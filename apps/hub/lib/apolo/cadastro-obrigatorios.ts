@@ -39,6 +39,55 @@ const ESTADO_CIVIL_TEM_CONJUGE = new Set(["2", "6"]); // temConjuge
 const SOCIO_IDENTIFICACAO_RE = /^identificacao_socio_\d+$/;
 const SOCIO_COMPROVANTE_RE = /^comprovante_socio_\d+$/;
 
+// ---------------------------------------------------------------------------
+// COMPROVANTE DE RENDA (etapa por empreendimento — Setup > Comprovante de renda)
+// ---------------------------------------------------------------------------
+//
+// Pedido do Lucas (18/08/2026): "caso essa etapa esteja ativa, vamos solicitar o comprovante de
+// renda. Pode ser o extrato bancário dos últimos 3 meses, contracheque ou declaração do imposto
+// de renda."
+//
+// ⚠️ É UM DOCUMENTO COM TRÊS FORMAS, NÃO TRÊS DOCUMENTOS. O cliente entrega UM dos três, e
+// qualquer um deles satisfaz a exigência. Por isso a categoria carrega a forma escolhida
+// (`comprovante_renda_contracheque`) e o requisito casa pela FAMÍLIA — mesmo padrão dos
+// documentos de sócio, que carregam o índice na categoria. Guardar os três na mesma categoria
+// ("comprovante_renda") faria a ficha perder qual documento foi entregue; exigir os três seria
+// outra regra, que ninguém pediu.
+export const COMPROVANTE_RENDA_OPCOES = [
+  {
+    categoria: "comprovante_renda_extrato",
+    // Aparece no drive/ficha como "Nome do cliente - Comprovante de renda (extrato bancário)".
+    rotulo: "Comprovante de renda (extrato bancário)",
+    // Texto da tela, na forma em que o Lucas descreveu para o corretor.
+    tela: "Extrato bancário dos últimos 3 meses",
+    telaHint: "Os 3 meses completos, em um arquivo ou em vários",
+  },
+  {
+    categoria: "comprovante_renda_contracheque",
+    rotulo: "Comprovante de renda (contracheque)",
+    tela: "Contracheque",
+    telaHint: "O holerite mais recente",
+  },
+  {
+    categoria: "comprovante_renda_irpf",
+    rotulo: "Comprovante de renda (imposto de renda)",
+    tela: "Declaração de imposto de renda",
+    telaHint: "A declaração completa do último exercício",
+  },
+] as const;
+
+export type ComprovanteRendaCategoria = (typeof COMPROVANTE_RENDA_OPCOES)[number]["categoria"];
+
+// Casa QUALQUER das três formas. Um único lugar define a família: as duas rotas de salvar, o
+// agrupamento de upload e o wizard leem daqui.
+const COMPROVANTE_RENDA_RE = /^comprovante_renda_(contracheque|extrato|irpf)$/;
+
+// categoria -> rótulo legível, para os mapas CATEGORIA_LABEL das rotas de salvar (é o rótulo que
+// vira o nome do documento na ficha, então é ELE que identifica o tipo entregue).
+export const COMPROVANTE_RENDA_LABELS: Record<string, string> = Object.fromEntries(
+  COMPROVANTE_RENDA_OPCOES.map((opcao) => [opcao.categoria, opcao.rotulo]),
+);
+
 export type RequisitoDocumento = {
   // Casa a categoria do documento anexado (exata, como "identificacao", ou de família, como o
   // grupo de sócios). Recebe a categoria já normalizada (trim + minúsculas).
@@ -63,10 +112,32 @@ export function normalizarCategoria(valor: string | null | undefined): string {
 //   PJ  → cartão CNPJ (chega na categoria "identificacao") + contrato social + a ficha de cada
 //         sócio (identificação + comprovante DELE). Vale para prospect PJ e imobiliária: os dois
 //         passam pelas etapas Contrato social e Sócios.
-export function requisitosDocumentos(input: {
-  persona: PersonaCadastro;
+//   +   → COMPROVANTE DE RENDA, nos dois, quando a etapa está ligada no Setup do empreendimento
+//         (`exigeComprovanteRenda`). É a única exigência que NÃO se deduz do cadastro: ela vem da
+//         chave do empreendimento, lida no servidor.
+export type RequisitosInput = {
   estadoCivilId?: string | null;
-}): RequisitoDocumento[] {
+  // Etapa "Comprovante de renda" LIGADA no Setup do empreendimento (migration 0095). Vem SEMPRE
+  // de fora: a exigência é decisão comercial por empreendimento, não característica da persona.
+  //
+  // ⚠️ Por isso não dá para deduzi-la aqui de `persona`/`role`: o cadastro de IMOBILIÁRIA passa
+  // por esta mesma função como PJ, e a etapa não fala dela — fala do comprador da CAD.
+  exigeComprovanteRenda?: boolean;
+  persona: PersonaCadastro;
+};
+
+// O requisito do comprovante de renda (uma das três formas). Igual para PF e PJ: quem decide é a
+// chave do empreendimento, e a lista de formas aceitas é a mesma nos dois casos.
+const REQUISITO_COMPROVANTE_RENDA: RequisitoDocumento = {
+  match: (c) => COMPROVANTE_RENDA_RE.test(c),
+  rotulo:
+    "o comprovante de renda (extrato bancário dos últimos 3 meses, contracheque ou declaração de imposto de renda)",
+  rotuloCurto: "comprovante de renda",
+};
+
+export function requisitosDocumentos(input: RequisitosInput): RequisitoDocumento[] {
+  const renda = input.exigeComprovanteRenda ? [REQUISITO_COMPROVANTE_RENDA] : [];
+
   if (input.persona === "pj") {
     return [
       {
@@ -89,6 +160,7 @@ export function requisitosDocumentos(input: {
         rotulo: "o comprovante de endereço de ao menos um sócio",
         rotuloCurto: "comprovante de sócio",
       },
+      ...renda,
     ];
   }
 
@@ -120,6 +192,7 @@ export function requisitosDocumentos(input: {
       rotuloCurto: "identificação do cônjuge",
     });
   }
+  requisitos.push(...renda);
   return requisitos;
 }
 
@@ -155,7 +228,7 @@ export function categoriasComArquivo(
 
 // Os rótulos (forma de frase) dos obrigatórios que NÃO têm arquivo anexado. Vazio = tudo presente.
 export function documentosFaltando(
-  input: { persona: PersonaCadastro; estadoCivilId?: string | null },
+  input: RequisitosInput,
   categoriasPresentes: Iterable<string>,
 ): string[] {
   const presentes = new Set<string>();
@@ -167,7 +240,7 @@ export function documentosFaltando(
 
 // Igual a documentosFaltando, mas em forma curta (para a lista "Falta: ..." do wizard).
 export function documentosFaltandoCurto(
-  input: { persona: PersonaCadastro; estadoCivilId?: string | null },
+  input: RequisitosInput,
   categoriasPresentes: Iterable<string>,
 ): string[] {
   const presentes = new Set<string>();
@@ -198,12 +271,20 @@ export type ValidacaoObrigatorios =
 // createApoloEntity já recusa nome/documento ausentes; a checagem de dígito verificador do CPF é
 // feita na rota, ver validarDocumentoObrigatorio).
 export function validarDocumentosObrigatorios(payload: {
-  persona: PersonaCadastro;
-  perfil?: { estadoCivilId?: string | null } | null;
   documentos?: DocumentoAnexado[] | null;
+  // A chave "Comprovante de renda" do EMPREENDIMENTO desta CAD, lida no servidor
+  // (`exigeComprovanteRenda` em lib/apolo/enterprise-settings.ts). Nunca vem do corpo: o corpo é
+  // do cliente, e um payload forjado desligaria a exigência sozinho.
+  exigeComprovanteRenda?: boolean;
+  perfil?: { estadoCivilId?: string | null } | null;
+  persona: PersonaCadastro;
 }): ValidacaoObrigatorios {
   const faltando = documentosFaltando(
-    { persona: payload.persona, estadoCivilId: payload.perfil?.estadoCivilId },
+    {
+      estadoCivilId: payload.perfil?.estadoCivilId,
+      exigeComprovanteRenda: payload.exigeComprovanteRenda,
+      persona: payload.persona,
+    },
     categoriasComArquivo(payload.documentos),
   );
   if (faltando.length === 0) return { ok: true };

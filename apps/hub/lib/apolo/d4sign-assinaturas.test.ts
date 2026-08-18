@@ -6,6 +6,7 @@ import {
   conciliarDocumento,
   dataCurtaDaAssinatura,
   reconciliarAssinaturasComD4Sign,
+  type ResumoDaReconciliacao,
 } from "./d4sign-assinaturas";
 import { limparDivergencias, lerDivergencias } from "./d4sign-divergencias";
 import type { LinhaAssinatura } from "./painel-assinatura";
@@ -195,6 +196,41 @@ describe("conciliarDocumento — a D4Sign manda no status", () => {
     expect(resultado.divergencias[0]?.tipo).toBe("status-do-documento");
     expect(resultado.divergencias[0]?.c2x).toBe("Aguardando assinaturas (3)");
   });
+
+  it("documento cancelado é MARCADO como cancelado, não devolvido como pendência viva", () => {
+    // O caso do acervo: 1.161 cancelados, e o que chega até aqui é o que está com o status 7
+    // furado no C2X — o filtro `contract_signature_status_id <> 6` não o pega. Sem a marca, as
+    // linhas voltariam iguais às de um contrato vivo esperando assinatura.
+    const resultado = conciliarDocumento({
+      consulta: ok(
+        [signatario({ assinadoEm: null, assinou: false })],
+        documento({ situacao: "cancelado", statusId: 6, statusName: "Cancelado" }),
+      ),
+      csId: 900,
+      linhas: [linha()],
+      statusC2x: 7,
+      uuidDoc: "5b797156",
+    });
+
+    expect(resultado.cancelado).toBe(true);
+    expect(resultado.fonte).toBe("d4sign");
+    expect(resultado.aviso).toBe(AVISOS_DA_FONTE.cancelado);
+    // As linhas ficam intactas: quem quiser mostrar o histórico do contrato morto tem o que mostrar.
+    expect(resultado.linhas).toHaveLength(1);
+    // E não há enxurrada de divergência de signatário em documento morto: só o status.
+    expect(resultado.divergencias.map((d) => d.tipo)).toEqual(["status-do-documento"]);
+  });
+
+  it("documento vivo não é marcado como cancelado", () => {
+    const resultado = conciliarDocumento({
+      consulta: ok([signatario()]),
+      csId: 900,
+      linhas: [linha()],
+      uuidDoc: "5b797156",
+    });
+
+    expect(resultado.cancelado).toBe(false);
+  });
 });
 
 describe("conciliarDocumento — casamento dos assinantes", () => {
@@ -225,7 +261,7 @@ describe("conciliarDocumento — casamento dos assinantes", () => {
     expect(resultado.divergencias.map((d) => d.tipo)).toEqual(["assinatura-nao-registrada"]);
   });
 
-  it("pareia por posição quando sobra exatamente um de cada lado", () => {
+  it("pareia por posição quando sobra exatamente um de cada lado, e REGISTRA o palpite", () => {
     const resultado = conciliarDocumento({
       consulta: ok([
         signatario({ chave: "K1" }),
@@ -244,6 +280,41 @@ describe("conciliarDocumento — casamento dos assinantes", () => {
     expect(resultado.linhas[1]?.perfil).toBe("Testemunha");
     expect(resultado.linhas[1]?.degrau).toBe(2);
     expect(resultado.linhas[1]?.assinou).toBe(true);
+    // O casamento adivinhado é CONTÁVEL: ele sobrescreve `assinou`, e errar em silêncio seria
+    // dizer "Fulano assinou" sobre quem não assinou.
+    const palpite = resultado.divergencias.find((d) => d.tipo === "pareado-por-posicao");
+    expect(palpite?.degrau).toBe(2);
+    expect(palpite?.referencia).toBe("K2");
+  });
+
+  it("NÃO adivinha por índice quando sobra mais de um de cada lado", () => {
+    // As duas ordens não são a mesma: o C2X vem por `after_position, ss.id` e a D4Sign vem na
+    // ordem do convite, sem campo de ordem nenhum. Com dois sobrando de cada lado, parear por
+    // índice é chute — e chute que sobrescreve `assinou`.
+    const resultado = conciliarDocumento({
+      consulta: ok([
+        signatario({ assinadoEm: null, assinou: false, chave: "K1", email: "a@x.com", nome: "Alfa" }),
+        signatario({ chave: "K2", email: "b@x.com", nome: "Beta" }),
+      ]),
+      csId: 900,
+      linhas: [
+        linha({ degrau: 1, email: "", usuario: "Primeiro do C2X" }),
+        linha({ degrau: 2, email: "", usuario: "Segundo do C2X" }),
+      ],
+      uuidDoc: "5b797156",
+    });
+
+    // Ninguém foi adivinhado: as duas linhas do C2X seguem com o dado do C2X (as duas que vêm
+    // depois são os assinantes que só a D4Sign conhece, virando linha nova).
+    expect(resultado.linhas.slice(0, 2).map((l) => l.assinou)).toEqual([false, false]);
+    expect(resultado.linhas.slice(0, 2).map((l) => l.usuario)).toEqual([
+      "Primeiro do C2X",
+      "Segundo do C2X",
+    ]);
+    expect(resultado.divergencias.filter((d) => d.tipo === "pareado-por-posicao")).toHaveLength(0);
+    // E os dois lados viram divergência, que é o "a gente não sabe" ficando visível.
+    expect(resultado.divergencias.filter((d) => d.tipo === "signatario-so-no-c2x")).toHaveLength(2);
+    expect(resultado.divergencias.filter((d) => d.tipo === "signatario-so-no-d4sign")).toHaveLength(2);
   });
 
   it("assinante só na D4Sign vira linha nova, no ÚLTIMO degrau, sem virar dono da fila", () => {
@@ -391,14 +462,28 @@ describe("fallback honesto", () => {
     expect(resultado.divergencias).toEqual([]);
   });
 
-  it("o aviso do quadro só grita quando TUDO caiu", () => {
-    expect(avisoDoQuadro({ assinaturasCorrigidas: 0, confirmados: 10, emFallback: 0, envios: 10 })).toBeNull();
-    expect(avisoDoQuadro({ assinaturasCorrigidas: 0, confirmados: 0, emFallback: 3, envios: 3 })).toBe(
-      AVISOS_DA_FONTE.indisponivel,
-    );
-    expect(avisoDoQuadro({ assinaturasCorrigidas: 0, confirmados: 9, emFallback: 1, envios: 10 })).toContain(
-      "1 de 10",
-    );
+  it("o aviso do quadro só grita quando TUDO QUE FOI TENTADO caiu", () => {
+    const resumo = (parcial: Partial<ResumoDaReconciliacao>): ResumoDaReconciliacao => ({
+      assinaturasCorrigidas: 0,
+      cancelados: 0,
+      confirmados: 0,
+      emFallback: 0,
+      envios: 0,
+      semDocumento: 0,
+      somenteStatus: 0,
+      ...parcial,
+    });
+
+    expect(avisoDoQuadro(resumo({ confirmados: 10, envios: 10 }))).toBeNull();
+    expect(avisoDoQuadro(resumo({ emFallback: 3, envios: 3 }))).toBe(AVISOS_DA_FONTE.indisponivel);
+    expect(avisoDoQuadro(resumo({ confirmados: 9, emFallback: 1, envios: 10 }))).toContain("1 de 10");
+  });
+
+  it("recorte só de contratos sem documento NÃO acende o banner de indisponibilidade", () => {
+    // Nenhuma chamada foi feita: não houve queda nenhuma para avisar. Banner que vive aceso não é
+    // acreditado no dia em que a D4Sign cair de verdade.
+    const so = { assinaturasCorrigidas: 0, cancelados: 0, confirmados: 0, emFallback: 0, envios: 7, semDocumento: 7, somenteStatus: 0 };
+    expect(avisoDoQuadro(so)).toBeNull();
   });
 });
 
@@ -456,9 +541,14 @@ describe("reconciliarAssinaturasComD4Sign", () => {
     expect(resultado.situacaoPorEnvio.get(900)).toBe("finalizado");
     expect(resultado.resumo).toEqual({
       assinaturasCorrigidas: 1,
+      cancelados: 0,
       confirmados: 1,
       emFallback: 0,
       envios: 1,
+      semDocumento: 0,
+      // `somenteStatus` conta o envio cujo status veio da listagem em lote sem o detalhe por
+      // assinante (o caminho barato). Aqui a conciliação foi completa, então é zero.
+      somenteStatus: 0,
     });
     expect(resultado.aviso).toBeNull();
     // A divergência ficou registrada para o time cobrar o webhook.
@@ -496,5 +586,53 @@ describe("reconciliarAssinaturasComD4Sign", () => {
     );
 
     expect(resultado.linhas.map((l) => l.contrato).sort()).toEqual([900, 999]);
+  });
+
+  it("envio SEM documento não conta como queda do D4Sign, e nem chama a D4Sign", async () => {
+    const espiao = vi.fn(async () => {
+      throw new Error("não era para tocar na rede");
+    });
+    globalThis.fetch = espiao as unknown as typeof fetch;
+
+    const resultado = await reconciliarAssinaturasComD4Sign(
+      [linha({ contrato: 900 })],
+      [{ csId: 900, uuidDoc: null }],
+    );
+
+    expect(espiao).not.toHaveBeenCalled();
+    expect(resultado.resumo.semDocumento).toBe(1);
+    expect(resultado.resumo.emFallback).toBe(0);
+    // O banner do quadro fica APAGADO: não houve queda nenhuma para avisar.
+    expect(resultado.aviso).toBeNull();
+    // O aviso certo continua na linha.
+    expect(resultado.avisoPorEnvio.get(900)).toBe(AVISOS_DA_FONTE.semDocumento);
+  });
+
+  it("documento cancelado sai das linhas e vai para o balde de cancelados", async () => {
+    globalThis.fetch = (async () => ({
+      json: async () => [
+        { list: [], statusId: "6", statusName: "Cancelado", uuidDoc: "doc-morto" },
+      ],
+      ok: true,
+      status: 200,
+    })) as unknown as typeof fetch;
+
+    const resultado = await reconciliarAssinaturasComD4Sign(
+      [linha({ contrato: 900 }), linha({ contrato: 901 })],
+      [
+        { csId: 900, statusC2x: 7, uuidDoc: "doc-morto" },
+        { csId: 901, uuidDoc: null },
+      ],
+    );
+
+    expect(resultado.enviosCancelados.has(900)).toBe(true);
+    expect(resultado.linhas.map((l) => l.contrato)).toEqual([901]);
+    expect(resultado.linhasCanceladas.map((l) => l.contrato)).toEqual([900]);
+    expect(resultado.resumo.cancelados).toBe(1);
+    // A D4Sign respondeu: isto é confirmação, não fallback.
+    expect(resultado.resumo.confirmados).toBe(1);
+    expect(resultado.resumo.emFallback).toBe(0);
+    // E o time fica sabendo que o C2X não soube do cancelamento.
+    expect(lerDivergencias().porTipo["status-do-documento"]).toBe(1);
   });
 });

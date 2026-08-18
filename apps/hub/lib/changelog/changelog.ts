@@ -36,6 +36,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-comprovante-de-renda",
+    deployedAt: "2026-08-18T14:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Etapa nova no Setup do empreendimento: COMPROVANTE DE RENDA. Ligada, passa a ser obrigatorio anexar o comprovante para enviar a CAD, junto dos documentos que ja sao exigidos",
+              "O cliente entrega UM dos tres: extrato bancario dos ultimos 3 meses, contracheque ou declaracao de imposto de renda",
+              "Nasce DESLIGADA em todos os empreendimentos: nada muda ate alguem ligar a chave, e ligar vale da proxima CAD em diante",
+              "Como as outras etapas, ela fica inativa quando a chave geral Recebendo CAD esta desligada",
+            ],
+            screen: "Empreendimento - Setup",
+          },
+        ],
+      },
+      {
+        module: "Cadastro (CAD)",
+        screens: [
+          {
+            items: [
+              "Com a etapa ligada, o wizard ganha o passo Renda antes da revisao: escolhe a forma, anexa e segue; trocar de forma descarta o anexo anterior para nao subir documento duplicado",
+              "O comprovante aparece na ficha do cliente junto dos outros documentos, com o tipo identificado (extrato, contracheque ou imposto de renda)",
+            ],
+            screen: "Wizard de cadastro",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.155.0 (2026-08-18-contratos-e-vale-do-ouro)",
+    technical: {
+      done:
+        "Migration 0095 aplicada em producao (comprovante_renda_habilitado, boolean not null default false — ao contrario da 0071, que nasceu true: aqui true viraria exigencia nova em massa). A regra pura vive em lib/apolo/cadastro-obrigatorios.ts e casa por FAMILIA de categoria (extrato | contracheque | irpf: qualquer uma satisfaz). O flag NUNCA vem do corpo: as duas rotas de salvar releem a chave no banco e o empreendimento sai do token da sessao, entao POST forjado nao desliga a exigencia. Documento segue o caminho atual (bucket apolo-documents, uploadApoloDocument, apolo_documents com document_type), e a contabilidade de 3,2MB no corpo ja manda o excedente por URL assinada, sem risco novo de 413.",
+      motivation:
+        "Lucas: 'vamos criar uma nova etapa, comprovante de renda... quando estiver ativa vira uma obrigatoriedade na hora de subir a CAD'.",
+    },
+    title: "Comprovante de renda como etapa do credenciamento",
+    type: "novidade",
+    version: "1.156.0",
+  },
+  {
     buildTag: "2026-08-18-contratos-e-vale-do-ouro",
     deployedAt: "2026-08-18T13:20:00-03:00",
     modules: [

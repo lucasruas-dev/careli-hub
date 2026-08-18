@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
 import {
+  COMPROVANTE_RENDA_LABELS,
   validarCamposMinimos,
   validarDocumentosObrigatorios,
 } from "@/lib/apolo/cadastro-obrigatorios";
@@ -20,6 +21,7 @@ import {
   removerDocumentoDoStorage,
   uploadApoloDocument,
 } from "@/lib/apolo/documentos";
+import { exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { montarCadPdf, type CadDoc } from "@/modules/apolo/blocks/cadastro/cad-pdf";
 import { PDFDocument } from "pdf-lib";
@@ -57,6 +59,9 @@ const CATEGORIA_LABEL: Record<string, string> = {
   cad: "CAD",
   certidao: "Certidão",
   comprovante_endereco: "Comprovante de endereço",
+  // As TRÊS formas do comprovante de renda: o rótulo carrega a forma entregue (extrato bancário /
+  // contracheque / imposto de renda), que é o que a aba Documentos da ficha mostra.
+  ...COMPROVANTE_RENDA_LABELS,
   contrato_social: "Contrato social",
   identificacao: "Identificação",
   identificacao_conjuge: "Identificação (cônjuge)",
@@ -187,8 +192,21 @@ export async function POST(request: Request) {
   if (!campos.ok) {
     return NextResponse.json({ error: campos.mensagem }, { status: 400 });
   }
+  // Etapa COMPROVANTE DE RENDA (Setup do empreendimento). Vale só para a CAD do cliente: a
+  // imobiliária passa por esta mesma rota como PJ, e a etapa fala do COMPRADOR, não do parceiro.
+  //
+  // ⚠️ CAD INTERNA SEM EMPREENDIMENTO NÃO TEM COMO SER COBRADA. O operador só escolhe o
+  // empreendimento no bloco Vínculo, e ele é opcional aqui (é o mesmo buraco que gera as CADs
+  // órfãs). Sem `enterpriseId` não existe chave que consultar, então a exigência não se aplica —
+  // não é um furo desta etapa, é o furo do vínculo faltando, que se resolve exigindo o
+  // empreendimento no wizard.
+  const rendaObrigatoria =
+    role === "prospect"
+      ? await exigeComprovanteRenda(adminClient, payload.vinculo?.enterpriseId)
+      : false;
   const obrigatorios = validarDocumentosObrigatorios({
     documentos,
+    exigeComprovanteRenda: rendaObrigatoria,
     perfil: payload.perfil,
     persona: payload.persona,
   });

@@ -4,6 +4,7 @@ import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
 import {
   listEnterpriseSettings,
   setEnterpriseAnaliseCredito,
+  setEnterpriseComprovanteRenda,
   setEnterpriseCredenciamento,
   setEnterpriseLimiteCredito,
   setEnterprisePrevenda,
@@ -16,8 +17,9 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 //  - POST  → flag `credenciamentoAtivo` (master "Recebendo CAD": empreendimento na ativa; o portal
 //            de credenciamento oferece somente os ativos).
 //  - PATCH → campos parciais das sub-etapas: `analiseCreditoHabilitada` + `limiteCredito` (Análise
-//            de Crédito) e `prevendaHabilitada` + `valorPix` (Pré-venda). Cada campo é opcional; a
-//            tela envia só o que o operador mexeu.
+//            de Crédito), `prevendaHabilitada` + `valorPix` (Pré-venda) e
+//            `comprovanteRendaHabilitado` (Comprovante de renda, que é só um flag — não tem valor
+//            a configurar). Cada campo é opcional; a tela envia só o que o operador mexeu.
 // O GET devolve todos os campos por empreendimento.
 //
 // AUTORIZAÇÃO: GET usa leitura (`authorizeApoloRead`); POST e PATCH usam ESCRITA
@@ -98,6 +100,7 @@ export async function PATCH(request: Request) {
   let body: {
     analiseCreditoHabilitada?: boolean;
     code?: string;
+    comprovanteRendaHabilitado?: boolean;
     enterpriseId?: string;
     limiteCredito?: number | null;
     prevendaHabilitada?: boolean;
@@ -122,11 +125,13 @@ export async function PATCH(request: Request) {
   const mexeuAnalise = "analiseCreditoHabilitada" in body;
   const mexeuLimite = "limiteCredito" in body;
   const mexeuPrevenda = "prevendaHabilitada" in body;
+  const mexeuRenda = "comprovanteRendaHabilitado" in body;
   const mexeuValorPix = "valorPix" in body;
 
   if (
     (mexeuAnalise && typeof body.analiseCreditoHabilitada !== "boolean") ||
-    (mexeuPrevenda && typeof body.prevendaHabilitada !== "boolean")
+    (mexeuPrevenda && typeof body.prevendaHabilitada !== "boolean") ||
+    (mexeuRenda && typeof body.comprovanteRendaHabilitado !== "boolean")
   ) {
     return NextResponse.json({ error: "Estado invalido." }, { status: 400 });
   }
@@ -158,6 +163,19 @@ export async function PATCH(request: Request) {
       code: body.code,
       enterpriseId: body.enterpriseId,
       habilitada: Boolean(body.analiseCreditoHabilitada),
+      updatedBy: auth.userId,
+    });
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 });
+  }
+
+  // Comprovante de renda: só o flag (não há valor a configurar). Ligado, as duas rotas de salvar
+  // passam a exigir o documento — a leitura fica em `exigeComprovanteRenda`.
+  if (mexeuRenda) {
+    const r = await setEnterpriseComprovanteRenda({
+      adminClient,
+      code: body.code,
+      enterpriseId: body.enterpriseId,
+      habilitada: Boolean(body.comprovanteRendaHabilitado),
       updatedBy: auth.userId,
     });
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 });
@@ -210,6 +228,7 @@ export async function PATCH(request: Request) {
   return NextResponse.json({
     data: {
       analiseCreditoHabilitada: body.analiseCreditoHabilitada,
+      comprovanteRendaHabilitado: body.comprovanteRendaHabilitado,
       limiteCredito: limite,
       prevendaHabilitada: body.prevendaHabilitada,
       // Null quando não houve desligamento. Preenchido, diz quantas CADs saíram da pré-venda e para

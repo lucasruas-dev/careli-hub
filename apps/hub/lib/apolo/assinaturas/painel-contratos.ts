@@ -28,6 +28,7 @@
 // carimbo antigo — a tela mostra "atualizado às …" e ninguém confunde um com o outro.
 import type { RowDataPacket } from "mysql2";
 
+import { montarQuadroComD4Sign } from "@/lib/apolo/d4sign-quadro";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 import {
@@ -63,6 +64,16 @@ export type PainelDeContratos = {
   atualizadoEm: string;
   /** O aviso do teto da lista, quando ela veio cortada. Nulo quando veio inteira. */
   aviso: null | string;
+  /**
+   * O aviso da FONTE: "o D4Sign não respondeu e isto é o registro antigo".
+   *
+   * ⚠️ SÃO TRÊS AVISOS DIFERENTES nesta tela e nenhum substitui o outro: `aviso` é o teto da lista,
+   * `avisoDaFonte` é a queda da fonte e `avisoDosAssinantes` é o detalhe pessoa a pessoa que não
+   * foi conferido. Fundir dois deles faz o raro (a queda) sumir atrás do corriqueiro.
+   */
+  avisoDaFonte: null | string;
+  /** O aviso sobre o detalhe por assinante quando só a situação do documento foi confirmada. */
+  avisoDosAssinantes: null | string;
   /** O recorte que de fato foi lido (já validado): é o que a tela ecoa no cabeçalho. */
   codes: string[];
   contratos: ContratoDoPainel[];
@@ -94,6 +105,8 @@ type LinhaRow = RowDataPacket & {
   quadra: null | string;
   /** Nulo = envio sem NENHUM assinante (o LEFT JOIN devolve uma linha só, vazia). */
   signer_id: null | number;
+  /** `contract_signature_status_id` — alimenta a divergência "D4Sign 4 x C2X 7". */
+  status_c2x: null | number;
   unidade: null | string;
   usuario: null | string;
   uuid_doc: null | string;
@@ -246,8 +259,11 @@ export async function carregarPainelDeContratos(
     // Por contrato vale UM envio — o com uuidDoc, senão o de maior id. A média é de dois envios
     // por contrato, e contar todos dobraria o quadro.
     const enviosPorAr = new Map<number, EnvioDeAssinatura[]>();
+    // O `contract_signature_status_id` por envio: alimenta a divergência de status na conciliação.
+    const statusPorEnvio = new Map<number, null | number>();
     for (const row of linhaRows) {
       const arId = Number(row.ar_id);
+      statusPorEnvio.set(Number(row.id_ass), row.status_c2x ?? null);
       const lista = enviosPorAr.get(arId) ?? [];
       if (!lista.some((envio) => envio.csId === Number(row.id_ass))) {
         lista.push({
@@ -366,12 +382,32 @@ export async function carregarPainelDeContratos(
     // 3. O QUADRO — as regras compartilhadas com o portal, sem uma linha reescrita: a lista já
     // vem com as três situações, os dados do contrato pendurados, ordenada pelo gargalo e cortada
     // no teto.
-    const quadro = montarQuadroDeAssinaturas(linhas, vivos, arPorEnvio, semAssinante);
+    //
+    // ⚠️ E COM A D4SIGN MANDANDO NO STATUS. O envio que ela diz cancelado sai da conta (a venda
+    // volta a "aguardando emissão"), o finalizado fecha as linhas que o C2X deixou em aberto, e
+    // cada linha volta com `fonte`/`aviso`. Fonte fora do ar = C2X com aviso, nunca tela vazia.
+    //
+    // ⚠️ O `statusC2x` VAI JUNTO: é ele que dá nome à divergência ("D4Sign Finalizado (4) x C2X
+    // Em aberto (7)"). Sem ele a discordância é contada e fica muda.
+    const paraD4Sign = [...escolhidos].map((csId) => ({
+      csId,
+      statusC2x: statusPorEnvio.get(csId) ?? null,
+      uuidDoc: uuidPorEnvio.get(csId) ?? null,
+    }));
+    const quadro = await montarQuadroComD4Sign({
+      arPorEnvio,
+      envios: paraD4Sign,
+      linhas,
+      semAssinante,
+      vivos,
+    });
 
     const dados: PainelDeContratos = {
       assinantes: enriquecerAssinantes(quadro.assinantes, emailsPorNome(linhas)),
       atualizadoEm: new Date().toISOString(),
       aviso: quadro.aviso,
+      avisoDaFonte: quadro.avisoDaFonte,
+      avisoDosAssinantes: quadro.avisoDosAssinantes,
       codes,
       contratos: enriquecerUnidades({ linhas, unidades: quadro.unidades, uuidPorEnvio }),
       empreendimentos,
@@ -401,6 +437,8 @@ function vazio(codes: string[], empreendimentos: EmpreendimentoDoFiltro[]): Pain
     assinantes: [],
     atualizadoEm: new Date().toISOString(),
     aviso: null,
+    avisoDaFonte: null,
+    avisoDosAssinantes: null,
     codes,
     contratos: [],
     empreendimentos,

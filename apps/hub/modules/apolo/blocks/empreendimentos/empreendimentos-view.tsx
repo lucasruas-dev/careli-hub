@@ -812,6 +812,7 @@ async function fetchEnterpriseLogos(): Promise<Record<string, string>> {
 async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
   analiseCredito: boolean;
   ativo: boolean;
+  comprovanteRenda: boolean;
   limiteCredito: number | null;
   prevenda: boolean;
   valorPix: number | null;
@@ -828,6 +829,7 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
           string,
           {
             analiseCreditoHabilitada?: boolean;
+            comprovanteRendaHabilitado?: boolean;
             credenciamentoAtivo?: boolean;
             limiteCredito?: number | null;
             prevendaHabilitada?: boolean;
@@ -845,6 +847,9 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
       // primeiro cliente aprovado caía na coluna Pré-venda.
       analiseCredito: setting?.analiseCreditoHabilitada ?? true,
       ativo: Boolean(setting?.credenciamentoAtivo),
+      // Comprovante de renda nasce DESLIGADO (default da coluna, migration 0095): sem setting
+      // salvo, empreendimento nenhum passa a exigir documento novo sozinho.
+      comprovanteRenda: setting?.comprovanteRendaHabilitado === true,
       limiteCredito:
         typeof setting?.limiteCredito === "number" ? setting.limiteCredito : null,
       prevenda:
@@ -857,6 +862,7 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
     return {
       analiseCredito: true,
       ativo: false,
+      comprovanteRenda: false,
       limiteCredito: null,
       prevenda: false,
       valorPix: null,
@@ -894,6 +900,7 @@ async function patchEnterpriseSettings(
   code: string,
   patch: {
     analiseCreditoHabilitada?: boolean;
+    comprovanteRendaHabilitado?: boolean;
     limiteCredito?: number | null;
     prevendaHabilitada?: boolean;
     valorPix?: number | null;
@@ -978,6 +985,11 @@ function CredenciamentoCard({
   const [erroPrevenda, setErroPrevenda] = useState<string | null>(null);
   // Resultado da varredura ao DESLIGAR a pré-venda: quantas fichas saíram e para onde.
   const [avisoPrevenda, setAvisoPrevenda] = useState<string | null>(null);
+  // Comprovante de renda: só o toggle (não há valor a configurar). Nasce DESLIGADO — ligar é
+  // acrescentar um documento obrigatório à CAD, e isso é decisão de quem clica, nunca default.
+  const [rendaOn, setRendaOn] = useState(false);
+  const [salvandoRenda, setSalvandoRenda] = useState(false);
+  const [erroRenda, setErroRenda] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -994,6 +1006,7 @@ function CredenciamentoCard({
       setLimite(numeroParaMoeda(value.limiteCredito));
       setPrevendaOn(value.prevenda);
       setValorPix(numeroParaMoeda(value.valorPix));
+      setRendaOn(value.comprovanteRenda);
     });
     return () => {
       alive = false;
@@ -1069,6 +1082,23 @@ function CredenciamentoCard({
       setAvisoPrevenda(null);
     }
     if (v?.erro) setErroPrevenda(`A varredura das fichas falhou em parte: ${v.erro}`);
+  }
+
+  // Salva o bloco Comprovante de renda (só o toggle). Sem valor a exigir, não há trava local: o
+  // clique salva direto, e ligado passa a valer para a PRÓXIMA CAD deste empreendimento.
+  //
+  // ⚠️ NÃO ALCANÇA O PASSADO, ao contrário do desligamento da pré-venda (que varre a fila). Aqui
+  // seria o inverso do que a varredura faz: alcançar o passado significaria invalidar CADs já
+  // aceitas por faltar um documento que ninguém pediu na hora do envio. Se o Lucas quiser cobrar o
+  // comprovante das CADs antigas, isso é uma ação de contato, não um efeito colateral do toggle.
+  async function salvarRenda() {
+    setErroRenda(null);
+    setSalvandoRenda(true);
+    const result = await patchEnterpriseSettings(enterpriseId, code, {
+      comprovanteRendaHabilitado: rendaOn,
+    });
+    setSalvandoRenda(false);
+    if (!result.ok) setErroRenda(result.error ?? "Falha ao salvar.");
   }
 
   async function handleFile(file: File | undefined) {
@@ -1162,6 +1192,19 @@ function CredenciamentoCard({
         salvando={salvandoPrevenda}
         titulo="Pré-venda"
         valor={valorPix}
+      />
+
+      {/* Comprovante de renda: chave sem valor. Ligada, o envio da CAD passa a exigir o documento
+          (um dos três) — a trava de verdade está nas rotas de salvar. */}
+      <SubEtapaCredenciamento
+        ativo={ativo}
+        descricao="Exige o comprovante de renda do cliente para enviar a CAD, junto dos documentos que já são obrigatórios. O cliente entrega UM dos três: extrato bancário dos últimos 3 meses, contracheque ou declaração de imposto de renda. Desligada, a CAD segue sem esse documento."
+        erro={erroRenda}
+        habilitada={rendaOn}
+        onSalvar={() => void salvarRenda()}
+        onToggle={() => setRendaOn((v) => !v)}
+        salvando={salvandoRenda}
+        titulo="Comprovante de renda"
       />
 
       {/* O clique no toggle mexeu na fila: quantas fichas saíram da pré-venda e para onde. */}
@@ -3992,9 +4035,14 @@ function locationLabel(row: ApoloEnterpriseRow): string {
   return [row.city, row.state].filter(Boolean).join("/");
 }
 
-// Sub-etapa do credenciamento (Análise de Crédito / Pré-venda): toggle + valor em moeda + Salvar.
-// Salva o BLOCO (toggle e valor juntos); ligada, o valor é obrigatório (a trava mora no onSalvar do
-// pai). Travada e esmaecida quando o master "Recebendo CAD" está desligado.
+// Sub-etapa do credenciamento (Análise de Crédito / Pré-venda / Comprovante de renda): toggle +
+// (quando a etapa tem valor) campo em moeda + Salvar. Salva o BLOCO (toggle e valor juntos);
+// ligada, o valor é obrigatório (a trava mora no onSalvar do pai). Travada e esmaecida quando o
+// master "Recebendo CAD" está desligado.
+//
+// O campo de valor é OPCIONAL: o Comprovante de renda é só uma chave — não há número a configurar,
+// a lista do que é aceito é fixa (extrato / contracheque / IRPF). Componente único de propósito:
+// as três etapas têm que ser o mesmo objeto na tela, inclusive no jeito de travar com o master.
 function SubEtapaCredenciamento({
   ativo,
   descricao,
@@ -4012,17 +4060,19 @@ function SubEtapaCredenciamento({
   ativo: boolean;
   descricao: string;
   erro: string | null;
-  fieldHelp: string;
-  fieldLabel: string;
+  fieldHelp?: string;
+  fieldLabel?: string;
   habilitada: boolean;
   onSalvar: () => void;
   onToggle: () => void;
-  onValorChange: (display: string) => void;
+  onValorChange?: (display: string) => void;
   salvando: boolean;
   titulo: string;
-  valor: string;
+  valor?: string;
 }) {
   const travado = !ativo;
+  // Etapa COM valor a configurar. Sem os quatro, o bloco mostra só o toggle e o Salvar.
+  const temCampo = Boolean(fieldLabel && fieldHelp && onValorChange && valor !== undefined);
 
   return (
     <div
@@ -4056,23 +4106,23 @@ function SubEtapaCredenciamento({
       </div>
 
       <div className="mt-2.5">
-        {habilitada ? (
+        {habilitada && temCampo ? (
           <>
             <p className="m-0 text-sm font-medium text-ink">{fieldLabel}</p>
             <p className="m-0 mt-0.5 text-xs text-ink-muted">{fieldHelp}</p>
           </>
         ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          {habilitada ? (
+          {habilitada && temCampo ? (
             <span className="inline-flex h-9 items-center rounded-lg border border-line bg-surface px-3 focus-within:border-line-strong">
               <span className="mr-1 text-sm text-ink-muted">R$</span>
               <input
                 className="w-28 bg-transparent text-sm text-ink outline-none"
                 disabled={travado}
                 inputMode="numeric"
-                onChange={(event) => onValorChange(event.target.value)}
+                onChange={(event) => onValorChange?.(event.target.value)}
                 placeholder="0,00"
-                value={valor}
+                value={valor ?? ""}
               />
             </span>
           ) : null}

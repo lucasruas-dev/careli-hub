@@ -93,6 +93,7 @@ export const SQL_LINHAS_POR_CODE = (placeholders: string): string => `
     cs.id as id_ass,
     ar.id as ar_id,
     nullif(trim(cs.uuidDoc), '') as uuid_doc,
+    cs.contract_signature_status_id as status_c2x,
     date_format(cs.created_at, '%Y-%m-%d') as envio,
     datediff(now(), cs.created_at) as dias_envio,
     ss.id as signer_id,

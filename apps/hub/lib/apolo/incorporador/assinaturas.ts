@@ -59,6 +59,17 @@
 // degrau, e que o rótulo do degrau é DERIVADO dos perfis que assinam nele (ver `fila`).
 import type { RowDataPacket } from "mysql2";
 
+// ⚠️ SÓ O TIPO. `d4sign-assinaturas` puxa o cliente HTTP da D4Sign; importar valor daqui criaria
+// dependência de rede na montagem do quadro, que é PURA de propósito (é ela que os testes fixam).
+import type { EnvioParaConciliar, FonteDaAssinatura } from "@/lib/apolo/d4sign-assinaturas";
+// ⚠️ IMPORTAÇÃO CIRCULAR, E DE PROPÓSITO: `d4sign-quadro` importa daqui a montagem pura
+// (`montarQuadroDeAssinaturas`) e este arquivo importa de lá o enxerto que a usa. O ciclo é seguro
+// porque NENHUM dos dois lados usa o outro em tempo de AVALIAÇÃO do módulo — só dentro de função,
+// e declaração de função é içada. Quem mexer aqui não pode criar uso de topo (uma constante
+// calculada com `montarQuadroComD4Sign`, por exemplo): aí o ciclo passa a valer `undefined`.
+// A alternativa seria mudar `montarQuadroDeAssinaturas` de arquivo — o que o cabeçalho de
+// lib/apolo/assinaturas/nucleo.ts já prevê para quando o portal parar de estar em obra.
+import { montarQuadroComD4Sign, type QuadroComFonte } from "@/lib/apolo/d4sign-quadro";
 import {
   marcarSituacao,
   perfilDeTela,
@@ -140,6 +151,16 @@ export type DadosDoContrato = {
 /** Uma linha da lista analítica: um ENVIO (contrato) rotulado pela unidade dele. */
 export type UnidadeDeAssinatura = {
   assinadas: number;
+  /**
+   * O aviso DAQUELA linha sobre a procedência do que está escrito nela. Nulo quando a D4Sign
+   * confirmou e o contrato está vivo.
+   *
+   * ⚠️ TEM QUE APARECER NA TELA. Uma linha "c2x-legado" pode estar dizendo "pendente" sobre um
+   * contrato já assinado — é literalmente o defeito que motivou a troca de fonte. Quem preenche é
+   * `montarQuadroComD4Sign`; a montagem pura deixa nulo, porque sem consultar a D4Sign não há o
+   * que avisar.
+   */
+  aviso: null | string;
   /** Nome(s) do perfil Comprador daquele contrato, já juntados. Nulo quando não há. */
   comprador: null | string;
   concluida: boolean;
@@ -153,6 +174,11 @@ export type UnidadeDeAssinatura = {
   envioId: number;
   /** O esquema inteiro, na ordem do fluxo. Vazio = envio sem assinante registrado. */
   esquema: AssinaturaDoEsquema[];
+  /**
+   * De onde veio o status desta linha. `c2x-legado` na montagem pura (ninguém perguntou nada à
+   * D4Sign); `montarQuadroComD4Sign` é quem troca pelo que a fonte respondeu.
+   */
+  fonte: FonteDaAssinatura;
   /** Os perfis presentes no contrato, na ordem do fluxo: as barrinhas da linha. */
   grupos: GrupoDaUnidade[];
   /** Quem está na vez NESTE contrato — pode ser mais de um (degrau dividido assina em paralelo). */
@@ -231,6 +257,19 @@ export type QuadroDeAssinaturas = {
   assinantes: AssinanteDoQuadro[];
   /** O aviso do teto da lista, quando ela foi cortada. Nulo quando veio inteira. */
   aviso: null | string;
+  /**
+   * O aviso da FONTE no recorte inteiro: "o D4Sign não respondeu e isto aqui é o registro antigo".
+   *
+   * ⚠️ NÃO É O `aviso`. Aquele é o do teto da lista ("mostrando os 500 mais antigos"); este é o da
+   * procedência do dado. Somar os dois num campo só faria um esconder o outro — e o que some é
+   * sempre o que aparece menos, que é justamente a notícia.
+   */
+  avisoDaFonte: null | string;
+  /**
+   * O aviso sobre o DETALHE por assinante, quando a situação do documento veio confirmada mas
+   * ninguém foi conferido um a um (ver `avisoDosAssinantes` em lib/apolo/d4sign-assinaturas).
+   */
+  avisoDosAssinantes: null | string;
   /** A fila por ordem de assinatura. Vem VAZIA quando o recorte não usa ordem (tudo no 0). */
   fila: DegrauDaFila[];
   kpis: KpisDeAssinatura;
@@ -477,6 +516,10 @@ export function montarQuadroDeAssinaturas(
 
     lista.push({
       assinadas: doContrato.filter((linha) => linha.assinou).length,
+      // A montagem PURA não fala com a D4Sign: a procedência sai daqui como legado, e quem troca é
+      // `montarQuadroComD4Sign`. Nascer "confirmado" seria mentir por omissão no dia em que alguém
+      // chamasse a montagem sozinha.
+      aviso: null,
       comprador: compradoresDoContrato.length > 0 ? compradoresDoContrato.join(", ") : null,
       concluida,
       contrato: dadosDoContrato(vivo),
@@ -484,6 +527,7 @@ export function montarQuadroDeAssinaturas(
       enviadoEm: doContrato[0]?.envio ?? "",
       envioId,
       esquema,
+      fonte: "c2x-legado",
       grupos: agruparPorPerfil(esquema),
       naVez,
       perfisNaVez: [
@@ -504,6 +548,7 @@ export function montarQuadroDeAssinaturas(
     const vivo = vivoPorAr.get(arPorEnvio.get(envio.csId) ?? -1);
     lista.push({
       assinadas: 0,
+      aviso: null,
       comprador: null,
       concluida: false,
       contrato: dadosDoContrato(vivo),
@@ -511,6 +556,7 @@ export function montarQuadroDeAssinaturas(
       enviadoEm: envio.enviadoEm,
       envioId: envio.csId,
       esquema: [],
+      fonte: "c2x-legado",
       grupos: [],
       naVez: [],
       perfisNaVez: [],
@@ -531,6 +577,7 @@ export function montarQuadroDeAssinaturas(
 
     lista.push({
       assinadas: 0,
+      aviso: null,
       comprador: vivo.ficha.comprador,
       concluida: false,
       contrato: dadosDoContrato(vivo),
@@ -538,6 +585,7 @@ export function montarQuadroDeAssinaturas(
       enviadoEm: "",
       envioId: 0,
       esquema: [],
+      fonte: "c2x-legado",
       grupos: [],
       naVez: [],
       perfisNaVez: [],
@@ -591,6 +639,10 @@ export function montarQuadroDeAssinaturas(
     aviso: cortada
       ? `Mostrando os ${TETO_DE_ENVIOS} contratos mais antigos sem assinar, de ${lista.length.toLocaleString("pt-BR")}. Os indicadores acima contam o recorte inteiro.`
       : null,
+    // Montagem pura não consulta fonte nenhuma: não há o que avisar. Preenchidos por
+    // `montarQuadroComD4Sign`.
+    avisoDaFonte: null,
+    avisoDosAssinantes: null,
     fila,
     kpis: {
       aguardandoEmissao,
@@ -712,14 +764,21 @@ type LinhaRow = RowDataPacket & {
   quadra: null | string;
   /** Nulo = envio sem NENHUM assinante (o LEFT JOIN devolve uma linha só, vazia). */
   signer_id: null | number;
+  /** `contract_signature_status_id` — alimenta a divergência "D4Sign 4 x C2X 7". */
+  status_c2x: null | number;
   unidade: null | string;
   usuario: null | string;
   uuid_doc: null | string;
   valor: null | number | string;
 };
 
+/**
+ * ⚠️ `QuadroComFonte` É UM `QuadroDeAssinaturas` — só acrescenta os números da reconciliação. Quem
+ * já lia o quadro continua lendo sem mudar uma linha; quem quiser saber de onde veio o dado tem
+ * `avisoDaFonte`, `avisoDosAssinantes` e o `fonte`/`aviso` de cada linha.
+ */
 export type ResultadoAssinaturas =
-  | { data: QuadroDeAssinaturas; ok: true }
+  | { data: QuadroComFonte; ok: true }
   | { error: string; ok: false };
 
 /**
@@ -734,7 +793,23 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
     .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
 
   if (validCodes.length === 0) {
-    return { data: montarQuadroDeAssinaturas([], [], new Map()), ok: true };
+    // Recorte vazio não tem documento para conferir: monta o quadro vazio sem tocar na D4Sign.
+    return {
+      data: {
+        ...montarQuadroDeAssinaturas([], [], new Map()),
+        cancelados: [],
+        resumoDaFonte: {
+          assinaturasCorrigidas: 0,
+          cancelados: 0,
+          confirmados: 0,
+          emFallback: 0,
+          envios: 0,
+          semDocumento: 0,
+          somenteStatus: 0,
+        },
+      },
+      ok: true,
+    };
   }
 
   const poolResult = getHadesDbPool();
@@ -760,6 +835,7 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
          cs.id as id_ass,
          ar.id as ar_id,
          nullif(trim(cs.uuidDoc), '') as uuid_doc,
+         cs.contract_signature_status_id as status_c2x,
          date_format(cs.created_at, '%Y-%m-%d') as envio,
          datediff(now(), cs.created_at) as dias_envio,
          ss.id as signer_id,
@@ -793,8 +869,12 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
 
     // Por contrato, UM envio: o com uuidDoc, senão o de maior id (regra do estudo, reusada).
     const enviosPorAr = new Map<number, EnvioDeAssinatura[]>();
+    // O status do C2X por envio: é ele que vira a divergência de status na reconciliação. Sem ele
+    // a discordância existe e fica muda ("o D4Sign fechou e o C2X nao soube" some do contador).
+    const statusPorEnvio = new Map<number, null | number>();
     for (const row of linhaRows) {
       const arId = Number(row.ar_id);
+      statusPorEnvio.set(Number(row.id_ass), row.status_c2x ?? null);
       const lista = enviosPorAr.get(arId) ?? [];
       if (!lista.some((envio) => envio.csId === Number(row.id_ass))) {
         lista.push({
@@ -812,12 +892,19 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
     // O PDF do fim da linha existe quando o envio ESCOLHIDO tem uuidDoc — a mesma régua do
     // `temContrato` da visão antiga, sobre o mesmo conjunto de envios.
     const temContratoPorAr = new Map<number, boolean>();
+    // Os envios que vão ser conferidos na D4Sign: um por contrato, o mesmo que a tela mostra.
+    const paraD4Sign: EnvioParaConciliar[] = [];
     for (const [arId, envios] of enviosPorAr) {
       const escolhido = escolherEnvio(envios);
       if (escolhido) {
         enviosEscolhidos.add(escolhido.csId);
         arPorEnvio.set(escolhido.csId, arId);
         temContratoPorAr.set(arId, Boolean(escolhido.uuidDoc));
+        paraD4Sign.push({
+          csId: escolhido.csId,
+          statusC2x: statusPorEnvio.get(escolhido.csId) ?? null,
+          uuidDoc: escolhido.uuidDoc,
+        });
       }
     }
 
@@ -875,7 +962,20 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
       geradoEm: isoOuNulo(bruto.geradoEm),
     }));
 
-    return { data: montarQuadroDeAssinaturas(linhas, vivos, arPorEnvio, semAssinante), ok: true };
+    // ⚠️ A D4SIGN MANDA NO STATUS DAQUI PARA BAIXO. A troca é `montarQuadroComD4Sign` no lugar de
+    // `montarQuadroDeAssinaturas`: as linhas entram corrigidas, o documento que a D4Sign diz
+    // cancelado sai da conta (e a venda volta a "aguardando emissão") e cada linha volta sabendo
+    // de onde veio. Com a fonte fora do ar, degrada para o C2X com aviso — nunca tela vazia.
+    return {
+      data: await montarQuadroComD4Sign({
+        arPorEnvio,
+        envios: paraD4Sign,
+        linhas,
+        semAssinante,
+        vivos,
+      }),
+      ok: true,
+    };
   } catch (error) {
     console.error("[incorporador][assinaturas] falha ao ler o C2X", error);
     return { error: "Não foi possível ler as assinaturas agora.", ok: false };

@@ -313,6 +313,10 @@ describe("envio válido sem NENHUM assinante registrado (o furo do join interno)
     expect(quadro.unidades).toEqual([
       {
         assinadas: 0,
+        // `aviso` e `fonte` entraram com a conciliação do D4Sign (18/08/2026): dizem de ONDE veio
+        // a verdade daquela linha. Aqui não houve conciliação (o teste exercita a montagem pura),
+        // então o aviso é nulo e a fonte é o C2X.
+        aviso: null,
         comprador: null,
         concluida: false,
         contrato: {
@@ -327,6 +331,7 @@ describe("envio válido sem NENHUM assinante registrado (o furo do join interno)
         enviadoEm: "2026-06-01",
         envioId: 10,
         esquema: [],
+        fonte: "c2x-legado",
         grupos: [],
         naVez: [],
         perfisNaVez: [],

@@ -19,6 +19,13 @@ export type TipoDeDivergencia =
   | "data-divergente"
   /** O uuid está no C2X e a D4Sign não conhece o documento. */
   | "documento-ausente-no-d4sign"
+  /**
+   * O casamento do assinante foi ADIVINHADO por posição (sobrou exatamente um de cada lado, e o
+   * e-mail e o nome não bateram). É um palpite bem fundamentado, não um fato: registrar torna o
+   * palpite CONTÁVEL — sem isso, um pareamento errado diria "Fulano assinou" sobre quem não
+   * assinou, em silêncio absoluto.
+   */
+  | "pareado-por-posicao"
   /** Assinante que só o C2X conhece: a D4Sign não tem ninguém que case com ele. */
   | "signatario-so-no-c2x"
   /** Assinante que só a D4Sign conhece. */

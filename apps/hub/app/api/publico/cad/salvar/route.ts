@@ -14,6 +14,7 @@ import {
   caminhoUploadDiretoValido,
   uploadApoloDocument,
 } from "@/lib/apolo/documentos";
+import { exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
 import {
   gravarVinculoEsteira,
   nomeDoEmpreendimento,
@@ -133,8 +134,12 @@ export async function POST(request: Request) {
   if (!campos.ok) {
     return responder(request, inicio, erro(campos.mensagem, 400));
   }
+  // A etapa COMPROVANTE DE RENDA é do EMPREENDIMENTO, e o empreendimento sai do TOKEN — nunca do
+  // corpo, pela mesma razão da imobiliária: um corpo forjado desligaria a exigência sozinho.
+  const rendaObrigatoria = await exigeComprovanteRenda(adminClient, sessao.enterpriseId);
   const obrigatorios = validarDocumentosObrigatorios({
     documentos,
+    exigeComprovanteRenda: rendaObrigatoria,
     perfil: payload.perfil,
     persona,
   });

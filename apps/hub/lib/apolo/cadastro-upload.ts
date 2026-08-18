@@ -6,6 +6,7 @@
 // /api/apolo/cadastro/salvar (modo interno). O modo PÚBLICO precisa do MESMO comportamento, então
 // ela foi isolada aqui para o público reusar SEM tocar na rota interna de produção (regra de ouro:
 // modo interno intacto). A rota interna segue com a cópia dela; esta é a superfície partilhável.
+import { COMPROVANTE_RENDA_LABELS } from "@/lib/apolo/cadastro-obrigatorios";
 import {
   documentoTemArquivo,
   lerDocumentoDoStorage,
@@ -43,6 +44,10 @@ const CATEGORIA_LABEL: Record<string, string> = {
   cad: "CAD",
   certidao: "Certidão",
   comprovante_endereco: "Comprovante de endereço",
+  // As TRÊS formas do comprovante de renda (extrato / contracheque / IRPF). O rótulo carrega a
+  // forma entregue: é ele que vira o nome do documento na aba Documentos da ficha, e "Comprovante
+  // de renda" sem a forma faria o validador abrir o arquivo para descobrir o que recebeu.
+  ...COMPROVANTE_RENDA_LABELS,
   contrato_social: "Contrato social",
   identificacao: "Identificação",
   identificacao_conjuge: "Identificação (cônjuge)",

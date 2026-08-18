@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  COMPROVANTE_RENDA_LABELS,
+  COMPROVANTE_RENDA_OPCOES,
   categoriasComArquivo,
   documentosFaltando,
+  documentosFaltandoCurto,
   requisitosDocumentos,
   validarCamposMinimos,
   validarDocumentosObrigatorios,
@@ -281,5 +284,168 @@ describe("documentosFaltando (forma de frase)", () => {
       "comprovante_endereco",
     ]);
     expect(faltando).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// COMPROVANTE DE RENDA (etapa por empreendimento — Setup > Comprovante de renda)
+// ---------------------------------------------------------------------------
+//
+// A regra que estes testes protegem é a do pedido do Lucas (18/08/2026), e ela tem DOIS lados que
+// quebram de formas opostas:
+//   • ligada e faltando o comprovante → tem que RECUSAR (senão a etapa não existe de fato);
+//   • DESLIGADA → tem que passar exatamente como hoje (senão a migration muda o comportamento de
+//     todos os empreendimentos existentes de uma vez, que é o que o default `false` evita).
+describe("comprovante de renda — etapa por empreendimento", () => {
+  const PF_COMPLETO = [arquivo("identificacao"), arquivo("comprovante_endereco")];
+
+  it("etapa DESLIGADA: CAD sem comprovante de renda passa (comportamento de hoje)", () => {
+    const r = validarDocumentosObrigatorios({
+      documentos: PF_COMPLETO,
+      perfil: { estadoCivilId: "1" },
+      persona: "pf",
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("flag ausente é igual a desligada (default da coluna é false)", () => {
+    const req = requisitosDocumentos({ persona: "pf", estadoCivilId: "1" });
+    expect(req.some((r) => r.match("comprovante_renda_extrato"))).toBe(false);
+  });
+
+  it("etapa LIGADA e sem comprovante: RECUSA com mensagem que lista as três formas", () => {
+    const r = validarDocumentosObrigatorios({
+      documentos: PF_COMPLETO,
+      exigeComprovanteRenda: true,
+      perfil: { estadoCivilId: "1" },
+      persona: "pf",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.faltando).toEqual([
+        "o comprovante de renda (extrato bancário dos últimos 3 meses, contracheque ou declaração de imposto de renda)",
+      ]);
+      expect(r.mensagem).toBe(
+        "Anexe o comprovante de renda (extrato bancário dos últimos 3 meses, contracheque ou declaração de imposto de renda) para enviar o cadastro.",
+      );
+    }
+  });
+
+  // O cliente entrega UM dos três: qualquer um satisfaz. Se algum dia só o extrato passar, a etapa
+  // vira "traga o extrato", que não foi o que o dono pediu.
+  it.each(COMPROVANTE_RENDA_OPCOES.map((opcao) => opcao.categoria))(
+    "etapa LIGADA: %s sozinho já satisfaz a exigência",
+    (categoria) => {
+      const r = validarDocumentosObrigatorios({
+        documentos: [...PF_COMPLETO, arquivo(categoria)],
+        exigeComprovanteRenda: true,
+        perfil: { estadoCivilId: "1" },
+        persona: "pf",
+      });
+      expect(r.ok).toBe(true);
+    },
+  );
+
+  // A trava conta o ARQUIVO anexado, nunca leitura — e o comprovante de renda não passa nem por
+  // OCR. Categoria certa sem arquivo é o caso do payload forjado/estado parcial.
+  it("etapa LIGADA: categoria de renda SEM arquivo não conta", () => {
+    const r = validarDocumentosObrigatorios({
+      documentos: [...PF_COMPLETO, { categoria: "comprovante_renda_contracheque", fileBase64: "" }],
+      exigeComprovanteRenda: true,
+      perfil: { estadoCivilId: "1" },
+      persona: "pf",
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  // Documento grande sobe direto pro Storage e viaja como CAMINHO (a Vercel corta o corpo em
+  // ~4,5MB). Extrato de 3 meses em PDF é justamente o candidato a esse caminho: se só o base64
+  // contasse, a CAD seria recusada por "falta comprovante" com o arquivo já gravado no bucket.
+  it("etapa LIGADA: comprovante que subiu direto (storagePath) conta", () => {
+    const r = validarDocumentosObrigatorios({
+      documentos: [
+        ...PF_COMPLETO,
+        {
+          categoria: "comprovante_renda_extrato",
+          storagePath: "entidade/_pendente/s-abc/1234-extrato.pdf",
+        },
+      ],
+      exigeComprovanteRenda: true,
+      perfil: { estadoCivilId: "1" },
+      persona: "pf",
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  // Categoria fora das três (nome inventado num payload forjado, ou resíduo de versão antiga) NÃO
+  // pode satisfazer a exigência: o que vale é a família fechada.
+  it("etapa LIGADA: categoria parecida mas fora das três não satisfaz", () => {
+    const r = validarDocumentosObrigatorios({
+      documentos: [...PF_COMPLETO, arquivo("comprovante_renda"), arquivo("renda")],
+      exigeComprovanteRenda: true,
+      perfil: { estadoCivilId: "1" },
+      persona: "pf",
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it("etapa LIGADA no PJ: exige o comprovante junto do resto", () => {
+    const pjCompleto = [
+      arquivo("identificacao"),
+      arquivo("contrato_social"),
+      arquivo("identificacao_socio_1"),
+      arquivo("comprovante_socio_1"),
+    ];
+    const sem = validarDocumentosObrigatorios({
+      documentos: pjCompleto,
+      exigeComprovanteRenda: true,
+      persona: "pj",
+    });
+    expect(sem.ok).toBe(false);
+
+    const com = validarDocumentosObrigatorios({
+      documentos: [...pjCompleto, arquivo("comprovante_renda_irpf")],
+      exigeComprovanteRenda: true,
+      persona: "pj",
+    });
+    expect(com.ok).toBe(true);
+  });
+
+  // Ligar a etapa não pode apagar nenhuma exigência antiga: o pedido é "ALÉM dos documentos que
+  // são necessários".
+  it("etapa LIGADA no casado: soma ao conjunto de sempre, não substitui", () => {
+    const r = validarDocumentosObrigatorios({
+      documentos: [arquivo("identificacao")],
+      exigeComprovanteRenda: true,
+      perfil: { estadoCivilId: "2" },
+      persona: "pf",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.faltando).toContain("o comprovante de endereço");
+      expect(r.faltando).toContain("a certidão de estado civil");
+      expect(r.faltando).toContain("o documento de identificação do cônjuge");
+      expect(r.faltando).toContain(
+        "o comprovante de renda (extrato bancário dos últimos 3 meses, contracheque ou declaração de imposto de renda)",
+      );
+    }
+  });
+
+  it("a lista do wizard (forma curta) mostra 'comprovante de renda'", () => {
+    const faltando = documentosFaltandoCurto(
+      { estadoCivilId: "1", exigeComprovanteRenda: true, persona: "pf" },
+      ["identificacao", "comprovante_endereco"],
+    );
+    expect(faltando).toEqual(["comprovante de renda"]);
+  });
+
+  // O rótulo é o que vira o NOME do documento na aba Documentos da ficha: sem a forma entre
+  // parênteses, o validador teria que abrir o arquivo para saber o que recebeu.
+  it("cada forma tem rótulo próprio, com o tipo identificado", () => {
+    expect(COMPROVANTE_RENDA_LABELS).toEqual({
+      comprovante_renda_contracheque: "Comprovante de renda (contracheque)",
+      comprovante_renda_extrato: "Comprovante de renda (extrato bancário)",
+      comprovante_renda_irpf: "Comprovante de renda (imposto de renda)",
+    });
   });
 });

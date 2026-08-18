@@ -10,6 +10,39 @@
 // `GET /documents/{uuid}` MAIS a lista de assinantes (sondado com documento real do Vista Alegre).
 // Quem quiser status + assinantes não deve chamar os dois: é o dobro do custo pelo mesmo dado.
 //
+// ⚠️ E MESMO ASSIM, UMA CHAMADA POR DOCUMENTO NÃO PAGA UMA CARGA DE TELA. Medido em 18/08/2026,
+// contra o C2X e contra a D4Sign, nos recortes reais:
+//
+//   recorte                envios com uuid   terminais   em movimento
+//   Vista Alegre (VAL)                  39          38              1
+//   Lagoa Bonita (LBR)                 211         198             13
+//   Vale do Ouro (VOC+VOL)             185           0            185   ← o padrão da tela do Apolo
+//
+// A 1,5 s por chamada e 6 em paralelo, o Vale do Ouro sozinho custaria 185/6 × 1,5 s ≈ 46 s — e o
+// orçamento de 8 s cortaria quase tudo, entregando uma tela inteira em fallback. É o oposto do
+// pedido.
+//
+// ⚠️ A SAÍDA É A LISTAGEM EM LOTE: `GET /documents?pg=N` devolve 500 documentos por página com
+// `uuidDoc`, `statusId`, `statusName`, `nameDoc`, `pages`, `uuidSafe` e `whoCanceled` — tudo o que
+// `lerDocumentoDaResposta` já lê, MENOS os assinantes. Medido: o CATÁLOGO INTEIRO (3.923
+// documentos, 8 páginas, 6 em paralelo) leva 3,0 s. Dos 2.171 uuid que o C2X aponta, 2.171 estão
+// nele — nenhum ficou de fora. E 93% do acervo é TERMINAL (2.489 finalizados + 1.161 cancelados),
+// caso em que o assinante a assinante não acrescenta nada que mude a tela:
+//   • finalizado = todo mundo daquele documento assinou (é o que "finalizado" quer dizer);
+//   • cancelado = não é pendência de ninguém, e a conciliação já ignora os assinantes dele.
+//
+// Então a divisão de custo ficou assim, e é o que `consultarDocumentosD4Sign` faz:
+//   1. lote poucochinho (≤ 8 documentos)  → direto no `/list`, que é mais barato que 8 páginas;
+//   2. lote grande                        → CATÁLOGO (3 s, uma vez a cada 5 min, para o Hub
+//                                           inteiro) resolve o status de todos;
+//   3. os EM MOVIMENTO que sobraram       → `/list` assinante a assinante, se couberem no teto
+//                                           (`TETO_ASSINANTES_POR_CARGA`) e no orçamento;
+//   4. o que não couber                   → fica com o status do catálogo (`signatarios: null`),
+//                                           que a camada de cima marca como "situação confirmada,
+//                                           assinaturas do sistema antigo". NÃO vira "indisponível":
+//                                           mentir queda de API sobre um dado que a gente TEM seria
+//                                           pior que o dado parcial.
+//
 // ⚠️ O QUE SAI DAQUI PARA A TELA. A resposta do `/list` traz CPF (`user_document`), e-mail, IP,
 // geolocalização e user-agent de quem assinou (`sign_info`). Nada disso pode atravessar para o
 // navegador. O tipo interno (`SignatarioD4Sign`) guarda e-mail e CPF porque são o que casa o
@@ -66,6 +99,36 @@ const ORCAMENTO_PADRAO_MS = 8000;
 
 /** Falhas seguidas que abrem o disjuntor. */
 const FALHAS_PARA_ABRIR = 3;
+
+/**
+ * A partir de quantos documentos pendentes vale puxar o CATÁLOGO em vez de perguntar um a um.
+ *
+ * O catálogo custa 8 chamadas (uma por página) e resolve o acervo inteiro; abaixo disso, perguntar
+ * documento a documento é mais barato e ainda traz os assinantes junto. O número é o de páginas
+ * medido em 18/08/2026 — se o acervo dobrar, o `total_pages` da primeira página é quem manda no
+ * custo real, e este limiar continua sendo o piso honesto.
+ */
+const LIMIAR_DO_CATALOGO = 8;
+
+/**
+ * Quantos documentos EM MOVIMENTO uma carga de tela ainda persegue assinante a assinante.
+ *
+ * ⚠️ É TUDO OU NADA POR RECORTE, de propósito. Perseguir "o que couber no tempo" faria a mesma
+ * tela mostrar metade das linhas confirmadas e metade não, e a metade mudaria a cada F5 — o
+ * usuário não teria como saber o que está olhando. Com o teto, o recorte inteiro tem o mesmo grau
+ * de confirmação, e ele é dizível numa frase.
+ *
+ * 20 × 1,5 s ÷ 6 em paralelo ≈ 5 s, que cabe no orçamento junto com os 3 s do catálogo. Cobre
+ * Vista Alegre (1 em movimento) e Lagoa Bonita (13); não cobre o Vale do Ouro (185), que fica com
+ * a situação do documento confirmada e a marcação de quem assinou vinda do C2X.
+ */
+const TETO_ASSINANTES_POR_CARGA = 20;
+
+/** TTL do catálogo. O mesmo dos documentos que se movem: é para eles que ele serve. */
+const TTL_CATALOGO_MS = TTL_MS;
+
+/** Trava de segurança: mesmo que a API diga `total_pages` absurdo, a gente para aqui. */
+const MAX_PAGINAS_DO_CATALOGO = 40;
 
 /** Quanto tempo o disjuntor fica aberto. Com ele aberto, ninguém chama o D4Sign: devolve na hora. */
 const DISJUNTOR_MS = 60 * 1000;
@@ -292,6 +355,40 @@ export function lerSignatariosDaResposta(payload: unknown): SignatarioD4Sign[] {
   return signatarios;
 }
 
+/** Uma página de `GET /documents?pg=N`: o cabeçalho de paginação e os documentos dela. */
+export type PaginaDoCatalogo = {
+  documentos: DocumentoD4Sign[];
+  /** `total_pages` do cabeçalho. 0 quando a resposta não trouxe. */
+  paginas: number;
+};
+
+/**
+ * Lê uma página da LISTAGEM EM LOTE.
+ *
+ * ⚠️ O ITEM `[0]` É CABEÇALHO, NÃO DOCUMENTO — `{total_documents, total_in_this_page,
+ * current_page, total_pages}`. Ele é a diferença desta resposta para a do `/documents/{uuid}`, e
+ * quem tratar o array inteiro como documento vai criar um registro fantasma sem uuid por página.
+ * Aqui a defesa é dupla: o cabeçalho é lido à parte E só entra na lista quem tem `uuidDoc`.
+ *
+ * ⚠️ ESTA RESPOSTA NÃO TRAZ ASSINANTE NENHUM. Ela é a fonte do STATUS; quem precisar de assinante
+ * pergunta pelo `/list`.
+ */
+export function lerPaginaDoCatalogo(payload: unknown): null | PaginaDoCatalogo {
+  if (!Array.isArray(payload)) return null;
+
+  const cabecalho = payload[0] && typeof payload[0] === "object" ? (payload[0] as Record<string, unknown>) : null;
+  const paginas = Number(cabecalho?.total_pages);
+
+  const documentos: DocumentoD4Sign[] = [];
+  for (const item of payload) {
+    if (!item || typeof item !== "object") continue;
+    const documento = lerDocumentoDaResposta(item);
+    if (documento) documentos.push(documento);
+  }
+
+  return { documentos, paginas: Number.isFinite(paginas) && paginas > 0 ? paginas : 0 };
+}
+
 /**
  * O resultado de uma consulta.
  *
@@ -303,7 +400,16 @@ export type ConsultaD4Sign =
   | {
       documento: DocumentoD4Sign;
       ok: true;
-      signatarios: SignatarioD4Sign[];
+      /**
+       * Os assinantes daquele documento, ou `null` quando a resposta veio da LISTAGEM EM LOTE e
+       * ninguém perguntou assinante a assinante.
+       *
+       * ⚠️ `null` NÃO É "documento sem assinante" — é "não perguntamos". A diferença muda a tela:
+       * lista vazia diria que o C2X inventou todo mundo (e viraria um `signatario-so-no-c2x` por
+       * linha); `null` diz que o STATUS está confirmado e a marcação de quem assinou continua
+       * sendo a do sistema antigo. Quem consome tem que separar os dois casos.
+       */
+      signatarios: null | SignatarioD4Sign[];
     }
   | {
       motivo: "credencial-ausente" | "documento-desconhecido" | "indisponivel";
@@ -320,24 +426,34 @@ const cache = new Map<string, EmCache>();
 /** Chamadas em voo, por uuid: é o que impede N cargas simultâneas de virarem N chamadas iguais. */
 const emVoo = new Map<string, Promise<ConsultaD4Sign>>();
 
+/** O catálogo inteiro por uuid, e quando ele foi montado. Um só para o processo. */
+let catalogo: null | { em: number; mapa: Map<string, DocumentoD4Sign> } = null;
+/** A montagem do catálogo em voo: dez cargas ao mesmo tempo pagam UMA varredura de 8 páginas. */
+let catalogoEmVoo: null | Promise<null | Map<string, DocumentoD4Sign>> = null;
+
 let falhasSeguidas = 0;
 let disjuntorAbertoAte = 0;
 
-/** Zera cache, chamadas em voo e disjuntor. Existe para os testes; não use em runtime. */
+/** Zera cache, catálogo, chamadas em voo e disjuntor. Existe para os testes; não use em runtime. */
 export function limparCacheD4Sign(): void {
   cache.clear();
   emVoo.clear();
+  catalogo = null;
+  catalogoEmVoo = null;
   falhasSeguidas = 0;
   disjuntorAbertoAte = 0;
 }
 
 /** Números do cache para diagnóstico. Não expõe conteúdo de documento nenhum. */
 export function estadoDoCacheD4Sign(): {
+  /** Documentos no catálogo em lote. 0 quando ele nunca foi carregado (ou já venceu). */
+  catalogo: number;
   disjuntorAberto: boolean;
   documentos: number;
   emVoo: number;
 } {
   return {
+    catalogo: catalogo && Date.now() - catalogo.em < TTL_CATALOGO_MS ? catalogo.mapa.size : 0,
     disjuntorAberto: Date.now() < disjuntorAbertoAte,
     documentos: cache.size,
     emVoo: emVoo.size,
@@ -426,6 +542,105 @@ async function buscar(uuid: string): Promise<ConsultaD4Sign> {
 }
 
 /**
+ * Puxa UMA página da listagem em lote. Devolve nulo em qualquer tropeço — o catálogo é um atalho
+ * de custo, e catálogo incompleto só faz o documento faltante cair no caminho normal do `/list`.
+ */
+async function buscarPaginaDoCatalogo(pg: number): Promise<null | PaginaDoCatalogo> {
+  const tokenAPI = process.env.D4SIGN_TOKEN_API;
+  const cryptKey = process.env.D4SIGN_CRYPT_KEY;
+  if (!tokenAPI || !cryptKey) return null;
+
+  // ⚠️ Mesma regra do `buscar`: a credencial vai na query string e esta URL não pode ser logada,
+  // devolvida nem entrar em mensagem de erro.
+  const url = `${D4SIGN_API_BASE_URL}/documents?${new URLSearchParams({
+    cryptKey,
+    pg: String(pg),
+    tokenAPI,
+  }).toString()}`;
+
+  try {
+    const resposta = await fetch(url, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      // A página é maior que um documento (500 itens, ~125 KB): 6 s seria apertado. Medido: 1,5 s.
+      signal: AbortSignal.timeout(TIMEOUT_MS * 2),
+    });
+    if (!resposta.ok) {
+      registrarFalha();
+      return null;
+    }
+
+    const payload: unknown = await resposta.json().catch(() => null);
+    const pagina = lerPaginaDoCatalogo(payload);
+    if (pagina) falhasSeguidas = 0;
+
+    return pagina;
+  } catch {
+    // ⚠️ O erro do fetch NÃO é repassado nem logado: a URL que ele carrega tem a credencial.
+    registrarFalha();
+    return null;
+  }
+}
+
+/**
+ * O CATÁLOGO INTEIRO por uuid — a listagem em lote, com cache e deduplicação de montagem.
+ *
+ * Medido em 18/08/2026: 3.923 documentos em 8 páginas, 3,0 s com 6 páginas em paralelo. Isso é o
+ * status de TODO o acervo por menos tempo do que custam duas consultas documento a documento.
+ *
+ * ⚠️ ELE NÃO ENTRA NO CACHE POR DOCUMENTO, e isso é decisão, não esquecimento: seriam 3.923
+ * entradas num cache com teto de 2.000, e a poda comeria justamente as consultas COMPLETAS (com
+ * assinantes) que custaram uma chamada cada. O catálogo mora no mapa dele, com o TTL dele.
+ *
+ * ⚠️ PÁGINA QUE FALHA NÃO INVALIDA O CATÁLOGO. O que ela deixa de fora simplesmente não é
+ * encontrado, e o documento cai no caminho normal (`/list`) — que é a resposta certa para "não
+ * sei", e não um erro de tela.
+ */
+export async function carregarCatalogoD4Sign(): Promise<null | Map<string, DocumentoD4Sign>> {
+  if (catalogo && Date.now() - catalogo.em < TTL_CATALOGO_MS) return catalogo.mapa;
+  if (Date.now() < disjuntorAbertoAte) return null;
+  if (catalogoEmVoo) return catalogoEmVoo;
+
+  const montar = async (): Promise<null | Map<string, DocumentoD4Sign>> => {
+    const primeira = await buscarPaginaDoCatalogo(1);
+    // Sem a primeira página não há nem quantas são: aqui a gente desiste e deixa o `/list` cuidar.
+    if (!primeira) return null;
+
+    const mapa = new Map<string, DocumentoD4Sign>();
+    for (const documento of primeira.documentos) mapa.set(documento.uuidDoc, documento);
+
+    const total = Math.min(primeira.paginas, MAX_PAGINAS_DO_CATALOGO);
+    if (total > 1) {
+      const restantes = Array.from({ length: total - 1 }, (_, i) => i + 2);
+      let proxima = 0;
+      const trabalhador = async (): Promise<void> => {
+        for (;;) {
+          const pg = restantes[proxima];
+          proxima += 1;
+          if (pg === undefined) return;
+          const pagina = await buscarPaginaDoCatalogo(pg);
+          if (!pagina) continue;
+          for (const documento of pagina.documentos) mapa.set(documento.uuidDoc, documento);
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(CONCORRENCIA_PADRAO, restantes.length) }, () => trabalhador()),
+      );
+    }
+
+    catalogo = { em: Date.now(), mapa };
+
+    return mapa;
+  };
+
+  catalogoEmVoo = montar().finally(() => {
+    catalogoEmVoo = null;
+  });
+
+  return catalogoEmVoo;
+}
+
+/**
  * Consulta UM documento, com cache e deduplicação.
  *
  * As três camadas, nesta ordem:
@@ -462,6 +677,13 @@ export async function consultarDocumentoD4Sign(uuidDoc: string): Promise<Consult
 }
 
 export type OpcoesDeLote = {
+  /**
+   * Usar a listagem em lote quando o recorte for grande. Padrão: sim.
+   *
+   * Existe para o teste poder fixar o caminho documento a documento sem depender do limiar — e
+   * para um chamador que precise de assinante a assinante custe o que custar (nenhum precisa hoje).
+   */
+  catalogo?: boolean;
   /** Chamadas simultâneas. Padrão 6. */
   concorrencia?: number;
   /** Teto de tempo da rodada inteira. Estourou, o que faltava vira "indisponível". Padrão 8 s. */
@@ -499,18 +721,54 @@ export async function consultarDocumentosD4Sign(
     else pendentes.push(uuid);
   }
 
+  // ── O CATÁLOGO ────────────────────────────────────────────────────────────
+  //
+  // Ele resolve o STATUS de todo mundo por 8 chamadas. O que ele NÃO resolve é quem assinou — e é
+  // por isso que só o TERMINAL sai daqui pronto: em documento finalizado ou cancelado, assinante a
+  // assinante não muda nada na tela (ver o cabeçalho). O que está EM MOVIMENTO segue para o
+  // `/list`, que é onde a fila de assinatura de verdade se decide.
+  const doCatalogo =
+    (opcoes.catalogo ?? true) && pendentes.length > LIMIAR_DO_CATALOGO
+      ? await carregarCatalogoD4Sign()
+      : null;
+
+  const paraLista: string[] = [];
+  for (const uuid of pendentes) {
+    const documento = doCatalogo?.get(uuid);
+    if (documento && situacaoEhTerminal(documento.situacao)) {
+      resultado.set(uuid, { documento, ok: true, signatarios: null });
+      continue;
+    }
+    paraLista.push(uuid);
+  }
+
+  // ── OS QUE SE MOVEM ───────────────────────────────────────────────────────
+  //
+  // ⚠️ TUDO OU NADA. Passou do teto, NINGUÉM é perseguido assinante a assinante: o recorte inteiro
+  // fica com o status do catálogo e a tela diz isso numa frase só. Perseguir "o que couber"
+  // deixaria metade das linhas confirmadas e metade não, com a metade mudando a cada F5.
+  const conhecidosNoCatalogo = paraLista.filter((uuid) => doCatalogo?.has(uuid));
+  const desisteDaLista =
+    paraLista.length > TETO_ASSINANTES_POR_CARGA &&
+    conhecidosNoCatalogo.length === paraLista.length;
+
   let proximo = 0;
   const trabalhador = async (): Promise<void> => {
     for (;;) {
       const indice = proximo;
       proximo += 1;
-      const uuid = pendentes[indice];
+      const uuid = paraLista[indice];
       if (uuid === undefined) return;
 
-      if (Date.now() >= limite) {
-        // Orçamento estourado: o resto nem tenta. Devolver "indisponível" é o que aciona o
-        // fallback honesto na camada de cima — mentir "pendente" aqui seria pior.
-        resultado.set(uuid, { motivo: "indisponivel", ok: false });
+      // Orçamento estourado (ou teto batido): o que o catálogo souber vale como status confirmado,
+      // e só o que ele NÃO souber vira "indisponível" — que é o que aciona o fallback honesto. Dar
+      // queda de API sobre um dado que a gente tem na mão seria mentira na direção errada.
+      if (desisteDaLista || Date.now() >= limite) {
+        const documento = doCatalogo?.get(uuid);
+        resultado.set(
+          uuid,
+          documento ? { documento, ok: true, signatarios: null } : { motivo: "indisponivel", ok: false },
+        );
         continue;
       }
 
@@ -519,7 +777,7 @@ export async function consultarDocumentosD4Sign(
   };
 
   await Promise.all(
-    Array.from({ length: Math.min(concorrencia, pendentes.length) }, () => trabalhador()),
+    Array.from({ length: Math.min(concorrencia, paraLista.length) }, () => trabalhador()),
   );
 
   return resultado;

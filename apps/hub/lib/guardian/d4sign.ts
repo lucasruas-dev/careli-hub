@@ -4,6 +4,31 @@
 // arquivo. Usado pelo Hades e pelo Apolo (carteira do empreendimento).
 const D4SIGN_API_BASE_URL = "https://secure.d4sign.com.br/api/v1";
 
+/**
+ * ⚠️ TIMEOUT EM TODA CHAMADA — sem `AbortSignal` o `fetch` do Node espera o socket, e o padrão
+ * dele é praticamente eterno. Numa rota de Next isso vira função pendurada até o `maxDuration`
+ * do runtime, com o usuário olhando um spinner e a conexão ocupada; a mesma armadilha que o
+ * `d4sign-consulta` já resolve com `AbortSignal.timeout` (lá, 6 s, medido).
+ *
+ * São DOIS orçamentos porque são dois pedidos de natureza diferente:
+ *   • gerar o link é uma chamada de API que devolve um JSON de duas linhas — mesma faixa de
+ *     latência das outras (mediana 1,4 s, pior caso medido 2,7 s), logo 8 s é folga larga;
+ *   • baixar o PDF é transferência de arquivo (contrato real do Vista Alegre: 27 páginas), e a
+ *     conta que importa é a banda de quem está com a tela aberta. 30 s cobre o arquivo grande
+ *     numa conexão ruim sem deixar a rota presa para sempre.
+ *
+ * O `signal` vale também para a LEITURA DO CORPO: se o servidor abrir a resposta e travar no
+ * meio, o `arrayBuffer()` é abortado junto — que é exatamente o caso que um timeout só de
+ * cabeçalho deixaria passar.
+ */
+const TIMEOUT_LINK_MS = 8000;
+const TIMEOUT_ARQUIVO_MS = 30_000;
+
+/** O `AbortSignal.timeout` estourou (e não um erro de rede qualquer). */
+function ehTimeout(erro: unknown): boolean {
+  return erro instanceof Error && (erro.name === "TimeoutError" || erro.name === "AbortError");
+}
+
 export type D4SignContractResult =
   | {
       body: ArrayBuffer;
@@ -44,6 +69,7 @@ export async function fetchD4SignContract(
       cache: "no-store",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       method: "POST",
+      signal: AbortSignal.timeout(TIMEOUT_LINK_MS),
     });
     const payload = (await linkResponse.json().catch(() => null)) as {
       message?: string;
@@ -61,6 +87,7 @@ export async function fetchD4SignContract(
     const fileResponse = await fetch(payload.url, {
       cache: "no-store",
       redirect: "follow",
+      signal: AbortSignal.timeout(TIMEOUT_ARQUIVO_MS),
     });
 
     if (!fileResponse.ok) {
@@ -77,7 +104,18 @@ export async function fetchD4SignContract(
       contentType: fileResponse.headers.get("content-type") ?? "application/pdf",
       ok: true,
     };
-  } catch {
+  } catch (erro) {
+    // ⚠️ O erro do fetch NÃO é repassado: a URL que ele carrega tem a credencial na query string.
+    // O que sai é só a DIFERENÇA que muda o que a tela deve dizer — demorou demais (504) ou não
+    // conectou (502).
+    if (ehTimeout(erro)) {
+      return {
+        error: "O D4Sign demorou demais para responder.",
+        ok: false,
+        status: 504,
+      };
+    }
+
     return {
       error: "Nao foi possivel conectar ao D4Sign agora.",
       ok: false,

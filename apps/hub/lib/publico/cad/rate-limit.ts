@@ -23,6 +23,7 @@ export type Balde =
   | "assistente"
   | "creci"
   | "enviar"
+  | "exigencias"
   | "identificacao"
   | "imobiliaria"
   | "ocr"
@@ -42,6 +43,11 @@ const REGRAS: Record<Balde, Regra> = {
   // Torneiras PAGAS: teto diário e 429 seco, sem atraso progressivo (atrasar não economiza).
   creci: { janelaSegundos: 24 * 60 * 60, teto: 60 },
   enviar: { janelaSegundos: 60 * 60, teto: 60 },
+  // "Este empreendimento exige comprovante de renda?" — uma linha de settings, sem consulta paga e
+  // sem oráculo (quem pergunta já tem sessão assinada, e a resposta é sobre o empreendimento que o
+  // token dele já carimbou). Balde PRÓPRIO de propósito: pendurar no `identificacao` gastaria o
+  // teto do CPF/CNPJ e empurraria o corretor legítimo para o atraso progressivo.
+  exigencias: { janelaSegundos: 60 * 60, teto: 120 },
   identificacao: { janelaSegundos: 10 * 60, teto: 40 },
   imobiliaria: { janelaSegundos: 10 * 60, teto: 24 },
   ocr: { janelaSegundos: 24 * 60 * 60, teto: 400 },

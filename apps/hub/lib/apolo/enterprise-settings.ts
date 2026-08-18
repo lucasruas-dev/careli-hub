@@ -15,8 +15,12 @@ export type EnterpriseSetting = {
   // Toggle da Análise de Crédito (default true na migration). Ligado ⇒ o limite de crédito é
   // exigido; desligado ⇒ a etapa de crédito é ignorada na esteira.
   analiseCreditoHabilitada: boolean;
+  // Toggle do Comprovante de renda (default FALSE na migration 0095). Ligado ⇒ o envio da CAD
+  // exige o comprovante de renda do cliente (um entre extrato bancário dos últimos 3 meses,
+  // contracheque ou declaração de imposto de renda). Desligado ⇒ a CAD segue como hoje.
+  comprovanteRendaHabilitado: boolean;
   // Master "Recebendo CAD": o empreendimento está na ativa, recebendo credenciamento. Desligado,
-  // os blocos de Análise de Crédito e Pré-venda ficam inertes.
+  // os blocos de Análise de Crédito, Pré-venda e Comprovante de renda ficam inertes.
   credenciamentoAtivo: boolean;
   // Limite em R$ das restrições do Serasa acima do qual o cliente é REPROVADO. null = padrão
   // da aplicação (R$ 1.000).
@@ -32,6 +36,7 @@ export type EnterpriseSetting = {
 type SettingRow = {
   analise_credito_habilitada: boolean | null;
   code: string | null;
+  comprovante_renda_habilitado: boolean | null;
   credenciamento_ativo: boolean | null;
   enterprise_id: string;
   limite_credito: number | string | null;
@@ -43,6 +48,14 @@ type SettingRow = {
 // caminho de fallback) conta como LIGADO, para bater com o default da migration.
 function flagPadraoLigado(v: boolean | null | undefined): boolean {
   return v == null ? true : Boolean(v);
+}
+
+// Flag com DEFAULT false no banco (comprovante de renda, migration 0095): null/undefined conta
+// como DESLIGADO. ⚠️ Não dá para reaproveitar `flagPadraoLigado` aqui: no caminho de fallback
+// (coluna ainda inexistente) ele devolveria "ligado" e a CAD passaria a ser recusada por falta de
+// um documento que ninguém configurou.
+function flagPadraoDesligado(v: boolean | null | undefined): boolean {
+  return v == null ? false : Boolean(v);
 }
 
 // numeric do Postgres pode voltar como número ou string; normaliza para número >= 0 ou null.
@@ -78,14 +91,14 @@ export async function listEnterpriseSettings(
   const completa = await adminClient
     .from(TABLE)
     .select(
-      "enterprise_id, code, credenciamento_ativo, limite_credito, valor_pix, analise_credito_habilitada, prevenda_habilitada",
+      "enterprise_id, code, credenciamento_ativo, limite_credito, valor_pix, analise_credito_habilitada, prevenda_habilitada, comprovante_renda_habilitado",
     )
     .limit(2000);
 
   if (completa.error) {
-    // Colunas novas (valor_pix, análise de crédito, pré-venda) podem não existir em ambiente com
-    // migration pendente: refaz a leitura com o núcleo estável e assume os defaults (flags = true,
-    // valor_pix = null) em vez de perder o resto das settings.
+    // Colunas novas (valor_pix, análise de crédito, pré-venda, comprovante de renda) podem não
+    // existir em ambiente com migration pendente: refaz a leitura com o núcleo estável e assume os
+    // defaults de cada coluna em vez de perder o resto das settings.
     const semColuna = await adminClient
       .from(TABLE)
       .select("enterprise_id, code, credenciamento_ativo, limite_credito")
@@ -94,9 +107,13 @@ export async function listEnterpriseSettings(
     data = semColuna.data.map((r) => ({
       ...(r as Omit<
         SettingRow,
-        "analise_credito_habilitada" | "prevenda_habilitada" | "valor_pix"
+        | "analise_credito_habilitada"
+        | "comprovante_renda_habilitado"
+        | "prevenda_habilitada"
+        | "valor_pix"
       >),
       analise_credito_habilitada: null,
+      comprovante_renda_habilitado: null,
       prevenda_habilitada: null,
       valor_pix: null,
     }));
@@ -108,6 +125,7 @@ export async function listEnterpriseSettings(
   for (const row of data) {
     out[row.enterprise_id] = {
       analiseCreditoHabilitada: flagPadraoLigado(row.analise_credito_habilitada),
+      comprovanteRendaHabilitado: flagPadraoDesligado(row.comprovante_renda_habilitado),
       credenciamentoAtivo: Boolean(row.credenciamento_ativo),
       limiteCredito: normalizarLimite(row.limite_credito),
       prevendaHabilitada: flagPadraoLigado(row.prevenda_habilitada),
@@ -215,7 +233,10 @@ export async function setEnterpriseValorPix(input: {
 async function setEnterpriseFlag(input: {
   adminClient: AdminClient;
   code?: string | null;
-  coluna: "analise_credito_habilitada" | "prevenda_habilitada";
+  coluna:
+    | "analise_credito_habilitada"
+    | "comprovante_renda_habilitado"
+    | "prevenda_habilitada";
   enterpriseId: string;
   habilitada: boolean;
   updatedBy?: string | null;
@@ -236,6 +257,22 @@ async function setEnterpriseFlag(input: {
     return { error: `Nao foi possivel salvar: ${erroLeitura.message}`, ok: false };
   }
 
+  // Coluna do flag ainda inexistente (migration da etapa pendente). Sem isto o operador leva um
+  // erro cru do Postgres num toggle da tela e não tem como saber que falta aplicar a migration —
+  // mesmo cuidado que `setEnterpriseValorPix` já tinha para o valor do PIX.
+  const colunaAusente = (error: { message?: string } | null) =>
+    new RegExp(input.coluna, "i").test(error?.message ?? "") &&
+    /column|does not exist/i.test(error?.message ?? "");
+  const MIGRATION_DA_COLUNA: Record<typeof input.coluna, string> = {
+    analise_credito_habilitada: "0071",
+    comprovante_renda_habilitado: "0095",
+    prevenda_habilitada: "0071",
+  };
+  const erroColunaAusente = () => ({
+    error: `Coluna desta etapa ainda nao existe (migration ${MIGRATION_DA_COLUNA[input.coluna]} pendente).`,
+    ok: false as const,
+  });
+
   if (existente) {
     const { error } = await input.adminClient
       .from(TABLE)
@@ -246,7 +283,10 @@ async function setEnterpriseFlag(input: {
       })
       .eq("enterprise_id", enterpriseId);
 
-    if (error) return { error: `Nao foi possivel salvar: ${error.message}`, ok: false };
+    if (error) {
+      if (colunaAusente(error)) return erroColunaAusente();
+      return { error: `Nao foi possivel salvar: ${error.message}`, ok: false };
+    }
     return { ok: true };
   }
 
@@ -265,6 +305,7 @@ async function setEnterpriseFlag(input: {
     if (tabelaAusente(error)) {
       return { error: "Tabela de settings do empreendimento ainda nao existe.", ok: false };
     }
+    if (colunaAusente(error)) return erroColunaAusente();
     return { error: `Nao foi possivel salvar: ${error.message}`, ok: false };
   }
 
@@ -282,6 +323,18 @@ export function setEnterpriseAnaliseCredito(input: {
   return setEnterpriseFlag({ ...input, coluna: "analise_credito_habilitada" });
 }
 
+// Liga/desliga a exigência do Comprovante de renda no envio da CAD (não toca
+// `credenciamento_ativo`).
+export function setEnterpriseComprovanteRenda(input: {
+  adminClient: AdminClient;
+  code?: string | null;
+  enterpriseId: string;
+  habilitada: boolean;
+  updatedBy?: string | null;
+}): Promise<{ error?: string; ok: boolean }> {
+  return setEnterpriseFlag({ ...input, coluna: "comprovante_renda_habilitado" });
+}
+
 // Liga/desliga a Pré-venda do empreendimento (não toca `credenciamento_ativo`).
 export function setEnterprisePrevenda(input: {
   adminClient: AdminClient;
@@ -291,6 +344,36 @@ export function setEnterprisePrevenda(input: {
   updatedBy?: string | null;
 }): Promise<{ error?: string; ok: boolean }> {
   return setEnterpriseFlag({ ...input, coluna: "prevenda_habilitada" });
+}
+
+/**
+ * O empreendimento (id do C2X) exige COMPROVANTE DE RENDA no envio da CAD?
+ *
+ * É a leitura que as DUAS rotas de salvar consultam antes de validar os documentos obrigatórios —
+ * a trava de servidor da etapa. Uma linha, uma coluna, sem depender de `listEnterpriseSettings`
+ * (que carrega 2000 linhas e não faz sentido no caminho de envio da CAD).
+ *
+ * ⚠️ FALHA DE LEITURA = NÃO EXIGE, de propósito. Os três motivos de a leitura não responder são
+ * "empreendimento nunca configurado", "migration 0095 ainda não aplicada" e "Supabase oscilando";
+ * nos três a resposta honesta é "não sei", e transformar "não sei" em "exijo" derrubaria TODA CAD
+ * de TODO empreendimento por causa de uma coluna ou de um soluço de rede. O default da coluna é
+ * false justamente para que ausência e desligado signifiquem a mesma coisa.
+ */
+export async function exigeComprovanteRenda(
+  adminClient: AdminClient,
+  enterpriseId: null | string | undefined,
+): Promise<boolean> {
+  const id = (enterpriseId ?? "").trim();
+  if (!id) return false;
+
+  const { data, error } = await adminClient
+    .from(TABLE)
+    .select("comprovante_renda_habilitado")
+    .eq("enterprise_id", id)
+    .maybeSingle<{ comprovante_renda_habilitado: boolean | null }>();
+
+  if (error || !data) return false;
+  return flagPadraoDesligado(data.comprovante_renda_habilitado);
 }
 
 // Ids dos empreendimentos ativos pro credenciamento (o portal usa este recorte).

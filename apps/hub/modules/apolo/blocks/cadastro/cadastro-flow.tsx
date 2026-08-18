@@ -49,7 +49,12 @@ import {
   titleCase,
 } from "@/lib/apolo/c2x-fields";
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
-import { documentosFaltandoCurto, juntarPtBr } from "@/lib/apolo/cadastro-obrigatorios";
+import {
+  COMPROVANTE_RENDA_OPCOES,
+  type ComprovanteRendaCategoria,
+  documentosFaltandoCurto,
+  juntarPtBr,
+} from "@/lib/apolo/cadastro-obrigatorios";
 import { cpfValido } from "@/lib/apolo/documento";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
@@ -220,12 +225,15 @@ type Persona = "pf" | "pj";
 // drive da entidade junto do CAD (decisão do Lucas: "Arquivos + CAD").
 type ArquivoAnexado = { fileBase64: string; fileName: string; mimeType: string };
 // Categoria do documento no drive (vira document_type no Apolo).
+// As três formas do comprovante de renda entram como categorias IRMÃS (não como uma só): é o que
+// faz o documento chegar na ficha já dizendo qual das três o cliente entregou.
 type DocCategoria =
   | "certidao"
   | "comprovante_endereco"
   | "contrato_social"
   | "identificacao"
-  | "identificacao_conjuge";
+  | "identificacao_conjuge"
+  | ComprovanteRendaCategoria;
 // N arquivos por categoria: um documento pode ter frente + verso, ou varias paginas.
 type DocumentosAnexados = Partial<Record<DocCategoria, ArquivoAnexado[]>>;
 
@@ -811,6 +819,14 @@ export type PublicoConfig = {
   empreendimentos?: SelectOption[];
 };
 
+// O que o EMPREENDIMENTO desta CAD exige além do conjunto de sempre. Hoje só o comprovante de
+// renda (etapa nova do Setup); a forma é um objeto para caber a próxima sem mudar assinatura.
+export type ExigenciasCad = { comprovanteRenda: boolean };
+
+// Nada exigido a mais. É o valor de partida E o de qualquer falha: a tela nunca inventa uma
+// exigência que não conseguiu confirmar — quem barra a CAD é o servidor, no envio.
+const SEM_EXIGENCIAS: ExigenciasCad = { comprovanteRenda: false };
+
 export type ApiCadastro = {
   ocr: <T>(body: Record<string, unknown>) => Promise<T>;
   salvar: (body: Record<string, unknown>) => Promise<SalvarResposta>;
@@ -823,6 +839,9 @@ export type ApiCadastro = {
   // A trava de verdade continua no salvar; esta aqui existe para o corretor não preencher a ficha
   // inteira e só descobrir no fim que a CAD não pode ser aberta.
   checarCpf: (dados: ChecagemCpfPedido) => Promise<ChecagemCpf>;
+  // Etapas extras ligadas no Setup do EMPREENDIMENTO (hoje: comprovante de renda). Interno manda o
+  // id escolhido no Vínculo; no público o empreendimento sai do token e o argumento é ignorado.
+  exigencias: (enterpriseId?: null | string) => Promise<ExigenciasCad>;
 };
 
 export type ChecagemCpfPedido = {
@@ -858,6 +877,42 @@ async function apiChecarCpfInterno(dados: ChecagemCpfPedido): Promise<ChecagemCp
     return json?.data ?? SEM_CHECAGEM;
   } catch {
     return SEM_CHECAGEM;
+  }
+}
+
+// Etapas extras do empreendimento no modo INTERNO. Lê as settings de TODOS os empreendimentos (a
+// rota que já existe) e recorta a do escolhido no Vínculo. Sem empreendimento escolhido não há o
+// que exigir — e é o mesmo estado em que o servidor também não consegue cobrar.
+async function apiExigenciasInterno(enterpriseId?: null | string): Promise<ExigenciasCad> {
+  const id = (enterpriseId ?? "").trim();
+  if (!id) return SEM_EXIGENCIAS;
+  try {
+    const token = await accessToken();
+    const response = await fetch("/api/apolo/empreendimentos/settings", {
+      cache: "no-store",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const json = (await response.json().catch(() => null)) as null | {
+      data?: { settings?: Record<string, { comprovanteRendaHabilitado?: boolean }> };
+    };
+    return {
+      comprovanteRenda: json?.data?.settings?.[id]?.comprovanteRendaHabilitado === true,
+    };
+  } catch {
+    return SEM_EXIGENCIAS;
+  }
+}
+
+// Espelho público: o empreendimento sai do TOKEN, então a rota não recebe id nenhum.
+async function apiExigenciasPublico(headers: Record<string, string>): Promise<ExigenciasCad> {
+  try {
+    const response = await fetch("/api/publico/cad/exigencias", { cache: "no-store", headers });
+    const json = (await response.json().catch(() => null)) as null | {
+      comprovanteRenda?: boolean;
+    };
+    return { comprovanteRenda: json?.comprovanteRenda === true };
+  } catch {
+    return SEM_EXIGENCIAS;
   }
 }
 
@@ -961,6 +1016,7 @@ function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
       assinarUpload: apiAssinarUploadCadastro,
       checarCpf: apiChecarCpfInterno,
       empreendimentos: apiGetEmpreendimentos,
+      exigencias: apiExigenciasInterno,
       imobiliarias: apiGetImobiliarias,
       ocr: apiPost,
       salvar: apiSalvarCadastro,
@@ -992,6 +1048,11 @@ function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
     // Imobiliária pública: a vitrine de ativos vem do token/prop, não de rede (não há rota que
     // liste). CAD do corretor: `[]` — imobiliária e empreendimento já vêm FIXOS do token.
     empreendimentos: async () => publico.empreendimentos ?? [],
+    // Só o CAD do corretor tem a rota (o token dela é o `x-cad-sessao`). O auto-cadastro da
+    // imobiliária usa o MESMO wizard com outro token, e ali a etapa nem se aplica: ela fala do
+    // comprador, não do parceiro. Por isso o portal da imobiliária nunca chega a chamar isto
+    // (ver o efeito em CadastroFlow, travado em `!isImobiliaria`).
+    exigencias: () => apiExigenciasPublico(headers()),
     imobiliarias: async () => [],
     ocr: <T,>(body: Record<string, unknown>) =>
       postPublico<T>("/api/publico/cad/ocr", body, headers()),
@@ -1009,6 +1070,7 @@ const ApiCadastroContext = createContext<CadastroCtx>({
     assinarUpload: apiAssinarUploadCadastro,
     checarCpf: apiChecarCpfInterno,
     empreendimentos: apiGetEmpreendimentos,
+    exigencias: apiExigenciasInterno,
     imobiliarias: apiGetImobiliarias,
     ocr: apiPost,
     salvar: apiSalvarCadastro,
@@ -1105,6 +1167,9 @@ export function CadastroFlow({
     Array<{ entityId: string; nome: string; email: string | null }>
   >([]);
   const [corretorImobSel, setCorretorImobSel] = useState("");
+  // Etapas extras que o EMPREENDIMENTO liga no Setup (hoje: comprovante de renda). Parte de
+  // "nenhuma": a tela só acrescenta etapa depois de o servidor confirmar que ela está ligada.
+  const [exigencias, setExigencias] = useState<ExigenciasCad>(SEM_EXIGENCIAS);
 
   // Imobiliárias reais do Apolo (read-model), inclusive no localhost: a chave de serviço do
   // .env.local valida contra o projeto de produção (verificado 16/jul). Sem lista, o seletor
@@ -1180,6 +1245,32 @@ export function CadastroFlow({
     };
   }, [isImobiliaria, modoPublico, perfil.imobiliariaId]);
 
+  // Etapas extras do EMPREENDIMENTO (hoje só o comprovante de renda). No público o empreendimento
+  // vem do token e a leitura acontece uma vez; no interno ela reage à escolha do Vínculo, porque é
+  // ali que o operador decide de qual empreendimento é esta CAD.
+  //
+  // A IMOBILIÁRIA FICA DE FORA: o auto-cadastro dela roda neste mesmo wizard, mas a etapa fala do
+  // COMPRADOR da CAD, não do parceiro — e o token dela nem abre a rota pública de exigências.
+  useEffect(() => {
+    if (isImobiliaria) {
+      setExigencias(SEM_EXIGENCIAS);
+      return;
+    }
+    let alive = true;
+    void api
+      .exigencias(modoPublico ? null : empImobSel)
+      .then((valor) => {
+        if (alive) setExigencias(valor);
+      })
+      .catch(() => {
+        // A trava de verdade é o servidor no envio: aqui, falha = não mostra etapa nova.
+        if (alive) setExigencias(SEM_EXIGENCIAS);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [api, empImobSel, isImobiliaria, modoPublico]);
+
   // PJ não tem certidão/cônjuge. PF: Casado(2), Divorciado(3), Separado(4) e
   // União Estável(6) exigem certidão (o MOST valida a autenticidade).
   const isPj = persona === "pj";
@@ -1189,13 +1280,23 @@ export function CadastroFlow({
   // PJ tem jornada própria (Lucas 17/jul): o endereço da empresa já vem do cartão CNPJ, então
   // não se pede comprovante dela — o que se pede é o contrato social e a ficha de cada sócio
   // (com o comprovante DELE dentro do próprio bloco).
+  //
+  // A etapa RENDA entra por último, logo antes da Revisão, e só quando o empreendimento a liga
+  // (`exigencias.comprovanteRenda`). Vai no fim de propósito: é a única etapa que não depende do
+  // que foi lido antes, então acrescentá-la ali não reordena nada que o corretor já conhece — e a
+  // numeração dos cartões sai da posição no array, não de número fixo.
+  const exigeRenda = !isImobiliaria && exigencias.comprovanteRenda;
   const steps = isImobiliaria
     ? ["Identificação", "Contrato social", "Sócios", "Corretores", "Revisão"]
-    : isPj
-      ? ["Identificação", "Contrato social", "Sócios", "Revisão"]
-      : needsCertidao
-        ? ["Identificação", "Endereço", "Certidão", "Revisão"]
-        : ["Identificação", "Endereço", "Revisão"];
+    : [
+        ...(isPj
+          ? ["Identificação", "Contrato social", "Sócios"]
+          : needsCertidao
+            ? ["Identificação", "Endereço", "Certidão"]
+            : ["Identificação", "Endereço"]),
+        ...(exigeRenda ? ["Renda"] : []),
+        "Revisão",
+      ];
   const current = steps[Math.min(step, steps.length - 1)];
 
   function jump(target: number) {
@@ -1204,6 +1305,19 @@ export function CadastroFlow({
 
   const reterDocumento = (categoria: DocCategoria) => (arquivo: ArquivoAnexado) =>
     setDocumentos((prev) => ({ ...prev, [categoria]: [...(prev[categoria] ?? []), arquivo] }));
+
+  // Trocar a FORMA do comprovante de renda descarta o que já tinha sido anexado nas outras duas.
+  // Sem isto, quem sobe o contracheque, se arrepende e escolhe o extrato manda os DOIS para o
+  // drive — e a ficha fica com dois comprovantes de renda de tipos diferentes, um deles
+  // abandonado, sem ninguém saber qual vale.
+  const limparOutrasRendas = (manter: ComprovanteRendaCategoria) =>
+    setDocumentos((prev) => {
+      const proximo = { ...prev };
+      for (const opcao of COMPROVANTE_RENDA_OPCOES) {
+        if (opcao.categoria !== manter) delete proximo[opcao.categoria];
+      }
+      return proximo;
+    });
 
   // Zera tudo pra começar outro cadastro do zero. Reseta os estados daqui E remonta os steps
   // (resetKey) — os uploaders guardam a lista de arquivos internamente, então só limpar o estado
@@ -1507,8 +1621,20 @@ export function CadastroFlow({
           />
         ) : null}
 
+        {current === "Renda" ? (
+          <StepRenda
+            anexados={documentos}
+            numero={activeIndex + 1}
+            onBack={() => setStep(step - 1)}
+            onDocumento={(categoria) => reterDocumento(categoria)}
+            onNext={() => setStep(step + 1)}
+            onTrocarTipo={limparOutrasRendas}
+          />
+        ) : null}
+
         {current === "Revisão" ? (
           <StepRevisao
+            exigeComprovanteRenda={exigeRenda}
             conjuge={temConjuge ? conjuge : null}
             publico={publico}
             corretores={corretores}
@@ -3524,6 +3650,125 @@ function StepCertidao({
   );
 }
 
+// Comprovante de renda: etapa que só existe quando o EMPREENDIMENTO a liga no Setup.
+//
+// ⚠️ É UM DOCUMENTO, TRÊS FORMAS — e a tela tem que dizer isso. O corretor escolhe qual das três o
+// cliente tem em mãos (extrato bancário dos últimos 3 meses, contracheque ou declaração de imposto
+// de renda) e anexa SÓ essa. Listar as três como se fossem três anexos faria o corretor ir atrás
+// de documento que ninguém pediu; não dizer nada faria ele adivinhar o que serve.
+//
+// SEM LEITURA (`semLeitura`): contracheque e extrato não são formulários padronizados que a MOST
+// reconheça, e cada arquivo mandado para leitura é uma consulta cobrada. Mesma decisão do contrato
+// social. Quem confere o documento é a Validação, com o arquivo à vista.
+function StepRenda({
+  anexados,
+  numero,
+  onBack,
+  onDocumento,
+  onNext,
+  onTrocarTipo,
+}: {
+  anexados: DocumentosAnexados;
+  // Posição da etapa no wizard: ela cai em 3 (solteiro) ou 4 (com certidão / PJ), então o número
+  // do cartão vem de fora em vez de fixo como nos demais.
+  numero: number;
+  onBack: () => void;
+  onDocumento: (categoria: ComprovanteRendaCategoria) => (arquivo: ArquivoAnexado) => void;
+  onNext: () => void;
+  onTrocarTipo: (categoria: ComprovanteRendaCategoria) => void;
+}) {
+  // Nasce sem escolha: o corretor tem que dizer QUAL documento está mandando, senão o tipo que
+  // chega na ficha seria um chute nosso.
+  const [tipo, setTipo] = useState<ComprovanteRendaCategoria | null>(null);
+  const escolhida = COMPROVANTE_RENDA_OPCOES.find((opcao) => opcao.categoria === tipo) ?? null;
+  const anexado = tipo ? (anexados[tipo] ?? []).length > 0 : false;
+
+  return (
+    <StepCard title={`${numero}. Comprovante de renda`}>
+      <p className="m-0 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
+        Este empreendimento pede o <span className="font-semibold">comprovante de renda</span> do
+        cliente. Escolha <span className="font-semibold">um</span> dos três abaixo — o que o cliente
+        tiver em mãos — e anexe só ele.
+      </p>
+
+      <div className="print:hidden" role="radiogroup" aria-label="Tipo de comprovante de renda">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink">
+          Qual documento o cliente vai mandar?
+        </p>
+        <div className="grid gap-2">
+          {COMPROVANTE_RENDA_OPCOES.map((opcao) => {
+            const ativa = opcao.categoria === tipo;
+            return (
+              <button
+                aria-checked={ativa}
+                className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                  ativa
+                    ? "border-ink bg-subtle"
+                    : "border-line bg-surface hover:border-line-strong hover:bg-subtle"
+                }`}
+                key={opcao.categoria}
+                onClick={() => {
+                  if (ativa) return;
+                  setTipo(opcao.categoria);
+                  // Descarta o que tiver sido anexado nas outras formas: vale o que está escolhido.
+                  onTrocarTipo(opcao.categoria);
+                }}
+                role="radio"
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border ${
+                    ativa ? "border-ink" : "border-line-strong"
+                  }`}
+                >
+                  {ativa ? <span className="size-2 rounded-full bg-ink" /> : null}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-ink">{opcao.tela}</span>
+                  <span className="block text-xs text-ink-muted">{opcao.telaHint}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {tipo && escolhida ? (
+        <div>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink">
+            {escolhida.tela}
+          </p>
+          <div className="print:hidden">
+            {/* key={tipo}: trocar a forma remonta o uploader, que guarda a lista de arquivos
+                internamente — sem isso a tela continuaria mostrando "2 arquivos anexados" do
+                documento que acabou de ser descartado. */}
+            <DocUploader
+              hint={`${escolhida.telaHint} · foto ou PDF`}
+              key={tipo}
+              label={`Adicionar ${escolhida.tela.toLowerCase()}`}
+              onExtracted={() => {}}
+              onFile={onDocumento(tipo)}
+              // Anexo puro: não é formulário padronizado, não há campo a ler, e cada leitura seria
+              // uma consulta cobrada à toa.
+              semLeitura
+            />
+          </div>
+        </div>
+      ) : null}
+
+      <NavButtons
+        // Escolher a forma não basta: o que a CAD precisa é do ARQUIVO. Mesma regra das demais
+        // etapas — conta o anexo, nunca leitura nem qualidade.
+        canNext={anexado}
+        nextLabel="Avançar para revisão"
+        onBack={onBack}
+        onNext={onNext}
+      />
+    </StepCard>
+  );
+}
+
 function StepRevisao({
   conjuge,
   corretores,
@@ -3532,6 +3777,7 @@ function StepRevisao({
   empreendimentosSel,
   empresa,
   endereco,
+  exigeComprovanteRenda,
   identidade,
   imobiliarias,
   isImobiliaria,
@@ -3554,6 +3800,9 @@ function StepRevisao({
   empreendimentosSel: string[];
   empresa: Empresa;
   endereco: Endereco | null;
+  // Etapa "Comprovante de renda" ligada no empreendimento desta CAD: entra na lista do que falta e
+  // no `disabled` do Enviar, igual aos demais obrigatórios.
+  exigeComprovanteRenda: boolean;
   identidade: Identidade | null;
   imobiliarias: SelectOption[];
   isImobiliaria: boolean;
@@ -3619,7 +3868,7 @@ function StepRevisao({
     ...(socios.some((s) => s.arquivosComprovante.length > 0) ? ["comprovante_socio_1"] : []),
   ];
   const faltando = documentosFaltandoCurto(
-    { estadoCivilId: perfil.estadoCivilId, persona },
+    { estadoCivilId: perfil.estadoCivilId, exigeComprovanteRenda, persona },
     categoriasAnexadas,
   );
   const podeEnviar = faltando.length === 0;
