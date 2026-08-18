@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-portal-sem-jargao",
+    deployedAt: "2026-08-18T16:05:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Sai do portal o aviso que citava os sistemas por dentro ('o D4Sign confirmou a situacao; a marcacao vem do sistema antigo'). O loteador nao decide nada com aquilo e falar de tripa do sistema numa tela de cliente so passa insegurancia",
+              "Sai tambem o selo de procedencia nas linhas e o aviso dentro do popup da unidade, pelo mesmo motivo",
+              "Fica UM aviso, raro, e escrito para cliente: quando a confirmacao das assinaturas nao responde, a tela diz que alguns contratos podem levar alguns minutos para aparecer atualizados. Sem nome de sistema nenhum",
+              "A tela Contratos do Apolo continua com a sinalizacao completa: e o time da Careli que decide de quem cobrar, e para isso precisa saber a procedencia de cada linha",
+            ],
+            screen: "Vendas - Contratos",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.157.0 (2026-08-18-fonte-da-assinatura)",
+    technical: {
+      done:
+        "A limpeza e no SERVIDOR, nao na tela: a rota /api/incorporador/vendas/assinaturas zera avisoDosAssinantes, remove aviso e fonte de cada unidade e troca o texto tecnico de avisoDaFonte por uma frase de cliente. Esconder no componente deixaria o jargao viajando no JSON, visivel na aba de rede — o portal nao fala de C2X nem em payload. O tipo local da linha perdeu aviso/fonte com o porque escrito em cima, para ninguem 'consertar' isso de volta. A lib segue intacta e a tela interna recebe tudo. Tambem registrado: as 454 pendencias falsas da Lavra do Ouro tem causa conhecida (contratos rodados a mao, fora do fluxo do C2X) e a decisao do dono e seguir o D4Sign ali — a tela filtrada em LOS ja mostra o numero certo, porque documento finalizado e resolvido pela listagem em lote antes do teto por carga.",
+      motivation:
+        "Lucas, vendo a faixa no portal: 'nao queria esse tipo de comunicado para o incorporador'.",
+    },
+    title: "Portal do incorporador sem jargao de sistema",
+    type: "melhoria",
+    version: "1.158.0",
+  },
+  {
     buildTag: "2026-08-18-fonte-da-assinatura",
     deployedAt: "2026-08-18T15:05:00-03:00",
     modules: [

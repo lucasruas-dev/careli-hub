@@ -229,14 +229,6 @@ type GrupoDaUnidade = { assinadas: number; naVez: boolean; perfil: string; total
 /** Uma linha da lista: um contrato, rotulado pela unidade dele. */
 type UnidadeDeAssinatura = {
   assinadas: number;
-  /**
-   * A procedência do que está escrito NESTA linha, em texto pronto. Nulo quando a D4Sign confirmou.
-   *
-   * ⚠️ O tipo desta tela é uma CÓPIA do de `lib/apolo/incorporador/assinaturas.ts` (o portal não
-   * importa a lib: ela puxa mysql2). Campo que o servidor manda e a cópia não declara chega em
-   * tempo de execução e o TypeScript o apaga — foi o que manteve este aviso invisível.
-   */
-  aviso: null | string;
   comprador: null | string;
   concluida: boolean;
   /** Os dados do contrato daquela venda: valor, geração, imobiliária, faturamento e o PDF. */
@@ -248,9 +240,14 @@ type UnidadeDeAssinatura = {
   /** `contract_signatures.id`. 0 = contrato ainda sem envio (aguardando emissão). */
   envioId: number;
   esquema: AssinaturaDoEsquema[];
-  /** De onde veio o status desta linha. `c2x-legado` é o fallback: pode dizer pendente sobre já
-   * assinado, que é o defeito que motivou a troca de fonte. */
-  fonte: "c2x-legado" | "d4sign" | "d4sign-status";
+  /**
+   * ⚠️ NÃO TEM `aviso` NEM `fonte` AQUI, e a ausência é deliberada. A linha do lado interno
+   * (`UnidadeDeAssinatura` em lib/apolo/incorporador/assinaturas.ts) carrega os dois, e a rota
+   * deste portal os REMOVE antes de responder: os textos nomeiam C2X e D4Sign, que é vocabulário
+   * de quem opera, não de quem compra o produto. Decisão do Lucas em 18/08/2026 diante da faixa:
+   * *"não queria esse tipo de comunicado para o incorporador"*. Quem quiser essa informação usa a
+   * tela interna (/apolo/assinaturas), que recebe tudo. Ver o comentário da rota.
+   */
   grupos: GrupoDaUnidade[];
   naVez: string[];
   perfisNaVez: string[];
@@ -265,12 +262,16 @@ type DadosAssinaturas = {
   /** O aviso do teto da lista, quando ela veio cortada. */
   aviso: null | string;
   /**
-   * ⚠️ SÃO TRÊS AVISOS DIFERENTES NESTA TELA e nenhum substitui o outro: `aviso` é o teto da lista,
-   * `avisoDaFonte` é a D4Sign sem responder (o que está na tela é registro antigo) e
-   * `avisoDosAssinantes` é o detalhe pessoa a pessoa que não foi conferido um a um.
+   * A confirmação das assinaturas não respondeu: o que está na tela pode mostrar como pendente
+   * algo já assinado. Vem do SERVIDOR já em linguagem de cliente, sem nomear sistema nenhum (a
+   * rota troca o texto técnico da lib) e é raro por construção — só aparece quando a confirmação
+   * falha de verdade.
+   *
+   * ⚠️ O `avisoDosAssinantes` da lib NÃO chega aqui. Ele ficava aceso quase todo dia no Vale do
+   * Ouro dizendo que a marcação vinha do sistema antigo, e o dono cortou: para o incorporador
+   * aquilo não muda decisão nenhuma e só passa insegurança. A rota o zera.
    */
   avisoDaFonte: null | string;
-  avisoDosAssinantes: null | string;
   /** Vazia quando o recorte não usa ordem de assinatura (todo mundo no degrau 0). */
   fila: { assinadas: number; degrau: number; perfis: string[]; total: number }[];
   kpis: {
@@ -3080,8 +3081,7 @@ function SecaoContratos({
   if (estado.tipo === "carregando") return <Aviso texto="Carregando os contratos…" />;
   if (estado.tipo === "erro") return <Aviso texto={estado.mensagem} tom="erro" />;
 
-  const { assinantes, aviso, avisoDaFonte, avisoDosAssinantes, fila, kpis, taxas, unidades } =
-    estado.dados;
+  const { assinantes, aviso, avisoDaFonte, fila, kpis, taxas, unidades } = estado.dados;
 
   if (unidades.length === 0 && kpis.aguardandoEmissao === 0) {
     return (
@@ -3098,7 +3098,7 @@ function SecaoContratos({
           estilo inline, e as barrinhas precisam empilhar no celular. */}
       <style>{CSS_ASSINATURAS}</style>
 
-      <FaixaDaFonte assinantes={avisoDosAssinantes} fonte={avisoDaFonte} />
+      <FaixaDaFonte fonte={avisoDaFonte} />
       <FaixaDeTaxas kpis={kpis} taxas={taxas} />
       <BlocosDoPainel kpis={kpis} />
 
@@ -3128,68 +3128,39 @@ function SecaoContratos({
   );
 }
 
-// ── A PROCEDÊNCIA DO QUE ESTÁ NA TELA ───────────────────────────────────────
+// ── QUANDO A CONFIRMAÇÃO NÃO RESPONDE ───────────────────────────────────────
 //
-// Duas faixas, porque são dois fatos diferentes (a régua está em `AVISOS_DA_FONTE`,
-// lib/apolo/d4sign-assinaturas):
+// ⚠️ UMA FAIXA SÓ, E EM LINGUAGEM DE CLIENTE. A lib produz DOIS avisos e a tela interna mostra os
+// dois; aqui chega só este, e já reescrito pelo servidor. O outro (`avisoDosAssinantes`, que dizia
+// "a marcação de quem já assinou vem do sistema antigo (C2X)") foi cortado pelo dono em 18/08/2026
+// ao ver a faixa no portal: *"não queria esse tipo de comunicado para o incorporador"*. E ele está
+// certo — no Vale do Ouro aquilo ficava aceso todo dia, o loteador não decide nada com aquilo, e
+// nomear as tripas do sistema numa vitrine só passa insegurança sobre o produto.
 //
-//   • `fonte` é NOTÍCIA: a D4Sign não respondeu, e o que está abaixo é o registro do C2X — que
-//     pode mostrar como pendente uma assinatura já colhida. Ganha a borda de alerta do tema.
-//   • `assinantes` é PREÇO CONHECIDO: a situação do documento ESTÁ confirmada; o que vem do
-//     sistema antigo é só a marcação de quem já assinou, dentro de contrato ainda andando. No Vale
-//     do Ouro isto fica aceso quase todo dia (185 documentos em movimento contra um teto de 20
-//     conferidos um a um por carga), então é neutro: alarme que vive aceso ninguém lê.
-//
-// ⚠️ SEM COR NOVA AQUI. O portal é vitrine de cliente externo e o único tom de alerta do tema é o
-// `danger`; âmbar brigaria com o dourado da marca, que não é estado. Então o peso vem da BORDA e
-// do fundo, e o texto fica legível em vez de vermelho gritando na cara do loteador.
+// O que sobrou aparece raro (só quando a confirmação falha de verdade) e diz o EFEITO — pode faltar
+// atualizar — sem nomear sistema nenhum. Calar também isso seria pior: a tela mostraria como
+// pendente uma assinatura já colhida, sem nenhuma pista.
 //
 // Vem ANTES dos cards porque as taxas e os KPIs saem das MESMAS linhas da lista.
 
-function FaixaDaFonte({
-  assinantes,
-  fonte,
-}: {
-  assinantes: null | string;
-  fonte: null | string;
-}) {
-  if (!fonte && !assinantes) return null;
+function FaixaDaFonte({ fonte }: { fonte: null | string }) {
+  if (!fonte) return null;
 
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      {fonte ? (
-        <p
-          style={{
-            background: T.dangerBg,
-            border: `1px solid ${T.danger}`,
-            borderRadius: 12,
-            color: T.text,
-            fontSize: 12.5,
-            lineHeight: 1.5,
-            margin: 0,
-            padding: "10px 14px",
-          }}
-        >
-          {fonte}
-        </p>
-      ) : null}
-      {assinantes ? (
-        <p
-          style={{
-            background: T.soft,
-            border: `1px solid ${T.border}`,
-            borderRadius: 12,
-            color: T.muted,
-            fontSize: 12.5,
-            lineHeight: 1.5,
-            margin: 0,
-            padding: "10px 14px",
-          }}
-        >
-          {assinantes}
-        </p>
-      ) : null}
-    </div>
+    <p
+      style={{
+        background: T.soft,
+        border: `1px solid ${T.border}`,
+        borderRadius: 12,
+        color: T.muted,
+        fontSize: 12.5,
+        lineHeight: 1.5,
+        margin: 0,
+        padding: "10px 14px",
+      }}
+    >
+      {fonte}
+    </p>
   );
 }
 
@@ -3817,24 +3788,6 @@ function LinhaDaUnidade({
                 {apoio.join(" · ")}
               </div>
             ) : null}
-            {/* ⚠️ SELO SÓ NO FALLBACK DE VERDADE (`c2x-legado`). O outro caso marcado,
-                `d4sign-status`, é a maioria das linhas no Vale do Ouro: carimbar todas viraria
-                ruído e mataria o sinal do que importa. Para elas quem avisa é a faixa do topo, que
-                diz o número de uma vez; o detalhe aparece no popup, onde ele tem consequência. */}
-            {unidade.fonte === "c2x-legado" && unidade.aviso ? (
-              <div
-                style={{
-                  color: T.danger,
-                  fontSize: 10.5,
-                  fontWeight: 600,
-                  lineHeight: 1.4,
-                  marginTop: 4,
-                }}
-                title={unidade.aviso}
-              >
-                informação do sistema antigo
-              </div>
-            ) : null}
           </div>
 
           {unidade.situacao === "aguardando-emissao" ? (
@@ -4124,29 +4077,6 @@ function ModalDoEsquema({
         </header>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-          {/* ⚠️ AQUI O AVISO APARECE SEMPRE que a linha tiver um, inclusive no `d4sign-status` que
-              a lista não carimba. É neste popup que se olha nome por nome para saber de quem
-              cobrar, e a tabela abaixo mostra tique por tique — num documento ainda andando, esses
-              tiques são do sistema antigo. Borda de alerta só no fallback, que é o caso em que a
-              própria SITUAÇÃO pode estar errada; no resto, neutro. */}
-          {unidade.aviso ? (
-            <p
-              style={{
-                background: unidade.fonte === "c2x-legado" ? T.dangerBg : T.soft,
-                borderBottom: `1px solid ${
-                  unidade.fonte === "c2x-legado" ? T.danger : T.border
-                }`,
-                color: unidade.fonte === "c2x-legado" ? T.text : T.muted,
-                fontSize: 12,
-                lineHeight: 1.5,
-                margin: 0,
-                padding: "10px 20px",
-              }}
-            >
-              {unidade.aviso}
-            </p>
-          ) : null}
-
           {/* ── OS DADOS DO CONTRATO (a visão Contratos antiga, inteira) ──────── */}
           <div style={{ borderBottom: `1px solid ${T.border}`, padding: "14px 20px" }}>
             <div

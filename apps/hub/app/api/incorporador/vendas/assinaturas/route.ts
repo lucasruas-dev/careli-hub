@@ -51,20 +51,41 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: quadro.error }, { status: 503 });
   }
 
-  // ⚠️ DOIS CAMPOS DO QUADRO NÃO ATRAVESSAM. `montarQuadroComD4Sign` devolve, junto com a tela,
-  // material de diagnóstico: `cancelados` são `contract_signatures.id` crus do legado e
-  // `resumoDaFonte` é a contabilidade interna da reconciliação. Nada disso é dado pessoal, mas é
-  // dado NOSSO, e este payload vai para o navegador de um cliente externo — o portal só entrega o
-  // que a tela desenha. A tela interna (/apolo/assinaturas) fica com eles, que é onde servem.
-  // Os avisos (`avisoDaFonte`, `avisoDosAssinantes` e o `aviso` de cada linha) PASSAM: são texto
-  // pronto e é deles que depende o incorporador não cobrar quem já assinou.
+  // ⚠️ O QUE NÃO ATRAVESSA PARA O PORTAL, e por quê.
+  //
+  // 1. DIAGNÓSTICO. `montarQuadroComD4Sign` devolve `cancelados` (ids crus de
+  //    `contract_signatures`) e `resumoDaFonte` (a contabilidade da reconciliação). Não é dado
+  //    pessoal, mas é dado NOSSO, e este payload vai para o navegador de um cliente externo.
+  //
+  // 2. O VOCABULÁRIO INTERNO — decisão do Lucas em 18/08/2026, olhando a faixa no portal:
+  //    *"não queria esse tipo de comunicado para o incorporador"*. Os avisos da lib nomeiam os
+  //    sistemas ("o D4Sign confirmou… a marcação vem do sistema antigo (C2X)"), o que na tela do
+  //    time é precisão e na vitrine do loteador é tripa à mostra: ele não decide nada com essa
+  //    informação e ela só passa insegurança sobre o produto. Então saem daqui: o
+  //    `avisoDosAssinantes` (que no Vale do Ouro ficava aceso todo dia) e o `aviso` de cada linha.
+  //
+  // ⚠️ A LIMPEZA É NO SERVIDOR, DE PROPÓSITO. Esconder na tela deixaria o texto técnico viajando
+  // no JSON, visível a qualquer um que abra a aba de rede — o portal não fala de C2X nem em
+  // payload. E a tela interna (/apolo/assinaturas) continua recebendo tudo, que é onde a decisão
+  // de cobrar acontece.
+  //
+  // ⚠️ A QUEDA DA FONTE CONTINUA SENDO DITA, com outras palavras. Se a confirmação não acontece, o
+  // que está na tela pode mostrar como pendente uma assinatura já colhida — calar isso seria
+  // mentir por omissão. O texto abaixo diz o EFEITO (pode faltar atualizar) sem nomear sistema
+  // nenhum, e é raro por construção: só aparece quando a confirmação falha de verdade.
   const { cancelados: _cancelados, resumoDaFonte: _resumoDaFonte, ...paraTela } = quadro.data;
+
+  const AVISO_DE_ATUALIZACAO =
+    "Estamos confirmando as assinaturas mais recentes. Alguns contratos podem levar alguns minutos para aparecer atualizados aqui.";
 
   return NextResponse.json(
     {
       data: {
         ...paraTela,
+        avisoDaFonte: paraTela.avisoDaFonte ? AVISO_DE_ATUALIZACAO : null,
+        avisoDosAssinantes: null,
         filtro: pedido?.trim() ? pedido.trim() : null,
+        unidades: paraTela.unidades.map(({ aviso: _aviso, fonte: _fonte, ...unidade }) => unidade),
       },
     },
     { headers: { "Cache-Control": "no-store" } },
