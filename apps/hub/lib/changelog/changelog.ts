@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-proposta-prevista-pelo-plano",
+    deployedAt: "2026-08-18T03:05:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "O popup da proposta mostra o PREVISTO pelo plano comercial quando as parcelas ainda nao foram emitidas: entrada (valor e %), negociado e desconto, validos desde a etapa Proposta emitida",
+              "Plano personalizado segue sem numero previsto de negociado e desconto: o valor fechado so nasce na emissao",
+              "Titulo do popup no formato dos cards (LBFC1210), em vez do bloco e lote crus",
+            ],
+            screen: "Vendas - Pipeline (popup da proposta)",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.151.0 (2026-08-18-portal-do-incorporador-padrao)",
+    technical: {
+      done:
+        "venda-proposta.ts: previsao pelo plano (coalesce cpc/cps initial_input_value; negociado previsto = tabela so para plano padrao) quando zero parcelas emitidas; rotulo compacto codigo+bloco+lote; modal da TelaVendas renderiza o previsto com rotulos proprios. Validado com o contrato real 4283 (LBF C12-10) em teste.",
+      motivation:
+        "Lucas: a proposta e visivel desde a segunda etapa no C2X, e o popup dizia a definir em tudo antes da emissao.",
+    },
+    title: "Popup da proposta: previsto pelo plano antes da emissao",
+    type: "melhoria",
+    version: "1.151.1",
+  },
+  {
     buildTag: "2026-08-18-portal-do-incorporador-padrao",
     deployedAt: "2026-08-18T02:40:00-03:00",
     modules: [

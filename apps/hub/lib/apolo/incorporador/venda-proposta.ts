@@ -62,7 +62,21 @@ export type PropostaDaVenda = {
     valorParcela: null | number;
   };
   imobiliaria: null | string;
-  /** Rótulo bloco+lote ("G 09"), o mesmo formato da carteira. */
+  /**
+   * O PREVISTO PELO PLANO, para a venda que ainda não teve parcela emitida. Pedido do Lucas
+   * (18/08/2026): *"a gente já consegue ver a proposta desde a segunda etapa, proposta emitida"*
+   * — antes da emissão o popup dizia "a definir" em tudo, e o plano comercial do contrato já
+   * conta a entrada (%) e o prazo. Negociado/desconto previstos só saem para plano PADRÃO
+   * (negociado = tabela); plano personalizado fica sem previsão de total, porque o valor fechado
+   * só nasce com a emissão.
+   */
+  previsao: null | {
+    desconto: null | number;
+    entradaPercentual: number;
+    entradaTotal: number;
+    negociado: null | number;
+  };
+  /** Rótulo compacto no formato dos cards ("LBFC1210", "VALG09"): código + bloco + lote. */
   unidade: string;
   valorNegociado: null | number;
   valorTabela: number;
@@ -74,9 +88,14 @@ export type CabecalhoDaProposta = {
   bloco: null | string;
   faturado_em: null | string;
   imobiliaria: null | string;
+  codigo: null | string;
   lote: null | string;
+  /** `initial_input_value` do plano (personalizado primeiro): a % de entrada contratada. */
+  plano_entrada_pct: null | number | string;
   /** `commercial_plans.parcels` — o prazo do plano, plano B quando o financiamento não existe. */
   plano_parcelas: null | number;
+  /** 1 quando existe plano personalizado do contrato (cpc): total fechado só na emissão. */
+  plano_personalizado: null | number;
   valor_tabela: null | number | string;
 };
 
@@ -93,12 +112,16 @@ function round2(valor: number): number {
   return Math.round(valor * 100) / 100;
 }
 
-function rotuloDaUnidade(cab: Pick<CabecalhoDaProposta, "bloco" | "lote">): string {
-  const rotulo = [cab.bloco, cab.lote]
-    .map((parte) => String(parte ?? "").trim())
-    .filter(Boolean)
-    .join(" ");
-  return rotulo || "—";
+function rotuloDaUnidade(
+  cab: Pick<CabecalhoDaProposta, "bloco" | "codigo" | "lote">,
+): string {
+  // O formato dos cards ("LBFC1210"): código + bloco + lote, sem espaço. O Lucas estranhou o
+  // "C12 10" solto no título do popup (18/08/2026) — o rótulo tem que ser o mesmo da tela.
+  const bloco = String(cab.bloco ?? "").trim();
+  const lote = String(cab.lote ?? "").trim();
+  // Código sozinho não identifica a unidade: sem bloco e sem lote, melhor o traço honesto.
+  if (!bloco && !lote) return "—";
+  return `${String(cab.codigo ?? "").trim()}${bloco}${lote}`;
 }
 
 /** Paga na mesma régua da carteira (`situacaoDaLinha`): valor pago > 0 E data de pagamento. */
@@ -147,6 +170,20 @@ export function montarProposta(
     .filter((v): v is string => Boolean(v))
     .sort();
 
+  // A PREVISÃO só existe enquanto NADA foi emitido: com qualquer parcela na praça, o que vale é
+  // o emitido (misturar previsto com emitido no mesmo popup é pedir confusão).
+  const pct = cab.plano_entrada_pct == null ? null : Number(cab.plano_entrada_pct);
+  const personalizado = Number(cab.plano_personalizado ?? 0) === 1;
+  const previsao =
+    parcelas.length === 0 && pct != null && Number.isFinite(pct) && pct > 0 && valorTabela > 0
+      ? {
+          desconto: personalizado ? null : 0,
+          entradaPercentual: round2(pct),
+          entradaTotal: round2((valorTabela * pct) / 100),
+          negociado: personalizado ? null : valorTabela,
+        }
+      : null;
+
   return {
     desconto,
     entrada: {
@@ -184,6 +221,7 @@ export function montarProposta(
           : null,
     },
     imobiliaria: String(cab.imobiliaria ?? "").trim() || null,
+    previsao,
     unidade: rotuloDaUnidade(cab),
     valorNegociado,
     valorTabela,
@@ -228,12 +266,16 @@ export async function propostaDaVenda(
       `select ar.id ar_id,
               nullif(trim(eu.block), '') bloco,
               nullif(trim(eu.lot), '') lote,
+              nullif(trim(e.code), '') codigo,
               eu.price valor_tabela,
               date_format(ar.billing_date, '%Y-%m-%d') faturado_em,
               coalesce(cps.parcels, cpc.parcels) plano_parcelas,
+              coalesce(cpc.initial_input_value, cps.initial_input_value) plano_entrada_pct,
+              (cpc.id is not null) plano_personalizado,
               ${nome("imo")} imobiliaria
          from acquisition_requests ar
          join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+         join enterprises e on e.id = eu.enterprise_id
          left join commercial_plans cps on cps.id = ar.commercial_plan_id
          left join commercial_plans cpc on cpc.id = (
                 select cp2.id from commercial_plans cp2

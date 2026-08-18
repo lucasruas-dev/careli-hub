@@ -14,10 +14,13 @@ function cabecalho(extras: Partial<CabecalhoDaProposta> = {}): CabecalhoDaPropos
   return {
     ar_id: 4288,
     bloco: "G",
+    codigo: "VAL",
     faturado_em: "2026-08-07",
     imobiliaria: "HUBER NEGOCIOS IMOBILIARIOS LTDA",
     lote: "09",
+    plano_entrada_pct: "10.0000",
     plano_parcelas: 120,
+    plano_personalizado: 0,
     valor_tabela: "79900.00",
     ...extras,
   };
@@ -52,7 +55,7 @@ describe("a proposta da venda (contrato real do VAL, G 09)", () => {
   it("monta entrada, financiamento, negociado e desconto como no contrato", () => {
     const proposta = montarProposta(cabecalho(), contratoDoVal());
 
-    expect(proposta.unidade).toBe("G 09");
+    expect(proposta.unidade).toBe("VALG09");
     expect(proposta.valorTabela).toBe(79_900);
     // 0,01 + 3 × 2.663,33 + 120 × 599,25 = 79.900,00 — fecha com a tabela ao centavo.
     expect(proposta.valorNegociado).toBe(79_900);
@@ -173,5 +176,50 @@ describe("a proposta da venda (contrato real do VAL, G 09)", () => {
     ]) {
       expect(chaves.has(proibida)).toBe(false);
     }
+  });
+});
+
+describe("previsão pelo plano (venda sem parcela emitida)", () => {
+  // Régua REAL: contrato 4283 da Lagoa Bonita (LBF C12 lote 10, Em assinatura, lido do C2X em
+  // 18/08/2026): tabela R$ 378.216, plano padrão "10% ENTRADA + 120 VEZES", ZERO parcelas.
+  const semParcelas = cabecalho({
+    ar_id: 4283,
+    bloco: "C12",
+    codigo: "LBF",
+    faturado_em: null,
+    lote: "10",
+    plano_entrada_pct: "10.0000",
+    valor_tabela: "378216.00",
+  });
+
+  it("plano PADRÃO: prevê entrada, negociado igual à tabela e desconto zero", () => {
+    const p = montarProposta(semParcelas, []);
+    expect(p.previsao).toEqual({
+      desconto: 0,
+      entradaPercentual: 10,
+      entradaTotal: 37821.6,
+      negociado: 378216,
+    });
+    // O emitido continua honesto: nada foi gerado.
+    expect(p.valorNegociado).toBeNull();
+    expect(p.entrada.total).toBe(0);
+    expect(p.financiamento.parcelas).toBe(120);
+  });
+
+  it("plano PERSONALIZADO: prevê a entrada, mas negociado e desconto ficam sem número", () => {
+    const p = montarProposta({ ...semParcelas, plano_personalizado: 1 }, []);
+    expect(p.previsao?.entradaTotal).toBe(37821.6);
+    expect(p.previsao?.negociado).toBeNull();
+    expect(p.previsao?.desconto).toBeNull();
+  });
+
+  it("com QUALQUER parcela emitida a previsão sai de cena", () => {
+    const p = montarProposta(semParcelas, [parcela("Sinal", "37821.60", "2026-08-20")]);
+    expect(p.previsao).toBeNull();
+  });
+
+  it("o rótulo é o compacto dos cards: código + bloco + lote", () => {
+    expect(montarProposta(semParcelas, []).unidade).toBe("LBFC1210");
+    expect(montarProposta(cabecalho(), []).unidade).toBe("VALG09");
   });
 });

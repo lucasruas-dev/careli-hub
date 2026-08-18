@@ -169,6 +169,12 @@ type Proposta = {
   unidade: string;
   valorNegociado: null | number;
   valorTabela: number;
+  previsao: null | {
+    desconto: null | number;
+    entradaPercentual: number;
+    entradaTotal: number;
+    negociado: null | number;
+  };
 };
 
 /** O que o modal precisa saber da unidade clicada, antes mesmo do fetch: o cabeçalho. */
@@ -2293,8 +2299,13 @@ function ModalDaProposta({
 }
 
 function CorpoDaProposta({ proposta }: { proposta: Proposta }) {
-  const { desconto, entrada, faturadoEm, financiamento, valorNegociado, valorTabela } = proposta;
+  const { desconto, entrada, faturadoEm, financiamento, previsao, valorNegociado, valorTabela } =
+    proposta;
   const totalDeParcelas = entrada.parcelas.length;
+  // "previsto" = o plano comercial do contrato, antes de qualquer parcela emitida. Pedido do
+  // Lucas (18/08/2026): a proposta existe desde a etapa "Proposta emitida", e o popup dizia
+  // "a definir" em tudo — o plano já conta a entrada e o prazo.
+  const previsto = previsao !== null;
 
   return (
     <>
@@ -2310,14 +2321,21 @@ function CorpoDaProposta({ proposta }: { proposta: Proposta }) {
       >
         <FatoDoModal rotulo="Valor de tabela" valor={brlExato(valorTabela)} />
         <FatoDoModal
-          rotulo="Valor negociado"
-          valor={valorNegociado === null ? "a definir" : brlExato(valorNegociado)}
+          rotulo={previsto ? "Negociado (previsto)" : "Valor negociado"}
+          valor={
+            valorNegociado !== null
+              ? brlExato(valorNegociado)
+              : previsao?.negociado != null
+                ? brlExato(previsao.negociado)
+                : "a definir"
+          }
         />
         <FatoDoModal
-          rotulo="Desconto"
-          valor={
-            desconto === null ? "a definir" : desconto > 0 ? brlExato(desconto) : "Sem desconto"
-          }
+          rotulo={previsto ? "Desconto (previsto)" : "Desconto"}
+          valor={(() => {
+            const d = desconto ?? previsao?.desconto ?? null;
+            return d === null ? "a definir" : d > 0 ? brlExato(d) : "Sem desconto";
+          })()}
         />
       </div>
       {valorNegociado === null ? (
@@ -2331,26 +2349,30 @@ function CorpoDaProposta({ proposta }: { proposta: Proposta }) {
             padding: "10px 20px",
           }}
         >
-          As parcelas do financiamento desta venda ainda não foram emitidas: o valor negociado e o
-          desconto aparecem aqui assim que elas forem geradas.
+          {previsto
+            ? "As parcelas ainda não foram emitidas: os valores acima e a entrada abaixo são o PREVISTO pelo plano comercial do contrato, e viram definitivos na emissão."
+            : "As parcelas do financiamento desta venda ainda não foram emitidas: o valor negociado e o desconto aparecem aqui assim que elas forem geradas."}
         </p>
       ) : null}
 
       {/* ── ENTRADA: total, percentual e o parcelamento com o que já foi pago ── */}
       <div style={{ borderBottom: `1px solid ${T.border}`, padding: "14px 20px" }}>
-        <MiniRotulo texto="Entrada" />
+        <MiniRotulo texto={previsto ? "Entrada (prevista pelo plano)" : "Entrada"} />
         <p style={{ color: T.text, fontSize: 15, fontWeight: 700, margin: 0 }}>
-          {brlExato(entrada.total)}
-          {entrada.percentual !== null ? (
+          {brlExato(previsto && previsao ? previsao.entradaTotal : entrada.total)}
+          {(previsto && previsao ? previsao.entradaPercentual : entrada.percentual) !== null ? (
             <span style={{ color: T.muted, fontSize: 12, fontWeight: 500, marginLeft: 8 }}>
-              {pct1(entrada.percentual)}% do valor da venda
+              {pct1((previsto && previsao ? previsao.entradaPercentual : entrada.percentual) ?? 0)}%
+              do valor da venda
             </span>
           ) : null}
         </p>
 
         {totalDeParcelas === 0 ? (
           <p style={{ color: T.muted, fontSize: 12.5, margin: "8px 0 0" }}>
-            Sem parcelas de entrada registradas.
+            {previsto
+              ? "O parcelamento da entrada aparece aqui quando as parcelas forem emitidas."
+              : "Sem parcelas de entrada registradas."}
           </p>
         ) : (
           <div style={{ marginTop: 8 }}>
