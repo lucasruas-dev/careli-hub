@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-assinatura-por-unidade",
+    deployedAt: "2026-08-18T12:10:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "TAXA DE ASSINATURA POR PERFIL nos cards: Comprador, Imobiliaria, Coordenadora de venda, Incorporador, Backoffice e Corretor, cada um com percentual, fracao e barra; o elo mais atrasado aparece primeiro, em vermelho",
+              "ASSINATURA POR UNIDADE: cada unidade mostra uma barrinha por perfil que assina naquele contrato, o total (5 de 8) e com quem esta parado e ha quantos dias",
+              "Clicar na unidade abre a TABELA DE ASSINATURA do contrato: assinante, perfil, se ja assinou, se e a vez dele ou se ainda aguarda, com a data",
+              "Filtros em pilha com contagem (todas, pendentes, concluidas, parado com cada perfil), busca por unidade ou comprador, e a lista ordenada pelo que esta parado ha mais tempo",
+              "Blocos do painel interno replicados: Comprador, Geral, Prazo de 7 dias e a fila degrau a degrau quando o empreendimento usa ordem de assinatura",
+            ],
+            screen: "Vendas - Assinaturas",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.153.0 (2026-08-18-portal-no-escuro)",
+    technical: {
+      done:
+        "assinaturas.ts devolve unidades (esquema + grupos por perfil), fila, taxas e KPIs do painel interno, sem consulta nova (mesma leitura reagrupada); painel-assinatura.ts so ganhou export de prazoDoComprador/PRAZO_COMPRADOR para a regua de 7 dias ser importada em vez de copiada. NOME_DEGRAU do painel NAO foi copiado: medido no C2X, aquela tabela descreve o Vale do Ouro e no LBR a ordem 3 e da imobiliaria; o rotulo agora sai dos perfis que assinam no degrau. A fila so aparece onde ha ordem de verdade (after_position > 0).",
+      motivation:
+        "Lucas: 'do jeito que esta eu nao sei o status de assinatura das unidades' e 'esses cards poderiam trazer a taxa de assinatura das imobiliarias, backoffice, coordenacao, incorporador'.",
+    },
+    title: "Assinaturas por unidade, com barra de progresso e o esquema do contrato",
+    type: "novidade",
+    version: "1.154.0",
+  },
+  {
     buildTag: "2026-08-18-portal-no-escuro",
     deployedAt: "2026-08-18T09:10:00-03:00",
     modules: [

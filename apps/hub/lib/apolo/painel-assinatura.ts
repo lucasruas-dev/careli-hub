@@ -22,8 +22,13 @@ import { getHadesDbPool } from "@/lib/guardian/db";
 /** Vale do Ouro: VOL (Lino) e VOC (Cecílio). O VLO (35) fica fora: é masterplan, não carteira. */
 export const VALE_DO_OURO = [36, 37];
 
-/** Dias que o painel do Lucas usa para dizer que o comprador está atrasado. */
-const PRAZO_COMPRADOR = 7;
+/**
+ * Dias que o painel do Lucas usa para dizer que o comprador está atrasado.
+ *
+ * Exportado junto com `prazoDoComprador` para o portal do incorporador aplicar a MESMA régua de 7
+ * dias sem copiar o número: prazo duplicado é prazo que um dia diverge do outro.
+ */
+export const PRAZO_COMPRADOR = 7;
 
 const TTL_MS = 5 * 60 * 1000;
 
@@ -126,7 +131,11 @@ export function perfilDeTela(perfilC2x: null | string, email: string): string {
   return email.endsWith("@careli.adm.br") ? "Backoffice" : base;
 }
 
-function prazoDoComprador(perfil: string, assinou: boolean, dias: number): null | string {
+/**
+ * O prazo do comprador, como o painel mostra. Só o Comprador tem prazo; os outros perfis devolvem
+ * nulo. Exportado para o portal do incorporador reusar a régua em vez de recriá-la.
+ */
+export function prazoDoComprador(perfil: string, assinou: boolean, dias: number): null | string {
   if (perfil !== "Comprador") return null;
   if (assinou) return dias <= PRAZO_COMPRADOR ? "Assinado no prazo" : "Assinado fora do prazo";
   return dias <= PRAZO_COMPRADOR ? "Pendente dentro do prazo" : "Pendente e em atraso";

@@ -66,10 +66,20 @@ describe("o quadro por assinante respeita a ORDEM da fila (regra do painel inter
     expect(quadro.assinantes[0]!.naVez).toBeGreaterThan(0);
   });
 
-  it("a lista de pendentes diz QUEM está na vez naquele contrato", () => {
-    expect(quadro.pendentes).toHaveLength(1);
-    expect(quadro.pendentes[0]).toMatchObject({ empreendimento: "VAL", unidade: "VALB0218" });
-    expect(quadro.pendentes[0]!.naVez.sort()).toEqual(["Corretor C", "Imob B"]);
+  it("a lista de unidades diz QUEM está na vez naquele contrato", () => {
+    expect(quadro.unidades).toHaveLength(1);
+    expect(quadro.unidades[0]).toMatchObject({
+      assinadas: 1,
+      concluida: false,
+      empreendimento: "VAL",
+      total: 4,
+      unidade: "VALB0218",
+    });
+    expect(quadro.unidades[0]!.naVez.sort()).toEqual(["Corretor C", "Imob B"]);
+  });
+
+  it("⚠️ os PERFIS na vez são o recorte da pílula: é por eles que o dono filtra o que está parado", () => {
+    expect(quadro.unidades[0]!.perfisNaVez).toEqual(["Corretor", "Imobiliária"]);
   });
 
   it("papel do assinante é o perfil traduzido", () => {
@@ -120,7 +130,9 @@ describe("os KPIs", () => {
     // O contrato 20 fica FORA da média: sem geração no histórico (26 dos 39 do VAL são assim),
     // chutar a data mentiria o número.
     expect(quadro.kpis.tempoMedioDias).toBe(10);
-    expect(quadro.pendentes).toHaveLength(0);
+    // Nada pendente: as duas unidades entram na lista, as duas concluídas.
+    expect(quadro.unidades).toHaveLength(2);
+    expect(quadro.unidades.every((unidade) => unidade.concluida)).toBe(true);
   });
 
   it("% de compradores conta LINHAS de comprador (cônjuge tem linha própria), e só elas", () => {
@@ -186,15 +198,28 @@ describe("envio válido sem NENHUM assinante registrado (o furo do join interno)
       [{ arId: 1, geradoEm: null }],
       // O envio 10 (do ar 1) EXISTE e foi escolhido — só não tem linha de assinante.
       new Map([[10, 1]]),
-      [{ emp: "VAL", enviadoEm: "2026-06-01", un: "VALB0218" }],
+      [{ csId: 10, emp: "VAL", enviadoEm: "2026-06-01", un: "VALB0218" }],
     );
 
     expect(quadro.kpis.aguardandoEmissao).toBe(0);
     expect(quadro.kpis.unidadesComEnvio).toBe(1);
     expect(quadro.kpis.unidadesTotalmenteAssinadas).toBe(0);
-    // `naVez` vazio: a tela mostra "sem assinante registrado" no lugar dos nomes.
-    expect(quadro.pendentes).toEqual([
-      { empreendimento: "VAL", enviadoEm: "2026-06-01", naVez: [], unidade: "VALB0218" },
+    // Esquema e grupos vazios: a tela mostra "sem assinante registrado" no lugar das barrinhas.
+    expect(quadro.unidades).toEqual([
+      {
+        assinadas: 0,
+        comprador: null,
+        concluida: false,
+        empreendimento: "VAL",
+        enviadoEm: "2026-06-01",
+        envioId: 10,
+        esquema: [],
+        grupos: [],
+        naVez: [],
+        perfisNaVez: [],
+        total: 0,
+        unidade: "VALB0218",
+      },
     ]);
   });
 
@@ -206,7 +231,7 @@ describe("envio válido sem NENHUM assinante registrado (o furo do join interno)
         [10, 1],
         [20, 2],
       ]),
-      [{ emp: "VAL", enviadoEm: "2026-07-01", un: "VALB0218" }],
+      [{ csId: 20, emp: "VAL", enviadoEm: "2026-07-01", un: "VALB0218" }],
     );
 
     expect(quadro.kpis.unidadesComEnvio).toBe(1);
@@ -237,11 +262,20 @@ describe("unidades homônimas de empreendimentos diferentes (recorte 'todos')", 
   });
 });
 
-describe("a lista de contratos pendentes", () => {
-  it("vem do mais antigo para o mais novo: é onde o gargalo dói há mais tempo", () => {
+describe("a ordem da lista analítica", () => {
+  it("pendente antes de concluída, e a pendente mais antiga primeiro: é onde o gargalo dói há mais tempo", () => {
     const linhas = [
       linha({ contrato: 10, envio: "2026-07-01", un: "VALB0218" }),
       linha({ contrato: 20, envio: "2026-05-01", un: "VALC0301", usuario: "Comprador B" }),
+      // Concluída, e a mais antiga de todas: ainda assim vai para o fim.
+      linha({
+        assinadoEm: "2026-04-10",
+        assinou: true,
+        contrato: 30,
+        envio: "2026-04-01",
+        un: "VALD0402",
+        usuario: "Comprador C",
+      }),
     ];
     const quadro = montarQuadroDeAssinaturas(
       linhas,
@@ -249,12 +283,229 @@ describe("a lista de contratos pendentes", () => {
       new Map([
         [10, 1],
         [20, 2],
+        [30, 3],
       ]),
     );
 
-    expect(quadro.pendentes.map((pendente) => pendente.unidade)).toEqual([
+    expect(quadro.unidades.map((unidade) => unidade.unidade)).toEqual([
       "VALC0301",
       "VALB0218",
+      "VALD0402",
     ]);
+  });
+});
+
+// ── AS PEÇAS DO REDESENHO DE 18/08/2026 ─────────────────────────────────────
+// A pergunta da tela virou POR UNIDADE (*"eu não sei o status de assinatura das unidades"*), com
+// barrinha por grupo na linha e a tabela do esquema no popup. Os testes abaixo fixam o que a tela
+// desenha: os grupos, as taxas por perfil, a fila por ordem e a régua de atraso do comprador.
+
+describe("as barrinhas por GRUPO da unidade", () => {
+  // Um contrato do Vale do Ouro em miniatura: comprador e cônjuge no degrau 1 (um assinou), a
+  // imobiliária no 2 (a vez é dela) e o incorporador no 3 (ainda aguarda).
+  const linhas = [
+    linha({ assinadoEm: "2026-06-03", assinou: true, degrau: 1, usuario: "Titular" }),
+    linha({ degrau: 1, usuario: "Cônjuge" }),
+    linha({ degrau: 2, perfil: "Imobiliária", usuario: "Imob B" }),
+    linha({ degrau: 3, perfil: "Incorporador", usuario: "Incorporador D" }),
+  ];
+  const quadro = montarQuadroDeAssinaturas(linhas, [], new Map([[10, 1]]));
+  const unidade = quadro.unidades[0]!;
+
+  it("um grupo por perfil PRESENTE no contrato, na ordem do fluxo", () => {
+    expect(unidade.grupos.map((grupo) => grupo.perfil)).toEqual([
+      "Comprador",
+      "Imobiliária",
+      "Incorporador",
+    ]);
+  });
+
+  it("a fração de cada grupo é a daquele contrato ('1 de 2' no comprador)", () => {
+    expect(unidade.grupos[0]).toEqual({
+      assinadas: 1,
+      naVez: true,
+      perfil: "Comprador",
+      total: 2,
+    });
+  });
+
+  it("⚠️ só o grupo da VEZ fica marcado: quem aguarda os anteriores não é cobrado", () => {
+    expect(unidade.grupos.map((grupo) => grupo.naVez)).toEqual([true, false, false]);
+  });
+
+  it("⚠️ a soma dos grupos FECHA com o total da linha: ninguém some da conta", () => {
+    const soma = unidade.grupos.reduce((total, grupo) => total + grupo.total, 0);
+    const assinadas = unidade.grupos.reduce((total, grupo) => total + grupo.assinadas, 0);
+
+    expect(soma).toBe(unidade.total);
+    expect(assinadas).toBe(unidade.assinadas);
+  });
+
+  it("o comprador da linha sai das próprias assinaturas, sem consulta nova", () => {
+    expect(unidade.comprador).toBe("Titular, Cônjuge");
+  });
+
+  it("o esquema do popup vem na ordem do fluxo, com a data de quem assinou", () => {
+    expect(unidade.esquema.map((item) => [item.nome, item.situacao, item.assinadoEm])).toEqual([
+      ["Titular", "assinado", "2026-06-03"],
+      ["Cônjuge", "vez", null],
+      ["Imob B", "aguardando", null],
+      ["Incorporador D", "aguardando", null],
+    ]);
+  });
+});
+
+describe("as taxas por perfil (os cards de gargalo)", () => {
+  const linhas = [
+    linha({ assinadoEm: "2026-06-03", assinou: true, usuario: "Titular" }),
+    linha({ assinadoEm: "2026-06-03", assinou: true, contrato: 20, usuario: "Comprador B" }),
+    linha({ degrau: 2, perfil: "Backoffice", usuario: "Careli 1" }),
+    linha({ contrato: 20, degrau: 2, perfil: "Backoffice", usuario: "Careli 1" }),
+    linha({
+      assinadoEm: "2026-06-04",
+      assinou: true,
+      degrau: 3,
+      perfil: "Imobiliária",
+      usuario: "Imob B",
+    }),
+  ];
+  const quadro = montarQuadroDeAssinaturas(
+    linhas,
+    [],
+    new Map([
+      [10, 1],
+      [20, 2],
+    ]),
+  );
+
+  it("⚠️ o PIOR vem primeiro: a faixa existe para dizer em qual elo emperra", () => {
+    expect(quadro.taxas.map((taxa) => taxa.perfil)).toEqual([
+      "Backoffice",
+      "Comprador",
+      "Imobiliária",
+    ]);
+  });
+
+  it("a taxa é assinadas sobre esperadas daquele perfil no recorte inteiro", () => {
+    expect(quadro.taxas[0]).toEqual({ assinadas: 0, esperadas: 2, perfil: "Backoffice" });
+    expect(quadro.taxas[1]).toEqual({ assinadas: 2, esperadas: 2, perfil: "Comprador" });
+  });
+
+  it("⚠️ os rótulos são os de `perfilDeTela`, sem grupo inventado por cima", () => {
+    // Backoffice é o e-mail @careli.adm.br do painel interno, não um rótulo novo desta tela.
+    expect(quadro.taxas.map((taxa) => taxa.perfil)).not.toContain("Careli");
+  });
+});
+
+describe("a fila por ordem de assinatura", () => {
+  it("⚠️ recorte SEM ordem (todo mundo no degrau 0) não desenha fila nenhuma", () => {
+    // Metade dos empreendimentos assina com `after_position` = 0 para todos (medido no C2X em
+    // 18/08/2026: VAL, LBF e LBP). "Degrau 0: 3 de 3" seria uma seção repetindo o KPI geral.
+    const quadro = montarQuadroDeAssinaturas(
+      [
+        linha({ degrau: 0, usuario: "Titular" }),
+        linha({ degrau: 0, perfil: "Imobiliária", usuario: "Imob B" }),
+      ],
+      [],
+      new Map([[10, 1]]),
+    );
+
+    expect(quadro.fila).toEqual([]);
+  });
+
+  it("com ordem de verdade, cada degrau traz a fração e OS PERFIS que assinam nele", () => {
+    const quadro = montarQuadroDeAssinaturas(
+      [
+        linha({ assinadoEm: "2026-06-02", assinou: true, degrau: 1, usuario: "Titular" }),
+        linha({ degrau: 2, perfil: "Imobiliária", usuario: "Imob B" }),
+        linha({ degrau: 2, perfil: "Coordenadora de venda", usuario: "Coord C" }),
+      ],
+      [],
+      new Map([[10, 1]]),
+    );
+
+    // O rótulo do degrau é DERIVADO: a tabela de nomes fixos do painel interno descreve o Vale do
+    // Ouro e mentiria aqui (no LBR o degrau 3 é da Imobiliária, não das testemunhas).
+    expect(quadro.fila).toEqual([
+      { assinadas: 1, degrau: 1, perfis: ["Comprador"], total: 1 },
+      { assinadas: 0, degrau: 2, perfis: ["Coordenadora de venda", "Imobiliária"], total: 2 },
+    ]);
+  });
+});
+
+describe("os KPIs de prazo do comprador (régua de 7 dias, importada do painel)", () => {
+  it("⚠️ comprador pendente há mais de 7 dias conta como atraso; dentro do prazo, não", () => {
+    const quadro = montarQuadroDeAssinaturas(
+      [
+        linha({ contrato: 10, diasDesdeEnvio: 12, usuario: "Atrasado" }),
+        linha({ contrato: 20, diasDesdeEnvio: 3, un: "VALC0301", usuario: "No prazo" }),
+        // Imobiliária parada há 30 dias NÃO entra: o prazo de 7 dias é só do comprador.
+        linha({ contrato: 30, diasDesdeEnvio: 30, perfil: "Imobiliária", un: "VALD0402", usuario: "Imob B" }),
+      ],
+      [],
+      new Map([
+        [10, 1],
+        [20, 2],
+        [30, 3],
+      ]),
+    );
+
+    expect(quadro.kpis.compradorEmAtraso).toBe(1);
+  });
+
+  it("dias até assinar é a média do envio até a assinatura do comprador", () => {
+    const quadro = montarQuadroDeAssinaturas(
+      [
+        // 01/06 → 05/06 = 4 dias; 01/06 → 07/06 = 6 dias. Média 5.
+        linha({ assinadoEm: "2026-06-05", assinou: true, contrato: 10 }),
+        linha({ assinadoEm: "2026-06-07", assinou: true, contrato: 20, un: "VALC0301" }),
+      ],
+      [],
+      new Map([
+        [10, 1],
+        [20, 2],
+      ]),
+    );
+
+    expect(quadro.kpis.diasAteAssinar).toBe(5);
+  });
+
+  it("⚠️ dias desde o envio é UM valor por contrato, não por linha", () => {
+    // Um contrato de 3 assinantes com 10 dias e outro de 1 com 2 dias: média 6, não 8.
+    const quadro = montarQuadroDeAssinaturas(
+      [
+        linha({ contrato: 10, diasDesdeEnvio: 10, usuario: "A" }),
+        linha({ contrato: 10, degrau: 2, diasDesdeEnvio: 10, perfil: "Imobiliária", usuario: "B" }),
+        linha({ contrato: 10, degrau: 3, diasDesdeEnvio: 10, perfil: "Backoffice", usuario: "C" }),
+        linha({ contrato: 20, diasDesdeEnvio: 2, un: "VALC0301", usuario: "D" }),
+      ],
+      [],
+      new Map([
+        [10, 1],
+        [20, 2],
+      ]),
+    );
+
+    expect(quadro.kpis.diasDesdeEnvio).toBe(6);
+  });
+
+  it("as unidades do comprador batem com o painel: assinada de um lado, pendente do outro", () => {
+    const quadro = montarQuadroDeAssinaturas(
+      [
+        linha({ assinadoEm: "2026-06-02", assinou: true, contrato: 10 }),
+        linha({ contrato: 20, un: "VALC0301", usuario: "Comprador B" }),
+        // Contrato sem NENHUM comprador não entra em nenhum dos dois lados.
+        linha({ contrato: 30, perfil: "Imobiliária", un: "VALD0402", usuario: "Imob B" }),
+      ],
+      [],
+      new Map([
+        [10, 1],
+        [20, 2],
+        [30, 3],
+      ]),
+    );
+
+    expect(quadro.kpis.compradorOk).toBe(1);
+    expect(quadro.kpis.compradorPendente).toBe(1);
   });
 });
