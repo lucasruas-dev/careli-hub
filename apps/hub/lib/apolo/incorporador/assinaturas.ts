@@ -778,7 +778,8 @@ type LinhaRow = RowDataPacket & {
  * `avisoDaFonte`, `avisoDosAssinantes` e o `fonte`/`aviso` de cada linha.
  */
 export type ResultadoAssinaturas =
-  | { data: QuadroComFonte; ok: true }
+  /** `uuids` é a lista de documentos desta carga, para a rota aquecer depois de responder. */
+  | { data: QuadroComFonte; ok: true; uuids: string[] }
   | { error: string; ok: false };
 
 /**
@@ -798,6 +799,8 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
       data: {
         ...montarQuadroDeAssinaturas([], [], new Map()),
         cancelados: [],
+        // Recorte vazio já está conciliado por definição: não há documento nenhum a conferir.
+        conciliando: false,
         resumoDaFonte: {
           assinaturasCorrigidas: 0,
           cancelados: 0,
@@ -809,6 +812,7 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
         },
       },
       ok: true,
+      uuids: [],
     };
   }
 
@@ -971,9 +975,13 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
         arPorEnvio,
         envios: paraD4Sign,
         linhas,
+        // Ver o comentário gêmeo em lib/apolo/assinaturas/painel-contratos.ts: a tela não espera
+        // a D4Sign, e o aquecimento roda no `after()` da rota, depois da resposta.
+        opcoes: { semEsperar: true },
         semAssinante,
         vivos,
       }),
+      uuids: paraD4Sign.map((envio) => envio.uuidDoc ?? "").filter((uuid) => uuid.length > 0),
       ok: true,
     };
   } catch (error) {

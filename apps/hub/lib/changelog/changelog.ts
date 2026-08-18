@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-contratos-sem-espera",
+    deployedAt: "2026-08-18T17:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A tela de Contratos abre na hora. Ela deixou de esperar a consulta ao D4Sign para desenhar: mostra a lista do sistema imediatamente e confere as assinaturas em segundo plano, atualizando sozinha quando a conferencia termina",
+              "Enquanto carrega aparece o esqueleto da pagina, os blocos no formato do conteudo, em vez da frase Carregando os contratos. E o mesmo carregamento do resto do Panteon",
+            ],
+            screen: "Contratos",
+          },
+        ],
+      },
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Mesma coisa: as telas abrem na hora e se completam sozinhas",
+              "O esqueleto de carregamento respeita o tema do portal, claro e escuro",
+            ],
+            screen: "Vendas",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.158.0 (2026-08-18-portal-sem-jargao)",
+    technical: {
+      done:
+        "MEDIDO antes de mexer (scripts/apolo/medir-catalogo-real.mjs e medir-carga-contratos.mjs): catalogo D4Sign frio 4,4 s em 8 paginas, mais 7,0 s dos 20 detalhes do teto, contra 0,1 s do SQL que traz a mesma lista. Perto de 12 s de tela parada, e nao em caso raro: o cache e da INSTANCIA serverless e a Vercel recicla instancia o tempo todo. Paralelizar mais nao resolveria (medido: 3,0 s mais 4,5 s = 7,5 s). O que resolve e nao esperar. OpcoesDeLote.semEsperar usa so o que esta em memoria (o cache, e o catalogo apenas SE ja estiver quente); o que falta volta ok:false e cai no fallback honesto do C2X, com o aviso de sempre, e volta MARCADO em vez de sumir (entrada ausente seria lida como documento inexistente, enquanto ok:false e nao sei agora). O aquecimento roda no after() das duas rotas, DEPOIS da resposta: chamar antes do NextResponse.json desfaz o ganho inteiro. O campo conciliando manda a tela perguntar de novo em cerca de 6 s e nao e polling, porque so existe quando o servidor pede, some sozinho quando a resposta chega conciliada e com o catalogo quente nunca acontece; o cache de 5 min da lib nao guarda quadro com conciliando, senao prenderia a tela no dado do C2X depois de o aquecimento terminar. O repique troca os dados sem voltar ao esqueleto, e falha no repique nao apaga numeros que ja estao na frente do usuario. Tres testes novos travam o comportamento, incluindo o de que ZERO chamadas saem com o cache frio.",
+      motivation:
+        "Lucas: esta demorando muito para carregar as paginas, e gostaria de trazer o carregamento que ja tem no panteon, mas olha por favor essa demora.",
+    },
+    title: "Contratos: a tela abre na hora e se completa sozinha",
+    type: "melhoria",
+    version: "1.159.0",
+  },
+  {
     buildTag: "2026-08-18-portal-sem-jargao",
     deployedAt: "2026-08-18T16:05:00-03:00",
     modules: [

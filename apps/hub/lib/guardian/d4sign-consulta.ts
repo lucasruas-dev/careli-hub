@@ -673,6 +673,48 @@ export async function carregarCatalogoD4Sign(): Promise<null | Map<string, Docum
   return catalogoEmVoo;
 }
 
+/** O catálogo está em memória e dentro do TTL? Quem pergunta é quem não pode esperar 4,4 s. */
+export function catalogoEstaQuente(): boolean {
+  return catalogo !== null && Date.now() - catalogo.em < TTL_CATALOGO_MS;
+}
+
+/**
+ * Aquece o catálogo (e, opcionalmente, alguns documentos) SEM que ninguém espere.
+ *
+ * ⚠️ CHAME DENTRO DO `after()` DA ROTA, nunca antes de responder — o ponto todo é a resposta sair
+ * na frente. Na Vercel o `after()` mantém a função viva depois do envio, que é justamente onde
+ * este trabalho deve morar.
+ *
+ * ⚠️ NÃO É POLLING. Roda no máximo uma vez por instância a cada TTL (5 min), porque a primeira
+ * coisa que faz é desistir se o catálogo já estiver quente. Sem essa guarda, uma tela aberta em
+ * várias abas viraria uma fila de aquecimentos idênticos.
+ *
+ * ⚠️ ENGOLE ERRO DE PROPÓSITO. Ninguém está esperando: se a D4Sign estiver fora, a próxima carga
+ * simplesmente cai no fallback do C2X de novo, que é o comportamento correto. Deixar a promessa
+ * rejeitar aqui derrubaria a função DEPOIS de a resposta já ter saído, e o log ficaria mentindo
+ * sobre uma requisição que deu certo.
+ */
+export function aquecerD4SignEmSegundoPlano(uuids: string[] = []): void {
+  if (catalogoEstaQuente() || Date.now() < disjuntorAbertoAte) return;
+
+  void carregarCatalogoD4Sign()
+    .then(async (mapa) => {
+      if (!mapa || uuids.length === 0) return;
+
+      // Só o que se MOVE vale detalhe: o terminal já saiu resolvido do catálogo. Com o teto de
+      // sempre, para o aquecimento não virar uma varredura do acervo inteiro.
+      const emMovimento = [...new Set(uuids.map((u) => u.trim()).filter(Boolean))]
+        .filter((uuid) => {
+          const documento = mapa.get(uuid);
+          return !documento || !situacaoEhTerminal(documento.situacao);
+        })
+        .slice(0, TETO_ASSINANTES_POR_CARGA);
+
+      if (emMovimento.length > 0) await consultarDocumentosD4Sign(emMovimento, { catalogo: false });
+    })
+    .catch(() => undefined);
+}
+
 /**
  * Consulta UM documento, com cache e deduplicação.
  *
@@ -721,6 +763,21 @@ export type OpcoesDeLote = {
   concorrencia?: number;
   /** Teto de tempo da rodada inteira. Estourou, o que faltava vira "indisponível". Padrão 8 s. */
   orcamentoMs?: number;
+  /**
+   * NÃO ESPERAR REDE NENHUMA: responder com o que já está em memória e aquecer o resto depois.
+   *
+   * ⚠️ ISTO EXISTE PORQUE A CONTA DA CARGA FRIA ERA INSUSTENTÁVEL, e foi medida: catálogo 4,4 s
+   * (8 páginas, `scripts/apolo/medir-catalogo-real.mjs`) mais 7,0 s dos 20 detalhes do teto
+   * (concorrência 6) — perto de 12 s de tela parada, contra 0,1 s do SQL que traz a mesma lista.
+   * Como o cache é da INSTÂNCIA e a Vercel recicla instância o tempo todo, essa conta não era
+   * excepcional: reaparecia várias vezes ao dia, e foi o que o dono sentiu em 18/08/2026
+   * (*"está demorando muito para carregar as páginas"*).
+   *
+   * Ligada: o cache vale, o catálogo vale SE já estiver quente, e nada mais sai para a rede — o
+   * que sobra vira "indisponível" e cai no fallback honesto do C2X, com o aviso de sempre. Quem
+   * quiser o dado conciliado chama `aquecerD4SignEmSegundoPlano` e pergunta de novo.
+   */
+  semEsperar?: boolean;
 };
 
 /**
@@ -760,8 +817,11 @@ export async function consultarDocumentosD4Sign(
   // por isso que só o TERMINAL sai daqui pronto: em documento finalizado ou cancelado, assinante a
   // assinante não muda nada na tela (ver o cabeçalho). O que está EM MOVIMENTO segue para o
   // `/list`, que é onde a fila de assinatura de verdade se decide.
+  // ⚠️ COM `semEsperar`, O CATÁLOGO SÓ VALE SE JÁ ESTIVER QUENTE. Carregá-lo aqui custaria os
+  // 4,4 s medidos, que é exatamente o que esse modo existe para não pagar.
+  const querCatalogo = (opcoes.catalogo ?? true) && pendentes.length > LIMIAR_DO_CATALOGO;
   const doCatalogo =
-    (opcoes.catalogo ?? true) && pendentes.length > LIMIAR_DO_CATALOGO
+    querCatalogo && (!opcoes.semEsperar || catalogoEstaQuente())
       ? await carregarCatalogoD4Sign()
       : null;
 
@@ -782,8 +842,9 @@ export async function consultarDocumentosD4Sign(
   // deixaria metade das linhas confirmadas e metade não, com a metade mudando a cada F5.
   const conhecidosNoCatalogo = paraLista.filter((uuid) => doCatalogo?.has(uuid));
   const desisteDaLista =
-    paraLista.length > TETO_ASSINANTES_POR_CARGA &&
-    conhecidosNoCatalogo.length === paraLista.length;
+    opcoes.semEsperar === true ||
+    (paraLista.length > TETO_ASSINANTES_POR_CARGA &&
+      conhecidosNoCatalogo.length === paraLista.length);
 
   let proximo = 0;
   const trabalhador = async (): Promise<void> => {

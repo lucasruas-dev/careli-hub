@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
+import { aquecerD4SignEmSegundoPlano } from "@/lib/guardian/d4sign-consulta";
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import { lerAssinaturasDoPortal } from "@/lib/apolo/incorporador/assinaturas";
 import {
@@ -77,6 +78,12 @@ export async function GET(request: Request) {
 
   const AVISO_DE_ATUALIZACAO =
     "Estamos confirmando as assinaturas mais recentes. Alguns contratos podem levar alguns minutos para aparecer atualizados aqui.";
+
+  // Ver o comentário gêmeo em app/api/apolo/painel-contratos/route.ts: o aquecimento roda DEPOIS
+  // da resposta, e é isso que tira a espera da tela.
+  after(() => {
+    aquecerD4SignEmSegundoPlano(quadro.uuids);
+  });
 
   return NextResponse.json(
     {

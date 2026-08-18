@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
 import { carregarPainelDeContratos } from "@/lib/apolo/assinaturas/painel-contratos";
+import { aquecerD4SignEmSegundoPlano } from "@/lib/guardian/d4sign-consulta";
 
 // TELA CONTRATOS DO APOLO — a fila de assinatura dos contratos, por unidade.
 //
@@ -32,6 +33,15 @@ export async function GET(request: Request) {
   if (!resultado.ok) {
     return NextResponse.json({ error: resultado.erro }, { status: 503 });
   }
+
+  // ⚠️ O AQUECIMENTO RODA DEPOIS DA RESPOSTA, e é isso que tira a espera da tela. `after()` mantém
+  // a função viva depois do envio: o usuário recebe a lista do C2X na hora (0,1 s de SQL) e a
+  // D4Sign é buscada em segundo plano, para a próxima carga já sair conciliada. Chamar isto ANTES
+  // do `NextResponse.json` desfaz o ganho inteiro — era exatamente a espera de ~12 s que o dono
+  // sentiu em 18/08/2026.
+  after(() => {
+    aquecerD4SignEmSegundoPlano(resultado.uuids ?? []);
+  });
 
   return NextResponse.json(
     { data: resultado.dados },

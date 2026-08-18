@@ -76,6 +76,11 @@ export type PainelDeContratos = {
   avisoDosAssinantes: null | string;
   /** O recorte que de fato foi lido (já validado): é o que a tela ecoa no cabeçalho. */
   codes: string[];
+  /**
+   * A resposta saiu com o que havia em memória e a D4Sign está sendo buscada em segundo plano:
+   * a tela pergunta de novo em alguns segundos e recebe o quadro conciliado.
+   */
+  conciliando: boolean;
   contratos: ContratoDoPainel[];
   /** Todos os empreendimentos com contrato no C2X — as opções do filtro, com CÓDIGO e nome. */
   empreendimentos: EmpreendimentoDoFiltro[];
@@ -87,7 +92,12 @@ export type PainelDeContratos = {
 };
 
 export type ResultadoPainelDeContratos =
-  | { dados: PainelDeContratos; ok: true }
+  /**
+   * `uuids` são os documentos desta carga, para a rota aquecer a D4Sign DEPOIS de responder.
+   * Opcional porque só o caminho que foi ao banco os conhece: resposta de cache ou de recorte
+   * vazio não tem lista, e aquecer o catálogo (que é o caro) não depende dela.
+   */
+  | { dados: PainelDeContratos; ok: true; uuids?: string[] }
   | { erro: string; ok: false };
 
 type LinhaRow = RowDataPacket & {
@@ -394,13 +404,25 @@ export async function carregarPainelDeContratos(
       statusC2x: statusPorEnvio.get(csId) ?? null,
       uuidDoc: uuidPorEnvio.get(csId) ?? null,
     }));
+    // ⚠️ A TELA NÃO ESPERA A D4SIGN. Medido em 18/08/2026: catálogo frio 4,4 s mais 7,0 s dos 20
+    // detalhes do teto, contra 0,1 s do SQL que traz a mesma lista — quase 12 s de tela parada, e
+    // não em caso raro: o cache é da INSTÂNCIA e a Vercel recicla instância o tempo todo. Com
+    // `semEsperar`, o que está em memória vale, o resto cai no fallback honesto do C2X, e o
+    // aquecimento acontece DEPOIS da resposta (`after()` na rota). `conciliando` avisa a tela para
+    // perguntar de novo em alguns segundos, quando aí sim virá conciliado.
     const quadro = await montarQuadroComD4Sign({
       arPorEnvio,
       envios: paraD4Sign,
       linhas,
+      opcoes: { semEsperar: true },
       semAssinante,
       vivos,
     });
+
+    // Os uuids que o aquecimento vai perseguir depois de a resposta sair.
+    const uuidsDaCarga = paraD4Sign
+      .map((envio) => envio.uuidDoc ?? "")
+      .filter((uuid) => uuid.length > 0);
 
     const dados: PainelDeContratos = {
       assinantes: enriquecerAssinantes(quadro.assinantes, emailsPorNome(linhas)),
@@ -409,6 +431,7 @@ export async function carregarPainelDeContratos(
       avisoDaFonte: quadro.avisoDaFonte,
       avisoDosAssinantes: quadro.avisoDosAssinantes,
       codes,
+      conciliando: quadro.conciliando,
       contratos: enriquecerUnidades({ linhas, unidades: quadro.unidades, uuidPorEnvio }),
       empreendimentos,
       fila: quadro.fila,
@@ -419,9 +442,12 @@ export async function carregarPainelDeContratos(
       total: escolhidos.size + quadro.kpis.aguardandoEmissao,
     };
 
-    guardar(chave, dados);
+    // ⚠️ QUADRO PELA METADE NÃO ENTRA NO CACHE DE 5 MINUTOS. `conciliando` significa que a D4Sign
+    // ainda está sendo buscada; guardar isso prenderia a tela no dado do C2X por 5 min mesmo depois
+    // de o aquecimento terminar — e o repique do cliente voltaria de mãos abanando.
+    if (!dados.conciliando) guardar(chave, dados);
 
-    return { dados, ok: true };
+    return { dados, ok: true, uuids: uuidsDaCarga };
   } catch (error) {
     console.error("[apolo][painel-contratos] falha ao ler o C2X", error);
     if (guardado) return { dados: guardado.dados, ok: true };
@@ -440,6 +466,8 @@ function vazio(codes: string[], empreendimentos: EmpreendimentoDoFiltro[]): Pain
     avisoDaFonte: null,
     avisoDosAssinantes: null,
     codes,
+    // Recorte vazio não tem documento a conferir: já nasce conciliado.
+    conciliando: false,
     contratos: [],
     empreendimentos,
     fila: quadro.fila,

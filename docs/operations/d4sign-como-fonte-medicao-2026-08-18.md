@@ -68,8 +68,11 @@ documentos. Mais 1 envio que a D4Sign cancelou e o C2X mostra vivo (3 linhas).
 **Limpos, batendo com a D4Sign: 14 dos 23 empreendimentos** — entre eles VOC, VOL, VOR, VAL
 (Vista Alegre) e LBF (Lagoa Bonita), ou seja, todos os portais ativos.
 
-Na Lavra do Ouro vale lembrar que a integração GLOTES lê o C2X como fonte: os 454 afetam também o
-que sai por ali.
+⚠️ **O GLOTES NÃO propaga as 454** (conferido no código em 18/08, depois de eu ter afirmado o
+contrário). A API entrega loteamentos, clientes, lotes, vendas e recebimentos; assinatura não
+está no contrato, e `lib/integrations/glotes/consultas.ts` nunca toca `contract_signatures` —
+vendas lê `sale_statuses`. Se um dia o cliente pedir assinatura, a regra é servir do quadro
+conciliado (`montarQuadroComD4Sign`), não do legado cru.
 
 ## 4. Por que o teto de 20 não perde essas 496
 

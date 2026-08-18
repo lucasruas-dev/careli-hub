@@ -45,6 +45,7 @@ import {
   type UnidadeDeAssinatura,
 } from "@/lib/apolo/incorporador/assinaturas";
 import type { LinhaAssinatura } from "@/lib/apolo/painel-assinatura";
+import { catalogoEstaQuente } from "@/lib/guardian/d4sign-consulta";
 import type { OpcoesDeLote } from "@/lib/guardian/d4sign-consulta";
 
 /**
@@ -69,6 +70,15 @@ export type UnidadeComFonte = UnidadeDeAssinatura;
 export type QuadroComFonte = QuadroDeAssinaturas & {
   /** Os `csId` que a D4Sign diz cancelados e que saíram da lista. Diagnóstico, não tela. */
   cancelados: number[];
+  /**
+   * A tela veio do C2X porque ninguém quis esperar, e o aquecimento está a caminho: PERGUNTE DE
+   * NOVO em alguns segundos e a resposta virá conciliada.
+   *
+   * Só fica `true` com `semEsperar` ligado E o catálogo frio. Catálogo quente já responde com o
+   * status conciliado, que é o que corrige a tela — o detalhe assinante a assinante que ainda
+   * falte não muda número nenhum e não justifica pedir de novo.
+   */
+  conciliando: boolean;
   /** Os números da reconciliação: confirmados, só-status, fallback, cancelados, corrigidas. */
   resumoDaFonte: ResumoDaReconciliacao;
 };
@@ -134,6 +144,7 @@ export async function montarQuadroComD4Sign(args: {
     avisoDaFonte: fonte.aviso,
     avisoDosAssinantes: fonte.avisoDosAssinantes,
     cancelados: [...fonte.enviosCancelados],
+    conciliando: opcoes.semEsperar === true && !catalogoEstaQuente(),
     resumoDaFonte: fonte.resumo,
     unidades: quadro.unidades.map((unidade) => {
       // `envioId` 0 é o contrato que nunca saiu para assinar: não há documento, não há fonte a

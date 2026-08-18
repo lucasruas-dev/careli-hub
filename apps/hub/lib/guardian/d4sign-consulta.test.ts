@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  carregarCatalogoD4Sign,
+  catalogoEstaQuente,
   consultarDocumentoD4Sign,
   consultarDocumentosD4Sign,
   documentoParaTela,
@@ -344,5 +346,80 @@ describe("cache, deduplicação e disjuntor", () => {
     // … e não pode voltar em nada que o servidor devolva.
     expect(JSON.stringify(resultado)).not.toContain("token-de-teste");
     expect(JSON.stringify(resultado)).not.toContain("chave-de-teste");
+  });
+});
+
+// ── A TELA NÃO PODE ESPERAR A D4SIGN ────────────────────────────────────────
+//
+// O QUE ESTE BLOCO PROTEGE: a carga de tela não faz chamada BLOQUEANTE nenhuma. A conta que
+// motivou isso foi medida em 18/08/2026 (`scripts/apolo/medir-catalogo-real.mjs`): catálogo frio
+// 4,4 s mais 7,0 s dos 20 detalhes do teto, contra 0,1 s do SQL que traz a mesma lista. Como o
+// cache é da INSTÂNCIA e a Vercel recicla instância o tempo todo, essa espera reaparecia várias
+// vezes ao dia — foi o que o dono sentiu ("está demorando muito para carregar as páginas").
+//
+// ⚠️ É FÁCIL DESFAZER SEM PERCEBER: basta alguém achar que `semEsperar` é "só um detalhe do
+// catálogo" e deixar o caminho documento a documento seguir. Aí a tela volta a levar 12 s e o
+// sintoma não aponta para a mudança.
+describe("semEsperar: a carga de tela não bloqueia", () => {
+  const fetchOriginal = globalThis.fetch;
+
+  beforeEach(() => {
+    limparCacheD4Sign();
+    process.env.D4SIGN_TOKEN_API = "token-de-teste";
+    process.env.D4SIGN_CRYPT_KEY = "chave-de-teste";
+  });
+
+  afterEach(() => {
+    globalThis.fetch = fetchOriginal;
+    limparCacheD4Sign();
+    vi.restoreAllMocks();
+  });
+
+  it("com o cache frio, NÃO sai nenhuma chamada — e o que falta cai no fallback", async () => {
+    const chamadas: string[] = [];
+    globalThis.fetch = (async (url: unknown) => {
+      chamadas.push(String(url));
+      return { json: async () => [], ok: true, status: 200 };
+    }) as unknown as typeof fetch;
+
+    const resultado = await consultarDocumentosD4Sign(["uuid-a", "uuid-b", "uuid-c"], {
+      semEsperar: true,
+    });
+
+    // Nada de rede: nem catálogo, nem /list. É esta linha que segura o ganho.
+    expect(chamadas).toEqual([]);
+
+    // ⚠️ E O QUE NÃO FOI CONFIRMADO VOLTA MARCADO, não some. A diferença importa: entrada ausente
+    // seria lida como "documento que não existe", enquanto `ok: false` é "não sei agora" — que é
+    // o que faz o chamador manter a linha do C2X e acender o aviso da fonte. Nenhuma das três
+    // pode voltar como confirmada, senão a tela mostraria como conferido o que ninguém conferiu.
+    expect(resultado.size).toBe(3);
+    expect([...resultado.values()].every((consulta) => consulta.ok === false)).toBe(true);
+  });
+
+  it("sem a opção, o comportamento antigo continua: a consulta vai à rede", async () => {
+    const chamadas: string[] = [];
+    globalThis.fetch = (async (url: unknown) => {
+      chamadas.push(String(url));
+      return { json: async () => [], ok: true, status: 200 };
+    }) as unknown as typeof fetch;
+
+    await consultarDocumentosD4Sign(["uuid-a"], {});
+
+    expect(chamadas.length).toBeGreaterThan(0);
+  });
+
+  it("catalogoEstaQuente só diz sim depois que o catálogo entrou em memória", async () => {
+    expect(catalogoEstaQuente()).toBe(false);
+
+    globalThis.fetch = (async () => ({
+      json: async () => [{ total_pages: 1 }, { uuidDoc: "uuid-a", statusId: "4" }],
+      ok: true,
+      status: 200,
+    })) as unknown as typeof fetch;
+
+    await carregarCatalogoD4Sign();
+
+    expect(catalogoEstaQuente()).toBe(true);
   });
 });

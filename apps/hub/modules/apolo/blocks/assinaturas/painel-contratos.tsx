@@ -100,6 +100,28 @@ function rotuloDeEspera(ymd: null | string): string {
 const semAcento = (valor: string) =>
   valor.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
+/**
+ * O carregamento no padrão do Panteon (o mesmo `SkeletonScreen` dos Empreendimentos): blocos
+ * pulsando com o formato do que vem. Trazido a pedido do dono em 18/08/2026 — a frase
+ * "Carregando os contratos…" numa tela que podia levar 12 s parecia sistema travado.
+ */
+function EsqueletoDoPainel() {
+  return (
+    <div aria-busy="true" className="grid gap-3">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, indice) => (
+          <div
+            className="h-[92px] animate-pulse rounded-xl border border-line bg-subtle"
+            key={indice}
+          />
+        ))}
+      </div>
+      <div className="h-64 animate-pulse rounded-xl border border-line bg-subtle" />
+      <div className="h-40 animate-pulse rounded-xl border border-line bg-subtle" />
+    </div>
+  );
+}
+
 export function PainelContratos() {
   const [dados, setDados] = useState<null | PainelDeContratos>(null);
   const [carregando, setCarregando] = useState(true);
@@ -160,6 +182,26 @@ export function PainelContratos() {
       document.removeEventListener("visibilitychange", aoTrocarVisibilidade);
     };
   }, [carregar]);
+
+  // ⚠️ VOLTA CURTA QUANDO O SERVIDOR PEDIU, e só nesse caso. `conciliando` quer dizer que a
+  // resposta saiu com o que havia em memória enquanto a D4Sign era buscada em segundo plano; em
+  // ~6 s o aquecimento terminou e a mesma pergunta traz o quadro conciliado. Sem isto o usuário
+  // esperaria o intervalo normal da tela para ver o número certo.
+  //
+  // ⚠️ NÃO É POLLING NOVO: some sozinho assim que a resposta chega conciliada, e em regime normal
+  // (catálogo quente) nunca chega a existir. `carregar(false)` = sem spinner, para a tela não
+  // piscar por baixo do usuário.
+  useEffect(() => {
+    if (!dados?.conciliando) return;
+
+    const relogio = setTimeout(() => {
+      if (visivel.current) void carregar(false);
+    }, 6000);
+
+    return () => {
+      clearTimeout(relogio);
+    };
+  }, [carregar, dados?.conciliando, dados?.atualizadoEm]);
 
   /** O clique num número do quadro joga a lista naquele recorte e desce até ela. */
   const filtrarPorAssinante = useCallback((filtro: FiltroDeAssinante) => {
@@ -242,9 +284,13 @@ export function PainelContratos() {
         ) : null}
 
         {!dados ? (
-          <p className="rounded-xl border border-dashed border-black/[0.12] p-10 text-center text-sm text-ink-soft dark:border-white/[0.12]">
-            {carregando ? "Carregando os contratos…" : "Sem dados para este recorte."}
-          </p>
+          carregando ? (
+            <EsqueletoDoPainel />
+          ) : (
+            <p className="rounded-xl border border-dashed border-black/[0.12] p-10 text-center text-sm text-ink-soft dark:border-white/[0.12]">
+              Sem dados para este recorte.
+            </p>
+          )
         ) : (
           <>
             <FaixaDaFonte

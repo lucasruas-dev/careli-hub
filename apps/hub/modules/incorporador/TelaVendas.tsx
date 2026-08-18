@@ -504,7 +504,7 @@ export function TelaVendas() {
     );
   }
 
-  if (carregando && !dados) return <Aviso texto="Carregando as vendas…" />;
+  if (carregando && !dados) return <EsqueletoDaTela blocos={3} cards={6} />;
   if (erro) return <Aviso texto={erro} tom="erro" />;
 
   if (!dados || !dados.resumo || !dados.ritmo) {
@@ -2786,6 +2786,19 @@ type EstadoDeVisao<Tipo> =
  * recorte), erro fora do cache, flag `ativo` contra setState depois do unmount. O efeito roda
  * quando a visão MONTA (a troca de visão desmonta a seção) e quando o recorte muda.
  */
+/**
+ * Quanto esperar antes de perguntar de novo quando a resposta veio marcada `conciliando`.
+ *
+ * ⚠️ ISTO NÃO É POLLING, e a diferença importa: só há repique quando o SERVIDOR pediu, e ele para
+ * sozinho assim que a resposta chega conciliada (ou depois de `MAXIMO_DE_REPIQUES`). Em regime
+ * normal — que é o caso comum, com o catálogo quente — não acontece nenhuma volta.
+ *
+ * 6 s porque é a ordem de grandeza do aquecimento medido (catálogo 4,4 s), com folga. Menos que
+ * isso só produz uma volta a mais que ainda pega o dado velho.
+ */
+const MS_ATE_PERGUNTAR_DE_NOVO = 6000;
+const MAXIMO_DE_REPIQUES = 3;
+
 function useDadosDaVisao<Tipo>(
   caminho: string,
   emp: null | string,
@@ -2795,16 +2808,12 @@ function useDadosDaVisao<Tipo>(
   const [estado, setEstado] = useState<EstadoDeVisao<Tipo>>({ tipo: "carregando" });
 
   useEffect(() => {
-    const chave = emp ?? "";
-    const guardado = cache.get(chave);
-    if (guardado !== undefined) {
-      setEstado({ dados: guardado, tipo: "pronto" });
-      return;
-    }
-
     let ativo = true;
+    let relogio: null | ReturnType<typeof setTimeout> = null;
 
-    async function carregar() {
+    const chave = emp ?? "";
+
+    async function carregar(tentativa: number) {
       try {
         const endereco = emp ? `${caminho}?emp=${encodeURIComponent(emp)}` : caminho;
         const resposta = await fetch(endereco, { cache: "no-store" });
@@ -2817,9 +2826,26 @@ function useDadosDaVisao<Tipo>(
         }
 
         cache.set(chave, corpo.data);
-        if (ativo) setEstado({ dados: corpo.data, tipo: "pronto" });
+        if (!ativo) return;
+        // ⚠️ TROCA SEM VOLTAR PARA "CARREGANDO". No repique a tela JÁ tem números na frente do
+        // usuário; devolvê-la ao esqueleto para trocar por números quase iguais seria piscada
+        // gratuita. Os dados são substituídos por baixo e pronto.
+        setEstado({ dados: corpo.data, tipo: "pronto" });
+
+        // O servidor respondeu com o que tinha e foi buscar o resto: voltamos daqui a pouco.
+        const aindaConciliando =
+          (corpo.data as { conciliando?: boolean } | null)?.conciliando === true;
+        if (aindaConciliando && tentativa < MAXIMO_DE_REPIQUES) {
+          relogio = setTimeout(() => {
+            void carregar(tentativa + 1);
+          }, MS_ATE_PERGUNTAR_DE_NOVO);
+        }
       } catch (falha) {
-        if (ativo) {
+        // ⚠️ FALHA NO REPIQUE NÃO APAGA A TELA. Na primeira carga não há nada a perder e o erro
+        // aparece; da segunda em diante o usuário já está lendo números que vieram do C2X, e
+        // trocá-los por uma mensagem de erro porque a CONFERÊNCIA falhou seria piorar o que já
+        // estava bom.
+        if (ativo && tentativa === 0) {
           setEstado({
             mensagem: falha instanceof Error ? falha.message : mensagemDeErro,
             tipo: "erro",
@@ -2828,10 +2854,27 @@ function useDadosDaVisao<Tipo>(
       }
     }
 
+    const guardado = cache.get(chave);
+    if (guardado !== undefined) {
+      setEstado({ dados: guardado, tipo: "pronto" });
+      // Cache local não impede o repique: se o que está guardado veio pela metade, a volta é
+      // justamente o que o completa.
+      if ((guardado as { conciliando?: boolean } | null)?.conciliando === true) {
+        relogio = setTimeout(() => {
+          void carregar(1);
+        }, MS_ATE_PERGUNTAR_DE_NOVO);
+      }
+      return () => {
+        ativo = false;
+        if (relogio) clearTimeout(relogio);
+      };
+    }
+
     setEstado({ tipo: "carregando" });
-    void carregar();
+    void carregar(0);
     return () => {
       ativo = false;
+      if (relogio) clearTimeout(relogio);
     };
   }, [cache, caminho, emp, mensagemDeErro]);
 
@@ -3078,7 +3121,7 @@ function SecaoContratos({
     document.getElementById(ANCORA_DA_LISTA)?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  if (estado.tipo === "carregando") return <Aviso texto="Carregando os contratos…" />;
+  if (estado.tipo === "carregando") return <EsqueletoDaTela blocos={5} cards={4} />;
   if (estado.tipo === "erro") return <Aviso texto={estado.mensagem} tom="erro" />;
 
   const { assinantes, aviso, avisoDaFonte, fila, kpis, taxas, unidades } = estado.dados;
@@ -4551,6 +4594,53 @@ function NumeroDaColuna({ valor }: { valor: number }) {
     >
       {inteiro(valor)}
     </td>
+  );
+}
+
+/**
+ * O ESQUELETO DA ESPERA — o carregamento que o resto do Panteon já usa (`animate-pulse` sobre
+ * blocos do tamanho do que vem), trazido para cá a pedido do dono em 18/08/2026.
+ *
+ * ⚠️ POR QUE NÃO A FRASE "Carregando…". Uma linha de texto centralizada não diz quanto falta nem
+ * o que vem, e numa tela que demorava perto de 12 s parecia sistema travado. O bloco no formato do
+ * conteúdo mostra a página se montando e dá a leitura certa do que está por vir.
+ *
+ * As cores saem dos tokens do PORTAL (`T.card`, `T.border`), não das classes utilitárias de cor do
+ * hub: o portal tem tema próprio e claro/escuro, e cor emprestada de outro tema acerta num e erra
+ * no outro. Do Tailwind vem só a animação, que é neutra.
+ */
+function EsqueletoDaTela({ blocos = 4, cards = 4 }: { blocos?: number; cards?: number }) {
+  const pele: CSSProperties = {
+    animationDuration: "1.6s",
+    background: T.card,
+    border: `1px solid ${T.border}`,
+    borderRadius: 14,
+  };
+
+  return (
+    <div aria-busy="true" aria-live="polite" style={{ display: "grid", gap: 12 }}>
+      <span style={{ height: 0, overflow: "hidden", position: "absolute", width: 0 }}>
+        Carregando
+      </span>
+      <div
+        style={{
+          display: "grid",
+          gap: 12,
+          gridTemplateColumns: `repeat(auto-fit, minmax(190px, 1fr))`,
+        }}
+      >
+        {Array.from({ length: cards }).map((_, indice) => (
+          <div className="animate-pulse" key={indice} style={{ ...pele, height: 92 }} />
+        ))}
+      </div>
+      {Array.from({ length: blocos }).map((_, indice) => (
+        <div
+          className="animate-pulse"
+          key={indice}
+          style={{ ...pele, height: indice === 0 ? 220 : 56 }}
+        />
+      ))}
+    </div>
   );
 }
 
