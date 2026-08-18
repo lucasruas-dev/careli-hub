@@ -34,6 +34,7 @@ function bruto(sobrescreve: Partial<ContratoBruto> = {}): ContratoBruto {
     lote: "L18",
     propostaEm: "2026-04-20",
     unitId: 100,
+    unitName: null,
     valorTabela: 89900,
     ...sobrescreve,
   };

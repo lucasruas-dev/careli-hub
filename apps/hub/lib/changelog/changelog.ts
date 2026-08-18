@@ -36,6 +36,56 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-contratos-e-vale-do-ouro",
+    deployedAt: "2026-08-18T13:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A tela de assinaturas virou CONTRATOS, no mesmo desenho do portal: taxa por perfil, uma linha por unidade com barra por grupo, popup com a tabela de assinatura e o PDF do contrato",
+              "O painel antigo continua a um clique, na aba ao lado, para a conferencia linha a linha que o time usa",
+              "Filtro por empreendimento mostrando nome E sigla: acabou a confusao entre os quatro VALE DO OURO",
+            ],
+            screen: "Assinaturas / Contratos",
+          },
+          {
+            items: [
+              "O total geral parou de contar o Vale do Ouro DUAS VEZES: o registro historico (VLO) tem os mesmos lotes das divisoes vivas (VOC + VOL) e nao entra mais nas somas. O numero certo e 4.262 unidades e R$ 1.040.273.342, no lugar de 4.560 e R$ 1.068.042.231",
+              "O historico continua listado e acessivel (e por ele que se chega ao masterplan e as CADs), agora identificado como historico",
+              "O papel de quem assina passa a sair do CADASTRO do empreendimento: quem e coordenador ou gerente aparece como coordenacao, nao mais como imobiliaria",
+            ],
+            screen: "Empreendimento",
+          },
+        ],
+      },
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "As abas Contratos e Assinaturas viraram UMA, chamada Contratos, com o PDF no fim de cada linha",
+              "Os grupos da barra ficam sempre na mesma ordem (alfabetica), para dar para comparar uma unidade com a outra de relance",
+              "Valor e data de geracao do contrato na linha; imobiliaria e faturamento no popup",
+            ],
+            screen: "Vendas - Contratos",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.154.0 (2026-08-18-assinatura-por-unidade)",
+    technical: {
+      done:
+        "ENTERPRISE_MIRRORS em c2x-analytics.ts (VLO espelho de VOC+VOL) tira o espelho das somas sem removê-lo das leituras (masterplan 35, CADs da esteira e painel do coordenador dependem dele); displayEnterprise deixa de colapsar os quatro num rótulo só. perfilDeTela passa a receber o papel no cadastro do empreendimento (coordenador/gerente/captador vencem o profile genérico do C2X): medido, o Huber (2510) tem profile Imobiliária e é manager_id de 9 empreendimentos. Portal: visões Contratos e Assinaturas fundidas numa chamada só (lerContratosVivos compartilhado), grupos em ordem alfabética estável. Apolo: nova tela em /apolo/assinaturas reusando o núcleo do portal (lib/apolo/assinaturas/nucleo.ts), com e-mail do assinante e filtro por empreendimento; BI público intocado. Base do D4Sign como fonte da verdade preparada (d4sign-assinaturas.ts + divergências).",
+      motivation:
+        "Lucas: 'os dados não batem, revisa como está o Vale do Ouro'; 'o Huber é o Coordenador, está como imobiliária'; 'a tela de assinatura devia chamar contratos'; 'quero levá-la para dentro do Apolo'.",
+    },
+    title: "Contratos no Apolo, Vale do Ouro sem contar duas vezes",
+    type: "novidade",
+    version: "1.155.0",
+  },
+  {
     buildTag: "2026-08-18-assinatura-por-unidade",
     deployedAt: "2026-08-18T12:10:00-03:00",
     modules: [

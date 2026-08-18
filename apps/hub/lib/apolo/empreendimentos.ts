@@ -3,6 +3,11 @@
 //   - EXCLUDED_ENTERPRISE_CODES: TSC/SDT/LAB/LAG ficam de fora (teste + masterplan/aditivo).
 //   - ENTERPRISE_GROUPS: etapas do mesmo produto viram UMA linha consolidada (Lavra do Ouro =
 //     LOS+LOU, Lagoa Bonita = LBF+LBR+LBP...), com as etapas como sub-linhas expansíveis.
+//   - ENTERPRISE_MIRRORS: o ESPELHO (hoje o VLO) CONTINUA LISTADO mas fica FORA de `totals`.
+//     Ele é o registro do Vale do Ouro antes da divisão, e suas 298 unidades são as mesmas de
+//     VOC + VOL — somar os três contava o loteamento duas vezes (4.560 un / R$ 1.068.042.231,43
+//     na tela quando o certo é 4.262 un / R$ 1.040.273.342,43, medido em 18/08/2026). A linha
+//     não pode sumir: é por ela que se chega ao masterplan e às CADs da esteira.
 //
 // Baldes de unidade (mutuamente exclusivos, somam o total). O status 5 ("Bloqueado para venda")
 // está ZERADO no C2X: o bloqueio real é o flag `enterprise_unities.sale_blocked`, e hoje todas
@@ -13,6 +18,7 @@ import { deterministicUuid } from "@/lib/apolo/server";
 import {
   ENTERPRISE_GROUPS,
   EXCLUDED_ENTERPRISE_CODES,
+  findEnterpriseMirror,
 } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
@@ -64,6 +70,18 @@ export type ApoloEnterpriseRow = {
   codes: string[];
   id: string;
   incorporador: string | null;
+  /**
+   * ESPELHO HISTÓRICO (ENTERPRISE_MIRRORS): esta linha tem os MESMOS lotes de outras que estão
+   * vivas. Ela continua na listagem — é por onde se chega ao masterplan e às CADs —, mas NÃO
+   * entra em `totals`. Quem for somar rows por conta própria tem que filtrar por este campo.
+   */
+  mirror: boolean;
+  /**
+   * Rótulo pronto pra tela quando `mirror` é true ("Histórico · mesmos lotes de VOC + VOL");
+   * null quando a linha é normal. ⚠️ PENDENTE: a view (modules/apolo/blocks/empreendimentos)
+   * ainda não desenha esta etiqueta — o campo já vem preenchido esperando o selo.
+   */
+  mirrorLabel: string | null;
   name: string;
   scenario: ApoloEnterpriseScenario;
   state: string | null;
@@ -72,7 +90,9 @@ export type ApoloEnterpriseRow = {
 };
 
 export type ApoloEnterprisesData = {
+  /** Todas as linhas, ESPELHO INCLUÍDO (marcado com `mirror`). */
   rows: ApoloEnterpriseRow[];
+  /** Total geral SEM os espelhos — senão o Vale do Ouro entra duas vezes. */
   totals: ApoloEnterpriseScenario;
 };
 
@@ -155,7 +175,27 @@ export async function loadApoloEnterprises(): Promise<
 
   const mapped = rows.map(mapEnterpriseRow);
 
-  return { data: { rows: groupEnterpriseRows(mapped), totals: sumScenarios(mapped) }, ok: true };
+  return { data: buildApoloEnterprisesData(mapped), ok: true };
+}
+
+/**
+ * Monta o payload da tela a partir das linhas cruas do C2X: agrupa as etapas do mesmo produto e
+ * soma o total geral.
+ *
+ * ⚠️ O ESPELHO ENTRA EM `rows` E FICA FORA DE `totals`. São as duas metades da mesma regra: a
+ * linha do VLO precisa existir (é o caminho para o masterplan do Vale do Ouro e para as 663 CADs
+ * da esteira, todas gravadas no enterprise_id 35), e as 298 unidades dele são as MESMAS de
+ * VOC + VOL — contá-las de novo inflava o total em 298 un / R$ 27.768.889,00.
+ *
+ * Exportada (e pura) de propósito: é aqui que a regra é testável sem banco.
+ */
+export function buildApoloEnterprisesData(
+  rows: ApoloEnterpriseRow[],
+): ApoloEnterprisesData {
+  return {
+    rows: groupEnterpriseRows(rows),
+    totals: sumScenarios(rows.filter((row) => !row.mirror)),
+  };
 }
 
 // Player ligado ao empreendimento no C2X. É a semente das arestas do grafo.
@@ -665,8 +705,12 @@ function groupEnterpriseRows(rows: ApoloEnterpriseRow[]): ApoloEnterpriseRow[] {
       id: `group:${group.display}`,
       incorporador:
         stages.find((stage) => stage.incorporador)?.incorporador ?? null,
+      // Grupo consolidado nunca é espelho: espelho não entra em ENTERPRISE_GROUPS (se um dia
+      // entrar, a soma das etapas abaixo já ignora os espelhos e a linha segue somável).
+      mirror: false,
+      mirrorLabel: null,
       name: group.display,
-      scenario: sumScenarios(stages),
+      scenario: sumScenarios(stages.filter((stage) => !stage.mirror)),
       state: first?.state ?? null,
       stages,
     });
@@ -706,7 +750,9 @@ function sumScenarios(rows: ApoloEnterpriseRow[]): ApoloEnterpriseScenario {
   }, {} as ApoloEnterpriseScenario);
 }
 
-function mapEnterpriseRow(row: EnterpriseQueryRow): ApoloEnterpriseRow {
+// Exportada pro teste: é aqui que a linha ganha a marca de espelho, e a marca é a metade da
+// regra que a soma (buildApoloEnterprisesData) depende.
+export function mapEnterpriseRow(row: EnterpriseQueryRow): ApoloEnterpriseRow {
   const tally = (
     units: number | string | null,
     value: number | string | null,
@@ -715,6 +761,9 @@ function mapEnterpriseRow(row: EnterpriseQueryRow): ApoloEnterpriseRow {
     value: toNumber(value),
   });
   const code = cleanText(row.code) ?? String(row.id);
+  // O rótulo de "histórico" nasce AQUI, na origem do dado: quem consome a linha (tela, API,
+  // relatório) recebe a marca pronta e não precisa reimplementar a regra do espelho.
+  const mirror = findEnterpriseMirror(code);
 
   return {
     city: cleanText(row.city),
@@ -722,6 +771,8 @@ function mapEnterpriseRow(row: EnterpriseQueryRow): ApoloEnterpriseRow {
     codes: [code],
     id: String(row.id),
     incorporador: cleanText(row.incorporador),
+    mirror: mirror !== null,
+    mirrorLabel: mirror?.label ?? null,
     name: cleanText(row.name) ?? "Empreendimento",
     scenario: {
       bloqueado: tally(row.bloqueado_units, row.bloqueado_value),

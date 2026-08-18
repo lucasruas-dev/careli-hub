@@ -1,5 +1,17 @@
-// CONTRATOS GERADOS — a aba de Vendas do portal do incorporador que lista os contratos VIVOS dos
-// empreendimentos da sessão, com a situação da assinatura resumida.
+// CONTRATOS GERADOS — os contratos VIVOS dos empreendimentos da sessão, com a situação da
+// assinatura resumida.
+//
+// ⚠️ FUSÃO DE 18/08/2026 (pedido do Lucas: *"a tela de assinatura devia chamar contratos e tirar a
+// tela de contratos que tem hoje"*). A visão Contratos e a visão Assinaturas do portal viraram UMA
+// só, servida por /api/incorporador/vendas/assinaturas. O que sobrou aqui, e por quê:
+//   • `lerContratosVivos` — a consulta dos contratos vivos, agora COMPARTILHADA: é ela que dá à
+//     lista de assinatura os dados do contrato (gerado em, valor, imobiliária, faturado em, o
+//     unitId do botão de PDF) e as linhas dos contratos que ainda não saíram para assinar;
+//   • `escolherEnvio`, `situacaoDaAssinatura`, `ESTAGIOS_*`, `clientesUnicos` — regras usadas por
+//     assinaturas.ts e pela rota de vendas;
+//   • `lerContratosDoPortal` / `montarContratos` — SEM leitor na tela hoje: /vendas/contratos
+//     continua de pé (rota escopada, read-only) mas nenhuma visão do portal a chama. Ficam para o
+//     dono decidir se a rota some; nada mais depende delas.
 //
 // ⚠️ A RÉGUA DE ESTÁGIO É A DAS VENDAS, IMPORTADA. "Contrato vivo" = a proposta MAIS RECENTE da
 // unidade está num estágio que a dobra `STAGE_MAP` (lib/apolo/vendas.ts) traduz como contrato,
@@ -21,6 +33,7 @@
 // ⚠️ O QUE NÃO SAI DAQUI: telefone, e-mail, documento, motivo de cancelamento. O incorporador é
 // parte do contrato e vê o NOME de quem comprou e de quem vendeu, e só isso.
 import type { RowDataPacket } from "mysql2";
+import type { Pool } from "mysql2/promise";
 
 import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
@@ -108,6 +121,13 @@ export type ContratoBruto = {
   /** Data da proposta — o fallback de ordenação quando o histórico não tem a geração. */
   propostaEm: null | Date | string;
   unitId: number;
+  /**
+   * `enterprise_unities.name` cru, quando o empreendimento batiza a unidade. A visão Contratos
+   * rotula pelo código compacto (`rotuloDaUnidade`), mas a lista de assinatura rotula por
+   * `coalesce(name, code+block+lot)` — e as duas leituras agora dividem a mesma linha, então o
+   * nome cru precisa atravessar para o rótulo não trocar de régua no meio da lista.
+   */
+  unitName: null | string;
   valorTabela: number;
 };
 
@@ -247,6 +267,71 @@ export type ResultadoContratos =
   | { error: string; ok: false };
 
 /**
+ * OS CONTRATOS VIVOS DO ESCOPO, crus — a leitura COMPARTILHADA (fusão de 18/08/2026).
+ *
+ * A visão Contratos do portal e a leitura de assinaturas faziam esta MESMA consulta, cada uma com
+ * as colunas de que precisava; agora a tela é uma só e faz UMA chamada, então a consulta é uma só
+ * e mora aqui. `lerAssinaturasDoPortal` a chama para pendurar em cada linha da lista os dados do
+ * contrato (gerado em, valor, imobiliária, faturado em, unitId do PDF) e para desenhar as linhas
+ * dos contratos que ainda NÃO saíram para assinar.
+ *
+ * "Vivo" = a proposta MAIS RECENTE da unidade está num estágio com contrato (`ESTAGIOS_COM_CONTRATO`,
+ * derivado do STAGE_MAP das vendas).
+ *
+ * ⚠️ Esta função NÃO autoriza nada: `codes` tem que vir de `codigosDaSessao` + `codesDoRecorte`.
+ */
+export async function lerContratosVivos(pool: Pool, codes: string[]): Promise<ContratoBruto[]> {
+  if (codes.length === 0) return [];
+
+  const codePlaceholders = codes.map(() => "?").join(", ");
+  const vivosPlaceholders = ESTAGIOS_COM_CONTRATO.map(() => "?").join(", ");
+  const geracaoPlaceholders = ESTAGIOS_DE_GERACAO.map(() => "?").join(", ");
+  const nameSql = (alias: string) =>
+    `coalesce(nullif(trim(${alias}.name), ''), nullif(trim(${alias}.fantasy_name), ''), nullif(trim(${alias}.social_name), ''))`;
+
+  const [rows] = await pool.query<ContratoRow[]>(
+    `select u.id as unit_id, u.block, u.lot, u.price, u.name as unit_name,
+            e.code as enterprise_code,
+            ar.id as ar_id, ar.created_at as proposta_em,
+            date_format(ar.billing_date, '%Y-%m-%d') as billing_date,
+            (select min(h.created_at) from acquisition_request_historics h
+               where h.acquisition_request_id = ar.id
+                 and h.new_acquisition_request_stage_id in (${geracaoPlaceholders})) as gerado_em,
+            ${nameSql("cli")} as comprador,
+            ${nameSql("imo")} as imobiliaria
+       from enterprise_unities u
+       join enterprises e on e.id = u.enterprise_id
+       join acquisition_requests ar on ar.id = (
+              select ar2.id from acquisition_requests ar2
+               where ar2.enterprise_unity_id = u.id
+               order by ar2.created_at desc, ar2.id desc
+               limit 1)
+       left join users cli on cli.id = ar.client_id
+       left join users imo on imo.id = cli.vinculed_by_id
+      where e.code in (${codePlaceholders})
+        and ar.acquisition_request_stage_id in (${vivosPlaceholders})`,
+    [...ESTAGIOS_DE_GERACAO, ...codes, ...ESTAGIOS_COM_CONTRATO],
+  );
+
+  return rows.map((row) => ({
+    arId: Number(row.ar_id),
+    bloco: textoOuNulo(row.block),
+    comprador: textoOuNulo(row.comprador),
+    enterpriseCode: String(row.enterprise_code ?? ""),
+    // Já vem 'YYYY-MM-DD' do date_format: coluna DATE não pode virar Date do driver (o pool fala
+    // UTC e a meia-noite viraria véspera na formatação em America/Sao_Paulo).
+    faturadoEm: textoOuNulo(row.billing_date),
+    geradoEm: row.gerado_em as Date | string | null,
+    imobiliaria: textoOuNulo(row.imobiliaria),
+    lote: textoOuNulo(row.lot),
+    propostaEm: row.proposta_em as Date | string | null,
+    unitId: Number(row.unit_id),
+    unitName: textoOuNulo(row.unit_name),
+    valorTabela: Number(row.price ?? 0) || 0,
+  }));
+}
+
+/**
  * Lê os contratos vivos do C2X (read-only) para os CÓDIGOS já autorizados pela sessão.
  *
  * ⚠️ Esta função NÃO autoriza nada: ela confia que `codes` veio de `codigosDaSessao` +
@@ -266,54 +351,8 @@ export async function lerContratosDoPortal(codes: string[]): Promise<ResultadoCo
     return { error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`, ok: false };
   }
 
-  const codePlaceholders = validCodes.map(() => "?").join(", ");
-  const vivosPlaceholders = ESTAGIOS_COM_CONTRATO.map(() => "?").join(", ");
-  const geracaoPlaceholders = ESTAGIOS_DE_GERACAO.map(() => "?").join(", ");
-  const nameSql = (alias: string) =>
-    `coalesce(nullif(trim(${alias}.name), ''), nullif(trim(${alias}.fantasy_name), ''), nullif(trim(${alias}.social_name), ''))`;
-
   try {
-    // Contratos vivos: a proposta MAIS RECENTE de cada unidade (mesmo padrão da leitura de
-    // vendas), quando ela está num estágio com contrato.
-    const [rows] = await poolResult.pool.query<ContratoRow[]>(
-      `select u.id as unit_id, u.block, u.lot, u.price,
-              e.code as enterprise_code,
-              ar.id as ar_id, ar.created_at as proposta_em,
-              date_format(ar.billing_date, '%Y-%m-%d') as billing_date,
-              (select min(h.created_at) from acquisition_request_historics h
-                 where h.acquisition_request_id = ar.id
-                   and h.new_acquisition_request_stage_id in (${geracaoPlaceholders})) as gerado_em,
-              ${nameSql("cli")} as comprador,
-              ${nameSql("imo")} as imobiliaria
-         from enterprise_unities u
-         join enterprises e on e.id = u.enterprise_id
-         join acquisition_requests ar on ar.id = (
-                select ar2.id from acquisition_requests ar2
-                 where ar2.enterprise_unity_id = u.id
-                 order by ar2.created_at desc, ar2.id desc
-                 limit 1)
-         left join users cli on cli.id = ar.client_id
-         left join users imo on imo.id = cli.vinculed_by_id
-        where e.code in (${codePlaceholders})
-          and ar.acquisition_request_stage_id in (${vivosPlaceholders})`,
-      [...ESTAGIOS_DE_GERACAO, ...validCodes, ...ESTAGIOS_COM_CONTRATO],
-    );
-
-    const brutos: ContratoBruto[] = rows.map((row) => ({
-      arId: Number(row.ar_id),
-      bloco: textoOuNulo(row.block),
-      comprador: textoOuNulo(row.comprador),
-      enterpriseCode: String(row.enterprise_code ?? ""),
-      // Já vem 'YYYY-MM-DD' do date_format: coluna DATE não pode virar Date do driver (o pool
-      // fala UTC e a meia-noite viraria véspera na formatação em America/Sao_Paulo).
-      faturadoEm: textoOuNulo(row.billing_date),
-      geradoEm: row.gerado_em as Date | string | null,
-      imobiliaria: textoOuNulo(row.imobiliaria),
-      lote: textoOuNulo(row.lot),
-      propostaEm: row.proposta_em as Date | string | null,
-      unitId: Number(row.unit_id),
-      valorTabela: Number(row.price ?? 0) || 0,
-    }));
+    const brutos = await lerContratosVivos(poolResult.pool, validCodes);
 
     if (brutos.length === 0) {
       return { data: montarContratos([], []), ok: true };

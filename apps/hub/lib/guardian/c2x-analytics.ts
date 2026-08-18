@@ -26,6 +26,84 @@ export const STAGE = {
 // Bonita) — decisão do Lucas. Por código (sigla).
 export const EXCLUDED_ENTERPRISE_CODES = ["TSC", "SDT", "LAB", "LAG"];
 
+// ESPELHO = o registro HISTÓRICO de antes de uma divisão, cujos lotes existem DE NOVO nas
+// divisões vivas. Não é teste, não é lixo: é o mesmo loteamento gravado duas vezes no C2X.
+//
+// O caso vivo é o Vale do Ouro. Ele foi partido em duas empresas (cada lote é do Cecílio ou do
+// Lino, e o contrato/boleto roda na empresa da dona), e o registro anterior continuou de pé:
+//   • VLO (35) — o espelho: 298 unidades, que são EXATAMENTE as mesmas de VOC + VOL, par a par
+//     por quadra/lote (conferido em 18/08/2026: 298 de 298 com gêmeo);
+//   • VOC (37) — 157 unidades · R$ 13.744.472,00 (carteira do Cecílio);
+//   • VOL (36) — 141 unidades · R$ 14.024.417,00 (carteira do Lino).
+//   157 + 141 = 298 unidades e 13.744.472 + 14.024.417 = 27.768.889 — o espelho, ao centavo.
+// (VOR/41, "VALE DO OURO - EXTRAS", é empreendimento de verdade, não espelho.)
+//
+// Quem soma os três conta o Vale do Ouro DUAS VEZES. Medido na tela "todos os empreendimentos"
+// do Apolo em 18/08/2026: 4.560 un / R$ 1.068.042.231,43 quando o certo é 4.262 un /
+// R$ 1.040.273.342,43. A diferença é o espelho inteiro.
+//
+// ⚠️ POR QUE O ESPELHO NÃO ENTRA EM `EXCLUDED_ENTERPRISE_CODES`: aquela lista tira o
+// empreendimento de TUDO (é usada em ~15 leituras — carteira, cobrança, extrato, credenciamento,
+// catálogo, ficha, grafo), e o VLO NÃO PODE SUMIR. Ele é, hoje:
+//   • a casa do MASTERPLAN do Vale do Ouro — `lib/apolo/espelho-masterplan.ts` usa MASTERPLAN=35
+//     e reflete o status para as carteiras 36/37 num cron de 1 minuto; é o mapa que o corretor vê;
+//   • onde estão TODAS as CADs da esteira (`apolo_esteira` é 100% enterprise_id 35);
+//   • o eixo do painel do coordenador (`lib/apolo/painel-coordenador.ts`, GRUPOS_C2X).
+// Botar o VLO em EXCLUDED quebraria masterplan, CADs e painel de uma vez.
+//
+// A regra do espelho é OUTRA: ele continua existindo e continua LISTADO — só não entra em SOMA
+// nenhuma. Quem soma usa `ANALYTICS_EXCLUDED_ENTERPRISE_CODES` (ou filtra por `isMirrorEnterprise`);
+// quem lista mostra a linha marcada como histórica.
+export type EnterpriseMirror = {
+  /** Código (sigla) do registro histórico. */
+  code: string;
+  /** Códigos vivos que hoje contêm os MESMOS lotes. */
+  divisions: string[];
+  /** Rótulo curto pra tela, ao lado do nome. */
+  label: string;
+  /** Por que a linha continua existindo (quem depende dela). */
+  note: string;
+};
+
+export const ENTERPRISE_MIRRORS: EnterpriseMirror[] = [
+  {
+    code: "VLO",
+    divisions: ["VOC", "VOL"],
+    label: "Histórico · mesmos lotes de VOC + VOL",
+    note:
+      "Registro do Vale do Ouro antes da divisão VLO → VOC + VOL. Fica de fora de toda soma " +
+      "(as 298 unidades são as mesmas das carteiras vivas), mas segue no ar porque é a casa do " +
+      "masterplan, das CADs da esteira e do painel do coordenador.",
+  },
+];
+
+export const MIRROR_ENTERPRISE_CODES: string[] = ENTERPRISE_MIRRORS.map(
+  (mirror) => mirror.code,
+);
+
+// Códigos que ficam de fora de QUALQUER conta: os excluídos de sempre + os espelhos.
+// É esta a lista que as agregações usam (motor da CACÁ, ranking, vendas por empreendimento).
+export const ANALYTICS_EXCLUDED_ENTERPRISE_CODES: string[] = [
+  ...EXCLUDED_ENTERPRISE_CODES,
+  ...MIRROR_ENTERPRISE_CODES,
+];
+
+export function findEnterpriseMirror(
+  code: string | null,
+): EnterpriseMirror | null {
+  const normalized = String(code ?? "")
+    .trim()
+    .toUpperCase();
+
+  return (
+    ENTERPRISE_MIRRORS.find((mirror) => mirror.code === normalized) ?? null
+  );
+}
+
+export function isMirrorEnterprise(code: string | null): boolean {
+  return findEnterpriseMirror(code) !== null;
+}
+
 // Consolidação de empreendimentos com o mesmo produto (regras do diário/Lucas): soma etapas.
 // Fonte única — o displayEnterprise e o filtro por empreendimento do motor derivam daqui.
 export const ENTERPRISE_GROUPS: { display: string; codes: string[] }[] = [
@@ -53,6 +131,17 @@ export function displayEnterprise(
   name: string | null,
 ): string {
   const c = String(code ?? "").toUpperCase();
+
+  // ESPELHO ANTES DE TUDO. Os quatro "VALE DO OURO" têm o MESMO `name` no C2X, então o
+  // `return name` lá embaixo colapsava espelho e divisões numa chave só — e toda agregação por
+  // rótulo somava o loteamento duas vezes. Quem ainda receber a linha do espelho (uma listagem,
+  // um detalhe) vê que é histórico em vez de vê-la disfarçada de divisão viva.
+  const mirror = findEnterpriseMirror(c);
+
+  if (mirror) {
+    return `${(name ?? "Empreendimento").trim()} (histórico)`;
+  }
+
   const group = ENTERPRISE_GROUPS.find((entry) => entry.codes.includes(c));
 
   if (group) {
@@ -218,10 +307,10 @@ export async function loadC2xMovimentacaoResumo(
       join enterprise_unities eu on eu.id = ar.enterprise_unity_id
       join enterprises e on e.id = eu.enterprise_id
       where h.created_at >= ? and h.created_at < ?
-        and e.code not in (${EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+        and e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
       group by h.new_acquisition_request_stage_id
       `,
-      [from, to, ...EXCLUDED_ENTERPRISE_CODES],
+      [from, to, ...ANALYTICS_EXCLUDED_ENTERPRISE_CODES],
     );
 
     const byStage = new Map<number, number>();
@@ -342,11 +431,11 @@ export async function loadC2xMovimentacaoDetalhe(
       left join users imob on imob.id = cli.vinculed_by_id
       where h.created_at >= ? and h.created_at < ?
         and h.new_acquisition_request_stage_id in (${stages.map(() => "?").join(", ")})
-        and e.code not in (${EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+        and e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
       order by h.created_at desc
       limit ${safeLimit}
       `,
-      [from, to, ...stages, ...EXCLUDED_ENTERPRISE_CODES],
+      [from, to, ...stages, ...ANALYTICS_EXCLUDED_ENTERPRISE_CODES],
     );
 
     return rows.map((row) => ({
@@ -408,12 +497,12 @@ export async function loadC2xVendasPorImobiliaria(
       join users cli on cli.id = ar.client_id
       left join users imob on imob.id = cli.vinculed_by_id
       where ar.acquisition_request_stage_id = 4
-        and e.code not in (${EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+        and e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
       group by imobiliaria
       order by unidades desc
       limit ${safeLimit}
       `,
-      [...EXCLUDED_ENTERPRISE_CODES],
+      [...ANALYTICS_EXCLUDED_ENTERPRISE_CODES],
     );
 
     return rows.map((row) => ({
@@ -464,12 +553,12 @@ export async function loadC2xUnidade(filters: {
   }
 
   const where: string[] = [
-    `e.code not in (${EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})`,
+    `e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})`,
     "(upper(e.code) = upper(?) or e.name like ? or e.divulgation_name like ?)",
     "(eu.lot = ? or eu.lot = lpad(?, 2, '0'))",
   ];
   const params: unknown[] = [
-    ...EXCLUDED_ENTERPRISE_CODES,
+    ...ANALYTICS_EXCLUDED_ENTERPRISE_CODES,
     emp,
     `%${emp}%`,
     `%${emp}%`,
@@ -665,11 +754,11 @@ export async function loadC2xClienteResumo(
       left join acquisition_request_stages s on s.id = ar.acquisition_request_stage_id
       where ar.client_id = ?
         and ar.acquisition_request_stage_id not in (7, 8, 10, 11)
-        and e.code not in (${EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+        and e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
       order by e.name, eu.block, eu.lot
       limit 50
       `,
-      [cliente.id, ...EXCLUDED_ENTERPRISE_CODES],
+      [cliente.id, ...ANALYTICS_EXCLUDED_ENTERPRISE_CODES],
     );
 
     const cidadeUf = [cliente.cidade, cliente.uf].filter(Boolean).join("/") || null;
@@ -741,13 +830,16 @@ export async function loadC2xVendasPorEmpreendimento(): Promise<
              sum(eu.sale_status_id = 1) as disponiveis
       from enterprise_unities eu
       join enterprises e on e.id = eu.enterprise_id
-      where e.code not in (${EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+      where e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
       group by e.code, e.name
       `,
-      [...EXCLUDED_ENTERPRISE_CODES],
+      [...ANALYTICS_EXCLUDED_ENTERPRISE_CODES],
     );
 
     // Consolida os que compartilham produto (Lavra do Ouro, Rio de Pedras, Portal, Lagoa Bonita).
+    // O ESPELHO já ficou fora no SQL (ANALYTICS_EXCLUDED_ENTERPRISE_CODES): os quatro
+    // "VALE DO OURO" têm o mesmo `name`, e sem isso o VLO caía na MESMA chave das divisões
+    // vivas e o loteamento aparecia com o dobro das unidades.
     const byDisplay = new Map<string, C2xVendasEmpreendimento>();
     for (const row of rows) {
       const key = displayEnterprise(row.code, row.name);

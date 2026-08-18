@@ -1,7 +1,8 @@
 import {
+  ANALYTICS_EXCLUDED_ENTERPRISE_CODES,
   ENTERPRISE_GROUPS,
+  findEnterpriseMirror,
   ENTERPRISE_SUB_ALIASES,
-  EXCLUDED_ENTERPRISE_CODES,
   STAGE,
 } from "@/lib/guardian/c2x-analytics";
 
@@ -24,7 +25,12 @@ import type {
 // - PERFIL do cliente (idade/sexo/estado civil/renda/escolaridade) vem da tabela users +
 //   lookups (sexes/civil_states/salary_ranges/schoolings) — dimensões pra cruzar quem compra/
 //   quem atrasa. Fill rate validado (compradores ~97%; sexo ~60% → bucket "(não informado)");
-// - exclui empreendimentos de teste/masterplan (EXCLUDED_ENTERPRISE_CODES) em TODAS as contas.
+// - exclui empreendimentos de teste/masterplan e os ESPELHOS históricos
+//   (ANALYTICS_EXCLUDED_ENTERPRISE_CODES = EXCLUDED + ENTERPRISE_MIRRORS) em TODAS as contas.
+//   ⚠️ O espelho (hoje o VLO, registro do Vale do Ouro antes da divisão em VOC + VOL) tem os
+//   MESMOS lotes das divisões vivas e o MESMO nome delas: sem esta linha, "quantas unidades tem o
+//   Vale do Ouro" responde o dobro, e o filtro por nome ("vale do ouro" casa e.name LIKE nos três)
+//   traz o loteamento duas vezes. Ver ENTERPRISE_MIRRORS em lib/guardian/c2x-analytics.ts.
 
 export type C2xBuilderInput = {
   metrica: C2xMetrica;
@@ -256,6 +262,19 @@ function filtroEmpreendimento(term: string): FiltroSql {
     return { clause: "e.code = ?", needs: {}, params: [sub.code] };
   }
 
+  // Pediu o ESPELHO pelo código (ex.: "VLO")? Responde pelas DIVISÕES vivas. O espelho está fora
+  // de toda conta (ANALYTICS_EXCLUDED_ENTERPRISE_CODES), então sem este desvio a pergunta legítima
+  // "quanto tem o VLO" voltaria ZERO — mentira por omissão. Ver ENTERPRISE_MIRRORS.
+  const mirror = findEnterpriseMirror(term);
+
+  if (mirror) {
+    return {
+      clause: `e.code in (${mirror.divisions.map(() => "?").join(", ")})`,
+      needs: {},
+      params: [...mirror.divisions],
+    };
+  }
+
   const group = ENTERPRISE_GROUPS.find((entry) => {
     const display = normalizeTerm(entry.display);
 
@@ -409,9 +428,9 @@ export function buildC2xAnalyticsQuery(input: C2xBuilderInput): C2xQueryPlan {
   const needs = mergeNeeds(grupoResolved, filtros);
 
   const where: string[] = [
-    `e.code not in (${EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})`,
+    `e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})`,
   ];
-  const whereParams: unknown[] = [...EXCLUDED_ENTERPRISE_CODES];
+  const whereParams: unknown[] = [...ANALYTICS_EXCLUDED_ENTERPRISE_CODES];
 
   for (const filtro of filtros) {
     where.push(filtro.clause);

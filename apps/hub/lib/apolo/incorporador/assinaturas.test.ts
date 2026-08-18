@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { LinhaAssinatura } from "@/lib/apolo/painel-assinatura";
 
-import { montarQuadroDeAssinaturas, type ContratoVivo } from "./assinaturas";
+import {
+  montarQuadroDeAssinaturas,
+  type ContratoVivo,
+  type FichaDoContratoVivo,
+} from "./assinaturas";
 
 // A RÉGUA REAL, medida no C2X em 18/08/2026 no VAL (Vista Alegre, o portal de teste): 39
 // contratos vivos com envio válido, TODOS 100% assinados; 61 linhas de Comprador, 61 assinadas
@@ -33,6 +37,34 @@ function linha(sobrescreve: Partial<LinhaAssinatura> = {}): LinhaAssinatura {
     usuario: "Fulano",
     valor: 89900,
     ...sobrescreve,
+  };
+}
+
+/**
+ * Um contrato vivo do escopo. Desde a fusão de 18/08/2026 ele carrega TUDO o que a visão Contratos
+ * antiga mostrava (valor, imobiliária, geração, faturamento e o unitId do PDF), e é por ele que
+ * esses dados chegam na linha da lista.
+ */
+function vivo(
+  sobrescreve: Omit<Partial<ContratoVivo>, "ficha"> & { ficha?: Partial<FichaDoContratoVivo> } = {},
+): ContratoVivo {
+  const { ficha, ...resto } = sobrescreve;
+
+  return {
+    arId: 1,
+    ficha: {
+      comprador: "Fulano de Tal",
+      empreendimento: "VAL",
+      faturadoEm: null,
+      imobiliaria: "Imobiliária X",
+      temContrato: true,
+      unidade: "VALB0218",
+      unitId: 100,
+      valorTabela: 89900,
+      ...ficha,
+    },
+    geradoEm: null,
+    ...resto,
   };
 }
 
@@ -110,8 +142,8 @@ describe("os KPIs", () => {
       }),
     ];
     const vivos: ContratoVivo[] = [
-      { arId: 1, geradoEm: "2026-06-01T00:00:00.000Z" },
-      { arId: 2, geradoEm: null },
+      vivo({ arId: 1, geradoEm: "2026-06-01T00:00:00.000Z" }),
+      vivo({ arId: 2, ficha: { unidade: "VALC0301", unitId: 101 } }),
     ];
     const quadro = montarQuadroDeAssinaturas(
       linhas,
@@ -161,14 +193,87 @@ describe("os KPIs", () => {
     // O contrato 10 (ar 1) tem envio; o ar 2 é vivo e nunca saiu para a D4Sign.
     const quadro = montarQuadroDeAssinaturas(
       [linha({ assinadoEm: "2026-06-02", assinou: true })],
-      [
-        { arId: 1, geradoEm: null },
-        { arId: 2, geradoEm: null },
-      ],
+      [vivo({ arId: 1 }), vivo({ arId: 2, ficha: { unidade: "VALC0301", unitId: 101 } })],
       new Map([[10, 1]]),
     );
 
     expect(quadro.kpis.aguardandoEmissao).toBe(1);
+  });
+
+  it("⚠️ o contrato que ainda não saiu para assinar é LINHA da lista, não só um KPI (fusão 18/08)", () => {
+    // A visão Contratos antiga mostrava esta venda com o chip "Aguardando emissão", com valor,
+    // imobiliária e faturamento. Some-la num contador perderia tudo isso.
+    const quadro = montarQuadroDeAssinaturas(
+      [linha({ assinadoEm: "2026-06-02", assinou: true })],
+      [
+        vivo({ arId: 1 }),
+        vivo({
+          arId: 2,
+          ficha: {
+            faturadoEm: "2026-07-20",
+            imobiliaria: "Imobiliária Y",
+            temContrato: false,
+            unidade: "VALC0301",
+            unitId: 101,
+            valorTabela: 123456,
+          },
+          geradoEm: "2026-07-01T12:00:00.000Z",
+        }),
+      ],
+      new Map([[10, 1]]),
+    );
+
+    const semEnvio = quadro.unidades.find((unidade) => unidade.unidade === "VALC0301");
+
+    expect(semEnvio).toMatchObject({
+      // Sem envio não há esquema nem barrinha: a linha vive dos dados do contrato.
+      enviadoEm: "",
+      envioId: 0,
+      esquema: [],
+      grupos: [],
+      situacao: "aguardando-emissao",
+      total: 0,
+    });
+    expect(semEnvio?.contrato).toEqual({
+      faturadoEm: "2026-07-20",
+      geradoEm: "2026-07-01T12:00:00.000Z",
+      imobiliaria: "Imobiliária Y",
+      temContrato: false,
+      unitId: 101,
+      valorTabela: 123456,
+    });
+    // Ele NÃO conta como unidade com envio: esse KPI continua sendo o que saiu para a D4Sign.
+    expect(quadro.kpis.unidadesComEnvio).toBe(1);
+  });
+
+  it("os dados do contrato descem na linha do envio, pelo ar_id (valor, imobiliária, PDF)", () => {
+    const quadro = montarQuadroDeAssinaturas(
+      [linha({ assinadoEm: "2026-06-02", assinou: true })],
+      [vivo({ arId: 1, ficha: { faturadoEm: "2026-06-30", temContrato: true, unitId: 100 } })],
+      new Map([[10, 1]]),
+    );
+
+    expect(quadro.unidades[0]).toMatchObject({ situacao: "assinado" });
+    expect(quadro.unidades[0]!.contrato).toMatchObject({
+      faturadoEm: "2026-06-30",
+      imobiliaria: "Imobiliária X",
+      temContrato: true,
+      unitId: 100,
+      valorTabela: 89900,
+    });
+  });
+
+  it("⚠️ envio de proposta que não é mais a viva da unidade vem SEM dados de contrato", () => {
+    // Distrato/revenda: o envio segue vivo no C2X, mas não há contrato vigente por trás dele —
+    // então nada de valor, imobiliária ou botão de PDF apontando para o lugar errado.
+    const quadro = montarQuadroDeAssinaturas(
+      [linha()],
+      [],
+      new Map([[10, 1]]),
+    );
+
+    expect(quadro.unidades[0]!.contrato).toBeNull();
+    expect(quadro.unidades[0]!.situacao).toBe("em-assinatura");
   });
 
   it("⚠️ unidade com um contrato assinado e outro pendente NÃO conta como 100% assinada", () => {
@@ -195,7 +300,7 @@ describe("envio válido sem NENHUM assinante registrado (o furo do join interno)
   it("⚠️ entra como pendente 'sem assinante' e NÃO cai em aguardando emissão: a aba Contratos mostra o mesmo envio como Em assinatura", () => {
     const quadro = montarQuadroDeAssinaturas(
       [],
-      [{ arId: 1, geradoEm: null }],
+      [vivo({ arId: 1 })],
       // O envio 10 (do ar 1) EXISTE e foi escolhido — só não tem linha de assinante.
       new Map([[10, 1]]),
       [{ csId: 10, emp: "VAL", enviadoEm: "2026-06-01", un: "VALB0218" }],
@@ -210,6 +315,14 @@ describe("envio válido sem NENHUM assinante registrado (o furo do join interno)
         assinadas: 0,
         comprador: null,
         concluida: false,
+        contrato: {
+          faturadoEm: null,
+          geradoEm: null,
+          imobiliaria: "Imobiliária X",
+          temContrato: true,
+          unitId: 100,
+          valorTabela: 89900,
+        },
         empreendimento: "VAL",
         enviadoEm: "2026-06-01",
         envioId: 10,
@@ -217,6 +330,8 @@ describe("envio válido sem NENHUM assinante registrado (o furo do join interno)
         grupos: [],
         naVez: [],
         perfisNaVez: [],
+        // O envio saiu: é "em assinatura", não "aguardando emissão" (a régua da visão antiga).
+        situacao: "em-assinatura",
         total: 0,
         unidade: "VALB0218",
       },

@@ -33,15 +33,19 @@ import type { RowDataPacket } from "mysql2/promise";
 
 import { queryPanteon } from "@/lib/analytics/query-panteon";
 import {
+  ANALYTICS_EXCLUDED_ENTERPRISE_CODES,
   displayEnterprise,
-  EXCLUDED_ENTERPRISE_CODES,
   loadC2xClienteResumo,
   resolvePeriodoRange,
   type C2xPeriodo,
 } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
-const EXCL = EXCLUDED_ENTERPRISE_CODES;
+// A REFERÊNCIA tem que excluir o mesmo que o caminho de produção: os de teste/masterplan E os
+// ESPELHOS (o VLO, registro do Vale do Ouro antes da divisão, cujos lotes são os de VOC + VOL).
+// Se a referência somasse o espelho, todo cross-check do Vale do Ouro acusaria diferença — e a
+// diferença seria do validador, não do motor. Ver ENTERPRISE_MIRRORS.
+const EXCL = ANALYTICS_EXCLUDED_ENTERPRISE_CODES;
 const EXCL_IN = EXCL.map(() => "?").join(", ");
 
 let pass = 0;

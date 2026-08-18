@@ -84,6 +84,7 @@ type Bruta = RowDataPacket & {
   envio: string;
   id_ass: number;
   lot: null | string;
+  papel_no_empreendimento: null | string;
   perfil_c2x: null | string;
   posicao: null | number;
   price: null | number;
@@ -102,6 +103,16 @@ const CONSULTA = `
     ss.user_name as usuario,
     ss.email,
     pf.name as perfil_c2x,
+    -- O PAPEL DO ASSINANTE NO CADASTRO DO EMPREENDIMENTO, que vence o perfil generico do
+    -- usuario (ver perfilDeTela): e o que resolve o gerente cadastrado como "Imobiliaria".
+    -- Sem crase neste comentario: ele vive dentro de um template literal e uma crase solta
+    -- encerra a string e quebra o arquivo inteiro.
+    case
+      when usr.id is not null and usr.id = e.coordenador_id then 'coordenador'
+      when usr.id is not null and usr.id = e.manager_id then 'gerente'
+      when usr.id is not null and usr.id = e.captivator_id then 'captador'
+      else null
+    end as papel_no_empreendimento,
     ss.signed as assinado,
     date_format(ss.date_signed, '%Y-%m-%d') as data_assinatura,
     ss.after_position as posicao
@@ -125,10 +136,39 @@ const limpo = (v: unknown) => String(v ?? "").trim().replace(/\s+/g, " ");
 /**
  * O perfil como o painel mostra, na MESMA ordem do modelo: traduz e depois sobrescreve.
  * Exportado para o quadro de assinaturas do portal do incorporador usar a MESMA tradução.
+ *
+ * ⚠️ O PAPEL NO EMPREENDIMENTO VENCE O PERFIL GENÉRICO DO USUÁRIO, e isso não é preciosismo: o
+ * `profiles` do C2X é um perfil de ACESSO ao sistema, não a função da pessoa naquela venda. O
+ * Lucas viu o caso e apontou (18/08/2026): *"o Huber é o Coordenador, está como imobiliária;
+ * temos que identificar o coordenador para definir o papel dele corretamente"*. Medido: o Huber
+ * (users 2510) tem `profiles` = "Imobiliária" e assina 322 contratos, mas é o `manager_id`
+ * cadastrado em NOVE empreendimentos, entre eles Vista Alegre e os três Vale do Ouro. Sem esta
+ * regra, a taxa de assinatura da Imobiliária engordava com o que é da coordenação, e o gargalo
+ * aparecia no elo errado.
+ *
+ * A ordem de precedência, da mais forte para a mais fraca:
+ *   1. e-mail @careli.adm.br  -> Backoffice (quem é da casa é da casa, em qualquer empreendimento);
+ *   2. papel no CADASTRO daquele empreendimento (coordenador / gerente / captador);
+ *   3. o perfil do usuário no C2X, com "Cliente" traduzido para "Comprador".
  */
-export function perfilDeTela(perfilC2x: null | string, email: string): string {
-  const base = perfilC2x === "Cliente" ? "Comprador" : (perfilC2x ?? "Sem perfil");
-  return email.endsWith("@careli.adm.br") ? "Backoffice" : base;
+export function perfilDeTela(
+  perfilC2x: null | string,
+  email: string,
+  papelNoEmpreendimento?: null | string,
+): string {
+  if (email.endsWith("@careli.adm.br")) return "Backoffice";
+
+  // Os rótulos são os do próprio C2X (a lista de `profiles`), para a tela do cliente falar a
+  // mesma língua da tela do time.
+  const doCadastro: Record<string, string> = {
+    captador: "Captador",
+    coordenador: "Coordenadora de venda",
+    gerente: "Coordenadora de venda",
+  };
+  const papel = String(papelNoEmpreendimento ?? "").trim().toLowerCase();
+  if (doCadastro[papel]) return doCadastro[papel] as string;
+
+  return perfilC2x === "Cliente" ? "Comprador" : (perfilC2x ?? "Sem perfil");
 }
 
 /**
@@ -206,7 +246,7 @@ export async function carregarPainelAssinatura(
 
     const semSituacao: LinhaAssinatura[] = linhasBrutas.map((l) => {
       const email = String(l.email ?? "").trim().toLowerCase();
-      const perfil = perfilDeTela(l.perfil_c2x, email);
+      const perfil = perfilDeTela(l.perfil_c2x, email, l.papel_no_empreendimento);
       const assinou = Number(l.assinado) === 1;
       // Para o prazo: quem assinou conta os dias até assinar; quem não, os dias desde o envio.
       const dias = assinou && l.data_assinatura

@@ -1,6 +1,16 @@
-// GESTÃO DE ASSINATURA — a aba de Vendas do portal do incorporador que mostra a fila de
-// assinaturas dos contratos do escopo: as taxas por perfil, os blocos de KPI, a fila por ordem, a
-// LISTA DE UNIDADES com o progresso por grupo e o quadro por assinante.
+// CONTRATOS — a visão de Vendas do portal do incorporador que mostra os contratos do escopo e a
+// fila de assinatura deles: as taxas por perfil, os blocos de KPI, a fila por ordem, a LISTA DE
+// UNIDADES com o progresso por grupo e o quadro por assinante.
+//
+// ⚠️ FUSÃO DE 18/08/2026. Eram duas visões (Contratos e Assinaturas) e o dono pediu uma:
+// *"a tela de assinatura devia chamar contratos e tirar a tela de contratos que tem hoje... no
+// final dessa linha vai ter o contrato para ser baixado"*. Esta leitura virou a ÚNICA da visão, e
+// por isso ela absorveu o que a outra mostrava:
+//   • os dados do contrato (gerado em, valor, imobiliária, faturado em, o unitId do PDF) descem em
+//     `UnidadeDeAssinatura.contrato`, vindos de `lerContratosVivos` (contratos.ts) pelo ar_id;
+//   • o contrato gerado que ainda NÃO saiu para assinar deixou de ser só o KPI "aguardando
+//     emissão" e virou LINHA da lista — sem envio não há esquema, mas os dados do contrato dele
+//     existem e a visão antiga os mostrava.
 //
 // A REFERÊNCIA É O PAINEL INTERNO (lib/apolo/painel-assinatura.ts), e as regras dele são
 // IMPORTADAS, não copiadas:
@@ -23,16 +33,16 @@
 //
 // ⚠️ ENVIO VÁLIDO SEM NENHUM ASSINANTE EXISTE (contratos.ts admite o cenário; medido 0 casos no
 // VAL, mas o portal vai além do VAL). Por isso a leitura usa LEFT JOIN em
-// `contract_signature_signers`, como a aba Contratos: com join interno o envio sumiria, o
-// contrato cairia (errado) no KPI "Aguardando emissão" e as duas abas se contradiriam para o
-// MESMO contrato. Aqui ele entra na lista com o esquema vazio, que a tela rotula como "sem
-// assinante registrado".
+// `contract_signature_signers`: com join interno o envio sumiria e o contrato cairia (errado) no
+// KPI "Aguardando emissão", que é justamente o balde de quem NÃO saiu para assinar. Aqui ele entra
+// na lista com o esquema vazio, que a tela rotula como "sem assinante registrado".
 //
 // ⚠️ RÉGUA IMPORTADA À RISCA (decisão registrada): as linhas NÃO filtram estágio nem se
 // restringem à proposta mais recente da unidade — fiel ao painel interno. Um envio pendente de
-// venda já distratada/cancelada segue na lista até o envio ser cancelado no C2X (status 6). Se o
-// Lucas decidir que o portal (vitrine externa) deve esconder esses mortos, o corte é cruzar
-// `enviosPorAr` com os `vivos` que esta função já lê.
+// venda já distratada/cancelada segue na lista até o envio ser cancelado no C2X (status 6). Ele
+// entra SEM dados de contrato (`contrato: null`), porque não há contrato vigente por trás dele:
+// sem valor, sem imobiliária e sem botão de PDF. Se o Lucas decidir que o portal (vitrine externa)
+// deve esconder esses mortos, o corte é cruzar `enviosPorAr` com os `vivos` que esta função já lê.
 //
 // OS NOMES DOS ASSINANTES DO FLUXO APARECEM — decisão já comunicada ao dono: o incorporador é
 // parte do contrato e assina junto; esconder quem está segurando a fila inutilizaria o quadro.
@@ -60,9 +70,10 @@ import { getHadesDbPool } from "@/lib/guardian/db";
 
 import {
   escolherEnvio,
-  ESTAGIOS_COM_CONTRATO,
-  ESTAGIOS_DE_GERACAO,
+  lerContratosVivos,
+  type ContratoBruto,
   type EnvioDeAssinatura,
+  type SituacaoDaAssinatura,
 } from "./contratos";
 
 /**
@@ -99,16 +110,46 @@ export type GrupoDaUnidade = {
   total: number;
 };
 
+/**
+ * O QUE O CONTRATO ACRESCENTA À LINHA — os dados que a visão Contratos antiga mostrava em colunas
+ * e que a fusão de 18/08/2026 pendurou na linha da unidade (valor e geração aparecem na própria
+ * linha; imobiliária e faturamento, no cabeçalho do popup).
+ *
+ * Vem de `lerContratosVivos` (contratos.ts) pelo `ar_id` do envio. Nulo quando o envio é de uma
+ * proposta que NÃO é mais a viva da unidade (revenda, distrato): ali não há contrato vigente de
+ * onde tirar valor, imobiliária ou PDF — e a visão antiga também não mostrava essa linha.
+ */
+export type DadosDoContrato = {
+  /** Data de faturamento (`billing_date`), ISO CURTO 'YYYY-MM-DD': formatar por STRING na tela. */
+  faturadoEm: null | string;
+  /** Primeira entrada no estágio "Contrato gerado" (ISO completo). Nulo em venda antiga. */
+  geradoEm: null | string;
+  imobiliaria: null | string;
+  /**
+   * O contrato assinado existe no D4Sign (uuidDoc do envio escolhido): é o que liga o botão de PDF
+   * do fim da linha, que aponta para /api/incorporador/contrato?unitId=… — rota que reconfere
+   * `unidadeNoEscopo` e resolve o uuid NO C2X, nunca aceita uuid do navegador.
+   */
+  temContrato: boolean;
+  /** A chave do botão de PDF. Único id que atravessa; a rota que o recebe reconfere o escopo. */
+  unitId: number;
+  /** Valor de tabela da unidade. */
+  valorTabela: number;
+};
+
 /** Uma linha da lista analítica: um ENVIO (contrato) rotulado pela unidade dele. */
 export type UnidadeDeAssinatura = {
   assinadas: number;
   /** Nome(s) do perfil Comprador daquele contrato, já juntados. Nulo quando não há. */
   comprador: null | string;
   concluida: boolean;
+  /** Os dados do contrato daquela venda. Nulo quando o envio não é da proposta viva da unidade. */
+  contrato: DadosDoContrato | null;
   empreendimento: string;
-  /** Data em que o contrato saiu para assinatura (ISO curto, "2026-07-01"). */
+  /** Data em que o contrato saiu para assinatura (ISO curto, "2026-07-01"). VAZIA em contrato que
+   * ainda não saiu para assinar (situação "aguardando-emissao"). */
   enviadoEm: string;
-  /** `contract_signatures.id` — a chave da linha e do popup. */
+  /** `contract_signatures.id` — a chave da linha e do popup. 0 = contrato ainda sem envio. */
   envioId: number;
   /** O esquema inteiro, na ordem do fluxo. Vazio = envio sem assinante registrado. */
   esquema: AssinaturaDoEsquema[];
@@ -118,6 +159,11 @@ export type UnidadeDeAssinatura = {
   naVez: string[];
   /** Os perfis que estão na vez: é por eles que a lista filtra ("parado com o Incorporador"). */
   perfisNaVez: string[];
+  /**
+   * A situação resumida, na MESMA régua da visão Contratos antiga (`situacaoDaAssinatura`):
+   * assinado, em assinatura ou aguardando emissão (o contrato existe e não saiu para a D4Sign).
+   */
+  situacao: SituacaoDaAssinatura;
   total: number;
   unidade: string;
 };
@@ -193,9 +239,42 @@ export type QuadroDeAssinaturas = {
   unidades: UnidadeDeAssinatura[];
 };
 
-/** Um contrato vivo do escopo: id da proposta + quando o contrato foi gerado (histórico). */
+/**
+ * A FICHA de um contrato vivo: tudo o que a visão Contratos antiga mostrava, fora a data de
+ * geração (que fica no `ContratoVivo`, porque o tempo médio de assinatura sempre precisou dela).
+ */
+export type FichaDoContratoVivo = {
+  /** Nome de quem comprou, do cadastro do C2X (rotula o contrato que ainda não saiu para assinar). */
+  comprador: null | string;
+  /** Código do empreendimento (VAL, LBR…): a chave de unidade da lista é emp + unidade. */
+  empreendimento: string;
+  /** ISO curto 'YYYY-MM-DD' de `billing_date`. */
+  faturadoEm: null | string;
+  imobiliaria: null | string;
+  /** O PDF assinado existe na D4Sign (uuidDoc do envio escolhido daquele contrato). */
+  temContrato: boolean;
+  /** Rótulo da unidade, na MESMA régua das linhas de assinatura (`name`, senão code+quadra+lote). */
+  unidade: string;
+  /** `enterprise_unities.id` — a chave do botão de PDF. */
+  unitId: number;
+  valorTabela: number;
+};
+
+/**
+ * Um contrato vivo do escopo — a proposta viva da unidade.
+ *
+ * ⚠️ DUAS FORMAS DE CHAMADA, de propósito. `arId` + `geradoEm` bastam para o que a montagem sempre
+ * fez: o KPI "aguardando emissão" e o tempo médio de assinatura. A FICHA só vem de quem leu o
+ * contrato inteiro (`lerContratosVivos`), e é ela que autoriza as duas coisas que a fusão de
+ * 18/08/2026 trouxe: os dados na linha (`DadosDoContrato`) e a LINHA do contrato que ainda não
+ * saiu para assinar. Quem chama sem ficha (o painel interno, que monta essas linhas com os campos
+ * dele) continua recebendo exatamente a mesma lista de antes.
+ */
 export type ContratoVivo = {
   arId: number;
+  /** A ficha completa. Ausente na chamada mínima. */
+  ficha?: FichaDoContratoVivo;
+  /** ISO completo da primeira entrada no estágio "Contrato gerado". */
   geradoEm: null | string;
 };
 
@@ -290,12 +369,12 @@ export function montarQuadroDeAssinaturas(
   // Tempo médio: geração do contrato (primeira entrada no estágio "Contrato gerado") até a
   // ÚLTIMA assinatura do envio. Só contratos completos e com a geração registrada entram — as
   // vendas antigas do C2X não têm o histórico, e chutar a data mentiria a média.
-  const geradoPorAr = new Map(vivos.map((vivo) => [vivo.arId, vivo.geradoEm]));
+  const vivoPorAr = new Map(vivos.map((vivo) => [vivo.arId, vivo]));
   const temposDias: number[] = [];
   for (const [contrato, doContrato] of porContrato) {
     if (!doContrato.every((linha) => linha.assinou)) continue;
     const arId = arPorEnvio.get(contrato);
-    const gerado = arId === undefined ? null : geradoPorAr.get(arId) ?? null;
+    const gerado = arId === undefined ? null : vivoPorAr.get(arId)?.geradoEm ?? null;
     if (!gerado) continue;
     const ultima = doContrato
       .map((linha) => linha.assinadoEm)
@@ -308,7 +387,10 @@ export function montarQuadroDeAssinaturas(
   }
 
   const arsComEnvio = new Set(arPorEnvio.values());
-  const aguardandoEmissao = vivos.filter((vivo) => !arsComEnvio.has(vivo.arId)).length;
+  // Contrato gerado que ainda NÃO saiu para a D4Sign. Desde a fusão ele não é só um KPI: vira
+  // linha da lista (a visão Contratos antiga o mostrava, com valor, imobiliária e faturamento).
+  const semEnvio = vivos.filter((vivo) => !arsComEnvio.has(vivo.arId));
+  const aguardandoEmissao = semEnvio.length;
 
   // ── A FILA POR ORDEM ──────────────────────────────────────────────────────────────────────
   const porDegrau = new Map<number, { assinadas: number; perfis: Set<string>; total: number }>();
@@ -389,10 +471,15 @@ export function montarQuadroDeAssinaturas(
       ),
     ];
 
+    const arDoEnvio = arPorEnvio.get(envioId);
+    const vivo = arDoEnvio === undefined ? undefined : vivoPorAr.get(arDoEnvio);
+    const concluida = doContrato.every((linha) => linha.assinou);
+
     lista.push({
       assinadas: doContrato.filter((linha) => linha.assinou).length,
       comprador: compradoresDoContrato.length > 0 ? compradoresDoContrato.join(", ") : null,
-      concluida: doContrato.every((linha) => linha.assinou),
+      concluida,
+      contrato: dadosDoContrato(vivo),
       empreendimento: doContrato[0]?.emp ?? "",
       enviadoEm: doContrato[0]?.envio ?? "",
       envioId,
@@ -404,6 +491,8 @@ export function montarQuadroDeAssinaturas(
           doContrato.filter((linha) => linha.situacao === "vez").map((linha) => linha.perfil || "Sem perfil"),
         ),
       ].sort((a, b) => a.localeCompare(b, "pt-BR")),
+      // Mesma régua da visão antiga: o envio existe, então nunca "aguardando emissão".
+      situacao: concluida ? "assinado" : "em-assinatura",
       total: doContrato.length,
       unidade: doContrato[0]?.un ?? "",
     });
@@ -412,10 +501,12 @@ export function montarQuadroDeAssinaturas(
   // por assinante (não há linha de quem cobrar), mas não pode sumir da lista — a tela mostra
   // "sem assinante registrado" quando o esquema vem vazio.
   for (const envio of semAssinante) {
+    const vivo = vivoPorAr.get(arPorEnvio.get(envio.csId) ?? -1);
     lista.push({
       assinadas: 0,
       comprador: null,
       concluida: false,
+      contrato: dadosDoContrato(vivo),
       empreendimento: envio.emp,
       enviadoEm: envio.enviadoEm,
       envioId: envio.csId,
@@ -423,8 +514,36 @@ export function montarQuadroDeAssinaturas(
       grupos: [],
       naVez: [],
       perfisNaVez: [],
+      situacao: "em-assinatura",
       total: 0,
       unidade: envio.un,
+    });
+  }
+  // ⚠️ O CONTRATO QUE AINDA NÃO SAIU PARA ASSINAR TAMBÉM É LINHA (fusão de 18/08/2026). A visão
+  // Contratos antiga listava estas vendas com o chip "Aguardando emissão", e some-las num KPI
+  // perderia o valor, a imobiliária, a geração e o faturamento delas. Sem envio, não há esquema
+  // nem barrinha: a linha mostra o chip e os dados do contrato.
+  //
+  // Só quem manda a FICHA recebe estas linhas: sem ela não há nem rótulo de unidade para desenhar
+  // (ver `ContratoVivo`), e o chamador que monta as próprias linhas não ganha uma segunda cópia.
+  for (const vivo of semEnvio) {
+    if (!vivo.ficha) continue;
+
+    lista.push({
+      assinadas: 0,
+      comprador: vivo.ficha.comprador,
+      concluida: false,
+      contrato: dadosDoContrato(vivo),
+      empreendimento: vivo.ficha.empreendimento,
+      enviadoEm: "",
+      envioId: 0,
+      esquema: [],
+      grupos: [],
+      naVez: [],
+      perfisNaVez: [],
+      situacao: "aguardando-emissao",
+      total: 0,
+      unidade: vivo.ficha.unidade,
     });
   }
 
@@ -435,8 +554,8 @@ export function montarQuadroDeAssinaturas(
     (a, b) =>
       Number(a.concluida) - Number(b.concluida) ||
       (a.concluida
-        ? b.enviadoEm.localeCompare(a.enviadoEm)
-        : a.enviadoEm.localeCompare(b.enviadoEm)) ||
+        ? esperaDe(b).localeCompare(esperaDe(a))
+        : esperaDe(a).localeCompare(esperaDe(b))) ||
       a.unidade.localeCompare(b.unidade, "pt-BR"),
   );
 
@@ -493,6 +612,29 @@ export function montarQuadroDeAssinaturas(
   };
 }
 
+/** O recorte de `ContratoVivo` que desce para a linha. Sem ficha, a linha vem sem dados. */
+function dadosDoContrato(vivo: ContratoVivo | undefined): DadosDoContrato | null {
+  if (!vivo?.ficha) return null;
+
+  return {
+    faturadoEm: vivo.ficha.faturadoEm,
+    geradoEm: vivo.geradoEm,
+    imobiliaria: vivo.ficha.imobiliaria,
+    temContrato: vivo.ficha.temContrato,
+    unitId: vivo.ficha.unitId,
+    valorTabela: vivo.ficha.valorTabela,
+  };
+}
+
+/**
+ * A data que mede a espera da linha: o envio, e — no contrato que ainda não saiu para assinar — a
+ * geração dele. Sem essa segunda régua, todo contrato aguardando emissão empataria em "" e
+ * subiria ao topo da lista sem critério nenhum.
+ */
+function esperaDe(unidade: UnidadeDeAssinatura): string {
+  return unidade.enviadoEm || (unidade.contrato?.geradoEm ?? "").slice(0, 10);
+}
+
 /**
  * As barrinhas por grupo de uma unidade: um item por perfil PRESENTE no contrato, na ordem do
  * fluxo (o menor degrau em que aquele perfil assina).
@@ -518,8 +660,13 @@ function agruparPorPerfil(esquema: AssinaturaDoEsquema[]): GrupoDaUnidade[] {
     mapa.set(item.perfil, atual);
   }
 
+  // ⚠️ ORDEM ALFABÉTICA, NÃO A DO FLUXO. Ordenar pelo degrau parece mais "certo", mas o degrau
+  // muda de contrato para contrato: o Lucas viu a lista e apontou (18/08/2026) que *"uma hora
+  // aparece o Backoffice, outra não"* — na verdade ele aparecia em posições diferentes a cada
+  // linha, e o olho não consegue comparar coluna com coluna assim. Alfabética é estável entre
+  // linhas, que é o que faz a lista virar tabela e o vazio de um grupo saltar.
   return [...mapa.values()]
-    .sort((a, b) => a.primeiroDegrau - b.primeiroDegrau || a.perfil.localeCompare(b.perfil, "pt-BR"))
+    .sort((a, b) => a.perfil.localeCompare(b.perfil, "pt-BR"))
     .map(({ assinadas, naVez, perfil, total }) => ({ assinadas, naVez, perfil, total }));
 }
 
@@ -571,8 +718,6 @@ type LinhaRow = RowDataPacket & {
   valor: null | number | string;
 };
 
-type VivoRow = RowDataPacket & { ar_id: number; gerado_em: null | Date | string };
-
 export type ResultadoAssinaturas =
   | { data: QuadroDeAssinaturas; ok: true }
   | { error: string; ok: false };
@@ -598,8 +743,6 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
   }
 
   const placeholders = validCodes.map(() => "?").join(", ");
-  const vivosPlaceholders = ESTAGIOS_COM_CONTRATO.map(() => "?").join(", ");
-  const geracaoPlaceholders = ESTAGIOS_DE_GERACAO.map(() => "?").join(", ");
 
   try {
     // As LINHAS de assinatura do escopo — a MESMA consulta do painel interno (filtro de envio
@@ -643,23 +786,10 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
       validCodes,
     );
 
-    // Os contratos VIVOS do escopo (mesma régua da aba de contratos), com a data de geração.
-    const [vivoRows] = await poolResult.pool.query<VivoRow[]>(
-      `select ar.id as ar_id,
-              (select min(h.created_at) from acquisition_request_historics h
-                 where h.acquisition_request_id = ar.id
-                   and h.new_acquisition_request_stage_id in (${geracaoPlaceholders})) as gerado_em
-         from enterprise_unities u
-         join enterprises e on e.id = u.enterprise_id
-         join acquisition_requests ar on ar.id = (
-                select ar2.id from acquisition_requests ar2
-                 where ar2.enterprise_unity_id = u.id
-                 order by ar2.created_at desc, ar2.id desc
-                 limit 1)
-        where e.code in (${placeholders})
-          and ar.acquisition_request_stage_id in (${vivosPlaceholders})`,
-      [...ESTAGIOS_DE_GERACAO, ...validCodes, ...ESTAGIOS_COM_CONTRATO],
-    );
+    // Os contratos VIVOS do escopo — a MESMA leitura que servia a visão Contratos, agora
+    // compartilhada (`lerContratosVivos`, contratos.ts). Ela traz, além da data de geração, o que
+    // a linha da lista pendura: valor, imobiliária, faturamento e o unitId do botão de PDF.
+    const brutos = await lerContratosVivos(poolResult.pool, validCodes);
 
     // Por contrato, UM envio: o com uuidDoc, senão o de maior id (regra do estudo, reusada).
     const enviosPorAr = new Map<number, EnvioDeAssinatura[]>();
@@ -679,11 +809,15 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
     }
     const enviosEscolhidos = new Set<number>();
     const arPorEnvio = new Map<number, number>();
+    // O PDF do fim da linha existe quando o envio ESCOLHIDO tem uuidDoc — a mesma régua do
+    // `temContrato` da visão antiga, sobre o mesmo conjunto de envios.
+    const temContratoPorAr = new Map<number, boolean>();
     for (const [arId, envios] of enviosPorAr) {
       const escolhido = escolherEnvio(envios);
       if (escolhido) {
         enviosEscolhidos.add(escolhido.csId);
         arPorEnvio.set(escolhido.csId, arId);
+        temContratoPorAr.set(arId, Boolean(escolhido.uuidDoc));
       }
     }
 
@@ -726,9 +860,19 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
         };
       });
 
-    const vivos: ContratoVivo[] = vivoRows.map((row) => ({
-      arId: Number(row.ar_id),
-      geradoEm: isoOuNulo(row.gerado_em),
+    const vivos: ContratoVivo[] = brutos.map((bruto) => ({
+      arId: bruto.arId,
+      ficha: {
+        comprador: bruto.comprador,
+        empreendimento: bruto.enterpriseCode,
+        faturadoEm: bruto.faturadoEm,
+        imobiliaria: bruto.imobiliaria,
+        temContrato: temContratoPorAr.get(bruto.arId) ?? false,
+        unidade: rotuloDoVivo(bruto),
+        unitId: bruto.unitId,
+        valorTabela: bruto.valorTabela,
+      },
+      geradoEm: isoOuNulo(bruto.geradoEm),
     }));
 
     return { data: montarQuadroDeAssinaturas(linhas, vivos, arPorEnvio, semAssinante), ok: true };
@@ -740,6 +884,21 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
 
 function limpo(valor: unknown): string {
   return String(valor ?? "").trim().replace(/\s+/g, " ");
+}
+
+/**
+ * O rótulo da unidade de um contrato vivo, na MESMA régua da consulta de linhas
+ * (`coalesce(nullif(trim(u.name), ''), concat(e.code, u.block, u.lot))`).
+ *
+ * ⚠️ NÃO usa o `rotuloDaUnidade` compacto de contratos.ts (VALB0218): as duas leituras agora
+ * dividem a mesma lista, e trocar de régua no meio dela faria a mesma unidade aparecer com dois
+ * nomes conforme tivesse saído para assinar ou não.
+ */
+function rotuloDoVivo(bruto: ContratoBruto): string {
+  return (
+    limpo(bruto.unitName) ||
+    limpo(`${bruto.enterpriseCode}${bruto.bloco ?? ""}${bruto.lote ?? ""}`)
+  );
 }
 
 function isoOuNulo(valor: null | Date | string): null | string {

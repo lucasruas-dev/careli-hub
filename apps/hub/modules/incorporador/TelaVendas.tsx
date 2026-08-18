@@ -29,10 +29,16 @@ import { TelaMasterplan } from "./TelaMasterplan";
 // masterplan não some com a aba Produtos: ele passa a morar AQUI, que é onde faz sentido, porque o
 // mapa é outra forma de olhar as mesmas unidades desta tela.
 //
-// A tela tem QUATRO visões na mesma faixa. Resumo e Pipeline dividem o MESMO fetch (a rota custa
-// 4+1 consultas no C2X; nada de segundo carregamento); Contratos e Assinaturas (18/08/2026) têm
-// fetch PRÓPRIO sob demanda — só quando a visão abre, com cache por recorte (useDadosDaVisao) e
-// sem polling:
+// A tela tem TRÊS visões na mesma faixa. Resumo e Pipeline dividem o MESMO fetch (a rota custa
+// 4+1 consultas no C2X; nada de segundo carregamento); Contratos tem fetch PRÓPRIO sob demanda —
+// só quando a visão abre, com cache por recorte (useDadosDaVisao) e sem polling:
+//   • CONTRATOS — a FUSÃO de 18/08/2026, pedida pelo dono: *"a tela de assinatura devia chamar
+//     contratos e tirar a tela de contratos que tem hoje... no final dessa linha vai ter o
+//     contrato para ser baixado"*. Eram duas visões (a lista de contratos gerados e a gestão de
+//     assinatura); viraram uma, servida por /api/incorporador/vendas/assinaturas — UMA chamada. O
+//     que a lista antiga mostrava não se perdeu: unidade e comprador continuam na linha, VALOR e
+//     GERADO EM entraram nela, imobiliária e FATURADO EM foram para o cabeçalho do popup, a
+//     situação virou chip (o mesmo `ChipDeAssinatura`) e o PDF virou o botão do FIM DA LINHA;
 //   • RESUMO   — uma GRADE DE BI (pedido do Lucas, 18/08/2026: "trazer o informativo top da
 //     barra, deixar claro que é um gráfico... em vez de colocar um embaixo do outro, poderia
 //     trazer como um BI com o analítico dando suporte"): linha 1 = faixa de KPIs; linha 2 = o
@@ -161,10 +167,10 @@ type Dados = {
   unidades?: Unidade[];
 };
 
-// ── CONTRATOS E ASSINATURAS (as visões com fetch PRÓPRIO) ───────────────────
-// Payloads de /api/incorporador/vendas/contratos e /vendas/assinaturas — cada shape é a allowlist
-// da rota, campo a campo. Nome de comprador/imobiliária/assinante aparece (o incorporador é parte
-// do contrato); telefone, e-mail e documento NÃO existem no payload.
+// ── CONTRATOS (a visão com fetch PRÓPRIO) ───────────────────────────────────
+// Payload de /api/incorporador/vendas/assinaturas — o shape é a allowlist da rota, campo a campo.
+// Nome de comprador/imobiliária/assinante aparece (o incorporador é parte do contrato); telefone,
+// e-mail e documento NÃO existem no payload.
 
 /** A situação resumida da assinatura de um contrato (lib/apolo/incorporador/contratos.ts). */
 type SituacaoAssinatura = "aguardando-emissao" | "assinado" | "em-assinatura";
@@ -177,37 +183,22 @@ const SITUACAO_LABELS: Record<SituacaoAssinatura, string> = {
   "em-assinatura": "Em assinatura",
 };
 
-type ContratoDaTela = {
-  assinatura: SituacaoAssinatura;
-  bloco: null | string;
-  comprador: null | string;
+/**
+ * O que o CONTRATO acrescenta à linha — o que a visão Contratos antiga mostrava em colunas. Nulo
+ * quando o envio é de uma proposta que não é mais a viva da unidade (revenda, distrato): ali não
+ * há contrato vigente de onde tirar valor, imobiliária ou PDF.
+ */
+type ContratoDaLinha = {
   /** ISO curto "YYYY-MM-DD" — formatar por STRING (rotuloDeYmd), nunca por new Date. */
   faturadoEm: null | string;
   /** ISO completo (created_at do histórico é datetime real): aqui rotuloDaData serve. */
   geradoEm: null | string;
   imobiliaria: null | string;
-  lote: null | string;
   /** Há contrato assinado no D4Sign: liga o botão de PDF (mesma UX da coluna da Carteira). */
   temContrato: boolean;
-  /** Rótulo compacto código+quadra+lote (VALB0218), o mesmo da carteira. */
-  unidade: string;
   /** A chave do botão de PDF; a rota que o recebe reconfere o escopo do lado de lá. */
   unitId: number;
   valorTabela: number;
-};
-
-type DadosContratos = {
-  /** O aviso do teto (lista cortada nos 500 mais recentes), quando houver. */
-  aviso: null | string;
-  contratos: ContratoDaTela[];
-  /**
-   * Contagem por situação do recorte INTEIRO, calculada na rota ANTES do teto: é ela que os
-   * chips mostram. Opcional só por resiliência a payload antigo em cache; sem ela, o fallback
-   * conta a lista exibida.
-   */
-  porSituacao?: Partial<Record<SituacaoAssinatura, number>>;
-  /** Quantos contratos vivos o recorte tem DE VERDADE, mesmo com a lista no teto. */
-  total: number;
 };
 
 type AssinanteDaTela = {
@@ -235,19 +226,25 @@ type AssinaturaDoEsquema = {
 /** O progresso de um perfil DENTRO de um contrato: a barrinha por grupo da linha da unidade. */
 type GrupoDaUnidade = { assinadas: number; naVez: boolean; perfil: string; total: number };
 
-/** Uma linha da lista analítica: um ENVIO (contrato), rotulado pela unidade dele. */
+/** Uma linha da lista: um contrato, rotulado pela unidade dele. */
 type UnidadeDeAssinatura = {
   assinadas: number;
   comprador: null | string;
   concluida: boolean;
+  /** Os dados do contrato daquela venda: valor, geração, imobiliária, faturamento e o PDF. */
+  contrato: ContratoDaLinha | null;
   empreendimento: string;
-  /** ISO curto "2026-07-01" — formatar por STRING (rotuloDeYmd), nunca por new Date. */
+  /** ISO curto "2026-07-01" — formatar por STRING (rotuloDeYmd), nunca por new Date. VAZIA no
+   * contrato que ainda não saiu para assinar. */
   enviadoEm: string;
+  /** `contract_signatures.id`. 0 = contrato ainda sem envio (aguardando emissão). */
   envioId: number;
   esquema: AssinaturaDoEsquema[];
   grupos: GrupoDaUnidade[];
   naVez: string[];
   perfisNaVez: string[];
+  /** A régua da visão antiga: assinado, em assinatura ou aguardando emissão. */
+  situacao: SituacaoAssinatura;
   total: number;
   unidade: string;
 };
@@ -406,11 +403,9 @@ export function TelaVendas() {
   const [baldeAtivo, setBaldeAtivo] = useState<Balde | null>(null);
   const [visiveis, setVisiveis] = useState(PAGINA);
   const [mapa, setMapa] = useState<EmpreendimentoDaTela | null>(null);
-  // Resumo e Pipeline dividem o MESMO fetch (trocar entre elas não refaz a chamada); Contratos e
-  // Assinaturas têm fetch PRÓPRIO, disparado só quando a visão abre (custo C2X).
-  const [visao, setVisao] = useState<"assinaturas" | "contratos" | "pipeline" | "resumo">(
-    "resumo",
-  );
+  // Resumo e Pipeline dividem o MESMO fetch (trocar entre elas não refaz a chamada); Contratos
+  // tem fetch PRÓPRIO, disparado só quando a visão abre (custo C2X).
+  const [visao, setVisao] = useState<"contratos" | "pipeline" | "resumo">("resumo");
   // A alternância UN × R$ dos KPIs do BI (página "Vendas" do Power BI do Lucas).
   const [medida, setMedida] = useState<"rs" | "un">("un");
   // O popup da proposta: aberto pela unidade clicada (kanban ou tabela), quando ela tem unitId.
@@ -418,11 +413,10 @@ export function TelaVendas() {
   // Cache por unitId, vivo enquanto a tela vive: fechar e reabrir o MESMO popup não refaz a
   // chamada (a rota custa duas consultas no C2X). Erro NÃO entra no cache — reabrir tenta de novo.
   const cacheDePropostas = useRef(new Map<number, Proposta | null>());
-  // Cache POR VISÃO e por recorte (chave = emp escolhido, "" = todos), vivo enquanto a tela vive:
-  // voltar para Contratos/Assinaturas no mesmo recorte não refaz a chamada (2 queries C2X cada).
-  // Erro NÃO entra no cache — reabrir a visão tenta de novo. E nada de polling.
-  const cacheDeContratos = useRef(new Map<string, DadosContratos>());
-  const cacheDeAssinaturas = useRef(new Map<string, DadosAssinaturas>());
+  // Cache por recorte (chave = emp escolhido, "" = todos), vivo enquanto a tela vive: voltar para
+  // Contratos no mesmo recorte não refaz a chamada (2 queries C2X). Erro NÃO entra no cache —
+  // reabrir a visão tenta de novo. E nada de polling.
+  const cacheDeContratos = useRef(new Map<string, DadosAssinaturas>());
 
   const carregar = useCallback(async (emp: null | string) => {
     setCarregando(true);
@@ -560,7 +554,7 @@ export function TelaVendas() {
         ) : null}
       </header>
 
-      {/* ── AS DUAS VISÕES: Resumo (números) e Pipeline (o kanban do Apolo) ──── */}
+      {/* ── AS TRÊS VISÕES: Resumo (números), Pipeline (o kanban) e Contratos ── */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         <Pilula
           ativo={visao === "resumo"}
@@ -577,11 +571,6 @@ export function TelaVendas() {
           onClick={() => setVisao("contratos")}
           rotulo="Contratos"
         />
-        <Pilula
-          ativo={visao === "assinaturas"}
-          onClick={() => setVisao("assinaturas")}
-          rotulo="Assinaturas"
-        />
       </div>
 
       {visao === "pipeline" ? (
@@ -594,8 +583,6 @@ export function TelaVendas() {
         />
       ) : visao === "contratos" ? (
         <SecaoContratos cache={cacheDeContratos.current} emp={empSelecionado} />
-      ) : visao === "assinaturas" ? (
-        <SecaoAssinaturas cache={cacheDeAssinaturas.current} emp={empSelecionado} />
       ) : (
         <>
           {/* A grade do BI precisa de media query (as linhas 2 e 3 empilham abaixo de ~1100px),
@@ -2863,13 +2850,24 @@ function ChipDeAssinatura({ situacao }: { situacao: SituacaoAssinatura }) {
 }
 
 /**
- * O botão da coluna Contrato — a MESMA UX do BotaoDeContrato da TelaCarteira: ícone de documento
- * que abre /api/incorporador/contrato?unitId=… em aba nova. O link leva o unitId, NUNCA o uuid: a
- * rota reconfere `unidadeNoEscopo` e resolve o documento no C2X a cada clique. Sem contrato
- * assinado, a célula é "-", igual à carteira.
+ * O BOTÃO DO FIM DA LINHA — *"no final dessa linha vai ter o contrato para ser baixado"* (Lucas,
+ * 18/08/2026). A MESMA UX do BotaoDeContrato da TelaCarteira: ícone de documento que abre
+ * /api/incorporador/contrato?unitId=… em aba nova. O link leva o unitId, NUNCA o uuid: a rota
+ * reconfere `unidadeNoEscopo` e resolve o documento no C2X a cada clique.
+ *
+ * ⚠️ SEM CONTRATO DISPONÍVEL, A CÉLULA É "-", NUNCA UM BOTÃO QUE ERRA: sem `temContrato` não há
+ * documento assinado na D4Sign, e sem `contrato` (envio de proposta que não é mais a viva) não há
+ * nem unitId para onde apontar.
  */
-function BotaoDePdfDoContrato({ contrato }: { contrato: ContratoDaTela }) {
-  if (!contrato.temContrato) {
+function BotaoDePdfDoContrato({
+  contrato,
+  largo,
+}: {
+  contrato: ContratoDaLinha | null;
+  /** Versão do popup: o mesmo destino, com rótulo, porque ali sobra largura. */
+  largo?: boolean;
+}) {
+  if (!contrato?.temContrato) {
     return <span style={{ color: T.muted, fontSize: 12 }}>-</span>;
   }
 
@@ -2884,229 +2882,42 @@ function BotaoDePdfDoContrato({ contrato }: { contrato: ContratoDaTela }) {
         borderRadius: 8,
         color: T.sub,
         display: "inline-flex",
+        fontFamily: fonte,
+        fontSize: 12,
+        fontWeight: 600,
+        gap: largo ? 7 : 0,
         height: 28,
         justifyContent: "center",
-        width: 28,
+        padding: largo ? "0 11px" : 0,
+        textDecoration: "none",
+        width: largo ? "auto" : 28,
       }}
       target="_blank"
       title="Abrir contrato assinado"
     >
       <FileText aria-hidden="true" size={14} />
+      {largo ? "Abrir contrato" : null}
     </a>
   );
 }
 
-// ── CONTRATOS: a tabela dos contratos gerados, com a situação da assinatura ──
-function SecaoContratos({
-  cache,
-  emp,
-}: {
-  cache: Map<string, DadosContratos>;
-  emp: null | string;
-}) {
-  const estado = useDadosDaVisao(
-    "/api/incorporador/vendas/contratos",
-    emp,
-    cache,
-    "Não foi possível carregar os contratos.",
-  );
-  const [busca, setBusca] = useState("");
-  const [situacaoAtiva, setSituacaoAtiva] = useState<null | SituacaoAssinatura>(null);
-
-  if (estado.tipo === "carregando") return <Aviso texto="Carregando os contratos…" />;
-  if (estado.tipo === "erro") return <Aviso texto={estado.mensagem} tom="erro" />;
-
-  const { aviso, contratos, porSituacao, total } = estado.dados;
-  const alvo = busca.trim().toLowerCase();
-
-  const filtrados = contratos.filter((contrato) => {
-    if (situacaoAtiva && contrato.assinatura !== situacaoAtiva) return false;
-    if (!alvo) return true;
-
-    return [contrato.unidade, contrato.bloco, contrato.lote, contrato.comprador, contrato.imobiliaria]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase()
-      .includes(alvo);
-  });
-
-  // Os chips contam o recorte INTEIRO (a rota calcula antes do teto de 500), como o título:
-  // contar a lista cortada faria os números do topo divergirem entre si. O fallback local só
-  // atende payload antigo em cache, e aí conta a lista exibida.
-  const contagemDaSituacao = (situacao: SituacaoAssinatura): number =>
-    porSituacao?.[situacao] ??
-    contratos.filter((contrato) => contrato.assinatura === situacao).length;
-  const situacoes: SituacaoAssinatura[] = ["assinado", "em-assinatura", "aguardando-emissao"];
-
-  return (
-    <section style={cartao}>
-      <div
-        style={{
-          alignItems: "center",
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          justifyContent: "space-between",
-        }}
-      >
-        <div>
-          {/* O CONTADOR do topo: o total do recorte, mesmo quando a lista bateu no teto. */}
-          <h2 style={titulo}>
-            {inteiro(total)} {total === 1 ? "contrato gerado" : "contratos gerados"}
-          </h2>
-          <p style={{ color: T.muted, fontSize: 12.5, margin: "6px 0 0" }}>
-            As vendas deste recorte que já têm contrato, com a situação da assinatura.
-          </p>
-        </div>
-
-        <label
-          style={{
-            alignItems: "center",
-            background: T.soft,
-            border: `1px solid ${T.border}`,
-            borderRadius: 10,
-            display: "flex",
-            gap: 8,
-            minWidth: 220,
-            padding: "0 12px",
-          }}
-        >
-          <Search aria-hidden="true" size={15} style={{ color: T.muted, flexShrink: 0 }} />
-          <input
-            onChange={(evento) => setBusca(evento.target.value)}
-            placeholder="Unidade, comprador, imobiliária"
-            style={{
-              background: "transparent",
-              border: "none",
-              color: T.text,
-              flex: 1,
-              fontFamily: fonte,
-              fontSize: 14,
-              minWidth: 0,
-              outline: "none",
-              padding: "9px 0",
-            }}
-            value={busca}
-          />
-        </label>
-      </div>
-
-      {/* Filtro por situação da assinatura: só situações com contrato aparecem (ruído zero). */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "14px 0 4px" }}>
-        <Pilula
-          ativo={situacaoAtiva === null}
-          onClick={() => setSituacaoAtiva(null)}
-          rotulo={`Todos (${inteiro(total)})`}
-        />
-        {situacoes
-          .filter((situacao) => contagemDaSituacao(situacao) > 0)
-          .map((situacao) => (
-            <Pilula
-              ativo={situacaoAtiva === situacao}
-              key={situacao}
-              onClick={() =>
-                setSituacaoAtiva(situacaoAtiva === situacao ? null : situacao)
-              }
-              rotulo={`${SITUACAO_LABELS[situacao]} (${inteiro(contagemDaSituacao(situacao))})`}
-            />
-          ))}
-      </div>
-
-      {contratos.length === 0 ? (
-        <p style={{ color: T.muted, fontSize: 13, margin: "20px 0 4px", textAlign: "center" }}>
-          Nenhuma venda deste recorte chegou à etapa de contrato ainda.
-        </p>
-      ) : (
-        <>
-          {/* A tabela rola SOZINHA no celular, como o Cenário Analítico. */}
-          <div style={{ marginTop: 12, overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", fontSize: 13, minWidth: 880, width: "100%" }}>
-              <thead>
-                <tr>
-                  {[
-                    "Unidade",
-                    "Comprador",
-                    "Imobiliária",
-                    "Gerado em",
-                    "Valor",
-                    "Assinatura",
-                    "Faturado em",
-                    "Contrato",
-                  ].map((coluna) => (
-                    <th
-                      key={coluna}
-                      style={{
-                        borderBottom: `1px solid ${T.border}`,
-                        color: T.muted,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        letterSpacing: "0.04em",
-                        padding: "8px 10px 8px 0",
-                        textAlign: coluna === "Valor" ? "right" : "left",
-                        textTransform: "uppercase",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {coluna}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtrados.map((contrato) => (
-                  <tr key={contrato.unitId}>
-                    <td style={{ ...celula, color: T.text, fontWeight: 600, whiteSpace: "nowrap" }}>
-                      {contrato.unidade}
-                    </td>
-                    <td style={celula}>{contrato.comprador ?? ""}</td>
-                    <td style={celula}>{contrato.imobiliaria ?? ""}</td>
-                    <td style={{ ...celula, whiteSpace: "nowrap" }}>
-                      {rotuloDaData(contrato.geradoEm) || "-"}
-                    </td>
-                    {/* Coluna de número em tabela: aqui SIM tabular-nums. */}
-                    <td
-                      style={{
-                        ...celula,
-                        color: T.text,
-                        fontVariantNumeric: "tabular-nums",
-                        textAlign: "right",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {brl(contrato.valorTabela)}
-                    </td>
-                    <td style={{ ...celula, whiteSpace: "nowrap" }}>
-                      <ChipDeAssinatura situacao={contrato.assinatura} />
-                    </td>
-                    {/* Por STRING: billing_date é DATE, e new Date mostraria a véspera. */}
-                    <td style={{ ...celula, whiteSpace: "nowrap" }}>
-                      {rotuloDeYmd(contrato.faturadoEm) || "-"}
-                    </td>
-                    <td style={{ ...celula, whiteSpace: "nowrap" }}>
-                      <BotaoDePdfDoContrato contrato={contrato} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {filtrados.length === 0 ? (
-            <p style={{ color: T.muted, fontSize: 13, margin: "16px 0 0", textAlign: "center" }}>
-              Nenhum contrato encontrado com esse filtro.
-            </p>
-          ) : null}
-        </>
-      )}
-
-      {aviso ? (
-        <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5, margin: "14px 0 0" }}>{aviso}</p>
-      ) : null}
-    </section>
-  );
-}
-
-// ── ASSINATURAS: a taxa por perfil, os blocos do painel, a lista por unidade e o quadro ─
+// ── CONTRATOS: a taxa por perfil, os blocos do painel, a lista por unidade e o quadro ─
+//
+// ⚠️ FUSÃO DE 18/08/2026 (o quarto desenho): *"acho que a tela de assinatura devia chamar
+// contratos e tirar a tela de contratos que tem hoje. O nome da tela de assinatura vai chamar
+// contrato, e aí no final dessa linha vai ter o contrato para ser baixado"*. Esta visão absorveu a
+// lista de contratos gerados. ONDE CADA COISA DELA FOI PARAR:
+//   • unidade e comprador → já eram a identificação da linha;
+//   • VALOR e GERADO EM → linha de apoio da mesma identificação (uma linha só, discreta);
+//   • IMOBILIÁRIA e FATURADO EM → cabeçalho "Dados do contrato" do popup da unidade;
+//   • SITUAÇÃO DA ASSINATURA → o mesmo `ChipDeAssinatura`, na terceira coluna da linha (só quando
+//     o contrato ainda não saiu para assinar; nos demais a fração "x de y" e o "parado com quem"
+//     dizem mais do que o chip) e no cabeçalho do popup;
+//   • PDF → o botão do FIM DA LINHA, e de novo no popup;
+//   • FILTRO POR SITUAÇÃO → virou a pílula "Aguardando emissão", ao lado de Pendentes/Concluídas;
+//   • BUSCA por imobiliária → continua, junto de unidade e comprador.
+// O contrato gerado que ainda NÃO saiu para assinar deixou de ser só o KPI "aguardando emissão" e
+// virou LINHA: era linha na visão antiga, e some-lo num contador perderia valor e faturamento.
 //
 // REDESENHO 18/08/2026 (o terceiro, e o que o dono desenhou por inteiro). O que ele pediu, na
 // ordem em que pediu, e onde cada coisa foi parar:
@@ -3124,8 +2935,8 @@ function SecaoContratos({
 //   4. *"ao clicar nessa unidade abre um popup... quem assinou, quem falta"* — o clique abre a
 //      TABELA de assinatura daquele contrato (o termo é dele, e tabela lê melhor que linha do
 //      tempo quando metade dos contratos não tem ordem nenhuma);
-//   5. *"colocar filtro para saber as unidades, tipo pendente e tal"* — pílulas com contagem, no
-//      mesmo padrão da aba Contratos, mais a busca por unidade e comprador;
+//   5. *"colocar filtro para saber as unidades, tipo pendente e tal"* — pílulas com contagem,
+//      mais a busca por unidade, comprador e imobiliária;
 //   6. *"esses cards poderiam trazer a taxa de assinatura das imobiliárias, Careli, coordenação,
 //      incorporador"* — a faixa de cima virou a TAXA POR PERFIL, com o pior elo primeiro.
 //
@@ -3156,6 +2967,11 @@ const CSS_ASSINATURAS = `
     align-items: center; display: grid; gap: 14px;
     grid-template-columns: minmax(140px, 1.05fr) minmax(0, 2.3fr) minmax(116px, 0.85fr);
   }
+  /* ⚠️ O PDF FICA FORA DO BOTÃO DA LINHA, não dentro: <a> dentro de <button> é HTML inválido e o
+     clique do link seria engolido pelo popup. A moldura é uma grade de duas células — a linha
+     clicável e a célula do documento —, e é ela que põe o contrato no FIM da linha. */
+  .asn-moldura { align-items: center; display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .asn-pdf { display: flex; justify-content: flex-end; padding: 0 10px 0 6px; }
   /* Abaixo de 960px as três colunas não cabem sem espremer as barrinhas a ponto de a fração não
      caber embaixo: empilha, e a linha vira um cartãozinho. */
   @media (max-width: 960px) { .asn-linha { gap: 10px; grid-template-columns: minmax(0, 1fr); } }
@@ -3205,14 +3021,19 @@ function rotuloDeEspera(ymd: null | string): string {
 }
 
 /** O recorte da lista: um estado, ou "parado com o perfil X". */
-type RecorteDeAssinatura = "concluidas" | "pendentes" | "todas" | `perfil:${string}`;
+type RecorteDeAssinatura =
+  | "concluidas"
+  | "emissao"
+  | "pendentes"
+  | "todas"
+  | `perfil:${string}`;
 
 /** O que o clique num número do quadro por assinante manda a lista mostrar. */
 type FiltroDeAssinante = { alvo: "aguardando" | "assinado" | "vez"; nome: string };
 
-const ANCORA_DA_LISTA = "analitico-assinaturas";
+const ANCORA_DA_LISTA = "analitico-contratos";
 
-function SecaoAssinaturas({
+function SecaoContratos({
   cache,
   emp,
 }: {
@@ -3223,7 +3044,7 @@ function SecaoAssinaturas({
     "/api/incorporador/vendas/assinaturas",
     emp,
     cache,
-    "Não foi possível carregar as assinaturas.",
+    "Não foi possível carregar os contratos.",
   );
 
   const [busca, setBusca] = useState("");
@@ -3238,7 +3059,7 @@ function SecaoAssinaturas({
     document.getElementById(ANCORA_DA_LISTA)?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  if (estado.tipo === "carregando") return <Aviso texto="Carregando as assinaturas…" />;
+  if (estado.tipo === "carregando") return <Aviso texto="Carregando os contratos…" />;
   if (estado.tipo === "erro") return <Aviso texto={estado.mensagem} tom="erro" />;
 
   const { assinantes, aviso, fila, kpis, taxas, unidades } = estado.dados;
@@ -3247,7 +3068,7 @@ function SecaoAssinaturas({
     return (
       <div style={{ display: "grid", gap: 16 }}>
         <style>{CSS_ASSINATURAS}</style>
-        <Aviso texto="Nenhum contrato deste recorte saiu para assinatura ainda." />
+        <Aviso texto="Nenhuma venda deste recorte chegou à etapa de contrato ainda." />
       </div>
     );
   }
@@ -3548,11 +3369,12 @@ function NumeroDoBloco({
   );
 }
 
-// ── O PALCO: A LISTA POR UNIDADE ────────────────────────────────────────────
+// ── O PALCO: A LISTA DE CONTRATOS, POR UNIDADE ──────────────────────────────
 //
-// Uma linha por CONTRATO ENVIADO, rotulada pela unidade (a granularidade está declarada em
+// Uma linha por CONTRATO, rotulada pela unidade (a granularidade está declarada em
 // lib/apolo/incorporador/assinaturas.ts: unidade revendida tem dois contratos, com esquemas
-// diferentes, e fundir os dois inventaria um esquema que não existe).
+// diferentes, e fundir os dois inventaria um esquema que não existe). Desde a fusão, o contrato
+// que ainda não saiu para assinar também é linha — sem barrinha, com o chip "Aguardando emissão".
 //
 // A ordem vem do servidor e é a do gargalo: pendente primeiro, a que espera há mais tempo no topo,
 // e as concluídas no fim — visíveis, mas sem disputar o palco.
@@ -3595,9 +3417,11 @@ function ListaDeUnidades({
         }
         if (!alvo) return true;
 
+        // A IMOBILIÁRIA entrou na busca com a fusão: era campo pesquisável na visão antiga.
         return (
           unidade.unidade.toLowerCase().includes(alvo) ||
           (unidade.comprador ?? "").toLowerCase().includes(alvo) ||
+          (unidade.contrato?.imobiliaria ?? "").toLowerCase().includes(alvo) ||
           unidade.empreendimento.toLowerCase().includes(alvo)
         );
       }),
@@ -3606,6 +3430,11 @@ function ListaDeUnidades({
 
   const pendentes = buscadas.filter((unidade) => !unidade.concluida);
   const concluidas = buscadas.length - pendentes.length;
+  // O contrato que nem saiu para assinar: era o chip "Aguardando emissão" da visão antiga, e é o
+  // único estado que a fração "x de y" não conta (não há nenhuma assinatura para contar).
+  const aguardandoEmissao = buscadas.filter(
+    (unidade) => unidade.situacao === "aguardando-emissao",
+  ).length;
 
   // Os perfis que estão SEGURANDO alguma unidade, do que mais segura para o que menos segura.
   // ⚠️ Uma unidade parada em dois perfis (degrau dividido) conta nos dois: a soma das pílulas pode
@@ -3625,6 +3454,7 @@ function ListaDeUnidades({
   const lista = buscadas.filter((unidade) => {
     if (recorte === "pendentes") return !unidade.concluida;
     if (recorte === "concluidas") return unidade.concluida;
+    if (recorte === "emissao") return unidade.situacao === "aguardando-emissao";
     if (recorte.startsWith("perfil:")) {
       return !unidade.concluida && unidade.perfisNaVez.includes(recorte.slice(7));
     }
@@ -3645,15 +3475,16 @@ function ListaDeUnidades({
           justifyContent: "space-between",
         }}
       >
-        <h2 style={titulo}>Assinatura por unidade</h2>
+        <h2 style={titulo}>Contratos por unidade</h2>
         <span style={{ color: T.muted, fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
           {inteiro(lista.length)} de {inteiro(unidades.length)}{" "}
-          {unidades.length === 1 ? "contrato enviado" : "contratos enviados"}
+          {unidades.length === 1 ? "contrato" : "contratos"}
         </span>
       </div>
       <p style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, margin: "6px 0 0" }}>
-        Cada barra é um perfil que assina aquele contrato. Clique na unidade para ver a tabela de
-        assinatura, com quem já assinou e quem falta.
+        Cada barra é um perfil que assina aquele contrato. Clique na unidade para ver os dados do
+        contrato e a tabela de assinatura, com quem já assinou e quem falta. O contrato assinado
+        abre no ícone do fim da linha.
       </p>
 
       {porAssinante ? (
@@ -3718,6 +3549,15 @@ function ListaDeUnidades({
             rotulo={`Concluídas (${inteiro(concluidas)})`}
           />
         ) : null}
+        {/* O filtro por situação da visão antiga, no que ele tinha de único: as outras duas
+            situações já são Pendentes e Concluídas. */}
+        {aguardandoEmissao > 0 ? (
+          <Pilula
+            ativo={recorte === "emissao"}
+            onClick={() => onRecorte(recorte === "emissao" ? "todas" : "emissao")}
+            rotulo={`${SITUACAO_LABELS["aguardando-emissao"]} (${inteiro(aguardandoEmissao)})`}
+          />
+        ) : null}
       </div>
 
       {porPerfil.length > 0 ? (
@@ -3770,7 +3610,7 @@ function ListaDeUnidades({
         <Search aria-hidden="true" size={15} style={{ color: T.muted, flexShrink: 0 }} />
         <input
           onChange={(evento) => onBuscar(evento.target.value)}
-          placeholder="Buscar por unidade ou comprador"
+          placeholder="Buscar por unidade, comprador ou imobiliária"
           style={{
             background: "transparent",
             border: "none",
@@ -3788,13 +3628,15 @@ function ListaDeUnidades({
 
       {lista.length === 0 ? (
         <p style={{ color: T.muted, fontSize: 13, margin: "22px 0 6px", textAlign: "center" }}>
-          Nenhuma unidade neste recorte.
+          Nenhum contrato neste recorte.
         </p>
       ) : (
         <div style={{ marginTop: 12 }}>
           {lista.map((unidade, indice) => (
             <div
-              key={`${unidade.envioId}-${unidade.unidade}`}
+              // O contrato sem envio tem envioId 0: a chave só fecha com empreendimento +
+              // unidade, que é a chave de unidade do servidor.
+              key={`${unidade.envioId}-${unidade.empreendimento}-${unidade.unidade}`}
               style={{ borderTop: indice === 0 ? "none" : `1px solid ${T.border}` }}
             >
               <LinhaDaUnidade
@@ -3815,10 +3657,14 @@ function ListaDeUnidades({
 }
 
 /**
- * A linha da unidade: identificação, uma barrinha por perfil daquele contrato e a situação.
+ * A linha do contrato: identificação, uma barrinha por perfil daquele contrato, a situação e, no
+ * FIM, o documento assinado.
  *
  * ⚠️ SÓ OS PERFIS DAQUELE CONTRATO desenham barra. Perfil que não assina ali não vira barra vazia,
  * porque barra vazia diz "falta alguém" de quem nunca foi chamado.
+ *
+ * ⚠️ O VALOR E A GERAÇÃO ficam numa linha de apoio, esmaecidos: eles vieram da visão antiga e são
+ * consulta, não a pergunta da tela. Quem manda no destaque continua sendo a barrinha.
  */
 function LinhaDaUnidade({
   mostrarEmpreendimento,
@@ -3830,103 +3676,147 @@ function LinhaDaUnidade({
   unidade: UnidadeDeAssinatura;
 }) {
   const percentual = unidade.total > 0 ? (unidade.assinadas / unidade.total) * 100 : 0;
+  const apoio = [
+    unidade.contrato ? brl(unidade.contrato.valorTabela) : null,
+    unidade.contrato?.geradoEm ? `gerado em ${rotuloDaData(unidade.contrato.geradoEm)}` : null,
+  ].filter(Boolean);
 
   return (
-    <button
-      className="asn-clicavel"
-      onClick={onAbrir}
-      style={{ borderRadius: 10, padding: "12px 10px" }}
-      title={`Ver a tabela de assinatura de ${unidade.unidade || "esta unidade"}`}
-      type="button"
-    >
-      <div className="asn-linha">
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              color: T.text,
-              fontSize: 13.5,
-              fontWeight: 700,
-              overflowWrap: "anywhere",
-            }}
-          >
-            {unidade.unidade || "unidade sem nome"}
-            {mostrarEmpreendimento && unidade.empreendimento ? (
-              <span style={{ color: T.muted, fontWeight: 500 }}> · {unidade.empreendimento}</span>
-            ) : null}
-          </div>
-          <div
-            style={{
-              color: T.muted,
-              fontSize: 11.5,
-              lineHeight: 1.4,
-              marginTop: 2,
-              overflowWrap: "anywhere",
-            }}
-          >
-            {unidade.comprador ?? "comprador não registrado no envio"}
-          </div>
-        </div>
-
-        {unidade.grupos.length === 0 ? (
-          <div style={{ color: T.muted, fontSize: 12 }}>
-            Nenhum assinante ficou registrado neste envio. Não há de quem cobrar sem refazer o
-            envio.
-          </div>
-        ) : (
-          <div className="asn-grupos">
-            {unidade.grupos.map((grupo) => (
-              <BarraDoGrupo grupo={grupo} key={grupo.perfil} />
-            ))}
-          </div>
-        )}
-
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              color: T.text,
-              fontSize: 13,
-              fontVariantNumeric: "tabular-nums",
-              fontWeight: 700,
-            }}
-          >
-            {inteiro(unidade.assinadas)} de {inteiro(unidade.total)}
-            <span style={{ color: T.muted, fontWeight: 500 }}>
-              {" "}
-              · {Math.round(percentual)}%
-            </span>
-          </div>
-          <div style={{ marginTop: 4 }}>
-            {unidade.concluida ? (
-              <span
+    <div className="asn-moldura">
+      <button
+        className="asn-clicavel"
+        onClick={onAbrir}
+        style={{ borderRadius: 10, padding: "12px 10px" }}
+        title={`Ver o contrato de ${unidade.unidade || "esta unidade"}`}
+        type="button"
+      >
+        <div className="asn-linha">
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                color: T.text,
+                fontSize: 13.5,
+                fontWeight: 700,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {unidade.unidade || "unidade sem nome"}
+              {mostrarEmpreendimento && unidade.empreendimento ? (
+                <span style={{ color: T.muted, fontWeight: 500 }}> · {unidade.empreendimento}</span>
+              ) : null}
+            </div>
+            <div
+              style={{
+                color: T.muted,
+                fontSize: 11.5,
+                lineHeight: 1.4,
+                marginTop: 2,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {unidade.comprador ?? "comprador não registrado no envio"}
+            </div>
+            {/* O VALOR E A GERAÇÃO da visão antiga. Sem contrato vivo por trás do envio, a linha
+                simplesmente não tem esses dados e some com ela — nada de "R$ 0". */}
+            {apoio.length > 0 ? (
+              <div
                 style={{
-                  alignItems: "center",
-                  color: T.ok,
-                  display: "inline-flex",
-                  fontSize: 11.5,
-                  fontWeight: 600,
-                  gap: 5,
+                  color: T.muted,
+                  fontSize: 11,
+                  fontVariantNumeric: "tabular-nums",
+                  lineHeight: 1.4,
+                  marginTop: 3,
+                  opacity: 0.85,
                 }}
               >
-                <CheckCircle2 aria-hidden="true" size={13} />
-                contrato completo
-              </span>
+                {apoio.join(" · ")}
+              </div>
+            ) : null}
+          </div>
+
+          {unidade.situacao === "aguardando-emissao" ? (
+            // Contrato gerado que não saiu para assinar: não há esquema, e barrinha vazia mentiria.
+            <div style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>
+              O contrato foi gerado e ainda não saiu para assinatura.
+            </div>
+          ) : unidade.grupos.length === 0 ? (
+            <div style={{ color: T.muted, fontSize: 12 }}>
+              Nenhum assinante ficou registrado neste envio. Não há de quem cobrar sem refazer o
+              envio.
+            </div>
+          ) : (
+            <div className="asn-grupos">
+              {unidade.grupos.map((grupo) => (
+                <BarraDoGrupo grupo={grupo} key={grupo.perfil} />
+              ))}
+            </div>
+          )}
+
+          <div style={{ minWidth: 0 }}>
+            {unidade.situacao === "aguardando-emissao" ? (
+              // A situação da visão antiga, no chip da visão antiga: aqui não há fração para contar.
+              <ChipDeAssinatura situacao={unidade.situacao} />
             ) : (
-              <span style={{ color: T.muted, fontSize: 11.5, lineHeight: 1.4 }}>
-                {unidade.perfisNaVez.length > 0 ? (
-                  <>
-                    com <b style={{ color: T.text, fontWeight: 600 }}>
-                      {unidade.perfisNaVez.join(" e ")}
-                    </b>
-                    {" · "}
-                  </>
-                ) : null}
-                {rotuloDeEspera(unidade.enviadoEm)}
-              </span>
+              <div
+                style={{
+                  color: T.text,
+                  fontSize: 13,
+                  fontVariantNumeric: "tabular-nums",
+                  fontWeight: 700,
+                }}
+              >
+                {inteiro(unidade.assinadas)} de {inteiro(unidade.total)}
+                <span style={{ color: T.muted, fontWeight: 500 }}>
+                  {" "}
+                  · {Math.round(percentual)}%
+                </span>
+              </div>
             )}
+            <div style={{ marginTop: 4 }}>
+              {unidade.situacao === "aguardando-emissao" ? (
+                <span style={{ color: T.muted, fontSize: 11.5, lineHeight: 1.4 }}>
+                  {unidade.contrato?.geradoEm
+                    ? rotuloDeEspera(unidade.contrato.geradoEm.slice(0, 10))
+                    : "sem data de geração registrada"}
+                </span>
+              ) : unidade.concluida ? (
+                <span
+                  style={{
+                    alignItems: "center",
+                    color: T.ok,
+                    display: "inline-flex",
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    gap: 5,
+                  }}
+                >
+                  <CheckCircle2 aria-hidden="true" size={13} />
+                  contrato completo
+                </span>
+              ) : (
+                <span style={{ color: T.muted, fontSize: 11.5, lineHeight: 1.4 }}>
+                  {unidade.perfisNaVez.length > 0 ? (
+                    <>
+                      com <b style={{ color: T.text, fontWeight: 600 }}>
+                        {unidade.perfisNaVez.join(" e ")}
+                      </b>
+                      {" · "}
+                    </>
+                  ) : null}
+                  {rotuloDeEspera(unidade.enviadoEm)}
+                </span>
+              )}
+            </div>
           </div>
         </div>
+      </button>
+
+      {/* *"no final dessa linha vai ter o contrato para ser baixado"*. Fora do <button> de
+          propósito (link dentro de botão é HTML inválido) e "-" quando não há documento. */}
+      <div className="asn-pdf">
+        <BotaoDePdfDoContrato contrato={unidade.contrato} />
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -3989,9 +3879,13 @@ function BarraDoGrupo({ grupo }: { grupo: GrupoDaUnidade }) {
   );
 }
 
-// ── O POPUP: A TABELA DE ASSINATURA DAQUELE CONTRATO ────────────────────────
+// ── O POPUP: OS DADOS DO CONTRATO E A TABELA DE ASSINATURA DELE ─────────────
 // *"ao clicar nessa unidade abre um popup que mostra o esquema de assinatura, quem assinou, quem
 // falta"*. Mesmo esqueleto do ModalDaProposta: clique fora fecha, Esc fecha, corpo rolável.
+//
+// ⚠️ O CABEÇALHO "DADOS DO CONTRATO" É DA FUSÃO de 18/08/2026: gerado em, valor, imobiliária e
+// faturado em vieram da visão Contratos antiga, mais o botão do documento. Eles ficam ACIMA da
+// tabela de assinatura, que continua sendo o corpo do popup.
 //
 // TABELA e não linha do tempo: o dono usou a palavra "tabela" duas vezes, e o dado a favorece —
 // metade dos empreendimentos assina com a ordem DESLIGADA (todo mundo no degrau 0), e uma linha do
@@ -4021,6 +3915,7 @@ function ModalDoEsquema({
   // Ordem de verdade = mais de um degrau no contrato. Com todos em 0 a coluna só repetiria zero.
   const temOrdem = new Set(unidade.esquema.map((item) => item.degrau)).size > 1;
   const sublinha = [unidade.comprador, unidade.empreendimento].filter(Boolean).join(" · ");
+  const dados = unidade.contrato;
 
   return (
     <div
@@ -4086,7 +3981,7 @@ function ModalDoEsquema({
               }}
             >
               <FileText aria-hidden="true" size={16} style={{ color: T.sub }} />
-              Assinaturas · {unidade.unidade || "unidade sem nome"}
+              Contrato · {unidade.unidade || "unidade sem nome"}
             </p>
             {sublinha ? (
               <p
@@ -4126,44 +4021,97 @@ function ModalDoEsquema({
         </header>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+          {/* ── OS DADOS DO CONTRATO (a visão Contratos antiga, inteira) ──────── */}
           <div style={{ borderBottom: `1px solid ${T.border}`, padding: "14px 20px" }}>
             <div
               style={{
-                alignItems: "baseline",
+                alignItems: "center",
                 display: "flex",
                 flexWrap: "wrap",
-                gap: "2px 10px",
+                gap: 10,
                 justifyContent: "space-between",
+                marginBottom: 12,
               }}
             >
-              <span style={{ color: T.text, fontSize: 13, fontWeight: 700 }}>
-                {inteiro(unidade.assinadas)} de {inteiro(unidade.total)} assinaturas
-              </span>
-              <span style={{ color: T.muted, fontSize: 12 }}>
-                enviado em {rotuloDeYmd(unidade.enviadoEm)} · {rotuloDeEspera(unidade.enviadoEm)}
-              </span>
-            </div>
-            <div
-              aria-hidden="true"
-              style={{
-                background: T.border,
-                borderRadius: 999,
-                height: 6,
-                marginTop: 8,
-                overflow: "hidden",
-              }}
-            >
-              <div
+              <span
                 style={{
-                  background: unidade.concluida ? T.ok : T.text,
-                  height: "100%",
-                  width: `${percentual}%`,
+                  color: T.muted,
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  letterSpacing: "0.05em",
+                  textTransform: "uppercase",
                 }}
-              />
+              >
+                Dados do contrato
+              </span>
+              <ChipDeAssinatura situacao={unidade.situacao} />
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gap: "12px 16px",
+                gridTemplateColumns: "repeat(auto-fit, minmax(126px, 1fr))",
+              }}
+            >
+              <FatoDoModal rotulo="Gerado em" valor={rotuloDaData(dados?.geradoEm ?? null) || "-"} />
+              <FatoDoModal rotulo="Valor" valor={dados ? brl(dados.valorTabela) : "-"} />
+              <FatoDoModal rotulo="Imobiliária" valor={dados?.imobiliaria ?? "-"} />
+              {/* Por STRING: billing_date é DATE, e new Date mostraria a véspera. */}
+              <FatoDoModal rotulo="Faturado em" valor={rotuloDeYmd(dados?.faturadoEm ?? null) || "-"} />
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <BotaoDePdfDoContrato contrato={unidade.contrato} largo />
             </div>
           </div>
 
-          {unidade.esquema.length === 0 ? (
+          {/* ── O ANDAMENTO DA ASSINATURA ─────────────────────────────────────── */}
+          {unidade.situacao === "aguardando-emissao" ? null : (
+            <div style={{ borderBottom: `1px solid ${T.border}`, padding: "14px 20px" }}>
+              <div
+                style={{
+                  alignItems: "baseline",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "2px 10px",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span style={{ color: T.text, fontSize: 13, fontWeight: 700 }}>
+                  {inteiro(unidade.assinadas)} de {inteiro(unidade.total)} assinaturas
+                </span>
+                <span style={{ color: T.muted, fontSize: 12 }}>
+                  enviado em {rotuloDeYmd(unidade.enviadoEm)} · {rotuloDeEspera(unidade.enviadoEm)}
+                </span>
+              </div>
+              <div
+                aria-hidden="true"
+                style={{
+                  background: T.border,
+                  borderRadius: 999,
+                  height: 6,
+                  marginTop: 8,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    background: unidade.concluida ? T.ok : T.text,
+                    height: "100%",
+                    width: `${percentual}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {unidade.situacao === "aguardando-emissao" ? (
+            <p style={{ color: T.muted, fontSize: 13, margin: 0, padding: 24, textAlign: "center" }}>
+              O contrato foi gerado e ainda não saiu para assinatura. Quando ele for enviado, a
+              tabela de assinatura aparece aqui.
+            </p>
+          ) : unidade.esquema.length === 0 ? (
             <p style={{ color: T.muted, fontSize: 13, margin: 0, padding: 24, textAlign: "center" }}>
               O contrato saiu para assinatura, mas nenhum assinante ficou registrado no envio. Não
               há de quem cobrar sem refazer o envio.

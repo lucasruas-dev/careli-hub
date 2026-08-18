@@ -1,14 +1,17 @@
 import { HubShell } from "@/layouts/hub-shell";
-import { PainelAssinatura } from "@/modules/apolo/blocks/assinaturas/painel-assinatura";
+import { AssinaturasView } from "@/modules/apolo/blocks/assinaturas/assinaturas-view";
 
 export const dynamic = "force-dynamic";
 
-// Painel de assinatura de contratos do Vale do Ouro, no lugar do Painel Assinatura do Power BI.
-// As regras vieram do .pbit e estão em docs/operations/c2x-painel-assinatura-dax.md.
+// CONTRATOS — a tela de assinatura do portal do incorporador, trazida para dentro do Apolo
+// (pedido do Lucas, 18/08/2026), com o painel clássico a um clique de distância.
+//
+// A rota continua sendo `/apolo/assinaturas`: o link circula em conversa e está no changelog. O
+// NOME da tela é Contratos, que é o que ela mostra desde a fusão com a aba de contratos.
 export default function AssinaturasPage() {
   return (
     <HubShell chrome="operational" layoutMode="module">
-      <PainelAssinatura />
+      <AssinaturasView />
     </HubShell>
   );
 }
