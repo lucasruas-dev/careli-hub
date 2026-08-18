@@ -9,7 +9,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { CheckCircle2, FileText, Map as MapaIcone, ReceiptText, Search, X } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  FileText,
+  Map as MapaIcone,
+  ReceiptText,
+  Search,
+  X,
+} from "lucide-react";
 
 import { fonte } from "@/modules/publico/ui/tokens";
 
@@ -627,13 +635,6 @@ export function TelaVendas() {
             </div>
           ) : null}
 
-          {/* ── QUEM É O COMPRADOR: o perfil agregado, no desenho do relatório do Vale do Ouro
-              que o Lucas elogiou (public/bi/vale-do-ouro-*.html, seção #perfil), adaptado aos
-              tokens do portal. Só baldes com contagem + percentual — nada individual. */}
-          {dados.perfilComprador && dados.perfilComprador.vendas > 0 ? (
-            <SecaoPerfilComprador perfil={dados.perfilComprador} />
-          ) : null}
-
           {/* ── LINHA 3: composição do estoque + ritmo, lado a lado ──────────────── */}
           <div className="vnd-l3">
           <section style={cartao}>
@@ -711,7 +712,17 @@ export function TelaVendas() {
       </section>
           </div>
 
-      {/* ── LINHA 4: o Cenário Analítico (a tabela de unidades) em largura total ─ */}
+          {/* ── LINHA 4: QUEM É O COMPRADOR — o perfil agregado, no desenho do relatório do Vale
+              do Ouro que o Lucas elogiou (public/bi/vale-do-ouro-*.html, seção #perfil),
+              adaptado aos tokens do portal. Só baldes com contagem + percentual, nada individual.
+              ⚠️ A ORDEM É PEDIDO DO DONO (18/08/2026): estoque e ritmo vêm ANTES porque são a
+              leitura operacional do dia (o que tenho para vender, em que velocidade); o perfil de
+              quem compra é contexto, leitura mais lenta, e por isso desceu para cá. */}
+          {dados.perfilComprador && dados.perfilComprador.vendas > 0 ? (
+            <SecaoPerfilComprador perfil={dados.perfilComprador} />
+          ) : null}
+
+      {/* ── LINHA 5: o Cenário Analítico (a tabela de unidades) em largura total ─ */}
       <section style={cartao}>
         <div
           style={{
@@ -1191,9 +1202,16 @@ const CSS_RESUMO = `
   .vnd-l2 { align-items: stretch; display: grid; gap: 16px; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
   .vnd-l3 { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .vnd-perfil { display: grid; gap: 14px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 16px; }
+  /* ⚠️ O GRÁFICO EMPILHA ANTES DO RESTO (1200, não 1100), e é medida, não gosto: entre 1100 e
+     1200 ele dividia a linha com o ranking e o palco caía para ~480px, onde os 36 rótulos de topo
+     de barra do modo R$ ficavam com 3,4px de folga entre si (o ponto mais apertado do gráfico
+     inteiro). Ocupando a linha toda nessa faixa, a folga volta para ~15px. Acima de 1200 a linha
+     dupla continua, com folga de 9px ou mais. */
+  @media (max-width: 1200px) {
+    .vnd-l2 { grid-template-columns: minmax(0, 1fr); }
+  }
   @media (max-width: 1100px) {
-    .vnd-l2, .vnd-l3 { grid-template-columns: minmax(0, 1fr); }
-    .vnd-perfil { grid-template-columns: minmax(0, 1fr); }
+    .vnd-l3, .vnd-perfil { grid-template-columns: minmax(0, 1fr); }
   }
 `;
 
@@ -1209,11 +1227,33 @@ const SERIES_BI = [
 ];
 
 // Anatomia vertical do gráfico: ~280px de palco (240px de plotagem + rótulos dos meses), com as
-// barras escalando até 216px para o rótulo de topo (~24px) nunca colidir com o teto do painel.
+// barras escalando até 204px para o rótulo de topo nunca colidir com o teto do painel.
+// ⚠️ O TETO DA BARRA CAIU DE 216 PARA 204 em 18/08/2026: com o rótulo ESCALONADO em dois
+// níveis (ver `elevacaoDoRotulo`), o nível de cima sobe até ~29px acima da barra mais alta, e com
+// 216 esse rótulo saía pelo teto do palco.
 const ALTURA_PLOT = 240;
-const ALTURA_BARRA = 216;
+const ALTURA_BARRA = 204;
 
-/** "1,2 mi" / "850 mil" — para eixo e rótulo de topo no modo R$ (o valor cheio fica no tooltip). */
+// O respiro entre o rótulo e o topo da barra, e o salto de um nível de rótulo para o outro.
+// 14 = os ~11px de altura do rótulo mais 3px de folga: menos que isso e os dois níveis se
+// encostam em vez de se separarem.
+const FOLGA_ATE_A_BARRA = 3;
+const SALTO_DO_NIVEL = 14;
+
+/**
+ * A forma MAIS CURTA de um valor em R$: "1,2M", "378k". É o rótulo de TOPO DE BARRA no modo R$,
+ * onde cada coluna tem ~15px de largura e o mês inteiro ~50px para três rótulos. O `compacto`
+ * ("1,2 mi", "850 mil") continua no eixo e no tooltip, que têm espaço de sobra.
+ */
+const compactoCurto = (valor: number): string => {
+  if (valor >= 1_000_000)
+    return `${(valor / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}M`;
+  if (valor >= 1_000) return `${Math.round(valor / 1_000).toLocaleString("pt-BR")}k`;
+
+  return inteiro(valor);
+};
+
+/** "1,2 mi" / "850 mil" — para o eixo e o tooltip (o valor cheio fica no tooltip). */
 const compacto = (valor: number): string => {
   if (valor >= 1_000_000)
     return `${(valor / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mi`;
@@ -1291,6 +1331,65 @@ function PainelGraficoBI({
   const ticks = ticksDoEixo(maximo, medida === "un");
   const topo = ticks[ticks.length - 1] ?? 1;
   const formatar = (valor: number): string => (medida === "un" ? inteiro(valor) : compacto(valor));
+  // O rótulo de TOPO DE BARRA usa a forma mais curta: no modo R$ ele divide ~50px de mês com
+  // outros dois, e "378k" ocupa metade de "378 mil".
+  const rotularValor = (valor: number): string =>
+    medida === "un" ? inteiro(valor) : compactoCurto(valor);
+
+  // ── O ESCALONAMENTO DOS RÓTULOS, EM DOIS NÍVEIS ──────────────────────────────
+  // Toda barra com valor rotula (regra do dono), e no modo R$ o rótulo ("1,4M") mede ~21px numa
+  // coluna cujo passo é ~15px: deitado lado a lado, vizinho invade vizinho. A saída é alternar a
+  // ALTURA do rótulo, para que dois rótulos que poderiam se tocar nunca dividam a mesma linha.
+  //
+  // ⚠️ O NÍVEL SAI DO CONFLITO REAL, NÃO DE UMA REGRA FIXA POR SÉRIE, e cada pedaço da conta veio
+  // de uma medição na tela:
+  //   • fixar "Canceladas em cima, Propostas e Faturadas embaixo" resolveria só DENTRO do mês: o
+  //     passo entre séries é 15,0px e o passo na FRONTEIRA entre dois meses é 16,1px, ou seja,
+  //     Faturadas de agosto e Propostas de setembro ficariam no mesmo nível a 16px uma da outra;
+  //   • alternar por coluna par/ímpar resolvia rótulo contra rótulo, mas deixava TRÊS rótulos
+  //     escritos em cima da BARRA vizinha (o rótulo mede 21px numa coluna de 13px, então ele
+  //     transborda para os lados e cai sobre a barra alta do lado).
+  // Por isso o rótulo sobe até passar o topo da barra mais alta entre a dele e as duas vizinhas, e
+  // só sobe MAIS um nível quando ficaria na mesma linha do rótulo imediatamente à esquerda. Com
+  // barras de altura parecida isso vira o zigue-zague de dois níveis, e não acumula: o terceiro
+  // rótulo já volta para o nível de baixo (a diferença para o segundo é exatamente um salto).
+  const alturasDasColunas = meses.flatMap((mes) =>
+    SERIES_BI.map((serie) => {
+      const valor = valorDe(mes[serie.chave]);
+
+      return valor > 0 ? Math.max((valor / topo) * ALTURA_BARRA, 2) : 0;
+    }),
+  );
+  const niveisDosRotulos = alturasDasColunas.reduce<number[]>((niveis, altura, coluna) => {
+    // Coluna sem barra não tem rótulo; o zero aqui é só para o índice continuar batendo.
+    if (altura === 0) {
+      niveis.push(0);
+
+      return niveis;
+    }
+
+    const maiorPerto = Math.max(
+      alturasDasColunas[coluna - 1] ?? 0,
+      altura,
+      alturasDasColunas[coluna + 1] ?? 0,
+    );
+    const nivelBase = maiorPerto + FOLGA_ATE_A_BARRA;
+    // Só a coluna imediatamente à esquerda disputa espaço: a de duas casas já está a ~30px, e o
+    // rótulo mais largo mede 21px.
+    const daEsquerda = (alturasDasColunas[coluna - 1] ?? 0) > 0 ? niveis[coluna - 1] ?? 0 : null;
+    const brigaComAEsquerda =
+      daEsquerda !== null && Math.abs(nivelBase - daEsquerda) < SALTO_DO_NIVEL;
+
+    niveis.push(brigaComAEsquerda && daEsquerda !== null ? daEsquerda + SALTO_DO_NIVEL : nivelBase);
+
+    return niveis;
+  }, []);
+  /** Quanto o rótulo desta coluna sobe acima do topo da própria barra (o fio guia preenche). */
+  const elevacaoDoRotulo = (coluna: number): number =>
+    Math.max(
+      0,
+      (niveisDosRotulos[coluna] ?? 0) - (alturasDasColunas[coluna] ?? 0) - FOLGA_ATE_A_BARRA,
+    );
 
   return (
     <section style={{ ...cartao, display: "flex", flexDirection: "column" }}>
@@ -1404,15 +1503,6 @@ function PainelGraficoBI({
               {/* As faixas de mês. */}
               <div style={{ display: "flex", inset: 0, position: "absolute" }}>
                 {meses.map((mes, indice) => {
-                  const maiorDoMes = Math.max(
-                    ...SERIES_BI.map((serie) => valorDe(mes[serie.chave])),
-                  );
-                  // Desempate do máximo: em empate (ex.: propostas === canceladas), só a
-                  // PRIMEIRA série empatada rotula — são colunas vizinhas de ≤24px com vão
-                  // de 2px, dois rótulos nowrap lado a lado colidem.
-                  const chaveMax = SERIES_BI.find(
-                    (serie) => valorDe(mes[serie.chave]) === maiorDoMes,
-                  )?.chave;
                   // Perto das bordas o tooltip ancora no lado, senão vazaria do painel.
                   const alinhamento =
                     indice <= 1 ? "esquerda" : indice >= meses.length - 2 ? "direita" : "centro";
@@ -1429,31 +1519,32 @@ function PainelGraficoBI({
                         background: mesAtivo === indice ? T.soft : "transparent",
                         display: "flex",
                         flex: 1,
-                        gap: 2, // o VÃO separa as barras vizinhas — nunca borda
+                        // O VÃO separa as barras vizinhas (nunca borda). Subiu de 2 para 5 em
+                        // 18/08/2026: com as três séries rotulando, os 3px a mais são o respiro
+                        // que impede o rótulo de uma barra de encostar no da vizinha.
+                        gap: 5,
                         justifyContent: "center",
                         minWidth: 0,
                         padding: "0 3px",
                         position: "relative",
                       }}
                     >
-                      {SERIES_BI.map((serie) => {
+                      {SERIES_BI.map((serie, indiceDaSerie) => {
                         const valor = valorDe(mes[serie.chave]);
-                        // Rótulo SELETIVO: Faturadas sempre (é a série que conta a história);
-                        // das demais, só a série do máximo do mês (chaveMax desempata). No
-                        // modo R$ o rótulo compacto ("850 mil" ~40px) transborda a coluna de
-                        // 24px: quando o máximo é Canceladas — vizinha imediata de Faturadas —
-                        // e Faturadas também rotula, o rótulo do máximo é suprimido (o valor
-                        // cheio já mora no tooltip). O resto fica no tooltip.
-                        const rotular =
-                          valor > 0 &&
-                          (serie.chave === "faturadas" ||
-                            (serie.chave === chaveMax &&
-                              valor !== valorDe(mes.faturadas) &&
-                              !(
-                                medida === "rs" &&
-                                chaveMax === "canceladas" &&
-                                valorDe(mes.faturadas) > 0
-                              )));
+                        // ⚠️ TODA BARRA COM VALOR ROTULA. Decisão do dono em 18/08/2026: *"ainda
+                        // tem barra sem indicador"*. A regra anterior era SELETIVA (Faturadas
+                        // sempre, das outras só a maior do mês) e deixava muda a barra cinza de
+                        // propostas e quase toda barra vermelha de canceladas. Não voltar atrás:
+                        // se dois rótulos brigarem por espaço, o conserto é no FORMATO, no VÃO e
+                        // na ALTURA do rótulo, nunca em esconder número.
+                        //
+                        // O que a regra seletiva evitava, resolvido de outro jeito: rótulo
+                        // deitado em 10px, o formato mais curto que existe no modo R$
+                        // (`compactoCurto`: "378k", "1,2M", metade da largura de "850 mil"), vão
+                        // de 5px entre as séries e o ESCALONAMENTO em dois níveis
+                        // (`elevacaoDoRotulo`). Barra zerada continua sem desenhar e sem rotular.
+                        const coluna = indice * SERIES_BI.length + indiceDaSerie;
+                        const elevacao = valor > 0 ? elevacaoDoRotulo(coluna) : 0;
 
                         return (
                           <div
@@ -1468,19 +1559,37 @@ function PainelGraficoBI({
                               minWidth: 0,
                             }}
                           >
-                            {rotular ? (
-                              // Rótulo em cor de TEXTO, nunca na cor da série.
+                            {valor > 0 ? (
+                              // Rótulo DEITADO e em cor de TEXTO, nunca na cor da série: a
+                              // identidade da série já está na barra embaixo dele.
                               <span
                                 style={{
                                   color: serie.chave === "faturadas" ? T.text : T.muted,
                                   fontSize: 10,
                                   fontWeight: 600,
-                                  marginBottom: 2,
+                                  lineHeight: 1.1,
+                                  marginBottom: FOLGA_ATE_A_BARRA,
                                   whiteSpace: "nowrap",
                                 }}
                               >
-                                {formatar(valor)}
+                                {rotularValor(valor)}
                               </span>
+                            ) : null}
+                            {/* O FIO GUIA do nível de cima: 1px discreto que liga o rótulo
+                                elevado à barra dele. É ele que ocupa a elevação (a coluna é um
+                                flex vertical ancorado embaixo), então some sozinho no nível de
+                                baixo, onde a elevação é zero. */}
+                            {elevacao > 0 ? (
+                              <span
+                                aria-hidden="true"
+                                style={{
+                                  background: T.muted,
+                                  flexShrink: 0,
+                                  height: elevacao,
+                                  opacity: 0.35,
+                                  width: 1,
+                                }}
+                              />
                             ) : null}
                             {/* Valor ZERO não desenha marca — nada de altura mínima inventada. */}
                             {valor > 0 ? (
@@ -2964,7 +3073,84 @@ function SecaoContratos({
   );
 }
 
-// ── ASSINATURAS: KPIs + o quadro por assinante do painel interno + pendentes ─
+// ── ASSINATURAS: os KPIs, quem está com a bola e o quadro completo recolhido ─
+//
+// REDESENHO 18/08/2026. O Lucas reprovou a primeira versão: *"não gostei da tela de assinatura,
+// está longa, fiquei perdido ao tentar usá-la"*. O problema não era o dado, era a HIERARQUIA: a
+// tabela dos 63 assinantes ocupava o palco e, como 61 deles têm 0 na vez e 0 aguardando, o
+// acionável (os 3 contratos parados) virava agulha no palheiro. A ordem agora é:
+//   1. KPIs — mantidos, mas em TILE de verdade, com barra fina onde o número é uma fração
+//      (compradores que assinaram e unidades 100% assinadas);
+//   2. COM A BOLA AGORA — o palco: só quem tem `naVez > 0`, em CARD, com a lista das unidades
+//      que esperam por ele e há quanto tempo. É o que o dono cobra, de quem ele cobra;
+//   3. o quadro dos 63 recolhido num <details> com busca, ordenado por assinados.
+//
+// ⚠️ A LISTA "Contratos aguardando assinatura" FOI FUNDIDA nos cards, não removida: ela dizia
+// exatamente o que os cards dizem (a mesma unidade, a mesma pessoa na vez, a mesma data de
+// envio), só que espalhada por linha em vez de agrupada por quem tem que agir — duas leituras do
+// mesmo dado, e era metade do comprimento que incomodou. O ÚNICO resíduo que card nenhum cobre é
+// o envio SEM assinante registrado (`naVez` vazio, ver o LEFT JOIN em
+// lib/apolo/incorporador/assinaturas.ts): esse continua visível, em bloco próprio logo abaixo.
+//
+// ⚠️ NÃO EXISTE nome de comprador no payload dos pendentes — o shape é empreendimento + unidade +
+// enviadoEm + naVez[] (PendenteDaTela). O card identifica a pendência por UNIDADE, empreendimento
+// (só quando o recorte tem mais de um) e tempo de espera; trazer o comprador exigiria mexer na
+// rota, que está fora deste redesenho.
+const CSS_ASSINATURAS = `
+  /* São QUATRO tiles, número fixo, então a grade é fixa e a quebra é 4 → 2x2 → 1. Com auto-fit
+     a faixa quebrava em 3 + 1 e sobrava um KPI órfão na segunda linha, que é justo o tipo de
+     irregularidade que salta aos olhos numa faixa de topo. */
+  .asn-kpis { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  @media (max-width: 1120px) { .asn-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .asn-kpis { grid-template-columns: minmax(0, 1fr); } }
+  .asn-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  /* auto-FIT (e não auto-fill) + teto de 520px no card: com auto-fill sobrava trilho vazio à
+     direita quando só uma pessoa está com a bola, e sem o teto esse card único esticava a linha
+     inteira. Assim ele fica do tamanho dos irmãos, tenha um ou quatro. */
+  .asn-cards > article { max-width: 520px; }
+  /* Abaixo de ~900px o card fica estreito demais para a linha "unidade … há N dias": empilha. */
+  @media (max-width: 900px) { .asn-cards { grid-template-columns: minmax(0, 1fr); } }
+  .asn-sumario { cursor: pointer; list-style: none; }
+  .asn-sumario::-webkit-details-marker { display: none; }
+  .asn-seta { flex: 0 0 auto; transition: transform .16s ease; }
+  details[open] .asn-seta { transform: rotate(180deg); }
+  /* A tabela recolhida rola DENTRO dela mesma (cabeçalho fixo): aberta, ela não pode empurrar a
+     página de volta ao comprimento que o dono reprovou. */
+  .asn-rolagem { max-height: 420px; overflow: auto; }
+  .asn-tabela { border-collapse: separate; border-spacing: 0; min-width: 520px; width: 100%; }
+  .asn-tabela thead th {
+    background: var(--inc-card); box-shadow: inset 0 -1px 0 var(--inc-border);
+    color: var(--inc-muted); font-size: 11px; font-weight: 600; letter-spacing: .04em;
+    padding: 9px 10px 9px 0; position: sticky; text-transform: uppercase; top: 0;
+    white-space: nowrap; z-index: 1;
+  }
+  .asn-tabela td { padding: 9px 10px 9px 0; }
+  .asn-tabela thead th:first-child, .asn-tabela tbody td:first-child { padding-left: 10px; }
+  /* Zebra em cinza TRANSLÚCIDO, não em token: o mesmo valor serve nos dois temas (sobre branco
+     vira quase-cinza, sobre preto vira quase-grafite) sem precisar de segunda regra no dark. */
+  .asn-tabela tbody tr:nth-child(2n) td { background: rgb(127 127 127 / .06); }
+`;
+
+/** Quantos dias inteiros desde 'YYYY-MM-DD', pela data LOCAL (new Date do ymd é UTC: erra um dia). */
+function diasDesdeYmd(ymd: null | string): null | number {
+  const texto = String(ymd ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(texto)) return null;
+  const [ano, mes, dia] = texto.split("-").map(Number);
+  const entao = new Date(ano ?? 0, (mes ?? 1) - 1, dia ?? 1).getTime();
+  if (Number.isNaN(entao)) return null;
+
+  return Math.max(0, Math.floor((Date.now() - entao) / 86_400_000));
+}
+
+/** "há 12 dias" / "há 1 dia" / "hoje" — a espera, do jeito que se fala. */
+function rotuloDeEspera(ymd: null | string): string {
+  const dias = diasDesdeYmd(ymd);
+  if (dias === null) return "";
+  if (dias === 0) return "hoje";
+
+  return dias === 1 ? "há 1 dia" : `há ${inteiro(dias)} dias`;
+}
+
 function SecaoAssinaturas({
   cache,
   emp,
@@ -2984,217 +3170,575 @@ function SecaoAssinaturas({
 
   const { assinantes, kpis, pendentes } = estado.dados;
 
+  // O palco: só quem tem contrato parado ESPERANDO por ele. A ordem já vem do servidor pelo
+  // gargalo; reordenar aqui é barato e deixa o card independente de mudança na rota.
+  const comABola = assinantes
+    .filter((assinante) => assinante.naVez > 0)
+    .sort((a, b) => b.naVez - a.naVez || a.nome.localeCompare(b.nome, "pt-BR"));
+
+  // O resíduo que card nenhum cobre: envio válido sem NENHUM assinante registrado.
+  const semDono = pendentes.filter((pendente) => pendente.naVez.length === 0);
+  const paradosComDono = pendentes.length - semDono.length;
+
+  // O empreendimento só entra na linha quando o recorte tem mais de um: no recorte de um
+  // loteamento só, repetir o nome em toda linha é ruído.
+  const variosEmpreendimentos =
+    new Set(pendentes.map((pendente) => pendente.empreendimento).filter(Boolean)).size > 1;
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      {/* ── A LINHA DE KPIs, no mesmo desenho da faixa do Resumo ─────────────── */}
-      <section style={{ ...cartao, padding: "16px 20px" }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "14px 32px" }}>
-          <Numero
-            destaque
+      {/* Layout responsivo em classe pela mesma razão do CSS_RESUMO: media query não alcança
+          estilo inline, e os cards precisam empilhar no celular. */}
+      <style>{CSS_ASSINATURAS}</style>
+
+      {/* ── OS KPIs ──────────────────────────────────────────────────────────── */}
+      <section style={{ ...cartao, padding: 16 }}>
+        <div className="asn-kpis">
+          <TileDeAssinatura
+            apoio="das assinaturas de comprador já colhidas"
+            progresso={kpis.pctCompradoresAssinaram}
             rotulo="Compradores que assinaram"
+            sufixo="%"
             valor={
-              kpis.pctCompradoresAssinaram === null
-                ? "sem dado"
-                : `${pct1(kpis.pctCompradoresAssinaram)}%`
+              kpis.pctCompradoresAssinaram === null ? null : pct1(kpis.pctCompradoresAssinaram)
             }
           />
-          <Numero
-            extra={`de ${inteiro(kpis.unidadesComEnvio)} com contrato enviado`}
+          <TileDeAssinatura
+            apoio="unidades com contrato enviado para assinar"
+            progresso={
+              kpis.unidadesComEnvio > 0
+                ? (kpis.unidadesTotalmenteAssinadas / kpis.unidadesComEnvio) * 100
+                : null
+            }
             rotulo="Unidades 100% assinadas"
+            sufixo={`de ${inteiro(kpis.unidadesComEnvio)}`}
             valor={inteiro(kpis.unidadesTotalmenteAssinadas)}
           />
-          <Numero
-            extra="da geração do contrato à última assinatura"
+          <TileDeAssinatura
+            apoio="da geração do contrato à última assinatura"
             rotulo="Tempo médio"
-            valor={
-              kpis.tempoMedioDias === null ? "sem dado" : `${pct1(kpis.tempoMedioDias)} dias`
-            }
+            sufixo="dias"
+            valor={kpis.tempoMedioDias === null ? null : pct1(kpis.tempoMedioDias)}
           />
-          <Numero
-            extra="contratos que ainda não saíram para assinar"
+          <TileDeAssinatura
+            apoio="contratos que ainda não saíram para assinar"
             rotulo="Aguardando emissão"
             valor={inteiro(kpis.aguardandoEmissao)}
           />
         </div>
       </section>
 
-      {/* ── O QUADRO POR ASSINANTE (o desenho do painel interno) ─────────────── */}
+      {/* ── O PALCO: COM A BOLA AGORA ────────────────────────────────────────── */}
       <section style={cartao}>
-        <h2 style={titulo}>
-          Quadro por assinante{" "}
-          <span style={{ color: T.muted, fontSize: 12, fontWeight: 500 }}>
-            quem está com a bola
-          </span>
-        </h2>
+        <div
+          style={{
+            alignItems: "baseline",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "4px 10px",
+            justifyContent: "space-between",
+          }}
+        >
+          <h2 style={titulo}>Com a bola agora</h2>
+          {comABola.length > 0 ? (
+            <span style={{ color: T.muted, fontSize: 12.5 }}>
+              {inteiro(paradosComDono)}{" "}
+              {paradosComDono === 1 ? "contrato parado" : "contratos parados"} com{" "}
+              {inteiro(comABola.length)} {comABola.length === 1 ? "pessoa" : "pessoas"}
+            </span>
+          ) : null}
+        </div>
         <p style={{ color: T.muted, fontSize: 12.5, margin: "6px 0 0" }}>
-          Na vez é o contrato parado ESPERANDO a pessoa; aguardando é o que ainda depende de
-          alguém antes dela na ordem de assinatura.
+          A fila destes contratos parou nestas pessoas. É delas que a assinatura depende agora.
         </p>
 
-        {assinantes.length === 0 ? (
-          <p style={{ color: T.muted, fontSize: 13, margin: "20px 0 4px", textAlign: "center" }}>
-            Nenhum contrato deste recorte saiu para assinatura ainda.
-          </p>
-        ) : (
-          <div style={{ marginTop: 12, overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", fontSize: 13, minWidth: 560, width: "100%" }}>
-              <thead>
-                <tr>
-                  {["Assinante", "Assinados", "Na vez", "Aguardando"].map((coluna) => (
-                    <th
-                      key={coluna}
-                      style={{
-                        borderBottom: `1px solid ${T.border}`,
-                        color: T.muted,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        letterSpacing: "0.04em",
-                        padding: "8px 10px 8px 0",
-                        textAlign: coluna === "Assinante" ? "left" : "right",
-                        textTransform: "uppercase",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {coluna}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {assinantes.map((assinante) => (
-                  <tr key={`${assinante.nome}-${assinante.papel ?? ""}`}>
-                    <td style={{ ...celula, color: T.text, fontWeight: 600 }}>
-                      {assinante.nome}
-                      {assinante.papel ? (
-                        <span style={{ color: T.muted, fontWeight: 500 }}>
-                          {" "}
-                          · {assinante.papel}
-                        </span>
-                      ) : null}
-                    </td>
-                    {/* Colunas de número: tabular-nums para as casas alinharem. */}
-                    <td
-                      style={{
-                        ...celula,
-                        fontVariantNumeric: "tabular-nums",
-                        textAlign: "right",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {inteiro(assinante.assinou)}
-                    </td>
-                    {/* NA VEZ em destaque: é o gargalo que o dono quer ver. Pílula grafite com
-                        preto (bg inverso), nunca dourado — dourado não é estado. */}
-                    <td style={{ ...celula, textAlign: "right", whiteSpace: "nowrap" }}>
-                      {assinante.naVez > 0 ? (
-                        <span
-                          style={{
-                            background: T.btnBg,
-                            borderRadius: 999,
-                            color: T.btnFg,
-                            fontSize: 12,
-                            fontVariantNumeric: "tabular-nums",
-                            fontWeight: 700,
-                            padding: "2px 10px",
-                          }}
-                        >
-                          {inteiro(assinante.naVez)}
-                        </span>
-                      ) : (
-                        <span style={{ color: T.muted, fontVariantNumeric: "tabular-nums" }}>0</span>
-                      )}
-                    </td>
-                    <td
-                      style={{
-                        ...celula,
-                        color: T.muted,
-                        fontVariantNumeric: "tabular-nums",
-                        textAlign: "right",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {inteiro(assinante.aguardandoAnteriores)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      {/* ── OS CONTRATOS PENDENTES, com quem está na vez em cada um ──────────── */}
-      <section style={cartao}>
-        <h2 style={titulo}>Contratos aguardando assinatura</h2>
-
-        {pendentes.length === 0 ? (
-          // O estado vazio que a operação MERECE ver: sem pendência, a visão comemora.
+        {comABola.length === 0 ? (
+          // O ESTADO VAZIO DE VERDADE: ninguém está segurando nada. Sem tabela, sem lista, sem
+          // fazer o dono procurar. O Vista Alegre vive neste estado; a Lagoa Bonita, não.
           <div
             style={{
               alignItems: "center",
               display: "flex",
               flexDirection: "column",
               gap: 8,
-              padding: "36px 0 28px",
+              padding: "34px 0 26px",
               textAlign: "center",
             }}
           >
             <CheckCircle2 aria-hidden="true" size={30} style={{ color: T.ok }} />
             <p style={{ color: T.text, fontSize: 15, fontWeight: 700, margin: 0 }}>
-              Tudo assinado
+              Ninguém está segurando contrato
             </p>
-            <p style={{ color: T.muted, fontSize: 12.5, margin: 0, maxWidth: 420 }}>
-              Nenhum contrato enviado está esperando assinatura neste recorte.
+            <p style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.55, margin: 0, maxWidth: 440 }}>
+              Nenhum contrato enviado está parado esperando assinatura neste recorte.
               {kpis.aguardandoEmissao > 0
-                ? ` ${inteiro(kpis.aguardandoEmissao)} ${kpis.aguardandoEmissao === 1 ? "contrato ainda não saiu" : "contratos ainda não saíram"} para assinatura, veja o indicador acima.`
+                ? ` ${inteiro(kpis.aguardandoEmissao)} ${kpis.aguardandoEmissao === 1 ? "contrato ainda não saiu" : "contratos ainda não saíram"} para assinar, veja o indicador acima.`
                 : ""}
             </p>
           </div>
         ) : (
-          <>
-            <p style={{ color: T.muted, fontSize: 12.5, margin: "6px 0 0" }}>
-              Do mais antigo para o mais novo: é onde a espera dói há mais tempo.
-            </p>
-            <div style={{ marginTop: 8 }}>
-              {pendentes.map((pendente, indice) => (
-                <div
-                  key={`${pendente.unidade}-${pendente.enviadoEm}-${indice}`}
-                  style={{
-                    alignItems: "baseline",
-                    borderBottom:
-                      indice === pendentes.length - 1 ? "none" : `1px solid ${T.border}`,
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "4px 12px",
-                    padding: "10px 0",
-                  }}
-                >
-                  <span style={{ color: T.text, fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
-                    {pendente.unidade}
-                  </span>
-                  {pendente.empreendimento ? (
-                    <span style={{ color: T.muted, fontSize: 12 }}>{pendente.empreendimento}</span>
-                  ) : null}
-                  {pendente.enviadoEm ? (
-                    <span style={{ color: T.muted, fontSize: 12, whiteSpace: "nowrap" }}>
-                      enviado em {rotuloDeYmd(pendente.enviadoEm)}
-                    </span>
-                  ) : null}
-                  <span style={{ color: T.sub, fontSize: 12.5, marginLeft: "auto", minWidth: 0 }}>
-                    Na vez:{" "}
-                    <b style={{ color: T.text }}>
-                      {pendente.naVez.length > 0
-                        ? pendente.naVez.join(", ")
-                        : "sem assinante registrado"}
-                    </b>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </>
+          <div className="asn-cards" style={{ marginTop: 14 }}>
+            {comABola.map((assinante) => (
+              <CardComABola
+                assinante={assinante}
+                key={`${assinante.nome}-${assinante.papel ?? ""}`}
+                mostrarEmpreendimento={variosEmpreendimentos}
+                pendentes={pendentes.filter((pendente) =>
+                  pendente.naVez.includes(assinante.nome),
+                )}
+              />
+            ))}
+          </div>
         )}
       </section>
+
+      {/* ── O RESÍDUO: envio que saiu sem nenhum assinante registrado ────────── */}
+      {semDono.length > 0 ? (
+        <section style={cartao}>
+          <h2 style={titulo}>
+            Sem assinante registrado{" "}
+            <span style={{ color: T.muted, fontSize: 12, fontWeight: 500 }}>
+              ({inteiro(semDono.length)})
+            </span>
+          </h2>
+          <p style={{ color: T.muted, fontSize: 12.5, margin: "6px 0 0" }}>
+            O contrato saiu para assinatura, mas nenhum assinante ficou registrado no envio. Não há
+            de quem cobrar sem refazer o envio.
+          </p>
+          <div style={{ marginTop: 10 }}>
+            {semDono.map((pendente, indice) => (
+              <div
+                key={`${pendente.empreendimento}-${pendente.unidade}-${pendente.enviadoEm}-${indice}`}
+                style={{
+                  alignItems: "baseline",
+                  borderTop: indice === 0 ? "none" : `1px solid ${T.border}`,
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "2px 10px",
+                  padding: "8px 0",
+                }}
+              >
+                <span style={{ color: T.text, fontSize: 13, fontWeight: 700 }}>
+                  {pendente.unidade || "unidade sem nome"}
+                </span>
+                {variosEmpreendimentos && pendente.empreendimento ? (
+                  <span style={{ color: T.muted, fontSize: 12 }}>{pendente.empreendimento}</span>
+                ) : null}
+                <span
+                  style={{
+                    color: T.muted,
+                    fontSize: 12,
+                    marginLeft: "auto",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  enviado em {rotuloDeYmd(pendente.enviadoEm)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {/* ── O QUADRO COMPLETO, RECOLHIDO ─────────────────────────────────────── */}
+      <QuadroCompletoDeAssinantes assinantes={assinantes} />
     </div>
+  );
+}
+
+/**
+ * Um tile de KPI da faixa de assinaturas: rótulo em caixa alta, número grande com o sufixo
+ * discreto ao lado, linha de apoio e, quando o número é uma FRAÇÃO de algo, a barra fina que
+ * mostra quanto falta. A barra é monocromática (tinta do texto sobre a borda): dourado não é
+ * estado, e cor por estado aqui só confundiria com o verde de "assinado".
+ * ⚠️ SEM tabular-nums no número grande, igual ao `Numero` do Resumo: tabular é para coluna.
+ */
+function TileDeAssinatura({
+  apoio,
+  progresso,
+  rotulo,
+  sufixo,
+  valor,
+}: {
+  apoio: string;
+  progresso?: null | number;
+  rotulo: string;
+  sufixo?: string;
+  valor: null | string;
+}) {
+  const barra = progresso === null || progresso === undefined ? null : Math.min(100, Math.max(0, progresso));
+
+  return (
+    <div
+      style={{
+        background: T.soft,
+        border: `1px solid ${T.border}`,
+        borderRadius: 12,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        minWidth: 0,
+        padding: "13px 14px 14px",
+      }}
+    >
+      <div
+        style={{
+          color: T.muted,
+          fontSize: 10.5,
+          fontWeight: 600,
+          letterSpacing: "0.05em",
+          lineHeight: 1.35,
+          textTransform: "uppercase",
+        }}
+      >
+        {rotulo}
+      </div>
+
+      {valor === null ? (
+        <div style={{ color: T.muted, fontSize: 17, fontWeight: 600, lineHeight: 1.2 }}>
+          sem dado
+        </div>
+      ) : (
+        <div style={{ alignItems: "baseline", display: "flex", flexWrap: "wrap", gap: 5 }}>
+          <span style={{ color: T.text, fontSize: 27, fontWeight: 700, lineHeight: 1.05 }}>
+            {valor}
+          </span>
+          {sufixo ? (
+            <span style={{ color: T.muted, fontSize: 13, fontWeight: 600 }}>{sufixo}</span>
+          ) : null}
+        </div>
+      )}
+
+      <div style={{ color: T.muted, fontSize: 11, lineHeight: 1.4, marginTop: "auto" }}>
+        {apoio}
+      </div>
+
+      {barra === null ? null : (
+        <div
+          aria-hidden="true"
+          style={{ background: T.border, borderRadius: 999, height: 4, overflow: "hidden" }}
+        >
+          <div style={{ background: T.text, height: "100%", width: `${barra}%` }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Quantas unidades o card mostra antes de resumir o resto em "+N". */
+const UNIDADES_NO_CARD = 4;
+
+/**
+ * O CARD do gargalo: quem está com a bola, quantos contratos pararam nele e QUAIS unidades
+ * esperam por ele, da espera mais antiga para a mais nova (a ordem que vem do servidor).
+ * O número mora num selo invertido (grafite com preto), que é o único destaque forte da tela.
+ */
+function CardComABola({
+  assinante,
+  mostrarEmpreendimento,
+  pendentes,
+}: {
+  assinante: AssinanteDaTela;
+  mostrarEmpreendimento: boolean;
+  pendentes: PendenteDaTela[];
+}) {
+  const visiveis = pendentes.slice(0, UNIDADES_NO_CARD);
+  const restantes = pendentes.length - visiveis.length;
+
+  return (
+    <article
+      style={{
+        background: T.soft,
+        border: `1px solid ${T.border}`,
+        borderRadius: 12,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        minWidth: 0,
+        padding: 14,
+      }}
+    >
+      <header style={{ alignItems: "center", display: "flex", gap: 12 }}>
+        <span
+          style={{
+            alignItems: "center",
+            background: T.btnBg,
+            borderRadius: 11,
+            color: T.btnFg,
+            display: "flex",
+            flex: "0 0 auto",
+            fontSize: 20,
+            fontWeight: 700,
+            height: 42,
+            justifyContent: "center",
+            minWidth: 42,
+            padding: "0 8px",
+          }}
+        >
+          {inteiro(assinante.naVez)}
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              color: T.text,
+              fontSize: 15.5,
+              fontWeight: 700,
+              lineHeight: 1.25,
+              overflowWrap: "anywhere",
+            }}
+          >
+            {assinante.nome}
+          </div>
+          <div style={{ color: T.muted, fontSize: 11.5, marginTop: 2 }}>
+            {assinante.papel ? `${assinante.papel} · ` : ""}
+            {assinante.naVez === 1 ? "1 contrato esperando" : `${inteiro(assinante.naVez)} contratos esperando`}
+          </div>
+        </div>
+      </header>
+
+      {visiveis.length === 0 ? (
+        <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>
+          As unidades desta pendência não vieram na lista de contratos deste recorte.
+        </p>
+      ) : (
+        <div>
+          <div
+            style={{
+              color: T.muted,
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+            }}
+          >
+            Unidades esperando
+          </div>
+          <div style={{ marginTop: 4 }}>
+            {visiveis.map((pendente, indice) => (
+              <div
+                key={`${pendente.empreendimento}-${pendente.unidade}-${pendente.enviadoEm}-${indice}`}
+                style={{
+                  alignItems: "baseline",
+                  borderTop: indice === 0 ? "none" : `1px solid ${T.border}`,
+                  display: "flex",
+                  gap: 10,
+                  padding: "7px 0",
+                }}
+              >
+                <span style={{ minWidth: 0 }}>
+                  <span
+                    style={{
+                      color: T.text,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    {pendente.unidade || "unidade sem nome"}
+                  </span>
+                  {mostrarEmpreendimento && pendente.empreendimento ? (
+                    <span style={{ color: T.muted, fontSize: 11.5 }}>
+                      {" "}
+                      {pendente.empreendimento}
+                    </span>
+                  ) : null}
+                </span>
+                <span
+                  style={{
+                    color: T.muted,
+                    fontSize: 11.5,
+                    fontVariantNumeric: "tabular-nums",
+                    marginLeft: "auto",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={`Enviado em ${rotuloDeYmd(pendente.enviadoEm)}`}
+                >
+                  {rotuloDeEspera(pendente.enviadoEm)}
+                </span>
+              </div>
+            ))}
+          </div>
+          {restantes > 0 ? (
+            <div
+              style={{ borderTop: `1px solid ${T.border}`, color: T.muted, fontSize: 12, paddingTop: 7 }}
+            >
+              +{inteiro(restantes)} {restantes === 1 ? "unidade" : "unidades"}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </article>
+  );
+}
+
+/**
+ * O QUADRO COMPLETO, recolhido: o histórico dos 63 assinantes vira consulta, não palco. Fechado
+ * por padrão, com busca por nome e ordenado por ASSINADOS (o que faz sentido num quadro de
+ * histórico; o gargalo já está nos cards acima).
+ *
+ * ⚠️ AS COLUNAS "Na vez" e "Aguardando" NÃO SOMEM quando estão zeradas para todo mundo: coluna
+ * que aparece e desaparece conforme o recorte faz o leitor duvidar do que está vendo. Os zeros
+ * ficam esmaecidos (T.muted) e o número que importa fica na tinta do texto.
+ */
+function QuadroCompletoDeAssinantes({ assinantes }: { assinantes: AssinanteDaTela[] }) {
+  const [busca, setBusca] = useState("");
+
+  if (assinantes.length === 0) {
+    return (
+      <section style={cartao}>
+        <h2 style={titulo}>Quadro por assinante</h2>
+        <p style={{ color: T.muted, fontSize: 13, margin: "16px 0 4px", textAlign: "center" }}>
+          Nenhum contrato deste recorte saiu para assinatura ainda.
+        </p>
+      </section>
+    );
+  }
+
+  const alvo = busca.trim().toLowerCase();
+  const lista = [...assinantes]
+    .filter((assinante) => (alvo ? assinante.nome.toLowerCase().includes(alvo) : true))
+    .sort(
+      (a, b) =>
+        b.assinou - a.assinou || b.naVez - a.naVez || a.nome.localeCompare(b.nome, "pt-BR"),
+    );
+
+  return (
+    <details style={{ ...cartao, padding: 0 }}>
+      <summary
+        className="asn-sumario"
+        style={{
+          alignItems: "center",
+          display: "flex",
+          gap: 10,
+          justifyContent: "space-between",
+          padding: "15px 20px",
+        }}
+      >
+        <span style={{ minWidth: 0 }}>
+          <span style={{ ...titulo, fontSize: 14 }}>
+            Ver todos os assinantes ({inteiro(assinantes.length)})
+          </span>
+          <span style={{ color: T.muted, display: "block", fontSize: 12, marginTop: 3 }}>
+            O histórico completo: quem já assinou quantos contratos.
+          </span>
+        </span>
+        <ChevronDown aria-hidden="true" className="asn-seta" size={17} style={{ color: T.muted }} />
+      </summary>
+
+      <div style={{ borderTop: `1px solid ${T.border}`, padding: "14px 20px 18px" }}>
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+            justifyContent: "space-between",
+            marginBottom: 12,
+          }}
+        >
+          <label
+            style={{
+              alignItems: "center",
+              background: T.soft,
+              border: `1px solid ${T.border}`,
+              borderRadius: 10,
+              display: "flex",
+              gap: 8,
+              minWidth: 220,
+              padding: "0 12px",
+            }}
+          >
+            <Search aria-hidden="true" size={15} style={{ color: T.muted, flexShrink: 0 }} />
+            <input
+              onChange={(evento) => setBusca(evento.target.value)}
+              placeholder="Buscar assinante pelo nome"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: T.text,
+                flex: 1,
+                fontFamily: fonte,
+                fontSize: 14,
+                minWidth: 0,
+                outline: "none",
+                padding: "8px 0",
+              }}
+              value={busca}
+            />
+          </label>
+          <span style={{ color: T.muted, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+            {alvo
+              ? `${inteiro(lista.length)} de ${inteiro(assinantes.length)}`
+              : `${inteiro(assinantes.length)} assinantes`}
+          </span>
+        </div>
+
+        {lista.length === 0 ? (
+          <p style={{ color: T.muted, fontSize: 13, margin: "18px 0 6px", textAlign: "center" }}>
+            Nenhum assinante com esse nome neste recorte.
+          </p>
+        ) : (
+          <div className="asn-rolagem">
+            <table className="asn-tabela">
+              <thead>
+                <tr>
+                  {["Assinante", "Assinados", "Na vez", "Aguardando"].map((coluna) => (
+                    <th key={coluna} style={{ textAlign: coluna === "Assinante" ? "left" : "right" }}>
+                      {coluna}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {lista.map((assinante) => (
+                  <tr key={`${assinante.nome}-${assinante.papel ?? ""}`}>
+                    <td style={{ color: T.text, fontSize: 13, fontWeight: 600 }}>
+                      {assinante.nome}
+                      {assinante.papel ? (
+                        <span style={{ color: T.muted, fontWeight: 500 }}> · {assinante.papel}</span>
+                      ) : null}
+                    </td>
+                    <NumeroDaColuna valor={assinante.assinou} />
+                    <NumeroDaColuna destaque valor={assinante.naVez} />
+                    <NumeroDaColuna valor={assinante.aguardandoAnteriores} />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <p style={{ color: T.muted, fontSize: 11.5, lineHeight: 1.5, margin: "12px 0 0" }}>
+          Na vez é o contrato parado esperando a pessoa. Aguardando é o que ainda depende de alguém
+          antes dela na ordem de assinatura.
+        </p>
+      </div>
+    </details>
+  );
+}
+
+/**
+ * Uma célula de número do quadro: tabular-nums para as casas alinharem, ZERO esmaecido para o
+ * olho pular direto no que tem número, e o "na vez" positivo na tinta do texto (é o único que
+ * pede ação). Sem pílula: a pílula era do tempo em que esta tabela era o palco.
+ */
+function NumeroDaColuna({ destaque, valor }: { destaque?: boolean; valor: number }) {
+  const zero = valor === 0;
+
+  return (
+    <td
+      style={{
+        color: zero ? T.muted : T.text,
+        fontSize: 13,
+        fontVariantNumeric: "tabular-nums",
+        fontWeight: !zero && destaque ? 700 : 500,
+        opacity: zero ? 0.55 : 1,
+        textAlign: "right",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {inteiro(valor)}
+    </td>
   );
 }
 

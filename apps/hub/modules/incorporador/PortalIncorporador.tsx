@@ -68,7 +68,7 @@ export function PortalIncorporador({
   }, [carregarSessao]);
 
   if (carregando) {
-    return <Moldura logoEscuraUrl={logoEscuraUrl} logoUrl={logoUrl} nome={nome}><div style={{ color: T.muted, fontSize: 14, textAlign: "center" }}>Carregando…</div></Moldura>;
+    return <Moldura logoEscuraUrl={logoEscuraUrl} logoUrl={logoUrl} nome={nome} slug={slug}><div style={{ color: T.muted, fontSize: 14, textAlign: "center" }}>Carregando…</div></Moldura>;
   }
 
   // ⚠️ A SESSAO TEM QUE SER DESTE PORTAL. O cookie e um so por navegador, entao quem tem sessao
@@ -82,7 +82,7 @@ export function PortalIncorporador({
 
   if (!sessao || !daCasa) {
     return (
-      <Moldura logoEscuraUrl={logoEscuraUrl} logoUrl={logoUrl} nome={nome}>
+      <Moldura logoEscuraUrl={logoEscuraUrl} logoUrl={logoUrl} nome={nome} slug={slug}>
         <Porta aoEntrar={carregarSessao} slug={slug} />
         {sessao && !daCasa ? (
           <p
@@ -123,12 +123,20 @@ function Moldura({
   logoEscuraUrl,
   logoUrl,
   nome,
+  slug,
 }: {
   children: React.ReactNode;
   logoEscuraUrl: string | null;
   logoUrl: string | null;
   nome: string;
+  slug: string;
 }) {
+  // ⚠️ A ASSINATURA DO PANTEON NA PORTA. O Lucas viu o login da Lagoa Bonita com o nome solto e
+  // apontou (18/08/2026): *"aqui faltou a logo do Panteon em cima do Lagoa Bonita"*. O padrão é
+  // "quem é a plataforma" em cima e "de quem é a carteira" embaixo, o mesmo eixo do sidebar de
+  // dentro. O portal PERSONALIZADO (Cecílio) fica de fora: lá a porta é a marca dele, decisão
+  // dele mesmo já aprovada. Ver [[perfis-de-portal]].
+  const assinaPanteon = !ehPortalPersonalizado(slug);
   return (
     <div
       className="inc"
@@ -146,6 +154,31 @@ function Moldura({
       <style>{TEMA_CSS}</style>
 
       <div style={{ maxWidth: 400, width: "100%" }}>
+        {assinaPanteon ? (
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              gap: 8,
+              justifyContent: "center",
+              marginBottom: 18,
+            }}
+          >
+            {/* Símbolo + nome escrito, igual ao topo do sidebar: a logo horizontal do Panteon só
+                existe em branco e sumiria neste fundo claro. */}
+            <Marca
+              altura={26}
+              escuraUrl="/panteon-mark-light.png"
+              largura={26}
+              nome="Panteon"
+              url="/panteon-mark.png"
+            />
+            <span style={{ color: T.text, fontSize: 17, fontWeight: 700, letterSpacing: 0.2 }}>
+              Panteon
+            </span>
+          </div>
+        ) : null}
+
         {/* A marca do cliente é o assunto da tela, não um selo de canto: 256px de largura,
             referência que o Lucas deu apontando a logo do login do Panteon. */}
         <div style={{ marginBottom: 30, textAlign: "center" }}>

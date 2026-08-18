@@ -36,6 +36,49 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-panteon-na-porta-do-portal",
+    deployedAt: "2026-08-18T08:40:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "A tela de login do portal passou a assinar Panteon acima do nome do empreendimento, como o menu de dentro ja fazia",
+              "O portal personalizado segue com a marca do proprio cliente na porta, sem mudanca",
+            ],
+            screen: "Login do portal",
+          },
+          {
+            items: [
+              "A aba Assinaturas foi reorganizada: em cima, QUEM ESTA COM A BOLA (um card por pessoa, com os contratos parados com ela e ha quantos dias), e o quadro completo dos assinantes virou uma lista recolhida com busca",
+              "Indicadores da aba ganharam barra de progresso no que e fracao (compradores que assinaram, unidades 100% assinadas)",
+              "Quando ninguem esta segurando contrato, a tela diz isso em vez de mostrar uma tabela cheia de zeros",
+            ],
+            screen: "Vendas - Assinaturas",
+          },
+          {
+            items: [
+              "TODA barra dos graficos mostra o valor no topo, tambem no modo R$ (antes so a maior de cada mes)",
+              "Ordem do resumo trocada: composicao do estoque e ritmo de vendas vem antes do perfil do comprador",
+            ],
+            screen: "Vendas - Resumo",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.152.0 (2026-08-18-contratos-e-assinaturas-no-portal)",
+    technical: {
+      done:
+        "Moldura da porta recebe o slug e assina com o simbolo + nome do Panteon quando ehPortalPersonalizado(slug) e falso. Aba Assinaturas redesenhada (tiles com barra de progresso, cards de 'com a bola agora' com unidades e tempo de espera, lista dos 63 recolhida com busca; a lista de pendentes foi fundida nos cards e sobrou bloco proprio para envio sem assinante). Rotulo em TODA barra com valor: escalonamento por conflito real (o rotulo sobe acima da barra mais alta da vizinhanca e salta um nivel quando encostaria no rotulo a esquerda), formato curto no modo R$. Medido na tela: 0 colisao rotulo-rotulo e 0 rotulo-barra nos dois modos, sem texto vertical. Ordem das secoes do Resumo trocada.",
+      motivation:
+        "Lucas: faltou a logo do Panteon na porta; a tela de assinatura estava longa e confusa; ainda havia barra sem indicador; e o perfil do comprador vinha antes do estoque e do ritmo.",
+    },
+    title: "Assinaturas reorganizada, Panteon na porta e todo grafico com numero",
+    type: "melhoria",
+    version: "1.152.1",
+  },
+  {
     buildTag: "2026-08-18-contratos-e-assinaturas-no-portal",
     deployedAt: "2026-08-18T03:30:00-03:00",
     modules: [
