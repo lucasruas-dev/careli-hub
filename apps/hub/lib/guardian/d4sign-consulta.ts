@@ -123,25 +123,36 @@ const LIMIAR_DO_CATALOGO = 8;
  * a situação do documento confirmada e a marcação de quem assinou vinda do C2X.
  *
  * ═════════════════════════════════════════════════════════════════════════════════════════════
- * ⚠️ E ISSO TEM UM PREÇO QUE PRECISA ESTAR ESCRITO: NO VALE DO OURO A TROCA DE FONTE NÃO CORRIGE
- * NENHUMA ASSINATURA. Medido em 18/08/2026 (scripts/apolo/medir-divergencia-d4sign.mjs), no
- * recorte VOC+VOL, que é o padrão da tela:
+ * ⚠️ E O TETO NÃO ATRAPALHA O CASO QUE IMPORTA — mas só porque o caso que importa é TERMINAL.
  *
- *   • 195 envios, 185 com uuid, 2.420 linhas de assinatura;
- *   • os 185 estão TODOS em movimento na D4Sign e TODOS presentes no catálogo (0 fora);
- *   • logo `desisteDaLista` é sempre verdadeiro ali — 185 > 20 E todos conhecidos —, então o
- *     `/list` não é chamado para NINGUÉM e toda linha do recorte volta como `d4sign-status`;
- *   • e o `d4sign-status` do Vale do Ouro confirma um status que o C2X já tinha certo
- *     ("aguardando assinaturas"), então na prática a tela mostra o mesmo que antes;
- *   • enquanto as 120 assinaturas que a D4Sign diz COLHIDAS e o C2X diz pendentes seguem
- *     aparecendo como pendência (medido assinante a assinante, 1.534 linhas conferidas).
+ * Medido em 18/08/2026 no acervo inteiro (scripts/apolo/onde-o-c2x-esta-furado.mjs), a pendência
+ * que o C2X cobra e a D4Sign já fechou são 496 assinaturas em 2.171 envios, e elas se concentram
+ * de um jeito que decide o desenho:
  *
- * Ou seja: o pedido *"queria usar somente o D4Sign"* está cumprido no Vista Alegre e na Lagoa
- * Bonita, e NÃO está no recorte que o dono mais olha. O que falta não é teto maior — 185 × 1,5 s
- * ÷ 6 = 46 s, medido, não cabe em carga de tela nenhuma — é PERSISTIR a conciliação: uma tabela
- * própria alimentada por cron incremental, com a tela lendo do banco. Isso é migration + cron, ou
- * seja, operação sensível, e está esperando decisão do Lucas. Até lá o aviso da tela é o que
- * impede a leitura errada, e é por isso que ele não pode ser removido "porque polui".
+ *   emp                        falsas   documentos finalizados que o C2X mostra abertos
+ *   LOS (Lavra do Ouro, id 4)     454   151      ← 91% do problema mora aqui
+ *   LBR (Lagoa Bonita)             13     6
+ *   REP / CDJ / PDV / RDP           22    17
+ *   VDO / MLN / MLC                  7     7
+ *   VOC, VOL, VOR, VAL, LBF     LIMPOS   0       ← os portais ativos e o Vale do Ouro
+ *
+ * E todas as 496 saem do CATÁLOGO, sem uma chamada por documento: finalizado é terminal, e o laço
+ * acima resolve terminal ANTES de chegar neste teto. Ou seja, o `desisteDaLista` não perde nenhuma
+ * das 496 — ele só desiste do detalhe pessoa a pessoa de documento EM MOVIMENTO.
+ *
+ * ⚠️ E NO VALE DO OURO ESSE DETALHE NÃO CUSTA NADA, porque lá o C2X está CERTO. Medido assinante a
+ * assinante no recorte VOC+VOL (scripts/apolo/conferir-tela-vs-c2x.mjs): 185 envios, 2.295 linhas,
+ * 1.487 pareadas com a D4Sign (658 delas pelo nome, porque o e-mail não bastou) e ZERO divergência
+ * nas duas direções. As 808 linhas que não pareiam têm 808 signatários sobrando do outro lado — o
+ * mesmo número —, então são a mesma pessoa gravada com e-mail e grafia diferentes nos dois
+ * sistemas, não assinatura faltando.
+ *
+ * ⚠️ CUIDADO COM A MEDIÇÃO, que é onde eu mesmo errei antes: casar assinante por e-mail com um
+ * `Map` (sem consumir o par) faz UM signatário assinado casar com N linhas do mesmo e-mail e
+ * inventa divergência — deu "120 erradas no Vale do Ouro" numa primeira conta, e o número era
+ * artefato. O pareamento tem que ser 1-para-1, como `conciliarDocumento` faz. E na resposta do
+ * `/list` o nome é `user_name` (não `name`) e `assinou` exige `signed === "1"` E `sign_info`
+ * presente: ler o campo errado produz medição limpa e falsa.
  * ═════════════════════════════════════════════════════════════════════════════════════════════
  */
 const TETO_ASSINANTES_POR_CARGA = 20;
