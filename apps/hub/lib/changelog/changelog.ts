@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-faturada-cancelada",
+    deployedAt: "2026-08-18T20:10:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Venda que foi faturada e DEPOIS cancelada nao conta mais como faturada. No CER a tela mostrava 1 faturada de R$ 148.401 ao lado de 0 unidades vendidas e R$ 0 vendido: era a VOC1221, faturada em 12/08 e cancelada em seguida, contada ao mesmo tempo como venda e como perda",
+              "Ela some tambem do mes no grafico, senao a barra continuaria mostrando uma venda que nao houve",
+              "Se a mesma unidade for faturada de novo mais tarde, volta a contar: ai a venda existe de verdade",
+            ],
+            screen: "Vendas - Resumo",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.161.0 (2026-08-18-carteira-parcela-e-data)",
+    technical: {
+      done:
+        "Os dois indicadores estavam certos pela propria regua e mentiam juntos: Faturadas conta EVENTO (a unidade passou pelo estagio 4 do C2X) e Vendido conta ESTADO ATUAL (o estagio de hoje). Conferido no C2X com scripts/apolo/conferir-faturada-cer.mjs: o VOC tem exatamente 1 evento de faturamento, a VOC1221 (ar 4770, R$ 148.401), faturada em 12/08/2026 vinda do estagio 3, e hoje no estagio 7 (Cancelado); as unidades do VOC estao 92 em assinatura e 3 canceladas. A regra que vale e a do estado final, entao o cancelamento agora DESFAZ o faturamento que a mesma unidade tinha somado, inclusive na serie mensal, e libera o dedupe para que um faturamento posterior volte a contar. Quatro testes novos cobrem os casos: desfaz, some do mes, refatura, e cancelar sem faturar nao mexe em nada.",
+      motivation:
+        "Lucas: no CER tem uma venda faturada, isso deve estar errado.",
+    },
+    title: "Venda cancelada deixa de contar como faturada",
+    type: "correcao",
+    version: "1.162.0",
+  },
+  {
     buildTag: "2026-08-18-carteira-parcela-e-data",
     deployedAt: "2026-08-18T19:40:00-03:00",
     modules: [

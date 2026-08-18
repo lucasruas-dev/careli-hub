@@ -176,3 +176,69 @@ describe("o ranking de imobiliárias", () => {
     expect(rankingDeImobiliarias([unidade("faturado", null)])).toEqual([]);
   });
 });
+
+// ── FATURAMENTO DESFEITO POR CANCELAMENTO ───────────────────────────────────
+//
+// O QUE ESTE BLOCO PROTEGE: a faixa de indicadores não pode se contradizer. O caso real que gerou
+// a regra (portal do CER, 18/08/2026): a VOC1221 foi faturada em 12/08 e cancelada depois, e a
+// tela mostrava "Faturadas 1 · R$ 148.401" ao lado de "Unidades vendidas 0". Cada número estava
+// certo pela própria régua — uma conta EVENTO, a outra conta ESTADO ATUAL — e juntos mentiam: a
+// mesma unidade aparecia como venda e como perda ao mesmo tempo.
+describe("faturada que depois foi cancelada", () => {
+  it("⚠️ não conta como faturada, e continua contando como cancelada", () => {
+    const bi = montarIndicadoresDeVendasBI(
+      [
+        evento(9, "2026-07-01T12:00:00.000Z"),
+        evento(4, "2026-07-10T12:00:00.000Z"),
+        evento(7, "2026-08-12T12:00:00.000Z", { estagioAnterior: 4 }),
+      ],
+      [],
+      AGORA,
+    );
+
+    expect(bi.faturadas).toEqual({ un: 0, vgv: 0 });
+    expect(bi.canceladas.un).toBe(1);
+  });
+
+  it("some também do MÊS em que tinha sido somada: o gráfico não guarda venda que não houve", () => {
+    const bi = montarIndicadoresDeVendasBI(
+      [
+        evento(4, "2026-07-10T12:00:00.000Z"),
+        evento(7, "2026-08-12T12:00:00.000Z", { estagioAnterior: 4 }),
+      ],
+      [],
+      AGORA,
+    );
+    const julho = bi.serieMensal.find((mes) => mes.mes === "2026-07");
+
+    expect(julho?.faturadas).toEqual({ un: 0, vgv: 0 });
+  });
+
+  it("faturar DE NOVO depois do cancelamento volta a contar: aí a venda existe", () => {
+    const bi = montarIndicadoresDeVendasBI(
+      [
+        evento(4, "2026-07-10T12:00:00.000Z"),
+        evento(7, "2026-08-01T12:00:00.000Z", { estagioAnterior: 4 }),
+        evento(4, "2026-08-20T12:00:00.000Z"),
+      ],
+      [],
+      AGORA,
+    );
+
+    expect(bi.faturadas.un).toBe(1);
+  });
+
+  it("cancelar SEM ter faturado não mexe em faturadas (não há o que desfazer)", () => {
+    const bi = montarIndicadoresDeVendasBI(
+      [
+        evento(9, "2026-07-01T12:00:00.000Z"),
+        evento(7, "2026-08-12T12:00:00.000Z"),
+      ],
+      [],
+      AGORA,
+    );
+
+    expect(bi.faturadas).toEqual({ un: 0, vgv: 0 });
+    expect(bi.canceladas.un).toBe(1);
+  });
+});

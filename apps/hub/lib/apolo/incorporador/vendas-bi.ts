@@ -167,6 +167,9 @@ export function montarIndicadoresDeVendasBI(
   const deadlines: number[] = [];
   const arJaFaturado = new Set<number>();
 
+  /** O que cada unidade somou em "faturadas", para poder ser desfeito se ela cancelar depois. */
+  const faturamentoContado = new Map<string, { mes: null | string; vgv: number }>();
+
   for (const evento of eventos) {
     const quandoMs = Date.parse(evento.em);
 
@@ -186,6 +189,37 @@ export function montarIndicadoresDeVendasBI(
     }
 
     const metrica = metricaDoEvento(evento);
+
+    // ⚠️ FATURAMENTO DESFEITO POR CANCELAMENTO POSTERIOR NÃO É FATURAMENTO.
+    //
+    // Achado com o Lucas em 18/08/2026: o portal do CER mostrava "Faturadas 1 · R$ 148.401" ao
+    // lado de "Vendido R$ 0" e "Unidades vendidas 0". Os dois estavam certos pela régua de cada
+    // um — a VOC1221 passou pelo estágio 4 em 12/08 e HOJE está no 7 (Cancelado) —, e a faixa
+    // ficava se contradizendo: a mesma unidade era contada como faturada E como cancelada, em
+    // direções opostas.
+    //
+    // A régua que vale é a do estado final: quem cancelou depois não vendeu. Como os eventos
+    // chegam em ordem, basta desfazer no cancelamento o que o faturamento somou — inclusive no
+    // mês em que ele foi somado, senão o gráfico continua mostrando uma barra de venda que não
+    // existiu.
+    //
+    // ⚠️ E LIBERA A UNIDADE para contar de novo: unidade que fatura, cancela e fatura outra vez
+    // é venda de verdade na segunda passagem. Manter o dedupe travado a esconderia para sempre.
+    if (metrica === "cancelada") {
+      const desfazer = faturamentoContado.get(evento.unitId);
+      if (desfazer) {
+        totais.faturada.un -= 1;
+        totais.faturada.vgv -= desfazer.vgv;
+        const alvoDoMes = desfazer.mes ? serie.get(desfazer.mes) : undefined;
+        if (alvoDoMes) {
+          alvoDoMes.faturadas.un -= 1;
+          alvoDoMes.faturadas.vgv -= desfazer.vgv;
+        }
+        faturamentoContado.delete(evento.unitId);
+        vistas.faturada.delete(evento.unitId);
+      }
+    }
+
     if (!metrica || vistas[metrica].has(evento.unitId)) continue;
     vistas[metrica].add(evento.unitId);
 
@@ -193,6 +227,9 @@ export function montarIndicadoresDeVendasBI(
     totais[metrica].vgv += evento.precoDaUnidade;
 
     const mes = mesDe(evento.em);
+    if (metrica === "faturada") {
+      faturamentoContado.set(evento.unitId, { mes, vgv: evento.precoDaUnidade });
+    }
     const alvo = mes ? serie.get(mes) : undefined;
     if (alvo) {
       const balde =

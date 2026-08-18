@@ -5276,3 +5276,12 @@ Conclusao:
   - Aplicada nas DUAS telas do portal (Carteira e Vendas — geração/faturamento tinham o mesmo desvio), matando a duplicação em vez de criar a terceira cópia.
 - **NUMERAÇÃO**: cada tipo tem o próprio contador no legado e a consulta usava o das parcelas para todos, daí "0/156" no Ato e no Sinal. ⚠️ A pegadinha: `current_total_parcel` e `current_signal_parcel` vêm **ZERO, não NULL**, quando não se aplicam — então `??` nunca cai no alternativo (o mesmo tropeço já documentado na integração GLOTES) e o `nullif(0)` precisa ser feito à mão. O Ato é `1/1` por definição: no C2X a coluna de parcela dele vem vazia, e mostrar "-" obrigaria quem lê a saber disso de cabeça.
 - Verificação: tsc limpo, **1.276 testes PASS** (5 novos), eslint limpo.
+
+## v1.162.0 — 18/ago/2026 · Venda cancelada deixa de contar como faturada
+- Autorização: Lucas (pendente de OK para o push). Rollback: v1.161.0 (`2026-08-18-carteira-parcela-e-data`). SEM migration.
+- Motivo: *"no CER tem uma venda faturada, isso deve estar errado"*. A faixa mostrava **Faturadas 1 · R$ 148.401** ao lado de **Vendido R$ 0** e **Unidades vendidas 0**.
+- **CONFERIDO NO C2X** (`scripts/apolo/conferir-faturada-cer.mjs`, read-only): o VOC tem **exatamente 1** evento de faturamento — a **VOC1221** (ar 4770, R$ 148.401), faturada em 12/08/2026 vindo do estágio 3, **hoje no estágio 7 (Cancelado)**. As unidades do VOC estão 92 "Em assinatura" e 3 "Cancelado".
+- ⚠️ **Os dois números estavam certos pela própria régua e mentiam juntos**: `Faturadas` conta EVENTO (a unidade passou pelo estágio 4 em algum momento) e `Vendido`/`Unidades vendidas` contam ESTADO ATUAL. A mesma unidade era contada como venda **e** como perda, em direções opostas.
+- Correção: a régua que vale é a do **estado final**. O cancelamento agora desfaz o faturamento que aquela unidade tinha somado — inclusive na **série mensal**, senão o gráfico guardaria uma barra de venda que não existiu — e libera o dedupe para que um faturamento posterior volte a contar (unidade que fatura, cancela e fatura de novo é venda de verdade na segunda vez).
+- Quatro testes novos: desfaz, some do mês, refatura volta a contar, e cancelar sem ter faturado não mexe em nada.
+- Verificação: tsc limpo, **1.280 testes PASS** (104 arquivos), eslint limpo.
