@@ -36,6 +36,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-fonte-da-assinatura",
+    deployedAt: "2026-08-18T15:05:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A tela agora DIZ de onde vem cada assinatura. Quando o D4Sign nao responde, o que aparece continua sendo o registro do sistema antigo, mas com aviso: antes a tela mostrava dado velho calado, que era justamente o defeito que motivou a troca de fonte",
+              "Sao dois avisos diferentes e cada um diz uma coisa: um e o D4Sign sem responder (a situacao pode estar errada), o outro e a situacao confirmada com a marcacao de quem assinou vindo do sistema antigo. Nenhum substitui o outro",
+              "Contrato que o D4Sign diz cancelado sai da conta e a unidade volta para Aguardando emissao, em vez de ficar cobrando assinatura de contrato morto",
+              "Dentro do popup da unidade o aviso aparece sempre que houver: e ali que se olha nome por nome para decidir de quem cobrar",
+            ],
+            screen: "Contratos",
+          },
+        ],
+      },
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Mesma sinalizacao de procedencia da tela interna, na visao Contratos",
+              "O portal parou de receber dado interno que nao desenha nada na tela (identificadores do sistema antigo e a contabilidade da conferencia). Nada de dado pessoal estava envolvido, mas aquele pacote vai para o navegador de um cliente externo e agora leva so o que a tela mostra",
+            ],
+            screen: "Vendas - Contratos",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.156.0 (2026-08-18-comprovante-de-renda)",
+    technical: {
+      done:
+        "Os dois leitores (carregarPainelDeContratos e lerAssinaturasDoPortal) ja chamavam montarQuadroComD4Sign; o que faltava era a TELA — avisoDaFonte, avisoDosAssinantes e o aviso/fonte por linha chegavam do servidor e eram descartados. No portal o tipo local da linha e uma COPIA do tipo da lib (o portal nao importa a lib, que puxa mysql2) e campo que a copia nao declara chega em runtime com o TypeScript apagando o tipo: foi o que manteve o aviso invisivel. Selo por linha SO no fallback real (c2x-legado); para o caso majoritario quem avisa e a faixa do topo, senao 165 carimbos matam o sinal. CONFERIDO contra o C2X: no recorte VOC+VOL a tela bate casa por casa com o SQL cru e com producao (2.295 linhas / 1.202 assinadas / 185 unidades, filtro send_document_signature = 1 mais status <> 6), e no pareamento assinante a assinante deu ZERO divergencia nas duas direcoes — no Vale do Ouro o C2X esta certo. O gap do C2X esta na LAVRA DO OURO: 454 das 496 pendencias falsas do acervo (151 documentos finalizados no D4Sign e abertos no C2X), resolvidas pela listagem em lote sem chamada por documento. Medicoes em docs/operations/d4sign-como-fonte-medicao-2026-08-18.md.",
+      motivation:
+        "Lucas: 'queria usar somente o D4Sign, o C2X tem muito gap ainda' e, na conferencia, 'olha se esta batendo com o C2X, por favor'.",
+    },
+    title: "Assinaturas: a tela diz de onde vem cada informacao",
+    type: "melhoria",
+    version: "1.157.0",
+  },
+  {
     buildTag: "2026-08-18-comprovante-de-renda",
     deployedAt: "2026-08-18T14:40:00-03:00",
     modules: [
