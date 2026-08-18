@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-portal-no-escuro",
+    deployedAt: "2026-08-18T09:10:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "MODO ESCURO no portal, com o cliente escolhendo: claro, escuro ou seguir o aparelho, no menu e na tela de login",
+              "O escuro passa a ser o PADRAO de quem nunca escolheu; o portal personalizado continua abrindo no tema do aparelho, e agora tambem pode escolher",
+              "O mapa do empreendimento acompanha o tema: no escuro ele vem escuro, sem virar um retangulo branco no meio da tela",
+              "A escolha fica salva e vale ja no carregamento, sem a tela piscar branco",
+              "A logo do Panteon na porta e a mesma do login do sistema, maior e legivel nos dois temas",
+            ],
+            screen: "Portal (todas as telas)",
+          },
+          {
+            items: [
+              "Gestao de assinaturas refeita: os KPIs viraram indicadores com barra de progresso e o palco agora e QUEM ESTA COM A BOLA, com os contratos parados esperando cada pessoa e ha quantos dias",
+              "A lista completa de assinantes virou um bloco recolhido com busca, no fim da tela",
+              "Resumo de vendas reordenado: composicao do estoque e ritmo antes do perfil do comprador",
+              "Todas as barras dos graficos mostram o valor no topo",
+            ],
+            screen: "Vendas (Resumo e Assinaturas)",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.152.1 (2026-08-18-panteon-na-porta-do-portal)",
+    technical: {
+      done:
+        "Tokens do portal em tres estados (claro na base, media query guardada por :not([data-inc-tema=claro]), e [data-inc-tema=escuro]); escolha em localStorage aplicada por script pre-pintura no layout; TEMA_PADRAO_DO_PORTAL=escuro separado de escolhaInicialDoPortal(bruto, personalizado) para nao colar 'nunca escolheu' com 'escolheu sistema'; rota do masterplan respeita ?tema= (deveClarearMasterplan) sem tocar em escopo; logo do hub reaproveitada com filter invert(1) no claro. Aba Assinaturas reescrita (cards de quem esta na vez + acordeao), Resumo reordenado e rotulo em toda barra com escalonamento em dois niveis.",
+      motivation:
+        "Lucas: 'temos que disponibilizar o dark tambem', depois 'ficou muito bom esse modo dark, quero ele padrao daqui pra frente' e 'pode deixar a Cecilio escolher tambem'; a aba de assinaturas estava longa demais para usar.",
+    },
+    title: "Portal do incorporador no escuro, por escolha do cliente",
+    type: "novidade",
+    version: "1.153.0",
+  },
+  {
     buildTag: "2026-08-18-panteon-na-porta-do-portal",
     deployedAt: "2026-08-18T08:40:00-03:00",
     modules: [

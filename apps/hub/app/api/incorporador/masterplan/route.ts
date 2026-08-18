@@ -8,6 +8,7 @@ import { codigosDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { MASTERPLANS_INTERNOS } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
 import { chaveDoLote, recortarMasterplan } from "@/lib/apolo/incorporador/masterplan-recorte";
 import { sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
+import { deveClarearMasterplan } from "@/lib/apolo/incorporador/tema-portal";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import { comTemaClaro } from "@/lib/apolo/masterplan-tema-claro";
 
@@ -104,7 +105,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
   }
 
-  const code = (new URL(request.url).searchParams.get("code") ?? "").trim().toUpperCase();
+  const parametros = new URL(request.url).searchParams;
+  const code = (parametros.get("code") ?? "").trim().toUpperCase();
   const arquivo = TELAS[code];
 
   if (!arquivo) {
@@ -176,10 +178,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Masterplan indisponível." }, { status: 503 });
   }
 
-  // TEMA CLARO no portal (Lucas, 11/08). O arquivo aprovado é escuro, feito para o shell do Apolo;
-  // o portal do incorporador é claro, e a tela escura dentro dele deixava dois esquemas de cor
-  // brigando na mesma imagem. O desenho não muda: só os tokens de cor.
-  return new NextResponse(comTemaClaro(comCaminhoAbsoluto(recorte.html)), {
+  // O TEMA, E SÓ O TEMA. O arquivo aprovado é ESCURO, feito para o shell do Apolo; quando o portal
+  // era claro para todo mundo (Lucas, 11/08), ele era clareado à força aqui, senão eram dois
+  // esquemas de cor brigando na mesma imagem. Com o portal ganhando alternador (18/08/2026), a
+  // conta se inverte: em tela escura o mapa clareado vira um retângulo branco no meio do preto.
+  //
+  // Então o escuro NÃO tem transformação nenhuma — é o arquivo original, que já nasce certo. É por
+  // isso que o parâmetro se chama "tema" e não "claro=1": ele diz em que tela o mapa vai aparecer,
+  // e quem decide o que fazer com isso é o servidor.
+  //
+  // ⚠️ ISTO NÃO TOCA EM AUTORIZAÇÃO NEM EM ESCOPO. Tudo acima — sessão, tradução de código para id
+  // do C2X, os lotes permitidos e o recorte fail-closed — já aconteceu, igual para os dois temas.
+  // Um `?tema=` chutado na URL muda a cor do mapa de quem já tinha direito de vê-lo, e nada mais.
+  //
+  // ⚠️ SEM PARÂMETRO CONTINUA CLAREANDO: é o que chega do portal PERSONALIZADO (Cecílio, que não
+  // tem alternador) e de qualquer link salvo. O comportamento de hoje segue sendo o padrão.
+  const corpo = comCaminhoAbsoluto(recorte.html);
+
+  return new NextResponse(deveClarearMasterplan(parametros.get("tema")) ? comTemaClaro(corpo) : corpo, {
     headers: {
       // `no-store` porque a tela carrega situação e preço: nada disso pode ficar em cache de proxy.
       "Cache-Control": "no-store",

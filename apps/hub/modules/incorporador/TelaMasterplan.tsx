@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 
+import { useTemaDoPortal } from "./tema";
+
 // O MASTERPLAN INTERNO, EM TELA CHEIA, DENTRO DO PORTAL.
 //
 // Pedido do Lucas (11/08), depois de ver a primeira versão: "ficou ruim, primeiro tem que seguir o
@@ -22,13 +24,31 @@ import { ArrowLeft } from "lucide-react";
 // ⚠️ A TELA LÁ DENTRO NÃO MUDA. Ela é o A-INTERNO, aprovado com nove prints de validação, servido
 // inteiro pela rota. Aqui só se decide QUANTO ESPAÇO ela ocupa e o que a emoldura.
 
-// Tokens CLAROS do Panteon — os mesmos que a tela do masterplan passou a usar por dentro
-// (lib/apolo/masterplan-tema-claro.ts) e os mesmos do portal. Uma paleta só na tela inteira.
-const SHELL = {
-  base: "#ffffff",
-  borda: "#dce2ea",
-  texto: "#121722",
-  textoFraco: "#667085",
+// A MOLDURA ACOMPANHA O MAPA, e por isso ela NÃO usa as variáveis `--inc-*` do portal.
+//
+// Parece contraintuitivo, mas o mapa mora num <iframe>: ele é outro documento e não herda variável
+// CSS nenhuma daqui. Quem decide a cor lá dentro é o parâmetro `tema` que a rota recebe. Se a
+// moldura seguisse o token do portal e o mapa seguisse o parâmetro, bastaria os dois discordarem
+// um instante (por exemplo, no portal PERSONALIZADO, onde o mapa é sempre claro) para a faixa de
+// cima ficar preta em volta de um mapa branco. Amarrando as duas ao MESMO `efetivo`, elas não têm
+// como divergir.
+//
+// Os valores claros são os do Panteon, os mesmos que a tela passou a usar por dentro
+// (lib/apolo/masterplan-tema-claro.ts). Os escuros são os do arquivo A-INTERNO original, que é a
+// paleta que o Lucas aprovou em 07/08 — a mesma do tema escuro do portal.
+const SHELL_POR_TEMA = {
+  claro: {
+    base: "#ffffff",
+    borda: "#dce2ea",
+    texto: "#121722",
+    textoFraco: "#667085",
+  },
+  escuro: {
+    base: "#0a0a0a",
+    borda: "rgb(255 255 255 / .075)",
+    texto: "#f7f8fa",
+    textoFraco: "#a5afbd",
+  },
 } as const;
 
 export function TelaMasterplan({
@@ -40,6 +60,12 @@ export function TelaMasterplan({
   nome: string;
   onVoltar: () => void;
 }) {
+  // O TEMA EM USO, que aqui vira duas coisas: a cor desta moldura e o que a rota faz com o arquivo.
+  // No portal PERSONALIZADO (Cecílio) o provedor devolve "claro" sempre — o mapa dele continua
+  // chegando claro, byte a byte como está no ar. Ver [[perfis-de-portal]].
+  const { efetivo } = useTemaDoPortal();
+  const SHELL = SHELL_POR_TEMA[efetivo];
+
   // Enquanto o mapa está aberto, a página de trás não rola: o masterplan tem rolagem própria nos
   // painéis, e duas barras de rolagem concorrendo é o tipo de coisa que o cliente sente sem saber
   // nomear. `Escape` fecha, porque tela cheia sem saída de teclado prende quem usa teclado.
@@ -118,8 +144,12 @@ export function TelaMasterplan({
         </span>
       </header>
 
+      {/* ⚠️ O `tema` NA URL É SÓ APARÊNCIA. A rota confere a sessão e recorta os lotes do jeito que
+          sempre conferiu; este parâmetro decide uma coisa só: clarear o arquivo (que nasce escuro)
+          ou entregá-lo como está. Sem ele, o mapa vinha claro à força e ficava um retângulo branco
+          no meio do portal escuro. */}
       <iframe
-        src={`/api/incorporador/masterplan?code=${encodeURIComponent(code)}`}
+        src={`/api/incorporador/masterplan?code=${encodeURIComponent(code)}&tema=${efetivo}`}
         style={{ border: "none", display: "block", flex: 1, width: "100%" }}
         title={`Masterplan do ${nome}`}
       />

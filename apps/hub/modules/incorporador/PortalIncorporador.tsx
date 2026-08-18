@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ALVO_TOQUE, fonte } from "@/modules/publico/ui/tokens";
 
-import { Marca, T, TEMA_CSS } from "./tema";
+import { AlternadorDeTema, Marca, ProvedorDeTema, T, TEMA_CSS } from "./tema";
 
 import { ehPortalPersonalizado } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { TelaCarteira } from "./TelaCarteira";
@@ -34,17 +34,26 @@ type Sessao = {
 // dentro de Vendas.
 type Aba = "carteira" | "crm" | "produtos" | "vendas";
 
-export function PortalIncorporador({
-  logoEscuraUrl,
-  logoUrl,
-  nome,
-  slug,
-}: {
+type DadosDoPortal = {
   logoEscuraUrl: string | null;
   logoUrl: string | null;
   nome: string;
   slug: string;
-}) {
+};
+
+// O PROVEDOR DE TEMA ENVOLVE TUDO, e não só o portal de dentro: a escolha vale desde a porta (o
+// login), que é a primeira tela que o cliente vê. Quem lê o tema é o alternador (para saber qual
+// botão está aceso) e a TelaMasterplan (para pedir o mapa no tema certo) — a PINTURA em si sai do
+// CSS, que não depende deste contexto para nada.
+export function PortalIncorporador(dados: DadosDoPortal) {
+  return (
+    <ProvedorDeTema slug={dados.slug}>
+      <PortalComTema {...dados} />
+    </ProvedorDeTema>
+  );
+}
+
+function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug }: DadosDoPortal) {
   const [sessao, setSessao] = useState<Sessao | null>(null);
   const [carregando, setCarregando] = useState(true);
   // Abre em Vendas: é a primeira pergunta do dono do empreendimento e a única aba que existe para
@@ -149,9 +158,18 @@ function Moldura({
         justifyContent: "center",
         minHeight: "100dvh",
         padding: 24,
+        position: "relative",
       }}
     >
       <style>{TEMA_CSS}</style>
+
+      {/* O ALTERNADOR NA PORTA, num canto e só isso. Aqui ele não é assunto — a tela é a marca do
+          cliente e dois campos — mas precisa existir: quem prefere o escuro escolhe ANTES de
+          entrar, e a escolha já vale na tela de login. No portal PERSONALIZADO o próprio
+          `AlternadorDeTema` não renderiza nada (ver [[perfis-de-portal]]). */}
+      <div style={{ position: "absolute", right: 16, top: 16 }}>
+        <AlternadorDeTema />
+      </div>
 
       <div style={{ maxWidth: 400, width: "100%" }}>
         {assinaPanteon ? (
@@ -159,23 +177,21 @@ function Moldura({
             style={{
               alignItems: "center",
               display: "flex",
-              gap: 8,
+              gap: 11,
               justifyContent: "center",
-              marginBottom: 18,
+              marginBottom: 22,
             }}
           >
-            {/* Símbolo + nome escrito, igual ao topo do sidebar: a logo horizontal do Panteon só
-                existe em branco e sumiria neste fundo claro. */}
-            <Marca
-              altura={26}
-              escuraUrl="/panteon-mark-light.png"
-              largura={26}
-              nome="Panteon"
-              url="/panteon-mark.png"
+            {/* eslint-disable-next-line @next/next/no-img-element -- asset local, sem otimização */}
+            <img
+              alt="Panteon"
+              className="inc-logo-panteon"
+              src="/panteon-logo-light.png"
+              // ⚠️ LIMITE PELA ALTURA, não pela largura: a arte é quase quadrada (870x772), então
+              // 230px de largura viravam 211px de altura e a tela de login passava a ROLAR.
+              // Medido: com 160px de teto a porta inteira cabe na janela.
+              style={{ height: "auto", maxHeight: 160, maxWidth: "min(200px, 58vw)", objectFit: "contain", width: "auto" }}
             />
-            <span style={{ color: T.text, fontSize: 17, fontWeight: 700, letterSpacing: 0.2 }}>
-              Panteon
-            </span>
           </div>
         ) : null}
 
@@ -304,7 +320,10 @@ function Porta({ aoEntrar, slug }: { aoEntrar: () => Promise<void>; slug: string
         <div
           role="alert"
           style={{
-            background: "#fdf3f2",
+            // ⚠️ ERA O HEX CRAVADO `#fdf3f2`, que é rosa-claro: no tema escuro virava uma faixa
+            // branca gritando no meio do cartão preto. `dangerBg` é o mesmo rosa no claro e o
+            // vermelho translúcido no escuro — o token já existia, faltava usar.
+            background: T.dangerBg,
             border: `1px solid ${T.danger}33`,
             borderRadius: 10,
             color: T.danger,
@@ -470,6 +489,14 @@ function Portal({
             <span style={{ color: T.muted, display: "block", fontSize: 12.5, marginBottom: 8 }}>
               {sessao.usuario.nome}
             </span>
+
+            {/* O TEMA FICA JUNTO DO "SAIR", que é onde vive o que é da PESSOA e não da carteira:
+                quem ela é, como ela quer ver a tela e a saída. Fora do menu de abas de propósito —
+                tema não é um lugar do portal, é um ajuste. */}
+            <div style={{ marginBottom: 8 }}>
+              <AlternadorDeTema />
+            </div>
+
             <button
               onClick={() => void aoSair()}
               style={{
