@@ -336,6 +336,7 @@ export async function loadApoloUnitInstallments(
     `select
        p.id,
        p.current_total_parcel as parcel, p.total_parcels as total_parcels,
+       p.current_signal_parcel as signal_parcel, p.total_signal_parcels as total_signal_parcels,
        pt.name as type,
        p.reference_date as competence, p.due_date, p.payment_date,
        p.payment_status_id as status_id,
@@ -375,7 +376,7 @@ function mapInstallment(row: InstallmentRow): ApoloUnitInstallment {
     dueDate: dateOrNull(row.due_date),
     id: String(row.id),
     invoiceUrl: httpOrNull(row.invoice_url),
-    number: `${row.parcel ?? "-"}/${row.total_parcels ?? "-"}`,
+    number: numeroDaParcela(row),
     overdueDays,
     paidAmount: toNumber(row.paid_value),
     paidAt: dateOrNull(row.payment_date),
@@ -383,6 +384,41 @@ function mapInstallment(row: InstallmentRow): ApoloUnitInstallment {
     status,
     type: text(row.type),
   };
+}
+
+/**
+ * "1 de 3", "12 de 156" — a numeração que a linha mostra, POR TIPO DE PAGAMENTO.
+ *
+ * ⚠️ CADA TIPO TEM O PRÓPRIO CONTADOR, e misturá-los foi o defeito que o Lucas pegou em
+ * 18/08/2026 comparando a tela com o C2X: o Ato e as três parcelas do Sinal apareciam como
+ * "0/156". A causa é uma pegadinha conhecida do legado — `current_total_parcel` e
+ * `current_signal_parcel` vêm **ZERO, não NULL**, quando não se aplicam ao tipo daquela linha,
+ * então um `??` puro nunca cai no valor alternativo (o mesmo tropeço já documentado na
+ * integração GLOTES). Daí o `nullif(0)` feito à mão aqui.
+ *
+ * O Ato é sempre "1/1": ele é pagamento único por definição, e no C2X a coluna de parcela dele
+ * vem vazia — mostrar "-" obrigaria quem lê a saber isso de cabeça.
+ */
+function numeroDaParcela(row: InstallmentRow): string {
+  // `text` devolve nulo quando o C2X não classificou o pagamento: sem tipo, cai na régua das
+  // parcelas, que é o caso da esmagadora maioria das linhas.
+  const tipo = (text(row.type) ?? "").toLowerCase();
+  const naoZero = (valor: unknown): null | number => {
+    const numero = Number(valor);
+    return Number.isFinite(numero) && numero > 0 ? numero : null;
+  };
+
+  if (tipo.includes("ato")) return "1/1";
+
+  // Desestruturar a tupla faria o TS perder o refinamento de nulo nas duas pontas; nomear os dois
+  // campos primeiro é mais chato de ler e é o que o compilador entende.
+  const doSinal = tipo.includes("sinal");
+  const atual = doSinal ? naoZero(row.signal_parcel) : naoZero(row.parcel);
+  const total = doSinal ? naoZero(row.total_signal_parcels) : naoZero(row.total_parcels);
+
+  if (atual === null && total === null) return "-";
+
+  return `${atual ?? "-"}/${total ?? "-"}`;
 }
 
 function dateOrNull(value: unknown): string | null {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowUpDown, ExternalLink, FileText, Search, WalletCards, X } from "lucide-react";
 
+import { diaNaTela, mesNaTela } from "@/lib/apolo/incorporador/dia-na-tela";
 import { fonte } from "@/modules/publico/ui/tokens";
 import type {
   ExtratoParcela,
@@ -145,28 +146,19 @@ const inteiro = (valor: number): string => valor.toLocaleString("pt-BR");
 const pct = (valor: number): string =>
   `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
-/** ISO/`YYYY-MM-DD` vira dd/mm/aaaa no fuso de São Paulo; vazio vira traço. */
-function dia(valor: null | string): string {
-  if (!valor) return "-";
-  // 'YYYY-MM-DD' cru é montado na mão: passar por Date deslocaria o dia conforme o fuso.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
-    const [ano, mes, diaN] = valor.split("-");
-    return `${diaN}/${mes}/${ano}`;
-  }
-  const data = new Date(valor);
-  return Number.isNaN(data.getTime())
-    ? "-"
-    : data.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-}
+/**
+ * dd/mm/aaaa. A régua mora em `lib/apolo/incorporador/dia-na-tela`, com teste.
+ *
+ * ⚠️ NÃO VOLTE A FORMATAR ISTO NO FUSO DE SÃO PAULO. Vencimento é DIA: chega como meia-noite em
+ * UTC e, no fuso da casa, volta três horas e cai no dia anterior — foi o que fez a Carteira do
+ * portal mostrar 31/07 numa parcela que vence em 01/08 (apontado pelo Lucas em 18/08/2026,
+ * comparando a tela com o C2X). A tela interna do Apolo nunca teve o problema porque sempre
+ * formatou em UTC.
+ */
+const dia = (valor: null | string): string => diaNaTela(valor);
 
-/** Competência (ISO) vira mm/aaaa, em UTC como a interna (formatMonth). */
-function mesDeCompetencia(valor: null | string): string {
-  if (!valor) return "-";
-  const data = new Date(valor);
-  return Number.isNaN(data.getTime())
-    ? "-"
-    : data.toLocaleDateString("pt-BR", { month: "2-digit", timeZone: "UTC", year: "numeric" });
-}
+/** Competência (mm/aaaa), sempre em UTC: competência é mês, nunca instante. */
+const mesDeCompetencia = (valor: null | string): string => mesNaTela(valor);
 
 const MESES_CURTOS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 

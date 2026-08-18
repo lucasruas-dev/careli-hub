@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-carteira-parcela-e-data",
+    deployedAt: "2026-08-18T19:40:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "CORRECAO IMPORTANTE: as datas de vencimento estavam aparecendo UM DIA ANTES do que o sistema tem. Uma parcela que vence em 01/08 aparecia como 31/07, e isso valia para toda a coluna. Corrigido; a tela agora bate com o C2X data por data",
+              "A numeracao da parcela passa a ser a do tipo: Ato e 1/1, o Sinal e 1/3, 2/3 e 3/3, e as parcelas seguem 1/156 em diante. Antes o Ato e o Sinal apareciam como 0/156, misturando o contador das parcelas",
+              "As datas de geracao e faturamento na tela de Vendas tinham o mesmo desvio de um dia e foram corrigidas junto",
+            ],
+            screen: "Carteira",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.160.0 (2026-08-18-ordem-de-assinatura)",
+    technical: {
+      done:
+        "DATA: due_date chega do MySQL como Date, vira 2026-08-01T00:00:00.000Z no JSON, e o portal formatava isso no fuso de Sao Paulo — tres horas para tras, 31/07 as 21h. A tela INTERNA do Apolo nunca teve o problema porque formata em UTC; o portal foi portado com a regua trocada. A correcao nao foi 'usar UTC em tudo', que quebraria instantes de verdade (criadoEm de documento, desde de prospect: um evento das 22h viraria o dia seguinte): a regua nova (lib/apolo/incorporador/dia-na-tela, 5 testes) olha o VALOR — dia puro e meia-noite exata em UTC sao DIA, qualquer outra hora e instante e vai para o fuso da casa. Aplicada nas duas telas do portal, matando a duplicacao em vez de criar a terceira copia. NUMERACAO: cada tipo tem o proprio contador no legado e a consulta usava o das parcelas para todos. A pegadinha e que current_total_parcel e current_signal_parcel vem ZERO, nao NULL, quando nao se aplicam — entao ?? nunca cai no alternativo (mesmo tropeco ja documentado na integracao GLOTES), e o nullif(0) precisa ser feito a mao. O Ato e 1/1 por definicao: no C2X a coluna de parcela dele vem vazia.",
+      motivation:
+        "Lucas, comparando a Carteira com o C2X: tem alguma coisa errada com a parcela, Ato deveria ser 1/1, sinal 1/3, 2/3, 3/3, e as parcelas comecariam em 1/156.",
+    },
+    title: "Carteira: numero da parcela e data de vencimento certos",
+    type: "correcao",
+    version: "1.161.0",
+  },
+  {
     buildTag: "2026-08-18-ordem-de-assinatura",
     deployedAt: "2026-08-18T18:30:00-03:00",
     modules: [

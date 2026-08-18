@@ -5267,3 +5267,12 @@ Conclusao:
   - E o papel do cadastro passou a ser lido nos **TRÊS** leitores: antes só o painel antigo passava o argumento; a tela de Contratos e o portal chamavam `perfilDeTela` sem ele. Mesma armadilha de sempre — camada nova exige varrer todos os leitores.
 - Verificação: tsc limpo, **1.271 testes PASS** (2 novos, um com contrato fora do padrão provando que as colunas continuam alinhadas), eslint limpo.
 - ⏭️ A decidir com o Lucas: o rótulo hoje é "Coordenadora de venda" (nome do próprio C2X) e ele escreve "Coordenação". Trocar é uma linha, mas muda o vocabulário das duas telas e dos cards de taxa.
+
+## v1.161.0 — 18/ago/2026 · Carteira: número da parcela e data de vencimento certos
+- Autorização: Lucas (pendente de OK para o push). Rollback: v1.160.0 (`2026-08-18-ordem-de-assinatura`). SEM migration.
+- Motivo: *"tem alguma coisa errada com a parcela, Ato deveria ser 1/1, sinal 1/3, 2/3, 3/3, as parcelas sim começaria 1/156"*, com print da Carteira (VOC0112) ao lado do C2X.
+- ⚠️ **A DATA ERA O PIOR, e não foi apontada**: no mesmo print, TODO vencimento do portal estava **um dia antes** do C2X (31/07 x 01/08, 18/08 x 19/08, 19/09 x 20/09). `due_date` chega do MySQL como `Date`, vira `2026-08-01T00:00:00.000Z` no JSON, e o portal formatava no fuso de São Paulo — três horas para trás, 31/07 às 21h. **A tela interna do Apolo nunca teve o problema** porque formata em UTC; o portal foi portado com a régua trocada.
+  - A correção NÃO foi "usar UTC em tudo": isso quebraria instantes de verdade (`criadoEm` de documento, `desde` de prospect — um evento das 22h viraria o dia seguinte). A régua nova (`lib/apolo/incorporador/dia-na-tela`, 5 testes) olha o VALOR: dia puro e meia-noite exata em UTC são DIA; qualquer outra hora é instante e vai para o fuso da casa.
+  - Aplicada nas DUAS telas do portal (Carteira e Vendas — geração/faturamento tinham o mesmo desvio), matando a duplicação em vez de criar a terceira cópia.
+- **NUMERAÇÃO**: cada tipo tem o próprio contador no legado e a consulta usava o das parcelas para todos, daí "0/156" no Ato e no Sinal. ⚠️ A pegadinha: `current_total_parcel` e `current_signal_parcel` vêm **ZERO, não NULL**, quando não se aplicam — então `??` nunca cai no alternativo (o mesmo tropeço já documentado na integração GLOTES) e o `nullif(0)` precisa ser feito à mão. O Ato é `1/1` por definição: no C2X a coluna de parcela dele vem vazia, e mostrar "-" obrigaria quem lê a saber disso de cabeça.
+- Verificação: tsc limpo, **1.276 testes PASS** (5 novos), eslint limpo.

@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 
+import { diaNaTela } from "@/lib/apolo/incorporador/dia-na-tela";
 import { fonte } from "@/modules/publico/ui/tokens";
 
 import { T } from "./tema";
@@ -403,12 +404,13 @@ function rotuloDoMes(mes: string): string {
   return `${MESES_CURTOS[indice] ?? numero}/${(ano ?? "").slice(2)}`;
 }
 
+/**
+ * dd/mm/aaaa para geração, faturamento e envio. Mesma régua da Carteira
+ * (`lib/apolo/incorporador/dia-na-tela`), pelo mesmo motivo: estas datas são DIA, e formatá-las
+ * no fuso da casa devolve o dia anterior — o defeito que o Lucas pegou na Carteira em 18/08/2026.
+ */
 function rotuloDaData(iso: null | string): string {
-  if (!iso) return "";
-  const data = new Date(iso);
-  if (Number.isNaN(data.getTime())) return "";
-
-  return data.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  return diaNaTela(iso, "");
 }
 
 const PAGINA = 40;
