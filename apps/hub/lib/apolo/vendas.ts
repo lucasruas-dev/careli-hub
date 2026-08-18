@@ -51,7 +51,11 @@ export const APOLO_VENDA_TERMINAL_LABELS: Record<ApoloVendaTerminal, string> = {
 
 // Dobra dos 11 estágios do C2X nos 6+2 do fluxo (decisão do Lucas: Análise→Proposta,
 // Finalizado→Faturado, Reprovado→Cancelado).
-const STAGE_MAP: Record<number, ApoloVendaStage | ApoloVendaTerminal> = {
+//
+// Exportado de propósito: quem precisa de "quais ids do C2X são contrato/assinatura/faturado"
+// (ex.: os contratos do portal do incorporador) DERIVA daqui, em vez de repetir os números — se a
+// dobra mudar, muda num lugar só.
+export const STAGE_MAP: Record<number, ApoloVendaStage | ApoloVendaTerminal> = {
   1: "reservado",
   2: "proposta", // Análise de crédito
   3: "contrato",

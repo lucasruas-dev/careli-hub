@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Map as MapaIcone, ReceiptText, Search, X } from "lucide-react";
+import { CheckCircle2, FileText, Map as MapaIcone, ReceiptText, Search, X } from "lucide-react";
 
 import { fonte } from "@/modules/publico/ui/tokens";
 
@@ -22,8 +22,10 @@ import { TelaMasterplan } from "./TelaMasterplan";
 // masterplan não some com a aba Produtos: ele passa a morar AQUI, que é onde faz sentido, porque o
 // mapa é outra forma de olhar as mesmas unidades desta tela.
 //
-// A tela tem DUAS visões sobre o MESMO fetch (a rota custa 4+1 consultas no C2X; nada de segundo
-// carregamento):
+// A tela tem QUATRO visões na mesma faixa. Resumo e Pipeline dividem o MESMO fetch (a rota custa
+// 4+1 consultas no C2X; nada de segundo carregamento); Contratos e Assinaturas (18/08/2026) têm
+// fetch PRÓPRIO sob demanda — só quando a visão abre, com cache por recorte (useDadosDaVisao) e
+// sem polling:
 //   • RESUMO   — uma GRADE DE BI (pedido do Lucas, 18/08/2026: "trazer o informativo top da
 //     barra, deixar claro que é um gráfico... em vez de colocar um embaixo do outro, poderia
 //     trazer como um BI com o analítico dando suporte"): linha 1 = faixa de KPIs; linha 2 = o
@@ -71,6 +73,8 @@ type BaldeResumo = {
 
 type Resumo = {
   baldes: BaldeResumo[];
+  /** Pessoas DISTINTAS comprando nas vendas vivas (campo novo do payload; opcional p/ degradar). */
+  clientesUnicos?: number;
   perdas: { canceladas: number; distratos: number };
   total: { units: number; vgv: number };
   vendido: { units: number; vgv: number };
@@ -148,6 +152,85 @@ type Dados = {
   resumo?: Resumo;
   ritmo?: Ritmo;
   unidades?: Unidade[];
+};
+
+// ── CONTRATOS E ASSINATURAS (as visões com fetch PRÓPRIO) ───────────────────
+// Payloads de /api/incorporador/vendas/contratos e /vendas/assinaturas — cada shape é a allowlist
+// da rota, campo a campo. Nome de comprador/imobiliária/assinante aparece (o incorporador é parte
+// do contrato); telefone, e-mail e documento NÃO existem no payload.
+
+/** A situação resumida da assinatura de um contrato (lib/apolo/incorporador/contratos.ts). */
+type SituacaoAssinatura = "aguardando-emissao" | "assinado" | "em-assinatura";
+
+// COPIADO de contratos.ts, não importado, pela mesma razão de ETAPA_ORDEM: aquele módulo puxa o
+// driver do MySQL, que não pode entrar no bundle de um componente "use client".
+const SITUACAO_LABELS: Record<SituacaoAssinatura, string> = {
+  "aguardando-emissao": "Aguardando emissão",
+  assinado: "Assinado",
+  "em-assinatura": "Em assinatura",
+};
+
+type ContratoDaTela = {
+  assinatura: SituacaoAssinatura;
+  bloco: null | string;
+  comprador: null | string;
+  /** ISO curto "YYYY-MM-DD" — formatar por STRING (rotuloDeYmd), nunca por new Date. */
+  faturadoEm: null | string;
+  /** ISO completo (created_at do histórico é datetime real): aqui rotuloDaData serve. */
+  geradoEm: null | string;
+  imobiliaria: null | string;
+  lote: null | string;
+  /** Há contrato assinado no D4Sign: liga o botão de PDF (mesma UX da coluna da Carteira). */
+  temContrato: boolean;
+  /** Rótulo compacto código+quadra+lote (VALB0218), o mesmo da carteira. */
+  unidade: string;
+  /** A chave do botão de PDF; a rota que o recebe reconfere o escopo do lado de lá. */
+  unitId: number;
+  valorTabela: number;
+};
+
+type DadosContratos = {
+  /** O aviso do teto (lista cortada nos 500 mais recentes), quando houver. */
+  aviso: null | string;
+  contratos: ContratoDaTela[];
+  /**
+   * Contagem por situação do recorte INTEIRO, calculada na rota ANTES do teto: é ela que os
+   * chips mostram. Opcional só por resiliência a payload antigo em cache; sem ela, o fallback
+   * conta a lista exibida.
+   */
+  porSituacao?: Partial<Record<SituacaoAssinatura, number>>;
+  /** Quantos contratos vivos o recorte tem DE VERDADE, mesmo com a lista no teto. */
+  total: number;
+};
+
+type AssinanteDaTela = {
+  /** Contratos em que a fila parou em alguém ANTES dele: pendência que ainda não é dele. */
+  aguardandoAnteriores: number;
+  assinou: number;
+  /** Contratos em que a bola está COM ELE agora: o gargalo que o quadro existe para mostrar. */
+  naVez: number;
+  nome: string;
+  papel: null | string;
+};
+
+type PendenteDaTela = {
+  empreendimento: string;
+  /** ISO curto "2026-07-01" — formatar por STRING (rotuloDeYmd), nunca por new Date. */
+  enviadoEm: string;
+  naVez: string[];
+  unidade: string;
+};
+
+type DadosAssinaturas = {
+  assinantes: AssinanteDaTela[];
+  kpis: {
+    aguardandoEmissao: number;
+    pctCompradoresAssinaram: null | number;
+    tempoMedioDias: null | number;
+    unidadesComEnvio: number;
+    unidadesTotalmenteAssinadas: number;
+  };
+  pendentes: PendenteDaTela[];
 };
 
 // ── O POPUP DA PROPOSTA (payload de /api/incorporador/vendas/proposta) ──────
@@ -282,8 +365,11 @@ export function TelaVendas() {
   const [baldeAtivo, setBaldeAtivo] = useState<Balde | null>(null);
   const [visiveis, setVisiveis] = useState(PAGINA);
   const [mapa, setMapa] = useState<EmpreendimentoDaTela | null>(null);
-  // As duas visões sobre o MESMO dado: trocar de visão não refaz o fetch (custo C2X).
-  const [visao, setVisao] = useState<"pipeline" | "resumo">("resumo");
+  // Resumo e Pipeline dividem o MESMO fetch (trocar entre elas não refaz a chamada); Contratos e
+  // Assinaturas têm fetch PRÓPRIO, disparado só quando a visão abre (custo C2X).
+  const [visao, setVisao] = useState<"assinaturas" | "contratos" | "pipeline" | "resumo">(
+    "resumo",
+  );
   // A alternância UN × R$ dos KPIs do BI (página "Vendas" do Power BI do Lucas).
   const [medida, setMedida] = useState<"rs" | "un">("un");
   // O popup da proposta: aberto pela unidade clicada (kanban ou tabela), quando ela tem unitId.
@@ -291,6 +377,11 @@ export function TelaVendas() {
   // Cache por unitId, vivo enquanto a tela vive: fechar e reabrir o MESMO popup não refaz a
   // chamada (a rota custa duas consultas no C2X). Erro NÃO entra no cache — reabrir tenta de novo.
   const cacheDePropostas = useRef(new Map<number, Proposta | null>());
+  // Cache POR VISÃO e por recorte (chave = emp escolhido, "" = todos), vivo enquanto a tela vive:
+  // voltar para Contratos/Assinaturas no mesmo recorte não refaz a chamada (2 queries C2X cada).
+  // Erro NÃO entra no cache — reabrir a visão tenta de novo. E nada de polling.
+  const cacheDeContratos = useRef(new Map<string, DadosContratos>());
+  const cacheDeAssinaturas = useRef(new Map<string, DadosAssinaturas>());
 
   const carregar = useCallback(async (emp: null | string) => {
     setCarregando(true);
@@ -440,6 +531,16 @@ export function TelaVendas() {
           onClick={() => setVisao("pipeline")}
           rotulo="Pipeline"
         />
+        <Pilula
+          ativo={visao === "contratos"}
+          onClick={() => setVisao("contratos")}
+          rotulo="Contratos"
+        />
+        <Pilula
+          ativo={visao === "assinaturas"}
+          onClick={() => setVisao("assinaturas")}
+          rotulo="Assinaturas"
+        />
       </div>
 
       {visao === "pipeline" ? (
@@ -450,6 +551,10 @@ export function TelaVendas() {
           resumo={resumo}
           unidades={unidades}
         />
+      ) : visao === "contratos" ? (
+        <SecaoContratos cache={cacheDeContratos.current} emp={empSelecionado} />
+      ) : visao === "assinaturas" ? (
+        <SecaoAssinaturas cache={cacheDeAssinaturas.current} emp={empSelecionado} />
       ) : (
         <>
           {/* A grade do BI precisa de media query (as linhas 2 e 3 empilham abaixo de ~1100px),
@@ -466,6 +571,17 @@ export function TelaVendas() {
                 valor={`${resumo.vendidoPct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`}
               />
               <Numero rotulo="Unidades vendidas" valor={inteiro(resumo.vendido.units)} />
+              {/* PESSOAS distintas com compra em andamento (36 nas 39 vendas do VAL) — o funil
+                  vivo INTEIRO, reserva e proposta inclusas, não só o vendido: num lançamento com
+                  fila de reservas este número passa o vizinho, e está certo. O apoio do tile diz
+                  a régua para o leitor não somar laranja com maçã. */}
+              {resumo.clientesUnicos !== undefined ? (
+                <Numero
+                  extra="pessoas comprando neste recorte"
+                  rotulo="Clientes únicos"
+                  valor={inteiro(resumo.clientesUnicos)}
+                />
+              ) : null}
               <Numero rotulo="VGV do empreendimento" valor={brl(resumo.total.vgv)} />
               {dados.bi ? (
                 <>
@@ -2501,6 +2617,583 @@ function FatoDoModal({ rotulo, valor }: { rotulo: string; valor: string }) {
       >
         {valor}
       </div>
+    </div>
+  );
+}
+
+// ── CONTRATOS E ASSINATURAS: as visões com fetch próprio ─────────────────────
+//
+// O QUE FICOU DE FORA, declarado: ordenação clicável nas tabelas novas (a ordem já vem decidida
+// do servidor: contratos do mais recente, assinantes pelo gargalo); "dias desde o envio" e o
+// prazo por linha do painel interno (o payload do portal não os traz); export/CSV. O filtro de
+// empreendimento é o das pílulas do topo da tela — o recorte global vale nas quatro visões.
+
+type EstadoDeVisao<Tipo> =
+  | { dados: Tipo; tipo: "pronto" }
+  | { mensagem: string; tipo: "erro" }
+  | { tipo: "carregando" };
+
+/**
+ * O fetch de uma visão sob demanda, no mesmo desenho do ModalDaProposta: cache primeiro (chave =
+ * recorte), erro fora do cache, flag `ativo` contra setState depois do unmount. O efeito roda
+ * quando a visão MONTA (a troca de visão desmonta a seção) e quando o recorte muda.
+ */
+function useDadosDaVisao<Tipo>(
+  caminho: string,
+  emp: null | string,
+  cache: Map<string, Tipo>,
+  mensagemDeErro: string,
+): EstadoDeVisao<Tipo> {
+  const [estado, setEstado] = useState<EstadoDeVisao<Tipo>>({ tipo: "carregando" });
+
+  useEffect(() => {
+    const chave = emp ?? "";
+    const guardado = cache.get(chave);
+    if (guardado !== undefined) {
+      setEstado({ dados: guardado, tipo: "pronto" });
+      return;
+    }
+
+    let ativo = true;
+
+    async function carregar() {
+      try {
+        const endereco = emp ? `${caminho}?emp=${encodeURIComponent(emp)}` : caminho;
+        const resposta = await fetch(endereco, { cache: "no-store" });
+        const corpo = (await resposta.json().catch(() => null)) as
+          | { data?: Tipo; error?: string }
+          | null;
+
+        if (!resposta.ok || corpo?.data === undefined) {
+          throw new Error(corpo?.error ?? mensagemDeErro);
+        }
+
+        cache.set(chave, corpo.data);
+        if (ativo) setEstado({ dados: corpo.data, tipo: "pronto" });
+      } catch (falha) {
+        if (ativo) {
+          setEstado({
+            mensagem: falha instanceof Error ? falha.message : mensagemDeErro,
+            tipo: "erro",
+          });
+        }
+      }
+    }
+
+    setEstado({ tipo: "carregando" });
+    void carregar();
+    return () => {
+      ativo = false;
+    };
+  }, [cache, caminho, emp, mensagemDeErro]);
+
+  return estado;
+}
+
+/**
+ * O chip da coluna Assinatura: assinado no verde T.ok, em assinatura neutro, aguardando emissão
+ * esmaecido. É a única cor de estado da tabela — e verde de "concluído" é permitido (o que não é
+ * estado é o dourado).
+ */
+function ChipDeAssinatura({ situacao }: { situacao: SituacaoAssinatura }) {
+  const tom: CSSProperties =
+    situacao === "assinado"
+      ? { background: T.okBg, color: T.ok }
+      : situacao === "em-assinatura"
+        ? { background: T.soft, color: T.sub }
+        : { background: "transparent", color: T.muted, opacity: 0.75 };
+
+  return (
+    <span
+      style={{
+        border: `1px solid ${T.border}`,
+        borderRadius: 999,
+        fontSize: 10.5,
+        fontWeight: 700,
+        padding: "2px 9px",
+        whiteSpace: "nowrap",
+        ...tom,
+      }}
+    >
+      {SITUACAO_LABELS[situacao]}
+    </span>
+  );
+}
+
+/**
+ * O botão da coluna Contrato — a MESMA UX do BotaoDeContrato da TelaCarteira: ícone de documento
+ * que abre /api/incorporador/contrato?unitId=… em aba nova. O link leva o unitId, NUNCA o uuid: a
+ * rota reconfere `unidadeNoEscopo` e resolve o documento no C2X a cada clique. Sem contrato
+ * assinado, a célula é "-", igual à carteira.
+ */
+function BotaoDePdfDoContrato({ contrato }: { contrato: ContratoDaTela }) {
+  if (!contrato.temContrato) {
+    return <span style={{ color: T.muted, fontSize: 12 }}>-</span>;
+  }
+
+  return (
+    <a
+      href={`/api/incorporador/contrato?unitId=${encodeURIComponent(contrato.unitId)}`}
+      rel="noopener noreferrer"
+      style={{
+        alignItems: "center",
+        background: T.soft,
+        border: `1px solid ${T.border}`,
+        borderRadius: 8,
+        color: T.sub,
+        display: "inline-flex",
+        height: 28,
+        justifyContent: "center",
+        width: 28,
+      }}
+      target="_blank"
+      title="Abrir contrato assinado"
+    >
+      <FileText aria-hidden="true" size={14} />
+    </a>
+  );
+}
+
+// ── CONTRATOS: a tabela dos contratos gerados, com a situação da assinatura ──
+function SecaoContratos({
+  cache,
+  emp,
+}: {
+  cache: Map<string, DadosContratos>;
+  emp: null | string;
+}) {
+  const estado = useDadosDaVisao(
+    "/api/incorporador/vendas/contratos",
+    emp,
+    cache,
+    "Não foi possível carregar os contratos.",
+  );
+  const [busca, setBusca] = useState("");
+  const [situacaoAtiva, setSituacaoAtiva] = useState<null | SituacaoAssinatura>(null);
+
+  if (estado.tipo === "carregando") return <Aviso texto="Carregando os contratos…" />;
+  if (estado.tipo === "erro") return <Aviso texto={estado.mensagem} tom="erro" />;
+
+  const { aviso, contratos, porSituacao, total } = estado.dados;
+  const alvo = busca.trim().toLowerCase();
+
+  const filtrados = contratos.filter((contrato) => {
+    if (situacaoAtiva && contrato.assinatura !== situacaoAtiva) return false;
+    if (!alvo) return true;
+
+    return [contrato.unidade, contrato.bloco, contrato.lote, contrato.comprador, contrato.imobiliaria]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(alvo);
+  });
+
+  // Os chips contam o recorte INTEIRO (a rota calcula antes do teto de 500), como o título:
+  // contar a lista cortada faria os números do topo divergirem entre si. O fallback local só
+  // atende payload antigo em cache, e aí conta a lista exibida.
+  const contagemDaSituacao = (situacao: SituacaoAssinatura): number =>
+    porSituacao?.[situacao] ??
+    contratos.filter((contrato) => contrato.assinatura === situacao).length;
+  const situacoes: SituacaoAssinatura[] = ["assinado", "em-assinatura", "aguardando-emissao"];
+
+  return (
+    <section style={cartao}>
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          justifyContent: "space-between",
+        }}
+      >
+        <div>
+          {/* O CONTADOR do topo: o total do recorte, mesmo quando a lista bateu no teto. */}
+          <h2 style={titulo}>
+            {inteiro(total)} {total === 1 ? "contrato gerado" : "contratos gerados"}
+          </h2>
+          <p style={{ color: T.muted, fontSize: 12.5, margin: "6px 0 0" }}>
+            As vendas deste recorte que já têm contrato, com a situação da assinatura.
+          </p>
+        </div>
+
+        <label
+          style={{
+            alignItems: "center",
+            background: T.soft,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            display: "flex",
+            gap: 8,
+            minWidth: 220,
+            padding: "0 12px",
+          }}
+        >
+          <Search aria-hidden="true" size={15} style={{ color: T.muted, flexShrink: 0 }} />
+          <input
+            onChange={(evento) => setBusca(evento.target.value)}
+            placeholder="Unidade, comprador, imobiliária"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: T.text,
+              flex: 1,
+              fontFamily: fonte,
+              fontSize: 14,
+              minWidth: 0,
+              outline: "none",
+              padding: "9px 0",
+            }}
+            value={busca}
+          />
+        </label>
+      </div>
+
+      {/* Filtro por situação da assinatura: só situações com contrato aparecem (ruído zero). */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "14px 0 4px" }}>
+        <Pilula
+          ativo={situacaoAtiva === null}
+          onClick={() => setSituacaoAtiva(null)}
+          rotulo={`Todos (${inteiro(total)})`}
+        />
+        {situacoes
+          .filter((situacao) => contagemDaSituacao(situacao) > 0)
+          .map((situacao) => (
+            <Pilula
+              ativo={situacaoAtiva === situacao}
+              key={situacao}
+              onClick={() =>
+                setSituacaoAtiva(situacaoAtiva === situacao ? null : situacao)
+              }
+              rotulo={`${SITUACAO_LABELS[situacao]} (${inteiro(contagemDaSituacao(situacao))})`}
+            />
+          ))}
+      </div>
+
+      {contratos.length === 0 ? (
+        <p style={{ color: T.muted, fontSize: 13, margin: "20px 0 4px", textAlign: "center" }}>
+          Nenhuma venda deste recorte chegou à etapa de contrato ainda.
+        </p>
+      ) : (
+        <>
+          {/* A tabela rola SOZINHA no celular, como o Cenário Analítico. */}
+          <div style={{ marginTop: 12, overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", fontSize: 13, minWidth: 880, width: "100%" }}>
+              <thead>
+                <tr>
+                  {[
+                    "Unidade",
+                    "Comprador",
+                    "Imobiliária",
+                    "Gerado em",
+                    "Valor",
+                    "Assinatura",
+                    "Faturado em",
+                    "Contrato",
+                  ].map((coluna) => (
+                    <th
+                      key={coluna}
+                      style={{
+                        borderBottom: `1px solid ${T.border}`,
+                        color: T.muted,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        letterSpacing: "0.04em",
+                        padding: "8px 10px 8px 0",
+                        textAlign: coluna === "Valor" ? "right" : "left",
+                        textTransform: "uppercase",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {coluna}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtrados.map((contrato) => (
+                  <tr key={contrato.unitId}>
+                    <td style={{ ...celula, color: T.text, fontWeight: 600, whiteSpace: "nowrap" }}>
+                      {contrato.unidade}
+                    </td>
+                    <td style={celula}>{contrato.comprador ?? ""}</td>
+                    <td style={celula}>{contrato.imobiliaria ?? ""}</td>
+                    <td style={{ ...celula, whiteSpace: "nowrap" }}>
+                      {rotuloDaData(contrato.geradoEm) || "-"}
+                    </td>
+                    {/* Coluna de número em tabela: aqui SIM tabular-nums. */}
+                    <td
+                      style={{
+                        ...celula,
+                        color: T.text,
+                        fontVariantNumeric: "tabular-nums",
+                        textAlign: "right",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {brl(contrato.valorTabela)}
+                    </td>
+                    <td style={{ ...celula, whiteSpace: "nowrap" }}>
+                      <ChipDeAssinatura situacao={contrato.assinatura} />
+                    </td>
+                    {/* Por STRING: billing_date é DATE, e new Date mostraria a véspera. */}
+                    <td style={{ ...celula, whiteSpace: "nowrap" }}>
+                      {rotuloDeYmd(contrato.faturadoEm) || "-"}
+                    </td>
+                    <td style={{ ...celula, whiteSpace: "nowrap" }}>
+                      <BotaoDePdfDoContrato contrato={contrato} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {filtrados.length === 0 ? (
+            <p style={{ color: T.muted, fontSize: 13, margin: "16px 0 0", textAlign: "center" }}>
+              Nenhum contrato encontrado com esse filtro.
+            </p>
+          ) : null}
+        </>
+      )}
+
+      {aviso ? (
+        <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5, margin: "14px 0 0" }}>{aviso}</p>
+      ) : null}
+    </section>
+  );
+}
+
+// ── ASSINATURAS: KPIs + o quadro por assinante do painel interno + pendentes ─
+function SecaoAssinaturas({
+  cache,
+  emp,
+}: {
+  cache: Map<string, DadosAssinaturas>;
+  emp: null | string;
+}) {
+  const estado = useDadosDaVisao(
+    "/api/incorporador/vendas/assinaturas",
+    emp,
+    cache,
+    "Não foi possível carregar as assinaturas.",
+  );
+
+  if (estado.tipo === "carregando") return <Aviso texto="Carregando as assinaturas…" />;
+  if (estado.tipo === "erro") return <Aviso texto={estado.mensagem} tom="erro" />;
+
+  const { assinantes, kpis, pendentes } = estado.dados;
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      {/* ── A LINHA DE KPIs, no mesmo desenho da faixa do Resumo ─────────────── */}
+      <section style={{ ...cartao, padding: "16px 20px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "14px 32px" }}>
+          <Numero
+            destaque
+            rotulo="Compradores que assinaram"
+            valor={
+              kpis.pctCompradoresAssinaram === null
+                ? "sem dado"
+                : `${pct1(kpis.pctCompradoresAssinaram)}%`
+            }
+          />
+          <Numero
+            extra={`de ${inteiro(kpis.unidadesComEnvio)} com contrato enviado`}
+            rotulo="Unidades 100% assinadas"
+            valor={inteiro(kpis.unidadesTotalmenteAssinadas)}
+          />
+          <Numero
+            extra="da geração do contrato à última assinatura"
+            rotulo="Tempo médio"
+            valor={
+              kpis.tempoMedioDias === null ? "sem dado" : `${pct1(kpis.tempoMedioDias)} dias`
+            }
+          />
+          <Numero
+            extra="contratos que ainda não saíram para assinar"
+            rotulo="Aguardando emissão"
+            valor={inteiro(kpis.aguardandoEmissao)}
+          />
+        </div>
+      </section>
+
+      {/* ── O QUADRO POR ASSINANTE (o desenho do painel interno) ─────────────── */}
+      <section style={cartao}>
+        <h2 style={titulo}>
+          Quadro por assinante{" "}
+          <span style={{ color: T.muted, fontSize: 12, fontWeight: 500 }}>
+            quem está com a bola
+          </span>
+        </h2>
+        <p style={{ color: T.muted, fontSize: 12.5, margin: "6px 0 0" }}>
+          Na vez é o contrato parado ESPERANDO a pessoa; aguardando é o que ainda depende de
+          alguém antes dela na ordem de assinatura.
+        </p>
+
+        {assinantes.length === 0 ? (
+          <p style={{ color: T.muted, fontSize: 13, margin: "20px 0 4px", textAlign: "center" }}>
+            Nenhum contrato deste recorte saiu para assinatura ainda.
+          </p>
+        ) : (
+          <div style={{ marginTop: 12, overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", fontSize: 13, minWidth: 560, width: "100%" }}>
+              <thead>
+                <tr>
+                  {["Assinante", "Assinados", "Na vez", "Aguardando"].map((coluna) => (
+                    <th
+                      key={coluna}
+                      style={{
+                        borderBottom: `1px solid ${T.border}`,
+                        color: T.muted,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        letterSpacing: "0.04em",
+                        padding: "8px 10px 8px 0",
+                        textAlign: coluna === "Assinante" ? "left" : "right",
+                        textTransform: "uppercase",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {coluna}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {assinantes.map((assinante) => (
+                  <tr key={`${assinante.nome}-${assinante.papel ?? ""}`}>
+                    <td style={{ ...celula, color: T.text, fontWeight: 600 }}>
+                      {assinante.nome}
+                      {assinante.papel ? (
+                        <span style={{ color: T.muted, fontWeight: 500 }}>
+                          {" "}
+                          · {assinante.papel}
+                        </span>
+                      ) : null}
+                    </td>
+                    {/* Colunas de número: tabular-nums para as casas alinharem. */}
+                    <td
+                      style={{
+                        ...celula,
+                        fontVariantNumeric: "tabular-nums",
+                        textAlign: "right",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {inteiro(assinante.assinou)}
+                    </td>
+                    {/* NA VEZ em destaque: é o gargalo que o dono quer ver. Pílula grafite com
+                        preto (bg inverso), nunca dourado — dourado não é estado. */}
+                    <td style={{ ...celula, textAlign: "right", whiteSpace: "nowrap" }}>
+                      {assinante.naVez > 0 ? (
+                        <span
+                          style={{
+                            background: T.btnBg,
+                            borderRadius: 999,
+                            color: T.btnFg,
+                            fontSize: 12,
+                            fontVariantNumeric: "tabular-nums",
+                            fontWeight: 700,
+                            padding: "2px 10px",
+                          }}
+                        >
+                          {inteiro(assinante.naVez)}
+                        </span>
+                      ) : (
+                        <span style={{ color: T.muted, fontVariantNumeric: "tabular-nums" }}>0</span>
+                      )}
+                    </td>
+                    <td
+                      style={{
+                        ...celula,
+                        color: T.muted,
+                        fontVariantNumeric: "tabular-nums",
+                        textAlign: "right",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {inteiro(assinante.aguardandoAnteriores)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ── OS CONTRATOS PENDENTES, com quem está na vez em cada um ──────────── */}
+      <section style={cartao}>
+        <h2 style={titulo}>Contratos aguardando assinatura</h2>
+
+        {pendentes.length === 0 ? (
+          // O estado vazio que a operação MERECE ver: sem pendência, a visão comemora.
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              padding: "36px 0 28px",
+              textAlign: "center",
+            }}
+          >
+            <CheckCircle2 aria-hidden="true" size={30} style={{ color: T.ok }} />
+            <p style={{ color: T.text, fontSize: 15, fontWeight: 700, margin: 0 }}>
+              Tudo assinado
+            </p>
+            <p style={{ color: T.muted, fontSize: 12.5, margin: 0, maxWidth: 420 }}>
+              Nenhum contrato enviado está esperando assinatura neste recorte.
+              {kpis.aguardandoEmissao > 0
+                ? ` ${inteiro(kpis.aguardandoEmissao)} ${kpis.aguardandoEmissao === 1 ? "contrato ainda não saiu" : "contratos ainda não saíram"} para assinatura, veja o indicador acima.`
+                : ""}
+            </p>
+          </div>
+        ) : (
+          <>
+            <p style={{ color: T.muted, fontSize: 12.5, margin: "6px 0 0" }}>
+              Do mais antigo para o mais novo: é onde a espera dói há mais tempo.
+            </p>
+            <div style={{ marginTop: 8 }}>
+              {pendentes.map((pendente, indice) => (
+                <div
+                  key={`${pendente.unidade}-${pendente.enviadoEm}-${indice}`}
+                  style={{
+                    alignItems: "baseline",
+                    borderBottom:
+                      indice === pendentes.length - 1 ? "none" : `1px solid ${T.border}`,
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "4px 12px",
+                    padding: "10px 0",
+                  }}
+                >
+                  <span style={{ color: T.text, fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
+                    {pendente.unidade}
+                  </span>
+                  {pendente.empreendimento ? (
+                    <span style={{ color: T.muted, fontSize: 12 }}>{pendente.empreendimento}</span>
+                  ) : null}
+                  {pendente.enviadoEm ? (
+                    <span style={{ color: T.muted, fontSize: 12, whiteSpace: "nowrap" }}>
+                      enviado em {rotuloDeYmd(pendente.enviadoEm)}
+                    </span>
+                  ) : null}
+                  <span style={{ color: T.sub, fontSize: 12.5, marginLeft: "auto", minWidth: 0 }}>
+                    Na vez:{" "}
+                    <b style={{ color: T.text }}>
+                      {pendente.naVez.length > 0
+                        ? pendente.naVez.join(", ")
+                        : "sem assinante registrado"}
+                    </b>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
+import { clientesUnicos } from "@/lib/apolo/incorporador/contratos";
 import {
   codesDoRecorte,
   empreendimentosDoPortal,
@@ -120,7 +121,9 @@ export async function GET(request: Request) {
         // civil, renda, profissões top 6, cidades top 5). Nulo quando o C2X não respondeu — e
         // também quando o recorte tem menos vendas que o piso de agregação.
         perfilComprador,
-        resumo: resumoDeVendas(vendas.data),
+        // CLIENTES ÚNICOS das vendas vivas: derivado das unidades que a leitura JÁ trouxe (o
+        // `client` só vem em venda ativa), sem query nova. Medido no VAL: 39 vendas, 36 clientes.
+        resumo: { ...resumoDeVendas(vendas.data), clientesUnicos: clientesUnicos(vendas.data.units) },
         ritmo: ritmoDeVendas(vendas.data.units, Date.now()),
         unidades: unidadesParaOPortal(vendas.data.units),
       },

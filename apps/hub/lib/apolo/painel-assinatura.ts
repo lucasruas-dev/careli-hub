@@ -117,8 +117,11 @@ const CONSULTA = `
 
 const limpo = (v: unknown) => String(v ?? "").trim().replace(/\s+/g, " ");
 
-/** O perfil como o painel mostra, na MESMA ordem do modelo: traduz e depois sobrescreve. */
-function perfilDeTela(perfilC2x: null | string, email: string): string {
+/**
+ * O perfil como o painel mostra, na MESMA ordem do modelo: traduz e depois sobrescreve.
+ * Exportado para o quadro de assinaturas do portal do incorporador usar a MESMA tradução.
+ */
+export function perfilDeTela(perfilC2x: null | string, email: string): string {
   const base = perfilC2x === "Cliente" ? "Comprador" : (perfilC2x ?? "Sem perfil");
   return email.endsWith("@careli.adm.br") ? "Backoffice" : base;
 }

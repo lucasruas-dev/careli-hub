@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-contratos-e-assinaturas-no-portal",
+    deployedAt: "2026-08-18T03:30:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Aba CONTRATOS GERADOS: todos os contratos vivos do empreendimento, com data de geracao, valor, situacao da assinatura, faturamento e o PDF do contrato assinado",
+              "Aba GESTAO DE ASSINATURAS: o quadro por assinante (quantos assinou, quantos estao NA VEZ dele, quantos aguardam os anteriores) com a mesma regra de ordem do painel interno, e os indicadores de % assinado, unidades 100% assinadas e tempo medio ate assinar",
+              "Indicador novo de CLIENTES UNICOS no resumo de vendas",
+            ],
+            screen: "Vendas (Contratos - Assinaturas)",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.151.1 (2026-08-18-proposta-prevista-pelo-plano)",
+    technical: {
+      done:
+        "lib/apolo/incorporador/contratos.ts (regua de estagio derivada de STAGE_MAP, escolha de envio uuidDoc>maior id, teto 500 com flag truncado) e assinaturas.ts (importa marcarSituacao/perfilDeTela do painel interno; LEFT JOIN em signers para envio sem assinante nao sumir) + rotas escopadas por codigosDaSessao; TelaVendas com as visoes Contratos e Assinaturas (fetch na abertura, cache por recorte) e KPI clientesUnicos. Correcoes da revisao: billing_date por date_format (DATE + timezone Z voltava um dia) e envio sem assinante visivel nas duas abas.",
+      motivation:
+        "Pedido do Lucas: acompanhar contratos gerados e o andamento das assinaturas dentro de Vendas, com clientes unicos como indicador.",
+    },
+    title: "Vendas do portal: contratos gerados e gestao de assinaturas",
+    type: "novidade",
+    version: "1.152.0",
+  },
+  {
     buildTag: "2026-08-18-proposta-prevista-pelo-plano",
     deployedAt: "2026-08-18T03:05:00-03:00",
     internal: true,
