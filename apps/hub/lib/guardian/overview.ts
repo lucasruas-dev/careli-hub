@@ -274,12 +274,17 @@ const overdueWhere = `
   and (p.payment_to_delete is null or p.payment_to_delete = 0)
 `;
 
+// ⚠️ O `paid_value` SÓ é dinheiro recebido quando `payment_date` existe. A integração Asaas
+// PRÉ-PREENCHE paid_value com o valor esperado ao emitir o boleto (medido 18/08/2026: vencidas
+// com status 7, payment_date NULL e paid_value = initial_value) — subtraí-lo sem conferir a data
+// zerava o vencido dessas parcelas aqui e na cópia do Apolo (lib/apolo/carteira.ts, em sincronia
+// à mão com esta).
 const outstandingAmountExpression = `
   greatest(
     coalesce(p.initial_value, 0)
     + coalesce(p.interest_value, 0)
     + coalesce(p.mulct_value, 0)
-    - coalesce(p.paid_value, 0),
+    - (case when p.payment_date is not null then coalesce(p.paid_value, 0) else 0 end),
     0
   )
 `;

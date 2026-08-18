@@ -101,7 +101,10 @@ function brParaIso(valor: string | null): string {
 
 // Mapeia a ficha AO VIVO do C2X para as MESMAS chaves de `cadastro` que a ficha lê — cópia
 // fiel de mapearC2xParaFicha em app/api/apolo/board/[id]/route.ts (só devolve chave com valor).
-function mapearC2xParaFicha(c2x: ApoloC2xCadastro): Record<string, string> {
+// Exportada porque a aba Cadastro do portal do incorporador (lib/apolo/incorporador/
+// ficha-cadastro.ts) precisa da MESMA tradução valor→id para a prioridade
+// metadata.cadastro < C2X < esteira.ficha ser idêntica à do CRM interno.
+export function mapearC2xParaFicha(c2x: ApoloC2xCadastro): Record<string, string> {
   const bruto: Record<string, string> = {
     dataNascimento: brParaIso(c2x.birthday),
     nomeMae: c2x.motherName ?? "",

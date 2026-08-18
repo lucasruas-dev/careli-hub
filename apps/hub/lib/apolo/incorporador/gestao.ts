@@ -29,6 +29,7 @@ export type EmpreendimentoDisponivel = {
 
 export type UsuarioDoIncorporador = {
   ativo: boolean;
+  criadoEm: null | string;
   email: string;
   id: string;
   nome: string;
@@ -124,11 +125,12 @@ export async function listarIncorporadores(
     // `senha_hash` NÃO entra nesta lista. Ver o alerta no topo do arquivo.
     client
       .from("apolo_incorporador_usuarios")
-      .select("id,incorporador_id,email,nome,ativo,ultimo_login_em")
+      .select("id,incorporador_id,email,nome,ativo,ultimo_login_em,created_at")
       .in("incorporador_id", ids)
       .order("nome")
       .returns<{
         ativo: boolean;
+        created_at: null | string;
         email: string;
         id: string;
         incorporador_id: string;
@@ -154,6 +156,7 @@ export async function listarIncorporadores(
       .filter((u) => u.incorporador_id === i.id)
       .map((u) => ({
         ativo: Boolean(u.ativo),
+        criadoEm: u.created_at,
         email: u.email,
         id: u.id,
         nome: u.nome,
@@ -303,9 +306,15 @@ export async function salvarUsuarioIncorporador(
 }
 
 function mensagemDeUsuario(mensagem: null | string | undefined, email: string): string {
-  if (mensagem?.includes("apolo_incorporador_usuarios_email_uk")) {
-    // O índice é global, não por incorporador: a mesma pessoa não loga em dois clientes.
-    return `O e-mail ${email} já está em uso por outra conta de incorporador.`;
+  // Desde a 0094 o índice é POR PORTAL (`apolo_incorporador_usuarios_portal_email_uk`): o mesmo
+  // e-mail pode ter conta em vários incorporadores, com senha própria em cada um; o que ele não
+  // pode é repetir DENTRO do mesmo portal. O nome antigo fica no match para o caso de a migration
+  // ainda não ter chegado no banco que atender esta chamada.
+  if (
+    mensagem?.includes("apolo_incorporador_usuarios_portal_email_uk") ||
+    mensagem?.includes("apolo_incorporador_usuarios_email_uk")
+  ) {
+    return `O e-mail ${email} já tem conta neste portal. Em outro incorporador ele pode entrar; aqui é uma conta por pessoa.`;
   }
   return mensagem ?? "Não foi possível gravar o usuário.";
 }

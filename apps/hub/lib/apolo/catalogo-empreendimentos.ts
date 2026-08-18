@@ -15,6 +15,14 @@ import { getHadesDbPool } from "@/lib/guardian/db";
 // Ver [[project_hermes_cost]]: já houve incidente de fatura por leitura repetida.
 
 export type EmpreendimentoDoCatalogo = {
+  /**
+   * O CÓDIGO de cada divisão, na MESMA ordem de `stageIds`. Para o Lagoa Bonita: LBF, LBR, LBP.
+   *
+   * Existe porque quase toda leitura de negócio do C2X (carteira, vendas, unidades) recebe
+   * `codes`, e não ids. Sem isto, quem precisa da tradução id → code refaz a consulta por fora, e
+   * é aí que a regra do grupo se perde.
+   */
+  codes: string[];
   /** "group:Lagoa Bonita" para o consolidado, ou o id do C2X para o simples. */
   id: string;
   /** Nome de mercado, em caixa alta. Para o grupo é o display ("LAGOA BONITA"). */
@@ -102,6 +110,7 @@ export function agrupar(linhas: LinhaCrua[]): EmpreendimentoDoCatalogo[] {
     }
 
     saida.push({
+      codes: divisoes.map((divisao) => (divisao.code ?? "").trim().toUpperCase()),
       id: `group:${grupo.display}`,
       name: grupo.display.toLocaleUpperCase("pt-BR"),
       stageIds: divisoes.map((divisao) => String(divisao.id)),
@@ -113,6 +122,7 @@ export function agrupar(linhas: LinhaCrua[]): EmpreendimentoDoCatalogo[] {
     if (!code || consumidos.has(code)) continue;
 
     saida.push({
+      codes: [code],
       id: String(linha.id),
       name: (linha.name ?? code).trim().toLocaleUpperCase("pt-BR"),
       // Para o empreendimento simples, a "divisão" é ele mesmo — assim quem consome não precisa

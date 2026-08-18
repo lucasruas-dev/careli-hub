@@ -1,15 +1,10 @@
-import { HubShell } from "@/layouts/hub-shell";
-import { GestaoIncorporadores } from "@/modules/apolo/blocks/incorporadores/gestao-incorporadores";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-// Ferramenta INTERNA: criar o incorporador, dizer quais empreendimentos ele enxerga e abrir as
-// contas de login do portal dele. Antes disso o caminho era INSERT manual no Supabase.
-// Ver [[project_apolo_acesso_incorporador]].
+// A gestão de incorporadores MUDOU para o Setup (pedido do Lucas, 18/08/2026: "essa tela poderia
+// estar dentro do setup"). O link antigo já circulou em mensagens e no changelog, então esta rota
+// não pode quebrar: só encaminha para a aba nova.
 export default function IncorporadoresPage() {
-  return (
-    <HubShell chrome="operational" layoutMode="module">
-      <GestaoIncorporadores />
-    </HubShell>
-  );
+  redirect("/setup?aba=incorporadores");
 }

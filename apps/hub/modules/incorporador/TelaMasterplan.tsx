@@ -106,11 +106,11 @@ export function TelaMasterplan({
             gap: 6,
             padding: "5px 11px",
           }}
-          title="Voltar para os produtos (Esc)"
+          title="Voltar para o portal (Esc)"
           type="button"
         >
           <ArrowLeft aria-hidden="true" size={14} />
-          Voltar aos produtos
+          Voltar
         </button>
         <span style={{ color: SHELL.texto, fontSize: 12.5, fontWeight: 600 }}>{nome}</span>
         <span style={{ color: SHELL.textoFraco, fontSize: 11.5, marginLeft: "auto" }}>

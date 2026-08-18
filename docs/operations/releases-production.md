@@ -1843,6 +1843,25 @@ Atualizacao pos-deploy:
 - Validacoes finais: diff check OK; eslint escopado OK; check-types direto apps/hub OK; lint direto apps/hub OK; build hub OK; Vercel Production READY; healthchecks 200/401 esperado; logs error sem ocorrencia.
 - Observacao: producao foi publicada a partir do pacote limpo .codex-deploy/zeus-helpdesk-kanban-prod-20260526-1215/workspace, sem root misto e sem env/secret/migration/banco.
 
+## 2026-08-18 02:40:00 -03:00 - Zeus - Producao portal do incorporador padrao (v1.151.0)
+
+- Assunto: portal PADRAO do incorporador (CRM, Vendas, Carteira, mapa) + gestao no Setup + correcao do vencido zerado.
+- Squad/agente responsavel: Zeus (orquestracao com subagentes e workflows; revisao adversarial em cada frente).
+- Data e hora local: 2026-08-18 02:40 -03:00.
+- Ambiente: producao `https://c2x.app.br` via push na `main` (git automatico).
+- Origem/homologacao de referencia: dev local `localhost:3001`, validado visualmente pelo Lucas nos portais `bill` e `lagoabonita` em 17-18/08.
+- Escopo publicado: telas do portal do incorporador reconstruidas do Apolo (Carteira 2 abas com valor liquido, contrato D4Sign e boleto por parcela; Vendas com resumo BI, pipeline, popup de proposta, perfil agregado do comprador; CRM lista+ficha com 7 abas e documentos em 3 fontes); masterplans internos novos (lagoa-bonita 495, vista-alegre 126, recanto-do-para 199) com recorte por escopo e moldura interna removida; gestao de incorporadores no Setup (aba Incorporadores, contas por portal, chave de carteira); sessao do portal revalidada no banco a cada carga; correcao do OUTSTANDING (paid_value pre-preenchido pela integracao Asaas) no Apolo e no Hades.
+- Commit publicado: registrado no push desta entrada (ver git log da main).
+- Deployment anterior: v1.150.0 `2026-08-17-corretor-avisado-e-habilitar-sem-beco`.
+- Deployment novo: v1.151.0 `2026-08-18-portal-do-incorporador-padrao`.
+- Dominio alvo autorizado: `https://c2x.app.br` (OK explicito do Lucas em 18/08: "faz o seguinte, sobe isso em producao de uma vez").
+- Aliases/dominios afetados: somente `c2x.app.br`.
+- Arquivos/modulos incluidos: apps/hub (modules/incorporador, app/api/incorporador/*, lib/apolo/incorporador/*, masterplans-internos/{lagoa-bonita,vista-alegre,recanto-do-para}.html, public/masterplan/*, scripts/apolo/masterplan-*, Setup incorporadores, lib/apolo/carteira.ts, lib/guardian/overview.ts, changelog).
+- Arquivos/modulos excluidos: portal personalizado do Cecilio (perfis-de-portal.ts congelado, TelaProdutos intacta); `public/garden/interno-3634d57f.html` NAO removido (vazamento conhecido, aguarda OK para remocao + ajuste do masterplan_url da enterprise 39 no Supabase).
+- Validacoes executadas: `tsc --noEmit` limpo; vitest 93 arquivos / 1091 testes verdes; validacao visual do Lucas nas telas e mapas; revisoes adversariais de vazamento/fidelidade/tecnica em cada frente; prova de escopo (LBF 47 dentro / 448 fora, VAL 126, REP 199).
+- Healthchecks pos-deploy: `c2x.app.br` 200 e portais `/incorporador/{bill,lagoabonita}` 200 (registrados apos o push).
+- Riscos residuais: vazamento do Garden segue no ar (tarefa aberta); anexos do C2X na aba Documentos listam metadados sem abrir o binario (falta credencial S3); ficha de imobiliaria no CRM do portal segue reduzida (pendente ratificacao).
+
 ## 2026-08-14 20:35:00 -03:00 - Zeus - Producao credenciamento Lagoa Bonita unificado
 
 - Autorizacao: Lucas, explicita ("pode sim, mas analisa pois eu subi muita coisa hoje, cuidado

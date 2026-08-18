@@ -117,6 +117,8 @@ export type AutenticacaoResultado =
 export async function autenticarUsuarioIncorporador(
   email: string,
   senha: string,
+  /** Slug do portal onde a pessoa está entrando. Vem da URL; sem ele, busca só pelo e-mail. */
+  slug?: null | string,
 ): Promise<AutenticacaoResultado> {
   const client = createApoloAdminClient();
   if (!client) return { motivo: "indisponivel", ok: false };
@@ -124,11 +126,34 @@ export async function autenticarUsuarioIncorporador(
   const alvo = email.trim().toLowerCase();
   if (!alvo || !senha) return { motivo: "credencial", ok: false };
 
-  const { data, error } = await client
+  // ⚠️ O PORTAL FAZ PARTE DA CREDENCIAL, e é isso que deixa o MESMO e-mail servir a vários
+  // incorporadores (regra do Lucas, 17/08/2026: *"deixa o meu e-mail padrão acessar todos, só
+  // muda a URL"*). Antes o e-mail era único no sistema inteiro e um `maybeSingle()` por e-mail
+  // bastava; com o mesmo endereço em dois portais, ele passaria a estourar com "mais de uma
+  // linha" e derrubaria o login dos DOIS.
+  //
+  // O slug vem da URL, que é pública e não autoriza nada sozinha: quem autoriza é a senha. O que
+  // ele faz é dizer EM QUAL portal a pessoa está tentando entrar.
+  const portal = String(slug ?? "").trim().toLowerCase();
+
+  let consulta = client
     .from("apolo_incorporador_usuarios")
     .select("id,incorporador_id,email,nome,senha_hash,ativo")
-    .ilike("email", alvo)
-    .maybeSingle<LinhaUsuario>();
+    .ilike("email", alvo);
+
+  if (portal) {
+    const { data: doPortal } = await client
+      .from("apolo_incorporadores")
+      .select("id")
+      .ilike("slug", portal)
+      .maybeSingle<{ id: string }>();
+
+    // Portal inexistente: não devolve "não achei o portal" (isso confirmaria quais slugs existem
+    // para quem chuta endereço). Segue com um id impossível e cai no mesmo "credencial inválida".
+    consulta = consulta.eq("incorporador_id", doPortal?.id ?? "00000000-0000-0000-0000-000000000000");
+  }
+
+  const { data, error } = await consulta.limit(1).maybeSingle<LinhaUsuario>();
 
   if (error) return { motivo: "indisponivel", ok: false };
 
@@ -165,6 +190,25 @@ export async function autenticarUsuarioIncorporador(
     ok: true,
     usuario: { email: data.email, id: data.id, nome: data.nome },
   };
+}
+
+/**
+ * A conta ainda está ativa? `null` = não deu para conferir (banco fora); quem chama decide o
+ * fallback. Existe para a REVALIDAÇÃO de sessão: desativar a conta no Setup tem que valer no
+ * próximo carregamento do portal, não no vencimento do cookie.
+ */
+export async function usuarioIncorporadorSegueAtivo(usuarioId: string): Promise<boolean | null> {
+  const client = createApoloAdminClient();
+  if (!client) return null;
+
+  const { data, error } = await client
+    .from("apolo_incorporador_usuarios")
+    .select("ativo")
+    .eq("id", usuarioId)
+    .maybeSingle<{ ativo: boolean }>();
+
+  if (error) return null;
+  return Boolean(data?.ativo);
 }
 
 /** Carimba o último acesso. Falha aqui não derruba o login: é trilha, não autorização. */

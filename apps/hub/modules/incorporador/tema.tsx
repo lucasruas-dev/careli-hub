@@ -16,6 +16,8 @@ export const TEMA_CSS = `
     --inc-page:#f7f8fa; --inc-card:#ffffff; --inc-soft:#eef1f4;
     --inc-border:#dce2ea; --inc-text:#121722; --inc-sub:#485466; --inc-muted:#667085;
     --inc-danger:#c24135; --inc-danger-bg:#fdf3f2; --inc-gold:#a07c3b;
+    --inc-ok:#2f7d59; --inc-ok-bg:#eef7f2;
+    --inc-sombra:0 12px 32px rgba(0,0,0,0.14);
     --inc-btn-bg:#121722; --inc-btn-fg:#ffffff;
     color-scheme: light;
   }
@@ -31,6 +33,8 @@ export const TEMA_CSS = `
       --inc-page:#0a0a0a; --inc-card:#171717; --inc-soft:#242424;
       --inc-border:rgb(255 255 255 / .075); --inc-text:#f7f8fa; --inc-sub:#dce2ea;
       --inc-muted:#a5afbd; --inc-danger:#e08278; --inc-danger-bg:rgb(194 65 53 / .12);
+      --inc-ok:#7cc4a1; --inc-ok-bg:rgb(47 125 89 / .16);
+      --inc-sombra:0 12px 32px rgba(0,0,0,0.55);
       --inc-gold:#d6b56f; --inc-btn-bg:#f7f8fa; --inc-btn-fg:#121722;
       color-scheme: dark;
     }
@@ -75,8 +79,14 @@ export const T = {
   dangerBg: "var(--inc-danger-bg)",
   gold: "var(--inc-gold)",
   muted: "var(--inc-muted)",
+  // O verde de ESTADO (adimplência, "em dia"). Nasceu hardcoded no Chip da TelaCrm; virou token
+  // para a próxima tela que precisar do mesmo verde não duplicar o hex. É o par do `danger`.
+  ok: "var(--inc-ok)",
+  okBg: "var(--inc-ok-bg)",
   page: "var(--inc-page)",
   soft: "var(--inc-soft)",
+  // A sombra de popover/modal, mais funda no tema escuro (sombra clara some no fundo preto).
+  sombra: "var(--inc-sombra)",
   sub: "var(--inc-sub)",
   text: "var(--inc-text)",
 } as const;

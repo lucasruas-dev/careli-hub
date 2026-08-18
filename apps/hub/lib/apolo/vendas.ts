@@ -110,6 +110,13 @@ export type ApoloVendaTerminalBucket = {
 export type ApoloVendaUnit = {
   arId: number | null;
   block: string | null;
+  /**
+   * Unidade fora da oferta (`enterprise_unities.sale_blocked`). Vem por unidade porque o resumo
+   * já separa as bloqueadas do estoque disponível, e uma LISTA que não soubesse disso mostraria
+   * as mesmas unidades como "Disponível" logo abaixo de um card dizendo que elas estão
+   * bloqueadas. Só vale quando não há venda ativa: com proposta em andamento, o estágio manda.
+   */
+  blocked: boolean;
   client: ApoloVendaParty | null;
   code: string;
   id: string;
@@ -543,6 +550,7 @@ function mapVendaUnit(row: UnitRow): ApoloVendaUnit {
   return {
     arId: row.ar_id ? toNumber(row.ar_id) : null,
     block: text(row.block),
+    blocked: toNumber(row.sale_blocked) === 1,
     client: showParty ? party(row.client_id, row.client_code, row.client_name) : null,
     code: buildUnitCode(enterpriseCode, text(row.block), text(row.lot)),
     id: String(row.id),

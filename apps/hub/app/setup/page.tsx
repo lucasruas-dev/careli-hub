@@ -2,6 +2,7 @@
 
 import { HubShell } from "@/layouts/hub-shell";
 import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
+import { GestaoIncorporadores } from "@/modules/apolo/blocks/incorporadores/gestao-incorporadores";
 import {
   createAtlasDepartment,
   createAtlasOccurrenceProfile,
@@ -65,6 +66,7 @@ import {
   Archive,
   Gauge,
   KeyRound,
+  Landmark,
   Layers3,
   Link2,
   MoreVertical,
@@ -93,6 +95,7 @@ type SetupTabId =
   | "departamentos"
   | "setores"
   | "modulos"
+  | "incorporadores"
   | "permissoes";
 
 type SetupActionId = "new-department" | "new-sector" | "new-user";
@@ -112,6 +115,8 @@ const setupTabs = [
   { icon: Building2, id: "departamentos", label: "Departamentos" },
   { icon: Layers3, id: "setores", label: "Setores" },
   { icon: PackageCheck, id: "modulos", label: "Modulos" },
+  // Portais de incorporador (era /apolo/incorporadores; o Lucas pediu dentro do Setup em 18/08).
+  { icon: Landmark, id: "incorporadores", label: "Incorporadores" },
   { icon: KeyRound, id: "permissoes", label: "Permissoes" },
 ] as const satisfies readonly {
   icon: typeof Users;
@@ -239,6 +244,17 @@ function SetupWorkspace() {
 
   useEffect(() => {
     void refreshSetupData();
+  }, []);
+
+  useEffect(() => {
+    // O link antigo /apolo/incorporadores redireciona para /setup?aba=incorporadores; qualquer
+    // aba pode ser aberta direto pela URL. Lido no efeito (e não no estado inicial) para o
+    // primeiro render do client bater com o do servidor.
+    const aba = new URLSearchParams(window.location.search).get("aba");
+
+    if (aba && setupTabs.some((tab) => tab.id === aba)) {
+      setActiveTab(aba as SetupTabId);
+    }
   }, []);
 
   const summary = useMemo(
@@ -560,7 +576,11 @@ function SetupWorkspace() {
           </Tooltip>
         </div>
         <div className="p-5">
-          {isLoading ? (
+          {activeTab === "incorporadores" ? (
+            // A gestão de incorporadores busca os próprios dados (rota com gate admin);
+            // não depende do loadSetupData e por isso fica fora do gate de loading acima.
+            <GestaoIncorporadores />
+          ) : isLoading ? (
             <PanteonLoadingState
               description="Buscando dados reais do Supabase."
               minHeightClassName="min-h-64"

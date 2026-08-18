@@ -6,13 +6,18 @@ import { ALVO_TOQUE, fonte } from "@/modules/publico/ui/tokens";
 
 import { Marca, T, TEMA_CSS } from "./tema";
 
+import { ehPortalPersonalizado } from "@/lib/apolo/incorporador/perfis-de-portal";
+import { TelaCarteira } from "./TelaCarteira";
+import { TelaCrm } from "./TelaCrm";
+// Só o portal PERSONALIZADO monta esta tela (ver `abasDoPortal`); no padrão o mapa vive em Vendas.
 import { TelaProdutos } from "./TelaProdutos";
+import { TelaVendas } from "./TelaVendas";
 
-// PORTAL DO INCORPORADOR — a porta e as três telas.
+// PORTAL DO INCORPORADOR — a porta e as telas de dentro.
 //
 // Desenho pedido pelo Lucas (10/08): "a tela inicial para eles fazerem acesso com a logo deles",
-// e dentro "Vendas - Carteira(quando tiver) - Produtos". A marca do CLIENTE manda na tela; a
-// nossa aparece como assinatura discreta no rodapé, ordem dele: "sempre marcar c2x".
+// e dentro "Vendas - Carteira(quando tiver)"; o CRM entra na sequência. A marca do CLIENTE manda
+// na tela; a nossa aparece como assinatura discreta no rodapé, ordem dele: "sempre marcar c2x".
 //
 // Paleta: a das telas públicas (modules/publico/ui/tokens), a mesma do masterplan que o Cecílio
 // já validou. Nada de tema próprio por cliente ainda — hoje personalização é a logo, e inventar
@@ -25,6 +30,8 @@ type Sessao = {
   usuario: { nome: string };
 };
 
+// "produtos" existe SÓ no portal personalizado (ver `abasDoPortal`). No padrão, o mapa vive
+// dentro de Vendas.
 type Aba = "carteira" | "crm" | "produtos" | "vendas";
 
 export function PortalIncorporador({
@@ -40,7 +47,9 @@ export function PortalIncorporador({
 }) {
   const [sessao, setSessao] = useState<Sessao | null>(null);
   const [carregando, setCarregando] = useState(true);
-  const [aba, setAba] = useState<Aba>("produtos");
+  // Abre em Vendas: é a primeira pergunta do dono do empreendimento e a única aba que existe para
+  // todo mundo (Carteira só aparece para quem tem carteira administrada, CRM ainda está por vir).
+  const [aba, setAba] = useState<Aba>("vendas");
 
   const carregarSessao = useCallback(async () => {
     try {
@@ -62,10 +71,34 @@ export function PortalIncorporador({
     return <Moldura logoEscuraUrl={logoEscuraUrl} logoUrl={logoUrl} nome={nome}><div style={{ color: T.muted, fontSize: 14, textAlign: "center" }}>Carregando…</div></Moldura>;
   }
 
-  if (!sessao) {
+  // ⚠️ A SESSAO TEM QUE SER DESTE PORTAL. O cookie e um so por navegador, entao quem tem sessao
+  // aberta de um incorporador e abre a URL de OUTRO via com a marca do endereco (que vem do slug)
+  // e os dados do cookie: nome, empreendimentos e carteira do primeiro, sob a logo do segundo.
+  // O dado nunca vazou (toda rota filtra pela sessao), mas a TELA mentia sobre de quem ele era —
+  // e foi exatamente o que apareceu ao abrir /incorporador/bill com sessao do Cecilio.
+  //
+  // Sessao de outro portal = tratada como quem nao entrou: mostra a porta, com a marca certa.
+  const daCasa = sessao?.incorporador.slug === slug;
+
+  if (!sessao || !daCasa) {
     return (
       <Moldura logoEscuraUrl={logoEscuraUrl} logoUrl={logoUrl} nome={nome}>
         <Porta aoEntrar={carregarSessao} slug={slug} />
+        {sessao && !daCasa ? (
+          <p
+            style={{
+              color: T.muted,
+              fontSize: 12.5,
+              lineHeight: 1.5,
+              margin: "14px auto 0",
+              maxWidth: 360,
+              textAlign: "center",
+            }}
+          >
+            Voce esta conectado como <b style={{ color: T.sub }}>{sessao.incorporador.nome}</b>.
+            Para ver {nome}, entre com o acesso deste portal.
+          </p>
+        ) : null}
       </Moldura>
     );
   }
@@ -173,7 +206,8 @@ function Porta({ aoEntrar, slug }: { aoEntrar: () => Promise<void>; slug: string
 
     try {
       const resposta = await fetch("/api/incorporador/sessao", {
-        body: JSON.stringify({ email, senha }),
+        // O slug diz em QUAL portal ela esta entrando: o mesmo e-mail pode ter acesso a varios.
+        body: JSON.stringify({ email, senha, slug }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -206,7 +240,7 @@ function Porta({ aoEntrar, slug }: { aoEntrar: () => Promise<void>; slug: string
         Portal do incorporador
       </div>
       <div style={{ color: T.muted, fontSize: 13, marginBottom: 20 }}>
-        Acompanhe vendas, carteira e produtos.
+        Acompanhe as vendas e a carteira do seu empreendimento.
       </div>
 
       <label htmlFor="inc-email" style={rotulo}>
@@ -279,15 +313,30 @@ function Porta({ aoEntrar, slug }: { aoEntrar: () => Promise<void>; slug: string
 
 // ── O PORTAL ────────────────────────────────────────────────────────────────
 
-// "no sidebar lateral queria ter poucas abas: CRM - Vendas - Carteira" (Lucas, 12/08). Produtos
-// continua na lista porque já está no ar e é por onde o Cecílio abre o masterplan; tirar seria
-// remover função de cliente ativo para cumprir uma contagem de abas.
+// "no sidebar lateral queria ter poucas abas: CRM - Vendas - Carteira" (Lucas, 12/08), fechado em
+// 17/08/2026: *"nao tem a tela produto, vai ser CRM - Vendas - Carteira"*.
+//
+// Produtos SAIU, e o masterplan não foi junto: ele passou para dentro de Vendas (TelaVendas), que
+// é onde faz sentido, porque o mapa é outra forma de olhar as mesmas unidades. Era essa a única
+// função que a aba Produtos entregava para cliente ativo, e ela continua a um clique.
 const ABAS: { chave: Aba; rotulo: string }[] = [
   { chave: "crm", rotulo: "CRM" },
   { chave: "vendas", rotulo: "Vendas" },
   { chave: "carteira", rotulo: "Carteira" },
+];
+
+// ⚠️ O CECILIO NAO PERDE A ABA PRODUTOS. O portal dele e um projeto PERSONALIZADO, ja aprovado e
+// em uso pelo cliente (regra do Lucas, 17/08/2026), e o padrao nao pode passar por cima: tirar
+// Produtos aqui apagaria a porta por onde ele abre o masterplan do Garden todo dia.
+// Ver [[perfis-de-portal]].
+const ABAS_PERSONALIZADO: { chave: Aba; rotulo: string }[] = [
+  ...ABAS,
   { chave: "produtos", rotulo: "Produtos" },
 ];
+
+export function abasDoPortal(slug: string): { chave: Aba; rotulo: string }[] {
+  return ehPortalPersonalizado(slug) ? ABAS_PERSONALIZADO : ABAS;
+}
 
 // A logo do incorporador NÃO entra aqui de propósito: ela recebe na porta (o login) e o portal
 // é Panteon para todo mundo. Por isso o Portal não recebe mais `logoUrl`/`logoEscuraUrl`.
@@ -305,7 +354,9 @@ function Portal({
   // "Carteira (quando tiver)": some inteira quando nenhum empreendimento deste incorporador tem
   // carteira administrada pela Careli. Aba que abre vazia vira chamado.
   const temCarteira = sessao.empreendimentosComCarteira.length > 0;
-  const abas = ABAS.filter((item) => item.chave !== "carteira" || temCarteira);
+  const abas = abasDoPortal(sessao.incorporador.slug).filter(
+    (item) => item.chave !== "carteira" || temCarteira,
+  );
 
   return (
     <div className="inc" style={{ background: T.page, fontFamily: fonte }}>
@@ -407,11 +458,16 @@ function Portal({
         </aside>
 
         <div className="inc-main">
-          <main style={{ margin: "0 auto", maxWidth: 1180, padding: "26px 20px 40px" }}>
-            {aba === "crm" ? <EmBreve titulo="CRM" /> : null}
+          {/* LARGURA TOTAL, como as telas internas do Apolo (Lucas, 18/08/2026: "a tela aqui no
+              apolo parece maior"). O miolo era travado em maxWidth 1180 e centrado; agora ocupa a
+              viewport inteira com padding lateral, em TODAS as abas — o mesmo comportamento do
+              CRM 360 interno. */}
+          <main style={{ padding: "26px 24px 40px" }}>
+            {aba === "crm" ? <TelaCrm /> : null}
+            {aba === "vendas" ? <TelaVendas /> : null}
+            {aba === "carteira" ? <TelaCarteira /> : null}
+            {/* Só o portal personalizado chega aqui: `abasDoPortal` não oferece a aba no padrão. */}
             {aba === "produtos" ? <TelaProdutos /> : null}
-            {aba === "vendas" ? <EmBreve titulo="Vendas" /> : null}
-            {aba === "carteira" ? <EmBreve titulo="Carteira" /> : null}
           </main>
 
           <footer
@@ -427,24 +483,6 @@ function Portal({
           </footer>
         </div>
       </div>
-    </div>
-  );
-}
-
-function EmBreve({ titulo }: { titulo: string }) {
-  return (
-    <div
-      style={{
-        background: T.card,
-        border: `1px dashed ${T.border}`,
-        borderRadius: 14,
-        color: T.muted,
-        fontSize: 14,
-        padding: 40,
-        textAlign: "center",
-      }}
-    >
-      <b style={{ color: T.text }}>{titulo}</b> entra na próxima rodada.
     </div>
   );
 }

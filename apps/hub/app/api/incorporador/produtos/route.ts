@@ -5,6 +5,10 @@ import {
   type ApoloEnterpriseRow,
 } from "@/lib/apolo/empreendimentos";
 import { listEnterpriseLogos } from "@/lib/apolo/enterprise-logos";
+import {
+  masterplanInternoDe,
+  nomeApresentavel,
+} from "@/lib/apolo/incorporador/empreendimentos-do-portal";
 import { sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
@@ -32,13 +36,6 @@ export type ProdutoDoIncorporador = {
   masterplanInterno: null | string;
   nome: string;
 };
-
-/**
- * Empreendimentos com a tela do masterplan interno pronta. A lista tem que casar com a de
- * `app/api/incorporador/masterplan/route.ts`, que é quem serve o arquivo — aqui só decidimos o
- * que o card oferece, e oferecer o que a outra rota não entrega daria um quadro vazio.
- */
-const COM_TELA_INTERNA = new Set(["GDN", "VLO", "VOC", "VOL"]);
 
 /**
  * O Apolo consolida etapas do mesmo produto numa linha só (Lavra do Ouro = LOS + LOU, Lagoa
@@ -77,30 +74,6 @@ function recortar(
   }
 
   return saida;
-}
-
-/**
- * O C2X guarda o nome do empreendimento em CAIXA ALTA ("VALE DO OURO", "GARDEN"), que serve para
- * tela de operação e fica agressivo no portal do cliente. Aqui vira "Vale do Ouro" e "Garden".
- * Preposição fica minúscula, e nome que não é todo maiúsculo passa intacto — se alguém cadastrar
- * "Garden Resort Residence" com a caixa certa, respeitamos.
- */
-function nomeApresentavel(nome: string): string {
-  const limpo = nome.trim().replace(/\s+/g, " ");
-
-  if (limpo !== limpo.toUpperCase()) return limpo;
-
-  const minusculas = new Set(["a", "as", "da", "das", "de", "do", "dos", "e", "o", "os"]);
-
-  return limpo
-    .toLowerCase()
-    .split(" ")
-    .map((palavra, indice) =>
-      indice > 0 && minusculas.has(palavra)
-        ? palavra
-        : palavra.charAt(0).toUpperCase() + palavra.slice(1),
-    )
-    .join(" ");
 }
 
 function idsReais(linha: ApoloEnterpriseRow): string[] {
@@ -168,7 +141,7 @@ export async function GET(request: Request) {
         enterpriseIds: ids,
         id: String(linha.id),
         logoUrl: ids.map((id) => logos[id]).find(Boolean) ?? null,
-        masterplanInterno: codes.find((code) => COM_TELA_INTERNA.has(code)) ?? null,
+        masterplanInterno: masterplanInternoDe(codes),
         masterplanUrl: ids.map((id) => masterplans[id]).find(Boolean) ?? null,
         nome: nomeApresentavel(linha.name ?? linha.code ?? "Empreendimento"),
       };

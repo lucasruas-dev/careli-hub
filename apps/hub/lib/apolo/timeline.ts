@@ -54,7 +54,9 @@ export type ApoloTimelineScope = {
 // desempenho e atendimentos de teste da Iris, so porque o e-mail era @careli.adm.br.
 const DOMINIO_INTERNO = /@careli\.adm\.br\s*$/i;
 
-function somenteEmailsDeCliente(emails: string[]): string[] {
+// Exportada porque o histórico do portal do incorporador (lib/apolo/incorporador/historico.ts)
+// monta as reuniões pelo MESMO loadChronos e precisa da mesma regra de identidade.
+export function somenteEmailsDeCliente(emails: string[]): string[] {
   return emails.filter((email) => email.trim() && !DOMINIO_INTERNO.test(email));
 }
 
@@ -385,7 +387,9 @@ async function loadHades(
 
 // ---- Chronos (Supabase) --------------------------------------------------------------------
 
-async function loadChronos(
+// Exportada para o histórico do portal do incorporador reusar SÓ as reuniões, sem pagar as
+// outras cinco leituras de loadApoloEntityTimeline (e sem receber Iris/Hades, que lá não saem).
+export async function loadChronos(
   adminClient: AdminClient,
   emails: string[],
 ): Promise<ApoloTimelineEntry[]> {

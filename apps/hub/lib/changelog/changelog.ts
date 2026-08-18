@@ -36,6 +36,61 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-portal-do-incorporador-padrao",
+    deployedAt: "2026-08-18T02:40:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Portal PADRAO completo para o loteador, com a marca dele: CRM, Vendas e Carteira, tudo filtrado so pelo que e dele",
+              "CRM no desenho do CRM 360: lista de compradores, cadastros e imobiliarias, e a ficha completa com Resumo, Cadastro, Relacionamentos, Carteira, Financeiro, Documentos e Historico",
+              "Documentos da ficha em tres fontes: os do cadastro no Apolo abrem direto, o contrato assinado abre em PDF, e os arquivos guardados no C2X aparecem listados",
+              "Vendas como um BI: indicadores de propostas, faturadas e cancelamentos, grafico mensal, ranking de imobiliarias, perfil agregado do comprador, pipeline em colunas e o popup da proposta de cada venda (entrada, desconto, parcelamento e financiamento)",
+              "Carteira identica a do Apolo, com a coluna nova de VALOR LIQUIDO por unidade, o contrato assinado, o boleto de cada parcela e a aba de indicadores no desenho do BI",
+              "Masterplan de cada empreendimento com recorte por dono: o lote das outras glebas aparece em cinza escuro, sem nome e sem valor",
+            ],
+            screen: "Portal (CRM - Vendas - Carteira - Mapa)",
+          },
+        ],
+      },
+      {
+        module: "Setup",
+        screens: [
+          {
+            items: [
+              "Tela nova Incorporadores: criar o portal, marcar os empreendimentos (com a chave de carteira administrada), e gerenciar as contas de acesso de cada incorporador",
+              "Mudanca feita no Setup vale no proximo carregamento do portal, sem precisar sair e entrar de novo",
+            ],
+            screen: "Incorporadores",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O valor VENCIDO da carteira estava zerado nas unidades com boleto emitido pela integracao: corrigido aqui e no Hades (a integracao pre-preenche o valor pago ao emitir o boleto, e a conta abatia isso sem conferir se houve pagamento)",
+            ],
+            screen: "Empreendimento - Carteira",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.150.0 (2026-08-17-corretor-avisado-e-habilitar-sem-beco)",
+    technical: {
+      done:
+        "Portal do incorporador reconstruido portando as telas reais do Apolo (CarteiraTab, VendasTab/kanban, CRM 360 lista+ficha) com escopo por sessao assinada (codigosDaSessao/idsDaSessao/unidadeNoEscopo/pessoaNoEscopo) e allowlist campo a campo em toda rota /api/incorporador/*. Masterplans internos novos (Lagoa Bonita 495, Vista Alegre 126, Recanto do Para 199) gerados dos SVGs do C2X pelo molde novo; recorte por escopo com quadra string e moldura interna removida do fonte. Correcoes: OUTSTANDING so abate paid_value com payment_date (apolo + guardian); camada cinza injetada no ULTIMO </body> (o primeiro era string JS do exportador e matava o app do mapa); sessao do portal revalidada no banco a cada carga com reemissao de cookie. Gestao de incorporadores movida para o Setup com secao de contas.",
+      motivation:
+        "Pedido do Lucas: portal padrao dos loteadores no nivel do BI que ele mesmo mantinha no Power BI, para Vista Alegre, Lagoa Bonita (LBF) e os proximos, sem afetar o portal personalizado do Cecilio.",
+    },
+    title: "Portal do incorporador: CRM, Vendas, Carteira e mapa, no padrao Panteon",
+    type: "novidade",
+    version: "1.151.0",
+  },
+  {
     buildTag: "2026-08-17-corretor-avisado-e-habilitar-sem-beco",
     deployedAt: "2026-08-17T21:30:00-03:00",
     modules: [

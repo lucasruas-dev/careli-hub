@@ -9,10 +9,14 @@ import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 // Expressões idênticas às do Hades (lib/guardian/overview.ts). Mantidas em sincronia à mão.
+// ⚠️ O `paid_value` SÓ é dinheiro recebido quando `payment_date` existe. A integração Asaas
+// PRÉ-PREENCHE paid_value com o valor esperado ao emitir o boleto (medido 18/08/2026: vencidas
+// com status 7, payment_date NULL e paid_value = initial_value) — subtraí-lo sem conferir a data
+// zerava o vencido de 4 unidades do Vista Alegre e o total geral contava só 2 de 6 clientes.
 const ACTIVE = "(p.payment_to_delete is null or p.payment_to_delete = 0)";
 const PORTFOLIO = `p.payment_status_id in (5, 6, 7) and ${ACTIVE}`; // carteira ativa
 const PRINCIPAL = "coalesce(p.initial_value, 0)";
-const OUTSTANDING = `greatest(coalesce(p.initial_value,0)+coalesce(p.interest_value,0)+coalesce(p.mulct_value,0)-coalesce(p.paid_value,0), 0)`;
+const OUTSTANDING = `greatest(coalesce(p.initial_value,0)+coalesce(p.interest_value,0)+coalesce(p.mulct_value,0)-(case when p.payment_date is not null then coalesce(p.paid_value,0) else 0 end), 0)`;
 const OVERDUE = `((p.payment_status_id = 7 or (p.due_date < curdate() and p.payment_status_id not in (1,2,5))) and ${ACTIVE})`;
 
 export type ApoloCarteiraSummary = {
