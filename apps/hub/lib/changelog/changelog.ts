@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-19-masterplan-dinamico",
+    deployedAt: "2026-08-19T23:40:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "O mapa passou a mostrar a situacao de agora: venda, cancelamento e bloqueio aparecem no mesmo instante em que acontecem no C2X",
+              "No Vale do Ouro (VOL) o mapa mostrava 6 lotes disponiveis contra 2 na tela de Vendas, e dois lotes ja cancelados continuavam pintados como vendidos. Agora os dois numeros sao o mesmo: 91 vendidos, 48 bloqueados e 2 disponiveis",
+              "O nome do comprador acompanha: entra quando o lote e vendido e SAI quando a venda e cancelada. Eram 21 lotes exibindo comprador desatualizado",
+            ],
+            screen: "Masterplan",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.166.0 (2026-08-19-lsoft-tudo-editavel)",
+    technical: {
+      done:
+        "O masterplan era um HTML GERADO com a situacao gravada dentro de cada linha do array DADOS ([quadra,lote,situacao,area,valor,comprador,poligono]), e a rota servia o arquivo por fs.readFileSync. O que estava em producao era de 11/08: nada posterior chegava nele. Novo lib/apolo/incorporador/masterplan-estado.ts com lerEstadoDosLotes (le situacao, comprador e preco do C2X) e aplicarEstadoAtual (reescreve so esses tres campos, linha a linha, sem encostar em quadra, lote, area e poligono, que sao o desenho). A regua de sale_status_id/sale_blocked para as quatro cores e a MESMA de mapUnitRow, que a tela de Vendas usa — era com ela que a comparacao estava sendo feita. A consulta e a MESMA que ja definia o escopo do recorte: virou um SELECT com colunas a mais, nao um segundo SELECT. Aplicacao ANTES do recorte, para o recorte fail-closed seguir sendo a ultima palavra sobre o que sai. Degrada para o arquivo (nunca para erro) quando o C2X nao conhece o lote. Medido contra producao: 8 lotes corrigidos no VOL, 4 no VOC. 19 testes novos, incluindo JSON.parse do array reescrito nos 5 masterplans reais com nomes acentuados e com aspas — o teste achou que o recorte NAO valida o miolo da linha, so cabeca e cauda, entao uma aspas no nome abriria o mapa em branco sem erro nenhum; a limpeza passou a morar no ponto de escrita.",
+      motivation:
+        "Lucas, 19/08/2026: 'criei aqui o perfil do Vale do Ouro, VOL e achei uma divergencia... na tela de vendas esta correto, 91 vendidos, 2 disponivel e 48 bloqueado, contudo, quando eu abro o masterplan o valor esta errado, me retorna 6 disponivel, e alguns lotes que realmente esta disponivel consta como vendido. Pelo que apurei, teve cancelamento ontem que o masterplan nao atualizou' e, na sequencia, 'o masterplan e dinamico, nao pode ser estatico'.",
+    },
+    title: "Masterplan passou a ler a situacao do C2X, em vez do arquivo",
+    type: "correcao",
+    version: "1.167.0",
+  },
+  {
     buildTag: "2026-08-19-lsoft-tudo-editavel",
     deployedAt: "2026-08-19T22:30:00-03:00",
     modules: [

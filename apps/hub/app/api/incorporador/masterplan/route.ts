@@ -6,7 +6,8 @@ import { NextResponse } from "next/server";
 import { loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
 import { codigosDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { MASTERPLANS_INTERNOS } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
-import { chaveDoLote, recortarMasterplan } from "@/lib/apolo/incorporador/masterplan-recorte";
+import { aplicarEstadoAtual, type EstadoDoLote, lerEstadoDosLotes } from "@/lib/apolo/incorporador/masterplan-estado";
+import { recortarMasterplan } from "@/lib/apolo/incorporador/masterplan-recorte";
 import { sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
 import { deveClarearMasterplan } from "@/lib/apolo/incorporador/tema-portal";
 import { getHadesDbPool } from "@/lib/guardian/db";
@@ -60,7 +61,7 @@ function comCaminhoAbsoluto(html: string): string {
 }
 
 /**
- * As chaves `quadra-lote` que este portal pode ver dentro DESTE arquivo de mapa.
+ * O estado ATUAL dos lotes que este portal pode ver dentro DESTE arquivo de mapa.
  *
  * ⚠️ O ARQUIVO É COMPARTILHADO. O `vale-do-ouro.html` atende VLO, VOC e VOL: quem chega com VOC
  * pede o mesmo arquivo que o dono do VOL. A permissão, então, não pode ser "abriu o arquivo, viu
@@ -68,34 +69,20 @@ function comCaminhoAbsoluto(html: string): string {
  *
  * Entram os códigos da SESSÃO que apontam para o mesmo arquivo: quem tiver VOC e VOL vê os dois
  * lados, quem tiver um vê o seu.
+ *
+ * ⚠️ ESTA CONSULTA FAZ AS DUAS COISAS DE PROPÓSITO. As chaves do mapa são o escopo (quem entra no
+ * recorte) e o valor é o estado (situação, comprador e preço de agora). Eram a mesma pergunta ao
+ * C2X sendo feita uma vez só: separar em duas rodadas custaria um segundo SELECT para responder o
+ * que a primeira já sabe — e abriria a chance de as duas discordarem entre si.
  */
-async function chavesDoEscopo(codesDaSessao: string[], arquivo: string): Promise<Set<string> | null> {
+async function estadoDoEscopo(
+  codesDaSessao: string[],
+  arquivo: string,
+): Promise<Map<string, EstadoDoLote> | null> {
   const doMesmoArquivo = codesDaSessao.filter((code) => MASTERPLANS_INTERNOS[code] === arquivo);
   if (doMesmoArquivo.length === 0) return null;
 
-  const pool = getHadesDbPool();
-  if (!pool.ok) return null;
-
-  try {
-    const [linhas] = await pool.pool.query(
-      `select u.block, u.lot
-         from enterprise_unities u
-         join enterprises e on e.id = u.enterprise_id
-        where e.code in (${doMesmoArquivo.map(() => "?").join(", ")})`,
-      doMesmoArquivo,
-    );
-
-    const chaves = new Set<string>();
-    for (const linha of linhas as Array<{ block: null | number | string; lot: null | number | string }>) {
-      if (linha.block == null || linha.lot == null) continue;
-      chaves.add(chaveDoLote(linha.block, linha.lot));
-    }
-
-    return chaves.size > 0 ? chaves : null;
-  } catch (error) {
-    console.error("[incorporador][masterplan] falha ao ler as unidades do escopo", error);
-    return null;
-  }
+  return lerEstadoDosLotes(doMesmoArquivo);
 }
 
 export async function GET(request: Request) {
@@ -164,14 +151,30 @@ export async function GET(request: Request) {
   // FAIL-CLOSED: sem conseguir provar quais lotes são dele, o mapa não vai. Servir o arquivo cru
   // "porque o C2X não respondeu" é exatamente o vazamento que este código existe para fechar.
   const codesDaSessao = await codigosDaSessao(sessao);
-  const permitidos = await chavesDoEscopo(codesDaSessao, arquivo);
+  const estado = await estadoDoEscopo(codesDaSessao, arquivo);
 
-  if (!permitidos) {
+  if (!estado) {
     console.error(`[incorporador][masterplan] sem escopo de lotes para ${code} (${arquivo})`);
     return NextResponse.json({ error: "Masterplan indisponível." }, { status: 503 });
   }
 
-  const recorte = recortarMasterplan(html, permitidos);
+  // ⚠️ A SITUAÇÃO VEM DO C2X, NÃO DO ARQUIVO. O HTML é gerado com a situação gravada dentro, e o
+  // que está em produção é de 11/08: venda, cancelamento e bloqueio posteriores não chegam nele.
+  // O Lucas viu isso no VOL (*"o masterplan é dinâmico, não pode ser estático"*, 19/08/2026), com
+  // 6 lotes disponíveis no mapa contra 2 na tela de Vendas. Aqui o desenho continua sendo o do
+  // arquivo e só situação, comprador e preço são trocados pelo estado de agora.
+  //
+  // ANTES DO RECORTE, e não depois: assim o recorte segue sendo a última palavra sobre o que sai
+  // daqui, com o mesmo código e o mesmo fail-closed de sempre.
+  const atualizado = aplicarEstadoAtual(html, estado);
+
+  if (atualizado.corrigidos > 0) {
+    console.info(
+      `[incorporador][masterplan] ${code}: ${atualizado.corrigidos} lote(s) com situação corrigida pelo C2X`,
+    );
+  }
+
+  const recorte = recortarMasterplan(atualizado.html, new Set(estado.keys()));
 
   if (!recorte.ok) {
     console.error(`[incorporador][masterplan] recorte recusado para ${code}: ${recorte.erro}`);
