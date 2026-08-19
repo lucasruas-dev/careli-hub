@@ -5285,3 +5285,20 @@ Conclusao:
 - Correção: a régua que vale é a do **estado final**. O cancelamento agora desfaz o faturamento que aquela unidade tinha somado — inclusive na **série mensal**, senão o gráfico guardaria uma barra de venda que não existiu — e libera o dedupe para que um faturamento posterior volte a contar (unidade que fatura, cancela e fatura de novo é venda de verdade na segunda vez).
 - Quatro testes novos: desfaz, some do mês, refatura volta a contar, e cancelar sem ter faturado não mexe em nada.
 - Verificação: tsc limpo, **1.280 testes PASS** (104 arquivos), eslint limpo.
+
+## v1.163.0 — 19/ago/2026 · Carteira do Garden e do Vale do Sol (LSoft) no Panteon
+- Autorização: Lucas ("pode subir"), 2026-08-19. Rollback: v1.162.0 (`2026-08-18-faturada-cancelada`). Migrations **0096 e 0097 já aplicadas** com OK.
+- **De onde vem**: LSoft SGC 6.13, sistema da Cecílio Rocha. Access **anterior ao Access 2000** em `\SERVIDOR\Sistema\sgc\dados.mdb`, rede local deles.
+  - ⚠️ O driver moderno (ACE) **recusa** abrir; só o **Jet 4.0, que existe apenas em 32 bits**, lê. Por isso o `.ps1` roda pelo `SysWOW64` e **sobre CÓPIA** — o arquivo fica em uso o dia inteiro.
+  - ⚠️ Pegadinhas do SQL do Jet: exige `AS` em alias, não tem `COUNT(DISTINCT)`, e **não aceita `UNION` em subconsulta**. Script `.ps1` para o PS 5.1 precisa de **BOM**.
+- ⚠️ **O RECORTE É O CENTRO DE CUSTO**, que no LSoft é `CATEGORIA.CLASSE.SUBCLASSE` — e a **CATEGORIA é o EMPREENDIMENTO**: **124 = Condomínio Garden**, **102 = Vale do Sol**, 16.3 = Receita/Aptos Vendidos. "Aptos Vendidos" se repete em dezenas de categorias; filtrar só por 16.3 traria obra de todo mundo.
+- **Carga**: 237 clientes, 19.988 parcelas, **R$ 60,9 mi em aberto** e **R$ 7,6 mi recebidos**. Das 412 tabelas do LSoft, só 54 têm dados — usam como sistema financeiro, não como ERP.
+- ⚠️ **"A receber" e "recebido" numa tabela só**: no LSoft a parcela **muda de tabela** quando é paga. Manter a divisão obrigaria todo indicador a somar dois lugares para responder "foi pago ou não".
+- ⚠️ **A unidade não existe como campo** — sai de parse do texto livre das observações (`LOTE: 109 QUADRA: 08`, com variações) e acerta **13.124 de 19.988 (66%)**. O texto original fica guardado e a tela o mostra quando o parse falha.
+- ⚠️ **Parcela repetida NÃO é duplicação**: é **pagamento parcial**. Conferido no Access — a 006/084 de um cliente do Garden foi quitada em R$ 29,26 + R$ 864,53 + R$ 1.300,00, e o LSoft lança uma linha por recebimento. A tela avisa, senão parece base duplicada.
+- ⚠️ **CARGA ÚNICA** (decisão do Lucas): não haverá novo sincronismo, então **este banco passa a ser a verdade** e o cadastro inteiro é editável, com trilha de autor/valor anterior/valor novo em `lsoft_clientes_edicoes`. Quem editar é gente de fora no futuro — sem trilha, dado que muda vira discussão sem prova.
+- **Campos para o C2X** (migration 0097): sexo, estado civil, regime de bens, escolaridade, profissão, naturalidade, nacionalidade, faixa de renda, número/complemento, nome do pai, imobiliária e empreendimento de destino. A lista saiu de `montarClienteIntegracao`.
+  - **Imobiliária vinculadora**: **AVANCA** (Kleber Barcelos), CNPJ 47.700.818/0001-80, id 4175 no C2X — gravada nos 237. **Garden → GDN** em 138; os 99 do Vale do Sol e 2 que compraram nos dois ficam **sem destino** até o empreendimento existir no C2X.
+- **MOST**: rota `/api/lsoft/enriquecer` em lotes. ⚠️ **As credenciais só existem na Vercel** — rodar local cairia no modo simulado e gravaria dado inventado. Pula quem já tem `enriquecido_em` (não pagar duas vezes) e **só preenche buraco**. ~R$ 2,23/CPF pela config de 10/jul; 237 ≈ R$ 530. ⚠️ O `basic_data` **não devolve estado civil nem nome do pai** — esses seguem humanos.
+- Verificação: tsc limpo, **1.280 testes PASS**, eslint limpo, `/lsoft` compila e responde 200.
+- ⏭️ Pendente: aba de documentos (precisa de `lsoft_documentos`), Vale do Sol no C2X, e a importação em si.
