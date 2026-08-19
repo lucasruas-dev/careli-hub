@@ -41271,3 +41271,61 @@ REGRAS QUE FICAM
    estados). Se o numero mudou sem eu ter pedido, e regressao.
 3. Quando a verificacao visual e impossivel para mim, DIZER isso ao Lucas antes do deploy, e
    nao tratar typecheck verde como "validado".
+
+---
+
+## 2026-08-19 · MASTERPLAN DINAMICO (v1.167.0, deployment dpl_3gobTV3nRPCMkkGZSJ95sVLpTkb2)
+
+PEDIDO DO LUCAS: "criei aqui o perfil do Vale do Ouro, VOL e achei uma divergencia... na tela de
+vendas esta correto, 91 vendidos, 2 disponivel e 48 bloqueado, contudo, quando eu abro o masterplan
+me retorna 6 disponivel, e alguns lotes que realmente esta disponivel consta como vendido... teve
+cancelamento ontem que o masterplan nao atualizou". Depois: "o masterplan e dinamico, nao pode ser
+estatico".
+
+CAUSA. `app/api/incorporador/masterplan/route.ts` servia um HTML GERADO por `fs.readFileSync`, com
+a situacao de cada lote gravada dentro do array `DADOS`
+(`[quadra,"lote",situacao,area,valor,"comprador","poligono"]`, situacao NUMERICA: 0=Disponivel
+1=Reservado 2=Vendido 3=Bloqueado, e bloqueado sempre com valor 0). O arquivo em producao era de
+11/08. Nada posterior chegava nele.
+
+⚠️ O ARQUIVO COM DADOS NAO E O DE `public/masterplans/` — aquele e so a casca. O de verdade vive em
+`apps/hub/masterplans-internos/` (fora do public de proposito: tem preco e nome de comprador).
+Perdi tempo medindo o arquivo errado e o script devolvia "0 lotes".
+
+CORRECAO. Novo `lib/apolo/incorporador/masterplan-estado.ts`. O desenho continua vindo do arquivo;
+situacao, comprador e preco passam a vir do C2X ao servir. A regua e a MESMA de `mapUnitRow`
+(`lib/apolo/empreendimentos.ts`), que a tela de Vendas usa. A consulta e a MESMA que ja definia o
+escopo do recorte, agora com colunas a mais: um SELECT, nao dois. Roda ANTES do recorte.
+
+MEDIDO CONTRA PRODUCAO: 8 lotes corrigidos no VOL, 4 no VOC, 21 compradores desatualizados. O VOL
+passa a mostrar 91/48/2, igual a tela de Vendas.
+
+⚠️ ARMADILHA 1 — A CHAVE QUADRA-LOTE COLIDE. O Vale do Ouro foi dividido (VLO -> VOC+VOL) e o VLO
+ficou com os MESMOS 298 lotes, so que como historico. A primeira medicao acusou 165 lotes errados
+porque o fantasma do VLO sobrescrevia o lote vivo. Com desempate, o numero real era 12.
+
+⚠️ ARMADILHA 2 — O RECORTE NAO VALIDA O MIOLO DA LINHA. `recortarMasterplan` e fail-closed e PARECE
+ser a rede de seguranca do formato, mas so confere a CABECA (`[quadra,"lote"`) e a CAUDA
+(`"poligono"]`). Situacao, area, valor e comprador passam sem ser olhados. Uma aspas no nome do
+comprador quebraria o `DADOS` e o mapa abriria EM BRANCO, sem erro no servidor. Descoberto por um
+teste que esperava a recusa e nao a teve. A protecao ficou no ponto de ESCRITA.
+
+REGRA QUE FICA: validar HTML gerado com `JSON.parse` do array, nao com regex. Regex acha o que
+procura e nao ve o que sobrou.
+
+## ACHADO SEPARADO, NAO CORRIGIDO: O ESPELHO DO MASTERPLAN ESTA PARADO
+
+`lib/apolo/espelho-masterplan.ts` copia `sale_status_id`/`sale_blocked` de VOC(37)/VOL(36) para o
+VLO(35), que e o `show_map/35` — o mapa que o CORRETOR ve dentro do C2X. O changelog de 03/08
+anuncia "cron de 1 minuto no vercel.json", mas NAO EXISTE entrada de cron para
+`/api/apolo/masterplan/espelho` no `vercel.json`.
+
+Medido em 19/08: a consulta do espelho encontra 62 lotes divergentes e ninguem os corrige. O VLO
+mostra 141 vendidos + 46 reservados contra os 183 vendidos reais de VOC+VOL.
+
+Nao afeta o portal (nenhum portal usa o VLO: os vinculos sao 39/37/29/33/36). Afeta o mapa do
+corretor no C2X. Religar exige OK do Lucas: e escrita no legado MAIS um cron novo.
+
+ROLLBACK: dpl_52do5tDcV4YbLeYsjthuvbreCJ7E (v1.166.0).
+HEALTHCHECK: c2x.app.br 200 · /api/incorporador/masterplan?code=VOL 401 (gate ok) · /lsoft 200 ·
+/incorporador/cer 200.
