@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-19-lsoft-tudo-editavel",
+    deployedAt: "2026-08-19T22:30:00-03:00",
+    modules: [
+      {
+        module: "LSoft Integracao",
+        screens: [
+          {
+            items: [
+              "O cadastro inteiro ficou editavel: nome, CPF, nascimento, RG, telefone, celular, e-mail, mae, conjuge e o endereco completo. Antes esses campos apareciam como texto e nao davam para corrigir",
+              "O botao de editar a parcela voltou a aparecer: com oito colunas ele saia da area visivel do painel, e a parcela parecia nao editavel. Agora ele fica fixo na direita e o painel e mais largo",
+              "A idade acompanha o campo de nascimento enquanto se digita",
+            ],
+            screen: "Ficha do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.165.0 (2026-08-19-lsoft-ficha-completa)",
+    technical: {
+      done:
+        "Dois defeitos somados no mesmo sintoma. (1) Quando a edicao foi aberta para todos os campos, a lista CAMPOS_EDITAVEIS cresceu no backend mas a tela continuou renderizando o bloco de cima com o componente de LEITURA — dai 'nao consigo editar as informacoes'. O componente Campo foi removido de vez para o engano nao se repetir. (2) A coluna de acao da tabela de parcelas era a primeira a sair da area visivel no painel de 780px; virou sticky right com fundo proprio e o painel foi para 980px. Regra que fica: coluna de ACAO em tabela dentro de painel estreito precisa ser sticky, senao o recurso existe e ninguem alcanca.",
+      motivation:
+        "Lucas: nao consigo editar as informacoes · achei o erro da edicao das parcelas, a tela comeu o botao de editar.",
+    },
+    title: "LSoft: cadastro e parcela editaveis de verdade",
+    type: "correcao",
+    version: "1.166.0",
+  },
+  {
     buildTag: "2026-08-19-lsoft-ficha-completa",
     deployedAt: "2026-08-19T21:40:00-03:00",
     modules: [

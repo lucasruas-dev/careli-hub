@@ -5329,3 +5329,13 @@ Conclusao:
 - **Nome do pai removido** a pedido do Lucas.
 - Verificação: tsc limpo, **1.280 testes PASS**, eslint sem aviso novo.
 - ⏭️ Pendente: os 8+6 do MOST, aba de documentos, Vale do Sol no C2X, importação para C2X/Apolo.
+
+## v1.166.0 — 19/ago/2026 · LSoft: cadastro e parcela editáveis de verdade
+- Autorização: Lucas ("pode subir"), 2026-08-19. Rollback: v1.165.0. SEM migration.
+- **Dois defeitos somados no mesmo sintoma** ("não consigo editar"):
+  1. ⚠️ Quando a edição foi aberta para todos os campos, `CAMPOS_EDITAVEIS` cresceu **no backend** e a tela continuou renderizando o bloco de cima com o componente de **leitura**. O `Campo` foi **removido de vez** para o engano não se repetir.
+  2. ⚠️ A coluna de ação da tabela de parcelas era a primeira a sair da área visível no painel de 780px — a tela "comia" o botão e a parcela parecia não editável (achado do Lucas). Virou `sticky right` com fundo próprio; painel foi para 980px.
+- **Regra que fica**: coluna de AÇÃO em tabela dentro de painel estreito precisa ser sticky. Senão o recurso existe e ninguém alcança.
+- Agora editáveis no cadastro: nome, CPF, nascimento, RG, telefone, celular, e-mail, mãe, cônjuge, endereço, bairro, CEP, cidade e UF. A idade recalcula enquanto se digita o nascimento.
+- Verificação: tsc limpo, **1.280 testes PASS**, eslint limpo.
+- ⏭️ **MASTERPLAN DESATUALIZADO — confirmado, correção pendente.** `app/api/incorporador/masterplan/route.ts:155` faz `fs.readFileSync` de `public/masterplans/vale-do-ouro.html`, **arquivo de 10/08** com a situação de cada lote gravada dentro. A tela de Vendas lê o C2X ao vivo; o mapa mostra a foto de 9 dias atrás — por isso o cancelamento de ontem não apareceu e lotes disponíveis constam como vendidos (Lucas: *"o masterplan é dinâmico, não pode ser estático"*). Correção: manter o polígono do arquivo e trazer situação/comprador/valor do C2X ao servir, casando por `chaveDoLote`.

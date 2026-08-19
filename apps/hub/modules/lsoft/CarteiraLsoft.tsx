@@ -579,7 +579,21 @@ function PainelDoCliente({
       setFicha(dados);
       const c = dados.cadastro;
       setRascunho({
+        bairro: c.bairro ?? "",
+        celular: c.celular ?? "",
+        cep: c.cep ?? "",
+        cidade: c.cidade ?? "",
         complemento: c.complemento ?? "",
+        conjuge: c.conjuge ?? "",
+        cpf_formatado: c.cpfFormatado ?? "",
+        email: c.email ?? "",
+        endereco: c.endereco ?? "",
+        estado: c.estado ?? "",
+        mae: c.mae ?? "",
+        nascimento: c.nascimento?.slice(0, 10) ?? "",
+        nome: c.nome ?? "",
+        rg: c.rg ?? "",
+        telefone: c.telefone ?? "",
         escolaridade: c.escolaridade ?? "",
         estado_civil: c.estadoCivil ?? "",
         faixa_renda: c.faixaRenda ?? "",
@@ -633,7 +647,7 @@ function PainelDoCliente({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onFechar} role="presentation">
       <div
-        className="flex h-full w-full max-w-[780px] flex-col bg-canvas shadow-2xl"
+        className="flex h-full w-full max-w-[980px] flex-col bg-canvas shadow-2xl"
         onClick={(evento) => evento.stopPropagation()}
         role="presentation"
       >
@@ -698,28 +712,84 @@ function PainelDoCliente({
                     </span>
                   ) : null}
                 </div>
-                <div className="grid gap-x-6 gap-y-2 rounded-xl border border-line bg-subtle p-4 sm:grid-cols-2">
-                  <Campo
-                    rotulo="Nascimento"
-                    valor={
-                      ficha.cadastro.nascimento
-                        ? `${dataBR(ficha.cadastro.nascimento)}${
-                            idadeDe(ficha.cadastro.nascimento) !== null
-                              ? ` · ${idadeDe(ficha.cadastro.nascimento)} anos`
-                              : ""
-                          }`
-                        : null
-                    }
+                {/* ⚠️ TUDO EDITÁVEL AQUI TAMBÉM. Estes campos ficaram só leitura por engano meu: o
+                    backend passou a aceitá-los quando a carga virou única, mas a tela seguia
+                    mostrando texto — foi o "não consigo editar as informações" do Lucas. */}
+                <div className="grid gap-x-6 gap-y-3 rounded-xl border border-line bg-subtle p-4 sm:grid-cols-2">
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, nome: v }))}
+                    rotulo="Nome"
+                    valor={rascunho.nome ?? ""}
                   />
-                  <Campo rotulo="RG" valor={ficha.cadastro.rg} />
-                  <Campo rotulo="Telefone" valor={ficha.cadastro.telefone ?? ficha.cadastro.celular} />
-                  <Campo rotulo="E-mail" valor={ficha.cadastro.email} />
-                  <Campo rotulo="Mãe" valor={ficha.cadastro.mae} />
-                  <Campo rotulo="Cônjuge" valor={ficha.cadastro.conjuge} />
-                  <Campo rotulo="Endereço" valor={ficha.cadastro.endereco} />
-                  <Campo
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, cpf_formatado: v }))}
+                    rotulo="CPF"
+                    valor={rascunho.cpf_formatado ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, nascimento: v }))}
+                    rotulo={
+                      idadeDe(rascunho.nascimento ?? null) !== null
+                        ? `Nascimento · ${idadeDe(rascunho.nascimento ?? null)} anos`
+                        : "Nascimento"
+                    }
+                    tipo="date"
+                    valor={rascunho.nascimento ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, rg: v }))}
+                    rotulo="RG"
+                    valor={rascunho.rg ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, telefone: v }))}
+                    rotulo="Telefone"
+                    valor={rascunho.telefone ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, celular: v }))}
+                    rotulo="Celular"
+                    valor={rascunho.celular ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, email: v }))}
+                    rotulo="E-mail"
+                    valor={rascunho.email ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, mae: v }))}
+                    rotulo="Mãe"
+                    valor={rascunho.mae ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, conjuge: v }))}
+                    rotulo="Cônjuge"
+                    valor={rascunho.conjuge ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, endereco: v }))}
+                    rotulo="Endereço"
+                    valor={rascunho.endereco ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, bairro: v }))}
+                    rotulo="Bairro"
+                    valor={rascunho.bairro ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, cep: v }))}
+                    rotulo="CEP"
+                    valor={rascunho.cep ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, cidade: v }))}
                     rotulo="Cidade"
-                    valor={[ficha.cadastro.cidade, ficha.cadastro.estado].filter(Boolean).join("/")}
+                    valor={rascunho.cidade ?? ""}
+                  />
+                  <Texto
+                    aoMudar={(v) => setRascunho((r) => ({ ...r, estado: v }))}
+                    rotulo="UF"
+                    valor={rascunho.estado ?? ""}
                   />
                 </div>
               </section>
@@ -896,7 +966,10 @@ function TabelaDeParcelas({
             <th className="px-3 py-2 text-right font-semibold">Recebido</th>
             <th className="px-3 py-2 text-left font-semibold">Situação</th>
             <th className="px-3 py-2 text-left font-semibold">Unidade</th>
-            <th className="px-3 py-2 text-right font-semibold" />
+            {/* ⚠️ GRUDADA NA DIREITA. Com oito colunas dentro do painel, esta era a primeira a sair
+                da área visível: a tela "comia" o botão de editar e a parcela parecia não editável
+                (o Lucas passou por isso). `sticky` mantém a ação sempre ao alcance, role ou não. */}
+            <th className="sticky right-0 bg-subtle px-3 py-2 text-right font-semibold" />
           </tr>
         </thead>
         <tbody>
@@ -958,14 +1031,13 @@ function TabelaDeParcelas({
                         .join(" ")
                     : (parcela.observacoes ?? "—")}
                 </td>
-                <td className="px-3 py-2 text-right">
+                <td className="sticky right-0 bg-canvas px-3 py-2 text-right">
                   <button
-                    aria-label="Editar parcela"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-ink-soft hover:bg-subtle"
+                    className="inline-flex h-7 items-center gap-1 rounded-lg border border-black/10 px-2 text-xs font-semibold text-ink-soft hover:bg-subtle dark:border-white/10"
                     onClick={() => setEditando(parcela.id)}
                     type="button"
                   >
-                    <Pencil size={13} />
+                    <Pencil size={12} /> Editar
                   </button>
                 </td>
               </tr>
@@ -1008,24 +1080,15 @@ function Historico({ edicoes }: { edicoes: EdicaoDoLsoft[] }) {
   );
 }
 
-function Campo({ rotulo, valor }: { rotulo: string; valor: null | string }) {
-  return (
-    <div className="min-w-0">
-      <p className="m-0 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-ink-soft">
-        {rotulo}
-      </p>
-      <p className="m-0 truncate text-sm text-ink">{valor || "—"}</p>
-    </div>
-  );
-}
-
 function Texto({
   aoMudar,
   rotulo,
+  tipo,
   valor,
 }: {
   aoMudar: (valor: string) => void;
   rotulo: string;
+  tipo?: string;
   valor: string;
 }) {
   return (
@@ -1036,6 +1099,7 @@ function Texto({
       <input
         className="h-9 rounded-lg border border-black/10 bg-canvas px-3 text-sm text-ink dark:border-white/10"
         onChange={(evento) => aoMudar(evento.target.value)}
+        type={tipo ?? "text"}
         value={valor}
       />
     </label>
