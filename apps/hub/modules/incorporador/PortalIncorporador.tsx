@@ -11,6 +11,9 @@ import { TelaCarteira } from "./TelaCarteira";
 import { TelaCrm } from "./TelaCrm";
 // Só o portal PERSONALIZADO monta esta tela (ver `abasDoPortal`); no padrão o mapa vive em Vendas.
 import { TelaProdutos } from "./TelaProdutos";
+import { CarteiraLsoft } from "@/modules/lsoft/CarteiraLsoft";
+import { apiDoPortal } from "@/modules/lsoft/api";
+import { portalVeBaseLsoft } from "@/lib/lsoft/portais";
 import { TelaVendas } from "./TelaVendas";
 
 // PORTAL DO INCORPORADOR — a porta e as telas de dentro.
@@ -32,7 +35,7 @@ type Sessao = {
 
 // "produtos" existe SÓ no portal personalizado (ver `abasDoPortal`). No padrão, o mapa vive
 // dentro de Vendas.
-type Aba = "carteira" | "crm" | "produtos" | "vendas";
+type Aba = "carteira" | "crm" | "lsoft" | "produtos" | "vendas";
 
 type DadosDoPortal = {
   logoEscuraUrl: string | null;
@@ -386,8 +389,16 @@ const ABAS_PERSONALIZADO: { chave: Aba; rotulo: string }[] = [
   { chave: "produtos", rotulo: "Produtos" },
 ];
 
+// ⚠️ A ABA DO LSOFT NÃO SEGUE "PERSONALIZADO x PADRÃO", e a razão é concreta: existem DOIS portais
+// do Cecílio — `cecilio-rocha` (o personalizado, congelado) e `cer` (o que a equipe dele usa hoje,
+// que roda no padrão). Amarrar ao personalizado deixaria o CER de fora, que é justamente quem vai
+// validar a base; amarrar ao padrão daria a aba a Vista Alegre e Lagoa Bonita, que não têm nada
+// com a carteira do Garden. Por isso a lista própria em lib/lsoft/portais.
+const ABA_LSOFT: { chave: Aba; rotulo: string } = { chave: "lsoft", rotulo: "LSoft Integração" };
+
 export function abasDoPortal(slug: string): { chave: Aba; rotulo: string }[] {
-  return ehPortalPersonalizado(slug) ? ABAS_PERSONALIZADO : ABAS;
+  const base = ehPortalPersonalizado(slug) ? ABAS_PERSONALIZADO : ABAS;
+  return portalVeBaseLsoft(slug) ? [...base, ABA_LSOFT] : base;
 }
 
 // A logo do incorporador NÃO entra aqui de propósito: ela recebe na porta (o login) e o portal
@@ -528,6 +539,9 @@ function Portal({
             {aba === "carteira" ? <TelaCarteira /> : null}
             {/* Só o portal personalizado chega aqui: `abasDoPortal` não oferece a aba no padrão. */}
             {aba === "produtos" ? <TelaProdutos /> : null}
+            {/* A MESMA tela do time interno, falando com a API do portal (cookie de sessão, sem
+                token, e sem o botão da MOST: quem paga o enriquecimento é a Careli). */}
+            {aba === "lsoft" ? <CarteiraLsoft api={apiDoPortal} /> : null}
           </main>
 
           <footer

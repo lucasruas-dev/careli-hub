@@ -514,3 +514,142 @@ export type EdicaoDoLsoft = {
   valorAnterior: null | string;
   valorNovo: null | string;
 };
+
+/** Os campos da parcela que a validação pode corrigir. */
+export const CAMPOS_DA_PARCELA = ["data_recebido", "paga", "valor", "vencimento"] as const;
+export type CampoDaParcela = (typeof CAMPOS_DA_PARCELA)[number];
+
+/**
+ * Corrige uma parcela — vencimento, valor e se foi paga — com trilha.
+ *
+ * ⚠️ ISTO SÓ EXISTE PORQUE A CARGA FOI ÚNICA. Com sincronismo previsto, mexer em valor de parcela
+ * criaria uma segunda verdade financeira que o próximo import apagaria. Sem recarga, este banco é
+ * a fonte, e corrigir aqui é a única forma de arrumar o que veio errado do Access.
+ *
+ * ⚠️ MARCAR COMO PAGA SEM DATA NEM VALOR É MEIA INFORMAÇÃO. Quando alguém marca `paga` e não diz
+ * quando nem quanto, assumimos o valor da parcela e a data de hoje — melhor um registro completo e
+ * conferível do que uma parcela "paga" que ninguém sabe de quando é.
+ */
+export async function salvarParcelaDoLsoft(args: {
+  autor: string;
+  autorOrigem?: "careli" | "incorporador";
+  campos: Partial<Record<CampoDaParcela, null | string>>;
+  parcelaId: string;
+}): Promise<{ alterados: number; ok: true } | { erro: string; ok: false }> {
+  const admin = createApoloAdminClient();
+  if (!admin) return { erro: "Supabase indisponível.", ok: false };
+
+  const { data: atual, error: erroLeitura } = await admin
+    .from("lsoft_parcelas")
+    .select("*")
+    .eq("id", args.parcelaId)
+    .maybeSingle();
+
+  if (erroLeitura) return { erro: erroLeitura.message, ok: false };
+  if (!atual) return { erro: "Parcela não encontrada.", ok: false };
+
+  const antes = atual as Record<string, unknown>;
+  // O rótulo do que a parcela ERA. Congelado aqui porque o vencimento pode mudar nesta mesma
+  // edição, e o histórico tem de continuar dizendo sobre qual linha ele falava.
+  const rotulo = `${texto(antes.parcela) ?? "?"} · ${texto(antes.vencimento)?.split("-").reverse().join("/") ?? "sem vencimento"}`;
+
+  const mudancas: Record<string, unknown> = {};
+  const trilha: Record<string, unknown>[] = [];
+
+  const registrar = (campo: string, velho: null | string, novo: null | string) => {
+    trilha.push({
+      autor: args.autor,
+      autor_origem: args.autorOrigem ?? "careli",
+      campo: `parcela.${campo}`,
+      cliente_codigo: String(antes.cliente_codigo),
+      parcela_id: args.parcelaId,
+      parcela_rotulo: rotulo,
+      valor_anterior: velho,
+      valor_novo: novo,
+    });
+  };
+
+  if ("vencimento" in args.campos) {
+    const novo = dataParaBanco(args.campos.vencimento);
+    const velho = texto(antes.vencimento);
+    if (novo !== velho) {
+      mudancas.vencimento = novo;
+      registrar("vencimento", velho, novo);
+    }
+  }
+
+  if ("valor" in args.campos) {
+    const novo = numeroParaBanco(args.campos.valor);
+    const velho = Number(antes.valor ?? 0);
+    if (novo !== null && novo !== velho) {
+      mudancas.valor = novo;
+      registrar("valor", velho.toFixed(2), novo.toFixed(2));
+    }
+  }
+
+  if ("data_recebido" in args.campos) {
+    const novo = dataParaBanco(args.campos.data_recebido);
+    const velho = texto(antes.data_recebido);
+    if (novo !== velho) {
+      mudancas.data_recebido = novo;
+      registrar("data_recebido", velho, novo);
+    }
+  }
+
+  if ("paga" in args.campos) {
+    const novo = args.campos.paga === "true" || args.campos.paga === "1";
+    const velho = Boolean(antes.paga);
+    if (novo !== velho) {
+      mudancas.paga = novo;
+      registrar("paga", velho ? "paga" : "em aberto", novo ? "paga" : "em aberto");
+
+      if (novo) {
+        // Virou paga: completa o que falta para o registro fazer sentido.
+        const valorFinal = (mudancas.valor as number | undefined) ?? Number(antes.valor ?? 0);
+        if (!mudancas.data_recebido && !antes.data_recebido) {
+          mudancas.data_recebido = new Date().toISOString().slice(0, 10);
+        }
+        if (Number(antes.valor_recebido ?? 0) === 0) mudancas.valor_recebido = valorFinal;
+      } else {
+        // Voltou a ficar em aberto: o recebimento não pode continuar registrado.
+        mudancas.data_recebido = null;
+        mudancas.valor_recebido = 0;
+      }
+    }
+  }
+
+  if (trilha.length === 0) return { alterados: 0, ok: true };
+
+  mudancas.editada_em = new Date().toISOString();
+  mudancas.editada_por = args.autor;
+
+  const { error: erroUpdate } = await admin
+    .from("lsoft_parcelas")
+    .update(mudancas)
+    .eq("id", args.parcelaId);
+
+  if (erroUpdate) return { erro: erroUpdate.message, ok: false };
+
+  const { error: erroTrilha } = await admin.from("lsoft_clientes_edicoes").insert(trilha);
+  if (erroTrilha) console.error("[lsoft] trilha da parcela falhou", erroTrilha);
+
+  return { alterados: trilha.length, ok: true };
+}
+
+/** "dd/mm/aaaa" ou ISO -> ISO. Vazio vira nulo (coluna `date` recusa string vazia). */
+function dataParaBanco(valor: null | string | undefined): null | string {
+  const t = texto(valor);
+  if (!t) return null;
+  const br = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
+}
+
+/** "2.119,05" ou "2119.05" -> 2119.05. */
+function numeroParaBanco(valor: null | string | undefined): null | number {
+  const t = texto(valor);
+  if (!t) return null;
+  const limpo = t.replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".");
+  const n = Number(limpo);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}

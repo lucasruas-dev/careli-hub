@@ -36,26 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
-    buildTag: "2026-08-19-carteira-lsoft",
+    buildTag: "2026-08-19-carteira-lsoft-most",
     deployedAt: "2026-08-19T18:10:00-03:00",
     modules: [
       {
-        module: "LSoft",
+        module: "LSoft Integracao",
         screens: [
           {
             items: [
+              "A equipe do CER passa a ver e EDITAR essa base pelo portal deles: sao eles que vao conferir os cadastros antes de tudo subir para o C2X",
+              "Mesma tela do time interno, sem o botao de enriquecimento (quem paga a consulta e a Careli) e sem o historico interno",
+              "Toda alteracao feita pelo portal fica marcada como tal no registro, separada das que a Careli faz",
+            ],
+            screen: "LSoft Integracao (portal do CER)",
+          },
+          {
+            items: [
               "Tela nova em /lsoft com a carteira do Garden e do Vale do Sol, que ate agora so existia no sistema antigo da Cecilio Rocha: 237 clientes, 19.988 parcelas, R$ 60,9 mi em aberto e R$ 7,6 mi ja recebidos",
+              "Parcela editavel: vencimento, valor e se foi paga. Marcar como paga preenche data e valor quando estao vazios; desmarcar limpa o recebimento",
               "Painel no mesmo formato da Carteira, com carteira total, recebido, a receber, vencido, inadimplencia e o andamento da validacao",
               "Cada cliente mostra quanto falta do cadastro para poder ir ao C2X, numa barra de 9 campos, e da para filtrar so quem ainda falta",
               "A ficha abre em tres abas: Cadastro (editavel), Parcelas (com empreendimento, valor, quanto foi recebido e situacao) e Historico de tudo que foi alterado, com autor e data",
               "Parcela paga em partes aparece identificada: o sistema antigo lanca uma linha por recebimento, e sem esse aviso parecia base duplicada",
+              "Botao para enriquecer os cadastros na MOST, mostrando quantos faltam e quanto custa ANTES de rodar, e pedindo confirmacao — a cobranca e por consulta e nao tem desfazer",
             ],
             screen: "Carteira LSoft",
           },
         ],
       },
     ],
-    rollback: "v1.162.0 (2026-08-18-faturada-cancelada)",
+    rollback: "v1.163.0 (2026-08-19-carteira-lsoft)",
     technical: {
       done:
         "O LSoft SGC 6.13 e um Access ANTERIOR ao Access 2000 em \SERVIDOR\Sistema\sgc\dados.mdb, na rede local da Cecilio: o driver ACE recusa abrir e so o Jet 4.0 (32 bits) le, por isso a extracao roda pelo SysWOW64 e sobre COPIA do arquivo, que fica em uso o dia inteiro. O recorte sai do centro de custo, que la e a tripla CATEGORIA.CLASSE.SUBCLASSE onde a CATEGORIA e o EMPREENDIMENTO (124 Garden, 102 Vale do Sol, 16.3 Aptos Vendidos); filtrar so por 16.3 traria obra de todo mundo. Migrations 0096 e 0097: lsoft_clientes, lsoft_parcelas, lsoft_sincronizacoes, lsoft_clientes_edicoes e a view de resumo, todas RLS deny-all (ha CPF, RG, filiacao e endereco de 237 pessoas). 'A receber' e 'recebido' foram unificados numa tabela so porque no LSoft a parcela MUDA DE TABELA ao ser paga, e a tela precisa responder 'foi pago ou nao' numa lista unica. A unidade nao existe como campo: sai de parse do texto livre das observacoes e acerta 13.124 de 19.988 (66%) — o texto original fica guardado, e a tela mostra ele quando o parse falha. A carga foi UNICA por decisao do Lucas, entao este banco passa a ser a verdade e o cadastro inteiro e editavel, com trilha de autor/valor anterior/valor novo. Rota /api/lsoft/enriquecer chama a MOST em lotes (as credenciais so existem na Vercel; rodar local cairia no modo simulado e gravaria dado inventado), pula quem ja foi enriquecido para nao pagar duas vezes e so preenche buraco.",
@@ -64,7 +74,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     },
     title: "Carteira do Garden e do Vale do Sol no Panteon",
     type: "novidade",
-    version: "1.163.0",
+    version: "1.164.0",
   },
   {
     buildTag: "2026-08-18-faturada-cancelada",

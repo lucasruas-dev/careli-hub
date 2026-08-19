@@ -1,9 +1,9 @@
 "use client";
 
-import { Check, Loader2, Pencil, RefreshCw, Search, X } from "lucide-react";
+import { Check, Loader2, Pencil, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { type ApiDoLsoft, apiInterna } from "./api";
 
 import type {
   CadastroDoCliente,
@@ -14,7 +14,7 @@ import type {
   StatusDaValidacao,
 } from "@/lib/lsoft/carteira";
 
-// CARTEIRA DO LSOFT — Garden e Vale do Sol.
+// LSOFT INTEGRAÇÃO — a carteira do Garden e do Vale do Sol, a caminho do C2X e do Apolo.
 //
 // Pedido do Lucas (19/08/2026): ver cadastro e parcelas, com um dash "igual temos na carteira" e os
 // botões de edição, como POC da integração com Apolo e C2X.
@@ -47,7 +47,7 @@ const ROTULO_DO_STATUS: Record<StatusDaValidacao, string> = {
   validado: "Validado",
 };
 
-export function CarteiraLsoft() {
+export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
   const [carteira, setCarteira] = useState<Carteira | null>(null);
   const [erro, setErro] = useState<null | string>(null);
   const [carregando, setCarregando] = useState(true);
@@ -62,30 +62,17 @@ export function CarteiraLsoft() {
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
-      const token = await getApoloAccessToken();
-      const parametros = new URLSearchParams();
-      if (buscaAtiva) parametros.set("q", buscaAtiva);
-      if (empreendimento) parametros.set("emp", empreendimento);
-
-      const resposta = await fetch(`/api/lsoft/carteira?${parametros}`, {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const corpo = (await resposta.json().catch(() => null)) as
-        | { data?: Carteira; error?: string }
-        | null;
-
-      if (!resposta.ok || !corpo?.data) {
-        setErro(corpo?.error ?? `Falha ao ler a carteira (${resposta.status}).`);
-      } else {
+      const dados = await api.lerCarteira({ busca: buscaAtiva, empreendimento });
+      if (!dados) setErro("Falha ao ler a carteira.");
+      else {
         setErro(null);
-        setCarteira(corpo.data);
+        setCarteira(dados);
       }
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Falha ao ler a carteira.");
     }
     setCarregando(false);
-  }, [buscaAtiva, empreendimento]);
+  }, [api, buscaAtiva, empreendimento]);
 
   useEffect(() => {
     void carregar();
@@ -112,7 +99,7 @@ export function CarteiraLsoft() {
     <div className="h-full min-h-0 overflow-y-auto bg-canvas">
       <header className="flex flex-wrap items-center gap-3 border-b border-black/[0.07] px-5 py-3 dark:border-white/[0.08]">
         <div className="min-w-0">
-          <h1 className="m-0 text-base font-bold text-ink">Carteira LSoft</h1>
+          <h1 className="m-0 text-base font-bold text-ink">LSoft Integração</h1>
           <p className="m-0 text-xs text-ink-soft">
             Garden e Vale do Sol ·{" "}
             {carimbo ? `dados de ${carimbo}` : "aguardando o primeiro sincronismo"}
@@ -165,6 +152,10 @@ export function CarteiraLsoft() {
             Buscar
           </button>
         </form>
+
+        {api.enriquecer ? (
+          <BotaoDeEnriquecimento aoTerminar={() => void carregar()} enriquecer={api.enriquecer} />
+        ) : null}
 
         <button
           aria-label="Recarregar"
@@ -323,11 +314,111 @@ export function CarteiraLsoft() {
 
       {aberto ? (
         <PainelDoCliente
+          api={api}
           codigo={aberto}
           onFechar={() => setAberto(null)}
           onSalvou={() => void carregar()}
         />
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * O botão que roda o enriquecimento da MOST, em lotes, com a conta à vista.
+ *
+ * ⚠️ ISTO GASTA DINHEIRO DE VERDADE: cada CPF são 4 datasets cobrados por consulta. Por isso o
+ * botão mostra quantos faltam e quanto vai custar ANTES, e pede confirmação — nenhuma operação que
+ * debita a conta da empresa deveria acontecer num clique só, sem o número na frente.
+ *
+ * ⚠️ E POR ISSO EXISTE AQUI, e não no console. A rota exige o token do Apolo no cabeçalho (é o que
+ * `getApoloAccessToken` resolve); um `fetch` solto do DevTools leva só o cookie e volta 401 — foi
+ * exatamente o que aconteceu na primeira tentativa.
+ */
+function BotaoDeEnriquecimento({
+  aoTerminar,
+  enriquecer,
+}: {
+  aoTerminar: () => void;
+  enriquecer: NonNullable<ApiDoLsoft["enriquecer"]>;
+}) {
+  const [situacao, setSituacao] = useState<null | { custoEstimado: number; pendentes: number }>(null);
+  const [rodando, setRodando] = useState(false);
+  const [progresso, setProgresso] = useState<null | string>(null);
+
+  const consultar = useCallback(async () => {
+    const dados = await enriquecer.situacao();
+    if (dados) setSituacao(dados);
+  }, [enriquecer]);
+
+  useEffect(() => {
+    void consultar();
+  }, [consultar]);
+
+  async function rodar() {
+    if (!situacao || situacao.pendentes === 0) return;
+
+    const confirmado = window.confirm(
+      `Enriquecer ${situacao.pendentes} cliente(s) na MOST?
+
+` +
+        `Custo estimado: R$ ${situacao.custoEstimado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+
+` +
+        "A cobrança é por consulta e não tem desfazer.",
+    );
+    if (!confirmado) return;
+
+    setRodando(true);
+    let feitos = 0;
+
+    try {
+      // Lote a lote até acabar. O teto de voltas evita laço infinito se a rota parar de progredir.
+      for (let volta = 0; volta < 40; volta += 1) {
+        const passo = await enriquecer.rodarLote();
+
+        if (!passo) {
+          setProgresso("Falhou. Tente de novo em instantes.");
+          break;
+        }
+
+        feitos += passo.enriquecidos;
+        setProgresso(`${feitos} enriquecido(s) · faltam ${passo.restam}`);
+        aoTerminar();
+
+        if (passo.terminou) break;
+        // Nada de novo nesta volta: sem isso o laço giraria à toa até o teto.
+        if (passo.enriquecidos === 0 && passo.falhas === 0) break;
+      }
+    } finally {
+      setRodando(false);
+      await consultar();
+    }
+  }
+
+  if (!situacao) return null;
+
+  if (situacao.pendentes === 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+        <Check size={14} /> MOST completa
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {progresso ? <span className="text-xs text-ink-soft">{progresso}</span> : null}
+      <button
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-black/10 px-3 text-sm font-semibold text-ink dark:border-white/10"
+        disabled={rodando}
+        onClick={() => void rodar()}
+        title={`${situacao.pendentes} pendente(s) · R$ ${situacao.custoEstimado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+        type="button"
+      >
+        {rodando ? <Loader2 className="animate-spin" size={15} /> : <Sparkles size={15} />}
+        Enriquecer {situacao.pendentes} na MOST
+      </button>
     </div>
   );
 }
@@ -442,10 +533,12 @@ const OPCOES = {
 const EXIGE_REGIME = new Set(["Casado(a)", "União estável"]);
 
 function PainelDoCliente({
+  api,
   codigo,
   onFechar,
   onSalvou,
 }: {
+  api: ApiDoLsoft;
   codigo: string;
   onFechar: () => void;
   onSalvou: () => void;
@@ -460,15 +553,10 @@ function PainelDoCliente({
 
   const buscar = useCallback(async () => {
     setCarregando(true);
-    const token = await getApoloAccessToken();
-    const resposta = await fetch(`/api/lsoft/cliente/${codigo}`, {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const corpo = (await resposta.json().catch(() => null)) as { data?: Ficha } | null;
-    if (corpo?.data) {
-      setFicha(corpo.data);
-      const c = corpo.data.cadastro;
+    const dados = await api.lerFicha(codigo);
+    if (dados) {
+      setFicha(dados);
+      const c = dados.cadastro;
       setRascunho({
         complemento: c.complemento ?? "",
         escolaridade: c.escolaridade ?? "",
@@ -485,24 +573,15 @@ function PainelDoCliente({
       });
     }
     setCarregando(false);
-  }, [codigo]);
+  }, [api, codigo]);
 
   useEffect(() => {
     void buscar();
   }, [buscar]);
 
   const carregarHistorico = useCallback(async () => {
-    const token = await getApoloAccessToken();
-    const resposta = await fetch(`/api/lsoft/cliente/${codigo}`, {
-      body: "{}",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      method: "POST",
-    });
-    const corpo = (await resposta.json().catch(() => null)) as
-      | { data?: { edicoes: EdicaoDoLsoft[] } }
-      | null;
-    setEdicoes(corpo?.data?.edicoes ?? []);
-  }, [codigo]);
+    setEdicoes(await api.historico(codigo));
+  }, [api, codigo]);
 
   useEffect(() => {
     if (aba === "historico") void carregarHistorico();
@@ -512,23 +591,13 @@ function PainelDoCliente({
     setSalvando(true);
     setAviso(null);
     try {
-      const token = await getApoloAccessToken();
-      const resposta = await fetch(`/api/lsoft/cliente/${codigo}`, {
-        body: JSON.stringify({ campos: rascunho, status }),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        method: "PATCH",
-      });
-      const corpo = (await resposta.json().catch(() => null)) as
-        | { data?: { alterados: number }; error?: string }
-        | null;
+      const resultado = await api.salvarCliente(codigo, rascunho, status);
 
-      if (!resposta.ok) {
-        setAviso(corpo?.error ?? "Não foi possível salvar.");
+      if (!resultado.ok) {
+        setAviso(resultado.erro ?? "Não foi possível salvar.");
       } else {
         setAviso(
-          corpo?.data?.alterados
-            ? `${corpo.data.alterados} alteração(ões) salva(s).`
-            : "Nada mudou.",
+          resultado.alterados ? `${resultado.alterados} alteração(ões) salva(s).` : "Nada mudou.",
         );
         await buscar();
         onSalvou();
@@ -702,7 +771,14 @@ function PainelDoCliente({
               {aviso ? <p className="m-0 text-sm text-ink-soft">{aviso}</p> : null}
             </div>
           ) : aba === "parcelas" ? (
-            <TabelaDeParcelas parcelas={ficha.parcelas} />
+            <TabelaDeParcelas
+              api={api}
+              aoSalvar={async () => {
+                await buscar();
+                onSalvou();
+              }}
+              parcelas={ficha.parcelas}
+            />
           ) : (
             <Historico edicoes={edicoes} />
           )}
@@ -742,8 +818,17 @@ function PainelDoCliente({
   );
 }
 
-function TabelaDeParcelas({ parcelas }: { parcelas: ParcelaDaCarteira[] }) {
+function TabelaDeParcelas({
+  api,
+  aoSalvar,
+  parcelas,
+}: {
+  api: ApiDoLsoft;
+  aoSalvar: () => Promise<void>;
+  parcelas: ParcelaDaCarteira[];
+}) {
   const hoje = new Date().toISOString().slice(0, 10);
+  const [editando, setEditando] = useState<null | string>(null);
 
   // ⚠️ PARCELA REPETIDA NÃO É DUPLICAÇÃO — é PAGAMENTO PARCIAL, e vem assim do LSoft. A 006/084 de
   // um cliente do Garden, por exemplo, aparece três vezes: R$ 29,26 + R$ 864,53 + R$ 1.300,00. O
@@ -774,12 +859,29 @@ function TabelaDeParcelas({ parcelas }: { parcelas: ParcelaDaCarteira[] }) {
             <th className="px-3 py-2 text-right font-semibold">Recebido</th>
             <th className="px-3 py-2 text-left font-semibold">Situação</th>
             <th className="px-3 py-2 text-left font-semibold">Unidade</th>
+            <th className="px-3 py-2 text-right font-semibold" />
           </tr>
         </thead>
         <tbody>
           {parcelas.map((parcela) => {
             const vencida = !parcela.paga && parcela.vencimento !== null && parcela.vencimento < hoje;
             const parcial = parcela.paga && parcela.valorRecebido > 0 && parcela.valorRecebido < parcela.valor;
+
+            if (editando === parcela.id) {
+              return (
+                <LinhaEmEdicao
+                  antes={api}
+                  aoCancelar={() => setEditando(null)}
+                  aoSalvar={async () => {
+                    setEditando(null);
+                    await aoSalvar();
+                  }}
+                  key={parcela.id}
+                  parcela={parcela}
+                />
+              );
+            }
+
             return (
               <tr className="border-t border-black/[0.06] dark:border-white/[0.06]" key={parcela.id}>
                 <td className="px-3 py-2 text-xs text-ink-soft">{parcela.empreendimento}</td>
@@ -818,6 +920,16 @@ function TabelaDeParcelas({ parcelas }: { parcelas: ParcelaDaCarteira[] }) {
                         .filter(Boolean)
                         .join(" ")
                     : (parcela.observacoes ?? "—")}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <button
+                    aria-label="Editar parcela"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-ink-soft hover:bg-subtle"
+                    onClick={() => setEditando(parcela.id)}
+                    type="button"
+                  >
+                    <Pencil size={13} />
+                  </button>
                 </td>
               </tr>
             );
@@ -922,5 +1034,120 @@ function Escolha({
         ))}
       </select>
     </label>
+  );
+}
+
+/**
+ * A linha da parcela em modo de edição: vencimento, valor e pago/em aberto.
+ *
+ * ⚠️ EDITA DINHEIRO, e por isso mostra o que vai acontecer antes de acontecer: marcar como paga
+ * preenche a data de hoje e o valor da parcela quando esses campos estão vazios, e desmarcar
+ * limpa o recebimento. Sem dizer isso, o usuário marca "paga" e descobre depois que ficou uma
+ * parcela quitada sem data — que é justamente o defeito que a gente encontrou no C2X hoje cedo.
+ */
+function LinhaEmEdicao({
+  antes,
+  aoCancelar,
+  aoSalvar,
+  parcela,
+}: {
+  antes: ApiDoLsoft;
+  aoCancelar: () => void;
+  aoSalvar: () => Promise<void>;
+  parcela: ParcelaDaCarteira;
+}) {
+  const [vencimento, setVencimento] = useState(parcela.vencimento?.slice(0, 10) ?? "");
+  const [valor, setValor] = useState(String(parcela.valor).replace(".", ","));
+  const [paga, setPaga] = useState(parcela.paga);
+  const [dataRecebido, setDataRecebido] = useState(parcela.dataRecebido?.slice(0, 10) ?? "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<null | string>(null);
+
+  async function salvar() {
+    setSalvando(true);
+    setErro(null);
+    try {
+      const resultado = await antes.salvarParcela(parcela.id, {
+        data_recebido: dataRecebido,
+        paga: String(paga),
+        valor,
+        vencimento,
+      });
+
+      if (!resultado.ok) {
+        setErro(resultado.erro ?? "Não foi possível salvar.");
+        return;
+      }
+
+      await aoSalvar();
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <tr className="border-t border-black/[0.06] bg-subtle dark:border-white/[0.06]">
+      <td className="px-3 py-2 text-xs text-ink-soft">{parcela.empreendimento}</td>
+      <td className="px-3 py-2 tabular-nums text-ink-soft">{parcela.parcela ?? "—"}</td>
+      <td className="px-3 py-2">
+        <input
+          className="h-8 w-[130px] rounded-lg border border-black/10 bg-canvas px-2 text-sm text-ink dark:border-white/10"
+          onChange={(evento) => setVencimento(evento.target.value)}
+          type="date"
+          value={vencimento}
+        />
+      </td>
+      <td className="px-3 py-2 text-right">
+        <input
+          className="h-8 w-[110px] rounded-lg border border-black/10 bg-canvas px-2 text-right text-sm tabular-nums text-ink dark:border-white/10"
+          onChange={(evento) => setValor(evento.target.value)}
+          value={valor}
+        />
+      </td>
+      <td className="px-3 py-2">
+        <input
+          className="h-8 w-[130px] rounded-lg border border-black/10 bg-canvas px-2 text-sm text-ink dark:border-white/10"
+          disabled={!paga}
+          onChange={(evento) => setDataRecebido(evento.target.value)}
+          type="date"
+          value={dataRecebido}
+        />
+      </td>
+      <td className="px-3 py-2">
+        <label className="flex items-center gap-1.5 text-xs text-ink">
+          <input
+            checked={paga}
+            className="h-4 w-4"
+            onChange={(evento) => setPaga(evento.target.checked)}
+            type="checkbox"
+          />
+          Paga
+        </label>
+      </td>
+      <td className="px-3 py-2 text-xs text-ink-soft">
+        {erro ? <span className="text-red-600 dark:text-red-400">{erro}</span> : null}
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center justify-end gap-1">
+          <button
+            className="inline-flex h-7 items-center rounded-lg bg-emerald-600 px-2 text-xs font-semibold text-white"
+            disabled={salvando}
+            onClick={() => void salvar()}
+            type="button"
+          >
+            {salvando ? <Loader2 className="animate-spin" size={12} /> : "Salvar"}
+          </button>
+          <button
+            aria-label="Cancelar"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-ink-soft hover:bg-canvas"
+            disabled={salvando}
+            onClick={aoCancelar}
+            type="button"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }

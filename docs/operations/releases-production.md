@@ -5302,3 +5302,18 @@ Conclusao:
 - **MOST**: rota `/api/lsoft/enriquecer` em lotes. ⚠️ **As credenciais só existem na Vercel** — rodar local cairia no modo simulado e gravaria dado inventado. Pula quem já tem `enriquecido_em` (não pagar duas vezes) e **só preenche buraco**. ~R$ 2,23/CPF pela config de 10/jul; 237 ≈ R$ 530. ⚠️ O `basic_data` **não devolve estado civil nem nome do pai** — esses seguem humanos.
 - Verificação: tsc limpo, **1.280 testes PASS**, eslint limpo, `/lsoft` compila e responde 200.
 - ⏭️ Pendente: aba de documentos (precisa de `lsoft_documentos`), Vale do Sol no C2X, e a importação em si.
+
+## v1.164.0 — 19/ago/2026 · LSoft Integração: edição de parcelas, MOST e acesso do CER
+- Autorização: Lucas ("ok"), 2026-08-19. Rollback: v1.163.0. **Migration 0098 aplicada** com OK.
+- **Botão "Enriquecer na MOST"** na tela interna. ⚠️ Existe porque `fetch` do console volta **401**: a rota exige o token do Apolo no cabeçalho, e o console manda só o cookie. Mostra pendentes e **custo antes**, pede confirmação e roda em lotes.
+- **Parcela editável** (vencimento, valor, paga) com trilha. ⚠️ Eu tinha decidido o contrário — a decisão dependia de haver recarga do LSoft; com a **carga única** definida pelo Lucas, este banco virou a fonte e corrigir aqui é a única forma de arrumar o que veio errado do Access.
+  - Marcar como paga preenche data de hoje e valor da parcela quando vazios; desmarcar limpa o recebimento. É o defeito que achamos no C2X hoje cedo (pago sem data), evitado por construção.
+  - A trilha guarda o **rótulo da parcela congelado** ("007/084 · 10/08/2026"): se o vencimento mudar depois, o histórico continua dizendo sobre qual linha ele falava.
+- **ACESSO DO CER** — ⚠️ **primeira escrita externa do Panteon**. Até aqui o portal do incorporador era leitura pura.
+  - ⚠️ **EXISTEM DOIS PORTAIS DO CECÍLIO**: `cecilio-rocha` (10/08, personalizado e congelado, com aba Produtos) e **`cer` (18/08, que a equipe usa e roda no PADRÃO)**. Amarrar a aba a `ehPortalPersonalizado` deixaria o CER de fora; amarrar ao padrão daria a aba a Vista Alegre e Lagoa Bonita. Por isso `lib/lsoft/portais.ts` tem lista própria com os dois slugs.
+  - Rota `/api/incorporador/lsoft` responde **404** (não 403) para portal sem acesso; autor gravado é o da sessão, com `autor_origem: 'incorporador'`.
+  - Usuários reais do CER: Rafael Oliveira e Yasmin Louize (`@ceciliorocha.com.br`). Escopo do portal: VOC · VALE DO OURO · carteira.
+- **A tela é UMA só nos dois lugares** (`modules/lsoft/api.ts`): a interna usa token do Apolo, o portal usa cookie. Duplicar ~900 linhas garantiria que a cópia do cliente ficaria para trás.
+- Renomeada para **"LSoft Integração"** a pedido do Lucas.
+- Verificação: tsc limpo, **1.280 testes PASS**, eslint sem aviso novo, `/lsoft` e a API respondendo 200 com dado real.
+- ⏭️ Pendente: rodar a MOST (botão pronto, ~R$ 530), aba de documentos, Vale do Sol no C2X, importação para C2X/Apolo.
