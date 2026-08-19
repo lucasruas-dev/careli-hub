@@ -5317,3 +5317,15 @@ Conclusao:
 - Renomeada para **"LSoft Integração"** a pedido do Lucas.
 - Verificação: tsc limpo, **1.280 testes PASS**, eslint sem aviso novo, `/lsoft` e a API respondendo 200 com dado real.
 - ⏭️ Pendente: rodar a MOST (botão pronto, ~R$ 530), aba de documentos, Vale do Sol no C2X, importação para C2X/Apolo.
+
+## v1.165.0 — 19/ago/2026 · LSoft Integração: parcela editável por inteiro
+- Autorização: Lucas ("autorizo"), 2026-08-19. Rollback: v1.164.0. **SEM migration.**
+- **MOST RODOU** (pelo botão, em produção): **229 de 237 enriquecidos** · 8 pendentes · 6 com erro. Ganho: +223 nascimento, +222 faixa de renda, +221 sexo, +200 nome da mãe, +182 telefone.
+- **Parcela: todos os campos editáveis** — empreendimento, número, vencimento, valor, quadra, lote, data e valor do pagamento, observação e paga. Ficam fora `id` e `cliente_codigo`: são as chaves que ligam a parcela ao dono, e mudá-las não é corrigir dado, é mover a parcela de pessoa.
+  - Se o número da parcela muda, `parcela_numero`/`parcela_total` são recalculados — senão a ordenação da lista discorda do que está escrito na linha.
+  - ⚠️ **Formulário expandido (colSpan), não inputs na linha**: dez campos nas colunas dariam ~60px cada, e campo de dinheiro nessa largura é convite a erro de digitação.
+- ⚠️ **O rótulo "Veio do LSoft" estava mentindo** e o Lucas pegou: depois do enriquecimento, nascimento/mãe/telefone/sexo/renda vêm da **MOST**. Virou "Dados do cliente" + selo "complementado pela MOST em DD/MM".
+- **Idade** ao lado do nascimento, **calculada e nunca persistida** — idade guardada congela no dia em que foi escrita e passa a afirmar número falso.
+- **Nome do pai removido** a pedido do Lucas.
+- Verificação: tsc limpo, **1.280 testes PASS**, eslint sem aviso novo.
+- ⏭️ Pendente: os 8+6 do MOST, aba de documentos, Vale do Sol no C2X, importação para C2X/Apolo.

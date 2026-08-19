@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-19-lsoft-ficha-completa",
+    deployedAt: "2026-08-19T21:40:00-03:00",
+    modules: [
+      {
+        module: "LSoft Integracao",
+        screens: [
+          {
+            items: [
+              "A parcela agora abre um formulario completo: empreendimento, numero, vencimento, valor, quadra, lote, data e valor do pagamento, observacao e a marca de paga — tudo editavel, tudo registrado",
+              "A idade aparece ao lado do nascimento, calculada na hora (nao fica guardada, senao envelheceria errada)",
+              "O bloco de dados deixou de dizer 'veio do LSoft': depois do enriquecimento boa parte vem da MOST, e agora a tela mostra quando o cadastro foi complementado",
+              "Campo Nome do pai removido",
+            ],
+            screen: "Ficha do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.164.0 (2026-08-19-carteira-lsoft-most)",
+    technical: {
+      done:
+        "Edicao da parcela ampliada para TODOS os campos (menos id e cliente_codigo, que sao as chaves que ligam a parcela ao dono — mudar isso nao e corrigir dado, e mover a parcela de pessoa). Quando o numero da parcela muda, parcela_numero e parcela_total sao recalculados, senao a ordenacao passa a discordar do que esta escrito na linha. O formulario e expandido em colSpan e nao inputs na propria linha: dez campos nas colunas da tabela dariam ~60px cada, e campo de dinheiro nessa largura e convite a erro. A idade e derivada e nunca persistida. O rotulo de origem foi corrigido porque o enriquecimento ja rodou (229 de 237): nascimento, mae, telefone, sexo e renda passaram a vir da MOST, e o bloco continuava afirmando LSoft.",
+      motivation:
+        "Lucas, testando a tela: edicao nao pegou parcelas, tudo tem que ser editavel · nome do pai nao e necessario · nao veio do LSoft · faltou idade.",
+    },
+    title: "Ficha do LSoft: parcela editavel por inteiro",
+    type: "melhoria",
+    version: "1.165.0",
+  },
+  {
     buildTag: "2026-08-19-carteira-lsoft-most",
     deployedAt: "2026-08-19T18:10:00-03:00",
     modules: [

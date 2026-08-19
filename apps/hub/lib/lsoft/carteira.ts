@@ -515,8 +515,29 @@ export type EdicaoDoLsoft = {
   valorNovo: null | string;
 };
 
-/** Os campos da parcela que a validação pode corrigir. */
-export const CAMPOS_DA_PARCELA = ["data_recebido", "paga", "valor", "vencimento"] as const;
+/**
+ * Os campos da parcela que a validação pode corrigir — todos eles.
+ *
+ * Decisão do Lucas (19/08/2026): *"tudo tem que ser editável"*. Com a carga única, o que veio
+ * torto do Access só se conserta aqui, e limitar a edição a alguns campos apenas empurraria o
+ * problema para uma planilha paralela.
+ *
+ * ⚠️ `id` e `cliente_codigo` seguem fora: são as chaves que ligam a parcela ao dono. Mudar isso
+ * não é corrigir um dado, é mover a parcela de pessoa — se for preciso, que seja explícito e não
+ * um efeito colateral de um campo de texto.
+ */
+export const CAMPOS_DA_PARCELA = [
+  "data_recebido",
+  "empreendimento",
+  "lote",
+  "observacoes",
+  "paga",
+  "parcela",
+  "quadra",
+  "valor",
+  "valor_recebido",
+  "vencimento",
+] as const;
 export type CampoDaParcela = (typeof CAMPOS_DA_PARCELA)[number];
 
 /**
@@ -596,6 +617,25 @@ export async function salvarParcelaDoLsoft(args: {
     }
   }
 
+  if ("valor_recebido" in args.campos) {
+    const novo = numeroParaBanco(args.campos.valor_recebido);
+    const velho = Number(antes.valor_recebido ?? 0);
+    if (novo !== null && novo !== velho) {
+      mudancas.valor_recebido = novo;
+      registrar("valor_recebido", velho.toFixed(2), novo.toFixed(2));
+    }
+  }
+
+  // Texto puro: número da parcela, empreendimento, lote, quadra e a observação original.
+  for (const campo of ["empreendimento", "lote", "observacoes", "parcela", "quadra"] as const) {
+    if (!(campo in args.campos)) continue;
+    const novo = texto(args.campos[campo]);
+    const velho = texto(antes[campo]);
+    if (novo === velho) continue;
+    mudancas[campo] = novo;
+    registrar(campo, velho, novo);
+  }
+
   if ("paga" in args.campos) {
     const novo = args.campos.paga === "true" || args.campos.paga === "1";
     const velho = Boolean(antes.paga);
@@ -619,6 +659,14 @@ export async function salvarParcelaDoLsoft(args: {
   }
 
   if (trilha.length === 0) return { alterados: 0, ok: true };
+
+  // "007/084" mudou: o número e o total derivados acompanham, senão a ordenação da lista passa a
+  // discordar do que está escrito na linha.
+  if (typeof mudancas.parcela === "string") {
+    const partes = String(mudancas.parcela).match(/(\d+)\s*\/\s*(\d+)/);
+    mudancas.parcela_numero = partes ? Number(partes[1]) : null;
+    mudancas.parcela_total = partes ? Number(partes[2]) : null;
+  }
 
   mudancas.editada_em = new Date().toISOString();
   mudancas.editada_por = args.autor;

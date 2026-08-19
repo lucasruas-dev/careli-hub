@@ -37,6 +37,27 @@ const inteiro = (valor: number) => valor.toLocaleString("pt-BR");
 const pct = (valor: number) => `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const dataBR = (iso: null | string) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 
+/**
+ * A idade, calculada do nascimento — não é campo guardado.
+ *
+ * ⚠️ NÃO GUARDAR IDADE, NUNCA. Idade guardada envelhece errado: fica congelada no dia em que foi
+ * escrita e, um ano depois, o cadastro afirma com segurança um número falso. O nascimento é o
+ * dado; a idade é uma conta.
+ */
+function idadeDe(nascimento: null | string): null | number {
+  if (!nascimento) return null;
+  const data = new Date(`${nascimento.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(data.getTime())) return null;
+
+  const hoje = new Date();
+  let anos = hoje.getFullYear() - data.getFullYear();
+  const mes = hoje.getMonth() - data.getMonth();
+  // Ainda não fez aniversário este ano.
+  if (mes < 0 || (mes === 0 && hoje.getDate() < data.getDate())) anos -= 1;
+
+  return anos >= 0 && anos < 130 ? anos : null;
+}
+
 type Carteira = { clientes: ClienteDaCarteira[]; resumo: ResumoDaCarteira };
 type Ficha = { cadastro: CadastroDoCliente; parcelas: ParcelaDaCarteira[] };
 
@@ -663,12 +684,33 @@ function PainelDoCliente({
           ) : aba === "cadastro" ? (
             <div className="grid gap-5">
               <section className="grid gap-2">
-                <h3 className="m-0 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-soft">
-                  Veio do LSoft
-                </h3>
-                {/* ⚠️ SÓ LEITURA: a próxima carga sobrescreve, então editar aqui perderia o trabalho. */}
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <h3 className="m-0 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-soft">
+                    Dados do cliente
+                  </h3>
+                  {/* ⚠️ NÃO DIZER MAIS "VEIO DO LSOFT". Depois do enriquecimento, boa parte destes
+                      campos veio da MOST (nascimento, mãe, telefone, sexo, renda), e manter o
+                      rótulo antigo faria a tela afirmar uma origem errada — o Lucas pegou isso
+                      olhando uma ficha com nascimento que o LSoft nunca teve. */}
+                  {ficha.cadastro.enriquecidoEm ? (
+                    <span className="rounded bg-subtle px-1.5 py-0.5 text-[10px] font-semibold text-ink-soft">
+                      complementado pela MOST em {dataBR(ficha.cadastro.enriquecidoEm)}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="grid gap-x-6 gap-y-2 rounded-xl border border-line bg-subtle p-4 sm:grid-cols-2">
-                  <Campo rotulo="Nascimento" valor={dataBR(ficha.cadastro.nascimento)} />
+                  <Campo
+                    rotulo="Nascimento"
+                    valor={
+                      ficha.cadastro.nascimento
+                        ? `${dataBR(ficha.cadastro.nascimento)}${
+                            idadeDe(ficha.cadastro.nascimento) !== null
+                              ? ` · ${idadeDe(ficha.cadastro.nascimento)} anos`
+                              : ""
+                          }`
+                        : null
+                    }
+                  />
                   <Campo rotulo="RG" valor={ficha.cadastro.rg} />
                   <Campo rotulo="Telefone" valor={ficha.cadastro.telefone ?? ficha.cadastro.celular} />
                   <Campo rotulo="E-mail" valor={ficha.cadastro.email} />
@@ -734,11 +776,6 @@ function PainelDoCliente({
                     aoMudar={(v) => setRascunho((r) => ({ ...r, nacionalidade: v }))}
                     rotulo="Nacionalidade"
                     valor={rascunho.nacionalidade ?? ""}
-                  />
-                  <Texto
-                    aoMudar={(v) => setRascunho((r) => ({ ...r, nome_pai: v }))}
-                    rotulo="Nome do pai"
-                    valor={rascunho.nome_pai ?? ""}
                   />
                   {/* ⚠️ O ENDEREÇO DO LSOFT NÃO TEM NÚMERO, e o C2X exige. */}
                   <Texto
@@ -1056,29 +1093,33 @@ function LinhaEmEdicao({
   aoSalvar: () => Promise<void>;
   parcela: ParcelaDaCarteira;
 }) {
-  const [vencimento, setVencimento] = useState(parcela.vencimento?.slice(0, 10) ?? "");
-  const [valor, setValor] = useState(String(parcela.valor).replace(".", ","));
+  const [campos, setCampos] = useState({
+    data_recebido: parcela.dataRecebido?.slice(0, 10) ?? "",
+    empreendimento: parcela.empreendimento,
+    lote: parcela.lote ?? "",
+    observacoes: parcela.observacoes ?? "",
+    parcela: parcela.parcela ?? "",
+    quadra: parcela.quadra ?? "",
+    valor: String(parcela.valor).replace(".", ","),
+    valor_recebido: String(parcela.valorRecebido).replace(".", ","),
+    vencimento: parcela.vencimento?.slice(0, 10) ?? "",
+  });
   const [paga, setPaga] = useState(parcela.paga);
-  const [dataRecebido, setDataRecebido] = useState(parcela.dataRecebido?.slice(0, 10) ?? "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<null | string>(null);
+
+  const mudar = (campo: keyof typeof campos) => (valor: string) =>
+    setCampos((atual) => ({ ...atual, [campo]: valor }));
 
   async function salvar() {
     setSalvando(true);
     setErro(null);
     try {
-      const resultado = await antes.salvarParcela(parcela.id, {
-        data_recebido: dataRecebido,
-        paga: String(paga),
-        valor,
-        vencimento,
-      });
-
+      const resultado = await antes.salvarParcela(parcela.id, { ...campos, paga: String(paga) });
       if (!resultado.ok) {
         setErro(resultado.erro ?? "Não foi possível salvar.");
         return;
       }
-
       await aoSalvar();
     } finally {
       setSalvando(false);
@@ -1087,67 +1128,106 @@ function LinhaEmEdicao({
 
   return (
     <tr className="border-t border-black/[0.06] bg-subtle dark:border-white/[0.06]">
-      <td className="px-3 py-2 text-xs text-ink-soft">{parcela.empreendimento}</td>
-      <td className="px-3 py-2 tabular-nums text-ink-soft">{parcela.parcela ?? "—"}</td>
-      <td className="px-3 py-2">
-        <input
-          className="h-8 w-[130px] rounded-lg border border-black/10 bg-canvas px-2 text-sm text-ink dark:border-white/10"
-          onChange={(evento) => setVencimento(evento.target.value)}
-          type="date"
-          value={vencimento}
-        />
-      </td>
-      <td className="px-3 py-2 text-right">
-        <input
-          className="h-8 w-[110px] rounded-lg border border-black/10 bg-canvas px-2 text-right text-sm tabular-nums text-ink dark:border-white/10"
-          onChange={(evento) => setValor(evento.target.value)}
-          value={valor}
-        />
-      </td>
-      <td className="px-3 py-2">
-        <input
-          className="h-8 w-[130px] rounded-lg border border-black/10 bg-canvas px-2 text-sm text-ink dark:border-white/10"
-          disabled={!paga}
-          onChange={(evento) => setDataRecebido(evento.target.value)}
-          type="date"
-          value={dataRecebido}
-        />
-      </td>
-      <td className="px-3 py-2">
-        <label className="flex items-center gap-1.5 text-xs text-ink">
-          <input
-            checked={paga}
-            className="h-4 w-4"
-            onChange={(evento) => setPaga(evento.target.checked)}
-            type="checkbox"
-          />
-          Paga
-        </label>
-      </td>
-      <td className="px-3 py-2 text-xs text-ink-soft">
-        {erro ? <span className="text-red-600 dark:text-red-400">{erro}</span> : null}
-      </td>
-      <td className="px-3 py-2">
-        <div className="flex items-center justify-end gap-1">
-          <button
-            className="inline-flex h-7 items-center rounded-lg bg-emerald-600 px-2 text-xs font-semibold text-white"
-            disabled={salvando}
-            onClick={() => void salvar()}
-            type="button"
-          >
-            {salvando ? <Loader2 className="animate-spin" size={12} /> : "Salvar"}
-          </button>
-          <button
-            aria-label="Cancelar"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-ink-soft hover:bg-canvas"
-            disabled={salvando}
-            onClick={aoCancelar}
-            type="button"
-          >
-            <X size={13} />
-          </button>
+      {/* ⚠️ FORMULÁRIO EXPANDIDO, não inputs na própria linha. São dez campos: espremê-los nas
+          colunas da tabela deixaria cada um com 60px, e editar valor em caixa dessa largura é
+          convite a erro de digitação — ainda mais em campo de dinheiro. */}
+      <td colSpan={8} className="px-3 py-4">
+        <div className="grid gap-3">
+          <div className="grid gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
+            <CampoDeTexto aoMudar={mudar("empreendimento")} rotulo="Empreendimento" valor={campos.empreendimento} />
+            <CampoDeTexto aoMudar={mudar("parcela")} rotulo="Parcela" valor={campos.parcela} />
+            <CampoDeTexto aoMudar={mudar("vencimento")} rotulo="Vencimento" tipo="date" valor={campos.vencimento} />
+            <CampoDeTexto aoMudar={mudar("valor")} rotulo="Valor" valor={campos.valor} />
+            <CampoDeTexto aoMudar={mudar("quadra")} rotulo="Quadra" valor={campos.quadra} />
+            <CampoDeTexto aoMudar={mudar("lote")} rotulo="Lote" valor={campos.lote} />
+            <CampoDeTexto
+              aoMudar={mudar("data_recebido")}
+              desabilitado={!paga}
+              rotulo="Data do pagamento"
+              tipo="date"
+              valor={campos.data_recebido}
+            />
+            <CampoDeTexto
+              aoMudar={mudar("valor_recebido")}
+              desabilitado={!paga}
+              rotulo="Valor recebido"
+              valor={campos.valor_recebido}
+            />
+          </div>
+
+          <CampoDeTexto aoMudar={mudar("observacoes")} rotulo="Observação do LSoft" valor={campos.observacoes} />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 text-sm text-ink">
+              <input
+                checked={paga}
+                className="h-4 w-4"
+                onChange={(evento) => setPaga(evento.target.checked)}
+                type="checkbox"
+              />
+              Parcela paga
+            </label>
+
+            {erro ? (
+              <span className="text-sm text-red-600 dark:text-red-400">{erro}</span>
+            ) : (
+              <span className="text-xs text-ink-soft">
+                Marcar como paga preenche data e valor quando estiverem vazios; desmarcar limpa o
+                recebimento.
+              </span>
+            )}
+
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white"
+                disabled={salvando}
+                onClick={() => void salvar()}
+                type="button"
+              >
+                {salvando ? <Loader2 className="animate-spin" size={13} /> : <Check size={13} />}
+                Salvar parcela
+              </button>
+              <button
+                className="inline-flex h-8 items-center rounded-lg px-3 text-sm font-semibold text-ink-soft hover:bg-canvas"
+                disabled={salvando}
+                onClick={aoCancelar}
+                type="button"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
       </td>
     </tr>
+  );
+}
+
+function CampoDeTexto({
+  aoMudar,
+  desabilitado,
+  rotulo,
+  tipo,
+  valor,
+}: {
+  aoMudar: (valor: string) => void;
+  desabilitado?: boolean;
+  rotulo: string;
+  tipo?: string;
+  valor: string;
+}) {
+  return (
+    <label className="grid gap-1">
+      <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-ink-soft">
+        {rotulo}
+      </span>
+      <input
+        className="h-8 rounded-lg border border-black/10 bg-canvas px-2 text-sm text-ink disabled:opacity-50 dark:border-white/10"
+        disabled={desabilitado}
+        onChange={(evento) => aoMudar(evento.target.value)}
+        type={tipo ?? "text"}
+        value={valor}
+      />
+    </label>
   );
 }
