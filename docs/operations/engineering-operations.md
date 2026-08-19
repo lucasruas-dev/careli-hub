@@ -41329,3 +41329,53 @@ corretor no C2X. Religar exige OK do Lucas: e escrita no legado MAIS um cron nov
 ROLLBACK: dpl_52do5tDcV4YbLeYsjthuvbreCJ7E (v1.166.0).
 HEALTHCHECK: c2x.app.br 200 · /api/incorporador/masterplan?code=VOL 401 (gate ok) · /lsoft 200 ·
 /incorporador/cer 200.
+
+---
+
+## 2026-08-19 · ABA DE DOCUMENTOS DO LSOFT (v1.168.0)
+
+PEDIDO DO LUCAS: "deixar aba para subir documentacao" e, depois, "kd a parte de subir documentacao".
+
+POR QUE. A base do LSoft veio de um Access sem anexo nenhum: o que existe de documento dos 237
+clientes esta em papel ou na maquina de alguem do CER. Como e o CER que valida a base antes de ela
+subir para o C2X e o Apolo, o lugar de juntar o documento e a mesma ficha onde o dado esta sendo
+corrigido. A aba serve as duas portas: /lsoft (Careli) e o portal do CER.
+
+MIGRATION 0099 APLICADA EM PRODUCAO (autorizada pelo Lucas). Tabela `lsoft_documentos`, RLS
+deny-all como as demais `lsoft_*`. Conferido depois de aplicar: 14 colunas, 3 indices, RLS ligada
+com ZERO politicas, 237 clientes intactos.
+
+⚠️ UPLOAD DIRETO, EM DUAS ETAPAS. O servidor assina a permissao de gravar UM caminho (requisicao
+pequena, sem bytes), o navegador manda o arquivo ao Supabase e devolve so o CAMINHO, que o servidor
+registra. Base64 no JSON estouraria os 4,5MB da Vercel e voltaria 413 sem explicacao — foi o que
+aconteceu no CAD (ver [[reference_apolo_upload_413]]).
+
+TRES TRAVAS, e o motivo de cada uma:
+  1. o caminho que volta do navegador e conferido contra a pasta do PROPRIO cliente. Sem isso, um
+     caminho forjado registraria na ficha de A um arquivo da pasta de B, e a abertura — que confia
+     na LINHA, nao no caminho — entregaria o documento errado com toda a cara de estar certo;
+  2. o teto de 20MB e conferido ANTES de assinar. O bucket `apolo-documents` NAO tem limite proprio
+     (conferido: `file_size_limit: null`), entao sem isso o arquivo grande subiria inteiro e so
+     seria recusado no registro, virando orfao que nenhuma ficha mostra;
+  3. constantes e tipo em `documentos-tipos.ts`, SEM import nenhum: o modulo irmao carrega
+     `createApoloAdminClient` (service role), e um componente client que importasse dali so para
+     pegar o teto puxaria a arvore do servidor para o bundle.
+
+REMOVER apaga o binario e guarda o rastro (`removido_em`/`removido_por`). Documento de pessoa
+fisica guardado "por via das duvidas" depois de removido e passivo, nao e historico.
+
+COMPONENTE EM ARQUIVO PROPRIO (`DocumentosDoCliente.tsx`), e nao dentro do `CarteiraLsoft.tsx`, que
+ja passa de 1.300 linhas — foi num recorte grande ali que um efeito se perdeu sem o typecheck ver.
+Pecas contadas antes e depois: 24 estados, 4 efeitos, 5 callbacks nos dois.
+
+VERIFICACAO PONTA A PONTA CONTRA PRODUCAO (nao so typecheck):
+  assinar OK · subir OK · registrar OK · listar OK · abrir com o CONTEUDO conferindo OK · remover
+  OK · limpeza OK. E a RLS provada com uma linha real dentro (a tabela vazia devolvendo "[]" nao
+  prova nada): a chave anonima le [], nao grava (401 violates RLS) e nao apaga (a linha sobreviveu
+  intacta ao DELETE, que o PostgREST responde 204 mesmo sem apagar).
+
+OBSERVACAO REGISTRADA AO LUCAS: todo o modulo LSoft usa `authorizeApoloRead` mesmo para GRAVAR,
+inclusive a edicao de parcela, que mexe em dinheiro. Segui o padrao para nao criar excecao so nos
+documentos; apertar isso e uma troca de uma linha por rota, se ele quiser.
+
+ROLLBACK: v1.167.0 (2026-08-19-masterplan-dinamico).
