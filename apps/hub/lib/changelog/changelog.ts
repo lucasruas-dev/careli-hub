@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-19-lsoft-documentos",
+    deployedAt: "2026-08-20T00:40:00-03:00",
+    modules: [
+      {
+        module: "LSoft Integracao",
+        screens: [
+          {
+            items: [
+              "Aba Documentos na ficha do cliente: da para anexar RG, CPF, comprovante, contrato e o que mais aparecer, com categoria e observacao",
+              "Cada documento mostra quem enviou, quando, e se veio pela Careli ou pelo portal do CER",
+              "Abrir e remover pelos botoes da propria linha. Remover apaga o arquivo de vez, e fica registrado quem removeu",
+              "Ate 20MB por arquivo, o mesmo limite dos documentos do Apolo",
+            ],
+            screen: "Ficha do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.167.0 (2026-08-19-masterplan-dinamico)",
+    technical: {
+      done:
+        "Migration 0099 (lsoft_documentos, RLS deny-all) + lib/lsoft/documentos.ts + rota interna /api/lsoft/documentos e as mesmas acoes na rota do portal. O arquivo vive no bucket PRIVADO apolo-documents, o mesmo do Apolo: bucket novo significaria politica, backup e mais um lugar para vazar. UPLOAD DIRETO em duas etapas — o servidor assina a permissao de gravar UM caminho, o navegador manda os bytes ao Supabase e devolve so o caminho, que o servidor registra. Base64 no JSON estouraria os 4,5MB da Vercel e voltaria 413 sem explicacao, que foi o que aconteceu no CAD. O caminho que volta do navegador e conferido contra o prefixo do proprio cliente antes de virar linha: sem isso um caminho forjado registraria na ficha de A um arquivo da pasta de B, e a abertura (que confia na linha) entregaria o documento errado com cara de certo. O teto de 20MB e conferido ANTES de assinar, porque o bucket nao tem limite proprio (file_size_limit: null) e o arquivo grande viraria orfao. Constantes e tipo em documentos-tipos.ts, sem import nenhum, para o componente client nao arrastar a service role para o bundle. Componente em arquivo proprio (DocumentosDoCliente.tsx) e nao dentro do CarteiraLsoft, que ja passa de 1.300 linhas — foi num recorte grande ali que um efeito se perdeu sem o typecheck ver.",
+      motivation:
+        "Lucas, 19/08/2026: 'deixar aba para subir documentacao' e, depois, 'kd a parte de subir documentacao'. A base do LSoft veio de um Access sem anexo nenhum: o que existe de documento desses 237 clientes esta em papel ou na maquina de alguem do CER. Como sao eles que validam a base antes de ela subir para o C2X e o Apolo, o lugar de juntar o documento e a mesma ficha onde o dado esta sendo corrigido.",
+    },
+    title: "LSoft ganhou a aba de documentos",
+    type: "novidade",
+    version: "1.168.0",
+  },
+  {
     buildTag: "2026-08-19-masterplan-dinamico",
     deployedAt: "2026-08-19T23:40:00-03:00",
     modules: [

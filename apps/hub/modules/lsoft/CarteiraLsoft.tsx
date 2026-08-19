@@ -4,6 +4,7 @@ import { Check, Loader2, Pencil, RefreshCw, Search, Sparkles, X } from "lucide-r
 import { useCallback, useEffect, useState } from "react";
 
 import { type ApiDoLsoft, apiInterna } from "./api";
+import { DocumentosDoCliente } from "./DocumentosDoCliente";
 
 import type {
   CadastroDoCliente,
@@ -566,7 +567,7 @@ function PainelDoCliente({
 }) {
   const [ficha, setFicha] = useState<Ficha | null>(null);
   const [edicoes, setEdicoes] = useState<EdicaoDoLsoft[]>([]);
-  const [aba, setAba] = useState<"cadastro" | "historico" | "parcelas">("cadastro");
+  const [aba, setAba] = useState<"cadastro" | "documentos" | "historico" | "parcelas">("cadastro");
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [aviso, setAviso] = useState<null | string>(null);
@@ -674,7 +675,7 @@ function PainelDoCliente({
           </div>
 
           <div className="mt-3 flex gap-1">
-            {(["cadastro", "parcelas", "historico"] as const).map((chave) => (
+            {(["cadastro", "parcelas", "documentos", "historico"] as const).map((chave) => (
               <button
                 className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
                   aba === chave ? "bg-ink text-canvas" : "text-ink-soft hover:bg-subtle"
@@ -683,7 +684,13 @@ function PainelDoCliente({
                 onClick={() => setAba(chave)}
                 type="button"
               >
-                {chave === "cadastro" ? "Cadastro" : chave === "parcelas" ? "Parcelas" : "Histórico"}
+                {chave === "cadastro"
+                  ? "Cadastro"
+                  : chave === "parcelas"
+                    ? "Parcelas"
+                    : chave === "documentos"
+                      ? "Documentos"
+                      : "Histórico"}
               </button>
             ))}
           </div>
@@ -886,6 +893,8 @@ function PainelDoCliente({
               }}
               parcelas={ficha.parcelas}
             />
+          ) : aba === "documentos" ? (
+            <DocumentosDoCliente api={api} codigo={codigo} />
           ) : (
             <Historico edicoes={edicoes} />
           )}

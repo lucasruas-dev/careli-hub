@@ -12,6 +12,13 @@ import {
   salvarValidacaoDoLsoft,
   type StatusDaValidacao,
 } from "@/lib/lsoft/carteira";
+import {
+  abrirDocumentoDoLsoft,
+  listarDocumentosDoLsoft,
+  prepararUploadDoLsoft,
+  registrarDocumentoDoLsoft,
+  removerDocumentoDoLsoft,
+} from "@/lib/lsoft/documentos";
 import { portalVeBaseLsoft } from "@/lib/lsoft/portais";
 
 // A BASE DO LSOFT DENTRO DO PORTAL DO INCORPORADOR.
@@ -45,6 +52,27 @@ export async function GET(request: Request) {
   const codigo = url.searchParams.get("cliente");
 
   if (codigo) {
+    // A ABA DE DOCUMENTOS. Mesmo caminho da ficha, porque a permissão é a mesma: quem pode ver o
+    // cadastro deste cliente pode ver (e juntar) os documentos dele.
+    const abrir = (url.searchParams.get("abrir") ?? "").trim();
+    if (abrir) {
+      const aberto = await abrirDocumentoDoLsoft({ codigo, id: abrir });
+      if (!aberto.ok) return NextResponse.json({ error: aberto.erro }, { status: 404 });
+      return NextResponse.json(
+        { data: { nome: aberto.nome, url: aberto.url } },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    if (url.searchParams.get("documentos")) {
+      const lista = await listarDocumentosDoLsoft(codigo);
+      if (!lista.ok) return NextResponse.json({ error: lista.erro }, { status: 503 });
+      return NextResponse.json(
+        { data: { documentos: lista.documentos } },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     const ficha = await lerFichaDoLsoft(codigo);
     if (!ficha.ok) return NextResponse.json({ error: ficha.erro }, { status: 404 });
     return NextResponse.json(
@@ -130,4 +158,89 @@ export async function PATCH(request: Request) {
 
   if (!resultado.ok) return NextResponse.json({ error: resultado.erro }, { status: 400 });
   return NextResponse.json({ data: { alterados: resultado.alterados } });
+}
+
+// ── DOCUMENTOS ──────────────────────────────────────────────────────────────
+//
+// O envio em duas etapas, igual à rota interna: `preparar` assina a permissão de gravar um
+// caminho, o navegador manda o arquivo direto ao Supabase, e `registrar` grava a linha. O binário
+// não passa por aqui — em base64 dentro do JSON ele estouraria o limite de corpo da Vercel.
+//
+// ⚠️ MESMAS TRÊS TRAVAS DO RESTO DESTA ROTA: só portal de `portalVeBaseLsoft`, autor é o usuário da
+// sessão com origem `incorporador`, e nada além dos campos previstos.
+
+export async function POST(request: Request) {
+  const auth = autorizar(request);
+  if (!auth.ok) return auth.response;
+  if (!portalVeBaseLsoft(auth.sessao.slug)) return fora();
+
+  const corpo = (await request.json().catch(() => null)) as null | {
+    acao?: string;
+    caminho?: string;
+    categoria?: string;
+    cliente?: string;
+    mimeType?: string;
+    nomeArquivo?: string;
+    observacao?: string;
+    tamanhoBytes?: number;
+  };
+
+  if (!corpo?.cliente) return NextResponse.json({ error: "Cliente ausente." }, { status: 400 });
+  if (!corpo.nomeArquivo?.trim()) {
+    return NextResponse.json({ error: "Nome do arquivo ausente." }, { status: 400 });
+  }
+
+  if (corpo.acao === "preparar") {
+    const preparo = await prepararUploadDoLsoft({
+      codigo: corpo.cliente,
+      nomeArquivo: corpo.nomeArquivo,
+      tamanhoBytes: corpo.tamanhoBytes ?? null,
+    });
+    if (!preparo.ok) return NextResponse.json({ error: preparo.erro }, { status: 400 });
+    return NextResponse.json({
+      data: { bucket: preparo.bucket, caminho: preparo.caminho, token: preparo.token },
+    });
+  }
+
+  if (!corpo.caminho) return NextResponse.json({ error: "Caminho ausente." }, { status: 400 });
+
+  const registro = await registrarDocumentoDoLsoft({
+    autor: `${auth.sessao.usuarioNome} (${auth.sessao.slug})`,
+    autorOrigem: "incorporador",
+    caminho: corpo.caminho,
+    categoria: corpo.categoria ?? null,
+    codigo: corpo.cliente,
+    mimeType: corpo.mimeType ?? null,
+    nomeArquivo: corpo.nomeArquivo,
+    observacao: corpo.observacao ?? null,
+    tamanhoBytes: corpo.tamanhoBytes ?? null,
+  });
+
+  if (!registro.ok) return NextResponse.json({ error: registro.erro }, { status: 400 });
+
+  return NextResponse.json({ data: { documento: registro.documento } });
+}
+
+export async function DELETE(request: Request) {
+  const auth = autorizar(request);
+  if (!auth.ok) return auth.response;
+  if (!portalVeBaseLsoft(auth.sessao.slug)) return fora();
+
+  const url = new URL(request.url);
+  const codigo = (url.searchParams.get("cliente") ?? "").trim();
+  const id = (url.searchParams.get("id") ?? "").trim();
+
+  if (!codigo || !id) {
+    return NextResponse.json({ error: "Cliente ou documento ausente." }, { status: 400 });
+  }
+
+  const resultado = await removerDocumentoDoLsoft({
+    autor: `${auth.sessao.usuarioNome} (${auth.sessao.slug})`,
+    codigo,
+    id,
+  });
+
+  if (!resultado.ok) return NextResponse.json({ error: resultado.erro }, { status: 404 });
+
+  return NextResponse.json({ data: { removido: true } });
 }
