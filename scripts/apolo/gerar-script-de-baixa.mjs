@@ -1,0 +1,132 @@
+// Gera o script de baixa que roda NO NAVEGADOR, já com a lista conferida embutida.
+//
+//   node scripts/apolo/gerar-script-de-baixa.mjs
+//
+// A lista vem de `baixa-ato-1000-conferidas.json`, produzida por
+// `cruzar-pix-pago-x-ato-c2x.mjs` — só as unidades onde 1 PIX de R$ 1.000 corresponde a 1 unidade.
+import fs from "node:fs";
+import path from "node:path";
+
+const lista = JSON.parse(
+  fs.readFileSync(path.resolve(process.cwd(), "scripts/apolo/baixa-ato-1000-conferidas.json"), "utf8"),
+);
+
+const partes = [];
+const p = (linha = "") => partes.push(linha);
+
+p("// ═══════════════════════════════════════════════════════════════════════════");
+p("// BAIXA DO \"ATO\" DE R$ 1.000 — VALE DO OURO");
+p("//");
+p("// COMO USAR (no Chrome JÁ LOGADO no C2X, em https://sistema.careli.adm.br/payments):");
+p("//   1. F12 -> aba Console");
+p("//   2. cole este arquivo inteiro e dê Enter  -> roda em ENSAIO, não grava nada");
+p("//   3. leia o resumo; se estiver certo, troque ENVIAR para true e rode de novo");
+p("//   4. na primeira vez de verdade deixe APENAS = 1: faz UMA baixa, você confere no C2X,");
+p("//      e só então aumenta para o restante");
+p("//");
+p("// O QUE FAZ POR UNIDADE: abre a listagem filtrada por AQUELA unidade + tipo ATO, acha o");
+p("// formulário daquele pagamento e envia o MESMO PATCH que o botão Salvar do modal envia.");
+p("//");
+p("// ⚠️ AS QUATRO CONFERÊNCIAS. Qualquer uma que falhe = pula e registra, nunca \"tenta assim");
+p("// mesmo\":");
+p("//   1. o formulário daquele payment_id existe na listagem daquela unidade");
+p("//   2. o título do modal bate com a unidade esperada");
+p("//   3. o valor da parcela é R$ 1.000,00");
+p("//   4. a data de pagamento está VAZIA (se já tem, alguém baixou antes — não mexe)");
+p("//");
+p("// ⚠️ A DATA LANÇADA É A DO PIX (23 a 30/07), não a de hoje. O dinheiro entrou em julho;");
+p("// lançar agosto bagunçaria o histórico e qualquer conferência futura com o extrato.");
+p("//");
+p("// ⚠️ O STATUS NÃO É ENVIADO. Na tela ele aparece desabilitado: o servidor deriva \"Pago\" a");
+p("// partir da data e do valor. Mandar o campo à mão seria inventar um caminho que a tela não usa.");
+p("//");
+p("// ⚠️ NÃO CLICA EM MAIS NADA. A mesma tela tem \"Apagar parcelas em aberto\" a poucos pixels;");
+p("// por isso aqui não há clique nenhum — só o POST do formulário certo, achado por id.");
+p("// ═══════════════════════════════════════════════════════════════════════════");
+p();
+p("const ENVIAR = false;   // <- true grava de verdade");
+p("const APENAS = 1;       // <- quantas processar (deixe 1 na primeira vez de verdade)");
+p();
+p(`const LISTA = ${JSON.stringify(lista, null, 2)};`);
+p();
+p('const VALOR = "R$ 1.000,00";');
+p('const dataBR = (iso) => iso.split("-").reverse().join("/");');
+p();
+p("async function baixar(item, indice) {");
+p("  const rotulo = `[${indice + 1}] ${item.unidade}`;");
+p("  const url =");
+p('    "/payments?payments_grid%5Benterprise_unity_id%5D=" + item.unitId +');
+p('    "&payments_grid%5Bparcel_type_id%5D=1";');
+p();
+p('  const pagina = await fetch(url, { credentials: "same-origin" }).then((r) => r.text());');
+p('  const doc = new DOMParser().parseFromString(pagina, "text/html");');
+p('  const modal = doc.querySelector("#update_payment_" + item.paymentId);');
+p('  if (!modal) return { erro: "formulário não encontrado nessa unidade", rotulo };');
+p();
+p('  const titulo = (modal.querySelector(".modal-title") || {}).textContent || "";');
+p("  if (!titulo.includes(item.unidade)) {");
+p('    return { erro: "o formulário é de OUTRA unidade: " + titulo.trim(), rotulo };');
+p("  }");
+p();
+p('  const campo = (n) => (modal.querySelector(\'[name="payment[\' + n + \']"]\') || {}).value || "";');
+p('  const semEspaco = (v) => v.replace(/\\s/g, "");');
+p('  if (semEspaco(campo("initial_value")) !== semEspaco(VALOR)) {');
+p('    return { erro: "valor é " + campo("initial_value") + ", não " + VALOR, rotulo };');
+p("  }");
+p('  if (campo("payment_date").trim() !== "") {');
+p('    return { pulou: true, erro: "já baixado em " + campo("payment_date"), rotulo };');
+p("  }");
+p();
+p('  const form = modal.querySelector("form");');
+p("  const dados = new FormData();");
+p('  for (const e of form.querySelectorAll("input, select, textarea")) {');
+p('    if (!e.name || e.disabled || e.type === "file" || e.type === "submit") continue;');
+p("    dados.append(e.name, e.value);");
+p("  }");
+p('  dados.set("payment[payment_date]", dataBR(item.dataDoPix));');
+p('  dados.set("payment[paid_value]", VALOR);');
+p();
+p("  if (!ENVIAR) {");
+p('    return { ensaio: true, rotulo, vai: "data " + dataBR(item.dataDoPix) + " · pago " + VALOR };');
+p("  }");
+p();
+p('  const r = await fetch("/payments/" + item.paymentId, {');
+p("    body: dados,");
+p('    credentials: "same-origin",');
+p('    method: "POST",');
+p("  });");
+p("  return { ok: r.ok, rotulo, status: r.status };");
+p("}");
+p();
+p("(async () => {");
+p('  const quantas = Math.min(APENAS, LISTA.length);');
+p('  console.log(ENVIAR ? "GRAVANDO DE VERDADE" : "ENSAIO — nada será gravado");');
+p('  console.log(LISTA.length + " na lista · processando " + quantas);');
+p();
+p("  const feitos = [];");
+p("  for (const [i, item] of LISTA.slice(0, quantas).entries()) {");
+p("    const r = await baixar(item, i).catch((e) => ({ erro: String(e), rotulo: item.unidade }));");
+p("    feitos.push(r);");
+p("    console.log(");
+p('      r.pulou ? "  - " + r.rotulo + ": " + r.erro');
+p('        : r.erro ? "  x " + r.rotulo + ": " + r.erro');
+p('        : r.ensaio ? "  . " + r.rotulo + ": baixaria " + r.vai');
+p('        : r.ok ? "  v " + r.rotulo + ": BAIXADO"');
+p('        : "  x " + r.rotulo + ": HTTP " + r.status,');
+p("    );");
+p("    await new Promise((s) => setTimeout(s, 400));");
+p("  }");
+p();
+p("  const erros = feitos.filter((f) => f.erro && !f.pulou);");
+p('  console.log("");');
+p('  console.log("baixados: " + feitos.filter((f) => f.ok).length +');
+p('    " · pulados: " + feitos.filter((f) => f.pulou).length +');
+p('    " · erros: " + erros.length);');
+p("  if (erros.length) console.table(erros);");
+p("  window.__resultadoDaBaixa = feitos;");
+p("})();");
+
+const destino = path.resolve(process.cwd(), "scripts/apolo/baixa-ato-1000-navegador.js");
+fs.writeFileSync(destino, partes.join("\n") + "\n");
+console.log("gerado: " + destino);
+console.log("unidades na lista: " + lista.length);

@@ -1,0 +1,1072 @@
+{
+  "devolucao": [
+    {
+      "cliente": "(não encontrado no C2X)",
+      "cpf": "20869966000177",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "30/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "(não encontrado no C2X)",
+      "cpf": "57769484000155",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "23/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "ANDRE LUIS FERREIRA",
+      "cpf": "083.103.266-96",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "23/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "ANGELA MARIA DE OLIVEIRA",
+      "cpf": "013.168.996-75",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "23/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "ANTONIO CARLOS MARINHO JUNIOR",
+      "cpf": "147.144.866-59",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "23/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "APARECIDA MOREIRA RIBEIRO",
+      "cpf": "005.980.986-82",
+      "estagio": "Cancelado",
+      "pixEm": "27/07/2026",
+      "unidade": "VOL0230 · VOL0231 · VOL0231"
+    },
+    {
+      "cliente": "BRUNA OLIVEIRA FARIA",
+      "cpf": "110.719.276-55",
+      "estagio": "Cancelado",
+      "pixEm": "29/07/2026",
+      "unidade": "VOC0522"
+    },
+    {
+      "cliente": "GABRIEL FLORES PARREIRAS",
+      "cpf": "108.344.956-78",
+      "estagio": "Cancelado",
+      "pixEm": "23/07/2026",
+      "unidade": "VOL0523"
+    },
+    {
+      "cliente": "GABRIEL GERALDO DA SILVA PENNA",
+      "cpf": "127.884.716-29",
+      "estagio": "Cancelado",
+      "pixEm": "23/07/2026",
+      "unidade": "VOL0413 · VOL1112"
+    },
+    {
+      "cliente": "GLEIDIANE KELY APARECIDA DE OLIVEIRA",
+      "cpf": "134.991.136-43",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "25/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "IGOR ALVES VITAL DA SILVA",
+      "cpf": "117.994.626-09",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "23/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "JOSIMAR HENRIQUE DE SOUSA SARAIVA",
+      "cpf": "091.530.746-45",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "24/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "LUCIO HENRIQUE TELES VIEIRA",
+      "cpf": "040.098.881-05",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "29/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "MARIA ISABELA DA SILVA",
+      "cpf": "143.647.776-09",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "26/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "PEDRO EMANUEL LEITE DE OLIVEIRA",
+      "cpf": "119.771.336-06",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "23/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "POLIANA MARA DOS SANTOS MOREIRA",
+      "cpf": "096.574.316-03",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "30/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "RAYANE NOGUEIRA DUARTE",
+      "cpf": "147.427.286-02",
+      "estagio": "Em assinatura",
+      "pixEm": "25/07/2026",
+      "unidade": "VOL1404"
+    },
+    {
+      "cliente": "REINALDO GABRIEL SOUZA SOARES",
+      "cpf": "138.631.656-32",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "23/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "REINALDO SANTOS PINTO",
+      "cpf": "052.431.326-16",
+      "estagio": "Cancelado",
+      "pixEm": "23/07/2026",
+      "unidade": "VOL0106 · VOL0527 · VOL0528 · VOL0724 · VOL0725 · VOC0104 · VOC0529 · VOC0530"
+    },
+    {
+      "cliente": "SIDNEY MIRANDA DA SILVA",
+      "cpf": "092.203.226-25",
+      "estagio": "Cancelado",
+      "pixEm": "23/07/2026",
+      "unidade": "VOL0710"
+    },
+    {
+      "cliente": "TIAGO CESAR BARROS",
+      "cpf": "074.583.336-50",
+      "estagio": "Cancelado",
+      "pixEm": "27/07/2026",
+      "unidade": "VLO1023 · VOC0607 · VOC1023"
+    },
+    {
+      "cliente": "VICENTINA LUZIA DE PAULO",
+      "cpf": "792.980.446-15",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "23/07/2026",
+      "unidade": "—"
+    },
+    {
+      "cliente": "YORRANA VANIESKA QUEIROZ ROCHA",
+      "cpf": "105.050.956-02",
+      "estagio": "Sem proposta no Vale do Ouro",
+      "pixEm": "23/07/2026",
+      "unidade": "—"
+    }
+  ],
+  "feitas": [
+    {
+      "cliente": "AGRACIELIO RIBEIRO SANTANA",
+      "cpf": "078.209.826-67",
+      "pagoEm": "23/07/2026",
+      "paymentId": 349702,
+      "unidade": "VOC1006"
+    },
+    {
+      "cliente": "AILTON GERALDO DUARTE",
+      "cpf": "578.907.656-49",
+      "pagoEm": "24/07/2026",
+      "paymentId": 330721,
+      "unidade": "VOC0213"
+    },
+    {
+      "cliente": "ALISSON JOSE GABRIEL",
+      "cpf": "090.235.766-24",
+      "pagoEm": "23/07/2026",
+      "paymentId": 331196,
+      "unidade": "VOC0214"
+    },
+    {
+      "cliente": "ALISSON SILVA SANTIAGO",
+      "cpf": "054.115.016-28",
+      "pagoEm": "23/07/2026",
+      "paymentId": 347853,
+      "unidade": "VOC0717"
+    },
+    {
+      "cliente": "ASCANIO IVON DE SOUSA",
+      "cpf": "107.511.326-16",
+      "pagoEm": "30/07/2026",
+      "paymentId": 350816,
+      "unidade": "VOL1230"
+    },
+    {
+      "cliente": "AUGUSTO SERGIO LACERDA DA SILVEIRA",
+      "cpf": "108.883.686-07",
+      "pagoEm": "23/07/2026",
+      "paymentId": 349861,
+      "unidade": "VOC0116"
+    },
+    {
+      "cliente": "BERNARDO MARTINS HORTA",
+      "cpf": "015.378.836-40",
+      "pagoEm": "23/07/2026",
+      "paymentId": 328998,
+      "unidade": "VOL0505"
+    },
+    {
+      "cliente": "BRUNA FRANCIELLI BRANDAO ZOIA",
+      "cpf": "021.173.006-85",
+      "pagoEm": "25/07/2026",
+      "paymentId": 341186,
+      "unidade": "VOL1228"
+    },
+    {
+      "cliente": "BRUNO SANCHES DE OLIVEIRA",
+      "cpf": "143.524.906-28",
+      "pagoEm": "25/07/2026",
+      "paymentId": 333415,
+      "unidade": "VOC0228"
+    },
+    {
+      "cliente": "CELIO RODRIGUES DA SILVA",
+      "cpf": "130.119.396-83",
+      "pagoEm": "23/07/2026",
+      "paymentId": 344999,
+      "unidade": "VOL1503"
+    },
+    {
+      "cliente": "CLAUDIO ANTONIO MENDES",
+      "cpf": "963.662.306-68",
+      "pagoEm": "27/07/2026",
+      "paymentId": 334845,
+      "unidade": "VOC0412"
+    },
+    {
+      "cliente": "CLEBER ROCHA SILVESTRE",
+      "cpf": "866.765.396-91",
+      "pagoEm": "23/07/2026",
+      "paymentId": 338648,
+      "unidade": "VOL0901"
+    },
+    {
+      "cliente": "CRISTIANO LUIZ VENANCIO",
+      "cpf": "078.917.776-59",
+      "pagoEm": "23/07/2026",
+      "paymentId": 336585,
+      "unidade": "VOL0316"
+    },
+    {
+      "cliente": "DAIANE GONCALVES DE CARVALHO",
+      "cpf": "100.807.466-75",
+      "pagoEm": "30/07/2026",
+      "paymentId": 350496,
+      "unidade": "VOC1108"
+    },
+    {
+      "cliente": "DEBORA CRISTINA DE MESQUITA",
+      "cpf": "147.662.946-37",
+      "pagoEm": "23/07/2026",
+      "paymentId": 336268,
+      "unidade": "VOL0215"
+    },
+    {
+      "cliente": "DENER CRISTIAN DA SILVA OLIVEIRA",
+      "cpf": "049.238.886-52",
+      "pagoEm": "23/07/2026",
+      "paymentId": 346425,
+      "unidade": "VOL0110"
+    },
+    {
+      "cliente": "DINEIDE ALVES ",
+      "cpf": "060.133.126-56",
+      "pagoEm": "24/07/2026",
+      "paymentId": 332938,
+      "unidade": "VOC0711"
+    },
+    {
+      "cliente": "DIONATA DE JESUS ARAUJO",
+      "cpf": "113.428.826-36",
+      "pagoEm": "25/07/2026",
+      "paymentId": 350656,
+      "unidade": "VOC0715"
+    },
+    {
+      "cliente": "EDUARDO DE CASTRO MEDEIROS",
+      "cpf": "065.251.076-01",
+      "pagoEm": "23/07/2026",
+      "paymentId": 335952,
+      "unidade": "VOC0516"
+    },
+    {
+      "cliente": "EMANUEL FERNANDO DA SILVA",
+      "cpf": "090.798.246-82",
+      "pagoEm": "23/07/2026",
+      "paymentId": 336426,
+      "unidade": "VOL1008"
+    },
+    {
+      "cliente": "ERICK RIBEIRO LEMOS",
+      "cpf": "140.966.706-50",
+      "pagoEm": "23/07/2026",
+      "paymentId": 336905,
+      "unidade": "VOL0216"
+    },
+    {
+      "cliente": "EUDES ROBERTO ALVES RIBEIRO",
+      "cpf": "072.161.366-75",
+      "pagoEm": "23/07/2026",
+      "paymentId": 345632,
+      "unidade": "VOL0101"
+    },
+    {
+      "cliente": "EVERTON APARECIDO REIS",
+      "cpf": "069.933.136-69",
+      "pagoEm": "23/07/2026",
+      "paymentId": 351489,
+      "unidade": "VOL0705"
+    },
+    {
+      "cliente": "FABIO MOREIRA DOS REIS",
+      "cpf": "037.355.826-05",
+      "pagoEm": "23/07/2026",
+      "paymentId": 332143,
+      "unidade": "VOC0704"
+    },
+    {
+      "cliente": "GABRIEL LUCAS DAVID OLIVEIRA",
+      "cpf": "125.373.266-36",
+      "pagoEm": "29/07/2026",
+      "paymentId": 338488,
+      "unidade": "VOL1024"
+    },
+    {
+      "cliente": "GEISE NAIARA FERREIRA",
+      "cpf": "113.119.996-04",
+      "pagoEm": "29/07/2026",
+      "paymentId": 329159,
+      "unidade": "VOC0310"
+    },
+    {
+      "cliente": "GUSTAVO BARBOSA NEVES",
+      "cpf": "019.177.396-48",
+      "pagoEm": "23/07/2026",
+      "paymentId": 353232,
+      "unidade": "VOL1220"
+    },
+    {
+      "cliente": "HENRIQUE GABRIEL ANTUNES FERREIRA",
+      "cpf": "138.526.096-31",
+      "pagoEm": "23/07/2026",
+      "paymentId": 348587,
+      "unidade": "VOL0114"
+    },
+    {
+      "cliente": "HENRIQUE RIBEIRO DINIZ",
+      "cpf": "131.436.516-95",
+      "pagoEm": "23/07/2026",
+      "paymentId": 341505,
+      "unidade": "VOL0315"
+    },
+    {
+      "cliente": "HUGO DE OLIVEIRA PEREIRA",
+      "cpf": "065.570.776-00",
+      "pagoEm": "30/07/2026",
+      "paymentId": 338806,
+      "unidade": "VOL0204"
+    },
+    {
+      "cliente": "IARA VALADARES",
+      "cpf": "109.456.966-63",
+      "pagoEm": "23/07/2026",
+      "paymentId": 348906,
+      "unidade": "VOC0223"
+    },
+    {
+      "cliente": "ISABELLA ALMEIDA E SOUZA",
+      "cpf": "126.160.066-50",
+      "pagoEm": "23/07/2026",
+      "paymentId": 331669,
+      "unidade": "VOC0521"
+    },
+    {
+      "cliente": "JAIME MAGELA DE OLIVEIRA",
+      "cpf": "031.369.446-07",
+      "pagoEm": "23/07/2026",
+      "paymentId": 348377,
+      "unidade": "VOC0525"
+    },
+    {
+      "cliente": "JAIRO ANTONIO DE SOUZA",
+      "cpf": "047.007.366-74",
+      "pagoEm": "23/07/2026",
+      "paymentId": 335163,
+      "unidade": "VOC0502"
+    },
+    {
+      "cliente": "JAIRO DE OLIVEIRA",
+      "cpf": "049.383.146-06",
+      "pagoEm": "27/07/2026",
+      "paymentId": 329313,
+      "unidade": "VOC0917"
+    },
+    {
+      "cliente": "JOAO MARCOS CLEMENS COSTA",
+      "cpf": "114.276.226-20",
+      "pagoEm": "23/07/2026",
+      "paymentId": 344363,
+      "unidade": "VOL0211"
+    },
+    {
+      "cliente": "JONATA GERALD PEREIRA",
+      "cpf": "084.571.096-69",
+      "pagoEm": "23/07/2026",
+      "paymentId": 342297,
+      "unidade": "VOL1304"
+    },
+    {
+      "cliente": "JORDANIA APARECIDA EUFRAZIO",
+      "cpf": "056.942.956-09",
+      "pagoEm": "24/07/2026",
+      "paymentId": 344202,
+      "unidade": "VOL1312"
+    },
+    {
+      "cliente": "JOSE LAFAIETE FERREIRA",
+      "cpf": "146.722.068-07",
+      "pagoEm": "25/07/2026",
+      "paymentId": 339599,
+      "unidade": "VOL0302"
+    },
+    {
+      "cliente": "JOSE LEONARDO DA SILVA",
+      "cpf": "636.564.936-34",
+      "pagoEm": "24/07/2026",
+      "paymentId": 349383,
+      "unidade": "VOC0209"
+    },
+    {
+      "cliente": "JOSE MAURICIO MENDES ",
+      "cpf": "132.203.616-09",
+      "pagoEm": "27/07/2026",
+      "paymentId": 336745,
+      "unidade": "VOL0106"
+    },
+    {
+      "cliente": "JULIO SERGIO VERTELO",
+      "cpf": "091.094.606-08",
+      "pagoEm": "23/07/2026",
+      "paymentId": 334369,
+      "unidade": "VOC0406"
+    },
+    {
+      "cliente": "JUSCELINO DE CASTRO ALVES",
+      "cpf": "484.256.486-53",
+      "pagoEm": "26/07/2026",
+      "paymentId": 342138,
+      "unidade": "VOC1204"
+    },
+    {
+      "cliente": "KAMILLA SOARES MARTINS",
+      "cpf": "151.299.816-85",
+      "pagoEm": "23/07/2026",
+      "paymentId": 337856,
+      "unidade": "VOL1012"
+    },
+    {
+      "cliente": "LAFAIETE ALVES TEIXEIRA",
+      "cpf": "550.810.886-68",
+      "pagoEm": "23/07/2026",
+      "paymentId": 331985,
+      "unidade": "VOC0113"
+    },
+    {
+      "cliente": "LARISSA PEREIRA MELGACO",
+      "cpf": "135.923.656-22",
+      "pagoEm": "25/07/2026",
+      "paymentId": 339281,
+      "unidade": "VOL0207"
+    },
+    {
+      "cliente": "LEANDRO AUGUSTO DE ALMEIDA GOMES",
+      "cpf": "131.137.486-82",
+      "pagoEm": "30/07/2026",
+      "paymentId": 334527,
+      "unidade": "VOC0313"
+    },
+    {
+      "cliente": "LEONARDO DE SOUZA CRUZ",
+      "cpf": "132.658.766-83",
+      "pagoEm": "23/07/2026",
+      "paymentId": 345947,
+      "unidade": "VOC0526"
+    },
+    {
+      "cliente": "LEONARDO DOURADO OLIVEIRA DA SILVA",
+      "cpf": "079.070.416-19",
+      "pagoEm": "23/07/2026",
+      "paymentId": 347218,
+      "unidade": "VOC0324"
+    },
+    {
+      "cliente": "LEONEL ANTONIO ARAUJO",
+      "cpf": "061.542.666-26",
+      "pagoEm": "29/07/2026",
+      "paymentId": 338330,
+      "unidade": "VOL0232"
+    },
+    {
+      "cliente": "LIDIA MACHADO MARINHO",
+      "cpf": "141.187.496-02",
+      "pagoEm": "23/07/2026",
+      "paymentId": 340233,
+      "unidade": "VOL0411"
+    },
+    {
+      "cliente": "LORENA DOS SANTOS CAMARGOS",
+      "cpf": "146.008.636-82",
+      "pagoEm": "27/07/2026",
+      "paymentId": 335321,
+      "unidade": "VOC1227"
+    },
+    {
+      "cliente": "LUCAS EMANUEL RIBEIRO DINIZ",
+      "cpf": "122.016.146-28",
+      "pagoEm": "23/07/2026",
+      "paymentId": 348746,
+      "unidade": "VOC0112"
+    },
+    {
+      "cliente": "LUCAS SILVESTRE SOARES",
+      "cpf": "108.113.196-95",
+      "pagoEm": "23/07/2026",
+      "paymentId": 329062,
+      "unidade": "VOL0802"
+    },
+    {
+      "cliente": "LUIZ FELIPE DA SILVA",
+      "cpf": "074.417.576-30",
+      "pagoEm": "23/07/2026",
+      "paymentId": 343728,
+      "unidade": "VOC0409"
+    },
+    {
+      "cliente": "LUZIA APARECIDA DOS SANTOS CRUZ",
+      "cpf": "060.410.506-10",
+      "pagoEm": "25/07/2026",
+      "paymentId": 340391,
+      "unidade": "VOL1213"
+    },
+    {
+      "cliente": "LYVIA GONÇALVES DE OLIVEIRA",
+      "cpf": "129.929.186-44",
+      "pagoEm": "28/07/2026",
+      "paymentId": 346583,
+      "unidade": "VOL0208"
+    },
+    {
+      "cliente": "MARCOS DE OLIVEIRA MENESES",
+      "cpf": "082.823.396-95",
+      "pagoEm": "23/07/2026",
+      "paymentId": 350975,
+      "unidade": "VOC0210"
+    },
+    {
+      "cliente": "MARIA JOSE LIMA DA SILVA",
+      "cpf": "008.445.704-00",
+      "pagoEm": "23/07/2026",
+      "paymentId": 339757,
+      "unidade": "VOL0509"
+    },
+    {
+      "cliente": "MARTA FLORIANO DOS SANTOS",
+      "cpf": "056.210.376-77",
+      "pagoEm": "23/07/2026",
+      "paymentId": 349223,
+      "unidade": "VOL0103"
+    },
+    {
+      "cliente": "NADIA CAROLINE PENHA RIBEIRO",
+      "cpf": "118.727.916-11",
+      "pagoEm": "27/07/2026",
+      "paymentId": 334687,
+      "unidade": "VOC1029"
+    },
+    {
+      "cliente": "NATANAEL ISAC DA SILVA",
+      "cpf": "056.922.666-01",
+      "pagoEm": "23/07/2026",
+      "paymentId": 347695,
+      "unidade": "VOC0501"
+    },
+    {
+      "cliente": "PAULO ROBERTO LEITE SILVA",
+      "cpf": "091.464.066-62",
+      "pagoEm": "23/07/2026",
+      "paymentId": 340075,
+      "unidade": "VOL1208"
+    },
+    {
+      "cliente": "PEDRO HENRIQUE COSTA MOREIRA ",
+      "cpf": "154.537.436-89",
+      "pagoEm": "23/07/2026",
+      "paymentId": 337696,
+      "unidade": "VOL0119"
+    },
+    {
+      "cliente": "POLIANE RODRIGUES DA SILVA",
+      "cpf": "104.673.216-12",
+      "pagoEm": "24/07/2026",
+      "paymentId": 341820,
+      "unidade": "VOL1232"
+    },
+    {
+      "cliente": "Rafael Ribeiro da Silveira",
+      "cpf": "136.241.346-12",
+      "pagoEm": "27/07/2026",
+      "paymentId": 345474,
+      "unidade": "VOC1028"
+    },
+    {
+      "cliente": "REINALDO DANIEL DOS SANTOS",
+      "cpf": "040.599.716-77",
+      "pagoEm": "23/07/2026",
+      "paymentId": 331354,
+      "unidade": "VOC0109"
+    },
+    {
+      "cliente": "ROBERTO GERALDO DUARTE",
+      "cpf": "930.704.466-04",
+      "pagoEm": "23/07/2026",
+      "paymentId": 336110,
+      "unidade": "VOC0401"
+    },
+    {
+      "cliente": "RODRIGO DA SILVA BREHRING",
+      "cpf": "306.397.538-92",
+      "pagoEm": "23/07/2026",
+      "paymentId": 339915,
+      "unidade": "VOL1212"
+    },
+    {
+      "cliente": "RONY RIBEIRO MAIA DA SILVA",
+      "cpf": "083.122.986-14",
+      "pagoEm": "23/07/2026",
+      "paymentId": 347379,
+      "unidade": "VOC0321"
+    },
+    {
+      "cliente": "ROSIENE GOMES DOS SANTOS",
+      "cpf": "076.805.936-47",
+      "pagoEm": "23/07/2026",
+      "paymentId": 331038,
+      "unidade": "VOC0108"
+    },
+    {
+      "cliente": "STANLEY DOS SANTOS VICENTE",
+      "cpf": "132.817.936-22",
+      "pagoEm": "25/07/2026",
+      "paymentId": 339441,
+      "unidade": "VOL1034"
+    },
+    {
+      "cliente": "TALITA ALINE PEREIRA DA CRUZ",
+      "cpf": "140.640.706-23",
+      "pagoEm": "23/07/2026",
+      "paymentId": 330563,
+      "unidade": "VOC0105"
+    },
+    {
+      "cliente": "VILMAR APARECIDO DE OLIVEIRA",
+      "cpf": "008.426.386-52",
+      "pagoEm": "23/07/2026",
+      "paymentId": 343886,
+      "unidade": "VOC0405"
+    },
+    {
+      "cliente": "VIVIANE APARECIDA FELIX ELIAS",
+      "cpf": "061.975.056-14",
+      "pagoEm": "23/07/2026",
+      "paymentId": 350337,
+      "unidade": "VOL0709"
+    },
+    {
+      "cliente": "WASHINGTON LUIZ DOS SANTOS",
+      "cpf": "076.153.436-90",
+      "pagoEm": "23/07/2026",
+      "paymentId": 347537,
+      "unidade": "VOC0234"
+    },
+    {
+      "cliente": "WEBERTON DE PAULA SAMPAIO DE SOUZA",
+      "cpf": "081.893.436-02",
+      "pagoEm": "26/07/2026",
+      "paymentId": 337378,
+      "unidade": "VOL0118"
+    },
+    {
+      "cliente": "WELINTON APARECIDO DE SOUZA ",
+      "cpf": "103.038.656-01",
+      "pagoEm": "23/07/2026",
+      "paymentId": 329050,
+      "unidade": "VOL0524"
+    },
+    {
+      "cliente": "WESLEI JUNIO RODRIGUES CORDEIRO",
+      "cpf": "129.944.896-86",
+      "pagoEm": "23/07/2026",
+      "paymentId": 346741,
+      "unidade": "VOC0219"
+    }
+  ],
+  "geradoEm": "19/08/2026",
+  "semRegistro": [
+    {
+      "cliente": "ALINE DE OLIVEIRA PEREIRA",
+      "cpf": "058.873.976-67",
+      "paymentId": 338172,
+      "pixEm": null,
+      "unidade": "VOL0203",
+      "vence": "01/08/2026"
+    },
+    {
+      "cliente": "AMANDA MAIRA GOMES DA COSTA",
+      "cpf": "126.785.736-64",
+      "paymentId": 353552,
+      "pixEm": null,
+      "unidade": "VOC0227",
+      "vence": "17/08/2026"
+    },
+    {
+      "cliente": "ANTONIO PAULINO TORRES JUNIOR",
+      "cpf": "053.494.336-52",
+      "paymentId": 345790,
+      "pixEm": null,
+      "unidade": "VOC0205",
+      "vence": "15/08/2026"
+    },
+    {
+      "cliente": "AUGUSTA E RESPEITAVEL LOJA SIMBOLICA ESTRELA DE ABRAAO",
+      "cpf": "—",
+      "paymentId": 338964,
+      "pixEm": null,
+      "unidade": "VOL0301",
+      "vence": "01/08/2026"
+    },
+    {
+      "cliente": "CAMILA DIONISIO RODRIGUES",
+      "cpf": "088.792.296-13",
+      "paymentId": 340708,
+      "pixEm": null,
+      "unidade": "VOL1040",
+      "vence": "06/08/2026"
+    },
+    {
+      "cliente": "CARLOS AUGUSTO SILVA GONCALVES",
+      "cpf": "153.472.876-75",
+      "paymentId": 353074,
+      "pixEm": null,
+      "unidade": "VOC0529",
+      "vence": "15/08/2026"
+    },
+    {
+      "cliente": "DOUGLAS RIBEIRO DOS SANTOS",
+      "cpf": "128.948.406-67",
+      "paymentId": 352756,
+      "pixEm": null,
+      "unidade": "VOC1231",
+      "vence": "01/08/2026"
+    },
+    {
+      "cliente": "ERIVELTO TIAGO LOPES REZENDE",
+      "cpf": "084.587.866-21",
+      "paymentId": 337536,
+      "pixEm": null,
+      "unidade": "VOL0604",
+      "vence": "06/08/2026"
+    },
+    {
+      "cliente": "FELIPE DO CARMO DE OLIVEIRA",
+      "cpf": "084.574.196-92",
+      "paymentId": 346265,
+      "pixEm": null,
+      "unidade": "VOL1225",
+      "vence": "12/08/2026"
+    },
+    {
+      "cliente": "FELIPE DO CARMO DE OLIVEIRA",
+      "cpf": "084.574.196-92",
+      "paymentId": 352438,
+      "pixEm": null,
+      "unidade": "VOC1226",
+      "vence": "12/08/2026"
+    },
+    {
+      "cliente": "GERALDA IMACULADA SABINO",
+      "cpf": "000.626.126-46",
+      "paymentId": 348011,
+      "pixEm": null,
+      "unidade": "VOL0222",
+      "vence": "06/08/2026"
+    },
+    {
+      "cliente": "JACI DOS SANTOS",
+      "cpf": "386.949.566-91",
+      "paymentId": 352598,
+      "pixEm": null,
+      "unidade": "VOC0233",
+      "vence": "15/08/2026"
+    },
+    {
+      "cliente": "JEAN CARLOS DE OLIVEIRA FARIA",
+      "cpf": "117.624.096-07",
+      "paymentId": 344680,
+      "pixEm": null,
+      "unidade": "VOC0530",
+      "vence": "06/08/2026"
+    },
+    {
+      "cliente": "JEFERSON ANTONIO DA SILVA",
+      "cpf": "062.198.186-95",
+      "paymentId": 331827,
+      "pixEm": null,
+      "unidade": "VOC0217",
+      "vence": "01/08/2026"
+    },
+    {
+      "cliente": "LIDIANY GONCALVES DOS SANTOS",
+      "cpf": "126.971.226-80",
+      "paymentId": 349542,
+      "pixEm": null,
+      "unidade": "VOC0220",
+      "vence": "01/08/2026"
+    },
+    {
+      "cliente": "LUCAS CARVALHO SILVA",
+      "cpf": "107.081.926-37",
+      "paymentId": 334211,
+      "pixEm": null,
+      "unidade": "VOC0309",
+      "vence": "01/08/2026"
+    },
+    {
+      "cliente": "LUCAS DE LIMA SOUSA",
+      "cpf": "120.438.666-80",
+      "paymentId": 333098,
+      "pixEm": null,
+      "unidade": "VOC0202",
+      "vence": "07/08/2026"
+    },
+    {
+      "cliente": "LUCELIA FERNANDA PINTO",
+      "cpf": "064.181.526-38",
+      "paymentId": 343092,
+      "pixEm": null,
+      "unidade": "VOL1110",
+      "vence": "07/08/2026"
+    },
+    {
+      "cliente": "MANOEL ALVES SOBRINHO",
+      "cpf": "073.865.236-96",
+      "paymentId": 341663,
+      "pixEm": null,
+      "unidade": "VOC1104",
+      "vence": "10/08/2026"
+    },
+    {
+      "cliente": "MAXWELL MATEUS DA SILVA FARIA",
+      "cpf": "105.725.966-77",
+      "paymentId": 352916,
+      "pixEm": null,
+      "unidade": "VOC0104",
+      "vence": "06/08/2026"
+    },
+    {
+      "cliente": "MAYRA DIOVANA SILVA COSTA",
+      "cpf": "170.530.206-81",
+      "paymentId": 348169,
+      "pixEm": null,
+      "unidade": "VOC0317",
+      "vence": "06/08/2026"
+    },
+    {
+      "cliente": "MERCIA RAQUEL DA SILVA",
+      "cpf": "050.145.106-47",
+      "paymentId": 334050,
+      "pixEm": null,
+      "unidade": "VOC0318",
+      "vence": "05/08/2026"
+    },
+    {
+      "cliente": "MILTON MOREIRA DUARTE",
+      "cpf": "222.582.486-04",
+      "paymentId": 329279,
+      "pixEm": null,
+      "unidade": "VOC0606",
+      "vence": "01/08/2026"
+    },
+    {
+      "cliente": "NAYARA NATALLY MARTINS DA SILVA",
+      "cpf": "112.860.066-86",
+      "paymentId": 353392,
+      "pixEm": null,
+      "unidade": "VOL0714",
+      "vence": "12/08/2026"
+    },
+    {
+      "cliente": "NBL MODULARES CONTRUCAO CIVIL LTDA",
+      "cpf": "—",
+      "paymentId": 351134,
+      "pixEm": null,
+      "unidade": "VOL0523",
+      "vence": "01/08/2026"
+    },
+    {
+      "cliente": "RAMON LEITE GASPAR",
+      "cpf": "070.909.686-00",
+      "paymentId": 338014,
+      "pixEm": null,
+      "unidade": "VOL0605",
+      "vence": "07/08/2026"
+    },
+    {
+      "cliente": "RONALDO DOS SANTOS",
+      "cpf": "066.229.076-33",
+      "paymentId": 342934,
+      "pixEm": null,
+      "unidade": "VOL1111",
+      "vence": "08/08/2026"
+    },
+    {
+      "cliente": "UEMERSON JUNIOR BARBOSA LEITE",
+      "cpf": "130.769.946-46",
+      "paymentId": 329250,
+      "pixEm": null,
+      "unidade": "VOL0307",
+      "vence": "01/08/2026"
+    },
+    {
+      "cliente": "WENDER LUCIO MOREIRA OLIVEIRA",
+      "cpf": "107.046.316-79",
+      "paymentId": 353711,
+      "pixEm": null,
+      "unidade": "VOC1502",
+      "vence": "06/08/2026"
+    },
+    {
+      "cliente": "WILLIAN APARECIDO DA SILVA CAMPOS",
+      "cpf": "016.485.326-08",
+      "paymentId": 342457,
+      "pixEm": null,
+      "unidade": "VOC1105",
+      "vence": "10/08/2026"
+    },
+    {
+      "cliente": "WILLIAN JONES PEREIRA",
+      "cpf": "085.723.496-00",
+      "paymentId": 351331,
+      "pixEm": null,
+      "unidade": "VOL0518",
+      "vence": "07/08/2026"
+    }
+  ],
+  "variosLotes": [
+    {
+      "cliente": "ANDRE JUNIO SANTOS",
+      "cpf": "141.478.916-59",
+      "paymentId": 328996,
+      "pixEm": "23/07/2026",
+      "unidade": "VOC0719",
+      "vence": "01/08/2026",
+      "ref": "pay_zlafliqwhu7gc9rc"
+    },
+    {
+      "cliente": "ANDRE JUNIO SANTOS",
+      "cpf": "141.478.916-59",
+      "paymentId": 352281,
+      "pixEm": "23/07/2026",
+      "unidade": "VOC0718",
+      "vence": "01/08/2026",
+      "ref": "pay_zlafliqwhu7gc9rc"
+    },
+    {
+      "cliente": "ANGELA APARECIDA DOS SANTOS GONZAGA",
+      "cpf": "654.385.076-00",
+      "paymentId": 335003,
+      "pixEm": "23/07/2026",
+      "unidade": "VOC1415",
+      "vence": "01/08/2026",
+      "ref": "pay_na8lmngcqxkkd5ab"
+    },
+    {
+      "cliente": "ANGELA APARECIDA DOS SANTOS GONZAGA",
+      "cpf": "654.385.076-00",
+      "paymentId": 342615,
+      "pixEm": "23/07/2026",
+      "unidade": "VOL1416",
+      "vence": "01/08/2026",
+      "ref": "pay_na8lmngcqxkkd5ab"
+    },
+    {
+      "cliente": "JAINE APARECIDA GUIMARAES ALCANTARA",
+      "cpf": "064.012.706-16",
+      "paymentId": 351961,
+      "pixEm": "30/07/2026",
+      "unidade": "VOC0712",
+      "vence": "01/08/2026",
+      "ref": "pay_3bhj70ujsgzdhrso"
+    },
+    {
+      "cliente": "JAINE APARECIDA GUIMARAES ALCANTARA",
+      "cpf": "064.012.706-16",
+      "paymentId": 352121,
+      "pixEm": "30/07/2026",
+      "unidade": "VOC0716",
+      "vence": "12/08/2026",
+      "ref": "pay_3bhj70ujsgzdhrso"
+    },
+    {
+      "cliente": "LEOJAIME JOSE DOS SANTOS SILVA",
+      "cpf": "097.822.374-85",
+      "paymentId": 343412,
+      "pixEm": "23/07/2026",
+      "unidade": "VOC0721",
+      "vence": "01/08/2026",
+      "ref": "pay_lts1safx93kxd1hy"
+    },
+    {
+      "cliente": "LEOJAIME JOSE DOS SANTOS SILVA",
+      "cpf": "097.822.374-85",
+      "paymentId": 343570,
+      "pixEm": "23/07/2026",
+      "unidade": "VOC0720",
+      "vence": "10/08/2026",
+      "ref": "pay_lts1safx93kxd1hy"
+    },
+    {
+      "cliente": "SANDRA APARECIDA AMARO",
+      "cpf": "957.503.476-72",
+      "paymentId": 344521,
+      "pixEm": "23/07/2026",
+      "unidade": "VOC0402",
+      "vence": "01/08/2026",
+      "ref": "pay_c78psk2wgjpub7m0"
+    },
+    {
+      "cliente": "SANDRA APARECIDA AMARO",
+      "cpf": "957.503.476-72",
+      "paymentId": 344840,
+      "pixEm": "23/07/2026",
+      "unidade": "VOL1042",
+      "vence": "01/08/2026",
+      "ref": "pay_c78psk2wgjpub7m0"
+    },
+    {
+      "cliente": "SANDRA APARECIDA AMARO",
+      "cpf": "957.503.476-72",
+      "paymentId": 345157,
+      "pixEm": "23/07/2026",
+      "unidade": "VOL1043",
+      "vence": "01/08/2026",
+      "ref": "pay_c78psk2wgjpub7m0"
+    }
+  ]
+}
