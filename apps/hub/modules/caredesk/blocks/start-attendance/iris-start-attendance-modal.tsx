@@ -14,9 +14,12 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+import { IRIS_CENTRAIS, IRIS_CENTRAL_LABEL_CURTO } from "../../lib/centrais";
+
 import type {
   IrisApoloClientOption,
   IrisApoloContextEntity,
+  IrisCentral,
   IrisData,
   IrisMetaPhoneNumberLink,
   IrisMetaPhoneNumberOption,
@@ -94,9 +97,18 @@ export type IrisStartAttendanceModalHelpers = {
 };
 
 type IrisStartAttendanceModalProps = {
+  /** A central que está aberta na barra de abas — vira a escolha inicial do seletor de canal. */
+  centralAtiva?: IrisCentral | null;
   data: IrisData;
   helpers: IrisStartAttendanceModalHelpers;
   initialQueueLabel?: string | null;
+  /**
+   * TODAS as filas que a pessoa enxerga, de todas as centrais.
+   *
+   * ⚠️ SEPARADO DE `data` DE PROPÓSITO. O `data` chega recortado pela central da aba
+   * (`recortarDadosPorCentral`), e o seletor de canal precisa justamente do que está FORA dela.
+   */
+  todasAsFilas?: IrisQueueConfig[];
   onClose: () => void;
   onTicketCreated: (ticketId?: string) => void;
   onTemplatesSynced?: () => void;
@@ -151,11 +163,13 @@ type IrisActiveTicketBlock = {
 // escolhe assunto + template aprovado e personaliza com tickets ou parcelas.
 // Tenta a janela de 24h aberta primeiro; se fechada, envia o template aprovado.
 export function IrisStartAttendanceModal({
+  centralAtiva,
   data,
   helpers,
   initialQueueLabel,
   onClose,
   onTicketCreated,
+  todasAsFilas,
 }: IrisStartAttendanceModalProps) {
   const {
     defaultIrisQueueId,
@@ -195,12 +209,46 @@ export function IrisStartAttendanceModal({
   const [blockedTicket, setBlockedTicket] =
     useState<IrisActiveTicketBlock | null>(null);
 
+  /**
+   * O CANAL vem primeiro, e a fila depois — o fluxo que o Lucas descreveu (20/08/2026):
+   * *"para abrir uma conversa tem que escolher o canal (atendimento) (relacionamento) (gurgel),
+   * depois que ele escolhe o canal... vai ter que escolher a fila, pois cada fila tem seus
+   * templates"*.
+   *
+   * ⚠️ AS FILAS SAEM DE `todasAsFilas`, E NÃO DE `data.queues`. O `data` que chega aqui já passou
+   * por `recortarDadosPorCentral` e só traz a central da aba aberta — com ele, trocar de canal no
+   * modal não mudaria nada, porque as filas das outras centrais nem teriam vindo. `todasAsFilas`
+   * carrega o conjunto que a PESSOA enxerga (já filtrado por permissão em `canSeeResource`), que é
+   * o recorte certo para uma escolha que acontece dentro do modal.
+   */
+  const filasDisponiveis = todasAsFilas?.length ? todasAsFilas : data.queues;
+
+  const centraisDisponiveis = useMemo(() => {
+    const comFila = new Set(
+      filasDisponiveis
+        .filter((queue) => queue.status === "active" && queue.central)
+        .map((queue) => queue.central as IrisCentral),
+    );
+    // A ordem sai de IRIS_CENTRAIS, a mesma das abas: o seletor não pode contar uma história
+    // diferente da barra de cima.
+    return IRIS_CENTRAIS.filter((central) => comFila.has(central));
+  }, [filasDisponiveis]);
+
+  // Começa na central da aba aberta: quem já estava no Relacionamento não precisa reescolher.
+  const [centralEscolhida, setCentralEscolhida] = useState<IrisCentral | null>(
+    () => centralAtiva ?? centraisDisponiveis[0] ?? null,
+  );
+
   const activeQueues = useMemo(
     () =>
-      data.queues
-        .filter((queue) => queue.status === "active")
+      filasDisponiveis
+        .filter(
+          (queue) =>
+            queue.status === "active" &&
+            (!centralEscolhida || queue.central === centralEscolhida),
+        )
         .sort(sortIrisQueues),
-    [data.queues, sortIrisQueues],
+    [centralEscolhida, filasDisponiveis, sortIrisQueues],
   );
   const [selectedQueueId, setSelectedQueueId] = useState(() =>
     defaultIrisQueueId(data.queues, initialQueueLabel),
@@ -1056,6 +1104,40 @@ export function IrisStartAttendanceModal({
                   ) : null}
                 </div>
               )}
+
+              {/* ⚠️ O CANAL VEM PRIMEIRO, e a fila depende dele. Regra do Lucas (20/08/2026):
+                  *"primeiro eu seleciono o canal, depois eu seleciono a fila"*. Só aparece quando
+                  há mais de uma central para escolher — com uma só, o seletor seria uma pergunta
+                  de resposta única. */}
+              {centraisDisponiveis.length > 1 ? (
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
+                    Canal
+                  </span>
+                  <div className="relative">
+                    <select
+                      value={centralEscolhida ?? ""}
+                      onChange={(event) => {
+                        setCentralEscolhida(event.target.value as IrisCentral);
+                        // A fila da central antiga não vale na nova: zerar aqui evita o modal
+                        // ficar com um par canal/fila que não existe.
+                        setSelectedQueueId("");
+                      }}
+                      className="h-9 w-full appearance-none rounded-lg border border-line/70 bg-surface px-2 pr-7 text-sm text-ink outline-none focus:border-[#101820]/40"
+                    >
+                      {centraisDisponiveis.map((central) => (
+                        <option key={central} value={central}>
+                          {IRIS_CENTRAL_LABEL_CURTO[central]}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
+                      aria-hidden="true"
+                    />
+                  </div>
+                </label>
+              ) : null}
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">

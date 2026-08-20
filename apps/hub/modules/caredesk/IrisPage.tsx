@@ -1460,6 +1460,9 @@ export function IrisPage({
       ) : null}
       {startAttendanceOpen ? (
         <IrisStartAttendanceModal
+          // A central da aba entra como escolha INICIAL do seletor de canal, e não como limite:
+          // quem está no Relacionamento não precisa reescolher, mas pode trocar sem sair da tela.
+          centralAtiva={centralAtiva === "todas" ? null : centralAtiva}
           data={irisData}
           helpers={irisStartAttendanceModalHelpers}
           initialQueueLabel={startAttendanceQueueLabel}
@@ -1470,6 +1473,10 @@ export function IrisPage({
           onTemplatesSynced={() => {
             void refreshIrisData({ notifyNewInbound: false });
           }}
+          // ⚠️ AS FILAS VÊM DO BRUTO, não de `irisData`: este último já passou por
+          // `recortarDadosPorCentral` e traz só a aba aberta — o seletor de canal precisa
+          // justamente do que está fora dela. O bruto já vem filtrado por permissão.
+          todasAsFilas={irisDataBruto.queues}
           onTicketCreated={(ticketId) => {
             setStartAttendanceOpen(false);
             setStartAttendanceQueueLabel(null);

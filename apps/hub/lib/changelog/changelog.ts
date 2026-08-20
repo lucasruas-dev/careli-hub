@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-20-iris-canal-antes-da-fila",
+    deployedAt: "2026-08-20T19:15:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O modal agora comeca pelo CANAL: escolhe Atendimento, Relacionamento ou Gurgel, e so entao a fila daquele canal",
+              "Da para trocar de canal sem sair da tela. Antes era preciso fechar o modal e mudar a aba de cima para alcancar a fila de outra central",
+              "Fila Relacionamento foi arquivada: era duplicata da Central de Relacionamento (1 ticket ja fechado contra 780) e ainda apontava para o canal da Meta, o unico da central que continuaria pedindo template",
+            ],
+            screen: "Abrir atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.172.0 (2026-08-20-iris-abrir-fora-da-meta)",
+    technical: {
+      done:
+        "O modal recebia `data` ja recortado por `recortarDadosPorCentral`, entao so enxergava a central da aba aberta — com isso um seletor de canal nao teria o que oferecer. Passou a receber tambem `todasAsFilas={irisDataBruto.queues}` (bruto = filtrado por PERMISSAO em canSeeResource, nao por central) e `centralAtiva`, que vira a escolha inicial. As centrais oferecidas saem de IRIS_CENTRAIS intersectado com as filas que a pessoa enxerga, entao o seletor nunca mostra central sem fila; com uma central so, ele nem aparece. Trocar de canal zera `selectedQueueId` — manter a fila da central anterior deixaria um par canal/fila que nao existe. NO BANCO (autorizado): fila `Relacionamento` (1731fbc4) arquivada; o AT-001897 continua nela, conferido depois do update. NAO mexi em Contato, Compras e Grupo, ao contrario do que eu tinha proposto: a medicao mostrou que Contato e fila de E-MAIL (21 tickets, todos de contato@careli.adm.br) e aponta-la para o WhatsApp da Evolution quebraria o roteamento. Grupo tem canal Evolution PROPRIO, separado do de conversa 1:1 ('Monitoramento passivo de grupos pela CACA').",
+      motivation:
+        "Lucas, 20/08/2026: 'nao ficou do jeito que eu queria, primeiro eu seleciono o canal, depois eu seleciono a fila'. E, sobre a duplicidade: 'a Central de Relacionamento e Relacionamento e a mesma coisa'.",
+    },
+    title: "Canal antes da fila, e uma fila duplicada a menos",
+    type: "melhoria",
+    version: "1.173.0",
+  },
+  {
     buildTag: "2026-08-20-iris-abrir-fora-da-meta",
     deployedAt: "2026-08-20T18:30:00-03:00",
     modules: [
