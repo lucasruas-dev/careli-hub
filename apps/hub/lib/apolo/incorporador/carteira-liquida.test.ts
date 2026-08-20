@@ -44,6 +44,10 @@ function linha(sobrescreve: Partial<LinhaCruaDaCarteira> = {}): LinhaCruaDaCarte
     payment_date: "2026-07-12",
     payment_id: 1,
     plano_personalizado: null,
+    // O par de contadores do SINAL. No padrão do helper a linha é uma "Parcela", então eles vêm
+    // zerados — igual ao C2X, que só preenche este par no tipo "Sinal".
+    sinal_n: null,
+    sinal_total: null,
     split_data: null,
     status_id: 5,
     unit_block: "Q01",
@@ -541,5 +545,76 @@ describe("filtro do extrato, no servidor", () => {
       const comDataDepois = extrato.slice(semData).some((p) => p.pagoEm);
       expect(comDataDepois).toBe(false);
     }
+  });
+});
+
+// ⚠️ O DEFEITO QUE ESTE BLOCO IMPEDE (Lucas, 20/08/2026): *"tem uma divergência de informação, no
+// gráfico fala que 6,1%, nos indicadores eu tenho 7% e tenho 10,3, estamos em agosto ainda deve
+// ter alguma coisa errada"*.
+//
+// Estava: a barra do mês CORRENTE somava no previsto todas as parcelas com vencimento no mês,
+// inclusive as que ainda não tinham chegado na data. O vencido ficava diluído por um denominador
+// que ainda ia crescer até o dia 31, e a barra mostrava menos inadimplência do que a real — o
+// mesmo erro do card antigo (dividir pelo que ainda não venceu), sobrevivendo no gráfico.
+describe("série mensal: o mês corrente só conta o que já venceu", () => {
+  const base = {
+    agoraMs: AGORA_MS, // 17/08/2026
+    nomeDoIncorporador: "Loteadora VAL",
+    nomePorCode: new Map([["VAL", "Vista Alegre"]]),
+    politicaPorCode: POLITICAS,
+  };
+
+  it("parcela que vence DEPOIS de hoje, no mesmo mês, fica fora do previsto", () => {
+    const { serieMensal } = montarIndicadores(
+      [
+        // Venceu dia 10 e não foi paga: inadimplente.
+        linha({ due_date: "2026-08-10", payment_date: null, status_id: 7, valor: null }),
+        // Vence dia 25 — ainda não chegou a data, então não pode entrar no denominador de hoje.
+        linha({ due_date: "2026-08-25", payment_date: null, status_id: 6, valor: null }),
+      ],
+      base,
+    );
+
+    const agosto = serieMensal.find((m) => m.mes === "2026-08");
+    expect(agosto).toBeDefined();
+
+    // Só a do dia 10 entra no previsto. Com a do dia 25 junto, o percentual cairia pela metade
+    // sem que nada tivesse sido pago.
+    expect(agosto!.inadimplente).toBeGreaterThan(0);
+    expect(agosto!.previsto).toBe(agosto!.inadimplente);
+    expect(agosto!.inadimplenciaPct).toBeCloseTo(100, 6);
+  });
+
+  it("mês passado continua contando o mês inteiro", () => {
+    const { serieMensal } = montarIndicadores(
+      [
+        linha({ due_date: "2026-07-10", payment_date: "2026-07-11", status_id: 5 }),
+        // Dia 25 de julho já passou: entra normalmente, como sempre entrou.
+        linha({ due_date: "2026-07-25", payment_date: "2026-07-26", status_id: 5 }),
+      ],
+      base,
+    );
+
+    const julho = serieMensal.find((m) => m.mes === "2026-07");
+    expect(julho!.previsto).toBeGreaterThan(0);
+    // Tudo pago: inadimplência zero, e as duas parcelas no denominador.
+    expect(julho!.inadimplente).toBe(0);
+    expect(julho!.inadimplenciaPct).toBe(0);
+  });
+
+  it("o mês corrente fecha com a MESMA base do card de inadimplência", () => {
+    // Quando toda a carteira vence no mês corrente — o caso do Vale do Ouro —, a barra do mês e o
+    // card acumulado têm que dar o mesmo número. Era a divergência que o Lucas viu na tela.
+    const linhas = [
+      linha({ due_date: "2026-08-05", payment_date: "2026-08-06", status_id: 5 }),
+      linha({ due_date: "2026-08-10", payment_date: null, status_id: 7, valor: null }),
+      linha({ due_date: "2026-08-28", payment_date: null, status_id: 6, valor: null }),
+    ];
+
+    const { kpis, serieMensal } = montarIndicadores(linhas, base);
+    const agosto = serieMensal.find((m) => m.mes === "2026-08")!;
+
+    expect(agosto.previsto).toBeCloseTo(kpis.previstoAteHoje.liquido, 6);
+    expect(agosto.inadimplenciaPct).toBeCloseTo(kpis.inadimplenciaPct.liquida, 6);
   });
 });

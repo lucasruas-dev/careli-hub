@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-20-carteira-numeracao-e-cenarios",
+    deployedAt: "2026-08-20T15:30:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "O numero da parcela parou de mostrar 0/156 no Ato e no Sinal. Ato agora e 1/1, o Sinal conta so o sinal (1/3, 2/3) e a Parcela conta o saldo devedor (7/156)",
+              "Bloco Neste recorte: filtrando por dezembro, por exemplo, a tela passa a dizer quanto entra no mes, quanto ja foi pago, quanto esta a vencer e quanto esta em atraso",
+              "O grafico e o card de inadimplencia agora dao o MESMO numero. A barra do mes corrente estava diluindo o atraso com parcelas que ainda nem tinham vencido",
+              "O Previsto ate hoje passou para logo depois da Receita liquida, que e a ordem em que os numeros se explicam",
+              "Uma linha nova explica por que a inadimplencia liquida e a bruta diferem",
+            ],
+            screen: "Carteira · Indicadores",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.169.0 (2026-08-20-carteira-filtros-e-inadimplencia)",
+    technical: {
+      done:
+        "(1) NUMERACAO. O C2X guarda DOIS pares de contadores na mesma linha de payments e preenche um ou outro conforme o tipo — medido no VOC: Ato tem current_signal_parcel=0 e current_total_parcel=0; Sinal usa current_signal_parcel (1..4); Parcela usa current_total_parcel (1..156); e total_parcels vale 156 em TODAS. O extrato do portal montava a string na mao com o par da Parcela, dai o 0/156 em Ato e Sinal. A regra ja tinha sido corrigida em 19/08 na carteira INTERNA, com uma funcao privada — e o portal ficou para tras: caso de manual de camada nova sem varrer os leitores. Agora existe UMA regua (lib/apolo/numero-da-parcela.ts), usada pelos dois, com 7 testes escritos a partir dos valores reais do C2X. A query do extrato ganhou current_signal_parcel/total_signal_parcels. (2) GRAFICO x CARD. A serie mensal somava no previsto TODAS as parcelas com vencimento no mes, inclusive as que ainda nao tinham chegado na data: em 20/08 o denominador de agosto pegava ate os vencimentos de 31/08 (R$ 93.960 a mais no bruto) e a barra dava 6,1% onde o card dava 7%. Era o mesmo defeito do card antigo sobrevivendo no grafico. No mes CORRENTE o previsto passou a contar so o que ja venceu; nos meses passados nada muda, porque tudo ja venceu. Teste novo prova que a barra do mes corrente e o card fecham na mesma base. (3) CENARIOS. montarIndicadores passou a devolver totaisDoRecorte (total, pagas, vencidas, aVencer), calculado sobre o filtro INTEIRO e nao sobre as linhas enviadas — somar o que chegou na tela responderia 'quanto recebo em dezembro' com a soma das primeiras 2.000 de dezembro. O cartao so aparece COM filtro: sem recorte ele repetiria os KPIs do topo. (4) A ordem dos cards e uma linha explicando o par liquida/bruta. Investigado e NAO e defeito: no VOC, 29 dos 35 vencimentos em aberto sao ATOS, que vao quase inteiros para comissao — o incorporador perde pouco quando um Ato atrasa, e por isso a % dele fica abaixo da bruta.",
+      motivation:
+        "Lucas, 20/08/2026: 'o ato sempre sera 1/1 - o sinal depende de quantas vezes foi parcelado, mas o sinal tem que mostrar somente do sinal ae sim o parcelamento que vai buscar de quantas vezes foi parcelado o saldo devedor'. E: 'nessa tela o previsto deveria vir depois da receita liquida'; 'a liquida nao seria o valor que o incorporador tem a receber e o bruto seria o todo? se sim, tem alguma coisa errada com a inadiplencia'; 'falta trazer os cenarios, exemplo, se o cliente quiser saber quanto que ele vai receber em dezembro, nao tem como saber'; 'tem uma divergencia de informacao, no grafico fala que 6,1%, nos indicadores eu tenho 7% e tenho 10,3, estamos em agosto ainda deve ter alguma coisa errada'.",
+    },
+    title: "Numeracao da parcela, cenarios por filtro e grafico batendo com o card",
+    type: "correcao",
+    version: "1.170.0",
+  },
+  {
     buildTag: "2026-08-20-carteira-filtros-e-inadimplencia",
     deployedAt: "2026-08-20T12:00:00-03:00",
     modules: [

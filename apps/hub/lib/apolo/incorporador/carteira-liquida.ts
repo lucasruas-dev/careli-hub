@@ -1,3 +1,4 @@
+import { numeroDaParcela } from "@/lib/apolo/numero-da-parcela";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import {
   liquidoDaParcela,
@@ -75,7 +76,13 @@ export type MesDaSerie = {
   inadimplente: number;
   /** "YYYY-MM". */
   mes: string;
-  /** Líquido de TODAS as parcelas com VENCIMENTO neste mês (pagas ou não). */
+  /**
+   * Líquido das parcelas com VENCIMENTO neste mês que JÁ venceram (pagas ou não).
+   *
+   * ⚠️ "que já venceram" só restringe o mês CORRENTE — nos anteriores, tudo já venceu. Sem isso, a
+   * barra do mês em curso comparava o vencido com um previsto que ainda vai crescer até o dia 31,
+   * e o percentual saía menor do que a realidade.
+   */
   previsto: number;
   /** Líquido das parcelas PAGAS com PAGAMENTO neste mês. */
   transferido: number;
@@ -153,6 +160,24 @@ export type IndicadoresDaCarteira = {
    * isso ela só mostrava 2037-2039: os anos das 2.000 linhas que sobraram do corte.
    */
   opcoesDoExtrato: { anos: string[]; perfis: string[] };
+  /**
+   * Os totais DO RECORTE FILTRADO — a resposta para "quanto eu recebo em dezembro?".
+   *
+   * Pedido do Lucas (20/08/2026): *"falta trazer os cenários... se o cliente quiser saber quanto
+   * que ele vai receber em dezembro, não tem como saber, então precisamos de indicadores dinâmicos
+   * que tem correlação com os filtros que estamos fazendo"*.
+   *
+   * ⚠️ CONTA SOBRE O FILTRO INTEIRO, não sobre as linhas enviadas. O extrato tem teto de payload:
+   * somar o que chegou na tela responderia "quanto recebo em dezembro" com a soma das primeiras
+   * 2.000 de dezembro, que é uma resposta errada com cara de certa.
+   */
+  totaisDoRecorte: {
+    aVencer: TotalLiquido;
+    pagas: TotalLiquido;
+    /** Todas as parcelas do recorte, qualquer situação. */
+    total: TotalLiquido;
+    vencidas: TotalLiquido;
+  };
   kpis: {
     /**
      * Inadimplência A VALOR PRESENTE, JÁ em 0–100, nas DUAS visões.
@@ -217,6 +242,10 @@ export type LinhaCruaDaCarteira = {
   parcel_type: null | string;
   parcela_n: null | number;
   parcela_total: null | number;
+  /** `current_signal_parcel` — qual parcela DO SINAL. Zerado fora do tipo "Sinal". */
+  sinal_n: null | number;
+  /** `total_signal_parcels` — em quantas vezes o SINAL foi parcelado. */
+  sinal_total: null | number;
   payment_date: null | string;
   /** `payments.id` — o cursor da paginação por lote. */
   payment_id: number;
@@ -538,7 +567,17 @@ export function montarIndicadores(
     const mesVencimento = (linha.due_date ?? "").slice(0, 7);
     if (naJanela.has(mesVencimento)) {
       const mes = serie.get(mesVencimento)!;
-      mes.previsto += liquido;
+
+      // ⚠️ NO MÊS CORRENTE, SÓ O QUE JÁ VENCEU ENTRA NO PREVISTO. Somar o mês inteiro dilui o
+      // vencido com parcelas que ainda nem chegaram na data: no CER, em 20/08, o denominador
+      // pegava até os vencimentos de 21 a 31/08 e a barra mostrava 6,1% onde a inadimplência real
+      // do período era 7%. Era o MESMO defeito do card antigo (dividir pelo que ainda não venceu),
+      // sobrevivendo no gráfico — o Lucas viu os dois números na mesma tela e estranhou, com razão.
+      //
+      // Nos meses passados isto não muda nada: o mês inteiro já venceu, então a condição é sempre
+      // verdadeira. Ela só age no mês corrente, que é justamente onde a distorção existe.
+      const jaVenceu = (linha.due_date ?? "").slice(0, 10) <= hoje;
+      if (jaVenceu) mes.previsto += liquido;
       if (situacao === "vencida") mes.inadimplente += liquido;
     }
     if (situacao === "paga") {
@@ -554,7 +593,16 @@ export function montarIndicadores(
       imobiliaria: String(linha.imobiliaria ?? "").trim() || null,
       liquido: resultado.liquido,
       motivo: resultado.motivo,
-      numero: `${linha.parcela_n ?? "-"}/${linha.parcela_total ?? "-"}`,
+      // ⚠️ A RÉGUA É COMPARTILHADA (lib/apolo/numero-da-parcela.ts). Montar a string aqui na mão
+      // foi o que fez o extrato mostrar "0/156" em Ato e Sinal: `total_parcels` vale 156 em toda
+      // linha, e o contador do Ato/Sinal mora em OUTRO par de campos.
+      numero: numeroDaParcela({
+        parcelaAtual: linha.parcela_n,
+        parcelaTotal: linha.parcela_total,
+        sinalAtual: linha.sinal_n,
+        sinalTotal: linha.sinal_total,
+        tipo: linha.parcel_type,
+      }),
       pagoEm: linha.payment_date,
       perfil: PERFIL_LABELS[perfilDaParcela(linha.parcel_type)],
       situacao,
@@ -582,6 +630,22 @@ export function montarIndicadores(
   const recorte = filtrarExtrato(extrato, opcoes.filtroDoExtrato);
   ordenarExtrato(recorte, opcoes.filtroDoExtrato);
 
+  // Os totais do recorte, sobre TODAS as linhas que o filtro pegou — antes do corte de payload.
+  const totaisDoRecorte = {
+    aVencer: totalVazio(),
+    pagas: totalVazio(),
+    total: totalVazio(),
+    vencidas: totalVazio(),
+  };
+
+  for (const parcela of recorte) {
+    acumular(totaisDoRecorte.total, parcela.valor, parcela.liquido);
+    if (parcela.situacao === "paga") acumular(totaisDoRecorte.pagas, parcela.valor, parcela.liquido);
+    else if (parcela.situacao === "vencida") {
+      acumular(totaisDoRecorte.vencidas, parcela.valor, parcela.liquido);
+    } else acumular(totaisDoRecorte.aVencer, parcela.valor, parcela.liquido);
+  }
+
   return {
     contadores: {
       clientes: clientes.size,
@@ -607,6 +671,7 @@ export function montarIndicadores(
     },
     motivos: [...motivos],
     opcoesDoExtrato,
+    totaisDoRecorte,
     serieMensal: meses.map((mes) => serie.get(mes)!),
   };
 }
@@ -722,6 +787,8 @@ async function lerLinhasDaCarteira(
          ${nome("imo")}                        as imobiliaria,
          p.current_total_parcel                as parcela_n,
          p.total_parcels                       as parcela_total,
+         p.current_signal_parcel               as sinal_n,
+         p.total_signal_parcels                as sinal_total,
          p.payment_status_id                   as status_id,
          p.paid_value                          as valor,
          p.initial_value                       as valor_previsto,

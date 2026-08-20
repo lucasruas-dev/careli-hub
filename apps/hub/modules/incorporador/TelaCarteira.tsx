@@ -772,17 +772,31 @@ function AbaIndicadores({
           inadimplência é a valor presente: o vencido em aberto sobre o que já deveria ter sido
           recebido até hoje, e não sobre o contrato inteiro.
         </p>
+        {/* ⚠️ POR QUE OS DOIS PERCENTUAIS DIFEREM. A pergunta do Lucas (20/08/2026) — *"a líquida
+            não seria o valor que o incorporador tem a receber e o bruto seria o todo? se sim, tem
+            alguma coisa errada"* — é a pergunta certa, e a resposta é que não há erro: o rateio
+            não é uniforme entre os tipos de parcela. No Vale do Ouro, 29 dos 35 vencimentos em
+            aberto são ATOS, que vão quase inteiros para comissão; o incorporador perde pouco
+            quando um Ato atrasa, e por isso a % dele fica ABAIXO da bruta. Sem esta linha, a
+            diferença parece defeito. */}
+        <p style={{ color: T.muted, fontSize: 12.5, margin: "0 0 16px" }}>
+          A líquida é a sua: o quanto do SEU dinheiro está atrasado. A bruta é o atraso do valor
+          cheio das parcelas, somando a parte de todo mundo. Elas diferem quando o que está em
+          atraso tem um rateio diferente da média da carteira.
+        </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 28 }}>
           <Numero destaque rotulo="Receita líquida total" valor={brl(kpis.receitaLiquida.liquido)} />
+          {/* O PREVISTO VEM LOGO DEPOIS DA RECEITA (Lucas, 20/08/2026). Ele é o denominador de
+              tudo o que vem em seguida, então ler primeiro "quanto já deveria ter entrado" faz o
+              transferido e o inadimplente caírem no lugar sozinhos. */}
+          <Numero rotulo="Previsto até hoje" valor={brl(kpis.previstoAteHoje.liquido)} />
           <Numero rotulo="Transferida (paga)" valor={brl(kpis.transferida.liquido)} />
           <Numero
             rotulo="Inadimplente"
             tom={kpis.inadimplente.liquido > 0 ? "alerta" : undefined}
             valor={brl(kpis.inadimplente.liquido)}
           />
-          {/* AS DUAS VISÕES, lado a lado (Lucas, 20/08/2026). A LÍQUIDA vem primeiro e em
-              destaque porque é o cenário DELE; a bruta fica ao lado para comparar com o extrato,
-              que mostra os dois valores em cada linha. */}
+          {/* AS DUAS VISÕES, lado a lado. A LÍQUIDA primeiro porque é o cenário DELE. */}
           <Numero
             rotulo="% Inadimplência (líquida)"
             tom={kpis.inadimplenciaPct.liquida > 0 ? "alerta" : undefined}
@@ -793,10 +807,6 @@ function AbaIndicadores({
             tom={kpis.inadimplenciaPct.bruta > 0 ? "alerta" : undefined}
             valor={pct(kpis.inadimplenciaPct.bruta)}
           />
-          {/* O DENOMINADOR, À VISTA. O percentual mudou de base em 20/08/2026 e passou a ser
-              sobre o que já venceu; sem mostrar esse número, o usuário que conhecia o valor
-              antigo (bem menor) não teria como entender de onde veio a diferença. */}
-          <Numero rotulo="Previsto até hoje" valor={brl(kpis.previstoAteHoje.liquido)} />
           <Numero rotulo="Parcelas" valor={inteiro(contadores.parcelas)} />
           <Numero rotulo="Clientes" valor={inteiro(contadores.clientes)} />
           <Numero rotulo="Unidades" valor={inteiro(contadores.unidades)} />
@@ -816,6 +826,13 @@ function AbaIndicadores({
       </section>
 
       {/* O extrato analítico do BI, com os filtros da página. */}
+      {/* ⚠️ O CENÁRIO DO RECORTE — pedido do Lucas (20/08/2026): *"se o cliente quiser saber
+          quanto que ele vai receber em dezembro, não tem como saber, então precisamos de
+          indicadores dinâmicos que tem correlação com os filtros"*.
+          Só aparece COM filtro: sem recorte ele repetiria os KPIs de cima, e um número repetido
+          em dois lugares vira dúvida sobre qual dos dois é o certo. */}
+      <CenarioDoRecorte filtro={filtro} totais={indicadores.totaisDoRecorte} />
+
       <ExtratoAnalitico
         carregando={carregando}
         extrato={indicadores.extrato}
@@ -966,6 +983,78 @@ const COLUNAS_DO_EXTRATO: { chave: ColunaDoExtrato | null; rotulo: string }[] = 
   { chave: "liquido", rotulo: "Valor líquido" },
   { chave: "situacao", rotulo: "Situação" },
 ];
+
+/** Os meses por extenso, para o cenário dizer "dezembro de 2026" e não "12/2026". */
+const MESES_POR_EXTENSO = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+/**
+ * O que o recorte atual soma — a resposta para "quanto eu recebo em dezembro?".
+ *
+ * ⚠️ NÃO APARECE SEM FILTRO. Sem recorte, estes números seriam os mesmos KPIs do topo da tela, e
+ * o mesmo valor em dois cartões diferentes faz o leitor duvidar de qual deles é o certo.
+ */
+function CenarioDoRecorte({
+  filtro,
+  totais,
+}: {
+  filtro: FiltroDoExtrato;
+  totais: IndicadoresDaCarteira["totaisDoRecorte"];
+}) {
+  const temFiltro = Boolean(
+    filtro.ano || filtro.mes || filtro.perfil || filtro.situacao || filtro.busca?.trim(),
+  );
+  if (!temFiltro) return null;
+
+  // O título diz o recorte em português, para o número não ficar órfão de contexto.
+  const partes: string[] = [];
+  if (filtro.mes) {
+    const nome = MESES_POR_EXTENSO[Number(filtro.mes) - 1] ?? filtro.mes;
+    partes.push(filtro.ano ? `${nome} de ${filtro.ano}` : nome);
+  } else if (filtro.ano) {
+    partes.push(filtro.ano);
+  }
+  if (filtro.perfil) partes.push(filtro.perfil.toLowerCase());
+  if (filtro.situacao) partes.push(ROTULO_DA_SITUACAO[filtro.situacao] ?? filtro.situacao);
+  if (filtro.busca?.trim()) partes.push(`busca "${filtro.busca.trim()}"`);
+
+  return (
+    <section style={cartao}>
+      <h2 style={titulo}>Neste recorte</h2>
+      <p style={{ color: T.muted, fontSize: 12.5, margin: "6px 0 16px" }}>
+        {partes.join(" · ")}. Os valores são o SEU líquido, e a soma cobre o recorte inteiro — não
+        só as linhas que aparecem na tabela abaixo.
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 28 }}>
+        <Numero destaque rotulo="Total do recorte" valor={brl(totais.total.liquido)} />
+        <Numero rotulo="Já pago" valor={brl(totais.pagas.liquido)} />
+        <Numero
+          rotulo="A vencer"
+          valor={brl(totais.aVencer.liquido)}
+        />
+        <Numero
+          rotulo="Vencido em aberto"
+          tom={totais.vencidas.liquido > 0 ? "alerta" : undefined}
+          valor={brl(totais.vencidas.liquido)}
+        />
+        <Numero rotulo="Parcelas" valor={inteiro(totais.total.parcelas)} />
+        <Numero rotulo="Valor cheio (bruto)" valor={brl(totais.total.bruto)} />
+      </div>
+
+      <AvisoDeCalculo motivos={[]} totais={[totais.total]} />
+    </section>
+  );
+}
+
+/** Rótulo humano de cada situação, usado no título do cenário. */
+const ROTULO_DA_SITUACAO: Record<string, string> = {
+  a_vencer: "a vencer",
+  liquidada: "liquidadas",
+  paga: "pagas",
+  vencida: "vencidas",
+};
 
 /**
  * O extrato do BI: ano, mês, perfil, situação, busca e ordenação — TUDO no servidor.

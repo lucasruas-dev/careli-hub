@@ -2,6 +2,7 @@
 // matemática (pra os números baterem), mas escopado a um empreendimento e com uma visão nova:
 // por UNIDADE (o Hades é centrado no comprador). Ver [[project-apolo-crm-grafo]].
 import type { RowDataPacket } from "mysql2";
+import { numeroDaParcela as numeroDoBoleto } from "@/lib/apolo/numero-da-parcela";
 import type { Pool } from "mysql2/promise";
 
 import { deterministicUuid } from "@/lib/apolo/server";
@@ -419,26 +420,21 @@ function mapInstallment(row: InstallmentRow): ApoloUnitInstallment {
  * O Ato é sempre "1/1": ele é pagamento único por definição, e no C2X a coluna de parcela dele
  * vem vazia — mostrar "-" obrigaria quem lê a saber isso de cabeça.
  */
+/**
+ * O número da parcela desta linha, pela régua ÚNICA de `lib/apolo/numero-da-parcela.ts`.
+ *
+ * ⚠️ A REGRA MORAVA AQUI e o extrato do portal tinha uma cópia própria — que ficou para trás e
+ * seguiu mostrando "0/156" em Ato e Sinal. Agora existe UMA régua e este arquivo só traduz os
+ * nomes das colunas desta consulta para ela.
+ */
 function numeroDaParcela(row: InstallmentRow): string {
-  // `text` devolve nulo quando o C2X não classificou o pagamento: sem tipo, cai na régua das
-  // parcelas, que é o caso da esmagadora maioria das linhas.
-  const tipo = (text(row.type) ?? "").toLowerCase();
-  const naoZero = (valor: unknown): null | number => {
-    const numero = Number(valor);
-    return Number.isFinite(numero) && numero > 0 ? numero : null;
-  };
-
-  if (tipo.includes("ato")) return "1/1";
-
-  // Desestruturar a tupla faria o TS perder o refinamento de nulo nas duas pontas; nomear os dois
-  // campos primeiro é mais chato de ler e é o que o compilador entende.
-  const doSinal = tipo.includes("sinal");
-  const atual = doSinal ? naoZero(row.signal_parcel) : naoZero(row.parcel);
-  const total = doSinal ? naoZero(row.total_signal_parcels) : naoZero(row.total_parcels);
-
-  if (atual === null && total === null) return "-";
-
-  return `${atual ?? "-"}/${total ?? "-"}`;
+  return numeroDoBoleto({
+    parcelaAtual: Number(row.parcel ?? 0) || null,
+    parcelaTotal: Number(row.total_parcels ?? 0) || null,
+    sinalAtual: Number(row.signal_parcel ?? 0) || null,
+    sinalTotal: Number(row.total_signal_parcels ?? 0) || null,
+    tipo: text(row.type),
+  });
 }
 
 function dateOrNull(value: unknown): string | null {
