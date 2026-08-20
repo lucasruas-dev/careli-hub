@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { PoliticaDoEmpreendimento } from "@/lib/apolo/liquido-incorporador";
 
 import {
+  EXTRATO_TETO,
   agregarPorUnidade,
   lerSplit,
   type LinhaCruaDaCarteira,
@@ -222,8 +223,56 @@ describe("montarIndicadores", () => {
       parcelas: 1,
       semLiquido: 0,
     });
+    // O DENOMINADOR DO VALOR PRESENTE: só o que já venceu. As duas pagas (bruto 3000 / líquido
+    // 970) mais a vencida (500 / 250). A parcela A VENCER fica de fora — é justamente ela que
+    // inflava o denominador antigo e fazia o percentual parecer pequeno.
+    expect(indicadores.kpis.previstoAteHoje).toEqual({
+      bruto: 3500,
+      liquido: 1220,
+      parcelas: 3,
+      semLiquido: 0,
+    });
+
     // ⚠️ JÁ multiplicado por 100 — a lição do bug da TelaCarteira (0,3% onde era 30%).
-    expect(indicadores.kpis.inadimplenciaPct).toBeCloseTo((250 / 1620) * 100, 6);
+    // ⚠️ E SOBRE O PREVISTO ATÉ HOJE, não sobre a receita da carteira inteira: dividir por 1620
+    // (que inclui parcela futura) dava 15,4%; a conta certa é 20,5% no líquido.
+    expect(indicadores.kpis.inadimplenciaPct.bruta).toBeCloseTo((500 / 3500) * 100, 6);
+    expect(indicadores.kpis.inadimplenciaPct.liquida).toBeCloseTo((250 / 1220) * 100, 6);
+
+    // A LÍQUIDA É MAIOR QUE A BRUTA aqui, e isso não é erro: o rateio tira do incorporador uma
+    // fatia maior das parcelas PAGAS do que da vencida. É exatamente por isso que o Lucas pediu
+    // as duas visões — a bruta esconde o efeito do rateio no cenário dele.
+    expect(indicadores.kpis.inadimplenciaPct.liquida).toBeGreaterThan(
+      indicadores.kpis.inadimplenciaPct.bruta,
+    );
+  });
+
+  it("a parcela que ainda NÃO venceu fica fora do denominador da inadimplência", () => {
+    // A conta antiga usava a receita inteira (1620), então uma carteira longa diluía o vencido e
+    // o número afundava sozinho. Aqui a diferença fica explícita.
+    const comBaseAntiga = (250 / 1620) * 100;
+    expect(indicadores.kpis.inadimplenciaPct.liquida).toBeGreaterThan(comBaseAntiga);
+    // O previsto até hoje é MENOR que a receita da carteira: é essa distância que o número mede.
+    expect(indicadores.kpis.previstoAteHoje.liquido).toBeLessThan(
+      indicadores.kpis.receitaLiquida.liquido,
+    );
+  });
+
+  it("sem nenhum vencimento ainda, a inadimplência é 0 e não divisão por zero", () => {
+    // Carteira nova: a única parcela vence no futuro. Não há inadimplência POSSÍVEL.
+    const soFuturo = montarIndicadores(
+      [linha({ due_date: "2030-01-10", payment_date: null, status_id: 6, valor: null })],
+      {
+        agoraMs: AGORA_MS,
+        nomeDoIncorporador: "Loteadora VAL",
+        nomePorCode: new Map([["VAL", "Vista Alegre"]]),
+        politicaPorCode: POLITICAS,
+      },
+    );
+
+    expect(soFuturo.kpis.previstoAteHoje.bruto).toBe(0);
+    expect(soFuturo.kpis.inadimplenciaPct.bruta).toBe(0);
+    expect(soFuturo.kpis.inadimplenciaPct.liquida).toBe(0);
   });
 
   it("contadores: clientes únicos por nome (ignorando caixa) e unidades únicas", () => {
@@ -265,16 +314,22 @@ describe("montarIndicadores", () => {
     expect(porMes["2026-09"]).toBeUndefined();
   });
 
-  it("extrato: mais recente por vencimento primeiro, com nome de mercado e SEM dado sensível", () => {
+  it("extrato: vencimento CRESCENTE por padrão, com nome de mercado e SEM dado sensível", () => {
     expect(indicadores.extratoTotal).toBe(4);
+
+    // ⚠️ A ORDEM VIROU CRESCENTE em 20/08/2026, e é uma decisão de produto, não um detalhe:
+    // descendente punha 2039 na primeira linha, ou seja, a informação mais distante possível
+    // ocupando o lugar mais nobre da tela. Lucas: *"assim se o usuário quiser saber o que vai
+    // vencer no próximo mês ele sabe"*.
     expect(indicadores.extrato.map((p) => p.vencimento)).toEqual([
-      "2026-09-10",
-      "2026-08-01",
-      "2026-07-10",
       "2026-06-05",
+      "2026-07-10",
+      "2026-08-01",
+      "2026-09-10",
     ]);
 
-    expect(indicadores.extrato[0]).toEqual({
+    // A última continua sendo a mais distante — a mesma linha que antes vinha primeiro.
+    expect(indicadores.extrato.at(-1)).toEqual({
       cliente: "João Pereira",
       empreendimento: "Vista Alegre",
       imobiliaria: "Imobiliária X",
@@ -334,5 +389,157 @@ describe("lerSplit", () => {
     expect(lerSplit("{quebrado")).toBeNull();
     expect(lerSplit(null)).toBeNull();
     expect(lerSplit([])).toBeNull();
+  });
+});
+
+// ⚠️ O BUG QUE ESTES TESTES EXISTEM PARA IMPEDIR (Lucas, 20/08/2026): *"nos indicadores quando eu
+// seleciono paga ou vencida vem em branco"*. O extrato era ordenado por vencimento DECRESCENTE e
+// cortado em `EXTRATO_TETO` ANTES de o filtro rodar — e como o filtro rodava na TELA, sobre o que
+// tinha sobrado, procurar "Paga" varria um recorte só de parcelas futuras e não achava nada.
+//
+// O caso abaixo reproduz exatamente isso: muito mais parcelas que o teto, com as pagas no passado
+// e as a vencer no futuro. Se o filtro voltar para depois do corte, ele quebra.
+describe("filtro do extrato, no servidor", () => {
+  /**
+   * Uma carteira maior que o teto: 2.400 PAGAS antigas e 300 A VENCER no futuro.
+   *
+   * A proporção não é decorativa. Como a ordem padrão é por vencimento crescente, as 2.400 pagas
+   * ocupam o teto inteiro e as 300 a vencer ficam FORA do envio — que é a situação em que o
+   * filtro da tela devolvia vazio. É o mesmo desenho do CER (12.614 parcelas), só que invertido
+   * no tempo, porque lá a ordem era decrescente.
+   */
+  function carteiraGrande(): LinhaCruaDaCarteira[] {
+    const linhas: LinhaCruaDaCarteira[] = [];
+
+    for (let i = 0; i < 2400; i += 1) {
+      // ⚠️ DEZ ANOS, NÃO DUZENTOS. Espalhar 2.400 parcelas em meses sequenciais jogaria a maior
+      // parte delas para depois de `AGORA_MS`, e o teste passaria a medir outra coisa: as
+      // "pagas" cairiam no futuro e deixariam de ser pagas.
+      const ano = 2016 + (i % 10);
+      const mes = String((i % 12) + 1).padStart(2, "0");
+      linhas.push(
+        linha({
+          due_date: `${ano}-${mes}-10`,
+          payment_date: `${ano}-${mes}-12`,
+          payment_id: 100000 + i,
+          status_id: 5,
+        }),
+      );
+    }
+
+    for (let i = 0; i < 300; i += 1) {
+      const mes = String((i % 12) + 1).padStart(2, "0");
+      linhas.push(
+        linha({
+          // Cliente PRÓPRIO: o helper repete "Maria da Silva" em todas, e sem um nome distinto a
+          // busca por texto não teria como separar um grupo do outro.
+          cliente: "Cliente Do Futuro",
+          due_date: `2030-${mes}-10`,
+          payment_date: null,
+          payment_id: 200000 + i,
+          status_id: 6,
+          valor: null,
+        }),
+      );
+    }
+
+    return linhas;
+  }
+
+  const base = {
+    agoraMs: AGORA_MS,
+    nomeDoIncorporador: "Loteadora VAL",
+    nomePorCode: new Map([["VAL", "Vista Alegre"]]),
+    politicaPorCode: POLITICAS,
+  };
+
+  it("acha o que está ALÉM do teto de envio, que é o bug relatado", () => {
+    const semFiltro = montarIndicadores(carteiraGrande(), base);
+
+    // O envio para no teto, e as 2.000 primeiras (vencimento crescente) são todas pagas: as
+    // a vencer não chegam ao navegador de jeito nenhum.
+    expect(semFiltro.extrato.length).toBe(EXTRATO_TETO);
+    expect(semFiltro.extrato.every((p) => p.situacao === "paga")).toBe(true);
+    expect(semFiltro.extrato.some((p) => p.situacao === "a_vencer")).toBe(false);
+
+    // Era AQUI que a tela devolvia vazio, porque filtrava o que já tinha sido cortado.
+    const aVencer = montarIndicadores(carteiraGrande(), {
+      ...base,
+      filtroDoExtrato: { situacao: "a_vencer" },
+    });
+
+    expect(aVencer.extratoTotal).toBe(300);
+    expect(aVencer.extrato.length).toBe(300);
+    expect(aVencer.extrato.every((p) => p.situacao === "a_vencer")).toBe(true);
+
+    // E o contrário também: pedir as pagas devolve as 2.400, com o total certo mesmo que o
+    // ENVIO continue limitado pelo teto.
+    const pagas = montarIndicadores(carteiraGrande(), {
+      ...base,
+      filtroDoExtrato: { situacao: "paga" },
+    });
+    expect(pagas.extratoTotal).toBe(2400);
+    expect(pagas.extrato.length).toBe(EXTRATO_TETO);
+  });
+
+  it("os seletores oferecem os anos de TODA a carteira, não os do recorte enviado", () => {
+    const { opcoesDoExtrato } = montarIndicadores(carteiraGrande(), base);
+
+    // O ano das A VENCER tem que estar na lista, ainda que nenhuma delas caiba no envio — era
+    // exatamente isto que fazia o seletor do CER oferecer só 2037, 2038 e 2039.
+    expect(opcoesDoExtrato.anos).toContain("2030");
+    expect(opcoesDoExtrato.anos).toContain("2016");
+    expect(opcoesDoExtrato.anos[0]).toBe("2016");
+  });
+
+  it("filtra por ano, mês e busca, e o total é o do FILTRO, não o do envio", () => {
+    const emMarco = carteiraGrande().filter((l) => (l.due_date ?? "").startsWith("2030-03")).length;
+    const marco = montarIndicadores(carteiraGrande(), {
+      ...base,
+      filtroDoExtrato: { ano: "2030", mes: "03" },
+    });
+
+    // Contado a partir do próprio cenário, e não cravado: número mágico em teste vira falso
+    // negativo assim que alguém mexe no gerador.
+    expect(marco.extratoTotal).toBe(emMarco);
+    expect(emMarco).toBeGreaterThan(0);
+    expect(marco.extrato.every((p) => (p.vencimento ?? "").startsWith("2030-03"))).toBe(true);
+
+    // A busca varre unidade, cliente e imobiliária, e é insensível a caixa.
+    const porCliente = montarIndicadores(carteiraGrande(), {
+      ...base,
+      filtroDoExtrato: { busca: "cliente DO futuro" },
+    });
+    expect(porCliente.extratoTotal).toBe(300);
+  });
+
+  it("ordena pela coluna pedida, nos dois sentidos", () => {
+    const cresc = montarIndicadores(cenario(), {
+      ...base,
+      filtroDoExtrato: { direcao: "asc", ordenarPor: "valor" },
+    });
+    const desc = montarIndicadores(cenario(), {
+      ...base,
+      filtroDoExtrato: { direcao: "desc", ordenarPor: "valor" },
+    });
+
+    const valores = cresc.extrato.map((p) => p.valor);
+    expect(valores).toEqual([...valores].sort((a, b) => a - b));
+    expect(desc.extrato.map((p) => p.valor)).toEqual([...valores].reverse());
+  });
+
+  it("parcela sem data de pagamento vai para o FIM, ordenando nos dois sentidos", () => {
+    // Ordenar por pagamento com string vazia jogaria as não pagas para o topo — e o topo é onde
+    // o usuário procura o que ACONTECEU, não o que não aconteceu.
+    for (const direcao of ["asc", "desc"] as const) {
+      const { extrato } = montarIndicadores(cenario(), {
+        ...base,
+        filtroDoExtrato: { direcao, ordenarPor: "pagamento" },
+      });
+
+      const semData = extrato.findIndex((p) => !p.pagoEm);
+      const comDataDepois = extrato.slice(semData).some((p) => p.pagoEm);
+      expect(comDataDepois).toBe(false);
+    }
   });
 });

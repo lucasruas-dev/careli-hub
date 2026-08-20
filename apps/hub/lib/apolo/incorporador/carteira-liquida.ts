@@ -104,16 +104,77 @@ export type ExtratoParcela = {
   vencimento: null | string;
 };
 
+/**
+ * O recorte do extrato, aplicado NO SERVIDOR.
+ *
+ * ⚠️ POR QUE NÃO DÁ PARA FILTRAR NA TELA. O extrato tem teto de payload (`EXTRATO_TETO`), e o
+ * corte acontecia ANTES do filtro: com 12.614 parcelas, as 2.000 "mais recentes por vencimento"
+ * eram todas de 2037 a 2039 — todas a vencer. Filtrar por "Paga" ou "Vencida" na tela varria um
+ * recorte onde nenhuma delas existia e devolvia vazio; e o seletor de ano, montado a partir das
+ * mesmas 2.000, só oferecia 2037, 2038 e 2039. Lucas, 20/08/2026: *"nos indicadores quando eu
+ * seleciono paga ou vencida vem em branco"*.
+ *
+ * Filtrar aqui é o que faz o teto voltar a ser só um teto de payload, e não um recorte que decide
+ * em silêncio o que o usuário pode procurar.
+ */
+export type FiltroDoExtrato = {
+  /** "YYYY" do vencimento. */
+  ano?: null | string;
+  /** Nome do cliente, unidade ou imobiliária. */
+  busca?: null | string;
+  direcao?: "asc" | "desc";
+  /** "MM" do vencimento. */
+  mes?: null | string;
+  ordenarPor?: ColunaDoExtrato;
+  perfil?: null | string;
+  situacao?: null | SituacaoDaParcela;
+};
+
+/** As colunas por onde o extrato pode ser ordenado (pedido do Lucas, 20/08/2026). */
+export type ColunaDoExtrato =
+  | "cliente"
+  | "liquido"
+  | "pagamento"
+  | "situacao"
+  | "unidade"
+  | "valor"
+  | "vencimento";
+
 export type IndicadoresDaCarteira = {
   contadores: { clientes: number; parcelas: number; unidades: number };
   /** Até `EXTRATO_TETO` linhas, das mais recentes por vencimento. O total real está ao lado. */
   extrato: ExtratoParcela[];
+  /** Quantas parcelas o FILTRO encontrou (pode passar de `EXTRATO_TETO`, que é só o teto do envio). */
   extratoTotal: number;
+  /**
+   * O que os seletores da tela devem oferecer, apurado sobre TODAS as parcelas.
+   *
+   * ⚠️ NÃO PODE SAIR DO `extrato` ENVIADO. Era assim que a tela montava a lista de anos, e por
+   * isso ela só mostrava 2037-2039: os anos das 2.000 linhas que sobraram do corte.
+   */
+  opcoesDoExtrato: { anos: string[]; perfis: string[] };
   kpis: {
-    /** Inadimplente ÷ receita prevista, JÁ em 0–100 (lição do bug do ×100 da TelaCarteira). */
-    inadimplenciaPct: number;
+    /**
+     * Inadimplência A VALOR PRESENTE, JÁ em 0–100, nas DUAS visões.
+     *
+     * Pedido do Lucas (20/08/2026): *"a inadimplência o cálculo tem que ser no valor presente...
+     * não sobre o contrato total mas sim sobre o que deveríamos ter recebido até a data
+     * presente"*, e *"ter duas visões, uma bruto... e outra da líquida, para o incorporador saber
+     * o cenário dele somente e não inflado com os valores de outros participantes"*.
+     *
+     * ⚠️ O DENOMINADOR É `previstoAteHoje`, NÃO a receita da carteira inteira. Dividir pelo total
+     * do contrato mistura o que venceu com o que só vence em 2039: no CER dava 0,2% onde o número
+     * real passa de 10%. O indicador ficava mais tranquilizador quanto MAIS LONGO o financiamento,
+     * que é o oposto do que ele existe para dizer.
+     *
+     * `bruta` é sobre o valor cheio da parcela; `liquida` é sobre a parte que é DELE, já descontado
+     * o rateio — é a que responde "qual é o meu cenário", sem inflar com a fatia dos outros.
+     */
+    inadimplenciaPct: { bruta: number; liquida: number };
     /** Vencidas e não pagas, pela DATA DE VENCIMENTO (regra do BI do Lucas). */
     inadimplente: TotalLiquido;
+    /** O denominador do valor presente: TODAS as parcelas já vencidas até hoje, pagas ou não. */
+    previstoAteHoje: TotalLiquido;
     /** Todas as parcelas da carteira ativa: pagas + a vencer + vencidas. */
     receitaLiquida: TotalLiquido;
     /** Só as pagas, pela DATA DE PAGAMENTO (regra do BI do Lucas). */
@@ -417,6 +478,8 @@ export function montarIndicadores(
     agoraMs: number;
     /** Código da divisão -> nome de mercado. Sem o mapa, `empreendimento` sai nulo no extrato. */
     nomePorCode?: Map<string, string>;
+    /** O recorte do extrato. Sem ele, sai a carteira inteira ordenada por vencimento. */
+    filtroDoExtrato?: FiltroDoExtrato;
     nomeDoIncorporador?: null | string;
     politicaPorCode: Map<string, PoliticaDoEmpreendimento>;
   },
@@ -428,6 +491,7 @@ export function montarIndicadores(
   const receitaLiquida = totalVazio();
   const transferida = totalVazio();
   const inadimplente = totalVazio();
+  const previstoAteHoje = totalVazio();
 
   const serie = new Map<string, MesDaSerie>(
     meses.map((mes) => [
@@ -455,6 +519,13 @@ export function montarIndicadores(
     acumular(receitaLiquida, valor, resultado.liquido);
     if (situacao === "paga") acumular(transferida, valor, resultado.liquido);
     if (situacao === "vencida") acumular(inadimplente, valor, resultado.liquido);
+
+    // ⚠️ O DENOMINADOR DO VALOR PRESENTE: a parcela entra pelo VENCIMENTO, não pelo pagamento, e
+    // entra tendo sido paga ou não. É a pergunta "quanto já deveria ter entrado até hoje" — e a
+    // parcela paga faz parte dela tanto quanto a vencida, senão o percentual daria sempre 100%.
+    if ((linha.due_date ?? "") && (linha.due_date as string).slice(0, 10) <= hoje) {
+      acumular(previstoAteHoje, valor, resultado.liquido);
+    }
 
     // ── Contadores ──────────────────────────────────────────────────────────
     const cliente = String(linha.cliente ?? "").trim();
@@ -497,9 +568,19 @@ export function montarIndicadores(
     mes.inadimplenciaPct = mes.previsto > 0 ? (mes.inadimplente / mes.previsto) * 100 : 0;
   }
 
-  // O extrato sai das mais recentes por vencimento (sem vencimento vai para o fim), com teto: o
-  // payload não pode crescer com o empreendimento. O total real segue em `extratoTotal`.
-  extrato.sort((a, b) => (b.vencimento ?? "").localeCompare(a.vencimento ?? ""));
+  // ⚠️ AS OPÇÕES DOS SELETORES SAEM DAQUI, do extrato INTEIRO — antes de qualquer filtro ou
+  // corte. Tirá-las da lista já recortada foi o que fez a tela oferecer só 2037-2039.
+  const opcoesDoExtrato = {
+    anos: [...new Set(extrato.map((p) => (p.vencimento ?? "").slice(0, 4)).filter(Boolean))].sort(
+      (a, b) => a.localeCompare(b),
+    ),
+    perfis: [...new Set(extrato.map((p) => p.perfil).filter(Boolean))].sort(),
+  };
+
+  // ⚠️ FILTRA ANTES DE CORTAR. Esta ordem é o conserto: o teto passa a limitar o ENVIO, e não o
+  // que o usuário consegue procurar.
+  const recorte = filtrarExtrato(extrato, opcoes.filtroDoExtrato);
+  ordenarExtrato(recorte, opcoes.filtroDoExtrato);
 
   return {
     contadores: {
@@ -507,18 +588,94 @@ export function montarIndicadores(
       parcelas: linhas.length,
       unidades: unidades.size,
     },
-    extrato: extrato.slice(0, EXTRATO_TETO),
-    extratoTotal: extrato.length,
+    extrato: recorte.slice(0, EXTRATO_TETO),
+    extratoTotal: recorte.length,
     kpis: {
-      inadimplenciaPct:
-        receitaLiquida.liquido > 0 ? (inadimplente.liquido / receitaLiquida.liquido) * 100 : 0,
+      // Sem nenhum vencimento ainda, o percentual é 0 e não divisão por zero: antes do primeiro
+      // vencimento não existe inadimplência possível.
+      inadimplenciaPct: {
+        bruta: previstoAteHoje.bruto > 0 ? (inadimplente.bruto / previstoAteHoje.bruto) * 100 : 0,
+        liquida:
+          previstoAteHoje.liquido > 0
+            ? (inadimplente.liquido / previstoAteHoje.liquido) * 100
+            : 0,
+      },
       inadimplente,
+      previstoAteHoje,
       receitaLiquida,
       transferida,
     },
     motivos: [...motivos],
+    opcoesDoExtrato,
     serieMensal: meses.map((mes) => serie.get(mes)!),
   };
+}
+
+/** Aplica o recorte do extrato. Sem filtro, devolve a lista inteira. */
+function filtrarExtrato(
+  extrato: ExtratoParcela[],
+  filtro: FiltroDoExtrato | undefined,
+): ExtratoParcela[] {
+  if (!filtro) return extrato;
+
+  const busca = (filtro.busca ?? "").trim().toLowerCase();
+  const ano = (filtro.ano ?? "").trim();
+  const mes = (filtro.mes ?? "").trim();
+  const perfil = (filtro.perfil ?? "").trim();
+  const situacao = filtro.situacao ?? null;
+
+  if (!busca && !ano && !mes && !perfil && !situacao) return extrato;
+
+  return extrato.filter((parcela) => {
+    const vencimento = parcela.vencimento ?? "";
+    if (ano && vencimento.slice(0, 4) !== ano) return false;
+    if (mes && vencimento.slice(5, 7) !== mes) return false;
+    if (perfil && parcela.perfil !== perfil) return false;
+    if (situacao && parcela.situacao !== situacao) return false;
+    if (!busca) return true;
+
+    return [parcela.unidade, parcela.cliente, parcela.imobiliaria]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(busca);
+  });
+}
+
+/**
+ * Ordena o extrato NO LUGAR, pela coluna pedida.
+ *
+ * ⚠️ O PADRÃO É VENCIMENTO CRESCENTE, e mudou de propósito (Lucas, 20/08/2026: *"quando eu coloco
+ * a vencer inicia da maior para menor... assim se o usuário quiser saber o que vai vencer no
+ * próximo mês ele sabe"*). Descendente colocava 2039 na primeira linha: a informação mais distante
+ * possível ocupando o lugar mais nobre da tela.
+ *
+ * Parcela sem data vai sempre para o FIM, nos dois sentidos: ausência de data não é "muito antigo"
+ * nem "muito no futuro", e deixá-la ordenar como string vazia jogaria essas linhas para o topo.
+ */
+function ordenarExtrato(extrato: ExtratoParcela[], filtro: FiltroDoExtrato | undefined): void {
+  const coluna = filtro?.ordenarPor ?? "vencimento";
+  const fator = filtro?.direcao === "desc" ? -1 : 1;
+
+  const texto = (valor: null | string) => (valor ?? "").toLowerCase();
+  const data = (valor: null | string) => valor ?? "";
+
+  extrato.sort((a, b) => {
+    if (coluna === "valor") return (a.valor - b.valor) * fator;
+    if (coluna === "liquido") return ((a.liquido ?? -1) - (b.liquido ?? -1)) * fator;
+    if (coluna === "cliente") return texto(a.cliente).localeCompare(texto(b.cliente), "pt-BR") * fator;
+    if (coluna === "unidade") return a.unidade.localeCompare(b.unidade, "pt-BR", { numeric: true }) * fator;
+    if (coluna === "situacao") return a.situacao.localeCompare(b.situacao) * fator;
+
+    const chaveA = coluna === "pagamento" ? data(a.pagoEm) : data(a.vencimento);
+    const chaveB = coluna === "pagamento" ? data(b.pagoEm) : data(b.vencimento);
+    // Sem data vai para o fim nos DOIS sentidos, por isso o `fator` não entra aqui.
+    if (!chaveA && !chaveB) return 0;
+    if (!chaveA) return 1;
+    if (!chaveB) return -1;
+
+    return chaveA.localeCompare(chaveB) * fator;
+  });
 }
 
 /**
@@ -634,7 +791,12 @@ async function lerLinhasDaCarteira(
 export async function carteiraLiquidaDoIncorporador(input: {
   codes: string[];
   /** Quando presente, a leitura amplia para as parcelas em aberto e calcula os KPIs do BI. */
-  indicadores?: { agoraMs: number; nomePorCode?: Map<string, string> };
+  indicadores?: {
+    agoraMs: number;
+    /** O recorte do extrato, aplicado no servidor. Ver `FiltroDoExtrato`. */
+    filtroDoExtrato?: FiltroDoExtrato;
+    nomePorCode?: Map<string, string>;
+  };
   nomeDoIncorporador?: null | string;
   politicaPorCode: Map<string, PoliticaDoEmpreendimento>;
 }): Promise<{ data: CarteiraLiquida; ok: true } | { error: string; ok: false }> {
@@ -708,6 +870,7 @@ export async function carteiraLiquidaDoIncorporador(input: {
         indicadores: input.indicadores
           ? montarIndicadores(leitura.linhas, {
               agoraMs: input.indicadores.agoraMs,
+              filtroDoExtrato: input.indicadores.filtroDoExtrato,
               nomeDoIncorporador: input.nomeDoIncorporador,
               nomePorCode: input.indicadores.nomePorCode,
               politicaPorCode: input.politicaPorCode,

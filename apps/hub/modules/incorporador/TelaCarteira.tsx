@@ -7,6 +7,8 @@ import { diaNaTela, mesNaTela } from "@/lib/apolo/incorporador/dia-na-tela";
 import { fonte } from "@/modules/publico/ui/tokens";
 import type {
   ExtratoParcela,
+  ColunaDoExtrato,
+  FiltroDoExtrato,
   IndicadoresDaCarteira,
   MesDaSerie,
   TotalLiquido,
@@ -240,6 +242,12 @@ export function TelaCarteira() {
   // seletor de empreendimento invalidar o cache.
   const [indicadores, setIndicadores] = useState<IndicadoresDaCarteira | null>(null);
   const [indicadoresDe, setIndicadoresDe] = useState<null | string>(null);
+  // ⚠️ O FILTRO DO EXTRATO MORA AQUI, e não dentro do componente da tabela: quem filtra agora é o
+  // SERVIDOR, então mudar um seletor é uma nova busca. Ver `FiltroDoExtrato` no backend.
+  const [filtroExtrato, setFiltroExtrato] = useState<FiltroDoExtrato>({
+    direcao: "asc",
+    ordenarPor: "vencimento",
+  });
   const [indicadoresErro, setIndicadoresErro] = useState<null | string>(null);
   const [indicadoresCarregando, setIndicadoresCarregando] = useState(false);
 
@@ -265,13 +273,21 @@ export function TelaCarteira() {
     }
   }, []);
 
-  const carregarIndicadores = useCallback(async (emp: null | string) => {
+  const carregarIndicadores = useCallback(async (emp: null | string, filtro: FiltroDoExtrato) => {
     setIndicadoresCarregando(true);
     setIndicadoresErro(null);
     try {
-      const endereco = emp
-        ? `/api/incorporador/carteira?indicadores=1&code=${encodeURIComponent(emp)}`
-        : "/api/incorporador/carteira?indicadores=1";
+      const parametros = new URLSearchParams({ indicadores: "1" });
+      if (emp) parametros.set("code", emp);
+      if (filtro.ano) parametros.set("ano", filtro.ano);
+      if (filtro.mes) parametros.set("mes", filtro.mes);
+      if (filtro.perfil) parametros.set("perfil", filtro.perfil);
+      if (filtro.situacao) parametros.set("situacao", filtro.situacao);
+      if (filtro.busca) parametros.set("q", filtro.busca);
+      if (filtro.ordenarPor) parametros.set("ordenarPor", filtro.ordenarPor);
+      if (filtro.direcao) parametros.set("direcao", filtro.direcao);
+
+      const endereco = `/api/incorporador/carteira?${parametros}`;
       const r = await fetch(endereco, { cache: "no-store" });
       const corpo = (await r.json().catch(() => null)) as { data?: Dados; error?: string } | null;
       if (!r.ok || !corpo?.data) {
@@ -296,8 +312,27 @@ export function TelaCarteira() {
   useEffect(() => {
     if (aba !== "indicadores") return;
     if (indicadoresDe === (empSelecionado ?? "") && indicadores) return;
-    void carregarIndicadores(empSelecionado);
+    void carregarIndicadores(empSelecionado, filtroExtrato);
+    // `filtroExtrato` NÃO entra nas dependências de propósito: quem reage a ele é o efeito
+    // abaixo. Juntar os dois faria a primeira abertura disparar duas buscas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aba, carregarIndicadores, empSelecionado, indicadores, indicadoresDe]);
+
+  // ⚠️ MUDOU O FILTRO → NOVA BUSCA, com respiro para a digitação. O extrato é filtrado no
+  // servidor desde 20/08/2026 (antes o filtro varria só as linhas que tinham sobrado do teto, e
+  // "Paga" e "Vencida" voltavam vazias). O atraso existe para a busca por texto não disparar uma
+  // consulta por tecla; os seletores também passam por ele, e 300ms não se percebe num clique.
+  useEffect(() => {
+    if (aba !== "indicadores") return;
+    if (indicadoresDe !== (empSelecionado ?? "")) return;
+
+    const relogio = setTimeout(() => {
+      void carregarIndicadores(empSelecionado, filtroExtrato);
+    }, 300);
+
+    return () => clearTimeout(relogio);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtroExtrato]);
 
   if (carregando && !dados) return <Aviso texto="Carregando a carteira…" />;
   if (erro) return <Aviso texto={erro} tom="erro" />;
@@ -371,7 +406,10 @@ export function TelaCarteira() {
         <AbaIndicadores
           carregando={indicadoresCarregando}
           erro={indicadoresErro}
+          filtro={filtroExtrato}
           indicadores={indicadores}
+          // Mudança PARCIAL: o seletor mexe só no campo dele e o resto do recorte fica de pé.
+          onFiltro={(mudanca) => setFiltroExtrato((atual) => ({ ...atual, ...mudanca }))}
         />
       )}
     </div>
@@ -706,11 +744,15 @@ function AbaCarteira({
 function AbaIndicadores({
   carregando,
   erro,
+  filtro,
   indicadores,
+  onFiltro,
 }: {
   carregando: boolean;
   erro: null | string;
+  filtro: FiltroDoExtrato;
   indicadores: IndicadoresDaCarteira | null;
+  onFiltro: (mudanca: Partial<FiltroDoExtrato>) => void;
 }) {
   if (carregando && !indicadores) return <Aviso texto="Calculando os indicadores…" />;
   if (erro) return <Aviso texto={erro} tom="erro" />;
@@ -726,7 +768,9 @@ function AbaIndicadores({
       <section style={cartao}>
         <h2 style={titulo}>Receita líquida da carteira</h2>
         <p style={{ color: T.muted, fontSize: 12.5, margin: "6px 0 16px" }}>
-          Os valores desta aba são o SEU líquido, parcela a parcela, já descontado o rateio.
+          Os valores desta aba são o SEU líquido, parcela a parcela, já descontado o rateio. A
+          inadimplência é a valor presente: o vencido em aberto sobre o que já deveria ter sido
+          recebido até hoje, e não sobre o contrato inteiro.
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 28 }}>
           <Numero destaque rotulo="Receita líquida total" valor={brl(kpis.receitaLiquida.liquido)} />
@@ -736,11 +780,23 @@ function AbaIndicadores({
             tom={kpis.inadimplente.liquido > 0 ? "alerta" : undefined}
             valor={brl(kpis.inadimplente.liquido)}
           />
+          {/* AS DUAS VISÕES, lado a lado (Lucas, 20/08/2026). A LÍQUIDA vem primeiro e em
+              destaque porque é o cenário DELE; a bruta fica ao lado para comparar com o extrato,
+              que mostra os dois valores em cada linha. */}
           <Numero
-            rotulo="% Inadimplência"
-            tom={kpis.inadimplenciaPct > 0 ? "alerta" : undefined}
-            valor={pct(kpis.inadimplenciaPct)}
+            rotulo="% Inadimplência (líquida)"
+            tom={kpis.inadimplenciaPct.liquida > 0 ? "alerta" : undefined}
+            valor={pct(kpis.inadimplenciaPct.liquida)}
           />
+          <Numero
+            rotulo="% Inadimplência (bruta)"
+            tom={kpis.inadimplenciaPct.bruta > 0 ? "alerta" : undefined}
+            valor={pct(kpis.inadimplenciaPct.bruta)}
+          />
+          {/* O DENOMINADOR, À VISTA. O percentual mudou de base em 20/08/2026 e passou a ser
+              sobre o que já venceu; sem mostrar esse número, o usuário que conhecia o valor
+              antigo (bem menor) não teria como entender de onde veio a diferença. */}
+          <Numero rotulo="Previsto até hoje" valor={brl(kpis.previstoAteHoje.liquido)} />
           <Numero rotulo="Parcelas" valor={inteiro(contadores.parcelas)} />
           <Numero rotulo="Clientes" valor={inteiro(contadores.clientes)} />
           <Numero rotulo="Unidades" valor={inteiro(contadores.unidades)} />
@@ -760,7 +816,14 @@ function AbaIndicadores({
       </section>
 
       {/* O extrato analítico do BI, com os filtros da página. */}
-      <ExtratoAnalitico extrato={indicadores.extrato} extratoTotal={indicadores.extratoTotal} />
+      <ExtratoAnalitico
+        carregando={carregando}
+        extrato={indicadores.extrato}
+        extratoTotal={indicadores.extratoTotal}
+        filtro={filtro}
+        onFiltro={onFiltro}
+        opcoes={indicadores.opcoesDoExtrato}
+      />
     </>
   );
 }
@@ -884,53 +947,74 @@ function Legenda({ opacidade, rotulo }: { opacidade: number; rotulo: string }) {
 
 const PAGINA_DO_EXTRATO = 60;
 
-/** O extrato do BI, com os filtros da página: ano, mês, perfil, status e busca por unidade. */
+/**
+ * As colunas do extrato e por qual chave cada uma ordena.
+ *
+ * `chave: null` = coluna que NÃO ordena. Imobiliária, Perfil e Parcela ficam de fora porque o
+ * servidor não ordena por elas — e oferecer o clique ordenando só o pedaço que está na tela seria
+ * pior que não oferecer: o usuário confiaria numa ordem que não vale para a carteira inteira.
+ */
+const COLUNAS_DO_EXTRATO: { chave: ColunaDoExtrato | null; rotulo: string }[] = [
+  { chave: "unidade", rotulo: "Unidade" },
+  { chave: "cliente", rotulo: "Cliente" },
+  { chave: null, rotulo: "Imobiliária" },
+  { chave: null, rotulo: "Perfil" },
+  { chave: null, rotulo: "Parcela" },
+  { chave: "vencimento", rotulo: "Vencimento" },
+  { chave: "pagamento", rotulo: "Pagamento" },
+  { chave: "valor", rotulo: "Valor" },
+  { chave: "liquido", rotulo: "Valor líquido" },
+  { chave: "situacao", rotulo: "Situação" },
+];
+
+/**
+ * O extrato do BI: ano, mês, perfil, situação, busca e ordenação — TUDO no servidor.
+ *
+ * ⚠️ ESTE COMPONENTE NÃO FILTRA MAIS NADA, e é aí que estava o defeito. O extrato chega com teto
+ * de linhas (`EXTRATO_TETO`), e o corte acontecia ANTES do filtro: no CER, as 2.000 enviadas eram
+ * todas de 2037-2039, então procurar "Paga" ou "Vencida" varria um recorte onde elas não existiam
+ * e a tela mostrava vazio. Pelo mesmo motivo o seletor de ano só oferecia três anos: ele era
+ * montado a partir das linhas que tinham sobrado.
+ *
+ * Agora o pai guarda o filtro, o servidor aplica sobre a carteira inteira e devolve o recorte já
+ * pronto — a tela só desenha. `opcoes` vem do backend e cobre TODOS os anos e perfis.
+ */
 function ExtratoAnalitico({
+  carregando,
   extrato,
   extratoTotal,
+  filtro,
+  onFiltro,
+  opcoes,
 }: {
+  carregando: boolean;
   extrato: ExtratoParcela[];
   extratoTotal: number;
+  filtro: FiltroDoExtrato;
+  onFiltro: (mudanca: Partial<FiltroDoExtrato>) => void;
+  opcoes: { anos: string[]; perfis: string[] };
 }) {
-  const [ano, setAno] = useState("");
-  const [mes, setMes] = useState("");
-  const [perfil, setPerfil] = useState("");
-  const [situacao, setSituacao] = useState("");
-  const [busca, setBusca] = useState("");
   const [visiveis, setVisiveis] = useState(PAGINA_DO_EXTRATO);
 
-  const anos = useMemo(
-    () =>
-      [...new Set(extrato.map((p) => (p.vencimento ?? "").slice(0, 4)).filter(Boolean))].sort(
-        (a, b) => b.localeCompare(a),
-      ),
-    [extrato],
-  );
-  const perfis = useMemo(
-    () => [...new Set(extrato.map((p) => p.perfil).filter(Boolean))].sort(),
-    [extrato],
-  );
+  // ⚠️ A BUSCA TEM ESTADO PRÓPRIO, espelhando o filtro do pai. Ligar o input direto ao filtro faria
+  // cada tecla esperar a ida ao servidor para reaparecer na tela, e o campo engasgaria enquanto se
+  // digita. Aqui a letra aparece na hora e a consulta sai com o respiro do pai.
+  const [buscaLocal, setBuscaLocal] = useState(filtro.busca ?? "");
 
-  const filtradas = useMemo(() => {
-    const alvo = busca.trim().toLowerCase();
+  const ano = filtro.ano ?? "";
+  const mes = filtro.mes ?? "";
+  const perfil = filtro.perfil ?? "";
+  const situacao = filtro.situacao ?? "";
+  const anos = opcoes.anos;
+  const perfis = opcoes.perfis;
 
-    return extrato.filter((parcela) => {
-      const vencimento = parcela.vencimento ?? "";
-      if (ano && vencimento.slice(0, 4) !== ano) return false;
-      if (mes && vencimento.slice(5, 7) !== mes) return false;
-      if (perfil && parcela.perfil !== perfil) return false;
-      if (situacao && parcela.situacao !== situacao) return false;
-      if (!alvo) return true;
+  // O que chega já veio filtrado: a tabela desenha exatamente isto.
+  const filtradas = extrato;
 
-      return [parcela.unidade, parcela.cliente, parcela.imobiliaria]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(alvo);
-    });
-  }, [ano, busca, extrato, mes, perfil, situacao]);
-
-  // A linha de Total do BI, sobre o RECORTE filtrado (é o que a página do Power BI faz).
+  // A linha de Total do BI, sobre o RECORTE (é o que a página do Power BI faz).
+  //
+  // ⚠️ É O TOTAL DO QUE ESTÁ NA TELA, não o do filtro inteiro: quando o resultado passa do teto,
+  // o rodapé avisa quantas de quantas estão aparecendo, e a soma acompanha o que se vê.
   const totais = useMemo(
     () =>
       filtradas.reduce(
@@ -942,6 +1026,16 @@ function ExtratoAnalitico({
       ),
     [filtradas],
   );
+
+  /** Clique no cabeçalho: mesma coluna inverte o sentido; coluna nova começa crescente. */
+  function ordenarPor(coluna: ColunaDoExtrato) {
+    setVisiveis(PAGINA_DO_EXTRATO);
+    onFiltro(
+      filtro.ordenarPor === coluna
+        ? { direcao: filtro.direcao === "asc" ? "desc" : "asc" }
+        : { direcao: "asc", ordenarPor: coluna },
+    );
+  }
 
   return (
     <section style={{ ...cartao, overflow: "hidden", padding: 0 }}>
@@ -958,8 +1052,11 @@ function ExtratoAnalitico({
       >
         <h2 style={titulo}>
           Extrato da carteira{" "}
+          {/* O total do FILTRO, e não o das linhas que couberam no envio: o servidor conta a
+              carteira inteira, e é esse número que responde "quantas são". */}
           <span style={{ color: T.muted, fontSize: 12, fontWeight: 500 }}>
-            ({inteiro(filtradas.length)})
+            ({inteiro(extratoTotal)})
+            {carregando ? <span style={{ marginLeft: 6 }}>atualizando…</span> : null}
           </span>
         </h2>
         <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -978,8 +1075,9 @@ function ExtratoAnalitico({
             <Search aria-hidden="true" size={15} style={{ color: T.muted, flexShrink: 0 }} />
             <input
               onChange={(evento) => {
-                setBusca(evento.target.value);
+                setBuscaLocal(evento.target.value);
                 setVisiveis(PAGINA_DO_EXTRATO);
+                onFiltro({ busca: evento.target.value });
               }}
               placeholder="Unidade ou cliente"
               style={{
@@ -993,10 +1091,10 @@ function ExtratoAnalitico({
                 outline: "none",
                 padding: "8px 0",
               }}
-              value={busca}
+              value={buscaLocal}
             />
           </label>
-          <select onChange={(e) => { setAno(e.target.value); setVisiveis(PAGINA_DO_EXTRATO); }} style={seletor} value={ano}>
+          <select onChange={(e) => { onFiltro({ ano: e.target.value }); setVisiveis(PAGINA_DO_EXTRATO); }} style={seletor} value={ano}>
             <option value="">Todo ano</option>
             {anos.map((opcao) => (
               <option key={opcao} value={opcao}>
@@ -1004,7 +1102,7 @@ function ExtratoAnalitico({
               </option>
             ))}
           </select>
-          <select onChange={(e) => { setMes(e.target.value); setVisiveis(PAGINA_DO_EXTRATO); }} style={seletor} value={mes}>
+          <select onChange={(e) => { onFiltro({ mes: e.target.value }); setVisiveis(PAGINA_DO_EXTRATO); }} style={seletor} value={mes}>
             <option value="">Todo mês</option>
             {MESES_CURTOS.map((rotulo, indice) => {
               const valor = String(indice + 1).padStart(2, "0");
@@ -1015,7 +1113,7 @@ function ExtratoAnalitico({
               );
             })}
           </select>
-          <select onChange={(e) => { setPerfil(e.target.value); setVisiveis(PAGINA_DO_EXTRATO); }} style={seletor} value={perfil}>
+          <select onChange={(e) => { onFiltro({ perfil: e.target.value }); setVisiveis(PAGINA_DO_EXTRATO); }} style={seletor} value={perfil}>
             <option value="">Todo perfil</option>
             {perfis.map((opcao) => (
               <option key={opcao} value={opcao}>
@@ -1023,7 +1121,14 @@ function ExtratoAnalitico({
               </option>
             ))}
           </select>
-          <select onChange={(e) => { setSituacao(e.target.value); setVisiveis(PAGINA_DO_EXTRATO); }} style={seletor} value={situacao}>
+          <select
+            onChange={(e) => {
+              onFiltro({ situacao: (e.target.value || null) as FiltroDoExtrato["situacao"] });
+              setVisiveis(PAGINA_DO_EXTRATO);
+            }}
+            style={seletor}
+            value={situacao}
+          >
             <option value="">Toda situação</option>
             <option value="paga">Paga</option>
             <option value="a_vencer">A vencer</option>
@@ -1036,21 +1141,52 @@ function ExtratoAnalitico({
         <table style={{ borderCollapse: "collapse", fontSize: 12.5, minWidth: 960, width: "100%" }}>
           <thead>
             <tr style={{ background: T.soft }}>
-              {["Unidade", "Cliente", "Imobiliária", "Perfil", "Parcela", "Vencimento", "Pagamento", "Valor", "Valor líquido", "Situação"].map(
-                (coluna) => (
+              {/* ⚠️ A ORDENAÇÃO É DO SERVIDOR e vale sobre a carteira INTEIRA, não sobre as linhas
+                  que estão na tela. Pedido do Lucas (20/08/2026): *"poderia ter a ordenação dos
+                  campos pois assim se o usuário quiser saber o que vai vencer no próximo mês ele
+                  sabe"*. Coluna sem chave (Imobiliária, Perfil, Parcela) não ordena: seria uma
+                  ordenação que só vale para o pedaço visível, e isso mente para quem clica. */}
+              {COLUNAS_DO_EXTRATO.map(({ chave, rotulo }) => {
+                const numerica = rotulo === "Valor" || rotulo === "Valor líquido";
+                const ativa = chave && filtro.ordenarPor === chave;
+
+                return (
                   <th
-                    key={coluna}
+                    key={rotulo}
                     style={{
                       ...cabecalho,
-                      ...(coluna === "Unidade" ? { paddingLeft: 16 } : null),
-                      textAlign:
-                        coluna === "Valor" || coluna === "Valor líquido" ? "right" : "left",
+                      ...(rotulo === "Unidade" ? { paddingLeft: 16 } : null),
+                      textAlign: numerica ? "right" : "left",
                     }}
                   >
-                    {coluna}
+                    {chave ? (
+                      <button
+                        onClick={() => ordenarPor(chave)}
+                        style={{
+                          alignItems: "center",
+                          background: "transparent",
+                          border: "none",
+                          color: ativa ? T.text : "inherit",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          font: "inherit",
+                          gap: 4,
+                          justifyContent: numerica ? "flex-end" : "flex-start",
+                          padding: 0,
+                          width: "100%",
+                        }}
+                        title={`Ordenar por ${rotulo.toLowerCase()}`}
+                        type="button"
+                      >
+                        {rotulo}
+                        <ArrowUpDown aria-hidden="true" size={12} style={{ opacity: ativa ? 1 : 0.4 }} />
+                      </button>
+                    ) : (
+                      rotulo
+                    )}
                   </th>
-                ),
-              )}
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -1114,7 +1250,9 @@ function ExtratoAnalitico({
 
       {filtradas.length === 0 ? (
         <p style={{ color: T.muted, fontSize: 13, margin: 0, padding: 24, textAlign: "center" }}>
-          Nenhuma parcela nesse filtro.
+          {/* Enquanto a consulta está indo, "nenhuma parcela" é uma afirmação que ainda não se
+              pode fazer — e era exatamente essa frase que aparecia no bug do filtro. */}
+          {carregando ? "Buscando…" : "Nenhuma parcela nesse filtro."}
         </p>
       ) : null}
 
@@ -1139,9 +1277,14 @@ function ExtratoAnalitico({
         </button>
       ) : null}
 
+      {/* ⚠️ O AVISO MUDOU DE SENTIDO. Antes dizia "as mais recentes", e era literal: o corte
+          escolhia por data e decidia sozinho o que o usuário conseguia procurar. Agora o filtro é
+          do servidor e o teto limita só o ENVIO — então o texto diz o que de fato acontece, e
+          aponta o caminho de estreitar o recorte. */}
       {extratoTotal > extrato.length ? (
         <p style={{ color: T.muted, fontSize: 12, margin: 0, padding: "10px 16px" }}>
-          Mostrando as {inteiro(extrato.length)} parcelas mais recentes de {inteiro(extratoTotal)}.
+          Mostrando {inteiro(extrato.length)} de {inteiro(extratoTotal)} parcelas deste recorte.
+          Use os filtros acima para estreitar.
         </p>
       ) : null}
     </section>

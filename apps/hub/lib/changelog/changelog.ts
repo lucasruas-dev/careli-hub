@@ -36,6 +36,44 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-20-carteira-filtros-e-inadimplencia",
+    deployedAt: "2026-08-20T12:00:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Os filtros do extrato voltaram a funcionar: Paga e Vencida vinham em branco porque a lista era cortada antes de o filtro rodar, e o que sobrava era so parcela futura. No CER, Paga passa a mostrar 132 e Vencida 35",
+              "O seletor de ano agora oferece os 14 anos da carteira (2026 a 2039). Antes so aparecia 2037, 2038 e 2039",
+              "O extrato abre do vencimento mais PROXIMO para o mais distante, e nao ao contrario: da para ver o que vence no proximo mes sem procurar",
+              "Da para ordenar clicando na coluna (unidade, cliente, vencimento, pagamento, valor, liquido e situacao), e a ordem vale para a carteira inteira, nao so para o que esta na tela",
+            ],
+            screen: "Carteira · Indicadores",
+          },
+          {
+            items: [
+              "A inadimplencia passou a ser calculada A VALOR PRESENTE: sobre o que ja deveria ter sido recebido ate hoje, e nao sobre o contrato inteiro. No CER isso e a diferenca entre 0,8% e 10,3%",
+              "Duas visoes lado a lado: a LIQUIDA (o cenario do incorporador, ja descontado o rateio) e a BRUTA (o valor cheio da parcela)",
+              "O card mostra tambem o Previsto ate hoje, que e o denominador da conta",
+            ],
+            screen: "Carteira",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.168.0 (2026-08-19-lsoft-documentos)",
+    technical: {
+      done:
+        "TRES CORRECOES COM A MESMA RAIZ E UMA MUDANCA DE REGUA. (1) O extrato era ordenado por vencimento DECRESCENTE e cortado em EXTRATO_TETO (2.000) ANTES do filtro, que rodava na TELA: com 12.614 parcelas no CER, as 2.000 enviadas eram todas de 2037-2039, entao filtrar por Paga/Vencida varria um recorte onde elas nao existiam. O filtro e a ordenacao passaram para o SERVIDOR (FiltroDoExtrato + filtrarExtrato/ordenarExtrato em carteira-liquida.ts), aplicados sobre a carteira inteira antes do corte; o teto voltou a ser so teto de PAYLOAD. Medido: a leitura das 12.614 leva 508ms em 3 lotes, entao refazer por filtro e barato; mandar tudo foi descartado (3,66MB, perto do teto de 4,5MB da Vercel). (2) As opcoes dos seletores passaram a vir de opcoesDoExtrato, apurado sobre TODAS as parcelas — eram derivadas do recorte enviado, dai os 3 anos. (3) Ordem padrao virou vencimento CRESCENTE e as colunas ganharam ordenacao server-side. (4) delinquencyRate (carteira.ts) e inadimplenciaPct (carteira-liquida.ts) passaram a dividir pelo PREVISTO ATE HOJE (nova coluna expected_to_date / previstoAteHoje) em vez do total do contrato; inadimplenciaPct virou { bruta, liquida }. A mudanca vale para os CINCO portais (todos montam a mesma TelaCarteira; o congelamento do Cecilio so afeta tema, aba Produtos e assinatura) e tambem para as telas internas do Apolo que leem delinquencyRate — deixar so o portal mudado faria as telas discordarem entre si. 22 testes em carteira-liquida.test.ts, incluindo um cenario de 2.700 parcelas que reproduz o corte-antes-do-filtro e falha se ele voltar.",
+      motivation:
+        "Lucas, 20/08/2026: 'o bug esta muito nos filtros. nos indicadores quando eu seleciono paga ou vencida vem em branco... quando eu coloca a vencer inicia da maior para menor, poderia ter a ordenacao dos campos pois assim se o usuario quiser saber o que vai vencer no proximo mes ele sabe. ae uma melhoria, a inadimplencia o calculo tem que ser no valor presente... nao sobre o contrato total mas sim sobre o que deveriamos ter recebido ate a data presente. e ter duas visoes, uma bruto... e outra da liquida, para o incorporador saber o cenario dele somente e nao inflado com os valores de outros participantes'. E depois: 'essas alteracoes tem que valer para todos'.",
+    },
+    title: "Filtros do extrato e inadimplencia a valor presente",
+    type: "correcao",
+    version: "1.169.0",
+  },
+  {
     buildTag: "2026-08-19-lsoft-documentos",
     deployedAt: "2026-08-20T00:40:00-03:00",
     modules: [

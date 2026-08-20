@@ -23,7 +23,19 @@ export type ApoloCarteiraSummary = {
   clients: number;
   contracts: number;
   criticalContracts: number;
+  /**
+   * Inadimplência A VALOR PRESENTE: vencido em aberto ÷ o que JÁ deveria ter sido recebido.
+   *
+   * ⚠️ O DENOMINADOR MUDOU EM 20/08/2026, a pedido do Lucas: *"a inadimplência o cálculo tem que
+   * ser no valor presente... não sobre o contrato total mas sim sobre o que deveríamos ter
+   * recebido até a data presente"*. Antes era `overdueAmount / totalPortfolio`, e isso não media
+   * inadimplência: dividia o vencido pelo contrato INTEIRO, incluindo parcela que só vence em
+   * 2039. No CER dava 0,8% onde o número real é 10,3% — um indicador que tranquiliza justamente
+   * quando deveria alertar, e que só melhora quanto mais longo for o financiamento.
+   */
   delinquencyRate: number;
+  /** O denominador do `delinquencyRate`: principal de tudo que venceu até hoje, pago ou não. */
+  expectedToDate: number;
   overdueAmount: number;
   overdueClients: number;
   overdueInstallments: number;
@@ -173,6 +185,9 @@ async function runCarteiraQueries(
   const [summaryRows] = await pool.query<SummaryRow[]>(
     `select
        coalesce(sum(case when ${PORTFOLIO} then ${PRINCIPAL} else 0 end), 0) as total_portfolio,
+       -- O DENOMINADOR DA INADIMPLENCIA A VALOR PRESENTE: o que ja venceu ate hoje, pago ou nao.
+       -- O "due_date <= curdate()" e a regra inteira; o resto e a mesma carteira ativa de sempre.
+       coalesce(sum(case when ${PORTFOLIO} and p.due_date <= curdate() then ${PRINCIPAL} else 0 end), 0) as expected_to_date,
        coalesce(sum(case when p.payment_status_id = 5 and ${ACTIVE} then ${PRINCIPAL} else 0 end), 0) as paid_amount,
        coalesce(sum(case when p.payment_status_id = 6 and ${ACTIVE} then ${PRINCIPAL} else 0 end), 0) as to_receive_amount,
        coalesce(sum(case when ${OVERDUE} then ${OUTSTANDING} else 0 end), 0) as overdue_amount,
@@ -242,12 +257,17 @@ function mapSummary(
 ): ApoloCarteiraSummary {
   const totalPortfolio = toNumber(row?.total_portfolio);
   const overdueAmount = toNumber(row?.overdue_amount);
+  const expectedToDate = toNumber(row?.expected_to_date);
 
   return {
     clients: toNumber(row?.clients),
     contracts: toNumber(row?.contracts),
     criticalContracts,
-    delinquencyRate: totalPortfolio > 0 ? overdueAmount / totalPortfolio : 0,
+    // ⚠️ SOBRE O PREVISTO ATE HOJE, nao sobre o contrato inteiro. Ver o comentario do tipo.
+    // Carteira que ainda nao teve nenhum vencimento devolve 0, e nao divisao por zero: nao ha
+    // inadimplencia possivel antes do primeiro vencimento.
+    delinquencyRate: expectedToDate > 0 ? overdueAmount / expectedToDate : 0,
+    expectedToDate,
     overdueAmount,
     overdueClients: toNumber(row?.overdue_clients),
     overdueInstallments: toNumber(row?.overdue_installments),
@@ -443,6 +463,7 @@ function emptySummary(): ApoloCarteiraSummary {
     contracts: 0,
     criticalContracts: 0,
     delinquencyRate: 0,
+    expectedToDate: 0,
     overdueAmount: 0,
     overdueClients: 0,
     overdueInstallments: 0,

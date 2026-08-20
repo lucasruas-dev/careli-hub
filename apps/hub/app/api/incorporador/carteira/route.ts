@@ -5,6 +5,9 @@ import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos"
 import {
   carteiraLiquidaDoIncorporador,
   type CarteiraPorUnidade,
+  type ColunaDoExtrato,
+  type FiltroDoExtrato,
+  type SituacaoDaParcela,
 } from "@/lib/apolo/incorporador/carteira-liquida";
 import {
   codesDoRecorte,
@@ -126,6 +129,42 @@ export async function GET(request: Request) {
   const filtro = params.get("code")?.trim() || null;
   const comIndicadores = params.get("indicadores") === "1";
 
+  // ⚠️ O RECORTE DO EXTRATO VEM NA URL, e é aplicado NO SERVIDOR. Antes a tela filtrava o que já
+  // tinha recebido — e o que ela recebia era um corte de `EXTRATO_TETO` linhas feito ANTES do
+  // filtro, então procurar "Paga" ou "Vencida" varria um recorte onde elas não estavam e voltava
+  // vazio (Lucas, 20/08/2026).
+  //
+  // Os valores entram como texto e são normalizados aqui; `situacao` e `ordenarPor` passam por
+  // allowlist, porque viram comparação e chave de ordenação lá dentro.
+  const SITUACOES = ["a_vencer", "liquidada", "paga", "vencida"] as const;
+  const COLUNAS = [
+    "cliente",
+    "liquido",
+    "pagamento",
+    "situacao",
+    "unidade",
+    "valor",
+    "vencimento",
+  ] as const;
+
+  const texto = (chave: string) => params.get(chave)?.trim() || null;
+  const situacaoPedida = texto("situacao");
+  const colunaPedida = texto("ordenarPor");
+
+  const filtroDoExtrato: FiltroDoExtrato = {
+    ano: texto("ano"),
+    busca: texto("q"),
+    direcao: params.get("direcao") === "desc" ? "desc" : "asc",
+    mes: texto("mes"),
+    ordenarPor: COLUNAS.includes(colunaPedida as never)
+      ? (colunaPedida as ColunaDoExtrato)
+      : undefined,
+    perfil: texto("perfil"),
+    situacao: SITUACOES.includes(situacaoPedida as never)
+      ? (situacaoPedida as SituacaoDaParcela)
+      : null,
+  };
+
   // Tudo o que a sessão autoriza, SEM filtro: é sobre esta lista que o seletor de empreendimento
   // se monta, e é só DENTRO dela que o pedido da tela consegue escolher.
   const codesAutorizados = await codigosDaSessao(auth.sessao);
@@ -197,7 +236,9 @@ export async function GET(request: Request) {
     carteiraLiquidaDoIncorporador({
       codes,
       // Os KPIs do BI só quando a tela pede: a leitura ampliada (parcelas em aberto) custa mais.
-      indicadores: comIndicadores ? { agoraMs: Date.now(), nomePorCode } : undefined,
+      indicadores: comIndicadores
+        ? { agoraMs: Date.now(), filtroDoExtrato, nomePorCode }
+        : undefined,
       // Casa o split quando a linha não traz `perfil` — em boa parte das parcelas o único campo
       // presente é a razão social.
       nomeDoIncorporador: auth.sessao.incorporadorNome,
