@@ -36,6 +36,38 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-20-cadastrar-unidades",
+    deployedAt: "2026-08-20T17:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Botao Adicionar na aba Unidades do empreendimento: da para cadastrar uma unidade pelo formulario ou importar uma planilha inteira, e nos dois casos a unidade e criada no C2X",
+              "Botao para baixar a planilha padrao em Excel, com uma aba de instrucoes que lista os status aceitos e o que e obrigatorio",
+              "A planilha aceita CSV e XLSX, e entende o cabecalho como cada um escreve (Area, AREA, Metragem, metragem_m2 caem no mesmo campo)",
+              "Antes de importar, a tela mostra quantas sobem, quantas ja existem e quais linhas tem erro, com o numero da linha do Excel",
+              "Valor de tabela ficou OPCIONAL: da para cadastrar a unidade antes de saber o preco, e a tela avisa que ela fica fora do VGV ate o valor ser preenchido",
+              "A tabela de unidades ganhou a coluna Metragem, ordenavel. O dado ja existia, mas so aparecia como subtitulo miudo embaixo da quadra",
+            ],
+            screen: "Empreendimento · Unidades",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.170.0 (2026-08-20-carteira-numeracao-e-cenarios)",
+    technical: {
+      done:
+        "POST /api/v1/integrations/panteon/enterprise_units — o mesmo contrato usado na carga do Vale do Ouro em 01/08 (obrigatorios enterprise_id, block, lot, area, price; token cru nos dois headers, SEM Bearer). Regras puras em lib/apolo/cadastrar-unidades.ts (30 testes), acesso ao C2X em cadastrar-unidades-server.ts, rota em /api/apolo/empreendimentos/unidades/cadastrar com authorizeApoloWrite e maxDuration 300. A TELA MORA NO EMPREENDIMENTO e nao no Setup (o Lucas pediu a mudanca no meio): assim o enterprise_id vem do contexto e a escolha mais perigosa do processo — subir 300 lotes no empreendimento errado — deixa de existir. TRAVAS, porque criar unidade nao tem desfazer pela API: conferir e obrigatorio e o servidor REVALIDA no clique de importar (entre a conferencia e o envio alguem pode ter criado a unidade pela tela do C2X); o host de destino aparece antes do clique (a env aponta para teste em dev, e foi assim que 8 cadastros foram para o ambiente errado em 01/08 respondendo sucesso); e a contagem do BANCO e comparada antes/depois, porque a API dizer que criou nao e prova. Quadra e lote normalizados nos dois lados (1 -> 01), senao a checagem de duplicidade nao acha o que existe e o loteamento sobe duplicado. numeroBR le o formato brasileiro: 1.002,00 e mil e dois, e um parser ingenuo faria um lote de R$ 140.401 virar R$ 140,40. O parse do CSV descobre o separador (Excel PT-BR salva com ponto e virgula) e engole o BOM. Modelo em XLSX gerado no cliente com exceljs por import dinamico, com aba de instrucoes montada a partir das MESMAS constantes que a validacao usa.",
+      motivation:
+        "Lucas, 20/08/2026: 'cria para mim uma tela para importar unidades dentro do C2X, configura ela para que o operador possa subir uma tabela (ae define o arquivo padrao)'. Depois: 'faz melhor, deixa essa tela de dentro do Apolo empreendimento, na parte de unidades' e 'botao de adicionar (pode ser uma ou importacao), ae vc ja vai ter a referencia do empreendimento'. E: 'quando finalizar o cadastro ou a importacao, tem que ir para o c2x'. O valor virou opcional por causa de 'vou testar depois, pois eu ainda nao tenho o valor dessas matriculas'.",
+    },
+    title: "Cadastro e importacao de unidades direto no C2X",
+    type: "novidade",
+    version: "1.171.0",
+  },
+  {
     buildTag: "2026-08-20-carteira-numeracao-e-cenarios",
     deployedAt: "2026-08-20T15:30:00-03:00",
     modules: [

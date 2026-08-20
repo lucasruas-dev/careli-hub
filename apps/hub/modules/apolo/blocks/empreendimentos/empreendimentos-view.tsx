@@ -1,5 +1,6 @@
 "use client";
 
+import { AdicionarUnidades } from "@/modules/apolo/blocks/empreendimentos/adicionar-unidades";
 import { PoliticaComercialTab } from "@/modules/apolo/blocks/empreendimentos/politica-comercial-tab";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -22,6 +23,7 @@ import {
   MapPinned,
   Network,
   Percent,
+  Plus,
   Search,
   Settings,
   Tag,
@@ -1329,6 +1331,10 @@ function UnidadesTab({
   const [units, setUnits] = useState<ApoloEnterpriseUnit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [adicionando, setAdicionando] = useState(false);
+  // Muda depois de cada criação e faz o efeito reler o C2X: sem isto, a unidade nova só apareceria
+  // trocando de aba e voltando, e o operador não teria como saber se deu certo.
+  const [recarga, setRecarga] = useState(0);
   const [statusFilter, setStatusFilter] = useState<UnitFilter>("todos");
   const [sort, setSort] = useState<UnitSort>({
     column: "codigo",
@@ -1378,7 +1384,7 @@ function UnidadesTab({
     return () => {
       active = false;
     };
-  }, [row.codes]);
+  }, [row.codes, recarga]);
 
   if (error) {
     return (
@@ -1422,12 +1428,32 @@ function UnidadesTab({
         <span className="text-xs font-medium text-ink-muted">
           {visible.length} de {units.length}
         </span>
+
+        {/* ⚠️ O EMPREENDIMENTO VEM DAQUI, e é por isso que o botão mora nesta aba e não no Setup:
+            quem está nesta ficha já está dentro dele, então a escolha mais perigosa do processo
+            (subir lotes no empreendimento errado) deixa de existir. */}
+        <button
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-ink px-3 text-sm font-semibold text-canvas"
+          onClick={() => setAdicionando(true)}
+          type="button"
+        >
+          <Plus aria-hidden="true" className="size-4" />
+          Adicionar
+        </button>
       </div>
+
+      {adicionando ? (
+        <AdicionarUnidades
+          aoFechar={() => setAdicionando(false)}
+          aoTerminar={() => setRecarga((n) => n + 1)}
+          empreendimento={{ code: row.code, id: row.id, nome: row.name }}
+        />
+      ) : null}
 
       {/* Cabeçalho TRAVADO: só os dados rolam. */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface">
         <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full min-w-[980px] border-collapse text-sm">
+          <table className="w-full min-w-[1080px] border-collapse text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-line bg-subtle text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
                 <SortableHead
@@ -1439,6 +1465,16 @@ function UnidadesTab({
                 <SortableHead
                   column="quadra"
                   label="Quadra / Lote"
+                  onSort={setSort}
+                  sort={sort}
+                />
+                {/* METRAGEM COMO COLUNA PRÓPRIA (Lucas, 20/08/2026: "podia trazer o campo da
+                    metragem"). Ela já vinha do backend, mas só como subtítulo miúdo embaixo da
+                    quadra — invisível para quem varre a tabela e impossível de ordenar. */}
+                <SortableHead
+                  align="right"
+                  column="metragem"
+                  label="Metragem"
                   onSort={setSort}
                   sort={sort}
                 />
@@ -1483,11 +1519,11 @@ function UnidadesTab({
                     <p className="m-0 text-sm font-semibold tabular-nums text-ink">
                       {[unit.block, unit.lot].filter(Boolean).join(" / ") || "-"}
                     </p>
-                    <p className="m-0 text-xs tabular-nums text-ink-muted">
-                      {unit.area
-                        ? `${unit.area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`
-                        : "-"}
-                    </p>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-ink-soft">
+                    {unit.area
+                      ? `${unit.area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`
+                      : "-"}
                   </td>
                   <td className="px-3 py-2 tabular-nums text-ink-soft">
                     {unit.registration ?? "-"}
@@ -1523,6 +1559,7 @@ type UnitFilter = "todos" | ApoloEnterpriseBucket;
 type UnitSortColumn =
   | "codigo"
   | "matricula"
+  | "metragem"
   | "quadra"
   | "status"
   | "valor";
@@ -1610,6 +1647,13 @@ function sortUnits(
   return [...units].sort((left, right) => {
     if (sort.column === "valor") {
       return (left.price - right.price) * factor;
+    }
+
+    // Metragem é número: comparar como texto poria "1.000" antes de "600".
+    // Unidade sem área vai para o fim, e não para o topo como se medisse zero.
+    if (sort.column === "metragem") {
+      const area = (unit: ApoloEnterpriseUnit) => unit.area ?? -1;
+      return (area(left) - area(right)) * factor;
     }
 
     const value = (unit: ApoloEnterpriseUnit) =>
