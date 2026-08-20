@@ -41451,3 +41451,68 @@ Hipotese principal: JS antigo em cache (o portal e PWA). Pedido ao Lucas: Ctrl+S
 topo da lista com o filtro aplicado.
 
 ROLLBACK: v1.168.0 (2026-08-19-lsoft-documentos).
+
+---
+
+## 2026-08-20 · NUMERACAO DA PARCELA, CENARIOS POR FILTRO E O GRAFICO x O CARD (v1.170.0)
+
+Segunda lista do Lucas sobre o portal. Cinco pontos: DOIS eram erro real, UM nao era erro, DOIS
+eram melhoria. Investiguei os cinco contra o dado ANTES de mexer.
+
+### ERRO 1 — "0/156" NO ATO E NO SINAL
+
+O C2X guarda DOIS pares de contadores na MESMA linha de `payments` e preenche um ou outro conforme
+o tipo. Medido no VOC em 20/08/2026:
+
+  tipo    | current_signal_parcel | total_signal_parcels | current_total_parcel | total_parcels
+  Ato     |          0            |        1..4          |          0           |     156
+  Sinal   |        1..4           |        1..4          |          0           |     156
+  Parcela |          0            |        1..4          |        1..156        |     156
+
+O extrato do portal montava `${parcela_n}/${parcela_total}` na mao — sempre o par da PARCELA.
+Como `total_parcels` vale 156 em TODA linha e o contador do Ato/Sinal vem ZERADO, saia "0/156".
+
+⚠️ A REGRA JA TINHA SIDO CORRIGIDA EM 19/08 (v1.161.0), mas dentro de uma funcao PRIVADA de
+`lib/apolo/carteira.ts`. O extrato do portal tinha a propria copia e ficou para tras — exatamente
+[[reference_camada_nova_exige_varrer_leitores]]. Agora existe UMA regua
+(`lib/apolo/numero-da-parcela.ts`), usada pelos dois, com 7 testes escritos a partir dos valores
+REAIS do C2X (a tabela acima esta no cabecalho do teste).
+
+### ERRO 2 — O GRAFICO DIZIA 6,1% E O CARD 7%, NA MESMA TELA
+
+A serie mensal somava no `previsto` TODAS as parcelas com vencimento no mes, inclusive as que
+ainda nao tinham chegado na data. Em 20/08, o denominador de agosto incluia os vencimentos de 21 a
+31/08 — R$ 93.960 a mais no bruto. Era o MESMO defeito do card antigo (dividir pelo que ainda nao
+venceu) sobrevivendo no grafico, um dia depois de o card ter sido consertado.
+
+CORRECAO: no mes CORRENTE o previsto conta so o que ja venceu. Nos meses passados nada muda (tudo
+ja venceu), entao a condicao so age onde a distorcao existe. Teste novo prova que a barra do mes
+corrente e o card fecham na MESMA base.
+
+### NAO ERA ERRO — A % LIQUIDA (7%) MENOR QUE A BRUTA (10,3%)
+
+Pergunta do Lucas: *"a liquida nao seria o valor que o incorporador tem a receber e o bruto seria o
+todo? se sim, tem alguma coisa errada"*. A leitura esta certa e o resultado tambem: medido no VOC,
+29 dos 35 vencimentos em aberto sao ATOS (R$ 29.000 de R$ 87.840), e o Ato vai quase inteiro para
+COMISSAO. Quando um Ato atrasa quem sente e a comissao, nao o incorporador — por isso a fatia dele
+no vencido (26,9%) e menor que a fatia dele no previsto (39,4%), e a % cai.
+
+Se as duas fossem iguais e que haveria erro. Entrou uma linha na tela explicando, porque sem ela a
+diferenca parece defeito.
+
+### MELHORIAS
+
+  • `totaisDoRecorte` (total, pagas, vencidas, aVencer) calculado sobre o FILTRO INTEIRO, nao
+    sobre as linhas enviadas: somar o que chegou na tela responderia "quanto recebo em dezembro"
+    com a soma das primeiras 2.000 de dezembro. O cartao "Neste recorte" so aparece COM filtro —
+    sem recorte ele repetiria os KPIs do topo, e numero repetido faz duvidar de qual e o certo.
+  • "Previsto ate hoje" subiu para logo depois da Receita liquida: ele e o denominador do que vem
+    embaixo.
+
+VERIFICADO: 928 testes, typecheck, lint e build de producao limpos.
+ROLLBACK: v1.169.0 (2026-08-20-carteira-filtros-e-inadimplencia).
+
+### AINDA EM ABERTO
+
+O filtro "Em dia" da aba Carteira (2o item da lista anterior) segue sem reproducao. Aguarda o
+Ctrl+Shift+R e o print do Lucas.
