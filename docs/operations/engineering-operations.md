@@ -41516,3 +41516,126 @@ ROLLBACK: v1.169.0 (2026-08-20-carteira-filtros-e-inadimplencia).
 
 O filtro "Em dia" da aba Carteira (2o item da lista anterior) segue sem reproducao. Aguarda o
 Ctrl+Shift+R e o print do Lucas.
+
+## 2026-08-20 · CADASTRO E IMPORTACAO DE UNIDADES NO C2X, PELO APOLO (v1.171.0)
+
+Pedido do Lucas, que mudou de lugar no meio: comecou em *"cria para mim dentro de setup do
+panteon, uma tela para importar unidades dentro do C2X"* e virou *"faz melhor, deixa essa tela de
+dentro do Apolo empreendimento, na parte de unidades"*, com *"botao de adicionar (pode ser uma ou
+importacao), ae voce ja vai ter a referencia do empreendimento"*.
+
+Mudar de lugar mudou o desenho, e para melhor: dentro da ficha do empreendimento o `enterprise_id`
+ja esta na mao. No Setup ele seria digitado, e digitar id de empreendimento e como as unidades vao
+parar no loteamento errado.
+
+### O QUE FOI FEITO
+
+  • `lib/apolo/cadastrar-unidades.ts` — validacao pura, 30 testes. `numeroBR` le formato
+    brasileiro ("1.002,00" = mil e dois, nao 1,002); `doisDigitos` normaliza quadra/lote (1 -> 01)
+    porque o C2X ordena como TEXTO e "10" viria antes de "2".
+  • `-server.ts` — confere contra o que ja existe no C2X e so entao escreve.
+  • Rota `POST /api/apolo/empreendimentos/unidades/cadastrar` com tres acoes: `conferir` (nao
+    escreve), `criar` (uma) e `importar` (o lote).
+  • Botao de baixar a planilha modelo, pedido depois: *"deixa um botao para operador baixar a
+    panilha padrao"*. O modelo sai da MESMA funcao de validacao, entao acompanha sozinho se
+    alguem acrescentar coluna.
+
+### AS PROTECOES, E O MOTIVO DE CADA UMA
+
+  • ⚠️ ESCRITA SEM DESFAZER. O C2X nao expoe exclusao de unidade por API: unidade errada so sai
+    pela tela dele, a mao, e enquanto isso aparece no estoque, no masterplan e na conta de VGV.
+    Dai `authorizeApoloWrite` (e nao `Read`, que o resto do modulo usa) e a conferencia
+    obrigatoria antes do envio.
+  • ⚠️ O DESTINO VOLTA EM TODA RESPOSTA. Em dev o `C2X_WRITE_API_URL` aponta para
+    `teste.careli.adm.br`, e foi assim que 8 cadastros de cliente foram parar no ambiente errado
+    em 01/08 — todos com resposta de sucesso. A tela mostra o destino ANTES do clique.
+  • ⚠️ RECONFERE NO SERVIDOR no `importar`, sem confiar na lista que a tela aprovou: entre a
+    conferencia e o clique alguem pode ter criado a unidade pela tela do C2X.
+  • `criar` passa pelas MESMAS regras da planilha. Formulario com regra propria divergiria na
+    primeira mudanca, e a mesma unidade seria aceita por um caminho e recusada pelo outro.
+
+Valor ficou OPCIONAL com aviso: o Lucas subiu sem ter os valores em maos (*"eu ainda nao tenho o
+valor dessas matriculas"*).
+
+VERIFICADO: 30 testes novos, typecheck, lint e build de producao limpos.
+ROLLBACK: v1.170.0.
+
+## 2026-08-20 · O BOTAO "ABRIR" QUE NUNCA ACENDIA NA CENTRAL DE RELACIONAMENTO (v1.172.0)
+
+Relato do Lucas: *"ta vendo que nada fica habilitado para o meu usuario? eu tenho que escolher a
+fila e o assunto simples"*, depois de *"o Northon precisa mandar cobranca de assinatura pela fila
+do contrato, tem ate um template aprovado para isso so que nao aparece para ele nao"*.
+
+### A CAUSA
+
+O `canStart` do modal exigia assunto E template SEMPRE. A Central de Relacionamento tem ZERO
+assuntos (os 24 estao todos em Atendimento, Cobranca, Financeiro, Suporte, Juridico, Contrato e
+Comercial) e nao usa template, porque o canal dela e EVOLUTION, fora da Meta. Resultado: naquela
+central o botao nao acendia para ninguem, nunca.
+
+⚠️ COMO SE DISTINGUE UM CANAL DO OUTRO, NO DADO: o canal da Meta tem `external_account_id` (o
+`phone_number_id`); o da Evolution nao tem nenhum. Nao existe campo "provider" confiavel — e a
+AUSENCIA da conta externa que identifica. Fila sem canal cai no numero padrao, que e da Meta e
+portanto exige template.
+
+    const filaForaDaMeta = Boolean(canalDaFila) && !canalDaFila?.phoneNumberId;
+
+O `Boolean(canalDaFila)` na frente e proposital: fila SEM canal nao e "fora da Meta", e sim fila
+que cai no numero padrao — se ela dispensasse template, o envio quebraria no 132001 da Meta.
+
+### CORRECAO ANTERIOR NO MESMO ASSUNTO
+
+O template do Contrato existe e TEM vinculo com a Meta (`metaTemplateName`, `metaTemplateId`,
+`queueLabel`) — eu tinha afirmado o contrario lendo o metadata truncado, e corrigi ao Lucas. O que
+o esconde e `metaStatus: PENDING`, barrado de proposito por `isMetaTemplateUnavailableStatus`
+porque a Meta recusa o envio de template pendente. O conserto e o botao "Sincronizar Meta" no
+Setup da Iris, nao forcar o status na mao. SEGUE PENDENTE.
+
+VERIFICADO: 102 testes da Iris, typecheck, lint e build limpos.
+ROLLBACK: v1.171.0.
+
+## 2026-08-20 · CANAL ANTES DA FILA, NO ABRIR ATENDIMENTO (v1.173.0)
+
+Regra do Lucas, depois de ver a v1.172.0: *"nao ficou do jeito que eu queria, primeiro eu
+seleciono o canal, depois eu seleciono a fila"*. O modal passa a comecar pelo CANAL (Atendimento /
+Relacionamento / Gurgel) e so entao oferecer as filas daquele canal.
+
+### O QUE ISSO EXIGIU
+
+  • ⚠️ AS FILAS PRECISARAM VIR DO BRUTO. O modal recebia `data` ja recortado por
+    `recortarDadosPorCentral`, ou seja, so a central da aba aberta — com ele, um seletor de canal
+    nao teria o que oferecer: trocar para Gurgel nao mostraria fila nenhuma, porque as filas dele
+    nunca teriam chegado. Agora recebe `todasAsFilas={irisDataBruto.queues}`, que continua
+    filtrado por PERMISSAO (`canSeeResource`) e so nao e recortado por central. Ninguem passa a
+    ver fila que nao podia.
+  • `centralAtiva` entra como escolha INICIAL, nao como limite: quem ja estava no Relacionamento
+    nao reescolhe, mas pode trocar sem fechar o modal — que era o unico caminho antes.
+  • Trocar de canal zera `selectedQueueId`: manter a fila da central anterior deixaria um par
+    canal/fila que nao existe.
+  • O seletor so aparece com mais de uma central disponivel. Com uma so, seria pergunta de
+    resposta unica ocupando espaco.
+
+### NO BANCO (autorizado pelo Lucas)
+
+Fila `Relacionamento` (`1731fbc4-fb66-4334-bd13-ad1e97a1359a`) ARQUIVADA. Era duplicata da
+`Central de Relacionamento` — 1 ticket ja fechado contra 780 — e ainda apontava para o canal da
+META, sendo a unica da central que continuaria pedindo template depois da v1.172.0. Arquivar
+preserva o historico: o AT-001897 continua nela, conferido depois do update. A central ficou com
+cinco filas ativas.
+
+### ⚠️ O QUE EU NAO EXECUTEI, E POR QUE
+
+Eu tinha proposto apontar CONTATO, COMPRAS e GRUPO para o WhatsApp da Evolution, e o Lucas
+autorizou. A medicao desmentiu a propria proposta e eu parei:
+
+  • `Contato` e fila de E-MAIL — 21 tickets, todos vindos de `contato@careli.adm.br`. Aponta-la
+    para um canal WhatsApp quebraria o roteamento dela.
+  • `Grupo` tem canal Evolution PROPRIO, de monitoramento passivo de grupos pela CACA, separado
+    do canal de conversa 1:1.
+
+Licao para a proxima: antes de mexer no canal de uma fila, medir de ONDE vem os tickets dela
+(`caredesk_tickets.channel_id`). Nem toda fila de central de WhatsApp e fila de WhatsApp.
+
+VERIFICADO: typecheck, lint, 102 testes da Iris e build de producao limpos. Deploy confirmado com
+`c2x.app.br` e `/iris` em 200.
+ROLLBACK: v1.172.0.
