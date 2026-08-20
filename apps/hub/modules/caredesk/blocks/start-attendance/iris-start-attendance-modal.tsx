@@ -583,15 +583,55 @@ export function IrisStartAttendanceModal({
     ? renderStartTemplatePreview(selectedTemplate.body, previewParams)
     : null;
 
+  /**
+   * Esta fila fala com a META, ou com a Evolution?
+   *
+   * ⚠️ É A PERGUNTA QUE DECIDE SE PRECISA DE TEMPLATE. Regra do Lucas (20/08/2026): *"para abrir
+   * uma conversa tem que escolher o canal (Atendimento) (Relacionamento) (Gurgel)... se for
+   * relacionamento não precisa de templates, pois estamos fora da meta"*.
+   *
+   * Como se distingue, no dado: o canal da Meta tem `phoneNumberId` (o `external_account_id`, ex.
+   * 1167201739813897); o canal da Evolution não tem nenhum — o registro dele diz, por extenso,
+   * "Atendimento 1:1 com corretor e imobiliária pela Evolution API".
+   *
+   * Fila SEM canal continua contando como Meta: ela cai no número padrão, que é da Meta, e afrouxar
+   * aí deixaria passar um envio que a Meta recusaria com 132001.
+   */
+  const canalDaFila = useMemo(
+    () =>
+      selectedQueue?.channelId
+        ? (data.channels.find((canal) => canal.id === selectedQueue.channelId) ?? null)
+        : null,
+    [data.channels, selectedQueue],
+  );
+  const filaForaDaMeta = Boolean(canalDaFila) && !canalDaFila?.phoneNumberId;
+
+  /**
+   * O que o botão "Abrir" exige.
+   *
+   * ⚠️ ANTES EXIGIA ASSUNTO E TEMPLATE SEMPRE, e era isso que deixava a Central de Relacionamento
+   * inteira travada: as seis filas dela não têm assunto nenhum cadastrado (os 24 assuntos são todos
+   * da central de Atendimento) e ela não usa template, porque está fora da Meta. O botão nunca
+   * acendia, e o Lucas viu como "nada fica habilitado para o meu usuário".
+   *
+   * Agora cada exigência só vale quando faz sentido:
+   *   • assunto, só se a fila TIVER assuntos;
+   *   • template, só se a fila for da Meta E houver template disponível para ela.
+   *
+   * O caminho de envio abaixo já era mais esperto que o botão: ele tenta abrir sem template e só
+   * pede um quando a Meta recusa por janela de 24h fechada. O botão é que não deixava chegar lá.
+   */
   const canStart =
     Boolean(selectedClient) &&
     Boolean(selectedQueue) &&
-    Boolean(selectedProfile) &&
-    Boolean(selectedTemplate) &&
+    (!subjectOptions.length || Boolean(selectedProfile)) &&
+    (filaForaDaMeta || !templateOptions.length || Boolean(selectedTemplate)) &&
     !submitting;
 
   async function submit() {
-    if (!selectedClient || !selectedQueue || !selectedProfile) return;
+    // O ASSUNTO SAIU DA GUARDA: a rota de tickets aceita `profileId` nulo, e a central de
+    // Relacionamento não tem assunto para escolher. Cliente e fila continuam obrigatórios.
+    if (!selectedClient || !selectedQueue) return;
     setSubmitting(true);
     setError("");
     setBlockedTicket(null);
@@ -627,9 +667,9 @@ export function IrisStartAttendanceModal({
             contextMode === "parcelas" ? installmentsUnitLabel : "",
         },
         phone: selectedClient.phone,
-        profileId: selectedProfile.id,
+        profileId: selectedProfile?.id,
         queueId: selectedQueue.id,
-        subject: selectedProfile.name,
+        subject: selectedProfile?.name,
         templateContext: contextMode === "tickets" ? "atendimento" : undefined,
         templateId: selectedTemplate?.id,
         templateLanguage: startTemplateLanguage,
@@ -1090,7 +1130,18 @@ export function IrisStartAttendanceModal({
                 {selectedQueuePhoneNumberId ? null : " · número padrão"}
               </div>
 
-              <label className="block">
+              {/* ⚠️ FORA DA META, NÃO HÁ TEMPLATE A ESCOLHER — e dizer isso importa tanto quanto
+                  destravar o botão: sem esta linha o operador fica procurando num campo vazio um
+                  template que nunca vai existir, que foi exatamente o que aconteceu. */}
+              {filaForaDaMeta ? (
+                <div className="rounded-lg border border-line/70 bg-subtle px-3 py-2 text-[11px] text-ink-muted">
+                  Esta fila fala pelo WhatsApp da{" "}
+                  <span className="font-semibold text-ink">{canalDaFila?.name}</span>, fora da Meta:
+                  não precisa de template. É só abrir e escrever.
+                </div>
+              ) : null}
+
+              <label className={filaForaDaMeta ? "hidden" : "block"}>
                 <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
                   Template aprovado (Meta)
                 </span>

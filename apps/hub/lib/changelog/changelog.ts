@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-20-iris-abrir-fora-da-meta",
+    deployedAt: "2026-08-20T18:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Da para abrir atendimento pela Central de Relacionamento. O botao Abrir ficava apagado para todo mundo, porque exigia assunto e template — e a central nao tem assunto cadastrado nem usa template, ja que fala pela Evolution e nao pela Meta",
+              "Na fila que esta fora da Meta o campo de template some e aparece uma linha explicando que e so abrir e escrever, em vez de um seletor vazio",
+              "Nas filas da Meta (Atendimento e Gurgel) nada mudou: template continua sendo exigido, porque sem ele a Meta recusa o envio",
+            ],
+            screen: "Abrir atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.171.0 (2026-08-20-cadastrar-unidades)",
+    technical: {
+      done:
+        "O `canStart` do modal exigia `selectedProfile` E `selectedTemplate` sempre. As 6 filas da central de relacionamento tem ZERO assuntos (os 24 estao todos em Atendimento/Cobranca/Financeiro/Suporte/Juridico/Contrato/Comercial) e nenhum template com `queueLabel` delas — entao o botao nunca acendia. Agora assunto so e exigido se `subjectOptions.length` e template so se a fila for da META. A distincao vem do dado: canal da Meta tem `phoneNumberId` (external_account_id, ex. 1167201739813897); o canal da Evolution nao tem nenhum e o registro dele diz 'Atendimento 1:1 com corretor e imobiliaria pela Evolution API'. Fila SEM canal continua contando como Meta (cai no numero padrao). O `submit` parou de travar por falta de profile e o payload manda `profileId`/`subject` opcionais — a rota /api/iris/tickets ja aceitava nulo (`profileId ? getProfileById : ...`). O caminho de envio ja fazia o certo desde antes: tenta abrir sem template e so pede um quando a Meta devolve 409 por janela de 24h fechada; era o botao que nao deixava chegar la.",
+      motivation:
+        "Lucas, 20/08/2026: 'ta vendo que nada fica habilitado para o meu usuario? eu tenho que escolher a fila e o assunto simples'. E o modelo que ele descreveu: 'para abrir uma conversa tem que escolher o canal (atendimento) (relacionamento) (gurgel), depois que ele escolhe o canal, caso for o Gurgel ou Atendimento, ele vai ter que escolher a fila pois cada fila tem seus templates, se for relacionamento nao precisa de templates, pois estamos fora da meta'.",
+    },
+    title: "Abrir atendimento pela Central de Relacionamento, sem template",
+    type: "correcao",
+    version: "1.172.0",
+  },
+  {
     buildTag: "2026-08-20-cadastrar-unidades",
     deployedAt: "2026-08-20T17:00:00-03:00",
     modules: [
