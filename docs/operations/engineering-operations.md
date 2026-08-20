@@ -41379,3 +41379,75 @@ inclusive a edicao de parcela, que mexe em dinheiro. Segui o padrao para nao cri
 documentos; apertar isso e uma troca de uma linha por rota, se ele quiser.
 
 ROLLBACK: v1.167.0 (2026-08-19-masterplan-dinamico).
+
+---
+
+## 2026-08-20 · FILTROS DO EXTRATO E INADIMPLENCIA A VALOR PRESENTE (v1.169.0)
+
+LISTA DO LUCAS: *"o bug esta muito nos filtros. nos indicadores quando eu seleciono paga ou vencida
+vem em branco... na carteira tambem, quando eu coloco em dia vem clientes com parcelas vencidas.
+Nos indicadores, quando eu coloca a vencer inicia da maior para menor, poderia ter a ordenacao dos
+campos... a inadimplencia o calculo tem que ser no valor presente... e ter duas visoes, uma bruto
+e outra da liquida"*. E depois: *"essas alteracoes tem que valer para todos"*.
+
+### A RAIZ DE TRES DOS QUATRO: FILTRAR DEPOIS DE CORTAR
+
+`carteira-liquida.ts` ordenava o extrato por vencimento DECRESCENTE e cortava em `EXTRATO_TETO`
+(2.000) ANTES de qualquer filtro — e o filtro rodava na TELA, sobre o que tinha sobrado. Com as
+12.614 parcelas do CER, as 2.000 enviadas eram todas de 2037-2039, ou seja, todas a vencer:
+
+  • "Paga" e "Vencida" varriam um recorte onde elas nao existiam -> tela vazia;
+  • o seletor de ano era montado a partir das mesmas 2.000 -> so oferecia 2037, 2038 e 2039;
+  • a ordem descendente punha 2039 na primeira linha.
+
+CORRECAO: filtro e ordenacao passaram para o SERVIDOR (`FiltroDoExtrato`, `filtrarExtrato`,
+`ordenarExtrato`), aplicados sobre a carteira inteira ANTES do corte. O teto voltou a ser so teto
+de payload. As opcoes dos seletores saem de `opcoesDoExtrato`, apurado sobre TODAS as parcelas.
+
+⚠️ A DECISAO DE ARQUITETURA FOI MEDIDA, nao chutada:
+  • ler as 12.614 do C2X leva 508ms em 3 lotes -> refazer por filtro e barato;
+  • mandar o extrato inteiro daria 3,66MB, perto demais do teto de 4,5MB da Vercel — seria repetir
+    a armadilha do 413 do CAD (ver [[reference_apolo_upload_413]]).
+
+CONTADO NO C2X, o CER passa a devolver: Paga=132, Vencida=35, A vencer=12.447, e 14 anos no
+seletor (2026-2039). O 35 bate com o cartao "Vencido: 35 parcelas" que a tela ja mostrava — duas
+consultas independentes chegando no mesmo numero.
+
+### A REGUA DA INADIMPLENCIA
+
+`delinquencyRate` (carteira.ts) e `inadimplenciaPct` (carteira-liquida.ts) dividiam o vencido pelo
+CONTRATO INTEIRO, incluindo parcela que so vence em 2039. No CER: 0,8% onde o numero real e 10,3%.
+O indicador melhorava sozinho quanto mais longo o financiamento — tranquilizava justamente quando
+deveria alertar.
+
+Agora dividem pelo PREVISTO ATE HOJE (`expected_to_date` / `previstoAteHoje`: principal de tudo
+que venceu, pago ou nao), e `inadimplenciaPct` virou `{ bruta, liquida }`. A tela mostra as duas
+lado a lado e exibe o denominador, para o numero novo nao aparecer sem explicacao.
+
+### ALCANCE ("tem que valer para todos")
+
+Conferido ANTES de mexer: os CINCO portais montam a mesma `TelaCarteira`. O congelamento do
+Cecilio (`perfis-de-portal.ts`) so alcanca tema, a aba Produtos extra e a assinatura do Panteon —
+nao a logica da carteira. Entao cer, cecilio-rocha, valedoouro, vistaalegre e lagoabonita recebem
+tudo junto.
+
+⚠️ E ALCANCA O APOLO INTERNO TAMBEM, de proposito: `delinquencyRate` alimenta o CRM
+(scoped-portfolio-panel) e a tela de Empreendimentos. Mudar so o portal faria a MESMA metrica dar
+numeros diferentes conforme a tela, que e pior que o problema original.
+
+VERIFICADO: 918 testes, typecheck, lint e build de producao limpos. 22 testes em
+carteira-liquida.test.ts, entre eles um cenario de 2.700 parcelas que reproduz o corte-antes-do-
+filtro e quebra se ele voltar.
+
+### EM ABERTO: O "EM DIA" DA CARTEIRA
+
+O 2o item da lista (filtro "Em dia" trazendo unidade com parcela vencida) NAO foi corrigido: nao
+consegui reproduzir. Medido no C2X, a lista do CER tem 93 linhas, 33 com vencida e 60 em dia — e o
+contador do print do Lucas diz exatamente 60, ou seja, o filtro CONTOU certo. No codigo, contador e
+tabela leem a mesma variavel filtrada (`visiveis`), `ordenarUnidades` usa a lista que recebe, e
+`git log -S "units.map((unit)"` nao acha nenhuma versao que tenha renderizado sem filtro.
+
+Hipotese principal: JS antigo em cache (o portal e PWA). Pedido ao Lucas: Ctrl+Shift+R e print do
+topo da lista com o filtro aplicado.
+
+ROLLBACK: v1.168.0 (2026-08-19-lsoft-documentos).
