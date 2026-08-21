@@ -41736,3 +41736,91 @@ ROLLBACK: v1.173.0 (2026-08-20-iris-canal-antes-da-fila).
   • A CAD da Cristiana nao subiu ao C2X (entra no proximo lote do Sync).
   • `disparo-reprovacao.ts` ficou sem chamador, marcado como descontinuado e NAO apagado: e a
     referencia de como o anexo e a devolutiva de entrega da Meta funcionavam.
+
+## 2026-08-21 (tarde) · PROMETEU MULTI-LANCAMENTO, CACA SEM VALOR ERRADO E CIDADE COM SUGESTAO
+### (v1.177.0 a v1.181.0)
+
+### O PROMETEU (v1.177.0, v1.178.0, v1.180.0)
+
+Lucas: *"o prometeu e o nosso sistema de fila, ou seja ele funcionara em lancamentos ATIVOS. Os
+lancamentos que foram FINALIZADOS, pode arquivar tudo. Entao o que eu nao vi hoje e um BOTAO PARA
+CRIAR OS NOVOS LANCAMENTOS e ainda tem MUITA COISA DO VALE DO OURO."*
+
+A auditoria (4 agentes + banco) achou a razao das duas queixas de uma vez: o Prometeu inteiro
+tinha UM evento — Vale do Ouro, encerrado em 01/08 — e ele reaparecia por CINCO caminhos, enquanto
+o botao de criar estava preso num early-return que so renderiza com ZERO eventos.
+
+⚠️ O BOTAO DE CRIAR SEMPRE EXISTIU, e o backend tambem. Ele vivia dentro da tela "Nenhum
+lancamento ainda". Com um lancamento no banco, nunca aparecia.
+
+Os cinco caminhos do Vale do Ouro: o fallback `?? eventos[0]` do `eventoDoDia` (que prometia no
+proprio comentario "nunca cai num encerrado" e caia); `listEventos` sem filtro; "Vale do Ouro"
+CRAVADO no HTML do telao (a TV do salao, em producao); o `?? "VLO"` do codigo da unidade
+reservada; e os presets do locutor.
+
+MIGRATION 0100 (autorizada): `arquivado_em` + `arquivado_por`. Coluna SEPARADA e nao
+`status='arquivado'` — o status carrega o ciclo do dia e sobrescreve-lo apagaria a informacao de
+que o evento terminou direito. ⚠️ NAO existe DELETE de evento e nao deve existir: as FKs sao ON
+DELETE CASCADE e apagariam 609 credenciados, 481 movimentacoes, 242 chamadas, 18 mesas e 13
+operadores.
+
+⚠️ RISCO Nº1, FECHADO ANTES DE VIRAR PROBLEMA: `credenciado-para-fila` pegava o evento operavel e
+inseria SEM olhar de qual loteamento a CAD era. Quem chama e `esteira.ts` em TODA mudanca de etapa
+do Board. Era inocuo so porque nao havia evento ativo — no segundo em que o proximo lancamento
+fosse ativado, Garden, Lagoa Bonita e Villa Paris cairiam no mesmo salao.
+
+Depois, com o lancamento do Villa Paris ja criado, o Lucas fechou a regra: *"isso e padrao. Toda
+vez que eu habilitar um lancamento, o sistema ja tem que buscar as cads do credenciado, entender
+se tem pix, fazer toda essa rotina"*. Virou `popularFilaDoLancamento`, chamada por `criarEvento`,
+`ativarEvento` e pela rota manual — UMA rotina, tres portas. O PIX entra porque decide a ORDEM:
+com pre-venda, a ordem do pagamento; sem pre-venda (o caso do Villa Paris), a data em que o
+corretor mandou a CAD. Fail-closed na duvida, porque a chegada da CAD e uma ordem verdadeira e a
+de pagamento seria inventada.
+
+Tambem: trava de UM lancamento operavel por vez (`eventoOperavel` desempatava dois "ativo" por
+`linhas[0]` de uma ordenacao com EMPATE — escolha arbitraria que podia alternar entre requisicoes).
+
+E os logins: *"esses logins e senhas tambem sao arquivados com a finalizacao do lancamento"*. Os
+operadores sao contas proprias com senha, em boa parte freela do dia; os 13 do Vale do Ouro
+seguiam `ativo = true` desde 01/08.
+
+### A CACA (v1.179.0)
+
+Lucas: *"as parcelas que tem boleto ja tem reajuste feito manualmente, contudo as parcelas que nao
+tem nao tem. Ela esta passando informacoes de valores diferentes."*
+
+⚠️ MEDIDO, E PIOR DO QUE PARECIA. Nao existe campo de reajuste no C2X: a correcao e aplicada A
+MAO, sobrescrevendo `initial_value`, quando a parcela recebe boleto. No contrato 455, a parcela 34
+(com boleto, mai/2027) vale R$ 535,72 e a 35 (sem boleto, jun/2027) R$ 426,81 — 20,4% a menos, e
+era esse numero que a CACA informava. Das 96.682 parcelas em aberto, so 990 (1%) tem boleto; 1.201
+estao VENCIDAS sem boleto, o caso em que ela falava valor com mais convicção.
+
+A trava e num ponto so (`describeInstallment`, por onde passam os cinco caminhos) e o sinal ja
+existia (`hasBoletoLink`, calculado na linha anterior a que imprimia o valor, sem gatear nada). No
+lugar do numero vai "valor sob atualizacao (confirmado na emissao do boleto)" — marca EXPLICITA,
+porque omitir calado faz o modelo preencher a lacuna.
+
+⚠️ DOIS EXEMPLOS DO PROMPT ENSINAVAM O CONTRARIO, incluindo um que citava "no valor de R$ 824,83"
+para uma parcela cujo boleto NAO estava disponivel. A regra ja existia no motor LEGADO da CACA e
+se perdeu na migracao para o Claude.
+
+### O CAMPO DE CIDADE (v1.181.0)
+
+Lucas: *"esse campo de cidades tem que ser padrao, igual profissao"*. Virou sugestao com as 5.601
+cidades do C2X, aceitando a UF em qualquer posicao. ⚠️ So um token ISOLADO de 2 letras conta como
+UF: senao "pará de minas" filtraria PA e devolveria lista vazia. Grava so o NOME (o padrao
+dominante no C2X), com a UF aparecendo na sugestao — 247 nomes se repetem entre estados.
+
+VERIFICADO nas cinco: 1.098 testes do Prometeu/Apolo, 95 da Iris, typecheck, lint e build limpos.
+ROLLBACK: v1.176.0 (2026-08-21-board-avisar-coordenador).
+
+### AINDA EM ABERTO
+
+  • As 44 mensagens do Villa Paris ao coordenador dependem do Lucas clicar em "Avisar coordenador".
+  • As 20 CADs do Villa Paris entram na fila quando ele ATIVAR o lancamento (ou clicar em "Trazer
+    CADs" com ele ainda em rascunho).
+  • Total vencido da carteira da imobiliaria (CACA) soma parcelas com e sem boleto: herda a
+    defasagem. Fora do escopo do pedido, reportado ao Lucas.
+  • O portal do incorporador le a mesma fonte de valor de parcela; nao avaliado.
+  • Prometeu: 18 mesas contra 7 configuradas (criarMesas nunca remove) e 9 tabelas
+    `prometeu_bkp_*` / `prometeu_reset_bkp_*` com 978 linhas que nenhum codigo cita.
