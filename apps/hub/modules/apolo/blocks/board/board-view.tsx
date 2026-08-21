@@ -46,6 +46,8 @@ import {
   titleCase,
 } from "@/lib/apolo/c2x-fields";
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
+
+import { CampoCidade } from "../cadastro/campo-cidade";
 import {
   empreendimentosNovos,
   ehReativacao,
@@ -3292,7 +3294,7 @@ type Campo = {
   full?: boolean;
   label: string;
   opcoes?: { id: number | string; label: string }[];
-  tipo?: "data" | "select" | "texto";
+  tipo?: "cidade" | "data" | "select" | "texto";
   valor: string;
   valorCru?: string;
 };
@@ -3405,6 +3407,13 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
         valorCru: ehTelefone ? formatarTelefoneBR(bruto) : bruto,
       };
     };
+    // CAMPO DE CIDADE com sugestao (naturalidade e cidade do endereco). Mesma padronizacao de
+    // exibicao do `livre` — o C2X devolve em CAIXA ALTA e a tela mostra em "Primeira Maiuscula".
+    const cidade = (chave: string, label: string, full = false): Campo => {
+      const bruto = texto(c[chave]);
+      return { chave, full, label, tipo: "cidade", valor: titleCase(bruto), valorCru: bruto };
+    };
+
     const lista = (
       chave: string,
       label: string,
@@ -3463,7 +3472,7 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
         // Derivada do nascimento, como na revisão: não se digita idade, se digita a data.
         { label: "Idade", valor: calcIdade(texto(c.dataNascimento)) },
         livre("nomeMae", "Nome da mãe", true),
-        livre("naturalidade", "Naturalidade"),
+        cidade("naturalidade", "Naturalidade"),
         livre("nacionalidade", "Nacionalidade"),
         lista("sexoId", "Sexo", C2X_SEXO),
         lista("estadoCivilId", "Estado civil", C2X_ESTADO_CIVIL),
@@ -3494,7 +3503,11 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
     const valor = /logradouro|bairro|cidade|complemento/i.test(chave)
       ? titleCase(bruto)
       : bruto;
-    return { chave, full, label, tipo: "texto", valor, valorCru: valor };
+    // A CIDADE do endereço ganha a mesma sugestão da naturalidade: é a mesma pergunta feita duas
+    // vezes na mesma ficha, e responder de dois jeitos diferentes é o que produz "Bh", "B.H." e
+    // "BELO HORIZONTE " no mesmo cadastro.
+    const tipo = /^cidade$/i.test(chave) ? ("cidade" as const) : ("texto" as const);
+    return { chave, full, label, tipo, valor, valorCru: valor };
   };
 
   secoes.push({
@@ -3626,7 +3639,8 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
         chave: `socios.${i}.endereco.${campo}`,
         full,
         label,
-        tipo: "texto",
+        // A cidade do sócio segue a mesma regra do resto da ficha.
+        tipo: /^cidade$/i.test(campo) ? "cidade" : "texto",
         valor: ehNome ? titleCase(bruto) : bruto,
         valorCru: bruto,
       };
@@ -4136,6 +4150,12 @@ function ValidacaoLadoALado({
                         <p className="m-0 mt-0.5 text-sm text-ink">
                           {(campo.chave ? valorDe(campo.chave, campo.valor) : campo.valor) || "—"}
                         </p>
+                      ) : campo.tipo === "cidade" ? (
+                        <CampoCidade
+                          className="mt-0.5 w-full rounded border border-line bg-surface px-1.5 py-1 text-sm text-ink outline-none placeholder:text-ink-muted"
+                          onChange={(valorNovo) => mexer(campo.chave!, valorNovo)}
+                          valor={valorDe(campo.chave, campo.valorCru ?? "")}
+                        />
                       ) : campo.tipo === "select" ? (
                         /* ⚠️ NÃO trocar por `bg-transparent`. O popup do <select> é desenhado
                            pelo browser usando a cor de fundo COMPUTADA do elemento, e

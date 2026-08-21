@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-21-apolo-campo-cidade",
+    deployedAt: "2026-08-21T15:45:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Naturalidade virou campo com SUGESTAO, igual profissao: comeca a digitar e a lista mostra os municipios, com a UF ao lado",
+              "Da para digitar a UF junto para estreitar a busca, antes ou depois do nome: 'mg joao', 'joao monlevade mg' ou 'joao/mg'",
+              "Acha sem acento: 'sao joao' encontra 'Sao Joao'",
+              "Vale tambem para a cidade do endereco, do titular, do conjuge e dos socios",
+            ],
+            screen: "Cadastro e validacao da CAD",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.180.0 (2026-08-21-prometeu-abrir-lancamento)",
+    technical: {
+      done:
+        "Nova lista `lib/apolo/c2x-cidades.ts` gerada da tabela `cities` do C2X: 5.601 municipios, formato compacto 'Nome|UF' (como array de objetos passaria de 300KB; assim fica em 119KB) e carregada por IMPORT DINAMICO na primeira tecla, para nao pesar o bundle de quem nunca abre o campo. Script permanente de regeneracao em scripts/apolo/gerar-cidades.mjs. `lib/apolo/cidades.ts` tem a regra: `separarUf` acha a UF em QUALQUER posicao do que foi digitado, e ⚠️ so trata como UF um token ISOLADO de 2 letras — senao 'pará de minas' e 'sapucaia' filtrariam PA e SP e devolveriam lista vazia. `buscarCidades` poe quem COMECA com o termo antes de quem so contem ('belo' traz Belo Horizonte antes de Monte Belo). +14 testes. ⚠️ NAO E UM <select> como profissao: sao 5.601 itens e o C2X guarda `users.naturalness` como TEXTO LIVRE, nao como id — o campo continua input, o que muda e que ele ensina o valor certo. `textoDaCidade` grava SO O NOME: o padrao dominante hoje e o nome puro ('BELO HORIZONTE', 496 registros) e gravar 'Nome / UF' criaria um segundo formato para o mesmo dado. A UF fica na SUGESTAO, que e onde ela resolve a ambiguidade.",
+      motivation:
+        "Lucas, 21/08, olhando a naturalidade na validacao da CAD: *\"esse campo de cidades tem que ser padrao, igual profissao: comeco a digitar ele puxa a cidade correta, se quiser colocar um UF antes para mitigar a busca pode colocar\"*. Medido no C2X: 247 nomes de cidade se repetem entre estados diferentes (por isso a UF importa), e o campo livre ja produziu 'NAO INFORMADO' em 569 cadastros, alem de 'PARA DE MINAS / MG' convivendo com 'BELO HORIZONTE' — dois formatos para o mesmo dado.",
+    },
+    title: "Cidade com sugestao no cadastro",
+    type: "melhoria",
+    version: "1.181.0",
+  },
+  {
     buildTag: "2026-08-21-prometeu-abrir-lancamento",
     deployedAt: "2026-08-21T15:20:00-03:00",
     modules: [

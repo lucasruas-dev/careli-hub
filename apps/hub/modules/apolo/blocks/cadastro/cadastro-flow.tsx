@@ -75,6 +75,7 @@ import {
   subirDocumentoDireto,
 } from "../../lib/document-upload";
 import { buscarEnderecoPorCep, soDigitos } from "../../lib/cep";
+import { CampoCidade } from "./campo-cidade";
 
 // Wizard de cadastro de CAD (prospect). Etapas: Identificação -> Endereço ->
 // (Cônjuge se casado) -> Revisão. Campos read-only vêm do documento/MOST;
@@ -2574,8 +2575,9 @@ function StepIdentificacao({
               />
             )}
             <CampoDoDocumento
+              cidade
               label="Naturalidade (obrigatória)"
-              placeholder="Cidade de nascimento, ex.: Goiânia / GO"
+              placeholder="Cidade de nascimento, ex.: Goiânia"
               value={identidade.naturalidade}
               onChange={(v) => onIdentidadeChange({ naturalidade: v })}
             />
@@ -2693,8 +2695,9 @@ function StepIdentificacao({
                         entregou abre para digitar. A CNH não traz naturalidade impressa, e o RG
                         mal fotografado também falha; travado, o campo ficava "—" para sempre. */}
                     <CampoDoDocumento
+                      cidade
                       label="Naturalidade"
-                      placeholder="Cidade de nascimento, ex.: Goiânia / GO"
+                      placeholder="Cidade de nascimento, ex.: Goiânia"
                       value={conjuge.naturalidade}
                       onChange={(v) => onConjugeChange({ naturalidade: v })}
                     />
@@ -2953,8 +2956,9 @@ function BlocoSocio({
                 entregava (CNH não traz naturalidade impressa, e foto ruim de RG também falha), o
                 campo ficava "—" e NÃO havia como preencher. Mesmo tratamento do titular. */}
             <CampoDoDocumento
+              cidade
               label="Naturalidade"
-              placeholder="Cidade de nascimento, ex.: Goiânia / GO"
+              placeholder="Cidade de nascimento, ex.: Goiânia"
               value={socio.naturalidade}
               onChange={(v) => aoMudar({ naturalidade: v })}
             />
@@ -4570,11 +4574,16 @@ function StepRevisao({
 // naturalidade (que passou a barrar o avanço) isso trancava o cadastro inteiro. Aqui a decisão é
 // tomada UMA VEZ, na montagem: quem nasceu vazio continua digitável enquanto a pessoa escreve.
 function CampoDoDocumento({
+  cidade,
   label,
   onChange,
   placeholder,
   value,
 }: {
+  // Naturalidade é uma CIDADE: quando o documento não trouxe e o operador precisa digitar, ele
+  // digita com sugestão em vez de escrever à mão (é assim que nascem "NAO INFORMADO", com 569
+  // ocorrências, e "Bh" em vez de "Belo Horizonte").
+  cidade?: boolean;
   label: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -4583,7 +4592,14 @@ function CampoDoDocumento({
   const [veioDoDocumento] = useState(() => Boolean(value.trim()));
   if (veioDoDocumento) return <ReadField label={label} value={titleCase(value)} />;
   return (
-    <TextField editavel label={label} onChange={onChange} placeholder={placeholder} value={value} />
+    <TextField
+      cidade={cidade}
+      editavel
+      label={label}
+      onChange={onChange}
+      placeholder={placeholder}
+      value={value}
+    />
   );
 }
 
@@ -4654,12 +4670,16 @@ function SelectField({
 }
 
 function TextField({
+  cidade,
   editavel,
   label,
   onChange,
   placeholder,
   value,
 }: {
+  // Liga a sugestão de CIDADE (naturalidade, cidade do endereço): digita e a lista mostra os
+  // municípios, com a UF ao lado. Ver `CampoCidade`.
+  cidade?: boolean;
   // Mostra o selo "editável" (lápis), o mesmo do telefone: sinaliza campo que o operador digita.
   editavel?: boolean;
   label: string;
@@ -4680,12 +4700,21 @@ function TextField({
           </span>
         ) : null}
       </div>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="mt-0.5 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
-      />
+      {cidade ? (
+        <CampoCidade
+          className="mt-0.5 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
+          onChange={onChange}
+          placeholder={placeholder}
+          valor={value}
+        />
+      ) : (
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className="mt-0.5 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
+        />
+      )}
     </div>
   );
 }
