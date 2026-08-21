@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-21-prometeu-etiqueta-corretor",
+    deployedAt: "2026-08-21T16:20:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Nova aba CORRETORES: a tela de etiquetas agora imprime tambem o cracha dos corretores do lancamento",
+              "A lista sai da propria fila (o nome que veio junto de cada CAD), sem cadastro novo: 69 corretores no Vale do Ouro, 6 no Villa Paris",
+              "A etiqueta do corretor tem o nome GRANDE, a imobiliaria e o selo CORRETOR. Sem QR, porque corretor nao faz check-in",
+              "Da para imprimir um a um ou o lote inteiro, com o mesmo filtro por imobiliaria",
+            ],
+            screen: "Etiquetas",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.181.0 (2026-08-21-apolo-campo-cidade)",
+    technical: {
+      done:
+        "A lista de corretores e DERIVADA de `prometeu_credenciados.corretor` (nao ha cadastro de corretor no Prometeu): conjunto distinto por nome+imobiliaria, normalizando caixa e espaco — o dado e digitado a mao em cada CAD, e 'Joao Silva' e 'JOAO SILVA ' sao a mesma pessoa. A chave inclui a imobiliaria porque o mesmo nome pode aparecer por duas, e ai sao dois crachas. O motor de impressao foi EXTRAIDO para `imprimirDocumento` (monta o iframe isolado, espera as imagens, dispara o print) e agora serve os dois tipos: cliente e corretor imprimem pelo mesmo caminho, entao o ajuste fino contra a Honeywell vale para os dois de uma vez. `imprimirEtiquetasCorretor` nao carimba 'impressa' — o corretor nao tem linha na fila para carimbar. CSS: `.etq-corretor` reusa a caixa `.etq` inteira (mesmo papel, mesma margem de seguranca, mesmas barras pretas) e so troca o miolo — sem QR, nome a 21pt e o selo com borda. A previa na tela e espelho do HTML da impressao.",
+      motivation:
+        "Lucas, 21/08: *\"fazer as etiquetas tambem dos corretores, seria muito bacana\"*, e a escolha do formato foi dele: nome + imobiliaria com selo CORRETOR, para o time reconhecer de longe no salao.",
+    },
+    title: "Etiqueta do corretor",
+    type: "novidade",
+    version: "1.182.0",
+  },
+  {
     buildTag: "2026-08-21-apolo-campo-cidade",
     deployedAt: "2026-08-21T15:45:00-03:00",
     modules: [

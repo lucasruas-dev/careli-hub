@@ -79,6 +79,44 @@ function etiquetaHTML(
   </div>`;
 }
 
+// O CORRETOR não é um credenciado: ele não tem CAD, não faz check-in e não tem código de fila.
+// Por isso é um tipo próprio, e não um `PrometeuCredenciado` meio preenchido — que obrigaria a
+// inventar id e documento para satisfazer o formato.
+export type CorretorParaEtiqueta = { imobiliaria: null | string; nome: string };
+
+// A etiqueta do corretor: MESMA caixa, miolo diferente.
+//
+// ⚠️ SEM QR, de propósito (decisão do Lucas, 21/08). O QR do cliente carrega o id do credenciado e
+// serve ao check-in; o corretor não passa por esse fluxo. Tirá-lo libera a largura inteira para o
+// nome, que é o que faz o crachá ser lido de longe no salão.
+function etiquetaCorretorHTML(
+  corretor: CorretorParaEtiqueta,
+  contexto: { dataEvento: string; empreendimento: string; logoSrc: string },
+): string {
+  const dataLinha = contexto.dataEvento
+    ? `CORRETOR · ${esc(contexto.dataEvento)}`
+    : "CORRETOR";
+
+  return `<div class="etq etq-corretor">
+    <div class="etq-top">
+      <div class="etq-top-l">
+        <div class="etq-emp">${esc(contexto.empreendimento.toUpperCase())}</div>
+        <div class="etq-data">${dataLinha}</div>
+      </div>
+      <div class="etq-top-r">
+        <img class="etq-logo" src="${esc(contexto.logoSrc)}" alt="C2X">
+      </div>
+    </div>
+    <div class="etq-body">
+      <div class="etq-dados">
+        <div class="etq-nome">${esc(corretor.nome)}</div>
+        <div class="etq-imob">${esc(corretor.imobiliaria ?? "")}</div>
+        <div class="etq-selo">CORRETOR</div>
+      </div>
+    </div>
+  </div>`;
+}
+
 // Espera todas as imagens do documento carregarem antes de mandar para a impressora: disparar o
 // print com o logo ou o QR ainda carregando queima etiqueta física em branco. O QR é data URL
 // (instantâneo), mas o logo vem da rede.
@@ -96,27 +134,10 @@ function esperarImagens(doc: Document): Promise<void> {
   ).then(() => undefined);
 }
 
-export async function imprimirEtiquetas(
-  etiquetas: DadosEtiqueta[],
-  contexto: {
-    dataEvento: string;
-    empreendimento: string;
-    // Chamado quando a impressão foi disparada (para carimbar etiqueta_impressa_em).
-    aoImprimir: (ids: string[]) => void;
-  },
-): Promise<void> {
-  if (etiquetas.length === 0) return;
-
-  // Logo em URL absoluta: dentro do iframe about:blank, um caminho relativo não resolveria.
-  const logoSrc = new URL(
-    "/prometeu/c2x-logo.png",
-    window.location.origin,
-  ).toString();
-
-  const corpo = etiquetas
-    .map((e) => etiquetaHTML(e, { ...contexto, logoSrc }))
-    .join("");
-
+// O MOTOR DA IMPRESSÃO, separado do CONTEÚDO: monta o documento isolado, espera as imagens e
+// dispara o print. Cliente e corretor imprimem pelo mesmo caminho — o que muda é só o HTML de cada
+// etiqueta, e é por isso que o ajuste fino contra a Honeywell vale para os dois de uma vez.
+async function imprimirDocumento(corpo: string, aoDisparar?: () => void): Promise<void> {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
   Object.assign(iframe.style, {
@@ -145,7 +166,6 @@ export async function imprimirEtiquetas(
 
   await esperarImagens(doc);
 
-  const ids = etiquetas.map((e) => e.credenciado.id);
   let finalizado = false;
   const limpar = () => {
     if (finalizado) return;
@@ -160,8 +180,50 @@ export async function imprimirEtiquetas(
 
   win.focus();
   win.print();
+  aoDisparar?.();
+}
+
+// O logo em URL absoluta: dentro do iframe about:blank, um caminho relativo não resolveria.
+function logoAbsoluto(): string {
+  return new URL("/prometeu/c2x-logo.png", window.location.origin).toString();
+}
+
+// AS ETIQUETAS DOS CORRETORES (Lucas, 21/08: *"fazer as etiquetas também dos corretores, seria
+// muito bacana"*). Sem carimbo de "impressa": o corretor não tem linha na fila para carimbar.
+export async function imprimirEtiquetasCorretor(
+  corretores: CorretorParaEtiqueta[],
+  contexto: { dataEvento: string; empreendimento: string },
+): Promise<void> {
+  if (corretores.length === 0) return;
+
+  const logoSrc = logoAbsoluto();
+  const corpo = corretores
+    .map((c) => etiquetaCorretorHTML(c, { ...contexto, logoSrc }))
+    .join("");
+
+  await imprimirDocumento(corpo);
+}
+
+export async function imprimirEtiquetas(
+  etiquetas: DadosEtiqueta[],
+  contexto: {
+    dataEvento: string;
+    empreendimento: string;
+    // Chamado quando a impressão foi disparada (para carimbar etiqueta_impressa_em).
+    aoImprimir: (ids: string[]) => void;
+  },
+): Promise<void> {
+  if (etiquetas.length === 0) return;
+
+  const logoSrc = logoAbsoluto();
+  const corpo = etiquetas
+    .map((e) => etiquetaHTML(e, { ...contexto, logoSrc }))
+    .join("");
+
   // O carimbo é otimista (o diálogo pode ser cancelado), mas é o comportamento certo aqui: o
   // operador imprime lotes grandes e reimprimir é barato; deixar "não impressa" quem saiu é que
   // faria o time reimprimir o lote inteiro por segurança.
-  contexto.aoImprimir(ids);
+  await imprimirDocumento(corpo, () =>
+    contexto.aoImprimir(etiquetas.map((e) => e.credenciado.id)),
+  );
 }

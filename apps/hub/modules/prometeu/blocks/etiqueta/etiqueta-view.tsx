@@ -10,7 +10,7 @@ import {
   marcarEtiquetaImpressaRemoto,
 } from "../../data/prometeu-operations";
 import { ETIQUETA_PRINT_DOC_CSS, ETIQUETA_TELA_CSS } from "./etiqueta-css";
-import { imprimirEtiquetas } from "./imprimir-etiquetas";
+import { imprimirEtiquetas, imprimirEtiquetasCorretor } from "./imprimir-etiquetas";
 import {
   codigoDaCredencial,
   conteudoDoQrCredencial,
@@ -133,6 +133,42 @@ function Etiqueta({
   );
 }
 
+// A ETIQUETA DO CORRETOR na tela — espelho do HTML de `imprimir-etiquetas`, para a prévia mostrar
+// o que sai no papel. Mesma caixa `.etq`, sem QR: o corretor não faz check-in, e a largura livre é
+// o que deixa o nome grande o bastante para ser lido de longe no salão.
+function EtiquetaCorretor({
+  corretor,
+  dataEvento,
+  empreendimento,
+}: {
+  corretor: { imobiliaria: null | string; nome: string };
+  dataEvento: string;
+  empreendimento: string;
+}) {
+  return (
+    <div className="etq etq-corretor">
+      <div className="etq-top">
+        <div className="etq-top-l">
+          <div className="etq-emp">{empreendimento.toUpperCase()}</div>
+          <div className="etq-data">CORRETOR{dataEvento ? ` · ${dataEvento}` : ""}</div>
+        </div>
+        <div className="etq-top-r">
+          {/* eslint-disable-next-line @next/next/no-img-element -- impressão térmica. */}
+          <img alt="C2X" className="etq-logo" src="/prometeu/c2x-logo.png" />
+        </div>
+      </div>
+
+      <div className="etq-body">
+        <div className="etq-dados">
+          <div className="etq-nome">{corretor.nome}</div>
+          <div className="etq-imob">{corretor.imobiliaria ?? ""}</div>
+          <div className="etq-selo">CORRETOR</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EtiquetaView() {
   const [eventos, setEventos] = useState<PrometeuEvento[]>([]);
   const [eventoId, setEventoId] = useState("");
@@ -144,6 +180,9 @@ export function EtiquetaView() {
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [qrPorId, setQrPorId] = useState<Record<string, string>>({});
   const [preparando, setPreparando] = useState(false);
+  // CLIENTES ou CORRETORES. Duas listas da MESMA fila: o corretor não tem cadastro próprio no
+  // Prometeu, ele é o nome que veio junto de cada CAD.
+  const [aba, setAba] = useState<"clientes" | "corretores">("clientes");
 
   useEffect(() => {
     void (async () => {
@@ -207,6 +246,48 @@ export function EtiquetaView() {
   const selecionado = useMemo(
     () => credenciados.find((c) => c.id === selecionadoId) ?? null,
     [credenciados, selecionadoId],
+  );
+
+  // OS CORRETORES DO LANÇAMENTO, tirados da própria fila.
+  //
+  // ⚠️ NÃO HÁ CADASTRO DE CORRETOR NO PROMETEU: o que existe é o nome que veio com cada CAD. Então
+  // a lista é o conjunto DISTINTO desses nomes — 69 no Vale do Ouro, para 609 credenciados.
+  //
+  // A chave junta nome + imobiliária porque o mesmo nome pode aparecer por duas imobiliárias, e aí
+  // são dois crachás diferentes. A comparação normaliza caixa e espaço: o dado vem digitado à mão
+  // em CAD diferente, e "João Silva" e "JOAO SILVA " são a mesma pessoa.
+  const corretores = useMemo(() => {
+    const mapa = new Map<string, { imobiliaria: null | string; nome: string }>();
+
+    for (const c of credenciados) {
+      const nome = (c.corretor ?? "").trim();
+      if (!nome) continue;
+
+      const imobiliaria = (c.imobiliaria ?? "").trim() || null;
+      const chave = `${nome.toLowerCase()}|${(imobiliaria ?? "").toLowerCase()}`;
+      if (!mapa.has(chave)) mapa.set(chave, { imobiliaria, nome });
+    }
+
+    return [...mapa.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [credenciados]);
+
+  const corretoresFiltrados = useMemo(() => {
+    const alvo = busca.trim().toLowerCase();
+    return corretores.filter((c) => {
+      const casaImob =
+        imobiliaria === "Todas as imobiliárias" || c.imobiliaria === imobiliaria;
+      if (!casaImob) return false;
+      if (!alvo) return true;
+      return `${c.nome} ${c.imobiliaria ?? ""}`.toLowerCase().includes(alvo);
+    });
+  }, [busca, corretores, imobiliaria]);
+
+  const imprimirCorretores = useCallback(
+    async (lista: { imobiliaria: null | string; nome: string }[]) => {
+      if (lista.length === 0) return;
+      await imprimirEtiquetasCorretor(lista, { dataEvento, empreendimento });
+    },
+    [dataEvento, empreendimento],
   );
 
   // Gera os QR que faltam e DEVOLVE o mapa completo (id -> dataURL) da lista pedida. Devolver em
@@ -323,6 +404,30 @@ export function EtiquetaView() {
           </div>
         </div>
 
+        {/* CLIENTES | CORRETORES — duas listas da mesma fila. O corretor não tem cadastro no
+            Prometeu: ele é o nome que veio junto de cada CAD, e a lista é o conjunto distinto. */}
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          {(["clientes", "corretores"] as const).map((chave) => (
+            <button
+              className={`h-8 rounded-lg px-3 text-xs font-semibold transition-colors ${
+                aba === chave
+                  ? "bg-[#101820] text-[#cba25a]"
+                  : "border border-line text-ink-soft hover:bg-subtle"
+              }`}
+              key={chave}
+              onClick={() => {
+                setAba(chave);
+                setSelecionadoId(null);
+              }}
+              type="button"
+            >
+              {chave === "clientes"
+                ? `Clientes (${credenciados.length})`
+                : `Corretores (${corretores.length})`}
+            </button>
+          ))}
+        </div>
+
         <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-muted">
           <span>
             <b className="text-ink">{credenciados.length}</b> credenciados
@@ -383,6 +488,41 @@ export function EtiquetaView() {
               <p className="m-0 flex items-center gap-2 p-4 text-xs text-ink-muted">
                 <Loader2 className="size-3.5 animate-spin" /> Carregando os credenciados...
               </p>
+            ) : aba === "corretores" ? (
+              corretoresFiltrados.length === 0 ? (
+                <p className="m-0 p-4 text-xs text-ink-muted">
+                  {corretores.length === 0
+                    ? "Nenhum corretor na fila ainda. O nome vem junto de cada CAD."
+                    : "Nenhum corretor com esse filtro."}
+                </p>
+              ) : (
+                <ul className="m-0 list-none space-y-1 p-2">
+                  {corretoresFiltrados.map((c) => (
+                    <li key={`${c.nome}|${c.imobiliaria ?? ""}`}>
+                      <div className="flex w-full items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 hover:bg-subtle">
+                        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#101820] text-[11px] font-bold text-[#cba25a]">
+                          {iniciais(c.nome)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-ink">
+                            {c.nome}
+                          </span>
+                          <span className="block truncate text-[11px] text-ink-muted">
+                            {c.imobiliaria ?? "Sem imobiliária"}
+                          </span>
+                        </span>
+                        <button
+                          className="shrink-0 rounded-lg border border-line px-2 py-1 text-[11px] font-semibold text-ink hover:bg-subtle"
+                          onClick={() => void imprimirCorretores([c])}
+                          type="button"
+                        >
+                          Imprimir
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )
             ) : filtrados.length === 0 ? (
               <p className="m-0 p-4 text-xs text-ink-muted">
                 {credenciados.length === 0
@@ -448,11 +588,25 @@ export function EtiquetaView() {
         <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-surface">
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-2.5">
             <p className="m-0 text-sm font-bold text-ink">Etiqueta</p>
-            <span className="text-[11px] text-ink-muted">cola no crachá do cliente</span>
+            <span className="text-[11px] text-ink-muted">
+              {aba === "corretores" ? "crachá do corretor" : "cola no crachá do cliente"}
+            </span>
           </div>
 
           <div className="etq-preview grid min-h-0 flex-1 place-items-center overflow-auto p-6">
-            {selecionado ? (
+            {aba === "corretores" ? (
+              corretoresFiltrados[0] ? (
+                <EtiquetaCorretor
+                  corretor={corretoresFiltrados[0]}
+                  dataEvento={dataEvento}
+                  empreendimento={empreendimento}
+                />
+              ) : (
+                <p className="m-0 text-xs text-ink-muted">
+                  Nenhum corretor na fila para gerar etiqueta.
+                </p>
+              )
+            ) : selecionado ? (
               <Etiqueta
                 credenciado={selecionado}
                 dataEvento={dataEvento}
@@ -467,8 +621,21 @@ export function EtiquetaView() {
           </div>
 
           <div className="flex shrink-0 items-center justify-between gap-2 border-t border-line px-4 py-3">
+            {aba === "corretores" ? (
+              <button
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-[#e8d5a8] hover:bg-[#1b2732] disabled:opacity-50"
+                disabled={corretoresFiltrados.length === 0}
+                onClick={() => void imprimirCorretores(corretoresFiltrados)}
+                type="button"
+              >
+                <Printer aria-hidden="true" className="size-4" />
+                Imprimir todas ({corretoresFiltrados.length})
+              </button>
+            ) : null}
             <button
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-line px-3 text-sm font-semibold text-ink hover:bg-subtle disabled:opacity-50"
+              className={`inline-flex h-10 items-center gap-2 rounded-lg border border-line px-3 text-sm font-semibold text-ink hover:bg-subtle disabled:opacity-50 ${
+                aba === "corretores" ? "hidden" : ""
+              }`}
               disabled={preparando || filtrados.length === 0}
               onClick={() => void imprimir(filtrados)}
               type="button"
@@ -481,7 +648,9 @@ export function EtiquetaView() {
               Imprimir todas ({filtrados.length})
             </button>
             <button
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-[#e8d5a8] hover:bg-[#1b2732] disabled:opacity-50"
+              className={`inline-flex h-10 items-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-[#e8d5a8] hover:bg-[#1b2732] disabled:opacity-50 ${
+                aba === "corretores" ? "hidden" : ""
+              }`}
               disabled={!selecionado || preparando}
               onClick={() => void (selecionado && imprimir([selecionado]))}
               type="button"

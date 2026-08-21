@@ -24,6 +24,18 @@ const ETIQUETA_ESTILO_BASE = `
 .etq-nome{font-size:15pt;font-weight:800;line-height:1.06;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .etq-imob{font-size:9.5pt;font-weight:700;margin-top:1mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .etq-cor{font-size:8pt;margin-top:.6mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ETIQUETA DO CORRETOR (Lucas, 21/08/2026: "fazer as etiquetas tambem dos corretores").
+   REUSA a mesma caixa .etq — mesmo papel, mesma margem de seguranca, mesmas barras — e so troca o
+   MIOLO: sem QR (corretor nao faz check-in, o QR e do fluxo do cliente) e por isso o nome ocupa a
+   largura inteira e cresce. E o que faz o crachá ser lido de longe no salao, que e para o que ele
+   serve. */
+.etq-corretor .etq-body{gap:0}
+.etq-corretor .etq-dados{text-align:center}
+.etq-corretor .etq-nome{font-size:21pt;line-height:1.04;-webkit-line-clamp:2}
+.etq-corretor .etq-imob{font-size:11pt;margin-top:2mm}
+.etq-selo{display:inline-block;margin-top:2.2mm;border:.5mm solid #000;border-radius:1.2mm;padding:.7mm 3mm;font-size:9pt;font-weight:800;letter-spacing:.14em}
+
 .etq-foot{background:#000;color:#fff;padding:1.0mm 3mm;display:flex;justify-content:space-between;gap:2mm;font-size:8pt;font-weight:800;font-family:Consolas,monospace;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .etq-foot span{white-space:nowrap}
 .etq-foot i{font-style:normal;font-weight:600;opacity:.7;margin-right:.6mm}
