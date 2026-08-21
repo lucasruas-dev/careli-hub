@@ -163,6 +163,53 @@ export async function sendEvolutionDirectText({
   return postEvolutionMessage("sendText", { number: numero, text });
 }
 
+// ANEXO 1:1 pelo número do RELACIONAMENTO — o mesmo caminho do texto, com arquivo junto.
+//
+// Existe porque o aviso de crédito reprovado leva a CAD em PDF, e até aqui só a Meta sabia
+// mandar documento (`sendMetaWhatsAppTemplateMessage` com headerMedia). Sem isto, migrar o aviso
+// para o Relacionamento custaria o anexo — e o coordenador decide olhando a CAD, não o texto.
+//
+// ⚠️ MESMO ENDPOINT DO GRUPO. A Evolution não separa: `sendMedia` aceita no `number` tanto o JID
+// de um grupo quanto um telefone com DDI. A diferença está só no que se passa.
+export async function sendEvolutionDirectMedia({
+  base64,
+  caption,
+  fileName,
+  mediatype = "document",
+  mimeType,
+  telefone,
+  url,
+}: {
+  // Uma das duas. `url` evita carregar o arquivo inteiro na memória da função serverless.
+  base64?: string;
+  caption: string;
+  fileName: string;
+  mediatype?: "document" | "image" | "video";
+  mimeType: string;
+  // só dígitos, com DDI (ex.: 5531997250000)
+  telefone: string;
+  url?: string;
+}): Promise<EvolutionSendResult> {
+  const numero = telefone.replace(/\D/g, "");
+
+  if (numero.length < 12) {
+    return { ok: false, error: "Telefone sem DDI: nao da para enviar." };
+  }
+
+  if (!url && !base64) {
+    return { ok: false, error: "Anexo sem conteudo: informe url ou base64." };
+  }
+
+  return postEvolutionMessage("sendMedia", {
+    caption,
+    fileName,
+    media: url ?? base64,
+    mediatype,
+    mimetype: mimeType,
+    number: numero,
+  });
+}
+
 async function postEvolutionMessage(
   endpoint: "sendMedia" | "sendReaction" | "sendText" | "sendWhatsAppAudio",
   payload: Record<string, unknown>,

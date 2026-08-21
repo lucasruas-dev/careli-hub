@@ -143,7 +143,11 @@ type ItemFila = {
 // lista encolheu, o número 2 ("Pré-venda") passaria a apontar para Credenciado.
 const PASSO_DA_ETAPA: Record<string, string> = {
   cadastro: "cadastro",
-  correcao: "cadastro",
+  // ⚠️ CORREÇÃO TEM BOLINHA PRÓPRIA desde 21/08 (pedido do Lucas: *"temos que ter nessa esteira a
+  // etapa de correção, para a gente entender onde está parado aquela CAD"*). Antes apontava para
+  // "cadastro" e a CAD em correção ficava visualmente idêntica a uma que acabou de chegar — a
+  // trilha não dizia que ela estava parada esperando o corretor. Ver `etapasDoItem`.
+  correcao: "correcao",
   credenciado: "credenciado",
   credito: "credito",
   // Os DESVIOS do crédito (revisão, indeferido) abrem NA Análise de crédito: quem está em revisão
@@ -229,6 +233,16 @@ const ETAPAS_CAD: Etapa[] = [
   },
 ];
 
+// O DESVIO DA CORREÇÃO. Fica fora de `ETAPAS_CAD` porque não é passo do caminho normal: entra na
+// trilha só de quem está em correção (ver `etapasDoItem`), entre a Validação e o Crédito, que é
+// onde a devolução acontece.
+const ETAPA_CORRECAO: Etapa = {
+  descricao: "Devolvida ao corretor: aguardando o documento ou a informação que faltou.",
+  icon: AlertTriangle,
+  id: "correcao",
+  label: "Correção",
+};
+
 const ETAPAS_IMOBILIARIA: Etapa[] = [
   {
     descricao:
@@ -251,7 +265,16 @@ const ETAPAS_IMOBILIARIA: Etapa[] = [
 // O servidor decide (`prevendaHabilitada` do card, fail-closed); aqui só se obedece.
 const etapasDoItem = (item: ItemFila): Etapa[] => {
   if (item.papel === "imobiliaria") return ETAPAS_IMOBILIARIA;
-  return item.prevendaHabilitada ? ETAPAS_CAD : ETAPAS_CAD.filter((e) => e.id !== "prevenda");
+  const base = item.prevendaHabilitada ? ETAPAS_CAD : ETAPAS_CAD.filter((e) => e.id !== "prevenda");
+
+  // ⚠️ CORREÇÃO É UM DESVIO, e só entra na trilha de quem está NELE. Ela não é um passo do caminho
+  // normal: pô-la fixa faria as outras 714 CADs mostrarem um degrau que ninguém vai pisar. Quem
+  // está em correção vê "Validação ✓ → Correção → Análise de crédito", que é a resposta visual
+  // para "onde essa CAD parou".
+  if (item.etapa !== "correcao") return base;
+
+  const depoisDaValidacao = base.findIndex((e) => e.id === "cadastro") + 1;
+  return [...base.slice(0, depoisDaValidacao), ETAPA_CORRECAO, ...base.slice(depoisDaValidacao)];
 };
 
 type Analista = { id: string; nome: string };
@@ -2772,20 +2795,66 @@ function DetalheBoard({
           const atual = i === indice && !concluida;
           const alcancada = concluida || i <= indice;
           const vendo = i === indiceVisto;
+
+          // ⚠️ A TRILHA PASSA A TER ESTADO DE FALHA. Regra do Lucas (21/08): *"se for aprovada
+          // fica como verde e avança para próxima etapa; se não foi aprovado, fica vermelho a
+          // etapa de crédito e mantém ela nessa etapa"*.
+          //
+          // Até aqui existiam TRÊS estados (feita/atual/futura) e nenhum deles dizia "deu errado":
+          // uma CAD reprovada — 165 delas — era pintada igual a uma que estava só esperando a
+          // consulta. O verde do aprovado já funcionava por consequência (o crédito vira `feita`
+          // quando a etapa avança para pré-venda ou credenciado); o que faltava era o vermelho.
+          //
+          // `indeferido` entra junto: é o mesmo desfecho, em definitivo.
+          const reprovado = (emRevisao || indeferido) && passo.id === "credito";
+          // A correção é uma parada, não uma reprovação: âmbar, o mesmo tom do badge do topo.
+          const aguardandoCorrecao = emCorrecao && passo.id === "correcao";
+
           const conteudo = (
             <>
               <span
                 className={`flex size-7 items-center justify-center rounded-full text-[11px] font-bold ${
-                  feita
-                    ? "bg-emerald-500 text-white"
-                    : atual
-                      ? "bg-inverse text-brand-ink"
-                      : "border border-line bg-surface text-ink-muted"
+                  reprovado
+                    ? "bg-rose-600 text-white"
+                    : aguardandoCorrecao
+                      ? "bg-amber-500 text-white"
+                      : feita
+                        ? "bg-emerald-500 text-white"
+                        : atual
+                          ? "bg-inverse text-brand-ink"
+                          : "border border-line bg-surface text-ink-muted"
                 } ${vendo && !atual ? "ring-2 ring-[#A07C3B]/50 ring-offset-1" : ""}`}
+                title={
+                  reprovado
+                    ? indeferido
+                      ? "Crédito indeferido"
+                      : "Crédito reprovado: aguardando a coordenação"
+                    : aguardandoCorrecao
+                      ? "Aguardando a correção do corretor"
+                      : undefined
+                }
               >
-                {feita ? <Check aria-hidden="true" className="size-3.5" /> : i + 1}
+                {reprovado ? (
+                  <X aria-hidden="true" className="size-3.5" />
+                ) : aguardandoCorrecao ? (
+                  <AlertTriangle aria-hidden="true" className="size-3.5" />
+                ) : feita ? (
+                  <Check aria-hidden="true" className="size-3.5" />
+                ) : (
+                  i + 1
+                )}
               </span>
-              <span className={`text-xs font-medium ${vendo ? "text-ink" : "text-ink-muted"}`}>
+              <span
+                className={`text-xs font-medium ${
+                  reprovado
+                    ? "text-rose-700 dark:text-rose-300"
+                    : aguardandoCorrecao
+                      ? "text-amber-700 dark:text-amber-300"
+                      : vendo
+                        ? "text-ink"
+                        : "text-ink-muted"
+                }`}
+              >
                 {passo.label}
               </span>
             </>

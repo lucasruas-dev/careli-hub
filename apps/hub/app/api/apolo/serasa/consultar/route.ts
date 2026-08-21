@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloWrite } from "@/lib/apolo/auth";
 import { avisarImobReprovado } from "@/lib/apolo/disparo-imobiliaria";
-import { dispararReprovacao } from "@/lib/apolo/disparo-reprovacao";
 import { lerCadDaEsteira } from "@/lib/apolo/esteira-cad";
 import { cpfValido } from "@/lib/apolo/documento";
 import { destinoAposCredito } from "@/lib/apolo/destino-credito";
@@ -502,6 +501,41 @@ export async function POST(request: Request) {
   // reconsultar uma ficha credenciada a devolvia para revisão e desfazia a decisão humana.
   const limiteResolvido = await resolverLimiteCredito(client, entidade.id, corpo.enterpriseId);
   const veredito = avaliarCredito(resposta.corpo, limiteResolvido ?? 1000);
+
+  // CONGELA O VEREDITO NA CONSULTA — "a etapa tem que ser marcada" (Lucas, 21/08).
+  //
+  // ⚠️ ATÉ AQUI O RESULTADO NÃO ERA GUARDADO EM LUGAR NENHUM: ele era RECALCULADO a cada leitura
+  // (aqui e no GET) a partir do JSON cru, usando o limite ATUAL do empreendimento. Como esse
+  // limite é editável, o mesmo relatório podia virar APROVADO no dia seguinte sem ninguém
+  // reconsultar nada — e o contrário também. O único rastro da decisão era a etapa.
+  //
+  // Guardado junto do `resumo` para não custar coluna nova. Best-effort e DEPOIS do insert: a
+  // consulta já foi cobrada e gravada, e um carimbo que falha não pode derrubá-la.
+  const idConsulta = (gravada as { id?: string } | null)?.id ?? null;
+  if (idConsulta) {
+    try {
+      const resumoAtual = ((gravada as { resumo?: Record<string, unknown> } | null)?.resumo ??
+        {}) as Record<string, unknown>;
+      await client
+        .from("serasa_consultas")
+        .update({
+          resumo: {
+            ...resumoAtual,
+            veredito: {
+              aprovado: veredito.aprovado,
+              avaliadoEm: new Date().toISOString(),
+              // O limite VIGENTE no momento da decisão. É ele que explica, meses depois, por que
+              // esta consulta reprovou e outra igual passou.
+              limite: limiteResolvido ?? 1000,
+              motivo: veredito.motivo ?? null,
+            },
+          },
+        })
+        .eq("id", idConsulta);
+    } catch {
+      /* segue: o veredito volta a ser recomputado, como era antes */
+    }
+  }
   // Pré-venda DESLIGADA no empreendimento (ex.: fila já montada, PIX encerrado): o aprovado vai
   // DIRETO para credenciado, sem gerar PIX. Ligada (padrão) segue para pré-venda como sempre.
   const prevendaHabilitada = await resolverPrevendaHabilitada(
@@ -565,16 +599,23 @@ export async function POST(request: Request) {
   // revisão, quando a esteira não registrou nada, é criar trabalho para uma ficha que a tela vai
   // mostrar em Validação de novo no minuto seguinte.
   if (transicao && !etapaNaoGravada && !veredito.aprovado && !transicao.mantida) {
-    try {
-      disparo = await dispararReprovacao({
-        adminClient: client,
-        enterpriseId: corpo.enterpriseId ?? null,
-        entityId: entidade.id,
-      });
-    } catch {
-      disparo = null;
-    }
+    // ⚠️ O AVISO NÃO SAI MAIS DAQUI. Ele agora é disparado por `atualizarEtapa`, que é o ponto
+    // autoritativo de escrita de etapa, e vem de volta em `transicao.aviso`.
+    //
+    // Regra do Lucas (21/08): *"reforço que os disparos têm que ser feitos pelo número do
+    // relacionamento"*. O caminho antigo (`dispararReprovacao`) saía do 4143 com template da Meta
+    // — e o ramo do CORRETOR ali era estruturalmente morto: lia `metadata.phone` do vínculo do
+    // cliente, campo vazio em 718 de 718 CADs, o que explica `apolo_disparos` ter 2.249 linhas e
+    // ZERO do tipo `corretor`. O caminho novo lê `corretor_entity_id` e cai na imobiliária quando
+    // o corretor não está vinculado.
+    //
+    // O PDF da CAD continua indo junto para o coordenador — `esteira-avisos` anexa na `revisao`.
+    disparo = transicao.aviso ?? null;
+
     // Avisa também a IMOBILIÁRIA (só o STATUS, nunca o valor do crédito). Best-effort próprio.
+    //
+    // ⚠️ CONTINUA SEPARADO de propósito: este aviso é do fluxo da imobiliária (outro texto, outro
+    // destinatário resolvido por outro caminho) e sobrevive mesmo quando a CAD não tem corretor.
     try {
       await avisarImobReprovado(client, entidade.id);
     } catch {

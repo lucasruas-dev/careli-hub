@@ -318,6 +318,20 @@ export async function aoEnviarPixPrevenda(input: {
       .eq("entity_id", entityId)
       .eq("enterprise_id", enterpriseId);
     saida.etapa = error ? `erro: ${error.message}` : "credenciado";
+
+    // ⚠️ AVISO À MÃO PORQUE ESTA ESCRITA FURA `atualizarEtapa` (ver o comentário na linha 227).
+    // O gancho de aviso mora lá dentro, então quem grava direto na tabela não é coberto por ele —
+    // e este é justamente o caminho de MAIOR volume de boa notícia (o cliente pagou). Sem esta
+    // chamada, o corretor descobre pelo cliente que a CAD foi credenciada.
+    if (!error) {
+      const { avisarEtapa } = await import("./esteira-avisos");
+      await avisarEtapa(client, {
+        enterpriseId,
+        entityId,
+        etapa: "credenciado",
+        etapaAnterior: "prevenda",
+      });
+    }
   } else {
     saida.etapa = `mantida (${esteira?.etapa ?? "sem esteira"})`;
   }
@@ -435,6 +449,20 @@ export async function aoConfirmarPagamentoPrevenda(input: {
   // Quem ESTA chamada credenciou (o `.eq("etapa","prevenda")` acima faz o update devolver linha só
   // na primeira vez). Guardado aqui porque o envio ao C2X acontece lá embaixo, DEPOIS da fila.
   const credenciouAgora = (credenciadasAgora?.length ?? 0) > 0;
+
+  // ⚠️ MESMA RAZÃO DO OUTRO PONTO: escrita direta não passa pelo gancho de `atualizarEtapa`.
+  // `credenciouAgora` é a trava de repetição aqui — o `.eq("etapa","prevenda")` faz o update
+  // devolver linha só na primeira vez, então um webhook do Asaas reentregue não vira mensagem
+  // nova para quem já foi avisado.
+  if (credenciouAgora) {
+    const { avisarEtapa } = await import("./esteira-avisos");
+    await avisarEtapa(client, {
+      enterpriseId,
+      entityId,
+      etapa: "credenciado",
+      etapaAnterior: "prevenda",
+    });
+  }
 
   // 2) Prometeu: a fila se reordena sozinha pela hora do pagamento.
   const eventoId = await eventoDaFilaId(client);

@@ -1,3 +1,20 @@
+// ⚠️ DESCONTINUADO EM 21/08/2026 — NÃO TEM MAIS CHAMADOR. Substituído por `esteira-avisos.ts`.
+//
+// Regra do Lucas: *"reforço que os disparos têm que ser feitos pelo número do relacionamento"*.
+// Este arquivo manda pela META (4143) com template, e os dois caminhos que o usavam migraram:
+// o automático (`serasa/consultar`) e o reenvio manual (`serasa/reenviar-reprovacao`).
+//
+// Dois motivos além da regra do número:
+//   • o ramo do CORRETOR aqui era estruturalmente morto — lia `apolo_relationships.metadata.phone`
+//     do vínculo do CLIENTE, campo vazio em 718 de 718 CADs, e por isso `apolo_disparos` tinha
+//     2.249 linhas com ZERO do tipo `corretor`, falhando em silêncio como "pulado";
+//   • template da Meta exige janela de 24h e aprovação, que corretor e coordenador não sustentam.
+//
+// Mantido no repositório de propósito: é a referência de como o anexo da CAD era montado e de
+// como a devolutiva de entrega da Meta (`wa_message_id`) casa com o webhook. Apagar antes de a
+// substituição rodar em produção por algumas semanas seria perder o caminho de volta.
+//
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // DISPARO da reprovação de crédito: avisa o COORDENADOR do empreendimento (sempre) e o CORRETOR
 // (só quando tem telefone cadastrado), com a CAD do cliente anexa, pela Iris (WhatsApp, número
 // 4143). Reusado pelos DOIS caminhos: automático (ao reprovar no /serasa/consultar) e manual (os

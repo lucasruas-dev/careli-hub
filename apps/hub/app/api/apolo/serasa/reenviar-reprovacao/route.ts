@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { authorizeApoloAdmin } from "@/lib/apolo/auth";
-import { dispararReprovacao } from "@/lib/apolo/disparo-reprovacao";
+import { avisarEtapa } from "@/lib/apolo/esteira-avisos";
 import { lerCadDaEsteira } from "@/lib/apolo/esteira-cad";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
@@ -57,12 +57,23 @@ export async function POST(request: Request) {
     );
   }
 
-  const resultado = await dispararReprovacao({
-    enterpriseId: corpo.enterpriseId ?? null,
-    adminClient: client,
+  // ⚠️ REENVIO PELO NÚMERO DO RELACIONAMENTO, igual ao aviso automático.
+  //
+  // Regra do Lucas (21/08): *"reforço que os disparos têm que ser feitos pelo número do
+  // relacionamento"*. Este botão saía pela Meta (`dispararReprovacao`, template no 4143), e
+  // manter os dois caminhos significaria que o mesmo aviso chegaria de um número quando a máquina
+  // manda e de outro quando alguém reenvia — sem contar que o ramo do corretor na Meta era morto
+  // (lia um campo vazio em 718 de 718 CADs).
+  //
+  // `forcar` porque reenviar É pedir a repetição: a trava de "etapa não mudou" existe para o
+  // automático, não para quem clica sabendo que o primeiro envio falhou.
+  const resultado = await avisarEtapa(client, {
     apenas: corpo.destinatario,
-    atorUserId: auth.userId,
+    enterpriseId: corpo.enterpriseId ?? null,
     entityId: corpo.entityId,
+    etapa: "revisao",
+    forcar: true,
+    origem: "board",
   });
 
   return NextResponse.json({ data: resultado });

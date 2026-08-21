@@ -76,6 +76,9 @@ export async function atualizarEtapa(
     saidaDeRevisaoAutorizada?: boolean;
   } = {},
 ): Promise<{
+  // Quem foi avisado desta mudança (corretor ou imobiliária, e coordenador), para a rota devolver
+  // à tela. `null` = etapa sem aviso, ou etapa que não mudou de verdade.
+  aviso?: Awaited<ReturnType<typeof import("./esteira-avisos").avisarEtapa>>;
   // `true` = a saída de "revisao" para uma etapa de avanço foi barrada (PROBLEMA 2): crédito
   // reprovado só avança pela coordenação. A rota traduz em 409, não em 500 — é pedido incoerente.
   bloqueado?: boolean;
@@ -205,6 +208,35 @@ export async function atualizarEtapa(
     await garantirNaFilaDoLancamento(client, entityId, { enterpriseId });
   }
 
+  let aviso: Awaited<ReturnType<typeof import("./esteira-avisos").avisarEtapa>> = null;
+
+  // AVISA CORRETOR E COORDENADOR — regra do Lucas (21/08): "devemos comunicar em todas as etapas
+  // o corretor, coordenador", pelo número do RELACIONAMENTO.
+  //
+  // ⚠️ AQUI, E NÃO NAS ROTAS. Cada rota que move etapa (Serasa, Board, override da coordenação,
+  // importação) teria que lembrar de avisar, e a que esquecesse ficaria muda — foi exatamente o
+  // que aconteceu com `correcao`, cujo motivo o operador escrevia e ninguém recebia. Este é o
+  // ponto autoritativo único de escrita, então é o único lugar onde o aviso não pode ser
+  // esquecido.
+  //
+  // ⚠️ `etapaAnterior` É O QUE IMPEDE A REPETIÇÃO. Esta função faz upsert e é chamada de novo com
+  // a MESMA etapa em vários caminhos (reconsulta de Serasa numa ficha já reprovada, clique
+  // repetido no Board, backfill). Sem a comparação, cada regravação viraria mensagem nova para
+  // quem não teve novidade nenhuma.
+  //
+  // Best-effort e DEPOIS do upsert, como a fila: a etapa já mudou, e um WhatsApp que não sai não
+  // pode desfazer isso nem virar 500 na tela do operador.
+  if (!error) {
+    const { avisarEtapa } = await import("./esteira-avisos");
+    aviso = await avisarEtapa(client, {
+      enterpriseId,
+      entityId,
+      etapa: alvo,
+      etapaAnterior: atual?.etapa ?? null,
+      origem: opts.automatico ? "automatico" : "board",
+    });
+  }
+
   // SUBIR PARA O C2X continua SÓ para "credenciado", de propósito. O C2X é o sistema de contratos:
   // mandar para lá uma ficha que ainda está em validação ou correção é cadastrar cliente com dado
   // incompleto no lugar mais caro de consertar. Liberar a ETIQUETA é barato e reversível; liberar
@@ -214,5 +246,5 @@ export async function atualizarEtapa(
     await subirParaC2xAoCredenciar(client, entityId);
   }
 
-  return { error: error?.message ?? null, etapa: alvo };
+  return { aviso, error: error?.message ?? null, etapa: alvo };
 }

@@ -36,6 +36,44 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-21-esteira-avisos-e-trilha",
+    deployedAt: "2026-08-21T11:55:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Credito reprovado agora fica VERMELHO na trilha, na etapa de Analise de credito, e a CAD permanece nela. Antes era pintado igual a quem so estava esperando a consulta",
+              "Correcao virou etapa PROPRIA na trilha (Validacao > Correcao > Analise de credito), em ambar, para se ver de relance onde a CAD parou",
+              "Credito aprovado continua avancando sozinho e a etapa fica verde",
+            ],
+            screen: "Board / ficha da CAD",
+          },
+          {
+            items: [
+              "As 7 etapas passam a avisar corretor e coordenador pelo numero do RELACIONAMENTO. Antes so 2 avisavam: validacao, credito, correcao, credenciado e indeferido eram silenciosas",
+              "Quando a CAD nao tem corretor vinculado, o aviso vai para a IMOBILIARIA em vez de nao ir para ninguem",
+              "Quando nao ha nem corretor nem imobiliaria, fica registrada uma FALHA visivel na tela de disparos, em vez de sumir em silencio",
+              "O aviso de credito reprovado continua levando a CAD em PDF para o coordenador",
+            ],
+            screen: "Avisos da esteira",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.173.0 (2026-08-20-iris-canal-antes-da-fila)",
+    technical: {
+      done:
+        "GANCHO UNICO: `lib/apolo/esteira-avisos.ts` (novo) e chamado por `atualizarEtapa`, que e o ponto autoritativo de escrita de etapa — assim nenhuma rota precisa lembrar de avisar. Trava de repeticao por `etapaAnterior`: a funcao faz upsert e e rechamada com a MESMA etapa em varios caminhos (reconsulta de Serasa, clique repetido, backfill), e sem a comparacao cada regravacao viraria mensagem nova. DESTINATARIO: corretor por `apolo_esteira.corretor_entity_id` -> `apolo_contacts`, com a IMOBILIARIA como segunda opcao (medido: das 195 CADs vivas, 45 tem corretor vinculado e 92 tem imobiliaria); coordenador por enterprise_id -> `apolo_enterprise_settings.code` -> C2X `players.coordenador_vendas`. CANAL: `sendEvolutionDirectText` e o novo `sendEvolutionDirectMedia` (o gateway so tinha envio de midia para GRUPO) — pelo Relacionamento nao ha janela de 24h nem template. MIGRADOS para o caminho novo: o disparo automatico em `serasa/consultar` e o reenvio manual em `serasa/reenviar-reprovacao`; `disparo-reprovacao.ts` ficou sem chamador e esta marcado como descontinuado, nao apagado. FUROS COBERTOS: `prevenda-fluxo.ts` grava `credenciado` por escrita DIRETA em dois pontos (nao passa por `atualizarEtapa`), entao o aviso foi chamado a mao nos dois — e e justamente o caminho de maior volume de boa noticia (o cliente pagou). VEREDITO CONGELADO: `serasa/consultar` passa a gravar `resumo.veredito` (aprovado, motivo, limite vigente, hora); antes o resultado era RECALCULADO a cada leitura com o limite ATUAL do empreendimento, que e editavel — o mesmo relatorio podia mudar de veredito sem nova consulta. TELA: `PASSO_DA_ETAPA.correcao` deixou de apontar para `cadastro` e `etapasDoItem` insere a etapa Correcao so para quem esta nela (desvio, nao passo fixo); o stepper ganhou os estados de falha (rose-600 + X) e de espera (amber-500 + alerta), que nao existiam — havia exatamente tres classes. +7 testes. 965 testes do Apolo, typecheck, lint e build limpos.",
+      motivation:
+        "Lucas, 21/08: *\"cliente teve o credito analisado, a etapa tem que ser marcada, ae se for aprovada fica como verde e avanca para proxima etapa, se nao foi aprovado, fica vermelho a etapa de credito e mantem ela nessa etapa. da mesma forma, temos que ter nessa esteira a etapa de correcao, para a gente entender onde esta parado aquela CAD, e devemos comunicar em todas as etapas o corretor, coordenador\"*, com *\"revisa se todas as etapas temos os disparos sendo feitos\"* e *\"reforco que os disparos tem que ser feito pelo numero do relacionamento\"*. A auditoria mediu o tamanho do buraco: 5 das 7 etapas nao avisavam NINGUEM, e `apolo_disparos` tinha 2.249 linhas com ZERO do tipo corretor — o unico codigo que tentava avisa-lo lia `apolo_relationships.metadata.phone` do vinculo do CLIENTE, campo vazio em 718 de 718 CADs, um ramo morto que falhava em silencio marcando 'pulado'.",
+    },
+    title: "Esteira da CAD: trilha com resultado e aviso em todas as etapas",
+    type: "melhoria",
+    version: "1.174.0",
+  },
+  {
     buildTag: "2026-08-20-iris-canal-antes-da-fila",
     deployedAt: "2026-08-20T19:15:00-03:00",
     modules: [
