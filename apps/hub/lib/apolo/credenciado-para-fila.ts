@@ -9,7 +9,7 @@
 //
 // BEST-EFFORT: nunca lança e nunca segura a mudança de etapa. Se o Prometeu estiver fora do ar
 // ou não houver evento ativo, a etapa muda do mesmo jeito — a fila é consequência, não condição.
-import { adicionarCredenciado, eventoOperavel } from "@/lib/prometeu/data";
+import { adicionarCredenciado, eventoOperavel, getEvento } from "@/lib/prometeu/data";
 
 import { lerCadDaEsteira } from "./esteira-cad";
 import type { createApoloAdminClient } from "./server";
@@ -25,13 +25,24 @@ export async function garantirNaFilaDoLancamento(
   //
   // `enterpriseId` diz de qual CAD sair o corretor/imobiliária que vão na etiqueta. Sem ele, a
   // CAD mais recente — a fila é do evento do dia, e a CAD mais recente é a que o trouxe até aqui.
-  opts: { enterpriseId?: null | string; pagoEm?: string | null } = {},
+  opts: {
+    enterpriseId?: null | string;
+    // Para QUAL lançamento. Só o BACKFILL informa: ele traz para a fila as CADs que já estavam
+    // credenciadas antes do lançamento existir, e nesse momento o evento normalmente ainda está
+    // em RASCUNHO — que `eventoOperavel` (ativo/em_andamento) de propósito não enxerga.
+    eventoId?: null | string;
+    pagoEm?: string | null;
+  } = {},
   // `entrou` = ESTA chamada inseriu. `naFila` = a regra está satisfeita, tendo sido esta chamada
   // que resolveu ou não. Quem só quer saber se a pessoa vai aparecer na etiqueta lê `naFila`:
   // "já estava lá" é sucesso, não falha.
 ): Promise<{ entrou: boolean; motivo: string; naFila: boolean }> {
   try {
-    const evento = await eventoOperavel(client);
+    const evento = opts.eventoId
+      ? await getEvento(client, opts.eventoId).then((e) =>
+          e ? { enterpriseId: e.enterpriseId, id: e.id } : null,
+        )
+      : await eventoOperavel(client);
     if (!evento) return { entrou: false, motivo: "sem evento ativo", naFila: false };
     const eventoId = evento.id;
 

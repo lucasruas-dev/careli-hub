@@ -124,8 +124,41 @@ export async function salvarEventoRemoto(input: {
 
 // Libera a preparacao: CAD, etiqueta, PIX, fila e os testes do time.
 export async function ativarEventoRemoto(eventoId: string) {
-  return chamar<{ ok: boolean; status: string }>("/api/prometeu/eventos/status", {
+  return chamar<{ fila?: ResumoDaFilaAberta; ok: boolean; status: string }>("/api/prometeu/eventos/status", {
     body: JSON.stringify({ acao: "ativar", eventoId }),
+    method: "POST",
+  });
+}
+
+// O que a ROTINA DE ABERTURA do lancamento fez. Volta na criacao e na ativacao.
+export type ResumoDaFilaAberta = {
+  comPix: boolean;
+  credenciadas: number;
+  entraram: number;
+  erro?: string;
+  jaEstavam: number;
+  recusadas: number;
+  recusasPorMotivo: Record<string, number>;
+};
+
+// TRAZ para a fila as CADs que ja estavam CREDENCIADAS antes do lancamento existir.
+//
+// ⚠️ A fila e alimentada por EVENTO (quando a CAD muda de etapa). Quem ja estava em `credenciado`
+// ha semanas nunca mais muda de etapa, entao nao entra sozinho num lancamento criado hoje.
+export async function importarCredenciadosRemoto(input: {
+  dryRun?: boolean;
+  eventoId: string;
+}) {
+  return chamar<{
+    credenciadas: number;
+    dryRun?: boolean;
+    empreendimento?: null | string;
+    entraram?: number;
+    jaEstavam?: number;
+    recusadas?: number;
+    recusasPorMotivo?: Record<string, number>;
+  }>("/api/prometeu/eventos/importar-credenciados", {
+    body: JSON.stringify(input),
     method: "POST",
   });
 }

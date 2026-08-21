@@ -51,6 +51,13 @@ export function agoraNoEvento(momento = new Date()): { data: string; hora: strin
   return { data, hora };
 }
 
+// O resultado da rotina de abertura do lancamento. Declarado por `Awaited<ReturnType<...>>` para
+// nao criar import ESTATICO de `lib/apolo` aqui: o modulo do Apolo ja importa deste arquivo, e o
+// ciclo quebraria o build.
+type FilaDoLancamento = Awaited<
+  ReturnType<typeof import("@/lib/apolo/popular-fila-lancamento").popularFilaDoLancamento>
+>;
+
 type EventoRow = {
   arquivado_em: string | null;
   config: PrometeuEventoConfig | null;
@@ -203,7 +210,7 @@ export async function criarEvento(input: {
   enterpriseCode?: string | null;
   enterpriseId?: string | null;
   nome: string;
-}): Promise<{ error?: string; evento?: PrometeuEvento }> {
+}): Promise<{ error?: string; evento?: PrometeuEvento; fila?: FilaDoLancamento }> {
   const nome = input.nome.trim();
   if (!nome) return { error: "Informe o nome do evento." };
 
@@ -221,7 +228,29 @@ export async function criarEvento(input: {
     .single();
 
   if (error || !data) return { error: error?.message ?? "Nao foi possivel criar o evento." };
-  return { evento: mapEvento(data as EventoRow) };
+  const evento = mapEvento(data as EventoRow);
+
+  // JÁ NA CRIAÇÃO, e não só na ativação (Lucas, 21/08: *"criou novo lançamento, temos que entender
+  // se já tem cad em credenciado, se tiver já começar organizar a fila e encaminhar para
+  // etiquetas"*).
+  //
+  // Faz sentido no rascunho: é justamente aí que o operador confere as etiquetas antes do dia. E
+  // rodar nos dois momentos não duplica ninguém — a rotina é idempotente, e quem já está na fila
+  // volta como "já estava".
+  //
+  // ⚠️ AS CADs QUE FOREM CREDENCIADAS DEPOIS não dependem disto: a esteira chama
+  // `garantirNaFilaDoLancamento` a cada mudança de etapa. Mas ela só enxerga lançamento ATIVO
+  // (`eventoOperavel`), então quem for credenciado enquanto o lançamento está em rascunho entra
+  // pela rotina da ativação. Nos dois caminhos, ninguém se perde.
+  let fila: FilaDoLancamento | undefined;
+  try {
+    const { popularFilaDoLancamento } = await import("@/lib/apolo/popular-fila-lancamento");
+    fila = await popularFilaDoLancamento(input.client as never, evento.id);
+  } catch {
+    fila = undefined;
+  }
+
+  return { evento, fila };
 }
 
 export async function atualizarEvento(input: {
@@ -273,14 +302,48 @@ export async function atualizarEvento(input: {
 export async function ativarEvento(
   client: AdminClient,
   eventoId: string,
-): Promise<{ error?: string; ok: boolean }> {
+): Promise<{ error?: string; fila?: FilaDoLancamento; ok: boolean }> {
+  // ⚠️ UM LANCAMENTO OPERAVEL POR VEZ. `eventoOperavel` desempata entre dois "ativo" pegando
+  // `linhas[0]` de uma ordenacao com empate — ou seja, a escolha seria arbitraria e poderia
+  // alternar entre requisicoes. A partir dai a fila do Apolo passaria a cair num evento
+  // indefinido. Recusar aqui e a diferenca entre um erro na tela e um dia de evento confuso.
+  const emOperacao = await eventoOperavel(client);
+  if (emOperacao && emOperacao.id !== eventoId) {
+    return {
+      error:
+        "Ja existe um lancamento em operacao. Encerre o dia dele antes de ativar este.",
+      ok: false,
+    };
+  }
+
   const { error } = await client
     .from("prometeu_eventos")
     .update({ status: "ativo", updated_at: new Date().toISOString() })
     .eq("id", eventoId);
 
   if (error) return { error: error.message, ok: false };
-  return { ok: true };
+
+  // A ROTINA DE ABRIR O LANCAMENTO (Lucas, 21/08: *"isso e padrao. Toda vez que eu habilitar um
+  // lancamento, o sistema ja tem que buscar as cads do credenciado, entender se tem pix, fazer
+  // toda essa rotina"*).
+  //
+  // Traz para a fila quem ja esta CREDENCIADO naquele empreendimento e resolve a ORDEM pelo
+  // regime do empreendimento: com pre-venda, a ordem do pagamento; sem pre-venda, a chegada da
+  // CAD. Sem isto, um lancamento novo nasce com a fila VAZIA — quem ja estava credenciado nunca
+  // mais muda de etapa, que e o unico gatilho que alimentava a fila.
+  //
+  // Idempotente e best-effort: quem ja esta na fila nao duplica, e uma falha aqui NAO desfaz a
+  // ativacao. Lancamento ativo com fila vazia se resolve com um clique; lancamento que nao ativa,
+  // no dia do evento, nao.
+  let fila: FilaDoLancamento | undefined;
+  try {
+    const { popularFilaDoLancamento } = await import("@/lib/apolo/popular-fila-lancamento");
+    fila = await popularFilaDoLancamento(client as never, eventoId);
+  } catch {
+    fila = undefined;
+  }
+
+  return { fila, ok: true };
 }
 
 // O PostgREST monta o filtro `in` na URL: mandar milhares de UUIDs de uma vez estoura o limite

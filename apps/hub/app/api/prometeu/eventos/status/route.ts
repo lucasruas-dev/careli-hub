@@ -49,9 +49,9 @@ export async function POST(request: Request) {
     const auth = await authorizePrometeuWrite(request);
     if (!auth.ok) return auth.response;
 
-    const { error, ok } = await ativarEvento(client, body.eventoId);
+    const { error, fila, ok } = await ativarEvento(client, body.eventoId);
     if (!ok) return NextResponse.json({ error }, { status: 409 });
-    return NextResponse.json({ data: { ok: true, status: "ativo" } });
+    return NextResponse.json({ data: { fila, ok: true, status: "ativo" } });
   }
 
   // ARQUIVAR / DESARQUIVAR — tira o lancamento de circulacao, sem apagar nada.

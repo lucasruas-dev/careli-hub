@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     nome?: string;
   };
 
-  const { error, evento } = await criarEvento({
+  const { error, evento, fila } = await criarEvento({
     client,
     createdBy: auth.userId,
     dataEvento: body.dataEvento ?? null,
@@ -56,7 +56,11 @@ export async function POST(request: Request) {
   });
 
   if (error) return NextResponse.json({ error }, { status: 400 });
-  return NextResponse.json({ data: evento });
+
+  // `fila` diz o que a rotina de abertura fez (quantas CADs credenciadas ja entraram). Vai junto
+  // do evento para a tela poder contar isso na hora, em vez de o operador criar o lancamento e
+  // ficar sem saber se a fila veio.
+  return NextResponse.json({ data: { ...evento, fila } });
 }
 
 // Salva o Setup. As mesas da secretaria sao criadas junto: o numero delas e configuracao do

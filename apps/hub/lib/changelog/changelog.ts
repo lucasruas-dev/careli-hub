@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-21-prometeu-abrir-lancamento",
+    deployedAt: "2026-08-21T15:20:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Criar ou ativar um lancamento agora MONTA A FILA sozinho: busca as CADs ja credenciadas daquele empreendimento e joga na fila e nas etiquetas",
+              "A ordem sai do regime do empreendimento: COM pre-venda, a ordem do pagamento do PIX; SEM pre-venda, a data em que o corretor mandou a CAD",
+              "A tela conta o que aconteceu: quantas entraram, quantas ja estavam e por que alguma ficou de fora",
+              "Botao 'Trazer CADs' para reprocessar quando novas forem credenciadas depois",
+              "Nao da mais para ter dois lancamentos em operacao ao mesmo tempo",
+            ],
+            screen: "Setup",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.179.0 (2026-08-21-caca-valor-so-com-boleto)",
+    technical: {
+      done:
+        "Nova `popularFilaDoLancamento` (lib/apolo), chamada por `criarEvento` E por `ativarEvento`, e tambem pela rota manual POST /api/prometeu/eventos/importar-credenciados — UMA rotina, tres portas, porque duas implementacoes divergiriam na primeira mudanca de regra. Idempotente: quem ja esta na fila volta como `jaEstavam`. Best-effort: falha na fila NAO desfaz a ativacao. ⚠️ POR QUE PRECISOU EXISTIR: a fila e alimentada quando a CAD MUDA de etapa, e quem ja estava em `credenciado` ha semanas nunca mais muda — um lancamento criado hoje nascia com fila VAZIA. O PIX entra na rotina porque decide a ORDEM: le `apolo_enterprise_settings.prevenda_habilitada` e so passa `pagoEm` quando ha pre-venda; sem ela, `ordenarFilaDoEvento` desempata por `chegou_em` (a data de envio da CAD), que e o que o Villa Paris precisa. Fail-closed: na duvida trata como SEM pre-venda, porque a chegada da CAD e uma ordem verdadeira e a ordem de pagamento seria inventada. `garantirNaFilaDoLancamento` aceita `eventoId` explicito para alcancar lancamento em RASCUNHO (o `eventoOperavel` so ve ativo/em_andamento, de proposito). TRAVA NOVA em `ativarEvento`: recusa 409 se ja houver outro lancamento em operacao — `eventoOperavel` desempata dois 'ativo' por `linhas[0]` de uma ordenacao com empate, ou seja a escolha seria arbitraria e a fila do Apolo cairia num evento indefinido. 1.098 testes, typecheck, lint e build limpos.",
+      motivation:
+        "Lucas, 21/08, logo apos criar o lancamento do Villa Paris: *\"criei o lancamento, agora todas as cads do vila paris que estao em credenciado tem que aparecer na fila e nas etiquetas. Como nesse empreendimento a gente nao tem o pix, a ordem da fila iniciar e quando eles mandaram as cads\"*, e em seguida: *\"isso e padrao. Toda vez que eu habilitar um lancamento, o sistema ja tem que buscar as cads do credenciado, entender se tem pix, fazer toda essa rotina\"* e *\"se nao tiver, uma hora vai chegar e quando chegar fazer esse processo\"* — este ultimo caso ja funcionava pela esteira, que alimenta a fila a cada mudanca de etapa.",
+    },
+    title: "Prometeu: abrir lancamento ja monta a fila",
+    type: "novidade",
+    version: "1.180.0",
+  },
+  {
     buildTag: "2026-08-21-caca-valor-so-com-boleto",
     deployedAt: "2026-08-21T13:45:00-03:00",
     modules: [

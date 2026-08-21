@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Check,
   Clock,
+  ListOrdered,
   Loader2,
   Moon,
   Archive,
@@ -25,6 +26,8 @@ import {
   arquivarEventoRemoto,
   ativarEventoRemoto,
   criarEventoRemoto,
+  importarCredenciadosRemoto,
+  type ResumoDaFilaAberta,
   encerrarDiaRemoto,
   criarTemplateBoasVindasRemoto,
   criarTemplateChamadoRemoto,
@@ -82,6 +85,11 @@ export function SetupView() {
   >(null);
   const [criandoAgora, setCriandoAgora] = useState(false);
   const [arquivando, setArquivando] = useState(false);
+  // TRAZER AS CADs CREDENCIADAS. `null` = nada pendente; com numero = ja contou e espera o
+  // segundo clique. Dois passos porque inserir dezenas de pessoas na fila e visivel na hora nas
+  // telas de todo mundo, e o operador merece ver o numero antes.
+  const [aTrazer, setATrazer] = useState<null | number>(null);
+  const [trazendo, setTrazendo] = useState(false);
   const [aba, setAba] = useState<Aba>("config");
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
@@ -110,6 +118,25 @@ export function SetupView() {
     () => eventos.find((e) => e.id === eventoId) ?? null,
     [eventoId, eventos],
   );
+
+  // A MESMA FRASE para os tres caminhos (criar, ativar e o reprocesso manual): a rotina e uma so,
+  // e o operador tem que ler o mesmo relato nos tres.
+  const contarFila = useCallback((fila: null | ResumoDaFilaAberta | undefined): string => {
+    if (!fila) return "";
+    if (fila.erro) return ` (a fila não pôde ser montada: ${fila.erro})`;
+    if (!fila.credenciadas) return " Nenhuma CAD credenciada neste empreendimento ainda.";
+
+    const ordem = fila.comPix
+      ? "ordenadas pela hora do pagamento"
+      : "ordenadas pela data de envio da CAD";
+
+    return (
+      ` ${fila.entraram} CAD(s) entraram na fila e nas etiquetas, ${ordem}` +
+      (fila.jaEstavam ? `; ${fila.jaEstavam} já estavam` : "") +
+      (fila.recusadas ? `; ${fila.recusadas} ficaram de fora` : "") +
+      "."
+    );
+  }, []);
 
   const preencher = useCallback((alvo: PrometeuEvento) => {
     setNome(alvo.nome);
@@ -225,7 +252,7 @@ export function SetupView() {
 
   const ativar = useCallback(async () => {
     if (!eventoId) return;
-    const { error } = await ativarEventoRemoto(eventoId);
+    const { data, error } = await ativarEventoRemoto(eventoId);
     if (error) {
       setErro(error);
       return;
@@ -233,8 +260,8 @@ export function SetupView() {
     setEventos((atual) =>
       atual.map((e) => (e.id === eventoId ? { ...e, status: "ativo" } : e)),
     );
-    setAviso("Lançamento ativo. Já pode subir CAD, imprimir etiqueta e montar a fila.");
-  }, [eventoId]);
+    setAviso(`Lançamento ativo.${contarFila(data?.fila)}`);
+  }, [contarFila, eventoId]);
 
   const criarTemplate = useCallback(async () => {
     setCriandoTemplate(true);
@@ -301,6 +328,7 @@ export function SetupView() {
     [eventoId],
   );
 
+
   // CRIAR O LANCAMENTO. Nasce em `rascunho`, e isso e proposital: `eventoOperavel` so enxerga
   // `ativo` e `em_andamento`, entao um rascunho nao rouba a operacao de ninguem enquanto esta
   // sendo montado. Quem poe no ar e o botao "Ativar lancamento", que ja existe.
@@ -343,9 +371,51 @@ export function SetupView() {
       setEventoId(data.id);
       preencher(data);
       setNovo(null);
-      setAviso(`Lançamento "${data.nome}" criado como rascunho. Configure e depois clique em Ativar.`);
+      setAviso(
+        `Lançamento "${data.nome}" criado como rascunho.${contarFila(
+          (data as { fila?: ResumoDaFilaAberta }).fila,
+        )} Configure e depois clique em Ativar.`,
+      );
     }
-  }, [empreendimentos, novo, preencher]);
+  }, [contarFila, empreendimentos, novo, preencher]);
+
+
+  // TRAZER AS CADs CREDENCIADAS DO EMPREENDIMENTO para a fila deste lancamento.
+  const trazerCredenciados = useCallback(
+    async (confirmar: boolean) => {
+      if (!eventoId) return;
+      setTrazendo(true);
+      setErro(null);
+
+      const { data, error } = await importarCredenciadosRemoto({
+        dryRun: !confirmar,
+        eventoId,
+      });
+
+      setTrazendo(false);
+
+      if (error) {
+        setATrazer(null);
+        setErro(error);
+        return;
+      }
+
+      if (!confirmar) {
+        const quantas = data?.credenciadas ?? 0;
+        setATrazer(quantas);
+        setAviso(
+          quantas
+            ? `${quantas} CAD(s) credenciada(s) de ${data?.empreendimento ?? "este empreendimento"} entram na fila e nas etiquetas. Clique de novo para confirmar.`
+            : "Nenhuma CAD credenciada neste empreendimento ainda.",
+        );
+        return;
+      }
+
+      setATrazer(null);
+      setAviso(`Fila atualizada.${contarFila(data as ResumoDaFilaAberta)}`);
+    },
+    [contarFila, eventoId],
+  );
 
   // ARQUIVAR / DESARQUIVAR — tira o lancamento de circulacao. NAO apaga nada: os credenciados,
   // as movimentacoes e as chamadas continuam no banco, e o desarquivar devolve tudo.
@@ -461,6 +531,25 @@ export function SetupView() {
         </span>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* ⚠️ SÓ ENQUANTO O LANÇAMENTO NÃO ACABOU. Trazer CAD para um evento encerrado ou
+              arquivado seria mexer num histórico fechado. */}
+          {evento.status !== "encerrado" && !evento.arquivadoEm ? (
+            <button
+              className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-1.5 text-sm font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
+              disabled={trazendo}
+              onClick={() => void trazerCredenciados(aTrazer !== null && aTrazer > 0)}
+              title="Traz para a fila as CADs já credenciadas deste empreendimento"
+              type="button"
+            >
+              {trazendo ? (
+                <Loader2 className="animate-spin" size={15} />
+              ) : (
+                <ListOrdered size={15} />
+              )}
+              {aTrazer !== null && aTrazer > 0 ? `Confirmar (${aTrazer})` : "Trazer CADs"}
+            </button>
+          ) : null}
+
           <button
             className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-1.5 text-sm font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
             disabled={salvando}
