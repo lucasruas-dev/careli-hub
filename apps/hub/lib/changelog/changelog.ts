@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-21-caca-valor-so-com-boleto",
+    deployedAt: "2026-08-21T13:45:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A CACA so informa VALOR de parcela quando ela ja foi paga ou ja tem boleto emitido",
+              "Parcela futura sem boleto: ela fala da parcela (numero e vencimento) mas NAO diz o valor, porque esse valor ainda nao passou pelo reajuste",
+              "No lugar do numero ela diz que o valor e confirmado na emissao do boleto, em vez de simplesmente omitir",
+              "Vale igual no audio: falar por extenso nao libera valor que o texto nao pode dizer",
+            ],
+            screen: "CACA (atendimento)",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.178.0 (2026-08-21-prometeu-telao-do-lancamento)",
+    technical: {
+      done:
+        "TRAVA NO PONTO UNICO: `describeInstallment` (executors.ts) e a unica funcao que escreve a linha de parcela, e os CINCO caminhos passam por ela (consultar_financeiro nas vencidas e no proximo vencimento, listar_boletos, e os dois da imobiliaria). Novo `podeInformarValor(item)`: true se status Liquidada OU `hasBoletoLink(item)` — helper que ja existia e ja era calculado ao lado do valor, sem gatear nada. Quando false, o valor e substituido por 'valor sob atualizacao (confirmado na emissao do boleto)'. ⚠️ MARCA EXPLICITA, NAO OMISSAO: sem nada no lugar, o modelo preenche a lacuna ou o cliente pergunta 'quanto e?' e ele inventa. PROMPT (persona.ts, bloco ESTAVEL e portanto cacheavel): secao nova com os tres estados, o PORQUE (senao o modelo trata como capricho e contorna), a proibicao de estimar por outra parcela e a frase pronta para a recusa nao soar como esconder informacao. Corrigidos dois exemplos que ENSINAVAM o contrario — o de resposta executiva e o de transferencia, que citava 'no valor de R$ 824,83' justamente para uma parcela sem boleto. O bloco de VOZ (contexto do turno) reafirma a regra, porque ele reescreve as regras de formato e 'diga os valores por extenso' soaria como permissao. +16 testes; 95 da Iris no total, incluindo o de cache que exige o bloco estavel byte a byte.",
+      motivation:
+        "Lucas, 21/08: *\"como estamos com problemas de reajuste, as parcelas que tem boleto ja tem reajuste feito manualmente, contudo as parcelas que nao tem nao tem. Ela esta passando informacoes de valores diferentes\"*. Medido no C2X: nao existe campo de reajuste — a correcao e aplicada a mao, sobrescrevendo `initial_value`, quando a parcela recebe boleto. No contrato 455, a parcela 34 (com boleto, mai/2027) vale R$ 535,72 e a 35 (sem boleto, jun/2027) vale R$ 426,81: 20,4% a menos, e era esse numero que a CACA informava. Das 96.682 parcelas em aberto, so 990 (1%) tem boleto; 1.201 estao VENCIDAS sem boleto, o caso em que ela falava valor com mais convicção. A regra ja existia no motor LEGADO da CACA (que filtrava parcela sem boleto) e se perdeu na migracao para o Claude.",
+    },
+    title: "CACA: valor de parcela so quando ele esta fechado",
+    type: "correcao",
+    version: "1.179.0",
+  },
+  {
     buildTag: "2026-08-21-prometeu-telao-do-lancamento",
     deployedAt: "2026-08-21T13:55:00-03:00",
     modules: [

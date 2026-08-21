@@ -2123,7 +2123,36 @@ function ensureVerified(context: CacaToolContext): string | null {
   return null;
 }
 
-function describeInstallment(item: CacaInstallment): string {
+// PODE DIZER O VALOR DESTA PARCELA?
+//
+// Regra do Lucas (21/08/2026): *"as parcelas que tem boleto emitido, ela pode mencionar valor, e
+// tambem das parcelas pagas. As parcelas futuras sem boleto emitido, ela pode somente fazer
+// mencao sem informar os valores, assim evitamos transmitir informacoes erradas."*
+//
+// ⚠️ O MOTIVO E QUE O REAJUSTE E MANUAL. Nao existe campo de reajuste no C2X: a correcao e
+// aplicada a mao, sobrescrevendo `initial_value`, no momento em que a parcela recebe boleto. Quem
+// ainda nao tem boleto carrega o valor CONTRATUAL CRU, defasado.
+//
+// Medido em 21/08 no contrato 455: a parcela 34 (com boleto, mai/2027) vale R$ 535,72 e a 35
+// (sem boleto, jun/2027) vale R$ 426,81 — 20,4% a menos, e era esse numero que a CACA informava.
+// Na carteira inteira, das 96.682 parcelas em aberto apenas 990 (1%) tem boleto; 1.201 estao
+// VENCIDAS sem boleto, que e o caso em que ela falava valor com mais convicção.
+//
+// O boleto e um PROXY do reajuste, nao a prova dele — se alguem emitir boleto sem reajustar, o
+// valor errado passa. Mas e o unico sinal que existe no dado, e erra para o lado seguro.
+export function podeInformarValor(item: CacaInstallment): boolean {
+  // Paga: o valor e o que REALMENTE foi pago (`paid_value`), entao e verdade histórica.
+  if (readString((item as Record<string, unknown>).status) === "Liquidada") return true;
+
+  return hasBoletoLink(item);
+}
+
+// ⚠️ NAO OMITE EM SILENCIO. Sem nada no lugar do valor, o modelo tende a preencher a lacuna — ou
+// o cliente pergunta "quanto e?" e ele inventa. A marca explicita diz que o numero existe, que
+// ainda nao esta fechado, e quando fica.
+const VALOR_SOB_ATUALIZACAO = "valor sob atualização (confirmado na emissão do boleto)";
+
+export function describeInstallment(item: CacaInstallment): string {
   const record = item as Record<string, unknown>;
   const numero = readString(record.number);
   const referencia = readString(record.reference);
@@ -2133,7 +2162,7 @@ function describeInstallment(item: CacaInstallment): string {
     numero ? `parcela ${numero}` : null,
     referencia || null,
     vencimento ? `vence/venceu ${vencimento}` : null,
-    valor ? valor : null,
+    podeInformarValor(item) ? valor || null : VALOR_SOB_ATUALIZACAO,
   ].filter(Boolean);
 
   return partes.join(" | ") || "parcela";
