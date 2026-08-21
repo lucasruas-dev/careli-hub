@@ -38,7 +38,13 @@ const PRIORIDADE: Record<string, number> = {
 // Pausa entre mensagens. São dezenas para o MESMO número, pelo celular do Relacionamento — em
 // rajada, é o padrão que marca conta como spam, e o número é o que fala com corretor e
 // imobiliária o dia inteiro.
-const PAUSA_MS = 3500;
+//
+// ⚠️ A PAUSA DISPUTA COM O `maxDuration`. Com 44 CADs (o caso do Villa Paris), 2,5s de pausa dão
+// ~110s de espera, mais o tempo dos envios e dos PDFs das reprovações — folgado dentro dos 300s.
+// Com 3,5s ficava em ~210s, perto demais do teto: estourar no meio deixaria metade do lote
+// enviada e sem resposta dizendo onde parou. Para lotes maiores, use `pular` e mande em duas
+// levas em vez de aumentar a pausa.
+const PAUSA_MS = 2500;
 
 function autorizadoPorSecret(request: NextRequest): boolean {
   const header = request.headers.get("authorization") ?? "";

@@ -316,6 +316,13 @@ export function BoardView({
   // Filtro por etapa: com centenas de itens na fila, ver só uma coluna por vez é o que torna
   // a lista utilizável.
   const [etapaFiltro, setEtapaFiltro] = useState("todas");
+  // AVISAR O COORDENADOR das CADs de um empreendimento (pedido do Lucas, 21/08: pôr o coordenador
+  // do Villa Paris em dia com as 44 CADs que já estavam na esteira). Duas etapas de propósito: o
+  // primeiro clique só CONTA (dryRun) e o segundo envia — são dezenas de mensagens no WhatsApp de
+  // uma pessoa real, e isso não tem desfazer.
+  const [loteAviso, setLoteAviso] = useState<
+    null | { enviando: boolean; resumo: string; total: number }
+  >(null);
   // Dentro de "Credenciado" convivem quem já pagou o PIX e quem só recebeu a cobrança. Este
   // filtro é o que separa os dois na hora de cobrar quem falta.
   const [pagoFiltro, setPagoFiltro] = useState<"pagos" | "pendentes" | "todos">("todos");
@@ -565,6 +572,70 @@ export function BoardView({
       evento: ["nota", `Enviado para correção — pendências: ${motivo}`],
       motivo,
     });
+  };
+
+  // O enterpriseId do empreendimento filtrado. A rota trabalha por ID (a esteira é
+  // `(entity_id, enterprise_id)`); o filtro da tela é por NOME, então a ponte sai dos cards.
+  const enterpriseIdDoFiltro = (): null | string => {
+    if (empreendimento === "todos") return null;
+    const card = itens.find(
+      (item) => item.empreendimentos.includes(empreendimento) && item.enterpriseId,
+    );
+    return card?.enterpriseId ?? null;
+  };
+
+  const avisarCoordenador = async (confirmar: boolean) => {
+    const enterpriseId = enterpriseIdDoFiltro();
+    if (!enterpriseId) return;
+
+    setAvisoAcao(null);
+    setLoteAviso((prev) => (prev ? { ...prev, enviando: true } : { enviando: true, resumo: "", total: 0 }));
+
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/apolo/esteira/avisar-lote", {
+        body: JSON.stringify({
+          apenas: "coordenador",
+          dryRun: !confirmar,
+          enterpriseId,
+        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const corpo = (await resposta.json().catch(() => null)) as {
+        data?: { enviados?: number; falhas?: number; total?: number };
+        error?: string;
+      } | null;
+
+      if (!resposta.ok) {
+        setLoteAviso(null);
+        setAvisoAcao(corpo?.error ?? "Não foi possível avisar o coordenador.");
+        return;
+      }
+
+      const total = corpo?.data?.total ?? 0;
+
+      if (confirmar) {
+        // Depois de enviar, zera o estado: deixar "Confirmar envio" no botão convidaria a mandar
+        // o lote inteiro de novo para quem acabou de receber.
+        setLoteAviso(null);
+        setAvisoAcao(
+          `Coordenador avisado: ${corpo?.data?.enviados ?? 0} mensagem(ns) enviada(s)` +
+            `${corpo?.data?.falhas ? `, ${corpo.data.falhas} falha(s)` : ""}.`,
+        );
+        return;
+      }
+
+      setLoteAviso({ enviando: false, resumo: "", total });
+      setAvisoAcao(
+        total
+          ? `${total} CAD(s) de ${toTitleCase(empreendimento)} serão avisadas ao coordenador, uma mensagem por CAD. Clique em "Confirmar envio".`
+          : "Nenhuma CAD para avisar neste empreendimento.",
+      );
+    } catch {
+      setLoteAviso(null);
+      setAvisoAcao("Falha de rede ao avisar o coordenador.");
+    }
   };
 
   const ehImobiliaria = (itemId: string): boolean =>
@@ -1289,6 +1360,25 @@ export function BoardView({
               </option>
             ))}
           </select>
+
+          {/* AVISAR O COORDENADOR — só com um empreendimento escolhido: a mensagem é DELE, e
+              "todos os empreendimentos" mandaria a CAD de um loteamento para o coordenador de
+              outro. Ver `avisarCoordenador`. */}
+          {empreendimento !== "todos" && enterpriseIdDoFiltro() ? (
+            <button
+              className="h-9 rounded-lg border border-line/70 bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors hover:bg-subtle disabled:opacity-50"
+              disabled={loteAviso?.enviando}
+              onClick={() => void avisarCoordenador(Boolean(loteAviso?.total))}
+              title="Avisa o coordenador deste empreendimento sobre as CADs da esteira"
+              type="button"
+            >
+              {loteAviso?.enviando
+                ? "Enviando…"
+                : loteAviso?.total
+                  ? "Confirmar envio"
+                  : "Avisar coordenador"}
+            </button>
+          ) : null}
 
           {/* Filtro por etapa: mostra a contagem junto, para saber onde a fila está parada
               sem precisar abrir o kanban. */}

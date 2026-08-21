@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-21-board-avisar-coordenador",
+    deployedAt: "2026-08-21T13:05:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Botao 'Avisar coordenador' na barra de filtros: escolha o empreendimento e ele manda ao coordenador uma mensagem por CAD da esteira",
+              "Dois cliques de proposito: o primeiro CONTA quantas serao e o segundo envia. Sao dezenas de mensagens em WhatsApp de pessoa real, e isso nao tem desfazer",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.175.0 (2026-08-21-esteira-status-envio-e-avanco)",
+    technical: {
+      done:
+        "Botao no Board chamando POST /api/apolo/esteira/avisar-lote com `apenas: 'coordenador'`, `dryRun` no primeiro clique. So aparece com UM empreendimento escolhido: em 'todos', mandaria a CAD de um loteamento para o coordenador de outro. A ponte nome -> enterpriseId sai dos proprios cards (`enterpriseIdDoFiltro`), porque o filtro da tela e por NOME e a esteira e por `(entity_id, enterprise_id)`. Depois de enviar, o estado zera — deixar 'Confirmar envio' no botao convidaria a remandar o lote para quem acabou de receber. ⚠️ ESTE BOTAO EXISTE PORQUE A ROTA NAO PODIA SER CHAMADA DE FORA: o `CRON_SECRET` local nao bate com o de producao (a rota respondeu 'Sessao do Apolo invalida'), e adivinhar ou extrair secret de producao esta fora de cogitacao. Pela tela, quem dispara e a sessao admin de quem ja esta logado.",
+      motivation:
+        "Lucas, 21/08: *\"quando subir, dispara por favor todas as mensagens do villa paris para o coordenador (verifica se o coordenador e o Mateus)\"*. Confirmado no C2X e na tela: o Coordenador de Vendas do RVP e MATHEUS GUEDES IMOVEIS, (33) 98731-9586 — vem de `enterprises.manager_id`, que o Apolo traduz como Coordenador de Vendas (o campo `coordenador_id` do C2X tem dado errado e nao e exibido). Sao 44 CADs: 20 credenciadas, 18 em validacao, 5 reprovadas no credito e 1 em correcao.",
+    },
+    title: "Board: avisar o coordenador das CADs de um empreendimento",
+    type: "novidade",
+    version: "1.176.0",
+  },
+  {
     buildTag: "2026-08-21-esteira-status-envio-e-avanco",
     deployedAt: "2026-08-21T12:35:00-03:00",
     modules: [
