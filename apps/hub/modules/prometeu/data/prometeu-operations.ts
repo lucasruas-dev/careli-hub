@@ -130,6 +130,24 @@ export async function ativarEventoRemoto(eventoId: string) {
   });
 }
 
+// ARQUIVA (ou devolve) o lancamento. Restrito ao DONO.
+//
+// ⚠️ NAO APAGA NADA. Arquivar so tira das telas: credenciados, movimentacoes, chamadas e mesas
+// continuam no banco, e `desarquivar` devolve tudo. Nao existe rota de apagar evento de
+// proposito — as FKs sao ON DELETE CASCADE e um clique errado levaria o historico inteiro.
+export async function arquivarEventoRemoto(input: {
+  arquivar: boolean;
+  eventoId: string;
+}) {
+  return chamar<{ arquivado: boolean; ok: boolean }>("/api/prometeu/eventos/status", {
+    body: JSON.stringify({
+      acao: input.arquivar ? "arquivar" : "desarquivar",
+      eventoId: input.eventoId,
+    }),
+    method: "POST",
+  });
+}
+
 // ⚠️ DESTRUTIVO e restrito ao DONO do evento (verificado por e-mail no servidor).
 // Só roda ANTES do evento começar: depois que entra em andamento, fica bloqueado em definitivo.
 export async function iniciarEventoRealRemoto(input: { eventoId: string }) {

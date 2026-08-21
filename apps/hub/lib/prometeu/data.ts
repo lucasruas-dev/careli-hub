@@ -52,6 +52,7 @@ export function agoraNoEvento(momento = new Date()): { data: string; hora: strin
 }
 
 type EventoRow = {
+  arquivado_em: string | null;
   config: PrometeuEventoConfig | null;
   data_evento: string | null;
   enterprise_code: string | null;
@@ -97,12 +98,13 @@ type UnidadeRow = {
 };
 
 const CAMPOS_EVENTO =
-  "id, nome, enterprise_id, enterprise_code, data_evento, status, config, iniciado_em";
+  "id, nome, enterprise_id, enterprise_code, data_evento, status, config, iniciado_em, arquivado_em";
 const CAMPOS_CREDENCIADO =
   "id, evento_id, entity_id, nome, documento, imobiliaria, corretor, etapa, entrou_em, etapa_desde, pago_em, origem, etiqueta_impressa_em, ordem_fila, ordem_motivo, credenciado_na_janela, created_at, metadata";
 
 function mapEvento(row: EventoRow): PrometeuEvento {
   return {
+    arquivadoEm: row.arquivado_em ?? null,
     config: row.config ?? {},
     dataEvento: row.data_evento,
     enterpriseCode: row.enterprise_code,
@@ -116,15 +118,67 @@ function mapEvento(row: EventoRow): PrometeuEvento {
 
 // ------------------------------------------------------------------ eventos
 
-export async function listEventos(client: AdminClient): Promise<PrometeuEvento[]> {
-  const { data, error } = await client
-    .from("prometeu_eventos")
-    .select(CAMPOS_EVENTO)
-    .order("created_at", { ascending: false })
-    .limit(200);
+// ⚠️ ARQUIVADO NAO APARECE, por padrao.
+//
+// Esta lista alimenta os QUATRO seletores de evento do modulo (Setup, Central, Fila, Etiqueta) e
+// o `eventoDoDia` das telas de posto. Sem o filtro, um lancamento que ja acabou fica no dropdown
+// para sempre — foi exatamente assim que o Vale do Ouro continuou aparecendo em tudo depois de
+// encerrado em 01/08.
+//
+// `incluirArquivados` existe para a consulta ao historico (a analise do lancamento passado), do
+// mesmo jeito que `listCredenciados` tem `incluirEncerrados` para pessoa.
+export async function listEventos(
+  client: AdminClient,
+  opts: { incluirArquivados?: boolean } = {},
+): Promise<PrometeuEvento[]> {
+  let query = client.from("prometeu_eventos").select(CAMPOS_EVENTO);
+
+  if (!opts.incluirArquivados) query = query.is("arquivado_em", null);
+
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(200);
 
   if (error || !data) return [];
   return (data as EventoRow[]).map(mapEvento);
+}
+
+// ARQUIVA (ou desarquiva) um lancamento.
+//
+// ⚠️ NAO APAGA NADA E NAO MEXE NO `status`: o evento continua "encerrado", que e a verdade sobre
+// como ele terminou. O que muda e so a visibilidade.
+//
+// Arquivar tambem DESATIVA OS OPERADORES daquele evento. Eles sao contas proprias, com senha, e
+// nao usuarios do hub: sem isto, as credenciais de um lancamento acabado seguem valendo (medido
+// em 21/08: 13 logins do Vale do Ouro ainda ativos, ultimo acesso em 02/08).
+export async function arquivarEvento(input: {
+  arquivar: boolean;
+  client: AdminClient;
+  eventoId: string;
+  por?: null | string;
+}): Promise<{ error?: string; ok: boolean }> {
+  const agora = new Date().toISOString();
+
+  const { error } = await input.client
+    .from("prometeu_eventos")
+    .update({
+      arquivado_em: input.arquivar ? agora : null,
+      arquivado_por: input.arquivar ? (input.por ?? null) : null,
+      updated_at: agora,
+    })
+    .eq("id", input.eventoId);
+
+  if (error) return { error: error.message, ok: false };
+
+  // Best-effort: o evento ja esta arquivado, e uma falha aqui nao pode desfazer isso.
+  try {
+    await input.client
+      .from("prometeu_operadores")
+      .update({ ativo: !input.arquivar })
+      .eq("evento_id", input.eventoId);
+  } catch {
+    /* segue */
+  }
+
+  return { ok: true };
 }
 
 export async function getEvento(
@@ -470,6 +524,28 @@ export async function encerrarDia(input: {
       .from("prometeu_eventos")
       .update({ status: "encerrado", updated_at: agora })
       .eq("id", input.eventoId);
+
+    // ⚠️ AS CREDENCIAIS DA EQUIPE MORREM COM O LANCAMENTO.
+    //
+    // Regra do Lucas (21/08/2026): *"esses logins e senhas tambem sao arquivados com a
+    // finalizacao do lancamento"*. Os operadores do Prometeu sao contas PROPRIAS, com senha, e
+    // nao usuarios do hub — em boa parte gente de freela contratada para o dia. Sem isto, o login
+    // continua valendo depois do evento acabar: medido em 21/08, os 13 operadores do Vale do Ouro
+    // (encerrado em 01/08) seguiam com `ativo = true`.
+    //
+    // No ULTIMO dia, e nao nos intermediarios, exatamente como o status: a equipe volta amanha se
+    // o lancamento tem mais uma leva.
+    //
+    // Best-effort: o dia ja foi encerrado, e uma falha aqui nao pode desfazer isso. O arquivamento
+    // do lancamento faz a mesma coisa, entao ha um segundo caminho para o mesmo fim.
+    try {
+      await input.client
+        .from("prometeu_operadores")
+        .update({ ativo: false })
+        .eq("evento_id", input.eventoId);
+    } catch {
+      /* segue */
+    }
   }
 
   return {
@@ -1131,7 +1207,20 @@ export async function reservarUnidade(input: {
     .select("enterprise_code")
     .eq("id", input.eventoId)
     .maybeSingle<{ enterprise_code: string | null }>();
-  const codigo = `${(evento?.enterprise_code ?? "VLO").toUpperCase()}${quadra}${lote}`;
+  // ⚠️ SEM SIGLA, NÃO SE INVENTA UMA. Aqui havia `?? "VLO"`: um lançamento cadastrado sem
+  // empreendimento gerava reserva com o prefixo do VALE DO OURO, em silêncio, e o código errado
+  // seguia para a proposta e para o contrato. Recusar é a diferença entre um erro visível na hora
+  // e um dado corrompido que só aparece semanas depois.
+  const sigla = (evento?.enterprise_code ?? "").trim().toUpperCase();
+  if (!sigla) {
+    return {
+      error:
+        "Este lançamento está sem empreendimento. Escolha o empreendimento no Setup antes de reservar unidade.",
+      ok: false,
+    };
+  }
+
+  const codigo = `${sigla}${quadra}${lote}`;
 
   // Mesma unidade para a MESMA pessoa: não duplica, só confirma. Para pessoas diferentes o
   // registro entra assim mesmo — dois corretores disputando o mesmo lote é um problema REAL do
@@ -2413,17 +2502,31 @@ export async function liberarMesa(input: {
 
 // O evento que esta rolando: prioriza o `em_andamento` (evento real), senao o `ativo` (preparo).
 // E' o alvo das operacoes do dia e do "meu posto".
-export async function eventoOperavelId(
+export async function eventoOperavel(
   client: AdminClient,
-): Promise<string | null> {
+): Promise<null | { enterpriseId: null | string; id: string }> {
   const { data } = await client
     .from("prometeu_eventos")
-    .select("id,status")
+    .select("id,status,enterprise_id")
     .in("status", ["em_andamento", "ativo"])
+    .is("arquivado_em", null)
     .order("status", { ascending: true }) // 'ativo' < 'em_andamento' no alfabeto; corrigido abaixo
     .limit(5);
 
-  const linhas = (data ?? []) as Array<{ id: string; status: string }>;
-  const emAndamento = linhas.find((linha) => linha.status === "em_andamento");
-  return emAndamento?.id ?? linhas[0]?.id ?? null;
+  const linhas = (data ?? []) as Array<{
+    enterprise_id: null | string;
+    id: string;
+    status: string;
+  }>;
+  const escolhido = linhas.find((linha) => linha.status === "em_andamento") ?? linhas[0];
+
+  return escolhido
+    ? { enterpriseId: escolhido.enterprise_id ?? null, id: escolhido.id }
+    : null;
+}
+
+export async function eventoOperavelId(
+  client: AdminClient,
+): Promise<string | null> {
+  return (await eventoOperavel(client))?.id ?? null;
 }

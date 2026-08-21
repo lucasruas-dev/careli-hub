@@ -6,6 +6,8 @@ import {
   Clock,
   Loader2,
   Moon,
+  Archive,
+  ArchiveRestore,
   Play,
   Plus,
   QrCode,
@@ -20,6 +22,7 @@ import type {
 } from "@/lib/prometeu/types";
 
 import {
+  arquivarEventoRemoto,
   ativarEventoRemoto,
   criarEventoRemoto,
   encerrarDiaRemoto,
@@ -71,6 +74,14 @@ export function SetupView() {
   const [eventos, setEventos] = useState<PrometeuEvento[]>([]);
   const [eventoId, setEventoId] = useState("");
   const [empreendimentos, setEmpreendimentos] = useState<PrometeuEmpreendimento[]>([]);
+  // NOVO LANCAMENTO. `null` = modal fechado. Ele existe porque criar um lancamento sem
+  // EMPREENDIMENTO produz dado errado em silencio: a reserva de unidade sai com a sigla de outro
+  // loteamento (era `?? "VLO"` em prometeu/data.ts) e a fila do Apolo nao tem como se amarrar.
+  const [novo, setNovo] = useState<
+    null | { data: string; enterpriseId: string; nome: string }
+  >(null);
+  const [criandoAgora, setCriandoAgora] = useState(false);
+  const [arquivando, setArquivando] = useState(false);
   const [aba, setAba] = useState<Aba>("config");
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
@@ -290,8 +301,39 @@ export function SetupView() {
     [eventoId],
   );
 
+  // CRIAR O LANCAMENTO. Nasce em `rascunho`, e isso e proposital: `eventoOperavel` so enxerga
+  // `ativo` e `em_andamento`, entao um rascunho nao rouba a operacao de ninguem enquanto esta
+  // sendo montado. Quem poe no ar e o botao "Ativar lancamento", que ja existe.
   const criar = useCallback(async () => {
-    const { data, error } = await criarEventoRemoto({ nome: "Novo lançamento" });
+    if (!novo) return;
+
+    const nome = novo.nome.trim();
+    if (!nome) {
+      setErro("Dê um nome ao lançamento.");
+      return;
+    }
+
+    // ⚠️ EMPREENDIMENTO E OBRIGATORIO. Sem ele a reserva de unidade nasce com a sigla errada e a
+    // fila do lancamento nao consegue recusar CAD de outro loteamento — os dois problemas
+    // acontecem calados, e so aparecem depois, na proposta e na etiqueta.
+    const escolhido = empreendimentos.find((e) => e.id === novo.enterpriseId);
+    if (!escolhido) {
+      setErro("Escolha o empreendimento do lançamento.");
+      return;
+    }
+
+    setCriandoAgora(true);
+    setErro(null);
+
+    const { data, error } = await criarEventoRemoto({
+      dataEvento: novo.data ? new Date(`${novo.data}T12:00:00`).toISOString() : null,
+      enterpriseCode: escolhido.code ?? null,
+      enterpriseId: escolhido.id,
+      nome,
+    });
+
+    setCriandoAgora(false);
+
     if (error) {
       setErro(error);
       return;
@@ -300,8 +342,37 @@ export function SetupView() {
       setEventos((atual) => [data, ...atual]);
       setEventoId(data.id);
       preencher(data);
+      setNovo(null);
+      setAviso(`Lançamento "${data.nome}" criado como rascunho. Configure e depois clique em Ativar.`);
     }
-  }, [preencher]);
+  }, [empreendimentos, novo, preencher]);
+
+  // ARQUIVAR / DESARQUIVAR — tira o lancamento de circulacao. NAO apaga nada: os credenciados,
+  // as movimentacoes e as chamadas continuam no banco, e o desarquivar devolve tudo.
+  const arquivar = useCallback(
+    async (voltar: boolean) => {
+      if (!eventoId) return;
+      setArquivando(true);
+      setErro(null);
+
+      const { error } = await arquivarEventoRemoto({ arquivar: !voltar, eventoId });
+
+      setArquivando(false);
+
+      if (error) {
+        setErro(error);
+        return;
+      }
+
+      setAviso(
+        voltar
+          ? "Lançamento devolvido às telas."
+          : "Lançamento arquivado. O histórico continua guardado, e os logins da equipe foram desativados.",
+      );
+      await carregar();
+    },
+    [carregar, eventoId],
+  );
 
   if (carregando) {
     return (
@@ -311,6 +382,9 @@ export function SetupView() {
     );
   }
 
+  // ⚠️ ESTA TELA DEIXOU DE SER O ÚNICO CAMINHO PARA CRIAR. O botão agora vive no header, fixo:
+  // aqui ele só repete a oferta para quem chega e não tem nada. Com um lançamento no banco esta
+  // tela nunca aparece — e era por isso que o botão de criar era inalcançável.
   if (!evento) {
     return (
       <div className="grid h-full place-items-center bg-canvas p-8">
@@ -321,11 +395,26 @@ export function SetupView() {
           </p>
           <button
             className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#A07C3B] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8d6c33]"
-            onClick={() => void criar()}
+            onClick={() => setNovo({ data: "", enterpriseId: "", nome: "" })}
             type="button"
           >
             <Plus size={16} /> Criar lançamento
           </button>
+
+          {novo ? (
+            <ModalNovoLancamento
+              criando={criandoAgora}
+              empreendimentos={empreendimentos}
+              erro={erro}
+              onCancelar={() => {
+                setNovo(null);
+                setErro(null);
+              }}
+              onConfirmar={() => void criar()}
+              onMudar={(patch) => setNovo((atual) => (atual ? { ...atual, ...patch } : atual))}
+              valor={novo}
+            />
+          ) : null}
           {erro ? <p className="mt-4 text-sm text-red-600">{erro}</p> : null}
         </div>
       </div>
@@ -337,6 +426,20 @@ export function SetupView() {
   return (
     <div className="h-full min-h-0 overflow-y-auto bg-canvas">
       <header className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-black/[0.07] bg-canvas/95 px-5 py-3 backdrop-blur dark:border-white/[0.08]">
+        {/* ⚠️ FIXO NO HEADER, e nao dentro do estado vazio.
+            Criar lancamento SEMPRE existiu no servidor, mas o unico botao vivia no early-return de
+            "Nenhum lancamento ainda" — que so aparece com ZERO eventos. Com um lancamento no banco
+            (e havia um, o Vale do Ouro), o botao nunca renderizava, e a queixa do Lucas em 21/08
+            foi exatamente essa: "o que eu nao vi hoje e um botao para criar os novos lancamentos". */}
+        <button
+          className="inline-flex items-center gap-2 rounded-lg bg-[#A07C3B] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#8d6c33]"
+          onClick={() => setNovo({ data: "", enterpriseId: "", nome: "" })}
+          title="Criar um lançamento novo"
+          type="button"
+        >
+          <Plus size={15} /> Novo lançamento
+        </button>
+
         <select
           className="rounded-lg border border-black/10 bg-surface px-3 py-1.5 text-sm font-semibold text-ink dark:border-white/10"
           onChange={(e) => void trocarEvento(e.target.value)}
@@ -397,6 +500,39 @@ export function SetupView() {
               type="button"
             >
               <Moon size={15} /> Encerrar o dia
+            </button>
+          ) : null}
+
+          {/* ARQUIVAR — só depois de encerrado. Regra do Lucas (21/08): *"os lançamentos que foram
+              finalizados, pode arquivar tudo, gestão, fila tudo"*. Arquivar NÃO apaga: some das
+              telas e o histórico fica. `Desarquivar` é o que torna o clique barato — mas ele só
+              aparece se você estiver vendo um arquivado, e a lista esconde arquivados por padrão. */}
+          {evento.status === "encerrado" && !evento.arquivadoEm ? (
+            <button
+              className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3.5 py-1.5 text-sm font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
+              disabled={arquivando}
+              onClick={() => void arquivar(false)}
+              title="Tira o lançamento das telas. Nada é apagado."
+              type="button"
+            >
+              {arquivando ? <Loader2 className="animate-spin" size={15} /> : <Archive size={15} />}
+              Arquivar
+            </button>
+          ) : null}
+
+          {evento.arquivadoEm ? (
+            <button
+              className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3.5 py-1.5 text-sm font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
+              disabled={arquivando}
+              onClick={() => void arquivar(true)}
+              type="button"
+            >
+              {arquivando ? (
+                <Loader2 className="animate-spin" size={15} />
+              ) : (
+                <ArchiveRestore size={15} />
+              )}
+              Desarquivar
             </button>
           ) : null}
         </div>
@@ -695,6 +831,21 @@ export function SetupView() {
           onConfirmar={(encerrarEvento) => void encerrarODia(encerrarEvento)}
         />
       ) : null}
+
+      {novo ? (
+        <ModalNovoLancamento
+          criando={criandoAgora}
+          empreendimentos={empreendimentos}
+          erro={erro}
+          onCancelar={() => {
+            setNovo(null);
+            setErro(null);
+          }}
+          onConfirmar={() => void criar()}
+          onMudar={(patch) => setNovo((atual) => (atual ? { ...atual, ...patch } : atual))}
+          valor={novo}
+        />
+      ) : null}
     </div>
   );
 }
@@ -800,6 +951,104 @@ function CheckinCard(props: { habilitado: boolean; onChange: (valor: boolean) =>
 
 // Fim de um dia do evento. Quem concluiu vira dado de performance; quem parou no meio sai da
 // operação (mas continua no histórico — arquivar, não apagar).
+
+// O MODAL DE CRIAR LANCAMENTO, como componente proprio porque e usado em DOIS pontos: no header
+// (o caminho normal) e no estado vazio "Nenhum lancamento ainda", que retorna antes do resto da
+// tela — inline, ele so existiria em um dos dois.
+function ModalNovoLancamento(props: {
+  criando: boolean;
+  empreendimentos: PrometeuEmpreendimento[];
+  erro: null | string;
+  onCancelar: () => void;
+  onConfirmar: () => void;
+  onMudar: (patch: Partial<{ data: string; enterpriseId: string; nome: string }>) => void;
+  valor: { data: string; enterpriseId: string; nome: string };
+}) {
+  return (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-xl border border-black/10 bg-surface p-5 dark:border-white/10">
+            <h3 className="text-base font-semibold text-ink">Novo lançamento</h3>
+            <p className="mt-1 text-sm text-ink-soft">
+              Ele nasce como <strong className="text-ink">rascunho</strong>: dá para montar mesas,
+              equipe e check-in sem afetar nada. Só o botão Ativar põe a fila no ar.
+            </p>
+
+            <label className="mt-4 block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                Nome do lançamento
+              </span>
+              <input
+                autoFocus
+                className="mt-1 w-full rounded-lg border border-black/10 bg-canvas px-3 py-2 text-sm text-ink dark:border-white/10"
+                onChange={(e) => props.onMudar({ nome: e.target.value })}
+                placeholder="Ex.: Residencial Villa Paris"
+                value={props.valor.nome}
+              />
+            </label>
+
+            {/* ⚠️ OBRIGATÓRIO. Sem empreendimento a reserva de unidade sai com a sigla de outro
+                loteamento e a fila não consegue recusar CAD que não é dela — os dois calados. */}
+            <label className="mt-3 block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                Empreendimento
+              </span>
+              <select
+                className="mt-1 w-full rounded-lg border border-black/10 bg-canvas px-3 py-2 text-sm text-ink dark:border-white/10"
+                onChange={(e) =>
+                  props.onMudar({ enterpriseId: e.target.value })
+                }
+                value={props.valor.enterpriseId}
+              >
+                <option value="">Escolha o empreendimento…</option>
+                {props.empreendimentos.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                    {item.code ? ` · ${item.code}` : ""}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-ink-muted">
+                Define a sigla das unidades reservadas e de quais CADs a fila aceita.
+              </span>
+            </label>
+
+            <label className="mt-3 block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                Data do lançamento
+              </span>
+              <input
+                className="mt-1 w-full rounded-lg border border-black/10 bg-canvas px-3 py-2 text-sm text-ink dark:border-white/10"
+                onChange={(e) => props.onMudar({ data: e.target.value })}
+                type="date"
+                value={props.valor.data}
+              />
+            </label>
+
+            {props.erro ? <p className="mt-3 text-sm text-red-600">{props.erro}</p> : null}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="rounded-lg border border-black/10 px-3.5 py-2 text-sm font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
+                onClick={props.onCancelar}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button
+                className="inline-flex items-center gap-2 rounded-lg bg-[#A07C3B] px-3.5 py-2 text-sm font-semibold text-white hover:bg-[#8d6c33] disabled:opacity-60"
+                disabled={props.criando || !props.valor.nome.trim() || !props.valor.enterpriseId}
+                onClick={props.onConfirmar}
+                type="button"
+              >
+                {props.criando ? <Loader2 className="animate-spin" size={15} /> : <Plus size={15} />}
+                Criar lançamento
+              </button>
+            </div>
+          </div>
+        </div>
+  );
+}
+
 function ModalEncerrarDia(props: {
   onCancelar: () => void;
   onConfirmar: (encerrarEvento: boolean) => void;

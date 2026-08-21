@@ -123,6 +123,9 @@ export type PrometeuEventoConfig = {
 };
 
 export type PrometeuEvento = {
+  // Quando o lancamento saiu de circulacao. Null = aparece nas telas. ARQUIVAR NAO APAGA NADA:
+  // todo o historico (credenciados, movimentacoes, chamadas) continua no banco.
+  arquivadoEm: string | null;
   config: PrometeuEventoConfig;
   dataEvento: string | null;
   enterpriseCode: string | null;

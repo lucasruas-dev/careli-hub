@@ -21,6 +21,7 @@ import {
   lancamentoSemEmpreendimento,
   rotuloDoLancamento,
 } from "@/lib/prometeu/lancamento";
+import { eventoDoDia } from "@/lib/prometeu/evento-do-dia";
 import type { PrometeuCredenciado, PrometeuEvento } from "@/lib/prometeu/types";
 
 // FILA DO EVENTO — quem está habilitado e ainda NÃO chegou.
@@ -75,8 +76,10 @@ export function FilaView() {
       const { data } = await fetchEventos();
       const lista = data ?? [];
       setEventos(lista);
-      // Abre no evento ativo — é o do dia.
-      const ativo = lista.find((e) => e.status === "ativo") ?? lista[0];
+      // ⚠️ MESMA REGRA DAS OUTRAS TELAS: quem está EM ANDAMENTO manda, senão o ativo, senão um
+      // rascunho. Aqui era `find(status === "ativo") ?? lista[0]`, e o `?? lista[0]` abria no
+      // evento mais RECENTE — que, com um lançamento encerrado no banco, era justamente ele.
+      const ativo = eventoDoDia(lista);
       if (ativo) setEventoId(ativo.id);
       else setCarregando(false);
     })();
@@ -241,9 +244,14 @@ export function FilaView() {
           </p>
         ) : filtrada.length === 0 ? (
           <p className="m-0 p-4 text-xs text-ink-muted">
-            {credenciados.length === 0
-              ? "Ninguém na fila ainda. Quem for credenciado no Apolo entra aqui automaticamente."
-              : "Todos que estavam na fila já fizeram check-in."}
+            {/* ⚠️ SEM LANÇAMENTO É DIFERENTE DE FILA VAZIA. Dizer "ninguém na fila ainda" quando
+                não há lançamento nenhum manda o operador procurar gente que nunca ia aparecer —
+                e passou a ser um caso real agora que lançamento encerrado pode ser arquivado. */}
+            {!eventoId
+              ? "Nenhum lançamento em operação. Crie ou ative um lançamento no Setup."
+              : credenciados.length === 0
+                ? "Ninguém na fila ainda. Quem for credenciado no Apolo entra aqui automaticamente."
+                : "Todos que estavam na fila já fizeram check-in."}
           </p>
         ) : (
           <table className="w-full text-left text-sm">

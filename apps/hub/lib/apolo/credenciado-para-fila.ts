@@ -9,7 +9,7 @@
 //
 // BEST-EFFORT: nunca lança e nunca segura a mudança de etapa. Se o Prometeu estiver fora do ar
 // ou não houver evento ativo, a etapa muda do mesmo jeito — a fila é consequência, não condição.
-import { adicionarCredenciado, eventoOperavelId } from "@/lib/prometeu/data";
+import { adicionarCredenciado, eventoOperavel } from "@/lib/prometeu/data";
 
 import { lerCadDaEsteira } from "./esteira-cad";
 import type { createApoloAdminClient } from "./server";
@@ -31,8 +31,39 @@ export async function garantirNaFilaDoLancamento(
   // "já estava lá" é sucesso, não falha.
 ): Promise<{ entrou: boolean; motivo: string; naFila: boolean }> {
   try {
-    const eventoId = await eventoOperavelId(client);
-    if (!eventoId) return { entrou: false, motivo: "sem evento ativo", naFila: false };
+    const evento = await eventoOperavel(client);
+    if (!evento) return { entrou: false, motivo: "sem evento ativo", naFila: false };
+    const eventoId = evento.id;
+
+    // ⚠️ A FILA É DE UM EMPREENDIMENTO, NÃO DE TODOS.
+    //
+    // Até aqui esta função pegava o evento operável e inseria SEM olhar de qual loteamento a CAD
+    // era. Enquanto não havia lançamento ativo, o efeito era zero — `eventoOperavel` devolvia
+    // null e ninguém entrava. Mas quem chama é `esteira.ts`, em TODA mudança de etapa do Board
+    // (a amplitude foi ampliada no dia do evento, de propósito), e também o webhook do PIX. No
+    // segundo em que um lançamento novo fosse ativado, qualquer CAD que mudasse de etapa em
+    // QUALQUER empreendimento do Apolo cairia na fila dele: Garden, Lagoa Bonita e Villa Paris
+    // no mesmo salão, e ninguém perceberia até alguém estranhar um nome na etiqueta.
+    //
+    // Comparação por `enterprise_id`, nunca por nome: o mesmo loteamento aparece escrito de
+    // formas diferentes nas duas pontas.
+    //
+    // Evento SEM empreendimento não filtra nada — é o cadastro antigo, e barrar todo mundo aí
+    // quebraria o que já funciona. O aperto certo é exigir empreendimento na CRIAÇÃO.
+    const doEvento = (evento.enterpriseId ?? "").trim();
+    if (doEvento) {
+      const cad = await lerCadDaEsteira<{ enterprise_id: null | string }>(
+        client,
+        entityId,
+        "enterprise_id",
+        { enterpriseId: opts.enterpriseId },
+      );
+      const daCad = (cad?.enterprise_id ?? "").trim();
+
+      if (daCad && daCad !== doEvento) {
+        return { entrou: false, motivo: "CAD de outro empreendimento", naFila: false };
+      }
+    }
 
     // Já está lá? Nada a fazer — nem quando veio pelo PIX, nem quando entrou por aqui antes.
     const { data: existente } = await client

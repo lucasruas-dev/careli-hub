@@ -36,6 +36,53 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-21-prometeu-lancamentos",
+    deployedAt: "2026-08-21T13:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Botao 'Novo lancamento' FIXO no topo. Ele existia, mas so aparecia quando nao havia nenhum lancamento cadastrado — com o Vale do Ouro no banco, nunca dava para ver",
+              "Criar agora pede o EMPREENDIMENTO. Sem ele a reserva de unidade saia com a sigla de outro loteamento, calada",
+              "Lancamento encerrado pode ser ARQUIVADO: some das telas e leva junto os logins da equipe daquele evento. Nada e apagado, e da para desarquivar",
+            ],
+            screen: "Setup",
+          },
+          {
+            items: [
+              "As telas param de abrir num lancamento ENCERRADO. Check-in, atendente, gestao, fila e etiqueta caiam no evento mais recente, que era o Vale do Ouro de 01/08",
+              "Fila vazia agora diz a verdade: 'nenhum lancamento em operacao' e diferente de 'ninguem na fila'",
+            ],
+            screen: "Fila / Etiqueta / postos",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A fila do lancamento so aceita CAD do empreendimento DAQUELE lancamento",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.176.0 (2026-08-21-board-avisar-coordenador)",
+    technical: {
+      done:
+        "MIGRATION 0100 (autorizada): `arquivado_em` + `arquivado_por` em prometeu_eventos, com indice parcial nos vivos. Coluna SEPARADA e nao `status='arquivado'` — status carrega o ciclo do dia (rascunho/ativo/em_andamento/encerrado) e sobrescreve-lo apagaria a informacao de que o evento terminou direito. Mesmo padrao que o modulo ja usa para PESSOA (`prometeu_credenciados.encerrado_em`). `listEventos` filtra por padrao, com `incluirArquivados` para o historico. `arquivarEvento` tambem desativa os operadores do evento. ⚠️ NAO existe e nao deve existir DELETE de evento: as FKs sao ON DELETE CASCADE e apagariam 609 credenciados, 481 movimentacoes, 242 chamadas, 18 mesas e 13 operadores. AMARRA DA FILA: `eventoOperavel` (novo) devolve id + enterprise_id, e `credenciado-para-fila` recusa CAD de outro empreendimento comparando por ID, nunca por nome. Era o risco numero 1: `esteira.ts:206` chama isso em TODA mudanca de etapa do Board e nada comparava empreendimento — inocuo so porque nao havia evento ativo. EVENTO DO DIA: o fallback `?? eventos[0]` saiu; a funcao promete no comentario que 'nunca cai num encerrado' e caia, porque o Vale do Ouro era o unico evento do banco. Fila e Etiqueta migraram para `eventoDoDia` (usavam `find(status==='ativo') ?? lista[0]`). FALLBACK 'VLO' REMOVIDO de data.ts:1134: lancamento sem sigla agora RECUSA a reserva em vez de gerar codigo com o prefixo do Vale do Ouro. LOGINS: `encerrarDia` com encerrarEvento desativa os operadores — regra do Lucas, 'esses logins e senhas tambem sao arquivados com a finalizacao do lancamento'. Modal de criacao extraido como componente porque e usado no header E no estado vazio, que retorna antes do resto da tela. +6 testes; 1.098 no total, typecheck, lint e build limpos.",
+      motivation:
+        "Lucas, 21/08: *\"o prometeu e o nosso sistema de fila, ou seja ele funcionara em lancamentos ATIVOS. Os lancamentos que foram FINALIZADOS, pode arquivar tudo, gestao, fila tudo. Entao o que eu nao vi hoje e um BOTAO PARA CRIAR OS NOVOS LANCAMENTOS e ainda tem MUITA COISA DO VALE DO OURO\"*. A auditoria (4 agentes + banco) achou a razao das duas queixas: o Prometeu inteiro tem UM evento, o Vale do Ouro, encerrado em 01/08 — e ele reaparecia por cinco caminhos diferentes, enquanto o botao de criar estava preso num early-return que so renderiza com ZERO eventos.",
+    },
+    title: "Prometeu: criar lancamento, arquivar o que acabou e soltar o Vale do Ouro",
+    type: "novidade",
+    version: "1.177.0",
+  },
+  {
     buildTag: "2026-08-21-board-avisar-coordenador",
     deployedAt: "2026-08-21T13:05:00-03:00",
     modules: [

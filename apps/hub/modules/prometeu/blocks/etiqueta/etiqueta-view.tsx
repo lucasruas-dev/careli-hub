@@ -20,6 +20,7 @@ import {
   nomeDoLancamento,
   dataDoLancamento,
 } from "@/lib/prometeu/lancamento";
+import { eventoDoDia } from "@/lib/prometeu/evento-do-dia";
 import type { PrometeuCredenciado, PrometeuEvento } from "@/lib/prometeu/types";
 
 // ETIQUETA DE CREDENCIAMENTO — o crachá que o cliente usa o evento inteiro.
@@ -149,7 +150,10 @@ export function EtiquetaView() {
       const { data } = await fetchEventos();
       const lista = data ?? [];
       setEventos(lista);
-      const ativo = lista.find((e) => e.status === "ativo") ?? lista[0];
+      // ⚠️ MESMA REGRA DAS OUTRAS TELAS: quem está EM ANDAMENTO manda, senão o ativo, senão um
+      // rascunho. Aqui era `find(status === "ativo") ?? lista[0]`, e o `?? lista[0]` abria no
+      // evento mais RECENTE — que, com um lançamento encerrado no banco, era justamente ele.
+      const ativo = eventoDoDia(lista);
       if (ativo) setEventoId(ativo.id);
       else setCarregando(false);
     })();
