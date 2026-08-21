@@ -41639,3 +41639,100 @@ Licao para a proxima: antes de mexer no canal de uma fila, medir de ONDE vem os 
 VERIFICADO: typecheck, lint, 102 testes da Iris e build de producao limpos. Deploy confirmado com
 `c2x.app.br` e `/iris` em 200.
 ROLLBACK: v1.172.0.
+
+## 2026-08-21 · A ESTEIRA DA CAD PASSOU A FALAR (v1.174.0 / v1.175.0 / v1.176.0)
+
+Pedido do Lucas: *"cliente teve o credito analisado, a etapa tem que ser marcada, ae se for
+aprovada fica como verde e avanca para proxima etapa, se nao foi aprovado, fica vermelho a etapa
+de credito e mantem ela nessa etapa. da mesma forma, temos que ter nessa esteira a etapa de
+correcao, para a gente entender onde esta parado aquela CAD, e devemos comunicar em todas as
+etapas o corretor, coordenador"*, seguido de *"revisa se todas as etapas temos os disparos sendo
+feitos"* e *"reforco que os disparos tem que ser feito pelo numero do relacionamento"*.
+
+### O QUE A AUDITORIA MEDIU (7 agentes, codigo + banco de producao)
+
+⚠️ CINCO DAS SETE ETAPAS NAO AVISAVAM NINGUEM: validacao, credito, correcao, credenciado e
+indeferido. A rota que move a etapa (`board/[id]/etapa/route.ts`, 88 linhas) gravava, auditava,
+regerava o PDF e retornava — sem um unico import de disparo. O motivo da correcao que o operador
+escrevia morria na tela.
+
+⚠️ O CORRETOR NUNCA FOI AVISADO, NEM UMA VEZ. `apolo_disparos` tinha 2.249 linhas e ZERO do tipo
+corretor. O unico codigo que tentava avisa-lo lia `apolo_relationships.metadata.phone` do vinculo
+do CLIENTE — campo vazio em 718 de 718 CADs. Ramo estruturalmente morto, falhando em silencio
+marcando "pulado", que e o estado que nao aparece como problema em lugar nenhum.
+
+O que o Lucas leu como "a etapa nao registra nada" era problema de TELA: o servidor ja movia
+sozinho (aprovado -> prevenda/credenciado, reprovado -> revisao), mas o stepper tinha exatamente
+tres classes (verde/escura/cinza) e nenhuma dizia "deu errado" — 165 CADs reprovadas eram pintadas
+como quem so espera a consulta.
+
+### v1.174.0 — O GANCHO E A TRILHA
+
+`lib/apolo/esteira-avisos.ts` chamado por `atualizarEtapa`, o ponto autoritativo de escrita. Trava
+de repeticao por `etapaAnterior` (a funcao faz upsert e e rechamada com a MESMA etapa em varios
+caminhos). Corretor por `corretor_entity_id`, com a IMOBILIARIA como segunda opcao — medido: das
+195 CADs vivas, 45 tem corretor e 92 tem imobiliaria. Sem nenhum dos dois, registra FALHA visivel.
+Canal: Evolution (`sendEvolutionDirectText` + o novo `sendEvolutionDirectMedia`, que nao existia
+para 1:1). O PDF da CAD continua indo ao coordenador na reprovacao.
+
+⚠️ FURO COBERTO A MAO: `prevenda-fluxo.ts` grava `credenciado` por escrita DIRETA em dois pontos
+e nao passa por `atualizarEtapa`. E o caminho de maior volume de boa noticia (o cliente pagou).
+
+Na tela: `correcao` ganhou bolinha propria (desvio, so para quem esta nele) e o stepper ganhou
+falha (rose) e espera (amber).
+
+### v1.175.0 — STATUS DE ENVIO E O AVANCO QUE ANDAVA PARA TRAS
+
+Lucas, olhando uma ficha em correcao: *"nessa tela temos que ter os status de envio de mensagem,
+se foi enviado, pra quem, telefone, igual as outras telas"*. `<StatusDisparos>` deixou de ser
+exclusivo da imobiliaria. So faz sentido agora — antes a CAD nao tinha disparo nenhum e o bloco
+apareceria vazio.
+
+E: *"porque temos cads ainda em analise de credito no vale do ouro, quando nao tem a etapa do pix,
+se ele passou no credito tem que ir direto para credenciado"*.
+
+⚠️ SAO DOIS PROBLEMAS COM A MESMA APARENCIA. Das 4 paradas, TRES (Lucelia, Rafael, Ronaldo) nunca
+tiveram consulta ao Serasa — movidas para la em 13/08 e ninguem clicou em consultar. Operacao
+parada, nao defeito. A QUARTA (Cristiana) e defeito, e a sequencia esta inteira em
+`apolo_audit_events`:
+
+    19:42:18  Board grava `credito` (clique de Avancar na Validacao)
+    19:42:23  Serasa APROVA (score 580, zero negativacao) e o servidor grava `credenciado`
+    19:42:37  Board grava `credito` POR CIMA
+
+O avanco chega com a etapa que a TELA achava ser a atual. Corrigido com `nuncaRebaixar`, so no
+botao de avanco — movimentos laterais (indeferir, correcao, revisao) continuam livres.
+
+NO BANCO (autorizado): a CAD da Cristiana foi restaurada para `credenciado`. ⚠️ Por UPDATE direto,
+que fura os efeitos de `atualizarEtapa`: ela nao entrou na fila do Prometeu (mas a fila parou de
+receber em 02/08 e 309 das 503 credenciadas do VLO tambem nao estao nela) e nao subiu ao C2X —
+entra no proximo lote.
+
+### v1.176.0 — O BOTAO, E POR QUE ELE PRECISOU EXISTIR
+
+Lucas: *"quando subir, dispara por favor todas as mensagens do villa paris para o coordenador
+(verifica se o coordenador e o Mateus)"*. Confirmado: RVP -> `enterprises.manager_id` ->
+MATHEUS GUEDES IMOVEIS, (33) 98731-9586. Sao 44 CADs (20 credenciadas, 18 validacao, 5 revisao,
+1 correcao). Perguntei se preferia um resumo agrupado; ele escolheu todas, uma a uma.
+
+⚠️ DUAS PAREDES, NESTA ORDEM:
+  1. O script local nao envia: as credenciais do gateway do Relacionamento (`EVOLUTION_API_*`) so
+     existem na Vercel. Medido com UMA mensagem antes de soltar o lote — o caminho resolveu o
+     coordenador certo e montou o texto, e falhou so no gateway. Sem essa prova, seriam 44 falhas.
+  2. A rota nao aceitou chamada de fora: o `CRON_SECRET` local nao e o mesmo de producao
+     ("Sessao do Apolo invalida"). Adivinhar ou extrair secret de producao esta fora de cogitacao.
+
+Dai o botao "Avisar coordenador" no Board: quem dispara e a sessao admin de quem ja esta logado.
+Dois cliques (conta, depois envia), so com um empreendimento escolhido.
+
+VERIFICADO nas tres: 968 testes (+10), typecheck, lint e build de producao limpos. Deploys
+confirmados com `c2x.app.br` e `/apolo` em 200.
+ROLLBACK: v1.173.0 (2026-08-20-iris-canal-antes-da-fila).
+
+### AINDA EM ABERTO
+
+  • As 44 mensagens do Villa Paris NAO foram enviadas: dependem do Lucas clicar no botao novo.
+  • Lucelia, Rafael e Ronaldo esperam alguem clicar em consultar o Serasa.
+  • A CAD da Cristiana nao subiu ao C2X (entra no proximo lote do Sync).
+  • `disparo-reprovacao.ts` ficou sem chamador, marcado como descontinuado e NAO apagado: e a
+    referencia de como o anexo e a devolutiva de entrega da Meta funcionavam.
