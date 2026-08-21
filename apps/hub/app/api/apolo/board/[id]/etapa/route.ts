@@ -32,6 +32,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     enterpriseId?: unknown;
     etapa?: unknown;
     motivo?: unknown;
+    // AVANÇAR não pode REBAIXAR. Só o botão de avanço genérico manda esta flag; indeferir,
+    // correção e revisão são movimentos LATERAIS deliberados e continuam livres.
+    nuncaRebaixar?: unknown;
   };
 
   if (!ehEtapaValida(body.etapa)) {
@@ -43,9 +46,26 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       ? body.enterpriseId
       : null;
 
+  // ⚠️ ESTA FLAG CONSERTA UM ROMBO DE DADO MEDIDO (Lucas, 21/08: *"porque temos cads ainda em
+  // analise de credito no vale do ouro, quando nao tem a etapa do pix, se ele passou no credito
+  // tem que ir direto para credenciado"*).
+  //
+  // A CAD da CRISTIANA, no Vale do Ouro, mostra a sequência inteira em `apolo_audit_events`:
+  //   19:42:18  o Board grava `credito` (o operador clicou Avançar na Validação)
+  //   19:42:23  a consulta ao Serasa APROVA (score 580, zero negativação) e o servidor,
+  //             com a pré-venda desligada no VLO, grava `credenciado`
+  //   19:42:37  o Board grava `credito` DE NOVO, por cima
+  // Resultado: uma ficha aprovada parada na Análise de crédito, e a decisão do servidor perdida.
+  //
+  // A causa é o avanço chegar com a etapa que a TELA achava que era a atual. Sem `nuncaRebaixar`,
+  // `atualizarEtapa` obedece — porque ação humana manda, e é assim que indeferir e corrigir
+  // funcionam. Mas AVANÇAR que anda para trás não é decisão, é clique fora de sincronia.
+  const nuncaRebaixar = body.nuncaRebaixar === true;
+
   const { bloqueado, error, etapa, semCad } = await atualizarEtapa(adminClient, id, body.etapa, {
     atualizadoPor: auth.userId,
     enterpriseId,
+    nuncaRebaixar,
     // motivo só entra quando veio (indeferir/correção exigem motivo); avanço normal não mexe nele.
     motivo: motivo.length ? motivo : undefined,
   });

@@ -169,3 +169,24 @@ describe("tradução de erro", () => {
     expect(explicarErroDoDisparo(gigante)).toHaveLength(91);
   });
 });
+
+describe("rótulo dos avisos de etapa", () => {
+  it("traduz o padrão `etapa_<etapa>_<papel>` sem precisar de uma entrada por combinação", () => {
+    // São 7 etapas x 3 papéis. Listadas uma a uma, bastaria uma etapa nova para a tela mostrar
+    // "etapa credenciado corretor" cru para o operador.
+    expect(rotuloDoEvento("etapa_correcao_coordenador")).toBe("Pedido de correção (coordenador)");
+    expect(rotuloDoEvento("etapa_revisao_corretor")).toBe("Crédito reprovado (corretor)");
+    expect(rotuloDoEvento("etapa_credenciado_imobiliaria")).toBe("CAD credenciada (imobiliária)");
+    expect(rotuloDoEvento("etapa_validacao_corretor")).toBe("CAD recebida (corretor)");
+  });
+
+  it("tipo desconhecido continua legível, sem quebrar a tela", () => {
+    expect(rotuloDoEvento("etapa_inventada_ninguem")).toBe("etapa inventada ninguem");
+    expect(rotuloDoEvento(null)).toBe("Mensagem");
+  });
+
+  it("os tipos antigos continuam com o rótulo deles", () => {
+    expect(rotuloDoEvento("credenciamento_aprovado")).toBe("Aviso de habilitação");
+    expect(rotuloDoEvento("prevenda_cobranca")).toBe("Cobrança da pré-venda");
+  });
+});

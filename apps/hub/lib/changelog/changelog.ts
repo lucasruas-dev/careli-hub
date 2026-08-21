@@ -36,6 +36,40 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-21-esteira-status-envio-e-avanco",
+    deployedAt: "2026-08-21T12:35:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A ficha da CAD passa a mostrar o STATUS DE ENVIO das mensagens: o que saiu, para quem, em que telefone, a hora e o motivo quando falhou. Igual a tela da imobiliaria",
+              "AVANCAR nao volta mais a CAD para tras. Uma ficha aprovada no credito que ja tinha ido para Credenciado podia ser puxada de volta para Analise de credito por um clique fora de sincronia",
+            ],
+            screen: "Board / ficha da CAD",
+          },
+          {
+            items: [
+              "Nova rota para por o coordenador em dia com as CADs que ja estao na esteira, uma mensagem por CAD, com pausa entre elas",
+            ],
+            screen: "Avisos da esteira",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.174.0 (2026-08-21-esteira-avisos-e-trilha)",
+    technical: {
+      done:
+        "STATUS DE ENVIO NA CAD: `<StatusDisparos>` deixou de ser exclusivo da imobiliaria (`{imob ? ... : null}`) e aparece em toda ficha. A rota GET /board/[id]/disparos ja servia — nunca filtrou por perfil. `rotuloDoEvento` ganhou o padrao `etapa_<etapa>_<papel>` (7 etapas x 3 papeis) em vez de 21 entradas no dicionario, senao uma etapa nova apareceria como 'etapa credenciado corretor' cru na tela. +3 testes. AVANCO SEM REBAIXAR: PATCH /board/[id]/etapa aceita `nuncaRebaixar`, e SO o botao de avancar manda (indeferir, correcao e revisao sao movimentos laterais deliberados e continuam livres). CAUSA MEDIDA na CAD da Cristiana (Vale do Ouro), reconstruida por `apolo_audit_events`: 19:42:18 o Board grava `credito`; 19:42:23 o Serasa APROVA (score 580, zero negativacao) e o servidor grava `credenciado` porque a pre-venda do VLO esta desligada; 19:42:37 o Board grava `credito` por cima, com a etapa que a TELA achava ser a atual. ROTA DE LOTE: POST /api/apolo/esteira/avisar-lote (admin ou CRON_SECRET), `dryRun` por padrao, com `apenas`, `pular` e `limite`. Existe porque as credenciais do gateway do Relacionamento so vivem na Vercel: rodando por script de uma maquina de desenvolvimento, toda mensagem falha com 'Gateway Evolution nao configurado' — medido com UMA mensagem antes de soltar o lote.",
+      motivation:
+        "Lucas, 21/08, olhando uma ficha em correcao: *\"nessa tela temos que ter os status de envio de mensagem, se foi enviado, pra quem, telefone, igual as outras telas\"*. E, no Board: *\"porque temos cads ainda em analise de credito no vale do ouro, quando nao tem a etapa do pix, se ele passou no credito tem que ir direto para credenciado\"*. Medido: das 4 CADs paradas em Analise de credito, TRES nunca tiveram consulta ao Serasa (paradas desde 13/08, ninguem clicou em consultar) e UMA foi aprovada e sobrescrita pelo clique de avancar. Sao dois problemas diferentes com a mesma aparencia na tela.",
+    },
+    title: "CAD: status de envio na ficha e avanco que nao anda para tras",
+    type: "correcao",
+    version: "1.175.0",
+  },
+  {
     buildTag: "2026-08-21-esteira-avisos-e-trilha",
     deployedAt: "2026-08-21T11:55:00-03:00",
     modules: [

@@ -65,10 +65,40 @@ const EVENTOS: Record<string, string> = {
   prevenda_recibo: "Recibo da pré-venda",
 };
 
+// Os avisos por ETAPA da esteira (`esteira-avisos.ts`) chegam como `etapa_<etapa>_<papel>` —
+// 7 etapas x 3 papéis. Listar as 21 combinações no dicionário acima envelheceria mal: bastaria
+// uma etapa nova para a tela mostrar "etapa credenciado corretor" em vez de um rótulo.
+const ETAPAS_ROTULO: Record<string, string> = {
+  correcao: "Pedido de correção",
+  credenciado: "CAD credenciada",
+  credito: "Em análise de crédito",
+  indeferido: "CAD indeferida",
+  prevenda: "Pré-venda",
+  revisao: "Crédito reprovado",
+  validacao: "CAD recebida",
+};
+
+const PAPEL_ROTULO: Record<string, string> = {
+  coordenador: "coordenador",
+  corretor: "corretor",
+  imobiliaria: "imobiliária",
+};
+
 export function rotuloDoEvento(tipo: null | string): string {
   const chave = (tipo ?? "").trim();
   if (!chave) return "Mensagem";
-  return EVENTOS[chave] ?? chave.replace(/_/g, " ");
+
+  const doPadrao = EVENTOS[chave];
+  if (doPadrao) return doPadrao;
+
+  const etapa = /^etapa_([a-z]+)_([a-z]+)$/.exec(chave);
+  if (etapa) {
+    const rotulo = ETAPAS_ROTULO[etapa[1]!];
+    const papel = PAPEL_ROTULO[etapa[2]!];
+    if (rotulo && papel) return `${rotulo} (${papel})`;
+  }
+
+  return chave.replace(/_/g, " ");
 }
 
 /**

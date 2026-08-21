@@ -380,13 +380,15 @@ export function BoardView({
     entityId: string,
     etapa: string,
     motivo?: string,
+    // Só o AVANÇO manda. Ver o comentário em `avancarEtapa`.
+    nuncaRebaixar?: boolean,
   ): Promise<{ error?: string; etapa?: string; ok: boolean }> => {
     try {
       const token = await getApoloAccessToken();
       // `enterpriseId` do card: diz ao servidor QUAL CAD desta pessoa está sendo movida.
       const enterpriseId = itens.find((item) => item.id === entityId)?.enterpriseId ?? null;
       const resposta = await fetch(`/api/apolo/board/${encodeURIComponent(entityId)}/etapa`, {
-        body: JSON.stringify({ enterpriseId, etapa, motivo }),
+        body: JSON.stringify({ enterpriseId, etapa, motivo, nuncaRebaixar }),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "PATCH",
       });
@@ -464,10 +466,15 @@ export function BoardView({
   const moverEtapa = async (
     itemId: string,
     etapa: string,
-    opts: { aplicar: (etapaGravada: string) => void; evento?: [EventoHistorico["tipo"], string]; motivo?: string },
+    opts: {
+      aplicar: (etapaGravada: string) => void;
+      evento?: [EventoHistorico["tipo"], string];
+      motivo?: string;
+      nuncaRebaixar?: boolean;
+    },
   ) => {
     setErroEtapa(null);
-    const r = await gravarEtapa(itemId, etapa, opts.motivo);
+    const r = await gravarEtapa(itemId, etapa, opts.motivo, opts.nuncaRebaixar);
     if (!r.ok) {
       setErroEtapa(r.error ?? "Não foi possível gravar a etapa.");
       return;
@@ -637,6 +644,12 @@ export function BoardView({
         if (indice !== undefined) setProgresso((prev) => ({ ...prev, [item.id]: indice }));
       },
       evento: ["etapa", etapaAtualId === "cadastro" ? "Validação aprovada" : "Credenciado"],
+      // ⚠️ AVANÇAR NUNCA ANDA PARA TRÁS. `etapaAtualId` é a etapa que ESTA TELA acha que é a
+      // atual, e ela pode estar velha: no Vale do Ouro a consulta ao Serasa aprovou e o servidor
+      // mandou a ficha direto para `credenciado` (pré-venda desligada), e 14 segundos depois um
+      // avanço com a etapa antiga gravou `credito` por cima — a ficha aprovada ficou parada na
+      // Análise de crédito. Com a flag, o servidor mantém a etapa mais adiantada.
+      nuncaRebaixar: true,
     });
   };
 
@@ -2915,7 +2928,14 @@ function DetalheBoard({
           fora do painel da etapa de propósito: o operador precisa ver os envios em qualquer
           ponto da trilha, inclusive depois de habilitada, que é justamente quando ele pergunta
           "ela recebeu?". */}
-      {imob ? <StatusDisparos entityId={item.id} /> : null}
+      {/* ⚠️ AGORA TAMBÉM NA CAD, não só na imobiliária. Pedido do Lucas (21/08): *"nessa tela
+          temos que ter os status de envio de mensagem, se foi enviado, pra quem, telefone, igual
+          as outras telas"*, olhando uma ficha em correção.
+          Faz sentido a partir desta versão: até aqui a CAD de pessoa física não tinha disparo
+          nenhum para mostrar — 5 das 7 etapas não avisavam ninguém, e o bloco apareceria sempre
+          vazio. Com os avisos de etapa ligados, é aqui que se vê se o corretor foi avisado, em
+          que número e se a mensagem falhou. */}
+      <StatusDisparos entityId={item.id} />
 
       <div className="flex items-center justify-between gap-2 border-t border-line pt-4">
         <div className="flex items-center gap-2">
