@@ -145,7 +145,11 @@
   <div class="mod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg></div>
   <div class="brand"><h1>Telão</h1><div class="sub">Prometeu · Chamadas</div></div>
   <span class="canal-chip" id="canal-chip">—</span>
-  <div class="ev">Vale do Ouro</div>
+  <!-- ⚠️ NOME DO LANCAMENTO, VINDO DO EVENTO. Ate 21/08/2026 aqui estava "Vale do Ouro" escrito
+       a mao, sem id e sem nenhum JS que reescrevesse — e este arquivo e PRODUCAO, e a tela
+       projetada no salao. No lancamento seguinte a TV estamparia o nome do lancamento anterior.
+       A rota /api/prometeu/telao ja devolvia `lancamento` desde sempre; faltava usar. -->
+  <div class="ev" id="ev-lancamento">—</div>
 </div>
 <div class="tools">
   <button class="tbtn" onclick="abrirIdle()" title="Conteúdo ocioso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 8 6 4-6 4V8z"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg></button>
@@ -409,18 +413,30 @@
   // ===== comemoração de venda (som venda.mp3 + CACÁ improvisa via LLM) =====
   const venda=new Audio("venda.mp3"); venda.preload="auto"; venda.volume=0.95;
   const COMEMORAR_ENDPOINT="http://localhost:5180/comemorar";
+  // ⚠️ AS FALAS FALAM DO LANCAMENTO DA VEZ, nao de um nome fixo. `{lancamento}` e trocado pelo
+  // nome que veio do evento — antes as quatro frases citavam "Vale do Ouro" por extenso e a TV
+  // parabenizaria o comprador pelo loteamento errado.
   const FALLBACK_FALAS=[
-    "Parabéns, {nome}! Mais uma família realizando o sonho aqui no Vale do Ouro!",
-    "É venda! Parabéns, {nome}, o Vale do Ouro está de portas abertas pra você!",
-    "Que alegria! {nome} acaba de conquistar seu lugar no Vale do Ouro. Felicidades!",
-    "Mais uma venda! Parabéns, {nome}, seja muito bem-vindo à família Vale do Ouro!",
+    "Parabéns, {nome}! Mais uma família realizando o sonho aqui no {lancamento}!",
+    "É venda! Parabéns, {nome}, o {lancamento} está de portas abertas pra você!",
+    "Que alegria! {nome} acaba de conquistar seu lugar no {lancamento}. Felicidades!",
+    "Mais uma venda! Parabéns, {nome}, seja muito bem-vindo à família {lancamento}!",
   ];
+
+  // Nome do lancamento em memoria, preenchido por `aplicarDados` a cada leitura do servidor.
+  let lancamentoAtual="";
+  function nomeDoLancamento(){ return lancamentoAtual || "nosso empreendimento"; }
   function novaVenda(){
-    return {comprador:rnd(NOMES), corretor:rnd(CORRETORES), unidade:"VOR"+pad(1+Math.floor(Math.random()*14),2)+pad(1+Math.floor(Math.random()*40),2), empreendimento:"Vale do Ouro"};
+    // Dados de ENSAIO (o botao de testar a comemoracao). A sigla sai do lancamento do dia em vez
+    // do "VOR" fixo, para o teste parecer com o que vai ao ar.
+    const sigla=(lancamentoAtual||"XXX").replace(/[^A-Za-zÀ-ú]/g,"").slice(0,3).toUpperCase();
+    return {comprador:rnd(NOMES), corretor:rnd(CORRETORES), unidade:sigla+pad(1+Math.floor(Math.random()*14),2)+pad(1+Math.floor(Math.random()*40),2), empreendimento:nomeDoLancamento()};
   }
   async function textoComemoracao(v){
     try{ const r=await fetch(COMEMORAR_ENDPOINT,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(v)}); if(r.ok){const j=await r.json(); if(j.text) return j.text;} }catch(e){}
-    return rnd(FALLBACK_FALAS).replace("{nome}", v.comprador.split(" ")[0]); // rede de segurança
+    return rnd(FALLBACK_FALAS)
+      .replace("{nome}", v.comprador.split(" ")[0])
+      .replace(/\{lancamento\}/g, nomeDoLancamento()); // rede de segurança
   }
   function dispararConfetti(){
     const box=document.getElementById("confetti"); box.innerHTML="";
@@ -565,6 +581,12 @@
   // funcionar: chamar de novo REAPROVEITA a mesma linha (mesmo id, mesma hora — de propósito, pra
   // o cronômetro de espera não zerar), então comparar o id sozinho nunca dispararia o 2º anúncio.
   function aplicarDados(d,anunciar,alvo){
+    // O nome do lancamento vem do EVENTO, em toda leitura. Assim cada lancamento tem o seu telao
+    // sem ninguem editar HTML, e uma TV que ficou ligada de um evento para o outro se corrige
+    // sozinha no primeiro poll.
+    const elEv=document.getElementById("ev-lancamento");
+    if(d.lancamento){ lancamentoAtual=d.lancamento; if(elEv) elEv.textContent=d.lancamento; document.title="Telão · "+d.lancamento; }
+
     // O fundo do MAESTRO vem junto em toda leitura (1ª carga E poll de 20s): TV que perdeu o
     // broadcast converge sozinha. O guard por atualizadoEm evita reaplicar o mesmo comando.
     aplicarPalco(d.palco);

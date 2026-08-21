@@ -36,6 +36,41 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-21-prometeu-telao-do-lancamento",
+    deployedAt: "2026-08-21T13:55:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O telao passa a mostrar o nome do LANCAMENTO ATIVO, vindo do evento. Antes 'Vale do Ouro' estava escrito a mao no HTML da TV do salao",
+              "As falas de comemoracao de venda tambem citam o lancamento da vez, em vez de um nome fixo",
+              "TV que ficou ligada de um lancamento para o outro se corrige sozinha na proxima leitura",
+            ],
+            screen: "Telao",
+          },
+          {
+            items: [
+              "Tela Locutor desativada",
+            ],
+            screen: "Menu",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.177.0 (2026-08-21-prometeu-lancamentos)",
+    technical: {
+      done:
+        "TELAO: a rota /api/prometeu/telao JA devolvia `lancamento` (nomeDoLancamento do evento) — faltava usar. A div virou `#ev-lancamento` e `aplicarDados` escreve nela a cada leitura (1a carga e poll de 20s), junto com o document.title. As 4 frases de FALLBACK_FALAS passaram a usar `{lancamento}`, trocado em tempo de execucao; e o gerador de venda de ENSAIO deriva a sigla do lancamento em vez do 'VOR' fixo. Sintaxe do JS validada por `new Function` nos dois blocos <script>. LOCUTOR: item removido de ALL_SCREENS (prometeu-module.tsx). Ele dependia de um TTS em `http://localhost:5180`, que nunca existiu em producao — aberta pelo hub, a tela carregava e nao falava, e os presets ainda diziam 'bem-vindos ao Vale do Ouro'. O HTML continua em /public: apagar 600 linhas por causa de um item de menu seria desproporcional, e o comentario no lugar diz por que ele saiu.",
+      motivation:
+        "Lucas, 21/08: *\"pode desativar essa tela de locutor, o telao tem que buscar o empreendimento ativo, por isso que acho que o telao tem que estar dentro do lancamento, assim teremos os teloes personalizados\"*. O telao e a tela projetada no salao: no proximo lancamento ele estamparia o nome do lancamento anterior para todo mundo ver.",
+    },
+    title: "Telao do lancamento ativo, e adeus ao Locutor",
+    type: "correcao",
+    version: "1.178.0",
+  },
+  {
     buildTag: "2026-08-21-prometeu-lancamentos",
     deployedAt: "2026-08-21T13:30:00-03:00",
     modules: [

@@ -74,7 +74,13 @@ const ALL_SCREENS: readonly PrometeuScreen[] = [
     label: "Etiqueta",
   },
   { file: "telao.html", icon: Tv, id: "telao", label: "Telão", newTab: true },
-  { file: "locutor.html", icon: Mic, id: "locutor", label: "Locutor" },
+  // ⚠️ LOCUTOR DESATIVADO (Lucas, 21/08/2026: *"pode desativar essa tela de locutor"*).
+  //
+  // Ela dependia de um servico de TTS em `http://localhost:5180`, que nunca existiu em producao:
+  // aberta pelo hub, a tela carregava e nao falava. Os presets ainda diziam "bem-vindos ao Vale
+  // do Ouro". O arquivo continua em /public — tirar do rail e o que o pedido exige, e apagar um
+  // HTML de 600 linhas por causa de um item de menu seria desproporcional.
+  // { file: "locutor.html", icon: Mic, id: "locutor", label: "Locutor" },
   {
     component: SetupView,
     file: "setup.html",
