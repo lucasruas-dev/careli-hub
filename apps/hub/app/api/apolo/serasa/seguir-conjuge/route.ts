@@ -5,7 +5,8 @@ import { registrarOverrideCredito } from "@/lib/apolo/credito-override";
 import { destinoAposCredito } from "@/lib/apolo/destino-credito";
 import { atualizarEtapa } from "@/lib/apolo/esteira";
 import { normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
-import { resolverPrevendaHabilitada } from "@/lib/apolo/limite-credito";
+import { resolverLimiteCredito, resolverPrevendaHabilitada } from "@/lib/apolo/limite-credito";
+import { avaliarCredito } from "@/lib/serasa/avaliacao";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // SEGUIR O CREDENCIAMENTO PELO CÔNJUGE — decisão humana, de ADMIN.
@@ -50,15 +51,18 @@ export async function POST(request: Request) {
 
   // A CONSULTA DO CÔNJUGE PRECISA EXISTIR E TER SIDO APROVADA. Sem isso, este caminho viraria um
   // "avançar sem crédito" com outro nome — e é justamente o que a esteira barra.
+  // ⚠️ A finalidade é `analise-credito-conjuge` — é o valor que a rota de consulta grava
+  // (consultar/route.ts:489). Chutar o nome aqui fazia a rota jurar que não havia consulta
+  // nenhuma logo depois de o operador ter pago por ela.
   const { data: consulta } = await client
     .from("serasa_consultas")
-    .select("id, created_at, resumo")
+    .select("id, created_at, resposta")
     .eq("entity_id", entityId)
-    .eq("finalidade", "credito_conjuge")
+    .eq("finalidade", "analise-credito-conjuge")
     .eq("status", "sucesso")
     .order("created_at", { ascending: false })
     .limit(1)
-    .maybeSingle<{ created_at: string; id: string; resumo: unknown }>();
+    .maybeSingle<{ created_at: string; id: string; resposta: unknown }>();
 
   if (!consulta) {
     return NextResponse.json(
@@ -71,8 +75,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const aprovado = Boolean((consulta.resumo as { aprovado?: boolean } | null)?.aprovado);
-  if (!aprovado) {
+  // ⚠️ O VEREDITO NÃO ESTÁ GRAVADO — ele é CALCULADO da resposta crua contra o limite do
+  // empreendimento, do mesmo jeito que a tela faz. `resumo.aprovado` vem null em todas as
+  // consultas, então testar aquele campo reprovava até quem tinha passado.
+  const limite = await resolverLimiteCredito(client, entityId, enterpriseId);
+  const veredito = consulta.resposta ? avaliarCredito(consulta.resposta, limite ?? 1000) : null;
+  if (!veredito?.aprovado) {
     return NextResponse.json(
       { error: "A ultima consulta do conjuge nao foi aprovada. Nao da para seguir por ele." },
       { status: 412 },
