@@ -57,6 +57,13 @@ export async function GET(request: NextRequest) {
       ...c,
       // Nome do evento quando existe: é o que o time reconhece nas outras telas.
       cliente: noEvento?.nome ?? c.cliente,
+      // ⚠️ O CORRETOR SAI DAQUI, resolvido contra a fila INTEIRA do evento — não pode ficar para a
+      // tela resolver. O C2X não preenche `acquisition_requests.corretor_id` (35 de 35 nulos no
+      // Villa Paris), então o nome só existe do lado do Apolo, na CAD. E a tela cruzava com a
+      // lista que ela já tinha em mão, que é recortada por quem está presente: como quem reserva
+      // costuma estar em `recepcao` (reservou pelo corretor sem ter passado pelo salão), o
+      // cruzamento falhava justamente para as 14 linhas da aba e a coluna vinha toda com "—".
+      corretor: noEvento?.corretor ?? c.corretor ?? null,
       credenciadoId: noEvento?.id ?? null,
       etapaNoEvento: noEvento?.etapa ?? null,
       imobiliaria: noEvento?.imobiliaria ?? null,

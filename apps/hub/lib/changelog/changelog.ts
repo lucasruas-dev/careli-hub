@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-22-prometeu-reservas-completas",
+    deployedAt: "2026-08-22T12:05:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A aba Reservas passa a mostrar O CORRETOR de cada cliente — o C2X nao guarda esse dado, ele vem da CAD do Apolo",
+              "Nova coluna UNIDADES: da para ver na hora qual lote esta preso com cada pessoa, sem abrir a ficha",
+              "O card 'Com reserva' do painel agora bate com a aba: contava a fila fisica e mostrava 0 enquanto a aba listava 14",
+              "Clicar no card leva direto para a lista de reservas",
+              "Se o C2X sair do ar, a tela avisa em vez de deixar a lista envelhecer calada",
+            ],
+            screen: "Central · Reservas",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.183.0 (2026-08-22-prometeu-nome-e-fuso)",
+    technical: {
+      done:
+        "CORRETOR: `acquisition_requests.corretor_id` e' NULL em 35 de 35 pedidos do Villa Paris — o C2X simplesmente nao preenche. O nome existe do lado do Apolo, em `prometeu_credenciados.corretor` (44 de 44 preenchidos). A rota /api/prometeu/reservas ja cruzava por CPF com `listCredenciados`, mas nao devolvia o corretor, e a TELA tentava resolver cruzando com a lista que ela ja tinha em mao — que e' recortada por presenca. Como quem reserva costuma continuar em `recepcao` (o corretor lanca o pedido sem a pessoa passar pelo salao), o cruzamento falhava exatamente nas 14 linhas da aba: a coluna vinha toda com tracinho. Agora a rota resolve contra a fila INTEIRA e entrega `corretor` pronto. UNIDADES: o payload ja trazia os codigos e o componente ja os montava no formato de chip — faltava a coluna na tabela; reusa `.unid-wrap`/`.unid-chip` da lista principal. CARD: `porEtapa('reserva')` media a etapa da fila fisica e dava 0 com 14 reservas vivas. O fetch subiu para `useReservasDoC2x`, no CentralView, e alimenta a aba E o card — uma fonte so, senao os dois numeros divergem de novo. Enquanto a primeira leitura nao volta o valor e' null (nao zero) e cai no numero antigo: mostrar 0 diria que ninguem esta com unidade na mao. O clique passou a levar a aba Reservas em vez de abrir um modal por etapa, que viria vazio. ERRO: `erroC2x` era estado morto (setado, nunca exibido) e virou aviso na tela, com a lista antiga preservada. tsc limpo, 143 testes do Prometeu verdes.",
+      motivation:
+        "Lucas, 22/08, durante o evento do Villa Paris: *\"vc vai ter que enriquecer essa tela com o apolo, o C2x nao traz o corretor, mas o apolo sim\"*, *\"nessa tela tem que tambem trazer a unidade(s) que esta reservada para esse cliente\"* e *\"esse card tem que bater com essa tela, pode acontecer como aconteceu hoje que a pessoa nao veio fisicamente mas reservou unidade\"*.",
+    },
+    title: "Reservas com corretor, unidade e card batendo",
+    type: "melhoria",
+    version: "1.184.0",
+  },
+  {
     buildTag: "2026-08-22-prometeu-nome-e-fuso",
     deployedAt: "2026-08-22T11:25:00-03:00",
     modules: [

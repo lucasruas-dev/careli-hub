@@ -293,6 +293,13 @@ export function CentralView() {
   // KPIs: função pura compartilhada com a Gestão (mobile), pra os números não divergirem.
   const kpis = useMemo(() => calcularKpisDoEvento(credenciados), [credenciados]);
 
+  // Reservas do C2X: alimentam a aba Reservas E o card "Com reserva" do painel.
+  const reservasC2x = useReservasDoC2x();
+  // ⚠️ Enquanto a primeira leitura não volta, `clientes` é null — e null NÃO é zero. Mostrar 0
+  // aqui diria ao coordenador que ninguém está com unidade na mão, que é o oposto do que a aba
+  // vai exibir um instante depois.
+  const comReserva = reservasC2x.clientes?.length ?? null;
+
   // Média de tempo parado de um grupo de etapas, em minutos.
   const mediaMinutos = useCallback(
     (...etapas: PrometeuEtapa[]) => {
@@ -616,12 +623,18 @@ export function CentralView() {
                   onAbrir={abrir("Salão de Vendas", "Com o corretor", "negociacao")}
                   valor={porEtapa("negociacao")}
                 />
+                {/* ⚠️ ESTE CARD CONTA AS RESERVAS DO C2X, e não a etapa `reserva` da fila. Ele
+                    mostrava 0 enquanto a aba Reservas listava 14: quem pega unidade costuma
+                    continuar em `recepcao`, e teve gente que reservou pelo corretor sem sequer
+                    aparecer no salão. Contar a etapa media a fila física; o que o coordenador
+                    precisa saber é quantas unidades estão presas. Clicar leva à aba, que é onde
+                    estão o lote, o corretor e o tempo. */}
                 <Celula
-                  detalhe="fila física do espelho"
+                  detalhe="unidades presas no C2X"
                   fonte="dado"
                   label="Com reserva"
-                  onAbrir={abrir("Salão de Vendas", "Com reserva", "reserva")}
-                  valor={porEtapa("reserva")}
+                  onAbrir={() => setAba("reservas")}
+                  valor={comReserva ?? porEtapa("reserva")}
                 />
               </div>
             </div>
@@ -1050,6 +1063,8 @@ export function CentralView() {
         <Reservas
           agora={agora}
           credenciados={presentesTodos}
+          doC2x={reservasC2x.clientes}
+          erroC2x={reservasC2x.erro}
           onAbrirJornada={(pessoa) => setModal({ pessoa, tipo: "jornada" })}
         />
       </div>
@@ -1439,22 +1454,17 @@ function ChipDaEtapa(props: { etapa: PrometeuEtapa }) {
 // não é escrita hoje, então a unidade anexada não serve de critério).
 const LIMITE_RESERVA_MS = 30 * 60 * 1000;
 
-function Reservas(props: {
-  agora: number;
-  credenciados: PrometeuCredenciado[];
-  onAbrirJornada: (pessoa: PrometeuCredenciado) => void;
-}) {
-  const [busca, setBusca] = useState("");
-  const [imob, setImob] = useState("");
-  const [corretor, setCorretor] = useState("");
-  const [soAlerta, setSoAlerta] = useState(false);
-
-  // AS RESERVAS VÊM DO C2X, não daqui (Lucas, 01/08: "esses dados vem tudo do C2X, nada é feito no
-  // hub"). Antes esta aba filtrava por `etapa === "reserva"` do Prometeu, que ninguém alimentava —
-  // por isso vivia vazia. Agora lê os pedidos de aquisição ABERTOS na etapa Reservado, que é onde
-  // o corretor de fato registra, e cruza por CPF para trazer imobiliária e a etapa no salão.
-  const [doC2x, setDoC2x] = useState<ReservaC2x[] | null>(null);
-  const [erroC2x, setErroC2x] = useState<string | null>(null);
+// AS RESERVAS VÊM DO C2X, não daqui (Lucas, 01/08: "esses dados vem tudo do C2X, nada é feito no
+// hub"). Lê os pedidos de aquisição ABERTOS na etapa Reservado, que é onde o corretor de fato
+// registra, já cruzados por CPF com a fila (a rota resolve imobiliária, corretor e etapa).
+//
+// ⚠️ O FETCH MORA AQUI EM CIMA, e não dentro da aba, porque o PAINEL também precisa do número: o
+// card "Com reserva" contava `etapa === "reserva"` do Prometeu e mostrava 0 enquanto a aba listava
+// 14 — quem reserva costuma estar em `recepcao`, e há quem reserve sem nem aparecer no salão.
+// Uma fonte só para os dois lugares é o que faz o card bater com a tela.
+function useReservasDoC2x() {
+  const [clientes, setClientes] = useState<null | ReservaC2x[]>(null);
+  const [erro, setErro] = useState<null | string>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -1464,10 +1474,10 @@ function Reservas(props: {
       // ⚠️ Sem payload NÃO apaga a tela: um blip de rede zerando a lista faria o coordenador achar
       // que as reservas foram resolvidas. Erro vira aviso; a lista antiga fica.
       if (data?.clientes) {
-        setDoC2x(data.clientes);
-        setErroC2x(null);
+        setClientes(data.clientes);
+        setErro(null);
       } else if (error) {
-        setErroC2x(error);
+        setErro(error);
       }
     };
     void buscar();
@@ -1477,6 +1487,22 @@ function Reservas(props: {
       window.clearInterval(t);
     };
   }, []);
+
+  return { clientes, erro };
+}
+
+function Reservas(props: {
+  agora: number;
+  credenciados: PrometeuCredenciado[];
+  doC2x: null | ReservaC2x[];
+  erroC2x: null | string;
+  onAbrirJornada: (pessoa: PrometeuCredenciado) => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const [imob, setImob] = useState("");
+  const [corretor, setCorretor] = useState("");
+  const [soAlerta, setSoAlerta] = useState(false);
+  const { doC2x, erroC2x } = props;
 
   // Adapta o cliente do C2X ao formato que a tabela já sabe desenhar. `etapaDesde` passa a ser a
   // hora da reserva MAIS ANTIGA da pessoa — é ela que o alerta de 30 min cobra.
@@ -1587,6 +1613,15 @@ function Reservas(props: {
         </div>
       </div>
 
+      {/* O C2X fora do ar no meio do evento tem que APARECER: a lista continua na tela (não se
+          apaga de propósito), e sem este aviso ela passaria por atual enquanto envelhece calada. */}
+      {erroC2x ? (
+        <div className="lista-empty" role="status">
+          Não consegui atualizar as reservas no C2X ({erroC2x}). A lista abaixo é a última leitura
+          que deu certo.
+        </div>
+      ) : null}
+
       {filtradas.length === 0 ? (
         <div className="lista-empty">
           {reservas.length === 0
@@ -1602,6 +1637,9 @@ function Reservas(props: {
                   <th>Cliente</th>
                   <th>Corretor</th>
                   <th>Imobiliária</th>
+                  {/* A UNIDADE é o que o coordenador precisa saber para cobrar: sem ela a linha
+                      diz que existe uma reserva parada, mas não QUAL lote está preso. */}
+                  <th>Unidades</th>
                   <th>Tempo na reserva</th>
                 </tr>
               </thead>
@@ -1619,6 +1657,17 @@ function Reservas(props: {
                       </td>
                       <td>{c.corretor?.trim() || "—"}</td>
                       <td>{c.imobiliaria?.trim() || "—"}</td>
+                      <td>
+                        <div className="unid-wrap">
+                          {c.unidades.length === 0
+                            ? "—"
+                            : c.unidades.map((u) => (
+                                <span className="unid-chip" key={u.id}>
+                                  {u.codigo}
+                                </span>
+                              ))}
+                        </div>
+                      </td>
                       <td className={`lt-tempo${alerta ? " lt-alerta" : ""}`}>
                         {duracao(c.etapaDesde, props.agora)}
                         {alerta ? <span className="reserva-flag">+30 min</span> : null}
