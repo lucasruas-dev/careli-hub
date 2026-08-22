@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-22-athena-template-saneado",
+    deployedAt: "2026-08-22T17:15:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Athena nao gera mais template que a Meta recusa: corpo comecando ou terminando com variavel e consertado sozinho (com aviso do que foi ajustado)",
+              "Variaveis coladas tambem sao separadas automaticamente",
+            ],
+            screen: "Templates",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.190.0 (2026-08-22-board-motivo-correcao)",
+    technical: {
+      done:
+        "A Meta recusa com erro 100 ('As variaveis nao podem estar no inicio ou no fim do modelo') corpo que abre/fecha com {{n}} ou tem variaveis coladas. O prompt da Athena JA proibia (template-author.ts:159), mas instrucao ao modelo nao e garantia — em 22/08 ela abriu com {{1}} e o operador levou o erro vermelho sem saber que era do texto. Saneamento deterministico no parse do draft: prefixa 'Ola, ', sufixa ponto, separa coladas com hifen — cada ajuste vira warning para o operador ver o que mudou. Regex validados contra o caso real. tsc limpo.",
+      motivation:
+        "Lucas, 22/08, criando o template 'Contrato · Alinhamento de ajustes': *\"deu esse erro, o que e?\"* — codigo Meta 100, Invalid parameter.",
+    },
+    title: "Athena entrega template que a Meta aceita",
+    type: "correcao",
+    version: "1.191.0",
+  },
+  {
     buildTag: "2026-08-22-board-motivo-correcao",
     deployedAt: "2026-08-22T16:55:00-03:00",
     modules: [

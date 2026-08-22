@@ -207,8 +207,35 @@ function normalizeDraft(input: unknown): TemplateAuthorDraft {
     ? raw.warnings.map((warning) => asString(warning).trim()).filter(Boolean)
     : [];
 
+  // ⚠️ SANEAMENTO DURO das regras que a Meta recusa com erro 100 ("As variáveis não podem estar
+  // no início ou no fim do modelo"). O prompt JÁ manda o modelo não fazer isso, mas instrução
+  // não é garantia — em 22/08 a Athena abriu o corpo com {{1}}, a Meta rejeitou o template e o
+  // operador ficou com um erro em vermelho sem saber que era do TEXTO. Consertar aqui é
+  // determinístico e barato; o warning conta ao operador o que foi ajustado.
+  let bodyText = asString(raw.bodyText).trim();
+  if (/^\{\{\d+\}\}/.test(bodyText)) {
+    bodyText = `Olá, ${bodyText}`;
+    warnings.push(
+      "O corpo começava com uma variável (a Meta rejeita); adicionei 'Olá, ' no início.",
+    );
+  }
+  if (/\{\{\d+\}\}$/.test(bodyText)) {
+    bodyText = `${bodyText}.`;
+    warnings.push(
+      "O corpo terminava com uma variável (a Meta rejeita); adicionei ponto final.",
+    );
+  }
+  // Duas variáveis coladas ({{1}} {{2}} ou {{1}}{{2}}) também levam recusa: separa com hífen.
+  const coladas = /(\{\{\d+\}\})(\s*)(\{\{\d+\}\})/;
+  if (coladas.test(bodyText)) {
+    bodyText = bodyText.replace(new RegExp(coladas, "g"), "$1 - $3");
+    warnings.push(
+      "Havia variáveis coladas (a Meta rejeita); separei com hífen.",
+    );
+  }
+
   return {
-    bodyText: asString(raw.bodyText).trim(),
+    bodyText,
     buttons,
     category: (CATEGORIES.has(category)
       ? category
