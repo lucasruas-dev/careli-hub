@@ -312,6 +312,13 @@ export const COCKPIT_CSS = `.pcx{
 .pcx .modal-close{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;font-size:15px;flex-shrink:0}
 .pcx .modal-close:hover{background:var(--subtle);color:var(--text)}
 .pcx .modal-body{overflow-y:auto;padding:10px 20px 18px}
+/* Rodapé do modal da ficha: onde mora o "Saiu do evento". Fica preso embaixo, separado por uma
+   linha, para não se misturar com a jornada — é uma ação que tira a pessoa da operação. */
+.pcx .modal-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 20px;border-top:1px solid var(--line);background:var(--panel)}
+.pcx .modal-foot .note{margin:0;font-size:12px;color:var(--danger,#b42318)}
+.pcx .btn-sec{padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:13px;font-weight:600;cursor:pointer}
+.pcx .btn-sec:hover:not(:disabled){background:var(--subtle)}
+.pcx .btn-sec:disabled{opacity:.55;cursor:default}
 .pcx .crow{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
 .pcx .crow:last-child{border-bottom:0}
 .pcx .cav{width:36px;height:36px;border-radius:9px;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0}

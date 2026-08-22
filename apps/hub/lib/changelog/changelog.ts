@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-22-prometeu-ficha-do-lote",
+    deployedAt: "2026-08-22T13:55:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A ficha do cliente agora conta a historia das UNIDADES junto com a do salao, na ordem do relogio",
+              "Da para ver que a pessoa reservou um lote, DEVOLVEU e pegou outro — com hora, quem mexeu e o motivo",
+              "A devolucao aparece marcada em vermelho, igual ao cancelamento",
+              "Novo botao 'Saiu do evento' na ficha: funciona de qualquer lista, inclusive do Analitico",
+            ],
+            screen: "Central · Ficha do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.185.0 (2026-08-22-prometeu-unidades-do-c2x)",
+    technical: {
+      done:
+        "HISTORICO: vem de `acquisition_request_historics` do C2X, uma linha por mudanca de status — e NAO do estado atual do pedido, que so guarda onde ele parou (a RVPD14 da Ana Maria aparece hoje como 'Cancelado' e ponto, sem contar que houve reserva antes). `historicoDeUnidadesDoC2x` agrupa por CPF; `passosDasUnidades` traduz cada etapa para o portugues do salao ('Reservou a unidade · RVPD14', 'Devolveu a unidade · RVPD14') e acende `cancelado` nas etapas de saida; `mesclarJornada` intercala com os passos do salao ORDENANDO PELO RELOGIO — sem isso a ficha conta a historia fora de ordem, porque a reserva do Antonio (09:25) cai entre o check-in (09:13) e a conclusao (10:09). Passo sem carimbo vai para o fim em vez de fingir precedencia; empate de horario mantem o passo do salao antes do da unidade. A leitura do C2X e best-effort: legado fora do ar nao fecha a ficha, so devolve a jornada como antes. Mesmo cuidado de fuso das outras consultas (DATE_FORMAT + `paraInstante`). SAIU DO EVENTO: `excluirCredenciadoRemoto` ja existia mas so estava na tela do ATENDENTE, o que exigia que a pessoa tivesse sentado na secretaria — e quem vai embora no meio sai antes disso. O botao foi para o rodape do modal da ficha, que abre de qualquer lista. Carimba `encerrado_em`, que ja e o filtro padrao de `listCredenciados`: a pessoa some das telas de operacao e dos numeros de uma vez. tsc limpo, 157 testes do Prometeu verdes.",
+      motivation:
+        "Lucas, 22/08: *\"essa AA Maria Fernandes reservou uma unidade, so que ela devolveu, ou seja, ela reservou e devolveu e foi embora, entao eu preciso apontar isso na ficha dela... Mas temos caso da pessoa devolver a PA e pegar outra, entao esse historico temos que ter dentro do prometeu\"*. E sobre o botao: *\"esse saiu eu so consigo fazer se a pessoa chegou a dar checkin dentro da secretaria, eu deveria ter a opcao dentro da tela analitico da central fazer esse apontamento\"*.",
+    },
+    title: "A ficha conta o que aconteceu com o lote",
+    type: "novidade",
+    version: "1.186.0",
+  },
+  {
     buildTag: "2026-08-22-prometeu-unidades-do-c2x",
     deployedAt: "2026-08-22T13:10:00-03:00",
     modules: [

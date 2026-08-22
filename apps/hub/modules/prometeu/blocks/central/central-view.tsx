@@ -26,6 +26,7 @@ import {
   criarEventoRemoto,
   fetchEventos,
   fetchFila,
+  excluirCredenciadoRemoto,
   fetchJornada,
   fetchOperadores,
   fetchReservas,
@@ -1146,6 +1147,15 @@ export function CentralView() {
         agora={agora}
         conteudo={modal}
         onFechar={() => setModal(null)}
+        onSaiuDoEvento={async (pessoa) => {
+          const { error } = await excluirCredenciadoRemoto({
+            credenciadoId: pessoa.id,
+            motivo: "Saiu do evento (marcado na Central)",
+          });
+          if (error) return error;
+          // Recarrega para a pessoa sumir da fila e dos números na hora.
+          if (eventoId) void carregarFila(eventoId);
+        }}
         // Derivada A CADA RENDER: é isto que faz a lista aberta andar junto com o polling.
         pessoas={modal?.tipo === "pessoas" ? daEtapa(...modal.etapas) : []}
       />
@@ -1932,9 +1942,12 @@ function ModalDeClientes(props: {
   agora: number;
   conteudo: ConteudoDoModal | null;
   onFechar: () => void;
+  onSaiuDoEvento: (pessoa: PrometeuCredenciado) => Promise<string | void>;
   pessoas: PrometeuCredenciado[];
 }) {
   const [modo, setModo] = useState<"lista" | "grupo">("lista");
+  const [saindo, setSaindo] = useState(false);
+  const [erroSaida, setErroSaida] = useState<null | string>(null);
   const { onFechar } = props;
 
   // Depende de `onFechar`, não de `props`: o objeto de props é novo a cada render do pai (que
@@ -2070,6 +2083,33 @@ function ModalDeClientes(props: {
             ))
           )}
         </div>
+
+        {/* SAIU DO EVENTO — a partir de QUALQUER lista, inclusive o Analítico.
+            ⚠️ Antes isto só existia na tela do atendente, o que exigia que a pessoa tivesse
+            chegado a sentar na secretaria (Lucas, 22/08: "esse saiu eu só consigo fazer se a
+            pessoa chegou a dar check-in dentro da secretária"). Só que quem vai embora no meio
+            costuma ir ANTES disso — a Ana Maria reservou, devolveu e saiu ainda na negociação —
+            e continuava ocupando a fila e os números do painel. */}
+        {jornada ? (
+          <div className="modal-foot">
+            {erroSaida ? <span className="note">{erroSaida}</span> : null}
+            <button
+              className="btn-sec"
+              disabled={saindo}
+              onClick={async () => {
+                setSaindo(true);
+                setErroSaida(null);
+                const erro = await props.onSaiuDoEvento(jornada);
+                setSaindo(false);
+                if (erro) setErroSaida(erro);
+                else onFechar();
+              }}
+              type="button"
+            >
+              {saindo ? "Registrando..." : "Saiu do evento"}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
