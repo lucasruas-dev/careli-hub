@@ -405,6 +405,16 @@ export async function urlDaPaRemoto(path: string) {
 // AS RESERVAS DO DIA, LIDAS DO C2X. O hub não registra reserva (Lucas, 01/08: "esses dados vem
 // tudo do C2X, nada é feito no hub") — o corretor lança o pedido de aquisição lá e aqui a gente
 // reflete. Vem agrupado por CLIENTE, com as unidades dele, porque a aba lista pessoas.
+// Uma unidade na mão de alguém AGORA, em qualquer etapa do C2X.
+export type UnidadeDoC2x = {
+  etapa: string;
+  lote: string;
+  quadra: string;
+  unidade: string;
+  // Contrato em diante: já é venda, não volta para o balcão.
+  vendida: boolean;
+};
+
 export type ReservaC2x = {
   cliente: string;
   corretor: string | null;
@@ -425,6 +435,8 @@ export async function fetchReservas(eventoId?: string) {
     atualizadoEm: string;
     clientes: ReservaC2x[];
     resumo: { clientes: number; foraDaFila: number; unidades: number };
+    // CPF -> unidades na mao da pessoa agora, em qualquer etapa (vem do C2X).
+    unidadesPorCpf: Record<string, UnidadeDoC2x[]>;
   }>(`/api/prometeu/reservas${qs}`);
 }
 

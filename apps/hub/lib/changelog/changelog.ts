@@ -36,6 +36,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-22-prometeu-unidades-do-c2x",
+    deployedAt: "2026-08-22T13:10:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A coluna UNIDADES da lista deixou de mostrar tracinho: agora traz os lotes que a pessoa tem no C2X",
+              "O 'UN' de cada mesa da secretaria passa a somar as unidades de quem foi atendido ali — antes era sempre 0",
+              "'Vendas fechadas' conta UNIDADES e mostra tambem quantos clientes compraram: quem leva dois lotes contava como uma venda so",
+              "O Funil de unidades conta unidades de verdade, com a etapa vinda do C2X, e ganhou a linha 'Em contrato'",
+            ],
+            screen: "Central · Painel e Lista",
+          },
+          {
+            items: [
+              "Diminuir a quantidade de mesas no Setup agora REMOVE as mesas que sobraram",
+              "Mesa ocupada nao e removida: ela continua no ar e a tela avisa quais foram mantidas",
+            ],
+            screen: "Setup",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.184.0 (2026-08-22-prometeu-reservas-completas)",
+    technical: {
+      done:
+        "UNIDADES: `prometeu_unidades` tem 0 linhas em producao — nunca foi escrita. Como a Central inteira le `credenciado.unidades`, o mesmo vazio aparecia em cinco lugares: coluna Unidades, 'UN' da mesa, funil, card de vendas e a ficha. Nova `unidadesVivasDoC2x(enterpriseId)` le TODAS as `acquisition_requests` com open=1 (nao so a etapa Reservado, que e o recorte da aba) e devolve CPF -> unidades com etapa. A rota /api/prometeu/reservas passou a fazer as duas leituras do legado em paralelo (conexao la e escassa) e devolve `unidadesPorCpf`; a Central cola isso nos credenciados num `useMemo`, entao todo ponto que ja lia `unidades` passou a funcionar sem mudanca. FUNIL: contava PESSOAS nas quatro linhas ('Finalizadas 11' eram 11 clientes, nao 11 lotes); agora soma unidades por etapa do C2X e mostra a contagem de clientes ao lado, porque o Lucas quer as duas leituras. VENDA: `etapaEhVenda` (pura, testada) define a linha — contrato em diante conta, Reservado e Proposta NAO, porque nessas duas o lote ainda cai (RVPC02 caiu 09:33 e o mesmo cliente pegou a RVPD02 as 09:42). MESA: `criarMesas` fazia upsert com ignoreDuplicates, ou seja SO CRIAVA. O Setup abre com 10 por padrao, entao salvar uma vez nascia com 10 e mudar para 3 depois nao tirava nada — a Secretaria do Villa Paris desenhava 10 mesas com config 3. Agora as excedentes VAZIAS sao removidas; as ocupadas ficam (apagar sumiria com o cliente sentado no meio do atendimento) e voltam num aviso. `PrometeuIndicadorDaMesa` ganhou `credenciadoIds` para a tela somar as unidades do C2X por mesa. tsc limpo, 149 testes do Prometeu verdes.",
+      motivation:
+        "Lucas, 22/08, durante o evento: *\"esse card, tem que refletir a quantidade de unidades, ou seja, vao ter clientes que vao comprar mais de uma unidade\"*, *\"da mesma forma que nos card da secretaria tem que somar a quantidade de unidades\"*, *\"outro local que usa unidades estamos trazendo clientes\"* (funil), *\"falta trazer a unidade aqui\"* (lista) e *\"nao esta respeitando a quantidade de mesa no setup\"*. E o complemento: *\"mas e legal sim trazer essas duas visoes diferentes, quantidade de cliente e quantidades de unidades\"*.",
+    },
+    title: "Unidades do C2X na Central, e o Setup mandando nas mesas",
+    type: "correcao",
+    version: "1.185.0",
+  },
+  {
     buildTag: "2026-08-22-prometeu-reservas-completas",
     deployedAt: "2026-08-22T12:05:00-03:00",
     modules: [

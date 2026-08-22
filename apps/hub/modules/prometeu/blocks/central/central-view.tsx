@@ -31,6 +31,7 @@ import {
   fetchReservas,
   moverCredenciado,
   type ReservaC2x,
+  type UnidadeDoC2x,
 } from "../../data/prometeu-operations";
 import { COCKPIT_CSS } from "./cockpit-estilo";
 
@@ -118,7 +119,42 @@ function labelDaEtapa(etapa: PrometeuEtapa): string {
 export function CentralView() {
   const [eventos, setEventos] = useState<PrometeuEvento[]>([]);
   const [eventoId, setEventoId] = useState("");
-  const [credenciados, setCredenciados] = useState<PrometeuCredenciado[]>([]);
+  const [credenciadosCrus, setCredenciados] = useState<PrometeuCredenciado[]>([]);
+
+  // AS UNIDADES DE CADA PESSOA VÊM DO C2X, coladas aqui na leitura.
+  //
+  // ⚠️ `prometeu_unidades` nunca foi escrita — 0 linhas em produção. Como TODA a Central lê
+  // `credenciado.unidades`, o efeito era o mesmo em cinco lugares ao mesmo tempo: a coluna
+  // "Unidades" da lista com tracinho, o "UN" de cada mesa em 0, o funil de unidades zerado e o
+  // card de vendas contando pessoas em vez de lotes — enquanto o C2X tinha 32 pedidos abertos.
+  // Colando aqui, num ponto só, todos os cinco passam a mostrar o número certo.
+  const reservasC2x = useReservasDoC2x();
+  const credenciados = useMemo(() => {
+    const mapa = reservasC2x.unidadesPorCpf;
+    if (!mapa || Object.keys(mapa).length === 0) return credenciadosCrus;
+    return credenciadosCrus.map((c) => {
+      const doC2x = mapa[String(c.documento ?? "").replace(/\D/g, "")];
+      if (!doC2x?.length) return c;
+      return {
+        ...c,
+        unidades: doC2x.map((u) => ({
+          codigo: u.unidade,
+          id: `c2x:${c.id}:${u.unidade}`,
+          lote: u.lote,
+          quadra: u.quadra,
+          // A etapa do C2X vira a situação que os chips já sabem colorir.
+          situacao: u.vendida ? "vendida" : "reservada",
+        })),
+      };
+    });
+  }, [credenciadosCrus, reservasC2x.unidadesPorCpf]);
+
+  // Índice por id, para somar as unidades de quem passou por cada mesa sem varrer a lista toda
+  // a cada card.
+  const porId = useMemo(
+    () => new Map(credenciados.map((c) => [c.id, c])),
+    [credenciados],
+  );
   const [mesas, setMesas] = useState<PrometeuMesa[]>([]);
   const [resumoDeMesas, setResumoDeMesas] = useState<
     Record<string, PrometeuIndicadorDaMesa>
@@ -272,6 +308,7 @@ export function CentralView() {
     return () => window.clearInterval(id);
   }, [carregarFila, eventoId]);
 
+
   // ⚠️ Conta SÓ quem já fez check-in. Sem isto, "recepcao" — que é o estado padrão de quem está
   // apenas habilitado — mostraria os 500 cadastrados como "aguardando na espera" com o salão
   // vazio.
@@ -293,12 +330,32 @@ export function CentralView() {
   // KPIs: função pura compartilhada com a Gestão (mobile), pra os números não divergirem.
   const kpis = useMemo(() => calcularKpisDoEvento(credenciados), [credenciados]);
 
-  // Reservas do C2X: alimentam a aba Reservas E o card "Com reserva" do painel.
-  const reservasC2x = useReservasDoC2x();
   // ⚠️ Enquanto a primeira leitura não volta, `clientes` é null — e null NÃO é zero. Mostrar 0
   // aqui diria ao coordenador que ninguém está com unidade na mão, que é o oposto do que a aba
   // vai exibir um instante depois.
   const comReserva = reservasC2x.clientes?.length ?? null;
+
+  // VENDA FECHADA = unidade com contrato em diante, contada no C2X. Duas leituras, porque o Lucas
+  // pediu as duas: quantos LOTES sairam e quantas PESSOAS compraram.
+  //
+  // ⚠️ null enquanto o C2X não respondeu — o card cai no número antigo (pessoas concluídas) em
+  // vez de piscar 0 no meio do evento.
+  const { clientesQueCompraram, unidadesVendidas } = useMemo(() => {
+    const mapa = reservasC2x.unidadesPorCpf;
+    if (!mapa || Object.keys(mapa).length === 0) {
+      return { clientesQueCompraram: 0, unidadesVendidas: null as null | number };
+    }
+    let unidades = 0;
+    let clientes = 0;
+    for (const lista of Object.values(mapa)) {
+      const vendidas = lista.filter((u) => u.vendida).length;
+      if (vendidas > 0) {
+        unidades += vendidas;
+        clientes += 1;
+      }
+    }
+    return { clientesQueCompraram: clientes, unidadesVendidas: unidades };
+  }, [reservasC2x.unidadesPorCpf]);
 
   // Média de tempo parado de um grupo de etapas, em minutos.
   const mediaMinutos = useCallback(
@@ -532,10 +589,18 @@ export function CentralView() {
           <div className="kl">Em atendimento</div>
           <div className="kd">salão + secretaria</div>
         </div>
+        {/* DUAS LEITURAS NO MESMO CARD (pedido do Lucas, 22/08): o número grande são as
+            UNIDADES vendidas, porque é o que a incorporadora conta no fim do dia, e logo abaixo
+            quantos CLIENTES fecharam. Antes só existia a contagem de pessoas, e quem levava dois
+            lotes contava como uma venda. */}
         <div className="kpi">
-          <div className="kv ok tabnum">{kpis.concluidos}</div>
+          <div className="kv ok tabnum">{unidadesVendidas ?? kpis.concluidos}</div>
           <div className="kl">Vendas fechadas</div>
-          <div className="kd">fluxo concluído</div>
+          <div className="kd">
+            {unidadesVendidas === null
+              ? "fluxo concluído"
+              : `${unidadesVendidas === 1 ? "unidade" : "unidades"} · ${clientesQueCompraram} cliente${clientesQueCompraram === 1 ? "" : "s"}`}
+          </div>
         </div>
         <div className="kpi">
           <div className="kv">
@@ -726,7 +791,7 @@ export function CentralView() {
           <div className="side">
             <div className="card">
               <h3>Funil de unidades</h3>
-              <Funil credenciados={presentesTodos} porEtapa={porEtapa} />
+              <Funil unidadesPorCpf={reservasC2x.unidadesPorCpf} />
             </div>
 
             <div className="card">
@@ -974,6 +1039,14 @@ export function CentralView() {
                     operadores.find((o) => o.mesaId === mesa.id)?.nome ??
                     null;
                   const indic = resumoDeMesas[mesa.id];
+                  // UNIDADES DA MESA somadas pelo C2X. ⚠️ `indic.unidades` vem de
+                  // `prometeu_unidades`, que nunca foi escrita, e por isso o "UN" ficava 0 o dia
+                  // inteiro. Aqui soma-se o que cada pessoa atendida nesta mesa tem de fato na
+                  // mão — inclusive quem levou mais de um lote.
+                  const unidadesDaMesa = (indic?.credenciadoIds ?? []).reduce(
+                    (soma, id) => soma + (porId.get(id)?.unidades.length ?? 0),
+                    0,
+                  );
                   return (
                     <div
                       key={mesa.id}
@@ -1021,7 +1094,7 @@ export function CentralView() {
                           <b>{indic?.atendimentos ?? 0}</b> AT
                         </span>
                         <span className="mt">
-                          <b>{indic?.unidades ?? 0}</b> UN
+                          <b>{unidadesDaMesa || (indic?.unidades ?? 0)}</b> UN
                         </span>
                         <span className="mt">
                           <b>{indic?.tempoMedioMs != null ? duracaoMs(indic.tempoMedioMs) : "—"}</b>{" "}
@@ -1188,18 +1261,45 @@ function Pontos(props: { classe: string; quantidade: number }) {
 // O funil do mockup mostrava valor em R$ por faixa. Esse dado vem do C2X (valor da unidade), que
 // ainda não está ligado ao Prometeu — então a barra mostra a CONTAGEM real e o valor fica como
 // travessão, em vez de número inventado.
-function Funil(props: {
-  credenciados: PrometeuCredenciado[];
-  porEtapa: (etapa: PrometeuEtapa) => number;
-}) {
-  const reservas = props.credenciados.filter((c) => c.unidades.length > 0).length;
-  const linhas = [
-    { label: "Reservas", ok: false, valor: reservas },
-    { label: "Propostas", ok: false, valor: props.porEtapa("proposta") },
-    { label: "Pagamento", ok: false, valor: props.porEtapa("pagamento") },
-    { label: "Finalizadas", ok: true, valor: props.porEtapa("concluido") },
-  ];
-  const topo = Math.max(...linhas.map((l) => l.valor), 1);
+// FUNIL DE UNIDADES — e agora conta UNIDADES mesmo.
+//
+// ⚠️ Contava PESSOAS nas quatro linhas: "Finalizadas 11" eram 11 clientes concluídos, não 11
+// lotes. Quem compra dois lotes aparecia uma vez, e o número do funil não fechava com o do C2X.
+// Como o mesmo card serve para ler o dia, a diferença importa (Lucas, 22/08: "vão ter clientes
+// que vão comprar mais de uma unidade").
+//
+// As etapas saem do C2X, que é quem sabe: o Prometeu tem a etapa da PESSOA no salão, e ela não
+// diz em que pé está cada unidade — uma pessoa "concluída" pode ter um lote em contrato e outro
+// ainda reservado. Ao lado de cada linha vai também a contagem de CLIENTES, porque o Lucas quer
+// as duas leituras ("é legal sim trazer essas duas visões diferentes").
+function Funil(props: { unidadesPorCpf: Record<string, UnidadeDoC2x[]> }) {
+  const linhas = useMemo(() => {
+    const todas = Object.entries(props.unidadesPorCpf);
+    const conta = (filtro: (u: UnidadeDoC2x) => boolean) => {
+      let unidades = 0;
+      let clientes = 0;
+      for (const [, lista] of todas) {
+        const quantas = lista.filter(filtro).length;
+        if (quantas > 0) {
+          unidades += quantas;
+          clientes += 1;
+        }
+      }
+      return { clientes, unidades };
+    };
+    return [
+      { label: "Reservas", ok: false, ...conta((u) => u.etapa === "Reservado") },
+      { label: "Propostas", ok: false, ...conta((u) => u.etapa === "Proposta realizada") },
+      { label: "Em contrato", ok: false, ...conta((u) => u.etapa === "Contrato gerado") },
+      {
+        label: "Finalizadas",
+        ok: true,
+        ...conta((u) => u.etapa === "Faturado" || u.etapa === "Em assinatura" || u.etapa === "Finalizado"),
+      },
+    ];
+  }, [props.unidadesPorCpf]);
+
+  const topo = Math.max(...linhas.map((l) => l.unidades), 1);
 
   return (
     <div className="funil">
@@ -1208,13 +1308,14 @@ function Funil(props: {
           <div className={`fbar${linha.ok ? " ok" : ""}`}>
             <div
               className="fill"
-              style={{ width: `${Math.max(6, (linha.valor / topo) * 100)}%` }}
+              style={{ width: `${Math.max(6, (linha.unidades / topo) * 100)}%` }}
             />
             <span className="flabel">{linha.label}</span>
-            <span className="fval">{linha.valor}</span>
+            <span className="fval">{linha.unidades}</span>
           </div>
-          <span className="fmoney" title="Valor em R$ virá do C2X quando as unidades forem ligadas ao evento">
-            —
+          {/* A segunda leitura: quantas PESSOAS estão por trás daquelas unidades. */}
+          <span className="fmoney" title={`${linha.clientes} cliente(s) com unidade nesta etapa`}>
+            {linha.clientes} cli
           </span>
         </div>
       ))}
@@ -1464,6 +1565,7 @@ const LIMITE_RESERVA_MS = 30 * 60 * 1000;
 // Uma fonte só para os dois lugares é o que faz o card bater com a tela.
 function useReservasDoC2x() {
   const [clientes, setClientes] = useState<null | ReservaC2x[]>(null);
+  const [unidadesPorCpf, setUnidadesPorCpf] = useState<Record<string, UnidadeDoC2x[]>>({});
   const [erro, setErro] = useState<null | string>(null);
 
   useEffect(() => {
@@ -1475,6 +1577,7 @@ function useReservasDoC2x() {
       // que as reservas foram resolvidas. Erro vira aviso; a lista antiga fica.
       if (data?.clientes) {
         setClientes(data.clientes);
+        setUnidadesPorCpf(data.unidadesPorCpf ?? {});
         setErro(null);
       } else if (error) {
         setErro(error);
@@ -1488,7 +1591,7 @@ function useReservasDoC2x() {
     };
   }, []);
 
-  return { clientes, erro };
+  return { clientes, erro, unidadesPorCpf };
 }
 
 function Reservas(props: {

@@ -2,7 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { createPrometeuClient, eventoOperavelId, getEvento, listCredenciados } from "@/lib/prometeu/data";
 import { autorizarOperacao } from "@/lib/prometeu/operador-server";
-import { agruparPorCliente, reservasVivasDoC2x } from "@/lib/prometeu/reservas-c2x";
+import {
+  agruparPorCliente,
+  reservasVivasDoC2x,
+  unidadesVivasDoC2x,
+} from "@/lib/prometeu/reservas-c2x";
 
 // AS RESERVAS DO DIA, LIDAS DO C2X. O hub não registra reserva nenhuma (regra do Lucas, 01/08):
 // o corretor lança o pedido de aquisição lá e esta rota só reflete, cruzando por CPF com quem
@@ -40,7 +44,13 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { error, reservas } = await reservasVivasDoC2x(enterpriseId);
+  // As duas leituras do C2X saem juntas: a aba precisa das RESERVAS PARADAS e o resto da Central
+  // (coluna Unidades, "UN" da mesa, funil, card de vendas) precisa de TODAS as unidades vivas.
+  // Uma chamada só de ida ao legado para os dois, que é conexão escassa lá.
+  const [{ error, reservas }, { error: erroUnidades, porCpf: unidadesPorCpf }] = await Promise.all([
+    reservasVivasDoC2x(enterpriseId),
+    unidadesVivasDoC2x(enterpriseId),
+  ]);
   if (error) {
     return NextResponse.json({ error }, { headers: { "Cache-Control": "no-store" }, status: 502 });
   }
@@ -78,6 +88,10 @@ export async function GET(request: NextRequest) {
       data: {
         atualizadoEm: new Date().toISOString(),
         clientes,
+        // Mapa CPF -> unidades na mão da pessoa AGORA, em qualquer etapa. É o que preenche a
+        // coluna "Unidades" da lista, o "UN" de cada mesa e o funil — todos liam
+        // `prometeu_unidades`, que nunca foi escrita.
+        unidadesPorCpf: erroUnidades ? {} : unidadesPorCpf,
         resumo: {
           clientes: clientes.length,
           foraDaFila: clientes.filter((c) => !c.naFilaDoEvento).length,

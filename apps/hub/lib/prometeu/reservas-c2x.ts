@@ -112,6 +112,189 @@ export async function reservasVivasDoC2x(
   }
 }
 
+// UMA UNIDADE NA MÃO DE ALGUÉM, agora, seja qual for a etapa.
+export type UnidadeDoCliente = {
+  // Etapa do pedido no C2X: Reservado, Proposta realizada, Contrato gerado, Faturado...
+  etapa: string;
+  lote: string;
+  quadra: string;
+  // Se já é venda fechada (contrato em diante) ou ainda está em negociação.
+  vendida: boolean;
+  unidade: string;
+};
+
+// Etapas em que a unidade já é VENDA — daqui para frente o cliente não devolve no balcão.
+//
+// ⚠️ "Reservado" e "Proposta realizada" NÃO entram: são as duas etapas em que o lote ainda volta
+// para a prateleira, e foi exatamente o que aconteceu no Villa Paris (a RVPC02 caiu 09:33 e o
+// mesmo cliente pegou a RVPD02 nove minutos depois). Contar reserva como venda inflaria o número
+// do dia e o coordenador tomaria decisão em cima de lote que ainda pode cair.
+const ETAPAS_VENDIDA = new Set([
+  "Contrato gerado",
+  "Em assinatura",
+  "Faturado",
+  "Finalizado",
+]);
+
+export function etapaEhVenda(etapa: string): boolean {
+  return ETAPAS_VENDIDA.has(String(etapa ?? "").trim());
+}
+
+// TODAS as unidades vivas do evento, por CPF — não só as reservadas.
+//
+// ⚠️ Existe porque `prometeu_unidades` NUNCA foi escrita (0 linhas em produção): a coluna
+// "Unidades" da lista, o "UN" de cada mesa e o card de vendas liam essa tabela e mostravam
+// tracinho e zero o dia inteiro, enquanto o C2X tinha 32 pedidos abertos. O dado sempre esteve
+// do lado do legado — regra do Lucas, 01/08: "esses dados vem tudo do C2X, nada é feito no hub".
+//
+// Difere de `reservasVivasDoC2x` de propósito: aquela responde "quem está com unidade PARADA"
+// (só a etapa Reservado, que é o que a aba cobra); esta responde "o que cada um tem na mão",
+// incluindo o que já virou contrato — que é o que a lista e os cards precisam somar.
+export async function unidadesVivasDoC2x(
+  enterpriseId: number,
+): Promise<{ error?: string; porCpf: Record<string, UnidadeDoCliente[]> }> {
+  const poolResult = getHadesDbPool();
+  if (!poolResult.ok) return { error: "C2X indisponível.", porCpf: {} };
+
+  const semMascara = "REPLACE(REPLACE(REPLACE(u.cpf,'.',''),'-',''),'/','')";
+
+  try {
+    const [rows] = await poolResult.pool.query<RowDataPacket[]>(
+      `SELECT ${semMascara} AS cpf,
+              eu.name  AS unidade,
+              eu.block AS quadra,
+              eu.lot   AS lote,
+              s.name   AS etapa
+         FROM acquisition_requests ar
+         JOIN enterprise_unities eu ON eu.id = ar.enterprise_unity_id
+         JOIN acquisition_request_stages s ON s.id = ar.acquisition_request_stage_id
+         LEFT JOIN users u ON u.id = ar.client_id
+        WHERE eu.enterprise_id = ?
+          AND ar.open = 1
+        ORDER BY eu.name ASC`,
+      [enterpriseId],
+    );
+
+    const porCpf: Record<string, UnidadeDoCliente[]> = {};
+    for (const bruto of rows as Array<Record<string, unknown>>) {
+      const cpf = String(bruto.cpf ?? "").replace(/\D/g, "");
+      if (!cpf) continue;
+      const etapa = String(bruto.etapa ?? "").trim();
+      const item: UnidadeDoCliente = {
+        etapa,
+        lote: String(bruto.lote ?? "").trim(),
+        quadra: String(bruto.quadra ?? "").trim(),
+        unidade: String(bruto.unidade ?? "").trim(),
+        vendida: etapaEhVenda(etapa),
+      };
+      (porCpf[cpf] ??= []).push(item);
+    }
+
+    return { porCpf };
+  } catch (erro) {
+    return {
+      error: erro instanceof Error ? erro.message : String(erro),
+      porCpf: {},
+    };
+  }
+}
+
+// UM PASSO DO CICLO DE UMA UNIDADE: reservou, caiu, virou proposta, virou contrato.
+export type PassoDaUnidade = {
+  // Instante ISO já com o fuso resolvido.
+  em: string;
+  // Etapa anterior. Vazio no primeiro passo (quando o pedido nasce).
+  de: null | string;
+  lote: string;
+  operador: null | string;
+  para: string;
+  quadra: string;
+  motivo: null | string;
+  unidade: string;
+};
+
+export type HistoricoDoCliente = {
+  cpf: string;
+  passos: PassoDaUnidade[];
+};
+
+// Etapas que significam "esta unidade saiu da mão desta pessoa".
+const ETAPAS_DE_SAIDA = new Set(["Cancelado", "Reprovado análise de crédito", "Distratado"]);
+
+export function passoEhSaida(passo: PassoDaUnidade): boolean {
+  return ETAPAS_DE_SAIDA.has(passo.para);
+}
+
+// O CICLO COMPLETO DE CADA CLIENTE NO EVENTO — reservou, devolveu, pegou outra.
+//
+// ⚠️ Por que não dá para montar isso a partir de `acquisition_requests`: a linha do pedido guarda
+// só o estado ATUAL. Um pedido que foi reservado 09:33 e cancelado 09:33 aparece como uma linha
+// "Cancelado", sem contar que houve reserva. Quem guarda a passagem é
+// `acquisition_request_historics`, uma linha por mudança de status — é ela que sabe dizer que a
+// RVPC02 do Geraldo caiu 09:33 e que ele pegou a RVPD02 nove minutos depois.
+//
+// Só leitura no legado, como manda a regra do C2X.
+export async function historicoDeUnidadesDoC2x(
+  enterpriseId: number,
+): Promise<{ error?: string; historicos: HistoricoDoCliente[] }> {
+  const poolResult = getHadesDbPool();
+  if (!poolResult.ok) return { error: "C2X indisponível.", historicos: [] };
+
+  const semMascara = "REPLACE(REPLACE(REPLACE(u.cpf,'.',''),'-',''),'/','')";
+
+  try {
+    const [rows] = await poolResult.pool.query<RowDataPacket[]>(
+      // Mesmo cuidado de fuso da consulta de reservas: a data sai como TEXTO e o fuso é colado
+      // depois, senão o histórico aparece 3 horas fora do lugar.
+      `SELECT ${semMascara} AS cpf,
+              eu.name  AS unidade,
+              eu.block AS quadra,
+              eu.lot   AS lote,
+              sa.name  AS etapa_de,
+              sn.name  AS etapa_para,
+              op.name  AS operador,
+              COALESCE(NULLIF(h.rejection_reason, ''), NULLIF(h.observation, '')) AS motivo,
+              DATE_FORMAT(h.created_at, '%Y-%m-%dT%H:%i:%s') AS em
+         FROM acquisition_request_historics h
+         JOIN acquisition_requests ar ON ar.id = h.acquisition_request_id
+         JOIN enterprise_unities eu   ON eu.id = ar.enterprise_unity_id
+         LEFT JOIN users u  ON u.id  = ar.client_id
+         LEFT JOIN users op ON op.id = h.user_id
+         LEFT JOIN acquisition_request_stages sa ON sa.id = h.old_acquisition_request_stage_id
+         LEFT JOIN acquisition_request_stages sn ON sn.id = h.new_acquisition_request_stage_id
+        WHERE eu.enterprise_id = ?
+        ORDER BY h.created_at ASC`,
+      [enterpriseId],
+    );
+
+    const porCpf = new Map<string, HistoricoDoCliente>();
+    for (const bruto of rows as Array<Record<string, unknown>>) {
+      const cpf = String(bruto.cpf ?? "").replace(/\D/g, "");
+      if (!cpf) continue;
+      const passo: PassoDaUnidade = {
+        de: bruto.etapa_de ? String(bruto.etapa_de).trim() : null,
+        em: paraInstante(String(bruto.em ?? "")),
+        lote: String(bruto.lote ?? "").trim(),
+        motivo: bruto.motivo ? String(bruto.motivo).trim() : null,
+        operador: bruto.operador ? String(bruto.operador).trim() : null,
+        para: String(bruto.etapa_para ?? "").trim(),
+        quadra: String(bruto.quadra ?? "").trim(),
+        unidade: String(bruto.unidade ?? "").trim(),
+      };
+      const atual = porCpf.get(cpf);
+      if (atual) atual.passos.push(passo);
+      else porCpf.set(cpf, { cpf, passos: [passo] });
+    }
+
+    return { historicos: [...porCpf.values()] };
+  } catch (erro) {
+    return {
+      error: erro instanceof Error ? erro.message : String(erro),
+      historicos: [],
+    };
+  }
+}
+
 export type ClienteComReserva = {
   cpf: string;
   cliente: string;

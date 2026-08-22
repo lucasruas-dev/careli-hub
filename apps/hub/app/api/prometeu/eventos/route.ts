@@ -100,14 +100,22 @@ export async function PATCH(request: Request) {
   if (error) return NextResponse.json({ error }, { status: 400 });
 
   const mesas = body.config?.mesasSecretaria;
+  let avisoMesas: null | string = null;
   if (mesas && mesas > 0) {
-    await criarMesas({
+    const ajuste = await criarMesas({
       client,
       eventoId: body.eventoId,
       quantidade: mesas,
       zona: "secretaria",
     });
+    // Mesa ocupada não é removida: quem está sentado nela continuaria no atendimento e sumiria
+    // da tela. A tela do Setup precisa dizer isso em vez de deixar o número divergir calado.
+    if (ajuste.mantidas.length > 0) {
+      avisoMesas =
+        `As mesas ${ajuste.mantidas.join(", ")} estão ocupadas e continuam no ar. ` +
+        `Elas saem sozinhas quando o atendimento terminar e você salvar de novo.`;
+    }
   }
 
-  return NextResponse.json({ data: evento });
+  return NextResponse.json({ data: evento, aviso: avisoMesas });
 }

@@ -1909,7 +1909,7 @@ export async function criarMesas(input: {
   eventoId: string;
   quantidade: number;
   zona: string;
-}): Promise<{ criadas: number }> {
+}): Promise<{ criadas: number; mantidas: string[]; removidas: number }> {
   const total = Math.max(1, Math.min(99, Math.trunc(input.quantidade)));
   const linhas = Array.from({ length: total }, (_, i) => ({
     evento_id: input.eventoId,
@@ -1920,8 +1920,51 @@ export async function criarMesas(input: {
   const { error } = await input.client
     .from("prometeu_mesas")
     .upsert(linhas, { ignoreDuplicates: true, onConflict: "evento_id,zona,numero" });
+  if (error) return { criadas: 0, mantidas: [], removidas: 0 };
 
-  return { criadas: error ? 0 : linhas.length };
+  // ⚠️ DIMINUIR O NÚMERO DE MESAS NO SETUP NÃO TIRAVA MESA NENHUMA DA TELA. O upsert acima só
+  // CRIA; as sobras de uma configuração anterior ficavam para sempre. O Setup abre com 10 por
+  // padrão, então bastava salvar uma vez sem pensar para o evento nascer com 10 mesas — e mudar
+  // para 3 depois não adiantava: a Secretaria seguia mostrando 10, sete delas "sem atendente"
+  // (Villa Paris, 22/08: config dizia 3, a tela desenhava 10).
+  //
+  // ⚠️ MAS NÃO SE APAGA MESA COM GENTE. Remover uma mesa ocupada sumiria com o cliente que está
+  // sentado nela no meio do atendimento. Só saem as EXCEDENTES que estão vazias; as ocupadas
+  // ficam e voltam na lista `mantidas`, para a tela poder avisar em vez de mentir que reduziu.
+  const { data: excedentes } = await input.client
+    .from("prometeu_mesas")
+    .select("id, numero, estado, credenciado_id, atendente_user_id")
+    .eq("evento_id", input.eventoId)
+    .eq("zona", input.zona)
+    .gt("numero", String(total).padStart(2, "0"));
+
+  const paraRemover: string[] = [];
+  const mantidas: string[] = [];
+  for (const mesa of (excedentes ?? []) as Array<{
+    atendente_user_id: null | string;
+    credenciado_id: null | string;
+    estado: null | string;
+    id: string;
+    numero: string;
+  }>) {
+    const ocupada =
+      Boolean(mesa.credenciado_id) ||
+      Boolean(mesa.atendente_user_id) ||
+      (mesa.estado != null && mesa.estado !== "livre");
+    if (ocupada) mantidas.push(mesa.numero);
+    else paraRemover.push(mesa.id);
+  }
+
+  let removidas = 0;
+  if (paraRemover.length > 0) {
+    const { error: erroDelete } = await input.client
+      .from("prometeu_mesas")
+      .delete()
+      .in("id", paraRemover);
+    if (!erroDelete) removidas = paraRemover.length;
+  }
+
+  return { criadas: linhas.length, mantidas, removidas };
 }
 
 // As ultimas chamadas do evento — alimenta o card "Ultimas chamadas" da Central.
@@ -2174,6 +2217,7 @@ export async function resumoDeTodasAsMesas(
     let somaMs = 0;
     let encerrados = 0;
     let unidades = 0;
+    const credenciadoIds: string[] = [];
     for (const a of atendimentos) {
       const inicio = new Date(a.atendidoEm).getTime();
       if (Number.isNaN(inicio)) continue;
@@ -2183,9 +2227,11 @@ export async function resumoDeTodasAsMesas(
       somaMs += fim - inicio;
       encerrados += 1;
       unidades += (unidadesPorCredenciado[a.credenciadoId] ?? []).length;
+      credenciadoIds.push(a.credenciadoId);
     }
     resultado[mesaId] = {
       atendimentos: encerrados,
+      credenciadoIds,
       tempoMedioMs: encerrados > 0 ? Math.round(somaMs / encerrados) : null,
       tempoTotalMs: somaMs,
       unidades,

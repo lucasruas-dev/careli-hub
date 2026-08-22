@@ -251,6 +251,10 @@ export type PrometeuMesa = {
 // unidades foram vendidas nesses atendimentos, e o tempo (médio e total). Derivados, não colunas.
 export type PrometeuIndicadorDaMesa = {
   atendimentos: number;
+  // Quem SENTOU nesta mesa e já saiu. ⚠️ Existe para a tela poder somar as unidades do C2X: o
+  // campo `unidades` abaixo vem de `prometeu_unidades`, que nunca foi escrita, e por isso o "UN"
+  // de toda mesa aparecia 0 mesmo com o cliente tendo levado dois lotes.
+  credenciadoIds: string[];
   tempoMedioMs: number | null;
   tempoTotalMs: number;
   unidades: number;
