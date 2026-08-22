@@ -817,6 +817,34 @@ export async function listCredenciados(
       .replace(/\s+/g, " ")
       .trim();
 
+  // NOME DA PESSOA PELA ENTIDADE, pelo mesmo motivo da imobiliária logo acima: a ficha do Apolo é
+  // a fonte, a coluna `nome` daqui é só o retrato do dia em que a pessoa entrou na fila.
+  //
+  // ⚠️ POR QUE ISTO EXISTE: `prometeu_credenciados.nome` é gravado UMA única vez, no insert de
+  // `adicionarCredenciado`, e não há um só UPDATE dessa coluna no repositório inteiro. Quem
+  // corrigisse o nome no board via tela de identidade não via a correção chegar na fila nem na
+  // etiqueta — nem clicando em "Trazer CADs", porque `garantirNaFilaDoLancamento` sai antes de
+  // reler a ficha quando a pessoa já está na fila. Resolvendo na LEITURA, toda tela do módulo
+  // (fila, etiqueta, telão, credencial, chamada) passa a mostrar o nome atual sem backfill.
+  //
+  // A regra de composição é a MESMA da gravação (credenciado-para-fila.ts:99 e :119): `legal_name`
+  // na frente de `display_name`, e MAIÚSCULAS — é o que faz a etiqueta ser lida de longe no salão.
+  const nomePorEntidade = new Map<string, string>();
+  for (let i = 0; i < entityIds.length; i += 200) {
+    const { data } = await client
+      .from("apolo_entities")
+      .select("id, display_name, legal_name")
+      .in("id", entityIds.slice(i, i + 200));
+    for (const e of (data ?? []) as Array<{
+      display_name: null | string;
+      id: string;
+      legal_name: null | string;
+    }>) {
+      const canonico = nomeCanonico(e.legal_name, e.display_name, "");
+      if (canonico) nomePorEntidade.set(e.id, canonico);
+    }
+  }
+
   // A posicao 1,2,3 nasce AQUI, da ordenacao — nao existe coluna. Uma fonte de verdade so.
   return linhas.map((row, indice) => {
     const imobEnt =
@@ -841,7 +869,9 @@ export async function listCredenciados(
       id: row.id,
       imobiliaria: imobNome,
       imobiliariaEntityId: imobEnt,
-      nome: row.nome,
+      // Fallback na coluna: linha sem entidade resolvida continua mostrando o retrato antigo em
+      // vez de ficar sem nome na etiqueta.
+      nome: (row.entity_id ? nomePorEntidade.get(row.entity_id) : undefined) ?? row.nome,
       ordemFila: row.ordem_fila,
       ordemMotivo: row.ordem_motivo,
       origem: row.origem,
@@ -1482,6 +1512,43 @@ export type ResultadoDoBip = {
 // SALAO — o bip CONFIRMA uma chamada. E' a trava anti-fraude do evento: so' entra no salao
 // quem foi chamado. Bipar alguem que nao foi chamado nao move nada e devolve recusa explicita,
 // pro organizador barrar na hora (regra do Lucas, 24/jul).
+// A REGRA DE COMPOSIÇÃO DO NOME, isolada para poder ser testada sem banco.
+//
+// Espelha o que `credenciado-para-fila.ts` faz ao gravar (linha 99: `legal_name` na frente de
+// `display_name`; linha 119: `.toUpperCase()`). Tem que ser a MESMA regra dos dois lados, senão a
+// leitura "corrige" nomes que estavam certos e a fila começa a piscar entre duas grafias.
+//
+// ⚠️ Devolve o `fallback` quando a entidade não tem nome utilizável — etiqueta sem nome é pior
+// que etiqueta com nome velho.
+export function nomeCanonico(
+  legalName: null | string | undefined,
+  displayName: null | string | undefined,
+  fallback: string,
+): string {
+  const canonico = (legalName?.trim() || displayName?.trim() || "").trim();
+  return canonico ? canonico.toUpperCase() : fallback;
+}
+
+// Nome canônico de UMA pessoa, para as mensagens do bip. Mesma regra da fila (`legal_name` na
+// frente, MAIÚSCULAS), mas resolvido um a um porque aqui não há lote.
+//
+// ⚠️ Chamar só no ramo que MONTA A MENSAGEM, nunca no caminho feliz do bip: no dia do evento a
+// bipagem é o gargalo do salão, e não vale gastar uma consulta por leitura de QR para um texto
+// que só aparece quando algo dá errado.
+async function nomeCanonicoDaPessoa(
+  client: AdminClient,
+  entityId: null | string | undefined,
+  fallback: string,
+): Promise<string> {
+  if (!entityId) return fallback;
+  const { data } = await client
+    .from("apolo_entities")
+    .select("display_name, legal_name")
+    .eq("id", entityId)
+    .maybeSingle<{ display_name: null | string; legal_name: null | string }>();
+  return nomeCanonico(data?.legal_name, data?.display_name, fallback);
+}
+
 export async function bipDoSalao(input: {
   client: AdminClient;
   credenciadoId: string;
@@ -1489,10 +1556,11 @@ export async function bipDoSalao(input: {
 }): Promise<ResultadoDoBip> {
   const { data: pessoa } = await input.client
     .from("prometeu_credenciados")
-    .select("nome, etapa, evento_id, encerrado_em")
+    .select("nome, etapa, evento_id, encerrado_em, entity_id")
     .eq("id", input.credenciadoId)
     .maybeSingle<{
       encerrado_em: string | null;
+      entity_id: null | string;
       etapa: string;
       evento_id: string;
       nome: string;
@@ -1539,12 +1607,13 @@ export async function bipDoSalao(input: {
     const jaAndou = pessoa.etapa !== "recepcao";
     const ondeEsta =
       PROMETEU_ETAPAS.find((e) => e.id === pessoa.etapa)?.label ?? pessoa.etapa;
+    const nome = await nomeCanonicoDaPessoa(input.client, pessoa.entity_id, pessoa.nome);
 
     return {
-      credenciado: { etapa: pessoa.etapa, nome: pessoa.nome },
+      credenciado: { etapa: pessoa.etapa, nome },
       error: jaAndou
-        ? `${pessoa.nome} já passou por aqui e está em ${ondeEsta}.`
-        : `${pessoa.nome} ainda não foi chamado. Peça para aguardar a chamada.`,
+        ? `${nome} já passou por aqui e está em ${ondeEsta}.`
+        : `${nome} ainda não foi chamado. Peça para aguardar a chamada.`,
       ok: false,
       recusadoPelaRegra: true,
     };
@@ -1578,7 +1647,13 @@ export async function bipDoSalao(input: {
     return { error: movido.error, ok: false };
   }
 
-  return { credenciado: { etapa: "negociacao", nome: pessoa.nome }, ok: true };
+  return {
+    credenciado: {
+      etapa: "negociacao",
+      nome: await nomeCanonicoDaPessoa(input.client, pessoa.entity_id, pessoa.nome),
+    },
+    ok: true,
+  };
 }
 
 // SECRETARIA — aqui NAO ha chamada previa: a pessoa vai por conta propria depois de fechar no
@@ -1591,9 +1666,14 @@ export async function bipDaSecretaria(input: {
 }): Promise<ResultadoDoBip> {
   const { data: pessoa } = await input.client
     .from("prometeu_credenciados")
-    .select("nome, etapa, evento_id")
+    .select("nome, etapa, evento_id, entity_id")
     .eq("id", input.credenciadoId)
-    .maybeSingle<{ etapa: string; evento_id: string; nome: string }>();
+    .maybeSingle<{
+      entity_id: null | string;
+      etapa: string;
+      evento_id: string;
+      nome: string;
+    }>();
 
   if (!pessoa) {
     return { error: "Credenciado nao encontrado.", ok: false };
@@ -1631,7 +1711,13 @@ export async function bipDaSecretaria(input: {
   // Rebipar quem ja' esta' na secretaria nao e' erro: e' o organizador conferindo. Devolve ok
   // sem mexer em nada, pra tela nao acusar falha de quem so' passou o QR duas vezes.
   if (pessoa.etapa === "secretaria") {
-    return { credenciado: { etapa: pessoa.etapa, nome: pessoa.nome }, ok: true };
+    return {
+      credenciado: {
+        etapa: pessoa.etapa,
+        nome: await nomeCanonicoDaPessoa(input.client, pessoa.entity_id, pessoa.nome),
+      },
+      ok: true,
+    };
   }
 
   const movido = await moverEtapa({
@@ -1645,7 +1731,13 @@ export async function bipDaSecretaria(input: {
     return { error: movido.error, ok: false };
   }
 
-  return { credenciado: { etapa: "secretaria", nome: pessoa.nome }, ok: true };
+  return {
+    credenciado: {
+      etapa: "secretaria",
+      nome: await nomeCanonicoDaPessoa(input.client, pessoa.entity_id, pessoa.nome),
+    },
+    ok: true,
+  };
 }
 
 // ---------------------------------------------------------------- movimento

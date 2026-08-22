@@ -36,6 +36,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-22-prometeu-nome-e-fuso",
+    deployedAt: "2026-08-22T11:25:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Nome corrigido no Apolo agora aparece na hora no Prometeu: fila, etiqueta, telao, credencial e bipagem",
+              "Antes o nome ficava congelado no dia em que a pessoa entrou na fila — nem 'Trazer CADs' atualizava",
+              "17 pessoas do Vale do Ouro e do Villa Paris estavam com o nome antigo e ja aparecem certas, sem precisar refazer nada",
+            ],
+            screen: "Fila e Etiquetas",
+          },
+          {
+            items: [
+              "A coluna TEMPO NA RESERVA estava mostrando 3 HORAS A MAIS: uma reserva de 17h46 aparecia como 20h46",
+              "Por causa disso o alerta '+30 min' acendia para reservas que ainda estavam dentro do prazo",
+              "Os horarios agora batem com o que o C2X mostra na tela dele",
+            ],
+            screen: "Central · Reservas",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.182.0 (2026-08-21-prometeu-etiqueta-corretor)",
+    technical: {
+      done:
+        "(1) NOME. `prometeu_credenciados.nome` e' copia gravada UMA vez, no insert de `adicionarCredenciado` — nao existe um unico UPDATE dessa coluna no repositorio, e `garantirNaFilaDoLancamento` faz early-return quando a pessoa ja esta na fila, entao nem a rotina de abertura relia a ficha. Resolvido na LEITURA, replicando o padrao que o proprio arquivo ja usava para a IMOBILIARIA: `listCredenciados` (data.ts) resolve o nome por `entity_id` em lotes de 200 e devolve o canonico, com fallback na coluna. Como listCredenciados e' funil unico (fila, telao, reservas, boas-vindas), uma mudanca conserta o modulo todo, sem backfill. `bipDoSalao`/`bipDaSecretaria` tambem passaram a resolver, mas so no ramo que monta a mensagem — o caminho feliz do bip nao ganhou consulta nova, porque no dia do evento a bipagem e' o gargalo. Regra extraida para `nomeCanonico` (pura, testada): legal_name na frente de display_name e MAIUSCULAS, identica a da gravacao (credenciado-para-fila.ts:99 e :119) — se as duas divergirem, a fila alterna entre duas grafias. (2) FUSO. O MySQL do C2X roda em UTC, mas a aplicacao Rails grava o relogio de BRASILIA num DATETIME (que nao carrega fuso); o pool do Hades usa `timezone: 'Z'`, entao o driver lia '17:17' como UTC e o calculo de 'ha quanto tempo' saia 3h maior. Medido com tres ancoras do mesmo cliente: check-in 09:13 (Postgres, timestamptz) -> reserva 09:25 -> contrato 10:01 -> concluido 10:09; lido como UTC a reserva caia as 06:25, antes do check-in. A tela do C2X confirma 17:17. Correcao CIRURGICA: a data sai do SQL como texto (`DATE_FORMAT`) e o fuso e' colado em `paraInstante` — o pool NAO foi tocado porque e' o mesmo da cobranca do Hades e mexer no fuso ali moveria data de parcela e de contrato. 143 testes do Prometeu verdes, tsc limpo.",
+      motivation:
+        "Lucas, 22/08, no meio do evento do Villa Paris: *\"eu alterei um nome no board, essa alteracao nao chegou no prometeu (etiqueta, fila), queria que ao atualizar no apolo em todas as telas essas alteracoes sejam refletida\"* — era a Ana Maria Fernandes, corrigida de 'AA MARIA'. E, na sequencia, o alerta dele *\"cuidado com o fuso\"*, que expos o erro de 3h na coluna de tempo de reserva.",
+    },
+    title: "Nome do Apolo chega ao Prometeu, e o tempo de reserva bate com o relogio",
+    type: "correcao",
+    version: "1.183.0",
+  },
+  {
     buildTag: "2026-08-21-prometeu-etiqueta-corretor",
     deployedAt: "2026-08-21T16:20:00-03:00",
     modules: [

@@ -18,6 +18,22 @@
 import { getHadesDbPool } from "@/lib/guardian/db";
 import type { RowDataPacket } from "mysql2";
 
+// Fuso de Brasília, fixo: o país não tem horário de verão desde 2019, então -03:00 vale o ano
+// inteiro. Se algum dia voltar, este é o único ponto a mexer.
+const FUSO_BRASILIA = "-03:00";
+
+// Converte o horário que o C2X gravou (relógio de Brasília, sem fuso) no instante de verdade.
+// ⚠️ Sem isto o valor é lido como UTC e todo cálculo de "há quanto tempo" erra em 3 horas.
+export function paraInstante(textoDoC2x: string): string {
+  const limpo = String(textoDoC2x ?? "").trim();
+  if (!limpo) return "";
+  // Já veio com fuso (algum caminho que não passou pelo DATE_FORMAT): respeita o que veio.
+  if (/(Z|[+-]\d{2}:?\d{2})$/.test(limpo)) return new Date(limpo).toISOString();
+  const iso = limpo.replace(" ", "T").slice(0, 19);
+  const instante = new Date(`${iso}${FUSO_BRASILIA}`);
+  return Number.isNaN(instante.getTime()) ? "" : instante.toISOString();
+}
+
 // A aba Reservas mostra SÓ quem está com reserva de pé (decisão do Lucas). Quem já virou contrato
 // ou proposta andou na esteira e não é mais "reserva parada" — que é o que a tela cobra.
 const ETAPA_RESERVADO = "Reservado";
@@ -45,13 +61,26 @@ export async function reservasVivasDoC2x(
 
   try {
     const [rows] = await poolResult.pool.query<RowDataPacket[]>(
+      // ⚠️ `DATE_FORMAT` em vez de devolver o DATETIME cru — e a razão é um erro de 3 HORAS que
+      // esteve no ar. O servidor do C2X roda em UTC, mas a APLICAÇÃO Rails grava o horário de
+      // BRASÍLIA dentro de um DATETIME (que não carrega fuso nenhum). O pool do Hades usa
+      // `timezone: "Z"` (db.ts:123), então o driver lia "17:17" como 17:17 UTC = 14:17 aqui —
+      // e a coluna "tempo na reserva" mostrava 20h46 onde o certo era 17h46.
+      //
+      // Medido em 22/08/2026 com três âncoras que fecham a sequência do mesmo cliente:
+      // check-in no Prometeu 09:13 (Postgres, timestamptz) → reserva no C2X 09:25 → contrato
+      // 10:01 → concluído 10:09. Lendo como UTC, a reserva cairia às 06:25, antes do check-in.
+      //
+      // Não dá para arrumar no pool: ele é o mesmo da cobrança do Hades, e mexer no fuso ali
+      // moveria data de parcela e de contrato. Então a data sai daqui como TEXTO e o fuso é
+      // colado explicitamente em `paraInstante`.
       `SELECT ${semMascara} AS cpf,
               u.name        AS cliente,
               cor.name      AS corretor,
               eu.name       AS unidade,
               eu.block      AS quadra,
               eu.lot        AS lote,
-              ar.created_at AS criado_em
+              DATE_FORMAT(ar.created_at, '%Y-%m-%dT%H:%i:%s') AS criado_em
          FROM acquisition_requests ar
          JOIN enterprise_unities eu ON eu.id = ar.enterprise_unity_id
          JOIN acquisition_request_stages s ON s.id = ar.acquisition_request_stage_id
@@ -68,7 +97,7 @@ export async function reservasVivasDoC2x(
       cliente: String(r.cliente ?? "").trim(),
       corretor: r.corretor ? String(r.corretor).trim() : null,
       cpf: String(r.cpf ?? "").replace(/\D/g, ""),
-      criadoEm: String(r.criado_em ?? ""),
+      criadoEm: paraInstante(String(r.criado_em ?? "")),
       lote: String(r.lote ?? "").trim(),
       quadra: String(r.quadra ?? "").trim(),
       unidade: String(r.unidade ?? "").trim(),
