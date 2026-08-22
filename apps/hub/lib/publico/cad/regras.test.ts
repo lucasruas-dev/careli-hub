@@ -188,8 +188,27 @@ describe("máquina de estados", () => {
     );
   });
 
-  it("CPF conhecido com UM empreendimento PULA a escolha (regra do Lucas)", () => {
-    expect(proximoEstado("identificar", { empreendimentos: 1, tipo: "cpf-conhecido" })).toBe("cad");
+  // ⚠️ A REGRA MUDOU EM 22/08, E O MOTIVO É UM ERRO REAL. Antes, um único empreendimento pulava
+  // a escolha e levava direto à CAD. Um corretor então digitou o CPF, caiu na CAD e mandou o
+  // cliente para o Vale do Ouro — o único produto habilitado para a imobiliária dele — quando
+  // queria a Aldeia da Cachoeira. Ele nunca viu o destino, porque a tela que o mostrava era
+  // justamente a pulada. O corretor não decora o que a imobiliária dele vende.
+  it("com UM empreendimento AINDA passa pela escolha: é onde ele vê o destino da CAD", () => {
+    expect(proximoEstado("identificar", { empreendimentos: 1, tipo: "cpf-conhecido" })).toBe(
+      "empreendimento",
+    );
+  });
+
+  it("com VÁRIOS empreendimentos, idem", () => {
+    expect(proximoEstado("identificar", { empreendimentos: 3, tipo: "cpf-conhecido" })).toBe(
+      "empreendimento",
+    );
+  });
+
+  it("sem NENHUM empreendimento vai para a central, não para uma escolha vazia", () => {
+    expect(proximoEstado("identificar", { empreendimentos: 0, tipo: "cpf-conhecido" })).toBe(
+      "central",
+    );
   });
 
   it("CPF novo abre o cadastro, não manda o corretor embora", () => {
@@ -200,7 +219,7 @@ describe("máquina de estados", () => {
     expect(proximoEstado("cnpj", { tipo: "cnpj-recusado" })).toBe("central");
   });
 
-  it("percorre o auto-cadastro inteiro até a CAD com um empreendimento só", () => {
+  it("percorre o auto-cadastro inteiro até a CAD, passando pela escolha do empreendimento", () => {
     let estado: EstadoCad = "identificar";
     estado = proximoEstado(estado, { tipo: "cpf-novo" });
     expect(estado).toBe("cnpj");
@@ -211,6 +230,10 @@ describe("máquina de estados", () => {
     estado = proximoEstado(estado, { tipo: "creci-ok" });
     expect(estado).toBe("confirmar");
     estado = proximoEstado(estado, { empreendimentos: 1, tipo: "cadastrado" });
+    // Mesmo com um único empreendimento, a escolha acontece — e é ela que diz ao corretor para
+    // onde a CAD vai.
+    expect(estado).toBe("empreendimento");
+    estado = proximoEstado(estado, { tipo: "empreendimento-escolhido" });
     expect(estado).toBe("cad");
     estado = proximoEstado(estado, { tipo: "cad-pronta" });
     expect(estado).toBe("enviando");

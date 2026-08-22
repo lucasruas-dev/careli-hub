@@ -148,15 +148,17 @@ export function PortaoCorretor({
       const lista = dados.empreendimentos ?? [];
       setImobiliaria(dados.imobiliaria ?? "");
       setEmpreendimentos(lista);
-      // Regra do Lucas: "se tiver somente uma seguir para o formulário". A sessão já vem com o
-      // enterpriseId carimbado (sessao/corretor route), então entramos direto no CadastroFlow.
-      if (lista.length === 1) {
-        onValidado(dados.sessao ?? "", lista[0]?.name ?? "", {
-          corretorNome: dados.nome ?? corretor.nome,
-          imobiliariaNome: dados.imobiliaria ?? "",
-        });
-        return;
-      }
+      // ⚠️ A ETAPA APARECE SEMPRE, INCLUSIVE COM UM ÚNICO EMPREENDIMENTO.
+      //
+      // Até 22/08 havia um atalho aqui ("se tiver somente uma, seguir para o formulário"), e ele
+      // causou o estrago que motivou esta mudança: um corretor digitou o CPF, caiu direto na CAD
+      // e mandou o cliente para o Vale do Ouro — único produto habilitado para a imobiliária
+      // dele — quando queria a Aldeia da Cachoeira. Ele nunca viu para onde a CAD foi, porque a
+      // tela que dizia isso era justamente a que o atalho pulava.
+      //
+      // O corretor não tem como saber, de cabeça, o que a imobiliária dele está habilitada a
+      // vender. Um clique a mais é barato; CAD no empreendimento errado custa retrabalho de
+      // validação, crédito consultado à toa e um cliente cadastrado no lugar errado.
       setSessao(dados.sessao ?? "");
       avancar(
         novo
@@ -463,9 +465,35 @@ export function PortaoCorretor({
         return (
           <>
             <Cabecalho
-              subtitulo="Toque no empreendimento deste cliente. Aparecem só os que a sua imobiliária está habilitada a trabalhar."
+              subtitulo={
+                imobiliaria
+                  ? `Estes são os empreendimentos que a ${imobiliaria} está habilitada a vender.`
+                  : "Estes são os empreendimentos que a sua imobiliária está habilitada a vender."
+              }
               titulo="Para qual empreendimento é esta CAD?"
             />
+            {/* ⚠️ O AVISO É A PARTE IMPORTANTE DESTA TELA, não a lista.
+                O corretor não decora o que a imobiliária dele vende, e antes o sistema o mandava
+                direto para a CAD quando havia um único produto — foi assim que uma CAD da Aldeia
+                da Cachoeira foi parar no Vale do Ouro (22/08), sem ninguém perceber na hora.
+                Dizer o que NÃO está na lista, e o que fazer a respeito, é o que evita o erro. */}
+            <div
+              style={{
+                background: "#FFF8E6",
+                border: "1px solid #F0DFB0",
+                borderRadius: 12,
+                color: "#5C4708",
+                fontSize: 13,
+                lineHeight: 1.5,
+                marginBottom: 14,
+                padding: "12px 14px",
+              }}
+            >
+              Não encontrou o empreendimento que você queria? Então a{" "}
+              {imobiliaria ? <b>{imobiliaria}</b> : "sua imobiliária"} ainda não está habilitada
+              nele. Fale com a gestão da sua imobiliária para pedir a habilitação — não envie a CAD
+              por outro empreendimento, porque o cliente ficaria cadastrado no lugar errado.
+            </div>
             <div style={{ display: "grid", gap: 12 }}>
               {empreendimentos.map((emp) => (
                 <CardEmpreendimento

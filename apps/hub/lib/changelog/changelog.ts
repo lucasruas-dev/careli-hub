@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-22-cad-escolha-empreendimento",
+    deployedAt: "2026-08-22T15:45:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O corretor SEMPRE passa pela tela de escolher o empreendimento — antes, com um produto so, o sistema pulava e ele nao via para onde a CAD ia",
+              "A tela agora diz o nome da imobiliaria: 'Estes sao os empreendimentos que a X esta habilitada a vender'",
+              "Aviso novo: se o empreendimento nao esta na lista, a imobiliaria nao esta habilitada nele — falar com a gestao da imobiliaria, e NAO enviar por outro",
+            ],
+            screen: "Portal publico da CAD",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.187.0 (2026-08-22-apolo-credito-conjuge)",
+    technical: {
+      done:
+        "O atalho existia em DOIS lugares e os dois foram corrigidos: `seguirComSessao` (PortaoCorretor.tsx) chamava `onValidado` direto quando `lista.length === 1`, e `proximoEstado` (lib/publico/cad/regras.ts:210 e :232) devolvia 'cad' em vez de 'empreendimento' para `empreendimentos === 1`. Mexer so num deixaria a tela pulada do mesmo jeito. Agora `>= 1` vai para a escolha e `0` vai para a central (antes, zero empreendimentos com o atalho ligado cairia numa escolha vazia). O informativo ambar da tela nomeia a imobiliaria e diz o que fazer quando o produto nao aparece — e' a parte que evita o erro, porque a lista sozinha nao explica a ausencia. Dois testes da maquina de estados prendiam a regra antiga ('PULA a escolha (regra do Lucas)') e foram reescritos com o caso real; entraram tambem os casos de 3 e de 0 empreendimentos. 64 testes da CAD publica verdes, tsc limpo.",
+      motivation:
+        "Lucas, 22/08: *\"quando o corretor for subir a cad, mesmo que a imobiliaria dele esteja habilitada em um so produto, aparecer a etapa que ele escolhe o produto... se o produto que ele quer nao estiver ele tem que procurar a gestao da imobiliaria para habilitacao\"*. O caso que motivou: *\"o corretor ao digitar o cpf dele foi direto para subir cad, contudo a imobiliaria dele estava habilitada para o Vale do Ouro, mas ele queria subir uma cad para aldeia da cachoeira, ou seja, ele nao tinha como saber para qual empreendimento ele enviou a cad\"*.",
+    },
+    title: "Corretor sempre ve para qual empreendimento a CAD vai",
+    type: "correcao",
+    version: "1.188.0",
+  },
+  {
     buildTag: "2026-08-22-apolo-credito-conjuge",
     deployedAt: "2026-08-22T15:20:00-03:00",
     modules: [

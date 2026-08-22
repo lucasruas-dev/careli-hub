@@ -206,8 +206,11 @@ export function proximoEstado(atual: EstadoCad, evento: EventoCad): EstadoCad {
     case "identificar":
       if (evento.tipo === "cpf-novo") return "cnpj";
       if (evento.tipo === "cpf-conhecido") {
-        // Regra do Lucas: "se tiver somente uma seguir para o formulário".
-        return evento.empreendimentos === 1 ? "cad" : "empreendimento";
+        // ⚠️ SEMPRE passa pela escolha, mesmo com UM empreendimento só — ver `PortaoCorretor`.
+        // A regra anterior ("se tiver somente uma, seguir para o formulário") mandava o corretor
+        // direto para a CAD, e ele não via para qual empreendimento estava cadastrando. Em 22/08
+        // isso pôs uma CAD da Aldeia da Cachoeira no Vale do Ouro.
+        return evento.empreendimentos >= 1 ? "empreendimento" : "central";
       }
       return atual;
 
@@ -229,7 +232,8 @@ export function proximoEstado(atual: EstadoCad, evento: EventoCad): EstadoCad {
 
     case "confirmar":
       if (evento.tipo === "cadastrado") {
-        return evento.empreendimentos === 1 ? "cad" : "empreendimento";
+        // Mesma regra do `identificar`: a escolha do empreendimento nunca é pulada.
+        return evento.empreendimentos >= 1 ? "empreendimento" : "central";
       }
       if (evento.tipo === "voltar") return "creci";
       return atual;
