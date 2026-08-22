@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-22-cad-pj-sem-anexo",
+    deployedAt: "2026-08-22T18:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "CAD de pessoa JURIDICA volta a subir para o C2X: o contrato social deixou de ser enviado junto (decisao do Lucas), e era o anexo que derrubava o envio",
+              "O documento continua guardado no Apolo — so nao viaja para o legado",
+            ],
+            screen: "Envio ao C2X",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.192.0 (2026-08-22-imobiliaria-correcao-padrao)",
+    technical: {
+      done:
+        "NENHUMA PJ jamais foi criada pela integracao (zero 'resolvido' na fila para entity_kind=pj). A diferenca entre o caminho que funciona e o que falha era o TRANSPORTE: PF viaja como JSON; o cliente PJ anexava o contrato social e virava multipart/form-data — e o multipart o C2X respondia com 500 Internal Server Error sem mensagem (hipotese: wrap_parameters do Rails so embrulha JSON em params[:user]; no multipart o controller acha nil e estoura). Casos de 22/08: TBTC e VIDRO TELA falharam as 08:43 (Brasilia) e o time criou as duas NA MAO as 08:49/08:53 — cuidado com o fuso ao ler a fila: atualizado_em e UTC. Correcao conforme a decisao do Lucas ('nao precisa subir documentacao para o C2X'): `lerContratoSocialParaC2x` sai do funil, o anexo vai sempre nulo com motivo registrado na auditoria, e o PJ viaja como JSON igual a PF. As 2 linhas presas foram resetadas para 'pendente': no reenvio a trava anti-duplicado encontra as empresas criadas a mao (ids 4856/4857) e carimba sem criar nada. tsc limpo.",
+      motivation:
+        "Lucas, 22/08: *\"o time me relatou que nao esta conseguindo subir cad com pessoa pj para o c2x, analisa o porque e corrige\"* e, na sequencia, *\"nao precisa subir documentacao para o c2x\"*.",
+    },
+    title: "CAD PJ sobe para o C2X (sem o anexo que derrubava)",
+    type: "correcao",
+    version: "1.193.0",
+  },
+  {
     buildTag: "2026-08-22-imobiliaria-correcao-padrao",
     deployedAt: "2026-08-22T17:40:00-03:00",
     modules: [

@@ -1320,13 +1320,19 @@ export async function enviarEntidadeParaC2x(input: {
   // e dentro do cliente separa PF de PJ pelo `isCompany` da ficha.
   const payload = montarPayload(perfil, dados, { vinculedById: input.vinculedById });
 
-  // CONTRATO SOCIAL: só o CLIENTE PJ. A PF não tem esse campo no C2X e a imobiliária tem fluxo
-  // próprio — nenhum dos dois é tocado aqui (o `anexo` fica nulo e o corpo continua sendo o JSON
-  // de sempre).
+  // ⚠️ CONTRATO SOCIAL NÃO SOBE MAIS (decisão do Lucas, 22/08: "não precisa subir documentação
+  // para o C2X"). O anexo era o que fazia o envio de CLIENTE PJ virar multipart — e o multipart
+  // é exatamente o caminho que o C2X respondia com 500 Internal Server Error sem mensagem:
+  // NENHUMA PJ jamais foi criada por esta integração (zero resolvidas na fila; TBTC e VIDRO TELA
+  // falharam em 22/08 às 08:43 e o time teve que criar na mão às 08:49). Sem o anexo, o PJ
+  // viaja como JSON — o mesmo transporte que cria PF aos montes. O documento continua guardado
+  // no Apolo; só não é enviado ao legado.
   const ehClientePj = perfil === "cliente" && dados.cadastro.isCompany;
-  const contrato: ContratoSocialParaC2x = ehClientePj
-    ? await lerContratoSocialParaC2x(client, input.entityId)
-    : { anexo: null, documentoId: null, motivo: null };
+  const contrato: ContratoSocialParaC2x = {
+    anexo: null,
+    documentoId: null,
+    motivo: ehClientePj ? "documentação não sobe para o C2X (decisão do Lucas, 22/08)" : null,
+  };
 
   // O motivo de o anexo não ter ido gruda em QUALQUER erro gravado na fila — inclusive quando o
   // cadastro deu certo. Anexo que falhou nunca é engolido.
