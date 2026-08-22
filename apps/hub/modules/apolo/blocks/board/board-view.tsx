@@ -247,6 +247,15 @@ const ETAPA_CORRECAO: Etapa = {
   label: "Correção",
 };
 
+// O desvio de correção da IMOBILIÁRIA — mesma cara do da CAD (Lucas, 22/08: "tem que ser
+// padrão, tanto para cad quanto para imobiliária"). Entra na trilha só de quem está `attention`.
+const ETAPA_CORRECAO_IMOBILIARIA: Etapa = {
+  descricao: "Devolvida à imobiliária: aguardando o documento ou a informação que faltou.",
+  icon: AlertTriangle,
+  id: "correcao",
+  label: "Correção",
+};
+
 const ETAPAS_IMOBILIARIA: Etapa[] = [
   {
     descricao:
@@ -268,7 +277,15 @@ const ETAPAS_IMOBILIARIA: Etapa[] = [
 // que faz o cliente "cair em pré-venda" na tela de um lançamento que não cobra nada (Lucas, 10/08).
 // O servidor decide (`prevendaHabilitada` do card, fail-closed); aqui só se obedece.
 const etapasDoItem = (item: ItemFila): Etapa[] => {
-  if (item.papel === "imobiliaria") return ETAPAS_IMOBILIARIA;
+  if (item.papel === "imobiliaria") {
+    // Em correção a trilha ganha o degrau próprio, entre Validação e Habilitada — sem ele a
+    // ficha devolvida ficava visualmente igual a uma recém-chegada (e `posicaoDaImobiliaria`
+    // devolve 1 exatamente para esta lista de 3).
+    if (item.entidadeStatus === "attention") {
+      return [ETAPAS_IMOBILIARIA[0]!, ETAPA_CORRECAO_IMOBILIARIA, ETAPAS_IMOBILIARIA[1]!];
+    }
+    return ETAPAS_IMOBILIARIA;
+  }
   const base = item.prevendaHabilitada ? ETAPAS_CAD : ETAPAS_CAD.filter((e) => e.id !== "prevenda");
 
   // ⚠️ CORREÇÃO É UM DESVIO, e só entra na trilha de quem está NELE. Ela não é um passo do caminho

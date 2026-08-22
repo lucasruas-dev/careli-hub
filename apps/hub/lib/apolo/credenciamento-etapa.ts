@@ -37,8 +37,17 @@ export function posicaoDaImobiliaria(input: {
     return input.totalEtapas;
   }
 
-  // review, blocked, archived e a correção (`attention` na entidade) são todos ANTES da decisão
-  // ou a decisão desfeita: a trilha volta para a Validação, que é onde o trabalho está.
+  // CORREÇÃO TEM BOLINHA PRÓPRIA, igual à CAD (Lucas, 22/08: "imobiliária na sessão de correção
+  // não aparece o estágio e nem o motivo, tem que ser padrão"). Quando a entidade está
+  // `attention`, o Board insere a etapa "Correção" entre Validação e Habilitada — e a posição 1
+  // é ela. Antes voltava para a Validação, e a ficha em correção ficava idêntica a uma recém-
+  // chegada, sem dizer que estava parada esperando o parceiro.
+  if (input.entidadeStatus === "attention" && input.totalEtapas >= 3) {
+    return 1;
+  }
+
+  // review, blocked e archived são ANTES da decisão ou a decisão desfeita: a trilha volta para a
+  // Validação, que é onde o trabalho está.
   return 0;
 }
 

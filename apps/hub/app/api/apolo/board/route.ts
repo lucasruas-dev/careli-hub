@@ -203,6 +203,40 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Nao foi possivel carregar a fila." }, { status: 500 });
   }
 
+  // MOTIVO DA CORREÇÃO DA IMOBILIÁRIA. Ela não tem esteira: o motivo mora no evento de
+  // auditoria `credenciamento_correcao` (metadata.motivos + observacao), gravado quando o
+  // operador devolve. Sem este lookup a ficha em correção mostrava só o selo, sem o porquê
+  // (Lucas, 22/08: "não aparece o estágio e nem o motivo, tem que ser padrão").
+  // ⚠️ A perna certa é `decididas` — é ela que carrega active/attention; `naEsteira` é outra.
+  const idsImobAttention = ((decididas.data ?? []) as Array<{ id: string; status?: null | string }>)
+    .filter((row) => row.status === "attention")
+    .map((row) => row.id);
+  const motivoCorrecaoImob = new Map<string, string>();
+  if (idsImobAttention.length > 0) {
+    const { data: eventosCorrecao } = await adminClient
+      .from("apolo_audit_events")
+      .select("entity_id, metadata, created_at")
+      .eq("action", "credenciamento_correcao")
+      .in("entity_id", idsImobAttention.slice(0, 100))
+      .order("created_at", { ascending: false })
+      .limit(300);
+    for (const evento of (eventosCorrecao ?? []) as Array<{
+      created_at: string;
+      entity_id: string;
+      metadata: { motivos?: unknown; observacao?: unknown } | null;
+    }>) {
+      // Mais recentes primeiro: o primeiro visto por entidade é o que vale.
+      if (motivoCorrecaoImob.has(evento.entity_id)) continue;
+      const motivos = Array.isArray(evento.metadata?.motivos)
+        ? evento.metadata.motivos.filter((m): m is string => typeof m === "string" && !!m.trim())
+        : [];
+      const observacao =
+        typeof evento.metadata?.observacao === "string" ? evento.metadata.observacao.trim() : "";
+      const texto = [...motivos, observacao].filter(Boolean).join(" · ");
+      if (texto) motivoCorrecaoImob.set(evento.entity_id, texto);
+    }
+  }
+
   // FALHA DE ENVIO da pré-venda. O card só marca quem deu erro — quem está bem não mostra nada,
   // senão a fila vira um mar de ícones e o problema deixa de saltar aos olhos.
   const { data: falhas } = await adminClient
@@ -488,7 +522,7 @@ export async function GET(request: Request) {
       // ou a informação que faltou") e o motivo real — que o operador é OBRIGADO a escrever no
       // popup — morria no banco (Lucas, 22/08: "aqui tem que apontar o porque estamos colocando
       // essa cad em correção").
-      motivo: esteira?.motivo ?? null,
+      motivo: esteira?.motivo ?? motivoCorrecaoImob.get(row.id) ?? null,
       // Só é true quando algum envio da pré-venda falhou — o card marca em vermelho.
       erroEnvio: comErroEnvio.has(row.id),
       id: row.id,

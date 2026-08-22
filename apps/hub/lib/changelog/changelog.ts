@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-22-imobiliaria-correcao-padrao",
+    deployedAt: "2026-08-22T17:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Imobiliaria em correcao ganhou a MESMA cara da CAD: a trilha mostra a etapa Correcao entre Validacao e Habilitada",
+              "E o MOTIVO da devolucao aparece em destaque na ficha — antes so havia o selo, sem o porque",
+            ],
+            screen: "Board · Imobiliaria",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.191.0 (2026-08-22-athena-template-saneado)",
+    technical: {
+      done:
+        "A imobiliaria nao tem esteira: correcao = apolo_entities.status='attention' e o motivo mora no evento de auditoria credenciamento_correcao (metadata.motivos+observacao). TRILHA: `etapasDoItem` insere ETAPA_CORRECAO_IMOBILIARIA quando attention, e `posicaoDaImobiliaria` (regra pura, testada) devolve 1 para a trilha de 3 — antes voltava para a Validacao e a ficha devolvida ficava identica a uma recem-chegada. MOTIVO: a rota do board busca em lote o ultimo credenciamento_correcao das attention e o item o carrega no mesmo campo `motivo` da CAD; o PainelEtapa ja exibia para etapa.id='correcao', entao a imobiliaria herdou de graca. ⚠️ Pegadinha evitada: a perna da query que carrega as imobiliarias active/attention chama `decididas`, nao `naEsteira` — o filtro na perna errada devolveria vazio calado. Caso real validado no banco: C & E Negocios, attention desde 17/08, motivo 'Contrato social ilegivel ou incompleto...'. 18 testes verdes, tsc limpo.",
+      motivation:
+        "Lucas, 22/08, na ficha da C & E Negocios: *\"imobiliaria na sessao de correcao, nao aparece o estagio e nem o motivo, tem que ser padrao, tanto para cad quanto para imobiliaria\"*.",
+    },
+    title: "Correcao da imobiliaria com estagio e motivo, no padrao da CAD",
+    type: "correcao",
+    version: "1.192.0",
+  },
+  {
     buildTag: "2026-08-22-athena-template-saneado",
     deployedAt: "2026-08-22T17:15:00-03:00",
     modules: [

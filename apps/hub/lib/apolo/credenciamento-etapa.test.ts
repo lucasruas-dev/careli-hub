@@ -34,12 +34,25 @@ describe("posição da imobiliária na trilha", () => {
     ).toBe(0);
   });
 
-  it("em correção volta para a Validação, que é onde o trabalho está", () => {
+  // ⚠️ Regra mudou em 22/08 (pedido do Lucas: mesma cara da CAD): em correção a trilha ganha a
+  // etapa própria entre Validação e Habilitada, e a posição aponta para ELA. Com trilha curta
+  // (sem a etapa inserida) continua na Validação, para nunca apontar além da lista.
+  it("em correção aponta para a etapa Correção da trilha de 3 passos", () => {
     expect(
       posicaoDaImobiliaria({
         entidadeStatus: "attention",
         papelStatus: "review",
-        totalEtapas: TOTAL,
+        totalEtapas: 3,
+      }),
+    ).toBe(1);
+  });
+
+  it("em correção com trilha SEM a etapa inserida fica na Validação", () => {
+    expect(
+      posicaoDaImobiliaria({
+        entidadeStatus: "attention",
+        papelStatus: "review",
+        totalEtapas: 2,
       }),
     ).toBe(0);
   });
