@@ -88,6 +88,22 @@ function duracao(desde: string, agora: number): string {
   return duracaoMs(agora - new Date(desde).getTime());
 }
 
+// QUEM JÁ SAIU TEM O RELÓGIO PARADO.
+//
+// ⚠️ O tempo era sempre contado até AGORA, então uma pessoa que concluiu às 10:09 continuava
+// "envelhecendo" na tela: às 13:57 aparecia com 4h44 no evento, como se ainda estivesse no salão
+// (Lucas, 22/08: "concluído tem que parar de contar, entenda que o concluído não está no evento
+// mais"). Para quem concluiu ou cancelou, o relógio para na hora em que isso aconteceu — que é
+// exatamente o que `calcularKpisDoEvento` já fazia para o tempo médio, e por isso o card dizia
+// 58 min enquanto a lista dizia 4h44 para as mesmas pessoas.
+const ETAPAS_QUE_PARAM_O_RELOGIO: PrometeuEtapa[] = ["cancelado", "concluido"];
+
+function relogioAte(pessoa: PrometeuCredenciado, agora: number): number {
+  if (!ETAPAS_QUE_PARAM_O_RELOGIO.includes(pessoa.etapa)) return agora;
+  const fim = new Date(pessoa.etapaDesde).getTime();
+  return Number.isNaN(fim) ? agora : fim;
+}
+
 function haQuantoTempo(iso: string, agora: number): string {
   const minutos = Math.floor((agora - new Date(iso).getTime()) / 60000);
   if (minutos < 1) return "agora";
@@ -1477,9 +1493,10 @@ function Analitico(props: {
                     <ChipDaEtapa etapa={c.etapa} />
                   </td>
                   <td className="lt-tempo">
-                    {c.entrouEm ? duracao(c.entrouEm, props.agora) : "—"}
+                    {c.entrouEm ? duracao(c.entrouEm, relogioAte(c, props.agora)) : "—"}
                   </td>
-                  <td className="lt-tempo">{duracao(c.etapaDesde, props.agora)}</td>
+                  {/* No estágio: para quem saiu, o estágio final não cresce mais. */}
+                  <td className="lt-tempo">{duracao(c.etapaDesde, relogioAte(c, props.agora))}</td>
                 </tr>
               ))}
             </tbody>
@@ -1850,7 +1867,7 @@ function PorImobiliaria(props: {
                         <ChipDaEtapa etapa={c.etapa} />
                       </td>
                       <td className="lt-tempo">
-                        {c.entrouEm ? duracao(c.entrouEm, props.agora) : "—"}
+                        {c.entrouEm ? duracao(c.entrouEm, relogioAte(c, props.agora)) : "—"}
                       </td>
                     </tr>
                   ))}
@@ -1923,7 +1940,7 @@ function Kanban(props: {
                       <span className="kcard-tempo">sem unidade</span>
                     )}
                     <span className="kcard-tempo">
-                      ⏱ {duracao(c.etapaDesde, props.agora)}
+                      ⏱ {duracao(c.etapaDesde, relogioAte(c, props.agora))}
                     </span>
                   </div>
                 </div>
@@ -2074,7 +2091,7 @@ function ModalDeClientes(props: {
                   <LinhaDoModal
                     key={pessoa.id}
                     agora={props.agora}
-                    abaixo={`há ${duracao(pessoa.etapaDesde, props.agora)}`}
+                    abaixo={`há ${duracao(pessoa.etapaDesde, relogioAte(pessoa, props.agora))}`}
                     pessoa={pessoa}
                     semTempo
                   />
