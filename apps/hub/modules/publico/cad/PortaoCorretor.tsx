@@ -491,7 +491,7 @@ export function PortaoCorretor({
             >
               Não encontrou o empreendimento que você queria? Então a{" "}
               {imobiliaria ? <b>{imobiliaria}</b> : "sua imobiliária"} ainda não está habilitada
-              nele. Fale com a gestão da sua imobiliária para pedir a habilitação — não envie a CAD
+              nele. Fale com a gestão da sua imobiliária para pedir a habilitação. Não envie a CAD
               por outro empreendimento, porque o cliente ficaria cadastrado no lugar errado.
             </div>
             <div style={{ display: "grid", gap: 12 }}>
