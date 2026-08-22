@@ -114,6 +114,8 @@ type ItemFila = {
   nome: string;
   // PIX da pré-venda confirmado (hora do nosso carimbo). Null = enviamos a cobrança mas ainda
   // não caiu. É o que separa, dentro de "Credenciado", quem pagou de quem só recebeu o PIX.
+  // O porquê da etapa atual, escrito pelo operador no popup (correção/revisão/indeferido).
+  motivo?: null | string;
   pagoEm?: string | null;
   papel: string;
   // Status do papel `imobiliaria` (blocked | active | review). É a ETAPA dela: imobiliária não
@@ -3007,6 +3009,7 @@ function DetalheBoard({
           entityId={item.id}
           etapa={etapaVista}
           imob={imob}
+          motivo={item.motivo ?? null}
           onCreditoResultado={onCreditoResultado}
           onHabilitar={onHabilitar}
           onIdentidadeSalva={onIdentidadeSalva}
@@ -3183,6 +3186,7 @@ function PainelEtapa({
   entityId,
   etapa,
   imob,
+  motivo,
   onCreditoResultado,
   onHabilitar,
   onIdentidadeSalva,
@@ -3190,6 +3194,9 @@ function PainelEtapa({
 }: {
   entityId: string;
   etapa: Etapa;
+  // O porquê real da etapa (apolo_esteira.motivo) — exibido na correção no lugar do texto
+  // genérico, para o operador saber O QUE devolver/cobrar sem caçar no histórico.
+  motivo?: null | string;
   // `imob` PASSOU A SER USADO: a etapa "cadastro" da imobiliária ganha as caixinhas de
   // habilitação, que é a decisão que faltava. Antes ele chegava aqui e era ignorado, e o
   // operador validava os documentos sem ter onde concluir.
@@ -3211,6 +3218,16 @@ function PainelEtapa({
         <div className="min-w-0">
           <h3 className="m-0 text-sm font-semibold text-ink">{etapa.label}</h3>
           <p className="m-0 mt-1 text-xs text-ink-soft">{etapa.descricao}</p>
+          {/* O PORQUÊ desta CAD estar aqui (Lucas, 22/08: "aqui tem que apontar o porque estamos
+              colocando essa cad em correção"). O operador é obrigado a escrever o motivo no popup
+              ao devolver — mas ele ficava só no banco, e quem abria a ficha via apenas o texto
+              genérico acima. Vale para correção, revisão e indeferido: são as etapas cujo motivo
+              é uma decisão que alguém tomou. */}
+          {motivo?.trim() && ["correcao", "revisao", "indeferido"].includes(etapa.id) ? (
+            <p className="m-0 mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300">
+              Motivo: {motivo}
+            </p>
+          ) : null}
         </div>
       </div>
 

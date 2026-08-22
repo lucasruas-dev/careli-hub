@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-22-board-motivo-correcao",
+    deployedAt: "2026-08-22T16:55:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A ficha em CORRECAO agora mostra O MOTIVO real que o operador escreveu ao devolver — antes so aparecia o texto generico",
+              "Vale tambem para revisao e indeferido: o porque da etapa fica na cara, sem cacar no historico",
+            ],
+            screen: "Board · Ficha",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.189.0 (2026-08-22-cad-comprovante-nao-barra)",
+    technical: {
+      done:
+        "O motivo ja era OBRIGATORIO no popup de devolver para correcao e ja era gravado em `apolo_esteira.motivo` — mas a rota do board nao o devolvia e o `PainelEtapa` mostrava so a `descricao` estatica de ETAPA_CORRECAO. Agora o select da rota inclui `motivo`, o item da resposta o carrega, e o painel o exibe em destaque ambar quando a etapa e correcao, revisao ou indeferido (as tres cujo motivo e uma decisao humana). tsc limpo.",
+      motivation:
+        "Lucas, 22/08, olhando a ficha do Jose Renato em correcao: *\"aqui tem que apontar o porque estamos colocando essa cad em correcao\"*.",
+    },
+    title: "A ficha em correcao diz o porque",
+    type: "correcao",
+    version: "1.190.0",
+  },
+  {
     buildTag: "2026-08-22-cad-comprovante-nao-barra",
     deployedAt: "2026-08-22T16:40:00-03:00",
     modules: [

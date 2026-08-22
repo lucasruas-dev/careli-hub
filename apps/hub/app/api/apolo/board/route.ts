@@ -31,6 +31,8 @@ type EsteiraRow = {
   entity_id: string;
   etapa: string | null;
   imobiliaria: string | null;
+  // O porquê da etapa atual (correção/revisão/indeferido). É o que o operador escreveu no popup.
+  motivo: string | null;
   // PIX da pré-venda confirmado (carimbo nosso, com hora). Null = ainda não pagou.
   pago_em: string | null;
 };
@@ -108,7 +110,7 @@ export async function GET(request: Request) {
   const { data: esteiraRows } = await adminClient
     .from("apolo_esteira")
     .select(
-      "entity_id, enterprise_id, etapa, analista_id, chegou_em, corretor, empreendimento, imobiliaria, pago_em, atualizado_em, created_at",
+      "entity_id, enterprise_id, etapa, analista_id, chegou_em, corretor, empreendimento, imobiliaria, motivo, pago_em, atualizado_em, created_at",
     )
     .order("atualizado_em", { ascending: false })
     .order("created_at", { ascending: false })
@@ -482,6 +484,11 @@ export async function GET(request: Request) {
       // sync, e era exatamente por ler daqui que a coluna "Análise de crédito" aparecia
       // zerada mesmo com 122 registros corretos no banco.
       etapa: esteira?.etapa ?? null,
+      // O PORQUÊ da etapa. A tela de correção dizia só o texto genérico ("aguardando o documento
+      // ou a informação que faltou") e o motivo real — que o operador é OBRIGADO a escrever no
+      // popup — morria no banco (Lucas, 22/08: "aqui tem que apontar o porque estamos colocando
+      // essa cad em correção").
+      motivo: esteira?.motivo ?? null,
       // Só é true quando algum envio da pré-venda falhou — o card marca em vermelho.
       erroEnvio: comErroEnvio.has(row.id),
       id: row.id,
