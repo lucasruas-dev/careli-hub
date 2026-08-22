@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-22-apolo-credito-conjuge",
+    deployedAt: "2026-08-22T15:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O botao de consultar o credito do CONJUGE voltou a aparecer para quem e casado — 40 CADs estavam sem ele",
+              "Titular reprovado deixa de ser beco sem saida: da para tentar o resgate pela renda do conjuge",
+              "Conjuge aprovado NAO avanca mais a ficha sozinho: agora e decisao da coordenacao, com um clique explicito",
+              "O botao 'Seguir o credenciamento pelo conjuge' aparece SO para perfil admin, e a decisao fica registrada com autor e motivo",
+            ],
+            screen: "Board · Analise de credito",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.186.0 (2026-08-22-prometeu-ficha-do-lote)",
+    technical: {
+      done:
+        "BOTAO SUMIDO: `temConjuge` lia o estado civil SO de `apolo_esteira.ficha.estadoCivilId`. O dado mora em DOIS lugares — 126 casados tem na ficha da esteira, 57 no `apolo_entities.metadata.cadastro`, e 40 SO no metadata. O Geraldo Antonio Mendes (22/08) era um desses: a tela de validacao mostrava 'Casado (a) · Comunhao parcial de bens', o PDF da CAD tambem, e o botao nao existia porque a ficha da esteira dele esta vazia. Agora `valorDaFicha` tenta a esteira e cai no metadata — mesma leitura para estadoCivilId, conjugeCpf e conjugeNome. DECISAO MANUAL: `conjugeResgata` chamava `atualizarEtapa` no mesmo request da consulta, entao conjuge aprovado movia a ficha sozinho. Seguir pela renda do conjuge muda quem sustenta a compra: e escolha comercial, nao consequencia do score (o titular reprovado continua no contrato e o regime de bens pesa). A consulta passou a so INFORMAR (`transicao = ehConjuge ? null : ...`), e a nova rota POST /api/apolo/serasa/seguir-conjuge faz o avanco — protegida por `authorizeApoloCoordenacao` (admin/leader, o mesmo portao da aprovacao com restricao), exigindo consulta `credito_conjuge` com status sucesso E resumo aprovado, passando `saidaDeRevisaoAutorizada` (sem isso, sair de 'revisao' e barrado) e gravando `registrarOverrideCredito` com quem decidiu. Na tela, o botao so renderiza com `conjugeAprovado && situacao.ehAdmin`, e o texto do resultado deixou de prometer que a ficha andou. tsc limpo.",
+      motivation:
+        "Lucas, 22/08: *\"o titular da cad deu reprovado, mas queria rodar do conjuge, o botao sumiu\"*. E, sobre o avanco: *\"posso fazer analise de credito do conjuge, contudo eu tenho que aprovar se segue o cadastro pelo conjuge ou nao, nao pode ser automatico\"* e *\"o botao de avancar com o conjuge titular aparece somente para um perfil admin\"*.",
+    },
+    title: "Credito do conjuge: botao de volta, e o avanco vira decisao do admin",
+    type: "correcao",
+    version: "1.187.0",
+  },
+  {
     buildTag: "2026-08-22-prometeu-ficha-do-lote",
     deployedAt: "2026-08-22T13:55:00-03:00",
     modules: [

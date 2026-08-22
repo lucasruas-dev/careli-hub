@@ -94,6 +94,9 @@ export function CreditoSerasa({
   const [avisoReenvio, setAvisoReenvio] = useState<string | null>(null);
   const [baixando, setBaixando] = useState<"cad" | "comprovante" | null>(null);
   const [avisoDoc, setAvisoDoc] = useState<string | null>(null);
+  // Cônjuge aprovado nesta sessão: libera o botão de decisão (que só admin enxerga).
+  const [conjugeAprovado, setConjugeAprovado] = useState(false);
+  const [seguindoPeloConjuge, setSeguindoPeloConjuge] = useState(false);
   // Resultado da consulta do cônjuge. Estado próprio porque ele NÃO entra no painel de baixo,
   // que mostra a última consulta do titular.
   const [resultadoConjuge, setResultadoConjuge] = useState<string | null>(null);
@@ -235,12 +238,17 @@ export function CreditoSerasa({
         // consulta, a tela fica idêntica, e ele clica de novo achando que não funcionou.
         if (corpo.data?.alvo === "conjuge" && corpo.data.veredito) {
           const aprovado = Boolean(corpo.data.veredito.aprovado);
+          // ⚠️ O TEXTO NÃO PROMETE MAIS QUE A FICHA ANDOU. Até 22/08 o servidor movia a etapa
+          // sozinho quando o cônjuge era aprovado; agora quem decide é um admin, então dizer
+          // "o credenciamento pode seguir" sem dizer que falta um clique seria mentir sobre o
+          // estado da ficha.
           setResultadoConjuge(
             aprovado
-              ? "Crédito do cônjuge APROVADO. O credenciamento pode seguir."
+              ? "Crédito do cônjuge APROVADO. A ficha do titular NÃO foi alterada: seguir por ele é decisão da coordenação."
               : `Crédito do cônjuge reprovado. ${corpo.data.veredito.motivo ?? ""}`.trim() +
                   " A ficha do titular não foi alterada.",
           );
+          setConjugeAprovado(aprovado);
         }
 
         // O servidor já moveu a etapa pela regra do crédito. Avisa o Board na hora.
@@ -454,6 +462,62 @@ export function CreditoSerasa({
                 <p className="m-0 w-full rounded-lg border border-line bg-subtle px-3 py-2 text-xs font-semibold text-ink">
                   {resultadoConjuge}
                 </p>
+              ) : null}
+
+              {/* A DECISÃO É DE ADMIN, E É EXPLÍCITA (Lucas, 22/08: "o botão de avançar com o
+                  cônjuge titular aparece somente para um perfil admin").
+                  ⚠️ Antes isto não existia porque o servidor movia a ficha sozinho ao aprovar o
+                  cônjuge. Seguir pela renda dele muda quem sustenta a compra — é escolha
+                  comercial, não consequência do score. O botão só aparece com cônjuge aprovado
+                  nesta sessão E para quem é admin. */}
+              {conjugeAprovado && situacao.ehAdmin ? (
+                <div className="w-full">
+                  <button
+                    className="inline-flex items-center gap-2 rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                    disabled={seguindoPeloConjuge}
+                    onClick={async () => {
+                      setSeguindoPeloConjuge(true);
+                      setErro(null);
+                      try {
+                        const resposta = await fetch("/api/apolo/serasa/seguir-conjuge", {
+                          body: JSON.stringify({ entityId }),
+                          headers: { "Content-Type": "application/json" },
+                          method: "POST",
+                        });
+                        const corpo = (await resposta.json().catch(() => ({}))) as {
+                          data?: { etapa?: string };
+                          error?: string;
+                        };
+                        if (!resposta.ok) {
+                          setErro(corpo.error ?? "Nao foi possivel seguir pelo conjuge.");
+                        } else {
+                          setResultadoConjuge(
+                            "Credenciamento seguindo pela renda do cônjuge. Decisão registrada.",
+                          );
+                          setConjugeAprovado(false);
+                          if (corpo.data?.etapa) {
+                            onResultado?.({ aprovado: true, etapa: corpo.data.etapa });
+                          }
+                          await carregar();
+                        }
+                      } finally {
+                        setSeguindoPeloConjuge(false);
+                      }
+                    }}
+                    type="button"
+                  >
+                    {seguindoPeloConjuge ? (
+                      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                    ) : (
+                      <Users aria-hidden="true" className="size-3.5" />
+                    )}
+                    Seguir o credenciamento pelo cônjuge
+                  </button>
+                  <p className="m-0 mt-1 text-[11px] text-ink-muted">
+                    A ficha sai da revisão e segue com a renda do cônjuge. Fica registrado quem
+                    decidiu.
+                  </p>
+                </div>
               ) : null}
             </div>
           ) : null}

@@ -134,13 +134,17 @@ export async function GET(request: Request) {
   const enterpriseId = url.searchParams.get("enterpriseId");
 
   let documento = "";
+  // `metadata` vem junto porque o estado civil pode estar SÓ aqui (ver o bloco do cônjuge abaixo).
+  let cadastroDaEntidade: Record<string, unknown> | undefined;
   if (entityId) {
     const { data: entidade } = await client
       .from("apolo_entities")
-      .select("document_masked")
+      .select("document_masked, metadata")
       .eq("id", entityId)
-      .maybeSingle<{ document_masked: string | null }>();
+      .maybeSingle<{ document_masked: null | string; metadata: unknown }>();
     documento = (entidade?.document_masked ?? "").replace(/\D/g, "");
+    cadastroDaEntidade = (entidade?.metadata as { cadastro?: Record<string, unknown> } | null)
+      ?.cadastro;
   }
 
   const cfg = lerConfigSerasa();
@@ -180,11 +184,28 @@ export async function GET(request: Request) {
       })
     : null;
 
-  const estadoCivil = String(fichaEsteira?.ficha?.estadoCivilId ?? "");
-  const cpfDoConjuge = String(fichaEsteira?.ficha?.conjugeCpf ?? "").replace(/\D/g, "");
+  // ⚠️ O ESTADO CIVIL MORA EM DOIS LUGARES, e ler só um escondia o botão de quem é casado.
+  //
+  // A ficha da esteira é a fonte preferida, mas 40 CADs de casados têm o dado APENAS em
+  // `apolo_entities.metadata.cadastro` — foi o caso do Geraldo Antonio Mendes (22/08): a tela de
+  // validação mostrava "Casado (a) · Comunhão parcial de bens", o PDF da CAD também, e mesmo
+  // assim o botão do cônjuge não aparecia, porque `apolo_esteira.ficha` dele está vazia. Sem o
+  // botão, o titular reprovado vira beco sem saída: não há como tentar o resgate pela renda do
+  // cônjuge.
+  //
+  // Medido em produção: 126 casados pela ficha da esteira, 57 pelo metadata, 40 SÓ pelo metadata.
+  const valorDaFicha = (chave: string): string => {
+    const daEsteira = fichaEsteira?.ficha?.[chave];
+    if (typeof daEsteira === "string" && daEsteira.trim()) return daEsteira.trim();
+    const doCadastro = cadastroDaEntidade?.[chave];
+    return typeof doCadastro === "string" ? doCadastro.trim() : "";
+  };
+
+  const estadoCivil = valorDaFicha("estadoCivilId");
+  const cpfDoConjuge = valorDaFicha("conjugeCpf").replace(/\D/g, "");
   const conjuge = {
     // Nome só para a tela dizer de quem é a consulta; pode vir vazio (só 6 fichas têm).
-    nome: String(fichaEsteira?.ficha?.conjugeNome ?? ""),
+    nome: valorDaFicha("conjugeNome"),
     temCpf: cpfDoConjuge.length === 11,
     temConjuge: ["2", "6"].includes(estadoCivil),
   };
@@ -557,26 +578,26 @@ export async function POST(request: Request) {
   //
   // O `nuncaRebaixar` continua valendo, então nem o resgate nem a aprovação normal desfazem
   // decisão humana de quem já está em pré-venda ou credenciado.
-  const conjugeResgata = ehConjuge && veredito.aprovado;
-  const transicao =
-    ehConjuge && !conjugeResgata
-      ? null
-      : await atualizarEtapa(
-          client,
-          entidade.id,
-          destino,
-          {
-            atualizadoPor: auth.userId,
-            automatico: true,
-            enterpriseId: corpo.enterpriseId ?? null,
-            motivo: conjugeResgata
-              ? "Crédito aprovado pelo cônjuge."
-              : veredito.aprovado
-                ? undefined
-                : `Crédito reprovado. ${veredito.motivo}`,
-            nuncaRebaixar: veredito.aprovado,
-          },
-        );
+  // ⚠️ CÔNJUGE APROVADO NÃO MOVE A FICHA SOZINHO — decisão do Lucas (22/08): *"posso fazer análise
+  // de crédito do cônjuge, contudo eu tenho que aprovar se segue o cadastro pelo cônjuge ou não,
+  // não pode ser automático"*.
+  //
+  // Antes, cônjuge aprovado disparava `atualizarEtapa` na hora e o credenciamento seguia. Só que
+  // seguir pela renda do cônjuge é escolha comercial, não consequência do score: muda quem
+  // assina, o regime de bens pesa, e o titular reprovado continua no contrato. Agora a consulta
+  // só INFORMA; quem move a ficha é o operador, pelo botão "Seguir o credenciamento pelo
+  // cônjuge", que passa por `atualizarEtapa` com autor humano e motivo registrado.
+  //
+  // Cônjuge REPROVADO segue sem mexer em nada, como já era: a ficha está em revisão pelo titular.
+  const transicao = ehConjuge
+    ? null
+    : await atualizarEtapa(client, entidade.id, destino, {
+        atualizadoPor: auth.userId,
+        automatico: true,
+        enterpriseId: corpo.enterpriseId ?? null,
+        motivo: veredito.aprovado ? undefined : `Crédito reprovado. ${veredito.motivo}`,
+        nuncaRebaixar: veredito.aprovado,
+      });
 
   // DISPARO AUTOMÁTICO da reprovação: reprovou -> avisa o coordenador do empreendimento (sempre) e
   // o corretor (se tiver telefone), com a CAD anexa, pela Iris. Best-effort: falha no disparo NÃO
