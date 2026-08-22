@@ -479,9 +479,16 @@ export function CreditoSerasa({
                       setSeguindoPeloConjuge(true);
                       setErro(null);
                       try {
+                        // ⚠️ O TOKEN VAI NO HEADER, como em toda chamada deste componente. Sem
+                        // ele a rota responde "Sessao ausente." — o cookie sozinho não autentica
+                        // as rotas do Apolo.
+                        const token = await getApoloAccessToken();
                         const resposta = await fetch("/api/apolo/serasa/seguir-conjuge", {
                           body: JSON.stringify({ entityId }),
-                          headers: { "Content-Type": "application/json" },
+                          headers: {
+                            Authorization: `Bearer ${token}`,
+                            "Content-Type": "application/json",
+                          },
                           method: "POST",
                         });
                         const corpo = (await resposta.json().catch(() => ({}))) as {
