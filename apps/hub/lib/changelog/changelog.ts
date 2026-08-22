@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-22-cad-comprovante-nao-barra",
+    deployedAt: "2026-08-22T16:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Comprovante de endereco NAO trava mais o envio da CAD: vencido ou ilegivel vira AVISO, e a CAD segue",
+              "O erro falso 'emitido ha 227 meses' acabou: data implausivel lida do documento e descartada em vez de virar acusacao de vencimento",
+              "Ficha da CAD ganhou a secao PENDENCIAS DE DOCUMENTACAO: comprovante vencido, data nao confirmada ou endereco nao lido ficam formalizados para o corretor e o analista",
+            ],
+            screen: "Cadastro de CAD",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.188.0 (2026-08-22-cad-escolha-empreendimento)",
+    technical: {
+      done:
+        "O comprovante era o ULTIMO documento que ainda barrava (certidao e nitidez foram desarmadas em 02/08). O `throw` de 'Comprovante vencido' rodava ANTES de `onExtract`, entao o endereco nunca era setado, o aviso ambar e o campo manual de CEP nem renderizavam (`{endereco ? ...}`), e como `processFiles` acumula arquivos sem botao de remover, reanexar um comprovante bom relancava o erro do antigo: beco sem saida. E o numero era LIXO: `acharDataComprovante` tem um fallback que aceita a primeira data de QUALQUER campo da resposta da MOST (inclusive metadados e historico de consumo, via `collectFields` recursivo), com regex sem ancora — uma data de set/2007 pescada de um numero qualquer virava 'emitido ha 227 meses'. Correcoes: (1) `dataPlausivel` — so aceita data entre 24 meses atras e 1 mes a frente; implausivel = leitura nao confiavel = vazio; (2) os dois `throw` (PF e socio PJ) viraram `ext.avisoQualidade` nao bloqueante, reaproveitando o mecanismo de 02/08; (3) `montarCadDoc` ganhou a secao 'Pendencias de documentacao', DERIVADA do estado final (nao acumulada por handler: reanexar documento bom limpa a pendencia sozinho) — cobre data nao confirmada, emissao >3 meses e endereco nao lido. O gate de credito sem esteira que o caso Lucas Henrique pedia JA EXISTIA (10/08, consultar/route.ts:336) — as 4 consultas cobradas dele foram anteriores. tsc limpo.",
+      motivation:
+        "Lucas, 22/08: *\"quando eu anexo um comprovante que nao esta sendo lido ele esta retornando que o documento tem mais de 227 dias de atraso, estou achando que esse texto e um fallback errado... certidoes, comprovante de endereco nao pode travar o processo de subir cad. Temos que deixar claro que a cad que subiu tem essa observacao no documento que e gerado na hora que finaliza o processo... deixar bem formalizado a pendencia para que o corretor e o analista quando for fazer operacao saiba disso\"*. (O numero real era 227 MESES — data-lixo de set/2007.)",
+    },
+    title: "Comprovante avisa e formaliza, mas nao trava a CAD",
+    type: "correcao",
+    version: "1.189.0",
+  },
+  {
     buildTag: "2026-08-22-cad-escolha-empreendimento",
     deployedAt: "2026-08-22T15:45:00-03:00",
     modules: [

@@ -405,18 +405,29 @@ function delay(ms: number) {
 // Acha a data de emissão/referência/vencimento do comprovante nos campos lidos
 // pelo MOST (pra saber se está atual). Prefere um campo com rótulo de data;
 // senão pega a primeira data encontrada.
+// Uma data de comprovante só é confiável se for PLAUSÍVEL: entre 24 meses atrás e 1 mês à
+// frente. ⚠️ Sem este filtro, o fallback abaixo (que aceita a primeira data de QUALQUER campo)
+// pescava lixo da leitura — número de medidor, código de barras, histórico de consumo — e uma
+// "data" de 2007 virava "comprovante vencido: emitido há 227 meses", travando a CAD (caso real
+// de 22/08). Data implausível = leitura não confiável = melhor devolver vazio e AVISAR do que
+// acusar um vencimento que não existe.
+function dataPlausivel(valor: string): boolean {
+  const meses = mesesDesde(valor);
+  return meses !== null && meses >= -1 && meses <= 24;
+}
+
 function acharDataComprovante(fields: Extraction["fields"]): string {
   const dateRe = /\d{2}\/\d{2}\/\d{4}|\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}/;
   const prefer = /emiss|referenc|venc|competenc|data/i;
   for (const field of fields) {
     if (prefer.test(`${field.label} ${field.key}`)) {
       const match = field.value.match(dateRe);
-      if (match) return match[0];
+      if (match && dataPlausivel(match[0])) return match[0];
     }
   }
   for (const field of fields) {
     const match = field.value.match(dateRe);
-    if (match) return match[0];
+    if (match && dataPlausivel(match[0])) return match[0];
   }
   return "";
 }
@@ -3026,13 +3037,18 @@ function BlocoSocio({
                   ["comprovante"],
                   "um comprovante de endereço (conta de luz, água ou telefone)",
                 );
+                // Mesma regra do comprovante do titular: vencido ou ilegível AVISA e segue —
+                // nunca trava (Lucas, 22/08). A pendência sai na ficha.
                 const emissao = acharDataComprovante(ext.fields);
                 const meses = emissao ? mesesDesde(emissao) : null;
                 if (meses !== null && meses > 3) {
-                  throw new Error(
-                    `Comprovante vencido: emitido há ${meses} meses (${formatDateBR(emissao)}). ` +
-                      "Envie um comprovante com até 3 meses de emissão.",
-                  );
+                  ext.avisoQualidade = [
+                    ext.avisoQualidade,
+                    `Comprovante emitido há ${meses} meses (${formatDateBR(emissao)}); o ideal ` +
+                      "são até 3 meses. A CAD segue com essa pendência anotada na ficha.",
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
                 }
                 const c = ext.cadastro;
                 aoMudar({
@@ -3500,14 +3516,31 @@ function StepEndereco({
               ["comprovante"],
               "um comprovante de endereço (conta de luz, água ou telefone)",
             );
-            // Comprovante vence em 3 meses: acima disso não serve de prova de endereço.
+            // ⚠️ COMPROVANTE NÃO BARRA MAIS (regra do Lucas, 22/08: "certidões, comprovante de
+            // endereço não pode travar o processo de subir cad... o restante pode passar mas
+            // devemos apontar esse erro"). O throw que existia aqui travava a etapa SEM SAÍDA:
+            // ele rodava antes de `onExtract`, então o endereço nunca era setado e o campo
+            // manual de CEP nem aparecia — e como os arquivos anexados se acumulam, reanexar um
+            // comprovante bom relançava o erro do antigo. Agora o problema vira AVISO na tela e
+            // PENDÊNCIA formalizada na ficha (ver `pendenciasDoComprovante`), e a CAD segue.
             const emissao = acharDataComprovante(ext.fields);
             const meses = emissao ? mesesDesde(emissao) : null;
             if (meses !== null && meses > 3) {
-              throw new Error(
-                `Comprovante vencido: emitido há ${meses} meses (${formatDateBR(emissao)}). ` +
-                  "Envie um comprovante com até 3 meses de emissão.",
-              );
+              ext.avisoQualidade = [
+                ext.avisoQualidade,
+                `Comprovante emitido há ${meses} meses (${formatDateBR(emissao)}); o ideal são ` +
+                  "até 3 meses. A CAD segue com essa pendência anotada na ficha.",
+              ]
+                .filter(Boolean)
+                .join(" ");
+            } else if (!emissao) {
+              ext.avisoQualidade = [
+                ext.avisoQualidade,
+                "Não conseguimos confirmar a data de emissão do comprovante. A CAD segue com " +
+                  "essa pendência anotada na ficha.",
+              ]
+                .filter(Boolean)
+                .join(" ");
             }
             onExtract(ext);
           }}
@@ -4195,6 +4228,42 @@ function StepRevisao({
         );
       }
     }
+
+    // ⚠️ PENDÊNCIAS DE DOCUMENTAÇÃO — a seção que FORMALIZA o que a leitura não confirmou.
+    //
+    // Pedido do Lucas (22/08): comprovante e certidão não travam mais o envio, "contudo temos que
+    // deixar claro que a cad que subiu tem essa observação no documento que é gerado na hora que
+    // finaliza o processo... deixar bem formalizado a pendência para que o corretor e o analista
+    // quando for fazer a operação saibam disso". Sem esta seção, o aviso morria na tela do
+    // corretor e o analista recebia a CAD como se estivesse completa.
+    //
+    // Derivada AQUI, do estado final, e não acumulada pelos handlers: reanexar um documento bom
+    // limpa a pendência sozinho, sem estado fantasma de um arquivo que já foi substituído.
+    const pendencias: string[] = [];
+    const mesesComprovante = endereco?.dataDocumento ? mesesDesde(endereco.dataDocumento) : null;
+    if (endereco && !endereco.dataDocumento) {
+      pendencias.push(
+        "Comprovante de endereço: a data de emissão não pôde ser confirmada pela leitura automática (documento ilegível ou sem data).",
+      );
+    } else if (mesesComprovante !== null && mesesComprovante > 3) {
+      pendencias.push(
+        `Comprovante de endereço emitido há ${mesesComprovante} meses (${formatDateBR(endereco?.dataDocumento ?? "")}); o ideal são até 3 meses.`,
+      );
+    }
+    if (endereco && !endereco.logradouro && !endereco.cidade) {
+      pendencias.push(
+        "Endereço não foi lido do comprovante; confirmar os dados preenchidos manualmente.",
+      );
+    }
+    if (pendencias.length) {
+      secoes.push(
+        cadSection(
+          "Pendências de documentação",
+          pendencias.map((texto, i) => cadField(`Pendência ${i + 1}`, texto, true)),
+        ),
+      );
+    }
+
     return {
       arquivo: cadTitulo,
       data: registro.data,
