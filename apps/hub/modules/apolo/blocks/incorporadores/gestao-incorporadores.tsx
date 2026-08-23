@@ -13,7 +13,7 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
 
@@ -137,6 +137,16 @@ export function GestaoIncorporadores() {
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  // O formulário de edição renderiza ANTES da lista. Quem clica no lápis de um card lá embaixo
+  // não vê nada mudar na área visível — caso real do Lucas, 23/08: "estou clicando para editar
+  // um perfil criado e não acontece nada... ele vai para o top". Rolar até o formulário.
+  const formularioRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (editando) {
+      formularioRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [editando]);
 
   const nomeDoEmpreendimento = useMemo(() => {
     const mapa = new Map(empreendimentos.map((e) => [e.enterpriseId, `${e.code} · ${e.nome}`]));
@@ -296,7 +306,7 @@ export function GestaoIncorporadores() {
       ) : null}
 
       {editando ? (
-        <section className="rounded-md border border-line bg-subtle p-4">
+        <section className="scroll-mt-24 rounded-md border border-line bg-subtle p-4" ref={formularioRef}>
           <p className="m-0 text-sm font-semibold text-ink">
             {editando === "novo" ? "Novo incorporador" : "Editar incorporador"}
           </p>

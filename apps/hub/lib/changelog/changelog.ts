@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-23-setup-incorporador-editar-rola",
+    deployedAt: "2026-08-23T11:30:00-03:00",
+    modules: [
+      {
+        module: "Setup",
+        screens: [
+          {
+            items: [
+              "Clicar no lapis de um incorporador agora ROLA a tela ate o formulario de edicao — antes ele abria la no topo, fora da vista, e parecia que o clique nao fazia nada",
+            ],
+            screen: "Incorporadores",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.193.0 (2026-08-22-cad-pj-sem-anexo)",
+    technical: {
+      done:
+        "O clique sempre funcionou: `abrirEdicao` seta `editando` e o formulario renderiza — mas ANTES da lista, no topo da aba, sem nenhum scroll. Quem clicava no lapis de um card abaixo da dobra nao via mudanca nenhuma (Lucas confirmou: 'ele vai para o top'). Correcao minima em gestao-incorporadores.tsx: ref na section do formulario + useEffect em `editando` com scrollIntoView({behavior:'smooth', block:'start'}) e scroll-mt-24 para nao colar no cabecalho. Vale para editar e para novo; trocar de card re-rola. Tooltip do uix e CSS verificados antes: nao interceptam o clique. tsc limpo.",
+      motivation:
+        "Lucas, 23/08: *\"olha por favor o bug de edicao na criacao dos perfis do incorporador, estou clicando para editar um perfil criado e nao acontece nada\"* — e, confirmando o diagnostico, *\"isos mesmo, ele vai para o top\"*.",
+    },
+    title: "Editar incorporador leva a tela ate o formulario",
+    type: "correcao",
+    version: "1.194.0",
+  },
+  {
     buildTag: "2026-08-22-cad-pj-sem-anexo",
     deployedAt: "2026-08-22T18:20:00-03:00",
     modules: [
