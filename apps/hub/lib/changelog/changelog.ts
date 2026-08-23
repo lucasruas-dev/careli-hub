@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-23-setup-incorporador-editar-no-card",
+    deployedAt: "2026-08-23T12:10:00-03:00",
+    modules: [
+      {
+        module: "Setup",
+        screens: [
+          {
+            items: [
+              "O formulario de edicao agora abre ABAIXO do proprio incorporador clicado, colado nos dados que ele edita — nada de pular para o topo da lista",
+              "Abrir uma conta fecha a edicao (e vice-versa): um formulario por card, sem empilhar",
+            ],
+            screen: "Incorporadores",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.194.0 (2026-08-23-setup-incorporador-editar-rola)",
+    technical: {
+      done:
+        "Iteracao sobre a v1.194.0 a pedido do Lucas ('acho melhor abrir abaixo do perfil'): o formulario virou um bloco unico (`formularioIncorporador`) renderizado em DOIS pontos — no topo so quando e incorporador NOVO, e dentro do card clicado (apos os chips de empreendimentos) quando e edicao. Os inputs sao controlados pelo estado `form` do componente, entao o remount ao trocar de posicao na arvore nao perde nada digitado. O scrollIntoView mudou de block:'start' para 'nearest': so rola o minimo se o formulario nascer parcialmente fora da viewport. Botoes de conta (nova/editar) passaram a fechar a edicao para nao empilhar dois formularios no mesmo card. tsc limpo.",
+      motivation:
+        "Lucas, 23/08, ao validar a v1.194.0: *\"acho melhor abrir abaixo do perfil do empreendimento\"*.",
+    },
+    title: "Edicao do incorporador abre no proprio card",
+    type: "melhoria",
+    version: "1.195.0",
+  },
+  {
     buildTag: "2026-08-23-setup-incorporador-editar-rola",
     deployedAt: "2026-08-23T11:30:00-03:00",
     modules: [

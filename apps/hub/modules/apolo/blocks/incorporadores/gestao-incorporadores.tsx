@@ -138,13 +138,13 @@ export function GestaoIncorporadores() {
     void carregar();
   }, [carregar]);
 
-  // O formulário de edição renderiza ANTES da lista. Quem clica no lápis de um card lá embaixo
-  // não vê nada mudar na área visível — caso real do Lucas, 23/08: "estou clicando para editar
-  // um perfil criado e não acontece nada... ele vai para o top". Rolar até o formulário.
+  // O formulário abre junto do card clicado, mas pode nascer parcialmente fora da tela (card no
+  // pé da viewport). `nearest` só rola o mínimo para ele aparecer inteiro — sem pular ao topo,
+  // que era o "não acontece nada" original (Lucas, 23/08).
   const formularioRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (editando) {
-      formularioRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      formularioRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }, [editando]);
 
@@ -260,53 +260,13 @@ export function GestaoIncorporadores() {
     setSalvando(false);
   }
 
-  return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="m-0 text-base font-semibold text-ink">Portais de incorporador</h2>
-          <p className="m-0 mt-1 text-xs text-ink-muted">
-            Cada incorporador enxerga só os empreendimentos marcados aqui. Quem entra pelo portal
-            usa as contas desta tela.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Tooltip content="Novo incorporador">
-            <button
-              aria-label="Novo incorporador"
-              className="grid h-9 w-9 place-items-center rounded-md bg-inverse text-brand-ink outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-              onClick={abrirNovo}
-              type="button"
-            >
-              <Plus aria-hidden="true" size={15} />
-            </button>
-          </Tooltip>
-          <Tooltip content="Atualizar">
-            <button
-              aria-label="Atualizar"
-              className="grid h-9 w-9 place-items-center rounded-md border border-line bg-surface text-ink outline-none transition hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-40"
-              disabled={carregando}
-              onClick={() => void carregar()}
-              type="button"
-            >
-              {carregando ? (
-                <Loader2 aria-hidden="true" className="animate-spin" size={15} />
-              ) : (
-                <RefreshCw aria-hidden="true" size={15} />
-              )}
-            </button>
-          </Tooltip>
-        </div>
-      </div>
-
-      {erro ? (
-        <p className="m-0 rounded-md border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 p-3 text-sm font-semibold text-amber-800 dark:text-amber-300">
-          {erro}
-        </p>
-      ) : null}
-
-      {editando ? (
-        <section className="scroll-mt-24 rounded-md border border-line bg-subtle p-4" ref={formularioRef}>
+  // Formulário único, renderizado em DOIS pontos: no topo quando é incorporador NOVO, e
+  // ABAIXO do card clicado quando é edição — pedido do Lucas, 23/08: "acho melhor abrir
+  // abaixo do perfil". Os inputs são controlados pelo estado , então o formulário
+  // trocar de posição na árvore (remount) não perde o que foi digitado.
+  const formularioIncorporador =
+    editando ? (
+        <section className="mt-3 scroll-mt-24 rounded-md border border-line bg-subtle p-4" ref={formularioRef}>
           <p className="m-0 text-sm font-semibold text-ink">
             {editando === "novo" ? "Novo incorporador" : "Editar incorporador"}
           </p>
@@ -420,7 +380,54 @@ export function GestaoIncorporadores() {
             </button>
           </div>
         </section>
+    ) : null;
+
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="m-0 text-base font-semibold text-ink">Portais de incorporador</h2>
+          <p className="m-0 mt-1 text-xs text-ink-muted">
+            Cada incorporador enxerga só os empreendimentos marcados aqui. Quem entra pelo portal
+            usa as contas desta tela.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Tooltip content="Novo incorporador">
+            <button
+              aria-label="Novo incorporador"
+              className="grid h-9 w-9 place-items-center rounded-md bg-inverse text-brand-ink outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onClick={abrirNovo}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={15} />
+            </button>
+          </Tooltip>
+          <Tooltip content="Atualizar">
+            <button
+              aria-label="Atualizar"
+              className="grid h-9 w-9 place-items-center rounded-md border border-line bg-surface text-ink outline-none transition hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={carregando}
+              onClick={() => void carregar()}
+              type="button"
+            >
+              {carregando ? (
+                <Loader2 aria-hidden="true" className="animate-spin" size={15} />
+              ) : (
+                <RefreshCw aria-hidden="true" size={15} />
+              )}
+            </button>
+          </Tooltip>
+        </div>
+      </div>
+
+      {erro ? (
+        <p className="m-0 rounded-md border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 p-3 text-sm font-semibold text-amber-800 dark:text-amber-300">
+          {erro}
+        </p>
       ) : null}
+
+      {editando === "novo" ? formularioIncorporador : null}
 
       {carregando && lista.length === 0 ? (
         <p className="m-0 text-sm text-ink-muted">Carregando…</p>
@@ -460,7 +467,8 @@ export function GestaoIncorporadores() {
                   <button
                     aria-label={`Nova conta em ${inc.nome}`}
                     className={BOTAO_ICONE}
-                    onClick={() =>
+                    onClick={() => {
+                      setEditando(null);
                       setConta({
                         ativo: true,
                         email: "",
@@ -468,8 +476,8 @@ export function GestaoIncorporadores() {
                         nome: "",
                         senha: "",
                         usuarioId: null,
-                      })
-                    }
+                      });
+                    }}
                     type="button"
                   >
                     <UserPlus aria-hidden="true" size={14} />
@@ -496,6 +504,8 @@ export function GestaoIncorporadores() {
               )}
             </div>
 
+            {editando === inc.id ? formularioIncorporador : null}
+
             <div className="mt-3 grid gap-1">
               {inc.usuarios.length === 0 ? (
                 <p className="m-0 text-xs text-ink-muted">Nenhuma conta criada ainda.</p>
@@ -520,7 +530,8 @@ export function GestaoIncorporadores() {
                         <button
                           aria-label={`Editar conta de ${u.nome}`}
                           className={BOTAO_ICONE}
-                          onClick={() =>
+                          onClick={() => {
+                            setEditando(null);
                             setConta({
                               ativo: u.ativo,
                               email: u.email,
@@ -528,8 +539,8 @@ export function GestaoIncorporadores() {
                               nome: u.nome,
                               senha: "",
                               usuarioId: u.id,
-                            })
-                          }
+                            });
+                          }}
                           type="button"
                         >
                           <KeyRound aria-hidden="true" size={14} />
