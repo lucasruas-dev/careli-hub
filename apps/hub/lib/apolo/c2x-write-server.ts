@@ -497,7 +497,13 @@ async function montarDados(
   }
 
   const unido = unirCadastroEFicha(meta.cadastro as Record<string, unknown>, fichaDoOperador);
-  const cad = unido.valores as Record<string, unknown>;
+  // `cadastroEditado` POR CIMA (23/08): é a camada onde o board sem esteira e o Editar cadastro
+  // do CRM gravam a correção humana — o GET do board e a CAD assinada já a aplicam por último,
+  // mas o envio ao C2X a ignorava: o campo corrigido aparecia certo na tela e subia errado.
+  const cad = {
+    ...(unido.valores as Record<string, unknown>),
+    ...((meta as { cadastroEditado?: Record<string, unknown> }).cadastroEditado ?? {}),
+  };
 
   // Contatos: a FICHA do operador ganha de `apolo_contacts`, como em todo o resto do payload.
   // Sem isto o envio usava só os contatos importados, e o e-mail que o operador corrigiu na ficha
@@ -547,7 +553,11 @@ async function montarDados(
     ? {
         name: conjuge.nome,
         cpf: conjuge.cpf || null,
-        birthday: texto((fichaDoOperador ?? {}).conjugeNascimento),
+        // Nascimento com fallback do relacionamento (23/08): o wizard agora grava a data lá,
+        // e a ficha da esteira só a tem quando um operador redigitou.
+        birthday:
+          texto((fichaDoOperador ?? {}).conjugeNascimento) ||
+          texto(relConjuge?.metadata?.dataNascimento),
         document: null,
         email: conjuge.email || null,
         phone: conjuge.telefone || null,

@@ -3989,11 +3989,20 @@ function StepRevisao({
         cad: montarCadDoc(),
         conjuge: conjuge
           ? {
+              // A ficha INTEIRA viaja (23/08): sexo, escolaridade, renda, profissão, patrimônio,
+              // naturalidade e nacionalidade só existiam no PDF — a validação abria vazia.
               cpf: conjuge.cpf,
               dataNascimento: conjuge.dataNascimento,
               email: conjuge.email,
+              escolaridadeId: conjuge.escolaridadeId,
+              nacionalidade: conjuge.nacionalidade,
+              naturalidade: conjuge.naturalidade,
               nome: conjuge.nome,
               nomeMae: conjuge.nomeMae,
+              patrimonio: conjuge.patrimonio,
+              profissaoId: conjuge.profissaoId,
+              rendaId: conjuge.rendaId,
+              sexoId: conjuge.sexoId,
               telefone: conjuge.telefone,
             }
           : null,

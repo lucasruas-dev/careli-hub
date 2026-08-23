@@ -123,8 +123,15 @@ export type CreateApoloEntityInput = {
     cpf?: string;
     dataNascimento?: string;
     email?: string;
+    escolaridadeId?: string;
+    nacionalidade?: string;
+    naturalidade?: string;
     nome?: string;
     nomeMae?: string;
+    patrimonio?: string;
+    profissaoId?: string;
+    rendaId?: string;
+    sexoId?: string;
     telefone?: string;
   } | null;
 };
@@ -539,9 +546,22 @@ export async function createApoloEntity(
       metadata: {
         cpf: text(input.conjuge?.cpf) || null,
         createdBy: ownerUserId,
+        // A FICHA COMPLETA do cônjuge mora aqui (23/08): o wizard sempre coletou tudo, mas só
+        // cpf/email/phone sobreviviam — nascimento, mãe, sexo, renda, escolaridade, profissão,
+        // patrimônio e naturalidade morriam neste insert e a validação abria vazia (o dado
+        // sobrevivia apenas no PDF da CAD). "Tem que subir tudo, documentos, dados, tudo" (Lucas).
+        dataNascimento: text(input.conjuge?.dataNascimento) || null,
         email: text(input.conjuge?.email) || null,
+        escolaridadeId: text(input.conjuge?.escolaridadeId) || null,
         kind: "contato",
+        nacionalidade: text(input.conjuge?.nacionalidade) || null,
+        naturalidade: text(input.conjuge?.naturalidade) || null,
+        nomeMae: text(input.conjuge?.nomeMae) || null,
+        patrimonio: text(input.conjuge?.patrimonio) || null,
         phone: text(input.conjuge?.telefone) || null,
+        profissaoId: text(input.conjuge?.profissaoId) || null,
+        rendaId: text(input.conjuge?.rendaId) || null,
+        sexoId: text(input.conjuge?.sexoId) || null,
         source: "apolo",
       },
       related_entity_id: null,

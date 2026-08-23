@@ -9,7 +9,18 @@
 // o endereço em `apolo_addresses`, o contato em `apolo_contacts`, o cônjuge em `apolo_relationships`.
 // Editar toca as quatro. O metadata é mesclado, nunca substituído (a lição da migration 0057: um
 // upsert cego apaga esteira/imobiliariaId/c2xSynced).
-import type { createApoloAdminClient } from "./server";
+//
+// ⚠️ A LEITURA É O MERGE COMPLETO, A ESCRITA É SÓ O DIFF (Lucas, 23/08: "as informações que já
+// estavam estão sumindo, não pode sumir, tem que ficar para que o operador veja e corrija").
+// Antes, o GET lia SÓ `metadata.cadastro` — vazio em ~70% das CADs, porque a ficha de quem veio
+// do C2X/import mora em `apolo_esteira.ficha` e a correção humana em `metadata.cadastroEditado`.
+// O formulário abria em branco, e o PATCH (que mandava o form inteiro) transformava o branco em
+// null por cima do que existia. Agora: ler = cadastro < C2X ao vivo < esteira.ficha <
+// cadastroEditado (a MESMA cascata do board e da CAD assinada); gravar = apenas os campos que o
+// operador alterou, na camada `cadastroEditado` (a que todos os leitores aplicam por último).
+import { mapearC2xParaFicha } from "./cad-de-entidade";
+import { lerCadDaEsteira } from "./esteira-cad";
+import { fetchC2xCadastroByEntity, type createApoloAdminClient } from "./server";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 
@@ -59,11 +70,10 @@ export async function lerCadastroParaEdicao(
   if (!entity) return null;
 
   const meta = (entity.metadata ?? {}) as Record<string, unknown>;
-  const cad = (meta.cadastro ?? {}) as Record<string, unknown>;
   // Só entidade nascida no Apolo tem cadastro editável aqui; a que veio do C2X é espelho do legado.
   const ehApolo = meta.source === "apolo";
 
-  const [{ data: contatos }, { data: enderecos }, { data: rels }] = await Promise.all([
+  const [{ data: contatos }, { data: enderecos }, { data: rels }, esteira] = await Promise.all([
     client.from("apolo_contacts").select("contact_type, value").eq("entity_id", entityId),
     client
       .from("apolo_addresses")
@@ -77,7 +87,38 @@ export async function lerCadastroParaEdicao(
       .eq("entity_id", entityId)
       .eq("relationship_type", "conjuge")
       .limit(1),
+    lerCadDaEsteira<{ ficha: Record<string, unknown> | null }>(client, entityId, "ficha"),
   ]);
+
+  // Ficha AO VIVO do C2X, best-effort (mesmo padrão de montarCadDeEntidade): se o legado estiver
+  // fora ou a entidade não tiver vínculo, a edição segue com as camadas locais.
+  let c2xMapeado: Record<string, string> = {};
+  try {
+    const { data: sourceLinks } = await client
+      .from("apolo_source_links")
+      .select("entity_id, source_system, source_table, source_id")
+      .eq("entity_id", entityId)
+      .eq("source_system", "c2x")
+      .eq("source_table", "users");
+    const links = (sourceLinks ?? []) as {
+      entity_id: string;
+      source_id: string | null;
+      source_system: string | null;
+      source_table: string | null;
+    }[];
+    if (links.length > 0) {
+      const { cadastro: c2xByEntity } = await fetchC2xCadastroByEntity(
+        client,
+        links,
+        new Set<number>(),
+        new Set<number>(),
+      );
+      const c2x = c2xByEntity.get(entityId);
+      if (c2x) c2xMapeado = mapearC2xParaFicha(c2x);
+    }
+  } catch (erro) {
+    console.error("[apolo] lerCadastroParaEdicao: c2xCadastro indisponivel", erro);
+  }
 
   const lista = (contatos ?? []) as { contact_type: string; value: string }[];
   const end = (enderecos ?? [])[0] as Record<string, unknown> | undefined;
@@ -85,34 +126,44 @@ export async function lerCadastroParaEdicao(
     | { label: string | null; metadata: Record<string, unknown> | null }
     | undefined;
 
+  // A MESMA cascata do board e da CAD assinada: a correção humana (cadastroEditado) por último.
+  const m = {
+    ...((meta.cadastro ?? {}) as Record<string, unknown>),
+    ...c2xMapeado,
+    ...((esteira?.ficha ?? {}) as Record<string, unknown>),
+    ...((meta.cadastroEditado ?? {}) as Record<string, unknown>),
+  } as Record<string, unknown>;
+
   return {
     dados: {
-      bairro: texto(end?.district),
-      cep: texto(end?.postal_code),
-      cidade: texto(end?.city),
-      cidade_uf: texto(end?.state),
-      complemento: texto(end?.complement),
-      conjuge_cpf: texto(conj?.metadata?.cpf),
-      conjuge_email: texto(conj?.metadata?.email),
-      conjuge_nome: texto(conj?.label),
-      conjuge_telefone: texto(conj?.metadata?.phone),
-      dataNascimento: texto(cad.dataNascimento),
-      email: lista.find((c) => c.contact_type === "email")?.value ?? "",
-      escolaridadeId: texto(cad.escolaridadeId),
-      estadoCivilId: texto(cad.estadoCivilId),
-      logradouro: texto(end?.street),
-      nacionalidade: texto(cad.nacionalidade),
-      naturalidade: texto(cad.naturalidade),
-      nomeMae: texto(cad.nomeMae),
-      numero: texto(end?.number),
-      profissaoId: texto(cad.profissaoId),
-      regimeBensId: texto(cad.regimeBensId),
-      rendaId: texto(cad.rendaId),
-      sexoId: texto(cad.sexoId),
+      // Endereço e contato: o que o operador corrigiu na ficha ganha da tabela — igual à CAD.
+      bairro: texto(m.bairro) || texto(end?.district),
+      cep: texto(m.cep) || texto(end?.postal_code),
+      cidade: texto(m.cidade) || texto(end?.city),
+      cidade_uf: texto(m.uf) || texto(end?.state),
+      complemento: texto(m.complemento) || texto(end?.complement),
+      conjuge_cpf: texto(m.conjugeCpf) || texto(conj?.metadata?.cpf),
+      conjuge_email: texto(m.conjugeEmail) || texto(conj?.metadata?.email),
+      conjuge_nome: texto(m.conjugeNome) || texto(conj?.label),
+      conjuge_telefone: texto(m.conjugeTelefone) || texto(conj?.metadata?.phone),
+      dataNascimento: texto(m.dataNascimento).slice(0, 10),
+      email: texto(m.email) || (lista.find((c) => c.contact_type === "email")?.value ?? ""),
+      escolaridadeId: texto(m.escolaridadeId),
+      estadoCivilId: texto(m.estadoCivilId),
+      logradouro: texto(m.logradouro) || texto(end?.street),
+      nacionalidade: texto(m.nacionalidade),
+      naturalidade: texto(m.naturalidade),
+      nomeMae: texto(m.nomeMae),
+      numero: texto(m.numero) || texto(end?.number),
+      profissaoId: texto(m.profissaoId),
+      regimeBensId: texto(m.regimeBensId),
+      rendaId: texto(m.rendaId),
+      sexoId: texto(m.sexoId),
       telefone:
-        lista.find((c) => c.contact_type === "whatsapp")?.value ??
-        lista.find((c) => c.contact_type === "phone")?.value ??
-        "",
+        texto(m.telefone) ||
+        (lista.find((c) => c.contact_type === "whatsapp")?.value ??
+          lista.find((c) => c.contact_type === "phone")?.value ??
+          ""),
     },
     ehApolo,
   };
@@ -128,10 +179,27 @@ function limparVazias(obj: Record<string, unknown>): Record<string, unknown> {
   return saida;
 }
 
+const CHAVES_DE_CADASTRO = [
+  "dataNascimento",
+  "escolaridadeId",
+  "estadoCivilId",
+  "nacionalidade",
+  "naturalidade",
+  "nomeMae",
+  "profissaoId",
+  "regimeBensId",
+  "rendaId",
+  "sexoId",
+] as const;
+
+// `dados` é o DIFF: só as chaves que o operador ALTEROU chegam aqui (a tela compara com o valor
+// inicial). Campo ausente = intocado = permanece como está; campo enviado vazio = o operador
+// APAGOU de propósito. É o que garante o "não pode sumir" do Lucas (23/08) — antes o form
+// inteiro chegava e o que abriu em branco virava null por cima do dado existente.
 export async function salvarEdicaoCadastro(
   client: AdminClient,
   entityId: string,
-  dados: CadastroEditavel,
+  dados: Partial<CadastroEditavel>,
 ): Promise<{ error?: string; ok: boolean }> {
   const { data: entity } = await client
     .from("apolo_entities")
@@ -141,38 +209,42 @@ export async function salvarEdicaoCadastro(
   if (!entity) return { error: "Entidade não encontrada.", ok: false };
 
   const meta = (entity.metadata ?? {}) as Record<string, unknown>;
-  const cadAtual = (meta.cadastro ?? {}) as Record<string, unknown>;
+  const enviado = (chave: keyof CadastroEditavel) => chave in dados;
 
-  // MERGE: o cadastro novo entra por cima do que já havia; o resto do metadata (esteira,
-  // imobiliariaId, c2xSynced, source, bornRole) permanece intocado.
-  const cadastro = {
-    ...cadAtual,
-    ...limparVazias({
-      dataNascimento: dados.dataNascimento,
-      escolaridadeId: dados.escolaridadeId,
-      estadoCivilId: dados.estadoCivilId,
-      nacionalidade: dados.nacionalidade,
-      naturalidade: dados.naturalidade,
-      nomeMae: dados.nomeMae,
-      profissaoId: dados.profissaoId,
-      // Regime de bens só faz sentido casado/união (2/6); nos demais, some para não sujar.
-      regimeBensId:
-        dados.estadoCivilId === "2" || dados.estadoCivilId === "6"
-          ? dados.regimeBensId
-          : "",
-      rendaId: dados.rendaId,
-      sexoId: dados.sexoId,
-    }),
-  };
+  const alteracoes: Record<string, unknown> = {};
+  for (const chave of CHAVES_DE_CADASTRO) {
+    if (enviado(chave)) alteracoes[chave] = dados[chave];
+  }
+  // Regime de bens só faz sentido casado/união (2/6): se o operador MUDOU o estado civil para
+  // outro, o regime some junto para não sujar.
+  if (
+    enviado("estadoCivilId") &&
+    dados.estadoCivilId !== "2" &&
+    dados.estadoCivilId !== "6"
+  ) {
+    alteracoes.regimeBensId = "";
+  }
 
-  const { error: erroEntity } = await client
-    .from("apolo_entities")
-    .update({ metadata: { ...meta, cadastro }, updated_at: new Date().toISOString() })
-    .eq("id", entityId);
-  if (erroEntity) return { error: erroEntity.message, ok: false };
+  if (Object.keys(alteracoes).length > 0) {
+    // Grava em `cadastroEditado` — a camada da CORREÇÃO HUMANA, que o board, a CAD assinada e o
+    // envio ao C2X aplicam por último. Gravar em `cadastro` (como era) deixava a correção
+    // invisível em toda tela onde a esteira.ficha tem valor. MERGE: o resto do metadata
+    // (esteira, imobiliariaId, c2xSynced, source, bornRole) permanece intocado.
+    const editadoAtual = (meta.cadastroEditado ?? {}) as Record<string, unknown>;
+    const cadastroEditado = { ...editadoAtual, ...limparVazias(alteracoes) };
+
+    const { error: erroEntity } = await client
+      .from("apolo_entities")
+      .update({
+        metadata: { ...meta, cadastroEditado },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", entityId);
+    if (erroEntity) return { error: erroEntity.message, ok: false };
+  }
 
   // Endereço: atualiza o principal se existe, senão cria. Uma linha por entidade basta aqui.
-  if (dados.logradouro.trim()) {
+  if (enviado("logradouro") && (dados.logradouro ?? "").trim()) {
     const { data: endExistente } = await client
       .from("apolo_addresses")
       .select("id")
@@ -186,7 +258,7 @@ export async function salvarEdicaoCadastro(
       number: dados.numero || null,
       postal_code: dados.cep || null,
       state: dados.cidade_uf || null,
-      street: dados.logradouro,
+      street: dados.logradouro ?? "",
     };
     const idExistente = (endExistente ?? [])[0]?.id as string | undefined;
     if (idExistente) {
@@ -198,44 +270,66 @@ export async function salvarEdicaoCadastro(
     }
   }
 
-  // Telefone e e-mail. O erro NÃO é engolido: se a gravação falhar, quem salvou precisa saber —
-  // é deste ponto que a cobrança e o recibo leem o contato.
+  // Telefone e e-mail — só os que o operador alterou. O erro NÃO é engolido: se a gravação
+  // falhar, quem salvou precisa saber — é deste ponto que a cobrança e o recibo leem o contato.
   const errosDeContato = [
-    await upsertContato(client, entityId, "phone", dados.telefone),
-    await upsertContato(client, entityId, "email", dados.email),
+    enviado("telefone") ? await upsertContato(client, entityId, "phone", dados.telefone ?? "") : null,
+    enviado("email") ? await upsertContato(client, entityId, "email", dados.email ?? "") : null,
   ].filter((e): e is string => Boolean(e));
 
-  // Cônjuge: só faz sentido casado/união. Cria/atualiza o relacionamento; sem nome, remove.
-  const ehCasado = dados.estadoCivilId === "2" || dados.estadoCivilId === "6";
-  if (ehCasado && dados.conjuge_nome.trim()) {
+  // Cônjuge: só quando algum campo dele veio no diff. O metadata do relacionamento entra em
+  // MERGE — o wizard grava ali a ficha completa (nascimento, mãe, sexo, renda, escolaridade,
+  // profissão, patrimônio...), e substituir o objeto inteiro (como era) APAGAVA tudo isso num
+  // simples "salvar" desta tela.
+  const conjugeEnviado =
+    enviado("conjuge_nome") ||
+    enviado("conjuge_cpf") ||
+    enviado("conjuge_email") ||
+    enviado("conjuge_telefone");
+  if (conjugeEnviado) {
     const { data: relExistente } = await client
       .from("apolo_relationships")
-      .select("id, metadata")
+      .select("id, label, metadata")
       .eq("entity_id", entityId)
       .eq("relationship_type", "conjuge")
       .limit(1);
-    const metaConj = {
-      cpf: dados.conjuge_cpf || null,
-      email: dados.conjuge_email || null,
-      kind: "contato",
-      phone: dados.conjuge_telefone || null,
-      source: "apolo",
-    };
-    const idRel = (relExistente ?? [])[0]?.id as string | undefined;
-    if (idRel) {
-      await client
-        .from("apolo_relationships")
-        .update({ label: dados.conjuge_nome, metadata: metaConj })
-        .eq("id", idRel);
-    } else {
-      await client.from("apolo_relationships").insert({
-        entity_id: entityId,
-        label: dados.conjuge_nome,
-        metadata: metaConj,
-        related_entity_id: null,
-        relationship_type: "conjuge",
-        status: "verified",
-      });
+    const rel = (relExistente ?? [])[0] as
+      | { id: string; label: string | null; metadata: Record<string, unknown> | null }
+      | undefined;
+
+    const nome = enviado("conjuge_nome")
+      ? (dados.conjuge_nome ?? "").trim()
+      : texto(rel?.label).trim();
+
+    if (nome) {
+      const metaAtual = (rel?.metadata ?? {}) as Record<string, unknown>;
+      const metaConj = {
+        ...metaAtual,
+        cpf: enviado("conjuge_cpf") ? dados.conjuge_cpf || null : (metaAtual.cpf ?? null),
+        email: enviado("conjuge_email")
+          ? dados.conjuge_email || null
+          : (metaAtual.email ?? null),
+        kind: "contato",
+        phone: enviado("conjuge_telefone")
+          ? dados.conjuge_telefone || null
+          : (metaAtual.phone ?? null),
+        source: metaAtual.source ?? "apolo",
+      };
+      if (rel) {
+        await client
+          .from("apolo_relationships")
+          .update({ label: nome, metadata: metaConj })
+          .eq("id", rel.id);
+      } else {
+        await client.from("apolo_relationships").insert({
+          entity_id: entityId,
+          label: nome,
+          metadata: metaConj,
+          related_entity_id: null,
+          relationship_type: "conjuge",
+          status: "verified",
+        });
+      }
     }
   }
 

@@ -61,8 +61,10 @@ export async function PATCH(
     return NextResponse.json({ error: "Supabase indisponível." }, { status: 503 });
   }
 
-  const corpo = (await request.json().catch(() => null)) as CadastroEditavel | null;
-  if (!corpo) {
+  // O corpo é PARCIAL: a tela manda só o que o operador alterou, e campo ausente fica intocado
+  // (Lucas, 23/08: "não pode sumir"). Um corpo vazio {} é válido — nada a salvar.
+  const corpo = (await request.json().catch(() => null)) as Partial<CadastroEditavel> | null;
+  if (!corpo || typeof corpo !== "object") {
     return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
   }
 

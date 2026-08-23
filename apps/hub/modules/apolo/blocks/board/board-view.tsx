@@ -3297,8 +3297,15 @@ type Ficha = {
     cpf: string;
     dataNascimento: string;
     email: string;
+    escolaridadeId: string;
+    nacionalidade: string;
+    naturalidade: string;
     nome: string;
     nomeMae: string;
+    patrimonio: string;
+    profissaoId: string;
+    rendaId: string;
+    sexoId: string;
     telefone: string;
   };
   contato: { email: string; telefone: string };
@@ -3599,6 +3606,21 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
     valor: texto(c[chave]) || valor,
     valorCru: texto(c[chave]) || valor,
   });
+  // Select do cônjuge: mesma regra dos campos de texto (ficha ganha do relacionamento), mas o
+  // valor exibido é o LABEL do id no catálogo do C2X.
+  const listaConjuge = (
+    chave: string,
+    label: string,
+    opcoes: { id: number | string; label: string }[],
+    valorDoRelacionamento: string,
+  ): Campo => ({
+    chave,
+    label,
+    opcoes,
+    tipo: "select",
+    valor: opcao(opcoes, texto(c[chave]) || valorDoRelacionamento),
+    valorCru: texto(c[chave]) || valorDoRelacionamento,
+  });
 
   if (casado) {
     secoes.push({
@@ -3617,6 +3639,15 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
           valor: calcIdade(texto(c.conjugeNascimento) || conj.dataNascimento),
         },
         campoConjuge("conjugeMae", "Nome da mãe", titleCase(conj.nomeMae), true),
+        // A ficha COMPLETA do cônjuge (Lucas, 23/08: "tem que subir tudo, documentos, dados,
+        // tudo") — o wizard sempre coletou; agora o dado chega e o operador valida/corrige aqui.
+        listaConjuge("conjugeSexoId", "Sexo", C2X_SEXO, conj.sexoId),
+        listaConjuge("conjugeEscolaridadeId", "Escolaridade", C2X_ESCOLARIDADE, conj.escolaridadeId),
+        listaConjuge("conjugeRendaId", "Faixa de renda", C2X_FAIXA_RENDA, conj.rendaId),
+        listaConjuge("conjugeProfissaoId", "Profissão", C2X_PROFISSOES, conj.profissaoId),
+        campoConjuge("conjugePatrimonio", "Patrimônio", conj.patrimonio),
+        campoConjuge("conjugeNaturalidade", "Naturalidade", titleCase(conj.naturalidade)),
+        campoConjuge("conjugeNacionalidade", "Nacionalidade", titleCase(conj.nacionalidade)),
         campoConjuge("conjugeTelefone", "Telefone", formatarTelefoneBR(conj.telefone)),
         campoConjuge("conjugeEmail", "E-mail", conj.email, true),
       ],

@@ -313,14 +313,36 @@ export async function GET(
             }
           : null,
         // O que o operador editou na ficha GANHA do que veio do relacionamento.
+        // A ficha COMPLETA (23/08): sexo, renda, escolaridade, profissão, patrimônio e
+        // naturalidade agora chegam do wizard via metadata do relacionamento — antes só o PDF
+        // os tinha, e a validação abria vazia.
         conjuge: {
           cpf: texto(daEsteira.conjugeCpf) || texto(doRelacionamento?.metadata?.cpf),
           dataNascimento:
             texto(daEsteira.conjugeNascimento) ||
             texto(doRelacionamento?.metadata?.dataNascimento),
           email: texto(daEsteira.conjugeEmail) || texto(doRelacionamento?.metadata?.email),
+          escolaridadeId:
+            texto(daEsteira.conjugeEscolaridadeId) ||
+            texto(doRelacionamento?.metadata?.escolaridadeId),
+          nacionalidade:
+            texto(daEsteira.conjugeNacionalidade) ||
+            texto(doRelacionamento?.metadata?.nacionalidade),
+          naturalidade:
+            texto(daEsteira.conjugeNaturalidade) ||
+            texto(doRelacionamento?.metadata?.naturalidade),
           nome: texto(daEsteira.conjugeNome) || (doRelacionamento?.label ?? ""),
           nomeMae: texto(daEsteira.conjugeMae) || texto(doRelacionamento?.metadata?.nomeMae),
+          patrimonio:
+            texto(daEsteira.conjugePatrimonio) ||
+            texto(doRelacionamento?.metadata?.patrimonio),
+          profissaoId:
+            texto(daEsteira.conjugeProfissaoId) ||
+            texto(doRelacionamento?.metadata?.profissaoId),
+          rendaId:
+            texto(daEsteira.conjugeRendaId) || texto(doRelacionamento?.metadata?.rendaId),
+          sexoId:
+            texto(daEsteira.conjugeSexoId) || texto(doRelacionamento?.metadata?.sexoId),
           telefone:
             texto(daEsteira.conjugeTelefone) || texto(doRelacionamento?.metadata?.phone),
         },

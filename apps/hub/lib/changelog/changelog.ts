@@ -36,6 +36,42 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-23-cad-conjuge-completo-e-editar-sem-sumir",
+    deployedAt: "2026-08-23T16:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A ficha COMPLETA do conjuge agora chega a validacao: sexo, escolaridade, renda, profissao, patrimonio, naturalidade e nacionalidade — o wizard sempre coletou tudo, mas so nome/CPF/telefone/e-mail sobreviviam (o resto ficava apenas no PDF)",
+              "Nascimento e nome da mae do conjuge tambem passam a ser gravados (eram descartados na persistencia)",
+            ],
+            screen: "Validacao da CAD",
+          },
+          {
+            items: [
+              "O Editar cadastro abre PREENCHIDO com tudo que ja existe (le a mesma cascata de camadas do board — antes ~70% das fichas abriam em branco)",
+              "Salvar envia SO o que o operador alterou: campo nao tocado nunca e apagado",
+              "Correcao feita ali passa a valer em TODAS as telas e no envio ao C2X",
+            ],
+            screen: "CRM · Editar cadastro",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.196.0 (2026-08-23-iris-reabrir-so-o-que-sai-certo)",
+    technical: {
+      done:
+        "Diagnostico por workflow (4 agentes, codigo + banco). BUG 1: o wizard coletava a ficha inteira do conjuge mas o submit enviava 6 campos e o persist gravava 3 — em producao, 0/44 CADs casadas de agosto tinham conjuge em metadata.cadastro e o relacionamento so guardava cpf/email/phone (docs chegavam: 43/44). Correcao na corrente inteira: payload completo (cadastro-flow), metadata do relacionamento com a ficha toda (cadastro-persist), rota do board devolve e a validacao exibe os campos novos (selects C2X), e o envio ao C2X ganha fallback do nascimento. BUG 2: lerCadastroParaEdicao lia SO metadata.cadastro (vazio em 538/736 CADs — ficha mora na esteira p/ quem veio de import/sync) e o PATCH mandava o form inteiro com vazio virando null. Correcao: leitura = cascata cadastro < C2X ao vivo < esteira.ficha < cadastroEditado (a mesma do board/CAD); escrita = Partial com DIFF calculado na tela, gravado em cadastroEditado (camada da correcao humana); metadata do relacionamento conjuge em MERGE (substituir o objeto apagaria a ficha nova do bug 1). BONUS: o envio ao C2X passou a aplicar cadastroEditado por cima (correcoes humanas subiam certas na tela e erradas no legado). tsc limpo; 1427 testes verdes. NOTA: dados de conjuge perdidos em CADs antigas nao voltam sozinhos — sobrevivem no PDF da CAD anexo; operador pode redigitar na validacao.",
+      motivation:
+        "Lucas, 23/08: *\"quando estamos subindo cad nao esta trazendo as informacoes completas do conjuge para validacao, tem que subir tudo, documentos, dados, tudo\"* e *\"ao clicar em editar cadastro no apolo, as informacoes que ja estavam estao sumindo, nao pode sumir, tem que ficar para que o operador veja e corrija caso necessario\"*.",
+    },
+    title: "Conjuge completo na CAD e Editar cadastro sem apagar nada",
+    type: "correcao",
+    version: "1.197.0",
+  },
+  {
     buildTag: "2026-08-23-iris-reabrir-so-o-que-sai-certo",
     deployedAt: "2026-08-23T13:00:00-03:00",
     modules: [

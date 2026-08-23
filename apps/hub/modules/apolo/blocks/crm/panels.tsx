@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   CalendarClock,
   ChevronDown,
@@ -426,6 +426,9 @@ function EdicaoCadastro({
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // O retrato do que o GET devolveu: o salvar compara com ele e manda SÓ o que mudou. Campo não
+  // tocado nem viaja — é o que impede o form de apagar dado existente (Lucas, 23/08).
+  const iniciais = useRef<CadastroEditavel>(CADASTRO_VAZIO);
 
   useEffect(() => {
     void (async () => {
@@ -442,7 +445,9 @@ function EdicaoCadastro({
         if (!resp.ok || !json?.data) {
           setErro(json?.error ?? "Não consegui carregar o cadastro.");
         } else {
-          setDados({ ...CADASTRO_VAZIO, ...json.data.dados });
+          const completos = { ...CADASTRO_VAZIO, ...json.data.dados };
+          iniciais.current = completos;
+          setDados(completos);
         }
       } catch {
         setErro("Não consegui carregar o cadastro.");
@@ -458,12 +463,22 @@ function EdicaoCadastro({
   const casado = dados.estadoCivilId === "2" || dados.estadoCivilId === "6";
 
   async function salvar() {
+    // Só o que MUDOU viaja: campo intocado não entra no corpo e o servidor não mexe nele.
+    const diff: Partial<CadastroEditavel> = {};
+    for (const chave of Object.keys(dados) as (keyof CadastroEditavel)[]) {
+      if (dados[chave] !== iniciais.current[chave]) diff[chave] = dados[chave];
+    }
+    if (Object.keys(diff).length === 0) {
+      onSalvo();
+      return;
+    }
+
     setSalvando(true);
     setErro(null);
     try {
       const token = await getApoloAccessToken();
       const resp = await fetch(`/api/apolo/cadastro/${entityId}`, {
-        body: JSON.stringify(dados),
+        body: JSON.stringify(diff),
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
