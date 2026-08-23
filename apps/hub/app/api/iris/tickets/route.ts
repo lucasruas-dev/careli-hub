@@ -481,6 +481,8 @@ export async function POST(request: NextRequest) {
           headerMedia: templateHeaderMedia,
           language: templateLanguage!,
           name: templateName!,
+          // A abertura de ticket grava a própria mensagem no protocolo novo.
+          registrarNaIris: false,
           to: phone,
         })
       : null;

@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-23-disparos-na-conversa-da-iris",
+    deployedAt: "2026-08-23T17:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "TODO template disparado pela Careli (acao de contato, cobranca, reprovacao, boas-vindas do Prometeu...) agora aparece na conversa do atendimento — antes o operador via SO a resposta do cliente, sem saber o que foi mandado",
+              "A mensagem entra na posicao certa da conversa (hora do envio) com o texto REAL do template preenchido",
+              "Se o contato ja tem atendimento aberto, o disparo cai na conversa na hora; senao, entra junto quando o cliente responde",
+            ],
+            screen: "Atendimento · Conversa",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.197.0 (2026-08-23-cad-conjuge-completo-e-editar-sem-sumir)",
+    technical: {
+      done:
+        "Medido em producao: 48 envios de template em 7 dias sem NENHUM registro na Iris (21 so no dia 22, todos do fone 4143/Relacionamento) — sao os disparos que chamam a Graph direto; apolo_disparos cobria apenas 10/48, entao remendar fluxo a fluxo nao fechava. Solucao em duas pontas: (1) o TRANSPORTE (sendMetaWhatsAppTemplateMessage) registra todo envio como referencia em caredesk_whatsapp_message_refs (payload guarda template+parametros; upsert ignoreDuplicates em provider+wa_message_id; best-effort pos-envio, nunca falha um template aceito; import dinamico p/ nao arrastar o client) com opt-out nos 3 caminhos da Iris que ja criam mensagem propria (conversa, abertura, retry do 9o digito); (2) o INBOUND materializa as referencias orfas do telefone como mensagens do ticket (novo lib/iris/disparo-na-conversa.ts): corpo REAL renderizado do body do template local com os parametros ({{n}} sem valor fica visivel), created_at = hora do envio (ordem certa na conversa), external_message_id = wamid (dedup + status delivered/read do webhook casam sozinhos), sender_type system + direction outbound; casamento de telefone com variante do 9o digito. Se ha ticket aberto no momento do disparo, materializa na hora. 7 testes novos (variantes de telefone pegaram ambiguidade de numero estrangeiro curto — documentada); tsc limpo; 1433 testes verdes.",
+      motivation:
+        "Lucas, 23/08: *\"o time reclamou que nao esta aparecendo as mensagens de template no board de mensagem, ou seja, enviamos a mensagem e so vemos a resposta do cliente, a mensagem de template tem que fica no painel de mensagens tbm\"*.",
+    },
+    title: "Disparos de template aparecem na conversa",
+    type: "correcao",
+    version: "1.198.0",
+  },
+  {
     buildTag: "2026-08-23-cad-conjuge-completo-e-editar-sem-sumir",
     deployedAt: "2026-08-23T16:40:00-03:00",
     modules: [

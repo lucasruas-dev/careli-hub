@@ -689,6 +689,7 @@ export async function sendMetaWhatsAppTemplateMessage({
   headerMedia,
   language,
   name,
+  registrarNaIris = true,
   to,
   urlButtonParameter,
 }: {
@@ -697,6 +698,11 @@ export async function sendMetaWhatsAppTemplateMessage({
   headerMedia?: MetaWhatsAppTemplateHeaderMedia | null;
   language: string;
   name: string;
+  // Registrar o envio como referência na Iris para a conversa do contato mostrar o disparo
+  // (Lucas, 23/08: "a mensagem de template tem que ficar no painel de mensagens tbm"). Default
+  // LIGADO: todo disparador (Apolo, cobrança, Prometeu, e os futuros) ganha o registro de
+  // graça. Os caminhos da própria Iris que JÁ criam a mensagem antes do envio passam `false`.
+  registrarNaIris?: boolean;
   to: string;
   // Sufixo dinamico de um BOTAO URL do template (ex.: o `{{1}}` de
   // `.../publico/fila?t={{1}}`). So' preenchido quando o template tem esse botao; ausente, o envio
@@ -778,11 +784,32 @@ export async function sendMetaWhatsAppTemplateMessage({
     );
   }
 
-  return {
+  const resultado = {
     contactWaId: normalizeText(payload?.contacts?.[0]?.wa_id),
     messageId: normalizeText(payload?.messages?.[0]?.id),
     raw: payload,
   };
+
+  // Best-effort e SEMPRE depois do envio: registrar o disparo na Iris nunca pode falhar um
+  // template que a Meta já aceitou. Import dinâmico para o transporte não arrastar o módulo
+  // (e o client Supabase) para quem só envia.
+  if (registrarNaIris && resultado.messageId) {
+    try {
+      const { registrarDisparoDeTemplate } = await import("./disparo-na-conversa");
+      await registrarDisparoDeTemplate({
+        bodyParameters,
+        language,
+        name,
+        phoneNumberId,
+        to: resultado.contactWaId ?? to,
+        wamid: resultado.messageId,
+      });
+    } catch (erro) {
+      console.error("[iris] registro do disparo na conversa falhou", erro);
+    }
+  }
+
+  return resultado;
 }
 
 export async function listMetaWhatsAppMessageTemplates({

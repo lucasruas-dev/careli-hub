@@ -432,6 +432,8 @@ export async function POST(request: NextRequest) {
               ...(metaSendConfig ? { config: metaSendConfig } : {}),
               language: template.language,
               name: template.name,
+              // Esta rota já criou a mensagem local (queued) e grava a própria referência.
+              registrarNaIris: false,
               to: candidate,
             })
           : audioMedia

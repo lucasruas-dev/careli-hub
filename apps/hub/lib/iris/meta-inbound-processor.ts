@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ClaudeAgentTurnError } from "@/lib/ai/claude-agent";
 import { registrarRespostaDeAcao } from "@/lib/apolo/acao-resposta";
+import { materializarDisparosNaConversa } from "@/lib/iris/disparo-na-conversa";
 import {
   CACA_AGENT_VERSION,
   readCacaAutomationState,
@@ -372,6 +373,22 @@ async function processInboundMessage({
         };
   const activeTicket = ticketAfterCoalesce.ticket;
   const ticketCreated = ticketResult.ticketCreated && !ticketAfterCoalesce.coalesced;
+
+  // DISPAROS AUTOMÁTICOS NA CONVERSA (Lucas, 23/08: "a mensagem de template tem que ficar no
+  // painel de mensagens tbm"): templates mandados fora da Iris (ação de contato, cobrança,
+  // Prometeu...) ficam como referência órfã; aqui, com o ticket em mãos, eles viram mensagens
+  // na posição do envio — o operador vê o que a Careli mandou ANTES da resposta do cliente.
+  // Best-effort: falhar isto nunca pode derrubar o recebimento.
+  if (contactWaId) {
+    try {
+      await materializarDisparosNaConversa(client, {
+        telefone: contactWaId,
+        ticketId: activeTicket.id,
+      });
+    } catch (erro) {
+      console.error("[iris] materializacao de disparos na conversa falhou", erro);
+    }
+  }
   const enrichedMessageDetail =
     await enrichInboundMessageDetailWithMediaAnalysis(messageDetail, event, client);
   const message = await insertInboundMessage({
@@ -713,6 +730,8 @@ async function maybeRetryBrazilNinthDigit({
       config,
       language: readString(template.language) || "pt_BR",
       name: readString(template.name) ?? "",
+      // Retry do 9º dígito de um envio que JÁ tem mensagem local — sem registro duplicado.
+      registrarNaIris: false,
       to: alternate,
     });
   } else if (row.body) {
