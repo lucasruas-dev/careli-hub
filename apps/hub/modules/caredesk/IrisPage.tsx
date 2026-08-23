@@ -163,6 +163,7 @@ import {
 } from "@/lib/iris/audio-transcode";
 import { getHubPresenceSnapshot } from "@/lib/hub-presence";
 import { canReplyAsCaca } from "@/lib/iris/caca-reply-access";
+import { templateSaiCompletoPeloServidor } from "@/lib/iris/template-chaves";
 import { PhoneFlag } from "./components/phone-flag";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { IrisCronometroEspera } from "./blocks/conversation/iris-cronometro-espera";
@@ -2861,7 +2862,14 @@ function IrisConversationPanel({
         modelo.channelKind === "whatsapp" &&
         Boolean(readTemplateMetaName(modelo)) &&
         modelo.status !== "paused" &&
-        !isMetaTemplateUnavailableStatus(readTemplateMetaStatus(modelo)),
+        !isMetaTemplateUnavailableStatus(readTemplateMetaStatus(modelo)) &&
+        // Template com cabeçalho de mídia é do DISPARO (Apolo manda o documento junto, ex.
+        // a CAD na reprovação de crédito); este caminho não envia header e a Meta recusa
+        // sempre — era o "Não foi possível reabrir a conversa" do vídeo de 27/07 (AT-001026).
+        !readTemplateHeaderFormat(modelo) &&
+        // E só oferecemos o que o servidor preenche por inteiro: variável sem fonte no
+        // ticket viraria "-" NO TEXTO que o cliente recebe.
+        templateSaiCompletoPeloServidor(modelo.variables),
     )
     .map((modelo) => ({
       id: modelo.id,

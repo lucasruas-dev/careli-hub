@@ -19,6 +19,7 @@ import {
   authorizeIrisMetaRequest,
   createIrisMetaAdminClient,
 } from "@/lib/iris/meta-server";
+import { montarValoresDeTemplate } from "@/lib/iris/template-chaves";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -117,24 +118,23 @@ async function preencherParametrosDoTemplate({
         }>()
     : { data: null };
 
-  const nomeCompleto = ticket?.caredesk_contacts?.display_name?.trim() ?? "";
-  const primeiroNome = nomeCompleto.split(/\s+/)[0] ?? "";
   // O assunto costuma vir do perfil do ticket; quando a ficha está sem assunto (acontece, e
-  // era o caso do AT-001285), a fila responde pelo contexto. NUNCA devolver string vazia:
-  // a Meta rejeita o envio inteiro por causa de um parâmetro em branco.
+  // era o caso do AT-001285), a fila responde pelo contexto.
   const assunto =
     ticket?.caredesk_ticket_profiles?.name?.trim() ||
     ticket?.subject?.trim() ||
     ticket?.caredesk_queues?.name?.trim() ||
-    "seu atendimento";
+    "";
 
-  const valorPorChave: Record<string, string> = {
+  // Os valores por chave moram em lib/iris/template-chaves — a MESMA fonte que a tela usa
+  // para decidir o que oferecer no "Reabrir conversa". Fallbacks não-vazios ficam lá (a Meta
+  // rejeita o envio inteiro por causa de um parâmetro em branco).
+  const valorPorChave = montarValoresDeTemplate({
     assunto,
-    nome_cliente: nomeCompleto || primeiroNome || "cliente",
-    operador: operatorName?.trim() || "equipe Careli",
-    primeiro_nome: primeiroNome || "cliente",
-    protocolo: ticket?.protocol?.trim() || "-",
-  };
+    nomeCompleto: ticket?.caredesk_contacts?.display_name ?? "",
+    operador: operatorName,
+    protocolo: ticket?.protocol ?? null,
+  });
 
   return variaveis.map((chave) => valorPorChave[chave] ?? "-");
 }

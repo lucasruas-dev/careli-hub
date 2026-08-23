@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-23-iris-reabrir-so-o-que-sai-certo",
+    deployedAt: "2026-08-23T13:00:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O seletor de 'Reabrir conversa' agora so oferece template que SAI CERTO: modelos com documento/imagem no cabecalho (que a Meta recusava sempre — era o 'Nao foi possivel reabrir a conversa') e modelos de disparo com variaveis que virariam '-' no texto do cliente ficam de fora",
+              "A variavel 'cliente' passou a ser preenchida com o nome do contato (templates da Athena usavam essa chave e o servidor nao conhecia)",
+            ],
+            screen: "Atendimento · Reabrir conversa",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.195.0 (2026-08-23-setup-incorporador-editar-no-card)",
+    technical: {
+      done:
+        "Diagnostico (workflow 4 agentes + dados de producao): o fluxo de reabrir esta saudavel (522 templates em 30 dias, 92% ok), mas 'Credito indeferido (corretor)' NUNCA saiu pela Iris — aprovado na Meta com header DOCUMENT obrigatorio (nasceu p/ o disparo do Apolo, que manda a CAD anexa), e o caminho de reabrir nao envia header → recusa sincrona em todo envio, ate hoje. Alem dele, 18 dos 44 modelos ofertados tinham chave sem fonte no ticket (variavel_2..5, unidade, empreendimento, parcelas, saldo_aberto) e sairiam com '-' no texto. Correcao: novo lib/iris/template-chaves.ts como FONTE UNICA — montarValoresDeTemplate (rota) e templateSaiCompletoPeloServidor (tela) derivam do mesmo mapa; filtro do seletor exclui header de midia e chave nao preenchivel (44 → 24 ofertados; todos os removidos sao de disparo automatizado); chave 'cliente' mapeada = nome do contato. Extras do diagnostico: billing 131042 derrubou 100% dos templates de 05-10/08 (resolvido, sem ocorrencia desde 10/08); falhas atuais sao 131026 numero inalcancavel, pontuais. 5 testes novos; tsc limpo (IrisPage e ts-nocheck — nomes conferidos a mao).",
+      motivation:
+        "Lucas, 23/08, com gravacao de 27/07 (AT-001026): *\"ao tentar responder um cliente ... mesmo selecionando um template e clicando no botao de reabrir conversa, nada acontece, analisa por favor se isso ainda esta acontecendo\"* — e, apos o diagnostico, *\"pode corrigir\"*.",
+    },
+    title: "Reabrir conversa so oferece template que funciona",
+    type: "correcao",
+    version: "1.196.0",
+  },
+  {
     buildTag: "2026-08-23-setup-incorporador-editar-no-card",
     deployedAt: "2026-08-23T12:10:00-03:00",
     modules: [
