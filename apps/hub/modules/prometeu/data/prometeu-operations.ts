@@ -767,3 +767,14 @@ export async function marcarPaImpressaRemoto(grupoId: string) {
     method: "POST",
   });
 }
+
+// A secretária LANÇA A PROPOSTA bipando o cupom da reserva (Lucas, 24/08).
+export async function lancarPropostaDoCupomRemoto(input: {
+  grupoId: string;
+  lancadoPor?: string;
+}) {
+  return chamar<{ jaLancada: boolean; ok: boolean }>("/api/prometeu/cupom", {
+    body: JSON.stringify({ acao: "lancar-proposta", ...input }),
+    method: "POST",
+  });
+}

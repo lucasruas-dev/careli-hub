@@ -105,10 +105,45 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
   }
 
-  const corpo = (await request.json().catch(() => null)) as { grupoId?: unknown } | null;
+  const corpo = (await request.json().catch(() => null)) as {
+    acao?: unknown;
+    grupoId?: unknown;
+    lancadoPor?: unknown;
+  } | null;
   const grupoId = String(corpo?.grupoId ?? "").trim();
+  const acao = String(corpo?.acao ?? "pa-impressa").trim();
   if (!ehIdDeCupom(grupoId)) {
     return NextResponse.json({ error: "Cupom nao reconhecido." }, { status: 400 });
+  }
+
+  const agora = new Date().toISOString();
+
+  // A SECRETÁRIA LANÇA A PROPOSTA bipando o mesmo cupom (Lucas, 24/08: "dentro da secretária
+  // eu lanço a proposta") — é este carimbo que o funil conta como "Proposta".
+  if (acao === "lancar-proposta") {
+    const { data: vivas } = await client
+      .from("prometeu_reservas")
+      .select("id, proposta_lancada_em")
+      .eq("grupo_id", grupoId)
+      .eq("situacao", "reservada");
+    const linhas = (vivas ?? []) as { id: string; proposta_lancada_em: null | string }[];
+    if (linhas.length === 0) {
+      return NextResponse.json({ error: "Reserva nao encontrada ou cancelada." }, { status: 404 });
+    }
+    const jaLancada = linhas.every((l) => l.proposta_lancada_em);
+    if (!jaLancada) {
+      await client
+        .from("prometeu_reservas")
+        .update({
+          proposta_lancada_em: agora,
+          proposta_lancada_por: String(corpo?.lancadoPor ?? "").trim() || null,
+          updated_at: agora,
+        })
+        .eq("grupo_id", grupoId)
+        .eq("situacao", "reservada")
+        .is("proposta_lancada_em", null);
+    }
+    return NextResponse.json({ data: { jaLancada, ok: true } });
   }
 
   // Leitura-modificação simples (sem corrida real: o posto é um só por evento).
@@ -118,7 +153,6 @@ export async function POST(request: NextRequest) {
     .eq("grupo_id", grupoId)
     .eq("situacao", "reservada");
 
-  const agora = new Date().toISOString();
   for (const linha of (linhas ?? []) as { id: string; pa_impressa_vezes: number }[]) {
     await client
       .from("prometeu_reservas")

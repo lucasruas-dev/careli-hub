@@ -37,6 +37,7 @@ import type {
   PrometeuResumoDaMesa,
 } from "@/lib/prometeu/types";
 import { ATENDENTE_CSS } from "./atendente-estilo";
+import { BipDoCupomDaSecretaria } from "./bip-cupom";
 
 // A MESA DE ATENDIMENTO DA SECRETARIA — o posto onde a venda se fecha.
 //
@@ -1116,6 +1117,11 @@ body{margin:0;overflow:hidden}
   return (
     <div className={classes} data-posto="secretaria">
       <style dangerouslySetInnerHTML={{ __html: ATENDENTE_CSS + AJUSTES_NO_HUB }} />
+
+      {/* Escuta o leitor USB: bipar o CUPOM da reserva abre o lançamento da proposta
+          (Lucas, 24/08: "dentro da secretária eu lanço a proposta"). Crachás seguem o fluxo
+          normal da mesa — o componente só age em QR de cupom. */}
+      <BipDoCupomDaSecretaria operador={operador?.nome ?? null} />
 
       <header>
         <div className="mod-icon">
