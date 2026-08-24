@@ -1,33 +1,42 @@
 "use client";
 
 import {
+  Activity,
   ChevronRight,
-  ExternalLink,
-  LayoutDashboard,
+  Flame,
+  HandMetal,
   ListOrdered,
-  Mic,
   PanelLeftClose,
   PanelLeftOpen,
+  Printer,
   Settings,
   TabletSmartphone,
   Tag,
-  Tv,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { eventoDoDia } from "@/lib/prometeu/evento-do-dia";
+import { rotuloDoLancamento } from "@/lib/prometeu/lancamento";
+import type { PrometeuEvento } from "@/lib/prometeu/types";
 import { useHubTheme } from "@/providers/theme-provider";
 
+import { fetchEventos } from "./data/prometeu-operations";
 import { CentralView } from "./blocks/central/central-view";
 import { AtendenteView } from "./blocks/atendente/atendente-view";
 import { EtiquetaView } from "./blocks/etiqueta/etiqueta-view";
 import { FilaView } from "./blocks/fila/fila-view";
+import { PostoPaView } from "./blocks/pa/posto-pa-view";
+import { ReservaView } from "./blocks/reserva/reserva-view";
 import { SetupView } from "./blocks/setup/setup-view";
 
-// Prometeu no hub: rail escuro de telas a esquerda (mesmo visual do Iris) + conteudo a direita.
+// Prometeu no hub: rail escuro de telas a esquerda + conteudo a direita, AGRUPADO POR
+// LANÇAMENTO (Lucas, 24/08): o lançamento ativo aparece no topo do rail e as telas se
+// organizam em grupos — Fila (Fila do lançamento, Etiquetas), Atendimento (Secretária,
+// Reserva, Impressão da PA) e o geral (Monitoramento, Setup). O Telão saiu do rail: mora no
+// Setup, que é onde o link público nasce.
 //
-// A migracao mockup -> real esta EM CURSO. Telas com `component` ja leem as tabelas prometeu_*;
-// as demais ainda sao o HTML de /public/prometeu (o desenho aprovado), e vao caindo uma a uma.
+// ⚠️ LOCUTOR DESATIVADO (21/08) — dependia de TTS local que nunca existiu em produção.
 
 type PrometeuScreen = {
   // Tela React de verdade. Quando presente, ganha do `file`.
@@ -36,68 +45,107 @@ type PrometeuScreen = {
   icon: LucideIcon;
   id: string;
   label: string;
-  // Telão roda uma TV por aba: abre em nova aba (URL publica), nao no iframe do hub.
-  newTab?: boolean;
 };
 
-const ALL_SCREENS: readonly PrometeuScreen[] = [
+type PrometeuGrupo = {
+  telas: readonly PrometeuScreen[];
+  titulo: null | string;
+};
+
+const GRUPOS: readonly PrometeuGrupo[] = [
   {
-    component: CentralView,
-    file: "cockpit.html",
-    icon: LayoutDashboard,
-    id: "central",
-    label: "Central",
+    telas: [
+      {
+        // Fila do EVENTO (antes do check-in): ordem do PIX + ajuste manual do organizador.
+        component: FilaView,
+        file: "cockpit.html",
+        icon: ListOrdered,
+        id: "fila",
+        label: "Fila do lançamento",
+      },
+      {
+        component: EtiquetaView,
+        file: "etiqueta.html",
+        icon: Tag,
+        id: "etiqueta",
+        label: "Etiquetas",
+      },
+    ],
+    titulo: "Fila",
   },
   {
-    // Fila do EVENTO (antes do check-in): ordem do PIX + o ajuste manual do organizador.
-    component: FilaView,
-    file: "cockpit.html",
-    icon: ListOrdered,
-    id: "fila",
-    label: "Fila",
+    telas: [
+      {
+        // A mesa da secretaria: chama da fila, recebe, LANÇA A PROPOSTA e conclui.
+        component: AtendenteView,
+        file: "atendente.html",
+        icon: TabletSmartphone,
+        id: "atendente",
+        label: "Secretária",
+      },
+      {
+        // A posição de reserva (monitor touch): bipa etiqueta → quadras → lotes → cupom.
+        component: ReservaView,
+        file: "cockpit.html",
+        icon: HandMetal,
+        id: "reserva",
+        label: "Reserva",
+      },
+      {
+        // O posto que bipa o cupom e imprime as folhas de PA (uma por unidade).
+        component: PostoPaView,
+        file: "cockpit.html",
+        icon: Printer,
+        id: "pa",
+        label: "Impressão da PA",
+      },
+    ],
+    titulo: "Atendimento",
   },
   {
-    // A mesa da secretaria: escolhe a mesa, chama da fila, recebe e conclui. Saiu do mockup em
-    // 27/07 — antes era iframe com nomes ficticios.
-    component: AtendenteView,
-    file: "atendente.html",
-    icon: TabletSmartphone,
-    id: "atendente",
-    label: "Atendimento",
-  },
-  {
-    // Crachá do cliente: nasce da fila (todo credenciado do evento) e imprime na térmica.
-    component: EtiquetaView,
-    file: "etiqueta.html",
-    icon: Tag,
-    id: "etiqueta",
-    label: "Etiqueta",
-  },
-  { file: "telao.html", icon: Tv, id: "telao", label: "Telão", newTab: true },
-  // ⚠️ LOCUTOR DESATIVADO (Lucas, 21/08/2026: *"pode desativar essa tela de locutor"*).
-  //
-  // Ela dependia de um servico de TTS em `http://localhost:5180`, que nunca existiu em producao:
-  // aberta pelo hub, a tela carregava e nao falava. Os presets ainda diziam "bem-vindos ao Vale
-  // do Ouro". O arquivo continua em /public — tirar do rail e o que o pedido exige, e apagar um
-  // HTML de 600 linhas por causa de um item de menu seria desproporcional.
-  // { file: "locutor.html", icon: Mic, id: "locutor", label: "Locutor" },
-  {
-    component: SetupView,
-    file: "setup.html",
-    icon: Settings,
-    id: "setup",
-    label: "Setup",
+    telas: [
+      {
+        component: CentralView,
+        file: "cockpit.html",
+        icon: Activity,
+        id: "central",
+        label: "Monitoramento",
+      },
+      {
+        component: SetupView,
+        file: "setup.html",
+        icon: Settings,
+        id: "setup",
+        label: "Setup",
+      },
+    ],
+    titulo: null,
   },
 ];
+
+const ALL_SCREENS: readonly PrometeuScreen[] = GRUPOS.flatMap((g) => g.telas);
 
 export function PrometeuModule() {
   const [activeId, setActiveId] = useState<string>("central");
   // Menu recolhido: encolhe a lateral para só os ícones, dando mais tela para o atendimento.
   const [menuRecolhido, setMenuRecolhido] = useState(false);
+  // O LANÇAMENTO em foco, no topo do rail: todas as telas abaixo obedecem a ele. Um lançamento
+  // operável por vez (regra do eventoDoDia); ativar/encerrar continua no Setup.
+  const [lancamento, setLancamento] = useState<null | PrometeuEvento>(null);
   const { mode } = useHubTheme();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const active =
     ALL_SCREENS.find((screen) => screen.id === activeId) ?? ALL_SCREENS[0];
+
+  useEffect(() => {
+    let vivo = true;
+    void fetchEventos().then((r) => {
+      if (vivo) setLancamento(eventoDoDia(r.data ?? []) ?? null);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   // O mock (iframe) e mesma-origem: sincronizamos o tema dele com o do hub. Usa o
   // setTheme() do proprio mock (atualiza tambem os botoes do toggle); se a tela nao
@@ -163,68 +211,75 @@ export function PrometeuModule() {
           </button>
         </div>
 
+        {/* O lançamento em foco: o contexto de TODAS as telas abaixo. */}
+        {menuRecolhido ? null : (
+          <div className="mb-1 flex items-center gap-2 rounded-[9px] border border-line/60 px-3 py-2">
+            <Flame aria-hidden="true" className="shrink-0 text-[#cba25a]" size={15} />
+            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-ink">
+              {lancamento ? rotuloDoLancamento(lancamento) : "Sem lançamento ativo"}
+            </span>
+          </div>
+        )}
+
         <nav className="mt-1 flex-1 space-y-0.5 overflow-y-auto">
-          {ALL_SCREENS.map((screen) => {
-            const Icon = screen.icon;
-            const isActive = !screen.newTab && screen.id === active.id;
-            return (
-              <button
-                key={screen.id}
-                className={`group relative flex w-full items-center gap-3 rounded-[9px] px-3 py-2 text-left transition-colors ${
-                  menuRecolhido ? "justify-center" : ""
-                } ${
-                  isActive
-                    ? "bg-black/[0.07] text-ink dark:bg-white/[0.08]"
-                    : "text-ink-soft hover:bg-black/[0.04] hover:text-ink dark:hover:bg-white/[0.05]"
-                }`}
-                onClick={() => {
-                  if (screen.newTab) {
-                    window.open(
-                      `/prometeu/${screen.file}`,
-                      "_blank",
-                      "noopener,noreferrer",
-                    );
-                    return;
-                  }
-                  setActiveId(screen.id);
-                }}
-                // Recolhido, o nome vira tooltip para o operador ainda reconhecer o posto.
-                title={menuRecolhido ? screen.label : undefined}
-                type="button"
-              >
-                {isActive ? (
-                  <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
-                ) : null}
-                <span
-                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
-                    isActive
-                      ? "panteon-module-sidebar__active-icon"
-                      : "text-ink-muted"
-                  }`}
-                >
-                  <Icon aria-hidden="true" size={17} />
-                </span>
-                {menuRecolhido ? null : (
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                    {screen.label}
-                  </span>
-                )}
-                {menuRecolhido ? null : screen.newTab ? (
-                  <ExternalLink
-                    aria-hidden="true"
-                    className="text-ink-muted"
-                    size={15}
-                  />
-                ) : isActive ? (
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="text-ink-muted"
-                    size={15}
-                  />
-                ) : null}
-              </button>
-            );
-          })}
+          {GRUPOS.map((grupo, indice) => (
+            <div key={grupo.titulo ?? `grupo-${indice}`}>
+              {menuRecolhido || !grupo.titulo ? (
+                grupo.titulo ? null : (
+                  <div className="mx-1 my-2 border-t border-line/50" />
+                )
+              ) : (
+                <div className="px-3 pb-1 pt-3 text-[10px] font-bold uppercase tracking-[0.12em] text-ink-muted">
+                  {grupo.titulo}
+                </div>
+              )}
+              {grupo.telas.map((screen) => {
+                const Icon = screen.icon;
+                const isActive = screen.id === active.id;
+                return (
+                  <button
+                    key={screen.id}
+                    className={`group relative flex w-full items-center gap-3 rounded-[9px] px-3 py-2 text-left transition-colors ${
+                      menuRecolhido ? "justify-center" : ""
+                    } ${
+                      isActive
+                        ? "bg-black/[0.07] text-ink dark:bg-white/[0.08]"
+                        : "text-ink-soft hover:bg-black/[0.04] hover:text-ink dark:hover:bg-white/[0.05]"
+                    }`}
+                    onClick={() => setActiveId(screen.id)}
+                    // Recolhido, o nome vira tooltip para o operador ainda reconhecer o posto.
+                    title={menuRecolhido ? screen.label : undefined}
+                    type="button"
+                  >
+                    {isActive ? (
+                      <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
+                    ) : null}
+                    <span
+                      className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
+                        isActive
+                          ? "panteon-module-sidebar__active-icon"
+                          : "text-ink-muted"
+                      }`}
+                    >
+                      <Icon aria-hidden="true" size={17} />
+                    </span>
+                    {menuRecolhido ? null : (
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                        {screen.label}
+                      </span>
+                    )}
+                    {menuRecolhido ? null : isActive ? (
+                      <ChevronRight
+                        aria-hidden="true"
+                        className="text-ink-muted"
+                        size={15}
+                      />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </aside>
 

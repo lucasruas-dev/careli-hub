@@ -663,3 +663,107 @@ export async function removerOperadorRemoto(id: string) {
     { method: "DELETE" },
   );
 }
+
+// ── POSIÇÃO DE RESERVA (tela touch — Lucas, 24/08) ──────────────────────────
+
+export type ReservaTouchUnidade = {
+  area: string;
+  c2xId: string;
+  codigo: string;
+  lote: string;
+  preco: null | number;
+  quadra: string;
+};
+
+export type ReservaTouchQuadra = {
+  disponiveis: ReservaTouchUnidade[];
+  quadra: string;
+};
+
+export type ReservaTouchContadores = {
+  finalizadas: number;
+  propostas: number;
+  reservas: number;
+};
+
+export async function fetchReservaTouch(eventoId?: string) {
+  const q = eventoId ? `?eventoId=${encodeURIComponent(eventoId)}` : "";
+  return chamar<{
+    contadores: ReservaTouchContadores;
+    eventoId: string;
+    quadras: ReservaTouchQuadra[];
+  }>(`/api/prometeu/reserva-touch${q}`);
+}
+
+// O bip da etiqueta: uuid lido do QR → nome/etapa para a conferência antes de reservar.
+export async function buscarClienteDaReserva(credenciadoId: string, eventoId?: string) {
+  const extra = eventoId ? `&eventoId=${encodeURIComponent(eventoId)}` : "";
+  return chamar<{
+    credenciado: {
+      corretor: null | string;
+      documento: null | string;
+      etapa: string;
+      id: string;
+      imobiliaria: null | string;
+      nome: string;
+    };
+  }>(`/api/prometeu/reserva-touch?credenciadoId=${encodeURIComponent(credenciadoId)}${extra}`);
+}
+
+export type ReservaTouchProponente = {
+  credenciadoId: string;
+  documento: null | string;
+  nome: string;
+  percentual: number;
+};
+
+export async function criarReservaTouchRemoto(input: {
+  credenciadoId: string;
+  eventoId: string;
+  proponentes: ReservaTouchProponente[];
+  unidades: ReservaTouchUnidade[];
+}) {
+  return chamar<{ cliente: string; grupoId: string; unidades: string[] }>(
+    "/api/prometeu/reserva-touch",
+    { body: JSON.stringify(input), method: "POST" },
+  );
+}
+
+// ── ÁREA DE IMPRESSÃO DA PA (bip do cupom — Lucas, 24/08) ───────────────────
+
+export type CupomReservaLinha = {
+  area: null | string;
+  codigo: string;
+  createdAt: string;
+  credenciadoId: string;
+  grupoId: string;
+  id: string;
+  lote: string;
+  paImpressaEm: null | string;
+  paImpressaVezes: number;
+  precoTabela: null | number;
+  proponentes: ReservaTouchProponente[];
+  propostaLancadaEm: null | string;
+  quadra: string;
+  situacao: string;
+};
+
+export async function fetchCupom(grupoId: string) {
+  return chamar<{
+    cliente: {
+      corretor: null | string;
+      documento: null | string;
+      imobiliaria: null | string;
+      nome: string;
+    };
+    evento: { id: string; incorporadora: null | string; nome: string } | null;
+    reservas: CupomReservaLinha[];
+  }>(`/api/prometeu/cupom?grupoId=${encodeURIComponent(grupoId)}`);
+}
+
+export async function marcarPaImpressaRemoto(grupoId: string) {
+  return chamar<{ ok: boolean }>("/api/prometeu/cupom", {
+    body: JSON.stringify({ grupoId }),
+    method: "POST",
+  });
+}
