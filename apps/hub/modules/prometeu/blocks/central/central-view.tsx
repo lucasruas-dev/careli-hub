@@ -34,6 +34,7 @@ import {
   type ReservaC2x,
   type UnidadeDoC2x,
 } from "../../data/prometeu-operations";
+import { useLancamentoSelecionado } from "../../lancamento-contexto";
 import { COCKPIT_CSS } from "./cockpit-estilo";
 
 // Central do Prometeu — a tela de comando do dia do lançamento.
@@ -136,6 +137,16 @@ function labelDaEtapa(etapa: PrometeuEtapa): string {
 export function CentralView() {
   const [eventos, setEventos] = useState<PrometeuEvento[]>([]);
   const [eventoId, setEventoId] = useState("");
+  // O LANCAMENTO SELECIONADO na tela inicial MANDA (bug 24/08: Vale do Ouro selecionado,
+  // tela mostrando Villa Paris — o eventoDoDia ignora a escolha). Ref para o efeito de carga
+  // inicial; o efeito abaixo troca o evento quando a selecao muda.
+  const selecionado = useLancamentoSelecionado();
+  const selecionadoRef = useRef(selecionado);
+  selecionadoRef.current = selecionado;
+  useEffect(() => {
+    if (selecionado) setEventoId(selecionado.id);
+  }, [selecionado]);
+
   const [credenciadosCrus, setCredenciados] = useState<PrometeuCredenciado[]>([]);
 
   // AS UNIDADES DE CADA PESSOA VÊM DO C2X, coladas aqui na leitura.
@@ -282,7 +293,7 @@ export function CentralView() {
     }
     const lista = data ?? [];
     setEventos(lista);
-    setEventoId((atual) => atual || lista[0]?.id || "");
+    setEventoId((atual) => atual || selecionadoRef.current?.id || lista[0]?.id || "");
     if (lista.length === 0) setCarregando(false);
   }, []);
 

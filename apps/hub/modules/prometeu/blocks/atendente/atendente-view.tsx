@@ -18,6 +18,7 @@ import {
   sentarNaMesaRemoto,
   urlDaPaRemoto,
 } from "../../data/prometeu-operations";
+import { useLancamentoSelecionado } from "../../lancamento-contexto";
 import { useAuth } from "@/providers/auth-provider";
 import {
   telefoneParaWhatsapp,
@@ -280,6 +281,16 @@ function PipHost({ children, janela }: { children: ReactNode; janela: Window }) 
 export function AtendenteView() {
   const [eventos, setEventos] = useState<PrometeuEvento[]>([]);
   const [eventoId, setEventoId] = useState("");
+  // O LANCAMENTO SELECIONADO na tela inicial MANDA (bug 24/08: Vale do Ouro selecionado,
+  // tela mostrando Villa Paris — o eventoDoDia ignora a escolha). Ref para o efeito de carga
+  // inicial; o efeito abaixo troca o evento quando a selecao muda.
+  const selecionado = useLancamentoSelecionado();
+  const selecionadoRef = useRef(selecionado);
+  selecionadoRef.current = selecionado;
+  useEffect(() => {
+    if (selecionado) setEventoId(selecionado.id);
+  }, [selecionado]);
+
   const [fila, setFila] = useState<PrometeuCredenciado[]>([]);
   // Chamados que não apareceram. É a segunda aba da fila: chamar de novo traz a pessoa de volta
   // ao fluxo sem ninguém precisar recadastrar nada.
@@ -390,7 +401,7 @@ export function AtendenteView() {
       const { data } = await fetchEventos();
       const lista = data ?? [];
       setEventos(lista);
-      const ativo = eventoDoDia(lista);
+      const ativo = selecionadoRef.current ?? eventoDoDia(lista);
       if (ativo) setEventoId(ativo.id);
       else setCarregando(false);
     })();

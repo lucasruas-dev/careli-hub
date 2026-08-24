@@ -2,13 +2,14 @@
 
 import { AlertTriangle, Loader2, Printer, RefreshCw, Search, Tag } from "lucide-react";
 import QRCode from "qrcode";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   fetchEventos,
   fetchFila,
   marcarEtiquetaImpressaRemoto,
 } from "../../data/prometeu-operations";
+import { useLancamentoSelecionado } from "../../lancamento-contexto";
 import { ETIQUETA_PRINT_DOC_CSS, ETIQUETA_TELA_CSS } from "./etiqueta-css";
 import { imprimirEtiquetas, imprimirEtiquetasCorretor } from "./imprimir-etiquetas";
 import {
@@ -172,6 +173,16 @@ function EtiquetaCorretor({
 export function EtiquetaView() {
   const [eventos, setEventos] = useState<PrometeuEvento[]>([]);
   const [eventoId, setEventoId] = useState("");
+  // O LANCAMENTO SELECIONADO na tela inicial MANDA (bug 24/08: Vale do Ouro selecionado,
+  // tela mostrando Villa Paris — o eventoDoDia ignora a escolha). Ref para o efeito de carga
+  // inicial; o efeito abaixo troca o evento quando a selecao muda.
+  const lancamentoEscolhido = useLancamentoSelecionado();
+  const lancamentoEscolhidoRef = useRef(lancamentoEscolhido);
+  lancamentoEscolhidoRef.current = lancamentoEscolhido;
+  useEffect(() => {
+    if (lancamentoEscolhido) setEventoId(lancamentoEscolhido.id);
+  }, [lancamentoEscolhido]);
+
   const [credenciados, setCredenciados] = useState<PrometeuCredenciado[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -192,7 +203,7 @@ export function EtiquetaView() {
       // ⚠️ MESMA REGRA DAS OUTRAS TELAS: quem está EM ANDAMENTO manda, senão o ativo, senão um
       // rascunho. Aqui era `find(status === "ativo") ?? lista[0]`, e o `?? lista[0]` abria no
       // evento mais RECENTE — que, com um lançamento encerrado no banco, era justamente ele.
-      const ativo = eventoDoDia(lista);
+      const ativo = lancamentoEscolhidoRef.current ?? eventoDoDia(lista);
       if (ativo) setEventoId(ativo.id);
       else setCarregando(false);
     })();

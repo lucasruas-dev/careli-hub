@@ -176,12 +176,21 @@ export function sqlDaCoerencia(listaUnidades: string) {
      WHERE eu.enterprise_id IN (${listaUnidades}) AND ${UNIDADE_COMERCIAL}`;
 }
 
-export async function montarBiValeDoOuro(carteira: CarteiraDoVale = "todos") {
+export async function montarBiValeDoOuro(
+  carteira: CarteiraDoVale = "todos",
+  // GENERALIZAÇÃO (24/08): os relatórios do LANÇAMENTO reusam este motor inteiro apontando
+  // para o empreendimento do evento — todas as consultas já saem de `listaUnidades`, então o
+  // recorte custom é um ponto só. Sem o parâmetro, o BI do Vale segue idêntico.
+  enterpriseIdCustom?: number,
+) {
   const poolResult = getHadesDbPool();
   if (!poolResult.ok) throw new Error("C2X indisponível.");
   const { pool } = poolResult;
 
-  const { listaUnidades } = recorteDaCarteira(carteira);
+  const { listaUnidades } =
+    enterpriseIdCustom && Number.isFinite(enterpriseIdCustom)
+      ? { listaUnidades: String(enterpriseIdCustom) }
+      : recorteDaCarteira(carteira);
 
   const q = async (sql: string): Promise<Linha[]> => {
     const [rows] = await pool.query<Linha[]>(sql);

@@ -30,6 +30,7 @@ import {
   type ReservaTouchQuadra,
   type ReservaTouchUnidade,
 } from "../../data/prometeu-operations";
+import { useLancamentoSelecionado } from "../../lancamento-contexto";
 import { usarLeitorQr } from "../checkin/usar-leitor-qr";
 import { imprimirCupomDaReserva } from "./imprimir-cupom";
 
@@ -110,6 +111,9 @@ const LOTE_LIVRE =
 const LOTE_MARCADO = "rounded-xl border border-[#2C2C2A] bg-[#2C2C2A] text-[#F1EFE8]";
 
 export function ReservaView() {
+  // ⚠️ O LANÇAMENTO SELECIONADO NA TELA INICIAL MANDA (bug de 24/08: com o Vale do Ouro
+  // selecionado, a tela mostrava os lotes do Villa Paris — o eventoDoDia ignora a escolha).
+  const selecionado = useLancamentoSelecionado();
   const [evento, setEvento] = useState<null | PrometeuEvento>(null);
   const [quadras, setQuadras] = useState<ReservaTouchQuadra[]>([]);
   const [contadores, setContadores] = useState<null | ReservaTouchContadores>(null);
@@ -139,23 +143,30 @@ export function ReservaView() {
     setCarregando(false);
   }, []);
 
-  // Evento do dia + primeira carga; depois poll leve de 15s (o telão e a trava do servidor
-  // são a verdade — o poll só mantém a prateleira honesta entre um cliente e outro).
+  // O lançamento SELECIONADO manda; sem seleção (posto do operador via /m), cai no evento do
+  // dia. Primeira carga + poll leve de 15s SEMPRE com o id explícito — sem ele a rota resolve
+  // o "operável" e trai a seleção.
   useEffect(() => {
     let vivo = true;
     void (async () => {
-      const eventos = await fetchEventos();
+      let alvo = selecionado;
+      if (!alvo) {
+        const eventos = await fetchEventos();
+        if (!vivo) return;
+        alvo = eventoDoDia(eventos.data ?? []) ?? null;
+      }
       if (!vivo) return;
-      const doDia = eventoDoDia(eventos.data ?? []);
-      setEvento(doDia ?? null);
-      await carregar(doDia?.id);
+      setEvento(alvo);
+      await carregar(alvo?.id);
     })();
-    const timer = window.setInterval(() => void carregar(), 15_000);
+    const timer = window.setInterval(() => {
+      void carregar(selecionado?.id ?? undefined);
+    }, 15_000);
     return () => {
       vivo = false;
       window.clearInterval(timer);
     };
-  }, [carregar]);
+  }, [carregar, selecionado]);
 
   const aoBipar = useCallback(
     async (lido: string) => {

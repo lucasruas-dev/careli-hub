@@ -1,24 +1,28 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { montarBiValeDoOuro } from "@/lib/prometeu/bi-vale-do-ouro";
 import { createPrometeuClient, getEvento } from "@/lib/prometeu/data";
 import { validarTokenDoRelatorio } from "@/lib/prometeu/link-do-relatorio";
 import {
-  dadosComerciais,
-  dadosPerformance,
-  renderComercial,
-  renderPerformance,
+  paginaComercial,
+  paginaPerformance,
+  payloadPerformance,
 } from "@/lib/prometeu/relatorios";
 
-// O RELATÓRIO PÚBLICO DO LANÇAMENTO — a página que o gestor/loteador abre pelo link.
+// O RELATÓRIO PÚBLICO DO LANÇAMENTO — o link que o gestor/loteador abre.
 //
-// Mesmo desenho do BI público do Vale do Ouro: HTML pronto, SEM dado pessoal (só agregados),
-// cache de 60s na CDN (uma consulta por minuto, não importa quantos abram) e token HS256 no
-// padrão do telão. Rota liberada UMA A UMA no proxy.ts, como manda o lockdown.
+// PADRÃO dos entregáveis do Vale do Ouro (Lucas, 24/08): a página é o HTML rico do BI (placar,
+// estoque, curvas, ranking, perfil / régua da jornada, funil, onda da fila) e se atualiza
+// sozinha a cada 60s chamando ESTA MESMA rota com `formato=json`. O COMERCIAL reusa o motor
+// bi-vale-do-ouro generalizado (payload idêntico ao do BI original); o PERFORMANCE sai do
+// Prometeu. Token HS256 no padrão do telão; JSON com s-maxage=60 (1 consulta/min na CDN,
+// não importa quantos abram); SÓ AGREGADOS — nenhum dado pessoal.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const token = new URL(request.url).searchParams.get("t");
+  const params = new URL(request.url).searchParams;
+  const token = params.get("t");
   const autorizado = validarTokenDoRelatorio(token);
   if (!autorizado) {
     return new NextResponse("Link inválido ou expirado.", { status: 401 });
@@ -33,20 +37,37 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Lançamento não disponível.", { status: 404 });
   }
 
-  let html: null | string = null;
-  if (autorizado.tipo === "comercial") {
-    const dados = await dadosComerciais(client, evento);
-    if (dados) html = renderComercial(evento, dados);
-  } else {
-    html = renderPerformance(evento, await dadosPerformance(client, evento));
+  // O refresh da página: o payload de dados, com cache de 60s na CDN.
+  if (params.get("formato") === "json") {
+    try {
+      const dados =
+        autorizado.tipo === "comercial"
+          ? await montarBiValeDoOuro("todos", Number(evento.enterpriseId))
+          : await payloadPerformance(client, evento);
+      return NextResponse.json(
+        { data: dados },
+        {
+          headers: {
+            "Cache-Control": "public, s-maxage=60, stale-while-revalidate=30",
+          },
+        },
+      );
+    } catch (erro) {
+      return NextResponse.json(
+        { error: erro instanceof Error ? erro.message : "Falha ao montar o relatório." },
+        { status: 502 },
+      );
+    }
   }
-  if (!html) {
-    return new NextResponse("Relatório indisponível para este lançamento.", { status: 422 });
-  }
+
+  const html =
+    autorizado.tipo === "comercial"
+      ? paginaComercial(evento, token ?? "")
+      : paginaPerformance(evento, token ?? "");
 
   return new NextResponse(html, {
     headers: {
-      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=30",
+      "Cache-Control": "public, s-maxage=300, stale-while-revalidate=60",
       "Content-Type": "text/html; charset=utf-8",
     },
   });

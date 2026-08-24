@@ -10,13 +10,14 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ajustarOrdemRemoto,
   fetchEventos,
   fetchFila,
 } from "../../data/prometeu-operations";
+import { useLancamentoSelecionado } from "../../lancamento-contexto";
 import {
   lancamentoSemEmpreendimento,
   rotuloDoLancamento,
@@ -62,6 +63,16 @@ function telefoneBR(tel: string | null | undefined): string {
 export function FilaView() {
   const [eventos, setEventos] = useState<PrometeuEvento[]>([]);
   const [eventoId, setEventoId] = useState<string>("");
+  // O LANCAMENTO SELECIONADO na tela inicial MANDA (bug 24/08: Vale do Ouro selecionado,
+  // tela mostrando Villa Paris — o eventoDoDia ignora a escolha). Ref para o efeito de carga
+  // inicial; o efeito abaixo troca o evento quando a selecao muda.
+  const selecionado = useLancamentoSelecionado();
+  const selecionadoRef = useRef(selecionado);
+  selecionadoRef.current = selecionado;
+  useEffect(() => {
+    if (selecionado) setEventoId(selecionado.id);
+  }, [selecionado]);
+
   const [credenciados, setCredenciados] = useState<PrometeuCredenciado[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -79,7 +90,7 @@ export function FilaView() {
       // ⚠️ MESMA REGRA DAS OUTRAS TELAS: quem está EM ANDAMENTO manda, senão o ativo, senão um
       // rascunho. Aqui era `find(status === "ativo") ?? lista[0]`, e o `?? lista[0]` abria no
       // evento mais RECENTE — que, com um lançamento encerrado no banco, era justamente ele.
-      const ativo = eventoDoDia(lista);
+      const ativo = selecionadoRef.current ?? eventoDoDia(lista);
       if (ativo) setEventoId(ativo.id);
       else setCarregando(false);
     })();
