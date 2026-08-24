@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-24-inteligencia-de-dados",
+    deployedAt: "2026-08-24T13:40:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Grupo novo INTELIGENCIA DE DADOS no menu, com Monitoramento e a tela RELATORIOS",
+              "Dois relatorios por lancamento, herdados do Vale do Ouro: COMERCIAL (vendas, estoque, VGV, funil e quadro por quadra) e PERFORMANCE (fila, etapas, tempos mediana/P90, entrada por hora, chamadas)",
+              "Botao de COPIAR LINK publico para encaminhar a gestores e loteadores — so numeros agregados, sem dado pessoal; a pagina atualiza sozinha a cada minuto",
+            ],
+            screen: "Inteligencia de dados · Relatorios",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.200.0 (2026-08-24-prometeu-selecao-e-vitrine)",
+    technical: {
+      done:
+        "lib/prometeu/relatorios.ts: dadosComerciais (situacao REAL por unidade no C2X — AR aberta manda, etapas de venda = Contrato gerado/Em assinatura/Faturado/Finalizado; reservas vivas do Panteon sobrepoem o 'disponivel'; VGV por bucket; funil do evento) e dadosPerformance (credenciados por etapa/hora, tempos por etapa via prometeu_movimentacoes — SEM evento_id na tabela, recorte por credenciado em lotes de 100 pela regra do .in(); mediana/P90; chamadas) + render HTML no padrao visual APROVADO (claro #f6f4ef, dourado #A07C3B, terracota #B5451B, wordmark texto, refresh 60s). link-do-relatorio.ts: token HS256 {e,r,iat} com SESSAO_CAD_SECRET, sem exp (revogacao = arquivamento do evento). Rotas: /api/publico/prometeu/relatorio (token, s-maxage=60 — 1 consulta/min na CDN) na allowlist do proxy, e /api/prometeu/relatorios (autenticada) que gera os 2 links para a tela. RelatoriosView: abas comercial/performance, iframe de preview, copiar/abrir link; usa o lancamento SELECIONADO (contexto da tela inicial). Validado local com o Villa Paris: os dois HTML 200 com dados reais. tsc limpo.",
+      motivation:
+        "Lucas, 24/08: *\"cria uma nova, Inteligencia de Dados e deixa Monitoramento e Relatorios nele. Ae deixa pronto aquele relatorio que fizemos para o Vale do Ouro (html) trazendo as metricas do lancamento, ter isso na tela e a opcao de gerar um link para encaminhar para os gestores e loteadores. Haviamos feitos dois relatorio... uma com mais pegada comercial e outro com a pegada de performance do time de backoffice\"*.",
+    },
+    title: "Inteligencia de dados: relatorios do lancamento com link publico",
+    type: "novidade",
+    version: "1.201.0",
+  },
+  {
     buildTag: "2026-08-24-prometeu-selecao-e-vitrine",
     deployedAt: "2026-08-24T13:10:00-03:00",
     modules: [

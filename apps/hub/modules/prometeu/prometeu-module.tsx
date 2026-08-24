@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  BarChart3,
   ChevronRight,
   Flame,
   LandPlot,
@@ -29,6 +30,7 @@ import { EtiquetaView } from "./blocks/etiqueta/etiqueta-view";
 import { FilaView } from "./blocks/fila/fila-view";
 import { PostoPaView } from "./blocks/pa/posto-pa-view";
 import { ReservaView } from "./blocks/reserva/reserva-view";
+import { RelatoriosView } from "./blocks/relatorios/relatorios-view";
 import { SelecaoDeLancamento } from "./blocks/selecao/selecao-lancamento";
 import { SetupView } from "./blocks/setup/setup-view";
 
@@ -113,6 +115,19 @@ const GRUPOS: readonly PrometeuGrupo[] = [
         id: "central",
         label: "Monitoramento",
       },
+      {
+        // Os dois relatórios do lançamento (comercial e performance) com link público.
+        component: RelatoriosView,
+        file: "cockpit.html",
+        icon: BarChart3,
+        id: "relatorios",
+        label: "Relatórios",
+      },
+    ],
+    titulo: "Inteligência de dados",
+  },
+  {
+    telas: [
       {
         component: SetupView,
         file: "setup.html",
@@ -220,6 +235,7 @@ export function PrometeuModule() {
   }
 
   return (
+    <LancamentoProvider value={lancamento}>
     <div className="flex h-full min-h-0">
       <aside
         className={`panteon-module-sidebar panteon-module-sidebar--themed flex h-full min-h-0 shrink-0 flex-col px-3 py-4 text-ink transition-[width] duration-200 ${
@@ -351,5 +367,6 @@ export function PrometeuModule() {
         )}
       </main>
     </div>
+    </LancamentoProvider>
   );
 }

@@ -778,3 +778,11 @@ export async function lancarPropostaDoCupomRemoto(input: {
     method: "POST",
   });
 }
+
+// Os links públicos dos relatórios do lançamento (Inteligência de Dados).
+export async function fetchRelatoriosDoLancamento(eventoId?: string) {
+  const q = eventoId ? `?eventoId=${encodeURIComponent(eventoId)}` : "";
+  return chamar<{ comercial: string; eventoId: string; performance: string }>(
+    `/api/prometeu/relatorios${q}`,
+  );
+}

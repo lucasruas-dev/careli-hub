@@ -83,6 +83,9 @@ const PUBLIC_API_PREFIXES = [
   // Responde APENAS o nome — que ja' e' publico (telao, etiqueta, WhatsApp do cliente). Sem fila,
   // sem contagem, sem pessoa. Liberada UMA A UMA, igual a de cima.
   "/api/publico/prometeu/evento",
+  // Relatórios do lançamento (comercial/performance) por token HS256 — só agregados, sem PII;
+  // ver lib/prometeu/link-do-relatorio.ts. Cache de 60s na CDN.
+  "/api/publico/prometeu/relatorio",
   // Webhook do Asaas (pre-venda): maquina-a-maquina, valida por token proprio (asaas-access-token).
   "/api/publico/asaas",
   // BI publico de vendas do Vale do Ouro (pedido do Lucas, 01/08): o link circula com diretoria
