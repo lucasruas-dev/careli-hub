@@ -181,6 +181,11 @@ function limparVazias(obj: Record<string, unknown>): Record<string, unknown> {
 
 const CHAVES_DE_CADASTRO = [
   "dataNascimento",
+  // ⚠️ E-MAIL E TELEFONE TAMBÉM ENTRAM NA CAMADA DE CORREÇÃO HUMANA (24/08). Eles continuam
+  // indo para `apolo_contacts` (cobrança/Iris/disparos leem de lá), mas SÓ lá o valor perdia
+  // para `esteira.ficha.email` em toda leitura em cascata — o operador salvava, a tela dizia
+  // salvo, e o formulário reabria com o antigo (caso TAIS, 48 entidades divergentes na base).
+  "email",
   "escolaridadeId",
   "estadoCivilId",
   "nacionalidade",
@@ -190,6 +195,7 @@ const CHAVES_DE_CADASTRO = [
   "regimeBensId",
   "rendaId",
   "sexoId",
+  "telefone",
 ] as const;
 
 // `dados` é o DIFF: só as chaves que o operador ALTEROU chegam aqui (a tela compara com o valor
@@ -371,6 +377,10 @@ async function upsertContato(
     .select("id, contact_type")
     .eq("entity_id", entityId)
     .in("contact_type", familia)
+    // ⚠️ ORDEM ESTÁVEL: sem ela, entidade com linhas duplicadas do mesmo tipo (474 na base,
+    // 62 com valores diferentes) atualizava UMA linha ao acaso e os leitores liam OUTRA — o
+    // e-mail "salvo" alternava com o antigo conforme o planner.
+    .order("created_at", { ascending: true })
     .limit(20);
   const existentes = (data ?? []) as { contact_type: string; id: string }[];
 
@@ -384,14 +394,20 @@ async function upsertContato(
     if (error) return `${tipo}: ${error.message}`;
   }
 
-  // Atualiza a linha do MESMO tipo, se houver; senão cria.
-  const doTipo = existentes.find((c) => c.contact_type === tipo);
-  if (doTipo) {
+  // TODAS as linhas do mesmo tipo recebem o valor novo (as duplicatas deixam de guardar o dado
+  // velho); a mais antiga vira a principal.
+  const doTipo = existentes.filter((c) => c.contact_type === tipo);
+  if (doTipo.length > 0) {
     const { error } = await client
       .from("apolo_contacts")
-      .update({ is_primary: true, value: valor })
-      .eq("id", doTipo.id);
-    return error ? `${tipo}: ${error.message}` : null;
+      .update({ updated_at: new Date().toISOString(), value: valor })
+      .in("id", doTipo.map((c) => c.id));
+    if (error) return `${tipo}: ${error.message}`;
+    const { error: erroPrincipal } = await client
+      .from("apolo_contacts")
+      .update({ is_primary: true })
+      .eq("id", doTipo[0]!.id);
+    return erroPrincipal ? `${tipo}: ${erroPrincipal.message}` : null;
   }
 
   const { error } = await client.from("apolo_contacts").insert({

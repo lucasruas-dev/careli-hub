@@ -521,9 +521,20 @@ async function montarDados(
     return typeof v === "string" && v.trim() ? v.trim() : null;
   };
 
+  // A CORREÇÃO HUMANA DO CRM VEM PRIMEIRO (24/08): `cad` já traz `cadastroEditado` por cima.
+  // Sem isto, o e-mail corrigido no Editar cadastro aparecia certo nas telas e SUBIA ERRADO
+  // para o legado — o payload lia só a ficha da esteira e os contatos.
+  const doEditado = (chave: string): null | string => {
+    const v = (cad as Record<string, unknown>)[chave];
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  };
   const email =
-    textoDaFicha("email") ?? lista.find((c) => c.contact_type === "email")?.value ?? null;
+    doEditado("email") ??
+    textoDaFicha("email") ??
+    lista.find((c) => c.contact_type === "email")?.value ??
+    null;
   const telefone =
+    doEditado("telefone") ??
     textoDaFicha("telefone") ??
     lista.find((c) => c.contact_type === "whatsapp")?.value ??
     lista.find((c) => c.contact_type === "phone")?.value ??

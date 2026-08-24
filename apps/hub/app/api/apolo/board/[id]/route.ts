@@ -580,6 +580,53 @@ export async function PATCH(
     .eq("entity_id", id)
     .eq("enterprise_id", alvoEnterpriseId);
 
+  // E-MAIL/TELEFONE EDITADOS AQUI TAMBÉM ESPELHAM em `apolo_contacts` e em
+  // `metadata.cadastroEditado` (24/08) — o ramo SEM esteira sempre fez isso; este não, e a
+  // ficha virava um valor imortal que o Editar cadastro do CRM nunca alcançava (as duas telas
+  // escreviam e-mail em camadas diferentes; quem lia decidia qual aparecia).
+  const contatoNovo = {
+    email: typeof campos.email === "string" ? campos.email : null,
+    telefone: typeof campos.telefone === "string" ? campos.telefone : null,
+  };
+  if (!error && (contatoNovo.email || contatoNovo.telefone)) {
+    const { atualizarContatoDoContato } = await import("@/lib/iris/apolo/escrita-contato");
+    const gravado = await atualizarContatoDoContato(adminClient, {
+      email: contatoNovo.email,
+      entidadeId: id,
+      telefone: contatoNovo.telefone,
+    });
+    if (!gravado.ok) {
+      return NextResponse.json(
+        { error: `Ficha salva, mas o contato nao foi atualizado: ${gravado.erro}` },
+        { status: 500 },
+      );
+    }
+
+    const { data: entidadeAtual } = await adminClient
+      .from("apolo_entities")
+      .select("metadata")
+      .eq("id", id)
+      .maybeSingle<{ metadata: Record<string, unknown> | null }>();
+    if (entidadeAtual) {
+      const metaAtual = entidadeAtual.metadata ?? {};
+      const editadoAtual = (metaAtual.cadastroEditado ?? {}) as Record<string, unknown>;
+      await adminClient
+        .from("apolo_entities")
+        .update({
+          metadata: {
+            ...metaAtual,
+            cadastroEditado: {
+              ...editadoAtual,
+              ...(contatoNovo.email ? { email: contatoNovo.email } : {}),
+              ...(contatoNovo.telefone ? { telefone: contatoNovo.telefone } : {}),
+            },
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+    }
+  }
+
   // TRILHA DE AUDITORIA por campo (exigência do Lucas, 21/jul): "o que mudou, para qual valor
   // e quem — para caso eu precise validar depois". Uma linha POR CAMPO, com o valor de antes
   // e o de agora. `ficha_editada_por` sozinho só guarda o ÚLTIMO editor e não conta a história.
