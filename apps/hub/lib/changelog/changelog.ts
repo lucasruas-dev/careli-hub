@@ -36,6 +36,57 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-24-reserva-touch-email-glotes",
+    deployedAt: "2026-08-24T13:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Rail reorganizado POR LANCAMENTO: grupos Fila (Fila do lancamento, Etiquetas) e Atendimento (Secretaria, Reserva, Impressao da PA); Central virou Monitoramento; telao passa a viver no Setup",
+              "Tela RESERVA (monitor touch): bipa a etiqueta, escolhe quadra e lotes disponiveis (numeros grandes, selecionado em grafite), ate 5 proponentes com % de participacao, cupom termico com QR e reset automatico para o proximo cliente",
+              "Tela IMPRESSAO DA PA: bipa o cupom e saem as folhas de PA em A4 redesenhadas — uma por unidade, pre-preenchidas com proponentes, quadra/lote/area e os 3 planos calculados; 2a via so com confirmacao",
+            ],
+            screen: "Reserva do lancamento",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "E-mail e telefone editados AGORA FICAM: entram na camada de correcao humana (visivel em todas as telas), o board espelha o contato, e o envio ao C2X passa a levar o valor corrigido",
+            ],
+            screen: "CRM · Editar cadastro",
+          },
+        ],
+      },
+      {
+        module: "Integracoes",
+        screens: [
+          {
+            items: [
+              "Clientes do GLOTES ganharam email, telefone e atualizado_em — com os dados ATUALIZADOS vindos do Panteon (C2X como fallback) e filtro alterado_desde para sincronizacao incremental",
+            ],
+            screen: "GLOTES (Lavra do Ouro)",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.198.0 (2026-08-23-disparos-na-conversa-da-iris)",
+    technical: {
+      done:
+        "PROMETEU (fases A-C do processo novo de reserva): prometeu_reservas (migrations 0101+0102 aplicadas) com linha por unidade, grupo_id=cupom (QR uuid cru + codigo RSV-XXXXXX), trava unica parcial (evento_id,codigo) where situacao='reservada', soft-cancel e proponentes jsonb (max 5, soma 100, validarProponentes); rotas reserva-touch (GET quadras disponiveis = C2X sale_status 1 sem AR aberta MENOS reservas vivas do Panteon; POST com revalidacao de proponentes e realtime) e cupom (GET dados p/ PA, POST marca impressao); telas ReservaView (wedge USB + camera, 2 etapas, multi-quadra, mini dash) e PostoPaView (folhas A4 com planos 20%/12x, 30%/24x, 10%/180x calculados do price); impressao em iframe isolado (@page 80mm e A4); funcoes puras em lib/prometeu/cupom.ts (client-safe — mysql2 no bundle quebrava o build). APOLO: e-mail/telefone editados gravavam so em apolo_contacts e PERDIAM para esteira.ficha na cascata (regressao parcial da v1.197.0 + assimetria antiga do board); agora entram em cadastroEditado, o upsert atualiza TODAS as linhas duplicadas com ordem estavel, o board espelha contato+cadastroEditado no ramo com esteira e o c2x-write le a correcao primeiro. GLOTES: merge por document_hash (mesma formula do dedup) com apolo_contacts (whatsapp>phone, is_primary), relogio combinado em Brasilia, alterado_desde pos-merge com conversao da marca UTC; validado local (374 clientes; incremental=1 desde 20/08; futuro=0). tsc limpo; 1441 testes. PENDENTE (proximas fases): secretaria bipar cupom p/ lancar proposta, telao masterplan publico, limpeza das 48 fichas com e-mail divergente + 474 contatos duplicados.",
+      motivation:
+        "Lucas, 24/08: processo de reserva do lancamento no Panteon (touch + cupom + PA), *\"atualizamos o e-mail, salvamos mas a alteracao nao fica\"* e *\"melhorar a API da Glotes... esses dados agora tem que sair do Panteon — os atualizados\"*.",
+    },
+    title: "Reserva touch no lancamento, e-mail que fica e GLOTES atualizado",
+    type: "novidade",
+    version: "1.199.0",
+  },
+  {
     buildTag: "2026-08-23-disparos-na-conversa-da-iris",
     deployedAt: "2026-08-23T17:30:00-03:00",
     modules: [
