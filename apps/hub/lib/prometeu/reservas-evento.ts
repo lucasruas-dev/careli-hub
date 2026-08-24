@@ -32,27 +32,20 @@ export type QuadraDoEvento = {
   quadra: string;
 };
 
-// O código normalizado é a CHAVE da trava única (evento_id, codigo). "vlo0212 " e "VLO0212"
-// têm que colidir — por isso a normalização mora aqui e TODO gravador passa por ela.
-export function normalizarCodigoDeUnidade(codigo: string): string {
-  return String(codigo ?? "").trim().toUpperCase();
-}
+// As funções PURAS do cupom/proponentes moram em cupom.ts (client-safe — este arquivo puxa
+// mysql2 e NÃO pode entrar no bundle do navegador); reexportadas aqui para o servidor usar de
+// um lugar só.
+export {
+  codigoDoCupom,
+  conteudoDoQrDoCupom,
+  ehIdDeCupom,
+  MAX_PROPONENTES,
+  normalizarCodigoDeUnidade,
+  validarProponentes,
+  type ProponenteDaReserva,
+} from "./cupom";
 
-// Cupom: mesmo desenho da credencial (credencial.ts) — o QR carrega o grupo_id CRU (uuid, sem
-// URL: papel fotografado não abre nada fora do app), e o código curto é o plano B digitável.
-export function conteudoDoQrDoCupom(grupoId: string): string {
-  return grupoId;
-}
-
-export function codigoDoCupom(grupoId: string): string {
-  return `RSV-${grupoId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
-}
-
-export function ehIdDeCupom(lido: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    String(lido ?? "").trim(),
-  );
-}
+import { normalizarCodigoDeUnidade, validarProponentes, type ProponenteDaReserva } from "./cupom";
 
 // Ordena quadras e lotes com números de verdade ("2" antes de "10"), sem quebrar quadra-letra
 // ("C01") — o formato varia por empreendimento (RVP usa letra na quadra).
@@ -139,36 +132,6 @@ export async function quadrasDoEvento(
     .sort((a, b) => comparaNatural(a.quadra, b.quadra));
 
   return { quadras };
-}
-
-// Até 5 proponentes por reserva (limite do C2X — Lucas, 24/08); com mais de um, a % de
-// participação é obrigatória e a soma fecha 100. O 1º é o titular (o credenciado da linha).
-export type ProponenteDaReserva = {
-  credenciadoId: string;
-  documento: null | string;
-  nome: string;
-  percentual: number;
-};
-
-export const MAX_PROPONENTES = 5;
-
-export function validarProponentes(
-  proponentes: ProponenteDaReserva[],
-): null | string {
-  if (proponentes.length === 0) return "Informe ao menos um proponente.";
-  if (proponentes.length > MAX_PROPONENTES) {
-    return `No máximo ${MAX_PROPONENTES} proponentes (limite do C2X).`;
-  }
-  const ids = new Set(proponentes.map((p) => p.credenciadoId));
-  if (ids.size !== proponentes.length) return "Proponente repetido.";
-  const soma = proponentes.reduce((total, p) => total + p.percentual, 0);
-  if (Math.abs(soma - 100) > 0.05) {
-    return `A participação precisa somar 100% (está em ${soma.toFixed(1)}%).`;
-  }
-  if (proponentes.some((p) => p.percentual <= 0)) {
-    return "Todo proponente precisa de participação maior que zero.";
-  }
-  return null;
 }
 
 export type NovaReserva = {

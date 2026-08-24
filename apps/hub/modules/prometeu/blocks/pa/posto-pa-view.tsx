@@ -4,7 +4,7 @@ import { Camera, Check, Loader2, Printer, QrCode, X } from "lucide-react";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { codigoDoCupom, conteudoDoQrDoCupom, ehIdDeCupom } from "@/lib/prometeu/reservas-evento";
+import { codigoDoCupom, conteudoDoQrDoCupom, ehIdDeCupom } from "@/lib/prometeu/cupom";
 
 import {
   fetchCupom,

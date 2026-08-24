@@ -1,4 +1,4 @@
-import { codigoDoCupom } from "@/lib/prometeu/reservas-evento";
+import { codigoDoCupom } from "@/lib/prometeu/cupom";
 
 // O CUPOM DE RESERVA — térmica 80mm, estilo cupom fiscal (Lucas, 24/08).
 //

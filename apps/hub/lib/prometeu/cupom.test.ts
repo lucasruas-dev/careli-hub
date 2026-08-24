@@ -5,7 +5,7 @@ import {
   ehIdDeCupom,
   normalizarCodigoDeUnidade,
   validarProponentes,
-} from "./reservas-evento";
+} from "./cupom";
 
 // A RESERVA DO LANÇAMENTO (24/08): a trava única depende do código normalizado, o cupom segue
 // o desenho da credencial, e os proponentes têm as regras do C2X (máx. 5, soma 100%).

@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { eventoDoDia } from "@/lib/prometeu/evento-do-dia";
 import { rotuloDoLancamento } from "@/lib/prometeu/lancamento";
-import { conteudoDoQrDoCupom } from "@/lib/prometeu/reservas-evento";
+import { conteudoDoQrDoCupom } from "@/lib/prometeu/cupom";
 import type { PrometeuEvento } from "@/lib/prometeu/types";
 
 import {
