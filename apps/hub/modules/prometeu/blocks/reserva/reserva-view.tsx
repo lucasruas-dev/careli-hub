@@ -238,6 +238,13 @@ export function ReservaView() {
   );
 
   const alternarLote = (unidade: ReservaTouchUnidade) => {
+    // A tela é a VITRINE das quadras o tempo todo (Lucas, 24/08: "precisamos ver o cliente
+    // quando bipado"); navegar é livre, mas MARCAR lote exige um cliente bipado.
+    if (!cliente) {
+      setErro("Bipe a etiqueta do cliente para reservar.");
+      window.setTimeout(() => setErro(null), 3_000);
+      return;
+    }
     setMarcadas((atual) => {
       const novo = new Map(atual);
       if (novo.has(unidade.codigo)) novo.delete(unidade.codigo);
@@ -353,34 +360,6 @@ export function ReservaView() {
             <p className="mt-4 text-2xl font-bold text-ink">{sucesso.cliente}</p>
             <p className="mt-1 text-lg text-ink-soft">{sucesso.lotes.join(" · ")}</p>
             <p className="mt-3 text-sm text-ink-muted">Cupom impresso — leve à impressão da PA.</p>
-          </div>
-        </div>
-      ) : !cliente ? (
-        <div className="grid flex-1 place-items-center">
-          <div className="text-center">
-            {cameraAberta ? (
-              <div className="mx-auto w-full max-w-sm overflow-hidden rounded-xl border border-line">
-                <video ref={leitorCamera.videoRef} className="block w-full" muted playsInline />
-                <canvas ref={leitorCamera.canvasRef} className="hidden" />
-              </div>
-            ) : (
-              <span className="mx-auto grid h-24 w-24 place-items-center rounded-2xl border-2 border-dashed border-line text-ink-muted">
-                {bipando ? (
-                  <Loader2 aria-hidden="true" className="animate-spin" size={44} />
-                ) : (
-                  <QrCode aria-hidden="true" size={44} />
-                )}
-              </span>
-            )}
-            <p className="mt-4 text-xl font-semibold text-ink">Bipe a etiqueta do cliente</p>
-            <button
-              className="mx-auto mt-4 inline-flex items-center gap-2 rounded-lg border border-line px-4 py-2 text-sm font-semibold text-ink-soft transition hover:text-ink"
-              onClick={() => setCameraAberta((v) => !v)}
-              type="button"
-            >
-              {cameraAberta ? <X aria-hidden="true" size={16} /> : <Camera aria-hidden="true" size={16} />}
-              {cameraAberta ? "Fechar câmera" : "Usar a câmera"}
-            </button>
           </div>
         </div>
       ) : (
@@ -526,7 +505,34 @@ export function ReservaView() {
             </div>
           ) : null}
 
-          {/* Rodapé fixo: a conferência (cliente + lotes) e as duas ações. */}
+          {/* Rodapé fixo: sem cliente é o convite ao bip (leitor sempre ligado); com cliente,
+              a conferência (nome + lotes) e as ações. */}
+          {!cliente ? (
+            <footer className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 py-3">
+              {bipando ? (
+                <Loader2 aria-hidden="true" className="animate-spin text-ink-muted" size={20} />
+              ) : (
+                <QrCode aria-hidden="true" className="text-ink-muted" size={20} />
+              )}
+              <p className="text-sm font-semibold text-ink">
+                Bipe a etiqueta do cliente para começar a reserva
+              </p>
+              {cameraAberta ? (
+                <div className="w-44 overflow-hidden rounded-lg border border-line">
+                  <video ref={leitorCamera.videoRef} className="block w-full" muted playsInline />
+                  <canvas ref={leitorCamera.canvasRef} className="hidden" />
+                </div>
+              ) : null}
+              <button
+                className="ml-auto inline-flex items-center gap-2 rounded-lg border border-line px-4 py-2 text-sm font-semibold text-ink-soft transition hover:text-ink"
+                onClick={() => setCameraAberta((v) => !v)}
+                type="button"
+              >
+                {cameraAberta ? <X aria-hidden="true" size={16} /> : <Camera aria-hidden="true" size={16} />}
+                {cameraAberta ? "Fechar câmera" : "Usar a câmera"}
+              </button>
+            </footer>
+          ) : (
           <footer className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
             <User aria-hidden="true" className="text-ink-muted" size={18} />
             <div className="min-w-0">
@@ -575,6 +581,7 @@ export function ReservaView() {
               </button>
             </div>
           </footer>
+          )}
         </div>
       )}
     </div>

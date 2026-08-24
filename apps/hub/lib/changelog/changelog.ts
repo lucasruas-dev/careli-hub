@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-24-prometeu-selecao-e-vitrine",
+    deployedAt: "2026-08-24T13:10:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O Prometeu agora ABRE numa tela inicial de escolha do lancamento (vivos para operar, encerrados para consulta) — e o chip no topo do menu troca de lancamento a qualquer momento; e a fundacao para dois lancamentos simultaneos",
+              "A tela Reserva virou VITRINE: mostra as quadras e o painel o tempo todo, com o leitor sempre ligado — bipou a etiqueta, o cliente entra no rodape e a selecao habilita; sem tela de espera",
+              "Icone da Reserva trocado (lote demarcado no lugar da mao)",
+            ],
+            screen: "Reserva do lancamento",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.199.0 (2026-08-24-reserva-touch-email-glotes)",
+    technical: {
+      done:
+        "Feedback ao vivo do Lucas na v1.199.0. (1) SelecaoDeLancamento (blocks/selecao) como porta do modulo: cards por status (rascunho/preparacao/em andamento; encerrados como consulta), Novo lancamento entra no Setup sem selecao (setupLivre); escolha por aba em sessionStorage validada contra a lista (arquivado nao restaura); LancamentoProvider (lancamento-contexto.tsx) pronto para as views consumirem — o aperto multi-simultaneo das rotas (exigir eventoId em vez de eventoOperavelId) fica para a proxima fase, mapeado. (2) ReservaView sem branch de espera: quadras/dash sempre visiveis, marcar lote sem cliente avisa 'bipe a etiqueta', rodape alterna convite-ao-bip/conferencia. (3) HandMetal -> LandPlot. tsc limpo.",
+      motivation:
+        "Lucas, 24/08, validando em producao: *\"como eu seleciono os lancamentos?... acho que podemos ter uma tela inicial para selecionar... vamos imaginar se eu tiver dois lancamentos simultaneos... odiei esse icone de reserva... essa tela de bip tem que ser separada, precisamos ver o cliente quando bipado\"*.",
+    },
+    title: "Prometeu abre na escolha do lancamento e a Reserva vira vitrine",
+    type: "melhoria",
+    version: "1.200.0",
+  },
+  {
     buildTag: "2026-08-24-reserva-touch-email-glotes",
     deployedAt: "2026-08-24T13:30:00-03:00",
     modules: [

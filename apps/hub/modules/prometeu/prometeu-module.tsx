@@ -4,7 +4,7 @@ import {
   Activity,
   ChevronRight,
   Flame,
-  HandMetal,
+  LandPlot,
   ListOrdered,
   PanelLeftClose,
   PanelLeftOpen,
@@ -22,12 +22,14 @@ import type { PrometeuEvento } from "@/lib/prometeu/types";
 import { useHubTheme } from "@/providers/theme-provider";
 
 import { fetchEventos } from "./data/prometeu-operations";
+import { LancamentoProvider } from "./lancamento-contexto";
 import { CentralView } from "./blocks/central/central-view";
 import { AtendenteView } from "./blocks/atendente/atendente-view";
 import { EtiquetaView } from "./blocks/etiqueta/etiqueta-view";
 import { FilaView } from "./blocks/fila/fila-view";
 import { PostoPaView } from "./blocks/pa/posto-pa-view";
 import { ReservaView } from "./blocks/reserva/reserva-view";
+import { SelecaoDeLancamento } from "./blocks/selecao/selecao-lancamento";
 import { SetupView } from "./blocks/setup/setup-view";
 
 // Prometeu no hub: rail escuro de telas a esquerda + conteudo a direita, AGRUPADO POR
@@ -87,7 +89,7 @@ const GRUPOS: readonly PrometeuGrupo[] = [
         // A posição de reserva (monitor touch): bipa etiqueta → quadras → lotes → cupom.
         component: ReservaView,
         file: "cockpit.html",
-        icon: HandMetal,
+        icon: LandPlot,
         id: "reserva",
         label: "Reserva",
       },
@@ -125,27 +127,50 @@ const GRUPOS: readonly PrometeuGrupo[] = [
 
 const ALL_SCREENS: readonly PrometeuScreen[] = GRUPOS.flatMap((g) => g.telas);
 
+// A escolha sobrevive à navegação da aba (F5 volta aqui e reencontra o lançamento), mas cada
+// aba tem a sua — é o que permite dois lançamentos SIMULTÂNEOS, um por posto/aba.
+const CHAVE_SELECAO = "prometeu:lancamento";
+
 export function PrometeuModule() {
   const [activeId, setActiveId] = useState<string>("central");
   // Menu recolhido: encolhe a lateral para só os ícones, dando mais tela para o atendimento.
   const [menuRecolhido, setMenuRecolhido] = useState(false);
-  // O LANÇAMENTO em foco, no topo do rail: todas as telas abaixo obedecem a ele. Um lançamento
-  // operável por vez (regra do eventoDoDia); ativar/encerrar continua no Setup.
+  // O LANÇAMENTO SELECIONADO na tela inicial: todas as telas abaixo obedecem a ele.
   const [lancamento, setLancamento] = useState<null | PrometeuEvento>(null);
+  const [restaurando, setRestaurando] = useState(true);
   const { mode } = useHubTheme();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const active =
     ALL_SCREENS.find((screen) => screen.id === activeId) ?? ALL_SCREENS[0];
 
+  // Restaura a seleção da aba (sessionStorage) validando contra a lista atual — lançamento
+  // arquivado no meio do caminho não volta selecionado.
   useEffect(() => {
     let vivo = true;
+    const salvo = window.sessionStorage.getItem(CHAVE_SELECAO);
+    if (!salvo) {
+      setRestaurando(false);
+      return;
+    }
     void fetchEventos().then((r) => {
-      if (vivo) setLancamento(eventoDoDia(r.data ?? []) ?? null);
+      if (!vivo) return;
+      const achado = (r.data ?? []).find((e) => e.id === salvo && !e.arquivadoEm);
+      setLancamento(achado ?? null);
+      setRestaurando(false);
     });
     return () => {
       vivo = false;
     };
   }, []);
+
+  const escolherLancamento = useCallback((evento: null | PrometeuEvento) => {
+    setLancamento(evento);
+    if (evento) window.sessionStorage.setItem(CHAVE_SELECAO, evento.id);
+    else window.sessionStorage.removeItem(CHAVE_SELECAO);
+  }, []);
+
+  // Entrar no Setup SEM lançamento (o caminho "Novo lançamento" da seleção).
+  const [setupLivre, setSetupLivre] = useState(false);
 
   // O mock (iframe) e mesma-origem: sincronizamos o tema dele com o do hub. Usa o
   // setTheme() do proprio mock (atualiza tambem os botoes do toggle); se a tela nao
@@ -174,6 +199,24 @@ export function PrometeuModule() {
 
   if (!active) {
     return null;
+  }
+
+  if (restaurando) {
+    return <div className="h-full min-h-0 bg-canvas" />;
+  }
+
+  // A TELA INICIAL: sem lançamento escolhido, o módulo é a seleção — exceto no caminho
+  // "Novo lançamento", que entra direto no Setup para criar (setupLivre).
+  if (!lancamento && !setupLivre) {
+    return (
+      <SelecaoDeLancamento
+        aoEscolher={(evento) => escolherLancamento(evento)}
+        aoIrParaSetup={() => {
+          setSetupLivre(true);
+          setActiveId("setup");
+        }}
+      />
+    );
   }
 
   return (
@@ -211,14 +254,24 @@ export function PrometeuModule() {
           </button>
         </div>
 
-        {/* O lançamento em foco: o contexto de TODAS as telas abaixo. */}
+        {/* O lançamento em foco: o contexto de TODAS as telas abaixo. Clicar TROCA — volta à
+            tela inicial de seleção (dois lançamentos simultâneos = cada posto no seu). */}
         {menuRecolhido ? null : (
-          <div className="mb-1 flex items-center gap-2 rounded-[9px] border border-line/60 px-3 py-2">
+          <button
+            className="mb-1 flex w-full items-center gap-2 rounded-[9px] border border-line/60 px-3 py-2 text-left transition hover:border-[#A07C3B]/60"
+            onClick={() => {
+              escolherLancamento(null);
+              setSetupLivre(false);
+            }}
+            title="Trocar de lançamento"
+            type="button"
+          >
             <Flame aria-hidden="true" className="shrink-0 text-[#cba25a]" size={15} />
             <span className="min-w-0 flex-1 truncate text-xs font-semibold text-ink">
-              {lancamento ? rotuloDoLancamento(lancamento) : "Sem lançamento ativo"}
+              {lancamento ? rotuloDoLancamento(lancamento) : "Escolher lançamento"}
             </span>
-          </div>
+            <ChevronRight aria-hidden="true" className="shrink-0 text-ink-muted" size={13} />
+          </button>
         )}
 
         <nav className="mt-1 flex-1 space-y-0.5 overflow-y-auto">
