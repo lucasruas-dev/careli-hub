@@ -318,27 +318,30 @@ export async function dadosPerformance(
 
 // ── RENDER ──────────────────────────────────────────────────────────────────
 
+// O ESQUEMA DE CORES DO PANTEON (Lucas, 24/08: "muda as cores, segue o panteon"): grafite com
+// preto, dourado como acento — a mesma paleta do rail e do telão (#101820 / #cba25a / #A07C3B).
 const CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #f6f4ef; color: #262523; font-family: "Segoe UI", system-ui, sans-serif; padding: 28px 20px 48px; }
+  body { background: #0a0a0a; color: #e8e6e1; font-family: "Segoe UI", system-ui, sans-serif; padding: 28px 20px 48px; }
   .wrap { max-width: 880px; margin: 0 auto; }
-  .marca { font-size: 13px; letter-spacing: 0.32em; color: #A07C3B; font-weight: 700; }
-  h1 { font-size: 26px; margin-top: 6px; }
-  .sub { color: #6b675f; font-size: 13px; margin-top: 3px; }
+  .marca { font-size: 13px; letter-spacing: 0.32em; color: #cba25a; font-weight: 700; }
+  h1 { font-size: 26px; margin-top: 6px; color: #f4f2ec; }
+  .sub { color: #8b8678; font-size: 13px; margin-top: 3px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 22px; }
-  .card { background: #fff; border: 1px solid #e5e0d5; border-radius: 12px; padding: 16px; }
-  .card b { display: block; font-size: 30px; font-variant-numeric: tabular-nums; }
-  .card span { font-size: 12px; color: #6b675f; }
-  .card.destaque b { color: #B5451B; }
-  h2 { font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: #A07C3B; margin: 30px 0 10px; }
-  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e5e0d5; border-radius: 12px; overflow: hidden; font-size: 14px; }
-  th { text-align: left; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6b675f; padding: 10px 14px; border-bottom: 1px solid #e5e0d5; }
-  td { padding: 9px 14px; border-bottom: 1px solid #f0ece3; font-variant-numeric: tabular-nums; }
+  .card { background: #101820; border: 1px solid #232c36; border-radius: 12px; padding: 16px; }
+  .card b { display: block; font-size: 30px; font-variant-numeric: tabular-nums; color: #f4f2ec; }
+  .card span { font-size: 12px; color: #8b8678; }
+  .card.destaque { border-color: #A07C3B; }
+  .card.destaque b { color: #cba25a; }
+  h2 { font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: #cba25a; margin: 30px 0 10px; }
+  table { width: 100%; border-collapse: collapse; background: #101820; border: 1px solid #232c36; border-radius: 12px; overflow: hidden; font-size: 14px; }
+  th { text-align: left; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #8b8678; padding: 10px 14px; border-bottom: 1px solid #232c36; }
+  td { padding: 9px 14px; border-bottom: 1px solid #1a222b; font-variant-numeric: tabular-nums; }
   tr:last-child td { border-bottom: 0; }
   .num { text-align: right; }
-  .barra { height: 9px; border-radius: 6px; background: #eee7d9; overflow: hidden; }
+  .barra { height: 9px; border-radius: 6px; background: #1a222b; overflow: hidden; }
   .barra i { display: block; height: 100%; background: #A07C3B; }
-  .rodape { margin-top: 34px; font-size: 11px; color: #9a958a; text-align: center; }
+  .rodape { margin-top: 34px; font-size: 11px; color: #5f5a50; text-align: center; }
 `;
 
 function pagina(titulo: string, sub: string, corpo: string): string {
