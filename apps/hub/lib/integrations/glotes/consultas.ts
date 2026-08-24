@@ -17,6 +17,7 @@
 // onde pedir. É a diferença entre um filtro e uma trava.
 import type { RowDataPacket } from "mysql2";
 
+import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 /** As duas glebas do Lavra do Ouro no C2X. Trava de escopo, não filtro. */
@@ -176,9 +177,137 @@ export async function listarLoteamentos(): Promise<Pagina<unknown>> {
   };
 }
 
+// --- contatos ATUALIZADOS, do Panteon -----------------------------------------------------------
+//
+// "Esses dados agora têm que sair do Panteon — os atualizados" (Lucas, 24/08). O cadastro VIVO
+// de e-mail/telefone mora em `apolo_contacts` (é lá que a Iris, o CRM e o próprio cliente
+// corrigem); o C2X vira fallback de quem não tem entidade/contato no Apolo. O casamento é por
+// CPF/CNPJ via `document_hash` (a MESMA fórmula do dedup da CAD), nunca por nome.
+
+type ContatoDoPanteon = {
+  atualizadoEm: null | string;
+  email: null | string;
+  telefone: null | string;
+};
+
+// Instante do Supabase (UTC) no relógio de Brasília, `YYYY-MM-DD HH:MM:SS` — o MESMO formato
+// e fuso do lado C2X, para o `atualizado_em` e o `alterado_desde` compararem como texto.
+function relogioBrasilia(iso: null | string): null | string {
+  if (!iso) return null;
+  const instante = new Date(iso);
+  if (Number.isNaN(instante.getTime())) return null;
+  return new Intl.DateTimeFormat("sv-SE", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+  })
+    .format(instante)
+    .replace("T", " ");
+}
+
+async function contatosDoPanteonPorDocumento(
+  documentos: string[],
+): Promise<Map<string, ContatoDoPanteon>> {
+  const resultado = new Map<string, ContatoDoPanteon>();
+  const client = createApoloAdminClient();
+  if (!client) return resultado;
+
+  // hash → documento (o mapa final é por documento, que é o que a linha do C2X tem).
+  const hashPorDocumento = new Map<string, string>();
+  for (const doc of documentos) {
+    const limpo = (doc ?? "").replace(/\D/g, "");
+    if (limpo.length !== 11 && limpo.length !== 14) continue;
+    hashPorDocumento.set(hashIdentifier(limpo.length === 11 ? "cpf" : "cnpj", limpo), limpo);
+  }
+  if (hashPorDocumento.size === 0) return resultado;
+
+  // ⚠️ `.in()` estoura a URL do PostgREST com listas grandes — lotes de 100, sempre.
+  const hashes = [...hashPorDocumento.keys()];
+  const entidadePorHash = new Map<string, string>();
+  for (let inicio = 0; inicio < hashes.length; inicio += 100) {
+    const { data } = await client
+      .from("apolo_entities")
+      .select("id, document_hash")
+      .in("document_hash", hashes.slice(inicio, inicio + 100));
+    for (const linha of (data ?? []) as { document_hash: string; id: string }[]) {
+      entidadePorHash.set(linha.document_hash, linha.id);
+    }
+  }
+  if (entidadePorHash.size === 0) return resultado;
+
+  const entityIds = [...new Set(entidadePorHash.values())];
+  const contatosPorEntidade = new Map<
+    string,
+    { is_primary: boolean; tipo: string; updated_at: null | string; valor: string }[]
+  >();
+  for (let inicio = 0; inicio < entityIds.length; inicio += 100) {
+    const { data } = await client
+      .from("apolo_contacts")
+      .select("entity_id, contact_type, value, is_primary, updated_at")
+      .in("entity_id", entityIds.slice(inicio, inicio + 100))
+      .in("contact_type", ["email", "phone", "whatsapp"]);
+    for (const linha of (data ?? []) as Array<{
+      contact_type: string;
+      entity_id: string;
+      is_primary: boolean | null;
+      updated_at: null | string;
+      value: null | string;
+    }>) {
+      const valor = (linha.value ?? "").trim();
+      if (!valor) continue;
+      const lista = contatosPorEntidade.get(linha.entity_id) ?? [];
+      lista.push({
+        is_primary: Boolean(linha.is_primary),
+        tipo: linha.contact_type,
+        updated_at: linha.updated_at,
+        valor,
+      });
+      contatosPorEntidade.set(linha.entity_id, lista);
+    }
+  }
+
+  // Preferências (as MESMAS da ficha): principal primeiro; no telefone, whatsapp > phone;
+  // empate resolve pelo mais recente.
+  const peso = (c: { is_primary: boolean; tipo: string; updated_at: null | string }) =>
+    `${c.is_primary ? 1 : 0}|${c.tipo === "whatsapp" ? 1 : 0}|${c.updated_at ?? ""}`;
+
+  for (const [hash, documento] of hashPorDocumento) {
+    const entityId = entidadePorHash.get(hash);
+    if (!entityId) continue;
+    const contatos = contatosPorEntidade.get(entityId) ?? [];
+    if (contatos.length === 0) continue;
+
+    const emails = contatos
+      .filter((c) => c.tipo === "email")
+      .sort((a, b) => (peso(a) < peso(b) ? 1 : -1));
+    const fones = contatos
+      .filter((c) => c.tipo === "phone" || c.tipo === "whatsapp")
+      .sort((a, b) => (peso(a) < peso(b) ? 1 : -1));
+    const maisRecente = contatos
+      .map((c) => c.updated_at)
+      .filter((v): v is string => Boolean(v))
+      .sort()
+      .pop();
+
+    resultado.set(documento, {
+      atualizadoEm: relogioBrasilia(maisRecente ?? null),
+      email: emails[0]?.valor ?? null,
+      telefone: fones[0]?.valor ?? null,
+    });
+  }
+
+  return resultado;
+}
+
 // --- 2. clientes --------------------------------------------------------------------------------
 
 type ClienteRow = RowDataPacket & {
+  atualizado_em: null | string;
   bairro: null | string;
   cep: null | string;
   cidade: null | string;
@@ -188,6 +317,7 @@ type ClienteRow = RowDataPacket & {
   conjuge_cpf: null | string;
   conjuge_nome: null | string;
   cpf: null | string;
+  email: null | string;
   fantasy_name: null | string;
   id: number;
   logradouro: null | string;
@@ -195,6 +325,7 @@ type ClienteRow = RowDataPacket & {
   numero: null | string;
   person_type_id: null | number;
   social_name: null | string;
+  telefone: null | string;
   uf: null | string;
 };
 
@@ -219,9 +350,32 @@ export async function listarClientes(filtros: Filtros): Promise<Pagina<unknown>>
   const abertas = filtros.incluirCanceladas ? "" : "and ar.open = 1";
   const doRecorte = `${CLIENTES_DO_RECORTE} ${abertas})`;
 
+  // ⚠️ TELEFONE não mora em `users.phone/cellphone` (quase vazios na base): no C2X a fonte é a
+  // tabela polimórfica `phones`, preferindo o WhatsApp — a MESMA leitura do sync do Apolo. Mas
+  // o C2X aqui é só o FALLBACK: o dado ATUALIZADO sai do Panteon (Lucas, 24/08: "esses dados
+  // agora tem que sair do Panteon — os atualizados"), no merge feito após esta consulta.
+  const telefoneSql = `(
+       select nullif(trim(ph.phone), '')
+         from phones ph
+        where ph.ownertable_type = 'User'
+          and ph.ownertable_id = u.id
+          and trim(coalesce(ph.phone, '')) <> ''
+        order by ph.is_whatsapp desc, ph.updated_at desc, ph.id desc
+        limit 1
+     )`;
+  // Relógio do lado C2X (o do Panteon entra no merge): o maior entre o usuário e os telefones
+  // dele — trocar telefone não toca `users.updated_at`.
+  const atualizadoSql = `greatest(
+       coalesce(u.updated_at, u.created_at, '1970-01-01'),
+       coalesce((select max(ph2.updated_at) from phones ph2
+                  where ph2.ownertable_type = 'User' and ph2.ownertable_id = u.id), '1970-01-01')
+     )`;
+
+  const paramsBase: unknown[] = [ENTERPRISES];
+
   const total = await contar(
     `select count(*) as total from users u where ${doRecorte}`,
-    [ENTERPRISES],
+    paramsBase,
   );
 
   const linhas = await consultar<ClienteRow>(
@@ -234,6 +388,9 @@ export async function listarClientes(filtros: Filtros): Promise<Pagina<unknown>>
        u.cpf,
        u.cnpj,
        u.person_type_id,
+       nullif(trim(u.email), '') as email,
+       ${telefoneSql} as telefone,
+       date_format(${atualizadoSql}, '%Y-%m-%d %H:%i:%s') as atualizado_em,
        en.address as logradouro,
        en.number as numero,
        en.complement as complemento,
@@ -252,7 +409,18 @@ export async function listarClientes(filtros: Filtros): Promise<Pagina<unknown>>
        and u.id > ?
      order by u.id
      limit ?`,
-    [ENTERPRISES, desde, limite],
+    [...paramsBase, desde, limite],
+  );
+
+  // O DADO ATUALIZADO VEM DO PANTEON: o cadastro vivo (e-mail/telefone corrigidos pela Iris,
+  // pelo CRM, pelo cliente) mora em apolo_contacts — o C2X fica como fallback de quem não tem
+  // entidade/contato no Apolo. O casamento é por CPF/CNPJ via document_hash (mesma fórmula do
+  // dedup da CAD, hashIdentifier).
+  const doPanteon = await contatosDoPanteonPorDocumento(
+    linhas.map((linha) => {
+      const pj = Number(linha.person_type_id) === 2;
+      return digitos(pj ? linha.cnpj : linha.cpf) ?? "";
+    }),
   );
 
   const dados = linhas.map((linha) => {
@@ -260,30 +428,58 @@ export async function listarClientes(filtros: Filtros): Promise<Pagina<unknown>>
     const endereco = [texto(linha.logradouro), texto(linha.numero), texto(linha.complemento)]
       .filter(Boolean)
       .join(", ");
+    const documento = (pj ? digitos(linha.cnpj) : digitos(linha.cpf)) ?? "";
+    const panteon = doPanteon.get(documento);
+
+    // O maior relógio entre as duas fontes (mesmo formato/fuso — compara como texto).
+    const atualizadoC2x = texto(linha.atualizado_em);
+    const atualizadoEm =
+      panteon?.atualizadoEm && (!atualizadoC2x || panteon.atualizadoEm > atualizadoC2x)
+        ? panteon.atualizadoEm
+        : atualizadoC2x;
 
     return {
+      // Relógio da atualização do cadastro (Panteon OU C2X, o mais novo) — mesmo relógio do
+      // filtro `alterado_desde`, para o GLOTES sincronizar incrementalmente.
+      atualizado_em: atualizadoEm,
       bairro: texto(linha.bairro),
       cep: digitos(linha.cep),
       cidade: texto(linha.cidade),
       codigo_cliente: texto(linha.codigo_cliente),
       conjuge_cpf: digitos(linha.conjuge_cpf),
       conjuge_nome: texto(linha.conjuge_nome),
-      cpf_cnpj: pj ? digitos(linha.cnpj) : digitos(linha.cpf),
+      cpf_cnpj: documento || null,
+      // O ATUALIZADO ganha: Panteon primeiro (é onde o cadastro vive), C2X de fallback.
+      email: panteon?.email ?? texto(linha.email),
       endereco: endereco || null,
       // Em PJ o `name` traz a pessoa física representante; a razão social vive em `social_name`.
       nome: texto(linha.name),
       nome_fantasia: pj ? texto(linha.fantasy_name) : null,
       razao_social: pj ? texto(linha.social_name) : null,
+      telefone: panteon?.telefone ? digitos(panteon.telefone) : digitos(linha.telefone),
       tipo_pessoa: pj ? "J" : "F",
       uf: texto(linha.uf),
     };
   });
 
+  // `alterado_desde` compara o relógio COMBINADO (Panteon + C2X), então o corte é aqui, depois
+  // do merge — no SQL só o lado C2X existe e uma atualização feita no Apolo ficaria invisível.
+  // A base tem ~375 clientes: uma página cobre tudo, o pós-filtro não custa nada.
+  // ⚠️ FUSO: a porta normaliza a marca para UTC (lerAlteradoDesde), e o `atualizado_em` daqui
+  // está no relógio de Brasília — converter antes de comparar, senão o corte come 3 horas.
+  const marcaBrasilia = filtros.alteradoDesde
+    ? relogioBrasilia(`${filtros.alteradoDesde.replace(" ", "T")}Z`)
+    : null;
+  const filtrados = marcaBrasilia
+    ? dados.filter((d) => d.atualizado_em && d.atualizado_em >= marcaBrasilia)
+    : dados;
+
   const ultimo = linhas[linhas.length - 1];
   return {
-    dados,
+    dados: filtrados,
     proxima_pagina: linhas.length === limite && ultimo ? escreverCursor(Number(ultimo.id)) : null,
-    total,
+    // Com `alterado_desde`, o total reflete o que passou no corte (a carteira cabe numa página).
+    total: filtros.alteradoDesde ? filtrados.length : total,
   };
 }
 

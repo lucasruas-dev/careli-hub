@@ -135,6 +135,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Limite"
         - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/AlteradoDesde"
       responses:
         "200":
           description: Página de clientes.
@@ -516,6 +517,21 @@ components:
           type: [string, "null"]
           description: Nulo para quem não tem cônjuge cadastrado (192 dos 375).
         conjuge_cpf: { type: [string, "null"], pattern: '^\d{11}$' }
+        email:
+          type: [string, "null"]
+          description: E-mail atual do cadastro. Nulo quando a Careli não tem o dado.
+        telefone:
+          type: [string, "null"]
+          description: |
+            Telefone atual do cadastro, só dígitos (DDD incluído; pode vir com o 55 do país).
+            Quando o cliente tem mais de um, sai o preferido — WhatsApp primeiro, depois o mais
+            recente. Nulo quando a Careli não tem o dado.
+        atualizado_em:
+          type: [string, "null"]
+          description: |
+            Última alteração do cadastro (dados do cliente OU telefone), `YYYY-MM-DD HH:MM:SS`,
+            no mesmo relógio aceito pelo filtro `alterado_desde` — use-o para sincronização
+            incremental: guarde o maior `atualizado_em` recebido e repasse-o na próxima chamada.
 
     Lote:
       type: object
