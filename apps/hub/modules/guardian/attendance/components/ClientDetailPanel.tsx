@@ -630,6 +630,9 @@ function OverviewStrategicHeader({
         stacked
         autoStage={motorWorkflow?.stage}
         autoNextAction={motorWorkflow?.nextAction}
+        onChangeStage={async ({ reason, to }) => {
+          await salvarEtapaDoWorkflow({ clienteId: client.id, etapa: to, motivo: reason });
+        }}
       />
       <OverviewEventsCard events={timelineEvents} />
     </div>
@@ -1670,7 +1673,12 @@ function RiskTab({
           </p>
         </div>
       </DetailSection>
-      <OperationalWorkflowCard client={client} />
+      <OperationalWorkflowCard
+        client={client}
+        onChangeStage={async ({ reason, to }) => {
+          await salvarEtapaDoWorkflow({ clienteId: client.id, etapa: to, motivo: reason });
+        }}
+      />
     </>
   );
 }
@@ -1829,6 +1837,37 @@ function DocumentsTab({
       </div>
     </DetailSection>
   );
+}
+
+/**
+ * Grava a etapa do workflow escolhida à mão.
+ *
+ * ⚠️ ISTO FALTAVA. O card tinha o botão "Salvar alteração" e a promessa de que "fica registrado no
+ * histórico", mas chamava uma prop opcional que NENHUM dos dois pontos de render passava — o clique
+ * caía no vazio e 435 dos 437 clientes ficaram presos em "A acionar".
+ *
+ * A etapa vai para tabela própria (0106) porque `c2x_guardian_attendance_queue` é reescrita pelo
+ * sync a cada 15 minutos: gravar lá seria perder a decisão na rodada seguinte.
+ */
+async function salvarEtapaDoWorkflow(entrada: {
+  clienteId: number | string;
+  etapa: string;
+  motivo: string;
+}) {
+  const accessToken = await getHadesDocumentAccessToken();
+  const resposta = await fetch("/api/guardian/etapa", {
+    body: JSON.stringify(entrada),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!resposta.ok) {
+    const corpo = (await resposta.json().catch(() => null)) as null | { error?: string };
+    throw new Error(corpo?.error ?? "Nao foi possivel salvar a etapa.");
+  }
 }
 
 async function getHadesDocumentAccessToken() {

@@ -66,3 +66,17 @@ describe("unidadeParaExibir", () => {
     expect(unidadeParaExibir({ lote: null, observacoes: "AJUSTE DE SALDO", quadra: null })).toBeNull();
   });
 });
+
+// Formatos que vieram da planilha da Amanda (aba MUTUARIOS), medidos em 25/08/2026:
+// "N BL N" em 72 dos 81 contratos, "TÉRREO N BL N" em 6, "N BLN" em 2, "APTO N BL N" em 1.
+describe("formatos da planilha da Caixa", () => {
+  it("le o terreo", () => {
+    expect(unidadeDaObservacao("TÉRREO 04 BL 01")).toBe("TÉRREO 4 · BL 01");
+    expect(unidadeDaObservacao("TERREO 02 BL 03")).toBe("TÉRREO 2 · BL 03");
+  });
+
+  it("le numero solto seguido de bloco (o formato da planilha)", () => {
+    expect(unidadeDaObservacao("05 BL 01")).toBe("APTO 5 · BL 01");
+    expect(unidadeDaObservacao("207 BL04")).toBe("APTO 207 · BL 04");
+  });
+});

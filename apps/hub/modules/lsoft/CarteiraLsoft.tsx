@@ -16,6 +16,8 @@ import type {
 } from "@/lib/lsoft/carteira";
 import { unidadeParaExibir } from "@/lib/lsoft/unidade";
 
+import { SubsidioDaCaixa } from "./SubsidioDaCaixa";
+
 // LSOFT INTEGRAÇÃO — a carteira do Garden e do Vale do Sol, a caminho do C2X e do Apolo.
 //
 // Pedido do Lucas (19/08/2026): ver cadastro e parcelas, com um dash "igual temos na carteira" e os
@@ -81,6 +83,9 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
   const [somentePendentes, setSomentePendentes] = useState(false);
 
   const [aberto, setAberto] = useState<null | string>(null);
+  // A VISAO: carteira (o que o cliente deve) x subsidio (o que a Caixa tem para pagar).
+  // Pedido do Lucas (25/08): "eu queria uma tela diferente para os subsidio... parcela por parcela".
+  const [visao, setVisao] = useState<"carteira" | "subsidio">("carteira");
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -133,9 +138,37 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
           </p>
         </div>
 
+        {/* O seletor de VISÃO só aparece onde existe dinheiro da Caixa (Vale do Sol / MCMV). No
+            Garden a tela segue sendo o que sempre foi. */}
+        {temCarteiraCaixa ? (
+          <div className="ml-auto inline-flex rounded-lg border border-black/10 p-0.5 dark:border-white/10">
+            {(
+              [
+                ["carteira", "Carteira"],
+                ["subsidio", "Subsídio Caixa"],
+              ] as const
+            ).map(([chave, rotulo]) => (
+              <button
+                className={`rounded-md px-3 py-1.5 text-sm font-semibold transition ${
+                  visao === chave ? "bg-ink text-canvas" : "text-ink-soft hover:text-ink"
+                }`}
+                key={chave}
+                onClick={() => setVisao(chave)}
+                type="button"
+              >
+                {rotulo}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         <select
-          className="ml-auto h-9 rounded-lg border border-black/10 bg-canvas px-3 text-sm text-ink dark:border-white/10"
-          onChange={(evento) => setEmpreendimento(evento.target.value)}
+          className={`${temCarteiraCaixa ? "" : "ml-auto "}h-9 rounded-lg border border-black/10 bg-canvas px-3 text-sm text-ink dark:border-white/10`}
+          onChange={(evento) => {
+            setEmpreendimento(evento.target.value);
+            // Trocar de empreendimento volta para a carteira: o subsídio só existe no Vale do Sol.
+            setVisao("carteira");
+          }}
           value={empreendimento}
         >
           <option value="">Todos os empreendimentos</option>
@@ -210,6 +243,8 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
               Nada encontrado. Rode a carga do LSoft ou limpe a busca.
             </p>
           )
+        ) : visao === "subsidio" ? (
+          <SubsidioDaCaixa api={api} empreendimento={empreendimento} />
         ) : (
           <>
             {/* ⚠️ DUAS CARTEIRAS, NÃO UMA (Lucas, 25/08: "faz uma separação de carteira Cecilio

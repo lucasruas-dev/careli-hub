@@ -36,6 +36,50 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-25-tela-do-subsidio-e-regua",
+    deployedAt: "2026-08-25T15:15:00-03:00",
+    modules: [
+      {
+        module: "LSoft Integracao",
+        screens: [
+          {
+            items: [
+              "TELA NOVA: SUBSIDIO CAIXA. No Vale do Sol aparece um seletor no topo — Carteira (o que o cliente deve) x Subsidio Caixa (o que a Caixa tem para pagar), parcela por parcela",
+              "O JA LIBERADO agora vem dos EXTRATOS da Caixa, nao da baixa no LSoft: R$ 7,74 mi de verdade contra os R$ 598 mil que o LSoft registrava",
+              "Cada parcela do subsidio mostra cliente, unidade, natureza (financiamento, subsidio, FGTS), vencimento, valor e COMO foi identificada",
+              "A unidade agora sai limpa tambem para os apartamentos de TERREO e no formato que a planilha da Caixa usa",
+            ],
+            screen: "LSoft Integracao · Subsidio Caixa",
+          },
+        ],
+      },
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "O botao SALVAR ALTERACAO da etapa do workflow finalmente salva. Antes o clique nao gravava nada e 435 dos 437 clientes ficavam presos em A acionar",
+              "A regua de lembretes volta a funcionar: o telefone agora e buscado na fila de cobranca (nunca estava onde o robo procurava, e por isso 7 de 7 lembretes falharam)",
+              "TRAVA NOVA: lembrete so dispara com a proposta APROVADA. Sem ela, consertar o telefone ligaria WhatsApp de proposta que ninguem aprovou",
+              "A baixa de pagamento parou de depender da regua: parcela paga no C2X e conciliada mesmo sem lembrete (2 parcelas estavam pendentes ha 48 dias)",
+            ],
+            screen: "Cobranca · Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.203.0 (2026-08-25-vale-do-sol-carteira-caixa-e-hades)",
+    technical: {
+      done:
+        "SUBSIDIO: 0105 lsoft_credito_da_caixa + importador dos 17 extratos CIWEB (771 creditos, R$ 8.437.617,09, idempotente). Vinculo contrato->cliente reconstruido por CPF via aba MUTUARIOS da planilha da Amanda: 71 dos 77 contratos do extrato (os 6 restantes ficam SEM cliente de proposito — melhor faltar do que abater no errado). 0107 recria a view lendo caixa_ja_liberado do EXTRATO e nao de lsoft_parcelas.valor_recebido (R$ 7.745.484,15 x R$ 598.029,21), com principal/secundario separados, caixa_a_liberar e caixa_liquidada. Tela SubsidioDaCaixa.tsx + rota /api/lsoft/subsidio (interna) e ?subsidio=1 na rota do portal (leitura; classificar segue so na Careli). unidade.ts ganhou TERREO e o formato da planilha ('05 BL 01'), 14 testes — um deles pegou um bug real: o escape \b virou caractere de controle dentro do regex. HADES: 0106 guardian_etapa_manual (fora do read-model, que o sync reescreve a cada 15min) + POST /api/guardian/etapa com authorizeHadesWrite, e onChangeStage ligado nos 2 pontos de render do OperationalWorkflowCard. regua-cron: trava approval_status ANTES do telefone (pendente pula e espera, reprovado cancela), resolvePhone com fallback em c2x_guardian_attendance_queue.phone (medido: 3 de 3 compromissos sem telefone no metadata e COM telefone na fila) e conciliarPagamentos() fora do laco de lembretes. 1455 testes verdes, tsc limpo.",
+      motivation:
+        "Lucas, 25/08: *\"eu queria uma tela diferente para os subsidio, eu precisava enxergar esses valores separados... parcela por parcela\"*, *\"a baixa da caixa vem dos extratos e nao do lsoft\"* e *\"pode corrigir o telefone, pode corrigir o botao. Enfim, pode fazer tudo\"*.",
+    },
+    title: "Tela do Subsidio Caixa · Hades: regua e botao de etapa funcionando",
+    type: "novidade",
+    version: "1.204.0",
+  },
+  {
     buildTag: "2026-08-25-vale-do-sol-carteira-caixa-e-hades",
     deployedAt: "2026-08-25T14:45:00-03:00",
     modules: [

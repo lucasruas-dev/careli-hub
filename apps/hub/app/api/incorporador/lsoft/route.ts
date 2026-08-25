@@ -12,6 +12,7 @@ import {
   salvarValidacaoDoLsoft,
   type StatusDaValidacao,
 } from "@/lib/lsoft/carteira";
+import { lerParcelasDeSubsidio } from "@/lib/lsoft/classificacao";
 import {
   abrirDocumentoDoLsoft,
   listarDocumentosDoLsoft,
@@ -50,6 +51,22 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const codigo = url.searchParams.get("cliente");
+
+  // A VISÃO DO SUBSÍDIO DA CAIXA, parcela a parcela. É informação que o incorporador precisa: o
+  // dinheiro que a Caixa libera por medição é dele. Leitura pura — quem CLASSIFICA continua sendo
+  // só a Careli, por /api/lsoft/classificacao.
+  if (url.searchParams.get("subsidio")) {
+    const subsidio = await lerParcelasDeSubsidio({
+      busca: url.searchParams.get("busca"),
+      empreendimento: url.searchParams.get("empreendimento") ?? "Vale do Sol",
+      situacao: url.searchParams.get("situacao"),
+    });
+    if (!subsidio.ok) return NextResponse.json({ error: subsidio.erro }, { status: 400 });
+    return NextResponse.json(
+      { data: { linhas: subsidio.linhas, resumo: subsidio.resumo } },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
   if (codigo) {
     // A ABA DE DOCUMENTOS. Mesmo caminho da ficha, porque a permissão é a mesma: quem pode ver o

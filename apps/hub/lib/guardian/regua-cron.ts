@@ -42,6 +42,8 @@ type LembreteRowFull = {
 };
 
 type CompromissoLite = {
+  /** pendente | aprovado | reprovado. É a trava: proposta não aprovada NÃO manda mensagem. */
+  approval_status: null | string;
   client_c2x_id: number | string;
   id: string;
   kind: GuardianCompromissoKind;
@@ -115,6 +117,16 @@ export async function runGuardianReguaCron(
     return { ...result, error: "Falha ao carregar a fila de lembretes.", ok: false };
   }
 
+  // ⚠️ A CONCILIACAO SAI DE DENTRO DO LACO DE LEMBRETES. Ela vivia la dentro, entao quando os 7
+  // lembretes morreram em "falhou" (por causa do telefone) o cron passou a retornar aqui e a baixa
+  // de pagamento parou junto — sem ninguem perceber. Medido em 25/08/2026: 2 parcelas ja
+  // LIQUIDADAS no C2X seguiam "pendente" ha 48 dias, as promessas ficavam "ativo" para sempre e o
+  // indicador de recuperacao era zero por construcao.
+  //
+  // Dar baixa em parcela paga nao depende de lembrete nenhum: e leitura do C2X contra o que esta
+  // aberto. Roda antes, sempre.
+  result.paid += await conciliarPagamentos(client, options);
+
   if (!lembretes?.length) {
     return result;
   }
@@ -124,6 +136,11 @@ export async function runGuardianReguaCron(
     loadCompromissos(client, compromissoIds),
     loadParcelas(client, compromissoIds),
   ]);
+
+  const telefonePorCliente = await loadTelefonesDaFila(
+    client,
+    unique([...compromissos.values()].map((c) => String(c.client_c2x_id))),
+  );
 
   const parcelasByCompromisso = groupBy(parcelas, (row) => row.compromisso_id);
   const parcelaById = new Map(parcelas.map((row) => [row.id, row]));
@@ -151,6 +168,25 @@ export async function runGuardianReguaCron(
       continue;
     }
 
+    // ⚠️ TRAVA DE APROVACAO — E ELA QUE PRECISA VIR ANTES DO CONSERTO DO TELEFONE.
+    // Ate 25/08/2026 a regua nunca entregou uma mensagem (7 de 7 lembretes morreram em "cliente
+    // sem telefone"), e essa falha vinha mascarando outra coisa: o laco NAO conferia se a proposta
+    // foi aprovada. Consertar so o telefone ligaria disparo de WhatsApp de proposta que ninguem
+    // aprovou — o que e pior do que nao disparar nada.
+    //
+    // Aqui a decisao pendente PULA o lembrete (nao cancela): quando alguem aprovar, ele dispara na
+    // proxima rodada. Reprovada, ai sim cancela: nao ha o que esperar.
+    const aprovacao = String(compromisso.approval_status ?? "").trim().toLowerCase();
+    if (aprovacao === "reprovado") {
+      await cancelLembrete(client, lembrete.id, "proposta reprovada");
+      result.cancelled += 1;
+      continue;
+    }
+    if (aprovacao && aprovacao !== "aprovado") {
+      result.skipped += 1;
+      continue;
+    }
+
     // Promessa: parcela unica do compromisso. Acordo: a parcela do lembrete.
     const parcela =
       compromisso.kind === "promessa"
@@ -171,7 +207,7 @@ export async function runGuardianReguaCron(
       continue;
     }
 
-    const phone = resolvePhone(compromisso);
+    const phone = resolvePhone(compromisso, telefonePorCliente);
 
     if (!phone) {
       if (!options.dryRun) {
@@ -377,6 +413,56 @@ async function failLembrete(
 
 // --- Loaders ---
 
+/**
+ * Baixa as parcelas de compromisso que o C2X ja registra como pagas.
+ *
+ * Independe da regua: percorre o que esta EM ABERTO nos compromissos ativos, pergunta ao C2X quais
+ * foram liquidadas e fecha o ciclo (parcela paga -> lembretes cancelados -> compromisso cumprido
+ * quando todas fecham). Devolve quantas baixou.
+ */
+async function conciliarPagamentos(
+  client: GuardianMotorClient,
+  options: { dryRun?: boolean },
+): Promise<number> {
+  const { data: emAberto } = await client
+    .from("guardian_compromisso_parcelas")
+    .select("id,compromisso_id,amount,due_date,payment_c2x_id,sequence,status")
+    .in("status", ["pendente", "emitida", "enviada"])
+    .not("payment_c2x_id", "is", null)
+    .limit(500)
+    .returns<ParcelaLite[]>();
+
+  if (!emAberto?.length) return 0;
+
+  const compromissos = await loadCompromissos(
+    client,
+    unique(emAberto.map((linha) => linha.compromisso_id)),
+  );
+
+  const pagas = await loadC2xPaidStatuses(
+    emAberto
+      .map((linha) => toNullableNumber(linha.payment_c2x_id))
+      .filter((valor): valor is number => valor !== null),
+  );
+
+  let baixadas = 0;
+  for (const parcela of emAberto) {
+    const compromisso = compromissos.get(parcela.compromisso_id);
+    // Compromisso morto nao precisa de baixa: quem encerrou ja resolveu o ciclo.
+    if (!compromisso || compromisso.status !== "ativo") continue;
+    if (!isParcelaPaid(parcela, pagas)) continue;
+
+    if (!options.dryRun) {
+      await markParcelaPaid(client, parcela);
+      await cancelParcelaLembretes(client, compromisso, parcela);
+      await maybeFulfillCompromisso(client, compromisso.id);
+    }
+    baixadas += 1;
+  }
+
+  return baixadas;
+}
+
 async function loadCompromissos(
   client: GuardianMotorClient,
   ids: string[],
@@ -389,7 +475,7 @@ async function loadCompromissos(
 
   const { data } = await client
     .from("guardian_compromissos")
-    .select("id,client_c2x_id,kind,status,protocol,promised_date,metadata")
+    .select("id,client_c2x_id,kind,status,protocol,promised_date,metadata,approval_status")
     .in("id", ids)
     .returns<CompromissoLite[]>();
 
@@ -420,14 +506,64 @@ async function loadParcelas(
 
 // --- Template / telefone ---
 
-function resolvePhone(compromisso: CompromissoLite): string | null {
+// ⚠️ O TELEFONE QUASE NUNCA ESTA NO METADATA — e por isso a regua nunca entregou nada: 7 de 7
+// lembretes morreram em "cliente sem telefone", falha TERMINAL (o cron so rele status 'pendente'),
+// invisivel na tela do Hades, que seguia dizendo ao operador "aguardar a data prometida".
+//
+// A tela que cria o compromisso nao grava telefone nenhum no metadata; o numero vive no read-model
+// da fila (`c2x_guardian_attendance_queue.phone`), que o sync alimenta a cada 15 min. Medido em
+// 25/08/2026 nos 3 compromissos existentes: metadata sem telefone em 3 de 3, fila COM telefone em
+// 3 de 3.
+//
+// A ordem de busca respeita quem sabe mais: o que foi digitado no compromisso ganha do que veio do
+// cadastro, porque pode ser um numero que o cliente deu na conversa.
+function resolvePhone(
+  compromisso: CompromissoLite,
+  telefonePorCliente?: Map<string, string>,
+): string | null {
   const metadata = compromisso.metadata ?? {};
   const candidate =
     stringFromRecord(metadata, "phone") ??
     stringFromRecord(metadata, "client_phone") ??
     stringFromRecord(metadata, "telefone");
 
-  return normalizePhone(candidate);
+  const doMetadata = normalizePhone(candidate);
+  if (doMetadata) return doMetadata;
+
+  const daFila = telefonePorCliente?.get(String(compromisso.client_c2x_id));
+  return normalizePhone(daFila ?? null);
+}
+
+/** Telefone da fila de cobranca, por cliente do C2X. Uma consulta por rodada, nao por lembrete. */
+async function loadTelefonesDaFila(
+  client: GuardianMotorClient,
+  clientesC2x: string[],
+): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>();
+  if (clientesC2x.length === 0) return mapa;
+
+  // Lotes de 100: `.in()` grande estoura a URL do PostgREST.
+  for (let i = 0; i < clientesC2x.length; i += 100) {
+    const { data } = await client
+      .from("c2x_guardian_attendance_queue")
+      .select("client_c2x_id,phone")
+      .eq("is_current", true)
+      .in("client_c2x_id", clientesC2x.slice(i, i + 100));
+
+    // ⚠️ `as unknown as` de propósito: a coluna `phone` EXISTE em
+    // c2x_guardian_attendance_queue (text, conferido no banco em 25/08/2026 e escrita por
+    // read-model-sync.ts:321), mas os tipos gerados do Supabase estão defasados e não a conhecem.
+    // O cast direto é recusado pelo TS por isso, não por o dado não existir.
+    for (const linha of (data ?? []) as unknown as {
+      client_c2x_id: number | string;
+      phone: null | string;
+    }[]) {
+      const telefone = String(linha.phone ?? "").trim();
+      if (telefone) mapa.set(String(linha.client_c2x_id), telefone);
+    }
+  }
+
+  return mapa;
 }
 
 function buildTemplateParams(

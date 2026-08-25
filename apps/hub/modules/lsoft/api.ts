@@ -8,6 +8,7 @@
 // duas cópias garantiria que uma delas ficaria para trás — e a que fica para trás é justamente a
 // que o cliente usa.
 import type { CadastroDoCliente, ClienteDaCarteira, EdicaoDoLsoft, ParcelaDaCarteira, ResumoDaCarteira, StatusDaValidacao } from "@/lib/lsoft/carteira";
+import type { ParcelaDeSubsidio, ResumoDoSubsidio } from "@/lib/lsoft/classificacao";
 import type { DocumentoDoLsoft } from "@/lib/lsoft/documentos-tipos";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
@@ -55,6 +56,23 @@ export type ApiDoLsoft = {
   validarClassificacao:
     | null
     | ((parcelaId: string, decisao: "a_validar" | "confirmada" | "rejeitada") => Promise<Gravacao>);
+  /**
+   * A TELA DO SUBSIDIO: as parcelas da Caixa daquele empreendimento, uma a uma.
+   *
+   * A carteira responde "quanto o cliente deve"; esta responde "o que a Caixa tem para pagar" —
+   * pedido do Lucas (25/08): *"eu queria uma tela diferente para os subsidio, eu precisava
+   * enxergar esses valores separados... parcela por parcela"*.
+   */
+  lerSubsidio: (filtro: {
+    busca: string;
+    empreendimento: string;
+    situacao?: string;
+  }) => Promise<null | SubsidioCarregado>;
+};
+
+export type SubsidioCarregado = {
+  linhas: ParcelaDeSubsidio[];
+  resumo: ResumoDoSubsidio;
 };
 
 const json = async (resposta: Response) =>
@@ -255,6 +273,21 @@ export const apiInterna: ApiDoLsoft = {
     const corpo = await json(r);
     return { erro: corpo?.error, ok: r.ok };
   },
+  async lerSubsidio(filtro) {
+    const token = await getApoloAccessToken();
+    const parametros = new URLSearchParams({
+      empreendimento: filtro.empreendimento,
+      ...(filtro.busca ? { busca: filtro.busca } : {}),
+      ...(filtro.situacao ? { situacao: filtro.situacao } : {}),
+    });
+    const r = await fetch(`/api/lsoft/subsidio?${parametros}`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const corpo = await json(r);
+    return r.ok ? ((corpo?.data as SubsidioCarregado) ?? null) : null;
+  },
+
   async validarClassificacao(parcelaId, decisao) {
     const token = await getApoloAccessToken();
     const r = await fetch("/api/lsoft/classificacao", {
@@ -377,4 +410,19 @@ export const apiDoPortal: ApiDoLsoft = {
   },
   // Decisao pendente do Lucas: se a equipe do Cecilio pode classificar. Ate la, so a Careli.
   validarClassificacao: null,
+
+  // ⚠️ O PORTAL LE, MAS NAO DECIDE. A visao do subsidio e informacao que o incorporador precisa
+  // (e o dinheiro DELE que a Caixa esta liberando), entao a leitura vai pela rota do portal. Quem
+  // classifica continua sendo so a Careli, acima.
+  async lerSubsidio(filtro) {
+    const parametros = new URLSearchParams({
+      empreendimento: filtro.empreendimento,
+      subsidio: "1",
+      ...(filtro.busca ? { busca: filtro.busca } : {}),
+      ...(filtro.situacao ? { situacao: filtro.situacao } : {}),
+    });
+    const r = await fetch(`/api/incorporador/lsoft?${parametros}`, { cache: "no-store" });
+    const corpo = await json(r);
+    return r.ok ? ((corpo?.data as SubsidioCarregado) ?? null) : null;
+  },
 };

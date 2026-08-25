@@ -35,6 +35,21 @@ export function unidadeDaObservacao(observacoes: null | string): null | string {
     return `APTO ${apto} · BL ${bloco}`;
   }
 
+  // Térreo: a planilha da Amanda usa "TÉRREO 04 BL 01" em 6 dos 81 contratos, e o LSoft repete a
+  // forma. Sem tratar, essas unidades ficavam sem identificação nenhuma.
+  const terreo = texto.match(
+    /\bT[EÉ]RREO[\s:.-]*(\d{1,4})\b[\s.,|-]*\bBL(?:C|OCO)?[\s:.-]*(\d{1,3})\b/,
+  );
+  if (terreo) {
+    return `TÉRREO ${semZeroAEsquerda(terreo[1])} · BL ${semZeroAEsquerda(terreo[2]).padStart(2, "0")}`;
+  }
+
+  // A planilha escreve sem a palavra APTO ("05 BL 01"): número solto seguido de bloco.
+  const soNumeroEBloco = texto.match(/^\s*(\d{1,4})\s*BL(?:C|OCO)?[\s:.-]*(\d{1,3})\b/);
+  if (soNumeroEBloco) {
+    return `APTO ${semZeroAEsquerda(soNumeroEBloco[1])} · BL ${semZeroAEsquerda(soNumeroEBloco[2]).padStart(2, "0")}`;
+  }
+
   // Só o apartamento, sem bloco declarado.
   const soApto = texto.match(/\bAP(?:TO?)?[\s:.-]*(\d{1,4})\b/);
   if (soApto) return `APTO ${semZeroAEsquerda(soApto[1])}`;
