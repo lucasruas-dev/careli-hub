@@ -126,6 +126,8 @@ export type ResumoDaCarteira = {
   parcelasAbertas: number;
   /** Quantas parcelas a regra propos como Caixa e ainda esperam decisao humana. */
   parcelasAValidar: number;
+  /** Parcelas ja confirmadas como Caixa (saem da carteira do cliente). */
+  parcelasCaixa: number;
   parcelasVencidas: number;
   saldoAberto: number;
   saldoVencido: number;
@@ -345,6 +347,7 @@ export async function lerCarteiraDoLsoft(filtro: FiltroDaCarteira = {}): Promise
     clientes: clientes.length,
     parcelasAbertas: somar((c) => c.parcelasAbertas),
     parcelasAValidar: somar((c) => c.parcelasAValidar),
+    parcelasCaixa: somar((c) => c.parcelasCaixa),
     parcelasVencidas: somar((c) => c.parcelasVencidas),
     saldoAberto: somar((c) => c.saldoAberto),
     saldoVencido: somar((c) => c.saldoVencido),

@@ -361,7 +361,7 @@ export function AiCopilotDrawer({
     try {
       const result = await requestBoletoResend(action.candidate.id);
       const boletoUrl = result.action?.boletoUrl ?? action.candidate.boletoUrl;
-      const deliveryMessage = buildBoletoDeliveryMessage(client);
+      const deliveryMessage = buildBoletoDeliveryMessage(client, result.action?.message);
 
       setPendingBoletoAction(null);
       setMessages((current) =>
@@ -1315,19 +1315,29 @@ function buildBoletoBubbleMessage(candidate: BoletoCandidate) {
   ].join("\n");
 }
 
-function buildBoletoDeliveryMessage(client: QueueClient) {
+// ⚠️ ESTA MENSAGEM MENTIA. Ela dizia "Boleto enviado para o e-mail X e para o telefone Y" — mas
+// NENHUM disparo acontece nesta cadeia: o backend (prepareBoletoResendAction) só lê o link do
+// Asaas que já existe na parcela e devolve `providerAction: "link-ready"`. O envio de verdade é
+// feito à mão, pelo Iris. Quem lia a confirmação parava de cobrar achando que o cliente tinha
+// recebido o boleto.
+//
+// Regra: a mensagem descreve o que o servidor REALMENTE fez, e a falta de contato é aviso, não
+// promessa cumprida.
+function buildBoletoDeliveryMessage(client: QueueClient, mensagemDoServidor?: null | string) {
   const email = cleanContactValue(client.dados360.email);
   const phone = cleanContactValue(client.dados360.telefone);
-  const missing = [
-    email ? null : "e-mail",
-    phone ? null : "telefone",
-  ].filter(Boolean);
+  const faltando = [email ? null : "e-mail", phone ? null : "telefone"].filter(Boolean);
 
-  if (email && phone) {
-    return `Boleto enviado para o e-mail ${email} e para o telefone ${phone}.`;
+  const base = mensagemDoServidor?.trim() || "Link do boleto pronto para reenvio pelo Iris.";
+  const destino = [email ? `e-mail ${email}` : null, phone ? `telefone ${phone}` : null]
+    .filter(Boolean)
+    .join(" · ");
+
+  if (faltando.length) {
+    return `${base} Atenção: falta ${faltando.join(" e ")} no cadastro do cliente.`;
   }
 
-  return `Boleto separado para reenvio pelo Iris, mas falta ${missing.join(" e ")} no cadastro do cliente para confirmar o envio.`;
+  return `${base} Contato do cliente: ${destino}.`;
 }
 
 function cleanContactValue(value?: string) {

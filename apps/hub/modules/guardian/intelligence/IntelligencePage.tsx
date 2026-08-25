@@ -1105,6 +1105,14 @@ function HadesIntelligenceAssistant() {
   );
 }
 
+// ⚠️ AQUI IAM NUMEROS INVENTADOS PARA DENTRO DA IA. A TELA já foi saneada (mostra "-" onde não há
+// dado apurado), mas este contexto usava os objetos CRUS de exemplo: `perfis` e `tendenciaAtual`
+// carregavam inadimplência de 18,1%, R$ 392 mil e 131 clientes escritos à mão no código. O gestor
+// perguntava ao copiloto e recebia esses números como se fossem apuração do C2X, junto com o
+// conselho de priorizar um empreendimento escolhido pelo literal.
+//
+// O que sai daqui agora é só o que a tela realmente exibe. Os números de verdade entram por
+// `buildHadesIntelligenceRuntimeAiContext`, que lê o snapshot financeiro e a fila real.
 function buildHadesIntelligenceAiContext() {
   return {
     indicadores: kpis.map((kpi) => ({
@@ -1117,16 +1125,9 @@ function buildHadesIntelligenceAiContext() {
       indicador: insight.label,
       valor: insight.value,
     })),
-    perfis: profileGroups.map((group) => ({
-      grupo: group.title,
-      linhas: group.data,
-    })),
-    tendenciaAtual: {
-      indicadores: trendViews.behavior.indicators,
-      insights: trendViews.behavior.insights,
-      pontos: trendViews.behavior.data,
-      titulo: trendViews.behavior.title,
-    },
+    // `perfis` e `tendenciaAtual` NÃO entram: eram dados de exemplo apresentados como apurados.
+    avisoDeFonte:
+      "Perfis de comportamento e serie historica ainda NAO sao apurados: nao invente numero para eles. Use apenas o snapshot financeiro e a fila operacional que vem no restante deste contexto.",
   };
 }
 

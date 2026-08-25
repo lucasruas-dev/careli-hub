@@ -36,6 +36,51 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-25-vale-do-sol-carteira-caixa-e-hades",
+    deployedAt: "2026-08-25T14:45:00-03:00",
+    modules: [
+      {
+        module: "LSoft Integracao",
+        screens: [
+          {
+            items: [
+              "O resumo agora tem DUAS carteiras separadas: CARTEIRA CECILIO (o que o cliente deve) e CARTEIRA CAIXA (o financiamento MCMV, que a Caixa paga por medicao de obra)",
+              "Na Carteira Caixa: total contratado, ja liberado e saldo a liberar. So aparece no Vale do Sol — o Garden nao tem esse tipo de parcela",
+              "A coluna UNIDADE parou de despejar a observacao inteira: agora mostra APTO 205 · BL 04, e o texto original fica no passar do mouse",
+              "Os extratos da CAIXA entraram no sistema: 771 liberacoes, R$ 8.437.617,09 de marco/2025 a julho/2026, com o valor menor de cada medicao separado do principal",
+            ],
+            screen: "LSoft Integracao · Carteira",
+          },
+        ],
+      },
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "CONTRATO CANCELADO SAI DA FILA DE COBRANCA. Havia contrato cancelado sendo cobrado sem nenhum aviso na tela, incluindo um cujo lote ja tinha sido revendido para outro comprador",
+              "Empreendimento de TESTE sai da fila e do painel (SERVIDOR DE TREINAMENTO e TESTE SPLIT apareciam como cliente real)",
+              "O painel financeiro e a fila passam a olhar o MESMO universo: antes o card somava R$ 89,58 mi e a tabela R$ 61,86 mi, e Vale do Ouro nem aparecia no painel apesar de 47 inadimplentes",
+              "O copiloto parou de dizer BOLETO ENVIADO quando nada foi enviado: ele so separa o link, o envio e feito pelo Iris",
+              "A IA de inteligencia parou de citar numeros de exemplo (18,1% de inadimplencia) como se fossem apurados do C2X",
+            ],
+            screen: "Cobranca · Fila e Painel",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.202.0 (2026-08-25-vale-do-sol-subsidio-caixa)",
+    technical: {
+      done:
+        "VALE DO SOL: migration 0105 lsoft_credito_da_caixa (RLS ligado; trava unica por conta+contrato+data+valor+posicao — reimportar e idempotente, provado rodando 2x: 771 e 771) + scripts/lsoft/importar-extratos-caixa.mjs (le \SERVIDOR CIWEB, so historico CR DESBLOQ, marca eh_principal pelo maior do dia: R$ 7.299.825,70 principal / R$ 1.137.791,39 secundario). lib/lsoft/unidade.ts extrai APTO/BL do texto livre com 12 testes e 100% de cobertura na amostra real (quadra/lote so existem no Garden; no Vale do Sol vem preenchidos em 1 e 9 de 6.776). Cartoes reorganizados em 3 secoes (Carteira Cecilio / Carteira Caixa / Cadastro). 180 parcelas confirmadas como Caixa por decisao do Lucas (texto + valor alto): inadimplencia do Vale do Sol 50% -> 2,5%, vencido R$ 8,89 mi -> R$ 99.698,88. HADES (auditoria de 25 agentes com verificacao adversarial, 17 defeitos confirmados): (1) attendance.ts ganhou contratoVivoWhere excluindo stage 7/8/10/11 nas 2 consultas da fila — saem 2 clientes e R$ 10.534,65 de cobranca indevida, um deles com lote ja revendido (unidade 2740 -> pedido 4110/cliente 3966); (2) overview.ts trocou allowlist de 17 codigos pela denylist EXCLUDED_ENTERPRISE_CODES que o projeto ja mantem, e attendance.ts passou a aplica-la — dash e fila no mesmo universo, teste fora dos dois; (3) lib/guardian/auth.ts FAIL-OPEN fechado nas 3 portas (env vazia devolvia ok:true com papel admin; agora 503, atalho so fora de producao); (4) boleto-resend trocou guarda local por authorizeHadesWrite (era a unica das 14 rotas que nao lia hub_users: conta desativada com 192 sessoes vivas entrava); (5) AiCopilotDrawer nao afirma mais entrega inexistente; (6) IntelligencePage parou de mandar perfis/tendencia hardcoded para a IA. 1453 testes verdes, tsc limpo.",
+      motivation:
+        "Reuniao com a Cecilio Rocha (25/08) sobre o Vale do Sol ser Minha Casa Minha Vida, mais o pedido do Lucas no mesmo dia: *\"faz uma grande analise do hades, ache bug, corrige ele pois tem tempo que nao trabalhamos nele\"* e *\"Contratos cancelados, sai da fila. O dash tem que sair os empreendimentos testes\"*.",
+    },
+    title: "Vale do Sol: Carteira Cecilio x Carteira Caixa · Hades: fila sem contrato cancelado",
+    type: "melhoria",
+    version: "1.203.0",
+  },
+  {
     buildTag: "2026-08-25-vale-do-sol-subsidio-caixa",
     deployedAt: "2026-08-25T13:30:00-03:00",
     modules: [

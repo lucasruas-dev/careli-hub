@@ -1,5 +1,6 @@
 import type { RowDataPacket } from "mysql2/promise";
 
+import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 export type HadesOverviewSummary = {
@@ -317,12 +318,21 @@ const enterpriseDisplayExpression = `
     else trim(coalesce(nullif(e.name, ''), nullif(e.divulgation_name, ''), concat('Empreendimento ', e.id)))
   end
 `;
+// ⚠️ ERA UMA ALLOWLIST DE 17 CÓDIGOS, E ELA NÃO EXISTIA NA FILA — a mesma tela lia dois universos.
+// Efeito medido em 25/08/2026: o card "Carteira total" somava R$ 89,58 mi e a tabela "Performance
+// por empreendimento" R$ 61,86 mi, sem nenhuma legenda de recorte; 50 clientes em atraso ficavam
+// sem empreendimento; e VALE DO OURO (VOC+VOL, 158 clientes e R$ 120 mil vencidos), VIVA BOULEVARD
+// e RESIDENCIAL VILLA PARIS não tinham linha na tabela — como o seletor de empreendimento É o
+// clique na linha, eles eram inselecionáveis no painel inteiro.
+//
+// Decisão do Lucas (25/08): *"O dash tem que sair os empreendimentos testes, é para seguir o que
+// está hoje habilitado no Hades"*. Ou seja: mesmo universo da fila, menos o que é teste. Trocamos
+// a allowlist (que envelhece a cada empreendimento novo) pela DENYLIST que o projeto já mantém —
+// `EXCLUDED_ENTERPRISE_CODES` (TSC, SDT, LAB, LAG), usada em ~15 leituras do sistema.
+const codigosExcluidos = EXCLUDED_ENTERPRISE_CODES.map((code) => `'${code}'`).join(", ");
 const validEnterpriseWhere = `
   e.id is not null
-  and upper(trim(coalesce(e.code, ''))) in (
-    'REP', 'EDL', 'LOU', 'LOS', 'PDV', 'PVS', 'RDP', 'RPS', 'RPC',
-    'LBR', 'LBP', 'LBF', 'MDS', 'MLN', 'VDO', 'VAL', 'VDP'
-  )
+  and upper(trim(coalesce(e.code, ''))) not in (${codigosExcluidos})
 `;
 
 const overdueAgingLabels = [

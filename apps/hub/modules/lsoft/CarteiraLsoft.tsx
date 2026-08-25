@@ -14,6 +14,7 @@ import type {
   ResumoDaCarteira,
   StatusDaValidacao,
 } from "@/lib/lsoft/carteira";
+import { unidadeParaExibir } from "@/lib/lsoft/unidade";
 
 // LSOFT INTEGRAÇÃO — a carteira do Garden e do Vale do Sol, a caminho do C2X e do Apolo.
 //
@@ -114,6 +115,10 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
   );
 
   const carteiraTotal = (carteira?.resumo.saldoAberto ?? 0) + (carteira?.resumo.totalRecebido ?? 0);
+  // Onde existe dinheiro da Caixa (Vale do Sol / MCMV) a tela mostra DUAS carteiras separadas.
+  // No Garden isto é falso e a tela fica igual ao que sempre foi.
+  const temCarteiraCaixa =
+    (carteira?.resumo.totalCaixa ?? 0) > 0 || (carteira?.resumo.parcelasAValidar ?? 0) > 0;
   const inadimplentes = (carteira?.clientes ?? []).filter((c) => c.saldoVencido > 0).length;
   const validados = (carteira?.clientes ?? []).filter((c) => c.statusValidacao === "validado").length;
 
@@ -207,86 +212,120 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
           )
         ) : (
           <>
-            {/* O dash no formato da Carteira: os mesmos oito cartões, a mesma leitura. */}
-            <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(190px,1fr))]">
-              <Cartao
-                dica={`${inteiro(carteira.resumo.clientes)} cliente(s)`}
-                rotulo="Carteira total"
-                valor={brl(carteiraTotal)}
-              />
-              <Cartao
-                dica={
-                  carteiraTotal > 0
-                    ? `${pct((carteira.resumo.totalRecebido / carteiraTotal) * 100)} da carteira`
-                    : "—"
-                }
-                rotulo="Recebido"
-                valor={brl(carteira.resumo.totalRecebido)}
-              />
-              <Cartao
-                dica={`${inteiro(carteira.resumo.parcelasAbertas)} parcela(s)`}
-                rotulo="A receber"
-                valor={brl(carteira.resumo.saldoAberto)}
-              />
-              <Cartao
-                dica={`${inteiro(carteira.resumo.parcelasVencidas)} parcela(s)`}
-                rotulo="Vencido"
-                tom={carteira.resumo.saldoVencido > 0 ? "alerta" : undefined}
-                valor={brl(carteira.resumo.saldoVencido)}
-              />
-              <Cartao
-                dica="do saldo em aberto"
-                rotulo="Inadimplência"
-                tom={carteira.resumo.saldoVencido > 0 ? "alerta" : undefined}
-                valor={
-                  carteira.resumo.saldoAberto > 0
-                    ? pct((carteira.resumo.saldoVencido / carteira.resumo.saldoAberto) * 100)
-                    : "0%"
-                }
-              />
-              <Cartao
-                dica="com parcela vencida"
-                rotulo="Inadimplentes"
-                tom={inadimplentes > 0 ? "alerta" : undefined}
-                valor={inteiro(inadimplentes)}
-              />
-              {/* ⚠️ SUBSÍDIO DA CAIXA (Vale do Sol / MCMV). Só aparece onde existe: o Garden não
-                  tem uma única parcela desse tipo, então lá estes cartões nem entram na grade.
-                  "A validar" é a fila de curadoria — enquanto ela não zera, os valores acima ainda
-                  carregam dinheiro da Caixa contado como dívida de cliente. */}
-              {carteira.resumo.totalCaixa > 0 || carteira.resumo.parcelasAValidar > 0 ? (
-                <>
+            {/* ⚠️ DUAS CARTEIRAS, NÃO UMA (Lucas, 25/08: "faz uma separação de carteira Cecilio
+                - Carteira Caixa"). No Vale do Sol (Minha Casa Minha Vida) metade do dinheiro na
+                tela não é dívida de cliente: é financiamento que a CAIXA paga por medição de obra.
+                Somar os dois num cartão só foi o que fez o portal mostrar ~50% de inadimplência
+                onde a real é 2,5%. O bloco da Caixa só aparece onde existe — o Garden não tem uma
+                única parcela desse tipo. */}
+            <section className="grid gap-2">
+              <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+                {temCarteiraCaixa ? "Carteira Cecílio" : "Carteira"}
+                <span className="ml-2 font-normal normal-case tracking-normal text-ink-soft/70">
+                  {temCarteiraCaixa ? "o que o cliente deve" : null}
+                </span>
+              </h3>
+              <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(190px,1fr))]">
+                <Cartao
+                  dica={`${inteiro(carteira.resumo.clientes)} cliente(s)`}
+                  rotulo="Carteira total"
+                  valor={brl(carteiraTotal)}
+                />
+                <Cartao
+                  dica={
+                    carteiraTotal > 0
+                      ? `${pct((carteira.resumo.totalRecebido / carteiraTotal) * 100)} da carteira`
+                      : "—"
+                  }
+                  rotulo="Recebido"
+                  valor={brl(carteira.resumo.totalRecebido)}
+                />
+                <Cartao
+                  dica={`${inteiro(carteira.resumo.parcelasAbertas)} parcela(s)`}
+                  rotulo="A receber"
+                  valor={brl(carteira.resumo.saldoAberto)}
+                />
+                <Cartao
+                  dica={`${inteiro(carteira.resumo.parcelasVencidas)} parcela(s)`}
+                  rotulo="Vencido"
+                  tom={carteira.resumo.saldoVencido > 0 ? "alerta" : undefined}
+                  valor={brl(carteira.resumo.saldoVencido)}
+                />
+                <Cartao
+                  dica="do saldo em aberto"
+                  rotulo="Inadimplência"
+                  tom={carteira.resumo.saldoVencido > 0 ? "alerta" : undefined}
+                  valor={
+                    carteira.resumo.saldoAberto > 0
+                      ? pct((carteira.resumo.saldoVencido / carteira.resumo.saldoAberto) * 100)
+                      : "0%"
+                  }
+                />
+                <Cartao
+                  dica="com parcela vencida"
+                  rotulo="Inadimplentes"
+                  tom={inadimplentes > 0 ? "alerta" : undefined}
+                  valor={inteiro(inadimplentes)}
+                />
+              </div>
+            </section>
+
+            {temCarteiraCaixa ? (
+              <section className="grid gap-2">
+                <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+                  Carteira Caixa
+                  <span className="ml-2 font-normal normal-case tracking-normal text-ink-soft/70">
+                    financiamento MCMV, pago por medição de obra
+                  </span>
+                </h3>
+                <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(190px,1fr))]">
                   <Cartao
-                    dica={`${inteiro(carteira.resumo.parcelasAValidar)} parcela(s) esperando`}
-                    rotulo="Caixa a validar"
-                    tom={carteira.resumo.parcelasAValidar > 0 ? "alerta" : "ok"}
-                    valor={brl(carteira.resumo.valorAValidar)}
-                  />
-                  <Cartao
-                    dica="fora da carteira do cliente"
-                    rotulo="Subsídio Caixa"
+                    dica={`${inteiro(carteira.resumo.parcelasCaixa)} parcela(s)`}
+                    rotulo="Total contratado"
                     valor={brl(carteira.resumo.totalCaixa)}
                   />
                   <Cartao
+                    dica="baixado no LSoft"
+                    rotulo="Já liberado"
+                    tom="ok"
+                    valor={brl(carteira.resumo.caixaJaLiberado)}
+                  />
+                  <Cartao
                     dica="a Caixa libera por medição"
-                    rotulo="Caixa a liberar"
+                    rotulo="Saldo a liberar"
                     valor={brl(carteira.resumo.caixaALiberar)}
                   />
-                </>
-              ) : null}
-              <Cartao
-                dica={`de ${inteiro(carteira.resumo.clientes)} cliente(s)`}
-                rotulo="Validados"
-                tom={validados === carteira.resumo.clientes ? "ok" : undefined}
-                valor={inteiro(validados)}
-              />
-              <Cartao
-                dica="cadastro incompleto para o C2X"
-                rotulo="A validar"
-                tom={carteira.resumo.clientes - validados > 0 ? "alerta" : "ok"}
-                valor={inteiro(carteira.resumo.clientes - validados)}
-              />
-            </div>
+                  {carteira.resumo.parcelasAValidar > 0 ? (
+                    <Cartao
+                      dica={`${inteiro(carteira.resumo.parcelasAValidar)} parcela(s) esperando`}
+                      rotulo="A validar"
+                      tom="alerta"
+                      valor={brl(carteira.resumo.valorAValidar)}
+                    />
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
+
+            <section className="grid gap-2">
+              <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+                Cadastro para o C2X
+              </h3>
+              <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(190px,1fr))]">
+                <Cartao
+                  dica={`de ${inteiro(carteira.resumo.clientes)} cliente(s)`}
+                  rotulo="Validados"
+                  tom={validados === carteira.resumo.clientes ? "ok" : undefined}
+                  valor={inteiro(validados)}
+                />
+                <Cartao
+                  dica="cadastro incompleto para o C2X"
+                  rotulo="A validar"
+                  tom={carteira.resumo.clientes - validados > 0 ? "alerta" : "ok"}
+                  valor={inteiro(carteira.resumo.clientes - validados)}
+                />
+              </div>
+            </section>
 
             <div className="overflow-x-auto rounded-xl border border-black/[0.08] dark:border-white/[0.08]">
               <table className="w-full border-collapse text-sm">
@@ -1092,13 +1131,21 @@ function TabelaDeParcelas({
                     </span>
                   ) : null}
                 </td>
-                {/* Sem parse, mostra a observação crua: é ela que permite conferir à mão. */}
-                <td className="px-3 py-2 text-xs text-ink-soft">
-                  {parcela.quadra || parcela.lote
-                    ? [parcela.quadra ? `Q${parcela.quadra}` : null, parcela.lote ? `L${parcela.lote}` : null]
-                        .filter(Boolean)
-                        .join(" ")
-                    : (parcela.observacoes ?? "—")}
+                {/* ⚠️ ANTES ISTO DESPEJAVA A OBSERVAÇÃO INTEIRA na coluna Unidade — no Vale do Sol
+                    quadra/lote vêm vazios (preenchidos em 1 e 9 de 6.776 parcelas), então caía
+                    sempre no texto cru e a célula virava parágrafo: "PARCELA COM VALOR DE R$ 524,55
+                    AMORTIZADOS, DEVIDO A SALDO REMANESCENTE, CONFORME ADITIVO...". Agora extrai a
+                    unidade de verdade ("APTO 205 · BL 04"); o texto original continua visível no
+                    title, que é onde se confere à mão. */}
+                <td
+                  className="px-3 py-2 text-xs text-ink-soft"
+                  title={parcela.observacoes ?? undefined}
+                >
+                  {unidadeParaExibir({
+                    lote: parcela.lote,
+                    observacoes: parcela.observacoes,
+                    quadra: parcela.quadra,
+                  }) ?? "—"}
                 </td>
                 <td className="sticky right-0 bg-canvas px-3 py-2 text-right">
                   <div className="flex items-center justify-end gap-1">

@@ -8,6 +8,7 @@ import type {
   HadesAttendanceSourceUnit,
 } from "@/modules/guardian/attendance/data";
 import type { AttendancePriority, QueueClient } from "@/modules/guardian/attendance/types";
+import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 
 type AttendanceContractRow = RowDataPacket & {
   acquisition_request_code: string | null;
@@ -139,6 +140,21 @@ const EMPTY_FIELD = "-";
 const activePaymentWhere =
   "(p.payment_to_delete is null or p.payment_to_delete = 0)";
 
+// ⚠️ CONTRATO MORTO NAO ENTRA NA FILA DE COBRANCA. Ate 25/08/2026 nao havia filtro nenhum de
+// estagio aqui, e a fila trazia pedido CANCELADO (stage 7) sem nenhum sinal na tela — o card grava
+// `statusVenda` fixo como "-", entao o cobrador nao tinha como perceber. Medido no C2X: 2 contratos
+// / 4 parcelas / R$ 10.149,65 de "vencido" que nao existe, e num deles (unidade 2740) O LOTE JA FOI
+// REVENDIDO E FATURADO A OUTRO COMPRADOR (pedido 4110, cliente 3966) — cobrar ali e cobranca
+// indevida sobre imovel que hoje e de outra pessoa.
+//
+// E nao para de crescer: o C2X segue vencendo parcela de contrato cancelado (o pedido 271, morto em
+// 11/06/2024, tem mais 117 parcelas a vencer ate 2036, R$ 140.969,79).
+//
+// 7 Cancelado · 8 Reprovado · 10 Em distrato · 11 Distratado. Mesmo predicado ja usado no Apolo
+// (lib/apolo/incorporador/masterplan-estado.ts).
+const contratoVivoWhere =
+  "coalesce(ar.acquisition_request_stage_id, 0) not in (7, 8, 10, 11)";
+
 const outstandingAmountExpression = `
   coalesce(
     nullif(p.paid_value, 0),
@@ -178,17 +194,19 @@ const enterpriseDisplayExpression = `
 // TEMPORARIO (27/jun, pedido do Lucas para teste): allowlist de empreendimentos
 // LIBERADA — qualquer empreendimento valido entra na fila (ex.: SDT/CLI1347). O
 // Lucas vai pedir para RE-TRAVAR depois; basta restaurar o bloco comentado abaixo.
+// ⚠️ EMPREENDIMENTO DE TESTE NÃO ENTRA NA FILA DE COBRANÇA. Em 27/06 a allowlist foi comentada
+// "temporariamente, para teste" e nunca voltou — com ela fora, SERVIDOR DE TREINAMENTO (SDT) e
+// TESTE SPLIT CARELI (TSC) passaram a aparecer na fila de produção, indistinguíveis de cliente
+// real para quem atende (medido: 9 parcelas vencidas, R$ 385,00).
+//
+// Decisão do Lucas (25/08): o dashboard passa a seguir o universo da fila, e os dois excluem
+// teste. A lista é a que o projeto já mantém (`EXCLUDED_ENTERPRISE_CODES`): não se cria uma
+// segunda, foi exatamente a divergência entre duas listas que causou o problema.
+const codigosExcluidos = EXCLUDED_ENTERPRISE_CODES.map((code) => `'${code}'`).join(", ");
 const validEnterpriseWhere = `
   e.id is not null
+  and upper(trim(coalesce(e.code, ''))) not in (${codigosExcluidos})
 `;
-// Allowlist original (re-travar quando o Lucas pedir):
-// const validEnterpriseWhere = `
-//   e.id is not null
-//   and upper(trim(coalesce(e.code, ''))) in (
-//     'REP', 'EDL', 'LOU', 'LOS', 'PDV', 'PVS', 'RDP', 'RPS', 'RPC',
-//     'LBR', 'LBP', 'LBF', 'MDS', 'MLN', 'VDO', 'VAL', 'VDP'
-//   )
-// `;
 
 function guardianDbConfigError(missing: string[]) {
   return Object.assign(
@@ -388,6 +406,7 @@ export async function loadHadesAttendanceQueue(
     where p.payment_status_id in (5, 6, 7)
       and ${activePaymentWhere}
       and ${validEnterpriseWhere}
+      and ${contratoVivoWhere}
       and ar.id is not null
       ${clientFilter}
     group by
@@ -534,6 +553,7 @@ export async function loadHadesAttendanceQueueSummary(
         where p.payment_status_id in (5, 6, 7)
           and ${activePaymentWhere}
           and ${validEnterpriseWhere}
+          and ${contratoVivoWhere}
           and ar.id is not null
           and ar.client_id is not null
         group by ar.client_id

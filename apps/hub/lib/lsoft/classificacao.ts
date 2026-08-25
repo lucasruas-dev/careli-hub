@@ -141,3 +141,174 @@ export async function contarPendentesDeValidacao(empreendimento: string): Promis
 
   return count ?? 0;
 }
+
+/** Uma linha da TELA DE SUBSIDIO: a parcela com o cliente e a unidade junto. */
+export type ParcelaDeSubsidio = {
+  classificacaoId: string;
+  clienteCodigo: string;
+  clienteNome: string;
+  natureza: null | string;
+  observacoes: null | string;
+  /** regra_texto · regra_valor · manual — a tela conta POR QUE foi proposta. */
+  origemDaClasse: string;
+  paga: boolean;
+  parcelaId: string;
+  situacao: Decisao;
+  unidade: null | string;
+  validadoEm: null | string;
+  validadoPorNome: null | string;
+  valor: number;
+  valorRecebido: number;
+  vencimento: null | string;
+};
+
+export type ResumoDoSubsidio = {
+  /** Quantas ainda esperam decisao. */
+  aValidar: number;
+  clientes: number;
+  /** Ja confirmadas como Caixa. */
+  confirmadas: number;
+  parcelas: number;
+  rejeitadas: number;
+  /** Total ja liberado pela Caixa (valor_recebido das confirmadas). */
+  totalLiberado: number;
+  /** Total confirmado como Caixa. */
+  totalConfirmado: number;
+  /** Total esperando decisao. */
+  totalAValidar: number;
+};
+
+/**
+ * A TELA DO SUBSIDIO: todas as parcelas da Caixa daquele empreendimento, uma a uma.
+ *
+ * Pedido do Lucas (25/08/2026): *"eu queria uma tela diferente para os subsidio, eu precisava
+ * enxergar esses valores separados... parcela por parcela"*. A lista da carteira responde "quanto
+ * o cliente deve"; esta responde "o que a Caixa tem para pagar, item a item".
+ */
+export async function lerParcelasDeSubsidio(entrada: {
+  busca?: null | string;
+  empreendimento: string;
+  situacao?: null | string;
+}): Promise<
+  | { erro: string; ok: false }
+  | { linhas: ParcelaDeSubsidio[]; ok: true; resumo: ResumoDoSubsidio }
+> {
+  const admin = createApoloAdminClient();
+  if (!admin) return { erro: "Supabase indisponível.", ok: false };
+
+  let consulta = admin
+    .from("lsoft_classificacao_de_parcela")
+    .select("id, parcela_id, cliente_codigo, natureza, situacao, origem_da_classe, validado_em, validado_por_nome, valor_no_momento, observacao_no_momento")
+    .eq("empreendimento", entrada.empreendimento)
+    .eq("classe", "caixa");
+
+  const situacao = texto(entrada.situacao);
+  if (situacao && DECISOES.includes(situacao as Decisao)) {
+    consulta = consulta.eq("situacao", situacao);
+  }
+
+  const { data: marcas, error } = await consulta;
+  if (error) return { erro: error.message, ok: false };
+
+  const linhasMarcadas = (marcas ?? []) as Record<string, unknown>[];
+  if (linhasMarcadas.length === 0) {
+    return {
+      linhas: [],
+      ok: true,
+      resumo: {
+        aValidar: 0, clientes: 0, confirmadas: 0, parcelas: 0, rejeitadas: 0,
+        totalAValidar: 0, totalConfirmado: 0, totalLiberado: 0,
+      },
+    };
+  }
+
+  // ⚠️ LOTES DE 100 no `.in()`: lista grande estoura o tamanho da URL do PostgREST.
+  const idsDeParcela = linhasMarcadas.map((m) => String(m.parcela_id ?? "")).filter(Boolean);
+  const parcelaPorId = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < idsDeParcela.length; i += 100) {
+    const { data } = await admin
+      .from("lsoft_parcelas")
+      .select("id, vencimento, paga, valor, valor_recebido, quadra, lote, observacoes")
+      .in("id", idsDeParcela.slice(i, i + 100));
+    for (const p of (data ?? []) as Record<string, unknown>[]) {
+      parcelaPorId.set(String(p.id), p);
+    }
+  }
+
+  const codigos = [...new Set(linhasMarcadas.map((m) => String(m.cliente_codigo ?? "")))].filter(Boolean);
+  const nomePorCodigo = new Map<string, string>();
+  for (let i = 0; i < codigos.length; i += 100) {
+    const { data } = await admin
+      .from("lsoft_clientes")
+      .select("codigo, nome")
+      .in("codigo", codigos.slice(i, i + 100));
+    for (const c of (data ?? []) as { codigo: string; nome: string }[]) {
+      nomePorCodigo.set(c.codigo, c.nome);
+    }
+  }
+
+  const numero = (v: unknown) => {
+    const n = Number(v ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const linhas: ParcelaDeSubsidio[] = linhasMarcadas.map((m) => {
+    const parcelaId = String(m.parcela_id ?? "");
+    const p = parcelaPorId.get(parcelaId) ?? {};
+    const quadra = texto(p.quadra);
+    const lote = texto(p.lote);
+    return {
+      classificacaoId: String(m.id ?? ""),
+      clienteCodigo: String(m.cliente_codigo ?? ""),
+      clienteNome: nomePorCodigo.get(String(m.cliente_codigo ?? "")) ?? "",
+      natureza: texto(m.natureza),
+      // O texto original do LSoft: e nele que o operador confere se e subsidio mesmo.
+      observacoes: texto(p.observacoes) ?? texto(m.observacao_no_momento),
+      origemDaClasse: String(m.origem_da_classe ?? ""),
+      paga: Boolean(p.paga),
+      parcelaId,
+      situacao: (texto(m.situacao) ?? "a_validar") as Decisao,
+      unidade: quadra || lote ? [quadra ? `Q${quadra}` : "", lote ? `L${lote}` : ""].filter(Boolean).join(" ") : null,
+      validadoEm: texto(m.validado_em),
+      validadoPorNome: texto(m.validado_por_nome),
+      valor: numero(p.valor ?? m.valor_no_momento),
+      valorRecebido: numero(p.valor_recebido),
+      vencimento: texto(p.vencimento),
+    };
+  });
+
+  const busca = texto(entrada.busca)?.toLowerCase();
+  const filtradas = busca
+    ? linhas.filter(
+        (l) =>
+          l.clienteNome.toLowerCase().includes(busca) ||
+          (l.unidade ?? "").toLowerCase().includes(busca) ||
+          (l.observacoes ?? "").toLowerCase().includes(busca),
+      )
+    : linhas;
+
+  filtradas.sort(
+    (a, b) =>
+      a.clienteNome.localeCompare(b.clienteNome, "pt-BR") ||
+      (a.vencimento ?? "").localeCompare(b.vencimento ?? ""),
+  );
+
+  const soma = (quais: ParcelaDeSubsidio[]) => quais.reduce((t, l) => t + l.valor, 0);
+  const confirmadas = filtradas.filter((l) => l.situacao === "confirmada");
+  const aValidar = filtradas.filter((l) => l.situacao === "a_validar");
+
+  return {
+    linhas: filtradas,
+    ok: true,
+    resumo: {
+      aValidar: aValidar.length,
+      clientes: new Set(filtradas.map((l) => l.clienteCodigo)).size,
+      confirmadas: confirmadas.length,
+      parcelas: filtradas.length,
+      rejeitadas: filtradas.filter((l) => l.situacao === "rejeitada").length,
+      totalAValidar: soma(aValidar),
+      totalConfirmado: soma(confirmadas),
+      totalLiberado: confirmadas.reduce((t, l) => t + l.valorRecebido, 0),
+    },
+  };
+}

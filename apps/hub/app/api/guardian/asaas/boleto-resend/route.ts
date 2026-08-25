@@ -4,20 +4,20 @@ import {
   prepareBoletoResendAction,
   type BoletoResendMode,
 } from "@/lib/guardian/asaas";
-import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
-
-type SupabaseUserPayload = {
-  id?: unknown;
-};
+import { authorizeHadesWrite } from "@/lib/guardian/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const auth = await authorizeHadesAction(request);
+  // ⚠️ ESTA ERA A UNICA ROTA DO HADES QUE NAO CONSULTAVA `hub_users` (1 de 14): a guarda local so
+  // perguntava "existe um JWT valido do projeto?", entao conta DESATIVADA continuava puxando o link
+  // publico de fatura do Asaas de qualquer parcela. Agora entra pela mesma porta das outras, que
+  // confere status e papel do usuario.
+  const auth = await authorizeHadesWrite(request);
 
   if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
+    return auth.response;
   }
 
   const body = (await request.json().catch(() => null)) as
@@ -62,66 +62,3 @@ function parseDeliveryMode(_value: unknown): BoletoResendMode {
   return "link";
 }
 
-async function authorizeHadesAction(request: NextRequest) {
-  const { anonKey, url } = getServerSupabaseConfig();
-  const supabaseUrl = url?.replace(/\/+$/, "");
-
-  if (!supabaseUrl || !anonKey) {
-    return {
-      ok: true as const,
-      userId: "local-hub-user",
-    };
-  }
-
-  const accessToken = getBearerToken(request);
-
-  if (!accessToken) {
-    return {
-      error: "Sessao ausente para executar a acao do Hades.",
-      ok: false as const,
-      status: 401,
-    };
-  }
-
-  try {
-    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        apikey: anonKey,
-      },
-    });
-    const payload = (await response.json().catch(() => null)) as
-      | SupabaseUserPayload
-      | null;
-
-    if (!response.ok || typeof payload?.id !== "string") {
-      return {
-        error: "Sessao invalida para executar a acao do Hades.",
-        ok: false as const,
-        status: response.status === 400 ? 401 : response.status,
-      };
-    }
-
-    return {
-      ok: true as const,
-      userId: payload.id,
-    };
-  } catch {
-    return {
-      error: "Nao foi possivel validar a sessao do Hades.",
-      ok: false as const,
-      status: 503,
-    };
-  }
-}
-
-function getBearerToken(request: NextRequest) {
-  const authorization = request.headers.get("authorization");
-
-  if (!authorization?.startsWith("Bearer ")) {
-    return null;
-  }
-
-  return authorization.slice("Bearer ".length).trim() || null;
-}

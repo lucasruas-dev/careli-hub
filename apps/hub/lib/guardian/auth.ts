@@ -49,13 +49,49 @@ function getBearerToken(request: Request) {
 // da cobranca (PII do legado C2X). A pagina ja envia o Bearer da sessao Supabase;
 // aqui o servidor valida. Em dev/local sem Supabase configurado, libera (mesmo
 // padrao do boleto-resend), pois nao ha sessao real.
+// ⚠️ FAIL-CLOSED. Antes, se a SUPABASE_SERVICE_ROLE_KEY chegasse VAZIA no runtime, as três portas
+// do Hades devolviam ok:true com um usuário sintético — e a porta Admin devolvia papel "admin".
+// Como o gate do proxy só exige que o header exista, uma variável de ambiente em branco abriria a
+// fila de cobrança inteira (14 arquivos de rota) para qualquer JWT do projeto. Env vazia é falha de
+// configuração, e a resposta certa para isso é 503, não "entre à vontade".
+//
+// O atalho continua existindo SÓ fora de produção, onde não há Supabase configurado nem sessão real
+// para validar. Mesmo padrão que `kpi-drilldown` já usava sozinho.
+function semSupabaseConfigurado(): { ok: false; response: NextResponse } {
+  return {
+    ok: false,
+    response: NextResponse.json(
+      { error: "Servidor sem configuração do Supabase." },
+      { status: 503 },
+    ),
+  };
+}
+
+function atalhoDeLeitura(): HadesAuthResult {
+  if (process.env.NODE_ENV === "production") return semSupabaseConfigurado();
+  return { ok: true, userId: "local-hub-user" };
+}
+
+function atalhoDeEscrita(porta: "admin" | "write"): HadesWriteAuthResult {
+  if (process.env.NODE_ENV === "production") return semSupabaseConfigurado();
+  return {
+    ok: true,
+    user: {
+      displayName: porta === "admin" ? "Admin Hades" : "Operador Hades",
+      email: null,
+      id: "local-hub-user",
+      role: porta === "admin" ? "admin" : "operator",
+    },
+  };
+}
+
 export async function authorizeHadesRead(
   request: Request,
 ): Promise<HadesAuthResult> {
   const { serviceRoleKey, url } = getServerSupabaseConfig();
 
   if (!url || !serviceRoleKey) {
-    return { ok: true, userId: "local-hub-user" };
+    return atalhoDeLeitura();
   }
 
   const token = getBearerToken(request);
@@ -116,15 +152,7 @@ export async function authorizeHadesWrite(
   const { serviceRoleKey, url } = getServerSupabaseConfig();
 
   if (!url || !serviceRoleKey) {
-    return {
-      ok: true,
-      user: {
-        displayName: "Operador Hades",
-        email: null,
-        id: "local-hub-user",
-        role: "operator",
-      },
-    };
+    return atalhoDeEscrita("write");
   }
 
   const token = getBearerToken(request);
@@ -193,15 +221,7 @@ export async function authorizeHadesAdmin(
   const { serviceRoleKey, url } = getServerSupabaseConfig();
 
   if (!url || !serviceRoleKey) {
-    return {
-      ok: true,
-      user: {
-        displayName: "Admin Hades",
-        email: null,
-        id: "local-hub-user",
-        role: "admin",
-      },
-    };
+    return atalhoDeEscrita("admin");
   }
 
   const token = getBearerToken(request);
