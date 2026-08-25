@@ -56,6 +56,31 @@ function texto(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
+// Ficha ao vivo do C2X desta entidade (com spouse), best-effort. Usada na leitura (preencher o
+// form) e na escrita (fallback do nome do cônjuge quando o form não o mandou).
+async function fichaC2xDaEntidade(client: AdminClient, entityId: string) {
+  const { data: sourceLinks } = await client
+    .from("apolo_source_links")
+    .select("entity_id, source_system, source_table, source_id")
+    .eq("entity_id", entityId)
+    .eq("source_system", "c2x")
+    .eq("source_table", "users");
+  const links = (sourceLinks ?? []) as {
+    entity_id: string;
+    source_id: string | null;
+    source_system: string | null;
+    source_table: string | null;
+  }[];
+  if (links.length === 0) return null;
+  const { cadastro: c2xByEntity } = await fetchC2xCadastroByEntity(
+    client,
+    links,
+    new Set<number>(),
+    new Set<number>(),
+  );
+  return c2xByEntity.get(entityId) ?? null;
+}
+
 // ── LEITURA ───────────────────────────────────────────────────────────────
 
 export async function lerCadastroParaEdicao(
@@ -93,28 +118,28 @@ export async function lerCadastroParaEdicao(
   // Ficha AO VIVO do C2X, best-effort (mesmo padrão de montarCadDeEntidade): se o legado estiver
   // fora ou a entidade não tiver vínculo, a edição segue com as camadas locais.
   let c2xMapeado: Record<string, string> = {};
+  // ⚠️ O CÔNJUGE DO C2X entra à parte (caso Geraldo/Rosangela, 24/08): `mapearC2xParaFicha` não
+  // traz o spouse, então a aba de leitura MOSTRAVA a cônjuge (cad.spouse) e a edição abria os
+  // campos dela VAZIOS — o operador corrigia um campo, o nome não viajava e o salvar descartava
+  // tudo em silêncio.
+  let spouseC2x: {
+    cpf: null | string;
+    email: null | string;
+    name: null | string;
+    phone: null | string;
+  } | null = null;
   try {
-    const { data: sourceLinks } = await client
-      .from("apolo_source_links")
-      .select("entity_id, source_system, source_table, source_id")
-      .eq("entity_id", entityId)
-      .eq("source_system", "c2x")
-      .eq("source_table", "users");
-    const links = (sourceLinks ?? []) as {
-      entity_id: string;
-      source_id: string | null;
-      source_system: string | null;
-      source_table: string | null;
-    }[];
-    if (links.length > 0) {
-      const { cadastro: c2xByEntity } = await fetchC2xCadastroByEntity(
-        client,
-        links,
-        new Set<number>(),
-        new Set<number>(),
-      );
-      const c2x = c2xByEntity.get(entityId);
-      if (c2x) c2xMapeado = mapearC2xParaFicha(c2x);
+    const c2x = await fichaC2xDaEntidade(client, entityId);
+    if (c2x) {
+      c2xMapeado = mapearC2xParaFicha(c2x);
+      spouseC2x = c2x.spouse
+        ? {
+            cpf: c2x.spouse.cpf,
+            email: c2x.spouse.email,
+            name: c2x.spouse.name,
+            phone: c2x.spouse.phone,
+          }
+        : null;
     }
   } catch (erro) {
     console.error("[apolo] lerCadastroParaEdicao: c2xCadastro indisponivel", erro);
@@ -142,10 +167,12 @@ export async function lerCadastroParaEdicao(
       cidade: texto(m.cidade) || texto(end?.city),
       cidade_uf: texto(m.uf) || texto(end?.state),
       complemento: texto(m.complemento) || texto(end?.complement),
-      conjuge_cpf: texto(m.conjugeCpf) || texto(conj?.metadata?.cpf),
-      conjuge_email: texto(m.conjugeEmail) || texto(conj?.metadata?.email),
-      conjuge_nome: texto(m.conjugeNome) || texto(conj?.label),
-      conjuge_telefone: texto(m.conjugeTelefone) || texto(conj?.metadata?.phone),
+      conjuge_cpf: texto(m.conjugeCpf) || texto(conj?.metadata?.cpf) || texto(spouseC2x?.cpf),
+      conjuge_email:
+        texto(m.conjugeEmail) || texto(conj?.metadata?.email) || texto(spouseC2x?.email),
+      conjuge_nome: texto(m.conjugeNome) || texto(conj?.label) || texto(spouseC2x?.name),
+      conjuge_telefone:
+        texto(m.conjugeTelefone) || texto(conj?.metadata?.phone) || texto(spouseC2x?.phone),
       dataNascimento: texto(m.dataNascimento).slice(0, 10),
       email: texto(m.email) || (lista.find((c) => c.contact_type === "email")?.value ?? ""),
       escolaridadeId: texto(m.escolaridadeId),
@@ -221,6 +248,21 @@ export async function salvarEdicaoCadastro(
   for (const chave of CHAVES_DE_CADASTRO) {
     if (enviado(chave)) alteracoes[chave] = dados[chave];
   }
+  // O cônjuge editado TAMBÉM entra na camada de correção humana (24/08): é dela que a ficha do
+  // painel, a CAD e o envio ao C2X leem por último — só o relacionamento local não bastava (o
+  // sync do C2X não o alcança e a aba de leitura preferia o spouse do legado).
+  const MAPA_CONJUGE = {
+    conjuge_cpf: "conjugeCpf",
+    conjuge_email: "conjugeEmail",
+    conjuge_nome: "conjugeNome",
+    conjuge_telefone: "conjugeTelefone",
+  } as const;
+  for (const [campo, chave] of Object.entries(MAPA_CONJUGE) as [
+    keyof typeof MAPA_CONJUGE,
+    string,
+  ][]) {
+    if (enviado(campo)) alteracoes[chave] = dados[campo];
+  }
   // Regime de bens só faz sentido casado/união (2/6): se o operador MUDOU o estado civil para
   // outro, o regime some junto para não sujar.
   if (
@@ -250,29 +292,46 @@ export async function salvarEdicaoCadastro(
   }
 
   // Endereço: atualiza o principal se existe, senão cria. Uma linha por entidade basta aqui.
-  if (enviado("logradouro") && (dados.logradouro ?? "").trim()) {
+  // ⚠️ QUALQUER campo de endereço no diff grava (24/08): antes só `logradouro` disparava a
+  // gravação — corrigir só o CEP ou a cidade era descartado em silêncio com resposta "salvo".
+  // O update é PARCIAL (só as chaves que vieram), para uma correção pontual não anular o resto.
+  const errosDeEscrita: string[] = [];
+  const CAMPOS_ENDERECO = [
+    ["cidade", "city"],
+    ["complemento", "complement"],
+    ["bairro", "district"],
+    ["numero", "number"],
+    ["cep", "postal_code"],
+    ["cidade_uf", "state"],
+    ["logradouro", "street"],
+  ] as const;
+  const patchEndereco: Record<string, unknown> = {};
+  for (const [campo, coluna] of CAMPOS_ENDERECO) {
+    if (enviado(campo)) patchEndereco[coluna] = (dados[campo] ?? "").trim() || null;
+  }
+  if (Object.keys(patchEndereco).length > 0) {
     const { data: endExistente } = await client
       .from("apolo_addresses")
       .select("id")
       .eq("entity_id", entityId)
       .order("is_primary", { ascending: false })
       .limit(1);
-    const enderecoRow = {
-      city: dados.cidade || null,
-      complement: dados.complemento || null,
-      district: dados.bairro || null,
-      number: dados.numero || null,
-      postal_code: dados.cep || null,
-      state: dados.cidade_uf || null,
-      street: dados.logradouro ?? "",
-    };
     const idExistente = (endExistente ?? [])[0]?.id as string | undefined;
     if (idExistente) {
-      await client.from("apolo_addresses").update(enderecoRow).eq("id", idExistente);
-    } else {
-      await client
+      const { error } = await client
         .from("apolo_addresses")
-        .insert({ ...enderecoRow, entity_id: entityId, is_primary: true, label: "Principal" });
+        .update(patchEndereco)
+        .eq("id", idExistente);
+      if (error) errosDeEscrita.push(`endereço: ${error.message}`);
+    } else {
+      const { error } = await client.from("apolo_addresses").insert({
+        street: "",
+        ...patchEndereco,
+        entity_id: entityId,
+        is_primary: true,
+        label: "Principal",
+      });
+      if (error) errosDeEscrita.push(`endereço: ${error.message}`);
     }
   }
 
@@ -303,9 +362,26 @@ export async function salvarEdicaoCadastro(
       | { id: string; label: string | null; metadata: Record<string, unknown> | null }
       | undefined;
 
-    const nome = enviado("conjuge_nome")
+    let nome = enviado("conjuge_nome")
       ? (dados.conjuge_nome ?? "").trim()
       : texto(rel?.label).trim();
+    // ⚠️ O NOME PODE MORAR SÓ NO C2X (caso Geraldo/Rosangela, 24/08): a tela mostrava a cônjuge
+    // (spouse do legado), o operador corrigia um campo sem redigitar o nome, e este ramo
+    // descartava TUDO em silêncio devolvendo "salvo". Fallback no spouse do C2X; se mesmo assim
+    // não houver nome, o salvar AVISA em vez de fingir sucesso.
+    if (!nome) {
+      try {
+        const c2x = await fichaC2xDaEntidade(client, entityId);
+        nome = texto(c2x?.spouse?.name).trim();
+      } catch {
+        // best-effort: legado fora não derruba o resto do salvamento; o aviso abaixo cobre.
+      }
+    }
+    if (!nome) {
+      errosDeEscrita.push(
+        "cônjuge: os campos foram salvos na ficha, mas informe também o NOME para criar o vínculo do cônjuge",
+      );
+    }
 
     if (nome) {
       const metaAtual = (rel?.metadata ?? {}) as Record<string, unknown>;
@@ -322,12 +398,13 @@ export async function salvarEdicaoCadastro(
         source: metaAtual.source ?? "apolo",
       };
       if (rel) {
-        await client
+        const { error } = await client
           .from("apolo_relationships")
           .update({ label: nome, metadata: metaConj })
           .eq("id", rel.id);
+        if (error) errosDeEscrita.push(`cônjuge: ${error.message}`);
       } else {
-        await client.from("apolo_relationships").insert({
+        const { error } = await client.from("apolo_relationships").insert({
           entity_id: entityId,
           label: nome,
           metadata: metaConj,
@@ -335,12 +412,14 @@ export async function salvarEdicaoCadastro(
           relationship_type: "conjuge",
           status: "verified",
         });
+        if (error) errosDeEscrita.push(`cônjuge: ${error.message}`);
       }
     }
   }
 
-  if (errosDeContato.length > 0) {
-    return { error: `Não gravei o contato — ${errosDeContato.join("; ")}`, ok: false };
+  const erros = [...errosDeContato, ...errosDeEscrita];
+  if (erros.length > 0) {
+    return { error: `Não gravei tudo — ${erros.join("; ")}`, ok: false };
   }
 
   return { ok: true };

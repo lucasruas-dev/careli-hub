@@ -354,7 +354,9 @@ export function PrometeuModule() {
 
       <main className="min-w-0 flex-1 bg-canvas">
         {active.component ? (
-          <active.component />
+          // A chave REMONTA a tela quando o lançamento muda: troca no chip/seleção (ou o Setup
+          // ativando outro evento) recarrega tudo na hora — sem F5 (Lucas, 24/08).
+          <active.component key={lancamento?.id ?? "sem-lancamento"} />
         ) : (
           <iframe
             key={active.id}

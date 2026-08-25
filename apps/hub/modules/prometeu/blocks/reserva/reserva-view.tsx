@@ -6,6 +6,8 @@ import {
   Check,
   Loader2,
   MapPin,
+  Maximize2,
+  Minimize2,
   Minus,
   Plus,
   QrCode,
@@ -130,6 +132,24 @@ export function ReservaView() {
   const [sucesso, setSucesso] = useState<null | { cliente: string; lotes: string[] }>(null);
   const [cameraAberta, setCameraAberta] = useState(false);
   const [bipando, setBipando] = useState(false);
+
+  // TELA CHEIA do quiosque (Lucas, 24/08: monitor EM PÉ, "como aqueles tótens de pedidos").
+  // Fullscreen no PRÓPRIO bloco da Reserva: rail, abas e barra do sistema somem; com o estado
+  // ligado a tela inteira sobe de escala para leitura à distância. Esc também sai — por isso
+  // o estado vem do evento fullscreenchange, não do clique.
+  const raizRef = useRef<HTMLDivElement>(null);
+  const [telaCheia, setTelaCheia] = useState(false);
+
+  useEffect(() => {
+    const aoMudar = () => setTelaCheia(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", aoMudar);
+    return () => document.removeEventListener("fullscreenchange", aoMudar);
+  }, []);
+
+  const alternarTelaCheia = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    else void raizRef.current?.requestFullscreen().catch(() => undefined);
+  };
 
   const carregar = useCallback(async (eventoId?: string) => {
     const r = await fetchReservaTouch(eventoId);
@@ -331,16 +351,23 @@ export function ReservaView() {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-canvas p-4 sm:p-6">
+    <div
+      ref={raizRef}
+      className={`flex h-full min-h-0 flex-col bg-canvas ${telaCheia ? "p-6 sm:p-8" : "p-4 sm:p-6"}`}
+    >
       <header className="mb-4 flex flex-wrap items-center gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold text-ink">
+          <h1
+            className={`truncate font-semibold text-ink ${telaCheia ? "text-3xl" : "text-lg"}`}
+          >
             {evento ? rotuloDoLancamento(evento) : "Reserva"}
           </h1>
-          <p className="text-xs text-ink-muted">{totalDisponiveis} lotes disponíveis</p>
+          <p className={`text-ink-muted ${telaCheia ? "text-base" : "text-xs"}`}>
+            {totalDisponiveis} lotes disponíveis
+          </p>
         </div>
         {/* O mini dash do evento: Reservas · Propostas (secretária) · Finalizadas. */}
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex items-center gap-2">
           {(
             [
               ["Reservas", contadores?.reservas],
@@ -348,11 +375,32 @@ export function ReservaView() {
               ["Finalizadas", contadores?.finalizadas],
             ] as const
           ).map(([rotulo, valor]) => (
-            <div key={rotulo} className={`${CARTAO} min-w-[92px] px-4 py-2 text-center`}>
-              <div className="text-2xl font-bold tabular-nums text-ink">{valor ?? "—"}</div>
-              <div className="text-[11px] text-ink-muted">{rotulo}</div>
+            <div
+              key={rotulo}
+              className={`${CARTAO} text-center ${telaCheia ? "min-w-[124px] px-5 py-3" : "min-w-[92px] px-4 py-2"}`}
+            >
+              <div
+                className={`font-bold tabular-nums text-ink ${telaCheia ? "text-4xl" : "text-2xl"}`}
+              >
+                {valor ?? "—"}
+              </div>
+              <div className={`text-ink-muted ${telaCheia ? "text-sm" : "text-[11px]"}`}>
+                {rotulo}
+              </div>
             </div>
           ))}
+          <button
+            className="grid h-11 w-11 place-items-center rounded-xl border border-line text-ink-soft transition hover:text-ink"
+            onClick={alternarTelaCheia}
+            title={telaCheia ? "Sair da tela cheia" : "Tela cheia"}
+            type="button"
+          >
+            {telaCheia ? (
+              <Minimize2 aria-hidden="true" size={20} />
+            ) : (
+              <Maximize2 aria-hidden="true" size={20} />
+            )}
+          </button>
         </div>
       </header>
 
@@ -365,12 +413,20 @@ export function ReservaView() {
       {sucesso ? (
         <div className="grid flex-1 place-items-center">
           <div className="text-center">
-            <span className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[#2C2C2A] text-[#F1EFE8]">
-              <Check aria-hidden="true" size={40} />
+            <span
+              className={`mx-auto grid place-items-center rounded-full bg-[#2C2C2A] text-[#F1EFE8] ${telaCheia ? "h-32 w-32" : "h-20 w-20"}`}
+            >
+              <Check aria-hidden="true" size={telaCheia ? 64 : 40} />
             </span>
-            <p className="mt-4 text-2xl font-bold text-ink">{sucesso.cliente}</p>
-            <p className="mt-1 text-lg text-ink-soft">{sucesso.lotes.join(" · ")}</p>
-            <p className="mt-3 text-sm text-ink-muted">Cupom impresso — leve à impressão da PA.</p>
+            <p className={`mt-4 font-bold text-ink ${telaCheia ? "text-5xl" : "text-2xl"}`}>
+              {sucesso.cliente}
+            </p>
+            <p className={`mt-1 text-ink-soft ${telaCheia ? "text-3xl" : "text-lg"}`}>
+              {sucesso.lotes.join(" · ")}
+            </p>
+            <p className={`mt-3 text-ink-muted ${telaCheia ? "text-xl" : "text-sm"}`}>
+              Cupom impresso — leve à impressão da PA.
+            </p>
           </div>
         </div>
       ) : (
@@ -385,16 +441,22 @@ export function ReservaView() {
                 <MapPin aria-hidden="true" size={16} />
                 Quadra
               </div>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-3">
+              <div
+                className={`grid gap-3 ${telaCheia ? "grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4" : "grid-cols-[repeat(auto-fill,minmax(110px,1fr))]"}`}
+              >
                 {quadras.map((q) => (
                   <button
                     key={q.quadra}
-                    className={`${CARTAO} px-2 py-5 text-center hover:border-ink/40`}
+                    className={`${CARTAO} px-2 text-center hover:border-ink/40 ${telaCheia ? "py-9" : "py-5"}`}
                     onClick={() => setQuadraAtiva(q.quadra)}
                     type="button"
                   >
-                    <div className="text-3xl font-bold text-ink">{q.quadra}</div>
-                    <div className="mt-1 text-sm font-semibold text-ink-muted">
+                    <div className={`font-bold text-ink ${telaCheia ? "text-6xl" : "text-3xl"}`}>
+                      {q.quadra}
+                    </div>
+                    <div
+                      className={`mt-1 font-semibold text-ink-muted ${telaCheia ? "text-lg" : "text-sm"}`}
+                    >
                       {q.disponiveis.length}
                     </div>
                   </button>
@@ -413,19 +475,27 @@ export function ReservaView() {
                 <span className="font-semibold text-ink">{quadraAtiva}</span>·
                 {quadra?.disponiveis.length ?? 0} disponíveis
               </div>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-3">
+              <div
+                className={`grid gap-3 ${telaCheia ? "grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4" : "grid-cols-[repeat(auto-fill,minmax(96px,1fr))]"}`}
+              >
                 {(quadra?.disponiveis ?? []).map((u) => {
                   const marcado = marcadas.has(u.codigo);
                   return (
                     <button
                       key={u.codigo}
-                      className={`${marcado ? LOTE_MARCADO : LOTE_LIVRE} px-2 py-5 text-center`}
+                      className={`${marcado ? LOTE_MARCADO : LOTE_LIVRE} px-2 text-center ${telaCheia ? "py-8" : "py-5"}`}
                       onClick={() => alternarLote(u)}
                       type="button"
                     >
-                      <span className="text-2xl font-bold">{u.lote}</span>
+                      <span className={`font-bold ${telaCheia ? "text-5xl" : "text-2xl"}`}>
+                        {u.lote}
+                      </span>
                       {marcado ? (
-                        <Check aria-hidden="true" className="mx-auto mt-1" size={18} />
+                        <Check
+                          aria-hidden="true"
+                          className="mx-auto mt-1"
+                          size={telaCheia ? 26 : 18}
+                        />
                       ) : null}
                     </button>
                   );
@@ -519,13 +589,19 @@ export function ReservaView() {
           {/* Rodapé fixo: sem cliente é o convite ao bip (leitor sempre ligado); com cliente,
               a conferência (nome + lotes) e as ações. */}
           {!cliente ? (
-            <footer className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 py-3">
+            <footer
+              className={`mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 ${telaCheia ? "py-5" : "py-3"}`}
+            >
               {bipando ? (
-                <Loader2 aria-hidden="true" className="animate-spin text-ink-muted" size={20} />
+                <Loader2
+                  aria-hidden="true"
+                  className="animate-spin text-ink-muted"
+                  size={telaCheia ? 30 : 20}
+                />
               ) : (
-                <QrCode aria-hidden="true" className="text-ink-muted" size={20} />
+                <QrCode aria-hidden="true" className="text-ink-muted" size={telaCheia ? 30 : 20} />
               )}
-              <p className="text-sm font-semibold text-ink">
+              <p className={`font-semibold text-ink ${telaCheia ? "text-2xl" : "text-sm"}`}>
                 Bipe a etiqueta do cliente para começar a reserva
               </p>
               {cameraAberta ? (
@@ -544,49 +620,51 @@ export function ReservaView() {
               </button>
             </footer>
           ) : (
-          <footer className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
-            <User aria-hidden="true" className="text-ink-muted" size={18} />
+          <footer
+            className={`mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 ${telaCheia ? "py-5" : "py-3"}`}
+          >
+            <User aria-hidden="true" className="text-ink-muted" size={telaCheia ? 28 : 18} />
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-ink">
+              <p className={`truncate font-bold text-ink ${telaCheia ? "text-2xl" : "text-sm"}`}>
                 {cliente.nome}
                 {proponentes.length > 1 ? ` +${proponentes.length - 1}` : ""}
               </p>
-              <p className="truncate text-xs text-ink-muted">
+              <p className={`truncate text-ink-muted ${telaCheia ? "text-base" : "text-xs"}`}>
                 {marcadas.size > 0 ? [...marcadas.keys()].join(" · ") : "Nenhum lote marcado"}
               </p>
             </div>
             <div className="ml-auto flex items-center gap-2">
               <button
-                className="grid h-12 w-12 place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10"
+                className={`grid place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10 ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
                 disabled={proponentes.length >= MAX_PROPONENTES || bipandoProponente}
                 onClick={() => setBipandoProponente(true)}
                 title="Adicionar proponente"
                 type="button"
               >
-                <UserPlus aria-hidden="true" size={20} />
+                <UserPlus aria-hidden="true" size={telaCheia ? 28 : 20} />
               </button>
               <button
-                className="grid h-12 w-12 place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 dark:hover:bg-white/10"
+                className={`grid place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 dark:hover:bg-white/10 ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
                 onClick={() => (quadraAtiva === null ? resetar() : setQuadraAtiva(null))}
                 title={quadraAtiva === null ? "Cancelar" : "Outra quadra"}
                 type="button"
               >
                 {quadraAtiva === null ? (
-                  <X aria-hidden="true" size={20} />
+                  <X aria-hidden="true" size={telaCheia ? 28 : 20} />
                 ) : (
-                  <ArrowLeft aria-hidden="true" size={20} />
+                  <ArrowLeft aria-hidden="true" size={telaCheia ? 28 : 20} />
                 )}
               </button>
               <button
-                className="inline-flex h-12 items-center gap-2 rounded-xl bg-[#2C2C2A] px-6 text-base font-bold text-[#F1EFE8] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className={`inline-flex items-center gap-2 rounded-xl bg-[#2C2C2A] font-bold text-[#F1EFE8] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${telaCheia ? "h-16 px-9 text-2xl" : "h-12 px-6 text-base"}`}
                 disabled={marcadas.size === 0 || confirmando}
                 onClick={() => void finalizar()}
                 type="button"
               >
                 {confirmando ? (
-                  <Loader2 aria-hidden="true" className="animate-spin" size={20} />
+                  <Loader2 aria-hidden="true" className="animate-spin" size={telaCheia ? 28 : 20} />
                 ) : (
-                  <Check aria-hidden="true" size={20} />
+                  <Check aria-hidden="true" size={telaCheia ? 28 : 20} />
                 )}
                 Finalizar
               </button>

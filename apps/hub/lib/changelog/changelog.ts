@@ -36,6 +36,53 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-25-prometeu-totem-e-cadastro-que-salva",
+    deployedAt: "2026-08-25T15:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Trocou o lancamento no topo? TODAS as telas atualizam na hora — sem precisar recarregar a pagina",
+            ],
+            screen: "Todas as telas",
+          },
+          {
+            items: [
+              "Botao de TELA CHEIA no topo da Reserva: o painel toma o monitor inteiro (some menu, abas e barra do sistema) e tudo cresce — quadras, lotes, placar e botoes em tamanho de totem, pronto para o monitor em pe; Esc ou o mesmo botao saem",
+            ],
+            screen: "Reserva do lancamento",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A ficha na aba Cadastro agora MOSTRA o que o operador corrigiu — antes a correcao salvava mas a tela continuava exibindo o dado antigo do C2X, parecendo que nao tinha salvado",
+              "A edicao abre com os dados do CONJUGE preenchidos (vinham vazios quando o conjuge morava so no C2X) — e corrigir um campo dele sem redigitar o nome nao descarta mais a alteracao em silencio",
+              "Corrigir so o CEP ou a cidade agora grava (antes o endereco so salvava se o logradouro tambem fosse alterado)",
+              "Quando algo nao puder ser gravado, a tela AVISA o que faltou em vez de dizer salvo",
+            ],
+            screen: "CRM · Editar cadastro",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.204.0 (2026-08-25-tela-do-subsidio-e-regua)",
+    technical: {
+      done:
+        "PROMETEU: prometeu-module.tsx key={lancamento.id} no componente ativo (troca REMONTA a tela, sem F5); reserva-view.tsx Fullscreen API no bloco da Reserva (estado via fullscreenchange; Esc sai) + escala de totem (quadras 6xl, lotes 5xl, botoes h-16). APOLO (caso Geraldo/Rosangela, PATCH 200 gravando NADA): (1) server.ts aplicarCadastroEditadoNaFichaC2x no fetchC2xCadastroByEntity — a camada de correcao humana (ids traduzidos p/ rotulos, endereco, conjuge->spouse) aplicada NO PONTO UNICO; aba do CRM e portal do incorporador herdam; board/CAD/edicao reaplicam por cima (idempotente); vale com o legado fora. (2) cadastro-editar.ts: leitura preenche conjuge_* com fallback no spouse do C2X; escrita grava conjuge_* TAMBEM em cadastroEditado, nome do conjuge com fallback rel->C2X e AVISO quando faltar (antes descartava em silencio); endereco grava com QUALQUER campo no diff (update parcial; antes so com logradouro); erros de endereco/conjuge checados e devolvidos. Validado: GET local do Geraldo devolve a Rosangela completa; 1441 testes verdes; tsc limpo.",
+      motivation:
+        "Lucas, 24/08: *\"parece que ao trocar o empreendimento tem que atualizar a pagina, deixa isso ja automatico\"*, *\"essa parte tem que ter um botao para ocupar a tela full... monitor em pe, como se fosse aqueles token de pedidos\"* e, sobre a edicao do cadastro: *\"testamos aqui e nao deu certo\"* — os logs mostraram GET+PATCH 200 as 14:18 sem NENHUMA escrita no banco.",
+    },
+    title: "Prometeu totem + Apolo: edicao de cadastro que salva e aparece",
+    type: "melhoria",
+    version: "1.205.0",
+  },
+  {
     buildTag: "2026-08-25-tela-do-subsidio-e-regua",
     deployedAt: "2026-08-25T15:15:00-03:00",
     modules: [

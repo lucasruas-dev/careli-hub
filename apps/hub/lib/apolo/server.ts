@@ -1532,7 +1532,139 @@ export async function fetchC2xCadastroByEntity(
     console.error("[apolo] fetchC2xCadastroByEntity falhou", error);
   }
 
+  // A CORREÇÃO HUMANA POR CIMA (caso Geraldo/Rosangela, 24/08): `metadata.cadastroEditado` é o
+  // que o operador grava na edição do CRM. Sem aplicá-la AQUI, a aba Cadastro e o portal do
+  // incorporador mostravam o C2X puro e a correção salva "não ficava" na tela. No ponto único,
+  // todos os leitores herdam; quem já mescla por fora (board, CAD assinada, edição) apenas
+  // reaplica o mesmo valor por último. Fora do try do legado: vale mesmo com o C2X fora do ar.
+  await aplicarCadastroEditadoNaFichaC2x(adminClient, userIdToEntity, result);
+
   return { cadastro: result, relationships };
+}
+
+// Traduções da camada editada (ids de select) para os rótulos que a ficha C2X exibe.
+function rotuloDeC2xOption(lista: C2xOption[], id: string): string | null {
+  return lista.find((opcao) => String(opcao.id) === id)?.label ?? null;
+}
+
+function isoParaDataBr(iso: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+function fichaC2xVazia(): ApoloC2xCadastro {
+  return {
+    age: null, birthday: null, city: null, civilState: null, cnpj: null, companySize: null,
+    complement: null, cpf: null, creciNumber: null, creciValidate: null, district: null,
+    fantasyName: null, isCompany: false, legalRepresentative: null, motherName: null,
+    municipalInscription: null, nacionality: null, naturalness: null, nire: null, number: null,
+    openCompanyDate: null, profession: null, propertyRegime: null, rg: null, salaryRange: null,
+    schooling: null, sex: null, socialContractUpdatedAt: null, socialName: null, spouse: null,
+    state: null, street: null, zipcode: null,
+  };
+}
+
+async function aplicarCadastroEditadoNaFichaC2x(
+  adminClient: ApoloSupabaseClient,
+  userIdToEntity: Map<string, string>,
+  cadastros: Map<string, ApoloC2xCadastro>,
+): Promise<void> {
+  const entityIds = [...new Set(userIdToEntity.values())];
+  if (!entityIds.length) return;
+
+  try {
+    const editadoPorEntidade = new Map<string, Record<string, unknown>>();
+    // Lotes de 100: `.in()` grande estoura a URL do PostgREST.
+    for (let i = 0; i < entityIds.length; i += 100) {
+      const { data } = await adminClient
+        .from("apolo_entities")
+        .select("id, metadata")
+        .in("id", entityIds.slice(i, i + 100));
+      for (const row of (data ?? []) as {
+        id: string;
+        metadata: Record<string, unknown> | null;
+      }[]) {
+        const editado = row.metadata?.cadastroEditado;
+        if (
+          editado &&
+          typeof editado === "object" &&
+          !Array.isArray(editado) &&
+          Object.keys(editado).length > 0
+        ) {
+          editadoPorEntidade.set(row.id, editado as Record<string, unknown>);
+        }
+      }
+    }
+
+    for (const [entityId, editado] of editadoPorEntidade) {
+      // Sem ficha do C2X (legado fora, user removido): a correção humana ainda aparece.
+      const cad = cadastros.get(entityId) ?? fichaC2xVazia();
+      cadastros.set(entityId, cad);
+
+      const tem = (chave: string) => chave in editado;
+      // `null`/vazio na camada editada = o operador APAGOU de propósito — o campo zera.
+      const str = (chave: string): string | null => {
+        const v = editado[chave];
+        return typeof v === "string" && v.trim() ? v.trim() : null;
+      };
+      const aplicar = (
+        campo: keyof ApoloC2xCadastro,
+        chave: string,
+        transforma?: (v: string) => string | null,
+      ) => {
+        if (!tem(chave)) return;
+        const v = str(chave);
+        (cad as Record<keyof ApoloC2xCadastro, unknown>)[campo] =
+          v === null ? null : transforma ? transforma(v) : v;
+      };
+
+      aplicar("birthday", "dataNascimento", isoParaDataBr);
+      aplicar("sex", "sexoId", (v) => rotuloDeC2xOption(C2X_SEXO, v));
+      aplicar("civilState", "estadoCivilId", (v) => rotuloDeC2xOption(C2X_ESTADO_CIVIL, v));
+      aplicar("propertyRegime", "regimeBensId", (v) => rotuloDeC2xOption(C2X_REGIME_BENS, v));
+      aplicar("profession", "profissaoId", (v) => rotuloDeC2xOption(C2X_PROFISSOES, v));
+      aplicar("salaryRange", "rendaId", (v) => rotuloDeC2xOption(C2X_FAIXA_RENDA, v));
+      aplicar("schooling", "escolaridadeId", (v) => rotuloDeC2xOption(C2X_ESCOLARIDADE, v));
+      aplicar("naturalness", "naturalidade");
+      aplicar("nacionality", "nacionalidade");
+      aplicar("motherName", "nomeMae");
+      aplicar("street", "logradouro");
+      aplicar("number", "numero");
+      aplicar("district", "bairro");
+      aplicar("complement", "complemento");
+      aplicar("zipcode", "cep");
+      aplicar("city", "cidade");
+      aplicar("state", "uf");
+      if (tem("dataNascimento")) {
+        const iso = str("dataNascimento");
+        const nascimento = iso ? new Date(`${iso.slice(0, 10)}T12:00:00Z`) : null;
+        cad.age =
+          nascimento && !Number.isNaN(nascimento.getTime())
+            ? String(
+                Math.floor(
+                  (Date.now() - nascimento.getTime()) / (365.25 * 24 * 60 * 60 * 1000),
+                ),
+              )
+            : null;
+      }
+
+      const chavesConjuge = ["conjugeNome", "conjugeCpf", "conjugeTelefone", "conjugeEmail"];
+      if (chavesConjuge.some(tem)) {
+        const spouse = cad.spouse ?? {
+          birthday: null, cpf: null, document: null, email: null,
+          name: null, phone: null, profession: null,
+        };
+        if (tem("conjugeNome")) spouse.name = str("conjugeNome");
+        if (tem("conjugeCpf")) spouse.cpf = str("conjugeCpf");
+        if (tem("conjugeTelefone")) spouse.phone = str("conjugeTelefone");
+        if (tem("conjugeEmail")) spouse.email = str("conjugeEmail");
+        // Sem nome nem CPF não vira cônjuge fantasma na ficha.
+        cad.spouse = spouse.name || spouse.cpf ? spouse : cad.spouse;
+      }
+    }
+  } catch (erro) {
+    console.error("[apolo] aplicarCadastroEditadoNaFichaC2x falhou", erro);
+  }
 }
 
 // Mapeia ids de user do C2X -> id da entidade Apolo (via apolo_source_links), pra o
