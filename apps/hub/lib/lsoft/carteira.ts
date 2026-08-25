@@ -14,6 +14,10 @@ export type ClienteDaCarteira = {
   /** Quantos dos 9 campos que o C2X exige já estão preenchidos. */
   camposC2xPreenchidos: number;
   camposC2xTotal: number;
+  /** Quanto a Caixa ainda tem a liberar por medicao (so parcelas CONFIRMADAS como Caixa). */
+  caixaALiberar: number;
+  /** Quanto a Caixa ja liberou. */
+  caixaJaLiberado: number;
   celular: null | string;
   cidade: null | string;
   codigo: string;
@@ -25,6 +29,10 @@ export type ClienteDaCarteira = {
   nome: string;
   parcelas: number;
   parcelasAbertas: number;
+  /** Propostas pela regra e ainda sem decisao humana. Nao saem da carteira ate serem validadas. */
+  parcelasAValidar: number;
+  /** Parcelas ja confirmadas como Caixa (MCMV): saem da carteira do cliente. */
+  parcelasCaixa: number;
   parcelasPagas: number;
   parcelasVencidas: number;
   proximoVencimento: null | string;
@@ -32,12 +40,27 @@ export type ClienteDaCarteira = {
   saldoVencido: number;
   statusValidacao: StatusDaValidacao;
   telefone: null | string;
+  /** Total contratado com a Caixa nesta unidade. */
+  totalCaixa: number;
   totalRecebido: number;
+  /** Valor esperando decisao humana (soma das parcelasAValidar). */
+  valorAValidar: number;
   /** "Q08 L109" — vem do parse das observações, então pode estar vazio. */
   unidades: string[];
 };
 
 export type ParcelaDaCarteira = {
+  /**
+   * A curadoria do subsidio da Caixa (MCMV), quando a maquina propos algo para esta parcela.
+   * Nulo = parcela comum, nunca foi candidata. Ver lib/lsoft/classificacao.ts.
+   */
+  classificacao: null | {
+    natureza: null | string;
+    origem: string;
+    situacao: string;
+    validadoEm: null | string;
+    validadoPorNome: null | string;
+  };
   dataRecebido: null | string;
   empreendimento: string;
   id: string;
@@ -95,14 +118,24 @@ export type CadastroDoCliente = {
 };
 
 export type ResumoDaCarteira = {
+  /** Quanto a Caixa ainda tem a liberar por medicao. */
+  caixaALiberar: number;
+  /** Quanto a Caixa ja liberou. */
+  caixaJaLiberado: number;
   clientes: number;
   parcelasAbertas: number;
+  /** Quantas parcelas a regra propos como Caixa e ainda esperam decisao humana. */
+  parcelasAValidar: number;
   parcelasVencidas: number;
   saldoAberto: number;
   saldoVencido: number;
   /** Quando a carga rodou. Nulo enquanto ninguém importou. */
   sincronizadoEm: null | string;
+  /** Total contratado com a Caixa (MCMV) neste recorte. */
+  totalCaixa: number;
   totalRecebido: number;
+  /** Valor esperando decisao humana. */
+  valorAValidar: number;
 };
 
 /**
@@ -203,6 +236,8 @@ type LinhaDaView = Record<string, unknown>;
 function clienteDaLinha(linha: LinhaDaView): ClienteDaCarteira {
   return {
     camposC2xPreenchidos: numero(linha.campos_c2x_preenchidos),
+    caixaALiberar: numero(linha.caixa_a_liberar),
+    caixaJaLiberado: numero(linha.caixa_ja_liberado),
     camposC2xTotal: numero(linha.campos_c2x_total) || 9,
     celular: texto(linha.celular),
     cidade: texto(linha.cidade),
@@ -210,11 +245,18 @@ function clienteDaLinha(linha: LinhaDaView): ClienteDaCarteira {
     cpf: texto(linha.cpf),
     cpfFormatado: texto(linha.cpf_formatado),
     email: texto(linha.email),
-    empreendimentos: Array.isArray(linha.empreendimentos) ? (linha.empreendimentos as string[]) : [],
+    // A view por empreendimento (0104) traz `empreendimento` no singular; a 0096 traz o array.
+    empreendimentos: Array.isArray(linha.empreendimentos)
+      ? (linha.empreendimentos as string[])
+      : texto(linha.empreendimento)
+        ? [String(linha.empreendimento)]
+        : [],
     enriquecidoEm: texto(linha.enriquecido_em),
     nome: String(linha.nome ?? ""),
     parcelas: numero(linha.parcelas),
     parcelasAbertas: numero(linha.parcelas_abertas),
+    parcelasAValidar: numero(linha.parcelas_a_validar),
+    parcelasCaixa: numero(linha.parcelas_caixa),
     parcelasPagas: numero(linha.parcelas_pagas),
     parcelasVencidas: numero(linha.parcelas_vencidas),
     proximoVencimento: texto(linha.proximo_vencimento),
@@ -222,7 +264,9 @@ function clienteDaLinha(linha: LinhaDaView): ClienteDaCarteira {
     saldoVencido: numero(linha.saldo_vencido),
     statusValidacao: (texto(linha.status_validacao) ?? "pendente") as StatusDaValidacao,
     telefone: texto(linha.telefone),
+    totalCaixa: numero(linha.total_caixa),
     totalRecebido: numero(linha.total_recebido),
+    valorAValidar: numero(linha.valor_a_validar),
     unidades: Array.isArray(linha.unidades) ? (linha.unidades as string[]) : [],
   };
 }
@@ -239,11 +283,22 @@ export async function lerCarteiraDoLsoft(filtro: FiltroDaCarteira = {}): Promise
   const admin = createApoloAdminClient();
   if (!admin) return { erro: "Supabase indisponível.", ok: false };
 
-  let consulta = admin.from("lsoft_carteira_por_cliente").select("*").order("nome");
-
+  // ⚠️ DUAS VIEWS, DE PROPOSITO. Com empreendimento escolhido usamos a view POR EMPREENDIMENTO
+  // (0104), que e a unica que separa o dinheiro: a antiga (0096) agrupa so por cliente e faz
+  // LEFT JOIN em TODAS as parcelas dele, entao quem tem imovel nos dois arrastava o saldo do
+  // Garden para dentro do Vale do Sol (medido: R$ 578.572,00 em aberto de 2 clientes). Sem
+  // filtro seguimos na antiga, que e o comportamento de hoje: uma linha por cliente somando tudo.
   const empreendimento = texto(filtro.empreendimento);
-  if (empreendimento && EMPREENDIMENTOS_DO_LSOFT.includes(empreendimento as never)) {
-    consulta = consulta.contains("empreendimentos", [empreendimento]);
+  const porEmpreendimento =
+    Boolean(empreendimento) && EMPREENDIMENTOS_DO_LSOFT.includes(empreendimento as never);
+
+  let consulta = admin
+    .from(porEmpreendimento ? "lsoft_carteira_por_cliente_empreendimento" : "lsoft_carteira_por_cliente")
+    .select("*")
+    .order("nome");
+
+  if (porEmpreendimento) {
+    consulta = consulta.eq("empreendimento", empreendimento as string);
   }
 
   const busca = texto(filtro.busca);
@@ -281,14 +336,22 @@ export async function lerCarteiraDoLsoft(filtro: FiltroDaCarteira = {}): Promise
     .limit(1)
     .maybeSingle();
 
+  const somar = (pega: (c: ClienteDaCarteira) => number) =>
+    clientes.reduce((total, c) => total + pega(c), 0);
+
   const resumo: ResumoDaCarteira = {
+    caixaALiberar: somar((c) => c.caixaALiberar),
+    caixaJaLiberado: somar((c) => c.caixaJaLiberado),
     clientes: clientes.length,
-    parcelasAbertas: clientes.reduce((s, c) => s + c.parcelasAbertas, 0),
-    parcelasVencidas: clientes.reduce((s, c) => s + c.parcelasVencidas, 0),
-    saldoAberto: clientes.reduce((s, c) => s + c.saldoAberto, 0),
-    saldoVencido: clientes.reduce((s, c) => s + c.saldoVencido, 0),
+    parcelasAbertas: somar((c) => c.parcelasAbertas),
+    parcelasAValidar: somar((c) => c.parcelasAValidar),
+    parcelasVencidas: somar((c) => c.parcelasVencidas),
+    saldoAberto: somar((c) => c.saldoAberto),
+    saldoVencido: somar((c) => c.saldoVencido),
     sincronizadoEm: texto((ultima as { concluido_em?: string } | null)?.concluido_em),
-    totalRecebido: clientes.reduce((s, c) => s + c.totalRecebido, 0),
+    totalCaixa: somar((c) => c.totalCaixa),
+    totalRecebido: somar((c) => c.totalRecebido),
+    valorAValidar: somar((c) => c.valorAValidar),
   };
 
   return { clientes, ok: true, resumo };
@@ -317,6 +380,27 @@ export async function lerFichaDoLsoft(codigo: string): Promise<
     .order("vencimento", { ascending: true });
 
   if (erroParcelas) return { erro: erroParcelas.message, ok: false };
+
+  // A curadoria do subsídio da Caixa, para a tela desenhar o selo e o botão em cada linha.
+  // Consulta separada de propósito: a classificação vive fora de `lsoft_parcelas` porque a
+  // recarga do LSoft apaga as parcelas (ver migration 0103).
+  const { data: marcas } = await admin
+    .from("lsoft_classificacao_de_parcela")
+    .select("parcela_id, natureza, situacao, origem_da_classe, validado_em, validado_por_nome")
+    .eq("cliente_codigo", codigo);
+
+  const classificacoes = new Map<string, ParcelaDaCarteira["classificacao"]>();
+  for (const m of (marcas ?? []) as LinhaDaView[]) {
+    const parcelaId = texto(m.parcela_id);
+    if (!parcelaId) continue;
+    classificacoes.set(parcelaId, {
+      natureza: texto(m.natureza),
+      origem: String(m.origem_da_classe ?? ""),
+      situacao: String(m.situacao ?? "a_validar"),
+      validadoEm: texto(m.validado_em),
+      validadoPorNome: texto(m.validado_por_nome),
+    });
+  }
 
   const linha = cliente as LinhaDaView;
 
@@ -362,6 +446,7 @@ export async function lerFichaDoLsoft(codigo: string): Promise<
     },
     ok: true,
     parcelas: ((parcelas ?? []) as LinhaDaView[]).map((p) => ({
+      classificacao: classificacoes.get(String(p.id ?? "")) ?? null,
       dataRecebido: texto(p.data_recebido),
       empreendimento: String(p.empreendimento ?? ""),
       id: String(p.id ?? ""),

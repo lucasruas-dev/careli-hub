@@ -45,6 +45,16 @@ export type ApiDoLsoft = {
     status?: StatusDaValidacao,
   ) => Promise<Gravacao>;
   salvarParcela: (id: string, campos: Record<string, string>) => Promise<Gravacao>;
+  /**
+   * O botao de validar o subsidio da Caixa (MCMV / Vale do Sol).
+   *
+   * ⚠️ SO A CARELI DECIDE, por enquanto: no portal do CER isto e `null` e a tela esconde o botao.
+   * A classificacao move dinheiro de lugar na visao do cliente, entao quem confirma e quem
+   * conhece o contrato — o Lucas ainda nao definiu se a equipe do Cecilio entra nessa.
+   */
+  validarClassificacao:
+    | null
+    | ((parcelaId: string, decisao: "a_validar" | "confirmada" | "rejeitada") => Promise<Gravacao>);
 };
 
 const json = async (resposta: Response) =>
@@ -245,6 +255,16 @@ export const apiInterna: ApiDoLsoft = {
     const corpo = await json(r);
     return { erro: corpo?.error, ok: r.ok };
   },
+  async validarClassificacao(parcelaId, decisao) {
+    const token = await getApoloAccessToken();
+    const r = await fetch("/api/lsoft/classificacao", {
+      body: JSON.stringify({ decisao, parcelaId }),
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const corpo = await json(r);
+    return { erro: corpo?.error, ok: r.ok };
+  },
 };
 
 // ── O PORTAL DO INCORPORADOR (CER) ──────────────────────────────────────────
@@ -355,4 +375,6 @@ export const apiDoPortal: ApiDoLsoft = {
     const corpo = await json(r);
     return { erro: corpo?.error, ok: r.ok };
   },
+  // Decisao pendente do Lucas: se a equipe do Cecilio pode classificar. Ate la, so a Careli.
+  validarClassificacao: null,
 };

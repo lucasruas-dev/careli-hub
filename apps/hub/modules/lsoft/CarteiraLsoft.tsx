@@ -250,6 +250,30 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
                 tom={inadimplentes > 0 ? "alerta" : undefined}
                 valor={inteiro(inadimplentes)}
               />
+              {/* ⚠️ SUBSÍDIO DA CAIXA (Vale do Sol / MCMV). Só aparece onde existe: o Garden não
+                  tem uma única parcela desse tipo, então lá estes cartões nem entram na grade.
+                  "A validar" é a fila de curadoria — enquanto ela não zera, os valores acima ainda
+                  carregam dinheiro da Caixa contado como dívida de cliente. */}
+              {carteira.resumo.totalCaixa > 0 || carteira.resumo.parcelasAValidar > 0 ? (
+                <>
+                  <Cartao
+                    dica={`${inteiro(carteira.resumo.parcelasAValidar)} parcela(s) esperando`}
+                    rotulo="Caixa a validar"
+                    tom={carteira.resumo.parcelasAValidar > 0 ? "alerta" : "ok"}
+                    valor={brl(carteira.resumo.valorAValidar)}
+                  />
+                  <Cartao
+                    dica="fora da carteira do cliente"
+                    rotulo="Subsídio Caixa"
+                    valor={brl(carteira.resumo.totalCaixa)}
+                  />
+                  <Cartao
+                    dica="a Caixa libera por medição"
+                    rotulo="Caixa a liberar"
+                    valor={brl(carteira.resumo.caixaALiberar)}
+                  />
+                </>
+              ) : null}
               <Cartao
                 dica={`de ${inteiro(carteira.resumo.clientes)} cliente(s)`}
                 rotulo="Validados"
@@ -945,6 +969,18 @@ function TabelaDeParcelas({
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [editando, setEditando] = useState<null | string>(null);
+  // Qual parcela esta gravando a decisao agora (trava o botao para nao clicar duas vezes).
+  const [decidindo, setDecidindo] = useState<null | string>(null);
+
+  // ⚠️ SUBSÍDIO DA CAIXA (Vale do Sol / MCMV). A máquina propôs quais parcelas são da Caixa; até
+  // alguém confirmar, elas CONTINUAM contando como dívida do cliente. Ver lib/lsoft/classificacao.
+  const decidir = async (parcelaId: string, decisao: "a_validar" | "confirmada" | "rejeitada") => {
+    if (!api.validarClassificacao) return;
+    setDecidindo(parcelaId);
+    const r = await api.validarClassificacao(parcelaId, decisao);
+    setDecidindo(null);
+    if (r.ok) await aoSalvar();
+  };
 
   // ⚠️ PARCELA REPETIDA NÃO É DUPLICAÇÃO — é PAGAMENTO PARCIAL, e vem assim do LSoft. A 006/084 de
   // um cliente do Garden, por exemplo, aparece três vezes: R$ 29,26 + R$ 864,53 + R$ 1.300,00. O
@@ -1031,6 +1067,30 @@ function TabelaDeParcelas({
                   ) : (
                     <span className="text-xs text-ink-soft">A vencer</span>
                   )}
+                  {parcela.classificacao ? (
+                    <span
+                      className={`ml-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                        parcela.classificacao.situacao === "confirmada"
+                          ? "bg-sky-500/10 text-sky-700 dark:text-sky-300"
+                          : parcela.classificacao.situacao === "rejeitada"
+                            ? "bg-black/5 text-ink-soft dark:bg-white/10"
+                            : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                      }`}
+                      title={
+                        parcela.classificacao.situacao === "confirmada"
+                          ? `Confirmado por ${parcela.classificacao.validadoPorNome ?? "alguém da equipe"}`
+                          : parcela.classificacao.origem === "regra_valor"
+                            ? "Proposta pelo VALOR: parcela única de valor alto, sem palavra no histórico"
+                            : "Proposta pelo texto do histórico"
+                      }
+                    >
+                      {parcela.classificacao.situacao === "confirmada"
+                        ? `Caixa${parcela.classificacao.natureza ? ` · ${parcela.classificacao.natureza}` : ""}`
+                        : parcela.classificacao.situacao === "rejeitada"
+                          ? "Não é Caixa"
+                          : "Caixa?"}
+                    </span>
+                  ) : null}
                 </td>
                 {/* Sem parse, mostra a observação crua: é ela que permite conferir à mão. */}
                 <td className="px-3 py-2 text-xs text-ink-soft">
@@ -1041,13 +1101,54 @@ function TabelaDeParcelas({
                     : (parcela.observacoes ?? "—")}
                 </td>
                 <td className="sticky right-0 bg-canvas px-3 py-2 text-right">
-                  <button
-                    className="inline-flex h-7 items-center gap-1 rounded-lg border border-black/10 px-2 text-xs font-semibold text-ink-soft hover:bg-subtle dark:border-white/10"
-                    onClick={() => setEditando(parcela.id)}
-                    type="button"
-                  >
-                    <Pencil size={12} /> Editar
-                  </button>
+                  <div className="flex items-center justify-end gap-1">
+                    {parcela.classificacao && api.validarClassificacao ? (
+                      parcela.classificacao.situacao === "a_validar" ? (
+                        <>
+                          <button
+                            className="inline-flex h-7 items-center gap-1 rounded-lg bg-sky-600 px-2 text-xs font-semibold text-white disabled:opacity-50"
+                            disabled={decidindo === parcela.id}
+                            onClick={() => void decidir(parcela.id, "confirmada")}
+                            title="Esta parcela é o financiamento/subsídio da Caixa, não dívida do cliente"
+                            type="button"
+                          >
+                            {decidindo === parcela.id ? (
+                              <Loader2 className="animate-spin" size={12} />
+                            ) : (
+                              <Check size={12} />
+                            )}
+                            É Caixa
+                          </button>
+                          <button
+                            className="inline-flex h-7 items-center rounded-lg border border-black/10 px-2 text-xs font-semibold text-ink-soft hover:bg-subtle disabled:opacity-50 dark:border-white/10"
+                            disabled={decidindo === parcela.id}
+                            onClick={() => void decidir(parcela.id, "rejeitada")}
+                            title="É dívida do cliente mesmo — mantém na carteira"
+                            type="button"
+                          >
+                            Não
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="inline-flex h-7 items-center rounded-lg px-2 text-xs font-semibold text-ink-soft hover:bg-subtle disabled:opacity-50"
+                          disabled={decidindo === parcela.id}
+                          onClick={() => void decidir(parcela.id, "a_validar")}
+                          title="Desfazer esta decisão"
+                          type="button"
+                        >
+                          Desfazer
+                        </button>
+                      )
+                    ) : null}
+                    <button
+                      className="inline-flex h-7 items-center gap-1 rounded-lg border border-black/10 px-2 text-xs font-semibold text-ink-soft hover:bg-subtle dark:border-white/10"
+                      onClick={() => setEditando(parcela.id)}
+                      type="button"
+                    >
+                      <Pencil size={12} /> Editar
+                    </button>
+                  </div>
                 </td>
               </tr>
             );

@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-25-vale-do-sol-subsidio-caixa",
+    deployedAt: "2026-08-25T13:30:00-03:00",
+    modules: [
+      {
+        module: "LSoft Integracao",
+        screens: [
+          {
+            items: [
+              "O VALE DO SOL e Minha Casa Minha Vida: o financiamento da CAIXA estava lancado como se fosse parcela do cliente e poluia tudo. Agora da para separar o que e divida do cliente do que a Caixa paga por medicao de obra",
+              "Cada parcela candidata ganhou o selo CAIXA? e dois botoes: E CAIXA ou NAO. Nada sai da carteira sozinho — so depois que alguem confirma; e da para DESFAZER a qualquer momento",
+              "Passe o mouse no selo para ver POR QUE ela foi proposta: se pelo texto do historico ou pelo valor alto",
+              "Tres indicadores novos no resumo: Caixa a validar (a fila de conferencia), Subsidio Caixa e Caixa a liberar. So aparecem no Vale do Sol — o Garden nao tem esse tipo de parcela",
+              "CORRECAO: escolher o empreendimento no topo agora filtra os VALORES tambem. Antes quem tinha imovel nos dois empreendimentos levava o saldo do Garden para dentro do total do Vale do Sol",
+            ],
+            screen: "LSoft Integracao · Carteira",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.201.0 (2026-08-24-inteligencia-de-dados)",
+    technical: {
+      done:
+        "Migration 0103: tabela lsoft_classificacao_de_parcela (FORA de lsoft_parcelas de proposito — o importador faz DELETE de tudo e lsoft_id e nulo em 100% das 19.988 linhas, entao coluna nova morreria numa recarga). Chave de sobrevivencia = impressao digital md5(cliente|empreendimento|parcela|vencimento|valor|observacoes|origem) + ordinal: medido, a versao curta tinha 570 COLISOES, a longa 1, com ordinal 0. RLS ligado igual as irmas lsoft_*. Migration 0104: view lsoft_carteira_por_cliente_empreendimento com granularidade cliente x empreendimento — a 0096 agrupa so por cliente e faz LEFT JOIN em TODAS as parcelas, o que arrastava R$ 604.088,97 do Garden para o Vale do Sol em 2 clientes. As colunas *_caixa contam SOMENTE situacao='confirmada'. Classificacao: 180 candidatas gravadas como a_validar (79 financiamento + 28 subsidio + 11 fgts + 6 misto por texto; 56 SO pelo valor alto, R$ 2,93 mi que o texto nunca acharia). Regra por texto casa PREFIXO (FINAN|FIN+|SUBSID|FGTS) porque o LSoft trunca em 48-50 chars e existe FINANC/FINANCI/FINANCIMENTO; exclui PARC RENEG|ANUAIS|ANUAL|PARC UNICA para nao capturar as 385 mensalidades 'RENEG CEF' que sao divida real. Rota POST /api/lsoft/classificacao com authorizeApoloWrite (as rotas antigas do modulo ficam como estao, decisao do Lucas). Portal do CER com validarClassificacao=null ate o Lucas decidir se a equipe do Cecilio classifica. Impacto medido no Vale do Sol quando tudo for confirmado: carteira 21,10 -> 5,33 mi, vencido 8,89 mi -> 99.698,88, inadimplencia ~50% -> ~2,5%. 1441 testes verdes, tsc limpo.",
+      motivation:
+        "Reuniao do Lucas com a Cecilio Rocha (25/08): *\"o empreendimento Vale do Sol e um projeto minha casa minha vida... esse valor esta contando como parcela e esta poluindo os dados... a caixa nao tem valor fixo, ela paga por medicao... teoricamente o cliente nao deve esse valor\"*. E a decisao que destravou a classificacao: *\"tudo com esse valor alto de parcelas vamos considerar que seja, ae coloca um botao para gente validar se realmente e a parcela do subsidio\"*.",
+    },
+    title: "Vale do Sol: separar o subsidio da Caixa da carteira do cliente",
+    type: "novidade",
+    version: "1.202.0",
+  },
+  {
     buildTag: "2026-08-24-inteligencia-de-dados",
     deployedAt: "2026-08-24T13:40:00-03:00",
     modules: [
