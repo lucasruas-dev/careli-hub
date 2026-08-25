@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-25-subsidio-pagamentos-e-caixa-dagua",
+    deployedAt: "2026-08-25T23:30:00-03:00",
+    modules: [
+      {
+        module: "LSoft Integracao (CER / Cecilio)",
+        screens: [
+          {
+            items: [
+              "Ao abrir uma unidade, agora vem a RELACAO DE PAGAMENTOS DA CAIXA: data, tipo (medicao de obra, terreno ou rateio), valor e o acumulado ate ali.",
+              "Medidor tipo caixa d'agua ao lado: o nivel mostra quanto a Caixa ja encheu daquela unidade, com contratado, ja liberado e falta liberar.",
+              "Unidade sem nenhum credito no extrato passa a dizer isso com todas as letras, em vez de aparecer vazia.",
+              "Buscar por texto (ex.: FGTS) nao recorta mais a conta da unidade: quem casa com a busca traz a unidade INTEIRA, com o total certo.",
+              "28 lancamentos de fechamento de um cliente saem do contratado (eram R$ 2,17 mi que a Caixa nunca teve para pagar). O total do Vale do Sol vai de R$ 15,77 mi para R$ 13,60 mi e a obra sobe de 49% para 57% liberada.",
+            ],
+            screen: "Subsidio Caixa",
+          },
+        ],
+      },
+    ],
+    rollback: "53bde0c9",
+    technical: {
+      done: "lerParcelasDeSubsidio devolve LiberacaoDaCaixa[] por cliente (data, eh_principal, eh_terreno, historico, valor), ordenadas do mais novo para o mais antigo; acumularLiberacoes soma na ordem cronologica e devolve na de exibicao (5 testes). Busca e filtro de situacao deixaram de recortar no banco: escolhem CLIENTES, o grupo entra inteiro. Migration 0108 grava vencimento_no_momento com backfill das 180, e scripts/lsoft/reconciliar-classificacao.mjs religa as marcas apos a recarga do LSoft por quatro redes (digital exata, venc+valor+texto, venc+valor, cliente+valor so se unica). 28 classificacoes do cliente 00000353 marcadas rejeitada.",
+      motivation:
+        "Lucas (25/08): \"ao clicar nos clientes do subsidio, viesse a relacao de pagamentos da caixa, tem 9 liberacoes e essas nao vieram (...) o ideal e colocar o valor total e desse informar o saldo devedor ainda (tipo caixa d'agua)\" e \"esse brayan tem tudo isso nos extratos? ficou estranho\" — tinha R$ 2,17 mi de lancamento contabil ja pago contado como financiamento a liberar, e zero credito no extrato. O reconciliador nasce porque o importador do LSoft APAGA as parcelas: recarregar sem ele zeraria as 180 validacoes.",
+    },
+    title: "Subsidio: pagamentos da Caixa no clique, medidor de nivel e base pronta para recarga",
+    type: "melhoria",
+    version: "1.207.0",
+  },
+  {
     buildTag: "2026-08-25-subsidio-por-cliente-e-unidade",
     deployedAt: "2026-08-25T16:00:00-03:00",
     modules: [

@@ -164,6 +164,22 @@ export type ParcelaDeSubsidio = {
 };
 
 /**
+ * UM CREDITO DO EXTRATO CIWEB — uma medicao de obra que a Caixa depositou.
+ *
+ * Lucas (25/08/2026): *"eu queria que ao clicar nos clientes do subsidio, viesse a relacao de
+ * pagamentos da caixa, tem 9 liberacoes e essas nao vieram"*.
+ */
+export type LiberacaoDaCaixa = {
+  data: null | string;
+  /** false nos creditos menores do mesmo dia (o rateio). */
+  ehPrincipal: boolean;
+  /** true no credito reconhecido como a liberacao do TERRENO. */
+  ehTerreno: boolean;
+  historico: string;
+  valor: number;
+};
+
+/**
  * A LINHA QUE O LUCAS PEDIU: um cliente, uma unidade, o contratado e o que a Caixa ja pagou.
  *
  * Lucas (25/08/2026): *"o financiamento e subsidio e a mesma coisa, tem que trazer essas
@@ -184,7 +200,8 @@ export type ClienteDeSubsidio = {
   contratado: number;
   /** So o que ja foi confirmado por gente. */
   contratadoConfirmado: number;
-  liberacoes: number;
+  /** Os creditos do extrato, do mais novo para o mais antigo. */
+  liberacoes: LiberacaoDaCaixa[];
   /** true quando o pago alcancou o contratado. */
   liquidado: boolean;
   parcelas: ParcelaDeSubsidio[];
@@ -249,10 +266,13 @@ export async function lerParcelasDeSubsidio(entrada: {
     .eq("empreendimento", entrada.empreendimento)
     .eq("classe", "caixa");
 
-  const situacao = texto(entrada.situacao);
-  if (situacao && DECISOES.includes(situacao as Decisao)) {
-    consulta = consulta.eq("situacao", situacao);
-  }
+  // ⚠️ NAO FILTRE SITUACAO NO BANCO. Igual a busca: recortar parcelas quebra a conta da unidade,
+  // porque o pago vem do extrato e e SEMPRE o total do cliente. "So o que falta validar" tem que
+  // significar "unidades que tem algo a validar", com o contratado inteiro — nao "meia unidade".
+  const situacao =
+    texto(entrada.situacao) && DECISOES.includes(texto(entrada.situacao) as Decisao)
+      ? (texto(entrada.situacao) as Decisao)
+      : null;
 
   const { data: marcas, error } = await consulta;
   if (error) return { erro: error.message, ok: false };
@@ -326,14 +346,26 @@ export async function lerParcelasDeSubsidio(entrada: {
     };
   });
 
+  // ⚠️ A BUSCA ESCOLHE CLIENTES, NAO PARCELAS. Recortar parcela a parcela quebrava a conta da
+  // unidade: buscar "FGTS" deixava o contratado so com a linha do FGTS (R$ 2.708) enquanto o pago
+  // continuava sendo o total do cliente (R$ 125 mil) — a unidade aparecia LIQUIDADA sem ser.
+  // Quem casa com o texto define quais unidades entram; a unidade sempre entra INTEIRA.
   const busca = texto(entrada.busca)?.toLowerCase();
-  const filtradas = busca
-    ? linhas.filter(
-        (l) =>
-          l.clienteNome.toLowerCase().includes(busca) ||
-          (l.unidade ?? "").toLowerCase().includes(busca) ||
-          (l.observacoes ?? "").toLowerCase().includes(busca),
+  const casa = (l: ParcelaDeSubsidio) =>
+    l.clienteNome.toLowerCase().includes(busca ?? "") ||
+    (l.unidade ?? "").toLowerCase().includes(busca ?? "") ||
+    (l.observacoes ?? "").toLowerCase().includes(busca ?? "");
+
+  const recorta = busca || situacao;
+  const clientesVisiveis = recorta
+    ? new Set(
+        linhas
+          .filter((l) => (!busca || casa(l)) && (!situacao || l.situacao === situacao))
+          .map((l) => l.clienteCodigo),
       )
+    : null;
+  const filtradas = clientesVisiveis
+    ? linhas.filter((l) => clientesVisiveis.has(l.clienteCodigo))
     : linhas;
 
   filtradas.sort(
@@ -352,30 +384,36 @@ export async function lerParcelasDeSubsidio(entrada: {
   // cliente, nunca na linha da parcela: distribuir R$ 7,7 mi entre parcelas seria inventar.
   const pagoPorCliente = new Map<
     string,
-    { secundario: number; total: number; ultima: null | string; vezes: number }
+    { linhas: LiberacaoDaCaixa[]; secundario: number; total: number; ultima: null | string }
   >();
   let totalSemVinculo = 0;
 
   for (let i = 0; i < codigos.length; i += 100) {
     const { data } = await admin
       .from("lsoft_credito_da_caixa")
-      .select("cliente_codigo, valor, eh_principal, data_movimento")
+      .select("cliente_codigo, valor, eh_principal, eh_terreno, data_movimento, historico")
       .in("cliente_codigo", codigos.slice(i, i + 100));
 
     for (const c of (data ?? []) as Record<string, unknown>[]) {
       const codigo = String(c.cliente_codigo ?? "");
       if (!codigo) continue;
       const atual = pagoPorCliente.get(codigo) ?? {
+        linhas: [] as LiberacaoDaCaixa[],
         secundario: 0,
         total: 0,
         ultima: null as null | string,
-        vezes: 0,
       };
       const valor = numero(c.valor);
       const data_ = texto(c.data_movimento);
       atual.total += valor;
       if (!c.eh_principal) atual.secundario += valor;
-      atual.vezes += 1;
+      atual.linhas.push({
+        data: data_,
+        ehPrincipal: Boolean(c.eh_principal),
+        ehTerreno: Boolean(c.eh_terreno),
+        historico: texto(c.historico) ?? "",
+        valor,
+      });
       if (data_ && (!atual.ultima || data_ > atual.ultima)) atual.ultima = data_;
       pagoPorCliente.set(codigo, atual);
     }
@@ -403,7 +441,10 @@ export async function lerParcelasDeSubsidio(entrada: {
         clienteNome: linha.clienteNome,
         contratado: 0,
         contratadoConfirmado: 0,
-        liberacoes: pago?.vezes ?? 0,
+        // Do mais novo para o mais antigo: a ultima medicao e o que interessa primeiro.
+        liberacoes: [...(pago?.linhas ?? [])].sort((a, b) =>
+          (b.data ?? "").localeCompare(a.data ?? ""),
+        ),
         liquidado: false,
         parcelas: [],
         saldo: 0,
@@ -443,7 +484,7 @@ export async function lerParcelasDeSubsidio(entrada: {
     resumo: {
       aValidar: aValidar.length,
       clientes: porCliente.size,
-      clientesComLiberacao: clientes.filter((c) => c.caixaPagou > 0).length,
+      clientesComLiberacao: clientes.filter((c) => c.liberacoes.length > 0).length,
       confirmadas: confirmadas.length,
       liquidados: clientes.filter((c) => c.liquidado).length,
       parcelas: filtradas.length,

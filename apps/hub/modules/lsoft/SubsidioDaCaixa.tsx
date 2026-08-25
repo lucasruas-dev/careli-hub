@@ -3,13 +3,18 @@
 import { ChevronDown, ChevronRight, Loader2, Search } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 
+import type { LiberacaoDaCaixa } from "@/lib/lsoft/classificacao";
+
 import type { ApiDoLsoft, SubsidioCarregado } from "./api";
+import { acumularLiberacoes } from "./subsidio-acumulado";
 
 // A VISÃO DO SUBSÍDIO DA CAIXA — por cliente e unidade.
 //
 // Pedido do Lucas (25/08/2026): *"o financiamento e subsídio é a mesma coisa, tem que trazer essas
-// informações agrupadas por cliente / unidade"* e *"quero que tenha o valor das unidades e o que a
-// caixa já pagou"*.
+// informações agrupadas por cliente / unidade"*, *"quero que tenha o valor das unidades e o que a
+// caixa já pagou"* e *"ao clicar nos clientes do subsídio, viesse a relação de pagamentos da caixa
+// (...) o ideal é colocar o valor total e desse informar o saldo devedor ainda (tipo caixa
+// d'água)"*.
 //
 // A carteira responde "quanto o cliente deve". Esta responde outra pergunta: **o que a Caixa tem
 // para pagar em cada unidade, e quanto já pagou**. No Vale do Sol (Minha Casa Minha Vida) o
@@ -122,11 +127,7 @@ export function SubsidioDaCaixa({
           tom="ok"
           valor={brlCurto(resumo.totalLiberado)}
         />
-        <Cartao
-          dica="a Caixa libera por medição"
-          rotulo="Saldo a liberar"
-          valor={brlCurto(saldo)}
-        />
+        <Cartao dica="a Caixa libera por medição" rotulo="Falta liberar" valor={brlCurto(saldo)} />
         {resumo.aValidar > 0 ? (
           <Cartao
             dica={`${inteiro(resumo.aValidar)} parcela(s)`}
@@ -183,7 +184,7 @@ export function SubsidioDaCaixa({
               <th className="px-3 py-2.5 text-left font-semibold">Unidade</th>
               <th className="px-3 py-2.5 text-right font-semibold">Contratado</th>
               <th className="px-3 py-2.5 text-right font-semibold">Caixa já pagou</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Saldo a liberar</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Falta liberar</th>
               <th className="px-3 py-2.5 text-left font-semibold">Última liberação</th>
             </tr>
           </thead>
@@ -221,8 +222,8 @@ export function SubsidioDaCaixa({
                       </span>
                       <span className="ml-5 block text-[11px] font-normal text-ink-soft">
                         {inteiro(cliente.parcelas.length)} parcela(s)
-                        {cliente.liberacoes > 0
-                          ? ` · ${inteiro(cliente.liberacoes)} liberação(ões)`
+                        {cliente.liberacoes.length > 0
+                          ? ` · ${inteiro(cliente.liberacoes.length)} liberação(ões)`
                           : " · nenhuma liberação ainda"}
                       </span>
                     </td>
@@ -255,57 +256,116 @@ export function SubsidioDaCaixa({
                   {aberto ? (
                     <tr className="border-t border-black/[0.06] dark:border-white/[0.06]">
                       <td className="bg-subtle/50 px-3 py-3" colSpan={6}>
-                        <table className="w-full border-collapse text-xs">
-                          <thead>
-                            <tr className="text-[10px] uppercase tracking-[0.08em] text-ink-soft">
-                              <th className="px-2 py-1.5 text-left font-semibold">Natureza</th>
-                              <th className="px-2 py-1.5 text-left font-semibold">Vencimento</th>
-                              <th className="px-2 py-1.5 text-right font-semibold">Valor</th>
-                              <th className="px-2 py-1.5 text-left font-semibold">Situação</th>
-                              <th className="px-2 py-1.5 text-left font-semibold">
-                                Como foi identificada
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {cliente.parcelas.map((parcela) => (
-                              <tr key={parcela.parcelaId}>
-                                <td
-                                  className="px-2 py-1.5 text-ink"
-                                  title={parcela.observacoes ?? undefined}
-                                >
-                                  {parcela.natureza
-                                    ? (ROTULO_DA_NATUREZA[parcela.natureza] ?? parcela.natureza)
-                                    : "A definir"}
-                                </td>
-                                <td className="px-2 py-1.5 tabular-nums text-ink-soft">
-                                  {dataBR(parcela.vencimento)}
-                                </td>
-                                <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-ink">
-                                  {brl(parcela.valor)}
-                                </td>
-                                <td className="px-2 py-1.5">
-                                  <Selo situacao={parcela.situacao} />
-                                </td>
-                                <td className="px-2 py-1.5 text-ink-soft">
-                                  {parcela.origemDaClasse === "regra_texto"
-                                    ? "Pelo histórico do LSoft"
-                                    : parcela.origemDaClasse === "regra_valor"
-                                      ? "Pelo valor alto"
-                                      : "Marcada à mão"}
-                                  {parcela.validadoPorNome ? ` · ${parcela.validadoPorNome}` : ""}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        <div className="flex flex-wrap items-start gap-4">
+                          <CaixaDagua
+                            contratado={cliente.contratado}
+                            pago={cliente.caixaPagou}
+                            percentual={percentual}
+                            saldo={cliente.saldo}
+                          />
 
-                        {cliente.caixaPagouSecundario > 0 ? (
-                          <p className="m-0 mt-2 text-[11px] text-ink-soft">
-                            Do que a Caixa pagou, {brl(cliente.caixaPagouSecundario)} vieram em
-                            créditos menores (rateio), já somados acima.
-                          </p>
-                        ) : null}
+                          <div className="grid min-w-[300px] flex-1 gap-3">
+                            <Bloco
+                              titulo={`O que a Caixa contratou · ${inteiro(cliente.parcelas.length)} parcela(s)`}
+                            >
+                              <table className="w-full border-collapse text-xs">
+                                <thead>
+                                  <tr className="text-[10px] uppercase tracking-[0.08em] text-ink-soft">
+                                    <th className="px-2 py-1.5 text-left font-semibold">Natureza</th>
+                                    <th className="px-2 py-1.5 text-left font-semibold">
+                                      Vencimento
+                                    </th>
+                                    <th className="px-2 py-1.5 text-right font-semibold">Valor</th>
+                                    <th className="px-2 py-1.5 text-left font-semibold">Situação</th>
+                                    <th className="px-2 py-1.5 text-left font-semibold">
+                                      Como foi identificada
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {cliente.parcelas.map((parcela) => (
+                                    <tr key={parcela.parcelaId}>
+                                      <td
+                                        className="px-2 py-1.5 text-ink"
+                                        title={parcela.observacoes ?? undefined}
+                                      >
+                                        {parcela.natureza
+                                          ? (ROTULO_DA_NATUREZA[parcela.natureza] ??
+                                            parcela.natureza)
+                                          : "A definir"}
+                                      </td>
+                                      <td className="px-2 py-1.5 tabular-nums text-ink-soft">
+                                        {dataBR(parcela.vencimento)}
+                                      </td>
+                                      <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-ink">
+                                        {brl(parcela.valor)}
+                                      </td>
+                                      <td className="px-2 py-1.5">
+                                        <Selo situacao={parcela.situacao} />
+                                      </td>
+                                      <td className="px-2 py-1.5 text-ink-soft">
+                                        {parcela.origemDaClasse === "regra_texto"
+                                          ? "Pelo histórico do LSoft"
+                                          : parcela.origemDaClasse === "regra_valor"
+                                            ? "Pelo valor alto"
+                                            : "Marcada à mão"}
+                                        {parcela.validadoPorNome
+                                          ? ` · ${parcela.validadoPorNome}`
+                                          : ""}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </Bloco>
+
+                            <Bloco
+                              titulo={`O que a Caixa já liberou · ${inteiro(cliente.liberacoes.length)} medição(ões)`}
+                            >
+                              {cliente.liberacoes.length === 0 ? (
+                                <p className="m-0 px-2 py-2 text-[11px] text-ink-soft">
+                                  Nenhum crédito desta unidade nos extratos CIWEB. Ou a obra ainda
+                                  não foi medida, ou o contrato da Caixa não casou com este cliente.
+                                </p>
+                              ) : (
+                                <table className="w-full border-collapse text-xs">
+                                  <thead>
+                                    <tr className="text-[10px] uppercase tracking-[0.08em] text-ink-soft">
+                                      <th className="px-2 py-1.5 text-left font-semibold">Data</th>
+                                      <th className="px-2 py-1.5 text-left font-semibold">Tipo</th>
+                                      <th className="px-2 py-1.5 text-right font-semibold">Valor</th>
+                                      <th className="px-2 py-1.5 text-right font-semibold">
+                                        Acumulado
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {acumularLiberacoes(cliente.liberacoes).map((liberacao, indice) => (
+                                      <tr key={`${liberacao.data ?? ""}-${indice}`}>
+                                        <td className="px-2 py-1.5 tabular-nums text-ink-soft">
+                                          {dataBR(liberacao.data)}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-ink-soft">
+                                          {liberacao.ehTerreno
+                                            ? "Terreno"
+                                            : liberacao.ehPrincipal
+                                              ? "Medição de obra"
+                                              : "Rateio (crédito menor)"}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                                          {brl(liberacao.valor)}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums text-ink-soft">
+                                          {brl(liberacao.acumulado)}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </Bloco>
+                          </div>
+                        </div>
                       </td>
                     </tr>
                   ) : null}
@@ -321,6 +381,104 @@ export function SubsidioDaCaixa({
         Caixa paga por medição de obra e o crédito cai na conta da construtora. Financiamento,
         subsídio, FGTS e terreno somam na mesma unidade.
       </p>
+    </div>
+  );
+}
+
+/**
+ * O MEDIDOR QUE O LUCAS PEDIU — *"tipo caixa d'água"*.
+ *
+ * A obra é uma caixa que a Caixa Econômica enche por medição. O contratado é a capacidade, o pago é
+ * o nível, e o que falta é o vazio em cima. É a leitura que um número sozinho não dá: dá para ver
+ * de longe se a unidade está no começo ou quase cheia.
+ *
+ * ⚠️ O NÍVEL NUNCA PASSA DE 100%, mesmo quando a Caixa libera mais que o contratado (acontece:
+ * correção monetária entre a assinatura e a última medição). O excedente aparece no texto, não na
+ * altura da água — uma caixa transbordando desenhada como 130% cheia não significaria nada.
+ */
+function CaixaDagua({
+  contratado,
+  pago,
+  percentual,
+  saldo,
+}: {
+  contratado: number;
+  pago: number;
+  percentual: number;
+  saldo: number;
+}) {
+  const cheia = percentual >= 100;
+
+  return (
+    <div className="flex shrink-0 items-center gap-3">
+      <div
+        aria-label={`${percentual}% do contratado já liberado pela Caixa`}
+        className="relative h-[132px] w-[76px] overflow-hidden rounded-lg border-2 border-black/15 bg-canvas dark:border-white/20"
+        role="img"
+      >
+        {/* A água: sobe de baixo, altura = % liberado. */}
+        <div
+          className="absolute inset-x-0 bottom-0 bg-emerald-500/25 transition-[height] duration-500 dark:bg-emerald-400/25"
+          style={{ height: `${Math.max(percentual, 0)}%` }}
+        >
+          {/* A linha do nível, para o olho achar a marca sem medir. */}
+          <div className="absolute inset-x-0 top-0 h-[2px] bg-emerald-500 dark:bg-emerald-400" />
+        </div>
+
+        {/* As marcas de 25 em 25, como as réguas de uma caixa de verdade. */}
+        {[25, 50, 75].map((marca) => (
+          <div
+            className="absolute left-0 h-px w-2 bg-black/15 dark:bg-white/20"
+            key={marca}
+            style={{ bottom: `${marca}%` }}
+          />
+        ))}
+
+        <span className="absolute inset-0 grid place-items-center text-lg font-bold tabular-nums text-ink">
+          {percentual}%
+        </span>
+      </div>
+
+      <div className="grid gap-1.5 text-xs">
+        <div>
+          <p className="m-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-soft">
+            Contratado
+          </p>
+          <p className="m-0 font-bold tabular-nums text-ink">{brl(contratado)}</p>
+        </div>
+        <div>
+          <p className="m-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-soft">
+            Já liberado
+          </p>
+          <p className="m-0 font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+            {brl(pago)}
+          </p>
+        </div>
+        <div>
+          <p className="m-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-soft">
+            Falta liberar
+          </p>
+          <p className="m-0 font-bold tabular-nums text-ink">
+            {cheia ? "—" : brl(saldo)}
+            {cheia && pago > contratado ? (
+              <span className="ml-1 text-[10px] font-normal text-ink-soft">
+                (liberou {brl(pago - contratado)} a mais)
+              </span>
+            ) : null}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Bloco({ children, titulo }: { children: React.ReactNode; titulo: string }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-black/[0.08] bg-surface dark:border-white/[0.08]">
+      <p className="m-0 border-b border-black/[0.06] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-soft dark:border-white/[0.06]">
+        {titulo}
+      </p>
+      {children}
     </div>
   );
 }
