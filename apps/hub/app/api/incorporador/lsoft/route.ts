@@ -63,7 +63,7 @@ export async function GET(request: Request) {
     });
     if (!subsidio.ok) return NextResponse.json({ error: subsidio.erro }, { status: 400 });
     return NextResponse.json(
-      { data: { linhas: subsidio.linhas, resumo: subsidio.resumo } },
+      { data: { clientes: subsidio.clientes, linhas: subsidio.linhas, resumo: subsidio.resumo } },
       { headers: { "Cache-Control": "no-store" } },
     );
   }

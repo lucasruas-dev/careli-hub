@@ -14,6 +14,7 @@
 // só o valor denuncia), e a regra por valor pega junto uma anomalia conhecida — um cliente com 30
 // linhas repetidas que é histórico de saldo, não dívida. Quem decide é quem conhece o contrato.
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { unidadeParaExibir } from "@/lib/lsoft/unidade";
 
 /** O que o botão da tela pode fazer com uma proposta da máquina. */
 export const DECISOES = ["confirmada", "rejeitada", "a_validar"] as const;
@@ -162,6 +163,38 @@ export type ParcelaDeSubsidio = {
   vencimento: null | string;
 };
 
+/**
+ * A LINHA QUE O LUCAS PEDIU: um cliente, uma unidade, o contratado e o que a Caixa ja pagou.
+ *
+ * Lucas (25/08/2026): *"o financiamento e subsidio e a mesma coisa, tem que trazer essas
+ * informacoes agrupadas por cliente / unidade"*. Financiamento, subsidio, FGTS e terreno sao
+ * bolsos do MESMO dinheiro da Caixa — separa-los em linhas soltas obrigava a somar de cabeca.
+ *
+ * ⚠️ DUAS FONTES QUE NUNCA SE FALARAM: o CONTRATADO vem do LSoft (as parcelas), o PAGO vem do
+ * extrato CIWEB da construtora. E esse encontro que a tela existe para mostrar.
+ */
+export type ClienteDeSubsidio = {
+  /** Quanto a Caixa ja liberou para este cliente, pelo extrato. */
+  caixaPagou: number;
+  /** A parte dos creditos menores (rateio) dentro do que foi pago. */
+  caixaPagouSecundario: number;
+  clienteCodigo: string;
+  clienteNome: string;
+  /** Soma das parcelas marcadas como Caixa (confirmadas + a validar). */
+  contratado: number;
+  /** So o que ja foi confirmado por gente. */
+  contratadoConfirmado: number;
+  liberacoes: number;
+  /** true quando o pago alcancou o contratado. */
+  liquidado: boolean;
+  parcelas: ParcelaDeSubsidio[];
+  /** contratado - pago, nunca negativo. */
+  saldo: number;
+  /** Data do ultimo credito no extrato. */
+  ultimaLiberacao: null | string;
+  unidade: null | string;
+};
+
 export type ResumoDoSubsidio = {
   /** Quantas ainda esperam decisao. */
   aValidar: number;
@@ -170,8 +203,22 @@ export type ResumoDoSubsidio = {
   confirmadas: number;
   parcelas: number;
   rejeitadas: number;
-  /** Total ja liberado pela Caixa (valor_recebido das confirmadas). */
+  /**
+   * O QUE A CAIXA JA PAGOU — soma dos creditos do EXTRATO CIWEB, nao da baixa no LSoft.
+   *
+   * Lucas (25/08/2026): *"a baixa da caixa vem dos extratos e nao do lsoft"*. O LSoft registra
+   * R$ 598 mil baixados; o extrato mostra R$ 7,75 mi ligados a cliente. A diferenca e dinheiro
+   * que a Caixa pagou e o sistema da construtora nunca soube.
+   */
   totalLiberado: number;
+  /** A parte dos creditos menores (rateio): somada no total, mostrada a parte. */
+  totalLiberadoSecundario: number;
+  /** Creditos do extrato que ainda nao casaram com cliente nenhum. */
+  totalSemVinculo: number;
+  /** Quantos clientes ja receberam alguma liberacao. */
+  clientesComLiberacao: number;
+  /** Quantas unidades ja tiveram o contratado alcancado pelo pago. */
+  liquidados: number;
   /** Total confirmado como Caixa. */
   totalConfirmado: number;
   /** Total esperando decisao. */
@@ -190,8 +237,8 @@ export async function lerParcelasDeSubsidio(entrada: {
   empreendimento: string;
   situacao?: null | string;
 }): Promise<
+  | { clientes: ClienteDeSubsidio[]; linhas: ParcelaDeSubsidio[]; ok: true; resumo: ResumoDoSubsidio }
   | { erro: string; ok: false }
-  | { linhas: ParcelaDeSubsidio[]; ok: true; resumo: ResumoDoSubsidio }
 > {
   const admin = createApoloAdminClient();
   if (!admin) return { erro: "Supabase indisponível.", ok: false };
@@ -213,11 +260,13 @@ export async function lerParcelasDeSubsidio(entrada: {
   const linhasMarcadas = (marcas ?? []) as Record<string, unknown>[];
   if (linhasMarcadas.length === 0) {
     return {
+      clientes: [],
       linhas: [],
       ok: true,
       resumo: {
-        aValidar: 0, clientes: 0, confirmadas: 0, parcelas: 0, rejeitadas: 0,
-        totalAValidar: 0, totalConfirmado: 0, totalLiberado: 0,
+        aValidar: 0, clientes: 0, clientesComLiberacao: 0, confirmadas: 0, liquidados: 0,
+        parcelas: 0, rejeitadas: 0, totalAValidar: 0, totalConfirmado: 0, totalLiberado: 0,
+        totalLiberadoSecundario: 0, totalSemVinculo: 0,
       },
     };
   }
@@ -293,22 +342,117 @@ export async function lerParcelasDeSubsidio(entrada: {
       (a.vencimento ?? "").localeCompare(b.vencimento ?? ""),
   );
 
+  // ── O QUE A CAIXA JA PAGOU, PELO EXTRATO ──────────────────────────────────
+  //
+  // ⚠️ NAO USE `valor_recebido` DO LSOFT AQUI. Foi o erro que a tela mostrou ao Lucas: R$ 598 mil
+  // onde o certo eram R$ 7,75 mi. A Caixa deposita na conta da construtora por medicao de obra, e
+  // o LSoft so registra o punhado de baixas que alguem digitou.
+  //
+  // O credito nao aponta para uma PARCELA — aponta para o CONTRATO. Por isso o pago mora no
+  // cliente, nunca na linha da parcela: distribuir R$ 7,7 mi entre parcelas seria inventar.
+  const pagoPorCliente = new Map<
+    string,
+    { secundario: number; total: number; ultima: null | string; vezes: number }
+  >();
+  let totalSemVinculo = 0;
+
+  for (let i = 0; i < codigos.length; i += 100) {
+    const { data } = await admin
+      .from("lsoft_credito_da_caixa")
+      .select("cliente_codigo, valor, eh_principal, data_movimento")
+      .in("cliente_codigo", codigos.slice(i, i + 100));
+
+    for (const c of (data ?? []) as Record<string, unknown>[]) {
+      const codigo = String(c.cliente_codigo ?? "");
+      if (!codigo) continue;
+      const atual = pagoPorCliente.get(codigo) ?? {
+        secundario: 0,
+        total: 0,
+        ultima: null as null | string,
+        vezes: 0,
+      };
+      const valor = numero(c.valor);
+      const data_ = texto(c.data_movimento);
+      atual.total += valor;
+      if (!c.eh_principal) atual.secundario += valor;
+      atual.vezes += 1;
+      if (data_ && (!atual.ultima || data_ > atual.ultima)) atual.ultima = data_;
+      pagoPorCliente.set(codigo, atual);
+    }
+  }
+
+  // Os creditos que ainda nao acharam dono. Medido em 25/08: 6 contratos, R$ 692.132,94. Ficam
+  // visiveis de proposito — sumir com eles esconderia dinheiro real da construtora.
+  const { data: orfaos } = await admin
+    .from("lsoft_credito_da_caixa")
+    .select("valor")
+    .is("cliente_codigo", null);
+  for (const o of (orfaos ?? []) as Record<string, unknown>[]) totalSemVinculo += numero(o.valor);
+
+  // ── UMA LINHA POR CLIENTE / UNIDADE ───────────────────────────────────────
+  const porCliente = new Map<string, ClienteDeSubsidio>();
+  for (const linha of filtradas) {
+    const codigo = linha.clienteCodigo;
+    let cliente = porCliente.get(codigo);
+    if (!cliente) {
+      const pago = pagoPorCliente.get(codigo);
+      cliente = {
+        caixaPagou: pago?.total ?? 0,
+        caixaPagouSecundario: pago?.secundario ?? 0,
+        clienteCodigo: codigo,
+        clienteNome: linha.clienteNome,
+        contratado: 0,
+        contratadoConfirmado: 0,
+        liberacoes: pago?.vezes ?? 0,
+        liquidado: false,
+        parcelas: [],
+        saldo: 0,
+        ultimaLiberacao: pago?.ultima ?? null,
+        unidade: unidadeParaExibir({ observacoes: linha.observacoes }) ?? linha.unidade,
+      };
+      porCliente.set(codigo, cliente);
+    }
+    // A unidade so aparece em algumas parcelas: a primeira que trouxer, vale para o grupo.
+    if (!cliente.unidade) {
+      cliente.unidade = unidadeParaExibir({ observacoes: linha.observacoes }) ?? linha.unidade;
+    }
+    // ⚠️ REJEITADA NAO SOMA: quem disse "isso nao e Caixa" tirou a parcela da conta.
+    if (linha.situacao !== "rejeitada") {
+      cliente.contratado += linha.valor;
+      if (linha.situacao === "confirmada") cliente.contratadoConfirmado += linha.valor;
+    }
+    cliente.parcelas.push(linha);
+  }
+
+  const clientes = [...porCliente.values()]
+    .map((c) => ({
+      ...c,
+      liquidado: c.contratado > 0 && c.caixaPagou >= c.contratado,
+      saldo: Math.max(c.contratado - c.caixaPagou, 0),
+    }))
+    .sort((a, b) => b.saldo - a.saldo || a.clienteNome.localeCompare(b.clienteNome, "pt-BR"));
+
   const soma = (quais: ParcelaDeSubsidio[]) => quais.reduce((t, l) => t + l.valor, 0);
   const confirmadas = filtradas.filter((l) => l.situacao === "confirmada");
   const aValidar = filtradas.filter((l) => l.situacao === "a_validar");
 
   return {
+    clientes,
     linhas: filtradas,
     ok: true,
     resumo: {
       aValidar: aValidar.length,
-      clientes: new Set(filtradas.map((l) => l.clienteCodigo)).size,
+      clientes: porCliente.size,
+      clientesComLiberacao: clientes.filter((c) => c.caixaPagou > 0).length,
       confirmadas: confirmadas.length,
+      liquidados: clientes.filter((c) => c.liquidado).length,
       parcelas: filtradas.length,
       rejeitadas: filtradas.filter((l) => l.situacao === "rejeitada").length,
       totalAValidar: soma(aValidar),
       totalConfirmado: soma(confirmadas),
-      totalLiberado: confirmadas.reduce((t, l) => t + l.valorRecebido, 0),
+      totalLiberado: clientes.reduce((t, c) => t + c.caixaPagou, 0),
+      totalLiberadoSecundario: clientes.reduce((t, c) => t + c.caixaPagouSecundario, 0),
+      totalSemVinculo,
     },
   };
 }

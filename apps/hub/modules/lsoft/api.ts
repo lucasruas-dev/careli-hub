@@ -8,7 +8,11 @@
 // duas cópias garantiria que uma delas ficaria para trás — e a que fica para trás é justamente a
 // que o cliente usa.
 import type { CadastroDoCliente, ClienteDaCarteira, EdicaoDoLsoft, ParcelaDaCarteira, ResumoDaCarteira, StatusDaValidacao } from "@/lib/lsoft/carteira";
-import type { ParcelaDeSubsidio, ResumoDoSubsidio } from "@/lib/lsoft/classificacao";
+import type {
+  ClienteDeSubsidio,
+  ParcelaDeSubsidio,
+  ResumoDoSubsidio,
+} from "@/lib/lsoft/classificacao";
 import type { DocumentoDoLsoft } from "@/lib/lsoft/documentos-tipos";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
@@ -71,6 +75,8 @@ export type ApiDoLsoft = {
 };
 
 export type SubsidioCarregado = {
+  /** Uma linha por cliente/unidade, com as parcelas dentro. */
+  clientes: ClienteDeSubsidio[];
   linhas: ParcelaDeSubsidio[];
   resumo: ResumoDoSubsidio;
 };

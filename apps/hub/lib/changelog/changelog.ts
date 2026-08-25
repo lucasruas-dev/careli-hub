@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-25-subsidio-por-cliente-e-unidade",
+    deployedAt: "2026-08-25T16:00:00-03:00",
+    modules: [
+      {
+        module: "LSoft Integracao (CER / Cecilio)",
+        screens: [
+          {
+            items: [
+              "A aba Subsidio Caixa agora agrupa por CLIENTE e UNIDADE: uma linha por unidade, com Contratado, Caixa ja pagou, % coberto e Saldo a liberar.",
+              "Clique na linha para abrir as parcelas daquela unidade (natureza, vencimento, valor e como foi identificada).",
+              "Financiamento, subsidio, FGTS e terreno somam junto: sao bolsos do mesmo dinheiro da Caixa.",
+              "O 'Caixa ja pagou' passou a vir dos extratos CIWEB: de R$ 598 mil para R$ 7,75 milhoes.",
+              "Cartao novo 'Fora do rateio' com o credito que ainda nao achou dono (R$ 692 mil, 6 contratos).",
+            ],
+            screen: "Subsidio Caixa",
+          },
+        ],
+      },
+    ],
+    rollback: "b23fe28d",
+    technical: {
+      done: "lerParcelasDeSubsidio passou a agregar por cliente_codigo devolvendo ClienteDeSubsidio[] (contratado x caixaPagou x saldo x liquidado x ultimaLiberacao), lendo o pago de lsoft_credito_da_caixa em lotes de 100 e contando a parte os creditos sem vinculo. O totalLiberado do resumo saiu de lsoft_parcelas.valor_recebido para o extrato. A unidade do grupo usa unidadeParaExibir(observacoes). As duas rotas (interna e do incorporador) devolvem o campo clientes; a tela virou tabela expansivel com as parcelas dentro.",
+      motivation:
+        "Lucas (25/08): \"o financiamento e subsidio e a mesma coisa, tem que trazer essas informacoes agrupadas por cliente / unidade\" e \"cade o valor de 7 milhoes que voce encontrou, quero que tenha o valor das unidades e o que a caixa ja pagou\". A tela mostrava parcelas soltas e um 'ja liberado' de R$ 598 mil vindo da baixa no LSoft, quando a Caixa ja depositou R$ 7,75 mi na conta da construtora.",
+    },
+    title: "Subsidio Caixa por cliente e unidade, com o que a Caixa ja pagou",
+    type: "melhoria",
+    version: "1.206.0",
+  },
+  {
     buildTag: "2026-08-25-prometeu-totem-e-cadastro-que-salva",
     deployedAt: "2026-08-25T15:30:00-03:00",
     modules: [

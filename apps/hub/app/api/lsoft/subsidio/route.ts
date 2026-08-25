@@ -27,5 +27,7 @@ export async function GET(request: Request) {
 
   if (!resultado.ok) return NextResponse.json({ error: resultado.erro }, { status: 400 });
 
-  return NextResponse.json({ data: { linhas: resultado.linhas, resumo: resultado.resumo } });
+  return NextResponse.json({
+    data: { clientes: resultado.clientes, linhas: resultado.linhas, resumo: resultado.resumo },
+  });
 }

@@ -1,25 +1,27 @@
 "use client";
 
-import { Loader2, Search } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-
-import { unidadeParaExibir } from "@/lib/lsoft/unidade";
+import { ChevronDown, ChevronRight, Loader2, Search } from "lucide-react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 
 import type { ApiDoLsoft, SubsidioCarregado } from "./api";
 
-// A VISÃO DO SUBSÍDIO DA CAIXA — parcela por parcela.
+// A VISÃO DO SUBSÍDIO DA CAIXA — por cliente e unidade.
 //
-// Pedido do Lucas (25/08/2026): *"eu queria uma tela diferente para os subsidio, eu precisava
-// enxergar esses valores separados... parcela por parcela"*.
+// Pedido do Lucas (25/08/2026): *"o financiamento e subsídio é a mesma coisa, tem que trazer essas
+// informações agrupadas por cliente / unidade"* e *"quero que tenha o valor das unidades e o que a
+// caixa já pagou"*.
 //
 // A carteira responde "quanto o cliente deve". Esta responde outra pergunta: **o que a Caixa tem
-// para pagar, e quanto já pagou**. No Vale do Sol (Minha Casa Minha Vida) o financiamento não é
-// dívida do comprador — a Caixa libera por medição de obra, e o crédito cai no extrato CIWEB da
-// construtora.
+// para pagar em cada unidade, e quanto já pagou**. No Vale do Sol (Minha Casa Minha Vida) o
+// financiamento não é dívida do comprador — a Caixa libera por medição de obra, e o crédito cai no
+// extrato CIWEB da construtora.
 //
-// ⚠️ O "JÁ LIBERADO" VEM DO EXTRATO, NÃO DO LSOFT (Lucas, 25/08: *"a baixa da caixa vem dos
-// extratos e não do lsoft"*). Medido: o LSoft registra R$ 598 mil baixados, o extrato mostra
-// R$ 7,75 mi. São R$ 7,15 mi que a Caixa pagou e o sistema da construtora não sabe.
+// ⚠️ DUAS FONTES QUE NUNCA SE FALARAM. O contratado vem do LSoft (as parcelas); o pago vem do
+// extrato. Lucas, 25/08: *"a baixa da caixa vem dos extratos e não do lsoft"*. Medido: o LSoft
+// registra R$ 598 mil baixados, o extrato mostra R$ 7,75 mi ligados a cliente.
+//
+// ⚠️ FINANCIAMENTO, SUBSÍDIO, FGTS E TERRENO SÃO O MESMO BOLSO. A natureza continua visível parcela
+// a parcela, para auditoria, mas o número que decide é a soma da unidade.
 
 const brl = (valor: number) =>
   valor.toLocaleString("pt-BR", { currency: "BRL", style: "currency" });
@@ -49,6 +51,7 @@ export function SubsidioDaCaixa({
   const [erro, setErro] = useState<null | string>(null);
   const [busca, setBusca] = useState("");
   const [buscaAtiva, setBuscaAtiva] = useState("");
+  const [abertos, setAbertos] = useState<Set<string>>(new Set());
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -85,7 +88,7 @@ export function SubsidioDaCaixa({
     );
   }
 
-  if (!dados || dados.linhas.length === 0) {
+  if (!dados || dados.clientes.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-black/[0.12] p-10 text-center text-sm text-ink-soft dark:border-white/[0.12]">
         Nenhuma parcela de subsídio da Caixa neste empreendimento.
@@ -93,26 +96,36 @@ export function SubsidioDaCaixa({
     );
   }
 
-  const { linhas, resumo } = dados;
+  const { clientes, resumo } = dados;
+  const contratado = resumo.totalConfirmado + resumo.totalAValidar;
+  const saldo = clientes.reduce((total, cliente) => total + cliente.saldo, 0);
+
+  const alternar = (codigo: string) =>
+    setAbertos((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(codigo)) proximo.delete(codigo);
+      else proximo.add(codigo);
+      return proximo;
+    });
 
   return (
     <div className="grid gap-4">
       <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(190px,1fr))]">
         <Cartao
-          dica={`${inteiro(resumo.parcelas)} parcela(s) · ${inteiro(resumo.clientes)} cliente(s)`}
+          dica={`${inteiro(resumo.clientes)} unidade(s) · ${inteiro(resumo.parcelas)} parcela(s)`}
           rotulo="Contratado com a Caixa"
-          valor={brlCurto(resumo.totalConfirmado + resumo.totalAValidar)}
+          valor={brlCurto(contratado)}
         />
         <Cartao
-          dica="pelos extratos CIWEB"
-          rotulo="Já liberado"
+          dica={`${inteiro(resumo.clientesComLiberacao)} unidade(s) · extratos CIWEB`}
+          rotulo="A Caixa já pagou"
           tom="ok"
           valor={brlCurto(resumo.totalLiberado)}
         />
         <Cartao
           dica="a Caixa libera por medição"
           rotulo="Saldo a liberar"
-          valor={brlCurto(Math.max(resumo.totalConfirmado - resumo.totalLiberado, 0))}
+          valor={brlCurto(saldo)}
         />
         {resumo.aValidar > 0 ? (
           <Cartao
@@ -120,6 +133,14 @@ export function SubsidioDaCaixa({
             rotulo="A validar"
             tom="alerta"
             valor={brlCurto(resumo.totalAValidar)}
+          />
+        ) : null}
+        {resumo.totalSemVinculo > 0 ? (
+          <Cartao
+            dica="crédito sem cliente identificado"
+            rotulo="Fora do rateio"
+            tom="alerta"
+            valor={brlCurto(resumo.totalSemVinculo)}
           />
         ) : null}
       </div>
@@ -160,54 +181,145 @@ export function SubsidioDaCaixa({
             <tr className="bg-subtle text-[10.5px] uppercase tracking-[0.08em] text-ink-soft">
               <th className="px-3 py-2.5 text-left font-semibold">Cliente</th>
               <th className="px-3 py-2.5 text-left font-semibold">Unidade</th>
-              <th className="px-3 py-2.5 text-left font-semibold">Natureza</th>
-              <th className="px-3 py-2.5 text-left font-semibold">Vencimento</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Valor</th>
-              <th className="px-3 py-2.5 text-left font-semibold">Situação</th>
-              <th className="px-3 py-2.5 text-left font-semibold">Como foi identificada</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Contratado</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Caixa já pagou</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Saldo a liberar</th>
+              <th className="px-3 py-2.5 text-left font-semibold">Última liberação</th>
             </tr>
           </thead>
           <tbody>
-            {linhas.map((linha) => (
-              <tr
-                className="border-t border-black/[0.06] dark:border-white/[0.06]"
-                key={linha.parcelaId}
-              >
-                <td className="px-3 py-2 font-semibold text-ink">{linha.clienteNome || "—"}</td>
-                <td className="px-3 py-2 text-xs text-ink-soft" title={linha.observacoes ?? undefined}>
-                  {unidadeParaExibir({ observacoes: linha.observacoes }) ?? linha.unidade ?? "—"}
-                </td>
-                <td className="px-3 py-2 text-xs text-ink-soft">
-                  {linha.natureza
-                    ? (ROTULO_DA_NATUREZA[linha.natureza] ?? linha.natureza)
-                    : "A definir"}
-                </td>
-                <td className="px-3 py-2 text-xs tabular-nums text-ink-soft">
-                  {dataBR(linha.vencimento)}
-                </td>
-                <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink">
-                  {brl(linha.valor)}
-                </td>
-                <td className="px-3 py-2">
-                  <Selo situacao={linha.situacao} />
-                </td>
-                <td className="px-3 py-2 text-xs text-ink-soft">
-                  {linha.origemDaClasse === "regra_texto"
-                    ? "Pelo histórico do LSoft"
-                    : linha.origemDaClasse === "regra_valor"
-                      ? "Pelo valor alto"
-                      : "Marcada à mão"}
-                  {linha.validadoPorNome ? ` · ${linha.validadoPorNome}` : ""}
-                </td>
-              </tr>
-            ))}
+            {clientes.map((cliente) => {
+              const aberto = abertos.has(cliente.clienteCodigo);
+              // Quanto do contratado a Caixa já cobriu — o número que a obra acompanha.
+              const percentual =
+                cliente.contratado > 0
+                  ? Math.min(Math.round((cliente.caixaPagou / cliente.contratado) * 100), 100)
+                  : 0;
+
+              return (
+                <Fragment key={cliente.clienteCodigo}>
+                  <tr
+                    className="cursor-pointer border-t border-black/[0.06] hover:bg-subtle dark:border-white/[0.06]"
+                    onClick={() => alternar(cliente.clienteCodigo)}
+                  >
+                    <td className="px-3 py-2.5 font-semibold text-ink">
+                      <span className="inline-flex items-center gap-1.5">
+                        {aberto ? (
+                          <ChevronDown
+                            aria-hidden="true"
+                            className="shrink-0 text-ink-soft"
+                            size={14}
+                          />
+                        ) : (
+                          <ChevronRight
+                            aria-hidden="true"
+                            className="shrink-0 text-ink-soft"
+                            size={14}
+                          />
+                        )}
+                        {cliente.clienteNome || cliente.clienteCodigo}
+                      </span>
+                      <span className="ml-5 block text-[11px] font-normal text-ink-soft">
+                        {inteiro(cliente.parcelas.length)} parcela(s)
+                        {cliente.liberacoes > 0
+                          ? ` · ${inteiro(cliente.liberacoes)} liberação(ões)`
+                          : " · nenhuma liberação ainda"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-ink-soft">{cliente.unidade ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-ink">
+                      {brl(cliente.contratado)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                        {brl(cliente.caixaPagou)}
+                      </span>
+                      <span className="block text-[11px] font-normal text-ink-soft">
+                        {percentual}% do contratado
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {cliente.liquidado ? (
+                        <span className="inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                          Liquidada
+                        </span>
+                      ) : (
+                        <span className="font-semibold text-ink">{brl(cliente.saldo)}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs tabular-nums text-ink-soft">
+                      {dataBR(cliente.ultimaLiberacao)}
+                    </td>
+                  </tr>
+
+                  {aberto ? (
+                    <tr className="border-t border-black/[0.06] dark:border-white/[0.06]">
+                      <td className="bg-subtle/50 px-3 py-3" colSpan={6}>
+                        <table className="w-full border-collapse text-xs">
+                          <thead>
+                            <tr className="text-[10px] uppercase tracking-[0.08em] text-ink-soft">
+                              <th className="px-2 py-1.5 text-left font-semibold">Natureza</th>
+                              <th className="px-2 py-1.5 text-left font-semibold">Vencimento</th>
+                              <th className="px-2 py-1.5 text-right font-semibold">Valor</th>
+                              <th className="px-2 py-1.5 text-left font-semibold">Situação</th>
+                              <th className="px-2 py-1.5 text-left font-semibold">
+                                Como foi identificada
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cliente.parcelas.map((parcela) => (
+                              <tr key={parcela.parcelaId}>
+                                <td
+                                  className="px-2 py-1.5 text-ink"
+                                  title={parcela.observacoes ?? undefined}
+                                >
+                                  {parcela.natureza
+                                    ? (ROTULO_DA_NATUREZA[parcela.natureza] ?? parcela.natureza)
+                                    : "A definir"}
+                                </td>
+                                <td className="px-2 py-1.5 tabular-nums text-ink-soft">
+                                  {dataBR(parcela.vencimento)}
+                                </td>
+                                <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-ink">
+                                  {brl(parcela.valor)}
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <Selo situacao={parcela.situacao} />
+                                </td>
+                                <td className="px-2 py-1.5 text-ink-soft">
+                                  {parcela.origemDaClasse === "regra_texto"
+                                    ? "Pelo histórico do LSoft"
+                                    : parcela.origemDaClasse === "regra_valor"
+                                      ? "Pelo valor alto"
+                                      : "Marcada à mão"}
+                                  {parcela.validadoPorNome ? ` · ${parcela.validadoPorNome}` : ""}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+
+                        {cliente.caixaPagouSecundario > 0 ? (
+                          <p className="m-0 mt-2 text-[11px] text-ink-soft">
+                            Do que a Caixa pagou, {brl(cliente.caixaPagouSecundario)} vieram em
+                            créditos menores (rateio), já somados acima.
+                          </p>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       <p className="text-xs text-ink-soft">
-        O <strong>já liberado</strong> vem dos extratos da Caixa (CIWEB), não da baixa no LSoft: a
-        Caixa paga por medição de obra e o crédito cai na conta da construtora.
+        O <strong>Caixa já pagou</strong> vem dos extratos da Caixa (CIWEB), não da baixa no LSoft: a
+        Caixa paga por medição de obra e o crédito cai na conta da construtora. Financiamento,
+        subsídio, FGTS e terreno somam na mesma unidade.
       </p>
     </div>
   );
