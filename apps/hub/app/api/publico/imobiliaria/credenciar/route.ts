@@ -1,5 +1,5 @@
 import { createApoloEntity } from "@/lib/apolo/cadastro-persist";
-import { listEmpreendimentosAtivos } from "@/lib/apolo/credenciamento";
+import { listEmpreendimentosParaImobiliaria } from "@/lib/apolo/credenciamento";
 import {
   chaveDoCorretor,
   conflitosDeCorretor,
@@ -88,9 +88,10 @@ export async function POST(request: Request) {
   try {
     const existente = await consultarImobiliariaCredenciada(adminClient, cnpj);
 
-    // Só empreendimentos ATIVOS entram. O que o cliente mandar fora dessa lista é descartado
-    // em silêncio: ele não escolhe o que não está aberto.
-    const ativos = await listEmpreendimentosAtivos(adminClient);
+    // Só empreendimentos com o PORTÃO de imobiliária aberto (master `credenciamento_ativo` E
+    // `recepcao_imobiliaria`) entram. O que o cliente mandar fora dessa lista é descartado em
+    // silêncio: ele não escolhe o que não está aberto — validação server-side, não só vitrine.
+    const ativos = await listEmpreendimentosParaImobiliaria(adminClient);
 
     // Razão social, e-mail e telefone só fazem sentido no CADASTRO NOVO. Para quem já é
     // credenciada, a empresa já está cadastrada e exigir isso de novo travaria a habilitação.
@@ -213,9 +214,9 @@ export async function POST(request: Request) {
 // O que muda em relação ao cadastro novo: os vínculos nascem **`verified`** (e não `pending`),
 // porque a empresa já foi validada. O papel dela já é `active` e não se mexe nele.
 async function habilitarJaCredenciada(
-  adminClient: Parameters<typeof listEmpreendimentosAtivos>[0],
+  adminClient: Parameters<typeof listEmpreendimentosParaImobiliaria>[0],
   input: {
-    ativos: Awaited<ReturnType<typeof listEmpreendimentosAtivos>>;
+    ativos: Awaited<ReturnType<typeof listEmpreendimentosParaImobiliaria>>;
     corpo: Corpo | null;
     entityId: string;
     nome: string;
@@ -250,7 +251,7 @@ function corretoresValidos(cru: unknown): { cpf: string; nome: string }[] {
 }
 
 async function gravarCorretores(
-  adminClient: Parameters<typeof listEmpreendimentosAtivos>[0],
+  adminClient: Parameters<typeof listEmpreendimentosParaImobiliaria>[0],
   entityId: string,
   equipe: { cpf: string; nome: string }[],
 ): Promise<boolean> {
@@ -483,7 +484,7 @@ const soDigitosCpf = (v: unknown): string => (typeof v === "string" ? v.replace(
 // devolve os conflitos. Separado da regra pura (`conflitosDeCorretor`) para que a regra continue
 // testável sem banco.
 async function conflitosNoBanco(
-  adminClient: Parameters<typeof listEmpreendimentosAtivos>[0],
+  adminClient: Parameters<typeof listEmpreendimentosParaImobiliaria>[0],
   input: {
     corretores: { cpf?: null | string; nome: string }[];
     empreendimentos: { enterpriseId: string; label: string }[];

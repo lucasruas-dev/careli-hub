@@ -9,7 +9,7 @@
 // Toda escrita checa `error` e aborta. Já houve falha SILENCIOSA por upsert do PostgREST em
 // coluna NOT NULL sem default (21/jul, 11 fichas ficaram indexadas pelo nome antigo).
 import { createApoloEntity } from "@/lib/apolo/cadastro-persist";
-import { listEmpreendimentosAtivos } from "@/lib/apolo/credenciamento";
+import { listEmpreendimentosAtivos, listEmpreendimentosParaCad } from "@/lib/apolo/credenciamento";
 import { hashIdentifier, type createApoloAdminClient } from "@/lib/apolo/server";
 import {
   filtrarEmpreendimentosHabilitados,
@@ -239,6 +239,26 @@ export async function empreendimentosHabilitados(
   adminClient: AdminClient,
   imobiliariaEntityId: string,
 ): Promise<EmpreendimentoPublico[]> {
+  // ⚠️ Portão PÚBLICO de CAD (`credenciamento_ativo AND recepcao_cad`), não o master sozinho:
+  // empreendimento habilitando imobiliárias mas ainda sem receber CAD (caso Recanto do Vale) não
+  // pode aparecer aqui — este recorte é exatamente o que o formulário público oferece ao corretor.
+  const [credenciados, ativos] = await Promise.all([
+    empreendimentosCredenciados(adminClient, imobiliariaEntityId),
+    listEmpreendimentosParaCad(adminClient),
+  ]);
+  return filtrarEmpreendimentosHabilitados(credenciados, ativos);
+}
+
+// Variante INTERNA da lista acima: mesmo recorte (vínculo 'empreendimento' verified ∩ ativos),
+// mas no MASTER (`credenciamento_ativo`) sozinho, SEM o portão público de CAD. É a lista do
+// cadastro MANUAL de prospect pelo operador logado (lib/apolo/imobiliaria-cadastro.ts): fluxo
+// interno segue só o master, exatamente como antes da migration 0110 — o portão `recepcao_cad`
+// fecha o formulário PÚBLICO, não a mão do operador. (Se o Lucas decidir que CAD fechada fecha
+// também o cadastro manual, é só este consumidor trocar para `empreendimentosHabilitados`.)
+export async function empreendimentosHabilitadosInterno(
+  adminClient: AdminClient,
+  imobiliariaEntityId: string,
+): Promise<EmpreendimentoPublico[]> {
   const [credenciados, ativos] = await Promise.all([
     empreendimentosCredenciados(adminClient, imobiliariaEntityId),
     listEmpreendimentosAtivos(adminClient),
@@ -458,6 +478,11 @@ export async function registrarOrigemPublica(
 }
 
 // Nome do empreendimento para imprimir na CAD e na fila do Board.
+//
+// CLASSIFICAÇÃO (portões da 0110): uso INTERNO — é lookup de NOME, não vitrine. Fica no MASTER
+// (`listEmpreendimentosAtivos`) de propósito: uma CAD já enviada continua precisando imprimir o
+// nome mesmo que a `recepcao_cad` do empreendimento tenha sido desligada depois. Usar o portão
+// de CAD aqui apagaria o nome de fichas legítimas na fila do Board.
 export async function nomeDoEmpreendimento(
   adminClient: AdminClient,
   enterpriseId: string,

@@ -28,6 +28,15 @@ export type EnterpriseSetting = {
   // Toggle da Pré-venda (default true na migration). Ligado ⇒ o valor do PIX é exigido; desligado
   // ⇒ a etapa de pré-venda é ignorada na esteira.
   prevendaHabilitada: boolean;
+  // Portão público de CAD (default TRUE na migration 0110). O formulário público de CAD só oferece
+  // o empreendimento se `credenciamento_ativo AND recepcao_cad`. Motivo: CAD e habilitação de
+  // imobiliária acontecem em momentos diferentes (caso Recanto do Vale — habilita imobiliária
+  // antes da convenção de vendas, CAD só depois).
+  recepcaoCad: boolean;
+  // Portão público de credenciamento de imobiliária (default TRUE na migration 0110). O formulário
+  // público de imobiliária só oferece o empreendimento se `credenciamento_ativo AND
+  // recepcao_imobiliaria`.
+  recepcaoImobiliaria: boolean;
   // Valor em R$ do PIX de credenciamento (pré-venda) DESTE empreendimento. null = padrão da ação
   // (R$ 1.000). É o que permite, com vários empreendimentos ativos, gerar o PIX no valor certo.
   valorPix: number | null;
@@ -41,6 +50,8 @@ type SettingRow = {
   enterprise_id: string;
   limite_credito: number | string | null;
   prevenda_habilitada: boolean | null;
+  recepcao_cad: boolean | null;
+  recepcao_imobiliaria: boolean | null;
   valor_pix: number | string | null;
 };
 
@@ -91,7 +102,7 @@ export async function listEnterpriseSettings(
   const completa = await adminClient
     .from(TABLE)
     .select(
-      "enterprise_id, code, credenciamento_ativo, limite_credito, valor_pix, analise_credito_habilitada, prevenda_habilitada, comprovante_renda_habilitado",
+      "enterprise_id, code, credenciamento_ativo, limite_credito, valor_pix, analise_credito_habilitada, prevenda_habilitada, comprovante_renda_habilitado, recepcao_cad, recepcao_imobiliaria",
     )
     .limit(2000);
 
@@ -110,11 +121,17 @@ export async function listEnterpriseSettings(
         | "analise_credito_habilitada"
         | "comprovante_renda_habilitado"
         | "prevenda_habilitada"
+        | "recepcao_cad"
+        | "recepcao_imobiliaria"
         | "valor_pix"
       >),
       analise_credito_habilitada: null,
       comprovante_renda_habilitado: null,
       prevenda_habilitada: null,
+      // Colunas da migration 0110 ausentes: null vira "ligado" (flagPadraoLigado), o mesmo
+      // comportamento de hoje — o master sozinho decide.
+      recepcao_cad: null,
+      recepcao_imobiliaria: null,
       valor_pix: null,
     }));
   } else {
@@ -129,6 +146,8 @@ export async function listEnterpriseSettings(
       credenciamentoAtivo: Boolean(row.credenciamento_ativo),
       limiteCredito: normalizarLimite(row.limite_credito),
       prevendaHabilitada: flagPadraoLigado(row.prevenda_habilitada),
+      recepcaoCad: flagPadraoLigado(row.recepcao_cad),
+      recepcaoImobiliaria: flagPadraoLigado(row.recepcao_imobiliaria),
       valorPix: normalizarLimite(row.valor_pix),
     };
   }
@@ -236,7 +255,9 @@ async function setEnterpriseFlag(input: {
   coluna:
     | "analise_credito_habilitada"
     | "comprovante_renda_habilitado"
-    | "prevenda_habilitada";
+    | "prevenda_habilitada"
+    | "recepcao_cad"
+    | "recepcao_imobiliaria";
   enterpriseId: string;
   habilitada: boolean;
   updatedBy?: string | null;
@@ -267,6 +288,8 @@ async function setEnterpriseFlag(input: {
     analise_credito_habilitada: "0071",
     comprovante_renda_habilitado: "0095",
     prevenda_habilitada: "0071",
+    recepcao_cad: "0110",
+    recepcao_imobiliaria: "0110",
   };
   const erroColunaAusente = () => ({
     error: `Coluna desta etapa ainda nao existe (migration ${MIGRATION_DA_COLUNA[input.coluna]} pendente).`,
@@ -346,6 +369,31 @@ export function setEnterprisePrevenda(input: {
   return setEnterpriseFlag({ ...input, coluna: "prevenda_habilitada" });
 }
 
+// Liga/desliga a Recepção de CAD do empreendimento (não toca `credenciamento_ativo`). Desligada,
+// o formulário PÚBLICO de CAD deixa de oferecer o empreendimento — o interno segue normal.
+export function setEnterpriseRecepcaoCad(input: {
+  adminClient: AdminClient;
+  code?: string | null;
+  enterpriseId: string;
+  habilitada: boolean;
+  updatedBy?: string | null;
+}): Promise<{ error?: string; ok: boolean }> {
+  return setEnterpriseFlag({ ...input, coluna: "recepcao_cad" });
+}
+
+// Liga/desliga a Recepção de imobiliária do empreendimento (não toca `credenciamento_ativo`).
+// Desligada, o formulário PÚBLICO de credenciamento de imobiliária deixa de oferecer (e de
+// aceitar) o empreendimento — o interno segue normal.
+export function setEnterpriseRecepcaoImobiliaria(input: {
+  adminClient: AdminClient;
+  code?: string | null;
+  enterpriseId: string;
+  habilitada: boolean;
+  updatedBy?: string | null;
+}): Promise<{ error?: string; ok: boolean }> {
+  return setEnterpriseFlag({ ...input, coluna: "recepcao_imobiliaria" });
+}
+
 /**
  * O empreendimento (id do C2X) exige COMPROVANTE DE RENDA no envio da CAD?
  *
@@ -386,6 +434,68 @@ export async function listEnterprisesAtivos(adminClient: AdminClient): Promise<s
 
   if (error || !data) return [];
   return (data as { enterprise_id: string }[]).map((row) => row.enterprise_id);
+}
+
+export type PortaoRecepcao = "cad" | "imobiliaria";
+
+const COLUNA_DO_PORTAO: Record<PortaoRecepcao, "recepcao_cad" | "recepcao_imobiliaria"> = {
+  cad: "recepcao_cad",
+  imobiliaria: "recepcao_imobiliaria",
+};
+
+/**
+ * Ids dos empreendimentos com o PORTÃO PÚBLICO aberto: master `credenciamento_ativo` ligado E o
+ * flag de recepção do canal (CAD ou imobiliária) ligado.
+ *
+ * Motivo (Lucas, 26/08): CAD e habilitação de imobiliária acontecem em momentos diferentes —
+ * o Recanto do Vale habilita imobiliárias antes da convenção de vendas, mas só recebe CAD depois.
+ *
+ * ⚠️ FALLBACK DE COLUNA AUSENTE: se as colunas da migration 0110 ainda não existem no banco, a
+ * leitura refaz SÓ com o master (`listEnterprisesAtivos`) — comporta-se exatamente como hoje.
+ * Migration pendente NUNCA pode quebrar o formulário público (mesmo padrão do arquivo inteiro).
+ * E linha antiga com o valor null conta como LIGADO (`flagPadraoLigado`), batendo com o
+ * DEFAULT true da migration.
+ *
+ * ⚠️ Mas o fallback é SÓ para coluna/tabela ausente (migration pendente), NUNCA para erro
+ * genérico: com a 0110 já aplicada, um erro qualquer que atingisse só esta leitura (policy
+ * negando a coluna, regressão futura no select) não pode REABRIR o portão por baixo dos panos —
+ * portão de negócio falha FECHADO ([] — o mesmo que `listEnterprisesAtivos` devolve em erro).
+ */
+// Coluna da 0110 ausente: 42703 do Postgres ou PGRST204 do schema cache do PostgREST — e, por
+// garantia, mensagem citando a coluna nova (mesmo padrão do `colunaAusente` dos setters).
+function colunaRecepcaoAusente(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === "42703" || error.code === "PGRST204") return true;
+  const msg = error.message ?? "";
+  return /recepcao_(cad|imobiliaria)/i.test(msg) && /column|does not exist|schema cache/i.test(msg);
+}
+
+export async function listEnterprisesRecebendo(
+  adminClient: AdminClient,
+  portao: PortaoRecepcao,
+): Promise<string[]> {
+  const coluna = COLUNA_DO_PORTAO[portao];
+
+  const { data, error } = await adminClient
+    .from(TABLE)
+    .select(`enterprise_id, ${coluna}`)
+    .eq("credenciamento_ativo", true)
+    .limit(2000);
+
+  if (error) {
+    // Migration pendente (coluna 0110 ou a própria tabela 0052 ausente): refaz com o núcleo
+    // estável, que é o comportamento de antes desta feature.
+    if (colunaRecepcaoAusente(error) || tabelaAusente(error)) {
+      return listEnterprisesAtivos(adminClient);
+    }
+    // Qualquer outro erro: falha FECHADO, sem reabrir o portão.
+    return [];
+  }
+  if (!data) return [];
+
+  return (data as unknown as ({ enterprise_id: string } & Record<string, boolean | null>)[])
+    .filter((row) => flagPadraoLigado(row[coluna]))
+    .map((row) => row.enterprise_id);
 }
 
 export async function setEnterpriseCredenciamento(input: {

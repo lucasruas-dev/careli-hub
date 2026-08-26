@@ -817,6 +817,8 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
   comprovanteRenda: boolean;
   limiteCredito: number | null;
   prevenda: boolean;
+  recepcaoCad: boolean;
+  recepcaoImobiliaria: boolean;
   valorPix: number | null;
 }> {
   try {
@@ -835,6 +837,8 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
             credenciamentoAtivo?: boolean;
             limiteCredito?: number | null;
             prevendaHabilitada?: boolean;
+            recepcaoCad?: boolean;
+            recepcaoImobiliaria?: boolean;
             valorPix?: number | null;
           }
         >;
@@ -858,6 +862,11 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
         setting?.prevendaHabilitada === true &&
         typeof setting?.valorPix === "number" &&
         setting.valorPix > 0,
+      // Portões públicos (migration 0110): nascem LIGADOS (default true da coluna) — o master
+      // sozinho decide, que é o comportamento de sempre. Desligar é a exceção (caso Recanto do
+      // Vale: habilita imobiliária antes da convenção, CAD só depois).
+      recepcaoCad: setting?.recepcaoCad !== false,
+      recepcaoImobiliaria: setting?.recepcaoImobiliaria !== false,
       valorPix: typeof setting?.valorPix === "number" ? setting.valorPix : null,
     };
   } catch {
@@ -867,6 +876,8 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
       comprovanteRenda: false,
       limiteCredito: null,
       prevenda: false,
+      recepcaoCad: true,
+      recepcaoImobiliaria: true,
       valorPix: null,
     };
   }
@@ -905,6 +916,8 @@ async function patchEnterpriseSettings(
     comprovanteRendaHabilitado?: boolean;
     limiteCredito?: number | null;
     prevendaHabilitada?: boolean;
+    recepcaoCad?: boolean;
+    recepcaoImobiliaria?: boolean;
     valorPix?: number | null;
   },
 ): Promise<{
@@ -974,6 +987,13 @@ function CredenciamentoCard({
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [ativo, setAtivo] = useState(false);
   const [salvandoAtivo, setSalvandoAtivo] = useState(false);
+  // Portões públicos (migration 0110): CAD e habilitação de imobiliária abrem em momentos
+  // diferentes. Nascem LIGADOS (default da coluna) e salvam no clique, como o master.
+  const [recepcaoCad, setRecepcaoCad] = useState(true);
+  const [salvandoRecepcaoCad, setSalvandoRecepcaoCad] = useState(false);
+  const [recepcaoImob, setRecepcaoImob] = useState(true);
+  const [salvandoRecepcaoImob, setSalvandoRecepcaoImob] = useState(false);
+  const [erroRecepcao, setErroRecepcao] = useState<string | null>(null);
   // Análise de Crédito: toggle + limite (texto de moeda "1.000,00"). Vazio = padrão R$ 1.000.
   const [analiseOn, setAnaliseOn] = useState(true);
   const [limite, setLimite] = useState("");
@@ -1004,6 +1024,8 @@ function CredenciamentoCard({
     void fetchEnterpriseSettings(enterpriseId).then((value) => {
       if (!alive) return;
       setAtivo(value.ativo);
+      setRecepcaoCad(value.recepcaoCad);
+      setRecepcaoImob(value.recepcaoImobiliaria);
       setAnaliseOn(value.analiseCredito);
       setLimite(numeroParaMoeda(value.limiteCredito));
       setPrevendaOn(value.prevenda);
@@ -1025,6 +1047,29 @@ function CredenciamentoCard({
     if (!result.ok) {
       setAtivo(!proximo); // desfaz
       setErro(result.error ?? "Falha ao salvar.");
+    }
+  }
+
+  // Liga/desliga um portão público (Recepção de CAD / Recepção de imobiliária). Salva no clique,
+  // otimista como o master: um flag só, sem valor a configurar — botão Salvar seria burocracia.
+  async function alternarRecepcao(portao: "cad" | "imobiliaria") {
+    const eCad = portao === "cad";
+    const atual = eCad ? recepcaoCad : recepcaoImob;
+    const proximo = !atual;
+    const setValor = eCad ? setRecepcaoCad : setRecepcaoImob;
+    const setSalvando = eCad ? setSalvandoRecepcaoCad : setSalvandoRecepcaoImob;
+    setErroRecepcao(null);
+    setSalvando(true);
+    setValor(proximo); // otimista
+    const result = await patchEnterpriseSettings(
+      enterpriseId,
+      code,
+      eCad ? { recepcaoCad: proximo } : { recepcaoImobiliaria: proximo },
+    );
+    setSalvando(false);
+    if (!result.ok) {
+      setValor(atual); // desfaz
+      setErroRecepcao(result.error ?? "Falha ao salvar.");
     }
   }
 
@@ -1164,6 +1209,38 @@ function CredenciamentoCard({
           />
         </button>
       </div>
+
+      {/* Portões públicos (migration 0110): com o master ligado, cada formulário público abre
+          separado — CAD e habilitação de imobiliária acontecem em momentos diferentes (caso
+          Recanto do Vale). Travados e esmaecidos quando o master está desligado. */}
+      <div
+        aria-disabled={!ativo}
+        className={`mt-3 grid gap-2 sm:grid-cols-2 ${!ativo ? "pointer-events-none opacity-50" : ""}`}
+      >
+        <ToggleRecepcao
+          descricao="Formulário público de CAD oferece este empreendimento."
+          icone={FileText}
+          ligado={recepcaoCad}
+          onToggle={() => void alternarRecepcao("cad")}
+          salvando={salvandoRecepcaoCad}
+          titulo="Recepção de CAD"
+          travado={!ativo}
+        />
+        <ToggleRecepcao
+          descricao="Credenciamento público de imobiliária oferece este empreendimento."
+          icone={Handshake}
+          ligado={recepcaoImob}
+          onToggle={() => void alternarRecepcao("imobiliaria")}
+          salvando={salvandoRecepcaoImob}
+          titulo="Recepção de imobiliária"
+          travado={!ativo}
+        />
+      </div>
+      {erroRecepcao ? (
+        <p className="m-0 mt-2 text-xs font-medium text-rose-600 dark:text-rose-300">
+          {erroRecepcao}
+        </p>
+      ) : null}
 
       {/* Sub-etapas: travadas (esmaecidas) quando o master está desligado. */}
       <SubEtapaCredenciamento
@@ -4077,6 +4154,67 @@ function SkeletonScreen() {
 
 function locationLabel(row: ApoloEnterpriseRow): string {
   return [row.city, row.state].filter(Boolean).join("/");
+}
+
+// Portão público do credenciamento (Recepção de CAD / Recepção de imobiliária): um flag só, salvo
+// no clique como o master. Mesmo padrão visual do bloco (borda + bg-subtle/50 + switch), sem botão
+// Salvar — não há valor a configurar.
+function ToggleRecepcao({
+  descricao,
+  icone: Icone,
+  ligado,
+  onToggle,
+  salvando,
+  titulo,
+  travado,
+}: {
+  descricao: string;
+  icone: LucideIcon;
+  ligado: boolean;
+  onToggle: () => void;
+  salvando: boolean;
+  titulo: string;
+  travado: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-subtle/50 px-3 py-2.5">
+      <div className="flex min-w-0 items-start gap-2">
+        <Icone aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-ink-muted" />
+        <div className="min-w-0">
+          <p className="m-0 flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
+            {titulo}
+            <span
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                ligado
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                  : "bg-subtle text-ink-muted"
+              }`}
+            >
+              {ligado ? "Aberta" : "Fechada"}
+            </span>
+          </p>
+          <p className="m-0 mt-0.5 text-xs text-ink-muted">{descricao}</p>
+        </div>
+      </div>
+      <button
+        aria-checked={ligado}
+        aria-label={titulo}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
+          ligado ? "bg-inverse" : "bg-line-strong"
+        }`}
+        disabled={salvando || travado}
+        onClick={onToggle}
+        role="switch"
+        type="button"
+      >
+        <span
+          className={`inline-block size-4 rounded-full bg-white shadow transition-transform ${
+            ligado ? "translate-x-6" : "translate-x-1"
+          }`}
+        />
+      </button>
+    </div>
+  );
 }
 
 // Sub-etapa do credenciamento (Análise de Crédito / Pré-venda / Comprovante de renda): toggle +

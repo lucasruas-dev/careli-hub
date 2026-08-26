@@ -8,6 +8,8 @@ import {
   setEnterpriseCredenciamento,
   setEnterpriseLimiteCredito,
   setEnterprisePrevenda,
+  setEnterpriseRecepcaoCad,
+  setEnterpriseRecepcaoImobiliaria,
   setEnterpriseValorPix,
 } from "@/lib/apolo/enterprise-settings";
 import { varrerPrevendaDesligada } from "@/lib/apolo/prevenda-varredura";
@@ -19,7 +21,9 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 //  - PATCH → campos parciais das sub-etapas: `analiseCreditoHabilitada` + `limiteCredito` (Análise
 //            de Crédito), `prevendaHabilitada` + `valorPix` (Pré-venda) e
 //            `comprovanteRendaHabilitado` (Comprovante de renda, que é só um flag — não tem valor
-//            a configurar). Cada campo é opcional; a tela envia só o que o operador mexeu.
+//            a configurar) e os portões públicos `recepcaoCad` / `recepcaoImobiliaria` (migration
+//            0110 — CAD e habilitação de imobiliária abrem em momentos diferentes; caso Recanto
+//            do Vale). Cada campo é opcional; a tela envia só o que o operador mexeu.
 // O GET devolve todos os campos por empreendimento.
 //
 // AUTORIZAÇÃO: GET usa leitura (`authorizeApoloRead`); POST e PATCH usam ESCRITA
@@ -104,6 +108,8 @@ export async function PATCH(request: Request) {
     enterpriseId?: string;
     limiteCredito?: number | null;
     prevendaHabilitada?: boolean;
+    recepcaoCad?: boolean;
+    recepcaoImobiliaria?: boolean;
     valorPix?: number | null;
   };
   try {
@@ -126,12 +132,16 @@ export async function PATCH(request: Request) {
   const mexeuLimite = "limiteCredito" in body;
   const mexeuPrevenda = "prevendaHabilitada" in body;
   const mexeuRenda = "comprovanteRendaHabilitado" in body;
+  const mexeuRecepcaoCad = "recepcaoCad" in body;
+  const mexeuRecepcaoImob = "recepcaoImobiliaria" in body;
   const mexeuValorPix = "valorPix" in body;
 
   if (
     (mexeuAnalise && typeof body.analiseCreditoHabilitada !== "boolean") ||
     (mexeuPrevenda && typeof body.prevendaHabilitada !== "boolean") ||
-    (mexeuRenda && typeof body.comprovanteRendaHabilitado !== "boolean")
+    (mexeuRenda && typeof body.comprovanteRendaHabilitado !== "boolean") ||
+    (mexeuRecepcaoCad && typeof body.recepcaoCad !== "boolean") ||
+    (mexeuRecepcaoImob && typeof body.recepcaoImobiliaria !== "boolean")
   ) {
     return NextResponse.json({ error: "Estado invalido." }, { status: 400 });
   }
@@ -176,6 +186,29 @@ export async function PATCH(request: Request) {
       code: body.code,
       enterpriseId: body.enterpriseId,
       habilitada: Boolean(body.comprovanteRendaHabilitado),
+      updatedBy: auth.userId,
+    });
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 });
+  }
+
+  // Portões públicos: cada um salva só o próprio flag, sem tocar o master nem os demais campos.
+  if (mexeuRecepcaoCad) {
+    const r = await setEnterpriseRecepcaoCad({
+      adminClient,
+      code: body.code,
+      enterpriseId: body.enterpriseId,
+      habilitada: Boolean(body.recepcaoCad),
+      updatedBy: auth.userId,
+    });
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 });
+  }
+
+  if (mexeuRecepcaoImob) {
+    const r = await setEnterpriseRecepcaoImobiliaria({
+      adminClient,
+      code: body.code,
+      enterpriseId: body.enterpriseId,
+      habilitada: Boolean(body.recepcaoImobiliaria),
       updatedBy: auth.userId,
     });
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 });
@@ -231,6 +264,8 @@ export async function PATCH(request: Request) {
       comprovanteRendaHabilitado: body.comprovanteRendaHabilitado,
       limiteCredito: limite,
       prevendaHabilitada: body.prevendaHabilitada,
+      recepcaoCad: body.recepcaoCad,
+      recepcaoImobiliaria: body.recepcaoImobiliaria,
       // Null quando não houve desligamento. Preenchido, diz quantas CADs saíram da pré-venda e para
       // onde — a tela mostra, senão o operador não fica sabendo que o clique dele mexeu na fila.
       varredura,

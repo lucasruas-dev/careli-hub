@@ -2,7 +2,7 @@
 // UMA imobiliária, para o operador seguir o fluxo imobiliária -> empreendimento -> corretor — o
 // MESMO caminho que o portal público já faz pelo token da antessala. Reusa a regra do portal.
 // Ver [[reference_apolo_empreendimento_faltante]], [[project_apolo_portal_publico_cad]].
-import { empreendimentosHabilitados } from "@/lib/publico/cad/dados";
+import { empreendimentosHabilitadosInterno } from "@/lib/publico/cad/dados";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
@@ -12,11 +12,16 @@ export type CorretorDaImob = { email: string | null; entityId: string; nome: str
 
 // Empreendimentos que a imobiliária TRABALHA: vínculo 'empreendimento' verified ∩ empreendimentos
 // ativos. É a lista que decide "se >1 mostra pro operador escolher, se 1 vincula direto".
+//
+// ⚠️ Consumidor INTERNO (operador logado): usa a variante no MASTER, sem o portão público
+// `recepcao_cad` da migration 0110 — Recanto do Vale com CAD fechada ao público continua
+// disponível para o cadastro manual do time, como sempre foi. Decisão em aberto com o Lucas:
+// se CAD fechada dever fechar também o manual, trocar para `empreendimentosHabilitados`.
 export async function empreendimentosDaImobiliaria(
   client: AdminClient,
   imobiliariaEntityId: string,
 ): Promise<EmpreendimentoDaImob[]> {
-  const habilitados = await empreendimentosHabilitados(client, imobiliariaEntityId);
+  const habilitados = await empreendimentosHabilitadosInterno(client, imobiliariaEntityId);
   return habilitados.map((e) => ({ enterpriseId: String(e.id), nome: e.name }));
 }
 

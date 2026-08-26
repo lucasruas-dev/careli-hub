@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 
-import { listEmpreendimentosAtivos } from "@/lib/apolo/credenciamento";
+import { listEmpreendimentosParaImobiliaria } from "@/lib/apolo/credenciamento";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import type { EmpreendimentoPublico } from "@/lib/publico/cad/regras";
 import { ImobiliariaPublicoPortal } from "@/modules/publico/imobiliaria/ImobiliariaPublicoPortal";
@@ -29,7 +29,10 @@ export default async function ImobiliariaPublicoRoute() {
 
   if (adminClient) {
     try {
-      empreendimentos = await listEmpreendimentosAtivos(adminClient);
+      // Portão de imobiliária (master + `recepcao_imobiliaria`): este é o formulário público de
+      // credenciamento — empreendimento recebendo CAD mas fechado para imobiliárias novas não
+      // aparece aqui.
+      empreendimentos = await listEmpreendimentosParaImobiliaria(adminClient);
     } catch {
       // Legado/Supabase fora do ar não pode derrubar a página: o cadastro segue sem a lista,
       // e a central completa a habilitação depois.

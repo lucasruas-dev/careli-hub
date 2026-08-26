@@ -14,7 +14,7 @@ import type { RowDataPacket } from "mysql2";
 
 import { loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
 import { chaveDaLogo, listEnterpriseLogos } from "@/lib/apolo/enterprise-logos";
-import { listEnterprisesAtivos } from "@/lib/apolo/enterprise-settings";
+import { listEnterprisesAtivos, listEnterprisesRecebendo } from "@/lib/apolo/enterprise-settings";
 import { hashIdentifier } from "@/lib/apolo/server";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
 import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
@@ -48,16 +48,46 @@ function onlyDigits(value: string | null | undefined): string {
   return (value ?? "").replace(/\D/g, "");
 }
 
-// Empreendimentos "na ativa", com a logo que o operador subiu. O nome/sigla vem do C2X; se o
-// legado estiver fora do ar, o empreendimento ainda aparece (com a sigla salva no settings).
+// Empreendimentos "na ativa" (SÓ o master `credenciamento_ativo`), com a logo que o operador
+// subiu. O nome/sigla vem do C2X; se o legado estiver fora do ar, o empreendimento ainda aparece
+// (com a sigla salva no settings).
+//
+// ⚠️ É a lista dos fluxos INTERNOS (board/habilitar, credenciamento interno, Prometeu) e de
+// lookups de nome. Os formulários PÚBLICOS usam os portões abaixo (`listEmpreendimentosParaCad` /
+// `listEmpreendimentosParaImobiliaria`), porque CAD e habilitação de imobiliária abrem em
+// momentos diferentes (caso Recanto do Vale, Lucas 26/08).
 export async function listEmpreendimentosAtivos(
   adminClient: AdminClient,
 ): Promise<CredenciamentoEmpreendimento[]> {
-  const [ativos, logos] = await Promise.all([
-    listEnterprisesAtivos(adminClient),
-    listEnterpriseLogos(adminClient),
-  ]);
+  return montarEmpreendimentos(adminClient, await listEnterprisesAtivos(adminClient));
+}
+
+// Portão público de CAD: master ligado E `recepcao_cad` ligada. É o recorte que o formulário
+// público de CAD oferece ao corretor.
+export async function listEmpreendimentosParaCad(
+  adminClient: AdminClient,
+): Promise<CredenciamentoEmpreendimento[]> {
+  return montarEmpreendimentos(adminClient, await listEnterprisesRecebendo(adminClient, "cad"));
+}
+
+// Portão público de imobiliária: master ligado E `recepcao_imobiliaria` ligada. É o recorte da
+// vitrine e da validação server-side do credenciamento público de imobiliária.
+export async function listEmpreendimentosParaImobiliaria(
+  adminClient: AdminClient,
+): Promise<CredenciamentoEmpreendimento[]> {
+  return montarEmpreendimentos(
+    adminClient,
+    await listEnterprisesRecebendo(adminClient, "imobiliaria"),
+  );
+}
+
+// Montagem comum das três listas acima: muda SÓ o filtro de ids que entra.
+async function montarEmpreendimentos(
+  adminClient: AdminClient,
+  ativos: string[],
+): Promise<CredenciamentoEmpreendimento[]> {
   if (!ativos.length) return [];
+  const logos = await listEnterpriseLogos(adminClient);
 
   const { data: settingsRows } = await adminClient
     .from("apolo_enterprise_settings")

@@ -589,25 +589,43 @@ async function processStatusUpdate({
   // aqui, por wa_message_id, best-effort — nunca derruba o processamento do webhook.
   await atualizarApoloDisparo({ client, event, deliveryStatus, providerStatusId });
 
+  // Lê ANTES de gravar: o update de status regravava o payload INTEIRO da ref e apagava o
+  // registro do disparo ({kind:"disparo-template", name, bodyParameters...}) que o transporte
+  // gravou — TODA ref perdia o payload no primeiro webhook de "sent". Era isso que impedia a
+  // materialização do disparo na conversa e qualquer retry de disparo órfão.
   const { data, error } = await client
     .from("caredesk_whatsapp_message_refs")
-    .update({
-      delivery_status: deliveryStatus,
-      payload: {
-        provider: META_PROVIDER,
-        providerStatusId,
-        updatedFromWebhookEventId: event.id,
-      },
-    })
+    .select("id,message_id,payload,phone_number_id")
     .eq("provider", META_PROVIDER)
-    .eq("wa_message_id", providerStatusId)
-    .select("id,message_id");
+    .eq("wa_message_id", providerStatusId);
 
   if (error) {
     throw error;
   }
 
-  const updatedRows = data ?? [];
+  const updatedRows = (data ?? []) as Array<{
+    id: string;
+    message_id: null | string;
+    payload: Record<string, unknown> | null;
+    phone_number_id: null | string;
+  }>;
+
+  for (const ref of updatedRows) {
+    const payloadDaRef =
+      ref.payload && typeof ref.payload === "object" ? ref.payload : {};
+    await client
+      .from("caredesk_whatsapp_message_refs")
+      .update({
+        delivery_status: deliveryStatus,
+        payload: {
+          ...payloadDaRef,
+          provider: META_PROVIDER,
+          providerStatusId,
+          updatedFromWebhookEventId: event.id,
+        },
+      })
+      .eq("id", ref.id);
+  }
 
   if (updatedRows.length === 0) {
     await markWebhookEvent(
@@ -660,19 +678,24 @@ async function processStatusUpdate({
             ? (row.provider_payload as Record<string, unknown>)
             : {};
 
+        // O payload COM o deliveryError é o que segue pro retry: antes o retry regravava
+        // o provider_payload a partir do snapshot antigo e APAGAVA o motivo da falha
+        // (35 mensagens ficaram sem explicação na tela por isso).
+        const payloadComErro = {
+          ...current,
+          deliveryError: {
+            at: event.received_at,
+            code: deliveryError.code,
+            message: deliveryError.message,
+            title: deliveryError.title,
+          },
+        };
+
         await client
           .from("caredesk_messages")
           .update({
             ...messageStatusPatch,
-            provider_payload: {
-              ...current,
-              deliveryError: {
-                at: event.received_at,
-                code: deliveryError.code,
-                message: deliveryError.message,
-                title: deliveryError.title,
-              },
-            },
+            provider_payload: payloadComErro,
           })
           .eq("id", row.id);
 
@@ -689,7 +712,7 @@ async function processStatusUpdate({
               id: row.id as string,
               messageType:
                 typeof row.message_type === "string" ? row.message_type : null,
-              providerPayload: current,
+              providerPayload: payloadComErro,
             },
           });
         } catch (retryError) {
@@ -704,6 +727,34 @@ async function processStatusUpdate({
         .from("caredesk_messages")
         .update(messageStatusPatch)
         .in("id", messageIds);
+    }
+  }
+
+  // Disparos automaticos (Apolo, cobranca, Prometeu...) vivem SO como ref ORFA
+  // (message_id null): o retry acima anda por caredesk_messages e nunca os alcanca.
+  // Cobre aqui, pela propria ref — o payload gravado pelo transporte tem tudo o que o
+  // reenvio precisa. Best-effort: nunca derruba o processamento do webhook.
+  if (deliveryStatus === "failed") {
+    const refsOrfas = updatedRows.filter((row) => !row.message_id);
+
+    if (refsOrfas.length) {
+      const deliveryError = extractStatusError(event.payload, providerStatusId);
+
+      for (const ref of refsOrfas) {
+        try {
+          await maybeRetryOrphanDisparoNinthDigit({
+            client,
+            deliveryError,
+            previousWamid: providerStatusId,
+            ref,
+          });
+        } catch (retryError) {
+          console.error(
+            "[iris/meta] auto-retry 9o digito (ref orfa) falhou",
+            retryError instanceof Error ? retryError.message : retryError,
+          );
+        }
+      }
     }
   }
 
@@ -733,9 +784,11 @@ async function maybeRetryBrazilNinthDigit({
 }): Promise<void> {
   const reason = `${deliveryError.title ?? ""} ${deliveryError.message ?? ""}`.toLowerCase();
 
-  // So o "undeliverable" generico (sem codigo). Erros com codigo (bloqueio/spam/etc.)
-  // nao sao caso de 9o digito.
-  if (deliveryError.code || !reason.includes("undeliver")) {
+  // So o "undeliverable" (131026 ou sem codigo). Erros com OUTRO codigo
+  // (bloqueio/spam/limite) nao sao caso de 9o digito.
+  const codigoDeUndeliverable =
+    deliveryError.code == null || deliveryError.code === 131026;
+  if (!codigoDeUndeliverable || !reason.includes("undeliver")) {
     return;
   }
 
@@ -746,13 +799,17 @@ async function maybeRetryBrazilNinthDigit({
     return;
   }
 
-  const sentTo = digitsOnly(readString(payload.destination) ?? "");
   const metaContacts = asRecord(payload.meta)?.contacts;
-  const failedWaId = digitsOnly(
-    readString(
-      asRecord(Array.isArray(metaContacts) ? metaContacts[0] : null)?.wa_id,
-    ) ?? "",
+  const primeiroContato = asRecord(
+    Array.isArray(metaContacts) ? metaContacts[0] : null,
   );
+  // Disparos de template nao gravam `destination` no payload — o numero discado
+  // fica em meta.contacts[0].input. Sem o fallback, TODO template caia em
+  // "sem_alternativa" e o retry nunca rodava.
+  const sentTo =
+    digitsOnly(readString(payload.destination) ?? "") ||
+    digitsOnly(readString(primeiroContato?.input) ?? "");
+  const failedWaId = digitsOnly(readString(primeiroContato?.wa_id) ?? "");
   const alternate = flipBrazilNinthDigit(sentTo);
 
   if (!alternate || alternate === sentTo || (failedWaId && alternate === failedWaId)) {
@@ -852,6 +909,178 @@ async function flagNineDigitRetry(
       },
     })
     .eq("id", messageId);
+}
+
+// Retry do 9o digito para refs ORFAS de disparo (message_id null). Os disparos automaticos
+// (acao de contato do Apolo, cobranca, boas-vindas do Prometeu...) nao criam mensagem em
+// caredesk_messages — so a ref que o transporte gravou, com payload.kind === "disparo-template"
+// (name/language/bodyParameters/to) e o numero de envio em phone_number_id. E tudo o que o
+// reenvio precisa. A ref do NOVO wamid quem grava e o proprio transporte (registrarNaIris);
+// aqui so deixamos o rastro na ref antiga e reapontamos os disparadores.
+async function maybeRetryOrphanDisparoNinthDigit({
+  client,
+  deliveryError,
+  previousWamid,
+  ref,
+}: {
+  client: IrisMetaProcessorClient;
+  deliveryError: { code: number | null; message: string | null; title: string | null } | null;
+  previousWamid: string;
+  ref: {
+    id: string;
+    payload: Record<string, unknown> | null;
+    phone_number_id: null | string;
+  };
+}): Promise<void> {
+  const payload = ref.payload && typeof ref.payload === "object" ? ref.payload : null;
+
+  // So refs de DISPARO registradas pelo transporte: ref orfa de outra origem (ex.: mensagem
+  // da conversa cujo insert local falhou) nao tem o template no payload pra reenviar.
+  if (!payload || payload.kind !== "disparo-template") {
+    return;
+  }
+
+  // Mesma regra do retry com mensagem local: so o "undeliverable" (131026 ou sem codigo).
+  // Erros com OUTRO codigo (bloqueio/spam/limite) nao sao caso de 9o digito.
+  const reason =
+    `${deliveryError?.title ?? ""} ${deliveryError?.message ?? ""}`.toLowerCase();
+  const codigoDeUndeliverable =
+    deliveryError?.code == null || deliveryError.code === 131026;
+
+  if (!deliveryError || !codigoDeUndeliverable || !reason.includes("undeliver")) {
+    return;
+  }
+
+  // Anti-loop: ja avaliou/reenviou uma vez.
+  if (payload.nineDigitRetry) {
+    return;
+  }
+
+  const sentTo = digitsOnly(readString(payload.to) ?? "");
+  const alternate = flipBrazilNinthDigit(sentTo);
+
+  if (!alternate || alternate === sentTo) {
+    // Sem alternativa util (numero nao-BR ou irreconhecivel). Marca como avaliado e sai.
+    await flagNineDigitRetryNaRef(client, ref.id, { skipped: "sem_alternativa" });
+    return;
+  }
+
+  const name = readString(payload.name);
+
+  if (!name) {
+    // Ref sem o nome do template nao tem como ser reenviada.
+    await flagNineDigitRetryNaRef(client, ref.id, { skipped: "sem_conteudo" });
+    return;
+  }
+
+  // Reenvia pelo MESMO numero que disparou (phone_number_id da ref); sem ele, o padrao da config.
+  const baseConfig = getMetaWhatsAppOutboundConfig();
+  const config = ref.phone_number_id
+    ? { ...baseConfig, phoneNumberId: ref.phone_number_id }
+    : baseConfig;
+
+  const result = await sendMetaWhatsAppTemplateMessage({
+    bodyParameters: Array.isArray(payload.bodyParameters)
+      ? payload.bodyParameters.map((value) => String(value))
+      : [],
+    config,
+    language: readString(payload.language) || "pt_BR",
+    name,
+    // Diferente do retry com mensagem local: aqui NAO existe mensagem na Iris, entao o
+    // transporte registra a ref do novo wamid (e materializa na conversa, se houver ticket).
+    registrarNaIris: true,
+    to: alternate,
+  });
+
+  if (!result.messageId) {
+    await flagNineDigitRetryNaRef(client, ref.id, { skipped: "sem_message_id" });
+    return;
+  }
+
+  // Rastro na ref ANTIGA: e o que impede um segundo retry se outro "failed" chegar.
+  await flagNineDigitRetryNaRef(client, ref.id, {
+    to: alternate,
+    waMessageId: result.messageId,
+  });
+
+  // Anti-pingue-pongue: a ref NOVA (que o transporte acabou de registrar) nasce sem
+  // nineDigitRetry — se a variante alternativa TAMBEM falhar, o retry dela devolveria o
+  // numero original, que ja falhou, e o vai-e-vem nunca terminaria (um template pago por
+  // rodada). Marca a ref nova como ja avaliada: cada disparo tenta as DUAS formas no maximo.
+  try {
+    const { data: refNova } = await client
+      .from("caredesk_whatsapp_message_refs")
+      .select("id")
+      .eq("provider", META_PROVIDER)
+      .eq("wa_message_id", result.messageId)
+      .maybeSingle<{ id: string }>();
+
+    if (refNova?.id) {
+      await flagNineDigitRetryNaRef(client, refNova.id, {
+        retryOf: previousWamid,
+        skipped: "origem_ja_e_retry",
+      });
+    }
+  } catch (error) {
+    console.error(
+      "[iris/meta] marcar a ref nova do retry falhou",
+      errorMessage(error),
+    );
+  }
+
+  // Reaponta os rastros dos DISPARADORES para o novo wamid: sem isto, a devolutiva de status
+  // do reenvio nao casa com apolo_disparos/apolo_acao_alvos e a tela segue mostrando "falhou".
+  // Best-effort: tabela ausente ou linha inexistente nao pode derrubar o webhook.
+  try {
+    await client
+      .from("apolo_disparos")
+      .update({ wa_message_id: result.messageId })
+      .eq("wa_message_id", previousWamid);
+  } catch (error) {
+    console.error(
+      "[iris/meta] reapontar apolo_disparos para o novo wamid falhou",
+      errorMessage(error),
+    );
+  }
+
+  try {
+    await client
+      .from("apolo_acao_alvos")
+      .update({ disparo_wa_message_id: result.messageId })
+      .eq("disparo_wa_message_id", previousWamid);
+  } catch (error) {
+    console.error(
+      "[iris/meta] reapontar apolo_acao_alvos para o novo wamid falhou",
+      errorMessage(error),
+    );
+  }
+}
+
+// Merge, NUNCA substituir: o payload da ref carrega o registro do disparo ({kind, name,
+// bodyParameters...}) que a materializacao na conversa precisa. Le antes de gravar (caminho
+// de erro, raro) porque o update de status deste mesmo webhook ja mexeu no payload.
+async function flagNineDigitRetryNaRef(
+  client: IrisMetaProcessorClient,
+  refId: string,
+  info: Record<string, unknown>,
+): Promise<void> {
+  const { data } = await client
+    .from("caredesk_whatsapp_message_refs")
+    .select("payload")
+    .eq("id", refId)
+    .maybeSingle<{ payload: Record<string, unknown> | null }>();
+  const payloadAtual =
+    data?.payload && typeof data.payload === "object" ? data.payload : {};
+
+  await client
+    .from("caredesk_whatsapp_message_refs")
+    .update({
+      payload: {
+        ...payloadAtual,
+        nineDigitRetry: { ...info, at: new Date().toISOString() },
+      },
+    })
+    .eq("id", refId);
 }
 
 // Devolve a OUTRA variante do 9o digito de um celular BR (com 9 -> sem 9, sem 9 -> com 9),
@@ -2250,8 +2479,10 @@ function extractStatusError(payload: Json, statusId: string) {
   }
 
   const errorData = asRecord(first.error_data);
-  const rawCode = readString(first.code);
-  const code = rawCode && Number.isFinite(Number(rawCode)) ? Number(rawCode) : null;
+  // O Meta manda `code` como NÚMERO no JSON (ex.: 131026); readString devolvia null
+  // e o código se perdia — a tela ficava sem o motivo e o retry tratava tudo como genérico.
+  const rawCode = typeof first.code === "number" ? first.code : Number(readString(first.code));
+  const code = Number.isFinite(rawCode) ? rawCode : null;
   const title = readString(first.title) || null;
   const message =
     readString(first.message) ||

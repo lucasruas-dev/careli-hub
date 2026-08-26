@@ -226,7 +226,11 @@ export async function registrarDisparoDeTemplate(disparo: DisparoDeTemplate): Pr
     },
     { ignoreDuplicates: true, onConflict: "provider,wa_message_id" },
   );
-  if (error) return;
+  if (error) {
+    // Engolir o erro calado aqui deixava disparos sem registro e sem NENHUMA pista no log.
+    console.error("[iris] registro da ref do disparo falhou", error);
+    return;
+  }
 
   // Ticket aberto AGORA? Materializa na hora — o operador vê o disparo cair na conversa.
   const variantes = variantesDoTelefone(disparo.to);

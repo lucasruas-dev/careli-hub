@@ -4,7 +4,7 @@ import {
   documentoTemArquivo,
   type DocumentoEntrada,
 } from "@/lib/apolo/cadastro-upload";
-import { listEmpreendimentosAtivos } from "@/lib/apolo/credenciamento";
+import { listEmpreendimentosParaImobiliaria } from "@/lib/apolo/credenciamento";
 import {
   APOLO_DOC_MAX_BYTES,
   MENSAGEM_DOCUMENTO_GRANDE,
@@ -93,9 +93,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Só empreendimentos ATIVOS entram; o resto o servidor descarta em silêncio (mesma regra do
-    // credenciar). O `label` sai da lista de ativos, não do que o cliente mandou.
-    const ativos = await listEmpreendimentosAtivos(adminClient);
+    // Só empreendimentos com o PORTÃO de imobiliária aberto (master + `recepcao_imobiliaria`)
+    // entram; o resto o servidor descarta em silêncio (mesma regra do credenciar). O `label` sai
+    // da lista permitida, não do que o cliente mandou — a validação é server-side, não só vitrine.
+    const ativos = await listEmpreendimentosParaImobiliaria(adminClient);
     const permitidos = new Map(ativos.map((emp) => [String(emp.id), emp.name]));
     const empreendimentos = (payload.empreendimentos ?? [])
       .map((e) => String(e?.id ?? ""))

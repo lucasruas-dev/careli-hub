@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-26-recepcao-cad-imobiliaria-e-9o-digito",
+    deployedAt: "2026-08-26T16:45:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cada empreendimento ganhou dois botoes novos: Recepcao de CAD e Recepcao de imobiliaria. Da para abrir o credenciamento de imobiliarias antes da convencao de vendas sem abrir o formulario de CAD (caso Recanto do Vale).",
+              "Empreendimento com a recepcao desligada some do formulario publico correspondente e o envio tambem e recusado, nao e so esconder da vitrine.",
+              "Todos os empreendimentos atuais seguem exatamente como estavam: os dois botoes nascem ligados.",
+            ],
+            screen: "Empreendimentos",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Quando um envio de WhatsApp falha porque o numero nao existe, o sistema tenta sozinho a outra forma do celular (com/sem o 9) - agora em TODOS os disparos, inclusive os automaticos do Apolo, cobranca e Prometeu.",
+              "O motivo da falha volta a aparecer na conversa (ex.: numero invalido ou sem WhatsApp) - um ajuste apagava essa informacao logo depois de gravada.",
+              "Disparos automaticos voltam a aparecer na conversa quando o cliente responde - o registro deles estava sendo apagado em silencio pelo primeiro aviso de status da Meta.",
+            ],
+            screen: "Conversa",
+          },
+        ],
+      },
+    ],
+    rollback: "aacaec63",
+    technical: {
+      done: "APOLO: migration 0110 (recepcao_cad e recepcao_imobiliaria em apolo_enterprise_settings, default true; APLICADA com OK do Lucas). Portao publico de CAD = credenciamento_ativo AND recepcao_cad; portao de imobiliaria = credenciamento_ativo AND recepcao_imobiliaria. enterprise-settings.ts: listEnterprisesRecebendo(canal) com fail-CLOSED (fallback pro master SO em migration pendente 42703/PGRST204/42P01), setters novos. credenciamento.ts: montarEmpreendimentos + listEmpreendimentosParaCad/ParaImobiliaria; listEmpreendimentosAtivos (master) segue para os internos - board/habilitar, credenciamento interno, Prometeu e o cadastro MANUAL de prospect pelo operador (empreendimentosHabilitadosInterno em dados.ts, decisao a confirmar com o Lucas). Rotas publicas de imobiliaria (vitrine, cadastro, credenciar) e fluxo publico de CAD nos portoes, com validacao server-side no submit (a sessao de CAD ja e emitida so com a lista filtrada). UI: dois toggles no CredenciamentoCard, travados com o master desligado. Testes: recepcao-portoes.test.ts 6/6 + vizinhos 58/58. IRIS 9o digito: extractStatusError aceita code NUMERICO (a Meta manda 131026 como numero; readString devolvia null e o retry tratava tudo como generico); o payload com deliveryError e o que segue pro retry (antes o flag regravava snapshot antigo e APAGAVA o motivo - 35 falhas historicas sem explicacao); retry aceita code 131026 e acha o destino em meta.contacts[0].input (templates nao gravam destination - TODO template caia em sem_alternativa); update de status das refs agora MESCLA o payload em vez de substituir (o primeiro webhook de sent apagava o registro do disparo e quebrava a materializacao na conversa, regressao silenciosa do v1.198); retry novo para refs ORFAS de disparo (message_id null, kind disparo-template) com reenvio pelo phone_number_id da ref, reaponte de apolo_disparos/apolo_acao_alvos pro novo wamid e trava anti-pingue-pongue (cada disparo tenta no maximo as duas formas); registrarDisparoDeTemplate virou import estatico com erro do upsert logado. Typecheck limpo; 20 testes da Iris + 64 do Apolo verdes.",
+      motivation: "Lucas (26/08): o CAD e a habilitacao de imobiliaria acontecem em momentos diferentes - o Recanto do Vale ja habilita imobiliarias mas so recebe CAD depois da convencao de vendas; com o flag unico nao havia como abrir um sem o outro. Na Iris, 8 cobrancas do Isac falharam em 48h com 131026 (Message Undeliverable) e a tela nao mostrava o motivo: a investigacao achou a corrente de 3 defeitos no caminho de falha e a regressao que apagava o registro de todo disparo.",
+    },
+    title: "Recepcao de CAD e de imobiliaria separadas + 9o digito em todos os disparos",
+    type: "novidade",
+    version: "1.213.0",
+  },
+  {
     buildTag: "2026-08-26-enter-nao-envia-email",
     deployedAt: "2026-08-26T11:40:00-03:00",
     modules: [

@@ -1,6 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
 
+import { registrarDisparoDeTemplate } from "./disparo-na-conversa";
+
 export const META_WHATSAPP_WEBHOOK_PATH = "/api/iris/meta/webhook";
 
 export const META_WHATSAPP_ENV_KEYS = [
@@ -791,11 +793,12 @@ export async function sendMetaWhatsAppTemplateMessage({
   };
 
   // Best-effort e SEMPRE depois do envio: registrar o disparo na Iris nunca pode falhar um
-  // template que a Meta já aceitou. Import dinâmico para o transporte não arrastar o módulo
-  // (e o client Supabase) para quem só envia.
+  // template que a Meta já aceitou. O import era dinâmico "para não arrastar o módulo (e o
+  // client Supabase) para quem só envia" — mas em produção o registro nunca aconteceu e o
+  // import dinâmico era o único elo não provado da corrente. Import estático no topo: o
+  // custo de arrastar o módulo é irrisório perto de disparos sem registro.
   if (registrarNaIris && resultado.messageId) {
     try {
-      const { registrarDisparoDeTemplate } = await import("./disparo-na-conversa");
       await registrarDisparoDeTemplate({
         bodyParameters,
         language,

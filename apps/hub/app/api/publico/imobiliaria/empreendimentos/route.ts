@@ -1,11 +1,12 @@
-import { listEmpreendimentosAtivos } from "@/lib/apolo/credenciamento";
+import { listEmpreendimentosParaImobiliaria } from "@/lib/apolo/credenciamento";
 import { erro, json, prepararRota, responder } from "@/lib/publico/cad/rotas";
 
 // Empreendimentos que a imobiliária pode PEDIR para trabalhar.
 //
-// Restrito aos que o Lucas marcou como ATIVOS (`apolo_enterprise_settings.credenciamento_ativo`,
-// regra já existente no sistema, ligada em Apolo > Empreendimentos > Cadastro). Nada aqui é
-// dado pessoal: é a vitrine dos empreendimentos abertos para credenciamento.
+// Restrito ao PORTÃO de imobiliária: master `credenciamento_ativo` E `recepcao_imobiliaria`
+// ligados (Apolo > Empreendimentos). O master sozinho não basta: um empreendimento pode receber
+// CAD sem estar habilitando imobiliárias novas — e vice-versa (caso Recanto do Vale, Lucas
+// 26/08). Nada aqui é dado pessoal: é a vitrine dos empreendimentos abertos para credenciamento.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
     return responder(
       request,
       inicio,
-      json({ empreendimentos: await listEmpreendimentosAtivos(adminClient) }),
+      json({ empreendimentos: await listEmpreendimentosParaImobiliaria(adminClient) }),
     );
   } catch {
     return responder(request, inicio, erro(undefined, 500));
