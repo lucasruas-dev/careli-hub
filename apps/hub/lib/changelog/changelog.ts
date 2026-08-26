@@ -36,6 +36,29 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-26-enter-nao-envia-email",
+    deployedAt: "2026-08-26T11:40:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "No canal de E-MAIL o Enter passou a criar paragrafo em vez de enviar. Para mandar, use o botao de enviar (ou Ctrl+Enter).",
+              "No WhatsApp nada muda: Enter continua enviando.",
+            ],
+            screen: "Conversa",
+          },
+        ],
+      },
+    ],
+    rollback: "9d3f5f63",
+    technical: { done: "handleComposerKeyDown (IrisPage) devolve cedo quando isEmailTicket(ticket): o Enter deixa de chamar preventDefault + sendMessage e volta a ser quebra de linha nativa do textarea. WhatsApp intacto. Ctrl/Cmd+Enter continua enviando nos dois canais — ja caia no return das teclas modificadoras, antes de qualquer decisao. ⚠️ IrisPage tem @ts-nocheck: validado por compilacao da rota (/iris 200) e revisao manual do escopo, nao por tsc.", motivation: "Lucas (26/08): \"quando aperto o enter com objetivo de criar uma organizacao de texto, ele manda a mensagem pela metade, e no e-mail isso e ruim pois pode acontecer de eu mandar 3 e-mails para falar uma coisa somente\". A diferenca e do canal: no WhatsApp a mensagem curta e a unidade da conversa e mandar em partes e normal; um e-mail partido em tres chega como tres e-mails, cada um com assunto e cabecalho, e o destinatario le como tres assuntos." },
+    title: "E-mail: Enter cria paragrafo em vez de enviar",
+    type: "melhoria",
+    version: "1.212.0",
+  },
+  {
     buildTag: "2026-08-26-perfil-do-card-sem-teto-de-linhas",
     deployedAt: "2026-08-26T11:00:00-03:00",
     modules: [

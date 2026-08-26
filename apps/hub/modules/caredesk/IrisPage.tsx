@@ -3887,6 +3887,19 @@ function IrisConversationPanel({
       return;
     }
 
+    // ⚠️ NO E-MAIL, ENTER QUEBRA LINHA — NÃO ENVIA. Pedido do Lucas (26/08/2026): *"quando aperto
+    // o enter com objetivo de criar uma organização de texto, ele manda a mensagem pela metade, e
+    // no e-mail isso é ruim pois pode acontecer de eu mandar 3 e-mails para falar uma coisa
+    // somente"*.
+    //
+    // A diferença é do canal, não de gosto: no WhatsApp a mensagem curta é a unidade da conversa e
+    // mandar em partes é normal; um e-mail partido em três chega como três e-mails, cada um com
+    // assunto e cabeçalho, e o destinatário lê como três assuntos. Aqui o envio fica só no botão
+    // (e em Ctrl/Cmd+Enter, que já cai no return acima e é o atalho de quem escreve rápido).
+    if (isEmailTicket(ticket)) {
+      return;
+    }
+
     event.preventDefault();
 
     if (
