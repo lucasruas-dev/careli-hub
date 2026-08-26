@@ -172,3 +172,59 @@ export function contarParadoPorPerfil(
     .map(([perfil, quantas]) => ({ perfil, quantas }))
     .sort((a, b) => b.quantas - a.quantas || a.perfil.localeCompare(b.perfil, "pt-BR"));
 }
+
+/** O que recorta a lista de unidades. Campo vazio = não filtra por ele. */
+export type FiltroDeUnidades = {
+  /** Nome (ou parte) de quem assina. */
+  usuario?: string;
+  /** Perfil exato: Comprador, Incorporador, Backoffice… */
+  perfil?: string;
+  /** assinado · vez · aguardando · atraso */
+  situacao?: string;
+};
+
+const semAcento = (texto: string) =>
+  texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+/**
+ * Recorta a lista de unidades pelos filtros da tela.
+ *
+ * ⚠️ O FILTRO ESCOLHE UNIDADES, NÃO ASSINATURAS — e a unidade entra INTEIRA. Recortar assinatura a
+ * assinatura quebraria a régua por perfil: filtrar por "Comprador" deixaria o contrato com uma
+ * barra só, dizendo "1 de 1, 100%" quando faltam oito pessoas. As barras só significam alguma coisa
+ * com o contrato completo à vista.
+ *
+ * ⚠️ OS CRITÉRIOS VALEM SOBRE A MESMA PESSOA. Buscar "Northon" + "é a vez" tem que achar contratos
+ * onde o NORTHON está na vez, não contratos onde o Northon aparece E alguém está na vez. Por isso o
+ * teste é por assinante, não por unidade.
+ */
+export function filtrarUnidades(
+  unidades: UnidadeComAssinatura[],
+  filtro: FiltroDeUnidades,
+): UnidadeComAssinatura[] {
+  const usuario = semAcento(filtro.usuario ?? "");
+  const perfil = filtro.perfil ?? "";
+  const situacao = filtro.situacao ?? "";
+  if (!usuario && !perfil && !situacao) return unidades;
+
+  return unidades.filter((unidade) =>
+    unidade.assinantes.some((assinante) => {
+      if (usuario && !semAcento(assinante.usuario).includes(usuario)) return false;
+      if (perfil && assinante.perfil !== perfil) return false;
+      if (situacao === "assinado" && !assinante.assinou) return false;
+      if (situacao === "vez" && (assinante.assinou || assinante.situacao !== "vez")) return false;
+      if (situacao === "aguardando" && (assinante.assinou || assinante.situacao !== "aguardando")) {
+        return false;
+      }
+      // ⚠️ "Em atraso" SÓ EXISTE PARA O COMPRADOR: o prazo de 7 dias é regra dele. Para os outros
+      // perfis o campo vem nulo, então este filtro nunca os alcança — de propósito, não por
+      // esquecimento. Ver o prazo em lib/apolo/painel-assinatura.ts.
+      if (situacao === "atraso" && assinante.prazo !== "Pendente e em atraso") return false;
+      return true;
+    }),
+  );
+}

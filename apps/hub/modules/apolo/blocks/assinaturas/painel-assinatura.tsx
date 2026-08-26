@@ -7,6 +7,7 @@ import { getApoloAccessToken } from "../../data/apolo-operations";
 import {
   agruparUnidadesDeAssinatura,
   contarParadoPorPerfil,
+  filtrarUnidades,
 } from "@/lib/apolo/unidades-assinatura";
 import { UnidadesEmBarra } from "./unidades-em-barra";
 
@@ -59,8 +60,6 @@ const semAcento = (s: string) =>
 
 const num = (n: number) => n.toLocaleString("pt-BR");
 const pct = (a: number, b: number) => (b ? `${Math.round((100 * a) / b)}%` : "—");
-const dataCurta = (iso: null | string) =>
-  iso ? iso.split("-").reverse().join("/") : "—";
 
 /**
  * @param fonte De onde os dados vêm. O padrão é a rota interna (exige sessão do Apolo); a versão
@@ -258,11 +257,13 @@ export function PainelAssinatura({ fonte = "/api/apolo/painel-assinatura" }: { f
   }, [linhas, emp, fu]);
 
   /** Clicar num número do quadro leva o analítico para aquele recorte. */
+  // O clique num número do quadro recorta a LISTA DE UNIDADES por aquela pessoa. Antes ele levava
+  // a uma tabela solta de assinaturas, que era a segunda lista da tela e obedecia a outros
+  // controles. Lucas, 25/08: *"tem que ser tudo no mesmo padrão"*.
   const filtrarPor = useCallback((nome: string, alvo: "" | "aguardando" | "sim" | "vez") => {
     setUsuario(nome);
     setStatus(alvo);
-    // O analítico fica no fim da página; sem isto o clique parece não fazer nada.
-    document.getElementById("analitico-assinaturas")?.scrollIntoView({ behavior: "smooth" });
+    document.getElementById("contratos-por-unidade")?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
   // Quem também assina todo contrato mas com outro perfil no C2X. Sem isso, some sem rastro.
@@ -288,25 +289,29 @@ export function PainelAssinatura({ fonte = "/api/apolo/painel-assinatura" }: { f
   // justamente as unidades paradas no começo da fila, que são as mais urgentes.
   const [paradoCom, setParadoCom] = useState("");
   const paradoPorPerfil = useMemo(() => contarParadoPorPerfil(todasAsUnidades), [todasAsUnidades]);
-  const unidadesVisiveis = useMemo(
-    () =>
-      paradoCom
-        ? todasAsUnidades.filter((u) => !u.concluida && u.perfisNaVez.includes(paradoCom))
-        : todasAsUnidades,
-    [todasAsUnidades, paradoCom],
-  );
-
-  const ordenadas = useMemo(
-    () =>
-      [...filtradas].sort(
-        (a, b) =>
-          (a.assinou === b.assinou ? 0 : a.assinou ? 1 : -1) ||
-          b.diasDesdeEnvio - a.diasDesdeEnvio ||
-          a.un.localeCompare(b.un) ||
-          a.degrau - b.degrau,
-      ),
-    [filtradas],
-  );
+  // ⚠️ OS FILTROS DO TOPO E O QUADRO RECORTAM ESTA LISTA, agora que a tabela solta saiu. A unidade
+  // entra INTEIRA: recortar assinatura a assinatura quebraria a régua por perfil, que só significa
+  // alguma coisa com o contrato completo à vista.
+  const unidadesVisiveis = useMemo(() => {
+    const porFiltros = filtrarUnidades(todasAsUnidades, {
+      perfil,
+      situacao:
+        status === "sim"
+          ? "assinado"
+          : status === "vez"
+            ? "vez"
+            : status === "aguardando"
+              ? "aguardando"
+              : "",
+      usuario,
+    });
+    const porUnidade = fu
+      ? porFiltros.filter((u) => semAcento(u.un).includes(fu))
+      : porFiltros;
+    return paradoCom
+      ? porUnidade.filter((u) => !u.concluida && u.perfisNaVez.includes(paradoCom))
+      : porUnidade;
+  }, [todasAsUnidades, paradoCom, perfil, status, usuario, fu]);
 
   const carimbo = atualizadoEm
     ? new Date(atualizadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
@@ -502,8 +507,24 @@ export function PainelAssinatura({ fonte = "/api/apolo/painel-assinatura" }: { f
           </Cartao>
         </div>
 
-        <h2 className="mb-2 mt-6 text-[11.5px] font-bold uppercase tracking-[0.13em] text-ink-soft">
+        {/* Âncora do clique vindo do Quadro de assinaturas. */}
+        <h2
+          className="mb-2 mt-6 text-[11.5px] font-bold uppercase tracking-[0.13em] text-ink-soft"
+          id="contratos-por-unidade"
+        >
           Contratos por unidade
+          {usuario || status ? (
+            <button
+              className="ml-3 rounded-full border border-line px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-ink-soft transition-colors hover:bg-subtle"
+              onClick={() => {
+                setUsuario("");
+                setStatus("");
+              }}
+              type="button"
+            >
+              limpar filtro
+            </button>
+          ) : null}
         </h2>
         {paradoPorPerfil.length > 0 ? (
           <div className="mb-2 flex flex-wrap items-center gap-1.5">
@@ -531,67 +552,6 @@ export function PainelAssinatura({ fonte = "/api/apolo/painel-assinatura" }: { f
           {unidadesVisiveis.filter((u) => !u.concluida).length} aguardam assinatura.
         </p>
 
-        {/* Âncora do clique vindo do Quadro de assinaturas. */}
-        <h2
-          className="mb-2 mt-6 text-[11.5px] font-bold uppercase tracking-[0.13em] text-ink-soft"
-          id="analitico-assinaturas"
-        >
-          Assinaturas
-          {usuario || status ? (
-            <button
-              className="ml-3 rounded-full border border-line px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-ink-soft transition-colors hover:bg-subtle"
-              onClick={() => {
-                setUsuario("");
-                setStatus("");
-              }}
-              type="button"
-            >
-              limpar filtro
-            </button>
-          ) : null}
-        </h2>
-        <div className="max-h-[520px] overflow-auto rounded-xl border border-black/[0.07] dark:border-white/[0.08]">
-          <Tabela
-            cabecalho={["Unidade", "Envio", "Usuário", "Perfil", "Degrau", "Status", "Assinatura"]}
-            numericas={[4, 6]}
-          >
-            {ordenadas.slice(0, 400).map((l, i) => {
-              const atrasado = l.prazo === "Pendente e em atraso";
-              return (
-                <tr key={`${l.contrato}-${l.usuario}-${l.degrau}-${i}`}>
-                  <td className="px-2 py-1.5 font-semibold tabular-nums text-ink">{l.un}</td>
-                  <td className="px-2 py-1.5 text-ink-soft">{dataCurta(l.envio)}</td>
-                  <td className="px-2 py-1.5 text-ink">{l.usuario}</td>
-                  <td className="px-2 py-1.5 text-ink-soft">{l.perfil}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-ink-soft">
-                    {l.degrau || "—"}
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <span
-                      className={
-                        l.assinou
-                          ? "font-semibold text-emerald-600 dark:text-emerald-400"
-                          : atrasado
-                            ? "font-semibold text-red-600 dark:text-red-400"
-                            : "text-ink-soft"
-                      }
-                    >
-                      {l.assinou ? "Assinado" : atrasado ? "Em atraso" : "Pendente"}
-                    </span>
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-ink-soft">
-                    {dataCurta(l.assinadoEm)}
-                  </td>
-                </tr>
-              );
-            })}
-          </Tabela>
-        </div>
-        <p className="mt-2 text-xs text-ink-soft">
-          {ordenadas.length > 400
-            ? `Mostrando as 400 primeiras de ${num(ordenadas.length)} assinaturas. Use os filtros para estreitar.`
-            : `${num(ordenadas.length)} assinatura${ordenadas.length === 1 ? "" : "s"} neste recorte.`}
-        </p>
       </div>
     </div>
   );

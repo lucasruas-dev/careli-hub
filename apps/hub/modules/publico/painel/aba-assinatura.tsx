@@ -6,16 +6,13 @@ import type { PainelAssinatura } from "@/lib/apolo/painel-assinatura";
 import {
   agruparUnidadesDeAssinatura,
   contarParadoPorPerfil,
+  filtrarUnidades,
 } from "@/lib/apolo/unidades-assinatura";
 
 import {
   C,
   GOLD,
-  Selo,
-  Tabela,
   TituloSecao,
-  celula,
-  dataCurta,
   inputEstilo,
   numeroBR,
   useOrdenacao,
@@ -224,13 +221,26 @@ export function AbaAssinatura({ dados }: { dados: PainelAssinatura }) {
   // pela VOC0305: *"cadê a barrinha desse aí?"*.
   const [paradoCom, setParadoCom] = useState("");
   const paradoPorPerfil = useMemo(() => contarParadoPorPerfil(todasAsUnidades), [todasAsUnidades]);
-  const comCompradorOk = useMemo(
-    () =>
-      paradoCom
-        ? todasAsUnidades.filter((u) => !u.concluida && u.perfisNaVez.includes(paradoCom))
-        : todasAsUnidades,
-    [todasAsUnidades, paradoCom],
-  );
+  // ⚠️ OS FILTROS DO TOPO RECORTAM A LISTA DE UNIDADES, agora que a tabela solta de assinaturas
+  // saiu. Antes eles só mexiam naquela tabela e a lista de unidades os ignorava — duas listas
+  // obedecendo a controles diferentes na mesma tela. Lucas, 25/08: *"tem que ser tudo no mesmo
+  // padrão"*.
+  //
+  // ⚠️ A UNIDADE ENTRA INTEIRA. Recortar assinatura a assinatura quebraria a régua por perfil:
+  // filtrar por "Comprador" deixaria o contrato com uma barra só, dizendo 100% com oito faltando.
+  const comCompradorOk = useMemo(() => {
+    const porFiltros = filtrarUnidades(todasAsUnidades, {
+      perfil,
+      situacao: status === "sim" ? "assinado" : status === "atraso" ? "atraso" : status === "nao" ? "vez" : "",
+      usuario: fn,
+    });
+    const porUnidade = fu
+      ? porFiltros.filter((u) => semAcento(u.un).includes(fu))
+      : porFiltros;
+    return paradoCom
+      ? porUnidade.filter((u) => !u.concluida && u.perfisNaVez.includes(paradoCom))
+      : porUnidade;
+  }, [todasAsUnidades, paradoCom, perfil, status, fn, fu]);
 
   const unidadesOrdenadas = useOrdenacao(
     comCompradorOk,
@@ -244,20 +254,6 @@ export function AbaAssinatura({ dados }: { dados: PainelAssinatura }) {
       unidade: (p) => p.un,
     },
     { campo: "espera", desc: false },
-  );
-
-  const assinaturas = useOrdenacao(
-    filtradas,
-    {
-      degrau: (l) => l.degrau,
-      envio: (l) => l.envio,
-      perfil: (l) => l.perfil,
-      // Pendente primeiro (é o que exige ação), depois o mais antigo.
-      status: (l) => (l.assinou ? 1 : l.prazo === "Pendente e em atraso" ? -1 : 0),
-      unidade: (l) => l.un,
-      usuario: (l) => l.usuario,
-    },
-    { campo: "status", desc: false },
   );
 
   const carimbo = new Date(dados.atualizadoEm).toLocaleTimeString("pt-BR", {
@@ -563,49 +559,6 @@ export function AbaAssinatura({ dados }: { dados: PainelAssinatura }) {
         <UnidadesComBarra unidades={unidadesOrdenadas.itens} />
       </div>
 
-      <TituloSecao
-        contagem={`${numeroBR(assinaturas.itens.length)} no recorte${
-          assinaturas.itens.length > 400 ? " · mostrando as 400 primeiras" : ""
-        }`}
-        titulo="Assinaturas"
-      />
-      <Tabela
-        colunas={[
-          { campo: "unidade", chave: "Unidade", largura: 110 },
-          { campo: "envio", chave: "Envio", largura: 92 },
-          { campo: "usuario", chave: "Usuário", largura: "26%" },
-          { campo: "perfil", chave: "Perfil", largura: 140 },
-          { campo: "degrau", chave: "Ordem", largura: 86 },
-          { campo: "status", chave: "Status", largura: 130 },
-          { chave: "Assinatura", largura: 110 },
-        ]}
-        onOrdenar={assinaturas.alternar}
-        ordem={assinaturas.ordem}
-        vazio="Nenhuma assinatura com esses filtros."
-      >
-        {assinaturas.itens.slice(0, 400).map((l, indice) => {
-          const atrasado = l.prazo === "Pendente e em atraso";
-          return (
-            <tr key={`${l.contrato}-${l.usuario}-${l.degrau}-${indice}`}>
-              <td style={celula(C.text, { fontVariantNumeric: "tabular-nums", fontWeight: 600 })}>
-                {l.un}
-              </td>
-              <td style={celula(C.sub)}>{dataCurta(l.envio)}</td>
-              <td style={celula(C.text)}>{l.usuario}</td>
-              <td style={celula(C.sub)}>{l.perfil}</td>
-              <td style={celula(C.sub, { fontVariantNumeric: "tabular-nums" })}>
-                {l.degrau || "—"}
-              </td>
-              <td style={celula(C.text, { overflow: "visible" })}>
-                <Selo tom={l.assinou ? "verde" : atrasado ? "vermelho" : "cinza"}>
-                  {l.assinou ? "Assinado" : atrasado ? "Em atraso" : "Pendente"}
-                </Selo>
-              </td>
-              <td style={celula(C.sub)}>{dataCurta(l.assinadoEm)}</td>
-            </tr>
-          );
-        })}
-      </Tabela>
     </>
   );
 }

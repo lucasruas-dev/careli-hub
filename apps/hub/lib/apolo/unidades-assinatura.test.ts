@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { LinhaAssinatura } from "./painel-assinatura";
-import { agruparUnidadesDeAssinatura, contarParadoPorPerfil } from "./unidades-assinatura";
+import { type LinhaAssinatura, marcarSituacao } from "./painel-assinatura";
+import {
+  agruparUnidadesDeAssinatura,
+  contarParadoPorPerfil,
+  filtrarUnidades,
+} from "./unidades-assinatura";
 
 const linha = (parcial: Partial<LinhaAssinatura>): LinhaAssinatura => ({
   assinadoEm: null,
@@ -23,9 +27,21 @@ const linha = (parcial: Partial<LinhaAssinatura>): LinhaAssinatura => ({
   ...parcial,
 });
 
+// ⚠️ USA A marcarSituacao DE VERDADE, a mesma do servidor: a situacao (assinado/vez/aguardando)
+// é DERIVADA da fila, não um campo que a tela escolhe. Fixá-la à mão no teste deixaria passar bug
+// que produção pegaria — foi o que aconteceu na primeira versão destes testes.
+//
+// ⚠️ UM CONTRATO POR UNIDADE: marcarSituacao trabalha por contrato, então unidades diferentes
+// precisam de contratos diferentes ou a fila de uma travaria a outra.
 const mapa = (...linhas: LinhaAssinatura[]) => {
+  const contratoPorUn = new Map<string, number>();
+  const comContrato = linhas.map((l) => {
+    if (!contratoPorUn.has(l.un)) contratoPorUn.set(l.un, contratoPorUn.size + 1);
+    return { ...l, contrato: contratoPorUn.get(l.un) as number };
+  });
+
   const m = new Map<string, LinhaAssinatura[]>();
-  for (const l of linhas) {
+  for (const l of marcarSituacao(comContrato)) {
     if (!m.has(l.un)) m.set(l.un, []);
     m.get(l.un)?.push(l);
   }
@@ -233,5 +249,64 @@ describe("contarParadoPorPerfil", () => {
       { perfil: "Backoffice", quantas: 1 },
       { perfil: "Coordenadora de venda", quantas: 1 },
     ]);
+  });
+});
+
+describe("filtrarUnidades", () => {
+  const base = () =>
+    agruparUnidadesDeAssinatura(
+      mapa(
+        // A: imobiliária assinou, comprador é a vez
+        linha({ assinadoEm: "2026-08-02", assinou: true, degrau: 1, perfil: "Imobiliária", un: "A", usuario: "RONILSON" }),
+        linha({ assinou: false, degrau: 2, prazo: "Pendente e em atraso", un: "A", usuario: "DALTON" }),
+        linha({ assinou: false, degrau: 7, perfil: "Backoffice", un: "A", usuario: "NORTHON" }),
+        // B: tudo assinado até o Backoffice, que é a vez
+        linha({ assinadoEm: "2026-08-02", assinou: true, degrau: 2, un: "B", usuario: "MARIA" }),
+        linha({ assinou: false, degrau: 7, perfil: "Backoffice", un: "B", usuario: "NORTHON" }),
+      ),
+    );
+
+  it("sem filtro devolve tudo", () => {
+    expect(filtrarUnidades(base(), {}).map((u) => u.un).sort()).toEqual(["A", "B"]);
+  });
+
+  it("por usuário, achando parte do nome sem acento", () => {
+    expect(filtrarUnidades(base(), { usuario: "ronil" }).map((u) => u.un)).toEqual(["A"]);
+  });
+
+  it("a unidade entra INTEIRA, com todas as barras", () => {
+    // ⚠️ Recortar assinatura a assinatura faria o contrato dizer "1 de 1, 100%" faltando gente.
+    const [unidade] = filtrarUnidades(base(), { perfil: "Imobiliária" });
+    expect(unidade?.total).toBe(3);
+    expect(unidade?.grupos.map((g) => g.perfil)).toEqual(["Imobiliária", "Comprador", "Backoffice"]);
+  });
+
+  it("os critérios valem sobre a MESMA pessoa", () => {
+    // "Northon" + "é a vez": só B, porque em A o Northon está aguardando atrás do comprador.
+    expect(filtrarUnidades(base(), { situacao: "vez", usuario: "northon" }).map((u) => u.un)).toEqual(
+      ["B"],
+    );
+  });
+
+  it("situação aguardando acha quem está atrás de alguém", () => {
+    expect(
+      filtrarUnidades(base(), { situacao: "aguardando", usuario: "northon" }).map((u) => u.un),
+    ).toEqual(["A"]);
+  });
+
+  it("atraso só alcança o comprador, porque o prazo é regra dele", () => {
+    // Para os outros perfis o campo prazo vem nulo — de propósito, não por esquecimento.
+    expect(filtrarUnidades(base(), { situacao: "atraso" }).map((u) => u.un)).toEqual(["A"]);
+    expect(filtrarUnidades(base(), { situacao: "atraso", perfil: "Backoffice" })).toEqual([]);
+  });
+
+  it("assinado acha quem já assinou naquele contrato", () => {
+    expect(filtrarUnidades(base(), { situacao: "assinado", usuario: "maria" }).map((u) => u.un)).toEqual(
+      ["B"],
+    );
+  });
+
+  it("filtro que não casa com ninguém devolve vazio", () => {
+    expect(filtrarUnidades(base(), { usuario: "ninguem" })).toEqual([]);
   });
 });

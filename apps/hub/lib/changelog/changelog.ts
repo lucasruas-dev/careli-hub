@@ -36,6 +36,31 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-25-uma-lista-so-nas-assinaturas",
+    deployedAt: "2026-08-26T01:50:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A tabela de assinaturas do fim da tela saiu: agora ha UMA lista so, a de contratos por unidade. As assinaturas de cada contrato continuam aparecendo ao clicar na unidade.",
+              "Os filtros do topo (gleba, perfil, status, unidade, usuario) passaram a recortar essa lista. Antes eles so mexiam na tabela que saiu, e a lista de unidades os ignorava.",
+              "A unidade sempre aparece INTEIRA, com todas as barras: filtrar por um perfil nao faz o contrato parecer completo.",
+              "No painel interno, clicar num numero do Quadro de assinaturas filtra a lista de unidades por aquela pessoa, com botao de limpar filtro.",
+            ],
+            screen: "Assinaturas",
+          },
+        ],
+      },
+    ],
+    rollback: "2674f42f",
+    technical: { done: "A tabela analitica (uma linha por pessoa x contrato, 2.282 linhas) saiu das duas telas; filtrarUnidades recorta a lista de unidades por usuario, perfil e situacao, e os cinco filtros do topo passaram a alimenta-la. No painel interno o clique do quadro filtra as unidades e rola ate a ancora contratos-por-unidade, com botao de limpar. Removido o codigo morto que sobrou (useOrdenacao orfao, helpers e imports). Os testes do calculo passaram a usar marcarSituacao de verdade em vez de fixar o campo a mao — dois deles passavam por motivo errado. 24 testes.", motivation: "Lucas (25/08), sobre a tabela solta no fim da tela: \"nao entendi essa aqui, tem que ser tudo no mesmo padrao\". Ela nao existe no perfil do incorporador — la tudo e por unidade e as assinaturas aparecem dentro dela. Eram duas listas da mesma coisa em formatos diferentes, uma por unidade e outra por pessoa, e os filtros do topo so mexiam na segunda: a lista de unidades os ignorava." },
+    title: "Assinaturas: uma lista so, com os filtros agindo sobre ela",
+    type: "melhoria",
+    version: "1.210.0",
+  },
+  {
     buildTag: "2026-08-25-barras-por-perfil-e-parado-com",
     deployedAt: "2026-08-26T01:15:00-03:00",
     modules: [
