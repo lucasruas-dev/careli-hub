@@ -37,7 +37,15 @@ export const emptyIrisData: IrisData = {
   tickets: [],
 };
 
-export const IRIS_QUEUE_LOAD_TIMEOUT_MS = 15_000;
+// ⚠️ 15s DERRUBAVA A TELA EM REDE LENTA. Caso de 26/08/2026: uma coordenadora numa capacitação com
+// screenshare ligado não conseguia abrir a Iris, com "fila da Iris excedeu 15s" repetido no console.
+// Medido na hora: a carga dela era de 31 tickets e 241 mensagens, e o banco estava ocioso (53 de 160
+// conexões, consultas da tela em 1,6ms a 138ms). O tempo ia embora no caminho até o servidor, não no
+// servidor — e o corte em 15s transformava uma rede ruim em tela morta.
+//
+// 45s é folgado para quem está numa conexão degradada e ainda curto o bastante para não deixar
+// ninguém olhando um spinner sem fim.
+export const IRIS_QUEUE_LOAD_TIMEOUT_MS = 45_000;
 const IRIS_CRM360_ENRICH_TIMEOUT_MS = 4_000;
 
 // Cache do último CRM 360 casado com sucesso, por telefone. O overlay (nome do
@@ -164,10 +172,14 @@ export async function loadIrisData({
     // esconder a fila não adiantaria nada (o ticket dela apareceria assim mesmo).
     // Ticket sem fila segue a mesma regra da fila sem vínculo: só adm.
     if (viewerScope && !isAdminProfile(viewerScope.profile)) {
+      // ⚠️ SEM FILA VISÍVEL É LISTA VAZIA, NÃO UMA SENTINELA DE TEXTO. Antes isto era
+      // `.eq("queue_id", "__iris_sem_fila_visivel__")`, e `queue_id` é UUID: o Postgres recusava a
+      // string, a consulta virava exceção e a tela mostrava o erro genérico de carga. Quem não tinha
+      // fila nenhuma via "Nao foi possivel carregar a operacao do Iris" em vez de descobrir que o
+      // problema era acesso — e o `.in()` com lista vazia já devolve zero linhas, sem inventar
+      // valor nenhum.
       const visibleQueueIds = queues.map((queue) => queue.id);
-      query = visibleQueueIds.length
-        ? query.in("queue_id", visibleQueueIds)
-        : query.eq("queue_id", "__iris_sem_fila_visivel__");
+      query = query.in("queue_id", visibleQueueIds);
     }
 
     if (normalizedQueueSlugFilter) {

@@ -36,6 +36,31 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-26-iris-carrega-em-rede-lenta",
+    deployedAt: "2026-08-26T09:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Iris deixou de desistir tao cedo em conexao lenta: o limite de espera subiu de 15 para 45 segundos.",
+              "Quando a carga falha, a tela agora diz SE foi demora e sugere o que fazer, em vez de um erro generico.",
+              "Botao 'Tentar de novo' na tela de falha — sem precisar recarregar a pagina toda.",
+              "Quem nao tem acesso a nenhuma fila para de ver o erro de carga: aquilo era uma consulta invalida, nao uma falha de verdade.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "61401c5e",
+    technical: { done: "IRIS_QUEUE_LOAD_TIMEOUT_MS de 15s para 45s. O filtro de filas do nao-admin deixou de usar a sentinela .eq('queue_id','__iris_sem_fila_visivel__') — string numa coluna uuid, que o Postgres recusa e vira excecao: agora e .in() com lista vazia, que devolve zero linhas sem inventar valor. A mensagem distingue demora (label 'excedeu') de falha, e os dois blocos de erro viraram BlocoDeFalhaDaIris com botao 'Tentar de novo' (reloadToken na dependencia da carga), em vez de exigir recarregar a pagina inteira. ⚠️ IrisPage.tsx tem @ts-nocheck: validado por compilacao da rota (/iris 200) e revisao manual, nao por tsc.", motivation: "Caso de 26/08/2026: uma coordenadora nao conseguia abrir a Iris durante uma capacitacao, com 'fila da Iris excedeu 15s' repetido no console. Medido na hora: a carga dela era de 31 tickets e 241 mensagens e o banco estava ocioso (53 de 160 conexoes; consultas da tela entre 1,6ms e 138ms) — o tempo ia embora no caminho ate o servidor, com videochamada e screenshare ligados. O corte em 15s transformava rede ruim em tela morta, e a mensagem generica fez ela deslogar, relogar e trocar de navegador atras de um problema de conexao." },
+    title: "Iris: carrega em rede lenta e explica quando nao carrega",
+    type: "correcao",
+    version: "1.210.1",
+  },
+  {
     buildTag: "2026-08-25-uma-lista-so-nas-assinaturas",
     deployedAt: "2026-08-26T01:50:00-03:00",
     modules: [

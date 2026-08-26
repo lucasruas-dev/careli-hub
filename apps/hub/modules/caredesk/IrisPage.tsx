@@ -657,6 +657,8 @@ export function IrisPage({
   );
   const [loading, setLoading] = useState(loadFromSupabase);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Muda de valor a cada "tentar de novo" e reexecuta a carga, sem recarregar a página inteira.
+  const [reloadToken, setReloadToken] = useState(0);
   const [inboundNotice, setInboundNotice] = useState<IrisInboundNotice | null>(
     null,
   );
@@ -836,7 +838,15 @@ export function IrisPage({
         console.error("[caredesk] nao foi possivel carregar a operacao", error);
         if (active) {
           setIrisData(emptyIrisData);
-          setLoadError("Nao foi possivel carregar a operacao do Iris.");
+          // ⚠️ DEMORA E FALHA SÃO COISAS DIFERENTES, e a mensagem tem que dizer qual foi. O texto
+          // único ("Nao foi possivel carregar") mandava a pessoa deslogar, relogar e trocar de
+          // navegador atrás de um problema de conexão — foi o que aconteceu em 26/08/2026.
+          const demorou = error instanceof Error && error.message.includes("excedeu");
+          setLoadError(
+            demorou
+              ? "A Iris demorou demais para responder. Costuma ser a conexão: se você estiver em videochamada ou compartilhando a tela, pare por um instante e tente de novo."
+              : "Não foi possível carregar a operação do Iris.",
+          );
         }
       } finally {
         if (active) {
@@ -856,6 +866,7 @@ export function IrisPage({
     loadFromSupabase,
     operatorScoped,
     operatorUserId,
+    reloadToken,
     scopedQueueSlug,
   ]);
 
@@ -1492,9 +1503,7 @@ export function IrisPage({
       {embeddedBoardOnly ? (
         <section className="h-[calc(100vh-11rem)] min-h-[560px] overflow-hidden rounded-2xl border border-line bg-subtle dark:bg-canvas p-3">
           {loadError ? (
-            <div className="h-full rounded-2xl border border-rose-200 bg-surface p-8 text-center text-sm font-semibold text-rose-700">
-              {loadError}
-            </div>
+            <BlocoDeFalhaDaIris aoTentarDeNovo={() => setReloadToken((n) => n + 1)} mensagem={loadError} />
           ) : activeView === "atendimento" ? (
             <AttendanceView
               cobrancaMode={cobrancaMode}
@@ -1555,9 +1564,7 @@ export function IrisPage({
           onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
         >
           {loadError ? (
-            <div className="h-full rounded-2xl border border-rose-200 bg-surface p-8 text-center text-sm font-semibold text-rose-700">
-              {loadError}
-            </div>
+            <BlocoDeFalhaDaIris aoTentarDeNovo={() => setReloadToken((n) => n + 1)} mensagem={loadError} />
           ) : activeView === "gestao" ? (
             <ManagementView
               canSeeCacaQueue={canSeeCacaQueue}
@@ -9750,4 +9757,37 @@ function dateValue(value?: string | null) {
 
 function unique<T>(values: T[]) {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+/**
+ * A tela quando a operação não carrega.
+ *
+ * ⚠️ ANTES ERA SÓ O TEXTO VERMELHO, sem saída. Em 26/08/2026 uma coordenadora passou a manhã
+ * deslogando, relogando e trocando de navegador atrás de um problema que era de conexão — a tela
+ * não dizia o que tinha acontecido nem oferecia o gesto óbvio, que é tentar de novo. Recarregar a
+ * página inteira era o único caminho, e ele derruba o resto do hub junto.
+ */
+function BlocoDeFalhaDaIris({
+  aoTentarDeNovo,
+  mensagem,
+}: {
+  aoTentarDeNovo: () => void;
+  mensagem: string;
+}) {
+  return (
+    <div className="grid h-full place-items-center rounded-2xl border border-rose-200 bg-surface p-8 dark:border-rose-500/30">
+      <div className="grid max-w-md gap-3 text-center">
+        <p className="m-0 text-sm font-semibold text-rose-700 dark:text-rose-300">{mensagem}</p>
+        <div>
+          <button
+            className="inline-flex h-9 items-center rounded-lg bg-ink px-4 text-sm font-semibold text-canvas transition-opacity hover:opacity-90"
+            onClick={aoTentarDeNovo}
+            type="button"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
