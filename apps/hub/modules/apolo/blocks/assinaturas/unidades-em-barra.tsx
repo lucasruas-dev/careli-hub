@@ -1,28 +1,41 @@
 "use client";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
-import type { UnidadeComAssinatura } from "@/lib/apolo/unidades-assinatura";
+import type { GrupoDeAssinatura, UnidadeComAssinatura } from "@/lib/apolo/unidades-assinatura";
 
-// AS UNIDADES COM O COMPRADOR ASSINADO — em barras, no painel interno.
+// OS CONTRATOS POR UNIDADE — uma barra por perfil, no painel interno.
 //
-// Pedido do Lucas (25/08/2026): *"o pessoal está reclamando muito sobre a disposição das
-// assinaturas, está difícil de entender. Vamos deixar igual temos no perfil dos incorporadores,
-// aquele mesmo esquema de barras, ao clicar abrir as assinaturas e os indicadores"* — e, sobre
-// replicar aqui: *"pode seguir o mesmo padrão que fizemos no perfil do incorporador"*.
+// Pedido do Lucas (25/08/2026): *"vamos deixar igual temos no perfil dos incorporadores, aquele
+// mesmo esquema de barras, ao clicar abrir as assinaturas e os indicadores"* e, sobre replicar
+// aqui: *"pode seguir o mesmo padrão que fizemos no perfil do incorporador"*.
+//
+// ⚠️ A RÉGUA POR PERFIL, NÃO UMA BARRA DE PROGRESSO. Foi o erro do primeiro porte: uma barra única
+// responde "quanto falta", mas a pergunta que faz alguém agir é "QUEM está segurando". Cada perfil
+// do contrato tem a sua barra, e a do perfil parado ganha o anel.
+//
+// ⚠️ SÓ OS PERFIS DAQUELE CONTRATO desenham barra. Perfil que não assina ali não vira barra vazia,
+// porque barra vazia diz "falta alguém" de quem nunca foi chamado.
 //
 // ⚠️ MESMO DESENHO, OUTRA PALETA. O gêmeo público (modules/publico/painel/unidades-com-barra.tsx)
-// pinta com as cores fixas da tela do coordenador, que roda fora do hub. Aqui as classes são as do
-// chrome (`bg-surface`, `text-ink`), que seguem o tema claro/escuro do hub — trocar uma pela outra
-// deixa texto de um tema no fundo do outro.
-//
-// ⚠️ O CÁLCULO NÃO VIVE AQUI. Os dois painéis leem de lib/apolo/unidades-assinatura.ts, que tem os
-// testes: eles mostram a MESMA lista para as MESMAS pessoas, e divergirem seria um bug invisível.
+// pinta com cores fixas, porque roda fora do hub. Aqui as classes são as do chrome, que seguem o
+// tema claro/escuro — trocar uma pela outra deixa texto de um tema no fundo do outro.
 
 const num = (n: number) => n.toLocaleString("pt-BR");
 const dataCurta = (iso: null | string) =>
   iso ? iso.slice(0, 10).split("-").reverse().join("/").slice(0, 5) : "—";
+
+/** "há 17 dias" a partir de uma data ISO curta. */
+function rotuloDeEspera(iso: null | string): string {
+  if (!iso) return "sem data de envio";
+  const dias = Math.round(
+    (Date.now() - new Date(`${iso.slice(0, 10)}T12:00:00`).getTime()) / 86_400_000,
+  );
+  if (dias <= 0) return "hoje";
+  if (dias === 1) return "há 1 dia";
+  return `há ${num(dias)} dias`;
+}
 
 export function UnidadesEmBarra({ unidades }: { unidades: UnidadeComAssinatura[] }) {
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
@@ -38,7 +51,7 @@ export function UnidadesEmBarra({ unidades }: { unidades: UnidadeComAssinatura[]
   if (unidades.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-black/[0.12] p-8 text-center text-sm text-ink-soft dark:border-white/[0.12]">
-        Nenhuma unidade com o comprador assinado neste recorte.
+        Nenhum contrato neste recorte.
       </p>
     );
   }
@@ -49,7 +62,6 @@ export function UnidadesEmBarra({ unidades }: { unidades: UnidadeComAssinatura[]
         const aberta = abertas.has(unidade.un);
         const percentual =
           unidade.total > 0 ? Math.round((100 * unidade.assinadas) / unidade.total) : 0;
-        const completa = unidade.degrau === null;
 
         return (
           <div
@@ -62,7 +74,7 @@ export function UnidadesEmBarra({ unidades }: { unidades: UnidadeComAssinatura[]
               onClick={() => alternar(unidade.un)}
               type="button"
             >
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(130px,240px)_auto] items-center gap-3">
+              <div className="grid grid-cols-[minmax(140px,1.1fr)_minmax(0,2fr)_minmax(112px,auto)] items-center gap-3.5">
                 <span className="min-w-0">
                   <span className="flex items-center gap-1.5 text-sm font-bold text-ink">
                     {aberta ? (
@@ -76,44 +88,48 @@ export function UnidadesEmBarra({ unidades }: { unidades: UnidadeComAssinatura[]
                     )}
                     {unidade.un}
                   </span>
-                  {/* O comprador trunca; quem procura unidade acha pela unidade. */}
-                  <span className="ml-5 block truncate text-xs text-ink-soft">{unidade.nomes}</span>
-                </span>
-
-                <span>
-                  <span className="mb-1 block text-[11.5px] text-ink-soft">
-                    {num(unidade.assinadas)} de {num(unidade.total)} assinaturas
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    className="block h-2 overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/[0.1]"
-                  >
-                    <i
-                      className={`block h-full ${completa ? "bg-emerald-600 dark:bg-emerald-400" : "bg-ink"}`}
-                      style={{ width: `${percentual}%` }}
-                    />
+                  <span className="ml-5 block truncate text-[11.5px] text-ink-soft">
+                    {unidade.nomes || "comprador não registrado no envio"}
                   </span>
                 </span>
 
-                <span className="min-w-[86px] text-right">
+                {unidade.grupos.length === 0 ? (
+                  <span className="text-xs text-ink-soft">
+                    Nenhum assinante ficou registrado neste envio.
+                  </span>
+                ) : (
                   <span
-                    className={`block text-[15px] font-bold tabular-nums ${completa ? "text-emerald-600 dark:text-emerald-400" : "text-ink"}`}
+                    className="grid gap-2.5"
+                    style={{
+                      gridTemplateColumns: `repeat(${unidade.grupos.length}, minmax(0, 1fr))`,
+                    }}
                   >
-                    {percentual}%
+                    {unidade.grupos.map((grupo) => (
+                      <BarraDoPerfil grupo={grupo} key={grupo.perfil} />
+                    ))}
                   </span>
-                  <span className="block text-[11px] text-ink-soft">
-                    {completa ? "completo" : `degrau ${unidade.degrau}`}
+                )}
+
+                <span className="min-w-0 text-right">
+                  <span className="block text-[13px] font-bold tabular-nums text-ink">
+                    {num(unidade.assinadas)} de {num(unidade.total)}
+                    <span className="font-medium text-ink-soft"> · {percentual}%</span>
                   </span>
+                  {/* ⚠️ QUEM SEGURA E HÁ QUANTO TEMPO: a informação que a coluna "Agora espera"
+                      tentava dar espremida entre nomes cortados. */}
+                  {unidade.concluida ? (
+                    <span className="mt-0.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 aria-hidden="true" size={13} />
+                      contrato completo
+                    </span>
+                  ) : (
+                    <span className="mt-0.5 block text-[11.5px] text-ink-soft">
+                      com <b className="font-semibold">{unidade.perfisNaVez.join(", ") || "—"}</b> ·{" "}
+                      {rotuloDeEspera(unidade.envio)}
+                    </span>
+                  )}
                 </span>
               </div>
-
-              {/* ⚠️ A LINHA QUE A TABELA NÃO DAVA: quem está com a bola AGORA, por extenso. Era a
-                  coluna "Agora espera", espremida com três, quatro nomes cortados no meio. */}
-              {!completa && unidade.esperando.length > 0 ? (
-                <p className="m-0 ml-5 mt-2 text-xs text-ink-soft">
-                  <span className="opacity-70">Agora espera:</span> {unidade.esperando.join(", ")}
-                </p>
-              ) : null}
             </button>
 
             {aberta ? (
@@ -184,6 +200,45 @@ export function UnidadesEmBarra({ unidades }: { unidades: UnidadeComAssinatura[]
         );
       })}
     </div>
+  );
+}
+
+/**
+ * A barra de UM perfil dentro do contrato.
+ *
+ * ⚠️ O ANEL SÓ NO PERFIL DA VEZ. É ele que faz a linha ler "falta o Backoffice" de relance, sem
+ * ninguém comparar frações. Os perfis que ainda nem foram chamados ficam esmaecidos: eles não devem
+ * nada agora, e destacá-los espalharia a culpa por quem não tem culpa.
+ */
+function BarraDoPerfil({ grupo }: { grupo: GrupoDeAssinatura }) {
+  const completo = grupo.assinadas >= grupo.total;
+  const percentual = grupo.total > 0 ? (100 * grupo.assinadas) / grupo.total : 0;
+  const tinta = completo ? "bg-emerald-600 dark:bg-emerald-400" : grupo.naVez ? "bg-ink" : "bg-ink-soft";
+
+  return (
+    <span
+      className={`block min-w-0 ${completo || grupo.naVez ? "opacity-100" : "opacity-55"}`}
+      title={`${grupo.perfil}: ${grupo.assinadas} de ${grupo.total}`}
+    >
+      <span
+        className={`mb-1 block truncate text-[10.5px] ${
+          grupo.naVez && !completo ? "font-bold text-ink" : "font-medium text-ink-soft"
+        }`}
+      >
+        {grupo.perfil}
+      </span>
+      <span
+        aria-hidden="true"
+        className={`block h-1.5 overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/[0.1] ${
+          grupo.naVez && !completo ? "ring-[1.5px] ring-ink" : ""
+        }`}
+      >
+        <i className={`block h-full ${tinta}`} style={{ width: `${percentual}%` }} />
+      </span>
+      <span className="mt-0.5 block text-[10.5px] tabular-nums text-ink-soft">
+        {num(grupo.assinadas)} de {num(grupo.total)}
+      </span>
+    </span>
   );
 }
 

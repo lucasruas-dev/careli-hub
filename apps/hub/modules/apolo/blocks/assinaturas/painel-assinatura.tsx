@@ -4,7 +4,10 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
-import { agruparUnidadesComCompradorAssinado } from "@/lib/apolo/unidades-assinatura";
+import {
+  agruparUnidadesDeAssinatura,
+  contarParadoPorPerfil,
+} from "@/lib/apolo/unidades-assinatura";
 import { UnidadesEmBarra } from "./unidades-em-barra";
 
 // PAINEL DE ASSINATURA do Vale do Ouro, no lugar do Painel Assinatura do Power BI.
@@ -279,9 +282,18 @@ export function PainelAssinatura({ fonte = "/api/apolo/painel-assinatura" }: { f
 
   // ⚠️ O CÁLCULO VIVE EM lib/apolo/unidades-assinatura.ts, junto com o painel público do
   // coordenador: as duas telas mostram a MESMA lista para as MESMAS pessoas.
-  const comCompradorOk = useMemo(
-    () => agruparUnidadesComCompradorAssinado(resumo.porUn),
-    [resumo.porUn],
+  const todasAsUnidades = useMemo(() => agruparUnidadesDeAssinatura(resumo.porUn), [resumo.porUn]);
+
+  // ⚠️ O RECORTE É POR QUEM TRAVA, não por "o comprador já assinou": o filtro antigo escondia
+  // justamente as unidades paradas no começo da fila, que são as mais urgentes.
+  const [paradoCom, setParadoCom] = useState("");
+  const paradoPorPerfil = useMemo(() => contarParadoPorPerfil(todasAsUnidades), [todasAsUnidades]);
+  const unidadesVisiveis = useMemo(
+    () =>
+      paradoCom
+        ? todasAsUnidades.filter((u) => !u.concluida && u.perfisNaVez.includes(paradoCom))
+        : todasAsUnidades,
+    [todasAsUnidades, paradoCom],
   );
 
   const ordenadas = useMemo(
@@ -491,15 +503,32 @@ export function PainelAssinatura({ fonte = "/api/apolo/painel-assinatura" }: { f
         </div>
 
         <h2 className="mb-2 mt-6 text-[11.5px] font-bold uppercase tracking-[0.13em] text-ink-soft">
-          Unidades com o comprador assinado
+          Contratos por unidade
         </h2>
+        {paradoPorPerfil.length > 0 ? (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[11.5px] text-ink-soft">Parado com</span>
+            <PilulaDeFiltro
+              ativo={paradoCom === ""}
+              aoClicar={() => setParadoCom("")}
+              rotulo={`Todas (${todasAsUnidades.length})`}
+            />
+            {paradoPorPerfil.map((opcao) => (
+              <PilulaDeFiltro
+                ativo={paradoCom === opcao.perfil}
+                aoClicar={() => setParadoCom(opcao.perfil)}
+                key={opcao.perfil}
+                rotulo={`${opcao.perfil} (${opcao.quantas})`}
+              />
+            ))}
+          </div>
+        ) : null}
         <div className="max-h-[560px] overflow-auto pr-1">
-          <UnidadesEmBarra unidades={comCompradorOk} />
+          <UnidadesEmBarra unidades={unidadesVisiveis} />
         </div>
         <p className="mt-2 text-xs text-ink-soft">
-          {comCompradorOk.length} unidade{comCompradorOk.length === 1 ? "" : "s"} com o comprador
-          assinado · {comCompradorOk.filter((p) => p.esperando.length).length} ainda aguardam outra
-          assinatura.
+          {unidadesVisiveis.length} unidade{unidadesVisiveis.length === 1 ? "" : "s"} ·{" "}
+          {unidadesVisiveis.filter((u) => !u.concluida).length} aguardam assinatura.
         </p>
 
         {/* Âncora do clique vindo do Quadro de assinaturas. */}
@@ -565,6 +594,30 @@ export function PainelAssinatura({ fonte = "/api/apolo/painel-assinatura" }: { f
         </p>
       </div>
     </div>
+  );
+}
+
+function PilulaDeFiltro({
+  ativo,
+  aoClicar,
+  rotulo,
+}: {
+  ativo: boolean;
+  aoClicar: () => void;
+  rotulo: string;
+}) {
+  return (
+    <button
+      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+        ativo
+          ? "border-ink bg-ink font-semibold text-canvas"
+          : "border-line text-ink-soft hover:bg-subtle"
+      }`}
+      onClick={aoClicar}
+      type="button"
+    >
+      {rotulo}
+    </button>
   );
 }
 

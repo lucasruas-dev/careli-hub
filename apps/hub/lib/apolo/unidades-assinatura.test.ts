@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { LinhaAssinatura } from "./painel-assinatura";
-import { agruparUnidadesComCompradorAssinado } from "./unidades-assinatura";
+import { agruparUnidadesDeAssinatura, contarParadoPorPerfil } from "./unidades-assinatura";
 
 const linha = (parcial: Partial<LinhaAssinatura>): LinhaAssinatura => ({
   assinadoEm: null,
@@ -32,41 +32,74 @@ const mapa = (...linhas: LinhaAssinatura[]) => {
   return m;
 };
 
-describe("agruparUnidadesComCompradorAssinado", () => {
-  it("só entra unidade em que TODOS os compradores assinaram", () => {
-    const resultado = agruparUnidadesComCompradorAssinado(
+describe("agruparUnidadesDeAssinatura", () => {
+  it("inclui unidade cujo comprador AINDA NÃO assinou", () => {
+    // ⚠️ O recorte antigo só trazia quem já tinha o comprador assinado, e escondia justamente as
+    // mais urgentes. Foi o "cadê a barrinha desse aí?" do Lucas na VOC0305.
+    const resultado = agruparUnidadesDeAssinatura(
+      mapa(
+        linha({ assinou: false, un: "VOC0305", usuario: "DALTON" }),
+        linha({ assinou: false, degrau: 3, perfil: "Incorporador", un: "VOC0305" }),
+      ),
+    );
+    expect(resultado.map((u) => u.un)).toEqual(["VOC0305"]);
+    expect(resultado[0]?.compradorAssinou).toBe(false);
+  });
+
+  it("marca compradorAssinou só quando TODOS os compradores assinaram", () => {
+    const resultado = agruparUnidadesDeAssinatura(
       mapa(
         linha({ assinadoEm: "2026-08-05", assinou: true, un: "A", usuario: "MARIDO" }),
         linha({ assinou: false, un: "A", usuario: "ESPOSA" }),
         linha({ assinadoEm: "2026-08-05", assinou: true, un: "B", usuario: "SOZINHO" }),
       ),
     );
-    expect(resultado.map((u) => u.un)).toEqual(["B"]);
+    const porUn = Object.fromEntries(resultado.map((u) => [u.un, u.compradorAssinou]));
+    expect(porUn).toEqual({ A: false, B: true });
   });
 
-  it("unidade SEM comprador nenhum fica de fora", () => {
-    // Não dá para dizer "o comprador assinou" quando não há comprador na lista.
-    const resultado = agruparUnidadesComCompradorAssinado(
-      mapa(linha({ assinadoEm: "2026-08-05", assinou: true, perfil: "Imobiliária", un: "A" })),
-    );
-    expect(resultado).toEqual([]);
-  });
-
-  it("o total é o contrato inteiro e o assinadas conta todos os perfis", () => {
-    const resultado = agruparUnidadesComCompradorAssinado(
+  it("uma barra por PERFIL, na ordem em que cada um é chamado", () => {
+    const resultado = agruparUnidadesDeAssinatura(
       mapa(
         linha({ assinadoEm: "2026-08-02", assinou: true, degrau: 1, perfil: "Imobiliária", un: "A" }),
         linha({ assinadoEm: "2026-08-03", assinou: true, degrau: 2, un: "A" }),
-        linha({ assinou: false, degrau: 3, perfil: "Incorporador", un: "A" }),
-        linha({ assinou: false, degrau: 4, perfil: "Backoffice", un: "A" }),
+        linha({ assinou: false, degrau: 5, perfil: "Incorporador", un: "A", usuario: "X" }),
+        linha({ assinou: false, degrau: 5, perfil: "Incorporador", un: "A", usuario: "Y" }),
+        linha({ assinou: false, degrau: 7, perfil: "Backoffice", un: "A" }),
       ),
     );
-    expect(resultado[0]?.total).toBe(4);
-    expect(resultado[0]?.assinadas).toBe(2);
+    expect(resultado[0]?.grupos.map((g) => `${g.perfil} ${g.assinadas}/${g.total}`)).toEqual([
+      "Imobiliária 1/1",
+      "Comprador 1/1",
+      "Incorporador 0/2",
+      "Backoffice 0/1",
+    ]);
+  });
+
+  it("só o perfil da VEZ recebe naVez — os de trás não", () => {
+    // É o destaque que faz a linha ler "falta o Incorporador" sem ninguém somar de cabeça.
+    const resultado = agruparUnidadesDeAssinatura(
+      mapa(
+        linha({ assinadoEm: "2026-08-02", assinou: true, degrau: 1, perfil: "Imobiliária", un: "A" }),
+        linha({ assinou: false, degrau: 5, perfil: "Incorporador", un: "A" }),
+        linha({ assinou: false, degrau: 7, perfil: "Backoffice", un: "A" }),
+      ),
+    );
+    const naVez = Object.fromEntries(resultado[0]!.grupos.map((g) => [g.perfil, g.naVez]));
+    expect(naVez).toEqual({ Backoffice: false, Imobiliária: false, Incorporador: true });
+    expect(resultado[0]?.perfisNaVez).toEqual(["Incorporador"]);
+  });
+
+  it("perfil que NÃO assina o contrato não vira barra vazia", () => {
+    // Barra vazia diria "falta alguém" de quem nunca foi chamado.
+    const resultado = agruparUnidadesDeAssinatura(
+      mapa(linha({ assinadoEm: "2026-08-02", assinou: true, un: "A" })),
+    );
+    expect(resultado[0]?.grupos.map((g) => g.perfil)).toEqual(["Comprador"]);
   });
 
   it("o degrau é o MENOR pendente — é ele que trava a fila", () => {
-    const resultado = agruparUnidadesComCompradorAssinado(
+    const resultado = agruparUnidadesDeAssinatura(
       mapa(
         linha({ assinadoEm: "2026-08-03", assinou: true, degrau: 1, un: "A" }),
         linha({ assinou: false, degrau: 7, perfil: "Backoffice", un: "A", usuario: "TARDE" }),
@@ -79,7 +112,7 @@ describe("agruparUnidadesComCompradorAssinado", () => {
 
   it("assinatura sem ordem (degrau 0) vai para o FIM, não trava a fila", () => {
     // ⚠️ degrau 0 seria o menor de todos: o contrato apareceria travado numa ordem inexistente.
-    const resultado = agruparUnidadesComCompradorAssinado(
+    const resultado = agruparUnidadesDeAssinatura(
       mapa(
         linha({ assinadoEm: "2026-08-03", assinou: true, degrau: 1, un: "A" }),
         linha({ assinou: false, degrau: 0, perfil: "Backoffice", un: "A", usuario: "SEM ORDEM" }),
@@ -90,20 +123,20 @@ describe("agruparUnidadesComCompradorAssinado", () => {
     expect(resultado[0]?.esperando).toEqual(["COM ORDEM"]);
   });
 
-  it("contrato completo tem degrau null e ninguém esperando", () => {
-    const resultado = agruparUnidadesComCompradorAssinado(
+  it("contrato completo: concluida, degrau null e ninguém esperando", () => {
+    const resultado = agruparUnidadesDeAssinatura(
       mapa(
         linha({ assinadoEm: "2026-08-03", assinou: true, degrau: 1, un: "A" }),
         linha({ assinadoEm: "2026-08-04", assinou: true, degrau: 2, perfil: "Backoffice", un: "A" }),
       ),
     );
+    expect(resultado[0]?.concluida).toBe(true);
     expect(resultado[0]?.degrau).toBeNull();
     expect(resultado[0]?.esperando).toEqual([]);
-    expect(resultado[0]?.assinadas).toBe(resultado[0]?.total);
   });
 
-  it("mais de uma pessoa no mesmo degrau aparece junto em esperando, sem repetir", () => {
-    const resultado = agruparUnidadesComCompradorAssinado(
+  it("mais de uma pessoa no mesmo degrau aparece junto, sem repetir nome", () => {
+    const resultado = agruparUnidadesDeAssinatura(
       mapa(
         linha({ assinadoEm: "2026-08-03", assinou: true, degrau: 1, un: "A" }),
         linha({ assinou: false, degrau: 5, email: "x@y", perfil: "Incorporador", un: "A", usuario: "LINO" }),
@@ -115,7 +148,7 @@ describe("agruparUnidadesComCompradorAssinado", () => {
   });
 
   it("os assinantes vêm na ordem da fila, com desempate pelo nome", () => {
-    const resultado = agruparUnidadesComCompradorAssinado(
+    const resultado = agruparUnidadesDeAssinatura(
       mapa(
         linha({ assinou: false, degrau: 5, perfil: "Incorporador", un: "A", usuario: "ZEZE" }),
         linha({ assinadoEm: "2026-08-03", assinou: true, degrau: 2, un: "A", usuario: "COMPRADOR" }),
@@ -132,7 +165,7 @@ describe("agruparUnidadesComCompradorAssinado", () => {
   });
 
   it("dias conta do envio até a ÚLTIMA assinatura do comprador", () => {
-    const resultado = agruparUnidadesComCompradorAssinado(
+    const resultado = agruparUnidadesDeAssinatura(
       mapa(
         linha({ assinadoEm: "2026-08-03", assinou: true, envio: "2026-08-01", un: "A", usuario: "M" }),
         linha({ assinadoEm: "2026-08-06", assinou: true, envio: "2026-08-01", un: "A", usuario: "E" }),
@@ -142,13 +175,63 @@ describe("agruparUnidadesComCompradorAssinado", () => {
     expect(resultado[0]?.ultima).toBe("2026-08-06");
   });
 
-  it("ordena da assinatura mais recente para a mais antiga", () => {
-    const resultado = agruparUnidadesComCompradorAssinado(
+  it("comprador incompleto não tem data nem dias, mesmo com um deles assinado", () => {
+    // Metade do casal assinou: a unidade ainda não passou do comprador.
+    const resultado = agruparUnidadesDeAssinatura(
       mapa(
-        linha({ assinadoEm: "2026-08-01", assinou: true, un: "ANTIGA" }),
-        linha({ assinadoEm: "2026-08-20", assinou: true, un: "NOVA" }),
+        linha({ assinadoEm: "2026-08-03", assinou: true, un: "A", usuario: "M" }),
+        linha({ assinou: false, un: "A", usuario: "E" }),
       ),
     );
-    expect(resultado.map((u) => u.un)).toEqual(["NOVA", "ANTIGA"]);
+    expect(resultado[0]?.ultima).toBeNull();
+    expect(resultado[0]?.dias).toBeNull();
+  });
+
+  it("o mais parado vem primeiro; contrato completo vai para o fim", () => {
+    const resultado = agruparUnidadesDeAssinatura(
+      mapa(
+        linha({ assinadoEm: "2026-08-20", assinou: true, envio: "2026-08-20", un: "PRONTA" }),
+        linha({ assinou: false, envio: "2026-08-10", un: "RECENTE" }),
+        linha({ assinou: false, envio: "2026-08-01", un: "ANTIGA" }),
+      ),
+    );
+    expect(resultado.map((u) => u.un)).toEqual(["ANTIGA", "RECENTE", "PRONTA"]);
+  });
+});
+
+describe("contarParadoPorPerfil", () => {
+  it("conta unidades por perfil que trava, do maior para o menor", () => {
+    const unidades = agruparUnidadesDeAssinatura(
+      mapa(
+        linha({ assinou: false, degrau: 7, perfil: "Backoffice", un: "A" }),
+        linha({ assinou: false, degrau: 7, perfil: "Backoffice", un: "B" }),
+        linha({ assinou: false, degrau: 4, perfil: "Incorporador", un: "C" }),
+      ),
+    );
+    expect(contarParadoPorPerfil(unidades)).toEqual([
+      { perfil: "Backoffice", quantas: 2 },
+      { perfil: "Incorporador", quantas: 1 },
+    ]);
+  });
+
+  it("contrato completo não conta para ninguém", () => {
+    const unidades = agruparUnidadesDeAssinatura(
+      mapa(linha({ assinadoEm: "2026-08-03", assinou: true, un: "A" })),
+    );
+    expect(contarParadoPorPerfil(unidades)).toEqual([]);
+  });
+
+  it("unidade parada em DOIS perfis ao mesmo tempo conta nos dois", () => {
+    // Acontece quando duas pessoas de perfis diferentes dividem o mesmo degrau.
+    const unidades = agruparUnidadesDeAssinatura(
+      mapa(
+        linha({ assinou: false, degrau: 6, perfil: "Coordenadora de venda", un: "A" }),
+        linha({ assinou: false, degrau: 6, perfil: "Backoffice", un: "A", usuario: "OUTRO" }),
+      ),
+    );
+    expect(contarParadoPorPerfil(unidades)).toEqual([
+      { perfil: "Backoffice", quantas: 1 },
+      { perfil: "Coordenadora de venda", quantas: 1 },
+    ]);
   });
 });

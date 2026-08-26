@@ -1,52 +1,45 @@
 "use client";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
-import type { PainelAssinatura } from "@/lib/apolo/painel-assinatura";
+import type { GrupoDeAssinatura, UnidadeComAssinatura } from "@/lib/apolo/unidades-assinatura";
 
 import { C, GOLD, Selo, dataCurta, numeroBR } from "./ui";
 
-// AS UNIDADES COM O COMPRADOR ASSINADO — em barras, não em tabela.
+// OS CONTRATOS POR UNIDADE — uma barra por perfil, igual ao perfil do incorporador.
 //
 // Pedido do Lucas (25/08/2026): *"o pessoal está reclamando muito sobre a disposição das
 // assinaturas, está difícil de entender. Vamos deixar igual temos no perfil dos incorporadores,
 // aquele mesmo esquema de barras, ao clicar abrir as assinaturas e os indicadores"*.
 //
-// ⚠️ POR QUE A TABELA CONFUNDIA. A coluna "Agora espera" despejava a lista de nomes de quem falta
-// numa célula estreita — três, quatro nomes cortados no meio, com "ordem 5" embaixo. Para saber
-// como uma unidade estava era preciso ler nomes e cruzar de cabeça com a fila de ordens. O número
-// que a pessoa procura ("falta muito?") não estava em lugar nenhum.
+// ⚠️ A RÉGUA POR PERFIL, NÃO UMA BARRA DE PROGRESSO. Foi o erro do primeiro porte: uma barra única
+// responde "quanto falta", mas a pergunta que faz alguém agir é "QUEM está segurando". Aqui cada
+// perfil do contrato tem a sua barra — Imobiliária 1 de 1, Comprador 1 de 1, Incorporador 6 de 6,
+// Backoffice 0 de 2 — e a do perfil parado ganha o anel. Desenho de
+// modules/incorporador/TelaVendas.tsx, que o time já usa e o Lucas aprovou.
 //
-// ⚠️ O DESENHO VEM DO PERFIL DO INCORPORADOR (modules/incorporador/TelaVendas.tsx), que o Lucas já
-// aprovou e o time já usa: "X de Y assinaturas" + barra + a tabela de assinantes ao abrir. Portado
-// para a paleta clara desta tela pública, não para as classes do chrome do HUB — elas seguem o tema
-// do hub e viriam escuras aqui.
+// ⚠️ SÓ OS PERFIS DAQUELE CONTRATO desenham barra. Perfil que não assina ali não vira barra vazia,
+// porque barra vazia diz "falta alguém" de quem nunca foi chamado.
+//
+// ⚠️ PALETA FIXA, não as classes do chrome: esta tela roda fora do hub, sem o tema dele. O gêmeo
+// interno (modules/apolo/blocks/assinaturas/unidades-em-barra.tsx) tem o mesmo desenho com as
+// classes do hub — trocar uma pela outra deixa texto de um tema no fundo do outro.
 
-/** Uma unidade pronta para virar barra: o que a lista precisa saber sem reabrir a conta. */
-export type UnidadeComBarra = {
-  /** Quantas assinaturas do contrato já saíram. */
-  assinadas: number;
-  /** Todas as pessoas do contrato, na ordem da fila. */
-  assinantes: PainelAssinatura["linhas"];
-  /** Dias entre o envio e a última assinatura do comprador. */
-  dias: null | number;
-  /** A ordem que está travando a fila agora (null = contrato completo). */
-  degrau: null | number;
-  /** Quem está com a bola neste momento. */
-  esperando: string[];
-  /** Data em que o contrato saiu para assinatura. */
-  envio: null | string;
-  /** Nome dos compradores. */
-  nomes: string;
-  /** Data da última assinatura do comprador. */
-  ultima: null | string;
-  /** Total de assinaturas previstas no contrato. */
-  total: number;
-  un: string;
-};
+const VERDE = "#0F9D58";
 
-export function UnidadesComBarra({ unidades }: { unidades: UnidadeComBarra[] }) {
+/** "há 17 dias" a partir de uma data ISO curta. */
+function rotuloDeEspera(iso: null | string): string {
+  if (!iso) return "sem data de envio";
+  const dias = Math.round(
+    (Date.now() - new Date(`${iso.slice(0, 10)}T12:00:00`).getTime()) / 86_400_000,
+  );
+  if (dias <= 0) return "hoje";
+  if (dias === 1) return "há 1 dia";
+  return `há ${numeroBR(dias)} dias`;
+}
+
+export function UnidadesComBarra({ unidades }: { unidades: UnidadeComAssinatura[] }) {
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
 
   const alternar = (un: string) =>
@@ -70,7 +63,7 @@ export function UnidadesComBarra({ unidades }: { unidades: UnidadeComBarra[] }) 
           textAlign: "center",
         }}
       >
-        Nenhuma unidade com o comprador assinado neste recorte.
+        Nenhum contrato neste recorte.
       </p>
     );
   }
@@ -81,7 +74,6 @@ export function UnidadesComBarra({ unidades }: { unidades: UnidadeComBarra[] }) 
         const aberta = abertas.has(unidade.un);
         const percentual =
           unidade.total > 0 ? Math.round((100 * unidade.assinadas) / unidade.total) : 0;
-        const completa = unidade.degrau === null;
 
         return (
           <div
@@ -111,8 +103,8 @@ export function UnidadesComBarra({ unidades }: { unidades: UnidadeComBarra[] }) 
                 style={{
                   alignItems: "center",
                   display: "grid",
-                  gap: 12,
-                  gridTemplateColumns: "minmax(0, 1fr) minmax(140px, 260px) auto",
+                  gap: 14,
+                  gridTemplateColumns: "minmax(150px, 1.1fr) minmax(0, 2fr) minmax(118px, auto)",
                 }}
               >
                 <span style={{ minWidth: 0 }}>
@@ -133,86 +125,79 @@ export function UnidadesComBarra({ unidades }: { unidades: UnidadeComBarra[] }) 
                     )}
                     {unidade.un}
                   </span>
-                  {/* O comprador vem embaixo e pode truncar: quem procura unidade acha pela unidade. */}
                   <span
                     style={{
                       color: C.sub,
                       display: "block",
-                      fontSize: 12,
+                      fontSize: 11.5,
                       marginLeft: 20,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {unidade.nomes}
+                    {unidade.nomes || "comprador não registrado no envio"}
                   </span>
                 </span>
 
-                <span>
+                {unidade.grupos.length === 0 ? (
+                  <span style={{ color: C.muted, fontSize: 12 }}>
+                    Nenhum assinante ficou registrado neste envio.
+                  </span>
+                ) : (
                   <span
                     style={{
-                      color: C.sub,
-                      display: "block",
-                      fontSize: 11.5,
-                      marginBottom: 4,
+                      display: "grid",
+                      gap: 10,
+                      gridTemplateColumns: `repeat(${unidade.grupos.length}, minmax(0, 1fr))`,
                     }}
                   >
-                    {numeroBR(unidade.assinadas)} de {numeroBR(unidade.total)} assinaturas
+                    {unidade.grupos.map((grupo) => (
+                      <BarraDoPerfil grupo={grupo} key={grupo.perfil} />
+                    ))}
                   </span>
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      background: C.soft,
-                      borderRadius: 999,
-                      display: "block",
-                      height: 8,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <i
-                      style={{
-                        background: completa ? "#0F9D58" : GOLD,
-                        display: "block",
-                        height: "100%",
-                        width: `${percentual}%`,
-                      }}
-                    />
-                  </span>
-                </span>
+                )}
 
-                <span style={{ minWidth: 92, textAlign: "right" }}>
+                <span style={{ minWidth: 0, textAlign: "right" }}>
                   <span
                     style={{
-                      color: completa ? "#0F9D58" : C.text,
+                      color: C.text,
                       display: "block",
-                      fontSize: 15,
+                      fontSize: 13,
                       fontVariantNumeric: "tabular-nums",
                       fontWeight: 700,
                     }}
                   >
-                    {percentual}%
+                    {numeroBR(unidade.assinadas)} de {numeroBR(unidade.total)}
+                    <span style={{ color: C.muted, fontWeight: 500 }}> · {percentual}%</span>
                   </span>
-                  <span style={{ color: C.muted, display: "block", fontSize: 11 }}>
-                    {completa ? "completo" : `ordem ${unidade.degrau}`}
-                  </span>
+                  {/* ⚠️ QUEM SEGURA E HÁ QUANTO TEMPO: é a informação que a coluna "Agora espera"
+                      tentava dar espremida entre nomes cortados. */}
+                  {unidade.concluida ? (
+                    <span
+                      style={{
+                        alignItems: "center",
+                        color: VERDE,
+                        display: "inline-flex",
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        gap: 5,
+                        marginTop: 3,
+                      }}
+                    >
+                      <CheckCircle2 aria-hidden="true" size={13} />
+                      contrato completo
+                    </span>
+                  ) : (
+                    <span
+                      style={{ color: C.muted, display: "block", fontSize: 11.5, marginTop: 3 }}
+                    >
+                      com <b style={{ color: C.sub }}>{unidade.perfisNaVez.join(", ") || "—"}</b> ·{" "}
+                      {rotuloDeEspera(unidade.envio)}
+                    </span>
+                  )}
                 </span>
               </div>
-
-              {/* ⚠️ A LINHA QUE A TABELA NÃO CONSEGUIA DAR: quem está com a bola AGORA, por extenso,
-                  com espaço para caber. Era a coluna "Agora espera" espremida. */}
-              {!completa && unidade.esperando.length > 0 ? (
-                <p
-                  style={{
-                    color: C.sub,
-                    fontSize: 12,
-                    margin: "8px 0 0 20px",
-                  }}
-                >
-                  <span style={{ color: C.muted }}>Agora espera:</span>{" "}
-                  {unidade.esperando.join(", ")}
-                </p>
-              ) : null}
             </button>
 
             {aberta ? (
@@ -262,19 +247,20 @@ export function UnidadesComBarra({ unidades }: { unidades: UnidadeComBarra[] }) 
                         <td style={{ ...celulaLocal, color: C.sub }}>{assinante.perfil}</td>
                         <td style={celulaLocal}>
                           <Selo
-                              tom={assinante.situacao === "assinado"
+                            tom={
+                              assinante.situacao === "assinado"
                                 ? "verde"
                                 : assinante.situacao === "vez"
                                   ? "ambar"
                                   : "cinza"
-                              }
-                            >
-                              {assinante.situacao === "assinado"
-                                ? "Assinou"
-                                : assinante.situacao === "vez"
-                                  ? "É a vez"
-                                  : "Aguardando"}
-                            </Selo>
+                            }
+                          >
+                            {assinante.situacao === "assinado"
+                              ? "Assinou"
+                              : assinante.situacao === "vez"
+                                ? "É a vez"
+                                : "Aguardando"}
+                          </Selo>
                         </td>
                         <td
                           style={{
@@ -296,6 +282,67 @@ export function UnidadesComBarra({ unidades }: { unidades: UnidadeComBarra[] }) 
         );
       })}
     </div>
+  );
+}
+
+/**
+ * A barra de UM perfil dentro do contrato.
+ *
+ * ⚠️ O ANEL SÓ NO PERFIL DA VEZ. É ele que faz a linha ler "falta o Backoffice" de relance, sem
+ * ninguém comparar frações. Os perfis que ainda nem foram chamados ficam esmaecidos: eles não devem
+ * nada agora, e destacá-los espalharia a culpa por quem não tem culpa.
+ */
+function BarraDoPerfil({ grupo }: { grupo: GrupoDeAssinatura }) {
+  const completo = grupo.assinadas >= grupo.total;
+  const percentual = grupo.total > 0 ? (100 * grupo.assinadas) / grupo.total : 0;
+  const tinta = completo ? VERDE : grupo.naVez ? GOLD : C.muted;
+
+  return (
+    <span
+      style={{ display: "block", minWidth: 0, opacity: completo || grupo.naVez ? 1 : 0.55 }}
+      title={`${grupo.perfil}: ${grupo.assinadas} de ${grupo.total}`}
+    >
+      <span
+        style={{
+          color: grupo.naVez && !completo ? C.text : C.muted,
+          display: "block",
+          fontSize: 10.5,
+          fontWeight: grupo.naVez && !completo ? 700 : 500,
+          marginBottom: 4,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {grupo.perfil}
+      </span>
+      <span
+        aria-hidden="true"
+        style={{
+          background: C.border,
+          borderRadius: 999,
+          boxShadow: grupo.naVez && !completo ? `0 0 0 1.5px ${C.text}` : "none",
+          display: "block",
+          height: 6,
+          overflow: "hidden",
+        }}
+      >
+        <i
+          style={{ background: tinta, display: "block", height: "100%", width: `${percentual}%` }}
+        />
+      </span>
+      <span
+        style={{
+          color: C.muted,
+          display: "block",
+          fontSize: 10.5,
+          fontVariantNumeric: "tabular-nums",
+          marginTop: 3,
+        }}
+      >
+        {numeroBR(grupo.assinadas)} de {numeroBR(grupo.total)}
+      </span>
+    </span>
   );
 }
 

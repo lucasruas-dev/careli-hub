@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 
 import type { PainelAssinatura } from "@/lib/apolo/painel-assinatura";
-import { agruparUnidadesComCompradorAssinado } from "@/lib/apolo/unidades-assinatura";
+import {
+  agruparUnidadesDeAssinatura,
+  contarParadoPorPerfil,
+} from "@/lib/apolo/unidades-assinatura";
 
 import {
   C,
@@ -211,22 +214,36 @@ export function AbaAssinatura({ dados }: { dados: PainelAssinatura }) {
 
   // ⚠️ O CÁLCULO VIVE EM lib/apolo/unidades-assinatura.ts, junto com o painel interno: as duas
   // telas mostram a MESMA lista para as MESMAS pessoas, e divergirem seria um bug invisível.
-  const comCompradorOk = useMemo(
-    () => agruparUnidadesComCompradorAssinado(resumo.porUn),
+  const todasAsUnidades = useMemo(
+    () => agruparUnidadesDeAssinatura(resumo.porUn),
     [resumo.porUn],
+  );
+
+  // ⚠️ O RECORTE É POR QUEM TRAVA, não por "o comprador já assinou". O filtro antigo escondia
+  // justamente as unidades mais urgentes — as paradas no começo da fila. Lucas, 25/08, filtrando
+  // pela VOC0305: *"cadê a barrinha desse aí?"*.
+  const [paradoCom, setParadoCom] = useState("");
+  const paradoPorPerfil = useMemo(() => contarParadoPorPerfil(todasAsUnidades), [todasAsUnidades]);
+  const comCompradorOk = useMemo(
+    () =>
+      paradoCom
+        ? todasAsUnidades.filter((u) => !u.concluida && u.perfisNaVez.includes(paradoCom))
+        : todasAsUnidades,
+    [todasAsUnidades, paradoCom],
   );
 
   const unidadesOrdenadas = useOrdenacao(
     comCompradorOk,
     {
-      assinou: (p) => p.ultima ?? "",
       comprador: (p) => p.nomes,
       dias: (p) => p.dias ?? 0,
-      // Quanto do contrato ja saiu: e a pergunta que a barra responde, entao da para ordenar por ela.
+      // Há quanto tempo o contrato está no ar: o mais parado primeiro é a ordem natural aqui.
+      espera: (p) => p.envio ?? "",
+      // Quanto do contrato já saiu: é a pergunta que a barra responde.
       progresso: (p) => (p.total > 0 ? p.assinadas / p.total : 0),
       unidade: (p) => p.un,
     },
-    { campo: "assinou", desc: true },
+    { campo: "espera", desc: false },
   );
 
   const assinaturas = useOrdenacao(
@@ -522,17 +539,23 @@ export function AbaAssinatura({ dados }: { dados: PainelAssinatura }) {
 
       <TituloSecao
         contagem={`${unidadesOrdenadas.itens.length} unidades · ${
-          comCompradorOk.filter((p) => p.esperando.length).length
-        } aguardam outra assinatura`}
-        titulo="Unidades com o comprador assinado"
+          comCompradorOk.filter((p) => !p.concluida).length
+        } aguardam assinatura`}
+        titulo="Contratos por unidade"
+      />
+      <ParadoCom
+        atual={paradoCom}
+        aoTrocar={setParadoCom}
+        opcoes={paradoPorPerfil}
+        total={todasAsUnidades.length}
       />
       <OrdenarPor
         atual={unidadesOrdenadas.ordem}
         aoTrocar={unidadesOrdenadas.alternar}
         opcoes={[
-          { campo: "assinou", rotulo: "Assinou em" },
+          { campo: "espera", rotulo: "Mais parado" },
           { campo: "progresso", rotulo: "Progresso" },
-          { campo: "dias", rotulo: "Dias" },
+          { campo: "dias", rotulo: "Dias até assinar" },
           { campo: "unidade", rotulo: "Unidade" },
         ]}
       />
@@ -584,6 +607,66 @@ export function AbaAssinatura({ dados }: { dados: PainelAssinatura }) {
         })}
       </Tabela>
     </>
+  );
+}
+
+/**
+ * OS FILTROS "PARADO COM" — recorta a lista por QUEM está segurando.
+ *
+ * ⚠️ É O RECORTE QUE FALTAVA. A lista antiga era "unidades com o comprador assinado", o que
+ * escondia exatamente as mais urgentes: quem está travado no começo da fila sumia da visão. Aqui o
+ * critério é quem trava, então a unidade parada no comprador aparece — e agrupada com as outras
+ * paradas nele.
+ */
+function ParadoCom({
+  aoTrocar,
+  atual,
+  opcoes,
+  total,
+}: {
+  aoTrocar: (perfil: string) => void;
+  atual: string;
+  opcoes: { perfil: string; quantas: number }[];
+  total: number;
+}) {
+  if (opcoes.length === 0) return null;
+
+  const pilula = (ativo: boolean): React.CSSProperties => ({
+    background: ativo ? C.text : "transparent",
+    border: `1px solid ${ativo ? C.text : C.border}`,
+    borderRadius: 999,
+    color: ativo ? "#FFFFFF" : C.sub,
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: ativo ? 600 : 400,
+    padding: "4px 11px",
+  });
+
+  return (
+    <div
+      style={{
+        alignItems: "center",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 6,
+        margin: "10px 0",
+      }}
+    >
+      <span style={{ color: C.muted, fontSize: 11.5, marginRight: 2 }}>Parado com</span>
+      <button onClick={() => aoTrocar("")} style={pilula(atual === "")} type="button">
+        Todas ({numeroBR(total)})
+      </button>
+      {opcoes.map((opcao) => (
+        <button
+          key={opcao.perfil}
+          onClick={() => aoTrocar(opcao.perfil)}
+          style={pilula(atual === opcao.perfil)}
+          type="button"
+        >
+          {opcao.perfil} ({numeroBR(opcao.quantas)})
+        </button>
+      ))}
+    </div>
   );
 }
 

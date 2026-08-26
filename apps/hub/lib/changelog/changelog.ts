@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-25-barras-por-perfil-e-parado-com",
+    deployedAt: "2026-08-26T01:15:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cada contrato agora mostra UMA BARRA POR PERFIL: Imobiliaria, Comprador, Incorporador, Coordenadora de venda e Backoffice, cada um com a sua fracao. Da para ver quem esta segurando sem abrir nada.",
+              "No fim da linha, quem trava e ha quanto tempo: 'com Backoffice - ha 17 dias'.",
+              "Filtros PARADO COM, com a contagem por perfil: Backoffice (137), Comprador (21), Incorporador (16), Coordenadora de venda (8), Imobiliaria (2).",
+              "A lista passou a mostrar TODAS as unidades, nao so as que ja tinham o comprador assinado: eram 161, agora sao 184. As 23 escondidas eram justamente as mais atrasadas.",
+              "A ordem padrao e o mais parado primeiro, com os contratos completos no fim.",
+            ],
+            screen: "Assinaturas",
+          },
+        ],
+      },
+    ],
+    rollback: "e4cfaceb",
+    technical: { done: "agruparUnidadesDeAssinatura passou a devolver grupos por perfil (assinadas/total/naVez/ordem), perfisNaVez, concluida e compradorAssinou, e deixou de filtrar quem ainda nao passou do comprador; contarParadoPorPerfil alimenta as pilulas. Os dois componentes de apresentacao desenham uma barra por perfil com anel no perfil da vez e esmaecimento em quem nao foi chamado, mais o rodape 'com X - ha N dias'. Ordenacao padrao virou 'mais parado' (envio mais antigo), com os concluidos no fim. 16 testes no calculo.", motivation: "Lucas (25/08), vendo o perfil do incorporador: o padrao de la nao e uma barra de progresso, e UMA BARRA POR PERFIL - Imobiliaria 1 de 1, Comprador 1 de 1, Incorporador 6 de 6, Backoffice 0 de 2 - que mostra na hora QUEM esta segurando. O primeiro porte fez barra unica, que responde 'quanto falta' e nao 'quem trava'. E o recorte antigo escondia as unidades mais urgentes: filtrando pela VOC0305, parada no comprador, ele perguntou 'cade a barrinha desse ae?'." },
+    title: "Assinaturas: uma barra por perfil e filtro por quem esta segurando",
+    type: "melhoria",
+    version: "1.209.0",
+  },
+  {
     buildTag: "2026-08-25-ordenar-lista-vazia-nao-quebra",
     deployedAt: "2026-08-26T00:45:00-03:00",
     modules: [
