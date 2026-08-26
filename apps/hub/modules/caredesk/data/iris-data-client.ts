@@ -54,6 +54,19 @@ const IRIS_CRM360_ENRICH_TIMEOUT_MS = 4_000;
 // cadastro já conhecido — senão, no meio do atendimento, o nome do comprador vira o
 // handle do WhatsApp e o painel da direita esvazia. Reseta no reload (robustez em memória).
 const irisCrm360RegistrationCache = new Map<string, IrisCrm360Registration>();
+// ⚠️ O CADASTRO CONHECIDO TAMBÉM ENVELHECE. Antes o cache de "registered" era eterno na sessão:
+// quem resolvesse uma vez nunca mais era consultado, sob a premissa de que "o vínculo não muda de
+// 90 em 90s". O vínculo não, mas o que o card MOSTRA muda — o perfil vira Comprador quando a
+// carteira aparece, e a adimplência muda quando a parcela vence.
+//
+// Efeito medido em 26/08/2026, com o Lucas: três clientes apareciam como "Prospect" no Board e
+// "Comprador" ao abrir a conversa. Os três TÊM carteira no Apolo; o Board é que segurava a
+// primeira resposta, de quando ainda não tinham. Só um F5 corrigia, porque o cache mora na memória.
+//
+// 10 minutos: curto o bastante para o card se corrigir sozinho dentro do turno, longo o bastante
+// para não voltar a consultar a base inteira a cada refresh de 90s. Ver [[project_hermes_cost]].
+const IRIS_CRM360_REGISTERED_TTL_MS = 10 * 60 * 1000;
+const irisCrm360RegistrationExpiry = new Map<string, number>();
 // Telefone que NAO achou cadastro tambem entra em cache, por um tempo curto: sem isso todo
 // refresh (90s) reconsulta a base inteira de quem nunca vai casar, e a consulta e' cara
 // (varias tabelas do Apolo por telefone). TTL curto porque o cliente pode ser cadastrado
@@ -685,6 +698,7 @@ export async function enrichTicketsWithCrm360(
 
       if (fresh && fresh.status === "registered") {
         irisCrm360RegistrationCache.set(phone, fresh);
+        irisCrm360RegistrationExpiry.set(phone, Date.now() + IRIS_CRM360_REGISTERED_TTL_MS);
         irisCrm360MissingCache.delete(phone);
         return { ...ticket, crm360Registration: fresh };
       }
@@ -709,7 +723,10 @@ export async function enrichTicketsWithCrm360(
   const agora = Date.now();
   const pendentes = phones.filter((phone) => {
     if (irisCrm360RegistrationCache.has(phone)) {
-      return false;
+      // Vencido volta para a fila de consulta; o valor antigo CONTINUA no cache e segue sendo
+      // exibido até a resposta nova chegar, para o nome não piscar no meio do atendimento.
+      const valeAte = irisCrm360RegistrationExpiry.get(phone) ?? 0;
+      return valeAte <= agora;
     }
 
     const expiraEm = irisCrm360MissingCache.get(phone);

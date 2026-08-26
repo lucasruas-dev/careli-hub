@@ -36,6 +36,30 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-26-iris-ticket-unico-perfil-e-nome",
+    deployedAt: "2026-08-26T10:15:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Um cliente, um atendimento: responder um template antigo nao abre mais um card novo. Enquanto houver atendimento aberto, tudo entra nele; um novo so nasce quando nao ha nenhum aberto.",
+              "O perfil no card do Board para de mostrar Prospect para quem ja e Comprador — antes so corrigia ao abrir a conversa.",
+              "O nome do cliente no card passa a ser o do cadastro no Apolo. O nome do WhatsApp fica so para quem nao tem cadastro.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "9dea1867",
+    technical: { done: "(1) escolherTicketDoInbound extraida e coberta por 5 testes — o inbound nao tinha teste nenhum: o ticket ABERTO passa a ganhar do replyContextTicket, e o forceReopen so vale quando a escolha e o reply-context (ou seja, quando nao havia nada aberto). (2) O cache de cadastro do CRM 360 ganhou TTL de 10min (era eterno na sessao); o valor antigo segue exibido ate a resposta nova chegar, para o nome nao piscar. (3) resolverNomeDoApolo no findOrCreateContact, nos dois caminhos (contato novo e existente), com marca nomeVindoDoApolo na metadata para ser UMA consulta por contato e nao por mensagem; falha do Apolo nao derruba o inbound e nunca apaga nome existente.", motivation: "Tres problemas relatados pelo Lucas em 26/08/2026. Os cards duplicados: o cliente respondia um TEMPLATE ANTIGO, o reply-context achava o atendimento encerrado daquele template e o reabria por cima do que ja estava aberto — dois cards do mesmo cliente e dois atendentes em paralelo. O perfil errado: tres clientes com carteira no Apolo apareciam como Prospect no Board e Comprador ao abrir a conversa, porque o Board segurava para sempre a primeira resposta. O nome: medido, 76 dos 92 contatos com atendimento aberto tem cadastro no Apolo e em 60 o nome salvo era o apelido do WhatsApp — a tela corrigia, mas busca, relatorio e exportacao nao." },
+    title: "Iris: um atendimento por cliente, perfil certo no card e nome do cadastro",
+    type: "correcao",
+    version: "1.211.0",
+  },
+  {
     buildTag: "2026-08-26-iris-carrega-em-rede-lenta",
     deployedAt: "2026-08-26T09:30:00-03:00",
     modules: [

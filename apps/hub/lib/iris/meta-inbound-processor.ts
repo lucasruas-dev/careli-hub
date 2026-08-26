@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ClaudeAgentTurnError } from "@/lib/ai/claude-agent";
 import { registrarRespostaDeAcao } from "@/lib/apolo/acao-resposta";
+import { lookupApoloByPhone } from "@/lib/iris/caca-agent";
 import { materializarDisparosNaConversa } from "@/lib/iris/disparo-na-conversa";
 import {
   CACA_AGENT_VERSION,
@@ -123,6 +124,40 @@ type CacaAutoReply = CacaAgentTurn;
 
 const CLOSED_TICKET_STATUSES = new Set(["cancelled", "closed", "resolved"]);
 const REOPENABLE_TICKET_STATUSES = new Set(["closed", "resolved"]);
+/**
+ * QUAL ATENDIMENTO RECEBE A MENSAGEM QUE CHEGOU — e se ele pode ser reaberto.
+ *
+ * Regra do Lucas (26/08/2026): *"se o cliente tem um ticket aberto, tudo será registrado nesse
+ * ticket; se o ticket está fechado e ele conversar com a gente, abre-se um novo; ou seja, um novo
+ * só pode nascer se não tiver nenhum aberto"*.
+ *
+ * ⚠️ O ABERTO GANHA DO REPLY-CONTEXT. Era daí que vinham os cards duplicados: o cliente respondia
+ * um TEMPLATE ANTIGO, o reply-context achava o atendimento daquele template (já encerrado) e o
+ * reabria — mesmo havendo outro vivo para a mesma pessoa. O time via dois cards do mesmo cliente e
+ * as mensagens seguintes se dividiam entre os dois, com dois atendentes respondendo em paralelo.
+ *
+ * ⚠️ O REPLY-CONTEXT NÃO PERDEU A FUNÇÃO: quando não há nada aberto, é ele que diz em qual conversa
+ * a resposta entra, em vez de criar uma nova do zero. Só deixou de poder ressuscitar um encerrado
+ * por cima de um vivo.
+ */
+export function escolherTicketDoInbound<T extends { id: string }>({
+  abertoDoContato,
+  replyContextTicket,
+}: {
+  abertoDoContato: null | T | undefined;
+  replyContextTicket: null | T | undefined;
+}): { forceReopen: boolean; ticket: null | T } {
+  if (abertoDoContato) {
+    return { forceReopen: false, ticket: abertoDoContato };
+  }
+
+  if (replyContextTicket) {
+    return { forceReopen: true, ticket: replyContextTicket };
+  }
+
+  return { forceReopen: false, ticket: null };
+}
+
 const META_PROVIDER = "meta";
 const WHATSAPP_CHANNEL_SLUG = "whatsapp-careli";
 const DEFAULT_QUEUE_SLUG = "atendimento";
@@ -319,14 +354,29 @@ async function processInboundMessage({
         replyContextMessageId: messageDetail.replyContextMessageId,
       })
     : null;
-  const existingTicket =
-    replyContextTicket ??
-    (await findReusableTicketForInbound({
-      channelId,
-      client,
-      contactId: contact.id,
-      waId: contactWaId,
-    }));
+  // ⚠️ TICKET ABERTO GANHA DO REPLY-CONTEXT — REGRA DO LUCAS (26/08/2026):
+  //   *"se o cliente tem um ticket aberto, tudo será registrado nesse ticket; um novo só pode
+  //   nascer se não tiver nenhum aberto"*.
+  //
+  // O bug: quando o cliente respondia um TEMPLATE ANTIGO, o `replyContextTicket` achava o ticket
+  // daquele template (em geral já encerrado) e o `forceReopen` abaixo o REABRIA — mesmo havendo
+  // outro atendimento aberto para a mesma pessoa. O time via dois cards do mesmo cliente, e as
+  // mensagens seguintes se dividiam entre os dois, com dois atendentes respondendo em paralelo.
+  //
+  // A ordem agora é: primeiro procura ABERTO, e só depois considera o reply-context. O
+  // reply-context continua valendo para o que ele existe — apontar a conversa certa quando NÃO há
+  // nada aberto —, mas deixou de poder ressuscitar um encerrado por cima de um vivo.
+  const abertoDoContato = await findReusableTicketForInbound({
+    channelId,
+    client,
+    contactId: contact.id,
+    waId: contactWaId,
+  });
+  const escolha = escolherTicketDoInbound({
+    abertoDoContato,
+    replyContextTicket,
+  });
+  const existingTicket = escolha.ticket;
   const delayedReusableTicket =
     !existingTicket && contactWaId
       ? await waitForConcurrentTicketReuse({
@@ -340,7 +390,10 @@ async function processInboundMessage({
   const ticketResult = reusableTicket
     ? {
         ticket: await touchTicketForInbound(client, reusableTicket, event, {
-          forceReopen: Boolean(replyContextTicket?.id === reusableTicket.id),
+          // Só reabre quando a escolha foi o reply-context, e ela só é o reply-context quando não
+          // havia nada aberto. Um atendimento reaproveitado (o `delayedReusableTicket` da rajada)
+          // nunca entra aqui.
+          forceReopen: escolha.forceReopen && escolha.ticket?.id === reusableTicket.id,
         }),
         ticketCreated: false,
       }
@@ -954,6 +1007,50 @@ async function getDefaultProfile(
   return data;
 }
 
+/**
+ * O NOME DO CADASTRO GANHA DO APELIDO DO WHATSAPP.
+ *
+ * Regra do Lucas (26/08/2026): *"se o cliente já tem cadastro com a gente, vamos trazer o nome dele
+ * conforme Apolo; deixar o nome do WhatsApp somente quando não tem cadastro"*.
+ *
+ * ⚠️ MEDIDO ANTES DE MEXER: dos 92 contatos com atendimento aberto, 76 têm cadastro no Apolo e em
+ * 60 deles o nome salvo era o apelido do WhatsApp ("beteapa70" e afins). A tela já corrigia isso na
+ * hora, mas só na tela — busca, relatório e exportação continuavam com o apelido.
+ *
+ * ⚠️ UMA CONSULTA POR CONTATO, NÃO POR MENSAGEM. `nomeVindoDoApolo` na metadata marca quem já foi
+ * resolvido; sem isso, cada mensagem que chega pagaria uma busca no Apolo. Ver [[project_hermes_cost]].
+ *
+ * ⚠️ NUNCA APAGA O QUE JÁ EXISTE: sem cadastro no Apolo, devolve null e o chamador mantém o nome
+ * que estava lá. Cadastro que some (ou telefone que muda de dono) não deixa o contato sem nome.
+ */
+async function resolverNomeDoApolo({
+  client,
+  contato,
+}: {
+  client: IrisMetaProcessorClient;
+  contato: { metadata?: unknown; phone?: null | string; whatsapp_phone?: null | string };
+}): Promise<null | string> {
+  const metadata = isRecord(contato.metadata) ? contato.metadata : {};
+
+  if (metadata.nomeVindoDoApolo === true) {
+    return null;
+  }
+
+  try {
+    const encontrado = await lookupApoloByPhone(client as SupabaseClient, {
+      id: "",
+      phone: contato.phone ?? null,
+      whatsapp_phone: contato.whatsapp_phone ?? null,
+    });
+
+    return normalizeDisplayNameToken(encontrado?.displayName ?? "") || null;
+  } catch {
+    // Apolo fora do ar não pode derrubar o inbound: a mensagem do cliente entra do mesmo jeito,
+    // com o nome que já existia. É o lado seguro de errar.
+    return null;
+  }
+}
+
 async function findOrCreateContact({
   channelId,
   client,
@@ -998,24 +1095,34 @@ async function findOrCreateContact({
   const displayName = normalizeDisplayName(event.contact_name, waId);
 
   if (existingContact) {
-    const metadata = {
+    const metadata: Record<string, unknown> = {
       ...(isRecord(existingContact.metadata) ? existingContact.metadata : {}),
       lastInboundAt: event.received_at,
       provider: META_PROVIDER,
       providerContactId: waId,
       source: "meta_whatsapp",
     };
-    const shouldRefreshDisplayName = shouldRefreshWhatsAppDisplayName(
-      existingContact.display_name,
-      displayName,
-    );
+    // O cadastro do Apolo manda no nome; o apelido do WhatsApp é só o que sobra quando não há
+    // cadastro. Uma consulta por contato, não por mensagem — ver resolverNomeDoApolo.
+    const nomeDoApolo = await resolverNomeDoApolo({
+      client,
+      contato: existingContact,
+    });
+
+    if (nomeDoApolo) {
+      metadata.nomeVindoDoApolo = true;
+    }
+
+    const shouldRefreshDisplayName =
+      !nomeDoApolo &&
+      shouldRefreshWhatsAppDisplayName(existingContact.display_name, displayName);
 
     const { data, error } = await client
       .from("caredesk_contacts")
       .update({
-        display_name: shouldRefreshDisplayName
-          ? displayName
-          : existingContact.display_name,
+        display_name:
+          nomeDoApolo ??
+          (shouldRefreshDisplayName ? displayName : existingContact.display_name),
         metadata,
         phone: existingContact.phone ?? waId,
         whatsapp_phone: existingContact.whatsapp_phone ?? waId,
@@ -1033,13 +1140,21 @@ async function findOrCreateContact({
     return data;
   }
 
+  // Contato novo também nasce com o nome do cadastro, quando existe: assim ele nunca chega ao
+  // Board com o apelido do WhatsApp de quem a Careli já conhece.
+  const nomeDoApoloParaNovo = await resolverNomeDoApolo({
+    client,
+    contato: { phone: waId, whatsapp_phone: waId },
+  });
+
   const { data, error } = await client
     .from("caredesk_contacts")
     .insert({
-      display_name: displayName,
+      display_name: nomeDoApoloParaNovo ?? displayName,
       metadata: {
         firstInboundAt: event.received_at,
         lastInboundAt: event.received_at,
+        ...(nomeDoApoloParaNovo ? { nomeVindoDoApolo: true } : {}),
         provider: META_PROVIDER,
         providerContactId: waId,
         source: "meta_whatsapp",
