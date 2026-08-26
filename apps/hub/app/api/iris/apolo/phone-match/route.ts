@@ -247,10 +247,18 @@ export async function POST(request: NextRequest) {
             .select("entity_id,profile,status")
             .in("entity_id", entityIdsWithRelations)
         : Promise.resolve({ data: [], error: null }),
-      // Financeiro (adimplência) em batch — read-model do Apolo no Supabase, barato.
+      // ⚠️ LÊ A VIEW, NÃO A TABELA. `apolo_financial_snapshots` tem UMA LINHA POR COMPETÊNCIA —
+      // medido em 26/08/2026: ~55 por pessoa, 256.621 no total. Lendo a tabela com um lote de 100
+      // telefones, a consulta pedia ~5.500 linhas e o PostgREST cortava em 1.000: só as ~18
+      // primeiras pessoas voltavam com financeiro, e as outras 82 chegavam ao card do Board sem o
+      // dado, aparecendo como "Prospect" mesmo tendo carteira. Ao abrir a conversa era uma pessoa
+      // só (55 linhas, cabe) e ali dizia "Comprador" — a divergência que o Lucas apontou.
+      //
+      // A view (migration 0109) devolve UMA LINHA POR PESSOA, então o mesmo lote lê 100 linhas.
+      // Subir o limite do PostgREST resolveria hoje e quebraria de novo quando a carteira crescer.
       entityIdsWithRelations.length
         ? authorization.client
-            .from("apolo_financial_snapshots")
+            .from("apolo_financeiro_por_entidade")
             .select("entity_id,overdue_installments")
             .in("entity_id", entityIdsWithRelations)
         : Promise.resolve({ data: [], error: null }),

@@ -36,6 +36,28 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-26-perfil-do-card-sem-teto-de-linhas",
+    deployedAt: "2026-08-26T11:00:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O perfil no card do Board para de mostrar Prospect para quem ja e Comprador. Antes so as primeiras pessoas de cada carregamento vinham com o dado certo; agora todas vem.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "a49036cf",
+    technical: { done: "A rota /api/iris/apolo/phone-match lia apolo_financial_snapshots com .in() de ate 100 entidades, mas a tabela tem UMA LINHA POR COMPETENCIA — ~55 por pessoa, 256.621 no total. O lote pedia ~5.478 linhas e o PostgREST corta em 1.000: so 19 das 100 pessoas voltavam com financeiro, e o card marcava as outras 81 como Prospect. Migration 0109 cria a view apolo_financeiro_por_entidade (uma linha por pessoa, 4.707; valores do snapshot MAIS RECENTE) e a rota passou a le-la: o mesmo lote agora pede 100 linhas.", motivation: "O card continuou mostrando Prospect depois da v1.211.0: o TTL do cache daquela versao era uma causa real mas nao ESTA — se fosse so cache, um F5 resolveria. A divergencia entre Board e conversa tinha explicacao exata no teto de linhas: a conversa consulta UMA pessoa (55 linhas, cabe) e acerta; o Board consulta 100 de uma vez e a maioria estourava." },
+    title: "Correcao: o perfil do card estourava o limite de linhas da consulta",
+    type: "correcao",
+    version: "1.211.1",
+  },
+  {
     buildTag: "2026-08-26-iris-ticket-unico-perfil-e-nome",
     deployedAt: "2026-08-26T10:15:00-03:00",
     modules: [
