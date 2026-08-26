@@ -160,6 +160,27 @@ export function Selo({ children, tom = "cinza" }: { children: React.ReactNode; t
  */
 export type Ordenacao = { campo: string; desc: boolean };
 
+/**
+ * A direção em que uma coluna NOVA começa a ordenar.
+ *
+ * Texto começa CRESCENTE e número/data DECRESCENTE: ninguém clica em "valor" querendo ver o menor
+ * primeiro, nem em "cliente" querendo começar pelo Z. Para saber o tipo é preciso amostrar um item.
+ *
+ * ⚠️ COM A LISTA VAZIA NÃO HÁ AMOSTRA — e foi isso que derrubou a tela em produção (25/08/2026).
+ * O código amostrava o primeiro item com um cast que escondia o undefined do TypeScript; o extrator
+ * recebia undefined, estourava com "Cannot read properties of undefined" e levava a página junto
+ * (tela branca, "This page couldn't load"). Bastava filtrar por algo que zerasse a lista e clicar
+ * em qualquer critério. Sem amostra o padrão é decrescente: não há dado para a direção mudar nada.
+ */
+export function direcaoInicialDoCampo<T>(
+  campos: Record<string, (item: T) => number | string>,
+  campo: string,
+  amostra: T | undefined,
+): boolean {
+  if (amostra === undefined) return true;
+  return typeof campos[campo]?.(amostra) === "number";
+}
+
 export function useOrdenacao<T>(
   itens: T[],
   campos: Record<string, (item: T) => number | string>,
@@ -185,11 +206,9 @@ export function useOrdenacao<T>(
 
   const alternar = (campo: string) =>
     setOrdem((atual) =>
-      // Trocar de coluna começa CRESCENTE em texto e DECRESCENTE em número/data: ninguém clica em
-      // "valor" querendo ver o menor primeiro, nem em "cliente" querendo começar pelo Z.
       atual.campo === campo
         ? { campo, desc: !atual.desc }
-        : { campo, desc: typeof campos[campo]?.(itens[0] as T) === "number" },
+        : { campo, desc: direcaoInicialDoCampo(campos, campo, itens[0]) },
     );
 
   return { alternar, itens: ordenados, ordem };

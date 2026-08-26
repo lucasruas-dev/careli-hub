@@ -36,6 +36,31 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-25-ordenar-lista-vazia-nao-quebra",
+    deployedAt: "2026-08-26T00:45:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Ordenar uma lista vazia nao derruba mais a tela. Filtrar por uma unidade que nao esta no recorte e clicar em um criterio de ordenacao deixava a pagina em branco.",
+            ],
+            screen: "Painel do coordenador",
+          },
+        ],
+      },
+    ],
+    rollback: "b348af2d",
+    technical: {
+      done: "useOrdenacao amostrava o primeiro item para decidir a direcao inicial de uma coluna nova; com a lista vazia isso e undefined e o cast escondia o buraco do TypeScript — o extrator estourava com \"Cannot read properties of undefined (reading 'ultima')\" e levava a arvore do React junto. A decisao virou a funcao pura direcaoInicialDoCampo (6 testes, o primeiro exatamente a lista vazia), que devolve decrescente quando nao ha amostra.",
+      motivation: "Achado pelo Lucas em producao, minutos depois da v1.208.0: filtrou pela unidade VOC0305, que nao tem o comprador assinado e por isso some da lista de barras, e a tela caiu. O defeito morava no useOrdenacao desde antes, mas as setas ficavam nos cabecalhos de uma tabela que, vazia, quase nao convidava ao clique; o seletor em pilulas da v1.208.0 deixou o caminho obvio.",
+    },
+    title: "Correcao: ordenar lista vazia derrubava o painel do coordenador",
+    type: "correcao",
+    version: "1.208.1",
+  },
+  {
     buildTag: "2026-08-25-assinaturas-em-barras",
     deployedAt: "2026-08-26T00:20:00-03:00",
     modules: [
