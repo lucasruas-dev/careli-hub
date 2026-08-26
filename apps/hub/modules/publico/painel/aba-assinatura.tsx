@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import type { PainelAssinatura } from "@/lib/apolo/painel-assinatura";
+import { agruparUnidadesComCompradorAssinado } from "@/lib/apolo/unidades-assinatura";
 
 import {
   C,
@@ -16,6 +17,7 @@ import {
   numeroBR,
   useOrdenacao,
 } from "./ui";
+import { UnidadesComBarra } from "./unidades-com-barra";
 
 // ABA ASSINATURA — a MESMA tela do painel interno (`/apolo/assinaturas`), aberta ao coordenador.
 //
@@ -207,46 +209,12 @@ export function AbaAssinatura({ dados }: { dados: PainelAssinatura }) {
     return [...mapa.values()].filter((o) => o.n >= unidades * 0.9);
   }, [linhas, emp]);
 
-  const comCompradorOk = useMemo(() => {
-    const saida: {
-      degrau: null | number;
-      dias: null | number;
-      esperando: string[];
-      nomes: string;
-      ultima: null | string;
-      un: string;
-    }[] = [];
-    for (const [un, ls] of resumo.porUn) {
-      const primeira = ls[0];
-      if (!primeira) continue;
-      const compradores = ls.filter((x) => x.perfil === "Comprador");
-      if (!compradores.length || !compradores.every((x) => x.assinou)) continue;
-      const datas = compradores.map((x) => x.assinadoEm).filter(Boolean).sort() as string[];
-      const ultima = datas[datas.length - 1] ?? null;
-      const pendentes = ls.filter((x) => !x.assinou);
-      const degrau = pendentes.length ? Math.min(...pendentes.map((x) => x.degrau || 99)) : null;
-      saida.push({
-        degrau,
-        dias: ultima
-          ? Math.round(
-              (new Date(ultima).getTime() - new Date(primeira.envio).getTime()) / 86_400_000,
-            )
-          : null,
-        esperando:
-          degrau === null
-            ? []
-            : [
-                ...new Set(
-                  pendentes.filter((x) => (x.degrau || 99) === degrau).map((x) => x.usuario),
-                ),
-              ],
-        nomes: [...new Set(compradores.map((x) => x.usuario))].join(", "),
-        ultima,
-        un,
-      });
-    }
-    return saida;
-  }, [resumo.porUn]);
+  // ⚠️ O CÁLCULO VIVE EM lib/apolo/unidades-assinatura.ts, junto com o painel interno: as duas
+  // telas mostram a MESMA lista para as MESMAS pessoas, e divergirem seria um bug invisível.
+  const comCompradorOk = useMemo(
+    () => agruparUnidadesComCompradorAssinado(resumo.porUn),
+    [resumo.porUn],
+  );
 
   const unidadesOrdenadas = useOrdenacao(
     comCompradorOk,
@@ -254,6 +222,8 @@ export function AbaAssinatura({ dados }: { dados: PainelAssinatura }) {
       assinou: (p) => p.ultima ?? "",
       comprador: (p) => p.nomes,
       dias: (p) => p.dias ?? 0,
+      // Quanto do contrato ja saiu: e a pergunta que a barra responde, entao da para ordenar por ela.
+      progresso: (p) => (p.total > 0 ? p.assinadas / p.total : 0),
       unidade: (p) => p.un,
     },
     { campo: "assinou", desc: true },
@@ -556,44 +526,18 @@ export function AbaAssinatura({ dados }: { dados: PainelAssinatura }) {
         } aguardam outra assinatura`}
         titulo="Unidades com o comprador assinado"
       />
+      <OrdenarPor
+        atual={unidadesOrdenadas.ordem}
+        aoTrocar={unidadesOrdenadas.alternar}
+        opcoes={[
+          { campo: "assinou", rotulo: "Assinou em" },
+          { campo: "progresso", rotulo: "Progresso" },
+          { campo: "dias", rotulo: "Dias" },
+          { campo: "unidade", rotulo: "Unidade" },
+        ]}
+      />
       <div style={{ marginBottom: 24 }}>
-        <Tabela
-          colunas={[
-            { campo: "unidade", chave: "Unidade", largura: 110 },
-            { campo: "comprador", chave: "Comprador", largura: "30%" },
-            { campo: "assinou", chave: "Assinou em", largura: 116 },
-            { campo: "dias", chave: "Dias", largura: 76 },
-            { chave: "Agora espera" },
-          ]}
-          onOrdenar={unidadesOrdenadas.alternar}
-          ordem={unidadesOrdenadas.ordem}
-          vazio="Nenhuma unidade com o comprador assinado neste recorte."
-        >
-          {unidadesOrdenadas.itens.map((item) => (
-            <tr key={item.un}>
-              <td style={celula(C.text, { fontVariantNumeric: "tabular-nums", fontWeight: 600 })}>
-                {item.un}
-              </td>
-              <td style={celula(C.text)}>{item.nomes}</td>
-              <td style={celula(C.sub)}>{dataCurta(item.ultima)}</td>
-              <td style={celula(C.sub, { fontVariantNumeric: "tabular-nums" })}>
-                {item.dias ?? "—"}
-              </td>
-              <td style={celula(C.sub, { overflow: "visible" })}>
-                {item.esperando.length ? (
-                  <>
-                    {item.esperando.join(", ")}
-                    <span style={{ color: C.muted, display: "block", fontSize: 11 }}>
-                      ordem {item.degrau}
-                    </span>
-                  </>
-                ) : (
-                  <Selo tom="verde">contrato completo</Selo>
-                )}
-              </td>
-            </tr>
-          ))}
-        </Tabela>
+        <UnidadesComBarra unidades={unidadesOrdenadas.itens} />
       </div>
 
       <TituloSecao
@@ -640,6 +584,51 @@ export function AbaAssinatura({ dados }: { dados: PainelAssinatura }) {
         })}
       </Tabela>
     </>
+  );
+}
+
+/**
+ * OS CONTROLES DE ORDENACAO que a tabela tinha nos cabecalhos.
+ *
+ * ⚠️ TROCAR O DESENHO NAO PODE TIRAR FUNCAO. As setas nas colunas sumiram junto com a tabela; sem
+ * repor isso, quem ordenava por "Dias" para achar o contrato mais parado perderia o caminho.
+ */
+function OrdenarPor({
+  aoTrocar,
+  atual,
+  opcoes,
+}: {
+  aoTrocar: (campo: string) => void;
+  atual: { campo: string; desc: boolean };
+  opcoes: { campo: string; rotulo: string }[];
+}) {
+  return (
+    <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+      <span style={{ color: C.muted, fontSize: 11.5 }}>Ordenar por</span>
+      {opcoes.map((opcao) => {
+        const ativo = atual.campo === opcao.campo;
+        return (
+          <button
+            key={opcao.campo}
+            onClick={() => aoTrocar(opcao.campo)}
+            style={{
+              background: ativo ? GOLD : "transparent",
+              border: `1px solid ${ativo ? GOLD : C.border}`,
+              borderRadius: 999,
+              color: ativo ? "#FFFFFF" : C.sub,
+              cursor: "pointer",
+              fontSize: 11.5,
+              fontWeight: ativo ? 600 : 400,
+              padding: "3px 10px",
+            }}
+            type="button"
+          >
+            {opcao.rotulo}
+            {ativo ? <span aria-hidden="true"> {atual.desc ? "↓" : "↑"}</span> : null}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-25-assinaturas-em-barras",
+    deployedAt: "2026-08-26T00:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "As unidades com o comprador assinado sairam da tabela e viraram BARRAS, no mesmo padrao do perfil do incorporador: cada unidade mostra \"4 de 12 assinaturas\", a barra de progresso, o percentual e a ordem que esta travando a fila.",
+              "Quem esta com a bola agora aparece por extenso, embaixo da barra. Antes era uma coluna espremida com tres, quatro nomes cortados no meio.",
+              "Clicar na unidade abre os indicadores (enviado em, comprador assinou, dias ate assinar, faltam assinar) e a lista completa de assinantes na ordem da fila, com Assinou, E a vez e Aguardando.",
+              "Vale nas DUAS telas: o painel interno (Apolo > Assinaturas) e o painel publico do coordenador.",
+              "No painel do coordenador, os controles de ordenacao viraram botoes acima da lista, com um criterio novo: Progresso.",
+            ],
+            screen: "Assinaturas",
+          },
+        ],
+      },
+    ],
+    rollback: "24ae5273",
+    technical: {
+      done: "O calculo das unidades com o comprador assinado estava DUPLICADO linha a linha nas duas telas; extraido para lib/apolo/unidades-assinatura.ts (agruparUnidadesComCompradorAssinado) com 10 testes, e enriquecido com total, assinadas, assinantes ordenados pela fila e envio. Dois componentes de apresentacao, um por paleta: modules/publico/painel/unidades-com-barra.tsx (cores fixas da tela publica) e modules/apolo/blocks/assinaturas/unidades-em-barra.tsx (classes do chrome, que seguem o tema do hub). useOrdenacao ganhou o campo progresso e um seletor em pilulas, porque as setas de ordenacao viviam nos cabecalhos da tabela que saiu.",
+      motivation:
+        "Lucas (25/08): \"o pessoal esta reclamando muito sobre a disposicao das assinaturas, esta dificil de entender. Vamos deixar igual temos no perfil dos incorporadores, aquele mesmo esquema de barras, ao clicar abrir as assinaturas e os indicadores\" e, sobre o painel interno, \"pode seguir o mesmo padrao que fizemos no perfil do incorporador\". A coluna 'Agora espera' despejava a lista de quem falta numa celula estreita, e o numero que a pessoa procura (falta muito?) nao estava em lugar nenhum.",
+    },
+    title: "Assinaturas em barras, com os assinantes e os indicadores no clique",
+    type: "melhoria",
+    version: "1.208.0",
+  },
+  {
     buildTag: "2026-08-25-subsidio-pagamentos-e-caixa-dagua",
     deployedAt: "2026-08-25T23:30:00-03:00",
     modules: [

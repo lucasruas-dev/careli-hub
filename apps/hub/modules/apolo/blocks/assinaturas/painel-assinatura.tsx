@@ -4,6 +4,8 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
+import { agruparUnidadesComCompradorAssinado } from "@/lib/apolo/unidades-assinatura";
+import { UnidadesEmBarra } from "./unidades-em-barra";
 
 // PAINEL DE ASSINATURA do Vale do Ouro, no lugar do Painel Assinatura do Power BI.
 //
@@ -275,42 +277,12 @@ export function PainelAssinatura({ fonte = "/api/apolo/painel-assinatura" }: { f
     return [...m.values()].filter((o) => o.n >= unidades * 0.9);
   }, [linhas, emp]);
 
-  const comCompradorOk = useMemo(() => {
-    const saida: {
-      degrau: null | number;
-      dias: null | number;
-      esperando: string[];
-      nomes: string;
-      ultima: null | string;
-      un: string;
-    }[] = [];
-    for (const [un, ls] of resumo.porUn) {
-      const primeira = ls[0];
-      if (!primeira) continue;
-      const compradores = ls.filter((x) => x.perfil === "Comprador");
-      if (!compradores.length || !compradores.every((x) => x.assinou)) continue;
-      const datas = compradores.map((x) => x.assinadoEm).filter(Boolean).sort() as string[];
-      const ultima = datas[datas.length - 1] ?? null;
-      const pendentes = ls.filter((x) => !x.assinou);
-      const degrau = pendentes.length
-        ? Math.min(...pendentes.map((x) => x.degrau || 99))
-        : null;
-      saida.push({
-        degrau,
-        dias: ultima
-          ? Math.round((new Date(ultima).getTime() - new Date(primeira.envio).getTime()) / 86_400_000)
-          : null,
-        esperando:
-          degrau === null
-            ? []
-            : [...new Set(pendentes.filter((x) => (x.degrau || 99) === degrau).map((x) => x.usuario))],
-        nomes: [...new Set(compradores.map((x) => x.usuario))].join(", "),
-        ultima,
-        un,
-      });
-    }
-    return saida.sort((a, b) => (b.ultima ?? "").localeCompare(a.ultima ?? "") || a.un.localeCompare(b.un));
-  }, [resumo.porUn]);
+  // ⚠️ O CÁLCULO VIVE EM lib/apolo/unidades-assinatura.ts, junto com o painel público do
+  // coordenador: as duas telas mostram a MESMA lista para as MESMAS pessoas.
+  const comCompradorOk = useMemo(
+    () => agruparUnidadesComCompradorAssinado(resumo.porUn),
+    [resumo.porUn],
+  );
 
   const ordenadas = useMemo(
     () =>
@@ -521,36 +493,8 @@ export function PainelAssinatura({ fonte = "/api/apolo/painel-assinatura" }: { f
         <h2 className="mb-2 mt-6 text-[11.5px] font-bold uppercase tracking-[0.13em] text-ink-soft">
           Unidades com o comprador assinado
         </h2>
-        <div className="max-h-[420px] overflow-auto rounded-xl border border-black/[0.07] dark:border-white/[0.08]">
-          <Tabela
-            cabecalho={["Unidade", "Comprador", "Assinou em", "Dias", "Agora espera"]}
-            numericas={[2, 3]}
-          >
-            {comCompradorOk.map((p) => (
-              <tr key={p.un}>
-                <td className="px-2 py-1.5 font-semibold tabular-nums text-ink">{p.un}</td>
-                <td className="px-2 py-1.5 text-ink">{p.nomes}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums text-ink-soft">
-                  {dataCurta(p.ultima)}
-                </td>
-                <td className="px-2 py-1.5 text-right tabular-nums text-ink-soft">
-                  {p.dias ?? "—"}
-                </td>
-                <td className="px-2 py-1.5 text-ink-soft">
-                  {p.esperando.length ? (
-                    <>
-                      {p.esperando.join(", ")}
-                      <span className="block text-[11px]">degrau {p.degrau}</span>
-                    </>
-                  ) : (
-                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                      contrato completo
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </Tabela>
+        <div className="max-h-[560px] overflow-auto pr-1">
+          <UnidadesEmBarra unidades={comCompradorOk} />
         </div>
         <p className="mt-2 text-xs text-ink-soft">
           {comCompradorOk.length} unidade{comCompradorOk.length === 1 ? "" : "s"} com o comprador
