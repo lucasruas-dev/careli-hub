@@ -6,6 +6,7 @@ import {
   ExternalLink,
   FileText,
   Filter,
+  HandCoins,
   Handshake,
   Loader2,
   MapPinned,
@@ -71,6 +72,7 @@ import {
 } from "../../data/apolo-derive";
 import type { ApoloCarteiraRoleKind } from "../../data/apolo-derive";
 import { ScopedPortfolioPanel } from "./scoped-portfolio-panel";
+import { ExtratoClientePanel } from "./extrato-cliente-panel";
 import { StatementPanel } from "./statement-panel";
 import { getApoloAccessToken } from "../../data/apolo-operations";
 import {
@@ -1149,18 +1151,69 @@ function CompactInfo({ label, value }: { label: string; value: string }) {
 }
 
 // Roteia a aba Financeiro: papel comercial (imobiliária/incorporador/corretor) vê o extrato
-// por participante (split); comprador vê acordos e promessas. Ver [[project-apolo-acessos-externos]].
+// por participante (split); comprador vê o extrato dele + acordos e promessas.
+// Ver [[project-apolo-acessos-externos]].
 function FinancialPanel({ entity }: { entity: ApoloEntity }) {
   if (hasCommercialRole(entity)) {
-    return <StatementPanel entity={entity} />;
+    return <CommercialFinancialPanel entity={entity} />;
   }
 
   return <AgreementsFinancialPanel entity={entity} />;
 }
 
+// ⚠️ QUEM É IMOBILIÁRIA/CORRETOR TAMBÉM COMPRA LOTE. Antes desta subaba a entidade comercial ia
+// direto para o extrato por participante e o extrato do comprador ficava INALCANÇÁVEL para ela —
+// justamente o corretor que comprou no próprio loteamento. O seletor custa duas linhas e fecha
+// esse buraco; o padrão continua sendo o extrato por participante, que é o que ela abre no dia a
+// dia.
+function CommercialFinancialPanel({ entity }: { entity: ApoloEntity }) {
+  const [visao, setVisao] = useState<"comprador" | "participante">("participante");
+
+  const opcoes = [
+    { icon: HandCoins, id: "participante" as const, label: "Extrato por participante" },
+    { icon: ReceiptText, id: "comprador" as const, label: "Extrato do cliente" },
+  ];
+
+  return (
+    <section className="flex h-full min-h-0 flex-col gap-4">
+      <nav
+        aria-label="Areas financeiras"
+        className="flex shrink-0 flex-wrap gap-1 rounded-xl border border-line bg-surface p-1"
+      >
+        {opcoes.map((opcao) => {
+          const Icon = opcao.icon;
+          const active = visao === opcao.id;
+
+          return (
+            <button
+              aria-current={active ? "page" : undefined}
+              className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+                active
+                  ? "bg-inverse text-brand-ink"
+                  : "text-ink-soft hover:bg-subtle hover:text-ink"
+              }`}
+              key={opcao.id}
+              onClick={() => setVisao(opcao.id)}
+              type="button"
+            >
+              <Icon className="size-4" aria-hidden="true" />
+              {opcao.label}
+            </button>
+          );
+        })}
+      </nav>
+      {visao === "participante" ? (
+        <StatementPanel entity={entity} />
+      ) : (
+        <ExtratoClientePanel entity={entity} />
+      )}
+    </section>
+  );
+}
+
 function AgreementsFinancialPanel({ entity }: { entity: ApoloEntity }) {
   const [activeFinancialSubtab, setActiveFinancialSubtab] =
-    useState<ApoloFinancialSubtab>("acordos");
+    useState<ApoloFinancialSubtab>("extrato");
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [typeFilter, setTypeFilter] = useState<"Todos" | ApoloFinancialRecordType>("Todos");
   const [statusFilter, setStatusFilter] = useState("Todos");
@@ -1191,6 +1244,23 @@ function AgreementsFinancialPanel({ entity }: { entity: ApoloEntity }) {
 
   return (
     <section className="grid gap-4">
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <PanelTitle eyebrow="Financeiro" title="Area financeira" />
+            <p className="m-0 mt-2 text-sm font-medium text-ink-muted">
+              Extrato do comprador (dados reais do C2X) e acordos, cada um em subaba propria.
+            </p>
+          </div>
+        </div>
+        <FinancialSubtabNav
+          activeSubtab={activeFinancialSubtab}
+          onChange={setActiveFinancialSubtab}
+        />
+      </section>
+      {activeFinancialSubtab === "extrato" ? <ExtratoClientePanel entity={entity} /> : null}
+      {activeFinancialSubtab === "acordos" ? (
+        <>
       <section className="rounded-xl border border-line bg-surface p-4">
         <PanelTitle eyebrow="Financeiro" title="Cenario financeiro do cliente" />
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
@@ -1233,22 +1303,6 @@ function AgreementsFinancialPanel({ entity }: { entity: ApoloEntity }) {
           depende da API do Apolo)
         </p>
       </section>
-      <section className="rounded-xl border border-line bg-surface p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <PanelTitle eyebrow="Financeiro" title="Area financeira" />
-            <p className="m-0 mt-2 text-sm font-medium text-ink-muted">
-              Acordos agora ficam em subaba propria para abrir espaco para novas leituras financeiras.
-            </p>
-          </div>
-        </div>
-        <FinancialSubtabNav
-          activeSubtab={activeFinancialSubtab}
-          onChange={setActiveFinancialSubtab}
-        />
-      </section>
-      {activeFinancialSubtab === "acordos" ? (
-        <>
           <section className="rounded-xl border border-line bg-surface p-4">
             <PanelTitle eyebrow="Acordos" title="Indicadores de acordos e promessas" />
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">

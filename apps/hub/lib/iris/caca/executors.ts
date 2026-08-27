@@ -2140,11 +2140,28 @@ function ensureVerified(context: CacaToolContext): string | null {
 //
 // O boleto e um PROXY do reajuste, nao a prova dele — se alguem emitir boleto sem reajustar, o
 // valor errado passa. Mas e o unico sinal que existe no dado, e erra para o lado seguro.
+//
+// ⚠️ LIBERADO EM 27/08/2026 (decisao do Lucas). O que mudou no mundo: em 26/08 o reajuste foi
+// aplicado em 768 parcelas do Lavra do Ouro (LOU/LOS) ate a competencia 12/2026 — os dois
+// empreendimentos que respondem por 467 dos 526 contratos vivos. Os demais (REP, VAL, MDS, LBF)
+// o Lucas atualiza em seguida; ele decidiu liberar tudo agora sabendo disso, porque "o grande
+// volume e do Lavra do Ouro".
+//
+// ⚠️ O QUE FAZ ISSO VOLTAR A SER MENTIRA: a carteira anda. Quando a competencia de hoje passar
+// da ultima que foi reajustada (hoje 12/2026), as parcelas seguintes voltam a carregar valor
+// contratual cru e a CACA volta a informar numero defasado. A medicao que denuncia, por
+// empreendimento: media do `initial_value` das parcelas em aberto de set-dez/2026 contra as do
+// inicio de 2027 — no Lavra deu +23%; em REP/VAL/MDS/LBF deu 0%, que e o sinal de "nao
+// reajustado". Se isso reaparecer, o caminho de volta e uma linha: trocar o `true` por
+// `hasBoletoLink(item)` aqui e reverter a secao VALOR da persona.
 export function podeInformarValor(item: CacaInstallment): boolean {
   // Paga: o valor e o que REALMENTE foi pago (`paid_value`), entao e verdade histórica.
   if (readString((item as Record<string, unknown>).status) === "Liquidada") return true;
 
-  return hasBoletoLink(item);
+  // Em aberto: com o reajuste aplicado ate 12/2026, o valor gravado e o valor que vai sair no
+  // boleto. `hasBoletoLink` continua existindo porque decide o ENVIO DO LINK — que e outra
+  // coisa e nao foi liberado.
+  return true;
 }
 
 // ⚠️ NAO OMITE EM SILENCIO. Sem nada no lugar do valor, o modelo tende a preencher a lacuna — ou

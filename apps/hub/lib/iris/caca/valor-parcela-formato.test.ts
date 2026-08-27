@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { describeInstallment, podeInformarValor } from "./executors";
 
-// A trava no ponto onde o valor de fato é escrito. `describeInstallment` é o ÚNICO lugar que monta
-// a linha de parcela que a CACÁ lê — os cinco caminhos (financeiro do cliente, lista de boletos e
-// os três da imobiliária) passam por aqui, então uma regra só cobre todos.
+// `describeInstallment` é o ÚNICO lugar que monta a linha de parcela que a CACÁ lê — os cinco
+// caminhos (financeiro do cliente, lista de boletos e os três da imobiliária) passam por aqui.
+//
+// ⚠️ 27/08/2026: a trava que escondia o valor de parcela sem boleto foi LIBERADA (decisão do
+// Lucas), porque o reajuste passou a ser aplicado em massa e o valor gravado deixou de estar
+// defasado. Estes testes agora guardam o comportamento NOVO — e o de baixo guarda a fronteira
+// que continua valendo: o LINK do boleto não é liberado junto.
 
 const parcela = (patch: Record<string, unknown> = {}) =>
   ({
@@ -29,24 +33,22 @@ describe("quem pode ter o valor dito", () => {
     expect(podeInformarValor(parcela({ invoiceUrl: "https://www.asaas.com/b/pdf/abc" }))).toBe(true);
   });
 
-  it("parcela futura SEM boleto NÃO pode", () => {
-    expect(podeInformarValor(parcela())).toBe(false);
+  it("parcela futura SEM boleto AGORA pode — o reajuste já está aplicado no valor gravado", () => {
+    expect(podeInformarValor(parcela())).toBe(true);
   });
 
-  it("VENCIDA sem boleto também não pode — é o caso mais sensível, 1.201 parcelas hoje", () => {
-    // A tentação é liberar a vencida "porque já venceu". Mas o reajuste dela também não foi
-    // aplicado: quem não tem boleto não passou pela atualização, vencida ou não.
-    expect(podeInformarValor(parcela({ status: "Vencida" }))).toBe(false);
+  it("VENCIDA sem boleto também pode", () => {
+    expect(podeInformarValor(parcela({ status: "Vencida" }))).toBe(true);
   });
 });
 
 describe("o que sai escrito", () => {
-  it("sem boleto: mantém número e vencimento, e troca o valor pela marca", () => {
+  it("sem boleto: o valor sai, junto com número e vencimento", () => {
     const texto = describeInstallment(parcela());
     expect(texto).toContain("parcela 35/144");
     expect(texto).toContain("vence/venceu 20/06/2027");
-    expect(texto).not.toContain("426,81");
-    expect(texto).toContain("valor sob atualização");
+    expect(texto).toContain("R$ 426,81");
+    expect(texto).not.toContain("valor sob atualização");
   });
 
   it("com boleto: o valor sai normalmente", () => {
@@ -58,11 +60,12 @@ describe("o que sai escrito", () => {
   it("paga: o valor sai normalmente", () => {
     const texto = describeInstallment(parcela({ status: "Liquidada", value: "R$ 535,72" }));
     expect(texto).toContain("R$ 535,72");
+    expect(texto).not.toContain("valor sob atualização");
   });
 
-  it("a marca é explícita, não uma omissão silenciosa", () => {
-    // Omitir sem dizer nada faz o modelo preencher a lacuna sozinho — ou o cliente perguntar
-    // "quanto é?" e ele inventar. A marca diz que o número existe e quando fica pronto.
-    expect(describeInstallment(parcela())).toMatch(/confirmado na emissão do boleto/);
+  it("sem valor nenhum na ferramenta: a linha não inventa número", () => {
+    const texto = describeInstallment(parcela({ value: "" }));
+    expect(texto).toContain("parcela 35/144");
+    expect(texto).not.toContain("R$");
   });
 });

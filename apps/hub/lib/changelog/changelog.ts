@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-27-extrato-do-cliente-e-valor-liberado",
+    deployedAt: "2026-08-27T10:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Nova aba Extrato do cliente, dentro de Financeiro: mostra tudo o que o cliente ja pagou, os reajustes que foram aplicados no contrato dele e o saldo devedor.",
+              "Botao para baixar o EXTRATO EM PDF, timbrado com a logo da Careli, pronto para mandar ao cliente. E o documento que hoje alguem monta a mao toda vez que pedem.",
+              "O saldo devedor sai ATUALIZADO: as parcelas futuras que ainda nao foram reajustadas entram pelo valor da parcela vigente, nao pelo valor antigo de contrato. No exemplo do LOU1819 isso e a diferenca entre informar R$ 43.229,66 e os R$ 52.577,80 reais.",
+              "Cliente com mais de um lote recebe uma folha de rosto com o total de todos os lotes (pago, saldo e atraso) e a lista deles, e depois o detalhe de cada um.",
+            ],
+            screen: "Cliente > Financeiro",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Caca voltou a informar o VALOR das parcelas em todos os casos, inclusive das que ainda nao tem boleto emitido. Antes ela dizia apenas 'valor sob atualizacao' nesses casos.",
+              "O que continua valendo: ela fala o valor que o sistema mostra e nunca calcula por conta propria - nao estima por outra parcela, nao projeta reajuste futuro e nao soma juros de atraso. Pedido de simulacao ou de quitacao antecipada segue para o time.",
+            ],
+            screen: "Conversa",
+          },
+        ],
+      },
+    ],
+    rollback: "fd26f3d3",
+    technical: {
+      done: "APOLO EXTRATO: lib/apolo/extrato-cliente.ts (regras puras + tipos), extrato-cliente-c2x.ts (leitura READ-ONLY do C2X: comprador por client_id..client_5_id, parcelas por acquisition_request), extrato-cliente-pdf.ts (pdf-lib no molde do cad-pdf) + careli-logo.ts, rotas /api/apolo/extrato-cliente e /pdf com authorizeApoloRead, painel extrato-cliente-panel.tsx e a subaba nova em apoloFinancialSubtabs. ANCORA DO SALDO: maior initial_value entre as mensais plausiveis vivas (mediana +/- fator 3, janela de ~13 meses, descarta a superada por cobranca menor que nao e a linha original) - a versao ingenua ('a mensal com boleto de maior numero') errava em 3 dos 4 contratos de teste. ARMADILHAS COBERTAS: pago = payment_date NOT NULL (707 linhas tem paid_value>0 com status 7 e data nula, R$ 443.864,34 que nao entraram), reference_date e competencia mas a ORDEM e current_total_parcel, empilhadas por acordo detectadas por due_date compartilhado, payment_to_delete fora, juros/multa nao existem em parcela aberta (0 de 102.007) e a peca diz isso. Degraus classificados com persistencia minima de 3 competencias, variacao minima de 0,5% e corroboracao do paid_value em 3 datas distintas, para nao chamar mora de reajuste. Contrato encerrado sai sem bloco de saldo. 49 testes. IRIS: podeInformarValor passa a devolver true sempre (hasBoletoLink segue decidindo o ENVIO DO LINK, que nao mudou); secao VALOR da persona reescrita, mais as duas linhas que ensinavam o contrario pelo exemplo e a reafirmacao do bloco de VOZ; 15 testes atualizados nos dois arquivos. Typecheck limpo, 103 testes verdes.",
+      motivation: "Lucas (27/08): 'preciso criar um relatorio tipo extrato dos pagamentos que os clientes ja fizeram e uma visao de saldo devedor, isso toda hora eles pedem'. A trava de valor da Caca (v1.179, 21/08) existia porque o reajuste manual deixava a parcela sem boleto defasada; com as 768 parcelas do Lavra do Ouro reajustadas em 26/08 ate 12/2026, o Lucas liberou: 'ela tem os valores corretos ate dezembro'. Ele decidiu liberar para todos os empreendimentos sabendo que REP/VAL/MDS/LBF (159 contratos) ainda serao atualizados hoje.",
+    },
+    title: "Extrato do cliente em PDF no Apolo + Caca informando valor de parcela",
+    type: "novidade",
+    version: "1.214.0",
+  },
+  {
     buildTag: "2026-08-26-recepcao-cad-imobiliaria-e-9o-digito",
     deployedAt: "2026-08-26T16:45:00-03:00",
     modules: [

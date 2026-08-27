@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { buildCacaContextoDoTurno, buildCacaPersonaEstavel } from "./persona";
 
-// A REGRA DE VALOR DE PARCELA (Lucas, 21/08/2026).
+// A REGRA DE VALOR DE PARCELA — versão de 27/08/2026 (Lucas).
 //
-// O reajuste da carteira é MANUAL: ele é aplicado a mão, sobrescrevendo o valor, no momento em que
-// a parcela recebe boleto. Quem ainda não tem boleto carrega o valor contratual cru, defasado —
-// medido no contrato 455, a parcela 34 (com boleto) vale R$ 535,72 e a 35 (sem boleto) R$ 426,81,
-// 20,4% a menos. Dizer esse número ao cliente é prometer uma cobrança que não vai acontecer.
+// HISTÓRICO: de 21/08 a 27/08 a CACÁ NÃO podia dizer o valor de parcela sem boleto. O motivo era
+// real: o reajuste da carteira é aplicado à mão, e quem não tinha boleto carregava valor
+// contratual cru (medido: 20,4% abaixo no contrato 455). Em 26/08 o reajuste foi aplicado em massa
+// no Lavra do Ouro (768 parcelas, até a competência 12/2026), que é o grosso da carteira, e o
+// Lucas liberou: "com as ações de ontem ela tem os valores corretos até dezembro".
 //
-// Estes testes cobrem os dois lados da trava: o PROMPT (que impede o modelo de compensar a
-// ausência do número inventando um) e a formatação (coberta em executors, via describeInstallment).
+// O QUE SOBROU DE TRAVA, e é o que estes testes guardam: ela diz o número que a FERRAMENTA
+// devolveu, e não um que ela mesma calculou (estimativa por outra parcela, projeção de reajuste,
+// juros de atraso de cabeça). Essa parte não pode se perder numa reescrita do prompt.
 
 describe("a regra de valor está no prompt estável", () => {
   const prompt = buildCacaPersonaEstavel({
@@ -18,44 +20,35 @@ describe("a regra de valor está no prompt estável", () => {
     centralNome: "Atendimento",
   } as never);
 
-  it("diz explicitamente que parcela futura sem boleto não tem valor", () => {
-    expect(prompt).toContain("PARCELA FUTURA SEM BOLETO EMITIDO");
-    expect(prompt).toMatch(/NUNCA diga o valor/);
+  it("libera o valor da parcela, inclusive futura", () => {
+    expect(prompt).toMatch(/Diga o valor que a ferramenta te devolver/);
+    expect(prompt).not.toContain("PARCELA FUTURA SEM BOLETO EMITIDO");
+    expect(prompt).not.toMatch(/NUNCA diga o valor/);
   });
 
-  it("libera valor para parcela paga e para parcela com boleto", () => {
-    expect(prompt).toContain("PARCELA JÁ PAGA");
-    expect(prompt).toContain("PARCELA COM BOLETO EMITIDO");
+  it("mantém a trava que importa: o número vem da ferramenta, não da cabeça dela", () => {
+    expect(prompt).toMatch(/nunca um que você calculou/);
+    expect(prompt).toMatch(/Não estime pelo valor de outra parcela/);
   });
 
-  it("explica o PORQUÊ — sem isso o modelo trata a regra como capricho e contorna", () => {
-    expect(prompt).toMatch(/não passaram pela atualização de valor/);
+  it("não deixa ela projetar reajuste nem simular saldo por conta própria", () => {
+    expect(prompt).toMatch(/não calcule: encaminhe para o time/);
   });
 
-  it("proíbe estimar a partir de outra parcela, que é a saída óbvia do modelo", () => {
-    expect(prompt).toMatch(/não vá buscar o valor de outra parcela/);
+  it("é honesta sobre o que o valor de uma parcela distante significa", () => {
+    expect(prompt).toMatch(/ainda passa pelo reajuste anual/);
   });
 
-  it("dá a frase pronta, para a recusa não soar como esconder informação", () => {
-    expect(prompt).toMatch(/valor dela é fechado quando o boleto é emitido/);
+  it("não sobrou no prompt a marca da trava antiga", () => {
+    expect(prompt).not.toContain("valor sob atualização");
+    expect(prompt).not.toMatch(/valor dela é fechado quando o boleto é emitido/);
   });
 
-  it("o exemplo de transferência NÃO ensina a dizer valor de parcela sem link", () => {
-    // Este exemplo citava "no valor de R$ 824,83" para uma parcela cujo boleto não estava
-    // disponível — ou seja, ensinava pelo exemplo exatamente o que a regra proíbe.
-    const trecho = prompt.slice(
-      prompt.indexOf("Exemplo de TAMANHO"),
-      prompt.indexOf("Exemplo de TAMANHO") + 400,
-    );
-    expect(trecho).not.toMatch(/R\$ 824,83/);
-  });
-
-  it("o modo VOZ não é uma porta lateral para o valor proibido", () => {
-    // ⚠️ O bloco de voz vive no CONTEXTO DO TURNO, não na persona estável — ele muda por
-    // atendimento. Ele reescreve as regras de formato ("esqueça as regras de TEXTO que leu
-    // acima"), então precisa reafirmar a trava de valor: sem isso, "diga os valores por extenso"
-    // soaria como permissão para falar o número que o texto não pode escrever.
+  it("o modo VOZ continua sem ser porta lateral para número inventado", () => {
+    // ⚠️ O bloco de voz vive no CONTEXTO DO TURNO e reescreve as regras de formato ("esqueça as
+    // regras de TEXTO que leu acima"), então precisa reafirmar o que continua valendo — senão
+    // "diga os valores por extenso" soa como permissão para inventar o número.
     const voz = buildCacaContextoDoTurno({ voiceMode: true } as never);
-    expect(voz).toMatch(/Falar por extenso NÃO libera valor/);
+    expect(voz).toMatch(/NÃO libera número que você não tem/);
   });
 });

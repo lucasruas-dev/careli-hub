@@ -95,6 +95,44 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo+Iris/Zeus] Recepcao de CAD e de imobiliaria separadas por empreendimento + retry do 9o digito em todos os disparos`.
+- Squad/agente responsavel: `Zeus` (implementacao via workflow builder + 2 revisores adversariais + builder-fix; retry orfao via subagente builder).
+- Data e hora local: `2026-08-26 16:45:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `typecheck limpo + vitest 6/6 (recepcao-portoes) + 58/58 vizinhos CAD + 20/20 Iris; autorizacao explicita do Lucas ("tem o meu ok") para migration 0110, push na main e backfill`.
+- Escopo publicado:
+  - `dois toggles novos por empreendimento (Recepcao de CAD / Recepcao de imobiliaria) em Apolo > Empreendimentos; portoes publicos = credenciamento_ativo AND recepcao_*, validados tambem no submit; internos seguem no master (inclusive cadastro manual de prospect via empreendimentosHabilitadosInterno)`;
+  - `migration 0110 (recepcao_cad/recepcao_imobiliaria default true) APLICADA no Supabase antes do deploy`;
+  - `Iris: retry do 9o digito em todo envio Meta (131026), inclusive refs orfas de disparo com reaponte de apolo_disparos/apolo_acao_alvos e trava anti-pingue-pongue; motivo da falha preservado (o flag do retry apagava); update de status das refs passa a MESCLAR o payload (o primeiro webhook de sent apagava o registro do disparo - regressao silenciosa do v1.198); registro do transporte com import estatico e erro logado`;
+  - `backfill no banco: 48 mensagens failed recuperaram o deliveryError a partir de caredesk_meta_webhook_events (96/112 falhas com motivo; 16 sem webhook retido)`.
+- Commit publicado: `fd26f3d3` (push direto `fd26f3d3:main`; main local presa ao worktree chronos-fix).
+- Deployment anterior: `v1.212.0, buildTag 2026-08-26-enter-nao-envia-email (aacaec63)`.
+- Deployment novo: `deploy automatico do push na main` (v1.213.0, buildTag `2026-08-26-recepcao-cad-imobiliaria-e-9o-digito`).
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `v1.213.0, READY`.
+- Arquivos/modulos incluidos: `packages/database/migrations/0110_recepcao_cad_imobiliaria.sql`, `lib/apolo/{enterprise-settings,credenciamento,imobiliaria-cadastro}.ts`, `lib/publico/cad/dados.ts`, `app/api/publico/imobiliaria/{empreendimentos,cadastro,credenciar}/route.ts`, `app/publico/imobiliaria/page.tsx`, `app/api/apolo/empreendimentos/settings/route.ts`, `modules/apolo/blocks/empreendimentos/empreendimentos-view.tsx`, `lib/apolo/recepcao-portoes.test.ts`, `lib/iris/{meta-inbound-processor,meta-whatsapp,disparo-na-conversa}.ts`, `lib/changelog/changelog.ts`.
+- Arquivos/modulos excluidos: `.tmpxl/.tmpc2x (scripts de trabalho do reajuste Lavra), scripts/c2x, CSVs de analise`.
+- Validacoes executadas:
+  - `tsc --noEmit verde (pacote completo)`;
+  - `vitest: recepcao-portoes 6/6, cad-por-empreendimento+regras+sessao 58/58, iris (disparo-na-conversa, meta-whatsapp, inbound-escolha-de-ticket) 20/20`;
+  - `revisao adversarial em 2 lentes; 2 achados corrigidos (fallback fail-open -> fail-closed 42703/PGRST204/42P01; cadastro manual de prospect devolvido ao master)`.
+- Healthchecks pos-deploy:
+  - `GET /api/version -> {"buildTag":"2026-08-26-recepcao-cad-imobiliaria-e-9o-digito","version":"1.213.0"}`.
+- Logs recentes: `sem erros novos observados no go-live`.
+- Rollback definido: `aacaec63 (v1.212.0); a migration 0110 e aditiva com default true - rollback de codigo nao exige rollback de banco`.
+- Riscos conhecidos:
+  - `toggles novos com default ligado: comportamento identico ao anterior ate alguem desligar`;
+  - `retry do 9o digito nao cobre Evolution API (numero do Relacionamento) - outro provedor`;
+  - `retry de refs orfas depende do registro do transporte, que nunca rodou em producao ate esta versao (import dinamico substituido por estatico + erro logado); conferir refs kind=disparo-template no proximo disparo automatico`.
+- Pendencias:
+  - `Lucas confirmar: cadastro manual de prospect pelo operador deve mesmo ignorar recepcao_cad (comportamento preservado) ou respeitar o portao`;
+  - `configurar Recanto do Vale (master ON, imobiliaria ON, CAD OFF) quando o empreendimento entrar no settings`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `observar os proximos disparos automaticos (refs com payload de disparo + retry orfao) e os proximos failed 131026`.
+
+Registro de producao:
+
 - Assunto: `[Iris/Zeus] Cadastro do Apolo no cockpit do atendimento`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-08-14 19:50:00 -03:00`.

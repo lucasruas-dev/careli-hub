@@ -42,7 +42,9 @@ export const apoloUnitSubtabs = [
   label: string;
 }[];
 
+// A ordem manda: o extrato do cliente e a primeira subaba porque e o que o backoffice abre.
 export const apoloFinancialSubtabs = [
+  { icon: ReceiptText, id: "extrato", label: "Extrato do cliente" },
   { icon: HandCoins, id: "acordos", label: "Acordos" },
 ] as const satisfies readonly {
   icon: LucideIcon;
