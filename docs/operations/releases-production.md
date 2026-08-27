@@ -95,6 +95,45 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo+Iris/Zeus] Extrato do cliente em PDF timbrado + liberacao do valor de parcela na CACA`.
+- Squad/agente responsavel: `Zeus` (extrato via workflow: arquiteto + builder + 2 revisores adversariais + builder-fix; liberacao da CACA feita direto).
+- Data e hora local: `2026-08-27 10:30:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `typecheck limpo + 103 testes (49 do extrato, 54 da CACA); PDFs conferidos com 3 clientes REAIS (LOU1819 1 lote, REPA09 nome longo, 6 lotes consolidado); autorizacao explicita do Lucas ("ficou otimo, pode subir")`.
+- Escopo publicado:
+  - `Apolo > Cliente > Financeiro: subaba "Extrato do cliente" com pagamentos realizados, reajustes aplicados e saldo devedor, mais o PDF timbrado com a logo da Careli`;
+  - `saldo a VALOR DE HOJE: parcela futura ainda nao reajustada entra pela mensalidade vigente (LOU1819: R$ 52.577,80 contra R$ 43.229,66 nominal, +21,6%) — regra pedida pelo Lucas`;
+  - `folha de rosto consolidada para cliente com 2+ lotes (total pago, saldo, atraso e a lista dos lotes)`;
+  - `Iris/CACA: podeInformarValor devolve true sempre; a persona e os testes acompanham. O ENVIO DO LINK do boleto nao mudou`.
+- Commit publicado: `c0750953` (push direto `c0750953:main`; main local presa ao worktree chronos-fix).
+- Deployment anterior: `v1.213.0, buildTag 2026-08-26-recepcao-cad-imobiliaria-e-9o-digito (fd26f3d3)`.
+- Deployment novo: `deploy automatico do push na main` (v1.214.0, buildTag `2026-08-27-extrato-do-cliente-e-valor-liberado`).
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `v1.214.0`.
+- Arquivos/modulos incluidos: `lib/apolo/{extrato-cliente,extrato-cliente-c2x,extrato-cliente-pdf,careli-logo}.ts`, `app/api/apolo/extrato-cliente/{route,pdf/route}.ts`, `modules/apolo/blocks/crm/{extrato-cliente-panel.tsx,crm-tabs.ts,panels.tsx}`, `modules/apolo/types/apolo-local.ts`, `lib/iris/caca/{executors,persona}.ts` + 2 testes, `lib/changelog/changelog.ts`.
+- Arquivos/modulos excluidos: `nenhuma migration; o extrato le o C2X READ-ONLY e nao grava nada`.
+- Validacoes executadas:
+  - `tsc --noEmit verde`;
+  - `vitest: extrato-cliente 49/49, caca 54/54`;
+  - `revisao adversarial em 2 lentes (numeros / robustez+privacidade); achados corrigidos: ancora do saldo trocada por criterio de plausibilidade (errava em 3 de 4 contratos), contrato encerrado deixou de listar cobranca fantasma, mora deixou de ser rotulada como reajuste`;
+  - `PDF conferido pagina a pagina em 3 clientes reais`.
+- Healthchecks pos-deploy:
+  - `GET /api/version -> 1.214.0` (monitorado em background no go-live).
+- Logs recentes: `sem erros novos observados`.
+- Rollback definido: `fd26f3d3 (v1.213.0)`. Sem migration, rollback de codigo basta.
+- Riscos conhecidos:
+  - `a CACA passa a informar valor de parcela sem boleto em TODOS os empreendimentos, mas so LOU/LOS estavam reajustados no momento do deploy (medido: +23,6% e +22,2% de set-dez/26 contra inicio/27; REP/VAL/MDS/LBF em 0%). O Lucas decidiu liberar assim sabendo disso, e atualizaria os demais no mesmo dia — 159 contratos expostos ate la`;
+  - `o saldo "a valor de hoje" envelhece: e valido ate a competencia do ultimo reajuste aplicado, e a peca diz isso`;
+  - `o extrato mostra ate 150 parcelas por contrato; cliente com muitos lotes gera PDF grande (6 lotes = 13 paginas, 260 KB)`.
+- Pendencias:
+  - `reajustar REP (44 unidades) e MDS (6) — scripts prontos e conferidos, aguardando o Lucas confirmar o indice do REP (sem precedente interno)`;
+  - `os 17 contratos do Lavra que aguardam o IPCA de agosto (~10/set) seguem com parcela futura abaixo do que ja foi pago`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `acompanhar o primeiro uso do extrato pelo time e o comportamento da CACA falando valor`.
+
+Registro de producao:
+
 - Assunto: `[Apolo+Iris/Zeus] Recepcao de CAD e de imobiliaria separadas por empreendimento + retry do 9o digito em todos os disparos`.
 - Squad/agente responsavel: `Zeus` (implementacao via workflow builder + 2 revisores adversariais + builder-fix; retry orfao via subagente builder).
 - Data e hora local: `2026-08-26 16:45:00 -03:00`.
