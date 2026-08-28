@@ -695,8 +695,14 @@ export function ReservaView() {
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-baseline gap-2">
+                  {/* ⚠️ O TAMANHO É DITADO PELO NOME MAIS LONGO, não pelo mais bonito. Em
+                      retrato (1080 de largura) o `text-4xl` cortava "FLAVIA CALDEIRA ANDRADE"
+                      em "FLAVIA CALDEIRA ANDR…" — e nome truncado no tótem é o operador
+                      confirmando reserva com meia identificação na tela. Um degrau abaixo
+                      cabe, e continua legível de longe (Lucas, 28/08: "pode diminuir um
+                      pouco o nome"). */}
                   <span
-                    className={`min-w-0 truncate font-black uppercase leading-tight tracking-tight text-ink ${telaCheia ? "text-3xl portrait:text-4xl" : "text-xl"}`}
+                    className={`min-w-0 truncate font-black uppercase leading-tight tracking-tight text-ink ${telaCheia ? "text-2xl portrait:text-3xl" : "text-lg"}`}
                   >
                     {cliente.nome}
                   </span>
@@ -711,9 +717,13 @@ export function ReservaView() {
                 </div>
                 {/* Sem imobiliária E sem corretor a linha simplesmente não existe — nada de
                     rótulo órfão nem buraco no cartão. */}
+                {/* Um degrau abaixo do nome, e menor que ele: "F M S MACIEL IMOVEIS · IGOR
+                    FERNANDO CLODOMIRO" também estourava a largura em retrato. Aqui truncar
+                    incomoda menos (o nome do corretor é o fim da linha), mas quanto mais
+                    couber, melhor para o operador conferir com a etiqueta na mão. */}
                 {origemDoCliente ? (
                   <p
-                    className={`mt-0.5 flex min-w-0 items-center gap-1.5 font-semibold text-ink-soft ${telaCheia ? "text-lg" : "text-sm"}`}
+                    className={`mt-0.5 flex min-w-0 items-center gap-1.5 font-semibold text-ink-soft ${telaCheia ? "text-base" : "text-sm"}`}
                   >
                     {origemDoCliente.tipo === "imobiliaria" ? (
                       <Building2 aria-hidden="true" className="shrink-0" size={telaCheia ? 20 : 15} />

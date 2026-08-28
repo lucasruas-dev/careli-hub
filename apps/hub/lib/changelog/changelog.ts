@@ -36,7 +36,7 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
-    buildTag: "2026-08-28-reserva-touch-retrato",
+    buildTag: "2026-08-28-reserva-touch-retrato-2",
     deployedAt: "2026-08-28T14:10:00-03:00",
     modules: [
       {
@@ -46,7 +46,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
             items: [
               "CORRECAO: bipar a etiqueta com a tela cheia ligada SAIA da tela cheia. O Enter do leitor estava clicando o botao que tinha ficado focado no toque do operador.",
               "O mesmo Enter tambem desmarcava, em silencio, o ultimo lote tocado. Os dois somem com a mesma correcao.",
-              "O nome do cliente agora aparece em DESTAQUE, para ler de longe, com a IMOBILIARIA logo abaixo (e o corretor, quando e o caso).",
+              "O nome do cliente agora aparece em DESTAQUE, para ler de longe, com a IMOBILIARIA logo abaixo (e o corretor, quando e o caso). O tamanho cabe nome comprido sem cortar.",
               "Tela pensada para o monitor EM PE (retrato): o cliente fica sempre visivel no rodape, so a lista de lotes rola, e os botoes ficaram maiores para o dedo.",
             ],
             screen: "Reserva (monitor touch)",
@@ -68,7 +68,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     },
     title: "Reserva touch: tela cheia que nao cai ao bipar, cliente em destaque e layout retrato",
     type: "correcao",
-    version: "1.217.0",
+    version: "1.217.1",
   },
   {
     buildTag: "2026-08-28-logo-do-incorporador-no-setup",
