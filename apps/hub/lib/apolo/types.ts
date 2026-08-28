@@ -115,6 +115,12 @@ export type ApoloC2xCadastro = {
   number: string | null;
   openCompanyDate: string | null;
   profession: string | null;
+  // A profissão que o cliente DECLAROU no cadastro quando não a achou entre as 234 do C2X. É texto
+  // livre e vive SÓ no Apolo: `profession` continua sendo o rótulo do catálogo (o legado guarda uma
+  // FK). Existe para a ficha do CRM 360 não engolir o dado — sem ela, quem abria a aba Cadastro via
+  // "—" e um select vazio, sem sinal de que o cliente tinha declarado alguma coisa.
+  // OPCIONAL: quem monta payload para o C2X não preenche nem lê este campo.
+  professionDeclared?: null | string;
   propertyRegime: string | null;
   rg: string | null;
   salaryRange: string | null;

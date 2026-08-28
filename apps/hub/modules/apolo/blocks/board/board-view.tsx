@@ -46,6 +46,12 @@ import {
   titleCase,
 } from "@/lib/apolo/c2x-fields";
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
+import {
+  MARCA_A_PADRONIZAR,
+  normalizarProfissaoLivre,
+  profissaoDeclarada,
+  profissaoPendenteDePadronizacao,
+} from "@/lib/apolo/profissao";
 
 import { CampoCidade } from "../cadastro/campo-cidade";
 import {
@@ -3304,6 +3310,8 @@ type Ficha = {
     nomeMae: string;
     patrimonio: string;
     profissaoId: string;
+    // Profissão digitada no wizard quando não estava na lista do C2X (ver lib/apolo/profissao.ts).
+    profissaoOutro: string;
     rendaId: string;
     sexoId: string;
     telefone: string;
@@ -3332,8 +3340,14 @@ type Edicao = {
 
 type Campo = {
   chave?: string;
+  // Campo que EXIGE ação do operador nesta rodada (hoje: profissão digitada à mão, ainda sem a
+  // equivalente do catálogo escolhida). Pinta a moldura em âmbar para não passar batido na lista.
+  destaque?: boolean;
   full?: boolean;
   label: string;
+  // Linha de contexto abaixo do valor — o que o cliente DECLAROU, para o operador padronizar sem
+  // ter que abrir o PDF da CAD atrás do texto original.
+  nota?: string;
   opcoes?: { id: number | string; label: string }[];
   tipo?: "cidade" | "data" | "select" | "texto";
   valor: string;
@@ -3359,6 +3373,40 @@ function paraInputDate(valor: string): string {
   const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(limpo);
   if (br) return `${br[3]}-${br[2]}-${br[1]}`;
   return limpo.slice(0, 10);
+}
+
+// PROFISSÃO NA VALIDAÇÃO — é aqui que a padronização pedida pelo Lucas (27/08) acontece.
+//
+// Quem preenche a CAD não acha a profissão entre as 234 do C2X e agora pode DIGITAR a dela; o texto
+// viaja em `profissaoOutro`, separado do id (`profissaoId` alimenta uma FK do C2X, ver
+// lib/apolo/profissao.ts). Enquanto ninguém padronizou, o campo mostra o texto do corretor marcado
+// e ganha moldura de destaque — é a tarefa desta tela, e ela não pode se perder no meio de 30
+// campos iguais. Depois de padronizado, o texto original continua ali como OBSERVAÇÃO: é o que o
+// cliente declarou, e o dado não some só porque alguém escolheu o equivalente do catálogo.
+//
+// O select continua gravando SÓ `profissaoId`. Nada aqui escreve texto livre no id.
+function profissaoCampo(base: Campo, profissaoId: unknown, profissaoOutro: unknown): Campo {
+  const pendente = profissaoPendenteDePadronizacao(profissaoId, profissaoOutro);
+  const declarada = profissaoDeclarada(profissaoId, profissaoOutro);
+  if (!pendente && !declarada) return base;
+  const digitado = normalizarProfissaoLivre(profissaoOutro);
+  return {
+    ...base,
+    destaque: pendente,
+    nota: pendente
+      ? `Digitado no cadastro: “${titleCase(digitado)}”. Escolha a profissão equivalente na lista.`
+      : `Declarado no cadastro: “${declarada}”.`,
+    // Fora do modo de edição o operador vê o que o cliente declarou, e não um traço.
+    //
+    // NA CAIXA DA COLUNA: os selects desta ficha mostram o rótulo do C2X como ele é (CAIXA ALTA),
+    // e só a profissão vinha em "Primeira Maiúscula" — o campo destoava dos vizinhos (Escolaridade,
+    // Renda) na mesma seção. Já padronizada, `base.valor` volta a mandar; pendente, o texto do
+    // corretor entra na mesma caixa dos outros.
+    valor: pendente
+      ? `${digitado.toLocaleUpperCase("pt-BR")} ${MARCA_A_PADRONIZAR}`
+      : base.valor,
+    // ⚠️ `valorCru` NÃO muda: é o id que o <select> usa e o que vai para a ficha.
+  };
 }
 
 function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): SecaoFicha[] {
@@ -3528,7 +3576,11 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
         lista("escolaridadeId", "Escolaridade", C2X_ESCOLARIDADE),
         lista("rendaId", "Faixa de renda", C2X_FAIXA_RENDA),
         livre("patrimonio", "Patrimônio"),
-        lista("profissaoId", "Profissão", C2X_PROFISSOES),
+        // É AQUI QUE A PADRONIZAÇÃO ACONTECE (pedido do Lucas 27/08). Quem preenche a CAD não acha
+        // a profissão entre as 234 do C2X e agora pode digitá-la; o texto chega em
+        // `profissaoOutro` e o operador escolhe a equivalente do catálogo neste select.
+        // O select continua gravando SÓ `profissaoId` — o texto livre nunca vira id.
+        profissaoCampo(lista("profissaoId", "Profissão", C2X_PROFISSOES), c.profissaoId, c.profissaoOutro),
       ],
       titulo: "Perfil",
     });
@@ -3644,7 +3696,11 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
         listaConjuge("conjugeSexoId", "Sexo", C2X_SEXO, conj.sexoId),
         listaConjuge("conjugeEscolaridadeId", "Escolaridade", C2X_ESCOLARIDADE, conj.escolaridadeId),
         listaConjuge("conjugeRendaId", "Faixa de renda", C2X_FAIXA_RENDA, conj.rendaId),
-        listaConjuge("conjugeProfissaoId", "Profissão", C2X_PROFISSOES, conj.profissaoId),
+        profissaoCampo(
+          listaConjuge("conjugeProfissaoId", "Profissão", C2X_PROFISSOES, conj.profissaoId),
+          texto(c.conjugeProfissaoId) || conj.profissaoId,
+          texto(c.conjugeProfissaoOutro) || conj.profissaoOutro,
+        ),
         campoConjuge("conjugePatrimonio", "Patrimônio", conj.patrimonio),
         campoConjuge("conjugeNaturalidade", "Naturalidade", titleCase(conj.naturalidade)),
         campoConjuge("conjugeNacionalidade", "Nacionalidade", titleCase(conj.nacionalidade)),
@@ -4201,7 +4257,14 @@ function ValidacaoLadoALado({
                   {secao.campos.map((campo) => (
                     <div
                       className={`rounded-lg border px-3 py-2 ${
-                        campo.chave ? "border-line bg-surface" : "border-line bg-subtle/40"
+                        // DESTAQUE = campo que espera ação nesta rodada (profissão digitada à mão,
+                        // ainda sem a equivalente do catálogo). Sem ele, a padronização some no
+                        // meio de 30 campos de moldura igual.
+                        campo.destaque
+                          ? "border-[#A07C3B]/50 bg-[#A07C3B]/8"
+                          : campo.chave
+                            ? "border-line bg-surface"
+                            : "border-line bg-subtle/40"
                       } ${campo.full ? "sm:col-span-2" : ""}`}
                       key={`${secao.titulo}-${campo.label}`}
                     >
@@ -4255,6 +4318,21 @@ function ValidacaoLadoALado({
                           value={valorDe(campo.chave, campo.valorCru ?? "")}
                         />
                       )}
+
+                      {/* O que o cliente DECLAROU por escrito. Fica visível nos dois modos: em
+                          leitura o operador entende a pendência, e em edição ele tem o texto
+                          original à vista enquanto escolhe a profissão equivalente. */}
+                      {campo.nota ? (
+                        <p
+                          className={`m-0 mt-1 text-[10px] leading-snug ${
+                            campo.destaque
+                              ? "font-medium text-[#7a5e2c] dark:text-[#d9b877]"
+                              : "text-ink-muted"
+                          }`}
+                        >
+                          {campo.nota}
+                        </p>
+                      ) : null}
                     </div>
                   ))}
                 </div>

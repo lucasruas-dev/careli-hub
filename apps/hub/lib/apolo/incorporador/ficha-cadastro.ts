@@ -26,9 +26,9 @@ import {
   titleCase,
   type C2xOption,
 } from "@/lib/apolo/c2x-fields";
-import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
 import { mapearC2xParaFicha } from "@/lib/apolo/cad-de-entidade";
 import { lerCadsDaEsteira } from "@/lib/apolo/esteira-cad";
+import { casarProfissaoNaLista, profissaoExibida } from "@/lib/apolo/profissao";
 import { createApoloAdminClient, fetchC2xCadastroByEntity } from "@/lib/apolo/server";
 import type { ApoloC2xCadastro } from "@/lib/apolo/types";
 import { getHadesDbPool } from "@/lib/guardian/db";
@@ -217,7 +217,18 @@ export function montarGruposDeCadastro(insumos: InsumosDoCadastro): GrupoDoCadas
         ...(casado
           ? [campo("Regime de bens", opcao(C2X_REGIME_BENS, c.regimeBensId) || texto(c2x?.propertyRegime))]
           : []),
-        campo("Profissão", titleCase(opcao(C2X_PROFISSOES, c.profissaoId)) || texto(c2x?.profession)),
+        // A profissão DIGITADA no cadastro (fora das 234 do C2X) sai marcada "(a padronizar)" —
+        // antes desta linha não existia campo para ela e a ficha mostrava "—" com o dado salvo do
+        // lado. O id do legado entra pelo RÓTULO que ele devolve, e não como último recurso, porque
+        // "PROFISSÃO NÃO DECLARADA" (o vazio do C2X) não pode encobrir o que o cliente declarou.
+        // Ver lib/apolo/profissao.ts.
+        campo(
+          "Profissão",
+          profissaoExibida(
+            texto(c.profissaoId) || casarProfissaoNaLista(texto(c2x?.profession)),
+            c.profissaoOutro,
+          ) || titleCase(texto(c2x?.profession)),
+        ),
         campo("Renda", opcao(C2X_FAIXA_RENDA, c.rendaId) || texto(c2x?.salaryRange)),
         campo("Escolaridade", opcao(C2X_ESCOLARIDADE, c.escolaridadeId) || texto(c2x?.schooling)),
         campo("Naturalidade", titleCase(texto(c.naturalidade)) || texto(c2x?.naturalness)),

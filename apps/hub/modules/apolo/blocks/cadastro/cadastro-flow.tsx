@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   createContext,
   useContext,
@@ -56,6 +57,13 @@ import {
   juntarPtBr,
 } from "@/lib/apolo/cadastro-obrigatorios";
 import { cpfValido } from "@/lib/apolo/documento";
+import {
+  casarProfissaoNaLista,
+  normalizarProfissaoLivre,
+  profissaoExibida,
+  profissaoPendenteDePadronizacao,
+  temProfissao,
+} from "@/lib/apolo/profissao";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
 import {
@@ -177,6 +185,11 @@ type Perfil = {
   imobiliariaId: string;
   patrimonio: string;
   profissaoId: string;
+  // PROFISSÃO DIGITADA à mão, quando ela não existe entre as 234 do C2X (pedido do Lucas 27/08).
+  // Fica SEPARADA de `profissaoId` de propósito: aquele campo alimenta uma FK do C2X
+  // (users.profession_id, bigint) e é lido por 7 conversores id↔rótulo. Ver lib/apolo/profissao.ts.
+  // O backoffice escolhe a profissão equivalente da lista na tela de validação da CAD.
+  profissaoOutro: string;
   // Regime de bens (só casado / união estável). Fonte = certidão de casamento.
   regimeBensId: string;
   rendaEstimada: string;
@@ -187,7 +200,7 @@ type Perfil = {
 
 const PERFIL_VAZIO: Perfil = {
   email: "", escolaridadeId: "", estadoCivilId: "", imobiliariaId: "",
-  patrimonio: "", profissaoId: "", regimeBensId: "", rendaEstimada: "",
+  patrimonio: "", profissaoId: "", profissaoOutro: "", regimeBensId: "", rendaEstimada: "",
   rendaId: "", sexoId: "", telefone: "",
 };
 
@@ -207,6 +220,8 @@ type Conjuge = {
   nomeMae: string;
   patrimonio: string;
   profissaoId: string;
+  // Mesma saída do titular: profissão digitada quando não está na lista do C2X.
+  profissaoOutro: string;
   rendaId: string;
   sexoId: string;
   telefone: string;
@@ -215,7 +230,7 @@ type Conjuge = {
 const CONJUGE_VAZIO: Conjuge = {
   cpf: "", dataNascimento: "", documentoLido: false, email: "",
   escolaridadeId: "", nacionalidade: "", naturalidade: "", nome: "", nomeMae: "",
-  patrimonio: "", profissaoId: "", rendaId: "", sexoId: "", telefone: "",
+  patrimonio: "", profissaoId: "", profissaoOutro: "", rendaId: "", sexoId: "", telefone: "",
 };
 
 // Persona do cadastro, definida pelo documento: RG/CNH -> pessoa física (pf);
@@ -2163,7 +2178,7 @@ function StepIdentificacao({
         conjuge.sexoId &&
         conjuge.rendaId &&
         conjuge.escolaridadeId &&
-        conjuge.profissaoId &&
+        temProfissao(conjuge.profissaoId, conjuge.profissaoOutro) &&
         conjugeEmailOk,
     );
 
@@ -2330,7 +2345,9 @@ function StepIdentificacao({
         perfil.estadoCivilId ? null : "estado civil",
         perfil.escolaridadeId ? null : "escolaridade",
         perfil.rendaId ? null : "faixa de renda",
-        perfil.profissaoId ? null : "profissão",
+        // Profissão DIGITADA também vale para avançar — é o ponto do pedido: o corretor não pode
+        // mais travar por não achar a dele na lista. A padronização acontece depois, na validação.
+        temProfissao(perfil.profissaoId, perfil.profissaoOutro) ? null : "profissão",
         modoPublico || perfil.imobiliariaId ? null : "imobiliária",
         vinculoProspectOk ? null : "empreendimento e corretor",
         emailValido ? null : "e-mail válido",
@@ -2650,9 +2667,14 @@ function StepIdentificacao({
               placeholder="—"
               onChange={(v) => onPerfilChange({ patrimonio: v })}
             />
+            {/* ÚNICO seletor com saída de texto livre (`aoDigitarOutro`). Quem não acha a
+                profissão entre as 234 do C2X digita a dele; o backoffice padroniza na validação.
+                O texto vai para `profissaoOutro`, NUNCA para `profissaoId` (FK do C2X). */}
             <SearchableSelect
+              aoDigitarOutro={(v) => onPerfilChange({ profissaoOutro: v })}
               label="Profissão"
               value={perfil.profissaoId}
+              valorOutro={perfil.profissaoOutro}
               options={C2X_PROFISSOES}
               placeholder="Buscar profissão…"
               onChange={(v) => onPerfilChange({ profissaoId: v })}
@@ -2747,8 +2769,10 @@ function StepIdentificacao({
                       onChange={(v) => onConjugeChange({ patrimonio: v })}
                     />
                     <SearchableSelect
+                      aoDigitarOutro={(v) => onConjugeChange({ profissaoOutro: v })}
                       label="Profissão"
                       value={conjuge.profissaoId}
+                      valorOutro={conjuge.profissaoOutro}
                       options={C2X_PROFISSOES}
                       placeholder="Buscar profissão…"
                       onChange={(v) => onConjugeChange({ profissaoId: v })}
@@ -4001,6 +4025,8 @@ function StepRevisao({
               nomeMae: conjuge.nomeMae,
               patrimonio: conjuge.patrimonio,
               profissaoId: conjuge.profissaoId,
+              // Sobe junto: é o que o cliente DECLAROU e o que a validação vai padronizar.
+              profissaoOutro: conjuge.profissaoOutro,
               rendaId: conjuge.rendaId,
               sexoId: conjuge.sexoId,
               telefone: conjuge.telefone,
@@ -4191,7 +4217,9 @@ function StepRevisao({
           cadField("Escolaridade", label(C2X_ESCOLARIDADE, perfil.escolaridadeId)),
           cadField("Faixa de renda", label(C2X_FAIXA_RENDA, perfil.rendaId)),
           cadField("Patrimônio", perfil.patrimonio),
-          cadField("Profissão", titleCase(label(C2X_PROFISSOES, perfil.profissaoId))),
+          // Profissão digitada sai na CAD com a marca "(a padronizar)": a pendência tem que estar
+          // FORMALIZADA no papel, não só na tela (mesma regra da seção de pendências abaixo).
+          cadField("Profissão", profissaoExibida(perfil.profissaoId, perfil.profissaoOutro)),
         ]),
       );
       secoes.push(
@@ -4230,7 +4258,7 @@ function StepRevisao({
             cadField("Escolaridade", label(C2X_ESCOLARIDADE, conjuge.escolaridadeId)),
             cadField("Faixa de renda", label(C2X_FAIXA_RENDA, conjuge.rendaId)),
             cadField("Patrimônio", conjuge.patrimonio),
-            cadField("Profissão", titleCase(label(C2X_PROFISSOES, conjuge.profissaoId))),
+            cadField("Profissão", profissaoExibida(conjuge.profissaoId, conjuge.profissaoOutro)),
             cadField("Telefone", conjuge.telefone),
             cadField("E-mail", conjuge.email, true),
           ]),
@@ -4262,6 +4290,20 @@ function StepRevisao({
     if (endereco && !endereco.logradouro && !endereco.cidade) {
       pendencias.push(
         "Endereço não foi lido do comprovante; confirmar os dados preenchidos manualmente.",
+      );
+    }
+    // PROFISSÃO DIGITADA À MÃO: a marca "(a padronizar)" no campo é fácil de passar batido no meio
+    // de 30 linhas. Aqui a pendência fica FORMALIZADA no mesmo lugar em que o analista já procura o
+    // que falta — e é o que impede a CAD de subir ao C2X como se estivesse completa (o legado só
+    // aceita profissão do catálogo, e o envio é POST: padronizar depois não volta para lá).
+    if (profissaoPendenteDePadronizacao(perfil.profissaoId, perfil.profissaoOutro)) {
+      pendencias.push(
+        `Profissão declarada como “${titleCase(normalizarProfissaoLivre(perfil.profissaoOutro))}”, fora da lista do sistema; a equipe padroniza na validação da CAD.`,
+      );
+    }
+    if (conjuge && profissaoPendenteDePadronizacao(conjuge.profissaoId, conjuge.profissaoOutro)) {
+      pendencias.push(
+        `Profissão do cônjuge declarada como “${titleCase(normalizarProfissaoLivre(conjuge.profissaoOutro))}”, fora da lista do sistema; a equipe padroniza na validação da CAD.`,
       );
     }
     if (pendencias.length) {
@@ -4435,7 +4477,11 @@ function StepRevisao({
             <ReadField label="Escolaridade" value={label(C2X_ESCOLARIDADE, perfil.escolaridadeId)} />
             <ReadField label="Faixa de renda" value={label(C2X_FAIXA_RENDA, perfil.rendaId)} />
             <ReadField label="Patrimônio" value={perfil.patrimonio} />
-            <ReadField label="Profissão" value={titleCase(label(C2X_PROFISSOES, perfil.profissaoId))} span2 />
+            <ReadField
+              label="Profissão"
+              value={profissaoExibida(perfil.profissaoId, perfil.profissaoOutro)}
+              span2
+            />
           </Secao>
 
           <Secao title="Endereço">
@@ -4469,7 +4515,10 @@ function StepRevisao({
               <ReadField label="Escolaridade" value={label(C2X_ESCOLARIDADE, conjuge.escolaridadeId)} />
               <ReadField label="Faixa de renda" value={label(C2X_FAIXA_RENDA, conjuge.rendaId)} />
               <ReadField label="Patrimônio" value={conjuge.patrimonio} />
-              <ReadField label="Profissão" value={titleCase(label(C2X_PROFISSOES, conjuge.profissaoId))} />
+              <ReadField
+                label="Profissão"
+                value={profissaoExibida(conjuge.profissaoId, conjuge.profissaoOutro)}
+              />
               <ReadField label="Telefone" value={conjuge.telefone} />
               <ReadField label="E-mail" value={conjuge.email} span2 />
             </Secao>
@@ -4898,18 +4947,30 @@ function EnderecoEditavel({
 }
 
 // Combobox com busca (profissão: 234 opções do C2X).
+//
+// SAÍDA DE TEXTO LIVRE (`aoDigitarOutro`) — habilitada SÓ na profissão. As demais listas (sexo,
+// escolaridade, renda, imobiliária, corretor…) continuam fechadas no catálogo: ali um valor fora da
+// lista não tem para onde ir. Ver lib/apolo/profissao.ts para o porquê do campo separado.
+//
+// Digitou algo que não está na lista? A última linha do dropdown oferece usar o texto como está.
+// O texto vai para `valorOutro`, `value` fica VAZIO (nada de texto dentro do id da FK) e o campo
+// passa a mostrar o que foi digitado com a marca "a padronizar". Escolher da lista desfaz.
 function SearchableSelect({
+  aoDigitarOutro,
   label,
   onChange,
   options,
   placeholder,
   value,
+  valorOutro = "",
 }: {
+  aoDigitarOutro?: (value: string) => void;
   label: string;
   onChange: (value: string) => void;
   options: SelectOption[];
   placeholder?: string;
   value: string;
+  valorOutro?: string;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -4919,6 +4980,69 @@ function SearchableSelect({
     ? options.filter((option) => normalizeSearch(option.label).includes(q))
     : options
   ).slice(0, 60);
+  // Texto livre em vigor: só quando NÃO há escolha de lista (a lista sempre ganha).
+  const livre = aoDigitarOutro && !selected ? normalizarProfissaoLivre(valorOutro) : "";
+  const digitado = normalizarProfissaoLivre(query);
+  // Digitou o nome exato de uma profissão do catálogo? Então não é "outro": é ela mesma, escrita de
+  // outro jeito — e vira id, para a validação não receber pendência inventada.
+  const idExato = aoDigitarOutro ? casarProfissaoNaLista(digitado) : "";
+  // Há texto para aproveitar (mesmo que ele case com a lista). É o que impede o gesto mais provável
+  // do corretor — digitar e clicar no próximo campo — de jogar fora o que ele escreveu.
+  const temDigitado = Boolean(aoDigitarOutro && digitado);
+  // A FAIXA "Não encontrou?" só aparece quando o digitado NÃO está no catálogo: com o item idêntico
+  // listado logo acima, ela oferecia como "fora da lista" justamente o que está na lista.
+  const podeUsarDigitado = temDigitado && !idExato;
+
+  const escolher = (id: string) => {
+    onChange(id);
+    // Escolheu da lista: o texto livre deixa de valer (a padronização é justamente esta).
+    aoDigitarOutro?.("");
+    setOpen(false);
+  };
+
+  const usarDigitado = () => {
+    if (!digitado) return;
+    if (idExato) {
+      escolher(idExato);
+      return;
+    }
+    onChange("");
+    aoDigitarOutro?.(digitado);
+    setOpen(false);
+  };
+
+  // Fechar o dropdown NÃO pode descartar o que foi digitado — nem pelo clique fora, nem por Enter.
+  // Sem isto, quem digitava "piloto de drone", via a lista vazia e clicava no campo seguinte perdia
+  // tudo em silêncio (o clique morre no overlay) e só descobria no fim da etapa, na trava de
+  // obrigatórios — que é exatamente a fricção que este campo veio eliminar.
+  const fechar = () => {
+    if (temDigitado && !selected) {
+      usarDigitado();
+      return;
+    }
+    setOpen(false);
+  };
+
+  // TECLADO: quem busca digitando espera confirmar com Enter. Só vira texto livre quando a busca
+  // não achou NADA — com resultados na tela, Enter escolhe (o único filtrado, ou o nome exato),
+  // senão "advog" viraria uma pendência inventada com "ADVOGADO(A)" logo ali.
+  const aoTeclar = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      setOpen(false);
+      return;
+    }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (idExato) {
+      escolher(idExato);
+      return;
+    }
+    if (filtered.length === 1) {
+      escolher(filtered[0]!.id.toString());
+      return;
+    }
+    if (temDigitado && filtered.length === 0) usarDigitado();
+  };
 
   return (
     <div className="relative rounded-lg border border-line bg-surface px-3 py-2">
@@ -4926,41 +5050,69 @@ function SearchableSelect({
         {label}
       </div>
       <input
-        value={open ? query : selected ? titleCase(selected.label) : ""}
+        value={open ? query : selected ? titleCase(selected.label) : livre ? titleCase(livre) : ""}
         onFocus={() => {
           setOpen(true);
           setQuery("");
         }}
         onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={aoTeclar}
         placeholder={placeholder}
         className="mt-0.5 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
       />
+      {/* A pendência tem que ser VISÍVEL sem clicar em nada: o corretor sabe que aquilo ainda vai
+          ser conferido, e a CAD sai marcada do mesmo jeito. */}
+      {livre && !open ? (
+        <p className="m-0 mt-1 flex items-center gap-1 text-[10px] font-medium text-[#7a5e2c] dark:text-[#d9b877]">
+          <AlertTriangle aria-hidden="true" className="size-3 shrink-0" />
+          Fora da lista — a equipe padroniza na validação.
+        </p>
+      ) : null}
       {open ? (
         <>
           <button
             type="button"
             aria-label="Fechar"
-            onClick={() => setOpen(false)}
+            onClick={fechar}
             className="fixed inset-0 z-10 cursor-default"
           />
-          <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg">
-            {filtered.length ? (
-              filtered.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => {
-                    onChange(option.id.toString());
-                    setOpen(false);
-                  }}
-                  className="block w-full px-3 py-1.5 text-left text-sm text-ink hover:bg-subtle"
-                >
-                  {titleCase(option.label)}
-                </button>
-              ))
-            ) : (
-              <p className="px-3 py-2 text-xs text-ink-muted">Nenhuma opção</p>
-            )}
+          <div className="absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-lg border border-line bg-surface shadow-lg">
+            {/* Só a LISTA rola. A saída de texto livre fica FORA do scroll, ancorada embaixo:
+                dentro dele, com 60 resultados possíveis, ela ficaria escondida justamente para
+                quem tem a busca cheia de resultados e nenhum deles serve. */}
+            {/* Sem a faixa embaixo (imobiliária, empreendimento, corretor) a lista fica com a
+                altura de sempre: encolher todo mundo por causa de um campo era perda seca. */}
+            <div className={`${aoDigitarOutro ? "max-h-48" : "max-h-56"} overflow-y-auto py-1`}>
+              {filtered.length ? (
+                filtered.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => escolher(option.id.toString())}
+                    className="block w-full px-3 py-1.5 text-left text-sm text-ink hover:bg-subtle"
+                  >
+                    {titleCase(option.label)}
+                  </button>
+                ))
+              ) : podeUsarDigitado ? null : (
+                <p className="m-0 px-3 py-2 text-xs text-ink-muted">
+                  {aoDigitarOutro ? "Digite a profissão para poder usá-la." : "Nenhuma opção"}
+                </p>
+              )}
+            </div>
+            {podeUsarDigitado ? (
+              <button
+                type="button"
+                onClick={usarDigitado}
+                className="block w-full border-t border-line bg-subtle/50 px-3 py-2 text-left text-xs text-ink hover:bg-subtle"
+              >
+                <span className="font-semibold">Não encontrou?</span> Usar{" "}
+                <span className="font-semibold">“{titleCase(digitado)}”</span>
+                <span className="block text-[10px] text-ink-muted">
+                  A equipe padroniza na validação da CAD.
+                </span>
+              </button>
+            ) : null}
           </div>
         </>
       ) : null}

@@ -44,6 +44,7 @@ import {
   type PerfilC2x,
 } from "./c2x-write";
 import { APOLO_DOCS_BUCKET, guessMime, lerDocumentoDoStorage } from "./documentos";
+import { profissaoParaC2x, profissaoPendenteDePadronizacao } from "./profissao";
 import type { ApoloC2xCadastro, ApoloC2xRepresentante, ApoloC2xSpouse } from "./types";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
@@ -605,7 +606,13 @@ async function montarDados(
     number: null,
     // Da ficha de EMPRESA (ver `cadEmpresa` acima), não da cascata de campos pessoais.
     openCompanyDate: texto(cadEmpresa.dataAbertura),
-    profession: label(C2X_PROFISSOES, cad.profissaoId),
+    // ⚠️ SÓ O RÓTULO DE UM ID DO CATÁLOGO. A partir de 27/08 a ficha pode carregar também uma
+    // profissão DIGITADA à mão (`profissaoOutro`, quando o corretor não a acha entre as 234) — e
+    // ela NÃO entra aqui: `users.profession_id` é bigint FK e o Rails resolve este texto de volta
+    // para o número. Sem id o campo vai nulo e o C2X aplica o default dele (25 = "PROFISSÃO NÃO
+    // DECLARADA"), exatamente o que já acontecia com profissão em branco. A regra mora em um lugar
+    // só, com testes: lib/apolo/profissao.ts.
+    profession: profissaoParaC2x(cad.profissaoId),
     propertyRegime: label(C2X_REGIME_BENS, cad.regimeBensId),
     rg: texto(cad.rg),
     salaryRange: label(C2X_FAIXA_RENDA, cad.rendaId),
@@ -1695,6 +1702,15 @@ export function diagnosticarCadastro(
   if ((ec === "2" || ec === "6") && !texto(cadMeta.regimeBensId)) {
     faltam.push("Regime de bens");
   }
+  // 🔴 PROFISSÃO DIGITADA À MÃO E AINDA NÃO PADRONIZADA (27/08). Profissão não é obrigatória no
+  // C2X — mas ESTE caso não é "campo em branco", é trabalho combinado com o Lucas ("na validação eu
+  // padronizo") que ainda não foi feito. E o envio é de MÃO ÚNICA: `enviarUsuarioC2x` só faz POST,
+  // e a entidade sai das candidatas assim que recebe `c2xSynced` — subir antes da padronização
+  // grava "PROFISSÃO NÃO DECLARADA" no legado PARA SEMPRE, com a profissão do cliente existindo só
+  // no Apolo. Segura o lote automático; `tentarTodas` continua sendo a saída de quem quer forçar.
+  if (profissaoPendenteDePadronizacao(cadMeta.profissaoId, cadMeta.profissaoOutro)) {
+    faltam.push("Profissão a padronizar");
+  }
   return faltam;
 }
 
@@ -2017,6 +2033,23 @@ export async function processarLoteC2x(input: {
       ficha,
     );
     const cadMeta = { ...unido.valores } as Record<string, unknown>;
+
+    // PROFISSÃO PARA O DIAGNÓSTICO — na MESMA cascata que o payload usa (`cad`, lá em cima):
+    // cadastro < ficha da esteira < `cadastroEditado`. O texto livre não é campo pessoal do C2X
+    // (não entra em `CAMPOS_PESSOAIS` nem no payload), então precisa vir daqui; e o id tem que
+    // reler a camada humana, senão quem padronizou pelo Editar cadastro do CRM ficaria com a CAD
+    // presa em "Profissão a padronizar" sem ter como soltá-la.
+    const metaDaEntidade = (ent.metadata ?? {}) as {
+      cadastro?: Record<string, unknown>;
+      cadastroEditado?: Record<string, unknown>;
+    };
+    const cascataProfissao = {
+      ...(metaDaEntidade.cadastro ?? {}),
+      ...(ficha ?? {}),
+      ...(metaDaEntidade.cadastroEditado ?? {}),
+    } as Record<string, unknown>;
+    cadMeta.profissaoId = texto(cascataProfissao.profissaoId);
+    cadMeta.profissaoOutro = texto(cascataProfissao.profissaoOutro);
 
     // Nacionalidade derivada da naturalidade entra ANTES do diagnóstico, senão a ficha aparece
     // como "faltando Nacionalidade" sendo que o dado é dedutível.

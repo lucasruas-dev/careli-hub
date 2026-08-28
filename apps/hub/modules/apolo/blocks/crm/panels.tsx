@@ -81,9 +81,17 @@ import {
   C2X_FAIXA_RENDA,
   C2X_REGIME_BENS,
   C2X_SEXO,
+  titleCase,
 } from "@/lib/apolo/c2x-fields";
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
 import type { CadastroEditavel } from "@/lib/apolo/cadastro-editar";
+import {
+  MARCA_A_PADRONIZAR,
+  casarProfissaoNaLista,
+  normalizarProfissaoLivre,
+  profissaoDeclarada,
+  profissaoPendenteDePadronizacao,
+} from "@/lib/apolo/profissao";
 import type {
   ApoloFinancialRecord,
   ApoloFinancialRecordType,
@@ -327,6 +335,17 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
     ["CEP", cad?.zipcode ?? primaryAddress?.postalCode ?? "-"],
     ["Cidade", cidadeUf],
   ];
+  // PROFISSÃO DECLARADA (27/08): quem preenche a CAD e não acha a profissão entre as 234 do C2X
+  // agora digita a dela, e o texto vive só no Apolo. Sem estas linhas, a aba mais usada do dia a
+  // dia mostrava "—" para um cliente que declarou "piloto de drone agrícola".
+  // O id sai do RÓTULO que a ficha traz (é o que existe aqui), com a mesma regra do resto do
+  // sistema: "PROFISSÃO NÃO DECLARADA" é o vazio do C2X, não uma padronização.
+  const profissaoIdDaFicha = casarProfissaoNaLista(cad?.profession);
+  const profissaoLivre = cad?.professionDeclared ?? "";
+  const profissaoDaFicha = profissaoPendenteDePadronizacao(profissaoIdDaFicha, profissaoLivre)
+    ? `${titleCase(normalizarProfissaoLivre(profissaoLivre))} ${MARCA_A_PADRONIZAR}`
+    : (cad?.profession ?? "-");
+  const profissaoDeclaradaNaFicha = profissaoDeclarada(profissaoIdDaFicha, profissaoLivre);
   // Campos POR PERFIL (regra do Lucas): PJ é empresa, não tem nascimento/idade/RG/
   // sexo/estado civil/regime/profissão/cônjuge. Regime de bens só quando casado.
   // Relacionamento/responsável NÃO são campos aqui — vivem na aba Relacionamentos.
@@ -349,7 +368,10 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
         ["Sexo", cad?.sex ?? "-"],
         ["Estado civil", civilStatus || "-"],
         ...(isMarried ? [["Regime de bens", cad?.propertyRegime ?? "-"] as const] : []),
-        ["Profissao", cad?.profession ?? "-"],
+        ["Profissao", profissaoDaFicha],
+        ...(profissaoDeclaradaNaFicha
+          ? [["Profissao declarada", profissaoDeclaradaNaFicha] as const]
+          : []),
         ["Renda", cad?.salaryRange ?? "-"],
         ["Escolaridade", cad?.schooling ?? "-"],
         ["Naturalidade", cad?.naturalness ?? "-"],
@@ -412,7 +434,8 @@ const CADASTRO_VAZIO: CadastroEditavel = {
   bairro: "", cep: "", cidade: "", cidade_uf: "", complemento: "", conjuge_cpf: "",
   conjuge_email: "", conjuge_nome: "", conjuge_telefone: "", dataNascimento: "", email: "",
   escolaridadeId: "", estadoCivilId: "", logradouro: "", nacionalidade: "", naturalidade: "",
-  nomeMae: "", numero: "", profissaoId: "", regimeBensId: "", rendaId: "", sexoId: "", telefone: "",
+  nomeMae: "", numero: "", profissaoId: "", profissaoOutro: "", regimeBensId: "", rendaId: "",
+  sexoId: "", telefone: "",
 };
 
 function EdicaoCadastro({
@@ -562,6 +585,14 @@ function EdicaoCadastro({
             onChange={set("profissaoId")}
             opcoes={C2X_PROFISSOES}
             value={dados.profissaoId}
+          />
+          {/* O QUE O CLIENTE DECLAROU quando não achou a profissão na lista do C2X. Fica ao lado do
+              select porque é aqui que a padronização se resolve — e é o ÚNICO lugar onde esse texto
+              pode ser corrigido ou apagado (o wizard só o escreve uma vez). Não vai para o C2X. */}
+          <CampoTexto
+            label="Profissão declarada (texto livre)"
+            onChange={set("profissaoOutro")}
+            value={dados.profissaoOutro}
           />
           <CampoSelect label="Renda" onChange={set("rendaId")} opcoes={C2X_FAIXA_RENDA} value={dados.rendaId} />
           <CampoSelect

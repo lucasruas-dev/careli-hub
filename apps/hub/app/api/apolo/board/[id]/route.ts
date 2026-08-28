@@ -339,6 +339,11 @@ export async function GET(
           profissaoId:
             texto(daEsteira.conjugeProfissaoId) ||
             texto(doRelacionamento?.metadata?.profissaoId),
+          // Profissão DIGITADA no wizard (fora das 234 do C2X). Chega para a validação padronizar;
+          // nunca vira `profession` no C2X. Ver lib/apolo/profissao.ts.
+          profissaoOutro:
+            texto(daEsteira.conjugeProfissaoOutro) ||
+            texto(doRelacionamento?.metadata?.profissaoOutro),
           rendaId:
             texto(daEsteira.conjugeRendaId) || texto(doRelacionamento?.metadata?.rendaId),
           sexoId:

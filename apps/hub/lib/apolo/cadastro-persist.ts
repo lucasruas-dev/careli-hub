@@ -5,6 +5,7 @@
 // Ver [[project_apolo_cadastro_prospect]], [[project_apolo_crm_grafo]].
 import { lerCadsDaEsteira, normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
 import { conflitoDeNucleoFamiliar, mensagemDeConflito } from "@/lib/apolo/nucleo-familiar";
+import { normalizarProfissaoLivre } from "@/lib/apolo/profissao";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
@@ -104,6 +105,10 @@ export type CreateApoloEntityInput = {
     imobiliariaLabel?: string;
     patrimonio?: string;
     profissaoId?: string;
+    // Profissão DIGITADA à mão no wizard (não existe entre as 234 do C2X). Viaja e é guardada, mas
+    // NUNCA vira `profession` no envio ao C2X — lá só o rótulo de um id do catálogo vale.
+    // Ver lib/apolo/profissao.ts.
+    profissaoOutro?: string;
     // Regime de bens (property_regimes do C2X) — só casado / união estável.
     regimeBensId?: string;
     rendaId?: string;
@@ -130,6 +135,7 @@ export type CreateApoloEntityInput = {
     nomeMae?: string;
     patrimonio?: string;
     profissaoId?: string;
+    profissaoOutro?: string;
     rendaId?: string;
     sexoId?: string;
     telefone?: string;
@@ -359,6 +365,10 @@ export async function createApoloEntity(
     patrimonio: text(perfil.patrimonio),
     porte: text(empresa.porte),
     profissaoId: text(perfil.profissaoId),
+    // O que o cliente DECLAROU quando a profissão não estava na lista. Fica ao lado do id (nunca
+    // dentro dele) e é o que a validação da CAD usa para padronizar — e o que sobrevive depois,
+    // como observação, quando alguém já padronizou. `pruneEmpty` some com ele quando vazio.
+    profissaoOutro: normalizarProfissaoLivre(perfil.profissaoOutro),
     regimeBensId: text(perfil.regimeBensId),
     rendaId: text(perfil.rendaId),
     sexoId: text(perfil.sexoId),
@@ -560,6 +570,7 @@ export async function createApoloEntity(
         patrimonio: text(input.conjuge?.patrimonio) || null,
         phone: text(input.conjuge?.telefone) || null,
         profissaoId: text(input.conjuge?.profissaoId) || null,
+        profissaoOutro: normalizarProfissaoLivre(input.conjuge?.profissaoOutro) || null,
         rendaId: text(input.conjuge?.rendaId) || null,
         sexoId: text(input.conjuge?.sexoId) || null,
         source: "apolo",

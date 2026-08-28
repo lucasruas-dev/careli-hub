@@ -93,3 +93,47 @@ describe("diagnosticarCadastro numa PJ", () => {
     ]);
   });
 });
+
+// PROFISSÃO A PADRONIZAR (27/08). O envio ao C2X é de MÃO ÚNICA: só POST, e a entidade sai das
+// candidatas assim que recebe `c2xSynced`. Subir antes de alguém escolher a profissão equivalente
+// grava "PROFISSÃO NÃO DECLARADA" no legado para sempre — a profissão do cliente ficaria só no
+// Apolo. Por isso o diagnóstico segura o lote automático (com `tentarTodas` ainda dá para forçar).
+describe("diagnosticarCadastro e a profissão digitada à mão", () => {
+  const pfCompleta = {
+    dataNascimento: "1980-05-02",
+    escolaridadeId: "3",
+    estadoCivilId: "1",
+    nacionalidade: "BRASILEIRA",
+    naturalidade: "BELO HORIZONTE",
+    nomeMae: "MARIA DA SILVA",
+    rendaId: "2",
+  };
+
+  it("só texto livre: segura, com nome próprio", () => {
+    expect(
+      diagnosticarCadastro({ ...pfCompleta, profissaoOutro: "piloto de drone agrícola" }, true),
+    ).toEqual(["Profissão a padronizar"]);
+  });
+
+  it("padronizada (id do catálogo): libera, mesmo com o texto declarado guardado", () => {
+    expect(
+      diagnosticarCadastro(
+        { ...pfCompleta, profissaoId: "9", profissaoOutro: "piloto de drone agrícola" },
+        true,
+      ),
+    ).toEqual([]);
+  });
+
+  it("🔴 o 25 do C2X NÃO conta como padronização (é o default da FK, o vazio dele)", () => {
+    expect(
+      diagnosticarCadastro(
+        { ...pfCompleta, profissaoId: "25", profissaoOutro: "piloto de drone agrícola" },
+        true,
+      ),
+    ).toEqual(["Profissão a padronizar"]);
+  });
+
+  it("ficha sem profissão nenhuma continua passando: profissão é opcional no C2X", () => {
+    expect(diagnosticarCadastro(pfCompleta, true)).toEqual([]);
+  });
+});

@@ -20,6 +20,7 @@
 // operador alterou, na camada `cadastroEditado` (a que todos os leitores aplicam por último).
 import { mapearC2xParaFicha } from "./cad-de-entidade";
 import { lerCadDaEsteira } from "./esteira-cad";
+import { normalizarProfissaoLivre } from "./profissao";
 import { fetchC2xCadastroByEntity, type createApoloAdminClient } from "./server";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
@@ -46,6 +47,11 @@ export type CadastroEditavel = {
   nomeMae: string;
   numero: string;
   profissaoId: string;
+  // Profissão DIGITADA no cadastro, quando o corretor não a achou entre as 234 do C2X. Editável
+  // aqui de propósito: sem isto ela era gravada uma vez pelo wizard e ninguém mais conseguia
+  // corrigir um "nao sei"/"asdf" nem apagar um dado colado por engano — e ela sai na CAD e na nota
+  // da validação. Nunca vira `profession` no C2X. Ver lib/apolo/profissao.ts.
+  profissaoOutro: string;
   regimeBensId: string;
   rendaId: string;
   sexoId: string;
@@ -183,6 +189,7 @@ export async function lerCadastroParaEdicao(
       nomeMae: texto(m.nomeMae),
       numero: texto(m.numero) || texto(end?.number),
       profissaoId: texto(m.profissaoId),
+      profissaoOutro: normalizarProfissaoLivre(m.profissaoOutro),
       regimeBensId: texto(m.regimeBensId),
       rendaId: texto(m.rendaId),
       sexoId: texto(m.sexoId),
@@ -219,6 +226,10 @@ const CHAVES_DE_CADASTRO = [
   "naturalidade",
   "nomeMae",
   "profissaoId",
+  // A declaração do cliente é CORRIGÍVEL: gravar em `cadastroEditado` (a camada que todos os
+  // leitores aplicam por último) é o que faz o conserto — e o apagar — valer no board, na CAD
+  // regerada e aqui. Ela continua fora do payload do C2X.
+  "profissaoOutro",
   "regimeBensId",
   "rendaId",
   "sexoId",
@@ -262,6 +273,11 @@ export async function salvarEdicaoCadastro(
     string,
   ][]) {
     if (enviado(campo)) alteracoes[chave] = dados[campo];
+  }
+  // A declaração entra no MESMO formato que o wizard grava (espaços colapsados, teto de
+  // caracteres): é o que mantém estável a comparação com o catálogo em quem lê.
+  if (enviado("profissaoOutro")) {
+    alteracoes.profissaoOutro = normalizarProfissaoLivre(dados.profissaoOutro);
   }
   // Regime de bens só faz sentido casado/união (2/6): se o operador MUDOU o estado civil para
   // outro, o regime some junto para não sujar.

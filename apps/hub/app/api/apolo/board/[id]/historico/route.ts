@@ -25,6 +25,7 @@ const ROTULOS: Record<string, string> = {
   conjugeMae: "Cônjuge · Nome da mãe",
   conjugeNascimento: "Cônjuge · Nascimento",
   conjugeNome: "Cônjuge · Nome",
+  conjugeProfissaoOutro: "Cônjuge · Profissão (digitada no cadastro)",
   conjugeTelefone: "Cônjuge · Telefone",
   dataNascimento: "Nascimento",
   email: "E-mail",
@@ -38,6 +39,9 @@ const ROTULOS: Record<string, string> = {
   numero: "Número",
   patrimonio: "Patrimônio",
   profissaoId: "Profissão",
+  // Profissão DIGITADA no cadastro (fora das 234 do C2X). Aparece na trilha quando o operador
+  // limpa a declaração depois de padronizar. Ver lib/apolo/profissao.ts.
+  profissaoOutro: "Profissão (digitada no cadastro)",
   regimeBensId: "Regime de bens",
   rendaId: "Faixa de renda",
   rg: "RG",

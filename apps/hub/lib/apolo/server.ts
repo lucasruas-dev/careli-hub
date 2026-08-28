@@ -22,6 +22,7 @@ import {
   type C2xOption,
 } from "./c2x-fields";
 import { C2X_PROFISSOES } from "./c2x-professions";
+import { normalizarProfissaoLivre } from "./profissao";
 import type {
   ApoloAddress,
   ApoloAuditSignal,
@@ -3444,7 +3445,17 @@ function mapApoloEntityRow(
 
   const enderecos = related.addresses.map(mapApoloAddressRow);
   // C2X ao vivo tem prioridade; entidade nascida no Apolo cai no fallback da metadata.
-  const cadastro = c2xCadastro ?? cadastroFromApoloMetadata(row, enderecos);
+  const cadastroBase = c2xCadastro ?? cadastroFromApoloMetadata(row, enderecos);
+  // A PROFISSÃO DECLARADA vem do metadata nos DOIS casos, inclusive quando a ficha veio do C2X ao
+  // vivo: o legado guarda uma FK e devolve "PROFISSÃO NÃO DECLARADA" para quem subiu sem
+  // padronizar — se dependesse dele, o texto do cliente sumiria da tela mais usada do dia a dia
+  // justamente depois do envio. Ver lib/apolo/profissao.ts.
+  const declarada = normalizarProfissaoLivre(
+    cadastroEfetivo(row.metadata as { cadastro?: unknown; cadastroEditado?: unknown } | null)
+      .profissaoOutro,
+  );
+  const cadastro =
+    cadastroBase && declarada ? { ...cadastroBase, professionDeclared: declarada } : cadastroBase;
 
   return {
     addresses: enderecos,

@@ -28,6 +28,7 @@ import {
 } from "@/lib/apolo/c2x-fields";
 import type { C2xOption } from "@/lib/apolo/c2x-fields";
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
+import { profissaoDeclarada, profissaoExibida } from "@/lib/apolo/profissao";
 import { gerarCodigoAutenticacao } from "@/lib/apolo/cadastro-persist";
 import { lerCadDaEsteira } from "@/lib/apolo/esteira-cad";
 import { createApoloAdminClient, fetchC2xCadastroByEntity } from "@/lib/apolo/server";
@@ -390,7 +391,14 @@ export async function montarCadDeEntidade(
         campo("Escolaridade", opcao(C2X_ESCOLARIDADE, c.escolaridadeId)),
         campo("Faixa de renda", opcao(C2X_FAIXA_RENDA, c.rendaId)),
         campo("Patrimônio", texto(c.patrimonio)),
-        campo("Profissão", titleCase(opcao(C2X_PROFISSOES, c.profissaoId))),
+        // PROFISSÃO DIGITADA À MÃO (fora das 234 do C2X) sai NA CAD, marcada "(a padronizar)" —
+        // a pendência tem que estar no papel que o analista lê, não só na tela de validação.
+        // Já padronizada, o texto original vira um campo próprio: é o que o cliente DECLAROU, e
+        // esse dado não se perde ao ser traduzido para o catálogo. Ver lib/apolo/profissao.ts.
+        campo("Profissão", profissaoExibida(c.profissaoId, c.profissaoOutro)),
+        ...(profissaoDeclarada(c.profissaoId, c.profissaoOutro)
+          ? [campo("Profissão declarada", profissaoDeclarada(c.profissaoId, c.profissaoOutro))]
+          : []),
       ],
       title: "Perfil",
     });

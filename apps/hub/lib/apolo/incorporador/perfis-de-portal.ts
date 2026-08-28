@@ -19,6 +19,28 @@ export function ehPortalPersonalizado(slug: string): boolean {
   return PERSONALIZADOS.has(String(slug ?? "").trim().toLowerCase());
 }
 
+// PORTAL SÓ DE PRODUTOS — o sócio que enxerga o produto, não a operação.
+//
+// Pedido do Lucas (28/08/2026) para a MMendes Empreendimentos, sócia da Cecílio Rocha no Garden:
+// *"quero criar um perfil igual a cecilio para o socio deles. só que por enquanto deixa somente a
+// tela de produto e o produto somente o garden"*.
+//
+// ⚠️ POR QUE É UMA LISTA E NÃO UMA COLUNA NO BANCO: hoje é um caso e a regra é "por enquanto".
+// Coluna nova vira contrato permanente e migration; a lista deixa o recorte explícito no código,
+// onde quem for mexer nas abas TROPEÇA nela. Quando virar produto de verdade — vários sócios, cada
+// um com seu conjunto de abas —, aí sim vale a tabela. Ver [[project_portal_incorporador_dois_projetos]].
+//
+// ⚠️ O ESCOPO DO EMPREENDIMENTO NÃO MORA AQUI. "Só o Garden" é o vínculo em
+// `apolo_incorporador_empreendimentos`, que já limita TODAS as leituras do portal. Esta lista
+// decide apenas quais ABAS aparecem — se um dia a MMendes ganhar outro empreendimento, ela vê o
+// novo na aba Produtos sem precisar de deploy.
+const SO_PRODUTOS = new Set(["mmendes"]);
+
+/** Portal que enxerga SOMENTE a aba Produtos (sem CRM, Vendas nem Carteira). */
+export function ehPortalSoProdutos(slug: string): boolean {
+  return SO_PRODUTOS.has(String(slug ?? "").trim().toLowerCase());
+}
+
 // ⚠️ NÃO ACRESCENTE SLUG AQUI PARA "RESOLVER" UM PROBLEMA DO PADRÃO. Cada entrada é uma versão a
 // mais para manter viva, e a que ninguém olha é a que apodrece. A lista existe para proteger o que
 // JÁ FOI aprovado e entregue, não para adiar decisão de produto.

@@ -6,7 +6,7 @@ import { ALVO_TOQUE, fonte } from "@/modules/publico/ui/tokens";
 
 import { AlternadorDeTema, Marca, ProvedorDeTema, T, TEMA_CSS } from "./tema";
 
-import { ehPortalPersonalizado } from "@/lib/apolo/incorporador/perfis-de-portal";
+import { ehPortalPersonalizado, ehPortalSoProdutos } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { TelaCarteira } from "./TelaCarteira";
 import { TelaCrm } from "./TelaCrm";
 // Só o portal PERSONALIZADO monta esta tela (ver `abasDoPortal`); no padrão o mapa vive em Vendas.
@@ -61,7 +61,9 @@ function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug }: DadosDoPortal) {
   const [carregando, setCarregando] = useState(true);
   // Abre em Vendas: é a primeira pergunta do dono do empreendimento e a única aba que existe para
   // todo mundo (Carteira só aparece para quem tem carteira administrada, CRM ainda está por vir).
-  const [aba, setAba] = useState<Aba>("vendas");
+  // ⚠️ MENOS no portal SÓ PRODUTOS, onde Vendas não existe: abrir nela deixaria a tela em branco,
+  // porque o corpo renderiza por `aba` e nenhum ramo casaria. Ver [[perfis-de-portal]].
+  const [aba, setAba] = useState<Aba>(ehPortalSoProdutos(slug) ? "produtos" : "vendas");
 
   const carregarSessao = useCallback(async () => {
     try {
@@ -396,7 +398,16 @@ const ABAS_PERSONALIZADO: { chave: Aba; rotulo: string }[] = [
 // com a carteira do Garden. Por isso a lista própria em lib/lsoft/portais.
 const ABA_LSOFT: { chave: Aba; rotulo: string } = { chave: "lsoft", rotulo: "LSoft Integração" };
 
+// ⚠️ SÓ PRODUTOS É EXCLUSIVO: entra ANTES de tudo e sai com uma aba só. O sócio que recebe este
+// perfil (MMendes, no Garden) não vê CRM, Vendas, Carteira nem LSoft — inclusive porque a base do
+// LSoft é da carteira do Cecílio, não dele. Ver [[perfis-de-portal]].
+const ABAS_SO_PRODUTOS: { chave: Aba; rotulo: string }[] = [
+  { chave: "produtos", rotulo: "Produtos" },
+];
+
 export function abasDoPortal(slug: string): { chave: Aba; rotulo: string }[] {
+  if (ehPortalSoProdutos(slug)) return ABAS_SO_PRODUTOS;
+
   const base = ehPortalPersonalizado(slug) ? ABAS_PERSONALIZADO : ABAS;
   return portalVeBaseLsoft(slug) ? [...base, ABA_LSOFT] : base;
 }

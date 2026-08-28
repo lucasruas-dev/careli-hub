@@ -36,6 +36,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-28-profissao-outro-e-portal-mmendes",
+    deployedAt: "2026-08-28T07:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "PROFISSAO: quem nao encontra a profissao na lista agora digita e clica em 'Usar ...'. O cadastro segue em frente em vez de travar no campo.",
+              "O que foi digitado aparece com aviso ambar na validacao, com o texto do cliente do lado, para o operador escolher a profissao equivalente da lista.",
+              "Se a pessoa digitar o nome exato de uma profissao que ja existe (escrita de outro jeito), o sistema resolve sozinho e nao cria pendencia.",
+              "Para o C2X vai SEMPRE a profissao da lista, nunca o texto livre. Ficha com profissao a padronizar avisa antes de enviar.",
+              "O texto declarado fica visivel na CAD em PDF, no CRM 360 e na ficha do incorporador, e virou campo editavel em Editar cadastro.",
+            ],
+            screen: "Cadastro (CAD) e Validacao",
+          },
+        ],
+      },
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Novo perfil de portal que enxerga SOMENTE a aba Produtos - para socio que acompanha o produto, sem acesso a CRM, Vendas ou Carteira.",
+              "Primeiro portal assim: MMendes Empreendimentos (socia da Cecilio Rocha no Garden), com a logo propria na tela de login.",
+              "O portal da Cecilio Rocha nao muda em nada: segue com as cinco abas de sempre.",
+            ],
+            screen: "Perfis de portal",
+          },
+        ],
+      },
+    ],
+    rollback: "c0750953",
+    technical: {
+      done: "PROFISSAO: lib/apolo/profissao.ts novo (regra pura: normalizarProfissaoLivre, rotuloDaProfissao, casarProfissaoNaLista, temProfissao, profissaoPendenteDePadronizacao, profissaoExibida, profissaoParaC2x). SearchableSelect ganhou prop opcional aoDigitarOutro/valorOutro — a faixa 'Nao encontrou? Usar X' so aparece nos DOIS seletores de profissao (titular e conjuge); sexo/escolaridade/renda/imobiliaria seguem fechados no catalogo. profissaoOutro persiste em metadata.cadastro (titular) e no metadata do relacionamento conjuge; read-model do board e do CRM 360 devolvem o texto declarado; c2x-write-server usa profissaoParaC2x (rotulo de id valido ou null) para a regra 'texto livre jamais' ficar num ponto so. Revisao adversarial pegou dois defeitos reais, ambos corrigidos: (1) o id 25 = PROFISSAO NAO DECLARADA, que o C2X preenche sozinho, apagava a pendencia e a ficha passava batido pela validacao — agora ehProfissaoNaoDeclarada trata 25 como ausencia; (2) profissaoOutro era imortal (nao havia por onde corrigir/apagar) — virou campo do Editar cadastro do CRM, que grava em cadastroEditado, a camada que todos os leitores aplicam por ultimo. Mais: diagnosticarCadastro avisa 'Profissao a padronizar' antes do envio ao C2X, com a mesma cascata do payload. 30 testes novos. PORTAL: perfis-de-portal.ts ganhou SO_PRODUTOS + ehPortalSoProdutos(slug); abasDoPortal devolve so a aba Produtos para esses (checagem ANTES de personalizado/LSoft), e a aba inicial passa a ser 'produtos' em vez de 'vendas' (abrir em Vendas deixaria a tela em branco, porque o corpo renderiza por aba). Logo convertida do PDF com Inkscape (--export-area-drawing, recorte do A4 vazio) em /marcas/mmendes.svg e mmendes-branca.svg (tudo #ffffff, mesmo padrao do cecilio-rocha-branca). O escopo 'so Garden' NAO esta no codigo: e o vinculo em apolo_incorporador_empreendimentos, que ja limita todas as leituras. 11 testes cobrindo as tres formas de portal, inclusive que o Cecilio segue com cinco abas. Typecheck limpo; 310 testes do incorporador verdes.",
+      motivation: "Lucas (28/08): no CAD, 'o pessoal esta com dificuldades de achar a profissao, por isso, coloca uma opcao outro para eles digitarem, na validacao eu padronizo'. E no portal: 'quero criar um perfil igual a cecilio para o socio deles, so que por enquanto deixa somente a tela de produto e o produto somente o garden'.",
+    },
+    title: "Profissao com opcao 'Outro' no CAD + portal so de Produtos (MMendes)",
+    type: "novidade",
+    version: "1.215.0",
+  },
+  {
     buildTag: "2026-08-27-extrato-do-cliente-e-valor-liberado",
     deployedAt: "2026-08-27T10:30:00-03:00",
     modules: [
