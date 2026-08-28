@@ -41,7 +41,7 @@ import {
 import { useLancamentoSelecionado } from "../../lancamento-contexto";
 import { usarLeitorWedge } from "../usar-leitor-wedge";
 import { visualDoTotem } from "./escala-visual";
-import { imprimirCupomDaReserva } from "./imprimir-cupom";
+import { imprimirCupomDaReserva, logoDoCupom } from "./imprimir-cupom";
 import { usarEscalaDoTotem } from "./usar-escala-do-totem";
 
 // A POSIÇÃO DE RESERVA — tela touch do lançamento (Lucas, 24/08/2026).
@@ -400,9 +400,8 @@ export function ReservaView() {
     await imprimirCupomDaReserva({
       cliente: cliente.nome,
       codigoEvento: evento.enterpriseCode ?? "",
-      outrosProponentes: proponentes
-        .slice(1)
-        .map((p) => ({ nome: p.nome, percentual: p.percentual })),
+      // Só o nome: a participação de cada proponente é assunto da PA, não do cupom.
+      outrosProponentes: proponentes.slice(1).map((p) => ({ nome: p.nome })),
       dataHora: new Date().toLocaleString("pt-BR", {
         day: "2-digit",
         hour: "2-digit",
@@ -412,6 +411,7 @@ export function ReservaView() {
       }),
       evento: rotuloDoLancamento(evento),
       grupoId: r.data.grupoId,
+      logoSrc: logoDoCupom(),
       // Resolvida aqui e não pelo `origemDoCliente` do render, para não depender da ordem em
       // que os useMemo aparecem no arquivo.
       origem: origemDoClienteParaExibir(cliente)?.texto ?? null,

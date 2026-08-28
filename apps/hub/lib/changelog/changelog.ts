@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-28-cupom-com-marca",
+    deployedAt: "2026-08-28T21:00:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O cupom ganhou LAYOUT: faixa preta no topo com a marca da C2X, blocos separados por regua, cada lote na sua caixa e o codigo da reserva em destaque invertido.",
+              "O cupom agora conta os lotes ('LOTES RESERVADOS · 3') e separa o nome do empreendimento da data do evento.",
+              "Saiu o PERCENTUAL de participacao dos proponentes: o cupom diz quem esta na reserva, e a divisao entre eles fica na proposta de aquisicao, que e onde ela vale.",
+            ],
+            screen: "Cupom de reserva (impresso)",
+          },
+        ],
+      },
+    ],
+    rollback: "060632f2",
+    technical: {
+      done: "Layout novo em CUPOM_CSS/cupomHTML seguindo o padrao que ja imprime nitido na Honeywell ha semanas (etiqueta-css.ts): faixa #000 com print-color-adjust exact (sem ele o Chrome descarta o fundo na impressao e sobra texto branco em papel branco) e a logo da C2X em filter brightness(0) invert(1), do mesmo arquivo /prometeu/c2x-logo.png das credenciais, para a marca do cupom e a da etiqueta nao divergirem. Regua solida separa BLOCO, caixa de 1px separa item; o codigo da reserva ganhou bloco invertido, que e o que a secretaria confere de relance quando o bip falha. O rotulo do lancamento e quebrado em nome + data ('RESIDENCIAL VILLA PARIS · 22/08/2026'), com a segunda linha ausente quando nao ha separador. outrosProponentes passou de {nome, percentual} para {nome}: a participacao e clausula da PA. Uma versao intermediaria trouxe tambem a logo do EMPREENDIMENTO (rota + binarizacao por filtro SVG), retirada a pedido do Lucas antes do deploy - o cupom leva so a marca da C2X. 20 testes no arquivo do cupom guardam layout, blocos invertidos e as tres regras termicas. Typecheck limpo; 236 testes do Prometeu.",
+      motivation:
+        "Lucas (28/08), depois do deploy anterior: 'eu to achando o cupom feio, tem como deixar com um layout turbinado? trazer a logo da C2X'. Na sequencia, olhando a previa: 'tira a logo do empreendimento, o resto pode manter' e 'pode tirar os 50%, isso so vai na PA'.",
+    },
+    title: "Cupom de reserva com layout novo e a marca da C2X",
+    type: "melhoria",
+    version: "1.221.0",
+  },
+  {
     buildTag: "2026-08-28-reserva-no-tablet-deitado",
     deployedAt: "2026-08-28T19:20:00-03:00",
     modules: [

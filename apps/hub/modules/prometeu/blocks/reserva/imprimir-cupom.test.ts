@@ -56,8 +56,9 @@ const DADOS = {
   dataHora: "28/08/2026, 19:20",
   evento: "RESIDENCIAL VILLA PARIS · 22/08/2026",
   grupoId: "ca332abc-dbf5-4109-bb41-47f8f81ee63c",
+  logoSrc: "https://c2x.app.br/prometeu/c2x-logo.png",
   origem: "F M S MACIEL IMOVEIS · IGOR FERNANDO CLODOMIRO",
-  outrosProponentes: [] as { nome: string; percentual: number }[],
+  outrosProponentes: [] as { nome: string }[],
   qrDataUrl: "data:image/png;base64,iVBORw0KGgo=",
   unidades: [
     { lote: "06", quadra: "G" },
@@ -70,7 +71,7 @@ describe("o HTML do cupom", () => {
   it("não carrega tamanho de fonte solto no atributo style", () => {
     const html = cupomHTML({
       ...DADOS,
-      outrosProponentes: [{ nome: "JOAO DA SILVA", percentual: 50 }],
+      outrosProponentes: [{ nome: "JOAO DA SILVA" }],
     });
     // O proponente extra já teve `style="font-size:10px"` embutido, que escapava das regras
     // acima justamente por não estar no CSS.
@@ -84,12 +85,19 @@ describe("o HTML do cupom", () => {
     expect(html).toContain("QUADRA G · LOTE 08");
   });
 
-  it("a participação sai com vírgula decimal", () => {
+  // Lucas, 28/08: "pode tirar os 50%, isso só vai na PA". A divisão entre proponentes é
+  // cláusula da proposta; o cupom só diz QUEM está na reserva.
+  it("lista os outros proponentes pelo nome, sem percentual", () => {
     const html = cupomHTML({
       ...DADOS,
-      outrosProponentes: [{ nome: "JOAO DA SILVA", percentual: 33.33 }],
+      outrosProponentes: [
+        { nome: "JOAO DA SILVA" },
+        { nome: "ANA PAULA REIS" },
+      ],
     });
-    expect(html).toContain("33,33%");
+    expect(html).toContain("+ JOAO DA SILVA");
+    expect(html).toContain("+ ANA PAULA REIS");
+    expect(html).not.toContain("%");
   });
 
   // Lucas, 28/08, olhando o cupom impresso: "faltou na impressao o nome da imobiliairia".
@@ -102,6 +110,42 @@ describe("o HTML do cupom", () => {
   it("sem imobiliária o cupom não ganha linha em branco nem rótulo órfão", () => {
     const html = cupomHTML({ ...DADOS, origem: null });
     expect(html).not.toContain("cup-org");
+  });
+
+  // Lucas, 28/08: "eu to achando o cupom feio, tem como deixar com um layout turbinado?
+  // trazer a logo da C2X".
+  it("abre com a faixa preta da marca, igual à etiqueta da credencial", () => {
+    const html = cupomHTML(DADOS);
+    expect(html).toContain('class="cup-topo"');
+    expect(html).toContain('class="cup-logo"');
+    expect(html).toContain("https://c2x.app.br/prometeu/c2x-logo.png");
+  });
+
+  it("quebra o rótulo do lançamento em nome e data", () => {
+    const html = cupomHTML(DADOS);
+    expect(html).toContain(">RESIDENCIAL VILLA PARIS<");
+    expect(html).toContain(">22/08/2026<");
+  });
+
+  it("lançamento sem data no rótulo não gera linha vazia", () => {
+    const html = cupomHTML({ ...DADOS, evento: "GARDEN" });
+    expect(html).toContain(">GARDEN<");
+    expect(html).not.toContain("cup-dataev");
+  });
+
+  it("conta os lotes, e concorda no singular", () => {
+    expect(cupomHTML(DADOS)).toContain("LOTES RESERVADOS · 3");
+    const um = cupomHTML({ ...DADOS, unidades: [{ lote: "06", quadra: "G" }] });
+    expect(um).toContain("LOTE RESERVADO · 1");
+  });
+
+  // A faixa e o bloco do código são fundo preto: sem print-color-adjust o Chrome descarta o
+  // fundo na impressão e sobra texto branco em papel branco, ou seja, nada.
+  it("os blocos invertidos mandam o navegador imprimir o fundo", () => {
+    const faixa = CUPOM_CSS.slice(CUPOM_CSS.indexOf(".cup-topo"));
+    expect(faixa).toContain("print-color-adjust: exact");
+    const codigo = CUPOM_CSS.slice(CUPOM_CSS.indexOf(".cup-cod"));
+    expect(codigo).toContain("print-color-adjust: exact");
   });
 
   it("escapa o que veio do cadastro", () => {

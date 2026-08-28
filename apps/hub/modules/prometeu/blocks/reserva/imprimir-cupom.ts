@@ -17,8 +17,15 @@ type DadosDoCupom = {
   // origemDoClienteParaExibir. `null` quando não há nenhum dos dois: o cupom não desenha
   // rótulo órfão, mesma regra da tela.
   origem: null | string;
-  // Nomes + % dos DEMAIS proponentes (o titular é o `cliente`). Vazio = titular a 100%.
-  outrosProponentes: { nome: string; percentual: number }[];
+  // Só os NOMES dos demais proponentes (o titular é o `cliente`). Vazio = titular sozinho.
+  //
+  // ⚠️ SEM PERCENTUAL AQUI (Lucas, 28/08: "pode tirar os 50%, isso só vai na PA"). A
+  // participação de cada um é cláusula da proposta de aquisição, não do comprovante — o cupom
+  // existe para o cliente levar até a impressão da PA, e é lá que a divisão aparece.
+  outrosProponentes: { nome: string }[];
+  // URL ABSOLUTA da logo da C2X. Dentro do iframe about:blank um caminho relativo não resolve —
+  // mesma lição da etiqueta (imprimir-etiquetas.ts).
+  logoSrc: string;
   qrDataUrl: string;
   unidades: { lote: string; quadra: string }[];
 };
@@ -51,20 +58,51 @@ export const CUPOM_CSS = `
     color: #000;
     -webkit-font-smoothing: none;
     print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
-  .cup { padding: 4mm 1mm 6mm; text-align: center; }
-  .cup-emp { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
-  .cup-tit { font-size: 12px; margin-top: 1mm; letter-spacing: 0.1em; }
-  .cup-sep { border-top: 1px dashed #000; margin: 2.5mm 0; }
-  .cup-cli { font-size: 13px; text-transform: uppercase; word-wrap: break-word; }
-  .cup-lotes { margin-top: 2mm; }
-  .cup-lote { font-size: 15px; letter-spacing: 0.06em; padding: 0.8mm 0; }
-  .cup-qr img { width: 30mm; height: 30mm; margin-top: 1mm; }
-  .cup-cod { font-size: 13px; letter-spacing: 0.14em; margin-top: 1mm; }
+  .cup { padding: 0 0 6mm; text-align: center; }
+
+  /* A FAIXA PRETA — o mesmo desenho da etiqueta da credencial, que já sai nítido na
+     Honeywell há semanas: fundo sólido e a logo invertida por filtro. */
+  .cup-topo {
+    background: #000; color: #fff;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 3mm; padding: 2mm 3mm;
+    print-color-adjust: exact; -webkit-print-color-adjust: exact;
+  }
+  .cup-logo { height: 6mm; width: auto; flex-shrink: 0; filter: brightness(0) invert(1); }
+  .cup-selo { font-size: 13px; letter-spacing: 0.22em; }
+
+  .cup-corpo { padding: 0 1mm; }
+
+  .cup-emp { font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 3mm; }
+  .cup-dataev { font-size: 12px; margin-top: 0.6mm; }
+
+  /* Régua sólida separa BLOCO; a tracejada, item dentro do bloco. */
+  .cup-regua { border-top: 2px solid #000; margin: 3mm 0 2.5mm; }
+  .cup-rot { font-size: 11px; letter-spacing: 0.18em; }
+
+  .cup-cli { font-size: 14px; margin-top: 1.2mm; text-transform: uppercase; word-wrap: break-word; }
+  .cup-prop { font-size: 11px; margin-top: 0.8mm; }
+  .cup-org { font-size: 11px; margin-top: 1.5mm; text-transform: uppercase; }
+
+  .cup-lotes { margin-top: 1.5mm; }
+  .cup-lote {
+    border: 1px solid #000;
+    font-size: 15px; letter-spacing: 0.04em;
+    padding: 1.4mm 1mm; margin-top: 1.2mm;
+  }
+
+  .cup-qr img { width: 32mm; height: 32mm; margin-top: 1mm; }
+  /* O código em bloco invertido: é o que a secretária confere de relance quando o bip falha. */
+  .cup-cod {
+    background: #000; color: #fff;
+    font-size: 15px; letter-spacing: 0.2em;
+    padding: 1.4mm 1mm; margin-top: 1.5mm;
+    print-color-adjust: exact; -webkit-print-color-adjust: exact;
+  }
   .cup-data { font-size: 12px; margin-top: 2mm; }
   .cup-aviso { font-size: 11px; margin-top: 2.5mm; line-height: 1.4; }
-  .cup-prop { font-size: 11px; margin-top: 0.6mm; }
-  .cup-org { font-size: 11px; margin-top: 1.5mm; text-transform: uppercase; }
 `;
 
 function esc(valor: string | null | undefined): string {
@@ -84,32 +122,53 @@ export function cupomHTML(dados: DadosDoCupom): string {
     .join("");
 
   const outros = dados.outrosProponentes
-    .map(
-      (p) =>
-        `<div class="cup-prop">+ ${esc(p.nome)} · ${String(p.percentual).replace(".", ",")}%</div>`,
-    )
+    .map((p) => `<div class="cup-prop">+ ${esc(p.nome)}</div>`)
     .join("");
 
-  // A imobiliária fecha o bloco de gente, entre os proponentes e os lotes: é dela que o
-  // corretor precisa quando confere o cupom, e ela some por inteiro quando não existe.
+  // A imobiliária fecha o bloco de gente. Some por inteiro quando não existe — nada de rótulo
+  // órfão, mesma regra da tela.
   const origem = dados.origem
     ? `<div class="cup-org">${esc(dados.origem)}</div>`
     : "";
 
+  // O rótulo do lançamento chega como "RESIDENCIAL VILLA PARIS · 22/08/2026". No papel os dois
+  // pedem pesos diferentes, então quebram em duas linhas; sem o separador, o nome ocupa tudo.
+  const [nomeDoEvento, ...restoDoEvento] = dados.evento.split(" · ");
+  const dataDoEvento = restoDoEvento.join(" · ");
+
+  const plural =
+    dados.unidades.length === 1 ? "LOTE RESERVADO" : "LOTES RESERVADOS";
+
   return `<div class="cup">
-    <div class="cup-emp">${esc(dados.evento)}</div>
-    <div class="cup-tit">COMPROVANTE DE RESERVA</div>
-    <div class="cup-sep"></div>
-    <div class="cup-cli">${esc(dados.cliente)}</div>
-    ${outros}
-    ${origem}
-    <div class="cup-lotes">${lotes}</div>
-    <div class="cup-sep"></div>
-    <div class="cup-qr"><img src="${dados.qrDataUrl}" alt=""></div>
-    <div class="cup-cod">${esc(codigoDoCupom(dados.grupoId))}</div>
-    <div class="cup-data">${esc(dados.dataHora)}</div>
-    <div class="cup-aviso">Apresente este comprovante na área de impressão para retirar a proposta de aquisição.</div>
+    <div class="cup-topo">
+      <img class="cup-logo" src="${esc(dados.logoSrc)}" alt="C2X">
+      <div class="cup-selo">RESERVA</div>
+    </div>
+    <div class="cup-corpo">
+      <div class="cup-emp">${esc(nomeDoEvento ?? dados.evento)}</div>
+      ${dataDoEvento ? `<div class="cup-dataev">${esc(dataDoEvento)}</div>` : ""}
+      <div class="cup-regua"></div>
+      <div class="cup-rot">CLIENTE</div>
+      <div class="cup-cli">${esc(dados.cliente)}</div>
+      ${outros}
+      ${origem}
+      <div class="cup-regua"></div>
+      <div class="cup-rot">${plural} · ${dados.unidades.length}</div>
+      <div class="cup-lotes">${lotes}</div>
+      <div class="cup-regua"></div>
+      <div class="cup-qr"><img src="${dados.qrDataUrl}" alt=""></div>
+      <div class="cup-cod">${esc(codigoDoCupom(dados.grupoId))}</div>
+      <div class="cup-data">${esc(dados.dataHora)}</div>
+      <div class="cup-aviso">Apresente este comprovante na área de impressão para retirar a proposta de aquisição.</div>
+    </div>
   </div>`;
+}
+
+// A logo em URL ABSOLUTA: dentro do iframe about:blank um caminho relativo não resolveria.
+// Mesma peça da etiqueta (imprimir-etiquetas.ts) e o mesmo arquivo — a marca do cupom e a da
+// credencial não podem divergir.
+export function logoDoCupom(): string {
+  return new URL("/prometeu/c2x-logo.png", window.location.origin).toString();
 }
 
 function esperarImagens(doc: Document): Promise<void> {
