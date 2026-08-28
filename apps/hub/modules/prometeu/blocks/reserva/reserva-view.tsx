@@ -44,15 +44,15 @@ import { imprimirCupomDaReserva } from "./imprimir-cupom";
 
 // A POSIÇÃO DE RESERVA — monitor touch do lançamento (Lucas, 24/08/2026).
 //
-// Quiosque de AUTOATENDIMENTO, de fluxo contínuo: o CLIENTE passa a própria credencial no
-// leitor fixo → QUADRAS (só números + quantos livres) →
+// Quiosque de fluxo contínuo: o CLIENTE passa a própria credencial no LEITOR FIXO do balcão
+// (⚠️ a TELA fica com o OPERADOR — o cliente alcança só o leitor, então os textos daqui
+// informam ESTADO, não dão instrução a ninguém) → QUADRAS (só números + quantos livres) →
 // LOTES disponíveis (multi-seleção, selecionado em grafite invertido) → Finalizar → cupom
 // sai na térmica → a tela VOLTA SOZINHA para o início, limpa, pronta para o próximo bip.
 //
 // ⚠️ SEM LEITURA POR CÂMERA AQUI (Lucas, 28/08): "nessa etapa nunca iremos ter bip por camera".
-// O leitor é FIXO no balcão e quem bipa é o CLIENTE, não o operador — por isso os textos falam
-// com ele, na segunda pessoa, e chamam a etiqueta de CREDENCIAL. A câmera segue existindo no
-// CHECK-IN, que é outra tela e outro operador.
+// O leitor é FIXO no balcão e quem passa a credencial é o CLIENTE — mas quem OLHA a tela é o
+// operador. A câmera segue existindo no CHECK-IN, que é outra tela e outro operador.
 //
 // Decisões do Lucas nesta tela: mínimo de escrita (números grandes, ícones);
 // só lote DISPONÍVEL aparece; seleção acumula entre quadras; mini dash Reservas · Propostas
@@ -584,7 +584,7 @@ export function ReservaView() {
                 <QrCode aria-hidden="true" className="text-ink-muted" size={18} />
               )}
               <span className={`font-semibold text-ink ${telaCheia ? "text-xl" : "text-sm"}`}>
-                Agora passe a credencial do outro comprador
+                Aguardando a credencial do outro comprador
               </span>
               <div className="ml-auto flex gap-2">
                 <button
@@ -665,14 +665,14 @@ export function ReservaView() {
               ) : (
                 <QrCode aria-hidden="true" className="text-ink-muted" size={telaCheia ? 28 : 20} />
               )}
-              {/* ⚠️ QUEM LÊ ESTA FRASE É O CLIENTE, não o operador (Lucas, 28/08: "o scanner é
-                  fixo, o cliente vai chegar e bipar sua credencial, essa ação não é do operador
-                  e sim do cliente"). Por isso a tela fala com ele, na segunda pessoa, e chama a
-                  etiqueta de CREDENCIAL — que é o nome que ele conhece, o crachá que recebeu na
-                  recepção. "Bipe a etiqueta do cliente" era instrução de atendente e não fazia
-                  sentido nenhum para quem está do outro lado do balcão. */}
+              {/* ⚠️ ESTA TELA FICA COM O OPERADOR; o cliente só alcança o leitor (Lucas, 28/08:
+                  "essa tela vai ficar com operador, o cliente vai ver somente o scaner").
+                  Portanto ela informa ESTADO, não dá instrução: nem "bipe a etiqueta do cliente"
+                  (mandava o operador fazer o que é do cliente), nem "passe sua credencial"
+                  (falava com quem não está lendo). "Aguardando cliente" é o que o operador
+                  precisa saber de relance: o posto está livre e pronto. */}
               <p className={`font-semibold text-ink ${telaCheia ? "text-2xl" : "text-base"}`}>
-                Passe sua credencial no leitor para reservar seu lote
+                Aguardando cliente
               </p>
             </footer>
           ) : (
