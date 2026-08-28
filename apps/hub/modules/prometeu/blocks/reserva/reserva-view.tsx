@@ -40,9 +40,17 @@ import {
 } from "../../data/prometeu-operations";
 import { useLancamentoSelecionado } from "../../lancamento-contexto";
 import { usarLeitorWedge } from "../usar-leitor-wedge";
+import { visualDoTotem } from "./escala-visual";
 import { imprimirCupomDaReserva } from "./imprimir-cupom";
+import { usarEscalaDoTotem } from "./usar-escala-do-totem";
 
-// A POSIÇÃO DE RESERVA — monitor touch do lançamento (Lucas, 24/08/2026).
+// A POSIÇÃO DE RESERVA — tela touch do lançamento (Lucas, 24/08/2026).
+//
+// ⚠️ RODA EM TAMANHOS BEM DIFERENTES, e é isso que explica metade das decisões daqui: monitor
+// em pé no balcão, TABLET DEITADO no suporte (Lucas, 28/08: "pode deixar melhor deitado, o
+// suporte que tenho fica bom assim") e a janela do hub, para conferir sentado. Quem resolve o
+// tamanho é a escala — lib/prometeu/escala-do-totem.ts decide qual, escala-visual.ts diz
+// quanto vale cada um.
 //
 // Quiosque de fluxo contínuo: o CLIENTE passa a própria credencial no LEITOR FIXO do balcão
 // (⚠️ a TELA fica com o OPERADOR — o cliente alcança só o leitor, então os textos daqui
@@ -91,13 +99,13 @@ function dividirIgual(quantidade: number): number[] {
 // o clique do operador, e o `alternarTelaCheia` chamava exitFullscreen(). Ver o cabeçalho de
 // lib/prometeu/leitura-wedge.ts.
 
-const CARTAO =
-  "rounded-xl border border-line bg-surface transition-colors";
+const CARTAO = "rounded-xl border border-line bg-surface transition-colors";
 // O selecionado é GRAFITE INVERTIDO — padrão visual do Panteon; funciona nos dois temas por
 // ser par fixo de alto contraste (fundo #2C2C2A + texto #F1EFE8).
 const LOTE_LIVRE =
   "rounded-xl border border-line bg-surface text-ink hover:border-ink/40";
-const LOTE_MARCADO = "rounded-xl border border-[#2C2C2A] bg-[#2C2C2A] text-[#F1EFE8]";
+const LOTE_MARCADO =
+  "rounded-xl border border-[#2C2C2A] bg-[#2C2C2A] text-[#F1EFE8]";
 
 export function ReservaView() {
   // ⚠️ O LANÇAMENTO SELECIONADO NA TELA INICIAL MANDA (bug de 24/08: com o Vale do Ouro
@@ -105,7 +113,9 @@ export function ReservaView() {
   const selecionado = useLancamentoSelecionado();
   const [evento, setEvento] = useState<null | PrometeuEvento>(null);
   const [quadras, setQuadras] = useState<ReservaTouchQuadra[]>([]);
-  const [contadores, setContadores] = useState<null | ReservaTouchContadores>(null);
+  const [contadores, setContadores] = useState<null | ReservaTouchContadores>(
+    null,
+  );
   const [erro, setErro] = useState<null | string>(null);
   const [carregando, setCarregando] = useState(true);
 
@@ -114,15 +124,19 @@ export function ReservaView() {
   // true = o próximo bip ADICIONA um proponente em vez de começar reserva nova.
   const [bipandoProponente, setBipandoProponente] = useState(false);
   const [quadraAtiva, setQuadraAtiva] = useState<null | string>(null);
-  const [marcadas, setMarcadas] = useState<Map<string, ReservaTouchUnidade>>(new Map());
+  const [marcadas, setMarcadas] = useState<Map<string, ReservaTouchUnidade>>(
+    new Map(),
+  );
   const [confirmando, setConfirmando] = useState(false);
-  const [sucesso, setSucesso] = useState<null | { cliente: string; lotes: string[] }>(null);
+  const [sucesso, setSucesso] = useState<null | {
+    cliente: string;
+    lotes: string[];
+  }>(null);
   const [bipando, setBipando] = useState(false);
 
-  // TELA CHEIA do quiosque (Lucas, 24/08: monitor EM PÉ, "como aqueles tótens de pedidos").
-  // Fullscreen no PRÓPRIO bloco da Reserva: rail, abas e barra do sistema somem; com o estado
-  // ligado a tela inteira sobe de escala para leitura à distância. Esc também sai — por isso
-  // o estado vem do evento fullscreenchange, não do clique.
+  // TELA CHEIA do quiosque (Lucas, 24/08: "como aqueles tótens de pedidos"). Fullscreen no
+  // PRÓPRIO bloco da Reserva: rail, abas e barra do sistema somem. Esc também sai — por isso o
+  // estado vem do evento fullscreenchange, não do clique.
   const raizRef = useRef<HTMLDivElement>(null);
   const botaoTelaCheiaRef = useRef<HTMLButtonElement>(null);
   const [telaCheia, setTelaCheia] = useState(false);
@@ -130,6 +144,13 @@ export function ReservaView() {
   // tela cheia cair sem ele mandar, voltamos sozinhos no próximo bip — que é um gesto do
   // usuário e, portanto, autoriza requestFullscreen().
   const querTelaCheia = useRef(false);
+
+  // ⚠️ O TAMANHO NÃO VEM DA TELA CHEIA — vem do espaço que a tela tem. Aqui o `telaCheia` é só
+  // UM dos sinais de quiosque, e nem é o principal: o atalho do posto (`--kiosk`) ocupa o
+  // monitor inteiro sem passar pela Fullscreen API, e por muito tempo a tela do evento
+  // renderizou em tamanho de janelinha por causa disso. Ver lib/prometeu/escala-do-totem.ts.
+  const escala = usarEscalaDoTotem(raizRef, telaCheia);
+  const visual = visualDoTotem(escala);
 
   useEffect(() => {
     const aoMudar = () => setTelaCheia(Boolean(document.fullscreenElement));
@@ -142,7 +163,8 @@ export function ReservaView() {
   // toque seguinte, brigando com quem só queria dar uma olhada no Windows.
   useEffect(() => {
     const aoTeclar = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape" || ev.key === "F11") querTelaCheia.current = false;
+      if (ev.key === "Escape" || ev.key === "F11")
+        querTelaCheia.current = false;
     };
     window.addEventListener("keydown", aoTeclar);
     return () => window.removeEventListener("keydown", aoTeclar);
@@ -163,7 +185,8 @@ export function ReservaView() {
     entrarNaTelaCheia();
     // O botão continua FOCADO depois do clique. Com o foco nele, qualquer Enter que escape
     // (leitor mal configurado, sufixo extra) voltaria a clicá-lo e sairia da tela cheia.
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur();
   };
 
   const carregar = useCallback(async (eventoId?: string) => {
@@ -243,7 +266,12 @@ export function ReservaView() {
           if (atual.length >= MAX_PROPONENTES) return atual;
           const lista = [
             ...atual,
-            { credenciadoId: novo.id, documento: novo.documento, nome: novo.nome, percentual: 0 },
+            {
+              credenciadoId: novo.id,
+              documento: novo.documento,
+              nome: novo.nome,
+              percentual: 0,
+            },
           ];
           const divisao = dividirIgual(lista.length);
           return lista.map((p, i) => ({ ...p, percentual: divisao[i] ?? 0 }));
@@ -253,7 +281,12 @@ export function ReservaView() {
         const c = r.data.credenciado;
         setCliente(c);
         setProponentes([
-          { credenciadoId: c.id, documento: c.documento, nome: c.nome, percentual: 100 },
+          {
+            credenciadoId: c.id,
+            documento: c.documento,
+            nome: c.nome,
+            percentual: 100,
+          },
         ]);
         setBipandoProponente(false);
         setQuadraAtiva(null);
@@ -357,10 +390,13 @@ export function ReservaView() {
       return;
     }
 
-    const qrDataUrl = await QRCode.toDataURL(conteudoDoQrDoCupom(r.data.grupoId), {
-      margin: 1,
-      width: 340,
-    });
+    const qrDataUrl = await QRCode.toDataURL(
+      conteudoDoQrDoCupom(r.data.grupoId),
+      {
+        margin: 1,
+        width: 340,
+      },
+    );
     await imprimirCupomDaReserva({
       cliente: cliente.nome,
       codigoEvento: evento.enterpriseCode ?? "",
@@ -404,14 +440,15 @@ export function ReservaView() {
     [cliente],
   );
   const sufixoProponentes = sufixoDeProponentes(proponentes.length);
-  // Alvos de toque dos chips de proponente (Lucas: "é tela de toque — alvos grandes").
-  const alvoDoChip = telaCheia ? "h-11 w-11" : "h-9 w-9";
-  const iconeDoChip = telaCheia ? 18 : 14;
 
   return (
-    // ⚠️ RETRATO PRIMEIRO (monitor em pé, 1080×1920): a PÁGINA nunca rola — `overflow-hidden`
-    // aqui e `min-h-0` na coluna garantem que só a prateleira de lotes role por dentro. Header
-    // e rodapé do cliente são `shrink-0`: ficam SEMPRE visíveis, aconteça o que acontecer.
+    // ⚠️ A PÁGINA NUNCA ROLA, em nenhuma orientação: `overflow-hidden` aqui e `min-h-0` na
+    // coluna garantem que só a prateleira de lotes role por dentro. Header e rodapé do cliente
+    // são `shrink-0` — ficam SEMPRE visíveis, aconteça o que acontecer.
+    //
+    // Isso importa mais deitado do que em pé: no tablet a altura é o recurso escasso (uns 800px
+    // contra os 1920 do monitor em pé), e é justamente aí que um rodapé empurrado para fora
+    // deixaria o operador sem o Finalizar.
     <div
       ref={raizRef}
       className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas p-4 sm:p-6"
@@ -426,11 +463,11 @@ export function ReservaView() {
       <header className="mb-3 flex shrink-0 flex-col gap-2 landscape:flex-row landscape:items-center landscape:gap-3">
         <div className="min-w-0">
           <h1
-            className={`truncate font-semibold text-ink ${telaCheia ? "text-xl portrait:text-2xl" : "text-lg"}`}
+            className={`truncate font-semibold text-ink ${visual.tituloDoEvento}`}
           >
             {evento ? rotuloDoLancamento(evento) : "Reserva"}
           </h1>
-          <p className={`text-ink-muted ${telaCheia ? "text-sm" : "text-xs"}`}>
+          <p className={`text-ink-muted ${visual.subtituloDoEvento}`}>
             {totalDisponiveis} lotes disponíveis
           </p>
         </div>
@@ -447,14 +484,14 @@ export function ReservaView() {
           ).map(([rotulo, valor]) => (
             <div
               key={rotulo}
-              className={`${CARTAO} flex-1 text-center landscape:flex-none ${telaCheia ? "min-w-[92px] px-4 py-2" : "min-w-[86px] px-4 py-2"}`}
+              className={`${CARTAO} flex-1 text-center landscape:flex-none ${visual.cartaoDoContador}`}
             >
               <div
-                className={`font-bold tabular-nums text-ink ${telaCheia ? "text-3xl" : "text-2xl"}`}
+                className={`font-bold tabular-nums text-ink ${visual.numeroDoContador}`}
               >
                 {valor ?? "—"}
               </div>
-              <div className={`text-ink-muted ${telaCheia ? "text-xs" : "text-[11px]"}`}>
+              <div className={`text-ink-muted ${visual.rotuloDoContador}`}>
                 {rotulo}
               </div>
             </div>
@@ -485,19 +522,21 @@ export function ReservaView() {
         <div className="grid min-h-0 flex-1 place-items-center overflow-hidden">
           <div className="max-w-full px-4 text-center">
             <span
-              className={`mx-auto grid place-items-center rounded-full bg-[#2C2C2A] text-[#F1EFE8] ${telaCheia ? "h-32 w-32" : "h-20 w-20"}`}
+              className={`mx-auto grid place-items-center rounded-full bg-[#2C2C2A] text-[#F1EFE8] ${visual.medalhaDeSucesso}`}
             >
-              <Check aria-hidden="true" size={telaCheia ? 64 : 40} />
+              <Check aria-hidden="true" size={visual.iconeDeSucesso} />
             </span>
             <p
-              className={`mt-4 break-words font-bold uppercase text-ink ${telaCheia ? "text-4xl" : "text-2xl"}`}
+              className={`mt-4 break-words font-bold uppercase text-ink ${visual.nomeNoSucesso}`}
             >
               {sucesso.cliente}
             </p>
-            <p className={`mt-1 break-words text-ink-soft ${telaCheia ? "text-2xl" : "text-lg"}`}>
+            <p
+              className={`mt-1 break-words text-ink-soft ${visual.lotesNoSucesso}`}
+            >
               {sucesso.lotes.join(" · ")}
             </p>
-            <p className={`mt-3 text-ink-muted ${telaCheia ? "text-xl" : "text-sm"}`}>
+            <p className={`mt-3 text-ink-muted ${visual.avisoNoSucesso}`}>
               Cupom impresso — leve à impressão da PA.
             </p>
           </div>
@@ -516,21 +555,21 @@ export function ReservaView() {
                 <MapPin aria-hidden="true" size={16} />
                 Quadra
               </div>
-              <div
-                className={`grid gap-3 ${telaCheia ? "grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4" : "grid-cols-[repeat(auto-fill,minmax(110px,1fr))]"}`}
-              >
+              <div className={`grid ${visual.gradeDeQuadras}`}>
                 {quadras.map((q) => (
                   <button
                     key={q.quadra}
-                    className={`${CARTAO} px-2 text-center hover:border-ink/40 ${telaCheia ? "py-9" : "py-5"}`}
+                    className={`${CARTAO} px-2 text-center hover:border-ink/40 ${visual.cartaoDaQuadra}`}
                     onClick={() => setQuadraAtiva(q.quadra)}
                     type="button"
                   >
-                    <div className={`font-bold text-ink ${telaCheia ? "text-5xl" : "text-3xl"}`}>
+                    <div
+                      className={`font-bold text-ink ${visual.numeroDaQuadra}`}
+                    >
                       {q.quadra}
                     </div>
                     <div
-                      className={`mt-1 font-semibold text-ink-muted ${telaCheia ? "text-lg" : "text-sm"}`}
+                      className={`mt-1 font-semibold text-ink-muted ${visual.livresDaQuadra}`}
                     >
                       {q.disponiveis.length}
                     </div>
@@ -550,26 +589,24 @@ export function ReservaView() {
                 <span className="font-semibold text-ink">{quadraAtiva}</span>·
                 {quadra?.disponiveis.length ?? 0} disponíveis
               </div>
-              <div
-                className={`grid gap-3 ${telaCheia ? "grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-4" : "grid-cols-[repeat(auto-fill,minmax(96px,1fr))]"}`}
-              >
+              <div className={`grid ${visual.gradeDeLotes}`}>
                 {(quadra?.disponiveis ?? []).map((u) => {
                   const marcado = marcadas.has(u.codigo);
                   return (
                     <button
                       key={u.codigo}
-                      className={`${marcado ? LOTE_MARCADO : LOTE_LIVRE} px-2 text-center ${telaCheia ? "py-8" : "py-5"}`}
+                      className={`${marcado ? LOTE_MARCADO : LOTE_LIVRE} px-2 text-center ${visual.cartaoDoLote}`}
                       onClick={() => alternarLote(u)}
                       type="button"
                     >
-                      <span className={`font-bold ${telaCheia ? "text-4xl" : "text-2xl"}`}>
+                      <span className={`font-bold ${visual.numeroDoLote}`}>
                         {u.lote}
                       </span>
                       {marcado ? (
                         <Check
                           aria-hidden="true"
                           className="mx-auto mt-1"
-                          size={telaCheia ? 26 : 18}
+                          size={visual.iconeDoLote}
                         />
                       ) : null}
                     </button>
@@ -583,11 +620,21 @@ export function ReservaView() {
           {bipandoProponente ? (
             <div className="mt-3 flex shrink-0 flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 py-3">
               {bipando ? (
-                <Loader2 aria-hidden="true" className="animate-spin text-ink-muted" size={18} />
+                <Loader2
+                  aria-hidden="true"
+                  className="animate-spin text-ink-muted"
+                  size={18}
+                />
               ) : (
-                <QrCode aria-hidden="true" className="text-ink-muted" size={18} />
+                <QrCode
+                  aria-hidden="true"
+                  className="text-ink-muted"
+                  size={18}
+                />
               )}
-              <span className={`font-semibold text-ink ${telaCheia ? "text-xl" : "text-sm"}`}>
+              <span
+                className={`font-semibold text-ink ${visual.tituloDaQuadraAberta}`}
+              >
                 Aguardando a credencial do outro comprador
               </span>
               <div className="ml-auto flex gap-2">
@@ -614,7 +661,7 @@ export function ReservaView() {
               {proponentes.map((p, indice) => (
                 <span
                   key={p.credenciadoId}
-                  className={`inline-flex items-center gap-1.5 rounded-full border border-line bg-surface font-semibold text-ink ${telaCheia ? "py-1.5 pl-4 pr-2 text-base" : "py-1 pl-3 pr-1.5 text-xs"}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full border border-line bg-surface font-semibold text-ink ${visual.chipDeProponente}`}
                 >
                   {p.nome.split(/\s+/)[0]}
                   <b className="tabular-nums">{p.percentual}%</b>
@@ -624,28 +671,28 @@ export function ReservaView() {
                   {indice > 0 ? (
                     <span className="inline-flex items-center gap-0.5">
                       <button
-                        className={`grid place-items-center rounded-full text-ink-muted transition hover:bg-black/5 hover:text-ink dark:hover:bg-white/10 ${alvoDoChip}`}
+                        className={`grid place-items-center rounded-full text-ink-muted transition hover:bg-black/5 hover:text-ink dark:hover:bg-white/10 ${visual.alvoDoChip}`}
                         onClick={() => ajustarPercentual(p.credenciadoId, -5)}
                         title="-5%"
                         type="button"
                       >
-                        <Minus aria-hidden="true" size={iconeDoChip} />
+                        <Minus aria-hidden="true" size={visual.iconeDoChip} />
                       </button>
                       <button
-                        className={`grid place-items-center rounded-full text-ink-muted transition hover:bg-black/5 hover:text-ink dark:hover:bg-white/10 ${alvoDoChip}`}
+                        className={`grid place-items-center rounded-full text-ink-muted transition hover:bg-black/5 hover:text-ink dark:hover:bg-white/10 ${visual.alvoDoChip}`}
                         onClick={() => ajustarPercentual(p.credenciadoId, 5)}
                         title="+5%"
                         type="button"
                       >
-                        <Plus aria-hidden="true" size={iconeDoChip} />
+                        <Plus aria-hidden="true" size={visual.iconeDoChip} />
                       </button>
                       <button
-                        className={`grid place-items-center rounded-full text-ink-muted transition hover:bg-black/5 hover:text-ink dark:hover:bg-white/10 ${alvoDoChip}`}
+                        className={`grid place-items-center rounded-full text-ink-muted transition hover:bg-black/5 hover:text-ink dark:hover:bg-white/10 ${visual.alvoDoChip}`}
                         onClick={() => removerProponente(p.credenciadoId)}
                         title="Remover"
                         type="button"
                       >
-                        <X aria-hidden="true" size={iconeDoChip} />
+                        <X aria-hidden="true" size={visual.iconeDoChip} />
                       </button>
                     </span>
                   ) : null}
@@ -658,16 +705,20 @@ export function ReservaView() {
               a conferência (nome + lotes) e as ações. */}
           {!cliente ? (
             <footer
-              className={`mt-3 flex shrink-0 flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 ${telaCheia ? "py-4" : "py-3"}`}
+              className={`mt-3 flex shrink-0 flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 ${visual.paddingDoRodape}`}
             >
               {bipando ? (
                 <Loader2
                   aria-hidden="true"
                   className="animate-spin text-ink-muted"
-                  size={telaCheia ? 28 : 20}
+                  size={visual.iconeDoBip}
                 />
               ) : (
-                <QrCode aria-hidden="true" className="text-ink-muted" size={telaCheia ? 28 : 20} />
+                <QrCode
+                  aria-hidden="true"
+                  className="text-ink-muted"
+                  size={visual.iconeDoBip}
+                />
               )}
               {/* ⚠️ ESTA TELA FICA COM O OPERADOR; o cliente só alcança o leitor (Lucas, 28/08:
                   "essa tela vai ficar com operador, o cliente vai ver somente o scaner").
@@ -675,129 +726,143 @@ export function ReservaView() {
                   (mandava o operador fazer o que é do cliente), nem "passe sua credencial"
                   (falava com quem não está lendo). "Aguardando cliente" é o que o operador
                   precisa saber de relance: o posto está livre e pronto. */}
-              <p className={`font-semibold text-ink ${telaCheia ? "text-2xl" : "text-base"}`}>
+              <p className={`font-semibold text-ink ${visual.textoDeEspera}`}>
                 Aguardando cliente
               </p>
             </footer>
           ) : (
-          // O CLIENTE EM DESTAQUE (Lucas, 28/08): nome grande, legível a um metro, com a
-          // imobiliária logo abaixo. Em retrato o cartão vira duas faixas — identidade em cima,
-          // ações em baixo, com o Finalizar esticado (alvo grande de toque).
-          <footer
-            className={`mt-3 flex shrink-0 flex-col gap-3 rounded-2xl border border-line bg-surface px-4 landscape:flex-row landscape:items-center landscape:gap-4 ${telaCheia ? "py-4" : "py-3"}`}
-          >
-            <div className="flex min-w-0 items-center gap-3 landscape:flex-1">
-              <span
-                className={`grid shrink-0 place-items-center rounded-xl bg-[#2C2C2A] text-[#F1EFE8] ${telaCheia ? "h-14 w-14" : "h-11 w-11"}`}
-              >
-                <User aria-hidden="true" size={telaCheia ? 30 : 22} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-baseline gap-2">
-                  {/* ⚠️ O TAMANHO É DITADO PELO NOME MAIS LONGO, não pelo mais bonito. Em
+            // O CLIENTE EM DESTAQUE (Lucas, 28/08): nome grande, legível a um metro, com a
+            // imobiliária logo abaixo. Em retrato o cartão vira duas faixas — identidade em cima,
+            // ações em baixo, com o Finalizar esticado (alvo grande de toque).
+            <footer
+              className={`mt-3 flex shrink-0 flex-col gap-3 rounded-2xl border border-line bg-surface px-4 landscape:flex-row landscape:items-center landscape:gap-4 ${visual.paddingDoRodape}`}
+            >
+              <div className="flex min-w-0 items-center gap-3 landscape:flex-1">
+                <span
+                  className={`grid shrink-0 place-items-center rounded-xl bg-[#2C2C2A] text-[#F1EFE8] ${visual.avatarDoCliente}`}
+                >
+                  <User aria-hidden="true" size={visual.iconeDoAvatar} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    {/* ⚠️ O TAMANHO É DITADO PELO NOME MAIS LONGO, não pelo mais bonito. Em
                       retrato (1080 de largura) o `text-4xl` cortava "FLAVIA CALDEIRA ANDRADE"
                       em "FLAVIA CALDEIRA ANDR…" — e nome truncado no tótem é o operador
                       confirmando reserva com meia identificação na tela. Um degrau abaixo
                       cabe, e continua legível de longe (Lucas, 28/08: "pode diminuir um
                       pouco o nome"). */}
-                  <span
-                    className={`min-w-0 truncate font-black uppercase leading-tight tracking-tight text-ink ${telaCheia ? "text-2xl portrait:text-3xl" : "text-lg"}`}
-                  >
-                    {cliente.nome}
-                  </span>
-                  {sufixoProponentes ? (
                     <span
-                      className={`shrink-0 rounded-full bg-[#2C2C2A] px-2 py-0.5 font-bold text-[#F1EFE8] ${telaCheia ? "text-base" : "text-xs"}`}
-                      title={`${proponentes.length} proponentes`}
+                      className={`min-w-0 truncate font-black uppercase leading-tight tracking-tight text-ink ${visual.nomeDoCliente}`}
                     >
-                      {sufixoProponentes}
+                      {cliente.nome}
                     </span>
-                  ) : null}
-                </div>
-                {/* Sem imobiliária E sem corretor a linha simplesmente não existe — nada de
+                    {sufixoProponentes ? (
+                      <span
+                        className={`shrink-0 rounded-full bg-[#2C2C2A] px-2 py-0.5 font-bold text-[#F1EFE8] ${visual.seloDeProponentes}`}
+                        title={`${proponentes.length} proponentes`}
+                      >
+                        {sufixoProponentes}
+                      </span>
+                    ) : null}
+                  </div>
+                  {/* Sem imobiliária E sem corretor a linha simplesmente não existe — nada de
                     rótulo órfão nem buraco no cartão. */}
-                {/* Um degrau abaixo do nome, e menor que ele: "F M S MACIEL IMOVEIS · IGOR
+                  {/* Um degrau abaixo do nome, e menor que ele: "F M S MACIEL IMOVEIS · IGOR
                     FERNANDO CLODOMIRO" também estourava a largura em retrato. Aqui truncar
                     incomoda menos (o nome do corretor é o fim da linha), mas quanto mais
                     couber, melhor para o operador conferir com a etiqueta na mão. */}
-                {origemDoCliente ? (
-                  <p
-                    className={`mt-0.5 flex min-w-0 items-center gap-1.5 font-semibold text-ink-soft ${telaCheia ? "text-base" : "text-sm"}`}
-                  >
-                    {origemDoCliente.tipo === "imobiliaria" ? (
-                      <Building2 aria-hidden="true" className="shrink-0" size={telaCheia ? 20 : 15} />
-                    ) : (
-                      <UserRound aria-hidden="true" className="shrink-0" size={telaCheia ? 20 : 15} />
-                    )}
-                    <span className="truncate">{origemDoCliente.texto}</span>
-                  </p>
-                ) : null}
-                {/* ⚠️ QUADRA E LOTE, NÃO O CÓDIGO DA UNIDADE (Lucas, 28/08: "o codigo da unidade
+                  {origemDoCliente ? (
+                    <p
+                      className={`mt-0.5 flex min-w-0 items-center gap-1.5 font-semibold text-ink-soft ${visual.origemDoCliente}`}
+                    >
+                      {origemDoCliente.tipo === "imobiliaria" ? (
+                        <Building2
+                          aria-hidden="true"
+                          className="shrink-0"
+                          size={visual.iconeDaOrigem}
+                        />
+                      ) : (
+                        <UserRound
+                          aria-hidden="true"
+                          className="shrink-0"
+                          size={visual.iconeDaOrigem}
+                        />
+                      )}
+                      <span className="truncate">{origemDoCliente.texto}</span>
+                    </p>
+                  ) : null}
+                  {/* ⚠️ QUADRA E LOTE, NÃO O CÓDIGO DA UNIDADE (Lucas, 28/08: "o codigo da unidade
                     não é legal para esse processo pois confunde"). "RVPA19 · RVPB10" é código de
                     sistema: ninguém lê isso em voz alta, e com dois lotes de número igual em
                     quadras diferentes (RVPA10 e RVPB10) a diferença fica escondida no meio da
                     sigla. O corretor e o cliente falam "quadra A, lote 19" — é essa a leitura
                     que precisa bater com o cupom e com a placa no terreno. */}
-                <p
-                  className={`mt-0.5 truncate ${marcadas.size > 0 ? "font-semibold text-ink" : "text-ink-muted"} ${telaCheia ? "text-base" : "text-xs"}`}
-                >
-                  {marcadas.size > 0
-                    ? [...marcadas.values()]
-                        .map((u) => `${u.quadra} ${u.lote}`)
-                        .join("  ·  ")
-                    : "Nenhum lote marcado"}
-                </p>
+                  <p
+                    className={`mt-0.5 truncate ${marcadas.size > 0 ? "font-semibold text-ink" : "text-ink-muted"} ${visual.lotesMarcados}`}
+                  >
+                    {marcadas.size > 0
+                      ? [...marcadas.values()]
+                          .map((u) => `${u.quadra} ${u.lote}`)
+                          .join("  ·  ")
+                      : "Nenhum lote marcado"}
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2 landscape:ml-auto landscape:shrink-0">
-              <button
-                className={`grid shrink-0 place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10 ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
-                disabled={proponentes.length >= MAX_PROPONENTES || bipandoProponente}
-                onClick={() => setBipandoProponente(true)}
-                title="Adicionar proponente"
-                type="button"
-              >
-                <UserPlus aria-hidden="true" size={telaCheia ? 28 : 20} />
-              </button>
-              {/* ⚠️ VOLTAR E CANCELAR SÃO BOTÕES DIFERENTES. Eram um só, que trocava de função
+              <div className="flex items-center gap-2 landscape:ml-auto landscape:shrink-0">
+                <button
+                  className={`grid shrink-0 place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10 ${visual.botaoDeAcao}`}
+                  disabled={
+                    proponentes.length >= MAX_PROPONENTES || bipandoProponente
+                  }
+                  onClick={() => setBipandoProponente(true)}
+                  title="Adicionar proponente"
+                  type="button"
+                >
+                  <UserPlus aria-hidden="true" size={visual.iconeDeAcao} />
+                </button>
+                {/* ⚠️ VOLTAR E CANCELAR SÃO BOTÕES DIFERENTES. Eram um só, que trocava de função
                   conforme a tela: dentro de uma quadra virava "voltar" e o operador ficava SEM
                   saída — preso ao atendimento, tendo que finalizar para se livrar dele. Ficou
                   pior depois que passamos a recusar o bip de outro cliente com "finalize ou
                   cancele": a mensagem mandava fazer algo que a tela não oferecia naquele
                   momento (Lucas, 28/08: "aqui também precisamos de um botão de cancelar"). */}
-              {quadraAtiva !== null ? (
+                {quadraAtiva !== null ? (
+                  <button
+                    className={`grid shrink-0 place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 dark:hover:bg-white/10 ${visual.botaoDeAcao}`}
+                    onClick={() => setQuadraAtiva(null)}
+                    title="Outra quadra"
+                    type="button"
+                  >
+                    <ArrowLeft aria-hidden="true" size={visual.iconeDeAcao} />
+                  </button>
+                ) : null}
                 <button
-                  className={`grid shrink-0 place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 dark:hover:bg-white/10 ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
-                  onClick={() => setQuadraAtiva(null)}
-                  title="Outra quadra"
+                  className={`grid shrink-0 place-items-center rounded-xl border border-line text-ink-soft transition hover:border-ink/40 hover:text-ink ${visual.botaoDeAcao}`}
+                  onClick={resetar}
+                  title="Cancelar atendimento"
                   type="button"
                 >
-                  <ArrowLeft aria-hidden="true" size={telaCheia ? 28 : 20} />
+                  <X aria-hidden="true" size={visual.iconeDeAcao} />
                 </button>
-              ) : null}
-              <button
-                className={`grid shrink-0 place-items-center rounded-xl border border-line text-ink-soft transition hover:border-ink/40 hover:text-ink ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
-                onClick={resetar}
-                title="Cancelar atendimento"
-                type="button"
-              >
-                <X aria-hidden="true" size={telaCheia ? 28 : 20} />
-              </button>
-              <button
-                className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#2C2C2A] font-bold text-[#F1EFE8] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 landscape:flex-none ${telaCheia ? "h-16 px-9 text-2xl" : "h-12 px-6 text-base"}`}
-                disabled={marcadas.size === 0 || confirmando}
-                onClick={() => void finalizar()}
-                type="button"
-              >
-                {confirmando ? (
-                  <Loader2 aria-hidden="true" className="animate-spin" size={telaCheia ? 28 : 20} />
-                ) : (
-                  <Check aria-hidden="true" size={telaCheia ? 28 : 20} />
-                )}
-                Finalizar
-              </button>
-            </div>
-          </footer>
+                <button
+                  className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#2C2C2A] font-bold text-[#F1EFE8] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 landscape:flex-none ${visual.botaoFinalizar}`}
+                  disabled={marcadas.size === 0 || confirmando}
+                  onClick={() => void finalizar()}
+                  type="button"
+                >
+                  {confirmando ? (
+                    <Loader2
+                      aria-hidden="true"
+                      className="animate-spin"
+                      size={visual.iconeDeAcao}
+                    />
+                  ) : (
+                    <Check aria-hidden="true" size={visual.iconeDeAcao} />
+                  )}
+                  Finalizar
+                </button>
+              </div>
+            </footer>
           )}
         </div>
       )}

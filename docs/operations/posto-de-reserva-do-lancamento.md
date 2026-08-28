@@ -1,8 +1,12 @@
 # Posto de reserva do lançamento — como deixar a máquina pronta
 
-Guia da máquina que fica na **posição de reserva** do evento: monitor em pé, leitor fixo no
+Guia da máquina que fica na **posição de reserva** do evento: a tela no suporte, leitor fixo no
 balcão, impressora de cupom ao lado. O objetivo é o fluxo rodar **sem clique nenhum** além de
 escolher os lotes na tela.
+
+**A tela do próximo evento é o tablet, deitado** (Lucas, 28/08: *"pode deixar melhor deitado, o
+suporte que tenho fica bom assim"*). Isso muda o formato da tela, **não** o resto do posto: o
+computador, o leitor e a impressora continuam sendo os mesmos, pelo motivo da seção 6.
 
 Escrito em 28/08/2026, depois do primeiro teste com hardware real (evento Villa Paris).
 
@@ -108,8 +112,9 @@ alguém fechando o navegador sem querer.
    `Printer POS-80`).
 3. **Leitor 2D** — não precisa de driver; configurar no manual dele o layout **ABNT2** e o
    **sufixo Enter** (seção 1 deste guia).
-4. **spacedesk**, SÓ se a tela for um tablet ([spacedesk.net/download](https://www.spacedesk.net/download/)
-   no PC + app na Play Store). Com monitor comum, pular.
+4. **spacedesk** — é o que põe a tela no tablet
+   ([spacedesk.net/download](https://www.spacedesk.net/download/) no PC + app na Play Store).
+   Com monitor comum, pular. Ver a seção 6 antes.
 
 **Ajustes do Windows que evitam parada no meio do evento:**
 
@@ -130,3 +135,37 @@ alguém fechando o navegador sem querer.
 
 ⚠️ **Leve o notebook como reserva.** Se o mini PC falhar, o posto sobe em qualquer máquina com
 Chrome, o leitor e a impressora — nada do fluxo depende daquele computador específico.
+
+---
+
+## 6. ⚠️ O tablet é a TELA, não o computador
+
+Parece detalhe e não é: decide se o cupom sai sozinho ou não.
+
+**O jeito certo — tablet como monitor (spacedesk).** O Chrome roda no mini PC; o leitor e a
+impressora ficam plugados nele; o tablet mostra a tela e devolve o toque, por USB ou Wi‑Fi. O
+tablet fica deitado no suporte, e nada do fluxo muda.
+
+**O jeito que quebra — abrir o Panteon no navegador do próprio tablet.** Aí o posto perde as
+duas pontas físicas do fluxo:
+
+| | no mini PC | no navegador do tablet |
+|---|---|---|
+| **Cupom automático** | `--kiosk-printing` imprime direto | ❌ não existe no Android: toda impressão abre o diálogo do sistema, e a Elgin USB nem aparece como destino |
+| **Leitor de balcão** | USB, funciona como teclado | só se for Bluetooth, pareado com o tablet |
+
+Ou seja: no navegador do tablet, o *"finalizou, sai"* que o Lucas pediu vira "finalizou, alguém
+toca em imprimir e escolhe a impressora" — em cada cliente. **Não vale a pena.**
+
+**Como ligar o tablet como monitor:**
+
+1. spacedesk **Driver** no mini PC + app **spacedesk** no tablet (Play Store).
+2. Conectar por **USB** (tethering USB ligado no tablet) em vez de Wi‑Fi. A rede do salão cai, o
+   cabo não.
+3. No Windows: *Configurações → Sistema → Tela* → selecionar a tela do tablet →
+   **Duplicar** (mais simples: o operador vê o mesmo no tablet e no mini PC, se houver monitor).
+4. Confirmar que o **toque funciona** antes do evento: tocar um lote no tablet tem que marcar na
+   tela. É a única parte do spacedesk que às vezes precisa de ajuste.
+
+Com o tablet deitado, a tela de reserva já se ajusta sozinha ao formato — cartões e textos um
+degrau menores para sobrar lista de lotes. Não há nada para configurar no sistema.

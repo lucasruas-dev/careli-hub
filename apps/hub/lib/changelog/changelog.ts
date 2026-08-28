@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-28-reserva-no-tablet-deitado",
+    deployedAt: "2026-08-28T19:20:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A tela agora se ajusta ao TAMANHO de onde esta rodando: monitor do posto, TABLET DEITADO no suporte ou a janela do sistema. Antes eram so dois tamanhos, e a escolha entre eles era 'esta em tela cheia ou nao'.",
+              "No TABLET, texto e cartoes ficam um degrau menores para sobrar prateleira de lotes, que e a parte que o operador de fato usa. Os alvos de toque NAO encolhem junto: dedo continua do mesmo tamanho.",
+              "CORRECAO: aberta pelo atalho de quiosque do posto, a tela renderizava no tamanho de janelinha - justamente na maquina onde ela precisa ser lida de longe. O Chrome em quiosque ocupa o monitor inteiro sem avisar a pagina, e a tela achava que estava em janela.",
+              "O nome do cliente, a lista de lotes marcados e o botao de finalizar continuam sempre visiveis em qualquer um dos tres tamanhos.",
+            ],
+            screen: "Reserva (monitor touch)",
+          },
+        ],
+      },
+    ],
+    rollback: "6e1326f2",
+    technical: {
+      done: "A tela tinha dois tamanhos e escolhia por Boolean(document.fullscreenElement) espalhado em 37 ternarios no JSX. Dois defeitos nisso: (a) o atalho do posto abre com --kiosk, que ocupa o monitor inteiro SEM Fullscreen API, entao fullscreenElement e null e a tela do evento caia no tamanho de janela - o guia do posto que eu mesmo escrevi ontem recomenda --kiosk, ou seja, o defeito estava documentado como procedimento; (b) 'grande' nao e um tamanho so: monitor em pe tem 1920px de altura, tablet deitado tem ~800, e a mesma escala nos dois deixa header e rodape comendo a prateleira de lotes. Agora a escala vem do ESPACO: lib/prometeu/escala-do-totem.ts (puro, 13 testes) recebe {alturaDaJanela, alturaDaTela, alturaDoQuadro, telaCheiaPelaApi} e devolve ampla (>=1000px) / media (>=560px) / compacta; o quiosque e reconhecido por QUALQUER caminho - Fullscreen API OU janela com a altura da propria tela, com folga de 8px. Fora do quiosque e sempre compacta, para nao engordar dentro do hub. modules/prometeu/blocks/reserva/escala-visual.ts tabela os 35 tokens dos tres degraus num lugar so (os 37 ternarios sumiram do JSX); usar-escala-do-totem.ts mede o ELEMENTO com ResizeObserver + resize + orientationchange, e nao ha laco de realimentacao porque o quadro e h-full (altura vem do pai, nao do conteudo). Comeca em compacta de proposito: e o unico degrau que cabe em qualquer lugar. Um cuidado deliberado na tabela: o nome do cliente NAO desce de degrau no tablet (fica em text-2xl, igual ao monitor) porque e o campo que o operador confere contra a etiqueta na mao, e deitado sobra largura para ele. Typecheck limpo.",
+      motivation:
+        "Lucas (28/08), depois de montar o posto com o hardware real: 'para o proximo evento, vamos deixar a tela de reserva para o tablet? pode deixar melhor deitado, o suporte que tenho fica bom assim'. O layout retrato do deploy anterior continua valendo para o monitor em pe; o que faltava era a tela caber bem tambem onde a altura e curta.",
+    },
+    title:
+      "Reserva touch: o tamanho vem do espaco da tela, e o tablet deitado vira posto",
+    type: "melhoria",
+    version: "1.220.0",
+  },
+  {
     buildTag: "2026-08-28-reserva-quadra-lote-e-cancelar",
     deployedAt: "2026-08-28T14:10:00-03:00",
     modules: [
@@ -68,9 +98,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "6428702b",
     technical: {
       done: "A CAUSA do fullscreen cair: o botao de tela cheia e um <button> que fica como document.activeElement depois do clique; o wedge tratava Enter SEM preventDefault, e ativar botao focado com Enter e a acao PADRAO do keydown — o Enter que fecha a rajada do leitor re-clicava o botao e o toggle chamava exitFullscreen(). Mesmo mecanismo re-clicava o ultimo lote/quadra (desmarcava a selecao). Correcao na causa: lib/prometeu/leitura-wedge.ts novo (puro) com avaliarLeituraDoWedge + decidirEnterDoWedge, que separa 'aceita' de 'cancelarPadrao' — cancela tambem o sufixo CR+LF e a rajada curta em ritmo de maquina (<=30ms/tecla), mas NUNCA dentro de input/textarea (senao rouba o submit da pessoa); o listener virou fase de CAPTURA com preventDefault+stopPropagation. As TRES copias do wedge foram unificadas no hook compartilhado (reserva, PA e secretaria) — a da PA ainda nao passava por normalizarLeituraDoQr, entao o cupom com hifen trocado era recusado. Rede extra: blur do botao ao entrar em tela cheia, desejo do operador guardado em ref, Escape E F11 zeram o desejo, e a recuperacao saiu de aoBipar (que tambem e callback da camera, sem ativacao transitoria — requestFullscreen era recusado e engolido pelo catch). IDENTIDADE: lib/prometeu/identidade-do-credenciado.ts resolve nome e imobiliaria pela MESMA cadeia de listCredenciados (vinculo do Apolo > de-para apolo_imobiliaria_match > coluna crua) — sem isso o totem lia a coluna crua e quem veio por vinculo apareceria SEM imobiliaria, e o nome corrigido no Apolo nunca chegava ao totem (prometeu_credenciados.nome nao recebe UPDATE). Fallback nas colunas cruas se o Apolo falhar: o salao nao para. LAYOUT: raiz overflow-hidden, shrink-0 no header/rodapes, prateleira de lotes como unica area rolavel (min-h-0 + overscroll-contain), empilhamento por padrao com landscape: para a horizontal, escalas reduzidas para caber em 1080 de largura, botoes de proponente de 24px para 36/44px. Typecheck limpo; 203 testes do Prometeu (23 arquivos), 1.697 no total.",
-      motivation: "Primeiro teste do kit de reserva com hardware real (28/08): o Lucas bipou a etiqueta da FLAVIA e reservou 3 lotes. Pedidos dele na sequencia: 'queria trazer a imobiliaria', 'pode dar um destaque ao nome do cliente', 'a tela vai ficar em pe, tipo retrato' e 'quando eu clico em colocar a tela toda quando bipa esta saindo da tela, tem que ficar'.",
+      motivation:
+        "Primeiro teste do kit de reserva com hardware real (28/08): o Lucas bipou a etiqueta da FLAVIA e reservou 3 lotes. Pedidos dele na sequencia: 'queria trazer a imobiliaria', 'pode dar um destaque ao nome do cliente', 'a tela vai ficar em pe, tipo retrato' e 'quando eu clico em colocar a tela toda quando bipa esta saindo da tela, tem que ficar'.",
     },
-    title: "Reserva touch: tela cheia que nao cai ao bipar, cliente em destaque e layout retrato",
+    title:
+      "Reserva touch: tela cheia que nao cai ao bipar, cliente em destaque e layout retrato",
     type: "correcao",
     version: "1.219.0",
   },
@@ -107,7 +139,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "61f1b13f",
     technical: {
       done: "lib/apolo/incorporador/logo.ts novo: parte pura (formato da referencia, chaveDoPortal, validacao de formato POR CONTEUDO — assinatura PNG e <svg[\\s>] nos 4KB iniciais, nao o content-type do cliente —, teto de 2MB conferido ANTES de decodificar o base64, sanitizacao de SVG) + storage (subir/baixar/migrar) no bucket apolo-documents sob incorporador-logos/{chave}/{variante}.{ext}. Referencia gravada na propria logo_path como `storage:...?v=<epoch>`: sem coluna nova, o prefixo discrimina do asset do repo (o Cecilio segue em /marcas/, com teste nomeado) e o carimbo permite cache immutable sem prender arte velha. Rota publica /api/incorporador/[slug]/logo serve os bytes com Content-Type derivado da EXTENSAO GRAVADA, nosniff, CSP default-src 'none' + sandbox, X-Frame-Options DENY e CORP same-origin. ⚠️ GATE: proxy.ts ganhou alivio por FORMATO EXATO (/^\\/api\\/incorporador\\/[a-z0-9-]{1,60}\\/logo$/) — sem ele a rota levava 401 do guardApi e a porta abria com imagem quebrada (achado da revisao, escapou da correcao automatica); NAO virou prefixo de propria, porque /api/incorporador na allowlist abriria carteira/contrato/vendas. 7 testes guardam essa fronteira. Revisao adversarial em 2 lentes achou 4 defeitos alem do gate, todos corrigidos: (a) a lixeira apagava do bucket no clique, antes de salvar — virou operacao local, o servidor apaga na gravacao; (b) upload/DELETE agiam pelo slug DIGITADO, entao criar cadastro novo com endereco existente sobrescrevia a arte no ar — agora o prefixo permitido sai do registro do banco, e o DELETE foi removido por carregar o mesmo furo; (c) a extensao anterior era apagada ANTES do upload novo, e upload falho deixava o portal sem marca — ordem invertida; (d) move do storage acontecia antes da gravacao que pode falhar — agora ha rollback conferido por releitura. Mais dois defeitos JA EM PRODUCAO: a tela nao enviava logoPath e salvarIncorporador grava `?? null`, entao qualquer edicao do Cecilio apagava a logo dele; e carregarIncorporadorPorSlug fazia ilike com o slug cru da URL, onde %/_ sao curinga (/incorporador/cec% casava cecilio-rocha por prefixo, enumerando clientes). Typecheck limpo; 1.652 testes verdes.",
-      motivation: "Lucas (28/08), depois de eu criar o portal da MMendes na mao: 'pode colocar o campo de logo'. Era a terceira vez que publicar uma marca virava trabalho manual — dos 7 portais, so o cecilio-rocha tinha logo, e porque foi inserido direto no banco.",
+      motivation:
+        "Lucas (28/08), depois de eu criar o portal da MMendes na mao: 'pode colocar o campo de logo'. Era a terceira vez que publicar uma marca virava trabalho manual — dos 7 portais, so o cecilio-rocha tinha logo, e porque foi inserido direto no banco.",
     },
     title: "Logo do incorporador direto pela tela do Setup",
     type: "melhoria",
@@ -149,9 +182,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "c0750953",
     technical: {
       done: "PROFISSAO: lib/apolo/profissao.ts novo (regra pura: normalizarProfissaoLivre, rotuloDaProfissao, casarProfissaoNaLista, temProfissao, profissaoPendenteDePadronizacao, profissaoExibida, profissaoParaC2x). SearchableSelect ganhou prop opcional aoDigitarOutro/valorOutro — a faixa 'Nao encontrou? Usar X' so aparece nos DOIS seletores de profissao (titular e conjuge); sexo/escolaridade/renda/imobiliaria seguem fechados no catalogo. profissaoOutro persiste em metadata.cadastro (titular) e no metadata do relacionamento conjuge; read-model do board e do CRM 360 devolvem o texto declarado; c2x-write-server usa profissaoParaC2x (rotulo de id valido ou null) para a regra 'texto livre jamais' ficar num ponto so. Revisao adversarial pegou dois defeitos reais, ambos corrigidos: (1) o id 25 = PROFISSAO NAO DECLARADA, que o C2X preenche sozinho, apagava a pendencia e a ficha passava batido pela validacao — agora ehProfissaoNaoDeclarada trata 25 como ausencia; (2) profissaoOutro era imortal (nao havia por onde corrigir/apagar) — virou campo do Editar cadastro do CRM, que grava em cadastroEditado, a camada que todos os leitores aplicam por ultimo. Mais: diagnosticarCadastro avisa 'Profissao a padronizar' antes do envio ao C2X, com a mesma cascata do payload. 30 testes novos. PORTAL: perfis-de-portal.ts ganhou SO_PRODUTOS + ehPortalSoProdutos(slug); abasDoPortal devolve so a aba Produtos para esses (checagem ANTES de personalizado/LSoft), e a aba inicial passa a ser 'produtos' em vez de 'vendas' (abrir em Vendas deixaria a tela em branco, porque o corpo renderiza por aba). Logo convertida do PDF com Inkscape (--export-area-drawing, recorte do A4 vazio) em /marcas/mmendes.svg e mmendes-branca.svg (tudo #ffffff, mesmo padrao do cecilio-rocha-branca). O escopo 'so Garden' NAO esta no codigo: e o vinculo em apolo_incorporador_empreendimentos, que ja limita todas as leituras. 11 testes cobrindo as tres formas de portal, inclusive que o Cecilio segue com cinco abas. Typecheck limpo; 310 testes do incorporador verdes.",
-      motivation: "Lucas (28/08): no CAD, 'o pessoal esta com dificuldades de achar a profissao, por isso, coloca uma opcao outro para eles digitarem, na validacao eu padronizo'. E no portal: 'quero criar um perfil igual a cecilio para o socio deles, so que por enquanto deixa somente a tela de produto e o produto somente o garden'.",
+      motivation:
+        "Lucas (28/08): no CAD, 'o pessoal esta com dificuldades de achar a profissao, por isso, coloca uma opcao outro para eles digitarem, na validacao eu padronizo'. E no portal: 'quero criar um perfil igual a cecilio para o socio deles, so que por enquanto deixa somente a tela de produto e o produto somente o garden'.",
     },
-    title: "Profissao com opcao 'Outro' no CAD + portal so de Produtos (MMendes)",
+    title:
+      "Profissao com opcao 'Outro' no CAD + portal so de Produtos (MMendes)",
     type: "novidade",
     version: "1.215.0",
   },
@@ -189,9 +224,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "fd26f3d3",
     technical: {
       done: "APOLO EXTRATO: lib/apolo/extrato-cliente.ts (regras puras + tipos), extrato-cliente-c2x.ts (leitura READ-ONLY do C2X: comprador por client_id..client_5_id, parcelas por acquisition_request), extrato-cliente-pdf.ts (pdf-lib no molde do cad-pdf) + careli-logo.ts, rotas /api/apolo/extrato-cliente e /pdf com authorizeApoloRead, painel extrato-cliente-panel.tsx e a subaba nova em apoloFinancialSubtabs. ANCORA DO SALDO: maior initial_value entre as mensais plausiveis vivas (mediana +/- fator 3, janela de ~13 meses, descarta a superada por cobranca menor que nao e a linha original) - a versao ingenua ('a mensal com boleto de maior numero') errava em 3 dos 4 contratos de teste. ARMADILHAS COBERTAS: pago = payment_date NOT NULL (707 linhas tem paid_value>0 com status 7 e data nula, R$ 443.864,34 que nao entraram), reference_date e competencia mas a ORDEM e current_total_parcel, empilhadas por acordo detectadas por due_date compartilhado, payment_to_delete fora, juros/multa nao existem em parcela aberta (0 de 102.007) e a peca diz isso. Degraus classificados com persistencia minima de 3 competencias, variacao minima de 0,5% e corroboracao do paid_value em 3 datas distintas, para nao chamar mora de reajuste. Contrato encerrado sai sem bloco de saldo. 49 testes. IRIS: podeInformarValor passa a devolver true sempre (hasBoletoLink segue decidindo o ENVIO DO LINK, que nao mudou); secao VALOR da persona reescrita, mais as duas linhas que ensinavam o contrario pelo exemplo e a reafirmacao do bloco de VOZ; 15 testes atualizados nos dois arquivos. Typecheck limpo, 103 testes verdes.",
-      motivation: "Lucas (27/08): 'preciso criar um relatorio tipo extrato dos pagamentos que os clientes ja fizeram e uma visao de saldo devedor, isso toda hora eles pedem'. A trava de valor da Caca (v1.179, 21/08) existia porque o reajuste manual deixava a parcela sem boleto defasada; com as 768 parcelas do Lavra do Ouro reajustadas em 26/08 ate 12/2026, o Lucas liberou: 'ela tem os valores corretos ate dezembro'. Ele decidiu liberar para todos os empreendimentos sabendo que REP/VAL/MDS/LBF (159 contratos) ainda serao atualizados hoje.",
+      motivation:
+        "Lucas (27/08): 'preciso criar um relatorio tipo extrato dos pagamentos que os clientes ja fizeram e uma visao de saldo devedor, isso toda hora eles pedem'. A trava de valor da Caca (v1.179, 21/08) existia porque o reajuste manual deixava a parcela sem boleto defasada; com as 768 parcelas do Lavra do Ouro reajustadas em 26/08 ate 12/2026, o Lucas liberou: 'ela tem os valores corretos ate dezembro'. Ele decidiu liberar para todos os empreendimentos sabendo que REP/VAL/MDS/LBF (159 contratos) ainda serao atualizados hoje.",
     },
-    title: "Extrato do cliente em PDF no Apolo + Caca informando valor de parcela",
+    title:
+      "Extrato do cliente em PDF no Apolo + Caca informando valor de parcela",
     type: "novidade",
     version: "1.214.0",
   },
@@ -229,9 +266,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "aacaec63",
     technical: {
       done: "APOLO: migration 0110 (recepcao_cad e recepcao_imobiliaria em apolo_enterprise_settings, default true; APLICADA com OK do Lucas). Portao publico de CAD = credenciamento_ativo AND recepcao_cad; portao de imobiliaria = credenciamento_ativo AND recepcao_imobiliaria. enterprise-settings.ts: listEnterprisesRecebendo(canal) com fail-CLOSED (fallback pro master SO em migration pendente 42703/PGRST204/42P01), setters novos. credenciamento.ts: montarEmpreendimentos + listEmpreendimentosParaCad/ParaImobiliaria; listEmpreendimentosAtivos (master) segue para os internos - board/habilitar, credenciamento interno, Prometeu e o cadastro MANUAL de prospect pelo operador (empreendimentosHabilitadosInterno em dados.ts, decisao a confirmar com o Lucas). Rotas publicas de imobiliaria (vitrine, cadastro, credenciar) e fluxo publico de CAD nos portoes, com validacao server-side no submit (a sessao de CAD ja e emitida so com a lista filtrada). UI: dois toggles no CredenciamentoCard, travados com o master desligado. Testes: recepcao-portoes.test.ts 6/6 + vizinhos 58/58. IRIS 9o digito: extractStatusError aceita code NUMERICO (a Meta manda 131026 como numero; readString devolvia null e o retry tratava tudo como generico); o payload com deliveryError e o que segue pro retry (antes o flag regravava snapshot antigo e APAGAVA o motivo - 35 falhas historicas sem explicacao); retry aceita code 131026 e acha o destino em meta.contacts[0].input (templates nao gravam destination - TODO template caia em sem_alternativa); update de status das refs agora MESCLA o payload em vez de substituir (o primeiro webhook de sent apagava o registro do disparo e quebrava a materializacao na conversa, regressao silenciosa do v1.198); retry novo para refs ORFAS de disparo (message_id null, kind disparo-template) com reenvio pelo phone_number_id da ref, reaponte de apolo_disparos/apolo_acao_alvos pro novo wamid e trava anti-pingue-pongue (cada disparo tenta no maximo as duas formas); registrarDisparoDeTemplate virou import estatico com erro do upsert logado. Typecheck limpo; 20 testes da Iris + 64 do Apolo verdes.",
-      motivation: "Lucas (26/08): o CAD e a habilitacao de imobiliaria acontecem em momentos diferentes - o Recanto do Vale ja habilita imobiliarias mas so recebe CAD depois da convencao de vendas; com o flag unico nao havia como abrir um sem o outro. Na Iris, 8 cobrancas do Isac falharam em 48h com 131026 (Message Undeliverable) e a tela nao mostrava o motivo: a investigacao achou a corrente de 3 defeitos no caminho de falha e a regressao que apagava o registro de todo disparo.",
+      motivation:
+        "Lucas (26/08): o CAD e a habilitacao de imobiliaria acontecem em momentos diferentes - o Recanto do Vale ja habilita imobiliarias mas so recebe CAD depois da convencao de vendas; com o flag unico nao havia como abrir um sem o outro. Na Iris, 8 cobrancas do Isac falharam em 48h com 131026 (Message Undeliverable) e a tela nao mostrava o motivo: a investigacao achou a corrente de 3 defeitos no caminho de falha e a regressao que apagava o registro de todo disparo.",
     },
-    title: "Recepcao de CAD e de imobiliaria separadas + 9o digito em todos os disparos",
+    title:
+      "Recepcao de CAD e de imobiliaria separadas + 9o digito em todos os disparos",
     type: "novidade",
     version: "1.213.0",
   },
@@ -253,7 +292,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     rollback: "9d3f5f63",
-    technical: { done: "handleComposerKeyDown (IrisPage) devolve cedo quando isEmailTicket(ticket): o Enter deixa de chamar preventDefault + sendMessage e volta a ser quebra de linha nativa do textarea. WhatsApp intacto. Ctrl/Cmd+Enter continua enviando nos dois canais — ja caia no return das teclas modificadoras, antes de qualquer decisao. ⚠️ IrisPage tem @ts-nocheck: validado por compilacao da rota (/iris 200) e revisao manual do escopo, nao por tsc.", motivation: "Lucas (26/08): \"quando aperto o enter com objetivo de criar uma organizacao de texto, ele manda a mensagem pela metade, e no e-mail isso e ruim pois pode acontecer de eu mandar 3 e-mails para falar uma coisa somente\". A diferenca e do canal: no WhatsApp a mensagem curta e a unidade da conversa e mandar em partes e normal; um e-mail partido em tres chega como tres e-mails, cada um com assunto e cabecalho, e o destinatario le como tres assuntos." },
+    technical: {
+      done: "handleComposerKeyDown (IrisPage) devolve cedo quando isEmailTicket(ticket): o Enter deixa de chamar preventDefault + sendMessage e volta a ser quebra de linha nativa do textarea. WhatsApp intacto. Ctrl/Cmd+Enter continua enviando nos dois canais — ja caia no return das teclas modificadoras, antes de qualquer decisao. ⚠️ IrisPage tem @ts-nocheck: validado por compilacao da rota (/iris 200) e revisao manual do escopo, nao por tsc.",
+      motivation:
+        'Lucas (26/08): "quando aperto o enter com objetivo de criar uma organizacao de texto, ele manda a mensagem pela metade, e no e-mail isso e ruim pois pode acontecer de eu mandar 3 e-mails para falar uma coisa somente". A diferenca e do canal: no WhatsApp a mensagem curta e a unidade da conversa e mandar em partes e normal; um e-mail partido em tres chega como tres e-mails, cada um com assunto e cabecalho, e o destinatario le como tres assuntos.',
+    },
     title: "E-mail: Enter cria paragrafo em vez de enviar",
     type: "melhoria",
     version: "1.212.0",
@@ -275,8 +318,13 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     rollback: "a49036cf",
-    technical: { done: "A rota /api/iris/apolo/phone-match lia apolo_financial_snapshots com .in() de ate 100 entidades, mas a tabela tem UMA LINHA POR COMPETENCIA — ~55 por pessoa, 256.621 no total. O lote pedia ~5.478 linhas e o PostgREST corta em 1.000: so 19 das 100 pessoas voltavam com financeiro, e o card marcava as outras 81 como Prospect. Migration 0109 cria a view apolo_financeiro_por_entidade (uma linha por pessoa, 4.707; valores do snapshot MAIS RECENTE) e a rota passou a le-la: o mesmo lote agora pede 100 linhas.", motivation: "O card continuou mostrando Prospect depois da v1.211.0: o TTL do cache daquela versao era uma causa real mas nao ESTA — se fosse so cache, um F5 resolveria. A divergencia entre Board e conversa tinha explicacao exata no teto de linhas: a conversa consulta UMA pessoa (55 linhas, cabe) e acerta; o Board consulta 100 de uma vez e a maioria estourava." },
-    title: "Correcao: o perfil do card estourava o limite de linhas da consulta",
+    technical: {
+      done: "A rota /api/iris/apolo/phone-match lia apolo_financial_snapshots com .in() de ate 100 entidades, mas a tabela tem UMA LINHA POR COMPETENCIA — ~55 por pessoa, 256.621 no total. O lote pedia ~5.478 linhas e o PostgREST corta em 1.000: so 19 das 100 pessoas voltavam com financeiro, e o card marcava as outras 81 como Prospect. Migration 0109 cria a view apolo_financeiro_por_entidade (uma linha por pessoa, 4.707; valores do snapshot MAIS RECENTE) e a rota passou a le-la: o mesmo lote agora pede 100 linhas.",
+      motivation:
+        "O card continuou mostrando Prospect depois da v1.211.0: o TTL do cache daquela versao era uma causa real mas nao ESTA — se fosse so cache, um F5 resolveria. A divergencia entre Board e conversa tinha explicacao exata no teto de linhas: a conversa consulta UMA pessoa (55 linhas, cabe) e acerta; o Board consulta 100 de uma vez e a maioria estourava.",
+    },
+    title:
+      "Correcao: o perfil do card estourava o limite de linhas da consulta",
     type: "correcao",
     version: "1.211.1",
   },
@@ -299,8 +347,13 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     rollback: "9dea1867",
-    technical: { done: "(1) escolherTicketDoInbound extraida e coberta por 5 testes — o inbound nao tinha teste nenhum: o ticket ABERTO passa a ganhar do replyContextTicket, e o forceReopen so vale quando a escolha e o reply-context (ou seja, quando nao havia nada aberto). (2) O cache de cadastro do CRM 360 ganhou TTL de 10min (era eterno na sessao); o valor antigo segue exibido ate a resposta nova chegar, para o nome nao piscar. (3) resolverNomeDoApolo no findOrCreateContact, nos dois caminhos (contato novo e existente), com marca nomeVindoDoApolo na metadata para ser UMA consulta por contato e nao por mensagem; falha do Apolo nao derruba o inbound e nunca apaga nome existente.", motivation: "Tres problemas relatados pelo Lucas em 26/08/2026. Os cards duplicados: o cliente respondia um TEMPLATE ANTIGO, o reply-context achava o atendimento encerrado daquele template e o reabria por cima do que ja estava aberto — dois cards do mesmo cliente e dois atendentes em paralelo. O perfil errado: tres clientes com carteira no Apolo apareciam como Prospect no Board e Comprador ao abrir a conversa, porque o Board segurava para sempre a primeira resposta. O nome: medido, 76 dos 92 contatos com atendimento aberto tem cadastro no Apolo e em 60 o nome salvo era o apelido do WhatsApp — a tela corrigia, mas busca, relatorio e exportacao nao." },
-    title: "Iris: um atendimento por cliente, perfil certo no card e nome do cadastro",
+    technical: {
+      done: "(1) escolherTicketDoInbound extraida e coberta por 5 testes — o inbound nao tinha teste nenhum: o ticket ABERTO passa a ganhar do replyContextTicket, e o forceReopen so vale quando a escolha e o reply-context (ou seja, quando nao havia nada aberto). (2) O cache de cadastro do CRM 360 ganhou TTL de 10min (era eterno na sessao); o valor antigo segue exibido ate a resposta nova chegar, para o nome nao piscar. (3) resolverNomeDoApolo no findOrCreateContact, nos dois caminhos (contato novo e existente), com marca nomeVindoDoApolo na metadata para ser UMA consulta por contato e nao por mensagem; falha do Apolo nao derruba o inbound e nunca apaga nome existente.",
+      motivation:
+        "Tres problemas relatados pelo Lucas em 26/08/2026. Os cards duplicados: o cliente respondia um TEMPLATE ANTIGO, o reply-context achava o atendimento encerrado daquele template e o reabria por cima do que ja estava aberto — dois cards do mesmo cliente e dois atendentes em paralelo. O perfil errado: tres clientes com carteira no Apolo apareciam como Prospect no Board e Comprador ao abrir a conversa, porque o Board segurava para sempre a primeira resposta. O nome: medido, 76 dos 92 contatos com atendimento aberto tem cadastro no Apolo e em 60 o nome salvo era o apelido do WhatsApp — a tela corrigia, mas busca, relatorio e exportacao nao.",
+    },
+    title:
+      "Iris: um atendimento por cliente, perfil certo no card e nome do cadastro",
     type: "correcao",
     version: "1.211.0",
   },
@@ -324,7 +377,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     rollback: "61401c5e",
-    technical: { done: "IRIS_QUEUE_LOAD_TIMEOUT_MS de 15s para 45s. O filtro de filas do nao-admin deixou de usar a sentinela .eq('queue_id','__iris_sem_fila_visivel__') — string numa coluna uuid, que o Postgres recusa e vira excecao: agora e .in() com lista vazia, que devolve zero linhas sem inventar valor. A mensagem distingue demora (label 'excedeu') de falha, e os dois blocos de erro viraram BlocoDeFalhaDaIris com botao 'Tentar de novo' (reloadToken na dependencia da carga), em vez de exigir recarregar a pagina inteira. ⚠️ IrisPage.tsx tem @ts-nocheck: validado por compilacao da rota (/iris 200) e revisao manual, nao por tsc.", motivation: "Caso de 26/08/2026: uma coordenadora nao conseguia abrir a Iris durante uma capacitacao, com 'fila da Iris excedeu 15s' repetido no console. Medido na hora: a carga dela era de 31 tickets e 241 mensagens e o banco estava ocioso (53 de 160 conexoes; consultas da tela entre 1,6ms e 138ms) — o tempo ia embora no caminho ate o servidor, com videochamada e screenshare ligados. O corte em 15s transformava rede ruim em tela morta, e a mensagem generica fez ela deslogar, relogar e trocar de navegador atras de um problema de conexao." },
+    technical: {
+      done: "IRIS_QUEUE_LOAD_TIMEOUT_MS de 15s para 45s. O filtro de filas do nao-admin deixou de usar a sentinela .eq('queue_id','__iris_sem_fila_visivel__') — string numa coluna uuid, que o Postgres recusa e vira excecao: agora e .in() com lista vazia, que devolve zero linhas sem inventar valor. A mensagem distingue demora (label 'excedeu') de falha, e os dois blocos de erro viraram BlocoDeFalhaDaIris com botao 'Tentar de novo' (reloadToken na dependencia da carga), em vez de exigir recarregar a pagina inteira. ⚠️ IrisPage.tsx tem @ts-nocheck: validado por compilacao da rota (/iris 200) e revisao manual, nao por tsc.",
+      motivation:
+        "Caso de 26/08/2026: uma coordenadora nao conseguia abrir a Iris durante uma capacitacao, com 'fila da Iris excedeu 15s' repetido no console. Medido na hora: a carga dela era de 31 tickets e 241 mensagens e o banco estava ocioso (53 de 160 conexoes; consultas da tela entre 1,6ms e 138ms) — o tempo ia embora no caminho ate o servidor, com videochamada e screenshare ligados. O corte em 15s transformava rede ruim em tela morta, e a mensagem generica fez ela deslogar, relogar e trocar de navegador atras de um problema de conexao.",
+    },
     title: "Iris: carrega em rede lenta e explica quando nao carrega",
     type: "correcao",
     version: "1.210.1",
@@ -349,7 +406,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     rollback: "2674f42f",
-    technical: { done: "A tabela analitica (uma linha por pessoa x contrato, 2.282 linhas) saiu das duas telas; filtrarUnidades recorta a lista de unidades por usuario, perfil e situacao, e os cinco filtros do topo passaram a alimenta-la. No painel interno o clique do quadro filtra as unidades e rola ate a ancora contratos-por-unidade, com botao de limpar. Removido o codigo morto que sobrou (useOrdenacao orfao, helpers e imports). Os testes do calculo passaram a usar marcarSituacao de verdade em vez de fixar o campo a mao — dois deles passavam por motivo errado. 24 testes.", motivation: "Lucas (25/08), sobre a tabela solta no fim da tela: \"nao entendi essa aqui, tem que ser tudo no mesmo padrao\". Ela nao existe no perfil do incorporador — la tudo e por unidade e as assinaturas aparecem dentro dela. Eram duas listas da mesma coisa em formatos diferentes, uma por unidade e outra por pessoa, e os filtros do topo so mexiam na segunda: a lista de unidades os ignorava." },
+    technical: {
+      done: "A tabela analitica (uma linha por pessoa x contrato, 2.282 linhas) saiu das duas telas; filtrarUnidades recorta a lista de unidades por usuario, perfil e situacao, e os cinco filtros do topo passaram a alimenta-la. No painel interno o clique do quadro filtra as unidades e rola ate a ancora contratos-por-unidade, com botao de limpar. Removido o codigo morto que sobrou (useOrdenacao orfao, helpers e imports). Os testes do calculo passaram a usar marcarSituacao de verdade em vez de fixar o campo a mao — dois deles passavam por motivo errado. 24 testes.",
+      motivation:
+        'Lucas (25/08), sobre a tabela solta no fim da tela: "nao entendi essa aqui, tem que ser tudo no mesmo padrao". Ela nao existe no perfil do incorporador — la tudo e por unidade e as assinaturas aparecem dentro dela. Eram duas listas da mesma coisa em formatos diferentes, uma por unidade e outra por pessoa, e os filtros do topo so mexiam na segunda: a lista de unidades os ignorava.',
+    },
     title: "Assinaturas: uma lista so, com os filtros agindo sobre ela",
     type: "melhoria",
     version: "1.210.0",
@@ -375,7 +436,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     rollback: "e4cfaceb",
-    technical: { done: "agruparUnidadesDeAssinatura passou a devolver grupos por perfil (assinadas/total/naVez/ordem), perfisNaVez, concluida e compradorAssinou, e deixou de filtrar quem ainda nao passou do comprador; contarParadoPorPerfil alimenta as pilulas. Os dois componentes de apresentacao desenham uma barra por perfil com anel no perfil da vez e esmaecimento em quem nao foi chamado, mais o rodape 'com X - ha N dias'. Ordenacao padrao virou 'mais parado' (envio mais antigo), com os concluidos no fim. 16 testes no calculo.", motivation: "Lucas (25/08), vendo o perfil do incorporador: o padrao de la nao e uma barra de progresso, e UMA BARRA POR PERFIL - Imobiliaria 1 de 1, Comprador 1 de 1, Incorporador 6 de 6, Backoffice 0 de 2 - que mostra na hora QUEM esta segurando. O primeiro porte fez barra unica, que responde 'quanto falta' e nao 'quem trava'. E o recorte antigo escondia as unidades mais urgentes: filtrando pela VOC0305, parada no comprador, ele perguntou 'cade a barrinha desse ae?'." },
+    technical: {
+      done: "agruparUnidadesDeAssinatura passou a devolver grupos por perfil (assinadas/total/naVez/ordem), perfisNaVez, concluida e compradorAssinou, e deixou de filtrar quem ainda nao passou do comprador; contarParadoPorPerfil alimenta as pilulas. Os dois componentes de apresentacao desenham uma barra por perfil com anel no perfil da vez e esmaecimento em quem nao foi chamado, mais o rodape 'com X - ha N dias'. Ordenacao padrao virou 'mais parado' (envio mais antigo), com os concluidos no fim. 16 testes no calculo.",
+      motivation:
+        "Lucas (25/08), vendo o perfil do incorporador: o padrao de la nao e uma barra de progresso, e UMA BARRA POR PERFIL - Imobiliaria 1 de 1, Comprador 1 de 1, Incorporador 6 de 6, Backoffice 0 de 2 - que mostra na hora QUEM esta segurando. O primeiro porte fez barra unica, que responde 'quanto falta' e nao 'quem trava'. E o recorte antigo escondia as unidades mais urgentes: filtrando pela VOC0305, parada no comprador, ele perguntou 'cade a barrinha desse ae?'.",
+    },
     title: "Assinaturas: uma barra por perfil e filtro por quem esta segurando",
     type: "melhoria",
     version: "1.209.0",
@@ -399,7 +464,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "b348af2d",
     technical: {
       done: "useOrdenacao amostrava o primeiro item para decidir a direcao inicial de uma coluna nova; com a lista vazia isso e undefined e o cast escondia o buraco do TypeScript — o extrator estourava com \"Cannot read properties of undefined (reading 'ultima')\" e levava a arvore do React junto. A decisao virou a funcao pura direcaoInicialDoCampo (6 testes, o primeiro exatamente a lista vazia), que devolve decrescente quando nao ha amostra.",
-      motivation: "Achado pelo Lucas em producao, minutos depois da v1.208.0: filtrou pela unidade VOC0305, que nao tem o comprador assinado e por isso some da lista de barras, e a tela caiu. O defeito morava no useOrdenacao desde antes, mas as setas ficavam nos cabecalhos de uma tabela que, vazia, quase nao convidava ao clique; o seletor em pilulas da v1.208.0 deixou o caminho obvio.",
+      motivation:
+        "Achado pelo Lucas em producao, minutos depois da v1.208.0: filtrou pela unidade VOC0305, que nao tem o comprador assinado e por isso some da lista de barras, e a tela caiu. O defeito morava no useOrdenacao desde antes, mas as setas ficavam nos cabecalhos de uma tabela que, vazia, quase nao convidava ao clique; o seletor em pilulas da v1.208.0 deixou o caminho obvio.",
     },
     title: "Correcao: ordenar lista vazia derrubava o painel do coordenador",
     type: "correcao",
@@ -414,7 +480,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         screens: [
           {
             items: [
-              "As unidades com o comprador assinado sairam da tabela e viraram BARRAS, no mesmo padrao do perfil do incorporador: cada unidade mostra \"4 de 12 assinaturas\", a barra de progresso, o percentual e a ordem que esta travando a fila.",
+              'As unidades com o comprador assinado sairam da tabela e viraram BARRAS, no mesmo padrao do perfil do incorporador: cada unidade mostra "4 de 12 assinaturas", a barra de progresso, o percentual e a ordem que esta travando a fila.',
               "Quem esta com a bola agora aparece por extenso, embaixo da barra. Antes era uma coluna espremida com tres, quatro nomes cortados no meio.",
               "Clicar na unidade abre os indicadores (enviado em, comprador assinou, dias ate assinar, faltam assinar) e a lista completa de assinantes na ordem da fila, com Assinou, E a vez e Aguardando.",
               "Vale nas DUAS telas: o painel interno (Apolo > Assinaturas) e o painel publico do coordenador.",
@@ -429,9 +495,10 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     technical: {
       done: "O calculo das unidades com o comprador assinado estava DUPLICADO linha a linha nas duas telas; extraido para lib/apolo/unidades-assinatura.ts (agruparUnidadesComCompradorAssinado) com 10 testes, e enriquecido com total, assinadas, assinantes ordenados pela fila e envio. Dois componentes de apresentacao, um por paleta: modules/publico/painel/unidades-com-barra.tsx (cores fixas da tela publica) e modules/apolo/blocks/assinaturas/unidades-em-barra.tsx (classes do chrome, que seguem o tema do hub). useOrdenacao ganhou o campo progresso e um seletor em pilulas, porque as setas de ordenacao viviam nos cabecalhos da tabela que saiu.",
       motivation:
-        "Lucas (25/08): \"o pessoal esta reclamando muito sobre a disposicao das assinaturas, esta dificil de entender. Vamos deixar igual temos no perfil dos incorporadores, aquele mesmo esquema de barras, ao clicar abrir as assinaturas e os indicadores\" e, sobre o painel interno, \"pode seguir o mesmo padrao que fizemos no perfil do incorporador\". A coluna 'Agora espera' despejava a lista de quem falta numa celula estreita, e o numero que a pessoa procura (falta muito?) nao estava em lugar nenhum.",
+        'Lucas (25/08): "o pessoal esta reclamando muito sobre a disposicao das assinaturas, esta dificil de entender. Vamos deixar igual temos no perfil dos incorporadores, aquele mesmo esquema de barras, ao clicar abrir as assinaturas e os indicadores" e, sobre o painel interno, "pode seguir o mesmo padrao que fizemos no perfil do incorporador". A coluna \'Agora espera\' despejava a lista de quem falta numa celula estreita, e o numero que a pessoa procura (falta muito?) nao estava em lugar nenhum.',
     },
-    title: "Assinaturas em barras, com os assinantes e os indicadores no clique",
+    title:
+      "Assinaturas em barras, com os assinantes e os indicadores no clique",
     type: "melhoria",
     version: "1.208.0",
   },
@@ -459,9 +526,10 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     technical: {
       done: "lerParcelasDeSubsidio devolve LiberacaoDaCaixa[] por cliente (data, eh_principal, eh_terreno, historico, valor), ordenadas do mais novo para o mais antigo; acumularLiberacoes soma na ordem cronologica e devolve na de exibicao (5 testes). Busca e filtro de situacao deixaram de recortar no banco: escolhem CLIENTES, o grupo entra inteiro. Migration 0108 grava vencimento_no_momento com backfill das 180, e scripts/lsoft/reconciliar-classificacao.mjs religa as marcas apos a recarga do LSoft por quatro redes (digital exata, venc+valor+texto, venc+valor, cliente+valor so se unica). 28 classificacoes do cliente 00000353 marcadas rejeitada.",
       motivation:
-        "Lucas (25/08): \"ao clicar nos clientes do subsidio, viesse a relacao de pagamentos da caixa, tem 9 liberacoes e essas nao vieram (...) o ideal e colocar o valor total e desse informar o saldo devedor ainda (tipo caixa d'agua)\" e \"esse brayan tem tudo isso nos extratos? ficou estranho\" — tinha R$ 2,17 mi de lancamento contabil ja pago contado como financiamento a liberar, e zero credito no extrato. O reconciliador nasce porque o importador do LSoft APAGA as parcelas: recarregar sem ele zeraria as 180 validacoes.",
+        'Lucas (25/08): "ao clicar nos clientes do subsidio, viesse a relacao de pagamentos da caixa, tem 9 liberacoes e essas nao vieram (...) o ideal e colocar o valor total e desse informar o saldo devedor ainda (tipo caixa d\'agua)" e "esse brayan tem tudo isso nos extratos? ficou estranho" — tinha R$ 2,17 mi de lancamento contabil ja pago contado como financiamento a liberar, e zero credito no extrato. O reconciliador nasce porque o importador do LSoft APAGA as parcelas: recarregar sem ele zeraria as 180 validacoes.',
     },
-    title: "Subsidio: pagamentos da Caixa no clique, medidor de nivel e base pronta para recarga",
+    title:
+      "Subsidio: pagamentos da Caixa no clique, medidor de nivel e base pronta para recarga",
     type: "melhoria",
     version: "1.207.0",
   },
@@ -489,7 +557,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     technical: {
       done: "lerParcelasDeSubsidio passou a agregar por cliente_codigo devolvendo ClienteDeSubsidio[] (contratado x caixaPagou x saldo x liquidado x ultimaLiberacao), lendo o pago de lsoft_credito_da_caixa em lotes de 100 e contando a parte os creditos sem vinculo. O totalLiberado do resumo saiu de lsoft_parcelas.valor_recebido para o extrato. A unidade do grupo usa unidadeParaExibir(observacoes). As duas rotas (interna e do incorporador) devolvem o campo clientes; a tela virou tabela expansivel com as parcelas dentro.",
       motivation:
-        "Lucas (25/08): \"o financiamento e subsidio e a mesma coisa, tem que trazer essas informacoes agrupadas por cliente / unidade\" e \"cade o valor de 7 milhoes que voce encontrou, quero que tenha o valor das unidades e o que a caixa ja pagou\". A tela mostrava parcelas soltas e um 'ja liberado' de R$ 598 mil vindo da baixa no LSoft, quando a Caixa ja depositou R$ 7,75 mi na conta da construtora.",
+        'Lucas (25/08): "o financiamento e subsidio e a mesma coisa, tem que trazer essas informacoes agrupadas por cliente / unidade" e "cade o valor de 7 milhoes que voce encontrou, quero que tenha o valor das unidades e o que a caixa ja pagou". A tela mostrava parcelas soltas e um \'ja liberado\' de R$ 598 mil vindo da baixa no LSoft, quando a Caixa ja depositou R$ 7,75 mi na conta da construtora.',
     },
     title: "Subsidio Caixa por cliente e unidade, com o que a Caixa ja pagou",
     type: "melhoria",
@@ -533,10 +601,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.204.0 (2026-08-25-tela-do-subsidio-e-regua)",
     technical: {
-      done:
-        "PROMETEU: prometeu-module.tsx key={lancamento.id} no componente ativo (troca REMONTA a tela, sem F5); reserva-view.tsx Fullscreen API no bloco da Reserva (estado via fullscreenchange; Esc sai) + escala de totem (quadras 6xl, lotes 5xl, botoes h-16). APOLO (caso Geraldo/Rosangela, PATCH 200 gravando NADA): (1) server.ts aplicarCadastroEditadoNaFichaC2x no fetchC2xCadastroByEntity — a camada de correcao humana (ids traduzidos p/ rotulos, endereco, conjuge->spouse) aplicada NO PONTO UNICO; aba do CRM e portal do incorporador herdam; board/CAD/edicao reaplicam por cima (idempotente); vale com o legado fora. (2) cadastro-editar.ts: leitura preenche conjuge_* com fallback no spouse do C2X; escrita grava conjuge_* TAMBEM em cadastroEditado, nome do conjuge com fallback rel->C2X e AVISO quando faltar (antes descartava em silencio); endereco grava com QUALQUER campo no diff (update parcial; antes so com logradouro); erros de endereco/conjuge checados e devolvidos. Validado: GET local do Geraldo devolve a Rosangela completa; 1441 testes verdes; tsc limpo.",
+      done: "PROMETEU: prometeu-module.tsx key={lancamento.id} no componente ativo (troca REMONTA a tela, sem F5); reserva-view.tsx Fullscreen API no bloco da Reserva (estado via fullscreenchange; Esc sai) + escala de totem (quadras 6xl, lotes 5xl, botoes h-16). APOLO (caso Geraldo/Rosangela, PATCH 200 gravando NADA): (1) server.ts aplicarCadastroEditadoNaFichaC2x no fetchC2xCadastroByEntity — a camada de correcao humana (ids traduzidos p/ rotulos, endereco, conjuge->spouse) aplicada NO PONTO UNICO; aba do CRM e portal do incorporador herdam; board/CAD/edicao reaplicam por cima (idempotente); vale com o legado fora. (2) cadastro-editar.ts: leitura preenche conjuge_* com fallback no spouse do C2X; escrita grava conjuge_* TAMBEM em cadastroEditado, nome do conjuge com fallback rel->C2X e AVISO quando faltar (antes descartava em silencio); endereco grava com QUALQUER campo no diff (update parcial; antes so com logradouro); erros de endereco/conjuge checados e devolvidos. Validado: GET local do Geraldo devolve a Rosangela completa; 1441 testes verdes; tsc limpo.",
       motivation:
-        "Lucas, 24/08: *\"parece que ao trocar o empreendimento tem que atualizar a pagina, deixa isso ja automatico\"*, *\"essa parte tem que ter um botao para ocupar a tela full... monitor em pe, como se fosse aqueles token de pedidos\"* e, sobre a edicao do cadastro: *\"testamos aqui e nao deu certo\"* — os logs mostraram GET+PATCH 200 as 14:18 sem NENHUMA escrita no banco.",
+        'Lucas, 24/08: *"parece que ao trocar o empreendimento tem que atualizar a pagina, deixa isso ja automatico"*, *"essa parte tem que ter um botao para ocupar a tela full... monitor em pe, como se fosse aqueles token de pedidos"* e, sobre a edicao do cadastro: *"testamos aqui e nao deu certo"* — os logs mostraram GET+PATCH 200 as 14:18 sem NENHUMA escrita no banco.',
     },
     title: "Prometeu totem + Apolo: edicao de cadastro que salva e aparece",
     type: "melhoria",
@@ -577,10 +644,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.203.0 (2026-08-25-vale-do-sol-carteira-caixa-e-hades)",
     technical: {
-      done:
-        "SUBSIDIO: 0105 lsoft_credito_da_caixa + importador dos 17 extratos CIWEB (771 creditos, R$ 8.437.617,09, idempotente). Vinculo contrato->cliente reconstruido por CPF via aba MUTUARIOS da planilha da Amanda: 71 dos 77 contratos do extrato (os 6 restantes ficam SEM cliente de proposito — melhor faltar do que abater no errado). 0107 recria a view lendo caixa_ja_liberado do EXTRATO e nao de lsoft_parcelas.valor_recebido (R$ 7.745.484,15 x R$ 598.029,21), com principal/secundario separados, caixa_a_liberar e caixa_liquidada. Tela SubsidioDaCaixa.tsx + rota /api/lsoft/subsidio (interna) e ?subsidio=1 na rota do portal (leitura; classificar segue so na Careli). unidade.ts ganhou TERREO e o formato da planilha ('05 BL 01'), 14 testes — um deles pegou um bug real: o escape \b virou caractere de controle dentro do regex. HADES: 0106 guardian_etapa_manual (fora do read-model, que o sync reescreve a cada 15min) + POST /api/guardian/etapa com authorizeHadesWrite, e onChangeStage ligado nos 2 pontos de render do OperationalWorkflowCard. regua-cron: trava approval_status ANTES do telefone (pendente pula e espera, reprovado cancela), resolvePhone com fallback em c2x_guardian_attendance_queue.phone (medido: 3 de 3 compromissos sem telefone no metadata e COM telefone na fila) e conciliarPagamentos() fora do laco de lembretes. 1455 testes verdes, tsc limpo.",
+      done: "SUBSIDIO: 0105 lsoft_credito_da_caixa + importador dos 17 extratos CIWEB (771 creditos, R$ 8.437.617,09, idempotente). Vinculo contrato->cliente reconstruido por CPF via aba MUTUARIOS da planilha da Amanda: 71 dos 77 contratos do extrato (os 6 restantes ficam SEM cliente de proposito — melhor faltar do que abater no errado). 0107 recria a view lendo caixa_ja_liberado do EXTRATO e nao de lsoft_parcelas.valor_recebido (R$ 7.745.484,15 x R$ 598.029,21), com principal/secundario separados, caixa_a_liberar e caixa_liquidada. Tela SubsidioDaCaixa.tsx + rota /api/lsoft/subsidio (interna) e ?subsidio=1 na rota do portal (leitura; classificar segue so na Careli). unidade.ts ganhou TERREO e o formato da planilha ('05 BL 01'), 14 testes — um deles pegou um bug real: o escape \b virou caractere de controle dentro do regex. HADES: 0106 guardian_etapa_manual (fora do read-model, que o sync reescreve a cada 15min) + POST /api/guardian/etapa com authorizeHadesWrite, e onChangeStage ligado nos 2 pontos de render do OperationalWorkflowCard. regua-cron: trava approval_status ANTES do telefone (pendente pula e espera, reprovado cancela), resolvePhone com fallback em c2x_guardian_attendance_queue.phone (medido: 3 de 3 compromissos sem telefone no metadata e COM telefone na fila) e conciliarPagamentos() fora do laco de lembretes. 1455 testes verdes, tsc limpo.",
       motivation:
-        "Lucas, 25/08: *\"eu queria uma tela diferente para os subsidio, eu precisava enxergar esses valores separados... parcela por parcela\"*, *\"a baixa da caixa vem dos extratos e nao do lsoft\"* e *\"pode corrigir o telefone, pode corrigir o botao. Enfim, pode fazer tudo\"*.",
+        'Lucas, 25/08: *"eu queria uma tela diferente para os subsidio, eu precisava enxergar esses valores separados... parcela por parcela"*, *"a baixa da caixa vem dos extratos e nao do lsoft"* e *"pode corrigir o telefone, pode corrigir o botao. Enfim, pode fazer tudo"*.',
     },
     title: "Tela do Subsidio Caixa · Hades: regua e botao de etapa funcionando",
     type: "novidade",
@@ -622,12 +688,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.202.0 (2026-08-25-vale-do-sol-subsidio-caixa)",
     technical: {
-      done:
-        "VALE DO SOL: migration 0105 lsoft_credito_da_caixa (RLS ligado; trava unica por conta+contrato+data+valor+posicao — reimportar e idempotente, provado rodando 2x: 771 e 771) + scripts/lsoft/importar-extratos-caixa.mjs (le \SERVIDOR CIWEB, so historico CR DESBLOQ, marca eh_principal pelo maior do dia: R$ 7.299.825,70 principal / R$ 1.137.791,39 secundario). lib/lsoft/unidade.ts extrai APTO/BL do texto livre com 12 testes e 100% de cobertura na amostra real (quadra/lote so existem no Garden; no Vale do Sol vem preenchidos em 1 e 9 de 6.776). Cartoes reorganizados em 3 secoes (Carteira Cecilio / Carteira Caixa / Cadastro). 180 parcelas confirmadas como Caixa por decisao do Lucas (texto + valor alto): inadimplencia do Vale do Sol 50% -> 2,5%, vencido R$ 8,89 mi -> R$ 99.698,88. HADES (auditoria de 25 agentes com verificacao adversarial, 17 defeitos confirmados): (1) attendance.ts ganhou contratoVivoWhere excluindo stage 7/8/10/11 nas 2 consultas da fila — saem 2 clientes e R$ 10.534,65 de cobranca indevida, um deles com lote ja revendido (unidade 2740 -> pedido 4110/cliente 3966); (2) overview.ts trocou allowlist de 17 codigos pela denylist EXCLUDED_ENTERPRISE_CODES que o projeto ja mantem, e attendance.ts passou a aplica-la — dash e fila no mesmo universo, teste fora dos dois; (3) lib/guardian/auth.ts FAIL-OPEN fechado nas 3 portas (env vazia devolvia ok:true com papel admin; agora 503, atalho so fora de producao); (4) boleto-resend trocou guarda local por authorizeHadesWrite (era a unica das 14 rotas que nao lia hub_users: conta desativada com 192 sessoes vivas entrava); (5) AiCopilotDrawer nao afirma mais entrega inexistente; (6) IntelligencePage parou de mandar perfis/tendencia hardcoded para a IA. 1453 testes verdes, tsc limpo.",
+      done: "VALE DO SOL: migration 0105 lsoft_credito_da_caixa (RLS ligado; trava unica por conta+contrato+data+valor+posicao — reimportar e idempotente, provado rodando 2x: 771 e 771) + scripts/lsoft/importar-extratos-caixa.mjs (le \SERVIDOR CIWEB, so historico CR DESBLOQ, marca eh_principal pelo maior do dia: R$ 7.299.825,70 principal / R$ 1.137.791,39 secundario). lib/lsoft/unidade.ts extrai APTO/BL do texto livre com 12 testes e 100% de cobertura na amostra real (quadra/lote so existem no Garden; no Vale do Sol vem preenchidos em 1 e 9 de 6.776). Cartoes reorganizados em 3 secoes (Carteira Cecilio / Carteira Caixa / Cadastro). 180 parcelas confirmadas como Caixa por decisao do Lucas (texto + valor alto): inadimplencia do Vale do Sol 50% -> 2,5%, vencido R$ 8,89 mi -> R$ 99.698,88. HADES (auditoria de 25 agentes com verificacao adversarial, 17 defeitos confirmados): (1) attendance.ts ganhou contratoVivoWhere excluindo stage 7/8/10/11 nas 2 consultas da fila — saem 2 clientes e R$ 10.534,65 de cobranca indevida, um deles com lote ja revendido (unidade 2740 -> pedido 4110/cliente 3966); (2) overview.ts trocou allowlist de 17 codigos pela denylist EXCLUDED_ENTERPRISE_CODES que o projeto ja mantem, e attendance.ts passou a aplica-la — dash e fila no mesmo universo, teste fora dos dois; (3) lib/guardian/auth.ts FAIL-OPEN fechado nas 3 portas (env vazia devolvia ok:true com papel admin; agora 503, atalho so fora de producao); (4) boleto-resend trocou guarda local por authorizeHadesWrite (era a unica das 14 rotas que nao lia hub_users: conta desativada com 192 sessoes vivas entrava); (5) AiCopilotDrawer nao afirma mais entrega inexistente; (6) IntelligencePage parou de mandar perfis/tendencia hardcoded para a IA. 1453 testes verdes, tsc limpo.",
       motivation:
-        "Reuniao com a Cecilio Rocha (25/08) sobre o Vale do Sol ser Minha Casa Minha Vida, mais o pedido do Lucas no mesmo dia: *\"faz uma grande analise do hades, ache bug, corrige ele pois tem tempo que nao trabalhamos nele\"* e *\"Contratos cancelados, sai da fila. O dash tem que sair os empreendimentos testes\"*.",
+        'Reuniao com a Cecilio Rocha (25/08) sobre o Vale do Sol ser Minha Casa Minha Vida, mais o pedido do Lucas no mesmo dia: *"faz uma grande analise do hades, ache bug, corrige ele pois tem tempo que nao trabalhamos nele"* e *"Contratos cancelados, sai da fila. O dash tem que sair os empreendimentos testes"*.',
     },
-    title: "Vale do Sol: Carteira Cecilio x Carteira Caixa · Hades: fila sem contrato cancelado",
+    title:
+      "Vale do Sol: Carteira Cecilio x Carteira Caixa · Hades: fila sem contrato cancelado",
     type: "melhoria",
     version: "1.203.0",
   },
@@ -653,10 +719,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.201.0 (2026-08-24-inteligencia-de-dados)",
     technical: {
-      done:
-        "Migration 0103: tabela lsoft_classificacao_de_parcela (FORA de lsoft_parcelas de proposito — o importador faz DELETE de tudo e lsoft_id e nulo em 100% das 19.988 linhas, entao coluna nova morreria numa recarga). Chave de sobrevivencia = impressao digital md5(cliente|empreendimento|parcela|vencimento|valor|observacoes|origem) + ordinal: medido, a versao curta tinha 570 COLISOES, a longa 1, com ordinal 0. RLS ligado igual as irmas lsoft_*. Migration 0104: view lsoft_carteira_por_cliente_empreendimento com granularidade cliente x empreendimento — a 0096 agrupa so por cliente e faz LEFT JOIN em TODAS as parcelas, o que arrastava R$ 604.088,97 do Garden para o Vale do Sol em 2 clientes. As colunas *_caixa contam SOMENTE situacao='confirmada'. Classificacao: 180 candidatas gravadas como a_validar (79 financiamento + 28 subsidio + 11 fgts + 6 misto por texto; 56 SO pelo valor alto, R$ 2,93 mi que o texto nunca acharia). Regra por texto casa PREFIXO (FINAN|FIN+|SUBSID|FGTS) porque o LSoft trunca em 48-50 chars e existe FINANC/FINANCI/FINANCIMENTO; exclui PARC RENEG|ANUAIS|ANUAL|PARC UNICA para nao capturar as 385 mensalidades 'RENEG CEF' que sao divida real. Rota POST /api/lsoft/classificacao com authorizeApoloWrite (as rotas antigas do modulo ficam como estao, decisao do Lucas). Portal do CER com validarClassificacao=null ate o Lucas decidir se a equipe do Cecilio classifica. Impacto medido no Vale do Sol quando tudo for confirmado: carteira 21,10 -> 5,33 mi, vencido 8,89 mi -> 99.698,88, inadimplencia ~50% -> ~2,5%. 1441 testes verdes, tsc limpo.",
+      done: "Migration 0103: tabela lsoft_classificacao_de_parcela (FORA de lsoft_parcelas de proposito — o importador faz DELETE de tudo e lsoft_id e nulo em 100% das 19.988 linhas, entao coluna nova morreria numa recarga). Chave de sobrevivencia = impressao digital md5(cliente|empreendimento|parcela|vencimento|valor|observacoes|origem) + ordinal: medido, a versao curta tinha 570 COLISOES, a longa 1, com ordinal 0. RLS ligado igual as irmas lsoft_*. Migration 0104: view lsoft_carteira_por_cliente_empreendimento com granularidade cliente x empreendimento — a 0096 agrupa so por cliente e faz LEFT JOIN em TODAS as parcelas, o que arrastava R$ 604.088,97 do Garden para o Vale do Sol em 2 clientes. As colunas *_caixa contam SOMENTE situacao='confirmada'. Classificacao: 180 candidatas gravadas como a_validar (79 financiamento + 28 subsidio + 11 fgts + 6 misto por texto; 56 SO pelo valor alto, R$ 2,93 mi que o texto nunca acharia). Regra por texto casa PREFIXO (FINAN|FIN+|SUBSID|FGTS) porque o LSoft trunca em 48-50 chars e existe FINANC/FINANCI/FINANCIMENTO; exclui PARC RENEG|ANUAIS|ANUAL|PARC UNICA para nao capturar as 385 mensalidades 'RENEG CEF' que sao divida real. Rota POST /api/lsoft/classificacao com authorizeApoloWrite (as rotas antigas do modulo ficam como estao, decisao do Lucas). Portal do CER com validarClassificacao=null ate o Lucas decidir se a equipe do Cecilio classifica. Impacto medido no Vale do Sol quando tudo for confirmado: carteira 21,10 -> 5,33 mi, vencido 8,89 mi -> 99.698,88, inadimplencia ~50% -> ~2,5%. 1441 testes verdes, tsc limpo.",
       motivation:
-        "Reuniao do Lucas com a Cecilio Rocha (25/08): *\"o empreendimento Vale do Sol e um projeto minha casa minha vida... esse valor esta contando como parcela e esta poluindo os dados... a caixa nao tem valor fixo, ela paga por medicao... teoricamente o cliente nao deve esse valor\"*. E a decisao que destravou a classificacao: *\"tudo com esse valor alto de parcelas vamos considerar que seja, ae coloca um botao para gente validar se realmente e a parcela do subsidio\"*.",
+        'Reuniao do Lucas com a Cecilio Rocha (25/08): *"o empreendimento Vale do Sol e um projeto minha casa minha vida... esse valor esta contando como parcela e esta poluindo os dados... a caixa nao tem valor fixo, ela paga por medicao... teoricamente o cliente nao deve esse valor"*. E a decisao que destravou a classificacao: *"tudo com esse valor alto de parcelas vamos considerar que seja, ae coloca um botao para gente validar se realmente e a parcela do subsidio"*.',
     },
     title: "Vale do Sol: separar o subsidio da Caixa da carteira do cliente",
     type: "novidade",
@@ -682,10 +747,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.200.0 (2026-08-24-prometeu-selecao-e-vitrine)",
     technical: {
-      done:
-        "lib/prometeu/relatorios.ts: dadosComerciais (situacao REAL por unidade no C2X — AR aberta manda, etapas de venda = Contrato gerado/Em assinatura/Faturado/Finalizado; reservas vivas do Panteon sobrepoem o 'disponivel'; VGV por bucket; funil do evento) e dadosPerformance (credenciados por etapa/hora, tempos por etapa via prometeu_movimentacoes — SEM evento_id na tabela, recorte por credenciado em lotes de 100 pela regra do .in(); mediana/P90; chamadas) + render HTML no padrao visual APROVADO (claro #f6f4ef, dourado #A07C3B, terracota #B5451B, wordmark texto, refresh 60s). link-do-relatorio.ts: token HS256 {e,r,iat} com SESSAO_CAD_SECRET, sem exp (revogacao = arquivamento do evento). Rotas: /api/publico/prometeu/relatorio (token, s-maxage=60 — 1 consulta/min na CDN) na allowlist do proxy, e /api/prometeu/relatorios (autenticada) que gera os 2 links para a tela. RelatoriosView: abas comercial/performance, iframe de preview, copiar/abrir link; usa o lancamento SELECIONADO (contexto da tela inicial). Validado local com o Villa Paris: os dois HTML 200 com dados reais. tsc limpo.",
+      done: "lib/prometeu/relatorios.ts: dadosComerciais (situacao REAL por unidade no C2X — AR aberta manda, etapas de venda = Contrato gerado/Em assinatura/Faturado/Finalizado; reservas vivas do Panteon sobrepoem o 'disponivel'; VGV por bucket; funil do evento) e dadosPerformance (credenciados por etapa/hora, tempos por etapa via prometeu_movimentacoes — SEM evento_id na tabela, recorte por credenciado em lotes de 100 pela regra do .in(); mediana/P90; chamadas) + render HTML no padrao visual APROVADO (claro #f6f4ef, dourado #A07C3B, terracota #B5451B, wordmark texto, refresh 60s). link-do-relatorio.ts: token HS256 {e,r,iat} com SESSAO_CAD_SECRET, sem exp (revogacao = arquivamento do evento). Rotas: /api/publico/prometeu/relatorio (token, s-maxage=60 — 1 consulta/min na CDN) na allowlist do proxy, e /api/prometeu/relatorios (autenticada) que gera os 2 links para a tela. RelatoriosView: abas comercial/performance, iframe de preview, copiar/abrir link; usa o lancamento SELECIONADO (contexto da tela inicial). Validado local com o Villa Paris: os dois HTML 200 com dados reais. tsc limpo.",
       motivation:
-        "Lucas, 24/08: *\"cria uma nova, Inteligencia de Dados e deixa Monitoramento e Relatorios nele. Ae deixa pronto aquele relatorio que fizemos para o Vale do Ouro (html) trazendo as metricas do lancamento, ter isso na tela e a opcao de gerar um link para encaminhar para os gestores e loteadores. Haviamos feitos dois relatorio... uma com mais pegada comercial e outro com a pegada de performance do time de backoffice\"*.",
+        'Lucas, 24/08: *"cria uma nova, Inteligencia de Dados e deixa Monitoramento e Relatorios nele. Ae deixa pronto aquele relatorio que fizemos para o Vale do Ouro (html) trazendo as metricas do lancamento, ter isso na tela e a opcao de gerar um link para encaminhar para os gestores e loteadores. Haviamos feitos dois relatorio... uma com mais pegada comercial e outro com a pegada de performance do time de backoffice"*.',
     },
     title: "Inteligencia de dados: relatorios do lancamento com link publico",
     type: "novidade",
@@ -711,10 +775,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.199.0 (2026-08-24-reserva-touch-email-glotes)",
     technical: {
-      done:
-        "Feedback ao vivo do Lucas na v1.199.0. (1) SelecaoDeLancamento (blocks/selecao) como porta do modulo: cards por status (rascunho/preparacao/em andamento; encerrados como consulta), Novo lancamento entra no Setup sem selecao (setupLivre); escolha por aba em sessionStorage validada contra a lista (arquivado nao restaura); LancamentoProvider (lancamento-contexto.tsx) pronto para as views consumirem — o aperto multi-simultaneo das rotas (exigir eventoId em vez de eventoOperavelId) fica para a proxima fase, mapeado. (2) ReservaView sem branch de espera: quadras/dash sempre visiveis, marcar lote sem cliente avisa 'bipe a etiqueta', rodape alterna convite-ao-bip/conferencia. (3) HandMetal -> LandPlot. tsc limpo.",
+      done: "Feedback ao vivo do Lucas na v1.199.0. (1) SelecaoDeLancamento (blocks/selecao) como porta do modulo: cards por status (rascunho/preparacao/em andamento; encerrados como consulta), Novo lancamento entra no Setup sem selecao (setupLivre); escolha por aba em sessionStorage validada contra a lista (arquivado nao restaura); LancamentoProvider (lancamento-contexto.tsx) pronto para as views consumirem — o aperto multi-simultaneo das rotas (exigir eventoId em vez de eventoOperavelId) fica para a proxima fase, mapeado. (2) ReservaView sem branch de espera: quadras/dash sempre visiveis, marcar lote sem cliente avisa 'bipe a etiqueta', rodape alterna convite-ao-bip/conferencia. (3) HandMetal -> LandPlot. tsc limpo.",
       motivation:
-        "Lucas, 24/08, validando em producao: *\"como eu seleciono os lancamentos?... acho que podemos ter uma tela inicial para selecionar... vamos imaginar se eu tiver dois lancamentos simultaneos... odiei esse icone de reserva... essa tela de bip tem que ser separada, precisamos ver o cliente quando bipado\"*.",
+        'Lucas, 24/08, validando em producao: *"como eu seleciono os lancamentos?... acho que podemos ter uma tela inicial para selecionar... vamos imaginar se eu tiver dois lancamentos simultaneos... odiei esse icone de reserva... essa tela de bip tem que ser separada, precisamos ver o cliente quando bipado"*.',
     },
     title: "Prometeu abre na escolha do lancamento e a Reserva vira vitrine",
     type: "melhoria",
@@ -762,10 +825,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.198.0 (2026-08-23-disparos-na-conversa-da-iris)",
     technical: {
-      done:
-        "PROMETEU (fases A-C do processo novo de reserva): prometeu_reservas (migrations 0101+0102 aplicadas) com linha por unidade, grupo_id=cupom (QR uuid cru + codigo RSV-XXXXXX), trava unica parcial (evento_id,codigo) where situacao='reservada', soft-cancel e proponentes jsonb (max 5, soma 100, validarProponentes); rotas reserva-touch (GET quadras disponiveis = C2X sale_status 1 sem AR aberta MENOS reservas vivas do Panteon; POST com revalidacao de proponentes e realtime) e cupom (GET dados p/ PA, POST marca impressao); telas ReservaView (wedge USB + camera, 2 etapas, multi-quadra, mini dash) e PostoPaView (folhas A4 com planos 20%/12x, 30%/24x, 10%/180x calculados do price); impressao em iframe isolado (@page 80mm e A4); funcoes puras em lib/prometeu/cupom.ts (client-safe — mysql2 no bundle quebrava o build). APOLO: e-mail/telefone editados gravavam so em apolo_contacts e PERDIAM para esteira.ficha na cascata (regressao parcial da v1.197.0 + assimetria antiga do board); agora entram em cadastroEditado, o upsert atualiza TODAS as linhas duplicadas com ordem estavel, o board espelha contato+cadastroEditado no ramo com esteira e o c2x-write le a correcao primeiro. GLOTES: merge por document_hash (mesma formula do dedup) com apolo_contacts (whatsapp>phone, is_primary), relogio combinado em Brasilia, alterado_desde pos-merge com conversao da marca UTC; validado local (374 clientes; incremental=1 desde 20/08; futuro=0). tsc limpo; 1441 testes. PENDENTE (proximas fases): secretaria bipar cupom p/ lancar proposta, telao masterplan publico, limpeza das 48 fichas com e-mail divergente + 474 contatos duplicados.",
+      done: "PROMETEU (fases A-C do processo novo de reserva): prometeu_reservas (migrations 0101+0102 aplicadas) com linha por unidade, grupo_id=cupom (QR uuid cru + codigo RSV-XXXXXX), trava unica parcial (evento_id,codigo) where situacao='reservada', soft-cancel e proponentes jsonb (max 5, soma 100, validarProponentes); rotas reserva-touch (GET quadras disponiveis = C2X sale_status 1 sem AR aberta MENOS reservas vivas do Panteon; POST com revalidacao de proponentes e realtime) e cupom (GET dados p/ PA, POST marca impressao); telas ReservaView (wedge USB + camera, 2 etapas, multi-quadra, mini dash) e PostoPaView (folhas A4 com planos 20%/12x, 30%/24x, 10%/180x calculados do price); impressao em iframe isolado (@page 80mm e A4); funcoes puras em lib/prometeu/cupom.ts (client-safe — mysql2 no bundle quebrava o build). APOLO: e-mail/telefone editados gravavam so em apolo_contacts e PERDIAM para esteira.ficha na cascata (regressao parcial da v1.197.0 + assimetria antiga do board); agora entram em cadastroEditado, o upsert atualiza TODAS as linhas duplicadas com ordem estavel, o board espelha contato+cadastroEditado no ramo com esteira e o c2x-write le a correcao primeiro. GLOTES: merge por document_hash (mesma formula do dedup) com apolo_contacts (whatsapp>phone, is_primary), relogio combinado em Brasilia, alterado_desde pos-merge com conversao da marca UTC; validado local (374 clientes; incremental=1 desde 20/08; futuro=0). tsc limpo; 1441 testes. PENDENTE (proximas fases): secretaria bipar cupom p/ lancar proposta, telao masterplan publico, limpeza das 48 fichas com e-mail divergente + 474 contatos duplicados.",
       motivation:
-        "Lucas, 24/08: processo de reserva do lancamento no Panteon (touch + cupom + PA), *\"atualizamos o e-mail, salvamos mas a alteracao nao fica\"* e *\"melhorar a API da Glotes... esses dados agora tem que sair do Panteon — os atualizados\"*.",
+        'Lucas, 24/08: processo de reserva do lancamento no Panteon (touch + cupom + PA), *"atualizamos o e-mail, salvamos mas a alteracao nao fica"* e *"melhorar a API da Glotes... esses dados agora tem que sair do Panteon — os atualizados"*.',
     },
     title: "Reserva touch no lancamento, e-mail que fica e GLOTES atualizado",
     type: "novidade",
@@ -791,10 +853,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.197.0 (2026-08-23-cad-conjuge-completo-e-editar-sem-sumir)",
     technical: {
-      done:
-        "Medido em producao: 48 envios de template em 7 dias sem NENHUM registro na Iris (21 so no dia 22, todos do fone 4143/Relacionamento) — sao os disparos que chamam a Graph direto; apolo_disparos cobria apenas 10/48, entao remendar fluxo a fluxo nao fechava. Solucao em duas pontas: (1) o TRANSPORTE (sendMetaWhatsAppTemplateMessage) registra todo envio como referencia em caredesk_whatsapp_message_refs (payload guarda template+parametros; upsert ignoreDuplicates em provider+wa_message_id; best-effort pos-envio, nunca falha um template aceito; import dinamico p/ nao arrastar o client) com opt-out nos 3 caminhos da Iris que ja criam mensagem propria (conversa, abertura, retry do 9o digito); (2) o INBOUND materializa as referencias orfas do telefone como mensagens do ticket (novo lib/iris/disparo-na-conversa.ts): corpo REAL renderizado do body do template local com os parametros ({{n}} sem valor fica visivel), created_at = hora do envio (ordem certa na conversa), external_message_id = wamid (dedup + status delivered/read do webhook casam sozinhos), sender_type system + direction outbound; casamento de telefone com variante do 9o digito. Se ha ticket aberto no momento do disparo, materializa na hora. 7 testes novos (variantes de telefone pegaram ambiguidade de numero estrangeiro curto — documentada); tsc limpo; 1433 testes verdes.",
+      done: "Medido em producao: 48 envios de template em 7 dias sem NENHUM registro na Iris (21 so no dia 22, todos do fone 4143/Relacionamento) — sao os disparos que chamam a Graph direto; apolo_disparos cobria apenas 10/48, entao remendar fluxo a fluxo nao fechava. Solucao em duas pontas: (1) o TRANSPORTE (sendMetaWhatsAppTemplateMessage) registra todo envio como referencia em caredesk_whatsapp_message_refs (payload guarda template+parametros; upsert ignoreDuplicates em provider+wa_message_id; best-effort pos-envio, nunca falha um template aceito; import dinamico p/ nao arrastar o client) com opt-out nos 3 caminhos da Iris que ja criam mensagem propria (conversa, abertura, retry do 9o digito); (2) o INBOUND materializa as referencias orfas do telefone como mensagens do ticket (novo lib/iris/disparo-na-conversa.ts): corpo REAL renderizado do body do template local com os parametros ({{n}} sem valor fica visivel), created_at = hora do envio (ordem certa na conversa), external_message_id = wamid (dedup + status delivered/read do webhook casam sozinhos), sender_type system + direction outbound; casamento de telefone com variante do 9o digito. Se ha ticket aberto no momento do disparo, materializa na hora. 7 testes novos (variantes de telefone pegaram ambiguidade de numero estrangeiro curto — documentada); tsc limpo; 1433 testes verdes.",
       motivation:
-        "Lucas, 23/08: *\"o time reclamou que nao esta aparecendo as mensagens de template no board de mensagem, ou seja, enviamos a mensagem e so vemos a resposta do cliente, a mensagem de template tem que fica no painel de mensagens tbm\"*.",
+        'Lucas, 23/08: *"o time reclamou que nao esta aparecendo as mensagens de template no board de mensagem, ou seja, enviamos a mensagem e so vemos a resposta do cliente, a mensagem de template tem que fica no painel de mensagens tbm"*.',
     },
     title: "Disparos de template aparecem na conversa",
     type: "correcao",
@@ -827,10 +888,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.196.0 (2026-08-23-iris-reabrir-so-o-que-sai-certo)",
     technical: {
-      done:
-        "Diagnostico por workflow (4 agentes, codigo + banco). BUG 1: o wizard coletava a ficha inteira do conjuge mas o submit enviava 6 campos e o persist gravava 3 — em producao, 0/44 CADs casadas de agosto tinham conjuge em metadata.cadastro e o relacionamento so guardava cpf/email/phone (docs chegavam: 43/44). Correcao na corrente inteira: payload completo (cadastro-flow), metadata do relacionamento com a ficha toda (cadastro-persist), rota do board devolve e a validacao exibe os campos novos (selects C2X), e o envio ao C2X ganha fallback do nascimento. BUG 2: lerCadastroParaEdicao lia SO metadata.cadastro (vazio em 538/736 CADs — ficha mora na esteira p/ quem veio de import/sync) e o PATCH mandava o form inteiro com vazio virando null. Correcao: leitura = cascata cadastro < C2X ao vivo < esteira.ficha < cadastroEditado (a mesma do board/CAD); escrita = Partial com DIFF calculado na tela, gravado em cadastroEditado (camada da correcao humana); metadata do relacionamento conjuge em MERGE (substituir o objeto apagaria a ficha nova do bug 1). BONUS: o envio ao C2X passou a aplicar cadastroEditado por cima (correcoes humanas subiam certas na tela e erradas no legado). tsc limpo; 1427 testes verdes. NOTA: dados de conjuge perdidos em CADs antigas nao voltam sozinhos — sobrevivem no PDF da CAD anexo; operador pode redigitar na validacao.",
+      done: "Diagnostico por workflow (4 agentes, codigo + banco). BUG 1: o wizard coletava a ficha inteira do conjuge mas o submit enviava 6 campos e o persist gravava 3 — em producao, 0/44 CADs casadas de agosto tinham conjuge em metadata.cadastro e o relacionamento so guardava cpf/email/phone (docs chegavam: 43/44). Correcao na corrente inteira: payload completo (cadastro-flow), metadata do relacionamento com a ficha toda (cadastro-persist), rota do board devolve e a validacao exibe os campos novos (selects C2X), e o envio ao C2X ganha fallback do nascimento. BUG 2: lerCadastroParaEdicao lia SO metadata.cadastro (vazio em 538/736 CADs — ficha mora na esteira p/ quem veio de import/sync) e o PATCH mandava o form inteiro com vazio virando null. Correcao: leitura = cascata cadastro < C2X ao vivo < esteira.ficha < cadastroEditado (a mesma do board/CAD); escrita = Partial com DIFF calculado na tela, gravado em cadastroEditado (camada da correcao humana); metadata do relacionamento conjuge em MERGE (substituir o objeto apagaria a ficha nova do bug 1). BONUS: o envio ao C2X passou a aplicar cadastroEditado por cima (correcoes humanas subiam certas na tela e erradas no legado). tsc limpo; 1427 testes verdes. NOTA: dados de conjuge perdidos em CADs antigas nao voltam sozinhos — sobrevivem no PDF da CAD anexo; operador pode redigitar na validacao.",
       motivation:
-        "Lucas, 23/08: *\"quando estamos subindo cad nao esta trazendo as informacoes completas do conjuge para validacao, tem que subir tudo, documentos, dados, tudo\"* e *\"ao clicar em editar cadastro no apolo, as informacoes que ja estavam estao sumindo, nao pode sumir, tem que ficar para que o operador veja e corrija caso necessario\"*.",
+        'Lucas, 23/08: *"quando estamos subindo cad nao esta trazendo as informacoes completas do conjuge para validacao, tem que subir tudo, documentos, dados, tudo"* e *"ao clicar em editar cadastro no apolo, as informacoes que ja estavam estao sumindo, nao pode sumir, tem que ficar para que o operador veja e corrija caso necessario"*.',
     },
     title: "Conjuge completo na CAD e Editar cadastro sem apagar nada",
     type: "correcao",
@@ -855,10 +915,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.195.0 (2026-08-23-setup-incorporador-editar-no-card)",
     technical: {
-      done:
-        "Diagnostico (workflow 4 agentes + dados de producao): o fluxo de reabrir esta saudavel (522 templates em 30 dias, 92% ok), mas 'Credito indeferido (corretor)' NUNCA saiu pela Iris — aprovado na Meta com header DOCUMENT obrigatorio (nasceu p/ o disparo do Apolo, que manda a CAD anexa), e o caminho de reabrir nao envia header → recusa sincrona em todo envio, ate hoje. Alem dele, 18 dos 44 modelos ofertados tinham chave sem fonte no ticket (variavel_2..5, unidade, empreendimento, parcelas, saldo_aberto) e sairiam com '-' no texto. Correcao: novo lib/iris/template-chaves.ts como FONTE UNICA — montarValoresDeTemplate (rota) e templateSaiCompletoPeloServidor (tela) derivam do mesmo mapa; filtro do seletor exclui header de midia e chave nao preenchivel (44 → 24 ofertados; todos os removidos sao de disparo automatizado); chave 'cliente' mapeada = nome do contato. Extras do diagnostico: billing 131042 derrubou 100% dos templates de 05-10/08 (resolvido, sem ocorrencia desde 10/08); falhas atuais sao 131026 numero inalcancavel, pontuais. 5 testes novos; tsc limpo (IrisPage e ts-nocheck — nomes conferidos a mao).",
+      done: "Diagnostico (workflow 4 agentes + dados de producao): o fluxo de reabrir esta saudavel (522 templates em 30 dias, 92% ok), mas 'Credito indeferido (corretor)' NUNCA saiu pela Iris — aprovado na Meta com header DOCUMENT obrigatorio (nasceu p/ o disparo do Apolo, que manda a CAD anexa), e o caminho de reabrir nao envia header → recusa sincrona em todo envio, ate hoje. Alem dele, 18 dos 44 modelos ofertados tinham chave sem fonte no ticket (variavel_2..5, unidade, empreendimento, parcelas, saldo_aberto) e sairiam com '-' no texto. Correcao: novo lib/iris/template-chaves.ts como FONTE UNICA — montarValoresDeTemplate (rota) e templateSaiCompletoPeloServidor (tela) derivam do mesmo mapa; filtro do seletor exclui header de midia e chave nao preenchivel (44 → 24 ofertados; todos os removidos sao de disparo automatizado); chave 'cliente' mapeada = nome do contato. Extras do diagnostico: billing 131042 derrubou 100% dos templates de 05-10/08 (resolvido, sem ocorrencia desde 10/08); falhas atuais sao 131026 numero inalcancavel, pontuais. 5 testes novos; tsc limpo (IrisPage e ts-nocheck — nomes conferidos a mao).",
       motivation:
-        "Lucas, 23/08, com gravacao de 27/07 (AT-001026): *\"ao tentar responder um cliente ... mesmo selecionando um template e clicando no botao de reabrir conversa, nada acontece, analisa por favor se isso ainda esta acontecendo\"* — e, apos o diagnostico, *\"pode corrigir\"*.",
+        'Lucas, 23/08, com gravacao de 27/07 (AT-001026): *"ao tentar responder um cliente ... mesmo selecionando um template e clicando no botao de reabrir conversa, nada acontece, analisa por favor se isso ainda esta acontecendo"* — e, apos o diagnostico, *"pode corrigir"*.',
     },
     title: "Reabrir conversa so oferece template que funciona",
     type: "correcao",
@@ -883,10 +942,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.194.0 (2026-08-23-setup-incorporador-editar-rola)",
     technical: {
-      done:
-        "Iteracao sobre a v1.194.0 a pedido do Lucas ('acho melhor abrir abaixo do perfil'): o formulario virou um bloco unico (`formularioIncorporador`) renderizado em DOIS pontos — no topo so quando e incorporador NOVO, e dentro do card clicado (apos os chips de empreendimentos) quando e edicao. Os inputs sao controlados pelo estado `form` do componente, entao o remount ao trocar de posicao na arvore nao perde nada digitado. O scrollIntoView mudou de block:'start' para 'nearest': so rola o minimo se o formulario nascer parcialmente fora da viewport. Botoes de conta (nova/editar) passaram a fechar a edicao para nao empilhar dois formularios no mesmo card. tsc limpo.",
+      done: "Iteracao sobre a v1.194.0 a pedido do Lucas ('acho melhor abrir abaixo do perfil'): o formulario virou um bloco unico (`formularioIncorporador`) renderizado em DOIS pontos — no topo so quando e incorporador NOVO, e dentro do card clicado (apos os chips de empreendimentos) quando e edicao. Os inputs sao controlados pelo estado `form` do componente, entao o remount ao trocar de posicao na arvore nao perde nada digitado. O scrollIntoView mudou de block:'start' para 'nearest': so rola o minimo se o formulario nascer parcialmente fora da viewport. Botoes de conta (nova/editar) passaram a fechar a edicao para nao empilhar dois formularios no mesmo card. tsc limpo.",
       motivation:
-        "Lucas, 23/08, ao validar a v1.194.0: *\"acho melhor abrir abaixo do perfil do empreendimento\"*.",
+        'Lucas, 23/08, ao validar a v1.194.0: *"acho melhor abrir abaixo do perfil do empreendimento"*.',
     },
     title: "Edicao do incorporador abre no proprio card",
     type: "melhoria",
@@ -910,10 +968,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.193.0 (2026-08-22-cad-pj-sem-anexo)",
     technical: {
-      done:
-        "O clique sempre funcionou: `abrirEdicao` seta `editando` e o formulario renderiza — mas ANTES da lista, no topo da aba, sem nenhum scroll. Quem clicava no lapis de um card abaixo da dobra nao via mudanca nenhuma (Lucas confirmou: 'ele vai para o top'). Correcao minima em gestao-incorporadores.tsx: ref na section do formulario + useEffect em `editando` com scrollIntoView({behavior:'smooth', block:'start'}) e scroll-mt-24 para nao colar no cabecalho. Vale para editar e para novo; trocar de card re-rola. Tooltip do uix e CSS verificados antes: nao interceptam o clique. tsc limpo.",
+      done: "O clique sempre funcionou: `abrirEdicao` seta `editando` e o formulario renderiza — mas ANTES da lista, no topo da aba, sem nenhum scroll. Quem clicava no lapis de um card abaixo da dobra nao via mudanca nenhuma (Lucas confirmou: 'ele vai para o top'). Correcao minima em gestao-incorporadores.tsx: ref na section do formulario + useEffect em `editando` com scrollIntoView({behavior:'smooth', block:'start'}) e scroll-mt-24 para nao colar no cabecalho. Vale para editar e para novo; trocar de card re-rola. Tooltip do uix e CSS verificados antes: nao interceptam o clique. tsc limpo.",
       motivation:
-        "Lucas, 23/08: *\"olha por favor o bug de edicao na criacao dos perfis do incorporador, estou clicando para editar um perfil criado e nao acontece nada\"* — e, confirmando o diagnostico, *\"isos mesmo, ele vai para o top\"*.",
+        'Lucas, 23/08: *"olha por favor o bug de edicao na criacao dos perfis do incorporador, estou clicando para editar um perfil criado e nao acontece nada"* — e, confirmando o diagnostico, *"isos mesmo, ele vai para o top"*.',
     },
     title: "Editar incorporador leva a tela ate o formulario",
     type: "correcao",
@@ -938,10 +995,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.192.0 (2026-08-22-imobiliaria-correcao-padrao)",
     technical: {
-      done:
-        "NENHUMA PJ jamais foi criada pela integracao (zero 'resolvido' na fila para entity_kind=pj). A diferenca entre o caminho que funciona e o que falha era o TRANSPORTE: PF viaja como JSON; o cliente PJ anexava o contrato social e virava multipart/form-data — e o multipart o C2X respondia com 500 Internal Server Error sem mensagem (hipotese: wrap_parameters do Rails so embrulha JSON em params[:user]; no multipart o controller acha nil e estoura). Casos de 22/08: TBTC e VIDRO TELA falharam as 08:43 (Brasilia) e o time criou as duas NA MAO as 08:49/08:53 — cuidado com o fuso ao ler a fila: atualizado_em e UTC. Correcao conforme a decisao do Lucas ('nao precisa subir documentacao para o C2X'): `lerContratoSocialParaC2x` sai do funil, o anexo vai sempre nulo com motivo registrado na auditoria, e o PJ viaja como JSON igual a PF. As 2 linhas presas foram resetadas para 'pendente': no reenvio a trava anti-duplicado encontra as empresas criadas a mao (ids 4856/4857) e carimba sem criar nada. tsc limpo.",
+      done: "NENHUMA PJ jamais foi criada pela integracao (zero 'resolvido' na fila para entity_kind=pj). A diferenca entre o caminho que funciona e o que falha era o TRANSPORTE: PF viaja como JSON; o cliente PJ anexava o contrato social e virava multipart/form-data — e o multipart o C2X respondia com 500 Internal Server Error sem mensagem (hipotese: wrap_parameters do Rails so embrulha JSON em params[:user]; no multipart o controller acha nil e estoura). Casos de 22/08: TBTC e VIDRO TELA falharam as 08:43 (Brasilia) e o time criou as duas NA MAO as 08:49/08:53 — cuidado com o fuso ao ler a fila: atualizado_em e UTC. Correcao conforme a decisao do Lucas ('nao precisa subir documentacao para o C2X'): `lerContratoSocialParaC2x` sai do funil, o anexo vai sempre nulo com motivo registrado na auditoria, e o PJ viaja como JSON igual a PF. As 2 linhas presas foram resetadas para 'pendente': no reenvio a trava anti-duplicado encontra as empresas criadas a mao (ids 4856/4857) e carimba sem criar nada. tsc limpo.",
       motivation:
-        "Lucas, 22/08: *\"o time me relatou que nao esta conseguindo subir cad com pessoa pj para o c2x, analisa o porque e corrige\"* e, na sequencia, *\"nao precisa subir documentacao para o c2x\"*.",
+        'Lucas, 22/08: *"o time me relatou que nao esta conseguindo subir cad com pessoa pj para o c2x, analisa o porque e corrige"* e, na sequencia, *"nao precisa subir documentacao para o c2x"*.',
     },
     title: "CAD PJ sobe para o C2X (sem o anexo que derrubava)",
     type: "correcao",
@@ -966,10 +1022,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.191.0 (2026-08-22-athena-template-saneado)",
     technical: {
-      done:
-        "A imobiliaria nao tem esteira: correcao = apolo_entities.status='attention' e o motivo mora no evento de auditoria credenciamento_correcao (metadata.motivos+observacao). TRILHA: `etapasDoItem` insere ETAPA_CORRECAO_IMOBILIARIA quando attention, e `posicaoDaImobiliaria` (regra pura, testada) devolve 1 para a trilha de 3 — antes voltava para a Validacao e a ficha devolvida ficava identica a uma recem-chegada. MOTIVO: a rota do board busca em lote o ultimo credenciamento_correcao das attention e o item o carrega no mesmo campo `motivo` da CAD; o PainelEtapa ja exibia para etapa.id='correcao', entao a imobiliaria herdou de graca. ⚠️ Pegadinha evitada: a perna da query que carrega as imobiliarias active/attention chama `decididas`, nao `naEsteira` — o filtro na perna errada devolveria vazio calado. Caso real validado no banco: C & E Negocios, attention desde 17/08, motivo 'Contrato social ilegivel ou incompleto...'. 18 testes verdes, tsc limpo.",
+      done: "A imobiliaria nao tem esteira: correcao = apolo_entities.status='attention' e o motivo mora no evento de auditoria credenciamento_correcao (metadata.motivos+observacao). TRILHA: `etapasDoItem` insere ETAPA_CORRECAO_IMOBILIARIA quando attention, e `posicaoDaImobiliaria` (regra pura, testada) devolve 1 para a trilha de 3 — antes voltava para a Validacao e a ficha devolvida ficava identica a uma recem-chegada. MOTIVO: a rota do board busca em lote o ultimo credenciamento_correcao das attention e o item o carrega no mesmo campo `motivo` da CAD; o PainelEtapa ja exibia para etapa.id='correcao', entao a imobiliaria herdou de graca. ⚠️ Pegadinha evitada: a perna da query que carrega as imobiliarias active/attention chama `decididas`, nao `naEsteira` — o filtro na perna errada devolveria vazio calado. Caso real validado no banco: C & E Negocios, attention desde 17/08, motivo 'Contrato social ilegivel ou incompleto...'. 18 testes verdes, tsc limpo.",
       motivation:
-        "Lucas, 22/08, na ficha da C & E Negocios: *\"imobiliaria na sessao de correcao, nao aparece o estagio e nem o motivo, tem que ser padrao, tanto para cad quanto para imobiliaria\"*.",
+        'Lucas, 22/08, na ficha da C & E Negocios: *"imobiliaria na sessao de correcao, nao aparece o estagio e nem o motivo, tem que ser padrao, tanto para cad quanto para imobiliaria"*.',
     },
     title: "Correcao da imobiliaria com estagio e motivo, no padrao da CAD",
     type: "correcao",
@@ -994,8 +1049,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.190.0 (2026-08-22-board-motivo-correcao)",
     technical: {
-      done:
-        "A Meta recusa com erro 100 ('As variaveis nao podem estar no inicio ou no fim do modelo') corpo que abre/fecha com {{n}} ou tem variaveis coladas. O prompt da Athena JA proibia (template-author.ts:159), mas instrucao ao modelo nao e garantia — em 22/08 ela abriu com {{1}} e o operador levou o erro vermelho sem saber que era do texto. Saneamento deterministico no parse do draft: prefixa 'Ola, ', sufixa ponto, separa coladas com hifen — cada ajuste vira warning para o operador ver o que mudou. Regex validados contra o caso real. tsc limpo.",
+      done: "A Meta recusa com erro 100 ('As variaveis nao podem estar no inicio ou no fim do modelo') corpo que abre/fecha com {{n}} ou tem variaveis coladas. O prompt da Athena JA proibia (template-author.ts:159), mas instrucao ao modelo nao e garantia — em 22/08 ela abriu com {{1}} e o operador levou o erro vermelho sem saber que era do texto. Saneamento deterministico no parse do draft: prefixa 'Ola, ', sufixa ponto, separa coladas com hifen — cada ajuste vira warning para o operador ver o que mudou. Regex validados contra o caso real. tsc limpo.",
       motivation:
         "Lucas, 22/08, criando o template 'Contrato · Alinhamento de ajustes': *\"deu esse erro, o que e?\"* — codigo Meta 100, Invalid parameter.",
     },
@@ -1022,10 +1076,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.189.0 (2026-08-22-cad-comprovante-nao-barra)",
     technical: {
-      done:
-        "O motivo ja era OBRIGATORIO no popup de devolver para correcao e ja era gravado em `apolo_esteira.motivo` — mas a rota do board nao o devolvia e o `PainelEtapa` mostrava so a `descricao` estatica de ETAPA_CORRECAO. Agora o select da rota inclui `motivo`, o item da resposta o carrega, e o painel o exibe em destaque ambar quando a etapa e correcao, revisao ou indeferido (as tres cujo motivo e uma decisao humana). tsc limpo.",
+      done: "O motivo ja era OBRIGATORIO no popup de devolver para correcao e ja era gravado em `apolo_esteira.motivo` — mas a rota do board nao o devolvia e o `PainelEtapa` mostrava so a `descricao` estatica de ETAPA_CORRECAO. Agora o select da rota inclui `motivo`, o item da resposta o carrega, e o painel o exibe em destaque ambar quando a etapa e correcao, revisao ou indeferido (as tres cujo motivo e uma decisao humana). tsc limpo.",
       motivation:
-        "Lucas, 22/08, olhando a ficha do Jose Renato em correcao: *\"aqui tem que apontar o porque estamos colocando essa cad em correcao\"*.",
+        'Lucas, 22/08, olhando a ficha do Jose Renato em correcao: *"aqui tem que apontar o porque estamos colocando essa cad em correcao"*.',
     },
     title: "A ficha em correcao diz o porque",
     type: "correcao",
@@ -1051,10 +1104,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.188.0 (2026-08-22-cad-escolha-empreendimento)",
     technical: {
-      done:
-        "O comprovante era o ULTIMO documento que ainda barrava (certidao e nitidez foram desarmadas em 02/08). O `throw` de 'Comprovante vencido' rodava ANTES de `onExtract`, entao o endereco nunca era setado, o aviso ambar e o campo manual de CEP nem renderizavam (`{endereco ? ...}`), e como `processFiles` acumula arquivos sem botao de remover, reanexar um comprovante bom relancava o erro do antigo: beco sem saida. E o numero era LIXO: `acharDataComprovante` tem um fallback que aceita a primeira data de QUALQUER campo da resposta da MOST (inclusive metadados e historico de consumo, via `collectFields` recursivo), com regex sem ancora — uma data de set/2007 pescada de um numero qualquer virava 'emitido ha 227 meses'. Correcoes: (1) `dataPlausivel` — so aceita data entre 24 meses atras e 1 mes a frente; implausivel = leitura nao confiavel = vazio; (2) os dois `throw` (PF e socio PJ) viraram `ext.avisoQualidade` nao bloqueante, reaproveitando o mecanismo de 02/08; (3) `montarCadDoc` ganhou a secao 'Pendencias de documentacao', DERIVADA do estado final (nao acumulada por handler: reanexar documento bom limpa a pendencia sozinho) — cobre data nao confirmada, emissao >3 meses e endereco nao lido. O gate de credito sem esteira que o caso Lucas Henrique pedia JA EXISTIA (10/08, consultar/route.ts:336) — as 4 consultas cobradas dele foram anteriores. tsc limpo.",
+      done: "O comprovante era o ULTIMO documento que ainda barrava (certidao e nitidez foram desarmadas em 02/08). O `throw` de 'Comprovante vencido' rodava ANTES de `onExtract`, entao o endereco nunca era setado, o aviso ambar e o campo manual de CEP nem renderizavam (`{endereco ? ...}`), e como `processFiles` acumula arquivos sem botao de remover, reanexar um comprovante bom relancava o erro do antigo: beco sem saida. E o numero era LIXO: `acharDataComprovante` tem um fallback que aceita a primeira data de QUALQUER campo da resposta da MOST (inclusive metadados e historico de consumo, via `collectFields` recursivo), com regex sem ancora — uma data de set/2007 pescada de um numero qualquer virava 'emitido ha 227 meses'. Correcoes: (1) `dataPlausivel` — so aceita data entre 24 meses atras e 1 mes a frente; implausivel = leitura nao confiavel = vazio; (2) os dois `throw` (PF e socio PJ) viraram `ext.avisoQualidade` nao bloqueante, reaproveitando o mecanismo de 02/08; (3) `montarCadDoc` ganhou a secao 'Pendencias de documentacao', DERIVADA do estado final (nao acumulada por handler: reanexar documento bom limpa a pendencia sozinho) — cobre data nao confirmada, emissao >3 meses e endereco nao lido. O gate de credito sem esteira que o caso Lucas Henrique pedia JA EXISTIA (10/08, consultar/route.ts:336) — as 4 consultas cobradas dele foram anteriores. tsc limpo.",
       motivation:
-        "Lucas, 22/08: *\"quando eu anexo um comprovante que nao esta sendo lido ele esta retornando que o documento tem mais de 227 dias de atraso, estou achando que esse texto e um fallback errado... certidoes, comprovante de endereco nao pode travar o processo de subir cad. Temos que deixar claro que a cad que subiu tem essa observacao no documento que e gerado na hora que finaliza o processo... deixar bem formalizado a pendencia para que o corretor e o analista quando for fazer operacao saiba disso\"*. (O numero real era 227 MESES — data-lixo de set/2007.)",
+        'Lucas, 22/08: *"quando eu anexo um comprovante que nao esta sendo lido ele esta retornando que o documento tem mais de 227 dias de atraso, estou achando que esse texto e um fallback errado... certidoes, comprovante de endereco nao pode travar o processo de subir cad. Temos que deixar claro que a cad que subiu tem essa observacao no documento que e gerado na hora que finaliza o processo... deixar bem formalizado a pendencia para que o corretor e o analista quando for fazer operacao saiba disso"*. (O numero real era 227 MESES — data-lixo de set/2007.)',
     },
     title: "Comprovante avisa e formaliza, mas nao trava a CAD",
     type: "correcao",
@@ -1080,10 +1132,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.187.0 (2026-08-22-apolo-credito-conjuge)",
     technical: {
-      done:
-        "O atalho existia em DOIS lugares e os dois foram corrigidos: `seguirComSessao` (PortaoCorretor.tsx) chamava `onValidado` direto quando `lista.length === 1`, e `proximoEstado` (lib/publico/cad/regras.ts:210 e :232) devolvia 'cad' em vez de 'empreendimento' para `empreendimentos === 1`. Mexer so num deixaria a tela pulada do mesmo jeito. Agora `>= 1` vai para a escolha e `0` vai para a central (antes, zero empreendimentos com o atalho ligado cairia numa escolha vazia). O informativo ambar da tela nomeia a imobiliaria e diz o que fazer quando o produto nao aparece — e' a parte que evita o erro, porque a lista sozinha nao explica a ausencia. Dois testes da maquina de estados prendiam a regra antiga ('PULA a escolha (regra do Lucas)') e foram reescritos com o caso real; entraram tambem os casos de 3 e de 0 empreendimentos. 64 testes da CAD publica verdes, tsc limpo.",
+      done: "O atalho existia em DOIS lugares e os dois foram corrigidos: `seguirComSessao` (PortaoCorretor.tsx) chamava `onValidado` direto quando `lista.length === 1`, e `proximoEstado` (lib/publico/cad/regras.ts:210 e :232) devolvia 'cad' em vez de 'empreendimento' para `empreendimentos === 1`. Mexer so num deixaria a tela pulada do mesmo jeito. Agora `>= 1` vai para a escolha e `0` vai para a central (antes, zero empreendimentos com o atalho ligado cairia numa escolha vazia). O informativo ambar da tela nomeia a imobiliaria e diz o que fazer quando o produto nao aparece — e' a parte que evita o erro, porque a lista sozinha nao explica a ausencia. Dois testes da maquina de estados prendiam a regra antiga ('PULA a escolha (regra do Lucas)') e foram reescritos com o caso real; entraram tambem os casos de 3 e de 0 empreendimentos. 64 testes da CAD publica verdes, tsc limpo.",
       motivation:
-        "Lucas, 22/08: *\"quando o corretor for subir a cad, mesmo que a imobiliaria dele esteja habilitada em um so produto, aparecer a etapa que ele escolhe o produto... se o produto que ele quer nao estiver ele tem que procurar a gestao da imobiliaria para habilitacao\"*. O caso que motivou: *\"o corretor ao digitar o cpf dele foi direto para subir cad, contudo a imobiliaria dele estava habilitada para o Vale do Ouro, mas ele queria subir uma cad para aldeia da cachoeira, ou seja, ele nao tinha como saber para qual empreendimento ele enviou a cad\"*.",
+        'Lucas, 22/08: *"quando o corretor for subir a cad, mesmo que a imobiliaria dele esteja habilitada em um so produto, aparecer a etapa que ele escolhe o produto... se o produto que ele quer nao estiver ele tem que procurar a gestao da imobiliaria para habilitacao"*. O caso que motivou: *"o corretor ao digitar o cpf dele foi direto para subir cad, contudo a imobiliaria dele estava habilitada para o Vale do Ouro, mas ele queria subir uma cad para aldeia da cachoeira, ou seja, ele nao tinha como saber para qual empreendimento ele enviou a cad"*.',
     },
     title: "Corretor sempre ve para qual empreendimento a CAD vai",
     type: "correcao",
@@ -1110,12 +1161,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.186.0 (2026-08-22-prometeu-ficha-do-lote)",
     technical: {
-      done:
-        "BOTAO SUMIDO: `temConjuge` lia o estado civil SO de `apolo_esteira.ficha.estadoCivilId`. O dado mora em DOIS lugares — 126 casados tem na ficha da esteira, 57 no `apolo_entities.metadata.cadastro`, e 40 SO no metadata. O Geraldo Antonio Mendes (22/08) era um desses: a tela de validacao mostrava 'Casado (a) · Comunhao parcial de bens', o PDF da CAD tambem, e o botao nao existia porque a ficha da esteira dele esta vazia. Agora `valorDaFicha` tenta a esteira e cai no metadata — mesma leitura para estadoCivilId, conjugeCpf e conjugeNome. DECISAO MANUAL: `conjugeResgata` chamava `atualizarEtapa` no mesmo request da consulta, entao conjuge aprovado movia a ficha sozinho. Seguir pela renda do conjuge muda quem sustenta a compra: e escolha comercial, nao consequencia do score (o titular reprovado continua no contrato e o regime de bens pesa). A consulta passou a so INFORMAR (`transicao = ehConjuge ? null : ...`), e a nova rota POST /api/apolo/serasa/seguir-conjuge faz o avanco — protegida por `authorizeApoloCoordenacao` (admin/leader, o mesmo portao da aprovacao com restricao), exigindo consulta `credito_conjuge` com status sucesso E resumo aprovado, passando `saidaDeRevisaoAutorizada` (sem isso, sair de 'revisao' e barrado) e gravando `registrarOverrideCredito` com quem decidiu. Na tela, o botao so renderiza com `conjugeAprovado && situacao.ehAdmin`, e o texto do resultado deixou de prometer que a ficha andou. tsc limpo.",
+      done: "BOTAO SUMIDO: `temConjuge` lia o estado civil SO de `apolo_esteira.ficha.estadoCivilId`. O dado mora em DOIS lugares — 126 casados tem na ficha da esteira, 57 no `apolo_entities.metadata.cadastro`, e 40 SO no metadata. O Geraldo Antonio Mendes (22/08) era um desses: a tela de validacao mostrava 'Casado (a) · Comunhao parcial de bens', o PDF da CAD tambem, e o botao nao existia porque a ficha da esteira dele esta vazia. Agora `valorDaFicha` tenta a esteira e cai no metadata — mesma leitura para estadoCivilId, conjugeCpf e conjugeNome. DECISAO MANUAL: `conjugeResgata` chamava `atualizarEtapa` no mesmo request da consulta, entao conjuge aprovado movia a ficha sozinho. Seguir pela renda do conjuge muda quem sustenta a compra: e escolha comercial, nao consequencia do score (o titular reprovado continua no contrato e o regime de bens pesa). A consulta passou a so INFORMAR (`transicao = ehConjuge ? null : ...`), e a nova rota POST /api/apolo/serasa/seguir-conjuge faz o avanco — protegida por `authorizeApoloCoordenacao` (admin/leader, o mesmo portao da aprovacao com restricao), exigindo consulta `credito_conjuge` com status sucesso E resumo aprovado, passando `saidaDeRevisaoAutorizada` (sem isso, sair de 'revisao' e barrado) e gravando `registrarOverrideCredito` com quem decidiu. Na tela, o botao so renderiza com `conjugeAprovado && situacao.ehAdmin`, e o texto do resultado deixou de prometer que a ficha andou. tsc limpo.",
       motivation:
-        "Lucas, 22/08: *\"o titular da cad deu reprovado, mas queria rodar do conjuge, o botao sumiu\"*. E, sobre o avanco: *\"posso fazer analise de credito do conjuge, contudo eu tenho que aprovar se segue o cadastro pelo conjuge ou nao, nao pode ser automatico\"* e *\"o botao de avancar com o conjuge titular aparece somente para um perfil admin\"*.",
+        'Lucas, 22/08: *"o titular da cad deu reprovado, mas queria rodar do conjuge, o botao sumiu"*. E, sobre o avanco: *"posso fazer analise de credito do conjuge, contudo eu tenho que aprovar se segue o cadastro pelo conjuge ou nao, nao pode ser automatico"* e *"o botao de avancar com o conjuge titular aparece somente para um perfil admin"*.',
     },
-    title: "Credito do conjuge: botao de volta, e o avanco vira decisao do admin",
+    title:
+      "Credito do conjuge: botao de volta, e o avanco vira decisao do admin",
     type: "correcao",
     version: "1.187.0",
   },
@@ -1141,12 +1192,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.185.0 (2026-08-22-prometeu-unidades-do-c2x)",
     technical: {
-      done:
-        "HISTORICO: vem de `acquisition_request_historics` do C2X, uma linha por mudanca de status — e NAO do estado atual do pedido, que so guarda onde ele parou (a RVPD14 da Ana Maria aparece hoje como 'Cancelado' e ponto, sem contar que houve reserva antes). `historicoDeUnidadesDoC2x` agrupa por CPF; `passosDasUnidades` traduz cada etapa para o portugues do salao ('Reservou a unidade · RVPD14', 'Devolveu a unidade · RVPD14') e acende `cancelado` nas etapas de saida; `mesclarJornada` intercala com os passos do salao ORDENANDO PELO RELOGIO — sem isso a ficha conta a historia fora de ordem, porque a reserva do Antonio (09:25) cai entre o check-in (09:13) e a conclusao (10:09). Passo sem carimbo vai para o fim em vez de fingir precedencia; empate de horario mantem o passo do salao antes do da unidade. A leitura do C2X e best-effort: legado fora do ar nao fecha a ficha, so devolve a jornada como antes. Mesmo cuidado de fuso das outras consultas (DATE_FORMAT + `paraInstante`). RELOGIO: o tempo era sempre contado ate AGORA, entao quem concluiu as 10:09 aparecia com 4h44 as 13:57, como se ainda estivesse no salao. `relogioAte` congela o fim em `etapaDesde` para as etapas `concluido` e `cancelado`, e vale para a lista, o kanban e o modal — e' o mesmo criterio que `calcularKpisDoEvento` ja usava no tempo medio, por isso o card dizia 58 min enquanto a lista dizia 4h44 das MESMAS pessoas. ⚠️ Nao vale para a aba Reservas: la o relogio conta desde a reserva no C2X, e uma reserva parada continua parada. SAIU DO EVENTO: `excluirCredenciadoRemoto` ja existia mas so estava na tela do ATENDENTE, o que exigia que a pessoa tivesse sentado na secretaria — e quem vai embora no meio sai antes disso. O botao foi para o rodape do modal da ficha, que abre de qualquer lista. Carimba `encerrado_em`, que ja e o filtro padrao de `listCredenciados`: a pessoa some das telas de operacao e dos numeros de uma vez. tsc limpo, 157 testes do Prometeu verdes.",
+      done: "HISTORICO: vem de `acquisition_request_historics` do C2X, uma linha por mudanca de status — e NAO do estado atual do pedido, que so guarda onde ele parou (a RVPD14 da Ana Maria aparece hoje como 'Cancelado' e ponto, sem contar que houve reserva antes). `historicoDeUnidadesDoC2x` agrupa por CPF; `passosDasUnidades` traduz cada etapa para o portugues do salao ('Reservou a unidade · RVPD14', 'Devolveu a unidade · RVPD14') e acende `cancelado` nas etapas de saida; `mesclarJornada` intercala com os passos do salao ORDENANDO PELO RELOGIO — sem isso a ficha conta a historia fora de ordem, porque a reserva do Antonio (09:25) cai entre o check-in (09:13) e a conclusao (10:09). Passo sem carimbo vai para o fim em vez de fingir precedencia; empate de horario mantem o passo do salao antes do da unidade. A leitura do C2X e best-effort: legado fora do ar nao fecha a ficha, so devolve a jornada como antes. Mesmo cuidado de fuso das outras consultas (DATE_FORMAT + `paraInstante`). RELOGIO: o tempo era sempre contado ate AGORA, entao quem concluiu as 10:09 aparecia com 4h44 as 13:57, como se ainda estivesse no salao. `relogioAte` congela o fim em `etapaDesde` para as etapas `concluido` e `cancelado`, e vale para a lista, o kanban e o modal — e' o mesmo criterio que `calcularKpisDoEvento` ja usava no tempo medio, por isso o card dizia 58 min enquanto a lista dizia 4h44 das MESMAS pessoas. ⚠️ Nao vale para a aba Reservas: la o relogio conta desde a reserva no C2X, e uma reserva parada continua parada. SAIU DO EVENTO: `excluirCredenciadoRemoto` ja existia mas so estava na tela do ATENDENTE, o que exigia que a pessoa tivesse sentado na secretaria — e quem vai embora no meio sai antes disso. O botao foi para o rodape do modal da ficha, que abre de qualquer lista. Carimba `encerrado_em`, que ja e o filtro padrao de `listCredenciados`: a pessoa some das telas de operacao e dos numeros de uma vez. tsc limpo, 157 testes do Prometeu verdes.",
       motivation:
-        "Lucas, 22/08: *\"essa AA Maria Fernandes reservou uma unidade, so que ela devolveu, ou seja, ela reservou e devolveu e foi embora, entao eu preciso apontar isso na ficha dela... Mas temos caso da pessoa devolver a PA e pegar outra, entao esse historico temos que ter dentro do prometeu\"*. E sobre o botao: *\"esse saiu eu so consigo fazer se a pessoa chegou a dar checkin dentro da secretaria, eu deveria ter a opcao dentro da tela analitico da central fazer esse apontamento\"*.",
+        'Lucas, 22/08: *"essa AA Maria Fernandes reservou uma unidade, so que ela devolveu, ou seja, ela reservou e devolveu e foi embora, entao eu preciso apontar isso na ficha dela... Mas temos caso da pessoa devolver a PA e pegar outra, entao esse historico temos que ter dentro do prometeu"*. E sobre o botao: *"esse saiu eu so consigo fazer se a pessoa chegou a dar checkin dentro da secretaria, eu deveria ter a opcao dentro da tela analitico da central fazer esse apontamento"*.',
     },
-    title: "A ficha conta o que aconteceu com o lote, e o relógio para quando o cliente sai",
+    title:
+      "A ficha conta o que aconteceu com o lote, e o relógio para quando o cliente sai",
     type: "novidade",
     version: "1.186.0",
   },
@@ -1178,10 +1229,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.184.0 (2026-08-22-prometeu-reservas-completas)",
     technical: {
-      done:
-        "UNIDADES: `prometeu_unidades` tem 0 linhas em producao — nunca foi escrita. Como a Central inteira le `credenciado.unidades`, o mesmo vazio aparecia em cinco lugares: coluna Unidades, 'UN' da mesa, funil, card de vendas e a ficha. Nova `unidadesVivasDoC2x(enterpriseId)` le TODAS as `acquisition_requests` com open=1 (nao so a etapa Reservado, que e o recorte da aba) e devolve CPF -> unidades com etapa. A rota /api/prometeu/reservas passou a fazer as duas leituras do legado em paralelo (conexao la e escassa) e devolve `unidadesPorCpf`; a Central cola isso nos credenciados num `useMemo`, entao todo ponto que ja lia `unidades` passou a funcionar sem mudanca. FUNIL: contava PESSOAS nas quatro linhas ('Finalizadas 11' eram 11 clientes, nao 11 lotes); agora soma unidades por etapa do C2X e mostra a contagem de clientes ao lado, porque o Lucas quer as duas leituras. VENDA: `etapaEhVenda` (pura, testada) define a linha — contrato em diante conta, Reservado e Proposta NAO, porque nessas duas o lote ainda cai (RVPC02 caiu 09:33 e o mesmo cliente pegou a RVPD02 as 09:42). MESA: `criarMesas` fazia upsert com ignoreDuplicates, ou seja SO CRIAVA. O Setup abre com 10 por padrao, entao salvar uma vez nascia com 10 e mudar para 3 depois nao tirava nada — a Secretaria do Villa Paris desenhava 10 mesas com config 3. Agora as excedentes VAZIAS sao removidas; as ocupadas ficam (apagar sumiria com o cliente sentado no meio do atendimento) e voltam num aviso. `PrometeuIndicadorDaMesa` ganhou `credenciadoIds` para a tela somar as unidades do C2X por mesa. tsc limpo, 149 testes do Prometeu verdes.",
+      done: "UNIDADES: `prometeu_unidades` tem 0 linhas em producao — nunca foi escrita. Como a Central inteira le `credenciado.unidades`, o mesmo vazio aparecia em cinco lugares: coluna Unidades, 'UN' da mesa, funil, card de vendas e a ficha. Nova `unidadesVivasDoC2x(enterpriseId)` le TODAS as `acquisition_requests` com open=1 (nao so a etapa Reservado, que e o recorte da aba) e devolve CPF -> unidades com etapa. A rota /api/prometeu/reservas passou a fazer as duas leituras do legado em paralelo (conexao la e escassa) e devolve `unidadesPorCpf`; a Central cola isso nos credenciados num `useMemo`, entao todo ponto que ja lia `unidades` passou a funcionar sem mudanca. FUNIL: contava PESSOAS nas quatro linhas ('Finalizadas 11' eram 11 clientes, nao 11 lotes); agora soma unidades por etapa do C2X e mostra a contagem de clientes ao lado, porque o Lucas quer as duas leituras. VENDA: `etapaEhVenda` (pura, testada) define a linha — contrato em diante conta, Reservado e Proposta NAO, porque nessas duas o lote ainda cai (RVPC02 caiu 09:33 e o mesmo cliente pegou a RVPD02 as 09:42). MESA: `criarMesas` fazia upsert com ignoreDuplicates, ou seja SO CRIAVA. O Setup abre com 10 por padrao, entao salvar uma vez nascia com 10 e mudar para 3 depois nao tirava nada — a Secretaria do Villa Paris desenhava 10 mesas com config 3. Agora as excedentes VAZIAS sao removidas; as ocupadas ficam (apagar sumiria com o cliente sentado no meio do atendimento) e voltam num aviso. `PrometeuIndicadorDaMesa` ganhou `credenciadoIds` para a tela somar as unidades do C2X por mesa. tsc limpo, 149 testes do Prometeu verdes.",
       motivation:
-        "Lucas, 22/08, durante o evento: *\"esse card, tem que refletir a quantidade de unidades, ou seja, vao ter clientes que vao comprar mais de uma unidade\"*, *\"da mesma forma que nos card da secretaria tem que somar a quantidade de unidades\"*, *\"outro local que usa unidades estamos trazendo clientes\"* (funil), *\"falta trazer a unidade aqui\"* (lista) e *\"nao esta respeitando a quantidade de mesa no setup\"*. E o complemento: *\"mas e legal sim trazer essas duas visoes diferentes, quantidade de cliente e quantidades de unidades\"*.",
+        'Lucas, 22/08, durante o evento: *"esse card, tem que refletir a quantidade de unidades, ou seja, vao ter clientes que vao comprar mais de uma unidade"*, *"da mesma forma que nos card da secretaria tem que somar a quantidade de unidades"*, *"outro local que usa unidades estamos trazendo clientes"* (funil), *"falta trazer a unidade aqui"* (lista) e *"nao esta respeitando a quantidade de mesa no setup"*. E o complemento: *"mas e legal sim trazer essas duas visoes diferentes, quantidade de cliente e quantidades de unidades"*.',
     },
     title: "Unidades do C2X na Central, e o Setup mandando nas mesas",
     type: "correcao",
@@ -1209,10 +1259,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.183.0 (2026-08-22-prometeu-nome-e-fuso)",
     technical: {
-      done:
-        "CORRETOR: `acquisition_requests.corretor_id` e' NULL em 35 de 35 pedidos do Villa Paris — o C2X simplesmente nao preenche. O nome existe do lado do Apolo, em `prometeu_credenciados.corretor` (44 de 44 preenchidos). A rota /api/prometeu/reservas ja cruzava por CPF com `listCredenciados`, mas nao devolvia o corretor, e a TELA tentava resolver cruzando com a lista que ela ja tinha em mao — que e' recortada por presenca. Como quem reserva costuma continuar em `recepcao` (o corretor lanca o pedido sem a pessoa passar pelo salao), o cruzamento falhava exatamente nas 14 linhas da aba: a coluna vinha toda com tracinho. Agora a rota resolve contra a fila INTEIRA e entrega `corretor` pronto. UNIDADES: o payload ja trazia os codigos e o componente ja os montava no formato de chip — faltava a coluna na tabela; reusa `.unid-wrap`/`.unid-chip` da lista principal. CARD: `porEtapa('reserva')` media a etapa da fila fisica e dava 0 com 14 reservas vivas. O fetch subiu para `useReservasDoC2x`, no CentralView, e alimenta a aba E o card — uma fonte so, senao os dois numeros divergem de novo. Enquanto a primeira leitura nao volta o valor e' null (nao zero) e cai no numero antigo: mostrar 0 diria que ninguem esta com unidade na mao. O clique passou a levar a aba Reservas em vez de abrir um modal por etapa, que viria vazio. ERRO: `erroC2x` era estado morto (setado, nunca exibido) e virou aviso na tela, com a lista antiga preservada. tsc limpo, 143 testes do Prometeu verdes.",
+      done: "CORRETOR: `acquisition_requests.corretor_id` e' NULL em 35 de 35 pedidos do Villa Paris — o C2X simplesmente nao preenche. O nome existe do lado do Apolo, em `prometeu_credenciados.corretor` (44 de 44 preenchidos). A rota /api/prometeu/reservas ja cruzava por CPF com `listCredenciados`, mas nao devolvia o corretor, e a TELA tentava resolver cruzando com a lista que ela ja tinha em mao — que e' recortada por presenca. Como quem reserva costuma continuar em `recepcao` (o corretor lanca o pedido sem a pessoa passar pelo salao), o cruzamento falhava exatamente nas 14 linhas da aba: a coluna vinha toda com tracinho. Agora a rota resolve contra a fila INTEIRA e entrega `corretor` pronto. UNIDADES: o payload ja trazia os codigos e o componente ja os montava no formato de chip — faltava a coluna na tabela; reusa `.unid-wrap`/`.unid-chip` da lista principal. CARD: `porEtapa('reserva')` media a etapa da fila fisica e dava 0 com 14 reservas vivas. O fetch subiu para `useReservasDoC2x`, no CentralView, e alimenta a aba E o card — uma fonte so, senao os dois numeros divergem de novo. Enquanto a primeira leitura nao volta o valor e' null (nao zero) e cai no numero antigo: mostrar 0 diria que ninguem esta com unidade na mao. O clique passou a levar a aba Reservas em vez de abrir um modal por etapa, que viria vazio. ERRO: `erroC2x` era estado morto (setado, nunca exibido) e virou aviso na tela, com a lista antiga preservada. tsc limpo, 143 testes do Prometeu verdes.",
       motivation:
-        "Lucas, 22/08, durante o evento do Villa Paris: *\"vc vai ter que enriquecer essa tela com o apolo, o C2x nao traz o corretor, mas o apolo sim\"*, *\"nessa tela tem que tambem trazer a unidade(s) que esta reservada para esse cliente\"* e *\"esse card tem que bater com essa tela, pode acontecer como aconteceu hoje que a pessoa nao veio fisicamente mas reservou unidade\"*.",
+        'Lucas, 22/08, durante o evento do Villa Paris: *"vc vai ter que enriquecer essa tela com o apolo, o C2x nao traz o corretor, mas o apolo sim"*, *"nessa tela tem que tambem trazer a unidade(s) que esta reservada para esse cliente"* e *"esse card tem que bater com essa tela, pode acontecer como aconteceu hoje que a pessoa nao veio fisicamente mas reservou unidade"*.',
     },
     title: "Reservas com corretor, unidade e card batendo",
     type: "melhoria",
@@ -1246,12 +1295,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.182.0 (2026-08-21-prometeu-etiqueta-corretor)",
     technical: {
-      done:
-        "(1) NOME. `prometeu_credenciados.nome` e' copia gravada UMA vez, no insert de `adicionarCredenciado` — nao existe um unico UPDATE dessa coluna no repositorio, e `garantirNaFilaDoLancamento` faz early-return quando a pessoa ja esta na fila, entao nem a rotina de abertura relia a ficha. Resolvido na LEITURA, replicando o padrao que o proprio arquivo ja usava para a IMOBILIARIA: `listCredenciados` (data.ts) resolve o nome por `entity_id` em lotes de 200 e devolve o canonico, com fallback na coluna. Como listCredenciados e' funil unico (fila, telao, reservas, boas-vindas), uma mudanca conserta o modulo todo, sem backfill. `bipDoSalao`/`bipDaSecretaria` tambem passaram a resolver, mas so no ramo que monta a mensagem — o caminho feliz do bip nao ganhou consulta nova, porque no dia do evento a bipagem e' o gargalo. Regra extraida para `nomeCanonico` (pura, testada): legal_name na frente de display_name e MAIUSCULAS, identica a da gravacao (credenciado-para-fila.ts:99 e :119) — se as duas divergirem, a fila alterna entre duas grafias. (2) FUSO. O MySQL do C2X roda em UTC, mas a aplicacao Rails grava o relogio de BRASILIA num DATETIME (que nao carrega fuso); o pool do Hades usa `timezone: 'Z'`, entao o driver lia '17:17' como UTC e o calculo de 'ha quanto tempo' saia 3h maior. Medido com tres ancoras do mesmo cliente: check-in 09:13 (Postgres, timestamptz) -> reserva 09:25 -> contrato 10:01 -> concluido 10:09; lido como UTC a reserva caia as 06:25, antes do check-in. A tela do C2X confirma 17:17. Correcao CIRURGICA: a data sai do SQL como texto (`DATE_FORMAT`) e o fuso e' colado em `paraInstante` — o pool NAO foi tocado porque e' o mesmo da cobranca do Hades e mexer no fuso ali moveria data de parcela e de contrato. 143 testes do Prometeu verdes, tsc limpo.",
+      done: "(1) NOME. `prometeu_credenciados.nome` e' copia gravada UMA vez, no insert de `adicionarCredenciado` — nao existe um unico UPDATE dessa coluna no repositorio, e `garantirNaFilaDoLancamento` faz early-return quando a pessoa ja esta na fila, entao nem a rotina de abertura relia a ficha. Resolvido na LEITURA, replicando o padrao que o proprio arquivo ja usava para a IMOBILIARIA: `listCredenciados` (data.ts) resolve o nome por `entity_id` em lotes de 200 e devolve o canonico, com fallback na coluna. Como listCredenciados e' funil unico (fila, telao, reservas, boas-vindas), uma mudanca conserta o modulo todo, sem backfill. `bipDoSalao`/`bipDaSecretaria` tambem passaram a resolver, mas so no ramo que monta a mensagem — o caminho feliz do bip nao ganhou consulta nova, porque no dia do evento a bipagem e' o gargalo. Regra extraida para `nomeCanonico` (pura, testada): legal_name na frente de display_name e MAIUSCULAS, identica a da gravacao (credenciado-para-fila.ts:99 e :119) — se as duas divergirem, a fila alterna entre duas grafias. (2) FUSO. O MySQL do C2X roda em UTC, mas a aplicacao Rails grava o relogio de BRASILIA num DATETIME (que nao carrega fuso); o pool do Hades usa `timezone: 'Z'`, entao o driver lia '17:17' como UTC e o calculo de 'ha quanto tempo' saia 3h maior. Medido com tres ancoras do mesmo cliente: check-in 09:13 (Postgres, timestamptz) -> reserva 09:25 -> contrato 10:01 -> concluido 10:09; lido como UTC a reserva caia as 06:25, antes do check-in. A tela do C2X confirma 17:17. Correcao CIRURGICA: a data sai do SQL como texto (`DATE_FORMAT`) e o fuso e' colado em `paraInstante` — o pool NAO foi tocado porque e' o mesmo da cobranca do Hades e mexer no fuso ali moveria data de parcela e de contrato. 143 testes do Prometeu verdes, tsc limpo.",
       motivation:
-        "Lucas, 22/08, no meio do evento do Villa Paris: *\"eu alterei um nome no board, essa alteracao nao chegou no prometeu (etiqueta, fila), queria que ao atualizar no apolo em todas as telas essas alteracoes sejam refletida\"* — era a Ana Maria Fernandes, corrigida de 'AA MARIA'. E, na sequencia, o alerta dele *\"cuidado com o fuso\"*, que expos o erro de 3h na coluna de tempo de reserva.",
+        'Lucas, 22/08, no meio do evento do Villa Paris: *"eu alterei um nome no board, essa alteracao nao chegou no prometeu (etiqueta, fila), queria que ao atualizar no apolo em todas as telas essas alteracoes sejam refletida"* — era a Ana Maria Fernandes, corrigida de \'AA MARIA\'. E, na sequencia, o alerta dele *"cuidado com o fuso"*, que expos o erro de 3h na coluna de tempo de reserva.',
     },
-    title: "Nome do Apolo chega ao Prometeu, e o tempo de reserva bate com o relogio",
+    title:
+      "Nome do Apolo chega ao Prometeu, e o tempo de reserva bate com o relogio",
     type: "correcao",
     version: "1.183.0",
   },
@@ -1276,10 +1325,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.181.0 (2026-08-21-apolo-campo-cidade)",
     technical: {
-      done:
-        "A lista de corretores e DERIVADA de `prometeu_credenciados.corretor` (nao ha cadastro de corretor no Prometeu): conjunto distinto por nome+imobiliaria, normalizando caixa e espaco — o dado e digitado a mao em cada CAD, e 'Joao Silva' e 'JOAO SILVA ' sao a mesma pessoa. A chave inclui a imobiliaria porque o mesmo nome pode aparecer por duas, e ai sao dois crachas. O motor de impressao foi EXTRAIDO para `imprimirDocumento` (monta o iframe isolado, espera as imagens, dispara o print) e agora serve os dois tipos: cliente e corretor imprimem pelo mesmo caminho, entao o ajuste fino contra a Honeywell vale para os dois de uma vez. `imprimirEtiquetasCorretor` nao carimba 'impressa' — o corretor nao tem linha na fila para carimbar. CSS: `.etq-corretor` reusa a caixa `.etq` inteira (mesmo papel, mesma margem de seguranca, mesmas barras pretas) e so troca o miolo — sem QR, nome a 21pt e o selo com borda. A previa na tela e espelho do HTML da impressao.",
+      done: "A lista de corretores e DERIVADA de `prometeu_credenciados.corretor` (nao ha cadastro de corretor no Prometeu): conjunto distinto por nome+imobiliaria, normalizando caixa e espaco — o dado e digitado a mao em cada CAD, e 'Joao Silva' e 'JOAO SILVA ' sao a mesma pessoa. A chave inclui a imobiliaria porque o mesmo nome pode aparecer por duas, e ai sao dois crachas. O motor de impressao foi EXTRAIDO para `imprimirDocumento` (monta o iframe isolado, espera as imagens, dispara o print) e agora serve os dois tipos: cliente e corretor imprimem pelo mesmo caminho, entao o ajuste fino contra a Honeywell vale para os dois de uma vez. `imprimirEtiquetasCorretor` nao carimba 'impressa' — o corretor nao tem linha na fila para carimbar. CSS: `.etq-corretor` reusa a caixa `.etq` inteira (mesmo papel, mesma margem de seguranca, mesmas barras pretas) e so troca o miolo — sem QR, nome a 21pt e o selo com borda. A previa na tela e espelho do HTML da impressao.",
       motivation:
-        "Lucas, 21/08: *\"fazer as etiquetas tambem dos corretores, seria muito bacana\"*, e a escolha do formato foi dele: nome + imobiliaria com selo CORRETOR, para o time reconhecer de longe no salao.",
+        'Lucas, 21/08: *"fazer as etiquetas tambem dos corretores, seria muito bacana"*, e a escolha do formato foi dele: nome + imobiliaria com selo CORRETOR, para o time reconhecer de longe no salao.',
     },
     title: "Etiqueta do corretor",
     type: "novidade",
@@ -1306,8 +1354,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.180.0 (2026-08-21-prometeu-abrir-lancamento)",
     technical: {
-      done:
-        "Nova lista `lib/apolo/c2x-cidades.ts` gerada da tabela `cities` do C2X: 5.601 municipios, formato compacto 'Nome|UF' (como array de objetos passaria de 300KB; assim fica em 119KB) e carregada por IMPORT DINAMICO na primeira tecla, para nao pesar o bundle de quem nunca abre o campo. Script permanente de regeneracao em scripts/apolo/gerar-cidades.mjs. `lib/apolo/cidades.ts` tem a regra: `separarUf` acha a UF em QUALQUER posicao do que foi digitado, e ⚠️ so trata como UF um token ISOLADO de 2 letras — senao 'pará de minas' e 'sapucaia' filtrariam PA e SP e devolveriam lista vazia. `buscarCidades` poe quem COMECA com o termo antes de quem so contem ('belo' traz Belo Horizonte antes de Monte Belo). +14 testes. ⚠️ NAO E UM <select> como profissao: sao 5.601 itens e o C2X guarda `users.naturalness` como TEXTO LIVRE, nao como id — o campo continua input, o que muda e que ele ensina o valor certo. `textoDaCidade` grava SO O NOME: o padrao dominante hoje e o nome puro ('BELO HORIZONTE', 496 registros) e gravar 'Nome / UF' criaria um segundo formato para o mesmo dado. A UF fica na SUGESTAO, que e onde ela resolve a ambiguidade.",
+      done: "Nova lista `lib/apolo/c2x-cidades.ts` gerada da tabela `cities` do C2X: 5.601 municipios, formato compacto 'Nome|UF' (como array de objetos passaria de 300KB; assim fica em 119KB) e carregada por IMPORT DINAMICO na primeira tecla, para nao pesar o bundle de quem nunca abre o campo. Script permanente de regeneracao em scripts/apolo/gerar-cidades.mjs. `lib/apolo/cidades.ts` tem a regra: `separarUf` acha a UF em QUALQUER posicao do que foi digitado, e ⚠️ so trata como UF um token ISOLADO de 2 letras — senao 'pará de minas' e 'sapucaia' filtrariam PA e SP e devolveriam lista vazia. `buscarCidades` poe quem COMECA com o termo antes de quem so contem ('belo' traz Belo Horizonte antes de Monte Belo). +14 testes. ⚠️ NAO E UM <select> como profissao: sao 5.601 itens e o C2X guarda `users.naturalness` como TEXTO LIVRE, nao como id — o campo continua input, o que muda e que ele ensina o valor certo. `textoDaCidade` grava SO O NOME: o padrao dominante hoje e o nome puro ('BELO HORIZONTE', 496 registros) e gravar 'Nome / UF' criaria um segundo formato para o mesmo dado. A UF fica na SUGESTAO, que e onde ela resolve a ambiguidade.",
       motivation:
         "Lucas, 21/08, olhando a naturalidade na validacao da CAD: *\"esse campo de cidades tem que ser padrao, igual profissao: comeco a digitar ele puxa a cidade correta, se quiser colocar um UF antes para mitigar a busca pode colocar\"*. Medido no C2X: 247 nomes de cidade se repetem entre estados diferentes (por isso a UF importa), e o campo livre ja produziu 'NAO INFORMADO' em 569 cadastros, alem de 'PARA DE MINAS / MG' convivendo com 'BELO HORIZONTE' — dois formatos para o mesmo dado.",
     },
@@ -1337,10 +1384,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.179.0 (2026-08-21-caca-valor-so-com-boleto)",
     technical: {
-      done:
-        "Nova `popularFilaDoLancamento` (lib/apolo), chamada por `criarEvento` E por `ativarEvento`, e tambem pela rota manual POST /api/prometeu/eventos/importar-credenciados — UMA rotina, tres portas, porque duas implementacoes divergiriam na primeira mudanca de regra. Idempotente: quem ja esta na fila volta como `jaEstavam`. Best-effort: falha na fila NAO desfaz a ativacao. ⚠️ POR QUE PRECISOU EXISTIR: a fila e alimentada quando a CAD MUDA de etapa, e quem ja estava em `credenciado` ha semanas nunca mais muda — um lancamento criado hoje nascia com fila VAZIA. O PIX entra na rotina porque decide a ORDEM: le `apolo_enterprise_settings.prevenda_habilitada` e so passa `pagoEm` quando ha pre-venda; sem ela, `ordenarFilaDoEvento` desempata por `chegou_em` (a data de envio da CAD), que e o que o Villa Paris precisa. Fail-closed: na duvida trata como SEM pre-venda, porque a chegada da CAD e uma ordem verdadeira e a ordem de pagamento seria inventada. `garantirNaFilaDoLancamento` aceita `eventoId` explicito para alcancar lancamento em RASCUNHO (o `eventoOperavel` so ve ativo/em_andamento, de proposito). TRAVA NOVA em `ativarEvento`: recusa 409 se ja houver outro lancamento em operacao — `eventoOperavel` desempata dois 'ativo' por `linhas[0]` de uma ordenacao com empate, ou seja a escolha seria arbitraria e a fila do Apolo cairia num evento indefinido. 1.098 testes, typecheck, lint e build limpos.",
+      done: "Nova `popularFilaDoLancamento` (lib/apolo), chamada por `criarEvento` E por `ativarEvento`, e tambem pela rota manual POST /api/prometeu/eventos/importar-credenciados — UMA rotina, tres portas, porque duas implementacoes divergiriam na primeira mudanca de regra. Idempotente: quem ja esta na fila volta como `jaEstavam`. Best-effort: falha na fila NAO desfaz a ativacao. ⚠️ POR QUE PRECISOU EXISTIR: a fila e alimentada quando a CAD MUDA de etapa, e quem ja estava em `credenciado` ha semanas nunca mais muda — um lancamento criado hoje nascia com fila VAZIA. O PIX entra na rotina porque decide a ORDEM: le `apolo_enterprise_settings.prevenda_habilitada` e so passa `pagoEm` quando ha pre-venda; sem ela, `ordenarFilaDoEvento` desempata por `chegou_em` (a data de envio da CAD), que e o que o Villa Paris precisa. Fail-closed: na duvida trata como SEM pre-venda, porque a chegada da CAD e uma ordem verdadeira e a ordem de pagamento seria inventada. `garantirNaFilaDoLancamento` aceita `eventoId` explicito para alcancar lancamento em RASCUNHO (o `eventoOperavel` so ve ativo/em_andamento, de proposito). TRAVA NOVA em `ativarEvento`: recusa 409 se ja houver outro lancamento em operacao — `eventoOperavel` desempata dois 'ativo' por `linhas[0]` de uma ordenacao com empate, ou seja a escolha seria arbitraria e a fila do Apolo cairia num evento indefinido. 1.098 testes, typecheck, lint e build limpos.",
       motivation:
-        "Lucas, 21/08, logo apos criar o lancamento do Villa Paris: *\"criei o lancamento, agora todas as cads do vila paris que estao em credenciado tem que aparecer na fila e nas etiquetas. Como nesse empreendimento a gente nao tem o pix, a ordem da fila iniciar e quando eles mandaram as cads\"*, e em seguida: *\"isso e padrao. Toda vez que eu habilitar um lancamento, o sistema ja tem que buscar as cads do credenciado, entender se tem pix, fazer toda essa rotina\"* e *\"se nao tiver, uma hora vai chegar e quando chegar fazer esse processo\"* — este ultimo caso ja funcionava pela esteira, que alimenta a fila a cada mudanca de etapa.",
+        'Lucas, 21/08, logo apos criar o lancamento do Villa Paris: *"criei o lancamento, agora todas as cads do vila paris que estao em credenciado tem que aparecer na fila e nas etiquetas. Como nesse empreendimento a gente nao tem o pix, a ordem da fila iniciar e quando eles mandaram as cads"*, e em seguida: *"isso e padrao. Toda vez que eu habilitar um lancamento, o sistema ja tem que buscar as cads do credenciado, entender se tem pix, fazer toda essa rotina"* e *"se nao tiver, uma hora vai chegar e quando chegar fazer esse processo"* — este ultimo caso ja funcionava pela esteira, que alimenta a fila a cada mudanca de etapa.',
     },
     title: "Prometeu: abrir lancamento ja monta a fila",
     type: "novidade",
@@ -1367,10 +1413,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.178.0 (2026-08-21-prometeu-telao-do-lancamento)",
     technical: {
-      done:
-        "TRAVA NO PONTO UNICO: `describeInstallment` (executors.ts) e a unica funcao que escreve a linha de parcela, e os CINCO caminhos passam por ela (consultar_financeiro nas vencidas e no proximo vencimento, listar_boletos, e os dois da imobiliaria). Novo `podeInformarValor(item)`: true se status Liquidada OU `hasBoletoLink(item)` — helper que ja existia e ja era calculado ao lado do valor, sem gatear nada. Quando false, o valor e substituido por 'valor sob atualizacao (confirmado na emissao do boleto)'. ⚠️ MARCA EXPLICITA, NAO OMISSAO: sem nada no lugar, o modelo preenche a lacuna ou o cliente pergunta 'quanto e?' e ele inventa. PROMPT (persona.ts, bloco ESTAVEL e portanto cacheavel): secao nova com os tres estados, o PORQUE (senao o modelo trata como capricho e contorna), a proibicao de estimar por outra parcela e a frase pronta para a recusa nao soar como esconder informacao. Corrigidos dois exemplos que ENSINAVAM o contrario — o de resposta executiva e o de transferencia, que citava 'no valor de R$ 824,83' justamente para uma parcela sem boleto. O bloco de VOZ (contexto do turno) reafirma a regra, porque ele reescreve as regras de formato e 'diga os valores por extenso' soaria como permissao. +16 testes; 95 da Iris no total, incluindo o de cache que exige o bloco estavel byte a byte.",
+      done: "TRAVA NO PONTO UNICO: `describeInstallment` (executors.ts) e a unica funcao que escreve a linha de parcela, e os CINCO caminhos passam por ela (consultar_financeiro nas vencidas e no proximo vencimento, listar_boletos, e os dois da imobiliaria). Novo `podeInformarValor(item)`: true se status Liquidada OU `hasBoletoLink(item)` — helper que ja existia e ja era calculado ao lado do valor, sem gatear nada. Quando false, o valor e substituido por 'valor sob atualizacao (confirmado na emissao do boleto)'. ⚠️ MARCA EXPLICITA, NAO OMISSAO: sem nada no lugar, o modelo preenche a lacuna ou o cliente pergunta 'quanto e?' e ele inventa. PROMPT (persona.ts, bloco ESTAVEL e portanto cacheavel): secao nova com os tres estados, o PORQUE (senao o modelo trata como capricho e contorna), a proibicao de estimar por outra parcela e a frase pronta para a recusa nao soar como esconder informacao. Corrigidos dois exemplos que ENSINAVAM o contrario — o de resposta executiva e o de transferencia, que citava 'no valor de R$ 824,83' justamente para uma parcela sem boleto. O bloco de VOZ (contexto do turno) reafirma a regra, porque ele reescreve as regras de formato e 'diga os valores por extenso' soaria como permissao. +16 testes; 95 da Iris no total, incluindo o de cache que exige o bloco estavel byte a byte.",
       motivation:
-        "Lucas, 21/08: *\"como estamos com problemas de reajuste, as parcelas que tem boleto ja tem reajuste feito manualmente, contudo as parcelas que nao tem nao tem. Ela esta passando informacoes de valores diferentes\"*. Medido no C2X: nao existe campo de reajuste — a correcao e aplicada a mao, sobrescrevendo `initial_value`, quando a parcela recebe boleto. No contrato 455, a parcela 34 (com boleto, mai/2027) vale R$ 535,72 e a 35 (sem boleto, jun/2027) vale R$ 426,81: 20,4% a menos, e era esse numero que a CACA informava. Das 96.682 parcelas em aberto, so 990 (1%) tem boleto; 1.201 estao VENCIDAS sem boleto, o caso em que ela falava valor com mais convicção. A regra ja existia no motor LEGADO da CACA (que filtrava parcela sem boleto) e se perdeu na migracao para o Claude.",
+        'Lucas, 21/08: *"como estamos com problemas de reajuste, as parcelas que tem boleto ja tem reajuste feito manualmente, contudo as parcelas que nao tem nao tem. Ela esta passando informacoes de valores diferentes"*. Medido no C2X: nao existe campo de reajuste — a correcao e aplicada a mao, sobrescrevendo `initial_value`, quando a parcela recebe boleto. No contrato 455, a parcela 34 (com boleto, mai/2027) vale R$ 535,72 e a 35 (sem boleto, jun/2027) vale R$ 426,81: 20,4% a menos, e era esse numero que a CACA informava. Das 96.682 parcelas em aberto, so 990 (1%) tem boleto; 1.201 estao VENCIDAS sem boleto, o caso em que ela falava valor com mais convicção. A regra ja existia no motor LEGADO da CACA (que filtrava parcela sem boleto) e se perdeu na migracao para o Claude.',
     },
     title: "CACA: valor de parcela so quando ele esta fechado",
     type: "correcao",
@@ -1392,9 +1437,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
             screen: "Telao",
           },
           {
-            items: [
-              "Tela Locutor desativada",
-            ],
+            items: ["Tela Locutor desativada"],
             screen: "Menu",
           },
         ],
@@ -1402,10 +1445,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.177.0 (2026-08-21-prometeu-lancamentos)",
     technical: {
-      done:
-        "TELAO: a rota /api/prometeu/telao JA devolvia `lancamento` (nomeDoLancamento do evento) — faltava usar. A div virou `#ev-lancamento` e `aplicarDados` escreve nela a cada leitura (1a carga e poll de 20s), junto com o document.title. As 4 frases de FALLBACK_FALAS passaram a usar `{lancamento}`, trocado em tempo de execucao; e o gerador de venda de ENSAIO deriva a sigla do lancamento em vez do 'VOR' fixo. Sintaxe do JS validada por `new Function` nos dois blocos <script>. LOCUTOR: item removido de ALL_SCREENS (prometeu-module.tsx). Ele dependia de um TTS em `http://localhost:5180`, que nunca existiu em producao — aberta pelo hub, a tela carregava e nao falava, e os presets ainda diziam 'bem-vindos ao Vale do Ouro'. O HTML continua em /public: apagar 600 linhas por causa de um item de menu seria desproporcional, e o comentario no lugar diz por que ele saiu.",
+      done: "TELAO: a rota /api/prometeu/telao JA devolvia `lancamento` (nomeDoLancamento do evento) — faltava usar. A div virou `#ev-lancamento` e `aplicarDados` escreve nela a cada leitura (1a carga e poll de 20s), junto com o document.title. As 4 frases de FALLBACK_FALAS passaram a usar `{lancamento}`, trocado em tempo de execucao; e o gerador de venda de ENSAIO deriva a sigla do lancamento em vez do 'VOR' fixo. Sintaxe do JS validada por `new Function` nos dois blocos <script>. LOCUTOR: item removido de ALL_SCREENS (prometeu-module.tsx). Ele dependia de um TTS em `http://localhost:5180`, que nunca existiu em producao — aberta pelo hub, a tela carregava e nao falava, e os presets ainda diziam 'bem-vindos ao Vale do Ouro'. O HTML continua em /public: apagar 600 linhas por causa de um item de menu seria desproporcional, e o comentario no lugar diz por que ele saiu.",
       motivation:
-        "Lucas, 21/08: *\"pode desativar essa tela de locutor, o telao tem que buscar o empreendimento ativo, por isso que acho que o telao tem que estar dentro do lancamento, assim teremos os teloes personalizados\"*. O telao e a tela projetada no salao: no proximo lancamento ele estamparia o nome do lancamento anterior para todo mundo ver.",
+        'Lucas, 21/08: *"pode desativar essa tela de locutor, o telao tem que buscar o empreendimento ativo, por isso que acho que o telao tem que estar dentro do lancamento, assim teremos os teloes personalizados"*. O telao e a tela projetada no salao: no proximo lancamento ele estamparia o nome do lancamento anterior para todo mundo ver.',
     },
     title: "Telao do lancamento ativo, e adeus ao Locutor",
     type: "correcao",
@@ -1449,12 +1491,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.176.0 (2026-08-21-board-avisar-coordenador)",
     technical: {
-      done:
-        "MIGRATION 0100 (autorizada): `arquivado_em` + `arquivado_por` em prometeu_eventos, com indice parcial nos vivos. Coluna SEPARADA e nao `status='arquivado'` — status carrega o ciclo do dia (rascunho/ativo/em_andamento/encerrado) e sobrescreve-lo apagaria a informacao de que o evento terminou direito. Mesmo padrao que o modulo ja usa para PESSOA (`prometeu_credenciados.encerrado_em`). `listEventos` filtra por padrao, com `incluirArquivados` para o historico. `arquivarEvento` tambem desativa os operadores do evento. ⚠️ NAO existe e nao deve existir DELETE de evento: as FKs sao ON DELETE CASCADE e apagariam 609 credenciados, 481 movimentacoes, 242 chamadas, 18 mesas e 13 operadores. AMARRA DA FILA: `eventoOperavel` (novo) devolve id + enterprise_id, e `credenciado-para-fila` recusa CAD de outro empreendimento comparando por ID, nunca por nome. Era o risco numero 1: `esteira.ts:206` chama isso em TODA mudanca de etapa do Board e nada comparava empreendimento — inocuo so porque nao havia evento ativo. EVENTO DO DIA: o fallback `?? eventos[0]` saiu; a funcao promete no comentario que 'nunca cai num encerrado' e caia, porque o Vale do Ouro era o unico evento do banco. Fila e Etiqueta migraram para `eventoDoDia` (usavam `find(status==='ativo') ?? lista[0]`). FALLBACK 'VLO' REMOVIDO de data.ts:1134: lancamento sem sigla agora RECUSA a reserva em vez de gerar codigo com o prefixo do Vale do Ouro. LOGINS: `encerrarDia` com encerrarEvento desativa os operadores — regra do Lucas, 'esses logins e senhas tambem sao arquivados com a finalizacao do lancamento'. Modal de criacao extraido como componente porque e usado no header E no estado vazio, que retorna antes do resto da tela. +6 testes; 1.098 no total, typecheck, lint e build limpos.",
+      done: "MIGRATION 0100 (autorizada): `arquivado_em` + `arquivado_por` em prometeu_eventos, com indice parcial nos vivos. Coluna SEPARADA e nao `status='arquivado'` — status carrega o ciclo do dia (rascunho/ativo/em_andamento/encerrado) e sobrescreve-lo apagaria a informacao de que o evento terminou direito. Mesmo padrao que o modulo ja usa para PESSOA (`prometeu_credenciados.encerrado_em`). `listEventos` filtra por padrao, com `incluirArquivados` para o historico. `arquivarEvento` tambem desativa os operadores do evento. ⚠️ NAO existe e nao deve existir DELETE de evento: as FKs sao ON DELETE CASCADE e apagariam 609 credenciados, 481 movimentacoes, 242 chamadas, 18 mesas e 13 operadores. AMARRA DA FILA: `eventoOperavel` (novo) devolve id + enterprise_id, e `credenciado-para-fila` recusa CAD de outro empreendimento comparando por ID, nunca por nome. Era o risco numero 1: `esteira.ts:206` chama isso em TODA mudanca de etapa do Board e nada comparava empreendimento — inocuo so porque nao havia evento ativo. EVENTO DO DIA: o fallback `?? eventos[0]` saiu; a funcao promete no comentario que 'nunca cai num encerrado' e caia, porque o Vale do Ouro era o unico evento do banco. Fila e Etiqueta migraram para `eventoDoDia` (usavam `find(status==='ativo') ?? lista[0]`). FALLBACK 'VLO' REMOVIDO de data.ts:1134: lancamento sem sigla agora RECUSA a reserva em vez de gerar codigo com o prefixo do Vale do Ouro. LOGINS: `encerrarDia` com encerrarEvento desativa os operadores — regra do Lucas, 'esses logins e senhas tambem sao arquivados com a finalizacao do lancamento'. Modal de criacao extraido como componente porque e usado no header E no estado vazio, que retorna antes do resto da tela. +6 testes; 1.098 no total, typecheck, lint e build limpos.",
       motivation:
-        "Lucas, 21/08: *\"o prometeu e o nosso sistema de fila, ou seja ele funcionara em lancamentos ATIVOS. Os lancamentos que foram FINALIZADOS, pode arquivar tudo, gestao, fila tudo. Entao o que eu nao vi hoje e um BOTAO PARA CRIAR OS NOVOS LANCAMENTOS e ainda tem MUITA COISA DO VALE DO OURO\"*. A auditoria (4 agentes + banco) achou a razao das duas queixas: o Prometeu inteiro tem UM evento, o Vale do Ouro, encerrado em 01/08 — e ele reaparecia por cinco caminhos diferentes, enquanto o botao de criar estava preso num early-return que so renderiza com ZERO eventos.",
+        'Lucas, 21/08: *"o prometeu e o nosso sistema de fila, ou seja ele funcionara em lancamentos ATIVOS. Os lancamentos que foram FINALIZADOS, pode arquivar tudo, gestao, fila tudo. Entao o que eu nao vi hoje e um BOTAO PARA CRIAR OS NOVOS LANCAMENTOS e ainda tem MUITA COISA DO VALE DO OURO"*. A auditoria (4 agentes + banco) achou a razao das duas queixas: o Prometeu inteiro tem UM evento, o Vale do Ouro, encerrado em 01/08 — e ele reaparecia por cinco caminhos diferentes, enquanto o botao de criar estava preso num early-return que so renderiza com ZERO eventos.',
     },
-    title: "Prometeu: criar lancamento, arquivar o que acabou e soltar o Vale do Ouro",
+    title:
+      "Prometeu: criar lancamento, arquivar o que acabou e soltar o Vale do Ouro",
     type: "novidade",
     version: "1.177.0",
   },
@@ -1477,10 +1519,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.175.0 (2026-08-21-esteira-status-envio-e-avanco)",
     technical: {
-      done:
-        "Botao no Board chamando POST /api/apolo/esteira/avisar-lote com `apenas: 'coordenador'`, `dryRun` no primeiro clique. So aparece com UM empreendimento escolhido: em 'todos', mandaria a CAD de um loteamento para o coordenador de outro. A ponte nome -> enterpriseId sai dos proprios cards (`enterpriseIdDoFiltro`), porque o filtro da tela e por NOME e a esteira e por `(entity_id, enterprise_id)`. Depois de enviar, o estado zera — deixar 'Confirmar envio' no botao convidaria a remandar o lote para quem acabou de receber. ⚠️ ESTE BOTAO EXISTE PORQUE A ROTA NAO PODIA SER CHAMADA DE FORA: o `CRON_SECRET` local nao bate com o de producao (a rota respondeu 'Sessao do Apolo invalida'), e adivinhar ou extrair secret de producao esta fora de cogitacao. Pela tela, quem dispara e a sessao admin de quem ja esta logado.",
+      done: "Botao no Board chamando POST /api/apolo/esteira/avisar-lote com `apenas: 'coordenador'`, `dryRun` no primeiro clique. So aparece com UM empreendimento escolhido: em 'todos', mandaria a CAD de um loteamento para o coordenador de outro. A ponte nome -> enterpriseId sai dos proprios cards (`enterpriseIdDoFiltro`), porque o filtro da tela e por NOME e a esteira e por `(entity_id, enterprise_id)`. Depois de enviar, o estado zera — deixar 'Confirmar envio' no botao convidaria a remandar o lote para quem acabou de receber. ⚠️ ESTE BOTAO EXISTE PORQUE A ROTA NAO PODIA SER CHAMADA DE FORA: o `CRON_SECRET` local nao bate com o de producao (a rota respondeu 'Sessao do Apolo invalida'), e adivinhar ou extrair secret de producao esta fora de cogitacao. Pela tela, quem dispara e a sessao admin de quem ja esta logado.",
       motivation:
-        "Lucas, 21/08: *\"quando subir, dispara por favor todas as mensagens do villa paris para o coordenador (verifica se o coordenador e o Mateus)\"*. Confirmado no C2X e na tela: o Coordenador de Vendas do RVP e MATHEUS GUEDES IMOVEIS, (33) 98731-9586 — vem de `enterprises.manager_id`, que o Apolo traduz como Coordenador de Vendas (o campo `coordenador_id` do C2X tem dado errado e nao e exibido). Sao 44 CADs: 20 credenciadas, 18 em validacao, 5 reprovadas no credito e 1 em correcao.",
+        'Lucas, 21/08: *"quando subir, dispara por favor todas as mensagens do villa paris para o coordenador (verifica se o coordenador e o Mateus)"*. Confirmado no C2X e na tela: o Coordenador de Vendas do RVP e MATHEUS GUEDES IMOVEIS, (33) 98731-9586 — vem de `enterprises.manager_id`, que o Apolo traduz como Coordenador de Vendas (o campo `coordenador_id` do C2X tem dado errado e nao e exibido). Sao 44 CADs: 20 credenciadas, 18 em validacao, 5 reprovadas no credito e 1 em correcao.',
     },
     title: "Board: avisar o coordenador das CADs de um empreendimento",
     type: "novidade",
@@ -1511,10 +1552,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.174.0 (2026-08-21-esteira-avisos-e-trilha)",
     technical: {
-      done:
-        "STATUS DE ENVIO NA CAD: `<StatusDisparos>` deixou de ser exclusivo da imobiliaria (`{imob ? ... : null}`) e aparece em toda ficha. A rota GET /board/[id]/disparos ja servia — nunca filtrou por perfil. `rotuloDoEvento` ganhou o padrao `etapa_<etapa>_<papel>` (7 etapas x 3 papeis) em vez de 21 entradas no dicionario, senao uma etapa nova apareceria como 'etapa credenciado corretor' cru na tela. +3 testes. AVANCO SEM REBAIXAR: PATCH /board/[id]/etapa aceita `nuncaRebaixar`, e SO o botao de avancar manda (indeferir, correcao e revisao sao movimentos laterais deliberados e continuam livres). CAUSA MEDIDA na CAD da Cristiana (Vale do Ouro), reconstruida por `apolo_audit_events`: 19:42:18 o Board grava `credito`; 19:42:23 o Serasa APROVA (score 580, zero negativacao) e o servidor grava `credenciado` porque a pre-venda do VLO esta desligada; 19:42:37 o Board grava `credito` por cima, com a etapa que a TELA achava ser a atual. ROTA DE LOTE: POST /api/apolo/esteira/avisar-lote (admin ou CRON_SECRET), `dryRun` por padrao, com `apenas`, `pular` e `limite`. Existe porque as credenciais do gateway do Relacionamento so vivem na Vercel: rodando por script de uma maquina de desenvolvimento, toda mensagem falha com 'Gateway Evolution nao configurado' — medido com UMA mensagem antes de soltar o lote.",
+      done: "STATUS DE ENVIO NA CAD: `<StatusDisparos>` deixou de ser exclusivo da imobiliaria (`{imob ? ... : null}`) e aparece em toda ficha. A rota GET /board/[id]/disparos ja servia — nunca filtrou por perfil. `rotuloDoEvento` ganhou o padrao `etapa_<etapa>_<papel>` (7 etapas x 3 papeis) em vez de 21 entradas no dicionario, senao uma etapa nova apareceria como 'etapa credenciado corretor' cru na tela. +3 testes. AVANCO SEM REBAIXAR: PATCH /board/[id]/etapa aceita `nuncaRebaixar`, e SO o botao de avancar manda (indeferir, correcao e revisao sao movimentos laterais deliberados e continuam livres). CAUSA MEDIDA na CAD da Cristiana (Vale do Ouro), reconstruida por `apolo_audit_events`: 19:42:18 o Board grava `credito`; 19:42:23 o Serasa APROVA (score 580, zero negativacao) e o servidor grava `credenciado` porque a pre-venda do VLO esta desligada; 19:42:37 o Board grava `credito` por cima, com a etapa que a TELA achava ser a atual. ROTA DE LOTE: POST /api/apolo/esteira/avisar-lote (admin ou CRON_SECRET), `dryRun` por padrao, com `apenas`, `pular` e `limite`. Existe porque as credenciais do gateway do Relacionamento so vivem na Vercel: rodando por script de uma maquina de desenvolvimento, toda mensagem falha com 'Gateway Evolution nao configurado' — medido com UMA mensagem antes de soltar o lote.",
       motivation:
-        "Lucas, 21/08, olhando uma ficha em correcao: *\"nessa tela temos que ter os status de envio de mensagem, se foi enviado, pra quem, telefone, igual as outras telas\"*. E, no Board: *\"porque temos cads ainda em analise de credito no vale do ouro, quando nao tem a etapa do pix, se ele passou no credito tem que ir direto para credenciado\"*. Medido: das 4 CADs paradas em Analise de credito, TRES nunca tiveram consulta ao Serasa (paradas desde 13/08, ninguem clicou em consultar) e UMA foi aprovada e sobrescrita pelo clique de avancar. Sao dois problemas diferentes com a mesma aparencia na tela.",
+        'Lucas, 21/08, olhando uma ficha em correcao: *"nessa tela temos que ter os status de envio de mensagem, se foi enviado, pra quem, telefone, igual as outras telas"*. E, no Board: *"porque temos cads ainda em analise de credito no vale do ouro, quando nao tem a etapa do pix, se ele passou no credito tem que ir direto para credenciado"*. Medido: das 4 CADs paradas em Analise de credito, TRES nunca tiveram consulta ao Serasa (paradas desde 13/08, ninguem clicou em consultar) e UMA foi aprovada e sobrescrita pelo clique de avancar. Sao dois problemas diferentes com a mesma aparencia na tela.',
     },
     title: "CAD: status de envio na ficha e avanco que nao anda para tras",
     type: "correcao",
@@ -1549,10 +1589,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.173.0 (2026-08-20-iris-canal-antes-da-fila)",
     technical: {
-      done:
-        "GANCHO UNICO: `lib/apolo/esteira-avisos.ts` (novo) e chamado por `atualizarEtapa`, que e o ponto autoritativo de escrita de etapa — assim nenhuma rota precisa lembrar de avisar. Trava de repeticao por `etapaAnterior`: a funcao faz upsert e e rechamada com a MESMA etapa em varios caminhos (reconsulta de Serasa, clique repetido, backfill), e sem a comparacao cada regravacao viraria mensagem nova. DESTINATARIO: corretor por `apolo_esteira.corretor_entity_id` -> `apolo_contacts`, com a IMOBILIARIA como segunda opcao (medido: das 195 CADs vivas, 45 tem corretor vinculado e 92 tem imobiliaria); coordenador por enterprise_id -> `apolo_enterprise_settings.code` -> C2X `players.coordenador_vendas`. CANAL: `sendEvolutionDirectText` e o novo `sendEvolutionDirectMedia` (o gateway so tinha envio de midia para GRUPO) — pelo Relacionamento nao ha janela de 24h nem template. MIGRADOS para o caminho novo: o disparo automatico em `serasa/consultar` e o reenvio manual em `serasa/reenviar-reprovacao`; `disparo-reprovacao.ts` ficou sem chamador e esta marcado como descontinuado, nao apagado. FUROS COBERTOS: `prevenda-fluxo.ts` grava `credenciado` por escrita DIRETA em dois pontos (nao passa por `atualizarEtapa`), entao o aviso foi chamado a mao nos dois — e e justamente o caminho de maior volume de boa noticia (o cliente pagou). VEREDITO CONGELADO: `serasa/consultar` passa a gravar `resumo.veredito` (aprovado, motivo, limite vigente, hora); antes o resultado era RECALCULADO a cada leitura com o limite ATUAL do empreendimento, que e editavel — o mesmo relatorio podia mudar de veredito sem nova consulta. TELA: `PASSO_DA_ETAPA.correcao` deixou de apontar para `cadastro` e `etapasDoItem` insere a etapa Correcao so para quem esta nela (desvio, nao passo fixo); o stepper ganhou os estados de falha (rose-600 + X) e de espera (amber-500 + alerta), que nao existiam — havia exatamente tres classes. +7 testes. 965 testes do Apolo, typecheck, lint e build limpos.",
+      done: "GANCHO UNICO: `lib/apolo/esteira-avisos.ts` (novo) e chamado por `atualizarEtapa`, que e o ponto autoritativo de escrita de etapa — assim nenhuma rota precisa lembrar de avisar. Trava de repeticao por `etapaAnterior`: a funcao faz upsert e e rechamada com a MESMA etapa em varios caminhos (reconsulta de Serasa, clique repetido, backfill), e sem a comparacao cada regravacao viraria mensagem nova. DESTINATARIO: corretor por `apolo_esteira.corretor_entity_id` -> `apolo_contacts`, com a IMOBILIARIA como segunda opcao (medido: das 195 CADs vivas, 45 tem corretor vinculado e 92 tem imobiliaria); coordenador por enterprise_id -> `apolo_enterprise_settings.code` -> C2X `players.coordenador_vendas`. CANAL: `sendEvolutionDirectText` e o novo `sendEvolutionDirectMedia` (o gateway so tinha envio de midia para GRUPO) — pelo Relacionamento nao ha janela de 24h nem template. MIGRADOS para o caminho novo: o disparo automatico em `serasa/consultar` e o reenvio manual em `serasa/reenviar-reprovacao`; `disparo-reprovacao.ts` ficou sem chamador e esta marcado como descontinuado, nao apagado. FUROS COBERTOS: `prevenda-fluxo.ts` grava `credenciado` por escrita DIRETA em dois pontos (nao passa por `atualizarEtapa`), entao o aviso foi chamado a mao nos dois — e e justamente o caminho de maior volume de boa noticia (o cliente pagou). VEREDITO CONGELADO: `serasa/consultar` passa a gravar `resumo.veredito` (aprovado, motivo, limite vigente, hora); antes o resultado era RECALCULADO a cada leitura com o limite ATUAL do empreendimento, que e editavel — o mesmo relatorio podia mudar de veredito sem nova consulta. TELA: `PASSO_DA_ETAPA.correcao` deixou de apontar para `cadastro` e `etapasDoItem` insere a etapa Correcao so para quem esta nela (desvio, nao passo fixo); o stepper ganhou os estados de falha (rose-600 + X) e de espera (amber-500 + alerta), que nao existiam — havia exatamente tres classes. +7 testes. 965 testes do Apolo, typecheck, lint e build limpos.",
       motivation:
-        "Lucas, 21/08: *\"cliente teve o credito analisado, a etapa tem que ser marcada, ae se for aprovada fica como verde e avanca para proxima etapa, se nao foi aprovado, fica vermelho a etapa de credito e mantem ela nessa etapa. da mesma forma, temos que ter nessa esteira a etapa de correcao, para a gente entender onde esta parado aquela CAD, e devemos comunicar em todas as etapas o corretor, coordenador\"*, com *\"revisa se todas as etapas temos os disparos sendo feitos\"* e *\"reforco que os disparos tem que ser feito pelo numero do relacionamento\"*. A auditoria mediu o tamanho do buraco: 5 das 7 etapas nao avisavam NINGUEM, e `apolo_disparos` tinha 2.249 linhas com ZERO do tipo corretor — o unico codigo que tentava avisa-lo lia `apolo_relationships.metadata.phone` do vinculo do CLIENTE, campo vazio em 718 de 718 CADs, um ramo morto que falhava em silencio marcando 'pulado'.",
+        'Lucas, 21/08: *"cliente teve o credito analisado, a etapa tem que ser marcada, ae se for aprovada fica como verde e avanca para proxima etapa, se nao foi aprovado, fica vermelho a etapa de credito e mantem ela nessa etapa. da mesma forma, temos que ter nessa esteira a etapa de correcao, para a gente entender onde esta parado aquela CAD, e devemos comunicar em todas as etapas o corretor, coordenador"*, com *"revisa se todas as etapas temos os disparos sendo feitos"* e *"reforco que os disparos tem que ser feito pelo numero do relacionamento"*. A auditoria mediu o tamanho do buraco: 5 das 7 etapas nao avisavam NINGUEM, e `apolo_disparos` tinha 2.249 linhas com ZERO do tipo corretor — o unico codigo que tentava avisa-lo lia `apolo_relationships.metadata.phone` do vinculo do CLIENTE, campo vazio em 718 de 718 CADs, um ramo morto que falhava em silencio marcando \'pulado\'.',
     },
     title: "Esteira da CAD: trilha com resultado e aviso em todas as etapas",
     type: "melhoria",
@@ -1578,8 +1617,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.172.0 (2026-08-20-iris-abrir-fora-da-meta)",
     technical: {
-      done:
-        "O modal recebia `data` ja recortado por `recortarDadosPorCentral`, entao so enxergava a central da aba aberta — com isso um seletor de canal nao teria o que oferecer. Passou a receber tambem `todasAsFilas={irisDataBruto.queues}` (bruto = filtrado por PERMISSAO em canSeeResource, nao por central) e `centralAtiva`, que vira a escolha inicial. As centrais oferecidas saem de IRIS_CENTRAIS intersectado com as filas que a pessoa enxerga, entao o seletor nunca mostra central sem fila; com uma central so, ele nem aparece. Trocar de canal zera `selectedQueueId` — manter a fila da central anterior deixaria um par canal/fila que nao existe. NO BANCO (autorizado): fila `Relacionamento` (1731fbc4) arquivada; o AT-001897 continua nela, conferido depois do update. NAO mexi em Contato, Compras e Grupo, ao contrario do que eu tinha proposto: a medicao mostrou que Contato e fila de E-MAIL (21 tickets, todos de contato@careli.adm.br) e aponta-la para o WhatsApp da Evolution quebraria o roteamento. Grupo tem canal Evolution PROPRIO, separado do de conversa 1:1 ('Monitoramento passivo de grupos pela CACA').",
+      done: "O modal recebia `data` ja recortado por `recortarDadosPorCentral`, entao so enxergava a central da aba aberta — com isso um seletor de canal nao teria o que oferecer. Passou a receber tambem `todasAsFilas={irisDataBruto.queues}` (bruto = filtrado por PERMISSAO em canSeeResource, nao por central) e `centralAtiva`, que vira a escolha inicial. As centrais oferecidas saem de IRIS_CENTRAIS intersectado com as filas que a pessoa enxerga, entao o seletor nunca mostra central sem fila; com uma central so, ele nem aparece. Trocar de canal zera `selectedQueueId` — manter a fila da central anterior deixaria um par canal/fila que nao existe. NO BANCO (autorizado): fila `Relacionamento` (1731fbc4) arquivada; o AT-001897 continua nela, conferido depois do update. NAO mexi em Contato, Compras e Grupo, ao contrario do que eu tinha proposto: a medicao mostrou que Contato e fila de E-MAIL (21 tickets, todos de contato@careli.adm.br) e aponta-la para o WhatsApp da Evolution quebraria o roteamento. Grupo tem canal Evolution PROPRIO, separado do de conversa 1:1 ('Monitoramento passivo de grupos pela CACA').",
       motivation:
         "Lucas, 20/08/2026: 'nao ficou do jeito que eu queria, primeiro eu seleciono o canal, depois eu seleciono a fila'. E, sobre a duplicidade: 'a Central de Relacionamento e Relacionamento e a mesma coisa'.",
     },
@@ -1607,8 +1645,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.171.0 (2026-08-20-cadastrar-unidades)",
     technical: {
-      done:
-        "O `canStart` do modal exigia `selectedProfile` E `selectedTemplate` sempre. As 6 filas da central de relacionamento tem ZERO assuntos (os 24 estao todos em Atendimento/Cobranca/Financeiro/Suporte/Juridico/Contrato/Comercial) e nenhum template com `queueLabel` delas — entao o botao nunca acendia. Agora assunto so e exigido se `subjectOptions.length` e template so se a fila for da META. A distincao vem do dado: canal da Meta tem `phoneNumberId` (external_account_id, ex. 1167201739813897); o canal da Evolution nao tem nenhum e o registro dele diz 'Atendimento 1:1 com corretor e imobiliaria pela Evolution API'. Fila SEM canal continua contando como Meta (cai no numero padrao). O `submit` parou de travar por falta de profile e o payload manda `profileId`/`subject` opcionais — a rota /api/iris/tickets ja aceitava nulo (`profileId ? getProfileById : ...`). O caminho de envio ja fazia o certo desde antes: tenta abrir sem template e so pede um quando a Meta devolve 409 por janela de 24h fechada; era o botao que nao deixava chegar la.",
+      done: "O `canStart` do modal exigia `selectedProfile` E `selectedTemplate` sempre. As 6 filas da central de relacionamento tem ZERO assuntos (os 24 estao todos em Atendimento/Cobranca/Financeiro/Suporte/Juridico/Contrato/Comercial) e nenhum template com `queueLabel` delas — entao o botao nunca acendia. Agora assunto so e exigido se `subjectOptions.length` e template so se a fila for da META. A distincao vem do dado: canal da Meta tem `phoneNumberId` (external_account_id, ex. 1167201739813897); o canal da Evolution nao tem nenhum e o registro dele diz 'Atendimento 1:1 com corretor e imobiliaria pela Evolution API'. Fila SEM canal continua contando como Meta (cai no numero padrao). O `submit` parou de travar por falta de profile e o payload manda `profileId`/`subject` opcionais — a rota /api/iris/tickets ja aceitava nulo (`profileId ? getProfileById : ...`). O caminho de envio ja fazia o certo desde antes: tenta abrir sem template e so pede um quando a Meta devolve 409 por janela de 24h fechada; era o botao que nao deixava chegar la.",
       motivation:
         "Lucas, 20/08/2026: 'ta vendo que nada fica habilitado para o meu usuario? eu tenho que escolher a fila e o assunto simples'. E o modelo que ele descreveu: 'para abrir uma conversa tem que escolher o canal (atendimento) (relacionamento) (gurgel), depois que ele escolhe o canal, caso for o Gurgel ou Atendimento, ele vai ter que escolher a fila pois cada fila tem seus templates, se for relacionamento nao precisa de templates, pois estamos fora da meta'.",
     },
@@ -1639,8 +1676,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.170.0 (2026-08-20-carteira-numeracao-e-cenarios)",
     technical: {
-      done:
-        "POST /api/v1/integrations/panteon/enterprise_units — o mesmo contrato usado na carga do Vale do Ouro em 01/08 (obrigatorios enterprise_id, block, lot, area, price; token cru nos dois headers, SEM Bearer). Regras puras em lib/apolo/cadastrar-unidades.ts (30 testes), acesso ao C2X em cadastrar-unidades-server.ts, rota em /api/apolo/empreendimentos/unidades/cadastrar com authorizeApoloWrite e maxDuration 300. A TELA MORA NO EMPREENDIMENTO e nao no Setup (o Lucas pediu a mudanca no meio): assim o enterprise_id vem do contexto e a escolha mais perigosa do processo — subir 300 lotes no empreendimento errado — deixa de existir. TRAVAS, porque criar unidade nao tem desfazer pela API: conferir e obrigatorio e o servidor REVALIDA no clique de importar (entre a conferencia e o envio alguem pode ter criado a unidade pela tela do C2X); o host de destino aparece antes do clique (a env aponta para teste em dev, e foi assim que 8 cadastros foram para o ambiente errado em 01/08 respondendo sucesso); e a contagem do BANCO e comparada antes/depois, porque a API dizer que criou nao e prova. Quadra e lote normalizados nos dois lados (1 -> 01), senao a checagem de duplicidade nao acha o que existe e o loteamento sobe duplicado. numeroBR le o formato brasileiro: 1.002,00 e mil e dois, e um parser ingenuo faria um lote de R$ 140.401 virar R$ 140,40. O parse do CSV descobre o separador (Excel PT-BR salva com ponto e virgula) e engole o BOM. Modelo em XLSX gerado no cliente com exceljs por import dinamico, com aba de instrucoes montada a partir das MESMAS constantes que a validacao usa.",
+      done: "POST /api/v1/integrations/panteon/enterprise_units — o mesmo contrato usado na carga do Vale do Ouro em 01/08 (obrigatorios enterprise_id, block, lot, area, price; token cru nos dois headers, SEM Bearer). Regras puras em lib/apolo/cadastrar-unidades.ts (30 testes), acesso ao C2X em cadastrar-unidades-server.ts, rota em /api/apolo/empreendimentos/unidades/cadastrar com authorizeApoloWrite e maxDuration 300. A TELA MORA NO EMPREENDIMENTO e nao no Setup (o Lucas pediu a mudanca no meio): assim o enterprise_id vem do contexto e a escolha mais perigosa do processo — subir 300 lotes no empreendimento errado — deixa de existir. TRAVAS, porque criar unidade nao tem desfazer pela API: conferir e obrigatorio e o servidor REVALIDA no clique de importar (entre a conferencia e o envio alguem pode ter criado a unidade pela tela do C2X); o host de destino aparece antes do clique (a env aponta para teste em dev, e foi assim que 8 cadastros foram para o ambiente errado em 01/08 respondendo sucesso); e a contagem do BANCO e comparada antes/depois, porque a API dizer que criou nao e prova. Quadra e lote normalizados nos dois lados (1 -> 01), senao a checagem de duplicidade nao acha o que existe e o loteamento sobe duplicado. numeroBR le o formato brasileiro: 1.002,00 e mil e dois, e um parser ingenuo faria um lote de R$ 140.401 virar R$ 140,40. O parse do CSV descobre o separador (Excel PT-BR salva com ponto e virgula) e engole o BOM. Modelo em XLSX gerado no cliente com exceljs por import dinamico, com aba de instrucoes montada a partir das MESMAS constantes que a validacao usa.",
       motivation:
         "Lucas, 20/08/2026: 'cria para mim uma tela para importar unidades dentro do C2X, configura ela para que o operador possa subir uma tabela (ae define o arquivo padrao)'. Depois: 'faz melhor, deixa essa tela de dentro do Apolo empreendimento, na parte de unidades' e 'botao de adicionar (pode ser uma ou importacao), ae vc ja vai ter a referencia do empreendimento'. E: 'quando finalizar o cadastro ou a importacao, tem que ir para o c2x'. O valor virou opcional por causa de 'vou testar depois, pois eu ainda nao tenho o valor dessas matriculas'.",
     },
@@ -1670,12 +1706,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.169.0 (2026-08-20-carteira-filtros-e-inadimplencia)",
     technical: {
-      done:
-        "(1) NUMERACAO. O C2X guarda DOIS pares de contadores na mesma linha de payments e preenche um ou outro conforme o tipo — medido no VOC: Ato tem current_signal_parcel=0 e current_total_parcel=0; Sinal usa current_signal_parcel (1..4); Parcela usa current_total_parcel (1..156); e total_parcels vale 156 em TODAS. O extrato do portal montava a string na mao com o par da Parcela, dai o 0/156 em Ato e Sinal. A regra ja tinha sido corrigida em 19/08 na carteira INTERNA, com uma funcao privada — e o portal ficou para tras: caso de manual de camada nova sem varrer os leitores. Agora existe UMA regua (lib/apolo/numero-da-parcela.ts), usada pelos dois, com 7 testes escritos a partir dos valores reais do C2X. A query do extrato ganhou current_signal_parcel/total_signal_parcels. (2) GRAFICO x CARD. A serie mensal somava no previsto TODAS as parcelas com vencimento no mes, inclusive as que ainda nao tinham chegado na data: em 20/08 o denominador de agosto pegava ate os vencimentos de 31/08 (R$ 93.960 a mais no bruto) e a barra dava 6,1% onde o card dava 7%. Era o mesmo defeito do card antigo sobrevivendo no grafico. No mes CORRENTE o previsto passou a contar so o que ja venceu; nos meses passados nada muda, porque tudo ja venceu. Teste novo prova que a barra do mes corrente e o card fecham na mesma base. (3) CENARIOS. montarIndicadores passou a devolver totaisDoRecorte (total, pagas, vencidas, aVencer), calculado sobre o filtro INTEIRO e nao sobre as linhas enviadas — somar o que chegou na tela responderia 'quanto recebo em dezembro' com a soma das primeiras 2.000 de dezembro. O cartao so aparece COM filtro: sem recorte ele repetiria os KPIs do topo. (4) A ordem dos cards e uma linha explicando o par liquida/bruta. Investigado e NAO e defeito: no VOC, 29 dos 35 vencimentos em aberto sao ATOS, que vao quase inteiros para comissao — o incorporador perde pouco quando um Ato atrasa, e por isso a % dele fica abaixo da bruta.",
+      done: "(1) NUMERACAO. O C2X guarda DOIS pares de contadores na mesma linha de payments e preenche um ou outro conforme o tipo — medido no VOC: Ato tem current_signal_parcel=0 e current_total_parcel=0; Sinal usa current_signal_parcel (1..4); Parcela usa current_total_parcel (1..156); e total_parcels vale 156 em TODAS. O extrato do portal montava a string na mao com o par da Parcela, dai o 0/156 em Ato e Sinal. A regra ja tinha sido corrigida em 19/08 na carteira INTERNA, com uma funcao privada — e o portal ficou para tras: caso de manual de camada nova sem varrer os leitores. Agora existe UMA regua (lib/apolo/numero-da-parcela.ts), usada pelos dois, com 7 testes escritos a partir dos valores reais do C2X. A query do extrato ganhou current_signal_parcel/total_signal_parcels. (2) GRAFICO x CARD. A serie mensal somava no previsto TODAS as parcelas com vencimento no mes, inclusive as que ainda nao tinham chegado na data: em 20/08 o denominador de agosto pegava ate os vencimentos de 31/08 (R$ 93.960 a mais no bruto) e a barra dava 6,1% onde o card dava 7%. Era o mesmo defeito do card antigo sobrevivendo no grafico. No mes CORRENTE o previsto passou a contar so o que ja venceu; nos meses passados nada muda, porque tudo ja venceu. Teste novo prova que a barra do mes corrente e o card fecham na mesma base. (3) CENARIOS. montarIndicadores passou a devolver totaisDoRecorte (total, pagas, vencidas, aVencer), calculado sobre o filtro INTEIRO e nao sobre as linhas enviadas — somar o que chegou na tela responderia 'quanto recebo em dezembro' com a soma das primeiras 2.000 de dezembro. O cartao so aparece COM filtro: sem recorte ele repetiria os KPIs do topo. (4) A ordem dos cards e uma linha explicando o par liquida/bruta. Investigado e NAO e defeito: no VOC, 29 dos 35 vencimentos em aberto sao ATOS, que vao quase inteiros para comissao — o incorporador perde pouco quando um Ato atrasa, e por isso a % dele fica abaixo da bruta.",
       motivation:
         "Lucas, 20/08/2026: 'o ato sempre sera 1/1 - o sinal depende de quantas vezes foi parcelado, mas o sinal tem que mostrar somente do sinal ae sim o parcelamento que vai buscar de quantas vezes foi parcelado o saldo devedor'. E: 'nessa tela o previsto deveria vir depois da receita liquida'; 'a liquida nao seria o valor que o incorporador tem a receber e o bruto seria o todo? se sim, tem alguma coisa errada com a inadiplencia'; 'falta trazer os cenarios, exemplo, se o cliente quiser saber quanto que ele vai receber em dezembro, nao tem como saber'; 'tem uma divergencia de informacao, no grafico fala que 6,1%, nos indicadores eu tenho 7% e tenho 10,3, estamos em agosto ainda deve ter alguma coisa errada'.",
     },
-    title: "Numeracao da parcela, cenarios por filtro e grafico batendo com o card",
+    title:
+      "Numeracao da parcela, cenarios por filtro e grafico batendo com o card",
     type: "correcao",
     version: "1.170.0",
   },
@@ -1708,8 +1744,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.168.0 (2026-08-19-lsoft-documentos)",
     technical: {
-      done:
-        "TRES CORRECOES COM A MESMA RAIZ E UMA MUDANCA DE REGUA. (1) O extrato era ordenado por vencimento DECRESCENTE e cortado em EXTRATO_TETO (2.000) ANTES do filtro, que rodava na TELA: com 12.614 parcelas no CER, as 2.000 enviadas eram todas de 2037-2039, entao filtrar por Paga/Vencida varria um recorte onde elas nao existiam. O filtro e a ordenacao passaram para o SERVIDOR (FiltroDoExtrato + filtrarExtrato/ordenarExtrato em carteira-liquida.ts), aplicados sobre a carteira inteira antes do corte; o teto voltou a ser so teto de PAYLOAD. Medido: a leitura das 12.614 leva 508ms em 3 lotes, entao refazer por filtro e barato; mandar tudo foi descartado (3,66MB, perto do teto de 4,5MB da Vercel). (2) As opcoes dos seletores passaram a vir de opcoesDoExtrato, apurado sobre TODAS as parcelas — eram derivadas do recorte enviado, dai os 3 anos. (3) Ordem padrao virou vencimento CRESCENTE e as colunas ganharam ordenacao server-side. (4) delinquencyRate (carteira.ts) e inadimplenciaPct (carteira-liquida.ts) passaram a dividir pelo PREVISTO ATE HOJE (nova coluna expected_to_date / previstoAteHoje) em vez do total do contrato; inadimplenciaPct virou { bruta, liquida }. A mudanca vale para os CINCO portais (todos montam a mesma TelaCarteira; o congelamento do Cecilio so afeta tema, aba Produtos e assinatura) e tambem para as telas internas do Apolo que leem delinquencyRate — deixar so o portal mudado faria as telas discordarem entre si. 22 testes em carteira-liquida.test.ts, incluindo um cenario de 2.700 parcelas que reproduz o corte-antes-do-filtro e falha se ele voltar.",
+      done: "TRES CORRECOES COM A MESMA RAIZ E UMA MUDANCA DE REGUA. (1) O extrato era ordenado por vencimento DECRESCENTE e cortado em EXTRATO_TETO (2.000) ANTES do filtro, que rodava na TELA: com 12.614 parcelas no CER, as 2.000 enviadas eram todas de 2037-2039, entao filtrar por Paga/Vencida varria um recorte onde elas nao existiam. O filtro e a ordenacao passaram para o SERVIDOR (FiltroDoExtrato + filtrarExtrato/ordenarExtrato em carteira-liquida.ts), aplicados sobre a carteira inteira antes do corte; o teto voltou a ser so teto de PAYLOAD. Medido: a leitura das 12.614 leva 508ms em 3 lotes, entao refazer por filtro e barato; mandar tudo foi descartado (3,66MB, perto do teto de 4,5MB da Vercel). (2) As opcoes dos seletores passaram a vir de opcoesDoExtrato, apurado sobre TODAS as parcelas — eram derivadas do recorte enviado, dai os 3 anos. (3) Ordem padrao virou vencimento CRESCENTE e as colunas ganharam ordenacao server-side. (4) delinquencyRate (carteira.ts) e inadimplenciaPct (carteira-liquida.ts) passaram a dividir pelo PREVISTO ATE HOJE (nova coluna expected_to_date / previstoAteHoje) em vez do total do contrato; inadimplenciaPct virou { bruta, liquida }. A mudanca vale para os CINCO portais (todos montam a mesma TelaCarteira; o congelamento do Cecilio so afeta tema, aba Produtos e assinatura) e tambem para as telas internas do Apolo que leem delinquencyRate — deixar so o portal mudado faria as telas discordarem entre si. 22 testes em carteira-liquida.test.ts, incluindo um cenario de 2.700 parcelas que reproduz o corte-antes-do-filtro e falha se ele voltar.",
       motivation:
         "Lucas, 20/08/2026: 'o bug esta muito nos filtros. nos indicadores quando eu seleciono paga ou vencida vem em branco... quando eu coloca a vencer inicia da maior para menor, poderia ter a ordenacao dos campos pois assim se o usuario quiser saber o que vai vencer no proximo mes ele sabe. ae uma melhoria, a inadimplencia o calculo tem que ser no valor presente... nao sobre o contrato total mas sim sobre o que deveriamos ter recebido ate a data presente. e ter duas visoes, uma bruto... e outra da liquida, para o incorporador saber o cenario dele somente e nao inflado com os valores de outros participantes'. E depois: 'essas alteracoes tem que valer para todos'.",
     },
@@ -1738,8 +1773,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.167.0 (2026-08-19-masterplan-dinamico)",
     technical: {
-      done:
-        "Migration 0099 (lsoft_documentos, RLS deny-all) + lib/lsoft/documentos.ts + rota interna /api/lsoft/documentos e as mesmas acoes na rota do portal. O arquivo vive no bucket PRIVADO apolo-documents, o mesmo do Apolo: bucket novo significaria politica, backup e mais um lugar para vazar. UPLOAD DIRETO em duas etapas — o servidor assina a permissao de gravar UM caminho, o navegador manda os bytes ao Supabase e devolve so o caminho, que o servidor registra. Base64 no JSON estouraria os 4,5MB da Vercel e voltaria 413 sem explicacao, que foi o que aconteceu no CAD. O caminho que volta do navegador e conferido contra o prefixo do proprio cliente antes de virar linha: sem isso um caminho forjado registraria na ficha de A um arquivo da pasta de B, e a abertura (que confia na linha) entregaria o documento errado com cara de certo. O teto de 20MB e conferido ANTES de assinar, porque o bucket nao tem limite proprio (file_size_limit: null) e o arquivo grande viraria orfao. Constantes e tipo em documentos-tipos.ts, sem import nenhum, para o componente client nao arrastar a service role para o bundle. Componente em arquivo proprio (DocumentosDoCliente.tsx) e nao dentro do CarteiraLsoft, que ja passa de 1.300 linhas — foi num recorte grande ali que um efeito se perdeu sem o typecheck ver.",
+      done: "Migration 0099 (lsoft_documentos, RLS deny-all) + lib/lsoft/documentos.ts + rota interna /api/lsoft/documentos e as mesmas acoes na rota do portal. O arquivo vive no bucket PRIVADO apolo-documents, o mesmo do Apolo: bucket novo significaria politica, backup e mais um lugar para vazar. UPLOAD DIRETO em duas etapas — o servidor assina a permissao de gravar UM caminho, o navegador manda os bytes ao Supabase e devolve so o caminho, que o servidor registra. Base64 no JSON estouraria os 4,5MB da Vercel e voltaria 413 sem explicacao, que foi o que aconteceu no CAD. O caminho que volta do navegador e conferido contra o prefixo do proprio cliente antes de virar linha: sem isso um caminho forjado registraria na ficha de A um arquivo da pasta de B, e a abertura (que confia na linha) entregaria o documento errado com cara de certo. O teto de 20MB e conferido ANTES de assinar, porque o bucket nao tem limite proprio (file_size_limit: null) e o arquivo grande viraria orfao. Constantes e tipo em documentos-tipos.ts, sem import nenhum, para o componente client nao arrastar a service role para o bundle. Componente em arquivo proprio (DocumentosDoCliente.tsx) e nao dentro do CarteiraLsoft, que ja passa de 1.300 linhas — foi num recorte grande ali que um efeito se perdeu sem o typecheck ver.",
       motivation:
         "Lucas, 19/08/2026: 'deixar aba para subir documentacao' e, depois, 'kd a parte de subir documentacao'. A base do LSoft veio de um Access sem anexo nenhum: o que existe de documento desses 237 clientes esta em papel ou na maquina de alguem do CER. Como sao eles que validam a base antes de ela subir para o C2X e o Apolo, o lugar de juntar o documento e a mesma ficha onde o dado esta sendo corrigido.",
     },
@@ -1767,8 +1801,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.166.0 (2026-08-19-lsoft-tudo-editavel)",
     technical: {
-      done:
-        "O masterplan era um HTML GERADO com a situacao gravada dentro de cada linha do array DADOS ([quadra,lote,situacao,area,valor,comprador,poligono]), e a rota servia o arquivo por fs.readFileSync. O que estava em producao era de 11/08: nada posterior chegava nele. Novo lib/apolo/incorporador/masterplan-estado.ts com lerEstadoDosLotes (le situacao, comprador e preco do C2X) e aplicarEstadoAtual (reescreve so esses tres campos, linha a linha, sem encostar em quadra, lote, area e poligono, que sao o desenho). A regua de sale_status_id/sale_blocked para as quatro cores e a MESMA de mapUnitRow, que a tela de Vendas usa — era com ela que a comparacao estava sendo feita. A consulta e a MESMA que ja definia o escopo do recorte: virou um SELECT com colunas a mais, nao um segundo SELECT. Aplicacao ANTES do recorte, para o recorte fail-closed seguir sendo a ultima palavra sobre o que sai. Degrada para o arquivo (nunca para erro) quando o C2X nao conhece o lote. Medido contra producao: 8 lotes corrigidos no VOL, 4 no VOC. 19 testes novos, incluindo JSON.parse do array reescrito nos 5 masterplans reais com nomes acentuados e com aspas — o teste achou que o recorte NAO valida o miolo da linha, so cabeca e cauda, entao uma aspas no nome abriria o mapa em branco sem erro nenhum; a limpeza passou a morar no ponto de escrita.",
+      done: "O masterplan era um HTML GERADO com a situacao gravada dentro de cada linha do array DADOS ([quadra,lote,situacao,area,valor,comprador,poligono]), e a rota servia o arquivo por fs.readFileSync. O que estava em producao era de 11/08: nada posterior chegava nele. Novo lib/apolo/incorporador/masterplan-estado.ts com lerEstadoDosLotes (le situacao, comprador e preco do C2X) e aplicarEstadoAtual (reescreve so esses tres campos, linha a linha, sem encostar em quadra, lote, area e poligono, que sao o desenho). A regua de sale_status_id/sale_blocked para as quatro cores e a MESMA de mapUnitRow, que a tela de Vendas usa — era com ela que a comparacao estava sendo feita. A consulta e a MESMA que ja definia o escopo do recorte: virou um SELECT com colunas a mais, nao um segundo SELECT. Aplicacao ANTES do recorte, para o recorte fail-closed seguir sendo a ultima palavra sobre o que sai. Degrada para o arquivo (nunca para erro) quando o C2X nao conhece o lote. Medido contra producao: 8 lotes corrigidos no VOL, 4 no VOC. 19 testes novos, incluindo JSON.parse do array reescrito nos 5 masterplans reais com nomes acentuados e com aspas — o teste achou que o recorte NAO valida o miolo da linha, so cabeca e cauda, entao uma aspas no nome abriria o mapa em branco sem erro nenhum; a limpeza passou a morar no ponto de escrita.",
       motivation:
         "Lucas, 19/08/2026: 'criei aqui o perfil do Vale do Ouro, VOL e achei uma divergencia... na tela de vendas esta correto, 91 vendidos, 2 disponivel e 48 bloqueado, contudo, quando eu abro o masterplan o valor esta errado, me retorna 6 disponivel, e alguns lotes que realmente esta disponivel consta como vendido. Pelo que apurei, teve cancelamento ontem que o masterplan nao atualizou' e, na sequencia, 'o masterplan e dinamico, nao pode ser estatico'.",
     },
@@ -1796,8 +1829,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.165.0 (2026-08-19-lsoft-ficha-completa)",
     technical: {
-      done:
-        "Dois defeitos somados no mesmo sintoma. (1) Quando a edicao foi aberta para todos os campos, a lista CAMPOS_EDITAVEIS cresceu no backend mas a tela continuou renderizando o bloco de cima com o componente de LEITURA — dai 'nao consigo editar as informacoes'. O componente Campo foi removido de vez para o engano nao se repetir. (2) A coluna de acao da tabela de parcelas era a primeira a sair da area visivel no painel de 780px; virou sticky right com fundo proprio e o painel foi para 980px. Regra que fica: coluna de ACAO em tabela dentro de painel estreito precisa ser sticky, senao o recurso existe e ninguem alcanca.",
+      done: "Dois defeitos somados no mesmo sintoma. (1) Quando a edicao foi aberta para todos os campos, a lista CAMPOS_EDITAVEIS cresceu no backend mas a tela continuou renderizando o bloco de cima com o componente de LEITURA — dai 'nao consigo editar as informacoes'. O componente Campo foi removido de vez para o engano nao se repetir. (2) A coluna de acao da tabela de parcelas era a primeira a sair da area visivel no painel de 780px; virou sticky right com fundo proprio e o painel foi para 980px. Regra que fica: coluna de ACAO em tabela dentro de painel estreito precisa ser sticky, senao o recurso existe e ninguem alcanca.",
       motivation:
         "Lucas: nao consigo editar as informacoes · achei o erro da edicao das parcelas, a tela comeu o botao de editar.",
     },
@@ -1826,8 +1858,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.164.0 (2026-08-19-carteira-lsoft-most)",
     technical: {
-      done:
-        "Edicao da parcela ampliada para TODOS os campos (menos id e cliente_codigo, que sao as chaves que ligam a parcela ao dono — mudar isso nao e corrigir dado, e mover a parcela de pessoa). Quando o numero da parcela muda, parcela_numero e parcela_total sao recalculados, senao a ordenacao passa a discordar do que esta escrito na linha. O formulario e expandido em colSpan e nao inputs na propria linha: dez campos nas colunas da tabela dariam ~60px cada, e campo de dinheiro nessa largura e convite a erro. A idade e derivada e nunca persistida. O rotulo de origem foi corrigido porque o enriquecimento ja rodou (229 de 237): nascimento, mae, telefone, sexo e renda passaram a vir da MOST, e o bloco continuava afirmando LSoft.",
+      done: "Edicao da parcela ampliada para TODOS os campos (menos id e cliente_codigo, que sao as chaves que ligam a parcela ao dono — mudar isso nao e corrigir dado, e mover a parcela de pessoa). Quando o numero da parcela muda, parcela_numero e parcela_total sao recalculados, senao a ordenacao passa a discordar do que esta escrito na linha. O formulario e expandido em colSpan e nao inputs na propria linha: dez campos nas colunas da tabela dariam ~60px cada, e campo de dinheiro nessa largura e convite a erro. A idade e derivada e nunca persistida. O rotulo de origem foi corrigido porque o enriquecimento ja rodou (229 de 237): nascimento, mae, telefone, sexo e renda passaram a vir da MOST, e o bloco continuava afirmando LSoft.",
       motivation:
         "Lucas, testando a tela: edicao nao pegou parcelas, tudo tem que ser editavel · nome do pai nao e necessario · nao veio do LSoft · faltou idade.",
     },
@@ -1867,8 +1898,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.163.0 (2026-08-19-carteira-lsoft)",
     technical: {
-      done:
-        "O LSoft SGC 6.13 e um Access ANTERIOR ao Access 2000 em \SERVIDOR\Sistema\sgc\dados.mdb, na rede local da Cecilio: o driver ACE recusa abrir e so o Jet 4.0 (32 bits) le, por isso a extracao roda pelo SysWOW64 e sobre COPIA do arquivo, que fica em uso o dia inteiro. O recorte sai do centro de custo, que la e a tripla CATEGORIA.CLASSE.SUBCLASSE onde a CATEGORIA e o EMPREENDIMENTO (124 Garden, 102 Vale do Sol, 16.3 Aptos Vendidos); filtrar so por 16.3 traria obra de todo mundo. Migrations 0096 e 0097: lsoft_clientes, lsoft_parcelas, lsoft_sincronizacoes, lsoft_clientes_edicoes e a view de resumo, todas RLS deny-all (ha CPF, RG, filiacao e endereco de 237 pessoas). 'A receber' e 'recebido' foram unificados numa tabela so porque no LSoft a parcela MUDA DE TABELA ao ser paga, e a tela precisa responder 'foi pago ou nao' numa lista unica. A unidade nao existe como campo: sai de parse do texto livre das observacoes e acerta 13.124 de 19.988 (66%) — o texto original fica guardado, e a tela mostra ele quando o parse falha. A carga foi UNICA por decisao do Lucas, entao este banco passa a ser a verdade e o cadastro inteiro e editavel, com trilha de autor/valor anterior/valor novo. Rota /api/lsoft/enriquecer chama a MOST em lotes (as credenciais so existem na Vercel; rodar local cairia no modo simulado e gravaria dado inventado), pula quem ja foi enriquecido para nao pagar duas vezes e so preenche buraco.",
+      done: "O LSoft SGC 6.13 e um Access ANTERIOR ao Access 2000 em \SERVIDOR\Sistema\sgc\dados.mdb, na rede local da Cecilio: o driver ACE recusa abrir e so o Jet 4.0 (32 bits) le, por isso a extracao roda pelo SysWOW64 e sobre COPIA do arquivo, que fica em uso o dia inteiro. O recorte sai do centro de custo, que la e a tripla CATEGORIA.CLASSE.SUBCLASSE onde a CATEGORIA e o EMPREENDIMENTO (124 Garden, 102 Vale do Sol, 16.3 Aptos Vendidos); filtrar so por 16.3 traria obra de todo mundo. Migrations 0096 e 0097: lsoft_clientes, lsoft_parcelas, lsoft_sincronizacoes, lsoft_clientes_edicoes e a view de resumo, todas RLS deny-all (ha CPF, RG, filiacao e endereco de 237 pessoas). 'A receber' e 'recebido' foram unificados numa tabela so porque no LSoft a parcela MUDA DE TABELA ao ser paga, e a tela precisa responder 'foi pago ou nao' numa lista unica. A unidade nao existe como campo: sai de parse do texto livre das observacoes e acerta 13.124 de 19.988 (66%) — o texto original fica guardado, e a tela mostra ele quando o parse falha. A carga foi UNICA por decisao do Lucas, entao este banco passa a ser a verdade e o cadastro inteiro e editavel, com trilha de autor/valor anterior/valor novo. Rota /api/lsoft/enriquecer chama a MOST em lotes (as credenciais so existem na Vercel; rodar local cairia no modo simulado e gravaria dado inventado), pula quem ja foi enriquecido para nao pagar duas vezes e so preenche buraco.",
       motivation:
         "Lucas: quero deixar todos os campos necessarios para importar dentro do C2X, rodar todos os clientes na MOST, e uma tela para organizar isso.",
     },
@@ -1896,8 +1926,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.161.0 (2026-08-18-carteira-parcela-e-data)",
     technical: {
-      done:
-        "Os dois indicadores estavam certos pela propria regua e mentiam juntos: Faturadas conta EVENTO (a unidade passou pelo estagio 4 do C2X) e Vendido conta ESTADO ATUAL (o estagio de hoje). Conferido no C2X com scripts/apolo/conferir-faturada-cer.mjs: o VOC tem exatamente 1 evento de faturamento, a VOC1221 (ar 4770, R$ 148.401), faturada em 12/08/2026 vinda do estagio 3, e hoje no estagio 7 (Cancelado); as unidades do VOC estao 92 em assinatura e 3 canceladas. A regra que vale e a do estado final, entao o cancelamento agora DESFAZ o faturamento que a mesma unidade tinha somado, inclusive na serie mensal, e libera o dedupe para que um faturamento posterior volte a contar. Quatro testes novos cobrem os casos: desfaz, some do mes, refatura, e cancelar sem faturar nao mexe em nada.",
+      done: "Os dois indicadores estavam certos pela propria regua e mentiam juntos: Faturadas conta EVENTO (a unidade passou pelo estagio 4 do C2X) e Vendido conta ESTADO ATUAL (o estagio de hoje). Conferido no C2X com scripts/apolo/conferir-faturada-cer.mjs: o VOC tem exatamente 1 evento de faturamento, a VOC1221 (ar 4770, R$ 148.401), faturada em 12/08/2026 vinda do estagio 3, e hoje no estagio 7 (Cancelado); as unidades do VOC estao 92 em assinatura e 3 canceladas. A regra que vale e a do estado final, entao o cancelamento agora DESFAZ o faturamento que a mesma unidade tinha somado, inclusive na serie mensal, e libera o dedupe para que um faturamento posterior volte a contar. Quatro testes novos cobrem os casos: desfaz, some do mes, refatura, e cancelar sem faturar nao mexe em nada.",
       motivation:
         "Lucas: no CER tem uma venda faturada, isso deve estar errado.",
     },
@@ -1925,8 +1954,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.160.0 (2026-08-18-ordem-de-assinatura)",
     technical: {
-      done:
-        "DATA: due_date chega do MySQL como Date, vira 2026-08-01T00:00:00.000Z no JSON, e o portal formatava isso no fuso de Sao Paulo — tres horas para tras, 31/07 as 21h. A tela INTERNA do Apolo nunca teve o problema porque formata em UTC; o portal foi portado com a regua trocada. A correcao nao foi 'usar UTC em tudo', que quebraria instantes de verdade (criadoEm de documento, desde de prospect: um evento das 22h viraria o dia seguinte): a regua nova (lib/apolo/incorporador/dia-na-tela, 5 testes) olha o VALOR — dia puro e meia-noite exata em UTC sao DIA, qualquer outra hora e instante e vai para o fuso da casa. Aplicada nas duas telas do portal, matando a duplicacao em vez de criar a terceira copia. NUMERACAO: cada tipo tem o proprio contador no legado e a consulta usava o das parcelas para todos. A pegadinha e que current_total_parcel e current_signal_parcel vem ZERO, nao NULL, quando nao se aplicam — entao ?? nunca cai no alternativo (mesmo tropeco ja documentado na integracao GLOTES), e o nullif(0) precisa ser feito a mao. O Ato e 1/1 por definicao: no C2X a coluna de parcela dele vem vazia.",
+      done: "DATA: due_date chega do MySQL como Date, vira 2026-08-01T00:00:00.000Z no JSON, e o portal formatava isso no fuso de Sao Paulo — tres horas para tras, 31/07 as 21h. A tela INTERNA do Apolo nunca teve o problema porque formata em UTC; o portal foi portado com a regua trocada. A correcao nao foi 'usar UTC em tudo', que quebraria instantes de verdade (criadoEm de documento, desde de prospect: um evento das 22h viraria o dia seguinte): a regua nova (lib/apolo/incorporador/dia-na-tela, 5 testes) olha o VALOR — dia puro e meia-noite exata em UTC sao DIA, qualquer outra hora e instante e vai para o fuso da casa. Aplicada nas duas telas do portal, matando a duplicacao em vez de criar a terceira copia. NUMERACAO: cada tipo tem o proprio contador no legado e a consulta usava o das parcelas para todos. A pegadinha e que current_total_parcel e current_signal_parcel vem ZERO, nao NULL, quando nao se aplicam — entao ?? nunca cai no alternativo (mesmo tropeco ja documentado na integracao GLOTES), e o nullif(0) precisa ser feito a mao. O Ato e 1/1 por definicao: no C2X a coluna de parcela dele vem vazia.",
       motivation:
         "Lucas, comparando a Carteira com o C2X: tem alguma coisa errada com a parcela, Ato deveria ser 1/1, sinal 1/3, 2/3, 3/3, e as parcelas comecariam em 1/156.",
     },
@@ -1963,8 +1991,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.159.0 (2026-08-18-contratos-sem-espera)",
     technical: {
-      done:
-        "ORDEM: a posicao de cada perfil sai da MEDIA dos degraus dele no recorte, calculada uma vez depois de todas as linhas montadas (ordenarGruposPelaOrdemDeAssinatura). Ordenar cada linha pelo proprio degrau parece equivalente e nao e: contrato com um perfil a menos embaralha as colunas e a lista deixa de funcionar como tabela, que foi o defeito que a alfabetica tinha vindo consertar mais cedo no mesmo dia. A ordem sai do DADO e nao de uma constante com os cinco nomes de hoje: se o fluxo mudar, a tela acompanha em vez de mentir em silencio. Dois testes novos, um deles com um contrato fora do padrao provando que as colunas continuam alinhadas. HUBER: conferido no C2X (scripts/apolo/conferir-papel-huber.mjs) que ele NAO esta em coordenador_id, manager_id nem captivator_id de nenhum empreendimento — e Administrador no perfil e chega como Imobiliaria em cinco empreendimentos. Ou seja, a correcao anterior (papel pelo cadastro do empreendimento) nao tinha como alcanca-lo. Agora ha excecao declarada por users.id em PAPEL_FIXO_POR_USUARIO_C2X, e o papel do cadastro passou a ser lido nos TRES leitores (antes so no painel antigo: a tela de Contratos e o portal chamavam perfilDeTela sem o argumento).",
+      done: "ORDEM: a posicao de cada perfil sai da MEDIA dos degraus dele no recorte, calculada uma vez depois de todas as linhas montadas (ordenarGruposPelaOrdemDeAssinatura). Ordenar cada linha pelo proprio degrau parece equivalente e nao e: contrato com um perfil a menos embaralha as colunas e a lista deixa de funcionar como tabela, que foi o defeito que a alfabetica tinha vindo consertar mais cedo no mesmo dia. A ordem sai do DADO e nao de uma constante com os cinco nomes de hoje: se o fluxo mudar, a tela acompanha em vez de mentir em silencio. Dois testes novos, um deles com um contrato fora do padrao provando que as colunas continuam alinhadas. HUBER: conferido no C2X (scripts/apolo/conferir-papel-huber.mjs) que ele NAO esta em coordenador_id, manager_id nem captivator_id de nenhum empreendimento — e Administrador no perfil e chega como Imobiliaria em cinco empreendimentos. Ou seja, a correcao anterior (papel pelo cadastro do empreendimento) nao tinha como alcanca-lo. Agora ha excecao declarada por users.id em PAPEL_FIXO_POR_USUARIO_C2X, e o papel do cadastro passou a ser lido nos TRES leitores (antes so no painel antigo: a tela de Contratos e o portal chamavam perfilDeTela sem o argumento).",
       motivation:
         "Lucas, com o print da tabela de assinatura: nao esta padrao isso nao? imobiliaria, comprador, incorporador, coordenacao e backoffice? E, no mesmo dia pela segunda vez: o huber e coordenacao.",
     },
@@ -2003,8 +2030,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.158.0 (2026-08-18-portal-sem-jargao)",
     technical: {
-      done:
-        "MEDIDO antes de mexer (scripts/apolo/medir-catalogo-real.mjs e medir-carga-contratos.mjs): catalogo D4Sign frio 4,4 s em 8 paginas, mais 7,0 s dos 20 detalhes do teto, contra 0,1 s do SQL que traz a mesma lista. Perto de 12 s de tela parada, e nao em caso raro: o cache e da INSTANCIA serverless e a Vercel recicla instancia o tempo todo. Paralelizar mais nao resolveria (medido: 3,0 s mais 4,5 s = 7,5 s). O que resolve e nao esperar. OpcoesDeLote.semEsperar usa so o que esta em memoria (o cache, e o catalogo apenas SE ja estiver quente); o que falta volta ok:false e cai no fallback honesto do C2X, com o aviso de sempre, e volta MARCADO em vez de sumir (entrada ausente seria lida como documento inexistente, enquanto ok:false e nao sei agora). O aquecimento roda no after() das duas rotas, DEPOIS da resposta: chamar antes do NextResponse.json desfaz o ganho inteiro. O campo conciliando manda a tela perguntar de novo em cerca de 6 s e nao e polling, porque so existe quando o servidor pede, some sozinho quando a resposta chega conciliada e com o catalogo quente nunca acontece; o cache de 5 min da lib nao guarda quadro com conciliando, senao prenderia a tela no dado do C2X depois de o aquecimento terminar. O repique troca os dados sem voltar ao esqueleto, e falha no repique nao apaga numeros que ja estao na frente do usuario. Tres testes novos travam o comportamento, incluindo o de que ZERO chamadas saem com o cache frio.",
+      done: "MEDIDO antes de mexer (scripts/apolo/medir-catalogo-real.mjs e medir-carga-contratos.mjs): catalogo D4Sign frio 4,4 s em 8 paginas, mais 7,0 s dos 20 detalhes do teto, contra 0,1 s do SQL que traz a mesma lista. Perto de 12 s de tela parada, e nao em caso raro: o cache e da INSTANCIA serverless e a Vercel recicla instancia o tempo todo. Paralelizar mais nao resolveria (medido: 3,0 s mais 4,5 s = 7,5 s). O que resolve e nao esperar. OpcoesDeLote.semEsperar usa so o que esta em memoria (o cache, e o catalogo apenas SE ja estiver quente); o que falta volta ok:false e cai no fallback honesto do C2X, com o aviso de sempre, e volta MARCADO em vez de sumir (entrada ausente seria lida como documento inexistente, enquanto ok:false e nao sei agora). O aquecimento roda no after() das duas rotas, DEPOIS da resposta: chamar antes do NextResponse.json desfaz o ganho inteiro. O campo conciliando manda a tela perguntar de novo em cerca de 6 s e nao e polling, porque so existe quando o servidor pede, some sozinho quando a resposta chega conciliada e com o catalogo quente nunca acontece; o cache de 5 min da lib nao guarda quadro com conciliando, senao prenderia a tela no dado do C2X depois de o aquecimento terminar. O repique troca os dados sem voltar ao esqueleto, e falha no repique nao apaga numeros que ja estao na frente do usuario. Tres testes novos travam o comportamento, incluindo o de que ZERO chamadas saem com o cache frio.",
       motivation:
         "Lucas: esta demorando muito para carregar as paginas, e gostaria de trazer o carregamento que ja tem no panteon, mas olha por favor essa demora.",
     },
@@ -2033,8 +2059,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.157.0 (2026-08-18-fonte-da-assinatura)",
     technical: {
-      done:
-        "A limpeza e no SERVIDOR, nao na tela: a rota /api/incorporador/vendas/assinaturas zera avisoDosAssinantes, remove aviso e fonte de cada unidade e troca o texto tecnico de avisoDaFonte por uma frase de cliente. Esconder no componente deixaria o jargao viajando no JSON, visivel na aba de rede — o portal nao fala de C2X nem em payload. O tipo local da linha perdeu aviso/fonte com o porque escrito em cima, para ninguem 'consertar' isso de volta. A lib segue intacta e a tela interna recebe tudo. Tambem registrado: as 454 pendencias falsas da Lavra do Ouro tem causa conhecida (contratos rodados a mao, fora do fluxo do C2X) e a decisao do dono e seguir o D4Sign ali — a tela filtrada em LOS ja mostra o numero certo, porque documento finalizado e resolvido pela listagem em lote antes do teto por carga.",
+      done: "A limpeza e no SERVIDOR, nao na tela: a rota /api/incorporador/vendas/assinaturas zera avisoDosAssinantes, remove aviso e fonte de cada unidade e troca o texto tecnico de avisoDaFonte por uma frase de cliente. Esconder no componente deixaria o jargao viajando no JSON, visivel na aba de rede — o portal nao fala de C2X nem em payload. O tipo local da linha perdeu aviso/fonte com o porque escrito em cima, para ninguem 'consertar' isso de volta. A lib segue intacta e a tela interna recebe tudo. Tambem registrado: as 454 pendencias falsas da Lavra do Ouro tem causa conhecida (contratos rodados a mao, fora do fluxo do C2X) e a decisao do dono e seguir o D4Sign ali — a tela filtrada em LOS ja mostra o numero certo, porque documento finalizado e resolvido pela listagem em lote antes do teto por carga.",
       motivation:
         "Lucas, vendo a faixa no portal: 'nao queria esse tipo de comunicado para o incorporador'.",
     },
@@ -2075,8 +2100,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.156.0 (2026-08-18-comprovante-de-renda)",
     technical: {
-      done:
-        "Os dois leitores (carregarPainelDeContratos e lerAssinaturasDoPortal) ja chamavam montarQuadroComD4Sign; o que faltava era a TELA — avisoDaFonte, avisoDosAssinantes e o aviso/fonte por linha chegavam do servidor e eram descartados. No portal o tipo local da linha e uma COPIA do tipo da lib (o portal nao importa a lib, que puxa mysql2) e campo que a copia nao declara chega em runtime com o TypeScript apagando o tipo: foi o que manteve o aviso invisivel. Selo por linha SO no fallback real (c2x-legado); para o caso majoritario quem avisa e a faixa do topo, senao 165 carimbos matam o sinal. CONFERIDO contra o C2X: no recorte VOC+VOL a tela bate casa por casa com o SQL cru e com producao (2.295 linhas / 1.202 assinadas / 185 unidades, filtro send_document_signature = 1 mais status <> 6), e no pareamento assinante a assinante deu ZERO divergencia nas duas direcoes — no Vale do Ouro o C2X esta certo. O gap do C2X esta na LAVRA DO OURO: 454 das 496 pendencias falsas do acervo (151 documentos finalizados no D4Sign e abertos no C2X), resolvidas pela listagem em lote sem chamada por documento. Medicoes em docs/operations/d4sign-como-fonte-medicao-2026-08-18.md.",
+      done: "Os dois leitores (carregarPainelDeContratos e lerAssinaturasDoPortal) ja chamavam montarQuadroComD4Sign; o que faltava era a TELA — avisoDaFonte, avisoDosAssinantes e o aviso/fonte por linha chegavam do servidor e eram descartados. No portal o tipo local da linha e uma COPIA do tipo da lib (o portal nao importa a lib, que puxa mysql2) e campo que a copia nao declara chega em runtime com o TypeScript apagando o tipo: foi o que manteve o aviso invisivel. Selo por linha SO no fallback real (c2x-legado); para o caso majoritario quem avisa e a faixa do topo, senao 165 carimbos matam o sinal. CONFERIDO contra o C2X: no recorte VOC+VOL a tela bate casa por casa com o SQL cru e com producao (2.295 linhas / 1.202 assinadas / 185 unidades, filtro send_document_signature = 1 mais status <> 6), e no pareamento assinante a assinante deu ZERO divergencia nas duas direcoes — no Vale do Ouro o C2X esta certo. O gap do C2X esta na LAVRA DO OURO: 454 das 496 pendencias falsas do acervo (151 documentos finalizados no D4Sign e abertos no C2X), resolvidas pela listagem em lote sem chamada por documento. Medicoes em docs/operations/d4sign-como-fonte-medicao-2026-08-18.md.",
       motivation:
         "Lucas: 'queria usar somente o D4Sign, o C2X tem muito gap ainda' e, na conferencia, 'olha se esta batendo com o C2X, por favor'.",
     },
@@ -2117,8 +2141,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.155.0 (2026-08-18-contratos-e-vale-do-ouro)",
     technical: {
-      done:
-        "Migration 0095 aplicada em producao (comprovante_renda_habilitado, boolean not null default false — ao contrario da 0071, que nasceu true: aqui true viraria exigencia nova em massa). A regra pura vive em lib/apolo/cadastro-obrigatorios.ts e casa por FAMILIA de categoria (extrato | contracheque | irpf: qualquer uma satisfaz). O flag NUNCA vem do corpo: as duas rotas de salvar releem a chave no banco e o empreendimento sai do token da sessao, entao POST forjado nao desliga a exigencia. Documento segue o caminho atual (bucket apolo-documents, uploadApoloDocument, apolo_documents com document_type), e a contabilidade de 3,2MB no corpo ja manda o excedente por URL assinada, sem risco novo de 413.",
+      done: "Migration 0095 aplicada em producao (comprovante_renda_habilitado, boolean not null default false — ao contrario da 0071, que nasceu true: aqui true viraria exigencia nova em massa). A regra pura vive em lib/apolo/cadastro-obrigatorios.ts e casa por FAMILIA de categoria (extrato | contracheque | irpf: qualquer uma satisfaz). O flag NUNCA vem do corpo: as duas rotas de salvar releem a chave no banco e o empreendimento sai do token da sessao, entao POST forjado nao desliga a exigencia. Documento segue o caminho atual (bucket apolo-documents, uploadApoloDocument, apolo_documents com document_type), e a contabilidade de 3,2MB no corpo ja manda o excedente por URL assinada, sem risco novo de 413.",
       motivation:
         "Lucas: 'vamos criar uma nova etapa, comprovante de renda... quando estiver ativa vira uma obrigatoriedade na hora de subir a CAD'.",
     },
@@ -2167,8 +2190,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.154.0 (2026-08-18-assinatura-por-unidade)",
     technical: {
-      done:
-        "ENTERPRISE_MIRRORS em c2x-analytics.ts (VLO espelho de VOC+VOL) tira o espelho das somas sem removê-lo das leituras (masterplan 35, CADs da esteira e painel do coordenador dependem dele); displayEnterprise deixa de colapsar os quatro num rótulo só. perfilDeTela passa a receber o papel no cadastro do empreendimento (coordenador/gerente/captador vencem o profile genérico do C2X): medido, o Huber (2510) tem profile Imobiliária e é manager_id de 9 empreendimentos. Portal: visões Contratos e Assinaturas fundidas numa chamada só (lerContratosVivos compartilhado), grupos em ordem alfabética estável. Apolo: nova tela em /apolo/assinaturas reusando o núcleo do portal (lib/apolo/assinaturas/nucleo.ts), com e-mail do assinante e filtro por empreendimento; BI público intocado. Base do D4Sign como fonte da verdade preparada (d4sign-assinaturas.ts + divergências).",
+      done: "ENTERPRISE_MIRRORS em c2x-analytics.ts (VLO espelho de VOC+VOL) tira o espelho das somas sem removê-lo das leituras (masterplan 35, CADs da esteira e painel do coordenador dependem dele); displayEnterprise deixa de colapsar os quatro num rótulo só. perfilDeTela passa a receber o papel no cadastro do empreendimento (coordenador/gerente/captador vencem o profile genérico do C2X): medido, o Huber (2510) tem profile Imobiliária e é manager_id de 9 empreendimentos. Portal: visões Contratos e Assinaturas fundidas numa chamada só (lerContratosVivos compartilhado), grupos em ordem alfabética estável. Apolo: nova tela em /apolo/assinaturas reusando o núcleo do portal (lib/apolo/assinaturas/nucleo.ts), com e-mail do assinante e filtro por empreendimento; BI público intocado. Base do D4Sign como fonte da verdade preparada (d4sign-assinaturas.ts + divergências).",
       motivation:
         "Lucas: 'os dados não batem, revisa como está o Vale do Ouro'; 'o Huber é o Coordenador, está como imobiliária'; 'a tela de assinatura devia chamar contratos'; 'quero levá-la para dentro do Apolo'.",
     },
@@ -2198,12 +2220,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.153.0 (2026-08-18-portal-no-escuro)",
     technical: {
-      done:
-        "assinaturas.ts devolve unidades (esquema + grupos por perfil), fila, taxas e KPIs do painel interno, sem consulta nova (mesma leitura reagrupada); painel-assinatura.ts so ganhou export de prazoDoComprador/PRAZO_COMPRADOR para a regua de 7 dias ser importada em vez de copiada. NOME_DEGRAU do painel NAO foi copiado: medido no C2X, aquela tabela descreve o Vale do Ouro e no LBR a ordem 3 e da imobiliaria; o rotulo agora sai dos perfis que assinam no degrau. A fila so aparece onde ha ordem de verdade (after_position > 0).",
+      done: "assinaturas.ts devolve unidades (esquema + grupos por perfil), fila, taxas e KPIs do painel interno, sem consulta nova (mesma leitura reagrupada); painel-assinatura.ts so ganhou export de prazoDoComprador/PRAZO_COMPRADOR para a regua de 7 dias ser importada em vez de copiada. NOME_DEGRAU do painel NAO foi copiado: medido no C2X, aquela tabela descreve o Vale do Ouro e no LBR a ordem 3 e da imobiliaria; o rotulo agora sai dos perfis que assinam no degrau. A fila so aparece onde ha ordem de verdade (after_position > 0).",
       motivation:
         "Lucas: 'do jeito que esta eu nao sei o status de assinatura das unidades' e 'esses cards poderiam trazer a taxa de assinatura das imobiliarias, backoffice, coordenacao, incorporador'.",
     },
-    title: "Assinaturas por unidade, com barra de progresso e o esquema do contrato",
+    title:
+      "Assinaturas por unidade, com barra de progresso e o esquema do contrato",
     type: "novidade",
     version: "1.154.0",
   },
@@ -2238,8 +2260,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.152.1 (2026-08-18-panteon-na-porta-do-portal)",
     technical: {
-      done:
-        "Tokens do portal em tres estados (claro na base, media query guardada por :not([data-inc-tema=claro]), e [data-inc-tema=escuro]); escolha em localStorage aplicada por script pre-pintura no layout; TEMA_PADRAO_DO_PORTAL=escuro separado de escolhaInicialDoPortal(bruto, personalizado) para nao colar 'nunca escolheu' com 'escolheu sistema'; rota do masterplan respeita ?tema= (deveClarearMasterplan) sem tocar em escopo; logo do hub reaproveitada com filter invert(1) no claro. Aba Assinaturas reescrita (cards de quem esta na vez + acordeao), Resumo reordenado e rotulo em toda barra com escalonamento em dois niveis.",
+      done: "Tokens do portal em tres estados (claro na base, media query guardada por :not([data-inc-tema=claro]), e [data-inc-tema=escuro]); escolha em localStorage aplicada por script pre-pintura no layout; TEMA_PADRAO_DO_PORTAL=escuro separado de escolhaInicialDoPortal(bruto, personalizado) para nao colar 'nunca escolheu' com 'escolheu sistema'; rota do masterplan respeita ?tema= (deveClarearMasterplan) sem tocar em escopo; logo do hub reaproveitada com filter invert(1) no claro. Aba Assinaturas reescrita (cards de quem esta na vez + acordeao), Resumo reordenado e rotulo em toda barra com escalonamento em dois niveis.",
       motivation:
         "Lucas: 'temos que disponibilizar o dark tambem', depois 'ficou muito bom esse modo dark, quero ele padrao daqui pra frente' e 'pode deixar a Cecilio escolher tambem'; a aba de assinaturas estava longa demais para usar.",
     },
@@ -2281,12 +2302,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.152.0 (2026-08-18-contratos-e-assinaturas-no-portal)",
     technical: {
-      done:
-        "Moldura da porta recebe o slug e assina com o simbolo + nome do Panteon quando ehPortalPersonalizado(slug) e falso. Aba Assinaturas redesenhada (tiles com barra de progresso, cards de 'com a bola agora' com unidades e tempo de espera, lista dos 63 recolhida com busca; a lista de pendentes foi fundida nos cards e sobrou bloco proprio para envio sem assinante). Rotulo em TODA barra com valor: escalonamento por conflito real (o rotulo sobe acima da barra mais alta da vizinhanca e salta um nivel quando encostaria no rotulo a esquerda), formato curto no modo R$. Medido na tela: 0 colisao rotulo-rotulo e 0 rotulo-barra nos dois modos, sem texto vertical. Ordem das secoes do Resumo trocada.",
+      done: "Moldura da porta recebe o slug e assina com o simbolo + nome do Panteon quando ehPortalPersonalizado(slug) e falso. Aba Assinaturas redesenhada (tiles com barra de progresso, cards de 'com a bola agora' com unidades e tempo de espera, lista dos 63 recolhida com busca; a lista de pendentes foi fundida nos cards e sobrou bloco proprio para envio sem assinante). Rotulo em TODA barra com valor: escalonamento por conflito real (o rotulo sobe acima da barra mais alta da vizinhanca e salta um nivel quando encostaria no rotulo a esquerda), formato curto no modo R$. Medido na tela: 0 colisao rotulo-rotulo e 0 rotulo-barra nos dois modos, sem texto vertical. Ordem das secoes do Resumo trocada.",
       motivation:
         "Lucas: faltou a logo do Panteon na porta; a tela de assinatura estava longa e confusa; ainda havia barra sem indicador; e o perfil do comprador vinha antes do estoque e do ritmo.",
     },
-    title: "Assinaturas reorganizada, Panteon na porta e todo grafico com numero",
+    title:
+      "Assinaturas reorganizada, Panteon na porta e todo grafico com numero",
     type: "melhoria",
     version: "1.152.1",
   },
@@ -2310,8 +2331,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.151.1 (2026-08-18-proposta-prevista-pelo-plano)",
     technical: {
-      done:
-        "lib/apolo/incorporador/contratos.ts (regua de estagio derivada de STAGE_MAP, escolha de envio uuidDoc>maior id, teto 500 com flag truncado) e assinaturas.ts (importa marcarSituacao/perfilDeTela do painel interno; LEFT JOIN em signers para envio sem assinante nao sumir) + rotas escopadas por codigosDaSessao; TelaVendas com as visoes Contratos e Assinaturas (fetch na abertura, cache por recorte) e KPI clientesUnicos. Correcoes da revisao: billing_date por date_format (DATE + timezone Z voltava um dia) e envio sem assinante visivel nas duas abas.",
+      done: "lib/apolo/incorporador/contratos.ts (regua de estagio derivada de STAGE_MAP, escolha de envio uuidDoc>maior id, teto 500 com flag truncado) e assinaturas.ts (importa marcarSituacao/perfilDeTela do painel interno; LEFT JOIN em signers para envio sem assinante nao sumir) + rotas escopadas por codigosDaSessao; TelaVendas com as visoes Contratos e Assinaturas (fetch na abertura, cache por recorte) e KPI clientesUnicos. Correcoes da revisao: billing_date por date_format (DATE + timezone Z voltava um dia) e envio sem assinante visivel nas duas abas.",
       motivation:
         "Pedido do Lucas: acompanhar contratos gerados e o andamento das assinaturas dentro de Vendas, com clientes unicos como indicador.",
     },
@@ -2340,8 +2360,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.151.0 (2026-08-18-portal-do-incorporador-padrao)",
     technical: {
-      done:
-        "venda-proposta.ts: previsao pelo plano (coalesce cpc/cps initial_input_value; negociado previsto = tabela so para plano padrao) quando zero parcelas emitidas; rotulo compacto codigo+bloco+lote; modal da TelaVendas renderiza o previsto com rotulos proprios. Validado com o contrato real 4283 (LBF C12-10) em teste.",
+      done: "venda-proposta.ts: previsao pelo plano (coalesce cpc/cps initial_input_value; negociado previsto = tabela so para plano padrao) quando zero parcelas emitidas; rotulo compacto codigo+bloco+lote; modal da TelaVendas renderiza o previsto com rotulos proprios. Validado com o contrato real 4283 (LBF C12-10) em teste.",
       motivation:
         "Lucas: a proposta e visivel desde a segunda etapa no C2X, e o popup dizia a definir em tudo antes da emissao.",
     },
@@ -2395,12 +2414,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.150.0 (2026-08-17-corretor-avisado-e-habilitar-sem-beco)",
     technical: {
-      done:
-        "Portal do incorporador reconstruido portando as telas reais do Apolo (CarteiraTab, VendasTab/kanban, CRM 360 lista+ficha) com escopo por sessao assinada (codigosDaSessao/idsDaSessao/unidadeNoEscopo/pessoaNoEscopo) e allowlist campo a campo em toda rota /api/incorporador/*. Masterplans internos novos (Lagoa Bonita 495, Vista Alegre 126, Recanto do Para 199) gerados dos SVGs do C2X pelo molde novo; recorte por escopo com quadra string e moldura interna removida do fonte. Correcoes: OUTSTANDING so abate paid_value com payment_date (apolo + guardian); camada cinza injetada no ULTIMO </body> (o primeiro era string JS do exportador e matava o app do mapa); sessao do portal revalidada no banco a cada carga com reemissao de cookie. Gestao de incorporadores movida para o Setup com secao de contas.",
+      done: "Portal do incorporador reconstruido portando as telas reais do Apolo (CarteiraTab, VendasTab/kanban, CRM 360 lista+ficha) com escopo por sessao assinada (codigosDaSessao/idsDaSessao/unidadeNoEscopo/pessoaNoEscopo) e allowlist campo a campo em toda rota /api/incorporador/*. Masterplans internos novos (Lagoa Bonita 495, Vista Alegre 126, Recanto do Para 199) gerados dos SVGs do C2X pelo molde novo; recorte por escopo com quadra string e moldura interna removida do fonte. Correcoes: OUTSTANDING so abate paid_value com payment_date (apolo + guardian); camada cinza injetada no ULTIMO </body> (o primeiro era string JS do exportador e matava o app do mapa); sessao do portal revalidada no banco a cada carga com reemissao de cookie. Gestao de incorporadores movida para o Setup com secao de contas.",
       motivation:
         "Pedido do Lucas: portal padrao dos loteadores no nivel do BI que ele mesmo mantinha no Power BI, para Vista Alegre, Lagoa Bonita (LBF) e os proximos, sem afetar o portal personalizado do Cecilio.",
     },
-    title: "Portal do incorporador: CRM, Vendas, Carteira e mapa, no padrao Panteon",
+    title:
+      "Portal do incorporador: CRM, Vendas, Carteira e mapa, no padrao Panteon",
     type: "novidade",
     version: "1.151.0",
   },
@@ -2438,12 +2457,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "41df2760 (v1.149.0)",
     technical: {
-      done:
-        "AVISO AO CORRETOR (pedido do Lucas: *'pode mandar mensagem para ele também, falando que a imobiliária x credenciou ele no empreendimento x'*). MEDIDO ANTES: em todo o histórico de `apolo_disparos` os destinatários do credenciamento são só `imobiliaria` e `coordenador:` — o corretor NUNCA recebeu nada. E 58 de 58 corretores de imobiliária habilitada têm telefone em `apolo_contacts`, então o disparo tem para onde ir. Nova `corretoresDaImobiliaria` (lê o vínculo entre entidades: `entity_id` = imobiliária, `related_entity_id` = corretor; erro de leitura NÃO vira lista vazia em silêncio, senão 'ninguém avisado' seria indistinguível de 'imobiliária sem corretor') e `mensagemCorretorCredenciado` (6 testes). ⚠️ UMA MENSAGEM POR CORRETOR, com TODOS os empreendimentos juntos: uma por empreendimento faria a equipe receber três seguidas quase iguais. O disparo é gravado com o `entity_id` DO CORRETOR, não o da imobiliária — é na ficha dele que o operador vai procurar quando ele disser que não recebeu. Tom de AVISO, não de parabéns: quem credenciou foi a imobiliária, a Careli só liberou. O reenvio manual NÃO espalha para a equipe (`corretoresParaAvisar` vazio por padrão). ⚠️ DOIS DEFEITOS DA REVISÃO ADVERSARIAL SOBRE O QUE SUBIU HÁ MINUTOS (v1.149.0), os dois corrigidos aqui: (a) ALTA, e era regressão nossa: `podeHabilitar` só acendia com empreendimento NOVO, então depois de 'Reabrir validação' o botão morria — medido, das 420 imobiliárias com papel `active`, as 38 que têm vínculo têm 100% deles `verified`, ou seja NENHUMA voltaria pela tela, e o rodapé da imobiliária não tem outro caminho. A rota sempre aceitou (pedido `verified` cai em `jaHabilitados` e o papel volta a `active`); era só a tela que não deixava chegar lá. Agora o botão também acende quando o papel não é `active`, que é o fluxo que o Lucas descreveu: *'seria validar a partir dessa tela, habilita, se os erros foram corrigidos, e dali ela vai para habilitada'*. (b) MÉDIA: a rota disparava o WhatsApp mesmo sem alterar UMA LINHA — `promoverPapel` fica true só com `jaHabilitados`. Com a resposta perdida (rede, timeout), a tela dizia 'o credenciamento NÃO mudou' (falso) e mantinha o botão aceso; o segundo clique mandava a mensagem de novo, agora com o texto TROCADO, porque `primeiraVez` já era false: o parceiro receberia 'seu cadastro foi aprovado' e em seguida 'você está habilitada em mais um empreendimento'. Agora o aviso só sai se `plano.habilitar + plano.novos > 0` — a trava real é do servidor, a da tela virou conveniência. CONFERÊNCIA DA CORREÇÃO (pedido: *'perguntar se os erros xyz foram corrigidos'*): o GET de `/habilitar` passou a devolver as `pendencias` da última correção, lidas de `apolo_audit_events.metadata` — a MESMA fonte que o reenvio usa, para a pergunta e a mensagem nunca divergirem — e só quando a entidade está de fato em `attention`. A tela lista os pontos e trava o botão até o operador marcar que conferiu. MÁSCARAS REMOVIDAS (*'pode tirar esses *, não precisa esconder nada no Panteon'*): `mascararTelefone`/`mascararEmail` viraram `formatarTelefone`/`formatarEmail`, que formatam sem esconder. Vale para o painel INTERNO; rota pública continua não devolvendo telefone de parceiro.",
+      done: "AVISO AO CORRETOR (pedido do Lucas: *'pode mandar mensagem para ele também, falando que a imobiliária x credenciou ele no empreendimento x'*). MEDIDO ANTES: em todo o histórico de `apolo_disparos` os destinatários do credenciamento são só `imobiliaria` e `coordenador:` — o corretor NUNCA recebeu nada. E 58 de 58 corretores de imobiliária habilitada têm telefone em `apolo_contacts`, então o disparo tem para onde ir. Nova `corretoresDaImobiliaria` (lê o vínculo entre entidades: `entity_id` = imobiliária, `related_entity_id` = corretor; erro de leitura NÃO vira lista vazia em silêncio, senão 'ninguém avisado' seria indistinguível de 'imobiliária sem corretor') e `mensagemCorretorCredenciado` (6 testes). ⚠️ UMA MENSAGEM POR CORRETOR, com TODOS os empreendimentos juntos: uma por empreendimento faria a equipe receber três seguidas quase iguais. O disparo é gravado com o `entity_id` DO CORRETOR, não o da imobiliária — é na ficha dele que o operador vai procurar quando ele disser que não recebeu. Tom de AVISO, não de parabéns: quem credenciou foi a imobiliária, a Careli só liberou. O reenvio manual NÃO espalha para a equipe (`corretoresParaAvisar` vazio por padrão). ⚠️ DOIS DEFEITOS DA REVISÃO ADVERSARIAL SOBRE O QUE SUBIU HÁ MINUTOS (v1.149.0), os dois corrigidos aqui: (a) ALTA, e era regressão nossa: `podeHabilitar` só acendia com empreendimento NOVO, então depois de 'Reabrir validação' o botão morria — medido, das 420 imobiliárias com papel `active`, as 38 que têm vínculo têm 100% deles `verified`, ou seja NENHUMA voltaria pela tela, e o rodapé da imobiliária não tem outro caminho. A rota sempre aceitou (pedido `verified` cai em `jaHabilitados` e o papel volta a `active`); era só a tela que não deixava chegar lá. Agora o botão também acende quando o papel não é `active`, que é o fluxo que o Lucas descreveu: *'seria validar a partir dessa tela, habilita, se os erros foram corrigidos, e dali ela vai para habilitada'*. (b) MÉDIA: a rota disparava o WhatsApp mesmo sem alterar UMA LINHA — `promoverPapel` fica true só com `jaHabilitados`. Com a resposta perdida (rede, timeout), a tela dizia 'o credenciamento NÃO mudou' (falso) e mantinha o botão aceso; o segundo clique mandava a mensagem de novo, agora com o texto TROCADO, porque `primeiraVez` já era false: o parceiro receberia 'seu cadastro foi aprovado' e em seguida 'você está habilitada em mais um empreendimento'. Agora o aviso só sai se `plano.habilitar + plano.novos > 0` — a trava real é do servidor, a da tela virou conveniência. CONFERÊNCIA DA CORREÇÃO (pedido: *'perguntar se os erros xyz foram corrigidos'*): o GET de `/habilitar` passou a devolver as `pendencias` da última correção, lidas de `apolo_audit_events.metadata` — a MESMA fonte que o reenvio usa, para a pergunta e a mensagem nunca divergirem — e só quando a entidade está de fato em `attention`. A tela lista os pontos e trava o botão até o operador marcar que conferiu. MÁSCARAS REMOVIDAS (*'pode tirar esses *, não precisa esconder nada no Panteon'*): `mascararTelefone`/`mascararEmail` viraram `formatarTelefone`/`formatarEmail`, que formatam sem esconder. Vale para o painel INTERNO; rota pública continua não devolvendo telefone de parceiro.",
       motivation:
         "Sequência de pedidos do Lucas na ficha da imobiliária, mais dois defeitos que a revisão adversarial encontrou no código que tinha acabado de subir.",
     },
-    title: "O corretor tambem e avisado, e habilitar deixou de ter beco sem saida",
+    title:
+      "O corretor tambem e avisado, e habilitar deixou de ter beco sem saida",
     type: "melhoria",
     version: "1.150.0",
   },
@@ -2479,8 +2498,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "3d6aaeca (v1.148.0)",
     technical: {
-      done:
-        "Quatro pedidos do Lucas sobre a ficha da imobiliária habilitada, feitos por agente e revisados aqui. ETAPA VERDE: `habilitada` passou a valer `etapas.length` e não a posição 1 — com 1 ela era a etapa ATUAL (bolinha cinza numerada), com `length` a ficha entra como concluída, mesmo tratamento que a CAD `credenciado` já tinha. BOTÃO DO RODAPÉ: o do print era o avanço genérico, que só sabia mostrar 'marque abaixo os empreendimentos' apontando para caixinhas ausentes naquele ponto da trilha; saiu para imobiliária. A habilitação real é a do painel, e a regra de quando ela pode acontecer virou função pura testada (`podeHabilitar`, `empreendimentosNovos`, `tudoLiberado` em `credenciamento-etapa.ts`, 11 testes) — antes o botão continuava ativo com tudo liberado e cada clique redisparava o WhatsApp para imobiliária e coordenador. Também saíram 'Enviar ao coordenador' (que só respondia 'validação de imobiliária não passa por análise de crédito') e o 'Aprovar' genérico; 'Voltar' virou 'Reabrir validação' porque na imobiliária ele DESFAZ a habilitação, e o nome antigo escondia isso. STATUS DOS DISPAROS: nova rota `board/[id]/disparos` (GET status, POST reenvio) e `credenciamento-disparos.ts` (18 testes). ⚠️ MEDIDO ANTES DE DESENHAR: `apolo_disparos` não tem coluna de canal nem de e-mail, e os 24 disparos `relacionamento:whatsapp` estão com `wa_message_id`, `delivered_at` e `read_at` TODOS NULOS — o Evolution não devolve recibo, só o webhook da Meta preenche (302 `prevenda_cobranca` lidos comprovam o outro caminho). A tela diz isso explicitamente em vez de exibir um 'entregue' que ninguém confirmou: inventar confirmação de leitura seria pior que não mostrar. Telefone e e-mail saem mascarados. REENVIO: reusa `avisarCredenciamento*` e `telefoneDaImobiliaria([representante, empresa])` — a regra do telefone NÃO foi duplicada (é a que já custou 3 imobiliárias sem aviso, porque `\"\" ?? x` continua `\"\"`). Manda o aviso da situação ATUAL (habilitada → habilitação; correção → pedido com os motivos; recusada → recusa), e os motivos saem de `apolo_audit_events.metadata`: quando não há motivo registrado o reenvio é RECUSADO, em vez de mandar uma recusa sem dizer o que houve — que é a queixa que criou a ação de correção. 'Cadastro aprovado' vs 'mais um empreendimento' sai do histórico de disparos, não de chute. Grava `origem = reenvio:whatsapp` e evento `credenciamento_reenvio` na auditoria. MEDIDO: 418 de 440 imobiliárias estão em papel `active` + entidade `review` (é a combinação NORMAL, não defeito), 440 papéis para 440 entidades (sem duplicado, `maybeSingle` seguro), e a EDSON LUIZ BARBOSA não tem NENHUMA linha em `apolo_disparos` — foi habilitada antes do disparo existir. FICA REGISTRADO, sem correção nesta entrega: a rota `/habilitar` ainda dispara o WhatsApp mesmo quando `plano.habilitar` e `plano.novos` estão vazios; hoje quem impede é o botão da tela. Fechar no servidor muda comportamento de escrita e ficou para uma próxima, com decisão do Lucas.",
+      done: "Quatro pedidos do Lucas sobre a ficha da imobiliária habilitada, feitos por agente e revisados aqui. ETAPA VERDE: `habilitada` passou a valer `etapas.length` e não a posição 1 — com 1 ela era a etapa ATUAL (bolinha cinza numerada), com `length` a ficha entra como concluída, mesmo tratamento que a CAD `credenciado` já tinha. BOTÃO DO RODAPÉ: o do print era o avanço genérico, que só sabia mostrar 'marque abaixo os empreendimentos' apontando para caixinhas ausentes naquele ponto da trilha; saiu para imobiliária. A habilitação real é a do painel, e a regra de quando ela pode acontecer virou função pura testada (`podeHabilitar`, `empreendimentosNovos`, `tudoLiberado` em `credenciamento-etapa.ts`, 11 testes) — antes o botão continuava ativo com tudo liberado e cada clique redisparava o WhatsApp para imobiliária e coordenador. Também saíram 'Enviar ao coordenador' (que só respondia 'validação de imobiliária não passa por análise de crédito') e o 'Aprovar' genérico; 'Voltar' virou 'Reabrir validação' porque na imobiliária ele DESFAZ a habilitação, e o nome antigo escondia isso. STATUS DOS DISPAROS: nova rota `board/[id]/disparos` (GET status, POST reenvio) e `credenciamento-disparos.ts` (18 testes). ⚠️ MEDIDO ANTES DE DESENHAR: `apolo_disparos` não tem coluna de canal nem de e-mail, e os 24 disparos `relacionamento:whatsapp` estão com `wa_message_id`, `delivered_at` e `read_at` TODOS NULOS — o Evolution não devolve recibo, só o webhook da Meta preenche (302 `prevenda_cobranca` lidos comprovam o outro caminho). A tela diz isso explicitamente em vez de exibir um 'entregue' que ninguém confirmou: inventar confirmação de leitura seria pior que não mostrar. Telefone e e-mail saem mascarados. REENVIO: reusa `avisarCredenciamento*` e `telefoneDaImobiliaria([representante, empresa])` — a regra do telefone NÃO foi duplicada (é a que já custou 3 imobiliárias sem aviso, porque `\"\" ?? x` continua `\"\"`). Manda o aviso da situação ATUAL (habilitada → habilitação; correção → pedido com os motivos; recusada → recusa), e os motivos saem de `apolo_audit_events.metadata`: quando não há motivo registrado o reenvio é RECUSADO, em vez de mandar uma recusa sem dizer o que houve — que é a queixa que criou a ação de correção. 'Cadastro aprovado' vs 'mais um empreendimento' sai do histórico de disparos, não de chute. Grava `origem = reenvio:whatsapp` e evento `credenciamento_reenvio` na auditoria. MEDIDO: 418 de 440 imobiliárias estão em papel `active` + entidade `review` (é a combinação NORMAL, não defeito), 440 papéis para 440 entidades (sem duplicado, `maybeSingle` seguro), e a EDSON LUIZ BARBOSA não tem NENHUMA linha em `apolo_disparos` — foi habilitada antes do disparo existir. FICA REGISTRADO, sem correção nesta entrega: a rota `/habilitar` ainda dispara o WhatsApp mesmo quando `plano.habilitar` e `plano.novos` estão vazios; hoje quem impede é o botão da tela. Fechar no servidor muda comportamento de escrita e ficou para uma próxima, com decisão do Lucas.",
       motivation:
         "Lucas, 17/08, com print: 'a imobiliária já está habilitada e ainda fica aparecendo o campo de habilitar. Outra, se ela já está habilitada a etapa de habilitada deveria estar verde. Aqui nessa tela seria ótimo trazer os status do envio das mensagens, se foi enviado, hora, se recebeu, quem recebeu, para a gente não ficar no escuro, e um botão de reenviar a mensagem'.",
     },
@@ -2520,8 +2538,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "46a6baee (v1.147.0)",
     technical: {
-      done:
-        "A FILA DE ASSINATURA E ORDENADA, e o painel contava como se não fosse. `contract_signature_signers.after_position` é o degrau, e ele já vinha para a tela como `degrau` — mas o quadro somava tudo que a pessoa não tinha assinado num campo só. MEDIDO NO C2X antes de mexer: os degraus do Vale do Ouro vão de 1 a 10 e a ordem é respeitada À RISCA (0 contratos com alguém de degrau maior assinando antes de um menor), e a cadeia real é corretor (1) → comprador (2) → testemunhas do Cecílio Rocha (3) → Lino e Cecílio (4 e 5) → Gurgel e imobiliária (6) → Northon (7) → Nívea (8). Com isso, o número que o painel mostrava era inacionável: o NORTHON aparecia com 181 pendências e só 2 estavam com ele; a NÍVEA com 178 e ZERO. Cobrar por esse número é cobrar quem não pode agir. Nova `marcarSituacao(linhas)` (6 testes, com a cadeia real): por CONTRATO, acha o menor degrau ainda pendente e marca cada assinatura como `assinado` | `vez` | `aguardando`. ⚠️ QUEM DIVIDE O DEGRAU ASSINA EM PARALELO: o contrato tem dois no degrau 3 e três no 5, e nenhum trava o outro — por isso a conta é `degrau <= frente`, não `degrau === frente`. ⚠️ A FRENTE É POR CONTRATO, nunca global: calcular globalmente deixaria o Northon 'aguardando' em tudo por causa de um contrato atrasado alheio (teste próprio para isso). O clique no número do quadro preenche os filtros que JÁ EXISTIAM (usuário + status) e rola até o analítico; zero não vira botão, porque clique que leva a tabela vazia parece tela quebrada. BI PÚBLICO: nova rota `/api/publico/bi/assinaturas` (liberada UMA A UMA no proxy) e página `/publico/assinaturas`, com o MESMO componente da tela interna — só a fonte muda, via prop. Painel duplicado viraria duas verdades sobre o mesmo contrato, e a que ninguém abre é a que desatualiza. O cache de 5 min mora na lib e vale para os dois: link que circula não pode virar uma consulta ao legado por pessoa que abre. Escopo fixo no servidor (Vale do Ouro), sem parâmetro na query — rota anônima que aceita `codes` deixa qualquer um pedir a carteira de qualquer loteamento. ⚠️ REGISTRADO NO CÓDIGO E NO PROXY: ao contrário do BI público de vendas, que é só agregado, este sai com NOME E E-MAIL de quem assina (inclusive sócios do incorporador) e a unidade de cada contrato. Levantei isso antes de liberar; a decisão do Lucas foi 'só deixa público, somente isso'. A página é `noindex`, mesmo padrão de /publico/painel.",
+      done: "A FILA DE ASSINATURA E ORDENADA, e o painel contava como se não fosse. `contract_signature_signers.after_position` é o degrau, e ele já vinha para a tela como `degrau` — mas o quadro somava tudo que a pessoa não tinha assinado num campo só. MEDIDO NO C2X antes de mexer: os degraus do Vale do Ouro vão de 1 a 10 e a ordem é respeitada À RISCA (0 contratos com alguém de degrau maior assinando antes de um menor), e a cadeia real é corretor (1) → comprador (2) → testemunhas do Cecílio Rocha (3) → Lino e Cecílio (4 e 5) → Gurgel e imobiliária (6) → Northon (7) → Nívea (8). Com isso, o número que o painel mostrava era inacionável: o NORTHON aparecia com 181 pendências e só 2 estavam com ele; a NÍVEA com 178 e ZERO. Cobrar por esse número é cobrar quem não pode agir. Nova `marcarSituacao(linhas)` (6 testes, com a cadeia real): por CONTRATO, acha o menor degrau ainda pendente e marca cada assinatura como `assinado` | `vez` | `aguardando`. ⚠️ QUEM DIVIDE O DEGRAU ASSINA EM PARALELO: o contrato tem dois no degrau 3 e três no 5, e nenhum trava o outro — por isso a conta é `degrau <= frente`, não `degrau === frente`. ⚠️ A FRENTE É POR CONTRATO, nunca global: calcular globalmente deixaria o Northon 'aguardando' em tudo por causa de um contrato atrasado alheio (teste próprio para isso). O clique no número do quadro preenche os filtros que JÁ EXISTIAM (usuário + status) e rola até o analítico; zero não vira botão, porque clique que leva a tabela vazia parece tela quebrada. BI PÚBLICO: nova rota `/api/publico/bi/assinaturas` (liberada UMA A UMA no proxy) e página `/publico/assinaturas`, com o MESMO componente da tela interna — só a fonte muda, via prop. Painel duplicado viraria duas verdades sobre o mesmo contrato, e a que ninguém abre é a que desatualiza. O cache de 5 min mora na lib e vale para os dois: link que circula não pode virar uma consulta ao legado por pessoa que abre. Escopo fixo no servidor (Vale do Ouro), sem parâmetro na query — rota anônima que aceita `codes` deixa qualquer um pedir a carteira de qualquer loteamento. ⚠️ REGISTRADO NO CÓDIGO E NO PROXY: ao contrário do BI público de vendas, que é só agregado, este sai com NOME E E-MAIL de quem assina (inclusive sócios do incorporador) e a unidade de cada contrato. Levantei isso antes de liberar; a decisão do Lucas foi 'só deixa público, somente isso'. A página é `noindex`, mesmo padrão de /publico/painel.",
       motivation:
         "Lucas, 17/08: 'queria que ao clicar no nome do assinante no quadro de assinaturas o analítico filtrasse... e respeitando a ordem: se falta dois ainda para chegar no Northon, não devia contar no campo assinar, poderia ter um novo campo aguardando. E outra, deixa esse BI público também'.",
     },
@@ -2575,8 +2592,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "24bea2e4 (v1.146.0)",
     technical: {
-      done:
-        "UM EMPREENDIMENTO, DOIS FORMATOS DE ID, e cada ponta comparava só um deles. O id pode ser o do GRUPO (`group:Lagoa Bonita`, que é o que o portal público grava porque lá fora não existe divisão) ou o das DIVISÕES (33/LBF, 27/LBR, 32/LBP, como o C2X conhece). Os DOIS estão gravados em produção hoje. ⚠️ ISSO QUEBRAVA OS DOIS LADOS, e nenhum formato funcionava nos dois: (a) o POST de habilitar EXPANDIA os escolhidos para as divisões e comparava contra os pedidos, que estavam no formato do grupo — `[33,27,32]` contra `[group:Lagoa Bonita]` não casa nada, e a imobiliária recebia 'Empreendimento que esta imobiliaria nao pediu: 33, 27, 32' sobre o empreendimento que tinha ACABADO de pedir (visto ao vivo pela Nívea, com o Lucas na chamada); (b) o portal público cruzava o vínculo contra a lista de empreendimentos, onde Lagoa Bonita é UM item de id `group:Lagoa Bonita` — a DANY CASTRO, `verified` nas TRÊS divisões desde sempre, não via o Lagoa Bonita, e os corretores dela não conseguiam enviar CAD. Habilitação que existe no banco e não existe na prática é pior que habilitação ausente, porque ninguém vai procurar. Expansão de um lado só era o defeito, nas duas pontas. NOVO `lib/apolo/empreendimento-equivalencia.ts` (13 testes, com os dados REAIS do C2X): `canonizador(catalogo)` traduz qualquer id para o do grupo, e `cobertoPor(emp, vinculos)` aceita vínculo em qualquer formato. Ligado nos dois pontos: o POST canoniza escolhidos E pedidos antes de comparar, e `filtrarEmpreendimentosHabilitados` passa a casar por equivalência. Nenhuma migration: os vínculos que já existem seguem valendo nos dois formatos, e os NOVOS nascem canônicos. A trava continua de pé — empreendimento que a imobiliária realmente não pediu segue recusado (teste próprio). Regra do Lucas: 'quando clicar em Lagoa Bonita, tem que habilitar todos os Lagoa Bonita' · 'para eles não tem essa de divisão, isso é interno'. FILTRO DO BOARD: o seletor se montava a partir dos cards (`itens.flatMap(...)`), então empreendimento sem nenhuma CAD não existia como opção — não havia como perguntar 'e o Lagoa Bonita?', a resposta era a ausência da pergunta. Medido: dos 8 abertos a credenciamento, o Lagoa Bonita era o ÚNICO sem card, e o único que sumia. Agora sai do catálogo (`credenciamento_ativo`), unido ao que está nos cards para não perder grafia antiga da esteira. Junto: o card da imobiliária passa a ler o empreendimento do VÍNCULO (a fonte de verdade, e a única que existe para quem veio do C2X) antes do texto do cadastro — a DANY CASTRO aparecia sem empreendimento nenhum porque `metadata.cadastro` dela é nulo. Novo `lib/apolo/catalogo-empreendimentos.ts` (7 testes) com leitura ENXUTA (`select id, code, name`) e cache de 10 min: `loadApoloEnterprises` faz `left join enterprise_unities` com dez agregações de sale_status sobre TODAS as unidades, e pendurar isso no Board (que tem refetch-on-focus) sairia caro só para saber o nome. CADASTRO DE CORRETOR: o CPF virou a primeira pergunta e a MOST traz o nome (CARELI_PF_01, basic_data). É a mesma regra que o portal público segue desde 20/07 ('o corretor digita o CPF, a MOST traz o nome completo'); no wizard interno o nome ainda era digitado à mão e o CPF vinha depois. ⚠️ CUSTO: passa a rodar DUAS queries por corretor (PF_01 para o nome + PF_04 para o CRECI), uma vez por CPF — mesmo custo que o público já paga. O que o operador digitou sempre ganha: a busca preenche o que está vazio, nunca sobrescreve. MEDIDO: 24 dos 82 corretores estão sem CPF, todos criados em maio pelo sync do C2X — as duas telas de cadastro já exigiam CPF, então o resíduo é do legado e não da entrada.",
+      done: "UM EMPREENDIMENTO, DOIS FORMATOS DE ID, e cada ponta comparava só um deles. O id pode ser o do GRUPO (`group:Lagoa Bonita`, que é o que o portal público grava porque lá fora não existe divisão) ou o das DIVISÕES (33/LBF, 27/LBR, 32/LBP, como o C2X conhece). Os DOIS estão gravados em produção hoje. ⚠️ ISSO QUEBRAVA OS DOIS LADOS, e nenhum formato funcionava nos dois: (a) o POST de habilitar EXPANDIA os escolhidos para as divisões e comparava contra os pedidos, que estavam no formato do grupo — `[33,27,32]` contra `[group:Lagoa Bonita]` não casa nada, e a imobiliária recebia 'Empreendimento que esta imobiliaria nao pediu: 33, 27, 32' sobre o empreendimento que tinha ACABADO de pedir (visto ao vivo pela Nívea, com o Lucas na chamada); (b) o portal público cruzava o vínculo contra a lista de empreendimentos, onde Lagoa Bonita é UM item de id `group:Lagoa Bonita` — a DANY CASTRO, `verified` nas TRÊS divisões desde sempre, não via o Lagoa Bonita, e os corretores dela não conseguiam enviar CAD. Habilitação que existe no banco e não existe na prática é pior que habilitação ausente, porque ninguém vai procurar. Expansão de um lado só era o defeito, nas duas pontas. NOVO `lib/apolo/empreendimento-equivalencia.ts` (13 testes, com os dados REAIS do C2X): `canonizador(catalogo)` traduz qualquer id para o do grupo, e `cobertoPor(emp, vinculos)` aceita vínculo em qualquer formato. Ligado nos dois pontos: o POST canoniza escolhidos E pedidos antes de comparar, e `filtrarEmpreendimentosHabilitados` passa a casar por equivalência. Nenhuma migration: os vínculos que já existem seguem valendo nos dois formatos, e os NOVOS nascem canônicos. A trava continua de pé — empreendimento que a imobiliária realmente não pediu segue recusado (teste próprio). Regra do Lucas: 'quando clicar em Lagoa Bonita, tem que habilitar todos os Lagoa Bonita' · 'para eles não tem essa de divisão, isso é interno'. FILTRO DO BOARD: o seletor se montava a partir dos cards (`itens.flatMap(...)`), então empreendimento sem nenhuma CAD não existia como opção — não havia como perguntar 'e o Lagoa Bonita?', a resposta era a ausência da pergunta. Medido: dos 8 abertos a credenciamento, o Lagoa Bonita era o ÚNICO sem card, e o único que sumia. Agora sai do catálogo (`credenciamento_ativo`), unido ao que está nos cards para não perder grafia antiga da esteira. Junto: o card da imobiliária passa a ler o empreendimento do VÍNCULO (a fonte de verdade, e a única que existe para quem veio do C2X) antes do texto do cadastro — a DANY CASTRO aparecia sem empreendimento nenhum porque `metadata.cadastro` dela é nulo. Novo `lib/apolo/catalogo-empreendimentos.ts` (7 testes) com leitura ENXUTA (`select id, code, name`) e cache de 10 min: `loadApoloEnterprises` faz `left join enterprise_unities` com dez agregações de sale_status sobre TODAS as unidades, e pendurar isso no Board (que tem refetch-on-focus) sairia caro só para saber o nome. CADASTRO DE CORRETOR: o CPF virou a primeira pergunta e a MOST traz o nome (CARELI_PF_01, basic_data). É a mesma regra que o portal público segue desde 20/07 ('o corretor digita o CPF, a MOST traz o nome completo'); no wizard interno o nome ainda era digitado à mão e o CPF vinha depois. ⚠️ CUSTO: passa a rodar DUAS queries por corretor (PF_01 para o nome + PF_04 para o CRECI), uma vez por CPF — mesmo custo que o público já paga. O que o operador digitou sempre ganha: a busca preenche o que está vazio, nunca sobrescreve. MEDIDO: 24 dos 82 corretores estão sem CPF, todos criados em maio pelo sync do C2X — as duas telas de cadastro já exigiam CPF, então o resíduo é do legado e não da entrada.",
       motivation:
         "Bug visto ao vivo (17/08): a Nívea tentando habilitar uma imobiliária no Lagoa Bonita e o botão recusando. O diagnóstico encontrou o mesmo defeito do outro lado, afetando quem já estava habilitado.",
     },
@@ -2632,8 +2648,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "01adf844 (v1.145.0)",
     technical: {
-      done:
-        "LOG ERROS. Pedido do Lucas: 'uma imobiliaria tentou subir a CAD e deu erro, teria como ter essa visao? Tinha que pegar DESDE O INICIO, quando informa o CPF, imobiliaria'. Migration 0093 (`apolo_cad_log_erros`, RLS ligada sem policy de select: so a service role le). ⚠️ A DESCOBERTA QUE MUDOU O DESENHO: as paredes mais graves NAO sao erro HTTP. Corretor cuja imobiliaria nao esta credenciada recebe HTTP 200 com mensagem cordial; imobiliaria credenciada sem empreendimento habilitado, idem. Um log que olhasse so para status >=400 mostraria o funil saudavel enquanto a porta de entrada devolve gente todo dia. Por isso a tabela guarda DUAS naturezas, separadas por selo na tela: ERRO (>=400, a pessoa viu e pode tentar de novo) e BARREIRA (200, fluxo encerrado em silencio). Sucesso NAO entra: regra do Lucas, 'a tentativa de certo e a CAD que chega na validacao'. COMO O CONTEXTO CHEGA: sao 85 `return responder(...)` nas 14 rotas publicas, e passar o contexto em cada um seria 85 chances de esquecer — com o esquecimento SILENCIOSO (a coluna fica '—' e ninguem sabe se falta dado ou codigo). A rota chama `anotarContexto(request, {...})` assim que descobre quem e, um WeakMap por requisicao guarda, e o `responder()` le; anotar de novo ACUMULA e string vazia nao apaga o que ja se sabia. Registro via `after()` do Next, NUNCA `void promise`: na Vercel a funcao e congelada quando a resposta sai e a promessa solta nao termina — a tela mostraria 'nenhuma recusa' com o formulario quebrando na cara do corretor. ⚠️ REVISAO ADVERSARIAL (15 agentes, 5 lentes) PEGOU 7 DEFEITOS CONFIRMADOS, TODOS CORRIGIDOS: (a) VAZAMENTO DE DADO DE CLIENTE — a mensagem de conflito de nucleo familiar nomeia TERCEIRO ('o CPF do conjuge do JOAO DA SILVA ja possui CAD para o Vale do Ouro') e estava sendo gravada inteira numa tabela especificada como 'sem dado do cliente', ainda por cima no card 'o que mais barrou', que agrupa pela string e viraria lista de nomes de compradores; criado `ContextoDaTentativa.motivo`, o motivo canonico que ganha da mensagem quando ela vem de camada de negocio. (b) VAZAMENTO DE CARTEIRA DE CONCORRENTE, anterior a esta rodada: `/publico/imobiliaria/credenciar` devolvia `explicarConflitos` cru ('FULANO ja trabalha o Vale do Ouro pela Imobiliaria X') numa rota ANONIMA atras so do CNPJ — quem chutasse nomes e CPFs mapearia a rede dos concorrentes; a resposta publica virou generica e o detalhe foi para o log interno, que e onde ele ja deveria estar (a mesma regra ja estava escrita no /checar-cpf). (c) as DUAS recusas mais caras do /salvar (401 de sessao expirada e 400 sem empreendimento) saiam por `erro()` cru, fora do caminho do log — e o 401 e o corretor que preencheu a CAD toda e perdeu no envio, o caso que motivou dobrar o TTL de 45 para 90 min. (d) 429 e 503 escapavam nas 14 rotas, porque todas fazem `return preparo.response` direto: teto de uso batido e Supabase fora do ar ficavam invisiveis justo nos dois incidentes em que a tela mais precisaria falar; registro movido para dentro do `prepararRota`, um ponto so. (e) MASCARA DE CPF RECONSTRUIVEL: guardava o 9o digito e os dois verificadores, e como os DVs sao calculados dos 9 primeiros, validar os candidatos derruba o espaco de 100 mil para um punhado — era base de CPF disfarcada de mascara; agora so os 3 primeiros. (f) o insert engolia o `error` do PostgREST sem rastro, deixando 'tabela que parou de aceitar linha' indistinguivel de 'nao houve recusa'. (g) contador 'sem saida' contado sobre a pagina truncada e exibido na mesma frase que o total do periodo, dois denominadores lado a lado sugerindo uma proporcao que nao existia. Ainda: `imobiliaria_entity_id` validado como uuid antes do insert (um id fora de formato derrubaria a LINHA INTEIRA, nao so o campo), e o GET passou a selecionar o CNPJ mascarado — sem ele a coluna 'Quem' ficaria vazia no fluxo inteiro de credenciamento, que e onde o Lucas viu o problema. POLITICA COMERCIAL. Migration 0092 (`gestao_carteira_percentual`). Precedencia definida pelo Lucas: 'toda parte financeira, enquanto nao migramos tudo para o Apolo, o C2X tem prioridade; o que vai nascer ja no Apolo e a % da gestao de carteira'. A fonte da gestao mudou tres vezes ate assentar no `split_enterprises`: so ha gestao quando existe linha 'Gestora de recebiveis' no grupo Mensal (os `10+10` de `commercial_policies` eram campo morto). O PATCH grava todas as divisoes numa chamada e relata o que ja gravou se falhar no meio — a tela fazia um PATCH por divisao, e uma falha na segunda deixaria a Lagoa Bonita com uma gleba em 97% e outra em 96%, exatamente o que 'uma % por empreendimento' proibe. ⚠️ A ABA ELEGIA `politicas[0]` como referencia e apresentava o veredito como do empreendimento inteiro: se o banco devolvesse o LBR primeiro, a tela AFIRMARIA 'a Careli nao administra a carteira deste empreendimento' sobre um empreendimento onde administramos. Consolidado pela regra do negocio (se ALGUMA divisao tem gestao, o empreendimento tem) e com aviso explicito quando as divisoes divergem. NAO ENTRA NESTA ENTREGA, e fica registrado: `liquido-incorporador.ts` esta pronto e testado mas SEM NENHUM CHAMADOR, entao gravar a % ainda nao muda tela alguma — ela so ganha funcao quando a Carteira do portal do incorporador existir. ASANA: tela removida do menu e o bloco (6 arquivos) apagado, mas o BACKEND fica de pe de proposito — `lib/apolo/asana-import.ts` tambem alimenta o diagnostico de CAD, o backfill de empreendimento e o relatorio das imobiliarias. A tela ativa do Apolo e persistida no localStorage, entao quem estivesse em 'Importar CADs' abriria o Apolo EM BRANCO; `telaValida()` faz a tela salva que nao existe mais cair no CRM.",
+      done: "LOG ERROS. Pedido do Lucas: 'uma imobiliaria tentou subir a CAD e deu erro, teria como ter essa visao? Tinha que pegar DESDE O INICIO, quando informa o CPF, imobiliaria'. Migration 0093 (`apolo_cad_log_erros`, RLS ligada sem policy de select: so a service role le). ⚠️ A DESCOBERTA QUE MUDOU O DESENHO: as paredes mais graves NAO sao erro HTTP. Corretor cuja imobiliaria nao esta credenciada recebe HTTP 200 com mensagem cordial; imobiliaria credenciada sem empreendimento habilitado, idem. Um log que olhasse so para status >=400 mostraria o funil saudavel enquanto a porta de entrada devolve gente todo dia. Por isso a tabela guarda DUAS naturezas, separadas por selo na tela: ERRO (>=400, a pessoa viu e pode tentar de novo) e BARREIRA (200, fluxo encerrado em silencio). Sucesso NAO entra: regra do Lucas, 'a tentativa de certo e a CAD que chega na validacao'. COMO O CONTEXTO CHEGA: sao 85 `return responder(...)` nas 14 rotas publicas, e passar o contexto em cada um seria 85 chances de esquecer — com o esquecimento SILENCIOSO (a coluna fica '—' e ninguem sabe se falta dado ou codigo). A rota chama `anotarContexto(request, {...})` assim que descobre quem e, um WeakMap por requisicao guarda, e o `responder()` le; anotar de novo ACUMULA e string vazia nao apaga o que ja se sabia. Registro via `after()` do Next, NUNCA `void promise`: na Vercel a funcao e congelada quando a resposta sai e a promessa solta nao termina — a tela mostraria 'nenhuma recusa' com o formulario quebrando na cara do corretor. ⚠️ REVISAO ADVERSARIAL (15 agentes, 5 lentes) PEGOU 7 DEFEITOS CONFIRMADOS, TODOS CORRIGIDOS: (a) VAZAMENTO DE DADO DE CLIENTE — a mensagem de conflito de nucleo familiar nomeia TERCEIRO ('o CPF do conjuge do JOAO DA SILVA ja possui CAD para o Vale do Ouro') e estava sendo gravada inteira numa tabela especificada como 'sem dado do cliente', ainda por cima no card 'o que mais barrou', que agrupa pela string e viraria lista de nomes de compradores; criado `ContextoDaTentativa.motivo`, o motivo canonico que ganha da mensagem quando ela vem de camada de negocio. (b) VAZAMENTO DE CARTEIRA DE CONCORRENTE, anterior a esta rodada: `/publico/imobiliaria/credenciar` devolvia `explicarConflitos` cru ('FULANO ja trabalha o Vale do Ouro pela Imobiliaria X') numa rota ANONIMA atras so do CNPJ — quem chutasse nomes e CPFs mapearia a rede dos concorrentes; a resposta publica virou generica e o detalhe foi para o log interno, que e onde ele ja deveria estar (a mesma regra ja estava escrita no /checar-cpf). (c) as DUAS recusas mais caras do /salvar (401 de sessao expirada e 400 sem empreendimento) saiam por `erro()` cru, fora do caminho do log — e o 401 e o corretor que preencheu a CAD toda e perdeu no envio, o caso que motivou dobrar o TTL de 45 para 90 min. (d) 429 e 503 escapavam nas 14 rotas, porque todas fazem `return preparo.response` direto: teto de uso batido e Supabase fora do ar ficavam invisiveis justo nos dois incidentes em que a tela mais precisaria falar; registro movido para dentro do `prepararRota`, um ponto so. (e) MASCARA DE CPF RECONSTRUIVEL: guardava o 9o digito e os dois verificadores, e como os DVs sao calculados dos 9 primeiros, validar os candidatos derruba o espaco de 100 mil para um punhado — era base de CPF disfarcada de mascara; agora so os 3 primeiros. (f) o insert engolia o `error` do PostgREST sem rastro, deixando 'tabela que parou de aceitar linha' indistinguivel de 'nao houve recusa'. (g) contador 'sem saida' contado sobre a pagina truncada e exibido na mesma frase que o total do periodo, dois denominadores lado a lado sugerindo uma proporcao que nao existia. Ainda: `imobiliaria_entity_id` validado como uuid antes do insert (um id fora de formato derrubaria a LINHA INTEIRA, nao so o campo), e o GET passou a selecionar o CNPJ mascarado — sem ele a coluna 'Quem' ficaria vazia no fluxo inteiro de credenciamento, que e onde o Lucas viu o problema. POLITICA COMERCIAL. Migration 0092 (`gestao_carteira_percentual`). Precedencia definida pelo Lucas: 'toda parte financeira, enquanto nao migramos tudo para o Apolo, o C2X tem prioridade; o que vai nascer ja no Apolo e a % da gestao de carteira'. A fonte da gestao mudou tres vezes ate assentar no `split_enterprises`: so ha gestao quando existe linha 'Gestora de recebiveis' no grupo Mensal (os `10+10` de `commercial_policies` eram campo morto). O PATCH grava todas as divisoes numa chamada e relata o que ja gravou se falhar no meio — a tela fazia um PATCH por divisao, e uma falha na segunda deixaria a Lagoa Bonita com uma gleba em 97% e outra em 96%, exatamente o que 'uma % por empreendimento' proibe. ⚠️ A ABA ELEGIA `politicas[0]` como referencia e apresentava o veredito como do empreendimento inteiro: se o banco devolvesse o LBR primeiro, a tela AFIRMARIA 'a Careli nao administra a carteira deste empreendimento' sobre um empreendimento onde administramos. Consolidado pela regra do negocio (se ALGUMA divisao tem gestao, o empreendimento tem) e com aviso explicito quando as divisoes divergem. NAO ENTRA NESTA ENTREGA, e fica registrado: `liquido-incorporador.ts` esta pronto e testado mas SEM NENHUM CHAMADOR, entao gravar a % ainda nao muda tela alguma — ela so ganha funcao quando a Carteira do portal do incorporador existir. ASANA: tela removida do menu e o bloco (6 arquivos) apagado, mas o BACKEND fica de pe de proposito — `lib/apolo/asana-import.ts` tambem alimenta o diagnostico de CAD, o backfill de empreendimento e o relatorio das imobiliarias. A tela ativa do Apolo e persistida no localStorage, entao quem estivesse em 'Importar CADs' abriria o Apolo EM BRANCO; `telaValida()` faz a tela salva que nao existe mais cair no CRM.",
       motivation:
         "Lucas, 17/08: 'queria registrar os erros de input de CAD... uma imobiliaria tentou subir a CAD e deu erro, teria como ter essa visao? Tinha que pegar desde o inicio, quando informa o CPF, imobiliaria. A tela pode ser Log Erros.' E, sobre a politica: 'no cadastro do empreendimento podemos trazer a aba politicas comerciais, e la registrar o valor de comissao, bem como o valor da gestao de carteira'.",
     },
@@ -2672,8 +2687,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "911a946d (v1.144.2)",
     technical: {
-      done:
-        "REGRA DO LUCAS (17/08): a validacao de imobiliaria tem TRES decisoes, nao duas. Faltava CORRECAO, e a falta dela tem custo medido: a Beatriz Teodora levou TRES indeferimentos por ter enviado o Cartao de CNPJ no lugar do contrato social — um caso de pendencia, tratado como recusa porque nao havia outra opcao. ONDE O ESTADO MORA: `apolo_entity_profiles.status` so aceita active|review|blocked|archived, entao nao ha valor para 'em correcao' la; `apolo_entities.status` aceita `attention`, que significa exatamente 'aguardando acao de fora'. Correcao grava entidade `attention` com o PAPEL AINDA EM `review` (ela nao foi aprovada nem recusada), sem migration. Nova `mensagemImobiliariaCorrecao` (6 testes) com tom de pedido, nao de recusa, e `MOTIVOS_CORRECAO_IMOBILIARIA` proprios — os de CAD (comprovante de endereco, documento do socio) sao de comprador. O COORDENADOR NAO recebe aviso de correcao, de proposito: ele precisa saber quem foi habilitado e quem foi recusado, mas pendencia de documento e assunto entre a Careli e o parceiro. Nova acao `reabrir` para quem regularizou. A IMOBILIARIA NAO VAI MAIS PARA A ESTEIRA em caminho nenhum: so `indeferir` tinha sido desviado, e reabrir/avancar/voltar/correcao/enviar-ao-coordenador continuavam chamando `moverEtapa`, que grava em `apolo_esteira` — onde ela nao tem linha (435 de 435) — e devolvia 409 pedindo 'informe o empreendimento no cadastro' a quem valida uma EMPRESA. ⚠️ A REVISAO ADVERSARIAL SOBRE A FRENTE INTEIRA pegou 6 defeitos, dois deles no codigo desta mesma rodada: (a) a perna nova da fila filtrava por `updated_at`, que NINGUEM carimbava — a tabela nao tem trigger e o default `now()` so vale no INSERT, entao o filtro significava 'cadastrada ha 30 dias' e a imobiliaria em correcao sumiria da tela ainda esperando resposta; carimbado nas tres transicoes. (b) `enviarParaRevisao` seguia sem desvio, e revisao e o desvio do credito reprovado da CAD, que imobiliaria nao tem. (c) na aba Todos o kanban nao tem coluna 'habilitada', entao o card era DESCARTADO sem entrar em lista nem badge; a coluna passa a entrar ao lado de Credenciado quando ha imobiliaria na lista. (d) `progresso` vinha da esteira e ficava 0 para sempre: a ficha habilitada abria em 'Validacao', sem selo de apta, e o botao Voltar (disabled quando etapa 0) nunca ficava clicavel. (e) o botao Habilitar continuava ativo com tudo ja liberado, e cada clique redisparava o WhatsApp de boas-vindas para imobiliaria e coordenador. (f) indeferir nao devolvia a entidade para `review`, entao indeferir depois de habilitar fazia o card sumir em vez de ir para Recusada. Ainda: orientacao deixou de sair na tarja vermelha de erro e virou aviso neutro. ✅ REGRA CONFIRMADA E DOCUMENTADA NO CODIGO: imobiliaria cadastrada pelo WIZARD INTERNO nasce credenciada de proposito — 'cadastro feito pelo operador vale ja como validacao'. Os portais PUBLICOS rebaixam (papel review, vinculos pending) porque la quem preenche e a propria imobiliaria. A diferenca entre os caminhos e QUEM preencheu; a revisao apontou isso como defeito e nao e.",
+      done: "REGRA DO LUCAS (17/08): a validacao de imobiliaria tem TRES decisoes, nao duas. Faltava CORRECAO, e a falta dela tem custo medido: a Beatriz Teodora levou TRES indeferimentos por ter enviado o Cartao de CNPJ no lugar do contrato social — um caso de pendencia, tratado como recusa porque nao havia outra opcao. ONDE O ESTADO MORA: `apolo_entity_profiles.status` so aceita active|review|blocked|archived, entao nao ha valor para 'em correcao' la; `apolo_entities.status` aceita `attention`, que significa exatamente 'aguardando acao de fora'. Correcao grava entidade `attention` com o PAPEL AINDA EM `review` (ela nao foi aprovada nem recusada), sem migration. Nova `mensagemImobiliariaCorrecao` (6 testes) com tom de pedido, nao de recusa, e `MOTIVOS_CORRECAO_IMOBILIARIA` proprios — os de CAD (comprovante de endereco, documento do socio) sao de comprador. O COORDENADOR NAO recebe aviso de correcao, de proposito: ele precisa saber quem foi habilitado e quem foi recusado, mas pendencia de documento e assunto entre a Careli e o parceiro. Nova acao `reabrir` para quem regularizou. A IMOBILIARIA NAO VAI MAIS PARA A ESTEIRA em caminho nenhum: so `indeferir` tinha sido desviado, e reabrir/avancar/voltar/correcao/enviar-ao-coordenador continuavam chamando `moverEtapa`, que grava em `apolo_esteira` — onde ela nao tem linha (435 de 435) — e devolvia 409 pedindo 'informe o empreendimento no cadastro' a quem valida uma EMPRESA. ⚠️ A REVISAO ADVERSARIAL SOBRE A FRENTE INTEIRA pegou 6 defeitos, dois deles no codigo desta mesma rodada: (a) a perna nova da fila filtrava por `updated_at`, que NINGUEM carimbava — a tabela nao tem trigger e o default `now()` so vale no INSERT, entao o filtro significava 'cadastrada ha 30 dias' e a imobiliaria em correcao sumiria da tela ainda esperando resposta; carimbado nas tres transicoes. (b) `enviarParaRevisao` seguia sem desvio, e revisao e o desvio do credito reprovado da CAD, que imobiliaria nao tem. (c) na aba Todos o kanban nao tem coluna 'habilitada', entao o card era DESCARTADO sem entrar em lista nem badge; a coluna passa a entrar ao lado de Credenciado quando ha imobiliaria na lista. (d) `progresso` vinha da esteira e ficava 0 para sempre: a ficha habilitada abria em 'Validacao', sem selo de apta, e o botao Voltar (disabled quando etapa 0) nunca ficava clicavel. (e) o botao Habilitar continuava ativo com tudo ja liberado, e cada clique redisparava o WhatsApp de boas-vindas para imobiliaria e coordenador. (f) indeferir nao devolvia a entidade para `review`, entao indeferir depois de habilitar fazia o card sumir em vez de ir para Recusada. Ainda: orientacao deixou de sair na tarja vermelha de erro e virou aviso neutro. ✅ REGRA CONFIRMADA E DOCUMENTADA NO CODIGO: imobiliaria cadastrada pelo WIZARD INTERNO nasce credenciada de proposito — 'cadastro feito pelo operador vale ja como validacao'. Os portais PUBLICOS rebaixam (papel review, vinculos pending) porque la quem preenche e a propria imobiliaria. A diferenca entre os caminhos e QUEM preencheu; a revisao apontou isso como defeito e nao e.",
       motivation:
         "Lucas: 'temos que ter 3 acoes em validacao de imobiliaria: validar, correcao, indeferimento. Essa correcao e o status que deveria ter acontecido com a Beatriz: ela mandou um documento errado, eu preciso avisar ela sobre a pendencia, ela vai para correcao e quando corrigir eu habilito'.",
     },
@@ -2700,8 +2714,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "cf6bde9e (v1.144.1)",
     technical: {
-      done:
-        "MEDIDO EM 16/08: `credenciamento_aprovado` com 3 de 3 falhas e erro `sem telefone` (DANY CASTRO, F M S MACIEL, HRQ NEGOCIOS), enquanto `credenciamento_coordenador`, disparado no mesmo segundo, saiu 3 de 3. A habilitacao em si funcionou — papel `active` e vinculos `verified`, as tres ja podiam enviar CAD —, so o aviso nao saiu. **As tres tinham celular em `apolo_contacts` o tempo todo.** DUAS CAUSAS SOMADAS: (1) na rota publica o plano B do telefone era `corpo.telefone`, que so existe no CADASTRO NOVO — no fluxo de habilitacao o corpo traz apenas corretores e empreendimentos, entao nao havia plano B nenhum; e (2) `normalizarTelefone(undefined)` devolve STRING VAZIA e o `??` **nao troca string vazia**, so null/undefined, entao `\"\" ?? contato` continuava vazio e o codigo nem chegava a olhar o contato da empresa. Agrava que as fichas vindas do C2X nao tem `socios[]`, e para elas o representante legal simplesmente nao existe: o contato da empresa era a UNICA fonte. Criado `telefoneDaImobiliaria(fontes[])` em `disparo-credenciamento.ts`, que percorre as fontes na ordem (representante > empresa > corpo) e **pula vazio**, devolvendo null quando nao ha nenhuma — ligado nos tres pontos de disparo (habilitar, indeferir e a rota publica), que antes repetiam a regra com `??` cada um a seu modo. +7 testes, incluindo o caso exato desta falha. ⚠️ FICA REGISTRADO, sem correcao nesta entrega: `imob_pix_enviado`, `imob_pix_pago` e `prevenda_cobranca` estao em 100% de falha na medicao de 60 dias, mas pararam de rodar em 29-30/07 — ou foram desligados, ou quebraram e ninguem percebeu.",
+      done: 'MEDIDO EM 16/08: `credenciamento_aprovado` com 3 de 3 falhas e erro `sem telefone` (DANY CASTRO, F M S MACIEL, HRQ NEGOCIOS), enquanto `credenciamento_coordenador`, disparado no mesmo segundo, saiu 3 de 3. A habilitacao em si funcionou — papel `active` e vinculos `verified`, as tres ja podiam enviar CAD —, so o aviso nao saiu. **As tres tinham celular em `apolo_contacts` o tempo todo.** DUAS CAUSAS SOMADAS: (1) na rota publica o plano B do telefone era `corpo.telefone`, que so existe no CADASTRO NOVO — no fluxo de habilitacao o corpo traz apenas corretores e empreendimentos, entao nao havia plano B nenhum; e (2) `normalizarTelefone(undefined)` devolve STRING VAZIA e o `??` **nao troca string vazia**, so null/undefined, entao `"" ?? contato` continuava vazio e o codigo nem chegava a olhar o contato da empresa. Agrava que as fichas vindas do C2X nao tem `socios[]`, e para elas o representante legal simplesmente nao existe: o contato da empresa era a UNICA fonte. Criado `telefoneDaImobiliaria(fontes[])` em `disparo-credenciamento.ts`, que percorre as fontes na ordem (representante > empresa > corpo) e **pula vazio**, devolvendo null quando nao ha nenhuma — ligado nos tres pontos de disparo (habilitar, indeferir e a rota publica), que antes repetiam a regra com `??` cada um a seu modo. +7 testes, incluindo o caso exato desta falha. ⚠️ FICA REGISTRADO, sem correcao nesta entrega: `imob_pix_enviado`, `imob_pix_pago` e `prevenda_cobranca` estao em 100% de falha na medicao de 60 dias, mas pararam de rodar em 29-30/07 — ou foram desligados, ou quebraram e ninguem percebeu.',
       motivation:
         "Varredura dos disparos por central (pedido do Lucas: comunicado de imobiliaria, corretor e coordenador sai pelo Relacionamento) encontrou a falha acontecendo no mesmo dia.",
     },
@@ -2737,12 +2750,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "d1dfd057 (v1.144.0)",
     technical: {
-      done:
-        "Patch dos 7 achados que a SEGUNDA revisao adversarial confirmou sobre as correcoes da v1.144.0, mais os 2 que apareceram em producao no mesmo dia (imobiliaria Beatriz Teodora). CAUSA COMUM DOS DOIS INCIDENTES: a v1.144.0 moveu a gravacao da ficha para `metadata.cadastroEditado` para a correcao humana nao ser encoberta pelo C2X, mas **so o GET do Board aprendeu a ler essa camada**. `representanteDaImobiliaria` (que escolhe o telefone do disparo), a cascata do CRM e o envio ao C2X seguiam lendo `metadata.cadastro`: o Lucas corrigiu o telefone do representante, a tela passou a mostrar o numero novo e a mensagem de indeferimento saiu DUAS VEZES para o numero antigo, recusada pelo Evolution com `exists:false`. Criado `lib/apolo/cadastro-efetivo.ts` (4 testes) e ligado nos tres leitores. A REVISAO TINHA PREVISTO ISSO — o achado estava na lista antes de o caso acontecer. SEGUNDO INCIDENTE: o card recusado voltava para Validacao a cada F5, porque a coluna da imobiliaria saia de `apolo_esteira.etapa` e ela **nao tem linha na esteira** (435 de 435); a decisao estava em `apolo_entity_profiles.status` e a tela nunca lia esse campo. A fila passou a devolver `papelStatus` (em lotes de 100, o `.in()` estoura a URL) e o Board usa: blocked=Recusada, active=Habilitada. A Beatriz foi indeferida TRES vezes por causa disso. OS OUTROS ACHADOS: (a) a tela de erro do portal EXTERNO era um beco sem saida — `habilitacao` truthy fazia a guarda do passo dos corretores nunca mais valer e nada zerava o estado, entao a imobiliaria perdia empreendimento, CNPJ e equipe e so saia recarregando; e o caminho ficou alcancavel justamente pela correcao da guarda. Vale para 400, 409, 401 e 429, que sao desfechos PROJETADOS. (b) `pendentePorEnterprise` filtrava `!== 'verified'`, o que varria junto `blocked` e `archived`: numa rota PUBLICA, quem soubesse o CNPJ ressuscitaria um vinculo bloqueado de proposito — agora so `pending` sobe, e bloqueado devolve 409 explicando. (c) a expansao de grupo em stageIds estava dentro do `if (jaCredenciada)`, entao o botao do Board seguia devolvendo 400 para as 16 paradas em review. (d) o atalho `ja-habilitada` respondia 200 e DESCARTAVA os corretores digitados — caso comum, porque a vitrine do portal externo pede o empreendimento antes do CNPJ e nao filtra o que ela ja trabalha. (e) insert duplicado em `apolo_entity_identifiers` (indice unico) derrubava o salvamento de uma ficha que JA tinha gravado. (f) a trava de host do anexo tinha sido aplicada so no caminho Meta; o de grupos seguia com `includes`. (g) `resumoDaHabilitacao` nao contava `novos` e respondia 'nenhum empreendimento habilitado' logo depois de criar dois.",
+      done: "Patch dos 7 achados que a SEGUNDA revisao adversarial confirmou sobre as correcoes da v1.144.0, mais os 2 que apareceram em producao no mesmo dia (imobiliaria Beatriz Teodora). CAUSA COMUM DOS DOIS INCIDENTES: a v1.144.0 moveu a gravacao da ficha para `metadata.cadastroEditado` para a correcao humana nao ser encoberta pelo C2X, mas **so o GET do Board aprendeu a ler essa camada**. `representanteDaImobiliaria` (que escolhe o telefone do disparo), a cascata do CRM e o envio ao C2X seguiam lendo `metadata.cadastro`: o Lucas corrigiu o telefone do representante, a tela passou a mostrar o numero novo e a mensagem de indeferimento saiu DUAS VEZES para o numero antigo, recusada pelo Evolution com `exists:false`. Criado `lib/apolo/cadastro-efetivo.ts` (4 testes) e ligado nos tres leitores. A REVISAO TINHA PREVISTO ISSO — o achado estava na lista antes de o caso acontecer. SEGUNDO INCIDENTE: o card recusado voltava para Validacao a cada F5, porque a coluna da imobiliaria saia de `apolo_esteira.etapa` e ela **nao tem linha na esteira** (435 de 435); a decisao estava em `apolo_entity_profiles.status` e a tela nunca lia esse campo. A fila passou a devolver `papelStatus` (em lotes de 100, o `.in()` estoura a URL) e o Board usa: blocked=Recusada, active=Habilitada. A Beatriz foi indeferida TRES vezes por causa disso. OS OUTROS ACHADOS: (a) a tela de erro do portal EXTERNO era um beco sem saida — `habilitacao` truthy fazia a guarda do passo dos corretores nunca mais valer e nada zerava o estado, entao a imobiliaria perdia empreendimento, CNPJ e equipe e so saia recarregando; e o caminho ficou alcancavel justamente pela correcao da guarda. Vale para 400, 409, 401 e 429, que sao desfechos PROJETADOS. (b) `pendentePorEnterprise` filtrava `!== 'verified'`, o que varria junto `blocked` e `archived`: numa rota PUBLICA, quem soubesse o CNPJ ressuscitaria um vinculo bloqueado de proposito — agora so `pending` sobe, e bloqueado devolve 409 explicando. (c) a expansao de grupo em stageIds estava dentro do `if (jaCredenciada)`, entao o botao do Board seguia devolvendo 400 para as 16 paradas em review. (d) o atalho `ja-habilitada` respondia 200 e DESCARTAVA os corretores digitados — caso comum, porque a vitrine do portal externo pede o empreendimento antes do CNPJ e nao filtra o que ela ja trabalha. (e) insert duplicado em `apolo_entity_identifiers` (indice unico) derrubava o salvamento de uma ficha que JA tinha gravado. (f) a trava de host do anexo tinha sido aplicada so no caminho Meta; o de grupos seguia com `includes`. (g) `resumoDaHabilitacao` nao contava `novos` e respondia 'nenhum empreendimento habilitado' logo depois de criar dois.",
       motivation:
         "Relato do Lucas em producao: 'reprovamos a Beatriz Teodoro e ela nao recebeu mensagem nenhuma' e, depois, 'mesmo indeferindo ela nao foi para recusada'. Os dois viraram achados confirmados da revisao adversarial da v1.144.0.",
     },
-    title: "Correcoes do credenciamento: recusa que fica, aviso no telefone certo e saida para o erro",
+    title:
+      "Correcoes do credenciamento: recusa que fica, aviso no telefone certo e saida para o erro",
     type: "correcao",
     version: "1.144.1",
   },
@@ -2788,12 +2801,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "2290ea55 (v1.143.0 credenciamento de imobiliaria)",
     technical: {
-      done:
-        "⚠️ REVISAO ADVERSARIAL ANTES DO DEPLOY encontrou 12 defeitos que typecheck, 784 testes, lint e build passaram por cima; todos corrigidos e listados no fim. 1) EDITAR A FICHA DA IMOBILIARIA NAO SALVAVA NADA. Duas travas empilhadas: na tela, campo sem `chave` cai no ramo de leitura (`!editando || !campo.chave`) e o bloco inteiro de dados da empresa vinha como `{ label, valor }` puro; no servidor, o `PATCH /api/apolo/board/[id]` so sabia gravar em `apolo_esteira.ficha` e devolvia **409** sem achar a linha. **Medido: das 435 entidades com papel `imobiliaria`, ZERO tem linha em `apolo_esteira`** — esteira e CAD de PESSOA num empreendimento. Ou seja, nem telefone e e-mail (que ja tinham chave) gravavam, e consertar so a tela daria input habilitado que nao salva. Sem esteira, agora grava em `apolo_entities.metadata.cadastro`, que e a base que o GET ja le (`metadata.cadastro` < C2X < esteira) — so cai ai quando nao existe esteira para ganhar dele, entao PF com CAD segue igual. O `metadata` e reescrito INTEIRO no update: leitura e merge em dois niveis para nao derrubar `bornRole`. TELEFONE E E-MAIL VAO TAMBEM PARA `apolo_contacts` via `atualizarContatoDoContato` (que grava `value` e `normalized_value` juntos): a tela mostra o cadastro por cima do contato, entao gravar so no metadata deixaria a TELA certa e o DISPARO errado, mandando a mensagem para o numero velho. Socio e corretor moram em ARRAY e nao tem chave plana: usam chave com caminho (`socios.0.telefone`, `socios.0.endereco.cep`) e `expandirCamposComCaminho` (`lib/apolo/campos-aninhados.ts`, 9 testes) reagrupa no array inteiro antes de enviar — mandar a chave com ponto crua criaria um campo literal `\"socios.0.telefone\"` ao lado do array e a tela seguiria mostrando o valor velho. Indice inexistente e descartado, nao repassado. 2) O TESTE DO LUCAS (Raiane Oliveira / Jardim das Gerais) falhava nos DOIS portais: no externo, `/publico/imobiliaria/iniciar` respondia `ja-credenciada` e encerrava, sem chegar na rota que cria o vinculo (agora devolve uma pre-sessao assinada e segue para informar corretores); no interno, o botao era `onClick={() => setEtapa(\"enviado\")}`, so trocava de tela. O `credenciar` passou a aceitar o CNPJ da PRE-SESSAO (assinado, nao pode ser trocado pelo corpo) e a exigir razao social/e-mail/telefone so no cadastro NOVO. 3) ANEXO 60MB: o teto de 3MB nao era escolha — o arquivo viajava em base64 dentro do JSON e a **Vercel corta o corpo de qualquer requisicao serverless em 4,5MB** (base64 infla ~33%). Rota nova `/api/iris/media/upload-url` assina o upload direto para o Supabase Storage e so a referencia volta; o caminho e montado no servidor, nunca vem do cliente (com path livre daria para sobrescrever midia de outra conversa). Mesmo padrao ja em producao no Hermes, Prometeu e cadastro do Apolo. ── OS 12 DEFEITOS PEGOS NA REVISAO (nenhum aparecia no gate): (a) o passo dos corretores do portal EXTERNO era INALCANCAVEL — a guarda `if (!preSessao && !habilitacao)` devolvia o portao de novo, porque quem ja e credenciada so recebe `tokenHabilitacao`; o beco sem saida tinha andado uma tela, so isso. (b) o botao do portal INTERNO devolvia 400 em 100% dos casos: ele manda os empreendimentos que ela AINDA NAO trabalha, e a rota so promovia vinculo existente — `planejarHabilitacao` ganhou `ativos`/`novos` (+4 testes, 12 no total) e a rota passou a CRIAR o vinculo ja verified, expandindo grupo em stageIds; a trava do corretor, as mensagens e as contagens tambem passaram a cobrir os novos. (c) `escrita-contato.ts` gravava `status: 'active'`, que **nao existe no CHECK** de apolo_contacts (verified|pending|attention|blocked) nem no de apolo_relationships — o insert falhava SEMPRE, e o `update({is_primary:false})` que roda ANTES ja tinha zerado o contato principal: a entidade ficava sem telefone principal e o disparo caia no numero antigo. Mesmo bug ja corrigido em prevenda-fluxo.ts (v1.115.0); esta funcao nunca tinha sido exercitada porque a escrita do cockpit ficou pronta sem UI. (d) a falha do contato voltava como `{ auditoria, ok: true }`: resposta 200, tela dizendo 'salvo', ninguem lendo esse campo. (e) gravar em `metadata.cadastro` colocava a correcao ABAIXO do C2X no merge do GET, e o C2X manda em creci, dataAbertura, dataAtualizacaoCadastral e no endereco — o operador corrigiria o CRECI e o valor velho voltaria no F5; agora existe `metadata.cadastroEditado`, aplicado POR ULTIMO. (f) razao social e CNPJ editaveis derrubavam a rodada INTEIRA: viajam pela rota de identidade, que recusa com 409 toda ficha espelho do C2X (**medido: 417 das 435 imobiliarias sao espelho**), e em `salvarTudo` a identidade vai primeiro e da throw — voltaram a ser leitura. (g) nome fantasia so no metadata enquanto o CRM le `apolo_entities.trade_name`. (h) a trava do corretor era contornavel DEIXANDO O CPF EM BRANCO (o conflito e apurado por CPF) e ficava cega acima de 2000 vinculos verified — CPF virou obrigatorio e o filtro foi para o banco. (i) vinculo `pending` contava como 'ja habilitada': tela de sucesso falsa e corretores descartados — agora o pendente e PROMOVIDO. (j) insert dos corretores sem checar erro. (k) na Iris, o `url` nao era copiado para `outboundMedia`: o cliente recebia o anexo grande e a conversa ficava SEM ele; e havia uma faixa morta entre ~2,86MB e 3MB (base64 infla 4/3 e o teto do data URL e 4.000.000 de caracteres) onde o documento nao ia por nenhum dos dois caminhos — o limite inline caiu para 2,5MB. (l) a trava 'so URL do nosso bucket' era um `includes('/iris-media/')`, que aceita QUALQUER dominio com esse trecho no caminho; agora exige https + host do nosso Supabase. Ainda: auto-aprovacao publica passou a exigir a pre-sessao assinada, e a auditoria comparava com `String()`, que devolve '[object Object]' para todo array — edicao de socio nunca virava linha.",
+      done: "⚠️ REVISAO ADVERSARIAL ANTES DO DEPLOY encontrou 12 defeitos que typecheck, 784 testes, lint e build passaram por cima; todos corrigidos e listados no fim. 1) EDITAR A FICHA DA IMOBILIARIA NAO SALVAVA NADA. Duas travas empilhadas: na tela, campo sem `chave` cai no ramo de leitura (`!editando || !campo.chave`) e o bloco inteiro de dados da empresa vinha como `{ label, valor }` puro; no servidor, o `PATCH /api/apolo/board/[id]` so sabia gravar em `apolo_esteira.ficha` e devolvia **409** sem achar a linha. **Medido: das 435 entidades com papel `imobiliaria`, ZERO tem linha em `apolo_esteira`** — esteira e CAD de PESSOA num empreendimento. Ou seja, nem telefone e e-mail (que ja tinham chave) gravavam, e consertar so a tela daria input habilitado que nao salva. Sem esteira, agora grava em `apolo_entities.metadata.cadastro`, que e a base que o GET ja le (`metadata.cadastro` < C2X < esteira) — so cai ai quando nao existe esteira para ganhar dele, entao PF com CAD segue igual. O `metadata` e reescrito INTEIRO no update: leitura e merge em dois niveis para nao derrubar `bornRole`. TELEFONE E E-MAIL VAO TAMBEM PARA `apolo_contacts` via `atualizarContatoDoContato` (que grava `value` e `normalized_value` juntos): a tela mostra o cadastro por cima do contato, entao gravar so no metadata deixaria a TELA certa e o DISPARO errado, mandando a mensagem para o numero velho. Socio e corretor moram em ARRAY e nao tem chave plana: usam chave com caminho (`socios.0.telefone`, `socios.0.endereco.cep`) e `expandirCamposComCaminho` (`lib/apolo/campos-aninhados.ts`, 9 testes) reagrupa no array inteiro antes de enviar — mandar a chave com ponto crua criaria um campo literal `\"socios.0.telefone\"` ao lado do array e a tela seguiria mostrando o valor velho. Indice inexistente e descartado, nao repassado. 2) O TESTE DO LUCAS (Raiane Oliveira / Jardim das Gerais) falhava nos DOIS portais: no externo, `/publico/imobiliaria/iniciar` respondia `ja-credenciada` e encerrava, sem chegar na rota que cria o vinculo (agora devolve uma pre-sessao assinada e segue para informar corretores); no interno, o botao era `onClick={() => setEtapa(\"enviado\")}`, so trocava de tela. O `credenciar` passou a aceitar o CNPJ da PRE-SESSAO (assinado, nao pode ser trocado pelo corpo) e a exigir razao social/e-mail/telefone so no cadastro NOVO. 3) ANEXO 60MB: o teto de 3MB nao era escolha — o arquivo viajava em base64 dentro do JSON e a **Vercel corta o corpo de qualquer requisicao serverless em 4,5MB** (base64 infla ~33%). Rota nova `/api/iris/media/upload-url` assina o upload direto para o Supabase Storage e so a referencia volta; o caminho e montado no servidor, nunca vem do cliente (com path livre daria para sobrescrever midia de outra conversa). Mesmo padrao ja em producao no Hermes, Prometeu e cadastro do Apolo. ── OS 12 DEFEITOS PEGOS NA REVISAO (nenhum aparecia no gate): (a) o passo dos corretores do portal EXTERNO era INALCANCAVEL — a guarda `if (!preSessao && !habilitacao)` devolvia o portao de novo, porque quem ja e credenciada so recebe `tokenHabilitacao`; o beco sem saida tinha andado uma tela, so isso. (b) o botao do portal INTERNO devolvia 400 em 100% dos casos: ele manda os empreendimentos que ela AINDA NAO trabalha, e a rota so promovia vinculo existente — `planejarHabilitacao` ganhou `ativos`/`novos` (+4 testes, 12 no total) e a rota passou a CRIAR o vinculo ja verified, expandindo grupo em stageIds; a trava do corretor, as mensagens e as contagens tambem passaram a cobrir os novos. (c) `escrita-contato.ts` gravava `status: 'active'`, que **nao existe no CHECK** de apolo_contacts (verified|pending|attention|blocked) nem no de apolo_relationships — o insert falhava SEMPRE, e o `update({is_primary:false})` que roda ANTES ja tinha zerado o contato principal: a entidade ficava sem telefone principal e o disparo caia no numero antigo. Mesmo bug ja corrigido em prevenda-fluxo.ts (v1.115.0); esta funcao nunca tinha sido exercitada porque a escrita do cockpit ficou pronta sem UI. (d) a falha do contato voltava como `{ auditoria, ok: true }`: resposta 200, tela dizendo 'salvo', ninguem lendo esse campo. (e) gravar em `metadata.cadastro` colocava a correcao ABAIXO do C2X no merge do GET, e o C2X manda em creci, dataAbertura, dataAtualizacaoCadastral e no endereco — o operador corrigiria o CRECI e o valor velho voltaria no F5; agora existe `metadata.cadastroEditado`, aplicado POR ULTIMO. (f) razao social e CNPJ editaveis derrubavam a rodada INTEIRA: viajam pela rota de identidade, que recusa com 409 toda ficha espelho do C2X (**medido: 417 das 435 imobiliarias sao espelho**), e em `salvarTudo` a identidade vai primeiro e da throw — voltaram a ser leitura. (g) nome fantasia so no metadata enquanto o CRM le `apolo_entities.trade_name`. (h) a trava do corretor era contornavel DEIXANDO O CPF EM BRANCO (o conflito e apurado por CPF) e ficava cega acima de 2000 vinculos verified — CPF virou obrigatorio e o filtro foi para o banco. (i) vinculo `pending` contava como 'ja habilitada': tela de sucesso falsa e corretores descartados — agora o pendente e PROMOVIDO. (j) insert dos corretores sem checar erro. (k) na Iris, o `url` nao era copiado para `outboundMedia`: o cliente recebia o anexo grande e a conversa ficava SEM ele; e havia uma faixa morta entre ~2,86MB e 3MB (base64 infla 4/3 e o teto do data URL e 4.000.000 de caracteres) onde o documento nao ia por nenhum dos dois caminhos — o limite inline caiu para 2,5MB. (l) a trava 'so URL do nosso bucket' era um `includes('/iris-media/')`, que aceita QUALQUER dominio com esse trecho no caminho; agora exige https + host do nosso Supabase. Ainda: auto-aprovacao publica passou a exigir a pre-sessao assinada, e a auditoria comparava com `String()`, que devolve '[object Object]' para todo array — edicao de socio nunca virava linha.",
       motivation:
         "Lucas, testando o credenciamento: 'fui testar a imobiliaria Raiane Oliveira, fiz habilitacao para trabalhar o Jardim das Gerais, mesmo aparecendo a mensagem nao criou o vinculo' e 'temos que poder editar os dados do cadastro todo das imobiliarias, tudo tem que ser editavel quando eu clico em Editar'. E: 'aumenta por favor para 60MB o limite de anexo dentro da iris, hoje esta 3, nao da para nada'.",
     },
-    title: "Cadastro da imobiliaria editavel, credenciamento nos dois portais e anexo de 60MB",
+    title:
+      "Cadastro da imobiliaria editavel, credenciamento nos dois portais e anexo de 60MB",
     type: "correcao",
     version: "1.144.0",
   },
@@ -2834,12 +2847,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "df35c44d (v1.142.0 envio instantaneo da Iris)",
     technical: {
-      done:
-        "CAUSA RAIZ: o Board desenha a trilha da imobiliaria como `cadastro -> habilitada`, mas `ETAPAS_ESTEIRA` so conhece as etapas da CAD — o clique devolvia **400 'Etapa invalida.'**. E indeferir devolvia **409** pedindo para 'informar o empreendimento no cadastro' de uma empresa que nao tem CAD, porque `atualizarEtapa` exige linha em `apolo_esteira`, cuja PK `(entity_id, enterprise_id)` nao aceita nulo. Imobiliaria NAO passa pela esteira: rota propria `/board/[id]/habilitar` (GET lista o pedido, POST habilita/indefere) mexendo onde o portal do corretor le — papel `active` (dados.ts:218) e vinculos `verified` (dados.ts:~265). Ordem das escritas: empreendimentos ANTES do papel, senao o CNPJ valeria com zero empreendimento liberado. DISPARO pelo EVOLUTION (numero do Relacionamento), nao pela Meta: `sendEvolutionDirectText` e novo, o gateway so tinha envio para grupo. Telefone e o do REPRESENTANTE LEGAL (`metadata.cadastro.socios[]` com flag `representanteLegal`), nao o da empresa — medido: 16/16 tem celular pelo representante contra 15/16 pela empresa, porque varios cadastraram FIXO. Coordenador sai de `players.coordenador_vendas` do C2X, AGRUPADO (quem cuida de 3 produtos recebe 1 mensagem, nao 3). Trava do corretor barra no momento da habilitacao com 409 nomeando os conflitos. Imobiliaria ja credenciada passou a ser habilitada direto pelo portal (vinculo nasce `verified`), com auditoria `automatico: true`. ⚠️ 4 bugs que o typecheck NAO pegaria e o banco pegou: `rejected` nao existe no CHECK do papel (era `blocked`); `apolo_disparos` nao tem coluna `canal` e `origem` e NOT NULL; `apolo_enterprise_settings` nao tem `name`; e o GET nasceu sem `authorizeApoloRead`. +25 testes (aprovacao, mensagens, trava).",
+      done: "CAUSA RAIZ: o Board desenha a trilha da imobiliaria como `cadastro -> habilitada`, mas `ETAPAS_ESTEIRA` so conhece as etapas da CAD — o clique devolvia **400 'Etapa invalida.'**. E indeferir devolvia **409** pedindo para 'informar o empreendimento no cadastro' de uma empresa que nao tem CAD, porque `atualizarEtapa` exige linha em `apolo_esteira`, cuja PK `(entity_id, enterprise_id)` nao aceita nulo. Imobiliaria NAO passa pela esteira: rota propria `/board/[id]/habilitar` (GET lista o pedido, POST habilita/indefere) mexendo onde o portal do corretor le — papel `active` (dados.ts:218) e vinculos `verified` (dados.ts:~265). Ordem das escritas: empreendimentos ANTES do papel, senao o CNPJ valeria com zero empreendimento liberado. DISPARO pelo EVOLUTION (numero do Relacionamento), nao pela Meta: `sendEvolutionDirectText` e novo, o gateway so tinha envio para grupo. Telefone e o do REPRESENTANTE LEGAL (`metadata.cadastro.socios[]` com flag `representanteLegal`), nao o da empresa — medido: 16/16 tem celular pelo representante contra 15/16 pela empresa, porque varios cadastraram FIXO. Coordenador sai de `players.coordenador_vendas` do C2X, AGRUPADO (quem cuida de 3 produtos recebe 1 mensagem, nao 3). Trava do corretor barra no momento da habilitacao com 409 nomeando os conflitos. Imobiliaria ja credenciada passou a ser habilitada direto pelo portal (vinculo nasce `verified`), com auditoria `automatico: true`. ⚠️ 4 bugs que o typecheck NAO pegaria e o banco pegou: `rejected` nao existe no CHECK do papel (era `blocked`); `apolo_disparos` nao tem coluna `canal` e `origem` e NOT NULL; `apolo_enterprise_settings` nao tem `name`; e o GET nasceu sem `authorizeApoloRead`. +25 testes (aprovacao, mensagens, trava).",
       motivation:
         "Relato do Lucas: 'mesmo aprovando o cadastro da imobiliaria nao esta indo para habilitacao e com isso a imobiliaria fica sem poder subir CAD'.",
     },
-    title: "Credenciamento de imobiliaria: aprovar voltou a funcionar, e agora avisa",
+    title:
+      "Credenciamento de imobiliaria: aprovar voltou a funcionar, e agora avisa",
     type: "correcao",
     version: "1.143.0",
   },
@@ -2863,8 +2876,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "de135c46 (v1.141.1 legenda das centrais)",
     technical: {
-      done:
-        "A mensagem otimista JA EXISTIA em `sendMessage`, mas era usada so como plano B quando o servidor nao devolvia a linha, ou seja, nunca no caminho feliz: a tela esperava o round-trip inteiro (token + rota + Meta + gravacao). Medida de producao no 4143: 2,17s de mediana, 15% acima de 3s. Agora ela entra ANTES do fetch e `handleLocalMessageSettled` reconcilia depois, trocando a local (id `local-…`) pela real — a uniao historico+snapshot e por ID, entao sem essa troca a mensagem apareceria duas vezes. ⚠️ ARMADILHA QUE ISSO ABRIA: `shouldRepairOutboundMessage` reenvia toda outbound `queued` sem externalMessageId, e a otimista casa com o criterio exato; o id dela entra em `repairingOutboundMessageIds` para o reparo pular, senao o CLIENTE receberia a mensagem duas vezes. `sending` continua ligado de proposito, como trava de duplo clique. Em caso de falha o balao sai da tela e o texto volta ao composer, preservando o comportamento anterior.",
+      done: "A mensagem otimista JA EXISTIA em `sendMessage`, mas era usada so como plano B quando o servidor nao devolvia a linha, ou seja, nunca no caminho feliz: a tela esperava o round-trip inteiro (token + rota + Meta + gravacao). Medida de producao no 4143: 2,17s de mediana, 15% acima de 3s. Agora ela entra ANTES do fetch e `handleLocalMessageSettled` reconcilia depois, trocando a local (id `local-…`) pela real — a uniao historico+snapshot e por ID, entao sem essa troca a mensagem apareceria duas vezes. ⚠️ ARMADILHA QUE ISSO ABRIA: `shouldRepairOutboundMessage` reenvia toda outbound `queued` sem externalMessageId, e a otimista casa com o criterio exato; o id dela entra em `repairingOutboundMessageIds` para o reparo pular, senao o CLIENTE receberia a mensagem duas vezes. `sending` continua ligado de proposito, como trava de duplo clique. Em caso de falha o balao sai da tela e o texto volta ao composer, preservando o comportamento anterior.",
       motivation:
         "Relato do time de que a Iris demora. Esta e a metade do problema que nao depende de RLS; a recepcao (realtime) espera o ajuste dos vinculos de acesso.",
     },
@@ -2894,8 +2906,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "75eea601 (v1.141.0 Gurgel como terceira central)",
     technical: {
-      done:
-        "So `IRIS_CENTRAL_DESCRICAO` em lib/centrais.ts, que alimenta a legenda das abas do Board e o texto entre parenteses do select do Setup. As duas trocas andam juntas: o 'parceiro' que morava no Relacionamento ERA a Gurgel, que virou central propria na 0090.",
+      done: "So `IRIS_CENTRAL_DESCRICAO` em lib/centrais.ts, que alimenta a legenda das abas do Board e o texto entre parenteses do select do Setup. As duas trocas andam juntas: o 'parceiro' que morava no Relacionamento ERA a Gurgel, que virou central propria na 0090.",
       motivation:
         "Pedido do Lucas ao ver a tela: tirar 'parceiro' do Relacionamento e a Gurgel virar 'Comercial'.",
     },
@@ -2924,8 +2935,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "0938ec3d (v1.140.0 duas centrais)",
     technical: {
-      done:
-        "Migration 0090, aplicada: `metadata.central = 'gurgel'` na fila `gurgel` (sai do Relacionamento, onde a 0087 a tinha posto) e no canal `whatsapp-gurgel`. A ordem das centrais virou uma lista unica, `IRIS_CENTRAIS` em lib/centrais.ts, que alimenta as abas do Board E o select do Setup: central nova aparece nos dois sem alguem lembrar de editar dois lugares. Icone: o predio (Building2) foi para a Gurgel, onde diz o que precisa dizer (a central e de UMA empresa). A 0090 acrescenta uma trava que faltava na 0087: alem de barrar fila sem central, agora barra fila com central INVALIDA — um typo ('gurguel') passava batido e fazia a fila sumir de todas as subtelas, porque a tela casa o valor exato. Estado: Atendimento 9 filas/89 abertos, Relacionamento 6/60, Gurgel 1/3.",
+      done: "Migration 0090, aplicada: `metadata.central = 'gurgel'` na fila `gurgel` (sai do Relacionamento, onde a 0087 a tinha posto) e no canal `whatsapp-gurgel`. A ordem das centrais virou uma lista unica, `IRIS_CENTRAIS` em lib/centrais.ts, que alimenta as abas do Board E o select do Setup: central nova aparece nos dois sem alguem lembrar de editar dois lugares. Icone: o predio (Building2) foi para a Gurgel, onde diz o que precisa dizer (a central e de UMA empresa). A 0090 acrescenta uma trava que faltava na 0087: alem de barrar fila sem central, agora barra fila com central INVALIDA — um typo ('gurguel') passava batido e fazia a fila sumir de todas as subtelas, porque a tela casa o valor exato. Estado: Atendimento 9 filas/89 abertos, Relacionamento 6/60, Gurgel 1/3.",
       motivation:
         "Pedido do Lucas: o telefone da Gurgel vira central propria, ficando Atendimento, Relacionamento e Gurgel.",
     },
@@ -2955,8 +2965,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "0fe42143 (v1.139.0 seletor de central na barra lateral)",
     technical: {
-      done:
-        "Decisao do Lucas ao ver a v1.139.0: 'board poderia ser a tela principal, ae teria duas subtelas, atendimento e relacionamento'. O seletor saiu da sidebar (`IrisModuleShell` voltou ao contrato antigo) e virou `IrisCentralTabs` no topo do kanban, acima das abas de canal, o que resolve dois problemas que a versao anterior criou: a palavra 'Atendimento' aparecia como central E como aba, e na sidebar recolhida os dois blocos de icone viravam uma coluna so. `abasDaCentral()` define quais abas cada central mostra, e `abaEfetiva` cai na primeira aba valida quando a aba persistida nao existe na central escolhida (senao quem estava em Grupos e trocasse para Atendimento veria tela vazia). A contagem de nao lidas por central le o `IrisData` BRUTO de proposito: com o dado ja recortado, o outro lado seria sempre 0. ⚠️ ACHADO PELO CONFERIDOR MANUAL: havia uma SEGUNDA chamada de `ManagementView` (o board embarcado no cockpit do Hades) que ficou sem as props novas. O `@ts-nocheck` do IrisPage escondeu o erro e isso teria quebrado o cockpit em producao; o embed agora recebe central='todas' e lista vazia, ficando identico ao que era. Ver [[reference_typecheck_nao_cobre_ts_nocheck]].",
+      done: "Decisao do Lucas ao ver a v1.139.0: 'board poderia ser a tela principal, ae teria duas subtelas, atendimento e relacionamento'. O seletor saiu da sidebar (`IrisModuleShell` voltou ao contrato antigo) e virou `IrisCentralTabs` no topo do kanban, acima das abas de canal, o que resolve dois problemas que a versao anterior criou: a palavra 'Atendimento' aparecia como central E como aba, e na sidebar recolhida os dois blocos de icone viravam uma coluna so. `abasDaCentral()` define quais abas cada central mostra, e `abaEfetiva` cai na primeira aba valida quando a aba persistida nao existe na central escolhida (senao quem estava em Grupos e trocasse para Atendimento veria tela vazia). A contagem de nao lidas por central le o `IrisData` BRUTO de proposito: com o dado ja recortado, o outro lado seria sempre 0. ⚠️ ACHADO PELO CONFERIDOR MANUAL: havia uma SEGUNDA chamada de `ManagementView` (o board embarcado no cockpit do Hades) que ficou sem as props novas. O `@ts-nocheck` do IrisPage escondeu o erro e isso teria quebrado o cockpit em producao; o embed agora recebe central='todas' e lista vazia, ficando identico ao que era. Ver [[reference_typecheck_nao_cobre_ts_nocheck]].",
       motivation:
         "Pedido do Lucas: o Board como tela principal, com Atendimento e Relacionamento como subtelas.",
     },
@@ -3005,8 +3014,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "cac37213 (v1.138.0 as duas centrais no banco)",
     technical: {
-      done:
-        "TELA: `lib/centrais.ts` recorta `IrisData` (filas + tickets, casando por queueSlug) e o IrisPage passou a derivar `irisData` desse recorte, entao as views nao souberam da mudanca: 'a mesma estrutura, somente a separacao'. As centrais que a pessoa ve sao DERIVADAS das filas que ela ja enxerga (`canSeeResource`), sem vinculo novo. O Setup recebe o dado BRUTO de proposito, senao nao daria para mapear fila da outra central. MIGRATION 0089, aplicada: conserta a 0088, que preencheu `config.ingestMailbox` quando o roteador casa por `external_account_id` (`gmail-inbound.ts:203`) — os 7 canais estavam inertes, 0 tickets, e todo e-mail seguia caindo na mesma porta. Cada canal ganhou o proprio endereco + `ingestSinceEpoch` de agora (sem esse corte, `gmail-inbound.ts:151` nao filtra por data e ~1 mes de e-mail nao lido viraria ticket de uma vez). O canal antigo virou a caixa robo (external = ingest = caca@) e cede prioridade ao canal do contato@. Conferido simulando o findEmailChannel nos 9 cenarios de destinatario. ⚠️ ACHADO: `IrisPage.tsx` e `iris-setup-view.tsx` tem `@ts-nocheck` (36 arquivos no repo tem), entao o typecheck NAO cobre os dois. As edicoes foram conferidas removendo o pragma temporariamente: nenhum dos 78 erros esta nas linhas tocadas.",
+      done: "TELA: `lib/centrais.ts` recorta `IrisData` (filas + tickets, casando por queueSlug) e o IrisPage passou a derivar `irisData` desse recorte, entao as views nao souberam da mudanca: 'a mesma estrutura, somente a separacao'. As centrais que a pessoa ve sao DERIVADAS das filas que ela ja enxerga (`canSeeResource`), sem vinculo novo. O Setup recebe o dado BRUTO de proposito, senao nao daria para mapear fila da outra central. MIGRATION 0089, aplicada: conserta a 0088, que preencheu `config.ingestMailbox` quando o roteador casa por `external_account_id` (`gmail-inbound.ts:203`) — os 7 canais estavam inertes, 0 tickets, e todo e-mail seguia caindo na mesma porta. Cada canal ganhou o proprio endereco + `ingestSinceEpoch` de agora (sem esse corte, `gmail-inbound.ts:151` nao filtra por data e ~1 mes de e-mail nao lido viraria ticket de uma vez). O canal antigo virou a caixa robo (external = ingest = caca@) e cede prioridade ao canal do contato@. Conferido simulando o findEmailChannel nos 9 cenarios de destinatario. ⚠️ ACHADO: `IrisPage.tsx` e `iris-setup-view.tsx` tem `@ts-nocheck` (36 arquivos no repo tem), entao o typecheck NAO cobre os dois. As edicoes foram conferidas removendo o pragma temporariamente: nenhum dos 78 erros esta nas linhas tocadas.",
       motivation:
         "Pedido do Lucas: as duas centrais como visao de topo, com a mesma estrutura, e o e-mail dividido por caixa.",
     },
@@ -3044,8 +3052,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "33968bfc (v1.137.1 Caca sem travessao)",
     technical: {
-      done:
-        "Migrations 0087 e 0088, as duas ja aplicadas em producao com autorizacao. A 0087 carimba `metadata.central` em 12 filas (8 atendimento, 4 relacionamento) e falha se sobrar fila orfa, porque fila sem central sumiria das duas visoes. A 0088 cria 7 canais de e-mail e 4 filas novas (Contato, RH, Compras, Antecipacao). A central vive em `metadata` e nao em coluna nova, seguindo o padrao que as filas ja usam. ⚠️ CORRECAO DA PROPRIA 0088: os canais novos nasceram INERTES. O roteador (`gmail-inbound.ts:203`) casa o destinatario com `external_account_id`, e a 0088 preencheu `config.ingestMailbox`, que so serve de desempate entre grupo e caixa robo. Com `external_account_id` nulo os 7 canais nunca batem, e todo e-mail segue caindo no canal antigo. Corrigido pela 0089. A tela ainda nao tem o seletor de central: e o proximo passo.",
+      done: "Migrations 0087 e 0088, as duas ja aplicadas em producao com autorizacao. A 0087 carimba `metadata.central` em 12 filas (8 atendimento, 4 relacionamento) e falha se sobrar fila orfa, porque fila sem central sumiria das duas visoes. A 0088 cria 7 canais de e-mail e 4 filas novas (Contato, RH, Compras, Antecipacao). A central vive em `metadata` e nao em coluna nova, seguindo o padrao que as filas ja usam. ⚠️ CORRECAO DA PROPRIA 0088: os canais novos nasceram INERTES. O roteador (`gmail-inbound.ts:203`) casa o destinatario com `external_account_id`, e a 0088 preencheu `config.ingestMailbox`, que so serve de desempate entre grupo e caixa robo. Com `external_account_id` nulo os 7 canais nunca batem, e todo e-mail segue caindo no canal antigo. Corrigido pela 0089. A tela ainda nao tem o seletor de central: e o proximo passo.",
       motivation:
         "Pedido do Lucas: separar Atendimento de Relacionamento como visao de topo, com a mesma estrutura, e dividir o e-mail por caixa. Hoje 118 tickets de e-mail em 30 dias caiam todos na mesma porta.",
     },
@@ -3072,8 +3079,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "ee7fa0b4 (v1.137.0 Caca com motor novo)",
     technical: {
-      done:
-        "A persona usava travessao em 50 linhas do proprio prompt, inclusive dentro dos exemplos de fala que a Caca imita. Exemplo em prompt e instrucao: no PRIMEIRO atendimento com o Opus 5 (ticket 5745c035, 11:30) ela escreveu 'R$ 689,33 — e nenhuma delas', contra a regra da casa. As 50 linhas foram trocadas por virgula/dois-pontos (comentario de codigo nao entra, nao vai pro modelo) e a proibicao virou regra explicita no bloco de formato, no texto e na voz. A revisao adversarial tinha apontado isto como higiene e eu tratei como baixa prioridade: errei a classificacao, porque saiu na primeira mensagem em producao.",
+      done: "A persona usava travessao em 50 linhas do proprio prompt, inclusive dentro dos exemplos de fala que a Caca imita. Exemplo em prompt e instrucao: no PRIMEIRO atendimento com o Opus 5 (ticket 5745c035, 11:30) ela escreveu 'R$ 689,33 — e nenhuma delas', contra a regra da casa. As 50 linhas foram trocadas por virgula/dois-pontos (comentario de codigo nao entra, nao vai pro modelo) e a proibicao virou regra explicita no bloco de formato, no texto e na voz. A revisao adversarial tinha apontado isto como higiene e eu tratei como baixa prioridade: errei a classificacao, porque saiu na primeira mensagem em producao.",
       motivation:
         "Regra do Lucas: sem travessao em texto que vai para cliente.",
     },
@@ -3104,10 +3110,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "a71dd1c8 (v1.136.0 Central de Relacionamento)",
     technical: {
-      done:
-        "A CACA passa a rodar em claude-opus-5, por um tier `frontier` proprio em lib/ai/claude.ts. O tier `heavy` FICA no Opus 4.8: os outros 6 consumidores dele (Athena, copiloto do Zeus, ata e pauta do Chronos, evidencia do HelpDesk, autor de template) pedem 900 a 2.200 tokens sem mandar `thinking`, e no modelo novo o max_tokens vira teto de raciocinio MAIS resposta, o que truncaria os seis. Se o modelo nao estiver liberado na conta, o turno e refeito no `heavy` (agent.ts), entao a troca nao vira falha tecnica pro cliente. HARNESS: maxTokens 1024->4000; a chamada final de fechamento passou a repassar thinking/effort (omitir deixou de significar desligado); thinking:false manda {type:'disabled'}; stop_reason `refusal`/`max_tokens` viram transferencia; `pause_turn` deixa de ser tratado como resposta final; iteracoes 6->8; historico 14->24 com desempate por id; client Anthropic com maxRetries 1 e timeout 90s (era 2 e 10 min). CACHE: persona dividida em estavel (cacheada, TTL 1h) e contexto do turno, subindo o prefixo reaproveitado para 96% no cliente e 95% na direcao, com persona-cache.test.ts travando a separacao. TELEMETRIA: usage por turno (tokens, cache, latencia, stop_reason) em metadata.cacaAutomation.lastUsage, sem migration. RISCO OPERACIONAL: envio recusado pela Meta deixava a linha outbound morta e a guarda de turno via 'ja respondido' PARA SEMPRE, calando o atendimento - agora vai pro humano; corte em 3.900 caracteres so no texto da CACA e antes de gravar; retry so em 429/5xx/rede E se nenhuma ferramenta com efeito colateral tiver rodado; maxDuration 300 no webhook; timeout no TTS; montarTurnoDeFalha lia o objeto errado e apagava o vinculo do cadastro. consultar_status_cad afirmava que o PIX 'ja foi emitido e enviado' na etapa prevenda, que so prova credito aprovado. Revisado por 37 agentes em quatro lentes com refutacao adversarial: 11 achados confirmados e tratados, 22 derrubados. Detalhe em docs/operations/caca-motor-opus-5.md. A parte do meio desta mudanca ja tinha subido por acidente na v1.136.0 (git add -A de outra sessao no mesmo working tree); este deploy completa e corrige.",
+      done: "A CACA passa a rodar em claude-opus-5, por um tier `frontier` proprio em lib/ai/claude.ts. O tier `heavy` FICA no Opus 4.8: os outros 6 consumidores dele (Athena, copiloto do Zeus, ata e pauta do Chronos, evidencia do HelpDesk, autor de template) pedem 900 a 2.200 tokens sem mandar `thinking`, e no modelo novo o max_tokens vira teto de raciocinio MAIS resposta, o que truncaria os seis. Se o modelo nao estiver liberado na conta, o turno e refeito no `heavy` (agent.ts), entao a troca nao vira falha tecnica pro cliente. HARNESS: maxTokens 1024->4000; a chamada final de fechamento passou a repassar thinking/effort (omitir deixou de significar desligado); thinking:false manda {type:'disabled'}; stop_reason `refusal`/`max_tokens` viram transferencia; `pause_turn` deixa de ser tratado como resposta final; iteracoes 6->8; historico 14->24 com desempate por id; client Anthropic com maxRetries 1 e timeout 90s (era 2 e 10 min). CACHE: persona dividida em estavel (cacheada, TTL 1h) e contexto do turno, subindo o prefixo reaproveitado para 96% no cliente e 95% na direcao, com persona-cache.test.ts travando a separacao. TELEMETRIA: usage por turno (tokens, cache, latencia, stop_reason) em metadata.cacaAutomation.lastUsage, sem migration. RISCO OPERACIONAL: envio recusado pela Meta deixava a linha outbound morta e a guarda de turno via 'ja respondido' PARA SEMPRE, calando o atendimento - agora vai pro humano; corte em 3.900 caracteres so no texto da CACA e antes de gravar; retry so em 429/5xx/rede E se nenhuma ferramenta com efeito colateral tiver rodado; maxDuration 300 no webhook; timeout no TTS; montarTurnoDeFalha lia o objeto errado e apagava o vinculo do cadastro. consultar_status_cad afirmava que o PIX 'ja foi emitido e enviado' na etapa prevenda, que so prova credito aprovado. Revisado por 37 agentes em quatro lentes com refutacao adversarial: 11 achados confirmados e tratados, 22 derrubados. Detalhe em docs/operations/caca-motor-opus-5.md. A parte do meio desta mudanca ja tinha subido por acidente na v1.136.0 (git add -A de outra sessao no mesmo working tree); este deploy completa e corrige.",
       motivation:
-        "Lucas: \"eu quero para a Caca o melhor motor, quero um agente bem inteligente mesmo\". Medido antes (01 a 15/08): 484 tickets dela, 78,9% terminando em transferencia, e a taxa de resolucao sozinha caindo de 51,8% em junho para ~20% em agosto porque o mix virou boleto, que e o assunto em que ela nao tem ferramenta.",
+        'Lucas: "eu quero para a Caca o melhor motor, quero um agente bem inteligente mesmo". Medido antes (01 a 15/08): 484 tickets dela, 78,9% terminando em transferencia, e a taxa de resolucao sozinha caindo de 51,8% em junho para ~20% em agosto porque o mix virou boleto, que e o assunto em que ela nao tem ferramenta.',
     },
     title: "Caca: motor novo e conserto do harness",
     type: "melhoria",
@@ -3132,10 +3137,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Primeiro passo da modernizacao da Iris, sobre o diagnostico em docs/operations/iris-diagnostico-2026-08.md (12 agentes, 66 achados criticos/altos, com medicao em producao). Grupo e Direct dividiam o MESMO canal `whatsapp-grupo`, que nao tem numero nem fila: dai a fila Direct herdar o 4143 ao abrir atendimento e 9.187 mensagens do 1:1 estarem gravadas como se fossem de grupo. O processador agora resolve os DOIS canais de uma vez, fora do laco, e escolhe pelo tipo do JID; enquanto a migration 0086 nao for aplicada ele cai no canal do grupo, entao o codigo sobe sem depender da ordem. A autoria da saida sem operador passa a ser o dono padrao DA FILA (nao um id fixo): no 1:1 quem responde pelo celular e sempre a coordenadora, e a fila do Grupo, que nao tem dono padrao porque la respondem tres pessoas, continua sem autor - atribuir ali viraria metrica falsa. Medido antes: 3.247 saidas em 30 dias sem autor (80% daquele atendimento) contra 814 pela Iris. O slug interno da fila (relacionamento-direct) NAO foi tocado de proposito: renomear slug para arrumar rotulo ja quebrou coisa aqui, e a v1.38.0 fez a mesma distincao. A migration 0086 NAO foi aplicada neste deploy.",
+      done: "Primeiro passo da modernizacao da Iris, sobre o diagnostico em docs/operations/iris-diagnostico-2026-08.md (12 agentes, 66 achados criticos/altos, com medicao em producao). Grupo e Direct dividiam o MESMO canal `whatsapp-grupo`, que nao tem numero nem fila: dai a fila Direct herdar o 4143 ao abrir atendimento e 9.187 mensagens do 1:1 estarem gravadas como se fossem de grupo. O processador agora resolve os DOIS canais de uma vez, fora do laco, e escolhe pelo tipo do JID; enquanto a migration 0086 nao for aplicada ele cai no canal do grupo, entao o codigo sobe sem depender da ordem. A autoria da saida sem operador passa a ser o dono padrao DA FILA (nao um id fixo): no 1:1 quem responde pelo celular e sempre a coordenadora, e a fila do Grupo, que nao tem dono padrao porque la respondem tres pessoas, continua sem autor - atribuir ali viraria metrica falsa. Medido antes: 3.247 saidas em 30 dias sem autor (80% daquele atendimento) contra 814 pela Iris. O slug interno da fila (relacionamento-direct) NAO foi tocado de proposito: renomear slug para arrumar rotulo ja quebrou coisa aqui, e a v1.38.0 fez a mesma distincao. A migration 0086 NAO foi aplicada neste deploy.",
       motivation:
-        "Lucas: \"vamos separar sistemicamente\" e \"nao quero esse nome direct, tratar com a central de relacionamento\". Sao duas operacoes diferentes dividindo um canal por acidente historico: o grupo e monitoramento sem ticket; o 1:1 e atendimento com SLA e uma responsavel.",
+        'Lucas: "vamos separar sistemicamente" e "nao quero esse nome direct, tratar com a central de relacionamento". Sao duas operacoes diferentes dividindo um canal por acidente historico: o grupo e monitoramento sem ticket; o 1:1 e atendimento com SLA e uma responsavel.',
     },
     title: "Iris: Central de Relacionamento com canal proprio",
     type: "novidade",
@@ -3159,12 +3163,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Tres defeitos com a mesma origem: o Lagoa Bonita e um grupo consolidado do C2X (ENTERPRISE_GROUPS) e ja estava gravado em apolo_enterprise_settings com o id sintetico `group:Lagoa Bonita`, mas logo e credenciamento sao por enterprise_id individual. (1) LOGO: `uploadEnterpriseLogo` grava o arquivo com `safeId()`, que troca `:` e espaco por `_` (`group_Lagoa_Bonita`), e o consumidor procurava a chave crua no mapa, nunca achava, e caia no fallback que desenha o code (`LBF + LBR + LBP`); empreendimento de id numerico passava ileso, por isso so este aparecia quebrado. `safeId` virou `chaveDaLogo`, exportada, e o lookup usa a mesma transformacao. (2) CAIXA ALTA: o nome dos simples vem do C2X ja em maiusculas e o do grupo vinha do `display` do ENTERPRISE_GROUPS; uppercase aplicado em `listEmpreendimentosAtivos`, sem tocar no `display`, que o BI usa. (3) OS TRES: o credenciamento gravava o vinculo com o id do grupo, que nao casa com nenhum enterprise_id do C2X, e a imobiliaria ficaria credenciada sem poder vender em nenhum dos tres; `CredenciamentoEmpreendimento` ganhou `stageIds` e a rota expande o grupo antes de gravar, um vinculo por etapa. Vale para qualquer grupo do ENTERPRISE_GROUPS, nao so Lagoa Bonita. NAO e retroativo: quem se credenciou antes tem o vinculo no id do grupo.",
+      done: "Tres defeitos com a mesma origem: o Lagoa Bonita e um grupo consolidado do C2X (ENTERPRISE_GROUPS) e ja estava gravado em apolo_enterprise_settings com o id sintetico `group:Lagoa Bonita`, mas logo e credenciamento sao por enterprise_id individual. (1) LOGO: `uploadEnterpriseLogo` grava o arquivo com `safeId()`, que troca `:` e espaco por `_` (`group_Lagoa_Bonita`), e o consumidor procurava a chave crua no mapa, nunca achava, e caia no fallback que desenha o code (`LBF + LBR + LBP`); empreendimento de id numerico passava ileso, por isso so este aparecia quebrado. `safeId` virou `chaveDaLogo`, exportada, e o lookup usa a mesma transformacao. (2) CAIXA ALTA: o nome dos simples vem do C2X ja em maiusculas e o do grupo vinha do `display` do ENTERPRISE_GROUPS; uppercase aplicado em `listEmpreendimentosAtivos`, sem tocar no `display`, que o BI usa. (3) OS TRES: o credenciamento gravava o vinculo com o id do grupo, que nao casa com nenhum enterprise_id do C2X, e a imobiliaria ficaria credenciada sem poder vender em nenhum dos tres; `CredenciamentoEmpreendimento` ganhou `stageIds` e a rota expande o grupo antes de gravar, um vinculo por etapa. Vale para qualquer grupo do ENTERPRISE_GROUPS, nao so Lagoa Bonita. NAO e retroativo: quem se credenciou antes tem o vinculo no id do grupo.",
       motivation:
-        "Lucas, com print do portal: \"aqui lagoa bonita tem que vim unificado, ao cadastrar para lagoa bonita habilita os tres\", mais a logo do empreendimento e o nome em caixa alta.",
+        'Lucas, com print do portal: "aqui lagoa bonita tem que vim unificado, ao cadastrar para lagoa bonita habilita os tres", mais a logo do empreendimento e o nome em caixa alta.',
     },
-    title: "Credenciamento: Lagoa Bonita unificado, com logo e os tres empreendimentos",
+    title:
+      "Credenciamento: Lagoa Bonita unificado, com logo e os tres empreendimentos",
     type: "correcao",
     version: "1.135.0",
   },
@@ -3182,7 +3186,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
           {
             items: [
               "O painel do atendimento agora diz se quem está do outro lado tem cadastro no Apolo, e o que ele é: Comprador, Corretor, Imobiliária, Prospect",
-              "Mostra o vínculo separado em Trabalho ou Contato, com o nome de quem — \"Imobiliária: Imparável Soluções\" — e o nome abre a ficha no Apolo",
+              'Mostra o vínculo separado em Trabalho ou Contato, com o nome de quem — "Imobiliária: Imparável Soluções" — e o nome abre a ficha no Apolo',
               "Acha também quem não tem ficha própria e só existe como contato de outra pessoa (o cônjuge do comprador, o corretor da imobiliária)",
               "Quando a consulta ao Apolo falha, avisa que não conseguiu verificar em vez de mostrar a tela de quem não tem cadastro",
               "Botão para corrigir nome, documento, telefone e e-mail sem sair da conversa (mudar nome ou documento pede o motivo, que fica no histórico)",
@@ -3208,12 +3212,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "v1.133.0 (buildTag 2026-08-14-glotes-api)",
     technical: {
-      done:
-        "lib/iris/apolo/identidade-contato.ts resolve o telefone em TRÊS fontes (identificador por hash, apolo_contacts por texto e o telefone gravado no metadata do vínculo) e devolve ESTADO — entidade | vinculo | nenhum | indisponivel — em vez de booleano: 'não achei' e 'não consegui olhar' tinham o mesmo desenho e faziam o operador duplicar ficha. A terceira fonte é a que estava faltando: 204 vínculos guardam telefone no metadata e 101 desses números não pertencem a entidade nenhuma (80 são cônjuges). PERFIL vem da CARTEIRA (apolo_financial_snapshots), não de apolo_entity_profiles: comprador de verdade costuma ter só 'pessoa_fisica' e 'usuario' lá, que são rótulos de cadastro e não papel — mesma régua do isBuyer do CRM (server.ts:1008). VÍNCULO respeita a DIREÇÃO: 'Imobiliaria ou responsavel comercial' descreve a contraparte, não o titular, e exibi-lo como papel do titular dizia que a compradora era a responsável comercial da imobiliária. Escrita em app/api/iris/apolo/contato (POST com ação): corrigir identidade via atualizarIdentidade (valida DV, colisão em duas fontes, exige motivo, audita), contato gravando value E normalized_value juntos (o upsert do CRM deixa o normalized_value velho e a busca passa a devolver ficha errada), e vínculo com metadata.kind trabalho/contato, atualizando em vez de duplicar. Criar entidade NÃO entra: fica no Apolo. Campos pessoais da ficha também não, porque metadata.cadastro perde para apolo_esteira.ficha e a tela do CRM grava na camada perdedora — pendência do Apolo, registrada. Deep link: /apolo?entidade=&q= reusa o pendingEntityIdRef; o q é obrigatório junto porque a lista do CRM é busca, não a base inteira. Backfill (scripts/backfill-vinculo-imobiliaria.ts) casou por vinculed_by_id + uuid determinístico, não por nome: o próprio label foi gerado desse id (server.ts:2884), então o casamento é exato por construção. Bug pego no log do dev e não pelo typecheck: o modal importava a lista de vínculos de um arquivo que puxa mysql2, arrastando o driver de banco para o bundle do browser e quebrando a página da Iris.",
+      done: "lib/iris/apolo/identidade-contato.ts resolve o telefone em TRÊS fontes (identificador por hash, apolo_contacts por texto e o telefone gravado no metadata do vínculo) e devolve ESTADO — entidade | vinculo | nenhum | indisponivel — em vez de booleano: 'não achei' e 'não consegui olhar' tinham o mesmo desenho e faziam o operador duplicar ficha. A terceira fonte é a que estava faltando: 204 vínculos guardam telefone no metadata e 101 desses números não pertencem a entidade nenhuma (80 são cônjuges). PERFIL vem da CARTEIRA (apolo_financial_snapshots), não de apolo_entity_profiles: comprador de verdade costuma ter só 'pessoa_fisica' e 'usuario' lá, que são rótulos de cadastro e não papel — mesma régua do isBuyer do CRM (server.ts:1008). VÍNCULO respeita a DIREÇÃO: 'Imobiliaria ou responsavel comercial' descreve a contraparte, não o titular, e exibi-lo como papel do titular dizia que a compradora era a responsável comercial da imobiliária. Escrita em app/api/iris/apolo/contato (POST com ação): corrigir identidade via atualizarIdentidade (valida DV, colisão em duas fontes, exige motivo, audita), contato gravando value E normalized_value juntos (o upsert do CRM deixa o normalized_value velho e a busca passa a devolver ficha errada), e vínculo com metadata.kind trabalho/contato, atualizando em vez de duplicar. Criar entidade NÃO entra: fica no Apolo. Campos pessoais da ficha também não, porque metadata.cadastro perde para apolo_esteira.ficha e a tela do CRM grava na camada perdedora — pendência do Apolo, registrada. Deep link: /apolo?entidade=&q= reusa o pendingEntityIdRef; o q é obrigatório junto porque a lista do CRM é busca, não a base inteira. Backfill (scripts/backfill-vinculo-imobiliaria.ts) casou por vinculed_by_id + uuid determinístico, não por nome: o próprio label foi gerado desse id (server.ts:2884), então o casamento é exato por construção. Bug pego no log do dev e não pelo typecheck: o modal importava a lista de vínculos de um arquivo que puxa mysql2, arrastando o driver de banco para o bundle do browser e quebrando a página da Iris.",
       motivation:
-        "Lucas: \"não temos a informação que esse contato que está conversando com a gente está cadastrado no apolo, ou vinculado a alguma entidade\". Caso concreto: a Ingrity, corretora da L&I com CPF e telefone cadastrados, aparecia no cockpit como desconhecida; e a Ilza, compradora, aparecia como se fosse a responsável comercial da imobiliária dela.",
+        'Lucas: "não temos a informação que esse contato que está conversando com a gente está cadastrado no apolo, ou vinculado a alguma entidade". Caso concreto: a Ingrity, corretora da L&I com CPF e telefone cadastrados, aparecia no cockpit como desconhecida; e a Ilza, compradora, aparecia como se fosse a responsável comercial da imobiliária dela.',
     },
-    title: "Iris sabe quem está do outro lado: cadastro, papel e vínculo no atendimento",
+    title:
+      "Iris sabe quem está do outro lado: cadastro, papel e vínculo no atendimento",
     type: "novidade",
     version: "1.134.0",
   },
@@ -3236,10 +3240,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Cinco endpoints GET sob /api/integrations/glotes (loteamentos, clientes, lotes, vendas, recebimentos), paginados por cursor opaco (base64 de id:<n>, não OFFSET: com OFFSET uma inserção concorrente faz a próxima página pular linha, e numa carga de 66 mil parcelas isso passa despercebido). Implementa o contrato já fechado com o cliente em docs/integrations/glotes-openapi.yaml. SEGURANÇA: a rota entra na allowlist do proxy.ts e se protege por dentro (lib/integrations/glotes/porta.ts) — token dedicado no header X-Glotes-Token comparado em tempo constante, NUNCA aceito em query string (URL vaza em log de proxy, histórico e Referer, e este token abre nome, CPF e endereço de 375 titulares); sem GLOTES_API_TOKEN a API responde 503, falha fechada; escopo travado NO SERVIDOR nos enterprises 1 e 4, sem parâmetro de loteamento; teto de 120 req/min por IP; log de acesso com filtros e contagem, sem o corpo da resposta; Cache-Control no-store. Convenções do contrato: dinheiro como string decimal de duas casas (somar 66 mil parcelas em float diverge do fechamento em centavos), documento e CEP só com dígitos, e todo campo pedido presente mesmo quando a Careli não tem o dado. Decisões do Lucas aplicadas: recebimentos traz SÓ o parcelamento (Ato e Sinal são a entrada, já descrita em vendas — mandá-los de novo contaria a entrada duas vezes), percentual_reajuste sempre nulo (o plano tem duas taxas ambíguas) e do lote sai só area_total. Conferido contra a base: 375 clientes, 493 lotes, 475 vendas, 66.805 parcelas. Pendência P3 do contrato resolvida com teste: payments.updated_at acompanha a alteração (13.303 linhas alteradas após criadas, zero pagamentos recentes com marca defasada), então alterado_desde é confiável.",
+      done: "Cinco endpoints GET sob /api/integrations/glotes (loteamentos, clientes, lotes, vendas, recebimentos), paginados por cursor opaco (base64 de id:<n>, não OFFSET: com OFFSET uma inserção concorrente faz a próxima página pular linha, e numa carga de 66 mil parcelas isso passa despercebido). Implementa o contrato já fechado com o cliente em docs/integrations/glotes-openapi.yaml. SEGURANÇA: a rota entra na allowlist do proxy.ts e se protege por dentro (lib/integrations/glotes/porta.ts) — token dedicado no header X-Glotes-Token comparado em tempo constante, NUNCA aceito em query string (URL vaza em log de proxy, histórico e Referer, e este token abre nome, CPF e endereço de 375 titulares); sem GLOTES_API_TOKEN a API responde 503, falha fechada; escopo travado NO SERVIDOR nos enterprises 1 e 4, sem parâmetro de loteamento; teto de 120 req/min por IP; log de acesso com filtros e contagem, sem o corpo da resposta; Cache-Control no-store. Convenções do contrato: dinheiro como string decimal de duas casas (somar 66 mil parcelas em float diverge do fechamento em centavos), documento e CEP só com dígitos, e todo campo pedido presente mesmo quando a Careli não tem o dado. Decisões do Lucas aplicadas: recebimentos traz SÓ o parcelamento (Ato e Sinal são a entrada, já descrita em vendas — mandá-los de novo contaria a entrada duas vezes), percentual_reajuste sempre nulo (o plano tem duas taxas ambíguas) e do lote sai só area_total. Conferido contra a base: 375 clientes, 493 lotes, 475 vendas, 66.805 parcelas. Pendência P3 do contrato resolvida com teste: payments.updated_at acompanha a alteração (13.303 linhas alteradas após criadas, zero pagamentos recentes com marca defasada), então alterado_desde é confiável.",
       motivation:
-        "O cliente Lavra do Ouro administra a carteira dele no GLOTES e precisa dos dados que a Careli mantém. Lucas: \"preciso que eles já possam fazer a integração\". Até aqui existia só o levantamento e o contrato; faltava a API.",
+        'O cliente Lavra do Ouro administra a carteira dele no GLOTES e precisa dos dados que a Careli mantém. Lucas: "preciso que eles já possam fazer a integração". Até aqui existia só o levantamento e o contrato; faltava a API.',
     },
     title: "API da carteira Lavra do Ouro para o GLOTES",
     type: "novidade",
@@ -3266,7 +3269,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
           },
           {
             items: [
-              "O aviso \"sem CAD\" não aparece mais nos cards de imobiliária, onde ele nunca fez sentido",
+              'O aviso "sem CAD" não aparece mais nos cards de imobiliária, onde ele nunca fez sentido',
             ],
             screen: "Apolo · Board",
           },
@@ -3275,12 +3278,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "dpl_2rmBQ7tAvWwAN51jBGg9RaVQ4Wdq",
     technical: {
-      done:
-        "Rota nova /publico/painel (server component, navegação por link ?emp=&aba=, noindex): cada aba carrega só a sua fonte, então abrir CAD não paga a consulta do C2X. lib/apolo/painel-coordenador.ts lê o Apolo (esteira + credenciamento) e lib/apolo/painel-sinal.ts lê o C2X (payments, parcel_type 1 e 2 = Ato e Sinal, payment_to_delete = 0). Empreendimento é agrupado por enterprise_id, NUNCA pelo texto: 'VALE DO OURO' e 'Vale do Ouro' convivem no banco, e o Vale do Ouro são três enterprises (35 masterplan, 36 VOL, 37 VOC) com o mesmo nome. A aba Imobiliárias filtra por PAPEL (apolo_entity_profiles.profile = 'imobiliaria'): o vínculo 'empreendimento' também existe em ficha de prospect e de corretor, e sem o filtro a conta dava 76 no Vale do Ouro em vez de 30. A produção por imobiliária cruza pela ENTIDADE (imobiliariaEntityIdEmLote), não pelo nome, senão a J&F aparecia com zero CAD porque a esteira guarda o apelido que o corretor digitou. A canonização do nome da imobiliária saiu de app/api/apolo/board/route.ts para lib/apolo/imobiliaria-grafia.ts e agora serve o Board e o painel. Fonte de CAD 100% Apolo: o Asana saiu do painel público, do resumo e da tool consultar_cad da CACÁ (as 575 CADs que viveram lá já estão na esteira). /publico/cads/[emp] virou redirect. Estudo do racional financeiro do Power BI (aba Financiamento) em docs/operations/c2x-financiamento-racional.md, incluindo o achado de que a comissão de 7,5% chumbada lá é a política do Vista Alegre, e não uma constante (Vale do Ouro é 6%, em commercial_policies.total_value_commission).",
+      done: "Rota nova /publico/painel (server component, navegação por link ?emp=&aba=, noindex): cada aba carrega só a sua fonte, então abrir CAD não paga a consulta do C2X. lib/apolo/painel-coordenador.ts lê o Apolo (esteira + credenciamento) e lib/apolo/painel-sinal.ts lê o C2X (payments, parcel_type 1 e 2 = Ato e Sinal, payment_to_delete = 0). Empreendimento é agrupado por enterprise_id, NUNCA pelo texto: 'VALE DO OURO' e 'Vale do Ouro' convivem no banco, e o Vale do Ouro são três enterprises (35 masterplan, 36 VOL, 37 VOC) com o mesmo nome. A aba Imobiliárias filtra por PAPEL (apolo_entity_profiles.profile = 'imobiliaria'): o vínculo 'empreendimento' também existe em ficha de prospect e de corretor, e sem o filtro a conta dava 76 no Vale do Ouro em vez de 30. A produção por imobiliária cruza pela ENTIDADE (imobiliariaEntityIdEmLote), não pelo nome, senão a J&F aparecia com zero CAD porque a esteira guarda o apelido que o corretor digitou. A canonização do nome da imobiliária saiu de app/api/apolo/board/route.ts para lib/apolo/imobiliaria-grafia.ts e agora serve o Board e o painel. Fonte de CAD 100% Apolo: o Asana saiu do painel público, do resumo e da tool consultar_cad da CACÁ (as 575 CADs que viveram lá já estão na esteira). /publico/cads/[emp] virou redirect. Estudo do racional financeiro do Power BI (aba Financiamento) em docs/operations/c2x-financiamento-racional.md, incluindo o achado de que a comissão de 7,5% chumbada lá é a política do Vista Alegre, e não uma constante (Vale do Ouro é 6%, em commercial_policies.total_value_commission).",
       motivation:
-        "Lucas: \"queria juntar os painéis de CAD, assinatura e financeiro do sinal em um painel só, ele deve ser público para os coordenadores acessarem\", com todos os empreendimentos que estão recebendo CAD. Depois: \"pode cortar o vínculo com o Asana de uma vez\", \"nesse painel não quero valor líquido, quero o cenário de pagamentos\" e \"falta colocar os filtros, ordenação, para o coordenador procurar\". O perfil de acesso do time comercial vem depois e substitui o link aberto.",
+        'Lucas: "queria juntar os painéis de CAD, assinatura e financeiro do sinal em um painel só, ele deve ser público para os coordenadores acessarem", com todos os empreendimentos que estão recebendo CAD. Depois: "pode cortar o vínculo com o Asana de uma vez", "nesse painel não quero valor líquido, quero o cenário de pagamentos" e "falta colocar os filtros, ordenação, para o coordenador procurar". O perfil de acesso do time comercial vem depois e substitui o link aberto.',
     },
-    title: "Painel do coordenador: CAD, imobiliárias, assinatura e sinal num lugar só",
+    title:
+      "Painel do coordenador: CAD, imobiliárias, assinatura e sinal num lugar só",
     type: "novidade",
     version: "1.132.0",
   },
@@ -3303,10 +3306,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Tela nova em /apolo/assinaturas lendo o C2X, no lugar do Painel Assinatura do Power BI. As regras de leitura foram extraídas do .pbit do Lucas (Arquivo > Exportar > Modelo do Power BI, que traz o DataModelSchema em JSON legível; o .pbix não serve, o DataModel vem comprimido em VertiPaq) e estão em docs/operations/c2x-painel-assinatura-dax.md: só contrato com `send_document_signature` = 1 e status <> 6, \"Comprador\" é o perfil `Cliente` do C2X, quem tem e-mail @careli.adm.br vira \"Backoffice\", e o prazo do comprador é de 7 dias. Cache de 5 minutos no SERVIDOR (lib/apolo/painel-assinatura.ts), não por aba: medido na base, chegam ~7 assinaturas por hora nas horas úteis, então cada ciclo traz meia assinatura nova, e sem o cache dez pessoas com a tela aberta virariam 120 consultas/hora no legado, que tem pool de 5 conexões. A tela pede de 60 em 60s (quase sempre bate no cache) e pausa quando a aba sai de foco. Se o C2X cair, devolve o cache velho com o carimbo antigo em vez de sumir com o painel. Os números batem com o painel do Power BI: no Vista Alegre o card Comprador dá 39 de 39, igual.",
+      done: 'Tela nova em /apolo/assinaturas lendo o C2X, no lugar do Painel Assinatura do Power BI. As regras de leitura foram extraídas do .pbit do Lucas (Arquivo > Exportar > Modelo do Power BI, que traz o DataModelSchema em JSON legível; o .pbix não serve, o DataModel vem comprimido em VertiPaq) e estão em docs/operations/c2x-painel-assinatura-dax.md: só contrato com `send_document_signature` = 1 e status <> 6, "Comprador" é o perfil `Cliente` do C2X, quem tem e-mail @careli.adm.br vira "Backoffice", e o prazo do comprador é de 7 dias. Cache de 5 minutos no SERVIDOR (lib/apolo/painel-assinatura.ts), não por aba: medido na base, chegam ~7 assinaturas por hora nas horas úteis, então cada ciclo traz meia assinatura nova, e sem o cache dez pessoas com a tela aberta virariam 120 consultas/hora no legado, que tem pool de 5 conexões. A tela pede de 60 em 60s (quase sempre bate no cache) e pausa quando a aba sai de foco. Se o C2X cair, devolve o cache velho com o carimbo antigo em vez de sumir com o painel. Os números batem com o painel do Power BI: no Vista Alegre o card Comprador dá 39 de 39, igual.',
       motivation:
-        "Lucas: \"quero só a visão do Vale do Ouro, quero um painel em html\" e depois \"vamos colocar um tempo para gente atualizar esse painel\". O Painel Assinatura do Power BI cobre o Vista Alegre e não o Vale do Ouro, que está em pleno lançamento com 179 contratos em assinatura e R$ 25,9 mi em unidades esperando.",
+        'Lucas: "quero só a visão do Vale do Ouro, quero um painel em html" e depois "vamos colocar um tempo para gente atualizar esse painel". O Painel Assinatura do Power BI cobre o Vista Alegre e não o Vale do Ouro, que está em pleno lançamento com 179 contratos em assinatura e R$ 25,9 mi em unidades esperando.',
     },
     title: "Painel de assinatura do Vale do Ouro",
     type: "novidade",
@@ -3342,10 +3344,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Três peças. (1) `lib/apolo/incorporador/gestao.ts` + rotas `/api/apolo/incorporadores` e `/api/apolo/incorporadores/usuarios`, com `authorizeApoloWrite` nas duas pernas (inclusive no GET: a lista de empreendimentos por incorporador É a regra de permissão). A lista de empreendimentos é substituída inteira a cada gravação, porque merge deixaria empreendimento pendurado quando o operador desmarca; `carteira_administrada` é preservado pela tela ao remontar a lista. `senha_hash` nunca sai do servidor, e senha vazia na edição mantém a atual. (2) Tela `/apolo/incorporadores`. (3) Portal: header horizontal virou casca com menu lateral (`.inc-shell`/`.inc-side`/`.inc-nav` no TEMA_CSS, que vira faixa rolável abaixo de 860px, já que estilo inline não responde a media query), aba CRM entrou como esqueleto e a `<Marca>` do cabeçalho passou a ser o símbolo do Panteon; `logoUrl`/`logoEscuraUrl` saíram das props do Portal e ficaram só no login.",
+      done: "Três peças. (1) `lib/apolo/incorporador/gestao.ts` + rotas `/api/apolo/incorporadores` e `/api/apolo/incorporadores/usuarios`, com `authorizeApoloWrite` nas duas pernas (inclusive no GET: a lista de empreendimentos por incorporador É a regra de permissão). A lista de empreendimentos é substituída inteira a cada gravação, porque merge deixaria empreendimento pendurado quando o operador desmarca; `carteira_administrada` é preservado pela tela ao remontar a lista. `senha_hash` nunca sai do servidor, e senha vazia na edição mantém a atual. (2) Tela `/apolo/incorporadores`. (3) Portal: header horizontal virou casca com menu lateral (`.inc-shell`/`.inc-side`/`.inc-nav` no TEMA_CSS, que vira faixa rolável abaixo de 860px, já que estilo inline não responde a media query), aba CRM entrou como esqueleto e a `<Marca>` do cabeçalho passou a ser o símbolo do Panteon; `logoUrl`/`logoEscuraUrl` saíram das props do Portal e ficaram só no login.",
       motivation:
-        "Lucas, 12/08: \"eu preciso ter um local que eu crio o login e senha desses usuarios e vincula-los ao perfil correto\" e \"podemos usar a mesma estrutura para todos, somente a tela de login eu quero com a marca da cecilio, as demais pode ser o panteon mesmo\". Recanto do Pará, Vista Alegre e Lavra do Ouro entram agora, e o caminho até aqui era INSERT manual no Supabase, onde uma linha errada em `apolo_incorporador_empreendimentos` é um cliente vendo a carteira do outro.",
+        'Lucas, 12/08: "eu preciso ter um local que eu crio o login e senha desses usuarios e vincula-los ao perfil correto" e "podemos usar a mesma estrutura para todos, somente a tela de login eu quero com a marca da cecilio, as demais pode ser o panteon mesmo". Recanto do Pará, Vista Alegre e Lavra do Ouro entram agora, e o caminho até aqui era INSERT manual no Supabase, onde uma linha errada em `apolo_incorporador_empreendimentos` é um cliente vendo a carteira do outro.',
     },
     title: "Acessos de incorporador: tela de gestão e portal no padrão Panteon",
     type: "novidade",
@@ -3369,8 +3370,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Correção da v1.127.0, publicada horas antes. A trava de núcleo familiar lia SÓ `apolo_esteira.ficha->>'conjugeCpf'`, e nenhum fluxo de criação de CAD escreve `ficha`: ela só é gravada pelo import do Asana (descontinuado em 04/08) e pela edição manual do board. Medido na base: das 43 CADs vindas do portal público, ZERO têm `conjugeCpf` na ficha e 10 têm o cônjuge em `apolo_relationships`; do Asana é o inverso, 89 pela ficha e 2 pelo relacionamento. Ou seja, a trava fechava o buraco histórico e deixava passar todo caso novo. Agora lê as DUAS fontes, com a ficha ganhando quando as duas existem (é a que o operador revisou). Simulado contra as 656 CADs: de 10 para 12 casais pegos, e os 2 novos são justamente de `cadastro-manual` e `publico-cad`. Segunda correção, no mesmo arquivo: o ramo que pergunta se o cônjuge informado já tem CAD própria listava os donos do empreendimento e procurava o CPF entre eles com `.in('id', donos.slice(0, 100))`, sem `order by`. Em empreendimento com centenas de CADs, quais 100 entravam era decisão do planner, então o mesmo casal passava numa tentativa e era barrado na outra. Invertido: resolve o CPF por `hashIdentifier` e pergunta se alguma dessas fichas tem CAD aqui. Determinístico e sem teto. Achado pela revisão adversarial, que só terminou depois do deploy.",
+      done: "Correção da v1.127.0, publicada horas antes. A trava de núcleo familiar lia SÓ `apolo_esteira.ficha->>'conjugeCpf'`, e nenhum fluxo de criação de CAD escreve `ficha`: ela só é gravada pelo import do Asana (descontinuado em 04/08) e pela edição manual do board. Medido na base: das 43 CADs vindas do portal público, ZERO têm `conjugeCpf` na ficha e 10 têm o cônjuge em `apolo_relationships`; do Asana é o inverso, 89 pela ficha e 2 pelo relacionamento. Ou seja, a trava fechava o buraco histórico e deixava passar todo caso novo. Agora lê as DUAS fontes, com a ficha ganhando quando as duas existem (é a que o operador revisou). Simulado contra as 656 CADs: de 10 para 12 casais pegos, e os 2 novos são justamente de `cadastro-manual` e `publico-cad`. Segunda correção, no mesmo arquivo: o ramo que pergunta se o cônjuge informado já tem CAD própria listava os donos do empreendimento e procurava o CPF entre eles com `.in('id', donos.slice(0, 100))`, sem `order by`. Em empreendimento com centenas de CADs, quais 100 entravam era decisão do planner, então o mesmo casal passava numa tentativa e era barrado na outra. Invertido: resolve o CPF por `hashIdentifier` e pergunta se alguma dessas fichas tem CAD aqui. Determinístico e sem teto. Achado pela revisão adversarial, que só terminou depois do deploy.",
       motivation:
         "A revisão adversarial da própria trava, retomada após a interrupção da sessão anterior, apontou que a fonte escolhida estava congelada no passado. Confirmado na base antes de corrigir.",
     },
@@ -3391,18 +3391,19 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
               "Num lote de R$ 435.000 isso dá entrada de R$ 43.500 e parcela de R$ 4.442",
               "O plano Investidor Parcelado passou a mostrar, ao lado do nome, que é válido para as próximas 16 unidades",
             ],
-            screen: "Portal do incorporador · Produtos · Plano de pagamento do Garden",
+            screen:
+              "Portal do incorporador · Produtos · Plano de pagamento do Garden",
           },
         ],
       },
     ],
     technical: {
-      done:
-        "`PLANOS` do garden.html: o Normal foi de entrada 8%, 6 × 20.000 e 84 meses para entrada 10%, 5 × 25.000 e 60 meses. Conferido contra o print do Lucas: 435.000 menos 43.500 de entrada menos 125.000 de anuais dá 266.500, que em 60 meses é R$ 4.441,67, os R$ 4.442 que a tela dele mostrava. A ressalva do Investidor Parcelado entra como CAMPO do plano (`ressalva`), não como texto fixo no HTML, então qualquer plano ganha uma condição depois sem tocar no render. Renderizada como etiqueta âmbar ao lado do nome, que é onde o corretor lê ao escolher o plano, e não no rodapé. ⚠️ O número 16 é fixo: quando as 16 unidades forem vendidas, alguém precisa avisar. Amarrar na contagem de disponíveis faria o texto mudar sozinho conforme o mapa, e o que está prometido ao cliente deixaria de ser uma decisão.",
+      done: "`PLANOS` do garden.html: o Normal foi de entrada 8%, 6 × 20.000 e 84 meses para entrada 10%, 5 × 25.000 e 60 meses. Conferido contra o print do Lucas: 435.000 menos 43.500 de entrada menos 125.000 de anuais dá 266.500, que em 60 meses é R$ 4.441,67, os R$ 4.442 que a tela dele mostrava. A ressalva do Investidor Parcelado entra como CAMPO do plano (`ressalva`), não como texto fixo no HTML, então qualquer plano ganha uma condição depois sem tocar no render. Renderizada como etiqueta âmbar ao lado do nome, que é onde o corretor lê ao escolher o plano, e não no rodapé. ⚠️ O número 16 é fixo: quando as 16 unidades forem vendidas, alguém precisa avisar. Amarrar na contagem de disponíveis faria o texto mudar sozinho conforme o mapa, e o que está prometido ao cliente deixaria de ser uma decisão.",
       motivation:
         'Lucas, 12/08, com print da tela: "para o garden muda o plano normal, tem que ficar assim" e "na frente do plano investidor parcelado coloca uma frase, válido para as próximas 16 unidades".',
     },
-    title: "Garden: plano Normal novo e a validade do Investidor Parcelado na tela",
+    title:
+      "Garden: plano Normal novo e a validade do Investidor Parcelado na tela",
     type: "melhoria",
     version: "1.128.0",
   },
@@ -3427,8 +3428,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Duas falhas independentes, achadas pelo caso Alcimar e Sirlei (ele entrou em 20/07 pelo Asana com o CPF dela no campo de cônjuge; ela entrou em 05/08 pelo portal público e foi aceita). PRIMEIRA: o dedup por documento fazia `.limit(1).maybeSingle()` e conferia as CADs de UMA ficha escolhida sem ordem nenhuma. Como a mesma pessoa tem mais de uma ficha em 516 casos (o import do Asana criava uma cópia COM `document_hash` e sem vínculo, enquanto a CAD ficava na outra, SEM hash: são 437 fichas soltas, todas com hash, contra 116 das 656 CADs reais), a busca caía na cópia vazia, não achava CAD e liberava. Foi assim que Lucélia, Ronaldo e Rafael entraram duas vezes no Vale do Ouro em agosto, cada um por uma imobiliária. Agora lê TODAS as fichas do documento e todas as CADs delas, e anexa na que já tem esteira. SEGUNDA: não existia regra de cônjuge em lugar nenhum. Entra `lib/apolo/nucleo-familiar.ts`: o núcleo de uma CAD é o par {CPF titular, CPF cônjuge} e duas CADs do mesmo empreendimento colidem se os pares cruzarem em qualquer CPF, o que cobre os quatro sentidos, inclusive o cônjuge tendo entrado primeiro (aconteceu em 4 dos 10 pares). A fonte é `apolo_esteira.ficha->>'conjugeCpf'` (94 preenchidos) e não `apolo_relationships` (só 16 com CPF, e `related_entity_id` nulo em todos). Dígito verificador conferido dos dois lados, senão CPF em branco casa com todo mundo. Simulada contra as 656 CADs: pega os 10 casais reais, zero falso positivo. Duas rotas novas de checagem na identificação (`/api/publico/cad/checar-cpf` e `/api/apolo/cadastro/checar-cpf`), a pública com teto de uso próprio porque responder se um CPF tem cadastro é um oráculo. A checagem da tela é conveniência e falha ABERTA; a autoridade é a trava do salvar, que é fail-closed. A mensagem não revela a imobiliária que cadastrou antes: isso é carteira de concorrente.",
+      done: "Duas falhas independentes, achadas pelo caso Alcimar e Sirlei (ele entrou em 20/07 pelo Asana com o CPF dela no campo de cônjuge; ela entrou em 05/08 pelo portal público e foi aceita). PRIMEIRA: o dedup por documento fazia `.limit(1).maybeSingle()` e conferia as CADs de UMA ficha escolhida sem ordem nenhuma. Como a mesma pessoa tem mais de uma ficha em 516 casos (o import do Asana criava uma cópia COM `document_hash` e sem vínculo, enquanto a CAD ficava na outra, SEM hash: são 437 fichas soltas, todas com hash, contra 116 das 656 CADs reais), a busca caía na cópia vazia, não achava CAD e liberava. Foi assim que Lucélia, Ronaldo e Rafael entraram duas vezes no Vale do Ouro em agosto, cada um por uma imobiliária. Agora lê TODAS as fichas do documento e todas as CADs delas, e anexa na que já tem esteira. SEGUNDA: não existia regra de cônjuge em lugar nenhum. Entra `lib/apolo/nucleo-familiar.ts`: o núcleo de uma CAD é o par {CPF titular, CPF cônjuge} e duas CADs do mesmo empreendimento colidem se os pares cruzarem em qualquer CPF, o que cobre os quatro sentidos, inclusive o cônjuge tendo entrado primeiro (aconteceu em 4 dos 10 pares). A fonte é `apolo_esteira.ficha->>'conjugeCpf'` (94 preenchidos) e não `apolo_relationships` (só 16 com CPF, e `related_entity_id` nulo em todos). Dígito verificador conferido dos dois lados, senão CPF em branco casa com todo mundo. Simulada contra as 656 CADs: pega os 10 casais reais, zero falso positivo. Duas rotas novas de checagem na identificação (`/api/publico/cad/checar-cpf` e `/api/apolo/cadastro/checar-cpf`), a pública com teto de uso próprio porque responder se um CPF tem cadastro é um oráculo. A checagem da tela é conveniência e falha ABERTA; a autoridade é a trava do salvar, que é fail-closed. A mensagem não revela a imobiliária que cadastrou antes: isso é carteira de concorrente.",
       motivation:
         'Lucas, 12/08: "o Romulo subiu a cad do Alcimar, agora o Caio subiu a cad da Sirlei que é esposa do Alcimar para o mesmo empreendimento, deveria ter barrado essa CAD". E a regra: "o casal pode comprar quantas unidades quiser, o que não pode é ter cadastros distintos entre eles".',
     },
@@ -3457,12 +3457,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Os 406 lotes do Garden viviam colados à mão dentro do HTML, sem gerador (diferente do Vale do Ouro). Entra `scripts/apolo/garden-atualizar-lotes.mjs`: lê a planilha do cliente, confere o cabeçalho antes de qualquer linha (ler xlsx durante o salvamento do Excel devolve coluna deslocada SEM erro), preserva os polígonos — que não existem no Excel e sem os quais o lote some do mapa em silêncio — e recusa lote sem polígono conhecido em vez de gravá-lo mudo. A planilha repete Q10 L01 em duas linhas idênticas, então são 405 lotes e não 406; a repetida é descartada, senão o polígono é desenhado duas vezes e o percentual por situação sai inflado. `Reservado` passou a mapear para o mesmo código de `Vendido`: na planilha do Garden reservado nunca significou reserva de alguém (111 lotes, nenhum com comprador), era lote fora de venda, e unificar libera o status Reservado para o significado novo, a unidade com proposta emitida e 48h de validade. ⚠️ O CONVERSOR DE VALORES QUASE FOI PARA O AR ERRADO: a primeira versão só tratava um ponto de milhar, e `R$ 1.102.000` virou 1.102. Peguei na conferência; agora `testarConversor()` roda uma bateria antes de gravar e aborta sem tocar no arquivo se algum caso falhar.",
+      done: "Os 406 lotes do Garden viviam colados à mão dentro do HTML, sem gerador (diferente do Vale do Ouro). Entra `scripts/apolo/garden-atualizar-lotes.mjs`: lê a planilha do cliente, confere o cabeçalho antes de qualquer linha (ler xlsx durante o salvamento do Excel devolve coluna deslocada SEM erro), preserva os polígonos — que não existem no Excel e sem os quais o lote some do mapa em silêncio — e recusa lote sem polígono conhecido em vez de gravá-lo mudo. A planilha repete Q10 L01 em duas linhas idênticas, então são 405 lotes e não 406; a repetida é descartada, senão o polígono é desenhado duas vezes e o percentual por situação sai inflado. `Reservado` passou a mapear para o mesmo código de `Vendido`: na planilha do Garden reservado nunca significou reserva de alguém (111 lotes, nenhum com comprador), era lote fora de venda, e unificar libera o status Reservado para o significado novo, a unidade com proposta emitida e 48h de validade. ⚠️ O CONVERSOR DE VALORES QUASE FOI PARA O AR ERRADO: a primeira versão só tratava um ponto de milhar, e `R$ 1.102.000` virou 1.102. Peguei na conferência; agora `testarConversor()` roda uma bateria antes de gravar e aborta sem tocar no arquivo se algum caso falhar.",
       motivation:
         'Lucas, 12/08: "eles acabaram de me encaminhar a tabela toda corrigida, vamos precisar de atualizar os dados e tudo" e, sobre a situação, "o reservado passa vendido também, então vendido e reservado fica como vendido e recebe a mesma coloração".',
     },
-    title: "Garden com a planilha revisada, e reservado virando vendido no mapa",
+    title:
+      "Garden com a planilha revisada, e reservado virando vendido no mapa",
     type: "melhoria",
     version: "1.126.0",
   },
@@ -3491,12 +3491,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "O modal do plano ganhou duas vistas: `ofMesa` (tabela oficial, o padrão ao abrir) e `persMesa` (a mesa de duas colunas que já existia). O motor financeiro NÃO foi tocado. A trava usa VALOR PRESENTE (`vpDe`), não soma nominal, com tolerância de R$ 1,00: com juros zero os dois coincidem, mas no dia em que o Garden cadastrar taxa a conta continua certa sozinha. O alvo é o preço do PLANO (tabela menos o desconto oficial), não a tabela cheia, senão o próprio plano da planilha seria invendável. Enquanto ninguém digita a parcela ela é derivada e fecha por construção; `tocouParcela` marca a edição manual e é aí que a trava morde. ⚠️ CADA PLANO GANHOU `id`: o Investidor Parcelado foi para 84 meses e passou a empatar com o Normal, e o código identificava plano pelo número de meses (`planoDe(84)`) — na Proposta Personalizada os dois viravam o mesmo botão, e escolher Investidor Parcelado traria o desconto do Normal (zero), R$ 34.400 a mais num lote de R$ 430.000, sem aviso nenhum. `planoDe(id, meses)` resolve por id com queda para o prazo, e as composições do otimizador passaram a carregar o id. A pré-visualização é uma folha branca com o layout do PDF, para o desenho ser aprovado antes de existir arquivo. O botão de emitir ainda NÃO emite e diz isso na tela, no lugar do `alert()` antigo que prometia proposta e não fazia nada.",
+      done: "O modal do plano ganhou duas vistas: `ofMesa` (tabela oficial, o padrão ao abrir) e `persMesa` (a mesa de duas colunas que já existia). O motor financeiro NÃO foi tocado. A trava usa VALOR PRESENTE (`vpDe`), não soma nominal, com tolerância de R$ 1,00: com juros zero os dois coincidem, mas no dia em que o Garden cadastrar taxa a conta continua certa sozinha. O alvo é o preço do PLANO (tabela menos o desconto oficial), não a tabela cheia, senão o próprio plano da planilha seria invendável. Enquanto ninguém digita a parcela ela é derivada e fecha por construção; `tocouParcela` marca a edição manual e é aí que a trava morde. ⚠️ CADA PLANO GANHOU `id`: o Investidor Parcelado foi para 84 meses e passou a empatar com o Normal, e o código identificava plano pelo número de meses (`planoDe(84)`) — na Proposta Personalizada os dois viravam o mesmo botão, e escolher Investidor Parcelado traria o desconto do Normal (zero), R$ 34.400 a mais num lote de R$ 430.000, sem aviso nenhum. `planoDe(id, meses)` resolve por id com queda para o prazo, e as composições do otimizador passaram a carregar o id. A pré-visualização é uma folha branca com o layout do PDF, para o desenho ser aprovado antes de existir arquivo. O botão de emitir ainda NÃO emite e diz isso na tela, no lugar do `alert()` antigo que prometia proposta e não fazia nada.",
       motivation:
         'Lucas, 11/08, depois da reunião com a Cecílio Rocha: "vai aparecer primeiro a tabela oficial, dando destaque para o valor da unidade e a da parcela mensal", "não podemos deixar gerar nenhuma proposta quando esse não atingir o valor total da unidade" e "vamos substituir esses dois botões por um botão que vamos chamar Proposta Personalizada". A tabela nova e a correção por plano vieram na mesma conversa.',
     },
-    title: "Simulador do Garden: a tabela oficial primeiro, e a proposta que só fecha somando a unidade",
+    title:
+      "Simulador do Garden: a tabela oficial primeiro, e a proposta que só fecha somando a unidade",
     type: "melhoria",
     version: "1.125.0",
   },
@@ -3518,10 +3518,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "O retângulo que aparecia em volta da planta NÃO era cor de fundo, era a `box-shadow` do `.palco` (0 10px 40px em preto a 55%). Ela é a sombra do RETÂNGULO do palco, não do desenho: no Garden passa despercebida porque a foto é retangular e preenche o palco, mas com a planta transparente do Vale do Ouro o desenho é um polígono e a sombra segue quadrada em volta dele. Desligada junto com o fundo do `.palco`, do `.plano` e da `.cena`, no bloco do tema claro. Passei três rodadas oferecendo cor de fundo antes de achar a sombra.",
+      done: "O retângulo que aparecia em volta da planta NÃO era cor de fundo, era a `box-shadow` do `.palco` (0 10px 40px em preto a 55%). Ela é a sombra do RETÂNGULO do palco, não do desenho: no Garden passa despercebida porque a foto é retangular e preenche o palco, mas com a planta transparente do Vale do Ouro o desenho é um polígono e a sombra segue quadrada em volta dele. Desligada junto com o fundo do `.palco`, do `.plano` e da `.cena`, no bloco do tema claro. Passei três rodadas oferecendo cor de fundo antes de achar a sombra.",
       motivation:
-        "Lucas, 11/08: \"não dá somente para ela existir sem esse retângulo? como se fosse um mapa? tem que ter um jeito\" — e tinha.",
+        'Lucas, 11/08: "não dá somente para ela existir sem esse retângulo? como se fosse um mapa? tem que ter um jeito" — e tinha.',
     },
     title: "Masterplan sem caixa: o mapa solto na tela",
     type: "correcao",
@@ -3546,12 +3545,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "A planta passou a ser o PNG oficial entregue pelo Lucas (9999x6118, transparente, sem logos), no lugar da arte de venda que era limpa por script. Isso aposentou `masterplan-planta-limpa.mjs`, que apagava as quatro marcas por componente conexo e recortava a moldura azul: com a arte transparente na origem, nada disso é preciso. Entra `masterplan-planta-vale-do-ouro.mjs`, que faz trim do alfa, reduz para 4400px e grava WebP (3,3 MB). ⚠️ O ENQUADRAMENTO É OUTRO, e os 298 polígonos vivem em coordenadas da arte antiga: em vez de recalcular 1.880 vértices, o `viewBox` do SVG aponta para a janela equivalente na arte velha (81 28 3652 2369) e as duas viram a mesma janela. Só é válido porque a proporção interna do desenho bate (desvio 0,06%), e o script TRAVA acima de 1,5% e confere lote a lote no fim: 298/298 sobre o desenho, 0 na rua. O palco do mapa perdeu o fundo (`.plano` e `.cena` transparentes): com planta recortada, o fundo do palco virava um retângulo branco em volta do terreno. E o bloqueado ganhou DUAS cores, porque marcador e preenchimento vivem sobre fundos opostos: `#64748b` no chip e no selo (sobre papel branco) e um véu `#e2e8f0` a 62% no mapa (sobre o verde-oliva #a1aa25 da planta, medido). Escurecer não separava: o véu claro fica a 160 de distância do fundo, contra 96 do cinza anterior.",
+      done: "A planta passou a ser o PNG oficial entregue pelo Lucas (9999x6118, transparente, sem logos), no lugar da arte de venda que era limpa por script. Isso aposentou `masterplan-planta-limpa.mjs`, que apagava as quatro marcas por componente conexo e recortava a moldura azul: com a arte transparente na origem, nada disso é preciso. Entra `masterplan-planta-vale-do-ouro.mjs`, que faz trim do alfa, reduz para 4400px e grava WebP (3,3 MB). ⚠️ O ENQUADRAMENTO É OUTRO, e os 298 polígonos vivem em coordenadas da arte antiga: em vez de recalcular 1.880 vértices, o `viewBox` do SVG aponta para a janela equivalente na arte velha (81 28 3652 2369) e as duas viram a mesma janela. Só é válido porque a proporção interna do desenho bate (desvio 0,06%), e o script TRAVA acima de 1,5% e confere lote a lote no fim: 298/298 sobre o desenho, 0 na rua. O palco do mapa perdeu o fundo (`.plano` e `.cena` transparentes): com planta recortada, o fundo do palco virava um retângulo branco em volta do terreno. E o bloqueado ganhou DUAS cores, porque marcador e preenchimento vivem sobre fundos opostos: `#64748b` no chip e no selo (sobre papel branco) e um véu `#e2e8f0` a 62% no mapa (sobre o verde-oliva #a1aa25 da planta, medido). Escurecer não separava: o véu claro fica a 160 de distância do fundo, contra 96 do cinza anterior.",
       motivation:
-        "Lucas, 11/08, em sequência: \"tem esse preto ae que ficou horrivel\", \"tem como tirar o fundo azul?\", \"ainda tem um fundo branco, no garden não tem esse fundo branco\", \"os bloqueados ficou ruim, não da para ver\" e \"não tem como subir sem o palco do mapa?\". O PNG oficial foi ele quem ofereceu: \"você quer o png do mapa para refazer?\".",
+        'Lucas, 11/08, em sequência: "tem esse preto ae que ficou horrivel", "tem como tirar o fundo azul?", "ainda tem um fundo branco, no garden não tem esse fundo branco", "os bloqueados ficou ruim, não da para ver" e "não tem como subir sem o palco do mapa?". O PNG oficial foi ele quem ofereceu: "você quer o png do mapa para refazer?".',
     },
-    title: "Vale do Ouro: a planta oficial no masterplan, sem moldura e sem palco",
+    title:
+      "Vale do Ouro: a planta oficial no masterplan, sem moldura e sem palco",
     type: "melhoria",
     version: "1.123.0",
   },
@@ -3566,7 +3565,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
             items: [
               "O masterplan abre em TELA CHEIA: antes ele entrava espremido numa faixa no meio da página e ficava do tamanho de uma miniatura",
               "Versão CLARA do mapa, na mesma paleta do portal. O desenho é o mesmo, o que mudou foi a cor",
-              "Botão \"Voltar aos produtos\" no alto da tela, porque ali não há menu lateral. A tecla Esc faz o mesmo",
+              'Botão "Voltar aos produtos" no alto da tela, porque ali não há menu lateral. A tecla Esc faz o mesmo',
             ],
             screen: "Portal do incorporador · Produtos",
           },
@@ -3574,10 +3573,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "A tela do masterplan saiu do `<main>` do portal (maxWidth 1180) e virou camada `position: fixed; inset: 0`, com o body travado enquanto está aberta e Escape ligado — dentro de um iframe o voltar do navegador não sai, então sem botão o cliente fica preso. TEMA CLARO em `lib/apolo/masterplan-tema-claro.ts`, injetado pela rota que serve o arquivo: o A-INTERNO tem a paleta quase toda em tokens no `:root`, então redefinir os tokens vira a tela inteira sem tocar em uma medida sequer do desenho aprovado, e o arquivo original segue escuro para o Apolo interno. Os valores que estavam cravados assumindo fundo escuro foram tratados um a um: realce branco translúcido (some sobre branco) virou grafite translúcido, divisa quase preta virou a linha clara, o azul #cfe0ff do simulador virou azul escuro, e as tintas de texto de verde/âmbar/vermelho passaram a escurecer em vez de clarear. Medido na tela servida: data-uix-theme=light, --canvas #f7f8fa, --txt #121722, rail branco, 406 lotes intactos.",
+      done: "A tela do masterplan saiu do `<main>` do portal (maxWidth 1180) e virou camada `position: fixed; inset: 0`, com o body travado enquanto está aberta e Escape ligado — dentro de um iframe o voltar do navegador não sai, então sem botão o cliente fica preso. TEMA CLARO em `lib/apolo/masterplan-tema-claro.ts`, injetado pela rota que serve o arquivo: o A-INTERNO tem a paleta quase toda em tokens no `:root`, então redefinir os tokens vira a tela inteira sem tocar em uma medida sequer do desenho aprovado, e o arquivo original segue escuro para o Apolo interno. Os valores que estavam cravados assumindo fundo escuro foram tratados um a um: realce branco translúcido (some sobre branco) virou grafite translúcido, divisa quase preta virou a linha clara, o azul #cfe0ff do simulador virou azul escuro, e as tintas de texto de verde/âmbar/vermelho passaram a escurecer em vez de clarear. Medido na tela servida: data-uix-theme=light, --canvas #f7f8fa, --txt #121722, rail branco, 406 lotes intactos.",
       motivation:
-        "Lucas, 11/08, vendo a primeira versão: \"ficou ruim, primeiro tem que seguir o esquema de cor do sistema. e outra está pequeno, não era assim que abrir o link, tem que usar a tela toda\", depois \"tem que fazer a versão claro dessa tela\" e \"essa tela não tem sidebar lateral, tem que ter um botão ou algo parecido para voltar a tela inicial do perfil\".",
+        'Lucas, 11/08, vendo a primeira versão: "ficou ruim, primeiro tem que seguir o esquema de cor do sistema. e outra está pequeno, não era assim que abrir o link, tem que usar a tela toda", depois "tem que fazer a versão claro dessa tela" e "essa tela não tem sidebar lateral, tem que ter um botão ou algo parecido para voltar a tela inicial do perfil".',
     },
     title: "Portal do incorporador: masterplan em tela cheia e na versão clara",
     type: "melhoria",
@@ -3595,14 +3593,14 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
               "540 fichas voltaram a aparecer no Board: a fila estava servindo só 115 das 653 CADs, e 433 credenciados e 107 fichas em crédito reprovado tinham sumido da tela",
               "Aprovar e avançar agora GRAVAM antes de mover o card. Antes o card andava só na tela e a recarga devolvia o cliente para a etapa anterior",
               "Quando o servidor recusa a mudança de etapa, a tela diz o motivo em vermelho, em vez de mostrar o avanço que não aconteceu",
-              "A ficha sem CAD ganhou o selo \"sem CAD\": é ela que reaparece em Validação a cada recarga, e agora dá para ver quem é e o que falta (o empreendimento no cadastro)",
+              'A ficha sem CAD ganhou o selo "sem CAD": é ela que reaparece em Validação a cada recarga, e agora dá para ver quem é e o que falta (o empreendimento no cadastro)',
               "A análise de crédito não roda mais numa ficha sem empreendimento: a consulta é paga e não teria onde gravar o resultado",
             ],
             screen: "Esteira de credenciamento (Board)",
           },
           {
             items: [
-              "Crédito reprovado tem saída pela coordenação: no card em \"Crédito em revisão\", o botão roxo \"Aprovar com restrição (coordenação)\" libera a ficha anexando a evidência do de-acordo (PDF, PNG ou JPEG, até 3 MB, obrigatória)",
+              'Crédito reprovado tem saída pela coordenação: no card em "Crédito em revisão", o botão roxo "Aprovar com restrição (coordenação)" libera a ficha anexando a evidência do de-acordo (PDF, PNG ou JPEG, até 3 MB, obrigatória)',
               "Fica registrado quem aprovou, quando, por quê, e a evidência vai para a pasta do cliente",
               "São 157 fichas paradas em crédito reprovado esperando essa decisão, a mais antiga desde 23/07",
             ],
@@ -3630,10 +3628,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "(1) BOARD, perna (b): `.in(\"id\", 653 uuids)` montava URL de 25.697 chars e o PostgREST devolvia 400 — medido em produção hoje com a service key. Como o código só desiste quando as DUAS pernas falham, a falha era muda: 115 de 653 CADs servidas (433 credenciados + 107 em revisão sem card). Passou a ler em LOTES DE 100, em paralelo. (2) SERASA: `consultar/route.ts` chamava `atualizarEtapa` em :343 e :489 e ignorava `semCad`/`error`, devolvendo `etapa` = o ALVO calculado. Sem linha em `apolo_esteira`, o Board monta o card com `etapa: null` e `colunaDoItem` o joga em Validação a cada carga — caso real: 4 consultas PAGAS na mesma ficha (04/08, 06/08, 07/08 e 10/08), tela dizendo \"avançou\" nas quatro. Agora barra ANTES de gastar (409 quando a CAD não tem empreendimento), devolve `etapaNaoGravada` quando a consulta já saiu, e não dispara mais o aviso ao coordenador sem gravação (fecha a task #38). (3) BOARD/tela: `onAvancar` era `progresso++` puro, e a semeadura era `{...semeado, ...atual}` (sessão vencia o servidor), então nada corrigia. Tudo passa por `moverEtapa`: grava, lê a resposta, e só então mexe na tela; o banco passou a vencer a sessão na semeadura de progresso E de desvios. O botão genérico sumiu da Análise de crédito (dizia \"Consultar Serasa\" e só empurrava o card para a Pré-venda). (4) PRÉ-VENDA: `resolverPrevendaHabilitada` era fail-open em três saídas (sem empreendimento, sem linha, erro) e o default da coluna na 0071 é TRUE — 36, 37 e 39 amanheceram ligados com `valor_pix` NULO. Agora é FAIL-CLOSED e exige flag + valor > 0, regra isolada em `prevendaLigadaNaSetting` e usada tanto por ficha (servidor) quanto em lote (Board). `plantarFichaPrevenda` (bancada) e `gerar-pix` passaram a respeitar o toggle — eram os dois caminhos que escapavam. (5) VARREDURA: desligar a pré-venda agora move as CADs que estavam nela (reprovado -> revisao, resto -> credenciado), em lotes de 100 e com rastro em `apolo_audit_events`; era feito na mão por SQL, duas vezes em 09/08, 146 CADs. (6) Override: `registrarOverrideCredito` deixou de engolir erro e devolve o resultado; teto do upload caiu de 8 MB (maior que o corte da Vercel) para 3 MB, com mensagem. (7) PORTAL DO INCORPORADOR: as telas do masterplan interno saíram de `public/` (estático não passa por gate: /garden/interno-3634d57f.html respondia 200 sem cookie, com preço de 406 lotes e 186 nomes de comprador dentro) para `apps/hub/masterplans-internos/`, servidas por `GET /api/incorporador/masterplan?code=` que confere a sessão assinada E traduz código -> id para validar o escopo (VOL devolve 404 para o Cecílio). `outputFileTracingIncludes` no next.config para o arquivo subir no bundle da função. A aba Produtos abre a tela num quadro, sem sair do portal. (8) MASTERPLAN DO VALE DO OURO: 298 polígonos extraídos de MASTERPLAN_VALE_DO_OURO.svg pelo `inkscape:label` (4 lotes têm id divergente do label; pelo id trocariam de lugar), conferidos 298/298 contra o C2X e 298/298 caindo sobre área de lote. Planta recortada por componente conexo (41 ilhas apagadas: as 4 logos impressas e a moldura), com o recorte indo para o `viewBox` do SVG — assim nenhum dos 1.880 vértices precisou ser recalculado. Quarto estado (Bloqueado) porque 108 dos 110 'reservados' eram lotes fora de venda. Planos comerciais lidos do C2X, com o juros do PLANO NORMAL (0,7207% a.m.) que a primeira leitura tinha zerado. ⚠️ O GARDEN NÃO É GERADO: os dados dele são da planilha do Lucas, não do C2X (o cadastro do Garden no legado é de pré-lançamento). 24 testes novos.",
+      done: '(1) BOARD, perna (b): `.in("id", 653 uuids)` montava URL de 25.697 chars e o PostgREST devolvia 400 — medido em produção hoje com a service key. Como o código só desiste quando as DUAS pernas falham, a falha era muda: 115 de 653 CADs servidas (433 credenciados + 107 em revisão sem card). Passou a ler em LOTES DE 100, em paralelo. (2) SERASA: `consultar/route.ts` chamava `atualizarEtapa` em :343 e :489 e ignorava `semCad`/`error`, devolvendo `etapa` = o ALVO calculado. Sem linha em `apolo_esteira`, o Board monta o card com `etapa: null` e `colunaDoItem` o joga em Validação a cada carga — caso real: 4 consultas PAGAS na mesma ficha (04/08, 06/08, 07/08 e 10/08), tela dizendo "avançou" nas quatro. Agora barra ANTES de gastar (409 quando a CAD não tem empreendimento), devolve `etapaNaoGravada` quando a consulta já saiu, e não dispara mais o aviso ao coordenador sem gravação (fecha a task #38). (3) BOARD/tela: `onAvancar` era `progresso++` puro, e a semeadura era `{...semeado, ...atual}` (sessão vencia o servidor), então nada corrigia. Tudo passa por `moverEtapa`: grava, lê a resposta, e só então mexe na tela; o banco passou a vencer a sessão na semeadura de progresso E de desvios. O botão genérico sumiu da Análise de crédito (dizia "Consultar Serasa" e só empurrava o card para a Pré-venda). (4) PRÉ-VENDA: `resolverPrevendaHabilitada` era fail-open em três saídas (sem empreendimento, sem linha, erro) e o default da coluna na 0071 é TRUE — 36, 37 e 39 amanheceram ligados com `valor_pix` NULO. Agora é FAIL-CLOSED e exige flag + valor > 0, regra isolada em `prevendaLigadaNaSetting` e usada tanto por ficha (servidor) quanto em lote (Board). `plantarFichaPrevenda` (bancada) e `gerar-pix` passaram a respeitar o toggle — eram os dois caminhos que escapavam. (5) VARREDURA: desligar a pré-venda agora move as CADs que estavam nela (reprovado -> revisao, resto -> credenciado), em lotes de 100 e com rastro em `apolo_audit_events`; era feito na mão por SQL, duas vezes em 09/08, 146 CADs. (6) Override: `registrarOverrideCredito` deixou de engolir erro e devolve o resultado; teto do upload caiu de 8 MB (maior que o corte da Vercel) para 3 MB, com mensagem. (7) PORTAL DO INCORPORADOR: as telas do masterplan interno saíram de `public/` (estático não passa por gate: /garden/interno-3634d57f.html respondia 200 sem cookie, com preço de 406 lotes e 186 nomes de comprador dentro) para `apps/hub/masterplans-internos/`, servidas por `GET /api/incorporador/masterplan?code=` que confere a sessão assinada E traduz código -> id para validar o escopo (VOL devolve 404 para o Cecílio). `outputFileTracingIncludes` no next.config para o arquivo subir no bundle da função. A aba Produtos abre a tela num quadro, sem sair do portal. (8) MASTERPLAN DO VALE DO OURO: 298 polígonos extraídos de MASTERPLAN_VALE_DO_OURO.svg pelo `inkscape:label` (4 lotes têm id divergente do label; pelo id trocariam de lugar), conferidos 298/298 contra o C2X e 298/298 caindo sobre área de lote. Planta recortada por componente conexo (41 ilhas apagadas: as 4 logos impressas e a moldura), com o recorte indo para o `viewBox` do SVG — assim nenhum dos 1.880 vértices precisou ser recalculado. Quarto estado (Bloqueado) porque 108 dos 110 \'reservados\' eram lotes fora de venda. Planos comerciais lidos do C2X, com o juros do PLANO NORMAL (0,7207% a.m.) que a primeira leitura tinha zerado. ⚠️ O GARDEN NÃO É GERADO: os dados dele são da planilha do Lucas, não do C2X (o cadastro do Garden no legado é de pré-lançamento). 24 testes novos.',
       motivation:
-        "Lucas, 10/08: \"cliente que já teve analise de credito feito voltando para validação... cliente não volta no fluxo. e outra, precisamos ter um campo para aprovar cadastro de cliente que tiveram analise de credito reprovado, nesse campo temos que colocar a evidência, eu já havia solicitado isso. e outra, cliente caindo de novo em pre-venda, pre-venda só existe se estiver habilitado\". A apuração no banco mostrou que a regressão NÃO está gravada (zero fichas com crédito em validação, zero `etapa_change` para validação): ela é de tela, produzida por ações que não gravavam e por uma fila que servia 18% das CADs. O campo do item (2) já existia em produção desde 05/08 e nunca foi usado uma vez — nem anunciado.",
+        'Lucas, 10/08: "cliente que já teve analise de credito feito voltando para validação... cliente não volta no fluxo. e outra, precisamos ter um campo para aprovar cadastro de cliente que tiveram analise de credito reprovado, nesse campo temos que colocar a evidência, eu já havia solicitado isso. e outra, cliente caindo de novo em pre-venda, pre-venda só existe se estiver habilitado". A apuração no banco mostrou que a regressão NÃO está gravada (zero fichas com crédito em validação, zero `etapa_change` para validação): ela é de tela, produzida por ações que não gravavam e por uma fila que servia 18% das CADs. O campo do item (2) já existia em produção desde 05/08 e nunca foi usado uma vez — nem anunciado.',
     },
     title:
       "Apolo: o cliente para de voltar no fluxo, pré-venda só existe se estiver habilitada, e o masterplan entra no portal do incorporador",
@@ -3650,8 +3647,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
           {
             items: [
               "E-mail de cliente voltou a entrar: dois e-mails estavam presos desde ontem e falhavam a cada 5 minutos, 240 vezes por dia",
-              "O atendimento não mostra mais \"janela aberta\" quando o cliente ainda não respondeu, que era o que fazia a mensagem morrer depois de enviada",
-              "O erro de envio agora explica o que houve em português, no lugar de \"Re-engagement message\"",
+              'O atendimento não mostra mais "janela aberta" quando o cliente ainda não respondeu, que era o que fazia a mensagem morrer depois de enviada',
+              'O erro de envio agora explica o que houve em português, no lugar de "Re-engagement message"',
               "O botão de reabrir conversa parou de oferecer modelo que a Meta ainda não aprovou",
             ],
             screen: "Atendimento",
@@ -3671,10 +3668,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "(1) GMAIL: `parseGmailMessage` mandava o header `Date` CRU (\"Sun, 9 Aug 2026 09:11:25 -0300 (BRT)\") para coluna timestamptz — 22007 em toda ingestão, 240/dia, duas mensagens presas desde 09/08 repetindo a cada ciclo do cron. Agora `internalDate` (epoch do Gmail, já ISO) é a fonte e o header passa por `paraIso()`; data inválida vira null e a mensagem ENTRA. As presas seguem unread, então voltam sozinhas. 7 testes novos. (2) JANELA DE 24h: `getIrisCustomerServiceWindow` priorizava `metadata.customerServiceWindowOpenedAt`, gravado por `lib/apolo/acao-atendimento.ts` no disparo do TEMPLATE de convite — só que template não abre janela pela regra da Meta (o próprio metadata dizia `awaiting_customer_reply`). Tela pintava verde, liberava o textarea, e a Meta recusava com 131047. Corrigido nas DUAS pontas: a origem parou de gravar e a leitura parou de aceitar, o que alcança os 246 tickets que já nasceram com o carimbo falso (245 sem inbound). (3) `META_DELIVERY_ERROR_LABELS` casava só por código e as 38 falhas de 30 dias têm `code: null` — entrou `META_DELIVERY_ERROR_BY_TITLE` com os 5 títulos reais medidos no banco. (4) `isMetaTemplateUnavailableStatus` passou a barrar PENDING/IN_REVIEW: 3 dos 6 modelos oferecidos no reabrir voltariam 132001.",
+      done: '(1) GMAIL: `parseGmailMessage` mandava o header `Date` CRU ("Sun, 9 Aug 2026 09:11:25 -0300 (BRT)") para coluna timestamptz — 22007 em toda ingestão, 240/dia, duas mensagens presas desde 09/08 repetindo a cada ciclo do cron. Agora `internalDate` (epoch do Gmail, já ISO) é a fonte e o header passa por `paraIso()`; data inválida vira null e a mensagem ENTRA. As presas seguem unread, então voltam sozinhas. 7 testes novos. (2) JANELA DE 24h: `getIrisCustomerServiceWindow` priorizava `metadata.customerServiceWindowOpenedAt`, gravado por `lib/apolo/acao-atendimento.ts` no disparo do TEMPLATE de convite — só que template não abre janela pela regra da Meta (o próprio metadata dizia `awaiting_customer_reply`). Tela pintava verde, liberava o textarea, e a Meta recusava com 131047. Corrigido nas DUAS pontas: a origem parou de gravar e a leitura parou de aceitar, o que alcança os 246 tickets que já nasceram com o carimbo falso (245 sem inbound). (3) `META_DELIVERY_ERROR_LABELS` casava só por código e as 38 falhas de 30 dias têm `code: null` — entrou `META_DELIVERY_ERROR_BY_TITLE` com os 5 títulos reais medidos no banco. (4) `isMetaTemplateUnavailableStatus` passou a barrar PENDING/IN_REVIEW: 3 dos 6 modelos oferecidos no reabrir voltariam 132001.',
       motivation:
-        "Lucas, 10/08: \"estamos varios erros na iris, analisa por favor\" e depois \"mas foca na mensagens que não estamos conseguindo enviar\", com print de 8 atendimentos em ERRO DE ENVIO. O diagnóstico separou o que é defeito nosso do que é conta a pagar: 9 das falhas são \"Business eligibility payment issue\", pendência financeira na conta do WhatsApp Business, que nenhum código resolve.",
+        'Lucas, 10/08: "estamos varios erros na iris, analisa por favor" e depois "mas foca na mensagens que não estamos conseguindo enviar", com print de 8 atendimentos em ERRO DE ENVIO. O diagnóstico separou o que é defeito nosso do que é conta a pagar: 9 das falhas são "Business eligibility payment issue", pendência financeira na conta do WhatsApp Business, que nenhum código resolve.',
     },
     title: "Iris: e-mail preso volta a entrar e a janela de 24h para de mentir",
     type: "correcao",
@@ -3702,10 +3698,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Duas fontes discordavam: `statusUnidades` decidia o desfecho pela PROPOSTA e a tela do C2X mostra o `sale_status_id` da UNIDADE. Agora estoque, card do topo e reservas saem todos de `SITUACAO_DO_LOTE` (3+4 -> Vendido, 2 -> Reservado, 5 -> Bloqueado, resto -> Disponível), e `PROPOSTA_DO_LOTE` foi removido. Conferido: VOL 93+1+6=100, VOC 84+1+5=90, VLO 149+37+4=190. Achado no caminho: `VENDA` era `stage IN (3,9)` e perdia as 41 propostas do VOC em 'Em assinatura' (5), o que subcontava ranking, perfil, contratos e cobrança; virou `IN (3,4,5,6,9)` e agora propostas vivas = unidades vendidas nos três recortes (177/84/93). Como contar pela unidade cria o risco inverso (proposta cancelada não libera o lote sozinha), entrou `sqlDaCoerencia()`: quatro contadores de divergência lote x proposta no payload, exibidos como nota no painel. Medido hoje: 0, 0, 0, 0. Segundo achado: as \"órfãs do 35\" não eram órfãs. As 8 propostas vivas do master têm gêmeo na carteira com a MESMA venda e o MESMO cliente (VLO0104/4738 <-> VOC0104/4738), então o JOIN_GEMEO/CARTEIRA_DA_PROPOSTA fazia dupla contagem em ranking, perfil, planos, contratos e cobrança: ranking somava 89 no VOC contra 84 do card, e 185 contra 177 no lançamento inteiro. O master saiu de TODAS as consultas (LISTA_ENTERPRISES, JOIN_GEMEO e filtroCarteira removidos; `recorteDaCarteira` devolve só `listaUnidades`), e o duelo Cecílio x Lino passou a contar unidade. Agora todo agregado fecha com o card: VOC 84 em estoque/ranking/sexo/planos/idades/parcelas, VOL 93. Por ordem do Lucas (\"pode excluir esse BI unico\"), public/bi/vale-do-ouro.html foi apagado e o campo `porTipo` (duelo Cecílio x Lino) saiu do motor junto, que era a única tela que o consumia: uma consulta a menos por ciclo de 60s. A rota /api/publico/bi/vale-do-ouro continua liberada no proxy.ts, servindo os dois recortes por ?carteira=; a URL /bi/vale-do-ouro.html passa a responder 404.",
+      done: 'Duas fontes discordavam: `statusUnidades` decidia o desfecho pela PROPOSTA e a tela do C2X mostra o `sale_status_id` da UNIDADE. Agora estoque, card do topo e reservas saem todos de `SITUACAO_DO_LOTE` (3+4 -> Vendido, 2 -> Reservado, 5 -> Bloqueado, resto -> Disponível), e `PROPOSTA_DO_LOTE` foi removido. Conferido: VOL 93+1+6=100, VOC 84+1+5=90, VLO 149+37+4=190. Achado no caminho: `VENDA` era `stage IN (3,9)` e perdia as 41 propostas do VOC em \'Em assinatura\' (5), o que subcontava ranking, perfil, contratos e cobrança; virou `IN (3,4,5,6,9)` e agora propostas vivas = unidades vendidas nos três recortes (177/84/93). Como contar pela unidade cria o risco inverso (proposta cancelada não libera o lote sozinha), entrou `sqlDaCoerencia()`: quatro contadores de divergência lote x proposta no payload, exibidos como nota no painel. Medido hoje: 0, 0, 0, 0. Segundo achado: as "órfãs do 35" não eram órfãs. As 8 propostas vivas do master têm gêmeo na carteira com a MESMA venda e o MESMO cliente (VLO0104/4738 <-> VOC0104/4738), então o JOIN_GEMEO/CARTEIRA_DA_PROPOSTA fazia dupla contagem em ranking, perfil, planos, contratos e cobrança: ranking somava 89 no VOC contra 84 do card, e 185 contra 177 no lançamento inteiro. O master saiu de TODAS as consultas (LISTA_ENTERPRISES, JOIN_GEMEO e filtroCarteira removidos; `recorteDaCarteira` devolve só `listaUnidades`), e o duelo Cecílio x Lino passou a contar unidade. Agora todo agregado fecha com o card: VOC 84 em estoque/ranking/sexo/planos/idades/parcelas, VOL 93. Por ordem do Lucas ("pode excluir esse BI unico"), public/bi/vale-do-ouro.html foi apagado e o campo `porTipo` (duelo Cecílio x Lino) saiu do motor junto, que era a única tela que o consumia: uma consulta a menos por ciclo de 60s. A rota /api/publico/bi/vale-do-ouro continua liberada no proxy.ts, servindo os dois recortes por ?carteira=; a URL /bi/vale-do-ouro.html passa a responder 404.',
       motivation:
-        "Lucas, 09/08, comparando o painel com a tela do C2X lado a lado: \"existe somente os status: Vendido - Reserva - Disponivel... teria que ser 93 vendido, 6 disponivel, 1 [reserva]\". E no minuto seguinte: \"proposta podem ser canceladas, temos que ficar de olho nas atualizações\" — daí o vigia, em vez de trocar um número silenciosamente errado por outro.",
+        'Lucas, 09/08, comparando o painel com a tela do C2X lado a lado: "existe somente os status: Vendido - Reserva - Disponivel... teria que ser 93 vendido, 6 disponivel, 1 [reserva]". E no minuto seguinte: "proposta podem ser canceladas, temos que ficar de olho nas atualizações" — daí o vigia, em vez de trocar um número silenciosamente errado por outro.',
     },
     title: "BI do Vale do Ouro passa a contar pela situação do lote no C2X",
     type: "correcao",
@@ -3731,10 +3726,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "O painel somava 157 vendidas + 46 reservas + 28 disponíveis = 231 sobre 190 lotes. Duas causas, as duas de contar a entidade errada: (1) RESERVA vinha de PROPOSTA em estágio 1, e 14 delas apontavam para lote que JÁ TEM VENDA (reserva antiga sem baixa), então o mesmo lote entrava como vendido e reservado; (2) DISPONÍVEL vinha do sale_status_id do cadastro, sem olhar proposta viva, e os 9 lotes vendidos que ficaram no master têm o gêmeo na carteira marcado como Reservado. Agora `statusUnidades` e `reservas` percorrem o LOTE COMERCIAL (uma linha por lote físico) e decidem por precedência via PROPOSTA_DO_LOTE(): tem venda -> Vendido; senão tem reserva -> Reservado; senão Disponível. O EXISTS casa as propostas do próprio lote E as do master pelo NÚMERO DO LOTE (SUBSTRING(name,4)), mesma regra do gêmeo. Validado nos três recortes: todos 157+28+5=190, VOC 76+10+4=90, VOL 81+18+1=100.",
+      done: "O painel somava 157 vendidas + 46 reservas + 28 disponíveis = 231 sobre 190 lotes. Duas causas, as duas de contar a entidade errada: (1) RESERVA vinha de PROPOSTA em estágio 1, e 14 delas apontavam para lote que JÁ TEM VENDA (reserva antiga sem baixa), então o mesmo lote entrava como vendido e reservado; (2) DISPONÍVEL vinha do sale_status_id do cadastro, sem olhar proposta viva, e os 9 lotes vendidos que ficaram no master têm o gêmeo na carteira marcado como Reservado. Agora `statusUnidades` e `reservas` percorrem o LOTE COMERCIAL (uma linha por lote físico) e decidem por precedência via PROPOSTA_DO_LOTE(): tem venda -> Vendido; senão tem reserva -> Reservado; senão Disponível. O EXISTS casa as propostas do próprio lote E as do master pelo NÚMERO DO LOTE (SUBSTRING(name,4)), mesma regra do gêmeo. Validado nos três recortes: todos 157+28+5=190, VOC 76+10+4=90, VOL 81+18+1=100.",
       motivation:
-        "Lucas, 07/08: \"tem alguma coisa errada, pois tínhamos somente 190 lotes para vendas e o resto estava bloqueado, somando os valores não dá isso\". Ele estava certo: eu tinha visto o sintoma (avisei que o disponível estava otimista) e tratei como imprecisão a acertar depois, quando era erro de cálculo. Risco real de corretor oferecer lote já reservado no salão.",
+        'Lucas, 07/08: "tem alguma coisa errada, pois tínhamos somente 190 lotes para vendas e o resto estava bloqueado, somando os valores não dá isso". Ele estava certo: eu tinha visto o sintoma (avisei que o disponível estava otimista) e tratei como imprecisão a acertar depois, quando era erro de cálculo. Risco real de corretor oferecer lote já reservado no salão.',
     },
     title: "Estoque do BI passa a contar lote, e o disponível deixa de mentir",
     type: "correcao",
@@ -3760,10 +3754,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "lib/prometeu/bi-vale-do-ouro.ts ganhou o tipo CarteiraDoVale (todos|voc|vol) + normalizarCarteira + recorteDaCarteira; montarBiValeDoOuro(carteira) serve os TRÊS recortes com o mesmo SQL. A rota /api/publico/bi/vale-do-ouro aceita ?carteira=voc|vol (MESMA rota, então o proxy.ts não muda e o cache de 60s continua valendo). ⚠️ AS ÓRFÃS DO MASTER: sobraram no VLO(35) 9 vendas e 32 reservas que não migraram; filtrar a carteira só por enterprise_id sumiria com elas dos DOIS painéis (soma daria 148 em vez de 157). A atribuição é pela carteira do LOTE GÊMEO, casado por SUBSTRING(name,4): VLO0104 -> VOC0104(37) ou VOL0104(36). NÃO se usa o campo tipo (interna/externa): ele acerta hoje por coincidência estrutural e quebraria em silêncio num recadastro. Provado no C2X: os 298 lotes do master têm exatamente 1 gêmeo cada, COUNT(*) = COUNT(DISTINCT unidade) nos três recortes (157/76/81) e nenhum lote tem proposta viva no master e na carteira ao mesmo tempo. DENOMINADOR: separados os lotes COMERCIAIS (price > 1) do estoque NÃO LANÇADO (price <= 1 e sale_blocked); os 108 já estavam assim no 35 antes da divisão e nenhum tem proposta. Páginas: public/bi/vale-do-ouro-voc.html e -vol.html copiadas da aprovada (mesmo CSS, sem o bloco de duelo, que só faz sentido no unificado). Conferência no MySQL: VOC 76 + VOL 81 = 157 vendas e VGV 10.992.544 + 12.007.185 = 22.999.729, idêntico ao recorte todos.",
+      done: "lib/prometeu/bi-vale-do-ouro.ts ganhou o tipo CarteiraDoVale (todos|voc|vol) + normalizarCarteira + recorteDaCarteira; montarBiValeDoOuro(carteira) serve os TRÊS recortes com o mesmo SQL. A rota /api/publico/bi/vale-do-ouro aceita ?carteira=voc|vol (MESMA rota, então o proxy.ts não muda e o cache de 60s continua valendo). ⚠️ AS ÓRFÃS DO MASTER: sobraram no VLO(35) 9 vendas e 32 reservas que não migraram; filtrar a carteira só por enterprise_id sumiria com elas dos DOIS painéis (soma daria 148 em vez de 157). A atribuição é pela carteira do LOTE GÊMEO, casado por SUBSTRING(name,4): VLO0104 -> VOC0104(37) ou VOL0104(36). NÃO se usa o campo tipo (interna/externa): ele acerta hoje por coincidência estrutural e quebraria em silêncio num recadastro. Provado no C2X: os 298 lotes do master têm exatamente 1 gêmeo cada, COUNT(*) = COUNT(DISTINCT unidade) nos três recortes (157/76/81) e nenhum lote tem proposta viva no master e na carteira ao mesmo tempo. DENOMINADOR: separados os lotes COMERCIAIS (price > 1) do estoque NÃO LANÇADO (price <= 1 e sale_blocked); os 108 já estavam assim no 35 antes da divisão e nenhum tem proposta. Páginas: public/bi/vale-do-ouro-voc.html e -vol.html copiadas da aprovada (mesmo CSS, sem o bloco de duelo, que só faz sentido no unificado). Conferência no MySQL: VOC 76 + VOL 81 = 157 vendas e VGV 10.992.544 + 12.007.185 = 22.999.729, idêntico ao recorte todos.",
       motivation:
-        "Lucas, 07/08: \"o BI está todo errado, temos que refazer considerando agora o VOC e VOL\" e depois \"quero fazer um painel para cada um\". A investigação mostrou que o total já somava as três carteiras corretamente; o que distorcia era contar os 108 lotes nunca lançados como estoque, o que fazia o lançamento parecer 53% vendido.",
+        'Lucas, 07/08: "o BI está todo errado, temos que refazer considerando agora o VOC e VOL" e depois "quero fazer um painel para cada um". A investigação mostrou que o total já somava as três carteiras corretamente; o que distorcia era contar os 108 lotes nunca lançados como estoque, o que fazia o lançamento parecer 53% vendido.',
     },
     title: "BI do Vale do Ouro ganha um painel por coordenação",
     type: "melhoria",
@@ -3795,12 +3788,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "1) CORRETOR NA FILA, o SEGUNDO portão: /api/apolo/board monta a fila de DUAS fontes, e a segunda (apolo_entities com status='review' e source='apolo') não olha a esteira. Barrar só a gravação na esteira dava impressão de resolvido e a tela seguia igual. A consulta ganhou `.or(\"metadata->>bornRole.is.null,metadata->>bornRole.neq.corretor\")` — o is.null preserva entidades antigas sem bornRole, que um neq puro descartaria (NULL não é \"diferente de\" nada em SQL). Medido: 110 na fila, 15 são corretor e saem. 2) VÍNCULO EXCLUÍDO CONTINUAVA NA TELA: excluir ARQUIVA a linha (status 'archived') para manter histórico, mas lib/apolo/server.ts trazia todos os status; agora filtra archived antes do map. A rota de archive já ignorava arquivados e devolvia 404 na segunda tentativa, e relationships-panel.tsx engolia a falha sem `else` — passou a avisar, com mensagem específica para o 404. 3) CÔNJUGE: os dois campos viraram CampoDoDocumento, fechando o último dos três blocos (titular e sócio já tinham). 4) REVISÃO PÚBLICA: PublicoConfig ganhou imobiliariaNome/corretorNome, o PortaoCorretor passa os dois no onValidado e StepRevisao os exibe; no público a lista de imobiliárias (que resolve o rótulo no interno) não é carregada e não há rota pública que a liste, por isso o campo vinha vazio. 295 testes.",
+      done: "1) CORRETOR NA FILA, o SEGUNDO portão: /api/apolo/board monta a fila de DUAS fontes, e a segunda (apolo_entities com status='review' e source='apolo') não olha a esteira. Barrar só a gravação na esteira dava impressão de resolvido e a tela seguia igual. A consulta ganhou `.or(\"metadata->>bornRole.is.null,metadata->>bornRole.neq.corretor\")` — o is.null preserva entidades antigas sem bornRole, que um neq puro descartaria (NULL não é \"diferente de\" nada em SQL). Medido: 110 na fila, 15 são corretor e saem. 2) VÍNCULO EXCLUÍDO CONTINUAVA NA TELA: excluir ARQUIVA a linha (status 'archived') para manter histórico, mas lib/apolo/server.ts trazia todos os status; agora filtra archived antes do map. A rota de archive já ignorava arquivados e devolvia 404 na segunda tentativa, e relationships-panel.tsx engolia a falha sem `else` — passou a avisar, com mensagem específica para o 404. 3) CÔNJUGE: os dois campos viraram CampoDoDocumento, fechando o último dos três blocos (titular e sócio já tinham). 4) REVISÃO PÚBLICA: PublicoConfig ganhou imobiliariaNome/corretorNome, o PortaoCorretor passa os dois no onValidado e StepRevisao os exibe; no público a lista de imobiliárias (que resolve o rótulo no interno) não é carregada e não há rota pública que a liste, por isso o campo vinha vazio. 295 testes.",
       motivation:
         "Lucas testando em 05/08: cadastrou um corretor e ele apareceu na validação mesmo depois da primeira correção; o botão de excluir vínculo parecia morto (na verdade já tinha arquivado, e a tela continuava mostrando); a revisão do link público não trazia imobiliária nem corretor; e o cônjuge tinha os mesmos campos travados que já corrigimos no titular e no sócio.",
     },
-    title: "Corretor sai da fila, vínculo excluído some e revisão mostra quem trouxe a CAD",
+    title:
+      "Corretor sai da fila, vínculo excluído some e revisão mostra quem trouxe a CAD",
     type: "correcao",
     version: "1.116.0",
   },
@@ -3844,10 +3837,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "1) CLIENTE PJ: nasceu perfilPorPapel() em c2x-write.ts e perfilDaFicha() em c2x-write-server.ts, usadas TANTO pelo filtro da fila QUANTO pela montagem do payload (uma fonte só). O perfil sai de metadata.bornRole (cobertura medida: 109/109 das entidades source=apolo), com de-para prospect→cliente(2), imobiliaria→imobiliaria(6), incorporador→incorporador(3); corretor/colaborador/fornecedor/parceiro NÃO sobem. montarPayloadCliente ganhou o desvio `if (c.isCompany)` com cnpj/social_name/fantasy_name/person_type jurídica, e montarDados passou a ler metadata.cadastro.socios para preencher o que o C2X pede de pessoa. O formato-alvo não é suposição: o C2X já tem 80 users com profile_id=2 + person_type_id=2 exatamente assim. ⚠️ O caminho PF foi verificado byte a byte contra o HEAD e está IDÊNTICO; teste congela o payload PF para acusar regressão futura. Filtro novo medido em produção: 87 candidatas viram 78, entram as 6 PJ prospect credenciadas (incl. Vovo Braga) e saem os 15 corretores. 2) ALERTA: a decisão saiu da rota e virou função pura em lib/apolo/c2x-alerta-board.ts (alertaC2xDaCad) com 3 estados (erro / sem_confirmacao / nunca_tentado), 8 testes; cobre os 97 credenciados que não tinham linha em apolo_c2x_sync e por isso eram invisíveis. 3) O QUE FALTA NA TELA: podeAvancarPf/Pj passaram a derivar de uma LISTA de faltantes, e a mesma lista alimenta o aviso, então botão e aviso nunca discordam. 4) Corretor fora da esteira: a gravação em apolo_esteira passou a checar o papel (era só empreendimento+imobiliária, e o cadastro de corretor tem os dois); 12 corretores removidos da fila, os 5 que também são compradores preservados. 5) Board: o índice da barra passou a sair de INDICE_POR_ETAPA, o mesmo mapa do reload. 295 testes.",
+      done: "1) CLIENTE PJ: nasceu perfilPorPapel() em c2x-write.ts e perfilDaFicha() em c2x-write-server.ts, usadas TANTO pelo filtro da fila QUANTO pela montagem do payload (uma fonte só). O perfil sai de metadata.bornRole (cobertura medida: 109/109 das entidades source=apolo), com de-para prospect→cliente(2), imobiliaria→imobiliaria(6), incorporador→incorporador(3); corretor/colaborador/fornecedor/parceiro NÃO sobem. montarPayloadCliente ganhou o desvio `if (c.isCompany)` com cnpj/social_name/fantasy_name/person_type jurídica, e montarDados passou a ler metadata.cadastro.socios para preencher o que o C2X pede de pessoa. O formato-alvo não é suposição: o C2X já tem 80 users com profile_id=2 + person_type_id=2 exatamente assim. ⚠️ O caminho PF foi verificado byte a byte contra o HEAD e está IDÊNTICO; teste congela o payload PF para acusar regressão futura. Filtro novo medido em produção: 87 candidatas viram 78, entram as 6 PJ prospect credenciadas (incl. Vovo Braga) e saem os 15 corretores. 2) ALERTA: a decisão saiu da rota e virou função pura em lib/apolo/c2x-alerta-board.ts (alertaC2xDaCad) com 3 estados (erro / sem_confirmacao / nunca_tentado), 8 testes; cobre os 97 credenciados que não tinham linha em apolo_c2x_sync e por isso eram invisíveis. 3) O QUE FALTA NA TELA: podeAvancarPf/Pj passaram a derivar de uma LISTA de faltantes, e a mesma lista alimenta o aviso, então botão e aviso nunca discordam. 4) Corretor fora da esteira: a gravação em apolo_esteira passou a checar o papel (era só empreendimento+imobiliária, e o cadastro de corretor tem os dois); 12 corretores removidos da fila, os 5 que também são compradores preservados. 5) Board: o índice da barra passou a sair de INDICE_POR_ETAPA, o mesmo mapa do reload. 295 testes.",
       motivation:
-        "Lucas testando o fluxo real em 05/08: a Vovo Braga (padaria, cliente PJ) chegou a credenciado e não apareceu no C2X; um cadastro de corretor caiu na fila de validação sem ter o que validar; e um cadastro PF ficou travado com o botão apagado sem dizer o que faltava. Palavras dele: \"seria ótimo colocar um aviso do que falta a ser preenchido\".",
+        'Lucas testando o fluxo real em 05/08: a Vovo Braga (padaria, cliente PJ) chegou a credenciado e não apareceu no C2X; um cadastro de corretor caiu na fila de validação sem ter o que validar; e um cadastro PF ficou travado com o botão apagado sem dizer o que faltava. Palavras dele: "seria ótimo colocar um aviso do que falta a ser preenchido".',
     },
     title: "Cliente empresa chega ao C2X, e o cadastro diz o que falta",
     type: "correcao",
@@ -3880,8 +3872,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "UPLOAD EM DOIS CAMINHOS (estratégia definida pelo Lucas: 'se for um arquivo grande ele vai direto, se não segue o fluxo'). O documento que cabe no corpo continua viajando em base64 no JSON, byte a byte como antes; o que não cabe sobe por signed upload URL (mesmo padrão já em produção no Prometeu PA e nos anexos do Hermes) e viaja como referência (storagePath + sizeBytes). A escolha é POR CATEGORIA (categoriasParaUploadDireto soma o base64 da categoria), então RG frente+verso vão sempre pelo mesmo caminho e o agrupamento em PDF único é preservado: quando a categoria vai pelo caminho direto, o servidor baixa do Storage e junta com o mesmo juntarEmPdf; acima de 24MB somados vira arquivo por página COM aviso na tela, nunca em silêncio. Novas rotas /api/apolo/cadastro/upload-url e /api/publico/cad/upload-url só ASSINAM (não recebem arquivo); o caminho é montado no servidor a partir do dono da sessão (prefixoUploadDireto + uuid + nome sanitizado), nunca do que o cliente manda, e as TRÊS rotas de salvar validam com caminhoUploadDiretoValido. A pública exige a sessão assinada (x-cad-sessao) e ganhou balde de rate-limit próprio. uploadApoloDocument confere o tamanho REAL com .info() e move do staging para a pasta da entidade antes de criar a linha: se o arquivo não estiver lá, não nasce documento com link quebrado. validarDocumentosObrigatorios passou a aceitar as DUAS formas de anexo (fileBase64 OU storagePath) e continua recusando quando não há nenhuma. Bundle antigo em cache segue funcionando. Também: useEffect que dispara a busca de CEP quando o endereço vem do OCR (antes só rodava se o operador digitasse), e CampoDoDocumento aplicado à naturalidade/nacionalidade do sócio. 267 testes.",
+      done: "UPLOAD EM DOIS CAMINHOS (estratégia definida pelo Lucas: 'se for um arquivo grande ele vai direto, se não segue o fluxo'). O documento que cabe no corpo continua viajando em base64 no JSON, byte a byte como antes; o que não cabe sobe por signed upload URL (mesmo padrão já em produção no Prometeu PA e nos anexos do Hermes) e viaja como referência (storagePath + sizeBytes). A escolha é POR CATEGORIA (categoriasParaUploadDireto soma o base64 da categoria), então RG frente+verso vão sempre pelo mesmo caminho e o agrupamento em PDF único é preservado: quando a categoria vai pelo caminho direto, o servidor baixa do Storage e junta com o mesmo juntarEmPdf; acima de 24MB somados vira arquivo por página COM aviso na tela, nunca em silêncio. Novas rotas /api/apolo/cadastro/upload-url e /api/publico/cad/upload-url só ASSINAM (não recebem arquivo); o caminho é montado no servidor a partir do dono da sessão (prefixoUploadDireto + uuid + nome sanitizado), nunca do que o cliente manda, e as TRÊS rotas de salvar validam com caminhoUploadDiretoValido. A pública exige a sessão assinada (x-cad-sessao) e ganhou balde de rate-limit próprio. uploadApoloDocument confere o tamanho REAL com .info() e move do staging para a pasta da entidade antes de criar a linha: se o arquivo não estiver lá, não nasce documento com link quebrado. validarDocumentosObrigatorios passou a aceitar as DUAS formas de anexo (fileBase64 OU storagePath) e continua recusando quando não há nenhuma. Bundle antigo em cache segue funcionando. Também: useEffect que dispara a busca de CEP quando o endereço vem do OCR (antes só rodava se o operador digitasse), e CampoDoDocumento aplicado à naturalidade/nacionalidade do sócio. 267 testes.",
       motivation:
         "Lucas, 05/08, cadastrando a Vovo Braga pelo link público: o contrato social em PDF somava 3,8MB e o envio barrava em 3,2MB, obrigando a trocar o PDF por foto. Pedido dele: 'deixa o padrão 20MB para documentos'. Só aumentar o número faria o envio estourar o limite de corpo da Vercel e virar erro seco no fim do cadastro, daí os dois caminhos. No mesmo cadastro, o comprovante do sócio foi lido com 58% de confiança e trouxe 'CPF/CNPJ:.' no lugar da rua, e a naturalidade do sócio ficou travada sem como preencher.",
     },
@@ -3933,8 +3924,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "1) SEGURANÇA: as sondas /api/apolo/c2x-sync/obrigatorios e /unidades-sonda aceitavam `host` no CORPO e usavam esse host como destino do fetch que leva o token de escrita do C2X nos headers — sessão admin comprometida extraía a credencial de produção. Agora o destino sai da env e o corpo só pode PEDIR um host de uma allowlist (resolverHostSonda em lib/apolo/c2x-integracao.ts), que devolve a constante canônica, nunca o texto do corpo; host não permitido = 400 ANTES de qualquer fetch. 3 testes de regressão cobrem usuário embutido na URL, sufixo, porta trocada e downgrade para http. 2) PIX→C2X: aoEnviarPixPrevenda e aoConfirmarPagamentoPrevenda gravavam etapa='credenciado' por escrita direta, fora de atualizarEtapa, então o gancho subirParaC2xAoCredenciar nunca rodava (mesma classe do furo que já haviam remendado só para a fila do Prometeu). Passaram a chamar o envio best-effort, e no webhook do Asaas ele roda DEPOIS da fila e cobre também a saída antecipada de 'sem evento ativo' — o webhook tem teto de 30s e não reprocessa, então o lugar na fila pela hora do pagamento vem primeiro. 3) ALERTA: /api/apolo/board lê apolo_c2x_sync por STATUS (não por .in() com centenas de ids, que estoura a URL do PostgREST) e o Board ganhou o selo SeloC2x; motivoLegivel() troca o `<br>` do Rails por '; ' (13 das 41 falhas em produção vinham com a tag crua). 4) Naturalidade obrigatória em validarCamposMinimos (servidor, as duas rotas) e em podeAvancarPf; novo CampoDoDocumento decide ReadField x TextField UMA VEZ na montagem — o ternário por valor travava o input na primeira letra digitada e criava beco sem saída. 5) PATCH/POST de empreendimentos/settings passaram de authorizeApoloRead (que inclui viewer) para authorizeApoloWrite. 6) Chronos: gate do host passou a depender do isHost RESPONDIDO pelo servidor, não do Bearer enviado, e a falha no preparo sai do loader mostrando o erro. Migration 0082 (apolo_credito_overrides) aplicada. 265 testes passando.",
+      done: "1) SEGURANÇA: as sondas /api/apolo/c2x-sync/obrigatorios e /unidades-sonda aceitavam `host` no CORPO e usavam esse host como destino do fetch que leva o token de escrita do C2X nos headers — sessão admin comprometida extraía a credencial de produção. Agora o destino sai da env e o corpo só pode PEDIR um host de uma allowlist (resolverHostSonda em lib/apolo/c2x-integracao.ts), que devolve a constante canônica, nunca o texto do corpo; host não permitido = 400 ANTES de qualquer fetch. 3 testes de regressão cobrem usuário embutido na URL, sufixo, porta trocada e downgrade para http. 2) PIX→C2X: aoEnviarPixPrevenda e aoConfirmarPagamentoPrevenda gravavam etapa='credenciado' por escrita direta, fora de atualizarEtapa, então o gancho subirParaC2xAoCredenciar nunca rodava (mesma classe do furo que já haviam remendado só para a fila do Prometeu). Passaram a chamar o envio best-effort, e no webhook do Asaas ele roda DEPOIS da fila e cobre também a saída antecipada de 'sem evento ativo' — o webhook tem teto de 30s e não reprocessa, então o lugar na fila pela hora do pagamento vem primeiro. 3) ALERTA: /api/apolo/board lê apolo_c2x_sync por STATUS (não por .in() com centenas de ids, que estoura a URL do PostgREST) e o Board ganhou o selo SeloC2x; motivoLegivel() troca o `<br>` do Rails por '; ' (13 das 41 falhas em produção vinham com a tag crua). 4) Naturalidade obrigatória em validarCamposMinimos (servidor, as duas rotas) e em podeAvancarPf; novo CampoDoDocumento decide ReadField x TextField UMA VEZ na montagem — o ternário por valor travava o input na primeira letra digitada e criava beco sem saída. 5) PATCH/POST de empreendimentos/settings passaram de authorizeApoloRead (que inclui viewer) para authorizeApoloWrite. 6) Chronos: gate do host passou a depender do isHost RESPONDIDO pelo servidor, não do Bearer enviado, e a falha no preparo sai do loader mostrando o erro. Migration 0082 (apolo_credito_overrides) aplicada. 265 testes passando.",
       motivation:
         "Lucas, 05/08: não conseguia avançar o cadastro da Vovo Braga (PJ) pelo link público, e pediu um alerta visual para quando uma CAD não subir para o C2X. A investigação mostrou que o problema era maior: 36 CADs com erro e 5 aceitas sem confirmação estavam gravadas em apolo_c2x_sync sem ninguém ver, o fluxo principal do negócio (PIX pago credencia) nunca chamava o envio ao C2X, e as sondas de diagnóstico entregavam o token de produção para qualquer host informado no corpo.",
     },
@@ -3962,8 +3952,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Novo módulo lib/apolo/cadastro-obrigatorios.ts como fonte única da regra (requisitosDocumentos, validarDocumentosObrigatorios, validarCamposMinimos), espelhando o que o wizard já exigia para avançar: PF = identificacao + comprovante_endereco, mais certidao/identificacao_conjuge conforme estado civil; PJ = cartão CNPJ + contrato_social + documento de sócio. A trava roda no SERVIDOR (400 antes de criar a entidade) em /api/publico/cad/salvar e /api/apolo/cadastro/salvar — as duas tinham o mesmo furo, validavam só tamanho e quantidade. No cliente, o botão Enviar ganhou disabled + lista do que falta. A validação conta o ARQUIVO anexado (fileBase64 presente), nunca o sucesso do OCR nem score de qualidade — preserva a regra do v1.105.0 (MOST não trava). 20 testes novos, 244 no total.",
+      done: "Novo módulo lib/apolo/cadastro-obrigatorios.ts como fonte única da regra (requisitosDocumentos, validarDocumentosObrigatorios, validarCamposMinimos), espelhando o que o wizard já exigia para avançar: PF = identificacao + comprovante_endereco, mais certidao/identificacao_conjuge conforme estado civil; PJ = cartão CNPJ + contrato_social + documento de sócio. A trava roda no SERVIDOR (400 antes de criar a entidade) em /api/publico/cad/salvar e /api/apolo/cadastro/salvar — as duas tinham o mesmo furo, validavam só tamanho e quantidade. No cliente, o botão Enviar ganhou disabled + lista do que falta. A validação conta o ARQUIVO anexado (fileBase64 presente), nunca o sucesso do OCR nem score de qualidade — preserva a regra do v1.105.0 (MOST não trava). 20 testes novos, 244 no total.",
       motivation:
         "Em 04/08, 12 clientes subiram CAD pelo link só com o PDF do formulário, sem identificação e sem comprovante — o portal aceitava e marcava correção depois. Willian Jones Pereira foi o caso que o Lucas apontou. Regra dele: não pode subir sem todos os dados obrigatórios preenchidos.",
     },
@@ -3997,8 +3986,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "persistApoloEntityBatch (lib/apolo/server.ts:3401) passou a usar ON CONFLICT DO NOTHING (ignoreDuplicates do postgrest-js, confirmado no dist que roda) nas 8 tabelas de identidade — apolo_entities, entity_profiles, source_links, entity_identifiers, contacts, addresses, relationships e search_entries —, mantendo upsert normal nas 6 de carteira (commercial_links, financial_snapshots, documents, timeline_events, audit_events, module_records). Cria quem não existe, nunca sobrescreve quem existe: sem isso a carteira de um cliente novo ficaria órfã por violação de FK. Aplicado a todos os perfis, sem filtro, para não conviverem dois comportamentos na mesma função. Novo teste sync-c2x-identidade.test.ts com banco fake que imita as duas cláusulas do Postgres. Junto: dedup de CAD passou a comparar enterprise_id (cadastro-persist.ts) e a mensagem parou de afirmar aptidão.",
+      done: "persistApoloEntityBatch (lib/apolo/server.ts:3401) passou a usar ON CONFLICT DO NOTHING (ignoreDuplicates do postgrest-js, confirmado no dist que roda) nas 8 tabelas de identidade — apolo_entities, entity_profiles, source_links, entity_identifiers, contacts, addresses, relationships e search_entries —, mantendo upsert normal nas 6 de carteira (commercial_links, financial_snapshots, documents, timeline_events, audit_events, module_records). Cria quem não existe, nunca sobrescreve quem existe: sem isso a carteira de um cliente novo ficaria órfã por violação de FK. Aplicado a todos os perfis, sem filtro, para não conviverem dois comportamentos na mesma função. Novo teste sync-c2x-identidade.test.ts com banco fake que imita as duas cláusulas do Postgres. Junto: dedup de CAD passou a comparar enterprise_id (cadastro-persist.ts) e a mensagem parou de afirmar aptidão.",
       motivation:
         "O sync montava o metadata do zero e o upsert substituía a coluna jsonb inteira, então cada rodada apagava metadata.cadastro e o que o operador tinha corrigido. Em 20/jul isso custou a etapa e o analista de 122 CADs numa única passada. Decisão do Lucas em 04/08: o Apolo é dono do cadastro, o C2X é dono do dinheiro.",
     },
@@ -4029,8 +4017,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "lib/hades/dossie/: encargos.ts extrai multa/juros/índice do texto do contrato (acquisition_request_contracts.complete_text), reconhecendo as duas minutas em uso (Vale do Ouro e Lavra do Ouro, esta com ordem invertida) — 10/10 contratos reais com cláusula citável, 12 testes. dados.ts agrega o C2X separando DÍVIDA VENCIDA de SALDO TOTAL. tratativas.ts junta guardian_compromissos + guardian_compromisso_comments + caredesk_ticket_events (estes com ticket_id NULL, ligados só por metadata.client_id). pdf.ts monta as 13 seções com pdf-lib. Rota POST /api/guardian/dossie (authorizeHadesWrite, que é o único que devolve o nome do usuário para a capa) → uploadApoloDocument em apolo_documents, sem substituir dossiês anteriores (série histórica). Correção monetária entra por percentual digitado, em coluna própria da memória de cálculo.",
+      done: "lib/hades/dossie/: encargos.ts extrai multa/juros/índice do texto do contrato (acquisition_request_contracts.complete_text), reconhecendo as duas minutas em uso (Vale do Ouro e Lavra do Ouro, esta com ordem invertida) — 10/10 contratos reais com cláusula citável, 12 testes. dados.ts agrega o C2X separando DÍVIDA VENCIDA de SALDO TOTAL. tratativas.ts junta guardian_compromissos + guardian_compromisso_comments + caredesk_ticket_events (estes com ticket_id NULL, ligados só por metadata.client_id). pdf.ts monta as 13 seções com pdf-lib. Rota POST /api/guardian/dossie (authorizeHadesWrite, que é o único que devolve o nome do usuário para a capa) → uploadApoloDocument em apolo_documents, sem substituir dossiês anteriores (série histórica). Correção monetária entra por percentual digitado, em coluna própria da memória de cálculo.",
       motivation:
         "O encaminhamento ao jurídico era montado à mão a cada caso, juntando print de tela, extrato e conversa. Agora sai um documento só, com cada número tendo origem citável no contrato — que é o que se pode levar para os autos.",
     },
@@ -4057,8 +4044,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Vigia da instância Evolution: lib/iris/evolution-saude.ts consulta connectionState e avisa APENAS na virada (caiu/voltou), usando a própria hub_notifications como memória de estado (context.vigia/situacao) — sem tabela nova. Rota /api/iris/evolution/saude (GET com CRON_SECRET dispara o aviso; sem credencial devolve só o estado, servindo de health check) + cron de 5 min. Junto: gancho registrarPa → apolo_documents no registrarPa (lib/prometeu/pa.ts), best-effort, com backfill já aplicado nas 118 PAs do lançamento.",
+      done: "Vigia da instância Evolution: lib/iris/evolution-saude.ts consulta connectionState e avisa APENAS na virada (caiu/voltou), usando a própria hub_notifications como memória de estado (context.vigia/situacao) — sem tabela nova. Rota /api/iris/evolution/saude (GET com CRON_SECRET dispara o aviso; sem credencial devolve só o estado, servindo de health check) + cron de 5 min. Junto: gancho registrarPa → apolo_documents no registrarPa (lib/prometeu/pa.ts), best-effort, com backfill já aplicado nas 118 PAs do lançamento.",
       motivation:
         "Em 03/08 a sessão do WhatsApp dos grupos caiu às 7h57 e só foi descoberta às 14h41 pela operadora tentando responder um cliente: ~7h de grupos mudos sem ninguém saber.",
     },
@@ -4084,8 +4070,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Espelho do masterplan: lib/apolo/espelho-masterplan.ts casa as 298 unidades do VLO(35) com as gêmeas de VOC(37)/VOL(36) por (quadra, lote) e copia sale_status_id/sale_blocked apenas quando divergem. Rota /api/apolo/masterplan/espelho (GET por cron, POST manual com sessão admin) + cron de 1 minuto no vercel.json. Minuto sem movimento = 1 SELECT que volta vazio (~300ms, zero escrita); log só quando muda. Testado contra produção: divergência simulada em VLO0101 detectada e corrigida na execução seguinte.",
+      done: "Espelho do masterplan: lib/apolo/espelho-masterplan.ts casa as 298 unidades do VLO(35) com as gêmeas de VOC(37)/VOL(36) por (quadra, lote) e copia sale_status_id/sale_blocked apenas quando divergem. Rota /api/apolo/masterplan/espelho (GET por cron, POST manual com sessão admin) + cron de 1 minuto no vercel.json. Minuto sem movimento = 1 SELECT que volta vazio (~300ms, zero escrita); log só quando muda. Testado contra produção: divergência simulada em VLO0101 detectada e corrigida na execução seguinte.",
       motivation:
         "O corretor oferece lote pela cor do mapa (show_map/35) e a venda acontece no VOC/VOL: cor atrasada = lote vendido oferecido de novo = venda perdida (Lucas, 03/08).",
     },
@@ -4122,8 +4107,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Divisão VLO(35) → VOC(37, Cecílio) + VOL(36, Lino) executada no C2X: 298 unidades replicadas pela API oficial, 280 propostas migradas por (quadra, lote) com backup, VLO aposentado (sale_blocked). BI: constantes ENTERPRISES [35,36,37] para propostas e LISTA_UNIDADES_VIVAS (36,37) para contagem de unidades (evita dobrar o empreendimento); duelo por enterprise_id. Novo componente LogoEmpreendimento (contain + fallback onError) usado no portal de imobiliária e no portão do corretor. Lançamento encerrado (evento status=encerrado, 118 concluídos).",
+      done: "Divisão VLO(35) → VOC(37, Cecílio) + VOL(36, Lino) executada no C2X: 298 unidades replicadas pela API oficial, 280 propostas migradas por (quadra, lote) com backup, VLO aposentado (sale_blocked). BI: constantes ENTERPRISES [35,36,37] para propostas e LISTA_UNIDADES_VIVAS (36,37) para contagem de unidades (evita dobrar o empreendimento); duelo por enterprise_id. Novo componente LogoEmpreendimento (contain + fallback onError) usado no portal de imobiliária e no portão do corretor. Lançamento encerrado (evento status=encerrado, 118 concluídos).",
       motivation:
         "Cada unidade pertence a uma empresa diferente (pedido do Lucas): separação por empreendimento a partir da unidade, com o trabalho do corretor centralizado no master.",
     },
@@ -4153,8 +4137,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Revisão de 4 lentes + refutação (37 agentes, 30 achados confirmados) na véspera da carga dos corretores. Corrigidos os 7 críticos de código: tetos em rate-limit.ts; SESSAO_TTL_SEGUNDOS 45min→4h; modo anexo no cadastro-persist (dedup distingue ficha de CAD via apolo_esteira, merge de metadata preservando source/c2xSynced); guard de tamanho total no enviar() com mensagem acionável; catch do OCR diferenciando 429/401; 401 no assistente sem sessão/pré-sessão; rota do 409 repassa a mensagem verdadeira. Dado: credenciamento do VOC(37) desativado nos settings (CAD 100% no master VLO, decisão do Lucas). Backlog registrado: aprovação de imobiliária (review→active INEXISTE — paliativo manual), upload por signed URL, sliding session, notificação de CAD nova, timeout MOST, teto global de gasto.",
+      done: "Revisão de 4 lentes + refutação (37 agentes, 30 achados confirmados) na véspera da carga dos corretores. Corrigidos os 7 críticos de código: tetos em rate-limit.ts; SESSAO_TTL_SEGUNDOS 45min→4h; modo anexo no cadastro-persist (dedup distingue ficha de CAD via apolo_esteira, merge de metadata preservando source/c2xSynced); guard de tamanho total no enviar() com mensagem acionável; catch do OCR diferenciando 429/401; 401 no assistente sem sessão/pré-sessão; rota do 409 repassa a mensagem verdadeira. Dado: credenciamento do VOC(37) desativado nos settings (CAD 100% no master VLO, decisão do Lucas). Backlog registrado: aprovação de imobiliária (review→active INEXISTE — paliativo manual), upload por signed URL, sliding session, notificação de CAD nova, timeout MOST, teto global de gasto.",
       motivation:
         "Pedido do Lucas 03/08: revisar o fluxo de CAD e imobiliária antes do dia de trabalho em massa dos corretores; garantir zero gargalo.",
     },
@@ -4181,8 +4164,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Token HMAC do telão (lib/prometeu/link-do-telao.ts, mesmo desenho do link da fila, SESSAO_CAD_SECRET, sem exp — revoga pelo ciclo do evento); rota /api/prometeu/telao aceita ?tv= como terceira via e valida o evento do token contra o operável; rota liberada no proxy (valida por dentro); telao.html anexa o token e pula a sessão do hub; GET /api/prometeu/palco devolve linksTv atrás do login; botões de copiar na aba Telões do Setup.",
+      done: "Token HMAC do telão (lib/prometeu/link-do-telao.ts, mesmo desenho do link da fila, SESSAO_CAD_SECRET, sem exp — revoga pelo ciclo do evento); rota /api/prometeu/telao aceita ?tv= como terceira via e valida o evento do token contra o operável; rota liberada no proxy (valida por dentro); telao.html anexa o token e pula a sessão do hub; GET /api/prometeu/palco devolve linksTv atrás do login; botões de copiar na aba Telões do Setup.",
       motivation:
         "TV logada com cookie de operador (TTL 14h) expirava no meio do evento e o telão morria mudo (401 em loop na tarde de 02/08). Pedido do Lucas: tirar o operador da TV.",
     },
@@ -4209,8 +4191,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Dia 01/08 encerrado via encerrarDia (108 concluídos guardados, 499 arquivados com motivo, mesas liberadas, evento segue em andamento para o dia 2). Página estática de fechamento no padrão do BI: funil do dia, curvas de check-in×conclusão, placar das mesas e resumo do arquivamento.",
+      done: "Dia 01/08 encerrado via encerrarDia (108 concluídos guardados, 499 arquivados com motivo, mesas liberadas, evento segue em andamento para o dia 2). Página estática de fechamento no padrão do BI: funil do dia, curvas de check-in×conclusão, placar das mesas e resumo do arquivamento.",
       motivation:
         "Pedido do Lucas 02/08: encerrar o dia de ontem (guardar atendimentos, arquivar não-finalizados) e gerar relatório de fechamento no padrão do BI de vendas.",
     },
@@ -4238,8 +4219,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "conferirDocumento não lança mais (tipo trocado e baixa confiança viram avisos em ext.avisoQualidade); DocUploader retém o arquivo ANTES da validação e trata falha do OCR por arquivo (extração vazia + aviso, em vez de descartar); StepCertidao com canNext por documento enviado (não mais leitura reconhecida) e banner âmbar. Travas de NEGÓCIO (ex.: documento do titular no lugar do cônjuge) continuam.",
+      done: "conferirDocumento não lança mais (tipo trocado e baixa confiança viram avisos em ext.avisoQualidade); DocUploader retém o arquivo ANTES da validação e trata falha do OCR por arquivo (extração vazia + aviso, em vez de descartar); StepCertidao com canNext por documento enviado (não mais leitura reconhecida) e banner âmbar. Travas de NEGÓCIO (ex.: documento do titular no lugar do cônjuge) continuam.",
       motivation:
         "Pedido do Lucas 02/08: a MOST recusava certidão de casamento legítima e trancava o cadastro; quando não ler, abre manual e salva o arquivo imputado.",
     },
@@ -4266,8 +4246,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "BI REALTIME em /bi/vale-do-ouro.html: página estática (fora do gate, como o telão) que consome /api/publico/bi/vale-do-ouro (rota nova, liberada UMA A UMA no proxy, só agregados, CDN s-maxage=60 — N espectadores = 1 consulta MySQL/min). Motor em lib/prometeu/bi-vale-do-ouro.ts (vendas, VGV, lotes Cecílio×Lino, ranking, planos, entrada, contratos, cobranças, investidores, perfil, cidades por endereço). Poll de 60s com guard sem-payload. Sem nomes de compradores.",
+      done: "BI REALTIME em /bi/vale-do-ouro.html: página estática (fora do gate, como o telão) que consome /api/publico/bi/vale-do-ouro (rota nova, liberada UMA A UMA no proxy, só agregados, CDN s-maxage=60 — N espectadores = 1 consulta MySQL/min). Motor em lib/prometeu/bi-vale-do-ouro.ts (vendas, VGV, lotes Cecílio×Lino, ranking, planos, entrada, contratos, cobranças, investidores, perfil, cidades por endereço). Poll de 60s com guard sem-payload. Sem nomes de compradores.",
       motivation:
         "Lucas pediu o BI com link público no nosso domínio (sem moldura do claude.ai) e com dados realtime do C2X.",
     },
@@ -4320,8 +4299,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       },
     ],
     technical: {
-      done:
-        "Revisão completa do fluxo da fila da secretaria (32 agentes, 27 achados confirmados) e correção em lote: emTransitoTodos no payload da fila (regressão do overlay do atendente); filtro de sentados nas 3 filas e no telão; fechamento de chamadas órfãs em moverEtapa/liberarMesa/bipDaSecretaria; trava anti-corrida e anti-roubo no chamarCredenciado; validação do ocupante real no liberarMesa; marcarEmAtendimento com contagem de linhas; guard de payload no checkin-view; fila de anúncios + ?alvo= + watchdog + aviso de desconexão no telão; telefones da fila em lotes de 300; log de falha do WhatsApp de chamado. Maestro dos telões (rota /api/prometeu/palco + broadcast 'palco' + aba Telões no Setup). Cron do relatório diário das imobiliárias (18h) REMOVIDO do vercel.json a pedido do Lucas (01/08) — para religar, devolver a entrada e deployar.",
+      done: "Revisão completa do fluxo da fila da secretaria (32 agentes, 27 achados confirmados) e correção em lote: emTransitoTodos no payload da fila (regressão do overlay do atendente); filtro de sentados nas 3 filas e no telão; fechamento de chamadas órfãs em moverEtapa/liberarMesa/bipDaSecretaria; trava anti-corrida e anti-roubo no chamarCredenciado; validação do ocupante real no liberarMesa; marcarEmAtendimento com contagem de linhas; guard de payload no checkin-view; fila de anúncios + ?alvo= + watchdog + aviso de desconexão no telão; telefones da fila em lotes de 300; log de falha do WhatsApp de chamado. Maestro dos telões (rota /api/prometeu/palco + broadcast 'palco' + aba Telões no Setup). Cron do relatório diário das imobiliárias (18h) REMOVIDO do vercel.json a pedido do Lucas (01/08) — para religar, devolver a entrada e deployar.",
       motivation:
         "Dia do lançamento Vale do Ouro: mesas travando ao chamar, clientes sumindo da fila, telão mudo em rechamadas. Pedido do Lucas: revisar tudo e dar solução definitiva.",
     },
@@ -4416,7 +4394,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas, montando a equipe na véspera: 'gestor não precisa de local' e, ao descobrir que atendente/gestor não tinham tela no /evento, definiu o modelo — 'todos os externos acessam pelo login do Vale do Ouro, faz uma tela para mobile e pc; os internos acessam o hub'.",
     },
-    title: "Prometeu: acesso da equipe do evento (cada perfil na sua tela, celular e PC)",
+    title:
+      "Prometeu: acesso da equipe do evento (cada perfil na sua tela, celular e PC)",
     type: "novidade",
     version: "1.101.0",
   },
@@ -4524,7 +4503,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: 'quando chamar no salão e na secretaria tem que chamar no telão' + 'tem que ser igual o que eu aprovei no mockup'. Escopo escolhido: só a chamada, com a voz da CACÁ.",
     },
-    title: "Prometeu: telão ligado de verdade (chamada em tempo real + voz da CACÁ)",
+    title:
+      "Prometeu: telão ligado de verdade (chamada em tempo real + voz da CACÁ)",
     type: "novidade",
     version: "1.97.0",
   },
@@ -4605,7 +4585,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: 'na hora que chamar tem que ser em realtime' (o chamado tinha ~10s de atraso do poll) e 'não tem como colocar um som quando o cliente é chamado e fazer o telefone dele vibrar?' + 'garantir que o cliente veja que foi chamado'. E o ajuste do 'º' no numeral.",
     },
-    title: "Prometeu: alerta em tempo real quando o cliente é chamado (som + vibração + notificação)",
+    title:
+      "Prometeu: alerta em tempo real quando o cliente é chamado (som + vibração + notificação)",
     type: "novidade",
     version: "1.94.0",
   },
@@ -4631,7 +4612,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas, após validar o fix de layout: 'nome do cliente pequeno, aumenta' e 'tirar o texto abaixo da posição, deixar só a posição na fila'.",
     },
-    title: "Prometeu: tela do cliente com nome em destaque e posição mais limpa",
+    title:
+      "Prometeu: tela do cliente com nome em destaque e posição mais limpa",
     type: "melhoria",
     version: "1.93.0",
   },
@@ -4657,7 +4639,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas testou o link no celular (WhatsApp e fora dele) e a tela veio 'quebrada, aquele mesmo erro de disposição'. É o mesmo bug do /publico/cad de 20/jul.",
     },
-    title: "Prometeu: corrige a tela do cliente escapando pra direita no celular",
+    title:
+      "Prometeu: corrige a tela do cliente escapando pra direita no celular",
     type: "correcao",
     version: "1.92.0",
   },
@@ -4685,7 +4668,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas (frente Gestão): indicadores por fase + tempos no Painel, Analítico no celular com filtro por etapa+imobiliária ('quem está em negociação da imobiliária X'), e o Voltar mais óbvio. Mockup aprovado.",
     },
-    title: "Prometeu: Gestão no celular com fluxo, tempos e Analítico filtrável",
+    title:
+      "Prometeu: Gestão no celular com fluxo, tempos e Analítico filtrável",
     type: "novidade",
     version: "1.91.0",
   },
@@ -4712,7 +4696,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: no check-in, mandar a boas-vindas com a logo C2X e a posição, levando à tela do cliente. Para teste, 'todo check-in deve cair no meu celular' (modo teste). Decisão: automático via template (revoga o wa.me manual), submeter à Meta já.",
     },
-    title: "Prometeu: boas-vindas automática no check-in (template + link da fila)",
+    title:
+      "Prometeu: boas-vindas automática no check-in (template + link da fila)",
     type: "novidade",
     version: "1.90.0",
   },
@@ -4738,7 +4723,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: tela do cliente 'moderna, de impressionar', com posição, perspectiva de atendimento e mini-fluxo. Mockup aprovado ('ficou do jeito que eu queria').",
     },
-    title: "Prometeu: tela do cliente na fila com posição, perspectiva e mini-fluxo",
+    title:
+      "Prometeu: tela do cliente na fila com posição, perspectiva e mini-fluxo",
     type: "melhoria",
     version: "1.89.0",
   },
@@ -4765,7 +4751,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas atualizou no celular e não via a Gestão: o bip e as reservas (v1.87) viviam só na Central do PC. Esta é a porta de entrada + a tela mobile. Mockup aprovado (menos texto). Acesso: login do hub = gestor (não só admin).",
     },
-    title: "Prometeu: Gestão no celular (escolha Operação/Gestão + KPIs, bip e reservas)",
+    title:
+      "Prometeu: Gestão no celular (escolha Operação/Gestão + KPIs, bip e reservas)",
     type: "novidade",
     version: "1.88.0",
   },
@@ -4797,7 +4784,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: escalada do perfil Gestão. 'função de bip para o gestor... abre a tela da jornada dele'; e a tela de reservas para o coordenador pegar corretor/imobiliária que reserva unidade e não devolve ('guardando'). Decisões: reserva=etapa parada, alerta 30min, ordem bip→reservas→bifurcação→gestão.",
     },
-    title: "Prometeu: bip do gestor (abre a jornada) e aba de reservas seguradas",
+    title:
+      "Prometeu: bip do gestor (abre a jornada) e aba de reservas seguradas",
     type: "novidade",
     version: "1.87.0",
   },
@@ -4836,7 +4824,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas, sobre a operação do dia (lançamento 01/08): 'quando ele fala que o cliente não veio, a fila do aguardando tem que ser na tela dele, está indo para o checkin'; 'no mapa do salão dá pra colocar o nome do cliente, tirar essa legenda'; 'a tela do picture in picture ainda continua quebrado'.",
     },
-    title: "Prometeu: no-show por posto, nome do cliente no mapa do salão e PiP consertado",
+    title:
+      "Prometeu: no-show por posto, nome do cliente no mapa do salão e PiP consertado",
     type: "correcao",
     version: "1.86.0",
   },
@@ -4915,7 +4904,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: 'os crédito em revisão também estão faltando'. Andreza Carvalho (Mais Lotes) e ~140 outros em revisão sumiam por terem a imobiliária só como texto de apelido.",
     },
-    title: "Apolo: relatório inclui CADs com imobiliária só em texto (de-para de apelidos)",
+    title:
+      "Apolo: relatório inclui CADs com imobiliária só em texto (de-para de apelidos)",
     type: "correcao",
     version: "1.83.0",
   },
@@ -4967,7 +4957,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas apontou como extremamente grave: CADs vinculadas somindo do relatório da imobiliária. Descompasso entre o tipo de vínculo legado e o novo.",
     },
-    title: "Apolo: relatório volta a mostrar todo cliente com imobiliária vinculada",
+    title:
+      "Apolo: relatório volta a mostrar todo cliente com imobiliária vinculada",
     type: "correcao",
     version: "1.81.0",
   },
@@ -5289,7 +5280,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas (Parte 2 de 2): a jornada mostrava a etapa atual + etiqueta, nao o caminho pelo circuito. A gestao precisa ver por onde o cliente passou (negociacao, reserva com unidades, secretaria, proposta) e os no-shows. Sem migration.",
     },
-    title: "Prometeu: jornada do cliente reformulada (circuito do evento + no-shows)",
+    title:
+      "Prometeu: jornada do cliente reformulada (circuito do evento + no-shows)",
     type: "novidade",
     version: "1.69.0",
   },
@@ -5316,7 +5308,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas testando o Mapa do salao: as mesas mostravam 'sem atendente' porque a escolha da mesa vivia so no localStorage; e faltavam os indicadores por mesa que a gestao acompanha no dia. Parte 1 de 2 — a jornada reformulada (etapas do circuito + no-shows) vem em seguida.",
     },
-    title: "Prometeu: Mapa do salao mostra o atendente e os indicadores por mesa",
+    title:
+      "Prometeu: Mapa do salao mostra o atendente e os indicadores por mesa",
     type: "novidade",
     version: "1.68.0",
   },
@@ -5375,7 +5368,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Ajustes da tela de atendimento apontados pelo Lucas testando o ensaio: a tela e so da secretaria, entao cabecalho e paineis de outras zonas saem; o no-show tem que respeitar a fila de origem; a janela flutuante estava com os botoes mortos; e o reset tem que zerar tudo do ensaio, inclusive no-show e PA.",
     },
-    title: "Prometeu: faxina na tela de Atendimento + no-show por fila + PiP e reset",
+    title:
+      "Prometeu: faxina na tela de Atendimento + no-show por fila + PiP e reset",
     type: "correcao",
     version: "1.66.0",
   },
@@ -5449,7 +5443,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "O Lucas cortou a tela do Atendente tres vezes e fechou a questao: 'pega o codigo do mockado e habilita motor'. Portar deixou de ser reimplementar em Tailwind seguindo uma lista e passou a ser reusar o CSS e o markup do mockup. O evento e em 01/08.",
     },
-    title: "Prometeu: Central e Atendente com o layout aprovado e os motores ligados",
+    title:
+      "Prometeu: Central e Atendente com o layout aprovado e os motores ligados",
     type: "novidade",
     version: "1.64.0",
   },
@@ -5765,7 +5760,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas testando no celular: 'eu posso ter uma menina chamando 5 pessoas' — o estado local so' guardava o ultimo chamado e nao atravessava aparelhos. Tambem pediu cronometro no lugar da hora, numeracao em destaque, atualizacao automatica e o painel de chamada mais forte ('esta muito discreto').",
     },
-    title: "Prometeu: varios chamados ao mesmo tempo, cronometro e auto-refresh",
+    title:
+      "Prometeu: varios chamados ao mesmo tempo, cronometro e auto-refresh",
     type: "melhoria",
     version: "1.62.92",
   },
@@ -5856,7 +5852,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Faltavam 2 dos 3 pontos de QR do trilho fisico a 5 dias do lancamento. Bloqueio achado no caminho: SO o check-in aceitava o operador do evento; salao e secretaria teriam falhado na mao do freela, que e' quem opera no dia.",
     },
-    title: "Prometeu: organizador escolhe o posto (recepcao, salao, secretaria)",
+    title:
+      "Prometeu: organizador escolhe o posto (recepcao, salao, secretaria)",
     type: "novidade",
     version: "1.62.88",
   },
@@ -6088,7 +6085,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     technical: {
       done: "board-view: `onIdentidadeSalva` atravessa ValidacaoLadoALado -> PainelEtapa -> DetalheBoard -> BoardView e dispara carregarFila so' quando a identidade muda; carregarFila passou a ressincronizar `selecionado` por id (o titulo lia de estado proprio). cadastro-flow: campos da identidade alternam ReadField/TextField, com o CPF usando `cpfValido` (nao `vazio`) como criterio; `podeAvancarPf` exige nome e CPF valido.",
       motivation:
-        "O nome ia certo pro banco (39 edicoes registradas, nenhuma recusada) mas a fila era carregada uma vez so' e ninguem a avisava. No cadastro, o caso real da Katia Duarte mostrou os dois lados: contracheque e conta de luz nao tem CPF, e o contracheque ainda devolve texto solto (\"Ferias Vencidas\") no campo de CPF — criterio de campo vazio deixaria esse lixo travado na tela.",
+        'O nome ia certo pro banco (39 edicoes registradas, nenhuma recusada) mas a fila era carregada uma vez so\' e ninguem a avisava. No cadastro, o caso real da Katia Duarte mostrou os dois lados: contracheque e conta de luz nao tem CPF, e o contracheque ainda devolve texto solto ("Ferias Vencidas") no campo de CPF — criterio de campo vazio deixaria esse lixo travado na tela.',
     },
     title: "Apolo: nome atualiza no card e cadastro aceita digitacao",
     type: "correcao",
@@ -6170,7 +6167,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.76",
     technical: {
       done: "iris-board-kanban.tsx: nova função exportada valorDaDimensao(dimensao, ticket, helpers) — a MESMA usada pelo agrupamento e pelos filtros, para coluna e filtro nunca discordarem. Estado `filtros` (Record<GroupMode, string[]>, persistido em iris.board.filtros): dentro da dimensão os valores somam (OU), entre dimensões restringem (E). O seletor só oferece valores que existem na aba atual. O contador 'mostrando X de Y' evita o clássico filtro esquecido ligado. Antes o Board só tinha AGRUPAMENTO (muda colunas, não esconde nada), então a barra parecia filtro e não filtrava.",
-      motivation: "Lucas: 'dar a oportunidade de colocar mais de 1 filtro, operador e status, operador status canal, temos que dar oportunidade do operador montar a visão dele'.",
+      motivation:
+        "Lucas: 'dar a oportunidade de colocar mais de 1 filtro, operador e status, operador status canal, temos que dar oportunidade do operador montar a visão dele'.",
     },
     title: "Iris: filtros combináveis no Board",
     type: "melhoria",
@@ -6196,7 +6194,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.75",
     technical: {
       done: "iris-cobranca-context.tsx: removido o rótulo de texto das abas do painel. Com 5 abas em 340px não cabe, e o texto sobrepunha o ícone tanto na versão com rótulo em todas quanto na versão só na aba ativa (confirmado por print do Lucas nas duas tentativas). Se um dia quisermos rótulo aqui, o caminho é reduzir o número de abas, não espremer texto.",
-      motivation: "Lucas: 'pode deixar somente o ícone mesmo'. A tentativa de resolver a queixa dos ícones sem nome quebrou o layout duas vezes.",
+      motivation:
+        "Lucas: 'pode deixar somente o ícone mesmo'. A tentativa de resolver a queixa dos ícones sem nome quebrou o layout duas vezes.",
     },
     title: "Iris: abas do painel voltam a ser só ícone",
     type: "correcao",
@@ -6222,7 +6221,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.74",
     technical: {
       done: "iris-board-kanban.tsx: novo estado abaAtiva (persistido em iris.board.aba) e ticketsDaAba, que separa por natureza — ticket.isGroup vai para Grupos, isEmailBoardTicket para E-mail, o resto para Atendimento. O filtro entra ANTES dos indicadores e do visibleTickets, então cada aba recalcula os próprios números. naoLidasPorAba conta ticket.unread por natureza e alimenta o badge. É separação de APRESENTAÇÃO: a origem dos dados (iris-data-client, onde os grupos entram na mesma lista via ...groupConversations) segue intacta, o que mantém a conversa de grupo funcionando como está.",
-      motivation: "Lucas: os grupos poluem os indicadores e não têm como ser finalizados. A opção por abas dentro do Board (em vez de tela separada) foi escolha dele, e é também o caminho de menor risco.",
+      motivation:
+        "Lucas: os grupos poluem os indicadores e não têm como ser finalizados. A opção por abas dentro do Board (em vez de tela separada) foi escolha dele, e é também o caminho de menor risco.",
     },
     title: "Iris: Board com abas de Atendimento, E-mail e Grupos",
     type: "melhoria",
@@ -6249,7 +6249,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.73",
     technical: {
       done: "(1) iris-cobranca-context.tsx: o rótulo das abas virou exclusivo da aba ativa (a versão anterior punha texto nas 5 e estourava os 340px do painel, sobrepondo ícone e texto em produção). (2) iris-board-kanban.tsx: o rodapé do card passou a exibir helpers.slaLabel (que já devolve 'esperando 2h14' / 'Aguardando cliente') com ícone de relógio, no lugar de 'vencido · data'; a data foi para o title. (3) lib/espera.ts ganhou minutosCorridos: o TEXTO usa relógio de parede e a COR usa minutos úteis — sem isso, à noite tudo exibia 'esperando agora' e o cronômetro parecia quebrado (o Lucas testou às 23h e não viu). 14 testes.",
-      motivation: "Lucas viu a tela quebrada nas abas e pediu o cronômetro também no card. O 'não vi o cronômetro' foi consequência do relógio pausar fora do expediente.",
+      motivation:
+        "Lucas viu a tela quebrada nas abas e pediu o cronômetro também no card. O 'não vi o cronômetro' foi consequência do relógio pausar fora do expediente.",
     },
     title: "Iris: conserto das abas e cronômetro no card do Board",
     type: "correcao",
@@ -6275,9 +6276,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.72",
     technical: {
       done: "REABRIR CONVERSA: /api/iris/meta/messages passou a aceitar `template: {name, language, bodyParameters}` e enviar via sendMetaWhatsAppTemplateMessage no protocolo atual. Três travas foram derrubadas para o template ser alcançável: o 409 da janela fechada (agora só vale para texto livre), a exigência de body (template puro passa, e o histórico guarda o texto renderizado) e a ausência do ramo de envio. UI em iris-composer-actions.tsx (faixa âmbar com seletor, prévia e botão), alimentada por irisData.templates → AttendanceView → IrisConversationPanel → composer (cadeia conferida por grep, não só por typecheck). CRONÔMETRO: blocks/conversation/iris-cronometro-espera.tsx, atualiza a cada 30s, reusa modules/caredesk/lib/espera (12 testes).",
-      motivation: "A auditoria da tela mostrou que 80 dos 98 atendimentos abertos estavam com a janela da Meta fechada, 61 deles com a bola conosco: o operador lia o pedido e não tinha o que clicar, e o '+ Novo atendimento' recusava com 409 mandando abrir o atendimento existente, que é justamente onde ele não podia escrever. O cronômetro foi pedido do Lucas para enxergar o tempo sem interação.",
+      motivation:
+        "A auditoria da tela mostrou que 80 dos 98 atendimentos abertos estavam com a janela da Meta fechada, 61 deles com a bola conosco: o operador lia o pedido e não tinha o que clicar, e o '+ Novo atendimento' recusava com 409 mandando abrir o atendimento existente, que é justamente onde ele não podia escrever. O cronômetro foi pedido do Lucas para enxergar o tempo sem interação.",
     },
-    title: "Iris: dá para responder quem está fora da janela de 24h, e o cronômetro mostra a espera",
+    title:
+      "Iris: dá para responder quem está fora da janela de 24h, e o cronômetro mostra a espera",
     type: "melhoria",
     version: "1.62.73",
   },
@@ -6304,9 +6307,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.71",
     technical: {
       done: "Onda 1 do redesenho da Iris. (1) iris-data-client: segunda passada auto-corretiva para a prévia da fila — a leitura em lote pedia 300 msgs para 100 tickets e conversas longas consumiam o orçamento, deixando 60 de 100 itens sem preview (no banco, ZERO abertos estão sem mensagem); agora quem ficou de fora é buscado em lotes de 20 com 5 msgs por ticket. (2) modules/caredesk/lib/espera.ts (novo, 12 testes): relógio conta só quando a bola é nossa e só em horário comercial (seg-sex 8h-18h), faixas 2h/8h; isSlaCritical/slaLabel/slaClasses passaram a usá-la mantendo a assinatura, e a cópia da regra em iris-data-client (que alimenta o contador do topo) foi alinhada — estavam divergindo. (3) IrisCobrancaCloseModal recebe pendenciaDoCliente e o motivo nasce 'Finalizado'; a função closeTicket() do IrisPage era CÓDIGO MORTO (nunca chamada, o botão abre o modal direto) e foi removida. (4) Abas do painel com rótulo visível. Sobe junto o Lote 2 da CACÁ (memória de identidade, 11 testes; mural de avisos inerte até a migration 0073).",
-      motivation: "O time reportou que a Iris está confusa e difícil de trabalhar. A auditoria da tela mostrou que 96 de 98 abertos apareciam em vermelho (inclusive 19 de 19 que aguardavam o cliente), que a fila não mostrava o assunto e que o aviso de encerramento construído para evitar os 136 fechamentos indevidos nunca executava.",
+      motivation:
+        "O time reportou que a Iris está confusa e difícil de trabalhar. A auditoria da tela mostrou que 96 de 98 abertos apareciam em vermelho (inclusive 19 de 19 que aguardavam o cliente), que a fila não mostrava o assunto e que o aviso de encerramento construído para evitar os 136 fechamentos indevidos nunca executava.",
     },
-    title: "Iris: a fila mostra o assunto e o relógio para de marcar quem não espera",
+    title:
+      "Iris: a fila mostra o assunto e o relógio para de marcar quem não espera",
     type: "melhoria",
     version: "1.62.72",
   },
@@ -6329,7 +6334,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.70",
     technical: {
       done: "disparo-imobiliaria.ts (contatoDaEntidadeImobiliaria): a resolução do nome passou de `legal_name || display_name` para `display_name || trade_name || legal_name`. Afeta o cabeçalho e o assunto do relatório diário e do reenvio. O nome do CLIENTE segue vindo de legal_name (para pessoa física é o nome completo, que é o correto).",
-      motivation: "Lucas viu o relatório da Trindade chegar como 'RTRINDADE EMPREENDIMENTOS LTDA' e questionou. Investigando, a razão social do cadastro tem um typo ('RTRINDADE') e em outras imobiliárias ela é o nome da pessoa física por trás do CNPJ. Decisão dele: usar o nome de exibição.",
+      motivation:
+        "Lucas viu o relatório da Trindade chegar como 'RTRINDADE EMPREENDIMENTOS LTDA' e questionou. Investigando, a razão social do cadastro tem um typo ('RTRINDADE') e em outras imobiliárias ela é o nome da pessoa física por trás do CNPJ. Decisão dele: usar o nome de exibição.",
     },
     title: "Apolo: relatório vai no nome que a imobiliária conhece",
     type: "correcao",
@@ -6354,7 +6360,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.69",
     technical: {
       done: "relatorio-diario/route.ts: o banner AVISO_RETIFICACAO virou opt-in por `retificacao=1` (antes vinha grudado em todo `reenvio=1`). Sobe junto, sem efeito visível: memória de identidade da CACÁ (identidade-lembrada.ts, 11 testes — o número que já validou um cadastro por CPF não revalida por 30 dias, com reconfirmação leve do nome) e o mural de avisos operacionais (avisos-operacionais.ts, 8 testes), que fica INERTE porque a migration 0073 ainda não foi aplicada (a leitura devolve lista vazia e a CACÁ responde sem esse contexto).",
-      motivation: "Em 26/07 o refresh token do Gmail da caixa da Cacá expirou e as 25 imobiliárias não receberam o relatório das 18h por e-mail (o aviso de WhatsApp saiu). No reenvio, o banner de retificação afirmaria algo falso: não houve e-mail anterior nem erro de atribuição. Lucas: 'quero o relatório normal, sem mensagem'.",
+      motivation:
+        "Em 26/07 o refresh token do Gmail da caixa da Cacá expirou e as 25 imobiliárias não receberam o relatório das 18h por e-mail (o aviso de WhatsApp saiu). No reenvio, o banner de retificação afirmaria algo falso: não houve e-mail anterior nem erro de atribuição. Lucas: 'quero o relatório normal, sem mensagem'.",
     },
     title: "Apolo: reenvio de relatório sai limpo, sem aviso de retificação",
     type: "correcao",
@@ -6382,7 +6389,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.68",
     technical: {
       done: "Lote 1 da Cacá, a partir da auditoria de 1.091 atendimentos. (1) NOVO lib/iris/caca/guarda-de-turno.ts (+7 testes): decidirTurno() cala a execução quando há inbound mais recente (rajada, quem responde é a execução da última mensagem, que lê o histórico inteiro) ou quando já existe outbound posterior à inbound processada (corrida). Aplicado 2x no meta-inbound-processor: antes de chamar o modelo (economiza token) e imediatamente antes do envio, que é onde a janela real de corrida mora. (2) Fim do fallback para o motor determinístico como resposta ao cliente: agora 1 retry do Claude e, na segunda falha, montarTurnoDeFalha() devolve handoff.required=true com texto honesto e o motivo técnico na razão do handoff. O motor legado segue apenas para CACA_ENGINE != claude (desligado de propósito). (3) persona.ts: regra ATRASO É HIPÓTESE. (4) IrisPage.closeTicket: confirmação mostra a última mensagem do cliente quando a direção é inbound.",
-      motivation: "Auditoria da central (26/jul): o Claude falhou 26 vezes em 14 atendimentos e caía num motor legado sem memória que tratava o cliente pelo apelido do WhatsApp (AT-000923: 6 dessas na conversa de uma cliente idosa, que depois ameaçou a Defensoria). No mesmo ticket houve prova de corrida: resposta do legado às 12:52:28 e do Claude às 12:52:36. A falha era invisível (só console.error). Além disso 136 atendimentos foram fechados como Finalizado com o cliente falando por último, e a Cacá afirmou atraso de 13 dias num valor pago no mesmo dia (AT-000168).",
+      motivation:
+        "Auditoria da central (26/jul): o Claude falhou 26 vezes em 14 atendimentos e caía num motor legado sem memória que tratava o cliente pelo apelido do WhatsApp (AT-000923: 6 dessas na conversa de uma cliente idosa, que depois ameaçou a Defensoria). No mesmo ticket houve prova de corrida: resposta do legado às 12:52:28 e do Claude às 12:52:36. A falha era invisível (só console.error). Além disso 136 atendimentos foram fechados como Finalizado com o cliente falando por último, e a Cacá afirmou atraso de 13 dias num valor pago no mesmo dia (AT-000168).",
     },
     title: "Iris: a Cacá para de repetir resposta e assume quando falha",
     type: "correcao",
@@ -6407,9 +6415,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.66",
     technical: {
       done: "Correção de privacidade no cockpit: pickIrisApoloEntityForTicket retorna null (não pega entities[0] por nome); loadApoloContext só consulta o Apolo por documento (>=3 dígitos), sem cair no telefone solto nem no nome do contato; mesmo ajuste no mobile (apolo-context.ts). Sobe junto, interna da CACÁ e sem painel: tool registrar_chave_pix, o cliente responde a chave PIX de devolução no recibo e a Cacá grava em apolo_esteira (migration 0072 já aplicada).",
-      motivation: "Incidente: um contato de WhatsApp (Ana Paula) com o mesmo primeiro nome de uma compradora do Lavra viu a carteira dela no cockpit, sem o telefone bater. Regra: telefone é o único gatilho do match.",
+      motivation:
+        "Incidente: um contato de WhatsApp (Ana Paula) com o mesmo primeiro nome de uma compradora do Lavra viu a carteira dela no cockpit, sem o telefone bater. Regra: telefone é o único gatilho do match.",
     },
-    title: "Iris: cockpit só mostra o cliente quando o telefone confirma a identidade",
+    title:
+      "Iris: cockpit só mostra o cliente quando o telefone confirma a identidade",
     type: "correcao",
     version: "1.62.68",
   },
@@ -6433,7 +6443,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.66",
     technical: {
       done: "cobranca-prevenda.ts: helper remetentePrevenda(empreendimento) — Vale do Ouro (nome contém 'vale do ouro' ou code 'vlo') → 'Careli - C2X <contato@careli.adm.br>'; senão getCacaSender (caca@). enviarEmailPrevenda ganhou o param `from`. Aplicado nos 3 caminhos de disparo: lib cobranca-prevenda/recibo-prevenda (usados por gerar-pix + disparo-lote) e a CÓPIA da bancada/route.ts (cobrança + recibo). Fallback preservado: se o Send-As de contato@ não estiver liberado na conta caca@, o Gmail recusa e reenvia pela caixa padrão (caca@).",
-      motivation: "Lucas: voltar o remetente do PIX pro contato@careli.adm.br, mas SÓ no Vale do Ouro (os outros seguem na Cacá). Sem anúncio no painel de novidades.",
+      motivation:
+        "Lucas: voltar o remetente do PIX pro contato@careli.adm.br, mas SÓ no Vale do Ouro (os outros seguem na Cacá). Sem anúncio no painel de novidades.",
     },
     title: "Apolo: PIX do Vale do Ouro sai do contato@ (demais seguem na Cacá)",
     type: "melhoria",
@@ -6479,9 +6490,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.65",
     technical: {
       done: "APOLO: empreendimentos-view.tsx ganhou a aba 'setup' (ApoloEnterpriseTab += 'setup'); o CredenciamentoCard (toggles credenciamento_ativo/analise_credito_habilitada/prevenda_habilitada + limite + valor PIX + logo) foi movido do CadastroTab para a aba Setup. serasa/consultar/route.ts: guard de resolverAnaliseHabilitada (análise off → atualizarEtapa direto pra prevenda/credenciado, sem consultar) + cpfValido antes da consulta (412 sem gastar). Auto-refresh: hook use-refetch-on-focus (visibilitychange+focus, debounce 10s) em board-view.tsx e ApoloPage.tsx. PROMETEU: filaDaRecepcao(credenciados, checkinHabilitado) — troca o credenciadoNaJanela pelo flag config.checkinHabilitado do evento (ligado=ordem do PIX; desligado=ordem de chegada); fila-recepcao.test.ts reescrito (9 testes verdes). setup-view.tsx: 2 abas + CheckinCard (switch grava config.checkinHabilitado, some a janela data/hora) + construtora herda incorporador (só quando vazia); incorporador propagado por PrometeuEmpreendimento/listEmpreendimentosAtivos/rota empreendimentos.",
-      motivation: "Lucas: lista de pendências Apolo+Prometeu 'em paralelo'. A aba Setup nasceu de 'não achei a aba de setup do empreendimento' (os toggles estavam soterrados no Cadastro). O check-in liga/desliga substitui a janela data/hora, com a regra de fila validada por ele (25/jul).",
+      motivation:
+        "Lucas: lista de pendências Apolo+Prometeu 'em paralelo'. A aba Setup nasceu de 'não achei a aba de setup do empreendimento' (os toggles estavam soterrados no Cadastro). O check-in liga/desliga substitui a janela data/hora, com a regra de fila validada por ele (25/jul).",
     },
-    title: "Apolo: aba Setup do empreendimento + Análise/CPF no crédito; Prometeu: check-in liga/desliga e Setup em abas",
+    title:
+      "Apolo: aba Setup do empreendimento + Análise/CPF no crédito; Prometeu: check-in liga/desliga e Setup em abas",
     type: "melhoria",
     version: "1.62.66",
   },
@@ -6505,9 +6518,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.64",
     technical: {
       done: "cadastro-flow.tsx: o gate de qualidade (conferirDocumento) só LANÇA para famílias padronizadas (BLOQUEIA_POR_QUALIDADE = {identidade, cnpj}); comprovante/certidão/'outro' com score < mínimo viram `ext.avisoQualidade` (não-bloqueante), mostrado em âmbar no DocUploader (novo estado `aviso`, lido de `merged.avisoQualidade` após onExtracted). document-capture.ts: arquivoParaLeitura rasteriza a 1ª página do PDF via pdfjs-dist (import DINÂMICO) num JPEG 2600px@0.9 (worker servido de /public/pdf.worker.min.mjs), com FALLBACK pro PDF cru se o pdf.js falhar. Dep nova: pdfjs-dist ^6.1.200.",
-      motivation: "Comprovante em PDF de portal (fatura Vero, legível) reprovava por 'qualidade inferior' e o print do mesmo passava. A MOST não mede legibilidade e sim confiança de LEITURA; o PDF cru era rasterizado por ELA em DPI baixo. Decisão do Lucas 25/jul: comprovante não trava (vira aviso) + rasterizar o PDF em alta do nosso lado.",
+      motivation:
+        "Comprovante em PDF de portal (fatura Vero, legível) reprovava por 'qualidade inferior' e o print do mesmo passava. A MOST não mede legibilidade e sim confiança de LEITURA; o PDF cru era rasterizado por ELA em DPI baixo. Decisão do Lucas 25/jul: comprovante não trava (vira aviso) + rasterizar o PDF em alta do nosso lado.",
     },
-    title: "Apolo: comprovante em PDF não trava mais o cadastro; leitura de PDF melhorada",
+    title:
+      "Apolo: comprovante em PDF não trava mais o cadastro; leitura de PDF melhorada",
     type: "correcao",
     version: "1.62.65",
   },
@@ -6531,9 +6546,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.63",
     technical: {
       done: "CadPublicDashboard.tsx: mValidacao = counts.validacao (removido o `+ apolo?.validacao`). mRecebidas = base.length (era a soma dos cards mValidacao+mAnalise+mRevisao+mPrevenda+mCredenciado+mDuplicados+mIncorretas); pctDoTotal volta a ter base.length como denominador.",
-      motivation: "Lucas: 'tira o validação do apolo na somatória no card de validação e volta o recebidas como estava antes'.",
+      motivation:
+        "Lucas: 'tira o validação do apolo na somatória no card de validação e volta o recebidas como estava antes'.",
     },
-    title: "Apolo: dashboard de CADs — Validação só do Asana, Recebidas como antes",
+    title:
+      "Apolo: dashboard de CADs — Validação só do Asana, Recebidas como antes",
     type: "correcao",
     version: "1.62.64",
   },
@@ -6560,7 +6577,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.62",
     technical: {
       done: "CadPublicDashboard.tsx: os cards Análise de Crédito/Crédito em Revisão/Pré-venda deixaram de contar os records do Asana (counts) e passaram a usar apolo.analiseCredito/creditoRevisao/prevenda (etapas credito/revisao/prevenda da apolo_esteira), junto de Credenciado/PIX que já eram do Apolo; ficam DENTRO do guard `apolo ? ...`. Clicabilidade: carregarListasCredenciamento estendida para as listas do Apolo de credito/revisao/prevenda. FIX DA DIFERENÇA DE 44: o canonical() (mapa seção Asana -> card) foi simplificado — só Duplicados e Incorretas têm balde próprio; TODO o resto do Asana cai em Validação (antes 'Análise de Crédito'/'Crédito Reprovado'/'Emissão Pix' do Asana caíam nos cards de crédito, que agora mostram o Apolo, virando registros órfãos fora de qualquer card). Agora Validação+Duplicados+Incorretas fecham o total Recebidas.",
-      motivation: "Lucas: 'somente validação, duplicados, cads incorretas vamos trazer do asana; análise de crédito, crédito em revisão, pré-venda, credenciado e pix vamos trazer do apolo'. E depois: 'deu uma diferença de 44, soma para validação as seções do asana Análise de Crédito, em cadastro'.",
+      motivation:
+        "Lucas: 'somente validação, duplicados, cads incorretas vamos trazer do asana; análise de crédito, crédito em revisão, pré-venda, credenciado e pix vamos trazer do apolo'. E depois: 'deu uma diferença de 44, soma para validação as seções do asana Análise de Crédito, em cadastro'.",
     },
     title: "Apolo: dashboard público de CADs com a fonte certa por card",
     type: "correcao",
@@ -6587,9 +6605,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.58",
     technical: {
       done: "Migration 0071: apolo_enterprise_settings ganhou analise_credito_habilitada e prevenda_habilitada (bool, default true — preserva o fluxo de hoje). empreendimentos-view.tsx: seção de credenciamento reorganizada em hierarquia (master credenciamento_ativo trava os dois blocos quando OFF; Análise de Crédito exige limite; Pré-venda exige valor do PIX; máscara de moeda; trava 'não salva ON sem valor' no cliente E no servidor). enterprise-settings.ts + settings/route.ts: leem/gravam as 2 flags. FLUXO: lib/apolo/limite-credito.ts ganhou resolverPrevendaHabilitada (resolve o empreendimento da ficha, default true); serasa/consultar/route.ts usa isso — crédito aprovado vai para 'prevenda' se ligada, senão DIRETO para 'credenciado'. REVERTIDO no mesmo deploy: os campos editáveis do cadastro (Lucas não quer editável no wizard, corrige na Validação). FALTA (próxima leva): Análise de Crédito OFF pular a consulta do Serasa; hoje o toggle grava mas o fluxo ainda passa pelo crédito.",
-      motivation: "Lucas (25/jul): o PIX tem prazo (monta a fila); chega a quinta, encerra os PIX mas continua cadastrando — o crédito aprovado precisa ir direto pra credenciado sem PIX. Cada empreendimento controla seu fluxo.",
+      motivation:
+        "Lucas (25/jul): o PIX tem prazo (monta a fila); chega a quinta, encerra os PIX mas continua cadastrando — o crédito aprovado precisa ir direto pra credenciado sem PIX. Cada empreendimento controla seu fluxo.",
     },
-    title: "Apolo: fluxo da esteira configurável por empreendimento (liga/desliga crédito e PIX)",
+    title:
+      "Apolo: fluxo da esteira configurável por empreendimento (liga/desliga crédito e PIX)",
     type: "novidade",
     version: "1.62.59",
   },
@@ -6614,7 +6634,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.57",
     technical: {
       done: "AUTH PRÓPRIA do operador do evento (não é hub_user). Migration 0070 prometeu_operadores (username, senha_hash scrypt, perfil, zona, mesa_id). lib/prometeu/operador-auth.ts (scrypt + token HMAC assinado com PROMETEU_SESSION_SECRET, TTL 14h, 10 testes de segurança) + operadores.ts (CRUD) + operador-server.ts (lerOperadorDaSessao/autorizarOperacao). Rotas /api/prometeu/operador/{login,logout,eu} públicas (allowlist do proxy, cada uma se valida por dentro; login com rate limit 8/5min, cookie httpOnly+secure assinado) + /operadores admin (só hub). ÁREA /evento: layout limpo sem MobileViewport; /evento na allowlist do auth-provider (o operador não tem sessão do hub); evento-app decide login vs posto por perfil; login-operador. GATE: proxy.ts deixa /api/prometeu/* passar quando há cookie prometeu_op (a rota valida por dentro); credenciados PATCH checkin aceita operador OU hub via autorizarOperacao, TODAS as demais ações (mover/pagamento/chamar/etc) seguem authorizePrometeuWrite (só hub); fila e eventos GET aceitam operador. Setup: equipe-conteudo.tsx reescrito para cadastrar operadores. Removido o modelo antigo hub_users (prometeu_equipe/listEquipe/meuPosto). Typecheck limpo, 48 testes prometeu verdes.",
-      motivation: "Lucas (24/jul): a equipe do evento loga com nome.sobrenome + senha, só vê o Prometeu, cai no posto. FASE 1 (login) da operação do dia; faltam as telas de salão/secretaria/atendente e o trilho comercial do C2X — próximo chat.",
+      motivation:
+        "Lucas (24/jul): a equipe do evento loga com nome.sobrenome + senha, só vê o Prometeu, cai no posto. FASE 1 (login) da operação do dia; faltam as telas de salão/secretaria/atendente e o trilho comercial do C2X — próximo chat.",
     },
     title: "Prometeu: acesso próprio da equipe do evento (login por posto)",
     type: "novidade",
@@ -6641,9 +6662,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.55",
     technical: {
       done: "checkin-view.tsx: duas abas (checkin/fila) num toggle; a camera (usarLeitorQr) so roda com aba==='checkin' (economiza bateria e nao le QR na fila). AbaFila lista os credenciados ordenados (quem entrou primeiro, por hora do check-in desc; depois os que faltam, alfabetico) com busca, badge verde/relogio por status e o icone de PIX pago. GUARD: identificar() agora bloqueia com mensagem clara quando carregando|credenciados.length===0 — antes, ler o QR durante o carregamento da lista (0 credenciados) caia direto em 'nao e deste lancamento', que foi o que o Lucas viu (evento Vale do Ouro estava configurado e com 348 credenciados; era so timing). Rotas /api/prometeu/eventos e /fila respondem em <0.3s, nao havia travamento. Textos 'cracha' -> 'credenciamento'.",
-      motivation: "Lucas testou no celular: bipou e deu 'este cracha nao e deste lancamento' com '0 na fila'. Era a lista ainda carregando. E pediu: aba de fila para o organizador ver se a pessoa realmente entrou, e trocar 'cracha' por 'credenciamento'.",
+      motivation:
+        "Lucas testou no celular: bipou e deu 'este cracha nao e deste lancamento' com '0 na fila'. Era a lista ainda carregando. E pediu: aba de fila para o organizador ver se a pessoa realmente entrou, e trocar 'cracha' por 'credenciamento'.",
     },
-    title: "Prometeu: aba de fila no check-in + fim do falso 'não é deste lançamento'",
+    title:
+      "Prometeu: aba de fila no check-in + fim do falso 'não é deste lançamento'",
     type: "melhoria",
     version: "1.62.57",
   },
@@ -6667,7 +6690,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.54",
     technical: {
       done: "mobile-top-bar.tsx: terceira aba (ListOrdered, /m/prometeu) ao lado de Hermes/Iris; texto e gaps reduzidos (12.5px, gap-1, icone 15) para as tres caberem na largura do celular. A tela /m/prometeu (check-in por QR) ja existia desde a 1.62.49 mas nao tinha ponto de entrada no app standalone. Quando a frente de equipe/postos fechar, esta mesma aba passa a abrir no posto atribuido a pessoa logada.",
-      motivation: "Lucas, no celular: 'ele abre full eu nao tenho como ir para o prometeu'. A PWA abre em standalone, sem barra de URL, entao sem uma aba no menu nao havia como acessar o check-in.",
+      motivation:
+        "Lucas, no celular: 'ele abre full eu nao tenho como ir para o prometeu'. A PWA abre em standalone, sem barra de URL, entao sem uma aba no menu nao havia como acessar o check-in.",
     },
     title: "Prometeu: aba no app do celular para chegar no check-in",
     type: "melhoria",
@@ -6693,7 +6717,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.52",
     technical: {
       done: "O relatorio das 18h disparou as 18:00:52 (cron), 4 minutos ANTES de a correcao das imobiliarias terminar (18:05:21) — a trava do envio nao ficou no ar a tempo do cron. 7 imobiliarias receberam com cliente errado (J&F, LM, Romulo, Paulo Oliveira, Flat com cliente a mais; RR e Mais Lotes sem clientes que sao delas). Como o banco ja esta correto, um reenvio sai certo. montarRelatorioImobiliaria ganhou `avisoRetificacao` (banner ambar no topo + prefixo [Correcao] no assunto + linha no texto). relatorio-diario/route.ts ganhou modo `?reenvio=1&imobiliarias=a|b|c` que envia SO por e-mail (real da imobiliaria), SO para as listadas, com o banner. Botao de reenvio em vincular-imobiliarias.tsx aciona com o Bearer da sessao. O 1o reenvio pegou so 6 de 7: o filtro casa o NOME DO RELATORIO (legal_name||display_name), e a LM Imoveis aparece como 'ODAIR RODRIGUES TEIXEIRA' (o titular do CNPJ), entao 'LM IMOVEIS' nao casava. O campo de termos virou EDITAVEL (pre-preenchido com 'ODAIR RODRIGUES TEIXEIRA' para completar a LM que faltou), o que tambem evita novo ciclo se algum nome de imobiliaria divergir do esperado.",
-      motivation: "Lucas: 'vamos enviar para 7 e colocar uma mensagem falando para desconsiderar o e-mail anterior'.",
+      motivation:
+        "Lucas: 'vamos enviar para 7 e colocar uma mensagem falando para desconsiderar o e-mail anterior'.",
     },
     title: "Apolo: reenvio do relatório com retificação para as 7 afetadas",
     type: "correcao",
@@ -6744,7 +6769,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.49",
     technical: {
       done: "A impressao deixou de sair da pagina do hub e passou a sair de um DOCUMENTO ISOLADO (iframe), exatamente como o mockup public/prometeu/etiqueta.html que ja tinha sido validado na Honeywell. Causa do 'pequeno': window.print() na pagina inteira do app fazia o CSS global do hub e o preset de papel do driver ('Prometeu') competirem com o @page{size:100mm 50mm}, e o Chrome encolhia a etiqueta num canto de uma folha maior. imprimir-etiquetas.ts monta um iframe oculto, escreve um documento so com as etiquetas + ETIQUETA_PRINT_DOC_CSS (visual + @page + break-after) e chama iframe.contentWindow.print(); espera doc.images carregarem antes (QR e data URL, mas o logo vem da rede) e remove o iframe no afterprint. etiqueta-css.ts foi partido em ETIQUETA_TELA_CSS (preview React) e ETIQUETA_PRINT_DOC_CSS (documento de impressao); o hack antigo de #print-area + portal + body>*{display:none} foi removido, nao e mais necessario. VALIDADO no navegador: a .etq no iframe mede 378x189px = 100x50mm exatos e o stylesheet tem @page size 100mm 50mm.",
-      motivation: "Lucas, testando na Honeywell depois do fix da folha branca: 'saiu bem pequena'. A raiz era imprimir a pagina do app em vez de um documento isolado como o mockup fazia.",
+      motivation:
+        "Lucas, testando na Honeywell depois do fix da folha branca: 'saiu bem pequena'. A raiz era imprimir a pagina do app em vez de um documento isolado como o mockup fazia.",
     },
     title: "Prometeu: etiqueta imprime no tamanho certo (100x50mm)",
     type: "correcao",
@@ -6778,7 +6804,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.48",
     technical: {
       done: "CHECK-IN: app/m/prometeu (nova rota, dentro do /m para herdar sessao, login e PWA) + modules/prometeu/blocks/checkin/. usar-leitor-qr.ts tenta BarcodeDetector (nativo, sem custo de CPU) e cai para jsQR (dependencia nova, ^1.4.0, JS puro) quando nao existe: BarcodeDetector NAO existe no Safari do iPhone nem no Firefox, entao so com ele o organizador de iPhone ficaria sem check-in na porta do evento. facingMode environment forca a camera traseira (sem isso abre a frontal). Trava anti-repeticao de 2,5s por valor lido: a camera le o mesmo cracha dezenas de vezes por segundo enquanto ele esta na frente dela. O componente guarda o callback numa ref para nao remontar a camera a cada render. QR de outro lancamento e recusado por comparacao com a lista do evento; codigo curto ambiguo abre escolha manual (ver credencial.ts). Reusa fazerCheckInRemoto e a acao 'checkin'. h-full em vez de min-h-dvh: o MobileViewport ja trava 100dvh. CORRECAO DA IMPRESSAO EM BRANCO (a 1.62.48 subiu com esse bug): no mockup HTML o #print-area era filho direto do <body>, entao o @media print body>*{display:none} + #print-area{display:block} funcionava. Portado para React, o #print-area ficou enterrado na arvore do HubShell — body>*{display:none} escondia o container inteiro e a etiqueta ia junto (folha em branco). FIX: etiqueta-view.tsx monta o #print-area via createPortal(document.body), voltando a ser filho direto do body, e o CSS ganhou #print-area{display:none} de base para esconde-lo na tela fora da impressao. Validado no navegador: fora do print display=none e filho direto do body; no print o app some (body>*) e o #print-area vence por especificidade de ID e reaparece com o conteudo.",
-      motivation: "Lucas: 'os organizadores irao ficar somente com o celular ou um tablet nas filas que tem o check-in.' E, testando a etiqueta da 1.62.48 na Honeywell: 'ta imprimindo branco' — a armadilha classica do porte mockup->React da impressao.",
+      motivation:
+        "Lucas: 'os organizadores irao ficar somente com o celular ou um tablet nas filas que tem o check-in.' E, testando a etiqueta da 1.62.48 na Honeywell: 'ta imprimindo branco' — a armadilha classica do porte mockup->React da impressao.",
     },
     title: "Prometeu: check-in pelo celular + etiqueta que imprime de verdade",
     type: "novidade",
@@ -6813,7 +6840,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.47",
     technical: {
       done: "modules/prometeu/blocks/etiqueta/ (novo): etiqueta-view.tsx le prometeu_credenciados via fetchFila (a mesma fonte da Fila, sem lista paralela) e etiqueta-css.ts traz o CSS de impressao COPIADO LITERALMENTE de public/prometeu/etiqueta.html. O CSS nao foi reescrito em Tailwind de proposito: cada medida em mm e cada break-after foi descoberto contra a Honeywell PC42t real e esta documentado em [[reference-prometeu-etiqueta-termica]] (lote empilhado numa pagina so, etiqueta em branco no fim, corte na borda a ~1,5mm). lib/prometeu/credencial.ts (novo, 11 testes): o QR carrega o ID COMPLETO do credenciado — encurtar nao traz ganho (a camera le qualquer tamanho) e traria risco real, porque um codigo de 6 digitos tem ~0,4% de chance de colidir entre 348 pessoas, o que no dia seria check-in na pessoa ERRADA; o codigo curto APL-XXXXXX continua impresso apenas como plano B para digitar quando o QR nao le, e quem busca por ele TEM que tratar mais de um resultado. O QR nao carrega URL: o cracha fica exposto o evento inteiro e qualquer um fotografa. QR gerado com a lib qrcode que ja existia (comprovante do Serasa). marcarEtiquetaImpressaRemoto carimba no evento afterprint, nunca antes: carimbar no clique marcaria como impressa a etiqueta de quem cancelou o dialogo. Backend nao precisou de nada novo — marcarEtiquetaImpressa e a acao 'etiqueta' ja existiam. Terminologia: bipar/bipou/bipagem/janela de credenciamento trocados em types, data, central, fila, setup, operations e rotas; public/prometeu/atendente.html ficou de fora por ser mockup a ser substituido.",
-      motivation: "Lucas, sobre a tela de etiquetas: 'estao com dados mockados ainda, e nao tem nenhum cliente do Vale do Ouro que esta credenciado que esteja pronto para ser emitido as etiquetas. Hoje essa tela faz o vinculo errado com o empreendimento. os clientes tem que nascer da fila, do que o apolo entrega'. E sobre o PIX: 'nao pode ser escrito, e so um icone para referenciar para o time interno que aquele cliente pagou o pix, pois precisamos abater esse valor'. Evento real em 01/08.",
+      motivation:
+        "Lucas, sobre a tela de etiquetas: 'estao com dados mockados ainda, e nao tem nenhum cliente do Vale do Ouro que esta credenciado que esteja pronto para ser emitido as etiquetas. Hoje essa tela faz o vinculo errado com o empreendimento. os clientes tem que nascer da fila, do que o apolo entrega'. E sobre o PIX: 'nao pode ser escrito, e so um icone para referenciar para o time interno que aquele cliente pagou o pix, pois precisamos abater esse valor'. Evento real em 01/08.",
     },
     title: "Prometeu: etiqueta de verdade, com QR que lê e marca de PIX pago",
     type: "novidade",
@@ -6846,7 +6874,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.46",
     technical: {
       done: "lib/prometeu/lancamento.ts (novo): nomeDoLancamento (config.enterpriseNome -> enterpriseCode -> nome do evento, degrade honesto, nunca inventa empreendimento), lancamentoSemEmpreendimento e dataDoLancamento. ARMADILHA COBERTA POR TESTE: data_evento e timestamptz e o Setup grava so o dia ('2026-08-01'), que o Postgres guarda como meia-noite UTC — formatar via Date no fuso de Brasilia devolveria 31/07 e o evento apareceria com a data errada em TODA tela; por isso a data e lida como texto puro (regex nos 10 primeiros chars), sem passar por Date. O nome do empreendimento so existe no C2X (MySQL legado) e buscar la a cada leitura sairia caro, entao PrometeuEventoConfig ganhou enterpriseNome e o Setup grava junto (ele ja tem a lista carregada) — sem migration, usando o config que existe justamente para 'o que o Setup preenche e ainda nao merece coluna propria'. fila-view.tsx: chip com Building2 + aviso ambar quando falta vinculo. Terminologia: 'bipar/bipou/bipagem' trocado por check-in em types.ts, central-view, fila-view, setup-view (texto visivel) e prometeu-operations; public/prometeu/atendente.html ficou de fora de proposito, e mockup a ser substituido. 10 testes em lancamento.test.ts.",
-      motivation: "Lucas, abrindo a frente do Prometeu: 'me incomoda o fato de eu nao saber de qual empreendimento (lancamento) e essa fila, tinha que ter alguma coisa vinculando ao Vale do Ouro'. O evento em producao estava com enterprise_id, enterprise_code e data_evento nulos, embora o Setup ja tivesse os campos. Tambem e a fundacao da etiqueta real: sem saber o empreendimento, a etiqueta nao tem de quem nascer.",
+      motivation:
+        "Lucas, abrindo a frente do Prometeu: 'me incomoda o fato de eu nao saber de qual empreendimento (lancamento) e essa fila, tinha que ter alguma coisa vinculando ao Vale do Ouro'. O evento em producao estava com enterprise_id, enterprise_code e data_evento nulos, embora o Setup ja tivesse os campos. Tambem e a fundacao da etiqueta real: sem saber o empreendimento, a etiqueta nao tem de quem nascer.",
     },
     title: "Prometeu: a fila diz de qual lancamento ela e",
     type: "melhoria",
@@ -6872,7 +6901,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.45",
     technical: {
       done: "prevenda-fluxo.ts, aoConfirmarPagamentoPrevenda: alem de carimbar pago_em/pagamento_ref e mexer na fila, passa a mover a etapa prevenda -> credenciado (update com eq('etapa','prevenda'), mesma trava do envio: nunca puxa ninguem para tras). Quem credenciava era so o aoEnviarPixPrevenda, ou seja o ENVIO do link; quando o disparo falhava, o pagamento nao consertava a etapa. A fila do Prometeu ja estava correta nesse cenario (o ramo 'pagou e nao estava na fila' insere com a hora do pagamento): caso real 23/07, VICENTINA LUZIA DE PAULO entrou na posicao 66, entre quem pagou 19:25 e quem pagou 21:40. Varredura da base: 73 pagaram, 72 ja credenciados, 1 presa (a Vicentina). NAO mexi no significado de 'credenciado' (documentos validos + credito ok + PIX gerado): confirmado pelo Lucas que os 275 credenciados sem pagamento sao o desenho correto.",
-      motivation: "Lucas: 'a Vicentina nao recebeu o link e o sistema entendeu que ela ficou presa no pre-venda, mas meu time mandou via central o link e ela pagou'. Pagamento confirmado tem que credenciar, tenha o aviso saido ou nao.",
+      motivation:
+        "Lucas: 'a Vicentina nao recebeu o link e o sistema entendeu que ela ficou presa no pre-venda, mas meu time mandou via central o link e ela pagou'. Pagamento confirmado tem que credenciar, tenha o aviso saido ou nao.",
     },
     title: "Apolo: PIX pago credencia o cliente mesmo se o link falhou",
     type: "correcao",
@@ -6911,12 +6941,14 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "1.62.43",
     technical: {
-      done: "iris-data-client.ts: a leitura unica com .limit(200) ordenada por opened_at desc virou DUAS com a mesma regua de acesso (montarQueryTickets): abertos (neq status closed, sem janela de data) + encerrados (eq closed, order closed_at desc, limit 400). ticketsRows concatena as duas. A trava de 'cliente ja em atendimento' consulta o BANCO, por isso ticket fora da janela bloqueava sem aparecer. Incidente 24/jul: AT-000033 (Leticia, 29/06) e AT-001045 (Elizabete) presos com uma operadora que nao os via. ARMADILHA (a 1.62.44 subiu e foi revertida por isso): os ids dos tickets viajam na URL do PostgREST em .in('ticket_id', ids) — com 200 tickets a URL tinha 8k chars e passava, com ~1.000 foi a 27k e o Supabase respondeu 400 Bad Request, derrubando a tela inteira com 'nao foi possivel carregar a operacao'. Medido contra o banco real: 300 ids = 12k chars = 200 OK; 700 ids = 27k chars = 400. Agora contatos, mensagens e usuarios sao lidos pelo helper lerEmLotes (100 ids por requisicao, ~4k chars, 3x de folga), com os ABERTOS na frente da lista para que o corte por lote so afete preview de encerrado antigo. " +
+      done:
+        "iris-data-client.ts: a leitura unica com .limit(200) ordenada por opened_at desc virou DUAS com a mesma regua de acesso (montarQueryTickets): abertos (neq status closed, sem janela de data) + encerrados (eq closed, order closed_at desc, limit 400). ticketsRows concatena as duas. A trava de 'cliente ja em atendimento' consulta o BANCO, por isso ticket fora da janela bloqueava sem aparecer. Incidente 24/jul: AT-000033 (Leticia, 29/06) e AT-001045 (Elizabete) presos com uma operadora que nao os via. ARMADILHA (a 1.62.44 subiu e foi revertida por isso): os ids dos tickets viajam na URL do PostgREST em .in('ticket_id', ids) — com 200 tickets a URL tinha 8k chars e passava, com ~1.000 foi a 27k e o Supabase respondeu 400 Bad Request, derrubando a tela inteira com 'nao foi possivel carregar a operacao'. Medido contra o banco real: 300 ids = 12k chars = 200 OK; 700 ids = 27k chars = 400. Agora contatos, mensagens e usuarios sao lidos pelo helper lerEmLotes (100 ids por requisicao, ~4k chars, 3x de folga), com os ABERTOS na frente da lista para que o corte por lote so afete preview de encerrado antigo. " +
         "NOME DO APOLO: /api/iris/apolo/phone-match ja resolvia as variantes de 9o digito (a Elizabete casa por 31980208670 vindo de 553180208670), mas normalizePhoneInput corta a lista em .slice(0,100) — com a fila acima disso, o excedente voltava 'missing' e ticketContactLabel caia no display_name do contato (apelido do WhatsApp). enrichTicketsWithCrm360 passou a mandar em lotes de 100 e a so consultar quem nao tem resposta em cache (registrado = nunca reconsulta; missing = TTL de 10min), senao a janela maior de tickets multiplicaria o custo do refresh de 90s — ver [[project-hermes-cost]]. FECHAMENTO AUTOMATICO: lib/iris/fechar-sem-interacao.ts + cron horario /api/iris/tickets/fechar-sem-interacao (x-vercel-cron ou CRON_SECRET, allowlist do proxy). Fecha quando a ULTIMA mensagem e da CACA (outbound + sender_type operator + sender_user_id NULL) ha mais de 4h; ignora ticket com assigned_to_user_id e reconfirma o filtro no proprio UPDATE (corrida com o operador). closed_at = hora da ultima mensagem, nao a do cron, para o historico e os relatorios de tempo nao mentirem. A leitura das mensagens pagina por .range() ate esgotar: com corte por limit, os tickets MAIS parados (mensagens antigas) seriam os primeiros a escapar. ?simulacao=1 conta sem tocar. Regra coberta por 9 testes em fechar-sem-interacao.test.ts. Backlog medido em 24/jul: 104 candidatos, todos sem operador, o mais antigo parado desde 14/jul.",
       motivation:
         "Time relatou 'cliente em atendimento' para clientes que nao apareciam no Board, e Historico mostrando 53 encerrados de 775. As duas coisas eram o mesmo limite de 200. Na mesma varredura: 104 tickets zumbis presos na CACA e cliente da carteira exibido com o apelido do WhatsApp.",
     },
-    title: "Iris: atendimento aberto nao some mais do Board (e o Historico ve tudo)",
+    title:
+      "Iris: atendimento aberto nao some mais do Board (e o Historico ve tudo)",
     type: "correcao",
     version: "1.62.45",
   },
@@ -6940,7 +6972,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.42",
     technical: {
       done: "comparativo/route.ts: monta um Set com os nomes normalizados das fichas da esteira do empreendimento; CAD sem apolo_source_links cujo nome bate vira noBoardSemVinculo (por secao e no resumo) em vez de faltante. resumo.faltamImportar = validas - importadas - noBoardSemVinculo, entao naAsanaValidas = importadas + noBoardSemVinculo + faltamImportar. comparativo.tsx: 'faltam' desconta noBoardSemVinculo e o 'no Board' soma os dois, com o detalhe entre parenteses. Bloco 4 do plano das duplicatas. NAO mexi no mapeamento secao->etapa (Credito Reprovado -> revisao): reetiquetaria em massa, fica para decisao a parte.",
-      motivation: "Lucas: 'no asana eu tenho um numero em credito reprovado, no apolo eu tenho outro'. A Thais, cadastrada a mao, existia no Board mas contava como faltante por nao ter vinculo de task.",
+      motivation:
+        "Lucas: 'no asana eu tenho um numero em credito reprovado, no apolo eu tenho outro'. A Thais, cadastrada a mao, existia no Board mas contava como faltante por nao ter vinculo de task.",
     },
     title: "Comparativo Asana x Board: os numeros passam a fechar",
     type: "correcao",
@@ -6966,7 +6999,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.41",
     technical: {
       done: "criarEntidadesDoLote (asana-import.ts): antes de qualquer coisa consulta apolo_source_links pelo gid — task ja vinculada reusa aquele entity_id e conta como reaproveitada, em vez de cair no dedup por CPF e criar entidade nova. separarPorConflito: quando a entidade e nova, roda fichaDeHomonimo (nome normalizado igual em OUTRA entidade + mesmo empreendimento na esteira) e devolve conflito para conferencia. Bloco 2 do plano das duplicatas. 256 testes passando.",
-      motivation: "GUILHERME e WELINTON viraram duas fichas: a leitura releu a task ja credenciada e, como o OCR trouxe o CPF do conjuge (CPFs '379...'), o dedup por CPF nao casou e criou a segunda ficha.",
+      motivation:
+        "GUILHERME e WELINTON viraram duas fichas: a leitura releu a task ja credenciada e, como o OCR trouxe o CPF do conjuge (CPFs '379...'), o dedup por CPF nao casou e criou a segunda ficha.",
     },
     title: "Importar CADs: nao duplica mais ficha ao reler documento",
     type: "correcao",
@@ -6992,7 +7026,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.40",
     technical: {
       done: "templates/route.ts: o catch passou a extrair error_user_title/error_user_msg/error_subcode de MetaWhatsAppSendError.details e devolver em `detalhe`; vincular-imobiliarias.tsx exibe esse detalhe abaixo do status de cada template. Os 4 textos ja tinham sido corrigidos (v1.62.38) para nao terminarem numa variavel, que era a causa do 'Invalid parameter'.",
-      motivation: "A criacao dos 4 templates falhou com 'Invalid parameter', que sozinho nao diz nada — sem o detalhe da Meta, corrigir template vira adivinhacao.",
+      motivation:
+        "A criacao dos 4 templates falhou com 'Invalid parameter', que sozinho nao diz nada — sem o detalhe da Meta, corrigir template vira adivinhacao.",
     },
     title: "Templates da imobiliaria: mostrar o motivo real da recusa da Meta",
     type: "melhoria",
@@ -7018,7 +7053,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.39",
     technical: {
       done: "createApoloEntity ganhou dedup por documento OPT-IN (input.dedupPorDocumento) que casa document_hash + apolo_entity_identifiers; ligado só nos fluxos de PROSPECT (rota /api/apolo/cadastro/salvar e /api/publico/cad/salvar), retornando entityIdExistente (409) em vez de inserir cego — os fluxos de imobiliária/corretor ficam intactos (têm dedup por papel). A rota do cadastro manual passou a gravar apolo_esteira (empreendimento/imobiliaria/corretor, etapa validacao, origem 'cadastro-manual') a partir do novo campo payload.vinculo. Novas rotas GET /api/apolo/imobiliarias/[id]/empreendimentos e /corretores (lib/apolo/imobiliaria-cadastro.ts, reusando empreendimentosHabilitados do portal). Wizard cadastro-flow.tsx: no prospect interno, seletor de empreendimento (0=aviso,1=read-only,>1=select) + corretor, exigidos para avançar; vinculo no payload. Bloco 1 do plano de correção das duplicatas.",
-      motivation: "Incidente: o cadastro manual criava fichas duplicadas (sem dedup) e sem empreendimento (nasciam órfãs, quebrando aviso ao coordenador e relatórios). Lucas pediu o fluxo imobiliária->empreendimento->corretor + dedup.",
+      motivation:
+        "Incidente: o cadastro manual criava fichas duplicadas (sem dedup) e sem empreendimento (nasciam órfãs, quebrando aviso ao coordenador e relatórios). Lucas pediu o fluxo imobiliária->empreendimento->corretor + dedup.",
     },
     title: "Cadastro manual: fluxo imobiliária→empreendimento→corretor + dedup",
     type: "correcao",
@@ -7043,7 +7079,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.38",
     technical: {
       done: "backfill-empreendimento.ts + rota /api/apolo/esteira/backfill-empreendimento (GET simula, POST aplica; authorizeApoloWrite, só com ASANA_ACCESS_TOKEN = producao). Reusa escanearCads (todas as CADs, cada uma com empreendimento) + casarComApolo (casa por nome, mesma regra do import). Só grava quando o casamento é exato (1 candidato) e consistente (mesma pessoa, mesmo empreendimento em todas as CADs); homonimos/divergentes viram lista de conferencia. So preenche campo VAZIO (is null), nunca sobrescreve. Botao Simular/Preencher em vincular-imobiliarias.",
-      motivation: "Fichas de cadastro manual entravam sem empreendimento e quebravam o aviso ao coordenador + sumiam dos relatorios. Rede pra pescar as orfas (e as futuras) a partir do Asana, que e a fonte das CADs.",
+      motivation:
+        "Fichas de cadastro manual entravam sem empreendimento e quebravam o aviso ao coordenador + sumiam dos relatorios. Rede pra pescar as orfas (e as futuras) a partir do Asana, que e a fonte das CADs.",
     },
     title: "Varredura para preencher empreendimento faltando pelo Asana",
     type: "melhoria",
@@ -7074,9 +7111,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.37",
     technical: {
       done: "disparo-reprovacao.ts: quando nao ha telefone do coordenador, a mensagem distingue os casos (ficha sem empreendimento / empreendimento nao mapeado no C2X / sem coordenador de vendas / coordenador sem telefone) em vez do generico 'coordenador sem telefone'. A causa mais comum era ficha com apolo_esteira.empreendimento NULL (3 fichas do cadastro manual, corrigidas no banco para 'Vale do Ouro'). templates/route.ts: os 4 textos foram reescritos para nao terminar numa {{n}} (regra da Meta UTILITY).",
-      motivation: "Incidente: aviso de reprovacao da Thais falhava com 'Coordenador sem telefone', mas a causa real era a ficha sem empreendimento. E os templates da imobiliaria davam 'Invalid parameter' na criacao.",
+      motivation:
+        "Incidente: aviso de reprovacao da Thais falhava com 'Coordenador sem telefone', mas a causa real era a ficha sem empreendimento. E os templates da imobiliaria davam 'Invalid parameter' na criacao.",
     },
-    title: "Aviso ao coordenador: mensagem honesta + templates da imobiliaria corrigidos",
+    title:
+      "Aviso ao coordenador: mensagem honesta + templates da imobiliaria corrigidos",
     type: "correcao",
     version: "1.62.38",
   },
@@ -7100,7 +7139,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.36",
     technical: {
       done: "Bloco 'Mensagens do WhatsApp (Meta)' em vincular-imobiliarias.tsx: POST /api/apolo/imobiliarias/templates cria os 4 templates UTILITY pt_BR (texto, sem midia) no numero 4143; GET mostra o status (APPROVED/PENDING/REJECTED). A rota exige sessao (authorizeApoloWrite), por isso o acionamento e por botao na tela — nao da para disparar via CLI. Textos aprovados pelo Lucas; template do relatorio ficou so texto (avisa que foi por e-mail).",
-      motivation: "Lucas: criar as mensagens para disparar os relatorios; decidiu manter tudo em texto (sem a imagem dos cards).",
+      motivation:
+        "Lucas: criar as mensagens para disparar os relatorios; decidiu manter tudo em texto (sem a imagem dos cards).",
     },
     title: "Criar os templates de aviso a imobiliaria na Meta",
     type: "melhoria",
@@ -7125,7 +7165,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.35",
     technical: {
       done: "Novo getCacaSender() em lib/iris/gmail (nome 'Caca - C2X' + caixa robo caca@ via getGmailIngestMailbox). Os 5 pontos de disparo transacional (disparo-imobiliaria, recibo-prevenda, cobranca-prevenda, bancada Asaas, relatorio-diario) passaram a usar getCacaSender no lugar de PREVENDA_EMAIL_FROM/contato@. sendGmailMessage ganhou formatFromHeader: display name acentuado vai em RFC 2047 (senao 'Caca' quebra o header). Enviar da propria caca@ (caixa autenticada) dispensa alias/Send-As. A resposta de threads da Iris (email-reply) fica intacta (usa o alias do grupo quando existe).",
-      motivation: "Lucas: o e-mail de teste chegou de 'contato@careli.adm.br'; todos os e-mails devem sair da caixa da Caca.",
+      motivation:
+        "Lucas: o e-mail de teste chegou de 'contato@careli.adm.br'; todos os e-mails devem sair da caixa da Caca.",
     },
     title: "Todos os e-mails saem da caixa da Caca",
     type: "correcao",
@@ -7151,7 +7192,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.34",
     technical: {
       done: "relatorio-imobiliaria.ts passou a aplicar toTitleCase (lib/format/name-case) em nomeCliente, corretor e nos nomes vindos do Asana (duplicadas/incorretas). Fonte legada (OCR/esteira) vem em caixa alta; normalizacao so na exibicao, nunca no dado. Nome da imobiliaria fica como o cadastro (razao social pode ter sigla).",
-      motivation: "Lucas: na previa os nomes vinham em Primeira Maiuscula, mas no e-mail real vinham em caixa alta (cliente) e caixa trocada (corretor 'Caio silva'). Seguir o padrao do Hub.",
+      motivation:
+        "Lucas: na previa os nomes vinham em Primeira Maiuscula, mas no e-mail real vinham em caixa alta (cliente) e caixa trocada (corretor 'Caio silva'). Seguir o padrao do Hub.",
     },
     title: "Relatorio das imobiliarias: nomes em Primeira Maiuscula",
     type: "correcao",
@@ -7178,7 +7220,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.33",
     technical: {
       done: "relatorio-imobiliaria.ts junta 3 fontes por imobiliaria (vinculo 'Imobiliaria da CAD'): esteira (credenciados/revisao/validacao/credito + PIX so DATA), Asana via escanearCads (secoes 'duplic'/'incorret', motivo do custom field 'Motivo da reprovacao'), apolo_disparos falhados (erro do PIX traduzido). emails-imobiliaria.ts montarRelatorioImobiliaria reescrito: header escuro + logo branca c2x-logo-branca.png (nova em public/), 6 cards e-mail-safe (total = soma sem PIX pago), secoes, rodape Caca + botao WhatsApp 553199264143. Rota relatorio-diario ganhou modo ?teste=email&imobiliaria=nome (admin) que envia so por e-mail. Botao na tela vincular-imobiliarias.",
-      motivation: "Iteracao com o Lucas sobre o formato: dashboard com 6 cards somando o total, marca C2X (logo branca), motivo das incorretas do Asana, PIX so data, e um jeito de ele receber o teste antes de ligar o disparo real.",
+      motivation:
+        "Iteracao com o Lucas sobre o formato: dashboard com 6 cards somando o total, marca C2X (logo branca), motivo das incorretas do Asana, PIX so data, e um jeito de ele receber o teste antes de ligar o disparo real.",
     },
     title: "Relatorio das imobiliarias vira dashboard (C2X, Asana, teste)",
     type: "melhoria",
@@ -7206,7 +7249,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.32",
     technical: {
       done: "Vinculo de trabalho: 457 relationships 'Imobiliaria da CAD' (prospect -> entidade da imobiliaria), a prova do sync. lib/apolo/disparo-imobiliaria.ts (resolve contato pela entidade, dispara WA template + e-mail, best-effort, celular BR obrigatorio), emails-imobiliaria.ts (avisos + relatorio HTML, so status de credito), relatorio-imobiliaria.ts (agrupa por imob via vinculo). Ganchos best-effort: serasa/consultar (reprovado), cobranca-prevenda enviarCobrancaPrevenda (pix enviado, com statusEnvioAoCliente), webhook Asaas (pix pago, respeita a trava de reentrega). Cron 0 21 * * * (18h BRT) em /api/apolo/imobiliarias/relatorio-diario (allowlist proxy + x-vercel-cron/CRON_SECRET). Rota /api/apolo/imobiliarias/templates cria os 4 templates Meta — pendente aprovacao (ate la, WhatsApp falha e so o e-mail sai).",
-      motivation: "Pedido do Lucas: em vez de tela com login, avisar as imobiliarias automaticamente do andamento das CADs e mandar um relatorio de performance diario. Sem redisparo, so daqui pra frente.",
+      motivation:
+        "Pedido do Lucas: em vez de tela com login, avisar as imobiliarias automaticamente do andamento das CADs e mandar um relatorio de performance diario. Sem redisparo, so daqui pra frente.",
     },
     title: "Avisos automaticos e relatorio diario as imobiliarias",
     type: "novidade",
@@ -7232,7 +7276,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.31",
     technical: {
       done: "Nova pagina /apolo/imobiliarias + rota GET/POST /api/apolo/imobiliarias/vinculo + lib imobiliaria-match.ts. GET agrupa apolo_esteira.imobiliaria por nome normalizado (sem acento/caixa/espaco), com contagem de CADs e o match atual. O seletor de entidade reusa /api/apolo/imobiliarias (loadApoloImobiliarias, papel 'imobiliaria', ~413 opcoes, todas com contato), filtrado no front. POST salva o de-para em apolo_imobiliaria_match (migration 0068, chave nome_normalizado unico). PROXIMO PASSO (nao neste deploy): propagar o match para imobiliaria_entity_id na esteira e para o related_entity_id dos relacionamentos comerciais (hoje NULL, so label texto), e alimentar a Central de CADs escopada por entidade.",
-      motivation: "As imobiliarias das CADs vivem so como TEXTO (apolo_esteira.imobiliaria e apolo_relationships.label com related_entity_id NULL). So 124 de 457 prospects do Vale do Ouro tem vinculo de entidade. As entidades existem (vieram do C2X) mas o nome nao casa exato, entao o Lucas casa manualmente. Fundacao da Central de CADs das imobiliarias.",
+      motivation:
+        "As imobiliarias das CADs vivem so como TEXTO (apolo_esteira.imobiliaria e apolo_relationships.label com related_entity_id NULL). So 124 de 457 prospects do Vale do Ouro tem vinculo de entidade. As entidades existem (vieram do C2X) mas o nome nao casa exato, entao o Lucas casa manualmente. Fundacao da Central de CADs das imobiliarias.",
     },
     title: "Vincular imobiliarias das CADs ao cadastro do Apolo",
     type: "novidade",
@@ -7258,7 +7303,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.30",
     technical: {
       done: "CadPublicDashboard: cards 'duplicados' e 'incorretas' movidos no JSX para depois do bloco do Apolo (credenciado/pago). Sem mudanca de dados nem de logica.",
-      motivation: "Pedido do Lucas: refugo (duplicadas/incorretas) por ultimo, depois do PIX recebido.",
+      motivation:
+        "Pedido do Lucas: refugo (duplicadas/incorretas) por ultimo, depois do PIX recebido.",
     },
     title: "Central de CADs: refugo depois do PIX Compensado",
     type: "melhoria",
@@ -7284,9 +7330,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.29",
     technical: {
       done: "Nova funcao carregarListasCredenciamento(empreendimento) em cads-publico-resumo.ts: lista credenciados (etapa=credenciado) e pagos (pago_em not null) do Apolo com nome (apolo_entities), imobiliaria e data. A page passa apoloListas ao dashboard. CadPublicDashboard: novos Status 'credenciado'/'pago', os dois kpiInfo viraram kpiCard clicaveis; `shown` usa as listas do Apolo (filtradas por imob/busca) quando o status e credenciado/pago, sem entrar no `base`/'Recebidas' (que segue sendo o total do Asana); kanban ganha a coluna correspondente. PIX Compensado: sub = pctDe(pagos, credenciados) + valor.",
-      motivation: "Pedido do Lucas: os cards do fim do funil (Credenciado e PIX Compensado) nao eram clicaveis como os demais, e faltava o % de pagos sobre os credenciados.",
+      motivation:
+        "Pedido do Lucas: os cards do fim do funil (Credenciado e PIX Compensado) nao eram clicaveis como os demais, e faltava o % de pagos sobre os credenciados.",
     },
-    title: "Central de CADs: cards Credenciado e PIX Compensado clicaveis + % de pagos",
+    title:
+      "Central de CADs: cards Credenciado e PIX Compensado clicaveis + % de pagos",
     type: "melhoria",
     version: "1.62.30",
   },
@@ -7310,7 +7358,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.28",
     technical: {
       done: "Nova tool consultar_consolidado_cads na CACA, registrada DENTRO do bloco assistantMode (so numeros de gestao/direcao a recebem) — reusa carregarResumoApolo(empreendimento), o mesmo resumo do dashboard publico de CADs: conta por etapa em apolo_esteira e soma o valor pago deduplicando PAYMENT_CONFIRMED/RECEIVED em apolo_asaas_eventos. Orientacao no bloco de persona do MODO ASSISTENTE (nao na persona geral), deixando claro que e numero de gestao. Sem CPF; default Vale do Ouro.",
-      motivation: "A CACA respondia a direcao que nao conseguia trazer o total das CADs do Vale do Ouro, so caso a caso. Faltava dar a ferramenta de resumo — restrita a gestao, porque o consolidado nao pode vazar pra cliente/corretor/imobiliaria.",
+      motivation:
+        "A CACA respondia a direcao que nao conseguia trazer o total das CADs do Vale do Ouro, so caso a caso. Faltava dar a ferramenta de resumo — restrita a gestao, porque o consolidado nao pode vazar pra cliente/corretor/imobiliaria.",
     },
     title: "CACA traz o consolidado das CADs (so para gestao)",
     type: "melhoria",
@@ -7336,7 +7385,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.27",
     technical: {
       done: "serasa/consultar/route.ts: o reportName passou a ser resolvido no SERVIDOR pelo entity_kind (nao mais exigido/confiado do corpo). PF = SERASA_REPORT_PF || corpo || 'RELATORIO_BASICO_PF_PME' (comportamento inalterado). PJ = SERASA_REPORT_PJ (env nova, gravada como RELATORIO_BASICO_PJ_PME via CLI) || override da tela se nao for nome de PF; sem isso, erro 412 claro pedindo a env. consultarPJ ja existia (endpoint business-information-report, valida 14 digitos). PENDENTE: avaliarCredito le a estrutura de negativeData do relatorio PF; a resposta PJ tem shape diferente, entao o veredito automatico (aprovado/reprovado) de PJ sera calibrado com a primeira resposta real.",
-      motivation: "Caso real do Lucas: ficha PJ (loja simbolica, CNPJ) travada na analise de credito com 'RELATORIO_BASICO_PF_PME not found'. O nome do relatorio PJ (basico) foi confirmado empiricamente no levantamento (docs/architecture/serasa-credito-integracao.md: 200 completo pra CNPJs reais em homologacao).",
+      motivation:
+        "Caso real do Lucas: ficha PJ (loja simbolica, CNPJ) travada na analise de credito com 'RELATORIO_BASICO_PF_PME not found'. O nome do relatorio PJ (basico) foi confirmado empiricamente no levantamento (docs/architecture/serasa-credito-integracao.md: 200 completo pra CNPJs reais em homologacao).",
     },
     title: "Analise de credito de PJ (relatorio por tipo de ficha)",
     type: "melhoria",
@@ -7363,7 +7413,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.26",
     technical: {
       done: "app/apolo/disparo-pix/page.tsx passou a redirect('/apolo'). O componente disparo-massa.tsx e a rota api/apolo/asaas/disparo-lote seguem no codigo (reversivel), so a pagina foi desconectada.",
-      motivation: "Decisao do Lucas (23/jul): nao havera mais disparo em massa; esconder a tela evita acionamento por engano agora que o fluxo e individual.",
+      motivation:
+        "Decisao do Lucas (23/jul): nao havera mais disparo em massa; esconder a tela evita acionamento por engano agora que o fluxo e individual.",
     },
     title: "Esconder a tela de disparo em massa do PIX",
     type: "correcao",
@@ -7397,9 +7448,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.25",
     technical: {
       done: "Nova rota POST api/apolo/board/[id]/gerar-pix: le apolo_esteira (409 se pago; GUARD de etapa!=prevenda; devolve o existente se pagamento_ref real; reserva antiga >90s e retomavel), resolve nome+documento (document_masked -> identifiers), reserva com update condicional (is null OU eq da reserva antiga), emitirCobrancaPix(valor por empreendimento) + enviarCobrancaPrevenda dentro de try/catch que NAO libera a reserva em erro ambiguo (evita cobranca dupla). emitirCobrancaPix passou a devolver paymentId tambem no ramo de erro sem-link, pra o chamador gravar em vez de reemitir. Botao movido pra dentro de status-pix.tsx; rodape esconde o generico em prevenda. VALOR POR EMPREENDIMENTO: migration 0067 (coluna valor_pix nullable em apolo_enterprise_settings) PENDENTE DE OK; getValorPix/setEnterpriseValorPix resilientes a coluna ausente (fallback R$ 1.000); PATCH de settings aceita valorPix; UI na aba Cadastro do empreendimento.",
-      motivation: "O botao Gerar PIX do rodape so incrementava a etapa localmente: parecia funcionar mas nao emitia cobranca. Uma auditoria adversarial da rota nova apontou 3 furos (sem guard de etapa, reserva presa pra sempre, cobranca orfa virando dupla), corrigidos antes de subir. Pedido do Lucas: valor do PIX por empreendimento como referencia quando houver mais de um ativo.",
+      motivation:
+        "O botao Gerar PIX do rodape so incrementava a etapa localmente: parecia funcionar mas nao emitia cobranca. Uma auditoria adversarial da rota nova apontou 3 furos (sem guard de etapa, reserva presa pra sempre, cobranca orfa virando dupla), corrigidos antes de subir. Pedido do Lucas: valor do PIX por empreendimento como referencia quando houver mais de um ativo.",
     },
-    title: "Gerar PIX da ficha (com travas anti-duplicidade) e valor do PIX por empreendimento",
+    title:
+      "Gerar PIX da ficha (com travas anti-duplicidade) e valor do PIX por empreendimento",
     type: "correcao",
     version: "1.62.26",
   },
@@ -7426,7 +7479,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.24",
     technical: {
       done: "Nova rota GET api/apolo/asana/comparativo: escanearCads com secoes vazias (varre o projeto inteiro do empreendimento), exclui secoes cujo nome normalizado contem 'duplic'/'incorret', cruza os gids com apolo_source_links (asana/cad_task) pra saber quem ja subiu, le a etapa de cada entidade em apolo_esteira, devolve os FALTANTES {gid,nome} por secao e lista quem esta na esteira do empreendimento SEM task. UI: comparativo.tsx como primeira aba de importacao-view (que passa a abrir nela); cada secao expande a lista com checkbox por CAD (marcar todos/limpar) e um unico botao Importar que roda o orcamento internamente e filtra pelos gids marcados (vazio = secao inteira), lendo em lotes de 5 em asana/leitura com barra de progresso e gasto acumulado. Sem passo separado de 'calcular custo'.",
-      motivation: "Nao havia como saber o tamanho da diferenca entre o Asana e o Board sem contar na mao, e a importacao vivia em outra aba exigindo digitar o nome exato da secao.",
+      motivation:
+        "Nao havia como saber o tamanho da diferenca entre o Asana e o Board sem contar na mao, e a importacao vivia em outra aba exigindo digitar o nome exato da secao.",
     },
     title: "Comparativo Asana x Board, com importacao na mesma tela",
     type: "novidade",
@@ -7468,9 +7522,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.23",
     technical: {
       done: "api/apolo/board/[id]/pix passa a devolver `pix` (invoiceUrl + payload copia-e-cola + QR base64 + vencimento) consultando o Asaas sob demanda, so quando pagamento_ref existe, nao e reserva e pago_em e null. status-pix.tsx ganhou a caixa 'Reenviar este PIX' com copiar/baixar. CACA: 3 tools novas — enviar_pix_credenciamento (CPF -> esteira -> consultarCobranca/obterQrCodePix), consultar_ficha_credenciamento (raio-x juntando apolo_esteira + apolo_disparos com traducao de erro e contato mascarado) e enviar_ficha_cad (montarFichaCad -> signed URL 1h) — mais o bloco 'BOARD DO APOLO' na persona com a esteira, a fila do evento e as regras de entrega.",
-      motivation: "Pedido do Lucas apos o disparo dos 296: o disparo em massa acabou e a operacao volta ao fluxo normal de atendimento. A CACA precisa resolver na central, sem transferir — e para isso precisa do mesmo contexto que um atendente tem abrindo o Board.",
+      motivation:
+        "Pedido do Lucas apos o disparo dos 296: o disparo em massa acabou e a operacao volta ao fluxo normal de atendimento. A CACA precisa resolver na central, sem transferir — e para isso precisa do mesmo contexto que um atendente tem abrindo o Board.",
     },
-    title: "CACA entende o Board do Apolo e resolve o credenciamento no atendimento",
+    title:
+      "CACA entende o Board do Apolo e resolve o credenciamento no atendimento",
     type: "novidade",
     version: "1.62.24",
   },
@@ -7494,7 +7550,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.22",
     technical: {
       done: "lib/prometeu/data.ts: chegadaDasFichas() le apolo_esteira.chegou_em pelos entity_ids e injeta chegou_em em CredenciadoRow ANTES de ordenarFilaDoEvento, que passa a desempatar por (chegou_em ?? created_at). Novo campo chegouEm em PrometeuCredenciado; fila-view usa chegouEm ?? etapaDesde. Sem migration: o dado ja existia na esteira (267 dos 268 da fila tem, de 30/05 a 16/07).",
-      motivation: "No disparo em massa todos entram na fila no mesmo minuto, entao created_at/etapa_desde viravam a hora do laco. A fila do lancamento e ordenada por merito (hora do PIX; na falta dele, chegada da CAD), e mostrar a hora do disparo apagava esse criterio.",
+      motivation:
+        "No disparo em massa todos entram na fila no mesmo minuto, entao created_at/etapa_desde viravam a hora do laco. A fila do lancamento e ordenada por merito (hora do PIX; na falta dele, chegada da CAD), e mostrar a hora do disparo apagava esse criterio.",
     },
     title: "Fila do evento: data real da CAD",
     type: "correcao",
@@ -7524,7 +7581,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.21",
     technical: {
       done: "Novo: app/api/apolo/asaas/disparo-lote (GET previa custo zero + POST lote com confirmado), lib/apolo/cobranca-prevenda.ts (caminho de envio extraido da bancada) e modules/apolo/blocks/asaas/disparo-massa.tsx em /apolo/disparo-pix. Travas: (1) reserva otimista em apolo_esteira.pagamento_ref com update condicional is('pagamento_ref', null) antes do Asaas, liberada se a emissao falhar; (2) filtro por pagamento_ref IS NULL em vez de etapa; (3) parada automatica por erro de conta/template/limite da Meta (131031, 130429, 132001, 132000, 190) e do Asaas. normalizarTelefone agora usa fixLegacyBrazilianMobileNumber e exige o padrao de celular BR (55+DDD+9+8), com o comprimento decidindo o DDI (DDD 55 do RS era confundido com o DDI). aoEnviarPixPrevenda so roda se algum canal saiu. aoConfirmarPagamentoPrevenda passa a inserir na fila quem pagou sem estar nela.",
-      motivation: "Sao 296 cobrancas de R$ 1.000 em clientes reais. Uma auditoria em 45 agentes sobre o fluxo apontou 3 defeitos com vitima concreta na base: 12 celulares no formato antigo, 5 telefones fora do padrao BR (risco de entregar a CAD a terceiro) e a esteira avancando mesmo sem ninguem receber.",
+      motivation:
+        "Sao 296 cobrancas de R$ 1.000 em clientes reais. Uma auditoria em 45 agentes sobre o fluxo apontou 3 defeitos com vitima concreta na base: 12 celulares no formato antigo, 5 telefones fora do padrao BR (risco de entregar a CAD a terceiro) e a esteira avancando mesmo sem ninguem receber.",
     },
     title: "Disparo em massa do PIX da pre-venda",
     type: "novidade",
@@ -7552,9 +7610,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.20",
     technical: {
       done: "separarPorConflito extraida para lib/apolo/asana-import.ts e usada pelas DUAS portas de entrada (importar-secao e leitura), com campo vazio na ficha atual tratado como complemento e nao como divergencia (a base tem 3 fichas sem imobiliaria e 2 sem empreendimento, que virariam falso conflito). leitura/route.ts: corretor propagado no orcamento -> tela -> POST (CadParaLeitura ganhou o campo), email/telefone no vinculo e conflitos na resposta. orcarLeitura: nova economia (c) por apolo_source_links (asana/cad_task) — pula quem ja foi importado antes de listar anexos; totalCads passa a ser o do lote.",
-      motivation: "A leitura era a outra porta de entrada da esteira e nao tinha a regra de duplicidade: seria o buraco por onde a mesma pessoa entraria duas vezes no mesmo empreendimento. E o formulario do Asana nao tem CPF, entao a importacao da secao Analise de Credito depende dela.",
+      motivation:
+        "A leitura era a outra porta de entrada da esteira e nao tinha a regra de duplicidade: seria o buraco por onde a mesma pessoa entraria duas vezes no mesmo empreendimento. E o formulario do Asana nao tem CPF, entao a importacao da secao Analise de Credito depende dela.",
     },
-    title: "Leitura de documentos com as mesmas regras do import (e sem pagar duas vezes)",
+    title:
+      "Leitura de documentos com as mesmas regras do import (e sem pagar duas vezes)",
     type: "melhoria",
     version: "1.62.21",
   },
@@ -7580,7 +7640,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.19",
     technical: {
       done: "app/api/apolo/asana/importar-secao (novo): escanearCads -> acharCpfNoTexto (custo zero) -> lookupApoloByDocument (resolve identidade sem criar, inclusive no dry-run, senao a simulacao nao teria como mostrar conflito) -> criarEntidadesDoLote (reaproveita quem ja tem o CPF) -> aplicarVinculos. Conflito e detectado comparando empreendimento e imobiliaria da ficha atual, normalizados. UI: bloco novo em importar-cads.tsx com simular/aplicar e lista de conflitos.",
-      motivation: "Caso real (Danilo): comprador do C2X virando prospect do Vale do Ouro por outra imobiliaria. A tela antiga casava por nome e a esteira tem PK por entity_id, entao o caso nao subia direito.",
+      motivation:
+        "Caso real (Danilo): comprador do C2X virando prospect do Vale do Ouro por outra imobiliaria. A tela antiga casava por nome e a esteira tem PK por entity_id, entao o caso nao subia direito.",
     },
     title: "Importar secao inteira por CPF, sem duplicar pessoa",
     type: "melhoria",
@@ -7606,7 +7667,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.18",
     technical: {
       done: "prevenda-fluxo.ts/plantarFichaPrevenda: `status` gravava 'active', que viola o CHECK de apolo_contacts ('verified'|'pending'|'attention'|'blocked'), e o erro do insert NAO era checado — falha silenciosa classica. Agora grava 'pending', checa o error e devolve o motivo; alem disso desmarca is_primary dos demais do mesmo tipo, senao o envio continuava lendo o contato antigo. bancada/route.ts e recibo-prevenda.ts: o registro em apolo_disparos passou pra FORA do if de telefone e os casos 'sem telefone/sem e-mail' viraram erro.",
-      motivation: "Teste de erro do Lucas: ele digitou telefone e e-mail invalidos e o envio saiu normalmente para os contatos corretos antigos.",
+      motivation:
+        "Teste de erro do Lucas: ele digitou telefone e e-mail invalidos e o envio saiu normalmente para os contatos corretos antigos.",
     },
     title: "Contato informado passa a valer + falha de envio deixa de sumir",
     type: "correcao",
@@ -7644,7 +7706,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.17",
     technical: {
       done: "modules/prometeu/blocks/fila/fila-view.tsx (novo) + entrada no menu. Reusa o que ja existia no backend: fetchFila (credenciados x filaRecepcao), ajustarOrdem (furar fila com motivo auditado) e fazerCheckIn. /api/prometeu/fila passa a enriquecer com TELEFONE vindo de apolo_contacts (nao existe coluna em prometeu_credenciados). board/route.ts devolve erroEnvio (apolo_disparos com status 'falhou'); board-view marca card, linha e ganha filtro condicional.",
-      motivation: "Lucas: precisa ver e reordenar a fila antes do evento, e enxergar rapidamente quais envios falharam sem poluir a tela.",
+      motivation:
+        "Lucas: precisa ver e reordenar a fila antes do evento, e enxergar rapidamente quais envios falharam sem poluir a tela.",
     },
     title: "Prometeu: tela de Fila com reordenacao + marcacao de erro de envio",
     type: "melhoria",
@@ -7673,7 +7736,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.16",
     technical: {
       done: "lib/apolo/esteira.ts: atualizarEtapa ganhou `automatico` — gatilho de maquina nao move quem ja esta em ordem >= prevenda (nem promove, nem rebaixa) e devolve `mantida`. `nuncaRebaixar` sozinho nao resolvia: revisao/correcao/indeferido ficam fora da ORDEM e venciam qualquer comparacao. serasa/consultar: passa automatico e so dispara o aviso se a transicao NAO foi mantida. board-view: INDICE_POR_ETAPA.credenciado 3 -> 4 (concluida => verdes + selo + sem botao). status-pix.tsx (novo) + /api/apolo/board/[id]/pix: junta apolo_esteira, apolo_disparos e apolo_asaas_eventos.",
-      motivation: "Lucas testou: estava em credenciado (ja pago), reconsultou o credito e a ficha voltou para analise; e a aprovacao dele como coordenador nao se sustentava.",
+      motivation:
+        "Lucas testou: estava em credenciado (ja pago), reconsultou o credito e a ficha voltou para analise; e a aprovacao dele como coordenador nao se sustentava.",
     },
     title: "Esteira sem regressao + status do PIX na ficha",
     type: "correcao",
@@ -7701,9 +7765,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.15",
     technical: {
       done: "CadPublicDashboard: canonical() reescrito com a ordem certa (o especifico antes do generico, senao 'Analise de Documento' e 'Analise de Credito' caem no mesmo balde); cards fixos do funil + os nao-mapeados renderizados com nome cru pra soma sempre fechar com Recebidas; kpiInfo (nao clicavel) pros numeros do Apolo. lib/apolo/cads-publico-resumo.ts (novo): le apolo_esteira por empreendimento e soma o valor pago via apolo_asaas_eventos, deduplicando CONFIRMED/RECEIVED do mesmo pagamento.",
-      motivation: "Os cards nao refletiam a esteira: agrupavam etapas diferentes e nao mostravam o que acontece depois da emissao do PIX.",
+      motivation:
+        "Os cards nao refletiam a esteira: agrupavam etapas diferentes e nao mostravam o que acontece depois da emissao do PIX.",
     },
-    title: "Central de CADs: cards na ordem da esteira + Credenciado e PIX Compensado",
+    title:
+      "Central de CADs: cards na ordem da esteira + Credenciado e PIX Compensado",
     type: "melhoria",
     version: "1.62.16",
   },
@@ -7728,7 +7794,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.14",
     technical: {
       done: "prevenda-fluxo.ts: contatosDaFicha (le apolo_contacts; considera 'whatsapp' E 'phone' — o C2X grava 4.067 como whatsapp e so 520 como phone), plantarFichaPrevenda (bancada grava contatos + ficha em prevenda, idempotente) e registrarDisparoPrevenda (apolo_disparos, que o meta-inbound-processor ja atualiza por wa_message_id). bancada/route.ts: externalReference = entity_id; cobranca e recibo leem da ficha; montarFichaCad recebe entityId. recibo-prevenda.ts reescrito: entityId em vez de customerId, sem ida ao Asaas. webhook: externalReference -> entityId.",
-      motivation: "Teste real do Lucas: cobranca chegou, recibo nao. Causa: dois caminhos diferentes pra mesma pessoa.",
+      motivation:
+        "Teste real do Lucas: cobranca chegou, recibo nao. Causa: dois caminhos diferentes pra mesma pessoa.",
     },
     title: "Pre-venda: cobranca e recibo pelo mesmo caminho (a ficha)",
     type: "correcao",
@@ -7754,7 +7821,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.13",
     technical: {
       done: "bancada/route.ts: disparo da cobranca extraido para enviarCobrancaPrevenda() (ficha gerada UMA vez -> signed URL no WhatsApp + bytes no e-mail -> aoEnviarPixPrevenda), reusada pelo botao manual e pela acao gerar-pix com o flag enviarCobranca. Falha de um canal NAO derruba o outro nem a emissao do PIX: cada um devolve seu status. UI: checkbox 'ao gerar, ja enviar' (ligado por padrao) e resumo por canal.",
-      motivation: "Ensaiar o fluxo real do lancamento ponta a ponta: emitiu -> cliente recebe a cobranca; pagou -> recebe o recibo.",
+      motivation:
+        "Ensaiar o fluxo real do lancamento ponta a ponta: emitiu -> cliente recebe a cobranca; pagou -> recebe o recibo.",
     },
     title: "Emitiu o PIX, a cobranca sai na hora",
     type: "melhoria",
@@ -7791,7 +7859,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.12",
     technical: {
       done: "Texto trocado nos 6 pontos (2 templates WhatsApp + 4 trechos dos e-mails). Templates renomeados para cad_pix_cobranca_v2 / cad_pix_recibo_v2 em bancada/route.ts e recibo-prevenda.ts: os cad_pix_* ja estavam ATIVOS na Meta com o texto antigo e template aprovado nao se edita livremente. Os antigos seguem ativos ate o v2 aprovar, sem buraco no envio. persona.ts: bloco da acao corrigido (dizia 'confirmar a participacao') e ganhou o prazo.",
-      motivation: "Pedido do time: 15 dias -> 10 dias uteis, e avisar que a CAD vai junto pro cliente validar.",
+      motivation:
+        "Pedido do time: 15 dias -> 10 dias uteis, e avisar que a CAD vai junto pro cliente validar.",
     },
     title: "PIX: prazo de 10 dias uteis e aviso da ficha em anexo",
     type: "melhoria",
@@ -7829,7 +7898,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.11",
     technical: {
       done: "Migration apolo_esteira_pagamento_prevenda: colunas pago_em e pagamento_ref + indice. lib/apolo/prevenda-fluxo.ts (novo): aoEnviarPixPrevenda (prevenda->credenciado + adicionarCredenciado no evento ativo, origem 'prevenda' com indice unico anti-duplicata) e aoConfirmarPagamentoPrevenda (carimba a esteira com `is null` pra ser idempotente + registrarPagamento no Prometeu). Webhook e disparo da bancada ligados nos dois. board/route.ts devolve pagoEm; board-view.tsx ganhou selo e filtro.",
-      motivation: "Dentro de Credenciado convivem quem pagou e quem so recebeu a cobranca; faltava marcar, filtrar e alimentar a fila do lancamento.",
+      motivation:
+        "Dentro de Credenciado convivem quem pagou e quem so recebeu a cobranca; faltava marcar, filtrar e alimentar a fila do lancamento.",
     },
     title: "PIX enviado vira Credenciado e alimenta a fila do Prometeu",
     type: "melhoria",
@@ -7855,7 +7925,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.10",
     technical: {
       done: "lib/apolo/recibo-prevenda.ts (novo): consulta o cliente no Asaas pelo customerId (o evento so traz o id), acha a ficha no Apolo pelo CPF pra pegar nome e empreendimento, e dispara o recibo nos dois canais; nunca lanca, cada canal devolve seu status. asaas-prevenda.ts: consultarClienteAsaas. webhook/route.ts: detecta PAYMENT_RECEIVED/CONFIRMED, checa reentrega ANTES do insert (se ja houve evento de confirmacao pro mesmo payment_id, nao redispara) e chama o recibo; maxDuration 30.",
-      motivation: "O webhook so registrava o evento. Com o pagamento de teste confirmado, faltava fechar o ciclo: pagou -> recibo.",
+      motivation:
+        "O webhook so registrava o evento. Com o pagamento de teste confirmado, faltava fechar o ciclo: pagou -> recibo.",
     },
     title: "Pagou o PIX, recibo sai sozinho (webhook)",
     type: "melhoria",
@@ -7880,7 +7951,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.9",
     technical: {
       done: "bancada/route.ts: remetente em PREVENDA_EMAIL_FROM (default contato@careli.adm.br), passado no `from` do sendGmailMessage. Se o Gmail recusar o remetente (alias nao liberado em 'Enviar e-mail como' na conta caca@), reenvia pela caixa padrao e avisa no retorno, em vez de perder a mensagem.",
-      motivation: "O primeiro teste chegou como caca@; pro cliente quem fala e o contato@.",
+      motivation:
+        "O primeiro teste chegou como caca@; pro cliente quem fala e o contato@.",
     },
     title: "E-mails da pre-venda saem do contato@",
     type: "melhoria",
@@ -7917,7 +7989,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.8",
     technical: {
       done: "lib/iris/gmail.ts: sendGmailMessage ganhou `attachments` (corpo vira parte de um multipart/mixed; caminho sem anexo intacto). lib/apolo/emails-prevenda.ts (novo): monta assunto/texto/HTML da cobranca e do recibo. bancada/route.ts: montarFichaCad gera o PDF UMA vez (signed URL pro WhatsApp, bytes pro e-mail) e o disparo envia nos dois canais, reportando o status de cada um; falha de e-mail nao derruba o WhatsApp.",
-      motivation: "Lucas: mandar as mensagens do PIX tambem por e-mail, sempre junto com o WhatsApp. O Gmail da Iris (caixa caca@) ja enviava, mas nao suportava anexo.",
+      motivation:
+        "Lucas: mandar as mensagens do PIX tambem por e-mail, sempre junto com o WhatsApp. O Gmail da Iris (caixa caca@) ja enviava, mas nao suportava anexo.",
     },
     title: "Pre-venda: PIX e recibo tambem por e-mail (com a ficha anexada)",
     type: "melhoria",
@@ -7949,7 +8022,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.7",
     technical: {
       done: "bancada/route.ts: novos templates cad_pix_cobranca (header DOCUMENT + amostra via uploadMetaWhatsAppTemplateHeaderMedia) e cad_pix_recibo, com texto reposicionado; disparo da cobranca monta o anexo (lookupApoloByDocument -> montarCadDeEntidade -> montarCadPdf -> signed URL do bucket privado). board-view.tsx: removido o badge de previa.",
-      motivation: "O texto antigo dizia 'confirme sua participacao', o que esta errado: quem nao paga tambem pode comprar e ir ao evento. O PIX e etapa da ficha de cadastro. Os templates antigos (prevenda_pix_*) foram preservados; subimos nomes novos pra nao derrubar o que ja esta aprovado.",
+      motivation:
+        "O texto antigo dizia 'confirme sua participacao', o que esta errado: quem nao paga tambem pode comprar e ir ao evento. O PIX e etapa da ficha de cadastro. Os templates antigos (prevenda_pix_*) foram preservados; subimos nomes novos pra nao derrubar o que ja esta aprovado.",
     },
     title: "PIX como etapa da ficha (CAD) + ficha anexada na cobranca",
     type: "melhoria",
@@ -7975,7 +8049,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.6",
     technical: {
       done: "persona.ts: bloco da acao de lancamento passa a instruir que o ENVIO e via Asana (time) e a NAO divulgar link de formulario de CAD nesta acao.",
-      motivation: "Lucas: nao divulgar o link do formulario para o Vale do Ouro, pois as CADs entram pelo Asana.",
+      motivation:
+        "Lucas: nao divulgar o link do formulario para o Vale do Ouro, pois as CADs entram pelo Asana.",
     },
     title: "CACA: envio de CAD via Asana (sem divulgar formulario)",
     type: "melhoria",
@@ -8001,7 +8076,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.5",
     technical: {
       done: "lib/iris/caca/tools.ts + executors.ts: tool consultar_status_cad (por CPF -> lookupApoloByDocument -> etapa da apolo_esteira: prevenda=aprovado, revisao=reprovado, validacao/sem-esteira=em validacao; fallback so trata como CAD nova quem e review+source apolo). Disponivel no atendimento normal (nao so admin). persona.ts: bloco TEMPORARIO da acao de lancamento (cronograma validacao ate 12h / PIX amanha ao meio-dia) e como responder por status.",
-      motivation: "Enxurrada de duvidas de clientes e corretores sobre o andamento da CAD na acao de lancamento; a CACA so sabia consultar em massa, nao responder o status de uma pessoa.",
+      motivation:
+        "Enxurrada de duvidas de clientes e corretores sobre o andamento da CAD na acao de lancamento; a CACA so sabia consultar em massa, nao responder o status de uma pessoa.",
     },
     title: "CACA: status da CAD por CPF + contexto da acao de lancamento",
     type: "melhoria",
@@ -8027,7 +8103,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.4",
     technical: {
       done: "app/api/apolo/asaas/bancada/route.ts: acoes status-templates (listMetaWhatsAppMessageTemplates dos 2 templates), disparar-cobranca e disparar-recibo (sendMetaWhatsAppTemplateMessage pelo 4143). UI preview-asaas.tsx: badge de status + telefone de teste + botoes de disparo.",
-      motivation: "Validar ao vivo as comunicacoes da pre-venda (quais templates a Meta aprovou e como a mensagem chega).",
+      motivation:
+        "Validar ao vivo as comunicacoes da pre-venda (quais templates a Meta aprovou e como a mensagem chega).",
     },
     title: "Bancada Asaas: status dos templates + disparo de teste",
     type: "melhoria",
@@ -8052,7 +8129,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.3",
     technical: {
       done: "modules/apolo/blocks/crm/add-relationship-modal.tsx: o useEffect do debounce de busca ficava DEPOIS do early-return `if (!open) return null`. Com o modal fechado rodavam so os useState; ao abrir, entrava tambem o useEffect -> a contagem de hooks mudava e o React derrubava a arvore (erro minificado #310). useEffect movido para antes do early-return, com guarda `!open`.",
-      motivation: "React #310 (rendered more hooks than during the previous render) ao abrir o modal de adicionar relacionamento.",
+      motivation:
+        "React #310 (rendered more hooks than during the previous render) ao abrir o modal de adicionar relacionamento.",
     },
     title: "Relacionamentos: modal de adicionar quebrava a ficha",
     type: "correcao",
@@ -8077,7 +8155,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.2",
     technical: {
       done: "lib/apolo/cadastro-persist.ts: createApoloEntity gravava document_masked/value_masked mascarados (maskDocument). Trocado por formatDocument (numero completo), alinhando com o sync do C2X, o import do Asana e o identidade-persist, que sempre gravaram completo. Era a unica porta que mascarava, e travava a analise de credito ('A ficha nao tem CPF completo'). Backfill manual da unica CAD real afetada (Poliana), CPF confirmado por hash.",
-      motivation: "Documento mascarado na CAD travava a consulta ao Serasa e a esteira inteira (incidente 22/jul).",
+      motivation:
+        "Documento mascarado na CAD travava a consulta ao Serasa e a esteira inteira (incidente 22/jul).",
     },
     title: "CAD: CPF/CNPJ completo e legivel na validacao",
     type: "correcao",
@@ -8102,7 +8181,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.62.1",
     technical: {
       done: "app/api/apolo/board/route.ts: teto da origem review+apolo de 200 -> 2000 (ordem ascending cortava as CADs recentes; ha 272 em validacao, a 'Poliana' 272a nao aparecia).",
-      motivation: "CAD enviada nao aparecia no Board (incidente reportado pelo Lucas).",
+      motivation:
+        "CAD enviada nao aparecia no Board (incidente reportado pelo Lucas).",
     },
     title: "Board: CADs novas sumindo da fila de validacao",
     type: "correcao",
@@ -8117,7 +8197,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         module: "Apolo",
         screens: [
           {
-            items: ["Bancada Asaas: botao para criar na Meta os 2 templates da pre-venda (cobranca + recibo)."],
+            items: [
+              "Bancada Asaas: botao para criar na Meta os 2 templates da pre-venda (cobranca + recibo).",
+            ],
             screen: "Asaas preview (interno)",
           },
         ],
@@ -8178,7 +8260,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.61.4",
     technical: {
       done: "Conta Gurgel (ASAAS_GURGEL_API_KEY, separada da Careli/Hades). lib/apolo/asaas-prevenda.ts (myAccount, criar cliente, criar PIX, QR, status). Rota /api/apolo/asaas/bancada (testar/gerar-pix/status + GET eventos). Webhook /api/publico/asaas/webhook grava apolo_asaas_eventos (migration 0066) com recebido_em (clock_timestamp, com hora) + headers crus (descobrir a auth do webhook); valida asaas-access-token se ASAAS_WEBHOOK_TOKEN setado. Tela /apolo/asaas-preview.",
-      motivation: "Validar ao vivo a integracao Asaas da pre-venda: comunicacao, geracao de PIX e os dois bloqueadores (expiracao do QR sem chave PIX propria; webhook sem hora do pagamento).",
+      motivation:
+        "Validar ao vivo a integracao Asaas da pre-venda: comunicacao, geracao de PIX e os dois bloqueadores (expiracao do QR sem chave PIX propria; webhook sem hora do pagamento).",
     },
     title: "Bancada de teste do Asaas (pre-venda)",
     type: "novidade",
@@ -8211,7 +8294,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.61.3",
     technical: {
       done: "comprovante.ts dataBR com timeZone America/Sao_Paulo (afeta pagina e PDF). VerificarComprovante: removidos relatorio(codigo)/ambiente, add 'Base consultada: Serasa Experian' e 'Finalidade: CAD - <empreendimento>' (empreendimento vem do read-model, variavel); dd com break-words + viewport meta na page. BoardView recebe onOpenEntity=openEntityInCrm (ApoloPage) e mostra botao 'Abrir no CRM' no header do detalhe.",
-      motivation: "Ajustes do Lucas na tela de verificacao (hora BR, nomes, responsivo) + atalho pro CRM a partir do Board.",
+      motivation:
+        "Ajustes do Lucas na tela de verificacao (hora BR, nomes, responsivo) + atalho pro CRM a partir do Board.",
     },
     title: "Verificacao do comprovante: ajustes + atalho pro CRM no Board",
     type: "melhoria",
@@ -8236,7 +8320,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.61.2",
     technical: {
       done: "comprovante.ts: BASE_URL do QR fixado em https://c2x.app.br (nao usa mais NEXT_PUBLIC_APP_URL, que vinha errada no .env.local apontando pra URL do Supabase). 11 comprovantes gerados no backfill local (QR apontava pra URL errada) foram regenerados com o dominio correto; os 111 de producao ja estavam corretos.",
-      motivation: "Lucas reportou erro ao ler o QR de um comprovante (era um dos gerados no backfill local, com dominio errado no QR).",
+      motivation:
+        "Lucas reportou erro ao ler o QR de um comprovante (era um dos gerados no backfill local, com dominio errado no QR).",
     },
     title: "Correcao do QR do comprovante de credito",
     type: "correcao",
@@ -8261,7 +8346,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.61.1",
     technical: {
       done: "board-view.tsx CardBoard: imobiliaria e corretor em duas linhas (cada uma truncate) em vez de concatenadas numa linha so.",
-      motivation: "Lucas: o corretor estava sendo cortado ao ficar na mesma linha da imobiliaria.",
+      motivation:
+        "Lucas: o corretor estava sendo cortado ao ficar na mesma linha da imobiliaria.",
     },
     title: "Card do Board: corretor embaixo da imobiliaria",
     type: "melhoria",
@@ -8287,7 +8373,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.61.0",
     technical: {
       done: "lib/apolo/salvar-cad.ts (gerarESalvarCad: montarCadDeEntidade -> montarCadPdf -> uploadApoloDocument tipo 'cad', idempotente por origem 'automatico', substitui a anterior). Gatilho em toda transicao de etapa: /serasa/consultar (na consulta) e board/[id]/etapa (movimento manual), best-effort. Rota board/[id]/salvar-cad reusa a CAD existente (gera se nao ha). maxDuration=30 na rota de etapa.",
-      motivation: "Lucas: a CAD e um documento vivo, atualizado a cada etapa com as novas informacoes, salvo automaticamente.",
+      motivation:
+        "Lucas: a CAD e um documento vivo, atualizado a cada etapa com as novas informacoes, salvo automaticamente.",
     },
     title: "CAD viva: salva e atualizada a cada etapa",
     type: "melhoria",
@@ -8320,7 +8407,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.60.0",
     technical: {
       done: "Comprovante de credito: lib/serasa/comprovante-pdf.ts (pdf-lib + qrcode, logo C2X, valores + QR), comprovante.ts (monta dados da serasa_consultas, fingerprint sha256 dos valores, gera+salva em apolo_documents tipo 'comprovante-credito', idempotente por consulta), comprovante-token.ts (HMAC HS256 reusando SESSAO_CAD_SECRET, falha-fechada). Gatilho best-effort no /serasa/consultar apos gravar. Rotas board/[id]/comprovante (baixar) e board/[id]/salvar-cad. Pagina publica app/publico/verificar (server component, sem login, mostra autenticidade + dados tecnicos da consulta: data/operador/relatorio/ambiente; score/dividas ficam so no PDF; sem senha). Dep nova: qrcode. Migration 0064 apolo_disparos (frente anterior) e 0065 (coluna comprovante_senha_hash, ficou orfa apos decisao de nao usar senha).",
-      motivation: "Guardar o comprovante da consulta na pasta do cliente e permitir verificar a autenticidade pelo QR, com transparencia dos dados tecnicos da consulta ao Serasa.",
+      motivation:
+        "Guardar o comprovante da consulta na pasta do cliente e permitir verificar a autenticidade pelo QR, com transparencia dos dados tecnicos da consulta ao Serasa.",
     },
     title: "Comprovante de credito com QR de verificacao",
     type: "novidade",
@@ -8367,7 +8455,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.59.1",
     technical: {
       done: "Serasa em producao (relatorio basico PF, 7 env). Esteira persiste em apolo_esteira: rota PATCH /board/[id]/etapa + gatilho no /serasa/consultar (aprovado->prevenda, reprovado->revisao, sem rebaixar). Limite por empreendimento em apolo_enterprise_settings.limite_credito (migration 0063). Validacao le o c2xCadastro ao vivo (fetchC2xCadastroByEntity) e mescla metadata < c2x < esteira.ficha. montarCadDeEntidade gera a CAD real (logo C2X centralizada, imobiliaria/corretor da coluna apolo_esteira, autenticacao sempre via gerarCodigoAutenticacao). Backfill imobiliaria/corretor do Asana (completar-vinculos): 379 corretores + 391 imobiliarias. Disparo de reprovacao (lib/apolo/disparo-reprovacao.ts): coordenador do empreendimento (manager_id do C2X, com telefone) sempre + corretor se tiver telefone; templates Meta reprovacao_de_credito e reprovacao_de_credito_corretor pelo numero 4143, com a CAD anexa. Gatilho automatico ao reprovar + reenvio manual so-admin (POST /serasa/reenviar-reprovacao, authorizeApoloAdmin). Registro em apolo_audit_events (historico) + apolo_disparos (migration 0064) com devolutiva de entrega que o meta-inbound-processor casa por wa_message_id.",
-      motivation: "Ligar a analise de credito na esteira de credenciamento: consulta, decisao aprovado/reprovado, ficha completa, vinculos de imobiliaria/corretor e o aviso automatico ao coordenador quando reprova.",
+      motivation:
+        "Ligar a analise de credito na esteira de credenciamento: consulta, decisao aprovado/reprovado, ficha completa, vinculos de imobiliaria/corretor e o aviso automatico ao coordenador quando reprova.",
     },
     title: "Analise de credito Serasa e esteira de credenciamento",
     type: "novidade",
@@ -8394,7 +8483,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.59.0",
     technical: {
       done: "lib/serasa/avaliacao.ts: totalRestricoes (soma o balance de todos os blocos de negativeData) + avaliarCredito(cru, limite) — aprovado se total <= limite (default R$ 1.000, do Vale do Ouro; parametrizavel por empreendimento). Rota /preview devolve o veredito; a tela mostra em verde/vermelho. 27 testes verdes (fixture real: 5.499,77 de restricao reprova no limite de 1.000).",
-      motivation: "O Lucas: 'ter um campo que vai falar se esta aprovado ou reprovado; para o Vale do Ouro, restricao acima de 1000 reais reprova'.",
+      motivation:
+        "O Lucas: 'ter um campo que vai falar se esta aprovado ou reprovado; para o Vale do Ouro, restricao acima de 1000 reais reprova'.",
     },
     title: "Serasa: veredito aprovado/reprovado por limite de restricao",
     type: "melhoria",
@@ -8421,7 +8511,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.58.1",
     technical: {
       done: "Com a massa de teste do Serasa (21/jul), a integracao PF foi finalizada. Descobertas: (1) o PF autorizado e RELATORIO_AVANCADO_TOP_SCORE_PF_PME (o basico da 412 USER-NOT-AUTHORIZED [BPCB]); trocado o default. (2) Schema real de PF capturado (fixture exemplo-resposta-pf.json): o parser antigo lia o score do lugar errado (fica em attributes.attributesResponse[].scoring, nao em score.score) e as negativacoes das listas (que vem vazias; a contagem esta em summary.count). resumo.ts reescrito lidando com os dois schemas (PF por summary.count, PJ por listas); 23 testes verdes. Nova rota POST /api/apolo/serasa/preview (consulta ao vivo sem amarrar a um CAD, grava com finalidade 'preview-validacao', devolve resumo + cru). Tela PreviewSerasa com os 23 CPFs da massa. PJ ainda sem reportName autorizado — perguntar ao Serasa.",
-      motivation: "O Lucas pediu uma tela para validar as informacoes que a analise de credito traz antes de cravar o que vai pro cadastro. E a massa de teste destravou o teste real da integracao PF.",
+      motivation:
+        "O Lucas pediu uma tela para validar as informacoes que a analise de credito traz antes de cravar o que vai pro cadastro. E a massa de teste destravou o teste real da integracao PF.",
     },
     title: "Serasa: tela de preview + PF finalizado com a massa de teste",
     type: "melhoria",
@@ -8446,7 +8537,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.58.0",
     technical: {
       done: "ImobiliariaPublicoPortal ganhou o passo de escolha de empreendimento (vitrine multi-select dos ativos) ANTES do CNPJ, espelhando o CredenciamentoFlow interno. Os escolhidos vao ao CadastroFlow via empreendimentosIniciais (empreendimentosHerdados = true -> o wizard nao repete o seletor na Identificacao). Antes o publico comecava pelo CNPJ.",
-      motivation: "Lucas: 'o da imobiliaria comeca escolhendo o empreendimento a qual ela quer se habilitar, eu quero o mesmo fluxo' (o mesmo do credenciamento interno).",
+      motivation:
+        "Lucas: 'o da imobiliaria comeca escolhendo o empreendimento a qual ela quer se habilitar, eu quero o mesmo fluxo' (o mesmo do credenciamento interno).",
     },
     title: "Imobiliaria publica: comeca pela escolha do empreendimento",
     type: "melhoria",
@@ -8479,7 +8571,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.57.1",
     technical: {
       done: "CadastroFlow ganhou um modo publico via prop `publico` (React Context com adapter dos 4 fetches; default = comportamento interno atual, byte a byte). Interno intacto (revisado + 176 testes). Telas publicas: PortaoCorretor (CPF -> CNPJ -> dados -> CRECI -> empreendimento, sessao assinada) entrega ao CadastroFlow tipo=prospect; PortaoImobiliaria idem para tipo=imobiliaria. Rotas publicas novas: /api/publico/cad/salvar, /api/publico/imobiliaria/{iniciar,cadastro}; ocr virou multiplexer (extract/enrich/enrich-company) exigindo sessao do corretor (trava de custo). Descartados os flows simplificados CadPublicoFlow e ImobiliariaPublicoFlow. Modal de relacionamento: busca com debounce (350ms) ao digitar, alem do Enter. Confirmado: loadApoloEnterprises traz o Vale do Ouro (VLO/id 35, VALE DO OURO; VDO/19 e VEREDAS DO OURO).",
-      motivation: "O Lucas: 'tenho ele dentro do hub para quem e interno e tenho ele publico para os corretores enviarem sem login, e o mesmo processo'. Antes o publico era um formulario simplificado paralelo; agora reusa o completo. E o vinculo empreendimento-imobiliaria (pre-requisito para o corretor chegar no formulario) travava porque a busca so disparava no Enter.",
+      motivation:
+        "O Lucas: 'tenho ele dentro do hub para quem e interno e tenho ele publico para os corretores enviarem sem login, e o mesmo processo'. Antes o publico era um formulario simplificado paralelo; agora reusa o completo. E o vinculo empreendimento-imobiliaria (pre-requisito para o corretor chegar no formulario) travava porque a busca so disparava no Enter.",
     },
     title: "CAD publico: formulario completo e vinculo de empreendimento",
     type: "melhoria",
@@ -8506,7 +8599,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.57.0",
     technical: {
       done: "globals.css tem `html { min-width: 1024px }` (o hub e desktop), que fazia o card centralizar num espaco de 1024px e deslocar para a direita no celular. Adicionada a excecao `html:has(.publico-shell) { min-width: 0; overflow-x: hidden }` (mesmo padrao do app /m com .panteon-mobile-root) e a classe `publico-shell` no container raiz da CascaPublica. Botao flutuante da CACA: icone Sparkles (lucide-react, o mesmo que o Apolo usa para IA) no estado fechado; X no aberto.",
-      motivation: "O portal e mobile-first e o corretor abre no celular. O min-width de desktop quebrava a tela no dispositivo real (visto num Android em 20/jul).",
+      motivation:
+        "O portal e mobile-first e o corretor abre no celular. O min-width de desktop quebrava a tela no dispositivo real (visto num Android em 20/jul).",
     },
     title: "Portal publico: ajuste de layout no celular e icone da assistente",
     type: "correcao",
@@ -8542,7 +8636,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.56.0",
     technical: {
       done: "Rotas publicas em /publico/cad e /publico/imobiliaria (fora do HubShell, allowlist no proxy). Fluxo do corretor por maquina de estados: CPF -> CNPJ (prova credenciamento) -> dados (nome/CRECI da MOST via CARELI_PF_01 + CARELI_PF_06) -> empreendimento -> CAD. Sessao assinada (SESSAO_CAD_SECRET): a imobiliaria e os empreendimentos habilitados vem do token, nunca do corpo, entao o anonimo nao escolhe a que imobiliaria se vincula. Toda CAD nasce com corretor_entity_id + imobiliaria_entity_id + enterprise_id, com CHECK no banco (migration 0061) que impede CAD publica sem vinculo. Teto por IP em publico_rate_limit (0062). Correcoes: busca de CNPJ agora olha apolo_entity_identifiers (as 412 imobiliarias nao tem document_hash); nivel Empreendimento do modal de relacionamento grava metadata.enterpriseId (empreendimento nao e entidade Apolo); CRECI migrou de CARELI_PF_04 (9 datasets) para CARELI_PF_06 (so class_organization, R$ 0,177). Inclui tambem melhorias do Serasa que estavam na branch (parser lendo a resposta real, contador que atualiza no erro).",
-      motivation: "Levar a captura de CAD para fora do hub: o corretor sobe a ficha do cliente pelo celular, por um link enviado no WhatsApp, sem depender de operador nem de login. O CPF do corretor cadastrado e a trava de custo (so quem esta credenciado dispara OCR/enriquecimento). Fase 1 do acesso externo — o app com login proprio vem depois.",
+      motivation:
+        "Levar a captura de CAD para fora do hub: o corretor sobe a ficha do cliente pelo celular, por um link enviado no WhatsApp, sem depender de operador nem de login. O CPF do corretor cadastrado e a trava de custo (so quem esta credenciado dispara OCR/enriquecimento). Fase 1 do acesso externo — o app com login proprio vem depois.",
     },
     title: "Portal publico: CAD do corretor e cadastro de imobiliaria",
     type: "melhoria",
@@ -8570,7 +8665,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.55.0",
     technical: {
       done: "POST /api/apolo/serasa/bancada: uma chamada de autenticacao por requisicao, sem retry e sem lote. Teto proprio de 40 tentativas/dia (o Serasa bloqueia o IP acima de 200 e a liberacao exige formalizacao). Recusa rodar quando SERASA_AMBIENTE != homologacao. Cada tentativa e registrada em serasa_consultas com finalidade 'bancada-descoberta-endpoint', entao entra na conta do teto e deixa historico. A resposta de SUCESSO nao volta inteira para a tela (carrega o token): volta so a lista de campos; a de ERRO volta crua, que e onde esta o diagnostico. As 7 env vars foram configuradas em producao (homologacao).",
-      motivation: "A documentacao do Serasa publica DOIS caminhos de token e DOIS hosts de teste sem dizer qual vale para a nossa credencial, e a resposta do time deles pode demorar. Decisao do Lucas: descobrir por tentativa e erro. Sao 4 combinacoes — menos de dez chamadas contra um teto de 200/dia.",
+      motivation:
+        "A documentacao do Serasa publica DOIS caminhos de token e DOIS hosts de teste sem dizer qual vale para a nossa credencial, e a resposta do time deles pode demorar. Decisao do Lucas: descobrir por tentativa e erro. Sao 4 combinacoes — menos de dez chamadas contra um teto de 200/dia.",
     },
     title: "Serasa: bancada de teste da autenticacao",
     type: "melhoria",
@@ -8604,7 +8700,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.54.0",
     technical: {
       done: "Migration 0059 (serasa_consultas): uma linha por chamada, inclusive as que falham, com ambiente OBRIGATORIO e sem default. lib/serasa/{config,auth,client,resumo}.ts, 23 testes. Hosts, credenciais e ambiente 100% por env: a documentacao do Serasa publica TRES hosts (uat-api, sandbox-api, api) e DOIS caminhos de token, entao nada fica cravado no codigo. `ambienteConfere` recusa a consulta quando o ambiente declarado nao bate com o host — o cenario caro e URL de producao rodando com rotulo de teste. Documento sempre em header (X-Document-Id), nunca em query string; X-Retailer-Document-Id sempre enviado, senao a documentacao diz que a cobranca vai para o cliente distribuidor. Teto de 150/dia em homologacao (o Serasa bloqueia o IP acima de 200) e reaproveitamento de consulta em 30 dias. O resumo do relatorio e heuristico e assumidamente provisorio: o schema da resposta nao esta documentado, entao o cru fica salvo inteiro.",
-      motivation: "Proximo passo da esteira: a analise de credito das 122 CADs e manual hoje. Decisao do Lucas: montar tela, resultado, ligacao com o cadastro e comprovante ANTES de comecar a consultar. As perguntas que travam o codigo (endpoint de token, host de homologacao, grafia dos reportName) foram enviadas ao Serasa em 21/jul.",
+      motivation:
+        "Proximo passo da esteira: a analise de credito das 122 CADs e manual hoje. Decisao do Lucas: montar tela, resultado, ligacao com o cadastro e comprovante ANTES de comecar a consultar. As perguntas que travam o codigo (endpoint de token, host de homologacao, grafia dos reportName) foram enviadas ao Serasa em 21/jul.",
     },
     title: "Apolo: analise de credito com Serasa (motor e tela)",
     type: "novidade",
@@ -8631,7 +8728,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.53.0",
     technical: {
       done: "GET /api/apolo/board/[id]/historico le apolo_audit_events (edit_ficha + edit_identity) e AGRUPA por autor+minuto: um Salvar alteracoes com 13 campos e UM evento com 13 alteracoes, nao 13 eventos. Rotulos legiveis (escolaridadeId -> Escolaridade). Nome do autor resolvido em uma consulta so a hub_users. Carregado sob demanda no clique — a maioria das fichas nunca foi editada e buscar em toda abertura seria consulta a toa com 270 na fila.",
-      motivation: "Fechando o pedido do Lucas de 21/jul: as alteracoes ja eram registradas (o que mudou, para qual valor e quem), mas so davam para ler por SQL. Agora ele valida pela propria tela.",
+      motivation:
+        "Fechando o pedido do Lucas de 21/jul: as alteracoes ja eram registradas (o que mudou, para qual valor e quem), mas so davam para ler por SQL. Agora ele valida pela propria tela.",
     },
     title: "Apolo: historico de alteracoes na ficha",
     type: "novidade",
@@ -8659,7 +8757,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.52.1",
     technical: {
       done: "montarSecoes passou a receber o `rascunho` e mescla por cima do cadastro, entao tudo que e DERIVADO acompanha a digitacao (idade via calcIdade, e o `casado` que decide a secao Conjuge e o regime de bens). lib/format/phone-br.ts (novo, 9 testes) com mascara progressiva e normalizacao dos formatos que vieram do Asana: 37999569096, (37)998256365, +55 37 99860-2317, 0379991251532 e dois numeros separados por barra. Guarda: numero que comeca com 55 e ja tem tamanho nacional NAO perde os dois primeiros digitos. Padronizacao aplicada na exibicao E no PATCH do servidor, porque o mesmo campo entra pela digitacao e pela importacao. Nomes usam o toTitleCase que ja e a regra global do Hub.",
-      motivation: "Lucas editou a ficha do Mateus e apontou: idade nao atualizava ao trocar a data, faltava o padrao de Primeira Maiuscula e os telefones precisavam sair todos no formato do Apolo, tanto o digitado quanto o importado.",
+      motivation:
+        "Lucas editou a ficha do Mateus e apontou: idade nao atualizava ao trocar a data, faltava o padrao de Primeira Maiuscula e os telefones precisavam sair todos no formato do Apolo, tanto o digitado quanto o importado.",
     },
     title: "Apolo: idade ao vivo, Primeira Maiuscula e telefone padronizado",
     type: "melhoria",
@@ -8685,7 +8784,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.52.0",
     technical: {
       done: "Restaurado o useEffect que busca /api/apolo/documentos e /api/apolo/board/[id] e desliga o estado `carregando`. Ele foi APAGADO por engano na v1.52.0, quando a substituicao do autosave pelo modo de edicao recortou um bloco de texto grande demais e levou o efeito junto.",
-      motivation: "Sem o efeito nenhum fetch era disparado e `carregando` nunca virava false — spinner eterno, com a validacao inutilizavel. O typecheck passou porque o codigo seguia VALIDO sem o efeito: type-check nao cobre 'faltou uma peca'. Licao: em arquivo de 2 mil linhas, substituir bloco por recorte de texto e fragil; usar ancoras menores e conferir o que ficou entre elas. E rodar o build (que tambem passou aqui) nao substitui abrir a tela.",
+      motivation:
+        "Sem o efeito nenhum fetch era disparado e `carregando` nunca virava false — spinner eterno, com a validacao inutilizavel. O typecheck passou porque o codigo seguia VALIDO sem o efeito: type-check nao cobre 'faltou uma peca'. Licao: em arquivo de 2 mil linhas, substituir bloco por recorte de texto e fragil; usar ancoras menores e conferir o que ficou entre elas. E rodar o build (que tambem passou aqui) nao substitui abrir a tela.",
     },
     title: "Apolo: ficha da validacao voltou a carregar",
     type: "correcao",
@@ -8714,7 +8814,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.51.1",
     technical: {
       done: "board-view: estado `editando` + `rascunho` (so o que foi mexido). Salvar separa identidade (nome/documento/tipo, chaves __) da ficha: a identidade vai para POST /api/apolo/board/[id]/identidade e ABORTA o salvamento se falhar; o resto vai no PATCH. Recarrega do servidor depois, porque a identidade muda em outra tabela. PATCH passou a gravar UMA LINHA POR CAMPO em apolo_audit_events (action edit_ficha, com de/para/autor) — antes so existia ficha_editada_por, que guarda apenas o ultimo editor. Diagnostico le o Perfil dos custom_fields do Asana (o projeto tem dois campos Perfil; pega o preenchido) e marca divergencia de PF/PJ. GET devolve o conjuge de apolo_relationships e o laudo do Asana.",
-      motivation: "Regra do Lucas: o operador vai olhar CAD por CAD e alterar o que perceber errado, e e obrigatorio saber depois o que mudou, para qual valor e por quem. O autosave campo a campo nao dava trilha coerente e permitia gravacao sem querer. Nas PJ nada e preenchido automaticamente (o Asana nao traz CNPJ): o sistema aponta e o operador resolve.",
+      motivation:
+        "Regra do Lucas: o operador vai olhar CAD por CAD e alterar o que perceber errado, e e obrigatorio saber depois o que mudou, para qual valor e por quem. O autosave campo a campo nao dava trilha coerente e permitia gravacao sem querer. Nas PJ nada e preenchido automaticamente (o Asana nao traz CNPJ): o sistema aponta e o operador resolve.",
     },
     title: "Apolo: modo de edicao na validacao da CAD",
     type: "melhoria",
@@ -8741,7 +8842,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.51.0",
     technical: {
       done: "apolo_search_entries.status e NOT NULL SEM DEFAULT: o upsert do PostgREST monta INSERT ... ON CONFLICT e o INSERT viola a restricao antes de chegar ao conflito. Como o erro nao era checado, as 11 fichas corrigidas ficaram indexadas pelo nome ANTIGO. Trocado por UPDATE (a linha sempre existe para entidade existente) com insert de fallback informando status. Erro de delete e insert de identificador tambem passaram a abortar: se o insert falhasse apos o delete, a pessoa ficaria sem documento e invisivel ao dedup. Os 11 indices ja afetados foram corrigidos por SQL.",
-      motivation: "As 11 correcoes de titular gravaram certo em apolo_entities mas a busca continuou devolvendo o nome antigo — a ficha do Mateus indexada como Karla. O comentario do codigo dizia 'sem isso a ficha some da busca' e a implementacao falhava em silencio.",
+      motivation:
+        "As 11 correcoes de titular gravaram certo em apolo_entities mas a busca continuou devolvendo o nome antigo — a ficha do Mateus indexada como Karla. O comentario do codigo dizia 'sem isso a ficha some da busca' e a implementacao falhava em silencio.",
     },
     title: "Apolo: indice de busca na troca de identidade",
     type: "correcao",
@@ -8770,7 +8872,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.50.2",
     technical: {
       done: "lib/apolo/documento.ts (validacao de CPF e CNPJ — CNPJ nao existia no repo, e por isso a JFL entrou como PF com o CPF do socio). lib/apolo/identidade-persist.ts grava identidade com quatro protecoes que a auditoria do codigo apontou: recusa ficha espelho do C2X (resync de 6/6h reescreveria), recusa documento que ja pertence a outra ficha, DELETE+INSERT do identificador (upsert deixaria dois CPFs is_primary e a CACA atenderia a pessoa errada) e recalculo do normalized_text (senao a ficha some da busca). lib/apolo/corrigir-titular.ts le os anexos ate achar o documento do proponente, reaproveitando o que ja foi lido por SHA-256. Rota com GET de orcamento e POST confirmado, em lotes de 5.",
-      motivation: "A leitura parava no primeiro anexo com CPF valido; no PDF do casal esse costuma ser o do CONJUGE. O diagnostico com ancora no formulario do Asana achou 15 fichas assim. Regra do Lucas: se o formulario aponta o Mateus, o CPF tem que ser o do Mateus.",
+      motivation:
+        "A leitura parava no primeiro anexo com CPF valido; no PDF do casal esse costuma ser o do CONJUGE. O diagnostico com ancora no formulario do Asana achou 15 fichas assim. Regra do Lucas: se o formulario aponta o Mateus, o CPF tem que ser o do Mateus.",
     },
     title: "Apolo: corrigir titular das CADs",
     type: "melhoria",
@@ -8799,7 +8902,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.50.1",
     technical: {
       done: "lib/apolo/cad-diagnostico.ts com classificarCad puro e 9 testes sobre casos reais (Mateus x Karla, Marcia x Helio, Maria Eduarda x Joao Marcus, diploma lido como nome). Similaridade token a token, porque a distancia de edicao sobre a string inteira reprovava 'JOAO MARCOS REZENDE COELHO' lido como 'JOAO MARCUS REZENDE COMO'. Decisao RELATIVA entre os dois candidatos da CAD (proponente x conjuge) com vantagem minima de 0,25; empate fica com o proponente. POST /api/apolo/asana/diagnostico grava o laudo em apolo_audit_events (action diagnostico_cad), nunca no cadastro.",
-      motivation: "A leitura de documentos para no primeiro anexo com CPF valido; no PDF do casal esse costuma ser o do CONJUGE, e a ficha nasce com a identidade da pessoa errada enquanto telefone, profissao e renda vem do formulario e sao do proponente. So o Asana sabe quem e proponente e quem e conjuge. Eu mesmo errei o diagnostico da ficha da Karla olhando so o documento — dai a necessidade de laudo antes de corrigir.",
+      motivation:
+        "A leitura de documentos para no primeiro anexo com CPF valido; no PDF do casal esse costuma ser o do CONJUGE, e a ficha nasce com a identidade da pessoa errada enquanto telefone, profissao e renda vem do formulario e sao do proponente. So o Asana sabe quem e proponente e quem e conjuge. Eu mesmo errei o diagnostico da ficha da Karla olhando so o documento — dai a necessidade de laudo antes de corrigir.",
     },
     title: "Apolo: diagnostico de titular das CADs",
     type: "melhoria",
@@ -8835,7 +8939,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.50.0",
     technical: {
       done: "board-view: montarSecoes espelha o montarCadDoc do wizard (mesmas secoes, ordem e rotulos), com calcIdade e regime de bens condicionado a casado/uniao estavel (ids 2 e 6). Endereco deixou de ser condicional e le ficha -> apolo_addresses. O <select> voltou a bg-surface: o popup e desenhado pelo browser com a cor COMPUTADA do elemento, e bg-transparent resolvia para branco enquanto a option herdava text-ink claro. chegou_em: criadoEm agora atravessa escanearCads -> orcamento -> tela -> aplicarVinculos (a rota mandava null cravado). gravarChegadaDoLote faz o backfill so onde esta null.",
-      motivation: "O Lucas abriu a validacao e faltava metade: sem endereco, sem idade, com campos que a revisao do formulario nao tem, lista ilegivel no dark e a fila inteira marcada com a mesma data (392 registros as 01:58). A regra que ele fixou: a validacao confere o que aparece na revisao ao final do formulario, PF e PJ.",
+      motivation:
+        "O Lucas abriu a validacao e faltava metade: sem endereco, sem idade, com campos que a revisao do formulario nao tem, lista ilegivel no dark e a fila inteira marcada com a mesma data (392 registros as 01:58). A regra que ele fixou: a validacao confere o que aparece na revisao ao final do formulario, PF e PJ.",
     },
     title: "Apolo: validacao espelha a revisao do formulario",
     type: "correcao",
@@ -8871,7 +8976,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.49.0",
     technical: {
       done: "Migration 0058 (apolo_esteira.ficha jsonb) + PATCH em /api/apolo/board/[id] gravando campo a campo com merge. A tela le metadata.cadastro mesclado com a ficha, e a ficha ganha. gravarFichaDoLote passa a copiar o cadastro importado para a ficha preenchendo SO campo vazio, para reimportar nunca desfazer digitacao humana. acharPorCpf consulta apolo_entity_identifiers.value_hash alem de apolo_entities.document_hash: o sync do C2X grava document_hash null e deixava 4.133 das 4.286 entidades invisiveis ao dedup. 59 testes no Apolo.",
-      motivation: "A ficha vivia em apolo_entities.metadata, que o sync do C2X substitui inteiro a cada rodada — o mesmo mecanismo que apagou a esteira de 122 CADs em 20/jul. Com o operador digitando na tela o dia todo, o prejuizo passaria a ser trabalho humano. O dedup cego ja tinha duplicado um cliente real (RAFAEL GONCALVES LEITE).",
+      motivation:
+        "A ficha vivia em apolo_entities.metadata, que o sync do C2X substitui inteiro a cada rodada — o mesmo mecanismo que apagou a esteira de 122 CADs em 20/jul. Com o operador digitando na tela o dia todo, o prejuizo passaria a ser trabalho humano. O dedup cego ja tinha duplicado um cliente real (RAFAEL GONCALVES LEITE).",
     },
     title: "Apolo: validacao editavel pelo operador",
     type: "melhoria",
@@ -8908,7 +9014,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.48.2",
     technical: {
       done: "asana-descricao.ts faz o parse do corpo do formulario (rotulo/valor, aceitando valor na mesma linha ou na seguinte) e separa proponente, conjuge e corretor — os tres tem e-mail e telefone, e confundi-los gravaria o contato do corretor como do cliente. c2x-match.ts casa texto livre com as listas fechadas do C2X: profissao por similaridade contra 234 opcoes (limiar alto: Pedreiro nao pode virar Padeiro), escolaridade por sinonimos (2 grau, faculdade, cursando), renda convertendo reais para faixa de salarios. matchEstadoCivilId ja existia e foi reusado. Board: filtro por etapa com contagem, ThOrdenavel com 3 estados por coluna, e CPF completo (272 registros corrigidos no banco). 54 testes.",
-      motivation: "A descricao da CAD tinha profissao, renda, estado civil, escolaridade e o conjuge inteiro, e estava sendo ignorada — enquanto o plano era pagar enriquecimento (R$ 1,06 por CPF, R$ 292 nos 275) para descobrir parte do mesmo. O Lucas apontou tambem que a profissao do Asana e escrita livre e a do C2X e lista fechada, o que exigia a ponte entre as duas.",
+      motivation:
+        "A descricao da CAD tinha profissao, renda, estado civil, escolaridade e o conjuge inteiro, e estava sendo ignorada — enquanto o plano era pagar enriquecimento (R$ 1,06 por CPF, R$ 292 nos 275) para descobrir parte do mesmo. O Lucas apontou tambem que a profissao do Asana e escrita livre e a do C2X e lista fechada, o que exigia a ponte entre as duas.",
     },
     title: "Apolo: importacao le o formulario completo da CAD",
     type: "novidade",
@@ -8935,7 +9042,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.48.1",
     technical: {
       done: "A rota do Board lia esteira?.etapa da tabela nova em quase tudo, menos na propria linha da etapa, que continuava em row.metadata.esteira.etapa — vazio para as entidades vindas do C2X. Varredura confirmou que nao sobrou nenhuma outra leitura do metadata. A ficha de validacao passou a aceitar contact_type 'whatsapp' alem de 'phone'.",
-      motivation: "O Board mostrava 275 itens em Validacao e zero em Analise de credito, com o banco tendo 153 e 122 corretos. E o telefone aparecia vazio em 94% das fichas: o C2X grava 4.064 contatos como 'whatsapp' e so 248 como 'phone', mas a ficha procurava apenas por 'phone'.",
+      motivation:
+        "O Board mostrava 275 itens em Validacao e zero em Analise de credito, com o banco tendo 153 e 122 corretos. E o telefone aparecia vazio em 94% das fichas: o C2X grava 4.064 contatos como 'whatsapp' e so 248 como 'phone', mas a ficha procurava apenas por 'phone'.",
     },
     title: "Apolo: etapa e telefone na ficha de validacao",
     type: "correcao",
@@ -8965,7 +9073,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.48.0",
     technical: {
       done: "Migration 0057 cria apolo_esteira (entity_id PK) e migra o que restava em metadata.esteira; a rota do Board le dela e a importacao escreve nela. Correcao de dados: 122 entidades do Finalizado restauradas para credito, e 150 fichas preenchidas a partir do que ja estava salvo em apolo_ocr_reads (custo zero). extrairCadastro/mesclarCadastros aproveitam a extracao inteira e o nome do documento ganha do titulo da task. etapaMaisAvancada impede rebaixamento (6 testes). Board passou a ler { documents } na raiz: lia data.documents numa rota que nao tem envelope, entao a validacao NUNCA exibiu documento.",
-      motivation: "As 122 CADs perderam etapa e analista as 02:56, muito depois da importacao: o sync do C2X monta a entidade com metadata proprio e faz upsert, SUBSTITUINDO o metadata inteiro. Guardar a esteira ali significava perde-la a cada rodada do sync. A correcao mais segura foi tabela separada, sem tocar no caminho que sincroniza ~4 mil entidades do legado.",
+      motivation:
+        "As 122 CADs perderam etapa e analista as 02:56, muito depois da importacao: o sync do C2X monta a entidade com metadata proprio e faz upsert, SUBSTITUINDO o metadata inteiro. Guardar a esteira ali significava perde-la a cada rodada do sync. A correcao mais segura foi tabela separada, sem tocar no caminho que sincroniza ~4 mil entidades do legado.",
     },
     title: "Apolo: esteira em tabela propria, imune ao sync do C2X",
     type: "correcao",
@@ -8995,7 +9104,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.47.0",
     technical: {
       done: "Migration 0056 (apolo_ocr_reads) com file_sha256 unico: registro das leituras pagas, chave pelo HASH DO BYTE. lib/apolo/asana-ocr.ts com orcarLeitura (gratis) e lerDocumentosDoLote (pago, lotes de 5). Rota /api/apolo/asana/leitura: GET orca, POST exige confirmado e orquestra ler -> criarEntidadesDoLote -> aplicarVinculos (etapa validacao) -> trazerDocumentosDoLote. criarEntidadesDoLote faz dedup por document_hash NO CODIGO, porque a migration 0026 dropou o indice unico e createApoloEntity insere cego. cpfValido valida digito verificador (createApoloEntity so conta 11 digitos). Rotacao automatica de imagem DESLIGADA: no wizard ela reenvia em [0,90,270,180] e custaria ate 4x pelo mesmo arquivo. 12 testes nas funcoes que decidem custo e o que entra como CPF.",
-      motivation: "As secoes que faltam nao tem cadastro no Apolo: o CPF so existe dentro do documento anexado, e ler custa R$ 0,506 por imagem. Como nao havia log, cache nem dedup de consultas, reimportar pagaria tudo de novo — e ja se sabia de CAD repetida (5 pessoas com 2 CADs), que significa o mesmo documento cobrado duas vezes.",
+      motivation:
+        "As secoes que faltam nao tem cadastro no Apolo: o CPF so existe dentro do documento anexado, e ler custa R$ 0,506 por imagem. Como nao havia log, cache nem dedup de consultas, reimportar pagaria tudo de novo — e ja se sabia de CAD repetida (5 pessoas com 2 CADs), que significa o mesmo documento cobrado duas vezes.",
     },
     title: "Apolo: ler documentos das CADs e criar os cadastros",
     type: "novidade",
@@ -9023,7 +9133,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.46.5",
     technical: {
       done: "lib/apolo/asana-documentos.ts baixa o anexo pelo download_url (link assinado do Asana, sem mandar o token para host de terceiro) e sobe via uploadApoloDocument para o bucket apolo-documents, ligado a entidade. uploadApoloDocument ganhou metadataExtra, usado para gravar asanaAnexoGid — a chave de dedup. A entidade sai do vinculo em apolo_source_links, nao de casamento por nome. Rota /api/apolo/asana/documentos processa lotes de ate 10 CADs (maxDuration 300) e a tela itera somando o progresso. Concorrencia de 4 downloads, mesmo numero ja usado no relatorio de performance do Asana; teto de 15MB por arquivo.",
-      motivation: "A validacao lado a lado do Board precisa do documento, e ate agora as CADs importadas tinham so os dados. Isto NAO passa pela MOST: baixar e guardar nao tem custo de consulta, diferente da leitura por iOCR, que fica como etapa separada.",
+      motivation:
+        "A validacao lado a lado do Board precisa do documento, e ate agora as CADs importadas tinham so os dados. Isto NAO passa pela MOST: baixar e guardar nao tem custo de consulta, diferente da leitura por iOCR, que fica como etapa separada.",
     },
     title: "Apolo: documentos das CADs do Asana no Board",
     type: "novidade",
@@ -9051,9 +9162,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.46.4",
     technical: {
       done: "Sugestao por distancia de edicao (Levenshtein) com indice por primeiro nome, limiar 0,86, exposta como lista quaseCasados que NUNCA aplica sozinha. Etapa da importacao virou parametro (validacao/credito/credenciado, padrao credito) com seletor na barra de confirmacao. A data de criacao da task do Asana e gravada em metadata.esteira.chegouEm e a rota do Board usa ela no lugar do created_at da entidade. 14 testes, incluindo os tres erros de digitacao reais como regressao.",
-      motivation: "Tres CADs nao casaram por uma letra (Cristiana/Cristina, Higno/Higino, Feliphe/Felipe) e corrigir a mao resolveria hoje e voltaria na proxima importacao. A data de chegada estava errada: vinha do created_at da entidade, e 100 das 121 tinham o mesmo horario porque foram criadas em lote pelo sync do C2X — o que ainda ordenava a fila errado.",
+      motivation:
+        "Tres CADs nao casaram por uma letra (Cristiana/Cristina, Higno/Higino, Feliphe/Felipe) e corrigir a mao resolveria hoje e voltaria na proxima importacao. A data de chegada estava errada: vinha do created_at da entidade, e 100 das 121 tinham o mesmo horario porque foram criadas em lote pelo sync do C2X — o que ainda ordenava a fila errado.",
     },
-    title: "Apolo: etapa na importacao, sugestao de nome parecido e data de chegada correta",
+    title:
+      "Apolo: etapa na importacao, sugestao de nome parecido e data de chegada correta",
     type: "correcao",
     version: "1.46.5",
   },
@@ -9078,7 +9191,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.46.3",
     technical: {
       done: "aplicarVinculos grava analistaId em metadata.esteira; a rota de importacao devolve a lista de hub_users ativos e o id de quem esta logado, e a tela traz um seletor na barra de confirmacao. A rota do Board projeta analistaId e o board-view semeia analistaPorItem na carga, preservando o que o operador mexeu na sessao.",
-      motivation: "Os itens importados entravam todos como 'Sem analista' e alguem teria que atribuir um a um. O analistaPorItem era mais um estado local que nao persistia — mesmo padrao da etapa.",
+      motivation:
+        "Os itens importados entravam todos como 'Sem analista' e alguem teria que atribuir um a um. O analistaPorItem era mais um estado local que nao persistia — mesmo padrao da etapa.",
     },
     title: "Apolo: analista responsavel na importacao das CADs",
     type: "correcao",
@@ -9106,7 +9220,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.46.2",
     technical: {
       done: "aplicarVinculos passou a gravar empreendimento, imobiliaria e corretor em metadata.esteira, e a ATUALIZAR os dados mesmo quando o vinculo ja existe (o insert em apolo_source_links continua sendo a trava de duplicacao: no 23505 o link nao repete mas o metadata e reescrito). A rota do Board usa o empreendimento do cadastro quando existe e cai para o da esteira quando nao — cadastro antigo nao tem metadata.cadastro. A tela envia os dados da CAD junto e permite marcar os ja importados para reaplicar.",
-      motivation: "Depois da importacao das 121 CADs a coluna Empreendimento ficou vazia: eu tinha o dado em maos durante a importacao (era o proprio filtro da busca) e nao gravei na entidade. Sem poder reaplicar nos ja importados, a unica saida seria mexer no banco a mao.",
+      motivation:
+        "Depois da importacao das 121 CADs a coluna Empreendimento ficou vazia: eu tinha o dado em maos durante a importacao (era o proprio filtro da busca) e nao gravei na entidade. Sem poder reaplicar nos ja importados, a unica saida seria mexer no banco a mao.",
     },
     title: "Apolo: CAD importada leva empreendimento, imobiliaria e corretor",
     type: "correcao",
@@ -9133,7 +9248,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.46.1",
     technical: {
       done: "A rota do Board passou a buscar em duas frentes e deduplicar: a fila normal (status review + source apolo) e quem tem metadata.esteira preenchido. Sem a segunda, as CADs importadas ficavam de fora: sao cadastros antigos, com status 'active' e sem source. O item devolvido ganhou o campo etapa (metadata.esteira.etapa) e o board-view semeia o progresso a partir dele, preservando o que o operador moveu na sessao (INDICE_POR_ETAPA faz a ponte texto->indice de ETAPAS_CAD).",
-      motivation: "A importacao das CADs gravou 124 vinculos e 121 entidades marcadas como credenciado, mas o Board continuava vazio: a escrita da etapa tinha sido implementada e a leitura nao. O progresso era useState local, e o filtro da fila excluia justamente as entidades importadas.",
+      motivation:
+        "A importacao das CADs gravou 124 vinculos e 121 entidades marcadas como credenciado, mas o Board continuava vazio: a escrita da etapa tinha sido implementada e a leitura nao. O progresso era useState local, e o filtro da fila excluia justamente as entidades importadas.",
     },
     title: "Apolo: Board passou a ler a etapa salva no banco",
     type: "correcao",
@@ -9160,7 +9276,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.46.0",
     technical: {
       done: "escanearCads e sondarCadsNoAsana pararam de filtrar task.completed. escanearCads passou a devolver diagnostico { porSecao, valoresEmpreendimento, descartadasPorEmpreendimento } e a tela mostra os valores como botoes que preenchem o filtro, mais a opcao de buscar sem filtro de empreendimento.",
-      motivation: "A busca em Finalizado voltava sempre zero: as tasks daquela secao estao marcadas como concluidas no Asana e o codigo descartava toda task completed — contradicao com o proprio recorte. Sem o diagnostico, a tela pedia para conferir a grafia sem dizer qual era o valor certo.",
+      motivation:
+        "A busca em Finalizado voltava sempre zero: as tasks daquela secao estao marcadas como concluidas no Asana e o codigo descartava toda task completed — contradicao com o proprio recorte. Sem o diagnostico, a tela pedia para conferir a grafia sem dizer qual era o valor certo.",
     },
     title: "Apolo: importacao deixava de fora as CADs concluidas",
     type: "correcao",
@@ -9190,7 +9307,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.45.0",
     technical: {
       done: "lib/apolo/asana-import.ts: escanearCads pagina o projeto do Asana e filtra por empreendimento e secao; casarComApolo indexa apolo_entities por nome normalizado (acento, caixa, espaco, pontuacao) e separa em casados/ambiguos/naoCasados/jaImportados; aplicarVinculos grava apolo_source_links (unique source_system+source_table+source_id = trava de reimportacao) e a etapa em metadata.esteira. Rota /api/apolo/asana/importar (GET preview read-only, POST exige confirmado e a lista explicita de itens). authorizeApoloWrite novo: escrita exclui o papel viewer. 10 testes na normalizacao de nome e no mapa de secoes.",
-      motivation: "Primeiro lote da migracao das CADs do Asana, escolhido pelo Lucas: a secao Finalizado do Vale do Ouro ja tem cadastro no Apolo, entao casa por nome e marca como credenciado sem gastar iOCR (R$ 0,506 por imagem). Serve de ensaio da mecanica antes das secoes que exigem leitura paga. A etapa nao precisou de migration: apolo_entities.metadata e jsonb livre e o Board ja le de la.",
+      motivation:
+        "Primeiro lote da migracao das CADs do Asana, escolhido pelo Lucas: a secao Finalizado do Vale do Ouro ja tem cadastro no Apolo, entao casa por nome e marca como credenciado sem gastar iOCR (R$ 0,506 por imagem). Serve de ensaio da mecanica antes das secoes que exigem leitura paga. A etapa nao precisou de migration: apolo_entities.metadata e jsonb livre e o Board ja le de la.",
     },
     title: "Apolo: importar as CADs finalizadas do Asana",
     type: "novidade",
@@ -9218,7 +9336,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.44.2",
     technical: {
       done: "sondarCadsNoAsana estendida: alem de secoes e anexos, monta o catalogo de custom fields do projeto (nome, quantos preenchidos, ate 3 valores distintos) e uma amostra de tasks com gid e campos. Nova tela apolo/blocks/importacao consumindo /api/apolo/asana/cads, entrada 'importacao' no catalogo do Apolo. Read-only: sem escrita e sem iOCR.",
-      motivation: "Dois bloqueios apareceram ao montar a importacao das CADs: createApoloEntity exige CPF/CNPJ valido (se as CADs nao trouxerem documento em campo, ele teria que sair dos anexos por iOCR, que e consulta cobrada na MOST) e o Board nao persiste etapa alguma (a fila e derivada de apolo_entities com status review, entao Finalizado->Credenciado nao tem onde ser gravado). O token do Asana so existe em producao, entao sem uma tela nao havia como enxergar os dados para decidir o mapeamento e o custo.",
+      motivation:
+        "Dois bloqueios apareceram ao montar a importacao das CADs: createApoloEntity exige CPF/CNPJ valido (se as CADs nao trouxerem documento em campo, ele teria que sair dos anexos por iOCR, que e consulta cobrada na MOST) e o Board nao persiste etapa alguma (a fila e derivada de apolo_entities com status review, entao Finalizado->Credenciado nao tem onde ser gravado). O token do Asana so existe em producao, entao sem uma tela nao havia como enxergar os dados para decidir o mapeamento e o custo.",
     },
     title: "Apolo: sondagem das CADs do Asana",
     type: "novidade",
@@ -9253,9 +9372,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.44.1",
     technical: {
       done: "Tela cheia via requestFullscreen no container da Central (nao no documento, para a TV mostrar so o painel) com listener de fullscreenchange. Escala por zoom no container, presets 1 / 1.28 / TV pela formula calibrada 0.0175*pol+0.72, persistida em localStorage. Correcoes de calculo: porEtapa passa a exigir entrouEm (recepcao e o estado padrao de quem so esta habilitado); presentes exclui concluido e cancelado; tempo medio usa etapaDesde do concluido em vez do relogio; conversao sobre quem passou pelo evento; filaDaRecepcao exclui concluido e cancelado. Limite de gargalo unificado entre Painel e Mapa. Dois testes novos na fila (17 no total).",
-      motivation: "Revisao adversarial da Central (34 agentes, 30 achados, 21 confirmados) apontou que a aba Painel contava quem nunca tinha chegado ao evento — mostraria centenas aguardando com o salao vazio — e que o tempo medio inflava sozinho ao longo do dia. O Lucas pediu o modo tela cheia, que faltava do mockup aprovado.",
+      motivation:
+        "Revisao adversarial da Central (34 agentes, 30 achados, 21 confirmados) apontou que a aba Painel contava quem nunca tinha chegado ao evento — mostraria centenas aguardando com o salao vazio — e que o tempo medio inflava sozinho ao longo do dia. O Lucas pediu o modo tela cheia, que faltava do mockup aprovado.",
     },
-    title: "Prometeu: tela cheia, escala por tela e correcao dos numeros da Central",
+    title:
+      "Prometeu: tela cheia, escala por tela e correcao dos numeros da Central",
     type: "correcao",
     version: "1.44.2",
   },
@@ -9283,7 +9404,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.44.0",
     technical: {
       done: "Central reescrita seguindo a estrutura do mockup aprovado (public/prometeu/cockpit.html): KPIs no topo e abas Painel / Mapa do salao / Analitico, com Lista e Kanban como sub-abas do Analitico. Rotas de leitura estendidas com listChamadasRecentes e listAtividadeRecente. Onde nao ha fonte real o valor aparece como travessao em vez de numero inventado: o valor em R$ do funil depende das unidades no C2X, ainda nao ligadas ao evento.",
-      motivation: "Regressao introduzida na v1.44.0: ao trocar o mockup pela tela React foi portada apenas a aba Analitico, e Painel e Mapa do salao sumiram sem aviso. O Lucas percebeu a falta ao abrir o modulo em producao.",
+      motivation:
+        "Regressao introduzida na v1.44.0: ao trocar o mockup pela tela React foi portada apenas a aba Analitico, e Painel e Mapa do salao sumiram sem aviso. O Lucas percebeu a falta ao abrir o modulo em producao.",
     },
     title: "Prometeu: Painel e Mapa do salao de volta na Central",
     type: "correcao",
@@ -9322,7 +9444,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "1.43.0",
     technical: {
       done: "Migrations 0053/0054/0055 (prometeu_eventos, credenciados, unidades, mesas, chamadas, movimentacoes, janelas_credenciamento) com RLS. Camada lib/prometeu (types/data/auth) + rotas /api/prometeu/{eventos,eventos/status,fila,credenciados,janelas,empreendimentos}. Telas Central e Setup em React substituindo os mockups HTML. Ordem da fila por chave numerica (ordem_fila) derivando a posicao na leitura, permitindo ajuste manual do admin sem recalculo em massa. Acoes irreversiveis (reset e encerramento) restritas ao dono do evento por e-mail verificado no token, e reset bloqueado em definitivo apos o inicio. 15 testes cobrindo as regras da fila, o fuso de Brasilia e a trava do reset.",
-      motivation: "O Prometeu era 100% mockup e o lancamento acontece em ~2 semanas. Passou a ter banco e telas reais. Revisao adversarial antes do deploy encontrou 28 defeitos confirmados; os tres graves (reset forcavel no meio do evento, regra da fila implementada mas desconectada da tela, e limpeza que falhava em silencio marcando o evento como iniciado) foram corrigidos antes de subir.",
+      motivation:
+        "O Prometeu era 100% mockup e o lancamento acontece em ~2 semanas. Passou a ter banco e telas reais. Revisao adversarial antes do deploy encontrou 28 defeitos confirmados; os tres graves (reset forcavel no meio do evento, regra da fila implementada mas desconectada da tela, e limpeza que falhava em silencio marcando o evento como iniciado) foram corrigidos antes de subir.",
     },
     title: "Prometeu: modulo real do dia do lancamento",
     type: "novidade",
@@ -9413,7 +9536,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: 'tem que ter a opcao de mencao, o famoso @'. E: 'tem que funcionar como se fosse um grupo de WhatsApp normal mesmo'.",
     },
-    title: "Iris: menção @ nos grupos (participantes + @todos, notificando de verdade)",
+    title:
+      "Iris: menção @ nos grupos (participantes + @todos, notificando de verdade)",
     type: "novidade",
     version: "1.42.0",
   },
@@ -9440,7 +9564,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: 'estamos com problema de ouvir os audios no grupo e direct'. Diagnostico: nao era o player nem o formato (ogg/opus abre e o arquivo e servido certo) — era midia antiga sem arquivo nenhum.",
     },
-    title: "Iris: recupera as mídias antigas dos grupos/Direct (áudio, imagem, PDF)",
+    title:
+      "Iris: recupera as mídias antigas dos grupos/Direct (áudio, imagem, PDF)",
     type: "correcao",
     version: "1.41.1",
   },
@@ -9468,7 +9593,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: 'vamos precisar criar niveis de acesso na Iris, vincular as filas a setores e departamentos' + reclamacao do time: nao abriam PDF/PNG e a marcacao de novas mensagens/pendente nao funcionava.",
     },
-    title: "Iris: níveis de acesso por setor + PDF/arquivos abrindo + pendência correta",
+    title:
+      "Iris: níveis de acesso por setor + PDF/arquivos abrindo + pendência correta",
     type: "novidade",
     version: "1.41.0",
   },
@@ -9518,7 +9644,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas fechou a tela CRM 360 do Apolo: carteira e financeiro POR PAPEL/participante (o Apolo e o centro, C2X e uma das fontes), e o Historico como ficha corrida que absorve TODOS os modulos do Panteon num lugar so (premissa: registrar tudo).",
     },
-    title: "Apolo: CRM 360 — Carteira por papel, Extrato por participante e Histórico (ficha corrida)",
+    title:
+      "Apolo: CRM 360 — Carteira por papel, Extrato por participante e Histórico (ficha corrida)",
     type: "novidade",
     version: "1.40.0",
   },
@@ -9547,7 +9674,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: o numero 6566 (operacional, Evolution) precisa das 1:1 como atendimento de verdade (ticket/SLA/encerramento), mas sem template nem janela porque nao e Meta; e cor por canal pra ler a fila mais rapido.",
     },
-    title: "Iris: canal Relacionamento com filas Grupo e Direct (1:1) + cor por canal",
+    title:
+      "Iris: canal Relacionamento com filas Grupo e Direct (1:1) + cor por canal",
     type: "novidade",
     version: "1.39.0",
   },
@@ -9715,9 +9843,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         module: "Chronos",
         screens: [
           {
-            items: [
-              "A barra lateral também passou pro grafite do tema.",
-            ],
+            items: ["A barra lateral também passou pro grafite do tema."],
             screen: "Ajustes do tema escuro",
           },
         ],
@@ -10112,7 +10238,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Fechar o enriquecimento: automatico so o que vale e sai no CAD; o caro (GOLD/AuthScore) fora; o resto sob demanda no Apolo. Reduz o custo do cadastro em ~86%.",
     },
-    title: "Cadastro de prospect: enxuto (só o automático) + enriquecimento fechado",
+    title:
+      "Cadastro de prospect: enxuto (só o automático) + enriquecimento fechado",
     type: "melhoria",
     version: "1.31.12",
   },
@@ -10139,7 +10266,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "O Lucas ja tinha aprovado o layout e rejeitou o dialogo de impressao. Precisava do PDF de verdade com urgencia (apresentando o Apolo).",
     },
-    title: "Cadastro: Baixar CAD gera PDF de verdade (sem diálogo de impressão)",
+    title:
+      "Cadastro: Baixar CAD gera PDF de verdade (sem diálogo de impressão)",
     type: "melhoria",
     version: "1.31.11",
   },
@@ -10167,7 +10295,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Fase seguinte ao diagnostico do HelpDesk: com a Fase 0 (anexos no Storage, resolution_summary) pronta, o agente ataca os 14 chamados sem resposta e os 12 parados em 'novo'. Nivel 1 = triagem + resposta; jamais fecha ticket sozinho (ja ha um robo fechando 90% por timeout).",
     },
-    title: "HelpDesk: agente de triagem (lê, acha duplicata, confere changelog e responde)",
+    title:
+      "HelpDesk: agente de triagem (lê, acha duplicata, confere changelog e responde)",
     type: "novidade",
     version: "1.31.10",
   },
@@ -10193,7 +10322,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Regra que o laboratorio existe pra fechar: o que e confiavel o bastante pra vir automatico vs. o que precisa ser declarado. Estado civil e escolaridade caem no segundo grupo.",
     },
-    title: "Cadastro: estado civil e escolaridade declarados (fora do enriquecimento)",
+    title:
+      "Cadastro: estado civil e escolaridade declarados (fora do enriquecimento)",
     type: "melhoria",
     version: "1.31.9",
   },
@@ -10259,7 +10389,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         screens: [
           {
             items: [
-              "O e-mail e o telefone sugeridos deixaram de aparecer como \"[object Object]\": a tela agora lê o valor certo mesmo quando o dado vem aninhado.",
+              'O e-mail e o telefone sugeridos deixaram de aparecer como "[object Object]": a tela agora lê o valor certo mesmo quando o dado vem aninhado.',
               "Os campos que dependem da Validação de contato passam a explicar isso, em vez de mandar rodar uma consulta que não existe como botão.",
             ],
             screen: "Enriquecimento (laboratório)",
@@ -10273,7 +10403,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "O telefone e o e-mail sugeridos sao dois dos campos que o Lucas mais precisa avaliar, e vinham ilegiveis. A estrutura real do BestInfo so apareceu com a consulta em producao.",
     },
-    title: "Enriquecimento: e-mail/telefone sugeridos legíveis (fim do [object Object])",
+    title:
+      "Enriquecimento: e-mail/telefone sugeridos legíveis (fim do [object Object])",
     type: "correcao",
     version: "1.31.6",
   },
@@ -10306,7 +10437,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "O TI-000061 e uma queixa sobre o proprio tipo (melhoria vira erro), que bate com o achado do diagnostico de que todo ticket cai em erro/media: a classificacao nunca era do usuario, era adivinhada do texto. Corrigido na origem (form) e no detalhe (reclassificacao pelo Zeus).",
     },
-    title: "HelpDesk: tipo do chamado respeita a escolha + reclassificação pelo Zeus",
+    title:
+      "HelpDesk: tipo do chamado respeita a escolha + reclassificação pelo Zeus",
     type: "correcao",
     version: "1.31.5",
   },
@@ -10333,7 +10465,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "O AuthScore precisa do contato declarado como entrada, entao pertence a uma etapa de validacao propria, no fim do cadastro, nao a uma consulta por CPF. Com a PF_05 e o painel, o Lucas ve o resultado real dessa checagem.",
     },
-    title: "Enriquecimento: validação de contato (AuthScore PF_05) + turnover na PF_04",
+    title:
+      "Enriquecimento: validação de contato (AuthScore PF_05) + turnover na PF_04",
     type: "novidade",
     version: "1.31.4",
   },
@@ -10361,7 +10494,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Sem o AuthScore fora, a PF_04 inteira falhava e o Lucas nao via nenhum dos datasets novos. E o AuthScore, por precisar do contato declarado como entrada, e uma etapa de validacao, nao um enriquecimento por CPF.",
     },
-    title: "Enriquecimento: Perfil ampliado responde (AuthScore vira etapa à parte)",
+    title:
+      "Enriquecimento: Perfil ampliado responde (AuthScore vira etapa à parte)",
     type: "correcao",
     version: "1.31.3",
   },
@@ -10457,7 +10591,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Diagnostico completo da aba HelpDesk: 90% dos fechamentos eram o timeout de 3 dias, resolution_summary vazio em 71/71 tickets e 53MB de anexos em base64 dentro do Postgres. A ma qualidade do video e do print e a falta de narracao tinham a MESMA causa: tudo precisava caber no base64 do banco.",
     },
-    title: "HelpDesk: gravação com narração, qualidade real e anexos fora do banco",
+    title:
+      "HelpDesk: gravação com narração, qualidade real e anexos fora do banco",
     type: "melhoria",
     version: "1.31.0",
   },
@@ -10542,7 +10677,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: ligar as consultas pesadas do MOST em duas etapas — certidoes automaticas no envio (PF_02) e financeiro profundo manual (PF_03) — validando tela a tela antes de levar pro Apolo.",
     },
-    title: "Cadastro: certidões no envio (PF_02) + análise financeira manual (PF_03)",
+    title:
+      "Cadastro: certidões no envio (PF_02) + análise financeira manual (PF_03)",
     type: "novidade",
     version: "1.29.3",
   },
@@ -10570,7 +10706,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas validou o PF real: faltava saber qual documento foi lido, saber se o comprovante esta atual (3 meses) e ter como sair da tela.",
     },
-    title: "Cadastro: tipo de documento específico + validade do comprovante + sair",
+    title:
+      "Cadastro: tipo de documento específico + validade do comprovante + sair",
     type: "melhoria",
     version: "1.29.2",
   },
@@ -10598,7 +10735,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas testou o cadastro real em prod (Vercel->proxy->MOST): patrimonio e sexo nao vinham (bug de mapeamento do enriquecimento), enderecos em caixa alta, e faltava um botao Enviar distinto do Gerar CAD.",
     },
-    title: "Cadastro: sexo/patrimônio do enriquecimento + endereço em title case + botão Enviar",
+    title:
+      "Cadastro: sexo/patrimônio do enriquecimento + endereço em title case + botão Enviar",
     type: "correcao",
     version: "1.29.1",
   },
@@ -10626,7 +10764,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: cadastrar empresa (PJ) além de PF, usar a base real de imobiliárias, ligar o MOST em produção pela porta oficial (IP fixo na whitelist) e começar a reestruturação do Apolo como CRM de grafo (papéis + relacionamentos).",
     },
-    title: "Apolo: cadastro PJ + imobiliárias reais + MOST por IP fixo + papéis/relacionamentos na ficha",
+    title:
+      "Apolo: cadastro PJ + imobiliárias reais + MOST por IP fixo + papéis/relacionamentos na ficha",
     type: "novidade",
     version: "1.29.0",
   },
@@ -10655,7 +10794,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: montar o cadastro de CAD do Apolo (foco Prospect) por documento, com leitura e enriquecimento automaticos e CAD final impressao-ready, ligado ao botao + do Apolo com seletor de tipo.",
     },
-    title: "Apolo: cadastro de CAD por documento (Prospect) com leitura + enriquecimento MOST",
+    title:
+      "Apolo: cadastro de CAD por documento (Prospect) com leitura + enriquecimento MOST",
     type: "novidade",
     version: "1.28.0",
   },
@@ -10711,7 +10851,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Print do Lucas 17:42: central com '2 mensagens em Atendimento' pendentes (respostas de thread) e canal SEM bolinha; e itens do Hermes com duas cores na central (severidade) parecendo modulos distintos.",
     },
-    title: "Hermes: respostas de thread acendem o canal + cor única por módulo na central",
+    title:
+      "Hermes: respostas de thread acendem o canal + cor única por módulo na central",
     type: "correcao",
     version: "1.27.4",
   },
@@ -10739,7 +10880,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Pedido do Lucas: no encerramento da Iris exigir assunto + motivo (3 opções) e apontar por que o ticket está sendo fechado.",
     },
-    title: "Iris: motivo do encerramento obrigatório (Finalizado/Sem Interação/Sem Continuidade)",
+    title:
+      "Iris: motivo do encerramento obrigatório (Finalizado/Sem Interação/Sem Continuidade)",
     type: "melhoria",
     version: "1.27.3",
   },
@@ -10823,7 +10965,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Pedido do Lucas 7/jul ~13h: tirar o aviso escrito in-app, cor distinta quando mencionado (canal e thread), central abrindo direto no canal, e 'o principal: a notificacao chega primeiro que a mensagem' — fechar a dor de cabeca do Hermes de vez.",
     },
-    title: "Hermes: mensagens instantâneas, cores de menção e central direto no canal",
+    title:
+      "Hermes: mensagens instantâneas, cores de menção e central direto no canal",
     type: "melhoria",
     version: "1.27.0",
   },
@@ -10906,7 +11049,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas 09:59: 'teria como resolver de vez esse problema? estamos desde manha' — Chronos com 'Nao foi possivel carregar' recorrente mesmo apos v1.25.1/1.25.2; logs mostraram OOM persistente com apenas 284 reunioes visiveis.",
     },
-    title: "Chronos: carregamento leve e estável (fim do 'não foi possível carregar')",
+    title:
+      "Chronos: carregamento leve e estável (fim do 'não foi possível carregar')",
     type: "correcao",
     version: "1.26.0",
   },
@@ -11103,7 +11247,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: o Hades não estava com a continuação de tela que fizemos antes, toda hora voltava pro estado inicial.",
     },
-    title: "Hades: continua de onde você estava (cliente do cockpit + filtro do painel)",
+    title:
+      "Hades: continua de onde você estava (cliente do cockpit + filtro do painel)",
     type: "melhoria",
     version: "1.24.3",
   },
@@ -11157,7 +11302,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Relato de atendente (prints do Lucas): comprador com nome certo no início do atendimento e, após um tempo, nome virava o do WhatsApp e os dados do Apolo sumiam do lado direito.",
     },
-    title: "Iris: nome e ficha do comprador não somem mais no meio do atendimento",
+    title:
+      "Iris: nome e ficha do comprador não somem mais no meio do atendimento",
     type: "correcao",
     version: "1.24.1",
   },
@@ -11185,7 +11331,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Time reclamando muito das regressões de 'a tela volta pro estado inicial' ao navegar e voltar. Pedido do Lucas: tudo tem que continuar de onde estávamos, em todos os módulos.",
     },
-    title: "As telas continuam de onde você estava (filtros, abas, organização e seleção)",
+    title:
+      "As telas continuam de onde você estava (filtros, abas, organização e seleção)",
     type: "melhoria",
     version: "1.24.0",
   },
@@ -11224,7 +11371,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Time reclamando muito das notificações (Hermes e Iris). Sintoma do Lucas: Central mandando Hermes direto pro histórico + 'tem hora funciona tem hora não'. Padrão de uso: hub aberto o dia todo enquanto trabalha em outras janelas — exatamente o cenário que o bug atingia.",
     },
-    title: "Notificações: fim do 'vai direto pro histórico' quando o hub está aberto atrás de outra janela",
+    title:
+      "Notificações: fim do 'vai direto pro histórico' quando o hub está aberto atrás de outra janela",
     type: "correcao",
     version: "v1.23.7",
   },
@@ -11252,7 +11400,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Fila do diagnóstico custo+performance de 6/jul: tabela gigante bloqueava o degrau Small do compute (~-US$45/mês); N+1s inflavam latência e invocações; prefill derrubava a Cacá pro fallback determinístico.",
     },
-    title: "Banco em dieta: retenção da fila de cobrança + consultas em lote + Cacá estável",
+    title:
+      "Banco em dieta: retenção da fila de cobrança + consultas em lote + Cacá estável",
     type: "melhoria",
     version: "v1.23.6",
   },
@@ -11312,7 +11461,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Diagnóstico completo custo+performance de 6/jul: erro ativo na Iris (500 contínuo), perda de gravações do Chronos, 208 OOM kills e fixes de custo parados na branch desde 3/jul.",
     },
-    title: "Estabilidade: CRM na fila da Iris, gravações do Chronos, números da cobrança e banco mais leve",
+    title:
+      "Estabilidade: CRM na fila da Iris, gravações do Chronos, números da cobrança e banco mais leve",
     type: "correcao",
     version: "v1.23.5",
   },
@@ -11457,7 +11607,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         screens: [
           {
             items: [
-              "Quando o WhatsApp não entrega uma mensagem de disparo ativo (o famoso \"não entregue\" por causa do 9º dígito do celular), a Iris agora reenvia sozinha na outra variante do número — reduz mensagens que sumiam silenciosamente na cobrança/retorno.",
+              'Quando o WhatsApp não entrega uma mensagem de disparo ativo (o famoso "não entregue" por causa do 9º dígito do celular), a Iris agora reenvia sozinha na outra variante do número — reduz mensagens que sumiam silenciosamente na cobrança/retorno.',
             ],
             screen: "Atendimento — entrega",
           },
@@ -11500,7 +11650,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Prioridade máxima do Lucas: notificações do Hermes instáveis há 1+ mês, time reclamando (push engolido, delay de 8s no clique, menção sem destaque). Diagnóstico completo com 3 causas raízes na memória project-hermes-notifications-diagnosis.",
     },
-    title: "Hermes: notificações confiáveis — Windows, @menção, threads e clique instantâneo",
+    title:
+      "Hermes: notificações confiáveis — Windows, @menção, threads e clique instantâneo",
     type: "melhoria",
     version: "v1.22.0",
   },
@@ -11556,7 +11707,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: a imobiliaria pode ver cadastro/financeiro/boleto dos clientes DELA (sao clientes dela) — caso real da Raiane Imobiliaria pedindo a saude financeira dos boletos dos clientes, que a Cacá recusava e transferia. E: nao quero a Cacá presa em boleto/financeiro; se o cliente falar de assunto fora do trabalho, pode responder naturalmente.",
     },
-    title: "Cacá atende imobiliárias sobre os clientes delas + conversa mais natural",
+    title:
+      "Cacá atende imobiliárias sobre os clientes delas + conversa mais natural",
     type: "melhoria",
     version: "v1.21.1",
   },
@@ -11570,7 +11722,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
           {
             items: [
               'Agora o Panteon tem APP no celular! Para instalar é só ACESSAR c2x.app.br/m pelo navegador do celular e tocar em "Adicionar à tela de início" — ele abre como app, em tela cheia. (Android: menu ⋮ → Instalar app / Adicionar à tela inicial. iPhone: Compartilhar → Adicionar à Tela de Início.)',
-              "No app você usa a Iris (fila de atendimento agrupada por seção, ficha do cliente e cronômetro de \"sem resposta\") e o Hermes (canais e conversas estilo WhatsApp: responder em thread, reações, tags e @menção). As notificações ficam no sino no topo.",
+              'No app você usa a Iris (fila de atendimento agrupada por seção, ficha do cliente e cronômetro de "sem resposta") e o Hermes (canais e conversas estilo WhatsApp: responder em thread, reações, tags e @menção). As notificações ficam no sino no topo.',
               "É a mesma conta e os mesmos dados de sempre — só que na palma da mão.",
             ],
             screen: "App no celular — c2x.app.br/m",
@@ -11633,7 +11785,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas: 'revisa todos os agentes, caca, athena, principalmente na geracao da ata, revisa com cuidado para gente fechar isso de uma vez'. A ata falhava intermitente desde a migracao pro Claude (perdeu o json_schema da OpenAI); o colaborador nao conseguia consultar o proprio cadastro.",
     },
-    title: "Agentes de IA revisados: ata do Chronos estável + Cacá lê cadastro de qualquer perfil",
+    title:
+      "Agentes de IA revisados: ata do Chronos estável + Cacá lê cadastro de qualquer perfil",
     type: "correcao",
     version: "v1.20.2",
   },
@@ -11660,7 +11813,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas, em teste real, viu a conversa da Cacá sumida do cockpit da Iris (mensagens no banco, nao exibidas) e a Cacá dizendo 'instabilidade' quando, por ele ser colaborador (sem carteira), simplesmente nao ha financeiro. Ela precisa entender o perfil de quem atende.",
     },
-    title: "Iris: conversas reaparecem no atendimento + Cacá entende o perfil do contato",
+    title:
+      "Iris: conversas reaparecem no atendimento + Cacá entende o perfil do contato",
     type: "correcao",
     version: "v1.20.1",
   },
@@ -11803,7 +11957,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Ajustes de UI pedidos pelo Lucas: separar criação do template (fila) do envio, protocolo nos cards, Setup só admin, barra do Apolo fixa. + Cobrança preenche os dados do cliente sozinha e a Athena passa a redigir templates com IA (Claude Opus). Fix da tela branca do /iris.",
     },
-    title: "Iris: Athena monta templates com IA + cobrança preenche os dados sozinha (e fix da tela branca)",
+    title:
+      "Iris: Athena monta templates com IA + cobrança preenche os dados sozinha (e fix da tela branca)",
     type: "novidade",
     version: "v1.18.0",
   },
@@ -11831,7 +11986,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Migração dos números (Gurgel + 4143) para a WABA própria Careli-Panteon (saindo da Elife/Smarters). Lucas quer tudo separado por número: cada fila vinculada ao seu número, atendimento saindo pelo número certo, e transferência travada entre números diferentes (a janela de 24h do WhatsApp é por número).",
     },
-    title: "Iris: filas vinculadas ao número (multi-número separado + trava de transferência)",
+    title:
+      "Iris: filas vinculadas ao número (multi-número separado + trava de transferência)",
     type: "novidade",
     version: "v1.16.0",
   },
@@ -11860,7 +12016,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas pediu que a Cacá tire dúvidas cadastrais usando o banco C2X (com a regra de identidade: PF confirma, PJ só CNPJ — caso AT-000063 da imobiliária Fr Freitas) e que a transferência demonstre a análise em vez de soar genérica. Lote único de melhorias da Cacá.",
     },
-    title: "Iris: Cacá tira dúvidas de cadastro (cliente e imobiliária) e transfere demonstrando análise",
+    title:
+      "Iris: Cacá tira dúvidas de cadastro (cliente e imobiliária) e transfere demonstrando análise",
     type: "melhoria",
     version: "v1.15.3",
   },
@@ -11946,7 +12103,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas pediu que TODOS os modulos (menos Apolo/Ares) virem produtores da central, incluindo os baseados em estado (crons), com dedup e consciencia de custo.",
     },
-    title: "Notificações: Iris, Meu dia, Chronos e Hades passam a avisar na central",
+    title:
+      "Notificações: Iris, Meu dia, Chronos e Hades passam a avisar na central",
     type: "melhoria",
     version: "v1.15.1",
   },
@@ -12364,7 +12522,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
           {
             items: [
               "Nova tela de atendimento de cobranca (fila · conversa · contexto do cliente) com a Athena, a assistente do operador: ela escreve a resposta, resume a conversa, organiza os boletos e ate le o contrato (D4Sign) pra tirar duvida.",
-              "Da pra registrar acordo e promessa direto no atendimento; e a CACA responde sozinha quando o cliente toca \"Receber boleto\".",
+              'Da pra registrar acordo e promessa direto no atendimento; e a CACA responde sozinha quando o cliente toca "Receber boleto".',
             ],
             screen: "Atendimento",
           },
@@ -12382,7 +12540,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         screens: [
           {
             items: [
-              "Novo \"Meu dia\": sua agenda, tarefas e retornos num lugar so — puxa as reunioes do Chronos e as tarefas do Asana.",
+              'Novo "Meu dia": sua agenda, tarefas e retornos num lugar so — puxa as reunioes do Chronos e as tarefas do Asana.',
               "Home reformulada e melhorias de interface (os tooltips nao cortam mais).",
             ],
             screen: "Home",
@@ -12477,7 +12635,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Conectar os processos da Cobranca numa arvore navegavel (workflow <-> acordos/promessas <-> regua), deixando o desenho do motor de cobranca completo e visual para o time; e registrar a hora dos deploys no painel de Novidades.",
     },
-    title: "Processos POP: processos conectados (cross-link) + Cobrança completa",
+    title:
+      "Processos POP: processos conectados (cross-link) + Cobrança completa",
     type: "melhoria",
     version: "v1.6.1",
   },
@@ -12505,7 +12664,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Centralizar os POPs e regras de negocio num lugar visual e vivo no Hub (O&M), comecando pela documentacao do workflow e do score de risco da Cobranca, com base que pode evoluir para BPM executavel.",
     },
-    title: "Processos POP: biblioteca de processos e regras com fluxograma interativo",
+    title:
+      "Processos POP: biblioteca de processos e regras com fluxograma interativo",
     type: "novidade",
     version: "v1.6.0",
   },
