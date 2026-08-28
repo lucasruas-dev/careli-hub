@@ -167,6 +167,18 @@ function guardApi(request: NextRequest, pathname: string) {
       return NextResponse.next();
     }
 
+    // A LOGO DA PORTA, e SO ela. A tela de login mostra a marca do cliente ANTES de existir
+    // cookie — sem este alivio o <img> sai sem credencial, leva 401 e a porta abre com o quadrado
+    // quebrado (era o defeito, encontrado na revisao antes de ir ao ar).
+    //
+    // ⚠️ NAO VIRA PREFIXO. `PUBLIC_API_PREFIXES` casa por comeco de caminho, e um
+    // "/api/incorporador" ali abriria carteira, contrato e vendas para o mundo. Por isso a
+    // liberacao e por FORMATO EXATO: um slug de portal e o segmento final "logo", nada mais.
+    // A rota ainda se protege por dentro — so serve o objeto que a coluna daquele portal aponta.
+    if (/^\/api\/incorporador\/[a-z0-9-]{1,60}\/logo$/.test(pathname)) {
+      return NextResponse.next();
+    }
+
     return NextResponse.json({ error: "Sessao ausente." }, { status: 401 });
   }
 

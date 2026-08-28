@@ -6,7 +6,22 @@
 // filtro do cliente: o único caminho é slug (porta pública) ou id vindo da sessão assinada.
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
+import { chaveDoPortal } from "./logo";
 import { verificarSenhaIncorporador } from "./senha";
+
+/**
+ * O slug que pode entrar numa consulta.
+ *
+ * ⚠️ `%` E `_` SÃO CURINGA NO `ilike` DO POSTGREST. Sem esta passagem, `/incorporador/cec%` casa
+ * com `cecilio-rocha` por prefixo e a porta vira um enumerador de quem é cliente da Careli — o
+ * oposto do 404 mudo que estas funções fazem questão de dar. `chaveDoPortal` só deixa passar
+ * `[a-z0-9-]`, então o curinga morre antes da query. Slug legítimo já nasce assim
+ * (`normalizarSlug`), então nada de verdadeiro é perdido; a tolerância a MAIÚSCULAS continua,
+ * porque quem compara é o `ilike`.
+ */
+function slugDeConsulta(valor: null | string | undefined): string {
+  return chaveDoPortal(String(valor ?? ""));
+}
 
 export type IncorporadorEmpreendimento = {
   carteiraAdministrada: boolean;
@@ -75,7 +90,7 @@ export async function carregarIncorporadorPorSlug(slug: string): Promise<Incorpo
   const client = createApoloAdminClient();
   if (!client) return null;
 
-  const alvo = slug.trim().toLowerCase();
+  const alvo = slugDeConsulta(slug);
   if (!alvo) return null;
 
   const { data, error } = await client
@@ -94,6 +109,43 @@ export async function carregarIncorporadorPorSlug(slug: string): Promise<Incorpo
     logoEscuraPath: data.logo_escura_path,
     logoPath: data.logo_path,
     nome: data.nome,
+    slug: data.slug,
+  };
+}
+
+/**
+ * Leitura MAGRA para a rota pública da logo: só slug real + as duas referências de marca.
+ *
+ * Existe separada de `carregarIncorporadorPorSlug` de propósito. Aquela carrega também a lista de
+ * empreendimentos (que É a regra de permissão) e ESTOURA quando o banco falha; servir uma imagem
+ * não precisa de nada disso e não pode derrubar a porta por causa de uma logo. Aqui, portal
+ * inexistente ou inativo devolve `null` e a rota responde 404 sem dizer qual dos dois.
+ */
+export async function carregarMarcaDoPortal(
+  slug: string,
+): Promise<null | { logoEscuraPath: null | string; logoPath: null | string; slug: string }> {
+  const client = createApoloAdminClient();
+  if (!client) return null;
+
+  const alvo = slugDeConsulta(slug);
+  if (!alvo) return null;
+
+  const { data, error } = await client
+    .from("apolo_incorporadores")
+    .select("slug,logo_path,logo_escura_path,ativo")
+    .ilike("slug", alvo)
+    .maybeSingle<{
+      ativo: boolean;
+      logo_escura_path: null | string;
+      logo_path: null | string;
+      slug: string;
+    }>();
+
+  if (error || !data || !data.ativo) return null;
+
+  return {
+    logoEscuraPath: data.logo_escura_path,
+    logoPath: data.logo_path,
     slug: data.slug,
   };
 }
@@ -134,7 +186,7 @@ export async function autenticarUsuarioIncorporador(
   //
   // O slug vem da URL, que é pública e não autoriza nada sozinha: quem autoriza é a senha. O que
   // ele faz é dizer EM QUAL portal a pessoa está tentando entrar.
-  const portal = String(slug ?? "").trim().toLowerCase();
+  const portal = slugDeConsulta(slug);
 
   let consulta = client
     .from("apolo_incorporador_usuarios")

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { carregarIncorporadorPorSlug } from "@/lib/apolo/incorporador/dados";
+import { resolverLogoDoPortal } from "@/lib/apolo/incorporador/logo";
 import { PortalIncorporador } from "@/modules/incorporador/PortalIncorporador";
 
 // PORTAL DO INCORPORADOR — o dono do loteamento entra aqui.
@@ -15,17 +16,14 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 // A logo aceita duas formas em `logo_path`, e a diferença importa:
-//   • caminho começando com "/" — arquivo servido pelo próprio app (public/). É o que dá para
-//     usar hoje: a logo do Cecílio já está em /garden/, commitada com o masterplan.
-//   • qualquer outra coisa — chave no bucket privado, que exige URL assinada.
-// A segunda ainda não está ligada de propósito: signed URL do Storage vence em 1h e esta tela
-// fica aberta a manhã toda (a logo viraria um quadrado quebrado, defeito já visto no repo). Vai
-// precisar de rota proxy que assina na hora, e isso entra quando o Lucas mandar a arte boa.
-function resolverLogo(logoPath: string | null): string | null {
-  if (!logoPath) return null;
-
-  return logoPath.startsWith("/") ? logoPath : null;
-}
+//   • caminho começando com "/" — arquivo servido pelo próprio app (public/). É o caso do
+//     Cecílio, que está EM PRODUÇÃO e entrou por INSERT manual;
+//   • `storage:incorporador-logos/<slug>/<variante>.<ext>` — arte subida pelo Setup, que a rota
+//     `/api/incorporador/<slug>/logo` serve do bucket privado.
+//
+// As duas continuam funcionando; a decisão inteira mora em `resolverLogoDoPortal`
+// (lib/apolo/incorporador/logo.ts), com teste. A rota existe em vez de signed URL porque o link
+// assinado vence em 1h e esta tela fica aberta a manhã toda — a marca viraria quadrado quebrado.
 
 export async function generateMetadata({
   params,
@@ -56,8 +54,16 @@ export default async function PaginaIncorporador({
 
   return (
     <PortalIncorporador
-      logoEscuraUrl={resolverLogo(incorporador.logoEscuraPath)}
-      logoUrl={resolverLogo(incorporador.logoPath)}
+      logoEscuraUrl={resolverLogoDoPortal({
+        referencia: incorporador.logoEscuraPath,
+        slug: incorporador.slug,
+        variante: "escura",
+      })}
+      logoUrl={resolverLogoDoPortal({
+        referencia: incorporador.logoPath,
+        slug: incorporador.slug,
+        variante: "clara",
+      })}
       nome={incorporador.nome}
       slug={incorporador.slug}
     />

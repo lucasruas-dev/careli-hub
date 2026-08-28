@@ -15,6 +15,7 @@
 import type { RowDataPacket } from "mysql2";
 
 import { getHadesDbPool } from "@/lib/guardian/db";
+import { resolverLogoDoPortal } from "@/lib/apolo/incorporador/logo";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 import { hashSenhaIncorporador } from "./senha";
@@ -41,7 +42,10 @@ export type IncorporadorGerenciado = {
   empreendimentos: { carteiraAdministrada: boolean; enterpriseId: string }[];
   id: string;
   logoEscuraPath: null | string;
+  /** Endereço pronto para a prévia da tela — o MESMO que a porta usa. Resolvido no servidor. */
+  logoEscuraUrl: null | string;
   logoPath: null | string;
+  logoUrl: null | string;
   nome: string;
   slug: string;
   usuarios: UsuarioDoIncorporador[];
@@ -149,7 +153,13 @@ export async function listarIncorporadores(
       })),
     id: i.id,
     logoEscuraPath: i.logo_escura_path,
+    logoEscuraUrl: resolverLogoDoPortal({
+      referencia: i.logo_escura_path,
+      slug: i.slug,
+      variante: "escura",
+    }),
     logoPath: i.logo_path,
+    logoUrl: resolverLogoDoPortal({ referencia: i.logo_path, slug: i.slug, variante: "clara" }),
     nome: i.nome,
     slug: i.slug,
     usuarios: (usus ?? [])
@@ -163,6 +173,119 @@ export async function listarIncorporadores(
         ultimoLoginEm: u.ultimo_login_em,
       })),
   }));
+}
+
+/**
+ * ⚠️ O PORTÃO DO UPLOAD. Responde a uma pergunta só: em qual prefixo do bucket este operador
+ * pode gravar agora?
+ *
+ * Sem ela, a rota de upload obedecia ao texto do campo "endereço de acesso" e mais nada — e o
+ * furo era real e silencioso: o operador clica em "Novo incorporador", digita `vistaalegre`
+ * (endereço que JÁ existe, erro comum quando se recria um cadastro), escolhe o arquivo, e o
+ * upload com `upsert` SOBRESCREVE a arte do portal que está no ar. Só depois, ao salvar, o banco
+ * recusa por endereço duplicado — e ninguém liga uma coisa à outra. Pior: como o `?v=` gravado
+ * na coluna não mudou, quem já tinha a logo em cache continua vendo a certa, e só visitante novo
+ * vê a errada.
+ *
+ * As duas regras:
+ *   • EDIÇÃO (`id` presente): o prefixo é o slug GRAVADO no banco, nunca o que está no campo. Se
+ *     o operador está renomeando o endereço, a arte sobe no prefixo antigo e o `migrarLogoDeSlug`
+ *     da gravação a leva para o novo — a renomeação continua funcionando, e mesmo assim é
+ *     impossível escrever no prefixo de outro portal.
+ *   • NOVO (sem `id`): endereço que já pertence a alguém é recusado ANTES de tocar no bucket, com
+ *     a mesma mensagem que a gravação daria.
+ */
+export async function prefixoDeLogoPermitido(
+  client: AdminClient,
+  entrada: { id?: null | string; slug: string },
+): Promise<{ erro: string; ok: false } | { ok: true; slug: string }> {
+  const pedido = normalizarSlug(entrada.slug ?? "");
+  const id = entrada.id?.trim() || "";
+
+  if (id) {
+    const { data, error } = await client
+      .from("apolo_incorporadores")
+      .select("slug")
+      .eq("id", id)
+      .maybeSingle<{ slug: string }>();
+
+    if (error) return { erro: "Não foi possível confirmar o portal.", ok: false };
+    if (!data) return { erro: "Incorporador não encontrado.", ok: false };
+
+    const gravado = normalizarSlug(data.slug ?? "");
+    if (!gravado) return { erro: "O portal está com o endereço de acesso inválido.", ok: false };
+    return { ok: true, slug: gravado };
+  }
+
+  if (!pedido) {
+    return { erro: "Defina o endereço de acesso antes de enviar a logo.", ok: false };
+  }
+
+  const livre = await enderecoDeAcessoLivre(client, { id: null, slug: pedido });
+  if (!livre.ok) return livre;
+
+  return { ok: true, slug: pedido };
+}
+
+/**
+ * O endereço de acesso pedido já pertence a OUTRO incorporador?
+ *
+ * ⚠️ ISTO PRECISA RODAR ANTES DE QUALQUER MEXIDA NO BUCKET. A gravação move o objeto da logo para
+ * o prefixo do endereço novo, e o índice único do banco só reclama depois. Renomear o portal A
+ * para o endereço do portal B, então, mandava a arte de A para o prefixo de B ANTES de a gravação
+ * ser recusada — na melhor hipótese o `move` falha e o operador recebe uma mensagem sobre logo que
+ * nada tem a ver com o problema real; na pior, a marca do portal B, que está no ar, é substituída.
+ *
+ * `ilike` porque o slug gravado pode ter caixa diferente do normalizado; `pedido` já saiu de
+ * `normalizarSlug`, então não carrega `%` nem `_` para virar curinga do pattern matching.
+ */
+export async function enderecoDeAcessoLivre(
+  client: AdminClient,
+  entrada: { id?: null | string; slug: string },
+): Promise<{ erro: string; ok: false } | { ok: true }> {
+  const pedido = normalizarSlug(entrada.slug ?? "");
+  if (!pedido) {
+    return { erro: "O endereço de acesso ficou vazio. Use letras e números.", ok: false };
+  }
+
+  const { data, error } = await client
+    .from("apolo_incorporadores")
+    .select("id")
+    .ilike("slug", pedido)
+    .maybeSingle<{ id: string }>();
+
+  if (error) return { erro: "Não foi possível confirmar o endereço de acesso.", ok: false };
+
+  // O próprio registro ocupando o próprio endereço não é conflito — é o caso normal de editar
+  // qualquer outro campo sem mexer no endereço.
+  if (data && data.id !== (entrada.id?.trim() || "")) {
+    return { erro: `Já existe um incorporador com o endereço "${pedido}".`, ok: false };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * O que as duas colunas de logo do registro apontam AGORA. Serve para duas perguntas da gravação:
+ * antes dela, "qual arquivo vai ficar para trás?"; e, quando ela falha, "o registro chegou a ser
+ * gravado?" — porque `salvarIncorporador` também falha DEPOIS de gravar o incorporador, na lista
+ * de empreendimentos que vem em seguida.
+ */
+export async function logosGravadasDoIncorporador(
+  client: AdminClient,
+  id: string,
+): Promise<null | { logoEscuraPath: null | string; logoPath: null | string }> {
+  const alvo = id.trim();
+  if (!alvo) return null;
+
+  const { data } = await client
+    .from("apolo_incorporadores")
+    .select("logo_path,logo_escura_path")
+    .eq("id", alvo)
+    .maybeSingle<{ logo_escura_path: null | string; logo_path: null | string }>();
+
+  if (!data) return null;
+  return { logoEscuraPath: data.logo_escura_path, logoPath: data.logo_path };
 }
 
 export type ResultadoGravacao = { erro: string; ok: false } | { id: string; ok: true };

@@ -360,6 +360,17 @@ export function AlternadorDeTema() {
 /**
  * A marca, na versão certa para cada tema. Quem não tem versão em negativo continua com a clara
  * nos dois: melhor a logo dele um pouco fora de tom do que sumida.
+ *
+ * ⚠️ IMAGEM QUE NÃO CARREGA VIRA O NOME ESCRITO, nunca o ícone de imagem quebrada do navegador.
+ * O componente já sabia fazer isso quando não havia URL nenhuma; faltava fazer quando a URL existe
+ * e a resposta não vem — e agora existe um caso real: desde que a logo passou a morar no storage,
+ * a rota `/api/incorporador/<slug>/logo` pode responder 404 (arquivo removido do bucket por fora)
+ * ou 503 (base do Apolo indisponível), e a PORTA do cliente é a primeira tela que ele vê. Nome
+ * sóbrio é degradação; quadrado quebrado é defeito. (Mesmo padrão de `modules/publico/
+ * logo-empreendimento.tsx`.)
+ *
+ * As duas variantes falham SEPARADAS de propósito: no tema escuro só a escura está visível, e a
+ * clara quebrada não pode arrastar a escura que está funcionando.
  */
 export function Marca({
   altura,
@@ -374,7 +385,17 @@ export function Marca({
   nome: string;
   url: string | null;
 }) {
-  if (!url && !escuraUrl) {
+  const [claraQuebrou, setClaraQuebrou] = useState(false);
+  const [escuraQuebrou, setEscuraQuebrou] = useState(false);
+
+  // Sem versão em negativo, a clara serve os dois temas — é o que a porta sempre fez.
+  const fonteClara = url ?? escuraUrl;
+
+  const claraOk = Boolean(fonteClara) && !claraQuebrou;
+  const escuraOk = Boolean(escuraUrl) && !escuraQuebrou;
+
+  // Nem arte, nem arte que carregue: o nome, como sempre foi.
+  if (!claraOk && !escuraOk) {
     return <span style={{ color: T.text, fontSize: 22, fontWeight: 600 }}>{nome}</span>;
   }
 
@@ -388,13 +409,41 @@ export function Marca({
     width: "100%",
   };
 
+  // O nome carrega a MESMA classe da variante que ele substitui: quem decide qual das duas está
+  // visível continua sendo o CSS do tema, e `inline-block` num <span> vale igual.
+  const nomeEscrito = (classe: string) => (
+    <span className={classe} style={{ color: T.text, fontSize: 22, fontWeight: 600 }}>
+      {nome}
+    </span>
+  );
+
   return (
     <>
-      {/* eslint-disable-next-line @next/next/no-img-element -- asset local, sem otimização */}
-      <img alt={nome} className="marca-clara" src={url ?? escuraUrl ?? ""} style={estilo} />
-      {escuraUrl ? (
+      {claraOk && fonteClara ? (
         // eslint-disable-next-line @next/next/no-img-element -- asset local, sem otimização
-        <img alt={nome} className="marca-escura" src={escuraUrl} style={estilo} />
+        <img
+          alt={nome}
+          className="marca-clara"
+          onError={() => setClaraQuebrou(true)}
+          src={fonteClara}
+          style={estilo}
+        />
+      ) : (
+        nomeEscrito("marca-clara")
+      )}
+      {escuraUrl ? (
+        escuraOk ? (
+          // eslint-disable-next-line @next/next/no-img-element -- asset local, sem otimização
+          <img
+            alt={nome}
+            className="marca-escura"
+            onError={() => setEscuraQuebrou(true)}
+            src={escuraUrl}
+            style={estilo}
+          />
+        ) : (
+          nomeEscrito("marca-escura")
+        )
       ) : null}
     </>
   );

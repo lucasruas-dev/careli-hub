@@ -4,18 +4,21 @@ import { Badge, Tooltip } from "@repo/uix";
 import {
   Building2,
   ExternalLink,
+  ImagePlus,
   KeyRound,
   Loader2,
   Pencil,
   Plus,
   Power,
   RefreshCw,
+  Trash2,
   UserPlus,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
+import { fileToBase64 } from "../../lib/document-capture";
 
 // GESTÃO DOS ACESSOS DE INCORPORADOR — hoje uma ABA DO SETUP (pedido do Lucas, 18/08/2026:
 // "essa tela poderia estar dentro do setup ... podia também colocar uma parte que eu adiciono
@@ -47,11 +50,21 @@ type Incorporador = {
   empreendimentos: { carteiraAdministrada: boolean; enterpriseId: string }[];
   id: string;
   logoEscuraPath: null | string;
+  logoEscuraUrl: null | string;
   logoPath: null | string;
+  logoUrl: null | string;
   nome: string;
   slug: string;
   usuarios: Usuario[];
 };
+
+type VarianteDaLogo = "clara" | "escura";
+
+// ⚠️ Os MESMOS números do servidor (lib/apolo/incorporador/logo.ts). A conferência aqui existe
+// para o arquivo grande nem sair do navegador: a Vercel corta a requisição por volta de 4,5MB e
+// devolve 413 SEM mensagem — foi assim no upload de CAD, e a tela ficava muda.
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+const LOGO_MAX_LABEL = "2MB";
 
 /** O mesmo `normalizarSlug` do servidor, para a tela mostrar o endereço antes de gravar. */
 function slugDe(valor: string): string {
@@ -92,11 +105,21 @@ export function GestaoIncorporadores() {
   // Cada empreendimento marcado carrega a própria chave de carteira: antes a tela só PRESERVAVA
   // o valor anterior, então incorporador novo nascia sempre sem carteira e a aba Carteira do
   // portal não aparecia (caso real: Lagoa Bonita/LBF, 18/08).
+  //
+  // LOGO: o formulário guarda a REFERÊNCIA (o que vai para `logo_path`) e, separada, a PRÉVIA.
+  // São coisas diferentes de propósito: a referência de storage só vira imagem depois de salvar
+  // (a rota pública lê a coluna do banco), então logo após o upload a prévia é o dataURL local.
   const [form, setForm] = useState({
     empreendimentos: [] as { carteiraAdministrada: boolean; enterpriseId: string }[],
+    logoEscuraPath: null as null | string,
+    logoEscuraPrevia: null as null | string,
+    logoPath: null as null | string,
+    logoPrevia: null as null | string,
     nome: "",
     slug: "",
   });
+  // Qual variante está subindo agora (`null` = nenhuma). Trava só o botão daquela metade.
+  const [enviandoLogo, setEnviandoLogo] = useState<null | VarianteDaLogo>(null);
   // Formulário de conta: guarda o incorporador dono e, quando é edição, o id do usuário.
   // `ativo` viaja junto para a edição não reativar sem querer uma conta desativada.
   const [conta, setConta] = useState<
@@ -156,7 +179,15 @@ export function GestaoIncorporadores() {
   function abrirNovo() {
     setConta(null);
     setEditando("novo");
-    setForm({ empreendimentos: [], nome: "", slug: "" });
+    setForm({
+      empreendimentos: [],
+      logoEscuraPath: null,
+      logoEscuraPrevia: null,
+      logoPath: null,
+      logoPrevia: null,
+      nome: "",
+      slug: "",
+    });
   }
 
   function abrirEdicao(inc: Incorporador) {
@@ -167,6 +198,10 @@ export function GestaoIncorporadores() {
         carteiraAdministrada: e.carteiraAdministrada,
         enterpriseId: e.enterpriseId,
       })),
+      logoEscuraPath: inc.logoEscuraPath,
+      logoEscuraPrevia: inc.logoEscuraUrl,
+      logoPath: inc.logoPath,
+      logoPrevia: inc.logoUrl,
       nome: inc.nome,
       slug: inc.slug,
     });
@@ -183,6 +218,11 @@ export function GestaoIncorporadores() {
           // empreendimento; a aba de recebimento do portal depende disso e não deriva do C2X.
           empreendimentos: form.empreendimentos,
           id: editando === "novo" ? null : editando,
+          // ⚠️ AS DUAS LOGOS VIAJAM SEMPRE. O servidor grava o que chega, e `undefined` vira
+          // `null` lá: antes desta tela ter os campos, salvar o cadastro do Cecílio APAGAVA a
+          // logo dele, porque o corpo simplesmente não trazia `logoPath`.
+          logoEscuraPath: form.logoEscuraPath,
+          logoPath: form.logoPath,
           nome: form.nome,
           slug: form.slug || form.nome,
         }),
@@ -260,6 +300,180 @@ export function GestaoIncorporadores() {
     setSalvando(false);
   }
 
+  /**
+   * Sobe uma variante da logo. O arquivo vai em base64 para a mesma rota que grava no bucket, e
+   * o que volta é a REFERÊNCIA — que só vira marca na porta quando o formulário for salvo.
+   *
+   * As duas conferências (formato e tamanho) acontecem aqui ANTES de enviar, e de novo no
+   * servidor. A daqui é a que dá recado legível: passando de ~4,5MB quem responde é a Vercel, com
+   * um 413 sem corpo, e a tela ficaria muda.
+   */
+  async function enviarLogo(variante: VarianteDaLogo, arquivo: File) {
+    // ⚠️ O `id` viaja JUNTO e é ele que manda no servidor. Sem isso, o upload obedecia ao texto
+    // deste campo: quem clicasse em "Novo incorporador" e digitasse um endereço já existente
+    // (`vistaalegre`, por exemplo) SOBRESCREVIA a arte do portal que está no ar — e só descobria
+    // pelo erro de endereço duplicado no save, que não parece ter relação nenhuma com a logo.
+    const id = editando === "novo" ? null : editando;
+    const slug = slugDe(form.slug || form.nome);
+    if (!id && !slug) {
+      setErro("Preencha o nome (ou o endereço de acesso) antes de enviar a logo.");
+      return;
+    }
+
+    const tipo = arquivo.type.toLowerCase();
+    const nome = arquivo.name.toLowerCase();
+    const formatoOk =
+      tipo === "image/svg+xml" ||
+      tipo === "image/png" ||
+      nome.endsWith(".svg") ||
+      nome.endsWith(".png");
+    if (!formatoOk) {
+      setErro("A logo precisa ser SVG ou PNG.");
+      return;
+    }
+    if (arquivo.size > LOGO_MAX_BYTES) {
+      setErro(`A logo pode ter até ${LOGO_MAX_LABEL}. Envie um arquivo menor.`);
+      return;
+    }
+
+    setEnviandoLogo(variante);
+    setErro(null);
+    try {
+      const fileBase64 = await fileToBase64(arquivo);
+      const token = await getApoloAccessToken();
+      const r = await fetch("/api/apolo/incorporadores/logo", {
+        body: JSON.stringify({
+          contentType: arquivo.type || null,
+          fileBase64,
+          id,
+          nomeArquivo: arquivo.name,
+          slug,
+          variante,
+        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const c = (await r.json()) as { data?: { referencia?: string }; error?: string };
+      if (!r.ok || !c.data?.referencia) {
+        setErro(c.error ?? `Falha ao enviar a logo (${r.status}).`);
+        return;
+      }
+
+      const referencia = c.data.referencia;
+      setForm((f) =>
+        variante === "escura"
+          ? { ...f, logoEscuraPath: referencia, logoEscuraPrevia: fileBase64 }
+          : { ...f, logoPath: referencia, logoPrevia: fileBase64 },
+      );
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+    setEnviandoLogo(null);
+  }
+
+  /**
+   * Zera o campo. Só o campo — a lixeira é uma edição do FORMULÁRIO, e como toda edição daqui só
+   * vale quando o operador salvar.
+   *
+   * ⚠️ ANTES ELA APAGAVA NO BUCKET, no clique. Quem abrisse a edição de um portal com logo,
+   * clicasse na lixeira, se arrependesse e fechasse sem salvar já tinha destruído a arte: a coluna
+   * do banco continuava apontando para um arquivo que não existia mais, e a porta do cliente
+   * passava a mostrar imagem quebrada — sem ninguém ter salvo nada, e sem volta pela tela a não
+   * ser subir a arte de novo. O arquivo agora sai no servidor, durante a gravação, depois que a
+   * coluna já deixou de apontar para ele.
+   */
+  function removerLogo(variante: VarianteDaLogo) {
+    setErro(null);
+    setForm((f) =>
+      variante === "escura"
+        ? { ...f, logoEscuraPath: null, logoEscuraPrevia: null }
+        : { ...f, logoPath: null, logoPrevia: null },
+    );
+  }
+
+  /**
+   * Um campo de logo. A prévia da versão ESCURA vai sobre fundo escuro — é o único jeito de
+   * enxergar uma arte em negativo, que sobre branco some.
+   */
+  function campoDeLogo(variante: VarianteDaLogo) {
+    const escura = variante === "escura";
+    const previa = escura ? form.logoEscuraPrevia : form.logoPrevia;
+    const referencia = escura ? form.logoEscuraPath : form.logoPath;
+    const ocupado = enviandoLogo === variante;
+
+    return (
+      <div className="grid gap-1.5">
+        <span className="text-xs font-semibold text-ink-muted">
+          {escura ? "Logo para fundo escuro (opcional)" : "Logo"}
+        </span>
+
+        <div
+          className={`grid h-24 place-items-center overflow-hidden rounded-md border border-line p-3 ${
+            escura ? "bg-[#12161d]" : "bg-surface"
+          }`}
+        >
+          {ocupado ? (
+            <Loader2 aria-hidden="true" className="animate-spin text-ink-muted" size={18} />
+          ) : previa ? (
+            // eslint-disable-next-line @next/next/no-img-element -- prévia local/rota própria
+            <img
+              alt={escura ? "Prévia da logo em negativo" : "Prévia da logo"}
+              className="max-h-full max-w-full object-contain"
+              src={previa}
+            />
+          ) : (
+            <span className={`text-xs ${escura ? "text-white/45" : "text-ink-muted"}`}>
+              {escura ? "Sem versão em negativo" : "Sem logo"}
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <label className={`${BOTAO_SECUNDARIO} cursor-pointer`}>
+            <ImagePlus aria-hidden="true" size={14} />
+            {referencia ? "Trocar" : "Escolher arquivo"}
+            <input
+              accept=".svg,.png,image/svg+xml,image/png"
+              className="hidden"
+              disabled={ocupado || salvando}
+              onChange={(ev) => {
+                const arquivo = ev.target.files?.[0];
+                // O input é limpo SEMPRE: sem isso, escolher o mesmo arquivo de novo (depois de
+                // corrigir a arte) não dispara `change` e parece que a tela travou.
+                ev.target.value = "";
+                if (arquivo) void enviarLogo(variante, arquivo);
+              }}
+              type="file"
+            />
+          </label>
+          {referencia ? (
+            <Tooltip content="Remover a logo (vale quando salvar)">
+              <button
+                aria-label={escura ? "Remover logo em negativo" : "Remover logo"}
+                className={BOTAO_ICONE}
+                disabled={ocupado || salvando}
+                onClick={() => removerLogo(variante)}
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={14} />
+              </button>
+            </Tooltip>
+          ) : null}
+        </div>
+
+        {escura ? (
+          <span className="text-[11px] font-normal text-ink-muted">
+            Sem esta, o portal usa a logo normal também no tema escuro.
+          </span>
+        ) : (
+          <span className="text-[11px] font-normal text-ink-muted">
+            SVG ou PNG, até {LOGO_MAX_LABEL}. Aparece na tela de acesso do cliente.
+          </span>
+        )}
+      </div>
+    );
+  }
+
   // Formulário único, renderizado em DOIS pontos: no topo quando é incorporador NOVO, e
   // ABAIXO do card clicado quando é edição — pedido do Lucas, 23/08: "acho melhor abrir
   // abaixo do perfil". Os inputs são controlados pelo estado , então o formulário
@@ -292,6 +506,14 @@ export function GestaoIncorporadores() {
                 c2x.app.br/incorporador/{slugDe(form.slug || form.nome) || "…"}
               </span>
             </label>
+          </div>
+
+          {/* A MARCA DA PORTA. Antes disto, publicar a logo de um portal era INSERT na mão no
+              banco apontando arquivo commitado — por isso, dos 7 portais, só o Cecílio tinha
+              marca no login. Agora a arte sobe pela tela e vale sem deploy. */}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {campoDeLogo("clara")}
+            {campoDeLogo("escura")}
           </div>
 
           <p className="mb-1 mt-4 text-xs font-semibold text-ink-muted">

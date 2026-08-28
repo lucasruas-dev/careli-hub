@@ -36,6 +36,45 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-28-logo-do-incorporador-no-setup",
+    deployedAt: "2026-08-28T09:00:00-03:00",
+    modules: [
+      {
+        module: "Setup",
+        screens: [
+          {
+            items: [
+              "O cadastro de incorporador ganhou os campos de LOGO: a normal e a para fundo escuro (opcional), com previa do que esta salvo.",
+              "A arte sobe pela propria tela, em SVG ou PNG - nao depende mais de publicar arquivo no sistema. Aviso de tamanho antes de dar erro.",
+              "Com isso da para colocar a marca dos portais que ainda estao sem: Vista Alegre, Lagoa Bonita, CER, Vale do Ouro, Lavra do Ouro e Villa Paris.",
+            ],
+            screen: "Incorporadores",
+          },
+        ],
+      },
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "CORRECAO: editar o cadastro do incorporador pela tela APAGAVA a logo dele do login. Quem tinha marca perdia ao salvar qualquer outro campo.",
+              "CORRECAO: o endereco do portal era consultado por aproximacao, entao um endereco parcial abria o portal de outro cliente. Agora so o endereco exato responde.",
+            ],
+            screen: "Tela de acesso",
+          },
+        ],
+      },
+    ],
+    rollback: "61f1b13f",
+    technical: {
+      done: "lib/apolo/incorporador/logo.ts novo: parte pura (formato da referencia, chaveDoPortal, validacao de formato POR CONTEUDO — assinatura PNG e <svg[\\s>] nos 4KB iniciais, nao o content-type do cliente —, teto de 2MB conferido ANTES de decodificar o base64, sanitizacao de SVG) + storage (subir/baixar/migrar) no bucket apolo-documents sob incorporador-logos/{chave}/{variante}.{ext}. Referencia gravada na propria logo_path como `storage:...?v=<epoch>`: sem coluna nova, o prefixo discrimina do asset do repo (o Cecilio segue em /marcas/, com teste nomeado) e o carimbo permite cache immutable sem prender arte velha. Rota publica /api/incorporador/[slug]/logo serve os bytes com Content-Type derivado da EXTENSAO GRAVADA, nosniff, CSP default-src 'none' + sandbox, X-Frame-Options DENY e CORP same-origin. ⚠️ GATE: proxy.ts ganhou alivio por FORMATO EXATO (/^\\/api\\/incorporador\\/[a-z0-9-]{1,60}\\/logo$/) — sem ele a rota levava 401 do guardApi e a porta abria com imagem quebrada (achado da revisao, escapou da correcao automatica); NAO virou prefixo de propria, porque /api/incorporador na allowlist abriria carteira/contrato/vendas. 7 testes guardam essa fronteira. Revisao adversarial em 2 lentes achou 4 defeitos alem do gate, todos corrigidos: (a) a lixeira apagava do bucket no clique, antes de salvar — virou operacao local, o servidor apaga na gravacao; (b) upload/DELETE agiam pelo slug DIGITADO, entao criar cadastro novo com endereco existente sobrescrevia a arte no ar — agora o prefixo permitido sai do registro do banco, e o DELETE foi removido por carregar o mesmo furo; (c) a extensao anterior era apagada ANTES do upload novo, e upload falho deixava o portal sem marca — ordem invertida; (d) move do storage acontecia antes da gravacao que pode falhar — agora ha rollback conferido por releitura. Mais dois defeitos JA EM PRODUCAO: a tela nao enviava logoPath e salvarIncorporador grava `?? null`, entao qualquer edicao do Cecilio apagava a logo dele; e carregarIncorporadorPorSlug fazia ilike com o slug cru da URL, onde %/_ sao curinga (/incorporador/cec% casava cecilio-rocha por prefixo, enumerando clientes). Typecheck limpo; 1.652 testes verdes.",
+      motivation: "Lucas (28/08), depois de eu criar o portal da MMendes na mao: 'pode colocar o campo de logo'. Era a terceira vez que publicar uma marca virava trabalho manual — dos 7 portais, so o cecilio-rocha tinha logo, e porque foi inserido direto no banco.",
+    },
+    title: "Logo do incorporador direto pela tela do Setup",
+    type: "melhoria",
+    version: "1.216.0",
+  },
+  {
     buildTag: "2026-08-28-profissao-outro-e-portal-mmendes",
     deployedAt: "2026-08-28T07:10:00-03:00",
     modules: [
