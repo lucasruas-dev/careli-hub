@@ -3,7 +3,6 @@
 import {
   ArrowLeft,
   Building2,
-  Camera,
   Check,
   Loader2,
   MapPin,
@@ -23,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { eventoDoDia } from "@/lib/prometeu/evento-do-dia";
 import {
   origemDoClienteParaExibir,
+  primeiroNome,
   sufixoDeProponentes,
 } from "@/lib/prometeu/identificacao-do-cliente";
 import { rotuloDoLancamento } from "@/lib/prometeu/lancamento";
@@ -39,17 +39,22 @@ import {
   type ReservaTouchUnidade,
 } from "../../data/prometeu-operations";
 import { useLancamentoSelecionado } from "../../lancamento-contexto";
-import { usarLeitorQr } from "../checkin/usar-leitor-qr";
 import { usarLeitorWedge } from "../usar-leitor-wedge";
 import { imprimirCupomDaReserva } from "./imprimir-cupom";
 
 // A POSIÇÃO DE RESERVA — monitor touch do lançamento (Lucas, 24/08/2026).
 //
-// Quiosque de fluxo contínuo: bipa a etiqueta → QUADRAS (só números + quantos livres) →
+// Quiosque de AUTOATENDIMENTO, de fluxo contínuo: o CLIENTE passa a própria credencial no
+// leitor fixo → QUADRAS (só números + quantos livres) →
 // LOTES disponíveis (multi-seleção, selecionado em grafite invertido) → Finalizar → cupom
 // sai na térmica → a tela VOLTA SOZINHA para o início, limpa, pronta para o próximo bip.
 //
-// Decisões do Lucas nesta tela: mínimo de escrita (sem "Q"/"L", números grandes, ícones);
+// ⚠️ SEM LEITURA POR CÂMERA AQUI (Lucas, 28/08): "nessa etapa nunca iremos ter bip por camera".
+// O leitor é FIXO no balcão e quem bipa é o CLIENTE, não o operador — por isso os textos falam
+// com ele, na segunda pessoa, e chamam a etiqueta de CREDENCIAL. A câmera segue existindo no
+// CHECK-IN, que é outra tela e outro operador.
+//
+// Decisões do Lucas nesta tela: mínimo de escrita (números grandes, ícones);
 // só lote DISPONÍVEL aparece; seleção acumula entre quadras; mini dash Reservas · Propostas
 // (lançadas na secretária) · Finalizadas no topo. Dois temas (tokens do hub).
 
@@ -112,7 +117,6 @@ export function ReservaView() {
   const [marcadas, setMarcadas] = useState<Map<string, ReservaTouchUnidade>>(new Map());
   const [confirmando, setConfirmando] = useState(false);
   const [sucesso, setSucesso] = useState<null | { cliente: string; lotes: string[] }>(null);
-  const [cameraAberta, setCameraAberta] = useState(false);
   const [bipando, setBipando] = useState(false);
 
   // TELA CHEIA do quiosque (Lucas, 24/08: monitor EM PÉ, "como aqueles tótens de pedidos").
@@ -203,6 +207,26 @@ export function ReservaView() {
     async (lido: string) => {
       const id = lido.trim();
       if (!id || bipando) return;
+
+      // ⚠️ ATENDIMENTO EM CURSO NÃO É INTERROMPIDO POR UM BIP (Lucas, 28/08, depois de acontecer
+      // de verdade: *"eu estava reservando um lote para algumas pessoas, e sem querer eu bipei
+      // outro cliente, automaticamente fechou o que eu estava reservando"*).
+      //
+      // O leitor fica FIXO no balcão e quem passa a credencial é o CLIENTE — então o bip
+      // indevido não é hipótese remota: é o próximo da fila encostando o crachá enquanto o
+      // atual ainda escolhe. Antes, esse bip trocava o cliente e apagava os lotes já marcados,
+      // sem aviso e sem volta. Agora ele é RECUSADO com o nome de quem está em atendimento;
+      // para trocar, o operador cancela (X) ou finaliza.
+      //
+      // A exceção é o segundo proponente, que é justamente um bip esperado — e nesse caso
+      // `bipandoProponente` está ligado, pedido pelo operador.
+      if (cliente && !bipandoProponente) {
+        setErro(
+          `${primeiroNome(cliente.nome)} está em atendimento. Finalize ou cancele a reserva antes de passar outra credencial.`,
+        );
+        return;
+      }
+
       setBipando(true);
       setErro(null);
       const r = await buscarClienteDaReserva(id, evento?.id);
@@ -225,7 +249,6 @@ export function ReservaView() {
           return lista.map((p, i) => ({ ...p, percentual: divisao[i] ?? 0 }));
         });
         setBipandoProponente(false);
-        setCameraAberta(false);
       } else {
         const c = r.data.credenciado;
         setCliente(c);
@@ -233,7 +256,6 @@ export function ReservaView() {
           { credenciadoId: c.id, documento: c.documento, nome: c.nome, percentual: 100 },
         ]);
         setBipandoProponente(false);
-        setCameraAberta(false);
         setQuadraAtiva(null);
         setMarcadas(new Map());
       }
@@ -282,10 +304,6 @@ export function ReservaView() {
     recuperarTelaCheia();
     void aoBipar(v);
   }, !sucesso && !confirmando);
-  const leitorCamera = usarLeitorQr({
-    aoLer: (v) => void aoBipar(v),
-    ativo: cameraAberta && (!cliente || bipandoProponente),
-  });
 
   const quadra = useMemo(
     () => quadras.find((q) => q.quadra === quadraAtiva) ?? null,
@@ -565,29 +583,14 @@ export function ReservaView() {
               ) : (
                 <QrCode aria-hidden="true" className="text-ink-muted" size={18} />
               )}
-              <span className="text-sm font-semibold text-ink">
-                Bipe a etiqueta do próximo proponente
+              <span className={`font-semibold text-ink ${telaCheia ? "text-xl" : "text-sm"}`}>
+                Agora passe a credencial do outro comprador
               </span>
-              {cameraAberta ? (
-                <div className="w-40 overflow-hidden rounded-lg border border-line">
-                  <video ref={leitorCamera.videoRef} className="block w-full" muted playsInline />
-                  <canvas ref={leitorCamera.canvasRef} className="hidden" />
-                </div>
-              ) : null}
               <div className="ml-auto flex gap-2">
-                <button
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-line text-ink-soft"
-                  onClick={() => setCameraAberta((v) => !v)}
-                  title="Usar a câmera"
-                  type="button"
-                >
-                  <Camera aria-hidden="true" size={16} />
-                </button>
                 <button
                   className="grid h-9 w-9 place-items-center rounded-lg border border-line text-ink-soft"
                   onClick={() => {
                     setBipandoProponente(false);
-                    setCameraAberta(false);
                   }}
                   title="Cancelar"
                   type="button"
@@ -662,23 +665,15 @@ export function ReservaView() {
               ) : (
                 <QrCode aria-hidden="true" className="text-ink-muted" size={telaCheia ? 28 : 20} />
               )}
-              <p className={`font-semibold text-ink ${telaCheia ? "text-xl" : "text-sm"}`}>
-                Bipe a etiqueta do cliente para começar a reserva
+              {/* ⚠️ QUEM LÊ ESTA FRASE É O CLIENTE, não o operador (Lucas, 28/08: "o scanner é
+                  fixo, o cliente vai chegar e bipar sua credencial, essa ação não é do operador
+                  e sim do cliente"). Por isso a tela fala com ele, na segunda pessoa, e chama a
+                  etiqueta de CREDENCIAL — que é o nome que ele conhece, o crachá que recebeu na
+                  recepção. "Bipe a etiqueta do cliente" era instrução de atendente e não fazia
+                  sentido nenhum para quem está do outro lado do balcão. */}
+              <p className={`font-semibold text-ink ${telaCheia ? "text-2xl" : "text-base"}`}>
+                Passe sua credencial no leitor para reservar seu lote
               </p>
-              {cameraAberta ? (
-                <div className="w-44 overflow-hidden rounded-lg border border-line">
-                  <video ref={leitorCamera.videoRef} className="block w-full" muted playsInline />
-                  <canvas ref={leitorCamera.canvasRef} className="hidden" />
-                </div>
-              ) : null}
-              <button
-                className="ml-auto inline-flex items-center gap-2 rounded-lg border border-line px-4 py-2 text-sm font-semibold text-ink-soft transition hover:text-ink"
-                onClick={() => setCameraAberta((v) => !v)}
-                type="button"
-              >
-                {cameraAberta ? <X aria-hidden="true" size={16} /> : <Camera aria-hidden="true" size={16} />}
-                {cameraAberta ? "Fechar câmera" : "Usar a câmera"}
-              </button>
             </footer>
           ) : (
           // O CLIENTE EM DESTAQUE (Lucas, 28/08): nome grande, legível a um metro, com a

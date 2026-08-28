@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { origemDoClienteParaExibir, sufixoDeProponentes } from "./identificacao-do-cliente";
+import {
+  origemDoClienteParaExibir,
+  primeiroNome,
+  sufixoDeProponentes,
+} from "./identificacao-do-cliente";
 
 // A cliente do primeiro teste com o leitor 2D de verdade (28/08/2026, Villa Paris).
 const FLAVIA = { corretor: "Ana Paula", imobiliaria: "Careli Imóveis" };
@@ -62,5 +66,24 @@ describe("sufixo de proponentes", () => {
   it("conta só os extras", () => {
     expect(sufixoDeProponentes(2)).toBe("+1");
     expect(sufixoDeProponentes(5)).toBe("+4");
+  });
+});
+
+describe("primeiroNome", () => {
+  it("pega o primeiro nome para a frase do atendimento", () => {
+    expect(primeiroNome("FLAVIA CALDEIRA ANDRADE")).toBe("FLAVIA");
+  });
+
+  it("nome único volta inteiro", () => {
+    expect(primeiroNome("MADONNA")).toBe("MADONNA");
+  });
+
+  it("espaço sobrando não vira nome vazio", () => {
+    expect(primeiroNome("   JOAO   DA SILVA  ")).toBe("JOAO");
+  });
+
+  it("vazio é vazio", () => {
+    expect(primeiroNome("")).toBe("");
+    expect(primeiroNome("   ")).toBe("");
   });
 });

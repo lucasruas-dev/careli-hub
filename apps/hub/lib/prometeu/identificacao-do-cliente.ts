@@ -63,3 +63,16 @@ export function sufixoDeProponentes(quantidade: number): string {
   const extras = Math.floor(Number.isFinite(quantidade) ? quantidade : 0) - 1;
   return extras > 0 ? `+${extras}` : "";
 }
+
+/**
+ * O primeiro nome, para a tela falar como gente ("FLAVIA está em atendimento") em vez de
+ * despejar o nome completo no meio de uma frase.
+ *
+ * Devolve o nome inteiro quando não há espaço, e string vazia para entrada vazia — quem chama
+ * decide o que fazer com isso.
+ */
+export function primeiroNome(nome: string): string {
+  const limpo = String(nome ?? "").trim().replace(/\s+/g, " ");
+  if (!limpo) return "";
+  return limpo.split(" ")[0] ?? limpo;
+}
