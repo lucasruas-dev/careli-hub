@@ -412,6 +412,9 @@ export function ReservaView() {
       }),
       evento: rotuloDoLancamento(evento),
       grupoId: r.data.grupoId,
+      // Resolvida aqui e não pelo `origemDoCliente` do render, para não depender da ordem em
+      // que os useMemo aparecem no arquivo.
+      origem: origemDoClienteParaExibir(cliente)?.texto ?? null,
       qrDataUrl,
       unidades: unidades.map((u) => ({ lote: u.lote, quadra: u.quadra })),
     });

@@ -44,7 +44,7 @@ sistema. Com o modo quiosque de impressão, o papel sai direto na impressora pad
 2. No campo do caminho, cole (ajuste o caminho do Chrome se for diferente):
 
 ```
-"C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --kiosk --app=https://c2x.app.br/prometeu
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --kiosk --user-data-dir="C:\PostoReserva" --app=https://c2x.app.br/prometeu
 ```
 
 3. Nomeie como **Posto de Reserva** e use SEMPRE esse atalho na máquina do evento.
@@ -53,7 +53,17 @@ O que cada parte faz:
 
 - `--kiosk-printing` → **imprime direto, sem diálogo**. É o que resolve o pedido.
 - `--kiosk` → tela cheia de verdade, sem barra de endereço (o cliente não navega para outro lugar).
+- `--user-data-dir=` → perfil separado. **Não é opcional, ver o aviso abaixo.**
 - `--app=` → abre já no Prometeu.
+
+> ⚠️ **SEM O `--user-data-dir`, A FLAG É IGNORADA quando o Chrome já está aberto.** O Chrome não
+> sobe um processo novo para cada atalho: havendo janela aberta com o mesmo perfil, ele só manda
+> abrir mais uma aba naquele processo — que foi iniciado sem `--kiosk-printing`. O sintoma
+> engana, porque o atalho *parece* certo: abre a tela do posto e mesmo assim mostra o diálogo.
+> Com perfil próprio, o posto sempre sobe como processo independente.
+>
+> Consequência prática: esse perfil é uma instalação limpa, então **faça o login do Panteon uma
+> vez** nele. Depois fica salvo.
 
 > ⚠️ **A impressora que sair o cupom precisa ser a PADRÃO do Windows** nessa máquina. Em modo
 > quiosque não há escolha de destino: vai para a padrão, sempre. Configure em
@@ -81,6 +91,23 @@ Com a impressora de cupom correta e papel contínuo, sai uma tira só.
 Ajustes no driver da impressora de cupom, se o papel sair com problema — as lições da PC42t valem
 aqui ([[reference_prometeu_etiqueta_termica]]): **Pontilhado = Nenhum** (o "difusão de erro"
 borra QR e preto sólido) e margens **Nenhuma** no Chrome.
+
+### Se o texto sair apagado, o problema é o CSS, não a impressora
+
+No primeiro cupom impresso de verdade (28/08) o texto em **negrito** saiu perfeito e o de peso
+normal saiu tão fraco que "COMPROVANTE DE RESERVA" imprimiu **"PESERVA"** — o R não marcou.
+
+A causa é o meio-tom: o Chrome desenha texto fino com antialiasing, ou seja, em **cinza**. A
+térmica não tem cinza, ela queima o ponto ou não queima; o driver aproxima o cinza por
+pontilhado e o traço de 1px vira uma fileira de furos.
+
+Por isso o cupom segue três regras, presas por teste em `imprimir-cupom.test.ts`:
+
+1. **tudo em negrito** (`font-weight: 700` no body) — não existe peso normal em papel térmico;
+2. **nada abaixo de 11px**;
+3. `-webkit-font-smoothing: none`, para o Chrome não suavizar a borda das letras.
+
+Quem for acrescentar campo novo ao cupom não precisa lembrar disso: o teste reprova sozinho.
 
 ---
 

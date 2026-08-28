@@ -13,27 +13,58 @@ type DadosDoCupom = {
   dataHora: string;
   evento: string;
   grupoId: string;
+  // DE ONDE VEIO O CLIENTE — "IMOBILIÁRIA · Corretor", já montado por
+  // origemDoClienteParaExibir. `null` quando não há nenhum dos dois: o cupom não desenha
+  // rótulo órfão, mesma regra da tela.
+  origem: null | string;
   // Nomes + % dos DEMAIS proponentes (o titular é o `cliente`). Vazio = titular a 100%.
   outrosProponentes: { nome: string; percentual: number }[];
   qrDataUrl: string;
   unidades: { lote: string; quadra: string }[];
 };
 
-const CUPOM_CSS = `
+// ⚠️ NA TÉRMICA, TUDO É NEGRITO — E NADA DESCE DE 11px.
+//
+// A prova saiu do primeiro cupom impresso de verdade (28/08/2026): o que estava em peso 700
+// (empreendimento, nome, lotes, código) saiu perfeito, e o que estava em peso normal saiu
+// apagado a ponto de "COMPROVANTE DE RESERVA" imprimir como "COMPROVANTE DE PESERVA" — o R
+// simplesmente não marcou. A data e o aviso do rodapé, os menores da folha, saíram quase
+// invisíveis.
+//
+// A causa não é a impressora, é o meio-tom: o Chrome rasteriza texto fino com antialiasing, ou
+// seja, em CINZA. A térmica não tem cinza — ela queima o ponto ou não queima — então o driver
+// aproxima o cinza por pontilhado e o traço de 1px vira uma fileira de furos. Fonte pequena,
+// peso normal e letter-spacing largo (o subtítulo tinha 0.18em) somam para o mesmo lugar.
+//
+// Daí as três regras deste bloco, que valem para QUALQUER coisa nova que entrar no cupom:
+//   1. font-weight 700 no body, sem exceção — não existe texto de peso normal em papel térmico;
+//   2. nada abaixo de 11px;
+//   3. -webkit-font-smoothing: none, para o Chrome parar de suavizar a borda das letras.
+// O teste ao lado (imprimir-cupom.test.ts) trava as três.
+export const CUPOM_CSS = `
   @page { size: 80mm auto; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { width: 72mm; margin: 0 auto; font-family: "Courier New", monospace; color: #000; }
+  body {
+    width: 72mm; margin: 0 auto;
+    font-family: "Courier New", monospace;
+    font-weight: 700;
+    color: #000;
+    -webkit-font-smoothing: none;
+    print-color-adjust: exact;
+  }
   .cup { padding: 4mm 1mm 6mm; text-align: center; }
-  .cup-emp { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-  .cup-tit { font-size: 11px; margin-top: 1mm; letter-spacing: 0.18em; }
+  .cup-emp { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .cup-tit { font-size: 12px; margin-top: 1mm; letter-spacing: 0.1em; }
   .cup-sep { border-top: 1px dashed #000; margin: 2.5mm 0; }
-  .cup-cli { font-size: 13px; font-weight: 700; text-transform: uppercase; word-wrap: break-word; }
+  .cup-cli { font-size: 13px; text-transform: uppercase; word-wrap: break-word; }
   .cup-lotes { margin-top: 2mm; }
-  .cup-lote { font-size: 15px; font-weight: 700; letter-spacing: 0.06em; padding: 0.8mm 0; }
+  .cup-lote { font-size: 15px; letter-spacing: 0.06em; padding: 0.8mm 0; }
   .cup-qr img { width: 30mm; height: 30mm; margin-top: 1mm; }
-  .cup-cod { font-size: 13px; font-weight: 700; letter-spacing: 0.14em; margin-top: 1mm; }
-  .cup-data { font-size: 10px; margin-top: 2mm; }
-  .cup-aviso { font-size: 9px; margin-top: 2.5mm; line-height: 1.35; }
+  .cup-cod { font-size: 13px; letter-spacing: 0.14em; margin-top: 1mm; }
+  .cup-data { font-size: 12px; margin-top: 2mm; }
+  .cup-aviso { font-size: 11px; margin-top: 2.5mm; line-height: 1.4; }
+  .cup-prop { font-size: 11px; margin-top: 0.6mm; }
+  .cup-org { font-size: 11px; margin-top: 1.5mm; text-transform: uppercase; }
 `;
 
 function esc(valor: string | null | undefined): string {
@@ -44,17 +75,26 @@ function esc(valor: string | null | undefined): string {
     .replace(/"/g, "&quot;");
 }
 
-function cupomHTML(dados: DadosDoCupom): string {
+export function cupomHTML(dados: DadosDoCupom): string {
   const lotes = dados.unidades
-    .map((u) => `<div class="cup-lote">QUADRA ${esc(u.quadra)} · LOTE ${esc(u.lote)}</div>`)
+    .map(
+      (u) =>
+        `<div class="cup-lote">QUADRA ${esc(u.quadra)} · LOTE ${esc(u.lote)}</div>`,
+    )
     .join("");
 
   const outros = dados.outrosProponentes
     .map(
       (p) =>
-        `<div style="font-size:10px;margin-top:0.6mm">+ ${esc(p.nome)} · ${String(p.percentual).replace(".", ",")}%</div>`,
+        `<div class="cup-prop">+ ${esc(p.nome)} · ${String(p.percentual).replace(".", ",")}%</div>`,
     )
     .join("");
+
+  // A imobiliária fecha o bloco de gente, entre os proponentes e os lotes: é dela que o
+  // corretor precisa quando confere o cupom, e ela some por inteiro quando não existe.
+  const origem = dados.origem
+    ? `<div class="cup-org">${esc(dados.origem)}</div>`
+    : "";
 
   return `<div class="cup">
     <div class="cup-emp">${esc(dados.evento)}</div>
@@ -62,6 +102,7 @@ function cupomHTML(dados: DadosDoCupom): string {
     <div class="cup-sep"></div>
     <div class="cup-cli">${esc(dados.cliente)}</div>
     ${outros}
+    ${origem}
     <div class="cup-lotes">${lotes}</div>
     <div class="cup-sep"></div>
     <div class="cup-qr"><img src="${dados.qrDataUrl}" alt=""></div>
@@ -89,7 +130,9 @@ function esperarImagens(doc: Document): Promise<void> {
  * Imprime o cupom num documento isolado. Com o Chrome da posição em modo quiosque
  * (--kiosk-printing), o papel sai DIRETO na térmica padrão, sem diálogo — zero cliques.
  */
-export async function imprimirCupomDaReserva(dados: DadosDoCupom): Promise<void> {
+export async function imprimirCupomDaReserva(
+  dados: DadosDoCupom,
+): Promise<void> {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
   Object.assign(iframe.style, {
