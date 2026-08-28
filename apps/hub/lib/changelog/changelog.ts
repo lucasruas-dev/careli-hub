@@ -36,7 +36,7 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
-    buildTag: "2026-08-28-reserva-aguardando-cliente",
+    buildTag: "2026-08-28-reserva-quadra-lote-e-cancelar",
     deployedAt: "2026-08-28T14:10:00-03:00",
     modules: [
       {
@@ -48,6 +48,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
               "O mesmo Enter tambem desmarcava, em silencio, o ultimo lote tocado. Os dois somem com a mesma correcao.",
               "O nome do cliente agora aparece em DESTAQUE, para ler de longe, com a IMOBILIARIA logo abaixo (e o corretor, quando e o caso). O tamanho cabe nome comprido sem cortar.",
               "Tela pensada para o monitor EM PE (retrato): o cliente fica sempre visivel no rodape, so a lista de lotes rola, e os botoes ficaram maiores para o dedo.",
+              "Os lotes marcados agora aparecem como QUADRA e LOTE (A 19) no lugar do codigo do sistema (RVPA19), igual ao cupom e a placa do terreno.",
+              "Botao de CANCELAR ATENDIMENTO sempre disponivel, separado do voltar. Antes, dentro de uma quadra, so dava para sair finalizando.",
               "PROTECAO: bipar outra credencial no meio de um atendimento NAO troca mais de cliente. Antes, o bip errado fechava a reserva em andamento e apagava os lotes ja marcados, sem aviso. Agora a tela recusa e diz quem esta em atendimento; para trocar, cancele ou finalize.",
               "A tela do posto fica com o OPERADOR (o cliente alcanca so o leitor), entao ela informa ESTADO: 'Aguardando cliente' quando o posto esta livre. Saiu a leitura por camera, que nao existe nesse posto.",
             ],
@@ -70,7 +72,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     },
     title: "Reserva touch: tela cheia que nao cai ao bipar, cliente em destaque e layout retrato",
     type: "correcao",
-    version: "1.218.1",
+    version: "1.219.0",
   },
   {
     buildTag: "2026-08-28-logo-do-incorporador-no-setup",

@@ -380,7 +380,11 @@ export function ReservaView() {
       unidades: unidades.map((u) => ({ lote: u.lote, quadra: u.quadra })),
     });
 
-    setSucesso({ cliente: cliente.nome, lotes: unidades.map((u) => u.codigo) });
+    // Q/L aqui também: o cliente está com o cupom na mão, que diz "QUADRA A · LOTE 19".
+    setSucesso({
+      cliente: cliente.nome,
+      lotes: unidades.map((u) => `${u.quadra} ${u.lote}`),
+    });
     setConfirmando(false);
     void carregar(evento.id);
     // Fluxo contínuo: mostra o "feito" por 4s e volta sozinho para o início.
@@ -728,10 +732,20 @@ export function ReservaView() {
                     <span className="truncate">{origemDoCliente.texto}</span>
                   </p>
                 ) : null}
+                {/* ⚠️ QUADRA E LOTE, NÃO O CÓDIGO DA UNIDADE (Lucas, 28/08: "o codigo da unidade
+                    não é legal para esse processo pois confunde"). "RVPA19 · RVPB10" é código de
+                    sistema: ninguém lê isso em voz alta, e com dois lotes de número igual em
+                    quadras diferentes (RVPA10 e RVPB10) a diferença fica escondida no meio da
+                    sigla. O corretor e o cliente falam "quadra A, lote 19" — é essa a leitura
+                    que precisa bater com o cupom e com a placa no terreno. */}
                 <p
                   className={`mt-0.5 truncate ${marcadas.size > 0 ? "font-semibold text-ink" : "text-ink-muted"} ${telaCheia ? "text-base" : "text-xs"}`}
                 >
-                  {marcadas.size > 0 ? [...marcadas.keys()].join(" · ") : "Nenhum lote marcado"}
+                  {marcadas.size > 0
+                    ? [...marcadas.values()]
+                        .map((u) => `${u.quadra} ${u.lote}`)
+                        .join("  ·  ")
+                    : "Nenhum lote marcado"}
                 </p>
               </div>
             </div>
@@ -745,17 +759,29 @@ export function ReservaView() {
               >
                 <UserPlus aria-hidden="true" size={telaCheia ? 28 : 20} />
               </button>
+              {/* ⚠️ VOLTAR E CANCELAR SÃO BOTÕES DIFERENTES. Eram um só, que trocava de função
+                  conforme a tela: dentro de uma quadra virava "voltar" e o operador ficava SEM
+                  saída — preso ao atendimento, tendo que finalizar para se livrar dele. Ficou
+                  pior depois que passamos a recusar o bip de outro cliente com "finalize ou
+                  cancele": a mensagem mandava fazer algo que a tela não oferecia naquele
+                  momento (Lucas, 28/08: "aqui também precisamos de um botão de cancelar"). */}
+              {quadraAtiva !== null ? (
+                <button
+                  className={`grid shrink-0 place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 dark:hover:bg-white/10 ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
+                  onClick={() => setQuadraAtiva(null)}
+                  title="Outra quadra"
+                  type="button"
+                >
+                  <ArrowLeft aria-hidden="true" size={telaCheia ? 28 : 20} />
+                </button>
+              ) : null}
               <button
-                className={`grid shrink-0 place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 dark:hover:bg-white/10 ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
-                onClick={() => (quadraAtiva === null ? resetar() : setQuadraAtiva(null))}
-                title={quadraAtiva === null ? "Cancelar" : "Outra quadra"}
+                className={`grid shrink-0 place-items-center rounded-xl border border-line text-ink-soft transition hover:border-ink/40 hover:text-ink ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
+                onClick={resetar}
+                title="Cancelar atendimento"
                 type="button"
               >
-                {quadraAtiva === null ? (
-                  <X aria-hidden="true" size={telaCheia ? 28 : 20} />
-                ) : (
-                  <ArrowLeft aria-hidden="true" size={telaCheia ? 28 : 20} />
-                )}
+                <X aria-hidden="true" size={telaCheia ? 28 : 20} />
               </button>
               <button
                 className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#2C2C2A] font-bold text-[#F1EFE8] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 landscape:flex-none ${telaCheia ? "h-16 px-9 text-2xl" : "h-12 px-6 text-base"}`}
