@@ -36,6 +36,41 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-28-reserva-touch-retrato",
+    deployedAt: "2026-08-28T14:10:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "CORRECAO: bipar a etiqueta com a tela cheia ligada SAIA da tela cheia. O Enter do leitor estava clicando o botao que tinha ficado focado no toque do operador.",
+              "O mesmo Enter tambem desmarcava, em silencio, o ultimo lote tocado. Os dois somem com a mesma correcao.",
+              "O nome do cliente agora aparece em DESTAQUE, para ler de longe, com a IMOBILIARIA logo abaixo (e o corretor, quando e o caso).",
+              "Tela pensada para o monitor EM PE (retrato): o cliente fica sempre visivel no rodape, so a lista de lotes rola, e os botoes ficaram maiores para o dedo.",
+            ],
+            screen: "Reserva (monitor touch)",
+          },
+          {
+            items: [
+              "O bip do cupom passou a aceitar a leitura mesmo quando o leitor troca o hifen por outro caractere (layout de teclado), em vez de recusar com 'isso nao parece um cupom'.",
+              "O Enter do leitor tambem nao reabre mais a camera nem fecha a 2a via sem querer.",
+            ],
+            screen: "Impressao da PA",
+          },
+        ],
+      },
+    ],
+    rollback: "6428702b",
+    technical: {
+      done: "A CAUSA do fullscreen cair: o botao de tela cheia e um <button> que fica como document.activeElement depois do clique; o wedge tratava Enter SEM preventDefault, e ativar botao focado com Enter e a acao PADRAO do keydown — o Enter que fecha a rajada do leitor re-clicava o botao e o toggle chamava exitFullscreen(). Mesmo mecanismo re-clicava o ultimo lote/quadra (desmarcava a selecao). Correcao na causa: lib/prometeu/leitura-wedge.ts novo (puro) com avaliarLeituraDoWedge + decidirEnterDoWedge, que separa 'aceita' de 'cancelarPadrao' — cancela tambem o sufixo CR+LF e a rajada curta em ritmo de maquina (<=30ms/tecla), mas NUNCA dentro de input/textarea (senao rouba o submit da pessoa); o listener virou fase de CAPTURA com preventDefault+stopPropagation. As TRES copias do wedge foram unificadas no hook compartilhado (reserva, PA e secretaria) — a da PA ainda nao passava por normalizarLeituraDoQr, entao o cupom com hifen trocado era recusado. Rede extra: blur do botao ao entrar em tela cheia, desejo do operador guardado em ref, Escape E F11 zeram o desejo, e a recuperacao saiu de aoBipar (que tambem e callback da camera, sem ativacao transitoria — requestFullscreen era recusado e engolido pelo catch). IDENTIDADE: lib/prometeu/identidade-do-credenciado.ts resolve nome e imobiliaria pela MESMA cadeia de listCredenciados (vinculo do Apolo > de-para apolo_imobiliaria_match > coluna crua) — sem isso o totem lia a coluna crua e quem veio por vinculo apareceria SEM imobiliaria, e o nome corrigido no Apolo nunca chegava ao totem (prometeu_credenciados.nome nao recebe UPDATE). Fallback nas colunas cruas se o Apolo falhar: o salao nao para. LAYOUT: raiz overflow-hidden, shrink-0 no header/rodapes, prateleira de lotes como unica area rolavel (min-h-0 + overscroll-contain), empilhamento por padrao com landscape: para a horizontal, escalas reduzidas para caber em 1080 de largura, botoes de proponente de 24px para 36/44px. Typecheck limpo; 203 testes do Prometeu (23 arquivos), 1.697 no total.",
+      motivation: "Primeiro teste do kit de reserva com hardware real (28/08): o Lucas bipou a etiqueta da FLAVIA e reservou 3 lotes. Pedidos dele na sequencia: 'queria trazer a imobiliaria', 'pode dar um destaque ao nome do cliente', 'a tela vai ficar em pe, tipo retrato' e 'quando eu clico em colocar a tela toda quando bipa esta saindo da tela, tem que ficar'.",
+    },
+    title: "Reserva touch: tela cheia que nao cai ao bipar, cliente em destaque e layout retrato",
+    type: "correcao",
+    version: "1.217.0",
+  },
+  {
     buildTag: "2026-08-28-logo-do-incorporador-no-setup",
     deployedAt: "2026-08-28T09:00:00-03:00",
     modules: [

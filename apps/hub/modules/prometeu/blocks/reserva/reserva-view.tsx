@@ -2,6 +2,7 @@
 
 import {
   ArrowLeft,
+  Building2,
   Camera,
   Check,
   Loader2,
@@ -13,12 +14,17 @@ import {
   QrCode,
   User,
   UserPlus,
+  UserRound,
   X,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { eventoDoDia } from "@/lib/prometeu/evento-do-dia";
+import {
+  origemDoClienteParaExibir,
+  sufixoDeProponentes,
+} from "@/lib/prometeu/identificacao-do-cliente";
 import { rotuloDoLancamento } from "@/lib/prometeu/lancamento";
 import { conteudoDoQrDoCupom } from "@/lib/prometeu/cupom";
 import type { PrometeuEvento } from "@/lib/prometeu/types";
@@ -34,6 +40,7 @@ import {
 } from "../../data/prometeu-operations";
 import { useLancamentoSelecionado } from "../../lancamento-contexto";
 import { usarLeitorQr } from "../checkin/usar-leitor-qr";
+import { usarLeitorWedge } from "../usar-leitor-wedge";
 import { imprimirCupomDaReserva } from "./imprimir-cupom";
 
 // A POSIÇÃO DE RESERVA — monitor touch do lançamento (Lucas, 24/08/2026).
@@ -73,36 +80,11 @@ function dividirIgual(quantidade: number): number[] {
   return [primeiro, ...Array.from({ length: quantidade - 1 }, () => base)];
 }
 
-// Leitor USB (wedge de teclado): chars em rajada + Enter. Janela de 300ms entre teclas —
-// digitação humana não dispara, o leitor sim.
-function usarLeitorWedge(aoLer: (valor: string) => void, ativo: boolean) {
-  const bufferRef = useRef("");
-  const ultimoRef = useRef(0);
-  const aoLerRef = useRef(aoLer);
-
-  useEffect(() => {
-    aoLerRef.current = aoLer;
-  }, [aoLer]);
-
-  useEffect(() => {
-    if (!ativo) return;
-    const aoTeclar = (ev: KeyboardEvent) => {
-      const agora = Date.now();
-      if (agora - ultimoRef.current > 300) bufferRef.current = "";
-      ultimoRef.current = agora;
-
-      if (ev.key === "Enter") {
-        const lido = bufferRef.current.trim();
-        bufferRef.current = "";
-        if (lido.length >= 6) aoLerRef.current(lido);
-        return;
-      }
-      if (ev.key.length === 1) bufferRef.current += ev.key;
-    };
-    window.addEventListener("keydown", aoTeclar);
-    return () => window.removeEventListener("keydown", aoTeclar);
-  }, [ativo]);
-}
+// ⚠️ O LEITOR USB agora vem do hook COMPARTILHADO (../usar-leitor-wedge). A cópia local que
+// existia aqui não cancelava a ação padrão do Enter — e era essa a causa da tela cheia cair no
+// bip (28/08/2026): o Enter do leitor re-clicava o botão de tela cheia, que estava focado desde
+// o clique do operador, e o `alternarTelaCheia` chamava exitFullscreen(). Ver o cabeçalho de
+// lib/prometeu/leitura-wedge.ts.
 
 const CARTAO =
   "rounded-xl border border-line bg-surface transition-colors";
@@ -138,7 +120,12 @@ export function ReservaView() {
   // ligado a tela inteira sobe de escala para leitura à distância. Esc também sai — por isso
   // o estado vem do evento fullscreenchange, não do clique.
   const raizRef = useRef<HTMLDivElement>(null);
+  const botaoTelaCheiaRef = useRef<HTMLButtonElement>(null);
   const [telaCheia, setTelaCheia] = useState(false);
+  // O que o OPERADOR pediu (não o que o navegador está fazendo). É a rede do quiosque: se a
+  // tela cheia cair sem ele mandar, voltamos sozinhos no próximo bip — que é um gesto do
+  // usuário e, portanto, autoriza requestFullscreen().
+  const querTelaCheia = useRef(false);
 
   useEffect(() => {
     const aoMudar = () => setTelaCheia(Boolean(document.fullscreenElement));
@@ -146,9 +133,33 @@ export function ReservaView() {
     return () => document.removeEventListener("fullscreenchange", aoMudar);
   }, []);
 
+  // Esc e F11 são os jeitos de sair pelo teclado: se o operador apertou, ele QUER sair — a rede
+  // desliga. Sem o F11 aqui o desejo continuava ligado e a tela voltava sozinha ao fullscreen no
+  // toque seguinte, brigando com quem só queria dar uma olhada no Windows.
+  useEffect(() => {
+    const aoTeclar = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape" || ev.key === "F11") querTelaCheia.current = false;
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, []);
+
+  const entrarNaTelaCheia = useCallback(() => {
+    if (document.fullscreenElement) return;
+    void raizRef.current?.requestFullscreen().catch(() => undefined);
+  }, []);
+
   const alternarTelaCheia = () => {
-    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
-    else void raizRef.current?.requestFullscreen().catch(() => undefined);
+    if (document.fullscreenElement) {
+      querTelaCheia.current = false;
+      void document.exitFullscreen().catch(() => undefined);
+      return;
+    }
+    querTelaCheia.current = true;
+    entrarNaTelaCheia();
+    // O botão continua FOCADO depois do clique. Com o foco nele, qualquer Enter que escape
+    // (leitor mal configurado, sufixo extra) voltaria a clicá-lo e sairia da tela cheia.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   };
 
   const carregar = useCallback(async (eventoId?: string) => {
@@ -231,6 +242,16 @@ export function ReservaView() {
     [bipando, bipandoProponente, cliente, evento?.id],
   );
 
+  // A REDE DO QUIOSQUE, e só ela: recuperar a tela cheia exige ATIVAÇÃO TRANSITÓRIA (gesto do
+  // usuário), então mora nos dois lugares que são gesto de verdade — o keydown do leitor USB e o
+  // toque na tela. Fora daí o `requestFullscreen()` é recusado pelo Chrome em silêncio; foi por
+  // isso que a tentativa antiga, dentro de `aoBipar`, não valia nada quando o bip vinha da CÂMERA
+  // (o callback dispara de dentro do loop de decodificação, sem gesto nenhum).
+  const recuperarTelaCheia = useCallback(() => {
+    if (!querTelaCheia.current) return;
+    entrarNaTelaCheia();
+  }, [entrarNaTelaCheia]);
+
   // Ajuste de ±5% num proponente extra; o TITULAR absorve a diferença (100 − soma dos demais).
   const ajustarPercentual = (credenciadoId: string, delta: number) => {
     setProponentes((atual) => {
@@ -257,7 +278,10 @@ export function ReservaView() {
   };
 
   // Os dois leitores: USB (sempre que a tela está em pé) e câmera (botão).
-  usarLeitorWedge((v) => void aoBipar(v), !sucesso && !confirmando);
+  usarLeitorWedge((v) => {
+    recuperarTelaCheia();
+    void aoBipar(v);
+  }, !sucesso && !confirmando);
   const leitorCamera = usarLeitorQr({
     aoLer: (v) => void aoBipar(v),
     ativo: cameraAberta && (!cliente || bipandoProponente),
@@ -350,24 +374,48 @@ export function ReservaView() {
     [quadras],
   );
 
+  // DE ONDE VEIO O CLIENTE (Lucas, 28/08: "queria trazer a imobiliária"). O payload do bip já
+  // traz imobiliaria/corretor; a regra de montar a linha — e de NÃO desenhar nada quando não há
+  // nenhum dos dois — mora em lib/prometeu/identificacao-do-cliente.ts.
+  const origemDoCliente = useMemo(
+    () => (cliente ? origemDoClienteParaExibir(cliente) : null),
+    [cliente],
+  );
+  const sufixoProponentes = sufixoDeProponentes(proponentes.length);
+  // Alvos de toque dos chips de proponente (Lucas: "é tela de toque — alvos grandes").
+  const alvoDoChip = telaCheia ? "h-11 w-11" : "h-9 w-9";
+  const iconeDoChip = telaCheia ? 18 : 14;
+
   return (
+    // ⚠️ RETRATO PRIMEIRO (monitor em pé, 1080×1920): a PÁGINA nunca rola — `overflow-hidden`
+    // aqui e `min-h-0` na coluna garantem que só a prateleira de lotes role por dentro. Header
+    // e rodapé do cliente são `shrink-0`: ficam SEMPRE visíveis, aconteça o que acontecer.
     <div
       ref={raizRef}
-      className={`flex h-full min-h-0 flex-col bg-canvas ${telaCheia ? "p-6 sm:p-8" : "p-4 sm:p-6"}`}
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas p-4 sm:p-6"
+      onPointerDown={(ev) => {
+        // O operador toca a tela o tempo todo: se a tela cheia caiu sem ele pedir, o próximo
+        // toque já devolve — sem esperar o próximo cliente chegar. O botão de tela cheia fica
+        // FORA da rede, senão o toque nele restauraria e o clique logo em seguida sairia.
+        if (botaoTelaCheiaRef.current?.contains(ev.target as Node)) return;
+        recuperarTelaCheia();
+      }}
     >
-      <header className="mb-4 flex flex-wrap items-center gap-3">
+      <header className="mb-3 flex shrink-0 flex-col gap-2 landscape:flex-row landscape:items-center landscape:gap-3">
         <div className="min-w-0">
           <h1
-            className={`truncate font-semibold text-ink ${telaCheia ? "text-3xl" : "text-lg"}`}
+            className={`truncate font-semibold text-ink ${telaCheia ? "text-xl portrait:text-2xl" : "text-lg"}`}
           >
             {evento ? rotuloDoLancamento(evento) : "Reserva"}
           </h1>
-          <p className={`text-ink-muted ${telaCheia ? "text-base" : "text-xs"}`}>
+          <p className={`text-ink-muted ${telaCheia ? "text-sm" : "text-xs"}`}>
             {totalDisponiveis} lotes disponíveis
           </p>
         </div>
-        {/* O mini dash do evento: Reservas · Propostas (secretária) · Finalizadas. */}
-        <div className="ml-auto flex items-center gap-2">
+        {/* O mini dash do evento: Reservas · Propostas (secretária) · Finalizadas.
+            Em retrato ele ocupa a linha inteira (os três cartões dividem a largura); em
+            paisagem volta para a direita do título, como sempre foi. */}
+        <div className="flex items-center gap-2 landscape:ml-auto">
           {(
             [
               ["Reservas", contadores?.reservas],
@@ -377,51 +425,54 @@ export function ReservaView() {
           ).map(([rotulo, valor]) => (
             <div
               key={rotulo}
-              className={`${CARTAO} text-center ${telaCheia ? "min-w-[124px] px-5 py-3" : "min-w-[92px] px-4 py-2"}`}
+              className={`${CARTAO} flex-1 text-center landscape:flex-none ${telaCheia ? "min-w-[92px] px-4 py-2" : "min-w-[86px] px-4 py-2"}`}
             >
               <div
-                className={`font-bold tabular-nums text-ink ${telaCheia ? "text-4xl" : "text-2xl"}`}
+                className={`font-bold tabular-nums text-ink ${telaCheia ? "text-3xl" : "text-2xl"}`}
               >
                 {valor ?? "—"}
               </div>
-              <div className={`text-ink-muted ${telaCheia ? "text-sm" : "text-[11px]"}`}>
+              <div className={`text-ink-muted ${telaCheia ? "text-xs" : "text-[11px]"}`}>
                 {rotulo}
               </div>
             </div>
           ))}
           <button
-            className="grid h-11 w-11 place-items-center rounded-xl border border-line text-ink-soft transition hover:text-ink"
+            ref={botaoTelaCheiaRef}
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-line text-ink-soft transition hover:text-ink"
             onClick={alternarTelaCheia}
             title={telaCheia ? "Sair da tela cheia" : "Tela cheia"}
             type="button"
           >
             {telaCheia ? (
-              <Minimize2 aria-hidden="true" size={20} />
+              <Minimize2 aria-hidden="true" size={22} />
             ) : (
-              <Maximize2 aria-hidden="true" size={20} />
+              <Maximize2 aria-hidden="true" size={22} />
             )}
           </button>
         </div>
       </header>
 
       {erro ? (
-        <p className="mb-3 rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300">
+        <p className="mb-3 shrink-0 rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300">
           {erro}
         </p>
       ) : null}
 
       {sucesso ? (
-        <div className="grid flex-1 place-items-center">
-          <div className="text-center">
+        <div className="grid min-h-0 flex-1 place-items-center overflow-hidden">
+          <div className="max-w-full px-4 text-center">
             <span
               className={`mx-auto grid place-items-center rounded-full bg-[#2C2C2A] text-[#F1EFE8] ${telaCheia ? "h-32 w-32" : "h-20 w-20"}`}
             >
               <Check aria-hidden="true" size={telaCheia ? 64 : 40} />
             </span>
-            <p className={`mt-4 font-bold text-ink ${telaCheia ? "text-5xl" : "text-2xl"}`}>
+            <p
+              className={`mt-4 break-words font-bold uppercase text-ink ${telaCheia ? "text-4xl" : "text-2xl"}`}
+            >
               {sucesso.cliente}
             </p>
-            <p className={`mt-1 text-ink-soft ${telaCheia ? "text-3xl" : "text-lg"}`}>
+            <p className={`mt-1 break-words text-ink-soft ${telaCheia ? "text-2xl" : "text-lg"}`}>
               {sucesso.lotes.join(" · ")}
             </p>
             <p className={`mt-3 text-ink-muted ${telaCheia ? "text-xl" : "text-sm"}`}>
@@ -436,13 +487,15 @@ export function ReservaView() {
               <Loader2 aria-hidden="true" className="animate-spin" size={32} />
             </div>
           ) : quadraAtiva === null ? (
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            // A ÚNICA coisa que rola na tela: a prateleira. `min-h-0` é o que impede o flex de
+            // empurrar o rodapé do cliente para fora em retrato.
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
               <div className="mb-2 flex items-center gap-2 text-sm text-ink-muted">
                 <MapPin aria-hidden="true" size={16} />
                 Quadra
               </div>
               <div
-                className={`grid gap-3 ${telaCheia ? "grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4" : "grid-cols-[repeat(auto-fill,minmax(110px,1fr))]"}`}
+                className={`grid gap-3 ${telaCheia ? "grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4" : "grid-cols-[repeat(auto-fill,minmax(110px,1fr))]"}`}
               >
                 {quadras.map((q) => (
                   <button
@@ -451,7 +504,7 @@ export function ReservaView() {
                     onClick={() => setQuadraAtiva(q.quadra)}
                     type="button"
                   >
-                    <div className={`font-bold text-ink ${telaCheia ? "text-6xl" : "text-3xl"}`}>
+                    <div className={`font-bold text-ink ${telaCheia ? "text-5xl" : "text-3xl"}`}>
                       {q.quadra}
                     </div>
                     <div
@@ -469,14 +522,14 @@ export function ReservaView() {
               </div>
             </div>
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
               <div className="mb-2 flex items-center gap-2 text-sm text-ink-muted">
                 <MapPin aria-hidden="true" size={16} />
                 <span className="font-semibold text-ink">{quadraAtiva}</span>·
                 {quadra?.disponiveis.length ?? 0} disponíveis
               </div>
               <div
-                className={`grid gap-3 ${telaCheia ? "grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4" : "grid-cols-[repeat(auto-fill,minmax(96px,1fr))]"}`}
+                className={`grid gap-3 ${telaCheia ? "grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-4" : "grid-cols-[repeat(auto-fill,minmax(96px,1fr))]"}`}
               >
                 {(quadra?.disponiveis ?? []).map((u) => {
                   const marcado = marcadas.has(u.codigo);
@@ -487,7 +540,7 @@ export function ReservaView() {
                       onClick={() => alternarLote(u)}
                       type="button"
                     >
-                      <span className={`font-bold ${telaCheia ? "text-5xl" : "text-2xl"}`}>
+                      <span className={`font-bold ${telaCheia ? "text-4xl" : "text-2xl"}`}>
                         {u.lote}
                       </span>
                       {marcado ? (
@@ -506,7 +559,7 @@ export function ReservaView() {
 
           {/* Proponentes (até 5): chips com % — o titular absorve os ajustes dos demais. */}
           {bipandoProponente ? (
-            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 py-3">
+            <div className="mt-3 flex shrink-0 flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 py-3">
               {bipando ? (
                 <Loader2 aria-hidden="true" className="animate-spin text-ink-muted" size={18} />
               ) : (
@@ -544,40 +597,48 @@ export function ReservaView() {
               </div>
             </div>
           ) : null}
+          {/* ⚠️ SEM ALTURA MÁXIMA AQUI. Uma versão anterior pôs `max-h-24` + `overflow-y-auto`
+              nesta faixa: com 4 ou 5 proponentes em retrato a terceira linha de chips sumia atrás
+              de um scroll interno sem indicação nenhuma, num monitor de toque. A faixa é
+              `shrink-0` e o rodapé nunca dependeu dela — quem cede espaço é a prateleira de
+              lotes, que rola e sinaliza que rola. */}
           {proponentes.length > 1 ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-3 flex shrink-0 flex-wrap items-center gap-2">
               {proponentes.map((p, indice) => (
                 <span
                   key={p.credenciadoId}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface py-1 pl-3 pr-1.5 text-xs font-semibold text-ink"
+                  className={`inline-flex items-center gap-1.5 rounded-full border border-line bg-surface font-semibold text-ink ${telaCheia ? "py-1.5 pl-4 pr-2 text-base" : "py-1 pl-3 pr-1.5 text-xs"}`}
                 >
                   {p.nome.split(/\s+/)[0]}
                   <b className="tabular-nums">{p.percentual}%</b>
+                  {/* Tela de TOQUE: os 24px de antes exigiam precisão de mouse justamente no
+                      único ajuste fino da tela, com cliente na frente. Agora são alvos de 36px
+                      (44px em tela cheia), como o resto do quiosque. */}
                   {indice > 0 ? (
-                    <span className="inline-flex items-center">
+                    <span className="inline-flex items-center gap-0.5">
                       <button
-                        className="grid h-6 w-6 place-items-center rounded-full text-ink-muted hover:text-ink"
+                        className={`grid place-items-center rounded-full text-ink-muted transition hover:bg-black/5 hover:text-ink dark:hover:bg-white/10 ${alvoDoChip}`}
                         onClick={() => ajustarPercentual(p.credenciadoId, -5)}
                         title="-5%"
                         type="button"
                       >
-                        <Minus aria-hidden="true" size={12} />
+                        <Minus aria-hidden="true" size={iconeDoChip} />
                       </button>
                       <button
-                        className="grid h-6 w-6 place-items-center rounded-full text-ink-muted hover:text-ink"
+                        className={`grid place-items-center rounded-full text-ink-muted transition hover:bg-black/5 hover:text-ink dark:hover:bg-white/10 ${alvoDoChip}`}
                         onClick={() => ajustarPercentual(p.credenciadoId, 5)}
                         title="+5%"
                         type="button"
                       >
-                        <Plus aria-hidden="true" size={12} />
+                        <Plus aria-hidden="true" size={iconeDoChip} />
                       </button>
                       <button
-                        className="grid h-6 w-6 place-items-center rounded-full text-ink-muted hover:text-ink"
+                        className={`grid place-items-center rounded-full text-ink-muted transition hover:bg-black/5 hover:text-ink dark:hover:bg-white/10 ${alvoDoChip}`}
                         onClick={() => removerProponente(p.credenciadoId)}
                         title="Remover"
                         type="button"
                       >
-                        <X aria-hidden="true" size={12} />
+                        <X aria-hidden="true" size={iconeDoChip} />
                       </button>
                     </span>
                   ) : null}
@@ -590,18 +651,18 @@ export function ReservaView() {
               a conferência (nome + lotes) e as ações. */}
           {!cliente ? (
             <footer
-              className={`mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 ${telaCheia ? "py-5" : "py-3"}`}
+              className={`mt-3 flex shrink-0 flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 ${telaCheia ? "py-4" : "py-3"}`}
             >
               {bipando ? (
                 <Loader2
                   aria-hidden="true"
                   className="animate-spin text-ink-muted"
-                  size={telaCheia ? 30 : 20}
+                  size={telaCheia ? 28 : 20}
                 />
               ) : (
-                <QrCode aria-hidden="true" className="text-ink-muted" size={telaCheia ? 30 : 20} />
+                <QrCode aria-hidden="true" className="text-ink-muted" size={telaCheia ? 28 : 20} />
               )}
-              <p className={`font-semibold text-ink ${telaCheia ? "text-2xl" : "text-sm"}`}>
+              <p className={`font-semibold text-ink ${telaCheia ? "text-xl" : "text-sm"}`}>
                 Bipe a etiqueta do cliente para começar a reserva
               </p>
               {cameraAberta ? (
@@ -620,22 +681,58 @@ export function ReservaView() {
               </button>
             </footer>
           ) : (
+          // O CLIENTE EM DESTAQUE (Lucas, 28/08): nome grande, legível a um metro, com a
+          // imobiliária logo abaixo. Em retrato o cartão vira duas faixas — identidade em cima,
+          // ações em baixo, com o Finalizar esticado (alvo grande de toque).
           <footer
-            className={`mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 ${telaCheia ? "py-5" : "py-3"}`}
+            className={`mt-3 flex shrink-0 flex-col gap-3 rounded-2xl border border-line bg-surface px-4 landscape:flex-row landscape:items-center landscape:gap-4 ${telaCheia ? "py-4" : "py-3"}`}
           >
-            <User aria-hidden="true" className="text-ink-muted" size={telaCheia ? 28 : 18} />
-            <div className="min-w-0">
-              <p className={`truncate font-bold text-ink ${telaCheia ? "text-2xl" : "text-sm"}`}>
-                {cliente.nome}
-                {proponentes.length > 1 ? ` +${proponentes.length - 1}` : ""}
-              </p>
-              <p className={`truncate text-ink-muted ${telaCheia ? "text-base" : "text-xs"}`}>
-                {marcadas.size > 0 ? [...marcadas.keys()].join(" · ") : "Nenhum lote marcado"}
-              </p>
+            <div className="flex min-w-0 items-center gap-3 landscape:flex-1">
+              <span
+                className={`grid shrink-0 place-items-center rounded-xl bg-[#2C2C2A] text-[#F1EFE8] ${telaCheia ? "h-14 w-14" : "h-11 w-11"}`}
+              >
+                <User aria-hidden="true" size={telaCheia ? 30 : 22} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <span
+                    className={`min-w-0 truncate font-black uppercase leading-tight tracking-tight text-ink ${telaCheia ? "text-3xl portrait:text-4xl" : "text-xl"}`}
+                  >
+                    {cliente.nome}
+                  </span>
+                  {sufixoProponentes ? (
+                    <span
+                      className={`shrink-0 rounded-full bg-[#2C2C2A] px-2 py-0.5 font-bold text-[#F1EFE8] ${telaCheia ? "text-base" : "text-xs"}`}
+                      title={`${proponentes.length} proponentes`}
+                    >
+                      {sufixoProponentes}
+                    </span>
+                  ) : null}
+                </div>
+                {/* Sem imobiliária E sem corretor a linha simplesmente não existe — nada de
+                    rótulo órfão nem buraco no cartão. */}
+                {origemDoCliente ? (
+                  <p
+                    className={`mt-0.5 flex min-w-0 items-center gap-1.5 font-semibold text-ink-soft ${telaCheia ? "text-lg" : "text-sm"}`}
+                  >
+                    {origemDoCliente.tipo === "imobiliaria" ? (
+                      <Building2 aria-hidden="true" className="shrink-0" size={telaCheia ? 20 : 15} />
+                    ) : (
+                      <UserRound aria-hidden="true" className="shrink-0" size={telaCheia ? 20 : 15} />
+                    )}
+                    <span className="truncate">{origemDoCliente.texto}</span>
+                  </p>
+                ) : null}
+                <p
+                  className={`mt-0.5 truncate ${marcadas.size > 0 ? "font-semibold text-ink" : "text-ink-muted"} ${telaCheia ? "text-base" : "text-xs"}`}
+                >
+                  {marcadas.size > 0 ? [...marcadas.keys()].join(" · ") : "Nenhum lote marcado"}
+                </p>
+              </div>
             </div>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="flex items-center gap-2 landscape:ml-auto landscape:shrink-0">
               <button
-                className={`grid place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10 ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
+                className={`grid shrink-0 place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10 ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
                 disabled={proponentes.length >= MAX_PROPONENTES || bipandoProponente}
                 onClick={() => setBipandoProponente(true)}
                 title="Adicionar proponente"
@@ -644,7 +741,7 @@ export function ReservaView() {
                 <UserPlus aria-hidden="true" size={telaCheia ? 28 : 20} />
               </button>
               <button
-                className={`grid place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 dark:hover:bg-white/10 ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
+                className={`grid shrink-0 place-items-center rounded-xl border border-line text-ink transition hover:bg-black/5 dark:hover:bg-white/10 ${telaCheia ? "h-16 w-16" : "h-12 w-12"}`}
                 onClick={() => (quadraAtiva === null ? resetar() : setQuadraAtiva(null))}
                 title={quadraAtiva === null ? "Cancelar" : "Outra quadra"}
                 type="button"
@@ -656,7 +753,7 @@ export function ReservaView() {
                 )}
               </button>
               <button
-                className={`inline-flex items-center gap-2 rounded-xl bg-[#2C2C2A] font-bold text-[#F1EFE8] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${telaCheia ? "h-16 px-9 text-2xl" : "h-12 px-6 text-base"}`}
+                className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#2C2C2A] font-bold text-[#F1EFE8] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 landscape:flex-none ${telaCheia ? "h-16 px-9 text-2xl" : "h-12 px-6 text-base"}`}
                 disabled={marcadas.size === 0 || confirmando}
                 onClick={() => void finalizar()}
                 type="button"

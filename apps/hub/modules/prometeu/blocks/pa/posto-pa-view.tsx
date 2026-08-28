@@ -2,7 +2,7 @@
 
 import { Camera, Check, Loader2, Printer, QrCode, X } from "lucide-react";
 import QRCode from "qrcode";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { codigoDoCupom, conteudoDoQrDoCupom, ehIdDeCupom } from "@/lib/prometeu/cupom";
 
@@ -12,6 +12,7 @@ import {
   type CupomReservaLinha,
 } from "../../data/prometeu-operations";
 import { usarLeitorQr } from "../checkin/usar-leitor-qr";
+import { usarLeitorWedge } from "../usar-leitor-wedge";
 import { imprimirFolhasDaPa } from "./imprimir-pa";
 
 // A ÁREA DE IMPRESSÃO DA PA — mãos livres (Lucas, 24/08).
@@ -33,33 +34,13 @@ type CupomCarregado = {
   reservas: CupomReservaLinha[];
 };
 
-function usarLeitorWedge(aoLer: (valor: string) => void, ativo: boolean) {
-  const bufferRef = useRef("");
-  const ultimoRef = useRef(0);
-  const aoLerRef = useRef(aoLer);
-
-  useEffect(() => {
-    aoLerRef.current = aoLer;
-  }, [aoLer]);
-
-  useEffect(() => {
-    if (!ativo) return;
-    const aoTeclar = (ev: KeyboardEvent) => {
-      const agora = Date.now();
-      if (agora - ultimoRef.current > 300) bufferRef.current = "";
-      ultimoRef.current = agora;
-      if (ev.key === "Enter") {
-        const lido = bufferRef.current.trim();
-        bufferRef.current = "";
-        if (lido.length >= 6) aoLerRef.current(lido);
-        return;
-      }
-      if (ev.key.length === 1) bufferRef.current += ev.key;
-    };
-    window.addEventListener("keydown", aoTeclar);
-    return () => window.removeEventListener("keydown", aoTeclar);
-  }, [ativo]);
-}
+// ⚠️ O LEITOR USB VEM DO HOOK COMPARTILHADO (../usar-leitor-wedge). A cópia local que existia
+// aqui tinha os dois defeitos consertados na Reserva em 28/08/2026 e ficou para trás: (1) não
+// passava por `normalizarLeituraDoQr`, então o cupom bipado com o separador trocado pelo layout
+// de teclado era reprovado por `ehIdDeCupom` e a tela dizia "Isso não parece um cupom de
+// reserva" com a fila esperando; (2) não cancelava a ação padrão do Enter, que re-clicava o
+// botão focado — aqui, "Usar a câmera" ou o "Cancelar" da 2ª via. A regra de aceite é a mesma
+// (rajada de 6+ caracteres fora de campo).
 
 function horaBR(iso: null | string): string {
   if (!iso) return "";

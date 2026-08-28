@@ -5,6 +5,7 @@ import {
   eventoOperavelId,
   getEvento,
 } from "@/lib/prometeu/data";
+import { identidadeCanonicaDoCredenciado } from "@/lib/prometeu/identidade-do-credenciado";
 import {
   autorizarOperacao,
   autorizarOperacaoDeEscrita,
@@ -58,11 +59,12 @@ export async function GET(request: NextRequest) {
   if (credenciadoId) {
     const { data: credenciado } = await client
       .from("prometeu_credenciados")
-      .select("id, nome, documento, etapa, evento_id, imobiliaria, corretor")
+      .select("id, nome, documento, etapa, evento_id, entity_id, imobiliaria, corretor")
       .eq("id", credenciadoId)
       .maybeSingle<{
         corretor: null | string;
         documento: null | string;
+        entity_id: null | string;
         etapa: string;
         evento_id: string;
         id: string;
@@ -75,16 +77,20 @@ export async function GET(request: NextRequest) {
         { status: 404 },
       );
     }
+    // ⚠️ O TÓTEM TEM QUE FALAR A MESMA COISA QUE A ETIQUETA: nome e imobiliária saem da ENTIDADE
+    // do Apolo, como em `listCredenciados`, e não das colunas cruas — que guardam o retrato do
+    // dia do credenciamento e a grafia livre da esteira. Ver lib/prometeu/identidade-do-credenciado.ts.
+    const identidade = await identidadeCanonicaDoCredenciado(client, credenciado);
     return NextResponse.json(
       {
         data: {
           credenciado: {
-            corretor: credenciado.corretor,
+            corretor: identidade.corretor,
             documento: credenciado.documento,
             etapa: credenciado.etapa,
             id: credenciado.id,
-            imobiliaria: credenciado.imobiliaria,
-            nome: credenciado.nome,
+            imobiliaria: identidade.imobiliaria,
+            nome: identidade.nome,
           },
         },
       },
