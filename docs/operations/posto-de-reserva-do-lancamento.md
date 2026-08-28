@@ -44,7 +44,7 @@ sistema. Com o modo quiosque de impressão, o papel sai direto na impressora pad
 2. No campo do caminho, cole (ajuste o caminho do Chrome se for diferente):
 
 ```
-"C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --kiosk --user-data-dir="C:\PostoReserva" --app=https://c2x.app.br/prometeu
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --kiosk --window-position=2560,0 --user-data-dir="C:\PostoReserva" --app=https://c2x.app.br/prometeu
 ```
 
 3. Nomeie como **Posto de Reserva** e use SEMPRE esse atalho na máquina do evento.
@@ -53,6 +53,7 @@ O que cada parte faz:
 
 - `--kiosk-printing` → **imprime direto, sem diálogo**. É o que resolve o pedido.
 - `--kiosk` → tela cheia de verdade, sem barra de endereço (o cliente não navega para outro lugar).
+- `--window-position=` → **em qual tela o posto abre.** Ver o aviso das duas telas.
 - `--user-data-dir=` → perfil separado. **Não é opcional, ver o aviso abaixo.**
 - `--app=` → abre já no Prometeu.
 
@@ -64,6 +65,24 @@ O que cada parte faz:
 >
 > Consequência prática: esse perfil é uma instalação limpa, então **faça o login do Panteon uma
 > vez** nele. Depois fica salvo.
+
+> ⚠️ **COM DUAS TELAS, O `--kiosk` ABRE NA PRINCIPAL.** Se a tela do posto é a segunda — o
+> tablet no suporte, um monitor extra — o quiosque vai para o monitor errado e a tela do posto
+> fica mostrando a área de trabalho. Quem resolve é o `--window-position`, que recebe a
+> coordenada X onde aquela tela começa.
+>
+> **Para descobrir a coordenada na máquina em uso**, rode no PowerShell:
+>
+> ```powershell
+> Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::AllScreens | Select-Object DeviceName, Primary, @{n='Posicao';e={"$($_.Bounds.X),$($_.Bounds.Y)"}}, @{n='Tamanho';e={"$($_.Bounds.Width)x$($_.Bounds.Height)"}}
+> ```
+>
+> A tela do posto é a que tem o tamanho do tablet (1920×1200 no Redmi Pad SE); copie a
+> `Posicao` dela para o `--window-position`. No notebook do Lucas, em 28/08, era `2560,0`.
+>
+> ⚠️ **Refaça essa conta na máquina do evento.** A coordenada depende de quantas telas existem
+> e de como estão arrumadas, então no mini PC ela quase certamente será outra. A alternativa,
+> se preferir não mexer no atalho, é marcar a tela do posto como **principal** no Windows.
 
 > ⚠️ **A impressora que sair o cupom precisa ser a PADRÃO do Windows** nessa máquina. Em modo
 > quiosque não há escolha de destino: vai para a padrão, sempre. Configure em
