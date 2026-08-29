@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Printer, RotateCcw, Search, X } from "lucide-react";
+import { Check, Loader2, Printer, RotateCcw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -123,10 +123,16 @@ export function ListaDeReservas({ aoImprimir, eventoId }: Props) {
     }
   };
 
-  const cancelar = async (reserva: ReservaDoEventoLinha, motivo: string) => {
+  const cancelar = async (
+    reserva: ReservaDoEventoLinha,
+    motivo: string,
+    codigos: string[],
+  ) => {
     setOcupado(reserva.grupoId);
     setConfirmandoCancelar(null);
     const r = await cancelarReservaRemoto({
+      // Lista completa = cupom inteiro; a rota trata vazio como "todos".
+      codigos: codigos.length === reserva.lotes.length ? undefined : codigos,
       eventoId,
       grupoId: reserva.grupoId,
       motivo,
@@ -255,7 +261,9 @@ export function ListaDeReservas({ aoImprimir, eventoId }: Props) {
       {confirmandoCancelar ? (
         <ConfirmarCancelamento
           onCancelar={() => setConfirmandoCancelar(null)}
-          onConfirmar={(motivo) => void cancelar(confirmandoCancelar, motivo)}
+          onConfirmar={(motivo, codigos) =>
+            void cancelar(confirmandoCancelar, motivo, codigos)
+          }
           reserva={confirmandoCancelar}
         />
       ) : null}
@@ -272,24 +280,83 @@ function ConfirmarCancelamento({
   reserva,
 }: {
   onCancelar: () => void;
-  onConfirmar: (motivo: string) => void;
+  onConfirmar: (motivo: string, codigos: string[]) => void;
   reserva: ReservaDoEventoLinha;
 }) {
   const [motivo, setMotivo] = useState("");
+  // ⚠️ COMEÇA COM TUDO MARCADO: devolver o cupom inteiro é o caso comum, e o operador que quer
+  // isso não deve precisar marcar nada. Quem devolve UM lote desmarca os outros.
+  const [escolhidos, setEscolhidos] = useState<string[]>(() => [...reserva.codigos]);
+  const varios = reserva.lotes.length > 1;
+  const nenhum = escolhidos.length === 0;
+  const todos = escolhidos.length === reserva.lotes.length;
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
       <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-5">
-        <p className="text-lg font-bold text-ink">Cancelar a reserva?</p>
-        <p className="mt-2 text-sm text-ink-soft">
-          <b>{reserva.cliente ?? "Sem proponente"}</b> ·{" "}
-          {reserva.lotes.join(", ")}
+        <p className="text-lg font-bold text-ink">
+          {varios && !todos ? "Cancelar o lote?" : "Cancelar a reserva?"}
         </p>
-        <p className="mt-2 text-sm text-ink-muted">
-          {reserva.lotes.length === 1 ? "O lote volta" : "Os lotes voltam"} para
-          a prateleira na hora, e{" "}
-          {reserva.lotes.length === 1 ? "aparece" : "aparecem"} de novo no
-          telão.
+        <p className="mt-2 text-sm text-ink-soft">
+          <b>{reserva.cliente ?? "Sem proponente"}</b>
+        </p>
+
+        {/* ⚠️ A ESCOLHA SÓ APARECE COM MAIS DE UM LOTE (Lucas, 29/08: *"o vitor vai devolver
+            somente um lote, tem que especificar qual quando tem mais de um"*). Com um lote só,
+            a lista seria uma pergunta com uma resposta — ruído no meio do salão. */}
+        {varios ? (
+          <div className="mt-3">
+            <span className="mb-1.5 block text-[0.7rem] font-semibold uppercase tracking-wide text-ink-muted">
+              Quais lotes devolver
+            </span>
+            <ul className="flex flex-col gap-1">
+              {reserva.lotes.map((rotulo, i) => {
+                const codigo = reserva.codigos[i] ?? "";
+                const marcado = escolhidos.includes(codigo);
+                return (
+                  <li key={codigo || rotulo}>
+                    <button
+                      className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm font-semibold transition ${
+                        marcado
+                          ? "border-red-400 bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300"
+                          : "border-line text-ink-soft"
+                      }`}
+                      onClick={() =>
+                        setEscolhidos((atual) =>
+                          atual.includes(codigo)
+                            ? atual.filter((c) => c !== codigo)
+                            : [...atual, codigo],
+                        )
+                      }
+                      type="button"
+                    >
+                      <span
+                        className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${
+                          marcado ? "border-red-500 bg-red-500 text-white" : "border-line"
+                        }`}
+                      >
+                        {marcado ? <Check aria-hidden="true" size={13} /> : null}
+                      </span>
+                      {rotulo}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : (
+          <p className="mt-1 text-sm font-semibold text-ink-soft">
+            {reserva.lotes.join(", ")}
+          </p>
+        )}
+
+        <p className="mt-3 text-sm text-ink-muted">
+          {escolhidos.length === 1 ? "O lote volta" : "Os lotes voltam"} para a
+          prateleira na hora, e {escolhidos.length === 1 ? "aparece" : "aparecem"} de
+          novo no telão.
+          {varios && !todos && !nenhum
+            ? " O resto do cupom continua reservado."
+            : ""}
         </p>
         <label className="mt-4 block">
           <span className="mb-1.5 block text-[0.7rem] font-semibold uppercase tracking-wide text-ink-muted">
@@ -312,11 +379,16 @@ function ConfirmarCancelamento({
             Voltar
           </button>
           <button
-            className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90"
-            onClick={() => onConfirmar(motivo.trim())}
+            className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+            disabled={nenhum}
+            onClick={() => onConfirmar(motivo.trim(), escolhidos)}
             type="button"
           >
-            Cancelar reserva
+            {nenhum
+              ? "Escolha um lote"
+              : varios && !todos
+                ? `Cancelar ${escolhidos.length} lote${escolhidos.length > 1 ? "s" : ""}`
+                : "Cancelar reserva"}
           </button>
         </div>
       </div>

@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
 
   const corpo = (await request.json().catch(() => ({}))) as {
     grupoId?: unknown;
+    codigos?: unknown;
     motivo?: unknown;
   };
   const grupoId = String(corpo?.grupoId ?? "").trim();
@@ -91,6 +92,10 @@ export async function POST(request: NextRequest) {
   const { error, resultado } = await cancelarReservaDoGrupo(client, {
     canceladoPor: auth.operadorId ?? null,
     grupoId,
+    // Quais lotes: vazio = o cupom inteiro (padrão). Ver a nota em cancelarReservaDoGrupo.
+    codigos: Array.isArray(corpo?.codigos)
+      ? (corpo.codigos as unknown[]).map((c) => String(c ?? ""))
+      : null,
     motivo: typeof corpo?.motivo === "string" ? corpo.motivo : null,
   });
 

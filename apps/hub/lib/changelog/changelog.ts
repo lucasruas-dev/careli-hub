@@ -36,6 +36,38 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-central-panteon-cancelar-lote",
+    deployedAt: "2026-08-29T11:20:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A CENTRAL E O MONITORAMENTO passam a mostrar as reservas feitas no salao (Panteon), com nome, CPF, imobiliaria e corretor do proprio credenciado - sem depender do C2X.",
+            ],
+            screen: "Central / Monitoramento",
+          },
+          {
+            items: [
+              "CANCELAR SO UM LOTE: quando o cupom tem mais de um, da para escolher quais devolver; o resto continua reservado. Com um lote so, nada muda.",
+            ],
+            screen: "Reservas do evento",
+          },
+        ],
+      },
+    ],
+    rollback: "eccf5bcb",
+    technical: {
+      done: "Duas coisas do dia do evento. (1) CENTRAL: Lucas pediu 'a parte de monitoramento, e toda a central tem que ser alimentada por essas vias que criamos hoje' e, ao ver a leitura pronta, 'pode ler somente o panteon'. Nova lib reservas-do-panteon.ts le prometeu_reservas vivas e devolve no MESMO formato que a Central ja consumia (ReservaDoC2x), mais o mapa CPF->unidades que alimenta a coluna Unidades, o UN das mesas e o funil. A rota /api/prometeu/reservas nao toca mais no legado. ⚠️ Nenhuma unidade do salao e marcada como VENDIDA: venda fechada segue sendo verdade do C2X, e marcar aqui inflaria o funil com negocio que nao existe. ⚠️ Reserva sem CPF (balcao) cai numa chave propria (id:<credenciado>) para nao se FUNDIR com outra pessoa sem documento. (2) CANCELAMENTO POR LOTE: 'o vitor vai devolver somente um lote, tem que especificar qual quando tem mais de um'. cancelarReservaDoGrupo aceita `codigos`; o recorte entra DEPOIS do filtro de grupo, entao um codigo so cancela dentro do cupom aberto, nunca um lote homonimo de outro cliente. A listagem passou a carregar `codigos` junto de `lotes`, na mesma ordem — o rotulo e o que o operador le, o codigo e o que o cancelamento manda. O dialogo comeca com tudo marcado (devolver o cupom inteiro e o caso comum) e so mostra a escolha quando ha mais de um lote. Typecheck limpo, 285 testes do Prometeu verdes.",
+      motivation:
+        "Com a reserva nascendo no Panteon, a Central lia a fonte errada e mostrava o dia vazio; e devolver um lote de um cupom com varios custava o cupom inteiro.",
+    },
+    title: "Central lendo o Panteon e cancelamento por lote",
+    type: "novidade",
+    version: "1.237.0",
+  },
+  {
     buildTag: "2026-08-29-telao-nitidez",
     deployedAt: "2026-08-29T10:10:00-03:00",
     modules: [

@@ -2,11 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { createPrometeuClient, eventoOperavelId, getEvento, listCredenciados } from "@/lib/prometeu/data";
 import { autorizarOperacao } from "@/lib/prometeu/operador-server";
+import { agruparPorCliente } from "@/lib/prometeu/reservas-c2x";
 import {
-  agruparPorCliente,
-  reservasVivasDoC2x,
-  unidadesVivasDoC2x,
-} from "@/lib/prometeu/reservas-c2x";
+  reservasVivasDoPanteon,
+  unidadesPorCpfDoPanteon,
+} from "@/lib/prometeu/reservas-do-panteon";
 
 // AS RESERVAS DO DIA, LIDAS DO C2X. O hub não registra reserva nenhuma (regra do Lucas, 01/08):
 // o corretor lança o pedido de aquisição lá e esta rota só reflete, cruzando por CPF com quem
@@ -47,10 +47,20 @@ export async function GET(request: NextRequest) {
   // As duas leituras do C2X saem juntas: a aba precisa das RESERVAS PARADAS e o resto da Central
   // (coluna Unidades, "UN" da mesa, funil, card de vendas) precisa de TODAS as unidades vivas.
   // Uma chamada só de ida ao legado para os dois, que é conexão escassa lá.
-  const [{ error, reservas }, { error: erroUnidades, porCpf: unidadesPorCpf }] = await Promise.all([
-    reservasVivasDoC2x(enterpriseId),
-    unidadesVivasDoC2x(enterpriseId),
-  ]);
+  // ⚠️ SÓ O PANTEON (Lucas, 29/08/2026: *"agora que temos a reserva dentro do prometeu, a parte
+  // de monitoramento, e toda a central tem que ser alimentada por essas vias que criamos hoje"*
+  // e, ao ver a leitura pronta, *"pode ler somente o panteon"*).
+  //
+  // Isto INVERTE a regra de 01/08 — o cabeçalho de reservas-c2x.ts ainda diz "as reservas do dia
+  // vêm do C2X, o hub não registra nenhuma", o que era verdade antes da posição de reserva
+  // existir. Agora quem reserva no salão grava aqui, e é daqui que a Central lê: nome, CPF,
+  // imobiliária e corretor vêm do credenciado da fila, sem depender do cruzamento com o legado.
+  //
+  // ⚠️ O C2X SEGUE SENDO A VERDADE DA VENDA. O que sai desta rota é a RESERVA do dia; contrato
+  // e faturamento continuam do lado de lá, e nenhuma unidade daqui é marcada como vendida.
+  const { error, reservas } = await reservasVivasDoPanteon(client, eventoId);
+  const unidadesPorCpf = unidadesPorCpfDoPanteon(reservas);
+
   if (error) {
     return NextResponse.json({ error }, { headers: { "Cache-Control": "no-store" }, status: 502 });
   }
@@ -74,9 +84,12 @@ export async function GET(request: NextRequest) {
       // costuma estar em `recepcao` (reservou pelo corretor sem ter passado pelo salão), o
       // cruzamento falhava justamente para as 14 linhas da aba e a coluna vinha toda com "—".
       corretor: noEvento?.corretor ?? c.corretor ?? null,
-      credenciadoId: noEvento?.id ?? null,
+      credenciadoId: noEvento?.id ?? c.credenciadoId ?? null,
       etapaNoEvento: noEvento?.etapa ?? null,
-      imobiliaria: noEvento?.imobiliaria ?? null,
+      // O cruzamento por CPF resolve para quem veio do C2X; para quem veio do Panteon a
+      // imobiliária já veio junto e não pode ser apagada por um cruzamento que não achou nada
+      // (reserva de balcão não tem CPF para cruzar).
+      imobiliaria: noEvento?.imobiliaria ?? c.imobiliaria ?? null,
       // Reservou no C2X mas não passou pelo credenciamento do evento. Acontece e não é erro —
       // a tela mostra, marcado, em vez de esconder.
       naFilaDoEvento: Boolean(noEvento),
@@ -91,7 +104,7 @@ export async function GET(request: NextRequest) {
         // Mapa CPF -> unidades na mão da pessoa AGORA, em qualquer etapa. É o que preenche a
         // coluna "Unidades" da lista, o "UN" de cada mesa e o funil — todos liam
         // `prometeu_unidades`, que nunca foi escrita.
-        unidadesPorCpf: erroUnidades ? {} : unidadesPorCpf,
+        unidadesPorCpf,
         resumo: {
           clientes: clientes.length,
           foraDaFila: clientes.filter((c) => !c.naFilaDoEvento).length,

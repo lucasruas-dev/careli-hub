@@ -299,6 +299,14 @@ export type ClienteComReserva = {
   cpf: string;
   cliente: string;
   corretor: string | null;
+  /**
+   * Preenchidos SÓ quando a reserva nasceu no Panteon (posição de reserva do salão).
+   *
+   * ⚠️ Opcionais de propósito: a reserva que vem do C2X não tem credenciado por trás, e a
+   * imobiliária dela é resolvida depois, no cruzamento por CPF com a fila do evento.
+   */
+  credenciadoId?: null | string;
+  imobiliaria?: null | string;
   // A mais ANTIGA das reservas dele: é ela que define há quanto tempo está parado.
   desde: string;
   unidades: string[];
@@ -313,11 +321,17 @@ export function agruparPorCliente(reservas: ReservaDoC2x[]): ClienteComReserva[]
     if (!r.cpf) continue;
     const atual = porCpf.get(r.cpf);
     if (!atual) {
+      const extra = r as Partial<{
+        credenciadoId: string;
+        imobiliaria: null | string;
+      }>;
       porCpf.set(r.cpf, {
         cliente: r.cliente,
         corretor: r.corretor,
         cpf: r.cpf,
+        credenciadoId: extra.credenciadoId ?? null,
         desde: r.criadoEm,
+        imobiliaria: extra.imobiliaria ?? null,
         unidades: [r.unidade],
       });
       continue;
@@ -326,6 +340,11 @@ export function agruparPorCliente(reservas: ReservaDoC2x[]): ClienteComReserva[]
     // A lista vem ordenada por data, mas não custa manter a mais antiga de forma explícita.
     if (r.criadoEm < atual.desde) atual.desde = r.criadoEm;
     if (!atual.corretor && r.corretor) atual.corretor = r.corretor;
+    // Quem chegou primeiro define a identidade; os campos que faltavam são completados por
+    // qualquer reserva seguinte da mesma pessoa que os tenha.
+    const extra = r as Partial<{ credenciadoId: string; imobiliaria: null | string }>;
+    if (!atual.credenciadoId && extra.credenciadoId) atual.credenciadoId = extra.credenciadoId;
+    if (!atual.imobiliaria && extra.imobiliaria) atual.imobiliaria = extra.imobiliaria;
   }
 
   return [...porCpf.values()].sort((a, b) => a.desde.localeCompare(b.desde));

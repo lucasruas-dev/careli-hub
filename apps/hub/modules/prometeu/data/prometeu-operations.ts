@@ -873,6 +873,8 @@ export async function fetchRelatoriosDoLancamento(eventoId?: string) {
 // pedem a mesma pergunta ("quais reservas existem?") e não valia a pena três telas.
 export type ReservaDoEventoLinha = {
   canceladaEm: null | string;
+  /** Códigos das unidades, na MESMA ordem de `lotes`. */
+  codigos: string[];
   canceladaMotivo: null | string;
   cliente: null | string;
   criadaEm: string;
@@ -893,6 +895,8 @@ export async function fetchReservasDoEvento(eventoId?: string) {
 
 /** Cancela o cupom inteiro (todos os lotes daquele grupo). */
 export async function cancelarReservaRemoto(input: {
+  /** Lotes a cancelar. Vazio/ausente = o cupom inteiro. */
+  codigos?: string[];
   eventoId?: string;
   grupoId: string;
   motivo?: string;
@@ -903,7 +907,11 @@ export async function cancelarReservaRemoto(input: {
   return chamar<{ codigos: string[]; quantos: number }>(
     `/api/prometeu/reservas-do-evento${query}`,
     {
-      body: JSON.stringify({ grupoId: input.grupoId, motivo: input.motivo }),
+      body: JSON.stringify({
+        codigos: input.codigos,
+        grupoId: input.grupoId,
+        motivo: input.motivo,
+      }),
       method: "POST",
     },
   );

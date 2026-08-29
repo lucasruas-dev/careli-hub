@@ -342,10 +342,22 @@ export type ReservaCancelada = {
  * Idempotente: cancelar de novo o que já está cancelado não é erro, é resultado zero. O
  * operador pode bipar duas vezes sem susto.
  */
+/**
+ * Cancela a reserva — o cupom inteiro, ou SÓ os lotes escolhidos.
+ *
+ * ⚠️ `codigos` existe porque devolver UM lote de um cupom com vários é caso real (Lucas,
+ * 29/08/2026: *"o vitor vai devolver somente um lote, tem que especificar qual quando tem mais
+ * de um"*). Sem ele, cancelar o lote errado custava o cupom todo e obrigava a refazer a reserva
+ * dos que o cliente queria manter — com o risco de outro corretor levar o lote no meio.
+ *
+ * Lista vazia (ou ausente) = cupom inteiro, que é o caso comum e continua sendo o padrão.
+ */
 export async function cancelarReservaDoGrupo(
   client: AdminClient,
   entrada: {
     canceladoPor: null | string;
+    /** Quais lotes cancelar. Vazio = todos os do cupom. */
+    codigos?: null | string[];
     grupoId: string;
     motivo: null | string;
   },
@@ -354,8 +366,11 @@ export async function cancelarReservaDoGrupo(
   if (!grupoId) return { error: "Informe a reserva a cancelar." };
 
   const motivo = String(entrada.motivo ?? "").trim();
+  const escolhidos = (entrada.codigos ?? [])
+    .map((c) => String(c ?? "").trim().toUpperCase())
+    .filter(Boolean);
 
-  const { data, error } = await client
+  let consulta = client
     .from("prometeu_reservas")
     .update({
       cancelada_em: new Date().toISOString(),
@@ -369,10 +384,18 @@ export async function cancelarReservaDoGrupo(
     .eq("grupo_id", grupoId)
     // ⚠️ Só as VIVAS. Sem isto, recancelar carimbaria uma data nova por cima da original e
     // apagaria quando a reserva realmente caiu.
-    .eq("situacao", "reservada")
-    .select("codigo");
+    .eq("situacao", "reservada");
+
+  // O recorte por lote entra DEPOIS do filtro do grupo: um código só cancela dentro do cupom
+  // que o operador abriu, nunca um lote de outro cliente com o mesmo número.
+  if (escolhidos.length > 0) consulta = consulta.in("codigo", escolhidos);
+
+  const { data, error } = await consulta.select("codigo");
 
   if (error) return { error: error.message };
+  if (escolhidos.length > 0 && (data ?? []).length === 0) {
+    return { error: "Nenhum dos lotes escolhidos estava reservado neste cupom." };
+  }
 
   const codigos = ((data ?? []) as { codigo: string }[]).map((r) => r.codigo);
   return { resultado: { codigos, quantos: codigos.length } };
@@ -381,6 +404,8 @@ export async function cancelarReservaDoGrupo(
 /** As reservas de um evento, para a tela que lista e cancela. */
 export type ReservaDoEvento = {
   canceladaEm: null | string;
+  /** Códigos das unidades, na MESMA ordem de `lotes`. */
+  codigos: string[];
   canceladaMotivo: null | string;
   cliente: null | string;
   criadaEm: string;
@@ -414,9 +439,11 @@ export async function reservasDoEvento(
     if (!grupoId) continue;
     const rotulo =
       `${String(linha.quadra ?? "").trim()} ${String(linha.lote ?? "").trim()}`.trim();
+    const codigo = String(linha.codigo ?? "").trim();
     const existente = porGrupo.get(grupoId);
     if (existente) {
       existente.lotes.push(rotulo);
+      existente.codigos.push(codigo);
       continue;
     }
     const proponentes = Array.isArray(linha.proponentes)
@@ -431,6 +458,10 @@ export async function reservasDoEvento(
       cliente: String(proponentes[0]?.nome ?? "").trim() || null,
       criadaEm: String(linha.created_at ?? ""),
       grupoId,
+      // ⚠️ RÓTULO E CÓDIGO ANDAM JUNTOS, na MESMA ordem. O rótulo ("32 06") é o que o operador
+      // lê; o código ("JDG3206") é o que o cancelamento por lote precisa mandar. Guardar só o
+      // rótulo obrigaria a tela a remontar o código na mão, e uma quadra com letra quebraria.
+      codigos: [codigo],
       lotes: [rotulo],
       origem: String(proponentes[0]?.origem ?? "").trim() || null,
       paImpressaEm: (linha.pa_impressa_em as null | string) ?? null,
