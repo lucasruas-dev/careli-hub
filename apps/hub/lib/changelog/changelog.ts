@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-masterplan-jdg-v3",
+    deployedAt: "2026-08-29T09:05:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Masterplan do Jardim das Gerais no telao com o desenho REVISADO: as quadras que o Lucas corrigiu a mao entram intocadas, e mais quatro quadras (03, 04, 36, 37) foram redesenhadas lote a lote seguindo as linhas brancas da arte.",
+              "As demais quadras seguem com o desenho anterior por enquanto - a proxima rodada substitui.",
+            ],
+            screen: "Telao do masterplan",
+          },
+        ],
+      },
+    ],
+    rollback: "7ea07c66",
+    technical: {
+      done: "Lucas reprovou a v2 ('esta muito ruim o desenho') e corrigiu ele mesmo 34 lotes no Inkscape (quadras 02, 06, 08 inteiras + parte da 09/10), definindo o padrao: poligono de ~9 vertices cravado NA LINHA BRANCA, vizinhos compartilhando divisa. Esses 34 foram extraidos do SVG dele (parser de path Inkscape com m/l/c relativos) e entram com PRIORIDADE ABSOLUTA. Para o resto foi montado material por quadra (recorte da imagem-mestre em alta com regua de 25px + JSON com lotes da carga, centros dos circulos e vizinhos ja aprovados) e despachado um workflow de 24 duplas desenhista+verificador — o verificador renderiza o proprio desenho sobre a arte, olha e corrige antes de aprovar. A sessao bateu o limite com 14 quadras desenhadas e 4 gravadas em disco (03, 04, 36, 37), conferidas em zoom: cravadas na linha. As demais herdam a v2. Cobertura: 250/250 da carga. Material e scripts em scripts/prometeu/masterplan-jdg/ para retomar as 20 quadras restantes.",
+      motivation:
+        "Lucas (29/08): 'sobe o masterplan que temos agora para o telao, depois continua fazendo a melhoria' e 'eu preciso do masterplan urgente'.",
+    },
+    title: "Masterplan do JDG revisado no telão (parcial)",
+    type: "novidade",
+    version: "1.234.0",
+  },
+  {
     buildTag: "2026-08-29-pa-textos-editaveis",
     deployedAt: "2026-08-29T08:10:00-03:00",
     modules: [

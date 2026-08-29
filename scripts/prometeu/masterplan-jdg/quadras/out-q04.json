@@ -1,0 +1,154 @@
+{
+ "lotes": [
+  {
+   "nome": "JDG0404",
+   "pontos": [
+    [
+     2952.5,
+     2590
+    ],
+    [
+     2957,
+     2570
+    ],
+    [
+     2966,
+     2556
+    ],
+    [
+     2977,
+     2550.5
+    ],
+    [
+     2985,
+     2551.5
+    ],
+    [
+     3005,
+     2555.8
+    ],
+    [
+     3025,
+     2564
+    ],
+    [
+     3055,
+     2576.2
+    ],
+    [
+     3085,
+     2585.5
+    ],
+    [
+     3115,
+     2595.7
+    ],
+    [
+     3133.5,
+     2603
+    ],
+    [
+     3127.3,
+     2660.3
+    ],
+    [
+     2950.5,
+     2638.5
+    ]
+   ]
+  },
+  {
+   "nome": "JDG0403",
+   "pontos": [
+    [
+     2950.5,
+     2638.5
+    ],
+    [
+     3127.3,
+     2660.3
+    ],
+    [
+     3119.4,
+     2727.1
+    ],
+    [
+     2938.8,
+     2705.2
+    ]
+   ]
+  },
+  {
+   "nome": "JDG0402",
+   "pontos": [
+    [
+     2938.8,
+     2705.2
+    ],
+    [
+     3119.4,
+     2727.1
+    ],
+    [
+     3111.6,
+     2793.3
+    ],
+    [
+     2930.4,
+     2771.5
+    ]
+   ]
+  },
+  {
+   "nome": "JDG0401",
+   "pontos": [
+    [
+     2930.4,
+     2771.5
+    ],
+    [
+     3111.6,
+     2793.3
+    ],
+    [
+     3104.2,
+     2857
+    ],
+    [
+     2922,
+     2863
+    ],
+    [
+     2926,
+     2815
+    ]
+   ]
+  },
+  {
+   "nome": "JDG0405",
+   "pontos": [
+    [
+     3133.5,
+     2603
+    ],
+    [
+     3162,
+     2606
+    ],
+    [
+     3189,
+     2609
+    ],
+    [
+     3160.4,
+     2839.8
+    ],
+    [
+     3104.2,
+     2857
+    ]
+   ]
+  }
+ ],
+ "observacoes": "Quadra 04 medida por varredura de pixels sobre as linhas brancas (nao so leitura visual): as 3 divisas internas tem inclinacao ~0.12 e as verticais tambem, formando um paralelogramo inclinado consistente. Lotes 01-04 sao fatias com frente para a rua vertical a oeste (borda da calcada de x~2951 no topo a x~2921 no cul-de-sac); lote 05 e a fatia leste com frente para a rua curva ao norte. Vertices compartilhados exatos entre vizinhos (divisa 04/03, 03/02, 02/01, e a divisa V1 entre a coluna 01-04 e o lote 05, de [3133.5, 2603] a [3104.2, 2857]). Fundo do lote 01 = linha branca quase horizontal (y 2863 -> 2857); fundo do lote 05 = diagonal que sobe para leste (inclinacao -0.30) ate encontrar a divisa leste L2 em [3160.4, 2839.8]. ATENCAO: ha DUAS linhas brancas paralelas (~11 px = ~3.4 m de faixa) entre o lote 05 e a quadra 05 a leste - parece viela entre quadras; o lote 05 foi fechado na linha OESTE do par (L2), sem engolir a faixa. Validacao: todos os circulos de numero cairam dentro do proprio lote com folga de 19-40 px; escala de area 10.1-13.2 px2/m2 (media 11.7) coerente entre os 5 lotes - nesta regiao da arte a escala e ~11.7 px2/m2, e nao os ~52.000 px2/1000 m2 tipicos."
+}
