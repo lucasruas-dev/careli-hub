@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { DesenhoDoMasterplan } from "@/lib/prometeu/desenho-do-masterplan";
+import { EVENTO_CHAMADO } from "@/lib/prometeu/fila-topic";
 import type { SituacaoDoLote } from "@/lib/prometeu/situacao-do-lote";
 
 // O TELÃO DO MASTERPLAN — o mapa de lotes projetado no salão do lançamento.
@@ -46,7 +47,7 @@ type Props = {
 const VERDE_DISPONIVEL = "rgba(34, 197, 94, 0.72)";
 const AZUL_OCUPADO = "rgba(5, 68, 255, 0.72)";
 
-const POLL_MS = 60_000;
+const POLL_MS = 20_000;
 
 export function TelaoMasterplan({
   desenho,
@@ -96,9 +97,9 @@ export function TelaoMasterplan({
     }
   }, [token]);
 
-  // BROADCAST + POLL. O broadcast dá o segundo; o poll de 1 minuto é o que garante que a
-  // projeção não fica congelada se o WebSocket cair no meio do evento — que foi exatamente o
-  // que aconteceu com a TV da fila em 02/08.
+  // BROADCAST + POLL. O broadcast é quem entrega em segundos; o poll de 20s é rede de segurança
+  // para o caso de o WebSocket cair no meio do evento — que foi exatamente o que aconteceu com
+  // a TV da fila em 02/08. Num telão projetado, um minuto de mapa errado é uma eternidade.
   useEffect(() => {
     const timer = window.setInterval(() => void atualizar(), POLL_MS);
     if (!realtime.url || !realtime.key) {
@@ -109,12 +110,16 @@ export function TelaoMasterplan({
       auth: { autoRefreshToken: false, persistSession: false },
     });
     // ⚠️ Escuta o canal do EVENTO, não um canal só do masterplan: a reserva já avisa nele
-    // (avisarFilaEmRealtime, chamado no POST da reserva). Qualquer aviso serve de gatilho — a
-    // fonte da verdade continua sendo o servidor, e um refetch a mais quando alguém é chamado
-    // na fila custa nada perto de manter um segundo canal vivo.
+    // (avisarFilaEmRealtime, chamado no POST da reserva). Um refetch a mais quando alguém é
+    // chamado na fila custa nada perto de manter um segundo canal vivo.
+    //
+    // ⚠️ E escuta o evento NOMINAL, não `"*"`: o wildcard depende de suporte da versão do
+    // supabase-js e falha calado se não houver — num telão, falhar calado é o pior modo de
+    // falhar, porque a tela continua bonita mostrando o mapa errado. Com a constante
+    // importada, mudar o nome do evento quebra o build em vez de quebrar a projeção.
     const canal = supabase
       .channel(realtime.topico, { config: { broadcast: { self: false } } })
-      .on("broadcast", { event: "*" }, () => void atualizar())
+      .on("broadcast", { event: EVENTO_CHAMADO }, () => void atualizar())
       .subscribe();
 
     return () => {

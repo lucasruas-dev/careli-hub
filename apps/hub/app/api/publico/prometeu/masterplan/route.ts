@@ -61,10 +61,15 @@ export async function GET(request: NextRequest) {
     },
     {
       headers: {
-        // Cache curto na CDN: o realtime é quem avisa a mudança; isto só segura rajada de
-        // reload e o custo de bater no C2X a cada carga.
-        "Cache-Control":
-          "public, max-age=0, s-maxage=10, stale-while-revalidate=30",
+        // ⚠️ NO-STORE, E AQUI ISSO NÃO É NEGOCIÁVEL. A primeira versão trazia
+        // `s-maxage=10, stale-while-revalidate=30` para poupar consultas ao C2X, e o efeito foi
+        // exatamente o que esta tela não pode ter: o Lucas reservou o RVPB03 e o telão continuou
+        // verde. O `cache: "no-store"` do fetch NÃO alcança a CDN — ela seguiu entregando a
+        // resposta guardada por até 40 segundos, e a projeção mostrou um mapa que já era falso.
+        //
+        // O custo de não cachear é baixo e conhecido: é UM telão por evento, atualizado por
+        // broadcast. Errar a cor na frente do salão custa mais.
+        "Cache-Control": "no-store",
       },
     },
   );
