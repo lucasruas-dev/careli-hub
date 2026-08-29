@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   baldeDaUnidade,
+  rotuloDoBalde,
   SALE_STATUS,
   type SinaisDaUnidade,
   sqlDoBalde,
@@ -137,5 +138,27 @@ describe("o SQL espelha a função", () => {
   it("o bloqueado olha o status 5 E o flag, que é o defeito de origem", () => {
     expect(sql).toContain(`sale_status_id = ${SALE_STATUS.BLOQUEADO}`);
     expect(sql).toMatch(/coalesce\(u\.sale_blocked, 0\) = 1/);
+  });
+});
+
+describe("o texto do badge sai do balde", () => {
+  // ⚠️ O DEFEITO: com a reserva do salão entrando na regra, o lote ganhava a COR de reservado
+  // mas o texto continuava vindo de sale_statuses.name — e o badge saía âmbar escrito
+  // "Disponível". Cor e palavra têm que ter a mesma fonte.
+  it("cada balde tem sua palavra", () => {
+    expect(rotuloDoBalde("disponivel")).toBe("Disponível");
+    expect(rotuloDoBalde("reservado")).toBe("Reservado");
+    expect(rotuloDoBalde("negociacao")).toBe("Em negociação");
+    expect(rotuloDoBalde("vendido")).toBe("Vendido");
+    expect(rotuloDoBalde("bloqueado")).toBe("Bloqueado");
+  });
+
+  it("lote reservado no salão diz Reservado, mesmo com o C2X dizendo disponível", () => {
+    const balde = baldeDaUnidade({
+      reservadoNoPanteon: true,
+      saleBlocked: false,
+      saleStatusId: SALE_STATUS.DISPONIVEL,
+    });
+    expect(rotuloDoBalde(balde)).toBe("Reservado");
   });
 });

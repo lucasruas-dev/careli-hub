@@ -14,7 +14,11 @@
 // as bloqueadas estão como "Disponível" — por isso Disponível DESCONTA as bloqueadas.
 import type { RowDataPacket } from "mysql2";
 
-import { baldeDaUnidade, sqlDoBalde } from "@/lib/apolo/balde-da-unidade";
+import {
+  baldeDaUnidade,
+  rotuloDoBalde,
+  sqlDoBalde,
+} from "@/lib/apolo/balde-da-unidade";
 import { deterministicUuid } from "@/lib/apolo/server";
 import { createPrometeuClient } from "@/lib/prometeu/data";
 import { codigosReservadosNoPanteon } from "@/lib/prometeu/reservas-vivas";
@@ -687,8 +691,10 @@ function mapUnitRow(
         : null,
     price: toNumber(row.price),
     registration: cleanText(row.registration),
-    // O status 5 nunca é usado no C2X; bloqueado vem do flag.
-    status: blocked ? "Bloqueado" : (cleanText(row.status) ?? "Sem status"),
+    // ⚠️ O TEXTO SAI DO BALDE, não de `sale_statuses.name`. Enquanto vinha do C2X, a tela
+    // dizia duas coisas: o lote reservado no tótem ganhava a cor âmbar (que vem do balde) e o
+    // texto "Disponível" (que vinha do legado, e o legado ainda não sabe da reserva).
+    status: rotuloDoBalde(bucket),
   };
 }
 

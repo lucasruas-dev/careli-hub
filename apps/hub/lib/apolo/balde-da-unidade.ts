@@ -81,3 +81,21 @@ export function sqlDoBalde(alias: string): string {
       else 'disponivel'
     end`;
 }
+
+// O TEXTO DO BADGE SAI DO BALDE, e não do nome do status no C2X.
+//
+// ⚠️ Foi assim que a tela ficou dizendo duas coisas ao mesmo tempo: com a reserva do salão
+// entrando na regra, o RVPA09 virou "reservado" e ganhou a cor âmbar, mas o texto continuou
+// vindo de `sale_statuses.name` — e o badge saiu âmbar escrito "Disponível". Cor e palavra
+// precisam ter a MESMA fonte, senão uma delas mente.
+const ROTULO: Record<BaldeDaUnidade, string> = {
+  bloqueado: "Bloqueado",
+  disponivel: "Disponível",
+  negociacao: "Em negociação",
+  reservado: "Reservado",
+  vendido: "Vendido",
+};
+
+export function rotuloDoBalde(balde: BaldeDaUnidade): string {
+  return ROTULO[balde];
+}
