@@ -29,13 +29,17 @@ export function emitirTokenDoTelao(eventoId: string): string | null {
   const chave = segredo();
   if (!chave || !eventoId) return null;
   const corpo = b64url(
-    Buffer.from(JSON.stringify({ e: eventoId, iat: Math.floor(Date.now() / 1000) })),
+    Buffer.from(
+      JSON.stringify({ e: eventoId, iat: Math.floor(Date.now() / 1000) }),
+    ),
   );
   return `${corpo}.${assinar(corpo, chave)}`;
 }
 
 // Devolve o eventoId autorizado, ou null. A rota compara com o evento operável do dia.
-export function validarTokenDoTelao(token: string | null | undefined): string | null {
+export function validarTokenDoTelao(
+  token: string | null | undefined,
+): string | null {
   const chave = segredo();
   if (!chave || !token) return null;
   const [corpo, assinatura] = token.split(".");
@@ -45,15 +49,39 @@ export function validarTokenDoTelao(token: string | null | undefined): string | 
   const b = Buffer.from(esperada);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   try {
-    const payload = JSON.parse(Buffer.from(corpo, "base64url").toString()) as TelaoPayload;
+    const payload = JSON.parse(
+      Buffer.from(corpo, "base64url").toString(),
+    ) as TelaoPayload;
     return typeof payload.e === "string" && payload.e ? payload.e : null;
   } catch {
     return null;
   }
 }
 
-export function linkDoTelao(eventoId: string, canal: "salao" | "secretaria"): string | null {
+export function linkDoTelao(
+  eventoId: string,
+  canal: "salao" | "secretaria",
+): string | null {
   const token = emitirTokenDoTelao(eventoId);
   if (!token) return null;
   return `${BASE_URL}/prometeu/telao.html?canal=${canal}&tv=${token}`;
+}
+
+/**
+ * O TELÃO DO MASTERPLAN — o mapa de lotes projetado no salão.
+ *
+ * Mesmo token do telão da fila (é o mesmo evento, e nenhum dos dois carrega PII), mas com uma
+ * diferença deliberada de validade:
+ *
+ * ⚠️ ESTE LINK NÃO MORRE COM O EVENTO. Requisito explícito do Lucas em 28/08/2026 — *"tem que
+ * ser um link publico que nunca expira"*. O telão da fila pode morrer no encerramento porque
+ * ele é chamada de senha, que só faz sentido durante o expediente; o masterplan continua sendo
+ * o retrato do lançamento depois dele, e o link circula fora do hub. Por isso a rota do
+ * masterplan usa o eventoId DO TOKEN e não exige que ele seja o evento operável do dia — que é
+ * exatamente o que faz o link da fila expirar sozinho.
+ */
+export function linkDoMasterplan(eventoId: string): null | string {
+  const token = emitirTokenDoTelao(eventoId);
+  if (!token) return null;
+  return `${BASE_URL}/publico/masterplan?tv=${token}`;
 }

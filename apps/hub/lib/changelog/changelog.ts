@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-28-telao-do-masterplan",
+    deployedAt: "2026-08-28T22:10:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "NOVO: o MASTERPLAN do lancamento agora tem telao proprio, para projetar no salao. O mapa pinta cada lote pela situacao e se atualiza sozinho.",
+              "O lote reservado no totem aparece pintado no telao em SEGUNDOS - nao espera o C2X saber.",
+              "Link PUBLICO que nao expira: abre em qualquer computador, sem login, e nao morre no meio do evento.",
+              "O telao mostra SO a situacao do lote. Nunca nome de comprador, nunca valor.",
+              "Villa Paris ja esta com o mapa cadastrado: 97 lotes, conferidos um a um contra o C2X.",
+            ],
+            screen: "Telao do masterplan",
+          },
+        ],
+      },
+    ],
+    rollback: "ae2bbcad",
+    technical: {
+      done: "Cinco pecas. (1) lib/prometeu/situacao-do-lote.ts (puro, 13 testes): a ordem das perguntas E a regra — reserva viva do Panteon ganha de tudo (é o que acabou de acontecer no salao e o unico sinal que chega em segundos), vendido e definitivo, sale_blocked/status 5 vai para CINZA e nao para amarelo (o salao le amarelo como 'alguem pegou' e cria disputa por lote que nunca esteve a venda), reservado/em negociacao/AR aberta sao a mesma cor, e status DESCONHECIDO nunca vira verde — anunciar disponivel um lote que nao esta e o erro caro desta tela. (2) lib/prometeu/masterplan-do-evento.ts junta C2X (todas as unidades, nao so as disponiveis) + prometeu_reservas e devolve {nome: situacao} e nada mais. (3) Rota publica /api/publico/prometeu/masterplan por token HS256, liberada UMA A UMA no proxy.ts; ⚠️ NAO exige que seja o evento operavel, ao contrario do link da fila — e essa comparacao que faz o link da fila expirar, e aqui o requisito e o oposto ('link que nunca expira'). (4) Pagina /publico/masterplan com primeira carga NO SERVIDOR: o projetor liga e o mapa ja esta pintado, sem tela cinza esperando fetch na frente do salao. (5) TelaoMasterplan.tsx escuta o canal do EVENTO (a reserva ja avisa nele por avisarFilaEmRealtime) e mantem poll de 60s como rede — a TV da fila ja caiu por WebSocket morto em 02/08. O DESENHO: o SVG entregue tinha 11 MB porque o PNG vinha embutido em base64; separei em JPEG q90 (7,7 MB -> 1,4 MB, importante porque o telao roda em maquina de terceiro) + JSON de contornos (114 KB, buscado a parte para nao pesar no bundle do hub). Os paths mantem fill-rule evenodd, que e o que deixa o NUMERO do lote aparecer pelo furo do marcador. Conferencia antes de aceitar o arquivo: 97 lotes no desenho, 97 no C2X, casando 1 para 1, com a distribuicao por quadra batendo (A=30 B=14 C=16 D=16 E=6 F=2 G=8 H=5). Typecheck limpo; 249 testes do Prometeu.",
+      motivation:
+        "Lucas (28/08): 'agora vc pode construir o masterplan', com o requisito repetido duas vezes — 'lembrando que tem que ser um link publico que nunca expira'. O desenho do Villa Paris chegou na mesma conversa; o primeiro arquivo enviado era um PNG dentro de um involucro SVG (zero vetores) e o segundo, o certo, ja vinha com um path nomeado por lote.",
+    },
+    title:
+      "Telao do masterplan: o mapa do lancamento pintando ao vivo, por link publico",
+    type: "novidade",
+    version: "1.223.0",
+  },
+  {
     buildTag: "2026-08-28-cupom-fonte-e-hierarquia",
     deployedAt: "2026-08-28T21:40:00-03:00",
     modules: [

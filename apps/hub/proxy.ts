@@ -86,6 +86,11 @@ const PUBLIC_API_PREFIXES = [
   // Relatórios do lançamento (comercial/performance) por token HS256 — só agregados, sem PII;
   // ver lib/prometeu/link-do-relatorio.ts. Cache de 60s na CDN.
   "/api/publico/prometeu/relatorio",
+  // TELAO DO MASTERPLAN do lancamento: o mapa de lotes projetado no salao, em computador de
+  // terceiro e sem login. Autoriza o token HS256 do link (lib/prometeu/link-do-telao.ts),
+  // validado DENTRO da rota. A resposta e' so' situacao por lote — nenhum comprador, nenhum
+  // valor (licao do Garden). Liberada UMA A UMA, como as de cima.
+  "/api/publico/prometeu/masterplan",
   // Webhook do Asaas (pre-venda): maquina-a-maquina, valida por token proprio (asaas-access-token).
   "/api/publico/asaas",
   // BI publico de vendas do Vale do Ouro (pedido do Lucas, 01/08): o link circula com diretoria
