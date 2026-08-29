@@ -14,6 +14,11 @@ type AdminClient = NonNullable<ReturnType<typeof createPrometeuClient>>;
 // mostrando "Disponível". *"Tem que refletir em tudo essa reserva"* — daí este módulo, que dá a
 // mesma resposta para todos os leitores.
 //
+// ⚠️ E TRAZ O NOME DE QUEM RESERVOU, não só o código. Sem ele acontece coisa pior que faltar
+// dado: a tela de Unidades mostrava o lote como "Reservado" e, ao lado, o comprador da ÚLTIMA
+// proposta antiga do C2X — uma pessoa que não tem nada a ver com a reserva de agora. Nome
+// errado numa tela de atendimento faz alguém atender o cliente errado.
+//
 // ⚠️ QUEM CRIAR TELA NOVA QUE LEIA `sale_status_id` PRECISA PASSAR POR AQUI. A lista está em
 // lib/apolo/balde-da-unidade.ts (Apolo) e lib/prometeu/situacao-do-lote.ts (telão).
 
@@ -21,32 +26,51 @@ type AdminClient = NonNullable<ReturnType<typeof createPrometeuClient>>;
 // única forma de ter certeza de que a resposta está inteira.
 const PAGINA = 1000;
 
+export type ReservaViva = {
+  /** O titular da reserva (o 1º proponente), como foi gravado no cupom. */
+  cliente: null | string;
+  /** Quantos proponentes ao todo — a tela decide se mostra "e mais N". */
+  proponentes: number;
+};
+
+type LinhaDeReserva = {
+  codigo: string;
+  proponentes: null | { nome?: null | string }[];
+};
+
 /**
- * Os códigos de unidade com reserva VIVA no Panteon, normalizados (`RVPB03`).
+ * As unidades com reserva VIVA no Panteon, por código normalizado (`RVPB03`).
  *
- * Devolve um Set vazio em qualquer tropeço: uma tela do Apolo não pode quebrar porque a consulta
+ * Devolve um Map vazio em qualquer tropeço: uma tela do Apolo não pode quebrar porque a consulta
  * de reservas falhou — ela volta a mostrar o que o C2X diz, que é o comportamento de antes.
  */
-export async function codigosReservadosNoPanteon(
+export async function reservasVivasPorCodigo(
   client: AdminClient,
-): Promise<Set<string>> {
-  const codigos = new Set<string>();
+): Promise<Map<string, ReservaViva>> {
+  const porCodigo = new Map<string, ReservaViva>();
 
   for (let inicio = 0; ; inicio += PAGINA) {
     const { data, error } = await client
       .from("prometeu_reservas")
-      .select("codigo")
+      .select("codigo, proponentes")
       .eq("situacao", "reservada")
       .range(inicio, inicio + PAGINA - 1);
 
-    if (error || !data) return codigos;
+    if (error || !data) return porCodigo;
 
-    for (const linha of data as { codigo: string }[]) {
+    for (const linha of data as LinhaDeReserva[]) {
       const codigo = normalizarCodigoDeUnidade(linha.codigo);
-      if (codigo) codigos.add(codigo);
+      if (!codigo) continue;
+      const lista = Array.isArray(linha.proponentes) ? linha.proponentes : [];
+      // O titular é sempre o primeiro — mesma ordem que o cupom imprime.
+      const titular = String(lista[0]?.nome ?? "").trim();
+      porCodigo.set(codigo, {
+        cliente: titular || null,
+        proponentes: lista.length,
+      });
     }
 
     // Página incompleta = acabou. Página cheia pode ter mais atrás dela.
-    if (data.length < PAGINA) return codigos;
+    if (data.length < PAGINA) return porCodigo;
   }
 }

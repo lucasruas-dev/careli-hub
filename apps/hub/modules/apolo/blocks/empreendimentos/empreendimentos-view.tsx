@@ -140,7 +140,9 @@ const hiddenPlayerRelations = new Set<ApoloEnterprisePlayer["relation"]>([
   "coordenador_c2x",
 ]);
 
-function visiblePlayers(cadastro: ApoloEnterpriseCadastro): ApoloEnterprisePlayer[] {
+function visiblePlayers(
+  cadastro: ApoloEnterpriseCadastro,
+): ApoloEnterprisePlayer[] {
   return cadastro.players.filter(
     (player) => !hiddenPlayerRelations.has(player.relation),
   );
@@ -243,12 +245,24 @@ export function EmpreendimentosScreen({
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-line bg-subtle text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
                 <th className="px-4 py-2.5 font-semibold">Empreendimento</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Unidades</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Disponível</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Reservado</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Negociação</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Vendido</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Bloqueado</th>
+                <th className="px-3 py-2.5 text-right font-semibold">
+                  Unidades
+                </th>
+                <th className="px-3 py-2.5 text-right font-semibold">
+                  Disponível
+                </th>
+                <th className="px-3 py-2.5 text-right font-semibold">
+                  Reservado
+                </th>
+                <th className="px-3 py-2.5 text-right font-semibold">
+                  Negociação
+                </th>
+                <th className="px-3 py-2.5 text-right font-semibold">
+                  Vendido
+                </th>
+                <th className="px-3 py-2.5 text-right font-semibold">
+                  Bloqueado
+                </th>
                 <th className="px-3 py-2.5 text-right font-semibold">VGV</th>
                 <th className="px-4 py-2.5 font-semibold" />
               </tr>
@@ -485,10 +499,18 @@ function EnterpriseDetail({
           <VendasTab onOpenEntity={onOpenEntity} row={row} />
         ) : null}
         {tab === "politica" ? (
-          <PoliticaComercialTab code={row.code} codes={row.codes} name={row.name} />
+          <PoliticaComercialTab
+            code={row.code}
+            codes={row.codes}
+            name={row.name}
+          />
         ) : null}
         {tab === "setup" ? (
-          <CredenciamentoCard code={row.code} enterpriseId={row.id} name={row.name} />
+          <CredenciamentoCard
+            code={row.code}
+            enterpriseId={row.id}
+            name={row.name}
+          />
         ) : null}
       </section>
     </div>
@@ -624,18 +646,17 @@ function RelacionamentosTab({
   useEffect(() => {
     let active = true;
 
-    void loadCadastros(row.codes)
-      .then((result) => {
-        if (!active) {
-          return;
-        }
+    void loadCadastros(row.codes).then((result) => {
+      if (!active) {
+        return;
+      }
 
-        if (result.ok) {
-          setCadastros(result.cadastros);
-        } else {
-          setError(result.error);
-        }
-      });
+      if (result.ok) {
+        setCadastros(result.cadastros);
+      } else {
+        setError(result.error);
+      }
+    });
 
     return () => {
       active = false;
@@ -651,7 +672,9 @@ function RelacionamentosTab({
   }
 
   if (!cadastros) {
-    return <div className="h-64 animate-pulse rounded-xl border border-line bg-subtle" />;
+    return (
+      <div className="h-64 animate-pulse rounded-xl border border-line bg-subtle" />
+    );
   }
 
   return (
@@ -692,7 +715,9 @@ function RelacionamentosTab({
                 Contato
               </p>
               <div className="mt-2">
-                {cadastro.focalName || cadastro.focalPhone || cadastro.focalEmail ? (
+                {cadastro.focalName ||
+                cadastro.focalPhone ||
+                cadastro.focalEmail ? (
                   <div className="rounded-lg border border-line bg-subtle px-3 py-2">
                     <p className="m-0 truncate text-sm font-semibold text-ink">
                       {toTitleCase(cadastro.focalName) || "-"}
@@ -749,7 +774,9 @@ function PlayerCard({
         </p>
       ) : null}
       <p className="m-0 text-xs text-ink-muted">{player.phone ?? "-"}</p>
-      <p className="m-0 truncate text-xs text-ink-muted">{player.email ?? "-"}</p>
+      <p className="m-0 truncate text-xs text-ink-muted">
+        {player.email ?? "-"}
+      </p>
       {player.address ? (
         <p className="m-0 truncate text-xs text-ink-muted">
           {toTitleCase(player.address)}
@@ -763,7 +790,8 @@ function PlayerCard({
 async function loadCadastros(
   codes: string[],
 ): Promise<
-  { cadastros: ApoloEnterpriseCadastro[]; ok: true } | { error: string; ok: false }
+  | { cadastros: ApoloEnterpriseCadastro[]; ok: true }
+  | { error: string; ok: false }
 > {
   try {
     const accessToken = await getApoloAccessToken();
@@ -787,7 +815,9 @@ async function loadCadastros(
   } catch (error) {
     return {
       error:
-        error instanceof Error ? error.message : "Falha ao carregar o cadastro.",
+        error instanceof Error
+          ? error.message
+          : "Falha ao carregar o cadastro.",
       ok: false,
     };
   }
@@ -802,7 +832,9 @@ async function fetchEnterpriseLogos(): Promise<Record<string, string>> {
       cache: "no-store",
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    const payload = (await response.json()) as { data?: { logos?: Record<string, string> } };
+    const payload = (await response.json()) as {
+      data?: { logos?: Record<string, string> };
+    };
     return payload.data?.logos ?? {};
   } catch {
     return {};
@@ -857,7 +889,9 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
       // salvo, empreendimento nenhum passa a exigir documento novo sozinho.
       comprovanteRenda: setting?.comprovanteRendaHabilitado === true,
       limiteCredito:
-        typeof setting?.limiteCredito === "number" ? setting.limiteCredito : null,
+        typeof setting?.limiteCredito === "number"
+          ? setting.limiteCredito
+          : null,
       prevenda:
         setting?.prevendaHabilitada === true &&
         typeof setting?.valorPix === "number" &&
@@ -899,10 +933,14 @@ async function postEnterpriseAtivo(
       method: "POST",
     });
     const payload = (await response.json()) as { error?: string };
-    if (!response.ok) return { error: payload.error ?? "Falha ao salvar.", ok: false };
+    if (!response.ok)
+      return { error: payload.error ?? "Falha ao salvar.", ok: false };
     return { ok: true };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Falha ao salvar.", ok: false };
+    return {
+      error: error instanceof Error ? error.message : "Falha ao salvar.",
+      ok: false,
+    };
   }
 }
 
@@ -924,7 +962,11 @@ async function patchEnterpriseSettings(
   error?: string;
   ok: boolean;
   // Quantas CADs saíram da pré-venda quando o toggle foi desligado (null = não houve varredura).
-  varredura?: null | { credenciado: number; erro: null | string; revisao: number };
+  varredura?: null | {
+    credenciado: number;
+    erro: null | string;
+    revisao: number;
+  };
 }> {
   try {
     const accessToken = await getApoloAccessToken();
@@ -937,13 +979,23 @@ async function patchEnterpriseSettings(
       method: "PATCH",
     });
     const payload = (await response.json()) as {
-      data?: { varredura?: null | { credenciado: number; erro: null | string; revisao: number } };
+      data?: {
+        varredura?: null | {
+          credenciado: number;
+          erro: null | string;
+          revisao: number;
+        };
+      };
       error?: string;
     };
-    if (!response.ok) return { error: payload.error ?? "Falha ao salvar.", ok: false };
+    if (!response.ok)
+      return { error: payload.error ?? "Falha ao salvar.", ok: false };
     return { ok: true, varredura: payload.data?.varredura ?? null };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Falha ao salvar.", ok: false };
+    return {
+      error: error instanceof Error ? error.message : "Falha ao salvar.",
+      ok: false,
+    };
   }
 }
 
@@ -955,18 +1007,29 @@ async function uploadEnterpriseLogo(
     const fileBase64 = await fileToBase64(file);
     const accessToken = await getApoloAccessToken();
     const response = await fetch("/api/apolo/empreendimentos/logo", {
-      body: JSON.stringify({ contentType: file.type || "image/png", enterpriseId, fileBase64 }),
+      body: JSON.stringify({
+        contentType: file.type || "image/png",
+        enterpriseId,
+        fileBase64,
+      }),
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       method: "POST",
     });
-    const payload = (await response.json()) as { data?: { url?: string }; error?: string };
-    if (!response.ok) return { error: payload.error ?? "Falha ao enviar a logo.", ok: false };
+    const payload = (await response.json()) as {
+      data?: { url?: string };
+      error?: string;
+    };
+    if (!response.ok)
+      return { error: payload.error ?? "Falha ao enviar a logo.", ok: false };
     return { ok: true, url: payload.data?.url };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Falha ao enviar a logo.", ok: false };
+    return {
+      error: error instanceof Error ? error.message : "Falha ao enviar a logo.",
+      ok: false,
+    };
   }
 }
 
@@ -1128,7 +1191,8 @@ function CredenciamentoCard({
     } else {
       setAvisoPrevenda(null);
     }
-    if (v?.erro) setErroPrevenda(`A varredura das fichas falhou em parte: ${v.erro}`);
+    if (v?.erro)
+      setErroPrevenda(`A varredura das fichas falhou em parte: ${v.erro}`);
   }
 
   // Salva o bloco Comprovante de renda (só o toggle). Sem valor a exigir, não há trava local: o
@@ -1187,8 +1251,9 @@ function CredenciamentoCard({
             </span>
           </p>
           <p className="m-0 mt-0.5 text-xs text-ink-muted">
-            Chave geral do credenciamento: ligada, o empreendimento aparece no portal das
-            imobiliárias e recebe novas CADs. Desligada, as etapas abaixo ficam inativas.
+            Chave geral do credenciamento: ligada, o empreendimento aparece no
+            portal das imobiliárias e recebe novas CADs. Desligada, as etapas
+            abaixo ficam inativas.
           </p>
         </div>
         <button
@@ -1300,10 +1365,17 @@ function CredenciamentoCard({
       <div className="mt-2 flex flex-wrap items-center gap-4">
         <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-line-strong bg-subtle">
           {busy ? (
-            <Loader2 aria-hidden="true" className="size-5 animate-spin text-ink-muted" />
+            <Loader2
+              aria-hidden="true"
+              className="size-5 animate-spin text-ink-muted"
+            />
           ) : logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img alt={`Logo ${name}`} className="size-full object-contain p-2" src={logoUrl} />
+            <img
+              alt={`Logo ${name}`}
+              className="size-full object-contain p-2"
+              src={logoUrl}
+            />
           ) : (
             <ImagePlus aria-hidden="true" className="size-6 text-ink-muted" />
           )}
@@ -1314,7 +1386,8 @@ function CredenciamentoCard({
             {logoUrl ? "Logo enviada" : "Nenhuma logo enviada"}
           </p>
           <p className="m-0 mt-0.5 text-xs text-ink-muted">
-            PNG, JPG, WEBP ou SVG, até 3MB. Usada no portal de credenciamento das imobiliárias.
+            PNG, JPG, WEBP ou SVG, até 3MB. Usada no portal de credenciamento
+            das imobiliárias.
           </p>
           <button
             className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1326,7 +1399,9 @@ function CredenciamentoCard({
             {logoUrl ? "Trocar logo" : "Enviar logo"}
           </button>
           {erro ? (
-            <p className="m-0 mt-2 text-xs font-medium text-rose-600 dark:text-rose-300">{erro}</p>
+            <p className="m-0 mt-2 text-xs font-medium text-rose-600 dark:text-rose-300">
+              {erro}
+            </p>
           ) : null}
         </div>
       </div>
@@ -1358,7 +1433,9 @@ function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {
         </p>
         <p className="m-0 mt-2 text-2xl font-semibold tabular-nums text-ink">
           {soldShare.toFixed(1)}%
-          <span className="ml-2 text-sm font-medium text-ink-muted">vendido</span>
+          <span className="ml-2 text-sm font-medium text-ink-muted">
+            vendido
+          </span>
         </p>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-subtle">
           <div
@@ -1387,7 +1464,10 @@ function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {
         <dl className="mt-2 grid gap-2 text-sm">
           <Fact label="Código" value={row.code} />
           <Fact label="Localização" value={locationLabel(row) || "-"} />
-          <Fact label="Incorporador" value={row.incorporador ?? "Não informado"} />
+          <Fact
+            label="Incorporador"
+            value={row.incorporador ?? "Não informado"}
+          />
           <Fact
             label="Etapas"
             value={row.stages.length ? String(row.stages.length) : "1"}
@@ -1439,7 +1519,9 @@ function UnidadesTab({
         };
 
         if (!response.ok || !payload.data) {
-          throw new Error(payload.error ?? "Nao foi possivel carregar as unidades.");
+          throw new Error(
+            payload.error ?? "Nao foi possivel carregar as unidades.",
+          );
         }
 
         if (active) {
@@ -1472,7 +1554,9 @@ function UnidadesTab({
   }
 
   if (!units) {
-    return <div className="h-64 animate-pulse rounded-xl border border-line bg-subtle" />;
+    return (
+      <div className="h-64 animate-pulse rounded-xl border border-line bg-subtle" />
+    );
   }
 
   const visible = sortUnits(filterUnits(units, search, statusFilter), sort);
@@ -1492,7 +1576,9 @@ function UnidadesTab({
         </label>
         <select
           className="h-9 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink outline-none"
-          onChange={(event) => setStatusFilter(event.target.value as UnitFilter)}
+          onChange={(event) =>
+            setStatusFilter(event.target.value as UnitFilter)
+          }
           value={statusFilter}
         >
           <option value="todos">Todos os status</option>
@@ -1594,7 +1680,8 @@ function UnidadesTab({
                   </td>
                   <td className="px-3 py-2">
                     <p className="m-0 text-sm font-semibold tabular-nums text-ink">
-                      {[unit.block, unit.lot].filter(Boolean).join(" / ") || "-"}
+                      {[unit.block, unit.lot].filter(Boolean).join(" / ") ||
+                        "-"}
                     </p>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-ink-soft">
@@ -1666,8 +1753,7 @@ function SortableHead({
         onClick={() =>
           onSort({
             column,
-            direction:
-              active && sort.direction === "asc" ? "desc" : "asc",
+            direction: active && sort.direction === "asc" ? "desc" : "asc",
           })
         }
         type="button"
@@ -1743,7 +1829,8 @@ function sortUnits(
             : `${unit.block ?? ""}/${unit.lot ?? ""}`;
 
     return (
-      value(left).localeCompare(value(right), "pt-BR", { numeric: true }) * factor
+      value(left).localeCompare(value(right), "pt-BR", { numeric: true }) *
+      factor
     );
   });
 }
@@ -1782,12 +1869,29 @@ function PartyLink({
   party: ApoloUnitParty;
   strong?: boolean;
 }) {
+  // ⚠️ SEM entityId NÃO VIRA BOTÃO. Quem reservou no tótem do lançamento não tem ficha do
+  // Apolo garantida; um botão que abre CRM vazio é pior que o nome sem link, porque promete
+  // uma navegação que não existe.
+  if (!party.entityId) {
+    return (
+      <span
+        className={`block max-w-[280px] truncate text-left text-xs ${
+          strong ? "font-bold text-ink" : "text-ink-muted"
+        }`}
+      >
+        {party.code ? `${party.code} · ` : ""}
+        {toTitleCase(party.name)}
+      </span>
+    );
+  }
+
+  const entityId = party.entityId;
   return (
     <button
       className={`block max-w-[280px] truncate text-left text-xs transition-colors hover:underline ${
         strong ? "text-ink" : "text-ink-muted hover:text-ink"
       }`}
-      onClick={() => onOpenEntity(party.name, party.entityId)}
+      onClick={() => onOpenEntity(party.name, entityId)}
       title="Abrir cadastro no CRM"
       type="button"
     >
@@ -1890,7 +1994,10 @@ function VendasTab({
         const accessToken = await getApoloAccessToken();
         const response = await fetch(
           `/api/apolo/empreendimentos/vendas?codes=${encodeURIComponent(row.codes.join(","))}`,
-          { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } },
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
         );
         const payload = (await response.json()) as {
           data?: ApoloEnterpriseVendas;
@@ -1898,7 +2005,9 @@ function VendasTab({
         };
 
         if (!response.ok || !payload.data) {
-          throw new Error(payload.error ?? "Nao foi possivel carregar as vendas.");
+          throw new Error(
+            payload.error ?? "Nao foi possivel carregar as vendas.",
+          );
         }
 
         if (active) {
@@ -1931,11 +2040,15 @@ function VendasTab({
   }
 
   if (!data) {
-    return <div className="h-72 animate-pulse rounded-xl border border-line bg-subtle" />;
+    return (
+      <div className="h-72 animate-pulse rounded-xl border border-line bg-subtle" />
+    );
   }
 
   const totalVgv = data.funnel.reduce((sum, bucket) => sum + bucket.vgv, 0);
-  const disponivel = data.funnel.find((bucket) => bucket.stage === "disponivel");
+  const disponivel = data.funnel.find(
+    (bucket) => bucket.stage === "disponivel",
+  );
   const query = search.trim().toLowerCase();
   const matches = (unit: ApoloVendaUnit) =>
     !query ||
@@ -1998,7 +2111,9 @@ function VendasTab({
           <div className="mt-2 flex flex-wrap gap-2">
             {disponivel && disponivel.units > 0 ? (
               <div className="inline-flex items-center gap-2 rounded-lg border border-line bg-subtle px-3 py-1.5">
-                <span className="text-xs font-semibold text-ink-soft">Disponível</span>
+                <span className="text-xs font-semibold text-ink-soft">
+                  Disponível
+                </span>
                 <span className="text-sm font-semibold tabular-nums text-ink">
                   {disponivel.units}
                 </span>
@@ -2025,7 +2140,9 @@ function VendasTab({
             {data.bloqueadas.units > 0 ? (
               <div className="inline-flex items-center gap-2 rounded-lg border border-line bg-subtle px-3 py-1.5">
                 <Ban aria-hidden="true" className="size-3.5 text-ink-muted" />
-                <span className="text-xs font-semibold text-ink-soft">Bloqueadas</span>
+                <span className="text-xs font-semibold text-ink-soft">
+                  Bloqueadas
+                </span>
                 <span className="text-sm font-semibold tabular-nums text-ink">
                   {data.bloqueadas.units}
                 </span>
@@ -2186,7 +2303,9 @@ function KanbanColumn({
       </p>
       <div className="flex max-h-[52vh] flex-col gap-1.5 overflow-auto p-2">
         {units.length === 0 ? (
-          <p className="m-0 py-6 text-center text-[11px] text-ink-muted">Vazio</p>
+          <p className="m-0 py-6 text-center text-[11px] text-ink-muted">
+            Vazio
+          </p>
         ) : (
           units.map((unit) => (
             <VendaCard key={unit.id} onOpenUnit={onOpenUnit} unit={unit} />
@@ -2222,7 +2341,9 @@ function VendaCard({
       type="button"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-bold tabular-nums text-ink">{unit.code}</span>
+        <span className="text-xs font-bold tabular-nums text-ink">
+          {unit.code}
+        </span>
         <span className="text-[11px] font-medium tabular-nums text-ink-soft">
           {formatCurrency(unit.vgv)}
         </span>
@@ -2269,7 +2390,10 @@ function VendaPropostaModal({
         const accessToken = await getApoloAccessToken();
         const response = await fetch(
           `/api/apolo/empreendimentos/vendas/proposta?unitId=${encodeURIComponent(unit.id)}`,
-          { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } },
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
         );
         const payload = (await response.json()) as {
           data?: ApoloVendaProposta | null;
@@ -2277,7 +2401,9 @@ function VendaPropostaModal({
         };
 
         if (!response.ok) {
-          throw new Error(payload.error ?? "Nao foi possivel carregar a proposta.");
+          throw new Error(
+            payload.error ?? "Nao foi possivel carregar a proposta.",
+          );
         }
 
         if (active) {
@@ -2332,8 +2458,12 @@ function VendaPropostaModal({
         <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-3.5">
           <div className="min-w-0">
             <p className="m-0 flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
-              <TrendingUp aria-hidden="true" className="size-4 text-[#A07C3B]" />
-              Proposta {proposta?.plan.code ? `· ${proposta.plan.code}` : ""} · {unit.code}
+              <TrendingUp
+                aria-hidden="true"
+                className="size-4 text-[#A07C3B]"
+              />
+              Proposta {proposta?.plan.code ? `· ${proposta.plan.code}` : ""} ·{" "}
+              {unit.code}
               <span
                 className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${VENDA_STAGE_PILL[unit.stage]}`}
               >
@@ -2343,11 +2473,15 @@ function VendaPropostaModal({
             {unit.client ? (
               <button
                 className="mt-0.5 block max-w-full truncate text-left text-xs font-semibold text-[#7A5E2C] hover:underline dark:text-[#d9b877]"
-                onClick={() => onOpenEntity(unit.client!.name, unit.client!.entityId)}
+                onClick={() =>
+                  onOpenEntity(unit.client!.name, unit.client!.entityId)
+                }
                 type="button"
               >
                 {toTitleCase(unit.client.name)}
-                {unit.imobiliaria ? ` · ${toTitleCase(unit.imobiliaria.name)}` : ""}
+                {unit.imobiliaria
+                  ? ` · ${toTitleCase(unit.imobiliaria.name)}`
+                  : ""}
               </button>
             ) : null}
           </div>
@@ -2387,14 +2521,30 @@ function VendaPropostaModal({
                       (proposta.plan.isCustom ? "Personalizado" : "-")
                     }
                   />
-                  <MiniFact label="VGV" value={formatCurrency(proposta.plan.vgv)} />
-                  <MiniFact label="Entrada" value={pct(proposta.plan.entrada)} />
+                  <MiniFact
+                    label="VGV"
+                    value={formatCurrency(proposta.plan.vgv)}
+                  />
+                  <MiniFact
+                    label="Entrada"
+                    value={pct(proposta.plan.entrada)}
+                  />
                   <MiniFact
                     label="Parcelas"
-                    value={proposta.plan.parcels != null ? String(proposta.plan.parcels) : "-"}
+                    value={
+                      proposta.plan.parcels != null
+                        ? String(proposta.plan.parcels)
+                        : "-"
+                    }
                   />
-                  <MiniFact label="Juros" value={pct(proposta.plan.interestRate)} />
-                  <MiniFact label="Correção" value={pct(proposta.plan.correctionRate)} />
+                  <MiniFact
+                    label="Juros"
+                    value={pct(proposta.plan.interestRate)}
+                  />
+                  <MiniFact
+                    label="Correção"
+                    value={pct(proposta.plan.correctionRate)}
+                  />
                   <MiniFact
                     label="Sinal"
                     value={
@@ -2403,10 +2553,26 @@ function VendaPropostaModal({
                         : "-"
                     }
                   />
-                  <MiniFact label="Ato" value={formatDate(proposta.plan.atoAt)} />
-                  <MiniFact label="Assinatura" value={formatDate(proposta.plan.signAt)} />
-                  <MiniFact label="Faturamento" value={formatDate(proposta.plan.billingAt)} />
-                  <MiniFact label="Corretor" value={proposta.plan.corretor ? toTitleCase(proposta.plan.corretor) : "-"} />
+                  <MiniFact
+                    label="Ato"
+                    value={formatDate(proposta.plan.atoAt)}
+                  />
+                  <MiniFact
+                    label="Assinatura"
+                    value={formatDate(proposta.plan.signAt)}
+                  />
+                  <MiniFact
+                    label="Faturamento"
+                    value={formatDate(proposta.plan.billingAt)}
+                  />
+                  <MiniFact
+                    label="Corretor"
+                    value={
+                      proposta.plan.corretor
+                        ? toTitleCase(proposta.plan.corretor)
+                        : "-"
+                    }
+                  />
                 </div>
                 {proposta.plan.observacao ? (
                   <p className="m-0 mt-2 rounded-lg border border-line bg-subtle/50 px-3 py-2 text-xs text-ink-soft">
@@ -2472,9 +2638,16 @@ function VendaPropostaModal({
                         <span className="w-16 shrink-0 tabular-nums text-ink-muted">
                           {formatShortDate(movement.at)}
                         </span>
-                        <span className="text-ink-muted">{movement.fromStage ?? "Novo"}</span>
-                        <ChevronRight aria-hidden="true" className="size-3 shrink-0 text-ink-muted" />
-                        <span className="font-semibold text-ink">{movement.toStage}</span>
+                        <span className="text-ink-muted">
+                          {movement.fromStage ?? "Novo"}
+                        </span>
+                        <ChevronRight
+                          aria-hidden="true"
+                          className="size-3 shrink-0 text-ink-muted"
+                        />
+                        <span className="font-semibold text-ink">
+                          {movement.toStage}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -2529,65 +2702,76 @@ function formatTimeInStage(iso: string | null): string | null {
 }
 
 // Feed cronológico das transições de estágio (o "o que mudou").
-function VendasMovimentacao({ movements }: { movements: ApoloVendaMovement[] }) {
+function VendasMovimentacao({
+  movements,
+}: {
+  movements: ApoloVendaMovement[];
+}) {
   return (
     <section className="overflow-hidden rounded-xl border border-line bg-surface">
       <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
         <TrendingUp aria-hidden="true" className="size-4 text-[#A07C3B]" />
-        <p className="m-0 text-sm font-semibold text-ink">Movimentação recente</p>
+        <p className="m-0 text-sm font-semibold text-ink">
+          Movimentação recente
+        </p>
       </div>
       {movements.length === 0 ? (
         <p className="m-0 p-6 text-center text-sm font-medium text-ink-muted">
           Nenhuma movimentação.
         </p>
       ) : (
-      <div className="max-h-[64vh] divide-y divide-line/70 overflow-auto">
-        {movements.map((movement, index) => (
-          <div
-            className="flex items-start gap-3 px-4 py-3"
-            key={`${movement.code}-${movement.at}-${index}`}
-          >
-            <span className="mt-0.5 w-16 shrink-0 text-[11px] tabular-nums text-ink-muted">
-              {formatShortDate(movement.at)}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold tabular-nums text-ink">
-                  {movement.code}
-                </span>
-                <span className="text-[11px] font-medium tabular-nums text-ink-soft">
-                  {formatCurrency(movement.vgv)}
-                </span>
-              </div>
-              <p className="m-0 mt-0.5 flex items-center gap-1.5 text-xs">
-                <span className="text-ink-muted">
-                  {movement.fromStage ?? "Novo"}
-                </span>
-                <ChevronRight aria-hidden="true" className="size-3 shrink-0 text-ink-muted" />
-                <span
-                  className={`font-semibold ${
-                    isTerminalStageLabel(movement.toStage)
-                      ? "text-rose-600 dark:text-rose-400"
-                      : "text-ink"
-                  }`}
-                >
-                  {movement.toStage}
-                </span>
-              </p>
-              {movement.client || movement.imobiliaria ? (
-                <p className="m-0 mt-0.5 truncate text-[11px] text-ink-muted">
-                  {[
-                    movement.client ? toTitleCase(movement.client) : null,
-                    movement.imobiliaria ? toTitleCase(movement.imobiliaria) : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
+        <div className="max-h-[64vh] divide-y divide-line/70 overflow-auto">
+          {movements.map((movement, index) => (
+            <div
+              className="flex items-start gap-3 px-4 py-3"
+              key={`${movement.code}-${movement.at}-${index}`}
+            >
+              <span className="mt-0.5 w-16 shrink-0 text-[11px] tabular-nums text-ink-muted">
+                {formatShortDate(movement.at)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold tabular-nums text-ink">
+                    {movement.code}
+                  </span>
+                  <span className="text-[11px] font-medium tabular-nums text-ink-soft">
+                    {formatCurrency(movement.vgv)}
+                  </span>
+                </div>
+                <p className="m-0 mt-0.5 flex items-center gap-1.5 text-xs">
+                  <span className="text-ink-muted">
+                    {movement.fromStage ?? "Novo"}
+                  </span>
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-3 shrink-0 text-ink-muted"
+                  />
+                  <span
+                    className={`font-semibold ${
+                      isTerminalStageLabel(movement.toStage)
+                        ? "text-rose-600 dark:text-rose-400"
+                        : "text-ink"
+                    }`}
+                  >
+                    {movement.toStage}
+                  </span>
                 </p>
-              ) : null}
+                {movement.client || movement.imobiliaria ? (
+                  <p className="m-0 mt-0.5 truncate text-[11px] text-ink-muted">
+                    {[
+                      movement.client ? toTitleCase(movement.client) : null,
+                      movement.imobiliaria
+                        ? toTitleCase(movement.imobiliaria)
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -2601,17 +2785,23 @@ function CarteiraTab({
   row: ApoloEnterpriseRow;
 }) {
   const [data, setData] = useState<ApoloCarteiraData | null>(null);
-  const [cobranca, setCobranca] = useState<ApoloEnterpriseCobranca | null>(null);
+  const [cobranca, setCobranca] = useState<ApoloEnterpriseCobranca | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [detailUnit, setDetailUnit] = useState<ApoloCarteiraUnit | null>(null);
-  const [cobrancaUnit, setCobrancaUnit] = useState<ApoloCarteiraUnit | null>(null);
+  const [cobrancaUnit, setCobrancaUnit] = useState<ApoloCarteiraUnit | null>(
+    null,
+  );
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<CarteiraFilter>("todos");
   const [sort, setSort] = useState<CarteiraSort>({
     column: "vencido",
     direction: "desc",
   });
-  const [openingContractId, setOpeningContractId] = useState<string | null>(null);
+  const [openingContractId, setOpeningContractId] = useState<string | null>(
+    null,
+  );
   const [contractError, setContractError] = useState<string | null>(null);
 
   // Abre o contrato assinado pedindo um PDF fresco pela API do D4Sign (o link do C2X
@@ -2633,7 +2823,10 @@ function CarteiraTab({
       const accessToken = await getApoloAccessToken();
       const response = await fetch(
         `/api/apolo/empreendimentos/contrato/${encodeURIComponent(documentId)}`,
-        { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } },
+        {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
       );
 
       if (!response.ok) {
@@ -2675,7 +2868,10 @@ function CarteiraTab({
         const accessToken = await getApoloAccessToken();
         const response = await fetch(
           `/api/apolo/empreendimentos/carteira?codes=${encodeURIComponent(row.codes.join(","))}`,
-          { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } },
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
         );
         const payload = (await response.json()) as {
           data?: ApoloCarteiraData;
@@ -2683,7 +2879,9 @@ function CarteiraTab({
         };
 
         if (!response.ok || !payload.data) {
-          throw new Error(payload.error ?? "Nao foi possivel carregar a carteira.");
+          throw new Error(
+            payload.error ?? "Nao foi possivel carregar a carteira.",
+          );
         }
 
         if (active) {
@@ -2717,7 +2915,10 @@ function CarteiraTab({
         const accessToken = await getApoloAccessToken();
         const response = await fetch(
           `/api/apolo/empreendimentos/cobranca?codes=${encodeURIComponent(row.codes.join(","))}`,
-          { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } },
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
         );
         const payload = (await response.json()) as {
           data?: ApoloEnterpriseCobranca;
@@ -2747,7 +2948,9 @@ function CarteiraTab({
   }
 
   if (!data) {
-    return <div className="h-72 animate-pulse rounded-xl border border-line bg-subtle" />;
+    return (
+      <div className="h-72 animate-pulse rounded-xl border border-line bg-subtle" />
+    );
   }
 
   const { summary } = data;
@@ -2868,15 +3071,47 @@ function CarteiraTab({
           <table className="w-full min-w-[1180px] border-collapse text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-line bg-subtle text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                <CarteiraHead column="codigo" label="Unidade" onSort={setSort} sort={sort} />
+                <CarteiraHead
+                  column="codigo"
+                  label="Unidade"
+                  onSort={setSort}
+                  sort={sort}
+                />
                 <th className="px-3 py-2.5">Comprador / Imobiliária</th>
-                <CarteiraHead column="faturado" label="Faturado" onSort={setSort} sort={sort} />
-                <CarteiraHead align="right" column="vgv" label="VGV" onSort={setSort} sort={sort} />
+                <CarteiraHead
+                  column="faturado"
+                  label="Faturado"
+                  onSort={setSort}
+                  sort={sort}
+                />
+                <CarteiraHead
+                  align="right"
+                  column="vgv"
+                  label="VGV"
+                  onSort={setSort}
+                  sort={sort}
+                />
                 <th className="px-3 py-2.5 text-right">Pago</th>
                 <th className="px-3 py-2.5 text-right">A receber</th>
-                <CarteiraHead align="right" column="vencido" label="Vencido" onSort={setSort} sort={sort} />
-                <CarteiraHead column="situacao" label="Situação" onSort={setSort} sort={sort} />
-                <CarteiraHead column="cobranca" label="Cobrança" onSort={setSort} sort={sort} />
+                <CarteiraHead
+                  align="right"
+                  column="vencido"
+                  label="Vencido"
+                  onSort={setSort}
+                  sort={sort}
+                />
+                <CarteiraHead
+                  column="situacao"
+                  label="Situação"
+                  onSort={setSort}
+                  sort={sort}
+                />
+                <CarteiraHead
+                  column="cobranca"
+                  label="Cobrança"
+                  onSort={setSort}
+                  sort={sort}
+                />
                 <th className="px-4 py-2.5 text-center">Contrato</th>
               </tr>
             </thead>
@@ -2902,7 +3137,10 @@ function CarteiraTab({
                         className="block max-w-[240px] truncate text-left text-xs font-semibold text-[#7A5E2C] transition-colors hover:underline dark:text-[#d9b877]"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onOpenEntity(unit.client!.name, unit.client!.entityId);
+                          onOpenEntity(
+                            unit.client!.name,
+                            unit.client!.entityId,
+                          );
                         }}
                         type="button"
                       >
@@ -2940,7 +3178,9 @@ function CarteiraTab({
                     {formatCurrency(unit.toReceiveAmount)}
                   </td>
                   <td className="px-3 py-2 text-right font-semibold tabular-nums text-rose-600 dark:text-rose-400">
-                    {unit.overdueAmount ? formatCurrency(unit.overdueAmount) : "-"}
+                    {unit.overdueAmount
+                      ? formatCurrency(unit.overdueAmount)
+                      : "-"}
                   </td>
                   <td className="px-4 py-2">
                     <UnitFinancialStatus unit={unit} />
@@ -2956,7 +3196,9 @@ function CarteiraTab({
                         title="Ver negociação"
                         type="button"
                       >
-                        <UnitCobrancaBadge cobranca={cobranca.byUnitId[unit.id]} />
+                        <UnitCobrancaBadge
+                          cobranca={cobranca.byUnitId[unit.id]}
+                        />
                       </button>
                     ) : (
                       <span className="text-xs text-ink-muted">-</span>
@@ -3113,7 +3355,8 @@ function sortInstallments(
   sort: InstallmentSort,
 ): ApoloUnitInstallment[] {
   const factor = sort.direction === "asc" ? 1 : -1;
-  const time = (value: string | null) => (value ? new Date(value).getTime() : 0);
+  const time = (value: string | null) =>
+    value ? new Date(value).getTime() : 0;
   const statusRank: Record<ApoloInstallmentStatus, number> = {
     a_vencer: 2,
     liquidada: 1,
@@ -3167,7 +3410,10 @@ function UnitCarteiraModal({
         const accessToken = await getApoloAccessToken();
         const response = await fetch(
           `/api/apolo/empreendimentos/parcelas?unitId=${encodeURIComponent(unit.id)}`,
-          { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } },
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
         );
         const payload = (await response.json()) as {
           data?: { installments: ApoloUnitInstallment[] };
@@ -3175,7 +3421,9 @@ function UnitCarteiraModal({
         };
 
         if (!response.ok || !payload.data) {
-          throw new Error(payload.error ?? "Nao foi possivel carregar as parcelas.");
+          throw new Error(
+            payload.error ?? "Nao foi possivel carregar as parcelas.",
+          );
         }
 
         if (active) {
@@ -3227,13 +3475,18 @@ function UnitCarteiraModal({
         <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-3.5">
           <div className="min-w-0">
             <p className="m-0 flex items-center gap-2 text-sm font-semibold text-ink">
-              <WalletCards aria-hidden="true" className="size-4 text-[#A07C3B]" />
+              <WalletCards
+                aria-hidden="true"
+                className="size-4 text-[#A07C3B]"
+              />
               Carteira · {unit.code}
             </p>
             {unit.client ? (
               <button
                 className="mt-0.5 block max-w-full truncate text-left text-xs font-medium text-[#7A5E2C] hover:underline dark:text-[#d9b877]"
-                onClick={() => onOpenEntity(unit.client!.name, unit.client!.entityId)}
+                onClick={() =>
+                  onOpenEntity(unit.client!.name, unit.client!.entityId)
+                }
                 type="button"
               >
                 {toTitleCase(unit.client.name)}
@@ -3307,11 +3560,37 @@ function UnitCarteiraModal({
               <thead className="sticky top-0 z-10">
                 <tr className="border-b border-line bg-subtle text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
                   <th className="px-5 py-2.5">Parcela</th>
-                  <InstallmentHead column="competencia" label="Competência" onSort={setSort} sort={sort} />
-                  <InstallmentHead column="vencimento" label="Vencimento" onSort={setSort} sort={sort} />
-                  <InstallmentHead column="pagamento" label="Pagamento" onSort={setSort} sort={sort} />
-                  <InstallmentHead align="right" column="valor" label="Valor" onSort={setSort} sort={sort} />
-                  <InstallmentHead column="status" label="Status" onSort={setSort} sort={sort} />
+                  <InstallmentHead
+                    column="competencia"
+                    label="Competência"
+                    onSort={setSort}
+                    sort={sort}
+                  />
+                  <InstallmentHead
+                    column="vencimento"
+                    label="Vencimento"
+                    onSort={setSort}
+                    sort={sort}
+                  />
+                  <InstallmentHead
+                    column="pagamento"
+                    label="Pagamento"
+                    onSort={setSort}
+                    sort={sort}
+                  />
+                  <InstallmentHead
+                    align="right"
+                    column="valor"
+                    label="Valor"
+                    onSort={setSort}
+                    sort={sort}
+                  />
+                  <InstallmentHead
+                    column="status"
+                    label="Status"
+                    onSort={setSort}
+                    sort={sort}
+                  />
                   <th className="px-5 py-2.5 text-right">Boleto</th>
                 </tr>
               </thead>
@@ -3416,7 +3695,9 @@ function MiniFact({
   return (
     <div className="rounded-lg border border-line bg-subtle px-3 py-2">
       <p className="m-0 text-[11px] font-medium text-ink-muted">{label}</p>
-      <p className={`m-0 text-sm font-semibold tabular-nums ${tone}`}>{value}</p>
+      <p className={`m-0 text-sm font-semibold tabular-nums ${tone}`}>
+        {value}
+      </p>
     </div>
   );
 }
@@ -3561,7 +3842,9 @@ function sortCarteiraUnits(
       );
     }
 
-    return left.code.localeCompare(right.code, "pt-BR", { numeric: true }) * factor;
+    return (
+      left.code.localeCompare(right.code, "pt-BR", { numeric: true }) * factor
+    );
   });
 }
 
@@ -3590,7 +3873,9 @@ function UnitCobrancaBadge({ cobranca }: { cobranca?: ApoloUnitCobranca }) {
     },
   };
   const cfg = config[cobranca.stage];
-  const date = cobranca.promisedDate ? formatShortDate(cobranca.promisedDate) : null;
+  const date = cobranca.promisedDate
+    ? formatShortDate(cobranca.promisedDate)
+    : null;
 
   return (
     <span
@@ -3629,7 +3914,9 @@ function CobrancaFunnel({
     <section className="rounded-xl border border-line bg-surface p-3">
       <div className="mb-2 flex items-center gap-2">
         <Handshake aria-hidden="true" className="size-4 text-[#A07C3B]" />
-        <p className="m-0 text-sm font-semibold text-ink">Cobrança &amp; recuperação</p>
+        <p className="m-0 text-sm font-semibold text-ink">
+          Cobrança &amp; recuperação
+        </p>
       </div>
       <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-5">
         <FunnelCard
@@ -3727,7 +4014,10 @@ function CobrancaModal({
         const accessToken = await getApoloAccessToken();
         const response = await fetch(
           `/api/apolo/empreendimentos/cobranca/unidade?unitId=${encodeURIComponent(unit.id)}`,
-          { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } },
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
         );
         const payload = (await response.json()) as {
           data?: { compromissos: GuardianCompromissoDetail[] };
@@ -3735,7 +4025,9 @@ function CobrancaModal({
         };
 
         if (!response.ok || !payload.data) {
-          throw new Error(payload.error ?? "Nao foi possivel carregar a negociação.");
+          throw new Error(
+            payload.error ?? "Nao foi possivel carregar a negociação.",
+          );
         }
 
         if (active) {
@@ -3816,7 +4108,10 @@ function CobrancaModal({
           ) : (
             <div className="grid gap-3">
               {compromissos.map((compromisso) => (
-                <CompromissoCard compromisso={compromisso} key={compromisso.id} />
+                <CompromissoCard
+                  compromisso={compromisso}
+                  key={compromisso.id}
+                />
               ))}
             </div>
           )}
@@ -3864,8 +4159,14 @@ function CompromissoCard({
             isAcordo ? compromisso.firstDueDate : compromisso.promisedDate,
           )}
         />
-        <MiniFact label="Valor" value={formatCurrency(compromisso.totalAmount)} />
-        <MiniFact label="Parcelas" value={String(compromisso.installmentsCount)} />
+        <MiniFact
+          label="Valor"
+          value={formatCurrency(compromisso.totalAmount)}
+        />
+        <MiniFact
+          label="Parcelas"
+          value={String(compromisso.installmentsCount)}
+        />
       </div>
 
       {compromisso.notes ? (
@@ -3973,8 +4274,7 @@ function CompromissoPill({
     "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300";
   const sky =
     "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/12 dark:text-sky-300";
-  const gray =
-    "border-line bg-subtle text-ink-soft";
+  const gray = "border-line bg-subtle text-ink-soft";
   const toneByValue: Record<string, string> = {
     aprovado: green,
     ativo: sky,
@@ -4041,8 +4341,8 @@ function PendingTab({ label }: { label: string }) {
     <div className="rounded-xl border border-dashed border-line bg-surface p-8 text-center">
       <p className="m-0 text-sm font-semibold text-ink">{label}</p>
       <p className="m-0 mt-1 text-sm font-medium text-ink-muted">
-        Próximo passo. Vendas e Financeiro saem de acquisition_requests e payments;
-        Relacionamentos é onde o corretor vai nascer.
+        Próximo passo. Vendas e Financeiro saem de acquisition_requests e
+        payments; Relacionamentos é onde o corretor vai nascer.
       </p>
     </div>
   );
@@ -4057,7 +4357,9 @@ function ScenarioCells({
   scenario: ApoloEnterpriseScenario;
   strong?: boolean;
 }) {
-  const weight = strong ? "font-semibold text-ink" : "font-medium text-ink-soft";
+  const weight = strong
+    ? "font-semibold text-ink"
+    : "font-medium text-ink-soft";
 
   return (
     <>
@@ -4179,7 +4481,10 @@ function ToggleRecepcao({
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-subtle/50 px-3 py-2.5">
       <div className="flex min-w-0 items-start gap-2">
-        <Icone aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-ink-muted" />
+        <Icone
+          aria-hidden="true"
+          className="mt-0.5 size-4 shrink-0 text-ink-muted"
+        />
         <div className="min-w-0">
           <p className="m-0 flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
             {titulo}
@@ -4254,7 +4559,9 @@ function SubEtapaCredenciamento({
 }) {
   const travado = !ativo;
   // Etapa COM valor a configurar. Sem os quatro, o bloco mostra só o toggle e o Salvar.
-  const temCampo = Boolean(fieldLabel && fieldHelp && onValorChange && valor !== undefined);
+  const temCampo = Boolean(
+    fieldLabel && fieldHelp && onValorChange && valor !== undefined,
+  );
 
   return (
     <div
@@ -4314,12 +4621,16 @@ function SubEtapaCredenciamento({
             onClick={onSalvar}
             type="button"
           >
-            {salvando ? <Loader2 aria-hidden="true" className="size-3.5 animate-spin" /> : null}
+            {salvando ? (
+              <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+            ) : null}
             Salvar
           </button>
         </div>
         {erro ? (
-          <p className="m-0 mt-2 text-xs font-medium text-rose-600 dark:text-rose-300">{erro}</p>
+          <p className="m-0 mt-2 text-xs font-medium text-rose-600 dark:text-rose-300">
+            {erro}
+          </p>
         ) : null}
       </div>
     </div>

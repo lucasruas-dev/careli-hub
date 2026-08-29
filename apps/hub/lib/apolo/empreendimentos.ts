@@ -21,7 +21,10 @@ import {
 } from "@/lib/apolo/balde-da-unidade";
 import { deterministicUuid } from "@/lib/apolo/server";
 import { createPrometeuClient } from "@/lib/prometeu/data";
-import { codigosReservadosNoPanteon } from "@/lib/prometeu/reservas-vivas";
+import {
+  type ReservaViva,
+  reservasVivasPorCodigo,
+} from "@/lib/prometeu/reservas-vivas";
 import {
   ENTERPRISE_GROUPS,
   EXCLUDED_ENTERPRISE_CODES,
@@ -482,9 +485,14 @@ function toIsoDate(value: Date | string | null): string | null {
 
 // Parte envolvida na movimentação da unidade (comprador ou imobiliária). O `entityId` permite
 // abrir a ficha CERTA no CRM.
+//
+// ⚠️ `entityId` pode ser NULO, e isso é informação, não descuido: quem reservou no tótem do
+// lançamento é um credenciado do Prometeu, e não há ficha do Apolo garantida para ele. Inventar
+// um id levaria o operador a um CRM vazio — pior que mostrar o nome sem link. A tela renderiza
+// texto simples quando não há para onde ir.
 export type ApoloUnitParty = {
   code: string | null;
-  entityId: string;
+  entityId: null | string;
   name: string;
 };
 
@@ -595,21 +603,23 @@ export async function loadApoloEnterpriseUnits(
 
   // As reservas feitas no salão ainda não existem para o C2X — sem isto, o lote que o cliente
   // acabou de reservar no tótem continua aparecendo "Disponível" nesta tela.
-  const reservados = await reservasVivasDoPanteon();
+  const reservas = await reservasVivasDoPanteon();
 
-  return { ok: true, units: rows.map((row) => mapUnitRow(row, reservados)) };
+  return { ok: true, units: rows.map((row) => mapUnitRow(row, reservas)) };
 }
 
 // Busca as reservas vivas do Prometeu, tolerando ausência: se o Supabase não estiver
 // configurado (ou falhar), a tela volta a mostrar exatamente o que o C2X diz — que era o
 // comportamento de antes, e é melhor que uma tela quebrada.
-async function reservasVivasDoPanteon(): Promise<ReadonlySet<string>> {
+async function reservasVivasDoPanteon(): Promise<
+  ReadonlyMap<string, ReservaViva>
+> {
   try {
     const client = createPrometeuClient();
-    if (!client) return new Set<string>();
-    return await codigosReservadosNoPanteon(client);
+    if (!client) return new Map<string, ReservaViva>();
+    return await reservasVivasPorCodigo(client);
   } catch {
-    return new Set<string>();
+    return new Map<string, ReservaViva>();
   }
 }
 
@@ -636,8 +646,14 @@ function buildUnitCode(
 
 function mapUnitRow(
   row: UnitQueryRow,
-  reservadosNoPanteon?: ReadonlySet<string>,
+  reservasDoSalao?: ReadonlyMap<string, ReservaViva>,
 ): ApoloEnterpriseUnit {
+  const codigoDaUnidade = buildUnitCode(
+    cleanText(row.enterprise_code) ?? "",
+    row.block,
+    row.lot,
+  );
+  const reservaDoSalao = reservasDoSalao?.get(codigoDaUnidade) ?? null;
   const blocked = Number(row.sale_blocked ?? 0) === 1;
   const statusId = Number(row.sale_status_id ?? 0);
   // ⚠️ A REGRA MORA EM balde-da-unidade.ts, junto do SQL que os cards usam. Ela estava
@@ -645,9 +661,7 @@ function mapUnitRow(
   // discordavam: o Villa Paris tem 27 unidades em status 5 que a lista mostrava como Bloqueado
   // e os cards não contavam em balde nenhum.
   const bucket: ApoloEnterpriseBucket = baldeDaUnidade({
-    reservadoNoPanteon: reservadosNoPanteon?.has(
-      buildUnitCode(String(row.enterprise_code ?? ""), row.block, row.lot),
-    ),
+    reservadoNoPanteon: Boolean(reservaDoSalao),
     saleBlocked: blocked,
     saleStatusId: statusId,
   });
@@ -680,13 +694,31 @@ function mapUnitRow(
     area: row.area === null ? null : toNumber(row.area),
     block: cleanText(row.block),
     bucket,
-    code: buildUnitCode(enterpriseCode, row.block, row.lot),
+    code: codigoDaUnidade,
     enterpriseCode,
     id: String(row.id),
     kind: cleanText(row.kind),
     lot: cleanText(row.lot),
-    movement:
-      client || imobiliaria
+    // ⚠️ A RESERVA DO SALÃO GANHA A LINHA DE MOVIMENTAÇÃO, e isso não é preferência: sem ela,
+    // a tela mostrava o lote como "Reservado" e, ao lado, o comprador da ÚLTIMA proposta antiga
+    // do C2X — alguém que não tem nada a ver com a reserva de agora. Nome errado numa tela de
+    // atendimento faz atender o cliente errado, que é pior do que não mostrar nome nenhum.
+    //
+    // A reserva do tótem É a movimentação mais recente daquela unidade; a AR do legado é
+    // história. Sem imobiliária, porque o tótem não a grava na reserva — e inventá-la a partir
+    // da proposta velha seria repetir o mesmo erro.
+    movement: reservaDoSalao
+      ? {
+          client: reservaDoSalao.cliente
+            ? { code: null, entityId: null, name: reservaDoSalao.cliente }
+            : null,
+          imobiliaria: null,
+          stage:
+            reservaDoSalao.proponentes > 1
+              ? `Reserva do lançamento · ${reservaDoSalao.proponentes} proponentes`
+              : "Reserva do lançamento",
+        }
+      : client || imobiliaria
         ? { client, imobiliaria, stage: cleanText(row.stage) }
         : null,
     price: toNumber(row.price),
