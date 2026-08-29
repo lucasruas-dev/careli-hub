@@ -69,11 +69,12 @@ export default async function MasterplanPublicoPage({
   // A publishable key já vive no bundle do hub — é ela que a TV da fila usa desde 02/08.
   const cfg = getServerSupabaseConfig();
 
+  // ⚠️ Nome e data do lançamento NÃO vão para o telão: ele mostra só o mapa (ver o cabeçalho de
+  // TelaoMasterplan.tsx). Continuam saindo na rota, para a futura tela comercial.
   return (
     <TelaoMasterplan
       desenho={desenho}
       estadoInicial={dados}
-      evento={{ data: evento.dataEvento, nome: evento.nome }}
       realtime={{
         key: cfg.anonKey ?? "",
         topico: topicoDaFila(eventoId),

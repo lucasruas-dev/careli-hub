@@ -8,14 +8,17 @@ import type { SituacaoDoLote } from "@/lib/prometeu/situacao-do-lote";
 
 // O TELÃO DO MASTERPLAN — o mapa de lotes projetado no salão do lançamento.
 //
-// ⚠️ ESTA TELA É PROJETADA PARA O SALÃO INTEIRO e roda em máquina de terceiro, por um link sem
-// login. Ela mostra SÓ a cor de cada lote — nunca nome de comprador, nunca valor. A lição é do
-// Garden, onde uma página interna sem senha expôs nome e preço. O dado já chega filtrado do
-// servidor; não acrescente campo nesta tela sem revisar essa decisão.
+// ⚠️ SÓ O MAPA. NADA MAIS. Regra do Lucas em 28/08/2026, depois de ver a primeira versão com
+// legenda e contagem: *"nada de informação, somente mostrar o masterplan (...) o que vai no
+// telão, masterplan lançamento é somente o masterplan"*. Sem legenda, sem nome do lançamento,
+// sem contadores, sem hora de atualização — nada flutuando por cima da arte.
 //
-// Fluxo: o servidor entrega o mapa já pintado no primeiro pixel (nada de tela cinza esperando
-// fetch na frente do salão), e daqui em diante a tela só se atualiza — pelo broadcast do
-// Realtime, em segundos, com um poll lento como rede de segurança.
+// A versão COMERCIAL, com os números do estilo que o CER já tem, é outra tela e virá depois.
+// Se algum dia bater a tentação de "só um cantinho com o total", é esta linha que diz não.
+//
+// ⚠️ E, por ser projetada para o salão inteiro, num link sem login e em máquina de terceiro:
+// nunca nome de comprador, nunca valor. A lição é do Garden, onde uma página interna sem senha
+// expôs nome e preço. O dado já chega filtrado do servidor.
 
 type Contagem = Record<SituacaoDoLote, number>;
 
@@ -28,41 +31,26 @@ export type EstadoDoMasterplan = {
 type Props = {
   desenho: DesenhoDoMasterplan;
   estadoInicial: EstadoDoMasterplan;
-  evento: { data: null | string; nome: string };
   realtime: { key: string; topico: string; url: string };
   token: string;
 };
 
-// As cores do salão. Translúcidas de propósito: o terreno, a rua e o número do lote precisam
-// continuar visíveis por baixo — o mapa é a arte do loteamento, não um gráfico.
-const COR: Record<SituacaoDoLote, string> = {
-  disponivel: "rgba(34, 197, 94, 0.55)",
-  indisponivel: "rgba(120, 128, 140, 0.45)",
-  reservado: "rgba(245, 158, 11, 0.62)",
-  vendido: "rgba(239, 68, 68, 0.55)",
-};
-
-const ROTULO: Record<SituacaoDoLote, string> = {
-  disponivel: "Disponível",
-  indisponivel: "Indisponível",
-  reservado: "Reservado",
-  vendido: "Vendido",
-};
-
-// A ordem da legenda é a da jornada do lote, não a alfabética.
-const ORDEM: SituacaoDoLote[] = [
-  "disponivel",
-  "reservado",
-  "vendido",
-  "indisponivel",
-];
+// DUAS CORES, E SÓ (Lucas, 28/08): livre ou não livre. O azul é o do PRÓPRIO C2X — na tabela
+// `sale_statuses`, Reservado, Em negociação, Vendido e Bloqueado compartilham o mesmo #0544ff.
+// Não é simplificação nossa: é a convenção que o time comercial já enxerga há anos, e inventar
+// paleta própria aqui criaria duas linguagens para a mesma informação.
+//
+// ⚠️ O VERDE, ESSE, NÃO É O DO C2X. Lá o Disponível é #398f19, um verde escuro — que no papel
+// funciona, mas neste mapa cairia em cima da GRAMA do loteamento e sumiria. O verde vivo
+// destaca o lote livre contra o terreno, que é a única coisa que o cliente procura no telão.
+const VERDE_DISPONIVEL = "rgba(34, 197, 94, 0.72)";
+const AZUL_OCUPADO = "rgba(5, 68, 255, 0.72)";
 
 const POLL_MS = 60_000;
 
 export function TelaoMasterplan({
   desenho,
   estadoInicial,
-  evento,
   realtime,
   token,
 }: Props) {
@@ -135,21 +123,15 @@ export function TelaoMasterplan({
     };
   }, [atualizar, realtime.key, realtime.topico, realtime.url]);
 
-  const hora = new Date(estado.atualizadoEm).toLocaleTimeString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
   return (
-    // ⚠️ A ARTE OCUPA A TELA INTEIRA, e tudo o que é nosso flutua por cima. A primeira versão
-    // tinha cabeçalho e rodapé próprios, e eles brigavam com o desenho: o loteamento já traz o
-    // título ("ESCOLHA SEU LOTE AQUI!") no alto e a faixa de marcas embaixo. Duas molduras
-    // concorrendo espremiam o mapa, que é a única coisa que o salão precisa enxergar de longe.
-    <main className="relative h-dvh w-dvw overflow-hidden bg-[#0b1017] text-white">
+    // A arte é 4K (3840×2160) e ocupa a tela inteira. `object-contain` preserva a proporção em
+    // qualquer projetor; o fundo escuro só aparece nas bordas quando a tela não é 16:9.
+    <main className="relative h-dvh w-dvw overflow-hidden bg-[#0b1017]">
       <div className="absolute inset-0 grid place-items-center">
         <div className="relative aspect-[16/9] max-h-full w-full max-w-full">
           {/* eslint-disable-next-line @next/next/no-img-element -- arte estática do
-              loteamento, servida de /public; o otimizador do Next não acrescenta nada aqui. */}
+              loteamento, servida de /public; o otimizador do Next serviria uma versão
+              redimensionada, que é justamente o que não se quer numa projeção 4K. */}
           <img
             alt=""
             className="absolute inset-0 h-full w-full object-contain"
@@ -171,10 +153,14 @@ export function TelaoMasterplan({
                     // ⚠️ evenodd é o que deixa o NÚMERO do lote aparecer: o desenho traz o
                     // contorno e um furo por cima do marcador redondo. Sem isto, a cor cobre
                     // o número e o mapa fica ilegível de longe.
-                    fill={COR[situacao]}
+                    fill={
+                      situacao === "disponivel"
+                        ? VERDE_DISPONIVEL
+                        : AZUL_OCUPADO
+                    }
                     fillRule="evenodd"
                     key={nome}
-                    stroke="rgba(255,255,255,0.35)"
+                    stroke="rgba(255,255,255,0.28)"
                     strokeWidth={1.5}
                   />
                 );
@@ -183,44 +169,6 @@ export function TelaoMasterplan({
           ) : null}
         </div>
       </div>
-
-      {/* A legenda mora no canto superior esquerdo, sobre o céu escuro da arte: é onde não há
-          desenho de lote em nenhum dos mapas, e onde o olho de quem entra no salão cai antes de
-          procurar o próprio lote. Fundo translúcido para não virar um bloco opaco na projeção. */}
-      <div className="absolute left-6 top-6 rounded-2xl bg-black/45 px-5 py-4 backdrop-blur-sm">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-xl font-semibold tracking-tight">
-            {evento.nome}
-          </h1>
-          {evento.data ? (
-            <span className="text-sm text-white/45">
-              {new Date(evento.data).toLocaleDateString("pt-BR", {
-                timeZone: "UTC",
-              })}
-            </span>
-          ) : null}
-        </div>
-        <dl className="mt-3 flex flex-col gap-2">
-          {ORDEM.map((s) => (
-            <div className="flex items-center gap-3" key={s}>
-              <span
-                className="h-4 w-4 shrink-0 rounded border border-white/30"
-                style={{ background: COR[s] }}
-              />
-              <dt className="text-base text-white/70">{ROTULO[s]}</dt>
-              <dd className="ml-auto text-xl font-bold tabular-nums">
-                {estado.contagem[s]}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-
-      {/* Discreto de propósito, mas presente: mapa projetado que congelou sem ninguém perceber é
-          pior que mapa desatualizado com hora à vista. */}
-      <span className="absolute bottom-4 right-6 text-xs tabular-nums text-white/30">
-        atualizado {hora}
-      </span>
     </main>
   );
 }
