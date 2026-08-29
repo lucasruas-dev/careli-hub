@@ -137,10 +137,18 @@ export function TelaoMasterplan({
           {/* eslint-disable-next-line @next/next/no-img-element -- arte estática do
               loteamento, servida de /public; o otimizador do Next serviria uma versão
               redimensionada, que é justamente o que não se quer numa projeção 4K. */}
+          {/* ⚠️ `imageRendering: high-quality` NÃO É ENFEITE. A arte tem 3840px de largura e a
+              tela do salão quase nunca tem exatamente isso: o Chrome reduz, e no filtro padrão
+              (rápido) as divisas de 1px e os números pequenos saem SERRILHADOS — foi o que o
+              Lucas viu em 29/08. Com `high-quality` o Chrome usa reamostragem melhor no
+              downscale, e o mapa volta a ficar limpo em qualquer resolução de projetor.
+              Conferido antes de mexer: o arquivo servido é byte a byte o que o designer
+              exportou, então não havia perda no caminho — o serrilhado nascia aqui. */}
           <img
             alt=""
             className="absolute inset-0 h-full w-full object-contain"
             src={desenho.base}
+            style={{ imageRendering: "high-quality" as never }}
           />
           {contornos ? (
             <svg

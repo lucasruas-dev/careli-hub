@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-telao-nitidez",
+    deployedAt: "2026-08-29T10:10:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Telao do masterplan mais nitido: as divisas finas e os numeros dos lotes param de sair serrilhados quando a TV nao tem exatamente 4K.",
+            ],
+            screen: "Telao do masterplan",
+          },
+        ],
+      },
+    ],
+    rollback: "0cae3bde",
+    technical: {
+      done: "Lucas (29/08): 'acho que subiu em baixa, esta ruim a qualidade da imagem, muito cerrilhado'. Conferido ANTES de mexer: o arquivo servido e byte a byte o que o designer exportou (7.376.555 bytes), entao nao havia perda no upload; e recompor o fundo em 2x a partir da imagem-mestre de 10000x5626 foi testado e NAO melhora (nitidez medida pela variancia do laplaciano na mesma escala: 3248 do original contra 2359 da recomposta) — a exportacao 4K do Photoshop ja e a melhor fonte. O serrilhado nascia no downscale do navegador: a arte tem 3840px e a tela do salao quase nunca tem exatamente isso, e o filtro padrao do Chrome come as divisas de 1px. `image-rendering: high-quality` no <img> do telao troca por reamostragem de qualidade. Uma linha, sem tocar em arte nem em geometria.",
+      motivation:
+        "O telao e projetado para o salao inteiro: divisa serrilhada e numero borrado sao lidos como mapa errado.",
+    },
+    title: "Telão do masterplan sem serrilhado",
+    type: "correcao",
+    version: "1.236.0",
+  },
+  {
     buildTag: "2026-08-29-reserva-sem-bip",
     deployedAt: "2026-08-29T09:40:00-03:00",
     modules: [
