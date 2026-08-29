@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-28-unidades-ao-vivo",
+    deployedAt: "2026-08-28T23:15:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A tela agora se ATUALIZA SOZINHA quando alguem reserva no salao. Antes era preciso recarregar a pagina para ver o lote mudar.",
+              "O nome de quem reservou no totem virou LINK: abre a ficha da pessoa no CRM, igual aos clientes que vem do C2X.",
+              "A IMOBILIARIA e o corretor aparecem abaixo do nome, no mesmo formato do cupom impresso.",
+            ],
+            screen: "Empreendimento · Unidades",
+          },
+        ],
+      },
+    ],
+    rollback: "7da74471",
+    technical: {
+      done: "TRES pontas da mesma frente. (1) ATUALIZACAO SOZINHA: a rota das unidades passou a devolver o topico do lancamento em andamento (topicoDaFila do evento operavel, nulo quando nao ha evento) e a tela assina o canal, incrementando o mesmo contador de recarga que a criacao de unidade ja usava. ⚠️ Broadcast e NAO poll, pela regra de custo herdada do incidente do Hermes: esta tela fica aberta o dia inteiro no backoffice e um poll de minuto custaria uma consulta ao C2X por minuto por pessoa, o dia todo, para uma mudanca que so acontece durante o evento. (2) LINK NO CRM: prometeu_credenciados.entity_id passou a ser gravado no proponente da reserva. Eu tinha assumido que quem reserva no totem podia nao ter ficha no Apolo e deixei o nome sem link; o Lucas corrigiu a premissa - todo credenciado tem cadastro. Reservas anteriores nao tem o campo e caem no texto simples, sem prometer navegacao que nao existe. (3) IMOBILIARIA: a origem resolvida no bip (cadeia canonica: vinculo do Apolo, de-para, coluna crua) fica gravada junto do titular, virando o retrato do momento - o mesmo texto impresso no cupom que o cliente levou. Typecheck limpo; 1.418 testes de Apolo+Prometeu.",
+      motivation:
+        "Lucas (28/08), testando: 'a tela estava aberta quando eu havia reservado, nao atualizou sozinha, tive que atualizar, isso e ruim', 'todo cliente tem que esta cadastrado do apolo, entao tem que vim o link sim para acessar ele no apolo' e 'faltou imobiliaria'.",
+    },
+    title:
+      "Unidades ao vivo: atualiza sozinha, com link no CRM e a imobiliária",
+    type: "melhoria",
+    version: "1.227.0",
+  },
+  {
     buildTag: "2026-08-28-unidade-diz-quem-reservou",
     deployedAt: "2026-08-28T22:35:00-03:00",
     modules: [
