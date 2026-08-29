@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-proposta-de-aquisicao-redesenhada",
+    deployedAt: "2026-08-29T00:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A folha da PROPOSTA foi redesenhada: logo da C2X no topo, nome do lancamento ao centro e quadra/lote/area num quadro so, do jeito que se procura a folha na pilha.",
+              "Os PLANOS COMERCIAIS agora ocupam tres linhas enxutas, e o PLANO PERSONALIZADO virou o bloco grande da folha, em branco, para o corretor escrever a negociacao.",
+              "O texto juridico completo entrou (nove clausulas), e o tamanho dele se ajusta sozinho: com um proponente a letra e maior, com cinco ela encolhe para tudo caber numa pagina.",
+              "Cabe SEMPRE em uma folha, ate cinco proponentes, cada um com sua linha de assinatura.",
+              "O RECIBO saiu do papel e virou mensagem de WhatsApp, com valor por extenso, CPF, unidade e data.",
+            ],
+            screen: "Proposta de aquisicao (impressa)",
+          },
+        ],
+      },
+    ],
+    rollback: "8203b7c1",
+    technical: {
+      done: "FOLHA REDESENHADA em oito rodadas com o Lucas, na tela e no papel. LAYOUT: os planos sairam de uma tabela 4x4 para TRES LINHAS lidas como frase (sinal, parcelas, correcao), e o espaco foi para o personalizado, que virou o bloco principal e ficou EM BRANCO - a versao com onze campos guiados foi recusada em favor da folha livre. O recibo saiu da folha (vai por WhatsApp) e devolveu o espaco que faltava. Logo da C2X no topo, nome do lancamento centralizado em Arial (era Georgia e destoava), quadra/lote/area num quadro unico com rotulo em preto solido, dia de vencimento junto do valor de tabela (as duas decisoes que valem para qualquer plano), e 'imovel' virou 'unidade' em todo o documento. TEXTO JURIDICO COMPLETO: nove clausulas com subitens, substituindo o paragrafo unico anterior. Os planos passaram aos numeros do documento oficial: CURTO em 36 parcelas (era 24) e NORMAL em 120 pela Tabela Price com 8% ao ano (era 180 em divisao simples). ⚠️ A TAXA DO PRICE e PROPORCIONAL (8/12), nao equivalente, e isso e uma escolha de dinheiro: a equivalente daria parcela ~1% menor. Esta marcada no codigo como provisoria porque os planos VAO VIRAR CONFIGURACAO por empreendimento (decisao do Lucas: 'cada empreendimento vai ter uma tabela (...) esse empreendimento e price, mas o mais comum seria sacoc'). ESCALA ADAPTATIVA: o tamanho do texto tecnico depende de quantos proponentes assinam (6,6pt com um; 5,3pt com cinco). Cada valor saiu de uma VARREDURA MEDIDA no navegador - a folha renderizada em todos os tamanhos de 5,0 a 7,6pt para cada quantidade, ficando o maior que cabe com ~6mm de sobra. A primeira tentativa foi por estimativa e estourava a pagina em tres dos cinco casos. ⚠️ DOIS DEFEITOS QUE SO O PAPEL MOSTROU. (1) Os rotulos miudos saiam falhados: a laser nao tem cinza, simula com pontilhado, e em 5,5pt o pontilhado come o traco da letra - viraram preto solido com peso 700, a mesma licao do cupom termico. (2) As colunas laterais do cabecalho estavam travadas em 46mm, mas o quadro da unidade precisa de quase 60mm: ele TRANSBORDAVA para fora do papel e a impressora cortava a direita. Eu vinha medindo religiosamente a ALTURA da folha e nunca a LARGURA, e por isso o defeito passou por tres rodadas de conferencia. A verificacao agora percorre todos os elementos procurando quem passa da borda, e a folha ganhou max-width de 190mm como rede. RECIBO POR WHATSAPP em lib/prometeu/recibo-whatsapp.ts (13 testes): nome, CPF, valor com extenso, forma de pagamento, unidade, reserva e data. Negrito de UM asterisco (o do WhatsApp) e sem travessao. O valor por extenso devolve vazio acima de um bilhao em vez de inventar escala - recibo com extenso divergente do numero e o que se usa para contestar o documento. Typecheck limpo.",
+      motivation:
+        "Lucas (28-29/08), vendo a folha antiga: 'achei muito fraca, quero algo mais bonito, algo mais top'. Depois, no papel: 'os textos menorzinhos, como sinal, % da entrada, ficaram falhos' e 'cortou as linhas da direitas, comeu um puco das palavras tbm'. No fim: 'perfeito, ficou muito bom, esse sera o padrao'.",
+    },
+    title: "Proposta de aquisição redesenhada, e o recibo indo por WhatsApp",
+    type: "melhoria",
+    version: "1.228.0",
+  },
+  {
     buildTag: "2026-08-28-unidades-ao-vivo",
     deployedAt: "2026-08-28T23:15:00-03:00",
     modules: [

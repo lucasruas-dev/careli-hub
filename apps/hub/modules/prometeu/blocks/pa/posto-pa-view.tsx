@@ -4,7 +4,11 @@ import { Camera, Check, Loader2, Printer, QrCode, X } from "lucide-react";
 import QRCode from "qrcode";
 import { useCallback, useState } from "react";
 
-import { codigoDoCupom, conteudoDoQrDoCupom, ehIdDeCupom } from "@/lib/prometeu/cupom";
+import {
+  codigoDoCupom,
+  conteudoDoQrDoCupom,
+  ehIdDeCupom,
+} from "@/lib/prometeu/cupom";
 
 import {
   fetchCupom,
@@ -44,7 +48,10 @@ type CupomCarregado = {
 
 function horaBR(iso: null | string): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export function PostoPaView() {
@@ -52,13 +59,19 @@ export function PostoPaView() {
   const [ocupado, setOcupado] = useState(false);
   const [cameraAberta, setCameraAberta] = useState(false);
   const [segundaVia, setSegundaVia] = useState<null | CupomCarregado>(null);
-  const [sucesso, setSucesso] = useState<null | { folhas: number; nome: string }>(null);
+  const [sucesso, setSucesso] = useState<null | {
+    folhas: number;
+    nome: string;
+  }>(null);
 
   const imprimir = useCallback(async (cupom: CupomCarregado) => {
-    const qrDataUrl = await QRCode.toDataURL(conteudoDoQrDoCupom(cupom.grupoId), {
-      margin: 1,
-      width: 220,
-    });
+    const qrDataUrl = await QRCode.toDataURL(
+      conteudoDoQrDoCupom(cupom.grupoId),
+      {
+        margin: 1,
+        width: 220,
+      },
+    );
     // Os proponentes viajam gravados na reserva; reserva antiga sem eles = titular a 100%.
     const proponentes = cupom.reservas[0]?.proponentes?.length
       ? cupom.reservas[0].proponentes.map((p) => ({
@@ -66,7 +79,13 @@ export function PostoPaView() {
           nome: p.nome,
           percentual: p.percentual,
         }))
-      : [{ documento: cupom.cliente.documento, nome: cupom.cliente.nome, percentual: 100 }];
+      : [
+          {
+            documento: cupom.cliente.documento,
+            nome: cupom.cliente.nome,
+            percentual: 100,
+          },
+        ];
 
     await imprimirFolhasDaPa({
       codigoCupom: codigoDoCupom(cupom.grupoId),
@@ -79,6 +98,12 @@ export function PostoPaView() {
       imobiliaria: cupom.cliente.imobiliaria,
       incorporadora: cupom.evento?.incorporadora ?? null,
       lancamento: cupom.evento?.nome ?? "Lançamento",
+      // A marca no topo da folha. URL absoluta: dentro do iframe about:blank o caminho
+      // relativo não resolve — mesma lição do cupom e da etiqueta.
+      logoSrc: new URL(
+        "/prometeu/c2x-logo.png",
+        window.location.origin,
+      ).toString(),
       proponentes,
       qrDataUrl,
       unidades: cupom.reservas.map((r) => ({
@@ -120,7 +145,9 @@ export function PostoPaView() {
       }
 
       const cupom: CupomCarregado = { ...r.data, grupoId };
-      const jaImpressa = cupom.reservas.some((linha) => linha.paImpressaVezes > 0);
+      const jaImpressa = cupom.reservas.some(
+        (linha) => linha.paImpressaVezes > 0,
+      );
       if (jaImpressa) {
         // Segunda via é decisão humana — o toque confirma.
         setSegundaVia(cupom);
@@ -155,15 +182,20 @@ export function PostoPaView() {
             </span>
             <p className="mt-4 text-2xl font-bold text-ink">{sucesso.nome}</p>
             <p className="mt-1 text-lg text-ink-soft">
-              {sucesso.folhas} {sucesso.folhas === 1 ? "folha de PA" : "folhas de PA"} na impressora
+              {sucesso.folhas}{" "}
+              {sucesso.folhas === 1 ? "folha de PA" : "folhas de PA"} na
+              impressora
             </p>
           </>
         ) : segundaVia ? (
           <div className="rounded-2xl border border-line bg-surface p-6">
-            <p className="text-lg font-bold text-ink">{segundaVia.cliente.nome}</p>
+            <p className="text-lg font-bold text-ink">
+              {segundaVia.cliente.nome}
+            </p>
             <p className="mt-2 text-sm text-ink-soft">
               PA já impressa às{" "}
-              <b>{horaBR(segundaVia.reservas[0]?.paImpressaEm ?? null)}</b>. Imprimir 2ª via?
+              <b>{horaBR(segundaVia.reservas[0]?.paImpressaEm ?? null)}</b>.
+              Imprimir 2ª via?
             </p>
             <div className="mt-5 flex justify-center gap-3">
               <button
@@ -191,19 +223,30 @@ export function PostoPaView() {
           <>
             {cameraAberta ? (
               <div className="mx-auto w-full overflow-hidden rounded-xl border border-line">
-                <video ref={leitorCamera.videoRef} className="block w-full" muted playsInline />
+                <video
+                  ref={leitorCamera.videoRef}
+                  className="block w-full"
+                  muted
+                  playsInline
+                />
                 <canvas ref={leitorCamera.canvasRef} className="hidden" />
               </div>
             ) : (
               <span className="mx-auto grid h-24 w-24 place-items-center rounded-2xl border-2 border-dashed border-line text-ink-muted">
                 {ocupado ? (
-                  <Loader2 aria-hidden="true" className="animate-spin" size={44} />
+                  <Loader2
+                    aria-hidden="true"
+                    className="animate-spin"
+                    size={44}
+                  />
                 ) : (
                   <QrCode aria-hidden="true" size={44} />
                 )}
               </span>
             )}
-            <p className="mt-4 text-xl font-semibold text-ink">Bipe o cupom de reserva</p>
+            <p className="mt-4 text-xl font-semibold text-ink">
+              Bipe o cupom de reserva
+            </p>
             <p className="mt-1 text-sm text-ink-muted">
               A proposta sai sozinha — uma folha por unidade.
             </p>
@@ -212,7 +255,11 @@ export function PostoPaView() {
               onClick={() => setCameraAberta((v) => !v)}
               type="button"
             >
-              {cameraAberta ? <X aria-hidden="true" size={16} /> : <Camera aria-hidden="true" size={16} />}
+              {cameraAberta ? (
+                <X aria-hidden="true" size={16} />
+              ) : (
+                <Camera aria-hidden="true" size={16} />
+              )}
               {cameraAberta ? "Fechar câmera" : "Usar a câmera"}
             </button>
             {sucesso ? null : (
