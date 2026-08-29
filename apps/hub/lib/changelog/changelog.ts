@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-masterplan-jdg-v4",
+    deployedAt: "2026-08-29T16:40:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Masterplan do Jardim das Gerais com as correcoes que o Lucas fez a mao, mais os lotes que faltavam no desenho (JDG0208, JDG0209 e JDG0905).",
+              "Todos os 250 lotes a venda tem contorno, e os 19 sem cadastro no C2X pintam como indisponiveis.",
+            ],
+            screen: "Telao do masterplan",
+          },
+        ],
+      },
+    ],
+    rollback: "adcf8f48",
+    technical: {
+      done: "O Lucas editou o SVG no Inkscape e devolveu com os lotes que faltavam. ⚠️ A ARMADILHA: ao duplicar um objeto o Inkscape COPIA O LABEL, entao os lotes novos nasceram com o nome do vizinho de quem foram copiados — tres paths chamados JDG0210 (um era o 0209, outro o 0208) e dois JDG0906 (um era o 0905). Confiar no label teria sobrescrito o vizinho e sumido com o lote novo. A primeira correcao foi renomear TODO path pelo numero que ele contem, e isso foi longe demais: como os numeros nao ficam no centro do lote, um poligono as vezes cobre tambem o numero do vizinho — perdeu 6 lotes da carga (244/250). A regra final: o LABEL manda quando e unico (e a intencao do desenhista), e a geometria so desempata os REPETIDOS, com os unicos entrando primeiro para fixar os nomes que os duplicados nao podem roubar. Resultado: 269 de 269 paths absorvidos, cobertura 250/250. Travados recalculados contra o desenho novo: entram JDG0208 e JDG0209, saem JDG4119 e JDG4120 (que o Lucas apagou). Script versionado em scripts/prometeu/masterplan-jdg/absorver-svg-editado.py para as proximas rodadas.",
+      motivation:
+        "Lucas: 'dei uma atualizada, e coloquei os lotes que faltavam, 0209 - 0208 - e um outro que eu nao lembro que estavam sem cor'.",
+    },
+    title: "Masterplan do JDG com as correções manuais e os lotes que faltavam",
+    type: "novidade",
+    version: "1.239.0",
+  },
+  {
     buildTag: "2026-08-29-lotes-travados-no-panteon",
     deployedAt: "2026-08-29T12:05:00-03:00",
     modules: [
