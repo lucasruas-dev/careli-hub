@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-28-unidade-diz-quem-reservou",
+    deployedAt: "2026-08-28T22:35:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "CORRECAO: o lote reservado no totem aparecia com o nome do comprador de uma proposta ANTIGA do C2X - uma pessoa sem relacao nenhuma com a reserva. Agora aparece quem reservou de verdade.",
+              "A linha diz 'Reserva do lancamento' (e '· N proponentes', quando ha mais de um). Fica SEM imobiliaria, porque o totem nao a grava na reserva - herda-la da proposta velha seria repetir o mesmo erro.",
+              "CORRECAO: o selo saia com a cor de reservado e a palavra 'Disponivel'. Cor e texto passaram a vir da mesma fonte.",
+              "Nome sem cadastro no CRM aparece como texto, e nao como link: quem reservou no totem nem sempre tem ficha, e o botao abriria um CRM vazio.",
+            ],
+            screen: "Empreendimento · Unidades",
+          },
+        ],
+      },
+    ],
+    rollback: "07db48e8",
+    technical: {
+      done: "Duas correcoes que sairam de um mesmo teste do Lucas e que a v1.225 deixou pela metade. (1) TEXTO DO SELO: mapUnitRow montava a cor pelo balde (que ja considerava a reserva do Panteon) e o texto por sale_statuses.name (que vem do legado, e o legado nao sabe da reserva) - o selo saiu ambar escrito 'Disponivel'. rotuloDoBalde() no mesmo modulo da regra, para nao voltarem a divergir. (2) NOME: a 'ultima movimentacao' vinha sempre da acquisition_request mais recente do C2X; num lote reservado hoje pelo totem, isso e uma proposta de meses atras, com OUTRO comprador (apareceu NIVEA CARELI num lote que o Lucas acabara de reservar). Nome errado em tela de atendimento faz atender o cliente errado, entao a reserva do salao passou a SER a movimentacao mais recente, com o titular saindo dos proponentes do cupom. reservasVivasPorCodigo devolve Map com nome e contagem de proponentes (era Set de codigos). ApoloUnitParty.entityId virou nulavel: quem reserva no totem e credenciado do Prometeu e nao tem ficha do Apolo garantida - o componente Party renderiza span em vez de button quando nao ha para onde navegar, em vez de inventar um uuid que abriria CRM vazio. Typecheck limpo; 1.418 testes de Apolo+Prometeu.",
+      motivation:
+        "Lucas (28/08), testando a v1.225: 'o telao respondeu muito bem, ja em unidades nao' (com print do selo ambar escrito Disponivel) e, na sequencia, 'nao veio o nome que reservamos'.",
+    },
+    title:
+      "Unidades: o lote reservado diz quem reservou, e o selo para de se contradizer",
+    type: "correcao",
+    version: "1.226.0",
+  },
+  {
     buildTag: "2026-08-28-reserva-reflete-em-tudo",
     deployedAt: "2026-08-28T22:30:00-03:00",
     modules: [
