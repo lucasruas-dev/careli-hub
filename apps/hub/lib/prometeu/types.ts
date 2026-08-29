@@ -117,6 +117,17 @@ export type PrometeuEventoConfig = {
     tempoTotalEvento?: number;
   };
   senhaPorWhatsapp?: boolean;
+  /**
+   * Lotes que o telao pinta como INDISPONIVEIS mesmo sem existirem no C2X.
+   *
+   * ⚠️ Pedido do Lucas (29/08/2026): *"tem alguns lotes que estao sem cor (...) sao lotes ja
+   * vendidos, e permutados (...) bloqueia para ficar azul tambem"* e, sobre onde registrar,
+   * *"deixa eles somente no panteon mesmo"*. Sao codigos de unidade (JDG0201) que ficariam SEM
+   * COR no mapa por nao terem cadastro no legado — permuta, area remanescente, lote vendido
+   * antes da carga. Marcar aqui evita escrever no C2X, que nao tem como desfazer cadastro de
+   * unidade pela API: para soltar um lote, basta tirar da lista.
+   */
+  lotesBloqueados?: string[];
   // Quem assina a PA como Empreendedora (ja era lido pela rota do cupom; agora o Setup edita).
   paIncorporadora?: string;
   // Textos editaveis da Proposta de Aquisicao (clausulas e declaracoes). Parcial: o que nao

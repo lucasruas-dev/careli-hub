@@ -32,7 +32,11 @@ export type MasterplanDoEvento = {
 
 export async function masterplanDoEvento(
   client: AdminClient,
-  evento: { enterpriseId: null | string; id: string },
+  evento: {
+    config?: null | Record<string, unknown>;
+    enterpriseId: null | string;
+    id: string;
+  },
 ): Promise<{ dados?: MasterplanDoEvento; error?: string }> {
   const enterpriseId = Number(evento.enterpriseId);
   if (!Number.isFinite(enterpriseId) || enterpriseId <= 0) {
@@ -75,10 +79,27 @@ export async function masterplanDoEvento(
     ),
   );
 
+  // ⚠️ A TRAVA DO PANTEON, aplicada por cima do C2X. Lote vendido/permutado que nunca entrou na
+  // carga do legado ficaria SEM COR no mapa — e lote sem cor no telao e lido como "disponivel,
+  // o sistema e que falhou". Marcar aqui pinta de indisponivel sem tocar no legado, e some da
+  // lista quando o cadastro chegar. Ver `lotesBloqueados` em PrometeuEventoConfig.
+  const travados = new Set(
+    (Array.isArray(evento.config?.lotesBloqueados)
+      ? (evento.config.lotesBloqueados as unknown[])
+      : []
+    )
+      .map((c) => normalizarCodigoDeUnidade(String(c ?? "")))
+      .filter(Boolean),
+  );
+
   const lotes: Record<string, SituacaoDoLote> = {};
   for (const r of rows as Array<Record<string, unknown>>) {
     const codigo = normalizarCodigoDeUnidade(String(r.name ?? ""));
     if (!codigo) continue;
+    if (travados.has(codigo)) {
+      lotes[codigo] = "indisponivel";
+      continue;
+    }
     lotes[codigo] = situacaoDoLote({
       // O MySQL devolve o EXISTS como 0/1, não como booleano.
       arAberta: Number(r.ar_aberta ?? 0) === 1,
@@ -86,6 +107,12 @@ export async function masterplanDoEvento(
       saleBlocked: Number(r.sale_blocked ?? 0) === 1,
       saleStatusId: r.sale_status_id == null ? null : Number(r.sale_status_id),
     });
+  }
+
+  // Os travados que NAO existem no C2X entram aqui: sem isto o mapa nao teria a chave e o
+  // telao continuaria sem pintar justamente o lote que se quis bloquear.
+  for (const codigo of travados) {
+    if (!lotes[codigo]) lotes[codigo] = "indisponivel";
   }
 
   return {

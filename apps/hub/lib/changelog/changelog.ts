@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-lotes-travados-no-panteon",
+    deployedAt: "2026-08-29T12:05:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Lote sem cadastro no C2X (vendido antes da carga, permuta, area remanescente) para de ficar SEM COR no telao: da para trava-lo pelo Panteon e ele pinta como indisponivel, igual aos demais.",
+              "No Jardim das Gerais, 19 lotes entraram nessa trava.",
+            ],
+            screen: "Telao do masterplan",
+          },
+        ],
+      },
+    ],
+    rollback: "77f72dac",
+    technical: {
+      done: "Lucas (29/08): 'tem alguns lotes que estao sem cor (...) sao lotes ja vendidos, e permutados (...) bloqueia para ficar azul tambem'. A primeira leitura foi cadastra-los no C2X, mas ele decidiu 'deixa eles somente no panteon mesmo' — melhor caminho, porque a API do legado NAO tem como desfazer cadastro de unidade: um cadastro errado so sai pela tela do C2X, a mao, e enquanto isso aparece no estoque e no VGV. A trava vive em prometeu_eventos.config.lotesBloqueados (sem migration) e o masterplanDoEvento a aplica por cima do C2X, inclusive criando a chave para os codigos que nem existem no legado — sem isso o telao continuaria sem pintar justamente o lote que se quis bloquear. Para soltar um lote, basta tirar da lista. ⚠️ Conferido antes: dois dos 19 (JDG0202 com 15.980 m2 e JDG0203 com 9.641 m2) sao GLEBAS do tamanho de meia quadra, nao lotes — cadastra-las como unidade vendavel teria posto 25 mil m2 no estoque; o Lucas confirmou que entram na trava assim mesmo. O config foi gravado com MERGE, preservando as demais chaves.",
+      motivation:
+        "Lote sem cor no telao e lido pelo corretor como disponivel — o oposto do que ele e.",
+    },
+    title: "Lotes sem cadastro no C2X pintam como indisponíveis",
+    type: "novidade",
+    version: "1.238.0",
+  },
+  {
     buildTag: "2026-08-29-central-panteon-cancelar-lote",
     deployedAt: "2026-08-29T11:20:00-03:00",
     modules: [
