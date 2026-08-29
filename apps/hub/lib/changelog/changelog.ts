@@ -36,17 +36,16 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
-    buildTag: "2026-08-29-masterplan-jardim-das-gerais",
-    deployedAt: "2026-08-29T02:15:00-03:00",
+    buildTag: "2026-08-29-masterplan-jdg-sem-geometria",
+    deployedAt: "2026-08-29T02:35:00-03:00",
+    internal: true,
     modules: [
       {
         module: "Prometeu",
         screens: [
           {
             items: [
-              "MASTERPLAN DO JARDIM DAS GERAIS no telao do salao: 46 quadras e 436 lotes, que acendem em verde (disponivel) e azul (reservado ou bloqueado) ao vivo.",
-              "O fundo saiu do mapa de implantacao em 4K, sem os textos de apresentacao - so o mapa, como o telao pede.",
-              "Seis lotes ainda nao pintam (JDG1018, JDG1020, JDG1101, JDG1102, JDG4201, JDG4202): ficam em quadras que se tocam sem rua no meio e precisam ser conferidos contra a carga do C2X.",
+              "O masterplan do Jardim das Gerais NAO entra no telao nesta versao: a geometria dos lotes reconstruida da imagem nao ficou boa o suficiente e foi retirada.",
             ],
             screen: "Telao do masterplan",
           },
@@ -55,12 +54,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "54585d8b",
     technical: {
-      done: "Todos os masterplans da casa saem de um SVG do projetista com um path por lote em `inkscape:label` (scripts/apolo/masterplan-geometria-*.mjs). Para o JDG esse SVG NAO EXISTE: o .cdr veio vazio (11 KB, so o template do Corel) e o PDF de 1,5 GB e um PSD achatado - 820 camadas de imagem, zero vetor. O que salvou foi o TEXTO do PDF, que traz 46 quadras, 442 lotes e 273 areas com coordenada exata; e sobre esses pontos que a reconstrucao fica assertiva em vez de tracada a olho. GEOMETRIA POR VORONOI, e nao watershed: o watershed persegue contraste, e a divisa do JDG e uma linha de ~3px em verde-agua sobre verde com arvores desenhadas por cima - na conferencia em zoom ele contornava copa de arvore e cortava o lote atravessado. Lote de loteamento nao e mancha, e FATIA da quadra entre a rua e o fundo, e a divisa entre dois vizinhos e praticamente a mediatriz entre os centros: e o que o Voronoi constroi, com aresta reta por definicao. Roda POR ILHA (a mancha que as ruas isolam), senao o lote da ponta rouba pixel da quadra do outro lado da rua. Scripts e inventario (quadra/lote/area) versionados em scripts/prometeu/masterplan-jdg/. ⚠️ A geometria e APROXIMADA: quando o SVG do projetista chegar, este arquivo sai e volta o caminho normal. ⚠️ Os nomes seguem JDG+quadra+lote com dois digitos (JDG0109) e precisam bater com `name` da unidade no C2X - path com nome errado nao quebra nada, so nunca pinta, e ninguem percebe ate o telao estar projetado no salao. O JDG tinha ZERO unidades no C2X nesta data. Typecheck limpo.",
+      done: "O JDG foi o unico lancamento em que o projetista nao entregou o SVG com um path por lote: .cdr vazio (11 KB), PDF de 1,5 GB que e um PSD achatado (820 camadas de imagem, zero vetor), PSD sem mascara vetorial. Tentei reconstruir da imagem por tres caminhos e os tres reprovaram na conferencia em zoom: WATERSHED contornava copa de arvore (a divisa e uma linha de ~3px em verde-agua sobre verde); VORONOI partia de uma premissa falsa - a de que o numero do lote fica no centro dele, quando na verdade e posicionado por estetica perto da frente, entao as arestas saiam tortas por cima das divisas reais; HOUGH nao achou uma unica divisa, o limiar pegou a mata clara como ruido. Nao e questao de afinar parametro: a imagem nao carrega a informacao. Um mapa que acende o lote errado e pior do que nao ter mapa, entao o JDG sai do telao ate chegar o SVG/DWG do urbanismo. O que foi levantado continua valendo e esta em scripts/prometeu/masterplan-jdg/: fundo 4K e o inventario de 46 quadras / 442 lotes / 273 areas, lido do TEXTO do PDF (esse sim exato), que serve para conferir a carga do C2X.",
       motivation:
-        "Lucas (29/08): 'quero que vc faca o masterplan do jardim das gerais, que e o empreendimento de amanha (...) a sigla sera JDG, quadra e os lotes estao no masterplan, caprixa por favor, bem assertivo' e, sobre a nomenclatura, 'sera assim mesmo JDGquadralote'.",
+        "Lucas (29/08), ao ver o resultado: 'esta muito mal feito'. Estava - e o registro fica para ninguem repetir as tres tentativas.",
     },
-    title: "Masterplan do Jardim das Gerais no telão",
-    type: "novidade",
+    title: "Masterplan do JDG retirado do telão até chegar o vetor",
+    type: "correcao",
     version: "1.231.0",
   },
   {

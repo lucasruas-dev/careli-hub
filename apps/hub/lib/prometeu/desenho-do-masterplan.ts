@@ -23,27 +23,30 @@ export type DesenhoDoMasterplan = {
 };
 
 const POR_CODIGO: Record<string, DesenhoDoMasterplan> = {
-  // ⚠️ JARDIM DAS GERAIS: a geometria aqui foi RECONSTRUIDA, e nao recebida do designer.
-  // Diferente de todos os outros masterplans da casa, que saem de um SVG com um path por lote
-  // rotulado em `inkscape:label`, o JDG so tinha material raster: o .cdr veio vazio (11 KB, sem
-  // desenho) e o PDF de 1,5 GB e um PSD achatado - 820 camadas de imagem e ZERO vetor.
+  // ⚠️ O JARDIM DAS GERAIS AINDA NAO TEM MAPA, e a tentativa de 29/08/2026 esta registrada aqui
+  // para ninguem repetir. O JDG foi o unico lancamento em que o projetista NAO entregou o SVG
+  // com um path por lote: o .cdr veio vazio (11 KB, so o template do Corel), o PDF de 1,5 GB e
+  // um PSD achatado (820 camadas de imagem, zero vetor) e o PSD nao tem mascara vetorial.
   //
-  // O que salvou foi o TEXTO do PDF, que traz as 46 quadras e os 442 lotes com coordenada
-  // exata. Os contornos vieram de Voronoi semeado nesses pontos, recortado pela mancha de cada
-  // quadra: lote de loteamento e fatia entre a rua e o fundo, e a divisa entre dois vizinhos e
-  // praticamente a mediatriz entre os centros deles. As arestas batem com as divisas do
-  // desenho, mas sao APROXIMADAS - quando o SVG do projetista chegar, este arquivo e
-  // substituido pelo caminho normal (scripts/apolo/masterplan-geometria-*.mjs).
+  // Tentei reconstruir a geometria da imagem, por dois caminhos, e os DOIS reprovaram na
+  // conferencia em zoom:
+  //   1. WATERSHED semeado nos numeros dos lotes - persegue contraste, e a divisa aqui e uma
+  //      linha de ~3px em verde-agua sobre verde com arvores desenhadas por cima: ele contornava
+  //      copa de arvore e cortava o lote atravessado.
+  //   2. VORONOI entre os numeros - a premissa era que o numero fica no centro do lote e que a
+  //      divisa e a mediatriz entre vizinhos. FALSO: os numeros sao posicionados por estetica,
+  //      perto da frente do lote, entao as arestas saiam tortas por cima das divisas reais.
+  //   3. HOUGH sobre as divisas realcadas - nao achou uma unica divisa de lote; o limiar pegou a
+  //      mata clara do topo como ruido.
   //
-  // ⚠️ 436 dos 442 lotes. Seis ficaram de fora porque caem em quadras que se tocam sem rua no
-  // meio (10, 11 e 42) e a associacao lote->quadra ficou ambigua: JDG1018, JDG1020, JDG1101,
-  // JDG1102, JDG4201 e JDG4202. Eles nao pintam no telao ate serem conferidos contra a carga
-  // do C2X - que na data desta entrada ainda nao existia (o JDG tinha ZERO unidades).
-  JDG: {
-    base: "/masterplans-telao/jardim-das-gerais.jpg",
-    contornos: "/masterplans-telao/jardim-das-gerais-lotes.json",
-    viewBox: "0 0 3840 2160",
-  },
+  // A conclusao e que a imagem NAO permite extrair a geometria: nao e questao de afinar
+  // parametro. O que resolve e o mesmo que resolveu em todos os outros - o SVG (ou DWG/DXF) do
+  // urbanismo, com um path por lote rotulado. O loteamento foi aprovado em prefeitura, entao a
+  // planta vetorial existe.
+  //
+  // O material levantado (fundo 4K, inventario de 46 quadras / 442 lotes / 273 areas lido do
+  // texto do PDF, e os scripts) esta em scripts/prometeu/masterplan-jdg/ e continua valendo: o
+  // inventario serve para conferir a carga do C2X, e o fundo e o mesmo. So a GEOMETRIA falta.
   RVP: {
     base: "/masterplans-telao/villa-paris.jpg",
     contornos: "/masterplans-telao/villa-paris-lotes.json",
