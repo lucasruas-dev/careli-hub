@@ -2,14 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { CUPOM_CSS, cupomHTML } from "./imprimir-cupom";
 
-// AS TRÊS REGRAS DO PAPEL TÉRMICO, presas por teste.
+// O QUE O PAPEL TÉRMICO EXIGE, preso por teste.
 //
-// Elas nasceram do primeiro cupom impresso de verdade (28/08/2026): o texto em peso normal saiu
-// tão apagado que "COMPROVANTE DE RESERVA" imprimiu "PESERVA" — o R não marcou. A térmica não
-// tem cinza, e o antialiasing do Chrome entrega cinza; o driver aproxima por pontilhado e o
-// traço fino vira uma fileira de furos.
+// A lista encolheu depois que a densidade do driver foi corrigida (28/08/2026). Enquanto ela
+// estava em "default", metade do cupom saía apagada — "COMPROVANTE DE RESERVA" imprimiu
+// "PESERVA", porque o R não marcou — e a única saída era pôr TUDO em negrito. Com a densidade
+// alta e uma fonte de traço grosso, o peso normal imprime limpo, e o negrito voltou a ser
+// hierarquia em vez de muleta.
 //
-// Sem estes testes, o próximo campo que alguém acrescentar ao cupom volta a nascer fino.
+// O que continua valendo, e por isso segue aqui: fonte grossa, piso de 11px e nenhum tom de
+// cinza no caminho. Sem isso, o próximo campo que alguém acrescentar nasce ilegível.
 
 const MENOR_TAMANHO_QUE_IMPRIME = 11;
 
@@ -20,16 +22,29 @@ function tamanhosDeFonte(css: string): number[] {
 }
 
 describe("o CSS do cupom respeita o papel térmico", () => {
-  it("o body é negrito — todo o resto herda", () => {
-    expect(CUPOM_CSS).toMatch(/body\s*\{[^}]*font-weight:\s*700/s);
+  // A fonte é o que mais marca o papel depois da densidade: Courier é fina por desenho e
+  // deixava o texto rendilhado mesmo em negrito.
+  it("usa fonte de traço grosso, não monoespaçada fina", () => {
+    expect(CUPOM_CSS).toContain("font-family: Arial");
+    expect(CUPOM_CSS).not.toContain("Courier");
   });
 
-  it("nenhuma regra volta para peso normal", () => {
-    const pesos = [...CUPOM_CSS.matchAll(/font-weight:\s*([a-z0-9]+)/g)].map(
-      (m) => m[1],
-    );
-    expect(pesos.length).toBeGreaterThan(0);
-    for (const peso of pesos) expect(peso).toBe("700");
+  // O que se lê DE LONGE é negrito; o que se lê de perto fica no peso normal. Sem isto o
+  // cupom perde a hierarquia que o operador usa para conferir de relance.
+  it("os destaques estão em negrito", () => {
+    for (const classe of [
+      ".cup-selo",
+      ".cup-emp",
+      ".cup-cli",
+      ".cup-lote",
+      ".cup-cod",
+    ]) {
+      // Com a chave junto: `.cup-lote` sozinho casaria com `.cup-lotes`, que vem antes e é
+      // outra regra.
+      const daClasse = CUPOM_CSS.slice(CUPOM_CSS.indexOf(classe + " {"));
+      const regra = daClasse.slice(0, daClasse.indexOf("}"));
+      expect(regra, classe).toContain("font-weight: 700");
+    }
   });
 
   it("nada abaixo de 11px", () => {
@@ -81,8 +96,8 @@ describe("o HTML do cupom", () => {
 
   it("fala QUADRA e LOTE, do jeito que o operador confere", () => {
     const html = cupomHTML(DADOS);
-    expect(html).toContain("QUADRA G · LOTE 06");
-    expect(html).toContain("QUADRA G · LOTE 08");
+    expect(html).toContain("QUADRA G - LOTE 06");
+    expect(html).toContain("QUADRA G - LOTE 08");
   });
 
   // Lucas, 28/08: "pode tirar os 50%, isso só vai na PA". A divisão entre proponentes é
@@ -103,7 +118,7 @@ describe("o HTML do cupom", () => {
   // Lucas, 28/08, olhando o cupom impresso: "faltou na impressao o nome da imobiliairia".
   it("traz a imobiliária, no mesmo formato da tela", () => {
     const html = cupomHTML(DADOS);
-    expect(html).toContain("F M S MACIEL IMOVEIS · IGOR FERNANDO CLODOMIRO");
+    expect(html).toContain("F M S MACIEL IMOVEIS - IGOR FERNANDO CLODOMIRO");
     expect(html).toContain('class="cup-org"');
   });
 
@@ -134,9 +149,9 @@ describe("o HTML do cupom", () => {
   });
 
   it("conta os lotes, e concorda no singular", () => {
-    expect(cupomHTML(DADOS)).toContain("LOTES RESERVADOS · 3");
+    expect(cupomHTML(DADOS)).toContain("LOTES RESERVADOS - 3");
     const um = cupomHTML({ ...DADOS, unidades: [{ lote: "06", quadra: "G" }] });
-    expect(um).toContain("LOTE RESERVADO · 1");
+    expect(um).toContain("LOTE RESERVADO - 1");
   });
 
   // A faixa e o bloco do código são fundo preto: sem print-color-adjust o Chrome descarta o

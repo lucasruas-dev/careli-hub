@@ -107,11 +107,34 @@ tem papel de tamanho fixo, então ele é fatiado em várias etiquetas.
 
 Com a impressora de cupom correta e papel contínuo, sai uma tira só.
 
+> **A tira em branco no topo de cada cupom é física, não é erro.** Entre a cabeça térmica e a
+> lâmina da guilhotina existe um vão de uns 15 a 20mm; depois de cada corte esse pedaço de
+> papel já passou pela cabeça sem ser impresso, e ele sai como cabeçalho em branco no cupom
+> seguinte. Toda impressora de cupom faz isso, e nenhum ajuste de software elimina — é por
+> isso que cupom fiscal de padaria também tem essa sobra.
+
 Ajustes no driver da impressora de cupom, se o papel sair com problema — as lições da PC42t valem
 aqui ([[reference_prometeu_etiqueta_termica]]): **Pontilhado = Nenhum** (o "difusão de erro"
 borra QR e preto sólido) e margens **Nenhuma** no Chrome.
 
-### Se o texto sair apagado, o problema é o CSS, não a impressora
+### Se o texto sair apagado, comece pela DENSIDADE
+
+⚠️ **É o ajuste que mais pesa, e não está nas Preferências de impressão.** Fica em
+*Propriedades da impressora → Configurações do Dispositivo → Opções instaláveis →
+**Printing Density***. Saindo de fábrica em `default`, metade do cupom imprimia apagada;
+subindo o nível, o mesmo arquivo passou a sair chapado.
+
+Depois dela, na ordem:
+
+1. **Meio-tom** (Preferências → Papel/Qualidade → Avançado): use **Seleção Automática**.
+   Dither 6x6 e 8x8 existem para FOTO — eles espalham o preto num padrão de pontinhos e é
+   isso que deixa o texto com cara de sujo.
+2. **Velocidade de impressão**: mais baixa, se o driver oferecer. Mais tempo de cabeça sobre
+   o papel, preto mais denso.
+3. **Papel**: bobina térmica velha ou de baixa gramatura queima mal, por melhor que esteja a
+   configuração.
+
+### E o CSS, o que garante
 
 No primeiro cupom impresso de verdade (28/08) o texto em **negrito** saiu perfeito e o de peso
 normal saiu tão fraco que "COMPROVANTE DE RESERVA" imprimiu **"PESERVA"** — o R não marcou.
@@ -120,13 +143,18 @@ A causa é o meio-tom: o Chrome desenha texto fino com antialiasing, ou seja, em
 térmica não tem cinza, ela queima o ponto ou não queima; o driver aproxima o cinza por
 pontilhado e o traço de 1px vira uma fileira de furos.
 
-Por isso o cupom segue três regras, presas por teste em `imprimir-cupom.test.ts`:
+O cupom segue três regras, presas por teste em `imprimir-cupom.test.ts`:
 
-1. **tudo em negrito** (`font-weight: 700` no body) — não existe peso normal em papel térmico;
+1. **fonte de traço grosso** (Arial, não Courier) — a monoespaçada é fina por desenho e
+   pinta pouco papel mesmo em negrito;
 2. **nada abaixo de 11px**;
 3. `-webkit-font-smoothing: none`, para o Chrome não suavizar a borda das letras.
 
 Quem for acrescentar campo novo ao cupom não precisa lembrar disso: o teste reprova sozinho.
+
+> Enquanto a densidade estava baixa, **tudo** no cupom precisava ser negrito para marcar. Com
+> ela corrigida, o negrito voltou a ser hierarquia: destaque no que se lê de longe, peso
+> normal no resto. Se o cupom voltar a sair fraco, **o problema é a densidade**, não o CSS.
 
 ---
 

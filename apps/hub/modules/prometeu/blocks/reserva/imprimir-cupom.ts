@@ -30,31 +30,36 @@ type DadosDoCupom = {
   unidades: { lote: string; quadra: string }[];
 };
 
-// ⚠️ NA TÉRMICA, TUDO É NEGRITO — E NADA DESCE DE 11px.
+// COMO O CUPOM SOBREVIVE AO PAPEL TÉRMICO.
 //
-// A prova saiu do primeiro cupom impresso de verdade (28/08/2026): o que estava em peso 700
-// (empreendimento, nome, lotes, código) saiu perfeito, e o que estava em peso normal saiu
-// apagado a ponto de "COMPROVANTE DE RESERVA" imprimir como "COMPROVANTE DE PESERVA" — o R
-// simplesmente não marcou. A data e o aviso do rodapé, os menores da folha, saíram quase
-// invisíveis.
+// Três coisas aprendidas imprimindo de verdade, em 28/08/2026, e nesta ordem:
 //
-// A causa não é a impressora, é o meio-tom: o Chrome rasteriza texto fino com antialiasing, ou
-// seja, em CINZA. A térmica não tem cinza — ela queima o ponto ou não queima — então o driver
-// aproxima o cinza por pontilhado e o traço de 1px vira uma fileira de furos. Fonte pequena,
-// peso normal e letter-spacing largo (o subtítulo tinha 0.18em) somam para o mesmo lugar.
+// 1. ⚠️ A DENSIDADE DO DRIVER É O QUE MAIS PESA, e não o CSS. Com a Elgin em
+//    "Printing Density: default" (Propriedades da impressora → Configurações do Dispositivo),
+//    metade do cupom saía apagada: o título imprimiu "COMPROVANTE DE PESERVA" porque o R não
+//    marcou. Subindo a densidade, o mesmo HTML passou a sair chapado. Antes de mexer aqui,
+//    confira lá — está no guia do posto.
 //
-// Daí as três regras deste bloco, que valem para QUALQUER coisa nova que entrar no cupom:
-//   1. font-weight 700 no body, sem exceção — não existe texto de peso normal em papel térmico;
-//   2. nada abaixo de 11px;
-//   3. -webkit-font-smoothing: none, para o Chrome parar de suavizar a borda das letras.
-// O teste ao lado (imprimir-cupom.test.ts) trava as três.
+// 2. FONTE DE TRAÇO GROSSO. O cupom nasceu em Courier New, que é fina por desenho: mesmo em
+//    negrito ela deixa o texto rendilhado, porque pinta pouco papel. Arial no mesmo corpo
+//    marca bem mais e ainda ocupa menos linhas.
+//
+// 3. NADA ABAIXO DE 11px, e nenhum tom no meio — a térmica queima o ponto ou não queima, e
+//    todo cinza que sobrar vira pontilhado do driver. Daí o -webkit-font-smoothing: none.
+//
+// ⚠️ O NEGRITO VOLTOU A SER ESCOLHA, não regra (Lucas, 28/08, com o cupom bom na mão: "será
+// que agora a gente trabalhar com negrito sim e negrito não não fica melhor?"). Enquanto a
+// densidade estava baixa, tudo precisava ser 700 para marcar; com ela alta e a fonte grossa, o
+// peso normal imprime limpo — e aí a variação vira hierarquia: o que se lê de longe (marca,
+// empreendimento, nome, lotes, código) fica em 700, e o que se lê de perto (rótulos, data,
+// imobiliária, aviso) fica em 400. Se um dia voltar a sair fraco, o problema é a densidade.
 export const CUPOM_CSS = `
   @page { size: 80mm auto; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     width: 72mm; margin: 0 auto;
-    font-family: "Courier New", monospace;
-    font-weight: 700;
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: 400;
     color: #000;
     -webkit-font-smoothing: none;
     print-color-adjust: exact;
@@ -71,25 +76,25 @@ export const CUPOM_CSS = `
     print-color-adjust: exact; -webkit-print-color-adjust: exact;
   }
   .cup-logo { height: 6mm; width: auto; flex-shrink: 0; filter: brightness(0) invert(1); }
-  .cup-selo { font-size: 13px; letter-spacing: 0.22em; }
+  .cup-selo { font-size: 13px; font-weight: 700; letter-spacing: 0.22em; }
 
   .cup-corpo { padding: 0 1mm; }
 
-  .cup-emp { font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 3mm; }
+  .cup-emp { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; margin-top: 3mm; }
   .cup-dataev { font-size: 12px; margin-top: 0.6mm; }
 
-  /* Régua sólida separa BLOCO; a tracejada, item dentro do bloco. */
+  /* Régua sólida separa BLOCO; a caixa de 1px separa item dentro do bloco. */
   .cup-regua { border-top: 2px solid #000; margin: 3mm 0 2.5mm; }
   .cup-rot { font-size: 11px; letter-spacing: 0.18em; }
 
-  .cup-cli { font-size: 14px; margin-top: 1.2mm; text-transform: uppercase; word-wrap: break-word; }
+  .cup-cli { font-size: 15px; font-weight: 700; margin-top: 1.2mm; text-transform: uppercase; word-wrap: break-word; }
   .cup-prop { font-size: 11px; margin-top: 0.8mm; }
   .cup-org { font-size: 11px; margin-top: 1.5mm; text-transform: uppercase; }
 
   .cup-lotes { margin-top: 1.5mm; }
   .cup-lote {
     border: 1px solid #000;
-    font-size: 15px; letter-spacing: 0.04em;
+    font-size: 15px; font-weight: 700; letter-spacing: 0.02em;
     padding: 1.4mm 1mm; margin-top: 1.2mm;
   }
 
@@ -97,7 +102,7 @@ export const CUPOM_CSS = `
   /* O código em bloco invertido: é o que a secretária confere de relance quando o bip falha. */
   .cup-cod {
     background: #000; color: #fff;
-    font-size: 15px; letter-spacing: 0.2em;
+    font-size: 15px; font-weight: 700; letter-spacing: 0.2em;
     padding: 1.4mm 1mm; margin-top: 1.5mm;
     print-color-adjust: exact; -webkit-print-color-adjust: exact;
   }
@@ -113,11 +118,26 @@ function esc(valor: string | null | undefined): string {
     .replace(/"/g, "&quot;");
 }
 
+// NO PAPEL, O SEPARADOR É HÍFEN (Lucas, 28/08: "trocar o . por -"). O ponto médio "·" fica
+// elegante na tela, mas impresso em 203 dpi ele encolhe para um respingo — dá para confundir
+// com sujeira do papel ou com o pingo de uma letra. O hífen ocupa largura e se lê.
+const SEPARADOR = " - ";
+
+/**
+ * Troca o ponto médio pelo hífen em texto que já vem montado de outro lugar.
+ *
+ * Sem regex de propósito: origemDoClienteParaExibir monta exatamente `${imobiliária} ·
+ * ${corretor}`, então a troca é literal e não há o que interpretar errado.
+ */
+function comHifen(texto: string): string {
+  return texto.split(" · ").join(SEPARADOR);
+}
+
 export function cupomHTML(dados: DadosDoCupom): string {
   const lotes = dados.unidades
     .map(
       (u) =>
-        `<div class="cup-lote">QUADRA ${esc(u.quadra)} · LOTE ${esc(u.lote)}</div>`,
+        `<div class="cup-lote">QUADRA ${esc(u.quadra)}${SEPARADOR}LOTE ${esc(u.lote)}</div>`,
     )
     .join("");
 
@@ -127,8 +147,10 @@ export function cupomHTML(dados: DadosDoCupom): string {
 
   // A imobiliária fecha o bloco de gente. Some por inteiro quando não existe — nada de rótulo
   // órfão, mesma regra da tela.
+  // A origem chega montada pela MESMA função da tela ("IMOBILIÁRIA · Corretor"); aqui só o
+  // separador muda, para o papel.
   const origem = dados.origem
-    ? `<div class="cup-org">${esc(dados.origem)}</div>`
+    ? `<div class="cup-org">${esc(comHifen(dados.origem))}</div>`
     : "";
 
   // O rótulo do lançamento chega como "RESIDENCIAL VILLA PARIS · 22/08/2026". No papel os dois
@@ -153,7 +175,7 @@ export function cupomHTML(dados: DadosDoCupom): string {
       ${outros}
       ${origem}
       <div class="cup-regua"></div>
-      <div class="cup-rot">${plural} · ${dados.unidades.length}</div>
+      <div class="cup-rot">${plural}${SEPARADOR}${dados.unidades.length}</div>
       <div class="cup-lotes">${lotes}</div>
       <div class="cup-regua"></div>
       <div class="cup-qr"><img src="${dados.qrDataUrl}" alt=""></div>

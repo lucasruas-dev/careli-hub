@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-28-cupom-fonte-e-hierarquia",
+    deployedAt: "2026-08-28T21:40:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O cupom trocou de fonte. A anterior era de traco fino e saia rendilhada na termica; a nova marca bem mais papel com a mesma tinta, e ainda ocupa menos linhas.",
+              "Voltou a ter NEGRITO E PESO NORMAL: o que se le de longe (empreendimento, nome, lotes, codigo) em negrito, e o que se le de perto (rotulos, data, imobiliaria, aviso) em peso normal. Antes era tudo negrito, porque a impressora estava fraca.",
+              "O separador virou HIFEN: 'QUADRA C - LOTE 15' no lugar do ponto do meio, que impresso encolhia a ponto de parecer sujeira do papel.",
+            ],
+            screen: "Cupom de reserva (impresso)",
+          },
+        ],
+      },
+    ],
+    rollback: "0ddf24cd",
+    technical: {
+      done: "⚠️ A LICAO DO DIA E QUE O AJUSTE QUE MAIS PESA NAO ESTA NO CODIGO: a Elgin i8 estava com 'Printing Density: default' (Propriedades da impressora → Configuracoes do Dispositivo → Opcoes instalaveis), e era isso que fazia metade do cupom sair apagada. Com a densidade alta, o MESMO HTML passou a sair chapado. Documentado no guia do posto, antes de qualquer instrucao de CSS. Com a impressora certa, tres mudancas: (a) font-family de Courier New para Arial - Courier e fina POR DESENHO e mesmo em 700 pinta pouco papel; a sans-serif marca mais e o aviso do rodape caiu de 3 linhas para 2, economizando bobina por cupom; (b) o peso normal voltou a existir: body em 400 e 700 so em cup-selo/cup-emp/cup-cli/cup-lote/cup-cod, o que devolve hierarquia ao cupom (enquanto a densidade estava baixa, 700 era muleta, nao escolha); (c) separador ' - ' no lugar de ' · ' em quadra/lote, na contagem e na origem - em 203 dpi o ponto medio encolhe para um respingo que se confunde com sujeira do papel. A origem chega montada por origemDoClienteParaExibir (a MESMA funcao da tela, com ponto medio) e a troca acontece so na impressao, por split/join literal. Os testes acompanharam a mudanca de regra: 'nenhuma regra volta ao peso normal' virou 'os destaques estao em negrito' + 'usa fonte de traco grosso'; o piso de 11px e o font-smoothing none continuam. Typecheck limpo; 236 testes do Prometeu.",
+      motivation:
+        "Lucas (28/08), com o cupom impresso na mao depois de subir a densidade: 'troca as fontes' e 'sera que agora a gente trabalhar com negrito sim e negrito nao nao fica melhor? e outra trocar o . por -'.",
+    },
+    title:
+      "Cupom de reserva: fonte que marca o papel, hierarquia de peso e separador legivel",
+    type: "melhoria",
+    version: "1.222.0",
+  },
+  {
     buildTag: "2026-08-28-cupom-com-marca",
     deployedAt: "2026-08-28T21:00:00-03:00",
     modules: [
