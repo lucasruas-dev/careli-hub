@@ -16,6 +16,7 @@ import {
   type CupomReservaLinha,
 } from "../../data/prometeu-operations";
 import { usarLeitorQr } from "../checkin/usar-leitor-qr";
+import { ListaDeReservas } from "./lista-de-reservas";
 import { usarLeitorWedge } from "../usar-leitor-wedge";
 import { imprimirFolhasDaPa } from "./imprimir-pa";
 
@@ -55,6 +56,11 @@ function horaBR(iso: null | string): string {
 }
 
 export function PostoPaView() {
+  // BIPAR ou LISTA. O bip é o caminho de mãos livres; a lista é a saída manual, que existe
+  // porque o leitor não vai estar pronto para o evento de amanhã (Lucas, 29/08: *"para amanhã
+  // terá que ser manualmente mesmo"*). Ela também é onde se reemite uma proposta e se cancela
+  // uma reserva — as três coisas partem da mesma pergunta.
+  const [modo, setModo] = useState<"bipar" | "lista">("bipar");
   const [erro, setErro] = useState<null | string>(null);
   const [ocupado, setOcupado] = useState(false);
   const [cameraAberta, setCameraAberta] = useState(false);
@@ -160,14 +166,75 @@ export function PostoPaView() {
     [imprimir, ocupado],
   );
 
-  usarLeitorWedge((v) => void aoBipar(v), !segundaVia);
+  // Imprimir a partir da LISTA: busca o cupom pelo grupo e cai no mesmo caminho do bip — a
+  // folha, o carimbo de impressa e a contagem de vias são exatamente os mesmos.
+  const imprimirPorGrupo = useCallback(
+    async (grupoId: string) => {
+      const r = await fetchCupom(grupoId);
+      if (r.error || !r.data) {
+        setErro(r.error ?? "Cupom não encontrado.");
+        return;
+      }
+      await imprimir({ ...r.data, grupoId });
+    },
+    [imprimir],
+  );
+
+  // ⚠️ O LEITOR SÓ ESCUTA NO MODO BIPAR. Na lista o operador digita no campo de busca, e o
+  // wedge trataria a digitação rápida como leitura de cupom.
+  usarLeitorWedge((v) => void aoBipar(v), modo === "bipar" && !segundaVia);
   const leitorCamera = usarLeitorQr({
     aoLer: (v) => void aoBipar(v),
-    ativo: cameraAberta && !segundaVia,
+    ativo: modo === "bipar" && cameraAberta && !segundaVia,
   });
 
+  const abas = (
+    <div className="mx-auto mb-4 flex w-fit shrink-0 gap-1 rounded-xl border border-line bg-surface p-1">
+      {(
+        [
+          ["bipar", "Bipar cupom"],
+          ["lista", "Reservas do evento"],
+        ] as const
+      ).map(([chave, rotulo]) => (
+        <button
+          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+            modo === chave
+              ? "bg-[#2C2C2A] text-[#F1EFE8]"
+              : "text-ink-soft hover:text-ink"
+          }`}
+          key={chave}
+          onClick={() => {
+            setModo(chave);
+            setErro(null);
+            setCameraAberta(false);
+          }}
+          type="button"
+        >
+          {rotulo}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (modo === "lista") {
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-canvas p-4">
+        {abas}
+        {erro ? (
+          <p className="mx-auto mb-3 max-w-3xl rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300">
+            {erro}
+          </p>
+        ) : null}
+        <div className="min-h-0 flex-1">
+          <ListaDeReservas aoImprimir={imprimirPorGrupo} />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="grid h-full min-h-0 place-items-center bg-canvas p-6">
+    <div className="flex h-full min-h-0 flex-col items-center justify-center bg-canvas p-6">
+      {abas}
       <div className="w-full max-w-md text-center">
         {erro ? (
           <p className="mb-4 rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300">

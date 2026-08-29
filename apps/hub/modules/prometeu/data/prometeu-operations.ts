@@ -37,11 +37,16 @@ async function chamar<T>(
   init?: RequestInit,
 ): Promise<{ data?: T; error?: string; status?: number }> {
   const token = await getAccessToken();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
   if (token) headers.Authorization = `Bearer ${token}`;
 
   try {
-    const resposta = await fetch(url, { ...init, headers: { ...headers, ...init?.headers } });
+    const resposta = await fetch(url, {
+      ...init,
+      headers: { ...headers, ...init?.headers },
+    });
     const corpo = (await resposta.json().catch(() => ({}))) as {
       data?: T;
       error?: string;
@@ -124,10 +129,13 @@ export async function salvarEventoRemoto(input: {
 
 // Libera a preparacao: CAD, etiqueta, PIX, fila e os testes do time.
 export async function ativarEventoRemoto(eventoId: string) {
-  return chamar<{ fila?: ResumoDaFilaAberta; ok: boolean; status: string }>("/api/prometeu/eventos/status", {
-    body: JSON.stringify({ acao: "ativar", eventoId }),
-    method: "POST",
-  });
+  return chamar<{ fila?: ResumoDaFilaAberta; ok: boolean; status: string }>(
+    "/api/prometeu/eventos/status",
+    {
+      body: JSON.stringify({ acao: "ativar", eventoId }),
+      method: "POST",
+    },
+  );
 }
 
 // O que a ROTINA DE ABERTURA do lancamento fez. Volta na criacao e na ativacao.
@@ -172,13 +180,16 @@ export async function arquivarEventoRemoto(input: {
   arquivar: boolean;
   eventoId: string;
 }) {
-  return chamar<{ arquivado: boolean; ok: boolean }>("/api/prometeu/eventos/status", {
-    body: JSON.stringify({
-      acao: input.arquivar ? "arquivar" : "desarquivar",
-      eventoId: input.eventoId,
-    }),
-    method: "POST",
-  });
+  return chamar<{ arquivado: boolean; ok: boolean }>(
+    "/api/prometeu/eventos/status",
+    {
+      body: JSON.stringify({
+        acao: input.arquivar ? "arquivar" : "desarquivar",
+        eventoId: input.eventoId,
+      }),
+      method: "POST",
+    },
+  );
 }
 
 // ⚠️ DESTRUTIVO e restrito ao DONO do evento (verificado por e-mail no servidor).
@@ -187,7 +198,11 @@ export async function iniciarEventoRealRemoto(input: { eventoId: string }) {
   return chamar<{ ok: boolean; resetados: number; status: string }>(
     "/api/prometeu/eventos/status",
     {
-      body: JSON.stringify({ acao: "iniciar-real", confirmado: true, ...input }),
+      body: JSON.stringify({
+        acao: "iniciar-real",
+        confirmado: true,
+        ...input,
+      }),
       method: "POST",
     },
   );
@@ -203,7 +218,11 @@ export async function encerrarDiaRemoto(input: {
   return chamar<{ arquivados: number; concluidos: number; ok: boolean }>(
     "/api/prometeu/eventos/status",
     {
-      body: JSON.stringify({ acao: "encerrar-dia", confirmado: true, ...input }),
+      body: JSON.stringify({
+        acao: "encerrar-dia",
+        confirmado: true,
+        ...input,
+      }),
       method: "POST",
     },
   );
@@ -251,7 +270,11 @@ export type FilaPayload = {
   // TODAS as chamadas abertas, com a mesa. É daqui que o atendente reconhece a chamada da PRÓPRIA
   // mesa (overlay Compareceu/Não veio/Rechamar) — regressão de 01/08: a lista filtrada acima nunca
   // traz chamada com mesa, e o overlay parou de abrir. Opcional para atravessar deploy misto.
-  emTransitoTodos?: { chamadoEm: string; credenciadoId: string; mesaId: string | null }[];
+  emTransitoTodos?: {
+    chamadoEm: string;
+    credenciadoId: string;
+    mesaId: string | null;
+  }[];
   mesas: PrometeuMesa[];
   // Os indicadores da MESA (atendimentos do dia, tempo médio e começo do atendimento em curso).
   // Só vem preenchido para quem passou `mesaId` — as outras telas não pedem e não pagam a conta.
@@ -309,10 +332,13 @@ export async function fazerCheckInRemoto(input: {
   credenciadoId: string;
   eventoId: string;
 }) {
-  return chamar<{ naJanela: boolean; ok: boolean }>("/api/prometeu/credenciados", {
-    body: JSON.stringify({ acao: "checkin", ...input }),
-    method: "PATCH",
-  });
+  return chamar<{ naJanela: boolean; ok: boolean }>(
+    "/api/prometeu/credenciados",
+    {
+      body: JSON.stringify({ acao: "checkin", ...input }),
+      method: "PATCH",
+    },
+  );
 }
 
 // OS OUTROS DOIS BIPS DO DIA. Mesma leitura de QR do check-in, postos diferentes:
@@ -442,7 +468,10 @@ export async function fetchReservas(eventoId?: string) {
 
 // Chamou, rechamou, ninguem apareceu: tira do painel de transito sem perder a pessoa. `zona` = o
 // posto que marcou, pra o no-show aparecer so' na tela dele (o do salao nao vaza pra recepcao).
-export async function marcarNoShowRemoto(input: { credenciadoId: string; zona?: string }) {
+export async function marcarNoShowRemoto(input: {
+  credenciadoId: string;
+  zona?: string;
+}) {
   return chamar<{ ok: boolean }>("/api/prometeu/credenciados", {
     body: JSON.stringify({ acao: "no-show", ...input }),
     method: "PATCH",
@@ -495,10 +524,13 @@ export async function fetchPalco() {
 }
 
 export async function comandarPalco(cmd: PalcoEstado) {
-  return chamar<{ eventoId: string; palco: PalcoEstado }>("/api/prometeu/palco", {
-    body: JSON.stringify(cmd),
-    method: "POST",
-  });
+  return chamar<{ eventoId: string; palco: PalcoEstado }>(
+    "/api/prometeu/palco",
+    {
+      body: JSON.stringify(cmd),
+      method: "POST",
+    },
+  );
 }
 
 export async function bipDoSalaoRemoto(input: {
@@ -597,7 +629,10 @@ export async function liberarMesaRemoto(input: {
 }
 
 // SENTAR na mesa: registra que ESTE atendente esta na mesa (o Mapa do salao mostra o nome).
-export async function sentarNaMesaRemoto(input: { mesaId: string; nome: string }) {
+export async function sentarNaMesaRemoto(input: {
+  mesaId: string;
+  nome: string;
+}) {
   return chamar<{ ok: boolean }>("/api/prometeu/mesa", {
     body: JSON.stringify({ acao: "sentar", ...input }),
     method: "PATCH",
@@ -696,7 +731,10 @@ export async function fetchReservaTouch(eventoId?: string) {
 }
 
 // O bip da etiqueta: uuid lido do QR → nome/etapa para a conferência antes de reservar.
-export async function buscarClienteDaReserva(credenciadoId: string, eventoId?: string) {
+export async function buscarClienteDaReserva(
+  credenciadoId: string,
+  eventoId?: string,
+) {
   const extra = eventoId ? `&eventoId=${encodeURIComponent(eventoId)}` : "";
   return chamar<{
     credenciado: {
@@ -707,7 +745,9 @@ export async function buscarClienteDaReserva(credenciadoId: string, eventoId?: s
       imobiliaria: null | string;
       nome: string;
     };
-  }>(`/api/prometeu/reserva-touch?credenciadoId=${encodeURIComponent(credenciadoId)}${extra}`);
+  }>(
+    `/api/prometeu/reserva-touch?credenciadoId=${encodeURIComponent(credenciadoId)}${extra}`,
+  );
 }
 
 export type ReservaTouchProponente = {
@@ -784,5 +824,52 @@ export async function fetchRelatoriosDoLancamento(eventoId?: string) {
   const q = eventoId ? `?eventoId=${encodeURIComponent(eventoId)}` : "";
   return chamar<{ comercial: string; eventoId: string; performance: string }>(
     `/api/prometeu/relatorios${q}`,
+  );
+}
+
+// AS RESERVAS DO EVENTO — a lista que o posto da PA usa para imprimir sem bipar.
+//
+// ⚠️ Existe porque o bip não é o único caminho (Lucas, 29/08): *"na parte de impressão PA
+// colocar a impressão manual, a qual lista as unidades em reserva, ae eu posso clicar e mandar
+// imprimir (...) para amanhã terá que ser manualmente mesmo"*. O leitor fica para depois; a
+// lista é o que faz o evento andar.
+//
+// De quebra, é por ela que se REEMITE uma proposta e se CANCELA uma reserva — as três coisas
+// pedem a mesma pergunta ("quais reservas existem?") e não valia a pena três telas.
+export type ReservaDoEventoLinha = {
+  canceladaEm: null | string;
+  canceladaMotivo: null | string;
+  cliente: null | string;
+  criadaEm: string;
+  grupoId: string;
+  lotes: string[];
+  origem: null | string;
+  paImpressaEm: null | string;
+  propostaLancadaEm: null | string;
+  situacao: string;
+};
+
+export async function fetchReservasDoEvento(eventoId?: string) {
+  const query = eventoId ? `?eventoId=${encodeURIComponent(eventoId)}` : "";
+  return chamar<{ eventoId: string; reservas: ReservaDoEventoLinha[] }>(
+    `/api/prometeu/reservas-do-evento${query}`,
+  );
+}
+
+/** Cancela o cupom inteiro (todos os lotes daquele grupo). */
+export async function cancelarReservaRemoto(input: {
+  eventoId?: string;
+  grupoId: string;
+  motivo?: string;
+}) {
+  const query = input.eventoId
+    ? `?eventoId=${encodeURIComponent(input.eventoId)}`
+    : "";
+  return chamar<{ codigos: string[]; quantos: number }>(
+    `/api/prometeu/reservas-do-evento${query}`,
+    {
+      body: JSON.stringify({ grupoId: input.grupoId, motivo: input.motivo }),
+      method: "POST",
+    },
   );
 }

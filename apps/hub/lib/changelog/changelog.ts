@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-pa-impressao-manual-e-cancelamento",
+    deployedAt: "2026-08-29T00:50:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "NOVA ABA 'Reservas do evento': lista todas as reservas do lancamento, com busca por cliente ou lote.",
+              "IMPRIMIR SEM BIPAR: clica na reserva e a proposta sai. E o caminho para o evento de amanha, sem depender do leitor.",
+              "REEMITIR: o botao vira '2a via' quando a proposta ja saiu, e a lista mostra a hora da impressao.",
+              "CANCELAR RESERVA: agora da para cancelar pela tela, com motivo. Antes so saia do sistema por comando no banco. O lote volta para a prateleira na hora e reaparece no telao.",
+            ],
+            screen: "Impressao da PA",
+          },
+        ],
+      },
+    ],
+    rollback: "4b7c81dd",
+    technical: {
+      done: "Uma aba na tela do posto da PA resolve TRES pedidos que fazem a mesma pergunta ('quais reservas existem?'), em vez de tres telas para desencontrar. IMPRESSAO MANUAL: e o caminho do evento de amanha, porque o leitor da PA nao vai estar pronto. A lista chama fetchCupom pelo grupo e cai no MESMO caminho do bip - a folha, o carimbo de impressa e a contagem de vias sao identicos, entao nao ha dois jeitos de imprimir divergindo. REEMISSAO: a lista mostra o que ja saiu e quando, e o botao vira '2a via' sozinho. E o 'historico' que o Lucas pediu. CANCELAMENTO: a tela do backend que subiu inerte em 4b7c81dd ganhou interface. Pede confirmacao e MOTIVO - o lote volta para a prateleira na hora e o cliente pode estar com o cupom impresso na mao; o motivo gravado e como se descobre depois por que um lote voltou. ⚠️ O LEITOR SO ESCUTA NO MODO BIPAR: na lista o operador digita no campo de busca, e o wedge trataria a digitacao rapida como leitura de cupom. Typecheck limpo.",
+      motivation:
+        "Lucas (29/08): 'temos que poder reemitir a reserva de undiades, (por isso pode deixar uma aba historico na tela) e na parte de impressao PA colocar a impressao manual, a qual lista as unidades em reserva, ae eu posso clicar e mandar imprimir, mas tambem vamos fechar mais pra frente o bip para impressao de PA, para amanha tera que ser manualmente mesmo'.",
+    },
+    title: "Impressão manual da PA, reemissão e cancelamento de reserva",
+    type: "novidade",
+    version: "1.229.0",
+  },
+  {
     buildTag: "2026-08-29-proposta-de-aquisicao-redesenhada",
     deployedAt: "2026-08-29T00:30:00-03:00",
     modules: [
