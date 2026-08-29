@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { createApoloAdminClient } from "@/lib/apolo/server";
+
 import {
   createPrometeuClient,
   eventoOperavelId,
@@ -18,6 +20,7 @@ import {
   type ProponenteDaReserva,
   type UnidadeDisponivel,
 } from "@/lib/prometeu/reservas-evento";
+import { origemDoClienteParaExibir } from "@/lib/prometeu/identificacao-do-cliente";
 import { avisarFilaEmRealtime } from "@/lib/prometeu/realtime-fila";
 
 // A POSIÇÃO DE RESERVA DO LANÇAMENTO (tela touch — Lucas, 24/08/2026).
@@ -38,19 +41,28 @@ export async function GET(request: NextRequest) {
 
   const client = createPrometeuClient();
   if (!client) {
-    return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Supabase indisponivel." },
+      { status: 503 },
+    );
   }
 
   const params = new URL(request.url).searchParams;
   let eventoId = (params.get("eventoId") ?? "").trim();
   if (!eventoId) eventoId = (await eventoOperavelId(client)) ?? "";
   if (!eventoId) {
-    return NextResponse.json({ error: "Nenhum evento em andamento." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Nenhum evento em andamento." },
+      { status: 404 },
+    );
   }
 
   const evento = await getEvento(client, eventoId);
   if (!evento) {
-    return NextResponse.json({ error: "Evento nao encontrado." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Evento nao encontrado." },
+      { status: 404 },
+    );
   }
 
   // Bip da etiqueta: resolve o credenciado sem carregar a fila inteira. A tela chama com o
@@ -59,7 +71,9 @@ export async function GET(request: NextRequest) {
   if (credenciadoId) {
     const { data: credenciado } = await client
       .from("prometeu_credenciados")
-      .select("id, nome, documento, etapa, evento_id, entity_id, imobiliaria, corretor")
+      .select(
+        "id, nome, documento, etapa, evento_id, entity_id, imobiliaria, corretor",
+      )
       .eq("id", credenciadoId)
       .maybeSingle<{
         corretor: null | string;
@@ -80,7 +94,10 @@ export async function GET(request: NextRequest) {
     // ⚠️ O TÓTEM TEM QUE FALAR A MESMA COISA QUE A ETIQUETA: nome e imobiliária saem da ENTIDADE
     // do Apolo, como em `listCredenciados`, e não das colunas cruas — que guardam o retrato do
     // dia do credenciamento e a grafia livre da esteira. Ver lib/prometeu/identidade-do-credenciado.ts.
-    const identidade = await identidadeCanonicaDoCredenciado(client, credenciado);
+    const identidade = await identidadeCanonicaDoCredenciado(
+      client,
+      credenciado,
+    );
     return NextResponse.json(
       {
         data: {
@@ -128,10 +145,15 @@ export async function POST(request: NextRequest) {
 
   const client = createPrometeuClient();
   if (!client) {
-    return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Supabase indisponivel." },
+      { status: 503 },
+    );
   }
 
-  const corpo = (await request.json().catch(() => null)) as CorpoDeReserva | null;
+  const corpo = (await request
+    .json()
+    .catch(() => null)) as CorpoDeReserva | null;
   const credenciadoId = String(corpo?.credenciadoId ?? "").trim();
   let eventoId = String(corpo?.eventoId ?? "").trim();
   if (!eventoId) eventoId = (await eventoOperavelId(client)) ?? "";
@@ -178,12 +200,14 @@ export async function POST(request: NextRequest) {
     .select("id, nome, documento, evento_id")
     .in("id", idsParaConferir);
   const porId = new Map(
-    ((confirmados ?? []) as Array<{
-      documento: null | string;
-      evento_id: string;
-      id: string;
-      nome: string;
-    }>).map((c) => [c.id, c]),
+    (
+      (confirmados ?? []) as Array<{
+        documento: null | string;
+        evento_id: string;
+        id: string;
+        nome: string;
+      }>
+    ).map((c) => [c.id, c]),
   );
 
   const credenciado = porId.get(credenciadoId);
@@ -194,13 +218,45 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // DE ONDE VEIO O TITULAR — resolvido AQUI e gravado na reserva.
+  //
+  // ⚠️ Pela cadeia canônica (vínculo do Apolo → de-para → coluna crua), a MESMA que o bip usa
+  // para pintar o tótem e o cupom: ler a coluna crua daria resposta diferente das outras telas
+  // justamente para quem veio por vínculo. Custa dois round-trips, e só do titular — aqui isso
+  // é barato, uma vez por reserva; numa tela que lista cem unidades, não seria.
+  //
+  // Nunca derruba a reserva: se a identidade falhar, a origem fica nula e o resto segue.
+  const origemDoTitular = await (async (): Promise<null | string> => {
+    try {
+      const apolo = createApoloAdminClient();
+      if (!apolo) return null;
+      const { data: cru } = await client
+        .from("prometeu_credenciados")
+        .select("nome, imobiliaria, corretor, entity_id")
+        .eq("id", credenciadoId)
+        .maybeSingle();
+      if (!cru) return null;
+      const identidade = await identidadeCanonicaDoCredenciado(apolo, {
+        corretor: (cru as Record<string, null | string>).corretor ?? null,
+        entity_id: (cru as Record<string, null | string>).entity_id ?? null,
+        imobiliaria: (cru as Record<string, null | string>).imobiliaria ?? null,
+        nome: (cru as Record<string, string>).nome ?? "",
+      });
+      return origemDoClienteParaExibir(identidade)?.texto ?? null;
+    } catch {
+      return null;
+    }
+  })();
+
   const proponentes: ProponenteDaReserva[] = proponentesCrus.length
-    ? proponentesCrus.map((p) => {
+    ? proponentesCrus.map((p, indice) => {
         const conferido = porId.get(p.credenciadoId);
         return {
           credenciadoId: p.credenciadoId,
           documento: conferido?.documento ?? p.documento,
           nome: conferido?.nome ?? p.nome,
+          // Só o titular carrega a origem: é dele a imobiliária que atendeu.
+          origem: indice === 0 ? origemDoTitular : null,
           percentual: p.percentual,
         };
       })
@@ -209,6 +265,7 @@ export async function POST(request: NextRequest) {
           credenciadoId,
           documento: credenciado.documento,
           nome: credenciado.nome,
+          origem: origemDoTitular,
           percentual: 100,
         },
       ];
@@ -219,7 +276,9 @@ export async function POST(request: NextRequest) {
   });
   if (proponenteForaDoEvento) {
     return NextResponse.json(
-      { error: `Proponente ${proponenteForaDoEvento.nome || "?"} nao pertence a este lancamento.` },
+      {
+        error: `Proponente ${proponenteForaDoEvento.nome || "?"} nao pertence a este lancamento.`,
+      },
       { status: 400 },
     );
   }
@@ -231,7 +290,10 @@ export async function POST(request: NextRequest) {
 
   const resultado = await criarReservaDoEvento(client, {
     credenciadoId,
-    criadoPor: ("userId" in auth ? auth.userId : null) ?? ("operadorId" in auth ? auth.operadorId : null) ?? null,
+    criadoPor:
+      ("userId" in auth ? auth.userId : null) ??
+      ("operadorId" in auth ? auth.operadorId : null) ??
+      null,
     criadoPorNome: null,
     eventoId,
     proponentes,
@@ -240,7 +302,10 @@ export async function POST(request: NextRequest) {
 
   if (resultado.error || !resultado.grupoId) {
     return NextResponse.json(
-      { conflitos: resultado.conflitos ?? [], error: resultado.error ?? "Nao consegui reservar." },
+      {
+        conflitos: resultado.conflitos ?? [],
+        error: resultado.error ?? "Nao consegui reservar.",
+      },
       { status: resultado.conflitos?.length ? 409 : 500 },
     );
   }

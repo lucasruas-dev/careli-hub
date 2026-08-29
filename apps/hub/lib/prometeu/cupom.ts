@@ -8,7 +8,9 @@
 // O código normalizado é a CHAVE da trava única (evento_id, codigo). "vlo0212 " e "VLO0212"
 // têm que colidir — por isso a normalização mora aqui e TODO gravador passa por ela.
 export function normalizarCodigoDeUnidade(codigo: string): string {
-  return String(codigo ?? "").trim().toUpperCase();
+  return String(codigo ?? "")
+    .trim()
+    .toUpperCase();
 }
 
 // Cupom: mesmo desenho da credencial (credencial.ts) — o QR carrega o grupo_id CRU (uuid, sem
@@ -33,6 +35,14 @@ export type ProponenteDaReserva = {
   credenciadoId: string;
   documento: null | string;
   nome: string;
+  // DE ONDE A PESSOA VEIO, como o cupom imprime: "IMOBILIÁRIA · Corretor".
+  //
+  // ⚠️ Fica GRAVADO na reserva, e não é resolvido depois. A imobiliária de um credenciado sai de
+  // uma cadeia (vínculo do Apolo → de-para de texto → coluna crua) que custa dois round-trips
+  // por pessoa: barato uma vez, no bip; caro numa tela que lista cem unidades. E, gravada, ela
+  // vira o RETRATO do momento da reserva — o mesmo que saiu impresso no cupom que o cliente
+  // levou na mão. Opcional porque as reservas antigas não têm.
+  origem?: null | string;
   percentual: number;
 };
 

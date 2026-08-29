@@ -27,15 +27,21 @@ type AdminClient = NonNullable<ReturnType<typeof createPrometeuClient>>;
 const PAGINA = 1000;
 
 export type ReservaViva = {
-  /** O titular da reserva (o 1º proponente), como foi gravado no cupom. */
+  /**
+   * O titular — o 1º proponente, o mesmo nome que saiu no cupom.
+   *
+   * ⚠️ SÓ ELE (Lucas, 28/08: "nessa tela pode deixar somente o primeiro proponente"). A lista de
+   * unidades é de leitura rápida, uma linha por lote; a composição inteira da reserva é assunto
+   * da proposta de aquisição, não desta tela.
+   */
   cliente: null | string;
-  /** Quantos proponentes ao todo — a tela decide se mostra "e mais N". */
-  proponentes: number;
+  /** De onde ele veio ("IMOBILIÁRIA · Corretor"), gravado na reserva no momento do bip. */
+  origem: null | string;
 };
 
 type LinhaDeReserva = {
   codigo: string;
-  proponentes: null | { nome?: null | string }[];
+  proponentes: null | { nome?: null | string; origem?: null | string }[];
 };
 
 /**
@@ -63,10 +69,11 @@ export async function reservasVivasPorCodigo(
       if (!codigo) continue;
       const lista = Array.isArray(linha.proponentes) ? linha.proponentes : [];
       // O titular é sempre o primeiro — mesma ordem que o cupom imprime.
-      const titular = String(lista[0]?.nome ?? "").trim();
+      const titular = lista[0];
       porCodigo.set(codigo, {
-        cliente: titular || null,
-        proponentes: lista.length,
+        cliente: String(titular?.nome ?? "").trim() || null,
+        // Reservas feitas antes de 28/08 não têm origem gravada; a linha simplesmente não sai.
+        origem: String(titular?.origem ?? "").trim() || null,
       });
     }
 

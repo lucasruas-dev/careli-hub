@@ -712,11 +712,12 @@ function mapUnitRow(
           client: reservaDoSalao.cliente
             ? { code: null, entityId: null, name: reservaDoSalao.cliente }
             : null,
-          imobiliaria: null,
-          stage:
-            reservaDoSalao.proponentes > 1
-              ? `Reserva do lançamento · ${reservaDoSalao.proponentes} proponentes`
-              : "Reserva do lançamento",
+          // A origem ocupa a linha da imobiliária — é ela, com o corretor junto, no mesmo
+          // formato do cupom. Sem entityId: é texto gravado na reserva, não uma entidade.
+          imobiliaria: reservaDoSalao.origem
+            ? { code: null, entityId: null, name: reservaDoSalao.origem }
+            : null,
+          stage: "Reserva do lançamento",
         }
       : client || imobiliaria
         ? { client, imobiliaria, stage: cleanText(row.stage) }

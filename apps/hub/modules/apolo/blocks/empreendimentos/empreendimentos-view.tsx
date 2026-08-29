@@ -1869,6 +1869,11 @@ function PartyLink({
   party: ApoloUnitParty;
   strong?: boolean;
 }) {
+  // ⚠️ SEM CÓDIGO NA FRENTE DO NOME (Lucas, 28/08: "se quiser tirar o CLI pode" / "e o IMO").
+  // Os códigos do C2X (CLI4168, IMO58) só existem para quem veio do legado — a reserva feita no
+  // tótem não tem nenhum. Enquanto uns tinham e outros não, duas linhas vizinhas da mesma tela
+  // pareciam de sistemas diferentes.
+  //
   // ⚠️ SEM entityId NÃO VIRA BOTÃO. Quem reservou no tótem do lançamento não tem ficha do
   // Apolo garantida; um botão que abre CRM vazio é pior que o nome sem link, porque promete
   // uma navegação que não existe.
@@ -1879,7 +1884,6 @@ function PartyLink({
           strong ? "font-bold text-ink" : "text-ink-muted"
         }`}
       >
-        {party.code ? `${party.code} · ` : ""}
         {toTitleCase(party.name)}
       </span>
     );
@@ -1898,7 +1902,6 @@ function PartyLink({
       {/* O peso vai num span: o reset global `button { font: inherit }` (não-camada)
           anula font-bold aplicado direto no <button>. */}
       <span className={strong ? "font-bold" : undefined}>
-        {party.code ? `${party.code} · ` : ""}
         {toTitleCase(party.name)}
       </span>
     </button>
