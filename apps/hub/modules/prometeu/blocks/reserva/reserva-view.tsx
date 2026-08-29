@@ -11,6 +11,7 @@ import {
   Minus,
   Plus,
   QrCode,
+  Search,
   User,
   UserPlus,
   UserRound,
@@ -31,6 +32,8 @@ import type { PrometeuEvento } from "@/lib/prometeu/types";
 
 import {
   buscarClienteDaReserva,
+  buscarClientesPorTermo,
+  criarCredenciadoNoBalcao,
   criarReservaTouchRemoto,
   fetchEventos,
   fetchReservaTouch,
@@ -123,6 +126,12 @@ export function ReservaView() {
   const [proponentes, setProponentes] = useState<Proponente[]>([]);
   // true = o próximo bip ADICIONA um proponente em vez de começar reserva nova.
   const [bipandoProponente, setBipandoProponente] = useState(false);
+  // BUSCA MANUAL — o caminho sem leitor (Lucas, 29/08: *"o ideal é digitar o nome do cliente ae
+  // me deixa reservar"*). Vive ao lado do bip, nunca no lugar dele: o leitor continua ligado, e
+  // quem tem etiqueta na mão segue bipando.
+  const [busca, setBusca] = useState("");
+  const [buscando, setBuscando] = useState(false);
+  const [achados, setAchados] = useState<null | Cliente[]>(null);
   const [quadraAtiva, setQuadraAtiva] = useState<null | string>(null);
   const [marcadas, setMarcadas] = useState<Map<string, ReservaTouchUnidade>>(
     new Map(),
@@ -296,6 +305,55 @@ export function ReservaView() {
     },
     [bipando, bipandoProponente, cliente, evento?.id],
   );
+
+  // BUSCAR pelo nome digitado. Não escolhe por você: devolve a lista e o operador toca no certo.
+  const buscarPorNome = useCallback(async () => {
+    const termo = busca.trim();
+    if (termo.length < 3) {
+      setErro("Digite ao menos 3 letras do nome ou o CPF.");
+      return;
+    }
+    setBuscando(true);
+    setErro(null);
+    const r = await buscarClientesPorTermo(termo, evento?.id);
+    setBuscando(false);
+    if (r.error) {
+      setErro(r.error);
+      return;
+    }
+    setAchados(r.data?.credenciados ?? []);
+  }, [busca, evento?.id]);
+
+  // Escolher da lista = o mesmo efeito do bip: vira o cliente em atendimento, titular a 100%.
+  const escolherCliente = useCallback((c: Cliente) => {
+    setCliente(c);
+    setProponentes([
+      { credenciadoId: c.id, documento: c.documento, nome: c.nome, percentual: 100 },
+    ]);
+    setAchados(null);
+    setBusca("");
+    setBipandoProponente(false);
+    setQuadraAtiva(null);
+    setMarcadas(new Map());
+  }, []);
+
+  // CADASTRO NO BALCÃO: cliente sem ficha entra com o nome digitado e já pode reservar.
+  const cadastrarEReservar = useCallback(async () => {
+    const nome = busca.trim();
+    if (nome.length < 3) {
+      setErro("Digite o nome do cliente.");
+      return;
+    }
+    setBuscando(true);
+    setErro(null);
+    const r = await criarCredenciadoNoBalcao(nome, evento?.id);
+    setBuscando(false);
+    if (r.error || !r.data) {
+      setErro(r.error ?? "Não foi possível cadastrar.");
+      return;
+    }
+    escolherCliente(r.data.credenciado);
+  }, [busca, escolherCliente, evento?.id]);
 
   // A REDE DO QUIOSQUE, e só ela: recuperar a tela cheia exige ATIVAÇÃO TRANSITÓRIA (gesto do
   // usuário), então mora nos dois lugares que são gesto de verdade — o keydown do leitor USB e o
@@ -732,6 +790,92 @@ export function ReservaView() {
               <p className={`font-semibold text-ink ${visual.textoDeEspera}`}>
                 Aguardando cliente
               </p>
+
+              {/* ⚠️ O CAMINHO SEM LEITOR, ao lado do bip e nunca no lugar dele (Lucas, 29/08:
+                  *"não estamos com etiqueta funcionando, vou precisar fazer manual"* e *"o ideal
+                  é digitar o nome do cliente ae me deixa reservar"*). O leitor continua ligado:
+                  quem tem etiqueta na mão bipa, quem não tem é achado pelo nome — e quem não tem
+                  ficha entra pelo cadastro de balcão, porque no salão o cliente chega antes do
+                  cadastro (*"provavelmente o cliente não terá cadastro"*). */}
+              <div className="flex w-full flex-col gap-2">
+                <div className="flex w-full items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
+                      size={18}
+                    />
+                    <input
+                      className="w-full rounded-xl border border-line bg-canvas py-3 pl-10 pr-3 text-lg text-ink"
+                      onChange={(e) => setBusca(e.target.value)}
+                      onKeyDown={(e) => {
+                        // ⚠️ O leitor é um teclado: o Enter dele dispararia esta busca com o
+                        // uuid digitado. `usarLeitorWedge` só aceita rajada FORA de campo, então
+                        // digitação aqui é humana — mas o Enter precisa parar aqui mesmo assim.
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void buscarPorNome();
+                        }
+                      }}
+                      placeholder="Nome do cliente ou CPF"
+                      value={busca}
+                    />
+                  </div>
+                  <button
+                    className="h-12 shrink-0 rounded-xl bg-[#2C2C2A] px-5 text-base font-bold text-[#F1EFE8] transition hover:opacity-90 disabled:opacity-40"
+                    disabled={buscando || busca.trim().length < 3}
+                    onClick={() => void buscarPorNome()}
+                    type="button"
+                  >
+                    {buscando ? "..." : "Buscar"}
+                  </button>
+                </div>
+
+                {achados ? (
+                  achados.length > 0 ? (
+                    <ul className="max-h-64 w-full overflow-y-auto rounded-xl border border-line">
+                      {achados.map((c) => (
+                        <li key={c.id}>
+                          <button
+                            className="flex w-full items-center justify-between gap-3 border-b border-line px-4 py-3 text-left transition hover:bg-black/[0.04] dark:hover:bg-white/5"
+                            onClick={() => escolherCliente(c)}
+                            type="button"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-lg font-bold uppercase text-ink">
+                                {c.nome}
+                              </span>
+                              {c.imobiliaria ? (
+                                <span className="block truncate text-sm text-ink-muted">
+                                  {c.imobiliaria}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="shrink-0 text-sm font-semibold text-ink-soft">
+                              Reservar
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="flex w-full flex-wrap items-center gap-3 rounded-xl border border-dashed border-line px-4 py-3">
+                      <p className="flex-1 text-sm text-ink-muted">
+                        Ninguém encontrado com <b>{busca.trim()}</b>.
+                      </p>
+                      <button
+                        className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#2C2C2A] px-4 text-sm font-bold text-[#F1EFE8] transition hover:opacity-90 disabled:opacity-40"
+                        disabled={buscando}
+                        onClick={() => void cadastrarEReservar()}
+                        type="button"
+                      >
+                        <UserPlus aria-hidden="true" size={16} />
+                        Cadastrar e reservar
+                      </button>
+                    </div>
+                  )
+                ) : null}
+              </div>
             </footer>
           ) : (
             // O CLIENTE EM DESTAQUE (Lucas, 28/08): nome grande, legível a um metro, com a

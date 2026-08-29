@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-reserva-sem-bip",
+    deployedAt: "2026-08-29T09:40:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "RESERVA SEM ETIQUETA: da para digitar o nome (ou o CPF) do cliente, escolher na lista e reservar - o leitor continua ligado para quem tiver a etiqueta na mao.",
+              "CLIENTE SEM CADASTRO entra pelo balcao: se a busca nao achar ninguem, um toque em 'Cadastrar e reservar' cria a ficha com o nome digitado e ja segue para os lotes.",
+            ],
+            screen: "Posição de reserva",
+          },
+        ],
+      },
+    ],
+    rollback: "52dd0d2b",
+    technical: {
+      done: "Pedido do Lucas no dia do evento (29/08): 'nao estamos com etiqueta funcionando, vou precisar fazer manual', 'o ideal e digitar o nome do cliente ae me deixa reservar' e 'provavelmente o cliente nao tera cadastro, entao vamos fazer um registro simples'. GET /api/prometeu/reserva-touch?busca= procura por nome (ilike) ou CPF (com e sem pontuacao) DENTRO do evento e devolve LISTA - nunca o primeiro que casar, porque no salao ha homonimos e familias inteiras credenciadas, e reservar no cliente errado so aparece na hora de assinar. Os nomes saem da identidade canonica do Apolo, iguais aos do bip. POST com acao 'criar-credenciado' reusa adicionarCredenciado com origem 'balcao' e origem_ref unico (sem ele, dois cadastros de balcao no mesmo evento colidiriam no indice unico) - o pos-evento acha por essa origem quem ainda precisa de CAD. Na tela, escolher da lista tem o MESMO efeito do bip (titular a 100%, lotes limpos); o Enter do campo e barrado para nao disparar busca com leitura do wedge. Typecheck limpo, 285 testes do Prometeu verdes.",
+      motivation:
+        "As etiquetas do JDG nao estavam saindo e o evento e hoje: sem este caminho, nao havia como reservar lote.",
+    },
+    title: "Reservar sem bipar: busca pelo nome e cadastro no balcão",
+    type: "novidade",
+    version: "1.235.0",
+  },
+  {
     buildTag: "2026-08-29-masterplan-jdg-v3",
     deployedAt: "2026-08-29T09:05:00-03:00",
     modules: [

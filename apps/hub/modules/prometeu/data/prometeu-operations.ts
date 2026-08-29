@@ -731,6 +731,41 @@ export async function fetchReservaTouch(eventoId?: string) {
 }
 
 // O bip da etiqueta: uuid lido do QR → nome/etapa para a conferência antes de reservar.
+/**
+ * Busca manual do cliente na posição de reserva — o mesmo cliente do bip, achado pelo nome ou
+ * pelo CPF. Devolve LISTA: no salão há homônimos, e quem escolhe é o operador.
+ */
+export async function buscarClientesPorTermo(termo: string, eventoId?: string) {
+  const extra = eventoId ? `&eventoId=${encodeURIComponent(eventoId)}` : "";
+  return chamar<{
+    credenciados: {
+      corretor: null | string;
+      documento: null | string;
+      etapa: string;
+      id: string;
+      imobiliaria: null | string;
+      nome: string;
+    }[];
+  }>(`/api/prometeu/reserva-touch?busca=${encodeURIComponent(termo)}${extra}`);
+}
+
+/** Cadastro simples no balcão: nome (mínimo) e já devolve o cliente pronto para reservar. */
+export async function criarCredenciadoNoBalcao(nome: string, eventoId?: string) {
+  return chamar<{
+    credenciado: {
+      corretor: null | string;
+      documento: null | string;
+      etapa: string;
+      id: string;
+      imobiliaria: null | string;
+      nome: string;
+    };
+  }>("/api/prometeu/reserva-touch", {
+    body: JSON.stringify({ acao: "criar-credenciado", eventoId, nome }),
+    method: "POST",
+  });
+}
+
 export async function buscarClienteDaReserva(
   credenciadoId: string,
   eventoId?: string,

@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 import {
+  adicionarCredenciado,
   createPrometeuClient,
   eventoOperavelId,
   getEvento,
@@ -115,6 +116,64 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // ⚠️ BUSCA MANUAL — o mesmo cliente, sem o leitor (Lucas, 29/08/2026: *"não estamos com
+  // etiqueta funcionando, vou precisar fazer manual, consegue liberar para eu reservar a
+  // unidade direto sem o bip?"*).
+  //
+  // Devolve uma LISTA para o operador escolher com o dedo, e não o primeiro que casar: no salão
+  // existem homônimos e famílias inteiras credenciadas, e reservar no cliente errado é o tipo de
+  // engano que só aparece na hora de assinar. Busca por nome OU por CPF (com ou sem pontuação).
+  const termo = (params.get("busca") ?? "").trim();
+  if (termo) {
+    if (termo.length < 3) {
+      return NextResponse.json(
+        { error: "Digite ao menos 3 letras do nome ou o CPF." },
+        { status: 400 },
+      );
+    }
+    const digitos = termo.replace(/\D/g, "");
+    // O documento é gravado com pontuação; comparar só os dígitos exigiria varrer tudo, então a
+    // busca por CPF usa `like` no formato gravado e nos dígitos crus.
+    const filtro = [
+      `nome.ilike.%${termo}%`,
+      ...(digitos.length >= 3 ? [`documento.ilike.%${digitos}%`, `documento.ilike.%${termo}%`] : []),
+    ].join(",");
+    const { data: achados } = await client
+      .from("prometeu_credenciados")
+      .select("id, nome, documento, etapa, evento_id, entity_id, imobiliaria, corretor")
+      .eq("evento_id", eventoId)
+      .or(filtro)
+      .order("nome")
+      .limit(25);
+
+    const lista = await Promise.all(
+      ((achados ?? []) as {
+        corretor: null | string;
+        documento: null | string;
+        entity_id: null | string;
+        etapa: string;
+        evento_id: string;
+        id: string;
+        imobiliaria: null | string;
+        nome: string;
+      }[]).map(async (c) => {
+        const identidade = await identidadeCanonicaDoCredenciado(client, c);
+        return {
+          corretor: identidade.corretor,
+          documento: c.documento,
+          etapa: c.etapa,
+          id: c.id,
+          imobiliaria: identidade.imobiliaria,
+          nome: identidade.nome,
+        };
+      }),
+    );
+    return NextResponse.json(
+      { data: { credenciados: lista } },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
   const [{ error, quadras }, contadores] = await Promise.all([
     quadrasDoEvento(client, evento),
     contadoresDoEvento(client, eventoId),
@@ -153,7 +212,58 @@ export async function POST(request: NextRequest) {
 
   const corpo = (await request
     .json()
-    .catch(() => null)) as CorpoDeReserva | null;
+    .catch(() => null)) as (CorpoDeReserva & {
+    acao?: string;
+    corretor?: string;
+    documento?: string;
+    imobiliaria?: string;
+    nome?: string;
+  }) | null;
+
+  // ⚠️ REGISTRO SIMPLES NO BALCÃO (Lucas, 29/08/2026: *"provavelmente o cliente não terá
+  // cadastro, então vamos fazer um registro simples"*). Cria o credenciado com o mínimo — nome
+  // e, quando houver, CPF/imobiliária/corretor — e devolve o id para a tela reservar em
+  // seguida. `origem: "balcao"` marca quem entrou por aqui, para o pós-evento saber quais
+  // fichas ainda precisam de CAD no Apolo.
+  if (corpo?.acao === "criar-credenciado") {
+    let ev = String(corpo?.eventoId ?? "").trim();
+    if (!ev) ev = (await eventoOperavelId(client)) ?? "";
+    const nome = String(corpo?.nome ?? "").trim();
+    if (!ev) {
+      return NextResponse.json({ error: "Nenhum evento em andamento." }, { status: 404 });
+    }
+    if (nome.length < 3) {
+      return NextResponse.json({ error: "Informe o nome do cliente." }, { status: 400 });
+    }
+    const { credenciadoId: novoId, error: erroCriar } = await adicionarCredenciado({
+      client,
+      corretor: String(corpo?.corretor ?? "").trim() || null,
+      documento: String(corpo?.documento ?? "").trim() || null,
+      eventoId: ev,
+      imobiliaria: String(corpo?.imobiliaria ?? "").trim() || null,
+      nome,
+      origem: "balcao",
+      // `origem_ref` único por registro: sem ele, dois cadastros de balcão no mesmo evento
+      // colidiriam no índice (evento, origem, origem_ref).
+      origemRef: `balcao-${Date.now()}`,
+    });
+    if (erroCriar || !novoId) {
+      return NextResponse.json({ error: erroCriar ?? "Não foi possível cadastrar." }, { status: 400 });
+    }
+    return NextResponse.json({
+      data: {
+        credenciado: {
+          corretor: String(corpo?.corretor ?? "").trim() || null,
+          documento: String(corpo?.documento ?? "").trim() || null,
+          etapa: "credenciado",
+          id: novoId,
+          imobiliaria: String(corpo?.imobiliaria ?? "").trim() || null,
+          nome,
+        },
+      },
+    });
+  }
+
   const credenciadoId = String(corpo?.credenciadoId ?? "").trim();
   let eventoId = String(corpo?.eventoId ?? "").trim();
   if (!eventoId) eventoId = (await eventoOperavelId(client)) ?? "";
