@@ -38,6 +38,7 @@ import {
   type PrometeuEmpreendimento,
 } from "../../data/prometeu-operations";
 import { EquipeConteudo } from "./equipe-conteudo";
+import { PaEditor, paTextosDoConfig, type PaTextosDoForm } from "./pa-editor";
 import { MaestroConteudo } from "./maestro-conteudo";
 
 // Setup do Prometeu: onde o lançamento é configurado e ATIVADO.
@@ -113,6 +114,9 @@ export function SetupView() {
   const [avisoTemplateChamado, setAvisoTemplateChamado] = useState<string | null>(null);
   const [checkinHabilitado, setCheckinHabilitado] = useState(true);
   const [metas, setMetas] = useState(METAS_PADRAO);
+  // Textos da Proposta de Aquisicao (Lucas, 29/08: "temos que criar a area para editar a PA").
+  const [paIncorporadora, setPaIncorporadora] = useState("");
+  const [paTextos, setPaTextos] = useState<PaTextosDoForm>(() => paTextosDoConfig({}));
 
   const evento = useMemo(
     () => eventos.find((e) => e.id === eventoId) ?? null,
@@ -151,6 +155,8 @@ export function SetupView() {
     // Ausente = ligado (default histórico: prioridade pela ordem do PIX).
     setCheckinHabilitado(alvo.config.checkinHabilitado ?? true);
     setMetas({ ...METAS_PADRAO, ...(alvo.config.metas ?? {}) });
+    setPaIncorporadora(alvo.config.paIncorporadora ?? "");
+    setPaTextos(paTextosDoConfig(alvo.config));
   }, []);
 
   const carregar = useCallback(async () => {
@@ -216,6 +222,10 @@ export function SetupView() {
         avisarChamadoPorWhatsapp: avisarChamado,
         mesasSecretaria: mesas,
         metas,
+        // Os textos da PA viajam completos: o formulario ja mostra o texto efetivo (gravado ou
+        // padrao), entao o que esta na tela e exatamente o que a folha vai imprimir.
+        paIncorporadora: paIncorporadora.trim() || undefined,
+        paTextos,
         senhaPorWhatsapp: whatsapp,
       },
       dataEvento: dataEvento || null,
@@ -247,6 +257,8 @@ export function SetupView() {
     mesas,
     metas,
     nome,
+    paIncorporadora,
+    paTextos,
     whatsapp,
   ]);
 
@@ -810,6 +822,13 @@ export function SetupView() {
         </Card>
 
         <CheckinCard habilitado={checkinHabilitado} onChange={setCheckinHabilitado} />
+
+        <PaEditor
+          aoMudar={setPaTextos}
+          aoMudarIncorporadora={setPaIncorporadora}
+          incorporadora={paIncorporadora}
+          valor={paTextos}
+        />
 
         <Card
           hint="Referência dos indicadores · colorem gargalos na Central e no tablet do atendente"

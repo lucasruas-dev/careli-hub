@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-pa-textos-editaveis",
+    deployedAt: "2026-08-29T08:10:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "AREA PARA EDITAR A PA no Setup do lancamento: a Empreendedora que assina, a clausula do sinal, a do plano personalizado e as declaracoes juridicas (adicionar, remover, restaurar o padrao).",
+              "Negrito com *asterisco*, como no WhatsApp; sub-itens comecando a linha com a), b)... viram a lista alfabetica da folha.",
+              "Quem nao editar nada continua imprimindo a folha de sempre - os padroes sao exatamente o texto que estava fixo.",
+            ],
+            screen: "Setup do lancamento",
+          },
+        ],
+      },
+    ],
+    rollback: "7c301066",
+    technical: {
+      done: "Pedido do Lucas (29/08): 'temos que criar a area para editar a PA'. Os textos moram em prometeu_eventos.config.paTextos - por evento, SEM migration. Lib pura lib/prometeu/pa-textos.ts: padroes (o texto que estava fixo em imprimir-pa.ts), resolucao campo a campo (editar so a clausula do sinal nao apaga as declaracoes), *negrito* estilo WhatsApp e sub-itens por linha a)/b) - com escape de HTML ANTES do negrito (campo livre nao injeta tag na folha). ⚠️ atualizarEvento passou a MESCLAR o config em vez de substituir: o Setup manda so os campos que conhece, e um salvamento comum apagaria chaves novas do jsonb - a mesma armadilha do metadata do Apolo. A rota do cupom devolve os textos resolvidos e a folha os consome; DadosDaPa.textos e opcional e ausente = padrao. Prova fim-a-fim renderizada: folha padrao intacta (264,7mm, uma pagina) e folha editada com negrito e sub-lista. 10 testes novos na lib; 296 testes do hub verdes; typecheck limpo.",
+      motivation:
+        "Ao aprovar o desenho da folha o Lucas ja tinha avisado: 'alguns textos vao vir de alguns preenchimentos de tela nosso, outros podemos editar manualmente'.",
+    },
+    title: "Textos da Proposta de Aquisição editáveis no Setup",
+    type: "novidade",
+    version: "1.233.0",
+  },
+  {
     buildTag: "2026-08-29-masterplan-jdg-v2",
     deployedAt: "2026-08-29T07:30:00-03:00",
     modules: [

@@ -9,6 +9,12 @@
 // quiosque a folha sai direto na A4 padrão, sem diálogo.
 
 import {
+  declaracaoParaHtml,
+  formatarLinhaDaPa,
+  resolverTextosDaPa,
+  type TextosDaPa,
+} from "@/lib/prometeu/pa-textos";
+import {
   calcularParcela,
   fraseDeCorrecao,
   nomeDoIndice,
@@ -61,6 +67,14 @@ export type DadosDaPa = {
    * padrão da casa quando não há o que ler — avisando na TELA do posto, nunca no papel.
    */
   planos: PlanoComercial[];
+  /**
+   * OS TEXTOS EDITÁVEIS DA FOLHA (cláusulas e declarações), já resolvidos com os padrões.
+   *
+   * ⚠️ Editados no Setup do lançamento (Lucas, 29/08: "temos que criar a area para editar a
+   * PA") e gravados no config do evento. Ausente = os padrões de sempre — reserva antiga e
+   * chamada antiga continuam imprimindo igual.
+   */
+  textos?: TextosDaPa;
   // Até 5 (limite do C2X); o 1º é o titular. A % de posse sai ao lado de cada um.
   proponentes: ProponenteDaPa[];
   qrDataUrl: string;
@@ -394,7 +408,7 @@ function escalaDoTextoTecnico(
  * mudar para o papel dizer uma coisa na tabela e outra na cláusula, sem erro visível. Agora os
  * dois saem da mesma fonte e não têm como divergir.
  */
-function textoDasRegras(planos: PlanoComercial[]): string {
+function textoDasRegras(planos: PlanoComercial[], textos: TextosDaPa): string {
   // ⚠️ O RÓTULO VEM DO SLOT (INVESTIDOR/CURTO/NORMAL), nunca do nome cadastrado no C2X — ver a
   // nota em `rotuloDoPlano`. Foi isso que matou o "PLANO PLANO-NORMAL" da primeira prévia: o
   // texto prefixa "PLANO" porque o documento oficial escreve assim, e metade dos nomes de lá
@@ -437,9 +451,9 @@ function textoDasRegras(planos: PlanoComercial[]): string {
 
   const letra = (i: number) => `<b>${String.fromCharCode(65 + i)})</b>`;
   const partes = [
-    `${letra(0)} Independentemente da modalidade do Plano escolhido, o valor do sinal deverá ser pago em até dois dias úteis, contados da assinatura da presente Proposta.`,
+    `${letra(0)} ${formatarLinhaDaPa(textos.clausulaSinal)}`,
     ...alineas.map((a, i) => `${letra(i + 1)} ${a}`),
-    `${letra(alineas.length + 1)} <b>PLANO PERSONALIZADO:</b> sujeito à aprovação da Empreendedora.`,
+    `${letra(alineas.length + 1)} <b>PLANO PERSONALIZADO:</b> ${formatarLinhaDaPa(textos.clausulaPersonalizado)}`,
   ];
   return partes.join(" ");
 }
@@ -463,6 +477,7 @@ function linhaDoPlano(entrada: {
 
 export function folhaHTML(dados: DadosDaPa, unidade: UnidadeDaPa): string {
   const planosDaFolha = ordenarParaAFolha(dados.planos);
+  const textos = dados.textos ?? resolverTextosDaPa(undefined);
   const vendedora = esc(dados.incorporadora ?? "a Empreendedora");
 
   // ⚠️ ATÉ CINCO PROPONENTES, e todos precisam sair com nome, CPF e posse — é o que dá validade
@@ -537,25 +552,11 @@ export function folhaHTML(dados: DadosDaPa, unidade: UnidadeDaPa): string {
       </div>
     </div>
 
-    <p class="regras">${textoDasRegras(planosDaFolha)}</p>
+    <p class="regras">${textoDasRegras(planosDaFolha, textos)}</p>
 
     <div class="sec">Declarações do proponente sobre a proposta</div>
     <ol class="decl">
-      <li>Estou ciente que a presente Proposta será encaminhada a Empreendedora, sujeita à análise, que será realizada em até <b>05 (cinco) dias úteis</b>. Estou (Estamos) ciente(s) de que a Empreendedora pode recursar a presente Proposta, independentemente de justificativa.</li>
-      <li>Concordo (Concordamos) que, se aprovada a Proposta, o valor do sinal pago, após decotado os honorários da Empresa Imobiliária (“Honorários de Intermediação”), conforme especificado a seguir, será apresentado à Instituição Bancária, para compensação imediata no preço da unidade, equivalendo-se ao pagamento. A quitação constará no contrato de promessa de compra e venda ou compra e venda com alienação fiduciária, conforme aplicável.</li>
-      <li>Declaro (Declaramos) estar ciente(s) de que o contrato de promessa de compra e venda ou compra e venda com alienação fiduciária, conforme aplicável, será confeccionado em até <b>07 (sete) dias úteis</b>, se aprovada esta Proposta. Este prazo se inicia somente após a entrega da documentação completa, pelo Proponente, à Empresa Imobiliária, no prazo que lhe for solicitado.</li>
-      <li>Declaro (Declaramos) estar ciente(s) de que assinarei (assinaremos) o contrato e seus anexos digitalmente em até <b>7 (sete) dias úteis</b>, após notificação pela Empresa Imobiliária que intermediou a negociação.</li>
-      <li>Estou (Estamos) ciente(s) de que o não pagamento do valor do sinal no prazo estabelecido neste documento, a não assinatura do contrato de promessa de compra e venda ou compra e venda com alienação fiduciária ou entrega da documentação, na data indicada, tornará sem validade e eficácia a presente Proposta, desobrigando a Empreendedora de qualquer compromisso decorrente deste documento. Nessa hipótese, o valor pago a título de sinal será devolvido ao Proponente em até <b>10 (dez) dias úteis</b>, contados do término do prazo para o pagamento do sinal ou do escoamento do prazo para assinatura do contrato de promessa de compra e venda ou compra e venda com alienação fiduciária, conforme aplicável, sem direito a qualquer tipo de indenização, reparação ou perdas ou danos. O cancelamento da Proposta será informado por meios digitais. O documento da Proposta será desconsiderado e não terá mais nenhum efeito.</li>
-      <li>Declaro (Declaramos) que contratei (Contratamos) os serviços profissionais da(s) Empresa Imobiliária(s) mencionada(s) no quadro resumo acima, para realizar, em meu (nosso) nome, a intermediação, assim como os atos necessários para a formalização desta Proposta, estando ciente que:
-        <ol type="a">
-          <li>Se a proposta for aprovada e aceita pela Empreendedora, será decotado do sinal pago pelo Proponente, sinal relativo aos Honorários de Intermediação a serem pagos à Empresa Imobiliária, os quais totalizam o percentual de <b>8% (oito por cento)</b> sobre o valor total de aquisição da unidade. O pagamento do saldo remanescente dos Honorários de Intermediação, deverá ser pagos via boleto bancário identificado como “ASAAS”. O pagamento do valor será realizado na mesma data de assinatura do contrato de promessa de compra e venda ou compra e venda com alienação fiduciária, conforme aplicável;</li>
-          <li>Em caso de recusa ou não aceitação da proposta, a(s) Empresa Imobiliária(s) devolverá (devolverão) integralmente o sinal referente aos Honorários de Intermediação, sem quaisquer despesas adicionais, indenização, reparação ou perdas ou danos;</li>
-          <li>As demais condições sobre a prestação de serviços estão detalhadas no Contrato de Corretagem, que será formalizado com a(s) Empresa Imobiliária(s) na mesma data de assinatura do contrato de promessa de compra e venda ou compra e venda com alienação fiduciária, conforme aplicável;</li>
-        </ol>
-      </li>
-      <li>Declaro estar ciente de que em caso de intenção de troca de Proponentes, é facultado a Empreendedora proceder com nova análise de crédito, no prazo de <b>05 (cinco) dias</b>, que poderá ser recusada independentemente de justificativa. Se recusada, o sinal pago pelo Proponente original será devolvido em até <b>10 (dez) dias úteis</b>, contados da recusa da cessão da Proposta, pela Empreendedora. Se aceita, será cobrado do novo Proponente o percentual de <b>1% (um por cento)</b> sobre o valor total de aquisição da unidade;</li>
-      <li>Concordo que em caso de troca de proponentes, plano de pagamento ou unidade distinta da descrita no quadro resumo, não é garantida a reserva ou disponibilidade da unidade.</li>
-      <li>O prazo para desistência da presente proposta é de até <b>07 (sete) dias</b>, contados de sua assinatura. O sinal pago pelo Proponente será devolvido em até <b>10 (dez) dias úteis</b>, contados da formalização da desistência.</li>
+      ${textos.declaracoes.map((d) => `<li>${declaracaoParaHtml(d)}</li>`).join("")}
     </ol>
 
     <div class="assin">

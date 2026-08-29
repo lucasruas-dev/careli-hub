@@ -117,6 +117,15 @@ export type PrometeuEventoConfig = {
     tempoTotalEvento?: number;
   };
   senhaPorWhatsapp?: boolean;
+  // Quem assina a PA como Empreendedora (ja era lido pela rota do cupom; agora o Setup edita).
+  paIncorporadora?: string;
+  // Textos editaveis da Proposta de Aquisicao (clausulas e declaracoes). Parcial: o que nao
+  // for editado sai dos padroes de lib/prometeu/pa-textos.ts. Ver a nota la sobre *negrito*.
+  paTextos?: {
+    clausulaPersonalizado?: string;
+    clausulaSinal?: string;
+    declaracoes?: string[];
+  };
   // Reforço do alerta da tela: manda um WhatsApp ("É a sua vez") na hora do chamado. Ausente =
   // ligado. Ver [[project_prometeu_tela_cliente]].
   avisarChamadoPorWhatsapp?: boolean;

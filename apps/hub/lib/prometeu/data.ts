@@ -278,7 +278,11 @@ export async function atualizarEvento(input: {
     const faseAtual = configAntes.checkinFase ?? 1;
     const ligadoAntes = configAntes.checkinHabilitado ?? true;
     const ligadoDepois = input.config.checkinHabilitado ?? true;
+    // ⚠️ MESCLA com o config gravado, nunca substitui. O Setup manda so os campos que conhece;
+    // um config com chaves novas (paTextos, por exemplo) seria APAGADO por um salvamento comum
+    // do Setup se o update trocasse o jsonb inteiro — a mesma armadilha do metadata do Apolo.
     patch.config = {
+      ...configAntes,
       ...input.config,
       checkinFase: ligadoAntes === ligadoDepois ? faseAtual : faseAtual + 1,
     };

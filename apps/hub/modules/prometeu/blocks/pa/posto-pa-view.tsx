@@ -8,6 +8,7 @@ import {
   type PlanoComercial,
   PLANOS_PADRAO_DA_CASA,
 } from "@/lib/apolo/planos-comerciais";
+import type { TextosDaPa } from "@/lib/prometeu/pa-textos";
 import {
   codigoDoCupom,
   conteudoDoQrDoCupom,
@@ -49,6 +50,8 @@ type CupomCarregado = {
   planos?: PlanoComercial[];
   /** Preenchido = a folha saiu com os planos padrão da casa, e o operador precisa saber. */
   planosAviso?: null | string;
+  /** Textos editáveis da folha (Setup do lançamento), já resolvidos pela rota. */
+  textos?: TextosDaPa;
   reservas: CupomReservaLinha[];
 };
 
@@ -124,6 +127,7 @@ export function PostoPaView() {
       // Sem planos na resposta (rota antiga em cache, resposta truncada) a folha ainda precisa
       // sair: cai nos padrão da casa, e o aviso logo abaixo diz que foi isso que aconteceu.
       planos: cupom.planos?.length ? cupom.planos : PLANOS_PADRAO_DA_CASA,
+      textos: cupom.textos,
       // A marca no topo da folha. URL absoluta: dentro do iframe about:blank o caminho
       // relativo não resolve — mesma lição do cupom e da etiqueta.
       logoSrc: new URL(

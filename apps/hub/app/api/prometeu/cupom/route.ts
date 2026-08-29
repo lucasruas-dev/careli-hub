@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
+import { resolverTextosDaPa } from "@/lib/prometeu/pa-textos";
 import {
   ordenarParaAFolha,
   type PlanoComercial,
@@ -182,6 +183,10 @@ export async function GET(request: NextRequest) {
             }
           : null,
         planos: dosPlanos.planos,
+        // Os textos editaveis da folha, ja resolvidos com os padroes (Setup > padrao da casa).
+        textos: resolverTextosDaPa(
+          (evento?.config as Record<string, unknown> | null)?.paTextos,
+        ),
         planosAviso: dosPlanos.planosAviso,
         planosSaoPadrao: dosPlanos.planosSaoPadrao,
         reservas: vivas,
