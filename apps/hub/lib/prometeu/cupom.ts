@@ -34,6 +34,13 @@ export function ehIdDeCupom(lido: string): boolean {
 export type ProponenteDaReserva = {
   credenciadoId: string;
   documento: null | string;
+  // A ENTIDADE DO APOLO da pessoa — é ela que abre a ficha no CRM.
+  //
+  // ⚠️ Todo credenciado é cadastrado no Apolo (Lucas, 28/08: "todo cliente tem que está
+  // cadastrado do apolo, então tem que vim o link sim"), e o vínculo já existe em
+  // `prometeu_credenciados.entity_id`. Fica gravado aqui pelo mesmo motivo da origem: quem lê a
+  // reserva depois não deveria ter que voltar ao credenciado para descobrir isso.
+  entityId?: null | string;
   nome: string;
   // DE ONDE A PESSOA VEIO, como o cupom imprime: "IMOBILIÁRIA · Corretor".
   //

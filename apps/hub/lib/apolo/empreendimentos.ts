@@ -709,8 +709,15 @@ function mapUnitRow(
     // da proposta velha seria repetir o mesmo erro.
     movement: reservaDoSalao
       ? {
+          // O nome vira link para o CRM quando a reserva guardou a entidade — e ela guarda,
+          // porque todo credenciado é cadastrado no Apolo. Reservas anteriores a 28/08 não têm
+          // o campo e caem no texto simples, sem prometer navegação que não existe.
           client: reservaDoSalao.cliente
-            ? { code: null, entityId: null, name: reservaDoSalao.cliente }
+            ? {
+                code: null,
+                entityId: reservaDoSalao.entityId,
+                name: reservaDoSalao.cliente,
+              }
             : null,
           // A origem ocupa a linha da imobiliária — é ela, com o corretor junto, no mesmo
           // formato do cupom. Sem entityId: é texto gravado na reserva, não uma entidade.

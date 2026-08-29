@@ -197,12 +197,14 @@ export async function POST(request: NextRequest) {
   ];
   const { data: confirmados } = await client
     .from("prometeu_credenciados")
-    .select("id, nome, documento, evento_id")
+    .select("id, nome, documento, evento_id, entity_id")
     .in("id", idsParaConferir);
   const porId = new Map(
     (
       (confirmados ?? []) as Array<{
         documento: null | string;
+        // A entidade do Apolo da pessoa — vai gravada na reserva para o nome virar link no CRM.
+        entity_id: null | string;
         evento_id: string;
         id: string;
         nome: string;
@@ -254,6 +256,7 @@ export async function POST(request: NextRequest) {
         return {
           credenciadoId: p.credenciadoId,
           documento: conferido?.documento ?? p.documento,
+          entityId: conferido?.entity_id ?? null,
           nome: conferido?.nome ?? p.nome,
           // Só o titular carrega a origem: é dele a imobiliária que atendeu.
           origem: indice === 0 ? origemDoTitular : null,
@@ -264,6 +267,7 @@ export async function POST(request: NextRequest) {
         {
           credenciadoId,
           documento: credenciado.documento,
+          entityId: credenciado.entity_id ?? null,
           nome: credenciado.nome,
           origem: origemDoTitular,
           percentual: 100,

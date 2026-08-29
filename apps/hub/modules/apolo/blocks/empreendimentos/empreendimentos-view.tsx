@@ -1,5 +1,10 @@
 "use client";
 
+import { EVENTO_CHAMADO } from "@/lib/prometeu/fila-topic";
+import {
+  getHubSupabaseClient,
+  hasHubSupabaseConfig,
+} from "@/lib/supabase/client";
 import { AdicionarUnidades } from "@/modules/apolo/blocks/empreendimentos/adicionar-unidades";
 import { PoliticaComercialTab } from "@/modules/apolo/blocks/empreendimentos/politica-comercial-tab";
 import { useEffect, useRef, useState } from "react";
@@ -1492,11 +1497,42 @@ function UnidadesTab({
   // Muda depois de cada criação e faz o efeito reler o C2X: sem isto, a unidade nova só apareceria
   // trocando de aba e voltando, e o operador não teria como saber se deu certo.
   const [recarga, setRecarga] = useState(0);
+  // O canal do lançamento em andamento, quando há um. Vem junto das unidades.
+  const [topicoDoEvento, setTopicoDoEvento] = useState<null | string>(null);
   const [statusFilter, setStatusFilter] = useState<UnitFilter>("todos");
   const [sort, setSort] = useState<UnitSort>({
     column: "codigo",
     direction: "asc",
   });
+
+  // A TELA SE ATUALIZA SOZINHA QUANDO ALGUÉM RESERVA NO SALÃO.
+  //
+  // ⚠️ Antes não se atualizava, e o Lucas topou com isso do pior jeito: reservou no tótem com
+  // esta tela aberta ao lado e ela seguiu mostrando o lote livre — *"tive que atualizar, isso é
+  // ruim"*. Numa tela de conferência, dado velho na frente do operador engana mais que tela
+  // vazia.
+  //
+  // ⚠️ BROADCAST, E NÃO POLL: a regra de custo do Panteon vem do incidente de fatura do Hermes.
+  // Esta tela fica aberta o dia inteiro; um poll de minuto custaria uma consulta ao C2X por
+  // minuto por pessoa, o dia todo, para uma mudança que só acontece durante o evento. Sem
+  // lançamento em andamento não há tópico, e nada é assinado.
+  useEffect(() => {
+    if (!topicoDoEvento || !hasHubSupabaseConfig()) return;
+    const supabase = getHubSupabaseClient();
+    if (!supabase) return;
+
+    const canal = supabase
+      .channel(topicoDoEvento, { config: { broadcast: { self: false } } })
+      .on("broadcast", { event: EVENTO_CHAMADO }, () => {
+        // Reusa o gatilho que já existia para a criação de unidade: o efeito abaixo relê o C2X.
+        setRecarga((n) => n + 1);
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(canal);
+    };
+  }, [topicoDoEvento]);
 
   useEffect(() => {
     let active = true;
@@ -1514,7 +1550,10 @@ function UnidadesTab({
           },
         );
         const payload = (await response.json()) as {
-          data?: { units: ApoloEnterpriseUnit[] };
+          data?: {
+            realtime?: { topico: null | string };
+            units: ApoloEnterpriseUnit[];
+          };
           error?: string;
         };
 
@@ -1526,6 +1565,7 @@ function UnidadesTab({
 
         if (active) {
           setUnits(payload.data.units);
+          setTopicoDoEvento(payload.data.realtime?.topico ?? null);
         }
       } catch (loadError) {
         if (active) {

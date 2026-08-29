@@ -35,13 +35,21 @@ export type ReservaViva = {
    * da proposta de aquisição, não desta tela.
    */
   cliente: null | string;
+  /** A entidade do Apolo do titular — o que faz o nome virar link para o CRM. */
+  entityId: null | string;
   /** De onde ele veio ("IMOBILIÁRIA · Corretor"), gravado na reserva no momento do bip. */
   origem: null | string;
 };
 
 type LinhaDeReserva = {
   codigo: string;
-  proponentes: null | { nome?: null | string; origem?: null | string }[];
+  proponentes:
+    | null
+    | {
+        entityId?: null | string;
+        nome?: null | string;
+        origem?: null | string;
+      }[];
 };
 
 /**
@@ -72,6 +80,7 @@ export async function reservasVivasPorCodigo(
       const titular = lista[0];
       porCodigo.set(codigo, {
         cliente: String(titular?.nome ?? "").trim() || null,
+        entityId: String(titular?.entityId ?? "").trim() || null,
         // Reservas feitas antes de 28/08 não têm origem gravada; a linha simplesmente não sai.
         origem: String(titular?.origem ?? "").trim() || null,
       });
