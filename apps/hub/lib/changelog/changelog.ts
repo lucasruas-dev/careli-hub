@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-28-link-do-masterplan-no-setup",
+    deployedAt: "2026-08-28T22:40:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O link do MASTERPLAN do lancamento agora fica em Setup > Teloes, junto dos links das TVs: um botao copia e pronto.",
+              "⚠️ Diferente dos outros dois, este link NAO expira quando o lancamento encerra.",
+            ],
+            screen: "Setup · Teloes",
+          },
+        ],
+      },
+    ],
+    rollback: "ecaa6d6b",
+    technical: {
+      done: "Reusa a peca que ja existia em vez de criar tela nova: /api/prometeu/palco ja devolvia linksTv {salao, secretaria} e o maestro-conteudo.tsx ja tinha o copiarLink com aviso de segredo ausente — o masterplan entrou como terceira chave e terceiro botao, com o texto explicando a diferenca de validade. Nenhuma rota nova, nenhum estado novo.",
+      motivation:
+        "Lucas (28/08), sobre onde o link deveria morar: 'acho que ele pode morar no setup, na parte de teloes'.",
+    },
+    title: "Link do masterplan em Setup · Telões",
+    type: "melhoria",
+    version: "1.224.0",
+  },
+  {
     buildTag: "2026-08-28-telao-do-masterplan",
     deployedAt: "2026-08-28T22:10:00-03:00",
     modules: [

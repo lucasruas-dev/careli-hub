@@ -15,10 +15,16 @@ export function MaestroConteudo() {
   const [ytUrl, setYtUrl] = useState("");
   const [volume, setVolume] = useState(80);
   const [mudo, setMudo] = useState(false);
-  const [status, setStatus] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [status, setStatus] = useState<{ msg: string; ok: boolean } | null>(
+    null,
+  );
   const [mandando, setMandando] = useState(false);
   // Links da TV independente (token, sem login) — vêm do GET do palco, atrás do login do Setup.
-  const [linksTv, setLinksTv] = useState<{ salao?: string | null; secretaria?: string | null }>({});
+  const [linksTv, setLinksTv] = useState<{
+    masterplan?: null | string;
+    salao?: null | string;
+    secretaria?: null | string;
+  }>({});
   // O slider dispara muitos onChange: o debounce manda UM comando quando a mão para.
   const volumeTimer = useRef<number | null>(null);
 
@@ -35,12 +41,23 @@ export function MaestroConteudo() {
 
   function copiarLink(rotulo: string, link: string | null | undefined) {
     if (!link) {
-      setStatus({ msg: "Link indisponível (segredo não configurado).", ok: false });
+      setStatus({
+        msg: "Link indisponível (segredo não configurado).",
+        ok: false,
+      });
       return;
     }
     void navigator.clipboard.writeText(link).then(
-      () => setStatus({ msg: `✓ Link da TV (${rotulo}) copiado — cole no navegador da TV`, ok: true }),
-      () => setStatus({ msg: "Não consegui copiar — selecione e copie manualmente.", ok: false }),
+      () =>
+        setStatus({
+          msg: `✓ Link da TV (${rotulo}) copiado — cole no navegador da TV`,
+          ok: true,
+        }),
+      () =>
+        setStatus({
+          msg: "Não consegui copiar — selecione e copie manualmente.",
+          ok: false,
+        }),
     );
   }
 
@@ -57,7 +74,8 @@ export function MaestroConteudo() {
 
   function extrairYT(s: string): string | null {
     const m =
-      s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/) ?? s.match(/^([\w-]{11})$/);
+      s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/) ??
+      s.match(/^([\w-]{11})$/);
     return m?.[1] ?? null;
   }
 
@@ -67,7 +85,10 @@ export function MaestroConteudo() {
       setStatus({ msg: "Link do YouTube inválido.", ok: false });
       return;
     }
-    void mandar({ tocando: true, videoId: id }, "Novo vídeo em todos os telões");
+    void mandar(
+      { tocando: true, videoId: id },
+      "Novo vídeo em todos os telões",
+    );
   }
 
   function aoMudarVolume(v: number) {
@@ -130,7 +151,10 @@ export function MaestroConteudo() {
           onClick={() => {
             const novo = !mudo;
             setMudo(novo);
-            void mandar({ mudo: novo }, novo ? "Áudio cortado em todos" : "Áudio religado em todos");
+            void mandar(
+              { mudo: novo },
+              novo ? "Áudio cortado em todos" : "Áudio religado em todos",
+            );
           }}
           type="button"
         >
@@ -151,10 +175,13 @@ export function MaestroConteudo() {
             type="range"
             value={volume}
           />
-          <span className="min-w-12 text-right text-sm font-bold tabular-nums">{volume}%</span>
+          <span className="min-w-12 text-right text-sm font-bold tabular-nums">
+            {volume}%
+          </span>
         </div>
         <p className="text-xs text-ink-muted">
-          Durante um anúncio de chamada, o telão abaixa sozinho e depois volta a este volume.
+          Durante um anúncio de chamada, o telão abaixa sozinho e depois volta a
+          este volume.
         </p>
       </div>
 
@@ -163,8 +190,9 @@ export function MaestroConteudo() {
           TVs independentes (sem login)
         </label>
         <p className="text-xs text-ink-muted">
-          Cole o link no navegador da TV e pronto: o telão abre direto no canal, sem operador e
-          sem sessão para vencer. O link vale enquanto este lançamento durar.
+          Cole o link no navegador da TV e pronto: o telão abre direto no canal,
+          sem operador e sem sessão para vencer. O link vale enquanto este
+          lançamento durar.
         </p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -180,6 +208,27 @@ export function MaestroConteudo() {
             type="button"
           >
             📺 Copiar link · Telão da secretaria
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-2 border-t border-black/10 pt-4 dark:border-white/10">
+        <label className="text-xs font-bold uppercase tracking-wider text-ink-muted">
+          Masterplan do lançamento
+        </label>
+        <p className="text-xs text-ink-muted">
+          O mapa de lotes para projetar no salão: verde o lote livre, azul o
+          resto. Pinta sozinho quando alguém reserva no tótem. É só o mapa — sem
+          nome, sem valor, sem legenda. ⚠️ Este link NÃO expira, nem quando o
+          lançamento encerra.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            className={`${botao} bg-slate-700`}
+            onClick={() => copiarLink("masterplan", linksTv.masterplan)}
+            type="button"
+          >
+            🗺️ Copiar link · Masterplan do lançamento
           </button>
         </div>
       </div>

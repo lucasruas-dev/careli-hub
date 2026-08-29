@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 
-import {
-  createPrometeuClient,
-  eventoOperavelId,
-} from "@/lib/prometeu/data";
-import { linkDoTelao } from "@/lib/prometeu/link-do-telao";
+import { createPrometeuClient, eventoOperavelId } from "@/lib/prometeu/data";
+import { linkDoMasterplan, linkDoTelao } from "@/lib/prometeu/link-do-telao";
 import { autorizarOperacao } from "@/lib/prometeu/operador-server";
 import { avisarPalcoEmRealtime } from "@/lib/prometeu/realtime-fila";
 
@@ -29,11 +26,17 @@ export async function GET(request: Request) {
 
   const client = createPrometeuClient();
   if (!client) {
-    return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Supabase indisponivel." },
+      { status: 503 },
+    );
   }
   const eventoId = await eventoOperavelId(client);
   if (!eventoId) {
-    return NextResponse.json({ error: "Nenhum evento ativo." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Nenhum evento ativo." },
+      { status: 404 },
+    );
   }
 
   const { data } = await client
@@ -49,6 +52,9 @@ export async function GET(request: Request) {
         // Links da TV INDEPENDENTE (token HMAC, sem login — ver lib/prometeu/link-do-telao.ts).
         // Só saem por aqui, atrás do login do Setup: quem monta a TV copia daqui.
         linksTv: {
+          // ⚠️ O do masterplan NÃO MORRE com o evento, ao contrário dos dois de cima — o
+          // requisito era "link que nunca expira". Ver linkDoMasterplan em link-do-telao.ts.
+          masterplan: linkDoMasterplan(eventoId),
           salao: linkDoTelao(eventoId, "salao"),
           secretaria: linkDoTelao(eventoId, "secretaria"),
         },
@@ -72,20 +78,33 @@ export async function POST(request: Request) {
   }
   if (typeof body.tocando === "boolean") comando.tocando = body.tocando;
   if (typeof body.mudo === "boolean") comando.mudo = body.mudo;
-  if (typeof body.volume === "number" && body.volume >= 0 && body.volume <= 100) {
+  if (
+    typeof body.volume === "number" &&
+    body.volume >= 0 &&
+    body.volume <= 100
+  ) {
     comando.volume = Math.round(body.volume);
   }
   if (Object.keys(comando).length === 0) {
-    return NextResponse.json({ error: "Nenhum comando reconhecido." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Nenhum comando reconhecido." },
+      { status: 400 },
+    );
   }
 
   const client = createPrometeuClient();
   if (!client) {
-    return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Supabase indisponivel." },
+      { status: 503 },
+    );
   }
   const eventoId = await eventoOperavelId(client);
   if (!eventoId) {
-    return NextResponse.json({ error: "Nenhum evento ativo." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Nenhum evento ativo." },
+      { status: 404 },
+    );
   }
 
   // Merge no estado persistido (ler → juntar → gravar): telão que ligar/recarregar depois pega
@@ -106,7 +125,8 @@ export async function POST(request: Request) {
     .from("prometeu_eventos")
     .update({ config: { ...(atual?.config ?? {}), palco } })
     .eq("id", eventoId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error)
+    return NextResponse.json({ error: error.message }, { status: 500 });
 
   await avisarPalcoEmRealtime(eventoId, palco as Record<string, unknown>);
 
