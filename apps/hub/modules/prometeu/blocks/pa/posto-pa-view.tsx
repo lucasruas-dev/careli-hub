@@ -1,9 +1,13 @@
 "use client";
 
-import { Camera, Check, Loader2, Printer, QrCode, X } from "lucide-react";
+import { AlertTriangle, Camera, Check, Loader2, Printer, QrCode, X } from "lucide-react";
 import QRCode from "qrcode";
 import { useCallback, useState } from "react";
 
+import {
+  type PlanoComercial,
+  PLANOS_PADRAO_DA_CASA,
+} from "@/lib/apolo/planos-comerciais";
 import {
   codigoDoCupom,
   conteudoDoQrDoCupom,
@@ -34,8 +38,17 @@ type CupomCarregado = {
     imobiliaria: null | string;
     nome: string;
   };
-  evento: { id: string; incorporadora: null | string; nome: string } | null;
+  evento: {
+    enterpriseCode?: null | string;
+    id: string;
+    incorporadora: null | string;
+    nome: string;
+  } | null;
   grupoId: string;
+  /** Os planos do empreendimento, já calculados pela rota. Ver a nota em `DadosDaPa.planos`. */
+  planos?: PlanoComercial[];
+  /** Preenchido = a folha saiu com os planos padrão da casa, e o operador precisa saber. */
+  planosAviso?: null | string;
   reservas: CupomReservaLinha[];
 };
 
@@ -69,6 +82,10 @@ export function PostoPaView() {
     folhas: number;
     nome: string;
   }>(null);
+  // ⚠️ O AVISO DOS PLANOS NÃO SOME SOZINHO. Ele diz que a folha saiu com os planos padrão da
+  // casa em vez dos do empreendimento — quem lê tem que conferir o papel ANTES de entregar, e
+  // um toast de quatro segundos no meio de uma fila não dá tempo disso.
+  const [avisoDosPlanos, setAvisoDosPlanos] = useState<null | string>(null);
 
   const imprimir = useCallback(async (cupom: CupomCarregado) => {
     const qrDataUrl = await QRCode.toDataURL(
@@ -104,6 +121,9 @@ export function PostoPaView() {
       imobiliaria: cupom.cliente.imobiliaria,
       incorporadora: cupom.evento?.incorporadora ?? null,
       lancamento: cupom.evento?.nome ?? "Lançamento",
+      // Sem planos na resposta (rota antiga em cache, resposta truncada) a folha ainda precisa
+      // sair: cai nos padrão da casa, e o aviso logo abaixo diz que foi isso que aconteceu.
+      planos: cupom.planos?.length ? cupom.planos : PLANOS_PADRAO_DA_CASA,
       // A marca no topo da folha. URL absoluta: dentro do iframe about:blank o caminho
       // relativo não resolve — mesma lição do cupom e da etiqueta.
       logoSrc: new URL(
@@ -128,6 +148,11 @@ export function PostoPaView() {
       })),
     });
     void marcarPaImpressaRemoto(cupom.grupoId);
+    setAvisoDosPlanos(
+      cupom.planos?.length
+        ? (cupom.planosAviso ?? null)
+        : "A folha saiu com os planos padrão da casa: não recebi os planos do empreendimento. Confira os valores antes de entregar.",
+    );
     setSucesso({ folhas: cupom.reservas.length, nome: cupom.cliente.nome });
     window.setTimeout(() => setSucesso(null), 4_000);
   }, []);
@@ -216,10 +241,36 @@ export function PostoPaView() {
     </div>
   );
 
+  // A FAIXA DE PLANOS PADRÃO — âmbar, dispensável no toque, presente nas duas abas. Ela é a
+  // única coisa que separa "a folha saiu certa" de "a folha saiu com os planos de outro
+  // empreendimento", e o papel de propósito não diz nada disso: carimbar "provisório" num
+  // documento que o cliente assina é pior do que o problema.
+  const faixaDosPlanos = avisoDosPlanos ? (
+    <div className="mx-auto mb-3 flex w-full max-w-3xl items-start gap-2 rounded-lg border border-amber-400/70 bg-amber-50 px-3 py-2 text-left dark:border-amber-500/40 dark:bg-amber-500/10">
+      <AlertTriangle
+        aria-hidden="true"
+        className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400"
+        size={16}
+      />
+      <p className="flex-1 text-sm font-semibold text-amber-900 dark:text-amber-200">
+        {avisoDosPlanos}
+      </p>
+      <button
+        aria-label="Dispensar aviso"
+        className="shrink-0 text-amber-700 transition hover:opacity-70 dark:text-amber-300"
+        onClick={() => setAvisoDosPlanos(null)}
+        type="button"
+      >
+        <X aria-hidden="true" size={16} />
+      </button>
+    </div>
+  ) : null;
+
   if (modo === "lista") {
     return (
       <div className="flex h-full min-h-0 flex-col bg-canvas p-4">
         {abas}
+        {faixaDosPlanos}
         {erro ? (
           <p className="mx-auto mb-3 max-w-3xl rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300">
             {erro}
@@ -235,6 +286,7 @@ export function PostoPaView() {
   return (
     <div className="flex h-full min-h-0 flex-col items-center justify-center bg-canvas p-6">
       {abas}
+      {faixaDosPlanos}
       <div className="w-full max-w-md text-center">
         {erro ? (
           <p className="mb-4 rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300">

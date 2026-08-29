@@ -1,5 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
+import {
+  ordenarParaAFolha,
+  type PlanoComercial,
+  PLANOS_PADRAO_DA_CASA,
+} from "@/lib/apolo/planos-comerciais";
 import { createPrometeuClient, getEvento } from "@/lib/prometeu/data";
 import {
   autorizarOperacao,
@@ -14,6 +20,84 @@ import { ehIdDeCupom, reservasDoGrupo } from "@/lib/prometeu/reservas-evento";
 // o segundo bip avisar "já impressa às X" e oferecer 2ª via em vez de duplicar papel calado.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+/**
+ * Quanto o bip espera pelos planos do C2X antes de seguir com os padrão.
+ *
+ * ⚠️ ISTO É UM POSTO DE ATENDIMENTO COM FILA. O cliente está de pé na frente do operador, e
+ * uma folha que demora dez segundos para sair é pior do que uma folha com o aviso na tela. Se
+ * o legado não responder em quatro segundos, a PA sai com os planos padrão e o posto avisa —
+ * em vez de o bip ficar pendurado esperando o MySQL.
+ */
+const ESPERA_PELOS_PLANOS_MS = 4_000;
+
+type PlanosDaFolha = {
+  planos: PlanoComercial[];
+  /** Nulo = deu tudo certo. Preenchido = a tela do posto TEM que mostrar antes de imprimir. */
+  planosAviso: null | string;
+  planosSaoPadrao: boolean;
+};
+
+/**
+ * Os planos que a folha vai imprimir, com a distinção que decide o que a tela mostra.
+ *
+ * ⚠️ VAZIO E FALHA SÃO COISAS DIFERENTES, e a diferença muda o que o operador faz:
+ *   • lançamento sem empreendimento, ou empreendimento sem plano → padrão da casa, aviso de
+ *     cadastro faltando;
+ *   • C2X fora do ar ou lento → padrão da casa, aviso de que NÃO FOI POSSÍVEL LER, que é um
+ *     pedido de conferência antes de entregar o papel.
+ * Tratar os dois como "lista vazia" faz a folha sair errada calada no dia em que o banco
+ * simplesmente não respondeu.
+ */
+async function planosDaFolha(code: null | string): Promise<PlanosDaFolha> {
+  const padrao = {
+    planos: PLANOS_PADRAO_DA_CASA,
+    planosSaoPadrao: true,
+  };
+
+  if (!code) {
+    return {
+      ...padrao,
+      planosAviso:
+        "Este lançamento não tem empreendimento no Setup, então a folha sai com os planos padrão da casa.",
+    };
+  }
+
+  const leitura = await Promise.race([
+    lerPlanosDoC2x([code]),
+    new Promise<"timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), ESPERA_PELOS_PLANOS_MS),
+    ),
+  ]);
+
+  if (leitura === "timeout") {
+    return {
+      ...padrao,
+      planosAviso: `O C2X não respondeu a tempo. A folha saiu com os planos padrão da casa — confira os valores de ${code} antes de entregar.`,
+    };
+  }
+
+  if (!leitura.ok) {
+    return {
+      ...padrao,
+      planosAviso: `Não consegui ler os planos de ${code} no C2X. A folha saiu com os planos padrão da casa — confira antes de entregar.`,
+    };
+  }
+
+  const planos = leitura.empreendimentos[0]?.planos ?? [];
+  if (planos.length === 0) {
+    return {
+      ...padrao,
+      planosAviso: `O empreendimento ${code} não tem planos comerciais cadastrados no C2X. A folha sai com os planos padrão da casa.`,
+    };
+  }
+
+  return {
+    planos: ordenarParaAFolha(planos),
+    planosAviso: null,
+    planosSaoPadrao: false,
+  };
+}
 
 export async function GET(request: NextRequest) {
   const auth = await autorizarOperacao(request);
@@ -68,6 +152,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Cliente da reserva nao encontrado." }, { status: 404 });
   }
 
+  // ⚠️ OS PLANOS SÃO DO EMPREENDIMENTO, e vêm do C2X — que é quem emite o boleto. Até 29/08 eles
+  // estavam FIXOS no código com os números do Villa Paris, impressos em qualquer lançamento; a
+  // medição mostrou que os 24 empreendimentos cadastrados têm planos distintos, com o NORMAL
+  // variando de 37 a 200 parcelas. Uma folha com os planos de outro empreendimento é um
+  // documento que o cliente assina prometendo o que o sistema não vai cobrar.
+  const dosPlanos = await planosDaFolha(evento?.enterpriseCode ?? null);
+
   return NextResponse.json(
     {
       data: {
@@ -79,6 +170,7 @@ export async function GET(request: NextRequest) {
         },
         evento: evento
           ? {
+              enterpriseCode: evento.enterpriseCode,
               // O texto da PA fala em nome da incorporadora — configurável por evento no
               // Setup (config.paIncorporadora); sem ela, o nome do lançamento assina.
               incorporadora:
@@ -89,6 +181,9 @@ export async function GET(request: NextRequest) {
               nome: evento.nome,
             }
           : null,
+        planos: dosPlanos.planos,
+        planosAviso: dosPlanos.planosAviso,
+        planosSaoPadrao: dosPlanos.planosSaoPadrao,
         reservas: vivas,
       },
     },

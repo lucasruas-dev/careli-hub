@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-pa-planos-do-empreendimento",
+    deployedAt: "2026-08-29T01:25:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A PROPOSTA AGORA IMPRIME OS PLANOS DO EMPREENDIMENTO. Antes ela saia sempre com os planos do Villa Paris, em qualquer lancamento.",
+              "SACOC E PRICE: a folha passou a calcular a parcela do jeito que o empreendimento cobra. Dos 24 empreendimentos cadastrados, 21 sao SACOC - e neles a parcela e o financiado dividido pelo prazo, sem juros embutidos.",
+              "O TEXTO JURIDICO acompanha: as clausulas repetem os mesmos numeros da tabela de planos, sempre.",
+              "AVISO NA TELA quando o lancamento nao tem plano cadastrado ou o C2X nao responde: a folha sai com os planos padrao da casa e o posto avisa para conferir antes de entregar.",
+            ],
+            screen: "Impressao da PA",
+          },
+        ],
+      },
+    ],
+    rollback: "e5610f23",
+    technical: {
+      done: "Os planos sairam de imprimir-pa.ts (tres constantes fixas) e passaram a vir do empreendimento do lancamento, lidos dos SLOTS do C2X (enterprises.investor_plan_id / short_plan_id / normal_plan_id) - a parte limpa de um cadastro que tem ~60 planos de lixo entre os 137 'padrao'. Regra de calculo em lib/apolo/planos-comerciais.ts, pura e com 27 testes; a folha ganhou mais 13. MEDICAO QUE MOTIVOU: cruzando commercial_plans com as parcelas emitidas em payments, 9 de 9 empreendimentos SACOOC emitem a AMORTIZACAO PURA (financiado/n) e o unico PRICE com parcelas emitidas bate na Price exata - ou seja, enterprise_table_id governa a matematica do boleto. No Villa Paris a folha prometia 120x de R$ 2.402,29 onde o C2X emite 180x de R$ 1.100,00. A convencao da taxa e a EQUIVALENTE ((1+i)^(1/12)-1), nao a proporcional: o C2X grava 0,6434 e 0,7207, que sao as equivalentes exatas de 8% e 9% a.a.; o comentario antigo do codigo afirmava o contrario. ⚠️ ESCALA DO TEXTO REFEITA em duas dimensoes (proponentes x planos): cada plano custa uma linha na tabela E uma alinea no texto, e o quarto plano sozinho empurra a folha ~14mm. As 25 combinacoes foram medidas no navegador com os nomes de plano mais longos do C2X; zero estouram a pagina, e ate tres planos - a faixa que existe de verdade - todas ficam acima do piso de legibilidade de 5,2pt. Vazio e falha sao tratados diferente: sem cadastro cai no padrao com aviso de cadastro; C2X mudo ou lento (timeout de 4s, para nao pendurar o bip com a fila esperando) avisa para CONFERIR. O aviso e da tela e nao some sozinho - carimbar 'provisorio' num documento que o cliente assina seria pior. Typecheck limpo, 1487 testes verdes.",
+      motivation:
+        "Lucas (28-29/08): 'cada empreendimento vai ter uma tabela, planos comerciais, vamos ter que alimentar isso em outro lugar (...) esse empreendimento e price, mas o mais comum seria sacoc' e 'amanha nao sera vila paris, sera outro empreendimento' - o que tornou urgente: a folha sairia com os planos do Villa Paris num lancamento diferente.",
+    },
+    title: "A Proposta de Aquisição agora sai com os planos do empreendimento",
+    type: "correcao",
+    version: "1.230.0",
+  },
+  {
     buildTag: "2026-08-29-pa-impressao-manual-e-cancelamento",
     deployedAt: "2026-08-29T00:50:00-03:00",
     modules: [

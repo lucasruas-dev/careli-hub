@@ -2,11 +2,22 @@
 //
 // Redesenho do documento do C2X que o Lucas mandou ("acho esse layout feio"): mesma estrutura
 // jurídica (planos, declarações, recibo, assinaturas), layout limpo e PRÉ-PREENCHIDO com o que
-// a reserva já sabe — proponente, CPF, imobiliária, corretor, quadra/lote/área — e os três
-// planos CALCULADOS do preço de tabela da unidade. O corretor só marca o plano e o vencimento.
+// a reserva já sabe — proponente, CPF, imobiliária, corretor, quadra/lote/área — e os planos
+// CALCULADOS do preço de tabela da unidade. O corretor só marca o plano e o vencimento.
 //
 // Impressão em documento isolado (iframe), padrão da casa; no posto com Chrome em modo
 // quiosque a folha sai direto na A4 padrão, sem diálogo.
+
+import {
+  calcularParcela,
+  fraseDeCorrecao,
+  nomeDoIndice,
+  ordenarParaAFolha,
+  type PlanoComercial,
+  rotuloDoPlano,
+  textoDaTaxa,
+  textoDoSinal,
+} from "@/lib/apolo/planos-comerciais";
 
 export type UnidadeDaPa = {
   area: null | string;
@@ -42,6 +53,14 @@ export type DadosDaPa = {
   imobiliaria: null | string;
   incorporadora: null | string;
   lancamento: string;
+  /**
+   * OS PLANOS DO EMPREENDIMENTO — quem manda no que a folha promete.
+   *
+   * ⚠️ VÊM DE FORA, sempre. A folha não tem plano próprio nem plano de reserva: quem decide o
+   * que imprimir é a rota do cupom, que lê o empreendimento do lançamento e só cai nos planos
+   * padrão da casa quando não há o que ler — avisando na TELA do posto, nunca no papel.
+   */
+  planos: PlanoComercial[];
   // Até 5 (limite do C2X); o 1º é o titular. A % de posse sai ao lado de cada um.
   proponentes: ProponenteDaPa[];
   qrDataUrl: string;
@@ -177,7 +196,10 @@ export const PA_CSS = `
     border-bottom: 0;
     padding: 0.85mm 2.5mm;
   }
-  .plano:nth-of-type(3) { border-bottom: 0.8px solid #c3c7cc; }
+  /* ⚠️ last-of-type, e NÃO nth-of-type(3): desde 29/08 a quantidade de planos vem do
+     empreendimento (o C2X tem lançamentos com dois e com quatro). Com o índice fixo, um
+     lançamento de dois planos ficava com a moldura aberta embaixo. */
+  .plano:last-of-type { border-bottom: 0.8px solid #c3c7cc; }
   .plano .nome { font-size: 8pt; font-weight: 700; letter-spacing: 0.07em; }
   .plano .nome span { font-size: 10pt; font-weight: 400; margin-right: 1mm; }
   .plano em { font-style: normal; font-size: 5.5pt; font-weight: 700; letter-spacing: 0.1em; color: #14161a; display: block; }
@@ -254,60 +276,25 @@ function cpfBR(doc: string | null): string {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
-// ⚠️ ESTES NÚMEROS SÃO PROVISÓRIOS, E O LUCAS JÁ DISSE ONDE ELES VÃO MORAR (28/08/2026):
-// *"cada empreendimento vai ter uma tabela, planos comerciais, vamos ter que alimentar isso em
-// outro lugar (...) esse empreendimento é price, mas o mais comum seria sacoc"*. O destino é a
-// configuração por empreendimento — a tela de Políticas comerciais do Apolo, ou uma aba de PA
-// no Setup do lançamento — e este bloco vira o PADRÃO de onde se parte.
+// ⚠️ OS PLANOS SAÍRAM DAQUI EM 29/08/2026 — e a razão é maior do que "virou configuração".
 //
-// Enquanto isso, os valores abaixo são os do documento oficial do Villa Paris:
-//   INVESTIDOR · sinal 20% · 12 parcelas fixas, sem juros e sem correção
-//   CURTO      · sinal 30% · saldo de 70% em 36 parcelas, sem juros, com IPCA anual
-//   NORMAL     · sinal 10% · saldo de 90% em até 120 parcelas, Tabela Price, 8% ao ano + IPCA
+// Até esta data, os três planos estavam FIXOS neste arquivo com os números do documento do
+// Villa Paris (sinal 20%/12×, 30%/36×, 10%/120× em Tabela Price a 8% a.a.), e eram impressos
+// em qualquer lançamento. A medição no C2X mostrou o tamanho do problema:
 //
-// ⚠️ O 20% do INVESTIDOR não está escrito no documento novo (ele só diz "12 parcelas fixas");
-// veio do documento anterior e do que já estava no código. Quando os planos virarem
-// configuração, é o primeiro número a conferir com o comercial.
-const TAXA_ANUAL_NORMAL = 0.08;
-
-/**
- * A taxa mensal do plano NORMAL, para a Tabela Price.
- *
- * ⚠️ PROPORCIONAL (8% ÷ 12), e não equivalente ((1,08)^(1/12)−1). É a convenção corrente nos
- * sistemas imobiliários brasileiros e a que o C2X usa; a equivalente daria parcela ~1% menor.
- * A diferença é pequena por parcela e grande no contrato inteiro, então quando os planos
- * virarem configuração esta escolha precisa ser explícita lá, e não herdada daqui em silêncio.
- */
-const TAXA_MENSAL_NORMAL = TAXA_ANUAL_NORMAL / 12;
-
-/** Parcela da Tabela Price: PV · i ÷ (1 − (1+i)^−n). Com i = 0, vira divisão simples. */
-function parcelaPrice(
-  saldo: number,
-  taxaMensal: number,
-  parcelas: number,
-): number {
-  if (parcelas <= 0) return 0;
-  if (taxaMensal <= 0) return saldo / parcelas;
-  const fator = (1 + taxaMensal) ** -parcelas;
-  return (saldo * taxaMensal) / (1 - fator);
-}
-
-function planos(preco: null | number) {
-  const monta = (fracaoSinal: number, parcelas: number, taxaMensal: number) => {
-    if (preco == null) return { parcela: null, parcelas, sinal: null };
-    const sinal = preco * fracaoSinal;
-    return {
-      parcela: parcelaPrice(preco - sinal, taxaMensal, parcelas),
-      parcelas,
-      sinal,
-    };
-  };
-  return {
-    curto: monta(0.3, 36, 0),
-    investidor: monta(0.2, 12, 0),
-    normal: monta(0.1, 120, TAXA_MENSAL_NORMAL),
-  };
-}
+//   • 24 empreendimentos têm planos cadastrados, TODOS diferentes entre si. O plano NORMAL vai
+//     de 37 a 200 parcelas; a entrada, de 0% a 30%.
+//   • 21 dos 24 são SACOOC, e nos SACOOC a parcela emitida é a AMORTIZAÇÃO PURA, sem juros
+//     embutidos — enquanto esta folha calculava tudo em Tabela Price.
+//   • Nem o próprio Villa Paris batia: o C2X emite 180 parcelas de R$ 1.100,00 onde a folha
+//     imprimia 120 de R$ 2.402,29. Parcela 2,2× maior, prazo 60 meses menor, no papel que o
+//     cliente assina.
+//
+// A regra de cálculo agora vive em lib/apolo/planos-comerciais.ts, com os casos reais medidos
+// como teste; os números vêm do empreendimento do lançamento, pela rota do cupom.
+//
+// ⚠️ A FOLHA NÃO ESCOLHE PLANO NEM INVENTA NÚMERO. Se `dados.planos` chegar vazio, ela imprime
+// o que recebeu e quem avisa é a TELA do posto. Papel não é lugar de aviso de sistema.
 // O TAMANHO DO TEXTO TÉCNICO DEPENDE DE QUANTOS ASSINAM.
 //
 // ⚠️ A folha tem altura fixa e conteúdo variável: cada proponente a mais custa uma linha na
@@ -317,36 +304,144 @@ function planos(preco: null | number) {
 // ficou muito pequeno e sobrou muita folha (...) quando tiver os 5 acho que pode aumentar um
 // pouquinho pois sobrou um pouco de folha"*).
 //
-// ⚠️ CADA VALOR SAIU DE UMA VARREDURA MEDIDA no navegador: a folha foi renderizada em TODOS os
-// tamanhos de 5,0pt a 7,6pt, para cada quantidade de proponentes, e ficou o MAIOR que cabe
-// deixando ~6mm de sobra sobre os 281mm úteis do A4.
+// ⚠️ E TAMBÉM DE QUANTOS PLANOS O EMPREENDIMENTO TEM (29/08/2026). Enquanto os planos eram
+// três constantes no código, a única variável era a quantidade de proponentes. Agora eles vêm
+// do cadastro, e cada plano custa uma linha na tabela MAIS uma alínea no texto jurídico. Medido:
+// o quarto plano sozinho empurra a folha em ~14mm, mais do que dois proponentes a mais.
 //
-// A primeira tentativa foi por estimativa e estourou a página em três dos cinco casos — com um
-// proponente dava 292mm, e o rodapé com o QR sumia. A relação não é a intuitiva: mais
-// proponentes custam linhas de tabela E blocos de assinatura, e a partir do quinto eles quebram
-// numa segunda fileira. Por isso isto é uma tabela medida, e não uma fórmula.
+// ⚠️ CADA VALOR SAIU DE UMA VARREDURA MEDIDA no navegador, e foi REFEITA nesta data porque o
+// texto jurídico deixou de ser fixo: as 25 combinações (1..5 proponentes × 1..5 planos) foram
+// renderizadas em todos os tamanhos de 7,6pt para baixo, com os nomes de plano mais longos que
+// existem no C2X ("10% ENTRADA + 200 PARCELAS") e todos com juros, que é a alínea mais comprida.
+// Ficou o MAIOR tamanho que cabe deixando ~6mm de sobra sobre os 281mm úteis do A4.
+//
+// A relação não é a intuitiva: mais proponentes custam linhas de tabela E blocos de assinatura,
+// e a partir do quinto eles quebram numa segunda fileira. Por isso isto é uma tabela medida, e
+// não uma fórmula.
+//
+// ⚠️ A ENTRELINHA SÓ APERTA QUANDO PRECISA. A varredura tenta 1,34 primeiro e só desce para
+// 1,22 quando manter a entrelinha folgada obrigaria a fonte a furar o piso de legibilidade —
+// entrelinha apertada incomoda menos, na laser, do que letra fechada.
+//
+// ⚠️ O PISO DE LEGIBILIDADE É 5,2pt. Abaixo disso a laser começa a falhar as letras, que foi
+// exatamente a reclamação do Lucas em 29/08 sobre os textos miúdos. Até TRÊS planos — a faixa
+// que existe de verdade, já que nenhum dos 24 empreendimentos do C2X tem mais de três planos
+// amarrados aos slots — todas as combinações cabem acima do piso. As entradas de quatro e cinco
+// planos ficam abaixo dele e estão marcadas: são um seguro para um cadastro futuro, não um
+// caso suportado. Se aparecerem de verdade, a saída não é encolher mais a fonte.
 //
 // ⚠️ Mexer aqui sem repetir a varredura é como a folha volta a passar para a segunda página no
 // meio do evento — sem ninguém perceber até o papel sair.
-const ESCALA_DO_TEXTO: Record<
-  number,
-  { decl: string; entrelinha: string; regras: string }
-> = {
-  1: { decl: "6.6pt", entrelinha: "1.34", regras: "7pt" },
-  2: { decl: "6.3pt", entrelinha: "1.34", regras: "6.7pt" },
-  3: { decl: "6.1pt", entrelinha: "1.34", regras: "6.5pt" },
-  4: { decl: "5.5pt", entrelinha: "1.34", regras: "5.9pt" },
-  5: { decl: "5.3pt", entrelinha: "1.34", regras: "5.7pt" },
+const ESCALA_DO_TEXTO: Record<string, { decl: number; entrelinha: string }> = {
+  // proponentes × planos
+  "1x1": { decl: 7.4, entrelinha: "1.34" },
+  "1x2": { decl: 6.7, entrelinha: "1.34" },
+  "1x3": { decl: 6.2, entrelinha: "1.34" },
+  "1x4": { decl: 6.0, entrelinha: "1.34" },
+  "1x5": { decl: 5.5, entrelinha: "1.34" },
+
+  "2x1": { decl: 7.1, entrelinha: "1.34" },
+  "2x2": { decl: 6.6, entrelinha: "1.34" },
+  "2x3": { decl: 6.2, entrelinha: "1.34" },
+  "2x4": { decl: 5.7, entrelinha: "1.34" },
+  "2x5": { decl: 5.2, entrelinha: "1.34" },
+
+  "3x1": { decl: 6.7, entrelinha: "1.34" },
+  "3x2": { decl: 6.3, entrelinha: "1.34" },
+  "3x3": { decl: 5.9, entrelinha: "1.34" },
+  "3x4": { decl: 5.5, entrelinha: "1.34" },
+  "3x5": { decl: 5.1, entrelinha: "1.22" }, // abaixo do piso
+
+  "4x1": { decl: 6.2, entrelinha: "1.34" },
+  "4x2": { decl: 5.7, entrelinha: "1.34" },
+  "4x3": { decl: 5.4, entrelinha: "1.34" },
+  "4x4": { decl: 5.2, entrelinha: "1.22" },
+  "4x5": { decl: 4.5, entrelinha: "1.22" }, // abaixo do piso
+
+  "5x1": { decl: 6.1, entrelinha: "1.34" },
+  "5x2": { decl: 5.6, entrelinha: "1.34" },
+  "5x3": { decl: 5.2, entrelinha: "1.34" },
+  "5x4": { decl: 5.0, entrelinha: "1.22" }, // abaixo do piso
+  "5x5": { decl: 4.3, entrelinha: "1.22" }, // abaixo do piso
 };
 
-function escalaDoTextoTecnico(proponentes: number): {
-  decl: string;
-  entrelinha: string;
-  regras: string;
-} {
-  // Fora da faixa (0 ou mais de 5, que a validação não deixa acontecer) cai no caso mais
-  // apertado: é melhor sobrar papel do que estourar a página.
-  return ESCALA_DO_TEXTO[proponentes] ?? ESCALA_DO_TEXTO[5]!;
+function naFaixa(valor: number): number {
+  return Math.min(5, Math.max(1, Math.round(valor) || 1));
+}
+
+function escalaDoTextoTecnico(
+  proponentes: number,
+  planos: number,
+): { decl: string; entrelinha: string; regras: string } {
+  // Fora da faixa cai no caso mais apertado: é melhor sobrar papel do que estourar a página.
+  const chave = `${naFaixa(proponentes)}x${naFaixa(planos)}`;
+  const medida = ESCALA_DO_TEXTO[chave] ?? ESCALA_DO_TEXTO["5x5"]!;
+  // As regras andam 0,4pt acima das declarações — é um parágrafo só, e ele é o que o corretor
+  // lê em voz alta para o cliente. A varredura mediu com essa mesma diferença.
+  return {
+    decl: `${medida.decl}pt`,
+    entrelinha: medida.entrelinha,
+    regras: `${Math.round((medida.decl + 0.4) * 10) / 10}pt`,
+  };
+}
+
+/**
+ * O parágrafo jurídico que descreve cada plano por extenso — a alínea B) em diante.
+ *
+ * ⚠️ DERIVADO DOS MESMOS OBJETOS QUE FAZEM A CONTA. Antes este texto era uma string fixa
+ * repetindo "12 parcelas fixas", "36 parcelas", "até 120 parcelas pela Tabela Price, com juros
+ * de 8% ao ano" — ao lado de números que eram calculados em outro lugar. Bastava um dos dois
+ * mudar para o papel dizer uma coisa na tabela e outra na cláusula, sem erro visível. Agora os
+ * dois saem da mesma fonte e não têm como divergir.
+ */
+function textoDasRegras(planos: PlanoComercial[]): string {
+  // ⚠️ O RÓTULO VEM DO SLOT (INVESTIDOR/CURTO/NORMAL), nunca do nome cadastrado no C2X — ver a
+  // nota em `rotuloDoPlano`. Foi isso que matou o "PLANO PLANO-NORMAL" da primeira prévia: o
+  // texto prefixa "PLANO" porque o documento oficial escreve assim, e metade dos nomes de lá
+  // já vinha com a palavra.
+  const alineas = planos.map((p) => {
+    const taxa = textoDaTaxa(p);
+    const correcao =
+      p.indiceCorrecao === "SEM_CORRECAO"
+        ? "sem correção monetária"
+        : `com correção monetária positiva pelo ${nomeDoIndice(p.indiceCorrecao)}`;
+
+    // Sem entrada e sem juros, o plano é uma frase só — é como o documento oficial descrevia o
+    // INVESTIDOR ("12 parcelas fixas, sem juros e sem correção").
+    if (p.entradaPercentual <= 0 && !taxa) {
+      return `<b>PLANO ${esc(rotuloDoPlano(p))}:</b> ${p.parcelas} parcelas fixas, sem juros e ${correcao}.`;
+    }
+
+    // ⚠️ A REDAÇÃO SEGUE O DOCUMENTO QUE O LUCAS APROVOU EM 29/08, palavra por palavra onde os
+    // números permitem — "sinal mínimo de N%. O saldo de M% é financiado em K parcelas…". Só
+    // os números e o trecho da amortização variam. Além da fidelidade jurídica, o texto tem
+    // que caber: cada frase a mais aqui empurra a folha para a segunda página e obriga a
+    // encolher a fonte, e abaixo de ~5,2pt a laser começa a falhar as letras.
+    const abertura =
+      p.entradaPercentual > 0
+        ? `sinal mínimo de ${esc(textoDoSinal(p))}. O saldo de ${esc(
+            `${Number((100 - p.entradaPercentual).toFixed(2))}`.replace(".", ","),
+          )}% é`
+        : "o valor da unidade é";
+
+    const financiamento = !taxa
+      ? `dividido em ${p.parcelas} parcelas, sem juros`
+      : p.sistemaAmortizacao === "price"
+        ? `financiado em até ${p.parcelas} parcelas pela Tabela Price, com juros de ${esc(taxa)} já embutidos na parcela`
+        : p.sistemaAmortizacao === "sac"
+          ? `financiado em ${p.parcelas} parcelas pelo sistema SAC, com juros de ${esc(taxa)} sobre o saldo devedor e parcelas decrescentes`
+          : `financiado em ${p.parcelas} parcelas de amortização constante, com juros de ${esc(taxa)} aplicados no reajuste anual`;
+
+    return `<b>PLANO ${esc(rotuloDoPlano(p))}:</b> ${abertura} ${financiamento}, ${correcao}.`;
+  });
+
+  const letra = (i: number) => `<b>${String.fromCharCode(65 + i)})</b>`;
+  const partes = [
+    `${letra(0)} Independentemente da modalidade do Plano escolhido, o valor do sinal deverá ser pago em até dois dias úteis, contados da assinatura da presente Proposta.`,
+    ...alineas.map((a, i) => `${letra(i + 1)} ${a}`),
+    `${letra(alineas.length + 1)} <b>PLANO PERSONALIZADO:</b> sujeito à aprovação da Empreendedora.`,
+  ];
+  return partes.join(" ");
 }
 
 /** Uma linha de plano pré-definido: caixa, nome, sinal, parcelas e a regra de correção. */
@@ -367,7 +462,7 @@ function linhaDoPlano(entrada: {
 }
 
 export function folhaHTML(dados: DadosDaPa, unidade: UnidadeDaPa): string {
-  const plano = planos(unidade.precoTabela);
+  const planosDaFolha = ordenarParaAFolha(dados.planos);
   const vendedora = esc(dados.incorporadora ?? "a Empreendedora");
 
   // ⚠️ ATÉ CINCO PROPONENTES, e todos precisam sair com nome, CPF e posse — é o que dá validade
@@ -385,7 +480,10 @@ export function folhaHTML(dados: DadosDaPa, unidade: UnidadeDaPa): string {
     )
     .join("");
 
-  const escala = escalaDoTextoTecnico(dados.proponentes.length);
+  const escala = escalaDoTextoTecnico(
+    dados.proponentes.length,
+    planosDaFolha.length,
+  );
 
   return `<div class="folha" style="--decl:${escala.decl};--decl-lh:${escala.entrelinha};--regras:${escala.regras}">
     <div class="topo">
@@ -418,30 +516,19 @@ export function folhaHTML(dados: DadosDaPa, unidade: UnidadeDaPa): string {
       <i>VALOR DE TABELA</i><b>${moeda(unidade.precoTabela)}</b>
       <span class="venc">DIA DE VENCIMENTO DAS PARCELAS: &nbsp; <b>☐</b> 10 &nbsp;&nbsp; <b>☐</b> 20</span>
     </div>
-    ${linhaDoPlano({
-      correcao: "sem juros, sem correção",
-      nome: "INVESTIDOR",
-      parcela: plano.investidor.parcela,
-      parcelas: plano.investidor.parcelas,
-      percentual: "20%",
-      sinal: plano.investidor.sinal,
-    })}
-    ${linhaDoPlano({
-      correcao: "sem juros, com IPCA anual",
-      nome: "CURTO",
-      parcela: plano.curto.parcela,
-      parcelas: plano.curto.parcelas,
-      percentual: "30%",
-      sinal: plano.curto.sinal,
-    })}
-    ${linhaDoPlano({
-      correcao: "Price, 8% a.a. + IPCA",
-      nome: "NORMAL",
-      parcela: plano.normal.parcela,
-      parcelas: plano.normal.parcelas,
-      percentual: "10%",
-      sinal: plano.normal.sinal,
-    })}
+    ${planosDaFolha
+      .map((p) => {
+        const calculo = calcularParcela(p, unidade.precoTabela);
+        return linhaDoPlano({
+          correcao: fraseDeCorrecao(p),
+          nome: rotuloDoPlano(p),
+          parcela: calculo.parcela,
+          parcelas: calculo.parcelas,
+          percentual: textoDoSinal(p),
+          sinal: calculo.sinal,
+        });
+      })
+      .join("")}
 
     <div class="perso">
       <div class="perso-tit"><span class="chk"></span>Plano personalizado <span class="nota">preencher só se a negociação sair da tabela</span></div>
@@ -450,7 +537,7 @@ export function folhaHTML(dados: DadosDaPa, unidade: UnidadeDaPa): string {
       </div>
     </div>
 
-    <p class="regras"><b>A)</b> Independentemente da modalidade do Plano escolhido, o valor do sinal deverá ser pago em até dois dias úteis, contados da assinatura da presente Proposta. <b>B) PLANO INVESTIDOR:</b> 12 parcelas fixas, sem juros e sem correção. <b>C) PLANO CURTO:</b> sinal mínimo de 30% do valor da unidade. O saldo de 70% é dividido em 36 parcelas, sem juros, com correção monetária positiva pela IPCA anual. <b>D) PLANO NORMAL:</b> sinal mínimo de 10%. O saldo de 90% é financiado em até 120 parcelas pela Tabela Price, com juros de 8% ao ano já embutidos na parcela, com correção monetária positiva pela IPCA anual. <b>E) PLANO PERSONALIZADO:</b> sujeito à aprovação da Empreendedora.</p>
+    <p class="regras">${textoDasRegras(planosDaFolha)}</p>
 
     <div class="sec">Declarações do proponente sobre a proposta</div>
     <ol class="decl">
