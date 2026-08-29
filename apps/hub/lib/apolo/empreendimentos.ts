@@ -14,7 +14,10 @@
 // as bloqueadas estão como "Disponível" — por isso Disponível DESCONTA as bloqueadas.
 import type { RowDataPacket } from "mysql2";
 
+import { baldeDaUnidade, sqlDoBalde } from "@/lib/apolo/balde-da-unidade";
 import { deterministicUuid } from "@/lib/apolo/server";
+import { createPrometeuClient } from "@/lib/prometeu/data";
+import { codigosReservadosNoPanteon } from "@/lib/prometeu/reservas-vivas";
 import {
   ENTERPRISE_GROUPS,
   EXCLUDED_ENTERPRISE_CODES,
@@ -130,6 +133,7 @@ export async function loadApoloEnterprises(): Promise<
   }
 
   const placeholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+  const balde = sqlDoBalde("u");
   const [rows] = await poolResult.pool.query<EnterpriseQueryRow[]>(
     `select
        e.id,
@@ -140,16 +144,20 @@ export async function loadApoloEnterprises(): Promise<
        inc.name as incorporador,
        count(u.id) as total_units,
        coalesce(sum(u.price), 0) as total_value,
-       sum(case when u.sale_status_id = ? and coalesce(u.sale_blocked, 0) = 0 then 1 else 0 end) as disponivel_units,
-       coalesce(sum(case when u.sale_status_id = ? and coalesce(u.sale_blocked, 0) = 0 then u.price else 0 end), 0) as disponivel_value,
-       sum(case when u.sale_status_id = ? and coalesce(u.sale_blocked, 0) = 1 then 1 else 0 end) as bloqueado_units,
-       coalesce(sum(case when u.sale_status_id = ? and coalesce(u.sale_blocked, 0) = 1 then u.price else 0 end), 0) as bloqueado_value,
-       sum(case when u.sale_status_id = ? then 1 else 0 end) as reservado_units,
-       coalesce(sum(case when u.sale_status_id = ? then u.price else 0 end), 0) as reservado_value,
-       sum(case when u.sale_status_id = ? then 1 else 0 end) as negociacao_units,
-       coalesce(sum(case when u.sale_status_id = ? then u.price else 0 end), 0) as negociacao_value,
-       sum(case when u.sale_status_id = ? then 1 else 0 end) as vendido_units,
-       coalesce(sum(case when u.sale_status_id = ? then u.price else 0 end), 0) as vendido_value
+       -- ⚠️ OS BALDES SAEM DE UMA REGRA SÓ (sqlDoBalde, em balde-da-unidade.ts), a mesma que a
+       -- lista usa em TypeScript. Antes eram duas regras diferentes e elas discordavam: o
+       -- bloqueado aqui procurava status DISPONÍVEL com o flag ligado, então as 27 unidades do
+       -- Villa Paris em status 5 não caíam em balde nenhum e a soma dos cards dava 70 de 97.
+       sum(case when ${balde} = 'disponivel' then 1 else 0 end) as disponivel_units,
+       coalesce(sum(case when ${balde} = 'disponivel' then u.price else 0 end), 0) as disponivel_value,
+       sum(case when ${balde} = 'bloqueado' then 1 else 0 end) as bloqueado_units,
+       coalesce(sum(case when ${balde} = 'bloqueado' then u.price else 0 end), 0) as bloqueado_value,
+       sum(case when ${balde} = 'reservado' then 1 else 0 end) as reservado_units,
+       coalesce(sum(case when ${balde} = 'reservado' then u.price else 0 end), 0) as reservado_value,
+       sum(case when ${balde} = 'negociacao' then 1 else 0 end) as negociacao_units,
+       coalesce(sum(case when ${balde} = 'negociacao' then u.price else 0 end), 0) as negociacao_value,
+       sum(case when ${balde} = 'vendido' then 1 else 0 end) as vendido_units,
+       coalesce(sum(case when ${balde} = 'vendido' then u.price else 0 end), 0) as vendido_value
      from enterprises e
      left join enterprise_unities u on u.enterprise_id = e.id
      left join cities ci on ci.id = e.city_id
@@ -158,19 +166,9 @@ export async function loadApoloEnterprises(): Promise<
      where e.code not in (${placeholders})
      group by e.id, e.code, e.name, ci.name, s.acronym, inc.name
      order by e.code`,
-    [
-      SALE_STATUS.DISPONIVEL,
-      SALE_STATUS.DISPONIVEL,
-      SALE_STATUS.DISPONIVEL,
-      SALE_STATUS.DISPONIVEL,
-      SALE_STATUS.RESERVADO,
-      SALE_STATUS.RESERVADO,
-      SALE_STATUS.EM_NEGOCIACAO,
-      SALE_STATUS.EM_NEGOCIACAO,
-      SALE_STATUS.VENDIDO,
-      SALE_STATUS.VENDIDO,
-      ...EXCLUDED_ENTERPRISE_CODES,
-    ],
+    // Os status saíram dos parâmetros: agora eles vivem dentro do CASE de sqlDoBalde, que é
+    // texto fixo do nosso código (nunca entrada de usuário) e por isso pode ser interpolado.
+    [...EXCLUDED_ENTERPRISE_CODES],
   );
 
   const mapped = rows.map(mapEnterpriseRow);
@@ -336,7 +334,8 @@ function playerSelect(column: string, alias: string): string {
 export async function loadApoloEnterpriseCadastro(
   codes: string[],
 ): Promise<
-  { cadastros: ApoloEnterpriseCadastro[]; ok: true } | { error: string; ok: false }
+  | { cadastros: ApoloEnterpriseCadastro[]; ok: true }
+  | { error: string; ok: false }
 > {
   const validCodes = codes
     .map((code) => code.trim().toUpperCase())
@@ -590,7 +589,24 @@ export async function loadApoloEnterpriseUnits(
     validCodes,
   );
 
-  return { ok: true, units: rows.map(mapUnitRow) };
+  // As reservas feitas no salão ainda não existem para o C2X — sem isto, o lote que o cliente
+  // acabou de reservar no tótem continua aparecendo "Disponível" nesta tela.
+  const reservados = await reservasVivasDoPanteon();
+
+  return { ok: true, units: rows.map((row) => mapUnitRow(row, reservados)) };
+}
+
+// Busca as reservas vivas do Prometeu, tolerando ausência: se o Supabase não estiver
+// configurado (ou falhar), a tela volta a mostrar exatamente o que o C2X diz — que era o
+// comportamento de antes, e é melhor que uma tela quebrada.
+async function reservasVivasDoPanteon(): Promise<ReadonlySet<string>> {
+  try {
+    const client = createPrometeuClient();
+    if (!client) return new Set<string>();
+    return await codigosReservadosNoPanteon(client);
+  } catch {
+    return new Set<string>();
+  }
 }
 
 // Código da unidade: sigla(3) + quadra + lote (ex.: LOU + 01 + 01 = LOU0101). Mesmo padrão do
@@ -614,23 +630,23 @@ function buildUnitCode(
   return `${prefix}${blockCode}${lotCode}`;
 }
 
-function mapUnitRow(row: UnitQueryRow): ApoloEnterpriseUnit {
+function mapUnitRow(
+  row: UnitQueryRow,
+  reservadosNoPanteon?: ReadonlySet<string>,
+): ApoloEnterpriseUnit {
   const blocked = Number(row.sale_blocked ?? 0) === 1;
   const statusId = Number(row.sale_status_id ?? 0);
-  const bucket: ApoloEnterpriseBucket =
-    statusId === SALE_STATUS.VENDIDO
-      ? "vendido"
-      : statusId === SALE_STATUS.EM_NEGOCIACAO
-        ? "negociacao"
-        : statusId === SALE_STATUS.RESERVADO
-          ? "reservado"
-          : // Status 5 ("Bloqueado para venda") vale por si só, sem depender do flag. Hoje os
-            // dois andam juntos no C2X, mas o legado é a fonte viva e nada garante isso numa
-            // edição manual: sem esta linha, limpar o flag e deixar o status pintaria a unidade
-            // de disponível enquanto o texto do status continua dizendo "Bloqueado para venda".
-            statusId === SALE_STATUS.BLOQUEADO || blocked
-            ? "bloqueado"
-            : "disponivel";
+  // ⚠️ A REGRA MORA EM balde-da-unidade.ts, junto do SQL que os cards usam. Ela estava
+  // duplicada — aqui em TypeScript e lá em SQL, cada uma com sua versão — e as duas
+  // discordavam: o Villa Paris tem 27 unidades em status 5 que a lista mostrava como Bloqueado
+  // e os cards não contavam em balde nenhum.
+  const bucket: ApoloEnterpriseBucket = baldeDaUnidade({
+    reservadoNoPanteon: reservadosNoPanteon?.has(
+      buildUnitCode(String(row.enterprise_code ?? ""), row.block, row.lot),
+    ),
+    saleBlocked: blocked,
+    saleStatusId: statusId,
+  });
 
   const party = (
     id: number | null,

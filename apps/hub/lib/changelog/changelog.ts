@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-28-reserva-reflete-em-tudo",
+    deployedAt: "2026-08-28T22:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "CORRECAO: os cards do topo nao fechavam com o total. No Villa Paris eles somavam 70 de 97 unidades - as 27 marcadas como 'Bloqueado para venda' nao entravam em card nenhum, embora a lista logo abaixo as mostrasse como bloqueadas.",
+              "A lista e os cards passaram a usar a MESMA regra. Antes eram duas, uma em cada lugar, e elas discordavam.",
+              "O lote reservado no totem do lancamento agora aparece como RESERVADO tambem aqui. Antes o C2X dizia 'Disponivel' e a tela repetia, mesmo com o cliente segurando o cupom impresso.",
+            ],
+            screen: "Empreendimento · Unidades",
+          },
+        ],
+      },
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "CORRECAO: o telao do masterplan demorava ate 40 segundos para pintar o lote recem-reservado. Agora pinta em segundos.",
+            ],
+            screen: "Telao do masterplan",
+          },
+        ],
+      },
+    ],
+    rollback: "c8c91d06",
+    technical: {
+      done: "DOIS defeitos, achados na mesma investigacao. (1) TELAO: a rota publica saia com s-maxage=10 + stale-while-revalidate=30 e a CDN servia resposta guardada por ate 40s; o cache:no-store do fetch NAO alcanca a CDN, ele so manda o NAVEGADOR nao usar cache local (confirmado em producao por x-vercel-cache: HIT). Virou no-store — e UM telao por evento, o custo de nao cachear e menor que errar a cor na frente do salao. De quebra, o listener saiu de event '*' para o evento NOMINAL importado da constante (o wildcard depende da versao do supabase-js e falharia calado, com a tela bonita e o mapa errado) e o poll de rede caiu de 60s para 20s. (2) APOLO: lib/apolo/balde-da-unidade.ts novo (puro, 11 testes) com a regra UNICA e o SQL espelho — antes a lista classificava em TypeScript e os cards somavam em SQL, cada um com sua versao. O SQL procurava bloqueado como 'status DISPONIVEL com o flag ligado', premissa escrita quando o status 5 estava zerado no C2X; o Villa Paris chegou com 27 unidades em status 5 e flag 0 e elas sumiram de todos os baldes (48+1+21+0+0 = 70 de 97). Conferido na fonte depois da correcao: 48+1+21+0+27 = 97. A reserva do Panteon entrou como 4o degrau da ordem, DEPOIS de vendido/negociacao/reservado (a reserva do evento e o comeco do funil, nao pode puxar de volta lote que ja andou na esteira) e ANTES de bloqueado/disponivel. lib/prometeu/reservas-vivas.ts busca os codigos com paginacao de 1.000 (o PostgREST corta nesse teto SEM ERRO) e devolve Set vazio em qualquer tropeco — tela do Apolo nao pode quebrar porque a consulta de reservas falhou. Typecheck limpo; 1.416 testes de Apolo+Prometeu.",
+      motivation:
+        "Lucas (28/08), testando: 'acabei de reservar o b03, e nao atualizou no masterplan, isso tem que ser em milesimo de segundos' e, na sequencia, 'tem que refletir em tudo essa reserva, na tela de unidades o B3 ainda esta disponivel'.",
+    },
+    title:
+      "A reserva do salão reflete nas telas, e os cards de unidades voltam a fechar",
+    type: "correcao",
+    version: "1.225.0",
+  },
+  {
     buildTag: "2026-08-28-link-do-masterplan-no-setup",
     deployedAt: "2026-08-28T22:40:00-03:00",
     modules: [
