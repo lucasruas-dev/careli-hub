@@ -23,6 +23,27 @@ export type DesenhoDoMasterplan = {
 };
 
 const POR_CODIGO: Record<string, DesenhoDoMasterplan> = {
+  // ⚠️ JARDIM DAS GERAIS: a geometria aqui foi RECONSTRUIDA, e nao recebida do designer.
+  // Diferente de todos os outros masterplans da casa, que saem de um SVG com um path por lote
+  // rotulado em `inkscape:label`, o JDG so tinha material raster: o .cdr veio vazio (11 KB, sem
+  // desenho) e o PDF de 1,5 GB e um PSD achatado - 820 camadas de imagem e ZERO vetor.
+  //
+  // O que salvou foi o TEXTO do PDF, que traz as 46 quadras e os 442 lotes com coordenada
+  // exata. Os contornos vieram de Voronoi semeado nesses pontos, recortado pela mancha de cada
+  // quadra: lote de loteamento e fatia entre a rua e o fundo, e a divisa entre dois vizinhos e
+  // praticamente a mediatriz entre os centros deles. As arestas batem com as divisas do
+  // desenho, mas sao APROXIMADAS - quando o SVG do projetista chegar, este arquivo e
+  // substituido pelo caminho normal (scripts/apolo/masterplan-geometria-*.mjs).
+  //
+  // ⚠️ 436 dos 442 lotes. Seis ficaram de fora porque caem em quadras que se tocam sem rua no
+  // meio (10, 11 e 42) e a associacao lote->quadra ficou ambigua: JDG1018, JDG1020, JDG1101,
+  // JDG1102, JDG4201 e JDG4202. Eles nao pintam no telao ate serem conferidos contra a carga
+  // do C2X - que na data desta entrada ainda nao existia (o JDG tinha ZERO unidades).
+  JDG: {
+    base: "/masterplans-telao/jardim-das-gerais.jpg",
+    contornos: "/masterplans-telao/jardim-das-gerais-lotes.json",
+    viewBox: "0 0 3840 2160",
+  },
   RVP: {
     base: "/masterplans-telao/villa-paris.jpg",
     contornos: "/masterplans-telao/villa-paris-lotes.json",
