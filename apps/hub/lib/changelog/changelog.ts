@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-masterplan-jardim-das-gerais",
+    deployedAt: "2026-08-29T02:15:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "MASTERPLAN DO JARDIM DAS GERAIS no telao do salao: 46 quadras e 436 lotes, que acendem em verde (disponivel) e azul (reservado ou bloqueado) ao vivo.",
+              "O fundo saiu do mapa de implantacao em 4K, sem os textos de apresentacao - so o mapa, como o telao pede.",
+              "Seis lotes ainda nao pintam (JDG1018, JDG1020, JDG1101, JDG1102, JDG4201, JDG4202): ficam em quadras que se tocam sem rua no meio e precisam ser conferidos contra a carga do C2X.",
+            ],
+            screen: "Telao do masterplan",
+          },
+        ],
+      },
+    ],
+    rollback: "54585d8b",
+    technical: {
+      done: "Todos os masterplans da casa saem de um SVG do projetista com um path por lote em `inkscape:label` (scripts/apolo/masterplan-geometria-*.mjs). Para o JDG esse SVG NAO EXISTE: o .cdr veio vazio (11 KB, so o template do Corel) e o PDF de 1,5 GB e um PSD achatado - 820 camadas de imagem, zero vetor. O que salvou foi o TEXTO do PDF, que traz 46 quadras, 442 lotes e 273 areas com coordenada exata; e sobre esses pontos que a reconstrucao fica assertiva em vez de tracada a olho. GEOMETRIA POR VORONOI, e nao watershed: o watershed persegue contraste, e a divisa do JDG e uma linha de ~3px em verde-agua sobre verde com arvores desenhadas por cima - na conferencia em zoom ele contornava copa de arvore e cortava o lote atravessado. Lote de loteamento nao e mancha, e FATIA da quadra entre a rua e o fundo, e a divisa entre dois vizinhos e praticamente a mediatriz entre os centros: e o que o Voronoi constroi, com aresta reta por definicao. Roda POR ILHA (a mancha que as ruas isolam), senao o lote da ponta rouba pixel da quadra do outro lado da rua. Scripts e inventario (quadra/lote/area) versionados em scripts/prometeu/masterplan-jdg/. ⚠️ A geometria e APROXIMADA: quando o SVG do projetista chegar, este arquivo sai e volta o caminho normal. ⚠️ Os nomes seguem JDG+quadra+lote com dois digitos (JDG0109) e precisam bater com `name` da unidade no C2X - path com nome errado nao quebra nada, so nunca pinta, e ninguem percebe ate o telao estar projetado no salao. O JDG tinha ZERO unidades no C2X nesta data. Typecheck limpo.",
+      motivation:
+        "Lucas (29/08): 'quero que vc faca o masterplan do jardim das gerais, que e o empreendimento de amanha (...) a sigla sera JDG, quadra e os lotes estao no masterplan, caprixa por favor, bem assertivo' e, sobre a nomenclatura, 'sera assim mesmo JDGquadralote'.",
+    },
+    title: "Masterplan do Jardim das Gerais no telão",
+    type: "novidade",
+    version: "1.231.0",
+  },
+  {
     buildTag: "2026-08-29-pa-planos-do-empreendimento",
     deployedAt: "2026-08-29T01:25:00-03:00",
     modules: [
