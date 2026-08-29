@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-29-masterplan-jdg-v2",
+    deployedAt: "2026-08-29T07:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "MASTERPLAN DO JARDIM DAS GERAIS no telao, agora de verdade: a arte nova com as divisas em branco e a fonte, e cada um dos 250 lotes a venda foi conferido contra a carga do C2X - nome a nome e area a area.",
+              "O telao usa a propria arte do lancamento em 4K; os lotes acendem ao vivo em verde (disponivel) e azul (reservado).",
+            ],
+            screen: "Telao do masterplan",
+          },
+        ],
+      },
+    ],
+    rollback: "33c9ab2f",
+    technical: {
+      done: "Segunda versao, apos a primeira reprovar no olho do Lucas. O que mudou: (1) o Lucas regravou o PSD com divisas BRANCAS e numeros ampliados - a informacao passou a existir na imagem; (2) os numeros de lote sao LIDOS da arte (267 circulos, glifos clusterizados + leitura visual dos 22 grupos, QA de sequencia contra a carga por quadra: a numeracao nova NAO bate com o PDF antigo - quadra 09 foi de 17 para 20 lotes); (3) watershed global com elevacao continua (linha branca*4 vs escuridao; furo no circulo do numero; borda de ilha = muralha absoluta; sementes-fantasma em grade absorvem area sem dono) + reparo por PARES na proporcao da area da carga + ajuste final por area; (4) QA quantitativo: 250/250 da carga com poligono, correlacao 0,88, zero lotes com desvio de area > 35%, e inspecao visual em zoom das regioes criticas. Registro para a arte 4K por template matching (escala 0,4240; duas ancoras, residuo 0). Scripts versionados em scripts/prometeu/masterplan-jdg/. Pendencia: quando vier o SVG do urbanismo, substituir pela geometria exata via masterplan-geometria-*.mjs.",
+      motivation:
+        "Lucas (29/08): 'quero que vc monta o masterplan com muita perfeicao (...) agora tem os lotes cadastrados (...) aumentei os numero e coloquei as marcacoes em branco para ajudar'.",
+    },
+    title: "Masterplan do Jardim das Gerais no telão (v2)",
+    type: "novidade",
+    version: "1.232.0",
+  },
+  {
     buildTag: "2026-08-29-masterplan-jdg-sem-geometria",
     deployedAt: "2026-08-29T02:35:00-03:00",
     internal: true,

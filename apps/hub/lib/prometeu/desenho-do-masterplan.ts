@@ -23,30 +23,24 @@ export type DesenhoDoMasterplan = {
 };
 
 const POR_CODIGO: Record<string, DesenhoDoMasterplan> = {
-  // ⚠️ O JARDIM DAS GERAIS AINDA NAO TEM MAPA, e a tentativa de 29/08/2026 esta registrada aqui
-  // para ninguem repetir. O JDG foi o unico lancamento em que o projetista NAO entregou o SVG
-  // com um path por lote: o .cdr veio vazio (11 KB, so o template do Corel), o PDF de 1,5 GB e
-  // um PSD achatado (820 camadas de imagem, zero vetor) e o PSD nao tem mascara vetorial.
-  //
-  // Tentei reconstruir a geometria da imagem, por dois caminhos, e os DOIS reprovaram na
-  // conferencia em zoom:
-  //   1. WATERSHED semeado nos numeros dos lotes - persegue contraste, e a divisa aqui e uma
-  //      linha de ~3px em verde-agua sobre verde com arvores desenhadas por cima: ele contornava
-  //      copa de arvore e cortava o lote atravessado.
-  //   2. VORONOI entre os numeros - a premissa era que o numero fica no centro do lote e que a
-  //      divisa e a mediatriz entre vizinhos. FALSO: os numeros sao posicionados por estetica,
-  //      perto da frente do lote, entao as arestas saiam tortas por cima das divisas reais.
-  //   3. HOUGH sobre as divisas realcadas - nao achou uma unica divisa de lote; o limiar pegou a
-  //      mata clara do topo como ruido.
-  //
-  // A conclusao e que a imagem NAO permite extrair a geometria: nao e questao de afinar
-  // parametro. O que resolve e o mesmo que resolveu em todos os outros - o SVG (ou DWG/DXF) do
-  // urbanismo, com um path por lote rotulado. O loteamento foi aprovado em prefeitura, entao a
-  // planta vetorial existe.
-  //
-  // O material levantado (fundo 4K, inventario de 46 quadras / 442 lotes / 273 areas lido do
-  // texto do PDF, e os scripts) esta em scripts/prometeu/masterplan-jdg/ e continua valendo: o
-  // inventario serve para conferir a carga do C2X, e o fundo e o mesmo. So a GEOMETRIA falta.
+  // ⚠️ JARDIM DAS GERAIS: geometria RECONSTRUIDA DA ARTE, validada pela CARGA DO C2X.
+  // O JDG e o unico lancamento sem SVG do projetista (o .cdr veio vazio; o PDF de 1,5 GB e um
+  // PSD achatado). Depois que a primeira tentativa reprovou, o Lucas regravou a arte com as
+  // divisas em BRANCO e os numeros ampliados (29/08), e a reconstrucao passou a ser guiada por
+  // dado, nao por olho:
+  //   • numeros de lote LIDOS da propria arte (cluster de glifos + leitura visual), quadra pelo
+  //     marcador vermelho — a numeracao da arte nova NAO bate com a do PDF antigo;
+  //   • corte por watershed global (linha branca e arvore = muralha; borda de quadra = muralha
+  //     absoluta; sementes-fantasma absorvem area sem dono) + reparo por pares e ajuste final
+  //     proporcionais a AREA DA CARGA;
+  //   • QA final: 250/250 unidades da carga com poligono, correlacao area-desenho x area-carga
+  //     0,88, nenhum lote com desvio > 35%. Scripts em scripts/prometeu/masterplan-jdg/.
+  // Quando o SVG do urbanismo chegar, este arquivo sai e volta o caminho normal.
+  JDG: {
+    base: "/masterplans-telao/jardim-das-gerais.png",
+    contornos: "/masterplans-telao/jardim-das-gerais-lotes.json",
+    viewBox: "0 0 3840 2160",
+  },
   RVP: {
     base: "/masterplans-telao/villa-paris.jpg",
     contornos: "/masterplans-telao/villa-paris-lotes.json",
