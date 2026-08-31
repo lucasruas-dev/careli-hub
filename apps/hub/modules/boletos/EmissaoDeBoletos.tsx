@@ -23,6 +23,7 @@ import {
   resumirAba,
 } from "@/lib/apolo/boletos/ler-planilha";
 import { vereditoDaLinha } from "@/lib/apolo/boletos/regra-de-emissao";
+import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
 // A EMISSÃO MENSAL DE BOLETOS — o administrativo abre o arquivo do mês, confere e dispara.
 //
@@ -96,15 +97,36 @@ export function EmissaoDeBoletos() {
   const [aberta, setAberta] = useState<null | string>(null);
   const [busca, setBusca] = useState("");
   const [prontidao, setProntidao] = useState<null | Prontidao>(null);
+  // ⚠️ TRES ESTADOS, E NAO DOIS. "carregando" e "falhou" NAO sao a mesma coisa que "nao ha conta":
+  // tratar ignorancia como fato faria a tela afirmar "0 boletos - R$ 0,00 - 181 parados por falta
+  // de conta" com a tabela logo acima somando R$ 512.835,55. E esse numero que o administrativo
+  // levaria para a conferencia do financeiro.
+  const [estadoDaProntidao, setEstadoDaProntidao] = useState<"carregando" | "erro" | "pronta">(
+    "carregando",
+  );
 
   useEffect(() => {
     let vivo = true;
-    void fetch("/api/boletos/prontidao", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (vivo && j?.data) setProntidao(j.data as Prontidao);
-      })
-      .catch(() => undefined);
+    void (async () => {
+      try {
+        // ⚠️ COM O BEARER DA SESSAO. A rota exige `authorizeApoloRead`, e um fetch solto leva so
+        // o cookie e volta 401 — o `proxy.ts` corta antes mesmo de a rota rodar. Sem isto a
+        // prontidao nunca chegava e a tela mostrava "chave ausente" com a chave configurada.
+        const token = await getApoloAccessToken();
+        const r = await fetch("/api/boletos/prontidao", {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) throw new Error(`prontidao ${r.status}`);
+        const j = (await r.json()) as { data?: Prontidao };
+        if (!vivo) return;
+        if (!j.data) throw new Error("prontidao sem dados");
+        setProntidao(j.data);
+        setEstadoDaProntidao("pronta");
+      } catch {
+        if (vivo) setEstadoDaProntidao("erro");
+      }
+    })();
     return () => {
       vivo = false;
     };
@@ -184,17 +206,22 @@ export function EmissaoDeBoletos() {
     return m;
   }, [prontidao]);
 
+  // ⚠️ SO CLASSIFICA QUANDO SABE. Enquanto a prontidao nao chegou ninguem e "liberado" nem
+  // "travado por falta de conta" — os dois seriam afirmacoes sobre algo que a tela ainda ignora.
+  const sabeDasContas = estadoDaProntidao === "pronta";
   const liberados = useMemo(
     () =>
-      naLista.filter((r) => {
-        const e = estadoPorSlug.get(r.empreendimento!.slug);
-        return r.emitem > 0 && Boolean(e?.contaConfigurada);
-      }),
-    [estadoPorSlug, naLista],
+      sabeDasContas
+        ? naLista.filter((r) => {
+            const e = estadoPorSlug.get(r.empreendimento!.slug);
+            return r.emitem > 0 && Boolean(e?.contaConfigurada);
+          })
+        : [],
+    [estadoPorSlug, naLista, sabeDasContas],
   );
   const travados = useMemo(
-    () => naLista.filter((r) => r.emitem > 0 && !liberados.includes(r)),
-    [liberados, naLista],
+    () => (sabeDasContas ? naLista.filter((r) => r.emitem > 0 && !liberados.includes(r)) : []),
+    [liberados, naLista, sabeDasContas],
   );
 
   return (
@@ -249,7 +276,7 @@ export function EmissaoDeBoletos() {
         </p>
       ) : null}
 
-      <PainelDeProntidao prontidao={prontidao} />
+      <PainelDeProntidao estado={estadoDaProntidao} prontidao={prontidao} />
 
       {abas.length === 0 && !lendo ? (
         <div className={`${CAIXA} grid place-items-center gap-2 px-6 py-14 text-center`}>
@@ -306,6 +333,7 @@ export function EmissaoDeBoletos() {
                     estado={r.empreendimento ? (estadoPorSlug.get(r.empreendimento.slug) ?? null) : null}
                     key={r.aba}
                     resumo={r}
+                    sabeDasContas={sabeDasContas}
                   />
                 ))}
               </tbody>
@@ -335,8 +363,10 @@ export function EmissaoDeBoletos() {
           ) : null}
 
           <BarraDeAcao
+            aEmitirSemSaber={geral.emitem}
             competencia={competencia}
             liberados={liberados}
+            sabeDasContas={sabeDasContas}
             travados={travados}
           />
         </>
@@ -362,7 +392,45 @@ function Cartao({ nota, rotulo, valor }: { nota: string; rotulo: string; valor: 
  * conta o boleto sai no CNPJ errado (e o dinheiro cai na conta errada), e sem CPF o Asaas recusa
  * a criação do cliente no meio do lote.
  */
-function PainelDeProntidao({ prontidao }: { prontidao: null | Prontidao }) {
+function PainelDeProntidao({
+  estado,
+  prontidao,
+}: {
+  estado: "carregando" | "erro" | "pronta";
+  prontidao: null | Prontidao;
+}) {
+  // ⚠️ O ERRO PRECISA APARECER. Este painel e a unica garantia da tela contra emitir no CNPJ
+  // errado ou sem CPF; se ele sumir calado quando a consulta falha, a tela fica parecendo que
+  // esta tudo certo justamente quando ela nao sabe de nada.
+  if (estado === "erro") {
+    return (
+      <section className="flex items-start gap-2 rounded-xl border border-red-300/60 bg-red-50 px-4 py-3 dark:border-red-500/40 dark:bg-red-500/10">
+        <AlertTriangle
+          aria-hidden="true"
+          className="mt-0.5 shrink-0 text-red-600 dark:text-red-400"
+          size={15}
+        />
+        <p className="text-sm text-ink">
+          <b className="text-red-700 dark:text-red-300">
+            Não consegui consultar as contas do Asaas nem os CPFs.
+          </b>{" "}
+          A conferência da planilha abaixo continua valendo, mas a tela não sabe dizer quais
+          empreendimentos estão prontos para emitir. Recarregue a página; se persistir, sua sessão
+          pode ter expirado.
+        </p>
+      </section>
+    );
+  }
+
+  if (estado === "carregando") {
+    return (
+      <p className="flex items-center gap-2 px-1 text-sm text-ink-muted">
+        <Loader2 aria-hidden="true" className="animate-spin" size={14} />
+        Consultando as contas do Asaas e a cobertura de CPF…
+      </p>
+    );
+  }
+
   if (!prontidao) return null;
 
   const semConta = prontidao.empreendimentos.filter((e) => !e.contaConfigurada);
@@ -437,6 +505,7 @@ function LinhaDoEmpreendimento({
   clientes,
   estado,
   resumo,
+  sabeDasContas,
 }: {
   aberta: boolean;
   aoAbrir: () => void;
@@ -444,6 +513,7 @@ function LinhaDoEmpreendimento({
   clientes: ClienteDaPlanilha[];
   estado: null | Prontidao["empreendimentos"][number];
   resumo: ResumoDaAba;
+  sabeDasContas: boolean;
 }) {
   const emp: EmpreendimentoDeBoleto | null = resumo.empreendimento;
   const carteira =
@@ -486,6 +556,8 @@ function LinhaDoEmpreendimento({
             <span className="rounded-full bg-subtle px-2 py-0.5 text-[0.7rem] font-bold text-ink-muted">
               fora da emissão
             </span>
+          ) : !sabeDasContas ? (
+            <span className="text-[0.7rem] font-semibold text-ink-muted">consultando…</span>
           ) : estado?.contaConfigurada ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[0.7rem] font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
               <Check aria-hidden="true" size={11} />
@@ -556,17 +628,43 @@ function ItemDoCliente({ cliente }: { cliente: ClienteDaPlanilha }) {
  * conferência do financeiro.
  */
 function BarraDeAcao({
+  aEmitirSemSaber,
   competencia,
   liberados,
+  sabeDasContas,
   travados,
 }: {
+  /** O que a planilha diz, independente do que se sabe das contas. */
+  aEmitirSemSaber: number;
   competencia: string;
   liberados: ResumoDaAba[];
+  sabeDasContas: boolean;
   travados: ResumoDaAba[];
 }) {
   const quantos = liberados.reduce((a, r) => a + r.emitem, 0);
   const total = Math.round(liberados.reduce((a, r) => a + r.total, 0) * 100) / 100;
   const parados = travados.reduce((a, r) => a + r.emitem, 0);
+
+  // ⚠️ SEM SABER DAS CONTAS, A BARRA NAO DA NUMERO DE EMISSAO. Dizer "0 boletos - R$ 0,00" com a
+  // tabela logo acima somando meio milhao seria a tela mentindo com cara de precisao.
+  if (!sabeDasContas) {
+    return (
+      <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur">
+        <div className="text-sm text-ink-muted">
+          <b className="tabular-nums text-ink">{aEmitirSemSaber}</b> na planilha para{" "}
+          {rotuloDaCompetencia(competencia)}. Quantos podem ser emitidos depende das contas do
+          Asaas, que não consegui consultar.
+        </div>
+        <button
+          className="rounded-lg bg-inverse px-5 py-2 text-sm font-bold text-brand-ink opacity-40"
+          disabled
+          type="button"
+        >
+          Emitir no Asaas
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur">

@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-31-boletos-prontidao-autenticada",
+    deployedAt: "2026-08-31T15:05:00-03:00",
+    modules: [
+      {
+        module: "Boletos",
+        screens: [
+          {
+            items: [
+              "O painel 'O que falta para emitir' volta a carregar: a consulta ia sem credencial e voltava negada, entao ele nunca aparecia.",
+              "A barra de baixo parava de dizer '0 boletos - R$ 0,00' quando ainda nao sabia das contas; agora ela diz o que sabe e o que nao sabe.",
+              "Empreendimento com a conta certa nao aparece mais como 'chave ausente'.",
+            ],
+            screen: "Emissão de boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "d6810e2e",
+    technical: {
+      done: "Achado por revisao adversarial (4 lentes, 10 achados brutos, 2 confirmados, 8 refutados) logo depois do deploy da v1.242.0 — e os dois confirmados eram a mesma raiz. O fetch de /api/boletos/prontidao saia SEM `Authorization: Bearer`: a rota exige authorizeApoloRead e o proxy.ts corta antes mesmo dela rodar, entao a resposta era 401 SEMPRE — nao numa corrida, nao com sessao expirada, sempre. ⚠️ E o estrago nao era um erro na tela: o 401 era engolido por `r.ok ? r.json() : null`, a prontidao ficava null para sempre, `contaConfigurada` vinha undefined e a tela tratava IGNORANCIA COMO FATO — a barra afirmava '0 boletos - R$ 0,00 - 181 parados por falta de conta' com a tabela logo acima somando R$ 512.835,55, e o Garden aparecia como 'chave ausente'. E esse numero que o administrativo levaria para a conferencia do financeiro. Corrigido em duas frentes: (1) o token vem de getApoloAccessToken, o helper que o resto da casa ja usa; (2) o estado da prontidao virou TRES ('carregando' | 'erro' | 'pronta'), a classificacao liberado/travado so acontece com `sabeDasContas`, e a falha aparece em vermelho em vez de sumir calada. ⚠️ O bug passou por typecheck, lint e 1.872 testes verdes porque nada disso prova que a peca esta conectada — nasceu dai o teste modules/boletos/chamada-autenticada.test.ts, que le o proprio fonte e garante que nenhum fetch de /api/ sai desta tela sem cabecalho; conferido removendo o header e vendo o teste ficar vermelho. 1.878 testes verdes, typecheck e lint limpos.",
+      motivation:
+        "A tela dizia com precisao um numero que ela nao tinha como saber, e o numero era zero.",
+    },
+    title: "Boletos: a tela para de afirmar o que não sabe",
+    type: "correcao",
+    version: "1.243.0",
+  },
+  {
     buildTag: "2026-08-31-tela-emissao-boletos",
     deployedAt: "2026-08-31T14:40:00-03:00",
     modules: [
