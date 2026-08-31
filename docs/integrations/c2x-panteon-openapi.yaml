@@ -1,0 +1,1019 @@
+openapi: 3.1.0
+
+info:
+  title: C2X · API de integração com o Panteon
+  version: "1.0.0-proposta"
+  summary: Especificação das operações que o Panteon precisa executar no C2X.
+  description: |
+    Documento de **especificação**, escrito pela Careli para o time responsável pelo C2X.
+    Descreve o que a integração precisa, não o que já existe.
+
+    ## Contexto
+
+    Hoje `/api/v1/integrations/panteon/` expõe **duas** operações: criação de `users` e criação de
+    `enterprise_units`. Tudo o mais é feito à mão pela tela do C2X ou, nos casos autorizados caso a
+    caso, por escrita direta no MySQL de produção. O Panteon lê o banco do C2X em modo
+    somente-leitura.
+
+    Isso produz, hoje, os seguintes efeitos:
+
+    - **A reserva feita no salão não chega ao C2X.** Desde 28/08/2026 a reserva nasce no Panteon
+      (terminal de toque no lançamento). O cliente sai com o cupom impresso e a unidade continua
+      "Disponível" no legado, no `show_map` que o corretor usa para vender e na tela de Unidades.
+      Alguém precisa relançar o pedido à mão depois do evento.
+    - **Unidade com dado errado só se conserta lote a lote pela tela.** Em 29/08/2026 subimos uma
+      tabela de preços defasada; a correção não tem caminho por API.
+    - **`sale_status_id` e `sale_blocked` só mudam por UPDATE direto no banco de produção**, que é a
+      única exceção à regra de somente-leitura e foi autorizada caso a caso.
+    - **O cliente criado pelo endpoint atual não devolve o `id`.** O Panteon precisa consultar o
+      MySQL pelo CPF depois de cada POST para descobrir com quem falou.
+
+    ## O que muda com esta especificação
+
+    O ciclo inteiro passa a ter caminho por API: cadastrar o comprador, reservar a unidade no
+    salão, evoluir a reserva para proposta (o coordenador envia a proposta pronta), atualizar
+    dados cadastrais da unidade, dar baixa de pagamento e receber avisos de mudança.
+
+    ## Convenções desta especificação
+
+    - `bloqueante` nas descrições marca o que impede a operação de existir.
+    - Todos os horários em ISO 8601 com fuso (`2026-09-01T10:00:00-03:00`).
+    - Valores monetários como **string decimal** com ponto (`"2207.17"`), nunca float.
+    - Datas sem hora no formato `YYYY-MM-DD`.
+  contact:
+    name: Careli · Panteon
+    email: lucas.ruas@careli.adm.br
+
+servers:
+  - url: https://sistema.careli.adm.br/api/v1/integrations/panteon
+    description: Produção
+  - url: https://teste.careli.adm.br/api/v1/integrations/panteon
+    description: |
+      Homologação. **Precisamos de um ambiente de teste com dados próprios.**
+      Em 01/08/2026, oito cadastros foram para o ambiente de teste sem que ninguém percebesse,
+      porque a API respondeu sucesso nos dois casos e não havia como distinguir o destino.
+
+security:
+  - tokenCru: []
+  - accessToken: []
+
+tags:
+  - name: Pessoas
+    description: Compradores, corretores e imobiliárias.
+  - name: Unidades
+    description: Cadastro e situação dos lotes.
+  - name: Pedidos
+    description: Reserva e proposta de aquisição. No C2X são o mesmo registro em etapas diferentes.
+  - name: Pagamentos
+    description: Baixa e reajuste de parcelas.
+  - name: Apoio
+    description: Consultas que a integração precisa para não adivinhar.
+
+paths:
+
+  # ────────────────────────────────────────────────────────────────────────────
+  #  PESSOAS
+  # ────────────────────────────────────────────────────────────────────────────
+
+  /users:
+    post:
+      tags: [Pessoas]
+      summary: Criar ou reaproveitar um cadastro de pessoa
+      description: |
+        **bloqueante.**
+
+        Três problemas do endpoint atual que precisam mudar:
+
+        1. **Ele responde HTTP 201 mesmo no erro** — o desfecho real vem no corpo. Isso obriga a
+           integração a interpretar texto para saber se deu certo.
+        2. **Ele não devolve o `id`.** Hoje o Panteon precisa consultar o MySQL de produção pelo
+           CPF depois de cada POST para descobrir o `users.id`. Sem o id na resposta, não há como
+           criar o pedido de aquisição em seguida.
+        3. **Ele cria de novo a cada chamada**, sem olhar o documento. Uma reexecução gera pessoa
+           duplicada, e a duplicidade só aparece no contrato.
+
+        O comportamento pedido é **idempotente por documento**: se o CPF/CNPJ já existe, devolver
+        `200` com o cadastro existente em vez de criar outro. Quem quiser garantir que é criação
+        nova usa `Idempotency-Key`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PessoaEntrada" }
+      responses:
+        "200":
+          description: Já existia. Devolve o cadastro encontrado pelo documento.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pessoa" }
+        "201":
+          description: Criado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pessoa" }
+        "422": { $ref: "#/components/responses/Invalido" }
+
+    get:
+      tags: [Pessoas]
+      summary: Buscar pessoa por documento
+      description: |
+        **bloqueante.** É como a integração descobre o `id` de alguém que já existe, sem precisar
+        consultar o banco. Sem ele, todo cadastro vira uma tentativa às cegas.
+      parameters:
+        - name: document
+          in: query
+          required: true
+          schema: { type: string }
+          description: CPF ou CNPJ, com ou sem pontuação. A comparação deve ignorar a formatação.
+      responses:
+        "200":
+          description: Encontrado, ou lista vazia.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Pessoa" }
+
+  /users/{documento}:
+    parameters:
+      - name: documento
+        in: path
+        required: true
+        schema: { type: string }
+        description: CPF ou CNPJ, com ou sem pontuação.
+    put:
+      tags: [Pessoas]
+      summary: Atualizar cadastro existente
+      description: |
+        **bloqueante.** O cadastro do comprador é conferido e completado no Panteon (documentos,
+        endereço, estado civil, cônjuge). Hoje essa correção não tem caminho de volta ao C2X, e as
+        duas bases divergem em silêncio.
+
+        **Atualização parcial**: apenas os campos enviados são alterados. Enviar o objeto inteiro
+        apagaria o que o C2X sabe e o Panteon não.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PessoaEntrada" }
+      responses:
+        "200":
+          description: Atualizado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pessoa" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+
+  # ────────────────────────────────────────────────────────────────────────────
+  #  UNIDADES
+  # ────────────────────────────────────────────────────────────────────────────
+
+  /enterprises:
+    get:
+      tags: [Apoio]
+      summary: Listar empreendimentos
+      description: |
+        **bloqueante.** A integração precisa resolver o `enterprise_id` a partir do código (`GDN`,
+        `RVP`) sem consultar o banco.
+      responses:
+        "200":
+          description: Lista.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, examples: [39] }
+                        code: { type: string, examples: ["GDN"] }
+                        name: { type: string, examples: ["GARDEN"] }
+
+  /enterprise_units:
+    get:
+      tags: [Unidades]
+      summary: Listar unidades de um empreendimento
+      description: |
+        **bloqueante.** Hoje o Panteon lê isso direto do MySQL. Com este endpoint a leitura passa
+        pelo contrato, e a dependência do acesso ao banco cai.
+      parameters:
+        - name: enterprise_id
+          in: query
+          required: true
+          schema: { type: integer }
+        - $ref: "#/components/parameters/Pagina"
+        - $ref: "#/components/parameters/PorPagina"
+        - name: updated_since
+          in: query
+          schema: { type: string, format: date-time }
+          description: Devolve apenas o que mudou depois deste instante, para leitura incremental.
+      responses:
+        "200":
+          description: Lista paginada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Unidade" }
+                  meta: { $ref: "#/components/schemas/Paginacao" }
+
+    post:
+      tags: [Unidades]
+      summary: Criar unidade
+      description: |
+        Já existe e funciona. Documentado aqui para o contrato ficar completo.
+
+        ⚠️ Pedimos **um índice único por (empreendimento, quadra, lote)** no banco. Hoje a
+        duplicidade só é evitada porque a integração confere antes de enviar; uma reexecução
+        simultânea criaria a mesma unidade duas vezes.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UnidadeEntrada" }
+      responses:
+        "201":
+          description: Criada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Unidade" }
+        "409":
+          description: Já existe unidade com essa quadra e lote no empreendimento.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /enterprise_units/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    put:
+      tags: [Unidades]
+      summary: Atualizar dados cadastrais da unidade
+      description: |
+        **bloqueante.** Hoje `PUT` e `PATCH` respondem **405**, medido em 01/08/2026. Sem isso,
+        uma tabela de preços defasada só se corrige lote a lote pela tela.
+
+        ⚠️ **`sale_status_id` e `sale_blocked` NÃO entram aqui, de propósito.** Situação de venda
+        muda por operação (reserva, venda, distrato), nunca por carga de planilha. Uma planilha
+        velha dizendo "disponível" não pode rebaixar um lote vendido. Para situação existe o
+        endpoint próprio, abaixo.
+
+        **Atualização parcial**: apenas os campos enviados mudam.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price: { type: string, examples: ["315132.00"], description: Preço de tabela. }
+                area: { type: string, examples: ["1036.07"], description: Área em m². }
+                registration: { type: string, description: Matrícula. }
+                registration_number: { type: string, description: A tela do C2X preenche os dois com o mesmo valor. }
+      responses:
+        "200":
+          description: Atualizada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Unidade" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+
+    delete:
+      tags: [Unidades]
+      summary: Inativar unidade criada por engano
+      description: |
+        **importante.** Hoje não há como desfazer: uma unidade errada só sai pela tela do C2X, à
+        mão, e enquanto isso aparece no estoque e no VGV.
+
+        Preferimos **inativação** (soft delete) a exclusão, para não perder histórico. Deve
+        recusar com `409` se a unidade tiver pedido de aquisição associado.
+      responses:
+        "200": { description: Inativada. }
+        "409":
+          description: A unidade tem pedido associado e não pode ser removida.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+  /enterprise_units/{id}/status:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      tags: [Unidades]
+      summary: Mudar a situação de venda da unidade
+      description: |
+        **bloqueante.** São os dois campos que pintam o mapa do corretor e definem o que pode ser
+        vendido. Hoje só mudam por UPDATE direto no banco de produção.
+
+        ⚠️ **Os dois campos andam juntos.** Existem hoje 882 unidades com status "Disponível" e
+        `sale_blocked` ligado ao mesmo tempo, uma combinação que a tela mostra como bloqueada e que
+        ninguém explica. Quem mexer só no status produz mais linhas assim, então pedimos que a
+        operação receba os dois e valide a coerência.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sale_status_id, sale_blocked]
+              properties:
+                sale_status_id:
+                  type: integer
+                  enum: [1, 2, 3, 4, 5]
+                  description: "1 Disponível · 2 Reservado · 3 Em negociação · 4 Vendido · 5 Bloqueado para venda"
+                sale_blocked:
+                  type: boolean
+                  description: O bloqueio manual, paralelo ao status.
+                motivo:
+                  type: string
+                  description: Para o histórico.
+      responses:
+        "200":
+          description: Situação alterada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Unidade" }
+
+  # ────────────────────────────────────────────────────────────────────────────
+  #  PEDIDOS — reserva e proposta
+  # ────────────────────────────────────────────────────────────────────────────
+
+  /acquisition_requests:
+    post:
+      tags: [Pedidos]
+      summary: Criar reserva ou proposta de aquisição
+      description: |
+        **bloqueante — é a operação mais importante desta especificação.**
+
+        No C2X, reserva e proposta são **o mesmo registro em etapas diferentes** (`stage_id` 1 e 9).
+        Este endpoint cria o pedido na etapa informada: o salão cria em `Reservado`, e o
+        coordenador envia a proposta pronta já em `Proposta realizada`.
+
+        ## Atomicidade
+
+        Vários terminais operam ao mesmo tempo no salão. **Dois vendedores vão tocar no mesmo lote
+        no mesmo segundo** — isso é certeza, não hipótese.
+
+        A verificação de pedido aberto e a criação precisam acontecer **na mesma transação**. Se já
+        houver pedido aberto para a unidade, recusar com `409` devolvendo o pedido vigente. Sem
+        isso, duas reservas nascem para o mesmo lote e o problema aparece no contrato.
+
+        ## Efeito colateral obrigatório
+
+        A unidade passa para `Reservado` (`sale_status_id = 2`) **no mesmo ato**, como acontece
+        pela tela. É isso que faz o `show_map` mudar de cor para os corretores.
+
+        ## O que é "pedido aberto"
+
+        Precisa estar declarado no contrato. Nossa leitura é `open = 1`, mas o comportamento
+        precisa ser o de vocês, não a nossa inferência.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PedidoEntrada" }
+      responses:
+        "201":
+          description: Criado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pedido" }
+        "409":
+          description: |
+            A unidade já tem pedido aberto. **Devolver qual**, para a tela do salão dizer ao
+            operador o que aconteceu em vez de mostrar erro genérico.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Erro"
+                  - type: object
+                    properties:
+                      current:
+                        type: object
+                        properties:
+                          id: { type: integer }
+                          code: { type: string, examples: ["VLO11"] }
+                          stage: { type: string, examples: ["Reservado"] }
+        "422": { $ref: "#/components/responses/Invalido" }
+
+    get:
+      tags: [Pedidos]
+      summary: Consultar pedidos
+      description: Conferência e reconciliação.
+      parameters:
+        - name: enterprise_unity_id
+          in: query
+          schema: { type: integer }
+        - name: external_ref
+          in: query
+          schema: { type: string }
+          description: O código do cupom do Panteon, para reconciliar sem guardar o id do C2X.
+        - $ref: "#/components/parameters/Pagina"
+      responses:
+        "200":
+          description: Lista.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Pedido" }
+
+  /acquisition_requests/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Pedidos]
+      summary: Consultar um pedido, com as parcelas geradas
+      description: |
+        **importante.** Depois que a proposta é aceita, o C2X gera as parcelas. O Panteon precisa
+        lê-las para montar o extrato do cliente e a régua de cobrança.
+      parameters:
+        - name: include
+          in: query
+          schema: { type: string, examples: ["payments"] }
+      responses:
+        "200":
+          description: O pedido.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pedido" }
+
+    patch:
+      tags: [Pedidos]
+      summary: Evoluir a etapa, alterar ou cancelar o pedido
+      description: |
+        **bloqueante.** É por aqui que a reserva do salão vira proposta quando o coordenador
+        confirma, e é por aqui que o pedido é cancelado.
+
+        As etapas do C2X são: `1 Reservado · 2 Análise de crédito · 3 Contrato gerado ·
+        4 Faturado · 5 Em assinatura · 6 Finalizado · 7 Cancelado · 8 Reprovado análise de crédito ·
+        9 Proposta realizada · 10 Em distrato · 11 Distratado`.
+
+        Pedimos que as **transições válidas estejam declaradas** — quais etapas podem virar quais.
+        Sem isso a integração tentaria transições que vocês recusam, e só descobriria em produção.
+
+        Cancelar precisa ser **idempotente**: o operador clica duas vezes no balcão.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stage_id: { type: integer, examples: [9] }
+                commercial_plan_id: { type: integer }
+                custom_commercial_plan: { type: boolean }
+                observation: { type: string }
+                motivo: { type: string, description: Obrigatório ao cancelar. }
+      responses:
+        "200":
+          description: Alterado. Quando vira Cancelado, a unidade volta para Disponível no mesmo ato.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pedido" }
+        "409":
+          description: Transição de etapa não permitida.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+    delete:
+      tags: [Pedidos]
+      summary: Cancelar a reserva e devolver o lote
+      description: |
+        **bloqueante.** O cliente desiste no balcão e o lote precisa voltar para a prateleira na
+        hora. Equivale ao `PATCH` com `stage_id: 7`.
+
+        A unidade volta para `Disponível` no mesmo ato.
+      responses:
+        "200":
+          description: Cancelado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  stage: { type: string, examples: ["Cancelado"] }
+                  unity_status: { type: string, examples: ["Disponível"] }
+
+  # ────────────────────────────────────────────────────────────────────────────
+  #  PAGAMENTOS
+  # ────────────────────────────────────────────────────────────────────────────
+
+  /payments/{id}/settlement:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      tags: [Pagamentos]
+      summary: Dar baixa em uma parcela
+      description: |
+        **importante.** Hoje a baixa é feita **pela tela do C2X**, com um script de navegador
+        rodando em cima da interface. Além de frágil, a resposta de sucesso da tela não garante que
+        gravou: já aconteceu de responder "sucesso" sem gravar, e só a releitura do banco mostrou.
+
+        Pedimos que a resposta devolva **o estado da parcela depois da baixa**, para a conferência
+        ser pela resposta e não por uma segunda consulta.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [valor_recebido, data_recebimento]
+              properties:
+                valor_recebido: { type: string, examples: ["2207.17"] }
+                data_recebimento: { type: string, format: date }
+                forma: { type: string, examples: ["pix", "boleto", "transferencia"] }
+                observacao: { type: string }
+      responses:
+        "200":
+          description: Baixa registrada, com a parcela como ficou.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Parcela" }
+        "409":
+          description: A parcela já estava baixada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+
+    delete:
+      tags: [Pagamentos]
+      summary: Estornar uma baixa
+      description: |
+        **importante.** Baixa errada acontece, e hoje não há como desfazer pela integração. Sem
+        isso, o conserto volta a ser manual na tela.
+      responses:
+        "200": { description: Estornada. }
+
+  /payments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      tags: [Pagamentos]
+      summary: Alterar o valor de uma parcela
+      description: |
+        **importante.** O reajuste contratual muda o valor das parcelas futuras. Hoje isso é feito
+        pela tela, uma a uma.
+
+        ⚠️ **Precisamos saber o que acontece com o boleto já emitido** quando o valor muda: ele é
+        cancelado e reemitido, continua válido pelo valor antigo, ou o sistema recusa a alteração?
+        A resposta muda o que a nossa régua de cobrança faz, e precisa estar no contrato.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                initial_value: { type: string, examples: ["2207.17"] }
+                due_date: { type: string, format: date }
+      responses:
+        "200":
+          description: Alterada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Parcela" }
+
+  # ────────────────────────────────────────────────────────────────────────────
+  #  APOIO
+  # ────────────────────────────────────────────────────────────────────────────
+
+  /lookups/{tabela}:
+    get:
+      tags: [Apoio]
+      summary: Tabelas de domínio
+      description: |
+        **importante.** Hoje a integração descobre esses valores lendo o banco, e por isso qualquer
+        item novo cadastrado por vocês passa despercebido até quebrar.
+
+        Tabelas necessárias: `acquisition_request_stages`, `sale_statuses`, `parcel_types`,
+        `acquisition_request_types`, `commercial_plans`, `index_monetary_corrections`, `due_days`,
+        `marital_statuses`, `cities`, `states`.
+      parameters:
+        - name: tabela
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Itens.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        name: { type: string }
+
+  /changes:
+    get:
+      tags: [Apoio]
+      summary: Feed de mudanças por cursor
+      description: |
+        **importante — é a alternativa ao webhook, e uma das duas precisa existir.**
+
+        Hoje o Panteon descobre que uma venda fechou **lendo o banco do C2X**. Enquanto essa for a
+        única forma, a integração continua dependendo de acesso direto ao MySQL de produção.
+
+        Com um feed por cursor, o Panteon pergunta "o que mudou desde X" e processa em ordem, sem
+        perder evento se ficar fora do ar.
+      parameters:
+        - name: since
+          in: query
+          schema: { type: string }
+          description: O cursor devolvido na última leitura.
+        - name: types
+          in: query
+          schema: { type: string, examples: ["acquisition_request,payment,enterprise_unit"] }
+      responses:
+        "200":
+          description: Mudanças em ordem, com o próximo cursor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string }
+                        id: { type: integer }
+                        event: { type: string, examples: ["updated", "created", "settled"] }
+                        occurred_at: { type: string, format: date-time }
+                  next_cursor: { type: string }
+
+webhooks:
+  mudancaNoC2x:
+    post:
+      summary: O C2X avisa o Panteon quando algo muda
+      description: |
+        **importante.** A alternativa ao feed acima, e a preferida: em vez de perguntarmos, vocês
+        avisam.
+
+        Eventos que nos interessam: venda faturada, contrato gerado, assinatura concluída, baixa de
+        pagamento, distrato, e mudança de situação de unidade.
+
+        Pedimos: **assinatura HMAC** no cabeçalho para provarmos a origem, **reenvio** em caso de
+        falha nossa, e **um id de evento** para descartarmos repetidos.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event_id: { type: string, description: Para descartar entrega repetida. }
+                type: { type: string, examples: ["acquisition_request.invoiced"] }
+                occurred_at: { type: string, format: date-time }
+                data: { type: object }
+      responses:
+        "200": { description: Recebido. }
+
+components:
+
+  securitySchemes:
+    tokenCru:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        O token **cru**, sem o prefixo `Bearer`. É como a integração atual funciona.
+        ⚠️ Precisamos saber a política: o token expira? Como é rotacionado? Há escopo por operação?
+    accessToken:
+      type: apiKey
+      in: header
+      name: access_token
+      description: O mesmo token, no segundo cabeçalho. A API atual exige os dois.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, format: uuid }
+      description: |
+        **bloqueante em todas as escritas.**
+
+        A rede do salão cai, o operador toca de novo, e a integração reexecuta. Sem idempotência,
+        cada retry vira um registro novo: cliente duplicado, reserva duplicada, baixa em dobro.
+
+        Comportamento pedido: a mesma chave devolve **a mesma resposta** da primeira chamada, sem
+        executar de novo.
+    Pagina:
+      name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    PorPagina:
+      name: per_page
+      in: query
+      schema: { type: integer, default: 100, maximum: 500 }
+
+  responses:
+    Invalido:
+      description: Dados inválidos.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+    NaoEncontrado:
+      description: Não encontrado.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+
+  schemas:
+
+    Erro:
+      type: object
+      description: |
+        **bloqueante: um formato único de erro em todos os endpoints.**
+
+        Hoje a integração precisa interpretar texto para saber o que houve, e o mesmo problema
+        chega escrito de formas diferentes. Pedimos um **código estável** (que não muda quando a
+        mensagem muda), o **campo** que causou, e uma mensagem legível.
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, examples: ["unidade_indisponivel", "documento_invalido"] }
+            message: { type: string }
+            field: { type: string, description: O campo do payload que causou o erro. }
+        request_id: { type: string, description: Para citarmos ao abrir um chamado com vocês. }
+
+    Paginacao:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+
+    Proveniencia:
+      type: object
+      description: |
+        **importante.** Aceito em toda escrita e devolvido em toda leitura.
+
+        Sem isso, ninguém sabe se um registro nasceu no C2X ou veio do Panteon, e auditar uma
+        divergência vira arqueologia. O `registered_by_id` já existe em `acquisition_requests`.
+      properties:
+        source: { type: string, examples: ["panteon"] }
+        external_ref: { type: string, description: O id do registro do nosso lado. }
+        actor: { type: string, description: Quem executou, do lado do Panteon. }
+
+    PessoaEntrada:
+      type: object
+      required: [name, document]
+      properties:
+        name: { type: string }
+        document: { type: string, description: CPF ou CNPJ, com ou sem pontuação. }
+        email: { type: string }
+        phone: { type: string }
+        cell_phone: { type: string }
+        rg: { type: string }
+        birth_date: { type: string, format: date }
+        marital_status_id: { type: integer }
+        profession: { type: string }
+        nationality: { type: string }
+        address:
+          type: object
+          properties:
+            zip_code: { type: string }
+            street: { type: string }
+            number: { type: string }
+            complement: { type: string }
+            district: { type: string }
+            city: { type: string }
+            state: { type: string }
+        enterprise_id:
+          type: integer
+          description: |
+            **importante.** Vincula a pessoa ao empreendimento no cadastro. Hoje esse vínculo é
+            feito por outro caminho, e sem ele o cliente não aparece nas telas do empreendimento.
+        legal_representatives:
+          type: array
+          description: |
+            **importante para pessoa jurídica.** Quem assina pela empresa. Sem isso, o contrato de
+            uma PJ não tem signatário.
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              document: { type: string }
+              role: { type: string }
+        provenance: { $ref: "#/components/schemas/Proveniencia" }
+
+    Pessoa:
+      allOf:
+        - $ref: "#/components/schemas/PessoaEntrada"
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: integer
+              description: |
+                **bloqueante.** É o que falta hoje: sem o id na resposta, o Panteon precisa
+                consultar o MySQL pelo CPF para descobrir com quem acabou de falar.
+            created_at: { type: string, format: date-time }
+
+    UnidadeEntrada:
+      type: object
+      required: [enterprise_id, block, lot, name]
+      properties:
+        enterprise_id: { type: integer }
+        block: { type: string, examples: ["08"] }
+        lot: { type: string, examples: ["109"] }
+        name: { type: string, examples: ["GDN08109"] }
+        area: { type: string }
+        price: { type: string }
+        registration: { type: string }
+        registration_number: { type: string }
+        enterprise_unity_type_id: { type: integer }
+        sale_status_id: { type: integer }
+        sale_blocked: { type: boolean }
+        provenance: { $ref: "#/components/schemas/Proveniencia" }
+
+    Unidade:
+      allOf:
+        - $ref: "#/components/schemas/UnidadeEntrada"
+        - type: object
+          properties:
+            id: { type: integer }
+            updated_at: { type: string, format: date-time }
+
+    Proponente:
+      type: object
+      required: [client_id, percentage]
+      properties:
+        client_id: { type: integer }
+        percentage:
+          type: string
+          examples: ["100.00"]
+          description: Percentual de posse. A soma dos proponentes deve fechar 100.
+
+    PedidoEntrada:
+      type: object
+      required: [enterprise_unity_id]
+      description: |
+        Os campos abaixo existem hoje em `acquisition_requests`. Esta especificação não pede
+        estrutura nova no banco de vocês, apenas o caminho por API para preenchê-los.
+      properties:
+        enterprise_unity_id:
+          type: integer
+          description: A unidade.
+        unity_ref:
+          type: object
+          description: |
+            **bloqueante como alternativa ao id.** O Panteon conhece o lote por código
+            (`GDN08109`) ou por quadra e lote; o `enterprise_unity_id` só existe do lado de vocês.
+            Hoje precisamos consultar o banco antes de cada reserva para traduzir.
+          properties:
+            enterprise_id: { type: integer }
+            block: { type: string }
+            lot: { type: string }
+            name: { type: string }
+        stage_id:
+          type: integer
+          default: 1
+          description: "1 Reservado (salão) · 9 Proposta realizada (coordenador envia pronta)."
+        client_id:
+          type: integer
+          description: O comprador principal.
+        client_attributes:
+          $ref: "#/components/schemas/PessoaEntrada"
+          description: |
+            **bloqueante para o balcão.** No salão aparece quem ainda não é cliente. Hoje seriam
+            duas chamadas com risco de sobrar cliente criado sem reserva se a segunda falhar.
+            Aceitar o cadastro aninhado resolve numa transação.
+        co_proponentes:
+          type: array
+          maxItems: 4
+          items: { $ref: "#/components/schemas/Proponente" }
+          description: |
+            Até quatro além do titular, totalizando cinco — o limite do próprio C2X
+            (`client_2_id` a `client_5_id` com `percentage_client_1` a `5`).
+        percentage_client_1: { type: string, examples: ["100.00"] }
+        corretor_id:
+          type: integer
+          description: |
+            Hoje o C2X não preenche este campo (35 de 35 nulos no Villa Paris), então o nome do
+            corretor só existe do lado do Panteon. Precisamos que ele aceite o id que enviarmos.
+        acquisition_request_type_id:
+          type: integer
+          description: "1 Corretor · 2 Imobiliária."
+        commercial_plan_id:
+          type: integer
+          description: O plano de tabela escolhido.
+        custom_commercial_plan:
+          type: boolean
+          description: |
+            Marca que o plano é personalizado. A nossa Proposta de Aquisição tem um campo de plano
+            personalizado preenchido à mão, e ele precisa chegar em vocês.
+        commercial_plan_attributes:
+          type: object
+          description: |
+            **bloqueante quando `custom_commercial_plan` for verdadeiro.** No C2X o plano
+            personalizado é uma linha em `commercial_plans` amarrada ao pedido
+            (`acquisition_request_id`). Sem poder criá-lo junto, a proposta com plano negociado não
+            tem como ser enviada.
+          properties:
+            name: { type: string }
+            initial_input_value: { type: string, description: "Percentual de entrada, 0 a 100." }
+            parcels: { type: integer }
+            contractual_interest: { type: string }
+            interest_periodicity: { type: string, enum: [anual, mensal] }
+            index_monetary_correction_id: { type: integer }
+            annual_value: { type: string }
+        quantity_signal_parcels:
+          type: integer
+          description: Em quantas vezes o sinal foi dividido.
+        first_signal_payment:
+          type: string
+          format: date
+        due_day_id:
+          type: integer
+          description: |
+            O dia de vencimento das parcelas. A nossa folha oferece dia 10 ou 20; precisamos da
+            lista de valores aceitos em `/lookups/due_days`.
+        act_date: { type: string, format: date }
+        observation: { type: string }
+        external_ref:
+          type: string
+          description: |
+            **importante.** O código do cupom do Panteon. É como reconciliamos os dois lados sem
+            guardar o id de vocês, e como identificamos uma reserva reenviada.
+        provenance: { $ref: "#/components/schemas/Proveniencia" }
+
+    Pedido:
+      allOf:
+        - $ref: "#/components/schemas/PedidoEntrada"
+        - type: object
+          properties:
+            id: { type: integer }
+            code: { type: string, examples: ["VLO12"] }
+            stage: { type: string, examples: ["Reservado"] }
+            open: { type: boolean }
+            unity: { $ref: "#/components/schemas/Unidade" }
+            client: { $ref: "#/components/schemas/Pessoa" }
+            payments:
+              type: array
+              items: { $ref: "#/components/schemas/Parcela" }
+
+    Parcela:
+      type: object
+      properties:
+        id: { type: integer }
+        acquisition_request_id: { type: integer }
+        parcel_type_id:
+          type: integer
+          description: "1 Ato · 2 Sinal · 3 Parcela · 4 Avulso."
+        parcel_number: { type: integer }
+        parcel_total: { type: integer }
+        due_date: { type: string, format: date }
+        initial_value: { type: string }
+        paid_value: { type: string }
+        payment_date: { type: string, format: date }
+        boleto_url: { type: string }
