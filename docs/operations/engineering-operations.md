@@ -41824,3 +41824,44 @@ ROLLBACK: v1.176.0 (2026-08-21-board-avisar-coordenador).
   • O portal do incorporador le a mesma fonte de valor de parcela; nao avaliado.
   • Prometeu: 18 mesas contra 7 configuradas (criarMesas nunca remove) e 9 tabelas
     `prometeu_bkp_*` / `prometeu_reset_bkp_*` com 978 linhas que nenhum codigo cita.
+
+## 2026-08-31 — LANCAMENTO DO JARDIM DAS GERAIS (30/08): o que ficou aberto
+
+O evento fechou funcionando. Sete lotes reservados para cinco clientes, todos com ficha completa.
+O caminho manual montado no dia (busca por nome, cadastro de balcao, cancelamento por lote) deu
+conta — as etiquetas nao chegaram a ser usadas.
+
+O que subiu no dia, em producao: v1.235.0 (reservar sem bipar) · v1.236.0 (telao sem serrilhado)
+· v1.237.0 (Central lendo o Panteon + cancelamento por lote) · v1.238.0 (lotes travados) ·
+v1.239.0 (masterplan com as correcoes manuais) · v1.240.0 (arquivado continua visivel).
+
+### DOIS ERROS MEUS, registrados para nao repetir
+
+1. **Ativei o evento por SQL** em vez de pela rotina da aplicacao. Isso PULOU o
+   `popularFilaDoLancamento`, e o lancamento nasceu ativo com a fila VAZIA: a busca de cliente
+   nao achava ninguem e as etiquetas ficaram zeradas. Corrigido replicando a rotina a mao (12
+   credenciados). **Ativar lancamento e pela tela ou pela funcao — nunca pelo status no banco.**
+
+2. **Renomeei os lotes do SVG editado pela geometria**, achando que o label era pouco confiavel.
+   Perdeu 6 lotes da carga. O certo esta em `reference_masterplan_jdg_absorver_svg`: label unico
+   manda, geometria so desempata os repetidos.
+
+### BACKLOG (Lucas, 31/08: "pode colocar em backlog essas demandas")
+
+  • **Masterplan — 20 quadras** ainda com a geometria v2 aproximada (05, 07, 09, 10, 11, 30-35,
+    38-46). Prontas: 02, 06, 08 (mao do Lucas) e 03, 04, 36, 37. Material em
+    `scripts/prometeu/masterplan-jdg/`.
+  • **Fase 2 (quadras 12-29, 173 lotes)** sem desenho e sem cadastro, portanto sem cor.
+    ⚠️ PERGUNTA ABERTA ao Lucas, feita duas vezes: ela deve aparecer no telao? Hoje o desenho ja
+    a mostra esmaecida, o que se le como "fora do lancamento" — pode ser o certo.
+  • **Importador que ATUALIZA unidades**: logica pronta e NAO COMMITADA (diff de preco/area/
+    matricula, com reconferencia no servidor; status de venda de fora de proposito). Falta a tela
+    e testar se a API do C2X aceita `PUT {caminho}/{id}` — se der 404/405, e pedido de endpoint ao
+    fornecedor, mesmo caso da reserva.
+  • **Planos comerciais do JDG**: vazios no C2X. Nao doeu porque a PA nao rodou pelo Panteon;
+    vira bloqueio quando ela entrar.
+  • **PIX da pre-venda do JDG**: `prevenda_habilitada=false` com `valor_pix=1000`, nada emitido.
+    Decisao pendente: mantem ou desliga.
+  • **Os 19 lotes travados**: estao azuis por `config.lotesBloqueados`, que e solucao de TELA.
+    Quando entrarem no C2X de verdade, saem da lista. ⚠️ Nao cadastrar no legado so para isso: a
+    API nao desfaz cadastro de unidade.
