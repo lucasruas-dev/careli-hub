@@ -26,7 +26,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
   }
 
-  const eventos = await listEventos(client);
+  // ⚠️ A LISTA PODE INCLUIR OS ARQUIVADOS, a pedido (Lucas, 31/08/2026: *"quero que mesmo
+  // arquivado deixa aparecendo igual aos outros"*). Arquivar tira o lancamento da OPERACAO, mas
+  // ele continua sendo consulta: reservas, fila e relatorios do dia seguem no banco, e sumir da
+  // tela de escolha era a unica forma de chegar neles — o Jardim das Gerais foi arquivado no
+  // dia seguinte ao evento e desapareceu de vista com as 7 reservas dentro.
+  //
+  // Os seletores de OPERACAO (Setup, Central, Fila, Etiqueta) continuam pedindo a lista padrao,
+  // sem arquivados: la um lancamento morto no dropdown e ruido, e foi por isso que o filtro
+  // nasceu em 01/08 com o Vale do Ouro.
+  const incluirArquivados =
+    new URL(request.url).searchParams.get("incluirArquivados") === "1";
+  const eventos = await listEventos(client, { incluirArquivados });
   return NextResponse.json({ data: eventos }, { headers: { "Cache-Control": "no-store" } });
 }
 

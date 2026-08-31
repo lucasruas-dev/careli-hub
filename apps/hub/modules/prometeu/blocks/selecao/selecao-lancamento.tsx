@@ -42,7 +42,7 @@ export function SelecaoDeLancamento({
 
   useEffect(() => {
     let vivo = true;
-    void fetchEventos().then((r) => {
+    void fetchEventos(true).then((r) => {
       if (!vivo) return;
       if (r.error) setErro(r.error);
       else setEventos(r.data ?? []);
@@ -53,9 +53,18 @@ export function SelecaoDeLancamento({
     };
   }, []);
 
-  const naoArquivados = eventos.filter((e) => !e.arquivadoEm);
-  const vivos = naoArquivados.filter((e) => e.status !== "encerrado");
-  const encerrados = naoArquivados.filter((e) => e.status === "encerrado");
+  // ⚠️ ARQUIVADO CONTINUA VISÍVEL AQUI (Lucas, 31/08/2026: *"quero que mesmo arquivado deixa
+  // aparecendo igual aos outros"*). Arquivar tira o lançamento da OPERAÇÃO — ele não pode voltar
+  // a receber check-in nem reserva —, mas o histórico dele (reservas, fila, relatórios) continua
+  // no banco, e esta tela é a única porta para chegar lá. Sumir daqui era perder o acesso: o
+  // Jardim das Gerais foi arquivado no dia seguinte ao evento e levou junto as 7 reservas.
+  //
+  // Em OPERAÇÃO nada muda: `vivos` exclui os arquivados, então lançamento arquivado nunca
+  // aparece como ativo, e os seletores das outras telas seguem pedindo a lista sem arquivados.
+  const vivos = eventos.filter((e) => !e.arquivadoEm && e.status !== "encerrado");
+  const encerrados = eventos.filter(
+    (e) => e.arquivadoEm || e.status === "encerrado",
+  );
 
   const Cartao = ({ evento, consulta }: { consulta?: boolean; evento: PrometeuEvento }) => (
     <button
@@ -86,6 +95,14 @@ export function SelecaoDeLancamento({
           <span className="rounded-full border border-line px-2 py-0.5 font-semibold">
             {STATUS_ROTULO[evento.status] ?? evento.status}
           </span>
+          {/* ⚠️ ARQUIVADO PRECISA SE ANUNCIAR. Ele aparece na mesma lista dos encerrados, mas
+              não é a mesma coisa: encerrado fechou o dia, arquivado saiu de circulação — e é
+              essa a diferença que explica por que ele não volta a receber check-in. */}
+          {evento.arquivadoEm ? (
+            <span className="rounded-full border border-line px-2 py-0.5 font-semibold text-ink-muted">
+              Arquivado
+            </span>
+          ) : null}
         </span>
       </span>
       <ChevronRight aria-hidden="true" className="shrink-0 text-ink-muted transition group-hover:text-ink" size={18} />

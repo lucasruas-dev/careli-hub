@@ -587,9 +587,22 @@ export async function encerrarDia(input: {
   // O evento so vai pra "encerrado" no ULTIMO dia; nos dias intermediarios ele continua
   // em andamento, esperando a proxima leva.
   if (input.encerrar) {
+    // ⚠️ ENCERRAR JÁ ARQUIVA (Lucas, 31/08/2026: *"se acabou o evento arquiva"* e *"acho que
+    // todos podem ficar arquivado"*). Eram dois passos, e o segundo vivia esquecido: o Villa
+    // Paris e o Vale do Ouro ficaram encerrados-mas-não-arquivados por semanas, aparecendo nos
+    // seletores de operação como se ainda pudessem receber gente.
+    //
+    // Isto só ficou seguro depois que a tela de escolha passou a MOSTRAR os arquivados (mesma
+    // data): antes, arquivar sumia com o lançamento e levava junto o acesso às reservas e aos
+    // relatórios dele. Agora arquivar tira da operação sem tirar da consulta.
     await input.client
       .from("prometeu_eventos")
-      .update({ status: "encerrado", updated_at: agora })
+      .update({
+        arquivado_em: agora,
+        arquivado_por: input.por ?? null,
+        status: "encerrado",
+        updated_at: agora,
+      })
       .eq("id", input.eventoId);
 
     // ⚠️ AS CREDENCIAIS DA EQUIPE MORREM COM O LANCAMENTO.

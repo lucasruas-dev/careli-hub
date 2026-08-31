@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-31-lancamento-arquivado-visivel",
+    deployedAt: "2026-08-31T09:50:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Lancamento ARQUIVADO continua aparecendo em 'Encerrados - consulta', com o selo de arquivado: da para abrir e ver reservas, fila e relatorios do dia.",
+              "Encerrar o dia ja ARQUIVA o lancamento - eram dois passos e o segundo vivia esquecido.",
+            ],
+            screen: "Escolha o lançamento",
+          },
+        ],
+      },
+    ],
+    rollback: "ff2b4fee",
+    technical: {
+      done: "Lucas (31/08): 'quero que mesmo arquivado deixa aparecendo igual aos outros' e 'se acabou o evento arquiva'. O Jardim das Gerais foi arquivado na manha seguinte ao evento e SUMIU da tela de escolha, levando junto o acesso as 7 reservas, a fila e os relatorios — arquivar nunca apagou nada, mas era a unica porta para esse historico. Agora GET /api/prometeu/eventos aceita ?incluirArquivados=1 e SO a tela de escolha usa: os seletores de OPERACAO (Setup, Central, Fila, Etiqueta) seguem com a lista sem arquivados, porque la um lancamento morto no dropdown e ruido — foi por isso que o filtro nasceu em 01/08 com o Vale do Ouro. Na tela, `vivos` continua excluindo arquivados (arquivado nunca aparece como ativo) e eles entram no bloco de consulta com selo proprio: encerrado fechou o dia, arquivado saiu de circulacao, e a diferenca precisa ser legivel. encerrarDia passou a carimbar arquivado_em junto do status — so ficou seguro DEPOIS da visibilidade acima. Os tres lancamentos existentes foram arquivados. Typecheck limpo, 285 testes verdes.",
+      motivation:
+        "Arquivar tirava o lançamento da operação E da consulta ao mesmo tempo; agora tira só da operação.",
+    },
+    title: "Lançamento arquivado continua visível para consulta",
+    type: "novidade",
+    version: "1.240.0",
+  },
+  {
     buildTag: "2026-08-29-masterplan-jdg-v4",
     deployedAt: "2026-08-29T16:40:00-03:00",
     modules: [

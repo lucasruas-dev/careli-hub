@@ -65,8 +65,13 @@ async function chamar<T>(
   }
 }
 
-export async function fetchEventos() {
-  return chamar<PrometeuEvento[]>("/api/prometeu/eventos");
+/**
+ * Os lançamentos. `incluirArquivados` só na TELA DE ESCOLHA — ver a nota na rota.
+ */
+export async function fetchEventos(incluirArquivados = false) {
+  return chamar<PrometeuEvento[]>(
+    `/api/prometeu/eventos${incluirArquivados ? "?incluirArquivados=1" : ""}`,
+  );
 }
 
 // Empreendimentos com credenciamento ativo no Apolo (nome e sigla vem do C2X).
