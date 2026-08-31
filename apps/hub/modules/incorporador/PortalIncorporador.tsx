@@ -6,7 +6,11 @@ import { ALVO_TOQUE, fonte } from "@/modules/publico/ui/tokens";
 
 import { AlternadorDeTema, Marca, ProvedorDeTema, T, TEMA_CSS } from "./tema";
 
-import { ehPortalPersonalizado, ehPortalSoProdutos } from "@/lib/apolo/incorporador/perfis-de-portal";
+import {
+  ehPortalPersonalizado,
+  ehPortalSoProdutos,
+  portalAssinaPanteon,
+} from "@/lib/apolo/incorporador/perfis-de-portal";
 import { TelaCarteira } from "./TelaCarteira";
 import { TelaCrm } from "./TelaCrm";
 // Só o portal PERSONALIZADO monta esta tela (ver `abasDoPortal`); no padrão o mapa vive em Vendas.
@@ -148,9 +152,14 @@ function Moldura({
   // ⚠️ A ASSINATURA DO PANTEON NA PORTA. O Lucas viu o login da Lagoa Bonita com o nome solto e
   // apontou (18/08/2026): *"aqui faltou a logo do Panteon em cima do Lagoa Bonita"*. O padrão é
   // "quem é a plataforma" em cima e "de quem é a carteira" embaixo, o mesmo eixo do sidebar de
-  // dentro. O portal PERSONALIZADO (Cecílio) fica de fora: lá a porta é a marca dele, decisão
-  // dele mesmo já aprovada. Ver [[perfis-de-portal]].
-  const assinaPanteon = !ehPortalPersonalizado(slug);
+  // dentro.
+  //
+  // Os portais PERSONALIZADOS ficam de fora: lá a porta é a marca do cliente. Era só o Cecílio
+  // até 31/08/2026, quando o Lucas viu o login da MMendes com as duas marcas empilhadas —
+  // *"nesses perfis que vamos fazer personalizado, pode tirar a logo do panteon"*. A regra mora
+  // em `portalAssinaPanteon`, e não num `!ehPortalPersonalizado` aqui: são duas perguntas
+  // diferentes (ver a nota lá).
+  const assinaPanteon = portalAssinaPanteon(slug);
   return (
     <div
       className="inc"

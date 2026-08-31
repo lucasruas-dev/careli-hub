@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { ehPortalPersonalizado, ehPortalSoProdutos } from "./perfis-de-portal";
+import {
+  ehPortalPersonalizado,
+  ehPortalSoProdutos,
+  portalAssinaPanteon,
+} from "./perfis-de-portal";
 import { abasDoPortal } from "@/modules/incorporador/PortalIncorporador";
 
 // As três formas de portal que existem hoje, e a garantia de que uma não vira a outra num
@@ -74,5 +78,35 @@ describe("slug desconhecido cai no padrão, nunca em branco", () => {
   it("slug vazio não quebra", () => {
     expect(() => abasDoPortal("")).not.toThrow();
     expect(rotulos("")).toEqual(["CRM", "Vendas", "Carteira"]);
+  });
+});
+
+describe("de quem é a marca na porta do portal", () => {
+  // Lucas, 31/08/2026, vendo o login da MMendes com as duas marcas empilhadas: *"nesses perfis
+  // que vamos fazer personalizado, pode tirar a logo do panteon por favor"*.
+  it("portal PADRÃO leva a assinatura do Panteon em cima da marca do cliente", () => {
+    expect(portalAssinaPanteon("lagoa-bonita")).toBe(true);
+    expect(portalAssinaPanteon("vistaalegre")).toBe(true);
+  });
+
+  it("portal personalizado NÃO leva — a porta é a marca dele", () => {
+    expect(portalAssinaPanteon("cecilio-rocha")).toBe(false);
+  });
+
+  it("portal só-produtos também não leva", () => {
+    expect(portalAssinaPanteon("mmendes")).toBe(false);
+  });
+
+  // ⚠️ As duas perguntas são SEPARADAS de propósito. "Assina Panteon" é sobre a porta; "é
+  // personalizado" é sobre estar congelado no comportamento aprovado. Amarrar as duas faria um
+  // portal novo herdar o congelamento do Cecílio só por querer a própria marca no login.
+  it("tirar a assinatura NÃO transforma o portal em personalizado", () => {
+    expect(portalAssinaPanteon("mmendes")).toBe(false);
+    expect(ehPortalPersonalizado("mmendes")).toBe(false);
+  });
+
+  it("aceita espaço e caixa, como as outras regras", () => {
+    expect(portalAssinaPanteon("  MMendes ")).toBe(false);
+    expect(portalAssinaPanteon("")).toBe(true);
   });
 });

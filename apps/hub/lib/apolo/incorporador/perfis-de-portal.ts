@@ -41,6 +41,22 @@ export function ehPortalSoProdutos(slug: string): boolean {
   return SO_PRODUTOS.has(String(slug ?? "").trim().toLowerCase());
 }
 
+/**
+ * O portal leva a marca do CLIENTE na porta, sem a assinatura do Panteon em cima?
+ *
+ * ⚠️ Pedido do Lucas (31/08/2026), vendo o login da MMendes: *"nesses perfis que vamos fazer
+ * personalizado, pode tirar a logo do panteon por favor"*.
+ *
+ * ⚠️ POR QUE NÃO É `ehPortalPersonalizado` DIRETO. Aquela lista significa "congelado no
+ * comportamento aprovado", e é ela que protege o Cecílio de mudanças no padrão. Esta pergunta é
+ * outra: "de quem é a porta". Hoje as duas respostas coincidem, mas amarrar as duas faria um
+ * portal novo herdar o congelamento do Cecílio só porque quis a própria marca no login — e aí
+ * ele pararia de receber as melhorias do padrão sem ninguém ter pedido.
+ */
+export function portalAssinaPanteon(slug: string): boolean {
+  return !ehPortalPersonalizado(slug) && !ehPortalSoProdutos(slug);
+}
+
 // ⚠️ NÃO ACRESCENTE SLUG AQUI PARA "RESOLVER" UM PROBLEMA DO PADRÃO. Cada entrada é uma versão a
 // mais para manter viva, e a que ninguém olha é a que apodrece. A lista existe para proteger o que
 // JÁ FOI aprovado e entregue, não para adiar decisão de produto.

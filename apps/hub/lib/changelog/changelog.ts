@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-31-portal-marca-do-cliente",
+    deployedAt: "2026-08-31T12:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "No login dos portais PERSONALIZADOS a porta passa a ser so a marca do cliente: a assinatura do Panteon sai de cima. Vale para a MMendes e para a Cecilio.",
+              "Os portais padrao continuam com as duas marcas, como antes.",
+            ],
+            screen: "Portal do incorporador",
+          },
+        ],
+      },
+    ],
+    rollback: "69a37e69",
+    technical: {
+      done: "Lucas (31/08), vendo o login da MMendes com as duas marcas empilhadas: 'nesses perfis que vamos fazer personalizado, pode tirar a logo do panteon por favor'. A regra ja existia para o Cecilio (`!ehPortalPersonalizado`), mas a MMendes entrou por outra lista (SO_PRODUTOS) e continuava assinando. ⚠️ NAO amarrei as duas perguntas: `ehPortalPersonalizado` significa CONGELADO no comportamento aprovado — e o congelamento existe para proteger o Cecilio de mudancas no padrao. Se 'tirar a logo' passasse a marcar o portal como personalizado, a MMendes pararia de receber as melhorias do padrao sem ninguem ter pedido. Por isso nasceu `portalAssinaPanteon`, que responde a pergunta certa ('de quem e a porta') e hoje coincide com as duas listas. Seis testes novos, incluindo um que fixa a separacao: tirar a assinatura NAO transforma o portal em personalizado. 1.220 testes do Apolo verdes, typecheck limpo.",
+      motivation:
+        "Portal com marca de cliente e assinatura da plataforma empilhadas confunde de quem e o produto.",
+    },
+    title: "Portal personalizado leva só a marca do cliente no login",
+    type: "correcao",
+    version: "1.241.0",
+  },
+  {
     buildTag: "2026-08-31-lancamento-arquivado-visivel",
     deployedAt: "2026-08-31T09:50:00-03:00",
     modules: [
