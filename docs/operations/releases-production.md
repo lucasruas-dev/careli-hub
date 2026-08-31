@@ -95,6 +95,51 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Boletos/Zeus] Tela /boletos - emissao mensal das carteiras administradas fora do C2X (v1.242.0)`.
+- Squad/agente responsavel: `Zeus` (implementacao direta; revisao adversarial pos-deploy por workflow de 4 dimensoes).
+- Data e hora local: `2026-08-31 14:40:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: OK explicito do Lucas ("ok, pode, deixa tudo pronto"), depois de ele pedir e revisar o escopo ("o que vai subir?").
+- Escopo publicado:
+  - rota interna `/boletos` + `modules/boletos/EmissaoDeBoletos.tsx`: o administrativo abre a planilha do mes e ve, por empreendimento, quantos boletos saem, quanto somam e QUEM NAO RECEBE com o motivo escrito;
+  - `GET /api/boletos/prontidao`: diz o que falta para emitir (conta do Asaas por empreendimento e cobertura de CPF no LSoft). NUNCA devolve chave, so se existe e o ambiente pelo prefixo;
+  - `lib/apolo/boletos/` (empreendimentos, regra-de-emissao, ler-planilha, celula-do-excel) e `lib/apolo/asaas-contas.ts`.
+- Commit publicado: `d6810e2e` (traz `a3970c04` e `2332b029`).
+- Deployment anterior: `dpl_J4FrsDn3pd3iDYTwgbLkUQHmrDPs` (commit `24b92319`, v1.241.0).
+- Deployment novo: `dpl_GWwAmRMYPWPqFmpgZyz5naantiMa` - state READY, target production.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `dpl_GWwAmRMYPWPqFmpgZyz5naantiMa` / 200.
+  - `https://ops.c2x.app.br`: NAO TOCADO.
+- Arquivos/modulos incluidos: 13 arquivos, +1.862 linhas, ZERO remocoes. Nenhum arquivo existente alterado, exceto `lib/changelog/changelog.ts`, que so ganhou a entrada nova.
+- Arquivos/modulos excluidos: o importador que ATUALIZA unidades (`cadastrar-unidades-server.ts` e a rota de cadastrar) ficou fora - sem tela e com o PUT nao testado. Tambem ficaram de fora os diretorios de trabalho `.tmpc2x/`, `.tmpr/`, `.tmpxl/`, `scripts/c2x/` e arquivos soltos de analise.
+- Validacoes executadas:
+  - typecheck limpo (`npm --prefix apps/hub run check-types`);
+  - suite completa: 1.872 testes em 146 arquivos, todos verdes (40 deles novos desta frente);
+  - lint limpo nos arquivos novos;
+  - leitura conferida contra o arquivo REAL de 31/08: 190 boletos e R$ 529.015,48 em setembro/2026 (181 e R$ 512.835,55 sem o Vale do Ouro) - o MESMO numero que o script independente apurou, por outro caminho.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br` -> 200;
+  - `https://c2x.app.br/boletos` -> 200;
+  - `https://c2x.app.br/api/boletos/prontidao` SEM sessao -> 401 `{"error":"Sessao ausente."}` (autorizacao ativa, como esperado).
+- Logs recentes: sem erro no build; deployment READY.
+- Rollback definido: `24b92319` / `dpl_J4FrsDn3pd3iDYTwgbLkUQHmrDPs` (registrado tambem no campo `rollback` da entrada v1.242.0 do changelog).
+- Riscos conhecidos: BAIXO. A tela e rota NOVA, nao esta no menu (chega-se por URL) e o botao de emitir esta TRAVADO. A rota de API so LE. Nada escreve no Asaas nem no banco. Nenhuma tela existente foi tocada.
+- Dois bugs corrigidos nesta frente, que so o arquivo real revelou (ambos com teste de regressao):
+  - o ExcelJS entrega a data do cabecalho em UTC; lida com `getMonth()` no fuso do Brasil, setembro virava agosto e as 23 colunas de mes deslizavam uma casa. A tela mostrava 0 boleto, mas o risco pior era o silencioso: emitir o mes anterior sem aviso;
+  - `celula.text` nao e campo, e getter, e ESTOURA em celula mesclada vazia; como toda aba tem o titulo mesclado no topo, ler `.text` de entrada derrubava a planilha inteira antes do primeiro cliente.
+- Pendencias:
+  - `ASAAS_GARDEN_API_KEY` na Vercel (Production + Preview). ATENCAO: nao marcar como "Sensitive" - chega vazia no runtime;
+  - contas do Asaas dos outros 8 empreendimentos (o Lucas vai abrir uma por empreendimento);
+  - 87 CPFs (79 sem fonte + 8 vazios no LSoft) - o Lucas busca presencialmente em 01/09/2026;
+  - decidir o arredondamento (139 de 142 valores com mais de 2 casas decimais) e se o valor fechado vira a base do mes seguinte;
+  - decidir `BOLETO` + chave PIX na conta vs `UNDEFINED`;
+  - confirmar se CAIXA ECONOMICA FEDERAL (Vale do Sol) deve receber boleto - e CNPJ e provavelmente financiamento, nao comprador.
+- Status: `EM PRODUCAO`.
+- Proxima acao: com as contas e os CPFs, destravar o botao e implementar a criacao de cliente + cobranca no Asaas, com `notificationDisabled: true` (toda comunicacao e nossa).
+
+Registro de producao:
+
 - Assunto: `[Apolo+Iris/Zeus] Extrato do cliente em PDF timbrado + liberacao do valor de parcela na CACA`.
 - Squad/agente responsavel: `Zeus` (extrato via workflow: arquiteto + builder + 2 revisores adversariais + builder-fix; liberacao da CACA feita direto).
 - Data e hora local: `2026-08-27 10:30:00 -03:00`.
