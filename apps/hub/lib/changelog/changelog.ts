@@ -55,7 +55,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         ],
       },
     ],
-    rollback: "PREENCHER-NO-DEPLOY",
+    rollback: "24b92319",
     technical: {
       done: "Lucas (31/08): 'quero organizar a tela que faremos esses envio (...) deixa tudo pronto, organizado'. Rota /boletos + modules/boletos/EmissaoDeBoletos.tsx + /api/boletos/prontidao. 40 testes novos (celula-do-excel 13, regra-de-emissao 15, ler-planilha 12) e a leitura conferida contra o arquivo real: 190 boletos e R$ 529.015,48 em setembro/2026 (181 e R$ 512.835,55 sem o Vale do Ouro), o MESMO numero que o script independente apurou. ⚠️ DOIS BUGS QUE SO O ARQUIVO REAL MOSTROU. (1) O ExcelJS entrega a data do cabecalho em UTC: lida com getMonth() aqui no Brasil (UTC-3), setembro virava agosto e as 23 colunas de mes deslizavam uma casa - a tela mostrava 0 boleto, e o risco pior era o silencioso, emitir o mes anterior sem aviso. Agora e getUTCMonth(), com teste. (2) `celula.text` nao e campo, e getter, e numa celula mesclada vazia ele ESTOURA ('Cannot read properties of null'); como toda aba tem o titulo mesclado no topo, ler .text de entrada derrubava a planilha inteira antes do primeiro cliente. Agora e lido preguicoso e dentro de try. Junto veio o desembrulho dos tipos ricos: formula, richText e link chegam como OBJETO, e um String() neles daria '[object Object]' - o bastante para a regra nao ver um 'PAGO ATE DEZ/26' em negrito e cobrar quem ja pagou. ⚠️ A tela NAO emite ainda: o botao esta travado ate as contas do Asaas existirem e os 87 CPFs entrarem. ⚠️ E NAO ficou no portal do incorporador: la entra gente de fora da Careli, e disparar cobranca e ato do administrativo. Typecheck limpo, lint limpo.",
       motivation:
