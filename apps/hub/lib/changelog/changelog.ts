@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-31-conjuge-profissao-nacionalidade",
+    deployedAt: "2026-08-31T17:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O cônjuge passa a subir para o C2X com profissão e nacionalidade — ele assina a escritura e o contrato o qualifica igual ao titular.",
+              "Nacionalidade em branco deriva da cidade natal, como já acontecia com o comprador.",
+              "⚠️ Vale dos cadastros novos em diante: quem já subiu vazio precisa ser preenchido à mão.",
+            ],
+            screen: "Cadastro e envio ao C2X",
+          },
+        ],
+      },
+    ],
+    rollback: "2f8018d1",
+    technical: {
+      done: "Investigado a pedido do Lucas (\"subimos o cadastro sem a profissao e sem as nacionalidades\"). O problema NAO estava nos compradores: os 35 titulares do Villa Paris estao completos no C2X, batendo campo a campo com o Apolo, zero divergencia — e com distribuicao variada de profissoes (21 diferentes em 35 pessoas), o que descarta valor default. Quem sobe vazio e o CONJUGE: 11 sem os dois campos, 6 em contratos JA GERADOS. Causa no codigo: c2x-write-server.ts montava o conjuge com `profession: null` FIXO, embora c2x-write.ts ja resolvesse `profession_id: matchProfissaoId(...)` do outro lado; e nacionalidade nao existia em ApoloC2xSpouse nem no spouseAttributes, embora a coluna `spouses.nacionality` exista no C2X. O wizard SEMPRE coletou os dois e a tela do CRM ja os mostrava — o dado morria no caminho. Agora `unirConjuge` os une na mesma precedencia do resto (ficha da esteira vence o relacionamento) e a nacionalidade em branco deriva da naturalidade no mesmo ponto em que ja deriva a do titular, onde a tabela `cities` esta a mao. ⚠️ O campo e `nacionality`, com o erro de grafia do C2X: \"nationality\" viaja e o Rails descarta em silencio. O payload congelado pegou a mudanca e foi atualizado com intencao. 1.881 testes verdes, 3 novos na cascata do conjuge.",
+      motivation:
+        "Contrato que nao qualifica quem assina volta do cartorio, e a correcao acontece com o cliente ja sentado na mesa.",
+    },
+    title: "O cônjuge sobe com profissão e nacionalidade",
+    type: "correcao",
+    version: "1.244.0",
+  },
+  {
     buildTag: "2026-08-31-boletos-prontidao-autenticada",
     deployedAt: "2026-08-31T15:05:00-03:00",
     modules: [
