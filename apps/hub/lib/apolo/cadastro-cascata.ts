@@ -118,13 +118,23 @@ export function unirCadastroEFicha(cadastro: FonteCadastro, ficha: FonteCadastro
 export type ConjugeUnido = {
   cpf: string;
   email: string;
+  nacionalidade: string;
   nome: string;
+  /** Id do catálogo do C2X. A profissão digitada à mão não vira `profession` — ver profissao.ts. */
+  profissaoId: string;
   telefone: string;
 };
 
 export function unirConjuge(
   ficha: FonteCadastro,
-  doRelacionamento: { cpf?: unknown; email?: unknown; nome?: unknown; telefone?: unknown } | null,
+  doRelacionamento: {
+    cpf?: unknown;
+    email?: unknown;
+    nacionalidade?: unknown;
+    nome?: unknown;
+    profissaoId?: unknown;
+    telefone?: unknown;
+  } | null,
 ): ConjugeUnido | null {
   const f = (ficha ?? {}) as Record<string, unknown>;
   const r = doRelacionamento ?? {};
@@ -136,7 +146,13 @@ export function unirConjuge(
   return {
     cpf: texto(f.conjugeCpf) || texto(r.cpf),
     email: texto(f.conjugeEmail) || texto(r.email),
+    // ⚠️ NACIONALIDADE E PROFISSÃO ENTRAM AQUI porque o contrato QUALIFICA o cônjuge do mesmo
+    // jeito que o titular ("brasileira, professora, portadora do CPF..."). O wizard sempre
+    // coletou os dois e a tela do CRM já os lê nesta mesma ordem (ficha da esteira vence o
+    // relacionamento); só o caminho até o C2X ficou de fora, e o campo subia vazio.
+    nacionalidade: texto(f.conjugeNacionalidade) || texto(r.nacionalidade),
     nome,
+    profissaoId: texto(f.conjugeProfissaoId) || texto(r.profissaoId),
     telefone: texto(f.conjugeTelefone) || texto(r.telefone),
   };
 }

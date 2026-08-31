@@ -160,6 +160,45 @@ describe("cônjuge", () => {
     expect(r?.nome).toBe("Joana Silva");
   });
 
+  // ⚠️ O CÔNJUGE ASSINA A ESCRITURA e é qualificado nela igual ao titular ("brasileira,
+  // professora, portadora do CPF..."). Estes dois campos ficaram fora da cascata até 31/08/2026:
+  // o wizard os coletava, a tela do CRM os mostrava, e o caminho até o C2X os perdia. Resultado
+  // medido no Villa Paris: 11 cônjuges no legado sem profissão e sem nacionalidade, 5 deles em
+  // contratos JÁ GERADOS.
+  it("leva nacionalidade e profissão — sem elas o contrato não qualifica quem assina", () => {
+    const r = unirConjuge(
+      {
+        conjugeNacionalidade: "Brasileira",
+        conjugeNome: "Maria Angelica",
+        conjugeProfissaoId: "88",
+      },
+      null,
+    );
+    expect(r?.nacionalidade).toBe("Brasileira");
+    expect(r?.profissaoId).toBe("88");
+  });
+
+  it("os dois campos também vêm do relacionamento, quando a ficha não os tem", () => {
+    // A ficha da esteira só existe depois que um operador digitou; no cadastro novo o dado mora
+    // no relacionamento que o wizard gravou.
+    const r = unirConjuge(
+      { conjugeNome: "Maria Angelica" },
+      { nacionalidade: "Brasileira", profissaoId: "88" },
+    );
+    expect(r?.nacionalidade).toBe("Brasileira");
+    expect(r?.profissaoId).toBe("88");
+  });
+
+  it("a ficha do operador ganha do relacionamento também nestes dois", () => {
+    // Mesma precedência do nome: quem corrigiu por último manda.
+    const r = unirConjuge(
+      { conjugeNacionalidade: "Portuguesa", conjugeNome: "Maria", conjugeProfissaoId: "12" },
+      { nacionalidade: "Brasileira", profissaoId: "88" },
+    );
+    expect(r?.nacionalidade).toBe("Portuguesa");
+    expect(r?.profissaoId).toBe("12");
+  });
+
   it("cai no relacionamento quando a ficha não tem cônjuge", () => {
     const r = unirConjuge({}, { email: "j@x.com", nome: "Joana Silva" });
     expect(r?.nome).toBe("Joana Silva");

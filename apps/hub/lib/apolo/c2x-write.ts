@@ -183,6 +183,10 @@ function spouseAttributes(spouse: ApoloC2xSpouse | null): PayloadC2x | null {
     identification_number: cpf,
     document_type_id: cpf ? DOC_TYPE_CPF : null,
     profession_id: matchProfissaoId(spouse.profession),
+    // ⚠️ `nacionality`, com o mesmo erro de grafia do C2X. A coluna se chama assim em `users` e em
+    // `spouses`; escrever "nationality" aqui manda um atributo que o Rails descarta em silêncio, e
+    // o campo continuaria vazio sem ninguém perceber.
+    nacionality: spouse.nationality,
   });
 }
 

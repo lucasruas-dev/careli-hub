@@ -1343,7 +1343,8 @@ export async function fetchC2xCadastroByEntity(
     // Cônjuge (spouses): entra no cadastro E como relacionamento de "contato".
     const [spouseRows] = await poolResult.pool.query<C2xSpouseRow[]>(
       `select s.ownertable_id, s.name, s.cpf, s.cellphone, s.phone_code,
-              s.birthday, s.email, s.identification_number, pf.name as profession
+              s.birthday, s.email, s.identification_number, pf.name as profession,
+              s.nacionality
          from spouses s
          left join professions pf on pf.id = s.profession_id
         where s.ownertable_type = 'User' and s.ownertable_id in (${placeholders})
@@ -1367,6 +1368,8 @@ export async function fetchC2xCadastroByEntity(
         document: text(row.identification_number),
         email: text(row.email),
         name: text(row.name),
+        // A grafia com o erro é a do C2X (`spouses.nacionality`); o nome do nosso campo é o certo.
+        nationality: text(row.nacionality),
         phone: buildPhone(row.phone_code, row.cellphone),
         profession: text(row.profession),
       };

@@ -153,6 +153,11 @@ export type ApoloC2xSpouse = {
   document: string | null;
   email: string | null;
   name: string | null;
+  // ⚠️ O CÔNJUGE ASSINA A ESCRITURA, e o contrato o qualifica igual ao titular: nome,
+  // nacionalidade, profissão, CPF. Estes dois campos faltavam aqui enquanto `spouses.nacionality`
+  // e `spouses.profession_id` já existiam no C2X — 11 cônjuges do Villa Paris subiram sem eles,
+  // 5 em contratos já gerados.
+  nationality: string | null;
   phone: string | null;
   profession: string | null;
 };

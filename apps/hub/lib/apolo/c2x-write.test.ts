@@ -137,6 +137,7 @@ describe("montarPayloadCliente", () => {
           propertyRegime: "Comunhão parcial de bens",
           spouse: {
             name: "MARIA CONJUGE",
+            nationality: "Brasileira",
             cpf: "529.982.247-25",
             birthday: "10/03/1988",
             document: "MG-99",
@@ -153,6 +154,10 @@ describe("montarPayloadCliente", () => {
     expect(s.cpf).toBe("52998224725");
     expect(s.birthday).toBe("1988-03-10");
     expect(s.profession_id).toBeGreaterThan(0);
+    // ⚠️ `nacionality`, com o erro de grafia do C2X. "nationality" viaja e o Rails descarta em
+    // silêncio — o campo ficaria vazio sem ninguém perceber, que foi o que aconteceu no Villa
+    // Paris.
+    expect(s.nacionality).toBe("Brasileira");
   });
 
   it("não inclui chave nenhuma com valor vazio/nulo", () => {
@@ -204,6 +209,7 @@ describe("payload do cliente PF (congelado)", () => {
             document: null,
             email: "maria@ex.com",
             name: "MARIA CONJUGE",
+            nationality: "Brasileira",
             phone: "(31) 91111-1111",
             profession: "ADVOGADO(A)",
           },
@@ -245,6 +251,8 @@ describe("payload do cliente PF (congelado)", () => {
         identification_number: "52998224725",
         document_type_id: 2,
         profession_id: 4,
+        // Entrou em 31/08/2026 junto com a profissão do cônjuge: o contrato qualifica quem assina.
+        nacionality: "Brasileira",
       },
       addresses_attributes: [
         {

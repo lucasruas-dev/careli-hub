@@ -557,7 +557,9 @@ async function montarDados(
   const conjuge = unirConjuge(fichaDoOperador, {
     cpf: relConjuge?.metadata?.cpf,
     email: relConjuge?.metadata?.email,
+    nacionalidade: relConjuge?.metadata?.nacionalidade,
     nome: relConjuge?.label,
+    profissaoId: relConjuge?.metadata?.profissaoId,
     telefone: relConjuge?.metadata?.phone,
   });
 
@@ -572,8 +574,14 @@ async function montarDados(
           texto(relConjuge?.metadata?.dataNascimento),
         document: null,
         email: conjuge.email || null,
+        // O declarado. Em branco, a derivação pela naturalidade acontece adiante — no mesmo ponto
+        // em que ela já roda para o titular, que é onde a tabela de cidades está à mão.
+        nationality: conjuge.nacionalidade || null,
         phone: conjuge.telefone || null,
-        profession: null,
+        // ⚠️ ERA `null` FIXO, e por isso 11 cônjuges do Villa Paris subiram sem profissão — 5 em
+        // contratos já gerados. O caminho já existia inteiro do outro lado (`spouseAttributes`
+        // resolve o id pelo rótulo, como no titular); só a origem estava amarrada em nulo.
+        profession: profissaoParaC2x(conjuge.profissaoId),
       }
     : null;
 
@@ -689,6 +697,18 @@ async function montarDados(
     const { cidade, uf } = partesDaNaturalidade(cadastro.naturalness);
     const conhecidas = uf ? new Set<string>() : await cidadesBrasileiras([cidade]);
     cadastro.nacionality = derivarNacionalidade(cadastro.naturalness, "", (c) =>
+      conhecidas.has(chaveDeCidade(c)),
+    );
+  }
+
+  // ⚠️ O MESMO PARA O CÔNJUGE, que assina a escritura e é qualificado nela igual ao titular. Fica
+  // aqui, e não na montagem do `spouse`, porque é neste ponto que a tabela `cities` do C2X está à
+  // mão — repetir a consulta lá em cima custaria outro round-trip por cadastro.
+  const naturalidadeDoConjuge = texto(meta.conjugeNaturalidade);
+  if (cadastro.spouse && !cadastro.spouse.nationality && naturalidadeDoConjuge) {
+    const { cidade, uf } = partesDaNaturalidade(naturalidadeDoConjuge);
+    const conhecidas = uf ? new Set<string>() : await cidadesBrasileiras([cidade]);
+    cadastro.spouse.nationality = derivarNacionalidade(naturalidadeDoConjuge, "", (c) =>
       conhecidas.has(chaveDeCidade(c)),
     );
   }
