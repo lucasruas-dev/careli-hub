@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  apenasDaCompetencia,
+  descricaoDoBoleto,
   diferencaDoArredondamento,
+  lerReferencia,
   referenciaDaCobranca,
   valorParaOAsaas,
 } from "./emissao";
@@ -99,5 +102,75 @@ describe("a referência que identifica a cobrança", () => {
     const a = referenciaDaCobranca({ competencia: "2026-09", empreendimento: "on-sky", unidade: "101" });
     const b = referenciaDaCobranca({ competencia: "2026-10", empreendimento: "on-sky", unidade: "101" });
     expect(a).not.toBe(b);
+  });
+});
+
+describe("a descrição que separa as carteiras no extrato", () => {
+  it("nomeia o empreendimento, a unidade e a competência", () => {
+    // ⚠️ Jade, Ruby, Cristal e Esmeralda emitem todos pela conta CER. No extrato dela as quatro
+    // carteiras chegam misturadas: sem o nome na descrição, a conciliação não sabe de qual prédio
+    // veio cada pagamento.
+    expect(
+      descricaoDoBoleto({ competencia: "2026-09", empreendimento: "Ed. Rubi", unidade: "301" }),
+    ).toBe("Ed. Rubi - Unidade 301 - Competência 09/2026");
+  });
+
+  it("cada edifício da CER sai com o próprio nome", () => {
+    const nomes = ["Ed. Jade", "Ed. Rubi", "Ed. Cristal", "Ed. Esmeralda"];
+    const saidas = nomes.map((e) =>
+      descricaoDoBoleto({ competencia: "2026-09", empreendimento: e, unidade: "101" }),
+    );
+    expect(new Set(saidas).size).toBe(4);
+    for (const [i, s] of saidas.entries()) expect(s).toContain(nomes[i]!);
+  });
+
+  it("unidade em branco não vira 'Unidade null' no boleto do cliente", () => {
+    expect(
+      descricaoDoBoleto({ competencia: "2026-09", empreendimento: "On Sky", unidade: null }),
+    ).toBe("On Sky - Competência 09/2026");
+    expect(
+      descricaoDoBoleto({ competencia: "2026-09", empreendimento: "On Sky", unidade: "  " }),
+    ).not.toContain("Unidade");
+  });
+
+  it("usa a grafia da planilha, não a de uma lista nossa", () => {
+    // "segue o que está na planilha" (Lucas). A planilha escreve "Ed. Rubi"; uma conversa dizia
+    // "EDIFICIO RUBY". Quem manda é o arquivo que o administrativo confere.
+    const d = descricaoDoBoleto({ competencia: "2026-09", empreendimento: "Ed. Rubi", unidade: "1" });
+    expect(d).toContain("Ed. Rubi");
+    expect(d).not.toContain("RUBY");
+  });
+});
+
+describe("ler de volta o que foi emitido", () => {
+  const cobranca = (ref: null | string) =>
+    ({ customer: "c", dueDate: "2026-09-15", externalReference: ref, id: "p", status: "PENDING", value: 10 });
+
+  it("separa as cobranças desta tela das outras da conta", () => {
+    // ⚠️ A conta CER também recebe cobranças de outras origens. Sem o filtro, a tela mostraria
+    // pagamentos que não têm nada a ver com o lote do mês.
+    const lista = [
+      cobranca("boleto:guaimbe:307:2026-09"),
+      cobranca("proposta-avulsa-123"),
+      cobranca(null),
+      cobranca("boleto:guaimbe:307:2026-08"),
+    ];
+    const so = apenasDaCompetencia(lista as never, "2026-09");
+    expect(so).toHaveLength(1);
+    expect(so[0]!.externalReference).toBe("boleto:guaimbe:307:2026-09");
+  });
+
+  it("lê o empreendimento e a unidade de volta", () => {
+    expect(lerReferencia("boleto:ed-rubi:301:2026-09")).toEqual({
+      competencia: "2026-09",
+      empreendimento: "ed-rubi",
+      unidade: "301",
+    });
+  });
+
+  it("referência de outra origem devolve nulo em vez de inventar", () => {
+    expect(lerReferencia("proposta-avulsa-123")).toBeNull();
+    expect(lerReferencia(null)).toBeNull();
+    expect(lerReferencia("boleto:incompleta")).toBeNull();
   });
 });

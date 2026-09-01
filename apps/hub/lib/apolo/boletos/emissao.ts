@@ -220,6 +220,70 @@ export function cobrancasDaReferencia(
   );
 }
 
+export type CobrancaListada = CobrancaAsaas & {
+  clientPaymentDate?: null | string;
+  customer: string;
+  dateCreated?: string;
+  description?: string;
+  externalReference?: null | string;
+  paymentDate?: null | string;
+};
+
+/**
+ * As cobranças de uma conta num intervalo de vencimento.
+ *
+ * ⚠️ FILTRA POR VENCIMENTO, E NÃO PELA REFERÊNCIA. O Asaas só casa `externalReference` por igualdade
+ * exata — não há busca por prefixo. Como a referência carrega a unidade
+ * (`boleto:guaimbe:307:2026-09`), procurar "todos os boletos de setembro do Guaimbé" exigiria uma
+ * chamada por unidade. Trazendo por intervalo e filtrando aqui, é uma chamada por conta.
+ *
+ * ⚠️ PAGINA ATÉ O FIM. O Asaas devolve 100 por página com `hasMore`; parar na primeira faria a tela
+ * mostrar 100 boletos de 142 sem dizer que faltam — e o operador emitiria os 42 de novo.
+ */
+export async function listarCobrancas(
+  conta: ContaAsaas,
+  intervalo: { fim: string; inicio: string },
+): Promise<ResultadoAsaas<CobrancaListada[]>> {
+  const todas: CobrancaListada[] = [];
+  let offset = 0;
+
+  // Teto de segurança: 50 páginas = 5.000 cobranças. Acima disso é laço infinito, não carteira.
+  for (let pagina = 0; pagina < 50; pagina += 1) {
+    const res = await chamar<{ data: CobrancaListada[]; hasMore: boolean }>(
+      conta,
+      `/payments?dueDate[ge]=${intervalo.inicio}&dueDate[le]=${intervalo.fim}` +
+        `&limit=100&offset=${offset}`,
+    );
+    if (!res.ok) return res;
+
+    todas.push(...(res.data.data ?? []));
+    if (!res.data.hasMore) break;
+    offset += 100;
+  }
+
+  return { data: todas, ok: true };
+}
+
+/** As cobranças que vieram desta tela, por competência — as outras da conta ficam de fora. */
+export function apenasDaCompetencia(
+  cobrancas: CobrancaListada[],
+  competencia: string,
+): CobrancaListada[] {
+  const sufixo = `:${competencia}`;
+  return cobrancas.filter(
+    (c) => (c.externalReference ?? "").startsWith("boleto:") && (c.externalReference ?? "").endsWith(sufixo),
+  );
+}
+
+/** O empreendimento e a unidade de volta, a partir da referência. */
+export function lerReferencia(
+  referencia: null | string | undefined,
+): null | { competencia: string; empreendimento: string; unidade: string } {
+  const partes = (referencia ?? "").split(":");
+  if (partes.length !== 4 || partes[0] !== "boleto") return null;
+  return { competencia: partes[3]!, empreendimento: partes[1]!, unidade: partes[2]! };
+}
+
 /** Confere que a chave responde e de quem é a conta — antes de emitir 142 boletos. */
 export function conferirConta(
   conta: ContaAsaas,
@@ -297,6 +361,39 @@ export function impedimentosDaConta(
   }
 
   return problemas;
+}
+
+/**
+ * A descrição que aparece no boleto e no extrato da conta.
+ *
+ * ⚠️ É O QUE SEPARA AS CARTEIRAS QUANDO A CONTA É COMPARTILHADA. Jade, Ruby, Cristal e Esmeralda
+ * emitem todos pela CER (decisão do Lucas, 01/09/2026: *"vão ser em uma conta somente, CER, por
+ * isso na descrição vamos ter que apontar qual empreendimento"*). No extrato da CER os quatro
+ * chegam misturados; sem o nome aqui, não há como saber de qual prédio veio cada pagamento — nem
+ * na conciliação, nem quando o cliente liga perguntando do que é a cobrança.
+ *
+ * ⚠️ O NOME VEM DA PLANILHA, e não de uma lista nossa. Decisão do Lucas: *"segue o que está na
+ * planilha"*. A planilha escreve "Ed. Rubi"; um print de conversa dizia "EDIFICIO RUBY". Quem manda
+ * é o arquivo, porque é o que o administrativo confere na hora de bater a cobrança.
+ *
+ * `descricaoDoBoleto({ competencia: "2026-09", empreendimento: "Ed. Rubi", unidade: "301" })`
+ *   → "Ed. Rubi - Unidade 301 - Competência 09/2026"
+ */
+export function descricaoDoBoleto(input: {
+  competencia: string;
+  empreendimento: string;
+  unidade: null | string;
+}): string {
+  const [ano, mes] = input.competencia.split("-");
+  const partes = [input.empreendimento.trim()];
+
+  // Unidade em branco acontece: algumas abas trazem a linha sem número. Melhor a descrição sair sem
+  // ela do que com "Unidade null" impresso no boleto do cliente.
+  const unidade = (input.unidade ?? "").trim();
+  if (unidade) partes.push(`Unidade ${unidade}`);
+
+  partes.push(mes && ano ? `Competência ${mes}/${ano}` : `Competência ${input.competencia}`);
+  return partes.join(" - ");
 }
 
 /**
