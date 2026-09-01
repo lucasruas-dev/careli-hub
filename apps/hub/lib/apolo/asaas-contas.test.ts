@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ambienteDaChave,
   chaveDaConta,
-  contaDoEmpreendimento,
   estadoDaConta,
   rotuloDaConta,
 } from "./asaas-contas";
@@ -66,13 +65,6 @@ describe("o estado que vai para a tela não carrega a chave", () => {
   });
 });
 
-describe("empreendimento sem conta NÃO emite", () => {
-  it("Garden aponta para a conta do Garden", () => {
-    expect(contaDoEmpreendimento("Garden")).toBe("garden");
-  });
-
-  it("empreendimento desconhecido devolve null, e não uma conta padrão", () => {
-    expect(contaDoEmpreendimento("Vale do Sol")).toBeNull();
-    expect(contaDoEmpreendimento("")).toBeNull();
-  });
-});
+// ⚠️ O BLOCO QUE TESTAVA `contaDoEmpreendimento` SAIU JUNTO COM A FUNÇÃO (01/09/2026). Ele era o
+// único consumidor de um mapa que duplicava o campo `conta` de `boletos/empreendimentos.ts` — e um
+// teste que guarda código que ninguém usa dá a impressão de cobertura onde não há uso.

@@ -16,7 +16,26 @@
 // trocar uma pela outra dá erro de autenticação. `ambienteDaChave` existe para a tela avisar
 // "esta chave é de sandbox" antes de alguém emitir 142 boletos que não existem.
 
-export type ContaAsaas = "careli" | "garden" | "gurgel";
+// ⚠️ A CONTA É POR EMPREENDIMENTO, MAS UMA CONTA PODE SERVIR A VÁRIOS. Decisão do Lucas
+// (01/09/2026): *"vamos ter varias contas asaas, cada uma cadastradas para os empreendimentos"*, e
+// logo depois: os quatro edifícios (Jade, Ruby, Cristal, Esmeralda) *"vão ser em uma conta somente,
+// CER, por isso na descrição vamos ter que apontar qual empreendimento"*.
+//
+// Cada boleto sai no CNPJ da dona da chave e o dinheiro cai nela; misturar é dinheiro na conta
+// errada, e só o extrato conta. Quando várias carteiras dividem a conta, o que as separa no extrato
+// é a DESCRIÇÃO da cobrança — ver `descricaoDoBoleto` em `boletos/emissao.ts`.
+//
+// `careli` e `gurgel` não são de boleto: a Careli é a leitura do Hades e a Gurgel os PIX da
+// pré-venda. Ficam aqui porque a chave e o ambiente se conferem do mesmo jeito.
+export type ContaAsaas =
+  | "careli"
+  | "cer"
+  | "garden"
+  | "giant-towers"
+  | "guaimbe"
+  | "gurgel"
+  | "on-sky"
+  | "vale-do-sol";
 
 type Definicao = {
   /** Nome que a tela mostra antes do clique. */
@@ -26,9 +45,21 @@ type Definicao = {
 
 const CONTAS: Record<ContaAsaas, Definicao> = {
   careli: { rotulo: "Careli", variavel: "ASAAS_API_KEY" },
+  // ⚠️ UMA CONTA PARA OS QUATRO EDIFÍCIOS. Decisão do Lucas (01/09/2026): Jade, Ruby, Cristal e
+  // Esmeralda emitem todos pela CER. É por isso que a DESCRIÇÃO do boleto tem de nomear o
+  // empreendimento: no extrato da CER as quatro carteiras chegam misturadas, e sem o nome na
+  // descrição não há como saber de qual prédio veio cada pagamento.
+  cer: { rotulo: "CER", variavel: "ASAAS_CER_API_KEY" },
   garden: { rotulo: "Garden", variavel: "ASAAS_GARDEN_API_KEY" },
+  "giant-towers": { rotulo: "Giant Towers", variavel: "ASAAS_GIANT_TOWERS_API_KEY" },
+  guaimbe: { rotulo: "Guaimbé", variavel: "ASAAS_GUAIMBE_API_KEY" },
   gurgel: { rotulo: "Gurgel", variavel: "ASAAS_GURGEL_API_KEY" },
+  "on-sky": { rotulo: "On Sky", variavel: "ASAAS_ON_SKY_API_KEY" },
+  "vale-do-sol": { rotulo: "Vale do Sol", variavel: "ASAAS_VALE_DO_SOL_API_KEY" },
 };
+
+/** Todas as contas cadastradas — para a tela conferir sem lista repetida em outro arquivo. */
+export const TODAS_AS_CONTAS = Object.keys(CONTAS) as ContaAsaas[];
 
 export function rotuloDaConta(conta: ContaAsaas): string {
   return CONTAS[conta].rotulo;
@@ -76,17 +107,10 @@ export function estadoDaConta(conta: ContaAsaas): EstadoDaConta {
   };
 }
 
-/**
- * A conta que emite as cobranças de cada empreendimento.
- *
- * ⚠️ MAPA EXPLÍCITO, e não convenção. O empreendimento sem entrada aqui NÃO EMITE — melhor a
- * tela dizer "este empreendimento não tem conta de cobrança" do que cair numa conta padrão e
- * faturar no CNPJ errado.
- */
-const CONTA_POR_EMPREENDIMENTO: Record<string, ContaAsaas> = {
-  Garden: "garden",
-};
-
-export function contaDoEmpreendimento(nome: string): ContaAsaas | null {
-  return CONTA_POR_EMPREENDIMENTO[nome.trim()] ?? null;
-}
+// ⚠️ O MAPA `CONTA_POR_EMPREENDIMENTO` FOI REMOVIDO EM 01/09/2026, e vale dizer por quê: ele
+// dizia a mesma coisa que o campo `conta` de `boletos/empreendimentos.ts`, por outro caminho (o
+// NOME do empreendimento), e nenhum código de produção o consumia — só o próprio teste. Quem
+// cadastrasse uma conta ali e esquecesse o `conta:` do empreendimento veria o teste passar verde
+// com o empreendimento sem emitir nada. Duas fontes para a mesma verdade é como se erra em silêncio.
+//
+// A fonte única é `EMPREENDIMENTOS_DE_BOLETO[].conta`.

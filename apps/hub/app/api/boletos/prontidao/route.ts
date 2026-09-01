@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
-import { estadoDaConta } from "@/lib/apolo/asaas-contas";
+import { estadoDaConta, TODAS_AS_CONTAS } from "@/lib/apolo/asaas-contas";
 import { EMPREENDIMENTOS_DE_BOLETO } from "@/lib/apolo/boletos/empreendimentos";
 import { lerCarteiraDoLsoft } from "@/lib/lsoft/carteira";
 
@@ -24,7 +24,10 @@ export async function GET(request: Request) {
 
   // As contas de verdade, na ordem em que a tela cita. `careli` entra para o operador conseguir
   // comparar: se a do Garden estiver vazia e a da Careli cheia, o erro é de configuração.
-  const contas = (["garden", "gurgel", "careli"] as const).map(estadoDaConta);
+  // ⚠️ A LISTA VEM DE `TODAS_AS_CONTAS`, e não escrita aqui. Antes era fixa — conta nova cadastrada
+  // em `asaas-contas.ts` não aparecia neste painel, e o operador conferia uma lista incompleta
+  // achando que era tudo.
+  const contas = TODAS_AS_CONTAS.map(estadoDaConta);
 
   const empreendimentos = await Promise.all(
     EMPREENDIMENTOS_DE_BOLETO.map(async (e) => {
