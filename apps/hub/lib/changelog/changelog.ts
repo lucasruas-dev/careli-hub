@@ -36,6 +36,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-01-boletos-cer",
+    deployedAt: "2026-09-01T17:45:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Aba nova nos portais CER e Cecílio Rocha: o consolidado dos boletos do mês e uma aba por edifício (Jade, Rubi, Cristal e Esmeralda).",
+              "A tabela traz cliente, unidade, CPF, valor, emissão, vencimento, data de pagamento, a situação (em aberto, pago ou vencido) e o link do boleto.",
+              "A emissão sai da planilha que o administrativo envia: escolhe-se o arquivo, confere-se o que vai sair prédio a prédio, e só então emite. A planilha é lida no navegador e não sobe para o servidor.",
+              "Antes de emitir, a tela lista quem NÃO recebe boleto e por quê — parcela paralisada, marcada como “não fazer”, sem valor no mês ou sem CPF cadastrado.",
+              "Se o nome da planilha divergir do cadastro na mesma unidade, a tela avisa antes: o boleto sai no CPF do cadastro.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+      {
+        module: "Boletos",
+        screens: [
+          {
+            items: [
+              "Os CPFs e CNPJs dos clientes que recebem boleto passaram a ter cadastro próprio: 83 documentos dos nove empreendimentos, que a planilha mensal não traz e o Asaas exige.",
+              "Um recado escrito no lugar do telefone (“PAGA AQUI - NÃO FAZER”) agora impede a emissão. Antes só a célula do mês e a coluna de observação eram lidas.",
+            ],
+            screen: "Emissão de boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "16b8afb9",
+    technical: {
+      done: "Pedido do Lucas: \"essa tela vai somente no perfil da CER e Cecilio (...) vamos ter uma aba trazendo o consolidado de tudo, vamos ter cada produto sua aba\", e na sequencia \"vamos fazer o CER primeiro, depois fazermos as demais\". ⚠️ ACHADO QUE CUSTOU R$ 3.245,08: a regra de emissao lia dois lugares (a celula do mes e a coluna solta depois do ultimo mes) e o ROMULO ANTONIO SIQUEIRA GARCIA (Ed. Rubi, 402) tem o valor de setembro calculado normalmente, sem observacao nenhuma — o \"NAO FAZER\" esta escrito no lugar do telefone. Varri as seis primeiras colunas das nove abas: e o unico caso do arquivo, e e justamente na carteira que emite primeiro. bloqueioDoTexto passou a ler tambem `contato`, e a conversao ClienteDaPlanilha->LinhaDaPlanilha virou funcao unica (`linhaDoCliente`): os dois chamadores montavam o objeto a mao e continuariam mandando os campos antigos — a correcao existiria e nao valeria. Migration 0114 APLICADA e os 83 documentos carregados (72 CPF + 11 CNPJ; 4 linhas marcadas com \"?\" descartadas por decisao do Lucas). lib/apolo/boletos/lote.ts monta o lote no SERVIDOR e reaplica a regra sobre as linhas cruas — a tela le a planilha no navegador, mas quem decide quem recebe boleto nao pode ser o lado que o operador edita. ⚠️ dataDeVencimento prende o dia ao ultimo do mes: a IZALTINA vence dia 30 e `new Date('2026-02-30')` escorrega sozinho para 2 de marco, emitindo com data errada sem erro. Duas rotas separadas de proposito (/api/boletos/emitir com authorizeApoloAdmin, /api/incorporador/boletos com sessao de portal): fundir seria uma funcao decidindo qual autenticacao vale por um if. As tres travas do portal: lista explicita em lib/apolo/boletos/portais.ts (o vinculo de apolo_incorporador_empreendimentos nao serve — nenhum destes predios existe no Panteon), conferencia do slug a CADA chamada (a aba some da tela, a rota continua no ar), e ensaio por padrao. Lote real da CER em setembro: 11 boletos (Cristal 3, Rubi 4, Jade 4, Esmeralda 0 — o unico do Esmeralda tem valor calculado E \"Nao fazer\" na coluna solta). Os 11 tem CPF cadastrado. 500 testes verdes.",
+      motivation:
+        "Os boletos da Cecilio Rocha precisam sair este mes e nao ha empreendimento cadastrado no Panteon para eles. A tela e o caminho manual acordado enquanto o processo definitivo e construido.",
+    },
+    title: "Emissão de boletos entra no portal da CER e da Cecílio Rocha",
+    type: "novidade",
+    version: "1.247.0",
+  },
+  {
     buildTag: "2026-09-01-temis-e-boletos",
     deployedAt: "2026-09-01T17:05:00-03:00",
     modules: [
