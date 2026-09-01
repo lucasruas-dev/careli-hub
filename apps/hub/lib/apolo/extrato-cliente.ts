@@ -216,6 +216,21 @@ export type ExtratoClienteTotais = {
   saldoAValorDeHoje: number;
   /** Soma crua de `initial_value` das abertas. Envelhece mal; nunca vai sozinho. */
   saldoNominal: number;
+  /**
+   * Soma do `initial_value` das parcelas PAGAS — o valor de contrato do que já foi quitado.
+   *
+   * Existe para o extrato poder imprimir "valor da parcela" ao lado de "total pago" sem afirmar
+   * o que é a diferença entre os dois. O C2X guarda o total recebido, NÃO a composição: medido no
+   * banco inteiro, `mulct_value` é 0,00 nas 15.655 parcelas pagas e 5.153 das 5.742 que pagaram
+   * acima do valor original não têm `interest_value`. Decompor em juros e multa seria imprimir
+   * "R$ 0,00 de juros" para quem pagou R$ 11,45 — mentira com cara de precisão. As duas colunas
+   * lado a lado deixam a diferença VISÍVEL sem que a peça diga o que ela é.
+   *
+   * ⚠️ Pode ficar ACIMA do `totalPago`: existem 158 parcelas no banco recebidas por menos que o
+   * valor de contrato (pagamento parcial), uma delas de R$ 125.746,40 baixada com R$ 44.011,24.
+   * Quem consome este par de números não pode supor que a diferença é sempre positiva.
+   */
+  totalContratualPago: number;
   /** Soma dos `paid_value` das parcelas com data de pagamento. */
   totalPago: number;
   ultimoPagamento: null | string;
@@ -873,6 +888,10 @@ export function montarExtratoDoContrato({
         : null,
     saldoAValorDeHoje: soma(abertas.map((linha) => linha.valorAtual)),
     saldoNominal: soma(abertas.map((linha) => linha.valorContratual)),
+    // O par de colunas da tabela "Pagamentos realizados": o valor de contrato das parcelas
+    // quitadas e o que de fato entrou. Mesma lista (`realizados`), duas somas — o rodapé da
+    // tabela fecha com as linhas impressas acima dele.
+    totalContratualPago: soma(realizados.map((linha) => linha.valorContratual)),
     totalPago: soma(realizados.map((linha) => linha.valorPago ?? 0)),
     ultimoPagamento: datasDePagamento(realizados).at(-1) ?? null,
     vencidaMaisAntiga: vencidas[0]?.vencimento ?? null,

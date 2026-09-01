@@ -740,14 +740,25 @@ function desenharTabela(
 }
 
 function linhaDeParcela(parcela: ExtratoClienteParcela, pago: boolean): string[] {
-  return [
+  const base = [
     pago ? dataBr(parcela.pagamento) : dataBr(parcela.vencimento),
     parcela.tipo,
     parcela.numero,
     parcela.competencia ?? "-",
     pago ? dataBr(parcela.vencimento) : `${parcela.diasAtraso} dias`,
-    dinheiro(pago ? (parcela.valorPago ?? 0) : parcela.valorContratual),
   ];
+  if (!pago) return [...base, dinheiro(parcela.valorContratual)];
+
+  // ⚠️ DUAS COLUNAS, E NÃO UMA CONTA. O C2X guarda o valor da parcela (`initial_value`) e o total
+  // recebido (`paid_value`), mas NÃO guarda a composição: medido no banco inteiro, `mulct_value` é
+  // zero nas 15.655 parcelas pagas e 5.153 das que pagaram a mais não têm juros registrados.
+  //
+  // Escrever "juros R$ 0,00" para quem pagou R$ 11,45 de juros seria mentir com cara de precisão.
+  // Mostrando os dois lado a lado, a diferença fica VISÍVEL sem que o extrato afirme o que ela é —
+  // e quando são iguais, o cliente lê num relance que não pagou acréscimo. Decisão do Lucas
+  // (01/09/2026): "no campo valor de parcela deixamos o valor real daquela parcela, que pode ser o
+  // valor total ou não".
+  return [...base, dinheiro(parcela.valorContratual), dinheiro(parcela.valorPago ?? 0)];
 }
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
@@ -1093,19 +1104,58 @@ async function desenharContrato(
   }
 
   tituloDeSecao(ctx, `Pagamentos realizados (${relatorio.realizados.length})`);
+  // "Pago em" em vez de "Pagamento": o rótulo antigo se lia como FORMA de pagamento, e a coluna
+  // sempre trouxe a DATA. Os pesos somam 1 e foram reequilibrados para caber a coluna nova.
   desenharTabela(ctx, {
     colunas: [
-      { label: "Pagamento", peso: 0.15 },
-      { label: "Tipo", peso: 0.14 },
-      { label: "Parcela", peso: 0.12 },
-      { label: "Competência", peso: 0.16 },
-      { label: "Vencimento", peso: 0.15 },
-      { align: "right", label: "Valor pago", peso: 0.28 },
+      { label: "Pago em", peso: 0.14 },
+      { label: "Tipo", peso: 0.12 },
+      { label: "Parcela", peso: 0.11 },
+      { label: "Competência", peso: 0.14 },
+      { label: "Vencimento", peso: 0.14 },
+      { align: "right", label: "Valor da parcela", peso: 0.175 },
+      { align: "right", label: "Total pago", peso: 0.175 },
     ],
     linhas: relatorio.realizados.map((parcela) => linhaDeParcela(parcela, true)),
-    total: ["Total pago", "", "", "", "", dinheiro(relatorio.totais.totalPago)],
+    // "Totais", e não "Total pago": com DUAS somas no rodapé, o rótulo antigo ficava à esquerda
+    // do total CONTRATUAL e dizia que aqueles R$ 2.904.120,19 foram pagos — quando o que o
+    // cliente pagou é o número da última coluna. Cada soma se identifica pelo cabeçalho da sua
+    // coluna; o rótulo da linha só diz que ali termina a tabela.
+    total: [
+      "Totais",
+      "",
+      "",
+      "",
+      "",
+      dinheiro(relatorio.totais.totalContratualPago),
+      dinheiro(relatorio.totais.totalPago),
+    ],
     vazio: "Nenhum pagamento registrado até a data desta posição.",
   });
+
+  // A frase só aparece quando há diferença — dizer "R$ 0,00 de acréscimo" em contrato em dia é
+  // ruído, e pior, planta a dúvida de que houve cobrança extra.
+  const acrescimos =
+    Math.round((relatorio.totais.totalPago - relatorio.totais.totalContratualPago) * 100) / 100;
+  if (acrescimos > 0.01) {
+    paragrafo(
+      ctx,
+      // ⚠️ NÃO DIZER "acréscimo por atraso" AQUI. Medido no banco em 01/09/2026: das 5.171 parcelas
+      // pagas acima do valor de contrato sem juros classificados, 1.419 (R$ 169.480,68) foram
+      // pagas EM DIA — a diferença ali é REAJUSTE que não foi gravado na parcela (o `initial_value`
+      // do legado envelhece), média de 6,46%, e não mora. Escrever "multa" no extrato de quem pagou
+      // no prazo é pior que a coluna em branco de ontem. A frase descreve o FATO (os dois valores
+      // diferem) e não a CAUSA, que só se sabe parcela a parcela.
+      `A diferença entre o valor das parcelas e o total pago é de ${dinheiro(acrescimos)}. Ela pode corresponder a reajuste do contrato ou a encargos de pagamento fora do vencimento; a apuração é feita em cada pagamento.`,
+      7,
+    );
+  } else if (acrescimos < -0.01) {
+    paragrafo(
+      ctx,
+      `Em algumas parcelas o valor recebido foi inferior ao valor da parcela, somando ${dinheiro(Math.abs(acrescimos))}. Consulte a central de atendimento para o detalhamento.`,
+      7,
+    );
+  }
 
   if (!relatorio.contrato.encerrado && relatorio.abertas.length) {
     const anos = resumoPorAno(relatorio.abertas);

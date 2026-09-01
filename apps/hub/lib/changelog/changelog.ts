@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-01-extrato-valor-da-parcela",
+    deployedAt: "2026-09-01T14:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A tabela de pagamentos passa a ter duas colunas: 'Valor da parcela' e 'Total pago'. Onde os dois diferem, a diferença fica visível sem o extrato afirmar o que ela é.",
+              "A coluna da data virou 'Pago em' — 'Pagamento' se lia como forma de pagamento, e sempre trouxe a data.",
+              "A tela do cockpit ganhou as MESMAS colunas do PDF: o atendente e o cliente passam a olhar os mesmos números na mesma conversa.",
+            ],
+            screen: "Extrato do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "358eeaf8",
+    technical: {
+      done: "Pedido do Lucas: \"traz um campo com valor da parcela e outro valor total, ae no campo valor de parcela deixamos o valor real daquela parcela, que pode ser o valor total ou nao\". extrato-cliente.ts passou a somar `totalContratualPago` (soma de `valorContratual` das parcelas pagas) ao lado do `totalPago`; extrato-cliente-pdf.ts foi de 6 para 7 colunas com os pesos reequilibrados, e o rodape passou a trazer as DUAS somas sob os respectivos cabecalhos (o rotulo virou 'Totais': com duas somas, 'Total pago' a esquerda dizia que o total CONTRATUAL de R$ 2.904.120,19 tinha sido pago). extrato-cliente-panel.tsx acompanhou — estava com 6 colunas enquanto o PDF ja tinha 7. ⚠️ O paragrafo de rodape NAO afirma causa: medido no banco em 01/09/2026, das parcelas pagas acima do valor de contrato sem juros classificados, 1.419 (R$ 169.480,68) foram pagas EM DIA — a diferenca ali e REAJUSTE nao gravado na parcela (media 6,46%), e nao mora. Escrever 'acrescimo por atraso' no extrato de quem pagou no prazo seria pior que a coluna em branco. O Asaas nao ajuda: das 5.171 parcelas sem classificacao, nenhuma tem `payment_asaas_id`. 134 testes verdes na frente do extrato.",
+      motivation:
+        "O cliente que pagou a mais quer saber quanto era a parcela; o que pagou em dia quer ver que nao pagou acrescimo. Uma coluna so nao responde nenhuma das duas.",
+    },
+    title: "Extrato mostra o valor da parcela ao lado do total pago",
+    type: "melhoria",
+    version: "1.245.0",
+  },
+  {
     buildTag: "2026-08-31-conjuge-profissao-nacionalidade",
     deployedAt: "2026-08-31T17:10:00-03:00",
     modules: [

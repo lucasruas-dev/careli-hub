@@ -573,6 +573,125 @@ describe("totais e saldo", () => {
   });
 });
 
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// AS DUAS COLUNAS DE VALOR DA TABELA "PAGAMENTOS REALIZADOS"
+// ────────────────────────────────────────────────────────────────────────────────────────────
+
+describe("valor da parcela x total pago", () => {
+  /** Mesma regra da lib: arredonda no fim, senao a soma em ponto flutuante rende 43229,6599... */
+  const somar = (valores: number[]) =>
+    Math.round(valores.reduce((total, valor) => total + valor, 0) * 100) / 100;
+
+  // O extrato imprime os DOIS numeros lado a lado e nao decompoe a diferenca: o C2X guarda o
+  // total recebido, nao a composicao (mulct_value e 0,00 nas 15.655 parcelas pagas do banco, e
+  // 5.153 das 5.742 que pagaram a mais nao tem interest_value). O que os testes travam aqui e
+  // que o rodape SEMPRE fecha com as linhas impressas acima dele, nos tres jeitos de pagar.
+
+  it("pagou exatamente o valor da parcela: as duas colunas batem", () => {
+    const extrato = montar([
+      pago(comBoleto(mensal(1, 452.43)), 452.43, "2024-01-10"),
+      pago(comBoleto(mensal(2, 452.43)), 452.43, "2024-02-10"),
+    ]);
+
+    expect(extrato.totais.totalContratualPago).toBe(904.86);
+    expect(extrato.totais.totalPago).toBe(904.86);
+    // A frase de acrescimo do PDF sai desta subtracao: zero = frase nenhuma.
+    expect(extrato.totais.totalPago - extrato.totais.totalContratualPago).toBe(0);
+  });
+
+  it("pagou a MAIS (mora que o C2X nao gravou): LOS0617 real, +R$ 49,10", () => {
+    // Caso medido no banco (Thiago Bruno, AR 1066): 10 parcelas quitadas, quatro delas com
+    // acrescimo de 11,45 / 12,50 / 12,95 / 12,20 e interest_value ZERADO nas quatro. E por isso
+    // que a peca mostra os dois valores em vez de anunciar "juros R$ 0,00".
+    const parcelas = [
+      pago(
+        comBoleto(parcela({ id: 800, tipo: "Ato", tipoId: TIPO_ATO, valorInicial: 1000, vencimento: "2024-08-02" })),
+        1000,
+        "2024-08-02",
+      ),
+      pago(
+        comBoleto(parcela({ id: 801, tipo: "Sinal", tipoId: TIPO_SINAL, valorInicial: 6238.8, vencimento: "2024-08-06" })),
+        6238.8,
+        "2024-09-14",
+      ),
+      pago(comBoleto(mensal(2, 452.43)), 452.43, "2024-10-22"),
+      pago(comBoleto(mensal(3, 452.43)), 452.43, "2024-11-27"),
+      pago(comBoleto(mensal(4, 452.43)), 452.43, "2024-12-27"),
+      pago(comBoleto(mensal(5, 452.43)), 463.88, "2025-02-07"),
+      pago(comBoleto(mensal(6, 452.43)), 464.93, "2025-03-20"),
+      pago(comBoleto(mensal(7, 452.43)), 452.43, "2025-04-07"),
+      pago(comBoleto(mensal(8, 452.43)), 465.38, "2025-06-16"),
+      pago(comBoleto(mensal(12, 452.43)), 464.63, "2025-09-10"),
+    ];
+
+    const extrato = montar(parcelas);
+
+    expect(extrato.totais.parcelasPagas).toBe(10);
+    expect(extrato.totais.totalContratualPago).toBe(10858.24);
+    expect(extrato.totais.totalPago).toBe(10907.34);
+    expect(
+      Math.round((extrato.totais.totalPago - extrato.totais.totalContratualPago) * 100) / 100,
+    ).toBe(49.1);
+  });
+
+  it("pagou a MENOS (baixa parcial): o total contratual fica ACIMA do recebido", () => {
+    // 158 parcelas do banco foram baixadas por menos que o valor de contrato; a maior delas e
+    // uma de R$ 125.746,40 com R$ 44.011,24 recebidos. Quem le o par de numeros nao pode supor
+    // que a diferenca e sempre positiva - o PDF tem uma frase propria para este lado.
+    const extrato = montar([
+      pago(comBoleto(mensal(1, 452.43)), 452.43, "2024-01-10"),
+      pago(
+        comBoleto(
+          parcela({
+            id: 810,
+            tipo: "Avulso",
+            tipoId: TIPO_AVULSO,
+            valorInicial: 125746.4,
+            vencimento: "2024-02-10",
+          }),
+        ),
+        44011.24,
+        "2024-02-12",
+      ),
+    ]);
+
+    expect(extrato.totais.totalContratualPago).toBe(126198.83);
+    expect(extrato.totais.totalPago).toBe(44463.67);
+    expect(extrato.totais.totalPago).toBeLessThan(extrato.totais.totalContratualPago);
+  });
+
+  it("soma so as pagas, e o rodape fecha com as linhas impressas", () => {
+    const extrato = montar([
+      pago(comBoleto(mensal(1, 452.43)), 463.88, "2024-01-15"),
+      comBoleto(mensal(2, 452.43, { vencimento: "2026-09-10" })), // em aberto: fica de fora
+      mensal(3, 452.43, { vencimento: "2026-10-10" }), // sem boleto: fica de fora
+    ]);
+
+    expect(extrato.realizados).toHaveLength(1);
+    expect(extrato.totais.totalContratualPago).toBe(452.43);
+    expect(extrato.totais.totalContratualPago).toBe(
+      somar(extrato.realizados.map((linha) => linha.valorContratual)),
+    );
+    expect(extrato.totais.totalPago).toBe(
+      somar(extrato.realizados.map((linha) => linha.valorPago ?? 0)),
+    );
+  });
+
+  it("contrato encerrado leva as duas somas do historico, sem saldo", () => {
+    const encerrado = montar(
+      [
+        pago(comBoleto(mensal(1, 452.43)), 464.93, "2024-01-18"),
+        mensal(2, 452.43, { vencimento: "2026-12-10" }),
+      ],
+      { encerrado: true, estagio: 7, estagioNome: "Cancelado" },
+    );
+
+    expect(encerrado.totais.totalContratualPago).toBe(452.43);
+    expect(encerrado.totais.totalPago).toBe(464.93);
+    expect(encerrado.totais.saldoNominal).toBe(0);
+  });
+});
+
 describe("contrato encerrado", () => {
   // AR 271 (MDS0203, cancelado) tem 120 parcelas em aberto no C2X, 3 delas vencidas: a premissa
   // de que o cancelamento apaga a carteira e FALSA. Zerar so os totais deixava o PDF imprimir

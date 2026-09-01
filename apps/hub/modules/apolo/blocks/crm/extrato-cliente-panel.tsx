@@ -456,7 +456,18 @@ function Parcelas({ relatorio }: { relatorio: ExtratoClienteRelatorio }) {
 
       {abaAtiva === "pagos" ? (
         <Tabela
-          cabecalho={["Pagamento", "Tipo", "Parcela", "Competência", "Vencimento", "Valor pago"]}
+          // ⚠️ AS MESMAS COLUNAS DO PDF, e isso não é capricho: o atendente lê esta tela enquanto o
+          // cliente lê o PDF que recebeu. Com uma coluna a menos aqui, os dois olham números
+          // diferentes na mesma conversa — e quem tem de explicar a diferença é o atendente.
+          cabecalho={[
+            "Pago em",
+            "Tipo",
+            "Parcela",
+            "Competência",
+            "Vencimento",
+            "Valor da parcela",
+            "Total pago",
+          ]}
           linhas={relatorio.realizados.map((parcela) => ({
             chave: parcela.id,
             colunas: [
@@ -465,11 +476,22 @@ function Parcelas({ relatorio }: { relatorio: ExtratoClienteRelatorio }) {
               parcela.numero,
               parcela.competencia ?? "-",
               dataBr(parcela.vencimento),
+              // O valor da parcela e o que entrou. Onde diferem, a diferença fica visível sem que a
+              // tela AFIRME o que ela é — o C2X não guarda a composição (juros e multa vêm zerados).
+              dinheiro(parcela.valorContratual),
               dinheiro(parcela.valorPago ?? 0),
             ],
             detalhe: detalheDaLinha(parcela),
           }))}
-          total={["Total pago", "", "", "", "", dinheiro(relatorio.totais.totalPago)]}
+          total={[
+            "Totais",
+            "",
+            "",
+            "",
+            "",
+            dinheiro(relatorio.totais.totalContratualPago),
+            dinheiro(relatorio.totais.totalPago),
+          ]}
           vazio="Nenhum pagamento registrado."
         />
       ) : null}
