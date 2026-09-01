@@ -110,6 +110,8 @@ type Emissao = {
   conta: string;
   emitidos: number;
   empreendimento: string;
+  /** Quantas mensagens saíram junto com a emissão. Ausente quando o envio automático foi desligado. */
+  enviados?: number;
   falhas: number;
   repetidos: number;
   resultados: {
@@ -160,6 +162,18 @@ function competenciasSugeridas(): string[] {
   }
   return lista.reverse();
 }
+
+/**
+ * A aba que junta as seis carteiras de teste.
+ *
+ * ⚠️ SÃO SEIS CARTEIRAS NO BACKEND E UMA ABA NA TELA. Pedido do Lucas (01/09/2026): *"pode fazer na
+ * mesma aba do teste, so incluir o empreendimento diferente"*. Elas precisam ser empreendimentos
+ * separados porque a conta do Asaas vem do EMPREENDIMENTO (testar a chave do Garden exige emitir por
+ * um cujo `conta` seja `garden`), mas seis abas de teste ao lado de nove reais é ruído.
+ */
+const ABA_TESTE = "__teste__";
+
+const ehTeste = (slug: string) => slug.startsWith("teste");
 
 export function TelaBoletos() {
   const [competencia, setCompetencia] = useState(() => {
@@ -233,28 +247,66 @@ export function TelaBoletos() {
     setSelecionadas(new Set());
   }, [competencia]);
 
+  /**
+   * Emite o lote da aba.
+   *
+   * ⚠️ UMA CHAMADA POR EMPREENDIMENTO, porque a conta do Asaas vem dele. Na aba de teste são seis
+   * empreendimentos diferentes (um por conta), e mandar `__teste__` como slug devolveria 404: essa
+   * aba existe só na tela.
+   */
   const emitir = useCallback(
-    async (slug: string, unidades?: string[]) => {
-      setEmitindo(slug);
+    async (alvos: string[], unidades?: string[]) => {
+      if (alvos.length === 0) return;
+      setEmitindo(alvos[0]!);
       setErro(null);
       setEmissao(null);
+
+      const juntos: Emissao[] = [];
+      const problemas: string[] = [];
+
       try {
-        const r = await fetch("/api/incorporador/boletos", {
-          body: JSON.stringify({
-            competencia,
-            confirmar: true,
-            empreendimento: slug,
-            // ⚠️ Por enquanto o automático sai pelo Relacionamento: o template ainda não foi
-            // aprovado pela Meta, e o Atendimento devolveria "template não existe" em todos.
-            ...(enviarAoEmitir ? { enviarAoEmitir: "relacionamento" } : {}),
-            ...(unidades && unidades.length > 0 ? { unidades } : {}),
-          }),
-          headers: { "Content-Type": "application/json" },
-          method: "POST",
-        });
-        const j = (await r.json()) as { data?: Emissao; error?: string };
-        if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
-        setEmissao(j.data ?? null);
+        // Em série: cada uma cria cobranças de verdade, e paralelizar embaralharia os resultados.
+        for (const slug of alvos) {
+          const r = await fetch("/api/incorporador/boletos", {
+            body: JSON.stringify({
+              competencia,
+              confirmar: true,
+              empreendimento: slug,
+              // ⚠️ Por enquanto o automático sai pelo Relacionamento: o template ainda não foi
+              // aprovado pela Meta, e o Atendimento devolveria "template não existe" em todos.
+              ...(enviarAoEmitir ? { enviarAoEmitir: "relacionamento" } : {}),
+              ...(unidades && unidades.length > 0 ? { unidades } : {}),
+            }),
+            headers: { "Content-Type": "application/json" },
+            method: "POST",
+          });
+          const j = (await r.json()) as { data?: Emissao; error?: string };
+          // ⚠️ UMA CARTEIRA QUE FALHA NÃO PARA AS OUTRAS. Na aba de teste é exatamente o esperado:
+          // a conta sem chave devolve erro e as cinco com chave precisam emitir mesmo assim.
+          if (!r.ok) {
+            problemas.push(`${slug}: ${j.error ?? `falhou (${r.status})`}`);
+            continue;
+          }
+          if (j.data) juntos.push(j.data);
+        }
+
+        if (juntos.length > 0) {
+          setEmissao(
+            juntos.length === 1
+              ? juntos[0]!
+              : {
+                  conta: [...new Set(juntos.map((e) => e.conta))].join(", "),
+                  emitidos: juntos.reduce((a, e) => a + e.emitidos, 0),
+                  empreendimento: juntos.map((e) => e.empreendimento).join(", "),
+                  enviados: juntos.reduce((a, e) => a + (e.enviados ?? 0), 0),
+                  falhas: juntos.reduce((a, e) => a + e.falhas, 0),
+                  repetidos: juntos.reduce((a, e) => a + e.repetidos, 0),
+                  resultados: juntos.flatMap((e) => e.resultados),
+                },
+          );
+        }
+        if (problemas.length > 0) setErro(problemas.join(" · "));
+
         setSelecionadas(new Set());
         await carregar();
       } catch (e) {
@@ -403,14 +455,21 @@ export function TelaBoletos() {
     [aEmitir],
   );
 
-  const visiveisPendentes =
-    aba === "consolidado" ? pendentes : pendentes.filter((p) => p.empreendimento === aba);
-  const visiveisEmitidos =
-    aba === "consolidado" ? emitidos : emitidos.filter((b) => b.empreendimento === aba);
-  const visiveisFora =
-    aba === "consolidado"
-      ? aEmitir.filter((p) => p.bloqueio)
-      : aEmitir.filter((p) => p.bloqueio && p.empreendimento === aba);
+  /** A aba mostra esta carteira? A de teste mostra as seis; o consolidado, todas menos as de teste. */
+  const naAba = useCallback(
+    (slug: string) => {
+      if (aba === ABA_TESTE) return ehTeste(slug);
+      // ⚠️ O CONSOLIDADO NÃO SOMA OS TESTES. Eles são boletos de R$ 5,00 no CPF do Lucas: entrar no
+      // total do mês faria o número que o administrativo confere não bater com a planilha.
+      if (aba === "consolidado") return !ehTeste(slug);
+      return slug === aba;
+    },
+    [aba],
+  );
+
+  const visiveisPendentes = pendentes.filter((p) => naAba(p.empreendimento));
+  const visiveisEmitidos = emitidos.filter((b) => naAba(b.empreendimento));
+  const visiveisFora = aEmitir.filter((p) => p.bloqueio && naAba(p.empreendimento));
 
   const totais = useMemo(() => {
     const pagos = visiveisEmitidos.filter((b) => b.pagamento);
@@ -428,19 +487,38 @@ export function TelaBoletos() {
   const contagemPorCarteira = useMemo(() => {
     const m = new Map<string, { emitidos: number; pendentes: number }>();
     for (const c of carteiras) m.set(c.slug, { emitidos: 0, pendentes: 0 });
+    // As seis de teste somam num contador só, o da aba agrupada.
+    m.set(ABA_TESTE, { emitidos: 0, pendentes: 0 });
+
     for (const p of pendentes) {
-      const e = m.get(p.empreendimento);
+      const chave = ehTeste(p.empreendimento) ? ABA_TESTE : p.empreendimento;
+      const e = m.get(chave);
       if (e) e.pendentes += 1;
     }
     for (const b of emitidos) {
-      const e = m.get(b.empreendimento);
+      const chave = ehTeste(b.empreendimento) ? ABA_TESTE : b.empreendimento;
+      const e = m.get(chave);
       if (e) e.emitidos += 1;
     }
     return m;
   }, [carteiras, emitidos, pendentes]);
 
-  const semChave = carteiras.filter((c) => !c.contaConfigurada);
-  const podeEmitir = aba !== "consolidado" && carteiras.find((c) => c.slug === aba)?.contaConfigurada;
+  // ⚠️ SÓ AS CARTEIRAS REAIS CONTAM AQUI. Uma conta de teste sem chave é a mesma conta real sem
+  // chave, e listar as duas faria o aviso dizer "Teste On Sky, On Sky" para um problema só.
+  /** Os empreendimentos que o botão da aba atinge. Na de teste são seis; nas outras, um. */
+  const alvosDaAba =
+    aba === ABA_TESTE
+      ? [...new Set(visiveisPendentes.map((p) => p.empreendimento))]
+      : aba === "consolidado"
+        ? []
+        : [aba];
+
+  const semChave = carteiras.filter((c) => !c.contaConfigurada && !ehTeste(c.slug));
+
+  const podeEmitir =
+    aba === ABA_TESTE
+      ? carteiras.some((c) => ehTeste(c.slug) && c.contaConfigurada)
+      : aba !== "consolidado" && Boolean(carteiras.find((c) => c.slug === aba)?.contaConfigurada);
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -518,10 +596,10 @@ export function TelaBoletos() {
         <>
           {visiveisPendentes.length > 0 ? (
             <AEmitir
-              aoEmitir={(unidades) => void emitir(aba, unidades)}
+              aoEmitir={(unidades) => void emitir(alvosDaAba, unidades)}
               emitindo={emitindo === aba}
               enviarAoEmitir={enviarAoEmitir}
-              mostrarPredio={aba === "consolidado"}
+              mostrarPredio={aba === "consolidado" || aba === ABA_TESTE}
               onEnviarAoEmitir={setEnviarAoEmitir}
               parcelas={visiveisPendentes}
               podeEmitir={Boolean(podeEmitir)}
@@ -535,7 +613,9 @@ export function TelaBoletos() {
             acaoNaUnidade={acaoNaUnidade}
             aoAbrir={abrirHistorico}
             aoConferirEnvio={
-              aba !== "consolidado" && visiveisEmitidos.length > 0
+              // Na aba de teste o envio em lote não faz sentido (cada linha é de uma conta), e o
+              // botão de reenviar de cada linha resolve.
+              aba !== "consolidado" && aba !== ABA_TESTE && visiveisEmitidos.length > 0
                 ? () => void conferirEnvio(aba, [...selecionadas])
                 : null
             }
@@ -543,7 +623,7 @@ export function TelaBoletos() {
             carregandoHistorico={carregandoHistorico}
             enviando={enviando}
             historico={historico}
-            mostrarPredio={aba === "consolidado"}
+            mostrarPredio={aba === "consolidado" || aba === ABA_TESTE}
             ocupado={ocupado}
           />
 
@@ -1622,14 +1702,28 @@ function Abas({
   totalEmitidos: number;
   totalPendentes: number;
 }) {
+  const reais = carteiras.filter((c) => !c.slug.startsWith("teste"));
+  const temTeste = carteiras.some((c) => c.slug.startsWith("teste"));
+
   const itens = [
     { chave: "consolidado", emitidos: totalEmitidos, pendentes: totalPendentes, rotulo: "Consolidado" },
-    ...carteiras.map((c) => ({
+    ...reais.map((c) => ({
       chave: c.slug,
       emitidos: contagem.get(c.slug)?.emitidos ?? 0,
       pendentes: contagem.get(c.slug)?.pendentes ?? 0,
       rotulo: c.nome,
     })),
+    // A aba de teste vai por último: é a que sai quando os testes servirem.
+    ...(temTeste
+      ? [
+          {
+            chave: ABA_TESTE,
+            emitidos: contagem.get(ABA_TESTE)?.emitidos ?? 0,
+            pendentes: contagem.get(ABA_TESTE)?.pendentes ?? 0,
+            rotulo: "Teste",
+          },
+        ]
+      : []),
   ];
 
   return (
