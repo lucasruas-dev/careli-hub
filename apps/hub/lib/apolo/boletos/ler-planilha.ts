@@ -204,6 +204,25 @@ export function lerAba(aba: string, grade: Grade, mes: string): AbaLida | { moti
   };
 }
 
+/**
+ * O que a regra de emissão precisa saber sobre um cliente da planilha.
+ *
+ * ⚠️ PASSA POR AQUI, SEMPRE. Antes cada chamador montava o objeto à mão, e quando a regra passou a
+ * olhar a coluna de contato (01/09/2026) os dois lugares continuaram mandando os campos antigos:
+ * a correção existia e não valia, porque o campo novo chegava `undefined`. Um ponto só de
+ * conversão faz o compilador achar o próximo campo esquecido — ver
+ * [[reference_camada_nova_exige_varrer_leitores]].
+ */
+export function linhaDoCliente(c: ClienteDaPlanilha): LinhaDaPlanilha {
+  return {
+    contato: c.contato,
+    marcaNoMes: c.marcaNoMes,
+    nome: c.nome,
+    observacao: c.observacao,
+    valor: c.valor,
+  };
+}
+
 export type ResumoDaAba = {
   aba: string;
   emitem: number;
@@ -222,13 +241,7 @@ export function resumirAba(lida: AbaLida): ResumoDaAba {
     total: 0,
   };
   for (const c of lida.clientes) {
-    const linha: LinhaDaPlanilha = {
-      marcaNoMes: c.marcaNoMes,
-      nome: c.nome,
-      observacao: c.observacao,
-      valor: c.valor,
-    };
-    const v = vereditoDaLinha(linha);
+    const v = vereditoDaLinha(linhaDoCliente(c));
     if (v.emite) {
       resumo.emitem += 1;
       resumo.total += v.valor;

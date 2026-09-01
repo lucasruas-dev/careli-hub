@@ -11,15 +11,31 @@
 // "Não fazer", com o rodapé da aba explicando que a obra atrasou e a parcela foi paralisada.
 // Quem somasse a coluna emitiria um boleto que ninguém mandou emitir.
 //
-// ⚠️ AS MARCAÇÕES VÊM DE DOIS LUGARES, e os dois precisam ser lidos:
+// ⚠️ AS MARCAÇÕES VÊM DE TRÊS LUGARES, e os três precisam ser lidos:
 //   1. DENTRO da célula do mês, no lugar do número ("Não fazer");
-//   2. numa coluna SOLTA depois do último mês, sem cabeçalho ("PAGO ATÉ DEZ/26 RETOMA JAN/27").
+//   2. numa coluna SOLTA depois do último mês, sem cabeçalho ("PAGO ATÉ DEZ/26 RETOMA JAN/27");
+//   3. NA COLUNA DE CONTATO, no lugar do telefone ("PAGA AQUI -NÃO FAZER").
+//
+// ⚠️ O TERCEIRO LUGAR CUSTOU R$ 3.245,08 PARA APARECER. O ROMULO ANTONIO SIQUEIRA GARCIA (Ed.
+// Rubi, apto 402) tem o valor de setembro calculado normalmente na planilha e nenhuma observação
+// — o recado está onde deveria estar o telefone dele. Com a regra lendo só os dois primeiros
+// lugares, ele era o único da CER que sairia errado: boleto cheio para quem já paga direto.
+// Medido em 01/09/2026 varrendo as seis primeiras colunas das nove abas: é o único caso do
+// arquivo, e é justamente na carteira que emite primeiro.
 //
 // ⚠️ E NEM TODA OBSERVAÇÃO BLOQUEIA. "PARCELA IREAJUSTAVEL" e "PARCELA FIXA PAGA TODOS OS
 // REAJUSTES DO ANO ATUAL NO PROXIMO" são informativas: o cliente recebe boleto normalmente.
 // Tratar toda observação como bloqueio deixaria dois clientes sem cobrança.
 
 export type LinhaDaPlanilha = {
+  /**
+   * A coluna de contato — telefone, "WHATSAPP", "EMAIL"…
+   *
+   * ⚠️ ELA TAMBÉM CARREGA RECADO. Só um texto de bloqueio conhecido impede a emissão; qualquer
+   * outro conteúdo é contato normal e passa. Tratar "texto no contato" como bloqueio deixaria
+   * sem boleto todo mundo das abas de loteamento, onde a coluna diz a forma de envio.
+   */
+  contato?: null | string;
   /** Texto encontrado NA célula do mês, quando não era número. */
   marcaNoMes?: null | string;
   nome: string;
@@ -106,6 +122,17 @@ export function vereditoDaLinha(linha: LinhaDaPlanilha): Veredito {
       emite: false,
       explicacao: `${EXPLICACAO[naObservacao]} — “${String(linha.observacao).trim()}”`,
       motivo: naObservacao,
+    };
+  }
+
+  // ⚠️ O contato vem por último de propósito: é o lugar improvável, e quando o recado está lá a
+  // linha tem valor calculado e nada mais que a denuncie.
+  const noContato = bloqueioDoTexto(linha.contato);
+  if (noContato) {
+    return {
+      emite: false,
+      explicacao: `${EXPLICACAO[noContato]} — “${String(linha.contato).trim()}” (escrito na coluna de contato)`,
+      motivo: noContato,
     };
   }
 

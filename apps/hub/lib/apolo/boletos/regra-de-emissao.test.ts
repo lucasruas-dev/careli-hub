@@ -127,3 +127,54 @@ describe("o resumo que a tela mostra antes do clique", () => {
     expect(r.total).toBe(4439.15);
   });
 });
+
+describe("o recado escrito na coluna de contato", () => {
+  // ⚠️ CASO REAL, MEDIDO: ROMULO ANTONIO SIQUEIRA GARCIA (Ed. Rubi, apto 402). A planilha calcula
+  // R$ 3.245,08 para setembro/2026 e não traz observação nenhuma — o "não fazer" está escrito no
+  // lugar do telefone. Ele é o único da CER que sairia errado, na carteira que emite primeiro.
+  it("impede a emissão quando o telefone foi trocado por 'PAGA AQUI -NÃO FAZER'", () => {
+    const v = vereditoDaLinha({
+      contato: "PAGA AQUI -NÃO FAZER",
+      nome: "ROMULO ANTONIO SIQUEIRA GARCIA",
+      valor: 3245.083223312992,
+    });
+    expect(v.emite).toBe(false);
+    if (!v.emite) {
+      expect(v.motivo).toBe("marcado-nao-fazer");
+      // A explicação diz ONDE estava o recado: quem confere a lista precisa achar a célula.
+      expect(v.explicacao).toContain("coluna de contato");
+    }
+  });
+
+  it("telefone comum não bloqueia ninguém", () => {
+    for (const contato of ["37 9911-4655", " 31 8864-5355", "37 8801-4334"]) {
+      expect(vereditoDaLinha({ contato, nome: "X", valor: 100 }).emite, contato).toBe(true);
+    }
+  });
+
+  it("forma de envio das abas de loteamento não bloqueia", () => {
+    // ⚠️ Nas abas de loteamento esta coluna se chama "FORMA ENVIO" e vem cheia de texto. Se
+    // qualquer texto aqui bloqueasse, as carteiras inteiras do Vale do Sol e do Guaimbé ficariam
+    // sem boleto — e o motivo apareceria como se o administrativo tivesse pedido isso.
+    for (const contato of ["WHATSAPP", "E-MAIL", "CORREIO", "e-mail e whats"]) {
+      expect(vereditoDaLinha({ contato, nome: "X", valor: 100 }).emite, contato).toBe(true);
+    }
+  });
+
+  it("contato vazio ou ausente segue o caminho normal", () => {
+    expect(vereditoDaLinha({ contato: null, nome: "X", valor: 100 }).emite).toBe(true);
+    expect(vereditoDaLinha({ contato: "   ", nome: "X", valor: 100 }).emite).toBe(true);
+    expect(vereditoDaLinha({ nome: "X", valor: 100 }).emite).toBe(true);
+  });
+
+  it("a célula do mês continua vencendo o contato", () => {
+    // Se os dois trouxerem recado, o do mês é o específico daquela competência.
+    const v = vereditoDaLinha({
+      contato: "PAGA AQUI -NÃO FAZER",
+      marcaNoMes: "Não fazer",
+      nome: "X",
+    });
+    expect(v.emite).toBe(false);
+    if (!v.emite) expect(v.explicacao).not.toContain("coluna de contato");
+  });
+});

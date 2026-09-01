@@ -19,6 +19,7 @@ import {
   type AbaLida,
   type ClienteDaPlanilha,
   lerAba,
+  linhaDoCliente,
   type ResumoDaAba,
   resumirAba,
 } from "@/lib/apolo/boletos/ler-planilha";
@@ -592,12 +593,7 @@ function LinhaDoEmpreendimento({
 }
 
 function ItemDoCliente({ cliente }: { cliente: ClienteDaPlanilha }) {
-  const v = vereditoDaLinha({
-    marcaNoMes: cliente.marcaNoMes,
-    nome: cliente.nome,
-    observacao: cliente.observacao,
-    valor: cliente.valor,
-  });
+  const v = vereditoDaLinha(linhaDoCliente(cliente));
 
   return (
     <li className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-line/60 py-1.5 last:border-0">
