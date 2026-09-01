@@ -409,3 +409,57 @@ export function referenciaDaCobranca(input: {
   const unidade = input.unidade.trim().replace(/\s+/g, "-");
   return `boleto:${input.empreendimento}:${unidade}:${input.competencia}`;
 }
+
+// ── DESFAZER E CORRIGIR ─────────────────────────────────────────────────────
+
+export type CobrancaCancelada = { deleted: boolean; id: string };
+
+/**
+ * Cancela a cobrança no Asaas.
+ *
+ * Pedido do Lucas (01/09/2026): *"temos agora que criar a rota de cancelamento desse boleto"*.
+ *
+ * ⚠️ CANCELAR NÃO DESFAZ O QUE O CLIENTE JÁ VIU. O boleto pode estar impresso, no aplicativo do
+ * banco ou já agendado; o cancelamento impede o pagamento futuro, e é isso que faz dele uma ação
+ * séria e não um "ctrl+z". Quem cancela precisa avisar o cliente.
+ *
+ * ⚠️ COBRANÇA PAGA NÃO CANCELA. O Asaas recusa, e é bom que recuse: apagar o registro de um
+ * pagamento recebido é como o dinheiro some da conciliação. O erro dele vem com a explicação, e
+ * quem chama a repassa em vez de traduzir para "não deu".
+ */
+export function cancelarCobranca(
+  conta: ContaAsaas,
+  cobrancaId: string,
+): Promise<ResultadoAsaas<CobrancaCancelada>> {
+  return chamar<CobrancaCancelada>(conta, `/payments/${encodeURIComponent(cobrancaId)}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Corrige uma cobrança já emitida: valor, vencimento ou descrição.
+ *
+ * Pedido do Lucas (01/09/2026): *"podemos editar o numero, valor de boleto, alterar descrição"*.
+ *
+ * ⚠️ O ASAAS GERA UM BOLETO NOVO quando o valor ou o vencimento mudam: a linha digitável antiga
+ * deixa de valer. Se o cliente já recebeu o link, ele precisa receber de novo — por isso a tela
+ * oferece o reenvio logo depois de editar.
+ *
+ * ⚠️ MANDA SÓ O QUE MUDOU. O endpoint aceita atualização parcial, e enviar o objeto inteiro faria
+ * um campo não informado (a descrição, por exemplo) ser sobrescrito com vazio.
+ */
+export function atualizarCobranca(
+  conta: ContaAsaas,
+  cobrancaId: string,
+  mudancas: { descricao?: string; valor?: number; vencimento?: string },
+): Promise<ResultadoAsaas<CobrancaAsaas>> {
+  const body: Record<string, unknown> = {};
+  if (mudancas.valor !== undefined) body.value = valorParaOAsaas(mudancas.valor);
+  if (mudancas.vencimento !== undefined) body.dueDate = mudancas.vencimento;
+  if (mudancas.descricao !== undefined) body.description = mudancas.descricao;
+
+  return chamar<CobrancaAsaas>(conta, `/payments/${encodeURIComponent(cobrancaId)}`, {
+    body,
+    method: "PUT",
+  });
+}

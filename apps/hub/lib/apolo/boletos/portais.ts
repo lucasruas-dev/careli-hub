@@ -10,20 +10,40 @@
 // vazia não devolve "nada": devolve o que o código de fallback resolver, e num portal externo isso
 // é a carteira de outra empresa aberta para quem não deveria ver.
 //
-// ⚠️ ENTRA AQUI SÓ O QUE FOI CONFIRMADO. Jade, Rubi, Cristal e Esmeralda são da CER — está no
-// print que o Lucas mandou ("EDIFICIO JADE - CER") e na conta única que os quatro dividem. On Sky,
-// Guaimbé e Giant Towers ficam de fora até alguém dizer de quem são: supor o dono de uma carteira
-// e mostrá-la num portal externo é vazamento, e o silêncio custa menos que o palpite.
+// ⚠️ AS NOVE CARTEIRAS ENTRARAM POR DECISÃO EXPLÍCITA, e em duas etapas. Primeiro só os quatro
+// edifícios da CER (*"vamos fazer o CER primeiro"*, 01/09/2026), porque eram os únicos cujo dono
+// estava provado — o print que o Lucas mandou dizia "EDIFICIO JADE - CER" e os quatro dividem uma
+// conta. Garden, Vale do Sol, On Sky, Guaimbé e Giant Towers ficaram de fora até ele autorizar:
+// *"pode subir os demais empreendimentos que vamos fazer"* (01/09/2026), na mesma mensagem em que
+// pediu os nomes das variáveis das outras contas.
 //
-// ⚠️ GARDEN E VALE DO SOL TAMBÉM FICAM DE FORA, apesar de a base do LSoft da Cecílio ter os dois.
-// Ali o portal LÊ e valida cadastro; aqui ele EMITE cobrança. São permissões diferentes e o Lucas
-// pediu a CER primeiro — acrescentar carteira é uma linha, e é decisão dele, não consequência de
-// eu ter achado parecido.
+// ⚠️ NÃO ACRESCENTE CARTEIRA POR SEMELHANÇA. Cada linha aqui é uma cobrança que um portal externo
+// passa a poder criar em nome de uma empresa. Mostrar a carteira errada num portal é vazamento;
+// deixar emitir nela é dívida no CNPJ de outro.
+const TODAS_AS_CARTEIRAS = [
+  "ed-jade",
+  "ed-rubi",
+  "ed-cristal",
+  "ed-esmeralda",
+  "garden",
+  "vale-do-sol",
+  "on-sky",
+  "guaimbe",
+  "giant-towers",
+  // ⚠️ AS CARTEIRAS DE TESTE, uma por conta do Asaas (ver `empreendimentos.ts`). O Lucas as mantém
+  // para validar cada chave antes do primeiro envio real: *"quero testar todas as contas antes de
+  // enviar"* (01/09/2026). Saem juntas quando servirem.
+  "teste",
+  "teste-garden",
+  "teste-vale-do-sol",
+  "teste-on-sky",
+  "teste-guaimbe",
+  "teste-giant-towers",
+];
+
 const CARTEIRAS_DO_PORTAL: Record<string, string[]> = {
-  // ⚠️ "teste" é a carteira do boleto de conferência (ver `empreendimentos.ts`). Ela emite na conta
-  // CER de verdade, e sai daqui assim que o teste servir para o que serve.
-  cer: ["ed-jade", "ed-rubi", "ed-cristal", "ed-esmeralda", "teste"],
-  "cecilio-rocha": ["ed-jade", "ed-rubi", "ed-cristal", "ed-esmeralda", "teste"],
+  cer: TODAS_AS_CARTEIRAS,
+  "cecilio-rocha": TODAS_AS_CARTEIRAS,
 };
 
 /** Os empreendimentos de boleto que este portal pode ver e emitir. Vazio = não tem a aba. */

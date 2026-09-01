@@ -1,13 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Ban,
   Check,
+  ChevronDown,
   ExternalLink,
   Loader2,
   MessageCircle,
+  Pencil,
   RefreshCw,
+  Send,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -48,8 +53,28 @@ type ParcelaAEmitir = {
   vencimentoDia: null | number;
 };
 
+type EventoDoBoleto = {
+  autor: null | string;
+  canal: null | string;
+  cobrancaId: null | string;
+  detalhe: null | string;
+  entrega: null | { em: null | string; status: string };
+  ok: boolean;
+  quando: string;
+  telefone: null | string;
+  tipo: "cancelamento" | "emissao" | "envio";
+};
+
+type Historico = {
+  contato: null | string;
+  eventos: EventoDoBoleto[];
+  nome: null | string;
+  unidade: string;
+};
+
 type BoletoEmitido = {
   cobranca: string;
+  contato: null | string;
   documento: null | string;
   emissao: null | string;
   empreendimento: string;
@@ -61,6 +86,8 @@ type BoletoEmitido = {
   valor: number;
   vencido: boolean;
   vencimento: string;
+  whatsappEnviadoEm: null | string;
+  whatsappErro: null | string;
 };
 
 type Previa = {
@@ -154,6 +181,17 @@ export function TelaBoletos() {
   const [previas, setPrevias] = useState<null | { itens: Previa[]; slug: string }>(null);
   const [enviando, setEnviando] = useState(false);
   const [envio, setEnvio] = useState<null | Envio>(null);
+
+  // A linha aberta: o histórico do boleto, logo abaixo dela.
+  const [aberta, setAberta] = useState<null | string>(null);
+  const [historico, setHistorico] = useState<null | Historico>(null);
+  const [carregandoHistorico, setCarregandoHistorico] = useState(false);
+  const [ocupado, setOcupado] = useState<null | string>(null);
+
+  // ⚠️ LIGADO POR PADRÃO: *"o disparo tem que ser automatico quando gerado o boleto"* (Lucas,
+  // 01/09/2026). Fica visível e desmarcável porque emitir sem avisar é caso legítimo, e porque
+  // mandar mensagem sem querer não tem desfazer.
+  const [enviarAoEmitir, setEnviarAoEmitir] = useState(true);
   // A unidade que o operador escolheu emitir sozinha. Vazio = o lote inteiro daquela carteira.
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
 
@@ -206,6 +244,9 @@ export function TelaBoletos() {
             competencia,
             confirmar: true,
             empreendimento: slug,
+            // ⚠️ Por enquanto o automático sai pelo Relacionamento: o template ainda não foi
+            // aprovado pela Meta, e o Atendimento devolveria "template não existe" em todos.
+            ...(enviarAoEmitir ? { enviarAoEmitir: "relacionamento" } : {}),
             ...(unidades && unidades.length > 0 ? { unidades } : {}),
           }),
           headers: { "Content-Type": "application/json" },
@@ -222,7 +263,7 @@ export function TelaBoletos() {
         setEmitindo(null);
       }
     },
-    [carregar, competencia],
+    [carregar, competencia, enviarAoEmitir],
   );
 
   /**
@@ -288,6 +329,71 @@ export function TelaBoletos() {
       }
     },
     [carregar, competencia],
+  );
+
+  const abrirHistorico = useCallback(
+    async (empreendimento: string, unidade: string) => {
+      const chave = `${empreendimento}|${unidade}`;
+      if (aberta === chave) {
+        setAberta(null);
+        setHistorico(null);
+        return;
+      }
+      setAberta(chave);
+      setHistorico(null);
+      setCarregandoHistorico(true);
+      try {
+        const r = await fetch(
+          `/api/incorporador/boletos?competencia=${competencia}` +
+            `&historico=${encodeURIComponent(unidade)}` +
+            `&empreendimento=${encodeURIComponent(empreendimento)}`,
+          { cache: "no-store" },
+        );
+        const j = (await r.json()) as { data?: Historico; error?: string };
+        if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
+        setHistorico(j.data ?? null);
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : "Não consegui carregar o histórico.");
+        setAberta(null);
+      } finally {
+        setCarregandoHistorico(false);
+      }
+    },
+    [aberta, competencia],
+  );
+
+  /** Reenviar, cancelar e editar: as três mexem numa unidade só, e recarregam a tela. */
+  const acaoNaUnidade = useCallback(
+    async (
+      empreendimento: string,
+      unidade: string,
+      corpo: Record<string, unknown>,
+    ): Promise<boolean> => {
+      setOcupado(`${empreendimento}|${unidade}`);
+      setErro(null);
+      try {
+        const r = await fetch("/api/incorporador/boletos", {
+          body: JSON.stringify({ competencia, empreendimento, unidades: [unidade], ...corpo }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const j = (await r.json()) as { data?: unknown; error?: string };
+        if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
+        await carregar();
+        // O histórico ganhou linha nova: recarrega o que está aberto.
+        if (aberta === `${empreendimento}|${unidade}`) {
+          setAberta(null);
+          await abrirHistorico(empreendimento, unidade);
+        }
+        return true;
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : "Não consegui completar a ação.");
+        return false;
+      } finally {
+        setOcupado(null);
+      }
+    },
+    [aberta, abrirHistorico, carregar, competencia],
   );
 
   // ── O que cada aba mostra ──────────────────────────────────────────────────
@@ -414,7 +520,9 @@ export function TelaBoletos() {
             <AEmitir
               aoEmitir={(unidades) => void emitir(aba, unidades)}
               emitindo={emitindo === aba}
+              enviarAoEmitir={enviarAoEmitir}
               mostrarPredio={aba === "consolidado"}
+              onEnviarAoEmitir={setEnviarAoEmitir}
               parcelas={visiveisPendentes}
               podeEmitir={Boolean(podeEmitir)}
               selecionadas={selecionadas}
@@ -423,14 +531,20 @@ export function TelaBoletos() {
           ) : null}
 
           <Emitidos
+            aberta={aberta}
+            acaoNaUnidade={acaoNaUnidade}
+            aoAbrir={abrirHistorico}
             aoConferirEnvio={
               aba !== "consolidado" && visiveisEmitidos.length > 0
                 ? () => void conferirEnvio(aba, [...selecionadas])
                 : null
             }
             boletos={visiveisEmitidos}
+            carregandoHistorico={carregandoHistorico}
             enviando={enviando}
+            historico={historico}
             mostrarPredio={aba === "consolidado"}
+            ocupado={ocupado}
           />
 
           {visiveisFora.length > 0 ? <ForaDaEmissao parcelas={visiveisFora} /> : null}
@@ -512,7 +626,9 @@ function Cabecalho({
 function AEmitir({
   aoEmitir,
   emitindo,
+  enviarAoEmitir,
   mostrarPredio,
+  onEnviarAoEmitir,
   onSelecionadas,
   parcelas,
   podeEmitir,
@@ -520,7 +636,9 @@ function AEmitir({
 }: {
   aoEmitir: (unidades: string[]) => void;
   emitindo: boolean;
+  enviarAoEmitir: boolean;
   mostrarPredio: boolean;
+  onEnviarAoEmitir: (v: boolean) => void;
   onSelecionadas: (s: Set<string>) => void;
   parcelas: ParcelaAEmitir[];
   podeEmitir: boolean;
@@ -583,6 +701,26 @@ function AEmitir({
           </span>
         )}
       </div>
+
+      {podeEmitir ? (
+        <label
+          style={{
+            alignItems: "center",
+            color: T.sub,
+            cursor: "pointer",
+            display: "inline-flex",
+            fontSize: 13,
+            gap: 7,
+          }}
+        >
+          <input
+            checked={enviarAoEmitir}
+            onChange={(e) => onEnviarAoEmitir(e.target.checked)}
+            type="checkbox"
+          />
+          Mandar o link ao cliente logo depois de gerar
+        </label>
+      ) : null}
 
       <div style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", fontSize: 13.5, minWidth: 640, width: "100%" }}>
@@ -650,16 +788,32 @@ function AEmitir({
 // ── EMITIDOS ────────────────────────────────────────────────────────────────
 
 function Emitidos({
+  aberta,
+  acaoNaUnidade,
+  aoAbrir,
   aoConferirEnvio,
   boletos,
+  carregandoHistorico,
   enviando,
+  historico,
   mostrarPredio,
+  ocupado,
 }: {
+  aberta: null | string;
+  acaoNaUnidade: (
+    empreendimento: string,
+    unidade: string,
+    corpo: Record<string, unknown>,
+  ) => Promise<boolean>;
+  aoAbrir: (empreendimento: string, unidade: string) => void;
   /** `null` no consolidado: enviar é por carteira, para o operador ver de qual conta saiu. */
   aoConferirEnvio: (() => void) | null;
   boletos: BoletoEmitido[];
+  carregandoHistorico: boolean;
   enviando: boolean;
+  historico: null | Historico;
   mostrarPredio: boolean;
+  ocupado: null | string;
 }) {
   if (boletos.length === 0) {
     return (
@@ -721,65 +875,460 @@ function Emitidos({
       <table style={{ borderCollapse: "collapse", fontSize: 13.5, minWidth: 900, width: "100%" }}>
         <thead>
           <tr style={{ color: T.sub, textAlign: "left" }}>
+            <th style={{ ...cabecalho, width: 26 }} />
             <th style={cabecalho}>Cliente</th>
             {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
             <th style={cabecalho}>Unidade</th>
             <th style={cabecalho}>CPF/CNPJ</th>
+            <th style={cabecalho}>Telefone</th>
             <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
-            <th style={cabecalho}>Emissão</th>
             <th style={cabecalho}>Vencimento</th>
             <th style={cabecalho}>Pagamento</th>
             <th style={cabecalho}>Situação</th>
+            <th style={cabecalho}>Enviado</th>
             <th style={cabecalho}>Boleto</th>
           </tr>
         </thead>
         <tbody>
-          {boletos.map((b) => (
-            <tr key={b.cobranca} style={{ borderTop: `1px solid ${T.border}` }}>
-              <td style={{ color: T.text, padding: "8px 10px" }}>{b.nome}</td>
-              {mostrarPredio ? (
-                <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
-                  {b.empreendimento}
-                </td>
-              ) : null}
-              <td style={{ color: T.sub, padding: "8px 10px" }}>{b.unidade}</td>
-              <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
-                {b.documento ?? "—"}
-              </td>
-              <td style={numero}>{moeda(b.valor)}</td>
-              <td style={celulaFraca}>{dia(b.emissao)}</td>
-              <td style={celulaFraca}>{dia(b.vencimento)}</td>
-              <td style={celulaFraca}>{dia(b.pagamento)}</td>
-              <td style={{ padding: "8px 10px" }}>
-                <Selo boleto={b} />
-              </td>
-              <td style={{ padding: "8px 10px" }}>
-                {b.link ? (
-                  <a
-                    href={b.link}
-                    rel="noreferrer"
-                    style={{
-                      alignItems: "center",
-                      color: T.gold,
-                      display: "inline-flex",
-                      gap: 4,
-                      textDecoration: "none",
-                    }}
-                    target="_blank"
-                  >
-                    Abrir <ExternalLink size={12} />
-                  </a>
-                ) : (
-                  <span style={{ color: T.sub }}>—</span>
-                )}
-              </td>
-            </tr>
-          ))}
+          {boletos.map((b) => {
+            const chave = `${b.empreendimento}|${b.unidade}`;
+            const estaAberta = aberta === chave;
+            const colunas = mostrarPredio ? 12 : 11;
+
+            return (
+              <Fragment key={b.cobranca}>
+                {/* ⚠️ A LINHA INTEIRA ABRE O HISTÓRICO. Pedido do Lucas (01/09/2026): *"ao clicar na
+                    linha que abrisse um modal abaixo mostrando o histórico"*. O link do boleto para
+                    a propagação, senão abrir o boleto abriria o painel junto. */}
+                <tr
+                  onClick={() => aoAbrir(b.empreendimento, b.unidade)}
+                  style={{
+                    background: estaAberta ? T.soft : "transparent",
+                    borderTop: `1px solid ${T.border}`,
+                    cursor: "pointer",
+                  }}
+                >
+                  <td style={{ color: T.sub, padding: "8px 4px 8px 10px" }}>
+                    <ChevronDown
+                      size={14}
+                      style={{
+                        transform: estaAberta ? "rotate(0deg)" : "rotate(-90deg)",
+                        transition: "transform .15s",
+                      }}
+                    />
+                  </td>
+                  <td style={{ color: T.text, padding: "8px 10px" }}>{b.nome}</td>
+                  {mostrarPredio ? (
+                    <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
+                      {b.empreendimento}
+                    </td>
+                  ) : null}
+                  <td style={{ color: T.sub, padding: "8px 10px" }}>{b.unidade}</td>
+                  <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
+                    {b.documento ?? "—"}
+                  </td>
+                  <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
+                    {b.contato ?? <span style={{ color: T.danger }}>sem telefone</span>}
+                  </td>
+                  <td style={numero}>{moeda(b.valor)}</td>
+                  <td style={celulaFraca}>{dia(b.vencimento)}</td>
+                  <td style={celulaFraca}>{dia(b.pagamento)}</td>
+                  <td style={{ padding: "8px 10px" }}>
+                    <Selo boleto={b} />
+                  </td>
+                  <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                    {b.whatsappEnviadoEm ? (
+                      <span style={{ color: T.ok, fontSize: 12.5 }}>
+                        <Check size={11} style={{ verticalAlign: "middle" }} />{" "}
+                        {dia(b.whatsappEnviadoEm)}
+                      </span>
+                    ) : b.whatsappErro ? (
+                      <span style={{ color: T.danger, fontSize: 12.5 }}>falhou</span>
+                    ) : (
+                      <span style={{ color: T.sub, fontSize: 12.5 }}>não enviado</span>
+                    )}
+                  </td>
+                  <td style={{ padding: "8px 10px" }} onClick={(e) => e.stopPropagation()}>
+                    {b.link ? (
+                      <a
+                        href={b.link}
+                        rel="noreferrer"
+                        style={{
+                          alignItems: "center",
+                          color: T.gold,
+                          display: "inline-flex",
+                          gap: 4,
+                          textDecoration: "none",
+                        }}
+                        target="_blank"
+                      >
+                        Abrir <ExternalLink size={12} />
+                      </a>
+                    ) : (
+                      <span style={{ color: T.sub }}>—</span>
+                    )}
+                  </td>
+                </tr>
+
+                {estaAberta ? (
+                  <tr>
+                    <td colSpan={colunas} style={{ padding: 0 }}>
+                      <PainelDoBoleto
+                        acaoNaUnidade={acaoNaUnidade}
+                        boleto={b}
+                        carregando={carregandoHistorico}
+                        historico={historico}
+                        ocupado={ocupado === chave}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            );
+          })}
           </tbody>
         </table>
       </div>
     </div>
   );
+}
+
+// ── O PAINEL DE UM BOLETO ───────────────────────────────────────────────────
+
+/** `2026-09-01T14:32:10Z` → `01/09 14:32`. Sem `new Date`, para não escorregar de fuso. */
+function quandoCurto(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso);
+  if (!m) return iso;
+  // O horário vem em UTC; a Careli opera em UTC−3.
+  const utc = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00Z`);
+  const local = new Date(utc.getTime() - 3 * 60 * 60 * 1000);
+  const dd = String(local.getUTCDate()).padStart(2, "0");
+  const mm = String(local.getUTCMonth() + 1).padStart(2, "0");
+  const hh = String(local.getUTCHours()).padStart(2, "0");
+  const mi = String(local.getUTCMinutes()).padStart(2, "0");
+  return `${dd}/${mm} ${hh}:${mi}`;
+}
+
+const ROTULO_DO_EVENTO: Record<string, string> = {
+  cancelamento: "Cancelado",
+  emissao: "Boleto gerado",
+  envio: "Link enviado",
+};
+
+/**
+ * O que aconteceu com este boleto, e o que dá para consertar.
+ *
+ * ⚠️ ABRE ABAIXO DA LINHA, e não numa janela por cima. Pedido do Lucas (01/09/2026): *"ao clicar na
+ * linha que abrisse um modal abaixo"*. A tabela continua à vista, e comparar duas linhas não exige
+ * fechar nada.
+ */
+function PainelDoBoleto({
+  acaoNaUnidade,
+  boleto,
+  carregando,
+  historico,
+  ocupado,
+}: {
+  acaoNaUnidade: (
+    empreendimento: string,
+    unidade: string,
+    corpo: Record<string, unknown>,
+  ) => Promise<boolean>;
+  boleto: BoletoEmitido;
+  carregando: boolean;
+  historico: null | Historico;
+  ocupado: boolean;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [telefone, setTelefone] = useState(boleto.contato ?? "");
+  const [valor, setValor] = useState(String(boleto.valor));
+  const [vencimento, setVencimento] = useState(boleto.vencimento);
+  const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
+
+  const salvar = async () => {
+    const edicao: Record<string, unknown> = {};
+    if (telefone.trim() !== (boleto.contato ?? "")) edicao.telefone = telefone.trim();
+    const novoValor = Number(valor.replace(",", "."));
+    if (Number.isFinite(novoValor) && novoValor > 0 && novoValor !== boleto.valor) {
+      edicao.valor = novoValor;
+    }
+    if (vencimento && vencimento !== boleto.vencimento) edicao.vencimento = vencimento;
+
+    if (Object.keys(edicao).length === 0) {
+      setEditando(false);
+      return;
+    }
+    const ok = await acaoNaUnidade(boleto.empreendimento, boleto.unidade, { acao: "editar", edicao });
+    if (ok) setEditando(false);
+  };
+
+  return (
+    <div
+      style={{
+        background: T.soft,
+        borderBottom: `1px solid ${T.border}`,
+        display: "grid",
+        gap: 14,
+        padding: "16px 20px",
+      }}
+    >
+      {/* ── O que aconteceu ─────────────────────────────────────────────── */}
+      <div>
+        <div
+          style={{
+            color: T.sub,
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.04em",
+            marginBottom: 8,
+            textTransform: "uppercase",
+          }}
+        >
+          Histórico
+        </div>
+
+        {carregando ? (
+          <p style={{ color: T.sub, fontSize: 13.5, margin: 0 }}>
+            <Loader2 className="inc-girando" size={14} style={{ verticalAlign: "middle" }} />{" "}
+            Carregando…
+          </p>
+        ) : !historico || historico.eventos.length === 0 ? (
+          <p style={{ color: T.sub, fontSize: 13.5, margin: 0 }}>
+            Sem histórico registrado. Boletos gerados antes desta tela não têm eventos guardados.
+          </p>
+        ) : (
+          <ul style={{ display: "grid", gap: 7, listStyle: "none", margin: 0, padding: 0 }}>
+            {historico.eventos.map((e, i) => (
+              <li
+                key={`${e.quando}-${i}`}
+                style={{ alignItems: "baseline", display: "flex", flexWrap: "wrap", gap: 8 }}
+              >
+                <span
+                  style={{
+                    color: T.sub,
+                    fontSize: 12.5,
+                    fontVariantNumeric: "tabular-nums",
+                    minWidth: 74,
+                  }}
+                >
+                  {quandoCurto(e.quando)}
+                </span>
+
+                <span
+                  style={{
+                    background: e.ok ? T.okBg : T.dangerBg,
+                    borderRadius: 999,
+                    color: e.ok ? T.ok : T.danger,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: "2px 9px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {ROTULO_DO_EVENTO[e.tipo] ?? e.tipo}
+                  {e.ok ? "" : " (falhou)"}
+                </span>
+
+                <span style={{ color: T.text, fontSize: 13 }}>
+                  {e.tipo === "envio" && e.telefone ? (
+                    <>
+                      para {e.telefone}
+                      {e.canal ? ` · ${e.canal === "relacionamento" ? "Relacionamento" : "Atendimento"}` : ""}
+                      {/* ⚠️ "sem confirmação" NÃO É "não entregue". O webhook pode não ter chegado, e
+                          o Relacionamento não passa pela Meta, então nunca terá status. As duas
+                          coisas levam a ações opostas. */}
+                      {e.ok ? (
+                        <span style={{ color: e.entrega ? T.ok : T.sub }}>
+                          {" · "}
+                          {e.entrega ? e.entrega.status : "sem confirmação de entrega"}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {e.detalhe ? <span style={{ color: T.danger }}>{e.detalhe}</span> : null}
+                  {e.autor ? (
+                    <span style={{ color: T.sub }}> · por {e.autor}</span>
+                  ) : e.tipo === "envio" ? (
+                    <span style={{ color: T.sub }}> · automático</span>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* ── O que dá para fazer ─────────────────────────────────────────── */}
+      {editando ? (
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <Campo
+              onChange={setTelefone}
+              rotulo="Telefone"
+              valor={telefone}
+            />
+            <Campo onChange={setValor} rotulo="Valor (R$)" valor={valor} />
+            <Campo onChange={setVencimento} rotulo="Vencimento" tipo="date" valor={vencimento} />
+          </div>
+
+          {/* ⚠️ MUDAR VALOR OU VENCIMENTO GERA BOLETO NOVO no Asaas: a linha digitável antiga morre.
+              Quem já recebeu o link precisa receber de novo. */}
+          <p style={{ color: T.sub, fontSize: 12.5, margin: 0 }}>
+            Mudar valor ou vencimento gera um boleto novo no Asaas, e a linha digitável antiga deixa
+            de valer. Reenvie o link depois de salvar.
+          </p>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              disabled={ocupado}
+              onClick={() => void salvar()}
+              style={botao(T.btnBg, T.btnFg, ocupado)}
+              type="button"
+            >
+              {ocupado ? <Loader2 className="inc-girando" size={14} /> : <Check size={14} />}
+              Salvar
+            </button>
+            <button
+              onClick={() => setEditando(false)}
+              style={botao("transparent", T.sub, false, T.border)}
+              type="button"
+            >
+              <X size={14} /> Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <button
+            disabled={ocupado}
+            onClick={() =>
+              void acaoNaUnidade(boleto.empreendimento, boleto.unidade, {
+                acao: "enviar",
+                canal: "relacionamento",
+                confirmar: true,
+              })
+            }
+            style={botao(T.btnBg, T.btnFg, ocupado)}
+            type="button"
+          >
+            {ocupado ? <Loader2 className="inc-girando" size={14} /> : <Send size={14} />}
+            {boleto.whatsappEnviadoEm ? "Reenviar link" : "Enviar link"}
+          </button>
+
+          <button
+            disabled={ocupado}
+            onClick={() => setEditando(true)}
+            style={botao("transparent", T.text, ocupado, T.border)}
+            type="button"
+          >
+            <Pencil size={14} /> Editar
+          </button>
+
+          {/* ⚠️ CANCELAR PEDE CONFIRMAÇÃO NO PRÓPRIO BOTÃO. O boleto pode estar no aplicativo do
+              banco do cliente ou agendado: cancelar impede o pagamento e exige avisar a pessoa. */}
+          {confirmandoCancelar ? (
+            <>
+              <button
+                disabled={ocupado}
+                onClick={() =>
+                  void acaoNaUnidade(boleto.empreendimento, boleto.unidade, {
+                    acao: "cancelar",
+                  }).then(() => setConfirmandoCancelar(false))
+                }
+                style={botao(T.danger, "#fff", ocupado)}
+                type="button"
+              >
+                {ocupado ? <Loader2 className="inc-girando" size={14} /> : <Ban size={14} />}
+                Confirmar cancelamento
+              </button>
+              <button
+                onClick={() => setConfirmandoCancelar(false)}
+                style={botao("transparent", T.sub, false, T.border)}
+                type="button"
+              >
+                Não
+              </button>
+            </>
+          ) : (
+            <button
+              disabled={ocupado || Boolean(boleto.pagamento)}
+              onClick={() => setConfirmandoCancelar(true)}
+              style={botao("transparent", T.danger, ocupado || Boolean(boleto.pagamento), T.danger)}
+              title={boleto.pagamento ? "Boleto pago não pode ser cancelado" : undefined}
+              type="button"
+            >
+              <Ban size={14} /> Cancelar boleto
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Campo({
+  onChange,
+  rotulo,
+  tipo = "text",
+  valor,
+}: {
+  onChange: (v: string) => void;
+  rotulo: string;
+  tipo?: string;
+  valor: string;
+}) {
+  return (
+    <label style={{ display: "grid", gap: 3 }}>
+      <span
+        style={{
+          color: T.sub,
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+        }}
+      >
+        {rotulo}
+      </span>
+      <input
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          background: T.card,
+          border: `1px solid ${T.border}`,
+          borderRadius: 8,
+          color: T.text,
+          // ⚠️ 16px não é estética: abaixo disso o Safari do iOS dá zoom ao focar e a tela "pula".
+          fontSize: 16,
+          padding: "7px 10px",
+          width: 170,
+        }}
+        type={tipo}
+        value={valor}
+      />
+    </label>
+  );
+}
+
+function botao(
+  fundo: string,
+  cor: string,
+  desabilitado: boolean,
+  borda?: string,
+): React.CSSProperties {
+  return {
+    alignItems: "center",
+    background: fundo,
+    border: borda ? `1px solid ${borda}` : "none",
+    borderRadius: 8,
+    color: cor,
+    cursor: desabilitado ? "default" : "pointer",
+    display: "inline-flex",
+    fontSize: 13.5,
+    fontWeight: 600,
+    gap: 6,
+    opacity: desabilitado ? 0.5 : 1,
+    padding: "7px 14px",
+  };
 }
 
 // ── O ENVIO DO LINK POR WHATSAPP ────────────────────────────────────────────

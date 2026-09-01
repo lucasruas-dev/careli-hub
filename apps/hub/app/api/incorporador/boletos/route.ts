@@ -9,6 +9,8 @@ import {
 import {
   acharOuCriarCliente,
   apenasDaCompetencia,
+  atualizarCobranca,
+  cancelarCobranca,
   cobrancasDaReferencia,
   criarBoleto,
   impedimentosDaConta,
@@ -16,6 +18,7 @@ import {
   listarCobrancas,
   situacaoCadastral,
 } from "@/lib/apolo/boletos/emissao";
+import { historicoDoBoleto, registrarEvento } from "@/lib/apolo/boletos/eventos";
 import {
   type CanalDoDisparo,
   dispararBoleto,
@@ -30,6 +33,7 @@ import {
 } from "@/lib/apolo/boletos/parcelas";
 import { carteirasDoPortal, portalEmiteBoletos, portalPodeEmitir } from "@/lib/apolo/boletos/portais";
 import { autorizar } from "@/lib/apolo/incorporador/escopo";
+import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // A EMISSÃO DE BOLETOS DENTRO DO PORTAL DO INCORPORADOR.
 //
@@ -93,6 +97,41 @@ export async function GET(request: Request) {
 
   const permitidos = carteirasDoPortal(auth.sessao.slug);
 
+  // O HISTÓRICO DE UMA UNIDADE — o que o modal mostra ao clicar na linha.
+  //
+  // ⚠️ Chamada à parte, e não junto da listagem: o histórico exige uma consulta por unidade mais a
+  // leitura do status de entrega, e carregá-lo para as 11 linhas de uma vez transformaria a abertura
+  // da tela em dezenas de consultas para responder algo que ninguém pediu ainda.
+  const historicoDe = (url.searchParams.get("historico") ?? "").trim();
+  if (historicoDe) {
+    const doEmpreendimento = (url.searchParams.get("empreendimento") ?? "").trim().toLowerCase();
+    // A mesma trava do POST: sessão de um portal não lê o histórico da carteira de outro.
+    if (!portalPodeEmitir(auth.sessao.slug, doEmpreendimento)) return fora();
+
+    const [eventos, documentos] = await Promise.all([
+      historicoDoBoleto({
+        competencia,
+        empreendimento: doEmpreendimento,
+        unidade: historicoDe,
+      }),
+      documentosDoEmpreendimento(doEmpreendimento),
+    ]);
+
+    const cadastro = documentos.get(historicoDe);
+    return NextResponse.json(
+      {
+        data: {
+          // O telefone do cadastro, para o modal mostrar e permitir corrigir.
+          contato: cadastro?.contato ?? null,
+          eventos,
+          nome: cadastro?.nome ?? null,
+          unidade: historicoDe,
+        },
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
   const carteiras = permitidos.map((slug) => {
     const e = empreendimentoPorSlug(slug);
     return {
@@ -150,6 +189,7 @@ export async function GET(request: Request) {
   }
 
   const intervalo = intervaloDaCompetencia(competencia);
+  const porChave = new Map(parcelas.map((p) => [`${p.empreendimento}|${p.unidade}`, p]));
   const boletos = [];
   const falhas: { conta: string; erro: string }[] = [];
 
@@ -170,8 +210,14 @@ export async function GET(request: Request) {
       const cadastro = documentos.get(`${ref.empreendimento}|${ref.unidade}`);
       const pagamento = c.paymentDate ?? c.clientPaymentDate ?? null;
 
+      const parcela = porChave.get(`${ref.empreendimento}|${ref.unidade}`);
+
       boletos.push({
         cobranca: c.id,
+        // ⚠️ O TELEFONE INTEIRO, e não mascarado: é o campo que o operador confere quando o cliente
+        // diz que não recebeu, e mascarado ele não serve para nada. Pedido do Lucas (01/09/2026):
+        // *"pode trazer o numero de telefone"*.
+        contato: cadastro?.contato ?? null,
         documento: cadastro ? documentoMascarado(cadastro.documento) : null,
         emissao: c.dateCreated ?? null,
         empreendimento: ref.empreendimento,
@@ -183,6 +229,9 @@ export async function GET(request: Request) {
         valor: c.value,
         vencido: estaVencido(c.status, c.dueDate, pagamento),
         vencimento: c.dueDate,
+        // O aviso verde some ao recarregar; isto fica.
+        whatsappEnviadoEm: parcela?.whatsappEnviadoEm ?? null,
+        whatsappErro: parcela?.whatsappErro ?? null,
       });
     }
   }
@@ -218,8 +267,24 @@ export async function GET(request: Request) {
 // ── ESCRITA: emitir o lote ──────────────────────────────────────────────────
 
 type Corpo = {
-  /** "emitir" (padrão) cria a cobrança no Asaas; "enviar" manda o link ao cliente. */
+  /**
+   * O que fazer:
+   *   "emitir" (padrão) cria a cobrança no Asaas;
+   *   "enviar"          manda o link ao cliente;
+   *   "cancelar"        cancela a cobrança;
+   *   "editar"          corrige valor, vencimento, descrição ou telefone.
+   */
   acao?: unknown;
+  /** Da edição: o que mudar. Campo ausente = não mexe naquele campo. */
+  edicao?: unknown;
+  /**
+   * Da emissão: manda o link logo depois de criar cada boleto.
+   *
+   * ⚠️ Pedido do Lucas (01/09/2026): *"o disparo tem que ser automatico quando gerado o boleto"*. O
+   * envio acontece POR BOLETO, logo após a criação de cada um, e a falha do envio NÃO desfaz a
+   * emissão: o boleto existe, e o botão de reenviar resolve o que não saiu.
+   */
+  enviarAoEmitir?: unknown;
   /**
    * Por onde a mensagem sai. Padrão "template" (4143, com template aprovado).
    *
@@ -267,6 +332,141 @@ export async function POST(request: Request) {
   }
 
   const conta = empreendimento.conta;
+
+  // ── CANCELAR A COBRANÇA ───────────────────────────────────────────────────
+  //
+  // ⚠️ CANCELAR NÃO DESFAZ O QUE O CLIENTE JÁ VIU. O boleto pode estar no aplicativo do banco ou
+  // agendado; o cancelamento impede o pagamento futuro, e quem cancela precisa avisar a pessoa.
+  if (String(corpo.acao ?? "") === "cancelar") {
+    const unidade = Array.isArray(corpo.unidades)
+      ? String((corpo.unidades as unknown[])[0] ?? "").trim()
+      : "";
+    if (!unidade) {
+      return NextResponse.json({ error: "informe a unidade a cancelar" }, { status: 400 });
+    }
+
+    const cobrancas = await listarCobrancas(conta, intervaloDaCompetencia(competencia));
+    if (!cobrancas.ok) {
+      return NextResponse.json(
+        { error: `não consegui ler as cobranças no Asaas: ${cobrancas.erro}` },
+        { status: 502 },
+      );
+    }
+
+    const alvo = apenasDaCompetencia(cobrancas.data, competencia).find((c) => {
+      const ref = lerReferencia(c.externalReference);
+      return ref?.empreendimento === slug && ref.unidade === unidade;
+    });
+
+    if (!alvo) {
+      return NextResponse.json(
+        { error: "não achei essa cobrança nesta competência" },
+        { status: 404 },
+      );
+    }
+
+    const r = await cancelarCobranca(conta, alvo.id);
+    await registrarEvento({
+      autor: auth.sessao.slug,
+      cobrancaId: alvo.id,
+      competencia,
+      detalhe: r.ok ? null : r.erro,
+      empreendimento: slug,
+      ok: r.ok,
+      tipo: "cancelamento",
+      unidade,
+    });
+
+    if (!r.ok) return NextResponse.json({ error: r.erro }, { status: r.status || 502 });
+    return NextResponse.json({ data: { cancelada: alvo.id, unidade } });
+  }
+
+  // ── EDITAR ────────────────────────────────────────────────────────────────
+  //
+  // ⚠️ O TELEFONE VAI PARA O NOSSO CADASTRO; VALOR, VENCIMENTO E DESCRIÇÃO VÃO PARA O ASAAS. São
+  // dois destinos, e a distinção importa: corrigir o telefone não mexe na cobrança, e mudar o valor
+  // faz o Asaas gerar um boleto NOVO, com outra linha digitável. Quem já recebeu o link precisa
+  // receber de novo.
+  if (String(corpo.acao ?? "") === "editar") {
+    const e = (corpo.edicao ?? {}) as {
+      descricao?: unknown;
+      telefone?: unknown;
+      valor?: unknown;
+      vencimento?: unknown;
+    };
+    const unidade = Array.isArray(corpo.unidades)
+      ? String((corpo.unidades as unknown[])[0] ?? "").trim()
+      : "";
+    if (!unidade) {
+      return NextResponse.json({ error: "informe a unidade a editar" }, { status: 400 });
+    }
+
+    const mudou: string[] = [];
+
+    // O telefone é nosso: muda no cadastro e vale do próximo envio em diante.
+    if (typeof e.telefone === "string") {
+      const supabase = createApoloAdminClient();
+      if (supabase) {
+        await supabase
+          .from("boletos_documentos")
+          .update({ atualizado_em: new Date().toISOString(), contato: e.telefone.trim() || null })
+          .eq("workspace_id", "careli")
+          .eq("empreendimento", slug)
+          .eq("unidade", unidade);
+        mudou.push("telefone");
+      }
+    }
+
+    const naCobranca: { descricao?: string; valor?: number; vencimento?: string } = {};
+    if (typeof e.valor === "number" && Number.isFinite(e.valor) && e.valor > 0) {
+      naCobranca.valor = e.valor;
+      mudou.push("valor");
+    }
+    if (typeof e.vencimento === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.vencimento)) {
+      naCobranca.vencimento = e.vencimento;
+      mudou.push("vencimento");
+    }
+    if (typeof e.descricao === "string" && e.descricao.trim()) {
+      naCobranca.descricao = e.descricao.trim();
+      mudou.push("descrição");
+    }
+
+    if (Object.keys(naCobranca).length > 0) {
+      const cobrancas = await listarCobrancas(conta, intervaloDaCompetencia(competencia));
+      if (!cobrancas.ok) {
+        return NextResponse.json(
+          { error: `não consegui ler as cobranças no Asaas: ${cobrancas.erro}` },
+          { status: 502 },
+        );
+      }
+      const alvo = apenasDaCompetencia(cobrancas.data, competencia).find((c) => {
+        const ref = lerReferencia(c.externalReference);
+        return ref?.empreendimento === slug && ref.unidade === unidade;
+      });
+      if (!alvo) {
+        return NextResponse.json(
+          { error: "o boleto ainda não foi emitido — não há o que corrigir no Asaas" },
+          { status: 404 },
+        );
+      }
+
+      const r = await atualizarCobranca(conta, alvo.id, naCobranca);
+      if (!r.ok) return NextResponse.json({ error: r.erro }, { status: r.status || 502 });
+    }
+
+    if (mudou.length === 0) {
+      return NextResponse.json({ error: "nada para mudar" }, { status: 400 });
+    }
+
+    return NextResponse.json({
+      data: {
+        mudou,
+        // ⚠️ Valor ou vencimento novos = boleto novo no Asaas: a linha digitável antiga morreu.
+        precisaReenviar: mudou.includes("valor") || mudou.includes("vencimento"),
+        unidade,
+      },
+    });
+  }
 
   // ── ENVIAR O LINK AO CLIENTE ──────────────────────────────────────────────
   //
@@ -384,6 +584,18 @@ export async function POST(request: Request) {
         erro: r.erro,
         unidade: previa.unidade,
       });
+      await registrarEvento({
+        autor: auth.sessao.slug,
+        canal: r.canal,
+        competencia,
+        detalhe: r.erro,
+        empreendimento: slug,
+        ok: r.ok,
+        telefone: r.telefone,
+        tipo: "envio",
+        unidade: previa.unidade,
+        waMessageId: r.messageId,
+      });
 
       envios.push({
         canal: r.canal,
@@ -464,12 +676,27 @@ export async function POST(request: Request) {
 
   const resultados = [];
 
+  // Por onde o envio automático sai. Ausente = emite e não manda nada.
+  const canalAutomatico: CanalDoDisparo | null =
+    corpo.enviarAoEmitir === "relacionamento"
+      ? "relacionamento"
+      : corpo.enviarAoEmitir === "template" || corpo.enviarAoEmitir === true
+        ? "template"
+        : null;
+
+  // As parcelas trazem o número da parcela, que a mensagem usa e o lote não carrega.
+  const parcelasDoLote = canalAutomatico
+    ? await parcelasDaCompetencia({ competencia, empreendimentos: [slug] })
+    : [];
+
   // ⚠️ EM SÉRIE, DE PROPÓSITO. Em paralelo, duas linhas do mesmo CPF (o MARCELO, com dois
   // apartamentos) fariam duas buscas de cliente ao mesmo tempo, as duas não achariam nada, e o Asaas
   // ganharia dois cadastros para a mesma pessoa.
   for (const item of itens) {
     const base = {
       cobranca: null as null | string,
+      enviado: false,
+      envioErro: null as null | string,
       erro: null as null | string,
       ja_existia: false,
       link: null as null | string,
@@ -521,11 +748,67 @@ export async function POST(request: Request) {
       continue;
     }
 
-    resultados.push({
-      ...base,
-      cobranca: boleto.data.id,
-      link: boleto.data.bankSlipUrl ?? boleto.data.invoiceUrl ?? null,
+    await registrarEvento({
+      autor: auth.sessao.slug,
+      cobrancaId: boleto.data.id,
+      competencia,
+      empreendimento: slug,
+      ok: true,
+      tipo: "emissao",
+      unidade: item.unidade,
     });
+
+    const link = boleto.data.bankSlipUrl ?? boleto.data.invoiceUrl ?? null;
+
+    // ⚠️ O ENVIO ACOMPANHA A EMISSÃO, MAS NÃO A DERRUBA. Pedido do Lucas (01/09/2026): *"o disparo
+    // tem que ser automatico quando gerado o boleto"*. Se a mensagem falhar, o boleto continua
+    // emitido e válido: o que falta é o aviso, e o botão de reenviar resolve. Desfazer a emissão por
+    // causa do WhatsApp seria cancelar uma cobrança correta por um problema de recado.
+    if (canalAutomatico && link) {
+      const parcela = parcelasDoLote.find((x) => x.unidade === item.unidade);
+      const envio = await dispararBoleto({
+        canal: canalAutomatico,
+        competencia,
+        contato: item.contato,
+        empreendimento: empreendimento.nome,
+        link,
+        nome: item.nome,
+        parcelaAtual: parcela?.parcelaAtual,
+        totalParcelas: parcela?.totalParcelas,
+        unidade: item.unidade,
+        valor: item.valor,
+        vencimento: item.vencimento,
+      });
+
+      await registrarDisparo({
+        competencia,
+        empreendimento: slug,
+        erro: envio.erro,
+        unidade: item.unidade,
+      });
+      await registrarEvento({
+        canal: envio.canal,
+        competencia,
+        detalhe: envio.erro,
+        empreendimento: slug,
+        ok: envio.ok,
+        telefone: envio.telefone,
+        tipo: "envio",
+        unidade: item.unidade,
+        waMessageId: envio.messageId,
+      });
+
+      resultados.push({
+        ...base,
+        cobranca: boleto.data.id,
+        enviado: envio.ok,
+        envioErro: envio.erro,
+        link,
+      });
+      continue;
+    }
+
+    resultados.push({ ...base, cobranca: boleto.data.id, link });
   }
 
   return NextResponse.json(
@@ -536,7 +819,9 @@ export async function POST(request: Request) {
         emitidos: resultados.filter((r) => r.cobranca && !r.ja_existia).length,
         empreendimento: empreendimento.nome,
         ensaio: false,
+        enviados: resultados.filter((r) => r.enviado).length,
         falhas: resultados.filter((r) => r.erro).length,
+        falhasNoEnvio: resultados.filter((r) => r.envioErro).length,
         fora: lote.fora,
         repetidos: resultados.filter((r) => r.ja_existia).length,
         resultados,

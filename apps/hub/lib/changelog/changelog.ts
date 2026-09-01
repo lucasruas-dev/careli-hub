@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-01-boletos-ciclo-completo",
+    deployedAt: "2026-09-01T19:30:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "As nove carteiras entraram na tela: os quatro edifícios da CER mais Garden, Vale do Sol, On Sky, Guaimbé e Giant Towers.",
+              "Ao gerar o boleto, o link já sai para o cliente por WhatsApp. Dá para desmarcar quando não quiser avisar.",
+              "Clicar na linha abre o histórico do boleto embaixo: quando foi gerado, para qual número o link foi, por qual canal, e se o WhatsApp confirmou a entrega.",
+              "No mesmo painel: reenviar o link, corrigir telefone, valor e vencimento, e cancelar o boleto.",
+              "A tabela passou a mostrar o telefone do cliente e quando o link foi enviado.",
+              "A mensagem fecha agradecendo e assinando como Time Careli.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "05a3c8d9",
+    technical: {
+      done: "Cinco pedidos do Lucas na mesma sessao, depois de o primeiro boleto de teste chegar no WhatsApp dele: \"o disparo tem que ser automatico quando gerado o boleto, podemos ter um botao de reeviar\", \"temos agora que criar a rota de cancelamento\", \"ao clicar na linha que abrisse um modal abaixo mostrando o historico, geracao, envio whatsapp(numero) se foi entregue\", \"pode trazer o numero de telefone (pode colocar um editor, podemos editar o numero, valor de boleto, alterar descricao)\" e \"pode subir os demais empreendimentos\". Migration 0117: `boletos_eventos`, UMA LINHA POR EVENTO e nunca update — reenvio e evento novo, e e justamente o \"mandei duas vezes\" que explica a conversa com o cliente. ⚠️ O STATUS DE ENTREGA E LIDO ONDE O WEBHOOK JA O ESCREVE: guardamos o `wa_message_id` no evento e buscamos o status em `caredesk_messages` na hora de montar o historico. Processar webhook aqui seria uma segunda verdade sobre a mesma mensagem. `apolo_disparos` nao servia: exige `entity_id` de uma ficha do Apolo, e estes clientes nao tem ficha. ⚠️ \"SEM CONFIRMACAO\" NAO E \"NAO ENTREGUE\": o webhook pode nao ter chegado, e o Relacionamento (Evolution) nao passa pela Meta, entao nunca tera status — as duas coisas levam a acoes opostas. ⚠️ O ENVIO AUTOMATICO NAO DERRUBA A EMISSAO: se a mensagem falhar, o boleto continua valido e o botao de reenviar resolve; desfazer a emissao por causa do WhatsApp seria cancelar uma cobranca correta por um problema de recado. `atualizarCobranca` manda so o que mudou (PUT parcial; enviar o objeto inteiro zeraria a descricao) e a tela avisa que valor ou vencimento novos geram boleto NOVO no Asaas, com a linha digitavel antiga morta. Cancelar pede confirmacao no proprio botao e fica desabilitado em boleto pago. 133 testes verdes.",
+      motivation:
+        "Emitir era metade do trabalho: faltava avisar o cliente, saber se ele recebeu, e conseguir consertar sem abrir o Asaas.",
+    },
+    title: "Boletos: envio automático, histórico por linha e correção sem sair da tela",
+    type: "novidade",
+    version: "1.250.0",
+  },
+  {
     buildTag: "2026-09-01-boleto-link-whatsapp",
     deployedAt: "2026-09-01T18:55:00-03:00",
     modules: [

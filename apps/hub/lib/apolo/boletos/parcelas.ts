@@ -25,6 +25,9 @@ export type ParcelaDoMes = {
   unidade: string;
   valor: null | number;
   vencimentoDia: null | number;
+  /** Quando o link foi mandado ao cliente. Nulo = não enviado, ou o envio falhou. */
+  whatsappEnviadoEm: null | string;
+  whatsappErro: null | string;
 };
 
 type LinhaCrua = {
@@ -37,6 +40,8 @@ type LinhaCrua = {
   unidade: string;
   valor: null | number | string;
   vencimento_dia: null | number;
+  whatsapp_enviado_em: null | string;
+  whatsapp_erro: null | string;
 };
 
 /**
@@ -58,7 +63,7 @@ export async function parcelasDaCompetencia(input: {
   const { data, error } = await supabase
     .from("boletos_parcelas")
     .select(
-      "bloqueio, competencia, empreendimento, nome, parcela_atual, total_parcelas, unidade, valor, vencimento_dia",
+      "bloqueio, competencia, empreendimento, nome, parcela_atual, total_parcelas, unidade, valor, vencimento_dia, whatsapp_enviado_em, whatsapp_erro",
     )
     .eq("workspace_id", "careli")
     .eq("competencia", input.competencia)
@@ -76,6 +81,8 @@ export async function parcelasDaCompetencia(input: {
     unidade: String(l.unidade).trim(),
     valor: l.valor === null ? null : Number(l.valor),
     vencimentoDia: l.vencimento_dia,
+    whatsappEnviadoEm: l.whatsapp_enviado_em,
+    whatsappErro: l.whatsapp_erro,
   }));
 }
 

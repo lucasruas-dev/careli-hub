@@ -43,8 +43,9 @@ export const TEMPLATE_BOLETO_HEADER = "Boleto disponível";
  * template volta reprovada.
  *
  * Decisão do Lucas (01/09/2026), vendo a mensagem chegar no WhatsApp dele: *"só tirar a última
- * frase e colocar Time Careli no final"*. A frase anterior avisava que a Careli não muda conta nem
- * chave PIX por mensagem; ele leu e preferiu a assinatura curta.
+ * frase e colocar Time Careli no final"*, e logo depois: *"tipo uma mensagem de agradecimento"*. A
+ * frase anterior avisava que a Careli não muda conta nem chave PIX por mensagem; ele leu e preferiu
+ * fechar agradecendo.
  *
  * ⚠️ O NEGRITO DO WHATSAPP É UM ASTERISCO, não dois. Ver [[feedback_whatsapp_negrito]].
  */
@@ -58,6 +59,8 @@ Valor: *R$ {{6}}*
 
 Acesse o boleto pelo link:
 {{7}}
+
+Agradecemos a sua confiança.
 
 Time Careli`;
 

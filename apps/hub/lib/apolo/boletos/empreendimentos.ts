@@ -82,15 +82,59 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
   },
   { aba: "BOLETOS ED RUBI", conta: "cer", nome: "Ed. Rubi", origem: "planilha", slug: "ed-rubi" },
   { aba: "BOLETOS ED JADE", conta: "cer", nome: "Ed. Jade", origem: "planilha", slug: "ed-jade" },
-  // ⚠️ CARTEIRA DE TESTE, e ela existe para NÃO sujar as de verdade. Pedido do Lucas (01/09/2026):
-  // *"coloca para mim um boleto Lucas Ruas - Teste - 10 reais"*. Um teste lançado dentro do Ed. Jade
-  // entraria na soma daquele prédio, apareceria na conferência do administrativo e teria de ser
-  // explicado todo mês. Aqui ele fica numa aba própria, e some com a remoção de uma linha.
+  // ── AS CARTEIRAS DE TESTE ─────────────────────────────────────────────────
   //
-  // ⚠️ EMITE NA CONTA CER DE VERDADE. É essa a graça do teste: o boleto sai pela mesma chave, no
-  // mesmo CNPJ, pelo mesmo caminho. `aba` é um nome que não existe em planilha nenhuma, então uma
-  // carga nunca cria linha aqui — o que estiver nesta carteira foi posto à mão.
-  { aba: "__TESTE__", conta: "cer", nome: "Teste", origem: "planilha", slug: "teste" },
+  // ⚠️ UMA POR CONTA DO ASAAS, e elas existem para NÃO sujar as carteiras de verdade. Pedido do
+  // Lucas (01/09/2026): *"coloca para mim um boleto Lucas Ruas - Teste"*, e depois *"quero testar
+  // todas as contas antes de enviar (...) pode fazer os testes de 5 reais"*.
+  //
+  // ⚠️ SÃO CARTEIRAS SEPARADAS PORQUE A CONTA VEM DO EMPREENDIMENTO. Testar a chave do Garden exige
+  // emitir por um empreendimento cuja `conta` seja `garden`; lançar o teste dentro do Garden real
+  // faria a linha entrar na soma daquela carteira, aparecer na conferência do administrativo e ter
+  // de ser explicada todo mês.
+  //
+  // ⚠️ EMITEM NAS CONTAS DE VERDADE. É essa a graça: o boleto sai pela mesma chave, no mesmo CNPJ,
+  // pelo mesmo caminho. `aba` é um nome que não existe em planilha nenhuma, então uma carga nunca
+  // cria linha aqui — o que estiver nestas carteiras foi posto à mão.
+  //
+  // ⚠️ SAEM QUANDO SERVIREM. São dez linhas ao todo (estas seis mais as de `portais.ts` e os
+  // registros no banco); apagar as daqui é o bastante para sumirem da tela.
+  { aba: "__TESTE_CER__", conta: "cer", nome: "Teste · CER", origem: "planilha", slug: "teste" },
+  {
+    aba: "__TESTE_GARDEN__",
+    conta: "garden",
+    nome: "Teste · Garden",
+    origem: "planilha",
+    slug: "teste-garden",
+  },
+  {
+    aba: "__TESTE_VALE_DO_SOL__",
+    conta: "vale-do-sol",
+    nome: "Teste · Vale do Sol",
+    origem: "planilha",
+    slug: "teste-vale-do-sol",
+  },
+  {
+    aba: "__TESTE_ON_SKY__",
+    conta: "on-sky",
+    nome: "Teste · On Sky",
+    origem: "planilha",
+    slug: "teste-on-sky",
+  },
+  {
+    aba: "__TESTE_GUAIMBE__",
+    conta: "guaimbe",
+    nome: "Teste · Guaimbé",
+    origem: "planilha",
+    slug: "teste-guaimbe",
+  },
+  {
+    aba: "__TESTE_GIANT_TOWERS__",
+    conta: "giant-towers",
+    nome: "Teste · Giant Towers",
+    origem: "planilha",
+    slug: "teste-giant-towers",
+  },
 ];
 
 /** Casa o nome da aba do arquivo com o empreendimento, tolerando espaço e acento. */
