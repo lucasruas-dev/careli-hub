@@ -48,6 +48,15 @@ import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 const CAIXA = "rounded-xl border border-line bg-surface";
 const ROTULO = "text-[0.7rem] font-semibold uppercase tracking-wide text-ink-muted";
 
+type TemplateDoBoleto = {
+  erro: null | string;
+  existe: boolean;
+  parecidos: { categoria: null | string; idioma: null | string; nome: null | string; status: null | string }[];
+  previa: string;
+  proposto: { categoria: string; corpo: string; idioma: string; nome: string };
+  status: null | string;
+};
+
 type Prontidao = {
   contas: {
     ambiente: "desconhecido" | "producao" | "sandbox";
@@ -106,6 +115,10 @@ export function EmissaoDeBoletos() {
     "carregando",
   );
 
+  // O template de WhatsApp que leva o link do boleto ao cliente.
+  const [template, setTemplate] = useState<null | TemplateDoBoleto>(null);
+  const [criandoTemplate, setCriandoTemplate] = useState(false);
+
   useEffect(() => {
     let vivo = true;
     void (async () => {
@@ -124,6 +137,17 @@ export function EmissaoDeBoletos() {
         if (!j.data) throw new Error("prontidao sem dados");
         setProntidao(j.data);
         setEstadoDaProntidao("pronta");
+
+        // O template é consulta à parte: se a Meta estiver fora, a prontidão do Asaas continua
+        // valendo, e o painel do template mostra o próprio erro.
+        const rt = await fetch("/api/boletos/template", {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (rt.ok && vivo) {
+          const jt = (await rt.json()) as { data?: TemplateDoBoleto };
+          if (jt.data) setTemplate(jt.data);
+        }
       } catch {
         if (vivo) setEstadoDaProntidao("erro");
       }
@@ -131,6 +155,40 @@ export function EmissaoDeBoletos() {
     return () => {
       vivo = false;
     };
+  }, []);
+
+  /**
+   * Cria o template na Meta.
+   *
+   * ⚠️ NÃO SE DESFAZ POR AQUI. A Meta enfileira para revisão humana e um template criado só sai
+   * pelo Business Manager. Por isso o botão só aparece quando a consulta diz que ele ainda não
+   * existe, e o texto fica à vista antes do clique.
+   */
+  const criarTemplate = useCallback(async () => {
+    setCriandoTemplate(true);
+    setErro(null);
+    try {
+      const token = await getApoloAccessToken();
+      const r = await fetch("/api/boletos/template", {
+        headers: { Authorization: `Bearer ${token}` },
+        method: "POST",
+      });
+      const j = (await r.json()) as { data?: { status: null | string }; error?: string };
+      if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
+
+      const rt = await fetch("/api/boletos/template", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (rt.ok) {
+        const jt = (await rt.json()) as { data?: TemplateDoBoleto };
+        if (jt.data) setTemplate(jt.data);
+      }
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não consegui criar o template na Meta.");
+    } finally {
+      setCriandoTemplate(false);
+    }
   }, []);
 
   const ler = useCallback(async (arquivo: File, mes: string) => {
@@ -279,6 +337,12 @@ export function EmissaoDeBoletos() {
 
       <PainelDeProntidao estado={estadoDaProntidao} prontidao={prontidao} />
 
+      <PainelDoTemplate
+        aoCriar={() => void criarTemplate()}
+        criando={criandoTemplate}
+        template={template}
+      />
+
       {abas.length === 0 && !lendo ? (
         <div className={`${CAIXA} grid place-items-center gap-2 px-6 py-14 text-center`}>
           <FileSpreadsheet aria-hidden="true" className="text-ink-muted" size={30} />
@@ -393,6 +457,94 @@ function Cartao({ nota, rotulo, valor }: { nota: string; rotulo: string; valor: 
  * conta o boleto sai no CNPJ errado (e o dinheiro cai na conta errada), e sem CPF o Asaas recusa
  * a criação do cliente no meio do lote.
  */
+/**
+ * O template de WhatsApp que leva o link do boleto ao cliente.
+ *
+ * ⚠️ ESTE PAINEL É A ÚNICA PORTA DE CRIAÇÃO, e o botão fica aqui e não no portal do incorporador de
+ * propósito: criar template é ato de MARCA. O texto vai para a Meta em nome da empresa, passa por
+ * revisão humana, e um template criado só sai pelo Business Manager. Quem faz isso é a Careli.
+ *
+ * ⚠️ "PENDING" É O ESTADO NORMAL depois de criar. A revisão da Meta leva de minutos a dias, e
+ * disparar antes devolve o erro 132001. Enquanto isso, o envio pelo Relacionamento funciona.
+ */
+function PainelDoTemplate({
+  aoCriar,
+  criando,
+  template,
+}: {
+  aoCriar: () => void;
+  criando: boolean;
+  template: null | TemplateDoBoleto;
+}) {
+  if (!template) return null;
+
+  const aprovado = template.status === "APPROVED";
+
+  return (
+    <section className={`${CAIXA} p-4`}>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className={ROTULO}>Template do WhatsApp</span>
+
+        {template.existe ? (
+          <span
+            className={
+              aprovado
+                ? "rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
+                : "rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+            }
+          >
+            {template.proposto.nome} · {template.status ?? "sem status"}
+          </span>
+        ) : (
+          <span className="text-sm text-ink-muted">
+            ainda não existe na conta do WhatsApp
+          </span>
+        )}
+
+        {!template.existe ? (
+          <button
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-ink px-3.5 py-2 text-sm font-semibold text-surface disabled:opacity-50"
+            disabled={criando}
+            onClick={aoCriar}
+            type="button"
+          >
+            {criando ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}
+            Criar o template na Meta
+          </button>
+        ) : null}
+      </div>
+
+      {template.erro ? (
+        <p className="mt-2 text-sm text-red-700 dark:text-red-300">
+          Não consegui consultar a Meta: {template.erro}
+        </p>
+      ) : null}
+
+      {!template.existe ? (
+        <>
+          <p className="mt-2 text-sm text-ink-muted">
+            Sem ele, o envio pelo Atendimento falha com &ldquo;template não existe&rdquo;. O envio
+            pelo Relacionamento não depende dele e já funciona. Criar não se desfaz por aqui: a Meta
+            enfileira para revisão e só o Business Manager remove.
+          </p>
+          <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-line bg-canvas px-3.5 py-3 text-sm leading-relaxed text-ink">
+            {template.previa}
+          </pre>
+        </>
+      ) : null}
+
+      {/* ⚠️ HOMÔNIMO É ARMADILHA: um template criado à mão no Business Manager com outro nome faria
+          a casa ter dois dizendo a mesma coisa, e ninguém saberia qual está aprovado. */}
+      {template.parecidos.length > 0 ? (
+        <p className="mt-2 text-xs text-ink-muted">
+          Outros templates com nome parecido nesta conta:{" "}
+          {template.parecidos.map((t) => `${t.nome} (${t.status})`).join(", ")}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function PainelDeProntidao({
   estado,
   prontidao,
