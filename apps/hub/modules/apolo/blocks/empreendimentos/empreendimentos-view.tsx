@@ -6,6 +6,8 @@ import {
   hasHubSupabaseConfig,
 } from "@/lib/supabase/client";
 import { AdicionarUnidades } from "@/modules/apolo/blocks/empreendimentos/adicionar-unidades";
+import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
+import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 import { PoliticaComercialTab } from "@/modules/apolo/blocks/empreendimentos/politica-comercial-tab";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -15,7 +17,9 @@ import {
   Ban,
   ChevronRight,
   ContactRound,
+  CreditCard,
   ExternalLink,
+  FileSignature,
   FileText,
   Handshake,
   ImagePlus,
@@ -133,6 +137,13 @@ const detailTabs = [
   // Políticas comerciais fica ANTES do Setup: é regra de negócio do produto (comissão, entrada,
   // gestão de carteira), e o Setup é a configuração operacional do Apolo.
   { icon: Percent, id: "politica", label: "Políticas comerciais" },
+  // Planos vem LOGO DEPOIS da política, e a distância entre as duas é a que o negócio tem: a
+  // política é o acordo com o incorporador; o plano é o que o cliente assina. É o plano da venda
+  // que decide a minuta do contrato (Temis).
+  { icon: CreditCard, id: "planos", label: "Planos" },
+  // Minutas fica ao lado de Planos porque as duas contam a mesma história: o plano decide QUAL
+  // minuta a venda usa, e a minuta é o texto que o comprador assina.
+  { icon: FileSignature, id: "minutas", label: "Minutas" },
   { icon: Settings, id: "setup", label: "Setup" },
 ] as const;
 
@@ -509,6 +520,12 @@ function EnterpriseDetail({
             codes={row.codes}
             name={row.name}
           />
+        ) : null}
+        {tab === "planos" ? (
+          <PlanosComerciaisTab enterpriseId={row.id} name={row.name} />
+        ) : null}
+        {tab === "minutas" ? (
+          <MinutasTab enterpriseId={row.id} name={row.name} />
         ) : null}
         {tab === "setup" ? (
           <CredenciamentoCard

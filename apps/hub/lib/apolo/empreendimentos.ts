@@ -48,6 +48,12 @@ export type ApoloEnterpriseTab =
   | "cadastro"
   | "carteira"
   | "mapa"
+  // Planos de pagamento do Temis. Fica separada de "politica" de propósito: a política é o acordo
+  // com o incorporador (comissão, gestão de carteira) e vem do C2X; o plano é o que o CLIENTE
+  // assina, nasce no Panteon e decide qual minuta o contrato usa.
+  // As minutas do Temis: o texto do contrato que o plano manda usar.
+  | "minutas"
+  | "planos"
   | "politica"
   | "relacionamentos"
   | "resumo"
