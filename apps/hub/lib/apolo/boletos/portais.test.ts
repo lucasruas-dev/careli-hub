@@ -9,12 +9,22 @@ import { carteirasDoPortal, portalEmiteBoletos, portalPodeEmitir } from "./porta
 describe("quem enxerga carteira de boleto", () => {
   it("os dois portais do Cecílio veem os quatro edifícios da CER", () => {
     for (const slug of ["cer", "cecilio-rocha"]) {
-      expect(carteirasDoPortal(slug).sort(), slug).toEqual([
-        "ed-cristal",
-        "ed-esmeralda",
-        "ed-jade",
-        "ed-rubi",
-      ]);
+      // A carteira "teste" fica de fora desta lista de propósito: ela existe para o boleto de
+      // conferência e sai daqui quando servir. Ver o teste seguinte.
+      const edificios = carteirasDoPortal(slug).filter((c) => c !== "teste").sort();
+      expect(edificios, slug).toEqual(["ed-cristal", "ed-esmeralda", "ed-jade", "ed-rubi"]);
+    }
+  });
+
+  it("a carteira de teste está só nos portais do Cecílio, e é temporária", () => {
+    // ⚠️ ESTE TESTE É O LEMBRETE. "teste" emite na conta CER de verdade — pedido do Lucas
+    // (01/09/2026): *"coloca para mim um boleto Lucas Ruas - Teste - 10 reais"*. Quando o teste
+    // tiver servido, a linha sai de CARTEIRAS_DO_PORTAL e de EMPREENDIMENTOS_DE_BOLETO, e este
+    // teste vem junto. Enquanto ele existir, ninguém a apaga por engano nem a estende a outro portal.
+    expect(carteirasDoPortal("cer")).toContain("teste");
+    expect(carteirasDoPortal("cecilio-rocha")).toContain("teste");
+    for (const slug of ["vistaalegre", "lagoabonita", "mmendes"]) {
+      expect(carteirasDoPortal(slug), slug).not.toContain("teste");
     }
   });
 

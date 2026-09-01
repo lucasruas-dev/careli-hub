@@ -20,8 +20,10 @@
 // pediu a CER primeiro — acrescentar carteira é uma linha, e é decisão dele, não consequência de
 // eu ter achado parecido.
 const CARTEIRAS_DO_PORTAL: Record<string, string[]> = {
-  cer: ["ed-jade", "ed-rubi", "ed-cristal", "ed-esmeralda"],
-  "cecilio-rocha": ["ed-jade", "ed-rubi", "ed-cristal", "ed-esmeralda"],
+  // ⚠️ "teste" é a carteira do boleto de conferência (ver `empreendimentos.ts`). Ela emite na conta
+  // CER de verdade, e sai daqui assim que o teste servir para o que serve.
+  cer: ["ed-jade", "ed-rubi", "ed-cristal", "ed-esmeralda", "teste"],
+  "cecilio-rocha": ["ed-jade", "ed-rubi", "ed-cristal", "ed-esmeralda", "teste"],
 };
 
 /** Os empreendimentos de boleto que este portal pode ver e emitir. Vazio = não tem a aba. */

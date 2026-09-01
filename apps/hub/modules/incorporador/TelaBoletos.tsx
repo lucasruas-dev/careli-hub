@@ -1,46 +1,43 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  Check,
-  ExternalLink,
-  FileSpreadsheet,
-  Loader2,
-  RefreshCw,
-  Upload,
-} from "lucide-react";
-
-import { lerArquivoDeBoletos } from "@/lib/apolo/boletos/ler-arquivo";
-import { linhaDoCliente } from "@/lib/apolo/boletos/ler-planilha";
-import { vereditoDaLinha } from "@/lib/apolo/boletos/regra-de-emissao";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Check, ExternalLink, Loader2, RefreshCw, Zap } from "lucide-react";
 
 import { T } from "./tema";
 
-// A EMISSÃO DE BOLETOS NO PORTAL — o consolidado, uma aba por prédio, e o botão que emite.
+// A EMISSÃO DE BOLETOS NO PORTAL — a carteira do mês já aberta, e um botão que emite.
 //
 // Pedido do Lucas (01/09/2026): *"vamos ter uma aba trazendo o consolidado de tudo, vamos ter cada
 // produto sua aba. vai ter uma tabela igual temos na carteira hoje... nome, cpf, valor da fatura,
-// emissão vencimento, data de pagamento, vencido e tal. além do link do boleto"*.
+// emissão vencimento, data de pagamento, vencido e tal. além do link do boleto"*. E, vendo a
+// primeira versão: *"não quero importar planilha, já traz isso pronto, vc já tem os dados pode
+// montar a tela e ter o botão de gerar boleto e pronto"*.
 //
-// ⚠️ O RECORTE DESTE MÊS É DECLARADO: *"não tem empreendimento para essas empresas ainda dentro o
-// panteon, mas como precisamos emitir esses boletos urgente, esse mês vou fazer de forma mais
-// manual, somente com essa tela, e durante o mês vamos construir o processo correto"*. Por isso a
-// planilha do administrativo é a fonte, e não uma carteira do sistema.
+// ⚠️ A PLANILHA SAIU DO CAMINHO. Ela virou a origem de uma CARGA (`boletos_parcelas`), não a fonte
+// que a tela consulta. Antes, quem abrisse a tela precisava ter o arquivo na mão, e duas pessoas com
+// versões diferentes dele viam números diferentes do mesmo mês.
 //
-// ⚠️ A PLANILHA NÃO SOBE PARA O SERVIDOR. Ela é lida aqui no navegador; para a rota vão só as
-// linhas do prédio que se está emitindo, e só no clique. O arquivo tem nome, telefone e valor de
-// gente que não pediu para estar num servidor nosso.
-//
-// ⚠️ QUEM DECIDE QUEM RECEBE BOLETO É O SERVIDOR. Esta tela mostra o veredito para o operador
-// conferir antes do clique, mas a rota reaplica a regra inteira sobre as linhas cruas — o valor do
-// boleto não pode ser escolhido pelo lado que o operador consegue editar.
+// ⚠️ A TELA NÃO MANDA VALOR NENHUM. O corpo do POST leva competência, empreendimento e, quando o
+// operador escolhe, as unidades. Valor, CPF e vencimento a rota busca no banco: o preço do boleto
+// não passa pelo lado que o operador consegue editar.
 
 type Carteira = {
   conta: null | string;
   contaConfigurada: boolean;
   nome: string;
   slug: string;
+};
+
+type ParcelaAEmitir = {
+  bloqueio: null | string;
+  documento: null | string;
+  empreendimento: string;
+  jaEmitido: boolean;
+  nome: string;
+  nomeNaPlanilha: string;
+  unidade: string;
+  valor: null | number;
+  vencimentoDia: null | number;
 };
 
 type BoletoEmitido = {
@@ -58,25 +55,10 @@ type BoletoEmitido = {
   vencimento: string;
 };
 
-type ItemDoEnsaio = {
-  nome: string;
-  referencia: string;
-  unidade: string;
-  valor: number;
-  vencimento: string;
-};
-
-type Ensaio = {
-  conta: string;
-  divergencias: { cadastro: string; planilha: string; unidade: string }[];
-  empreendimento: string;
-  fora: { motivo: string; nome: string; unidade: null | string }[];
-  impedimentos: string[];
-  itens: ItemDoEnsaio[];
-};
-
 type Emissao = {
+  conta: string;
   emitidos: number;
+  empreendimento: string;
   falhas: number;
   repetidos: number;
   resultados: {
@@ -88,17 +70,6 @@ type Emissao = {
     unidade: string;
     valor: number;
   }[];
-};
-
-/** As linhas da planilha daquele prédio, prontas para a rota reavaliar. */
-type LinhaParaRota = {
-  contato: null | string;
-  marcaNoMes: null | string;
-  nome: string;
-  observacao: null | string;
-  unidade: null | string;
-  valor: null | number;
-  vencimento: null | number;
 };
 
 const MESES = [
@@ -113,9 +84,9 @@ function moeda(v: number): string {
 /**
  * `2026-09-15` → `15/09/2026`.
  *
- * ⚠️ FATIANDO A STRING, sem `new Date`. A data vem do Asaas como `AAAA-MM-DD`; passada por
- * `new Date` ela vira meia-noite UTC e, exibida no Brasil (UTC−3), mostra o DIA ANTERIOR — um
- * vencimento dia 1º apareceria como do mês passado.
+ * ⚠️ FATIANDO A STRING, sem `new Date`. A data vem do Asaas como `AAAA-MM-DD`; passada por `new Date`
+ * ela vira meia-noite UTC e, exibida no Brasil (UTC−3), mostra o DIA ANTERIOR: um vencimento dia 1º
+ * apareceria como do mês passado.
  */
 function dia(iso: null | string): string {
   if (!iso) return "—";
@@ -128,36 +99,34 @@ function rotuloDaCompetencia(c: string): string {
   return `${MESES[Number(mes) - 1] ?? mes} de ${ano}`;
 }
 
-/** Os seis meses a partir do atual — o administrativo emite o corrente e, às vezes, adianta. */
+/** Do mês corrente para trás e para a frente: o administrativo emite o corrente, confere os passados. */
 function competenciasSugeridas(): string[] {
   const hoje = new Date();
   const lista: string[] = [];
-  for (let i = 0; i < 6; i += 1) {
-    const d = new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() + i, 1));
+  for (let i = 3; i >= -3; i -= 1) {
+    const d = new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth() - i, 1));
     lista.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
   }
-  return lista;
+  return lista.reverse();
 }
 
 export function TelaBoletos() {
-  const [competencia, setCompetencia] = useState(() => competenciasSugeridas()[0]!);
+  const [competencia, setCompetencia] = useState(() => {
+    const hoje = new Date();
+    return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+  });
   const [carteiras, setCarteiras] = useState<Carteira[]>([]);
+  const [aEmitir, setAEmitir] = useState<ParcelaAEmitir[]>([]);
   const [emitidos, setEmitidos] = useState<BoletoEmitido[]>([]);
   const [falhas, setFalhas] = useState<{ conta: string; erro: string }[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<null | string>(null);
   const [aba, setAba] = useState<string>("consolidado");
 
-  // A planilha do mês, lida no navegador. `null` = ninguém escolheu arquivo ainda.
-  const [daPlanilha, setDaPlanilha] = useState<Map<string, LinhaParaRota[]> | null>(null);
-  const [nomeDoArquivo, setNomeDoArquivo] = useState<null | string>(null);
-  const [lendo, setLendo] = useState(false);
-
-  const [ensaio, setEnsaio] = useState<null | { dados: Ensaio; slug: string }>(null);
-  const [emitindo, setEmitindo] = useState(false);
+  const [emitindo, setEmitindo] = useState<null | string>(null);
   const [emissao, setEmissao] = useState<null | Emissao>(null);
-
-  const arquivoRef = useRef<HTMLInputElement>(null);
+  // A unidade que o operador escolheu emitir sozinha. Vazio = o lote inteiro daquela carteira.
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -168,8 +137,14 @@ export function TelaBoletos() {
       });
       if (!r.ok) throw new Error(`Não consegui carregar (${r.status}).`);
       const j = (await r.json()) as {
-        data?: { boletos: BoletoEmitido[]; carteiras: Carteira[]; falhas: typeof falhas };
+        data?: {
+          aEmitir: ParcelaAEmitir[];
+          boletos: BoletoEmitido[];
+          carteiras: Carteira[];
+          falhas: { conta: string; erro: string }[];
+        };
       };
+      setAEmitir(j.data?.aEmitir ?? []);
       setEmitidos(j.data?.boletos ?? []);
       setCarteiras(j.data?.carteiras ?? []);
       setFalhas(j.data?.falhas ?? []);
@@ -184,106 +159,86 @@ export function TelaBoletos() {
     void carregar();
   }, [carregar]);
 
-  // Trocar de mês invalida a leitura: a planilha foi lida NAQUELA competência.
   useEffect(() => {
-    setDaPlanilha(null);
-    setNomeDoArquivo(null);
-    setEnsaio(null);
     setEmissao(null);
+    setSelecionadas(new Set());
   }, [competencia]);
 
-  const lerArquivo = useCallback(
-    async (arquivo: File) => {
-      setLendo(true);
+  const emitir = useCallback(
+    async (slug: string, unidades?: string[]) => {
+      setEmitindo(slug);
       setErro(null);
-      setEnsaio(null);
       setEmissao(null);
       try {
-        const { abas } = await lerArquivoDeBoletos(arquivo, competencia);
-        const mapa = new Map<string, LinhaParaRota[]>();
-        for (const lida of abas) {
-          if (!lida.empreendimento) continue;
-          mapa.set(
-            lida.empreendimento.slug,
-            lida.clientes.map((c) => ({
-              contato: c.contato,
-              marcaNoMes: c.marcaNoMes,
-              nome: c.nome,
-              observacao: c.observacao,
-              unidade: c.unidade,
-              valor: c.valor,
-              vencimento: c.vencimento,
-            })),
-          );
-        }
-        setDaPlanilha(mapa);
-        setNomeDoArquivo(arquivo.name);
-      } catch (e) {
-        setErro(e instanceof Error ? e.message : "Não consegui ler o arquivo.");
-      } finally {
-        setLendo(false);
-      }
-    },
-    [competencia],
-  );
-
-  const chamar = useCallback(
-    async (slug: string, confirmar: boolean) => {
-      const linhas = daPlanilha?.get(slug);
-      if (!linhas || linhas.length === 0) {
-        setErro("A planilha não trouxe nenhuma linha para este empreendimento.");
-        return;
-      }
-      if (confirmar) setEmitindo(true);
-      setErro(null);
-      try {
         const r = await fetch("/api/incorporador/boletos", {
-          body: JSON.stringify({ competencia, confirmar, empreendimento: slug, linhas }),
+          body: JSON.stringify({
+            competencia,
+            confirmar: true,
+            empreendimento: slug,
+            ...(unidades && unidades.length > 0 ? { unidades } : {}),
+          }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });
-        const j = (await r.json()) as { data?: Ensaio & Emissao; error?: string };
+        const j = (await r.json()) as { data?: Emissao; error?: string };
         if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
-        if (confirmar) {
-          setEmissao(j.data as Emissao);
-          setEnsaio(null);
-          await carregar();
-        } else {
-          setEnsaio({ dados: j.data as Ensaio, slug });
-        }
+        setEmissao(j.data ?? null);
+        setSelecionadas(new Set());
+        await carregar();
       } catch (e) {
         setErro(e instanceof Error ? e.message : "Não consegui falar com o servidor.");
       } finally {
-        setEmitindo(false);
+        setEmitindo(null);
       }
     },
-    [carregar, competencia, daPlanilha],
+    [carregar, competencia],
   );
 
-  const porEmpreendimento = useMemo(() => {
-    const mapa = new Map<string, BoletoEmitido[]>();
-    for (const b of emitidos) {
-      if (!mapa.has(b.empreendimento)) mapa.set(b.empreendimento, []);
-      mapa.get(b.empreendimento)!.push(b);
-    }
-    return mapa;
-  }, [emitidos]);
+  // ── O que cada aba mostra ──────────────────────────────────────────────────
 
-  const visiveis = aba === "consolidado" ? emitidos : (porEmpreendimento.get(aba) ?? []);
+  const pendentes = useMemo(
+    () => aEmitir.filter((p) => !p.bloqueio && !p.jaEmitido && (p.valor ?? 0) > 0),
+    [aEmitir],
+  );
+
+  const visiveisPendentes =
+    aba === "consolidado" ? pendentes : pendentes.filter((p) => p.empreendimento === aba);
+  const visiveisEmitidos =
+    aba === "consolidado" ? emitidos : emitidos.filter((b) => b.empreendimento === aba);
+  const visiveisFora =
+    aba === "consolidado"
+      ? aEmitir.filter((p) => p.bloqueio)
+      : aEmitir.filter((p) => p.bloqueio && p.empreendimento === aba);
 
   const totais = useMemo(() => {
-    const pagos = visiveis.filter((b) => b.pagamento);
-    const vencidos = visiveis.filter((b) => b.vencido);
+    const pagos = visiveisEmitidos.filter((b) => b.pagamento);
+    const vencidos = visiveisEmitidos.filter((b) => b.vencido);
     return {
+      aEmitir: visiveisPendentes.reduce((a, p) => a + (p.valor ?? 0), 0),
+      emitido: visiveisEmitidos.reduce((a, b) => a + b.valor, 0),
       pago: pagos.reduce((a, b) => a + b.valor, 0),
       pagos: pagos.length,
-      total: visiveis.reduce((a, b) => a + b.valor, 0),
       vencido: vencidos.reduce((a, b) => a + b.valor, 0),
       vencidos: vencidos.length,
     };
-  }, [visiveis]);
+  }, [visiveisEmitidos, visiveisPendentes]);
+
+  const contagemPorCarteira = useMemo(() => {
+    const m = new Map<string, { emitidos: number; pendentes: number }>();
+    for (const c of carteiras) m.set(c.slug, { emitidos: 0, pendentes: 0 });
+    for (const p of pendentes) {
+      const e = m.get(p.empreendimento);
+      if (e) e.pendentes += 1;
+    }
+    for (const b of emitidos) {
+      const e = m.get(b.empreendimento);
+      if (e) e.emitidos += 1;
+    }
+    return m;
+  }, [carteiras, emitidos, pendentes]);
 
   const semChave = carteiras.filter((c) => !c.contaConfigurada);
+  const podeEmitir = aba !== "consolidado" && carteiras.find((c) => c.slug === aba)?.contaConfigurada;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -297,66 +252,74 @@ export function TelaBoletos() {
       {semChave.length > 0 ? (
         <Aviso tom="alerta">
           Sem chave do Asaas configurada: {semChave.map((c) => c.nome).join(", ")}. Enquanto ela não
-          entrar no ambiente, estes empreendimentos não emitem nem aparecem na lista.
+          entrar no ambiente, estes empreendimentos não emitem.
         </Aviso>
       ) : null}
-
       {falhas.map((f) => (
         <Aviso key={f.conta} tom="erro">
           Não consegui ler a conta {f.conta} no Asaas: {f.erro}
         </Aviso>
       ))}
       {erro ? <Aviso tom="erro">{erro}</Aviso> : null}
+      {emissao ? <ResultadoDaEmissao emissao={emissao} /> : null}
 
-      <PainelDeEmissao
-        aoEscolherArquivo={() => arquivoRef.current?.click()}
-        aoEmitir={(slug) => void chamar(slug, true)}
-        aoSimular={(slug) => void chamar(slug, false)}
+      <Abas
+        aba={aba}
         carteiras={carteiras}
-        competencia={competencia}
-        daPlanilha={daPlanilha}
-        emissao={emissao}
-        emitindo={emitindo}
-        ensaio={ensaio}
-        lendo={lendo}
-        nomeDoArquivo={nomeDoArquivo}
-      />
-
-      <input
-        accept=".xlsx,.xls"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void lerArquivo(f);
-          e.target.value = "";
+        contagem={contagemPorCarteira}
+        onAba={(a) => {
+          setAba(a);
+          setSelecionadas(new Set());
         }}
-        ref={arquivoRef}
-        style={{ display: "none" }}
-        type="file"
+        totalEmitidos={emitidos.length}
+        totalPendentes={pendentes.length}
       />
 
-      <div style={{ display: "grid", gap: 12 }}>
-        <Abas
-          aba={aba}
-          carteiras={carteiras}
-          contagem={porEmpreendimento}
-          onAba={setAba}
-          total={emitidos.length}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        <Cartao
+          nota={`${visiveisPendentes.length} boleto(s)`}
+          rotulo="A emitir"
+          tom={visiveisPendentes.length > 0 ? "destaque" : undefined}
+          valor={moeda(totais.aEmitir)}
         />
-
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <Cartao rotulo="Boletos" valor={String(visiveis.length)} />
-          <Cartao rotulo="Total" valor={moeda(totais.total)} />
-          <Cartao nota={`${totais.pagos} boleto(s)`} rotulo="Pago" valor={moeda(totais.pago)} />
-          <Cartao
-            nota={`${totais.vencidos} boleto(s)`}
-            rotulo="Vencido"
-            tom={totais.vencidos > 0 ? "alerta" : undefined}
-            valor={moeda(totais.vencido)}
-          />
-        </div>
-
-        <Tabela boletos={visiveis} carregando={carregando} mostrarPredio={aba === "consolidado"} />
+        <Cartao
+          nota={`${visiveisEmitidos.length} boleto(s)`}
+          rotulo="Emitido"
+          valor={moeda(totais.emitido)}
+        />
+        <Cartao nota={`${totais.pagos} boleto(s)`} rotulo="Pago" valor={moeda(totais.pago)} />
+        <Cartao
+          nota={`${totais.vencidos} boleto(s)`}
+          rotulo="Vencido"
+          tom={totais.vencidos > 0 ? "alerta" : undefined}
+          valor={moeda(totais.vencido)}
+        />
       </div>
+
+      {carregando ? (
+        <p style={{ color: T.sub, fontSize: 14, padding: 24, textAlign: "center" }}>
+          <Loader2 className="inc-girando" size={16} style={{ verticalAlign: "middle" }} /> Lendo a
+          carteira e o Asaas…
+        </p>
+      ) : (
+        <>
+          {visiveisPendentes.length > 0 ? (
+            <AEmitir
+              aoEmitir={(unidades) => void emitir(aba, unidades)}
+              emitindo={emitindo === aba}
+              mostrarPredio={aba === "consolidado"}
+              parcelas={visiveisPendentes}
+              podeEmitir={Boolean(podeEmitir)}
+              selecionadas={selecionadas}
+              onSelecionadas={setSelecionadas}
+            />
+          ) : null}
+
+          <Emitidos boletos={visiveisEmitidos} mostrarPredio={aba === "consolidado"} />
+
+          {visiveisFora.length > 0 ? <ForaDaEmissao parcelas={visiveisFora} /> : null}
+        </>
+      )}
     </div>
   );
 }
@@ -421,49 +384,42 @@ function Cabecalho({
         }}
         type="button"
       >
-        {carregando ? (
-          <Loader2 className="inc-girando" size={15} />
-        ) : (
-          <RefreshCw size={15} />
-        )}
+        {carregando ? <Loader2 className="inc-girando" size={15} /> : <RefreshCw size={15} />}
         Atualizar
       </button>
     </div>
   );
 }
 
-// ── O PAINEL QUE EMITE ──────────────────────────────────────────────────────
+// ── A EMITIR ────────────────────────────────────────────────────────────────
 
-function PainelDeEmissao({
+function AEmitir({
   aoEmitir,
-  aoEscolherArquivo,
-  aoSimular,
-  carteiras,
-  competencia,
-  daPlanilha,
-  emissao,
   emitindo,
-  ensaio,
-  lendo,
-  nomeDoArquivo,
+  mostrarPredio,
+  onSelecionadas,
+  parcelas,
+  podeEmitir,
+  selecionadas,
 }: {
-  aoEmitir: (slug: string) => void;
-  aoEscolherArquivo: () => void;
-  aoSimular: (slug: string) => void;
-  carteiras: Carteira[];
-  competencia: string;
-  daPlanilha: Map<string, LinhaParaRota[]> | null;
-  emissao: null | Emissao;
+  aoEmitir: (unidades: string[]) => void;
   emitindo: boolean;
-  ensaio: null | { dados: Ensaio; slug: string };
-  lendo: boolean;
-  nomeDoArquivo: null | string;
+  mostrarPredio: boolean;
+  onSelecionadas: (s: Set<string>) => void;
+  parcelas: ParcelaAEmitir[];
+  podeEmitir: boolean;
+  selecionadas: Set<string>;
 }) {
+  const total = parcelas.reduce((a, p) => a + (p.valor ?? 0), 0);
+  const escolhidas = parcelas.filter((p) => selecionadas.has(p.unidade));
+  const totalEscolhido = escolhidas.reduce((a, p) => a + (p.valor ?? 0), 0);
+  const alvo = escolhidas.length > 0 ? escolhidas : parcelas;
+
   return (
     <section
       style={{
         background: T.card,
-        border: `1px solid ${T.border}`,
+        border: `1px solid ${T.gold}`,
         borderRadius: 12,
         display: "grid",
         gap: 12,
@@ -471,353 +427,119 @@ function PainelDeEmissao({
       }}
     >
       <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <FileSpreadsheet size={18} style={{ color: T.gold }} />
-        <strong style={{ color: T.text, fontSize: 15 }}>Emitir a partir da planilha do mês</strong>
-        <button
-          disabled={lendo}
-          onClick={aoEscolherArquivo}
-          style={{
-            alignItems: "center",
-            background: T.btnBg,
-            border: "none",
-            borderRadius: 8,
-            color: T.btnFg,
-            cursor: lendo ? "default" : "pointer",
-            display: "inline-flex",
-            fontSize: 14,
-            fontWeight: 600,
-            gap: 6,
-            marginLeft: "auto",
-            padding: "8px 14px",
-          }}
-          type="button"
-        >
-          {lendo ? <Loader2 className="inc-girando" size={15} /> : <Upload size={15} />}
-          {nomeDoArquivo ? "Trocar arquivo" : "Escolher arquivo"}
-        </button>
+        <strong style={{ color: T.text, fontSize: 15 }}>
+          {parcelas.length} boleto(s) a emitir · {moeda(total)}
+        </strong>
+
+        {podeEmitir ? (
+          <button
+            disabled={emitindo}
+            onClick={() => aoEmitir(escolhidas.map((p) => p.unidade))}
+            style={{
+              alignItems: "center",
+              background: T.btnBg,
+              border: "none",
+              borderRadius: 8,
+              color: T.btnFg,
+              cursor: emitindo ? "default" : "pointer",
+              display: "inline-flex",
+              fontSize: 14,
+              fontWeight: 600,
+              gap: 6,
+              marginLeft: "auto",
+              padding: "9px 16px",
+            }}
+            type="button"
+          >
+            {emitindo ? <Loader2 className="inc-girando" size={15} /> : <Zap size={15} />}
+            {emitindo
+              ? "Emitindo…"
+              : escolhidas.length > 0
+                ? `Gerar ${escolhidas.length} boleto(s) · ${moeda(totalEscolhido)}`
+                : `Gerar os ${parcelas.length} boletos`}
+          </button>
+        ) : (
+          // ⚠️ NO CONSOLIDADO NÃO HÁ BOTÃO, e é de propósito: cada carteira tem a sua conta, e um
+          // "emitir tudo" esconderia em qual CNPJ cada boleto está saindo. Abrir a aba do prédio é
+          // o passo que faz o operador ver de quem é a conta antes de clicar.
+          <span style={{ color: T.sub, fontSize: 13, marginLeft: "auto" }}>
+            Abra a aba do empreendimento para emitir
+          </span>
+        )}
       </div>
 
-      {nomeDoArquivo ? (
-        <p style={{ color: T.sub, fontSize: 13, margin: 0 }}>
-          Lendo <strong style={{ color: T.text }}>{nomeDoArquivo}</strong> na competência de{" "}
-          {rotuloDaCompetencia(competencia)}. O arquivo não sai do seu navegador.
-        </p>
-      ) : (
-        <p style={{ color: T.sub, fontSize: 13, margin: 0 }}>
-          Escolha a planilha que o administrativo envia. Ela é lida aqui no seu navegador — só as
-          linhas do prédio que você emitir chegam ao servidor.
-        </p>
-      )}
-
-      {daPlanilha ? (
-        <div style={{ display: "grid", gap: 8 }}>
-          {carteiras.map((c) => (
-            <LinhaDaCarteira
-              aoEmitir={() => aoEmitir(c.slug)}
-              aoSimular={() => aoSimular(c.slug)}
-              carteira={c}
-              emitindo={emitindo}
-              ensaio={ensaio?.slug === c.slug ? ensaio.dados : null}
-              key={c.slug}
-              linhas={daPlanilha.get(c.slug) ?? []}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      {emissao ? <ResultadoDaEmissao emissao={emissao} /> : null}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", fontSize: 13.5, minWidth: 640, width: "100%" }}>
+          <thead>
+            <tr style={{ color: T.sub, textAlign: "left" }}>
+              {podeEmitir ? <th style={{ padding: "6px 8px", width: 32 }} /> : null}
+              <th style={cabecalho}>Cliente</th>
+              {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
+              <th style={cabecalho}>Unidade</th>
+              <th style={cabecalho}>CPF/CNPJ</th>
+              <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
+              <th style={cabecalho}>Vencimento</th>
+            </tr>
+          </thead>
+          <tbody>
+            {parcelas.map((p) => (
+              <tr key={`${p.empreendimento}|${p.unidade}`} style={{ borderTop: `1px solid ${T.border}` }}>
+                {podeEmitir ? (
+                  <td style={{ padding: "7px 8px" }}>
+                    <input
+                      aria-label={`Selecionar ${p.nome}`}
+                      checked={selecionadas.has(p.unidade)}
+                      onChange={(e) => {
+                        const nova = new Set(selecionadas);
+                        if (e.target.checked) nova.add(p.unidade);
+                        else nova.delete(p.unidade);
+                        onSelecionadas(nova);
+                      }}
+                      type="checkbox"
+                    />
+                  </td>
+                ) : null}
+                <td style={{ color: T.text, padding: "7px 8px" }}>
+                  {p.nome}
+                  {/* ⚠️ O nome da planilha aparece quando difere do cadastro: o boleto sai no CPF do
+                      cadastro, e se o imóvel trocou de dono é aqui que se vê. */}
+                  {p.nomeNaPlanilha !== p.nome ? (
+                    <span style={{ color: T.sub, display: "block", fontSize: 12 }}>
+                      na planilha: {p.nomeNaPlanilha}
+                    </span>
+                  ) : null}
+                </td>
+                {mostrarPredio ? (
+                  <td style={{ color: T.sub, padding: "7px 8px", whiteSpace: "nowrap" }}>
+                    {p.empreendimento}
+                  </td>
+                ) : null}
+                <td style={{ color: T.sub, padding: "7px 8px" }}>{p.unidade}</td>
+                <td style={{ color: T.sub, padding: "7px 8px", whiteSpace: "nowrap" }}>
+                  {p.documento ?? "—"}
+                </td>
+                <td style={numero}>{p.valor === null ? "—" : moeda(p.valor)}</td>
+                <td style={{ color: T.sub, padding: "7px 8px", whiteSpace: "nowrap" }}>
+                  {p.vencimentoDia ? `dia ${p.vencimentoDia}` : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
 
-function LinhaDaCarteira({
-  aoEmitir,
-  aoSimular,
-  carteira,
-  emitindo,
-  ensaio,
-  linhas,
-}: {
-  aoEmitir: () => void;
-  aoSimular: () => void;
-  carteira: Carteira;
-  emitindo: boolean;
-  ensaio: null | Ensaio;
-  linhas: LinhaParaRota[];
-}) {
-  // ⚠️ A CONTA DA TELA É UMA PRÉVIA, NÃO A DECISÃO. Quem decide é a rota, que reaplica a regra
-  // sobre as linhas cruas. Aqui só se antecipa o número para o operador não clicar às cegas.
-  const previa = useMemo(() => {
-    let emitem = 0;
-    let total = 0;
-    for (const l of linhas) {
-      const v = vereditoDaLinha(linhaDoCliente({ ...l, lote: null, parcelaAtual: null, quadra: null, totalParcelas: null }));
-      if (v.emite) {
-        emitem += 1;
-        total += v.valor;
-      }
-    }
-    return { emitem, total: Math.round(total * 100) / 100 };
-  }, [linhas]);
+// ── EMITIDOS ────────────────────────────────────────────────────────────────
 
-  const semLinhas = linhas.length === 0;
-
-  return (
-    <div
-      style={{
-        background: T.soft,
-        border: `1px solid ${T.border}`,
-        borderRadius: 10,
-        display: "grid",
-        gap: 8,
-        padding: 12,
-      }}
-    >
-      <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <strong style={{ color: T.text, fontSize: 14 }}>{carteira.nome}</strong>
-        <span style={{ color: T.sub, fontSize: 13 }}>
-          {semLinhas
-            ? "sem aba na planilha"
-            : `${previa.emitem} de ${linhas.length} emitem · ${moeda(previa.total)}`}
-        </span>
-
-        <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
-          <button
-            disabled={semLinhas || !carteira.contaConfigurada || emitindo}
-            onClick={aoSimular}
-            style={{
-              background: "transparent",
-              border: `1px solid ${T.border}`,
-              borderRadius: 8,
-              color: T.text,
-              cursor: semLinhas || !carteira.contaConfigurada ? "default" : "pointer",
-              fontSize: 13,
-              opacity: semLinhas || !carteira.contaConfigurada ? 0.5 : 1,
-              padding: "6px 12px",
-            }}
-            type="button"
-          >
-            Conferir
-          </button>
-          {ensaio ? (
-            <button
-              disabled={emitindo || ensaio.itens.length === 0 || ensaio.impedimentos.length > 0}
-              onClick={aoEmitir}
-              style={{
-                alignItems: "center",
-                background: T.btnBg,
-                border: "none",
-                borderRadius: 8,
-                color: T.btnFg,
-                cursor: emitindo ? "default" : "pointer",
-                display: "inline-flex",
-                fontSize: 13,
-                fontWeight: 600,
-                gap: 6,
-                opacity: ensaio.itens.length === 0 || ensaio.impedimentos.length > 0 ? 0.5 : 1,
-                padding: "6px 12px",
-              }}
-              type="button"
-            >
-              {emitindo ? <Loader2 className="inc-girando" size={14} /> : <Check size={14} />}
-              Emitir {ensaio.itens.length}
-            </button>
-          ) : null}
-        </div>
-      </div>
-
-      {ensaio ? <DetalheDoEnsaio ensaio={ensaio} /> : null}
-    </div>
-  );
-}
-
-function DetalheDoEnsaio({ ensaio }: { ensaio: Ensaio }) {
-  const total = ensaio.itens.reduce((a, i) => a + i.valor, 0);
-
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-      {ensaio.impedimentos.map((i) => (
-        <Aviso key={i} tom="erro">
-          {i}
-        </Aviso>
-      ))}
-
-      {ensaio.divergencias.length > 0 ? (
-        <Aviso tom="alerta">
-          Nome diferente do cadastro em {ensaio.divergencias.length} unidade(s):{" "}
-          {ensaio.divergencias
-            .map((d) => `${d.unidade} (planilha “${d.planilha}”, cadastro “${d.cadastro}”)`)
-            .join("; ")}
-          . O boleto sai no CPF do cadastro — confira antes de emitir.
-        </Aviso>
-      ) : null}
-
-      {ensaio.itens.length > 0 ? (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ borderCollapse: "collapse", fontSize: 13, minWidth: 420, width: "100%" }}>
-            <thead>
-              <tr style={{ color: T.sub, textAlign: "left" }}>
-                <th style={{ padding: "4px 8px 4px 0" }}>Unidade</th>
-                <th style={{ padding: "4px 8px" }}>Cliente</th>
-                <th style={{ padding: "4px 8px" }}>Vencimento</th>
-                <th style={{ padding: "4px 0 4px 8px", textAlign: "right" }}>Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ensaio.itens.map((i) => (
-                <tr key={i.referencia} style={{ borderTop: `1px solid ${T.border}` }}>
-                  <td style={{ color: T.text, padding: "5px 8px 5px 0" }}>{i.unidade}</td>
-                  <td style={{ color: T.text, padding: "5px 8px" }}>{i.nome}</td>
-                  <td style={{ color: T.sub, padding: "5px 8px" }}>{dia(i.vencimento)}</td>
-                  <td
-                    style={{
-                      color: T.text,
-                      fontVariantNumeric: "tabular-nums",
-                      padding: "5px 0 5px 8px",
-                      textAlign: "right",
-                    }}
-                  >
-                    {moeda(i.valor)}
-                  </td>
-                </tr>
-              ))}
-              <tr style={{ borderTop: `1px solid ${T.border}`, fontWeight: 700 }}>
-                <td colSpan={3} style={{ color: T.sub, padding: "6px 8px 0 0" }}>
-                  {ensaio.itens.length} boleto(s) na conta {ensaio.conta}
-                </td>
-                <td
-                  style={{
-                    color: T.text,
-                    fontVariantNumeric: "tabular-nums",
-                    padding: "6px 0 0 8px",
-                    textAlign: "right",
-                  }}
-                >
-                  {moeda(total)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-
-      {/* ⚠️ QUEM FICA DE FORA APARECE COM O MOTIVO. Uma lista que só mostra quem emite esconde o
-          cliente esquecido — e o esquecido só reclama no mês seguinte. */}
-      {ensaio.fora.length > 0 ? (
-        <details>
-          <summary style={{ color: T.sub, cursor: "pointer", fontSize: 13 }}>
-            {ensaio.fora.length} não recebem boleto — ver o motivo de cada um
-          </summary>
-          <ul style={{ display: "grid", gap: 3, listStyle: "none", margin: "6px 0 0", padding: 0 }}>
-            {ensaio.fora.map((f, i) => (
-              <li key={`${f.nome}-${i}`} style={{ color: T.sub, fontSize: 12.5 }}>
-                <span style={{ color: T.text }}>
-                  {f.nome}
-                  {f.unidade ? ` (${f.unidade})` : ""}
-                </span>{" "}
-                — {f.motivo}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-    </div>
-  );
-}
-
-function ResultadoDaEmissao({ emissao }: { emissao: Emissao }) {
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <Aviso tom={emissao.falhas > 0 ? "alerta" : "ok"}>
-        {emissao.emitidos} boleto(s) emitido(s)
-        {emissao.repetidos > 0 ? ` · ${emissao.repetidos} já existia(m)` : ""}
-        {emissao.falhas > 0 ? ` · ${emissao.falhas} falhou(ram)` : ""}
-      </Aviso>
-
-      {emissao.resultados
-        .filter((r) => r.erro)
-        .map((r) => (
-          <Aviso key={r.unidade} tom="erro">
-            {r.nome} ({r.unidade}): {r.erro}
-          </Aviso>
-        ))}
-    </div>
-  );
-}
-
-// ── ABAS ────────────────────────────────────────────────────────────────────
-
-function Abas({
-  aba,
-  carteiras,
-  contagem,
-  onAba,
-  total,
-}: {
-  aba: string;
-  carteiras: Carteira[];
-  contagem: Map<string, unknown[]>;
-  onAba: (a: string) => void;
-  total: number;
-}) {
-  const itens = [
-    { chave: "consolidado", contagem: total, rotulo: "Consolidado" },
-    ...carteiras.map((c) => ({
-      chave: c.slug,
-      contagem: contagem.get(c.slug)?.length ?? 0,
-      rotulo: c.nome,
-    })),
-  ];
-
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      {itens.map((i) => {
-        const ativa = aba === i.chave;
-        return (
-          <button
-            key={i.chave}
-            onClick={() => onAba(i.chave)}
-            style={{
-              background: ativa ? T.soft : "transparent",
-              border: `1px solid ${ativa ? T.gold : T.border}`,
-              borderRadius: 999,
-              color: ativa ? T.text : T.sub,
-              cursor: "pointer",
-              fontSize: 13,
-              fontWeight: ativa ? 600 : 500,
-              padding: "6px 14px",
-            }}
-            type="button"
-          >
-            {i.rotulo}
-            <span style={{ color: T.sub, fontWeight: 500, marginLeft: 6 }}>{i.contagem}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── A TABELA ────────────────────────────────────────────────────────────────
-
-function Tabela({
+function Emitidos({
   boletos,
-  carregando,
   mostrarPredio,
 }: {
   boletos: BoletoEmitido[];
-  carregando: boolean;
   mostrarPredio: boolean;
 }) {
-  if (carregando) {
-    return (
-      <p style={{ color: T.sub, fontSize: 14, padding: 24, textAlign: "center" }}>
-        <Loader2 className="inc-girando" size={16} style={{ verticalAlign: "middle" }} /> Lendo o
-        Asaas…
-      </p>
-    );
-  }
-
   if (boletos.length === 0) {
     return (
       <p
@@ -836,45 +558,28 @@ function Tabela({
     );
   }
 
-  const cabecalho = [
-    "Cliente",
-    ...(mostrarPredio ? ["Prédio"] : []),
-    "Unidade",
-    "CPF/CNPJ",
-    "Valor",
-    "Emissão",
-    "Vencimento",
-    "Pagamento",
-    "Situação",
-    "Boleto",
-  ];
-
   return (
-    // ⚠️ A ROLAGEM É DA TABELA, e não da página: com dez colunas no celular, deixar o corpo rolar
-    // de lado empurra o menu do portal para fora da tela.
+    // ⚠️ A ROLAGEM É DA TABELA, e não da página: com dez colunas no celular, deixar o corpo rolar de
+    // lado empurra o menu do portal para fora da tela.
     <div style={{ overflowX: "auto" }}>
       <table style={{ borderCollapse: "collapse", fontSize: 13.5, minWidth: 900, width: "100%" }}>
         <thead>
           <tr style={{ color: T.sub, textAlign: "left" }}>
-            {cabecalho.map((c) => (
-              <th
-                key={c}
-                style={{
-                  borderBottom: `1px solid ${T.border}`,
-                  fontWeight: 600,
-                  padding: "8px 10px",
-                  textAlign: c === "Valor" ? "right" : "left",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {c}
-              </th>
-            ))}
+            <th style={cabecalho}>Cliente</th>
+            {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
+            <th style={cabecalho}>Unidade</th>
+            <th style={cabecalho}>CPF/CNPJ</th>
+            <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
+            <th style={cabecalho}>Emissão</th>
+            <th style={cabecalho}>Vencimento</th>
+            <th style={cabecalho}>Pagamento</th>
+            <th style={cabecalho}>Situação</th>
+            <th style={cabecalho}>Boleto</th>
           </tr>
         </thead>
         <tbody>
           {boletos.map((b) => (
-            <tr key={b.cobranca} style={{ borderBottom: `1px solid ${T.border}` }}>
+            <tr key={b.cobranca} style={{ borderTop: `1px solid ${T.border}` }}>
               <td style={{ color: T.text, padding: "8px 10px" }}>{b.nome}</td>
               {mostrarPredio ? (
                 <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
@@ -885,26 +590,10 @@ function Tabela({
               <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
                 {b.documento ?? "—"}
               </td>
-              <td
-                style={{
-                  color: T.text,
-                  fontVariantNumeric: "tabular-nums",
-                  padding: "8px 10px",
-                  textAlign: "right",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {moeda(b.valor)}
-              </td>
-              <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
-                {dia(b.emissao)}
-              </td>
-              <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
-                {dia(b.vencimento)}
-              </td>
-              <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
-                {dia(b.pagamento)}
-              </td>
+              <td style={numero}>{moeda(b.valor)}</td>
+              <td style={celulaFraca}>{dia(b.emissao)}</td>
+              <td style={celulaFraca}>{dia(b.vencimento)}</td>
+              <td style={celulaFraca}>{dia(b.pagamento)}</td>
               <td style={{ padding: "8px 10px" }}>
                 <Selo boleto={b} />
               </td>
@@ -935,6 +624,197 @@ function Tabela({
     </div>
   );
 }
+
+// ── QUEM NÃO RECEBE, E POR QUÊ ──────────────────────────────────────────────
+
+function ForaDaEmissao({ parcelas }: { parcelas: ParcelaAEmitir[] }) {
+  return (
+    // ⚠️ UMA LISTA QUE SÓ MOSTRA QUEM EMITE ESCONDE O CLIENTE ESQUECIDO, e o esquecido só reclama no
+    // mês seguinte. Fica recolhido para não competir com o que precisa de ação, mas fica.
+    <details
+      style={{
+        background: T.card,
+        border: `1px solid ${T.border}`,
+        borderRadius: 12,
+        padding: "12px 16px",
+      }}
+    >
+      <summary style={{ color: T.sub, cursor: "pointer", fontSize: 13.5 }}>
+        {parcelas.length} unidade(s) não recebem boleto neste mês — ver o motivo de cada uma
+      </summary>
+      <ul style={{ display: "grid", gap: 4, listStyle: "none", margin: "10px 0 0", padding: 0 }}>
+        {parcelas.map((p) => (
+          <li
+            key={`${p.empreendimento}|${p.unidade}`}
+            style={{ color: T.sub, fontSize: 13, lineHeight: 1.5 }}
+          >
+            <span style={{ color: T.text }}>
+              {p.nome} ({p.empreendimento} · {p.unidade})
+            </span>{" "}
+            — {p.bloqueio}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+// ── RESULTADO ───────────────────────────────────────────────────────────────
+
+function ResultadoDaEmissao({ emissao }: { emissao: Emissao }) {
+  const comLink = emissao.resultados.filter((r) => r.link);
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <Aviso tom={emissao.falhas > 0 ? "alerta" : "ok"}>
+        {emissao.emitidos} boleto(s) emitido(s) em {emissao.empreendimento}, na conta {emissao.conta}
+        {emissao.repetidos > 0 ? ` · ${emissao.repetidos} já existia(m)` : ""}
+        {emissao.falhas > 0 ? ` · ${emissao.falhas} falhou(ram)` : ""}
+      </Aviso>
+
+      {emissao.resultados
+        .filter((r) => r.erro)
+        .map((r) => (
+          <Aviso key={r.unidade} tom="erro">
+            {r.nome} ({r.unidade}): {r.erro}
+          </Aviso>
+        ))}
+
+      {comLink.length > 0 ? (
+        <div
+          style={{
+            background: T.soft,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            display: "grid",
+            gap: 5,
+            padding: "10px 12px",
+          }}
+        >
+          {comLink.map((r) => (
+            <a
+              href={r.link!}
+              key={r.unidade}
+              rel="noreferrer"
+              style={{
+                alignItems: "center",
+                color: T.gold,
+                display: "inline-flex",
+                fontSize: 13.5,
+                gap: 5,
+                textDecoration: "none",
+              }}
+              target="_blank"
+            >
+              {r.nome} ({r.unidade}) · {moeda(r.valor)} <ExternalLink size={12} />
+            </a>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ── ABAS ────────────────────────────────────────────────────────────────────
+
+function Abas({
+  aba,
+  carteiras,
+  contagem,
+  onAba,
+  totalEmitidos,
+  totalPendentes,
+}: {
+  aba: string;
+  carteiras: Carteira[];
+  contagem: Map<string, { emitidos: number; pendentes: number }>;
+  onAba: (a: string) => void;
+  totalEmitidos: number;
+  totalPendentes: number;
+}) {
+  const itens = [
+    { chave: "consolidado", emitidos: totalEmitidos, pendentes: totalPendentes, rotulo: "Consolidado" },
+    ...carteiras.map((c) => ({
+      chave: c.slug,
+      emitidos: contagem.get(c.slug)?.emitidos ?? 0,
+      pendentes: contagem.get(c.slug)?.pendentes ?? 0,
+      rotulo: c.nome,
+    })),
+  ];
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {itens.map((i) => {
+        const ativa = aba === i.chave;
+        return (
+          <button
+            key={i.chave}
+            onClick={() => onAba(i.chave)}
+            style={{
+              alignItems: "center",
+              background: ativa ? T.soft : "transparent",
+              border: `1px solid ${ativa ? T.gold : T.border}`,
+              borderRadius: 999,
+              color: ativa ? T.text : T.sub,
+              cursor: "pointer",
+              display: "inline-flex",
+              fontSize: 13,
+              fontWeight: ativa ? 600 : 500,
+              gap: 6,
+              padding: "6px 14px",
+            }}
+            type="button"
+          >
+            {i.rotulo}
+            {/* O número que pede ação vem primeiro e em destaque; o já resolvido fica discreto. */}
+            {i.pendentes > 0 ? (
+              <span
+                style={{
+                  background: T.gold,
+                  borderRadius: 999,
+                  color: T.btnFg,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: "1px 7px",
+                }}
+              >
+                {i.pendentes}
+              </span>
+            ) : null}
+            {i.emitidos > 0 ? (
+              <span style={{ color: T.sub, fontSize: 12, fontWeight: 500 }}>
+                {i.emitidos} emitido{i.emitidos > 1 ? "s" : ""}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── PEÇAS ───────────────────────────────────────────────────────────────────
+
+const cabecalho: React.CSSProperties = {
+  borderBottom: `1px solid ${T.border}`,
+  fontWeight: 600,
+  padding: "8px 10px",
+  whiteSpace: "nowrap",
+};
+
+const numero: React.CSSProperties = {
+  color: T.text,
+  fontVariantNumeric: "tabular-nums",
+  padding: "8px 10px",
+  textAlign: "right",
+  whiteSpace: "nowrap",
+};
+
+const celulaFraca: React.CSSProperties = {
+  color: T.sub,
+  padding: "8px 10px",
+  whiteSpace: "nowrap",
+};
 
 /**
  * O estado do boleto em uma palavra.
@@ -967,8 +847,6 @@ function Selo({ boleto }: { boleto: BoletoEmitido }) {
   );
 }
 
-// ── PEÇAS ───────────────────────────────────────────────────────────────────
-
 function Cartao({
   nota,
   rotulo,
@@ -977,14 +855,16 @@ function Cartao({
 }: {
   nota?: string;
   rotulo: string;
-  tom?: "alerta";
+  tom?: "alerta" | "destaque";
   valor: string;
 }) {
+  const cor = tom === "alerta" ? T.danger : tom === "destaque" ? T.gold : T.border;
+
   return (
     <div
       style={{
         background: T.card,
-        border: `1px solid ${tom === "alerta" ? T.danger : T.border}`,
+        border: `1px solid ${cor}`,
         borderRadius: 10,
         flex: "1 1 150px",
         padding: "10px 14px",

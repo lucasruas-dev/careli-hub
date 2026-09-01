@@ -82,6 +82,15 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
   },
   { aba: "BOLETOS ED RUBI", conta: "cer", nome: "Ed. Rubi", origem: "planilha", slug: "ed-rubi" },
   { aba: "BOLETOS ED JADE", conta: "cer", nome: "Ed. Jade", origem: "planilha", slug: "ed-jade" },
+  // ⚠️ CARTEIRA DE TESTE, e ela existe para NÃO sujar as de verdade. Pedido do Lucas (01/09/2026):
+  // *"coloca para mim um boleto Lucas Ruas - Teste - 10 reais"*. Um teste lançado dentro do Ed. Jade
+  // entraria na soma daquele prédio, apareceria na conferência do administrativo e teria de ser
+  // explicado todo mês. Aqui ele fica numa aba própria, e some com a remoção de uma linha.
+  //
+  // ⚠️ EMITE NA CONTA CER DE VERDADE. É essa a graça do teste: o boleto sai pela mesma chave, no
+  // mesmo CNPJ, pelo mesmo caminho. `aba` é um nome que não existe em planilha nenhuma, então uma
+  // carga nunca cria linha aqui — o que estiver nesta carteira foi posto à mão.
+  { aba: "__TESTE__", conta: "cer", nome: "Teste", origem: "planilha", slug: "teste" },
 ];
 
 /** Casa o nome da aba do arquivo com o empreendimento, tolerando espaço e acento. */

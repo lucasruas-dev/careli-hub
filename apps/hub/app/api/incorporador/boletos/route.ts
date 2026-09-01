@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { type ContaAsaas, chaveDaConta, rotuloDaConta } from "@/lib/apolo/asaas-contas";
-import { documentoMascarado, documentosDeVarios, documentosDoEmpreendimento } from "@/lib/apolo/boletos/documentos";
+import { documentoMascarado, documentosDeVarios } from "@/lib/apolo/boletos/documentos";
 import {
   acharOuCriarCliente,
   apenasDaCompetencia,
@@ -13,26 +13,31 @@ import {
   situacaoCadastral,
 } from "@/lib/apolo/boletos/emissao";
 import { empreendimentoPorSlug } from "@/lib/apolo/boletos/empreendimentos";
-import { type LinhaParaEmitir, nomesDivergentes, prepararLote } from "@/lib/apolo/boletos/lote";
+import {
+  divergenciasDeNome,
+  loteDaCompetencia,
+  parcelasDaCompetencia,
+} from "@/lib/apolo/boletos/parcelas";
 import { carteirasDoPortal, portalEmiteBoletos, portalPodeEmitir } from "@/lib/apolo/boletos/portais";
 import { autorizar } from "@/lib/apolo/incorporador/escopo";
 
 // A EMISSÃO DE BOLETOS DENTRO DO PORTAL DO INCORPORADOR.
 //
-// Pedido do Lucas (01/09/2026): *"essa tela vai somente no perfil da CER e Cecilio (...) Nessa
-// tela vamos emitir os boletos, gerar os pagamentos"*.
+// Pedido do Lucas (01/09/2026): *"essa tela vai somente no perfil da CER e Cecilio (...) Nessa tela
+// vamos emitir os boletos, gerar os pagamentos"*, e logo depois: *"não quero importar planilha, já
+// traz isso pronto, vc já tem os dados pode montar a tela e ter o botão de gerar boleto e pronto"*.
 //
 // ⚠️ É A SEGUNDA ESCRITA EXTERNA DO PANTEON, e a mais séria: a primeira (a base do LSoft) corrige
 // cadastro; esta cria cobrança em nome de outra empresa, num CNPJ que não é o nosso, e o Asaas não
-// desfaz em lote. Por isso as travas são as mesmas do LSoft, com uma a mais:
-//   1. só portais de `carteirasDoPortal` entram — e a lista é explícita, não derivada de vínculo;
+// desfaz em lote. As travas:
+//   1. só portais de `carteirasDoPortal` entram — lista explícita, não derivada de vínculo;
 //   2. o empreendimento pedido é conferido contra a lista DAQUELE portal, a cada chamada;
-//   3. a regra de emissão é reaplicada aqui: o navegador não decide quem recebe boleto;
+//   3. o corpo do POST traz só competência e empreendimento: valor, CPF e vencimento vêm do banco;
 //   4. ensaio por padrão — sem `confirmar: true` nada é criado no Asaas.
 //
-// ⚠️ ROTA SEPARADA DA `/api/boletos/emitir`, apesar de o motor ser o mesmo. Aquela pede admin do
-// Hub (Bearer do Supabase); esta pede sessão de portal. Fundir as duas seria uma função decidindo
-// qual autenticação vale por um `if` — e é assim que um dia a errada passa.
+// ⚠️ A TRAVA 3 SUBSTITUIU UMA DEFESA. Antes a tela lia a planilha e mandava as linhas, e a rota
+// reaplicava a regra por cima delas. Funcionava, mas mantinha um caminho em que o valor do boleto
+// passava pelo navegador. Com a carteira no banco, esse caminho deixou de existir.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -42,13 +47,18 @@ function fora(): NextResponse {
   return NextResponse.json({ error: "Não encontrado." }, { status: 404 });
 }
 
-/** O último dia do mês da competência. */
 function intervaloDaCompetencia(competencia: string): { fim: string; inicio: string } {
   const [ano, mes] = competencia.split("-").map(Number) as [number, number];
   const ultimo = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
   return { fim: `${competencia}-${ultimo}`, inicio: `${competencia}-01` };
 }
 
+/**
+ * A cobrança está vencida?
+ *
+ * ⚠️ O STATUS DO ASAAS MANDA. Ele conhece o feriado e a compensação; derivar só da data marcaria como
+ * vencido um boleto pago hoje que ainda não compensou.
+ */
 function estaVencido(situacao: string, vencimento: string, pagamento: null | string): boolean {
   if (pagamento) return false;
   if (situacao === "OVERDUE") return true;
@@ -58,7 +68,7 @@ function estaVencido(situacao: string, vencimento: string, pagamento: null | str
   return vencimento < new Date().toISOString().slice(0, 10);
 }
 
-// ── LEITURA: o que já foi emitido no mês ────────────────────────────────────
+// ── LEITURA: a carteira do mês e o que já foi emitido ───────────────────────
 
 export async function GET(request: Request) {
   const auth = autorizar(request);
@@ -72,10 +82,6 @@ export async function GET(request: Request) {
   }
 
   const permitidos = carteirasDoPortal(auth.sessao.slug);
-  const alvos = permitidos
-    .map(empreendimentoPorSlug)
-    .filter((e) => e !== null)
-    .filter((e) => e.conta && chaveDaConta(e.conta));
 
   const carteiras = permitidos.map((slug) => {
     const e = empreendimentoPorSlug(slug);
@@ -88,24 +94,52 @@ export async function GET(request: Request) {
     };
   });
 
-  if (alvos.length === 0) {
-    return NextResponse.json(
-      { data: { boletos: [], carteiras, competencia, falhas: [] } },
-      { headers: { "Cache-Control": "no-store" } },
-    );
-  }
+  const comChave = permitidos
+    .map(empreendimentoPorSlug)
+    .filter((e) => e !== null)
+    .filter((e) => e.conta && chaveDaConta(e.conta));
 
-  const contas = [...new Set(alvos.map((e) => e.conta as ContaAsaas))];
+  // A CARTEIRA DO MÊS — o que a tela mostra antes de qualquer clique, e a razão de a planilha ter
+  // saído do caminho.
+  const [parcelas, documentos] = await Promise.all([
+    parcelasDaCompetencia({ competencia, empreendimentos: permitidos }),
+    documentosDeVarios(permitidos),
+  ]);
+
+  const aEmitir = parcelas.map((p) => {
+    const cadastro = documentos.get(`${p.empreendimento}|${p.unidade}`);
+    return {
+      bloqueio:
+        p.bloqueio ??
+        (cadastro ? null : `sem CPF/CNPJ cadastrado para a unidade ${p.unidade}`),
+      documento: cadastro ? documentoMascarado(cadastro.documento) : null,
+      empreendimento: p.empreendimento,
+      // O nome do cadastro quando existe: é ele que sai no boleto.
+      nome: cadastro?.nome ?? p.nome,
+      nomeNaPlanilha: p.nome,
+      unidade: p.unidade,
+      valor: p.valor,
+      vencimentoDia: p.vencimentoDia,
+    };
+  });
+
+  aEmitir.sort(
+    (a, b) =>
+      a.empreendimento.localeCompare(b.empreendimento) ||
+      (a.vencimentoDia ?? 99) - (b.vencimentoDia ?? 99) ||
+      a.unidade.localeCompare(b.unidade, "pt-BR", { numeric: true }),
+  );
+
+  // O QUE JÁ FOI EMITIDO, direto do Asaas.
+  const contas = [...new Set(comChave.map((e) => e.conta as ContaAsaas))];
   const slugsPorConta = new Map<ContaAsaas, Set<string>>();
-  for (const e of alvos) {
+  for (const e of comChave) {
     const conta = e.conta as ContaAsaas;
     if (!slugsPorConta.has(conta)) slugsPorConta.set(conta, new Set());
     slugsPorConta.get(conta)!.add(e.slug);
   }
 
-  const documentos = await documentosDeVarios(alvos.map((e) => e.slug));
   const intervalo = intervaloDaCompetencia(competencia);
-
   const boletos = [];
   const falhas: { conta: string; erro: string }[] = [];
 
@@ -116,12 +150,12 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const desteConta = slugsPorConta.get(conta)!;
+    const destaConta = slugsPorConta.get(conta)!;
     for (const c of apenasDaCompetencia(lista.data, competencia)) {
       const ref = lerReferencia(c.externalReference);
-      // ⚠️ A conta da CER serve quatro edifícios; um portal que só pudesse ver dois receberia os
-      // outros dois de brinde se o filtro não estivesse aqui.
-      if (!ref || !desteConta.has(ref.empreendimento)) continue;
+      // ⚠️ A conta da CER serve cinco carteiras; um portal que só pudesse ver duas receberia as
+      // outras de brinde se o filtro não estivesse aqui.
+      if (!ref || !destaConta.has(ref.empreendimento)) continue;
 
       const cadastro = documentos.get(`${ref.empreendimento}|${ref.unidade}`);
       const pagamento = c.paymentDate ?? c.clientPaymentDate ?? null;
@@ -150,8 +184,23 @@ export async function GET(request: Request) {
       a.unidade.localeCompare(b.unidade, "pt-BR", { numeric: true }),
   );
 
+  // ⚠️ A UNIDADE QUE JÁ TEM BOLETO SAI DA LISTA DE "A EMITIR". Sem isto ela apareceria nos dois
+  // lados e o contador diria que faltam onze quando já saíram onze.
+  const emitidas = new Set(boletos.map((b) => `${b.empreendimento}|${b.unidade}`));
+
   return NextResponse.json(
-    { data: { boletos, carteiras, competencia, falhas } },
+    {
+      data: {
+        aEmitir: aEmitir.map((p) => ({
+          ...p,
+          jaEmitido: emitidas.has(`${p.empreendimento}|${p.unidade}`),
+        })),
+        boletos,
+        carteiras,
+        competencia,
+        falhas,
+      },
+    },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
@@ -162,7 +211,8 @@ type Corpo = {
   competencia?: unknown;
   confirmar?: unknown;
   empreendimento?: unknown;
-  linhas?: unknown;
+  /** As unidades a emitir. Ausente = todas as que a carteira do mês manda emitir. */
+  unidades?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -195,19 +245,27 @@ export async function POST(request: Request) {
     );
   }
 
-  const linhas = Array.isArray(corpo.linhas) ? (corpo.linhas as LinhaParaEmitir[]) : null;
-  if (!linhas || linhas.length === 0) {
-    return NextResponse.json({ error: "nenhuma linha recebida" }, { status: 400 });
+  const conta = empreendimento.conta;
+  const lote = await loteDaCompetencia({ competencia, empreendimento: slug });
+
+  // Recorte por unidade, para o operador emitir um boleto só sem mandar o lote inteiro.
+  const pedidas = Array.isArray(corpo.unidades)
+    ? new Set((corpo.unidades as unknown[]).map((u) => String(u).trim()).filter(Boolean))
+    : null;
+  const itens = pedidas ? lote.itens.filter((i) => pedidas.has(i.unidade)) : lote.itens;
+
+  if (pedidas && itens.length === 0) {
+    return NextResponse.json(
+      { error: "nenhuma das unidades pedidas está liberada para emissão neste mês" },
+      { status: 400 },
+    );
   }
 
-  const conta = empreendimento.conta;
-  const documentos = await documentosDoEmpreendimento(slug);
-  const lote = prepararLote({ competencia, documentos, empreendimento: slug, linhas });
-  const divergencias = nomesDivergentes(linhas, documentos);
+  const divergencias = await divergenciasDeNome({ competencia, empreendimento: slug });
 
   const situacao = await situacaoCadastral(conta);
   const impedimentos = situacao.ok
-    ? impedimentosDaConta(situacao.data, lote.itens.length)
+    ? impedimentosDaConta(situacao.data, itens.length)
     : [`não consegui consultar a situação do cadastro no Asaas: ${situacao.erro}`];
 
   if (corpo.confirmar !== true) {
@@ -221,7 +279,7 @@ export async function POST(request: Request) {
           ensaio: true,
           fora: lote.fora,
           impedimentos,
-          itens: lote.itens.map((i) => ({
+          itens: itens.map((i) => ({
             nome: i.nome,
             referencia: i.referencia,
             unidade: i.unidade,
@@ -240,8 +298,10 @@ export async function POST(request: Request) {
 
   const resultados = [];
 
-  // Em série: duas linhas do mesmo CPF em paralelo criariam dois cadastros para a mesma pessoa.
-  for (const item of lote.itens) {
+  // ⚠️ EM SÉRIE, DE PROPÓSITO. Em paralelo, duas linhas do mesmo CPF (o MARCELO, com dois
+  // apartamentos) fariam duas buscas de cliente ao mesmo tempo, as duas não achariam nada, e o Asaas
+  // ganharia dois cadastros para a mesma pessoa.
+  for (const item of itens) {
     const base = {
       cobranca: null as null | string,
       erro: null as null | string,
@@ -254,6 +314,8 @@ export async function POST(request: Request) {
       vencimento: item.vencimento,
     };
 
+    // ⚠️ CONSULTA ANTES DE CRIAR, SEMPRE. Alguém vai clicar duas vezes, ou a conexão vai cair no meio
+    // e a rodada será repetida. Sem isto o cliente recebe dois boletos do mesmo mês.
     const jaEmitido = await cobrancasDaReferencia(conta, item.referencia);
     if (!jaEmitido.ok) {
       resultados.push({ ...base, erro: `não consegui conferir se já existia: ${jaEmitido.erro}` });

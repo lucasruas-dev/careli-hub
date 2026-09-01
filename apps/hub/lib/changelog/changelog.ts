@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-01-boletos-sem-planilha",
+    deployedAt: "2026-09-01T18:25:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "A tela de boletos abre pronta: a carteira do mês já vem carregada, sem ninguém precisar ter a planilha na mão.",
+              "Um botão gera os boletos do empreendimento de uma vez, e caixas de seleção permitem emitir só alguns.",
+              "Cada aba mostra quantos faltam emitir e quantos já saíram; quem já tem boleto some da lista de pendentes.",
+              "A lista de quem NÃO recebe boleto no mês continua a um clique, com o motivo de cada um.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "318979fb",
+    technical: {
+      done: "Pedido do Lucas: \"nao quero importar planilha, ja traz isso pronto, vc ja tem os dados pode montar a tela e ter o botao de gerar boleto e pronto\". Migration 0115 (boletos_parcelas) aplicada e 183 parcelas da CER carregadas, cobrindo as 23 competencias do arquivo (2024-11 a 2026-09). Em setembro/2026: 11 boletos a emitir, o mesmo numero da conferencia manual. ⚠️ O VALOR E `numeric` SEM ESCALA: a planilha calcula reajuste em cascata e traz 13 casas; numeric(12,2) arredondaria na gravacao, e o arredondamento tem regra propria (para cima, na emissao). Duas arredondadas em serie dao resultado diferente de uma. ⚠️ `bloqueio` guarda o MOTIVO, nao um booleano: \"nao fazer\", \"paralisada\" e \"pago ate dez/26\" levam a mesma consequencia e a conversas diferentes. O script de carga NAO reimplementa a regra de emissao: importa `vereditoDaLinha` do codigo de producao via esbuild (lib/apolo/boletos/carga.ts e so reexportacao) — copia da regra num script e como a tela passa a dizer 11 e o banco 12. ⚠️ A TELA DEIXOU DE MANDAR VALOR: o corpo do POST leva competencia, empreendimento e as unidades escolhidas; valor, CPF e vencimento a rota busca no banco. Antes a tela lia a planilha e enviava as linhas, e a rota reaplicava a regra por cima — funcionava, mas mantinha um caminho em que o preco do boleto passava pelo navegador. Esse caminho deixou de existir. ⚠️ `valor` volta como STRING do PostgREST (coluna numeric, o driver nao converte para nao perder precisao): um reduce sem Number() concatena texto e devolve \"1044.671520.92\" como total do mes. Carteira \"teste\" cadastrada (conta CER de verdade, aba propria) com o boleto de conferencia de R$ 10,00 que o Lucas pediu; ela sai de CARTEIRAS_DO_PORTAL e de EMPREENDIMENTOS_DE_BOLETO quando servir, e ha teste lembrando disso. 90 testes verdes na frente de boletos.",
+      motivation:
+        "Exigir a planilha a cada visita fazia duas pessoas com versoes diferentes do arquivo verem numeros diferentes do mesmo mes.",
+    },
+    title: "Boletos: a tela abre com a carteira do mês pronta",
+    type: "melhoria",
+    version: "1.248.0",
+  },
+  {
     buildTag: "2026-09-01-boletos-cer",
     deployedAt: "2026-09-01T17:45:00-03:00",
     modules: [
