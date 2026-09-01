@@ -17,8 +17,15 @@
 // de sumir: perder um parágrafo em silêncio é pior do que perdê-lo de estilo.
 
 export type NoDeTexto = {
+  backgroundColor?: string;
   bold?: boolean;
   code?: boolean;
+  /** Cor do texto. Medida na minuta real: 18 ocorrencias, todas preto. */
+  color?: string;
+  /** ⚠️ 450 dos 485 trechos da minuta do JDG tem fonte propria. Ver a nota do topo. */
+  fontFamily?: string;
+  fontSize?: string;
+  highlight?: boolean;
   italic?: boolean;
   strikethrough?: boolean;
   subscript?: boolean;
@@ -29,12 +36,21 @@ export type NoDeTexto = {
 
 export type NoDoDocumento = {
   align?: string;
+  /** Fundo da celula. Na minuta do JDG e o cinza do box de CIENCIA PREVIA. */
+  background?: string;
+  /** Celula mesclada — perder isso desmonta o quadro-resumo. */
+  colSpan?: number;
   children?: (NoDeTexto | NoDoDocumento)[];
   indent?: number;
+  lineHeight?: number | string;
   listStyleType?: string;
+  rowSpan?: number;
   text?: string;
   textAlign?: string;
+  textIndent?: number;
   type?: string;
+  /** Endereco do link (elemento tipo "a"). */
+  url?: string;
 };
 
 /** Escapa o que é especial em HTML. Colchete NÃO é — ver a nota do topo. */
@@ -61,6 +77,23 @@ const MARCAS: { chave: keyof NoDeTexto; tag: string }[] = [
   { chave: "bold", tag: "strong" },
 ];
 
+/**
+ * O `style` de um trecho de texto: fonte, tamanho e cor.
+ *
+ * ⚠️ A FONTE NAO E ENFEITE. Medido na minuta do JDG que esta no ar: 450 dos 485 trechos trazem
+ * `font-family`, sempre a mesma ("Lucida Sans Unicode"). Normalizar para a fonte do editor mudaria
+ * a cara de TODAS as linhas do contrato impresso — o juridico compara com a versao do loteador e
+ * ve um documento diferente.
+ */
+function estiloDoTexto(no: NoDeTexto): string {
+  const partes: string[] = [];
+  if (no.fontFamily) partes.push(`font-family:${no.fontFamily}`);
+  if (no.fontSize) partes.push(`font-size:${no.fontSize}`);
+  if (no.color) partes.push(`color:${no.color}`);
+  if (no.backgroundColor) partes.push(`background-color:${no.backgroundColor}`);
+  return partes.join(";");
+}
+
 function textoParaHtml(no: NoDeTexto): string {
   // Texto vazio não vira `<strong></strong>`: tag vazia só suja o documento.
   if (!no.text) return "";
@@ -69,7 +102,11 @@ function textoParaHtml(no: NoDeTexto): string {
   for (const marca of MARCAS) {
     if (no[marca.chave]) html = `<${marca.tag}>${html}</${marca.tag}>`;
   }
-  return html;
+  if (no.highlight) html = `<mark>${html}</mark>`;
+
+  // O span vem POR FORA das marcas, para a fonte valer no trecho inteiro.
+  const estilo = estiloDoTexto(no);
+  return estilo ? `<span style="${estilo}">${html}</span>` : html;
 }
 
 function filhosParaHtml(no: NoDoDocumento): string {
@@ -78,7 +115,13 @@ function filhosParaHtml(no: NoDoDocumento): string {
     .join("");
 }
 
-/** O `style` do bloco: alinhamento e recuo. Vazio quando não há nenhum. */
+/**
+ * O `style` do bloco: alinhamento, recuo, entrelinha e fundo.
+ *
+ * ⚠️ O ALINHAMENTO VEM DE DOIS CAMPOS, e os dois são reais: o Plate grava `align` ao ler HTML e
+ * `textAlign` quando o usuário clica na barra. Ler só um deles perderia o alinhamento de 75 dos 75
+ * parágrafos da minuta do JDG — que são todos justificados ou centralizados, nenhum no padrão.
+ */
 function estiloDoBloco(no: NoDoDocumento, dentroDeLista: boolean): string {
   const partes: string[] = [];
   const alinhamento = no.textAlign ?? no.align;
@@ -90,7 +133,32 @@ function estiloDoBloco(no: NoDoDocumento, dentroDeLista: boolean): string {
     partes.push(`margin-left:${no.indent * 24}px`);
   }
 
+  if (no.textIndent) partes.push(`text-indent:${no.textIndent * 24}px`);
+  if (no.lineHeight) partes.push(`line-height:${no.lineHeight}`);
+  // O fundo da célula: na minuta do JDG é o cinza do box de "CIÊNCIA PRÉVIA E ESPECÍFICA".
+  if (no.background) partes.push(`background-color:${no.background}`);
+
   return partes.length ? ` style="${partes.join(";")}"` : "";
+}
+
+// ⚠️ TABELA DE CONTRATO TEM BORDA, E ELA NÃO SOBREVIVE À IMPORTAÇÃO. Medido em 01/09/2026: ao ler o
+// HTML da minuta do JDG, o Plate devolve a célula com `type`, `children` e `background` — a borda
+// que estava no `style` do `<td>` some no caminho, e não há plugin que a traga.
+//
+// A escolha aqui é EMITIR a borda por padrão, e não guardá-la como dado. O motivo é o documento: o
+// quadro-resumo do art. 26-A da Lei 6.766/1979 é uma tabela de 17 linhas que contém o contrato
+// inteiro depois do título. Sem borda ele deixa de ser um quadro e vira texto corrido — e ninguém
+// percebe até o cartório devolver.
+//
+// Erra-se para o lado visível: uma borda a mais alguém enxerga e pede para tirar; uma borda a menos
+// descaracteriza o documento em silêncio. Quando a célula trouxer `borders` do editor, ela manda.
+const BORDA_PADRAO = "1px solid #000000";
+
+function bordaDaCelula(no: NoDoDocumento): string {
+  const borders = (no as { borders?: { bottom?: unknown; left?: unknown } }).borders;
+  // O editor guardou bordas próprias: respeita o que ele disse, inclusive "sem borda".
+  if (borders) return "";
+  return `border:${BORDA_PADRAO}`;
 }
 
 const TAG_DO_BLOCO: Record<string, string> = {
@@ -110,11 +178,24 @@ function blocoParaHtml(no: NoDoDocumento, dentroDeLista = false): string {
   if (tipo === "hr") return "<hr />";
 
   if (tipo === "table") {
-    return `<table>${filhosParaHtml(no)}</table>`;
+    // `border-collapse` para as bordas das células não saírem duplicadas na impressão.
+    return `<table style="border-collapse:collapse;${bordaDaCelula(no)}">${filhosParaHtml(no)}</table>`;
   }
   if (tipo === "tr") return `<tr>${filhosParaHtml(no)}</tr>`;
   if (tipo === "td" || tipo === "th") {
-    return `<${tipo}${estiloDoBloco(no, false)}>${filhosParaHtml(no)}</${tipo}>`;
+    const estilo = estiloDoBloco(no, false).replace(/^ style="|"$/g, "");
+    const borda = bordaDaCelula(no);
+    const juntos = [borda, estilo].filter(Boolean).join(";");
+    // ⚠️ colSpan e rowSpan viajam: célula mesclada perdida desmonta a tabela inteira, e o
+    // quadro-resumo do contrato é feito delas.
+    const span =
+      (no.colSpan && no.colSpan > 1 ? ` colspan="${no.colSpan}"` : "") +
+      (no.rowSpan && no.rowSpan > 1 ? ` rowspan="${no.rowSpan}"` : "");
+    return `<${tipo}${span}${juntos ? ` style="${juntos}"` : ""}>${filhosParaHtml(no)}</${tipo}>`;
+  }
+  if (tipo === "a") {
+    const href = no.url ? escaparHtml(no.url) : "";
+    return `<a href="${href}">${filhosParaHtml(no)}</a>`;
   }
 
   // ⚠️ TIPO DESCONHECIDO VIRA PARÁGRAFO. Ver a nota do topo: perder o estilo é aceitável; perder o

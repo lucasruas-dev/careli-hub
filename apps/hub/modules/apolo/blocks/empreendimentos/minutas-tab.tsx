@@ -385,6 +385,7 @@ export function MinutasTab({ enterpriseId, name }: Props) {
           }}
           // ⚠️ A CHAVE É O ID DA MINUTA. Sem ela, abrir outra minuta reaproveitaria o editor com o
           // documento da anterior — o Plate só lê `valorInicial` na montagem.
+          enterpriseId={enterpriseId}
           key={aberta.id}
           valorInicial={documento}
         />

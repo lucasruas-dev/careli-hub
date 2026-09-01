@@ -47,6 +47,7 @@ import {
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
+  Scale,
   Settings,
   ShieldCheck,
   ShoppingCart,
@@ -95,6 +96,8 @@ export const moduleIconMap: Record<string, ReactNode> = {
   chronos: <CalendarClock aria-hidden="true" size={18} />,
   drive: <FolderKanban aria-hidden="true" size={18} />,
   financeiro: <CircleDollarSign aria-hidden="true" size={18} />,
+  // A balanca da justica: Temis e a deusa da lei, e o modulo e o dos contratos.
+  temis: <Scale aria-hidden="true" size={18} />,
   setup: <Settings aria-hidden="true" size={18} />,
   zeus: <ZeusModuleIcon />,
 };
@@ -105,6 +108,7 @@ const minimumReleasedModuleIds = [
   "atlas",
   "iris",
   "prometeu",
+  "temis",
   "chronos",
   "hermes",
   "financeiro",

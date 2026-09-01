@@ -167,7 +167,10 @@ describe("listas — que no editor não são listas", () => {
 });
 
 describe("tabelas — o quadro-resumo do contrato", () => {
-  it("monta table > tr > td", () => {
+  it("monta table > tr > td COM borda", () => {
+    // ⚠️ A BORDA É EMITIDA, e não guardada. Medido em 01/09/2026: ao ler o HTML da minuta do JDG, o
+    // Plate devolve a célula sem a borda que estava no `style` do `<td>`. O quadro-resumo do art.
+    // 26-A é uma tabela de 17 linhas que contém o contrato inteiro; sem borda ele vira texto corrido.
     const doc: NoDoDocumento[] = [
       {
         children: [
@@ -182,16 +185,119 @@ describe("tabelas — o quadro-resumo do contrato", () => {
         type: "table",
       },
     ];
-    expect(documentoParaHtml(doc)).toBe(
-      "<table><tr><td><p>QUADRO-RESUMO</p></td><td><p>[numero_lote]</p></td></tr></table>",
-    );
+    const html = documentoParaHtml(doc);
+    expect(html).toContain('<table style="border-collapse:collapse;border:1px solid #000000">');
+    expect(html).toContain('<td style="border:1px solid #000000"><p>QUADRO-RESUMO</p></td>');
+    expect(html).toContain("[numero_lote]");
   });
 
-  it("cabeçalho vira th", () => {
+  it("cabeçalho vira th, também com borda", () => {
     const doc: NoDoDocumento[] = [
       { children: [{ children: [{ children: [p("Item")], type: "th" }], type: "tr" }], type: "table" },
     ];
-    expect(documentoParaHtml(doc)).toContain("<th><p>Item</p></th>");
+    expect(documentoParaHtml(doc)).toContain('<th style="border:1px solid #000000"><p>Item</p></th>');
+  });
+
+  it("preserva o fundo da célula — o box de CIÊNCIA PRÉVIA do contrato", () => {
+    // Uma ocorrência só na minuta inteira, e é o destaque legal do aviso sobre desfazimento.
+    const doc: NoDoDocumento[] = [
+      {
+        children: [
+          { children: [{ background: "#D9D9D9", children: [p("CIÊNCIA")], type: "td" }], type: "tr" },
+        ],
+        type: "table",
+      },
+    ];
+    expect(documentoParaHtml(doc)).toContain("background-color:#D9D9D9");
+  });
+
+  it("preserva célula mesclada — sem isso a tabela desmonta", () => {
+    const doc: NoDoDocumento[] = [
+      {
+        children: [
+          { children: [{ children: [p("x")], colSpan: 3, rowSpan: 2, type: "td" }], type: "tr" },
+        ],
+        type: "table",
+      },
+    ];
+    const html = documentoParaHtml(doc);
+    expect(html).toContain('colspan="3"');
+    expect(html).toContain('rowspan="2"');
+  });
+
+  it("colSpan de 1 não polui o HTML", () => {
+    const doc: NoDoDocumento[] = [
+      { children: [{ children: [{ children: [p("x")], colSpan: 1, type: "td" }], type: "tr" }], type: "table" },
+    ];
+    expect(documentoParaHtml(doc)).not.toContain("colspan");
+  });
+});
+
+describe("fonte e cor — 450 dos 485 trechos da minuta real têm fonte própria", () => {
+  it("preserva a família da fonte", () => {
+    // Medido na minuta do JDG: 128 spans, todos com 'Lucida Sans Unicode'. Normalizar mudaria a cara
+    // de todas as linhas do contrato impresso.
+    const doc: NoDoDocumento[] = [
+      { children: [{ fontFamily: "'Lucida Sans Unicode', sans-serif", text: "VENDEDORA" }], type: "p" },
+    ];
+    expect(documentoParaHtml(doc)).toBe(
+      `<p><span style="font-family:'Lucida Sans Unicode', sans-serif">VENDEDORA</span></p>`,
+    );
+  });
+
+  it("o span vem POR FORA das marcas, para a fonte valer no trecho inteiro", () => {
+    const doc: NoDoDocumento[] = [
+      { children: [{ bold: true, fontFamily: "Georgia", text: "x" }], type: "p" },
+    ];
+    expect(documentoParaHtml(doc)).toBe('<p><span style="font-family:Georgia"><strong>x</strong></span></p>');
+  });
+
+  it("junta fonte, tamanho e cor num style só", () => {
+    const doc: NoDoDocumento[] = [
+      { children: [{ color: "#000000", fontFamily: "Georgia", fontSize: "12pt", text: "x" }], type: "p" },
+    ];
+    expect(documentoParaHtml(doc)).toContain(
+      'style="font-family:Georgia;font-size:12pt;color:#000000"',
+    );
+  });
+
+  it("texto sem estilo NÃO ganha span", () => {
+    // Envolver tudo em span incharia o contrato sem motivo.
+    expect(documentoParaHtml([p("simples")])).toBe("<p>simples</p>");
+  });
+
+  it("uma variável dentro de um span estilizado continua sendo achada", () => {
+    const doc: NoDoDocumento[] = [
+      { children: [{ bold: true, fontFamily: "Georgia", text: "[numero_quadra]" }], type: "p" },
+    ];
+    const html = documentoParaHtml(doc);
+    expect(classificarVariaveis(html).conhecidas.map((c) => c.nome)).toEqual(["numero_quadra"]);
+  });
+});
+
+describe("entrelinha, recuo de primeira linha e link", () => {
+  it("entrelinha vai para o style", () => {
+    expect(documentoParaHtml([p("x", { lineHeight: 1.5 })])).toBe(
+      '<p style="line-height:1.5">x</p>',
+    );
+  });
+
+  it("recuo de primeira linha", () => {
+    expect(documentoParaHtml([p("x", { textIndent: 1 })])).toBe(
+      '<p style="text-indent:24px">x</p>',
+    );
+  });
+
+  it("link vira <a href>, com o endereço escapado", () => {
+    const doc: NoDoDocumento[] = [
+      {
+        children: [{ children: [{ text: "cartório" }], type: "a", url: "https://exemplo.com?a=1&b=2" }],
+        type: "p",
+      },
+    ];
+    expect(documentoParaHtml(doc)).toBe(
+      '<p><a href="https://exemplo.com?a=1&amp;b=2">cartório</a></p>',
+    );
   });
 });
 

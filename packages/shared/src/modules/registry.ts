@@ -90,6 +90,37 @@ export const hubModules = [
     ],
   },
   {
+    id: "temis",
+    name: "Temis",
+    description:
+      "Minutas e contratos: o texto que o comprador assina, as variaveis do sistema e os planos que decidem qual minuta usar.",
+    category: "commercial",
+    status: "active",
+    basePath: "/temis",
+    iconKey: "temis",
+    realtimeEnabled: false,
+    order: 18,
+    requiredPermissions: [],
+    routes: [
+      {
+        id: "temis-overview",
+        label: "Modulo",
+        path: "/temis",
+        description: "Board das minutas, editor, planos comerciais e configuracao.",
+      },
+    ],
+    navigationItems: [
+      {
+        badge: "beta",
+        id: "temis-overview",
+        label: "Temis",
+        path: "/temis",
+        iconKey: "temis",
+        order: 10,
+      },
+    ],
+  },
+  {
     id: "prometeu",
     name: "Prometeu",
     description:

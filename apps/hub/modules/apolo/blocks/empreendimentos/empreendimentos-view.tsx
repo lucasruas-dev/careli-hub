@@ -494,7 +494,10 @@ function EnterpriseDetail({
           <section> rolasse, o thead ficaria preso a um container que nunca rola. */}
       <section
         className={
-          tab === "unidades"
+          // ⚠️ Unidades e Minutas NÃO rolam por fora: quem rola é o conteúdo. Em Unidades é para o
+          // cabeçalho da tabela grudar; em Minutas é para o editor ocupar a altura da tela — dentro
+          // de um container que rola, ele encolhe para a altura mínima e a folha fica um talho.
+          tab === "unidades" || tab === "minutas"
             ? "flex min-h-0 flex-1 flex-col overflow-hidden"
             : "min-h-0 flex-1 overflow-auto"
         }
