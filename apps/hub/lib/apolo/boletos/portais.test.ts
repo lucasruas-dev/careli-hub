@@ -1,0 +1,81 @@
+import { describe, expect, it } from "vitest";
+
+import { carteirasDoPortal, portalEmiteBoletos, portalPodeEmitir } from "./portais";
+
+// ⚠️ ESTE ARQUIVO GUARDA A PORTA. A rota de boletos do portal CRIA COBRANÇA em nome de outra
+// empresa, num CNPJ que não é o nosso, e o Asaas não desfaz em lote. Se qualquer caso aqui virar
+// verde por engano, alguém emite dívida na carteira do vizinho.
+
+describe("quem enxerga carteira de boleto", () => {
+  it("os dois portais do Cecílio veem os quatro edifícios da CER", () => {
+    for (const slug of ["cer", "cecilio-rocha"]) {
+      expect(carteirasDoPortal(slug).sort(), slug).toEqual([
+        "ed-cristal",
+        "ed-esmeralda",
+        "ed-jade",
+        "ed-rubi",
+      ]);
+    }
+  });
+
+  it("nenhum outro portal vê carteira nenhuma", () => {
+    for (const slug of ["vistaalegre", "lagoabonita", "mmendes", "gurgel", ""]) {
+      expect(carteirasDoPortal(slug), slug).toEqual([]);
+      expect(portalEmiteBoletos(slug), slug).toBe(false);
+    }
+  });
+
+  it("slug ausente ou nulo não vira portal com acesso", () => {
+    expect(portalEmiteBoletos(null)).toBe(false);
+    expect(portalEmiteBoletos(undefined)).toBe(false);
+    expect(carteirasDoPortal(null)).toEqual([]);
+  });
+
+  it("maiúscula e espaço não fazem o portal certo perder a aba", () => {
+    // ⚠️ A URL chega com a caixa que o usuário digitou: `/incorporador/CER` é o mesmo portal que
+    // `/incorporador/cer`. Já houve este erro na rota da logo — ver o comentário em
+    // `app/api/incorporador/[slug]/logo/route.ts`. Aqui perder a caixa não abriria acesso a
+    // ninguém: apagaria a aba de quem tem direito a ela.
+    expect(portalEmiteBoletos(" CER ")).toBe(true);
+    expect(portalEmiteBoletos("Cecilio-Rocha")).toBe(true);
+    expect(portalEmiteBoletos("CECILIO-ROCHA")).toBe(true);
+  });
+
+  it("nome parecido com o de um portal permitido NÃO entra", () => {
+    // O que a normalização não pode fazer é o contrário: aproximar slugs diferentes.
+    for (const slug of ["cer2", "cer-teste", "cecilio", "cecilio-rocha-2", "acer"]) {
+      expect(portalEmiteBoletos(slug), slug).toBe(false);
+    }
+  });
+});
+
+describe("a trava de emitir num empreendimento", () => {
+  it("o CER emite nos quatro edifícios dele", () => {
+    for (const e of ["ed-jade", "ed-rubi", "ed-cristal", "ed-esmeralda"]) {
+      expect(portalPodeEmitir("cer", e), e).toBe(true);
+    }
+  });
+
+  it("o CER NÃO emite nas carteiras que não são dele", () => {
+    // ⚠️ Este é o caso que a trava existe para pegar: a sessão é legítima, a aba está na tela, e o
+    // slug vem no corpo do POST — que é a parte que qualquer um edita.
+    for (const e of ["garden", "vale-do-sol", "on-sky", "guaimbe", "giant-towers"]) {
+      expect(portalPodeEmitir("cer", e), e).toBe(false);
+    }
+  });
+
+  it("portal sem aba não emite em lugar nenhum", () => {
+    for (const e of ["ed-jade", "garden", "on-sky"]) {
+      expect(portalPodeEmitir("vistaalegre", e), e).toBe(false);
+      expect(portalPodeEmitir("mmendes", e), e).toBe(false);
+    }
+  });
+
+  it("empreendimento vazio ou desconhecido não passa", () => {
+    expect(portalPodeEmitir("cer", "")).toBe(false);
+    expect(portalPodeEmitir("cer", "ed-safira")).toBe(false);
+    // Prefixo do nome de um permitido não vale: a comparação é do slug inteiro.
+    expect(portalPodeEmitir("cer", "ed-")).toBe(false);
+    expect(portalPodeEmitir("cer", "ed-jade-2")).toBe(false);
+  });
+});

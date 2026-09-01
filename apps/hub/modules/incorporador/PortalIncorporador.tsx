@@ -18,6 +18,8 @@ import { TelaProdutos } from "./TelaProdutos";
 import { CarteiraLsoft } from "@/modules/lsoft/CarteiraLsoft";
 import { apiDoPortal } from "@/modules/lsoft/api";
 import { portalVeBaseLsoft } from "@/lib/lsoft/portais";
+import { portalEmiteBoletos } from "@/lib/apolo/boletos/portais";
+import { TelaBoletos } from "./TelaBoletos";
 import { TelaVendas } from "./TelaVendas";
 
 // PORTAL DO INCORPORADOR — a porta e as telas de dentro.
@@ -39,7 +41,7 @@ type Sessao = {
 
 // "produtos" existe SÓ no portal personalizado (ver `abasDoPortal`). No padrão, o mapa vive
 // dentro de Vendas.
-type Aba = "carteira" | "crm" | "lsoft" | "produtos" | "vendas";
+type Aba = "boletos" | "carteira" | "crm" | "lsoft" | "produtos" | "vendas";
 
 type DadosDoPortal = {
   logoEscuraUrl: string | null;
@@ -407,6 +409,13 @@ const ABAS_PERSONALIZADO: { chave: Aba; rotulo: string }[] = [
 // com a carteira do Garden. Por isso a lista própria em lib/lsoft/portais.
 const ABA_LSOFT: { chave: Aba; rotulo: string } = { chave: "lsoft", rotulo: "LSoft Integração" };
 
+// ⚠️ A ABA DE BOLETOS TEM LISTA PRÓPRIA, pelo mesmo motivo da do LSoft — e um a mais: ela EMITE
+// cobrança, não só lê. Quem enxerga cada carteira está em `lib/apolo/boletos/portais.ts`, e o
+// vínculo de `apolo_incorporador_empreendimentos` não serve aqui porque nenhum destes prédios
+// existe no Panteon (Lucas, 01/09/2026: *"não tem empreendimento para essas empresas ainda dentro
+// o panteon"*). Sumir a aba não é a trava: a rota confere a mesma lista a cada chamada.
+const ABA_BOLETOS: { chave: Aba; rotulo: string } = { chave: "boletos", rotulo: "Boletos" };
+
 // ⚠️ SÓ PRODUTOS É EXCLUSIVO: entra ANTES de tudo e sai com uma aba só. O sócio que recebe este
 // perfil (MMendes, no Garden) não vê CRM, Vendas, Carteira nem LSoft — inclusive porque a base do
 // LSoft é da carteira do Cecílio, não dele. Ver [[perfis-de-portal]].
@@ -417,8 +426,10 @@ const ABAS_SO_PRODUTOS: { chave: Aba; rotulo: string }[] = [
 export function abasDoPortal(slug: string): { chave: Aba; rotulo: string }[] {
   if (ehPortalSoProdutos(slug)) return ABAS_SO_PRODUTOS;
 
-  const base = ehPortalPersonalizado(slug) ? ABAS_PERSONALIZADO : ABAS;
-  return portalVeBaseLsoft(slug) ? [...base, ABA_LSOFT] : base;
+  let abas = ehPortalPersonalizado(slug) ? ABAS_PERSONALIZADO : ABAS;
+  if (portalVeBaseLsoft(slug)) abas = [...abas, ABA_LSOFT];
+  if (portalEmiteBoletos(slug)) abas = [...abas, ABA_BOLETOS];
+  return abas;
 }
 
 // A logo do incorporador NÃO entra aqui de propósito: ela recebe na porta (o login) e o portal
@@ -562,6 +573,7 @@ function Portal({
             {/* A MESMA tela do time interno, falando com a API do portal (cookie de sessão, sem
                 token, e sem o botão da MOST: quem paga o enriquecimento é a Careli). */}
             {aba === "lsoft" ? <CarteiraLsoft api={apiDoPortal} /> : null}
+            {aba === "boletos" ? <TelaBoletos /> : null}
           </main>
 
           <footer

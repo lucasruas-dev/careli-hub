@@ -152,6 +152,16 @@ export const TEMA_CSS = `
     .inc-nav { flex-direction: row; overflow-x: auto; }
     .inc-nav > button { flex: 0 0 auto; }
   }
+
+  /* O ícone que gira enquanto algo carrega. Nasceu na TelaBoletos, onde a emissão leva alguns
+     segundos por prédio e um ícone parado passa por travamento.
+     ⚠️ RESPEITA prefers-reduced-motion: para quem pediu menos movimento, o ícone fica quieto —
+     o rótulo do botão ("Emitindo…", "Lendo o Asaas…") já diz que há trabalho em curso. */
+  @keyframes inc-girar { to { transform: rotate(360deg); } }
+  .inc-girando { animation: inc-girar 1s linear infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .inc-girando { animation: none; }
+  }
 `;
 
 export const T = {

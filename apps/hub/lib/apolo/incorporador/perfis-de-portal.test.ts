@@ -25,15 +25,21 @@ describe("portal padrão", () => {
 });
 
 describe("portal personalizado (Cecílio) — congelado", () => {
-  it("mantém Produtos além das três do padrão, e a aba do LSoft", () => {
-    // A do LSoft vem de `lib/lsoft/portais` (lista própria: cecilio-rocha e cer), por isso
-    // são CINCO abas — é o que o portal dele mostra hoje em produção.
+  it("mantém Produtos além das três do padrão, mais LSoft e Boletos", () => {
+    // As duas últimas vêm de listas próprias, cada uma por pedido DIRETO do Lucas nomeando os dois
+    // portais do Cecílio — não por herança do padrão:
+    //   • LSoft   (19/08/2026) — `lib/lsoft/portais`;
+    //   • Boletos (01/09/2026) — `lib/apolo/boletos/portais`, *"essa tela vai somente no perfil da
+    //     CER e Cecilio"*.
+    // ⚠️ O CONGELAMENTO NÃO É "NUNCA MUDA": é "o padrão não passa por cima". Pedido explícito do
+    // Lucas para este portal entra — é ele quem decide o que o cliente dele vê.
     expect(rotulos("cecilio-rocha")).toEqual([
       "CRM",
       "Vendas",
       "Carteira",
       "Produtos",
       "LSoft Integração",
+      "Boletos",
     ]);
   });
 
@@ -108,5 +114,28 @@ describe("de quem é a marca na porta do portal", () => {
   it("aceita espaço e caixa, como as outras regras", () => {
     expect(portalAssinaPanteon("  MMendes ")).toBe(false);
     expect(portalAssinaPanteon("")).toBe(true);
+  });
+});
+
+describe("a aba de boletos", () => {
+  it("aparece nos dois portais do Cecílio, e só neles", () => {
+    // Pedido do Lucas (01/09/2026): *"essa tela vai somente no perfil da CER e Cecilio"*, com o
+    // print dos dois portais.
+    expect(abasDoPortal("cer").map((a) => a.chave)).toContain("boletos");
+    expect(abasDoPortal("cecilio-rocha").map((a) => a.chave)).toContain("boletos");
+  });
+
+  it("NÃO aparece no portal padrão nem no do sócio", () => {
+    // ⚠️ Vista Alegre e Lagoa Bonita não têm nada com estas carteiras, e a MMendes é sócia só do
+    // Garden. Um botão de emitir cobrança num portal errado cria dívida em nome de outra empresa.
+    for (const slug of ["vistaalegre", "lagoabonita", "mmendes"]) {
+      expect(abasDoPortal(slug).map((a) => a.chave), slug).not.toContain("boletos");
+    }
+  });
+
+  it("entra DEPOIS do LSoft, no fim da lista", () => {
+    // A ordem é a do menu lateral: as três de negócio primeiro, as ferramentas no fim.
+    const abas = abasDoPortal("cer").map((a) => a.chave);
+    expect(abas[abas.length - 1]).toBe("boletos");
   });
 });
