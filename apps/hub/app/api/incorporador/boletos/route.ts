@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { type ContaAsaas, chaveDaConta, rotuloDaConta } from "@/lib/apolo/asaas-contas";
-import { documentoMascarado, documentosDeVarios } from "@/lib/apolo/boletos/documentos";
+import {
+  documentoMascarado,
+  documentosDeVarios,
+  documentosDoEmpreendimento,
+} from "@/lib/apolo/boletos/documentos";
 import {
   acharOuCriarCliente,
   apenasDaCompetencia,
@@ -12,6 +16,12 @@ import {
   listarCobrancas,
   situacaoCadastral,
 } from "@/lib/apolo/boletos/emissao";
+import {
+  type CanalDoDisparo,
+  dispararBoleto,
+  previaDoBoleto,
+  registrarDisparo,
+} from "@/lib/apolo/boletos/disparo";
 import { empreendimentoPorSlug } from "@/lib/apolo/boletos/empreendimentos";
 import {
   divergenciasDeNome,
@@ -208,10 +218,21 @@ export async function GET(request: Request) {
 // ── ESCRITA: emitir o lote ──────────────────────────────────────────────────
 
 type Corpo = {
+  /** "emitir" (padrão) cria a cobrança no Asaas; "enviar" manda o link ao cliente. */
+  acao?: unknown;
+  /**
+   * Por onde a mensagem sai. Padrão "template" (4143, com template aprovado).
+   *
+   * ⚠️ "relacionamento" é o 6065, via Evolution, que fala sem template porque não passa pela Meta.
+   * Pedido do Lucas (01/09/2026) para testar antes de a Meta aprovar: *"vamos disparar pelo 6065 que
+   * não precisa de template, só para ver se meu boleto vai ser gerado"* e *"só para o teste usar o
+   * do relacionamento"*. A regra da casa é que CLIENTE recebe pelo Atendimento.
+   */
+  canal?: unknown;
   competencia?: unknown;
   confirmar?: unknown;
   empreendimento?: unknown;
-  /** As unidades a emitir. Ausente = todas as que a carteira do mês manda emitir. */
+  /** As unidades a emitir ou enviar. Ausente = todas as da carteira do mês. */
   unidades?: unknown;
 };
 
@@ -246,6 +267,151 @@ export async function POST(request: Request) {
   }
 
   const conta = empreendimento.conta;
+
+  // ── ENVIAR O LINK AO CLIENTE ──────────────────────────────────────────────
+  //
+  // ⚠️ SÓ MANDA O QUE JÁ FOI EMITIDO. O link vem do Asaas, e boleto que não existe não tem link:
+  // sem esta leitura, o envio iria com o campo vazio e a Meta recusaria a mensagem inteira, ou pior,
+  // o Evolution mandaria o texto com um buraco no meio da frase.
+  if (String(corpo.acao ?? "") === "enviar") {
+    const canal: CanalDoDisparo =
+      String(corpo.canal ?? "") === "relacionamento" ? "relacionamento" : "template";
+
+    const pedidas = Array.isArray(corpo.unidades)
+      ? new Set((corpo.unidades as unknown[]).map((u) => String(u).trim()).filter(Boolean))
+      : null;
+
+    const [parcelas, documentos, cobrancas] = await Promise.all([
+      parcelasDaCompetencia({ competencia, empreendimentos: [slug] }),
+      documentosDoEmpreendimento(slug),
+      listarCobrancas(conta, intervaloDaCompetencia(competencia)),
+    ]);
+
+    if (!cobrancas.ok) {
+      return NextResponse.json(
+        { error: `não consegui ler as cobranças no Asaas: ${cobrancas.erro}` },
+        { status: 502 },
+      );
+    }
+
+    // unidade -> a cobrança daquela unidade nesta competência.
+    const porUnidade = new Map<string, (typeof cobrancas.data)[number]>();
+    for (const c of apenasDaCompetencia(cobrancas.data, competencia)) {
+      const ref = lerReferencia(c.externalReference);
+      if (ref?.empreendimento === slug) porUnidade.set(ref.unidade, c);
+    }
+
+    const alvos = parcelas.filter(
+      (p) => !p.bloqueio && (!pedidas || pedidas.has(p.unidade)),
+    );
+
+    // ⚠️ ENSAIO POR PADRÃO, COMO NA EMISSÃO. Sem `confirmar: true` devolve a PRÉVIA do texto que
+    // cada cliente receberia. Mensagem enviada não volta, e o operador precisa ler o que vai sair.
+    const previas = alvos.map((p) => {
+      const cobranca = porUnidade.get(p.unidade);
+      const cadastro = documentos.get(p.unidade);
+      const link = cobranca?.bankSlipUrl ?? cobranca?.invoiceUrl ?? "";
+
+      const texto = previaDoBoleto({
+        competencia,
+        empreendimento: empreendimento.nome,
+        link,
+        nome: cadastro?.nome ?? p.nome,
+        parcelaAtual: p.parcelaAtual,
+        totalParcelas: p.totalParcelas,
+        unidade: p.unidade,
+        valor: p.valor ?? 0,
+        vencimento: cobranca?.dueDate ?? "",
+      });
+
+      return {
+        contato: cadastro?.contato ?? null,
+        impedimento: !cobranca
+          ? "o boleto ainda não foi emitido"
+          : !cadastro
+            ? "sem cadastro para esta unidade"
+            : !texto
+              ? "faltou dado para montar a mensagem"
+              : null,
+        nome: cadastro?.nome ?? p.nome,
+        texto,
+        unidade: p.unidade,
+      };
+    });
+
+    if (corpo.confirmar !== true) {
+      return NextResponse.json(
+        { data: { canal, competencia, empreendimento: empreendimento.nome, ensaio: true, previas } },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const envios = [];
+    // Em série: o gateway do Relacionamento é uma sessão só, e rajada paralela derruba a conexão.
+    for (const previa of previas) {
+      if (previa.impedimento) {
+        envios.push({
+          canal,
+          erro: previa.impedimento,
+          nome: previa.nome,
+          ok: false,
+          unidade: previa.unidade,
+        });
+        continue;
+      }
+
+      const cobranca = porUnidade.get(previa.unidade)!;
+      const parcela = parcelas.find((x) => x.unidade === previa.unidade)!;
+      const cadastro = documentos.get(previa.unidade)!;
+
+      const r = await dispararBoleto({
+        canal,
+        competencia,
+        contato: cadastro.contato,
+        empreendimento: empreendimento.nome,
+        link: cobranca.bankSlipUrl ?? cobranca.invoiceUrl ?? "",
+        nome: cadastro.nome,
+        parcelaAtual: parcela.parcelaAtual,
+        totalParcelas: parcela.totalParcelas,
+        unidade: previa.unidade,
+        valor: parcela.valor ?? 0,
+        vencimento: cobranca.dueDate,
+      });
+
+      await registrarDisparo({
+        competencia,
+        empreendimento: slug,
+        erro: r.erro,
+        unidade: previa.unidade,
+      });
+
+      envios.push({
+        canal: r.canal,
+        erro: r.erro,
+        nome: cadastro.nome,
+        ok: r.ok,
+        telefone: r.telefone,
+        unidade: previa.unidade,
+      });
+    }
+
+    return NextResponse.json(
+      {
+        data: {
+          canal,
+          competencia,
+          empreendimento: empreendimento.nome,
+          enviados: envios.filter((e) => e.ok).length,
+          ensaio: false,
+          envios,
+          falhas: envios.filter((e) => !e.ok).length,
+        },
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  // ── EMITIR ────────────────────────────────────────────────────────────────
   const lote = await loteDaCompetencia({ competencia, empreendimento: slug });
 
   // Recorte por unidade, para o operador emitir um boleto só sem mandar o lote inteiro.

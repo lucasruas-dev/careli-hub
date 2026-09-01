@@ -112,6 +112,11 @@ for (const ws of abas) {
         empreendimento: emp.slug,
         nome: c.nome,
         origem: path.basename(arquivo),
+        // ⚠️ "Parc. Atual" e "N Parc." vao para a mensagem do cliente ("parcela 9 de 120"). Sao as
+        // colunas da planilha, e NAO uma contagem nossa: o cliente entrou no meio do contrato e a
+        // contagem dele nao comeca no primeiro mes do arquivo.
+        parcela_atual: c.parcelaAtual ?? null,
+        total_parcelas: c.totalParcelas ?? null,
         unidade,
         valor: v.emite ? v.valor : (c.valor ?? null),
         vencimento_dia: c.vencimento ?? null,

@@ -18,6 +18,10 @@ export type ParcelaDoMes = {
   competencia: string;
   empreendimento: string;
   nome: string;
+  /** O 9 de "parcela 9 de 36". Vem da coluna "Parc. Atual" da planilha. */
+  parcelaAtual: null | number;
+  /** O 36 de "parcela 9 de 36". Vem da coluna "Nº Parc.". */
+  totalParcelas: null | number;
   unidade: string;
   valor: null | number;
   vencimentoDia: null | number;
@@ -28,6 +32,8 @@ type LinhaCrua = {
   competencia: string;
   empreendimento: string;
   nome: string;
+  parcela_atual: null | number;
+  total_parcelas: null | number;
   unidade: string;
   valor: null | number | string;
   vencimento_dia: null | number;
@@ -51,7 +57,9 @@ export async function parcelasDaCompetencia(input: {
 
   const { data, error } = await supabase
     .from("boletos_parcelas")
-    .select("bloqueio, competencia, empreendimento, nome, unidade, valor, vencimento_dia")
+    .select(
+      "bloqueio, competencia, empreendimento, nome, parcela_atual, total_parcelas, unidade, valor, vencimento_dia",
+    )
     .eq("workspace_id", "careli")
     .eq("competencia", input.competencia)
     .in("empreendimento", input.empreendimentos);
@@ -63,6 +71,8 @@ export async function parcelasDaCompetencia(input: {
     competencia: l.competencia,
     empreendimento: l.empreendimento,
     nome: l.nome,
+    parcelaAtual: l.parcela_atual,
+    totalParcelas: l.total_parcelas,
     unidade: String(l.unidade).trim(),
     valor: l.valor === null ? null : Number(l.valor),
     vencimentoDia: l.vencimento_dia,

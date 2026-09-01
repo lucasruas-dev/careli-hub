@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, ExternalLink, Loader2, RefreshCw, Zap } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ExternalLink,
+  Loader2,
+  MessageCircle,
+  RefreshCw,
+  Zap,
+} from "lucide-react";
 
 import { T } from "./tema";
 
@@ -53,6 +61,22 @@ type BoletoEmitido = {
   valor: number;
   vencido: boolean;
   vencimento: string;
+};
+
+type Previa = {
+  contato: null | string;
+  impedimento: null | string;
+  nome: string;
+  texto: null | string;
+  unidade: string;
+};
+
+type Envio = {
+  canal: string;
+  empreendimento: string;
+  enviados: number;
+  envios: { erro: null | string; nome: string; ok: boolean; telefone?: null | string; unidade: string }[];
+  falhas: number;
 };
 
 type Emissao = {
@@ -125,6 +149,11 @@ export function TelaBoletos() {
 
   const [emitindo, setEmitindo] = useState<null | string>(null);
   const [emissao, setEmissao] = useState<null | Emissao>(null);
+
+  // O envio do link por WhatsApp: prévia primeiro, disparo depois.
+  const [previas, setPrevias] = useState<null | { itens: Previa[]; slug: string }>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [envio, setEnvio] = useState<null | Envio>(null);
   // A unidade que o operador escolheu emitir sozinha. Vazio = o lote inteiro daquela carteira.
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
 
@@ -161,6 +190,8 @@ export function TelaBoletos() {
 
   useEffect(() => {
     setEmissao(null);
+    setPrevias(null);
+    setEnvio(null);
     setSelecionadas(new Set());
   }, [competencia]);
 
@@ -189,6 +220,71 @@ export function TelaBoletos() {
         setErro(e instanceof Error ? e.message : "Não consegui falar com o servidor.");
       } finally {
         setEmitindo(null);
+      }
+    },
+    [carregar, competencia],
+  );
+
+  /**
+   * Pede a PRÉVIA do que seria enviado, sem mandar nada.
+   *
+   * ⚠️ MENSAGEM ENVIADA NÃO VOLTA. Ler o texto exato que cada cliente receberia é a única chance de
+   * pegar um nome trocado ou um valor fora de lugar enquanto isso ainda custa zero.
+   */
+  const conferirEnvio = useCallback(
+    async (slug: string, unidades: string[]) => {
+      setEnviando(true);
+      setErro(null);
+      setEnvio(null);
+      try {
+        const r = await fetch("/api/incorporador/boletos", {
+          body: JSON.stringify({
+            acao: "enviar",
+            competencia,
+            empreendimento: slug,
+            ...(unidades.length > 0 ? { unidades } : {}),
+          }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const j = (await r.json()) as { data?: { previas: Previa[] }; error?: string };
+        if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
+        setPrevias({ itens: j.data?.previas ?? [], slug });
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : "Não consegui montar a prévia.");
+      } finally {
+        setEnviando(false);
+      }
+    },
+    [competencia],
+  );
+
+  const enviar = useCallback(
+    async (slug: string, unidades: string[], canal: "relacionamento" | "template") => {
+      setEnviando(true);
+      setErro(null);
+      try {
+        const r = await fetch("/api/incorporador/boletos", {
+          body: JSON.stringify({
+            acao: "enviar",
+            canal,
+            competencia,
+            confirmar: true,
+            empreendimento: slug,
+            ...(unidades.length > 0 ? { unidades } : {}),
+          }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const j = (await r.json()) as { data?: Envio; error?: string };
+        if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
+        setEnvio(j.data ?? null);
+        setPrevias(null);
+        await carregar();
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : "Não consegui enviar.");
+      } finally {
+        setEnviando(false);
       }
     },
     [carregar, competencia],
@@ -262,6 +358,17 @@ export function TelaBoletos() {
       ))}
       {erro ? <Aviso tom="erro">{erro}</Aviso> : null}
       {emissao ? <ResultadoDaEmissao emissao={emissao} /> : null}
+      {envio ? <ResultadoDoEnvio envio={envio} /> : null}
+      {previas ? (
+        <PainelDeEnvio
+          aoCancelar={() => setPrevias(null)}
+          aoEnviar={(canal) =>
+            void enviar(previas.slug, [...selecionadas], canal)
+          }
+          enviando={enviando}
+          previas={previas.itens}
+        />
+      ) : null}
 
       <Abas
         aba={aba}
@@ -315,7 +422,16 @@ export function TelaBoletos() {
             />
           ) : null}
 
-          <Emitidos boletos={visiveisEmitidos} mostrarPredio={aba === "consolidado"} />
+          <Emitidos
+            aoConferirEnvio={
+              aba !== "consolidado" && visiveisEmitidos.length > 0
+                ? () => void conferirEnvio(aba, [...selecionadas])
+                : null
+            }
+            boletos={visiveisEmitidos}
+            enviando={enviando}
+            mostrarPredio={aba === "consolidado"}
+          />
 
           {visiveisFora.length > 0 ? <ForaDaEmissao parcelas={visiveisFora} /> : null}
         </>
@@ -534,10 +650,15 @@ function AEmitir({
 // ── EMITIDOS ────────────────────────────────────────────────────────────────
 
 function Emitidos({
+  aoConferirEnvio,
   boletos,
+  enviando,
   mostrarPredio,
 }: {
+  /** `null` no consolidado: enviar é por carteira, para o operador ver de qual conta saiu. */
+  aoConferirEnvio: (() => void) | null;
   boletos: BoletoEmitido[];
+  enviando: boolean;
   mostrarPredio: boolean;
 }) {
   if (boletos.length === 0) {
@@ -559,9 +680,44 @@ function Emitidos({
   }
 
   return (
-    // ⚠️ A ROLAGEM É DA TABELA, e não da página: com dez colunas no celular, deixar o corpo rolar de
-    // lado empurra o menu do portal para fora da tela.
-    <div style={{ overflowX: "auto" }}>
+    <div style={{ display: "grid", gap: 10 }}>
+      {aoConferirEnvio ? (
+        <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <strong style={{ color: T.text, fontSize: 14 }}>
+            {boletos.length} boleto(s) emitido(s)
+          </strong>
+          <button
+            disabled={enviando}
+            onClick={aoConferirEnvio}
+            style={{
+              alignItems: "center",
+              background: "transparent",
+              border: `1px solid ${T.gold}`,
+              borderRadius: 8,
+              color: T.text,
+              cursor: enviando ? "default" : "pointer",
+              display: "inline-flex",
+              fontSize: 13.5,
+              fontWeight: 600,
+              gap: 6,
+              marginLeft: "auto",
+              padding: "7px 14px",
+            }}
+            type="button"
+          >
+            {enviando ? (
+              <Loader2 className="inc-girando" size={14} />
+            ) : (
+              <MessageCircle size={14} />
+            )}
+            Enviar link por WhatsApp
+          </button>
+        </div>
+      ) : null}
+
+      {/* ⚠️ A ROLAGEM É DA TABELA, e não da página: com dez colunas no celular, deixar o corpo
+          rolar de lado empurra o menu do portal para fora da tela. */}
+      <div style={{ overflowX: "auto" }}>
       <table style={{ borderCollapse: "collapse", fontSize: 13.5, minWidth: 900, width: "100%" }}>
         <thead>
           <tr style={{ color: T.sub, textAlign: "left" }}>
@@ -619,8 +775,193 @@ function Emitidos({
               </td>
             </tr>
           ))}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── O ENVIO DO LINK POR WHATSAPP ────────────────────────────────────────────
+
+/**
+ * A prévia do que cada cliente receberia, e os dois botões que mandam.
+ *
+ * ⚠️ O TEXTO INTEIRO FICA À VISTA. Mensagem enviada não volta, e o cliente lê o que chegou: ver o
+ * corpo montado com os dados reais é a única chance de pegar um nome trocado ou um valor fora de
+ * lugar enquanto isso ainda custa zero.
+ */
+function PainelDeEnvio({
+  aoCancelar,
+  aoEnviar,
+  enviando,
+  previas,
+}: {
+  aoCancelar: () => void;
+  aoEnviar: (canal: "relacionamento" | "template") => void;
+  enviando: boolean;
+  previas: Previa[];
+}) {
+  const prontos = previas.filter((p) => !p.impedimento);
+  const travados = previas.filter((p) => p.impedimento);
+  const exemplo = prontos[0]?.texto ?? null;
+
+  return (
+    <section
+      style={{
+        background: T.card,
+        border: `1px solid ${T.gold}`,
+        borderRadius: 12,
+        display: "grid",
+        gap: 12,
+        padding: 16,
+      }}
+    >
+      <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 10 }}>
+        <MessageCircle size={18} style={{ color: T.gold }} />
+        <strong style={{ color: T.text, fontSize: 15 }}>
+          {prontos.length} cliente(s) vão receber o link
+        </strong>
+        <button
+          onClick={aoCancelar}
+          style={{
+            background: "transparent",
+            border: `1px solid ${T.border}`,
+            borderRadius: 8,
+            color: T.sub,
+            cursor: "pointer",
+            fontSize: 13,
+            marginLeft: "auto",
+            padding: "6px 12px",
+          }}
+          type="button"
+        >
+          Cancelar
+        </button>
+      </div>
+
+      {exemplo ? (
+        <div>
+          <div
+            style={{
+              color: T.sub,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              marginBottom: 5,
+              textTransform: "uppercase",
+            }}
+          >
+            A mensagem que vai sair
+          </div>
+          <pre
+            style={{
+              background: T.soft,
+              border: `1px solid ${T.border}`,
+              borderRadius: 10,
+              color: T.text,
+              fontFamily: "inherit",
+              fontSize: 13.5,
+              lineHeight: 1.55,
+              margin: 0,
+              overflowX: "auto",
+              padding: "12px 14px",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {exemplo}
+          </pre>
+        </div>
+      ) : null}
+
+      {prontos.length > 1 ? (
+        <p style={{ color: T.sub, fontSize: 13, margin: 0 }}>
+          Os outros {prontos.length - 1} recebem a mesma mensagem, com os dados de cada um:{" "}
+          {prontos.slice(1, 6).map((p) => `${p.nome} (${p.unidade})`).join(", ")}
+          {prontos.length > 6 ? ` e mais ${prontos.length - 6}` : ""}.
+        </p>
+      ) : null}
+
+      {travados.length > 0 ? (
+        <Aviso tom="alerta">
+          {travados.length} não recebem:{" "}
+          {travados.map((p) => `${p.nome} (${p.unidade}) — ${p.impedimento}`).join("; ")}
+        </Aviso>
+      ) : null}
+
+      {prontos.length > 0 ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {/* ⚠️ DOIS CANAIS, E O PADRÃO É O ATENDIMENTO. O Relacionamento fala sem template porque
+              não passa pela Meta, e é por isso que serve para testar antes de a aprovação sair. A
+              regra da casa é que cliente recebe pelo Atendimento. */}
+          <button
+            disabled={enviando}
+            onClick={() => aoEnviar("template")}
+            style={{
+              alignItems: "center",
+              background: T.btnBg,
+              border: "none",
+              borderRadius: 8,
+              color: T.btnFg,
+              cursor: enviando ? "default" : "pointer",
+              display: "inline-flex",
+              fontSize: 14,
+              fontWeight: 600,
+              gap: 6,
+              padding: "9px 16px",
+            }}
+            type="button"
+          >
+            {enviando ? <Loader2 className="inc-girando" size={15} /> : <MessageCircle size={15} />}
+            Enviar pelo Atendimento
+          </button>
+
+          <button
+            disabled={enviando}
+            onClick={() => aoEnviar("relacionamento")}
+            style={{
+              alignItems: "center",
+              background: "transparent",
+              border: `1px solid ${T.border}`,
+              borderRadius: 8,
+              color: T.text,
+              cursor: enviando ? "default" : "pointer",
+              display: "inline-flex",
+              fontSize: 14,
+              gap: 6,
+              padding: "9px 16px",
+            }}
+            type="button"
+          >
+            Enviar pelo Relacionamento
+          </button>
+
+          <span style={{ alignSelf: "center", color: T.sub, fontSize: 12.5 }}>
+            O Relacionamento dispensa template aprovado. Use enquanto a Meta não libera.
+          </span>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ResultadoDoEnvio({ envio }: { envio: Envio }) {
+  const canal = envio.canal === "relacionamento" ? "Relacionamento" : "Atendimento";
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <Aviso tom={envio.falhas > 0 ? "alerta" : "ok"}>
+        {envio.enviados} mensagem(ns) enviada(s) pelo {canal}
+        {envio.falhas > 0 ? ` · ${envio.falhas} não saiu(íram)` : ""}
+      </Aviso>
+
+      {envio.envios
+        .filter((e) => e.erro)
+        .map((e) => (
+          <Aviso key={e.unidade} tom="erro">
+            {e.nome} ({e.unidade}): {e.erro}
+          </Aviso>
+        ))}
     </div>
   );
 }

@@ -472,3 +472,54 @@ export const ORDEM_DOS_GRUPOS: GrupoDeVariavel[] = [
   "gerado",
   "bloco",
 ];
+
+export type CodigoPartido = {
+  /** O nome como aparece no texto, já remontado. */
+  nome: string;
+  /** Quantas vezes ele existe no texto renderizado. */
+  noTexto: number;
+  /** Quantas vezes existe INTEIRO no HTML. A diferença é o que o motor não vai achar. */
+  noHtml: number;
+};
+
+/**
+ * Códigos que o texto mostra inteiros mas o HTML tem partidos por tag.
+ *
+ * ⚠️ ESTE É O DEFEITO MAIS TRAIÇOEIRO QUE ACHAMOS, e ele chegou ao contrato. Em 01/09/2026, o
+ * primeiro contrato de teste do Jardim das Gerais saiu com `[nome_cliente]` impresso no lugar do
+ * nome do comprador — enquanto CPF, e-mail, telefone, endereço e todo o resto preencheram. A causa
+ * estava no HTML da minuta:
+ *
+ *     <strong>[nome_cl</strong></span><span ...><strong>iente]</strong>
+ *
+ * Alguém posicionou o cursor no meio da palavra e o CKEditor partiu o `<span>` de fonte ali. Na
+ * tela lê-se `[nome_cliente]` normalmente; o texto renderizado é idêntico. Mas o motor do C2X
+ * procura a string no HTML, e no HTML ela não existe — existem `[nome_cl` e `iente]` em elementos
+ * separados.
+ *
+ * Nenhuma revisão visual pega isso. Nenhuma conferência que olhe só o texto pega isso. Só comparar
+ * o texto com o HTML pega.
+ */
+export function codigosPartidos(html: string): CodigoPartido[] {
+  const texto = html.replace(/<[^>]+>/g, "");
+  const noTexto = new Map<string, number>();
+  for (const nome of variaveisDoTexto(texto)) {
+    noTexto.set(nome, (noTexto.get(nome) ?? 0) + 1);
+  }
+
+  const partidos: CodigoPartido[] = [];
+  for (const [nome, vezesNoTexto] of noTexto) {
+    const marcador = `[${nome}]`;
+    let vezesNoHtml = 0;
+    let de = 0;
+    while ((de = html.indexOf(marcador, de)) !== -1) {
+      vezesNoHtml += 1;
+      de += marcador.length;
+    }
+    if (vezesNoHtml < vezesNoTexto) {
+      partidos.push({ nome, noHtml: vezesNoHtml, noTexto: vezesNoTexto });
+    }
+  }
+
+  return partidos.sort((a, b) => a.nome.localeCompare(b.nome));
+}

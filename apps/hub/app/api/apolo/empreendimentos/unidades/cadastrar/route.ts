@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { authorizeApoloWrite } from "@/lib/apolo/auth";
 import { conferirPlanilha, type LinhaDaPlanilha } from "@/lib/apolo/cadastrar-unidades";
 import {
+  atualizarUnidades,
   conferirImportacao,
   destinoDoC2x,
   importarUnidades,
@@ -60,6 +61,32 @@ export async function POST(request: Request) {
     const resultado = await conferirImportacao({ enterpriseId, linhas });
     if (!resultado.ok) return NextResponse.json({ error: resultado.erro }, { status: 503 });
 
+    return NextResponse.json({ data: resultado.dados });
+  }
+
+  // ── ATUALIZAR: as existentes cuja planilha diverge (preço, área, matrícula). ──────────────
+  //
+  // ⚠️ A LISTA NASCE DE UMA RECONFERÊNCIA AQUI DENTRO, nunca do navegador. Se a tela mandasse
+  // os ids e valores, uma aba velha atualizaria por cima de dado novo; reconferindo, o diff é
+  // sempre contra o C2X de AGORA. Pedido do Lucas (29/08): "subimos uma tabela defasada,
+  // consegue liberar que a proxima importação atualize essa unidades?".
+  if (corpo.acao === "atualizar") {
+    const linhas = Array.isArray(corpo.linhas) ? corpo.linhas : [];
+    if (linhas.length === 0) {
+      return NextResponse.json({ error: "A planilha veio vazia." }, { status: 400 });
+    }
+    const conferencia = await conferirImportacao({ enterpriseId, linhas });
+    if (!conferencia.ok) return NextResponse.json({ error: conferencia.erro }, { status: 503 });
+    if (conferencia.dados.desatualizadas.length === 0) {
+      return NextResponse.json({
+        data: { atualizadas: 0, destino: conferencia.dados.destino, falhas: [] },
+      });
+    }
+    const resultado = await atualizarUnidades({
+      desatualizadas: conferencia.dados.desatualizadas,
+      enterpriseId,
+    });
+    if (!resultado.ok) return NextResponse.json({ error: resultado.erro }, { status: 503 });
     return NextResponse.json({ data: resultado.dados });
   }
 

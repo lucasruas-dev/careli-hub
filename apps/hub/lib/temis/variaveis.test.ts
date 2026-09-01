@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   acharVariavel,
   classificarVariaveis,
+  codigosPartidos,
   conferirBlocos,
   extensosOrfaos,
   VARIAVEIS_DO_CONTRATO,
@@ -163,5 +164,37 @@ describe("o par valor / por extenso", () => {
     // "300,00 m² (trezentos metros quadrados metros quadrados)" — a unidade saiu duas vezes porque o
     // dado guardado já a trazia. O par existe; quem escreve a unidade é o por-extenso.ts, uma vez só.
     expect(acharVariavel("area_lote_extenso")?.extensoDe).toBe("area_lote");
+  });
+});
+
+describe("o código partido por tag — o defeito que imprimiu [nome_cliente] no contrato", () => {
+  it("acha o código quebrado no meio por uma tag", () => {
+    // Copiado da minuta do JDG que estava no C2X. Na tela lia-se "[nome_cliente]"; no HTML havia
+    // "[nome_cl" fechando um span e "iente]" abrindo outro. O motor procura a string no HTML, não
+    // acha, e imprime o marcador no contrato — foi o que saiu no primeiro teste do Jardim das Gerais.
+    const html =
+      '<strong>[nome_cl</strong></span><span style="font-family:Lucida"><strong>iente]</strong>, de nacionalidade <strong>[nacionalidade_cliente]</strong>';
+
+    const partidos = codigosPartidos(html);
+    expect(partidos).toHaveLength(1);
+    expect(partidos[0]).toMatchObject({ nome: "nome_cliente", noHtml: 0, noTexto: 1 });
+  });
+
+  it("não acusa código inteiro, mesmo cercado de tags", () => {
+    const html = '<p><span style="color:red"><strong>[nome_cliente]</strong></span></p>';
+    expect(codigosPartidos(html)).toEqual([]);
+  });
+
+  it("acha quando SÓ UMA das ocorrências está partida", () => {
+    // O caso real: o mesmo código aparecia duas vezes na minuta, inteiro na área de assinatura e
+    // partido na qualificação. Contar só "existe no HTML" não pegaria.
+    const html = "<p>[nome_cliente]</p><p><strong>[nome_cl</strong><em>iente]</em></p>";
+    const partidos = codigosPartidos(html);
+    expect(partidos).toHaveLength(1);
+    expect(partidos[0]).toMatchObject({ noHtml: 1, noTexto: 2 });
+  });
+
+  it("texto sem código nenhum não acusa nada", () => {
+    expect(codigosPartidos("<p>contrato sem variáveis</p>")).toEqual([]);
   });
 });

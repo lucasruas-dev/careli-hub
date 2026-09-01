@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-01-boleto-link-whatsapp",
+    deployedAt: "2026-09-01T18:55:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Depois de emitir, um botão manda o link do boleto ao cliente por WhatsApp.",
+              "Antes de disparar, a tela mostra a mensagem exata que vai sair, com os dados reais, e lista quem não recebe e por quê.",
+              "A mensagem traz o nome do cliente, o empreendimento, a unidade, a parcela (9 de 36), o vencimento, o valor e o link.",
+              "Dois caminhos de envio: pelo Atendimento (com template) e pelo Relacionamento, que dispensa template aprovado.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "c8ffcaea",
+    technical: {
+      done: "Pedido do Lucas: \"temos agora que gerar o template para gente enviar o link do boleto\", \"esse vai servir para todos os empreendimentos, entao seria legal ter na mensagem, nome do cliente, nome do empreendimento a unidade, e a parcela (9/120) e a data de vencimento e o valor\", e para testar antes da aprovacao da Meta: \"vamos disparar pelo 6065 que nao precisa de template\". ⚠️ O NONO DIGITO ERA O BLOQUEADOR INVISIVEL: os contatos da CER vem como \"(37) 9911-4655\", DDD mais OITO digitos (formato antigo). Sem fixLegacyBrazilianMobileNumber o numero vira 553799114655 e a Meta responde 131026 (\"message undeliverable\") — a pessoa nao recebe nada e o erro parece \"numero sem WhatsApp\". O mesmo ja mordeu a cobranca da pre-venda. ⚠️ O ROTULO DO TEMPLATE E \"Referente a\" E NAO \"Parcela\": o Ed. Cristal 201 tem \"Parc. Atual\" 7 e \"N Parc.\" 5 na planilha, entao rotuloDaParcela cai para a competencia — com rotulo fixo, esse cliente leria \"Parcela: setembro de 2026\". Rotulo aprovado nao se conserta sem nova submissao a Meta, entao o substantivo vai DENTRO da variavel (\"Parcela 9 de 36\" ou \"Competencia setembro de 2026\"). Migration 0116 acrescentou parcela_atual, total_parcelas, whatsapp_enviado_em e whatsapp_erro; as 183 parcelas da CER foram recarregadas com os numeros da planilha. Os dois canais mandam o MESMO texto: previaDaMensagem monta o corpo do template com os dados reais e o Evolution envia isso como texto livre, entao o teste de hoje mostra exatamente o que o template vai produzir. Rota /api/boletos/template com GET (lista a WABA com limit 250 — o padrao 20 responderia \"nao existe\" sobre template que existe) e POST que cria como UTILITY, header TEXT fixo, tratando nome duplicado como sucesso idempotente. Uma revisao adversarial em 4 angulos apontou 30 itens; entraram os 2 que mudam o texto e 4 de codigo (competencia invalida produzia \"undefined de \", parametro nao colapsava quebra de linha vinda de celula de Excel, o Evolution devolve providerMessageId e nao messageId). 113 testes verdes na frente de boletos.",
+      motivation:
+        "Emitir o boleto sem entregar o link deixa o trabalho pela metade: o cliente so descobre a cobranca quando ela vence.",
+    },
+    title: "O link do boleto vai ao cliente por WhatsApp",
+    type: "novidade",
+    version: "1.249.0",
+  },
+  {
     buildTag: "2026-09-01-boletos-sem-planilha",
     deployedAt: "2026-09-01T18:25:00-03:00",
     modules: [
