@@ -36,6 +36,55 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-01-temis-e-boletos",
+    deployedAt: "2026-09-01T17:05:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "Módulo novo no menu: Board, Minutas, Planos e Setup. O Board mostra, por empreendimento, o que já gera contrato e o que trava antes dele.",
+              "Editor de minutas com folha do tamanho de uma página, importação do .docx do loteador e das minutas que já existem no C2X.",
+              "As variáveis do contrato ficam num painel ao lado, por grupo, marcando as que já estão no texto.",
+              "Antes de publicar, a tela acusa três defeitos que já produziram contrato errado: bloco condicional mal fechado, marcador que o sistema não preenche, e valor sem o par por extenso.",
+            ],
+            screen: "Minutas e contratos",
+          },
+          {
+            items: [
+              "Cadastro dos planos de pagamento por empreendimento, com o vínculo da minuta que cada um manda usar.",
+              "Um campo de conferência mostra o sinal e a parcela que o plano produz para o preço de uma unidade — é onde se percebe uma entrada digitada errado.",
+            ],
+            screen: "Planos comerciais",
+          },
+        ],
+      },
+      {
+        module: "Boletos",
+        screens: [
+          {
+            items: [
+              "Cada empreendimento passa a ter sua conta de cobrança declarada. Os quatro edifícios (Jade, Ruby, Cristal e Esmeralda) emitem pela mesma conta, e por isso a descrição do boleto nomeia o empreendimento.",
+              "O valor da planilha é arredondado para cima na segunda casa, e a tela mostra quanto isso mudou antes do clique.",
+              "Antes de emitir, a tela confere a situação da conta no Asaas: cadastro pendente limita a 100 boletos por dia, e o Vale do Sol tem 102.",
+            ],
+            screen: "Emissão de boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "cf702e0f",
+    technical: {
+      done: "TEMIS: modulo /temis registrado (packages/shared registry + hub-shell), com TemisPage, sidebar e Board proprio; MinutasTab e PlanosComerciaisTab servem tanto o modulo quanto a ficha do empreendimento (uma implementacao, duas portas). lib/temis/variaveis.ts traz o catalogo MEDIDO nas 60 minutas do C2X (223 nomes), com conferirBlocos, classificarVariaveis, extensosOrfaos e codigosPartidos. documento-html.ts e serializador proprio (nao o serializeHtml do Plate, que amarraria o contrato assinado a versao do editor); preserva fonte, cor, borda de tabela, celula mesclada e reconstroi <ul>/<ol> do listStyleType com a sublista DENTRO do <li>. round-trip.test.ts faz a volta completa com a minuta real do JDG (fixture de 41.827 bytes): 244 marcadores entram e 244 saem, 171 nomes distintos todos reconhecidos, 17 celulas com borda, a fonte preservada. Rota /api/temis/minutas/c2x (READ-ONLY) traz as 85 minutas do legado, que antes nao entravam por porta nenhuma. ⚠️ Achados no caminho: a minuta do JDG tinha o corpo do Vale do Ouro (6x 'Para de Minas', matricula 76.566, zero 'Jardim das Gerais'); as 4 minutas do JDG tinham o mesmo sha256; e [nome_cliente] saia impresso no contrato porque estava PARTIDO por tag no HTML ('<strong>[nome_cl</strong></span><span><strong>iente]'). BOLETOS: asaas-contas.ts ganhou as contas por empreendimento e perdeu o mapa CONTA_POR_EMPREENDIMENTO, que duplicava o campo `conta` e so o teste consumia — quem cadastrasse la e esquecesse o outro lugar via teste verde com o empreendimento sem emitir. A rota de prontidao deixou de ter lista fixa de contas. lib/apolo/boletos/emissao.ts: conta como PARAMETRO (ao contrario de asaas-prevenda e guardian/asaas, que amarram a chave), acharOuCriarCliente procura pelo CPF antes de criar, referencia `boleto:<emp>:<unidade>:<competencia>` impede emissao duplicada, e situacaoCadastral()/impedimentosDaConta() consultam GET /myAccount/status (conferido na doc do Asaas: cadastro pendente = 100 boletos/dia). ⚠️ valorParaOAsaas usa toFixed(6) antes do Math.ceil: `1.09*100` da 109.00000000000001 e o ceil ingenuo viraria R$ 1,10 — 6 casos assim entre 0,01 e 50,00, todos de valores que ja tinham 2 casas. Migration 0114 (boletos_documentos, RLS ligada) e o script de carga dos 83 CPFs seguem NAO aplicados. 169 testes verdes nas duas frentes.",
+      motivation:
+        "O contrato do Jardim das Gerais precisa sair esta semana, e os boletos do mes dependiam de duas faltas: os CPFs e a conta de cobranca de cada empreendimento.",
+    },
+    title: "Têmis entra no ar, e os boletos ganham conta por empreendimento",
+    type: "novidade",
+    version: "1.246.0",
+  },
+  {
     buildTag: "2026-09-01-extrato-valor-da-parcela",
     deployedAt: "2026-09-01T14:10:00-03:00",
     modules: [
