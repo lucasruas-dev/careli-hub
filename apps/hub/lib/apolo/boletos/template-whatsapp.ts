@@ -37,10 +37,14 @@ export const TEMPLATE_BOLETO_HEADER = "Boleto disponível";
  * o rótulo fixo "Parcela:", esses clientes leriam "Parcela: setembro de 2026". Rótulo aprovado não
  * se conserta sem nova submissão à Meta, então o substantivo vai DENTRO da variável.
  *
- * ⚠️ O FECHO DIZ DE QUEM É A MENSAGEM E O QUE NUNCA MUDA. Boleto por WhatsApp é o vetor de fraude
- * mais comum do mercado imobiliário, e o cliente recebe isto de um número que não tem salvo, com um
- * domínio que não conhece. A frase serve à pessoa e, de quebra, resolve o problema técnico de o
- * corpo não poder terminar em `{{7}}`.
+ * ⚠️ O FECHO É A ASSINATURA, E TAMBÉM É ESTRUTURAL. Ele diz de quem é a mensagem, que é o que o
+ * cliente procura ao receber um link de pagamento de um número que não tem salvo. E resolve a regra
+ * da Meta de o corpo não poder terminar em variável: sem uma linha depois do `{{7}}`, a criação do
+ * template volta reprovada.
+ *
+ * Decisão do Lucas (01/09/2026), vendo a mensagem chegar no WhatsApp dele: *"só tirar a última
+ * frase e colocar Time Careli no final"*. A frase anterior avisava que a Careli não muda conta nem
+ * chave PIX por mensagem; ele leu e preferiu a assinatura curta.
  *
  * ⚠️ O NEGRITO DO WHATSAPP É UM ASTERISCO, não dois. Ver [[feedback_whatsapp_negrito]].
  */
@@ -55,7 +59,7 @@ Valor: *R$ {{6}}*
 Acesse o boleto pelo link:
 {{7}}
 
-Esta mensagem é da Careli. Não alteramos conta nem chave PIX por mensagem.`;
+Time Careli`;
 
 /** A amostra que a Meta exige para aprovar. Precisa ser plausível, não real. */
 export const TEMPLATE_BOLETO_EXEMPLO = [

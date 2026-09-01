@@ -192,11 +192,11 @@ describe("o que a revisão da Meta mudou no texto", () => {
     expect(TEMPLATE_BOLETO_CORPO).not.toContain("Parcela:");
   });
 
-  it("a mensagem diz de quem é e o que nunca muda", () => {
-    // Boleto por WhatsApp é o vetor de fraude mais comum do mercado imobiliário, e o cliente recebe
-    // isto de um número que não tem salvo.
-    expect(TEMPLATE_BOLETO_CORPO).toContain("Careli");
-    expect(TEMPLATE_BOLETO_CORPO).toContain("chave PIX");
+  it("assina como Careli, que é o que o cliente procura", () => {
+    // O cliente recebe um link de pagamento de um número que não tem salvo. Decisão do Lucas
+    // (01/09/2026), vendo a mensagem chegar: *"só tirar a última frase e colocar Time Careli no
+    // final"*.
+    expect(TEMPLATE_BOLETO_CORPO.trimEnd().endsWith("Time Careli")).toBe(true);
   });
 
   it("o fecho não nomeia beneficiário — o template serve aos nove empreendimentos", () => {
