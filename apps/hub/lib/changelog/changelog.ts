@@ -36,6 +36,44 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-cadastro-do-asaas",
+    deployedAt: "2026-09-02T12:25:00-03:00",
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "A tela de boletos mostra se o cadastro de cada conta está aprovado no Asaas — conta pendente não emite, mesmo com a chave certa.",
+              "Passando o mouse, ela diz o que falta aprovar: documentos, dados comerciais ou conta bancária.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Depois de emitir, a tela rola até o resultado, com os erros de cada linha.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "0cf7967c",
+    technical: {
+      done: "Lucas (02/09/2026): *\"o motivo de nao ter gerado o boleto no on sky e Guaimbe e porque eles nao sao validados no asaas\"*, e em seguida *\"mas o asaas nao retornou nenhuma mensagem de erro?\"*. Retornou — e ninguem leu. ⚠️ A CHAVE FUNCIONAR NAO SIGNIFICA QUE A CONTA EMITE: as duas tinham a chave certa e respondiam ao `/myAccount`, mas o CADASTRO no Asaas nao estava aprovado. A rota ja chamava `situacaoCadastral` e montava `impedimentosDaConta`, so que DEPOIS do laco de emissao e apenas no ensaio: na emissao confirmada o codigo tentava, o Asaas recusava uma por uma, e o erro ia para `resultados[].erro`. ⚠️ E ELE ERA RENDERIZADO NO TOPO DA PAGINA, com quem clicou no meio da tabela de 143 linhas. Erro que ninguem le e erro que nao existe — e leva a clicar de novo, que e como nasceu a cobranca duplicada de hoje de manha. Duas correcoes: a tela de conferencia (`/boletos`) passou a mostrar a situacao cadastral de cada conta ANTES do clique, com um aviso destacado listando as pendentes e o detalhe por area no title; e a tela de emissao rola ate o resultado quando ele chega. Typecheck limpo, 137 testes verdes.",
+      motivation:
+        "Duas contas recusaram a emissão e a resposta do Asaas ficou fora da vista de quem clicou.",
+    },
+    title: "A tela diz quais contas o Asaas ainda não aprovou",
+    type: "correcao",
+    version: "1.266.0",
+  },
+  {
     buildTag: "2026-09-02-aviso-de-cpf-sem-alarme-falso",
     deployedAt: "2026-09-02T12:10:00-03:00",
     modules: [

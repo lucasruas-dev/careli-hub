@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
 import { estadoDaConta, TODAS_AS_CONTAS } from "@/lib/apolo/asaas-contas";
-import { conferirConta } from "@/lib/apolo/boletos/emissao";
+import { conferirConta, situacaoCadastral } from "@/lib/apolo/boletos/emissao";
 import { EMPREENDIMENTOS_DE_BOLETO } from "@/lib/apolo/boletos/empreendimentos";
 import { lerCarteiraDoLsoft } from "@/lib/lsoft/carteira";
 
@@ -38,15 +38,32 @@ export async function GET(request: Request) {
   const contas = await Promise.all(
     TODAS_AS_CONTAS.map(async (c) => {
       const estado = estadoDaConta(c);
-      if (!estado.configurada) return { ...estado, donoDaChave: null, erroDaChave: null };
-      const r = await conferirConta(c);
-      return r.ok
-        ? {
-            ...estado,
-            donoDaChave: r.data.companyName ?? r.data.name ?? null,
-            erroDaChave: null,
-          }
-        : { ...estado, donoDaChave: null, erroDaChave: r.erro };
+      if (!estado.configurada) {
+        return { ...estado, cadastro: null, donoDaChave: null, erroDaChave: null };
+      }
+
+      // ⚠️ A CHAVE FUNCIONAR NÃO SIGNIFICA QUE A CONTA EMITE. O On Sky e o Guaimbé tinham a chave
+      // certa e a emissão não saía: o CADASTRO no Asaas ainda não estava aprovado. O erro só
+      // aparecia depois de tentar, uma cobrança por vez — e, como a tela não mostrava a tentativa,
+      // do lado de quem clicava não acontecia nada. Aqui a conta diz o que falta ANTES do clique.
+      const [conferida, situacao] = await Promise.all([conferirConta(c), situacaoCadastral(c)]);
+
+      return {
+        ...estado,
+        cadastro: situacao.ok
+          ? {
+              aprovado: situacao.data.general === "APPROVED",
+              banco: situacao.data.bankAccountInfo,
+              comercial: situacao.data.commercialInfo,
+              documentos: situacao.data.documentation,
+              geral: situacao.data.general,
+            }
+          : null,
+        donoDaChave: conferida.ok
+          ? (conferida.data.companyName ?? conferida.data.name ?? null)
+          : null,
+        erroDaChave: conferida.ok ? null : conferida.erro,
+      };
     }),
   );
 

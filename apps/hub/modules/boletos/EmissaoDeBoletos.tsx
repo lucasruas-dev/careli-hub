@@ -62,6 +62,14 @@ type Prontidao = {
     ambiente: "desconhecido" | "producao" | "sandbox";
     configurada: boolean;
     /** O nome que o Asaas devolve para a chave — a prova de que ela é da conta certa. */
+    /** O cadastro no Asaas está aprovado? Conta não aprovada não emite, mesmo com a chave certa. */
+    cadastro?: null | {
+      aprovado: boolean;
+      banco: string;
+      comercial: string;
+      documentos: string;
+      geral: string;
+    };
     donoDaChave?: null | string;
     erroDaChave?: null | string;
     conta: string;
@@ -463,6 +471,21 @@ function DeQuemESaChave({ contas }: { contas: null | Prontidao["contas"] }) {
         O nome vem do próprio Asaas. Confira se cada linha bate com a empresa esperada: uma chave
         no lugar errado emite no CNPJ de outra empresa, sem erro nenhum.
       </p>
+      {configuradas.some((c) => c.cadastro && !c.cadastro.aprovado) ? (
+        <p className="rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm text-ink dark:border-red-500/40 dark:bg-red-500/10">
+          <b className="text-red-700 dark:text-red-300">
+            {configuradas
+              .filter((c) => c.cadastro && !c.cadastro.aprovado)
+              .map((c) => c.rotulo)
+              .join(", ")}
+          </b>{" "}
+          {configuradas.filter((c) => c.cadastro && !c.cadastro.aprovado).length === 1
+            ? "está com o cadastro pendente no Asaas e não emite"
+            : "estão com o cadastro pendente no Asaas e não emitem"}
+          , mesmo com a chave certa. Passe o mouse na coluna Cadastro para ver o que falta aprovar.
+        </p>
+      ) : null}
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -470,6 +493,7 @@ function DeQuemESaChave({ contas }: { contas: null | Prontidao["contas"] }) {
               <th className="py-1 pr-4 text-xs font-semibold">Conta</th>
               <th className="py-1 pr-4 text-xs font-semibold">Variável</th>
               <th className="py-1 pr-4 text-xs font-semibold">Quem o Asaas diz que é</th>
+              <th className="py-1 pr-4 text-xs font-semibold">Cadastro</th>
               <th className="py-1 text-xs font-semibold">Ambiente</th>
             </tr>
           </thead>
@@ -484,6 +508,25 @@ function DeQuemESaChave({ contas }: { contas: null | Prontidao["contas"] }) {
                   ) : (
                     <span className="text-red-600 dark:text-red-400">
                       {c.erroDaChave ?? "a chave não respondeu"}
+                    </span>
+                  )}
+                </td>
+                <td className="py-1.5 pr-4">
+                  {/* ⚠️ A CHAVE FUNCIONAR NÃO SIGNIFICA QUE A CONTA EMITE. O On Sky e o Guaimbé
+                      tinham a chave certa e a emissão não saía: o cadastro no Asaas ainda não
+                      estava aprovado. Sem esta coluna, isso só aparecia depois de tentar. */}
+                  {!c.cadastro ? (
+                    <span className="text-xs text-ink-muted">—</span>
+                  ) : c.cadastro.aprovado ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                      <Check aria-hidden="true" size={11} /> aprovado
+                    </span>
+                  ) : (
+                    <span
+                      className="text-xs font-bold text-red-600 dark:text-red-400"
+                      title={`geral: ${c.cadastro.geral} · documentos: ${c.cadastro.documentos} · comercial: ${c.cadastro.comercial} · banco: ${c.cadastro.banco}`}
+                    >
+                      {c.cadastro.geral === "REJECTED" ? "REJEITADO" : "não aprovado"} — não emite
                     </span>
                   )}
                 </td>

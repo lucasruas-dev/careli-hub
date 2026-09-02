@@ -274,6 +274,13 @@ export function TelaBoletos() {
   // segundo já encontra a porta fechada. (O servidor tem a trava definitiva, porque nada no
   // navegador impede duas abas abertas — mas o erro comum é este, e é aqui que ele morre.)
   const emitindoAgora = useRef(false);
+  const ondeOResultadoAparece = useRef<HTMLDivElement>(null);
+
+  // Terminou a emissão ou o envio: leva a tela até o que aconteceu.
+  useEffect(() => {
+    if (!emissao && !envio && !erro) return;
+    ondeOResultadoAparece.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [emissao, envio, erro]);
 
   const emitir = useCallback(
     async (alvos: string[], escolhidas?: { empreendimento: string; unidade: string }[]) => {
@@ -591,6 +598,11 @@ export function TelaBoletos() {
           Não consegui ler a conta {f.conta} no Asaas: {f.erro}
         </Aviso>
       ))}
+      {/* ⚠️ O RESULTADO FICA NO TOPO E QUEM CLICA ESTÁ NO MEIO DA TABELA. Em 02/09/2026 o On Sky e o
+          Guaimbé recusaram a emissão porque o cadastro no Asaas não estava aprovado — o erro
+          chegou, foi renderizado aqui, e o Lucas não viu: da posição dele, "clico e não acontece
+          nada". Um erro que ninguém lê é um erro que não existe, e leva a clicar de novo. */}
+      <div ref={ondeOResultadoAparece} />
       {erro ? <Aviso tom="erro">{erro}</Aviso> : null}
       {emissao ? <ResultadoDaEmissao emissao={emissao} /> : null}
       {envio ? <ResultadoDoEnvio envio={envio} /> : null}
