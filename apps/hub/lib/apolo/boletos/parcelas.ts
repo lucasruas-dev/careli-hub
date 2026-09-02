@@ -23,6 +23,15 @@ export type ParcelaDoMes = {
   /** O 36 de "parcela 9 de 36". Vem da coluna "Nº Parc.". */
   totalParcelas: null | number;
   unidade: string;
+  /**
+   * A unidade identifica a cobranca, mas NAO pode ser dita ao cliente.
+   *
+   * O Garden foi renumerado e as duas fontes de conversao do lote discordam em nove casos -- na
+   * quadra 7 sao cinco clientes deslocados um lote na mesma direcao. Decisao do Lucas (02/09/2026):
+   * *"esses que estao com divergencia no lote deixa somente o nome do empreendimento, assim nao
+   * corremos o risco de informar coisa errada"*. Marcada, a descricao sai sem o lote.
+   */
+  unidadeIncerta: boolean;
   valor: null | number;
   vencimentoDia: null | number;
   /** Quando o link foi mandado ao cliente. Nulo = não enviado, ou o envio falhou. */
@@ -38,6 +47,7 @@ type LinhaCrua = {
   parcela_atual: null | number;
   total_parcelas: null | number;
   unidade: string;
+  unidade_incerta: boolean | null;
   valor: null | number | string;
   vencimento_dia: null | number;
   whatsapp_enviado_em: null | string;
@@ -63,7 +73,7 @@ export async function parcelasDaCompetencia(input: {
   const { data, error } = await supabase
     .from("boletos_parcelas")
     .select(
-      "bloqueio, competencia, empreendimento, nome, parcela_atual, total_parcelas, unidade, valor, vencimento_dia, whatsapp_enviado_em, whatsapp_erro",
+      "bloqueio, competencia, empreendimento, nome, parcela_atual, total_parcelas, unidade, unidade_incerta, valor, vencimento_dia, whatsapp_enviado_em, whatsapp_erro",
     )
     .eq("workspace_id", "careli")
     .eq("competencia", input.competencia)
@@ -79,6 +89,7 @@ export async function parcelasDaCompetencia(input: {
     parcelaAtual: l.parcela_atual,
     totalParcelas: l.total_parcelas,
     unidade: String(l.unidade).trim(),
+    unidadeIncerta: l.unidade_incerta === true,
     valor: l.valor === null ? null : Number(l.valor),
     vencimentoDia: l.vencimento_dia,
     whatsappEnviadoEm: l.whatsapp_enviado_em,
@@ -142,7 +153,11 @@ export async function loteDaCompetencia(input: {
     const [ano, mes] = input.competencia.split("-");
     itens.push({
       contato: cadastro.contato,
-      descricao: `${nomeDoEmpreendimento} - Unidade ${p.unidade} - Competência ${mes}/${ano}`,
+      // A unidade some da descricao quando nao se pode garantir qual e -- `unidadeIncerta`. A
+      // `referencia` abaixo mantem a unidade: ela e interna, e e por ela que a cobranca e achada.
+      descricao: p.unidadeIncerta
+        ? `${nomeDoEmpreendimento} - Competência ${mes}/${ano}`
+        : `${nomeDoEmpreendimento} - Unidade ${p.unidade} - Competência ${mes}/${ano}`,
       documento: cadastro.documento,
       // O nome do CADASTRO, não o da planilha: esta traz "VINICIUS FERREIRA ARAUJO - TAXA SELIC",
       // e o sufixo é recado interno sobre o índice de reajuste.

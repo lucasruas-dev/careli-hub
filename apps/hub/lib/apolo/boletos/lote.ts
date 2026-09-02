@@ -14,6 +14,19 @@ import { type LinhaDaPlanilha, vereditoDaLinha } from "./regra-de-emissao";
 
 export type LinhaParaEmitir = LinhaDaPlanilha & {
   unidade: null | string;
+  /**
+   * A unidade identifica a cobrança, mas NÃO pode ser dita ao cliente.
+   *
+   * ⚠️ O GARDEN FOI RENUMERADO E AS DUAS FONTES DE CONVERSÃO DISCORDAM em nove lotes — na quadra 7
+   * são cinco clientes deslocados um lote na mesma direção. Decisão do Lucas (02/09/2026):
+   * *"esses que estão com divergência no lote deixa somente o nome do empreendimento, assim não
+   * corremos o risco de informar coisa errada"*.
+   *
+   * Marcada, a cobrança sai como "Garden - Competência 09/2026", sem o lote. A unidade continua
+   * sendo a chave no banco e na `referencia` — o que muda é só o que o cliente lê. Dizer o lote
+   * errado no boleto é pior do que não dizer lote nenhum: o cliente confere pelo que recebeu.
+   */
+  unidadeIncerta?: boolean;
   /** O dia do vencimento como a planilha escreve: 5, 10, 15, 20, 24, 25, 30. */
   vencimento: null | number;
 };
@@ -144,7 +157,12 @@ export function prepararLote(input: {
 
     itens.push({
       contato: cadastro.contato,
-      descricao: descricao(nomeDoEmpreendimento, unidade, input.competencia),
+      // A unidade some da descrição quando não se pode garantir qual é — ver `unidadeIncerta`.
+      descricao: descricao(
+        nomeDoEmpreendimento,
+        linha.unidadeIncerta ? "" : unidade,
+        input.competencia,
+      ),
       documento: cadastro.documento,
       // ⚠️ O NOME QUE VAI PARA O ASAAS É O DO CADASTRO, não o da planilha. A planilha escreve
       // "VINICIUS FERREIRA ARAUJO - TAXA SELIC" — o sufixo é recado interno sobre o índice de

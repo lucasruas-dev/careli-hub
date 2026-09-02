@@ -44,6 +44,21 @@ const filtro = (process.argv.find((a) => a.startsWith("--empreendimento=")) ?? "
   .map((s) => s.trim())
   .filter(Boolean);
 
+// !! UNIDADE COM DOIS CLIENTES NAO PODE SER ADIVINHADA, E TAMBEM NAO PODE SER IGNORADA EM SILENCIO.
+// No Vale do Sol tres apartamentos aparecem com DUAS pessoas diferentes (nome, telefone, dia de
+// vencimento e valor distintos): 406 BL 04, 408 BL 01 e 101 BL 01. A chave da tabela e a UNIDADE,
+// entao gravar as duas linhas faz o upsert derrubar a carga inteira -- e escolher uma delas
+// emitiria no CPF errado, porque `boletos_documentos` tambem guarda um documento por unidade.
+//
+// Por isso pular exige NOMEAR a unidade na linha de comando: cada exclusao e uma decisao declarada,
+// que aparece no relatorio e some sozinha quando o administrativo corrigir a planilha.
+const pular = (process.argv.find((a) => a.startsWith("--pular-unidade=")) ?? "")
+  .replace("--pular-unidade=", "")
+  .split(";")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const puladas = [];
+
 if (!arquivo) {
   console.error("Informe o arquivo: node scripts/boletos/carregar-parcelas.mjs <arquivo.xlsx> [--gravar]");
   process.exit(1);
@@ -97,6 +112,10 @@ for (const ws of abas) {
 
     for (const c of r.clientes) {
       const unidade = (c.unidade ?? "").trim();
+      if (pular.includes(`${emp.slug}|${unidade}`)) {
+        puladas.push({ competencia: mes, empreendimento: emp.slug, nome: c.nome, unidade });
+        continue;
+      }
       // Sem unidade nao ha como casar com o CPF nem identificar a cobranca.
       if (!unidade) continue;
 
@@ -157,6 +176,20 @@ if (semEmpreendimento.length) {
   console.log(`\nAbas fora da lista (nao entram): ${semEmpreendimento.join(", ")}`);
 }
 if (ignoradasPorFiltro) console.log(`${ignoradasPorFiltro} aba(s) fora do --empreendimento`);
+
+if (puladas.length) {
+  const porUnidade = new Map();
+  for (const p of puladas) {
+    const k = `${p.empreendimento}|${p.unidade}`;
+    if (!porUnidade.has(k)) porUnidade.set(k, new Set());
+    porUnidade.get(k).add(p.nome);
+  }
+  console.log(
+    String.fromCharCode(10) +
+      `${puladas.length} linha(s) PULADAS por --pular-unidade (${porUnidade.size} unidade(s)):`,
+  );
+  for (const [k, nomes] of porUnidade) console.log(`  ${k} -- ${[...nomes].join(" / ")}`);
+}
 
 if (duplicados.length) {
   console.log(`\n⚠️ ${duplicados.length} chave(s) repetida(s) — a carga NAO roda assim:`);

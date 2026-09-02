@@ -93,7 +93,12 @@ function papelDaColuna(rotulo: string): null | string {
   if (n.includes("nome")) return "nome";
   if (n.includes("forma") || n.includes("contato")) return "contato";
   if (n.includes("apto")) return "unidade";
-  if (n === "lote") return "lote";
+  // ⚠️ O CABEÇALHO DO LOTE VEM NUMERADO EM ALGUMAS ABAS: o Vale do Ouro escreve `LOTE`, o Garden
+  // escreve `N° LOTE`. Com a comparação exata que estava aqui, o Garden perdia a coluna do lote e a
+  // unidade virava só a quadra — os 146 clientes viravam 13 unidades, e a carga morria com 868
+  // chaves repetidas. Aceitar qualquer coisa que CONTENHA "lote" seria pior (`VALOR DO LOTE`,
+  // `LOTEAMENTO`), então o que entra é "lote" com um prefixo de numeração opcional.
+  if (/^(?:n[.º°o]*\s*)?lote$/.test(n)) return "lote";
   if (n.includes("quadra")) return "quadra";
   if (n.includes("venc")) return "vencimento";
   if (n.includes("parc") && n.includes("atual")) return "parcelaAtual";

@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-carteiras-completas",
+    deployedAt: "2026-09-02T09:30:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "As carteiras dos nove empreendimentos entraram: 283 boletos prontos para setembro, contra 11 ontem.",
+              "O Garden entrou com o lote de hoje, não com o antigo: a numeração mudou e a planilha ainda usa a antiga.",
+              "Onde o lote não pôde ser confirmado, o boleto sai só com o nome do empreendimento, sem a unidade.",
+              "Vale do Sol, Guaimbé, Giant Towers e On Sky passaram a aparecer com a carteira cheia.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "0feb69f5",
+    technical: {
+      done: "Pedido do Lucas: \"vamos agora continuar a fazer os boletos da cecilio rocha, tem que subir os clientes dos outros empreendimentos, pode subir tudo\". De 11 boletos prontos para 283 (R$ 785.393,19). ⚠️ O GARDEN FOI RENUMERADO E A PLANILHA AINDA USA O LOTE ANTIGO: o antigo e corrido pelo loteamento (109, 212, 421), o novo reinicia a cada quadra (Q08 L09) e e o que esta em hercules_unidades (enterprise 39) e no masterplan. Carregar o antigo poria a cobranca num lote que nao existe mais. ⚠️ AS DUAS FONTES DE CONVERSAO DISCORDAM EM NOVE CASOS, e na quadra 7 sao CINCO clientes deslocados um lote na MESMA direcao (JULIO L23/L24, AILTON L24/L25, WAGNER L25/L26, WARLLEY L26/L27, SAMUEL L27/L28) — erro sistematico de uma das planilhas, nao divergencia de cadastro. Decisao do Lucas: \"pode seguir o masterplan, ele esta correto, falo a base da Cecilio e nao da CER\" e \"tudo que nao conseguirmos validar, vamos seguir a tabela\". A tabela decide sempre que nomeia o comprador; o mapa do controle financeiro so desempata quem tem varios lotes, e ainda tem de apontar para um lote que a tabela deu aquele cliente. 142 de 142 convertidos. Migration 0118: `unidade_incerta` — nos nove divergentes a descricao sai como \"Garden - Competencia 09/2026\", sem o lote, porque dizer o lote errado e pior do que nao dizer lote nenhum: e por ele que o cliente confere se a cobranca e dele. A unidade continua sendo a chave da tabela e da referencia. ⚠️ O LEITOR PERDIA A COLUNA DO LOTE: papelDaColuna exigia o rotulo exatamente \"lote\" e o Garden escreve \"N° LOTE\" — a unidade virava so a quadra, 146 clientes viravam 13 unidades e a carga morria com 868 chaves repetidas. Aceita prefixo de numeracao agora, sem virar includes(\"lote\"), que capturaria \"VALOR DO LOTE\". ⚠️ TRES APARTAMENTOS DO VALE DO SOL TEM DOIS CLIENTES (406 BL 04, 408 BL 01, 101 BL 01), com nome, telefone, vencimento e valor diferentes: como a chave e a unidade, gravar os dois derruba o upsert e escolher um emitiria no CPF do outro. Pular exige NOMEAR a unidade na linha de comando, entao a exclusao sai no relatorio e some quando o administrativo corrigir. ⚠️ OS DOCUMENTOS DO VALE DO SOL E DO GARDEN ESTAVAM COM O CODIGO DO CLIENTE DO LSOFT NO LUGAR DA UNIDADE (00000429 em vez de \"06 BL 01\"): o CPF estava no banco e a tela dizia \"sem CPF\". O LSoft guarda o lote ANTIGO do Garden, e e isso que o torna util — o CPF entra pela chave (quadra, lote antigo), nao pelo nome. No Vale do Sol quadra e lote vem nulos em 96 dos 99, entao ali a ponte e o nome: identidade exata primeiro (67), depois semelhanca com tres exigencias (mais 10) autorizada pelo Lucas. ⚠️ SEMELHANCA SOLTA ERRA: no primeiro corte, tres dos treze pares eram gente diferente (CASSIO NASIONEZIO ~ GETULIO ALVES, EDUARDA FERNANDA ~ ISABELA, PAULO LINHARES ~ PEDRO HENRIQUE LINHARES) — todos com metade dos sobrenomes em comum e PRIMEIRO NOME diferente. Sobrenome e herdado e se repete no mesmo loteamento. O criterio exige primeiro nome igual ou com uma letra de diferenca, um nome sendo continuacao do outro (ou ultimo sobrenome tambem com uma letra), e 60% dos sobrenomes; homonimo derruba o par. Os tres falsos foram rejeitados, os dez verdadeiros passaram. Varri todas as colunas da aba do Garden atras de bloqueio escrito: GUSTAVO MENDES DUARTE (\"PAGOU A DE SET\", R$ 5.053,11 barrados) e MEIRE JANE (\"PAGOU ATE NOV/2026 RETOMA DEZ/2026\") — os dois barrados pela regra, conferido com teste direto. 115 testes verdes na frente de boletos, typecheck limpo.",
+      motivation:
+        "A tela existia com nove carteiras cadastradas e so a CER tinha clientes dentro. Sem a carga, oito empreendimentos abriam vazios.",
+    },
+    title: "As carteiras dos nove empreendimentos entraram na tela",
+    type: "novidade",
+    version: "1.251.0",
+  },
+  {
     buildTag: "2026-09-01-boletos-ciclo-completo",
     deployedAt: "2026-09-01T19:30:00-03:00",
     modules: [
