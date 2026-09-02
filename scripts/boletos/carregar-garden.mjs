@@ -155,8 +155,27 @@ function loteDeHoje(quadra, loteAntigo, nome, jaUsados) {
     return { fonte: "tabela (a mao)", lote: daTabela.lote, mapaDiscorda: null, quadra: daTabela.quadra };
   }
 
-  const doMapa = mapa.get(`${quadra}|${loteAntigo}`) ?? null;
-  const daRevisada = (porComprador.get(norm(nome)) ?? []).filter((x) => x.q === quadra);
+  // ⚠️ A QUADRA PODE ESTAR EM BRANCO NA PLANILHA, E ISSO JA CUSTOU UMA COBRANCA. A GABRIELA
+  // CRISTINA JACINTO (lote antigo 284) tem a celula da quadra vazia; com o filtro por quadra ela
+  // nao casava com a tabela nem com o mapa, e a linha sumia -- R$ 2.207,12 que ninguem cobraria e
+  // ninguem notaria, porque some do total tambem. Sem quadra, a tabela e consultada em TODAS as
+  // quadras, e so vale se o nome aparecer uma vez so.
+  const semQuadra = !quadra;
+  const doMapa = semQuadra ? null : (mapa.get(`${quadra}|${loteAntigo}`) ?? null);
+  const todosDaTabela = porComprador.get(norm(nome)) ?? [];
+  const daRevisada = semQuadra ? todosDaTabela : todosDaTabela.filter((x) => x.q === quadra);
+  if (semQuadra) {
+    if (daRevisada.length === 1) {
+      return { fonte: "tabela (quadra em branco na planilha)", lote: daRevisada[0].lo, mapaDiscorda: null, quadra: daRevisada[0].q };
+    }
+    return {
+      fonte: null,
+      lote: null,
+      motivo: daRevisada.length === 0
+        ? "quadra em branco na planilha e o nome nao consta na tabela"
+        : `quadra em branco na planilha e o nome aparece ${daRevisada.length}x na tabela`,
+    };
+  }
 
   if (daRevisada.length === 1) {
     return { fonte: "revisada", lote: daRevisada[0].lo, mapaDiscorda: doMapa && doMapa !== daRevisada[0].lo ? doMapa : null };
@@ -219,7 +238,13 @@ const discordancias = [];
 for (const c of primeira.clientes) {
   const q = nq(c.quadra);
   const antigo = nq(c.lote);
-  if (!q || !antigo || !c.nome) continue;
+  if (!c.nome) continue;
+  // ⚠️ LINHA COM LOTE FALTANDO NAO PODE SUMIR EM SILENCIO. Antes um `continue` aqui engolia a
+  // linha antes de qualquer relatorio: ela nao aparecia nem como convertida nem como pendente.
+  if (!antigo) {
+    foraDaConversao.push({ antigo, motivo: "sem lote na planilha", nome: c.nome, q });
+    continue;
+  }
   const chave = `${q}|${antigo}`;
   if (conversao.has(chave)) continue;
 
