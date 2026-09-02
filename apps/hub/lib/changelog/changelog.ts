@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-porta-do-coordenador",
+    deployedAt: "2026-09-02T19:46:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "A porta do portal comercial agora diz Portal do coordenador.",
+              "O aviso de sessão aberta em outro portal não aparece mais para o coordenador.",
+            ],
+            screen: "Portal comercial",
+          },
+        ],
+      },
+    ],
+    rollback: "a50a73ba",
+    technical: {
+      done: "Pedido do Lucas (02/09/2026), vendo a porta do /gurgel: *\"portal do coordenador, tira essa frase que voce esta conectado com CER nao faz sentido\"*. A `Porta` ganhou o `tipo` do portal: titulo e subtitulo mudam no comercial, e o aviso de sessao cruzada (feito para o dono de um loteamento que abre o portal de outro) some nele — o coordenador e gente da Careli e ter a sessao de um portal de incorporador aberta no mesmo navegador e rotina, nao confusao. Nos portais de incorporador nada mudou.",
+      motivation: "O coordenador entrava numa porta que falava com o incorporador e o avisava de uma sessao que, para ele, e normal.",
+    },
+    title: "A porta do coordenador",
+    type: "melhoria",
+    version: "1.270.1",
+  },
+  {
     buildTag: "2026-09-02-hercules-portal-comercial",
     deployedAt: "2026-09-02T19:00:00-03:00",
     modules: [

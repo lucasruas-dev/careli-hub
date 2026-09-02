@@ -120,8 +120,12 @@ function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug, tipo }: DadosDoPort
   if (!sessao || !daCasa) {
     return (
       <Moldura logoEscuraUrl={logoEscuraUrl} logoUrl={logoUrl} nome={nome} slug={slug} tipo={tipo}>
-        <Porta aoEntrar={carregarSessao} slug={slug} />
-        {sessao && !daCasa ? (
+        <Porta aoEntrar={carregarSessao} slug={slug} tipo={tipo} />
+        {/* O aviso de sessão cruzada NÃO aparece no portal comercial (Lucas, 02/09/2026: "tira
+            essa frase que você está conectado com CER, não faz sentido"): o coordenador é gente
+            da Careli e costuma ter a sessão de um portal de incorporador aberta no mesmo
+            navegador — para ele isso não é confusão, é rotina. */}
+        {sessao && !daCasa && !ehPortalComercial(tipo) ? (
           <p
             style={{
               color: T.muted,
@@ -280,7 +284,17 @@ const rotulo = {
   marginBottom: 6,
 } as const;
 
-function Porta({ aoEntrar, slug }: { aoEntrar: () => Promise<void>; slug: string }) {
+function Porta({
+  aoEntrar,
+  slug,
+  tipo,
+}: {
+  aoEntrar: () => Promise<void>;
+  slug: string;
+  tipo: TipoDePortal;
+}) {
+  // A porta do COMERCIAL fala com o coordenador (Lucas, 02/09/2026: "portal do coordenador").
+  const comercial = ehPortalComercial(tipo);
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -324,10 +338,12 @@ function Porta({ aoEntrar, slug }: { aoEntrar: () => Promise<void>; slug: string
       }}
     >
       <div style={{ color: T.text, fontSize: 17, fontWeight: 600, marginBottom: 4 }}>
-        Portal do incorporador
+        {comercial ? "Portal do coordenador" : "Portal do incorporador"}
       </div>
       <div style={{ color: T.muted, fontSize: 13, marginBottom: 20 }}>
-        Acompanhe as vendas e a carteira do seu empreendimento.
+        {comercial
+          ? "Vendas, contratos e lançamentos dos seus empreendimentos."
+          : "Acompanhe as vendas e a carteira do seu empreendimento."}
       </div>
 
       <label htmlFor="inc-email" style={rotulo}>
