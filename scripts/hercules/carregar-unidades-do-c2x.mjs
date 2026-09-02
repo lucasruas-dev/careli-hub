@@ -43,6 +43,10 @@ const env = Object.fromEntries(
 const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY;
 const GRAVAR = process.argv.includes("--gravar");
+// SÓ SITUAÇÃO: recarrega apenas `situacao` das unidades que já existem, sem tocar em preço,
+// matrícula, extensos nem `segmento_id`. É o modo para corrigir a régua de vendido/negociação
+// (02/09/2026) sem passar por cima do que a tela ou a segmentação já ajustaram.
+const SO_SITUACAO = process.argv.includes("--so-situacao");
 const iEmp = process.argv.indexOf("--empreendimentos");
 const FILTRO = iEmp > 0 ? (process.argv[iEmp + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean) : null;
 
@@ -65,8 +69,16 @@ const numero = (v) => {
  */
 function situacaoDaUnidade(u) {
   const status = Number(u.sale_status_id ?? 0);
-  // 3 = vendido no C2X; 2 = em negociação/reservado; 5 = bloqueado para venda.
-  if (status === 3) return "vendida";
+  // ⚠️ A RÉGUA É A DE `lib/apolo/balde-da-unidade.ts` (SALE_STATUS): 1 = disponível, 2 = reservado,
+  // 3 = EM NEGOCIAÇÃO, 4 = VENDIDO, 5 = bloqueado. A versão anterior deste script tratava só o 3
+  // como vendida e deixava o 4 cair em "disponivel" — o Lavra do Ouro (474 vendidos no C2X)
+  // apareceu no Panteon com ZERO vendidas, e 11 lotes vendidos do Vale do Ouro viraram
+  // disponíveis. Achado na revisão de 02/09/2026 (mapa do Hércules interno).
+  //
+  // Em negociação e vendido viram os dois "vendida", como a tela de Vendas do Apolo já faz
+  // (`mapUnitRow`): `hercules_unidades` não tem valor próprio para negociação — esse estágio, no
+  // Hércules, é a venda em rascunho, não a unidade.
+  if (status === 3 || status === 4) return "vendida";
   if (status === 5 || Number(u.sale_blocked ?? 0) === 1) return "bloqueada";
   if (status === 2) return "reservada";
   return "disponivel";
@@ -151,9 +163,23 @@ if (!GRAVAR) {
 // (`where origem_c2x_id is not null`) e o PostgREST recusa índice parcial em ON CONFLICT — devolve
 // 42P10 "no unique or exclusion constraint matching". A constraint de código é completa e serve ao
 // mesmo propósito: rodar duas vezes atualiza em vez de duplicar.
+// ⚠️ No modo --so-situacao o upsert manda SÓ a chave e a situação: `merge-duplicates` atualiza as
+// colunas presentes e deixa as outras como estão. Unidade que ainda não existe no Panteon nasce
+// só com a chave e a situação — o resto entra numa carga completa depois.
+const paraGravar = SO_SITUACAO
+  ? registros.map((r) => ({
+      codigo: r.codigo,
+      enterprise_id: r.enterprise_id,
+      origem_c2x_id: r.origem_c2x_id,
+      situacao: r.situacao,
+      workspace_id: r.workspace_id,
+    }))
+  : registros;
+if (SO_SITUACAO) console.log("  Modo --so-situacao: só a coluna `situacao` será atualizada.\n");
+
 let gravadas = 0;
-for (let i = 0; i < registros.length; i += 400) {
-  const lote = registros.slice(i, i + 400);
+for (let i = 0; i < paraGravar.length; i += 400) {
+  const lote = paraGravar.slice(i, i + 400);
   const resp = await fetch(
     `${SUPABASE_URL}/rest/v1/hercules_unidades?on_conflict=workspace_id,enterprise_id,codigo`,
     {

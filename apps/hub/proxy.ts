@@ -165,6 +165,27 @@ function guardApi(request: NextRequest, pathname: string) {
       return NextResponse.next();
     }
 
+    // COORDENADOR do portal COMERCIAL (o Hércules da Gurgel): a aba Lançamento usa a Fila e a
+    // Central do Prometeu com o MESMO cookie do portal, sem Bearer. Sem este alivio a tela recebia
+    // "Sessao ausente." daqui antes de a rota rodar (revisao de 02/09/2026).
+    //
+    // ⚠️ POR CAMINHO EXATO, NUNCA POR PREFIXO. So entram as rotas que aplicam o recorte do
+    // coordenador por dentro (lerCoordenadorDoPortal + eventoNoEscopo, em
+    // lib/prometeu/operador-server.ts). Um `startsWith("/api/prometeu/")` aqui abriria pela UI a
+    // duzia de rotas (reserva-touch, cupom, jornada, pa, palco, mesa…) que ainda nao conhecem
+    // `escopo` — elas ja recusam o cookie por dentro (fail-closed), e esta lista e a segunda trava.
+    // Rota nova para o coordenador: primeiro o recorte na rota, depois a linha aqui.
+    const ROTAS_DO_PROMETEU_PARA_O_COORDENADOR = new Set([
+      "/api/prometeu/eventos",
+      "/api/prometeu/fila",
+      "/api/prometeu/credenciados",
+      "/api/prometeu/reservas",
+      "/api/prometeu/operadores",
+    ]);
+    if (temCookieIncorporador && ROTAS_DO_PROMETEU_PARA_O_COORDENADOR.has(pathname)) {
+      return NextResponse.next();
+    }
+
     // A porta de entrada em si (login/logout) nasce sem cookie nenhum: precisa ser publica, como
     // a do operador do evento. Ela se protege por dentro (e-mail + senha em scrypt, resposta e
     // tempo iguais para e-mail inexistente e senha errada).

@@ -61,6 +61,7 @@ import {
   WorkspaceLayout,
 } from "@repo/uix";
 import {
+  Briefcase,
   BriefcaseBusiness,
   Building2,
   Archive,
@@ -96,6 +97,7 @@ type SetupTabId =
   | "setores"
   | "modulos"
   | "incorporadores"
+  | "comercial"
   | "permissoes";
 
 type SetupActionId = "new-department" | "new-sector" | "new-user";
@@ -117,6 +119,10 @@ const setupTabs = [
   { icon: PackageCheck, id: "modulos", label: "Modulos" },
   // Portais de incorporador (era /apolo/incorporadores; o Lucas pediu dentro do Setup em 18/08).
   { icon: Landmark, id: "incorporadores", label: "Incorporadores" },
+  // Portal comercial (HÉRCULES): a mesma tela em outro modo, onde o Lucas cria as contas dos
+  // coordenadores e vincula cada um aos empreendimentos dele (pedido de 02/09: "igual a tela do
+  // incorporador uma tela de Comercial").
+  { icon: Briefcase, id: "comercial", label: "Comercial" },
   { icon: KeyRound, id: "permissoes", label: "Permissoes" },
 ] as const satisfies readonly {
   icon: typeof Users;
@@ -576,10 +582,16 @@ function SetupWorkspace() {
           </Tooltip>
         </div>
         <div className="p-5">
-          {activeTab === "incorporadores" ? (
+          {activeTab === "incorporadores" || activeTab === "comercial" ? (
             // A gestão de incorporadores busca os próprios dados (rota com gate admin);
             // não depende do loadSetupData e por isso fica fora do gate de loading acima.
-            <GestaoIncorporadores />
+            // A aba Comercial é a MESMA tela em outro modo (portal comercial + coordenadores).
+            // ⚠️ `key` pelo tipo: é o mesmo componente na mesma posição da árvore, e sem a chave
+            // o React reaproveitaria o estado ao trocar de aba (lista da outra, formulário aberto).
+            <GestaoIncorporadores
+              key={activeTab}
+              tipo={activeTab === "comercial" ? "comercial" : "incorporador"}
+            />
           ) : isLoading ? (
             <PanteonLoadingState
               description="Buscando dados reais do Supabase."

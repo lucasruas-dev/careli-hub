@@ -24,6 +24,7 @@ const BASE: Omit<SessaoIncorporador, "exp"> = {
   incorporadorId: "inc-1",
   incorporadorNome: "Cecílio Rocha",
   slug: "cecilio-rocha",
+  tipo: "incorporador",
   usuarioId: "user-1",
   usuarioNome: "Nívea",
 };

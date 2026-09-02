@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Check, Clock, Loader2, Plus } from "lucide-react";
+import { AlertTriangle, Clock, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -28,6 +28,13 @@ import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 // ⚠️ E NÃO SE ARRASTA CARD. O card anda quando as atividades do estágio acabam — arrastar à mão
 // deixaria o board dizer "em assinatura" com o documento por gerar. Marcar a última atividade é o
 // gesto que move.
+//
+// ⚠️ O MESMO BOARD SERVE O PORTAL COMERCIAL (Hércules, 02/09/2026), e lá serve SÓ PARA LER. A aba
+// Contratos do coordenador é este componente com três props opcionais: `rota` (a escopada pela
+// sessão do portal, em vez da interna), `semToken` (quem autentica é o cookie do portal — e
+// `getApoloAccessToken` LANÇA sem sessão do hub, que o coordenador não tem) e `somenteLeitura`
+// (checkbox travado, nenhum POST: quem faz o card andar continua sendo a Têmis). Sem as três, o
+// comportamento interno é exatamente o de antes.
 
 type TrabalhoDaTela = {
   atividadesFeitas: string[];
@@ -65,7 +72,20 @@ function cpfLegivel(bruto: null | string): null | string {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
-export function TemisKanban({ enterpriseId }: { enterpriseId: null | string }) {
+export function TemisKanban({
+  enterpriseId,
+  rota = "/api/temis/trabalhos",
+  semToken = false,
+  somenteLeitura = false,
+}: {
+  enterpriseId: null | string;
+  /** De onde os cards vêm. O portal comercial aponta para a rota escopada pela sessão dele. */
+  rota?: string;
+  /** Sem `Authorization`: quem autentica é o cookie same-origin (portal do incorporador). */
+  semToken?: boolean;
+  /** Só olhar: checkbox travado e nenhum POST. */
+  somenteLeitura?: boolean;
+}) {
   const [trabalhos, setTrabalhos] = useState<null | TrabalhoDaTela[]>(null);
   const [colunas, setColunas] = useState<Colunas>([]);
   const [erro, setErro] = useState<null | string>(null);
@@ -75,9 +95,9 @@ export function TemisKanban({ enterpriseId }: { enterpriseId: null | string }) {
   const carregar = useCallback(async () => {
     setErro(null);
     try {
-      const token = await getApoloAccessToken();
+      const token = semToken ? null : await getApoloAccessToken();
       const q = enterpriseId ? `?empreendimento=${encodeURIComponent(enterpriseId)}` : "";
-      const r = await fetch(`/api/temis/trabalhos${q}`, {
+      const r = await fetch(`${rota}${q}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const j = (await r.json()) as {
@@ -91,7 +111,7 @@ export function TemisKanban({ enterpriseId }: { enterpriseId: null | string }) {
       setErro(e instanceof Error ? e.message : "Não consegui carregar o board.");
       setTrabalhos([]);
     }
-  }, [enterpriseId]);
+  }, [enterpriseId, rota, semToken]);
 
   useEffect(() => {
     void carregar();
@@ -99,11 +119,15 @@ export function TemisKanban({ enterpriseId }: { enterpriseId: null | string }) {
 
   const marcar = useCallback(
     async (id: string, atividade: string, feita: boolean) => {
+      // ⚠️ A TRAVA DE LEITURA MORA AQUI, e não só no checkbox: um `disabled` esquecido numa
+      // versão futura do card não pode virar POST numa rota que nem aceita POST.
+      if (somenteLeitura) return;
+
       setOcupado(id);
       setErro(null);
       try {
-        const token = await getApoloAccessToken();
-        const r = await fetch("/api/temis/trabalhos", {
+        const token = semToken ? null : await getApoloAccessToken();
+        const r = await fetch(rota, {
           body: JSON.stringify({ acao: "atividade", atividade, feita, id }),
           headers: {
             "Content-Type": "application/json",
@@ -120,7 +144,7 @@ export function TemisKanban({ enterpriseId }: { enterpriseId: null | string }) {
         setOcupado(null);
       }
     },
-    [carregar],
+    [carregar, rota, semToken, somenteLeitura],
   );
 
   const porEstagio = useMemo(() => {
@@ -178,6 +202,7 @@ export function TemisKanban({ enterpriseId }: { enterpriseId: null | string }) {
                       aoMarcar={(atividade, feita) => void marcar(t.id, atividade, feita)}
                       key={t.id}
                       ocupado={ocupado === t.id}
+                      somenteLeitura={somenteLeitura}
                       trabalho={t}
                     />
                   ))
@@ -196,12 +221,14 @@ function Card({
   aoAbrir,
   aoMarcar,
   ocupado,
+  somenteLeitura,
   trabalho,
 }: {
   aberto: boolean;
   aoAbrir: () => void;
   aoMarcar: (atividade: string, feita: boolean) => void;
   ocupado: boolean;
+  somenteLeitura: boolean;
   trabalho: TrabalhoDaTela;
 }) {
   const p = progresso(trabalho);
@@ -261,6 +288,7 @@ function Card({
               feita={feitas.has(a.texto)}
               key={a.texto}
               ocupado={ocupado}
+              somenteLeitura={somenteLeitura}
             />
           ))}
 
@@ -286,18 +314,26 @@ function ItemDoChecklist({
   atividade,
   feita,
   ocupado,
+  somenteLeitura,
 }: {
   aoMarcar: (atividade: string, feita: boolean) => void;
   atividade: Atividade;
   feita: boolean;
   ocupado: boolean;
+  somenteLeitura: boolean;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-1.5 text-[0.72rem] leading-snug text-ink">
+    <label
+      className={`flex items-start gap-1.5 text-[0.72rem] leading-snug text-ink ${
+        somenteLeitura ? "cursor-default" : "cursor-pointer"
+      }`}
+    >
+      {/* No portal o checkbox é só o retrato do que a Têmis já fez: travado, sem `onChange`
+          alcançável — e `marcar` recusa por cima, caso alguém destrave o input por fora. */}
       <input
         checked={feita}
         className="mt-0.5"
-        disabled={ocupado}
+        disabled={ocupado || somenteLeitura}
         onChange={(e) => aoMarcar(atividade.texto, e.target.checked)}
         type="checkbox"
       />

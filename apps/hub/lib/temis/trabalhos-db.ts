@@ -71,10 +71,26 @@ function mapear(l: LinhaCrua): TrabalhoDoBoard {
   };
 }
 
-/** Tudo que está no board. Finalizado entra também: some da fila, não do histórico. */
+/**
+ * Tudo que está no board. Finalizado entra também: some da fila, não do histórico.
+ *
+ * `enterpriseId` é o filtro da tela interna (um empreendimento por vez). `enterpriseIds` é o do
+ * portal comercial (Hércules, 02/09/2026): o coordenador enxerga VÁRIOS, e a lista chega pronta da
+ * sessão assinada — quem chama já passou pelo escopo; aqui é só o recorte.
+ *
+ * ⚠️ LISTA VAZIA DEVOLVE VAZIO SEM CONSULTAR. "Nenhum empreendimento" tem que virar "nenhum
+ * trabalho", nunca "todos": é a diferença entre um filtro que recorta e um filtro que sumiu.
+ *
+ * ⚠️ O `.in()` do PostgREST vai na URL e estoura com listas grandes (em outros cantos do repo a
+ * regra é lote de 100). Aqui são os empreendimentos de UMA pessoa — uns 15 no máximo —, então a
+ * lista passa inteira. Se um dia a fonte mudar para algo maior, lotear.
+ */
 export async function trabalhosDoBoard(input?: {
   enterpriseId?: string;
+  enterpriseIds?: string[];
 }): Promise<TrabalhoDoBoard[]> {
+  if (input?.enterpriseIds && input.enterpriseIds.length === 0) return [];
+
   const supabase = createApoloAdminClient();
   if (!supabase) return [];
 
@@ -85,6 +101,7 @@ export async function trabalhosDoBoard(input?: {
     .order("estagio_desde", { ascending: true });
 
   if (input?.enterpriseId) consulta = consulta.eq("enterprise_id", input.enterpriseId);
+  if (input?.enterpriseIds) consulta = consulta.in("enterprise_id", input.enterpriseIds);
 
   const { data, error } = await consulta;
   if (error || !data) return [];

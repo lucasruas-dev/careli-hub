@@ -53,10 +53,35 @@ export function ehPortalSoProdutos(slug: string): boolean {
  * portal novo herdar o congelamento do Cecílio só porque quis a própria marca no login — e aí
  * ele pararia de receber as melhorias do padrão sem ninguém ter pedido.
  */
-export function portalAssinaPanteon(slug: string): boolean {
+export function portalAssinaPanteon(slug: string, tipo?: null | string): boolean {
+  // O portal COMERCIAL veste a marca do time (a Gurgel), e não a do Panteon — Lucas, 02/09/2026:
+  // *"para esse perfil da Gurgel, quero que use a logo deles no lugar da logo do Panteon"*.
+  if (ehPortalComercial(tipo)) return false;
   return !ehPortalPersonalizado(slug) && !ehPortalSoProdutos(slug);
 }
 
 // ⚠️ NÃO ACRESCENTE SLUG AQUI PARA "RESOLVER" UM PROBLEMA DO PADRÃO. Cada entrada é uma versão a
 // mais para manter viva, e a que ninguém olha é a que apodrece. A lista existe para proteger o que
 // JÁ FOI aprovado e entregue, não para adiar decisão de produto.
+
+// O TIPO DO PORTAL — gravado em `apolo_incorporadores.tipo` (migration 0122).
+//
+// Pedido do Lucas (02/09/2026): *"queria dentro do setup nosso, igual a tela do incorporador uma
+// tela de Comercial, aí vou fazendo os perfis, todos terão o mesmo link, final do
+// c2x.app.br/gurgel, o que vai mudar são os acessos"*.
+//
+// ⚠️ É COLUNA, E NÃO MAIS UMA LISTA DE SLUG AQUI EM CIMA. As listas acima dizem, com razão, que
+// servem para "um caso, por enquanto". Vários coordenadores, cada um com o próprio recorte de
+// empreendimentos, é produto de verdade — e produto de verdade mora no banco, onde o Setup grava
+// sem deploy. Ver [[project_hercules_portal_comercial]].
+export type TipoDePortal = "comercial" | "incorporador";
+
+/** Normaliza o que veio do banco (ou de um cookie antigo, que não tinha o campo). */
+export function tipoDePortal(valor: unknown): TipoDePortal {
+  return valor === "comercial" ? "comercial" : "incorporador";
+}
+
+/** O HÉRCULES: o time comercial da Careli operando (reserva, proposta, contrato, lançamento). */
+export function ehPortalComercial(tipo: null | string | undefined): boolean {
+  return tipo === "comercial";
+}

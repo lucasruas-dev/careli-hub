@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   autenticarUsuarioIncorporador,
   carregarIncorporadorPorSlug,
+  escopoDaConta,
   registrarLoginIncorporador,
   usuarioIncorporadorSegueAtivo,
 } from "@/lib/apolo/incorporador/dados";
@@ -56,7 +57,19 @@ export async function POST(request: Request) {
 
   const { incorporador, usuario } = resultado;
 
-  if (incorporador.empreendimentos.length === 0) {
+  // O recorte é da CONTA, não só do portal (0122): no comercial cada coordenador vê os
+  // empreendimentos dele. Falha fechada: erro ao ler o vínculo não vira "vê tudo".
+  let escopo: Awaited<ReturnType<typeof escopoDaConta>>;
+  try {
+    escopo = await escopoDaConta(incorporador, usuario.id);
+  } catch {
+    return NextResponse.json(
+      { error: "Acesso indisponível agora. Tente de novo em instantes." },
+      { status: 503 },
+    );
+  }
+
+  if (escopo.enterpriseIds.length === 0) {
     // Conta válida, mas sem nenhum empreendimento liberado: entrar para ver telas vazias só
     // gera chamado. Melhor dizer que o acesso ainda não está pronto.
     return NextResponse.json(
@@ -70,13 +83,12 @@ export async function POST(request: Request) {
   try {
     token = criarSessaoIncorporador(
       {
-        enterpriseIds: incorporador.empreendimentos.map((e) => e.enterpriseId),
-        enterpriseIdsComCarteira: incorporador.empreendimentos
-          .filter((e) => e.carteiraAdministrada)
-          .map((e) => e.enterpriseId),
+        enterpriseIds: escopo.enterpriseIds,
+        enterpriseIdsComCarteira: escopo.enterpriseIdsComCarteira,
         incorporadorId: incorporador.id,
         incorporadorNome: incorporador.nome,
         slug: incorporador.slug,
+        tipo: incorporador.tipo,
         usuarioId: usuario.id,
         usuarioNome: usuario.nome,
       },
@@ -94,7 +106,7 @@ export async function POST(request: Request) {
 
   const resposta = NextResponse.json({
     data: {
-      incorporador: { nome: incorporador.nome, slug: incorporador.slug },
+      incorporador: { nome: incorporador.nome, slug: incorporador.slug, tipo: incorporador.tipo },
       usuario: { nome: usuario.nome },
     },
   });
@@ -137,23 +149,32 @@ export async function GET(request: Request) {
     usuarioIncorporadorSegueAtivo(sessao.usuarioId),
   ]);
 
+  // O recorte fresco é o da CONTA (0122). Erro ao ler cai no cookie, como banco fora.
+  let escopoFresco: Awaited<ReturnType<typeof escopoDaConta>> | null = null;
+  if (contaAtiva === true && incorporador) {
+    try {
+      escopoFresco = await escopoDaConta(incorporador, sessao.usuarioId);
+    } catch {
+      escopoFresco = null;
+    }
+  }
+
   // Desativação explícita derruba a sessão. `carregarIncorporadorPorSlug` devolve null tanto
   // para inativo quanto para banco fora; por isso a conta é o gatilho de revogação (ela
   // distingue: false = desativada, null = não deu para conferir).
-  if (contaAtiva === false || (contaAtiva === true && incorporador && incorporador.empreendimentos.length === 0)) {
+  if (contaAtiva === false || (escopoFresco !== null && escopoFresco.enterpriseIds.length === 0)) {
     const resposta = NextResponse.json({ data: null }, { headers: { "Cache-Control": "no-store" } });
     resposta.cookies.set({ httpOnly: true, maxAge: 0, name: INCORPORADOR_COOKIE, path: "/", sameSite: "lax", secure: process.env.NODE_ENV === "production", value: "" });
     return resposta;
   }
 
   const fresca =
-    contaAtiva === true && incorporador
+    escopoFresco !== null && incorporador
       ? {
-          enterpriseIds: incorporador.empreendimentos.map((e) => e.enterpriseId),
-          enterpriseIdsComCarteira: incorporador.empreendimentos
-            .filter((e) => e.carteiraAdministrada)
-            .map((e) => e.enterpriseId),
+          enterpriseIds: escopoFresco.enterpriseIds,
+          enterpriseIdsComCarteira: escopoFresco.enterpriseIdsComCarteira,
           incorporadorNome: incorporador.nome,
+          tipo: incorporador.tipo,
         }
       : null;
 
@@ -163,7 +184,11 @@ export async function GET(request: Request) {
         empreendimentos: fresca?.enterpriseIds ?? sessao.enterpriseIds,
         empreendimentosComCarteira:
           fresca?.enterpriseIdsComCarteira ?? sessao.enterpriseIdsComCarteira,
-        incorporador: { nome: fresca?.incorporadorNome ?? sessao.incorporadorNome, slug: sessao.slug },
+        incorporador: {
+          nome: fresca?.incorporadorNome ?? sessao.incorporadorNome,
+          slug: sessao.slug,
+          tipo: fresca?.tipo ?? sessao.tipo,
+        },
         usuario: { nome: sessao.usuarioNome },
       },
     },
@@ -179,6 +204,7 @@ export async function GET(request: Request) {
           incorporadorId: sessao.incorporadorId,
           incorporadorNome: fresca.incorporadorNome,
           slug: sessao.slug,
+          tipo: fresca.tipo,
           usuarioId: sessao.usuarioId,
           usuarioNome: sessao.usuarioNome,
         },

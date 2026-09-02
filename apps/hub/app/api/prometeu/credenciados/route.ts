@@ -1,6 +1,11 @@
 import { after, NextResponse } from "next/server";
 
 import { authorizePrometeuWrite } from "@/lib/prometeu/auth";
+import {
+  autorizarEscritaDoHubOuDoCoordenador,
+  eventoNoEscopo,
+  respostaForaDoEscopo,
+} from "@/lib/prometeu/operador-server";
 import { enviarBoasVindasDoCheckIn } from "@/lib/prometeu/boas-vindas-disparo";
 import { enviarChamadoPorWhatsApp } from "@/lib/prometeu/chamado-disparo";
 import {
@@ -8,6 +13,7 @@ import {
   ajustarOrdem,
   chamarCredenciado,
   createPrometeuClient,
+  getEvento,
   bipDaSecretaria,
   bipDoSalao,
   excluirCredenciado,
@@ -21,8 +27,8 @@ import {
   reservarUnidade,
 } from "@/lib/prometeu/data";
 import {
-  autorizarOperacao,
-  autorizarOperacaoDeEscrita,
+  autorizarEscritaComCoordenador,
+  autorizarOperacaoComCoordenador,
 } from "@/lib/prometeu/operador-server";
 import { avisarFilaEmRealtime } from "@/lib/prometeu/realtime-fila";
 import { PROMETEU_ETAPAS, type PrometeuEtapa } from "@/lib/prometeu/types";
@@ -34,6 +40,40 @@ export const runtime = "nodejs";
 // A tarefa after() da boas-vindas roda depois da resposta, dentro do lifecycle da função — teto
 // generoso pra ela não ser cortada se a Meta demorar.
 export const maxDuration = 60;
+
+type ClienteDoPrometeu = NonNullable<ReturnType<typeof createPrometeuClient>>;
+
+/**
+ * O credenciado do ato está num lançamento que esta autorização enxerga?
+ *
+ * ⚠️ VALE PARA TODO RAMO DO PATCH, inclusive os que respondem cedo (checkin, os dois bips, no-show
+ * e chamar-do-salao). Na revisão de 02/09/2026 esses cinco aceitavam o coordenador e devolviam
+ * ANTES da conferência de escopo que só existia lá embaixo: o coordenador com vínculo no 40
+ * chamava (com WhatsApp real) o cliente do lançamento do 35. O evento sai da LINHA do credenciado
+ * (é ele quem está sendo movido), não do corpo — o corpo só decide no "liberar" puro, sem pessoa.
+ * Sem `escopo` (hub ou operador do posto) não há recorte e a resposta é sempre true.
+ */
+async function credenciadoNoEscopo(
+  client: ClienteDoPrometeu,
+  auth: { escopo?: string[] },
+  credenciadoId: string,
+  eventoIdDoCorpo: string | undefined,
+): Promise<boolean> {
+  if (!auth.escopo) return true;
+
+  let eventoId = eventoIdDoCorpo ?? "";
+  if (credenciadoId) {
+    const { data: pessoa } = await client
+      .from("prometeu_credenciados")
+      .select("evento_id")
+      .eq("id", credenciadoId)
+      .maybeSingle<{ evento_id: string }>();
+    eventoId = pessoa?.evento_id ?? eventoId;
+  }
+  const eventoDoAto = eventoId ? await getEvento(client, eventoId) : null;
+  if (!eventoDoAto) return false;
+  return eventoNoEscopo(auth, eventoDoAto);
+}
 
 export async function POST(request: Request) {
   const auth = await authorizePrometeuWrite(request);
@@ -133,11 +173,15 @@ export async function PATCH(request: Request) {
   // precisa poder bipar. Grava se estava dentro da janela NAQUELE instante. Fica ANTES da
   // autorizacao de escrita do hub porque e' a UNICA acao que o operador pode disparar.
   if (body.acao === "checkin") {
-    const auth = await autorizarOperacao(request);
+    const auth = await autorizarOperacaoComCoordenador(request);
     if (!auth.ok) return auth.response;
 
     if (!body.eventoId) {
       return NextResponse.json({ error: "Informe o eventoId." }, { status: 400 });
+    }
+    // `fazerCheckIn` só confere credenciado × eventoId, não o recorte do coordenador.
+    if (!(await credenciadoNoEscopo(client, auth, credenciadoId, body.eventoId))) {
+      return respostaForaDoEscopo();
     }
 
     const { error, naJanela, ok } = await fazerCheckIn({
@@ -167,11 +211,14 @@ export async function PATCH(request: Request) {
   // de quem opera: por isso nao passam pelo gate de escrita do hub, mas TAMBEM nao aceitam
   // etapa arbitraria (cada uma so' move pro seu destino).
   if (body.acao === "bip-salao" || body.acao === "bip-secretaria") {
-    const auth = await autorizarOperacao(request);
+    const auth = await autorizarOperacaoComCoordenador(request);
     if (!auth.ok) return auth.response;
 
     if (!body.eventoId) {
       return NextResponse.json({ error: "Informe o eventoId." }, { status: 400 });
+    }
+    if (!(await credenciadoNoEscopo(client, auth, credenciadoId, body.eventoId))) {
+      return respostaForaDoEscopo();
     }
 
     const entrada = {
@@ -201,8 +248,12 @@ export async function PATCH(request: Request) {
   // transito pra sempre, porque so o bip do QR o fecha — e quem nao veio nao tem QR pra bipar.
   // Aberto ao operador: e ele quem esta na porta vendo que a pessoa nao chegou.
   if (body.acao === "no-show") {
-    const auth = await autorizarOperacao(request);
+    const auth = await autorizarOperacaoComCoordenador(request);
     if (!auth.ok) return auth.response;
+    // `marcarNoShow` nem recebe eventoId: o recorte só se prova pela linha do credenciado.
+    if (!(await credenciadoNoEscopo(client, auth, credenciadoId, body.eventoId))) {
+      return respostaForaDoEscopo();
+    }
 
     const { error, ok } = await marcarNoShow({
       client,
@@ -222,11 +273,15 @@ export async function PATCH(request: Request) {
   // A trava: zona FIXA em "salao" e SEM mesa e SEM mover etapa — quem move e' o bip. Assim o
   // operador nao consegue chamar pra mesa da secretaria nem empurrar alguem de etapa por aqui.
   if (body.acao === "chamar-do-salao") {
-    const auth = await autorizarOperacao(request);
+    const auth = await autorizarOperacaoComCoordenador(request);
     if (!auth.ok) return auth.response;
 
     if (!body.eventoId) {
       return NextResponse.json({ error: "Informe o eventoId." }, { status: 400 });
+    }
+    // Este ramo dispara WhatsApp REAL ao cliente: fora do recorte, nem chega ao `chamar`.
+    if (!(await credenciadoNoEscopo(client, auth, credenciadoId, body.eventoId))) {
+      return respostaForaDoEscopo();
     }
 
     const { error, ok } = await chamarCredenciado({
@@ -272,10 +327,18 @@ export async function PATCH(request: Request) {
 
   // Na via do HUB continua valendo o papel de escrita (viewer NAO opera mesa); na via do EVENTO
   // vale o cookie assinado do operador. Ver autorizarOperacaoDeEscrita.
+  // ⚠️ O COORDENADOR DO PORTAL COMERCIAL ENTRA NAS DUAS PORTAS — ele é gente da Careli, e no dia
+  // do lançamento comanda a fila como o time interno. O que ele NÃO faz é sair do próprio recorte:
+  // o evento da pessoa tem que ser de um empreendimento dele (ver `credenciadoNoEscopo`).
   const autorizacao = ehAcaoDaMesa
-    ? await autorizarOperacaoDeEscrita(request)
-    : await authorizePrometeuWrite(request);
+    ? await autorizarEscritaComCoordenador(request)
+    : await autorizarEscritaDoHubOuDoCoordenador(request);
   if (!autorizacao.ok) return autorizacao.response;
+
+  // O evento vem do credenciado (é ele quem está sendo movido); no "liberar" puro, do corpo.
+  if (!(await credenciadoNoEscopo(client, autorizacao, credenciadoId, body.eventoId))) {
+    return respostaForaDoEscopo();
+  }
 
   // Quem assinou o ato: o usuario do hub, ou o operador do evento (auditoria da chamada).
   const auth = {

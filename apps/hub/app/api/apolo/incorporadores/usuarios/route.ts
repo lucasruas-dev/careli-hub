@@ -23,6 +23,8 @@ export async function POST(request: Request) {
   const corpo = (await request.json().catch(() => null)) as null | {
     ativo?: boolean;
     email?: string;
+    /** Recorte próprio da conta (0122). Ausente = não mexer; lista = substituir. */
+    empreendimentos?: unknown;
     id?: null | string;
     incorporadorId?: string;
     nome?: string;
@@ -36,6 +38,9 @@ export async function POST(request: Request) {
   const resultado = await salvarUsuarioIncorporador(client, {
     ativo: corpo.ativo,
     email: corpo.email ?? "",
+    empreendimentos: Array.isArray(corpo.empreendimentos)
+      ? corpo.empreendimentos.map((e) => String(e ?? "").trim()).filter(Boolean)
+      : undefined,
     id: corpo.id ?? null,
     incorporadorId: String(corpo.incorporadorId ?? ""),
     nome: corpo.nome ?? "",

@@ -7,9 +7,11 @@ import { ALVO_TOQUE, fonte } from "@/modules/publico/ui/tokens";
 import { AlternadorDeTema, Marca, ProvedorDeTema, T, TEMA_CSS } from "./tema";
 
 import {
+  ehPortalComercial,
   ehPortalPersonalizado,
   ehPortalSoProdutos,
   portalAssinaPanteon,
+  type TipoDePortal,
 } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { TelaCarteira } from "./TelaCarteira";
 import { TelaCrm } from "./TelaCrm";
@@ -20,6 +22,10 @@ import { apiDoPortal } from "@/modules/lsoft/api";
 import { portalVeBaseLsoft } from "@/lib/lsoft/portais";
 import { portalEmiteBoletos } from "@/lib/apolo/boletos/portais";
 import { TelaBoletos } from "./TelaBoletos";
+// As duas do portal COMERCIAL (o Hércules da Gurgel): o board da Têmis recortado pelo escopo e a
+// fila + central do Prometeu. Ver `ABAS_COMERCIAL`.
+import { TelaContratos } from "./TelaContratos";
+import { TelaLancamento } from "./TelaLancamento";
 import { TelaVendas } from "./TelaVendas";
 
 // PORTAL DO INCORPORADOR — a porta e as telas de dentro.
@@ -35,19 +41,30 @@ import { TelaVendas } from "./TelaVendas";
 type Sessao = {
   empreendimentos: string[];
   empreendimentosComCarteira: string[];
-  incorporador: { nome: string; slug: string };
+  // `tipo` chega da rota de sessão (0122). Ausente em resposta antiga = incorporador.
+  incorporador: { nome: string; slug: string; tipo?: TipoDePortal };
   usuario: { nome: string };
 };
 
 // "produtos" existe SÓ no portal personalizado (ver `abasDoPortal`). No padrão, o mapa vive
-// dentro de Vendas.
-type Aba = "boletos" | "carteira" | "crm" | "lsoft" | "produtos" | "vendas";
+// dentro de Vendas. "contratos" e "lancamento" existem SÓ no portal comercial.
+type Aba =
+  | "boletos"
+  | "carteira"
+  | "contratos"
+  | "crm"
+  | "lancamento"
+  | "lsoft"
+  | "produtos"
+  | "vendas";
 
 type DadosDoPortal = {
   logoEscuraUrl: string | null;
   logoUrl: string | null;
   nome: string;
   slug: string;
+  /** Vem do banco pela página do servidor, junto com a marca: decide abas e assinatura. */
+  tipo: TipoDePortal;
 };
 
 // O PROVEDOR DE TEMA ENVOLVE TUDO, e não só o portal de dentro: a escolha vale desde a porta (o
@@ -62,7 +79,7 @@ export function PortalIncorporador(dados: DadosDoPortal) {
   );
 }
 
-function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug }: DadosDoPortal) {
+function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug, tipo }: DadosDoPortal) {
   const [sessao, setSessao] = useState<Sessao | null>(null);
   const [carregando, setCarregando] = useState(true);
   // Abre em Vendas: é a primeira pergunta do dono do empreendimento e a única aba que existe para
@@ -88,7 +105,7 @@ function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug }: DadosDoPortal) {
   }, [carregarSessao]);
 
   if (carregando) {
-    return <Moldura logoEscuraUrl={logoEscuraUrl} logoUrl={logoUrl} nome={nome} slug={slug}><div style={{ color: T.muted, fontSize: 14, textAlign: "center" }}>Carregando…</div></Moldura>;
+    return <Moldura logoEscuraUrl={logoEscuraUrl} logoUrl={logoUrl} nome={nome} slug={slug} tipo={tipo}><div style={{ color: T.muted, fontSize: 14, textAlign: "center" }}>Carregando…</div></Moldura>;
   }
 
   // ⚠️ A SESSAO TEM QUE SER DESTE PORTAL. O cookie e um so por navegador, entao quem tem sessao
@@ -102,7 +119,7 @@ function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug }: DadosDoPortal) {
 
   if (!sessao || !daCasa) {
     return (
-      <Moldura logoEscuraUrl={logoEscuraUrl} logoUrl={logoUrl} nome={nome} slug={slug}>
+      <Moldura logoEscuraUrl={logoEscuraUrl} logoUrl={logoUrl} nome={nome} slug={slug} tipo={tipo}>
         <Porta aoEntrar={carregarSessao} slug={slug} />
         {sessao && !daCasa ? (
           <p
@@ -130,8 +147,11 @@ function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug }: DadosDoPortal) {
         await fetch("/api/incorporador/sessao", { method: "DELETE" });
         setSessao(null);
       }}
+      logoEscuraUrl={logoEscuraUrl}
+      logoUrl={logoUrl}
       onAba={setAba}
       sessao={sessao}
+      tipo={tipo}
     />
   );
 }
@@ -144,12 +164,14 @@ function Moldura({
   logoUrl,
   nome,
   slug,
+  tipo,
 }: {
   children: React.ReactNode;
   logoEscuraUrl: string | null;
   logoUrl: string | null;
   nome: string;
   slug: string;
+  tipo: TipoDePortal;
 }) {
   // ⚠️ A ASSINATURA DO PANTEON NA PORTA. O Lucas viu o login da Lagoa Bonita com o nome solto e
   // apontou (18/08/2026): *"aqui faltou a logo do Panteon em cima do Lagoa Bonita"*. O padrão é
@@ -161,7 +183,7 @@ function Moldura({
   // *"nesses perfis que vamos fazer personalizado, pode tirar a logo do panteon"*. A regra mora
   // em `portalAssinaPanteon`, e não num `!ehPortalPersonalizado` aqui: são duas perguntas
   // diferentes (ver a nota lá).
-  const assinaPanteon = portalAssinaPanteon(slug);
+  const assinaPanteon = portalAssinaPanteon(slug, tipo);
   return (
     <div
       className="inc"
@@ -423,7 +445,23 @@ const ABAS_SO_PRODUTOS: { chave: Aba; rotulo: string }[] = [
   { chave: "produtos", rotulo: "Produtos" },
 ];
 
-export function abasDoPortal(slug: string): { chave: Aba; rotulo: string }[] {
+// O PORTAL COMERCIAL — o Hércules dos coordenadores (Lucas, 02/09/2026): *"a gente vai ter no
+// hercules, CRM - Vendas - Contratos - financeiro"* e depois *"a tela de lançamento (a tela do
+// prometeu) só com a fila e a central"*. "Financeiro" é a mesma tela Carteira, com o nome que o
+// time comercial usa; a sessão do comercial marca TODO empreendimento como "com carteira" (ver
+// `escopoDoUsuario`), então a aba nunca some por aqui.
+const ABAS_COMERCIAL: { chave: Aba; rotulo: string }[] = [
+  { chave: "crm", rotulo: "CRM" },
+  { chave: "vendas", rotulo: "Vendas" },
+  { chave: "contratos", rotulo: "Contratos" },
+  { chave: "carteira", rotulo: "Financeiro" },
+  { chave: "lancamento", rotulo: "Lançamento" },
+];
+
+export function abasDoPortal(slug: string, tipo?: TipoDePortal): { chave: Aba; rotulo: string }[] {
+  // ⚠️ O TIPO VEM ANTES DAS LISTAS DE SLUG. As listas protegem perfis já aprovados do padrão; o
+  // comercial não é um deles, é outro produto — e decidido pelo banco, não por slug em código.
+  if (ehPortalComercial(tipo)) return ABAS_COMERCIAL;
   if (ehPortalSoProdutos(slug)) return ABAS_SO_PRODUTOS;
 
   let abas = ehPortalPersonalizado(slug) ? ABAS_PERSONALIZADO : ABAS;
@@ -432,23 +470,32 @@ export function abasDoPortal(slug: string): { chave: Aba; rotulo: string }[] {
   return abas;
 }
 
-// A logo do incorporador NÃO entra aqui de propósito: ela recebe na porta (o login) e o portal
-// é Panteon para todo mundo. Por isso o Portal não recebe mais `logoUrl`/`logoEscuraUrl`.
+// A logo do incorporador NÃO veste o portal de dentro: ela recebe na porta (o login) e o portal
+// é Panteon para todo mundo. A EXCEÇÃO é o portal COMERCIAL — é o time da Careli operando sob a
+// marca dele (Lucas, 02/09/2026: *"para esse perfil da Gurgel, quero que use a logo deles no
+// lugar da logo do Panteon"*). Por isso as URLs chegam até aqui, e só o comercial as usa.
 function Portal({
   aba,
   aoSair,
+  logoEscuraUrl,
+  logoUrl,
   onAba,
   sessao,
+  tipo,
 }: {
   aba: Aba;
   aoSair: () => Promise<void>;
+  logoEscuraUrl: string | null;
+  logoUrl: string | null;
   onAba: (aba: Aba) => void;
   sessao: Sessao;
+  tipo: TipoDePortal;
 }) {
+  const comercial = ehPortalComercial(tipo);
   // "Carteira (quando tiver)": some inteira quando nenhum empreendimento deste incorporador tem
   // carteira administrada pela Careli. Aba que abre vazia vira chamado.
   const temCarteira = sessao.empreendimentosComCarteira.length > 0;
-  const abas = abasDoPortal(sessao.incorporador.slug).filter(
+  const abas = abasDoPortal(sessao.incorporador.slug, tipo).filter(
     (item) => item.chave !== "carteira" || temCarteira,
   );
 
@@ -469,29 +516,43 @@ function Portal({
               sumiria no tema claro daqui. Por isso: símbolo + o nome escrito em texto, que
               acompanha o tema sozinho pela variável de cor. */}
           <div style={{ borderBottom: `1px solid ${T.border}`, padding: "16px 16px 14px" }}>
-            <span style={{ alignItems: "center", display: "flex", gap: 8 }}>
+            {comercial ? (
+              // A MARCA DO TIME no lugar do Panteon. A arte é horizontal, então ocupa a largura
+              // do menu e limita pela altura; o nome não se repete embaixo — a logo já o diz.
               <Marca
-                altura={24}
-                escuraUrl="/panteon-mark-light.png"
-                largura={24}
-                nome="Panteon"
-                url="/panteon-mark.png"
+                altura={44}
+                escuraUrl={logoEscuraUrl}
+                largura="100%"
+                nome={sessao.incorporador.nome}
+                url={logoUrl}
               />
-              <span style={{ color: T.text, fontSize: 16, fontWeight: 700, letterSpacing: 0.2 }}>
-                Panteon
-              </span>
-            </span>
-            <span
-              style={{
-                color: T.sub,
-                display: "block",
-                fontSize: 13,
-                fontWeight: 600,
-                marginTop: 8,
-              }}
-            >
-              {sessao.incorporador.nome}
-            </span>
+            ) : (
+              <>
+                <span style={{ alignItems: "center", display: "flex", gap: 8 }}>
+                  <Marca
+                    altura={24}
+                    escuraUrl="/panteon-mark-light.png"
+                    largura={24}
+                    nome="Panteon"
+                    url="/panteon-mark.png"
+                  />
+                  <span style={{ color: T.text, fontSize: 16, fontWeight: 700, letterSpacing: 0.2 }}>
+                    Panteon
+                  </span>
+                </span>
+                <span
+                  style={{
+                    color: T.sub,
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    marginTop: 8,
+                  }}
+                >
+                  {sessao.incorporador.nome}
+                </span>
+              </>
+            )}
           </div>
 
           <nav className="inc-nav">
@@ -574,6 +635,9 @@ function Portal({
                 token, e sem o botão da MOST: quem paga o enriquecimento é a Careli). */}
             {aba === "lsoft" ? <CarteiraLsoft api={apiDoPortal} /> : null}
             {aba === "boletos" ? <TelaBoletos /> : null}
+            {/* Só o portal COMERCIAL chega aqui: `abasDoPortal` não oferece as duas fora dele. */}
+            {aba === "contratos" ? <TelaContratos /> : null}
+            {aba === "lancamento" ? <TelaLancamento /> : null}
           </main>
 
           <footer

@@ -36,6 +36,47 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-hercules-portal-comercial",
+    deployedAt: "2026-09-02T19:00:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "Nasce o portal do time comercial: o mesmo endereço do portal do incorporador, com perfil próprio e a marca da Gurgel no lugar do Panteon.",
+              "Cinco abas: CRM, Vendas, Contratos, Financeiro e Lançamento.",
+              "Cada coordenador enxerga só os empreendimentos vinculados a ele; sem vínculo, não entra.",
+              "Contratos mostra o board da Têmis recortado pelos empreendimentos do coordenador, só leitura.",
+              "Lançamento traz a fila e a central do Prometeu, com o mesmo login do portal e só os lançamentos dos seus empreendimentos.",
+            ],
+            screen: "Portal comercial",
+          },
+        ],
+      },
+      {
+        module: "Setup",
+        screens: [
+          {
+            items: [
+              "Aba nova Comercial: cria o portal, as contas dos coordenadores e o vínculo de cada um aos empreendimentos.",
+            ],
+            screen: "Comercial",
+          },
+        ],
+      },
+    ],
+    rollback: "f8ac0d5b",
+    technical: {
+      done: "Briefing do Lucas de 02/09/2026: *\"todos terao o mesmo link, final do c2x.app.br/gurgel, o que vai mudar sao os acessos. irei vincular os coordenadores aos empreendimentos\"*. O Hercules dos coordenadores nasce como um TIPO de portal do incorporador (`apolo_incorporadores.tipo`, migration 0122), nao como modulo novo: reaproveita as 13 mil linhas de CRM, Vendas e Carteira e as 47 libs do portal, e o que muda e o recorte. ⚠️ VINCULO POR USUARIO (`apolo_incorporador_usuario_empreendimentos`): no incorporador o recorte e do portal; no comercial e da conta, e conta sem vinculo NAO herda nada (fail-closed decidido na revisao adversarial: a primeira versao herdava e deixava toda conta nova onipotente). Regra pura em `escopo-do-usuario.ts`, a mesma no login e na revalidacao. ⚠️ O PROMETEU GANHOU UMA TERCEIRA VIA, e so onde ha recorte: o coordenador nao entra nas autorizacoes genericas (uma duzia de rotas sem `escopo`), so pelas variantes `...ComCoordenador`, adotadas em eventos, fila, credenciados (helper em TODOS os ramos do PATCH — os cinco que respondiam cedo deixavam chamar, com WhatsApp real, o cliente de outro lancamento), reservas e operadores; o gate do `proxy.ts` libera o cookie do portal por CAMINHO EXATO, nunca por prefixo. ⚠️ ORDEM DO DEPLOY: a 0122 vai ANTES do codigo — `carregarIncorporadorPorSlug` seleciona `tipo` e, sem a coluna, todo portal de incorporador cai em 404. Tres builders em paralelo (Lancamento, Contratos, Setup Comercial), tres lentes de verificacao e um corretor; typecheck limpo, suite inteira verde.",
+      motivation:
+        "Os coordenadores precisam de um lugar só para vender, emitir contrato e operar o lançamento, com a marca deles e vendo só o que é deles.",
+    },
+    title: "Hércules: o portal do time comercial",
+    type: "novidade",
+    version: "1.270.0",
+  },
+  {
     buildTag: "2026-09-02-temis-kanban",
     deployedAt: "2026-09-02T16:00:00-03:00",
     modules: [

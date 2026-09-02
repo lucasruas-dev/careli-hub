@@ -8,7 +8,10 @@ import {
   criarMesas,
   listEventos,
 } from "@/lib/prometeu/data";
-import { autorizarOperacao } from "@/lib/prometeu/operador-server";
+import {
+  autorizarOperacaoComCoordenador,
+  eventoNoEscopo,
+} from "@/lib/prometeu/operador-server";
 import type { PrometeuEventoConfig } from "@/lib/prometeu/types";
 
 // Eventos do Prometeu (os lancamentos). GET lista, POST cria, PATCH salva o Setup.
@@ -17,8 +20,10 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   // Listagem de eventos: aceita a sessao do hub OU o cookie do operador (as telas do posto
-  // resolvem qual evento esta ativo por aqui). Criar/salvar (POST/PATCH) segue so no hub.
-  const auth = await autorizarOperacao(request);
+  // resolvem qual evento esta ativo por aqui) OU o coordenador do portal comercial — este último
+  // só porque a lista é filtrada por `eventoNoEscopo` logo abaixo. Criar/salvar (POST/PATCH)
+  // segue so no hub.
+  const auth = await autorizarOperacaoComCoordenador(request);
   if (!auth.ok) return auth.response;
 
   const client = createPrometeuClient();
@@ -37,7 +42,11 @@ export async function GET(request: Request) {
   // nasceu em 01/08 com o Vale do Ouro.
   const incluirArquivados =
     new URL(request.url).searchParams.get("incluirArquivados") === "1";
-  const eventos = await listEventos(client, { incluirArquivados });
+  // O coordenador do portal comercial só vê os lançamentos dos empreendimentos dele; hub e
+  // operador do posto seguem vendo a lista inteira (ver `eventoNoEscopo`).
+  const eventos = (await listEventos(client, { incluirArquivados })).filter((evento) =>
+    eventoNoEscopo(auth, evento),
+  );
   return NextResponse.json({ data: eventos }, { headers: { "Cache-Control": "no-store" } });
 }
 

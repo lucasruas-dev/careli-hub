@@ -66,6 +66,7 @@ export default async function PaginaIncorporador({
       })}
       nome={incorporador.nome}
       slug={incorporador.slug}
+      tipo={incorporador.tipo}
     />
   );
 }

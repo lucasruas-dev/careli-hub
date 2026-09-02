@@ -14,7 +14,11 @@ import {
   resumoDaMesa,
   resumoDeTodasAsMesas,
 } from "@/lib/prometeu/data";
-import { autorizarOperacao } from "@/lib/prometeu/operador-server";
+import {
+  autorizarOperacaoComCoordenador,
+  eventoNoEscopo,
+  respostaForaDoEscopo,
+} from "@/lib/prometeu/operador-server";
 
 // A fila do evento: credenciados (ja ordenados pela hora do PIX) + mesas. E o que a Central,
 // o Atendente e o Telao leem.
@@ -23,8 +27,9 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   // Leitura da fila: aceita a sessao do hub OU o cookie do operador do evento (a Central, o
-  // Atendente e o Telao do posto leem daqui sem serem usuarios do hub).
-  const auth = await autorizarOperacao(request);
+  // Atendente e o Telao do posto leem daqui sem serem usuarios do hub) OU o coordenador do portal
+  // comercial — este preso ao recorte dele por `eventoNoEscopo`, logo abaixo.
+  const auth = await autorizarOperacaoComCoordenador(request);
   if (!auth.ok) return auth.response;
 
   const parametros = new URL(request.url).searchParams;
@@ -50,6 +55,7 @@ export async function GET(request: Request) {
   if (!evento) {
     return NextResponse.json({ error: "Evento nao encontrado." }, { status: 404 });
   }
+  if (!eventoNoEscopo(auth, evento)) return respostaForaDoEscopo();
 
   const [credenciadosCrus, mesas, chamadas, atividade, emTransito, resumo, resumoMesas] =
     await Promise.all([

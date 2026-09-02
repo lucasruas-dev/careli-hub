@@ -17,6 +17,7 @@ import {
   referenciaAceitavelParaGravar,
   removerObjetoDaLogo,
 } from "@/lib/apolo/incorporador/logo";
+import { tipoDePortal } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // Gestão dos acessos de incorporador (ferramenta INTERNA do Setup do Apolo).
@@ -38,8 +39,10 @@ export async function GET(request: Request) {
   try {
     // O C2X pode estar fora sem que isso impeça a tela: dá para editar usuário e senha mesmo
     // sem a lista de empreendimentos carregada.
+    // `?tipo=comercial` é a tela "Comercial" do Setup; sem o parâmetro, os incorporadores.
+    const tipo = tipoDePortal(new URL(request.url).searchParams.get("tipo"));
     const [incorporadores, empreendimentos] = await Promise.all([
-      listarIncorporadores(client),
+      listarIncorporadores(client, { tipo }),
       listarEmpreendimentosDisponiveis().catch(() => []),
     ]);
 
@@ -68,6 +71,7 @@ export async function POST(request: Request) {
     logoPath?: null | string;
     nome?: string;
     slug?: string;
+    tipo?: string;
   };
 
   if (!corpo?.nome?.trim()) {
@@ -149,6 +153,7 @@ export async function POST(request: Request) {
     logoPath: logos.clara,
     nome: corpo.nome,
     slug: corpo.slug ?? corpo.nome,
+    tipo: tipoDePortal(corpo.tipo),
   });
 
   if (!resultado.ok) {

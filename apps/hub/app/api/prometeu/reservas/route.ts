@@ -1,7 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { createPrometeuClient, eventoOperavelId, getEvento, listCredenciados } from "@/lib/prometeu/data";
-import { autorizarOperacao } from "@/lib/prometeu/operador-server";
+import {
+  autorizarOperacaoComCoordenador,
+  eventoNoEscopo,
+  respostaForaDoEscopo,
+} from "@/lib/prometeu/operador-server";
 import { agruparPorCliente } from "@/lib/prometeu/reservas-c2x";
 import {
   reservasVivasDoPanteon,
@@ -17,8 +21,10 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  // Mesma porta das outras telas do evento: sessão do hub OU cookie do operador do posto.
-  const auth = await autorizarOperacao(request);
+  // Mesma porta das outras telas do evento: sessão do hub OU cookie do operador do posto OU o
+  // coordenador do portal comercial — que só passa porque o evento é conferido contra o recorte
+  // dele antes de qualquer leitura (nome e CPF de comprador saem daqui).
+  const auth = await autorizarOperacaoComCoordenador(request);
   if (!auth.ok) return auth.response;
 
   const client = createPrometeuClient();
@@ -36,7 +42,15 @@ export async function GET(request: NextRequest) {
   }
 
   const evento = await getEvento(client, eventoId);
-  const enterpriseId = Number(evento?.enterpriseId ?? 0);
+  if (!evento) {
+    return NextResponse.json({ error: "Evento nao encontrado." }, { status: 404 });
+  }
+  // ⚠️ ANTES de ler qualquer reserva. Sem `eventoId` na query a rota cai no evento do DIA, que
+  // pode ser de outro empreendimento — e a Central chamava sem id (corrigido junto, em
+  // central-view.tsx). Com o recorte conferido aqui, nem o evento do dia nem um id forjado
+  // devolvem comprador de fora.
+  if (!eventoNoEscopo(auth, evento)) return respostaForaDoEscopo();
+  const enterpriseId = Number(evento.enterpriseId ?? 0);
   if (!enterpriseId) {
     return NextResponse.json(
       { error: "O evento nao esta ligado a um empreendimento do C2X." },

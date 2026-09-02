@@ -16,6 +16,7 @@ import type { RowDataPacket } from "mysql2";
 
 import { getHadesDbPool } from "@/lib/guardian/db";
 import { resolverLogoDoPortal } from "@/lib/apolo/incorporador/logo";
+import { type TipoDePortal, tipoDePortal } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 import { hashSenhaIncorporador } from "./senha";
@@ -32,6 +33,12 @@ export type UsuarioDoIncorporador = {
   ativo: boolean;
   criadoEm: null | string;
   email: string;
+  /**
+   * O recorte PRÓPRIO desta conta (migration 0122). No comercial é aqui que o coordenador é
+   * vinculado aos empreendimentos dele — e vazio significa "não entra" (não herda o portal). No
+   * portal de incorporador o campo fica vazio e a conta vê o que o portal vê.
+   */
+  empreendimentos: string[];
   id: string;
   nome: string;
   ultimoLoginEm: null | string;
@@ -48,6 +55,7 @@ export type IncorporadorGerenciado = {
   logoUrl: null | string;
   nome: string;
   slug: string;
+  tipo: TipoDePortal;
   usuarios: UsuarioDoIncorporador[];
 };
 
@@ -97,18 +105,23 @@ export async function listarEmpreendimentosDisponiveis(): Promise<Empreendimento
 /** Todos os incorporadores, com usuários e empreendimentos. Sem hash de senha. */
 export async function listarIncorporadores(
   client: AdminClient,
+  /** Só os portais deste tipo. A tela "Incorporadores" e a tela "Comercial" do Setup partem daqui. */
+  filtro: { tipo?: TipoDePortal } = {},
 ): Promise<IncorporadorGerenciado[]> {
-  const { data: incs, error } = await client
+  let consulta = client
     .from("apolo_incorporadores")
-    .select("id,slug,nome,ativo,logo_path,logo_escura_path")
-    .order("nome")
-    .returns<{
+    .select("id,slug,nome,ativo,logo_path,logo_escura_path,tipo")
+    .order("nome");
+  if (filtro.tipo) consulta = consulta.eq("tipo", filtro.tipo);
+
+  const { data: incs, error } = await consulta.returns<{
       ativo: boolean;
       id: string;
       logo_escura_path: null | string;
       logo_path: null | string;
       nome: string;
       slug: string;
+      tipo: null | string;
     }[]>();
 
   if (error) throw new Error(`Não foi possível ler os incorporadores: ${error.message}`);
@@ -143,6 +156,16 @@ export async function listarIncorporadores(
       }[]>(),
   ]);
 
+  // O recorte próprio de cada conta (0122). Lido num só disparo para o Setup inteiro.
+  const idsDeUsuario = (usus ?? []).map((u) => u.id);
+  const { data: vinculos } = idsDeUsuario.length
+    ? await client
+        .from("apolo_incorporador_usuario_empreendimentos")
+        .select("usuario_id,enterprise_id")
+        .in("usuario_id", idsDeUsuario)
+        .returns<{ enterprise_id: string; usuario_id: string }[]>()
+    : { data: [] as { enterprise_id: string; usuario_id: string }[] };
+
   return incs.map((i) => ({
     ativo: Boolean(i.ativo),
     empreendimentos: (emps ?? [])
@@ -162,12 +185,16 @@ export async function listarIncorporadores(
     logoUrl: resolverLogoDoPortal({ referencia: i.logo_path, slug: i.slug, variante: "clara" }),
     nome: i.nome,
     slug: i.slug,
+    tipo: tipoDePortal(i.tipo),
     usuarios: (usus ?? [])
       .filter((u) => u.incorporador_id === i.id)
       .map((u) => ({
         ativo: Boolean(u.ativo),
         criadoEm: u.created_at,
         email: u.email,
+        empreendimentos: (vinculos ?? [])
+          .filter((v) => v.usuario_id === u.id)
+          .map((v) => String(v.enterprise_id)),
         id: u.id,
         nome: u.nome,
         ultimoLoginEm: u.ultimo_login_em,
@@ -307,6 +334,11 @@ export async function salvarIncorporador(
     logoPath?: null | string;
     nome: string;
     slug: string;
+    /**
+     * Só na CRIAÇÃO. Um portal não muda de tipo depois de nascer: as contas, o recorte e a marca
+     * foram desenhados para um dos dois, e trocar viraria um incorporador em operador da fila.
+     */
+    tipo?: TipoDePortal;
   },
 ): Promise<ResultadoGravacao> {
   const nome = entrada.nome.trim();
@@ -315,7 +347,7 @@ export async function salvarIncorporador(
   if (!nome) return { erro: "Informe o nome do incorporador.", ok: false };
   if (!slug) return { erro: "O endereço de acesso ficou vazio. Use letras e números.", ok: false };
 
-  const campos = {
+  const campos: Record<string, unknown> = {
     ativo: entrada.ativo ?? true,
     logo_escura_path: entrada.logoEscuraPath?.trim() || null,
     logo_path: entrada.logoPath?.trim() || null,
@@ -330,6 +362,7 @@ export async function salvarIncorporador(
     const { error } = await client.from("apolo_incorporadores").update(campos).eq("id", id);
     if (error) return { erro: mensagemDeErro(error.message, slug), ok: false };
   } else {
+    if (entrada.tipo) campos.tipo = entrada.tipo;
     const { data, error } = await client
       .from("apolo_incorporadores")
       .insert(campos)
@@ -384,6 +417,21 @@ export async function salvarUsuarioIncorporador(
   entrada: {
     ativo?: boolean;
     email: string;
+    /**
+     * O recorte PRÓPRIO desta conta (0122). `undefined` = não mexer; lista, mesmo vazia, =
+     * substituir. No comercial, vazia significa "não entra" (escopoDoUsuario não herda o portal).
+     *
+     * ⚠️ SÓ VALE EM PORTAL `comercial`. Em portal de incorporador o campo é IGNORADO, mesmo que
+     * o corpo mande: a rota é interna (authorizeApoloWrite), mas um POST com `empreendimentos:
+     * ["1"]` para a conta do Cecílio gravaria a Lavra do Ouro no vínculo dele e o próximo GET
+     * /sessao reemitiria o cookie com ela — o recorte da conta SUBSTITUI o do portal, sem
+     * interseção (revisão de 02/09/2026). A tela nem oferece a lista nesse modo.
+     *
+     * DECISÃO: no comercial NÃO há interseção com a lista do portal. Depois da correção em
+     * escopoDoUsuario a lista do /gurgel não define escopo nenhum (só o vínculo da conta vale),
+     * e o portal pode nascer sem empreendimento — intersectar deixaria toda conta vazia.
+     */
+    empreendimentos?: string[];
     id?: null | string;
     incorporadorId: string;
     nome: string;
@@ -402,6 +450,16 @@ export async function salvarUsuarioIncorporador(
     return { erro: "A senha precisa de pelo menos 8 caracteres.", ok: false };
   }
 
+  // O vínculo próprio só existe no portal comercial (ver o comentário do campo). Portal não
+  // encontrado cai em "incorporador" e ignora — fail-closed: na dúvida, não amplia recorte.
+  const empreendimentos =
+    entrada.empreendimentos === undefined
+      ? undefined
+      : (await tipoDoPortalDaConta(client, { id, incorporadorId: entrada.incorporadorId })) ===
+          "comercial"
+        ? entrada.empreendimentos
+        : undefined;
+
   const campos: Record<string, unknown> = {
     ativo: entrada.ativo ?? true,
     email,
@@ -413,7 +471,7 @@ export async function salvarUsuarioIncorporador(
   if (id) {
     const { error } = await client.from("apolo_incorporador_usuarios").update(campos).eq("id", id);
     if (error) return { erro: mensagemDeUsuario(error.message, email), ok: false };
-    return { id, ok: true };
+    return gravarVinculosDaConta(client, id, empreendimentos);
   }
 
   campos.incorporador_id = entrada.incorporadorId;
@@ -425,7 +483,72 @@ export async function salvarUsuarioIncorporador(
     .maybeSingle<{ id: string }>();
 
   if (error || !data?.id) return { erro: mensagemDeUsuario(error?.message, email), ok: false };
-  return { id: data.id, ok: true };
+  return gravarVinculosDaConta(client, data.id, empreendimentos);
+}
+
+/**
+ * O tipo do portal a que a conta pertence. Na criação vem pelo `incorporadorId`; na edição a
+ * tela pode mandar só o `id` da conta, e aí o portal sai da própria linha dela — nunca do corpo,
+ * que poderia apontar outro portal.
+ */
+async function tipoDoPortalDaConta(
+  client: AdminClient,
+  conta: { id: string; incorporadorId: string },
+): Promise<TipoDePortal> {
+  let incorporadorId = conta.incorporadorId.trim();
+
+  if (conta.id) {
+    const { data } = await client
+      .from("apolo_incorporador_usuarios")
+      .select("incorporador_id")
+      .eq("id", conta.id)
+      .maybeSingle<{ incorporador_id: string }>();
+    if (data?.incorporador_id) incorporadorId = String(data.incorporador_id);
+  }
+  if (!incorporadorId) return "incorporador";
+
+  const { data } = await client
+    .from("apolo_incorporadores")
+    .select("tipo")
+    .eq("id", incorporadorId)
+    .maybeSingle<{ tipo: null | string }>();
+
+  return tipoDePortal(data?.tipo);
+}
+
+/**
+ * Substitui o recorte próprio da conta. Apaga e reinsere, como `salvarIncorporador` faz com o do
+ * portal: a lista da tela é a verdade inteira, não um delta.
+ *
+ * ⚠️ A CONTA JÁ FOI GRAVADA quando isto roda. Erro aqui volta como erro para a tela, mas o nome e
+ * a senha ficaram — igual ao que acontece com os empreendimentos do portal. Quem receber o erro
+ * salva de novo; a segunda gravação apaga e reinsere, sem duplicar.
+ */
+async function gravarVinculosDaConta(
+  client: AdminClient,
+  usuarioId: string,
+  empreendimentos: string[] | undefined,
+): Promise<ResultadoGravacao> {
+  if (empreendimentos === undefined) return { id: usuarioId, ok: true };
+
+  const { error: erroApagar } = await client
+    .from("apolo_incorporador_usuario_empreendimentos")
+    .delete()
+    .eq("usuario_id", usuarioId);
+  if (erroApagar) {
+    return { erro: `Não foi possível atualizar os empreendimentos da conta: ${erroApagar.message}`, ok: false };
+  }
+
+  const linhas = [...new Set(empreendimentos.map((e) => String(e ?? "").trim()).filter(Boolean))].map(
+    (enterprise_id) => ({ enterprise_id, usuario_id: usuarioId }),
+  );
+  if (linhas.length === 0) return { id: usuarioId, ok: true };
+
+  const { error } = await client.from("apolo_incorporador_usuario_empreendimentos").insert(linhas);
+  if (error) {
+    return { erro: `Não foi possível gravar os empreendimentos da conta: ${error.message}`, ok: false };
+  }
+  return { id: usuarioId, ok: true };
 }
 
 function mensagemDeUsuario(mensagem: null | string | undefined, email: string): string {

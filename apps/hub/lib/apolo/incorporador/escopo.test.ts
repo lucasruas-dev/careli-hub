@@ -27,6 +27,7 @@ function sessao(ids: string[]): SessaoIncorporador {
     incorporadorId: "inc-1",
     incorporadorNome: "Cecílio Rocha",
     slug: "cecilio",
+    tipo: "incorporador",
     usuarioId: "user-1",
     usuarioNome: "Vitor Cecílio",
   };

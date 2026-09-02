@@ -156,7 +156,7 @@ export function CentralView() {
   // "Unidades" da lista com tracinho, o "UN" de cada mesa em 0, o funil de unidades zerado e o
   // card de vendas contando pessoas em vez de lotes — enquanto o C2X tinha 32 pedidos abertos.
   // Colando aqui, num ponto só, todos os cinco passam a mostrar o número certo.
-  const reservasC2x = useReservasDoC2x();
+  const reservasC2x = useReservasDoC2x(eventoId);
   const credenciados = useMemo(() => {
     const mapa = reservasC2x.unidadesPorCpf;
     if (!mapa || Object.keys(mapa).length === 0) return credenciadosCrus;
@@ -1601,15 +1601,21 @@ const LIMITE_RESERVA_MS = 30 * 60 * 1000;
 // card "Com reserva" contava `etapa === "reserva"` do Prometeu e mostrava 0 enquanto a aba listava
 // 14 — quem reserva costuma estar em `recepcao`, e há quem reserve sem nem aparecer no salão.
 // Uma fonte só para os dois lugares é o que faz o card bater com a tela.
-function useReservasDoC2x() {
+//
+// ⚠️ RECEBE O EVENTO ESCOLHIDO. Sem `eventoId`, a rota resolve o evento do DIA (o em_andamento/
+// ativo, global) e ignora o lançamento que a tela está mostrando: com dois lançamentos vivos, a aba
+// Reservas e o card "Com reserva" eram de OUTRO empreendimento — e, no portal comercial, de um
+// que o coordenador nem enxerga (revisão de 02/09/2026). Trocou de lançamento, busca de novo.
+function useReservasDoC2x(eventoId: string) {
   const [clientes, setClientes] = useState<null | ReservaC2x[]>(null);
   const [unidadesPorCpf, setUnidadesPorCpf] = useState<Record<string, UnidadeDoC2x[]>>({});
   const [erro, setErro] = useState<null | string>(null);
 
   useEffect(() => {
+    if (!eventoId) return;
     let vivo = true;
     const buscar = async () => {
-      const { data, error } = await fetchReservas();
+      const { data, error } = await fetchReservas(eventoId);
       if (!vivo) return;
       // ⚠️ Sem payload NÃO apaga a tela: um blip de rede zerando a lista faria o coordenador achar
       // que as reservas foram resolvidas. Erro vira aviso; a lista antiga fica.
@@ -1627,7 +1633,7 @@ function useReservasDoC2x() {
       vivo = false;
       window.clearInterval(t);
     };
-  }, []);
+  }, [eventoId]);
 
   return { clientes, erro, unidadesPorCpf };
 }

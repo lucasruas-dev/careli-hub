@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { authorizePrometeuRead, authorizePrometeuWrite } from "@/lib/prometeu/auth";
-import { createPrometeuClient } from "@/lib/prometeu/data";
+import { authorizePrometeuWrite } from "@/lib/prometeu/auth";
+import { createPrometeuClient, getEvento } from "@/lib/prometeu/data";
+import {
+  autorizarLeituraDoHubOuDoCoordenador,
+  eventoNoEscopo,
+  respostaForaDoEscopo,
+} from "@/lib/prometeu/operador-server";
 import {
   criarOperador,
   listarOperadores,
@@ -17,7 +22,11 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const auth = await authorizePrometeuRead(request);
+  // A LISTA também é do coordenador do portal comercial: a Central mostra os postos de
+  // credenciamento (operadoresRecepcao) e engole o erro (`data ?? []`) — só com o hub, o mapa do
+  // salão dele apareceria sem posto nenhum, como se ninguém estivesse credenciando. O recorte é
+  // conferido no evento pedido; o operador de posto continua de fora (não é dele).
+  const auth = await autorizarLeituraDoHubOuDoCoordenador(request);
   if (!auth.ok) return auth.response;
 
   const client = createPrometeuClient();
@@ -29,6 +38,9 @@ export async function GET(request: Request) {
   if (!eventoId) {
     return NextResponse.json({ error: "Informe o eventoId." }, { status: 400 });
   }
+
+  const evento = await getEvento(client, eventoId);
+  if (!evento || !eventoNoEscopo(auth, evento)) return respostaForaDoEscopo();
 
   const operadores = await listarOperadores(client, eventoId);
   return NextResponse.json(

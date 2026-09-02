@@ -6,7 +6,9 @@
 // filtro do cliente: o único caminho é slug (porta pública) ou id vindo da sessão assinada.
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
+import { type EscopoDaSessao, escopoDoUsuario } from "./escopo-do-usuario";
 import { chaveDoPortal } from "./logo";
+import { type TipoDePortal, tipoDePortal } from "./perfis-de-portal";
 import { verificarSenhaIncorporador } from "./senha";
 
 /**
@@ -37,6 +39,8 @@ export type Incorporador = {
   logoPath: string | null;
   nome: string;
   slug: string;
+  /** `incorporador` ou `comercial` (o Hércules). Ver [[perfis-de-portal]]. */
+  tipo: TipoDePortal;
 };
 
 type LinhaIncorporador = {
@@ -47,6 +51,7 @@ type LinhaIncorporador = {
   logo_path: string | null;
   nome: string;
   slug: string;
+  tipo: null | string;
 };
 
 type LinhaEmpreendimento = {
@@ -95,7 +100,7 @@ export async function carregarIncorporadorPorSlug(slug: string): Promise<Incorpo
 
   const { data, error } = await client
     .from("apolo_incorporadores")
-    .select("id,slug,nome,entity_id,logo_path,logo_escura_path,ativo")
+    .select("id,slug,nome,entity_id,logo_path,logo_escura_path,ativo,tipo")
     .ilike("slug", alvo)
     .maybeSingle<LinhaIncorporador>();
 
@@ -110,7 +115,50 @@ export async function carregarIncorporadorPorSlug(slug: string): Promise<Incorpo
     logoPath: data.logo_path,
     nome: data.nome,
     slug: data.slug,
+    tipo: tipoDePortal(data.tipo),
   };
+}
+
+/**
+ * Os empreendimentos vinculados DIRETAMENTE a esta conta (migration 0122). Lista vazia = no
+ * portal de incorporador, a conta vê o do portal; no comercial, NÃO ENTRA. Ver `escopoDoUsuario`.
+ */
+async function empreendimentosDoUsuario(
+  client: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  usuarioId: string,
+): Promise<string[]> {
+  const { data, error } = await client
+    .from("apolo_incorporador_usuario_empreendimentos")
+    .select("enterprise_id")
+    .eq("usuario_id", usuarioId)
+    .returns<{ enterprise_id: string }[]>();
+
+  // Falha FECHADA, pelo mesmo motivo de `carregarEmpreendimentos`: "erro" virando "sem vínculo"
+  // daria à conta de incorporador o recorte do portal por engano, e no comercial derrubaria a
+  // sessão de um coordenador válido como se ele não tivesse vínculo.
+  if (error) {
+    throw new Error(`Não foi possível ler os empreendimentos da conta: ${error.message}`);
+  }
+
+  return (data ?? []).map((linha) => String(linha.enterprise_id));
+}
+
+/**
+ * O recorte que vai para dentro do cookie desta pessoa neste portal. É o ÚNICO lugar que combina
+ * portal + conta; o login e a revalidação chamam os dois aqui.
+ */
+export async function escopoDaConta(
+  incorporador: Pick<Incorporador, "empreendimentos" | "tipo">,
+  usuarioId: string,
+): Promise<EscopoDaSessao> {
+  const client = createApoloAdminClient();
+  const doUsuario = client ? await empreendimentosDoUsuario(client, usuarioId) : [];
+
+  return escopoDoUsuario({
+    doPortal: incorporador.empreendimentos,
+    doUsuario,
+    tipo: incorporador.tipo,
+  });
 }
 
 /**
@@ -222,7 +270,7 @@ export async function autenticarUsuarioIncorporador(
 
   const { data: inc, error: erroInc } = await client
     .from("apolo_incorporadores")
-    .select("id,slug,nome,entity_id,logo_path,logo_escura_path,ativo")
+    .select("id,slug,nome,entity_id,logo_path,logo_escura_path,ativo,tipo")
     .eq("id", data.incorporador_id)
     .maybeSingle<LinhaIncorporador>();
 
@@ -238,6 +286,7 @@ export async function autenticarUsuarioIncorporador(
       logoPath: inc.logo_path,
       nome: inc.nome,
       slug: inc.slug,
+      tipo: tipoDePortal(inc.tipo),
     },
     ok: true,
     usuario: { email: data.email, id: data.id, nome: data.nome },

@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { TipoDePortal } from "@/lib/apolo/incorporador/perfis-de-portal";
+
 import { getApoloAccessToken } from "../../data/apolo-operations";
 import { fileToBase64 } from "../../lib/document-capture";
 
@@ -35,12 +37,25 @@ import { fileToBase64 } from "../../lib/document-capture";
 // ⚠️ Senha: entra pelo formulário, vira scrypt no servidor e NUNCA volta em resposta nem em log.
 // E-mail: único POR PORTAL (migration 0094) — o mesmo e-mail pode ter conta em incorporadores
 // diferentes, então esta tela não bloqueia repetição entre portais.
+//
+// A MESMA TELA SERVE A ABA "COMERCIAL" (migration 0122, `apolo_incorporadores.tipo`). Pedido do
+// Lucas, 02/09/2026: "igual a tela do incorporador uma tela de Comercial, aí vou fazendo os
+// perfis... irei vincular os coordenadores aos empreendimentos". É o HÉRCULES da Gurgel: um
+// portal só (`/incorporador/gurgel`), e o que muda é o recorte de CADA conta. Por isso, com
+// `tipo="comercial"`, o formulário de conta ganha a lista de empreendimentos do coordenador
+// (`apolo_incorporador_usuario_empreendimentos`) e os textos falam em "coordenador".
+//
+// ⚠️ NO MODO INCORPORADOR O CAMPO `empreendimentos` DA CONTA NÃO VIAJA. O servidor trata lista
+// (mesmo vazia) como "substituir" e ausência como "não mexer"; mandar `[]` de um portal de
+// incorporador apagaria um vínculo que ninguém pediu para apagar.
 
 type EmpreendimentoDisponivel = { code: string; enterpriseId: string; nome: string };
 type Usuario = {
   ativo: boolean;
   criadoEm: null | string;
   email: string;
+  /** O recorte PRÓPRIO da conta (0122). No comercial, vazio = não entra. Só o comercial mexe nele. */
+  empreendimentos: string[];
   id: string;
   nome: string;
   ultimoLoginEm: null | string;
@@ -93,7 +108,74 @@ const BOTAO_PRIMARIO =
 const BOTAO_SECUNDARIO =
   "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none transition hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-40";
 
-export function GestaoIncorporadores() {
+// Só os textos mudam entre os dois modos. O resto da tela é idêntico DE PROPÓSITO: é o mesmo
+// cadastro (`apolo_incorporadores`), a mesma porta (`/incorporador/<slug>`) e a mesma tabela de
+// contas — o coordenador é uma conta de portal como qualquer outra, com um recorte a mais.
+const ROTULOS: Record<
+  TipoDePortal,
+  {
+    ajudaEmail: string;
+    contaEditar: string;
+    contaNova: string;
+    contaNovaEm: (nome: string) => string;
+    contaSalvar: string;
+    enxerga: string;
+    nenhumaConta: string;
+    /** O portal sem empreendimento marcado: no incorporador é portal quebrado; no comercial, não. */
+    semEmpreendimento: string;
+    placeholderNome: string;
+    placeholderSlug: string;
+    portalEditar: string;
+    portalNovo: string;
+    subtitulo: string;
+    titulo: string;
+  }
+> = {
+  comercial: {
+    ajudaEmail:
+      "O mesmo e-mail pode ter conta em outro portal (a URL decide onde ele entra); só não repete dentro deste.",
+    contaEditar: "Editar coordenador",
+    contaNova: "Novo coordenador",
+    contaNovaEm: (nome) => `Novo coordenador em ${nome}`,
+    contaSalvar: "Salvar coordenador",
+    enxerga:
+      "Empreendimentos do portal (referência; no comercial o acesso é só o vínculo de cada coordenador)",
+    nenhumaConta: "Nenhum coordenador ainda.",
+    placeholderNome: "Gurgel",
+    placeholderSlug: "gurgel",
+    portalEditar: "Editar portal comercial",
+    portalNovo: "Novo portal comercial",
+    semEmpreendimento:
+      "Sem recorte padrão: só entra quem tiver empreendimentos vinculados na própria conta.",
+    subtitulo:
+      "O time comercial da Careli entra por aqui. Cada coordenador tem a própria conta e enxerga só os empreendimentos vinculados a ele; sem vínculo, não entra.",
+    titulo: "Portal comercial",
+  },
+  incorporador: {
+    ajudaEmail:
+      "O mesmo e-mail pode ter conta em outros portais de incorporador (a URL decide onde ele entra); só não repete dentro deste portal.",
+    contaEditar: "Editar conta",
+    contaNova: "Nova conta",
+    contaNovaEm: (nome) => `Nova conta em ${nome}`,
+    contaSalvar: "Salvar conta",
+    enxerga: "O que este incorporador enxerga",
+    nenhumaConta: "Nenhuma conta criada ainda.",
+    placeholderNome: "Cecílio Rocha",
+    placeholderSlug: "cecilio-rocha",
+    portalEditar: "Editar incorporador",
+    portalNovo: "Novo incorporador",
+    semEmpreendimento: "Sem empreendimento: quem entrar por aqui não vê nada.",
+    subtitulo:
+      "Cada incorporador enxerga só os empreendimentos marcados aqui. Quem entra pelo portal usa as contas desta tela.",
+    titulo: "Portais de incorporador",
+  },
+};
+
+export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDePortal } = {}) {
+  // O modo comercial liga o recorte por conta e troca os textos; fora isso, é a mesma tela.
+  const comercial = tipo === "comercial";
+  const rotulos = ROTULOS[tipo];
+
   const [lista, setLista] = useState<Incorporador[]>([]);
   const [empreendimentos, setEmpreendimentos] = useState<EmpreendimentoDisponivel[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -126,6 +208,8 @@ export function GestaoIncorporadores() {
     null | {
       ativo: boolean;
       email: string;
+      /** O recorte próprio (só o comercial edita e envia). */
+      empreendimentos: string[];
       incorporadorId: string;
       nome: string;
       senha: string;
@@ -138,7 +222,8 @@ export function GestaoIncorporadores() {
     setErro(null);
     try {
       const token = await getApoloAccessToken();
-      const r = await fetch("/api/apolo/incorporadores", {
+      // Sem `?tipo=`, a rota devolve os incorporadores; a aba Comercial pede só os dela.
+      const r = await fetch(`/api/apolo/incorporadores?tipo=${tipo}`, {
         cache: "no-store",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -155,7 +240,7 @@ export function GestaoIncorporadores() {
       setErro((e as Error).message);
     }
     setCarregando(false);
-  }, []);
+  }, [tipo]);
 
   useEffect(() => {
     void carregar();
@@ -225,6 +310,9 @@ export function GestaoIncorporadores() {
           logoPath: form.logoPath,
           nome: form.nome,
           slug: form.slug || form.nome,
+          // Só na CRIAÇÃO: um portal não muda de tipo depois de nascer (o servidor ignora na
+          // edição, mas a tela nem manda, para o corpo dizer a verdade).
+          ...(editando === "novo" ? { tipo } : {}),
         }),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "POST",
@@ -257,6 +345,9 @@ export function GestaoIncorporadores() {
           nome: conta.nome,
           // Vazio na edição = mantém a senha atual. O servidor trata; a tela avisa no rótulo.
           senha: conta.senha || null,
+          // ⚠️ SÓ NO COMERCIAL. Lista (mesmo vazia) = substitui o recorte da conta; ausente =
+          // não mexe. Do portal de incorporador o campo nunca sai, para não apagar nada.
+          ...(comercial ? { empreendimentos: conta.empreendimentos } : {}),
         }),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "POST",
@@ -482,7 +573,7 @@ export function GestaoIncorporadores() {
     editando ? (
         <section className="mt-3 scroll-mt-24 rounded-md border border-line bg-subtle p-4" ref={formularioRef}>
           <p className="m-0 text-sm font-semibold text-ink">
-            {editando === "novo" ? "Novo incorporador" : "Editar incorporador"}
+            {editando === "novo" ? rotulos.portalNovo : rotulos.portalEditar}
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1.5 text-xs font-semibold text-ink-muted">
@@ -490,7 +581,7 @@ export function GestaoIncorporadores() {
               <input
                 className={INPUT}
                 onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
-                placeholder="Cecílio Rocha"
+                placeholder={rotulos.placeholderNome}
                 value={form.nome}
               />
             </label>
@@ -499,9 +590,10 @@ export function GestaoIncorporadores() {
               <input
                 className={INPUT}
                 onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
-                placeholder="cecilio-rocha"
+                placeholder={rotulos.placeholderSlug}
                 value={form.slug}
               />
+              {/* A porta é a MESMA nos dois tipos: o comercial também entra por /incorporador/. */}
               <span className="block font-normal text-ink-muted">
                 c2x.app.br/incorporador/{slugDe(form.slug || form.nome) || "…"}
               </span>
@@ -516,9 +608,7 @@ export function GestaoIncorporadores() {
             {campoDeLogo("escura")}
           </div>
 
-          <p className="mb-1 mt-4 text-xs font-semibold text-ink-muted">
-            O que este incorporador enxerga
-          </p>
+          <p className="mb-1 mt-4 text-xs font-semibold text-ink-muted">{rotulos.enxerga}</p>
           <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
             {empreendimentos.length === 0 ? (
               <p className="m-0 text-xs text-ink-muted">
@@ -558,7 +648,11 @@ export function GestaoIncorporadores() {
                       <span className="font-semibold">{e.code}</span>
                       <span className="truncate text-ink-muted">{e.nome}</span>
                     </label>
-                    {marcado ? (
+                    {/* ⚠️ A chave de carteira NÃO vale no comercial: lá o Financeiro é de todo
+                        empreendimento do escopo (escopo-do-usuario.ts), porque o coordenador
+                        vende e precisa do financeiro de tudo que vende. Mostrar a chave só
+                        convidaria a marcar algo sem efeito. */}
+                    {marcado && !comercial ? (
                       <Tooltip content="Carteira administrada pela Careli: liga a aba Carteira no portal deste incorporador">
                         <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs font-semibold text-ink-muted transition hover:text-ink">
                           <input
@@ -608,16 +702,13 @@ export function GestaoIncorporadores() {
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="m-0 text-base font-semibold text-ink">Portais de incorporador</h2>
-          <p className="m-0 mt-1 text-xs text-ink-muted">
-            Cada incorporador enxerga só os empreendimentos marcados aqui. Quem entra pelo portal
-            usa as contas desta tela.
-          </p>
+          <h2 className="m-0 text-base font-semibold text-ink">{rotulos.titulo}</h2>
+          <p className="m-0 mt-1 text-xs text-ink-muted">{rotulos.subtitulo}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Tooltip content="Novo incorporador">
+          <Tooltip content={rotulos.portalNovo}>
             <button
-              aria-label="Novo incorporador"
+              aria-label={rotulos.portalNovo}
               className="grid h-9 w-9 place-items-center rounded-md bg-inverse text-brand-ink outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               onClick={abrirNovo}
               type="button"
@@ -675,7 +766,7 @@ export function GestaoIncorporadores() {
               </a>
               {inc.ativo ? null : <Badge variant="warning">inativo</Badge>}
               <div className="ml-auto flex items-center gap-1">
-                <Tooltip content="Editar incorporador">
+                <Tooltip content={rotulos.portalEditar}>
                   <button
                     aria-label={`Editar ${inc.nome}`}
                     className={BOTAO_ICONE}
@@ -685,15 +776,16 @@ export function GestaoIncorporadores() {
                     <Pencil aria-hidden="true" size={14} />
                   </button>
                 </Tooltip>
-                <Tooltip content="Nova conta de acesso">
+                <Tooltip content={comercial ? rotulos.contaNova : "Nova conta de acesso"}>
                   <button
-                    aria-label={`Nova conta em ${inc.nome}`}
+                    aria-label={rotulos.contaNovaEm(inc.nome)}
                     className={BOTAO_ICONE}
                     onClick={() => {
                       setEditando(null);
                       setConta({
                         ativo: true,
                         email: "",
+                        empreendimentos: [],
                         incorporadorId: inc.id,
                         nome: "",
                         senha: "",
@@ -710,8 +802,16 @@ export function GestaoIncorporadores() {
 
             <div className="mt-2 flex flex-wrap gap-1">
               {inc.empreendimentos.length === 0 ? (
-                <span className="text-xs font-semibold text-red-700 dark:text-red-300">
-                  Sem empreendimento: quem entrar por aqui não vê nada.
+                /* No comercial o portal sem empreendimento NÃO está quebrado: o recorte é o de
+                   cada coordenador (escopoDoUsuario). Vermelho aqui diria o contrário. */
+                <span
+                  className={
+                    comercial
+                      ? "text-xs text-ink-muted"
+                      : "text-xs font-semibold text-red-700 dark:text-red-300"
+                  }
+                >
+                  {rotulos.semEmpreendimento}
                 </span>
               ) : (
                 inc.empreendimentos.map((e) => (
@@ -720,7 +820,7 @@ export function GestaoIncorporadores() {
                     key={e.enterpriseId}
                   >
                     {nomeDoEmpreendimento(e.enterpriseId)}
-                    {e.carteiraAdministrada ? " · carteira" : ""}
+                    {e.carteiraAdministrada && !comercial ? " · carteira" : ""}
                   </span>
                 ))
               )}
@@ -730,7 +830,7 @@ export function GestaoIncorporadores() {
 
             <div className="mt-3 grid gap-1">
               {inc.usuarios.length === 0 ? (
-                <p className="m-0 text-xs text-ink-muted">Nenhuma conta criada ainda.</p>
+                <p className="m-0 text-xs text-ink-muted">{rotulos.nenhumaConta}</p>
               ) : (
                 inc.usuarios.map((u) => (
                   <div
@@ -757,6 +857,8 @@ export function GestaoIncorporadores() {
                             setConta({
                               ativo: u.ativo,
                               email: u.email,
+                              // Pré-marca o recorte que a conta já tem (só o comercial mostra).
+                              empreendimentos: u.empreendimentos,
                               incorporadorId: inc.id,
                               nome: u.nome,
                               senha: "",
@@ -784,6 +886,27 @@ export function GestaoIncorporadores() {
                         </button>
                       </Tooltip>
                     </div>
+                    {/* O recorte do coordenador, em linha própria abaixo do nome. Sem vínculo
+                        ele NÃO entra (o login recusa com "sem empreendimento liberado") — e a
+                        tela DIZ isso em vermelho, porque é conta que alguém esqueceu de vincular. */}
+                    {comercial ? (
+                      <div className="flex basis-full flex-wrap gap-1">
+                        {u.empreendimentos.length === 0 ? (
+                          <span className="text-[11px] font-semibold text-red-700 dark:text-red-300">
+                            sem empreendimento: não entra
+                          </span>
+                        ) : (
+                          u.empreendimentos.map((id) => (
+                            <span
+                              className="rounded-full border border-line bg-surface px-2 py-0.5 text-[11px] text-ink-muted"
+                              key={id}
+                            >
+                              {nomeDoEmpreendimento(id)}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 ))
               )}
@@ -792,7 +915,7 @@ export function GestaoIncorporadores() {
             {conta?.incorporadorId === inc.id ? (
               <div className="mt-3 rounded-md border border-line bg-subtle p-3">
                 <p className="m-0 text-xs font-semibold text-ink">
-                  {conta.usuarioId ? "Editar conta" : "Nova conta"}
+                  {conta.usuarioId ? rotulos.contaEditar : rotulos.contaNova}
                 </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-3">
                   <input
@@ -818,10 +941,61 @@ export function GestaoIncorporadores() {
                     value={conta.senha}
                   />
                 </div>
-                <p className="m-0 mt-2 text-xs text-ink-muted">
-                  O mesmo e-mail pode ter conta em outros portais de incorporador (a URL decide
-                  onde ele entra); só não repete dentro deste portal.
-                </p>
+                <p className="m-0 mt-2 text-xs text-ink-muted">{rotulos.ajudaEmail}</p>
+
+                {/* O VÍNCULO DO COORDENADOR ("irei vincular os coordenadores aos empreendimentos").
+                    A lista é a do C2X inteira, e não só a do portal: o recorte próprio SUBSTITUI o
+                    do portal quando existe (escopo-do-usuario.ts), então restringir aqui esconderia
+                    empreendimento que o portal não marcou mas o coordenador atende. */}
+                {comercial ? (
+                  <div className="mt-3">
+                    <p className="m-0 text-xs font-semibold text-ink-muted">
+                      Empreendimentos deste coordenador
+                    </p>
+                    <p className="m-0 mt-0.5 text-[11px] text-ink-muted">
+                      É tudo o que este coordenador enxerga (CRM, Vendas, Financeiro, Contratos e
+                      Lançamento). Sem nenhum marcado, a conta não entra no portal.
+                    </p>
+                    <div className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+                      {empreendimentos.length === 0 ? (
+                        <p className="m-0 text-xs text-ink-muted">
+                          A lista do C2X não carregou. Dá para salvar a conta e vincular os
+                          empreendimentos depois.
+                        </p>
+                      ) : (
+                        empreendimentos.map((e) => {
+                          const marcado = conta.empreendimentos.includes(e.enterpriseId);
+
+                          return (
+                            <label
+                              className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm text-ink hover:bg-surface"
+                              key={e.enterpriseId}
+                            >
+                              <input
+                                checked={marcado}
+                                className="h-4 w-4 rounded border-line accent-[#A07C3B]"
+                                onChange={(ev) =>
+                                  setConta({
+                                    ...conta,
+                                    empreendimentos: ev.target.checked
+                                      ? [...conta.empreendimentos, e.enterpriseId]
+                                      : conta.empreendimentos.filter(
+                                          (id) => id !== e.enterpriseId,
+                                        ),
+                                  })
+                                }
+                                type="checkbox"
+                              />
+                              <span className="font-semibold">{e.code}</span>
+                              <span className="truncate text-ink-muted">{e.nome}</span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="mt-2 flex gap-2">
                   <button
                     className={BOTAO_PRIMARIO}
@@ -832,7 +1006,7 @@ export function GestaoIncorporadores() {
                     {salvando ? (
                       <Loader2 aria-hidden="true" className="animate-spin" size={15} />
                     ) : null}
-                    Salvar conta
+                    {rotulos.contaSalvar}
                   </button>
                   <button className={BOTAO_SECUNDARIO} onClick={() => setConta(null)} type="button">
                     Cancelar

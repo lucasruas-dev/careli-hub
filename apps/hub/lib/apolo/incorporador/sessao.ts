@@ -20,6 +20,8 @@
 // Mesmo desenho do operador do Prometeu (lib/prometeu/operador-auth.ts).
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { type TipoDePortal, tipoDePortal } from "./perfis-de-portal";
+
 export const INCORPORADOR_COOKIE = "apolo_inc";
 
 // 12h cobre um dia de trabalho inteiro sem virar acesso permanente. O operador do evento usa
@@ -36,6 +38,13 @@ export type SessaoIncorporador = {
   /** Nome de exibição, para o cabeçalho não precisar de uma ida ao banco a cada tela. */
   incorporadorNome: string;
   slug: string;
+  /**
+   * `incorporador` (o dono do loteamento lendo a carteira) ou `comercial` (o Hércules: o time da
+   * Careli operando). Decide abas, marca e quais rotas aceitam este cookie — o Prometeu, por
+   * exemplo, só abre a fila para o comercial. Cookie assinado antes da 0122 não traz o campo, e o
+   * leitor o preenche como `incorporador`: perfil antigo continua exatamente como era.
+   */
+  tipo: TipoDePortal;
   usuarioId: string;
   usuarioNome: string;
 };
@@ -60,10 +69,14 @@ function assinar(corpo: string): string {
 
 /** Emite o token assinado. A expiração é carimbada aqui, não recebida de fora. */
 export function criarSessaoIncorporador(
-  dados: Omit<SessaoIncorporador, "exp">,
+  dados: Omit<SessaoIncorporador, "exp" | "tipo"> & { tipo?: TipoDePortal },
   agoraMs: number,
 ): string {
-  const corpo: SessaoIncorporador = { ...dados, exp: agoraMs + INCORPORADOR_TTL_MS };
+  const corpo: SessaoIncorporador = {
+    ...dados,
+    exp: agoraMs + INCORPORADOR_TTL_MS,
+    tipo: tipoDePortal(dados.tipo),
+  };
   const parte = Buffer.from(JSON.stringify(corpo)).toString("base64url");
 
   return `${parte}.${assinar(parte)}`;
@@ -119,6 +132,7 @@ export function lerSessaoIncorporador(
     enterpriseIdsComCarteira: Array.isArray(sessao.enterpriseIdsComCarteira)
       ? sessao.enterpriseIdsComCarteira.map(String)
       : [],
+    tipo: tipoDePortal(sessao.tipo),
   };
 }
 
