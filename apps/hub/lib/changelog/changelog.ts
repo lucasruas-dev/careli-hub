@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-de-quem-e-a-chave",
+    deployedAt: "2026-09-02T10:45:00-03:00",
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "A tela de boletos mostra, para cada conta do Asaas, o nome que o próprio Asaas devolve para aquela chave.",
+              "Dá para conferir se a chave do Garden é mesmo da empresa do Garden antes de emitir.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "e9acd469",
+    technical: {
+      done: "Pedido do Lucas (02/09/2026): *\"validar se as chaves cadastradas estao corretas\"*. ⚠️ A CHAVE EXISTIR NAO PROVAVA QUE ERA A CHAVE CERTA: a tela dizia \"chave ausente\" ou mostrava a conta configurada, e isso so diz que alguem colou algo na variavel. Uma chave trocada entre dois empreendimentos emite o boleto no CNPJ da outra empresa e o dinheiro cai la — sem erro nenhum, porque a emissao funciona perfeitamente, na conta errada, e so o extrato conta. Sao SEIS contas cadastradas em duas horas, o cenario exato em que duas se trocam. `conferirConta` (`/myAccount`) ja existia em `emissao.ts` e nao era chamada por tela nenhuma: agora a rota de prontidao consulta cada conta configurada e devolve `donoDaChave`, e a tela lista conta, variavel, o nome que o Asaas respondeu e o ambiente. Uma chamada por conta, so nesta tela de conferencia, nunca no caminho da emissao. Typecheck limpo.",
+      motivation:
+        "Seis contas cadastradas no mesmo dia: era preciso poder provar de quem é cada chave antes de emitir.",
+    },
+    title: "A tela prova de quem é cada chave do Asaas",
+    type: "novidade",
+    version: "1.258.0",
+  },
+  {
     buildTag: "2026-09-02-tudo-editavel",
     deployedAt: "2026-09-02T10:15:00-03:00",
     modules: [

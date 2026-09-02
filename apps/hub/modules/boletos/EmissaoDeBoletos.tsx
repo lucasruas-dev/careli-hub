@@ -61,6 +61,9 @@ type Prontidao = {
   contas: {
     ambiente: "desconhecido" | "producao" | "sandbox";
     configurada: boolean;
+    /** O nome que o Asaas devolve para a chave — a prova de que ela é da conta certa. */
+    donoDaChave?: null | string;
+    erroDaChave?: null | string;
     conta: string;
     rotulo: string;
     variavel: string;
@@ -336,6 +339,7 @@ export function EmissaoDeBoletos() {
       ) : null}
 
       <PainelDeProntidao estado={estadoDaProntidao} prontidao={prontidao} />
+      <DeQuemESaChave contas={prontidao?.contas ?? null} />
 
       <PainelDoTemplate
         aoCriar={() => void criarTemplate()}
@@ -437,6 +441,67 @@ export function EmissaoDeBoletos() {
         </>
       ) : null}
     </div>
+  );
+}
+
+// ⚠️ A CHAVE EXISTIR NÃO PROVA QUE É A CHAVE CERTA. Ter a variável preenchida diz que alguém colou
+// algo ali; não diz de quem é a conta. Uma chave trocada entre dois empreendimentos emite o boleto
+// no CNPJ da outra empresa e o dinheiro cai lá — e não há erro nenhum: a emissão funciona
+// perfeitamente, na conta errada, e só o extrato conta. `/myAccount` é a única resposta que vem do
+// lado do Asaas dizendo o NOME de quem é a chave, e é isto que esta seção mostra.
+function DeQuemESaChave({ contas }: { contas: null | Prontidao["contas"] }) {
+  if (!contas) return null;
+  const configuradas = contas.filter((c) => c.configurada);
+  if (configuradas.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-2 rounded-xl border border-line bg-surface px-4 py-3">
+      <h2 className="flex items-center gap-2 text-sm font-bold text-ink">
+        <KeyRound aria-hidden="true" size={15} /> De quem é cada chave
+      </h2>
+      <p className="text-xs text-ink-muted">
+        O nome vem do próprio Asaas. Confira se cada linha bate com a empresa esperada: uma chave
+        no lugar errado emite no CNPJ de outra empresa, sem erro nenhum.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-ink-muted">
+              <th className="py-1 pr-4 text-xs font-semibold">Conta</th>
+              <th className="py-1 pr-4 text-xs font-semibold">Variável</th>
+              <th className="py-1 pr-4 text-xs font-semibold">Quem o Asaas diz que é</th>
+              <th className="py-1 text-xs font-semibold">Ambiente</th>
+            </tr>
+          </thead>
+          <tbody>
+            {configuradas.map((c) => (
+              <tr className="border-t border-line" key={c.conta}>
+                <td className="py-1.5 pr-4 font-semibold text-ink">{c.rotulo}</td>
+                <td className="py-1.5 pr-4 font-mono text-[0.7rem] text-ink-muted">{c.variavel}</td>
+                <td className="py-1.5 pr-4 text-ink">
+                  {c.donoDaChave ? (
+                    c.donoDaChave
+                  ) : (
+                    <span className="text-red-600 dark:text-red-400">
+                      {c.erroDaChave ?? "a chave não respondeu"}
+                    </span>
+                  )}
+                </td>
+                <td className="py-1.5">
+                  {c.ambiente === "producao" ? (
+                    <span className="text-xs text-ink-muted">produção</span>
+                  ) : (
+                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                      {c.ambiente === "sandbox" ? "sandbox" : "desconhecido"}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

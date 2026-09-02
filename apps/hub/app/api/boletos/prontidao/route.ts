@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
 import { estadoDaConta, TODAS_AS_CONTAS } from "@/lib/apolo/asaas-contas";
+import { conferirConta } from "@/lib/apolo/boletos/emissao";
 import { EMPREENDIMENTOS_DE_BOLETO } from "@/lib/apolo/boletos/empreendimentos";
 import { lerCarteiraDoLsoft } from "@/lib/lsoft/carteira";
 
@@ -27,7 +28,27 @@ export async function GET(request: Request) {
   // ⚠️ A LISTA VEM DE `TODAS_AS_CONTAS`, e não escrita aqui. Antes era fixa — conta nova cadastrada
   // em `asaas-contas.ts` não aparecia neste painel, e o operador conferia uma lista incompleta
   // achando que era tudo.
-  const contas = TODAS_AS_CONTAS.map(estadoDaConta);
+  // ⚠️ A CHAVE EXISTIR NÃO PROVA QUE É A CHAVE CERTA. Ter `ASAAS_GARDEN_API_KEY` preenchida diz
+  // que alguém colou algo ali; não diz de quem é a conta. Uma chave no lugar errado emite o boleto
+  // no CNPJ de outra empresa e o dinheiro cai na conta dela — e nada nesta tela denunciava, porque
+  // o erro não é técnico: a emissão funciona perfeitamente, na conta errada.
+  //
+  // `/myAccount` é a única resposta que vem do lado do Asaas dizendo o NOME de quem é a chave.
+  // Custa uma chamada por conta e só roda nesta tela de conferência, não na emissão.
+  const contas = await Promise.all(
+    TODAS_AS_CONTAS.map(async (c) => {
+      const estado = estadoDaConta(c);
+      if (!estado.configurada) return { ...estado, donoDaChave: null, erroDaChave: null };
+      const r = await conferirConta(c);
+      return r.ok
+        ? {
+            ...estado,
+            donoDaChave: r.data.companyName ?? r.data.name ?? null,
+            erroDaChave: null,
+          }
+        : { ...estado, donoDaChave: null, erroDaChave: r.erro };
+    }),
+  );
 
   const empreendimentos = await Promise.all(
     EMPREENDIMENTOS_DE_BOLETO.map(async (e) => {
