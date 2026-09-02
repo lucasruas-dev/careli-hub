@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-nome-do-predio",
+    deployedAt: "2026-09-02T11:00:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "A coluna Prédio mostra o nome do empreendimento, e não mais o código interno.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "376693f8",
+    technical: {
+      done: "A coluna mostrava o slug (`ed-cristal`, `garden`, `vale-do-sol`), que e chave de banco e nao nome. No consolidado, onde as nove carteiras aparecem juntas, isso ja fez o Lucas conferir uma linha do Ed. Cristal achando que era do Vale do Sol (*\"estava olhando consolidado achando que era o vale do sol\"*) — e conferir uma carteira na linha de outra e exatamente o erro que esta tela existe para evitar. `nomeDoPredio` resolve pelo `carteiras` que a rota ja devolve; sem carteira correspondente cai no proprio slug, entao nada some. Vale nas tres tabelas: prontos, pendentes e emitidos. Typecheck limpo, 126 testes verdes.",
+      motivation:
+        "Código interno na coluna fez confundir uma carteira com outra na conferência.",
+    },
+    title: "A coluna Prédio mostra o nome, não o código",
+    type: "correcao",
+    version: "1.259.0",
+  },
+  {
     buildTag: "2026-09-02-de-quem-e-a-chave",
     deployedAt: "2026-09-02T10:45:00-03:00",
     modules: [

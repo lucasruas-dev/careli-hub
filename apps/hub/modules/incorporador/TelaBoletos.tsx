@@ -525,6 +525,15 @@ export function TelaBoletos() {
         ? []
         : [aba];
 
+  // ⚠️ A COLUNA "PRÉDIO" MOSTRAVA O SLUG (`ed-cristal`, `garden`), que é código interno. No
+  // consolidado, onde as nove carteiras aparecem juntas, isso já fez confundir uma linha do Ed.
+  // Cristal com uma do Vale do Sol — e a conferência de uma carteira feita na linha de outra é
+  // exatamente o erro que a tela existe para evitar.
+  const nomeDoPredio = useCallback(
+    (slug: string) => carteiras.find((c) => c.slug === slug)?.nome ?? slug,
+    [carteiras],
+  );
+
   const semChave = carteiras.filter((c) => !c.contaConfigurada && !ehTeste(c.slug));
 
   const podeEmitir =
@@ -609,6 +618,7 @@ export function TelaBoletos() {
           {visiveisPendentes.length > 0 ? (
             <AEmitir
               acaoNaUnidade={acaoNaUnidade}
+              nomeDoPredio={nomeDoPredio}
               aoEmitir={(unidades) => void emitir(alvosDaAba, unidades)}
               emitindo={emitindo === aba}
               enviarAoEmitir={enviarAoEmitir}
@@ -625,6 +635,7 @@ export function TelaBoletos() {
           <Emitidos
             aberta={aberta}
             acaoNaUnidade={acaoNaUnidade}
+            nomeDoPredio={nomeDoPredio}
             aoAbrir={abrirHistorico}
             aoConferirEnvio={
               // Na aba de teste o envio em lote não faz sentido (cada linha é de uma conta), e o
@@ -644,6 +655,7 @@ export function TelaBoletos() {
           {visiveisFora.length > 0 ? (
             <ForaDaEmissao
               acaoNaUnidade={acaoNaUnidade}
+              nomeDoPredio={nomeDoPredio}
               mostrarPredio={aba === "consolidado" || aba === ABA_TESTE}
               ocupado={ocupado}
               parcelas={visiveisFora}
@@ -852,6 +864,7 @@ function AEmitir({
   emitindo,
   enviarAoEmitir,
   mostrarPredio,
+  nomeDoPredio,
   ocupado,
   onEnviarAoEmitir,
   onSelecionadas,
@@ -864,6 +877,7 @@ function AEmitir({
   emitindo: boolean;
   enviarAoEmitir: boolean;
   mostrarPredio: boolean;
+  nomeDoPredio: (slug: string) => string;
   ocupado: null | string;
   onEnviarAoEmitir: (v: boolean) => void;
   onSelecionadas: (s: Set<string>) => void;
@@ -1032,7 +1046,7 @@ function AEmitir({
                 </td>
                 {mostrarPredio ? (
                   <td style={{ color: T.sub, padding: "7px 8px", whiteSpace: "nowrap" }}>
-                    {p.empreendimento}
+                    {nomeDoPredio(p.empreendimento)}
                   </td>
                 ) : null}
                 <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
@@ -1141,6 +1155,7 @@ function Emitidos({
   enviando,
   historico,
   mostrarPredio,
+  nomeDoPredio,
   ocupado,
 }: {
   aberta: null | string;
@@ -1157,6 +1172,8 @@ function Emitidos({
   enviando: boolean;
   historico: null | Historico;
   mostrarPredio: boolean;
+  /** slug -> nome do empreendimento, para a coluna Prédio não mostrar código interno. */
+  nomeDoPredio: (slug: string) => string;
   ocupado: null | string;
 }) {
   if (boletos.length === 0) {
@@ -1264,7 +1281,7 @@ function Emitidos({
                   <td style={{ color: T.text, padding: "8px 10px" }}>{b.nome}</td>
                   {mostrarPredio ? (
                     <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
-                      {b.empreendimento}
+                      {nomeDoPredio(b.empreendimento)}
                     </td>
                   ) : null}
                   <td style={{ color: T.sub, padding: "8px 10px" }}>{b.unidade}</td>
@@ -1866,11 +1883,13 @@ function ResultadoDoEnvio({ envio }: { envio: Envio }) {
 function ForaDaEmissao({
   acaoNaUnidade,
   mostrarPredio,
+  nomeDoPredio,
   ocupado,
   parcelas,
 }: {
   acaoNaUnidade: (e: string, u: string, corpo: Record<string, unknown>) => Promise<boolean>;
   mostrarPredio: boolean;
+  nomeDoPredio: (slug: string) => string;
   ocupado: null | string;
   parcelas: ParcelaAEmitir[];
 }) {
@@ -1931,7 +1950,7 @@ function ForaDaEmissao({
                 </td>
                 {mostrarPredio ? (
                   <td style={{ color: T.sub, padding: "7px 8px", whiteSpace: "nowrap" }}>
-                    {p.empreendimento}
+                    {nomeDoPredio(p.empreendimento)}
                   </td>
                 ) : null}
                 <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
