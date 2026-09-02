@@ -43,8 +43,12 @@ type Carteira = {
 
 type ParcelaAEmitir = {
   bloqueio: null | string;
+  /** ⚠️ O CPF/CNPJ INTEIRO, para conferir e corrigir na tela. Pedido do Lucas (02/09/2026). */
   documento: null | string;
+  documentoValido: boolean;
   empreendimento: string;
+  /** O que impede a emissão, em uma frase. `null` = apto. */
+  pendencia: null | string;
   jaEmitido: boolean;
   nome: string;
   nomeNaPlanilha: string;
@@ -596,10 +600,12 @@ export function TelaBoletos() {
         <>
           {visiveisPendentes.length > 0 ? (
             <AEmitir
+              acaoNaUnidade={acaoNaUnidade}
               aoEmitir={(unidades) => void emitir(alvosDaAba, unidades)}
               emitindo={emitindo === aba}
               enviarAoEmitir={enviarAoEmitir}
               mostrarPredio={aba === "consolidado" || aba === ABA_TESTE}
+              ocupado={ocupado}
               onEnviarAoEmitir={setEnviarAoEmitir}
               parcelas={visiveisPendentes}
               podeEmitir={Boolean(podeEmitir)}
@@ -627,7 +633,14 @@ export function TelaBoletos() {
             ocupado={ocupado}
           />
 
-          {visiveisFora.length > 0 ? <ForaDaEmissao parcelas={visiveisFora} /> : null}
+          {visiveisFora.length > 0 ? (
+            <ForaDaEmissao
+              acaoNaUnidade={acaoNaUnidade}
+              mostrarPredio={aba === "consolidado" || aba === ABA_TESTE}
+              ocupado={ocupado}
+              parcelas={visiveisFora}
+            />
+          ) : null}
         </>
       )}
     </div>
@@ -701,23 +714,146 @@ function Cabecalho({
   );
 }
 
+// ── EDITAR NA PRÓPRIA LINHA ─────────────────────────────────────────────────
+//
+// ⚠️ 32 UNIDADES ESTAO SEM CPF E O ASAAS NAO CRIA CLIENTE SEM ELE. Pedido do Lucas (02/09/2026):
+// *"deixa por favor o CPF todo legivel e editavel, vou pedir alguem para atualizar"* e *"quero
+// poder tambem alterar a data de vencimento"*. Mandar a pessoa abrir a planilha, corrigir e pedir
+// recarga para cada linha e o caminho que faz ninguem corrigir.
+//
+// ⚠️ SALVA NO BLUR E NO ENTER, NAO A CADA TECLA: um CPF tem 11 digitos e salvar a cada um deles
+// mandaria 11 requisicoes, dez delas com documento invalido. Escape desiste e devolve o valor
+// anterior.
+//
+// ⚠️ O SERVIDOR CONFERE O DIGITO VERIFICADOR e devolve o erro; aqui a linha so pinta de vermelho o
+// que ele recusou. Validar so no cliente deixaria a rota aceitar qualquer coisa vinda de fora.
+
+function CelulaEditavel({
+  ajuda,
+  aoSalvar,
+  invalido,
+  largura,
+  ocupado,
+  placeholder,
+  valor,
+}: {
+  ajuda?: string;
+  aoSalvar: (novo: string) => Promise<boolean>;
+  invalido?: boolean;
+  largura: number;
+  ocupado: boolean;
+  placeholder: string;
+  valor: string;
+}) {
+  const [texto, setTexto] = useState(valor);
+  const [salvando, setSalvando] = useState(false);
+
+  // O valor do servidor volta a mandar quando a lista recarrega (ex.: outra pessoa editou).
+  useEffect(() => {
+    setTexto(valor);
+  }, [valor]);
+
+  const salvar = async () => {
+    const limpo = texto.trim();
+    if (limpo === valor.trim()) return;
+    if (!limpo) {
+      setTexto(valor);
+      return;
+    }
+    setSalvando(true);
+    const ok = await aoSalvar(limpo);
+    setSalvando(false);
+    if (!ok) setTexto(valor);
+  };
+
+  return (
+    <input
+      aria-label={ajuda}
+      disabled={ocupado || salvando}
+      onBlur={() => void salvar()}
+      onChange={(e) => setTexto(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        }
+        if (e.key === "Escape") setTexto(valor);
+      }}
+      placeholder={placeholder}
+      style={{
+        background: "transparent",
+        border: `1px solid ${invalido ? T.danger : texto.trim() ? "transparent" : T.gold}`,
+        borderRadius: 6,
+        color: invalido ? T.danger : T.text,
+        fontSize: 13,
+        fontVariantNumeric: "tabular-nums",
+        opacity: salvando ? 0.5 : 1,
+        padding: "4px 6px",
+        width: largura,
+      }}
+      title={ajuda}
+      type="text"
+      value={texto}
+    />
+  );
+}
+
+/** `12345678901` → `123.456.789-01`; `12345678000199` → `12.345.678/0001-99`. */
+function documentoLegivel(documento: null | string): string {
+  const d = String(documento ?? "").replace(/\D/g, "");
+  if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+  if (d.length === 14) {
+    return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  }
+  return d;
+}
+
+/** A situação da linha: apta, ou o que falta. */
+function Situacao({ pendencia }: { pendencia: null | string }) {
+  if (!pendencia) {
+    return (
+      <span
+        style={{
+          alignItems: "center",
+          color: T.ok,
+          display: "inline-flex",
+          fontSize: 12.5,
+          gap: 4,
+          whiteSpace: "nowrap",
+        }}
+      >
+        <Check size={13} /> Apto a enviar
+      </span>
+    );
+  }
+  return (
+    <span style={{ color: T.danger, display: "inline-block", fontSize: 12.5, lineHeight: 1.35 }}>
+      {pendencia}
+    </span>
+  );
+}
+
 // ── A EMITIR ────────────────────────────────────────────────────────────────
 
 function AEmitir({
+  acaoNaUnidade,
   aoEmitir,
   emitindo,
   enviarAoEmitir,
   mostrarPredio,
+  ocupado,
   onEnviarAoEmitir,
   onSelecionadas,
   parcelas,
   podeEmitir,
   selecionadas,
 }: {
+  acaoNaUnidade: (e: string, u: string, corpo: Record<string, unknown>) => Promise<boolean>;
   aoEmitir: (unidades: string[]) => void;
   emitindo: boolean;
   enviarAoEmitir: boolean;
   mostrarPredio: boolean;
+  ocupado: null | string;
   onEnviarAoEmitir: (v: boolean) => void;
   onSelecionadas: (s: Set<string>) => void;
   parcelas: ParcelaAEmitir[];
@@ -812,7 +948,8 @@ function AEmitir({
               <th style={cabecalho}>Unidade</th>
               <th style={cabecalho}>CPF/CNPJ</th>
               <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
-              <th style={cabecalho}>Vencimento</th>
+              <th style={cabecalho}>Vence dia</th>
+              <th style={cabecalho}>Situação</th>
             </tr>
           </thead>
           <tbody>
@@ -849,12 +986,40 @@ function AEmitir({
                   </td>
                 ) : null}
                 <td style={{ color: T.sub, padding: "7px 8px" }}>{p.unidade}</td>
-                <td style={{ color: T.sub, padding: "7px 8px", whiteSpace: "nowrap" }}>
-                  {p.documento ?? "—"}
+                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                  <CelulaEditavel
+                    ajuda={`CPF ou CNPJ de ${p.nome}`}
+                    aoSalvar={(novo) =>
+                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acao: "cadastro",
+                        documento: novo,
+                      })
+                    }
+                    invalido={Boolean(p.documento) && !p.documentoValido}
+                    largura={150}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="sem CPF"
+                    valor={documentoLegivel(p.documento)}
+                  />
                 </td>
                 <td style={numero}>{p.valor === null ? "—" : moeda(p.valor)}</td>
-                <td style={{ color: T.sub, padding: "7px 8px", whiteSpace: "nowrap" }}>
-                  {p.vencimentoDia ? `dia ${p.vencimentoDia}` : "—"}
+                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                  <CelulaEditavel
+                    ajuda="Dia do vencimento (1 a 31)"
+                    aoSalvar={(novo) =>
+                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acao: "cadastro",
+                        vencimentoDia: Number(novo.replace(/\D/g, "")),
+                      })
+                    }
+                    largura={46}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="dia"
+                    valor={p.vencimentoDia ? String(p.vencimentoDia) : ""}
+                  />
+                </td>
+                <td style={{ maxWidth: 260, padding: "7px 8px" }}>
+                  <Situacao pendencia={p.pendencia} />
                 </td>
               </tr>
             ))}
@@ -1597,11 +1762,28 @@ function ResultadoDoEnvio({ envio }: { envio: Envio }) {
 
 // ── QUEM NÃO RECEBE, E POR QUÊ ──────────────────────────────────────────────
 
-function ForaDaEmissao({ parcelas }: { parcelas: ParcelaAEmitir[] }) {
+function ForaDaEmissao({
+  acaoNaUnidade,
+  mostrarPredio,
+  ocupado,
+  parcelas,
+}: {
+  acaoNaUnidade: (e: string, u: string, corpo: Record<string, unknown>) => Promise<boolean>;
+  mostrarPredio: boolean;
+  ocupado: null | string;
+  parcelas: ParcelaAEmitir[];
+}) {
+  const semCpf = parcelas.filter((p) => !p.documento).length;
+
   return (
     // ⚠️ UMA LISTA QUE SÓ MOSTRA QUEM EMITE ESCONDE O CLIENTE ESQUECIDO, e o esquecido só reclama no
     // mês seguinte. Fica recolhido para não competir com o que precisa de ação, mas fica.
+    //
+    // ⚠️ E AQUI SE CONSERTA, NÃO SÓ SE LÊ. Era uma lista de texto: dizia "sem CPF/CNPJ cadastrado"
+    // e não dava o que fazer a respeito, então a correção exigia planilha nova e recarga. Agora as
+    // mesmas células editáveis da tabela de cima estão aqui, que é onde o problema aparece.
     <details
+      open={semCpf > 0}
       style={{
         background: T.card,
         border: `1px solid ${T.border}`,
@@ -1610,21 +1792,76 @@ function ForaDaEmissao({ parcelas }: { parcelas: ParcelaAEmitir[] }) {
       }}
     >
       <summary style={{ color: T.sub, cursor: "pointer", fontSize: 13.5 }}>
-        {parcelas.length} unidade(s) não recebem boleto neste mês — ver o motivo de cada uma
+        {parcelas.length} unidade(s) não recebem boleto neste mês
+        {semCpf > 0 ? ` · ${semCpf} só falta(m) o CPF/CNPJ, dá para preencher aqui` : ""}
       </summary>
-      <ul style={{ display: "grid", gap: 4, listStyle: "none", margin: "10px 0 0", padding: 0 }}>
-        {parcelas.map((p) => (
-          <li
-            key={`${p.empreendimento}|${p.unidade}`}
-            style={{ color: T.sub, fontSize: 13, lineHeight: 1.5 }}
-          >
-            <span style={{ color: T.text }}>
-              {p.nome} ({p.empreendimento} · {p.unidade})
-            </span>{" "}
-            — {p.bloqueio}
-          </li>
-        ))}
-      </ul>
+
+      <div style={{ marginTop: 10, overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", fontSize: 13.5, minWidth: 640, width: "100%" }}>
+          <thead>
+            <tr style={{ color: T.sub, textAlign: "left" }}>
+              <th style={cabecalho}>Cliente</th>
+              {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
+              <th style={cabecalho}>Unidade</th>
+              <th style={cabecalho}>CPF/CNPJ</th>
+              <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
+              <th style={cabecalho}>Vence dia</th>
+              <th style={cabecalho}>O que falta</th>
+            </tr>
+          </thead>
+          <tbody>
+            {parcelas.map((p) => (
+              <tr
+                key={`${p.empreendimento}|${p.unidade}`}
+                style={{ borderTop: `1px solid ${T.border}` }}
+              >
+                <td style={{ color: T.text, padding: "7px 8px" }}>{p.nome}</td>
+                {mostrarPredio ? (
+                  <td style={{ color: T.sub, padding: "7px 8px", whiteSpace: "nowrap" }}>
+                    {p.empreendimento}
+                  </td>
+                ) : null}
+                <td style={{ color: T.sub, padding: "7px 8px" }}>{p.unidade}</td>
+                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                  <CelulaEditavel
+                    ajuda={`CPF ou CNPJ de ${p.nome}`}
+                    aoSalvar={(novo) =>
+                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acao: "cadastro",
+                        documento: novo,
+                      })
+                    }
+                    invalido={Boolean(p.documento) && !p.documentoValido}
+                    largura={150}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="sem CPF"
+                    valor={documentoLegivel(p.documento)}
+                  />
+                </td>
+                <td style={numero}>{p.valor === null ? "—" : moeda(p.valor)}</td>
+                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                  <CelulaEditavel
+                    ajuda="Dia do vencimento (1 a 31)"
+                    aoSalvar={(novo) =>
+                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acao: "cadastro",
+                        vencimentoDia: Number(novo.replace(/\D/g, "")),
+                      })
+                    }
+                    largura={46}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="dia"
+                    valor={p.vencimentoDia ? String(p.vencimentoDia) : ""}
+                  />
+                </td>
+                <td style={{ maxWidth: 300, padding: "7px 8px" }}>
+                  <Situacao pendencia={p.pendencia ?? p.bloqueio} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </details>
   );
 }

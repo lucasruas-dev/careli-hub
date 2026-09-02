@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-cpf-editavel",
+    deployedAt: "2026-09-02T10:00:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "O CPF/CNPJ aparece por inteiro e dá para corrigir na própria linha, sem sair da tela.",
+              "O dia do vencimento também virou campo editável, antes de o boleto ser gerado.",
+              "Cada linha diz se está apta a enviar ou, quando não está, o que falta corrigir.",
+              "A lista de quem não recebe boleto no mês virou tabela editável: é ali que os CPFs em falta são preenchidos.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "8b6229db",
+    technical: {
+      done: "Pedido do Lucas (02/09/2026): \"deixa por favor o CPF todo legivel e editavel, vou pedir alguem para atualizar\", \"quero poder tambem alterar a data de vencimento\" e \"coloca uma observacao de esta apto a enviar, se nao o que falta a gente corrigir\". 32 unidades estao sem documento e o Asaas nao cria cliente sem ele. A tela mostrava o CPF mascarado (•••.812.686-42) por decisao de privacidade: mascarado ninguem confere nem corrige, e a correcao exigia planilha nova e recarga. A tela e interna e a sessao e a mesma que ja ve nome, valor e telefone. ⚠️ O DIGITO VERIFICADOR E CONFERIDO NO SERVIDOR (cpfValido/cnpjValido de lib/apolo/documento): CPF digitado errado nao volta como erro do Asaas na hora da emissao — ele falha no MEIO do lote, com metade dos boletos ja criados. O DV nao prova que o CPF e daquela pessoa, mas pega a digitacao trocada, que e o erro de quem preenche 32 linhas seguidas. ⚠️ UPSERT E NAO UPDATE: quem esta sem CPF costuma estar sem cadastro nenhum em `boletos_documentos`, e um UPDATE nao afetaria linha alguma e devolveria \"salvo\" sem ter salvado nada. ⚠️ O VENCIMENTO GRAVADO E O DIA, NAO A DATA: `dataDeVencimento` prende o dia ao ultimo do mes na emissao (a IZALTINA vence dia 30, que existe em setembro e nao em fevereiro); guardar a data pronta quebraria isso no mes seguinte. E o update filtra pela competencia aberta — sem isso, mudar o dia mexeria nas 8 competencias daquela unidade, inclusive nas ja emitidas, e o historico passaria a mentir. A celula salva no blur e no Enter, nunca a cada tecla (11 digitos = 11 requisicoes, dez com documento invalido); Escape desiste. A coluna Situacao diz \"Apto a enviar\" ou a primeira coisa que trava, na ordem em que travam: bloqueio da planilha, CPF, chave do Asaas, valor, dia. 115 testes verdes, typecheck limpo.",
+      motivation:
+        "O motivo de uma linha nao emitir ficava recolhido no fim da tela, longe dela, e nao dava o que fazer a respeito.",
+    },
+    title: "CPF e vencimento editáveis na linha, com o que falta em cada uma",
+    type: "novidade",
+    version: "1.252.0",
+  },
+  {
     buildTag: "2026-09-02-carteiras-completas",
     deployedAt: "2026-09-02T09:30:00-03:00",
     modules: [

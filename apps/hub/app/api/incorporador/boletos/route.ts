@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { type ContaAsaas, chaveDaConta, rotuloDaConta } from "@/lib/apolo/asaas-contas";
+import { cnpjValido, cpfValido, soDigitos } from "@/lib/apolo/documento";
 import {
   documentoMascarado,
   documentosDeVarios,
@@ -155,13 +156,37 @@ export async function GET(request: Request) {
     documentosDeVarios(permitidos),
   ]);
 
+  const comContaConfigurada = new Set(comChave.map((e) => e.slug));
+
   const aEmitir = parcelas.map((p) => {
     const cadastro = documentos.get(`${p.empreendimento}|${p.unidade}`);
+    const bloqueio =
+      p.bloqueio ?? (cadastro ? null : `sem CPF/CNPJ cadastrado para a unidade ${p.unidade}`);
+
+    // ⚠️ O QUE FALTA, EM UMA FRASE. Pedido do Lucas (02/09/2026): *"coloca uma observação de está
+    // apto a enviar, se não o que falta a gente corrigir"*. Antes o motivo existia mas ficava
+    // dentro de um `<details>` recolhido no fim da tela, longe da linha — quem olhava a tabela via
+    // a linha sem saber por que ela não sairia. A ordem aqui é a ordem em que as coisas travam.
+    const pendencia = bloqueio
+      ? bloqueio
+      : !comContaConfigurada.has(p.empreendimento)
+        ? "a chave do Asaas deste empreendimento não está no ambiente"
+        : p.valor === null || !(p.valor > 0)
+          ? "sem valor para o mês na planilha"
+          : p.vencimentoDia === null
+            ? "sem dia de vencimento na planilha"
+            : null;
+
     return {
-      bloqueio:
-        p.bloqueio ??
-        (cadastro ? null : `sem CPF/CNPJ cadastrado para a unidade ${p.unidade}`),
-      documento: cadastro ? documentoMascarado(cadastro.documento) : null,
+      bloqueio,
+      // ⚠️ O CPF INTEIRO, e não mascarado. Pedido do Lucas (02/09/2026): *"deixa por favor o CPF
+      // todo legivel e editavel, vou pedir alguem para atualizar"*. Trinta e duas unidades estão
+      // sem documento e o Asaas não cria cliente sem ele; com a máscara ninguém consegue conferir
+      // nem corrigir o que está errado. A tela é interna e a sessão é do portal — a mesma que já
+      // vê nome, valor e telefone.
+      documento: cadastro?.documento ?? null,
+      documentoValido: cadastro ? cpfValido(cadastro.documento) || cnpjValido(cadastro.documento) : false,
+      pendencia,
       empreendimento: p.empreendimento,
       // O nome do cadastro quando existe: é ele que sai no boleto.
       nome: cadastro?.nome ?? p.nome,
@@ -387,6 +412,113 @@ export async function POST(request: Request) {
   // dois destinos, e a distinção importa: corrigir o telefone não mexe na cobrança, e mudar o valor
   // faz o Asaas gerar um boleto NOVO, com outra linha digitável. Quem já recebeu o link precisa
   // receber de novo.
+  // ── GRAVAR O CPF/CNPJ ─────────────────────────────────────────────────────
+  //
+  // ⚠️ O DOCUMENTO E O UNICO CAMPO SEM O QUAL O ASAAS NAO CRIA CLIENTE, e 32 unidades estao sem
+  // ele. Pedido do Lucas (02/09/2026): *"deixa por favor o CPF todo legivel e editavel, vou pedir
+  // alguem para atualizar"*.
+  //
+  // ⚠️ O DIGITO VERIFICADOR E CONFERIDO AQUI, no servidor. Um CPF digitado errado nao volta como
+  // erro do Asaas na hora da emissao: ele falha no meio do lote, depois de metade dos boletos ja
+  // criados. O DV nao prova que o CPF e DAQUELA pessoa — nada aqui prova —, mas pega a digitacao
+  // trocada, que e o erro comum de quem preenche 32 linhas seguidas.
+  //
+  // ⚠️ UPSERT, PORQUE A LINHA PODE NAO EXISTIR. Quem esta sem CPF costuma estar sem cadastro
+  // nenhum em `boletos_documentos`; um UPDATE simples nao afetaria linha alguma e devolveria
+  // "salvo" sem ter salvado nada.
+  if (String(corpo.acao ?? "") === "cadastro") {
+    const unidade = Array.isArray(corpo.unidades)
+      ? String((corpo.unidades as unknown[])[0] ?? "").trim()
+      : "";
+    if (!unidade) {
+      return NextResponse.json({ error: "informe a unidade" }, { status: 400 });
+    }
+
+    const c = corpo as { documento?: unknown; vencimentoDia?: unknown };
+    const supabase = createApoloAdminClient();
+    if (!supabase) {
+      return NextResponse.json({ error: "sem acesso ao banco" }, { status: 500 });
+    }
+
+    const mudou: string[] = [];
+
+    // ── O DOCUMENTO ─────────────────────────────────────────────────────────
+    if (c.documento !== undefined) {
+      const digitos = soDigitos(String(c.documento ?? ""));
+      if (digitos.length !== 11 && digitos.length !== 14) {
+        return NextResponse.json(
+          { error: "o documento precisa ter 11 dígitos (CPF) ou 14 (CNPJ)" },
+          { status: 400 },
+        );
+      }
+      if (digitos.length === 11 && !cpfValido(digitos)) {
+        return NextResponse.json({ error: "CPF inválido — confira os dígitos" }, { status: 400 });
+      }
+      if (digitos.length === 14 && !cnpjValido(digitos)) {
+        return NextResponse.json({ error: "CNPJ inválido — confira os dígitos" }, { status: 400 });
+      }
+
+      const daCompetencia = await parcelasDaCompetencia({ competencia, empreendimentos: [slug] });
+      const parcela = daCompetencia.find((x) => x.unidade === unidade);
+
+      // ⚠️ UPSERT, PORQUE A LINHA PODE NAO EXISTIR. Quem esta sem CPF costuma estar sem cadastro
+      // nenhum em `boletos_documentos`; um UPDATE simples nao afetaria linha alguma e devolveria
+      // "salvo" sem ter salvado nada.
+      const { error } = await supabase.from("boletos_documentos").upsert(
+        {
+          atualizado_em: new Date().toISOString(),
+          documento: digitos,
+          empreendimento: slug,
+          nome: parcela?.nome ?? unidade,
+          unidade,
+          workspace_id: "careli",
+        },
+        { onConflict: "workspace_id,empreendimento,unidade" },
+      );
+      if (error) {
+        return NextResponse.json({ error: `não consegui salvar: ${error.message}` }, { status: 500 });
+      }
+      mudou.push("documento");
+    }
+
+    // ── O DIA DO VENCIMENTO ─────────────────────────────────────────────────
+    //
+    // ⚠️ E O DIA, NAO A DATA. A parcela guarda `vencimento_dia` (5, 10, 20…) e a data e montada na
+    // emissao por `dataDeVencimento`, que prende o dia ao ultimo do mes — a IZALTINA vence dia 30,
+    // que existe em setembro e nao existe em fevereiro. Guardar a data pronta aqui quebraria isso
+    // no mes seguinte.
+    if (c.vencimentoDia !== undefined) {
+      const dia = Number(c.vencimentoDia);
+      if (!Number.isInteger(dia) || dia < 1 || dia > 31) {
+        return NextResponse.json(
+          { error: "o dia do vencimento precisa ser um número de 1 a 31" },
+          { status: 400 },
+        );
+      }
+      // ⚠️ SO A COMPETENCIA ABERTA. Sem o filtro, mudar o dia mexeria nas 8 competencias daquela
+      // unidade de uma vez, inclusive nas ja emitidas — e o historico passaria a mentir.
+      const { error } = await supabase
+        .from("boletos_parcelas")
+        .update({ vencimento_dia: dia })
+        .eq("workspace_id", "careli")
+        .eq("empreendimento", slug)
+        .eq("unidade", unidade)
+        .eq("competencia", competencia);
+      if (error) {
+        return NextResponse.json(
+          { error: `não consegui salvar o vencimento: ${error.message}` },
+          { status: 500 },
+        );
+      }
+      mudou.push("vencimento");
+    }
+
+    if (mudou.length === 0) {
+      return NextResponse.json({ error: "nada para salvar" }, { status: 400 });
+    }
+    return NextResponse.json({ mudou, ok: true, unidade });
+  }
+
   if (String(corpo.acao ?? "") === "editar") {
     const e = (corpo.edicao ?? {}) as {
       descricao?: unknown;
