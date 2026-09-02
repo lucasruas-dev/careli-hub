@@ -5461,3 +5461,39 @@ Conclusao:
 - Agora editáveis no cadastro: nome, CPF, nascimento, RG, telefone, celular, e-mail, mãe, cônjuge, endereço, bairro, CEP, cidade e UF. A idade recalcula enquanto se digita o nascimento.
 - Verificação: tsc limpo, **1.280 testes PASS**, eslint limpo.
 - ⏭️ **MASTERPLAN DESATUALIZADO — confirmado, correção pendente.** `app/api/incorporador/masterplan/route.ts:155` faz `fs.readFileSync` de `public/masterplans/vale-do-ouro.html`, **arquivo de 10/08** com a situação de cada lote gravada dentro. A tela de Vendas lê o C2X ao vivo; o mapa mostra a foto de 9 dias atrás — por isso o cancelamento de ontem não apareceu e lotes disponíveis constam como vendidos (Lucas: *"o masterplan é dinâmico, não pode ser estático"*). Correção: manter o polígono do arquivo e trazer situação/comprador/valor do C2X ao servir, casando por `chaveDoLote`.
+
+## 2026-09-02 - Hercules: portal do time comercial (/gurgel) + cadastro pai/filhos (v1.270.0) - EM PRODUCAO
+
+Registro de producao:
+
+- Assunto: `[Hercules/Zeus] Portal comercial da Gurgel, cadastro de empreendimentos pai/filhos e masterplans importados`.
+- Squad/agente responsavel: `Zeus (autorizado pelo Lucas: "tem o meu ok")`.
+- Data e hora local: `2026-09-02 19:00:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `branch fix/credenciamento-lagoa-bonita, push HEAD:main; workflows wf_a571132a-45a (3 builders + 3 lentes + corretor) e wf_86af67ab-b44 (mapa do Hercules interno)`.
+- Escopo publicado:
+  - portal do incorporador ganha TIPO (`apolo_incorporadores.tipo`, 0122): `comercial` = Hercules dos coordenadores com CRM, Vendas, Contratos, Financeiro e Lancamento, marca da Gurgel, vinculo POR USUARIO (conta sem vinculo nao entra);
+  - Prometeu aceita o cookie do coordenador so nas rotas com recorte (eventos, fila, credenciados, reservas, operadores); `proxy.ts` libera por caminho exato;
+  - Setup > aba Comercial; `TemisKanban` com `rota/semToken/somenteLeitura`; rota `/api/incorporador/contratos`;
+  - cadastro de empreendimentos pai/filhos (0123) + `hercules_unidades.segmento_id` + `hercules_masterplans`; 0121 (`temis_trabalhos.venda_id`); 0124 (CHECK de `temis_minutas.tipo` aceita cessao e cancelamento);
+  - correcao da carga de unidades (Vendido caia em disponivel) com modo `--so-situacao`.
+- Commit publicado: `a50a73ba`.
+- Deployment anterior: `dpl_Ca7eoFTbzqnUDMzaRZHTnMZC3F6G` (f8ac0d5b).
+- Deployment novo: `dpl_87oqkEZepBFEkSxqJVGPDxWe7QQ8`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: deploy automatico da main.
+- Arquivos/modulos incluidos: 42 arquivos (lib/apolo/incorporador, lib/prometeu/operador-server, lib/hercules, rotas prometeu/incorporador/apolo, PortalIncorporador + TelaLancamento + TelaContratos, gestao-incorporadores, setup/page, proxy.ts, migrations 0121-0124, scripts/hercules, scripts/apolo/criar-portal-gurgel, changelog).
+- Arquivos/modulos excluidos: `.tmpc2x/ .tmpr/ .tmpxl/ pagamentos-carteira-compartilhada.csv public/_folhas-teste.html` (avulsos do worktree).
+- Validacoes executadas:
+  - `check-types` exit 0; `vitest` 166 arquivos / 2.152 testes verdes; revisao adversarial (seguranca/escopo, correcao, build) com corretor;
+  - dados apos as migrations: 24 pais, 13 visoes, 707 unidades segmentadas, 6 masterplans publicados (VLO, LAB, RVP, REP, VAL, JDG), portal `gurgel` tipo comercial, situacao recarregada (vendidas 595 -> 2.586).
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: pendente ate o build terminar (registrado abaixo).
+- Logs recentes: `n/a ate o build terminar`.
+- Rollback definido: `promover dpl_Ca7eoFTbzqnUDMzaRZHTnMZC3F6G (f8ac0d5b) na Vercel`. As migrations sao aditivas (coluna com default, tabelas novas, CHECK mais largo): o codigo antigo continua funcionando com elas.
+- Riscos conhecidos: portal comercial ainda sem contas de coordenador (criar no Setup > Comercial e vincular empreendimentos); VOR com 0 unidades segmentadas (VLO1206/1301/1302 em dois filhos); JDG com 19 labels sem unidade e JDG0905 duplicado; rotas jornada/link-fila/mesa/pa/palco/relatorios respondem 401 ao coordenador de proposito.
+- Pendencias: masterplans VDO e GDN (download do C2X; VDO 66 MB exige comprimir a planta) e ACP (tracar); Hercules interno (modulo no hub); tela Setup ainda diz "incorporador" em mensagens de servidor no modo comercial.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas validar /incorporador/gurgel (login com a marca) e Setup > Comercial; Zeus registrar healthcheck`.
+

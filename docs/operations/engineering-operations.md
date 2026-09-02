@@ -41865,3 +41865,35 @@ v1.239.0 (masterplan com as correcoes manuais) · v1.240.0 (arquivado continua v
   • **Os 19 lotes travados**: estao azuis por `config.lotesBloqueados`, que e solucao de TELA.
     Quando entrarem no C2X de verdade, saem da lista. ⚠️ Nao cadastrar no legado so para isso: a
     API nao desfaz cadastro de unidade.
+
+## 2026-09-02 (noite) · HERCULES NASCE: portal comercial da Gurgel, pai/filhos e masterplans importados (v1.270.0)
+
+Decisoes do Lucas no dia, na ordem: Hercules em DOIS lugares (portal `/gurgel` para os coordenadores, com
+CRM · Vendas · Contratos · Financeiro · Lancamento; e modulo INTERNO so de venda, ainda por construir —
+Vendas SAI do Apolo, que vira so cadastro e consulta); empreendimentos passam a ser cadastrados no Panteon
+com PAI e FILHOS ("o espelho sempre sera o pai, porque la que vai morar todos os registros, vendas"; "os
+filhos podem ter visoes segmentadas"); masterplans IMPORTADOS, nao consultados ("nao quero consultar c2x,
+quero importar"), so os 11 que estao vendendo; sem masterplan cadastrado, o botao some.
+
+O que foi ao ar (commit `a50a73ba`, deploy `dpl_87oqkEZepBFEkSxqJVGPDxWe7QQ8`): ver releases-production.md.
+
+Achados da revisao adversarial que mudaram o desenho: (1) o coordenador NAO entra nas autorizacoes genericas
+do Prometeu — uma duzia de rotas sem `escopo` deixaria ler CPF de reserva e trocar o telao de qualquer
+lancamento; entra so pelas variantes `...ComCoordenador`, e o `proxy.ts` libera por caminho exato; (2) cinco
+ramos do PATCH de credenciados respondiam antes da conferencia de escopo (chamar-do-salao dispara WhatsApp
+real): helper `credenciadoNoEscopo` em todos; (3) conta comercial sem vinculo NAO herda o portal (fail-closed).
+
+Achados do mapa do Hercules interno (workflow de 6 leitores): a carga de unidades mapeava `sale_status 4`
+(Vendido) como disponivel — Lavra do Ouro com 0 vendidas; corrigido e recarregado so a situacao (vendidas
+595 -> 2.586). `temis_minutas.tipo` recusava cessao e cancelamento (0124). `temis_planos` esta vazia e
+`hercules_vendas.plano_id` e NOT NULL. Reserva fora de evento nao existe. O id `group:Nome` esta persistido
+em varias tabelas e precisa de traducao no Hercules.
+
+Licao operacional: o heredoc do Bash converte `\n` em quebra real antes de o Python rodar — patch com
+barra invertida vai por arquivo `.py` (Write) ou `chr(92)`. Tres tentativas de "consertar" pelo mesmo
+caminho reintroduziram o defeito.
+
+Pendente: contas dos coordenadores no Setup > Comercial; VDO e GDN (download do C2X) e ACP (tracar);
+segmentacao do VOR (3 lotes em dois filhos); JDG com 19 lotes no desenho sem unidade; decisoes do Hercules
+interno (reserva em tabela propria; alargar `temis_planos`; situacao derivada) — recomendacoes enviadas.
+
