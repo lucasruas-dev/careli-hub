@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-ordenacao",
+    deployedAt: "2026-09-02T11:50:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Clicar no cabeçalho ordena a lista por aquela coluna; clicar de novo inverte, e o terceiro clique volta à ordem padrão.",
+              "Ordenar por Situação junta quem está apto de um lado e agrupa os pendentes pelo mesmo motivo.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "b0e6c3bf",
+    technical: {
+      done: "Pedido do Lucas (02/09/2026): *\"colocar ordenacao nas colunas\"*. Vale nas duas tabelas, prontos e pendentes. ⚠️ TRES ESTADOS, E NAO DOIS: crescente, decrescente e DE VOLTA AO PADRAO. A ordem padrao e por vencimento e depois por unidade, e ela existe porque emitir na ordem em que vence e o que o administrativo confere; sem o terceiro clique, quem ordenasse por nome nao conseguiria mais voltar a ela. ⚠️ UNIDADE E PARCELA ORDENAM COMO NUMERO: em ordem alfabetica `Q10 L02` vem antes de `Q02 L05`, e a lista fica ilegivel justamente onde e mais longa (143 linhas no Garden). `localeCompare` com `numeric` resolve. Ordenar por Situacao agrupa os pendentes pelo mesmo motivo, que e como se resolve um lote deles de uma vez. Typecheck limpo, 134 testes verdes.",
+      motivation:
+        "Com 143 linhas numa carteira, achar uma unidade sem poder ordenar é rolagem cega.",
+    },
+    title: "Ordenação por coluna nas duas tabelas",
+    type: "novidade",
+    version: "1.263.0",
+  },
+  {
     buildTag: "2026-09-02-parcela-e-selecao",
     deployedAt: "2026-09-02T11:40:00-03:00",
     modules: [

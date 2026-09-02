@@ -784,6 +784,98 @@ function Cabecalho({
   );
 }
 
+// ── ORDENAR PELAS COLUNAS ───────────────────────────────────────────────────
+//
+// ⚠️ A ORDEM PADRÃO É POR VENCIMENTO, e ela existe por um motivo: emitir na ordem em que vence é
+// o que o administrativo confere. A ordenação por clique não substitui isso, acrescenta — e por
+// isso o terceiro clique volta ao padrão, em vez de deixar a tabela presa numa ordem qualquer.
+//
+// ⚠️ UNIDADE E PARCELA ORDENAM COMO NÚMERO, e não como texto: em ordem alfabética `Q10 L02` vem
+// antes de `Q02 L05`, e a lista fica ilegível justamente onde ela é mais longa (143 linhas no
+// Garden). `localeCompare` com `numeric` resolve os dois de uma vez.
+
+type Coluna = "cliente" | "parcela" | "predio" | "situacao" | "telefone" | "unidade" | "valor" | "vencimento";
+type Ordem = { coluna: Coluna; desc: boolean } | null;
+
+function ordenarParcelas(linhas: ParcelaAEmitir[], ordem: Ordem): ParcelaAEmitir[] {
+  if (!ordem) return linhas;
+  const sinal = ordem.desc ? -1 : 1;
+  const texto = (a: string, b: string) => a.localeCompare(b, "pt-BR", { numeric: true });
+
+  return [...linhas].sort((a, b) => {
+    switch (ordem.coluna) {
+      case "cliente":
+        return sinal * texto(a.nome, b.nome);
+      case "parcela":
+        return sinal * ((a.parcelaAtual ?? -1) - (b.parcelaAtual ?? -1));
+      case "predio":
+        return sinal * texto(a.empreendimento, b.empreendimento);
+      case "situacao":
+        // Aptos primeiro; entre os pendentes, agrupa pelo mesmo motivo.
+        return sinal * texto(a.pendencia ?? "", b.pendencia ?? "");
+      case "telefone":
+        return sinal * texto(a.contato ?? "", b.contato ?? "");
+      case "unidade":
+        return sinal * texto(a.unidade, b.unidade);
+      case "valor":
+        return sinal * ((a.valor ?? 0) - (b.valor ?? 0));
+      case "vencimento":
+        return sinal * ((a.vencimentoDia ?? 99) - (b.vencimentoDia ?? 99));
+      default:
+        return 0;
+    }
+  });
+}
+
+function ThOrdenavel({
+  alinharADireita,
+  coluna,
+  ordem,
+  onOrdem,
+  children,
+}: {
+  alinharADireita?: boolean;
+  children: React.ReactNode;
+  coluna: Coluna;
+  onOrdem: (o: Ordem) => void;
+  ordem: Ordem;
+}) {
+  const ativa = ordem?.coluna === coluna;
+  return (
+    <th style={{ ...cabecalho, textAlign: alinharADireita ? "right" : "left" }}>
+      <button
+        onClick={() => {
+          // ⚠️ TRÊS ESTADOS, E NÃO DOIS: crescente, decrescente e DE VOLTA AO PADRÃO. Sem o
+          // terceiro, quem ordena por nome não consegue mais ver a lista na ordem de vencimento,
+          // que é a ordem em que a emissão acontece.
+          if (!ativa) onOrdem({ coluna, desc: false });
+          else if (!ordem.desc) onOrdem({ coluna, desc: true });
+          else onOrdem(null);
+        }}
+        style={{
+          alignItems: "center",
+          background: "none",
+          border: "none",
+          color: ativa ? T.text : "inherit",
+          cursor: "pointer",
+          display: "inline-flex",
+          font: "inherit",
+          fontWeight: ativa ? 700 : "inherit",
+          gap: 3,
+          padding: 0,
+        }}
+        title={ativa && ordem.desc ? "Clique para voltar à ordem padrão" : "Ordenar por esta coluna"}
+        type="button"
+      >
+        {children}
+        <span aria-hidden="true" style={{ fontSize: 9, opacity: ativa ? 1 : 0.35 }}>
+          {ativa ? (ordem.desc ? "▼" : "▲") : "↕"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 // ── EDITAR NA PRÓPRIA LINHA ─────────────────────────────────────────────────
 //
 // ⚠️ 32 UNIDADES ESTAO SEM CPF E O ASAAS NAO CRIA CLIENTE SEM ELE. Pedido do Lucas (02/09/2026):
@@ -943,6 +1035,8 @@ function AEmitir({
   // TODAS a unidade `TESTE-01`, então marcar uma marcava as seis — foi o que o Lucas viu em
   // 02/09/2026 (*"não consigo selecionar somente uma parcela, quando eu clico, ele seleciona
   // tudo"*). No consolidado o problema é o mesmo: o apartamento 201 existe em mais de um prédio.
+  const [ordem, setOrdem] = useState<Ordem>(null);
+  const linhas = ordenarParcelas(parcelas, ordem);
   const escolhidas = parcelas.filter((p) => selecionadas.has(chaveDaLinha(p)));
   const totalEscolhido = escolhidas.reduce((a, p) => a + (p.valor ?? 0), 0);
   const alvo = escolhidas.length > 0 ? escolhidas : parcelas;
@@ -1074,19 +1168,37 @@ function AEmitir({
                   />
                 </th>
               ) : null}
-              <th style={cabecalho}>Cliente</th>
-              {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
-              <th style={cabecalho}>Unidade</th>
-              <th style={cabecalho}>Parcela</th>
+              <ThOrdenavel coluna="cliente" onOrdem={setOrdem} ordem={ordem}>
+                Cliente
+              </ThOrdenavel>
+              {mostrarPredio ? (
+                <ThOrdenavel coluna="predio" onOrdem={setOrdem} ordem={ordem}>
+                  Prédio
+                </ThOrdenavel>
+              ) : null}
+              <ThOrdenavel coluna="unidade" onOrdem={setOrdem} ordem={ordem}>
+                Unidade
+              </ThOrdenavel>
+              <ThOrdenavel coluna="parcela" onOrdem={setOrdem} ordem={ordem}>
+                Parcela
+              </ThOrdenavel>
               <th style={cabecalho}>CPF/CNPJ</th>
-              <th style={cabecalho}>Telefone</th>
-              <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
-              <th style={cabecalho}>Vence dia</th>
-              <th style={cabecalho}>Situação</th>
+              <ThOrdenavel coluna="telefone" onOrdem={setOrdem} ordem={ordem}>
+                Telefone
+              </ThOrdenavel>
+              <ThOrdenavel alinharADireita coluna="valor" onOrdem={setOrdem} ordem={ordem}>
+                Valor
+              </ThOrdenavel>
+              <ThOrdenavel coluna="vencimento" onOrdem={setOrdem} ordem={ordem}>
+                Vence dia
+              </ThOrdenavel>
+              <ThOrdenavel coluna="situacao" onOrdem={setOrdem} ordem={ordem}>
+                Situação
+              </ThOrdenavel>
             </tr>
           </thead>
           <tbody>
-            {parcelas.map((p) => (
+            {linhas.map((p) => (
               <tr key={`${p.empreendimento}|${p.unidade}`} style={{ borderTop: `1px solid ${T.border}` }}>
                 {podeEmitir ? (
                   <td style={{ padding: "7px 8px" }}>
@@ -2006,6 +2118,8 @@ function ForaDaEmissao({
   ocupado: null | string;
   parcelas: ParcelaAEmitir[];
 }) {
+  const [ordem, setOrdem] = useState<Ordem>(null);
+  const linhas = ordenarParcelas(parcelas, ordem);
   const semCpf = parcelas.filter((p) => !p.documento).length;
 
   return (
@@ -2033,19 +2147,37 @@ function ForaDaEmissao({
         <table style={{ borderCollapse: "collapse", fontSize: 13.5, minWidth: 640, width: "100%" }}>
           <thead>
             <tr style={{ color: T.sub, textAlign: "left" }}>
-              <th style={cabecalho}>Cliente</th>
-              {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
-              <th style={cabecalho}>Unidade</th>
-              <th style={cabecalho}>Parcela</th>
+              <ThOrdenavel coluna="cliente" onOrdem={setOrdem} ordem={ordem}>
+                Cliente
+              </ThOrdenavel>
+              {mostrarPredio ? (
+                <ThOrdenavel coluna="predio" onOrdem={setOrdem} ordem={ordem}>
+                  Prédio
+                </ThOrdenavel>
+              ) : null}
+              <ThOrdenavel coluna="unidade" onOrdem={setOrdem} ordem={ordem}>
+                Unidade
+              </ThOrdenavel>
+              <ThOrdenavel coluna="parcela" onOrdem={setOrdem} ordem={ordem}>
+                Parcela
+              </ThOrdenavel>
               <th style={cabecalho}>CPF/CNPJ</th>
-              <th style={cabecalho}>Telefone</th>
-              <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
-              <th style={cabecalho}>Vence dia</th>
-              <th style={cabecalho}>O que falta</th>
+              <ThOrdenavel coluna="telefone" onOrdem={setOrdem} ordem={ordem}>
+                Telefone
+              </ThOrdenavel>
+              <ThOrdenavel alinharADireita coluna="valor" onOrdem={setOrdem} ordem={ordem}>
+                Valor
+              </ThOrdenavel>
+              <ThOrdenavel coluna="vencimento" onOrdem={setOrdem} ordem={ordem}>
+                Vence dia
+              </ThOrdenavel>
+              <ThOrdenavel coluna="situacao" onOrdem={setOrdem} ordem={ordem}>
+                O que falta
+              </ThOrdenavel>
             </tr>
           </thead>
           <tbody>
-            {parcelas.map((p) => (
+            {linhas.map((p) => (
               <tr
                 key={`${p.empreendimento}|${p.unidade}`}
                 style={{ borderTop: `1px solid ${T.border}` }}
