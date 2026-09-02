@@ -185,6 +185,9 @@ export async function GET(request: Request) {
       // sem documento e o Asaas não cria cliente sem ele; com a máscara ninguém consegue conferir
       // nem corrigir o que está errado. A tela é interna e a sessão é do portal — a mesma que já
       // vê nome, valor e telefone.
+      // ⚠️ O TELEFONE INTEIRO E EDITÁVEL, como o CPF: é por ele que o link do boleto chega, e um
+      // número errado faz a mensagem falhar com "undeliverable", que parece "não tem WhatsApp".
+      contato: cadastro?.contato ?? null,
       documento: cadastro?.documento ?? null,
       documentoValido: cadastro ? cpfValido(cadastro.documento) || cnpjValido(cadastro.documento) : false,
       pendencia,
@@ -438,6 +441,86 @@ export async function POST(request: Request) {
   // ⚠️ UPSERT, PORQUE A LINHA PODE NAO EXISTIR. Quem esta sem CPF costuma estar sem cadastro
   // nenhum em `boletos_documentos`; um UPDATE simples nao afetaria linha alguma e devolveria
   // "salvo" sem ter salvado nada.
+  // ── RENOMEAR A UNIDADE (quadra/lote) ──────────────────────────────────────
+  //
+  // ⚠️ A UNIDADE NÃO É UM CAMPO, É A CHAVE. Ela identifica a linha em `boletos_parcelas` (com a
+  // competência), em `boletos_documentos` e na referência da cobrança no Asaas. Trocá-la é
+  // RENOMEAR, e por isso tem ação própria: mexer nela junto com valor e telefone esconderia que
+  // duas tabelas se movem ao mesmo tempo.
+  //
+  // ⚠️ RENOMEIA TODAS AS COMPETÊNCIAS, e não só a aberta. É a mesma unidade física: deixar
+  // setembro como `Q17 L02` e os outros sete meses como `Q17 L18` criaria duas carteiras para o
+  // mesmo cliente, e a de trás só apareceria no mês seguinte.
+  //
+  // ⚠️ RECUSA SE O DESTINO JÁ EXISTE. Duas linhas na mesma unidade derrubam o upsert da próxima
+  // carga, e antes disso fariam o CPF de uma pessoa responder pela cobrança da outra.
+  //
+  // ⚠️ RECUSA SE JÁ HÁ BOLETO EMITIDO. A cobrança no Asaas guarda a unidade ANTIGA na referência;
+  // renomear aqui deixaria o boleto emitido órfão — sem histórico, sem reenvio e sem cancelamento.
+  // Cancele a cobrança, renomeie e emita de novo.
+  if (String(corpo.acao ?? "") === "renomear") {
+    const de = Array.isArray(corpo.unidades)
+      ? String((corpo.unidades as unknown[])[0] ?? "").trim()
+      : "";
+    const para = String((corpo as { unidadeNova?: unknown }).unidadeNova ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!de || !para) {
+      return NextResponse.json({ error: "informe a unidade e o novo nome" }, { status: 400 });
+    }
+    if (de === para) return NextResponse.json({ ok: true, unidade: de });
+
+    const supabase = createApoloAdminClient();
+    if (!supabase) return NextResponse.json({ error: "sem acesso ao banco" }, { status: 500 });
+
+    const { data: ocupada } = await supabase
+      .from("boletos_parcelas")
+      .select("unidade")
+      .eq("workspace_id", "careli")
+      .eq("empreendimento", slug)
+      .eq("unidade", para)
+      .limit(1);
+    if (ocupada && ocupada.length > 0) {
+      return NextResponse.json(
+        { error: `a unidade ${para} já existe nesta carteira` },
+        { status: 409 },
+      );
+    }
+
+    const cobrancas = await listarCobrancas(conta, intervaloDaCompetencia(competencia));
+    if (cobrancas.ok) {
+      const jaEmitida = apenasDaCompetencia(cobrancas.data, competencia).some((c) => {
+        const ref = lerReferencia(c.externalReference);
+        return ref?.empreendimento === slug && chaveDeUnidade(ref.unidade) === chaveDeUnidade(de);
+      });
+      if (jaEmitida) {
+        return NextResponse.json(
+          {
+            error: `${de} já tem boleto emitido nesta competência — cancele a cobrança antes de renomear`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    for (const tabela of ["boletos_parcelas", "boletos_documentos"]) {
+      const { error } = await supabase
+        .from(tabela)
+        .update({ unidade: para })
+        .eq("workspace_id", "careli")
+        .eq("empreendimento", slug)
+        .eq("unidade", de);
+      if (error) {
+        return NextResponse.json(
+          { error: `não consegui renomear em ${tabela}: ${error.message}` },
+          { status: 500 },
+        );
+      }
+    }
+
+    return NextResponse.json({ de, ok: true, para, unidade: para });
+  }
+
   if (String(corpo.acao ?? "") === "cadastro") {
     const unidade = Array.isArray(corpo.unidades)
       ? String((corpo.unidades as unknown[])[0] ?? "").trim()
@@ -446,7 +529,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "informe a unidade" }, { status: 400 });
     }
 
-    const c = corpo as { documento?: unknown; valor?: unknown; vencimentoDia?: unknown };
+    const c = corpo as {
+      documento?: unknown;
+      nome?: unknown;
+      telefone?: unknown;
+      valor?: unknown;
+      vencimentoDia?: unknown;
+    };
     const supabase = createApoloAdminClient();
     if (!supabase) {
       return NextResponse.json({ error: "sem acesso ao banco" }, { status: 500 });
@@ -491,6 +580,40 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `não consegui salvar: ${error.message}` }, { status: 500 });
       }
       mudou.push("documento");
+    }
+
+    // ── O TELEFONE E O NOME ─────────────────────────────────────────────────
+    //
+    // ⚠️ SÓ ALCANÇAM QUEM JÁ TEM CADASTRO. A linha de `boletos_documentos` nasce com o CPF; sem
+    // documento não há registro para atualizar, e criar um aqui com o CPF em branco violaria o
+    // CHECK da tabela. Por isso o UPDATE, e não upsert: quem ainda não tem CPF preenche o CPF
+    // primeiro, que é o campo sem o qual nada acontece de qualquer forma.
+    //
+    // ⚠️ O NOME QUE VAI NO BOLETO É ESTE, e não o da planilha: ela escreve "VINICIUS FERREIRA
+    // ARAUJO - TAXA SELIC", onde o sufixo é recado interno sobre o índice de reajuste.
+    for (const [campo, coluna] of [
+      ["telefone", "contato"],
+      ["nome", "nome"],
+    ] as const) {
+      const valor = c[campo];
+      if (valor === undefined) continue;
+      const texto = String(valor ?? "").trim();
+      if (campo === "nome" && !texto) {
+        return NextResponse.json({ error: "o nome não pode ficar em branco" }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from("boletos_documentos")
+        .update({ [coluna]: texto || null, atualizado_em: new Date().toISOString() })
+        .eq("workspace_id", "careli")
+        .eq("empreendimento", slug)
+        .eq("unidade", unidade);
+      if (error) {
+        return NextResponse.json(
+          { error: `não consegui salvar o ${campo}: ${error.message}` },
+          { status: 500 },
+        );
+      }
+      mudou.push(campo);
     }
 
     // ── O VALOR ─────────────────────────────────────────────────────────────

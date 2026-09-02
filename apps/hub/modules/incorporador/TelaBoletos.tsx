@@ -46,6 +46,7 @@ type Carteira = {
 type ParcelaAEmitir = {
   bloqueio: null | string;
   /** ⚠️ O CPF/CNPJ INTEIRO, para conferir e corrigir na tela. Pedido do Lucas (02/09/2026). */
+  contato: null | string;
   documento: null | string;
   documentoValido: boolean;
   empreendimento: string;
@@ -986,6 +987,7 @@ function AEmitir({
               {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
               <th style={cabecalho}>Unidade</th>
               <th style={cabecalho}>CPF/CNPJ</th>
+              <th style={cabecalho}>Telefone</th>
               <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
               <th style={cabecalho}>Vence dia</th>
               <th style={cabecalho}>Situação</th>
@@ -1009,12 +1011,21 @@ function AEmitir({
                     />
                   </td>
                 ) : null}
-                <td style={{ color: T.text, padding: "7px 8px" }}>
-                  {p.nome}
+                <td style={{ padding: "5px 8px" }}>
+                  <CelulaEditavel
+                    ajuda="Nome que sai no boleto"
+                    aoSalvar={(nv) =>
+                      acaoNaUnidade(p.empreendimento, p.unidade, { acao: "cadastro", nome: nv })
+                    }
+                    largura={230}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="nome do cliente"
+                    valor={p.nome}
+                  />
                   {/* ⚠️ O nome da planilha aparece quando difere do cadastro: o boleto sai no CPF do
                       cadastro, e se o imóvel trocou de dono é aqui que se vê. */}
                   {p.nomeNaPlanilha !== p.nome ? (
-                    <span style={{ color: T.sub, display: "block", fontSize: 12 }}>
+                    <span style={{ color: T.sub, display: "block", fontSize: 12, paddingLeft: 6 }}>
                       na planilha: {p.nomeNaPlanilha}
                     </span>
                   ) : null}
@@ -1024,7 +1035,24 @@ function AEmitir({
                     {p.empreendimento}
                   </td>
                 ) : null}
-                <td style={{ color: T.sub, padding: "7px 8px" }}>{p.unidade}</td>
+                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                  {/* ⚠️ RENOMEAR, E NÃO EDITAR: a unidade é a chave da parcela, do cadastro e da
+                      referência da cobrança. A rota move as duas tabelas juntas, recusa destino
+                      ocupado e recusa unidade que já tenha boleto emitido. */}
+                  <CelulaEditavel
+                    ajuda="Quadra e lote (ou apartamento). Renomeia em todas as competências."
+                    aoSalvar={(nv) =>
+                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acao: "renomear",
+                        unidadeNova: nv,
+                      })
+                    }
+                    largura={96}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="unidade"
+                    valor={p.unidade}
+                  />
+                </td>
                 <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                   <CelulaEditavel
                     ajuda={`CPF ou CNPJ de ${p.nome}`}
@@ -1039,6 +1067,21 @@ function AEmitir({
                     ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
                     placeholder="sem CPF"
                     valor={documentoLegivel(p.documento)}
+                  />
+                </td>
+                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                  <CelulaEditavel
+                    ajuda={`Telefone de ${p.nome} — é por ele que o link chega`}
+                    aoSalvar={(nv) =>
+                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acao: "cadastro",
+                        telefone: nv,
+                      })
+                    }
+                    largura={132}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="sem telefone"
+                    valor={p.contato ?? ""}
                   />
                 </td>
                 <td style={{ padding: "5px 8px", textAlign: "right", whiteSpace: "nowrap" }}>
@@ -1862,6 +1905,7 @@ function ForaDaEmissao({
               {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
               <th style={cabecalho}>Unidade</th>
               <th style={cabecalho}>CPF/CNPJ</th>
+              <th style={cabecalho}>Telefone</th>
               <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
               <th style={cabecalho}>Vence dia</th>
               <th style={cabecalho}>O que falta</th>
@@ -1873,13 +1917,41 @@ function ForaDaEmissao({
                 key={`${p.empreendimento}|${p.unidade}`}
                 style={{ borderTop: `1px solid ${T.border}` }}
               >
-                <td style={{ color: T.text, padding: "7px 8px" }}>{p.nome}</td>
+                <td style={{ padding: "5px 8px" }}>
+                  <CelulaEditavel
+                    ajuda="Nome que sai no boleto"
+                    aoSalvar={(nv) =>
+                      acaoNaUnidade(p.empreendimento, p.unidade, { acao: "cadastro", nome: nv })
+                    }
+                    largura={230}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="nome do cliente"
+                    valor={p.nome}
+                  />
+                </td>
                 {mostrarPredio ? (
                   <td style={{ color: T.sub, padding: "7px 8px", whiteSpace: "nowrap" }}>
                     {p.empreendimento}
                   </td>
                 ) : null}
-                <td style={{ color: T.sub, padding: "7px 8px" }}>{p.unidade}</td>
+                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                  {/* ⚠️ RENOMEAR, E NÃO EDITAR: a unidade é a chave da parcela, do cadastro e da
+                      referência da cobrança. A rota move as duas tabelas juntas, recusa destino
+                      ocupado e recusa unidade que já tenha boleto emitido. */}
+                  <CelulaEditavel
+                    ajuda="Quadra e lote (ou apartamento). Renomeia em todas as competências."
+                    aoSalvar={(nv) =>
+                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acao: "renomear",
+                        unidadeNova: nv,
+                      })
+                    }
+                    largura={96}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="unidade"
+                    valor={p.unidade}
+                  />
+                </td>
                 <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                   <CelulaEditavel
                     ajuda={`CPF ou CNPJ de ${p.nome}`}
@@ -1894,6 +1966,21 @@ function ForaDaEmissao({
                     ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
                     placeholder="sem CPF"
                     valor={documentoLegivel(p.documento)}
+                  />
+                </td>
+                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                  <CelulaEditavel
+                    ajuda={`Telefone de ${p.nome} — é por ele que o link chega`}
+                    aoSalvar={(nv) =>
+                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acao: "cadastro",
+                        telefone: nv,
+                      })
+                    }
+                    largura={132}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="sem telefone"
+                    valor={p.contato ?? ""}
                   />
                 </td>
                 <td style={{ padding: "5px 8px", textAlign: "right", whiteSpace: "nowrap" }}>

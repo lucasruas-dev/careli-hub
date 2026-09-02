@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-tudo-editavel",
+    deployedAt: "2026-09-02T10:15:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Tudo se corrige antes de gerar o boleto: nome, unidade, CPF, telefone, valor e vencimento.",
+              "Vale nos dois grupos — nos prontos para emitir e nos que precisam de correção.",
+              "A unidade renomeia em todas as competências de uma vez, e recusa se já existir outra igual.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "a22921e7",
+    technical: {
+      done: "Pedido do Lucas (02/09/2026): *\"tudo tem que estar para edicao antes\"*, *\"apto\"*, *\"tudo\"*, e depois *\"unidade\"*, *\"lote\"*, *\"quadra\"*. Todas as seis colunas viraram celula editavel, nas DUAS tabelas. ⚠️ A UNIDADE NAO E UM CAMPO, E A CHAVE: identifica a linha em `boletos_parcelas` (com a competencia), em `boletos_documentos` e na referencia da cobranca no Asaas. Por isso tem acao propria (`renomear`) em vez de entrar junto com valor e telefone — mexer nela move DUAS tabelas ao mesmo tempo, e esconder isso dentro de um \"salvar\" generico e como se perde a nocao do que aconteceu. Renomeia TODAS as competencias, e nao so a aberta: e a mesma unidade fisica, e deixar setembro como `Q17 L02` e os outros sete meses como `Q17 L18` criaria duas carteiras para o mesmo cliente, com a de tras aparecendo so no mes seguinte. Recusa destino ja ocupado (duas linhas na mesma unidade derrubam o upsert da proxima carga, e antes disso fazem o CPF de uma pessoa responder pela cobranca da outra) e recusa unidade que ja tenha boleto emitido na competencia (a cobranca no Asaas guarda a unidade ANTIGA na referencia, e renomear deixaria o boleto orfao — sem historico, sem reenvio, sem cancelamento). ⚠️ TELEFONE E NOME SAO UPDATE, NAO UPSERT: a linha de `boletos_documentos` nasce com o CPF, e criar uma aqui com documento em branco violaria o CHECK da tabela — quem nao tem CPF preenche o CPF primeiro, que e o campo sem o qual nada acontece. O nome editado e o que sai no boleto, e nao o da planilha, que escreve \"VINICIUS FERREIRA ARAUJO - TAXA SELIC\" com o sufixo do indice de reajuste. 126 testes verdes, typecheck limpo.",
+      motivation:
+        "Corrigir qualquer campo exigia planilha nova e recarga; agora tudo se resolve na linha.",
+    },
+    title: "Tudo editável antes de gerar: nome, unidade, CPF, telefone, valor e vencimento",
+    type: "novidade",
+    version: "1.257.0",
+  },
+  {
     buildTag: "2026-09-02-editar-antes-de-emitir",
     deployedAt: "2026-09-02T10:35:00-03:00",
     modules: [
