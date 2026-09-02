@@ -39,6 +39,7 @@ import {
   CircleDollarSign,
   ContactRound,
   Download,
+  FileSignature,
   FileText,
   FolderKanban,
   Headphones,
@@ -47,7 +48,6 @@ import {
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
-  Scale,
   Settings,
   ShieldCheck,
   ShoppingCart,
@@ -97,7 +97,10 @@ export const moduleIconMap: Record<string, ReactNode> = {
   drive: <FolderKanban aria-hidden="true" size={18} />,
   financeiro: <CircleDollarSign aria-hidden="true" size={18} />,
   // A balanca da justica: Temis e a deusa da lei, e o modulo e o dos contratos.
-  temis: <Scale aria-hidden="true" size={18} />,
+  // ⚠️ NÃO É A BALANÇA. Têmis é a deusa da justiça, e a balança dela é o símbolo óbvio — mas o
+  // módulo é de CONTRATO, não de jurídico: quem abre procura contrato, distrato e cessão. Pedido
+  // do Lucas (02/09/2026): *"troca para algo mais para contratos"*.
+  temis: <FileSignature aria-hidden="true" size={18} />,
   setup: <Settings aria-hidden="true" size={18} />,
   zeus: <ZeusModuleIcon />,
 };

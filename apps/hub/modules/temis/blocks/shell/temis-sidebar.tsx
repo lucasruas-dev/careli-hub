@@ -1,7 +1,7 @@
 "use client";
 
 import { Tooltip } from "@repo/uix";
-import { PanelLeftClose, PanelLeftOpen, Scale } from "lucide-react";
+import { FileSignature, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import Link from "next/link";
 
 import { temisScreens, type TemisScreen } from "@/lib/temis/catalog";
@@ -37,7 +37,7 @@ export function TemisSidebar({
                 className="grid h-10 w-10 place-items-center rounded-lg border border-[#A07C3B]/55 bg-[#101211] text-[#cba25a] outline-none transition hover:border-[#A07C3B]/75 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 href="/"
               >
-                <Scale aria-hidden="true" className="size-[18px]" />
+                <FileSignature aria-hidden="true" className="size-[18px]" />
               </Link>
             </Tooltip>
             <Tooltip content="Expandir sidebar" placement="right">
@@ -59,7 +59,7 @@ export function TemisSidebar({
               href="/"
             >
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#A07C3B]/45 bg-[#101211] text-[#cba25a]">
-                <Scale aria-hidden="true" className="size-[18px]" />
+                <FileSignature aria-hidden="true" className="size-[18px]" />
               </span>
               <span className="grid min-w-0 gap-0.5">
                 <span className="min-w-0 truncate text-sm font-semibold leading-tight text-ink">
