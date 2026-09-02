@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-aviso-de-cpf-sem-alarme-falso",
+    deployedAt: "2026-09-02T12:10:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "O aviso de CPF repetido só aparece quando os nomes são de pessoas diferentes de verdade.",
+              "Mesma pessoa escrita de outro jeito (Sousa/Souza, Luis/Luiz, com o cônjuge no nome) deixou de acusar.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "50d0c99a",
+    technical: {
+      done: "O aviso da versao anterior comparava os nomes caractere a caractere e acusaria ONZE documentos na carteira — DEZ deles a mesma pessoa: `SERGIO ANTONIO DE SOUSA`/`SOUZA`, `SIDMAR SOUSA`/`SOUZA SOARES`, `LUIS`/`LUIZ HENRIQUE SANTIAGO`, `RAFAEL ASSUNCAO`/`ASSUNCAO ABREU`, `WOLMERT ... BORGES`/`BORGES.` (um ponto final), `ANGELA MARIA DE OLIVEIRA`/`... EUFRAZIO MACIEL`, `VAGNER HENRIQUE DAS MERCES`/`VAGNER E BRUNA` (o conjuge no lugar do sobrenome). ⚠️ UM AVISO QUE ERRA DEZ VEZES PARA ACERTAR UMA ENSINA A IGNORAR AVISOS, e ai ele deixa de servir no caso que importa. `mesma-pessoa.ts` compara com tolerancia: primeiro nome igual ou com uma letra de diferenca (SOUSA/SOUZA), e algum sobrenome em comum — com a excecao do nome curto, que e abreviacao e nao outra pessoa. ⚠️ O CUSTO DE ERRAR NAO E SIMETRICO: na duvida diz que sao a mesma, porque um \"sim\" a mais so deixa de mostrar um aviso, e um \"nao\" a mais destroi a confianca em todos eles. Testado contra os onze pares REAIS da carteira: os dez de grafia passam, e sobra `ATHOS FIORAVANTE BARROS BARBOSA` × `JFB EMPREEDIMENTOS LTDA` com o mesmo CPF — que nao e erro de grafia de ninguem. 137 testes verdes, typecheck limpo.",
+      motivation:
+        "Dez alarmes falsos para um caso real fariam ninguém mais olhar o aviso.",
+    },
+    title: "O aviso de CPF repetido parou de acusar a mesma pessoa",
+    type: "correcao",
+    version: "1.265.0",
+  },
+  {
     buildTag: "2026-09-02-aviso-de-cpf-calculado",
     deployedAt: "2026-09-02T12:00:00-03:00",
     modules: [

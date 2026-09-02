@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { type ContaAsaas, chaveDaConta, rotuloDaConta } from "@/lib/apolo/asaas-contas";
+import { podeSerAMesmaPessoa } from "@/lib/apolo/boletos/mesma-pessoa";
 import { telefoneUtilizavel } from "@/lib/apolo/boletos/telefone-padrao";
 import { cnpjValido, cpfValido, soDigitos } from "@/lib/apolo/documento";
 import {
@@ -169,13 +170,25 @@ export async function GET(request: Request) {
   // ⚠️ CALCULADO A CADA CARGA DA TELA, E NÃO GRAVADO. Na primeira versão eu marquei isto como
   // `bloqueio` no banco: o CPF foi corrigido e o aviso continuou lá, porque um texto gravado não
   // sabe que o dado mudou. Aviso sobre uma condição que muda tem de ser lido da condição.
+  /**
+   * Os nomes REALMENTE diferentes que dividem o mesmo documento.
+   *
+   * ⚠️ COMPARAR CARACTERE A CARACTERE ACUSA A MESMA PESSOA. Onze documentos aparecem em mais de um
+   * nome nesta carteira e DEZ são grafia: `SOUSA`/`SOUZA`, `LUIS`/`LUIZ`, `ASSUNCAO`/`ASSUNÇÃO`,
+   * um ponto final a mais, o cônjuge no lugar do sobrenome. Um aviso que erra dez vezes para
+   * acertar uma ensina a ignorar avisos — e aí não serve no caso que importa.
+   */
+  const outrosNomesDoDocumento = (cadastro: { documento: string; nome: string }) =>
+    [...(nomesPorDocumento.get(cadastro.documento) ?? [])].filter(
+      (outro) => !podeSerAMesmaPessoa(outro, cadastro.nome),
+    );
+
   const nomesPorDocumento = new Map<string, Set<string>>();
   for (const [chave, d] of documentos) {
     const emp = chave.split("|")[0] ?? "";
     if (emp.startsWith("teste")) continue;
-    const nome = String(d.nome ?? "").trim().toUpperCase();
     if (!nomesPorDocumento.has(d.documento)) nomesPorDocumento.set(d.documento, new Set());
-    nomesPorDocumento.get(d.documento)!.add(nome);
+    nomesPorDocumento.get(d.documento)!.add(String(d.nome ?? "").trim());
   }
 
   const aEmitir = parcelas.map((p) => {
@@ -195,12 +208,10 @@ export async function GET(request: Request) {
           ? "sem valor para o mês na planilha"
           : p.vencimentoDia === null
             ? "sem dia de vencimento na planilha"
-            : cadastro && (nomesPorDocumento.get(cadastro.documento)?.size ?? 0) > 1
-              ? `confira o CPF: o mesmo documento está em outra unidade, com outro nome (${[
-                  ...(nomesPorDocumento.get(cadastro.documento) ?? []),
-                ]
-                  .filter((n) => n !== String(cadastro.nome ?? "").trim().toUpperCase())
-                  .join(", ")})`
+            : cadastro && outrosNomesDoDocumento(cadastro).length > 0
+              ? `confira o CPF: o mesmo documento está em outra unidade, com outro nome (${outrosNomesDoDocumento(
+                  cadastro,
+                ).join(", ")})`
               : // ⚠️ ISTO NÃO IMPEDE A EMISSÃO, AVISA. O boleto sai e é válido; o que não sai é o
               // link por WhatsApp. Barrar a cobrança por causa do recado seria deixar de cobrar
               // quem deve — mas emitir sem saber que o cliente não vai ser avisado é pior ainda.
