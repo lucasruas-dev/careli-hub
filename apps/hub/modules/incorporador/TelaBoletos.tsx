@@ -866,6 +866,8 @@ function AEmitir({
   const escolhidas = parcelas.filter((p) => selecionadas.has(p.unidade));
   const totalEscolhido = escolhidas.reduce((a, p) => a + (p.valor ?? 0), 0);
   const alvo = escolhidas.length > 0 ? escolhidas : parcelas;
+  const todasMarcadas = parcelas.length > 0 && escolhidas.length === parcelas.length;
+  const algumasMarcadas = escolhidas.length > 0;
 
   return (
     <section
@@ -880,7 +882,7 @@ function AEmitir({
     >
       <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 10 }}>
         <strong style={{ color: T.text, fontSize: 15 }}>
-          {parcelas.length} boleto(s) a emitir · {moeda(total)}
+          {parcelas.length} pronto(s) para emitir · {moeda(total)}
         </strong>
 
         {podeEmitir ? (
@@ -944,7 +946,34 @@ function AEmitir({
         <table style={{ borderCollapse: "collapse", fontSize: 13.5, minWidth: 640, width: "100%" }}>
           <thead>
             <tr style={{ color: T.sub, textAlign: "left" }}>
-              {podeEmitir ? <th style={{ padding: "6px 8px", width: 32 }} /> : null}
+              {podeEmitir ? (
+                <th style={{ padding: "6px 8px", width: 32 }}>
+                  {/* ⚠️ SELECIONAR TUDO NO CABEÇALHO, e não um botão à parte. Pedido do Lucas
+                      (02/09/2026): *"os aptos (aí eu posso selecionar tudo) e os que falta
+                      correção, assim eu posso adiantar o que está pronto"*. Só alcança as linhas
+                      desta aba: no consolidado não há emissão, e cada aba é uma conta do Asaas. */}
+                  <input
+                    aria-label={
+                      todasMarcadas ? "Desmarcar todas as unidades" : "Selecionar todas as unidades"
+                    }
+                    checked={todasMarcadas}
+                    onChange={(e) => {
+                      const nova = new Set(selecionadas);
+                      for (const p of parcelas) {
+                        if (e.target.checked) nova.add(p.unidade);
+                        else nova.delete(p.unidade);
+                      }
+                      onSelecionadas(nova);
+                    }}
+                    ref={(el) => {
+                      // O traço do "alguns marcados": sem ele, meia seleção parece nenhuma.
+                      if (el) el.indeterminate = algumasMarcadas && !todasMarcadas;
+                    }}
+                    title={todasMarcadas ? "Desmarcar todas" : "Selecionar todas"}
+                    type="checkbox"
+                  />
+                </th>
+              ) : null}
               <th style={cabecalho}>Cliente</th>
               {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
               <th style={cabecalho}>Unidade</th>
@@ -1807,7 +1836,7 @@ function ForaDaEmissao({
       }}
     >
       <summary style={{ color: T.sub, cursor: "pointer", fontSize: 13.5 }}>
-        {parcelas.length} unidade(s) não recebem boleto neste mês
+        {parcelas.length} precisa(m) de correção — não saem neste mês
         {semCpf > 0 ? ` · ${semCpf} só falta(m) o CPF/CNPJ, dá para preencher aqui` : ""}
       </summary>
 

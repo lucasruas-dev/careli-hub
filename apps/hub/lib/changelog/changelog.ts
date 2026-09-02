@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-grupos-aptos",
+    deployedAt: "2026-09-02T10:10:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Dentro de cada empreendimento a lista vem em dois grupos: os prontos para emitir e os que precisam de correção.",
+              "Um clique no cabeçalho seleciona todas as unidades prontas de uma vez.",
+              "Dá para emitir o grupo pronto agora e deixar as correções para depois, sem perder de vista o que ficou.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "eabda1a8",
+    technical: {
+      done: "Pedido do Lucas (02/09/2026): *\"vamos separar em grupos dentro dos empreendimentos, os aptos (ae eu posso selecionar tudo) e os que falta correcao, assim eu posso adiantar o que esta pronto e depois olhar os erros\"*. Os dois grupos ja existiam como secoes separadas, mas os titulos nao diziam isso (\"N boleto(s) a emitir\" e \"N unidade(s) nao recebem boleto neste mes\") e nao havia como marcar tudo: a coluna do checkbox tinha o cabecalho VAZIO, entao selecionar 141 linhas do Garden era 141 cliques — na pratica, ninguem selecionava e todo mundo usava o \"gerar todos\". Agora: \"N pronto(s) para emitir\" e \"N precisa(m) de correcao — nao saem neste mes\", e o cabecalho tem o checkbox que marca e desmarca o grupo inteiro, com estado indeterminado quando a selecao e parcial (sem ele, meia selecao parece nenhuma). ⚠️ SO ALCANCA AS LINHAS DA ABA ABERTA: cada aba e uma conta do Asaas, e no consolidado nao ha emissao — um \"selecionar tudo\" que atravessasse abas esconderia em qual CNPJ cada boleto esta saindo, que e a razao de o consolidado nao ter botao. Typecheck limpo, 126 testes verdes.",
+      motivation:
+        "O que está pronto não precisa esperar o que falta corrigir.",
+    },
+    title: "Prontos e pendentes separados, com selecionar tudo",
+    type: "novidade",
+    version: "1.254.0",
+  },
+  {
     buildTag: "2026-09-02-revisao-adversarial",
     deployedAt: "2026-09-02T10:00:00-03:00",
     modules: [
