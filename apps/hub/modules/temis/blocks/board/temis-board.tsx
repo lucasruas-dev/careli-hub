@@ -65,6 +65,7 @@ export function TemisBoard({
   empreendimentos: ApoloEnterpriseRow[];
 }) {
   const [contagens, setContagens] = useState<null | Record<string, Contagem>>(null);
+  const [recebemCad, setRecebemCad] = useState<null | Set<string>>(null);
   const [erro, setErro] = useState<null | string>(null);
 
   useEffect(() => {
@@ -78,7 +79,7 @@ export function TemisBoard({
           headers: { Authorization: `Bearer ${token}` },
         });
         const corpo = (await r.json().catch(() => ({}))) as {
-          data?: { contagens: Record<string, Contagem> };
+          data?: { contagens: Record<string, Contagem>; recebemCad?: string[] };
           error?: string;
         };
         if (cancelado) return;
@@ -89,6 +90,7 @@ export function TemisBoard({
           return;
         }
         setContagens(corpo.data.contagens);
+        setRecebemCad(new Set(corpo.data.recebemCad ?? []));
       } catch {
         if (!cancelado) setErro("Falha ao carregar o board.");
       }
@@ -117,8 +119,13 @@ export function TemisBoard({
     );
   }
 
-  // Os que travam primeiro; depois os que vendem; por último os que nem começaram.
+  // ⚠️ SÓ QUEM RECEBE CAD. Regra do Lucas (02/09/2026): *"os empreendimentos que vamos ter ali no
+  // setup será habilitados para aqueles que temos recepção de cad ativo, o resto não precisa
+  // mostrar"*. São 11 dos 27: os outros dezesseis apareciam como "nada cadastrado" e empurravam
+  // para baixo justamente os que precisam de atenção. Enquanto a lista não chega, mostra todos —
+  // esconder por falta de resposta seria pior do que mostrar demais.
   const linhas = empreendimentos
+    .filter((row) => !recebemCad || recebemCad.has(row.id))
     .map((row) => {
       const conta = contagens[row.id] ?? VAZIO;
       return { conta, row, situacao: situacao(conta) };

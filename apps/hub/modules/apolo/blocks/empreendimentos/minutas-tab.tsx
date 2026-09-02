@@ -49,6 +49,17 @@ const EditorDeMinuta = dynamic(() => import("@/modules/temis/editor-de-minuta"),
 type Props = {
   enterpriseId: string;
   name: string;
+  /**
+   * Qual documento esta aba edita: `contrato`, `cessao`, `distrato` ou `cancelamento`.
+   *
+   * ⚠️ SÃO OS MESMOS VALORES DE `temis_minutas.tipo`. Sem o filtro, o Setup mostraria o termo de
+   * distrato na aba da minuta e vice-versa — e alguém publicaria como contrato o texto que encerra
+   * contrato.
+   *
+   * ⚠️ O DEFAULT É `contrato` porque a ficha do empreendimento, no Apolo, usa esta mesma aba sem
+   * escolher tipo. Mudar o default quebraria aquela tela em silêncio.
+   */
+  tipo?: string;
 };
 
 type LinhaDeMinuta = {
@@ -85,7 +96,7 @@ const SITUACOES: Record<string, { cor: string; rotulo: string }> = {
   },
 };
 
-export function MinutasTab({ enterpriseId, name }: Props) {
+export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
   const [minutas, setMinutas] = useState<LinhaDeMinuta[] | null>(null);
   const [erro, setErro] = useState<null | string>(null);
   const [aviso, setAviso] = useState<null | string>(null);
@@ -106,10 +117,13 @@ export function MinutasTab({ enterpriseId, name }: Props) {
     void (async () => {
       try {
         const token = await getApoloAccessToken();
-        const r = await fetch(`/api/temis/minutas?enterpriseId=${encodeURIComponent(enterpriseId)}`, {
-          cache: "no-store",
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const r = await fetch(
+          `/api/temis/minutas?enterpriseId=${encodeURIComponent(enterpriseId)}&tipo=${encodeURIComponent(tipo)}`,
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
         const corpo = (await r.json().catch(() => ({}))) as {
           data?: { minutas: LinhaDeMinuta[] };
           error?: string;
@@ -130,7 +144,7 @@ export function MinutasTab({ enterpriseId, name }: Props) {
     return () => {
       vivo = false;
     };
-  }, [enterpriseId, recarregar]);
+  }, [enterpriseId, recarregar, tipo]);
 
   const abrir = useCallback(async (id: string) => {
     setErro(null);
@@ -168,7 +182,7 @@ export function MinutasTab({ enterpriseId, name }: Props) {
     try {
       const token = await getApoloAccessToken();
       const r = await fetch(`/api/temis/minutas?enterpriseId=${encodeURIComponent(enterpriseId)}`, {
-        body: JSON.stringify({ nome }),
+        body: JSON.stringify({ nome, tipo }),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "POST",
       });

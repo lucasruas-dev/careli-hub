@@ -123,8 +123,9 @@ export function TemisPage() {
 
         <section
           className={
-            // Minutas não rola por fora: quem rola é o editor, que precisa da altura toda.
-            tela === "minutas"
+            // O Setup com uma minuta aberta não rola por fora: quem rola é o editor, que precisa
+            // da altura toda.
+            tela === "setup"
               ? "flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface"
               : "min-h-0 flex-1 overflow-auto rounded-xl border border-line bg-surface"
           }
@@ -142,14 +143,12 @@ export function TemisPage() {
             <div className="p-3">
               <TemisKanban enterpriseId={escolhido?.id ?? null} />
             </div>
-          ) : !escolhido ? (
-            <p className="m-0 p-6 text-sm text-ink-muted">
-              Escolha um empreendimento no seletor acima.
-            </p>
-          ) : tela === "minutas" ? (
-            <MinutasTab enterpriseId={escolhido.id} key={escolhido.id} name={escolhido.name} />
           ) : (
-            <Setup aoAbrirEmpreendimento={escolher} empreendimentos={empreendimentos ?? []} />
+            <Setup
+              aoAbrirEmpreendimento={escolher}
+              empreendimentos={empreendimentos ?? []}
+              escolhido={escolhido}
+            />
           )}
         </section>
       </main>
@@ -202,20 +201,79 @@ function Cabecalho({
 // empreendimento consegue contratar hoje?" — é boa e continua valendo; ela só não é a pergunta de
 // quem passa o dia em contrato, que precisa saber o que está na mão dele agora. Aqui ela está no
 // lugar certo: é conferência de configuração, feita uma vez por empreendimento.
+// ⚠️ OS QUATRO DOCUMENTOS DO EMPREENDIMENTO, cada um na sua aba. Pedido do Lucas (02/09/2026):
+// *"tem a aba de minuta - termos de cessão - termo de distrato - termo de cancelamento"*.
+//
+// ⚠️ SÃO ABAS, E NÃO UMA LISTA SÓ FILTRADA. Uma lista com os quatro tipos misturados faria alguém
+// publicar como contrato o texto que encerra contrato — e o erro só apareceria no primeiro distrato
+// gerado, com o documento já na mão do cliente.
+const ABAS_DE_DOCUMENTO: { rotulo: string; tipo: string }[] = [
+  { rotulo: "Minuta do contrato", tipo: "contrato" },
+  { rotulo: "Termo de cessão", tipo: "cessao" },
+  { rotulo: "Termo de distrato", tipo: "distrato" },
+  { rotulo: "Termo de cancelamento", tipo: "cancelamento" },
+];
+
+// ⚠️ O QUE ERA O BOARD VIROU O SETUP, e não foi jogado fora: a pergunta "este empreendimento
+// consegue contratar hoje?" continua valendo, ela só não é a de quem passa o dia em contrato.
+// Aqui ela está no lugar certo — conferência de configuração, feita uma vez por empreendimento.
+//
+// ⚠️ E AS MINUTAS VIVEM AQUI DENTRO: *"acho que minutas tem que está dentro de setup"*. Eram duas
+// telas pedindo a mesma escolha de empreendimento para mostrar metade da resposta cada uma.
 function Setup({
   aoAbrirEmpreendimento,
   empreendimentos,
+  escolhido,
 }: {
   aoAbrirEmpreendimento: (id: string) => void;
   empreendimentos: ApoloEnterpriseRow[];
+  escolhido: ApoloEnterpriseRow | null;
 }) {
+  const [aba, setAba] = useState<string>("contrato");
+
+  if (!escolhido) {
+    return (
+      <div className="flex flex-col gap-3 p-3">
+        <p className="m-0 max-w-prose px-1 text-xs text-ink-soft">
+          Escolha um empreendimento no seletor acima para ver e editar os documentos dele. A lista
+          abaixo mostra o que cada um já tem cadastrado.
+        </p>
+        <TemisBoard
+          aoAbrirEmpreendimento={aoAbrirEmpreendimento}
+          empreendimentos={empreendimentos}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-3 p-3">
-      <p className="m-0 max-w-prose px-1 text-xs text-ink-soft">
-        O que cada empreendimento precisa ter cadastrado para atender cada serviço: a minuta do
-        contrato, o termo de cessão, o termo de distrato, o termo de cancelamento e a taxa da cessão.
-      </p>
-      <TemisBoard aoAbrirEmpreendimento={aoAbrirEmpreendimento} empreendimentos={empreendimentos} />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-wrap gap-1 border-b border-line px-3 pt-3">
+        {ABAS_DE_DOCUMENTO.map((x) => (
+          <button
+            className={`rounded-t-lg px-3 py-1.5 text-sm font-semibold ${
+              aba === x.tipo
+                ? "bg-surface text-ink shadow-[inset_0_-2px_0_0_currentColor]"
+                : "text-ink-muted hover:text-ink"
+            }`}
+            key={x.tipo}
+            onClick={() => setAba(x.tipo)}
+            type="button"
+          >
+            {x.rotulo}
+          </button>
+        ))}
+      </div>
+
+      {/* ⚠️ A `key` LEVA O TIPO JUNTO. Sem ela, trocar de aba reaproveitaria o componente com a
+          minuta anterior ainda aberta no editor — e o texto do distrato apareceria sob o título
+          de contrato. */}
+      <MinutasTab
+        enterpriseId={escolhido.id}
+        key={`${escolhido.id}:${aba}`}
+        name={escolhido.name}
+        tipo={aba}
+      />
     </div>
   );
 }

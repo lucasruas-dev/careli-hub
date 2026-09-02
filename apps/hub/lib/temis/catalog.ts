@@ -1,4 +1,4 @@
-import { FileSignature, LayoutGrid, type LucideIcon, Settings } from "lucide-react";
+import { LayoutGrid, type LucideIcon, Settings } from "lucide-react";
 
 // AS TELAS DA TÊMIS.
 //
@@ -15,10 +15,16 @@ import { FileSignature, LayoutGrid, type LucideIcon, Settings } from "lucide-rea
 // plano de pagamento é decisão comercial do empreendimento, e ter uma segunda porta para ele na
 // Têmis ensinaria o time a procurar cadastro dentro do módulo de contrato.
 //
-// O que existe hoje são as duas telas que sustentam a operação: as MINUTAS (o texto que o comprador
-// assina) e os PLANOS (que decidem qual minuta cada venda usa).
+// ⚠️ MINUTAS E PLANOS SAÍRAM DO MENU, e por motivos diferentes. O PLANO vive no cadastro do
+// empreendimento (*"plano não vive aqui no contrato"*) e continua lá, no Apolo. A MINUTA passou a
+// viver DENTRO do Setup: *"acho que minutas tem que está dentro de setup"*. Faz sentido — escolher
+// o empreendimento e ver o que ele tem cadastrado é um gesto só, e eram duas telas pedindo a mesma
+// escolha para mostrar metade da resposta cada uma.
+//
+// Sobra o essencial: o BOARD, que é o trabalho de hoje, e o SETUP, que é o que cada empreendimento
+// precisa ter para o trabalho poder acontecer.
 
-export type TemisScreen = "board" | "minutas" | "setup";
+export type TemisScreen = "board" | "setup";
 
 export const temisScreens: {
   description: string;
@@ -35,14 +41,7 @@ export const temisScreens: {
     label: "Board",
   },
   {
-    description: "O texto do contrato: importar, marcar as variáveis, publicar.",
-    hidden: false,
-    icon: FileSignature,
-    id: "minutas",
-    label: "Minutas",
-  },
-  {
-    description: "Configuração do módulo.",
+    description: "Os documentos e a taxa de cada empreendimento.",
     hidden: false,
     icon: Settings,
     id: "setup",

@@ -77,13 +77,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Informe o empreendimento ou a minuta." }, { status: 400 });
   }
 
-  const { data, error } = await admin
+  // ⚠️ O TIPO FILTRA A LISTA, e sem ele o Setup mostraria o termo de distrato na aba da minuta —
+  // e alguém publicaria como contrato o texto que encerra contrato. Sem o parâmetro devolve tudo,
+  // que é o comportamento de quem já chamava esta rota antes das abas.
+  const tipo = url.searchParams.get("tipo")?.trim();
+
+  let consulta = admin
     .from("temis_minutas")
     .select(
       "id, nome, descricao, tipo, situacao, versao, origem_arquivo_nome, variaveis, publicada_em, criado_em, atualizado_em",
     )
     .eq("workspace_id", "careli")
-    .eq("enterprise_id", enterpriseId)
+    .eq("enterprise_id", enterpriseId);
+
+  if (tipo) consulta = consulta.eq("tipo", tipo);
+
+  const { data, error } = await consulta
     .order("nome", { ascending: true })
     .order("versao", { ascending: false });
 
