@@ -16,6 +16,8 @@ import {
   Zap,
 } from "lucide-react";
 
+import { valorDigitado, valorParaOCampo } from "@/lib/apolo/boletos/valor-digitado";
+
 import { T } from "./tema";
 
 // A EMISSÃO DE BOLETOS NO PORTAL — a carteira do mês já aberta, e um botão que emite.
@@ -1286,17 +1288,23 @@ function PainelDoBoleto({
 }) {
   const [editando, setEditando] = useState(false);
   const [telefone, setTelefone] = useState(boleto.contato ?? "");
-  const [valor, setValor] = useState(String(boleto.valor));
+  const [valor, setValor] = useState(valorParaOCampo(boleto.valor));
   const [vencimento, setVencimento] = useState(boleto.vencimento);
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
+  const [erroLocal, setErroLocal] = useState<null | string>(null);
 
   const salvar = async () => {
+    setErroLocal(null);
     const edicao: Record<string, unknown> = {};
     if (telefone.trim() !== (boleto.contato ?? "")) edicao.telefone = telefone.trim();
-    const novoValor = Number(valor.replace(",", "."));
-    if (Number.isFinite(novoValor) && novoValor > 0 && novoValor !== boleto.valor) {
-      edicao.valor = novoValor;
+    // ⚠️ LIDO COMO BRASILEIRO. `Number("1.850".replace(",", "."))` devolve 1.85, e a edição não
+    // falhava: o boleto saía com um real e oitenta e cinco. Ver `valor-digitado.ts`.
+    const novoValor = valorDigitado(valor);
+    if (valor.trim() && novoValor === null) {
+      setErroLocal("Não entendi o valor. Escreva como 2.102,58.");
+      return;
     }
+    if (novoValor !== null && novoValor !== boleto.valor) edicao.valor = novoValor;
     if (vencimento && vencimento !== boleto.vencimento) edicao.vencimento = vencimento;
 
     if (Object.keys(edicao).length === 0) {
@@ -1317,6 +1325,13 @@ function PainelDoBoleto({
         padding: "16px 20px",
       }}
     >
+      {/* ⚠️ O ERRO DE LEITURA DO VALOR APARECE AQUI, e a edição não segue. Antes, texto que não
+          virava número era descartado por um `Number.isFinite` e o editor fechava como se tivesse
+          salvado — o operador saía achando que mudou o valor. */}
+      {erroLocal ? (
+        <p style={{ color: T.danger, fontSize: 13, margin: 0 }}>{erroLocal}</p>
+      ) : null}
+
       {/* ── O que aconteceu ─────────────────────────────────────────────── */}
       <div>
         <div

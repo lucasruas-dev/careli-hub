@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 import { type ContaAsaas, chaveDaConta, rotuloDaConta } from "@/lib/apolo/asaas-contas";
 import { authorizeApoloRead } from "@/lib/apolo/auth";
 import { documentoMascarado, documentosDeVarios } from "@/lib/apolo/boletos/documentos";
-import { apenasDaCompetencia, lerReferencia, listarCobrancas } from "@/lib/apolo/boletos/emissao";
+import {
+  apenasDaCompetencia,
+  chaveDeUnidade,
+  lerReferencia,
+  listarCobrancas,
+} from "@/lib/apolo/boletos/emissao";
 import {
   EMPREENDIMENTOS_DE_BOLETO,
   empreendimentoPorSlug,
@@ -119,7 +124,12 @@ export async function GET(request: Request) {
       // pode receber os boletos do Jade só porque a chave é a mesma.
       if (!ref || !permitidos.has(ref.empreendimento)) continue;
 
-      const cadastro = documentos.get(`${ref.empreendimento}|${ref.unidade}`);
+      // A referência volta com hífen no lugar do espaço — ver `chaveDeUnidade`.
+      const cadastro =
+        documentos.get(`${ref.empreendimento}|${ref.unidade}`) ??
+        [...documentos].find(
+          ([k]) => chaveDeUnidade(k.split("|")[1]) === chaveDeUnidade(ref.unidade),
+        )?.[1];
       const pagamento = c.paymentDate ?? c.clientPaymentDate ?? null;
 
       boletos.push({

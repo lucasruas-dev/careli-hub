@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-revisao-adversarial",
+    deployedAt: "2026-09-02T10:00:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "O valor que a mensagem de WhatsApp anuncia passou a ser exatamente o que o boleto cobra.",
+              "A mensagem não informa mais o lote nos casos em que o lote é incerto — o boleto já não informava.",
+              "Reenviar, editar e cancelar voltaram a funcionar nas unidades com espaço no nome (Garden e Vale do Sol).",
+              "Editar valor entende o formato brasileiro: digitar 1.850 cobra mil oitocentos e cinquenta, não um e oitenta e cinco.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "50c728bd",
+    technical: {
+      done: "Revisao adversarial com 60 agentes sobre a carga e a emissao, pedida pelo Lucas (*\"faz uma mega revisao por favor, nao podemos errar\"*). 55 achados brutos, 37 confirmados na verificacao, 20 de severidade alta. Os cinco corrigidos aqui sao os que produzem cobranca ou mensagem errada. ⚠️ A REFERENCIA DA COBRANCA TROCA ESPACO POR HIFEN E A LEITURA NAO DESFAZIA: `Q07 L24` vira `boleto:garden:Q07-L24:2026-09` e voltava como `Q07-L24`, que nao existe em `boletos_parcelas` — 235 das 315 unidades de setembro tem espaco (todo o Garden e todo o Vale do Sol). Com o casamento quebrado, `jaEmitido` NUNCA ficava verdadeiro e a linha reaparecia como \"a emitir\" depois de emitida, pronta para ser cobrada de novo; alem disso o reenviar nao achava a cobranca e o nome do cadastro nao era encontrado. `chaveDeUnidade` normaliza os dois lados, entao as cobrancas ja emitidas continuam casando. ⚠️ O WHATSAPP ANUNCIAVA UM CENTAVO A MENOS QUE O BOLETO em metade das linhas: o boleto sai por `valorParaOAsaas` (Math.ceil dos centavos) e o texto saia por `toLocaleString` (arredonda para o mais proximo) sobre o valor cru da planilha, que tem 13 casas decimais. O cliente lia \"R$ 4.265,63\" e recebia um boleto de R$ 4.265,64. ⚠️ A MENSAGEM AFIRMAVA O LOTE QUE O BOLETO OMITE: `unidade_incerta` so era lido na descricao; os TRES caminhos de disparo (previa, envio confirmado e o automatico que acompanha a emissao) mandavam a unidade crua. O pior era o automatico: a mesma emissao que tira o lote do boleto de proposito disparava em seguida um WhatsApp dizendo o lote. Agora o {{3}} vira a competencia — nao pode ficar vazio, a Meta recusa parametro em branco. ⚠️ RE-RODAR A CARGA DO GARDEN APAGAVA A MARCA: a carga deleta e recria as parcelas, e `unidade_incerta` morria com elas em silencio; a lista dos dez lotes agora vive no script, ao lado da conversao que a produziu. ⚠️ EDITAR VALOR COBRAVA R$ 1,85 NO LUGAR DE R$ 1.850,00: `Number(\"1.850\".replace(\",\", \".\"))` devolve 1.85 e a edicao nao falhava; \"2.102,58\" virava NaN, era descartado por um `Number.isFinite` e a tela fechava o editor como se tivesse salvado. `valor-digitado.ts` le o formato brasileiro (ponto seguido de tres digitos e milhar) e recusa o que nao entende, com 11 testes. Nos dados: dois lotes do Garden ficaram BLOQUEADOS por terem o mesmo CPF de outra unidade com outro nome (HENRIQUE GAUDENCIO/PAULO SERGIO MAIA) — vem do LSoft pela chave (quadra, lote), que guarda o ultimo cliente daquele lote, entao lote revendido leva o CPF do dono anterior. 126 testes verdes, typecheck limpo.",
+      motivation:
+        "Nada tinha sido emitido ainda: era a ultima janela para achar o que so apareceria no extrato do cliente.",
+    },
+    title: "Cinco defeitos que fariam a cobrança sair errada",
+    type: "correcao",
+    version: "1.253.0",
+  },
+  {
     buildTag: "2026-09-02-cpf-editavel",
     deployedAt: "2026-09-02T10:00:00-03:00",
     modules: [

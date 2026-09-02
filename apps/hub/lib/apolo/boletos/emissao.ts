@@ -276,6 +276,24 @@ export function apenasDaCompetencia(
 }
 
 /** O empreendimento e a unidade de volta, a partir da referência. */
+/**
+ * A unidade em forma de chave, para casar os dois lados sem depender da grafia.
+ *
+ * ⚠️ A REFERÊNCIA DA COBRANÇA TROCA ESPAÇO POR HÍFEN e a leitura não desfaz: `Q07 L24` vira
+ * `boleto:garden:Q07-L24:2026-09` e volta de lá como `Q07-L24`, que não existe em
+ * `boletos_parcelas`. Medido em 02/09/2026: **235 das 315 unidades de setembro têm espaço**
+ * (todo o Garden e todo o Vale do Sol). Com o casamento quebrado, `jaEmitido` nunca fica
+ * verdadeiro — e a linha reaparece como "a emitir" depois de emitida, pronta para ser cobrada
+ * de novo —, o botão de reenviar não acha a cobrança, o histórico não casa e o nome do cadastro
+ * não é encontrado, então a descrição inteira do boleto vira o nome mostrado ao operador.
+ *
+ * Comparar por aqui conserta os dois sentidos de uma vez: as cobranças já emitidas com o hífen
+ * continuam casando, e as novas também. Trocar a referência resolveria só o futuro.
+ */
+export function chaveDeUnidade(unidade: null | string | undefined): string {
+  return String(unidade ?? "").trim().replace(/\s+/g, "-").toUpperCase();
+}
+
 export function lerReferencia(
   referencia: null | string | undefined,
 ): null | { competencia: string; empreendimento: string; unidade: string } {

@@ -15,6 +15,7 @@ import {
   cobrancasDaReferencia,
   criarBoleto,
   impedimentosDaConta,
+  chaveDeUnidade,
   lerReferencia,
   listarCobrancas,
   situacaoCadastral,
@@ -214,7 +215,17 @@ export async function GET(request: Request) {
   }
 
   const intervalo = intervaloDaCompetencia(competencia);
-  const porChave = new Map(parcelas.map((p) => [`${p.empreendimento}|${p.unidade}`, p]));
+  // ⚠️ INDEXADO PELA CHAVE NORMALIZADA. A referência da cobrança volta com hífen no lugar do
+  // espaço; comparar cru deixaria 235 das 315 unidades sem casar. Ver `chaveDeUnidade`.
+  const porChave = new Map(
+    parcelas.map((p) => [`${p.empreendimento}|${chaveDeUnidade(p.unidade)}`, p]),
+  );
+  const documentosPorChave = new Map(
+    [...documentos].map(([k, v]) => {
+      const [emp, uni] = k.split("|");
+      return [`${emp}|${chaveDeUnidade(uni)}`, v];
+    }),
+  );
   const boletos = [];
   const falhas: { conta: string; erro: string }[] = [];
 
@@ -232,10 +243,10 @@ export async function GET(request: Request) {
       // outras de brinde se o filtro não estivesse aqui.
       if (!ref || !destaConta.has(ref.empreendimento)) continue;
 
-      const cadastro = documentos.get(`${ref.empreendimento}|${ref.unidade}`);
+      const cadastro = documentosPorChave.get(`${ref.empreendimento}|${chaveDeUnidade(ref.unidade)}`);
       const pagamento = c.paymentDate ?? c.clientPaymentDate ?? null;
 
-      const parcela = porChave.get(`${ref.empreendimento}|${ref.unidade}`);
+      const parcela = porChave.get(`${ref.empreendimento}|${chaveDeUnidade(ref.unidade)}`);
 
       boletos.push({
         cobranca: c.id,
@@ -250,7 +261,8 @@ export async function GET(request: Request) {
         nome: cadastro?.nome ?? c.description ?? "(sem cadastro)",
         pagamento,
         situacao: c.status,
-        unidade: ref.unidade,
+        // A unidade como está no banco (com espaço), não a da referência (com hífen).
+        unidade: parcela?.unidade ?? ref.unidade,
         valor: c.value,
         vencido: estaVencido(c.status, c.dueDate, pagamento),
         vencimento: c.dueDate,
@@ -380,7 +392,7 @@ export async function POST(request: Request) {
 
     const alvo = apenasDaCompetencia(cobrancas.data, competencia).find((c) => {
       const ref = lerReferencia(c.externalReference);
-      return ref?.empreendimento === slug && ref.unidade === unidade;
+      return ref?.empreendimento === slug && chaveDeUnidade(ref.unidade) === chaveDeUnidade(unidade);
     });
 
     if (!alvo) {
@@ -573,7 +585,7 @@ export async function POST(request: Request) {
       }
       const alvo = apenasDaCompetencia(cobrancas.data, competencia).find((c) => {
         const ref = lerReferencia(c.externalReference);
-        return ref?.empreendimento === slug && ref.unidade === unidade;
+        return ref?.empreendimento === slug && chaveDeUnidade(ref.unidade) === chaveDeUnidade(unidade);
       });
       if (!alvo) {
         return NextResponse.json(
@@ -630,7 +642,7 @@ export async function POST(request: Request) {
     const porUnidade = new Map<string, (typeof cobrancas.data)[number]>();
     for (const c of apenasDaCompetencia(cobrancas.data, competencia)) {
       const ref = lerReferencia(c.externalReference);
-      if (ref?.empreendimento === slug) porUnidade.set(ref.unidade, c);
+      if (ref?.empreendimento === slug) porUnidade.set(chaveDeUnidade(ref.unidade), c);
     }
 
     const alvos = parcelas.filter(
@@ -640,7 +652,7 @@ export async function POST(request: Request) {
     // ⚠️ ENSAIO POR PADRÃO, COMO NA EMISSÃO. Sem `confirmar: true` devolve a PRÉVIA do texto que
     // cada cliente receberia. Mensagem enviada não volta, e o operador precisa ler o que vai sair.
     const previas = alvos.map((p) => {
-      const cobranca = porUnidade.get(p.unidade);
+      const cobranca = porUnidade.get(chaveDeUnidade(p.unidade));
       const cadastro = documentos.get(p.unidade);
       const link = cobranca?.bankSlipUrl ?? cobranca?.invoiceUrl ?? "";
 
@@ -648,6 +660,8 @@ export async function POST(request: Request) {
         competencia,
         empreendimento: empreendimento.nome,
         link,
+        // A mensagem nao afirma o lote quando o lote e incerto — ver `unidadeIncerta`.
+        unidadeIncerta: p.unidadeIncerta,
         nome: cadastro?.nome ?? p.nome,
         parcelaAtual: p.parcelaAtual,
         totalParcelas: p.totalParcelas,
@@ -692,7 +706,7 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const cobranca = porUnidade.get(previa.unidade)!;
+      const cobranca = porUnidade.get(chaveDeUnidade(previa.unidade))!;
       const parcela = parcelas.find((x) => x.unidade === previa.unidade)!;
       const cadastro = documentos.get(previa.unidade)!;
 
@@ -701,6 +715,7 @@ export async function POST(request: Request) {
         competencia,
         contato: cadastro.contato,
         empreendimento: empreendimento.nome,
+        unidadeIncerta: parcela.unidadeIncerta,
         link: cobranca.bankSlipUrl ?? cobranca.invoiceUrl ?? "",
         nome: cadastro.nome,
         parcelaAtual: parcela.parcelaAtual,
@@ -901,6 +916,10 @@ export async function POST(request: Request) {
       const envio = await dispararBoleto({
         canal: canalAutomatico,
         competencia,
+        // ⚠️ ESTE E O PIOR DOS TRES: e a MESMA emissao que tira o lote do boleto de proposito que
+        // dispara o WhatsApp em seguida, sem ninguem escolher enviar. `ItemDoLote` nao carrega a
+        // flag, entao ela vem da parcela.
+        unidadeIncerta: parcela?.unidadeIncerta,
         contato: item.contato,
         empreendimento: empreendimento.nome,
         link,

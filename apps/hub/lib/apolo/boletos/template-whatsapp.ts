@@ -18,6 +18,8 @@
 // ⚠️ CATEGORIA UTILITY, e não MARKETING. É aviso sobre uma cobrança que já existe, para quem tem
 // contrato: transacional. Marketing custa mais por mensagem e a Meta reclassifica ao ler o texto.
 
+import { valorParaOAsaas } from "./emissao";
+
 export const TEMPLATE_BOLETO = "boleto_disponivel";
 export const TEMPLATE_BOLETO_IDIOMA = "pt_BR";
 
@@ -172,6 +174,19 @@ export type DadosDoDisparo = {
   parcelaAtual?: null | number;
   totalParcelas?: null | number;
   unidade: string;
+  /**
+   * A unidade existe para identificar a cobranca, mas nao pode ser AFIRMADA ao cliente.
+   *
+   * ⚠️ A DESCRICAO DO BOLETO JA OMITE O LOTE NESSES CASOS, e a mensagem estava dizendo. O Garden
+   * foi renumerado e em dez lotes as duas fontes discordam; o boleto do JULIO CESAR sai como
+   * "Garden - Competencia 09/2026", sem lote, e logo depois chegava um WhatsApp dizendo "unidade
+   * *Q07 L24*" — exatamente o lote que a casa decidiu nao afirmar. Marcada, a mensagem troca a
+   * unidade pela competencia.
+   *
+   * ⚠️ NAO PODE FICAR VAZIA: `parametrosDoBoleto` recusa parametro em branco (a Meta tambem), e a
+   * mensagem inteira deixaria de sair.
+   */
+  unidadeIncerta?: boolean;
   valor: number;
   vencimento: string;
 };
@@ -187,7 +202,10 @@ export type DadosDoDisparo = {
 export function parametrosDoBoleto(d: DadosDoDisparo): null | string[] {
   const nome = primeiroNomeParaSaudacao(d.nome);
   const empreendimento = comoParametro(d.empreendimento);
-  const unidade = comoParametro(d.unidade);
+  // Quando o lote e incerto, o {{3}} vira a competencia: identifica a cobranca sem afirmar o lote.
+  const unidade = d.unidadeIncerta
+    ? competenciaPorExtenso(d.competencia)
+    : comoParametro(d.unidade);
   const link = comoParametro(d.link);
 
   if (!nome || !empreendimento || !unidade || !link) return null;
@@ -211,7 +229,14 @@ export function parametrosDoBoleto(d: DadosDoDisparo): null | string[] {
     unidade,
     referencia,
     vencimento,
-    valorParaOTexto(d.valor),
+    // ⚠️ O MESMO VALOR QUE O ASAAS COBRA, e não o cru da planilha. O boleto sai por
+    // `valorParaOAsaas` (Math.ceil dos centavos, sempre para cima) e o texto saía por
+    // `toLocaleString` (arredonda para o mais próximo) sobre o valor com 13 casas decimais que a
+    // planilha traz. Medido em 02/09/2026: metade das linhas de setembro divergia em UM CENTAVO —
+    // o cliente lia "R$ 4.265,63" numa mensagem cujo boleto cobrava R$ 4.265,64. Um centavo não
+    // quebra ninguém, mas é a mensagem discordando do documento, e é sempre assim que a conversa
+    // com o cliente começa errada.
+    valorParaOTexto(valorParaOAsaas(d.valor)),
     link,
   ];
 }

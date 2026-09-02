@@ -352,6 +352,24 @@ if (erroDel) {
 }
 console.log(`\n${antes} parcela(s) antigas do Garden removidas (lote antigo).`);
 
+// !! A MARCA `unidade_incerta` MORRE NO DELETE E PRECISA VOLTAR. Ela e o que faz o boleto sair sem
+// o lote nos casos em que as duas fontes discordam; uma re-rodada desta carga apagaria a marca em
+// silencio, e os dez clientes passariam a receber um lote que a casa decidiu nao afirmar. A lista
+// vive aqui, ao lado da conversao que a produziu, e nao so no banco.
+const INCERTAS = [
+  "Q06 L10", // GABRIEL MOREIRA FERREIRA - revisada L10, financeiro L9
+  "Q06 L24", // CLEBER DE FARIA SILVA - revisada L24, financeiro L25
+  "Q07 L24", // JULIO CESAR FERREIRA BARBOSA
+  "Q07 L25", // AILTON ILARIO PINTO
+  "Q07 L26", // WAGNER LIBERIO DE SOUZA      os cinco da quadra 7, deslocados
+  "Q07 L27", // WARLLEY MACIEL DE MENDONCA   um lote na mesma direcao
+  "Q07 L28", // SAMUEL SOARES MOREIRA
+  "Q13 L10", // DEBORA BENUNES ALMEIDA ASSIS COSTA - revisada L10, financeiro L9
+  "Q17 L02", // GABRIELA CRISTINA JACINTO   as duas irmas, CRUZADAS
+  "Q17 L18", // MARIANA CRISTINA JACINTO    entre as duas fontes
+];
+
+
 let gravadas = 0;
 for (let i = 0; i < linhas.length; i += 500) {
   const lote = linhas.slice(i, i + 500);
@@ -367,3 +385,16 @@ for (let i = 0; i < linhas.length; i += 500) {
   process.stdout.write(`\r  ${gravadas}/${linhas.length}`);
 }
 console.log(`\n\n✓ ${gravadas} parcelas do Garden gravadas com o lote de hoje.`);
+
+const { count: marcadas, error: erroMarca } = await sb
+  .from("boletos_parcelas")
+  .update({ unidade_incerta: true }, { count: "exact" })
+  .eq("workspace_id", "careli")
+  .eq("empreendimento", "garden")
+  .in("unidade", INCERTAS);
+if (erroMarca) {
+  console.error(`ao remarcar as unidades incertas: ${erroMarca.message}`);
+  process.exit(1);
+}
+console.log(`OK ${marcadas} parcela(s) remarcadas como unidade incerta (${INCERTAS.length} lotes).`);
+
