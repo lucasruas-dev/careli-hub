@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { type ContaAsaas, chaveDaConta, rotuloDaConta } from "@/lib/apolo/asaas-contas";
+import { telefoneUtilizavel } from "@/lib/apolo/boletos/telefone-padrao";
 import { cnpjValido, cpfValido, soDigitos } from "@/lib/apolo/documento";
 import {
   documentoMascarado,
@@ -176,7 +177,12 @@ export async function GET(request: Request) {
           ? "sem valor para o mês na planilha"
           : p.vencimentoDia === null
             ? "sem dia de vencimento na planilha"
-            : null;
+            : // ⚠️ ISTO NÃO IMPEDE A EMISSÃO, AVISA. O boleto sai e é válido; o que não sai é o
+              // link por WhatsApp. Barrar a cobrança por causa do recado seria deixar de cobrar
+              // quem deve — mas emitir sem saber que o cliente não vai ser avisado é pior ainda.
+              !telefoneUtilizavel(cadastro?.contato)
+              ? "emite, mas o link não vai por WhatsApp: telefone inválido ou é e-mail"
+              : null;
 
     return {
       bloqueio,
@@ -189,6 +195,11 @@ export async function GET(request: Request) {
       // número errado faz a mensagem falhar com "undeliverable", que parece "não tem WhatsApp".
       contato: cadastro?.contato ?? null,
       documento: cadastro?.documento ?? null,
+      // ⚠️ A PARCELA VAI NA MENSAGEM ("Referente a: Parcela 9 de 36"), então precisa dar para
+      // conferir e corrigir aqui. O Ed. Cristal 201 tem "parcela 7 de 5" na planilha — conta que
+      // não fecha —, e nesse caso o rótulo cai para a competência.
+      parcelaAtual: p.parcelaAtual,
+      totalParcelas: p.totalParcelas,
       documentoValido: cadastro ? cpfValido(cadastro.documento) || cnpjValido(cadastro.documento) : false,
       pendencia,
       empreendimento: p.empreendimento,
@@ -532,6 +543,8 @@ export async function POST(request: Request) {
     const c = corpo as {
       documento?: unknown;
       nome?: unknown;
+      parcelaAtual?: unknown;
+      totalParcelas?: unknown;
       telefone?: unknown;
       valor?: unknown;
       vencimentoDia?: unknown;
@@ -610,6 +623,38 @@ export async function POST(request: Request) {
       if (error) {
         return NextResponse.json(
           { error: `não consegui salvar o ${campo}: ${error.message}` },
+          { status: 500 },
+        );
+      }
+      mudou.push(campo);
+    }
+
+    // ── A PARCELA ───────────────────────────────────────────────────────────
+    //
+    // ⚠️ SÃO OS NÚMEROS DA PLANILHA, e não uma contagem nossa: o cliente entrou no meio do
+    // contrato e a contagem dele não começa no primeiro mês do arquivo. Vão para a mensagem como
+    // "Parcela 9 de 36"; quando a conta não fecha, `rotuloDaParcela` cai para a competência.
+    for (const campo of ["parcelaAtual", "totalParcelas"] as const) {
+      const valor = (c as Record<string, unknown>)[campo];
+      if (valor === undefined) continue;
+      const n = valor === null || valor === "" ? null : Number(valor);
+      if (n !== null && (!Number.isInteger(n) || n < 0 || n > 999)) {
+        return NextResponse.json(
+          { error: "a parcela precisa ser um número inteiro de 0 a 999" },
+          { status: 400 },
+        );
+      }
+      const coluna = campo === "parcelaAtual" ? "parcela_atual" : "total_parcelas";
+      const { error } = await supabase
+        .from("boletos_parcelas")
+        .update({ [coluna]: n })
+        .eq("workspace_id", "careli")
+        .eq("empreendimento", slug)
+        .eq("unidade", unidade)
+        .eq("competencia", competencia);
+      if (error) {
+        return NextResponse.json(
+          { error: `não consegui salvar a parcela: ${error.message}` },
           { status: 500 },
         );
       }
@@ -975,6 +1020,9 @@ export async function POST(request: Request) {
   }
 
   const resultados = [];
+  // A trava contra emissão simultânea vive no banco; ver o comentário dentro do laço.
+  const supabaseDaEmissao = createApoloAdminClient();
+  const travadas: string[] = [];
 
   // Por onde o envio automático sai. Ausente = emite e não manda nada.
   const canalAutomatico: CanalDoDisparo | null =
@@ -1006,6 +1054,39 @@ export async function POST(request: Request) {
       valor: item.valor,
       vencimento: item.vencimento,
     };
+
+    // ⚠️ A TRAVA VEM ANTES DA CONSULTA, e as duas são necessárias por motivos diferentes.
+    //
+    // A consulta ao Asaas (logo abaixo) resolve o caso SEQUENCIAL: recarregar a página e clicar de
+    // novo. Ela não resolve o SIMULTÂNEO, que foi o que aconteceu em 02/09/2026 — o clique demorou,
+    // o Lucas clicou outra vez, e as duas requisições perguntaram "já existe?" ao mesmo tempo,
+    // ouviram "não" as duas, e criaram as duas. Corrida não se conserta com mais consulta.
+    //
+    // `UPDATE ... WHERE emissao_iniciada_em IS NULL` é atômico: das duas requisições, uma afeta a
+    // linha e a outra afeta zero. Quem afeta zero não emite.
+    //
+    // ⚠️ E A MARCA EXPIRA EM 5 MINUTOS. Se o processo morrer entre marcar e criar, a parcela
+    // ficaria travada para sempre e ninguém emitiria — pior do que o problema original.
+    const limite = new Date(Date.now() - 5 * 60_000).toISOString();
+    const trava = supabaseDaEmissao
+      ? await supabaseDaEmissao
+          .from("boletos_parcelas")
+          .update({ emissao_iniciada_em: new Date().toISOString() })
+          .eq("workspace_id", "careli")
+          .eq("empreendimento", slug)
+          .eq("unidade", item.unidade)
+          .eq("competencia", competencia)
+          .or(`emissao_iniciada_em.is.null,emissao_iniciada_em.lt.${limite}`)
+          .select("id")
+      : null;
+    if (trava && !trava.error && (trava.data?.length ?? 0) === 0) {
+      resultados.push({
+        ...base,
+        erro: "já há uma emissão em curso para esta unidade — aguarde e recarregue a tela",
+      });
+      continue;
+    }
+    travadas.push(item.unidade);
 
     // ⚠️ CONSULTA ANTES DE CRIAR, SEMPRE. Alguém vai clicar duas vezes, ou a conexão vai cair no meio
     // e a rodada será repetida. Sem isto o cliente recebe dois boletos do mesmo mês.
@@ -1113,6 +1194,19 @@ export async function POST(request: Request) {
     }
 
     resultados.push({ ...base, cobranca: boleto.data.id, link });
+  }
+
+  // ⚠️ A TRAVA SAI SEMPRE, tenha o boleto sido criado ou não. Ela protege a JANELA da emissão, e
+  // não o fato de já existir cobrança — quem impede o segundo boleto depois é a consulta ao Asaas
+  // pela referência. Deixá-la presa faria a próxima rodada legítima ser recusada até expirar.
+  if (supabaseDaEmissao && travadas.length > 0) {
+    await supabaseDaEmissao
+      .from("boletos_parcelas")
+      .update({ emissao_iniciada_em: null })
+      .eq("workspace_id", "careli")
+      .eq("empreendimento", slug)
+      .eq("competencia", competencia)
+      .in("unidade", travadas);
   }
 
   return NextResponse.json(

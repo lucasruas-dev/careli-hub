@@ -36,6 +36,91 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-parcela-e-selecao",
+    deployedAt: "2026-09-02T11:40:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "A parcela (9/36) aparece na tela e dá para corrigir ali mesmo.",
+              "A descrição do boleto passou a dizer a parcela, com o mesmo texto da mensagem do WhatsApp.",
+              "Selecionar uma linha seleciona só ela: antes, marcar uma marcava as seis da aba de teste.",
+              "Emitir com linhas selecionadas emite exatamente essas, na carteira certa de cada uma.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "e385f998",
+    technical: {
+      done: "Tres pedidos do Lucas (02/09/2026): *\"traz para a tela a parcela tambem\"*, *\"no boleto na descricao tem que ir a parcela tambem\"*, *\"igual a mensagem no celular\"*, e o defeito *\"nao consigo selecionar somente uma parcela, quando eu clico, ele seleciona tudo\"*. ⚠️ A SELECAO USAVA SO A UNIDADE COMO CHAVE: as seis carteiras de teste tem TODAS a unidade `TESTE-01`, entao marcar uma marcava as seis — e no consolidado o apartamento 201 existe em mais de um predio. Agora a chave e `empreendimento|unidade`, e o emitir AGRUPA por empreendimento antes de mandar: sem isso, com a selecao atravessando carteiras, o Guaimbe emitiria a linha do On Sky, porque a unidade bate nos dois. ⚠️ A DESCRICAO E A MENSAGEM PRECISAM DIZER A MESMA PARCELA: e o que o cliente le no boleto e no WhatsApp, e os dois discordarem abre exatamente a duvida que a cobranca precisa nao abrir. Por isso a descricao passou a usar `rotuloDaParcela`, o MESMO que monta o `{{4}}` do template — quando a contagem da planilha nao fecha (o Ed. Cristal 201 tem \"parcela 7 de 5\"), os dois caem para a competencia juntos. Conferido nos quatro casos: normal, conta que nao fecha, lote incerto e sem parcela. A parcela virou coluna editavel nas duas tabelas, gravando `parcela_atual` e `total_parcelas` so na competencia aberta. 134 testes verdes, typecheck limpo.",
+      motivation:
+        "A parcela sai na mensagem e no boleto, mas não dava para ver nem corrigir na tela.",
+    },
+    title: "Parcela na tela e no boleto, e a seleção que seleciona só uma",
+    type: "novidade",
+    version: "1.262.0",
+  },
+  {
+    buildTag: "2026-09-02-telefones-padronizados",
+    deployedAt: "2026-09-02T11:30:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Os telefones do cadastro ficaram todos no mesmo formato, com o nono dígito.",
+              "257 cadastros estavam com o número antigo, de oito dígitos — esses não recebiam a mensagem.",
+              "Quem tem e-mail no lugar do telefone aparece avisado: o boleto sai, o link por WhatsApp não.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "e385f998",
+    technical: {
+      done: "Pedido do Lucas (02/09/2026), olhando a coluna: *\"vamos padronizar esses telefones ta feito, ja insere os nono digito\"*. A coluna tinha CINCO formatos na mesma tela (`62998662052`, `+55 37 9905-3938`, `37 9912-3556`, `37 99109-7380`, `31 8822-3571`), de planilhas e epocas diferentes. ⚠️ 257 DOS 306 CADASTROS ESTAVAM SEM O NONO DIGITO — DDD mais OITO digitos, o formato antigo dos celulares. Mandado assim, a Meta responde 131026 (\"undeliverable\"): a pessoa nao recebe nada e o erro parece \"esse numero nao tem WhatsApp\". O disparo ja corrigia na hora de enviar, mas o cadastro seguia errado, e quem olhava a tela para conferir via o numero que nao funciona. ⚠️ FIXO NAO LEVA NONO: celular comeca com 6-9 e fixo com 2-5; enfiar um 9 num fixo produz numero que nao existe, e o disparo falharia por um erro nosso. ⚠️ E-MAIL NAO VIRA TELEFONE: a coluna guarda e-mail em nove linhas (as empresas da devolutiva), e um e-mail passado por `replace(/D/g)` produz digitos plausiveis — que seriam o numero de OUTRA pessoa. `telefone-padrao.ts` com 8 testes, incluindo idempotencia; o script de normalizacao importa a regra de producao compilada, nunca uma copia. 17 nao reconhecidos ficaram como estao (9 e-mails, o \"PAGA AQUI -NAO FAZER\" do ROMULO, um \"ZAP\" e dois numeros invalidos) e agora aparecem na coluna Situacao dizendo que o boleto sai mas o link nao vai — avisar, e nao impedir: barrar a cobranca por causa do recado seria deixar de cobrar quem deve. 134 testes verdes, typecheck limpo.",
+      motivation:
+        "257 clientes receberiam boleto e nenhuma mensagem, com o erro parecendo que eles não têm WhatsApp.",
+    },
+    title: "Telefones padronizados: 257 estavam sem o nono dígito",
+    type: "correcao",
+    version: "1.261.0",
+  },
+  {
+    buildTag: "2026-09-02-nao-cobrar-duas-vezes",
+    deployedAt: "2026-09-02T11:20:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Clicar duas vezes em gerar não cria duas cobranças: o segundo clique é recusado.",
+              "O botão mostra que está trabalhando também na aba de teste, onde antes ficava parado.",
+              "Se a emissão falhar, o erro aparece ao lado do botão, e não no topo da página.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "e385f998",
+    technical: {
+      done: "Incidente relatado pelo Lucas durante o teste (02/09/2026): *\"quando eu clico em gerar boleto e demora, eu cliquei outra vez, gerou duas cobrancas\"*, e logo depois *\"tentei gerar esses dois, clico e nao acontece nada\"*. As duas coisas sao o MESMO defeito visto de dois lados. ⚠️ NA ABA DE TESTE O BOTAO NUNCA MOSTRAVA QUE ESTAVA TRABALHANDO: `emitindo={emitindo === aba}` comparava o estado, que guarda o SLUG (`teste-guaimbe`), com a aba, que e `__teste__` — nunca davam iguais. Sem spinner, sem botao desabilitado, com a lista mexendo so no fim e o erro renderizado no topo da pagina, fora da vista de quem esta no meio da tabela: do lado de quem clica, nada acontece. E quem acha que nada aconteceu clica de novo — e e assim que nasce a cobranca duplicada. ⚠️ A CONSULTA-ANTES-DE-CRIAR NAO PROTEGE CONTRA CLIQUE DUPLO: ela resolve o caso SEQUENCIAL (recarregar e clicar de novo), mas dois cliques em segundos sao duas requisicoes em voo ao mesmo tempo — as duas perguntam \"ja existe?\", as duas ouvem \"nao\", e as duas criam. Corrida nao se conserta com mais consulta. Migration 0119: `emissao_iniciada_em`, e a rota faz `UPDATE ... WHERE emissao_iniciada_em IS NULL` antes de criar, que o Postgres serializa — das duas requisicoes, uma afeta a linha e a outra afeta zero, e quem afeta zero nao emite. ⚠️ A MARCA EXPIRA EM 5 MINUTOS: se o processo morrer entre marcar e criar, a parcela ficaria travada para sempre e ninguem emitiria, pior que o problema original. No navegador, a trava do clique e um `useRef` e nao o estado, porque `setEmitindo` so desabilita o botao no proximo render e o segundo clique acontece antes disso. 126 testes verdes, typecheck limpo.",
+      motivation:
+        "Uma cobrança duplicada chega ao cliente como dois boletos do mesmo mês.",
+    },
+    title: "Clicar duas vezes não cobra duas vezes",
+    type: "correcao",
+    version: "1.260.0",
+  },
+  {
     buildTag: "2026-09-02-nome-do-predio",
     deployedAt: "2026-09-02T11:00:00-03:00",
     modules: [

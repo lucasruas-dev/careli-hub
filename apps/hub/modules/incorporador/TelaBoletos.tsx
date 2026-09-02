@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Ban,
@@ -53,12 +53,19 @@ type ParcelaAEmitir = {
   /** O que impede a emissão, em uma frase. `null` = apto. */
   pendencia: null | string;
   jaEmitido: boolean;
+  /** O 9 de "parcela 9 de 36" — vai na mensagem, então dá para corrigir aqui. */
+  parcelaAtual: null | number;
+  totalParcelas: null | number;
   nome: string;
   nomeNaPlanilha: string;
   unidade: string;
   valor: null | number;
   vencimentoDia: null | number;
 };
+
+/** A chave de uma linha na tela: a unidade sozinha se repete entre carteiras. */
+const chaveDaLinha = (p: { empreendimento: string; unidade: string }) =>
+  `${p.empreendimento}|${p.unidade}`;
 
 type EventoDoBoleto = {
   autor: null | string;
@@ -261,9 +268,18 @@ export function TelaBoletos() {
    * empreendimentos diferentes (um por conta), e mandar `__teste__` como slug devolveria 404: essa
    * aba existe só na tela.
    */
+  // ⚠️ A TRAVA DO CLIQUE É UM REF, E NÃO O ESTADO. `setEmitindo` só desabilita o botão no próximo
+  // render, e dois cliques em sequência rápida acontecem ANTES disso: em 02/09/2026 isso gerou duas
+  // cobranças para a mesma parcela, no teste. Um ref muda no mesmo instante do clique, então o
+  // segundo já encontra a porta fechada. (O servidor tem a trava definitiva, porque nada no
+  // navegador impede duas abas abertas — mas o erro comum é este, e é aqui que ele morre.)
+  const emitindoAgora = useRef(false);
+
   const emitir = useCallback(
-    async (alvos: string[], unidades?: string[]) => {
+    async (alvos: string[], escolhidas?: { empreendimento: string; unidade: string }[]) => {
       if (alvos.length === 0) return;
+      if (emitindoAgora.current) return;
+      emitindoAgora.current = true;
       setEmitindo(alvos[0]!);
       setErro(null);
       setEmissao(null);
@@ -273,7 +289,20 @@ export function TelaBoletos() {
 
       try {
         // Em série: cada uma cria cobranças de verdade, e paralelizar embaralharia os resultados.
-        for (const slug of alvos) {
+        // ⚠️ AS UNIDADES SÃO AGRUPADAS POR EMPREENDIMENTO. A seleção pode atravessar carteiras —
+        // na aba de teste cada linha é de uma conta diferente, e as seis têm a MESMA unidade
+        // `TESTE-01`. Mandar a lista inteira para cada slug faria o Guaimbé emitir a linha do On
+        // Sky, porque a unidade bate nos dois.
+        const porEmpreendimento = new Map<string, string[]>();
+        for (const e of escolhidas ?? []) {
+          if (!porEmpreendimento.has(e.empreendimento)) porEmpreendimento.set(e.empreendimento, []);
+          porEmpreendimento.get(e.empreendimento)!.push(e.unidade);
+        }
+        // Nada selecionado: cada alvo emite a carteira inteira dele.
+        const aRodar = porEmpreendimento.size > 0 ? [...porEmpreendimento.keys()] : alvos;
+
+        for (const slug of aRodar) {
+          const unidades = porEmpreendimento.get(slug);
           const r = await fetch("/api/incorporador/boletos", {
             body: JSON.stringify({
               competencia,
@@ -325,6 +354,7 @@ export function TelaBoletos() {
         setErro(e instanceof Error ? e.message : "Não consegui falar com o servidor.");
       } finally {
         setEmitindo(null);
+        emitindoAgora.current = false;
       }
     },
     [carregar, competencia, enviarAoEmitir],
@@ -568,7 +598,15 @@ export function TelaBoletos() {
         <PainelDeEnvio
           aoCancelar={() => setPrevias(null)}
           aoEnviar={(canal) =>
-            void enviar(previas.slug, [...selecionadas], canal)
+            // ⚠️ A SELEÇÃO GUARDA "empreendimento|unidade"; a rota espera só a unidade, e só as
+            // deste empreendimento — mandar as de outro faria a rota não achar e enviar nada.
+            void enviar(
+              previas.slug,
+              [...selecionadas]
+                .filter((k) => k.startsWith(`${previas.slug}|`))
+                .map((k) => k.slice(previas.slug.length + 1)),
+              canal,
+            )
           }
           enviando={enviando}
           previas={previas.itens}
@@ -619,11 +657,17 @@ export function TelaBoletos() {
             <AEmitir
               acaoNaUnidade={acaoNaUnidade}
               nomeDoPredio={nomeDoPredio}
-              aoEmitir={(unidades) => void emitir(alvosDaAba, unidades)}
-              emitindo={emitindo === aba}
+              aoEmitir={(escolhidas) => void emitir(alvosDaAba, escolhidas)}
+              // ⚠️ NA ABA DE TESTE O ESTADO GUARDA O SLUG (`teste-guaimbe`) E A ABA É `__teste__`:
+              // comparar os dois nunca dava verdadeiro, então o botão não mostrava o "Emitindo…",
+              // não desabilitava, e a lista só mexia no fim. Do lado de quem clicava, nada
+              // acontecia — foi exatamente o que o Lucas viu em 02/09/2026 (*"clico e não acontece
+              // nada"*), e é o que leva a clicar de novo, que é como nasce a cobrança duplicada.
+              emitindo={emitindo !== null && (emitindo === aba || alvosDaAba.includes(emitindo))}
               enviarAoEmitir={enviarAoEmitir}
               mostrarPredio={aba === "consolidado" || aba === ABA_TESTE}
               ocupado={ocupado}
+              erro={erro}
               onEnviarAoEmitir={setEnviarAoEmitir}
               parcelas={visiveisPendentes}
               podeEmitir={Boolean(podeEmitir)}
@@ -641,7 +685,13 @@ export function TelaBoletos() {
               // Na aba de teste o envio em lote não faz sentido (cada linha é de uma conta), e o
               // botão de reenviar de cada linha resolve.
               aba !== "consolidado" && aba !== ABA_TESTE && visiveisEmitidos.length > 0
-                ? () => void conferirEnvio(aba, [...selecionadas])
+                ? () =>
+                    void conferirEnvio(
+                      aba,
+                      [...selecionadas]
+                        .filter((k) => k.startsWith(`${aba}|`))
+                        .map((k) => k.slice(aba.length + 1)),
+                    )
                 : null
             }
             boletos={visiveisEmitidos}
@@ -862,6 +912,7 @@ function AEmitir({
   acaoNaUnidade,
   aoEmitir,
   emitindo,
+  erro,
   enviarAoEmitir,
   mostrarPredio,
   nomeDoPredio,
@@ -873,8 +924,10 @@ function AEmitir({
   selecionadas,
 }: {
   acaoNaUnidade: (e: string, u: string, corpo: Record<string, unknown>) => Promise<boolean>;
-  aoEmitir: (unidades: string[]) => void;
+  aoEmitir: (escolhidas: { empreendimento: string; unidade: string }[]) => void;
   emitindo: boolean;
+  /** ⚠️ O erro precisa aparecer AO LADO do botão: no topo da página ele fica fora da vista. */
+  erro: null | string;
   enviarAoEmitir: boolean;
   mostrarPredio: boolean;
   nomeDoPredio: (slug: string) => string;
@@ -886,7 +939,11 @@ function AEmitir({
   selecionadas: Set<string>;
 }) {
   const total = parcelas.reduce((a, p) => a + (p.valor ?? 0), 0);
-  const escolhidas = parcelas.filter((p) => selecionadas.has(p.unidade));
+  // ⚠️ A CHAVE É EMPREENDIMENTO + UNIDADE, e não a unidade sozinha. As seis carteiras de teste têm
+  // TODAS a unidade `TESTE-01`, então marcar uma marcava as seis — foi o que o Lucas viu em
+  // 02/09/2026 (*"não consigo selecionar somente uma parcela, quando eu clico, ele seleciona
+  // tudo"*). No consolidado o problema é o mesmo: o apartamento 201 existe em mais de um prédio.
+  const escolhidas = parcelas.filter((p) => selecionadas.has(chaveDaLinha(p)));
   const totalEscolhido = escolhidas.reduce((a, p) => a + (p.valor ?? 0), 0);
   const alvo = escolhidas.length > 0 ? escolhidas : parcelas;
   const todasMarcadas = parcelas.length > 0 && escolhidas.length === parcelas.length;
@@ -911,7 +968,11 @@ function AEmitir({
         {podeEmitir ? (
           <button
             disabled={emitindo}
-            onClick={() => aoEmitir(escolhidas.map((p) => p.unidade))}
+            onClick={() =>
+              aoEmitir(
+                escolhidas.map((p) => ({ empreendimento: p.empreendimento, unidade: p.unidade })),
+              )
+            }
             style={{
               alignItems: "center",
               background: T.btnBg,
@@ -944,6 +1005,22 @@ function AEmitir({
           </span>
         )}
       </div>
+
+      {erro ? (
+        <p
+          style={{
+            background: T.dangerBg,
+            border: `1px solid ${T.danger}`,
+            borderRadius: 8,
+            color: T.danger,
+            fontSize: 13,
+            margin: 0,
+            padding: "8px 12px",
+          }}
+        >
+          {erro}
+        </p>
+      ) : null}
 
       {podeEmitir ? (
         <label
@@ -983,8 +1060,8 @@ function AEmitir({
                     onChange={(e) => {
                       const nova = new Set(selecionadas);
                       for (const p of parcelas) {
-                        if (e.target.checked) nova.add(p.unidade);
-                        else nova.delete(p.unidade);
+                        if (e.target.checked) nova.add(chaveDaLinha(p));
+                        else nova.delete(chaveDaLinha(p));
                       }
                       onSelecionadas(nova);
                     }}
@@ -1000,6 +1077,7 @@ function AEmitir({
               <th style={cabecalho}>Cliente</th>
               {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
               <th style={cabecalho}>Unidade</th>
+              <th style={cabecalho}>Parcela</th>
               <th style={cabecalho}>CPF/CNPJ</th>
               <th style={cabecalho}>Telefone</th>
               <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
@@ -1014,11 +1092,11 @@ function AEmitir({
                   <td style={{ padding: "7px 8px" }}>
                     <input
                       aria-label={`Selecionar ${p.nome}`}
-                      checked={selecionadas.has(p.unidade)}
+                      checked={selecionadas.has(chaveDaLinha(p))}
                       onChange={(e) => {
                         const nova = new Set(selecionadas);
-                        if (e.target.checked) nova.add(p.unidade);
-                        else nova.delete(p.unidade);
+                        if (e.target.checked) nova.add(chaveDaLinha(p));
+                        else nova.delete(chaveDaLinha(p));
                         onSelecionadas(nova);
                       }}
                       type="checkbox"
@@ -1066,6 +1144,41 @@ function AEmitir({
                     placeholder="unidade"
                     valor={p.unidade}
                   />
+                </td>
+                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                  {/* ⚠️ A PARCELA SAI NA MENSAGEM ("Referente a: Parcela 9 de 36"). Quando a conta
+                      não fecha — o Ed. Cristal 201 tem "parcela 7 de 5" —, o rótulo cai para a
+                      competência, e é aqui que se conserta. */}
+                  <span style={{ alignItems: "center", display: "inline-flex", gap: 2 }}>
+                    <CelulaEditavel
+                      ajuda="Parcela atual"
+                      alinharADireita
+                      aoSalvar={(nv) =>
+                        acaoNaUnidade(p.empreendimento, p.unidade, {
+                          acao: "cadastro",
+                          parcelaAtual: nv.replace(/\D/g, ""),
+                        })
+                      }
+                      largura={38}
+                      ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                      placeholder="—"
+                      valor={p.parcelaAtual === null ? "" : String(p.parcelaAtual)}
+                    />
+                    <span style={{ color: T.sub, fontSize: 12.5 }}>/</span>
+                    <CelulaEditavel
+                      ajuda="Total de parcelas"
+                      aoSalvar={(nv) =>
+                        acaoNaUnidade(p.empreendimento, p.unidade, {
+                          acao: "cadastro",
+                          totalParcelas: nv.replace(/\D/g, ""),
+                        })
+                      }
+                      largura={38}
+                      ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                      placeholder="—"
+                      valor={p.totalParcelas === null ? "" : String(p.totalParcelas)}
+                    />
+                  </span>
                 </td>
                 <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                   <CelulaEditavel
@@ -1923,6 +2036,7 @@ function ForaDaEmissao({
               <th style={cabecalho}>Cliente</th>
               {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
               <th style={cabecalho}>Unidade</th>
+              <th style={cabecalho}>Parcela</th>
               <th style={cabecalho}>CPF/CNPJ</th>
               <th style={cabecalho}>Telefone</th>
               <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
@@ -1970,6 +2084,41 @@ function ForaDaEmissao({
                     placeholder="unidade"
                     valor={p.unidade}
                   />
+                </td>
+                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+                  {/* ⚠️ A PARCELA SAI NA MENSAGEM ("Referente a: Parcela 9 de 36"). Quando a conta
+                      não fecha — o Ed. Cristal 201 tem "parcela 7 de 5" —, o rótulo cai para a
+                      competência, e é aqui que se conserta. */}
+                  <span style={{ alignItems: "center", display: "inline-flex", gap: 2 }}>
+                    <CelulaEditavel
+                      ajuda="Parcela atual"
+                      alinharADireita
+                      aoSalvar={(nv) =>
+                        acaoNaUnidade(p.empreendimento, p.unidade, {
+                          acao: "cadastro",
+                          parcelaAtual: nv.replace(/\D/g, ""),
+                        })
+                      }
+                      largura={38}
+                      ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                      placeholder="—"
+                      valor={p.parcelaAtual === null ? "" : String(p.parcelaAtual)}
+                    />
+                    <span style={{ color: T.sub, fontSize: 12.5 }}>/</span>
+                    <CelulaEditavel
+                      ajuda="Total de parcelas"
+                      aoSalvar={(nv) =>
+                        acaoNaUnidade(p.empreendimento, p.unidade, {
+                          acao: "cadastro",
+                          totalParcelas: nv.replace(/\D/g, ""),
+                        })
+                      }
+                      largura={38}
+                      ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                      placeholder="—"
+                      valor={p.totalParcelas === null ? "" : String(p.totalParcelas)}
+                    />
+                  </span>
                 </td>
                 <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                   <CelulaEditavel

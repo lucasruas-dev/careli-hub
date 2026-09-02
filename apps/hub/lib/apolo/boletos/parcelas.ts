@@ -2,6 +2,7 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 
 import { documentosDoEmpreendimento } from "./documentos";
 import { empreendimentoPorSlug } from "./empreendimentos";
+import { rotuloDaParcela } from "./template-whatsapp";
 import { dataDeVencimento, type ItemDoLote, type LotePreparado } from "./lote";
 
 // A CARTEIRA DO MÊS, LIDA DO BANCO — o que a tela mostra sem ninguém escolher arquivo.
@@ -155,9 +156,24 @@ export async function loteDaCompetencia(input: {
       contato: cadastro.contato,
       // A unidade some da descricao quando nao se pode garantir qual e -- `unidadeIncerta`. A
       // `referencia` abaixo mantem a unidade: ela e interna, e e por ela que a cobranca e achada.
-      descricao: p.unidadeIncerta
-        ? `${nomeDoEmpreendimento} - Competência ${mes}/${ano}`
-        : `${nomeDoEmpreendimento} - Unidade ${p.unidade} - Competência ${mes}/${ano}`,
+      // ⚠️ A DESCRIÇÃO DIZ A PARCELA, E COM O MESMO TEXTO DA MENSAGEM. Pedido do Lucas
+      // (02/09/2026): *"no boleto na descrição tem que ir a parcela também"*, *"igual a mensagem no
+      // celular"*. É o que o cliente lê no boleto e no WhatsApp, e os dois discordarem sobre qual
+      // parcela é abre exatamente a dúvida que a cobrança precisa não abrir. Por isso o rótulo sai
+      // de `rotuloDaParcela`, o mesmo que monta o `{{4}}` do template: quando a contagem da
+      // planilha não fecha (o Ed. Cristal 201 tem "parcela 7 de 5"), os dois caem para a
+      // competência juntos.
+      descricao: [
+        nomeDoEmpreendimento,
+        p.unidadeIncerta ? null : `Unidade ${p.unidade}`,
+        rotuloDaParcela({
+          atual: p.parcelaAtual,
+          competencia: input.competencia,
+          total: p.totalParcelas,
+        }),
+      ]
+        .filter(Boolean)
+        .join(" - "),
       documento: cadastro.documento,
       // O nome do CADASTRO, não o da planilha: esta traz "VINICIUS FERREIRA ARAUJO - TAXA SELIC",
       // e o sufixo é recado interno sobre o índice de reajuste.
