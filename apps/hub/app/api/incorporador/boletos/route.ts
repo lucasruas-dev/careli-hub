@@ -446,7 +446,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "informe a unidade" }, { status: 400 });
     }
 
-    const c = corpo as { documento?: unknown; vencimentoDia?: unknown };
+    const c = corpo as { documento?: unknown; valor?: unknown; vencimentoDia?: unknown };
     const supabase = createApoloAdminClient();
     if (!supabase) {
       return NextResponse.json({ error: "sem acesso ao banco" }, { status: 500 });
@@ -491,6 +491,36 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `não consegui salvar: ${error.message}` }, { status: 500 });
       }
       mudou.push("documento");
+    }
+
+    // ── O VALOR ─────────────────────────────────────────────────────────────
+    //
+    // ⚠️ ANTES DE EMITIR, O VALOR É SÓ NOSSO. Aqui ele muda em `boletos_parcelas` e nada mais
+    // acontece; depois de emitido, quem manda é a cobrança no Asaas e a edição passa pela ação
+    // `editar`, que gera boleto NOVO com a linha digitável antiga morta. São dois momentos
+    // diferentes do mesmo campo, e confundi-los emite cobrança duplicada.
+    //
+    // ⚠️ SÓ A COMPETÊNCIA ABERTA, como no vencimento: sem o filtro, corrigir o valor de setembro
+    // reescreveria as oito competências daquela unidade, incluindo as que já foram cobradas.
+    if (c.valor !== undefined) {
+      const valor = Number(c.valor);
+      if (!Number.isFinite(valor) || valor <= 0) {
+        return NextResponse.json({ error: "o valor precisa ser maior que zero" }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from("boletos_parcelas")
+        .update({ valor })
+        .eq("workspace_id", "careli")
+        .eq("empreendimento", slug)
+        .eq("unidade", unidade)
+        .eq("competencia", competencia);
+      if (error) {
+        return NextResponse.json(
+          { error: `não consegui salvar o valor: ${error.message}` },
+          { status: 500 },
+        );
+      }
+      mudou.push("valor");
     }
 
     // ── O DIA DO VENCIMENTO ─────────────────────────────────────────────────

@@ -737,6 +737,7 @@ function Cabecalho({
 
 function CelulaEditavel({
   ajuda,
+  alinharADireita,
   aoSalvar,
   invalido,
   largura,
@@ -745,6 +746,7 @@ function CelulaEditavel({
   valor,
 }: {
   ajuda?: string;
+  alinharADireita?: boolean;
   aoSalvar: (novo: string) => Promise<boolean>;
   invalido?: boolean;
   largura: number;
@@ -796,6 +798,7 @@ function CelulaEditavel({
         fontVariantNumeric: "tabular-nums",
         opacity: salvando ? 0.5 : 1,
         padding: "4px 6px",
+        textAlign: alinharADireita ? "right" : "left",
         width: largura,
       }}
       title={ajuda}
@@ -1038,7 +1041,24 @@ function AEmitir({
                     valor={documentoLegivel(p.documento)}
                   />
                 </td>
-                <td style={numero}>{p.valor === null ? "—" : moeda(p.valor)}</td>
+                <td style={{ padding: "5px 8px", textAlign: "right", whiteSpace: "nowrap" }}>
+                  <CelulaEditavel
+                    ajuda={`Valor do boleto de ${p.nome}`}
+                    alinharADireita
+                    aoSalvar={(nv) => {
+                      const n = valorDigitado(nv);
+                      if (n === null) return Promise.resolve(false);
+                      return acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acao: "cadastro",
+                        valor: n,
+                      });
+                    }}
+                    largura={104}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="sem valor"
+                    valor={valorParaOCampo(p.valor)}
+                  />
+                </td>
                 <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                   <CelulaEditavel
                     ajuda="Dia do vencimento (1 a 31)"
@@ -1876,7 +1896,24 @@ function ForaDaEmissao({
                     valor={documentoLegivel(p.documento)}
                   />
                 </td>
-                <td style={numero}>{p.valor === null ? "—" : moeda(p.valor)}</td>
+                <td style={{ padding: "5px 8px", textAlign: "right", whiteSpace: "nowrap" }}>
+                  <CelulaEditavel
+                    ajuda={`Valor do boleto de ${p.nome}`}
+                    alinharADireita
+                    aoSalvar={(nv) => {
+                      const n = valorDigitado(nv);
+                      if (n === null) return Promise.resolve(false);
+                      return acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acao: "cadastro",
+                        valor: n,
+                      });
+                    }}
+                    largura={104}
+                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    placeholder="sem valor"
+                    valor={valorParaOCampo(p.valor)}
+                  />
+                </td>
                 <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                   <CelulaEditavel
                     ajuda="Dia do vencimento (1 a 31)"

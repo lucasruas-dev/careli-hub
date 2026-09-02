@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-editar-antes-de-emitir",
+    deployedAt: "2026-09-02T10:35:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "Valor, vencimento e CPF se corrigem ANTES de gerar o boleto, direto na linha.",
+              "Vale nos dois grupos: nos prontos para emitir e nos que precisam de correção.",
+              "O valor abre no formato brasileiro e volta a ser lido assim ao salvar.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "64bca152",
+    technical: {
+      done: "Pedido do Lucas (02/09/2026): *\"eu nao vi o botao de atualizar, valores, vencimento\"*, *\"nao faz sentido, eu preciso mudar o vencimento antes\"*, *\"valor antes de enviar\"*. A edicao de valor e vencimento so existia DEPOIS de emitido, no painel que abre ao clicar na linha da tabela de emitidos — e como nada tinha sido emitido, nao havia botao nenhum na tela. ⚠️ SAO DOIS MOMENTOS DIFERENTES DO MESMO CAMPO, e confundi-los emite cobranca duplicada: antes de emitir o valor e so nosso e muda em `boletos_parcelas`; depois, quem manda e a cobranca no Asaas, e a edicao passa pela acao `editar`, que gera boleto NOVO com a linha digitavel antiga morta. A acao `cadastro` cobre o antes (documento, valor, vencimentoDia) e a `editar` continua cobrindo o depois. ⚠️ SO A COMPETENCIA ABERTA: sem o filtro, corrigir setembro reescreveria as oito competencias daquela unidade, incluindo as ja cobradas, e o historico passaria a mentir. O campo de valor usa `valorDigitado` (formato brasileiro, ponto com tres digitos e milhar) e abre com `valorParaOCampo`, entao ida e volta nao muda o numero. 126 testes verdes, typecheck limpo.",
+      motivation:
+        "Corrigir um valor errado exigia emitir o boleto errado primeiro.",
+    },
+    title: "Valor, vencimento e CPF corrigidos antes de gerar o boleto",
+    type: "novidade",
+    version: "1.256.0",
+  },
+  {
     buildTag: "2026-09-02-template-padrao",
     deployedAt: "2026-09-02T10:20:00-03:00",
     modules: [
