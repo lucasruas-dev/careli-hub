@@ -153,6 +153,36 @@ export async function POST(request: Request) {
   const admin = createApoloAdminClient();
   if (!admin) return NextResponse.json({ error: "Supabase indisponível." }, { status: 503 });
 
+  // ⚠️ SÓ A MINUTA DE CONTRATO PODE TER VÁRIAS POR EMPREENDIMENTO. Regra do Lucas (02/09/2026):
+  // *"será único por empreendimento, o varia por plano é somente a minuta"*. A minuta de contrato
+  // se multiplica porque o PLANO decide qual usar (a Lagoa Bonita tem dez); cessão, distrato e
+  // cancelamento são um só.
+  //
+  // ⚠️ E É AQUI QUE ISSO PRECISA SER BARRADO, e não na tela. Com dois termos de distrato publicados
+  // no mesmo empreendimento, o motor não tem critério para escolher — e a escolha cairia na ordem
+  // do banco, que é a mais silenciosa das escolhas erradas. A versão anterior continua existindo
+  // como versão, que é como o texto evolui; o que não pode é haver DOIS termos vivos.
+  const tipoNovo = corpo?.tipo ?? "contrato";
+  if (tipoNovo !== "contrato") {
+    const { data: jaExiste } = await admin
+      .from("temis_minutas")
+      .select("id, nome")
+      .eq("workspace_id", "careli")
+      .eq("enterprise_id", enterpriseId)
+      .eq("tipo", tipoNovo)
+      .neq("situacao", "arquivada")
+      .limit(1);
+
+    if (jaExiste && jaExiste.length > 0) {
+      return NextResponse.json(
+        {
+          error: `este empreendimento já tem um documento deste tipo ("${jaExiste[0]?.nome}"). Edite o que existe — ele guarda as versões — ou arquive antes de criar outro.`,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const auditoria = html ? auditar(html) : null;
 
   const { data, error } = await admin
@@ -165,7 +195,7 @@ export async function POST(request: Request) {
       nome,
       origem_arquivo_nome: corpo?.origemArquivoNome ?? null,
       situacao: "rascunho",
-      tipo: corpo?.tipo ?? "contrato",
+      tipo: tipoNovo,
       variaveis: auditoria?.conhecidas ?? [],
       versao: 1,
       workspace_id: "careli",

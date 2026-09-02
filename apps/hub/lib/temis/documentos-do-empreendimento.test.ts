@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DOCUMENTO_DO_SERVICO,
+  VARIA_POR_PLANO,
   oQueFaltaNoSetup,
   servicoDisponivel,
   type PreparoDoEmpreendimento,
@@ -66,5 +67,22 @@ describe("o que falta, junto", () => {
     expect(porServico.get("cessao")).toHaveLength(2);
     expect(porServico.get("distrato")).toHaveLength(1);
     expect(porServico.has("contrato")).toBe(false);
+  });
+});
+
+describe("um por empreendimento, menos a minuta", () => {
+  // ⚠️ A MINUTA SE MULTIPLICA PORQUE O PLANO DECIDE QUAL USAR (a Lagoa Bonita tem dez). Os termos
+  // são um só: com dois vivos, o motor escolheria pela ordem do banco.
+  it("só a minuta de contrato varia por plano", () => {
+    expect(VARIA_POR_PLANO.contrato).toBe(true);
+    for (const tipo of ["cessao", "distrato", "cancelamento"] as const) {
+      expect(VARIA_POR_PLANO[tipo], tipo).toBe(false);
+    }
+  });
+
+  it("todo tipo de documento declara a regra", () => {
+    for (const tipo of Object.values(DOCUMENTO_DO_SERVICO)) {
+      expect(VARIA_POR_PLANO[tipo], tipo).toBeDefined();
+    }
   });
 });

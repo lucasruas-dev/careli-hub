@@ -45,6 +45,25 @@ export const DOCUMENTO_DO_SERVICO: Record<TipoDeTrabalho, TipoDeDocumento> = {
   distrato: "distrato",
 };
 
+/**
+ * O empreendimento pode ter mais de um documento deste tipo?
+ *
+ * ⚠️ SÓ A MINUTA DE CONTRATO. Regra do Lucas (02/09/2026): *"será único por empreendimento, o varia
+ * por plano é somente a minuta"*. A minuta se multiplica porque o PLANO decide qual usar — a Lagoa
+ * Bonita tem dez, separadas por plano, tipo de unidade, canal e forma de pagamento. Cessão,
+ * distrato e cancelamento são um por empreendimento.
+ *
+ * ⚠️ COM DOIS TERMOS VIVOS, O MOTOR NÃO TEM CRITÉRIO e a escolha cai na ordem do banco — a mais
+ * silenciosa das escolhas erradas. A trava está na rota de criação; isto aqui é a regra escrita
+ * onde quem for mexer no assunto vai ler.
+ */
+export const VARIA_POR_PLANO: Record<TipoDeDocumento, boolean> = {
+  cancelamento: false,
+  cessao: false,
+  contrato: true,
+  distrato: false,
+};
+
 export type PreparoDoEmpreendimento = {
   /** Os tipos de documento que já têm versão publicada. */
   documentosPublicados: TipoDeDocumento[];
