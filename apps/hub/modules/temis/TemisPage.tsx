@@ -10,6 +10,7 @@ import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
 import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 import { TemisSidebar } from "@/modules/temis/blocks/shell/temis-sidebar";
 import { TemisBoard } from "@/modules/temis/blocks/board/temis-board";
+import { TemisKanban } from "@/modules/temis/blocks/board/temis-kanban";
 
 // MÓDULO TÊMIS — contratos.
 //
@@ -135,7 +136,13 @@ export function TemisPage() {
               Carregando os empreendimentos…
             </p>
           ) : tela === "board" ? (
-            <TemisBoard aoAbrirEmpreendimento={escolher} empreendimentos={empreendimentos ?? []} />
+            // ⚠️ O BOARD VIROU O KANBAN DO TRABALHO. Antes ele mostrava quantos planos e minutas
+            // cada empreendimento tinha — informação de Setup, olhada uma vez por empreendimento.
+            // Quem passa o dia em contrato precisa ver o que está na mão dele hoje. O que o board
+            // antigo mostrava não se perdeu: virou a tela Setup, onde é o lugar dele.
+            <div className="p-3">
+              <TemisKanban enterpriseId={escolhido?.id ?? null} />
+            </div>
           ) : !escolhido ? (
             <p className="m-0 p-6 text-sm text-ink-muted">
               Escolha um empreendimento no seletor acima.
@@ -149,7 +156,7 @@ export function TemisPage() {
               name={escolhido.name}
             />
           ) : (
-            <Setup />
+            <Setup aoAbrirEmpreendimento={escolher} empreendimentos={empreendimentos ?? []} />
           )}
         </section>
       </main>
@@ -198,18 +205,24 @@ function Cabecalho({
   );
 }
 
-function Setup() {
+// ⚠️ O QUE ERA O BOARD VIROU O SETUP, e não foi jogado fora. A pergunta que ele responde — "este
+// empreendimento consegue contratar hoje?" — é boa e continua valendo; ela só não é a pergunta de
+// quem passa o dia em contrato, que precisa saber o que está na mão dele agora. Aqui ela está no
+// lugar certo: é conferência de configuração, feita uma vez por empreendimento.
+function Setup({
+  aoAbrirEmpreendimento,
+  empreendimentos,
+}: {
+  aoAbrirEmpreendimento: (id: string) => void;
+  empreendimentos: ApoloEnterpriseRow[];
+}) {
   return (
-    <div className="grid gap-3 p-5">
-      <h3 className="m-0 text-sm font-semibold text-ink">Setup da Têmis</h3>
-      <p className="m-0 max-w-prose text-sm text-ink-muted">
-        Ainda não há o que configurar aqui. A assinatura continua na D4Sign, e o vínculo entre plano
-        e minuta é feito na tela de Planos — que é onde a decisão realmente acontece.
+    <div className="flex flex-col gap-3 p-3">
+      <p className="m-0 max-w-prose px-1 text-xs text-ink-soft">
+        O que cada empreendimento precisa ter cadastrado para atender cada serviço: a minuta do
+        contrato, o termo de cessão, o termo de distrato, o termo de cancelamento e a taxa da cessão.
       </p>
-      <p className="m-0 max-w-prose text-xs text-ink-soft">
-        Esta tela existe para não quebrar o desenho do módulo. Quando houver configuração de verdade
-        (numeração de contrato, cabeçalho e rodapé do PDF, prazo de assinatura), ela mora aqui.
-      </p>
+      <TemisBoard aoAbrirEmpreendimento={aoAbrirEmpreendimento} empreendimentos={empreendimentos} />
     </div>
   );
 }

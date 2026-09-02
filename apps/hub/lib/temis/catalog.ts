@@ -22,7 +22,7 @@ export const temisScreens: {
   label: string;
 }[] = [
   {
-    description: "O que cada empreendimento consegue contratar hoje, e o que trava.",
+    description: "O trabalho de hoje: contratos, cessões, distratos e cancelamentos.",
     hidden: false,
     icon: LayoutGrid,
     id: "board",
