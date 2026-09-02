@@ -107,12 +107,12 @@ describe("os parâmetros do disparo", () => {
   it("sem o tipo declarado, o {{3}} ainda vem preenchido", () => {
     const p = parametrosDoBoleto(BASE);
     expect(p).not.toBeNull();
-    expect(p![2].trim()).not.toBe("");
+    expect(p?.[2]?.trim()).not.toBe("");
   });
 
   it("diz lote no loteamento e apartamento no prédio", () => {
-    expect(parametrosDoBoleto({ ...BASE, tipoDeUnidade: "lote" })![2]).toBe("lote");
-    expect(parametrosDoBoleto({ ...BASE, tipoDeUnidade: "apartamento" })![2]).toBe("apartamento");
+    expect(parametrosDoBoleto({ ...BASE, tipoDeUnidade: "lote" })?.[2]).toBe("lote");
+    expect(parametrosDoBoleto({ ...BASE, tipoDeUnidade: "apartamento" })?.[2]).toBe("apartamento");
   });
 
   // ⚠️ O {{3}} DEIXOU DE SER O NÚMERO E PASSOU A SER O TIPO DO IMÓVEL. Decisão do Lucas
