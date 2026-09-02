@@ -186,6 +186,14 @@ export type DadosDoDisparo = {
    * ⚠️ NAO PODE FICAR VAZIA: `parametrosDoBoleto` recusa parametro em branco (a Meta tambem), e a
    * mensagem inteira deixaria de sair.
    */
+  /**
+   * `lote` ou `apartamento` — a palavra que vai no `{{3}}` no lugar do número.
+   *
+   * Vem de `EMPREENDIMENTOS_DE_BOLETO[].tipoDeUnidade`, declarado um por um: `origem: "lsoft"`
+   * vale para o Garden (loteamento) e para o Vale do Sol (apartamentos), então deduzir dali
+   * chamaria de lote o apartamento de alguém.
+   */
+  tipoDeUnidade?: "apartamento" | "lote";
   unidadeIncerta?: boolean;
   valor: number;
   vencimento: string;
@@ -202,10 +210,23 @@ export type DadosDoDisparo = {
 export function parametrosDoBoleto(d: DadosDoDisparo): null | string[] {
   const nome = primeiroNomeParaSaudacao(d.nome);
   const empreendimento = comoParametro(d.empreendimento);
-  // Quando o lote e incerto, o {{3}} vira a competencia: identifica a cobranca sem afirmar o lote.
-  const unidade = d.unidadeIncerta
-    ? competenciaPorExtenso(d.competencia)
-    : comoParametro(d.unidade);
+  // ⚠️ A UNIDADE SAIU DA MENSAGEM, PARA TODO MUNDO. Decisão do Lucas (02/09/2026): *"da mensagem
+  // do template a unidade, deixa o campo que está alimentando essa informação com um . (...) pois
+  // estamos achando muitos erros e isso pode gerar um cenário ruim"*.
+  //
+  // O dia inteiro apareceu erro de unidade: o Garden renumerado com duas fontes discordando em dez
+  // lotes, três apartamentos do Vale do Sol com o morador do vizinho, um "térreo" que virou
+  // apartamento na planilha. Nenhum deles afeta o VALOR — afetam só o número que a mensagem
+  // afirma. E dizer ao cliente um apartamento que não é o dele é a informação que ele confere
+  // primeiro, e a que quebra a confiança na cobrança inteira.
+  //
+  // ⚠️ A PALAVRA DO TIPO, E NÃO UM PONTO. O texto "unidade" é fixo no template aprovado e não sai
+  // sem nova submissão à Meta; com um ponto, o cliente leria "unidade *.*" e acharia que a
+  // mensagem veio com defeito. Com o tipo, a frase fecha: "unidade *lote*" num loteamento,
+  // "unidade *apartamento*" num prédio. Diz o que é o imóvel sem afirmar qual.
+  //
+  // ⚠️ NÃO PODE FICAR VAZIA: a Meta recusa parâmetro em branco e a mensagem inteira deixaria de sair.
+  const unidade = d.tipoDeUnidade ?? "unidade";
   const link = comoParametro(d.link);
 
   if (!nome || !empreendimento || !unidade || !link) return null;

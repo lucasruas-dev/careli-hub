@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-sem-numero-de-unidade",
+    deployedAt: "2026-09-02T12:35:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "A mensagem e o boleto deixaram de informar o número da unidade ao cliente.",
+              "No lugar do número, a mensagem diz o tipo do imóvel: lote no Garden, apartamento nos prédios.",
+              "As três unidades do Vale do Sol que estavam trocadas foram corrigidas e voltaram para a emissão.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "483ecc34",
+    technical: {
+      done: "Decisao do Lucas (02/09/2026): *\"da mensagem do template a unidade (...) e no descritivo do boleto tambem tirar a informacao das unidades, pois estamos achando muitos erros e isso pode gerar um cenario ruim\"*, e depois *\"ou alimenta o que e lote para o garden e apartamento para os demais\"*. ⚠️ O DIA INTEIRO APARECEU ERRO DE CADASTRO DE UNIDADE: o Garden renumerado com as duas fontes discordando em dez lotes, tres apartamentos do Vale do Sol com o morador do vizinho (o MICHEL estava no 101 BL 01 e era 101 BL 04, o CARLOS no 406 BL 04 e era 306 BL 04), e uma CLEZIA que nem apartamento tem — mora no terreo. Nenhum desses erros afeta o VALOR; afetam so o numero que a mensagem afirma. E o numero do imovel e a primeira coisa que o cliente confere: errar ali quebra a confianca na cobranca inteira. ⚠️ O TEXTO \"unidade\" E FIXO NO TEMPLATE APROVADO e nao sai sem nova submissao a Meta. Com um ponto no parametro, o cliente leria \"unidade *.*\" e acharia defeito; com o tipo, a frase fecha: \"unidade *lote*\" ou \"unidade *apartamento*\". Diz o que e o imovel sem afirmar qual. Parametro vazio nao serve: a Meta recusa a mensagem inteira. ⚠️ `tipoDeUnidade` E DECLARADO UM POR UM em `empreendimentos.ts`, e nao deduzido da origem da carteira: `origem: \"lsoft\"` vale para o Garden (loteamento) E para o Vale do Sol (apartamentos), entao deduzir dali chamaria de lote o apartamento de alguem. O typecheck pegou as quatro carteiras de teste que ficaram sem o campo. O numero continua na `referencia` da cobranca, que e interna, e na tela, que e de quem opera. 139 testes verdes.",
+      motivation:
+        "O número do imóvel é a primeira coisa que o cliente confere, e é onde estavam os erros.",
+    },
+    title: "A cobrança deixou de afirmar o número da unidade ao cliente",
+    type: "correcao",
+    version: "1.267.0",
+  },
+  {
     buildTag: "2026-09-02-cadastro-do-asaas",
     deployedAt: "2026-09-02T12:25:00-03:00",
     modules: [

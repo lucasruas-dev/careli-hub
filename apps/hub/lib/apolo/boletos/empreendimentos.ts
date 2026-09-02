@@ -32,6 +32,19 @@ export type EmpreendimentoDeBoleto = {
   /** Chave em `lsoft_parcelas.empreendimento`, quando a origem é o LSoft. */
   chaveLsoft?: string;
   slug: string;
+  /**
+   * Como se chama o imóvel deste empreendimento: `lote` num loteamento, `apartamento` num prédio.
+   *
+   * ⚠️ VAI NA MENSAGEM DO CLIENTE, e por isso é declarado um por um em vez de deduzido da origem
+   * da carteira — `origem: "lsoft"` vale para o Garden (loteamento) e para o Vale do Sol
+   * (apartamentos), então deduzir dali chamaria de lote o apartamento de alguém.
+   *
+   * ⚠️ E É SÓ A PALAVRA, SEM O NÚMERO. Decisão do Lucas (02/09/2026), depois de o dia inteiro
+   * aparecer erro de cadastro de unidade: *"estamos achando muitos erros e isso pode gerar um
+   * cenário ruim"*. O cliente lê "unidade *lote*" — a mensagem diz o TIPO do imóvel e não afirma
+   * um número que pode estar trocado. O número continua na `referencia` da cobrança, que é interna.
+   */
+  tipoDeUnidade: "apartamento" | "lote";
 };
 
 /**
@@ -48,6 +61,7 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
     nome: "Garden",
     origem: "lsoft",
     slug: "garden",
+    tipoDeUnidade: "lote",
   },
   {
     aba: "BOLETOS VALE SOL",
@@ -56,15 +70,31 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
     nome: "Vale do Sol",
     origem: "lsoft",
     slug: "vale-do-sol",
+    tipoDeUnidade: "apartamento",
   },
-  { aba: "BOLETOS ON SKY", conta: "on-sky", nome: "On Sky", origem: "planilha", slug: "on-sky" },
-  { aba: "BOLETOS GUAIMBE", conta: "guaimbe", nome: "Guaimbé", origem: "planilha", slug: "guaimbe" },
+  {
+    aba: "BOLETOS ON SKY",
+    conta: "on-sky",
+    nome: "On Sky",
+    origem: "planilha",
+    slug: "on-sky",
+    tipoDeUnidade: "apartamento",
+  },
+  {
+    aba: "BOLETOS GUAIMBE",
+    conta: "guaimbe",
+    nome: "Guaimbé",
+    origem: "planilha",
+    slug: "guaimbe",
+    tipoDeUnidade: "apartamento",
+  },
   {
     aba: "BOLETOS GIANT",
     conta: "giant-towers",
     nome: "Giant Towers",
     origem: "planilha",
     slug: "giant-towers",
+    tipoDeUnidade: "apartamento",
   },
   {
     aba: "BOLETOS ED ESMERALDA",
@@ -72,6 +102,7 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
     nome: "Ed. Esmeralda",
     origem: "planilha",
     slug: "ed-esmeralda",
+    tipoDeUnidade: "apartamento",
   },
   {
     aba: "BOLETOS ED CRISTAL",
@@ -79,9 +110,24 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
     nome: "Ed. Cristal",
     origem: "planilha",
     slug: "ed-cristal",
+    tipoDeUnidade: "apartamento",
   },
-  { aba: "BOLETOS ED RUBI", conta: "cer", nome: "Ed. Rubi", origem: "planilha", slug: "ed-rubi" },
-  { aba: "BOLETOS ED JADE", conta: "cer", nome: "Ed. Jade", origem: "planilha", slug: "ed-jade" },
+  {
+    aba: "BOLETOS ED RUBI",
+    conta: "cer",
+    nome: "Ed. Rubi",
+    origem: "planilha",
+    slug: "ed-rubi",
+    tipoDeUnidade: "apartamento",
+  },
+  {
+    aba: "BOLETOS ED JADE",
+    conta: "cer",
+    nome: "Ed. Jade",
+    origem: "planilha",
+    slug: "ed-jade",
+    tipoDeUnidade: "apartamento",
+  },
   // ── AS CARTEIRAS DE TESTE ─────────────────────────────────────────────────
   //
   // ⚠️ UMA POR CONTA DO ASAAS, e elas existem para NÃO sujar as carteiras de verdade. Pedido do
@@ -99,13 +145,14 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
   //
   // ⚠️ SAEM QUANDO SERVIREM. São dez linhas ao todo (estas seis mais as de `portais.ts` e os
   // registros no banco); apagar as daqui é o bastante para sumirem da tela.
-  { aba: "__TESTE_CER__", conta: "cer", nome: "Teste · CER", origem: "planilha", slug: "teste" },
+  { aba: "__TESTE_CER__", conta: "cer", nome: "Teste · CER", origem: "planilha", slug: "teste", tipoDeUnidade: "apartamento" },
   {
     aba: "__TESTE_GARDEN__",
     conta: "garden",
     nome: "Teste · Garden",
     origem: "planilha",
     slug: "teste-garden",
+    tipoDeUnidade: "lote",
   },
   {
     aba: "__TESTE_VALE_DO_SOL__",
@@ -113,6 +160,7 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
     nome: "Teste · Vale do Sol",
     origem: "planilha",
     slug: "teste-vale-do-sol",
+    tipoDeUnidade: "apartamento",
   },
   {
     aba: "__TESTE_ON_SKY__",
@@ -120,6 +168,7 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
     nome: "Teste · On Sky",
     origem: "planilha",
     slug: "teste-on-sky",
+    tipoDeUnidade: "apartamento",
   },
   {
     aba: "__TESTE_GUAIMBE__",
@@ -127,6 +176,7 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
     nome: "Teste · Guaimbé",
     origem: "planilha",
     slug: "teste-guaimbe",
+    tipoDeUnidade: "apartamento",
   },
   {
     aba: "__TESTE_GIANT_TOWERS__",
@@ -134,6 +184,7 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
     nome: "Teste · Giant Towers",
     origem: "planilha",
     slug: "teste-giant-towers",
+    tipoDeUnidade: "apartamento",
   },
 ];
 

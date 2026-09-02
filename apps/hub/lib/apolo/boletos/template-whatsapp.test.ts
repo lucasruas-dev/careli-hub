@@ -102,11 +102,29 @@ describe("o rótulo da parcela", () => {
 });
 
 describe("os parâmetros do disparo", () => {
-  it("monta os sete com os dados reais do MARCELO", () => {
-    expect(parametrosDoBoleto(BASE)).toEqual([
+  // ⚠️ NUNCA VAZIO: a Meta recusa a mensagem inteira por um parâmetro em branco, e sem o tipo
+  // declarado o campo cairia para uma palavra genérica em vez de sumir.
+  it("sem o tipo declarado, o {{3}} ainda vem preenchido", () => {
+    const p = parametrosDoBoleto(BASE);
+    expect(p).not.toBeNull();
+    expect(p![2].trim()).not.toBe("");
+  });
+
+  it("diz lote no loteamento e apartamento no prédio", () => {
+    expect(parametrosDoBoleto({ ...BASE, tipoDeUnidade: "lote" })![2]).toBe("lote");
+    expect(parametrosDoBoleto({ ...BASE, tipoDeUnidade: "apartamento" })![2]).toBe("apartamento");
+  });
+
+  // ⚠️ O {{3}} DEIXOU DE SER O NÚMERO E PASSOU A SER O TIPO DO IMÓVEL. Decisão do Lucas
+  // (02/09/2026), depois de o dia inteiro aparecer erro de cadastro de unidade — o Garden
+  // renumerado com duas fontes discordando, três apartamentos do Vale do Sol com o morador do
+  // vizinho: *"estamos achando muitos erros e isso pode gerar um cenário ruim"*. A mensagem diz o
+  // que é o imóvel e não afirma qual; o número continua na referência da cobrança, que é interna.
+  it("monta os sete, com o TIPO do imóvel no lugar do número", () => {
+    expect(parametrosDoBoleto({ ...BASE, tipoDeUnidade: "apartamento" })).toEqual([
       "Marcelo",
       "Ed. Rubi",
-      "302",
+      "apartamento",
       "Parcela 9 de 36",
       "20/09/2026",
       "2.102,58",
@@ -126,7 +144,8 @@ describe("os parâmetros do disparo", () => {
     // disparo, com o boleto já emitido e o cliente sem aviso.
     expect(parametrosDoBoleto({ ...BASE, nome: "" })).toBeNull();
     expect(parametrosDoBoleto({ ...BASE, empreendimento: "  " })).toBeNull();
-    expect(parametrosDoBoleto({ ...BASE, unidade: "" })).toBeNull();
+    // A unidade saiu da mensagem: falta dela não impede mais o disparo.
+    expect(parametrosDoBoleto({ ...BASE, unidade: "" })).not.toBeNull();
     expect(parametrosDoBoleto({ ...BASE, link: "" })).toBeNull();
     expect(parametrosDoBoleto({ ...BASE, valor: 0 })).toBeNull();
     expect(parametrosDoBoleto({ ...BASE, valor: Number.NaN })).toBeNull();
@@ -173,11 +192,11 @@ describe("as conversões que o cliente lê", () => {
 
 describe("a prévia que o operador vê antes de disparar", () => {
   it("substitui todos os marcadores, sem sobrar nenhum", () => {
-    const texto = previaDaMensagem(parametrosDoBoleto(BASE)!);
+    const texto = previaDaMensagem(parametrosDoBoleto({ ...BASE, tipoDeUnidade: "apartamento" })!);
     expect(texto).not.toMatch(/\{\{\d\}\}/);
     expect(texto).toContain("Olá, Marcelo!");
     expect(texto).toContain("Ed. Rubi");
-    expect(texto).toContain("unidade *302*");
+    expect(texto).toContain("unidade *apartamento*");
     expect(texto).toContain("Parcela 9 de 36");
     expect(texto).toContain("R$ 2.102,58");
     expect(texto).toContain("https://www.asaas.com/i/abc123");

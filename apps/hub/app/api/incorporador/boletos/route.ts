@@ -191,8 +191,41 @@ export async function GET(request: Request) {
     nomesPorDocumento.get(d.documento)!.add(String(d.nome ?? "").trim());
   }
 
+  // ⚠️ A CHAVE DA COBRANÇA É A UNIDADE, E ISSO NÃO MUDA: uma pessoa tem várias unidades, cada uma
+  // com o seu valor e o seu boleto. O MARCELO SALDANHA NUNES tem dois apartamentos no Ed. Rubi com
+  // o mesmo CPF e valores diferentes (R$ 2.704,24 e R$ 2.102,58), e o VAGNER tem cinco unidades em
+  // quatro empreendimentos — casar a COBRANÇA por nome daria o valor de um apartamento ao outro.
+  //
+  // ⚠️ MAS O DOCUMENTO É DA PESSOA, E NÃO DA UNIDADE. Quando a unidade muda (o Garden foi
+  // renumerado) ou nasce nova (as três repetidas do Vale do Sol), o cadastro fica órfão e a linha
+  // aparece "sem CPF" com o CPF ali do lado, na outra unidade da mesma pessoa. Sugestão do Lucas
+  // (02/09/2026): *"o cruzamento melhor seria pelo nome e não pela unidade"* — pelo NOME para achar
+  // o DOCUMENTO, pela UNIDADE para identificar a COBRANÇA.
+  //
+  // ⚠️ SÓ VALE COM NOME IDÊNTICO E ÚNICO no empreendimento. Dois cadastros com o mesmo nome não
+  // dizem qual CPF é de quem, e aí não há recuperação possível — a linha fica sem CPF, que é o
+  // desfecho seguro.
+  const documentoPorNome = new Map<string, null | { contato: null | string; documento: string }>();
+  for (const [chave, d] of documentos) {
+    const emp = chave.split("|")[0] ?? "";
+    const k = `${emp}|${String(d.nome ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim()}`;
+    // Já visto com outro documento: homônimo, e ninguém herda.
+    if (documentoPorNome.has(k)) {
+      const antes = documentoPorNome.get(k);
+      if (antes && antes.documento !== d.documento) documentoPorNome.set(k, null);
+      continue;
+    }
+    documentoPorNome.set(k, { contato: d.contato, documento: d.documento });
+  }
+
   const aEmitir = parcelas.map((p) => {
-    const cadastro = documentos.get(`${p.empreendimento}|${p.unidade}`);
+    const daUnidade = documentos.get(`${p.empreendimento}|${p.unidade}`);
+    const chaveDoNome = `${p.empreendimento}|${String(p.nome ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim()}`;
+    const doNome = daUnidade ? null : documentoPorNome.get(chaveDoNome);
+    const cadastro =
+      daUnidade ??
+      (doNome ? { contato: doNome.contato, documento: doNome.documento, nome: p.nome } : undefined);
+    const documentoHerdado = !daUnidade && Boolean(doNome);
     const bloqueio =
       p.bloqueio ?? (cadastro ? null : `sem CPF/CNPJ cadastrado para a unidade ${p.unidade}`);
 
@@ -221,6 +254,9 @@ export async function GET(request: Request) {
 
     return {
       bloqueio,
+      // ⚠️ O CPF veio do cadastro de OUTRA unidade da mesma pessoa: a tela avisa, para o operador
+      // conferir antes de emitir em vez de descobrir depois.
+      documentoHerdado,
       // ⚠️ O CPF INTEIRO, e não mascarado. Pedido do Lucas (02/09/2026): *"deixa por favor o CPF
       // todo legivel e editavel, vou pedir alguem para atualizar"*. Trinta e duas unidades estão
       // sem documento e o Asaas não cria cliente sem ele; com a máscara ninguém consegue conferir
@@ -649,16 +685,30 @@ export async function POST(request: Request) {
       if (campo === "nome" && !texto) {
         return NextResponse.json({ error: "o nome não pode ficar em branco" }, { status: 400 });
       }
-      const { error } = await supabase
+      // ⚠️ SEM LINHA PARA ATUALIZAR, O UPDATE AFETA ZERO E NÃO FALHA. A linha de
+      // `boletos_documentos` nasce com o CPF (o CHECK da tabela exige documento válido), então
+      // quem ainda não tem CPF não tem onde guardar telefone nem nome. Sem este aviso, o operador
+      // digita o telefone, a tela fecha o campo como se tivesse salvado, e o dado se perde em
+      // silêncio — que é o pior desfecho possível para quem está preenchendo trinta linhas.
+      const { data: linhas, error } = await supabase
         .from("boletos_documentos")
         .update({ [coluna]: texto || null, atualizado_em: new Date().toISOString() })
         .eq("workspace_id", "careli")
         .eq("empreendimento", slug)
-        .eq("unidade", unidade);
+        .eq("unidade", unidade)
+        .select("id");
       if (error) {
         return NextResponse.json(
           { error: `não consegui salvar o ${campo}: ${error.message}` },
           { status: 500 },
+        );
+      }
+      if ((linhas?.length ?? 0) === 0) {
+        return NextResponse.json(
+          {
+            error: `preencha o CPF/CNPJ desta unidade primeiro — é ele que cria o cadastro onde o ${campo} fica guardado`,
+          },
+          { status: 409 },
         );
       }
       mudou.push(campo);
@@ -894,6 +944,7 @@ export async function POST(request: Request) {
         empreendimento: empreendimento.nome,
         link,
         // A mensagem nao afirma o lote quando o lote e incerto — ver `unidadeIncerta`.
+        tipoDeUnidade: empreendimento.tipoDeUnidade,
         unidadeIncerta: p.unidadeIncerta,
         nome: cadastro?.nome ?? p.nome,
         parcelaAtual: p.parcelaAtual,
@@ -948,6 +999,7 @@ export async function POST(request: Request) {
         competencia,
         contato: cadastro.contato,
         empreendimento: empreendimento.nome,
+        tipoDeUnidade: empreendimento.tipoDeUnidade,
         unidadeIncerta: parcela.unidadeIncerta,
         link: cobranca.bankSlipUrl ?? cobranca.invoiceUrl ?? "",
         nome: cadastro.nome,
@@ -1188,6 +1240,7 @@ export async function POST(request: Request) {
         // ⚠️ ESTE E O PIOR DOS TRES: e a MESMA emissao que tira o lote do boleto de proposito que
         // dispara o WhatsApp em seguida, sem ninguem escolher enviar. `ItemDoLote` nao carrega a
         // flag, entao ela vem da parcela.
+        tipoDeUnidade: empreendimento.tipoDeUnidade,
         unidadeIncerta: parcela?.unidadeIncerta,
         contato: item.contato,
         empreendimento: empreendimento.nome,

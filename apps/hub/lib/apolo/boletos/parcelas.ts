@@ -163,9 +163,11 @@ export async function loteDaCompetencia(input: {
       // de `rotuloDaParcela`, o mesmo que monta o `{{4}}` do template: quando a contagem da
       // planilha não fecha (o Ed. Cristal 201 tem "parcela 7 de 5"), os dois caem para a
       // competência juntos.
+      // ⚠️ A UNIDADE SAIU DA DESCRIÇÃO TAMBÉM, e pelo mesmo motivo da mensagem: são erros de
+      // cadastro que aparecem todo dia, e o boleto é o documento que o cliente guarda. A cobrança
+      // continua identificada pela unidade na `referencia` — o que muda é só o que se afirma a ele.
       descricao: [
         nomeDoEmpreendimento,
-        p.unidadeIncerta ? null : `Unidade ${p.unidade}`,
         rotuloDaParcela({
           atual: p.parcelaAtual,
           competencia: input.competencia,
