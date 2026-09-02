@@ -45,6 +45,7 @@ type ContratoRow = RowDataPacket & {
   enterprise_name: null | string;
   id: number;
   index_name: null | string;
+  custom_plan: null | number;
   lot: null | string;
   parcels: null | number;
   percentage_1: null | number | string;
@@ -164,7 +165,11 @@ export async function loadExtratoDoCliente(
          e.name as enterprise_name,
          cp.parcels,
          cp.contractual_interest,
-         imc.name as index_name
+         imc.name as index_name,
+         -- O C2X MARCA O PLANO PERSONALIZADO, e a gente ignorava: custom_commercial_plan e 1 em
+         -- 428 contratos. Neles o plano comercial e ponto de partida, nao descricao, e e por isso
+         -- que o parcelamento do molde discordava do contrato.
+         ar.custom_commercial_plan as custom_plan
        from acquisition_requests ar
        join enterprise_unities eu on eu.id = ar.enterprise_unity_id
        join enterprises e on e.id = eu.enterprise_id
@@ -258,13 +263,32 @@ export async function loadExtratoDoCliente(
     }
 
     const contratos = filtrados
-      .map((row) =>
-        montarExtratoDoContrato({
-          contrato: mapearContrato(row, pessoas),
+      .map((row) => {
+        const parcelas = porContrato.get(row.id) ?? [];
+
+        // ⚠️ `commercial_plans.parcels` É O MOLDE DO PRODUTO, NÃO O CONTRATO. Medido em
+        // 02/09/2026: 256 contratos usam o plano 340 ("PLANO-NORMAL", que diz 144x) e CINCO deles
+        // têm outra contagem — 60, 24, 100, 3 e 1. O TIAGO EUSTAQUIO (LOS0302) é um deles: o
+        // extrato dele estampava "Plano: 144x - IPCA ANUAL" no topo e "27 de 62 parcelas
+        // quitadas" logo abaixo, os dois números na mesma página, discordando.
+        //
+        // ⚠️ QUEM SABE O TAMANHO DO CONTRATO É A PARCELA. `payments.total_parcels` é gravado pelo
+        // próprio C2X em cada linha e diz 60 para este contrato. O molde só entra quando não há
+        // parcela nenhuma para perguntar.
+        const doRegistro = parcelas
+          .map((parcela) => parcela.parcelaTotal)
+          .filter((n): n is number => typeof n === "number" && n > 0);
+        const contrato = mapearContrato(row, pessoas);
+
+        return montarExtratoDoContrato({
+          contrato: {
+            ...contrato,
+            planoParcelas: doRegistro.length > 0 ? Math.max(...doRegistro) : contrato.planoParcelas,
+          },
           hoje,
-          parcelas: porContrato.get(row.id) ?? [],
-        }),
-      )
+          parcelas,
+        });
+      })
       // Contrato sem nenhuma linha ativa não vira peça (não deveria acontecer — o EXISTS já
       // garante —, mas o extrato é entregue ao cliente e uma página em branco é pior que nada).
       .filter((relatorio) => relatorio.totais.parcelasTotal > 0);
@@ -362,7 +386,9 @@ function mapearContrato(row: ContratoRow, pessoas: PessoaMap): ExtratoClienteCon
     indiceCorrecao: texto(row.index_name),
     jurosContratuais: numeroOuNulo(row.contractual_interest),
     lote: texto(row.lot),
+    planoPadraoParcelas: numeroOuNulo(row.parcels),
     planoParcelas: numeroOuNulo(row.parcels),
+    planoPersonalizado: Boolean(row.custom_plan),
     precoTabela: numeroOuNulo(row.price),
     quadra: texto(row.block),
     titulares,

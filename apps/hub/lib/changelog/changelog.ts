@@ -36,6 +36,61 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-plano-do-contrato",
+    deployedAt: "2026-09-02T13:15:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O extrato do cliente passou a mostrar o número de parcelas do contrato dele, e não o do plano comercial.",
+              "Oito contratos mostravam um número e tinham outro — um deles dizia 144x num contrato de uma parcela.",
+            ],
+            screen: "Extrato do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "c9286819",
+    technical: {
+      done: "Lucas (02/09/2026), olhando o extrato do TIAGO EUSTAQUIO (LOS0302): *\"esse cliente tem um plano de 62 mas esta trazendo 144-ipca, verifica se e o nome do plano\"*. Nao e o nome: o plano se chama `PLANO-NORMAL`; \"144x - IPCA ANUAL\" e um rotulo que o PDF monta juntando `commercial_plans.parcels` com `index_monetary_corrections.name`. ⚠️ `commercial_plans.parcels` E O MOLDE DO PRODUTO, NAO O CONTRATO: 256 contratos usam o plano 340 e CINCO deles tem outra contagem. O extrato do TIAGO estampava \"Plano: 144x\" no topo e \"27 de 62 parcelas quitadas\" logo abaixo — os dois numeros na mesma pagina, discordando, num documento que vai para o cliente. ⚠️ QUEM SABE O TAMANHO DO CONTRATO E A PARCELA: `payments.total_parcels` e gravado pelo proprio C2X em cada linha e diz 60 para este contrato (as 62 do card sao 60 parcelas + Ato + Sinal). O molde so entra quando nao ha parcela nenhuma para perguntar. Medido no C2X inteiro: OITO contratos tinham o rotulo errado, em quatro empreendimentos — LOS0302 (144x/60), LOS0307 (144x/24), LOS0413 (144x/100), LOS1515 (144x/1), LOS2503 (144x/3), MDS0805 (144x/60), REPE182 (120x/24) e RVPG02 (180x/110). O LOS1515 dizia 144x num contrato de UMA parcela. Nota: a unidade LOS0302 tem dois contratos no C2X, um cancelado e um faturado — o extrato ja pegava o certo. 54 testes do extrato verdes, typecheck limpo.",
+      motivation:
+        "O extrato dizia 144 parcelas no topo e 62 embaixo, na mesma página, para o cliente ler.",
+    },
+    title: "O extrato mostra as parcelas do contrato, não as do plano",
+    type: "correcao",
+    version: "1.268.0",
+  },
+  {
+    buildTag: "2026-09-02-plano-do-contrato",
+    deployedAt: "2026-09-02T13:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O extrato mostra o fluxo do plano: parcelamento, correção e juros, em vez de só o número de parcelas.",
+              "O parcelamento é o do contrato do cliente, e não o do plano comercial do empreendimento.",
+              "Quando o contrato foi ajustado, o extrato mostra os dois: o parcelamento dele e o do plano de origem.",
+            ],
+            screen: "Extrato do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "c9286819",
+    technical: {
+      done: "Lucas (02/09/2026), olhando o extrato do TIAGO EUSTAQUIO (LOS0302): *\"esse cliente tem um plano de 62 mas esta trazendo 144-ipca, verifica se e o nome do plano\"*, e depois *\"em vez de trazer o nome, trazer o fluxo - parcelamento - correcao - juros\"* e *\"vamos trazer isso para todos, assim nao tem como errado\"*. Nao era o nome: o plano se chama PLANO-NORMAL, e \"144x - IPCA ANUAL\" era um rotulo montado no PDF. ⚠️ `commercial_plans.parcels` E O MOLDE DO PRODUTO: 256 contratos usam o plano 340 e cinco tem outra contagem. O extrato estampava \"144x\" no topo e \"27 de 62 parcelas quitadas\" logo abaixo, os dois na mesma pagina, discordando, num documento que vai para o cliente. Quem sabe o tamanho do contrato e a parcela: `payments.total_parcels`, gravado pelo C2X em cada linha. Medido no C2X inteiro: OITO contratos tinham o rotulo errado (LOS0302 144x/60, LOS0307 144x/24, LOS0413 144x/100, LOS1515 144x/1, LOS2503 144x/3, MDS0805 144x/60, REPE182 120x/24, RVPG02 180x/110) — o LOS1515 dizia 144x num contrato de UMA parcela. ⚠️ E O C2X JA MARCAVA ISSO: `acquisition_requests.custom_commercial_plan` e 1 em 428 contratos, e a gente ignorava o campo. Quando o contrato e ajustado, o extrato mostra os dois numeros: sumir com o do plano deixaria sem resposta o cliente que liga perguntando \"meu plano nao era de 144?\". Os tres dados juntos porque um so nao se confere — com o parcelamento sozinho um numero errado passa; com parcelamento, correcao e juros, quem le reconhece o proprio contrato. 54 testes do extrato verdes, typecheck limpo.",
+      motivation:
+        "O extrato dizia 144 parcelas no topo e 62 embaixo, na mesma página, para o cliente ler.",
+    },
+    title: "O extrato mostra o fluxo do plano: parcelamento, correção e juros",
+    type: "correcao",
+    version: "1.268.0",
+  },
+  {
     buildTag: "2026-09-02-sem-numero-de-unidade",
     deployedAt: "2026-09-02T12:35:00-03:00",
     modules: [

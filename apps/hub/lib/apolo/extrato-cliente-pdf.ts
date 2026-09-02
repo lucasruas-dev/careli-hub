@@ -24,6 +24,7 @@ import {
   percentualSimples,
   resumoPorAno,
   situacaoParaOComprador,
+  type ExtratoClienteContrato,
   type ExtratoClienteData,
   type ExtratoClienteParcela,
   type ExtratoClienteRelatorio,
@@ -440,12 +441,7 @@ function desenharFicha(ctx: Ctx, relatorio: ExtratoClienteRelatorio): void {
   const campos: Array<[string, string]> = [
     ["Contrato / unidade", contrato.codigo],
     ["Data do ato", dataBr(contrato.dataAto)],
-    [
-      "Plano",
-      contrato.planoParcelas
-        ? `${contrato.planoParcelas}x${contrato.indiceCorrecao ? ` - ${contrato.indiceCorrecao}` : ""}`
-        : (contrato.indiceCorrecao ?? "-"),
-    ],
+    ["Plano", descricaoDoPlano(contrato)],
     // Vocabulário do comprador, não o estágio interno da venda ("Faturado", "Em assinatura").
     ["Situação", situacaoParaOComprador(contrato)],
   ];
@@ -485,6 +481,44 @@ function desenharFicha(ctx: Ctx, relatorio: ExtratoClienteRelatorio): void {
     );
     ctx.y -= 30;
   }
+}
+
+/**
+ * O plano em uma linha: parcelamento, correção e juros.
+ *
+ * ⚠️ ANTES SAÍA SÓ O PARCELAMENTO, E VINHA DO MOLDE. O extrato do TIAGO EUSTAQUIO (LOS0302)
+ * estampava "144x - IPCA ANUAL" no topo e "27 de 62 parcelas quitadas" logo abaixo: o 144 era o
+ * `commercial_plans.parcels`, que descreve o produto que a mesa vende, e o 62 era o contrato dele.
+ * Dois números na mesma página, discordando, num documento que vai para o cliente.
+ *
+ * ⚠️ OS TRÊS JUNTOS PORQUE UM SÓ NÃO SE CONFERE. Pedido do Lucas (02/09/2026): *"vamos trazer isso
+ * para todos, assim não tem como errado (...) parcelamento - correção - juros"*. Com o
+ * parcelamento sozinho, um número errado passa; com os três, quem lê reconhece o próprio contrato.
+ *
+ * ⚠️ E O PERSONALIZADO É DITO, NÃO ESCONDIDO. 428 contratos têm `custom_commercial_plan = 1` — o
+ * plano comercial foi ponto de partida, não descrição. Quando o parcelamento do contrato difere do
+ * plano, os dois aparecem: some com o do plano e o cliente que ligar perguntando "meu plano não era
+ * de 144?" não encontra a resposta em lugar nenhum.
+ */
+function descricaoDoPlano(contrato: ExtratoClienteContrato): string {
+  const partes: string[] = [];
+
+  // ⚠️ O QUE ESTÁ NO SISTEMA HOJE, e só isso. Decisão do Lucas (02/09/2026). Cheguei a mostrar
+  // também o parcelamento do plano de origem nos contratos ajustados ("60x (plano de 144x)"), e
+  // ele cortou: o extrato é do contrato que vale agora, e um segundo número entre parênteses é
+  // exatamente o tipo de coisa que faz o cliente perguntar qual dos dois é o dele.
+  if (contrato.planoParcelas) partes.push(`${contrato.planoParcelas}x`);
+  if (contrato.indiceCorrecao) partes.push(contrato.indiceCorrecao);
+  if (typeof contrato.jurosContratuais === "number" && contrato.jurosContratuais > 0) {
+    partes.push(`juros ${porcentagem(contrato.jurosContratuais)} a.a.`);
+  }
+
+  return partes.length > 0 ? partes.join(" · ") : "-";
+}
+
+/** `8` → `8%`; `8.5` → `8,5%`. */
+function porcentagem(valor: number): string {
+  return `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 }
 
 function campoLargo(ctx: Ctx, rotulo: string, valor: string): void {

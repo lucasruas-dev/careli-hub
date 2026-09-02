@@ -261,7 +261,12 @@ export type ExtratoClienteContrato = {
   indiceCorrecao: null | string;
   jurosContratuais: null | number;
   lote: null | string;
+  /** O parcelamento do CONTRATO (de `payments.total_parcels`). */
   planoParcelas: null | number;
+  /** O do plano comercial, para comparar quando o contrato é personalizado. */
+  planoPadraoParcelas: null | number;
+  /** `acquisition_requests.custom_commercial_plan`: o plano foi ajustado para este contrato. */
+  planoPersonalizado: boolean;
   /** `enterprise_unities.price` — preço de tabela da unidade. */
   precoTabela: null | number;
   quadra: null | string;
