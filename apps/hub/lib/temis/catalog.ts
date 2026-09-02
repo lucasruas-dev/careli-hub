@@ -1,4 +1,4 @@
-import { FileSignature, LayoutGrid, type LucideIcon, Percent, Settings } from "lucide-react";
+import { FileSignature, LayoutGrid, type LucideIcon, Settings } from "lucide-react";
 
 // AS TELAS DA TÊMIS.
 //
@@ -9,10 +9,16 @@ import { FileSignature, LayoutGrid, type LucideIcon, Percent, Settings } from "l
 // nome (*"Inteligência de dados (não tem um nome melhor não)?"*) e a tela não tem escopo definido.
 // Um item de menu que abre vazio ensina o time a ignorar o menu.
 //
+// ⚠️ PLANOS SAIU DAQUI. Regra do Lucas (02/09/2026): *"plano não vive aqui no contrato, ele vive
+// dentro do cadastro do empreendimento"*. A tela continua existindo — é a mesma `PlanosComerciaisTab`
+// da ficha do empreendimento, no Apolo, e nada foi apagado. O que muda é onde ela é oferecida:
+// plano de pagamento é decisão comercial do empreendimento, e ter uma segunda porta para ele na
+// Têmis ensinaria o time a procurar cadastro dentro do módulo de contrato.
+//
 // O que existe hoje são as duas telas que sustentam a operação: as MINUTAS (o texto que o comprador
 // assina) e os PLANOS (que decidem qual minuta cada venda usa).
 
-export type TemisScreen = "board" | "minutas" | "planos" | "setup";
+export type TemisScreen = "board" | "minutas" | "setup";
 
 export const temisScreens: {
   description: string;
@@ -34,13 +40,6 @@ export const temisScreens: {
     icon: FileSignature,
     id: "minutas",
     label: "Minutas",
-  },
-  {
-    description: "Planos de pagamento e a minuta que cada um manda usar.",
-    hidden: false,
-    icon: Percent,
-    id: "planos",
-    label: "Planos",
   },
   {
     description: "Configuração do módulo.",

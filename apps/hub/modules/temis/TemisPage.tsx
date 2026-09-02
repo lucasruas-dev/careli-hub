@@ -7,7 +7,6 @@ import type { ApoloEnterpriseRow, ApoloEnterprisesData } from "@/lib/apolo/empre
 import { temisScreens, type TemisScreen } from "@/lib/temis/catalog";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
-import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 import { TemisSidebar } from "@/modules/temis/blocks/shell/temis-sidebar";
 import { TemisBoard } from "@/modules/temis/blocks/board/temis-board";
 import { TemisKanban } from "@/modules/temis/blocks/board/temis-kanban";
@@ -149,12 +148,6 @@ export function TemisPage() {
             </p>
           ) : tela === "minutas" ? (
             <MinutasTab enterpriseId={escolhido.id} key={escolhido.id} name={escolhido.name} />
-          ) : tela === "planos" ? (
-            <PlanosComerciaisTab
-              enterpriseId={escolhido.id}
-              key={escolhido.id}
-              name={escolhido.name}
-            />
           ) : (
             <Setup aoAbrirEmpreendimento={escolher} empreendimentos={empreendimentos ?? []} />
           )}
