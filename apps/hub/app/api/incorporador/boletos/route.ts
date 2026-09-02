@@ -160,6 +160,24 @@ export async function GET(request: Request) {
 
   const comContaConfigurada = new Set(comChave.map((e) => e.slug));
 
+  // ⚠️ O MESMO CPF EM DUAS UNIDADES COM NOMES DIFERENTES É SINAL DE DOCUMENTO TROCADO. Acontece
+  // quando o CPF vem do LSoft pela chave (quadra, lote), que guarda o ÚLTIMO cliente daquele lote:
+  // lote revendido leva o CPF do dono anterior, e o boleto sai no nome de um e no documento de
+  // outro. Duas unidades do MESMO dono são normais (o MARCELO tem dois apartamentos no Ed. Rubi),
+  // por isso o que acusa é o nome diferente, não a repetição.
+  //
+  // ⚠️ CALCULADO A CADA CARGA DA TELA, E NÃO GRAVADO. Na primeira versão eu marquei isto como
+  // `bloqueio` no banco: o CPF foi corrigido e o aviso continuou lá, porque um texto gravado não
+  // sabe que o dado mudou. Aviso sobre uma condição que muda tem de ser lido da condição.
+  const nomesPorDocumento = new Map<string, Set<string>>();
+  for (const [chave, d] of documentos) {
+    const emp = chave.split("|")[0] ?? "";
+    if (emp.startsWith("teste")) continue;
+    const nome = String(d.nome ?? "").trim().toUpperCase();
+    if (!nomesPorDocumento.has(d.documento)) nomesPorDocumento.set(d.documento, new Set());
+    nomesPorDocumento.get(d.documento)!.add(nome);
+  }
+
   const aEmitir = parcelas.map((p) => {
     const cadastro = documentos.get(`${p.empreendimento}|${p.unidade}`);
     const bloqueio =
@@ -177,7 +195,13 @@ export async function GET(request: Request) {
           ? "sem valor para o mês na planilha"
           : p.vencimentoDia === null
             ? "sem dia de vencimento na planilha"
-            : // ⚠️ ISTO NÃO IMPEDE A EMISSÃO, AVISA. O boleto sai e é válido; o que não sai é o
+            : cadastro && (nomesPorDocumento.get(cadastro.documento)?.size ?? 0) > 1
+              ? `confira o CPF: o mesmo documento está em outra unidade, com outro nome (${[
+                  ...(nomesPorDocumento.get(cadastro.documento) ?? []),
+                ]
+                  .filter((n) => n !== String(cadastro.nome ?? "").trim().toUpperCase())
+                  .join(", ")})`
+              : // ⚠️ ISTO NÃO IMPEDE A EMISSÃO, AVISA. O boleto sai e é válido; o que não sai é o
               // link por WhatsApp. Barrar a cobrança por causa do recado seria deixar de cobrar
               // quem deve — mas emitir sem saber que o cliente não vai ser avisado é pior ainda.
               !telefoneUtilizavel(cadastro?.contato)

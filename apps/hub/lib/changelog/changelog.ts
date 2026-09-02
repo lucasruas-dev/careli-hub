@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-aviso-de-cpf-calculado",
+    deployedAt: "2026-09-02T12:00:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "O aviso de CPF repetido some sozinho assim que o documento é corrigido.",
+              "O aviso agora diz em qual outro nome o mesmo CPF aparece.",
+              "Ele avisa em vez de barrar: o boleto pode ser emitido depois de conferido.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "b32f5277",
+    technical: {
+      done: "Lucas (02/09/2026): *\"foi corrigido e nao subiu\"* — ele corrigiu o CPF do HENRIQUE GAUDENCIO na tela e o aviso continuou lá. ⚠️ ERRO DE ABORDAGEM MEU: eu tinha gravado \"CPF conferir\" na coluna `bloqueio`, que e um TEXTO ESTATICO. Um aviso sobre uma condicao que muda tem de ser lido da condicao, senao ele sobrevive a correcao e trava a emissao para sempre — e a pessoa que corrigiu fica sem saber o que mais falta. Agora e calculado a cada carga da tela: agrupa os documentos por numero e acusa quando o mesmo CPF aparece com nomes DIFERENTES. Duas unidades do mesmo dono sao normais (o MARCELO SALDANHA tem dois apartamentos no Ed. Rubi, mesmo CPF), por isso o que acusa e o nome diferente, nao a repeticao. O aviso diz em qual outro nome o documento aparece, que e a informacao que faltava para resolver. Os dois bloqueios gravados a mao foram removidos do banco. ⚠️ AINDA SOBRA UM CASO REAL: o CPF do PAULO SERGIO MAIA (Q13 L07) esta tambem no VICTOR LIMA CAMPOS (Q12 L16) — vem do LSoft pela chave (quadra, lote), que guarda o ULTIMO cliente daquele lote, entao lote revendido leva o CPF do dono anterior. Typecheck limpo, 134 testes verdes.",
+      motivation:
+        "Um aviso que não some depois de corrigido ensina a ignorar avisos.",
+    },
+    title: "O aviso de CPF repetido some quando o CPF é corrigido",
+    type: "correcao",
+    version: "1.264.0",
+  },
+  {
     buildTag: "2026-09-02-ordenacao",
     deployedAt: "2026-09-02T11:50:00-03:00",
     modules: [
