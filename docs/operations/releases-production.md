@@ -5488,9 +5488,13 @@ Registro de producao:
 - Validacoes executadas:
   - `check-types` exit 0; `vitest` 166 arquivos / 2.152 testes verdes; revisao adversarial (seguranca/escopo, correcao, build) com corretor;
   - dados apos as migrations: 24 pais, 13 visoes, 707 unidades segmentadas, 6 masterplans publicados (VLO, LAB, RVP, REP, VAL, JDG), portal `gurgel` tipo comercial, situacao recarregada (vendidas 595 -> 2.586).
-- Healthchecks pos-deploy:
-  - `https://c2x.app.br`: pendente ate o build terminar (registrado abaixo).
-- Logs recentes: `n/a ate o build terminar`.
+- Healthchecks pos-deploy (deploy READY as 19:04, alias c2x.app.br):
+  - `https://c2x.app.br`: 200;
+  - `https://c2x.app.br/incorporador/gurgel`: 200, porta com a marca da Gurgel e SEM a logo do Panteon (captura de tela);
+  - `https://c2x.app.br/incorporador/cecilio-rocha`: 200 (portal antigo intacto com a coluna `tipo`);
+  - `/api/incorporador/gurgel/logo?variante=clara|escura`: 200 image/png (33 KB / 36 KB);
+  - `/api/prometeu/eventos` sem cookie: 401 (gate fechado).
+- Logs recentes: `sem erro no build (turbopack); runtime nao inspecionado`.
 - Rollback definido: `promover dpl_Ca7eoFTbzqnUDMzaRZHTnMZC3F6G (f8ac0d5b) na Vercel`. As migrations sao aditivas (coluna com default, tabelas novas, CHECK mais largo): o codigo antigo continua funcionando com elas.
 - Riscos conhecidos: portal comercial ainda sem contas de coordenador (criar no Setup > Comercial e vincular empreendimentos); VOR com 0 unidades segmentadas (VLO1206/1301/1302 em dois filhos); JDG com 19 labels sem unidade e JDG0905 duplicado; rotas jornada/link-fila/mesa/pa/palco/relatorios respondem 401 ao coordenador de proposito.
 - Pendencias: masterplans VDO e GDN (download do C2X; VDO 66 MB exige comprimir a planta) e ACP (tracar); Hercules interno (modulo no hub); tela Setup ainda diz "incorporador" em mensagens de servidor no modo comercial.
