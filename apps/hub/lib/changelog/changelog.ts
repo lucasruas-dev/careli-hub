@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-template-padrao",
+    deployedAt: "2026-09-02T10:20:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "O link do boleto passa a sair sempre pelo Atendimento, com o template aprovado.",
+              "O envio automático ao gerar o boleto também mudou para o Atendimento.",
+              "O botão de enviar pelo Relacionamento saiu da tela.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "cec40f02",
+    technical: {
+      done: "O template `boleto_disponivel` foi aprovado pela Meta em 02/09/2026. Lucas: *\"a mensagem esta ativa no meta, ela e a mensagem padrao, ok, nao utilizar o numero do relacionamento\"*. ⚠️ O ENVIO AUTOMATICO ESTAVA INDO PELO RELACIONAMENTO: `enviarAoEmitir: \"relacionamento\"` estava fixo na tela desde ontem, quando o template ainda nao existia e o 6065 (Evolution) era a UNICA forma de a mensagem chegar. Sem esta troca, os 283 boletos de setembro sairiam com o link vindo do numero errado — e o cliente responderia num canal onde ninguem o espera, porque o Relacionamento fala com imobiliaria e corretor, nao com cliente. Trocados os tres pontos: o automatico da emissao, o botao de reenviar da linha e o botao do painel. O botao \"Enviar pelo Relacionamento\" saiu da tela: dois botoes lado a lado convidavam ao clique errado. ⚠️ O CANAL CONTINUA NO BACKEND de proposito — o historico de ontem gravou disparos com canal \"relacionamento\", e apagar o caminho apagaria a leitura desse historico. Typecheck limpo.",
+      motivation:
+        "Cliente recebe pela central de Atendimento; o Relacionamento é para imobiliária e corretor.",
+    },
+    title: "O link do boleto sai pelo Atendimento, com o template aprovado",
+    type: "novidade",
+    version: "1.255.0",
+  },
+  {
     buildTag: "2026-09-02-grupos-aptos",
     deployedAt: "2026-09-02T10:10:00-03:00",
     modules: [

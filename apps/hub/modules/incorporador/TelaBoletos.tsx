@@ -278,9 +278,14 @@ export function TelaBoletos() {
               competencia,
               confirmar: true,
               empreendimento: slug,
-              // ⚠️ Por enquanto o automático sai pelo Relacionamento: o template ainda não foi
-              // aprovado pela Meta, e o Atendimento devolveria "template não existe" em todos.
-              ...(enviarAoEmitir ? { enviarAoEmitir: "relacionamento" } : {}),
+              // ⚠️ O AUTOMÁTICO SAI PELO ATENDIMENTO. O template `boleto_disponivel` foi aprovado
+              // pela Meta em 02/09/2026 e virou a mensagem padrão. Decisão do Lucas no mesmo dia:
+              // *"a mensagem está ativa no meta, ela é a mensagem padrão, ok, não utilizar o número
+              // do relacionamento"*. Enquanto o template não existia, o automático saía pelo
+              // Relacionamento (6065, via Evolution, que dispensa template) — era a única forma de
+              // a mensagem chegar, e agora é justamente a que não deve ser usada: cliente recebe
+              // pelo Atendimento, que é a central dele.
+              ...(enviarAoEmitir ? { enviarAoEmitir: "template" } : {}),
               ...(unidades && unidades.length > 0 ? { unidades } : {}),
             }),
             headers: { "Content-Type": "application/json" },
@@ -1493,7 +1498,7 @@ function PainelDoBoleto({
             onClick={() =>
               void acaoNaUnidade(boleto.empreendimento, boleto.unidade, {
                 acao: "enviar",
-                canal: "relacionamento",
+                canal: "template",
                 confirmar: true,
               })
             }
@@ -1754,25 +1759,14 @@ function PainelDeEnvio({
             Enviar pelo Atendimento
           </button>
 
-          <button
-            disabled={enviando}
-            onClick={() => aoEnviar("relacionamento")}
-            style={{
-              alignItems: "center",
-              background: "transparent",
-              border: `1px solid ${T.border}`,
-              borderRadius: 8,
-              color: T.text,
-              cursor: enviando ? "default" : "pointer",
-              display: "inline-flex",
-              fontSize: 14,
-              gap: 6,
-              padding: "9px 16px",
-            }}
-            type="button"
-          >
-            Enviar pelo Relacionamento
-          </button>
+          {/* ⚠️ O BOTÃO DO RELACIONAMENTO SAIU. Ele existia porque o template ainda não estava
+              aprovado e o 6065 (Evolution) era a única forma de a mensagem chegar. Aprovado o
+              `boleto_disponivel`, decisão do Lucas (02/09/2026): *"não utilizar o número do
+              relacionamento"*. Cliente recebe pelo Atendimento, que é a central dele — o
+              Relacionamento fala com imobiliária e corretor. Deixar os dois botões lado a lado
+              convidava ao clique errado, e o cliente responderia num número onde ninguém o espera.
+              O canal continua no backend: o histórico já gravado mostra "Relacionamento" nos
+              disparos de ontem, e apagar o caminho apagaria a leitura desse histórico. */}
 
           <span style={{ alignSelf: "center", color: T.sub, fontSize: 12.5 }}>
             O Relacionamento dispensa template aprovado. Use enquanto a Meta não libera.
