@@ -438,20 +438,24 @@ function desenharFicha(ctx: Ctx, relatorio: ExtratoClienteRelatorio): void {
 
   campoLargo(ctx, contrato.titulares.length > 1 ? "Titulares" : "Titular", titulares);
 
-  const campos: Array<[string, string]> = [
-    ["Contrato / unidade", contrato.codigo],
-    ["Data do ato", dataBr(contrato.dataAto)],
-    ["Plano", descricaoDoPlano(contrato)],
+  // ⚠️ AS COLUNAS TÊM LARGURAS DIFERENTES, e não a mesma. Com o quarto para cada uma, o plano saía
+  // cortado — "60x - IPCA ANUAL - juros 8..." — justamente depois de ganhar a informação que
+  // faltava. Uma data ocupa dez caracteres e o plano ocupa trinta e cinco: dividir igual é o que
+  // fez o campo mais informativo ser o único a não caber.
+  const campos: Array<[string, string, number]> = [
+    ["Contrato / unidade", contrato.codigo, 0.2],
+    ["Data do ato", dataBr(contrato.dataAto), 0.15],
+    ["Plano", descricaoDoPlano(contrato), 0.42],
     // Vocabulário do comprador, não o estágio interno da venda ("Faturado", "Em assinatura").
-    ["Situação", situacaoParaOComprador(contrato)],
+    ["Situação", situacaoParaOComprador(contrato), 0.23],
   ];
 
-  const colW = USABLE / campos.length;
   garantirEspaco(ctx, 24);
   const topo = ctx.y;
 
-  campos.forEach(([rotulo, valor], indice) => {
-    const x = MARGIN + indice * colW;
+  let x = MARGIN;
+  for (const [rotulo, valor, peso] of campos) {
+    const colW = USABLE * peso;
     escrever(ctx, rotulo.toUpperCase(), { color: MUTE, font: ctx.bold, size: 5.8, x, y: topo });
     escrever(ctx, encurtar(valor || "-", ctx.bold, 8.5, colW - 8), {
       color: TEXT,
@@ -460,7 +464,8 @@ function desenharFicha(ctx: Ctx, relatorio: ExtratoClienteRelatorio): void {
       x,
       y: topo - 11,
     });
-  });
+    x += colW;
+  }
 
   ctx.y = topo - 22;
 
