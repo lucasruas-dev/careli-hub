@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import { ETAPAS_DO_FLUXO } from "@/lib/hercules/fluxo-de-venda";
 import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
 import type { EventoDaUnidade } from "@/lib/hercules/historico-da-unidade";
 
@@ -322,6 +323,26 @@ function hora(iso: null | string): string {
   const m = /[T ](\d{2}):(\d{2})/.exec(String(iso ?? ""));
   return m ? `${m[1]}:${m[2]}` : "";
 }
+
+/**
+ * Como a proposta que caiu se chama.
+ *
+ * Sumiu junto com o painel antigo e voltou porque a ficha de um lote livre precisa dizer o que
+ * aconteceu com a última — "cancelada", não "cancelado", porque o sujeito é a proposta.
+ */
+const ROTULO_TERMINAL: Record<string, string> = {
+  cancelado: "Cancelada",
+  distrato: "Distratada",
+};
+
+/**
+ * A proposta está no caminho, ou já saiu dele?
+ *
+ * A lista das etapas vivas vem do núcleo (`ETAPAS_DO_FLUXO`), e não repetida aqui: é a mesma régua
+ * que decide a cor do lote na grade e o que entra na faixa. Duplicá-la seria criar um segundo lugar
+ * para alguém esquecer de mexer.
+ */
+const ehEtapaViva = (etapa: string) => (ETAPAS_DO_FLUXO as readonly string[]).includes(etapa);
 
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const mesCurto = (mes: string) => {
@@ -858,12 +879,22 @@ function Mesa({
   // O que o painel mostra. Vindo do mapa, a proposta é achada pelo id da unidade — a mais recente,
   // porque a lista já chega ordenada por `etapa_desde` decrescente.
   const unidadeEmFoco = foco?.tipo === "unidade" ? foco.unidade : null;
+  // ⚠️ SÓ A PROPOSTA VIVA VIRA A FICHA DA UNIDADE. O Lucas pegou isto olhando o VOC 06 07: o lote
+  // aparecia "Disponível" e a ficha mostrava cliente, imobiliária, plano e "Data do cancelamento" —
+  // eu casava pelo id da unidade sem olhar a etapa, e pegava a proposta CANCELADA como se fosse a
+  // atual. Num lote livre isso é pior do que não mostrar nada: sugere que o lote tem dono.
+  const propostasDaUnidade = unidadeEmFoco
+    ? (dados?.lista ?? []).filter((l) => l.unidadeId === unidadeEmFoco.id)
+    : [];
   const propostaEmFoco =
     foco?.tipo === "proposta"
       ? foco.proposta
-      : unidadeEmFoco
-        ? ((dados?.lista ?? []).find((l) => l.unidadeId === unidadeEmFoco.id) ?? null)
-        : null;
+      : (propostasDaUnidade.find((l) => ehEtapaViva(l.etapa)) ?? null);
+
+  // A última que caiu, quando não há viva: o lote está livre, mas já teve história — e o coordenador
+  // que vai oferecê-lo merece saber disso antes de ligar para o cliente.
+  const ultimaQueCaiu =
+    propostaEmFoco || !unidadeEmFoco ? null : (propostasDaUnidade[0] ?? null);
   const idEmFoco = unidadeEmFoco?.id ?? propostaEmFoco?.unidadeId ?? null;
 
   return (
@@ -1284,11 +1315,21 @@ function Mesa({
                   <Linha rotulo="Plano" valor={propostaEmFoco.plano ?? "—"} />
                 </>
               ) : (
-                // ⚠️ SEM PROPOSTA NÃO É ERRO: é lote livre, e o simulador abaixo já vem com o preço
-                // dele. É o caminho normal de uma venda que vai começar.
-                <p style={{ color: T.muted, fontSize: 12.5, margin: "8px 0 0" }}>
-                  Nenhuma proposta nesta unidade. O simulador abaixo já está com o valor de tabela.
-                </p>
+                // ⚠️ SEM PROPOSTA VIVA NÃO É ERRO: é lote livre, e é o começo normal de uma venda.
+                // Mas se ele JÁ TEVE proposta, isso é dito — em uma linha, sem os dados do cliente
+                // antigo, que não têm por que aparecer na ficha de um lote que está à venda.
+                <>
+                  <p style={{ color: T.muted, fontSize: 12.5, margin: "8px 0 0" }}>
+                    Nenhuma proposta em andamento nesta unidade.
+                  </p>
+                  {ultimaQueCaiu ? (
+                    <p style={{ color: T.muted, fontSize: 11.5, margin: "6px 0 0" }}>
+                      A última{" "}
+                      {ROTULO_TERMINAL[ultimaQueCaiu.etapa]?.toLowerCase() ?? "encerrada"} em{" "}
+                      {dia(ultimaQueCaiu.desde)}. O histórico abaixo conta o resto.
+                    </p>
+                  ) : null}
+                </>
               )}
             </>
           ) : (
