@@ -5533,3 +5533,41 @@ Registro de producao:
 - Status: `EM PRODUCAO`.
 - Proxima acao: `Zeus seguir com Produtos (replica do Apolo) e /comercial/<slug>`.
 
+## 2026-09-02 - Hercules: Produtos como no Apolo, ficha do produto e Parcelas com boleto (v1.271.0) - EM PRODUCAO
+
+Registro de producao:
+
+- Assunto: `[Hercules/Zeus] Produtos = replica da tela de Empreendimentos do Apolo; ficha do produto; Financeiro = Parcelas com boleto; /comercial/<slug>`.
+- Squad/agente responsavel: `Zeus (autorizado pelo Lucas: "pode seguir com o push")`.
+- Data e hora local: `2026-09-02 21:20:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `workflow wf_8bee8463-e29 (5 frentes + revisao adversarial + build + fixer) e agente do modo coordenador da carteira; direcao do Lucas ao vivo em 02/09`.
+- Escopo publicado:
+  - aba Produtos do portal comercial = EmpreendimentosScreen do Apolo (prop nova renderDetail) alimentada por /api/incorporador/produtos/painel, agrupada pelo cadastro pai/filhos;
+  - ficha do produto (FichaDoProduto): Resumo (faixa do processo + ResumoTab), Cadastro (BoardView com api/semToken e rotas /api/incorporador/board/**; etapa restrita a validacao/credito/correcao/revisao; habilitar dentro do recorte cru), Imobiliarias (visao processual), Vendas (TelaVendas empFixo), Contratos;
+  - Financeiro do coordenador = Parcelas: Ato e Sinal, valor cheio, boleto por parcela (abrir/copiar/WhatsApp), link liberado so quando sessao.tipo === 'comercial';
+  - pagina /comercial/[slug] (404 para tipo incorporador), redirect de /incorporador/<slug> comercial, Setup mostra o caminho por tipo; porta centralizada; icones na lateral.
+- Commit publicado: `8d42189c`.
+- Deployment anterior: `dpl_CR74ZqaMyv2CizQepAu8Epzi9DQk` (d59381d0).
+- Deployment novo: `dpl_DLphLPERteQjud7SuDtThMCvEB4F`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: READY, alias aplicado.
+- Arquivos/modulos incluidos: 55 arquivos (lib/apolo/board-do-servidor.ts extraido da rota do board; lib/apolo/incorporador/{board-do-portal,codigos-do-pedido,painel-de-produtos,painel-para-apolo,imobiliarias-do-produto,resumo-do-produto}.ts; lib/hercules/{cadastro,expandir-id-do-painel}.ts; rotas /api/incorporador/{board/**,produto/imobiliarias,produto/resumo,produtos/painel,contratos,vendas,carteira}; modules/incorporador/hercules/*; TelaCarteira, TelaVendas, TelaContratos, PortalIncorporador; empreendimentos-view.tsx e board-view.tsx do Apolo com props opcionais; app/comercial/[slug]; changelog 1.271.0).
+- Arquivos/modulos excluidos: `packages/database/migrations/0125_hercules_reservas.sql` (rascunho, nao aplicado), avulsos do worktree (.tmpc2x/.tmpr/.tmpxl, csv, public/_folhas-teste.html).
+- Validacoes executadas:
+  - revisao adversarial: 10 achados (2 altos: etapa livre no board do portal; typecheck quebrado na carteira), todos fechados antes do push;
+  - `check-types` exit 0; `vitest` 172 arquivos / 2.243 testes verdes.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: 200;
+  - `https://c2x.app.br/comercial/gurgel`: 200;
+  - `https://c2x.app.br/incorporador/gurgel`: 307 -> /comercial/gurgel;
+  - `https://c2x.app.br/incorporador/cecilio-rocha`: 200;
+  - `/api/incorporador/produtos/painel`, `/api/incorporador/board`, `/api/incorporador/produto/resumo`, `/api/incorporador/carteira` sem cookie: 401.
+- Logs recentes: `build sem erro (turbopack); runtime nao inspecionado`.
+- Rollback definido: `promover dpl_CR74ZqaMyv2CizQepAu8Epzi9DQk (d59381d0)`. Sem migration nova neste lote.
+- Riscos conhecidos: telas novas validadas por typecheck/testes e revisao, NAO por navegador (Lucas valida visualmente); pessoa com CAD em dois produtos aparece so no recorte da esteira mais recente dentro do recorte; TelaProdutosComercial.tsx ficou no repo sem uso.
+- Pendencias: validacao visual do Lucas em /comercial/gurgel (Produtos > Ver mais > cinco abas; Financeiro > WhatsApp do boleto); acoes de reservar/proposta/encaminhar para contrato (proxima etapa: migration 0125 + fluxo); ACP sem masterplan; apagar TelaProdutosComercial.tsx no proximo lote.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas validar; Zeus seguir para reserva -> proposta -> contrato`.
+
