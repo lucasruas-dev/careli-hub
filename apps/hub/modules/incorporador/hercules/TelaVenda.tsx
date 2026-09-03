@@ -503,7 +503,7 @@ function Mesa({
                   <Pilula
                     ativo={modo === "mapa"}
                     onClick={() => aoTrocarModo("mapa")}
-                    rotulo="Mapa"
+                    rotulo="Espelho"
                   />
                 </div>
               ) : null}
@@ -516,7 +516,7 @@ function Mesa({
               para zero e o mapa "não aparece". */}
           {modo === "mapa" && mapaDoProduto?.masterplanInterno ? (
             <iframe
-              src={`/api/incorporador/masterplan?code=${encodeURIComponent(mapaDoProduto.masterplanInterno)}&tema=${efetivo}`}
+              src={`/api/incorporador/masterplan?code=${encodeURIComponent(mapaDoProduto.masterplanInterno)}&tema=${efetivo}&so=espelho`}
               style={{
                 background: T.soft,
                 border: `1px solid ${T.border}`,
@@ -525,7 +525,7 @@ function Mesa({
                 height: "min(72vh, 720px)",
                 width: "100%",
               }}
-              title={`Masterplan · ${mapaDoProduto.nome}`}
+              title={`Espelho · ${mapaDoProduto.nome}`}
             />
           ) : (
             <>

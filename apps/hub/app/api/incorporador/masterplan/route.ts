@@ -12,6 +12,10 @@ import { sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
 import { deveClarearMasterplan } from "@/lib/apolo/incorporador/tema-portal";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import { comTemaClaro } from "@/lib/apolo/masterplan-tema-claro";
+import {
+  pediuSoOEspelho,
+  soOEspelho,
+} from "@/lib/apolo/incorporador/masterplan-so-espelho";
 
 // O MASTERPLAN INTERNO, servido para quem tem sessão.
 //
@@ -196,7 +200,13 @@ export async function GET(request: Request) {
   //
   // ⚠️ SEM PARÂMETRO CONTINUA CLAREANDO: é o que chega do portal PERSONALIZADO (Cecílio, que não
   // tem alternador) e de qualquer link salvo. O comportamento de hoje segue sendo o padrão.
-  const corpo = comCaminhoAbsoluto(recorte.html);
+  const bruto = comCaminhoAbsoluto(recorte.html);
+
+  // ⚠️ `so=espelho` É SÓ APRESENTAÇÃO, e vem DEPOIS de tudo o que decide o que a pessoa pode ver.
+  // Sessão, tradução do código, lotes permitidos e recorte fail-closed já aconteceram acima: este
+  // parâmetro esconde a casca da tela para o quadro embutido da Venda, e nada mais. Chutar
+  // `so=espelho` na URL não revela um lote a mais.
+  const corpo = pediuSoOEspelho(parametros.get("so")) ? soOEspelho(bruto) : bruto;
 
   return new NextResponse(deveClarearMasterplan(parametros.get("tema")) ? comTemaClaro(corpo) : corpo, {
     headers: {
