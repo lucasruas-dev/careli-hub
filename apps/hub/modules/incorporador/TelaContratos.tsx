@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import { fonte } from "@/modules/publico/ui/tokens";
 import { TemisKanban } from "@/modules/temis/blocks/board/temis-kanban";
@@ -97,14 +97,20 @@ export const MOLDURA_TAILWIND = {
   fontFamily: fonte,
 } as CSSProperties;
 
-/** As sub-abas da tela, na ordem do pedido: Board · Resumo · Assinatura. */
+// ⚠️ RESUMO PRIMEIRO, E É ELE QUE ABRE (Lucas, 03/09/2026: *"trocar a ordem, resumo vir primeiro
+// que board"*). Quem abre Contratos quer primeiro saber COMO ESTÁ — os totais numa olhada — e só
+// então descer ao card a card do Board. A ordem da barra é a ordem da pergunta.
+/** As sub-abas da tela: Resumo · Board · Assinatura. */
 type SubAba = "assinatura" | "board" | "resumo";
 
 const SUB_ABAS: ReadonlyArray<{ id: SubAba; rotulo: string }> = [
-  { id: "board", rotulo: "Board" },
   { id: "resumo", rotulo: "Resumo" },
+  { id: "board", rotulo: "Board" },
   { id: "assinatura", rotulo: "Assinatura" },
 ];
+
+/** O que o filtro precisa saber de cada produto: o id que as três visões entendem, e o nome. */
+type ProdutoDoFiltro = { id: string; nome: string };
 
 export function TelaContratos({
   emp,
@@ -117,8 +123,33 @@ export function TelaContratos({
 } = {}) {
   // O tema efetivo (já resolvido o "seguir o aparelho") vira o atributo que os `dark:` leem.
   const { efetivo } = useTemaDoPortal();
-  // Abre no Board: é o que a tela sempre foi, e é onde o Lucas apontou o kanban da Têmis.
-  const [subAba, setSubAba] = useState<SubAba>("board");
+  // Abre no Resumo: é a primeira pergunta de quem chega em Contratos.
+  const [subAba, setSubAba] = useState<SubAba>("resumo");
+
+  // ⚠️ O FILTRO SÓ EXISTE NA ABA DO MENU. Dentro da ficha o produto já está escolhido (`emp`), e um
+  // seletor ali deixaria a ficha do Jardim das Gerais mostrar contrato do Vale do Ouro.
+  const [produtos, setProdutos] = useState<ProdutoDoFiltro[]>([]);
+  const [escolhido, setEscolhido] = useState<string>("");
+  const alvo = emp ?? (escolhido || undefined);
+
+  useEffect(() => {
+    if (emp) return;
+    let vivo = true;
+    void (async () => {
+      try {
+        const r = await fetch("/api/incorporador/produtos/painel", { cache: "no-store" });
+        if (!r.ok) return;
+        const j = (await r.json()) as { data?: { linhas?: ProdutoDoFiltro[] } };
+        // Sem produtos o seletor não aparece: um filtro com uma opção só é ruído.
+        if (vivo) setProdutos((j.data?.linhas ?? []).map((l) => ({ id: l.id, nome: l.nome })));
+      } catch {
+        // O filtro é conforto: se a lista não vier, a tela continua mostrando tudo.
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [emp]);
   // UM cache para Resumo e Assinatura: as duas leem o MESMO payload
   // (/api/incorporador/vendas/assinaturas, 2 consultas no C2X mais a conferência das
   // assinaturas), guardado por recorte. Trocar de sub-aba — ou ir ao Board e voltar — não refaz
@@ -141,8 +172,10 @@ export function TelaContratos({
         </header>
       )}
 
-      {/* ── AS TRÊS SUB-ABAS: os chips das visões da TelaVendas ──────────────── */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      {/* ── AS TRÊS SUB-ABAS + O FILTRO POR EMPREENDIMENTO ───────────────────── */}
+      {/* O filtro fica na MESMA linha das sub-abas, empurrado para a direita: ele vale para as
+          três visões ao mesmo tempo, e não é propriedade de nenhuma delas. */}
+      <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
         {SUB_ABAS.map((item) => (
           <Pilula
             ativo={subAba === item.id}
@@ -151,6 +184,32 @@ export function TelaContratos({
             rotulo={item.rotulo}
           />
         ))}
+
+        {!emp && produtos.length > 1 ? (
+          <select
+            aria-label="Filtrar por empreendimento"
+            onChange={(e) => setEscolhido(e.target.value)}
+            style={{
+              background: T.card,
+              border: `1px solid ${T.border}`,
+              borderRadius: 999,
+              color: T.text,
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 600,
+              marginLeft: "auto",
+              padding: "7px 12px",
+            }}
+            value={escolhido}
+          >
+            <option value="">Todos os empreendimentos</option>
+            {produtos.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+        ) : null}
       </div>
 
       {subAba === "board" ? (
@@ -171,16 +230,16 @@ export function TelaContratos({
               rota só aceita o id DENTRO do que já é da sessão — inclusive "pai:<uuid>", que ela
               expande pelo cadastro. O recorte é do servidor, não daqui. */}
           <TemisKanban
-            enterpriseId={emp ?? null}
+            enterpriseId={alvo ?? null}
             rota="/api/incorporador/contratos"
             semToken
             somenteLeitura
           />
         </section>
       ) : subAba === "resumo" ? (
-        <ResumoDeContratos cache={cache.current} emp={emp} />
+        <ResumoDeContratos cache={cache.current} emp={alvo} />
       ) : (
-        <AssinaturasDoProduto cache={cache.current} emp={emp} />
+        <AssinaturasDoProduto cache={cache.current} emp={alvo} />
       )}
     </div>
   );

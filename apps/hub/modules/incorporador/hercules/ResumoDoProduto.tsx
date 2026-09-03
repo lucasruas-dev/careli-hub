@@ -46,7 +46,7 @@ import { useTemaDoPortal } from "../tema";
 /** O dourado da casa. Só ele fica em hex: azul e verde já são utilitários do hub. */
 const DOURADO = "#A07C3B";
 
-type Aba = "cadastro" | "contratos" | "imobiliarias" | "vendas";
+type Aba = "cadastro" | "imobiliarias" | "unidades" | null;
 
 /** A fase de cada bloco, que dá a cor da borda esquerda. */
 type Fase = "cadastro" | "quemVende" | "venda";
@@ -105,7 +105,7 @@ function blocosDaFaixa(processo: DadosDoResumo["processo"]): Bloco[] {
       subtexto: "prontos para reservar",
     },
     {
-      aba: "vendas",
+      aba: "unidades",
       fase: "venda",
       icone: Bookmark,
       numero: processo.reservas,
@@ -113,7 +113,7 @@ function blocosDaFaixa(processo: DadosDoResumo["processo"]): Bloco[] {
       subtexto: "unidades reservadas",
     },
     {
-      aba: "vendas",
+      aba: "unidades",
       fase: "venda",
       icone: FileText,
       numero: processo.propostas,
@@ -121,7 +121,10 @@ function blocosDaFaixa(processo: DadosDoResumo["processo"]): Bloco[] {
       subtexto: "em análise ou emitidas",
     },
     {
-      aba: "contratos",
+      // ⚠️ SEM DESTINO DE PROPÓSITO: a aba Contratos saiu da ficha (03/09/2026), e o Board da
+      // Têmis vive na tela Contratos do menu. O número continua aqui porque é parte do processo;
+      // o que não existe mais é o salto — `null` deixa o bloco sem clique.
+      aba: null,
       fase: "venda",
       icone: FileSignature,
       numero: processo.emContrato + processo.emAssinatura,
@@ -129,7 +132,7 @@ function blocosDaFaixa(processo: DadosDoResumo["processo"]): Bloco[] {
       subtexto: `${processo.emContrato} gerados · ${processo.emAssinatura} em assinatura`,
     },
     {
-      aba: "vendas",
+      aba: "unidades",
       fase: "venda",
       icone: BadgeDollarSign,
       numero: processo.vendidas,
@@ -150,7 +153,8 @@ export function ResumoDoProduto({
   row,
 }: {
   emp: string;
-  onIr: (aba: Aba) => void;
+  /** Para onde cada bloco da faixa leva. `null` (sem destino) nunca chega aqui. */
+  onIr: (aba: Exclude<Aba, null>) => void;
   row: ApoloEnterpriseRow;
 }) {
   const { efetivo } = useTemaDoPortal();
@@ -230,19 +234,30 @@ export function ResumoDoProduto({
 
 // ── A faixa ─────────────────────────────────────────────────────────────────
 
-function FaixaDoProcesso({ blocos, onIr }: { blocos: Bloco[]; onIr: (aba: Aba) => void }) {
+function FaixaDoProcesso({
+  blocos,
+  onIr,
+}: {
+  blocos: Bloco[];
+  onIr: (aba: Exclude<Aba, null>) => void;
+}) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
       {blocos.map((bloco) => {
         const Icone = bloco.icone;
+        // ⚠️ SEM DESTINO, SEM BOTÃO. "Em contrato" perdeu a aba para onde levava (a ficha não tem
+        // mais Contratos): mantê-lo como <button> daria um cartão que responde ao hover, ao clique
+        // e ao teclado sem fazer nada — pior do que um número que não promete nada.
+        const destino = bloco.aba;
+        const Caixa = destino ? "button" : "div";
         return (
-          <button
-            className={`group rounded-xl border border-line border-l-4 bg-surface p-3 text-left transition hover:bg-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${BORDA_DA_FASE[bloco.fase]}`}
+          <Caixa
+            className={`group rounded-xl border border-line border-l-4 bg-surface p-3 text-left ${destino ? "transition hover:bg-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" : ""} ${BORDA_DA_FASE[bloco.fase]}`}
             key={bloco.rotulo}
-            onClick={() => onIr(bloco.aba)}
+            onClick={destino ? () => onIr(destino) : undefined}
             style={bloco.fase === "quemVende" ? { borderLeftColor: DOURADO } : undefined}
-            title={`Abrir ${bloco.rotulo.toLowerCase()}`}
-            type="button"
+            title={destino ? `Abrir ${bloco.rotulo.toLowerCase()}` : bloco.subtexto}
+            type={destino ? "button" : undefined}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
@@ -256,7 +271,7 @@ function FaixaDoProcesso({ blocos, onIr }: { blocos: Bloco[]; onIr: (aba: Aba) =
             <p className="m-0 mt-1.5 truncate text-[11px] text-ink-soft" title={bloco.subtexto}>
               {bloco.subtexto}
             </p>
-          </button>
+          </Caixa>
         );
       })}
     </div>

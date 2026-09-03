@@ -1,14 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  ArrowLeft,
-  ContactRound,
-  FileSignature,
-  Layers,
-  Network,
-  TrendingUp,
-} from "lucide-react";
+import { ArrowLeft, ContactRound, Grid2x2, Layers, Network } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import type { ApoloEnterpriseRow } from "@/lib/apolo/empreendimentos";
@@ -21,12 +14,12 @@ import {
   locationLabel,
 } from "@/modules/apolo/blocks/empreendimentos/empreendimentos-view";
 
-import { MOLDURA_TAILWIND, TelaContratos } from "../TelaContratos";
-import { TelaVendas } from "../TelaVendas";
+import { MOLDURA_TAILWIND } from "../TelaContratos";
 import { useTemaDoPortal } from "../tema";
 import { BoardDoProduto } from "./BoardDoProduto";
 import { ImobiliariasDoProduto } from "./ImobiliariasDoProduto";
 import { ResumoDoProduto } from "./ResumoDoProduto";
+import { UnidadesDoProduto } from "./UnidadesDoProduto";
 
 // A FICHA DO PRODUTO NO HÉRCULES — a ficha de Empreendimento do Apolo, vista pelo coordenador.
 //
@@ -46,8 +39,9 @@ import { ResumoDoProduto } from "./ResumoDoProduto";
 //     BoardView do Apolo recortado para o produto, com as ações do coordenador;
 //   • Imobiliárias — *"deixa imobiliárias separado para a gente visualizar as imobiliárias
 //     habilitadas, com os corretores com os clientes"*: a visão processual das CADs;
-//   • Vendas — a TelaVendas fixa no produto (pipeline, Unidades e Mapa moram dentro dela);
-//   • Contratos — o board da Têmis (somente leitura) recortado para o produto.
+//   • Unidades — a tabela de unidades do Apolo, montada pela porta do portal (03/09/2026: era
+//     "Vendas", com pipeline e mapa dentro; virou só a lista, e o cenario comercial passou para a
+//     tela Venda, que e onde o coordenador trabalha).
 //
 // ⚠️ O ID QUE SOBE PARA AS ABAS É `linha.id`, o que a rota do painel devolveu: "pai:<uuid>" do
 // cadastro do Panteon ou o id do C2X de uma linha simples. Cada rota (vendas, contratos, board,
@@ -64,8 +58,19 @@ import { ResumoDoProduto } from "./ResumoDoProduto";
 // teve. Fica AQUI também (e não só no ProdutosDoHercules) para a ficha funcionar montada em
 // qualquer lugar.
 
-/** As abas da ficha. O Resumo salta para as outras quatro pelo `onIr`. */
-export type AbaDaFicha = "cadastro" | "contratos" | "imobiliarias" | "resumo" | "vendas";
+// ⚠️ A FICHA TEM QUATRO ABAS, E DUAS SAÍRAM DELA EM 03/09/2026. Pedido do Lucas:
+//
+//   • *"onde está vendas hoje dentro do produto vamos nomeá-la como unidade e deixar somente a
+//     tela de unidade, resumo, pipeline, tudo some fica somente unidades"*. A ficha responde "o
+//     que este produto TEM"; o cenário comercial (resumo, pipeline, mapa) vai para a tela Venda,
+//     que é onde o coordenador trabalha. Dois lugares mostrando o mesmo pipeline é a mesma
+//     pergunta com duas respostas que podem divergir.
+//
+//   • *"contrato tem que sair daqui, ele já tem a tela dele"*. A aba Contratos do menu mostra o
+//     mesmo Board da Têmis com o mesmo recorte — e agora com filtro por empreendimento, que é o
+//     que a aba da ficha entregava a mais.
+/** As abas da ficha. O Resumo salta para as outras três pelo `onIr`. */
+export type AbaDaFicha = "cadastro" | "imobiliarias" | "resumo" | "unidades";
 
 // Ícones na régua do Apolo: Resumo e Cadastro são os MESMOS da ficha interna (Layers e
 // ContactRound); Imobiliárias usa o de Relacionamentos (Network), que é o que elas são para o
@@ -74,8 +79,7 @@ const ABAS: ReadonlyArray<{ icone: LucideIcon; id: AbaDaFicha; rotulo: string }>
   { icone: Layers, id: "resumo", rotulo: "Resumo" },
   { icone: ContactRound, id: "cadastro", rotulo: "Cadastro" },
   { icone: Network, id: "imobiliarias", rotulo: "Imobiliárias" },
-  { icone: TrendingUp, id: "vendas", rotulo: "Vendas" },
-  { icone: FileSignature, id: "contratos", rotulo: "Contratos" },
+  { icone: Grid2x2, id: "unidades", rotulo: "Unidades" },
 ];
 
 export function FichaDoProduto({
@@ -159,14 +163,13 @@ export function FichaDoProduto({
       </nav>
 
       {/* O corpo por aba. Cada aba recebe `linha.id` e resolve o escopo na SUA rota.
-          ⚠️ EM VENDAS A SECTION É FLEX-COL (e segue `overflow-auto`): é o que deixa a TelaVendas,
-          na sub-aba Unidades, ocupar a section inteira e a tabela rolar por dentro com o thead
-          grudado — o mesmo que o EnterpriseDetail faz na aba Unidades, só que sem `overflow-hidden`,
-          porque Resumo, Pipeline e Mapa da Vendas continuam rolando por fora (flex item sem
-          `flex-1` fica com a altura do conteúdo e transborda a section, que rola). */}
+          ⚠️ EM UNIDADES A SECTION É FLEX-COL (e segue `overflow-auto`): é o que deixa a tabela
+          ocupar a section inteira e rolar por dentro com o thead grudado — o mesmo que o
+          EnterpriseDetail faz na aba Unidades, só que sem `overflow-hidden`. Nas outras abas o
+          conteúdo rola por fora. */}
       <section
         className={
-          aba === "vendas"
+          aba === "unidades"
             ? "flex min-h-0 flex-1 flex-col overflow-auto"
             : "min-h-0 flex-1 overflow-auto"
         }
@@ -176,13 +179,9 @@ export function FichaDoProduto({
         ) : null}
         {aba === "cadastro" ? <BoardDoProduto emp={linha.id} /> : null}
         {aba === "imobiliarias" ? <ImobiliariasDoProduto emp={linha.id} /> : null}
-        {/* `onVoltar` vai junto (redundante com a seta do cabeçalho, mas VIVO): com `empFixo` a
-            TelaVendas sempre desenha "Voltar para Produtos" acima do nome, e sem o handler o
-            botão aparecia e não fazia nada. Pipeline, Unidades e Mapa moram dentro dela. */}
-        {aba === "vendas" ? (
-          <TelaVendas empFixo={linha.id} nomeFixo={linha.nome} onVoltar={onVoltar} rowFixo={row} />
-        ) : null}
-        {aba === "contratos" ? <TelaContratos emp={linha.id} /> : null}
+        {/* A tabela de unidades do Apolo, montada pela porta do portal. É a MESMA peça que morava
+            dentro da Vendas — só perdeu as sub-abas em volta. */}
+        {aba === "unidades" ? <UnidadesDoProduto emp={linha.id} row={row} /> : null}
       </section>
     </div>
   );

@@ -36,6 +36,41 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-03-hercules-ficha-enxuta",
+    deployedAt: "2026-09-03T09:40:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "Resumo agora é a primeira aba, e é ela que abre.",
+              "Filtro por empreendimento no alto da tela: vale para o Resumo, o Board e a Assinatura ao mesmo tempo.",
+            ],
+            screen: "Contratos",
+          },
+          {
+            items: [
+              "A aba Vendas do produto virou Unidades, com a lista de unidades e mais nada em volta.",
+              "A aba Contratos saiu da ficha: o Board da Têmis é a tela Contratos do menu, agora com filtro por empreendimento.",
+              "Produtos ganhou ícone de loteamento no lugar do prédio.",
+            ],
+            screen: "Produtos",
+          },
+        ],
+      },
+    ],
+    rollback: "96178e46",
+    technical: {
+      done: "Pedidos do Lucas em 03/09/2026, olhando o /comercial/gurgel: *\"aqui temos que ter a opcao de filtrar por empreendimento\"*, *\"trocar a ordem, resumo vir primeiro que board\"*, *\"queria um icone que referenciasse loteamento\"*, *\"contrato tem que sai daqui ele ja tem a tela dele\"* e *\"onde esta vendas hoje dentro do produto vamos nomeala como unidade e deixar somente a tela de unidade, resumo, pipeline, tudo some fica somente unidades\"*. A ficha passou de cinco abas para QUATRO (Resumo · Cadastro · Imobiliarias · Unidades): a `TelaVendas` e a `TelaContratos` sairam de dentro dela, e a aba Unidades monta a `UnidadesDoProduto` direto — a mesma `UnidadesTab` do Apolo pela porta do portal. ⚠️ A FAIXA DO PROCESSO DO RESUMO PERDEU UM DESTINO: os blocos de reservas, propostas e vendidas passaram a levar para Unidades, e \"Em contrato\" ficou SEM salto — e sem virar botao, porque botao que nao faz nada responde a hover, clique e teclado prometendo o que nao cumpre. O filtro da tela Contratos le /api/incorporador/produtos/painel (a mesma lista da aba Produtos) e alimenta as tres visoes pelo MESMO estado: o Board recebe `enterpriseId`, Resumo e Assinatura recebem `emp`, e o recorte continua sendo conferido no servidor. So aparece na aba do MENU e com mais de um produto — dentro da ficha o produto ja esta escolhido, e um seletor ali deixaria a ficha de um empreendimento mostrar contrato de outro. `LandPlot` no lugar de `Building2`. O cenario comercial (pipeline, mapa, indicadores) nao foi jogado fora: vai para a tela Venda, com mockup aprovado a parte. Typecheck limpo; lint limpo.",
+      motivation:
+        "A ficha do produto responde o que aquele produto TEM; o cenário comercial e o contrato têm tela própria, e a mesma pergunta em dois lugares vira duas respostas que divergem.",
+    },
+    title: "Hércules: a ficha do produto ficou enxuta, e Contratos ganhou filtro",
+    type: "melhoria",
+    version: "1.274.0",
+  },
+  {
     buildTag: "2026-09-03-boletos-lote-em-blocos",
     deployedAt: "2026-09-03T08:15:00-03:00",
     modules: [

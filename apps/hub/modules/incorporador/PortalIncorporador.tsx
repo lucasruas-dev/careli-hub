@@ -33,16 +33,18 @@ import { TelaLancamento } from "./TelaLancamento";
 import { ProdutosDoHercules } from "./hercules/ProdutosDoHercules";
 import { TelaVendas } from "./TelaVendas";
 // Os ícones do menu do COMERCIAL (Lucas, 02/09/2026), na régua do Apolo/hub: CRM = o do CRM 360
-// (ContactRound), Produtos = o de Empreendimentos (Building2) — os dois de lib/apolo/catalog.ts —,
+// (ContactRound), Produtos = LandPlot, o desenho de um terreno demarcado (Lucas, 03/09/2026:
+// *"queria um icone que referenciasse loteamento"* — Building2 é prédio, e o que a Gurgel vende é
+// lote),
 // Contratos = o da Têmis (FileSignature), Financeiro = o de Carteira (WalletCards), Lançamento = o
 // do Prometeu (ListOrdered).
 //
 // E os da LATERAL RECOLHÍVEL do comercial (Lucas, 02/09/2026): PanelLeftClose/PanelLeftOpen no
 // botão de recolher/expandir e LogOut no "Sair" (recolhida, o ícone é o que sobra do botão).
 import {
-  Building2,
   ContactRound,
   FileSignature,
+  LandPlot,
   ListOrdered,
   LogOut,
   PanelLeftClose,
@@ -524,7 +526,7 @@ const ABAS_SO_PRODUTOS: ItemDeAba[] = [
 // mais" → `FichaDoProduto`), fixa no produto clicado.
 const ABAS_COMERCIAL: ItemDeAba[] = [
   { chave: "crm", icone: ContactRound, rotulo: "CRM" },
-  { chave: "produtos", icone: Building2, rotulo: "Produtos" },
+  { chave: "produtos", icone: LandPlot, rotulo: "Produtos" },
   { chave: "contratos", icone: FileSignature, rotulo: "Contratos" },
   { chave: "carteira", icone: WalletCards, rotulo: "Financeiro" },
   { chave: "lancamento", icone: ListOrdered, rotulo: "Lançamento" },
