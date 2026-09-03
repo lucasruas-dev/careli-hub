@@ -5571,3 +5571,38 @@ Registro de producao:
 - Status: `EM PRODUCAO`.
 - Proxima acao: `Lucas validar; Zeus seguir para reserva -> proposta -> contrato`.
 
+## 2026-09-02 - Hercules: sidebar recolhivel, Contratos completo e Unidades em Vendas (v1.272.0) - EM PRODUCAO
+
+Registro de producao:
+
+- Assunto: `[Hercules/Zeus] Melhorias 1 do portal comercial: area de trabalho, Contratos (Board/Resumo/Assinatura) e Unidades+Mapa dentro de Vendas`.
+- Squad/agente responsavel: `Zeus (autorizado pelo Lucas: "pode")`.
+- Data e hora local: `2026-09-02 22:30:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `workflow wf_2d6629f6-04a (3 frentes + revisao adversarial + build + fixer); pedido do Lucas ao vivo na ficha do Jardim das Gerais`.
+- Escopo publicado:
+  - sidebar recolhivel SO no portal comercial (localStorage `inc:sidebar-recolhida`, botao PanelLeftClose/Open, largura 64px, rotulos por title); estilos inline do menu migrados para classes do TEMA_CSS com os MESMOS valores;
+  - area de trabalho: rodape fino no comercial, `<main>` com padding menor, body sem rolagem no desktop; `.inc-hercules-produtos` = calc(100dvh - 123px) e - 59px com a ficha aberta;
+  - TelaContratos com sub-abas Board (TemisKanban) / Resumo (ResumoDeContratos) / Assinatura (AssinaturasDoProduto), tanto na lateral quanto dentro do produto (com `emp`);
+  - Vendas dentro da ficha = Resumo · Pipeline · Unidades · Mapa; a visao "contratos" some ali (foi para a aba Contratos); UnidadesTab do Apolo exportada com prop `api` (sem token) e rota nova GET /api/incorporador/produto/unidades?emp=.
+- Commit publicado: `c08f6165`.
+- Deployment anterior: `dpl_DLphLPERteQjud7SuDtThMCvEB4F` (8d42189c).
+- Deployment novo: `dpl_H3u47LiHER6u15JfhMjYF9LfPa9x`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: READY, alias aplicado.
+- Arquivos/modulos incluidos: 11 arquivos (PortalIncorporador, tema, ProdutosDoHercules, TelaContratos, TelaVendas, FichaDoProduto, AssinaturasDoProduto, UnidadesDoProduto, empreendimentos-view, rota produto/unidades, changelog).
+- Arquivos/modulos excluidos: TUDO do editor de minutas da Temis (frente em andamento no mesmo worktree: components/editor, components/ui, modules/temis/plugins, rotas /api/ai/*, /api/temis/minutas/upload, package.json, globals.css, lib/temis/*). Por isso o typecheck do commit foi conferido num WORKTREE ISOLADO (`careli-hub-verify`, node_modules por junction): exit 0.
+- Validacoes executadas:
+  - revisao adversarial: 5 achados (0 altos), 3 aplicados (vocabulario interno no payload de unidades, texto de 404, altura);
+  - `npx vitest run lib/apolo/incorporador lib/hercules`: 32 arquivos, 514 testes verdes;
+  - `npx tsc --noEmit` no worktree isolado do commit: exit 0.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: 200; `/comercial/gurgel`: 200; `/api/incorporador/produto/unidades?emp=x` sem cookie: 401.
+- Logs recentes: `build sem erro (turbopack)`.
+- Rollback definido: `promover dpl_DLphLPERteQjud7SuDtThMCvEB4F (8d42189c)`. Sem migration.
+- Riscos conhecidos: alturas e sidebar validadas por codigo, nao por navegador (Lucas valida visualmente); a UnidadesTab abre canal realtime do Supabase com anon key tambem no portal (achado de baixa, sem dado sensivel no payload, registrado).
+- Pendencias: validacao visual (recolher/expandir a lateral, Unidades e Mapa dentro de Vendas, as tres visoes de Contratos); editor de minutas completo da Temis em construcao.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas validar; Zeus fechar o editor de minutas`.
+
