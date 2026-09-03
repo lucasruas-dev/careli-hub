@@ -13,6 +13,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
+import type { EventoDaUnidade } from "@/lib/hercules/historico-da-unidade";
 
 import { toTitleCase } from "@/lib/format/name-case";
 
@@ -285,6 +286,14 @@ function loteSelecionadoNoEspelho(doc: Document): null | { lote: string; quadra:
   if (!texto) return null;
   const m = /Quadra\s*([^\s·]+)\s*·\s*Lote\s*(\S+)/i.exec(texto);
   return m ? { lote: m[2]!, quadra: m[1]! } : null;
+}
+
+/** "31/08/2026 14:20" — num histórico a hora importa: dois eventos do mesmo dia têm ordem. */
+function diaEHora(iso: null | string): string {
+  if (!iso) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso);
+  if (m) return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
+  return dia(iso);
 }
 
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -1248,6 +1257,8 @@ function Mesa({
           chave={unidadeEmFoco?.id ?? propostaEmFoco?.id ?? ""}
           valor={propostaEmFoco?.valor || (unidadeEmFoco?.preco ?? 0)}
         />
+
+        <Historico unidadeId={idEmFoco} />
       </div>
     </div>
   );
@@ -1570,6 +1581,152 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
         </p>
       </Cartao>
     </div>
+  );
+}
+
+// ── O HISTÓRICO DA UNIDADE ──────────────────────────────────────────────────
+//
+// Pedido do Lucas (03/09/2026): *"aqui eu quero ter um histórico de tudo que foi feito naquela
+// unidade, tudo tem que ficar registrado, trazendo o que foi feito, quando, por quem tudo, um
+// histórico bem completo"*.
+//
+// ⚠️ CARREGA SÓ QUANDO HÁ UNIDADE EM FOCO, e por rota própria: são 12.295 movimentações na base, e
+// mandá-las junto com a tela seria pagar o custo por uma pergunta que quase nunca é feita.
+//
+// ⚠️ E O EIXO É O LOTE, NÃO A PROPOSTA. O lote 01 04 do Portal dos Vales teve proposta de sete
+// clientes diferentes em quatro dias antes de vender: por isso cada evento diz de quem era a
+// proposta naquele momento.
+function Historico({ unidadeId }: { unidadeId: null | string }) {
+  const [eventos, setEventos] = useState<EventoDaUnidade[]>([]);
+  const [propostas, setPropostas] = useState(0);
+  const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">("pronto");
+  const [tudo, setTudo] = useState(false);
+
+  useEffect(() => {
+    setTudo(false);
+    if (!unidadeId) {
+      setEventos([]);
+      setPropostas(0);
+      return;
+    }
+
+    let vivo = true;
+    setEstado("carregando");
+    void (async () => {
+      try {
+        const r = await fetch(
+          `/api/incorporador/venda/historico?unidade=${encodeURIComponent(unidadeId)}`,
+          { cache: "no-store" },
+        );
+        const j = (await r.json().catch(() => null)) as null | {
+          data?: { eventos: EventoDaUnidade[]; propostas: number };
+        };
+        if (!vivo) return;
+        if (!r.ok || !j?.data) {
+          setEstado("erro");
+          return;
+        }
+        setEventos(j.data.eventos);
+        setPropostas(j.data.propostas);
+        setEstado("pronto");
+      } catch {
+        if (vivo) setEstado("erro");
+      }
+    })();
+
+    return () => {
+      vivo = false;
+    };
+  }, [unidadeId]);
+
+  if (!unidadeId) return null;
+
+  const visiveis = tudo ? eventos : eventos.slice(0, 12);
+
+  return (
+    <Cartao
+      direita={
+        propostas > 0 ? (
+          <span style={{ color: T.muted, fontSize: 11.5 }}>
+            {inteiro(propostas)} proposta(s) · {inteiro(eventos.length)} registro(s)
+          </span>
+        ) : null
+      }
+      titulo="Histórico da unidade"
+    >
+      {estado === "carregando" ? (
+        <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Carregando…</p>
+      ) : estado === "erro" ? (
+        <p style={{ color: T.danger, fontSize: 13, margin: 0 }}>
+          Não consegui carregar o histórico agora.
+        </p>
+      ) : eventos.length === 0 ? (
+        <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
+          Nada registrado nesta unidade. Ela nunca teve proposta.
+        </p>
+      ) : (
+        <>
+          <div style={{ display: "grid", gap: 0 }}>
+            {visiveis.map((e, i) => (
+              <div
+                key={e.id}
+                style={{
+                  borderTop: i === 0 ? "none" : `1px dashed ${T.border}`,
+                  display: "grid",
+                  gap: 2,
+                  padding: "8px 0",
+                }}
+              >
+                <div
+                  style={{ alignItems: "baseline", display: "flex", gap: 8, justifyContent: "space-between" }}
+                >
+                  <b style={{ fontSize: 12.5 }}>{e.fato}</b>
+                  <span
+                    style={{
+                      color: T.muted,
+                      fontSize: 11.5,
+                      fontVariantNumeric: "tabular-nums",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {diaEHora(e.quando)}
+                  </span>
+                </div>
+                {e.cliente ? (
+                  <span style={{ color: T.sub, fontSize: 11.5 }}>{e.cliente}</span>
+                ) : null}
+                <span style={{ color: T.muted, fontSize: 11 }}>
+                  {e.quem ? `por ${e.quem}` : "sem autor registrado"}
+                  {e.observacao ? ` · ${e.observacao}` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {eventos.length > 12 && !tudo ? (
+            <button
+              onClick={() => setTudo(true)}
+              style={{
+                background: "transparent",
+                border: `1px solid ${T.border}`,
+                borderRadius: 8,
+                color: T.sub,
+                cursor: "pointer",
+                font: "inherit",
+                fontSize: 12,
+                fontWeight: 600,
+                marginTop: 10,
+                padding: "6px 12px",
+                width: "100%",
+              }}
+              type="button"
+            >
+              Ver os {inteiro(eventos.length)} registros
+            </button>
+          ) : null}
+        </>
+      )}
+    </Cartao>
   );
 }
 
