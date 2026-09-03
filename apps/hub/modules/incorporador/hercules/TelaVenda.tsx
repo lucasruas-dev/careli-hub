@@ -12,19 +12,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import type {
-  EtapaDoEspelho,
-  EtapaDoFluxo,
-  FluxoDeVenda,
-  PlanoDaVenda,
-} from "@/lib/hercules/fluxo-de-venda";
-import {
-  parcelaPrice,
-  parcelaSacoc,
-  primeiraParcelaSac,
-  taxaMensal,
-} from "@/lib/apolo/planos-comerciais";
-import { valorDigitado, valorParaOCampo } from "@/lib/apolo/boletos/valor-digitado";
+import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
 import type { EventoDaUnidade } from "@/lib/hercules/historico-da-unidade";
 
 import { toTitleCase } from "@/lib/format/name-case";
@@ -1345,9 +1333,6 @@ function Mesa({
 // proposta não cumpre. Agora ele parte dos planos cadastrados (à vista, curto, investidor, normal),
 // com a entrada sugerida de cada um.
 
-/** O plano como a rota entrega — o mesmo `PlanoComercial` do cadastro. */
-type PlanoDoSimulador = PlanoDaVenda;
-
 /**
  * O simulador em tela cheia.
  *
@@ -1511,122 +1496,6 @@ function BotaoDoSimulador({
       </div>
     </Cartao>
   );
-}
-
-/**
- * Campo de dinheiro, escrito como dinheiro — com os pontos, sem o cifrão.
- *
- * ⚠️ Lucas (03/09/2026): *"aqui trazer com R$"*, *"sem cifrão"* (constatando que ainda estava) e
- * *"falta o cifrão"*. São duas coisas, e o campo precisa das duas: a PONTUAÇÃO, porque "145451"
- * obriga a contar casas com o dedo na tela e é aí que um zero a mais passa despercebido; e o
- * SÍMBOLO, que diz de imediato que aquele número é dinheiro e não um prazo ou uma quantidade —
- * numa grade onde "Parcelas" e "Balões" são números puros, a diferença tem de ser visível.
- *
- * A leitura e a escrita usam `valorDigitado`/`valorParaOCampo`, as mesmas da tela de boletos, que
- * já sabem que o brasileiro digita vírgula.
- */
-function CampoEmReais({
-  aoMudar,
-  rotulo,
-  valor,
-}: {
-  aoMudar: (n: number) => void;
-  rotulo: string;
-  valor: number;
-}) {
-  const [texto, setTexto] = useState(valorParaOCampo(valor));
-
-  // O valor vindo de fora (troca de unidade, de plano) reescreve o campo; o que a pessoa digita, não.
-  useEffect(() => {
-    setTexto(valorParaOCampo(valor));
-  }, [valor]);
-
-  return (
-    <label style={{ display: "grid", gap: 3 }}>
-      <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>{rotulo}</span>
-      <span style={{ alignItems: "center", display: "flex", position: "relative" }}>
-        <span
-          style={{
-            color: T.muted,
-            fontSize: 12,
-            fontWeight: 600,
-            left: 10,
-            pointerEvents: "none",
-            position: "absolute",
-          }}
-        >
-          R$
-        </span>
-        <input
-          inputMode="decimal"
-          onBlur={() => setTexto(valorParaOCampo(valor))}
-          onChange={(e) => {
-            setTexto(e.target.value);
-            const lido = valorDigitado(e.target.value);
-            if (lido !== null) aoMudar(lido);
-          }}
-          style={{
-            background: T.soft,
-            border: `1px solid ${T.border}`,
-            borderRadius: 8,
-            color: T.text,
-            font: "inherit",
-            fontSize: 13.5,
-            fontVariantNumeric: "tabular-nums",
-            fontWeight: 600,
-            padding: "7px 10px 7px 34px",
-            width: "100%",
-          }}
-          value={texto}
-        />
-      </span>
-    </label>
-  );
-}
-
-/** Campo de número puro (prazo, percentual, quantidade) — sem cifrão. */
-function CampoSimples({
-  aoMudar,
-  rotulo,
-  sufixo,
-  valor,
-}: {
-  aoMudar: (n: number) => void;
-  rotulo: string;
-  sufixo?: string;
-  valor: number;
-}) {
-  return (
-    <label style={{ display: "grid", gap: 3 }}>
-      <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>{rotulo}</span>
-      <span style={{ alignItems: "center", display: "flex", gap: 6 }}>
-        <input
-          onChange={(e) => aoMudar(Number(e.target.value) || 0)}
-          style={{
-            background: T.soft,
-            border: `1px solid ${T.border}`,
-            borderRadius: 8,
-            color: T.text,
-            font: "inherit",
-            fontSize: 13.5,
-            fontVariantNumeric: "tabular-nums",
-            fontWeight: 600,
-            padding: "7px 10px",
-            width: "100%",
-          }}
-          type="number"
-          value={String(Math.round(valor * 100) / 100)}
-        />
-        {sufixo ? <span style={{ color: T.muted, fontSize: 12 }}>{sufixo}</span> : null}
-      </span>
-    </label>
-  );
-}
-
-/** "IPCA_ANUAL" → "IPCA anual". O cadastro guarda a chave; a tela mostra a palavra. */
-function nomeDoIndiceCurto(indice: string): string {
-  const limpo = indice.replace(/_/g, " ").toLowerCase();
-  return limpo.charAt(0).toUpperCase() + limpo.slice(1);
 }
 
 // ── O PANORAMA ──────────────────────────────────────────────────────────────
