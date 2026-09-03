@@ -31,6 +31,7 @@ import { TelaLancamento } from "./TelaLancamento";
 // *"produtos é replicar a tela que temos hoje em empreendimento do apolo"*). A versão anterior em
 // estilo próprio do portal (TelaProdutosComercial.tsx) fica no repo, fora do fluxo.
 import { ProdutosDoHercules } from "./hercules/ProdutosDoHercules";
+import { TelaVenda } from "./hercules/TelaVenda";
 import { TelaVendas } from "./TelaVendas";
 // Os ícones do menu do COMERCIAL (Lucas, 02/09/2026), na régua do Apolo/hub: CRM = o do CRM 360
 // (ContactRound), Produtos = LandPlot, o desenho de um terreno demarcado (Lucas, 03/09/2026:
@@ -44,6 +45,7 @@ import { TelaVendas } from "./TelaVendas";
 import {
   ContactRound,
   FileSignature,
+  Handshake,
   LandPlot,
   ListOrdered,
   LogOut,
@@ -83,6 +85,7 @@ type Aba =
   | "lancamento"
   | "lsoft"
   | "produtos"
+  | "venda"
   | "vendas";
 
 // Um item do menu lateral. `icone` é opcional de propósito: o portal COMERCIAL carrega ícone em
@@ -524,9 +527,15 @@ const ABAS_SO_PRODUTOS: ItemDeAba[] = [
 // temos no empreendimento (...) vendas tem que morar dentro da tela de produtos"*). A TelaVendas
 // não saiu do comercial: ela é a aba Vendas da ficha do produto (`ProdutosDoHercules` → "Ver
 // mais" → `FichaDoProduto`), fixa no produto clicado.
+//
+// ⚠️ VENDA (03/09/2026) É OUTRA COISA QUE PRODUTOS. Produtos responde "o que temos"; Venda é onde a
+// venda ACONTECE — reserva, proposta, contrato, assinatura, faturamento — e onde o coordenador olha
+// se está vendendo bem. Pedido do Lucas: *"vamos criar a tela Venda, que vai ser a tela que vamos
+// fazer o processo de reserva, proposta e emissão de contratos"*.
 const ABAS_COMERCIAL: ItemDeAba[] = [
   { chave: "crm", icone: ContactRound, rotulo: "CRM" },
   { chave: "produtos", icone: LandPlot, rotulo: "Produtos" },
+  { chave: "venda", icone: Handshake, rotulo: "Venda" },
   { chave: "contratos", icone: FileSignature, rotulo: "Contratos" },
   { chave: "carteira", icone: WalletCards, rotulo: "Financeiro" },
   { chave: "lancamento", icone: ListOrdered, rotulo: "Lançamento" },
@@ -767,6 +776,7 @@ function Portal({
             {aba === "lsoft" ? <CarteiraLsoft api={apiDoPortal} /> : null}
             {aba === "boletos" ? <TelaBoletos /> : null}
             {/* Só o portal COMERCIAL chega aqui: `abasDoPortal` não oferece as duas fora dele. */}
+            {aba === "venda" ? <TelaVenda /> : null}
             {aba === "contratos" ? <TelaContratos /> : null}
             {aba === "lancamento" ? <TelaLancamento /> : null}
           </main>
