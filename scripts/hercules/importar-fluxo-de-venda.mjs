@@ -145,13 +145,19 @@ const [linhas] = await c.query(
           cli.name as cli_nome, cli.social_name as cli_social, cli.cpf as cli_cpf,
           cli.cnpj as cli_cnpj,
           imo.id as imo_id, imo.name as imo_nome, imo.social_name as imo_social,
-          cp.name as plano_nome, dd.day as dia_vencimento
+          cp.name as plano_nome, cp.parcels as plano_parcelas,
+          cp.contractual_interest as plano_juros, imc.name as plano_correcao,
+          ar.custom_commercial_plan as plano_personalizado,
+          (select max(p.total_parcels) from payments p
+            where p.acquisition_request_id = ar.id) as contrato_parcelas,
+          dd.day as dia_vencimento
      from acquisition_requests ar
      left join enterprise_unities u on u.id = ar.enterprise_unity_id
      left join enterprises e on e.id = u.enterprise_id
      left join users cli on cli.id = ar.client_id
      left join users imo on imo.id = cli.vinculed_by_id
      left join commercial_plans cp on cp.id = ar.commercial_plan_id
+     left join index_monetary_corrections imc on imc.id = cp.index_monetary_correction_id
      left join due_days dd on dd.id = ar.due_day_id
     order by ar.id`,
 );
@@ -259,8 +265,16 @@ const propostas = linhas.map((l) => {
     observacao: texto(l.observation),
     origem_c2x_id: Number(l.id),
     parcelas_sinal: numero(l.quantity_signal_parcels),
+    contrato_parcelas: numero(l.contrato_parcelas),
     plano_c2x_id: numero(l.commercial_plan_id),
+    plano_correcao: texto(l.plano_correcao),
+    plano_juros: numero(l.plano_juros),
     plano_nome: texto(l.plano_nome),
+    plano_parcelas: numero(l.plano_parcelas),
+    plano_personalizado:
+      l.plano_personalizado === null || l.plano_personalizado === undefined
+        ? null
+        : Number(l.plano_personalizado) === 1,
     primeiro_sinal: dia(l.first_signal_payment),
     unidade_id: unidade?.id ?? null,
     unidade_nome:
@@ -281,6 +295,11 @@ console.log(`com unidade casada: ${propostas.filter((p) => p.unidade_id).length}
 console.log(`com empreendimento casado: ${propostas.filter((p) => p.empreendimento_id).length}`);
 console.log(`com valor: ${propostas.filter((p) => p.valor).length}`);
 console.log(`com imobiliária: ${propostas.filter((p) => p.imobiliaria_nome).length}`);
+console.log(`com parcelamento do contrato: ${propostas.filter((p) => p.contrato_parcelas).length}`);
+console.log(`com parcelamento do plano: ${propostas.filter((p) => p.plano_parcelas).length}`);
+console.log(`com índice de correção: ${propostas.filter((p) => p.plano_correcao).length}`);
+console.log(`com juros: ${propostas.filter((p) => p.plano_juros).length}`);
+console.log(`plano personalizado: ${propostas.filter((p) => p.plano_personalizado).length}`);
 console.log(`com mais de um comprador: ${propostas.filter((p) => p.compradores.length > 1).length}`);
 if (semUnidade.length > 0) {
   console.log(`\n⚠️ ${semUnidade.length} propostas cuja unidade não existe no Panteon (ficam sem unidade_id):`);

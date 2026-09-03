@@ -124,7 +124,7 @@ export async function GET(request: Request) {
       const { data, error } = await supabase
         .from("hercules_propostas")
         .select(
-          "id,codigo,empreendimento_codigo,unidade_id,unidade_nome,etapa,etapa_c2x,etapa_desde,cliente_nome,cliente_documento,imobiliaria_nome,valor,plano_nome,data_ato,data_assinatura,data_faturamento,motivo,criado_em_c2x",
+          "id,codigo,empreendimento_codigo,unidade_id,unidade_nome,etapa,etapa_c2x,etapa_desde,cliente_nome,cliente_documento,imobiliaria_nome,valor,plano_nome,plano_parcelas,contrato_parcelas,plano_correcao,plano_juros,plano_personalizado,data_ato,data_assinatura,data_faturamento,motivo,criado_em_c2x",
         )
         .eq("workspace_id", "careli")
         .in("empreendimento_codigo", codes)

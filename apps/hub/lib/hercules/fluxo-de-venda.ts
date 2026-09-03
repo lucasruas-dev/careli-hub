@@ -61,6 +61,11 @@ export const ETAPAS_DA_FAIXA: readonly ("disponivel" | EtapaDoFluxo)[] = [
 
 export type PropostaDaCarga = {
   cliente_documento: null | string;
+  contrato_parcelas: null | number;
+  plano_correcao: null | string;
+  plano_juros: null | number | string;
+  plano_parcelas: null | number;
+  plano_personalizado: boolean | null;
   cliente_nome: null | string;
   codigo: null | string;
   criado_em_c2x: null | string;
@@ -106,6 +111,7 @@ export type LinhaDaLista = {
   etapa: string;
   id: string;
   imobiliaria: null | string;
+  /** O FLUXO do contrato — "60x · IPCA ANUAL · juros 8% a.a." —, não o nome do plano. */
   plano: null | string;
   produto: null | string;
   unidade: null | string;
@@ -205,6 +211,48 @@ function etapaDaSituacao(situacao: string): EtapaDoEspelho {
     default:
       return "bloqueada";
   }
+}
+
+/** `8` → `8%`; `8.5` → `8,5%`. A mesma escrita do extrato. */
+function porcentagem(valor: number): string {
+  return `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+}
+
+/**
+ * O FLUXO do contrato, no lugar do nome do plano.
+ *
+ * ⚠️ PEDIDO DO LUCAS (03/09/2026): *"não queria trazer o nome do plano, mas sim o fluxo, igual
+ * estamos trazendo nesse relatório de Extrato"*. "PLANO NORMAL" não diz nada a quem vende;
+ * "60x · IPCA ANUAL · juros 8% a.a." é o que o comprador reconhece como o contrato dele. A régua é
+ * a mesma de `descricaoDoPlano` no extrato (extrato-cliente-pdf.ts).
+ *
+ * ⚠️ O PARCELAMENTO VEM DA PARCELA, NÃO DO PLANO. `commercial_plans.parcels` descreve o PRODUTO que
+ * a mesa vende — um molde serve centenas de contratos —, e foi ele que fez o extrato do TIAGO
+ * estampar "144x" num contrato de 62 parcelas. Quem sabe o tamanho do contrato é
+ * `payments.total_parcels`; o do molde só entra quando o contrato não tem o dele.
+ *
+ * ⚠️ E OS TRÊS JUNTOS PORQUE UM SÓ NÃO SE CONFERE: com o parcelamento sozinho um número errado
+ * passa; com os três, quem lê reconhece o próprio contrato.
+ */
+function fluxoDoPlano(p: PropostaDaCarga): null | string {
+  const partes: string[] = [];
+
+  const parcelas = p.contrato_parcelas ?? p.plano_parcelas;
+  if (parcelas) partes.push(`${parcelas}x`);
+  // ⚠️ A SIGLA FICA, O RESTO NÃO GRITA. O legado grava "IPCA ANUAL"; o Lucas não quer caixa alta
+  // na tela ("deixa somente a primeira letra"), mas IPCA e INCC são siglas e viram outra coisa em
+  // caixa baixa. Então só a primeira palavra — a sigla — mantém a caixa: "IPCA anual".
+  const correcao = p.plano_correcao?.trim();
+  if (correcao) {
+    const [sigla, ...resto] = correcao.split(/\s+/);
+    partes.push([sigla, ...resto.map((w) => w.toLocaleLowerCase("pt-BR"))].join(" "));
+  }
+
+  const juros = numero(p.plano_juros);
+  if (juros > 0) partes.push(`juros ${porcentagem(juros)} a.a.`);
+
+  // Sem nenhum dos três, o nome do plano é melhor do que um travessão — mas só aí.
+  return partes.length > 0 ? partes.join(" · ") : (p.plano_nome?.trim() || null);
 }
 
 /** "Q07" de "Q07 L12" — o agrupamento do mapa quando a unidade não traz quadra própria. */
@@ -399,7 +447,7 @@ export function agregarFluxo({
       etapa: p.etapa,
       id: p.id,
       imobiliaria: p.imobiliaria_nome,
-      plano: p.plano_nome,
+      plano: fluxoDoPlano(p),
       produto: p.empreendimento_codigo,
       unidade: p.unidade_nome,
       unidadeId: p.unidade_id,

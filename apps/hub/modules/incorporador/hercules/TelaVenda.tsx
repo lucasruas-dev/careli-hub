@@ -14,6 +14,8 @@ import type { LucideIcon } from "lucide-react";
 
 import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
 
+import { toTitleCase } from "@/lib/format/name-case";
+
 import { T, useTemaDoPortal } from "../tema";
 import { Pilula } from "./AssinaturasDoProduto";
 
@@ -178,12 +180,6 @@ const FUNDO_ESCURO = new Set<EtapaDoEspelho>(["assinatura"]);
 const textoNoQuadrado = (etapa: EtapaDoEspelho) =>
   etapa === "disponivel" ? T.muted : FUNDO_ESCURO.has(etapa) ? "rgb(255 255 255 / .9)" : "rgb(0 0 0 / .6)";
 
-/** Cancelado e distrato não estão na faixa, mas aparecem no painel quando a unidade tem um. */
-const ROTULO_TERMINAL: Record<string, string> = {
-  cancelado: "Cancelada",
-  distrato: "Distratada",
-};
-
 
 
 const dinheiro = (v: number) =>
@@ -266,7 +262,7 @@ export function TelaVenda() {
   // `emp` é o PRODUTO (o pai); `recorte` é o filho escolhido dentro dele, quando houver.
   const [emp, setEmp] = useState<string>("");
   const [recorte, setRecorte] = useState<string>("");
-  const [visao, setVisao] = useState<"mesa" | "panorama">("mesa");
+  const [visao, setVisao] = useState<"mesa" | "panorama">("panorama");
   const [etapa, setEtapa] = useState<"disponivel" | EtapaDoFluxo>("reservado");
   const [foco, setFoco] = useState<null | Foco>(null);
   const [modoDoEstoque, setModoDoEstoque] = useState<"grade" | "mapa">("grade");
@@ -411,29 +407,31 @@ export function TelaVenda() {
         minHeight: 0,
       }}
     >
+      {/* ⚠️ SEM TÍTULO NEM SUBTÍTULO (Lucas, 03/09/2026: *"tirar essa venda, e o texto abaixo,
+          trazer o filtro do empreendimento mais a mesa (...) mais o Panorama"*). A aba do menu já
+          diz Venda, e o subtítulo explicava a tela para quem a usa o dia inteiro. O que sobra é o
+          que se opera: à esquerda o que estou vendo, à direita sobre o quê.
+
+          "Mesa" virou "Venda" e "Panorama" virou "Painel", também a pedido dele. */}
       <header
         style={{
-          alignItems: "flex-end",
+          alignItems: "center",
           display: "flex",
           flexWrap: "wrap",
           gap: 12,
           justifyContent: "space-between",
         }}
       >
-        <div>
-          <h1 style={{ color: T.text, fontSize: 20, fontWeight: 600, margin: "0 0 4px" }}>Venda</h1>
-          <p style={{ color: T.muted, fontSize: 13.5, margin: 0 }}>
-            Da reserva ao faturamento, com o mapa do lado e o painel de gestão a um clique
-          </p>
-        </div>
-
         <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <Pilula ativo={visao === "mesa"} onClick={() => setVisao("mesa")} rotulo="Mesa" />
           <Pilula
             ativo={visao === "panorama"}
             onClick={() => setVisao("panorama")}
-            rotulo="Panorama"
+            rotulo="Painel"
           />
+          <Pilula ativo={visao === "mesa"} onClick={() => setVisao("mesa")} rotulo="Venda" />
+        </div>
+
+        <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
           {/* A janela só muda o Panorama; na Mesa ela ficaria sem efeito e confundiria. */}
           {visao === "panorama" ? (
             <select
@@ -935,7 +933,6 @@ function Mesa({
                           letterSpacing: ".05em",
                           padding: "10px 12px",
                           textAlign: i === 1 ? "right" : "left",
-                          textTransform: "uppercase",
                           whiteSpace: "nowrap",
                         }}
                       >
@@ -1024,7 +1021,6 @@ function Mesa({
                         letterSpacing: ".05em",
                         padding: "10px 12px",
                         textAlign: i === 4 ? "right" : "left",
-                        textTransform: "uppercase",
                         whiteSpace: "nowrap",
                       }}
                     >
@@ -1047,8 +1043,8 @@ function Mesa({
                       <b>{l.unidade ?? "—"}</b>
                       <div style={{ color: T.muted, fontSize: 11.5 }}>{l.produto ?? ""}</div>
                     </td>
-                    <td style={celula}>{l.cliente ?? "—"}</td>
-                    <td style={celula}>{l.imobiliaria ?? "—"}</td>
+                    <td style={celula}>{l.cliente ? toTitleCase(l.cliente) : "—"}</td>
+                    <td style={celula}>{l.imobiliaria ? toTitleCase(l.imobiliaria) : "—"}</td>
                     <td style={{ ...celula, color: T.muted }}>{dia(l.desde)}</td>
                     <td
                       style={{ ...celula, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
@@ -1108,10 +1104,24 @@ function Mesa({
               </span>
             ) : null
           }
+          // ⚠️ O TÍTULO CARREGA O RECORTE quando existe (Lucas, 03/09/2026: *"quando tiver filho
+          // essa unidade tem que fazer referência"*). "04 04" sozinho é ambíguo num produto
+          // dividido: existe um 04 04 em VOC e outro em VOL, e são lotes diferentes.
+          // ⚠️ A SIGLA VEM PRIMEIRO (Lucas, 03/09/2026: *"trocar de lugar, começar com a sigla"*).
+          // "VOL · 04 04" se lê como endereço: primeiro onde, depois qual. Com o número na frente,
+          // dois lotes de recortes diferentes começam iguais e só se separam no fim.
           titulo={
             unidadeEmFoco
-              ? comoSeEscreve(unidadeEmFoco.codigo, unidadeEmFoco.quadra, unidadeEmFoco.lote).unidade
-              : (propostaEmFoco?.unidade ?? "Nada escolhido")
+              ? [
+                  comoSeEscreve(unidadeEmFoco.codigo, unidadeEmFoco.quadra, unidadeEmFoco.lote)
+                    .recorte,
+                  comoSeEscreve(unidadeEmFoco.codigo, unidadeEmFoco.quadra, unidadeEmFoco.lote)
+                    .unidade,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : [propostaEmFoco?.produto, propostaEmFoco?.unidade].filter(Boolean).join(" · ") ||
+                "Nada escolhido"
           }
         >
           {unidadeEmFoco || propostaEmFoco ? (
@@ -1121,22 +1131,17 @@ function Mesa({
               ) : null}
               {propostaEmFoco ? (
                 <>
-                  <Linha rotulo="Produto" valor={propostaEmFoco.produto ?? "—"} />
-                  <Linha
-                    rotulo="Etapa"
-                    valor={
-                      FLUXO.find((f) => f.etapa === propostaEmFoco.etapa)?.rotulo ??
-                      ROTULO_TERMINAL[propostaEmFoco.etapa] ??
-                      propostaEmFoco.etapa
-                    }
-                  />
+                  {/* ⚠️ ETAPA E PRODUTO SAÍRAM DA LISTA (Lucas, 03/09/2026): a etapa já está no selo
+                      aqui em cima e o produto no filtro do topo. Repetir os dois gastava duas linhas
+                      da ficha para dizer o que a tela já dizia duas vezes. */}
                   <Linha rotulo="Desde" valor={dia(propostaEmFoco.desde)} />
                   <Linha
                     rotulo="Valor negociado"
                     valor={propostaEmFoco.valor ? dinheiro(propostaEmFoco.valor) : "—"}
                   />
-                  <Linha rotulo="Cliente" valor={propostaEmFoco.cliente ?? "—"} />
-                  <Linha rotulo="Imobiliária" valor={propostaEmFoco.imobiliaria ?? "—"} />
+                  <Linha rotulo="Cliente" valor={toTitleCase(propostaEmFoco.cliente) || "—"} />
+                  <Linha rotulo="Imobiliária" valor={toTitleCase(propostaEmFoco.imobiliaria) || "—"} />
+                  {/* O FLUXO do contrato, não o nome do plano — a mesma escrita do extrato. */}
                   <Linha rotulo="Plano" valor={propostaEmFoco.plano ?? "—"} />
                 </>
               ) : (
@@ -1397,7 +1402,6 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
                           fontWeight: 650,
                           padding: "10px 12px",
                           textAlign: i === 0 ? "left" : "right",
-                          textTransform: "uppercase",
                         }}
                       >
                         {c}
@@ -1408,7 +1412,7 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
                 <tbody>
                   {dados.ranking.slice(0, 10).map((r) => (
                     <tr key={r.imobiliaria}>
-                      <td style={celula}>{r.imobiliaria}</td>
+                      <td style={celula}>{toTitleCase(r.imobiliaria)}</td>
                       <td style={{ ...celula, textAlign: "right" }}>{inteiro(r.propostas)}</td>
                       <td style={{ ...celula, textAlign: "right" }}>{inteiro(r.vendidas)}</td>
                       <td

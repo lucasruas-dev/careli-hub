@@ -5,6 +5,11 @@ import { agregarFluxo, ETAPAS_DO_FLUXO, type PropostaDaCarga, type UnidadeDoMapa
 const proposta = (p: Partial<PropostaDaCarga> & { etapa: string }): PropostaDaCarga => ({
   cliente_documento: null,
   cliente_nome: "FULANO DE TAL",
+  contrato_parcelas: null,
+  plano_correcao: null,
+  plano_juros: null,
+  plano_parcelas: null,
+  plano_personalizado: null,
   codigo: "JDG1",
   criado_em_c2x: "2026-08-01T10:00:00Z",
   data_assinatura: null,
