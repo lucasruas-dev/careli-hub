@@ -95,6 +95,37 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis/Zeus] Editor de minutas completo, com as variaveis nascendo do Panteon (v1.273.0)`.
+- Squad/agente responsavel: `Zeus` (workflow multi-agente com revisao adversarial; os 10 achados conferidos e fechados).
+- Data e hora local: `2026-09-03 07:34:23 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: OK explicito do Lucas ("tem o meu ok para subir o deploy"), depois do pedido de 02/09 ("nao temos todas essas ferramentas, revise as documentasções pois quero isso completo, estamos muito simples") e da regra "nao quero nada do c2x, todas as variaveis tem que nascer do panteon".
+- Escopo publicado:
+  - `modules/temis/editor-de-minuta.tsx` com o Plate UI inteiro: IA, comentarios, sugestoes, midia, tabelas, colunas, callout, indice, codigo, equacoes, data, emoji, mencao, links, listas, importar/exportar Word e Markdown, buscar e substituir, arrastar blocos e comando por barra;
+  - variaveis como etiquetas dentro do texto, com painel, saindo como `[nome]` no contrato;
+  - `styles/shadcn.css` NOVO (o `shadcn init` nao foi rodado: reescreveria o CSS da casa) e SEM `--radius-*` no `@theme inline`, que mudaria o raio de 2.900 elementos do hub;
+  - midia no bucket privado `apolo-documents` com URL assinada de 7 dias, reassinada na abertura.
+- Commit publicado: `ae8b868f` (traz `c67d1058`).
+- Deployment anterior: `dpl_H3u47LiHER6u15JfhMjYF9LfPa9x` (commit `c08f6165`, v1.272.0).
+- Deployment novo: `dpl_o8kD7rceUpko2FPQNUtPsq2xe35J` - state READY, target production.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `dpl_o8kD7rceUpko2FPQNUtPsq2xe35J` / 200.
+  - `https://ops.c2x.app.br`: NAO TOCADO.
+- Validacoes executadas:
+  - typecheck limpo; `npx next build` exit 0 (a prova que faltava: o CSS do KaTeX numa rota de servidor nao quebra o build);
+  - 2.342 testes em 177 arquivos, todos verdes;
+  - round-trip do HTML comparado byte a byte com a minuta real do Jardim das Gerais (41.827 bytes, 244 variaveis).
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br` -> 200;
+  - `https://c2x.app.br/api/version` -> 200 `{"buildTag":"2026-09-02-temis-editor-completo","version":"1.273.0"}`;
+  - `https://c2x.app.br/comercial/gurgel` -> 200.
+- Rollback definido: `c08f6165` / `dpl_H3u47LiHER6u15JfhMjYF9LfPa9x` (registrado tambem no campo `rollback` da entrada v1.273.0 do changelog).
+- Riscos conhecidos: MEDIO-BAIXO. O serializador do contrato continua sendo o nosso (`lib/temis/documento-html.ts`), e nao o `serializeHtml` do Plate: o HTML que vira contrato assinado nao depende da versao do editor. Minuta antiga abre igual (o alinhamento gravado como `textAlign` e migrado para `align` na abertura). ATENCAO DE CUSTO: a rota de IA do editor consome a chave da Anthropic por uso e subiu ATIVA, sem teto configurado — decisao pendente do Lucas.
+- Rota REMOVIDA: `/api/temis/minutas/c2x` (nenhuma consulta ao legado sai da Temis), junto com o botao "Do C2X" do editor.
+
+Registro de producao:
+
 - Assunto: `[Boletos/Zeus] Tela /boletos - emissao mensal das carteiras administradas fora do C2X (v1.242.0)`.
 - Squad/agente responsavel: `Zeus` (implementacao direta; revisao adversarial pos-deploy por workflow de 4 dimensoes).
 - Data e hora local: `2026-08-31 14:40:00 -03:00`.

@@ -32,6 +32,22 @@ export const runtime = "nodejs";
 // folgados; o Guaimbé, com 29, precisa do teto alto.
 export const maxDuration = 300;
 
+/**
+ * Quanto tempo o laco de emissao pode gastar antes de devolver o que ja fez.
+ *
+ * ⚠️ A FUNCAO MORRE AOS 300 SEGUNDOS, E MORRER E O PIOR DOS DESFECHOS. Foi o que aconteceu em
+ * 03/09/2026, as 02:35, com os 141 boletos do Garden: a Vercel matou a execucao, o gateway
+ * respondeu em TEXTO ("An error occurred with your deployment") e a tela mostrou o erro do parser
+ * de JSON. As cobrancas criadas ate ali continuaram existindo no Asaas — so que ninguem soube
+ * quais, porque a resposta que as listava morreu junto.
+ *
+ * Parar por conta propria aos 240 segundos troca isso por uma resposta honesta: os resultados de
+ * quem foi emitido e `restantes` dizendo quantos ficaram. A tela ja manda o lote em blocos, entao
+ * este teto e a rede embaixo — vale para quem chamar a rota direto, e para o dia em que uma
+ * carteira crescer sem ninguem reparar.
+ */
+const TETO_DO_LOTE_MS = 240_000;
+
 type Corpo = {
   competencia?: unknown;
   confirmar?: unknown;
@@ -145,7 +161,17 @@ export async function POST(request: Request) {
   // apartamentos) fariam duas buscas de cliente ao mesmo tempo, as duas não achariam nada, e o
   // Asaas ganharia dois cadastros para a mesma pessoa — que é justamente o que `acharOuCriarCliente`
   // existe para evitar.
+  // ⚠️ O MESMO TETO DA ROTA DO PORTAL, pelo mesmo motivo: esta rota emite as mesmas carteiras,
+  // pelo caminho do administrativo. Ver TETO_DO_LOTE_MS.
+  const comecouOLote = Date.now();
+  const naoProcessadas: string[] = [];
+
   for (const item of lote.itens) {
+    if (Date.now() - comecouOLote > TETO_DO_LOTE_MS) {
+      naoProcessadas.push(item.unidade);
+      continue;
+    }
+
     const base = {
       cobranca: null,
       erro: null,
@@ -222,6 +248,8 @@ export async function POST(request: Request) {
         falhas,
         fora: lote.fora,
         repetidos,
+        // Quantas unidades ficaram para a proxima rodada por causa do tempo. Zero e o normal.
+        restantes: naoProcessadas.length,
         resultados,
       },
     },

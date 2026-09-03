@@ -16,6 +16,11 @@ import {
   Zap,
 } from "lucide-react";
 
+import {
+  blocosDaEmissao,
+  totalDeUnidades,
+  UNIDADES_POR_REQUISICAO,
+} from "@/lib/apolo/boletos/blocos";
 import { valorDigitado, valorParaOCampo } from "@/lib/apolo/boletos/valor-digitado";
 
 import { T } from "./tema";
@@ -128,6 +133,8 @@ type Emissao = {
   enviados?: number;
   falhas: number;
   repetidos: number;
+  /** Unidades que ficaram para a proxima rodada porque o lote chegou perto do teto de tempo. */
+  restantes?: number;
   resultados: {
     cobranca: null | string;
     erro: null | string;
@@ -185,6 +192,27 @@ function competenciasSugeridas(): string[] {
  * separados porque a conta do Asaas vem do EMPREENDIMENTO (testar a chave do Garden exige emitir por
  * um cujo `conta` seja `garden`), mas seis abas de teste ao lado de nove reais é ruído.
  */
+/**
+ * Le a resposta da rota como JSON — e, quando ela NAO e JSON, diz em portugues o que houve.
+ *
+ * ⚠️ `await r.json()` cru estoura com a mensagem do parser ("Unexpected token 'A'"), que fala do
+ * primeiro caractere do texto e nao do que aconteceu. Numa tela de cobranca a diferenca importa: a
+ * pessoa precisa saber se pode clicar de novo.
+ */
+async function lerResposta<T>(r: Response): Promise<{ data?: T; error?: string }> {
+  const texto = await r.text();
+  try {
+    return JSON.parse(texto) as { data?: T; error?: string };
+  } catch {
+    const cortouNoTempo = /timed out|timeout|FUNCTION_INVOCATION_TIMEOUT/i.test(texto);
+    return {
+      error: cortouNoTempo
+        ? "o servidor passou do tempo limite e cortou a resposta — recarregue a tela ANTES de clicar de novo: o que ja foi emitido aparece na lista de baixo"
+        : `o servidor respondeu algo que nao e JSON (HTTP ${r.status})`,
+    };
+  }
+}
+
 const ABA_TESTE = "__teste__";
 
 const ehTeste = (slug: string) => slug.startsWith("teste");
@@ -204,6 +232,8 @@ export function TelaBoletos() {
 
   const [emitindo, setEmitindo] = useState<null | string>(null);
   const [emissao, setEmissao] = useState<null | Emissao>(null);
+  // Quantas unidades ja voltaram do servidor, para o botao contar em vez de sumir por um minuto.
+  const [progresso, setProgresso] = useState<null | { feitas: number; total: number }>(null);
 
   // O envio do link por WhatsApp: prévia primeiro, disparo depois.
   const [previas, setPrevias] = useState<null | { itens: Previa[]; slug: string }>(null);
@@ -296,20 +326,20 @@ export function TelaBoletos() {
 
       try {
         // Em série: cada uma cria cobranças de verdade, e paralelizar embaralharia os resultados.
-        // ⚠️ AS UNIDADES SÃO AGRUPADAS POR EMPREENDIMENTO. A seleção pode atravessar carteiras —
-        // na aba de teste cada linha é de uma conta diferente, e as seis têm a MESMA unidade
-        // `TESTE-01`. Mandar a lista inteira para cada slug faria o Guaimbé emitir a linha do On
-        // Sky, porque a unidade bate nos dois.
-        const porEmpreendimento = new Map<string, string[]>();
-        for (const e of escolhidas ?? []) {
-          if (!porEmpreendimento.has(e.empreendimento)) porEmpreendimento.set(e.empreendimento, []);
-          porEmpreendimento.get(e.empreendimento)!.push(e.unidade);
-        }
-        // Nada selecionado: cada alvo emite a carteira inteira dele.
-        const aRodar = porEmpreendimento.size > 0 ? [...porEmpreendimento.keys()] : alvos;
+        // O agrupamento por empreendimento e o corte em blocos vivem em `blocosDaEmissao`, com
+        // teste: são eles que impedem tanto a unidade emitida duas vezes quanto a esquecida.
+        const blocos = blocosDaEmissao({
+          alvos,
+          escolhidas: escolhidas ?? [],
+          tamanho: UNIDADES_POR_REQUISICAO,
+        });
 
-        for (const slug of aRodar) {
-          const unidades = porEmpreendimento.get(slug);
+        const totalDoLote = totalDeUnidades(blocos);
+        let feitas = 0;
+        if (totalDoLote > 0) setProgresso({ feitas: 0, total: totalDoLote });
+
+        for (const bloco of blocos) {
+          const { slug, unidades } = bloco;
           const r = await fetch("/api/incorporador/boletos", {
             body: JSON.stringify({
               competencia,
@@ -328,7 +358,9 @@ export function TelaBoletos() {
             headers: { "Content-Type": "application/json" },
             method: "POST",
           });
-          const j = (await r.json()) as { data?: Emissao; error?: string };
+          const j = await lerResposta<Emissao>(r);
+          feitas += unidades?.length ?? 0;
+          if (totalDoLote > 0) setProgresso({ feitas, total: totalDoLote });
           // ⚠️ UMA CARTEIRA QUE FALHA NÃO PARA AS OUTRAS. Na aba de teste é exatamente o esperado:
           // a conta sem chave devolve erro e as cinco com chave precisam emitir mesmo assim.
           if (!r.ok) {
@@ -336,6 +368,14 @@ export function TelaBoletos() {
             continue;
           }
           if (j.data) juntos.push(j.data);
+          // ⚠️ O SERVIDOR PODE PARAR NO MEIO DE PROPOSITO (teto de tempo). Sem este aviso, as
+          // unidades que sobraram sumiriam da vista: a tela mostraria uma emissao bem-sucedida
+          // com menos boletos do que foram pedidos, e ninguem saberia que falta clicar de novo.
+          if ((j.data?.restantes ?? 0) > 0) {
+            problemas.push(
+              `${slug}: ${j.data?.restantes} unidade(s) ficaram para a proxima rodada — clique em gerar de novo`,
+            );
+          }
         }
 
         if (juntos.length > 0) {
@@ -353,7 +393,9 @@ export function TelaBoletos() {
                 },
           );
         }
-        if (problemas.length > 0) setErro(problemas.join(" · "));
+        // ⚠️ SEM REPETIR: a mesma recusa (conta nao aprovada, por exemplo) volta uma vez por
+        // bloco, e oito copias da mesma frase escondem a segunda mensagem, que e a que interessa.
+        if (problemas.length > 0) setErro([...new Set(problemas)].join(" · "));
 
         setSelecionadas(new Set());
         await carregar();
@@ -361,6 +403,7 @@ export function TelaBoletos() {
         setErro(e instanceof Error ? e.message : "Não consegui falar com o servidor.");
       } finally {
         setEmitindo(null);
+        setProgresso(null);
         emitindoAgora.current = false;
       }
     },
@@ -389,7 +432,7 @@ export function TelaBoletos() {
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });
-        const j = (await r.json()) as { data?: { previas: Previa[] }; error?: string };
+        const j = await lerResposta<{ previas: Previa[] }>(r);
         if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
         setPrevias({ itens: j.data?.previas ?? [], slug });
       } catch (e) {
@@ -418,7 +461,7 @@ export function TelaBoletos() {
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });
-        const j = (await r.json()) as { data?: Envio; error?: string };
+        const j = await lerResposta<Envio>(r);
         if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
         setEnvio(j.data ?? null);
         setPrevias(null);
@@ -450,7 +493,7 @@ export function TelaBoletos() {
             `&empreendimento=${encodeURIComponent(empreendimento)}`,
           { cache: "no-store" },
         );
-        const j = (await r.json()) as { data?: Historico; error?: string };
+        const j = await lerResposta<Historico>(r);
         if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
         setHistorico(j.data ?? null);
       } catch (e) {
@@ -478,7 +521,7 @@ export function TelaBoletos() {
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });
-        const j = (await r.json()) as { data?: unknown; error?: string };
+        const j = await lerResposta<unknown>(r);
         if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
         await carregar();
         // O histórico ganhou linha nova: recarrega o que está aberto.
@@ -676,6 +719,7 @@ export function TelaBoletos() {
               // acontecia — foi exatamente o que o Lucas viu em 02/09/2026 (*"clico e não acontece
               // nada"*), e é o que leva a clicar de novo, que é como nasce a cobrança duplicada.
               emitindo={emitindo !== null && (emitindo === aba || alvosDaAba.includes(emitindo))}
+              progresso={progresso}
               enviarAoEmitir={enviarAoEmitir}
               mostrarPredio={aba === "consolidado" || aba === ABA_TESTE}
               ocupado={ocupado}
@@ -1025,6 +1069,7 @@ function AEmitir({
   onSelecionadas,
   parcelas,
   podeEmitir,
+  progresso,
   selecionadas,
 }: {
   acaoNaUnidade: (e: string, u: string, corpo: Record<string, unknown>) => Promise<boolean>;
@@ -1040,6 +1085,7 @@ function AEmitir({
   onSelecionadas: (s: Set<string>) => void;
   parcelas: ParcelaAEmitir[];
   podeEmitir: boolean;
+  progresso: null | { feitas: number; total: number };
   selecionadas: Set<string>;
 }) {
   const total = parcelas.reduce((a, p) => a + (p.valor ?? 0), 0);
@@ -1075,9 +1121,10 @@ function AEmitir({
           <button
             disabled={emitindo}
             onClick={() =>
-              aoEmitir(
-                escolhidas.map((p) => ({ empreendimento: p.empreendimento, unidade: p.unidade })),
-              )
+              // ⚠️ MANDA AS UNIDADES SEMPRE, mesmo com nada marcado (`alvo` e a lista inteira
+              // da aba). Antes, sem selecao, a tela pedia "a carteira do slug" e o servidor
+              // decidia o tamanho — e um pedido sem tamanho nao se divide em blocos.
+              aoEmitir(alvo.map((p) => ({ empreendimento: p.empreendimento, unidade: p.unidade })))
             }
             style={{
               alignItems: "center",
@@ -1097,7 +1144,9 @@ function AEmitir({
           >
             {emitindo ? <Loader2 className="inc-girando" size={15} /> : <Zap size={15} />}
             {emitindo
-              ? "Emitindo…"
+              ? progresso && progresso.total > 0
+                ? `Emitindo… ${progresso.feitas}/${progresso.total}`
+                : "Emitindo…"
               : escolhidas.length > 0
                 ? `Gerar ${escolhidas.length} boleto(s) · ${moeda(totalEscolhido)}`
                 : `Gerar os ${parcelas.length} boletos`}

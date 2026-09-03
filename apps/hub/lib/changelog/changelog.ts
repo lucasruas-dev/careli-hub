@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-03-boletos-lote-em-blocos",
+    deployedAt: "2026-09-03T08:15:00-03:00",
+    modules: [
+      {
+        module: "Boletos",
+        screens: [
+          {
+            items: [
+              "Gerar a carteira inteira de uma vez voltou a funcionar: o lote sai em blocos de 20 e o botão mostra o andamento (Emitindo… 40/141).",
+              "Quando alguma coisa dá errado, a tela diz o que houve em português, em vez da mensagem técnica do navegador.",
+              "Se o servidor precisar parar no meio, ele avisa quantas unidades ficaram para a próxima rodada — e clicar de novo continua de onde parou, sem repetir boleto.",
+            ],
+            screen: "Emissão de boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "ae8b868f",
+    technical: {
+      done: "O Lucas clicou em *\"Gerar 141 boleto(s)\"* no Garden as 02:35 de 03/09/2026 e a tela mostrou `Unexpected token 'A', \"An error o\"... is not valid JSON`. ⚠️ QUEM RESPONDEU AQUILO NAO FOI A NOSSA ROTA: nos logs da Vercel, `Vercel Runtime Timeout Error: Task timed out after 300 seconds` em /api/incorporador/boletos, no mesmo minuto. O gateway matou a funcao e devolveu TEXTO (\"An error occurred with your deployment\"), que o `r.json()` da tela tentou interpretar — a mensagem do parser fala do primeiro caractere, nao do que aconteceu. ⚠️ E O CORTE NAO DESFAZ NADA: as cobrancas criadas ate ali existem no Asaas; o que morreu foi a lista que dizia quais, porque o `carregar()` vem depois do `await` que nunca voltou. A emissao e em serie de proposito (mesmo CPF em paralelo cria dois cadastros no Asaas) e cada unidade custa de 2 a 4 chamadas: a ~2s, 141 passam de 280s. Nao e teto a ajustar — a carteira so cresce. TRES camadas: (1) a tela fatia em blocos de 20 unidades (`lib/apolo/boletos/blocos.ts`, com teste: nenhuma unidade perdida ou repetida, agrupamento por empreendimento preservado porque a conta do Asaas vem dele); (2) o botao passou a mandar SEMPRE as unidades que estao na tela (`alvo`, nao `escolhidas`) — pedido sem tamanho nao se divide; (3) as duas rotas de emissao (portal e /api/boletos/emitir) param sozinhas aos 240s e devolvem `restantes`, que a tela mostra. `lerResposta` substituiu os cinco `r.json()` crus e reconhece o timeout do gateway. Typecheck limpo, lint limpo, 147 testes de boletos verdes (8 novos).",
+      motivation:
+        "Emitir a carteira inteira num clique so parou de funcionar quando a maior delas cresceu, e o erro na tela nao dizia nem o que houve nem se era seguro clicar de novo.",
+    },
+    title: "Boletos: a carteira grande volta a emitir num clique",
+    type: "correcao",
+    version: "1.273.1",
+  },
+  {
     buildTag: "2026-09-02-temis-editor-completo",
     deployedAt: "2026-09-02T23:24:00-03:00",
     modules: [
