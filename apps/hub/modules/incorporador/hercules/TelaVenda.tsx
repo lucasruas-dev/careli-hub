@@ -133,8 +133,10 @@ export function TelaVenda() {
       try {
         const r = await fetch("/api/incorporador/produtos", { cache: "no-store" });
         if (!r.ok) return;
-        const j = (await r.json()) as { data?: Produto[] };
-        if (vivo) setProdutos(j.data ?? []);
+        // ⚠️ O PAYLOAD É `{ data: { produtos } }`, e não a lista solta: eu li errado e a tela
+        // quebrou com "produtos.filter is not a function" antes de desenhar qualquer coisa.
+        const j = (await r.json()) as { data?: { produtos?: Produto[] } };
+        if (vivo) setProdutos(j.data?.produtos ?? []);
       } catch {
         // Sem a lista, a tela mostra tudo e não oferece filtro. Ela não depende disso para viver.
       }
