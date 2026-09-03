@@ -12,6 +12,7 @@ import { sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
 import { deveClarearMasterplan } from "@/lib/apolo/incorporador/tema-portal";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import { comTemaClaro } from "@/lib/apolo/masterplan-tema-claro";
+import { comSimuladorAberto, loteDoPedido } from "@/lib/apolo/incorporador/masterplan-simulador";
 import {
   pediuSoOEspelho,
   soOEspelho,
@@ -206,7 +207,16 @@ export async function GET(request: Request) {
   // Sessão, tradução do código, lotes permitidos e recorte fail-closed já aconteceram acima: este
   // parâmetro esconde a casca da tela para o quadro embutido da Venda, e nada mais. Chutar
   // `so=espelho` na URL não revela um lote a mais.
-  const corpo = pediuSoOEspelho(parametros.get("so")) ? soOEspelho(bruto) : bruto;
+  // ⚠️ TRÊS MODOS DE SERVIR O MESMO ARQUIVO. Inteiro (a tela A-INTERNO como sempre foi), SÓ O
+  // ESPELHO (o quadro embutido na Mesa) e o SIMULADOR já aberto num lote — o "Monte o plano de
+  // pagamento" que o Lucas aprovou, reusado em vez de reescrito. O arquivo é o mesmo nos três: o
+  // que muda é o que fica visível e o que abre sozinho.
+  const alvoDoSimulador = loteDoPedido(parametros.get("simular"));
+  const corpo = alvoDoSimulador
+    ? comSimuladorAberto(bruto, alvoDoSimulador.quadra, alvoDoSimulador.lote)
+    : pediuSoOEspelho(parametros.get("so"))
+      ? soOEspelho(bruto)
+      : bruto;
 
   return new NextResponse(deveClarearMasterplan(parametros.get("tema")) ? comTemaClaro(corpo) : corpo, {
     headers: {

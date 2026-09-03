@@ -354,6 +354,10 @@ export function TelaVenda() {
   const [visao, setVisao] = useState<"mesa" | "panorama">("panorama");
   const [etapa, setEtapa] = useState<"disponivel" | EtapaDoFluxo>("reservado");
   const [foco, setFoco] = useState<null | Foco>(null);
+  const [simulando, setSimulando] = useState<null | UnidadeNoMapa>(null);
+  // O tema efetivo (já resolvido o "seguir o aparelho") vai para o masterplan: um <iframe> é outro
+  // documento e não herda variável CSS de ninguém.
+  const { efetivo } = useTemaDoPortal();
   const [modoDoEstoque, setModoDoEstoque] = useState<"grade" | "mapa">("grade");
   // Abre em 12 meses: o mês corrente sozinho, no dia 3, mostraria quase nada.
   const [janela, setJanela] = useState<string>("12m");
@@ -703,9 +707,23 @@ export function TelaVenda() {
       </div>
 
       <div style={{ display: "flex", flex: "1 1 auto", minHeight: 0 }}>
+      {/* ⚠️ A MODAL VIVE AQUI, e não dentro da Mesa: ela cobre a tela inteira, e um <dialog> preso
+          a uma coluna herdaria o `overflow: hidden` dela. */}
+      {simulando && mapaDoProduto?.masterplanInterno ? (
+        <ModalDoSimulador
+          codigo={mapaDoProduto.masterplanInterno}
+          lote={simulando.lote ?? ""}
+          nome={mapaDoProduto.nome}
+          onFechar={() => setSimulando(null)}
+          quadra={simulando.quadra ?? ""}
+          tema={efetivo}
+        />
+      ) : null}
+
       {visao === "mesa" ? (
         <Mesa
           aoFocar={setFoco}
+          aoSimular={setSimulando}
           aoTrocarModo={setModoDoEstoque}
           carregando={carregando}
           dados={dados}
@@ -728,6 +746,7 @@ export function TelaVenda() {
 
 function Mesa({
   aoFocar,
+  aoSimular,
   aoTrocarModo,
   carregando,
   dados,
@@ -739,6 +758,7 @@ function Mesa({
   modo,
 }: {
   aoFocar: (f: null | Foco) => void;
+  aoSimular: (u: null | UnidadeNoMapa) => void;
   aoTrocarModo: (m: "grade" | "mapa") => void;
   carregando: boolean;
   dados: FluxoDeVenda | null;
@@ -1295,10 +1315,10 @@ function Mesa({
         </Cartao>
 
         <div style={{ flex: "0 0 auto" }}>
-          <Simulador
-            chave={unidadeEmFoco?.id ?? propostaEmFoco?.id ?? ""}
-            planos={dados?.planos ?? []}
-            valor={propostaEmFoco?.valor || (unidadeEmFoco?.preco ?? 0)}
+          <BotaoDoSimulador
+            aoAbrir={() => aoSimular(unidadeEmFoco)}
+            produtoComMapa={mapaDoProduto}
+            unidade={unidadeEmFoco}
           />
         </div>
 
@@ -1328,164 +1348,166 @@ function Mesa({
 /** O plano como a rota entrega — o mesmo `PlanoComercial` do cadastro. */
 type PlanoDoSimulador = PlanoDaVenda;
 
-function Simulador({
-  chave,
-  planos,
-  valor,
+/**
+ * O simulador em tela cheia.
+ *
+ * ⚠️ É O ARQUIVO DO MASTERPLAN servido pela rota do portal com `simular=quadra|lote`: ela esconde a
+ * casca e manda abrir o popup do plano já no lote. Nada foi reescrito — o que chega aqui é a mesma
+ * tela que o Cecílio usa.
+ */
+function ModalDoSimulador({
+  codigo,
+  lote,
+  nome,
+  onFechar,
+  quadra,
+  tema,
 }: {
-  chave: string;
-  planos: PlanoDoSimulador[];
-  valor: number;
+  codigo: string;
+  lote: string;
+  nome: string;
+  onFechar: () => void;
+  quadra: string;
+  tema: string;
 }) {
-  const [tabela, setTabela] = useState(0);
-  const [desconto, setDesconto] = useState(0);
-  const [entrada, setEntrada] = useState(0);
-  const [parcelas, setParcelas] = useState(180);
-  const [planoEscolhido, setPlanoEscolhido] = useState<null | string>(null);
-
-  const plano = useMemo(
-    () => planos.find((p) => p.nome === planoEscolhido) ?? planos[0] ?? null,
-    [planoEscolhido, planos],
-  );
-
-  /** A taxa mensal do plano — é ela que governa a conta. */
-  const i = useMemo(
-    () =>
-      plano
-        ? taxaMensal({
-            entradaPercentual: plano.entradaPercentual,
-            indiceCorrecao: plano.indiceCorrecao as never,
-            jurosConvencao: plano.jurosConvencao as never,
-            jurosPeriodicidade: plano.jurosPeriodicidade as never,
-            jurosTaxa: plano.jurosTaxa,
-            nome: plano.nome,
-            parcelas: plano.parcelas,
-            sistemaAmortizacao: plano.sistemaAmortizacao as never,
-            slot: plano.slot as never,
-          })
-        : 0,
-    [plano],
-  );
-
-  // ⚠️ TROCAR DE UNIDADE RECOMEÇA A SIMULAÇÃO. Sem depender da `chave`, quem digitasse um desconto
-  // e clicasse em outro lote veria o valor novo com o desconto antigo — conta errada com cara de
-  // certa.
+  // Escape fecha: tela cheia sem saída de teclado prende quem usa teclado.
   useEffect(() => {
-    setTabela(valor);
-    setDesconto(0);
-    setPlanoEscolhido(null);
-  }, [chave, valor]);
-
-  // O plano manda na entrada e no prazo; o operador ajusta por cima se quiser.
-  useEffect(() => {
-    if (!plano) return;
-    setParcelas(plano.parcelas > 0 ? plano.parcelas : 180);
-    setEntrada(Math.round((tabela * (plano.entradaPercentual || 0)) / 100));
-  }, [plano, tabela]);
-
-  const final = Math.max(0, tabela * (1 - desconto / 100));
-  const financiado = Math.max(0, final - entrada);
-
-  // A régua do plano: Price, SAC ou SACOC. As primitivas são as de `planos-comerciais.ts`, e a
-  // escolha entre elas é a mesma de `calcularParcela` — o que não dá para usar é `calcularParcela`
-  // inteira, porque ela deriva a entrada do PERCENTUAL do plano e aqui a entrada é digitável.
-  //
-  // ⚠️ SACOC NÃO É O SAC DO LIVRO: a parcela emitida é só a amortização, e os juros sobem de degrau
-  // no aniversário. Medido em nove empreendimentos; usar Price nele daria parcela maior do que o
-  // contrato emite — por isso a linha da saída muda de nome conforme o sistema.
-  const conta = useMemo(() => {
-    if (!plano || parcelas <= 0) {
-      return { natureza: "fixa" as const, parcela: parcelas > 0 ? financiado / parcelas : 0 };
-    }
-    if (plano.sistemaAmortizacao === "sac") {
-      return { natureza: "primeira" as const, parcela: primeiraParcelaSac(financiado, i, parcelas) };
-    }
-    if (plano.sistemaAmortizacao === "sacoc") {
-      return { natureza: "inicial" as const, parcela: parcelaSacoc(financiado, parcelas) };
-    }
-    return { natureza: "fixa" as const, parcela: parcelaPrice(financiado, i, parcelas) };
-  }, [financiado, i, parcelas, plano]);
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onFechar();
+    };
+    window.addEventListener("keydown", aoTeclar);
+    const antes = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", aoTeclar);
+      document.body.style.overflow = antes;
+    };
+  }, [onFechar]);
 
   return (
-    // ⚠️ SÓ A TABELA (Lucas, 03/09/2026: *"deixa somente a tabela mesmo ali, vou tratar o
-    // personalizado em outro local"*, *"tabela bem básico"*). A proposta negociada — entrada livre,
-    // balões, parcela-alvo — sai daqui e vai para onde a venda acontece de verdade. A matemática
-    // dela continua pronta e testada em `lib/hercules/simulacao.ts`, esperando aquele lugar.
-    <Cartao titulo="Simulador de proposta">
-      <div style={{ display: "grid", gap: 10 }}>
-        {planos.length > 0 ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {planos.map((p) => (
-              <Pilula
-                ativo={plano?.nome === p.nome}
-                key={p.nome}
-                onClick={() => setPlanoEscolhido(p.nome)}
-                rotulo={p.nome}
-              />
-            ))}
-          </div>
-        ) : null}
-
-        {plano ? (
-          <div
+    <div
+      style={{
+        background: "rgb(0 0 0 / .55)",
+        display: "grid",
+        inset: 0,
+        padding: 24,
+        placeItems: "center",
+        position: "fixed",
+        zIndex: 60,
+      }}
+    >
+      <div
+        style={{
+          background: T.card,
+          border: `1px solid ${T.border}`,
+          borderRadius: 14,
+          display: "flex",
+          flexDirection: "column",
+          height: "min(92vh, 900px)",
+          maxWidth: 1280,
+          overflow: "hidden",
+          width: "min(96vw, 1280px)",
+        }}
+      >
+        <div
+          style={{
+            alignItems: "center",
+            borderBottom: `1px solid ${T.border}`,
+            display: "flex",
+            justifyContent: "space-between",
+            padding: "12px 16px",
+          }}
+        >
+          <b style={{ fontSize: 14 }}>
+            Simulador de proposta · {nome} · quadra {quadra} lote {lote}
+          </b>
+          <button
+            onClick={onFechar}
             style={{
-              background: T.soft,
+              background: "transparent",
+              border: `1px solid ${T.border}`,
               borderRadius: 8,
               color: T.sub,
-              fontSize: 11.5,
-              padding: "7px 10px",
+              cursor: "pointer",
+              font: "inherit",
+              fontSize: 12.5,
+              fontWeight: 600,
+              padding: "5px 12px",
             }}
+            type="button"
           >
-            {[
-              `${plano.parcelas}x`,
-              plano.indiceCorrecao ? nomeDoIndiceCurto(plano.indiceCorrecao) : null,
-              plano.jurosTaxa && plano.jurosTaxa > 0
-                ? `juros ${plano.jurosTaxa.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% ${
-                    plano.jurosPeriodicidade === "anual" ? "a.a." : "a.m."
-                  }`
-                : "sem juros",
-              plano.entradaPercentual > 0 ? `entrada ${plano.entradaPercentual}%` : null,
-              plano.sistemaAmortizacao?.toUpperCase(),
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </div>
-        ) : null}
-
-        <div style={{ display: "grid", gap: 9, gridTemplateColumns: "1fr 1fr" }}>
-          <CampoEmReais aoMudar={setTabela} rotulo="Valor de tabela" valor={tabela} />
-          <CampoSimples aoMudar={setDesconto} rotulo="Desconto" sufixo="%" valor={desconto} />
-          <CampoEmReais aoMudar={setEntrada} rotulo="Entrada" valor={entrada} />
-          <CampoSimples aoMudar={setParcelas} rotulo="Parcelas" sufixo="x" valor={parcelas} />
+            Fechar
+          </button>
         </div>
 
-        <div style={{ background: T.soft, borderRadius: 9, padding: "10px 12px" }}>
-          <Linha rotulo="Valor final" valor={dinheiro(final)} />
-          <Linha rotulo="A financiar" valor={dinheiro(financiado)} />
-          <Linha
-            rotulo={
-              conta.natureza === "primeira"
-                ? "Primeira parcela"
-                : conta.natureza === "inicial"
-                  ? "Parcela inicial"
-                  : "Parcela mensal"
-            }
-            valor={dinheiro(conta.parcela)}
-          />
-          {/* ⚠️ O TOTAL DENUNCIA O JURO. Com parcela e prazo só, o custo do financiamento fica
-              invisível: é a soma que mostra quanto o cliente paga a mais que o valor do lote. */}
-          <Linha rotulo="Total" valor={dinheiro(entrada + conta.parcela * parcelas)} />
-        </div>
+        <iframe
+          src={`/api/incorporador/masterplan?code=${encodeURIComponent(codigo)}&tema=${tema}&simular=${encodeURIComponent(`${quadra}|${lote}`)}`}
+          style={{ border: 0, flex: "1 1 auto", width: "100%" }}
+          title={`Simulador · ${nome}`}
+        />
+      </div>
+    </div>
+  );
+}
 
-        <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
-          {conta.natureza === "inicial"
-            ? `Plano ${plano?.nome}, SACOC: a parcela emitida é a amortização, e os juros sobem de degrau no aniversário. A correção pelo índice entra no reajuste anual.`
-            : i > 0
-              ? `Conta pelo plano ${plano?.nome}: ${plano?.sistemaAmortizacao?.toUpperCase()} com a taxa dele. A correção pelo índice entra no reajuste anual, e não aqui.`
-              : plano
-                ? `O plano ${plano.nome} não tem juros: a parcela é o saldo dividido pelo prazo.`
-                : "Sem plano cadastrado para este produto: conta simples, sem juros."}
+/**
+ * O botão que abre o simulador de proposta.
+ *
+ * ⚠️ O SIMULADOR É O DO MASTERPLAN, REUSADO (Lucas, 03/09/2026: *"coloca um botão de simulador de
+ * proposta, aí abre o simulador, esse simulador aqui tem que ser esse"*, mostrando o "Monte o plano
+ * de pagamento"). Aquela tela tem a tabela oficial aplicada ao lote, desconto por plano, reforços
+ * anuais, o modo "parto da parcela do cliente" que varre as composições que fecham e o "Copiar
+ * resumo" — ~1.500 linhas de JS que o Cecílio usa todo dia. Reescrever em React numa rodada seria
+ * trocar o que funciona pelo que ainda vai ser depurado, e a conta é de DINHEIRO.
+ *
+ * ⚠️ SEM MASTERPLAN NÃO HÁ SIMULADOR, e o botão diz isso em vez de sumir: o coordenador que abre
+ * um produto sem mapa precisa saber que falta o mapa, não achar que a tela está quebrada.
+ */
+function BotaoDoSimulador({
+  aoAbrir,
+  produtoComMapa,
+  unidade,
+}: {
+  aoAbrir: () => void;
+  produtoComMapa: null | CardDeProduto;
+  unidade: null | UnidadeNoMapa;
+}) {
+  const nome = unidade ? comoSeEscreve(unidade.codigo, unidade.quadra, unidade.lote) : null;
+
+  return (
+    <Cartao titulo="Simulador de proposta">
+      <div style={{ display: "grid", gap: 10 }}>
+        <p style={{ color: T.muted, fontSize: 12.5, margin: 0 }}>
+          {unidade
+            ? `Monta o plano de pagamento do lote ${nome?.unidade} com a tabela oficial do empreendimento: desconto por plano, reforços anuais e a parcela que fecha.`
+            : "Escolha um lote no quadro ou na lista para montar o plano de pagamento dele."}
         </p>
+
+        <button
+          disabled={!unidade || !produtoComMapa}
+          onClick={aoAbrir}
+          style={{
+            background: unidade && produtoComMapa ? T.btnBg : T.soft,
+            border: "none",
+            borderRadius: 9,
+            color: unidade && produtoComMapa ? T.btnFg : T.muted,
+            cursor: unidade && produtoComMapa ? "pointer" : "default",
+            font: "inherit",
+            fontSize: 13,
+            fontWeight: 650,
+            padding: "10px 14px",
+            width: "100%",
+          }}
+          type="button"
+        >
+          Abrir simulador
+        </button>
+
+        {unidade && !produtoComMapa ? (
+          <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
+            Este produto ainda não tem espelho publicado, e o simulador vive nele.
+          </p>
+        ) : null}
       </div>
     </Cartao>
   );
