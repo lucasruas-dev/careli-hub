@@ -70,8 +70,19 @@ export type PoliticaComercialDoEmpreendimento = {
   /** `commissioning_incorporador`. */
   comissaoIncorporador: null | number;
   enterpriseId: string;
-  /** `initial_input_value` — entrada mínima (ato + sinal). */
+  /** `initial_input_value` — entrada mínima (ato + sinal) SEGUNDO O C2X. Read-only, não trava. */
   entradaMinima: null | number;
+  /**
+   * A % mínima de entrada cadastrada NO APOLO — a que vale.
+   *
+   * ⚠️ É ESTA QUE O SIMULADOR E A PROPOSTA OBEDECEM (Lucas, 03/09/2026: *"vamos ter um campo dentro
+   * da parte que vamos cadastrar a política comercial e lá vamos apontar a % mínima"*). A do C2X
+   * acima continua aparecendo ao lado, como referência, do mesmo jeito que a gestão de carteira
+   * mostra o número do legado e o nosso.
+   *
+   * Nulo = não cadastrado; quem lê aplica o padrão da casa.
+   */
+  entradaMinimaApolo: null | number;
   /** `careli_percentage` — o par do loteador na divisão da parcela, no C2X. */
   gestaoCarteiraCareliC2x: null | number;
   /** `loteador_percentage` — quanto fica com o incorporador, segundo o C2X. */
@@ -311,6 +322,7 @@ function gestaoDoSplit(grupos: GrupoDeSplit[]): null | number {
 export async function loadPoliticaComercial(
   codes: string[],
   gestaoPorEnterpriseId: Map<string, null | number> = new Map(),
+  entradaMinimaPorEnterpriseId: Map<string, null | number> = new Map(),
 ): Promise<
   { error: string; ok: false } | { ok: true; politicas: PoliticaComercialDoEmpreendimento[] }
 > {
@@ -367,6 +379,7 @@ export async function loadPoliticaComercial(
         comissaoTotal: numero(linha.total_value_commission),
         enterpriseId,
         entradaMinima: numero(linha.initial_input_value),
+        entradaMinimaApolo: entradaMinimaPorEnterpriseId.get(enterpriseId) ?? null,
         gestaoCarteiraApolo: doApolo,
         gestaoCarteiraC2x: numero(linha.loteador_percentage),
         gestaoCarteiraCareliC2x: numero(linha.careli_percentage),

@@ -36,6 +36,60 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-03-hercules-reserva-e-simulador",
+    deployedAt: "2026-09-03T20:45:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "Reservar saiu do papel: escolha um lote disponível, aponte a imobiliária ou o corretor, informe nome, CPF e telefone do cliente e o prazo — a unidade fica reservada na hora.",
+              "Ao reservar, corretor, imobiliária e coordenador recebem o aviso pelo WhatsApp do Relacionamento, cada um com o texto que interessa a ele. O CPF do cliente vai mascarado.",
+              "Uma busca só para os dois lados: escolher o corretor traz a imobiliária dele; escolher a imobiliária abre os corretores dela.",
+              "A reserva aparece no funil, na grade, no mapa e na lista, como qualquer outra etapa da venda.",
+              "Duas pessoas não conseguem reservar o mesmo lote: a segunda recebe um aviso de que ele acabou de ser reservado.",
+              "Os botões de gerar proposta, enviar para contrato e cancelar já aparecem na ficha, dizendo o que ainda falta para funcionarem.",
+            ],
+            screen: "Venda",
+          },
+          {
+            items: [
+              "Simulador refeito: à esquerda a montagem da proposta, à direita o resultado. Os três botões de modo saíram.",
+              "Comece pelo valor da parcela que o cliente pode pagar: a tela varre os planos e devolve as composições que fecham, com a de menor entrada em destaque.",
+              "A tabela do empreendimento aparece aplicada ao lote, um cartão por plano; clicar carrega as condições e você ajusta a partir dali.",
+              "A entrada aceita reais ou porcentagem, e mostra em quantas vezes será paga.",
+              "O índice de reajuste do plano ficou visível junto do prazo e dos juros.",
+              "Nenhuma composição fica abaixo da entrada mínima do empreendimento.",
+            ],
+            screen: "Simulador de proposta",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Campo novo: % mínima de entrada do empreendimento. É ela que o simulador e a proposta passam a obedecer.",
+              "Sem preencher, vale o padrão da casa (10%). O que o C2X registra aparece ao lado, como referência.",
+            ],
+            screen: "Empreendimentos · Políticas comerciais",
+          },
+        ],
+      },
+    ],
+    rollback: "96178e46",
+    technical: {
+      done: "RESERVA DA UNIDADE (`hercules_reservas`, migration 0125 aplicada em 03/09 com OK do Lucas). Pedido dele: *\"se a unidade estiver disponivel, ter um botao para reservar (...) e automaticamente vai ser encaminhada uma mensagem para o corretor, imobiliaria e coordenador (...) vai sair do numero do relacionamento\"*. Nucleo puro e testado em `lib/hercules/reserva.ts` (validacao, os tres textos e `reservaComoLinhaDoFluxo`); a rota `/api/incorporador/venda/reserva` faz GET (quem pode vender) e POST (reserva + aviso). ⚠️ A TRAVA DE UMA RESERVA VIVA POR UNIDADE E O INDICE PARCIAL DO BANCO, nao um select antes do insert: no salao sao dezenas de tablets na mesma tela e no portal dois coordenadores clicam no mesmo lote — o 23505 vira frase na tela. ⚠️ O AVISO NAO DERRUBA A RESERVA: WhatsApp que falha devolve quem ficou sem aviso, e a reserva continua gravada. O disparo reusa `enviarPeloRelacionamento` (exportada do credenciamento) em vez de uma segunda copia — a segunda e a que para de registrar em `apolo_disparos` primeiro. ⚠️ A RESERVA ENTRA NO FLUXO CONVERTIDA EM `PropostaDaCarga` com etapa `reservado` e id prefixado `reserva:`, e nao como caso especial em cada peca: funil, grade, mapa e lista analitica passam a conta-la de graca. DOIS BUGS ACHADOS NO PRIMEIRO USO REAL: (1) *\"nenhuma imobiliaria habilitada\"* num Vale do Ouro com 37 credenciadas — as unidades vivem em VLO/VOL/VOC e os vinculos estao so no VLO, entao a busca passou a usar a FAMILIA do empreendimento (`familiaDoEmpreendimento`, com teste sobre o cadastro real); (2) a exigencia de vinculo proprio do corretor com o empreendimento deixava 42 dos 65 corretores cinza — o Lucas desfez (*\"nao entendi o motivo de nao trazer todos os corretores\"*) e a regra passou a ser a do mundo: a imobiliaria e credenciada no empreendimento, o corretor e credenciado nela. O filtro de PAPEL (`apolo_entity_profiles`) continua obrigatorio: sem ele, prospect com vinculo de empreendimento entraria na lista. SIMULADOR DO COMERCIAL (`SimuladorDeProposta.tsx`, React, no lugar do iframe do masterplan): *\"quero melhorar esse simulador, esta bem confuso (...) lado esquerdo ser esse cockpit, de montagem de proposta mesmo e o lado direito o de visualizacao\"*. Os tres botoes de MODO sumiram — o modo virou consequencia do campo mexido —, e a leitura e UMA so para os dois caminhos. `composicoesQueFecham` (14 testes) parte da parcela e devolve uma composicao por plano, ordenada pela MENOR ENTRADA, porque o que trava a venda e o dinheiro de agora. ⚠️ DOIS BUGS DE DINHEIRO CORRIGIDOS NA VARREDURA: o reforco anual ia ate 6 em plano de 36 meses (dinheiro cobrado depois da ultima parcela, derrubando a mensalidade abaixo do que o contrato cumpre) — agora o teto e `floor(parcelas/12)`; e a composicao ancora no PISO da entrada em vez de sumir, com a tela explicando por que a parcela saiu menor que a pedida. ENTRADA MINIMA POR EMPREENDIMENTO (migration 0128, aplicada): *\"vamos ter um campo dentro da parte que vamos cadastrar a politica comercial e la vamos apontar a % minima\"*. Coluna `apolo_enterprise_settings.entrada_minima_percentual` (gemea de `gestao_carteira_percentual`, mesma tabela e mesma tela), campo na aba Politica Comercial, e a rota `/api/incorporador/venda` entrega o piso POR EMPREENDIMENTO — a unidade passou a carregar o `enterpriseId` dela porque num escopo de pai com filhos ha mais de um produto aberto. Cadastrado: 8% no Garden (onde o plano Investidor Parcelado tem 8%), 10% nos outros nove que vendem. ⚠️ NULO NAO E ZERO: nulo cai no padrao da casa, zero e a decisao de vender sem entrada, e o PATCH recusa gravar os dois campos numa chamada so para nao sobrescrever o que o operador nao tocou. ⚠️ PONTO FLUTUANTE: 10% de R$ 178.100 e 17810.000000000002, e a tela acusava \"abaixo do minimo\" no valor exato do minimo — o piso arredonda no centavo e a comparacao e em centavos inteiros. CONSOLE: o sinal de gravacao do Chronos saiu do `<script dangerouslySetInnerHTML>` do layout raiz (o React 19 acusa \"Encountered a script tag while rendering React component\") e virou `public/chronos-recording-signal.js` carregado por `next/script`; conferido na rota do Chronos que o START_RECORDING continua saindo. Typecheck limpo; 2.371 testes verdes em 177 arquivos.",
+      motivation:
+        "A venda começa na reserva, e até hoje ela nascia fora do Panteon. E o piso de entrada era uma constante única no código, que ou proibia o que o Garden vende ou liberava abaixo do mínimo em todos os outros.",
+    },
+    title: "Hércules: a reserva de unidade, e o simulador de proposta refeito",
+    type: "novidade",
+    version: "1.275.0",
+  },
+  {
     buildTag: "2026-09-03-hercules-ficha-enxuta",
     deployedAt: "2026-09-03T09:40:00-03:00",
     modules: [

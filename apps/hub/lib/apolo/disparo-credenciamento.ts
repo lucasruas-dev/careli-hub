@@ -282,7 +282,16 @@ export async function corretoresDaImobiliaria(
   }));
 }
 
-async function enviar(
+/**
+ * Manda uma mensagem pelo número do RELACIONAMENTO e registra o disparo.
+ *
+ * ⚠️ EXPORTADA EM 03/09/2026 PARA A RESERVA DA UNIDADE, que avisa corretor, imobiliária e
+ * coordenador exatamente pelo mesmo caminho. Escrever um segundo envio na lib da reserva
+ * duplicaria as três coisas que esta função resolve juntas: o telefone normalizado com DDI, o
+ * fallback quando não há número, e a linha em `apolo_disparos` que faz o envio existir na tela de
+ * status. A segunda cópia é a que para de registrar primeiro.
+ */
+export async function enviarPeloRelacionamento(
   client: SupabaseClient,
   input: {
     destinatario: string;
@@ -379,7 +388,7 @@ export async function avisarCredenciamentoAprovado(
   imobiliaria: ResultadoEnvio;
 }> {
   const [imobiliaria, coordenadores, corretores] = await Promise.all([
-    enviar(client, {
+    enviarPeloRelacionamento(client, {
       entityId: input.entityId,
       destinatario: "imobiliaria",
       origem: input.origem,
@@ -395,7 +404,7 @@ export async function avisarCredenciamentoAprovado(
     }),
     Promise.all(
       (input.coordenadores ?? []).map((coord) =>
-        enviar(client, {
+        enviarPeloRelacionamento(client, {
           destinatario: `coordenador:${coord.nome}`,
           entityId: input.entityId,
           origem: input.origem,
@@ -419,7 +428,7 @@ export async function avisarCredenciamentoAprovado(
     // receber três mensagens seguidas dizendo quase a mesma coisa.
     Promise.all(
       (input.corretoresParaAvisar ?? []).map((corretor) =>
-        enviar(client, {
+        enviarPeloRelacionamento(client, {
           destinatario: "corretor",
           // O disparo fica pendurado na ficha DO CORRETOR, não na da imobiliária: é lá que o
           // operador vai procurar quando ele disser que não recebeu.
@@ -471,7 +480,7 @@ export async function avisarCredenciamentoCorrecao(
     representante?: null | string;
   },
 ): Promise<{ imobiliaria: ResultadoEnvio }> {
-  const imobiliaria = await enviar(client, {
+  const imobiliaria = await enviarPeloRelacionamento(client, {
     destinatario: "imobiliaria",
     entityId: input.entityId,
     origem: input.origem,
@@ -505,7 +514,7 @@ export async function avisarCredenciamentoIndeferido(
   },
 ): Promise<{ coordenador: ResultadoEnvio; imobiliaria: ResultadoEnvio }> {
   const [imobiliaria, coordenador] = await Promise.all([
-    enviar(client, {
+    enviarPeloRelacionamento(client, {
       entityId: input.entityId,
       destinatario: "imobiliaria",
       origem: input.origem,
@@ -519,7 +528,7 @@ export async function avisarCredenciamentoIndeferido(
       tipo: "credenciamento_indeferido",
     }),
     input.coordenadorTelefone
-      ? enviar(client, {
+      ? enviarPeloRelacionamento(client, {
           entityId: input.entityId,
           destinatario: "coordenador",
           origem: input.origem,

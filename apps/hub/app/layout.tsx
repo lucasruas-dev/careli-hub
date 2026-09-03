@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { AppProviders } from "@/providers/app-providers";
 import { PanteonPwaRuntime } from "@/components/panteon-pwa-runtime";
 import "@repo/uix/styles.css";
@@ -30,71 +31,6 @@ const appTitle = isHomologationEnvironment ? "Homo Panteon" : "Panteon";
 const appIconUrl = isHomologationEnvironment
   ? "/panteon-mark-homolog.png?v=1"
   : "/panteon-mark.png?v=1";
-const chronosRecordingEgressSignalScript = `
-(() => {
-  if (!window.location.pathname.startsWith("/chronos/recording-view")) {
-    return;
-  }
-
-  if (window.__chronosRecordingStartSignalBooted) {
-    return;
-  }
-
-  window.__chronosRecordingStartSignalBooted = true;
-
-  const emitStartSignal = () => {
-    window.__chronosRecordingStartLogged = true;
-    console.log("START_RECORDING");
-  };
-
-  window.__chronosRecordingEmitStartSignal = emitStartSignal;
-
-  const scheduleStartSignals = () => {
-    [
-      0,
-      250,
-      750,
-      1500,
-      3000,
-      5000,
-      8000,
-      12000,
-      20000,
-      30000,
-      45000,
-      60000,
-      90000,
-      110000,
-    ].forEach((delay) => {
-      window.setTimeout(emitStartSignal, delay);
-    });
-  };
-
-  if (document.readyState === "loading") {
-    window.addEventListener("DOMContentLoaded", scheduleStartSignals, {
-      once: true,
-    });
-  } else {
-    scheduleStartSignals();
-  }
-
-  window.addEventListener("load", emitStartSignal, { once: true });
-  window.addEventListener("pageshow", emitStartSignal, { once: true });
-
-  window.addEventListener(
-    "pagehide",
-    () => {
-      if (window.__chronosRecordingEndLogged) {
-        return;
-      }
-
-      window.__chronosRecordingEndLogged = true;
-      console.log("END_RECORDING");
-    },
-    { once: true },
-  );
-})();
-`;
 
 export const metadata: Metadata = {
   applicationName: appTitle,
@@ -138,11 +74,19 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: chronosRecordingEgressSignalScript,
-          }}
-        />
+        {/* ⚠️ POR `src`, E NÃO INLINE. Este script já morou aqui como <script
+            dangerouslySetInnerHTML>, e o React 19 passou a acusar no console ("Encountered a script
+            tag while rendering React component"). Trocar por <Script> com conteúdo inline NÃO
+            resolve: o next/script continua renderizando a tag, e o aviso vem dele. Com `src`, não
+            existe tag inline para o React reclamar — o corpo está em
+            `public/chronos-recording-signal.js`, que não guarda segredo nenhum.
+
+            ⚠️ `afterInteractive`, e não `beforeInteractive`: este só sinaliza pelo console para o
+            gravador, e o `beforeInteractive` fazia o Next pré-carregar o arquivo em TODA página do
+            hub — inclusive nas que nunca vão gravar nada —, rendendo um aviso de preload não usado
+            em cada carga. O script já se protege sozinho (roda na hora se o DOM estiver pronto,
+            senão espera o DOMContentLoaded) e repete o sinal por 110 segundos. */}
+        <Script src="/chronos-recording-signal.js" strategy="afterInteractive" />
         <PanteonPwaRuntime />
         <AppProviders>{children}</AppProviders>
       </body>

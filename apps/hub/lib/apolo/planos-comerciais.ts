@@ -78,7 +78,8 @@ export type ParcelaCalculada = {
   sinal: null | number;
 };
 
-const INDICES: Record<IndiceCorrecao, string> = {
+/** O nome do índice como o comercial escreve. Exportado desde 03/09/2026 para o simulador. */
+export const INDICES: Record<IndiceCorrecao, string> = {
   IGPM_ANUAL: "IGP-M anual",
   INCC_M_MENSAL: "INCC-M mensal",
   IPCA_ANUAL: "IPCA anual",

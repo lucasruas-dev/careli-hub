@@ -612,6 +612,72 @@ export async function setEnterpriseGestaoCarteira(input: {
   return { ok: true };
 }
 
+/**
+ * A % MÍNIMA DE ENTRADA do empreendimento.
+ *
+ * Lucas (03/09/2026): *"vamos ter um campo dentro da parte que vamos cadastrar a política comercial
+ * e lá vamos apontar a % mínima"*.
+ *
+ * ⚠️ É O GÊMEO DE `setEnterpriseGestaoCarteira`, de propósito: mesma tabela, mesma chave, mesma
+ * tela e o mesmo significado para `null` — "não cadastrado", e não zero. Quem lê aplica o padrão da
+ * casa (10%) quando vem nulo; gravar 0 é uma decisão diferente e legítima (empreendimento que
+ * aceita venda sem entrada), e as duas precisam continuar distinguíveis.
+ */
+export async function setEnterpriseEntradaMinima(input: {
+  adminClient: AdminClient;
+  code?: null | string;
+  enterpriseId: string;
+  percentual: null | number;
+  updatedBy?: null | string;
+}): Promise<{ error?: string; ok: boolean }> {
+  const enterpriseId = (input.enterpriseId ?? "").trim();
+  if (!enterpriseId) return { error: "Empreendimento invalido.", ok: false };
+
+  const percentual = normalizarPercentual(input.percentual);
+
+  if (percentual !== null && (percentual < 0 || percentual > 100)) {
+    return { error: "A entrada minima precisa estar entre 0 e 100%.", ok: false };
+  }
+
+  const { data: existente, error: erroLeitura } = await input.adminClient
+    .from(TABLE)
+    .select("enterprise_id")
+    .eq("enterprise_id", enterpriseId)
+    .maybeSingle<{ enterprise_id: string }>();
+
+  if (erroLeitura && !tabelaAusente(erroLeitura)) {
+    return { error: `Nao foi possivel salvar: ${erroLeitura.message}`, ok: false };
+  }
+
+  if (existente) {
+    const { error } = await input.adminClient
+      .from(TABLE)
+      .update({
+        entrada_minima_percentual: percentual,
+        updated_at: new Date().toISOString(),
+        updated_by: input.updatedBy ?? null,
+      })
+      .eq("enterprise_id", enterpriseId);
+
+    if (error) return { error: `Nao foi possivel salvar: ${error.message}`, ok: false };
+    return { ok: true };
+  }
+
+  const { error } = await input.adminClient.from(TABLE).insert({
+    code: input.code ?? null,
+    // Mesmo cuidado das irmãs: cadastrar a entrada mínima de um empreendimento sem settings NÃO
+    // pode ligar o credenciamento por acidente.
+    credenciamento_ativo: false,
+    enterprise_id: enterpriseId,
+    entrada_minima_percentual: percentual,
+    updated_at: new Date().toISOString(),
+    updated_by: input.updatedBy ?? null,
+  });
+
+  if (error) return { error: `Nao foi possivel salvar: ${error.message}`, ok: false };
+  return { ok: true };
+}
+
 export async function setEnterpriseLimiteCredito(input: {
   adminClient: AdminClient;
   code?: string | null;

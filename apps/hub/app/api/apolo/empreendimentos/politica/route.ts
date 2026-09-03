@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
-import { setEnterpriseGestaoCarteira } from "@/lib/apolo/enterprise-settings";
+import { setEnterpriseEntradaMinima, setEnterpriseGestaoCarteira } from "@/lib/apolo/enterprise-settings";
 import { loadPoliticaComercial } from "@/lib/apolo/politica-comercial";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
   // operador estaria a um clique de gravar esse vazio falso por cima do percentual real.
   const { data: settings, error: erroSettings } = await adminClient
     .from("apolo_enterprise_settings")
-    .select("enterprise_id, gestao_carteira_percentual")
+    .select("enterprise_id, gestao_carteira_percentual, entrada_minima_percentual")
     .limit(2000);
 
   if (erroSettings) {
@@ -69,7 +69,23 @@ export async function GET(request: Request) {
     ]),
   );
 
-  const resultado = await loadPoliticaComercial(codes, gestaoPorEnterpriseId);
+  const entradaMinimaPorEnterpriseId = new Map<string, null | number>(
+    ((settings ?? []) as Array<{
+      enterprise_id: string;
+      entrada_minima_percentual: null | number | string;
+    }>).map((linha) => [
+      String(linha.enterprise_id),
+      linha.entrada_minima_percentual === null || linha.entrada_minima_percentual === undefined
+        ? null
+        : Number(linha.entrada_minima_percentual),
+    ]),
+  );
+
+  const resultado = await loadPoliticaComercial(
+    codes,
+    gestaoPorEnterpriseId,
+    entradaMinimaPorEnterpriseId,
+  );
 
   if (!resultado.ok) {
     return NextResponse.json({ error: resultado.error }, { status: 502 });
@@ -98,6 +114,8 @@ export async function PATCH(request: Request) {
     // `null` APAGA, e apagar tem significado: "não fazemos a gestão de carteira deste
     // empreendimento". Por isso o campo distingue ausente (não mexeu) de null (limpou).
     gestaoCarteiraPercentual?: null | number | string;
+    // Mesma regra do campo acima: ausente = não mexeu; null = limpou ("volta ao padrão da casa").
+    entradaMinimaPercentual?: null | number | string;
   };
 
   try {
@@ -123,17 +141,32 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Informe o empreendimento." }, { status: 400 });
   }
 
-  if (!("gestaoCarteiraPercentual" in corpo)) {
+  const mexeuNaGestao = "gestaoCarteiraPercentual" in corpo;
+  const mexeuNaEntrada = "entradaMinimaPercentual" in corpo;
+
+  if (!mexeuNaGestao && !mexeuNaEntrada) {
     return NextResponse.json({ error: "Nada para salvar." }, { status: 400 });
   }
 
-  const bruto = corpo.gestaoCarteiraPercentual;
-  const percentual =
+  // ⚠️ UM CAMPO POR VEZ. A tela salva cada linha da política sozinha, e mandar os dois juntos
+  // significaria sobrescrever o que o operador não tocou com o valor que a tela tinha em memória.
+  if (mexeuNaGestao && mexeuNaEntrada) {
+    return NextResponse.json(
+      { error: "Salve um campo por vez." },
+      { status: 400 },
+    );
+  }
+
+  const lerPercentual = (bruto: null | number | string | undefined): null | number =>
     bruto === null || bruto === undefined || bruto === ""
       ? null
       : typeof bruto === "string"
         ? Number(bruto.replace(",", "."))
         : Number(bruto);
+
+  const percentual = lerPercentual(
+    mexeuNaGestao ? corpo.gestaoCarteiraPercentual : corpo.entradaMinimaPercentual,
+  );
 
   if (percentual !== null && !Number.isFinite(percentual)) {
     return NextResponse.json(
@@ -145,13 +178,21 @@ export async function PATCH(request: Request) {
   const gravados: string[] = [];
 
   for (const enterpriseId of enterpriseIds) {
-    const gravado = await setEnterpriseGestaoCarteira({
-      adminClient,
-      code: corpo.code ?? null,
-      enterpriseId,
-      percentual,
-      updatedBy: auth.userId,
-    });
+    const gravado = mexeuNaGestao
+      ? await setEnterpriseGestaoCarteira({
+          adminClient,
+          code: corpo.code ?? null,
+          enterpriseId,
+          percentual,
+          updatedBy: auth.userId,
+        })
+      : await setEnterpriseEntradaMinima({
+          adminClient,
+          code: corpo.code ?? null,
+          enterpriseId,
+          percentual,
+          updatedBy: auth.userId,
+        });
 
     if (!gravado.ok) {
       // Relata O QUE JÁ GRAVOU. Uma falha no meio deixa o empreendimento inconsistente, e o

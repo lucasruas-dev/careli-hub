@@ -179,6 +179,14 @@ export type FluxoDeVenda = {
     grupo: string;
     unidades: {
       codigo: string;
+      /**
+       * O empreendimento da unidade (id do C2X).
+       *
+       * ⚠️ VAI JUNTO PORQUE O PISO DE ENTRADA É POR EMPREENDIMENTO. Num escopo de pai com filhos, o
+       * simulador precisa saber de QUAL produto é o lote para aplicar a % mínima certa — o Garden
+       * aceita 8% e os outros, 10%.
+       */
+      enterpriseId: string;
       /** A etapa que pinta o quadrado — ver `EtapaDoEspelho`. */
       etapa: EtapaDoEspelho;
       id: string;
@@ -192,6 +200,13 @@ export type FluxoDeVenda = {
   }[];
   perdas: { canceladas: number; distratos: number; vgvCancelado: number };
   /** Os planos do escopo, para o simulador. Vazio quando o produto não tem plano cadastrado. */
+  /**
+   * A % mínima de entrada por empreendimento (id do C2X), cadastrada na Política Comercial.
+   *
+   * Empreendimento AUSENTE do mapa não cadastrou o seu: quem lê aplica o padrão da casa. A rota
+   * preenche; a agregação não sabe disso.
+   */
+  entradaMinima: Record<string, number>;
   planos: PlanoDaVenda[];
   /** Os motivos de cancelamento que EXISTEM na base — ver o aviso sobre o legado. */
   motivos: { motivo: string; n: number }[];
@@ -439,6 +454,7 @@ export function agregarFluxo({
     string,
     {
       codigo: string;
+      enterpriseId: string;
       etapa: EtapaDoEspelho;
       id: string;
       lote: null | string;
@@ -467,6 +483,7 @@ export function agregarFluxo({
     const lista = grupos.get(g);
     const item = {
       codigo: u.codigo,
+      enterpriseId: String(u.enterprise_id),
       etapa,
       id: u.id,
       lote: u.lote,
@@ -480,7 +497,9 @@ export function agregarFluxo({
 
   return {
     cads,
-    // A rota preenche depois: os planos vêm de outra fonte e não passam pela agregação.
+    // A rota preenche depois: os planos e o piso de entrada vêm de outras fontes e não passam
+    // pela agregação.
+    entradaMinima: {},
     planos: [],
     fluxo: ETAPAS_DA_FAIXA.map((etapa) =>
       etapa === "disponivel"

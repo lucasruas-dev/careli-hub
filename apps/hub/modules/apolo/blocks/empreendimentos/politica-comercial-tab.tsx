@@ -4,6 +4,7 @@ import { AlertTriangle, Check, Info, Loader2, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { PoliticaComercialDoEmpreendimento } from "@/lib/apolo/politica-comercial";
+import { ENTRADA_MINIMA_PERCENTUAL } from "@/lib/hercules/composicoes";
 
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
@@ -28,6 +29,15 @@ type Props = {
   name: string;
 };
 
+/**
+ * O padrão da casa, quando o empreendimento não cadastrou o seu.
+ *
+ * ⚠️ IMPORTADO, NÃO REDIGITADO: é a mesma constante que o simulador obedece
+ * (`lib/hercules/composicoes.ts`). Escrever "10" aqui criaria uma segunda verdade, e a tela passaria
+ * a prometer um piso diferente do que a conta aplica no dia em que o número mudar.
+ */
+const PADRAO_DA_CASA = ENTRADA_MINIMA_PERCENTUAL;
+
 const pct = (v: null | number): string =>
   v === null ? "—" : `${v.toLocaleString("pt-BR", { maximumFractionDigits: 3 })}%`;
 
@@ -38,6 +48,9 @@ export function PoliticaComercialTab({ code, codes, name }: Props) {
   // Um campo por divisão: a edição é POR EMPREENDIMENTO, mas o valor é gravado em cada divisão,
   // porque é nelas que as parcelas penduram. Ver o comentário do `salvar`.
   const [rascunho, setRascunho] = useState<Record<string, string>>({});
+  // A entrada mínima tem o próprio rascunho: a tela salva um campo por vez, e a rota recusa os
+  // dois juntos justamente para não sobrescrever o que o operador não tocou.
+  const [rascunhoEntrada, setRascunhoEntrada] = useState<Record<string, string>>({});
   const [salvando, setSalvando] = useState(false);
   const [aviso, setAviso] = useState<null | string>(null);
   const [recarregar, setRecarregar] = useState(0);
@@ -101,7 +114,7 @@ export function PoliticaComercialTab({ code, codes, name }: Props) {
    * particularidade (fases, sócios) mas refletem ao empreendimento único. Gravar nas divisões
    * mantém o dado no nível onde o dinheiro está, sem precisar resolver herança na hora de somar.
    */
-  const salvar = async (valor: string) => {
+  const salvar = async (valor: string, campo: "entrada" | "gestao" = "gestao") => {
     if (!politicas) return;
 
     setSalvando(true);
@@ -126,7 +139,9 @@ export function PoliticaComercialTab({ code, codes, name }: Props) {
         body: JSON.stringify({
           code: politicas[0]?.code ?? null,
           enterpriseIds: politicas.map((p) => p.enterpriseId),
-          gestaoCarteiraPercentual: limpo === "" ? null : limpo,
+          ...(campo === "gestao"
+            ? { gestaoCarteiraPercentual: limpo === "" ? null : limpo }
+            : { entradaMinimaPercentual: limpo === "" ? null : limpo }),
         }),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "PATCH",
@@ -145,20 +160,24 @@ export function PoliticaComercialTab({ code, codes, name }: Props) {
         return;
       }
 
+      const numero = limpo === "" ? null : Number(limpo.replace(",", "."));
       setPoliticas((atual) =>
         (atual ?? []).map((p) => ({
           ...p,
-          gestaoCarteiraApolo: limpo === "" ? null : Number(limpo.replace(",", ".")),
+          ...(campo === "gestao" ? { gestaoCarteiraApolo: numero } : { entradaMinimaApolo: numero }),
         })),
       );
 
       const divisoes = corpo.data?.divisoes ?? politicas.length;
+      const nome = campo === "gestao" ? "Gestão de carteira" : "Entrada mínima";
       setAviso(
         limpo === ""
-          ? "Gestão de carteira removida: este empreendimento passa a não ter carteira administrada."
+          ? campo === "gestao"
+            ? "Gestão de carteira removida: este empreendimento passa a não ter carteira administrada."
+            : `Entrada mínima removida: volta a valer o padrão da casa (${PADRAO_DA_CASA}%).`
           : divisoes > 1
-            ? `Gestão de carteira salva nas ${divisoes} divisões deste empreendimento.`
-            : "Gestão de carteira salva.",
+            ? `${nome} salva nas ${divisoes} divisões deste empreendimento.`
+            : `${nome} salva.`,
       );
     } catch {
       setErro("Falha de rede. Recarregue a tela para conferir o que foi salvo.");
@@ -217,6 +236,15 @@ export function PoliticaComercialTab({ code, codes, name }: Props) {
   const avisosUnicos = [...new Set(politicas.flatMap((p) => p.avisos))];
   const valorAtual = ref ? (rascunho[ref.enterpriseId] ?? "") : "";
   const semGestao = politicas.every((p) => p.gestaoCarteiraApolo === null);
+
+  // A entrada mínima cadastrada no Apolo. Como a gestão de carteira, o valor é do EMPREENDIMENTO e
+  // fica gravado em cada divisão; se alguma divergir, a tela mostra a primeira e o operador salva
+  // por cima, igualando as duas.
+  const entradaCadastrada = politicas.find((p) => p.entradaMinimaApolo !== null)?.entradaMinimaApolo ?? null;
+  const valorDaEntrada = ref
+    ? (rascunhoEntrada[ref.enterpriseId] ??
+      (entradaCadastrada === null ? "" : String(entradaCadastrada).replace(".", ",")))
+    : "";
 
   return (
     <div className="grid gap-4 p-5">
@@ -278,6 +306,47 @@ export function PoliticaComercialTab({ code, codes, name }: Props) {
                 : " O campo acima está preenchido e tem prioridade sobre ele."}
             </p>
           ) : null}
+
+          {/* ── A ENTRADA MÍNIMA: a segunda coisa que nasce no Apolo ────────
+              Lucas (03/09/2026): *"vamos ter um campo dentro da parte que vamos cadastrar a
+              política comercial e lá vamos apontar a % mínima"*. Fica aqui, no bloco do que é
+              NOSSO, e não junto dos campos do C2X — a leitura do legado (`entradaMinima`) continua
+              embaixo, como referência, e as duas não se misturam. */}
+          <label className="grid gap-1.5 border-t border-line pt-4">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+              % mínima de entrada
+            </span>
+            <span className="flex items-center gap-2">
+              <input
+                className="h-9 w-32 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-line-strong"
+                inputMode="decimal"
+                onChange={(evento) =>
+                  setRascunhoEntrada((atual) =>
+                    ref ? { ...atual, [ref.enterpriseId]: evento.target.value } : atual,
+                  )
+                }
+                placeholder={String(PADRAO_DA_CASA)}
+                value={valorDaEntrada}
+              />
+              <button
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={salvando}
+                onClick={() => void salvar(valorDaEntrada, "entrada")}
+                type="button"
+              >
+                {salvando ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
+                Salvar
+              </button>
+            </span>
+            <span className="text-xs text-ink-soft">
+              {entradaCadastrada === null
+                ? `Não cadastrada: vale o padrão da casa, ${PADRAO_DA_CASA}%. O simulador não oferece composição abaixo disso.`
+                : `O simulador e a proposta não aceitam entrada abaixo de ${pct(entradaCadastrada)} do valor da unidade.`}
+              {ref?.entradaMinima !== null && ref?.entradaMinima !== undefined
+                ? ` O C2X registra ${pct(ref.entradaMinima)} para este empreendimento.`
+                : ""}
+            </span>
+          </label>
 
           {/* ⚠️ Só afirma "não administramos" quando NENHUMA divisão tem gestão. No Lagoa Bonita
               administramos só o LBF: olhar uma divisão sorteada diria o contrário. */}

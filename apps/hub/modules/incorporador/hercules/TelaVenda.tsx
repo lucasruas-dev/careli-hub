@@ -20,6 +20,8 @@ import { toTitleCase } from "@/lib/format/name-case";
 
 import { T, useTemaDoPortal } from "../tema";
 import { Pilula } from "./AssinaturasDoProduto";
+import { ModalDeReserva } from "./ModalDeReserva";
+import { SimuladorDeProposta } from "./SimuladorDeProposta";
 
 // A TELA VENDA — onde o coordenador VENDE, e onde ele olha se está vendendo bem.
 //
@@ -364,9 +366,8 @@ export function TelaVenda() {
   const [etapa, setEtapa] = useState<"disponivel" | EtapaDoFluxo>("reservado");
   const [foco, setFoco] = useState<null | Foco>(null);
   const [simulando, setSimulando] = useState<null | UnidadeNoMapa>(null);
-  // O tema efetivo (já resolvido o "seguir o aparelho") vai para o masterplan: um <iframe> é outro
-  // documento e não herda variável CSS de ninguém.
-  const { efetivo } = useTemaDoPortal();
+  const [reservando, setReservando] = useState<null | UnidadeNoMapa>(null);
+  const [recado, setRecado] = useState<null | string>(null);
   const [modoDoEstoque, setModoDoEstoque] = useState<"grade" | "mapa">("grade");
   // Abre em 12 meses: o mês corrente sozinho, no dia 3, mostraria quase nada.
   const [janela, setJanela] = useState<string>("12m");
@@ -720,20 +721,82 @@ export function TelaVenda() {
       <div style={{ display: "flex", flex: "1 1 auto", minHeight: 0 }}>
       {/* ⚠️ A MODAL VIVE AQUI, e não dentro da Mesa: ela cobre a tela inteira, e um <dialog> preso
           a uma coluna herdaria o `overflow: hidden` dela. */}
-      {simulando && mapaDoProduto?.masterplanInterno ? (
+      {simulando ? (
         <ModalDoSimulador
-          codigo={mapaDoProduto.masterplanInterno}
-          lote={simulando.lote ?? ""}
-          nome={mapaDoProduto.nome}
+          // ⚠️ O PISO É DO EMPREENDIMENTO DO LOTE, e não do escopo: num pai com filhos há mais de
+          // um produto na tela, e eles podem ter mínimos diferentes.
+          entradaMinimaPercentual={dados?.entradaMinima?.[simulando.enterpriseId] ?? null}
+          nome={mapaDoProduto?.nome ?? "Simulação"}
           onFechar={() => setSimulando(null)}
-          quadra={simulando.quadra ?? ""}
-          tema={efetivo}
+          planos={dados?.planos ?? []}
+          unidade={simulando}
         />
+      ) : null}
+
+      {/* ⚠️ A MODAL DE RESERVA VIVE AQUI PELO MESMO MOTIVO DA DO SIMULADOR: cobre a tela toda, e
+          presa a uma coluna herdaria o `overflow: hidden` dela. */}
+      {reservando ? (
+        <ModalDeReserva
+          onFechar={() => setReservando(null)}
+          onReservado={(mensagem) => {
+            setReservando(null);
+            setRecado(mensagem);
+            // A unidade mudou de situação: a tela recarrega para o mapa, a grade e o funil
+            // contarem a reserva nova. Sem isso o lote continuaria verde até o próximo F5.
+            void carregar(recorte || emp, janela);
+          }}
+          unidade={{
+            id: reservando.id,
+            nome: (() => {
+              const e = comoSeEscreve(reservando.codigo, reservando.quadra, reservando.lote);
+              return `Quadra ${e.unidade.split(" ")[0]} · Lote ${e.unidade.split(" ")[1] ?? ""}`.trim();
+            })(),
+            produto: mapaDoProduto?.nome ?? "",
+          }}
+          valorDaUnidade={reservando.preco}
+        />
+      ) : null}
+
+      {recado ? (
+        <div
+          style={{
+            alignItems: "center",
+            background: T.okBg,
+            border: `1px solid ${T.ok}`,
+            borderRadius: 10,
+            color: T.ok,
+            display: "flex",
+            fontSize: 12.5,
+            gap: 12,
+            justifyContent: "space-between",
+            margin: "0 0 10px",
+            padding: "9px 12px",
+          }}
+        >
+          <span>{recado}</span>
+          <button
+            onClick={() => setRecado(null)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: T.ok,
+              cursor: "pointer",
+              font: "inherit",
+              fontSize: 12,
+              fontWeight: 700,
+              padding: 0,
+            }}
+            type="button"
+          >
+            fechar
+          </button>
+        </div>
       ) : null}
 
       {visao === "mesa" ? (
         <Mesa
           aoFocar={setFoco}
+          aoReservar={setReservando}
           aoSimular={setSimulando}
           aoTrocarModo={setModoDoEstoque}
           carregando={carregando}
@@ -757,6 +820,7 @@ export function TelaVenda() {
 
 function Mesa({
   aoFocar,
+  aoReservar,
   aoSimular,
   aoTrocarModo,
   carregando,
@@ -769,6 +833,7 @@ function Mesa({
   modo,
 }: {
   aoFocar: (f: null | Foco) => void;
+  aoReservar: (u: null | UnidadeNoMapa) => void;
   aoSimular: (u: null | UnidadeNoMapa) => void;
   aoTrocarModo: (m: "grade" | "mapa") => void;
   carregando: boolean;
@@ -1339,18 +1404,14 @@ function Mesa({
               Clique num lote do mapa ou numa linha da lista.
             </p>
           )}
-          <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-            Reservar, gerar proposta e cancelar com motivo entram quando a tabela de reservas subir.
-            Hoje esta tela lê o fluxo já importado e não grava.
-          </p>
+          <AcoesDaUnidade
+            aoReservar={() => aoReservar(unidadeEmFoco)}
+            unidade={unidadeEmFoco}
+          />
         </Cartao>
 
         <div style={{ flex: "0 0 auto" }}>
-          <BotaoDoSimulador
-            aoAbrir={() => aoSimular(unidadeEmFoco)}
-            produtoComMapa={mapaDoProduto}
-            unidade={unidadeEmFoco}
-          />
+          <BotaoDoSimulador aoAbrir={() => aoSimular(unidadeEmFoco)} unidade={unidadeEmFoco} />
         </div>
 
         <Historico unidadeId={idEmFoco} />
@@ -1361,43 +1422,44 @@ function Mesa({
 
 // ── O SIMULADOR DE PROPOSTA ─────────────────────────────────────────────────
 //
-// Lucas (03/09/2026): *"o simulador de proposta eu quero o mesmo que temos na Cecilio, aquele ficou
-// ótimo"* — o do masterplan interno, que ele usa todo dia. O que faz aquele funcionar não é a
-// aparência: é a MATEMÁTICA. Ele monta a proposta com juros compostos, entrada e balões anuais, e
-// mostra a parcela que o cliente vai pagar de verdade.
+// Lucas (03/09/2026): *"quero melhorar esse simulador, está bem confuso. O que eu gosto: a opção de
+// começar pelo valor da parcela, isso ajuda bastante; gosto das parcelas dos planos já definidos, e
+// a ideia é eu poder editar isso quando necessário. (...) acho que lado esquerdo ser esse cockpit,
+// de montagem de proposta mesmo, e o lado direito o de visualização, recomendação"*.
 //
-// ⚠️ A CONTA NÃO FOI COPIADA DO MASTERPLAN: ela já existe em TypeScript, testada, em
-// `lib/apolo/planos-comerciais.ts` (`calcularParcela`, que resolve Price, SAC e SACOC conforme o
-// plano manda). Reescrever a fórmula aqui seria manter duas versões da mesma matemática de
-// dinheiro — e é a segunda que sempre fica para trás.
+// ⚠️ ANTES ERA O MASTERPLAN NUM IFRAME, e o que ele achou confuso vinha de lá: três botões de MODO
+// ("parto da parcela do cliente", "eu escolho as condições", "proposta livre") obrigavam a declarar
+// como você ia pensar antes de digitar qualquer coisa. Numa mesa de venda ninguém escolhe modo — se
+// digita o que o cliente falou. Agora o modo é consequência do campo que você mexeu.
 //
-// ⚠️ E O PLANO É O DO EMPREENDIMENTO, não um número redondo. Antes o simulador dividia o saldo por
-// 180 sem juros: dava uma parcela menor que a real e treinava o coordenador a prometer o que a
-// proposta não cumpre. Agora ele parte dos planos cadastrados (à vista, curto, investidor, normal),
-// com a entrada sugerida de cada um.
+// ⚠️ SÓ AQUI, NO COMERCIAL (*"vamos mexer somente para o comercial, se eu gostar posso estender
+// para cecilio"*). Os cinco masterplans continuam byte a byte como estavam.
+//
+// ⚠️ E A MATEMÁTICA NÃO FOI REESCRITA: `lib/hercules/simulacao.ts` (Price com valor presente dos
+// reforços) e `lib/hercules/composicoes.ts` (a varredura que parte da parcela), as duas testadas.
+// Duas versões da mesma conta de dinheiro seria uma a mais.
 
 /**
  * O simulador em tela cheia.
  *
- * ⚠️ É O ARQUIVO DO MASTERPLAN servido pela rota do portal com `simular=quadra|lote`: ela esconde a
- * casca e manda abrir o popup do plano já no lote. Nada foi reescrito — o que chega aqui é a mesma
- * tela que o Cecílio usa.
+ * ⚠️ NÃO GRAVA NADA (*"a ideia é ter um local que o usuário possa fazer algumas simulações sem ter
+ * que vincular a nada e nem gerar proposta"*). O gerador de proposta real entra depois, no fluxo da
+ * venda.
  */
 function ModalDoSimulador({
-  codigo,
-  lote,
+  entradaMinimaPercentual,
   nome,
   onFechar,
-  quadra,
-  tema,
+  planos,
+  unidade,
 }: {
-  codigo: string;
-  lote: string;
+  entradaMinimaPercentual: null | number;
   nome: string;
   onFechar: () => void;
-  quadra: string;
-  tema: string;
+  planos: FluxoDeVenda["planos"];
+  unidade: UnidadeNoMapa;
 }) {
+  const escrita = comoSeEscreve(unidade.codigo, unidade.quadra, unidade.lote);
   // Escape fecha: tela cheia sem saída de teclado prende quem usa teclado.
   useEffect(() => {
     const aoTeclar = (e: KeyboardEvent) => {
@@ -1447,7 +1509,7 @@ function ModalDoSimulador({
           }}
         >
           <b style={{ fontSize: 14 }}>
-            Simulador de proposta · {nome} · quadra {quadra} lote {lote}
+            Simulador de proposta · {nome} · {escrita.unidade}
           </b>
           <button
             onClick={onFechar}
@@ -1468,12 +1530,110 @@ function ModalDoSimulador({
           </button>
         </div>
 
-        <iframe
-          src={`/api/incorporador/masterplan?code=${encodeURIComponent(codigo)}&tema=${tema}&simular=${encodeURIComponent(`${quadra}|${lote}`)}`}
-          style={{ border: 0, flex: "1 1 auto", width: "100%" }}
-          title={`Simulador · ${nome}`}
-        />
+        <div style={{ background: T.page, flex: "1 1 auto", minHeight: 0, padding: 14 }}>
+          <SimuladorDeProposta
+            entradaMinimaPercentual={entradaMinimaPercentual}
+            planos={planos}
+            unidade={escrita.unidade}
+            valorDaUnidade={unidade.preco}
+          />
+        </div>
       </div>
+    </div>
+  );
+}
+
+// ── AS AÇÕES DA UNIDADE ─────────────────────────────────────────────────────
+//
+// Lucas (03/09/2026): *"vamos inserir os botões de reservar, gerar propostas, enviar para contrato
+// e o botão de cancelar"*, e detalhou o fluxo da RESERVA — *"depois a gente continua"*.
+//
+// ⚠️ OS QUATRO APARECEM DESDE JÁ, e três dizem que ainda não fazem nada. Mostrar só o que funciona
+// esconderia o desenho do fluxo de quem usa a tela; um botão que some e volta a cada release é pior
+// do que um botão que diz "vem depois". O que NÃO pode é botão que parece pronto e não faz nada:
+// por isso eles ficam apagados e com o motivo no title.
+//
+// ⚠️ E O ESTADO MANDA. Reservar só existe em unidade DISPONÍVEL — é a regra dele ("se a unidade
+// estiver disponível, ter um botão para reservar"). Nas outras etapas o botão continua visível,
+// apagado, dizendo por quê: sumir faria o coordenador procurar o botão em vez de ler a ficha.
+
+const PROXIMA_FASE = "Entra na próxima fase da venda.";
+
+function AcoesDaUnidade({
+  aoReservar,
+  unidade,
+}: {
+  aoReservar: () => void;
+  unidade: null | UnidadeNoMapa;
+}) {
+  const disponivel = unidade?.etapa === "disponivel";
+  const reservada = unidade?.etapa === "reservado";
+
+  const acoes: Array<{
+    ativo: boolean;
+    aoClicar?: () => void;
+    motivo: string;
+    principal?: boolean;
+    rotulo: string;
+  }> = [
+    {
+      ativo: Boolean(unidade) && disponivel,
+      aoClicar: aoReservar,
+      motivo: !unidade
+        ? "Escolha uma unidade."
+        : disponivel
+          ? "Reserva a unidade e avisa corretor, imobiliária e coordenador."
+          : "Só unidade disponível pode ser reservada.",
+      principal: true,
+      rotulo: "Reservar",
+    },
+    {
+      ativo: false,
+      motivo: reservada ? PROXIMA_FASE : "Precisa de uma reserva ativa.",
+      rotulo: "Gerar proposta",
+    },
+    { ativo: false, motivo: PROXIMA_FASE, rotulo: "Enviar para contrato" },
+    {
+      ativo: false,
+      motivo: unidade && !disponivel ? PROXIMA_FASE : "Não há o que cancelar nesta unidade.",
+      rotulo: "Cancelar",
+    },
+  ];
+
+  return (
+    <div
+      style={{
+        borderTop: `1px dashed ${T.border}`,
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 6,
+        marginTop: 12,
+        paddingTop: 12,
+      }}
+    >
+      {acoes.map((acao) => (
+        <button
+          key={acao.rotulo}
+          disabled={!acao.ativo}
+          onClick={acao.aoClicar}
+          style={{
+            background: acao.ativo && acao.principal ? T.btnBg : T.soft,
+            border: `1px solid ${acao.ativo ? "transparent" : T.border}`,
+            borderRadius: 8,
+            color: acao.ativo ? (acao.principal ? T.btnFg : T.text) : T.muted,
+            cursor: acao.ativo ? "pointer" : "default",
+            font: "inherit",
+            fontSize: 12,
+            fontWeight: 650,
+            opacity: acao.ativo ? 1 : 0.55,
+            padding: "7px 13px",
+          }}
+          title={acao.motivo}
+          type="button"
+        >
+          {acao.rotulo}
+        </button>
+      ))}
     </div>
   );
 }
@@ -1481,23 +1641,15 @@ function ModalDoSimulador({
 /**
  * O botão que abre o simulador de proposta.
  *
- * ⚠️ O SIMULADOR É O DO MASTERPLAN, REUSADO (Lucas, 03/09/2026: *"coloca um botão de simulador de
- * proposta, aí abre o simulador, esse simulador aqui tem que ser esse"*, mostrando o "Monte o plano
- * de pagamento"). Aquela tela tem a tabela oficial aplicada ao lote, desconto por plano, reforços
- * anuais, o modo "parto da parcela do cliente" que varre as composições que fecham e o "Copiar
- * resumo" — ~1.500 linhas de JS que o Cecílio usa todo dia. Reescrever em React numa rodada seria
- * trocar o que funciona pelo que ainda vai ser depurado, e a conta é de DINHEIRO.
- *
- * ⚠️ SEM MASTERPLAN NÃO HÁ SIMULADOR, e o botão diz isso em vez de sumir: o coordenador que abre
- * um produto sem mapa precisa saber que falta o mapa, não achar que a tela está quebrada.
+ * ⚠️ NÃO DEPENDE MAIS DO MASTERPLAN. Enquanto o simulador era um iframe do espelho, produto sem
+ * mapa publicado era produto sem simulador — e o botão ficava cinza numa tela em que tudo o mais
+ * funcionava. Agora a conta é React puro sobre os planos do empreendimento: basta o lote ter preço.
  */
 function BotaoDoSimulador({
   aoAbrir,
-  produtoComMapa,
   unidade,
 }: {
   aoAbrir: () => void;
-  produtoComMapa: null | CardDeProduto;
   unidade: null | UnidadeNoMapa;
 }) {
   const nome = unidade ? comoSeEscreve(unidade.codigo, unidade.quadra, unidade.lote) : null;
@@ -1507,19 +1659,19 @@ function BotaoDoSimulador({
       <div style={{ display: "grid", gap: 10 }}>
         <p style={{ color: T.muted, fontSize: 12.5, margin: 0 }}>
           {unidade
-            ? `Monta o plano de pagamento do lote ${nome?.unidade} com a tabela oficial do empreendimento: desconto por plano, reforços anuais e a parcela que fecha.`
+            ? `Monta o plano de pagamento do lote ${nome?.unidade} partindo do que o cliente pode pagar por mês, sobre a tabela do empreendimento. Simulação livre: não vincula o lote nem gera proposta.`
             : "Escolha um lote no quadro ou na lista para montar o plano de pagamento dele."}
         </p>
 
         <button
-          disabled={!unidade || !produtoComMapa}
+          disabled={!unidade}
           onClick={aoAbrir}
           style={{
-            background: unidade && produtoComMapa ? T.btnBg : T.soft,
+            background: unidade ? T.btnBg : T.soft,
             border: "none",
             borderRadius: 9,
-            color: unidade && produtoComMapa ? T.btnFg : T.muted,
-            cursor: unidade && produtoComMapa ? "pointer" : "default",
+            color: unidade ? T.btnFg : T.muted,
+            cursor: unidade ? "pointer" : "default",
             font: "inherit",
             fontSize: 13,
             fontWeight: 650,
@@ -1530,12 +1682,6 @@ function BotaoDoSimulador({
         >
           Abrir simulador
         </button>
-
-        {unidade && !produtoComMapa ? (
-          <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
-            Este produto ainda não tem espelho publicado, e o simulador vive nele.
-          </p>
-        ) : null}
       </div>
     </Cartao>
   );

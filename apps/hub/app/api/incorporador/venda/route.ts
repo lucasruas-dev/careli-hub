@@ -23,6 +23,7 @@ import {
   type PropostaDaCarga,
   type UnidadeDoMapa,
 } from "@/lib/hercules/fluxo-de-venda";
+import { reservaComoLinhaDoFluxo } from "@/lib/hercules/reserva";
 
 /** As etapas da esteira que já PARARAM: virou credenciado, ou não seguiu. */
 const ETAPAS_FINAIS = new Set(["credenciado", "indeferido"]);
@@ -207,10 +208,62 @@ export async function GET(request: Request) {
     // fazia. Perder a Venda inteira porque o legado não respondeu seria pior.
     const planos = await lerPlanosDoC2x(codes).catch(() => ({ ok: false }) as const);
 
+    // ── AS RESERVAS NASCIDAS NO PANTEON ───────────────────────────────────
+    //
+    // ⚠️ ELAS NÃO ESTÃO NA CARGA DO C2X, e não estarão: a reserva do coordenador nasce aqui
+    // (`hercules_reservas`, migration 0125). Convertidas em linha do fluxo, entram no funil, na
+    // grade, no mapa e na lista analítica pelo mesmo caminho das propostas importadas — sem
+    // ensinar cada uma dessas peças a conhecer uma segunda tabela.
+    //
+    // ⚠️ FALHA AQUI NÃO DERRUBA A TELA. Sem as reservas o coordenador vê o fluxo importado, que é
+    // o que ele via ontem; perder a Venda inteira porque a tabela nova respondeu mal seria pior.
+    const reservas = await lerReservasVivas(supabase, unidades).catch((erro) => {
+      console.error("[incorporador/venda] reservas", erro);
+      return [] as PropostaDaCarga[];
+    });
+
+    // ── O PISO DE ENTRADA DE CADA EMPREENDIMENTO ──────────────────────────
+    //
+    // Lucas (03/09/2026): *"vamos ter um campo dentro da parte que vamos cadastrar a política
+    // comercial e lá vamos apontar a % mínima"*. O simulador precisa do número do produto DO LOTE:
+    // num escopo de pai com filhos há mais de um, e o Garden aceita 8% onde os outros exigem 10%.
+    //
+    // ⚠️ AUSENTE ≠ ZERO. Empreendimento sem linha aqui não entra no mapa, e a tela cai no padrão da
+    // casa. Mandar 0 para quem não cadastrou liberaria venda sem entrada em silêncio.
+    const entradaMinima: Record<string, number> = {};
+    {
+      const { data, error } = await supabase
+        .from("apolo_enterprise_settings")
+        .select("enterprise_id, entrada_minima_percentual")
+        .in("enterprise_id", [...idsDoEscopo]);
+
+      if (error) {
+        // Falha de leitura não derruba a tela, mas também não vira "sem mínimo": sem o mapa, o
+        // simulador usa o padrão da casa, que é o comportamento conservador.
+        console.error("[incorporador/venda] entrada minima", error);
+      }
+      for (const linha of (data ?? []) as Array<{
+        enterprise_id: string;
+        entrada_minima_percentual: null | number | string;
+      }>) {
+        if (linha.entrada_minima_percentual === null || linha.entrada_minima_percentual === undefined) {
+          continue;
+        }
+        const valor = Number(linha.entrada_minima_percentual);
+        if (Number.isFinite(valor)) entradaMinima[String(linha.enterprise_id)] = valor;
+      }
+    }
+
     return NextResponse.json(
       {
         data: {
-          ...agregarFluxo({ cads, periodo, propostas, unidades }),
+          ...agregarFluxo({
+            cads,
+            periodo,
+            propostas: [...reservas, ...propostas],
+            unidades,
+          }),
+          entradaMinima,
           planos: planos.ok ? planos.empreendimentos.flatMap((e) => e.planos) : [],
         },
       },
@@ -221,4 +274,94 @@ export async function GET(request: Request) {
     console.error("[incorporador/venda]", e);
     return indisponivel();
   }
+}
+
+/**
+ * As reservas VIVAS das unidades deste escopo, já como linha do fluxo.
+ *
+ * ⚠️ FILTRA PELAS UNIDADES QUE A TELA JÁ CARREGOU, e não por empreendimento. As unidades vieram
+ * filtradas pelo escopo da sessão; usar a mesma lista aqui garante que nenhuma reserva de fora
+ * entre pela porta dos fundos, sem repetir a tradução `code → id do C2X`.
+ *
+ * ⚠️ `.in()` VAI EM LOTES DE 100. São 5.528 unidades: a URL do PostgREST estoura muito antes disso,
+ * e o erro é de rede, não de banco — some como "falha ao carregar" sem dizer por quê.
+ */
+async function lerReservasVivas(
+  supabase: ReturnType<typeof createApoloAdminClient>,
+  unidades: UnidadeDoMapa[],
+): Promise<PropostaDaCarga[]> {
+  if (!supabase || unidades.length === 0) return [];
+
+  const porId = new Map(unidades.map((u) => [u.id, u]));
+  const ids = [...porId.keys()];
+  const linhas: Array<{
+    corretor_entity_id: null | string;
+    criado_em: string;
+    id: string;
+    imobiliaria_entity_id: null | string;
+    proponentes: unknown;
+    unidade_id: string;
+    validade_em: null | string;
+  }> = [];
+
+  for (let de = 0; de < ids.length; de += 100) {
+    const { data, error } = await supabase
+      .from("hercules_reservas")
+      .select("id,unidade_id,proponentes,imobiliaria_entity_id,corretor_entity_id,criado_em,validade_em")
+      .eq("workspace_id", "careli")
+      .in("situacao", ["ativa", "proposta"])
+      .in("unidade_id", ids.slice(de, de + 100));
+
+    if (error) throw new Error(error.message);
+    linhas.push(...((data ?? []) as typeof linhas));
+  }
+
+  if (linhas.length === 0) return [];
+
+  // O nome da imobiliária, para a lista e o ranking não mostrarem um uuid.
+  const imobiliarias = [
+    ...new Set(linhas.map((l) => l.imobiliaria_entity_id).filter((id): id is string => Boolean(id))),
+  ];
+  const nomePorId = new Map<string, string>();
+  if (imobiliarias.length > 0) {
+    const { data } = await supabase
+      .from("apolo_entities")
+      .select("id, display_name, legal_name, trade_name")
+      .in("id", imobiliarias);
+    for (const e of (data ?? []) as Array<{
+      display_name: null | string;
+      id: string;
+      legal_name: null | string;
+      trade_name: null | string;
+    }>) {
+      nomePorId.set(e.id, (e.trade_name || e.display_name || e.legal_name || "").trim());
+    }
+  }
+
+  return linhas.map((linha) => {
+    const unidade = porId.get(linha.unidade_id) ?? null;
+    return reservaComoLinhaDoFluxo(
+      {
+        criado_em: linha.criado_em,
+        id: linha.id,
+        imobiliaria_nome: linha.imobiliaria_entity_id
+          ? (nomePorId.get(linha.imobiliaria_entity_id) ?? null)
+          : null,
+        proponentes: linha.proponentes,
+        unidade_id: linha.unidade_id,
+        validade_em: linha.validade_em,
+      },
+      unidade
+        ? {
+            codigo: unidade.codigo,
+            lote: unidade.lote,
+            // ⚠️ `numeric` do Postgres chega como STRING no PostgREST. Sem o Number, o VGV do
+            // funil somaria "136521.00" com um número e viraria concatenação silenciosa.
+            preco_tabela: unidade.preco_tabela == null ? null : Number(unidade.preco_tabela),
+            quadra: unidade.quadra,
+          }
+        : null,
+      null,
+    ) as PropostaDaCarga;
+  });
 }
