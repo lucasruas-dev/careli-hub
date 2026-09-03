@@ -1517,13 +1517,32 @@ export function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {
   );
 }
 
-function UnidadesTab({
+// EXPORTADA porque o Hércules (portal comercial da Gurgel) usa ESTA tabela dentro da aba Vendas
+// da ficha do produto (modules/incorporador/hercules/UnidadesDoProduto.tsx). Lucas (02/09/2026):
+// *"precisamos trazer a tela de unidades para dentro de Venda"*. Uma tabela só, duas portas —
+// mudou aqui, mudou lá.
+//
+// ⚠️ A PROP `api` É A ÚNICA DIFERENÇA ENTRE AS DUAS PORTAS. Sem ela, nada muda: a rota do Apolo
+// com o Bearer do hub, como sempre. Com ela, o fetch vai na rota que o portal mandou (a sessão é
+// o COOKIE do portal, resolvido do outro lado) e NÃO passa por `getApoloAccessToken` — que LANÇA
+// sem sessão do hub, e o coordenador não tem uma (mesmo desenho do `semToken` do TemisKanban).
+// E some o que depende do hub: o "Adicionar" (AdicionarUnidades chama a API do Apolo com token)
+// e o link para o CRM 360 (o portal não tem essa porta; botão que não abre nada é pior que o
+// nome sem link).
+export function UnidadesTab({
+  api,
   onOpenEntity,
   row,
 }: {
+  /** A porta do portal: rota pronta (com o `?emp=`) e sem o Bearer do Apolo. */
+  api?: { rota: string; semToken: boolean };
   onOpenEntity: (name: string, entityId: string) => void;
   row: ApoloEnterpriseRow;
 }) {
+  // Deps do efeito como PRIMITIVOS: quem chama passa `api={{ ... }}` inline, e o objeto novo a
+  // cada render refaria o fetch a cada render.
+  const rotaDaApi = api?.rota ?? null;
+  const semToken = api?.semToken ?? false;
   const [units, setUnits] = useState<ApoloEnterpriseUnit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -1575,13 +1594,17 @@ function UnidadesTab({
       try {
         setError(null);
 
-        const accessToken = await getApoloAccessToken();
+        // Sem `api`, o caminho de sempre (rota do Apolo + Bearer do hub). Com ela, a rota do
+        // portal e cookie — ver a nota no cabeçalho do componente.
+        const headers: Record<string, string> = {};
+        if (!semToken) {
+          const accessToken = await getApoloAccessToken();
+          headers.Authorization = `Bearer ${accessToken}`;
+        }
         const response = await fetch(
-          `/api/apolo/empreendimentos/unidades?codes=${encodeURIComponent(row.codes.join(","))}`,
-          {
-            cache: "no-store",
-            headers: { Authorization: `Bearer ${accessToken}` },
-          },
+          rotaDaApi ??
+            `/api/apolo/empreendimentos/unidades?codes=${encodeURIComponent(row.codes.join(","))}`,
+          { cache: "no-store", headers },
         );
         const payload = (await response.json()) as {
           data?: {
@@ -1617,7 +1640,7 @@ function UnidadesTab({
     return () => {
       active = false;
     };
-  }, [row.codes, recarga]);
+  }, [row.codes, recarga, rotaDaApi, semToken]);
 
   if (error) {
     return (
@@ -1668,15 +1691,19 @@ function UnidadesTab({
 
         {/* ⚠️ O EMPREENDIMENTO VEM DAQUI, e é por isso que o botão mora nesta aba e não no Setup:
             quem está nesta ficha já está dentro dele, então a escolha mais perigosa do processo
-            (subir lotes no empreendimento errado) deixa de existir. */}
-        <button
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-ink px-3 text-sm font-semibold text-canvas"
-          onClick={() => setAdicionando(true)}
-          type="button"
-        >
-          <Plus aria-hidden="true" className="size-4" />
-          Adicionar
-        </button>
+            (subir lotes no empreendimento errado) deixa de existir.
+            Pelo portal (`api`) o botão NÃO entra: cadastrar unidade é ação do backoffice, e o
+            AdicionarUnidades fala com a API do Apolo com o token do hub. */}
+        {api ? null : (
+          <button
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-ink px-3 text-sm font-semibold text-canvas"
+            onClick={() => setAdicionando(true)}
+            type="button"
+          >
+            <Plus aria-hidden="true" className="size-4" />
+            Adicionar
+          </button>
+        )}
       </div>
 
       {adicionando ? (
@@ -1773,9 +1800,10 @@ function UnidadesTab({
                     <UnitStatusPill unit={unit} />
                   </td>
                   <td className="px-4 py-2">
+                    {/* Pelo portal não há CRM 360 para abrir: o nome sai como texto. */}
                     <UnitMovement
                       movement={unit.movement}
-                      onOpenEntity={onOpenEntity}
+                      onOpenEntity={api ? null : onOpenEntity}
                     />
                   </td>
                 </tr>
@@ -1916,7 +1944,8 @@ function UnitMovement({
   onOpenEntity,
 }: {
   movement: ApoloUnitMovement | null;
-  onOpenEntity: (name: string, entityId: string) => void;
+  /** `null` = sem porta para o CRM (o portal do Hércules): o nome vira texto, não botão. */
+  onOpenEntity: null | ((name: string, entityId: string) => void);
 }) {
   if (!movement?.client && !movement?.imobiliaria) {
     return <span className="text-xs text-ink-muted">Sem movimentação</span>;
@@ -1939,7 +1968,7 @@ function PartyLink({
   party,
   strong = false,
 }: {
-  onOpenEntity: (name: string, entityId: string) => void;
+  onOpenEntity: null | ((name: string, entityId: string) => void);
   party: ApoloUnitParty;
   strong?: boolean;
 }) {
@@ -1950,8 +1979,8 @@ function PartyLink({
   //
   // ⚠️ SEM entityId NÃO VIRA BOTÃO. Quem reservou no tótem do lançamento não tem ficha do
   // Apolo garantida; um botão que abre CRM vazio é pior que o nome sem link, porque promete
-  // uma navegação que não existe.
-  if (!party.entityId) {
+  // uma navegação que não existe. Sem `onOpenEntity` (o portal do Hércules) é a mesma regra.
+  if (!party.entityId || !onOpenEntity) {
     return (
       <span
         className={`block max-w-[280px] truncate text-left text-xs ${

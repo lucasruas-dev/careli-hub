@@ -141,6 +141,92 @@ export const TEMA_CSS = `
   }
   .inc-nav { display: flex; flex-direction: column; gap: 2px; padding: 10px; }
   .inc-main { flex: 1 1 auto; min-width: 0; }
+
+  /* AS PEÇAS DA LATERAL, EM CLASSE E NÃO EM ESTILO INLINE. Até 02/09/2026 cada botão do menu,
+     o rodapé e o "Sair" traziam o estilo no JSX; a lateral RECOLHÍVEL (abaixo) precisa trocar
+     padding, alinhamento e direção dessas peças, e regra de classe não vence estilo inline sem
+     !important. Os valores são os MESMOS de antes, token por token — os portais de incorporador
+     não mudam de cara com esta mudança. */
+  .inc-side-topo { border-bottom: 1px solid var(--inc-border); padding: 16px 16px 14px; }
+  .inc-side-marca-linha { align-items: center; display: flex; gap: 8px; }
+  .inc-side-marca { flex: 1 1 auto; min-width: 0; }
+  .inc-side-recolher {
+    align-items: center; background: transparent; border: 1px solid var(--inc-border);
+    border-radius: 8px; color: var(--inc-muted); cursor: pointer; display: inline-flex;
+    flex: 0 0 auto; height: 28px; justify-content: center; padding: 0; width: 28px;
+  }
+  .inc-side-recolher:hover { background: var(--inc-soft); color: var(--inc-text); }
+  .inc-nav-item {
+    align-items: center; background: transparent; border: none; border-radius: 8px;
+    color: var(--inc-muted); cursor: pointer; display: flex; font-family: inherit;
+    font-size: 14px; font-weight: 500; gap: 9px; padding: 9px 12px; text-align: left; width: 100%;
+  }
+  .inc-nav-item--ativa { background: var(--inc-soft); color: var(--inc-text); font-weight: 600; }
+  .inc-nav-item > svg { flex-shrink: 0; }
+  /* margin-top:auto prende o rodapé embaixo no desktop; no celular a casca vira bloco e ele
+     volta a ser uma linha normal logo depois do menu. */
+  .inc-side-rodape { border-top: 1px solid var(--inc-border); margin-top: auto; padding: 12px 16px 16px; }
+  .inc-side-nome { color: var(--inc-muted); display: block; font-size: 12.5px; margin-bottom: 8px; }
+  .inc-side-tema { margin-bottom: 8px; }
+  .inc-sair {
+    align-items: center; background: transparent; border: 1px solid var(--inc-border);
+    border-radius: 8px; color: var(--inc-sub); cursor: pointer; display: flex; font-family: inherit;
+    font-size: 12.5px; gap: 6px; justify-content: center; padding: 7px 12px; width: 100%;
+  }
+
+  /* O MIOLO E O RODAPÉ. Largura total, como as telas internas do Apolo (Lucas, 18/08/2026:
+     "a tela aqui no apolo parece maior"). */
+  .inc-conteudo { padding: 26px 24px 40px; }
+  .inc-rodape {
+    border-top: 1px solid var(--inc-border); color: var(--inc-muted); font-size: 11.5px;
+    padding: 16px 20px; text-align: center;
+  }
+
+  /* ── O PORTAL COMERCIAL GANHA ÁREA DE TRABALHO ──────────────────────────────
+     Lucas (02/09/2026, olhando a ficha do Jardim das Gerais na aba Vendas): *"colocar o botão
+     de recolher o sidebar para aumentar a tela de trabalho. Nessa linha estamos comendo o
+     rodapé, podemos aumentar a área de trabalho"*. Três medidas, SÓ no comercial (.inc--comercial;
+     os portais de incorporador ficam como estão):
+       1. o rodapé "Tecnologia C2X" vira uma linha fina (6px + 16px de linha + 6px + 1px de
+          borda = 29px) e o miolo perde padding (26/24/40 → 14/16/16);
+       2. no desktop o BODY NÃO ROLA: a casca fecha em 100dvh e quem rola é o <main> — e, dentro
+          dele, a lista/ficha de Produtos, que já rola por dentro;
+       3. a lateral RECOLHE (abaixo).
+     ⚠️ Estes números entram na conta de altura da tela de Produtos (CSS_PRODUTOS, em
+     hercules/ProdutosDoHercules.tsx): mudou padding ou rodapé aqui, refaça a soma lá. */
+  .inc--comercial .inc-conteudo { padding: 14px 16px 16px; }
+  .inc--comercial .inc-rodape { font-size: 11px; line-height: 16px; padding: 6px; }
+
+  @media (min-width: 861px) {
+    .inc--comercial .inc-shell { height: 100dvh; overflow: hidden; }
+    .inc--comercial .inc-main { display: flex; flex-direction: column; height: 100dvh; }
+    .inc--comercial .inc-conteudo { flex: 1 1 auto; min-height: 0; overflow: auto; }
+    .inc--comercial .inc-rodape { flex: 0 0 auto; }
+
+    /* ── A LATERAL RECOLHIDA: 64px, só ícones ────────────────────────────────
+       Quem recolhe é o botão no topo da lateral (PanelLeftClose/PanelLeftOpen); a escolha
+       fica no localStorage ("inc:sidebar-recolhida"). Todo rótulo escrito da lateral carrega
+       .inc-side-rotulo e some junto; o que sobra é o ícone centralizado com o rótulo no title.
+       A marca some inteira: a Gurgel só tem a logo HORIZONTAL (não há símbolo quadrado no
+       cadastro), e ela espremida em 40px vira um borrão — sem símbolo, esconde.
+       ⚠️ TUDO DENTRO DE min-width: 861px DE PROPÓSITO: no celular a casca vira bloco (menu em
+       cima) e a lateral segue como hoje, mesmo com "recolhida" gravada no storage. */
+    .inc-side { transition: flex-basis 160ms ease, width 160ms ease; }
+    .inc-side--recolhida { flex-basis: 64px; width: 64px; }
+    .inc-side--recolhida .inc-side-topo { padding: 12px 8px 10px; }
+    .inc-side--recolhida .inc-side-marca-linha { justify-content: center; }
+    .inc-side--recolhida .inc-side-marca { display: none; }
+    .inc-side--recolhida .inc-side-rotulo { display: none; }
+    .inc-side--recolhida .inc-nav { padding: 10px 8px; }
+    .inc-side--recolhida .inc-nav-item { justify-content: center; padding: 9px 0; }
+    .inc-side--recolhida .inc-side-rodape {
+      align-items: center; display: flex; flex-direction: column; padding: 12px 8px 16px;
+    }
+    /* O alternador de tema (três ícones lado a lado, ~100px) não cabe em 64px: vira coluna. */
+    .inc-side--recolhida .inc-alternador { flex-direction: column; }
+    .inc-side--recolhida .inc-sair { padding: 7px 0; }
+  }
+
   @media (max-width: 860px) {
     .inc-shell { display: block; }
     .inc-side {
@@ -151,16 +237,20 @@ export const TEMA_CSS = `
        quebra em duas linhas. */
     .inc-nav { flex-direction: row; overflow-x: auto; }
     .inc-nav > button { flex: 0 0 auto; }
+    /* Recolher não existe no celular: a lateral já é uma faixa em cima. */
+    .inc-side-recolher { display: none; }
   }
 
   /* O ícone que gira enquanto algo carrega. Nasceu na TelaBoletos, onde a emissão leva alguns
      segundos por prédio e um ícone parado passa por travamento.
      ⚠️ RESPEITA prefers-reduced-motion: para quem pediu menos movimento, o ícone fica quieto —
-     o rótulo do botão ("Emitindo…", "Lendo o Asaas…") já diz que há trabalho em curso. */
+     o rótulo do botão ("Emitindo…", "Lendo o Asaas…") já diz que há trabalho em curso — e a
+     lateral recolhe sem deslizar. */
   @keyframes inc-girar { to { transform: rotate(360deg); } }
   .inc-girando { animation: inc-girar 1s linear infinite; }
   @media (prefers-reduced-motion: reduce) {
     .inc-girando { animation: none; }
+    .inc-side { transition: none; }
   }
 `;
 
@@ -327,6 +417,9 @@ export function AlternadorDeTema() {
   return (
     <div
       aria-label="Tema da tela"
+      // A classe é para a lateral RECOLHIDA do comercial virar este grupo em coluna (TEMA_CSS):
+      // `flex-direction` não está no estilo inline, então a regra de classe alcança.
+      className="inc-alternador"
       role="group"
       style={{
         border: `1px solid ${T.border}`,

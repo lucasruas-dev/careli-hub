@@ -36,6 +36,47 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-hercules-melhorias-1",
+    deployedAt: "2026-09-02T22:26:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "Botão para recolher a barra lateral e ganhar área de trabalho; a escolha fica salva no navegador.",
+              "A lista de produtos e a ficha ocupam a tela até o rodapé, que ficou fino.",
+            ],
+            screen: "Portal comercial",
+          },
+          {
+            items: [
+              "A tela Contratos ganhou três visões: Board (a Têmis), Resumo e Assinatura.",
+              "Dentro do produto, a aba Contratos mostra as mesmas três visões só daquele produto.",
+            ],
+            screen: "Contratos",
+          },
+          {
+            items: [
+              "Dentro do produto, Vendas tem Resumo, Pipeline, Unidades e Mapa.",
+              "Unidades é a mesma tela do Apolo: filtros por quadra e situação, ordenação e o histórico de cada unidade.",
+            ],
+            screen: "Vendas",
+          },
+        ],
+      },
+    ],
+    rollback: "8d42189c",
+    technical: {
+      done: "Pedido do Lucas (02/09/2026, 21h45), vendo a ficha do Jardim das Gerais: *\"colocar o botao de recolher o sidebar para aumentar a tela de trabalho. Nessa linha estamos comendo o rodape (...) ja que temos uma aba de contratos, podemos levar para essa tela a parte de contratos: board, Resumo, assinatura. E precisamos trazer a tela de unidades para dentro de venda\"*, e a correcao logo depois, apontando o kanban dentro da ficha: *\"isso aqui tem que estar na tela de contrato, no board\"*. Tres frentes: casca (sidebar recolhivel so no comercial, estado em localStorage; rodape fino; altura da lista/ficha calculada, calc(100dvh - 123px) e - 59px com a ficha aberta, conta comentada no CSS), tela Contratos com sub-abas Board/Resumo/Assinatura (AssinaturasDoProduto copia a visao de contratos da TelaVendas, com a rota de assinaturas aceitando ausencia de emp), e Vendas com Unidades (UnidadesTab do Apolo exportada com prop api, rota nova /api/incorporador/produto/unidades com escopo por sessao e sem code/entityId de terceiros no payload) e Mapa como sub-abas. Revisao adversarial com cinco achados, tres aplicados; 514 testes verdes.",
+      motivation:
+        "O coordenador trabalha o dia inteiro dentro do produto e precisava de tela, de contratos no lugar certo e das unidades dentro de Vendas.",
+    },
+    title: "Hércules: mais tela, Contratos completo e Unidades em Vendas",
+    type: "melhoria",
+    version: "1.272.0",
+  },
+  {
     buildTag: "2026-09-02-hercules-produtos",
     deployedAt: "2026-09-02T21:10:00-03:00",
     modules: [

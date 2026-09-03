@@ -19,9 +19,11 @@ import {
   X,
 } from "lucide-react";
 
+import type { ApoloEnterpriseRow } from "@/lib/apolo/empreendimentos";
 import { diaNaTela } from "@/lib/apolo/incorporador/dia-na-tela";
 import { fonte } from "@/modules/publico/ui/tokens";
 
+import { UnidadesDoProduto } from "./hercules/UnidadesDoProduto";
 import { T } from "./tema";
 import { TelaMasterplan } from "./TelaMasterplan";
 
@@ -426,14 +428,30 @@ const PAGINA = 40;
 // ⚠️ O `empFixo` É O QUE A ROTA DE PRODUTOS DEVOLVEU, não um id que a tela inventou: "pai:<uuid>"
 // do cadastro do Panteon, ou o id do C2X de um filho/linha simples. A rota de vendas confere o
 // escopo da sessão de novo do lado de lá — a tela só escolhe entre o que já foi autorizado.
+//
+// DENTRO DA FICHA (`empFixo`), as sub-abas mudam — Lucas (02/09/2026, olhando a ficha do Jardim das
+// Gerais na aba Vendas): *"já que temos uma aba de contratos, podemos levar para essa tela a parte
+// de contratos […] E precisamos trazer a tela de unidades para dentro de Venda"*. Ficam Resumo ·
+// Pipeline · Unidades · Mapa: a visão "contratos" (as assinaturas do produto) SOME daqui, porque a
+// aba Contratos da ficha é quem passa a mostrá-las; "Unidades" é a tabela de unidades do Apolo pela
+// porta do portal (hercules/UnidadesDoProduto, que precisa da linha da ficha: `rowFixo`); "Mapa" é
+// o MESMO masterplan em tela cheia que o chip do cabeçalho abre — como sub-aba, sem precisar do
+// chip (e o chip some). Sem `empFixo` (os portais de incorporador), nada disso muda.
 export function TelaVendas({
   empFixo = null,
   nomeFixo,
   onVoltar,
+  rowFixo = null,
 }: {
   empFixo?: null | string;
   nomeFixo?: string;
   onVoltar?: () => void;
+  /**
+   * A linha da ficha no formato da tela do Apolo (`linhaParaRow`), quando a tela vive dentro da
+   * FichaDoProduto: é o que a sub-aba Unidades precisa para montar a tabela. Sem ela, a sub-aba
+   * avisa em vez de quebrar.
+   */
+  rowFixo?: ApoloEnterpriseRow | null;
 } = {}) {
   const [dados, setDados] = useState<Dados | null>(null);
   const [erro, setErro] = useState<null | string>(null);
@@ -445,8 +463,11 @@ export function TelaVendas({
   const [visiveis, setVisiveis] = useState(PAGINA);
   const [mapa, setMapa] = useState<EmpreendimentoDaTela | null>(null);
   // Resumo e Pipeline dividem o MESMO fetch (trocar entre elas não refaz a chamada); Contratos
-  // tem fetch PRÓPRIO, disparado só quando a visão abre (custo C2X).
-  const [visao, setVisao] = useState<"contratos" | "pipeline" | "resumo">("resumo");
+  // tem fetch PRÓPRIO, disparado só quando a visão abre (custo C2X). "unidades" e "mapa" só
+  // existem dentro da ficha (`empFixo`); Unidades também busca sozinha, só quando abre.
+  const [visao, setVisao] = useState<
+    "contratos" | "mapa" | "pipeline" | "resumo" | "unidades"
+  >("resumo");
   // A alternância UN × R$ dos KPIs do BI (página "Vendas" do Power BI do Lucas).
   const [medida, setMedida] = useState<"rs" | "un">("un");
   // O popup da proposta: aberto pela unidade clicada (kanban ou tabela), quando ela tem unitId.
@@ -543,8 +564,26 @@ export function TelaVendas({
     (emp) => emp.masterplan && (!idsDoRecorte || idsDoRecorte.has(emp.id)),
   );
 
+  // NA SUB-ABA UNIDADES (só dentro da ficha) a tela deixa de crescer com o conteúdo e passa a
+  // OCUPAR A SECTION DA FICHA: a FichaDoProduto põe a <section> em flex-col na aba Vendas, este
+  // raiz vira o flex item que a preenche (`flex: 1 1 0%` + `minHeight: 0`, para encolher quando a
+  // tabela é maior que a área) e a última linha do grid (`minmax(0, 1fr)`) é a UnidadesDoProduto,
+  // que assim mede exatamente o que sobra abaixo do cabeçalho e das pílulas — é o que faz a
+  // tabela rolar por dentro e o thead sticky grudar, sem conta de viewport (ver a nota de ALTURA
+  // em hercules/UnidadesDoProduto). Nas outras visões nada muda: o raiz segue com a altura do
+  // conteúdo e a section da ficha rola por fora, como sempre.
+  const ocupaASection = Boolean(empFixo) && visao === "unidades";
+
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div
+      style={{
+        display: "grid",
+        gap: 16,
+        ...(ocupaASection
+          ? { flex: "1 1 0%", gridTemplateRows: "auto auto minmax(0, 1fr)", minHeight: 0 }
+          : {}),
+      }}
+    >
       {/* ── CABEÇALHO: quem está sendo olhado e por onde trocar ──────────────── */}
       <header>
         {/* FIXA NUM PRODUTO: o voltar (a seta acima do título, como "Trocar lançamento" na
@@ -599,38 +638,23 @@ export function TelaVendas({
         ) : null}
 
         {/* O MASTERPLAN MORA AQUI AGORA. Abre a mesma tela que a aba Produtos abria, em tela
-            cheia, com a sessão conferida do outro lado. */}
-        {comMapa.length > 0 ? (
+            cheia, com a sessão conferida do outro lado. Dentro da ficha o chip NÃO entra: o mapa
+            virou a sub-aba "Mapa" (Lucas, 02/09/2026). */}
+        {!empFixo && comMapa.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
             {comMapa.map((emp) => (
-              <button
+              <BotaoDoMapa
                 key={emp.id}
                 onClick={() => setMapa(emp)}
-                style={{
-                  alignItems: "center",
-                  background: T.btnBg,
-                  border: "none",
-                  borderRadius: 10,
-                  color: T.btnFg,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  fontFamily: fonte,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  gap: 7,
-                  padding: "9px 14px",
-                }}
-                type="button"
-              >
-                <MapaIcone aria-hidden="true" size={15} />
-                {comMapa.length === 1 ? "Ver o mapa das unidades" : `Mapa: ${emp.nome}`}
-              </button>
+                rotulo={comMapa.length === 1 ? "Ver o mapa das unidades" : `Mapa: ${emp.nome}`}
+              />
             ))}
           </div>
         ) : null}
       </header>
 
-      {/* ── AS TRÊS VISÕES: Resumo (números), Pipeline (o kanban) e Contratos ── */}
+      {/* ── AS VISÕES: fora da ficha, Resumo · Pipeline · Contratos (como sempre); dentro dela,
+          Resumo · Pipeline · Unidades · Mapa (as assinaturas foram para a aba Contratos da ficha) ── */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         <Pilula
           ativo={visao === "resumo"}
@@ -642,11 +666,23 @@ export function TelaVendas({
           onClick={() => setVisao("pipeline")}
           rotulo="Pipeline"
         />
-        <Pilula
-          ativo={visao === "contratos"}
-          onClick={() => setVisao("contratos")}
-          rotulo="Contratos"
-        />
+        {empFixo ? (
+          <>
+            <Pilula
+              ativo={visao === "unidades"}
+              onClick={() => setVisao("unidades")}
+              rotulo="Unidades"
+            />
+            {/* "Mapa" como nome SEMPRE (não "Ver o mapa das unidades" nem "Mapa: <nome>"). */}
+            <Pilula ativo={visao === "mapa"} onClick={() => setVisao("mapa")} rotulo="Mapa" />
+          </>
+        ) : (
+          <Pilula
+            ativo={visao === "contratos"}
+            onClick={() => setVisao("contratos")}
+            rotulo="Contratos"
+          />
+        )}
       </div>
 
       {visao === "pipeline" ? (
@@ -659,6 +695,20 @@ export function TelaVendas({
         />
       ) : visao === "contratos" ? (
         <SecaoContratos cache={cacheDeContratos.current} emp={empSelecionado} />
+      ) : visao === "unidades" ? (
+        // A tabela de unidades do Apolo pela porta do portal. Precisa do `emp` E da linha da
+        // ficha; sem a linha (quem montou a Vendas não passou `rowFixo`) avisa em vez de quebrar.
+        empFixo && rowFixo ? (
+          <UnidadesDoProduto emp={empFixo} row={rowFixo} />
+        ) : (
+          <Aviso texto="Não foi possível carregar as unidades deste produto." tom="erro" />
+        )
+      ) : visao === "mapa" ? (
+        <SubAbaDoMapa
+          comMapa={comMapa}
+          onAbrir={setMapa}
+          onVoltar={() => setVisao("resumo")}
+        />
       ) : (
         <>
           {/* A grade do BI precisa de media query (as linhas 2 e 3 empilham abaixo de ~1100px),
@@ -2174,6 +2224,76 @@ const celula = {
   color: T.sub,
   padding: "10px 10px 10px 0",
 } as const;
+
+// O botão que abre o masterplan em tela cheia — o mesmo desenho nos dois lugares em que ele
+// aparece (o chip do cabeçalho, fora da ficha; a fileira da sub-aba Mapa, quando o produto tem
+// mais de um mapa).
+function BotaoDoMapa({ onClick, rotulo }: { onClick: () => void; rotulo: string }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        alignItems: "center",
+        background: T.btnBg,
+        border: "none",
+        borderRadius: 10,
+        color: T.btnFg,
+        cursor: "pointer",
+        display: "inline-flex",
+        fontFamily: fonte,
+        fontSize: 13,
+        fontWeight: 600,
+        gap: 7,
+        padding: "9px 14px",
+      }}
+      type="button"
+    >
+      <MapaIcone aria-hidden="true" size={15} />
+      {rotulo}
+    </button>
+  );
+}
+
+// A SUB-ABA "MAPA" DA FICHA (Lucas, 02/09/2026): o masterplan sem precisar clicar no chip.
+//
+// Com UM mapa (o caso comum: linha simples ou pai com uma divisão), a sub-aba É a tela cheia — o
+// MESMO <TelaMasterplan/> que o chip abre, e o "Voltar" dela (ou Esc) devolve ao Resumo. Com mais
+// de um (pai cujas divisões têm mapa próprio), a sub-aba lista um botão por mapa, e cada um abre a
+// tela cheia pelo caminho de sempre (`setMapa`; o Voltar de lá volta para esta lista). Sem mapa,
+// diz isso em vez de esconder a sub-aba: "Mapa" é o nome sempre, e sumir com ela deixaria o
+// coordenador procurando.
+function SubAbaDoMapa({
+  comMapa,
+  onAbrir,
+  onVoltar,
+}: {
+  comMapa: EmpreendimentoDaTela[];
+  onAbrir: (emp: EmpreendimentoDaTela) => void;
+  onVoltar: () => void;
+}) {
+  const unico = comMapa.length === 1 ? comMapa[0] : null;
+
+  if (unico?.masterplan) {
+    return <TelaMasterplan code={unico.masterplan} nome={unico.nome} onVoltar={onVoltar} />;
+  }
+
+  if (comMapa.length === 0) {
+    return <Aviso texto="Este produto ainda não tem o mapa das unidades." />;
+  }
+
+  return (
+    <section style={{ ...cartao, padding: 20 }}>
+      <p style={{ color: T.muted, fontFamily: fonte, fontSize: 13.5, margin: "0 0 12px" }}>
+        Este produto tem {comMapa.length} mapas. Escolha qual abrir:
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {comMapa.map((emp) => (
+          <BotaoDoMapa key={emp.id} onClick={() => onAbrir(emp)} rotulo={`Mapa: ${emp.nome}`} />
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function Pilula({
   ativo,

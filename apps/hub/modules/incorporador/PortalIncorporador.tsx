@@ -36,7 +36,19 @@ import { TelaVendas } from "./TelaVendas";
 // (ContactRound), Produtos = o de Empreendimentos (Building2) — os dois de lib/apolo/catalog.ts —,
 // Contratos = o da Têmis (FileSignature), Financeiro = o de Carteira (WalletCards), Lançamento = o
 // do Prometeu (ListOrdered).
-import { Building2, ContactRound, FileSignature, ListOrdered, WalletCards } from "lucide-react";
+//
+// E os da LATERAL RECOLHÍVEL do comercial (Lucas, 02/09/2026): PanelLeftClose/PanelLeftOpen no
+// botão de recolher/expandir e LogOut no "Sair" (recolhida, o ícone é o que sobra do botão).
+import {
+  Building2,
+  ContactRound,
+  FileSignature,
+  ListOrdered,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  WalletCards,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 // PORTAL DO INCORPORADOR — a porta e as telas de dentro.
@@ -530,6 +542,29 @@ export function abasDoPortal(slug: string, tipo?: TipoDePortal): ItemDeAba[] {
   return abas;
 }
 
+// A LATERAL RECOLHÍVEL DO COMERCIAL. Lucas (02/09/2026, olhando a ficha do Jardim das Gerais na
+// aba Vendas): *"colocar o botão de recolher o sidebar para aumentar a tela de trabalho"*. A
+// escolha é da PESSOA e do navegador, como o tema: fica no localStorage e volta na próxima
+// abertura. Só o comercial recolhe — os portais de incorporador não ganham o botão, e a pintura
+// da lateral recolhida (64px, só ícones) mora no TEMA_CSS (.inc-side--recolhida).
+const CHAVE_SIDEBAR_RECOLHIDA = "inc:sidebar-recolhida";
+
+function lerSidebarRecolhida(): boolean {
+  // ⚠️ SÓ NO NAVEGADOR. O `Portal` hoje nunca renderiza no servidor (o `PortalComTema` abre em
+  // "Carregando…" até a sessão chegar), então o inicializador preguiçoso do useState lê o storage
+  // no PRIMEIRO render e a lateral já nasce do tamanho certo — sem o piscar "aberta → recolhida"
+  // (e sem a transição de 160ms rodando à toa na abertura) que um useEffect daria. Se um dia o
+  // Portal passar a renderizar no servidor, este `typeof window` evita o erro, mas volta o piscar.
+  if (typeof window === "undefined") return false;
+
+  try {
+    return window.localStorage.getItem(CHAVE_SIDEBAR_RECOLHIDA) === "1";
+  } catch {
+    // Storage bloqueado (modo restrito): abre expandida, como sempre.
+    return false;
+  }
+}
+
 // A logo do incorporador NÃO veste o portal de dentro: ela recebe na porta (o login) e o portal
 // é Panteon para todo mundo. A EXCEÇÃO é o portal COMERCIAL — é o time da Careli operando sob a
 // marca dele (Lucas, 02/09/2026: *"para esse perfil da Gurgel, quero que use a logo deles no
@@ -559,12 +594,28 @@ function Portal({
     (item) => item.chave !== "carteira" || temCarteira,
   );
 
+  // Recolhida só faz sentido no comercial; fora dele o estado nasce falso e ninguém o troca (o
+  // botão nem renderiza). Ver `lerSidebarRecolhida` sobre ler o storage no primeiro render.
+  const [recolhida, setRecolhida] = useState(() => comercial && lerSidebarRecolhida());
+  const alternarLateral = () => {
+    const proxima = !recolhida;
+    setRecolhida(proxima);
+
+    try {
+      window.localStorage.setItem(CHAVE_SIDEBAR_RECOLHIDA, proxima ? "1" : "0");
+    } catch {
+      // Sem storage a escolha vale só nesta aba. Ainda é melhor do que não poder recolher.
+    }
+  };
+
   return (
-    <div className="inc" style={{ background: T.page, fontFamily: fonte }}>
+    // `inc--comercial` é o gancho do TEMA_CSS para a área de trabalho maior (miolo com menos
+    // padding, rodapé fino, body sem rolagem no desktop) e para a lateral recolhível.
+    <div className={comercial ? "inc inc--comercial" : "inc"} style={{ background: T.page, fontFamily: fonte }}>
       <style>{TEMA_CSS}</style>
 
       <div className="inc-shell">
-        <aside className="inc-side">
+        <aside className={recolhida ? "inc-side inc-side--recolhida" : "inc-side"}>
           {/* DENTRO DO PORTAL A MARCA É O PANTEON (Lucas, 12/08): "somente a tela de login eu
               quero com a marca da Cecílio, as demais pode ser o Panteon mesmo". O portal é o
               nosso produto e serve a todos os incorporadores da carteira; a marca do cliente
@@ -575,17 +626,37 @@ function Portal({
               branco (`panteon-logo-light.png`, feita para o fundo escuro do login do hub), e
               sumiria no tema claro daqui. Por isso: símbolo + o nome escrito em texto, que
               acompanha o tema sozinho pela variável de cor. */}
-          <div style={{ borderBottom: `1px solid ${T.border}`, padding: "16px 16px 14px" }}>
+          <div className="inc-side-topo">
             {comercial ? (
-              // A MARCA DO TIME no lugar do Panteon. A arte é horizontal, então ocupa a largura
-              // do menu e limita pela altura; o nome não se repete embaixo — a logo já o diz.
-              <Marca
-                altura={44}
-                escuraUrl={logoEscuraUrl}
-                largura="100%"
-                nome={sessao.incorporador.nome}
-                url={logoUrl}
-              />
+              // A MARCA DO TIME no lugar do Panteon, com o botão de recolher ao lado. A arte é
+              // horizontal, então ocupa a largura que sobra e limita pela altura; o nome não se
+              // repete embaixo — a logo já o diz. Recolhida, a marca some (não há símbolo
+              // quadrado da Gurgel no cadastro; ver TEMA_CSS) e fica só o botão, centrado.
+              <div className="inc-side-marca-linha">
+                <div className="inc-side-marca">
+                  <Marca
+                    altura={44}
+                    escuraUrl={logoEscuraUrl}
+                    largura="100%"
+                    nome={sessao.incorporador.nome}
+                    url={logoUrl}
+                  />
+                </div>
+                <button
+                  aria-expanded={!recolhida}
+                  aria-label={recolhida ? "Expandir o menu" : "Recolher o menu"}
+                  className="inc-side-recolher"
+                  onClick={alternarLateral}
+                  title={recolhida ? "Expandir o menu" : "Recolher o menu"}
+                  type="button"
+                >
+                  {recolhida ? (
+                    <PanelLeftOpen aria-hidden="true" size={16} />
+                  ) : (
+                    <PanelLeftClose aria-hidden="true" size={16} />
+                  )}
+                </button>
+              </div>
             ) : (
               <>
                 <span style={{ alignItems: "center", display: "flex", gap: 8 }}>
@@ -615,76 +686,54 @@ function Portal({
             )}
           </div>
 
+          {/* O estilo dos itens mora no TEMA_CSS (.inc-nav-item): a lateral recolhida precisa
+              centralizar o ícone e apagar o rótulo, e regra de classe não vence estilo inline. */}
           <nav className="inc-nav">
             {abas.map((item) => (
               <button
+                // O rótulo vai no aria-label SEMPRE: recolhida, o <span> some (display:none) e o
+                // botão ficaria sem nome acessível. O title só quando recolhida — expandida, o
+                // texto já diz.
+                aria-label={item.rotulo}
+                className={aba === item.chave ? "inc-nav-item inc-nav-item--ativa" : "inc-nav-item"}
                 key={item.chave}
                 onClick={() => onAba(item.chave)}
-                style={{
-                  alignItems: "center",
-                  background: aba === item.chave ? T.soft : "transparent",
-                  border: "none",
-                  borderRadius: 8,
-                  color: aba === item.chave ? T.text : T.muted,
-                  cursor: "pointer",
-                  display: "flex",
-                  fontFamily: fonte,
-                  fontSize: 14,
-                  fontWeight: aba === item.chave ? 600 : 500,
-                  gap: 9,
-                  padding: "9px 12px",
-                  textAlign: "left",
-                  width: "100%",
-                }}
+                title={recolhida ? item.rotulo : undefined}
                 type="button"
               >
                 {/* ÍCONE (16px) + RÓTULO em toda aba que trouxer `icone` — hoje só o comercial.
                     Sem ícone a linha é a de sempre: o flex com gap não muda a altura, porque o
                     ícone é menor que a linha de texto. */}
-                {item.icone ? (
-                  <item.icone aria-hidden="true" size={16} style={{ flexShrink: 0 }} />
-                ) : null}
-                {item.rotulo}
+                {item.icone ? <item.icone aria-hidden="true" size={16} /> : null}
+                <span className="inc-side-rotulo">{item.rotulo}</span>
               </button>
             ))}
           </nav>
 
-          {/* `marginTop:auto` prende o rodapé embaixo no desktop; no celular a casca vira bloco e
-              ele volta a ser uma linha normal logo depois do menu. */}
-          <div
-            style={{
-              borderTop: `1px solid ${T.border}`,
-              marginTop: "auto",
-              padding: "12px 16px 16px",
-            }}
-          >
-            <span style={{ color: T.muted, display: "block", fontSize: 12.5, marginBottom: 8 }}>
-              {sessao.usuario.nome}
-            </span>
+          {/* O estilo do rodapé mora no TEMA_CSS (.inc-side-rodape e filhas): recolhida, ele vira
+              uma coluna centrada, o nome some e passa a viver no title do "Sair". */}
+          <div className="inc-side-rodape">
+            <span className="inc-side-nome inc-side-rotulo">{sessao.usuario.nome}</span>
 
             {/* O TEMA FICA JUNTO DO "SAIR", que é onde vive o que é da PESSOA e não da carteira:
                 quem ela é, como ela quer ver a tela e a saída. Fora do menu de abas de propósito —
                 tema não é um lugar do portal, é um ajuste. */}
-            <div style={{ marginBottom: 8 }}>
+            <div className="inc-side-tema">
               <AlternadorDeTema />
             </div>
 
             <button
+              aria-label={recolhida ? `Sair (${sessao.usuario.nome})` : undefined}
+              className="inc-sair"
               onClick={() => void aoSair()}
-              style={{
-                background: "transparent",
-                border: `1px solid ${T.border}`,
-                borderRadius: 8,
-                color: T.sub,
-                cursor: "pointer",
-                fontFamily: fonte,
-                fontSize: 12.5,
-                padding: "7px 12px",
-                width: "100%",
-              }}
+              title={recolhida ? `Sair · ${sessao.usuario.nome}` : undefined}
               type="button"
             >
-              Sair
+              {/* O ícone só no COMERCIAL: recolhida, é o que sobra do botão; expandida, acompanha
+                  o menu, que lá tem ícone em toda aba. Os portais de incorporador seguem só com
+                  a palavra "Sair", como aprovados. */}
+              {comercial ? <LogOut aria-hidden="true" size={14} /> : null}
+              <span className="inc-side-rotulo">Sair</span>
             </button>
           </div>
         </aside>
@@ -693,8 +742,9 @@ function Portal({
           {/* LARGURA TOTAL, como as telas internas do Apolo (Lucas, 18/08/2026: "a tela aqui no
               apolo parece maior"). O miolo era travado em maxWidth 1180 e centrado; agora ocupa a
               viewport inteira com padding lateral, em TODAS as abas — o mesmo comportamento do
-              CRM 360 interno. */}
-          <main style={{ padding: "26px 24px 40px" }}>
+              CRM 360 interno. O padding mora no TEMA_CSS (.inc-conteudo): no comercial ele é
+              menor e, no desktop, é o <main> que rola — o body não. */}
+          <main className="inc-conteudo">
             {aba === "crm" ? <TelaCrm /> : null}
             {aba === "vendas" ? <TelaVendas /> : null}
             {/* No comercial, Financeiro é PARCELAS: Ato e Sinal, valor cheio, boleto por parcela (Lucas,
@@ -719,15 +769,9 @@ function Portal({
             {aba === "lancamento" ? <TelaLancamento /> : null}
           </main>
 
-          <footer
-            style={{
-              borderTop: `1px solid ${T.border}`,
-              color: T.muted,
-              fontSize: 11.5,
-              padding: "16px 20px",
-              textAlign: "center",
-            }}
-          >
+          {/* "sempre marcar c2x" (Lucas). No comercial vira uma linha fina (TEMA_CSS,
+              .inc--comercial .inc-rodape): estava comendo a área de trabalho. */}
+          <footer className="inc-rodape">
             <span style={{ color: T.gold }}>●</span> Tecnologia <b style={{ color: T.sub }}>C2X</b>
           </footer>
         </div>

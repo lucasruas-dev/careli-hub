@@ -38,10 +38,12 @@ import { FichaDoProduto } from "./FichaDoProduto";
 // (`[data-uix-theme="dark"] *`, globals.css): as cores dos baldes escurecem junto com o portal.
 //
 // ⚠️ ALTURA: a tela do Apolo é `flex min-h-0 flex-1` e conta com um pai de altura definida para a
-// TABELA rolar por dentro (thead sticky). No portal o <main> cresce com o conteúdo, então este
-// contêiner fixa a altura (viewport menos casca) — sem isso a lista empurraria a página inteira e
-// o cabeçalho da tabela nunca grudaria. Abaixo de 860px a casca vira bloco (menu em cima) e a
-// conta muda: altura do conteúdo, como na TelaLancamento.
+// TABELA rolar por dentro (thead sticky). Este contêiner fixa a altura EXATA da área de trabalho
+// (viewport menos casca) — sem isso a lista empurraria o <main> inteiro e o cabeçalho da tabela
+// nunca grudaria. Desde 02/09/2026 a casca do comercial não deixa o body rolar no desktop (é o
+// <main> que rola, ver TEMA_CSS), e a conta abaixo é o que faz a lista/ficha ir até o rodapé
+// sem folga e sem barra de rolagem no <main>. Abaixo de 860px a casca vira bloco (menu em
+// cima) e a conta muda: altura do conteúdo, como na TelaLancamento.
 const CSS_PRODUTOS = `
   .inc-hercules-produtos {
     --color-canvas: var(--inc-page);
@@ -71,14 +73,34 @@ const CSS_PRODUTOS = `
     color: var(--inc-text);
     display: flex;
     flex-direction: column;
-    height: calc(100dvh - 212px);
+    /* A CONTA (desktop, casca do comercial em TEMA_CSS — .inc--comercial):
+         14px  padding de cima do <main> (.inc-conteudo: 14px 16px 16px)
+         48px  o cabeçalho "Produtos" (h1 20px em 26px de linha + 4px de margem + p 13.5px em
+               18px de linha — as duas alturas de linha estão CRAVADAS abaixo, em
+               .inc-hercules-cabecalho, para a soma não depender do line-height herdado)
+         16px  o gap do grid entre o cabeçalho e este contêiner
+         16px  padding de baixo do <main>
+         29px  o rodapé fino (.inc-rodape: 1px de borda + 6px + 16px de linha + 6px)
+        ─────
+        123px
+       ⚠️ Mudou padding do <main>, rodapé ou cabeçalho: refaça a soma AQUI e na variante da
+       ficha abaixo. Como o <main> rola (overflow:auto), 1px a mais aqui vira uma barra de
+       rolagem no <main>; 1px a menos vira uma fresta acima do rodapé. */
+    height: calc(100dvh - 123px);
     min-height: 480px;
   }
+  /* COM A FICHA ABERTA o cabeçalho "Produtos" não renderiza (a ficha tem o próprio, com o
+     voltar) e o gap do grid vai junto: sobram só os paddings do <main> e o rodapé —
+     14 + 16 + 29 = 59px. Sem esta variante a ficha parava 64px acima do rodapé. */
+  .inc-hercules-produtos--ficha { height: calc(100dvh - 59px); }
   .inc-hercules-produtos > * { flex: 1 1 auto; min-height: 0; }
+  .inc-hercules-cabecalho h1 { line-height: 26px; }
+  .inc-hercules-cabecalho p { line-height: 18px; }
   /* ⚠️ O MESMO BREAKPOINT DA CASCA (TEMA_CSS): abaixo de 860px o menu lateral vira um bloco em
-     cima e os 212px deixam de ser a conta certa. No celular a altura é do conteúdo. */
+     cima, o body volta a rolar e os 123px deixam de ser a conta certa. No celular a altura é do
+     conteúdo. */
   @media (max-width: 860px) {
-    .inc-hercules-produtos { height: auto; min-height: 70dvh; }
+    .inc-hercules-produtos, .inc-hercules-produtos--ficha { height: auto; min-height: 70dvh; }
   }
 `;
 
@@ -146,7 +168,8 @@ export function ProdutosDoHercules() {
       {/* ── CABEÇALHO: o mesmo das outras abas do portal (título 20, subtítulo em muted). Some
           com a ficha aberta: a ficha tem o próprio cabeçalho (voltar + nome + código · cidade). */}
       {!detail ? (
-        <header>
+        // A classe crava as alturas de linha (CSS_PRODUTOS): o cabeçalho entra na conta da altura.
+        <header className="inc-hercules-cabecalho">
           <h1 style={{ color: T.text, fontFamily: fonte, fontSize: 20, fontWeight: 600, margin: "0 0 4px" }}>
             Produtos
           </h1>
@@ -157,7 +180,8 @@ export function ProdutosDoHercules() {
       ) : null}
 
       <div
-        className="inc-hercules-produtos"
+        // `--ficha` troca a conta de altura: sem o cabeçalho "Produtos" em cima (ver CSS_PRODUTOS).
+        className={detail ? "inc-hercules-produtos inc-hercules-produtos--ficha" : "inc-hercules-produtos"}
         data-uix-theme={efetivo === "escuro" ? "dark" : "light"}
         style={{ fontFamily: fonte }}
       >

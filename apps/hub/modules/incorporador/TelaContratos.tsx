@@ -1,28 +1,47 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { type CSSProperties, useRef, useState } from "react";
 
 import { fonte } from "@/modules/publico/ui/tokens";
 import { TemisKanban } from "@/modules/temis/blocks/board/temis-kanban";
 
+import {
+  AssinaturasDoProduto,
+  type CacheDeAssinaturas,
+  Pilula,
+  ResumoDeContratos,
+} from "./hercules/AssinaturasDoProduto";
 import { T, useTemaDoPortal } from "./tema";
 
-// CONTRATOS — o board da Têmis, visto pelo coordenador. Só o que é dele, e só para olhar.
+// CONTRATOS — a tela de contratos do coordenador: Board · Resumo · Assinatura.
 //
 // Pedido do Lucas (02/09/2026): o portal comercial (Hércules) ganha a aba Contratos = *"o board da
 // Têmis recortado pelo escopo do coordenador, somente leitura por enquanto"*. Quem faz o card andar
 // continua sendo a Têmis, na tela interna; aqui o coordenador acompanha em que etapa está o
 // contrato do cliente que ele vendeu.
 //
-// É O MESMO COMPONENTE da tela interna (TemisKanban), de propósito: um board só, duas portas. O que
-// muda é a porta — a rota escopada pela sessão do portal (/api/incorporador/contratos), o cookie no
-// lugar do Bearer do Apolo (`getApoloAccessToken` LANÇA sem sessão do hub, e o coordenador não tem
-// uma) e o checkbox travado.
+// AS TRÊS SUB-ABAS (Lucas, 02/09/2026, 21h45, olhando a ficha do Jardim das Gerais): *"já que
+// temos uma aba de contratos, podemos levar para essa tela a parte de contratos: podemos ter um
+// board (para visualizar a Têmis), podemos ter Resumo, podemos ter Assinatura"*. E, apontando o
+// kanban da Têmis dentro da ficha (21h50): *"isso aqui tem que estar na tela de contrato — no
+// board"*. Então:
+//   • BOARD — o kanban da Têmis de sempre (abre nele: é o que a tela sempre foi);
+//   • RESUMO — os totais dos contratos em cards (hercules/AssinaturasDoProduto → ResumoDeContratos);
+//   • ASSINATURA — a visão de assinatura que morava na aba Vendas (hercules/AssinaturasDoProduto):
+//     taxa por perfil, blocos do painel, a lista por unidade com as barrinhas, o popup do esquema,
+//     a fila e o quadro por assinante.
+// Os chips são os mesmos das sub-abas da TelaVendas (Resumo · Pipeline · Contratos): a `Pilula`.
+//
+// O BOARD É O MESMO COMPONENTE da tela interna (TemisKanban), de propósito: um board só, duas
+// portas. O que muda é a porta — a rota escopada pela sessão do portal (/api/incorporador/contratos),
+// o cookie no lugar do Bearer do Apolo (`getApoloAccessToken` LANÇA sem sessão do hub, e o
+// coordenador não tem uma) e o checkbox travado.
 //
 // DUAS PORTAS DENTRO DO PORTAL, também: a aba Contratos do menu (tudo o que a sessão autoriza) e a
 // aba Contratos da FICHA DO PRODUTO (FichaDoProduto, `emp` preenchido), recortada para aquele
 // produto — Lucas (02/09/2026): *"produtos é replicar a tela que temos hoje em empreendimento do
-// apolo"*, e a ficha de lá tem a aba de contratos.
+// apolo"*, e a ficha de lá tem a aba de contratos. As três sub-abas valem nas duas portas: sem
+// `emp` cobrem todos os empreendimentos da sessão; com `emp`, só o produto.
 //
 // ⚠️ O KANBAN FALA TAILWIND, O PORTAL FALA VARIÁVEL CSS. As classes do hub (bg-surface, text-ink,
 // border-line…) existem aqui — o CSS global (styles/globals.css) é um só e cobre o portal —, mas o
@@ -48,7 +67,8 @@ import { T, useTemaDoPortal } from "./tema";
 //
 // EXPORTADA porque a ficha do produto (hercules/FichaDoProduto, BoardDoProduto, ResumoDoProduto)
 // é a tela do Apolo inteira em Tailwind, e precisa da MESMA moldura — uma só, para os quatro
-// lugares virarem no escuro juntos.
+// lugares virarem no escuro juntos. (Resumo e Assinatura NÃO precisam dela: são estilo inline com
+// os tokens T, e por isso hercules/AssinaturasDoProduto não importa daqui — sem ciclo.)
 export const MOLDURA_TAILWIND = {
   "--color-canvas": "var(--inc-page)",
   "--color-surface": "var(--inc-card)",
@@ -77,6 +97,15 @@ export const MOLDURA_TAILWIND = {
   fontFamily: fonte,
 } as CSSProperties;
 
+/** As sub-abas da tela, na ordem do pedido: Board · Resumo · Assinatura. */
+type SubAba = "assinatura" | "board" | "resumo";
+
+const SUB_ABAS: ReadonlyArray<{ id: SubAba; rotulo: string }> = [
+  { id: "board", rotulo: "Board" },
+  { id: "resumo", rotulo: "Resumo" },
+  { id: "assinatura", rotulo: "Assinatura" },
+];
+
 export function TelaContratos({
   emp,
 }: {
@@ -88,6 +117,13 @@ export function TelaContratos({
 } = {}) {
   // O tema efetivo (já resolvido o "seguir o aparelho") vira o atributo que os `dark:` leem.
   const { efetivo } = useTemaDoPortal();
+  // Abre no Board: é o que a tela sempre foi, e é onde o Lucas apontou o kanban da Têmis.
+  const [subAba, setSubAba] = useState<SubAba>("board");
+  // UM cache para Resumo e Assinatura: as duas leem o MESMO payload
+  // (/api/incorporador/vendas/assinaturas, 2 consultas no C2X mais a conferência das
+  // assinaturas), guardado por recorte. Trocar de sub-aba — ou ir ao Board e voltar — não refaz
+  // a chamada enquanto a tela viver. Erro não entra no cache: reabrir tenta de novo.
+  const cache = useRef<CacheDeAssinaturas>(new Map());
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -100,34 +136,52 @@ export function TelaContratos({
             Contratos
           </h1>
           <p style={{ color: T.muted, fontSize: 13.5, margin: 0 }}>
-            Documentos dos seus empreendimentos na Têmis
+            Board da Têmis, resumo e assinatura dos contratos dos seus empreendimentos
           </p>
         </header>
       )}
 
-      {/* A moldura é o card do portal; dentro dela o kanban rola na horizontal sozinho (é ele
-          quem tem o overflow-x), então a página nunca rola de lado. */}
-      <section
-        data-uix-theme={efetivo === "escuro" ? "dark" : "light"}
-        style={{
-          ...MOLDURA_TAILWIND,
-          background: T.card,
-          border: `1px solid ${T.border}`,
-          borderRadius: 12,
-          padding: 12,
-        }}
-      >
-        {/* `enterpriseId={null}` = tudo o que a sessão autoriza; com `emp`, o kanban monta
-            sozinho `?empreendimento=<emp>` na rota (é assim que ele já faz na tela interna), e a
-            rota só aceita o id DENTRO do que já é da sessão — inclusive "pai:<uuid>", que ela
-            expande pelo cadastro. O recorte é do servidor, não daqui. */}
-        <TemisKanban
-          enterpriseId={emp ?? null}
-          rota="/api/incorporador/contratos"
-          semToken
-          somenteLeitura
-        />
-      </section>
+      {/* ── AS TRÊS SUB-ABAS: os chips das visões da TelaVendas ──────────────── */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {SUB_ABAS.map((item) => (
+          <Pilula
+            ativo={subAba === item.id}
+            key={item.id}
+            onClick={() => setSubAba(item.id)}
+            rotulo={item.rotulo}
+          />
+        ))}
+      </div>
+
+      {subAba === "board" ? (
+        /* A moldura é o card do portal; dentro dela o kanban rola na horizontal sozinho (é ele
+           quem tem o overflow-x), então a página nunca rola de lado. */
+        <section
+          data-uix-theme={efetivo === "escuro" ? "dark" : "light"}
+          style={{
+            ...MOLDURA_TAILWIND,
+            background: T.card,
+            border: `1px solid ${T.border}`,
+            borderRadius: 12,
+            padding: 12,
+          }}
+        >
+          {/* `enterpriseId={null}` = tudo o que a sessão autoriza; com `emp`, o kanban monta
+              sozinho `?empreendimento=<emp>` na rota (é assim que ele já faz na tela interna), e a
+              rota só aceita o id DENTRO do que já é da sessão — inclusive "pai:<uuid>", que ela
+              expande pelo cadastro. O recorte é do servidor, não daqui. */}
+          <TemisKanban
+            enterpriseId={emp ?? null}
+            rota="/api/incorporador/contratos"
+            semToken
+            somenteLeitura
+          />
+        </section>
+      ) : subAba === "resumo" ? (
+        <ResumoDeContratos cache={cache.current} emp={emp} />
+      ) : (
+        <AssinaturasDoProduto cache={cache.current} emp={emp} />
+      )}
     </div>
   );
 }

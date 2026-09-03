@@ -158,8 +158,19 @@ export function FichaDoProduto({
         })}
       </nav>
 
-      {/* O corpo por aba. Cada aba recebe `linha.id` e resolve o escopo na SUA rota. */}
-      <section className="min-h-0 flex-1 overflow-auto">
+      {/* O corpo por aba. Cada aba recebe `linha.id` e resolve o escopo na SUA rota.
+          ⚠️ EM VENDAS A SECTION É FLEX-COL (e segue `overflow-auto`): é o que deixa a TelaVendas,
+          na sub-aba Unidades, ocupar a section inteira e a tabela rolar por dentro com o thead
+          grudado — o mesmo que o EnterpriseDetail faz na aba Unidades, só que sem `overflow-hidden`,
+          porque Resumo, Pipeline e Mapa da Vendas continuam rolando por fora (flex item sem
+          `flex-1` fica com a altura do conteúdo e transborda a section, que rola). */}
+      <section
+        className={
+          aba === "vendas"
+            ? "flex min-h-0 flex-1 flex-col overflow-auto"
+            : "min-h-0 flex-1 overflow-auto"
+        }
+      >
         {aba === "resumo" ? (
           <ResumoDoProduto emp={linha.id} onIr={setAba} row={row} />
         ) : null}
@@ -169,7 +180,7 @@ export function FichaDoProduto({
             TelaVendas sempre desenha "Voltar para Produtos" acima do nome, e sem o handler o
             botão aparecia e não fazia nada. Pipeline, Unidades e Mapa moram dentro dela. */}
         {aba === "vendas" ? (
-          <TelaVendas empFixo={linha.id} nomeFixo={linha.nome} onVoltar={onVoltar} />
+          <TelaVendas empFixo={linha.id} nomeFixo={linha.nome} onVoltar={onVoltar} rowFixo={row} />
         ) : null}
         {aba === "contratos" ? <TelaContratos emp={linha.id} /> : null}
       </section>
