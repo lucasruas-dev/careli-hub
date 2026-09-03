@@ -10,6 +10,10 @@ import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimento
 import { autorizar, codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import {
+  espelhosADescartar,
+  semEspelhoDuplicado,
+} from "@/lib/hercules/sem-espelho-duplicado";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
 import {
@@ -73,8 +77,8 @@ export async function GET(request: Request) {
 
   if (!resolvido.ok) return resolvido.response;
 
-  const { codes } = resolvido;
-  if (codes.length === 0) {
+  const { codes: codesDoPedido } = resolvido;
+  if (codesDoPedido.length === 0) {
     return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
   }
 
@@ -89,6 +93,31 @@ export async function GET(request: Request) {
   };
 
   try {
+    // ── O ESPELHO SAI QUANDO OS FILHOS ESTÃO NA MESA ──────────────────────
+    //
+    // ⚠️ ISTO CONSERTA O CONSOLIDADO. Escolhendo um produto, `expandirIdDoPainel` já devolve só os
+    // filhos; mas em "todos os empreendimentos" o escopo trazia o Vale do Ouro QUATRO vezes — o
+    // espelho VLO (298 unidades, 165 propostas, R$ 1,5 mi faturado) somado a VOC + VOL + VOR, que
+    // são os MESMOS lotes. As 114 unidades do espelho marcadas "vendida" sem proposta nenhuma eram
+    // o rastro disso na grade.
+    const cadastro = await carregarCadastroDeEmpreendimentos();
+
+    const idsDoPedido = new Set<string>();
+    const doPedido = new Set(codesDoPedido);
+    for (const emp of catalogo) {
+      emp.codes.forEach((code, i) => {
+        const id = emp.stageIds[i];
+        if (id && doPedido.has(code)) idsDoPedido.add(String(id));
+      });
+    }
+
+    const fora = espelhosADescartar(cadastro, {
+      codigos: codesDoPedido,
+      idsDoC2x: idsDoPedido,
+    });
+    const codes = semEspelhoDuplicado(codesDoPedido, fora.codigos);
+    const idsDoEscopo = new Set(semEspelhoDuplicado([...idsDoPedido], fora.idsDoC2x));
+
     // ── As propostas do escopo, em páginas ────────────────────────────────
     const propostas: PropostaDaCarga[] = [];
     for (let de = 0; ; de += PAGINA) {
@@ -113,16 +142,7 @@ export async function GET(request: Request) {
     // do empreendimento ("JDG"), mas `hercules_unidades.enterprise_id` guarda o ID NUMÉRICO do C2X
     // ("39") — foi assim que a carga das unidades gravou. Filtrar as duas pelo mesmo `codes` não
     // dá erro nenhum: devolve zero unidade, e a tela mostra um mapa em branco com o funil cheio.
-    // O catálogo traz `codes` e `stageIds` na mesma ordem; é dele que sai a tradução.
-    const idsDoEscopo = new Set<string>();
-    const doEscopo = new Set(codes);
-    for (const emp of catalogo) {
-      emp.codes.forEach((code, i) => {
-        const id = emp.stageIds[i];
-        if (id && doEscopo.has(code)) idsDoEscopo.add(String(id));
-      });
-    }
-
+    // O catálogo traz `codes` e `stageIds` na mesma ordem; é dele que sai a tradução, feita acima.
     const unidades: UnidadeDoMapa[] = [];
     for (let de = 0; ; de += PAGINA) {
       const { data, error } = await supabase
@@ -147,9 +167,6 @@ export async function GET(request: Request) {
     const pedido = url.searchParams.get("emp");
     let enterpriseIds: string[] = [];
     if (pedidoPrecisaDeExpansao(pedido)) {
-      // ⚠️ A funcao devolve a LISTA e lanca quando o Supabase falta — nao um { ok, linhas }.
-      // O catch da rota ja traduz a queda em 503; aqui nao ha o que conferir.
-      const cadastro = await carregarCadastroDeEmpreendimentos();
       enterpriseIds = comIdsDoGrupo(
         expandirIdDoPainel(pedido, cadastro, permitidos),
         catalogo,
