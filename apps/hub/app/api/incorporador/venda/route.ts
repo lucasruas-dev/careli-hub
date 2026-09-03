@@ -9,6 +9,7 @@ import { lerEsteiraDoEscopo } from "@/lib/apolo/incorporador/crm";
 import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
 import { autorizar, codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
+import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
   espelhosADescartar,
@@ -196,8 +197,23 @@ export async function GET(request: Request) {
       };
     }
 
+    // ⚠️ O PLANO COMERCIAL AINDA VEM DO C2X, e é o último dado desta tela que vem de lá. Os planos
+    // moram em `enterprises` (quatro colunas: à vista, curto, investidor, normal) e `temis_planos`,
+    // que é o destino deles no Panteon, está vazia — a frente da Têmis é quem vai preenchê-la, com
+    // categoria e minuta ligadas. Popular por fora agora atrapalharia aquele cadastro; quando ele
+    // existir, troca-se a fonte aqui e mais nada.
+    //
+    // ⚠️ FALHA NÃO DERRUBA A TELA: sem plano o simulador cai na conta simples, que é o que ele já
+    // fazia. Perder a Venda inteira porque o legado não respondeu seria pior.
+    const planos = await lerPlanosDoC2x(codes).catch(() => ({ ok: false }) as const);
+
     return NextResponse.json(
-      { data: agregarFluxo({ cads, periodo, propostas, unidades }) },
+      {
+        data: {
+          ...agregarFluxo({ cads, periodo, propostas, unidades }),
+          planos: planos.ok ? planos.empreendimentos.flatMap((e) => e.planos) : [],
+        },
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e) {

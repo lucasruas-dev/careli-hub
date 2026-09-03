@@ -148,6 +148,25 @@ export type CadsDoEscopo = {
 /** O recorte de tempo do painel, em competência (AAAA-MM). Ausente = a base inteira. */
 export type PeriodoDoPainel = { ate?: string; de?: string };
 
+/**
+ * O plano comercial como a tela recebe.
+ *
+ * ⚠️ ESPELHA `PlanoComercial` de `lib/apolo/planos-comerciais.ts`, e não o reexporta: aquele tipo
+ * carrega uniões estreitas (`IndiceCorrecao`, `SlotDaPa`) que o payload JSON não preserva. A tela
+ * usa os campos para MOSTRAR e passa o plano de volta para a matemática de lá.
+ */
+export type PlanoDaVenda = {
+  entradaPercentual: number;
+  indiceCorrecao: string;
+  jurosConvencao: string;
+  jurosPeriodicidade: string;
+  jurosTaxa: null | number;
+  nome: string;
+  parcelas: number;
+  sistemaAmortizacao: string;
+  slot: null | string;
+};
+
 export type FluxoDeVenda = {
   /** Nulo quando a leitura do cadastro falhou — a tela mostra o funil sem as duas primeiras barras. */
   cads: CadsDoEscopo | null;
@@ -170,6 +189,8 @@ export type FluxoDeVenda = {
     }[];
   }[];
   perdas: { canceladas: number; distratos: number; vgvCancelado: number };
+  /** Os planos do escopo, para o simulador. Vazio quando o produto não tem plano cadastrado. */
+  planos: PlanoDaVenda[];
   /** Os motivos de cancelamento que EXISTEM na base — ver o aviso sobre o legado. */
   motivos: { motivo: string; n: number }[];
   ranking: { imobiliaria: string; propostas: number; vendidas: number; vgv: number }[];
@@ -457,6 +478,8 @@ export function agregarFluxo({
 
   return {
     cads,
+    // A rota preenche depois: os planos vêm de outra fonte e não passam pela agregação.
+    planos: [],
     fluxo: ETAPAS_DA_FAIXA.map((etapa) =>
       etapa === "disponivel"
         ? { etapa, quantidade: disponiveis, vgv: Math.round(vgvDisponivel * 100) / 100 }

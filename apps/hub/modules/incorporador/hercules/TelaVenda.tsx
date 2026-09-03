@@ -12,7 +12,20 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
+import type {
+  EtapaDoEspelho,
+  EtapaDoFluxo,
+  FluxoDeVenda,
+  PlanoDaVenda,
+} from "@/lib/hercules/fluxo-de-venda";
+import {
+  parcelaPrice,
+  parcelaSacoc,
+  primeiraParcelaSac,
+  taxaMensal,
+} from "@/lib/apolo/planos-comerciais";
+import { valorDigitado, valorParaOCampo } from "@/lib/apolo/boletos/valor-digitado";
+import { entradaParaAParcela, montarProposta } from "@/lib/hercules/simulacao";
 import type { EventoDaUnidade } from "@/lib/hercules/historico-da-unidade";
 
 import { toTitleCase } from "@/lib/format/name-case";
@@ -286,6 +299,28 @@ function loteSelecionadoNoEspelho(doc: Document): null | { lote: string; quadra:
   if (!texto) return null;
   const m = /Quadra\s*([^\s·]+)\s*·\s*Lote\s*(\S+)/i.exec(texto);
   return m ? { lote: m[2]!, quadra: m[1]! } : null;
+}
+
+/**
+ * A cor do ponto na linha do tempo.
+ *
+ * ⚠️ É A MESMA DA GRADE, de propósito. O coordenador já aprendeu que amarelo é reserva, azul é
+ * proposta e grafite é assinatura olhando o quadro de lotes; o histórico usar outra paleta o
+ * obrigaria a aprender duas. Cancelado e distratado saem em vermelho — antes ficavam no cinza das
+ * transições comuns, escondidos no meio da lista.
+ */
+function corDoEvento(e: EventoDaUnidade): string {
+  if (e.tipo === "pagamento") return T.ok;
+  if (e.tipo === "assinatura") return COR_DA_ETAPA.assinatura;
+
+  const fato = e.fato.toLowerCase();
+  if (/cancelad|reprovad|distrat/.test(fato)) return T.danger;
+  if (/faturad|finalizad/.test(fato)) return COR_DA_ETAPA.faturado;
+  if (/assinatura/.test(fato)) return COR_DA_ETAPA.assinatura;
+  if (/contrato/.test(fato)) return COR_DA_ETAPA.contrato;
+  if (/proposta|análise|analise/.test(fato)) return COR_DA_ETAPA.proposta;
+  if (/reservad/.test(fato)) return COR_DA_ETAPA.reservado;
+  return T.border;
 }
 
 /** "31/08/26" — a data curta da coluna da linha do tempo. */
@@ -1263,6 +1298,7 @@ function Mesa({
         <div style={{ flex: "0 0 auto" }}>
           <Simulador
             chave={unidadeEmFoco?.id ?? propostaEmFoco?.id ?? ""}
+            planos={dados?.planos ?? []}
             valor={propostaEmFoco?.valor || (unidadeEmFoco?.preco ?? 0)}
           />
         </div>
@@ -1273,30 +1309,398 @@ function Mesa({
   );
 }
 
-// ── O SIMULADOR ─────────────────────────────────────────────────────────────
+// ── O SIMULADOR DE PROPOSTA ─────────────────────────────────────────────────
 //
-// Calcula aqui no navegador: é conta, não integração. O que ele ainda não faz é GRAVAR a proposta —
-// e é isso que a frase no rodapé diz, para ninguém achar que emitiu.
-function Simulador({ chave, valor }: { chave: string; valor: number }) {
+// Lucas (03/09/2026): *"o simulador de proposta eu quero o mesmo que temos na Cecilio, aquele ficou
+// ótimo"* — o do masterplan interno, que ele usa todo dia. O que faz aquele funcionar não é a
+// aparência: é a MATEMÁTICA. Ele monta a proposta com juros compostos, entrada e balões anuais, e
+// mostra a parcela que o cliente vai pagar de verdade.
+//
+// ⚠️ A CONTA NÃO FOI COPIADA DO MASTERPLAN: ela já existe em TypeScript, testada, em
+// `lib/apolo/planos-comerciais.ts` (`calcularParcela`, que resolve Price, SAC e SACOC conforme o
+// plano manda). Reescrever a fórmula aqui seria manter duas versões da mesma matemática de
+// dinheiro — e é a segunda que sempre fica para trás.
+//
+// ⚠️ E O PLANO É O DO EMPREENDIMENTO, não um número redondo. Antes o simulador dividia o saldo por
+// 180 sem juros: dava uma parcela menor que a real e treinava o coordenador a prometer o que a
+// proposta não cumpre. Agora ele parte dos planos cadastrados (à vista, curto, investidor, normal),
+// com a entrada sugerida de cada um.
+
+/** O plano como a rota entrega — o mesmo `PlanoComercial` do cadastro. */
+type PlanoDoSimulador = PlanoDaVenda;
+
+function Simulador({
+  chave,
+  planos,
+  valor,
+}: {
+  chave: string;
+  planos: PlanoDoSimulador[];
+  valor: number;
+}) {
+  const [vista, setVista] = useState<"oficial" | "personalizada">("oficial");
   const [tabela, setTabela] = useState(0);
   const [desconto, setDesconto] = useState(0);
   const [entrada, setEntrada] = useState(0);
   const [parcelas, setParcelas] = useState(180);
+  const [planoEscolhido, setPlanoEscolhido] = useState<null | string>(null);
 
-  // ⚠️ A PROPOSTA ESCOLHIDA RECOMEÇA A SIMULAÇÃO. Sem depender da `chave`, quem digitasse um
-  // desconto e clicasse em outra linha veria o valor novo com o desconto antigo — uma conta errada
-  // com cara de certa.
+  // ── A vista personalizada ────────────────────────────────────────────────
+  const [modo, setModo] = useState<"montar" | "parcela">("montar");
+  const [alvo, setAlvo] = useState(0);
+  const [baloesQtd, setBaloesQtd] = useState(0);
+  const [baloesValor, setBaloesValor] = useState(0);
+
+  const plano = useMemo(
+    () => planos.find((p) => p.nome === planoEscolhido) ?? planos[0] ?? null,
+    [planoEscolhido, planos],
+  );
+
+  const comoPlano = useMemo(
+    () =>
+      plano
+        ? {
+            entradaPercentual: plano.entradaPercentual,
+            indiceCorrecao: plano.indiceCorrecao as never,
+            jurosConvencao: plano.jurosConvencao as never,
+            jurosPeriodicidade: plano.jurosPeriodicidade as never,
+            jurosTaxa: plano.jurosTaxa,
+            nome: plano.nome,
+            parcelas: plano.parcelas,
+            sistemaAmortizacao: plano.sistemaAmortizacao as never,
+            slot: plano.slot as never,
+          }
+        : null,
+    [plano],
+  );
+
+  /** A taxa mensal do plano escolhido — é ela que governa as duas vistas. */
+  const i = comoPlano ? taxaMensal(comoPlano) : 0;
+
+  // ⚠️ TROCAR DE UNIDADE RECOMEÇA A SIMULAÇÃO. Sem depender da `chave`, quem digitasse um desconto
+  // e clicasse em outro lote veria o valor novo com o desconto antigo — conta errada com cara de
+  // certa.
   useEffect(() => {
     setTabela(valor);
-    setEntrada(Math.round(valor * 0.1));
     setDesconto(0);
+    setPlanoEscolhido(null);
+    setBaloesQtd(0);
+    setBaloesValor(0);
   }, [chave, valor]);
 
-  const final = Math.max(0, tabela * (1 - desconto / 100));
-  const financiado = Math.max(0, final - entrada);
-  const mensal = parcelas > 0 ? financiado / parcelas : 0;
+  // O plano manda na entrada e no prazo; o operador ajusta por cima se quiser.
+  useEffect(() => {
+    if (!plano) return;
+    setParcelas(plano.parcelas > 0 ? plano.parcelas : 180);
+    setEntrada(Math.round((tabela * (plano.entradaPercentual || 0)) / 100));
+  }, [plano, tabela]);
 
-  const campo = (rotulo: string, v: number, aoMudar: (n: number) => void, sufixo?: string) => (
+  const final = Math.max(0, tabela * (1 - desconto / 100));
+
+  // ── A conta OFICIAL: a régua do plano, com a entrada que o operador deixou ──
+  //
+  // As três primitivas são as de `planos-comerciais.ts`, e a escolha entre elas é a mesma de
+  // `calcularParcela`. O que não dá para usar é `calcularParcela` inteira: ela deriva a entrada do
+  // PERCENTUAL do plano, e aqui a entrada é digitável.
+  //
+  // ⚠️ SACOC NÃO É O SAC DO LIVRO: a parcela emitida é só a amortização, e os juros sobem de degrau
+  // no aniversário. Medido em nove empreendimentos; usar Price nele daria parcela maior do que o
+  // contrato emite.
+  const oficial = useMemo(() => {
+    const financiado = Math.max(0, final - entrada);
+    if (!plano || parcelas <= 0) {
+      return {
+        financiado,
+        natureza: "fixa" as const,
+        parcela: parcelas > 0 ? financiado / parcelas : 0,
+      };
+    }
+    if (plano.sistemaAmortizacao === "sac") {
+      return {
+        financiado,
+        natureza: "primeira" as const,
+        parcela: primeiraParcelaSac(financiado, i, parcelas),
+      };
+    }
+    if (plano.sistemaAmortizacao === "sacoc") {
+      return {
+        financiado,
+        natureza: "inicial" as const,
+        parcela: parcelaSacoc(financiado, parcelas),
+      };
+    }
+    return { financiado, natureza: "fixa" as const, parcela: parcelaPrice(financiado, i, parcelas) };
+  }, [entrada, final, i, parcelas, plano]);
+
+  // ── A conta PERSONALIZADA: entrada, prazo e balões, ou a parcela-alvo ─────
+  const personalizada = useMemo(() => {
+    if (modo === "parcela") {
+      const { entrada: sugerida, sobra } = entradaParaAParcela({
+        baloesQuantidade: baloesQtd,
+        baloesValor,
+        parcela: alvo,
+        parcelas,
+        taxaAoMes: i,
+        valor: final,
+      });
+      const montada = montarProposta({
+        baloesQuantidade: baloesQtd,
+        baloesValor,
+        entrada: sugerida,
+        parcelas,
+        taxaAoMes: i,
+        valor: final,
+      });
+      return { ...montada, entradaSugerida: sugerida, sobra };
+    }
+    return {
+      ...montarProposta({
+        baloesQuantidade: baloesQtd,
+        baloesValor,
+        entrada,
+        parcelas,
+        taxaAoMes: i,
+        valor: final,
+      }),
+      entradaSugerida: entrada,
+      sobra: 0,
+    };
+  }, [alvo, baloesQtd, baloesValor, entrada, final, i, modo, parcelas]);
+
+  const ehPersonalizada = vista === "personalizada";
+  const parcelaMostrada = ehPersonalizada ? personalizada.parcela : oficial.parcela;
+  const entradaMostrada = ehPersonalizada ? personalizada.entradaSugerida : entrada;
+  const financiadoMostrado = ehPersonalizada ? personalizada.financiado : oficial.financiado;
+  const total = ehPersonalizada
+    ? personalizada.total
+    : entrada + oficial.parcela * parcelas;
+
+  return (
+    <Cartao
+      barra={
+        <>
+          <Pilula ativo={!ehPersonalizada} onClick={() => setVista("oficial")} rotulo="Tabela" />
+          <Pilula
+            ativo={ehPersonalizada}
+            onClick={() => setVista("personalizada")}
+            rotulo="Personalizada"
+          />
+          {ehPersonalizada ? (
+            <>
+              <span style={{ color: T.border }}>|</span>
+              <Pilula ativo={modo === "montar"} onClick={() => setModo("montar")} rotulo="Montar" />
+              <Pilula
+                ativo={modo === "parcela"}
+                onClick={() => setModo("parcela")}
+                rotulo="Pela parcela"
+              />
+            </>
+          ) : null}
+        </>
+      }
+      titulo="Simulador de proposta"
+    >
+      <div style={{ display: "grid", gap: 10 }}>
+        {/* Os planos do produto: clicar troca a régua da conta. */}
+        {planos.length > 0 ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {planos.map((p) => (
+              <Pilula
+                ativo={plano?.nome === p.nome}
+                key={p.nome}
+                onClick={() => setPlanoEscolhido(p.nome)}
+                rotulo={p.nome}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {plano ? (
+          <div
+            style={{
+              background: T.soft,
+              borderRadius: 8,
+              color: T.sub,
+              fontSize: 11.5,
+              padding: "7px 10px",
+            }}
+          >
+            {[
+              `${plano.parcelas}x`,
+              plano.indiceCorrecao ? nomeDoIndiceCurto(plano.indiceCorrecao) : null,
+              plano.jurosTaxa && plano.jurosTaxa > 0
+                ? `juros ${plano.jurosTaxa.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% ${
+                    plano.jurosPeriodicidade === "anual" ? "a.a." : "a.m."
+                  }`
+                : "sem juros",
+              plano.entradaPercentual > 0 ? `entrada ${plano.entradaPercentual}%` : null,
+              plano.sistemaAmortizacao?.toUpperCase(),
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        ) : null}
+
+        <div style={{ display: "grid", gap: 9, gridTemplateColumns: "1fr 1fr" }}>
+          <CampoEmReais aoMudar={setTabela} rotulo="Valor de tabela" valor={tabela} />
+          <CampoSimples aoMudar={setDesconto} rotulo="Desconto" sufixo="%" valor={desconto} />
+
+          {ehPersonalizada && modo === "parcela" ? (
+            <CampoEmReais aoMudar={setAlvo} rotulo="Parcela que o cliente paga" valor={alvo} />
+          ) : (
+            <CampoEmReais aoMudar={setEntrada} rotulo="Entrada" valor={entrada} />
+          )}
+          <CampoSimples aoMudar={setParcelas} rotulo="Parcelas" sufixo="x" valor={parcelas} />
+
+          {ehPersonalizada ? (
+            <>
+              <CampoSimples
+                aoMudar={setBaloesQtd}
+                rotulo="Balões anuais"
+                sufixo="x"
+                valor={baloesQtd}
+              />
+              <CampoEmReais aoMudar={setBaloesValor} rotulo="Valor do balão" valor={baloesValor} />
+            </>
+          ) : null}
+        </div>
+
+        <div style={{ background: T.soft, borderRadius: 9, padding: "10px 12px" }}>
+          <Linha rotulo="Valor final" valor={dinheiro(final)} />
+          {ehPersonalizada && modo === "parcela" ? (
+            <Linha rotulo="Entrada necessária" valor={dinheiro(entradaMostrada)} />
+          ) : null}
+          <Linha rotulo="A financiar" valor={dinheiro(financiadoMostrado)} />
+          <Linha
+            rotulo={
+              ehPersonalizada
+                ? "Parcela mensal"
+                : oficial.natureza === "primeira"
+                  ? "Primeira parcela"
+                  : oficial.natureza === "inicial"
+                    ? "Parcela inicial"
+                    : "Parcela mensal"
+            }
+            valor={dinheiro(parcelaMostrada)}
+          />
+          {ehPersonalizada && baloesQtd > 0 ? (
+            <Linha
+              rotulo={`Balões (${baloesQtd}x)`}
+              valor={dinheiro(baloesQtd * baloesValor)}
+            />
+          ) : null}
+          {/* ⚠️ O TOTAL DENUNCIA O JURO. Com parcela e prazo só, o custo do financiamento fica
+              invisível: é a soma que mostra quanto o cliente paga a mais do que o valor do lote. */}
+          <Linha rotulo="Total" valor={dinheiro(total)} />
+        </div>
+
+        {ehPersonalizada && modo === "parcela" && personalizada.sobra > 0 ? (
+          <p style={{ color: T.danger, fontSize: 11.5, fontWeight: 600, margin: 0 }}>
+            Essa parcela paga o lote antes do prazo: sobram {dinheiro(personalizada.sobra)}. Reduza a
+            parcela ou o número de meses.
+          </p>
+        ) : null}
+
+        <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
+          {ehPersonalizada
+            ? `Proposta montada à mão, com a taxa do plano ${plano?.nome ?? "—"}. O balão sai do saldo pelo valor de hoje, não pelo de face — é o que o contrato consegue cumprir.`
+            : oficial.natureza === "inicial"
+              ? `Plano ${plano?.nome}, SACOC: a parcela emitida é a amortização, e os juros sobem de degrau no aniversário. A correção pelo índice entra no reajuste anual.`
+              : i > 0
+                ? `Conta pelo plano ${plano?.nome}: ${plano?.sistemaAmortizacao?.toUpperCase()} com a taxa dele. A correção pelo índice entra no reajuste anual, e não aqui.`
+                : plano
+                  ? `O plano ${plano.nome} não tem juros: a parcela é o saldo dividido pelo prazo.`
+                  : "Sem plano cadastrado para este produto: conta simples, sem juros."}
+        </p>
+      </div>
+    </Cartao>
+  );
+}
+
+/**
+ * Campo de dinheiro, escrito como dinheiro — com os pontos, sem o cifrão.
+ *
+ * ⚠️ Lucas (03/09/2026): *"aqui trazer com R$"*, *"sem cifrão"* (constatando que ainda estava) e
+ * *"falta o cifrão"*. São duas coisas, e o campo precisa das duas: a PONTUAÇÃO, porque "145451"
+ * obriga a contar casas com o dedo na tela e é aí que um zero a mais passa despercebido; e o
+ * SÍMBOLO, que diz de imediato que aquele número é dinheiro e não um prazo ou uma quantidade —
+ * numa grade onde "Parcelas" e "Balões" são números puros, a diferença tem de ser visível.
+ *
+ * A leitura e a escrita usam `valorDigitado`/`valorParaOCampo`, as mesmas da tela de boletos, que
+ * já sabem que o brasileiro digita vírgula.
+ */
+function CampoEmReais({
+  aoMudar,
+  rotulo,
+  valor,
+}: {
+  aoMudar: (n: number) => void;
+  rotulo: string;
+  valor: number;
+}) {
+  const [texto, setTexto] = useState(valorParaOCampo(valor));
+
+  // O valor vindo de fora (troca de unidade, de plano) reescreve o campo; o que a pessoa digita, não.
+  useEffect(() => {
+    setTexto(valorParaOCampo(valor));
+  }, [valor]);
+
+  return (
+    <label style={{ display: "grid", gap: 3 }}>
+      <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>{rotulo}</span>
+      <span style={{ alignItems: "center", display: "flex", position: "relative" }}>
+        <span
+          style={{
+            color: T.muted,
+            fontSize: 12,
+            fontWeight: 600,
+            left: 10,
+            pointerEvents: "none",
+            position: "absolute",
+          }}
+        >
+          R$
+        </span>
+        <input
+          inputMode="decimal"
+          onBlur={() => setTexto(valorParaOCampo(valor))}
+          onChange={(e) => {
+            setTexto(e.target.value);
+            const lido = valorDigitado(e.target.value);
+            if (lido !== null) aoMudar(lido);
+          }}
+          style={{
+            background: T.soft,
+            border: `1px solid ${T.border}`,
+            borderRadius: 8,
+            color: T.text,
+            font: "inherit",
+            fontSize: 13.5,
+            fontVariantNumeric: "tabular-nums",
+            fontWeight: 600,
+            padding: "7px 10px 7px 34px",
+            width: "100%",
+          }}
+          value={texto}
+        />
+      </span>
+    </label>
+  );
+}
+
+/** Campo de número puro (prazo, percentual, quantidade) — sem cifrão. */
+function CampoSimples({
+  aoMudar,
+  rotulo,
+  sufixo,
+  valor,
+}: {
+  aoMudar: (n: number) => void;
+  rotulo: string;
+  sufixo?: string;
+  valor: number;
+}) {
+  return (
     <label style={{ display: "grid", gap: 3 }}>
       <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>{rotulo}</span>
       <span style={{ alignItems: "center", display: "flex", gap: 6 }}>
@@ -1315,36 +1719,18 @@ function Simulador({ chave, valor }: { chave: string; valor: number }) {
             width: "100%",
           }}
           type="number"
-          value={String(Math.round(v * 100) / 100)}
+          value={String(Math.round(valor * 100) / 100)}
         />
         {sufixo ? <span style={{ color: T.muted, fontSize: 12 }}>{sufixo}</span> : null}
       </span>
     </label>
   );
+}
 
-  return (
-    <Cartao titulo="Simulador de proposta">
-      <div style={{ display: "grid", gap: 10 }}>
-        <div style={{ display: "grid", gap: 9, gridTemplateColumns: "1fr 1fr" }}>
-          {campo("Valor de tabela", tabela, setTabela)}
-          {campo("Desconto", desconto, setDesconto, "%")}
-          {campo("Entrada", entrada, setEntrada)}
-          {campo("Parcelas", parcelas, setParcelas, "x")}
-        </div>
-
-        <div style={{ background: T.soft, borderRadius: 9, padding: "10px 12px" }}>
-          <Linha rotulo="Valor final" valor={dinheiro(final)} />
-          <Linha rotulo="A financiar" valor={dinheiro(financiado)} />
-          <Linha rotulo="Parcela mensal" valor={dinheiro(mensal)} />
-        </div>
-
-        <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
-          Conta simples, sem correção nem juros: é a ordem de grandeza para responder ao cliente na
-          hora. O plano comercial do empreendimento entra junto com a emissão da proposta.
-        </p>
-      </div>
-    </Cartao>
-  );
+/** "IPCA_ANUAL" → "IPCA anual". O cadastro guarda a chave; a tela mostra a palavra. */
+function nomeDoIndiceCurto(indice: string): string {
+  const limpo = indice.replace(/_/g, " ").toLowerCase();
+  return limpo.charAt(0).toUpperCase() + limpo.slice(1);
 }
 
 // ── O PANORAMA ──────────────────────────────────────────────────────────────
@@ -1658,11 +2044,33 @@ function Historico({ unidadeId }: { unidadeId: null | string }) {
     [eventos],
   );
 
+  // ⚠️ O FILTRO DE DATA TEM DE APARECER SEMPRE (Lucas, 03/09/2026: *"faltou o filtro de data"*).
+  // A primeira versão usava o `Filtro` genérico, que se esconde com menos de duas opções — e num
+  // lote cujos eventos são todos do mesmo ano ele simplesmente sumia. Períodos relativos existem
+  // independentemente do que há na base, então a lista nunca fica com uma opção só.
+  const opcoesDeData = useMemo(() => {
+    const agora = new Date();
+    const menos = (dias: number) =>
+      new Date(agora.getTime() - dias * 86_400_000).toISOString().slice(0, 10);
+    return [
+      { rotulo: "Todo o período", valor: "" },
+      { rotulo: "Últimos 30 dias", valor: `>=${menos(30)}` },
+      { rotulo: "Últimos 90 dias", valor: `>=${menos(90)}` },
+      { rotulo: "Últimos 12 meses", valor: `>=${menos(365)}` },
+      ...anos.map((a) => ({ rotulo: a, valor: a })),
+    ];
+  }, [anos]);
+
   const filtrados = useMemo(
     () =>
-      eventos.filter(
-        (e) => (so === "tudo" || e.tipo === so) && (!desde || e.quando.startsWith(desde)),
-      ),
+      eventos.filter((e) => {
+        if (so !== "tudo" && e.tipo !== so) return false;
+        if (!desde) return true;
+        // `>=AAAA-MM-DD` é o corte relativo; o resto é ano cheio.
+        return desde.startsWith(">=")
+          ? e.quando.slice(0, 10) >= desde.slice(2)
+          : e.quando.startsWith(desde);
+      }),
     [desde, eventos, so],
   );
 
@@ -1695,12 +2103,28 @@ function Historico({ unidadeId }: { unidadeId: null | string }) {
                 rotulo={rotulo}
               />
             ))}
-            <Filtro
-              aoMudar={setDesde}
-              opcoes={anos}
-              rotuloDeTodos="Todo o período"
-              valor={desde}
-            />
+            <select
+              aria-label="Período"
+              onChange={(e) => setDesde(e.target.value)}
+              style={{
+                background: T.soft,
+                border: `1px solid ${T.border}`,
+                borderRadius: 999,
+                color: T.text,
+                cursor: "pointer",
+                font: "inherit",
+                fontSize: 12.5,
+                fontWeight: 600,
+                padding: "6px 10px",
+              }}
+              value={desde}
+            >
+              {opcoesDeData.map((o) => (
+                <option key={o.valor} value={o.valor}>
+                  {o.rotulo}
+                </option>
+              ))}
+            </select>
             {pagos > 0 ? (
               <span style={{ color: T.ok, fontSize: 11.5, fontWeight: 650, marginLeft: "auto" }}>
                 {dinheiro(pagos)} pagos
@@ -1742,8 +2166,12 @@ function Historico({ unidadeId }: { unidadeId: null | string }) {
               // O nome do cliente só aparece quando MUDA: repetir "ALEXANDRE" em doze linhas
               // seguidas era metade do ruído da lista.
               const mostrarCliente = e.cliente && e.cliente !== anterior?.cliente;
-              const cor =
-                e.tipo === "pagamento" ? T.ok : e.tipo === "assinatura" ? "#a8447f" : T.border;
+              // ⚠️ A TRANSIÇÃO GANHA A COR DA ETAPA DE DESTINO (Lucas, 03/09/2026: *"deixar essas
+              // transições reserva - proposta na cor que estamos usando para marcar na grade,
+              // cancelamento em vermelho"*). A grade já ensinou o olho: azul é proposta, violeta é
+              // contrato, grafite é assinatura. O histórico usar outra paleta obrigaria a aprender
+              // duas — e cancelamento em cinza escondia justamente o que se procura.
+              const cor = corDoEvento(e);
 
               return (
                 <div key={e.id}>
