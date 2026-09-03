@@ -267,6 +267,26 @@ const ROTULO_DA_DATA: Record<string, string> = {
 
 const rotuloDaData = (etapa: string) => ROTULO_DA_DATA[etapa] ?? "Data";
 
+/**
+ * Lê a quadra e o lote que o espelho acabou de selecionar.
+ *
+ * ⚠️ O ESPELHO ESCREVE A IDENTIDADE DO LOTE NUM LUGAR SÓ: a ficha da coluna de unidade, no elemento
+ * `#fQL`, no formato "Quadra 03 · Lote 01" (é o `rot` que o `mostraLote` do A-INTERNO preenche).
+ * Como essa coluna está escondida pelo `so=espelho`, ela continua sendo preenchida — foi por isso
+ * que a casca é escondida e não removida.
+ *
+ * ⚠️ E O CASAMENTO É POR QUADRA E LOTE, NUNCA PELO CÓDIGO. O espelho monta o id com o prefixo do
+ * ARQUIVO ("VLO0301"), e no Vale do Ouro as unidades vivas são dos filhos ("VOC0301", "VOL..."):
+ * casar por código não acharia nada justamente no produto que mais precisa. Quadra e lote são o
+ * lote físico, e não mudam com o recorte.
+ */
+function loteSelecionadoNoEspelho(doc: Document): null | { lote: string; quadra: string } {
+  const texto = doc.getElementById("fQL")?.textContent?.trim();
+  if (!texto) return null;
+  const m = /Quadra\s*([^\s·]+)\s*·\s*Lote\s*(\S+)/i.exec(texto);
+  return m ? { lote: m[2]!, quadra: m[1]! } : null;
+}
+
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const mesCurto = (mes: string) => {
   const [ano, m] = mes.split("-");
@@ -685,6 +705,42 @@ function Mesa({
   const { efetivo } = useTemaDoPortal();
   const rotulo = FLUXO.find((f) => f.etapa === etapa)?.rotulo ?? "Propostas";
 
+  // ⚠️ CLICAR NO LOTE DO ESPELHO ABRE A FICHA AO LADO (Lucas, 03/09/2026: *"quando eu clicar no
+  // lote na imagem, tem que interagir com o painel ao lado, esse que traz os dados"*). O espelho é
+  // um <iframe> de MESMA ORIGEM (a rota do portal), então dá para escutar o clique lá dentro sem
+  // postMessage nem tocar no arquivo aprovado do masterplan.
+  //
+  // ⚠️ O LISTENER ENTRA NO `onLoad`, e não uma vez só: o iframe recarrega quando o tema muda ou o
+  // produto troca, e um listener preso ao documento antigo morre com ele, deixando o clique mudo.
+  const aoClicarNoEspelho = useCallback(
+    (frame: HTMLIFrameElement) => {
+      const doc = frame.contentDocument;
+      if (!doc) return;
+
+      doc.addEventListener("click", (evento) => {
+        // O script do espelho só preenche a ficha DEPOIS do clique dele: o `setTimeout(0)` deixa a
+        // seleção acontecer antes de a gente ler o resultado.
+        const alvo = evento.target as Element | null;
+        if (!alvo || alvo.tagName.toLowerCase() !== "polygon") return;
+
+        window.setTimeout(() => {
+          const escolhido = loteSelecionadoNoEspelho(doc);
+          if (!escolhido) return;
+
+          const achada = (dados?.mapa ?? [])
+            .flatMap((g) => g.unidades)
+            .find(
+              (u) =>
+                String(u.quadra ?? "").trim() === escolhido.quadra &&
+                String(u.lote ?? "").trim() === escolhido.lote,
+            );
+          if (achada) aoFocar({ tipo: "unidade", unidade: achada });
+        }, 0);
+      });
+    },
+    [aoFocar, dados],
+  );
+
   // ⚠️ BUSCA E FILTRO SÃO PADRÃO EM VISÃO ANALÍTICA (Lucas, 03/09/2026: *"no analítico, coloca
   // filtros, buscar. Sempre ter isso como padrão em visões analíticas"*). A busca zera ao trocar de
   // etapa: o texto que fazia sentido em "reserva" quase nunca faz em "faturamento", e um filtro
@@ -832,6 +888,7 @@ function Mesa({
               para zero e o mapa "não aparece". */}
           {modo === "mapa" && mapaDoProduto?.masterplanInterno ? (
             <iframe
+              onLoad={(e) => aoClicarNoEspelho(e.currentTarget)}
               src={`/api/incorporador/masterplan?code=${encodeURIComponent(mapaDoProduto.masterplanInterno)}&tema=${efetivo}&so=espelho`}
               style={{
                 background: T.soft,
