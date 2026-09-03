@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bookmark, FileSignature, FileText, Grid2x2, Receipt, Signature } from "lucide-react";
+import {
+  Bookmark,
+  FileSignature,
+  FileText,
+  Grid2x2,
+  Receipt,
+  Search,
+  Signature,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
@@ -211,6 +219,35 @@ function competenciaDe(mesesAtras: number): string {
   const hoje = new Date();
   const d = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - mesesAtras, 1));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Como a unidade aparece para quem vende: **quadra e lote**, e o recorte por baixo.
+ *
+ * ⚠️ O CÓDIGO DA UNIDADE NÃO VAI PARA A TELA. Lucas (03/09/2026), comparando as duas listas:
+ * *"vamos deixar esse padrão do segundo print, 12 06 VOR; não vamos trabalhar com o código da
+ * unidade, esse será de uso do backend (...) caso trazer, ter a conotação de código"*. "VOL0307" é
+ * chave de sistema; quem está vendendo fala "lote 07 da quadra 03". A lista de propostas já
+ * escrevia assim (o nome vem de bloco + lote), e a de disponíveis destoava.
+ *
+ * `VOL0307` → `{ recorte: "VOL", unidade: "03 07" }`. Código fora do padrão (apartamento, unidade
+ * avulsa) volta inteiro no lugar da unidade: melhor um código à mostra do que um lote inventado.
+ */
+function comoSeEscreve(
+  codigo: string,
+  quadra: null | string,
+  lote: null | string,
+): { recorte: null | string; unidade: string } {
+  if (quadra && lote) {
+    const m = /^([A-Za-z]{2,4})/.exec(codigo.trim());
+    return { recorte: m ? m[1]!.toUpperCase() : null, unidade: `${quadra} ${lote}` };
+  }
+
+  const padrao = /^([A-Za-z]{2,4})(\d{2})(\d{2})$/.exec(codigo.trim());
+  if (padrao) {
+    return { recorte: padrao[1]!.toUpperCase(), unidade: `${padrao[2]} ${padrao[3]}` };
+  }
+  return { recorte: null, unidade: codigo };
 }
 
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -628,6 +665,60 @@ function Mesa({
   // O tema vai para o iframe do masterplan: outro documento não herda variável CSS de ninguém.
   const { efetivo } = useTemaDoPortal();
   const rotulo = FLUXO.find((f) => f.etapa === etapa)?.rotulo ?? "Propostas";
+
+  // ⚠️ BUSCA E FILTRO SÃO PADRÃO EM VISÃO ANALÍTICA (Lucas, 03/09/2026: *"no analítico, coloca
+  // filtros, buscar. Sempre ter isso como padrão em visões analíticas"*). A busca zera ao trocar de
+  // etapa: o texto que fazia sentido em "reserva" quase nunca faz em "faturamento", e um filtro
+  // esquecido mostra lista vazia sem explicar por quê.
+  const [busca, setBusca] = useState("");
+  const [imobiliaria, setImobiliaria] = useState("");
+  const [quadra, setQuadra] = useState("");
+  useEffect(() => {
+    setBusca("");
+    setImobiliaria("");
+    setQuadra("");
+  }, [etapa]);
+
+  const procurado = normalizar(busca);
+
+  const imobiliarias = useMemo(
+    () => [...new Set(lista.map((l) => l.imobiliaria).filter((n): n is string => Boolean(n)))].sort(
+      (a, b) => a.localeCompare(b, "pt-BR"),
+    ),
+    [lista],
+  );
+
+  const listaFiltrada = useMemo(
+    () =>
+      lista.filter(
+        (l) =>
+          (!imobiliaria || l.imobiliaria === imobiliaria) &&
+          (contem(l.unidade, procurado) ||
+            contem(l.cliente, procurado) ||
+            contem(l.imobiliaria, procurado) ||
+            contem(l.produto, procurado)),
+      ),
+    [imobiliaria, lista, procurado],
+  );
+
+  const quadras = useMemo(
+    () => [...new Set(livres.map((u) => u.quadra ?? u.grupo))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true })),
+    [livres],
+  );
+
+  const livresFiltrados = useMemo(
+    () =>
+      livres.filter((u) => {
+        const nome = comoSeEscreve(u.codigo, u.quadra ?? u.grupo, u.lote);
+        return (
+          (!quadra || (u.quadra ?? u.grupo) === quadra) &&
+          (contem(nome.unidade, procurado) ||
+            contem(nome.recorte, procurado) ||
+            contem(u.codigo, procurado))
+        );
+      }),
+    [livres, procurado, quadra],
+  );
   const estoque = dados?.totais.estoque ?? {};
   // ⚠️ SÓ AS PRIMEIRAS QUADRAS. São 5.528 unidades no escopo inteiro: desenhar todas trava o
   // navegador e ninguém lê. Com um empreendimento escolhido, o mapa dele cabe inteiro.
@@ -661,16 +752,15 @@ function Mesa({
           rolam por dentro, cada um com a sua barra. */}
       <div
         style={{
-          display: "grid",
+          display: "flex",
+          flexDirection: "column",
           gap: 14,
-          gridTemplateRows: "minmax(0, auto) minmax(0, 1fr)",
           minHeight: 0,
           minWidth: 0,
+          overflow: "auto",
         }}
       >
         <Cartao
-          maxAltura="56%"
-          rolagem
           direita={
             <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12 }}>
               {modo === "grade"
@@ -778,7 +868,11 @@ function Mesa({
                         padding: 0,
                         placeItems: "center",
                       }}
-                      title={`${u.codigo} · ${ROTULO_DA_ETAPA[u.etapa] ?? u.etapa}`}
+                      // O código aparece aqui com a conotação de código, como o Lucas pediu: é a
+                      // única porta onde ele serve, para quem precisa cruzar com o backend.
+                      title={`${comoSeEscreve(u.codigo, u.quadra, u.lote).unidade} · ${
+                        ROTULO_DA_ETAPA[u.etapa] ?? u.etapa
+                      } · código ${u.codigo}`}
                       type="button"
                     >
                       {u.lote ?? ""}
@@ -805,12 +899,33 @@ function Mesa({
         </Cartao>
 
         {etapa === "disponivel" ? (
-          <Cartao rolagem titulo={`Disponíveis · ${inteiro(livres.length)}`}>
+          <Cartao
+            barra={
+              <>
+                <Busca
+                  aoMudar={setBusca}
+                  placeholder="Buscar quadra, lote ou código"
+                  valor={busca}
+                />
+                <Filtro
+                  aoMudar={setQuadra}
+                  opcoes={quadras}
+                  rotuloDeTodos="Todas as quadras"
+                  valor={quadra}
+                />
+                <span style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}>
+                  {inteiro(livresFiltrados.length)} de {inteiro(livres.length)}
+                </span>
+              </>
+            }
+            rolagem
+            titulo={`Disponíveis · ${inteiro(livres.length)}`}
+          >
             <div style={{ margin: "-16px", overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
                 <thead>
                   <tr>
-                    {["Unidade", "Quadra", "Valor de tabela"].map((c, i) => (
+                    {["Unidade", "Valor de tabela"].map((c, i) => (
                       <th
                         key={c}
                         style={{
@@ -819,7 +934,7 @@ function Mesa({
                           fontWeight: 650,
                           letterSpacing: ".05em",
                           padding: "10px 12px",
-                          textAlign: i === 2 ? "right" : "left",
+                          textAlign: i === 1 ? "right" : "left",
                           textTransform: "uppercase",
                           whiteSpace: "nowrap",
                         }}
@@ -830,7 +945,7 @@ function Mesa({
                   </tr>
                 </thead>
                 <tbody>
-                  {livres.slice(0, 150).map((u) => (
+                  {livresFiltrados.slice(0, 150).map((u) => (
                     <tr
                       key={u.id}
                       onClick={() => aoFocar({ tipo: "unidade", unidade: u })}
@@ -840,9 +955,11 @@ function Mesa({
                       }}
                     >
                       <td style={celula}>
-                        <b>{u.codigo}</b>
+                        <b>{comoSeEscreve(u.codigo, u.quadra ?? u.grupo, u.lote).unidade}</b>
+                        <div style={{ color: T.muted, fontSize: 11.5 }}>
+                          {comoSeEscreve(u.codigo, u.quadra ?? u.grupo, u.lote).recorte ?? ""}
+                        </div>
                       </td>
-                      <td style={{ ...celula, color: T.muted }}>{u.grupo}</td>
                       <td
                         style={{ ...celula, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
                       >
@@ -850,24 +967,49 @@ function Mesa({
                       </td>
                     </tr>
                   ))}
-                  {livres.length === 0 ? (
+                  {livresFiltrados.length === 0 ? (
                     <tr>
-                      <td colSpan={3} style={{ ...celula, color: T.muted, textAlign: "center" }}>
-                        {carregando ? "Carregando…" : "Nenhuma unidade disponível no recorte."}
+                      <td colSpan={2} style={{ ...celula, color: T.muted, textAlign: "center" }}>
+                        {carregando
+                          ? "Carregando…"
+                          : livres.length > 0
+                            ? "Nenhuma unidade com esse filtro."
+                            : "Nenhuma unidade disponível no recorte."}
                       </td>
                     </tr>
                   ) : null}
                 </tbody>
               </table>
             </div>
-            {livres.length > 150 ? (
+            {livresFiltrados.length > 150 ? (
               <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-                Mostrando 150 de {inteiro(livres.length)}.
+                Mostrando 150 de {inteiro(livresFiltrados.length)}.
               </p>
             ) : null}
           </Cartao>
         ) : (
-        <Cartao rolagem titulo={`${rotulo} · ${inteiro(lista.length)}`}>
+        <Cartao
+          barra={
+            <>
+              <Busca
+                aoMudar={setBusca}
+                placeholder="Buscar unidade, cliente ou imobiliária"
+                valor={busca}
+              />
+              <Filtro
+                aoMudar={setImobiliaria}
+                opcoes={imobiliarias}
+                rotuloDeTodos="Todas as imobiliárias"
+                valor={imobiliaria}
+              />
+              <span style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}>
+                {inteiro(listaFiltrada.length)} de {inteiro(lista.length)}
+              </span>
+            </>
+          }
+          rolagem
+          titulo={`${rotulo} · ${inteiro(lista.length)}`}
+        >
           <div style={{ margin: "-16px", overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
               <thead>
@@ -892,7 +1034,7 @@ function Mesa({
                 </tr>
               </thead>
               <tbody>
-                {lista.slice(0, 150).map((l) => (
+                {listaFiltrada.slice(0, 150).map((l) => (
                   <tr
                     key={l.id}
                     onClick={() => aoFocar({ proposta: l, tipo: "proposta" })}
@@ -915,19 +1057,23 @@ function Mesa({
                     </td>
                   </tr>
                 ))}
-                {lista.length === 0 ? (
+                {listaFiltrada.length === 0 ? (
                   <tr>
                     <td colSpan={5} style={{ ...celula, color: T.muted, textAlign: "center" }}>
-                      {carregando ? "Carregando…" : "Nenhuma proposta nesta etapa."}
+                      {carregando
+                        ? "Carregando…"
+                        : lista.length > 0
+                          ? "Nenhuma proposta com esse filtro."
+                          : "Nenhuma proposta nesta etapa."}
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
           </div>
-          {lista.length > 150 ? (
+          {listaFiltrada.length > 150 ? (
             <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-              Mostrando as 150 mais recentes de {inteiro(lista.length)}.
+              Mostrando as 150 mais recentes de {inteiro(listaFiltrada.length)}.
             </p>
           ) : null}
         </Cartao>
@@ -962,7 +1108,11 @@ function Mesa({
               </span>
             ) : null
           }
-          titulo={unidadeEmFoco?.codigo ?? propostaEmFoco?.unidade ?? "Nada escolhido"}
+          titulo={
+            unidadeEmFoco
+              ? comoSeEscreve(unidadeEmFoco.codigo, unidadeEmFoco.quadra, unidadeEmFoco.lote).unidade
+              : (propostaEmFoco?.unidade ?? "Nada escolhido")
+          }
         >
           {unidadeEmFoco || propostaEmFoco ? (
             <>
@@ -1338,6 +1488,111 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
   );
 }
 
+// ── AS PEÇAS DE UMA VISÃO ANALÍTICA ─────────────────────────────────────────
+//
+// ⚠️ BUSCA E FILTRO SÃO PADRÃO, e não enfeite desta tela. Lucas (03/09/2026): *"no analítico,
+// coloca filtros, buscar. Sempre ter isso como padrão em visões analíticas"*. Toda lista longa
+// nasce com os dois — uma tabela de 150 linhas sem busca obriga a rolar procurando com o olho, que
+// é o oposto do que uma visão analítica existe para fazer.
+
+function Busca({
+  aoMudar,
+  placeholder,
+  valor,
+}: {
+  aoMudar: (v: string) => void;
+  placeholder: string;
+  valor: string;
+}) {
+  return (
+    <span style={{ alignItems: "center", display: "inline-flex", gap: 6, position: "relative" }}>
+      <Search
+        aria-hidden="true"
+        size={13}
+        style={{ color: T.muted, left: 10, pointerEvents: "none", position: "absolute" }}
+      />
+      <input
+        onChange={(e) => aoMudar(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          background: T.soft,
+          border: `1px solid ${T.border}`,
+          borderRadius: 999,
+          color: T.text,
+          font: "inherit",
+          fontSize: 12.5,
+          minWidth: 210,
+          padding: "6px 12px 6px 28px",
+        }}
+        type="search"
+        value={valor}
+      />
+    </span>
+  );
+}
+
+function Filtro({
+  aoMudar,
+  opcoes,
+  rotuloDeTodos,
+  valor,
+}: {
+  aoMudar: (v: string) => void;
+  opcoes: string[];
+  rotuloDeTodos: string;
+  valor: string;
+}) {
+  // Um filtro com uma opção só não filtra nada: ele só ocupa espaço e sugere uma escolha que não
+  // existe.
+  if (opcoes.length < 2) return null;
+
+  return (
+    <select
+      aria-label={rotuloDeTodos}
+      onChange={(e) => aoMudar(e.target.value)}
+      style={{
+        background: T.soft,
+        border: `1px solid ${T.border}`,
+        borderRadius: 999,
+        color: T.text,
+        cursor: "pointer",
+        font: "inherit",
+        fontSize: 12.5,
+        fontWeight: 600,
+        maxWidth: 230,
+        padding: "6px 10px",
+      }}
+      value={valor}
+    >
+      <option value="">{rotuloDeTodos}</option>
+      {opcoes.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Compara ignorando caixa e acento — o operador digita "sao" e espera achar "SÃO". */
+function contem(alvo: null | string | undefined, busca: string): boolean {
+  if (!busca) return true;
+  return String(alvo ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .includes(busca);
+}
+
+/** O texto da busca, pronto para comparar. */
+function normalizar(v: string): string {
+  return v
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 // ── PEÇAS ───────────────────────────────────────────────────────────────────
 
 const celula = {
@@ -1346,12 +1601,21 @@ const celula = {
 } as const;
 
 function Cartao({
+  barra,
   children,
   direita,
   maxAltura,
   rolagem,
   titulo,
 }: {
+  /**
+   * Uma faixa entre o cabeçalho e o corpo — busca e filtros, tipicamente.
+   *
+   * ⚠️ FICA FORA DA ÁREA QUE ROLA, de propósito: um campo de busca que some quando a pessoa desce
+   * a lista obriga a subir de volta para refinar, e é justamente descendo a lista que se percebe
+   * o que precisa ser filtrado.
+   */
+  barra?: React.ReactNode;
   children: React.ReactNode;
   direita?: React.ReactNode;
   /**
@@ -1382,7 +1646,13 @@ function Cartao({
         // `minHeight: 0` é o que permite ao corpo encolher e rolar: sem ele o flex item cresce até
         // o tamanho do conteúdo e empurra a rolagem de volta para a página.
         ...(rolagem
-          ? { display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }
+          ? {
+              display: "flex",
+              flex: "1 1 auto",
+              flexDirection: "column",
+              minHeight: 240,
+              overflow: "hidden",
+            }
           : {}),
         ...(maxAltura ? { maxHeight: maxAltura } : {}),
         minWidth: 0,
@@ -1402,6 +1672,20 @@ function Cartao({
         <h2 style={{ color: T.text, fontSize: 14, fontWeight: 650, margin: 0 }}>{titulo}</h2>
         {direita}
       </div>
+      {barra ? (
+        <div
+          style={{
+            alignItems: "center",
+            borderBottom: `1px solid ${T.border}`,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            padding: "10px 16px",
+          }}
+        >
+          {barra}
+        </div>
+      ) : null}
       <div
         style={{
           minHeight: 0,

@@ -155,6 +155,8 @@ export type FluxoDeVenda = {
       id: string;
       lote: null | string;
       preco: number;
+      /** A quadra, para a tela escrever "03 07" em vez do código interno da unidade. */
+      quadra: null | string;
       /** A situação crua da unidade, para quem precisar do dado original. */
       situacao: string;
     }[];
@@ -345,6 +347,7 @@ export function agregarFluxo({
       id: string;
       lote: null | string;
       preco: number;
+      quadra: null | string;
       situacao: string;
     }[]
   >();
@@ -372,6 +375,7 @@ export function agregarFluxo({
       id: u.id,
       lote: u.lote,
       preco: numero(u.preco_tabela),
+      quadra: u.quadra,
       situacao: u.situacao,
     };
     if (lista) lista.push(item);
