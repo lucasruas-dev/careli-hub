@@ -8,6 +8,8 @@
 // 43.229,66 de saldo nominal que o Lucas usou como exemplo, com a mesma defasagem de 22,6%.
 import { describe, expect, it } from "vitest";
 
+import { descricaoDoPlano } from "./extrato-cliente-pdf";
+
 import {
   contarParcelas,
   detectarEventosDeValor,
@@ -885,5 +887,37 @@ describe("LOU1819 (AR 183) - o exemplo do Lucas", () => {
     expect(rotulados.map((evento) => evento.parcela)).toEqual([13, 30]);
     expect(rotulados.every((evento) => evento.tipo === "reajuste")).toBe(true);
     expect(extrato.eventos.at(-1)?.tipo).toBe("fronteira");
+  });
+});
+
+describe("descricaoDoPlano", () => {
+  const contrato = (extra: Partial<ExtratoClienteContrato>): ExtratoClienteContrato => ({
+    ...contratoBase,
+    ...extra,
+  });
+
+  it("⚠️ 0,72 é ao MÊS, 8 é ao ano", () => {
+    // O `contractual_interest` do C2X não diz a unidade: guarda 8.0000 ao ano na Lavra do Ouro e
+    // 0.7207 ao mês em outro produto — a mesma taxa econômica gravada de dois jeitos. Escrever
+    // "a.a." fixo saía errado em 853 contratos (662 clientes), num documento que vai para a mão do
+    // comprador. Foi o Lucas quem viu, olhando a ficha do Hércules: "acho que esse juros é ao mês
+    // não?".
+    expect(descricaoDoPlano(contrato({ jurosContratuais: 0.7207 }))).toContain("0,72% a.m.");
+    expect(descricaoDoPlano(contrato({ jurosContratuais: 8 }))).toContain("8% a.a.");
+    // Os valores que existem no banco, dos dois lados do vão:
+    expect(descricaoDoPlano(contrato({ jurosContratuais: 0.8 }))).toContain("a.m.");
+    expect(descricaoDoPlano(contrato({ jurosContratuais: 6 }))).toContain("a.a.");
+  });
+
+  it("junta parcelamento, correção e juros — os três, porque um só não se confere", () => {
+    expect(descricaoDoPlano(contrato({ jurosContratuais: 8, planoParcelas: 60 }))).toBe(
+      "60x · IPCA ANUAL · juros 8% a.a.",
+    );
+  });
+
+  it("sem juros, não inventa a linha", () => {
+    const sem = descricaoDoPlano(contrato({ jurosContratuais: 0 }));
+    expect(sem).not.toContain("juros");
+    expect(sem).toContain("IPCA ANUAL");
   });
 });

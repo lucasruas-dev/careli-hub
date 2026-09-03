@@ -16,6 +16,7 @@
 // da própria marca.
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
 
+import { periodicidadeDaTaxa } from "@/lib/apolo/planos-comerciais-c2x";
 import { CARELI_LOGO_PNG_BASE64 } from "@/lib/apolo/careli-logo";
 import {
   contarParcelas,
@@ -505,7 +506,7 @@ function desenharFicha(ctx: Ctx, relatorio: ExtratoClienteRelatorio): void {
  * plano, os dois aparecem: some com o do plano e o cliente que ligar perguntando "meu plano não era
  * de 144?" não encontra a resposta em lugar nenhum.
  */
-function descricaoDoPlano(contrato: ExtratoClienteContrato): string {
+export function descricaoDoPlano(contrato: ExtratoClienteContrato): string {
   const partes: string[] = [];
 
   // ⚠️ O QUE ESTÁ NO SISTEMA HOJE, e só isso. Decisão do Lucas (02/09/2026). Cheguei a mostrar
@@ -514,8 +515,15 @@ function descricaoDoPlano(contrato: ExtratoClienteContrato): string {
   // exatamente o tipo de coisa que faz o cliente perguntar qual dos dois é o dele.
   if (contrato.planoParcelas) partes.push(`${contrato.planoParcelas}x`);
   if (contrato.indiceCorrecao) partes.push(contrato.indiceCorrecao);
+  // ⚠️ A UNIDADE DO JURO NÃO É SEMPRE ANUAL, e escrever "a.a." fixo errava em 853 dos contratos
+  // com juros (662 clientes, 594 com contrato vivo) — num documento que vai para a mão do
+  // comprador. Foi o Lucas quem viu, na ficha da unidade do Hércules: *"acho que esse juros é ao
+  // mês não?"*. O `contractual_interest` do C2X guarda 8.0000 ao ano na Lavra do Ouro e 0.7207 ao
+  // mês em outro produto, a mesma taxa econômica de dois jeitos; a régua do corte é a do cadastro
+  // de planos, importada e não copiada.
   if (typeof contrato.jurosContratuais === "number" && contrato.jurosContratuais > 0) {
-    partes.push(`juros ${porcentagem(contrato.jurosContratuais)} a.a.`);
+    const unidade = periodicidadeDaTaxa(contrato.jurosContratuais) === "anual" ? "a.a." : "a.m.";
+    partes.push(`juros ${porcentagem(contrato.jurosContratuais)} ${unidade}`);
   }
 
   return partes.length > 0 ? partes.join(" · ") : "-";
