@@ -1309,6 +1309,16 @@ body.macroOff{grid-template-columns:54px 34px minmax(0,1fr) 340px}
             <div class="s-inp s-pq"><span class="s-pre">R$</span><input id="cEntrada" inputmode="numeric"></div>
             <input type="range" class="s-rg" id="rgEntrada" min="0" max="60" step="1">
             <div class="s-pontas"><span>0%</span><span>60% do valor</span></div>
+            <!-- EM QUANTAS VEZES A ENTRADA E PAGA. Nao existe no cadastro do plano: e a negociacao
+                 que define, e por isso o simulador pergunta. So informa - nao mexe na conta. -->
+            <div class="s-duplo" style="margin-top:8px">
+              <div class="s-stepper" id="stEntVezes">
+                <button data-ev="-1" aria-label="Menos uma vez">&minus;</button>
+                <span class="s-qt" id="vEntVezes">1</span>
+                <button data-ev="1" aria-label="Mais uma vez">+</button>
+              </div>
+              <div class="s-lb" style="align-self:center" id="lbEntVezes">a entrada, à vista</div>
+            </div>
           </div>
           <div class="s-campo">
             <div class="s-lb">PARCELAS ANUAIS <span class="s-aj" id="ajAnuais"></span></div>
@@ -2540,7 +2550,7 @@ let loteSim=null;     /* o lote que abriu o simulador */
 
 const SIM={
   preco:0, precoTabela:0, juros:POLITICA.jurosAM,
-  /* modo escolher */ planoId:'p120', prazo:120, entrada:0, anQtd:0, anVal:20000,
+  /* modo escolher */ planoId:'p120', prazo:120, entrada:0, entVezes:1, anQtd:0, anVal:20000,
   /* modo parcela  */ alvo:3000, entMax:null, anMax:null,
   /* modo livre    */ ajusta:'parcela', lEnt:0, lAnQtd:0, lAnVal:20000, lPz:60, lPa:0, lErro:null
 };
@@ -2686,6 +2696,7 @@ function espelhar(){
   /* modo 2 */
   $('cPrazos').querySelectorAll('.s-pz').forEach(b=>b.classList.toggle('on',b.dataset.id===SIM.planoId));
   $('cEntrada').value=fI.format(Math.round(SIM.entrada));
+  if(typeof pintaEntVezes==='function') pintaEntVezes();
   $('rgEntrada').value=SIM.preco?Math.min(60,Math.round(SIM.entrada/SIM.preco*100)):0;
   $('ajEntrada').textContent=SIM.preco?Math.round(SIM.entrada/SIM.preco*100)+'% do valor':'';
   $('vAnQtd').textContent=SIM.anQtd?SIM.anQtd+'×':'—';
@@ -2773,6 +2784,27 @@ function espelharLeve(id){
 }
 ligaMoeda('cPreco',   v=>{ SIM.preco=v; if(SIM.entrada>v) SIM.entrada=Math.round(v*0.2); });
 ligaMoeda('cEntrada', v=>{ SIM.entrada=v; });
+
+/* EM QUANTAS VEZES A ENTRADA. Entre 1 e 12: acima disso nao e mais entrada, e parcelamento. */
+(function(){
+  var st=document.getElementById('stEntVezes');
+  if(!st) return;
+  st.addEventListener('click',function(e){
+    var b=e.target.closest('button[data-ev]'); if(!b) return;
+    var n=(SIM.entVezes||1)+ (+b.dataset.ev);
+    SIM.entVezes=Math.max(1,Math.min(12,n));
+    pintaEntVezes();
+    calcular();
+  });
+})();
+
+function pintaEntVezes(){
+  var v=document.getElementById('vEntVezes'), l=document.getElementById('lbEntVezes');
+  if(!v||!l) return;
+  var n=SIM.entVezes||1;
+  v.textContent=n;
+  l.textContent = n>1 ? ('vezes de '+moeda((SIM.entrada||0)/n)) : 'a entrada, à vista';
+}
 ligaMoeda('cAnVal',   v=>{ SIM.anVal=v; });
 ligaMoeda('cAlvo',    v=>{ SIM.alvo=v; });
 ligaMoeda('cEntMax',  v=>{ SIM.entMax=v||null; });
@@ -3379,7 +3411,7 @@ function saidaMontar(){
       linha('Valor do lote',moeda(SIM.preco),pl.desc?'tabela':'')+
       (pl.desc?linha('Desconto do plano','− '+moeda(SIM.preco-pd),Math.round(pl.desc*100)+'%'):'')+
       linha('Valor negociado',moeda(pd))+
-      linha('Entrada',moeda(SIM.entrada),Math.round(SIM.entrada/pd*100)+'% do valor negociado')+
+      linha('Entrada',moeda(SIM.entrada),(SIM.entVezes>1?SIM.entVezes+' × '+moeda(SIM.entrada/SIM.entVezes)+' · ':'à vista · ')+Math.round(SIM.entrada/pd*100)+'% do valor negociado')+
       (anuais?linha('Parcelas anuais',moeda(anuais),SIM.anQtd+' × '+moeda(SIM.anVal))
              :linha('Parcelas anuais','—','sem reforço anual'))+
       linha('Saldo em '+SIM.prazo+' parcelas',moeda(parcela*SIM.prazo))+

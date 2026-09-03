@@ -639,10 +639,12 @@ export function TelaVenda() {
         </p>
       ) : null}
 
-      {/* ── A FAIXA DO FLUXO ─────────────────────────────────────────────── */}
+      {/* ── A FAIXA DO FLUXO, SÓ NA MESA ─────────────────────────────────── */}
+      {/* ⚠️ Fora do Panorama de propósito: lá embaixo o funil já conta a mesma história, e ter os
+          mesmos números em dois desenhos na mesma tela é convite a duvidar de qual está certo. */}
       <div
         style={{
-          display: "grid",
+          display: visao === "mesa" ? "grid" : "none",
           gap: 8,
           gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
         }}
