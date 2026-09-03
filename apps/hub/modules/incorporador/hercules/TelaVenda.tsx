@@ -1165,10 +1165,12 @@ function Mesa({
 
       <div
         style={{
-          display: "grid",
+          display: "flex",
+          flexDirection: "column",
           gap: 14,
-          gridAutoRows: "min-content",
           minHeight: 0,
+          // A rede: se a ficha e o simulador sozinhos passarem da altura (tela muito baixa), a
+          // coluna rola em vez de cortar. Em uso normal a barra aparece só no histórico.
           overflow: "auto",
         }}
       >
@@ -1253,10 +1255,12 @@ function Mesa({
           </p>
         </Cartao>
 
-        <Simulador
-          chave={unidadeEmFoco?.id ?? propostaEmFoco?.id ?? ""}
-          valor={propostaEmFoco?.valor || (unidadeEmFoco?.preco ?? 0)}
-        />
+        <div style={{ flex: "0 0 auto" }}>
+          <Simulador
+            chave={unidadeEmFoco?.id ?? propostaEmFoco?.id ?? ""}
+            valor={propostaEmFoco?.valor || (unidadeEmFoco?.preco ?? 0)}
+          />
+        </div>
 
         <Historico unidadeId={idEmFoco} />
       </div>
@@ -1645,6 +1649,7 @@ function Historico({ unidadeId }: { unidadeId: null | string }) {
 
   return (
     <Cartao
+      rolagem
       direita={
         propostas > 0 ? (
           <span style={{ color: T.muted, fontSize: 11.5 }}>
@@ -1680,7 +1685,19 @@ function Historico({ unidadeId }: { unidadeId: null | string }) {
                 <div
                   style={{ alignItems: "baseline", display: "flex", gap: 8, justifyContent: "space-between" }}
                 >
-                  <b style={{ fontSize: 12.5 }}>{e.fato}</b>
+                  <b style={{ fontSize: 12.5 }}>
+                    {/* ⚠️ PAGAMENTO E ASSINATURA GANHAM MARCA. Numa lista de trinta linhas de
+                        etapa, o dinheiro que entrou e a assinatura são o que o olho procura. */}
+                    {e.tipo === "pagamento" ? (
+                      <span style={{ color: T.ok, marginRight: 5 }}>●</span>
+                    ) : e.tipo === "assinatura" ? (
+                      <span style={{ color: "#a8447f", marginRight: 5 }}>●</span>
+                    ) : null}
+                    {e.fato}
+                    {e.valor ? (
+                      <span style={{ color: T.ok, fontWeight: 650 }}> · {dinheiro(e.valor)}</span>
+                    ) : null}
+                  </b>
                   <span
                     style={{
                       color: T.muted,

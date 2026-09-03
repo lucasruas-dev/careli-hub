@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { autorizar, codigosDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
+  type EventoImportado,
   historicoDaUnidade,
   type MovimentoDoHistorico,
   type PropostaDoHistorico,
@@ -72,10 +73,27 @@ export async function GET(request: Request) {
 
     if (erroMovimentos) throw new Error(erroMovimentos.message);
 
+    // Pagamento (ato e sinal) e assinatura — a outra metade da linha do tempo.
+    const { data: importados, error: erroEventos } = await supabase
+      .from("hercules_proposta_eventos")
+      .select("proposta_id,tipo,quando,quem,documento,valor,descricao")
+      .in(
+        "proposta_id",
+        daUnidade.map((p) => p.id),
+      )
+      .order("quando", { ascending: false })
+      .limit(500);
+
+    if (erroEventos) throw new Error(erroEventos.message);
+
     return NextResponse.json(
       {
         data: {
-          eventos: historicoDaUnidade(daUnidade, (movimentos ?? []) as MovimentoDoHistorico[]),
+          eventos: historicoDaUnidade(
+            daUnidade,
+            (movimentos ?? []) as MovimentoDoHistorico[],
+            (importados ?? []) as EventoImportado[],
+          ),
           propostas: daUnidade.length,
         },
       },

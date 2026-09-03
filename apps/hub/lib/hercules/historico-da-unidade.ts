@@ -54,6 +54,23 @@ export type MovimentoDoHistorico = {
   quando: string;
 };
 
+/**
+ * Pagamento ou assinatura — o que aconteceu na proposta além de mudar de etapa.
+ *
+ * ⚠️ PARCELA NÃO ENTRA AQUI (Lucas, 03/09/2026: *"parcela não precisa"*). São 15.715 parcelas pagas
+ * no legado; num lote de 156 parcelas elas cobririam os cinco eventos que importam. Ato e Sinal são
+ * o que o coordenador acompanha — a mesma régua da tela de Parcelas do portal.
+ */
+export type EventoImportado = {
+  descricao: null | string;
+  documento: null | string;
+  proposta_id: string;
+  quando: string;
+  quem: null | string;
+  tipo: string;
+  valor: null | number | string;
+};
+
 export type EventoDaUnidade = {
   /** Quem estava comprando naquele momento. A unidade passa por várias pessoas. */
   cliente: null | string;
@@ -67,7 +84,18 @@ export type EventoDaUnidade = {
   quando: string;
   /** Quem fez. */
   quem: null | string;
+  /** `pagamento` e `assinatura` ganham destaque na tela; `etapa` é o corpo da linha do tempo. */
+  tipo: "assinatura" | "etapa" | "pagamento";
+  /** Só no pagamento. */
+  valor: null | number;
 };
+
+/** `077.655.646-09` → `***.655.646-**`. O suficiente para conferir, sem expor o documento. */
+function mascarar(documento: string): string {
+  const so = documento.replace(/\D/g, "");
+  if (so.length !== 11) return `doc. ${documento.slice(-4)}`;
+  return `***.${so.slice(3, 6)}.${so.slice(6, 9)}-**`;
+}
 
 const texto = (v: null | string | undefined): null | string => {
   const t = String(v ?? "").trim();
@@ -98,6 +126,7 @@ function fraseDoMovimento(m: MovimentoDoHistorico): string {
 export function historicoDaUnidade(
   propostas: PropostaDoHistorico[],
   movimentos: MovimentoDoHistorico[],
+  importados: EventoImportado[] = [],
 ): EventoDaUnidade[] {
   const porProposta = new Map(propostas.map((p) => [p.id, p]));
   const eventos: EventoDaUnidade[] = [];
@@ -113,6 +142,8 @@ export function historicoDaUnidade(
       observacao: texto(p.codigo) ? `Proposta ${texto(p.codigo)}` : null,
       propostaId: p.id,
       quando: p.criado_em_c2x,
+      tipo: "etapa",
+      valor: null,
       // ⚠️ O C2X NÃO GUARDA QUEM ABRIU a proposta — só quem a moveu depois. Deixar em branco é o
       // honesto; pôr o autor do primeiro movimento seria atribuir a alguém um ato que pode não ter
       // sido dele.
@@ -130,6 +161,26 @@ export function historicoDaUnidade(
       propostaId: m.proposta_id,
       quando: m.quando,
       quem: texto(m.autor_nome),
+      tipo: "etapa",
+      valor: null,
+    });
+  }
+
+  // ⚠️ O DOCUMENTO DO SIGNATÁRIO SAI MASCARADO. O portal é externo: o coordenador precisa saber
+  // QUEM assinou, não o CPF inteiro de ninguém. É a mesma regra da tela de boletos.
+  for (const e of importados) {
+    const p = porProposta.get(e.proposta_id);
+    const valor = e.valor === null || e.valor === undefined ? null : Number(e.valor);
+    eventos.push({
+      cliente: texto(p?.cliente_nome ?? null),
+      fato: texto(e.descricao) ?? (e.tipo === "pagamento" ? "Pagamento" : "Assinatura"),
+      id: `${e.tipo}:${e.proposta_id}:${e.quando}:${texto(e.quem) ?? ""}`,
+      observacao: e.documento ? mascarar(e.documento) : null,
+      propostaId: e.proposta_id,
+      quando: e.quando,
+      quem: texto(e.quem),
+      tipo: e.tipo === "pagamento" ? "pagamento" : "assinatura",
+      valor: Number.isFinite(valor) ? valor : null,
     });
   }
 
