@@ -255,6 +255,20 @@ function fluxoDoPlano(p: PropostaDaCarga): null | string {
   return partes.length > 0 ? partes.join(" · ") : (p.plano_nome?.trim() || null);
 }
 
+/**
+ * A data que interessa NAQUELA etapa.
+ *
+ * ⚠️ NÃO É SEMPRE A MUDANÇA DE ETAPA. `etapa_desde` diz quando o registro MEXEU pela última vez; a
+ * data que o coordenador procura é a do fato — quando faturou, quando assinou. Uma correção feita
+ * hoje numa venda de março mudaria `etapa_desde` e a ficha passaria a dizer que a venda é de hoje.
+ * É a mesma régua que o gráfico mês a mês já usa.
+ */
+function dataDaEtapa(p: PropostaDaCarga): null | string {
+  if (p.etapa === "faturado") return p.data_faturamento ?? p.etapa_desde;
+  if (p.etapa === "assinatura") return p.data_assinatura ?? p.etapa_desde;
+  return p.etapa_desde;
+}
+
 /** "Q07" de "Q07 L12" — o agrupamento do mapa quando a unidade não traz quadra própria. */
 function grupoDaUnidade(u: UnidadeDoMapa): string {
   if (u.quadra) return u.quadra;
@@ -443,7 +457,7 @@ export function agregarFluxo({
     ),
     lista: propostas.map((p) => ({
       cliente: p.cliente_nome,
-      desde: p.etapa_desde,
+      desde: dataDaEtapa(p),
       etapa: p.etapa,
       id: p.id,
       imobiliaria: p.imobiliaria_nome,

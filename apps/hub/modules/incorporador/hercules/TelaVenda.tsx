@@ -246,6 +246,27 @@ function comoSeEscreve(
   return { recorte: null, unidade: codigo };
 }
 
+/**
+ * Como a data se chama em cada etapa.
+ *
+ * ⚠️ "Desde" NÃO DIZ NADA (Lucas, 03/09/2026: *"colocar Data de faturamento (quando for
+ * faturamento), Data de Reserva (quando for reserva), Data da Proposta (quando for proposta)"*).
+ * Numa lista de faturamento, "desde 31/08" faz pensar em tempo parado; "Data de faturamento
+ * 31/08" é o fato. E como a lista mostra uma etapa por vez, o cabeçalho da coluna pode dizer
+ * exatamente qual data está ali.
+ */
+const ROTULO_DA_DATA: Record<string, string> = {
+  assinatura: "Data da assinatura",
+  cancelado: "Data do cancelamento",
+  contrato: "Data do contrato",
+  distrato: "Data do distrato",
+  faturado: "Data de faturamento",
+  proposta: "Data da proposta",
+  reservado: "Data da reserva",
+};
+
+const rotuloDaData = (etapa: string) => ROTULO_DA_DATA[etapa] ?? "Data";
+
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const mesCurto = (mes: string) => {
   const [ano, m] = mes.split("-");
@@ -1011,7 +1032,7 @@ function Mesa({
             <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
               <thead>
                 <tr>
-                  {["Unidade", "Cliente", "Imobiliária", "Desde", "Valor"].map((c, i) => (
+                  {["Unidade", "Cliente", "Imobiliária", rotuloDaData(etapa), "Valor"].map((c, i) => (
                     <th
                       key={c}
                       style={{
@@ -1134,7 +1155,10 @@ function Mesa({
                   {/* ⚠️ ETAPA E PRODUTO SAÍRAM DA LISTA (Lucas, 03/09/2026): a etapa já está no selo
                       aqui em cima e o produto no filtro do topo. Repetir os dois gastava duas linhas
                       da ficha para dizer o que a tela já dizia duas vezes. */}
-                  <Linha rotulo="Desde" valor={dia(propostaEmFoco.desde)} />
+                  <Linha
+                    rotulo={rotuloDaData(propostaEmFoco.etapa)}
+                    valor={dia(propostaEmFoco.desde)}
+                  />
                   <Linha
                     rotulo="Valor negociado"
                     valor={propostaEmFoco.valor ? dinheiro(propostaEmFoco.valor) : "—"}
