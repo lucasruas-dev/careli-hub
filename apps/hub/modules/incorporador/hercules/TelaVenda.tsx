@@ -107,7 +107,7 @@ const FLUXO: ReadonlyArray<{
   { cor: "#c9962b", etapa: "reservado", icone: Bookmark, rotulo: "Reserva" },
   { cor: "#3c73c0", etapa: "proposta", icone: FileText, rotulo: "Proposta" },
   { cor: "#7d5cba", etapa: "contrato", icone: FileSignature, rotulo: "Contrato" },
-  { cor: "#a8447f", etapa: "assinatura", icone: Signature, rotulo: "Assinatura" },
+  { cor: "#454c5c", etapa: "assinatura", icone: Signature, rotulo: "Assinatura" },
   { cor: "#2f7d4a", etapa: "faturado", icone: Receipt, rotulo: "Faturamento" },
 ];
 
@@ -136,7 +136,7 @@ const listrado = (cor: string, sombra: string) =>
   `repeating-linear-gradient(135deg, ${cor} 0 4px, ${sombra} 4px 8px)`;
 
 const COR_DA_ETAPA: Record<EtapaDoEspelho, string> = {
-  assinatura: "#c9569c",
+  assinatura: "#454c5c",
   bloqueada: "#e08276",
   contrato: "#9b7ed0",
   disponivel: "var(--inc-soft)",
@@ -163,6 +163,12 @@ const LEGENDA: ReadonlyArray<{ etapa: EtapaDoEspelho; rotulo: string }> = [
 const ROTULO_DA_ETAPA: Record<EtapaDoEspelho, string> = Object.fromEntries(
   LEGENDA.map((l) => [l.etapa, l.rotulo]),
 ) as Record<EtapaDoEspelho, string>;
+
+/** As etapas de fundo ESCURO, onde o número do lote precisa ser claro para continuar legível. */
+const FUNDO_ESCURO = new Set<EtapaDoEspelho>(["assinatura"]);
+
+const textoNoQuadrado = (etapa: EtapaDoEspelho) =>
+  etapa === "disponivel" ? T.muted : FUNDO_ESCURO.has(etapa) ? "rgb(255 255 255 / .9)" : "rgb(0 0 0 / .6)";
 
 /** Cancelado e distrato não estão na faixa, mas aparecem no painel quando a unidade tem um. */
 const ROTULO_TERMINAL: Record<string, string> = {
@@ -731,7 +737,7 @@ function Mesa({
                         background: COR_DA_ETAPA[u.etapa] ?? T.soft,
                         border: 0,
                         borderRadius: 3,
-                        color: u.etapa === "disponivel" ? T.muted : "rgb(0 0 0 / .6)",
+                        color: textoNoQuadrado(u.etapa),
                         cursor: "pointer",
                         display: "grid",
                         font: "inherit",
@@ -906,7 +912,9 @@ function Mesa({
                 style={{
                   background: COR_DA_ETAPA[unidadeEmFoco.etapa] ?? T.soft,
                   borderRadius: 999,
-                  color: "rgb(0 0 0 / .7)",
+                  color: FUNDO_ESCURO.has(unidadeEmFoco.etapa)
+                    ? "rgb(255 255 255 / .92)"
+                    : "rgb(0 0 0 / .7)",
                   fontSize: 11,
                   fontWeight: 650,
                   padding: "2px 9px",
