@@ -66,6 +66,14 @@ export type LinhaDaLista = {
   plano: null | string;
   produto: null | string;
   unidade: null | string;
+  /**
+   * A unidade no Panteon — a chave que liga o LOTE DO MAPA a esta proposta.
+   *
+   * ⚠️ CASAR POR NOME NÃO SERVE: o nome da unidade na proposta vem do `block + lot` do legado e o
+   * do mapa vem de `hercules_unidades.codigo`, que a carga pode ter normalizado de outro jeito. O
+   * id é exato, e é o mesmo dos dois lados porque a carga casou por `origem_c2x_id`.
+   */
+  unidadeId: null | string;
   valor: number;
 };
 
@@ -73,7 +81,16 @@ export type FluxoDeVenda = {
   fluxo: PassoDoFluxo[];
   /** As propostas, já enxutas para a tela. A ordem é a mais recente primeiro. */
   lista: LinhaDaLista[];
-  mapa: { grupo: string; unidades: { codigo: string; lote: null | string; situacao: string }[] }[];
+  mapa: {
+    grupo: string;
+    unidades: {
+      codigo: string;
+      id: string;
+      lote: null | string;
+      preco: number;
+      situacao: string;
+    }[];
+  }[];
   perdas: { canceladas: number; distratos: number; vgvCancelado: number };
   /** Os motivos de cancelamento que EXISTEM na base — ver o aviso sobre o legado. */
   motivos: { motivo: string; n: number }[];
@@ -186,12 +203,21 @@ export function agregarFluxo({
 
   // ── O estoque, pelas unidades ────────────────────────────────────────────
   const estoque: Record<string, number> = {};
-  const grupos = new Map<string, { codigo: string; lote: null | string; situacao: string }[]>();
+  const grupos = new Map<
+    string,
+    { codigo: string; id: string; lote: null | string; preco: number; situacao: string }[]
+  >();
   for (const u of unidades) {
     estoque[u.situacao] = (estoque[u.situacao] ?? 0) + 1;
     const g = grupoDaUnidade(u);
     const lista = grupos.get(g);
-    const item = { codigo: u.codigo, lote: u.lote, situacao: u.situacao };
+    const item = {
+      codigo: u.codigo,
+      id: u.id,
+      lote: u.lote,
+      preco: numero(u.preco_tabela),
+      situacao: u.situacao,
+    };
     if (lista) lista.push(item);
     else grupos.set(g, [item]);
   }
@@ -211,6 +237,7 @@ export function agregarFluxo({
       plano: p.plano_nome,
       produto: p.empreendimento_codigo,
       unidade: p.unidade_nome,
+      unidadeId: p.unidade_id,
       valor: numero(p.valor),
     })),
     mapa: [...grupos.entries()]

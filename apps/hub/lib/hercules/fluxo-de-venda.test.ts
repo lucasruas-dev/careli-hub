@@ -129,6 +129,23 @@ describe("agregarFluxo", () => {
     expect(r.totais.estoque).toEqual({ disponivel: 2, vendida: 1 });
   });
 
+  it("⚠️ o mapa e a lista carregam a chave que LIGA um ao outro", () => {
+    // O clique no lote do mapa acha a proposta pelo id da unidade. Sem `id` no mapa ou sem
+    // `unidadeId` na lista, clicar no lote não mostra nada — foi o que aconteceu na primeira
+    // versão da tela, e por isso os dois campos têm teste.
+    const r = agregarFluxo({
+      propostas: [proposta({ etapa: "faturado", unidade_id: "unidade-1" })],
+      unidades: [unidade({ codigo: "Q07 L12", id: "unidade-1", preco_tabela: "142800.00" })],
+    });
+
+    const noMapa = r.mapa[0]?.unidades[0];
+    expect(noMapa?.id).toBe("unidade-1");
+    expect(noMapa?.preco).toBe(142800);
+    expect(r.lista[0]?.unidadeId).toBe("unidade-1");
+    // O casamento que a tela faz:
+    expect(r.lista.find((l) => l.unidadeId === noMapa?.id)?.etapa).toBe("faturado");
+  });
+
   it("sem quadra, o grupo sai do prefixo do código", () => {
     const r = agregarFluxo({
       propostas: [],

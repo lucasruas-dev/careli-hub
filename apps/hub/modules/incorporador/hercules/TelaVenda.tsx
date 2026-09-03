@@ -49,6 +49,21 @@ type Produto = {
   nome: string;
 };
 
+type UnidadeNoMapa = FluxoDeVenda["mapa"][number]["unidades"][number];
+type Proposta = FluxoDeVenda["lista"][number];
+
+/**
+ * O que o painel da direita está mostrando.
+ *
+ * ⚠️ SÃO DUAS PORTAS PARA A MESMA COISA. Clicar no lote do mapa parte da UNIDADE (e a proposta,
+ * se houver, é achada pelo id); clicar na linha da lista parte da PROPOSTA. Guardar só a proposta
+ * deixaria o lote disponível sem nada para mostrar — e foi exatamente o que aconteceu: o Lucas
+ * clicou nos lotes e a tela não reagiu.
+ */
+type Foco =
+  | { proposta: Proposta; tipo: "proposta" }
+  | { tipo: "unidade"; unidade: UnidadeNoMapa };
+
 const FLUXO: ReadonlyArray<{ cor: string; etapa: EtapaDoFluxo; icone: LucideIcon; rotulo: string }> =
   [
     { cor: "#a07c3b", etapa: "reservado", icone: Bookmark, rotulo: "Reserva" },
@@ -63,6 +78,12 @@ const COR_DA_SITUACAO: Record<string, string> = {
   disponivel: "var(--inc-soft)",
   reservada: "#e8c98a",
   vendida: "#86c3a4",
+};
+
+/** Cancelado e distrato não estão na faixa, mas aparecem no painel quando a unidade tem um. */
+const ROTULO_TERMINAL: Record<string, string> = {
+  cancelado: "Cancelada",
+  distrato: "Distratada",
 };
 
 const ROTULO_DA_SITUACAO: Record<string, string> = {
@@ -100,7 +121,7 @@ export function TelaVenda() {
   const [emp, setEmp] = useState<string>("");
   const [visao, setVisao] = useState<"mesa" | "panorama">("mesa");
   const [etapa, setEtapa] = useState<EtapaDoFluxo>("reservado");
-  const [escolhida, setEscolhida] = useState<null | FluxoDeVenda["lista"][number]>(null);
+  const [foco, setFoco] = useState<null | Foco>(null);
   const [mapaAberto, setMapaAberto] = useState<null | Produto>(null);
 
   const carregar = useCallback(async (alvo: string) => {
@@ -196,7 +217,7 @@ export function TelaVenda() {
               aria-label="Empreendimento"
               onChange={(e) => {
                 setEmp(e.target.value);
-                setEscolhida(null);
+                setFoco(null);
               }}
               style={{
                 background: T.card,
@@ -255,7 +276,7 @@ export function TelaVenda() {
               key={passo.etapa}
               onClick={() => {
                 setEtapa(passo.etapa);
-                setEscolhida(null);
+                setFoco(null);
                 setVisao("mesa");
               }}
               style={{
@@ -317,11 +338,11 @@ export function TelaVenda() {
       {visao === "mesa" ? (
         <Mesa
           aoAbrirMapa={setMapaAberto}
-          aoEscolher={setEscolhida}
+          aoFocar={setFoco}
           carregando={carregando}
           dados={dados}
-          escolhida={escolhida}
           etapa={etapa}
+          foco={foco}
           lista={daEtapa}
           mapas={mapasVisiveis}
         />
@@ -336,20 +357,20 @@ export function TelaVenda() {
 
 function Mesa({
   aoAbrirMapa,
-  aoEscolher,
+  aoFocar,
   carregando,
   dados,
-  escolhida,
   etapa,
+  foco,
   lista,
   mapas,
 }: {
   aoAbrirMapa: (p: Produto) => void;
-  aoEscolher: (l: null | FluxoDeVenda["lista"][number]) => void;
+  aoFocar: (f: null | Foco) => void;
   carregando: boolean;
   dados: FluxoDeVenda | null;
-  escolhida: null | FluxoDeVenda["lista"][number];
   etapa: EtapaDoFluxo;
+  foco: null | Foco;
   lista: FluxoDeVenda["lista"];
   mapas: Produto[];
 }) {
@@ -358,6 +379,17 @@ function Mesa({
   // ⚠️ SÓ AS PRIMEIRAS QUADRAS. São 5.528 unidades no escopo inteiro: desenhar todas trava o
   // navegador e ninguém lê. Com um empreendimento escolhido, o mapa dele cabe inteiro.
   const grupos = (dados?.mapa ?? []).slice(0, 30);
+
+  // O que o painel mostra. Vindo do mapa, a proposta é achada pelo id da unidade — a mais recente,
+  // porque a lista já chega ordenada por `etapa_desde` decrescente.
+  const unidadeEmFoco = foco?.tipo === "unidade" ? foco.unidade : null;
+  const propostaEmFoco =
+    foco?.tipo === "proposta"
+      ? foco.proposta
+      : unidadeEmFoco
+        ? ((dados?.lista ?? []).find((l) => l.unidadeId === unidadeEmFoco.id) ?? null)
+        : null;
+  const idEmFoco = unidadeEmFoco?.id ?? propostaEmFoco?.unidadeId ?? null;
 
   return (
     <div
@@ -439,22 +471,30 @@ function Mesa({
                 </div>
                 <div style={{ display: "grid", gap: 3, gridTemplateColumns: "repeat(6, 1fr)" }}>
                   {g.unidades.slice(0, 60).map((u) => (
-                    <span
+                    <button
                       key={u.codigo}
+                      onClick={() => aoFocar({ tipo: "unidade", unidade: u })}
                       style={{
                         aspectRatio: "1 / 1.25",
                         background: COR_DA_SITUACAO[u.situacao] ?? T.soft,
+                        border: 0,
                         borderRadius: 3,
-                        color: u.situacao === "disponivel" ? T.muted : "rgb(0 0 0 / .55)",
+                        color: u.situacao === "disponivel" ? T.muted : "rgb(0 0 0 / .6)",
+                        cursor: "pointer",
                         display: "grid",
+                        font: "inherit",
                         fontSize: 8.5,
                         fontWeight: 600,
+                        outline: idEmFoco === u.id ? `2.5px solid ${T.text}` : undefined,
+                        outlineOffset: 1,
+                        padding: 0,
                         placeItems: "center",
                       }}
                       title={`${u.codigo} · ${ROTULO_DA_SITUACAO[u.situacao] ?? u.situacao}`}
+                      type="button"
                     >
                       {u.lote ?? ""}
-                    </span>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -502,9 +542,9 @@ function Mesa({
                 {lista.slice(0, 150).map((l) => (
                   <tr
                     key={l.id}
-                    onClick={() => aoEscolher(l)}
+                    onClick={() => aoFocar({ proposta: l, tipo: "proposta" })}
                     style={{
-                      background: escolhida?.id === l.id ? T.soft : undefined,
+                      background: propostaEmFoco?.id === l.id ? T.soft : undefined,
                       cursor: "pointer",
                     }}
                   >
@@ -541,20 +581,61 @@ function Mesa({
       </div>
 
       <div style={{ display: "grid", gap: 14 }}>
-        <Cartao titulo={escolhida?.unidade ?? "Nenhuma proposta escolhida"}>
-          {escolhida ? (
+        <Cartao
+          direita={
+            unidadeEmFoco ? (
+              <span
+                style={{
+                  background: COR_DA_SITUACAO[unidadeEmFoco.situacao] ?? T.soft,
+                  borderRadius: 999,
+                  color: "rgb(0 0 0 / .7)",
+                  fontSize: 11,
+                  fontWeight: 650,
+                  padding: "2px 9px",
+                }}
+              >
+                {ROTULO_DA_SITUACAO[unidadeEmFoco.situacao] ?? unidadeEmFoco.situacao}
+              </span>
+            ) : null
+          }
+          titulo={unidadeEmFoco?.codigo ?? propostaEmFoco?.unidade ?? "Nada escolhido"}
+        >
+          {unidadeEmFoco || propostaEmFoco ? (
             <>
-              <Linha rotulo="Produto" valor={escolhida.produto ?? "—"} />
-              <Linha rotulo="Etapa" valor={rotulo} />
-              <Linha rotulo="Desde" valor={dia(escolhida.desde)} />
-              <Linha rotulo="Valor" valor={escolhida.valor ? dinheiro(escolhida.valor) : "—"} />
-              <Linha rotulo="Cliente" valor={escolhida.cliente ?? "—"} />
-              <Linha rotulo="Imobiliária" valor={escolhida.imobiliaria ?? "—"} />
-              <Linha rotulo="Plano" valor={escolhida.plano ?? "—"} />
+              {unidadeEmFoco?.preco ? (
+                <Linha rotulo="Valor de tabela" valor={dinheiro(unidadeEmFoco.preco)} />
+              ) : null}
+              {propostaEmFoco ? (
+                <>
+                  <Linha rotulo="Produto" valor={propostaEmFoco.produto ?? "—"} />
+                  <Linha
+                    rotulo="Etapa"
+                    valor={
+                      FLUXO.find((f) => f.etapa === propostaEmFoco.etapa)?.rotulo ??
+                      ROTULO_TERMINAL[propostaEmFoco.etapa] ??
+                      propostaEmFoco.etapa
+                    }
+                  />
+                  <Linha rotulo="Desde" valor={dia(propostaEmFoco.desde)} />
+                  <Linha
+                    rotulo="Valor negociado"
+                    valor={propostaEmFoco.valor ? dinheiro(propostaEmFoco.valor) : "—"}
+                  />
+                  <Linha rotulo="Cliente" valor={propostaEmFoco.cliente ?? "—"} />
+                  <Linha rotulo="Imobiliária" valor={propostaEmFoco.imobiliaria ?? "—"} />
+                  <Linha rotulo="Plano" valor={propostaEmFoco.plano ?? "—"} />
+                </>
+              ) : (
+                // ⚠️ SEM PROPOSTA NÃO É ERRO: é lote livre, e o simulador abaixo já vem com o preço
+                // dele. É o caminho normal de uma venda que vai começar.
+                <p style={{ color: T.muted, fontSize: 12.5, margin: "8px 0 0" }}>
+                  Nenhuma proposta nesta unidade. O simulador abaixo já está com o valor de tabela.
+                </p>
+              )}
             </>
           ) : (
             <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
-              Clique numa linha da lista para ver a proposta aqui.
+              Clique num lote do mapa ou numa linha da lista.
             </p>
           )}
           <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
@@ -563,7 +644,10 @@ function Mesa({
           </p>
         </Cartao>
 
-        <Simulador chave={escolhida?.id ?? ""} valor={escolhida?.valor ?? 0} />
+        <Simulador
+          chave={unidadeEmFoco?.id ?? propostaEmFoco?.id ?? ""}
+          valor={propostaEmFoco?.valor || (unidadeEmFoco?.preco ?? 0)}
+        />
       </div>
     </div>
   );
