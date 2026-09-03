@@ -44,10 +44,38 @@ import { Pilula } from "./AssinaturasDoProduto";
 // ⚠️ E COM TODOS OS EMPREENDIMENTOS NÃO HÁ MAPA. Cada produto tem o seu; o consolidado não tem um
 // desenho só. Nesse caso a opção nem aparece, em vez de aparecer e não fazer nada.
 
-type Produto = {
+/** O card da rota antiga — usado só para achar o masterplan de um produto. */
+type CardDeProduto = {
+  code: string;
+  enterpriseIds: string[];
   id: string;
   masterplanInterno: null | string;
   masterplanUrl: null | string;
+  nome: string;
+};
+
+/**
+ * O PRODUTO É O PAI, e os recortes são filhos dele.
+ *
+ * ⚠️ ISTO É A ARQUITETURA DA CASA, EXPLICADA PELO LUCAS (03/09/2026): *"o Pai sempre será a nossa
+ * referência para tudo, o filho são recortes, visões do pai (...) no Vale do Ouro o Pai VLO é a
+ * referência, o VOC são os lotes que pertencem a Cecílio Rocha, o VOL são os lotes que pertencem à
+ * Família Lino (...) eu peguei o pai e subdividi ele pois na hora de emitir os boletos teria que
+ * sair de contas separadas. No C2X não tínhamos essa divisão tão bem arquitetada, por isso
+ * criávamos outros empreendimentos, era nossa gambiarra"*.
+ *
+ * E o pedido: *"quero que o VLO seja reflexo dos filhos, então não vai ter três Vale do Ouro, vai
+ * ter UM Vale do Ouro e quando tiver filhos trazer um subfiltro para caso o usuário queira ver
+ * somente aquele recorte"*.
+ *
+ * ⚠️ E O ESPELHO DO PAI NÃO ENTRA NA CONTA quando há filhos. No C2X o VLO tem 298 unidades e 165
+ * propostas PRÓPRIAS (só 11 faturadas) — é o registro antigo, parado, dos MESMOS lotes que hoje
+ * vivem em VOC + VOL + VOR. Somar pai e filhos contaria cada venda duas vezes. Quem já resolve
+ * isso é `expandirIdDoPainel`: pai com filho devolve só os filhos.
+ */
+type Produto = {
+  filhos: { codigo: string; id: string; nome: string }[];
+  id: string;
   nome: string;
 };
 
@@ -188,10 +216,13 @@ const mesCurto = (mes: string) => {
 export function TelaVenda() {
   const [dados, setDados] = useState<FluxoDeVenda | null>(null);
   const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [cards, setCards] = useState<CardDeProduto[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<null | string>(null);
 
+  // `emp` é o PRODUTO (o pai); `recorte` é o filho escolhido dentro dele, quando houver.
   const [emp, setEmp] = useState<string>("");
+  const [recorte, setRecorte] = useState<string>("");
   const [visao, setVisao] = useState<"mesa" | "panorama">("mesa");
   const [etapa, setEtapa] = useState<"disponivel" | EtapaDoFluxo>("reservado");
   const [foco, setFoco] = useState<null | Foco>(null);
@@ -227,23 +258,50 @@ export function TelaVenda() {
     }
   }, []);
 
+  // ⚠️ O RECORTE SUBSTITUI O PAI NA CONSULTA, e não soma a ele: o filho já é um pedaço do pai, e
+  // mandar os dois pediria o mesmo lote duas vezes. Sem recorte, vale o pai — e aí o servidor
+  // expande para TODOS os filhos, deixando o espelho de fora.
   useEffect(() => {
-    void carregar(emp, janela);
-  }, [carregar, emp, janela]);
+    void carregar(recorte || emp, janela);
+  }, [carregar, emp, janela, recorte]);
 
-  // A lista de produtos serve a duas coisas: o filtro e o botão do masterplan.
+  // DUAS FONTES, e cada uma responde uma pergunta diferente:
+  //   • o PAINEL diz quais são os produtos e quem é filho de quem (é ele que agrupa o pai);
+  //   • os CARDS dizem qual produto tem masterplan publicado.
+  // O painel não carrega masterplan e a rota de cards não agrupa pai/filho — juntar as duas num
+  // endpoint só seria a terceira lista de empreendimentos para manter viva.
   useEffect(() => {
     let vivo = true;
     void (async () => {
       try {
-        const r = await fetch("/api/incorporador/produtos", { cache: "no-store" });
-        if (!r.ok) return;
-        // ⚠️ O PAYLOAD É `{ data: { produtos } }`, e não a lista solta: eu li errado e a tela
-        // quebrou com "produtos.filter is not a function" antes de desenhar qualquer coisa.
-        const j = (await r.json()) as { data?: { produtos?: Produto[] } };
-        if (vivo) setProdutos(j.data?.produtos ?? []);
+        const [rPainel, rCards] = await Promise.all([
+          fetch("/api/incorporador/produtos/painel", { cache: "no-store" }),
+          fetch("/api/incorporador/produtos", { cache: "no-store" }),
+        ]);
+
+        if (rPainel.ok) {
+          const j = (await rPainel.json()) as {
+            data?: { linhas?: { filhos?: Produto["filhos"]; id: string; nome: string }[] };
+          };
+          if (vivo) {
+            setProdutos(
+              (j.data?.linhas ?? []).map((l) => ({
+                filhos: l.filhos ?? [],
+                id: l.id,
+                nome: l.nome,
+              })),
+            );
+          }
+        }
+
+        if (rCards.ok) {
+          // ⚠️ O PAYLOAD É `{ data: { produtos } }`, e não a lista solta: eu li errado uma vez e a
+          // tela quebrou com "produtos.filter is not a function" antes de desenhar qualquer coisa.
+          const j = (await rCards.json()) as { data?: { produtos?: CardDeProduto[] } };
+          if (vivo) setCards(j.data?.produtos ?? []);
+        }
       } catch {
-        // Sem a lista, a tela mostra tudo e não oferece filtro. Ela não depende disso para viver.
+        // Sem as listas, a tela mostra tudo e não oferece filtro. Ela não depende disso para viver.
       }
     })();
     return () => {
@@ -271,10 +329,24 @@ export function TelaVenda() {
   );
 
   // O mapa do PRODUTO ESCOLHIDO, e só dele: no consolidado não existe um masterplan único.
-  const mapaDoProduto = useMemo(
-    () => (emp ? (produtos.find((p) => p.id === emp && p.masterplanInterno) ?? null) : null),
+  const produtoEscolhido = useMemo(
+    () => (emp ? (produtos.find((p) => p.id === emp) ?? null) : null),
     [emp, produtos],
   );
+
+  // ⚠️ O MASTERPLAN É DO PAI, sempre. O desenho é do loteamento inteiro; o recorte escolhe QUAIS
+  // lotes olhar, não outro desenho. Os cards trazem o mapa por id do C2X ou pelo id do card, e o
+  // pai do painel ("pai:<uuid>") não bate com nenhum dos dois — por isso o encontro é pelo NOME,
+  // que é o que os dois lados têm em comum.
+  const mapaDoProduto = useMemo(() => {
+    if (!produtoEscolhido) return null;
+    const nome = produtoEscolhido.nome.trim().toLowerCase();
+    return (
+      cards.find(
+        (c) => (c.masterplanInterno ?? c.masterplanUrl) && c.nome.trim().toLowerCase() === nome,
+      ) ?? null
+    );
+  }, [cards, produtoEscolhido]);
 
   // Trocar para "todos" (ou para um produto sem mapa) volta para a grade: deixar o modo
   // "mapa" aceso sem mapa para mostrar daria um painel vazio sem explicação.
@@ -337,6 +409,8 @@ export function TelaVenda() {
               aria-label="Empreendimento"
               onChange={(e) => {
                 setEmp(e.target.value);
+                // Trocar de produto sem zerar o recorte deixaria um filho de OUTRO pai escolhido.
+                setRecorte("");
                 setFoco(null);
               }}
               style={{
@@ -355,6 +429,37 @@ export function TelaVenda() {
               {produtos.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nome}
+                </option>
+              ))}
+            </select>
+          ) : null}
+
+          {/* ⚠️ O SUBFILTRO SÓ APARECE COM FILHOS. Pedido do Lucas: um Vale do Ouro no seletor, e o
+              recorte (Cecílio, Lino) num filtro à parte. Produto sem filho não mostra nada — um
+              seletor com uma opção só é ruído. */}
+          {(produtoEscolhido?.filhos.length ?? 0) > 0 ? (
+            <select
+              aria-label="Recorte do empreendimento"
+              onChange={(e) => {
+                setRecorte(e.target.value);
+                setFoco(null);
+              }}
+              style={{
+                background: T.card,
+                border: `1px solid ${T.gold}`,
+                borderRadius: 999,
+                color: T.text,
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+                padding: "7px 12px",
+              }}
+              value={recorte}
+            >
+              <option value="">Todo o {produtoEscolhido?.nome}</option>
+              {produtoEscolhido?.filhos.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.nome}
                 </option>
               ))}
             </select>
@@ -497,7 +602,7 @@ function Mesa({
   foco: null | Foco;
   lista: FluxoDeVenda["lista"];
   livres: (UnidadeNoMapa & { grupo: string })[];
-  mapaDoProduto: null | Produto;
+  mapaDoProduto: null | CardDeProduto;
   modo: "grade" | "mapa";
 }) {
   // O tema vai para o iframe do masterplan: outro documento não herda variável CSS de ninguém.
