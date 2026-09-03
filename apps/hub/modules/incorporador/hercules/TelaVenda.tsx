@@ -361,7 +361,19 @@ export function TelaVenda() {
   }, [mapaDoProduto]);
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    // ⚠️ A TELA TEM A ALTURA DO <main> E NÃO ROLA. O portal comercial já deixa o main com
+    // `height:100dvh` e rolagem própria (TEMA_CSS, `.inc--comercial .inc-conteudo`); aqui o
+    // conteúdo passa a caber nele, e quem rola são os painéis. Cabeçalho e faixa do fluxo ficam
+    // sempre à vista, que é o ponto: eles são a bússola da tela.
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
       <header
         style={{
           alignItems: "flex-end",
@@ -566,6 +578,7 @@ export function TelaVenda() {
         })}
       </div>
 
+      <div style={{ display: "flex", flex: "1 1 auto", minHeight: 0 }}>
       {visao === "mesa" ? (
         <Mesa
           aoFocar={setFoco}
@@ -582,6 +595,7 @@ export function TelaVenda() {
       ) : (
         <Panorama dados={dados} />
       )}
+      </div>
     </div>
   );
 }
@@ -631,16 +645,32 @@ function Mesa({
   const idEmFoco = unidadeEmFoco?.id ?? propostaEmFoco?.unidadeId ?? null;
 
   return (
+    // ⚠️ `alignItems: start` SAIU. Ele encolhia as colunas para a altura do conteúdo, e era isso
+    // que jogava a rolagem para a página inteira. Agora as duas esticam e rolam por dentro.
     <div
       style={{
-        alignItems: "start",
         display: "grid",
         gap: 14,
         gridTemplateColumns: "minmax(0, 1.35fr) minmax(300px, .65fr)",
+        minHeight: 0,
+        width: "100%",
       }}
     >
-      <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
+      {/* A coluna do estoque: o quadro em cima com altura própria (até 55% da área, para a lista
+          nunca virar uma faixa de três linhas) e o analítico embaixo ocupando o resto. Os dois
+          rolam por dentro, cada um com a sua barra. */}
+      <div
+        style={{
+          display: "grid",
+          gap: 14,
+          gridTemplateRows: "minmax(0, auto) minmax(0, 1fr)",
+          minHeight: 0,
+          minWidth: 0,
+        }}
+      >
         <Cartao
+          maxAltura="56%"
+          rolagem
           direita={
             <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12 }}>
               {modo === "grade"
@@ -775,7 +805,7 @@ function Mesa({
         </Cartao>
 
         {etapa === "disponivel" ? (
-          <Cartao titulo={`Disponíveis · ${inteiro(livres.length)}`}>
+          <Cartao rolagem titulo={`Disponíveis · ${inteiro(livres.length)}`}>
             <div style={{ margin: "-16px", overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
                 <thead>
@@ -837,7 +867,7 @@ function Mesa({
             ) : null}
           </Cartao>
         ) : (
-        <Cartao titulo={`${rotulo} · ${inteiro(lista.length)}`}>
+        <Cartao rolagem titulo={`${rotulo} · ${inteiro(lista.length)}`}>
           <div style={{ margin: "-16px", overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
               <thead>
@@ -904,7 +934,15 @@ function Mesa({
         )}
       </div>
 
-      <div style={{ display: "grid", gap: 14 }}>
+      <div
+        style={{
+          display: "grid",
+          gap: 14,
+          gridAutoRows: "min-content",
+          minHeight: 0,
+          overflow: "auto",
+        }}
+      >
         <Cartao
           direita={
             unidadeEmFoco ? (
@@ -1077,7 +1115,16 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
   const maiorFunil = Math.max(1, ...dados.fluxo.map((f) => f.quantidade));
 
   return (
-    <div style={{ display: "grid", gap: 14 }}>
+    <div
+      style={{
+        display: "grid",
+        gap: 14,
+        gridAutoRows: "min-content",
+        minHeight: 0,
+        overflow: "auto",
+        width: "100%",
+      }}
+    >
       <div
         style={{
           display: "grid",
@@ -1301,10 +1348,29 @@ const celula = {
 function Cartao({
   children,
   direita,
+  maxAltura,
+  rolagem,
   titulo,
 }: {
   children: React.ReactNode;
   direita?: React.ReactNode;
+  /**
+   * Teto de altura, em % da área de trabalho.
+   *
+   * ⚠️ SEM ELE O ESTOQUE COME O ANALÍTICO. O quadro cresce com a quantidade de quadras — o Vale do
+   * Ouro tem 15, o Jardim das Gerais 27 — e numa linha de grid `auto` ele tomaria a altura toda,
+   * deixando a lista com três linhas. O teto devolve o resto para quem está embaixo.
+   */
+  maxAltura?: string;
+  /**
+   * O corpo rola por dentro, e o cabeçalho fica.
+   *
+   * ⚠️ É O PEDIDO DO LUCAS (03/09/2026): *"eu não quero a barra de rolagem na tela toda, quero nos
+   * painéis (...) teríamos que ter a barra de rolagem no painel que traz o analítico"*. Com a
+   * página inteira rolando, descer até a linha 80 da lista levava embora a faixa do fluxo, o mapa
+   * e o simulador — some justamente o contexto que faz a lista significar alguma coisa.
+   */
+  rolagem?: boolean;
   titulo: string;
 }) {
   return (
@@ -1313,6 +1379,12 @@ function Cartao({
         background: T.card,
         border: `1px solid ${T.border}`,
         borderRadius: 13,
+        // `minHeight: 0` é o que permite ao corpo encolher e rolar: sem ele o flex item cresce até
+        // o tamanho do conteúdo e empurra a rolagem de volta para a página.
+        ...(rolagem
+          ? { display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }
+          : {}),
+        ...(maxAltura ? { maxHeight: maxAltura } : {}),
         minWidth: 0,
       }}
     >
@@ -1330,7 +1402,15 @@ function Cartao({
         <h2 style={{ color: T.text, fontSize: 14, fontWeight: 650, margin: 0 }}>{titulo}</h2>
         {direita}
       </div>
-      <div style={{ padding: 16 }}>{children}</div>
+      <div
+        style={{
+          minHeight: 0,
+          padding: 16,
+          ...(rolagem ? { flex: "1 1 auto", overflow: "auto" } : {}),
+        }}
+      >
+        {children}
+      </div>
     </section>
   );
 }
