@@ -1,15 +1,28 @@
 import { NextResponse } from "next/server";
 
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
-import { codigosDoPedido } from "@/lib/apolo/incorporador/codigos-do-pedido";
+import {
+  codigosDoPedido,
+  pedidoPrecisaDeExpansao,
+} from "@/lib/apolo/incorporador/codigos-do-pedido";
+import { lerEsteiraDoEscopo } from "@/lib/apolo/incorporador/crm";
 import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
-import { autorizar, codigosDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizar, codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
+import { expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
 import {
   agregarFluxo,
+  type CadsDoEscopo,
   type PropostaDaCarga,
   type UnidadeDoMapa,
 } from "@/lib/hercules/fluxo-de-venda";
+
+/** As etapas da esteira que já PARARAM: virou credenciado, ou não seguiu. */
+const ETAPAS_FINAIS = new Set(["credenciado", "indeferido"]);
+
+const COMPETENCIA = /^\d{4}-\d{2}$/;
 
 // O FLUXO DE VENDA — a tela Venda lendo o PANTEON, e não mais o legado.
 //
@@ -57,12 +70,23 @@ export async function GET(request: Request) {
     pedido: new URL(request.url).searchParams.get("emp"),
     sessao: auth.sessao,
   });
+
   if (!resolvido.ok) return resolvido.response;
 
   const { codes } = resolvido;
   if (codes.length === 0) {
     return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
   }
+
+  // O recorte de tempo do painel. Vale para desempenho (faturamento, cancelamento, ranking,
+  // série); a faixa do fluxo continua mostrando o pipeline VIVO — ver `agregarFluxo`.
+  const url = new URL(request.url);
+  const de = (url.searchParams.get("de") ?? "").trim();
+  const ate = (url.searchParams.get("ate") ?? "").trim();
+  const periodo = {
+    ate: COMPETENCIA.test(ate) ? ate : undefined,
+    de: COMPETENCIA.test(de) ? de : undefined,
+  };
 
   try {
     // ── As propostas do escopo, em páginas ────────────────────────────────
@@ -113,8 +137,50 @@ export async function GET(request: Request) {
       if ((data?.length ?? 0) < PAGINA) break;
     }
 
+    // ── As CADs: o começo do processo, que mora no Apolo e não no fluxo importado ──
+    //
+    // Pedido do Lucas: *"quantas cads foram geradas, quantas reservas, propostas"* — na mesma
+    // escada. ⚠️ A esteira filtra por ID (e em dois formatos: divisão e "group:Nome"), enquanto o
+    // fluxo filtra por CÓDIGO: é a mesma tradução que a rota do resumo do produto faz, e sem
+    // `comIdsDoGrupo` uma CAD gravada no grupo não entraria em nenhum recorte.
+    const permitidos = new Set(await idsDaSessao(auth.sessao));
+    const pedido = url.searchParams.get("emp");
+    let enterpriseIds: string[] = [];
+    if (pedidoPrecisaDeExpansao(pedido)) {
+      // ⚠️ A funcao devolve a LISTA e lanca quando o Supabase falta — nao um { ok, linhas }.
+      // O catch da rota ja traduz a queda em 503; aqui nao ha o que conferir.
+      const cadastro = await carregarCadastroDeEmpreendimentos();
+      enterpriseIds = comIdsDoGrupo(
+        expandirIdDoPainel(pedido, cadastro, permitidos),
+        catalogo,
+        permitidos,
+      );
+    } else {
+      enterpriseIds = await idsDaSessao(auth.sessao, pedido ?? undefined);
+    }
+
+    const esteira = await lerEsteiraDoEscopo(supabase, enterpriseIds);
+    let cads: CadsDoEscopo | null = null;
+    if (esteira.ok) {
+      // Uma CAD é uma PESSOA (entity_id), e a mesma pessoa pode aparecer em mais de uma linha da
+      // esteira: contar linhas infla o topo do funil.
+      const porPessoa = new Map<string, string>();
+      for (const l of esteira.linhas) {
+        const etapa = String(l.etapa ?? "").trim().toLowerCase();
+        porPessoa.set(String(l.entity_id), etapa);
+      }
+      const etapas = [...porPessoa.values()];
+      cads = {
+        credenciados: etapas.filter((e) => e === "credenciado").length,
+        emAndamento: etapas.filter((e) => !ETAPAS_FINAIS.has(e)).length,
+        emCorrecao: etapas.filter((e) => e === "correcao").length,
+        reprovadas: etapas.filter((e) => e === "indeferido").length,
+        total: etapas.length,
+      };
+    }
+
     return NextResponse.json(
-      { data: agregarFluxo({ propostas, unidades }) },
+      { data: agregarFluxo({ cads, periodo, propostas, unidades }) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e) {

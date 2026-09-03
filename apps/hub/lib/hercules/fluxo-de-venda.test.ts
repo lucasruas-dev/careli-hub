@@ -146,6 +146,53 @@ describe("agregarFluxo", () => {
     expect(r.lista.find((l) => l.unidadeId === noMapa?.id)?.etapa).toBe("faturado");
   });
 
+  it("⚠️ o PERÍODO nao mexe na faixa do fluxo, so no desempenho", () => {
+    // A faixa e o pipeline VIVO: "3 em assinatura" e verdade hoje, independente do mes escolhido.
+    // Filtrar a faixa pela janela faria a proposta em assinatura desde julho desaparecer da tela
+    // em setembro — o coordenador perderia de vista justamente o que esta parado.
+    const propostas = [
+      proposta({ data_faturamento: "2026-03-10", etapa: "faturado", valor: 100 }),
+      proposta({ data_faturamento: "2026-09-01", etapa: "faturado", valor: 700 }),
+      proposta({ etapa: "assinatura", etapa_desde: "2026-07-05T10:00:00Z", valor: 500 }),
+    ];
+
+    const tudo = agregarFluxo({ propostas, unidades: [] });
+    const setembro = agregarFluxo({ periodo: { ate: "2026-09", de: "2026-09" }, propostas, unidades: [] });
+
+    // A faixa: igual nos dois.
+    const faixa = (r: ReturnType<typeof agregarFluxo>) => r.fluxo.map((f) => [f.etapa, f.propostas, f.vgv]);
+    expect(faixa(setembro)).toEqual(faixa(tudo));
+    expect(setembro.fluxo.find((f) => f.etapa === "assinatura")?.propostas).toBe(1);
+
+    // O desempenho: so setembro.
+    expect(tudo.totais.vgvFaturado).toBe(800);
+    expect(setembro.totais.vgvFaturado).toBe(700);
+    expect(setembro.periodo).toEqual({ ate: "2026-09", de: "2026-09", propostasNoPeriodo: 1 });
+  });
+
+  it("as CADs entram no funil, e vêm de outra fonte", () => {
+    // CAD e do Apolo (apolo_esteira); proposta e do C2X importado. Pedido do Lucas: as duas na
+    // mesma escada. Sem CADs a chamada continua valida — o funil comeca na reserva.
+    const cads = { credenciados: 287, emAndamento: 61, emCorrecao: 12, reprovadas: 64, total: 412 };
+    const comCads = agregarFluxo({ cads, propostas: [], unidades: [] });
+    const semCads = agregarFluxo({ propostas: [], unidades: [] });
+
+    expect(comCads.cads).toEqual(cads);
+    expect(semCads.cads).toBeNull();
+  });
+
+  it("proposta sem data nenhuma fica FORA de uma janela, e dentro do total", () => {
+    // Com janela, "sem data" nao pode virar "aconteceu neste mes": inflaria o mes corrente com
+    // registro velho. Sem janela, ela conta normalmente.
+    const propostas = [proposta({ criado_em_c2x: null, etapa: "cancelado", etapa_desde: null })];
+
+    expect(agregarFluxo({ propostas, unidades: [] }).perdas.canceladas).toBe(1);
+    expect(
+      agregarFluxo({ periodo: { ate: "2026-09", de: "2026-09" }, propostas, unidades: [] }).perdas
+        .canceladas,
+    ).toBe(0);
+  });
+
   it("sem quadra, o grupo sai do prefixo do código", () => {
     const r = agregarFluxo({
       propostas: [],

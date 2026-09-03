@@ -1,20 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Bookmark,
-  FileSignature,
-  FileText,
-  Map as MapaIcone,
-  Receipt,
-  Signature,
-} from "lucide-react";
+import { Bookmark, FileSignature, FileText, Receipt, Signature } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import type { EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
 
-import { TelaMasterplan } from "../TelaMasterplan";
-import { T } from "../tema";
+import { T, useTemaDoPortal } from "../tema";
 import { Pilula } from "./AssinaturasDoProduto";
 
 // A TELA VENDA — onde o coordenador VENDE, e onde ele olha se está vendendo bem.
@@ -41,6 +33,16 @@ import { Pilula } from "./AssinaturasDoProduto";
 //
 // ⚠️ O QUE AINDA NÃO EXISTE ESTÁ DITO NA TELA, não escondido atrás de um botão morto. Reservar e
 // gerar proposta gravando no Panteon dependem da 0125 (reservas), ainda não aplicada.
+//
+// ⚠️ O ESTOQUE TEM DUAS VISTAS NO MESMO LUGAR: quadrados e mapa (Lucas, 03/09/2026: *"vamos dar a
+// opção do usuário de selecionar se ele quer ver essa tela quadrados, ou mapa (...) não é para
+// abrir uma tela nova, tem que aparecer aí mesmo"*). O masterplan é o desenho de verdade do
+// loteamento; a grade é o quadro por quadra, que funciona em qualquer produto e não depende
+// de haver mapa publicado. Antes disso o masterplan abria em tela cheia e tirava o coordenador da
+// Mesa — perdia a lista, o painel e o simulador para olhar o mapa.
+//
+// ⚠️ E COM TODOS OS EMPREENDIMENTOS NÃO HÁ MAPA. Cada produto tem o seu; o consolidado não tem um
+// desenho só. Nesse caso a opção nem aparece, em vez de aparecer e não fazer nada.
 
 type Produto = {
   id: string;
@@ -106,6 +108,28 @@ const dia = (iso: null | string) => {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
 };
 
+/**
+ * As janelas do Panorama.
+ *
+ * ⚠️ A JANELA VALE PARA O DESEMPENHO, NUNCA PARA A FAIXA DO FLUXO. A faixa é o pipeline VIVO — "3
+ * em assinatura" é verdade hoje, venha a proposta de que mês vier; filtrá-la faria a venda parada
+ * desde julho desaparecer da tela em setembro, escondendo justamente o que precisa de atenção. A
+ * régua está em `lib/hercules/fluxo-de-venda.ts`, com teste.
+ */
+const JANELAS: ReadonlyArray<{ id: string; meses: null | number; rotulo: string }> = [
+  { id: "mes", meses: 1, rotulo: "Este mês" },
+  { id: "3m", meses: 3, rotulo: "3 meses" },
+  { id: "12m", meses: 12, rotulo: "12 meses" },
+  { id: "tudo", meses: null, rotulo: "Tudo" },
+];
+
+/** A competência de N meses atrás, no formato AAAA-MM que a rota espera. */
+function competenciaDe(mesesAtras: number): string {
+  const hoje = new Date();
+  const d = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - mesesAtras, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const mesCurto = (mes: string) => {
   const [ano, m] = mes.split("-");
@@ -122,13 +146,24 @@ export function TelaVenda() {
   const [visao, setVisao] = useState<"mesa" | "panorama">("mesa");
   const [etapa, setEtapa] = useState<EtapaDoFluxo>("reservado");
   const [foco, setFoco] = useState<null | Foco>(null);
-  const [mapaAberto, setMapaAberto] = useState<null | Produto>(null);
+  const [modoDoEstoque, setModoDoEstoque] = useState<"grade" | "mapa">("grade");
+  // Abre em 12 meses: o mês corrente sozinho, no dia 3, mostraria quase nada.
+  const [janela, setJanela] = useState<string>("12m");
 
-  const carregar = useCallback(async (alvo: string) => {
+  const carregar = useCallback(async (alvo: string, qualJanela: string) => {
     setCarregando(true);
     setErro(null);
     try {
-      const sufixo = alvo ? `?emp=${encodeURIComponent(alvo)}` : "";
+      const busca = new URLSearchParams();
+      if (alvo) busca.set("emp", alvo);
+      const meses = JANELAS.find((j) => j.id === qualJanela)?.meses ?? null;
+      if (meses) {
+        // `de` é o começo da janela e `ate` é o mês corrente: um intervalo fechado, para o
+        // servidor não precisar saber que dia é hoje.
+        busca.set("de", competenciaDe(meses - 1));
+        busca.set("ate", competenciaDe(0));
+      }
+      const sufixo = busca.toString() ? `?${busca}` : "";
       const r = await fetch(`/api/incorporador/venda${sufixo}`, { cache: "no-store" });
       const j = (await r.json().catch(() => null)) as null | { data?: FluxoDeVenda; error?: string };
       if (!r.ok || !j?.data) {
@@ -144,8 +179,8 @@ export function TelaVenda() {
   }, []);
 
   useEffect(() => {
-    void carregar(emp);
-  }, [carregar, emp]);
+    void carregar(emp, janela);
+  }, [carregar, emp, janela]);
 
   // A lista de produtos serve a duas coisas: o filtro e o botão do masterplan.
   useEffect(() => {
@@ -172,20 +207,17 @@ export function TelaVenda() {
     [dados, etapa],
   );
 
-  const mapasVisiveis = useMemo(() => {
-    const comMapa = produtos.filter((p) => p.masterplanInterno ?? p.masterplanUrl);
-    return emp ? comMapa.filter((p) => p.id === emp) : comMapa;
-  }, [emp, produtos]);
+  // O mapa do PRODUTO ESCOLHIDO, e só dele: no consolidado não existe um masterplan único.
+  const mapaDoProduto = useMemo(
+    () => (emp ? (produtos.find((p) => p.id === emp && p.masterplanInterno) ?? null) : null),
+    [emp, produtos],
+  );
 
-  if (mapaAberto?.masterplanInterno) {
-    return (
-      <TelaMasterplan
-        code={mapaAberto.masterplanInterno}
-        nome={mapaAberto.nome}
-        onVoltar={() => setMapaAberto(null)}
-      />
-    );
-  }
+  // Trocar para "todos" (ou para um produto sem mapa) volta para a grade: deixar o modo
+  // "mapa" aceso sem mapa para mostrar daria um painel vazio sem explicação.
+  useEffect(() => {
+    if (!mapaDoProduto) setModoDoEstoque("grade");
+  }, [mapaDoProduto]);
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -212,6 +244,31 @@ export function TelaVenda() {
             onClick={() => setVisao("panorama")}
             rotulo="Panorama"
           />
+          {/* A janela só muda o Panorama; na Mesa ela ficaria sem efeito e confundiria. */}
+          {visao === "panorama" ? (
+            <select
+              aria-label="Período"
+              onChange={(e) => setJanela(e.target.value)}
+              style={{
+                background: T.card,
+                border: `1px solid ${T.border}`,
+                borderRadius: 999,
+                color: T.text,
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+                padding: "7px 12px",
+              }}
+              value={janela}
+            >
+              {JANELAS.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.rotulo}
+                </option>
+              ))}
+            </select>
+          ) : null}
+
           {produtos.length > 1 ? (
             <select
               aria-label="Empreendimento"
@@ -337,14 +394,15 @@ export function TelaVenda() {
 
       {visao === "mesa" ? (
         <Mesa
-          aoAbrirMapa={setMapaAberto}
           aoFocar={setFoco}
+          aoTrocarModo={setModoDoEstoque}
           carregando={carregando}
           dados={dados}
           etapa={etapa}
           foco={foco}
           lista={daEtapa}
-          mapas={mapasVisiveis}
+          mapaDoProduto={mapaDoProduto}
+          modo={modoDoEstoque}
         />
       ) : (
         <Panorama dados={dados} />
@@ -356,24 +414,28 @@ export function TelaVenda() {
 // ── A MESA ──────────────────────────────────────────────────────────────────
 
 function Mesa({
-  aoAbrirMapa,
   aoFocar,
+  aoTrocarModo,
   carregando,
   dados,
   etapa,
   foco,
   lista,
-  mapas,
+  mapaDoProduto,
+  modo,
 }: {
-  aoAbrirMapa: (p: Produto) => void;
   aoFocar: (f: null | Foco) => void;
+  aoTrocarModo: (m: "grade" | "mapa") => void;
   carregando: boolean;
   dados: FluxoDeVenda | null;
   etapa: EtapaDoFluxo;
   foco: null | Foco;
   lista: FluxoDeVenda["lista"];
-  mapas: Produto[];
+  mapaDoProduto: null | Produto;
+  modo: "grade" | "mapa";
 }) {
+  // O tema vai para o iframe do masterplan: outro documento não herda variável CSS de ninguém.
+  const { efetivo } = useTemaDoPortal();
   const rotulo = FLUXO.find((f) => f.etapa === etapa)?.rotulo ?? "Propostas";
   const estoque = dados?.totais.estoque ?? {};
   // ⚠️ SÓ AS PRIMEIRAS QUADRAS. São 5.528 unidades no escopo inteiro: desenhar todas trava o
@@ -403,58 +465,77 @@ function Mesa({
       <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
         <Cartao
           direita={
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-              {Object.entries(ROTULO_DA_SITUACAO).map(([chave, nome]) => (
-                <span
-                  key={chave}
-                  style={{ color: T.muted, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}
-                >
-                  <i
-                    style={{
-                      background: COR_DA_SITUACAO[chave],
-                      borderRadius: 3,
-                      display: "inline-block",
-                      height: 10,
-                      marginRight: 5,
-                      width: 10,
-                    }}
+            <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12 }}>
+              {modo === "grade"
+                ? Object.entries(ROTULO_DA_SITUACAO).map(([chave, nome]) => (
+                    <span
+                      key={chave}
+                      style={{
+                        color: T.muted,
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <i
+                        style={{
+                          background: COR_DA_SITUACAO[chave],
+                          borderRadius: 3,
+                          display: "inline-block",
+                          height: 10,
+                          marginRight: 5,
+                          width: 10,
+                        }}
+                      />
+                      {nome} {inteiro(estoque[chave] ?? 0)}
+                    </span>
+                  ))
+                : null}
+
+              {/* A escolha da vista. Só aparece com um produto que TEM masterplan. */}
+              {mapaDoProduto ? (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <Pilula
+                    ativo={modo === "grade"}
+                    onClick={() => aoTrocarModo("grade")}
+                    rotulo="Grade"
                   />
-                  {nome} {inteiro(estoque[chave] ?? 0)}
-                </span>
-              ))}
+                  <Pilula
+                    ativo={modo === "mapa"}
+                    onClick={() => aoTrocarModo("mapa")}
+                    rotulo="Mapa"
+                  />
+                </div>
+              ) : null}
             </div>
           }
-          titulo="Mapa do estoque"
+          titulo="Estoque"
         >
-          {mapas.length > 0 ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-              {mapas.map((m) =>
-                m.masterplanInterno ? (
-                  <button key={m.id} onClick={() => aoAbrirMapa(m)} style={botaoChip} type="button">
-                    <MapaIcone aria-hidden="true" size={13} /> Masterplan · {m.nome}
-                  </button>
-                ) : (
-                  <a
-                    href={m.masterplanUrl ?? "#"}
-                    key={m.id}
-                    rel="noreferrer"
-                    style={{ ...botaoChip, textDecoration: "none" }}
-                    target="_blank"
-                  >
-                    <MapaIcone aria-hidden="true" size={13} /> Masterplan · {m.nome}
-                  </a>
-                ),
-              )}
-            </div>
-          ) : null}
-
-          <div
-            style={{
-              display: "grid",
-              gap: 14,
-              gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-            }}
-          >
+          {/* ⚠️ O MASTERPLAN VIVE NUM <iframe> e não herda o tema: ele vai na query, como na tela
+              cheia antiga. A altura é fixa porque o card está num grid — sem ela o iframe colapsa
+              para zero e o mapa "não aparece". */}
+          {modo === "mapa" && mapaDoProduto?.masterplanInterno ? (
+            <iframe
+              src={`/api/incorporador/masterplan?code=${encodeURIComponent(mapaDoProduto.masterplanInterno)}&tema=${efetivo}`}
+              style={{
+                background: T.soft,
+                border: `1px solid ${T.border}`,
+                borderRadius: 10,
+                display: "block",
+                height: "min(72vh, 720px)",
+                width: "100%",
+              }}
+              title={`Masterplan · ${mapaDoProduto.nome}`}
+            />
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "grid",
+                  gap: 14,
+                  gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                }}
+              >
             {grupos.map((g) => (
               <div key={g.grupo}>
                 <div
@@ -499,19 +580,21 @@ function Mesa({
                 </div>
               </div>
             ))}
-          </div>
+              </div>
 
-          {!carregando && grupos.length === 0 ? (
-            <p style={{ color: T.muted, fontSize: 13, margin: 0, textAlign: "center" }}>
-              Nenhuma unidade no recorte.
-            </p>
-          ) : null}
-          {(dados?.mapa.length ?? 0) > 30 ? (
-            <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-              Mostrando 30 de {inteiro(dados?.mapa.length ?? 0)} quadras. Escolha um empreendimento
-              no alto para ver o mapa inteiro dele.
-            </p>
-          ) : null}
+              {!carregando && grupos.length === 0 ? (
+                <p style={{ color: T.muted, fontSize: 13, margin: 0, textAlign: "center" }}>
+                  Nenhuma unidade no recorte.
+                </p>
+              ) : null}
+              {(dados?.mapa.length ?? 0) > 30 ? (
+                <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
+                  Mostrando 30 de {inteiro(dados?.mapa.length ?? 0)} quadras. Escolha um
+                  empreendimento no alto para ver o estoque inteiro dele.
+                </p>
+              ) : null}
+            </>
+          )}
         </Cartao>
 
         <Cartao titulo={`${rotulo} · ${inteiro(lista.length)}`}>
@@ -766,7 +849,7 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
         />
         <Kpi nota="das propostas faturadas" rotulo="Ticket médio" valor={dinheiro(ticket)} />
         <Kpi
-          nota={`${inteiro(dados.totais.unidades)} unidades no escopo`}
+          nota="propostas vivas, fora do faturamento"
           rotulo="Em andamento"
           valor={inteiro(emAndamento)}
         />
@@ -796,6 +879,35 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
       >
         <Cartao titulo="O funil">
           <div style={{ display: "grid", gap: 9 }}>
+            {/* ⚠️ AS CADs SÃO OUTRA FONTE, e a barra diz isso na cor. CAD é cadastro (Apolo);
+                reserva para baixo é venda (o fluxo importado do C2X). Pedido do Lucas: *"quantas
+                cads foram geradas, quantas reservas, propostas"* — na mesma escada. Com todos os
+                empreendimentos a esteira não recorta, e aí a CAD não aparece. */}
+            {dados.cads
+              ? [
+                  { n: dados.cads.total, nota: `${inteiro(dados.cads.emCorrecao)} em correção`, rotulo: "CADs geradas" },
+                  { n: dados.cads.credenciados, nota: `${inteiro(dados.cads.reprovadas)} reprovadas`, rotulo: "Credenciados" },
+                ].map((c) => (
+                  <div key={c.rotulo} style={{ display: "grid", gap: 4 }}>
+                    <div style={{ display: "flex", fontSize: 12.5, justifyContent: "space-between" }}>
+                      <span style={{ color: T.sub }}>{c.rotulo}</span>
+                      <b style={{ fontVariantNumeric: "tabular-nums" }}>{inteiro(c.n)}</b>
+                    </div>
+                    <div style={{ background: T.soft, borderRadius: 5, height: 20, overflow: "hidden" }}>
+                      <i
+                        style={{
+                          background: T.muted,
+                          display: "block",
+                          height: "100%",
+                          width: `${Math.max(2, (c.n / Math.max(1, dados.cads!.total)) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                    <span style={{ color: T.muted, fontSize: 11 }}>{c.nota}</span>
+                  </div>
+                ))
+              : null}
+
             {dados.fluxo.map((f) => {
               const passo = FLUXO.find((x) => x.etapa === f.etapa);
               return (
@@ -822,8 +934,11 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
             })}
           </div>
           <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-            {inteiro(dados.totais.propostas)} propostas no escopo, com o histórico inteiro desde
-            2023. {inteiro(perdidas)} saíram do caminho e por isso não aparecem nas barras.
+            {dados.periodo.de
+              ? `Desempenho de ${mesCurto(dados.periodo.de)} a ${mesCurto(dados.periodo.ate ?? dados.periodo.de)}: ${inteiro(dados.periodo.propostasNoPeriodo)} propostas na janela.`
+              : `${inteiro(dados.totais.propostas)} propostas no escopo, com o histórico inteiro desde 2023.`}{" "}
+            As barras de reserva para baixo são o pipeline de HOJE, que a janela não filtra;{" "}
+            {inteiro(perdidas)} saíram do caminho e não aparecem nelas.
           </p>
         </Cartao>
 
@@ -938,21 +1053,6 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
 const celula = {
   borderTop: `1px solid ${T.border}`,
   padding: "9px 12px",
-} as const;
-
-const botaoChip = {
-  alignItems: "center",
-  background: T.soft,
-  border: `1px solid ${T.border}`,
-  borderRadius: 999,
-  color: T.text,
-  cursor: "pointer",
-  display: "inline-flex",
-  font: "inherit",
-  fontSize: 12.5,
-  fontWeight: 600,
-  gap: 6,
-  padding: "6px 12px",
 } as const;
 
 function Cartao({

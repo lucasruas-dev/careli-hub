@@ -77,7 +77,29 @@ export type LinhaDaLista = {
   valor: number;
 };
 
+/**
+ * O funil de CADASTRO — o começo do processo, que não está em `hercules_propostas`.
+ *
+ * ⚠️ VEM DE OUTRA FONTE, E POR ISSO É OUTRO CAMPO. CAD é do Apolo (`apolo_esteira`); proposta é do
+ * C2X importado. Pedido do Lucas: *"quantas cads foram geradas, quantas reservas, propostas"* — as
+ * duas coisas na mesma escada. Somá-las num único número seria misturar pessoa com unidade: uma CAD
+ * credenciada pode não reservar nada, e uma unidade pode ter tido três propostas de gente
+ * diferente.
+ */
+export type CadsDoEscopo = {
+  credenciados: number;
+  emAndamento: number;
+  emCorrecao: number;
+  reprovadas: number;
+  total: number;
+};
+
+/** O recorte de tempo do painel, em competência (AAAA-MM). Ausente = a base inteira. */
+export type PeriodoDoPainel = { ate?: string; de?: string };
+
 export type FluxoDeVenda = {
+  /** Nulo quando a leitura do cadastro falhou — a tela mostra o funil sem as duas primeiras barras. */
+  cads: CadsDoEscopo | null;
   fluxo: PassoDoFluxo[];
   /** As propostas, já enxutas para a tela. A ordem é a mais recente primeiro. */
   lista: LinhaDaLista[];
@@ -96,8 +118,12 @@ export type FluxoDeVenda = {
   motivos: { motivo: string; n: number }[];
   ranking: { imobiliaria: string; propostas: number; vendidas: number; vgv: number }[];
   serie: { canceladas: number; faturadas: number; mes: string }[];
+  /** O que o recorte de tempo pegou, para a tela poder dizer de que período está falando. */
+  periodo: { ate: null | string; de: null | string; propostasNoPeriodo: number };
   totais: {
     estoque: Record<string, number>;
+    /** Faturadas DENTRO da janela — o par do `vgvFaturado`, para o ticket médio fechar. */
+    faturadasNoPeriodo: number;
     propostas: number;
     unidades: number;
     vgvFaturado: number;
@@ -135,13 +161,37 @@ function mesDe(p: PropostaDaCarga): null | string {
   return m ? `${m[1]}-${m[2]}` : null;
 }
 
+/**
+ * ⚠️ O PERÍODO NÃO VALE PARA A FAIXA DO FLUXO, e isso é decisão de desenho, não esquecimento.
+ *
+ * A faixa responde "o que está na minha mão AGORA": uma reserva feita em julho e ainda viva é
+ * pipeline de hoje, e sumir dela porque o filtro está em setembro faria o coordenador trabalhar com
+ * menos do que tem. Já o Panorama responde "como fui no período" — aí faturamento, cancelamento,
+ * ranking e série só contam o que aconteceu na janela.
+ */
 export function agregarFluxo({
+  cads = null,
+  periodo,
   propostas,
   unidades,
 }: {
+  cads?: CadsDoEscopo | null;
+  periodo?: PeriodoDoPainel;
   propostas: PropostaDaCarga[];
   unidades: UnidadeDoMapa[];
 }): FluxoDeVenda {
+  const de = periodo?.de ?? null;
+  const ate = periodo?.ate ?? null;
+  /** A proposta caiu na janela? Sem janela, tudo cai. */
+  const naJanela = (p: PropostaDaCarga): boolean => {
+    if (!de && !ate) return true;
+    const mes = mesDe(p);
+    if (!mes) return false;
+    if (de && mes < de) return false;
+    if (ate && mes > ate) return false;
+    return true;
+  };
+  let propostasNoPeriodo = 0;
   // ── A faixa do fluxo ──────────────────────────────────────────────────────
   const porEtapa = new Map<EtapaDoFluxo, { propostas: number; vgv: number }>();
   for (const etapa of ETAPAS_DO_FLUXO) porEtapa.set(etapa, { propostas: 0, vgv: 0 });
@@ -161,15 +211,22 @@ export function agregarFluxo({
   for (const p of propostas) {
     const valor = numero(p.valor);
 
+    // A FAIXA: estado atual, sem janela.
     if (ehDoFluxo(p.etapa)) {
       const atual = porEtapa.get(p.etapa)!;
       atual.propostas += 1;
       atual.vgv += valor;
-      if (p.etapa === "faturado") vgvFaturado += valor;
-    } else if (p.etapa === "cancelado") {
+    }
+
+    // O DESEMPENHO: só o que caiu na janela.
+    const dentro = naJanela(p);
+    if (dentro) propostasNoPeriodo += 1;
+    if (dentro && p.etapa === "faturado") vgvFaturado += valor;
+    if (dentro && p.etapa === "cancelado") {
       canceladas += 1;
       vgvCancelado += valor;
-    } else if (p.etapa === "distrato") {
+    }
+    if (dentro && p.etapa === "distrato") {
       distratos += 1;
       vgvCancelado += valor;
     }
@@ -177,7 +234,7 @@ export function agregarFluxo({
     // ⚠️ O RANKING CONTA A IMOBILIÁRIA DE TODAS AS PROPOSTAS, e separa quantas VIRARAM venda: quem
     // abre muita proposta e fecha pouca é justamente o que o coordenador precisa enxergar.
     const imob = String(p.imobiliaria_nome ?? "").trim();
-    if (imob) {
+    if (imob && dentro) {
       const atual = porImobiliaria.get(imob) ?? { propostas: 0, vendidas: 0, vgv: 0 };
       atual.propostas += 1;
       if (p.etapa === "faturado") {
@@ -188,7 +245,7 @@ export function agregarFluxo({
     }
 
     const mes = mesDe(p);
-    if (mes && (p.etapa === "faturado" || p.etapa === "cancelado")) {
+    if (mes && dentro && (p.etapa === "faturado" || p.etapa === "cancelado")) {
       const atual = porMes.get(mes) ?? { canceladas: 0, faturadas: 0 };
       if (p.etapa === "faturado") atual.faturadas += 1;
       else atual.canceladas += 1;
@@ -196,7 +253,7 @@ export function agregarFluxo({
     }
 
     const motivo = String(p.motivo ?? "").trim();
-    if (motivo && (p.etapa === "cancelado" || p.etapa === "distrato")) {
+    if (motivo && dentro && (p.etapa === "cancelado" || p.etapa === "distrato")) {
       porMotivo.set(motivo, (porMotivo.get(motivo) ?? 0) + 1);
     }
   }
@@ -223,6 +280,7 @@ export function agregarFluxo({
   }
 
   return {
+    cads,
     fluxo: ETAPAS_DO_FLUXO.map((etapa) => ({
       etapa,
       propostas: porEtapa.get(etapa)!.propostas,
@@ -257,11 +315,15 @@ export function agregarFluxo({
     ranking: [...porImobiliaria.entries()]
       .map(([imobiliaria, v]) => ({ imobiliaria, ...v, vgv: Math.round(v.vgv * 100) / 100 }))
       .sort((a, b) => b.vgv - a.vgv || b.vendidas - a.vendidas),
+    periodo: { ate, de, propostasNoPeriodo },
     serie: [...porMes.entries()]
       .map(([mes, v]) => ({ mes, ...v }))
       .sort((a, b) => a.mes.localeCompare(b.mes)),
     totais: {
       estoque,
+      // ⚠️ `faturadasNoPeriodo` existe porque `fluxo` conta o TOTAL faturado e `vgvFaturado` só o
+      // do período: dividir um pelo outro daria um ticket médio inventado.
+      faturadasNoPeriodo: propostas.filter((p) => p.etapa === "faturado" && naJanela(p)).length,
       propostas: propostas.length,
       unidades: unidades.length,
       vgvFaturado: Math.round(vgvFaturado * 100) / 100,
