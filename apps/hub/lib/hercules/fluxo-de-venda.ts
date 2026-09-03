@@ -20,6 +20,45 @@ export const ETAPAS_DO_FLUXO: readonly EtapaDoFluxo[] = [
   "faturado",
 ];
 
+/**
+ * A etapa como a GRADE pinta a unidade.
+ *
+ * ⚠️ NÃO É A SITUAÇÃO DO C2X. Lucas (03/09/2026): *"quero ter os mesmos status, em vez de vendida,
+ * ter propostas, contrato assinatura faturamento"*. `hercules_unidades.situacao` só sabe dizer
+ * disponível / reservada / vendida / bloqueada — e "vendida" esconde a diferença entre o lote que
+ * tem proposta emitida hoje e o que já faturou. Quem sabe isso é a PROPOSTA viva da unidade, e é
+ * ela que decide a cor.
+ *
+ * `disponivel` e `bloqueada` continuam vindo da unidade: são os dois estados que existem sem
+ * proposta nenhuma.
+ */
+export type EtapaDoEspelho =
+  | EtapaDoFluxo
+  | "bloqueada"
+  | "disponivel"
+  /**
+   * ⚠️ VENDIDA SEM PROPOSTA VIVA — e este estado existe por segurança, não por capricho. São 114
+   * unidades hoje: o cadastro diz vendida e não há proposta no caminho que diga em que etapa ela
+   * está (proposta cancelada e status não atualizado, venda antiga, carga incompleta). Sem este
+   * estado elas cairiam em `disponivel` e a grade ofereceria lote já vendido — o pior erro que
+   * esta tela pode cometer. Aqui elas aparecem ocupadas, e o rótulo diz que falta a proposta.
+   */
+  | "vendida"
+  /** O par de `vendida`: reservada no cadastro, sem proposta que sustente. Hoje, zero casos. */
+  | "reservada";
+
+/**
+ * A faixa do fluxo, com o estoque na frente: é dele que a venda começa.
+ *
+ * ⚠️ `bloqueada` NÃO entra. Ela existe na grade (é uma cor no quadro), mas não é passo do caminho:
+ * lote bloqueado está fora da oferta, e somá-lo ao pipeline daria ao coordenador um estoque que
+ * ele não pode vender.
+ */
+export const ETAPAS_DA_FAIXA: readonly ("disponivel" | EtapaDoFluxo)[] = [
+  "disponivel",
+  ...ETAPAS_DO_FLUXO,
+];
+
 export type PropostaDaCarga = {
   cliente_documento: null | string;
   cliente_nome: null | string;
@@ -52,8 +91,12 @@ export type UnidadeDoMapa = {
 };
 
 export type PassoDoFluxo = {
-  etapa: EtapaDoFluxo;
-  propostas: number;
+  etapa: EtapaDoEspelho;
+  /**
+   * Quantas. No `disponivel` são UNIDADES (não existe proposta num lote livre); nas outras são
+   * propostas — e como uma unidade tem no máximo uma proposta viva, dá no mesmo.
+   */
+  quantidade: number;
   vgv: number;
 };
 
@@ -107,9 +150,12 @@ export type FluxoDeVenda = {
     grupo: string;
     unidades: {
       codigo: string;
+      /** A etapa que pinta o quadrado — ver `EtapaDoEspelho`. */
+      etapa: EtapaDoEspelho;
       id: string;
       lote: null | string;
       preco: number;
+      /** A situação crua da unidade, para quem precisar do dado original. */
       situacao: string;
     }[];
   }[];
@@ -121,6 +167,7 @@ export type FluxoDeVenda = {
   /** O que o recorte de tempo pegou, para a tela poder dizer de que período está falando. */
   periodo: { ate: null | string; de: null | string; propostasNoPeriodo: number };
   totais: {
+    /** Quantas unidades em cada `EtapaDoEspelho` — é a legenda da grade. */
     estoque: Record<string, number>;
     /** Faturadas DENTRO da janela — o par do `vgvFaturado`, para o ticket médio fechar. */
     faturadasNoPeriodo: number;
@@ -138,6 +185,25 @@ const numero = (v: null | number | string | undefined): number => {
 
 const ehDoFluxo = (etapa: string): etapa is EtapaDoFluxo =>
   (ETAPAS_DO_FLUXO as readonly string[]).includes(etapa);
+
+/**
+ * A etapa de uma unidade SEM proposta viva — o que o cadastro sozinho consegue afirmar.
+ *
+ * Situação desconhecida cai em `bloqueada`, e não em `disponivel`: na dúvida, fora da oferta. Um
+ * lote a menos no estoque é um aviso; um lote vendido oferecido de novo é um cliente perdido.
+ */
+function etapaDaSituacao(situacao: string): EtapaDoEspelho {
+  switch (situacao) {
+    case "disponivel":
+      return "disponivel";
+    case "reservada":
+      return "reservada";
+    case "vendida":
+      return "vendida";
+    default:
+      return "bloqueada";
+  }
+}
 
 /** "Q07" de "Q07 L12" — o agrupamento do mapa quando a unidade não traz quadra própria. */
 function grupoDaUnidade(u: UnidadeDoMapa): string {
@@ -260,16 +326,49 @@ export function agregarFluxo({
 
   // ── O estoque, pelas unidades ────────────────────────────────────────────
   const estoque: Record<string, number> = {};
+  // ⚠️ A ETAPA DA UNIDADE VEM DA PROPOSTA VIVA MAIS RECENTE. Uma unidade acumula propostas ao
+  // longo do tempo (revenda, cancelamento e nova venda): a que vale é a última que ainda está no
+  // caminho. Pegar qualquer uma pintaria de "faturado" um lote que voltou para o estoque.
+  const vivaPorUnidade = new Map<string, { desde: string; etapa: EtapaDoFluxo }>();
+  for (const p of propostas) {
+    if (!p.unidade_id || !ehDoFluxo(p.etapa)) continue;
+    const desde = String(p.etapa_desde ?? p.criado_em_c2x ?? "");
+    const atual = vivaPorUnidade.get(p.unidade_id);
+    if (!atual || desde > atual.desde) vivaPorUnidade.set(p.unidade_id, { desde, etapa: p.etapa });
+  }
+
   const grupos = new Map<
     string,
-    { codigo: string; id: string; lote: null | string; preco: number; situacao: string }[]
+    {
+      codigo: string;
+      etapa: EtapaDoEspelho;
+      id: string;
+      lote: null | string;
+      preco: number;
+      situacao: string;
+    }[]
   >();
+  /** Unidades livres, para o passo `disponivel` da faixa. */
+  let disponiveis = 0;
+  let vgvDisponivel = 0;
   for (const u of unidades) {
-    estoque[u.situacao] = (estoque[u.situacao] ?? 0) + 1;
+    // ⚠️ A PROPOSTA VIVA REFINA, MAS A SITUAÇÃO NUNCA É REBAIXADA PARA LIVRE. Com proposta, ela
+    // manda (é ela que sabe se está em contrato ou já faturou). Sem proposta, vale o cadastro — e
+    // "vendida" ou "reservada" continuam ocupadas, nunca disponíveis: dizer que um lote vendido
+    // está livre é convidar a segunda venda.
+    const etapa: EtapaDoEspelho = vivaPorUnidade.get(u.id)?.etapa ?? etapaDaSituacao(u.situacao);
+
+    estoque[etapa] = (estoque[etapa] ?? 0) + 1;
+    if (etapa === "disponivel") {
+      disponiveis += 1;
+      vgvDisponivel += numero(u.preco_tabela);
+    }
+
     const g = grupoDaUnidade(u);
     const lista = grupos.get(g);
     const item = {
       codigo: u.codigo,
+      etapa,
       id: u.id,
       lote: u.lote,
       preco: numero(u.preco_tabela),
@@ -281,11 +380,15 @@ export function agregarFluxo({
 
   return {
     cads,
-    fluxo: ETAPAS_DO_FLUXO.map((etapa) => ({
-      etapa,
-      propostas: porEtapa.get(etapa)!.propostas,
-      vgv: Math.round(porEtapa.get(etapa)!.vgv * 100) / 100,
-    })),
+    fluxo: ETAPAS_DA_FAIXA.map((etapa) =>
+      etapa === "disponivel"
+        ? { etapa, quantidade: disponiveis, vgv: Math.round(vgvDisponivel * 100) / 100 }
+        : {
+            etapa,
+            quantidade: porEtapa.get(etapa)!.propostas,
+            vgv: Math.round(porEtapa.get(etapa)!.vgv * 100) / 100,
+          },
+    ),
     lista: propostas.map((p) => ({
       cliente: p.cliente_nome,
       desde: p.etapa_desde,

@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bookmark, FileSignature, FileText, Receipt, Signature } from "lucide-react";
+import { Bookmark, FileSignature, FileText, Grid2x2, Receipt, Signature } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import type { EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
+import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
 
 import { T, useTemaDoPortal } from "../tema";
 import { Pilula } from "./AssinaturasDoProduto";
@@ -66,21 +66,75 @@ type Foco =
   | { proposta: Proposta; tipo: "proposta" }
   | { tipo: "unidade"; unidade: UnidadeNoMapa };
 
-const FLUXO: ReadonlyArray<{ cor: string; etapa: EtapaDoFluxo; icone: LucideIcon; rotulo: string }> =
-  [
-    { cor: "#a07c3b", etapa: "reservado", icone: Bookmark, rotulo: "Reserva" },
-    { cor: "#2f5d9e", etapa: "proposta", icone: FileText, rotulo: "Proposta" },
-    { cor: "#6b5ea8", etapa: "contrato", icone: FileSignature, rotulo: "Contrato" },
-    { cor: "#2f7d59", etapa: "assinatura", icone: Signature, rotulo: "Assinatura" },
-    { cor: "#121722", etapa: "faturado", icone: Receipt, rotulo: "Faturamento" },
-  ];
+// ⚠️ O ESTOQUE ABRE A FAIXA (Lucas, 03/09/2026: *"aproveitar trazer aqui também disponível"*). É
+// de onde a venda começa, e ver o pipeline sem saber quanto sobra para vender conta metade da
+// história. Ele é o único passo contado em UNIDADES — nos outros, cada unidade tem uma proposta.
+const FLUXO: ReadonlyArray<{
+  cor: string;
+  etapa: "disponivel" | EtapaDoFluxo;
+  icone: LucideIcon;
+  rotulo: string;
+}> = [
+  { cor: "#98a2b3", etapa: "disponivel", icone: Grid2x2, rotulo: "Disponível" },
+  { cor: "#c9962b", etapa: "reservado", icone: Bookmark, rotulo: "Reserva" },
+  { cor: "#3c73c0", etapa: "proposta", icone: FileText, rotulo: "Proposta" },
+  { cor: "#7d5cba", etapa: "contrato", icone: FileSignature, rotulo: "Contrato" },
+  { cor: "#2f93a3", etapa: "assinatura", icone: Signature, rotulo: "Assinatura" },
+  { cor: "#2f7d4a", etapa: "faturado", icone: Receipt, rotulo: "Faturamento" },
+];
 
-const COR_DA_SITUACAO: Record<string, string> = {
-  bloqueada: "#e3a49c",
+// ⚠️ A GRADE PINTA POR ETAPA, NÃO POR SITUAÇÃO (Lucas, 03/09/2026: *"em vez de vendida, ter
+// propostas, contrato assinatura faturamento"*). A cor de cada etapa é a MESMA da faixa acima, de
+// propósito: o quadrado amarelo no quadro é o mesmo amarelo do cartão Reserva, e o coordenador liga
+// os dois sem legenda.
+//
+// ⚠️ `vendida` e `reservada` são os estados SEM PROPOSTA que o cadastro sozinho afirma — 114 lotes
+// hoje. Recebem tom próprio, apagado, para parecerem ocupados sem se passar por uma etapa do fluxo:
+// eles não estão em nenhuma, e é justamente isso que precisa aparecer.
+// ⚠️ UM MATIZ POR ETAPA, e não tons do mesmo. Lucas (03/09/2026), olhando a legenda com
+// assinatura, faturamento e "vendida sem proposta" em três verdes: *"não gostei desses tons da
+// mesma cor, isso confunde na hora da visualização"*. Num quadro de 500 quadradinhos de 12px, dois
+// verdes vizinhos são a mesma cor — o olho não separa. Então cada etapa pegou um matiz distante no
+// círculo: amarelo, azul, violeta, ciano, verde.
+//
+// ⚠️ E O QUE NÃO TEM PROPOSTA GANHA LISTRA, NÃO UM TOM. `vendida` e `reservada` (114 lotes que o
+// cadastro afirma sem proposta que sustente) precisam parecer OCUPADOS — se virassem cinza, se
+// misturariam ao disponível e alguém venderia de novo. A cor é a do estado, a listra é o "falta a
+// proposta": diferença de textura, que sobrevive ao quadradinho pequeno.
+const AMARELO = "#f2c14e";
+const VERDE = "#3f9d5e";
+
+const listrado = (cor: string, sombra: string) =>
+  `repeating-linear-gradient(135deg, ${cor} 0 4px, ${sombra} 4px 8px)`;
+
+const COR_DA_ETAPA: Record<EtapaDoEspelho, string> = {
+  assinatura: "#4bb3c3",
+  bloqueada: "#e08276",
+  contrato: "#9b7ed0",
   disponivel: "var(--inc-soft)",
-  reservada: "#e8c98a",
-  vendida: "#86c3a4",
+  faturado: VERDE,
+  proposta: "#5b8dd6",
+  reservada: listrado(AMARELO, "#d9a833"),
+  reservado: AMARELO,
+  vendida: listrado(VERDE, "#2f7d4a"),
 };
+
+/** A ordem da legenda é a do caminho: estoque, fluxo, e no fim o que está fora dele. */
+const LEGENDA: ReadonlyArray<{ etapa: EtapaDoEspelho; rotulo: string }> = [
+  { etapa: "disponivel", rotulo: "Disponível" },
+  { etapa: "reservado", rotulo: "Reserva" },
+  { etapa: "proposta", rotulo: "Proposta" },
+  { etapa: "contrato", rotulo: "Contrato" },
+  { etapa: "assinatura", rotulo: "Assinatura" },
+  { etapa: "faturado", rotulo: "Faturamento" },
+  { etapa: "vendida", rotulo: "Vendida sem proposta" },
+  { etapa: "reservada", rotulo: "Reservada sem proposta" },
+  { etapa: "bloqueada", rotulo: "Bloqueada" },
+];
+
+const ROTULO_DA_ETAPA: Record<EtapaDoEspelho, string> = Object.fromEntries(
+  LEGENDA.map((l) => [l.etapa, l.rotulo]),
+) as Record<EtapaDoEspelho, string>;
 
 /** Cancelado e distrato não estão na faixa, mas aparecem no painel quando a unidade tem um. */
 const ROTULO_TERMINAL: Record<string, string> = {
@@ -88,12 +142,7 @@ const ROTULO_TERMINAL: Record<string, string> = {
   distrato: "Distratada",
 };
 
-const ROTULO_DA_SITUACAO: Record<string, string> = {
-  disponivel: "Disponível",
-  reservada: "Reservada",
-  vendida: "Vendida",
-  bloqueada: "Bloqueada",
-};
+
 
 const dinheiro = (v: number) =>
   v >= 1_000_000
@@ -144,7 +193,7 @@ export function TelaVenda() {
 
   const [emp, setEmp] = useState<string>("");
   const [visao, setVisao] = useState<"mesa" | "panorama">("mesa");
-  const [etapa, setEtapa] = useState<EtapaDoFluxo>("reservado");
+  const [etapa, setEtapa] = useState<"disponivel" | EtapaDoFluxo>("reservado");
   const [foco, setFoco] = useState<null | Foco>(null);
   const [modoDoEstoque, setModoDoEstoque] = useState<"grade" | "mapa">("grade");
   // Abre em 12 meses: o mês corrente sozinho, no dia 3, mostraria quase nada.
@@ -202,8 +251,22 @@ export function TelaVenda() {
     };
   }, []);
 
+  // Nas cinco etapas do fluxo a lista é de PROPOSTAS; no estoque não existe proposta, e o que o
+  // coordenador precisa ver é a lista de lotes livres para vender.
   const daEtapa = useMemo(
-    () => (dados?.lista ?? []).filter((l) => l.etapa === etapa),
+    () => (etapa === "disponivel" ? [] : (dados?.lista ?? []).filter((l) => l.etapa === etapa)),
+    [dados, etapa],
+  );
+
+  const livres = useMemo(
+    () =>
+      etapa === "disponivel"
+        ? (dados?.mapa ?? []).flatMap((g) =>
+            g.unidades
+              .filter((u) => u.etapa === "disponivel")
+              .map((u) => ({ ...u, grupo: g.grupo })),
+          )
+        : [],
     [dados, etapa],
   );
 
@@ -375,7 +438,7 @@ export function TelaVenda() {
                   marginTop: 7,
                 }}
               >
-                {carregando ? "—" : inteiro(dado?.propostas ?? 0)}
+                {carregando ? "—" : inteiro(dado?.quantidade ?? 0)}
               </div>
               <div
                 style={{
@@ -401,6 +464,7 @@ export function TelaVenda() {
           etapa={etapa}
           foco={foco}
           lista={daEtapa}
+          livres={livres}
           mapaDoProduto={mapaDoProduto}
           modo={modoDoEstoque}
         />
@@ -421,6 +485,7 @@ function Mesa({
   etapa,
   foco,
   lista,
+  livres,
   mapaDoProduto,
   modo,
 }: {
@@ -428,9 +493,10 @@ function Mesa({
   aoTrocarModo: (m: "grade" | "mapa") => void;
   carregando: boolean;
   dados: FluxoDeVenda | null;
-  etapa: EtapaDoFluxo;
+  etapa: "disponivel" | EtapaDoFluxo;
   foco: null | Foco;
   lista: FluxoDeVenda["lista"];
+  livres: (UnidadeNoMapa & { grupo: string })[];
   mapaDoProduto: null | Produto;
   modo: "grade" | "mapa";
 }) {
@@ -467,7 +533,7 @@ function Mesa({
           direita={
             <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12 }}>
               {modo === "grade"
-                ? Object.entries(ROTULO_DA_SITUACAO).map(([chave, nome]) => (
+                ? LEGENDA.filter((l) => (estoque[l.etapa] ?? 0) > 0).map(({ etapa: chave, rotulo: nome }) => (
                     <span
                       key={chave}
                       style={{
@@ -479,7 +545,7 @@ function Mesa({
                     >
                       <i
                         style={{
-                          background: COR_DA_SITUACAO[chave],
+                          background: COR_DA_ETAPA[chave],
                           borderRadius: 3,
                           display: "inline-block",
                           height: 10,
@@ -557,10 +623,10 @@ function Mesa({
                       onClick={() => aoFocar({ tipo: "unidade", unidade: u })}
                       style={{
                         aspectRatio: "1 / 1.25",
-                        background: COR_DA_SITUACAO[u.situacao] ?? T.soft,
+                        background: COR_DA_ETAPA[u.etapa] ?? T.soft,
                         border: 0,
                         borderRadius: 3,
-                        color: u.situacao === "disponivel" ? T.muted : "rgb(0 0 0 / .6)",
+                        color: u.etapa === "disponivel" ? T.muted : "rgb(0 0 0 / .6)",
                         cursor: "pointer",
                         display: "grid",
                         font: "inherit",
@@ -571,7 +637,7 @@ function Mesa({
                         padding: 0,
                         placeItems: "center",
                       }}
-                      title={`${u.codigo} · ${ROTULO_DA_SITUACAO[u.situacao] ?? u.situacao}`}
+                      title={`${u.codigo} · ${ROTULO_DA_ETAPA[u.etapa] ?? u.etapa}`}
                       type="button"
                     >
                       {u.lote ?? ""}
@@ -597,6 +663,69 @@ function Mesa({
           )}
         </Cartao>
 
+        {etapa === "disponivel" ? (
+          <Cartao titulo={`Disponíveis · ${inteiro(livres.length)}`}>
+            <div style={{ margin: "-16px", overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
+                <thead>
+                  <tr>
+                    {["Unidade", "Quadra", "Valor de tabela"].map((c, i) => (
+                      <th
+                        key={c}
+                        style={{
+                          color: T.muted,
+                          fontSize: 10.5,
+                          fontWeight: 650,
+                          letterSpacing: ".05em",
+                          padding: "10px 12px",
+                          textAlign: i === 2 ? "right" : "left",
+                          textTransform: "uppercase",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {livres.slice(0, 150).map((u) => (
+                    <tr
+                      key={u.id}
+                      onClick={() => aoFocar({ tipo: "unidade", unidade: u })}
+                      style={{
+                        background: idEmFoco === u.id ? T.soft : undefined,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <td style={celula}>
+                        <b>{u.codigo}</b>
+                      </td>
+                      <td style={{ ...celula, color: T.muted }}>{u.grupo}</td>
+                      <td
+                        style={{ ...celula, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
+                      >
+                        {u.preco ? dinheiro(u.preco) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {livres.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} style={{ ...celula, color: T.muted, textAlign: "center" }}>
+                        {carregando ? "Carregando…" : "Nenhuma unidade disponível no recorte."}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+            {livres.length > 150 ? (
+              <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
+                Mostrando 150 de {inteiro(livres.length)}.
+              </p>
+            ) : null}
+          </Cartao>
+        ) : (
         <Cartao titulo={`${rotulo} · ${inteiro(lista.length)}`}>
           <div style={{ margin: "-16px", overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
@@ -661,6 +790,7 @@ function Mesa({
             </p>
           ) : null}
         </Cartao>
+        )}
       </div>
 
       <div style={{ display: "grid", gap: 14 }}>
@@ -669,7 +799,7 @@ function Mesa({
             unidadeEmFoco ? (
               <span
                 style={{
-                  background: COR_DA_SITUACAO[unidadeEmFoco.situacao] ?? T.soft,
+                  background: COR_DA_ETAPA[unidadeEmFoco.etapa] ?? T.soft,
                   borderRadius: 999,
                   color: "rgb(0 0 0 / .7)",
                   fontSize: 11,
@@ -677,7 +807,7 @@ function Mesa({
                   padding: "2px 9px",
                 }}
               >
-                {ROTULO_DA_SITUACAO[unidadeEmFoco.situacao] ?? unidadeEmFoco.situacao}
+                {ROTULO_DA_ETAPA[unidadeEmFoco.etapa] ?? unidadeEmFoco.etapa}
               </span>
             ) : null
           }
@@ -821,17 +951,17 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
     );
   }
 
-  const faturadas = dados.fluxo.find((f) => f.etapa === "faturado")?.propostas ?? 0;
+  const faturadas = dados.fluxo.find((f) => f.etapa === "faturado")?.quantidade ?? 0;
   const emAndamento = dados.fluxo
     .filter((f) => f.etapa !== "faturado")
-    .reduce((a, f) => a + f.propostas, 0);
+    .reduce((a, f) => a + f.quantidade, 0);
   const perdidas = dados.perdas.canceladas + dados.perdas.distratos;
   const decididas = faturadas + perdidas;
   const conversao = decididas > 0 ? (faturadas / decididas) * 100 : 0;
   const ticket = faturadas > 0 ? dados.totais.vgvFaturado / faturadas : 0;
   const comMotivo = dados.motivos.reduce((a, m) => a + m.n, 0);
   const maiorSerie = Math.max(1, ...dados.serie.map((s) => s.faturadas));
-  const maiorFunil = Math.max(1, ...dados.fluxo.map((f) => f.propostas));
+  const maiorFunil = Math.max(1, ...dados.fluxo.map((f) => f.quantidade));
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -914,7 +1044,7 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
                 <div key={f.etapa} style={{ display: "grid", gap: 4 }}>
                   <div style={{ display: "flex", fontSize: 12.5, justifyContent: "space-between" }}>
                     <span style={{ color: T.sub }}>{passo?.rotulo ?? f.etapa}</span>
-                    <b style={{ fontVariantNumeric: "tabular-nums" }}>{inteiro(f.propostas)}</b>
+                    <b style={{ fontVariantNumeric: "tabular-nums" }}>{inteiro(f.quantidade)}</b>
                   </div>
                   <div
                     style={{ background: T.soft, borderRadius: 5, height: 20, overflow: "hidden" }}
@@ -924,7 +1054,7 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
                         background: passo?.cor ?? T.gold,
                         display: "block",
                         height: "100%",
-                        width: `${Math.max(2, (f.propostas / maiorFunil) * 100)}%`,
+                        width: `${Math.max(2, (f.quantidade / maiorFunil) * 100)}%`,
                       }}
                     />
                   </div>

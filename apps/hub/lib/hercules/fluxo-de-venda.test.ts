@@ -46,7 +46,7 @@ describe("agregarFluxo", () => {
 
     expect(r.fluxo.find((f) => f.etapa === "reservado")).toEqual({
       etapa: "reservado",
-      propostas: 2,
+      quantidade: 2,
       vgv: 30,
     });
     expect(r.totais.vgvFaturado).toBe(100);
@@ -64,16 +64,67 @@ describe("agregarFluxo", () => {
       unidades: [],
     });
 
-    expect(r.fluxo.map((f) => f.propostas)).toEqual([0, 0, 0, 0, 1]);
+    // Seis passos agora: o estoque na frente (zero aqui, porque o teste não passa unidades).
+    expect(r.fluxo.map((f) => f.quantidade)).toEqual([0, 0, 0, 0, 0, 1]);
     expect(r.fluxo.reduce((a, f) => a + f.vgv, 0)).toBe(100);
     expect(r.perdas).toEqual({ canceladas: 1, distratos: 1, vgvCancelado: 120 });
   });
 
-  it("mantém os cinco passos mesmo quando não há nenhuma proposta neles", () => {
+  it("mantém os seis passos mesmo quando não há nada neles", () => {
     // A faixa é o PROCESSO: uma etapa que some da tela faria o coordenador achar que ela não existe.
     const r = agregarFluxo({ propostas: [], unidades: [] });
-    expect(r.fluxo.map((f) => f.etapa)).toEqual([...ETAPAS_DO_FLUXO]);
-    expect(r.fluxo.every((f) => f.propostas === 0)).toBe(true);
+    expect(r.fluxo.map((f) => f.etapa)).toEqual(["disponivel", ...ETAPAS_DO_FLUXO]);
+    expect(r.fluxo.every((f) => f.quantidade === 0)).toBe(true);
+  });
+
+  it("⚠️ vendida SEM proposta viva NÃO vira disponível", () => {
+    // São 114 unidades assim na base: o cadastro diz vendida e nenhuma proposta no caminho explica
+    // em que etapa está. Cair em "disponível" faria a grade oferecer lote vendido — e a faixa
+    // contaria estoque que não existe.
+    const r = agregarFluxo({
+      propostas: [],
+      unidades: [
+        unidade({ codigo: "Q01 L01", situacao: "vendida" }),
+        unidade({ codigo: "Q01 L02", situacao: "reservada" }),
+        unidade({ codigo: "Q01 L03", situacao: "disponivel" }),
+        unidade({ codigo: "Q01 L04", situacao: "coisa-nova-do-c2x" }),
+      ],
+    });
+
+    expect(r.mapa[0]?.unidades.map((u) => u.etapa)).toEqual([
+      "vendida",
+      "reservada",
+      "disponivel",
+      // Situação desconhecida fica FORA da oferta: na dúvida, bloqueada.
+      "bloqueada",
+    ]);
+    expect(r.fluxo.find((f) => f.etapa === "disponivel")?.quantidade).toBe(1);
+  });
+
+  it("a proposta viva REFINA a situação da unidade", () => {
+    // O cadastro diz "vendida"; a proposta diz em que ponto do caminho ela está. Quem sabe mais
+    // manda — e é isso que faz a grade mostrar contrato e assinatura em vez de um verde só.
+    const r = agregarFluxo({
+      propostas: [proposta({ etapa: "contrato", unidade_id: "u-9" })],
+      unidades: [unidade({ codigo: "Q01 L01", id: "u-9", situacao: "vendida" })],
+    });
+
+    expect(r.mapa[0]?.unidades[0]?.etapa).toBe("contrato");
+    expect(r.totais.estoque).toEqual({ contrato: 1 });
+  });
+
+  it("entre duas propostas vivas na mesma unidade, vale a mais recente", () => {
+    // Revenda: a unidade acumula propostas. A antiga pintaria o lote de faturado depois de ele
+    // voltar para o estoque e ser reservado de novo.
+    const r = agregarFluxo({
+      propostas: [
+        proposta({ etapa: "faturado", etapa_desde: "2024-05-01T10:00:00Z", unidade_id: "u-1" }),
+        proposta({ etapa: "reservado", etapa_desde: "2026-08-20T10:00:00Z", unidade_id: "u-1" }),
+      ],
+      unidades: [unidade({ codigo: "Q01 L01", id: "u-1", situacao: "vendida" })],
+    });
+
+    expect(r.mapa[0]?.unidades[0]?.etapa).toBe("reservado");
   });
 
   it("o ranking separa proposta aberta de venda fechada", () => {
@@ -126,6 +177,7 @@ describe("agregarFluxo", () => {
     // Ordem natural: Q02 antes de Q10, e L02 antes de L10 (numérica, não alfabética).
     expect(r.mapa.map((g) => g.grupo)).toEqual(["Q02", "Q10"]);
     expect(r.mapa[0]?.unidades.map((u) => u.lote)).toEqual(["01", "10"]);
+    // O estoque conta por ETAPA do espelho, e sem proposta a vendida segue vendida.
     expect(r.totais.estoque).toEqual({ disponivel: 2, vendida: 1 });
   });
 
@@ -160,9 +212,9 @@ describe("agregarFluxo", () => {
     const setembro = agregarFluxo({ periodo: { ate: "2026-09", de: "2026-09" }, propostas, unidades: [] });
 
     // A faixa: igual nos dois.
-    const faixa = (r: ReturnType<typeof agregarFluxo>) => r.fluxo.map((f) => [f.etapa, f.propostas, f.vgv]);
+    const faixa = (r: ReturnType<typeof agregarFluxo>) => r.fluxo.map((f) => [f.etapa, f.quantidade, f.vgv]);
     expect(faixa(setembro)).toEqual(faixa(tudo));
-    expect(setembro.fluxo.find((f) => f.etapa === "assinatura")?.propostas).toBe(1);
+    expect(setembro.fluxo.find((f) => f.etapa === "assinatura")?.quantidade).toBe(1);
 
     // O desempenho: so setembro.
     expect(tudo.totais.vgvFaturado).toBe(800);
