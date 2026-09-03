@@ -1,8 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bookmark, FileSignature, FileText, Map as MapaIcone, Receipt, Signature } from "lucide-react";
+import {
+  Bookmark,
+  FileSignature,
+  FileText,
+  Map as MapaIcone,
+  Receipt,
+  Signature,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+
+import type { EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
 
 import { TelaMasterplan } from "../TelaMasterplan";
 import { T } from "../tema";
@@ -11,96 +20,56 @@ import { Pilula } from "./AssinaturasDoProduto";
 // A TELA VENDA — onde o coordenador VENDE, e onde ele olha se está vendendo bem.
 //
 // Pedido do Lucas (03/09/2026): *"vamos criar a tela Venda, que vai ser a tela que vamos fazer o
-// processo de reserva, proposta e emissão de contratos"*, com *"a parte indicadores (podemos
-// colocar um nome melhor) — a ideia é mostrar o cenário comercial daquele ou daqueles
-// empreendimentos"*, *"um dashboard (painel de gestão) rico focado em performance comercial"*, uma
-// tela *"que o coordenador possa ter uma agilidade nessas vendas, simulador de proposta"* e *"ter o
+// processo de reserva, proposta e emissão de contratos"*, com *"a parte indicadores (...) a ideia é
+// mostrar o cenário comercial daquele ou daqueles empreendimentos"*, *"um dashboard (painel de
+// gestão) rico focado em performance comercial"*, agilidade com *"simulador de proposta"* e *"ter o
 // mapa na tela de vendas para que o coordenador possa ver visualmente o que está sendo vendido"*.
+//
+// ⚠️ OS DADOS SÃO DO PANTEON, NÃO DO C2X. Na mesma conversa: *"quero importar todos os dados do
+// c2x, eles tem que existir dentro do panteon (...) e quero que hoje isso seja visto dentro do
+// panteon"*. A carga trouxe 4.853 propostas e 12.269 movimentações de etapa
+// (`scripts/hercules/importar-fluxo-de-venda.mjs`), e esta tela lê `/api/incorporador/venda` —
+// Supabase, não o MySQL do legado. A tela antiga (`TelaVendas`) continua lendo o C2X e serve os
+// portais de incorporador; quando eles migrarem, ela sai.
 //
 // ⚠️ A FAIXA DO FLUXO É A ESPINHA, e fica acima das duas visões. Reserva → Proposta → Contrato →
 // Assinatura → Faturamento é o processo, e ele não muda quando o coordenador troca de visão: o que
-// muda é o que ele faz com aquilo. Clicar numa etapa recorta a Mesa inteira para ela — é o mesmo
-// gesto de apontar para a coluna do quadro e dizer "me mostra esses".
+// muda é o que ele faz com aquilo. Clicar numa etapa recorta a Mesa para ela.
 //
-// ⚠️ OS NÚMEROS SÃO OS DO C2X, pela rota que a tela de Vendas já usava (/api/incorporador/vendas):
-// nada aqui inventa um segundo total. O funil de CAD vem da rota do resumo do produto, que é a
-// mesma da ficha. Duas fontes porque são dois assuntos — cadastro é do Apolo, unidade é do C2X —,
-// e cada número da tela diz de qual dos dois veio.
+// ⚠️ CANCELADO E DISTRATO NÃO SÃO PASSOS. São saídas do caminho, e vivem no quadro de perdas do
+// Panorama — a régua está em `lib/hercules/fluxo-de-venda.ts`, com teste.
 //
-// ⚠️ O QUE AINDA NÃO EXISTE ESTÁ DITO NA TELA, não escondido. Reservar, gerar proposta e cancelar
-// com motivo dependem da tabela de reservas do Panteon (migration 0125, ainda não aplicada): até
-// lá a Mesa MOSTRA o processo com dado real e o simulador calcula de verdade, mas não grava. Botão
-// que não faz nada seria pior do que a frase que explica.
+// ⚠️ O QUE AINDA NÃO EXISTE ESTÁ DITO NA TELA, não escondido atrás de um botão morto. Reservar e
+// gerar proposta gravando no Panteon dependem da 0125 (reservas), ainda não aplicada.
 
-type Etapa = "assinatura" | "contrato" | "disponivel" | "faturado" | "proposta" | "reservado";
-
-type Balde = "bloqueada" | "disponivel" | "negociacao" | "reservado" | "vendido";
-
-type Unidade = {
-  balde: Balde;
-  bloco: null | string;
-  comprador: null | string;
-  desde: null | string;
-  etapa: Etapa;
-  imobiliaria: null | string;
-  lote: null | string;
-  situacao: string;
-  unidade: string;
-  valor: number;
+type Produto = {
+  id: string;
+  masterplanInterno: null | string;
+  masterplanUrl: null | string;
+  nome: string;
 };
 
-type EmpreendimentoDaTela = { id: string; masterplan: null | string; nome: string };
+const FLUXO: ReadonlyArray<{ cor: string; etapa: EtapaDoFluxo; icone: LucideIcon; rotulo: string }> =
+  [
+    { cor: "#a07c3b", etapa: "reservado", icone: Bookmark, rotulo: "Reserva" },
+    { cor: "#2f5d9e", etapa: "proposta", icone: FileText, rotulo: "Proposta" },
+    { cor: "#6b5ea8", etapa: "contrato", icone: FileSignature, rotulo: "Contrato" },
+    { cor: "#2f7d59", etapa: "assinatura", icone: Signature, rotulo: "Assinatura" },
+    { cor: "#121722", etapa: "faturado", icone: Receipt, rotulo: "Faturamento" },
+  ];
 
-type TallyBI = { un: number; vgv: number };
-
-type DadosDaVenda = {
-  bi?: null | {
-    canceladas: TallyBI;
-    cancelamentoPct: number;
-    deadlineMedioDias: null | number;
-    faturadas: TallyBI;
-    propostas: TallyBI;
-    ranking: { nome: string; unidades: number; vgv: number }[];
-    serieMensal: { canceladas: TallyBI; faturadas: TallyBI; mes: string; propostas: TallyBI }[];
-  };
-  empreendimentos: EmpreendimentoDaTela[];
-  recorte?: null | string[];
-  resumo?: {
-    perdas: { canceladas: number; distratos: number };
-    total: { units: number; vgv: number };
-    vendido: { units: number; vgv: number };
-    vendidoPct: number;
-  };
-  unidades?: Unidade[];
-};
-
-/** O funil de CADASTRO, da mesma rota que a ficha do produto usa. */
-type ProcessoDeCad = {
-  cadsCorrecao: number;
-  cadsEmAndamento: number;
-  corretores: number;
-  credenciados: number;
-  imobiliariasHabilitadas: number;
-};
-
-// ── AS CINCO ETAPAS DO FLUXO ────────────────────────────────────────────────
-//
-// A ordem é a do processo, e cada uma sabe a cor da sua fase. `disponivel` não entra: estoque não é
-// etapa de venda — ele é o que a Mesa oferece, e aparece no mapa.
-const FLUXO: ReadonlyArray<{ cor: string; etapa: Etapa; icone: LucideIcon; rotulo: string }> = [
-  { cor: "#a07c3b", etapa: "reservado", icone: Bookmark, rotulo: "Reserva" },
-  { cor: "#2f5d9e", etapa: "proposta", icone: FileText, rotulo: "Proposta" },
-  { cor: "#6b5ea8", etapa: "contrato", icone: FileSignature, rotulo: "Contrato" },
-  { cor: "#2f7d59", etapa: "assinatura", icone: Signature, rotulo: "Assinatura" },
-  { cor: "#121722", etapa: "faturado", icone: Receipt, rotulo: "Faturamento" },
-];
-
-const COR_DO_BALDE: Record<Balde, string> = {
+const COR_DA_SITUACAO: Record<string, string> = {
   bloqueada: "#e3a49c",
   disponivel: "var(--inc-soft)",
-  negociacao: "#9fc0ea",
-  reservado: "#e8c98a",
-  vendido: "#86c3a4",
+  reservada: "#e8c98a",
+  vendida: "#86c3a4",
+};
+
+const ROTULO_DA_SITUACAO: Record<string, string> = {
+  disponivel: "Disponível",
+  reservada: "Reservada",
+  vendida: "Vendida",
+  bloqueada: "Bloqueada",
 };
 
 const dinheiro = (v: number) =>
@@ -110,39 +79,44 @@ const dinheiro = (v: number) =>
 
 const inteiro = (v: number) => v.toLocaleString("pt-BR");
 
-/** "Q07" de "Q07 L12" — o agrupamento do mapa quando a unidade não traz bloco. */
-function grupoDaUnidade(u: Unidade): string {
-  if (u.bloco) return u.bloco;
-  const partes = u.unidade.trim().split(/\s+/);
-  return partes.length > 1 ? partes[0]! : "Unidades";
-}
+const dia = (iso: null | string) => {
+  if (!iso) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
+};
+
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const mesCurto = (mes: string) => {
+  const [ano, m] = mes.split("-");
+  return `${MESES[Number(m) - 1] ?? m}/${String(ano).slice(2)}`;
+};
 
 export function TelaVenda() {
-  const [dados, setDados] = useState<DadosDaVenda | null>(null);
-  const [processo, setProcesso] = useState<null | ProcessoDeCad>(null);
+  const [dados, setDados] = useState<FluxoDeVenda | null>(null);
+  const [produtos, setProdutos] = useState<Produto[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<null | string>(null);
 
   const [emp, setEmp] = useState<string>("");
   const [visao, setVisao] = useState<"mesa" | "panorama">("mesa");
-  const [etapa, setEtapa] = useState<Etapa>("reservado");
-  const [escolhida, setEscolhida] = useState<null | Unidade>(null);
-  const [mapaAberto, setMapaAberto] = useState<null | EmpreendimentoDaTela>(null);
+  const [etapa, setEtapa] = useState<EtapaDoFluxo>("reservado");
+  const [escolhida, setEscolhida] = useState<null | FluxoDeVenda["lista"][number]>(null);
+  const [mapaAberto, setMapaAberto] = useState<null | Produto>(null);
 
   const carregar = useCallback(async (alvo: string) => {
     setCarregando(true);
     setErro(null);
-    const sufixo = alvo ? `?emp=${encodeURIComponent(alvo)}` : "";
     try {
-      const r = await fetch(`/api/incorporador/vendas${sufixo}`, { cache: "no-store" });
-      const j = (await r.json().catch(() => null)) as null | { data?: DadosDaVenda; error?: string };
+      const sufixo = alvo ? `?emp=${encodeURIComponent(alvo)}` : "";
+      const r = await fetch(`/api/incorporador/venda${sufixo}`, { cache: "no-store" });
+      const j = (await r.json().catch(() => null)) as null | { data?: FluxoDeVenda; error?: string };
       if (!r.ok || !j?.data) {
-        setErro(j?.error ?? "Não foi possível carregar as vendas.");
+        setErro(j?.error ?? "Não foi possível carregar o fluxo de venda.");
         return;
       }
       setDados(j.data);
     } catch {
-      setErro("Não foi possível carregar as vendas.");
+      setErro("Não foi possível carregar o fluxo de venda.");
     } finally {
       setCarregando(false);
     }
@@ -152,72 +126,38 @@ export function TelaVenda() {
     void carregar(emp);
   }, [carregar, emp]);
 
-  // O funil de CAD é de outra rota (Apolo), e só faz sentido com um produto escolhido: sem `emp`
-  // ela responderia pelo escopo inteiro, e o número não casaria com o recorte das unidades.
+  // A lista de produtos serve a duas coisas: o filtro e o botão do masterplan.
   useEffect(() => {
-    if (!emp) {
-      setProcesso(null);
-      return;
-    }
     let vivo = true;
     void (async () => {
       try {
-        const r = await fetch(`/api/incorporador/produto/resumo?emp=${encodeURIComponent(emp)}`, {
-          cache: "no-store",
-        });
+        const r = await fetch("/api/incorporador/produtos", { cache: "no-store" });
         if (!r.ok) return;
-        const j = (await r.json()) as { data?: { processo?: ProcessoDeCad } };
-        if (vivo && j.data?.processo) setProcesso(j.data.processo);
+        const j = (await r.json()) as { data?: Produto[] };
+        if (vivo) setProdutos(j.data ?? []);
       } catch {
-        // O funil de cadastro é complemento: sem ele a tela continua inteira.
+        // Sem a lista, a tela mostra tudo e não oferece filtro. Ela não depende disso para viver.
       }
     })();
     return () => {
       vivo = false;
     };
-  }, [emp]);
+  }, []);
 
-  const unidades = useMemo(() => dados?.unidades ?? [], [dados]);
+  const daEtapa = useMemo(
+    () => (dados?.lista ?? []).filter((l) => l.etapa === etapa),
+    [dados, etapa],
+  );
 
-  /** Quantidade e VGV por etapa do fluxo — a faixa inteira sai daqui. */
-  const porEtapa = useMemo(() => {
-    const m = new Map<Etapa, { valor: number; unidades: Unidade[] }>();
-    for (const u of unidades) {
-      const atual = m.get(u.etapa) ?? { unidades: [], valor: 0 };
-      atual.unidades.push(u);
-      atual.valor += u.valor || 0;
-      m.set(u.etapa, atual);
-    }
-    return m;
-  }, [unidades]);
+  const mapasVisiveis = useMemo(() => {
+    const comMapa = produtos.filter((p) => p.masterplanInterno ?? p.masterplanUrl);
+    return emp ? comMapa.filter((p) => p.id === emp) : comMapa;
+  }, [emp, produtos]);
 
-  const daEtapa = porEtapa.get(etapa)?.unidades ?? [];
-
-  // O mapa: quadras (ou blocos) com as unidades pintadas pela situação.
-  const quadras = useMemo(() => {
-    const m = new Map<string, Unidade[]>();
-    for (const u of unidades) {
-      const g = grupoDaUnidade(u);
-      const lista = m.get(g);
-      if (lista) lista.push(u);
-      else m.set(g, [u]);
-    }
-    return [...m.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0], "pt-BR", { numeric: true }))
-      .slice(0, 40);
-  }, [unidades]);
-
-  const mapasDoRecorte = useMemo(() => {
-    const lista = (dados?.empreendimentos ?? []).filter((e) => e.masterplan);
-    if (!emp) return lista;
-    const recorte = new Set(dados?.recorte ?? []);
-    return lista.filter((e) => recorte.size === 0 || recorte.has(e.id));
-  }, [dados, emp]);
-
-  if (mapaAberto?.masterplan) {
+  if (mapaAberto?.masterplanInterno) {
     return (
       <TelaMasterplan
-        code={mapaAberto.masterplan}
+        code={mapaAberto.masterplanInterno}
         nome={mapaAberto.nome}
         onVoltar={() => setMapaAberto(null)}
       />
@@ -249,31 +189,33 @@ export function TelaVenda() {
             onClick={() => setVisao("panorama")}
             rotulo="Panorama"
           />
-          <select
-            aria-label="Empreendimento"
-            onChange={(e) => {
-              setEmp(e.target.value);
-              setEscolhida(null);
-            }}
-            style={{
-              background: T.card,
-              border: `1px solid ${T.border}`,
-              borderRadius: 999,
-              color: T.text,
-              cursor: "pointer",
-              fontSize: 13,
-              fontWeight: 600,
-              padding: "7px 12px",
-            }}
-            value={emp}
-          >
-            <option value="">Todos os empreendimentos</option>
-            {(dados?.empreendimentos ?? []).map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.nome}
-              </option>
-            ))}
-          </select>
+          {produtos.length > 1 ? (
+            <select
+              aria-label="Empreendimento"
+              onChange={(e) => {
+                setEmp(e.target.value);
+                setEscolhida(null);
+              }}
+              style={{
+                background: T.card,
+                border: `1px solid ${T.border}`,
+                borderRadius: 999,
+                color: T.text,
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+                padding: "7px 12px",
+              }}
+              value={emp}
+            >
+              <option value="">Todos os empreendimentos</option>
+              {produtos.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
+          ) : null}
         </div>
       </header>
 
@@ -303,7 +245,7 @@ export function TelaVenda() {
         }}
       >
         {FLUXO.map((passo) => {
-          const dado = porEtapa.get(passo.etapa);
+          const dado = dados?.fluxo.find((f) => f.etapa === passo.etapa);
           const ativo = etapa === passo.etapa;
           const Icone = passo.icone;
           return (
@@ -353,7 +295,7 @@ export function TelaVenda() {
                   marginTop: 7,
                 }}
               >
-                {carregando ? "—" : inteiro(dado?.unidades.length ?? 0)}
+                {carregando ? "—" : inteiro(dado?.propostas ?? 0)}
               </div>
               <div
                 style={{
@@ -363,7 +305,7 @@ export function TelaVenda() {
                   marginTop: 3,
                 }}
               >
-                {carregando ? "carregando…" : dinheiro(dado?.valor ?? 0)}
+                {carregando ? "carregando…" : dinheiro(dado?.vgv ?? 0)}
               </div>
             </button>
           );
@@ -375,19 +317,14 @@ export function TelaVenda() {
           aoAbrirMapa={setMapaAberto}
           aoEscolher={setEscolhida}
           carregando={carregando}
+          dados={dados}
           escolhida={escolhida}
           etapa={etapa}
-          mapas={mapasDoRecorte}
-          quadras={quadras}
-          unidades={daEtapa}
+          lista={daEtapa}
+          mapas={mapasVisiveis}
         />
       ) : (
-        <Panorama
-          dados={dados}
-          porEtapa={porEtapa}
-          processo={processo}
-          totalDeUnidades={unidades.length}
-        />
+        <Panorama dados={dados} />
       )}
     </div>
   );
@@ -399,22 +336,26 @@ function Mesa({
   aoAbrirMapa,
   aoEscolher,
   carregando,
+  dados,
   escolhida,
   etapa,
+  lista,
   mapas,
-  quadras,
-  unidades,
 }: {
-  aoAbrirMapa: (e: EmpreendimentoDaTela) => void;
-  aoEscolher: (u: null | Unidade) => void;
+  aoAbrirMapa: (p: Produto) => void;
+  aoEscolher: (l: null | FluxoDeVenda["lista"][number]) => void;
   carregando: boolean;
-  escolhida: null | Unidade;
-  etapa: Etapa;
-  mapas: EmpreendimentoDaTela[];
-  quadras: [string, Unidade[]][];
-  unidades: Unidade[];
+  dados: FluxoDeVenda | null;
+  escolhida: null | FluxoDeVenda["lista"][number];
+  etapa: EtapaDoFluxo;
+  lista: FluxoDeVenda["lista"];
+  mapas: Produto[];
 }) {
-  const rotulo = FLUXO.find((f) => f.etapa === etapa)?.rotulo ?? "Unidades";
+  const rotulo = FLUXO.find((f) => f.etapa === etapa)?.rotulo ?? "Propostas";
+  const estoque = dados?.totais.estoque ?? {};
+  // ⚠️ SÓ AS PRIMEIRAS QUADRAS. São 5.528 unidades no escopo inteiro: desenhar todas trava o
+  // navegador e ninguém lê. Com um empreendimento escolhido, o mapa dele cabe inteiro.
+  const grupos = (dados?.mapa ?? []).slice(0, 30);
 
   return (
     <div
@@ -427,25 +368,16 @@ function Mesa({
     >
       <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
         <Cartao
-          titulo="Mapa do estoque"
           direita={
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-              {(
-                [
-                  ["disponivel", "Disponível"],
-                  ["reservado", "Reservado"],
-                  ["negociacao", "Em negociação"],
-                  ["vendido", "Vendido"],
-                  ["bloqueada", "Bloqueado"],
-                ] as [Balde, string][]
-              ).map(([b, nome]) => (
+              {Object.entries(ROTULO_DA_SITUACAO).map(([chave, nome]) => (
                 <span
-                  key={b}
+                  key={chave}
                   style={{ color: T.muted, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}
                 >
                   <i
                     style={{
-                      background: COR_DO_BALDE[b],
+                      background: COR_DA_SITUACAO[chave],
                       borderRadius: 3,
                       display: "inline-block",
                       height: 10,
@@ -453,37 +385,32 @@ function Mesa({
                       width: 10,
                     }}
                   />
-                  {nome}
+                  {nome} {inteiro(estoque[chave] ?? 0)}
                 </span>
               ))}
             </div>
           }
+          titulo="Mapa do estoque"
         >
           {mapas.length > 0 ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-              {mapas.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => aoAbrirMapa(m)}
-                  style={{
-                    alignItems: "center",
-                    background: T.soft,
-                    border: `1px solid ${T.border}`,
-                    borderRadius: 999,
-                    color: T.text,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    font: "inherit",
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    gap: 6,
-                    padding: "6px 12px",
-                  }}
-                  type="button"
-                >
-                  <MapaIcone aria-hidden="true" size={13} /> Masterplan · {m.nome}
-                </button>
-              ))}
+              {mapas.map((m) =>
+                m.masterplanInterno ? (
+                  <button key={m.id} onClick={() => aoAbrirMapa(m)} style={botaoChip} type="button">
+                    <MapaIcone aria-hidden="true" size={13} /> Masterplan · {m.nome}
+                  </button>
+                ) : (
+                  <a
+                    href={m.masterplanUrl ?? "#"}
+                    key={m.id}
+                    rel="noreferrer"
+                    style={{ ...botaoChip, textDecoration: "none" }}
+                    target="_blank"
+                  >
+                    <MapaIcone aria-hidden="true" size={13} /> Masterplan · {m.nome}
+                  </a>
+                ),
+              )}
             </div>
           ) : null}
 
@@ -494,8 +421,8 @@ function Mesa({
               gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
             }}
           >
-            {quadras.map(([nome, lista]) => (
-              <div key={nome}>
+            {grupos.map((g) => (
+              <div key={g.grupo}>
                 <div
                   style={{
                     color: T.muted,
@@ -506,46 +433,46 @@ function Mesa({
                     textTransform: "uppercase",
                   }}
                 >
-                  {nome}
+                  {g.grupo}
                 </div>
                 <div style={{ display: "grid", gap: 3, gridTemplateColumns: "repeat(6, 1fr)" }}>
-                  {lista.slice(0, 60).map((u) => (
-                    <button
-                      key={`${nome}-${u.unidade}`}
-                      onClick={() => aoEscolher(u)}
+                  {g.unidades.slice(0, 60).map((u) => (
+                    <span
+                      key={u.codigo}
                       style={{
                         aspectRatio: "1 / 1.25",
-                        background: COR_DO_BALDE[u.balde],
-                        border: 0,
+                        background: COR_DA_SITUACAO[u.situacao] ?? T.soft,
                         borderRadius: 3,
-                        color: u.balde === "disponivel" ? T.muted : "rgb(0 0 0 / .55)",
-                        cursor: "pointer",
+                        color: u.situacao === "disponivel" ? T.muted : "rgb(0 0 0 / .55)",
+                        display: "grid",
                         fontSize: 8.5,
                         fontWeight: 600,
-                        outline:
-                          escolhida?.unidade === u.unidade ? `2.5px solid ${T.text}` : undefined,
-                        outlineOffset: 1,
-                        padding: 0,
+                        placeItems: "center",
                       }}
-                      title={`${u.unidade} · ${u.situacao}`}
-                      type="button"
+                      title={`${u.codigo} · ${ROTULO_DA_SITUACAO[u.situacao] ?? u.situacao}`}
                     >
                       {u.lote ?? ""}
-                    </button>
+                    </span>
                   ))}
                 </div>
               </div>
             ))}
           </div>
 
-          {!carregando && quadras.length === 0 ? (
-            <p style={{ color: T.muted, fontSize: 13, margin: 0, padding: "20px 0", textAlign: "center" }}>
+          {!carregando && grupos.length === 0 ? (
+            <p style={{ color: T.muted, fontSize: 13, margin: 0, textAlign: "center" }}>
               Nenhuma unidade no recorte.
+            </p>
+          ) : null}
+          {(dados?.mapa.length ?? 0) > 30 ? (
+            <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
+              Mostrando 30 de {inteiro(dados?.mapa.length ?? 0)} quadras. Escolha um empreendimento
+              no alto para ver o mapa inteiro dele.
             </p>
           ) : null}
         </Cartao>
 
-        <Cartao titulo={`${rotulo} · ${inteiro(unidades.length)}`}>
+        <Cartao titulo={`${rotulo} · ${inteiro(lista.length)}`}>
           <div style={{ margin: "-16px", overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
               <thead>
@@ -570,66 +497,71 @@ function Mesa({
                 </tr>
               </thead>
               <tbody>
-                {unidades.slice(0, 120).map((u) => (
+                {lista.slice(0, 150).map((l) => (
                   <tr
-                    key={u.unidade}
-                    onClick={() => aoEscolher(u)}
+                    key={l.id}
+                    onClick={() => aoEscolher(l)}
                     style={{
-                      background: escolhida?.unidade === u.unidade ? T.soft : undefined,
+                      background: escolhida?.id === l.id ? T.soft : undefined,
                       cursor: "pointer",
                     }}
                   >
                     <td style={celula}>
-                      <b>{u.unidade}</b>
+                      <b>{l.unidade ?? "—"}</b>
+                      <div style={{ color: T.muted, fontSize: 11.5 }}>{l.produto ?? ""}</div>
                     </td>
-                    <td style={celula}>{u.comprador ?? "—"}</td>
-                    <td style={celula}>{u.imobiliaria ?? "—"}</td>
-                    <td style={{ ...celula, color: T.muted }}>{u.desde ?? "—"}</td>
-                    <td style={{ ...celula, fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
-                      {u.valor ? dinheiro(u.valor) : "—"}
+                    <td style={celula}>{l.cliente ?? "—"}</td>
+                    <td style={celula}>{l.imobiliaria ?? "—"}</td>
+                    <td style={{ ...celula, color: T.muted }}>{dia(l.desde)}</td>
+                    <td
+                      style={{ ...celula, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
+                    >
+                      {l.valor ? dinheiro(l.valor) : "—"}
                     </td>
                   </tr>
                 ))}
-                {unidades.length === 0 ? (
+                {lista.length === 0 ? (
                   <tr>
                     <td colSpan={5} style={{ ...celula, color: T.muted, textAlign: "center" }}>
-                      {carregando ? "Carregando…" : "Nenhuma unidade nesta etapa."}
+                      {carregando ? "Carregando…" : "Nenhuma proposta nesta etapa."}
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
           </div>
-          {unidades.length > 120 ? (
+          {lista.length > 150 ? (
             <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-              Mostrando as 120 primeiras de {inteiro(unidades.length)}.
+              Mostrando as 150 mais recentes de {inteiro(lista.length)}.
             </p>
           ) : null}
         </Cartao>
       </div>
 
       <div style={{ display: "grid", gap: 14 }}>
-        <Cartao titulo={escolhida ? escolhida.unidade : "Nenhuma unidade escolhida"}>
+        <Cartao titulo={escolhida?.unidade ?? "Nenhuma proposta escolhida"}>
           {escolhida ? (
             <>
-              <Linha rotulo="Situação" valor={escolhida.situacao} />
+              <Linha rotulo="Produto" valor={escolhida.produto ?? "—"} />
+              <Linha rotulo="Etapa" valor={rotulo} />
+              <Linha rotulo="Desde" valor={dia(escolhida.desde)} />
               <Linha rotulo="Valor" valor={escolhida.valor ? dinheiro(escolhida.valor) : "—"} />
-              <Linha rotulo="Cliente" valor={escolhida.comprador ?? "—"} />
+              <Linha rotulo="Cliente" valor={escolhida.cliente ?? "—"} />
               <Linha rotulo="Imobiliária" valor={escolhida.imobiliaria ?? "—"} />
-              <Linha rotulo="Desde" valor={escolhida.desde ?? "—"} />
+              <Linha rotulo="Plano" valor={escolhida.plano ?? "—"} />
             </>
           ) : (
             <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
-              Clique num lote do mapa ou numa linha da lista para ver a unidade aqui.
+              Clique numa linha da lista para ver a proposta aqui.
             </p>
           )}
           <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-            Reservar, gerar proposta e cancelar com motivo entram quando a tabela de reservas do
-            Panteon subir. Hoje esta tela lê o C2X e não grava nada.
+            Reservar, gerar proposta e cancelar com motivo entram quando a tabela de reservas subir.
+            Hoje esta tela lê o fluxo já importado e não grava.
           </p>
         </Cartao>
 
-        <Simulador chave={escolhida?.unidade ?? ""} valor={escolhida?.valor ?? 0} />
+        <Simulador chave={escolhida?.id ?? ""} valor={escolhida?.valor ?? 0} />
       </div>
     </div>
   );
@@ -637,17 +569,17 @@ function Mesa({
 
 // ── O SIMULADOR ─────────────────────────────────────────────────────────────
 //
-// Calcula de verdade, aqui no navegador: é conta, não integração. O que ele ainda não faz é GRAVAR
-// a proposta — e é isso que a frase no rodapé diz, para ninguém achar que emitiu.
+// Calcula aqui no navegador: é conta, não integração. O que ele ainda não faz é GRAVAR a proposta —
+// e é isso que a frase no rodapé diz, para ninguém achar que emitiu.
 function Simulador({ chave, valor }: { chave: string; valor: number }) {
   const [tabela, setTabela] = useState(0);
   const [desconto, setDesconto] = useState(0);
   const [entrada, setEntrada] = useState(0);
   const [parcelas, setParcelas] = useState(180);
 
-  // ⚠️ A UNIDADE ESCOLHIDA RECOMEÇA A SIMULAÇÃO. Sem depender da `chave`, quem digitasse um
-  // desconto e depois clicasse em outro lote veria o valor da unidade nova com o desconto da
-  // anterior — uma proposta errada que parece certa. Trocou de unidade, o simulador zera.
+  // ⚠️ A PROPOSTA ESCOLHIDA RECOMEÇA A SIMULAÇÃO. Sem depender da `chave`, quem digitasse um
+  // desconto e clicasse em outra linha veria o valor novo com o desconto antigo — uma conta errada
+  // com cara de certa.
   useEffect(() => {
     setTabela(valor);
     setEntrada(Math.round(valor * 0.1));
@@ -658,12 +590,7 @@ function Simulador({ chave, valor }: { chave: string; valor: number }) {
   const financiado = Math.max(0, final - entrada);
   const mensal = parcelas > 0 ? financiado / parcelas : 0;
 
-  const campo = (
-    rotulo: string,
-    v: number,
-    aoMudar: (n: number) => void,
-    sufixo?: string,
-  ) => (
+  const campo = (rotulo: string, v: number, aoMudar: (n: number) => void, sufixo?: string) => (
     <label style={{ display: "grid", gap: 3 }}>
       <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>{rotulo}</span>
       <span style={{ alignItems: "center", display: "flex", gap: 6 }}>
@@ -699,14 +626,7 @@ function Simulador({ chave, valor }: { chave: string; valor: number }) {
           {campo("Parcelas", parcelas, setParcelas, "x")}
         </div>
 
-        <div
-          style={{
-            background: "var(--inc-soft)",
-            borderRadius: 9,
-            marginTop: 2,
-            padding: "10px 12px",
-          }}
-        >
+        <div style={{ background: T.soft, borderRadius: 9, padding: "10px 12px" }}>
           <Linha rotulo="Valor final" valor={dinheiro(final)} />
           <Linha rotulo="A financiar" valor={dinheiro(financiado)} />
           <Linha rotulo="Parcela mensal" valor={dinheiro(mensal)} />
@@ -714,8 +634,7 @@ function Simulador({ chave, valor }: { chave: string; valor: number }) {
 
         <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
           Conta simples, sem correção nem juros: é a ordem de grandeza para responder ao cliente na
-          hora. O cálculo do plano comercial (IPCA, juros, tabela do empreendimento) entra junto com
-          a emissão da proposta.
+          hora. O plano comercial do empreendimento entra junto com a emissão da proposta.
         </p>
       </div>
     </Cartao>
@@ -724,47 +643,26 @@ function Simulador({ chave, valor }: { chave: string; valor: number }) {
 
 // ── O PANORAMA ──────────────────────────────────────────────────────────────
 
-function Panorama({
-  dados,
-  porEtapa,
-  processo,
-  totalDeUnidades,
-}: {
-  dados: DadosDaVenda | null;
-  porEtapa: Map<Etapa, { unidades: Unidade[]; valor: number }>;
-  processo: null | ProcessoDeCad;
-  totalDeUnidades: number;
-}) {
-  const bi = dados?.bi ?? null;
-  const resumo = dados?.resumo;
+function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
+  if (!dados) {
+    return (
+      <Cartao titulo="Panorama">
+        <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Carregando…</p>
+      </Cartao>
+    );
+  }
 
-  const contar = (e: Etapa) => porEtapa.get(e)?.unidades.length ?? 0;
-
-  // O funil: cadastro (Apolo) e venda (C2X) na mesma escada, cada trecho dizendo de onde vem.
-  const passos: { conversao: null | string; fonte: string; n: number; rotulo: string }[] = [
-    ...(processo
-      ? [
-          {
-            conversao: null,
-            fonte: "cadastro",
-            n: processo.cadsEmAndamento + processo.credenciados,
-            rotulo: "CADs no produto",
-          },
-          {
-            conversao: `${processo.cadsCorrecao} em correção`,
-            fonte: "cadastro",
-            n: processo.credenciados,
-            rotulo: "Credenciados",
-          },
-        ]
-      : []),
-    { conversao: null, fonte: "venda", n: contar("reservado"), rotulo: "Reservas" },
-    { conversao: null, fonte: "venda", n: contar("proposta"), rotulo: "Propostas" },
-    { conversao: null, fonte: "venda", n: contar("contrato"), rotulo: "Contratos" },
-    { conversao: null, fonte: "venda", n: contar("assinatura"), rotulo: "Em assinatura" },
-    { conversao: null, fonte: "venda", n: contar("faturado"), rotulo: "Faturadas" },
-  ];
-  const maior = Math.max(1, ...passos.map((p) => p.n));
+  const faturadas = dados.fluxo.find((f) => f.etapa === "faturado")?.propostas ?? 0;
+  const emAndamento = dados.fluxo
+    .filter((f) => f.etapa !== "faturado")
+    .reduce((a, f) => a + f.propostas, 0);
+  const perdidas = dados.perdas.canceladas + dados.perdas.distratos;
+  const decididas = faturadas + perdidas;
+  const conversao = decididas > 0 ? (faturadas / decididas) * 100 : 0;
+  const ticket = faturadas > 0 ? dados.totais.vgvFaturado / faturadas : 0;
+  const comMotivo = dados.motivos.reduce((a, m) => a + m.n, 0);
+  const maiorSerie = Math.max(1, ...dados.serie.map((s) => s.faturadas));
+  const maiorFunil = Math.max(1, ...dados.fluxo.map((f) => f.propostas));
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -775,31 +673,31 @@ function Panorama({
           gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
         }}
       >
-        <Kpi rotulo="VGV vendido" valor={dinheiro(resumo?.vendido.vgv ?? 0)} nota={`${inteiro(resumo?.vendido.units ?? 0)} unidades`} />
-        <Kpi rotulo="Do estoque" valor={`${Math.round(resumo?.vendidoPct ?? 0)}%`} nota={`${inteiro(resumo?.total.units ?? totalDeUnidades)} unidades no total`} />
         <Kpi
-          rotulo="Ticket médio"
-          valor={dinheiro(
-            (resumo?.vendido.units ?? 0) > 0
-              ? (resumo?.vendido.vgv ?? 0) / (resumo?.vendido.units ?? 1)
-              : 0,
-          )}
-          nota="das vendas faturadas"
+          nota={`${inteiro(faturadas)} propostas`}
+          rotulo="VGV faturado"
+          valor={dinheiro(dados.totais.vgvFaturado)}
+        />
+        <Kpi nota="das propostas faturadas" rotulo="Ticket médio" valor={dinheiro(ticket)} />
+        <Kpi
+          nota={`${inteiro(dados.totais.unidades)} unidades no escopo`}
+          rotulo="Em andamento"
+          valor={inteiro(emAndamento)}
         />
         <Kpi
-          rotulo="Cancelamento"
-          valor={bi ? `${Math.round(bi.cancelamentoPct)}%` : "—"}
-          nota={bi ? `${inteiro(bi.canceladas.un)} canceladas` : "sem dado no período"}
+          nota={`${inteiro(faturadas)} de ${inteiro(decididas)} decididas`}
+          rotulo="Conversão"
+          valor={`${conversao.toFixed(0)}%`}
         />
         <Kpi
-          rotulo="Prazo médio"
-          valor={bi?.deadlineMedioDias != null ? `${bi.deadlineMedioDias} dias` : "—"}
-          nota="da proposta ao faturamento"
+          nota={`${inteiro(dados.perdas.distratos)} distratos`}
+          rotulo="Canceladas"
+          valor={inteiro(dados.perdas.canceladas)}
         />
         <Kpi
-          rotulo="Distratos"
-          valor={inteiro(resumo?.perdas.distratos ?? 0)}
-          nota={`${inteiro(resumo?.perdas.canceladas ?? 0)} vendas canceladas`}
+          nota="que saiu do caminho"
+          rotulo="VGV perdido"
+          valor={dinheiro(dados.perdas.vgvCancelado)}
         />
       </div>
 
@@ -812,42 +710,44 @@ function Panorama({
       >
         <Cartao titulo="O funil">
           <div style={{ display: "grid", gap: 9 }}>
-            {passos.map((p) => (
-              <div key={p.rotulo} style={{ display: "grid", gap: 4 }}>
-                <div style={{ display: "flex", fontSize: 12.5, justifyContent: "space-between" }}>
-                  <span style={{ color: T.sub }}>{p.rotulo}</span>
-                  <b style={{ fontVariantNumeric: "tabular-nums" }}>{inteiro(p.n)}</b>
+            {dados.fluxo.map((f) => {
+              const passo = FLUXO.find((x) => x.etapa === f.etapa);
+              return (
+                <div key={f.etapa} style={{ display: "grid", gap: 4 }}>
+                  <div style={{ display: "flex", fontSize: 12.5, justifyContent: "space-between" }}>
+                    <span style={{ color: T.sub }}>{passo?.rotulo ?? f.etapa}</span>
+                    <b style={{ fontVariantNumeric: "tabular-nums" }}>{inteiro(f.propostas)}</b>
+                  </div>
+                  <div
+                    style={{ background: T.soft, borderRadius: 5, height: 20, overflow: "hidden" }}
+                  >
+                    <i
+                      style={{
+                        background: passo?.cor ?? T.gold,
+                        display: "block",
+                        height: "100%",
+                        width: `${Math.max(2, (f.propostas / maiorFunil) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <span style={{ color: T.muted, fontSize: 11 }}>{dinheiro(f.vgv)}</span>
                 </div>
-                <div style={{ background: T.soft, borderRadius: 5, height: 20, overflow: "hidden" }}>
-                  <i
-                    style={{
-                      background: p.fonte === "cadastro" ? T.muted : T.gold,
-                      display: "block",
-                      height: "100%",
-                      width: `${Math.max(2, (p.n / maior) * 100)}%`,
-                    }}
-                  />
-                </div>
-                {p.conversao ? (
-                  <span style={{ color: T.muted, fontSize: 11 }}>{p.conversao}</span>
-                ) : null}
-              </div>
-            ))}
+              );
+            })}
           </div>
           <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-            {processo
-              ? "As duas primeiras barras são do cadastro (Apolo); as outras, das unidades no C2X."
-              : "Escolha um empreendimento no alto para ver também as CADs e os credenciados."}
+            {inteiro(dados.totais.propostas)} propostas no escopo, com o histórico inteiro desde
+            2023. {inteiro(perdidas)} saíram do caminho e por isso não aparecem nas barras.
           </p>
         </Cartao>
 
         <Cartao titulo="Quem está vendendo">
-          {bi && bi.ranking.length > 0 ? (
+          {dados.ranking.length > 0 ? (
             <div style={{ margin: "-16px", overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
                 <thead>
                   <tr>
-                    {["Imobiliária", "Unidades", "VGV"].map((c, i) => (
+                    {["Imobiliária", "Propostas", "Vendidas", "VGV"].map((c, i) => (
                       <th
                         key={c}
                         style={{
@@ -865,10 +765,11 @@ function Panorama({
                   </tr>
                 </thead>
                 <tbody>
-                  {bi.ranking.slice(0, 8).map((r) => (
-                    <tr key={r.nome}>
-                      <td style={celula}>{r.nome}</td>
-                      <td style={{ ...celula, textAlign: "right" }}>{inteiro(r.unidades)}</td>
+                  {dados.ranking.slice(0, 10).map((r) => (
+                    <tr key={r.imobiliaria}>
+                      <td style={celula}>{r.imobiliaria}</td>
+                      <td style={{ ...celula, textAlign: "right" }}>{inteiro(r.propostas)}</td>
+                      <td style={{ ...celula, textAlign: "right" }}>{inteiro(r.vendidas)}</td>
                       <td
                         style={{
                           ...celula,
@@ -884,49 +785,62 @@ function Panorama({
               </table>
             </div>
           ) : (
-            <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Sem ranking no período.</p>
+            <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Sem imobiliária no recorte.</p>
           )}
         </Cartao>
       </div>
 
       <Cartao titulo="Mês a mês">
-        {bi && bi.serieMensal.length > 0 ? (
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, minHeight: 130 }}>
-            {bi.serieMensal.slice(-12).map((m) => {
-              const teto = Math.max(1, ...bi.serieMensal.map((x) => x.faturadas.un));
-              return (
-                <div key={m.mes} style={{ display: "grid", flex: 1, gap: 5, justifyItems: "center" }}>
-                  <b style={{ fontSize: 11.5, fontVariantNumeric: "tabular-nums" }}>
-                    {m.faturadas.un}
-                  </b>
-                  <div
-                    style={{
-                      background: T.gold,
-                      borderRadius: "4px 4px 0 0",
-                      height: `${Math.max(3, (m.faturadas.un / teto) * 100)}px`,
-                      width: "100%",
-                    }}
-                  />
-                  <span style={{ color: T.muted, fontSize: 10.5 }}>{m.mes}</span>
-                </div>
-              );
-            })}
+        {dados.serie.length > 0 ? (
+          <div style={{ alignItems: "flex-end", display: "flex", gap: 8, minHeight: 140 }}>
+            {dados.serie.slice(-18).map((s) => (
+              <div key={s.mes} style={{ display: "grid", flex: 1, gap: 5, justifyItems: "center" }}>
+                <b style={{ fontSize: 11, fontVariantNumeric: "tabular-nums" }}>{s.faturadas}</b>
+                <div
+                  style={{
+                    background: T.gold,
+                    borderRadius: "4px 4px 0 0",
+                    height: `${Math.max(3, (s.faturadas / maiorSerie) * 100)}px`,
+                    width: "100%",
+                  }}
+                  title={`${s.faturadas} faturadas · ${s.canceladas} canceladas`}
+                />
+                <div
+                  style={{
+                    background: T.danger,
+                    borderRadius: "0 0 4px 4px",
+                    height: `${Math.max(2, (s.canceladas / maiorSerie) * 40)}px`,
+                    opacity: 0.55,
+                    width: "100%",
+                  }}
+                />
+                <span style={{ color: T.muted, fontSize: 10 }}>{mesCurto(s.mes)}</span>
+              </div>
+            ))}
           </div>
         ) : (
-          <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Sem série no período.</p>
+          <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Sem série no recorte.</p>
         )}
+        <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
+          Dourado é faturamento; a barra vermelha embaixo é o que caiu no mesmo mês.
+        </p>
       </Cartao>
 
       <Cartao titulo="Cancelamentos por motivo">
-        <p style={{ color: T.sub, fontSize: 13, margin: 0 }}>
-          Hoje sabemos <b>quantas</b> foram canceladas ({inteiro(bi?.canceladas.un ?? 0)} propostas e{" "}
-          {inteiro(resumo?.perdas.distratos ?? 0)} distratos), mas não <b>por quê</b>: o C2X não
-          guarda o motivo. Quando a reserva e a proposta passarem a nascer aqui, o motivo vira campo
-          obrigatório do cancelamento e este quadro deixa de ser um número solto.
-        </p>
-        <p style={{ color: T.muted, fontSize: 11.5, margin: "10px 0 0" }}>
-          Preciso da sua lista de motivos: ela vira o que o coordenador escolhe, e mudar depois
-          significa reclassificar o que já foi cancelado.
+        {dados.motivos.length > 0 ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            {dados.motivos.slice(0, 10).map((m) => (
+              <div key={m.motivo} style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: T.sub, fontSize: 12.5 }}>{m.motivo}</span>
+                <b style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>{m.n}</b>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <p style={{ color: T.sub, fontSize: 13, margin: dados.motivos.length > 0 ? "12px 0 0" : 0 }}>
+          De {inteiro(perdidas)} propostas que caíram, {inteiro(comMotivo)} têm motivo registrado. O
+          legado tinha o campo e ele quase nunca foi preenchido; quando o cancelamento passar a
+          acontecer aqui, o motivo vira obrigatório e este quadro deixa de ser um número solto.
         </p>
       </Cartao>
     </div>
@@ -938,6 +852,21 @@ function Panorama({
 const celula = {
   borderTop: `1px solid ${T.border}`,
   padding: "9px 12px",
+} as const;
+
+const botaoChip = {
+  alignItems: "center",
+  background: T.soft,
+  border: `1px solid ${T.border}`,
+  borderRadius: 999,
+  color: T.text,
+  cursor: "pointer",
+  display: "inline-flex",
+  font: "inherit",
+  fontSize: 12.5,
+  fontWeight: 600,
+  gap: 6,
+  padding: "6px 12px",
 } as const;
 
 function Cartao({
@@ -999,12 +928,7 @@ function Kpi({ nota, rotulo, valor }: { nota: string; rotulo: string; valor: str
         {rotulo}
       </span>
       <div
-        style={{
-          fontSize: 23,
-          fontVariantNumeric: "tabular-nums",
-          fontWeight: 650,
-          marginTop: 6,
-        }}
+        style={{ fontSize: 23, fontVariantNumeric: "tabular-nums", fontWeight: 650, marginTop: 6 }}
       >
         {valor}
       </div>
