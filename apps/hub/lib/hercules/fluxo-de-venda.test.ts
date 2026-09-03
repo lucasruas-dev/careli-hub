@@ -250,6 +250,58 @@ describe("agregarFluxo", () => {
     ).toBe(0);
   });
 
+  it("⚠️ o juro sai com a unidade CERTA: 0,72 é ao mês, 8 é ao ano", () => {
+    // O legado grava `contractual_interest` sem dizer a unidade — 8.0000 ao ano na Lavra do Ouro e
+    // 0.7207 ao mês em outro produto, a mesma taxa econômica de dois jeitos. Chutar "a.a." errava
+    // em um terço dos contratos com juros, e foi o Lucas quem viu: "acho que esse juros é ao mês
+    // não?".
+    const mensal = agregarFluxo({
+      propostas: [
+        proposta({
+          contrato_parcelas: 156,
+          etapa: "faturado",
+          plano_correcao: "IPCA ANUAL",
+          plano_juros: 0.7207,
+        }),
+      ],
+      unidades: [],
+    });
+    const anual = agregarFluxo({
+      propostas: [
+        proposta({ contrato_parcelas: 60, etapa: "faturado", plano_correcao: "IPCA ANUAL", plano_juros: 8 }),
+      ],
+      unidades: [],
+    });
+
+    expect(mensal.lista[0]?.plano).toBe("156x · IPCA anual · juros 0,72% a.m.");
+    expect(anual.lista[0]?.plano).toBe("60x · IPCA anual · juros 8% a.a.");
+  });
+
+  it("o parcelamento do CONTRATO vence o do molde", () => {
+    // `commercial_plans.parcels` descreve o produto que a mesa vende; um molde serve centenas de
+    // contratos. Foi ele que fez o extrato do TIAGO estampar 144x num contrato de 62 parcelas.
+    const r = agregarFluxo({
+      propostas: [proposta({ contrato_parcelas: 62, etapa: "faturado", plano_parcelas: 144 })],
+      unidades: [],
+    });
+    expect(r.lista[0]?.plano).toBe("62x");
+
+    // Sem o do contrato, o do molde entra — é melhor que nada.
+    const semContrato = agregarFluxo({
+      propostas: [proposta({ contrato_parcelas: null, etapa: "faturado", plano_parcelas: 144 })],
+      unidades: [],
+    });
+    expect(semContrato.lista[0]?.plano).toBe("144x");
+  });
+
+  it("sem nenhum dos três, o nome do plano é melhor que um travessão", () => {
+    const r = agregarFluxo({
+      propostas: [proposta({ etapa: "faturado", plano_nome: "PLANO NORMAL" })],
+      unidades: [],
+    });
+    expect(r.lista[0]?.plano).toBe("PLANO NORMAL");
+  });
+
   it("sem quadra, o grupo sai do prefixo do código", () => {
     const r = agregarFluxo({
       propostas: [],

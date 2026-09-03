@@ -61,6 +61,17 @@ type LinhaC2x = RowDataPacket & {
  */
 const CORTE_ANUAL = 2;
 
+/**
+ * A taxa crua do C2X é ao ANO ou ao MÊS?
+ *
+ * Exportada porque a régua deixou de servir só ao cadastro de planos: a ficha da unidade no
+ * Hércules escreve o fluxo do contrato ("156x · IPCA anual · juros 0,72% a.m.") e precisa da mesma
+ * leitura. Duplicar um corte que decide unidade de JUROS é o tipo de cópia que envelhece torto.
+ */
+export function periodicidadeDaTaxa(taxa: null | number | undefined): "anual" | "mensal" {
+  return typeof taxa === "number" && taxa >= CORTE_ANUAL ? "anual" : "mensal";
+}
+
 const INDICE_POR_NOME: Record<string, IndiceCorrecao> = {
   "IGPM-ANUAL": "IGPM_ANUAL",
   "INCC-M MENSAL": "INCC_M_MENSAL",

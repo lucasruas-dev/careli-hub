@@ -9,6 +9,8 @@
 // cinco passos; os dois terminais vão para o quadro de perdas. Misturá-los faria "cancelado"
 // parecer uma fase da venda, e o coordenador contaria como pipeline o que já morreu.
 
+import { periodicidadeDaTaxa } from "@/lib/apolo/planos-comerciais-c2x";
+
 export type EtapaDoFluxo = "assinatura" | "contrato" | "faturado" | "proposta" | "reservado";
 export type EtapaDaProposta = EtapaDoFluxo | "cancelado" | "distrato";
 
@@ -248,8 +250,17 @@ function fluxoDoPlano(p: PropostaDaCarga): null | string {
     partes.push([sigla, ...resto.map((w) => w.toLocaleLowerCase("pt-BR"))].join(" "));
   }
 
+  // ⚠️ A TAXA DO LEGADO NÃO DIZ A UNIDADE, e chutar "a.a." é errar em um terço dos contratos.
+  // Lucas, olhando "juros 0,72% a.a.": *"acho que esse juros é ao mês não?"* — e é. O
+  // `contractual_interest` guarda 8.0000 na Lavra do Ouro (ao ano) e 0.7207 em outro produto (ao
+  // mês), a mesma taxa econômica gravada de dois jeitos. Os únicos valores que existem no banco
+  // são 0,5 · 0,6434 · 0,7207 · 0,8 · 6 · 8: há um vão enorme entre 0,8 e 6, e nenhum juro
+  // imobiliário real cai nele. A régua do corte é a do cadastro de planos, importada e não copiada.
   const juros = numero(p.plano_juros);
-  if (juros > 0) partes.push(`juros ${porcentagem(juros)} a.a.`);
+  if (juros > 0) {
+    const unidade = periodicidadeDaTaxa(juros) === "anual" ? "a.a." : "a.m.";
+    partes.push(`juros ${porcentagem(juros)} ${unidade}`);
+  }
 
   // Sem nenhum dos três, o nome do plano é melhor do que um travessão — mas só aí.
   return partes.length > 0 ? partes.join(" · ") : (p.plano_nome?.trim() || null);
