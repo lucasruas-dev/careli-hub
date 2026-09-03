@@ -25,7 +25,6 @@ import {
   taxaMensal,
 } from "@/lib/apolo/planos-comerciais";
 import { valorDigitado, valorParaOCampo } from "@/lib/apolo/boletos/valor-digitado";
-import { entradaParaAParcela, montarProposta } from "@/lib/hercules/simulacao";
 import type { EventoDaUnidade } from "@/lib/hercules/historico-da-unidade";
 
 import { toTitleCase } from "@/lib/format/name-case";
@@ -1338,28 +1337,22 @@ function Simulador({
   planos: PlanoDoSimulador[];
   valor: number;
 }) {
-  const [vista, setVista] = useState<"oficial" | "personalizada">("oficial");
   const [tabela, setTabela] = useState(0);
   const [desconto, setDesconto] = useState(0);
   const [entrada, setEntrada] = useState(0);
   const [parcelas, setParcelas] = useState(180);
   const [planoEscolhido, setPlanoEscolhido] = useState<null | string>(null);
 
-  // ── A vista personalizada ────────────────────────────────────────────────
-  const [modo, setModo] = useState<"montar" | "parcela">("montar");
-  const [alvo, setAlvo] = useState(0);
-  const [baloesQtd, setBaloesQtd] = useState(0);
-  const [baloesValor, setBaloesValor] = useState(0);
-
   const plano = useMemo(
     () => planos.find((p) => p.nome === planoEscolhido) ?? planos[0] ?? null,
     [planoEscolhido, planos],
   );
 
-  const comoPlano = useMemo(
+  /** A taxa mensal do plano — é ela que governa a conta. */
+  const i = useMemo(
     () =>
       plano
-        ? {
+        ? taxaMensal({
             entradaPercentual: plano.entradaPercentual,
             indiceCorrecao: plano.indiceCorrecao as never,
             jurosConvencao: plano.jurosConvencao as never,
@@ -1369,13 +1362,10 @@ function Simulador({
             parcelas: plano.parcelas,
             sistemaAmortizacao: plano.sistemaAmortizacao as never,
             slot: plano.slot as never,
-          }
-        : null,
+          })
+        : 0,
     [plano],
   );
-
-  /** A taxa mensal do plano escolhido — é ela que governa as duas vistas. */
-  const i = comoPlano ? taxaMensal(comoPlano) : 0;
 
   // ⚠️ TROCAR DE UNIDADE RECOMEÇA A SIMULAÇÃO. Sem depender da `chave`, quem digitasse um desconto
   // e clicasse em outro lote veria o valor novo com o desconto antigo — conta errada com cara de
@@ -1384,8 +1374,6 @@ function Simulador({
     setTabela(valor);
     setDesconto(0);
     setPlanoEscolhido(null);
-    setBaloesQtd(0);
-    setBaloesValor(0);
   }, [chave, valor]);
 
   // O plano manda na entrada e no prazo; o operador ajusta por cima se quiser.
@@ -1396,112 +1384,35 @@ function Simulador({
   }, [plano, tabela]);
 
   const final = Math.max(0, tabela * (1 - desconto / 100));
+  const financiado = Math.max(0, final - entrada);
 
-  // ── A conta OFICIAL: a régua do plano, com a entrada que o operador deixou ──
-  //
-  // As três primitivas são as de `planos-comerciais.ts`, e a escolha entre elas é a mesma de
-  // `calcularParcela`. O que não dá para usar é `calcularParcela` inteira: ela deriva a entrada do
-  // PERCENTUAL do plano, e aqui a entrada é digitável.
+  // A régua do plano: Price, SAC ou SACOC. As primitivas são as de `planos-comerciais.ts`, e a
+  // escolha entre elas é a mesma de `calcularParcela` — o que não dá para usar é `calcularParcela`
+  // inteira, porque ela deriva a entrada do PERCENTUAL do plano e aqui a entrada é digitável.
   //
   // ⚠️ SACOC NÃO É O SAC DO LIVRO: a parcela emitida é só a amortização, e os juros sobem de degrau
   // no aniversário. Medido em nove empreendimentos; usar Price nele daria parcela maior do que o
-  // contrato emite.
-  const oficial = useMemo(() => {
-    const financiado = Math.max(0, final - entrada);
+  // contrato emite — por isso a linha da saída muda de nome conforme o sistema.
+  const conta = useMemo(() => {
     if (!plano || parcelas <= 0) {
-      return {
-        financiado,
-        natureza: "fixa" as const,
-        parcela: parcelas > 0 ? financiado / parcelas : 0,
-      };
+      return { natureza: "fixa" as const, parcela: parcelas > 0 ? financiado / parcelas : 0 };
     }
     if (plano.sistemaAmortizacao === "sac") {
-      return {
-        financiado,
-        natureza: "primeira" as const,
-        parcela: primeiraParcelaSac(financiado, i, parcelas),
-      };
+      return { natureza: "primeira" as const, parcela: primeiraParcelaSac(financiado, i, parcelas) };
     }
     if (plano.sistemaAmortizacao === "sacoc") {
-      return {
-        financiado,
-        natureza: "inicial" as const,
-        parcela: parcelaSacoc(financiado, parcelas),
-      };
+      return { natureza: "inicial" as const, parcela: parcelaSacoc(financiado, parcelas) };
     }
-    return { financiado, natureza: "fixa" as const, parcela: parcelaPrice(financiado, i, parcelas) };
-  }, [entrada, final, i, parcelas, plano]);
-
-  // ── A conta PERSONALIZADA: entrada, prazo e balões, ou a parcela-alvo ─────
-  const personalizada = useMemo(() => {
-    if (modo === "parcela") {
-      const { entrada: sugerida, sobra } = entradaParaAParcela({
-        baloesQuantidade: baloesQtd,
-        baloesValor,
-        parcela: alvo,
-        parcelas,
-        taxaAoMes: i,
-        valor: final,
-      });
-      const montada = montarProposta({
-        baloesQuantidade: baloesQtd,
-        baloesValor,
-        entrada: sugerida,
-        parcelas,
-        taxaAoMes: i,
-        valor: final,
-      });
-      return { ...montada, entradaSugerida: sugerida, sobra };
-    }
-    return {
-      ...montarProposta({
-        baloesQuantidade: baloesQtd,
-        baloesValor,
-        entrada,
-        parcelas,
-        taxaAoMes: i,
-        valor: final,
-      }),
-      entradaSugerida: entrada,
-      sobra: 0,
-    };
-  }, [alvo, baloesQtd, baloesValor, entrada, final, i, modo, parcelas]);
-
-  const ehPersonalizada = vista === "personalizada";
-  const parcelaMostrada = ehPersonalizada ? personalizada.parcela : oficial.parcela;
-  const entradaMostrada = ehPersonalizada ? personalizada.entradaSugerida : entrada;
-  const financiadoMostrado = ehPersonalizada ? personalizada.financiado : oficial.financiado;
-  const total = ehPersonalizada
-    ? personalizada.total
-    : entrada + oficial.parcela * parcelas;
+    return { natureza: "fixa" as const, parcela: parcelaPrice(financiado, i, parcelas) };
+  }, [financiado, i, parcelas, plano]);
 
   return (
-    <Cartao
-      barra={
-        <>
-          <Pilula ativo={!ehPersonalizada} onClick={() => setVista("oficial")} rotulo="Tabela" />
-          <Pilula
-            ativo={ehPersonalizada}
-            onClick={() => setVista("personalizada")}
-            rotulo="Personalizada"
-          />
-          {ehPersonalizada ? (
-            <>
-              <span style={{ color: T.border }}>|</span>
-              <Pilula ativo={modo === "montar"} onClick={() => setModo("montar")} rotulo="Montar" />
-              <Pilula
-                ativo={modo === "parcela"}
-                onClick={() => setModo("parcela")}
-                rotulo="Pela parcela"
-              />
-            </>
-          ) : null}
-        </>
-      }
-      titulo="Simulador de proposta"
-    >
+    // ⚠️ SÓ A TABELA (Lucas, 03/09/2026: *"deixa somente a tabela mesmo ali, vou tratar o
+    // personalizado em outro local"*, *"tabela bem básico"*). A proposta negociada — entrada livre,
+    // balões, parcela-alvo — sai daqui e vai para onde a venda acontece de verdade. A matemática
+    // dela continua pronta e testada em `lib/hercules/simulacao.ts`, esperando aquele lugar.
+    <Cartao titulo="Simulador de proposta">
       <div style={{ display: "grid", gap: 10 }}>
-        {/* Os planos do produto: clicar troca a régua da conta. */}
         {planos.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {planos.map((p) => (
@@ -1544,73 +1455,36 @@ function Simulador({
         <div style={{ display: "grid", gap: 9, gridTemplateColumns: "1fr 1fr" }}>
           <CampoEmReais aoMudar={setTabela} rotulo="Valor de tabela" valor={tabela} />
           <CampoSimples aoMudar={setDesconto} rotulo="Desconto" sufixo="%" valor={desconto} />
-
-          {ehPersonalizada && modo === "parcela" ? (
-            <CampoEmReais aoMudar={setAlvo} rotulo="Parcela que o cliente paga" valor={alvo} />
-          ) : (
-            <CampoEmReais aoMudar={setEntrada} rotulo="Entrada" valor={entrada} />
-          )}
+          <CampoEmReais aoMudar={setEntrada} rotulo="Entrada" valor={entrada} />
           <CampoSimples aoMudar={setParcelas} rotulo="Parcelas" sufixo="x" valor={parcelas} />
-
-          {ehPersonalizada ? (
-            <>
-              <CampoSimples
-                aoMudar={setBaloesQtd}
-                rotulo="Balões anuais"
-                sufixo="x"
-                valor={baloesQtd}
-              />
-              <CampoEmReais aoMudar={setBaloesValor} rotulo="Valor do balão" valor={baloesValor} />
-            </>
-          ) : null}
         </div>
 
         <div style={{ background: T.soft, borderRadius: 9, padding: "10px 12px" }}>
           <Linha rotulo="Valor final" valor={dinheiro(final)} />
-          {ehPersonalizada && modo === "parcela" ? (
-            <Linha rotulo="Entrada necessária" valor={dinheiro(entradaMostrada)} />
-          ) : null}
-          <Linha rotulo="A financiar" valor={dinheiro(financiadoMostrado)} />
+          <Linha rotulo="A financiar" valor={dinheiro(financiado)} />
           <Linha
             rotulo={
-              ehPersonalizada
-                ? "Parcela mensal"
-                : oficial.natureza === "primeira"
-                  ? "Primeira parcela"
-                  : oficial.natureza === "inicial"
-                    ? "Parcela inicial"
-                    : "Parcela mensal"
+              conta.natureza === "primeira"
+                ? "Primeira parcela"
+                : conta.natureza === "inicial"
+                  ? "Parcela inicial"
+                  : "Parcela mensal"
             }
-            valor={dinheiro(parcelaMostrada)}
+            valor={dinheiro(conta.parcela)}
           />
-          {ehPersonalizada && baloesQtd > 0 ? (
-            <Linha
-              rotulo={`Balões (${baloesQtd}x)`}
-              valor={dinheiro(baloesQtd * baloesValor)}
-            />
-          ) : null}
           {/* ⚠️ O TOTAL DENUNCIA O JURO. Com parcela e prazo só, o custo do financiamento fica
-              invisível: é a soma que mostra quanto o cliente paga a mais do que o valor do lote. */}
-          <Linha rotulo="Total" valor={dinheiro(total)} />
+              invisível: é a soma que mostra quanto o cliente paga a mais que o valor do lote. */}
+          <Linha rotulo="Total" valor={dinheiro(entrada + conta.parcela * parcelas)} />
         </div>
 
-        {ehPersonalizada && modo === "parcela" && personalizada.sobra > 0 ? (
-          <p style={{ color: T.danger, fontSize: 11.5, fontWeight: 600, margin: 0 }}>
-            Essa parcela paga o lote antes do prazo: sobram {dinheiro(personalizada.sobra)}. Reduza a
-            parcela ou o número de meses.
-          </p>
-        ) : null}
-
         <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
-          {ehPersonalizada
-            ? `Proposta montada à mão, com a taxa do plano ${plano?.nome ?? "—"}. O balão sai do saldo pelo valor de hoje, não pelo de face — é o que o contrato consegue cumprir.`
-            : oficial.natureza === "inicial"
-              ? `Plano ${plano?.nome}, SACOC: a parcela emitida é a amortização, e os juros sobem de degrau no aniversário. A correção pelo índice entra no reajuste anual.`
-              : i > 0
-                ? `Conta pelo plano ${plano?.nome}: ${plano?.sistemaAmortizacao?.toUpperCase()} com a taxa dele. A correção pelo índice entra no reajuste anual, e não aqui.`
-                : plano
-                  ? `O plano ${plano.nome} não tem juros: a parcela é o saldo dividido pelo prazo.`
-                  : "Sem plano cadastrado para este produto: conta simples, sem juros."}
+          {conta.natureza === "inicial"
+            ? `Plano ${plano?.nome}, SACOC: a parcela emitida é a amortização, e os juros sobem de degrau no aniversário. A correção pelo índice entra no reajuste anual.`
+            : i > 0
+              ? `Conta pelo plano ${plano?.nome}: ${plano?.sistemaAmortizacao?.toUpperCase()} com a taxa dele. A correção pelo índice entra no reajuste anual, e não aqui.`
+              : plano
+                ? `O plano ${plano.nome} não tem juros: a parcela é o saldo dividido pelo prazo.`
+                : "Sem plano cadastrado para este produto: conta simples, sem juros."}
         </p>
       </div>
     </Cartao>
