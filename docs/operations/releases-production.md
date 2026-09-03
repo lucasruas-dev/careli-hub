@@ -95,6 +95,34 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Boletos/Zeus] Emissao em blocos: a carteira grande volta a emitir num clique (v1.273.1)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-03 08:44:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: OK explicito do Lucas ("pode realizar o push"), depois do incidente que ele reportou ("quero que olhe o erro que deu quando tentei gerar os boletos do garden").
+- Incidente que originou: 02/09/2026 23:35 (BRT), clique em "Gerar 141 boleto(s)" no Garden. Log da Vercel: `Vercel Runtime Timeout Error: Task timed out after 300 seconds` em /api/incorporador/boletos. O gateway respondeu em TEXTO e a tela mostrou o erro do parser de JSON. ⚠️ A EMISSAO ESTAVA FUNCIONANDO: 133 dos 141 boletos foram criados entre 23:35 e 23:40; os 8 restantes sairam em 03/09 08:06, sem recriar nenhum dos 133 (a consulta por `externalReference` no Asaas segurou). Vale do Sol: 100 na madrugada + 1 pela manha = 101.
+- Auditoria de duplicidade (leitura do banco, sem escrita): ZERO duplicatas nas carteiras reais - 141 cobrancas para 141 unidades no Garden, 101 para 101 no Vale do Sol. As duas unicas duplicatas de `boletos_eventos` sao das carteiras de TESTE (TESTE-01 do Giant Towers e do Vale do Sol, R$ 5,00 cada), do clique duplo de 02/09 10:33. Nenhuma parcela de setembro variou mais de 2% frente a agosto. Total emitido em setembro/2026: R$ 527.787,46 em 252 boletos.
+- Escopo publicado:
+  - `lib/apolo/boletos/blocos.ts` (NOVO) + teste: agrupa por empreendimento e fatia em blocos de 20 unidades;
+  - `modules/incorporador/TelaBoletos.tsx`: emissao em blocos com progresso (`Emitindo… 40/141`), `lerResposta` no lugar dos cinco `r.json()` crus, botao mandando sempre as unidades da tela;
+  - `app/api/incorporador/boletos/route.ts` e `app/api/boletos/emitir/route.ts`: `TETO_DO_LOTE_MS = 240_000`, o laco para sozinho e devolve `restantes`.
+- Commit publicado: `96178e46`.
+- Deployment anterior: `dpl_o8kD7rceUpko2FPQNUtPsq2xe35J` (commit `ae8b868f`, v1.273.0).
+- Deployment novo: `dpl_F3vaoBa1LnPpN5AESu6ccCNe4C5F` - state READY, target production.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `dpl_F3vaoBa1LnPpN5AESu6ccCNe4C5F` / 200.
+  - `https://ops.c2x.app.br`: NAO TOCADO.
+- Validacoes executadas: typecheck limpo; lint limpo nos cinco arquivos; 147 testes de boletos verdes (8 novos, entre eles o que garante que o fatiamento nao perde nem repete unidade).
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br` -> 200; `/boletos` -> 200; `/comercial/gurgel` -> 200;
+  - `/api/version` -> `{"buildTag":"2026-09-03-boletos-lote-em-blocos","version":"1.273.1"}`.
+- Rollback definido: `ae8b868f` / `dpl_o8kD7rceUpko2FPQNUtPsq2xe35J`.
+- Riscos conhecidos: BAIXO. A emissao continua em serie e continua consultando o Asaas por referencia antes de criar; o que muda e o TAMANHO de cada requisicao. Reemitir permanece seguro.
+- Pendencia registrada: o WEBHOOK do Asaas nao esta ligado nas contas de boleto (563 eventos em `apolo_asaas_eventos`, todos entre 22/07 e 21/08, nenhum com referencia `boleto:`). A tela NAO depende dele - le o status direto do Asaas a cada carga -, mas sem webhook nao ha reacao automatica ao pagamento (recibo, aviso). O webhook atual atende a PRE-VENDA e nao sabe tratar cobranca de boleto: apontar as contas novas para ele hoje jogaria mensalidade no fluxo de pre-venda.
+
+Registro de producao:
+
 - Assunto: `[Temis/Zeus] Editor de minutas completo, com as variaveis nascendo do Panteon (v1.273.0)`.
 - Squad/agente responsavel: `Zeus` (workflow multi-agente com revisao adversarial; os 10 achados conferidos e fechados).
 - Data e hora local: `2026-09-03 07:34:23 -03:00`.
