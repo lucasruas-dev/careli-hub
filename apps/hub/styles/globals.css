@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Tokens do shadcn/Plate UI do editor da Têmis (arquivo à parte: ver o cabeçalho dele). */
+@import "./shadcn.css";
 
 /* Modo escuro dirigido pelo toggle (o ThemeProvider seta data-uix-theme no :root),
    pra os utilitarios dark: responderem ao nosso tema (nao ao prefers-color-scheme). */

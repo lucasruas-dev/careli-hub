@@ -1,87 +1,69 @@
 "use client";
 
-import { BasicBlocksPlugin, BasicMarksPlugin } from "@platejs/basic-nodes/react";
-import { importDocx } from "@platejs/docx-io";
-import {
-  FontBackgroundColorPlugin,
-  FontColorPlugin,
-  FontFamilyPlugin,
-  FontSizePlugin,
-  LineHeightPlugin,
-  TextAlignPlugin,
-  TextIndentPlugin,
-} from "@platejs/basic-styles/react";
-import { IndentPlugin } from "@platejs/indent/react";
-import { ListPlugin } from "@platejs/list/react";
-import {
-  TableCellHeaderPlugin,
-  TableCellPlugin,
-  TablePlugin,
-  TableRowPlugin,
-} from "@platejs/table/react";
-import {
-  AlignCenter,
-  AlignJustify,
-  AlignLeft,
-  AlignRight,
-  Bold,
-  Braces,
-  Check,
-  ChevronRight,
-  Italic,
-  List,
-  Loader2,
-  ListOrdered,
-  Minus,
-  Quote,
-  PanelRight,
-  Strikethrough,
-  Table as TableIcon,
-  Underline,
-  DatabaseZap,
-  Upload,
-  X,
-} from "lucide-react";
-import { KEYS, type Value } from "platejs";
+import { Check, ChevronRight, X } from "lucide-react";
+import type { Value } from "platejs";
 import {
   Plate,
-  PlateContent,
-  PlateElement,
-  type PlateElementProps,
-  PlateLeaf,
-  type PlateLeafProps,
+  type PlateEditor,
+  useEditorRef,
   usePlateEditor,
+  usePluginOption,
 } from "platejs/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Toaster } from "sonner";
 
-import { documentoParaTexto, type NoDoDocumento } from "@/lib/temis/documento-html";
+import { discussionPlugin } from "@/components/editor/plugins/discussion-kit";
+import { Editor, EditorContainer } from "@/components/ui/editor";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import type { NoDoDocumento } from "@/lib/temis/documento-html";
+import { migrarAlinhamentoAntigo } from "@/lib/temis/migrar-documento";
+import { setMinutaAtualParaUpload } from "@/lib/temis/upload-midia";
+import { useAuth } from "@/providers/auth-provider";
+
+import { EditorKitTemis } from "./editor-kit-temis";
+import { TemisToolbarPlugin } from "./plugins/temis-toolbar-kit";
+import { inserirVariavel } from "./plugins/variavel-input-kit";
 import {
-  ORDEM_DOS_GRUPOS,
-  rotuloDoGrupo,
-  VARIAVEIS_DO_CONTRATO,
-  type VariavelDoContrato,
-  variaveisDoTexto,
-} from "@/lib/temis/variaveis";
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+  origemPendente,
+  promoverVariaveisNoValor,
+  VARIAVEIS_POR_GRUPO,
+  variaveisNoValor,
+} from "./plugins/variavel-kit-base";
 
-// O EDITOR DA MINUTA — o "Word" do jurídico.
+// O EDITOR DA MINUTA — o "Word" do jurídico, agora com o Plate UI completo.
 //
 // Pedido do Lucas (01/09/2026): *"não quero o mesmo editor do C2x, é muito ruimmmmmmmmm, quero algo
 // mais proximo de um word"*, e *"lembrando que temos que inserir as variaveis que vão se alimentadas
-// pelo sistema"*.
+// pelo sistema"*. E em 02/09/2026, ao comparar com o demo "An AI editor" do Plate: *"não temos todas
+// essas ferramentas, revise as documentações pois quero isso completo, estamos muito simples"*.
+//
+// ⚠️ NADA DO C2X. Lucas (02/09/2026): *"não quero nada do c2x, todas as variáveis tem que nascer do
+// panteon, esquece c2x como consulta"*. O botão "Do C2X" saiu; a prop `enterpriseId` saiu com ele
+// (só existia para listar minutas do legado). O que entra aqui vem do .docx do loteador ou é escrito.
+//
+// O QUE ESTE ARQUIVO FAZ, e o que delega:
+// - monta o editor com `EditorKitTemis` (o EditorKit do Plate + variável + busca + barra da Têmis);
+// - converte o documento na fronteira (Value do Plate ↔ NoDoDocumento[] do Temis) UMA vez, aqui;
+// - mostra o painel de variáveis ao lado da folha;
+// - liga o upload de mídia à minuta aberta e o usuário logado às discussões.
+// A barra de ferramentas é o plugin `temis-toolbar-kit.tsx`; o chip e o combobox da variável são
+// `variavel-kit.tsx`/`variavel-input-kit.tsx`; o HTML do contrato continua em
+// `lib/temis/documento-html.ts` (serializador próprio — ver a decisão no topo dele).
 //
 // ⚠️ A PÁGINA TEM LARGURA DE PAPEL, e não é estética: o jurídico revisa quebra de linha e quebra de
 // cláusula. Um editor que ocupa 1.900 px de tela mostra um texto que não se parece com o contrato
 // impresso, e o revisor perde a única referência que tem.
 //
-// ⚠️ A VARIÁVEL É INSERIDA PELO MENU, e nunca digitada. `[nome_cliente]` digitado à mão erra por um
-// caractere e o contrato sai com "[nome_clientes]" impresso no papel — foi assim que `[Nome]` e
-// `[CPF]` entraram nas minutas antigas do C2X. O menu só oferece o que o sistema sabe preencher.
+// ⚠️ A VARIÁVEL É INSERIDA PELO MENU OU PELO `[`, e nunca digitada solta. `[nome_cliente]` digitado
+// à mão erra por um caractere e o contrato sai com "[nome_clientes]" impresso — foi assim que
+// `[Nome]` e `[CPF]` entraram nas minutas antigas. O catálogo só oferece o que o Panteon preenche.
 
 // ⚠️ O DOCUMENTO ATRAVESSA A FRONTEIRA UMA VEZ SÓ, E É AQUI. Do lado do editor ele é o `Value` do
 // Plate; do lado do Temis é `NoDoDocumento[]`, que é o que `documento-html.ts` sabe serializar. São
 // a mesma coisa em memória — a diferença é só de tipo. Concentrar a conversão neste ponto evita
-// espalhar `as` pelo módulo inteiro e deixa claro onde a garantia começa.
+// espalhar `as` pelo módulo inteiro e deixa claro onde a garantia começa. Não há migração de shape:
+// os kits do Plate usam as MESMAS chaves e props dos plugins que já gravávamos (p, h1, td, bold,
+// fontFamily, align, indent, listStyleType…); o JSON salvo abre sem conversão.
 export type ValorDoDocumento = NoDoDocumento[];
 
 function paraOEditor(valor: ValorDoDocumento): Value {
@@ -92,171 +74,156 @@ function paraOTemis(valor: Value): ValorDoDocumento {
   return valor as unknown as ValorDoDocumento;
 }
 
-// ⚠️ O `as` DO PLATE É GENÉRICO NA TAG, e o genérico amarra o tipo de `attributes` à tag escolhida.
-// Como aqui a tag é decidida em tempo de execução (uma fábrica para p, h1, td…), o TypeScript não
-// consegue casar os dois. O cast é do COMPONENTE, uma vez, e não das props em cada uso — assim o
-// `props` continua tipado de verdade em quem escreve o componente.
-const Elemento = PlateElement as unknown as (
-  props: { as: string; className?: string } & PlateElementProps,
-) => React.ReactElement;
-
-const Marca = PlateLeaf as unknown as (
-  props: { as: string } & PlateLeafProps,
-) => React.ReactElement;
-
-/** Fábrica dos componentes de bloco. */
-function elementoComo(as: string, className?: string) {
-  return function Bloco(props: PlateElementProps) {
-    return <Elemento {...props} as={as} className={className} />;
-  };
-}
-
-/** Fábrica dos componentes de marca (negrito, itálico…). */
-function marcaComo(as: string) {
-  return function Formatacao(props: PlateLeafProps) {
-    return <Marca {...props} as={as} />;
-  };
-}
-
-function LinhaHorizontal(props: PlateElementProps) {
-  return (
-    <Elemento {...props} as="div" className="my-4">
-      <hr className="border-line" />
-    </Elemento>
-  );
-}
-
 type Props = {
   aoAvisar?: (aviso: string) => void;
   aoMudar: (valor: ValorDoDocumento) => void;
-  /** Necessário para listar as minutas que o empreendimento já tem no C2X. */
-  enterpriseId: string;
+  /** A minuta aberta: é o prefixo onde a mídia enviada pelo editor fica no bucket. */
+  minutaId: string;
   somenteLeitura?: boolean;
   valorInicial: ValorDoDocumento;
 };
 
-/** As variáveis agrupadas para o menu, na ordem em que o contrato as usa. */
-const VARIAVEIS_POR_GRUPO = ORDEM_DOS_GRUPOS.map((grupo) => ({
-  grupo,
-  rotulo: rotuloDoGrupo(grupo),
-  variaveis: VARIAVEIS_DO_CONTRATO.filter((v) => v.grupo === grupo),
-}));
+/**
+ * A FOLHA CONTINUA CLARA NO DARK — e os tokens do Plate UI acompanham.
+ *
+ * ⚠️ Os componentes do registro (placeholder, código, callout, toggle…) pintam com os tokens do
+ * shadcn (`--muted`, `--foreground`…), que no dark viram cinza-escuro. Como o papel fica branco de
+ * propósito (decisão de 01/09/2026: o jurídico compara com o contrato impresso), os tokens são
+ * refeitos AQUI, só dentro da folha, para não sair texto escuro em fundo escuro em cima do papel
+ * claro. Os popovers abrem em portal, fora da folha, e seguem o tema do app.
+ */
+const ESTILO_DA_FOLHA = {
+  "--accent": "oklch(0.97 0 0)",
+  "--accent-foreground": "oklch(0.205 0 0)",
+  "--background": "#ffffff",
+  "--border": "oklch(0.922 0 0)",
+  "--card": "#ffffff",
+  "--card-foreground": "oklch(0.145 0 0)",
+  "--foreground": "oklch(0.145 0 0)",
+  "--input": "oklch(0.922 0 0)",
+  "--muted": "oklch(0.97 0 0)",
+  "--muted-foreground": "oklch(0.556 0 0)",
+  "--primary": "oklch(0.205 0 0)",
+  "--primary-foreground": "oklch(0.985 0 0)",
+  "--secondary": "oklch(0.97 0 0)",
+  "--secondary-foreground": "oklch(0.205 0 0)",
+  fontFamily: "Georgia, 'Times New Roman', serif",
+} as React.CSSProperties;
 
 export default function EditorDeMinuta({
   aoAvisar,
   aoMudar,
-  enterpriseId,
+  minutaId,
   somenteLeitura,
   valorInicial,
 }: Props) {
   const editor = usePlateEditor({
-    components: {
-      [KEYS.blockquote]: elementoComo("blockquote", "my-2 border-l-4 border-line pl-4 italic"),
-      [KEYS.bold]: marcaComo("strong"),
-      [KEYS.h1]: elementoComo("h1", "mb-2 mt-4 text-xl font-bold"),
-      [KEYS.h2]: elementoComo("h2", "mb-2 mt-4 text-lg font-bold"),
-      [KEYS.h3]: elementoComo("h3", "mb-1 mt-3 text-base font-bold"),
-      [KEYS.hr]: LinhaHorizontal,
-      [KEYS.italic]: marcaComo("em"),
-      [KEYS.p]: elementoComo("p", "my-1.5"),
-      [KEYS.strikethrough]: marcaComo("s"),
-      [KEYS.table]: elementoComo("table", "my-3 w-full border-collapse"),
-      [KEYS.td]: elementoComo("td", "border border-line px-2 py-1 align-top"),
-      [KEYS.th]: elementoComo(
-        "th",
-        "border border-line bg-subtle px-2 py-1 text-left align-top font-semibold",
-      ),
-      [KEYS.tr]: elementoComo("tr"),
-      [KEYS.underline]: marcaComo("u"),
-    },
-    // ⚠️ OS PLUGINS DE FONTE E COR NÃO SÃO ENFEITE: SEM ELES O TEXTO CHEGA PELADO. Medido em
-    // 01/09/2026 com a minuta do JDG que está no ar — ao ler o HTML sem eles, o Plate devolve os
-    // trechos com `text`, `bold` e `italic` e joga fora `font-family` (450 dos 485 trechos), `color`
-    // e o fundo da célula. Registrá-los é o que faz a minuta importada continuar parecida com o
-    // documento que o loteador entregou.
-    plugins: [
-      BasicBlocksPlugin,
-      BasicMarksPlugin,
-      TextAlignPlugin,
-      FontFamilyPlugin,
-      FontSizePlugin,
-      FontColorPlugin,
-      FontBackgroundColorPlugin,
-      LineHeightPlugin,
-      TextIndentPlugin,
-      IndentPlugin,
-      ListPlugin,
-      TablePlugin,
-      TableRowPlugin,
-      TableCellPlugin,
-      TableCellHeaderPlugin,
-    ],
-    value: paraOEditor(valorInicial),
+    plugins: EditorKitTemis,
+    // Minutas salvas antes do chip trazem `[nome]` como texto: viram nós na abertura. `aoMudar` só
+    // dispara quando o usuário mexe, então isso não marca a minuta como "não salva" sozinho.
+    //
+    // ⚠️ E as salvas pelo editor ANTIGO trazem o alinhamento em `textAlign` (a chave do plugin de
+    // então); o AlignKit atual só lê `align`. Sem a migração o título centralizado abre à esquerda
+    // e, pior, realinhar aqui não mudava o HTML do contrato. Ver `lib/temis/migrar-documento.ts`.
+    value: promoverVariaveisNoValor(paraOEditor(migrarAlinhamentoAntigo(valorInicial))),
   });
-
-  // ⚠️ O PAINEL DE VARIÁVEIS FICA AO LADO, ABERTO. Pedido do Lucas (01/09/2026): "a ideia das
-  // variveis, é abrir ao lado e trazer elas separadas por grupos, seria mais facil de visualizar".
-  // Num menu suspenso, escolher uma variável fecha a lista e apaga o contexto — e quem marca uma
-  // minuta de 27 páginas insere dezenas seguidas. Ao lado, a lista fica de pé o tempo todo.
-  const [painelAberto, setPainelAberto] = useState(true);
+  const { hubUser } = useAuth();
   const [valorAtual, setValorAtual] = useState<ValorDoDocumento>(valorInicial);
+
+  // A mídia enviada pelo editor (imagem, vídeo, arquivo) vai para `temis-minutas/<minutaId>/` no
+  // bucket — o hook de upload lê daqui qual é a minuta aberta.
+  useEffect(() => {
+    setMinutaAtualParaUpload(minutaId);
+    return () => setMinutaAtualParaUpload(null);
+  }, [minutaId]);
+
+  // A barra é renderizada pelo Plate, fora desta árvore de props: o `aoAvisar` da tela vai por
+  // opção do plugin (a importação do .docx avisa por ele).
+  useEffect(() => {
+    editor.setOption(TemisToolbarPlugin, "aoAvisar", aoAvisar ?? null);
+  }, [aoAvisar, editor]);
+
+  // Comentários e sugestões assinados por quem está logado — o kit do registro vinha com "alice".
+  useEffect(() => {
+    if (!hubUser) return;
+    editor.setOption(discussionPlugin, "users", {
+      [hubUser.id]: { avatarUrl: hubUser.avatarUrl ?? "", id: hubUser.id, name: hubUser.name },
+    });
+    editor.setOption(discussionPlugin, "currentUserId", hubUser.id);
+  }, [editor, hubUser]);
 
   // Quais variáveis JÁ estão no texto. O painel marca cada uma, e é isso que responde de relance a
   // pergunta que se faz o tempo todo numa minuta longa: "já coloquei o CPF do cônjuge?".
-  const jaUsadas = useMemo(
-    () => new Set(variaveisDoTexto(documentoParaTexto(valorAtual))),
-    [valorAtual],
-  );
+  const jaUsadas = useMemo(() => new Set(variaveisNoValor(valorAtual)), [valorAtual]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-subtle/30">
-      <Plate
-        editor={editor}
-        onChange={({ value }) => {
-          const convertido = paraOTemis(value);
-          setValorAtual(convertido);
-          aoMudar(convertido);
-        }}
-        readOnly={somenteLeitura}
-      >
-        {somenteLeitura ? null : (
-          <Barra
-            aoAlternarPainel={() => setPainelAberto((a) => !a)}
-            aoAvisar={aoAvisar}
-            editor={editor}
-            enterpriseId={enterpriseId}
-            painelAberto={painelAberto}
-          />
-        )}
+      {/* ⚠️ O PROVIDER DO TOOLTIP É OBRIGATÓRIO. Todo botão da barra com `tooltip` (withTooltip em
+          components/ui/toolbar.tsx) monta o <Tooltip> do Radix depois do primeiro efeito, e o Radix
+          lança "`Tooltip` must be used within `TooltipProvider`" — a árvore inteira do editor caía
+          ao abrir a minuta. O hub não tem esse provider no layout (o editor é a única tela que usa
+          o Tooltip do Radix), então ele vive aqui. */}
+      <TooltipProvider delayDuration={300}>
+        <Plate
+          editor={editor}
+          // ⚠️ `onValueChange`, e não `onChange`: o `onChange` dispara em TODA operação do Slate,
+          // inclusive mover o cursor — um clique na folha marcava a minuta como "não salva",
+          // travava o Publicar ("salve o rascunho antes") e reserializava o documento inteiro a
+          // cada tecla de seta. `onValueChange` só dispara quando `editor.children` muda.
+          onValueChange={({ value }) => {
+            const convertido = paraOTemis(value);
+            setValorAtual(convertido);
+            aoMudar(convertido);
+          }}
+          readOnly={somenteLeitura}
+        >
+          <Miolo jaUsadas={jaUsadas} somenteLeitura={somenteLeitura} />
+        </Plate>
+      </TooltipProvider>
 
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          {/* A FOLHA. Rola sozinha e ocupa toda a altura que sobrar. */}
-          <div className="min-h-0 flex-1 overflow-auto px-4 py-5">
-            <div className="mx-auto max-w-[820px] rounded-lg bg-white px-14 py-12 text-[15px] leading-relaxed text-slate-900 shadow-sm dark:bg-slate-100">
-              <PlateContent
-                className="min-h-[65vh] outline-none [&_table]:w-full [&_table]:table-fixed"
-                placeholder="Cole aqui a minuta, ou importe o arquivo do loteador."
-                spellCheck={false}
-                style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
-              />
-            </div>
-          </div>
+      {/* Um só por tela: os toasts do upload de mídia e do menu de IA (sonner) saem por aqui. */}
+      <Toaster position="bottom-right" richColors />
+    </div>
+  );
+}
 
-          {painelAberto && !somenteLeitura ? (
-            <PainelDeVariaveis
-              aoFechar={() => setPainelAberto(false)}
-              editor={editor}
-              jaUsadas={jaUsadas}
-            />
-          ) : null}
-        </div>
-      </Plate>
+/** A folha e o painel — dentro do `<Plate>`, para os hooks do editor funcionarem. */
+function Miolo({ jaUsadas, somenteLeitura }: { jaUsadas: Set<string>; somenteLeitura?: boolean }) {
+  const editor = useEditorRef();
+  const painelAberto = usePluginOption(TemisToolbarPlugin, "painelAberto");
+
+  return (
+    <div className="flex min-h-0 flex-1 overflow-hidden">
+      {/* A FOLHA. O contêiner rola sozinho e ocupa toda a altura que sobrar; a barra fixa da Têmis
+          entra pelo plugin (`render.beforeEditable`) e fica grudada no topo dele. */}
+      <EditorContainer className="min-h-0 flex-1 bg-subtle/30 px-4 pb-5">
+        <Editor
+          className="mx-auto my-5 min-h-[65vh] max-w-[820px] rounded-lg bg-white px-14 py-12 text-[15px] leading-relaxed text-slate-900 shadow-sm outline-none dark:bg-slate-100 [&_table]:w-full [&_table]:table-fixed"
+          placeholder="Cole aqui a minuta, importe o .docx do loteador, ou digite `[` para inserir uma variável."
+          spellCheck={false}
+          style={ESTILO_DA_FOLHA}
+          variant="none"
+        />
+      </EditorContainer>
+
+      {painelAberto && !somenteLeitura ? (
+        <PainelDeVariaveis
+          aoFechar={() => editor.setOption(TemisToolbarPlugin, "painelAberto", false)}
+          editor={editor}
+          jaUsadas={jaUsadas}
+        />
+      ) : null}
     </div>
   );
 }
 
 /**
  * A lista de variáveis, ao lado da folha.
+ *
+ * ⚠️ O PAINEL FICA AO LADO, ABERTO. Pedido do Lucas (01/09/2026): "a ideia das variveis, é abrir ao
+ * lado e trazer elas separadas por grupos, seria mais facil de visualizar". Num menu suspenso,
+ * escolher uma variável fecha a lista e apaga o contexto — e quem marca uma minuta de 27 páginas
+ * insere dezenas seguidas. Ao lado, a lista fica de pé o tempo todo.
  *
  * ⚠️ CADA GRUPO DIZ QUANTAS JÁ ESTÃO NO TEXTO. Numa minuta com cinco compradores, a pergunta que o
  * jurídico faz o tempo todo é "já marquei o cônjuge do segundo?" — e a resposta precisa estar à
@@ -268,7 +235,7 @@ function PainelDeVariaveis({
   jaUsadas,
 }: {
   aoFechar: () => void;
-  editor: EditorDoPlate;
+  editor: PlateEditor;
   jaUsadas: Set<string>;
 }) {
   const [busca, setBusca] = useState("");
@@ -306,6 +273,10 @@ function PainelDeVariaveis({
           placeholder="Procurar (nome, CPF, quadra…)"
           value={busca}
         />
+        <p className="m-0 mt-1.5 px-1 text-[10px] leading-tight text-ink-muted">
+          Na folha, digite <kbd className="rounded border border-line px-1 font-mono">[</kbd> para
+          escolher sem sair do teclado.
+        </p>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-1.5">
@@ -348,444 +319,60 @@ function PainelDeVariaveis({
               </button>
 
               {aberto
-                ? achadas.map((v) => (
-                    <button
-                      className="group flex w-full flex-col items-start gap-0.5 rounded-lg py-1.5 pl-6 pr-2 text-left transition-colors hover:bg-subtle"
-                      key={v.nome}
-                      onClick={() => {
-                        editor.tf.insertText(`[${v.nome}]`);
-                        editor.tf.focus();
-                      }}
-                      // ⚠️ `onMouseDown` com preventDefault: sem isso o clique tira o foco do
-                      // editor, o cursor se perde e a variável entra no lugar errado — ou em
-                      // lugar nenhum.
-                      onMouseDown={(e) => e.preventDefault()}
-                      title={`Inserir [${v.nome}]`}
-                      type="button"
-                    >
-                      <span className="flex w-full items-center gap-1.5">
-                        {jaUsadas.has(v.nome) ? (
-                          <Check
-                            aria-hidden="true"
-                            className="size-3 shrink-0 text-emerald-600 dark:text-emerald-400"
-                          />
-                        ) : (
-                          <span aria-hidden="true" className="size-3 shrink-0" />
-                        )}
-                        <span className="flex-1 truncate text-xs font-medium text-ink">
-                          {v.rotulo}
+                ? achadas.map((v) => {
+                    const pendente = origemPendente(v);
+                    return (
+                      <button
+                        className="group flex w-full flex-col items-start gap-0.5 rounded-lg py-1.5 pl-6 pr-2 text-left transition-colors hover:bg-subtle"
+                        key={v.nome}
+                        onClick={() => {
+                          // Nó de variável, não texto: é o que impede a marca de partir o nome.
+                          inserirVariavel(editor, v.nome);
+                          editor.tf.focus();
+                        }}
+                        // ⚠️ `onMouseDown` com preventDefault: sem isso o clique tira o foco do
+                        // editor, o cursor se perde e a variável entra no lugar errado — ou em
+                        // lugar nenhum.
+                        onMouseDown={(e) => e.preventDefault()}
+                        title={`Inserir [${v.nome}]`}
+                        type="button"
+                      >
+                        <span className="flex w-full items-center gap-1.5">
+                          {jaUsadas.has(v.nome) ? (
+                            <Check
+                              aria-hidden="true"
+                              className="size-3 shrink-0 text-emerald-600 dark:text-emerald-400"
+                            />
+                          ) : (
+                            <span aria-hidden="true" className="size-3 shrink-0" />
+                          )}
+                          <span className="flex-1 truncate text-xs font-medium text-ink">
+                            {v.rotulo}
+                          </span>
+                          {/* "pendente": está no catálogo, mas o Panteon ainda não tem a coluna.
+                              Sai vazio no contrato até existir — e NUNCA se busca no C2X. */}
+                          {pendente ? (
+                            <span className="rounded bg-amber-100 px-1 text-[9px] font-semibold uppercase text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                              pendente
+                            </span>
+                          ) : null}
                         </span>
-                      </span>
-                      <span className="pl-[1.125rem] font-mono text-[10px] text-ink-muted">
-                        [{v.nome}]
-                      </span>
-                      {/* A origem responde à pergunta que o jurídico faz o tempo todo: "de onde vem
-                          esse dado?". Sem ela, ele deixa o campo em branco por via das dúvidas. */}
-                      <span className="pl-[1.125rem] text-[10px] leading-tight text-ink-soft opacity-0 transition-opacity group-hover:opacity-100">
-                        {v.origem}
-                      </span>
-                    </button>
-                  ))
+                        <span className="pl-[1.125rem] font-mono text-[10px] text-ink-muted">
+                          [{v.nome}]
+                        </span>
+                        {/* A origem responde à pergunta que o jurídico faz o tempo todo: "de onde vem
+                            esse dado?". Sem ela, ele deixa o campo em branco por via das dúvidas. */}
+                        <span className="pl-[1.125rem] text-[10px] leading-tight text-ink-soft opacity-0 transition-opacity group-hover:opacity-100">
+                          {v.origem}
+                        </span>
+                      </button>
+                    );
+                  })
                 : null}
             </section>
           );
         })}
       </div>
     </aside>
-  );
-}
-
-type EditorDoPlate = NonNullable<ReturnType<typeof usePlateEditor>>;
-
-type MinutaDoC2x = {
-  atualizadaEm: null | string;
-  id: number;
-  nome: string;
-  tamanho: number;
-};
-
-function Barra({
-  aoAlternarPainel,
-  aoAvisar,
-  editor,
-  enterpriseId,
-  painelAberto,
-}: {
-  aoAlternarPainel: () => void;
-  aoAvisar?: (aviso: string) => void;
-  editor: EditorDoPlate;
-  enterpriseId: string;
-  painelAberto: boolean;
-}) {
-  const [importando, setImportando] = useState(false);
-  const [minutasDoC2x, setMinutasDoC2x] = useState<MinutaDoC2x[] | null>(null);
-  const [menuC2xAberto, setMenuC2xAberto] = useState(false);
-
-  const marca = (chave: string) => () => {
-    editor.tf.toggleMark(chave);
-    editor.tf.focus();
-  };
-
-  const bloco = (tipo: string) => () => {
-    editor.tf.toggleBlock(tipo);
-    editor.tf.focus();
-  };
-
-  const alinhar = (valor: string) => () => {
-    editor.tf.setNodes({ [KEYS.textAlign]: valor });
-    editor.tf.focus();
-  };
-
-  /**
-   * Liga ou desliga a lista no bloco atual.
-   *
-   * ⚠️ NO PLATE A LISTA É UMA PROPRIEDADE DO PARÁGRAFO (`listStyleType` + `indent`), como no Word —
-   * não existe nó `<ul>` no documento. Quem reconstrói `<ul>/<ol>` é `lib/temis/documento-html.ts`.
-   */
-  const lista = (estilo: string) => () => {
-    const entrada = editor.api.block();
-    const atual = (entrada?.[0] as undefined | { listStyleType?: string })?.listStyleType;
-
-    if (atual === estilo) editor.tf.unsetNodes([KEYS.listType, KEYS.indent]);
-    else editor.tf.setNodes({ [KEYS.indent]: 1, [KEYS.listType]: estilo });
-
-    editor.tf.focus();
-  };
-
-  /**
-   * Lista as minutas que este empreendimento já tem no C2X.
-   *
-   * ⚠️ O TAMANHO VEM JUNTO PORQUE MINUTA VAZIA EXISTE. A `ACP-MINUTA-COMPRA-VENDA` tem zero
-   * caracteres no legado, com três planos apontando para ela — mostrar "0 caracteres" na lista
-   * evita o clique que não vai a lugar nenhum.
-   */
-  const listarDoC2x = async () => {
-    setMenuC2xAberto(true);
-    if (minutasDoC2x) return;
-
-    try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(
-        `/api/temis/minutas/c2x?enterpriseId=${encodeURIComponent(enterpriseId)}`,
-        { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
-      );
-      const corpo = (await r.json().catch(() => ({}))) as {
-        data?: { minutas: MinutaDoC2x[] };
-        error?: string;
-      };
-      if (!r.ok || !corpo.data) {
-        aoAvisar?.(corpo.error ?? "Não consegui listar as minutas do C2X.");
-        setMenuC2xAberto(false);
-        return;
-      }
-      setMinutasDoC2x(corpo.data.minutas);
-    } catch {
-      aoAvisar?.("Falha ao consultar o C2X.");
-      setMenuC2xAberto(false);
-    }
-  };
-
-  /**
-   * Traz o texto de uma minuta do C2X para o editor.
-   *
-   * ⚠️ É AQUI QUE A FORMATAÇÃO SOBREVIVE OU MORRE. `editor.api.html.deserialize` usa os plugins
-   * registrados: com FontFamily, FontColor e Table ligados, a fonte, a cor e o fundo da célula
-   * atravessam. Medido na minuta do JDG: 450 dos 485 trechos mantêm a fonte, e as 244 variáveis
-   * chegam inteiras. O que NÃO atravessa é a borda da tabela — o serializador a devolve na saída.
-   */
-  const importarDoC2x = async (minuta: MinutaDoC2x) => {
-    if (
-      !window.confirm(
-        `Importar "${minuta.nome}" do C2X substitui TODO o texto deste documento. Continuar?`,
-      )
-    ) {
-      return;
-    }
-
-    setImportando(true);
-    setMenuC2xAberto(false);
-
-    try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(`/api/temis/minutas/c2x?draftId=${minuta.id}`, {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const corpo = (await r.json().catch(() => ({}))) as {
-        data?: { minuta: { html: string; nome: string } };
-        error?: string;
-      };
-
-      if (!r.ok || !corpo.data) {
-        aoAvisar?.(corpo.error ?? "Não consegui trazer esta minuta do C2X.");
-        return;
-      }
-
-      const nos = editor.api.html.deserialize({ element: corpo.data.minuta.html });
-      if (!Array.isArray(nos) || nos.length === 0) {
-        aoAvisar?.("O texto veio do C2X, mas não consegui interpretá-lo. Nada foi alterado.");
-        return;
-      }
-
-      editor.tf.setValue(nos as Value);
-      aoAvisar?.(
-        `"${corpo.data.minuta.nome}" importada do C2X. Confira a conferência acima antes de publicar: a minuta do legado pode trazer bloco condicional mal fechado.`,
-      );
-    } catch {
-      aoAvisar?.("Falha ao importar do C2X.");
-    } finally {
-      setImportando(false);
-    }
-  };
-
-  /**
-   * Substitui o documento pelo conteúdo de um .docx.
-   *
-   * ⚠️ SUBSTITUI, não acrescenta — e o aviso na tela diz isso antes. É o fluxo que o Lucas
-   * descreveu: *"o fluxo é subir a minuta que chega do loteador, vou importar"*. Importar por cima
-   * de um texto já revisado apagaria o trabalho, então o botão só aparece com a confirmação.
-   *
-   * ⚠️ O QUE O WORD PERDE NA CONVERSÃO É REAL: cabeçalho, rodapé, numeração automática de cláusula e
-   * caixas de texto não atravessam. Por isso o aviso conta quantos avisos o conversor deu, em vez de
-   * dizer "importado com sucesso" — o jurídico precisa reler antes de publicar.
-   */
-  const importar = async (arquivo: File) => {
-    setImportando(true);
-    try {
-      const buffer = await arquivo.arrayBuffer();
-      const { nodes, warnings } = await importDocx(editor, buffer);
-
-      if (!nodes.length) {
-        aoAvisar?.("O arquivo foi lido, mas veio vazio. Confira se é mesmo um .docx.");
-        return;
-      }
-
-      editor.tf.setValue(nodes as Value);
-      aoAvisar?.(
-        warnings.length > 0
-          ? `Minuta importada com ${warnings.length} aviso(s) de conversão. Releia antes de publicar: cabeçalho, rodapé e numeração automática do Word não atravessam.`
-          : "Minuta importada. Releia antes de publicar: cabeçalho, rodapé e numeração automática do Word não atravessam.",
-      );
-    } catch {
-      aoAvisar?.("Não consegui ler este arquivo. Ele precisa ser .docx (Word), não .doc nem PDF.");
-    } finally {
-      setImportando(false);
-    }
-  };
-
-  return (
-    <div className="relative flex shrink-0 flex-wrap items-center gap-1 border-b border-line bg-surface px-3 py-2">
-      <Grupo>
-        <Botao aoClicar={marca(KEYS.bold)} titulo="Negrito">
-          <Bold aria-hidden="true" className="size-4" />
-        </Botao>
-        <Botao aoClicar={marca(KEYS.italic)} titulo="Itálico">
-          <Italic aria-hidden="true" className="size-4" />
-        </Botao>
-        <Botao aoClicar={marca(KEYS.underline)} titulo="Sublinhado">
-          <Underline aria-hidden="true" className="size-4" />
-        </Botao>
-        <Botao aoClicar={marca(KEYS.strikethrough)} titulo="Tachado">
-          <Strikethrough aria-hidden="true" className="size-4" />
-        </Botao>
-      </Grupo>
-
-      <Separador />
-
-      <Grupo>
-        <Botao aoClicar={bloco(KEYS.h1)} titulo="Título 1">
-          <span className="text-xs font-bold">H1</span>
-        </Botao>
-        <Botao aoClicar={bloco(KEYS.h2)} titulo="Título 2">
-          <span className="text-xs font-bold">H2</span>
-        </Botao>
-        <Botao aoClicar={bloco(KEYS.h3)} titulo="Título 3">
-          <span className="text-xs font-bold">H3</span>
-        </Botao>
-        <Botao aoClicar={bloco(KEYS.blockquote)} titulo="Citação">
-          <Quote aria-hidden="true" className="size-4" />
-        </Botao>
-      </Grupo>
-
-      <Separador />
-
-      <Grupo>
-        <Botao aoClicar={alinhar("left")} titulo="Alinhar à esquerda">
-          <AlignLeft aria-hidden="true" className="size-4" />
-        </Botao>
-        <Botao aoClicar={alinhar("center")} titulo="Centralizar">
-          <AlignCenter aria-hidden="true" className="size-4" />
-        </Botao>
-        <Botao aoClicar={alinhar("right")} titulo="Alinhar à direita">
-          <AlignRight aria-hidden="true" className="size-4" />
-        </Botao>
-        <Botao aoClicar={alinhar("justify")} titulo="Justificar">
-          <AlignJustify aria-hidden="true" className="size-4" />
-        </Botao>
-      </Grupo>
-
-      <Separador />
-
-      <Grupo>
-        <Botao aoClicar={lista("disc")} titulo="Lista com marcadores">
-          <List aria-hidden="true" className="size-4" />
-        </Botao>
-        <Botao aoClicar={lista("decimal")} titulo="Lista numerada">
-          <ListOrdered aria-hidden="true" className="size-4" />
-        </Botao>
-        <Botao
-          aoClicar={() => {
-            editor.tf.insert.table();
-            editor.tf.focus();
-          }}
-          titulo="Inserir tabela"
-        >
-          <TableIcon aria-hidden="true" className="size-4" />
-        </Botao>
-        <Botao aoClicar={bloco(KEYS.hr)} titulo="Linha horizontal">
-          <Minus aria-hidden="true" className="size-4" />
-        </Botao>
-      </Grupo>
-
-      <Separador />
-
-      {/* ⚠️ A PORTA PARA AS 85 MINUTAS DO LEGADO. Sem ela, "rodar o JDG hoje" significaria alguém
-          redigitar 41 mil caracteres — o editor só sabia ler .docx, e as minutas do C2X são HTML
-          dentro do MySQL. */}
-      <button
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-40"
-        disabled={importando}
-        onClick={() => void listarDoC2x()}
-        title="Trazer uma minuta que já existe no C2X"
-        type="button"
-      >
-        <DatabaseZap aria-hidden="true" className="size-3.5" />
-        Do C2X
-      </button>
-
-      {menuC2xAberto ? (
-        <>
-          <button
-            aria-label="Fechar"
-            className="fixed inset-0 z-10 cursor-default"
-            onClick={() => setMenuC2xAberto(false)}
-            type="button"
-          />
-          <div className="absolute left-3 top-12 z-20 max-h-80 w-96 overflow-auto rounded-xl border border-line bg-surface p-1 shadow-lg">
-            {!minutasDoC2x ? (
-              <p className="m-0 flex items-center gap-2 px-3 py-3 text-xs text-ink-muted">
-                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-                Consultando o C2X…
-              </p>
-            ) : minutasDoC2x.length === 0 ? (
-              <p className="m-0 px-3 py-3 text-xs text-ink-muted">
-                Este empreendimento não tem minuta no C2X.
-              </p>
-            ) : (
-              minutasDoC2x.map((m) => (
-                <button
-                  className="flex w-full flex-col items-start gap-0.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-subtle disabled:opacity-40"
-                  disabled={m.tamanho === 0}
-                  key={m.id}
-                  onClick={() => void importarDoC2x(m)}
-                  title={m.tamanho === 0 ? "Esta minuta está vazia no C2X" : `Importar ${m.nome}`}
-                  type="button"
-                >
-                  <span className="text-xs font-semibold text-ink">{m.nome}</span>
-                  <span className="text-[10px] text-ink-muted">
-                    {m.tamanho === 0
-                      ? "VAZIA no C2X — não há o que importar"
-                      : `${m.tamanho.toLocaleString("pt-BR")} caracteres`}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </>
-      ) : null}
-
-      <label
-        className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink transition-colors hover:bg-subtle"
-        title="Importar um .docx por cima deste documento"
-      >
-        <Upload aria-hidden="true" className="size-3.5" />
-        {importando ? "Importando…" : "Importar .docx"}
-        <input
-          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          className="hidden"
-          onChange={(e) => {
-            const arquivo = e.target.files?.[0];
-            e.target.value = "";
-            if (!arquivo) return;
-            if (
-              !window.confirm(
-                "Importar substitui TODO o texto deste documento pelo conteúdo do arquivo. Continuar?",
-              )
-            ) {
-              return;
-            }
-            void importar(arquivo);
-          }}
-          type="file"
-        />
-      </label>
-
-      <Separador />
-
-      {/* O painel de variáveis vive AO LADO da folha, não aqui — ver a nota em PainelDeVariaveis.
-          Este botão só o esconde quando o jurídico quer a folha inteira para reler. */}
-      <button
-        className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors ${
-          painelAberto
-            ? "bg-[#A07C3B] text-white hover:bg-[#8A6A32]"
-            : "border border-line bg-surface text-ink hover:bg-subtle"
-        }`}
-        onClick={aoAlternarPainel}
-        title={painelAberto ? "Esconder as variáveis" : "Mostrar as variáveis"}
-        type="button"
-      >
-        {painelAberto ? (
-          <PanelRight aria-hidden="true" className="size-3.5" />
-        ) : (
-          <Braces aria-hidden="true" className="size-3.5" />
-        )}
-        Variáveis
-      </button>
-    </div>
-  );
-}
-
-function Grupo({ children }: { children: React.ReactNode }) {
-  return <div className="flex items-center gap-0.5">{children}</div>;
-}
-
-function Separador() {
-  return <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />;
-}
-
-function Botao({
-  aoClicar,
-  children,
-  titulo,
-}: {
-  aoClicar: () => void;
-  children: React.ReactNode;
-  titulo: string;
-}) {
-  return (
-    <button
-      aria-label={titulo}
-      className="flex size-8 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
-      // ⚠️ `onMouseDown` com preventDefault, e NÃO `onClick`: sem isso o clique tira o foco do
-      // editor antes do comando rodar, a seleção se perde e o negrito não aplica em nada.
-      onMouseDown={(e) => {
-        e.preventDefault();
-        aoClicar();
-      }}
-      title={titulo}
-      type="button"
-    >
-      {children}
-    </button>
   );
 }

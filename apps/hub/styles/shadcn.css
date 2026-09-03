@@ -1,0 +1,90 @@
+/* Tokens do shadcn/Plate UI (editor de minutas da Têmis). Arquivo separado do globals.css
+   de propósito: o `shadcn init` reescreveria o CSS principal com um segundo
+   `@custom-variant dark (.dark)`, `:root/.dark` e um `--color-brand` AZUL que colide com o
+   dourado da casa (globals.css). Aqui o CLI `add` só acrescenta os cssVars dos itens.
+
+   ⚠️ O dark da casa é [data-uix-theme="dark"], não `.dark`: qualquer bloco `.dark {}` que
+   o CLI gravar aqui deve ser trocado por :root[data-uix-theme="dark"].
+   ⚠️ Os nomes reais dos tokens do @repo/uix estão em packages/uix/styles.css
+   (--uix-surface-base, --uix-text-primary, --uix-border-subtle, --uix-color-brand-primary);
+   o plano citava --uix-color-surface/ink/line, que NÃO existem. */
+
+@import "tw-animate-css";
+/* Classe `scrollbar-hide` usada pelos componentes do Plate UI (gravado pelo CLI). */
+@plugin "tailwind-scrollbar-hide";
+
+:root {
+  --background: var(--uix-surface-base, oklch(1 0 0));
+  --foreground: var(--uix-text-primary, oklch(0.145 0 0));
+  --card: var(--background);
+  --card-foreground: var(--foreground);
+  --popover: var(--background);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: var(--uix-border-subtle, oklch(0.922 0 0));
+  --input: var(--border);
+  --ring: oklch(0.708 0 0);
+  --radius: 0.625rem;
+  /* "brand" do Plate = dourado da casa. NÃO redeclarar --color-brand (globals.css já tem). */
+  --brand: var(--uix-color-brand-primary, #a07c3b);
+  --highlight: oklch(0.852 0.199 91.936);
+}
+
+:root[data-uix-theme="dark"] {
+  --background: var(--uix-surface-base, oklch(0.145 0 0));
+  --foreground: var(--uix-text-primary, oklch(0.985 0 0));
+  --card: var(--background);
+  --card-foreground: var(--foreground);
+  --popover: var(--uix-surface-raised, oklch(0.205 0 0));
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --brand: var(--uix-color-brand-primary, #c9a45c);
+  --highlight: oklch(0.852 0.199 91.936);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-highlight: var(--highlight);
+  /* ⚠️ SEM `--radius-sm/md/lg/xl` AQUI. O `@theme inline` é GLOBAL: redefinir esses tokens
+     (como o shadcn faz) trocaria o raio de todo `rounded-sm|md|lg|xl` do hub — 1.460 `rounded-lg`,
+     766 `rounded-xl`, 654 `rounded-md` fora do editor (Iris, Apolo, Hércules, Prometeu…) mudariam
+     de forma ao mesmo tempo. O Plate UI fica com os raios padrão do Tailwind (4/6/8/12px; diferença
+     de 2px nos popovers do editor). `--radius` continua em :root para quem usar `var(--radius)`. */
+}
+

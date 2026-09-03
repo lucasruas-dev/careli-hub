@@ -13,5 +13,14 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["**/*.test.{ts,tsx}"],
+    server: {
+      deps: {
+        // ⚠️ `@platejs/math` importa `katex/dist/katex.min.css` dentro do próprio dist. Como
+        // dependência externa o Node tenta carregar o .css e derruba qualquer teste que monte o
+        // `BaseEditorKitTemis` (round-trip da Têmis). Inline: o Vite transforma o pacote e o CSS
+        // vira no-op, como em qualquer outro import de estilo nos testes.
+        inline: ["@platejs/math"],
+      },
+    },
   },
 });

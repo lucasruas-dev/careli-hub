@@ -18,7 +18,9 @@ import {
   documentoParaHtml,
   documentoVazio,
   type NoDoDocumento,
+  temSugestoesPendentes,
 } from "@/lib/temis/documento-html";
+import { reassinarMidiasDoDocumento } from "@/lib/temis/reassinar-midias";
 import { acharVariavel, classificarVariaveis, conferirBlocos, extensosOrfaos } from "@/lib/temis/variaveis";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
@@ -164,8 +166,14 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
         return;
       }
       const minuta = corpo.data.minuta;
+      // ⚠️ AS URLs DE MÍDIA DO JSON EXPIRAM (7 dias, bucket privado). Antes de abrir, cada uma é
+      // trocada por uma re-assinada pela rota autenticada; a que falhar fica como está — a imagem
+      // some, o texto não. Ver `lib/temis/reassinar-midias.ts`.
+      const conteudo = minuta.conteudo?.length
+        ? await reassinarMidiasDoDocumento(minuta.conteudo, token)
+        : documentoVazio();
       setAberta(minuta);
-      setDocumento(minuta.conteudo?.length ? minuta.conteudo : documentoVazio());
+      setDocumento(conteudo);
       setSujo(false);
     } catch {
       setErro("Falha ao abrir a minuta.");
@@ -301,6 +309,10 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
       conhecidas,
       desconhecidas,
       orfaos: extensosOrfaos(html),
+      // Sugestões (modo "sugerir" do editor) ainda não aceitas nem rejeitadas. TRAVA o Publicar,
+      // como o bloco mal fechado: o serializador pula o texto que a sugestão propõe inserir, então
+      // publicar agora geraria contrato com o texto original — e ninguém perceberia na tela.
+      sugestoesPendentes: temSugestoesPendentes(documento),
       tamanho: html.length,
     };
   }, [documento]);
@@ -369,12 +381,14 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
 
           <button
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={salvando || conferencia.blocos.length > 0}
+            disabled={salvando || conferencia.blocos.length > 0 || conferencia.sugestoesPendentes}
             onClick={() => void publicar()}
             title={
               conferencia.blocos.length > 0
                 ? "Corrija os blocos condicionais antes de publicar"
-                : "Publicar esta versão"
+                : conferencia.sugestoesPendentes
+                  ? "Aceite ou rejeite as sugestões antes de publicar"
+                  : "Publicar esta versão"
             }
             type="button"
           >
@@ -385,6 +399,12 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
 
         {aviso ? <Faixa tom="ok">{aviso}</Faixa> : null}
         {erro ? <Faixa tom="erro">{erro}</Faixa> : null}
+        {conferencia.sugestoesPendentes ? (
+          <Faixa tom="aviso">
+            Há sugestões pendentes no texto: aceite ou rejeite cada uma no editor. O Publicar fica
+            travado enquanto houver — o contrato sairia com o texto original, sem a alteração sugerida.
+          </Faixa>
+        ) : null}
 
         <Conferencia conferencia={conferencia} />
 
@@ -399,8 +419,10 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
           }}
           // ⚠️ A CHAVE É O ID DA MINUTA. Sem ela, abrir outra minuta reaproveitaria o editor com o
           // documento da anterior — o Plate só lê `valorInicial` na montagem.
-          enterpriseId={enterpriseId}
           key={aberta.id}
+          // O editor não lê mais nada do C2X (Lucas, 02/09/2026: "esquece c2x como consulta");
+          // o que ele precisa saber é qual minuta está aberta, para guardar a mídia no lugar certo.
+          minutaId={aberta.id}
           valorInicial={documento}
         />
       </div>
@@ -501,11 +523,13 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
   );
 }
 
-function Faixa({ children, tom }: { children: React.ReactNode; tom: "erro" | "ok" }) {
+function Faixa({ children, tom }: { children: React.ReactNode; tom: "aviso" | "erro" | "ok" }) {
   const classe =
     tom === "ok"
       ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
-      : "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200";
+      : tom === "aviso"
+        ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+        : "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200";
 
   return (
     <p className={`m-0 flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${classe}`}>
@@ -581,7 +605,8 @@ function Conferencia({ conferencia }: { conferencia: Conferido }) {
               .slice(0, 8)
               .map((d) => `[${d.nome}]`)
               .join(", ")}{" "}
-            — sai impresso assim no contrato. Troque pelo item certo no menu "Inserir variável".
+            — sai impresso assim no contrato. Troque pelo item certo no painel Variáveis, ou digite{" "}
+            <code>[</code> na folha e escolha da lista.
           </p>
         </div>
       ) : null}

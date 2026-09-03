@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-temis-editor-completo",
+    deployedAt: "2026-09-02T23:24:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "O editor de minutas ficou completo: escrever com IA, comentar, sugerir alteração, inserir imagem, tabela, colunas, destaque, índice, código, data, emoji e equação.",
+              "Barra de ferramentas de verdade: fontes, cores, realce, alinhamento, recuo, listas, links, buscar e substituir, desfazer e refazer.",
+              "Comando por barra: digite / no meio do texto para inserir qualquer bloco.",
+              "Importar e exportar Word e Markdown; blocos podem ser arrastados pela alça.",
+              "As variáveis viraram etiquetas dentro do texto, com painel para inserir e conferir o que já foi usado.",
+              "As imagens da minuta ficam no nosso cofre, não em serviço de terceiros.",
+            ],
+            screen: "Minutas",
+          },
+        ],
+      },
+    ],
+    rollback: "c08f6165",
+    technical: {
+      done: "Pedido do Lucas (02/09/2026), comparando nosso editor com o demo do Plate: *\"nao temos todas essas ferramentas, revise as documentacoes pois quero isso completo, estamos muito simples\"*, e logo depois: *\"nao quero nada do c2x, todas as variaveis tem que nascer do panteon, esquece c2x como consulta\"*. O editor passou de 7 pacotes do Plate para o Plate UI inteiro, instalado pelo registro shadcn com `components.json` proprio e um `styles/shadcn.css` NOVO — o `shadcn init` nao foi rodado de proposito: ele reescreveria o CSS da casa com um segundo `@custom-variant dark (.dark)` e um `--color-brand` azul por cima do dourado usado em 121 classes. ⚠️ O `@theme inline` do shadcn NAO redefine `--radius-sm/md/lg/xl`: como e global, mudaria o raio de 2.900 elementos do hub inteiro (Iris, Apolo, Hades) — achado da revisao adversarial. ⚠️ O SERIALIZADOR CONTINUA SENDO O NOSSO (`lib/temis/documento-html.ts`), e nao o `serializeHtml` do Plate: o HTML que vira contrato assinado nao pode depender da versao do editor. Ele ganhou os nos novos (callout, colunas, toggle, codigo, equacao, data, midia, link, mencao) e passou a AGRUPAR trechos vizinhos de mesmo estilo — sem isso o `conteudo_html` da minuta do JDG inchava 33% so de spans partidos pelos chips de variavel. ⚠️ MINUTA ANTIGA ABRE IGUAL: o alinhamento gravado como `textAlign` (editor antigo) e migrado para `align` na abertura, e o round-trip compara o HTML byte a byte com a minuta real do Jardim das Gerais (41.827 bytes, 244 variaveis). A IA usa Anthropic (claude-sonnet-5) por rota propria com sessao do hub, sem log do texto; ⚠️ a escolha da ferramenta subiu de 64 para 1024 tokens de saida porque o thinking adaptativo do Sonnet 5 consome o teto e cortava a resposta. Midia vai para o bucket privado `apolo-documents` com URL assinada de 7 dias, reassinada na abertura — nada de UploadThing. C2X: o botao \"Do C2X\" saiu do editor e a rota `/api/temis/minutas/c2x` foi REMOVIDA (nenhuma consulta ao legado sai da Temis). Revisao adversarial com 10 achados, todos fechados; 195 testes da Temis verdes.",
+      motivation:
+        "A minuta e o documento que o comprador assina, e o jurídico manda Word com tabela, coluna e numeração: editor pobre obriga a colar e rezar.",
+    },
+    title: "O editor de minutas ficou completo",
+    type: "novidade",
+    version: "1.273.0",
+  },
+  {
     buildTag: "2026-09-02-hercules-melhorias-1",
     deployedAt: "2026-09-02T22:26:00-03:00",
     modules: [
