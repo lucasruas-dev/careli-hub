@@ -3,16 +3,14 @@ import { after, NextResponse } from "next/server";
 import { aquecerD4SignEmSegundoPlano } from "@/lib/guardian/d4sign-consulta";
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import { lerAssinaturasDoPortal } from "@/lib/apolo/incorporador/assinaturas";
-import {
-  codesDoRecorte,
-  empreendimentosDoPortal,
-} from "@/lib/apolo/incorporador/empreendimentos-do-portal";
+import { codigosDoPedido } from "@/lib/apolo/incorporador/codigos-do-pedido";
+import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
 import { autorizar, codigosDaSessao, foraDoEscopo } from "@/lib/apolo/incorporador/escopo";
 
 // GESTÃO DE ASSINATURA — a aba de Vendas do portal do incorporador.
 //
 // Mesmo esqueleto de /api/incorporador/vendas: escopo do TOKEN (`codigosDaSessao`), `emp` só
-// reduz (`codesDoRecorte`), pedido que não sobra nada é 404. As regras de fila (assinado / na
+// reduz (`codigosDoPedido`), pedido que não sobra nada é 404. As regras de fila (assinado / na
 // vez / aguardando) são as do painel interno, importadas em lib/apolo/incorporador/assinaturas.
 //
 // Os NOMES dos assinantes do fluxo aparecem (decisão já comunicada ao dono). Telefone e e-mail
@@ -40,7 +38,22 @@ export async function GET(request: Request) {
   const empreendimentos = empreendimentosDoPortal(catalogo, codesAutorizados);
 
   const pedido = new URL(request.url).searchParams.get("emp");
-  const codes = codesDoRecorte(empreendimentos, pedido);
+
+  // ⚠️ O MESMO `emp` DA ROTA DE VENDAS, RESOLVIDO PELA MESMA FUNÇÃO. A TelaVendas manda para cá o
+  // `empFixo` que o "Ver mais" da aba Produtos abriu ("pai:<uuid>" do cadastro do Panteon, ou o
+  // id numérico de um filho). Só `codesDoRecorte` aqui não entendia nenhum dos dois e a visão
+  // respondia 404 para um produto que É do coordenador. Cadastro fora do ar = 503 (resposta
+  // pronta), como na rota de vendas.
+  const resolvido = await codigosDoPedido({
+    catalogo,
+    codesAutorizados,
+    empreendimentos,
+    pedido,
+    sessao: auth.sessao,
+  });
+  if (!resolvido.ok) return resolvido.response;
+
+  const { codes } = resolvido;
 
   if (codes.length === 0) {
     return foraDoEscopo();

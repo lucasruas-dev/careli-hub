@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
+import { codigosDoPedido } from "@/lib/apolo/incorporador/codigos-do-pedido";
 import { clientesUnicos } from "@/lib/apolo/incorporador/contratos";
-import {
-  codesDoRecorte,
-  empreendimentosDoPortal,
-} from "@/lib/apolo/incorporador/empreendimentos-do-portal";
+import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
 import { autorizar, codigosDaSessao, foraDoEscopo } from "@/lib/apolo/incorporador/escopo";
 import {
   agregarPerfilDoComprador,
@@ -30,7 +28,7 @@ import { loadApoloEnterpriseVendas } from "@/lib/apolo/vendas";
 // empreendimentos deste cliente e traduzido para a língua dele em `vendas-resumo`.
 //
 // ⚠️ O ESCOPO VEM DO TOKEN, NUNCA DA URL. `codigosDaSessao` é a única fonte dos códigos; o
-// parâmetro `emp` apenas ESCOLHE um dos empreendimentos que já saíram de lá, e `codesDoRecorte`
+// parâmetro `emp` apenas ESCOLHE um dos empreendimentos que já saíram de lá, e `codigosDoPedido`
 // trabalha sobre essa lista, então ele só consegue reduzir. Empreendimento que não é dele não dá
 // erro revelador: dá 404, o mesmo que ele receberia para um empreendimento inexistente.
 //
@@ -64,7 +62,22 @@ export async function GET(request: Request) {
   const empreendimentos = empreendimentosDoPortal(catalogo, codesAutorizados);
 
   const pedido = new URL(request.url).searchParams.get("emp");
-  const codes = codesDoRecorte(empreendimentos, pedido);
+
+  // O `emp` chega em TRÊS formatos ("pai:<uuid>" do cadastro do Panteon, id numérico do C2X de
+  // um filho, id do catálogo do seletor) e os três só REDUZEM o que a sessão já autorizou. A
+  // tradução mora em `codigosDoPedido`, num lugar só, porque as rotas de assinaturas e contratos
+  // recebem o MESMO `emp` desta tela — e a regra só aqui deixava a pílula "Contratos" morta
+  // dentro do produto aberto pelo "Ver mais". Cadastro fora do ar = 503 (resposta pronta).
+  const resolvido = await codigosDoPedido({
+    catalogo,
+    codesAutorizados,
+    empreendimentos,
+    pedido,
+    sessao: auth.sessao,
+  });
+  if (!resolvido.ok) return resolvido.response;
+
+  const { codes } = resolvido;
 
   // Pedido que não sobra nada = empreendimento que não é dele (ou que saiu do catálogo). Nunca
   // cai na visão consolidada: filtro que "não achou" virando relatório do loteamento inteiro é
@@ -117,6 +130,14 @@ export async function GET(request: Request) {
           nome: emp.nome,
         })),
         filtro: pedido?.trim() ? pedido.trim() : null,
+        // OS IDS DO CATÁLOGO QUE O RECORTE ALCANÇA. Com produto fixo (o "Ver mais" da aba
+        // Produtos) a fileira de mapas da tela precisa mostrar só o mapa DAQUELE produto, e a
+        // lista `empreendimentos` acima é a da sessão inteira (o seletor de pílulas precisa
+        // dela completa). Como `codes` já é o recorte resolvido (pai expandido → VOC/VOL/VOR;
+        // Garden → GDN), a tela filtra por estes ids sem precisar conhecer "pai:".
+        recorte: pedido?.trim()
+          ? empreendimentosDoPortal(catalogo, codes).map((emp) => emp.id)
+          : null,
         // Agregado, nunca individual: contagem e percentual por faixa (sexo, idade, estado
         // civil, renda, profissões top 6, cidades top 5). Nulo quando o C2X não respondeu — e
         // também quando o recorte tem menos vendas que o piso de agregação.

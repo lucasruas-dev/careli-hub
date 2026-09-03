@@ -121,6 +121,11 @@ const ROTULOS: Record<
     contaSalvar: string;
     enxerga: string;
     nenhumaConta: string;
+    /**
+     * O caminho da porta. O comercial mora em /comercial/<slug> (Lucas, 02/09/2026: *"esse link
+     * está errado, tem que ser coordenação ou comercial"*); o incorporador segue em /incorporador/.
+     */
+    caminho: "comercial" | "incorporador";
     /** O portal sem empreendimento marcado: no incorporador é portal quebrado; no comercial, não. */
     semEmpreendimento: string;
     placeholderNome: string;
@@ -134,6 +139,7 @@ const ROTULOS: Record<
   comercial: {
     ajudaEmail:
       "O mesmo e-mail pode ter conta em outro portal (a URL decide onde ele entra); só não repete dentro deste.",
+    caminho: "comercial",
     contaEditar: "Editar coordenador",
     contaNova: "Novo coordenador",
     contaNovaEm: (nome) => `Novo coordenador em ${nome}`,
@@ -154,6 +160,7 @@ const ROTULOS: Record<
   incorporador: {
     ajudaEmail:
       "O mesmo e-mail pode ter conta em outros portais de incorporador (a URL decide onde ele entra); só não repete dentro deste portal.",
+    caminho: "incorporador",
     contaEditar: "Editar conta",
     contaNova: "Nova conta",
     contaNovaEm: (nome) => `Nova conta em ${nome}`,
@@ -593,9 +600,9 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
                 placeholder={rotulos.placeholderSlug}
                 value={form.slug}
               />
-              {/* A porta é a MESMA nos dois tipos: o comercial também entra por /incorporador/. */}
+              {/* A mesma tela e o mesmo cookie nos dois tipos; só o CAMINHO muda por tipo. */}
               <span className="block font-normal text-ink-muted">
-                c2x.app.br/incorporador/{slugDe(form.slug || form.nome) || "…"}
+                c2x.app.br/{rotulos.caminho}/{slugDe(form.slug || form.nome) || "…"}
               </span>
             </label>
           </div>
@@ -756,12 +763,12 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
                   Href ABSOLUTO e aba nova — a tela do Setup fica aberta. */}
               <a
                 className="inline-flex items-center gap-1 text-xs text-ink-muted underline-offset-2 outline-none transition hover:text-ink hover:underline focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                href={`/incorporador/${inc.slug}`}
+                href={`/${rotulos.caminho}/${inc.slug}`}
                 rel="noopener noreferrer"
                 target="_blank"
                 title="Abrir o portal em outra aba"
               >
-                /incorporador/{inc.slug}
+                /{rotulos.caminho}/{inc.slug}
                 <ExternalLink aria-hidden="true" size={12} />
               </a>
               {inc.ativo ? null : <Badge variant="warning">inativo</Badge>}

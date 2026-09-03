@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import {
+  ArrowLeft,
   CheckCircle2,
   FileText,
   Map as MapaIcone,
@@ -163,6 +164,8 @@ type Dados = {
   empreendimentos: EmpreendimentoDaTela[];
   filtro?: null | string;
   perfilComprador?: null | PerfilComprador;
+  /** Ids do catálogo que o `emp` pedido alcançou (nulo sem pedido). Filtra a fileira de mapas. */
+  recorte?: null | string[];
   resumo?: Resumo;
   ritmo?: Ritmo;
   unidades?: Unidade[];
@@ -415,11 +418,28 @@ function rotuloDaData(iso: null | string): string {
 
 const PAGINA = 40;
 
-export function TelaVendas() {
+// AS PROPS SÃO OPCIONAIS DE PROPÓSITO: sem elas a tela é exatamente a de sempre (os portais de
+// incorporador continuam iguais). Com `empFixo` ela vira a Vendas DE UM PRODUTO, aberta pelo "Ver
+// mais" da TelaProdutosComercial (Lucas, 02/09/2026: "vendas tem que morar dentro da tela de
+// produtos"): nasce naquele empreendimento, esconde o seletor e ganha o botão de voltar.
+//
+// ⚠️ O `empFixo` É O QUE A ROTA DE PRODUTOS DEVOLVEU, não um id que a tela inventou: "pai:<uuid>"
+// do cadastro do Panteon, ou o id do C2X de um filho/linha simples. A rota de vendas confere o
+// escopo da sessão de novo do lado de lá — a tela só escolhe entre o que já foi autorizado.
+export function TelaVendas({
+  empFixo = null,
+  nomeFixo,
+  onVoltar,
+}: {
+  empFixo?: null | string;
+  nomeFixo?: string;
+  onVoltar?: () => void;
+} = {}) {
   const [dados, setDados] = useState<Dados | null>(null);
   const [erro, setErro] = useState<null | string>(null);
   const [carregando, setCarregando] = useState(true);
-  const [empSelecionado, setEmpSelecionado] = useState<null | string>(null);
+  // Fixo = nasce nele e não troca (quem remonta a tela ao mudar de produto é a `key` de quem chama).
+  const [empSelecionado, setEmpSelecionado] = useState<null | string>(empFixo);
   const [busca, setBusca] = useState("");
   const [baldeAtivo, setBaldeAtivo] = useState<Balde | null>(null);
   const [visiveis, setVisiveis] = useState(PAGINA);
@@ -513,19 +533,54 @@ export function TelaVendas() {
     return <Aviso texto="Não foi possível carregar as vendas agora." tom="erro" />;
   }
 
-  const { empreendimentos, resumo, ritmo } = dados;
-  const comMapa = empreendimentos.filter((emp) => emp.masterplan);
+  const { empreendimentos, recorte, resumo, ritmo } = dados;
+  // Com produto FIXO, só o mapa daquele produto: a rota devolve em `recorte` os ids do catálogo
+  // que o `emp` alcançou (pai expandido → as divisões dele), e a tela filtra por eles sem
+  // precisar conhecer "pai:". Sem produto fixo (ou sem `recorte` no payload), a fileira segue
+  // com todos os mapas da sessão, como sempre.
+  const idsDoRecorte = empFixo && recorte ? new Set(recorte) : null;
+  const comMapa = empreendimentos.filter(
+    (emp) => emp.masterplan && (!idsDoRecorte || idsDoRecorte.has(emp.id)),
+  );
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
       {/* ── CABEÇALHO: quem está sendo olhado e por onde trocar ──────────────── */}
       <header>
-        <h1 style={{ color: T.text, fontSize: 20, fontWeight: 600, margin: "0 0 4px" }}>Vendas</h1>
+        {/* FIXA NUM PRODUTO: o voltar (a seta acima do título, como "Trocar lançamento" na
+            TelaLancamento) e o nome do produto no lugar de "Vendas". */}
+        {empFixo ? (
+          <button
+            onClick={onVoltar}
+            style={{
+              alignItems: "center",
+              background: "transparent",
+              border: "none",
+              color: T.muted,
+              cursor: "pointer",
+              display: "inline-flex",
+              fontFamily: fonte,
+              fontSize: 12.5,
+              gap: 6,
+              margin: "0 0 4px",
+              padding: 0,
+            }}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={14} />
+            Voltar para Produtos
+          </button>
+        ) : null}
+        <h1 style={{ color: T.text, fontSize: 20, fontWeight: 600, margin: "0 0 4px" }}>
+          {empFixo ? (nomeFixo ?? "Vendas") : "Vendas"}
+        </h1>
         <p style={{ color: T.muted, fontSize: 13.5, margin: 0 }}>
+          {empFixo ? "Vendas · " : ""}
           {inteiro(resumo.total.units)} unidades, {brl(resumo.total.vgv)} de VGV.
         </p>
 
-        {empreendimentos.length > 1 ? (
+        {/* O seletor NÃO aparece com produto fixo: trocar de produto é voltar para a tabela. */}
+        {!empFixo && empreendimentos.length > 1 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
             <Pilula
               ativo={empSelecionado === null}

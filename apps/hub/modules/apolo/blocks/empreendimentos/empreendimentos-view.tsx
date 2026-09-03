@@ -10,6 +10,7 @@ import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
 import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 import { PoliticaComercialTab } from "@/modules/apolo/blocks/empreendimentos/politica-comercial-tab";
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -99,7 +100,10 @@ const playerRoleLabels: Record<ApoloEnterprisePlayer["relation"], string> = {
 type BucketKey = keyof ApoloEnterpriseScenario;
 
 // Cores por balde (definidas pelo Lucas): vendido = azul forte, negociação = roxo.
-const bucketText: Record<BucketKey, string> = {
+// Exportado (junto de `buckets`, `KpiCard`, `ResumoTab` e `locationLabel`) para a ficha do
+// Hércules (modules/incorporador/hercules) desenhar com os MESMOS componentes — Lucas
+// (02/09/2026): *"produtos é replicar a tela que temos hoje em empreendimento do apolo"*.
+export const bucketText: Record<BucketKey, string> = {
   bloqueado: "text-rose-600 dark:text-rose-400",
   disponivel: "text-emerald-600 dark:text-emerald-400",
   negociacao: "text-violet-600 dark:text-violet-400",
@@ -108,7 +112,7 @@ const bucketText: Record<BucketKey, string> = {
   vendido: "text-blue-600 dark:text-blue-400",
 };
 
-const buckets: Array<{
+export const buckets: Array<{
   icon: LucideIcon;
   key: BucketKey;
   label: string;
@@ -172,6 +176,7 @@ export function EmpreendimentosScreen({
   onDetailChange,
   onOpenEntity,
   onTabChange,
+  renderDetail,
   tab,
 }: {
   data: ApoloEnterprisesData | null;
@@ -184,6 +189,11 @@ export function EmpreendimentosScreen({
   // Abre o cadastro daquela entidade no CRM 360.
   onOpenEntity: (name: string, entityId: string) => void;
   onTabChange: (tab: DetailTab) => void;
+  // A FICHA DE OUTRO DONO. Quando vem, o "Ver mais" renderiza o que ela devolver no lugar do
+  // <EnterpriseDetail/> do Apolo; a lista (cards + tabela) continua a mesma. É por aqui que o
+  // Hércules (portal comercial) reaproveita a tela inteira e troca só a ficha, que lá tem outras
+  // abas (Resumo · Cadastro · Imobiliárias · Vendas · Contratos). Sem a prop, nada muda.
+  renderDetail?: (row: ApoloEnterpriseRow, onBack: () => void) => ReactNode;
   tab: DetailTab;
 }) {
   // `selected` = linha marcada, que FILTRA os cards.
@@ -210,6 +220,10 @@ export function EmpreendimentosScreen({
   }
 
   if (detail) {
+    if (renderDetail) {
+      return <>{renderDetail(detail, () => onDetailChange(null))}</>;
+    }
+
     return (
       <EnterpriseDetail
         onBack={() => onDetailChange(null)}
@@ -1445,7 +1459,7 @@ function CredenciamentoCard({
   );
 }
 
-function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {
+export function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {
   const sold = row.scenario.vendido;
   const total = row.scenario.total;
   const soldShare = total.units ? (sold.units / total.units) * 100 : 0;
@@ -4461,7 +4475,7 @@ function ScenarioCells({
   );
 }
 
-function KpiCard({
+export function KpiCard({
   icon: Icon,
   label,
   tally,
@@ -4517,7 +4531,7 @@ function SkeletonScreen() {
   );
 }
 
-function locationLabel(row: ApoloEnterpriseRow): string {
+export function locationLabel(row: ApoloEnterpriseRow): string {
   return [row.city, row.state].filter(Boolean).join("/");
 }
 

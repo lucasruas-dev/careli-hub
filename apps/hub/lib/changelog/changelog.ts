@@ -36,6 +36,53 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-02-hercules-produtos",
+    deployedAt: "2026-09-02T21:10:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "Produtos é a mesma tela de Empreendimentos do Apolo: cards, uma linha por empreendimento com as etapas, e Ver mais.",
+              "Vale do Ouro e Lagoa Bonita aparecem unificados, com as divisões abertas por baixo.",
+              "A ficha do produto tem Resumo, Cadastro, Imobiliárias, Vendas e Contratos.",
+              "Resumo mostra o processo do coordenador: imobiliárias, corretores, CADs, credenciados, reservas, propostas, contratos e vendidas.",
+              "Cadastro é o Board do Apolo só com as CADs e imobiliárias daquele produto, com mover de etapa e habilitar.",
+              "Imobiliárias mostra cada imobiliária habilitada, seus corretores e os clientes com a situação da CAD.",
+              "Vendas fica dentro do produto, com pipeline, Unidades e Mapa.",
+            ],
+            screen: "Produtos",
+          },
+          {
+            items: [
+              "Financeiro virou Parcelas: só Ato e Sinal, com o valor cheio que o cliente paga.",
+              "Cada parcela traz o boleto: abrir, copiar o link ou mandar pelo WhatsApp para o cliente ou o corretor.",
+            ],
+            screen: "Financeiro",
+          },
+          {
+            items: [
+              "O portal comercial mora em c2x.app.br/comercial/gurgel. O endereço antigo redireciona.",
+              "A porta do coordenador ficou centralizada.",
+              "Ícones na barra lateral: Produtos, Contratos e Lançamento com os mesmos ícones do Apolo, da Têmis e do Prometeu.",
+            ],
+            screen: "Portal comercial",
+          },
+        ],
+      },
+    ],
+    rollback: "d59381d0",
+    technical: {
+      done: "Direcao do Lucas em 02/09/2026, a noite: *\"produtos e replicar a tela que temos hoje em empreendimento do apolo\"*, *\"deixa cadastro mesmo e traz a mesma visao do apolo, imobiliaria e cads, e deixa imobiliarias separado\"*, *\"Unidades dentro de vendas\"*, *\"aqui o financeiro nao tem carteira, e Parcelas (...) somente o Ato e o Sinal (...) e para trazer o valor cheio\"*, *\"aqui trazer os boletos para que o coordenador possa tambem encaminhar para o cliente, corretor\"*, *\"esse link esta errado, tem que ser coordenacao ou comercial\"*. Construido por um workflow de cinco frentes paralelas (lista com `renderDetail` no `EmpreendimentosScreen` do Apolo; ficha replica do `EnterpriseDetail`; `BoardView` com `api/semToken/empreendimentosFixos` e rotas `/api/incorporador/board/**` com escopo por CAD; aba Imobiliarias processual; Resumo com a faixa do processo) mais um agente para o modo coordenador da carteira, com revisao adversarial e build. ⚠️ O LINK DO BOLETO SO SAI NA SESSAO COMERCIAL: a rota da carteira confere `sessao.tipo` do cookie assinado, nunca parametro de URL — o incorporador continua sem o link, como decidido em 18/08. ⚠️ PAI COM FILHOS SOMA OS FILHOS, nunca o espelho: o VLO no C2X esta parado com 118 em negociacao que ja viraram venda em VOC/VOL. Typecheck limpo; suite verde.",
+      motivation:
+        "O coordenador precisava da mesma tela de empreendimentos do Apolo, com Vendas dentro do produto, e de um financeiro que fala a lingua dele: ato, sinal e boleto.",
+    },
+    title: "Hércules: Produtos como no Apolo, e Parcelas com boleto",
+    type: "novidade",
+    version: "1.271.0",
+  },
+  {
     buildTag: "2026-09-02-porta-do-coordenador",
     deployedAt: "2026-09-02T19:46:00-03:00",
     modules: [

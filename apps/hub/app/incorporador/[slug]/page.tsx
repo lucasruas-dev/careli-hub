@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { carregarIncorporadorPorSlug } from "@/lib/apolo/incorporador/dados";
 import { resolverLogoDoPortal } from "@/lib/apolo/incorporador/logo";
@@ -51,6 +51,10 @@ export default async function PaginaIncorporador({
   // Slug desconhecido ou inativo cai em 404, sem dizer qual dos dois: a porta não confirma
   // quem é cliente da Careli para quem só chutou um endereço.
   if (!incorporador) notFound();
+
+  // O portal COMERCIAL mora em /comercial/<slug> (Lucas, 02/09/2026: *"esse link está errado, tem
+  // que ser coordenação ou comercial"*). Quem chegar pelo endereço antigo vai para o certo.
+  if (incorporador.tipo === "comercial") redirect(`/comercial/${incorporador.slug}`);
 
   return (
     <PortalIncorporador

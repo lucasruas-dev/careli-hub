@@ -5501,3 +5501,35 @@ Registro de producao:
 - Status: `EM PRODUCAO`.
 - Proxima acao: `Lucas validar /incorporador/gurgel (login com a marca) e Setup > Comercial; Zeus registrar healthcheck`.
 
+## 2026-09-02 - Hercules: a porta do coordenador (v1.270.1) - EM PRODUCAO
+
+Registro de producao:
+
+- Assunto: `[Hercules/Zeus] Porta do portal comercial: titulo proprio e sem o aviso de sessao cruzada`.
+- Squad/agente responsavel: `Zeus (autorizado pelo Lucas: "pode subir")`.
+- Data e hora local: `2026-09-02 20:07:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `pedido do Lucas vendo a porta do /gurgel: "portal do coordenador, tira essa frase que voce esta conectado com CER"`.
+- Escopo publicado:
+  - `Porta` recebe o tipo do portal: no comercial, titulo "Portal do coordenador" e subtitulo proprio;
+  - o aviso de sessao aberta em outro portal nao aparece no comercial (segue nos portais de incorporador);
+  - diarios de operacao do deploy v1.270.0.
+- Commit publicado: `d59381d0`.
+- Deployment anterior: `dpl_87oqkEZepBFEkSxqJVGPDxWe7QQ8` (a50a73ba).
+- Deployment novo: `dpl_CR74ZqaMyv2CizQepAu8Epzi9DQk`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: READY, alias aplicado.
+- Arquivos/modulos incluidos: `apps/hub/modules/incorporador/PortalIncorporador.tsx`, `apps/hub/lib/changelog/changelog.ts`, `docs/operations/*`.
+- Arquivos/modulos excluidos: trabalho em andamento do Hercules (Produtos como replica do Apolo), nao commitado.
+- Validacoes executadas:
+  - `check-types` exit 0 antes do push.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br/incorporador/gurgel`: 200, porta com "Portal do coordenador" (captura do Lucas).
+- Logs recentes: `n/a`.
+- Rollback definido: `promover dpl_87oqkEZepBFEkSxqJVGPDxWe7QQ8`.
+- Riscos conhecidos: nenhum novo.
+- Pendencias: centralizar titulo e subtitulo da porta (pedido seguinte do Lucas); endereco /comercial/<slug> em construcao.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Zeus seguir com Produtos (replica do Apolo) e /comercial/<slug>`.
+

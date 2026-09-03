@@ -26,7 +26,18 @@ import { TelaBoletos } from "./TelaBoletos";
 // fila + central do Prometeu. Ver `ABAS_COMERCIAL`.
 import { TelaContratos } from "./TelaContratos";
 import { TelaLancamento } from "./TelaLancamento";
+// A aba Produtos do COMERCIAL é outra tela: a RÉPLICA da tela de Empreendimentos do Apolo (os seis
+// cards, a tabela pai/filhos e a ficha com abas), com Vendas dentro da ficha (Lucas, 02/09/2026:
+// *"produtos é replicar a tela que temos hoje em empreendimento do apolo"*). A versão anterior em
+// estilo próprio do portal (TelaProdutosComercial.tsx) fica no repo, fora do fluxo.
+import { ProdutosDoHercules } from "./hercules/ProdutosDoHercules";
 import { TelaVendas } from "./TelaVendas";
+// Os ícones do menu do COMERCIAL (Lucas, 02/09/2026), na régua do Apolo/hub: CRM = o do CRM 360
+// (ContactRound), Produtos = o de Empreendimentos (Building2) — os dois de lib/apolo/catalog.ts —,
+// Contratos = o da Têmis (FileSignature), Financeiro = o de Carteira (WalletCards), Lançamento = o
+// do Prometeu (ListOrdered).
+import { Building2, ContactRound, FileSignature, ListOrdered, WalletCards } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 // PORTAL DO INCORPORADOR — a porta e as telas de dentro.
 //
@@ -46,8 +57,10 @@ type Sessao = {
   usuario: { nome: string };
 };
 
-// "produtos" existe SÓ no portal personalizado (ver `abasDoPortal`). No padrão, o mapa vive
-// dentro de Vendas. "contratos" e "lancamento" existem SÓ no portal comercial.
+// "produtos" existe no portal personalizado (os cards com a logo, `TelaProdutos`) e no COMERCIAL
+// (a tabela de empreendimentos com Vendas dentro, `TelaProdutosComercial`) — mesma chave, telas
+// diferentes, decididas pelo tipo no corpo do Portal. No padrão, o mapa vive dentro de Vendas.
+// "contratos" e "lancamento" existem SÓ no portal comercial.
 type Aba =
   | "boletos"
   | "carteira"
@@ -57,6 +70,11 @@ type Aba =
   | "lsoft"
   | "produtos"
   | "vendas";
+
+// Um item do menu lateral. `icone` é opcional de propósito: o portal COMERCIAL carrega ícone em
+// todas as abas (pedido do Lucas, 02/09/2026); os portais de incorporador seguem só com o rótulo,
+// e o <nav> renderiza o ícone quando houver.
+type ItemDeAba = { chave: Aba; icone?: LucideIcon; rotulo: string };
 
 type DadosDoPortal = {
   logoEscuraUrl: string | null;
@@ -86,7 +104,11 @@ function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug, tipo }: DadosDoPort
   // todo mundo (Carteira só aparece para quem tem carteira administrada, CRM ainda está por vir).
   // ⚠️ MENOS no portal SÓ PRODUTOS, onde Vendas não existe: abrir nela deixaria a tela em branco,
   // porque o corpo renderiza por `aba` e nenhum ramo casaria. Ver [[perfis-de-portal]].
-  const [aba, setAba] = useState<Aba>(ehPortalSoProdutos(slug) ? "produtos" : "vendas");
+  // ⚠️ E MENOS no COMERCIAL, pelo mesmo motivo: lá Vendas virou Produtos (02/09/2026), e a chave
+  // "vendas" não está mais em `ABAS_COMERCIAL`.
+  const [aba, setAba] = useState<Aba>(
+    ehPortalComercial(tipo) || ehPortalSoProdutos(slug) ? "produtos" : "vendas",
+  );
 
   const carregarSessao = useCallback(async () => {
     try {
@@ -337,10 +359,27 @@ function Porta({
         padding: 24,
       }}
     >
-      <div style={{ color: T.text, fontSize: 17, fontWeight: 600, marginBottom: 4 }}>
+      {/* No comercial o título fica centralizado (Lucas, 02/09/2026: "centralizar"); o portal do
+          incorporador está aprovado como está e continua alinhado à esquerda. */}
+      <div
+        style={{
+          color: T.text,
+          fontSize: 17,
+          fontWeight: 600,
+          marginBottom: 4,
+          textAlign: comercial ? "center" : "left",
+        }}
+      >
         {comercial ? "Portal do coordenador" : "Portal do incorporador"}
       </div>
-      <div style={{ color: T.muted, fontSize: 13, marginBottom: 20 }}>
+      <div
+        style={{
+          color: T.muted,
+          fontSize: 13,
+          marginBottom: 20,
+          textAlign: comercial ? "center" : "left",
+        }}
+      >
         {comercial
           ? "Vendas, contratos e lançamentos dos seus empreendimentos."
           : "Acompanhe as vendas e a carteira do seu empreendimento."}
@@ -425,7 +464,7 @@ function Porta({
 // Produtos SAIU, e o masterplan não foi junto: ele passou para dentro de Vendas (TelaVendas), que
 // é onde faz sentido, porque o mapa é outra forma de olhar as mesmas unidades. Era essa a única
 // função que a aba Produtos entregava para cliente ativo, e ela continua a um clique.
-const ABAS: { chave: Aba; rotulo: string }[] = [
+const ABAS: ItemDeAba[] = [
   { chave: "crm", rotulo: "CRM" },
   { chave: "vendas", rotulo: "Vendas" },
   { chave: "carteira", rotulo: "Carteira" },
@@ -435,7 +474,7 @@ const ABAS: { chave: Aba; rotulo: string }[] = [
 // em uso pelo cliente (regra do Lucas, 17/08/2026), e o padrao nao pode passar por cima: tirar
 // Produtos aqui apagaria a porta por onde ele abre o masterplan do Garden todo dia.
 // Ver [[perfis-de-portal]].
-const ABAS_PERSONALIZADO: { chave: Aba; rotulo: string }[] = [
+const ABAS_PERSONALIZADO: ItemDeAba[] = [
   ...ABAS,
   { chave: "produtos", rotulo: "Produtos" },
 ];
@@ -445,19 +484,19 @@ const ABAS_PERSONALIZADO: { chave: Aba; rotulo: string }[] = [
 // que roda no padrão). Amarrar ao personalizado deixaria o CER de fora, que é justamente quem vai
 // validar a base; amarrar ao padrão daria a aba a Vista Alegre e Lagoa Bonita, que não têm nada
 // com a carteira do Garden. Por isso a lista própria em lib/lsoft/portais.
-const ABA_LSOFT: { chave: Aba; rotulo: string } = { chave: "lsoft", rotulo: "LSoft Integração" };
+const ABA_LSOFT: ItemDeAba = { chave: "lsoft", rotulo: "LSoft Integração" };
 
 // ⚠️ A ABA DE BOLETOS TEM LISTA PRÓPRIA, pelo mesmo motivo da do LSoft — e um a mais: ela EMITE
 // cobrança, não só lê. Quem enxerga cada carteira está em `lib/apolo/boletos/portais.ts`, e o
 // vínculo de `apolo_incorporador_empreendimentos` não serve aqui porque nenhum destes prédios
 // existe no Panteon (Lucas, 01/09/2026: *"não tem empreendimento para essas empresas ainda dentro
 // o panteon"*). Sumir a aba não é a trava: a rota confere a mesma lista a cada chamada.
-const ABA_BOLETOS: { chave: Aba; rotulo: string } = { chave: "boletos", rotulo: "Boletos" };
+const ABA_BOLETOS: ItemDeAba = { chave: "boletos", rotulo: "Boletos" };
 
 // ⚠️ SÓ PRODUTOS É EXCLUSIVO: entra ANTES de tudo e sai com uma aba só. O sócio que recebe este
 // perfil (MMendes, no Garden) não vê CRM, Vendas, Carteira nem LSoft — inclusive porque a base do
 // LSoft é da carteira do Cecílio, não dele. Ver [[perfis-de-portal]].
-const ABAS_SO_PRODUTOS: { chave: Aba; rotulo: string }[] = [
+const ABAS_SO_PRODUTOS: ItemDeAba[] = [
   { chave: "produtos", rotulo: "Produtos" },
 ];
 
@@ -466,15 +505,20 @@ const ABAS_SO_PRODUTOS: { chave: Aba; rotulo: string }[] = [
 // prometeu) só com a fila e a central"*. "Financeiro" é a mesma tela Carteira, com o nome que o
 // time comercial usa; a sessão do comercial marca TODO empreendimento como "com carteira" (ver
 // `escopoDoUsuario`), então a aba nunca some por aqui.
-const ABAS_COMERCIAL: { chave: Aba; rotulo: string }[] = [
-  { chave: "crm", rotulo: "CRM" },
-  { chave: "vendas", rotulo: "Vendas" },
-  { chave: "contratos", rotulo: "Contratos" },
-  { chave: "carteira", rotulo: "Financeiro" },
-  { chave: "lancamento", rotulo: "Lançamento" },
+//
+// ⚠️ VENDAS VIROU PRODUTOS, na mesma posição (Lucas, 02/09/2026: *"queria trazer aquela tela que
+// temos no empreendimento (...) vendas tem que morar dentro da tela de produtos"*). A TelaVendas
+// não saiu do comercial: ela é a aba Vendas da ficha do produto (`ProdutosDoHercules` → "Ver
+// mais" → `FichaDoProduto`), fixa no produto clicado.
+const ABAS_COMERCIAL: ItemDeAba[] = [
+  { chave: "crm", icone: ContactRound, rotulo: "CRM" },
+  { chave: "produtos", icone: Building2, rotulo: "Produtos" },
+  { chave: "contratos", icone: FileSignature, rotulo: "Contratos" },
+  { chave: "carteira", icone: WalletCards, rotulo: "Financeiro" },
+  { chave: "lancamento", icone: ListOrdered, rotulo: "Lançamento" },
 ];
 
-export function abasDoPortal(slug: string, tipo?: TipoDePortal): { chave: Aba; rotulo: string }[] {
+export function abasDoPortal(slug: string, tipo?: TipoDePortal): ItemDeAba[] {
   // ⚠️ O TIPO VEM ANTES DAS LISTAS DE SLUG. As listas protegem perfis já aprovados do padrão; o
   // comercial não é um deles, é outro produto — e decidido pelo banco, não por slug em código.
   if (ehPortalComercial(tipo)) return ABAS_COMERCIAL;
@@ -577,20 +621,29 @@ function Portal({
                 key={item.chave}
                 onClick={() => onAba(item.chave)}
                 style={{
+                  alignItems: "center",
                   background: aba === item.chave ? T.soft : "transparent",
                   border: "none",
                   borderRadius: 8,
                   color: aba === item.chave ? T.text : T.muted,
                   cursor: "pointer",
+                  display: "flex",
                   fontFamily: fonte,
                   fontSize: 14,
                   fontWeight: aba === item.chave ? 600 : 500,
+                  gap: 9,
                   padding: "9px 12px",
                   textAlign: "left",
                   width: "100%",
                 }}
                 type="button"
               >
+                {/* ÍCONE (16px) + RÓTULO em toda aba que trouxer `icone` — hoje só o comercial.
+                    Sem ícone a linha é a de sempre: o flex com gap não muda a altura, porque o
+                    ícone é menor que a linha de texto. */}
+                {item.icone ? (
+                  <item.icone aria-hidden="true" size={16} style={{ flexShrink: 0 }} />
+                ) : null}
                 {item.rotulo}
               </button>
             ))}
@@ -644,9 +697,19 @@ function Portal({
           <main style={{ padding: "26px 24px 40px" }}>
             {aba === "crm" ? <TelaCrm /> : null}
             {aba === "vendas" ? <TelaVendas /> : null}
-            {aba === "carteira" ? <TelaCarteira /> : null}
-            {/* Só o portal personalizado chega aqui: `abasDoPortal` não oferece a aba no padrão. */}
-            {aba === "produtos" ? <TelaProdutos /> : null}
+            {/* No comercial, Financeiro é PARCELAS: Ato e Sinal, valor cheio, boleto por parcela (Lucas,
+                02/09/2026: "aqui o financeiro não tem carteira, é Parcelas"). */}
+            {aba === "carteira" ? (
+              <TelaCarteira modo={comercial ? "coordenador" : "incorporador"} />
+            ) : null}
+            {/* A MESMA chave, DUAS telas: no COMERCIAL é a réplica da tela de Empreendimentos do
+                Apolo (lista + ficha com Resumo · Cadastro · Imobiliárias · Vendas · Contratos);
+                no PERSONALIZADO são os cards com a logo (o Cecílio abre o masterplan do Garden
+                por aqui todo dia, e o padrão não passa por cima dele). O padrão não chega aqui:
+                `abasDoPortal` não oferece a aba fora desses dois. */}
+            {aba === "produtos" ? (
+              comercial ? <ProdutosDoHercules /> : <TelaProdutos />
+            ) : null}
             {/* A MESMA tela do time interno, falando com a API do portal (cookie de sessão, sem
                 token, e sem o botão da MOST: quem paga o enriquecimento é a Careli). */}
             {aba === "lsoft" ? <CarteiraLsoft api={apiDoPortal} /> : null}

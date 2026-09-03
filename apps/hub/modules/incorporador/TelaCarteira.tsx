@@ -1,7 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, ExternalLink, FileText, Search, WalletCards, X } from "lucide-react";
+import { type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ArrowUpDown,
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  FileText,
+  MessageCircle,
+  Search,
+  WalletCards,
+  X,
+} from "lucide-react";
 
 import { diaNaTela, mesNaTela } from "@/lib/apolo/incorporador/dia-na-tela";
 import { fonte } from "@/modules/publico/ui/tokens";
@@ -52,6 +62,27 @@ import { T } from "./tema";
 //
 // ⚠️ O RECORTE NÃO VEM DA TELA. O seletor de empreendimento manda um id que a própria rota já
 // devolveu; quem decide o que ele pode ver é o cookie assinado, do outro lado.
+//
+// OS DOIS MODOS DA TELA (02/09/2026). A mesma tela serve o portal COMERCIAL (o Hércules dos
+// coordenadores), onde a aba se chama Financeiro — e o que o coordenador precisa ver não é o que
+// o incorporador vê. Lucas, olhando a aba no /gurgel: *"aqui o financeiro não tem carteira, é
+// Parcelas, e para o time de coordenação eles não precisam ver o financiamento, somente o Ato e o
+// Sinal. outra coisa, eles veem o que o cliente paga, não precisa trazer % de participação, é para
+// trazer o valor cheio. é diferente o que incorporador vê do que o coordenador precisa ver"*; e
+// depois: *"ser só essa tela mesmo"* (a sub-visão Carteira) e *"aqui trazer os boletos, para que
+// o coordenador possa também encaminhar para o cliente, corretor"*.
+//
+//   • modo "incorporador" (padrão) — TUDO como está: Carteira + Indicadores, líquido, rateio.
+//     Os portais de incorporador estão aprovados e em uso; este modo não muda NADA.
+//   • modo "coordenador" — SÓ a sub-visão Carteira (os 8 cards + a tabela por unidade), com:
+//       - só as parcelas de ATO e SINAL (o financiamento fica fora de tudo, cards inclusive);
+//       - valor CHEIO (o que o cliente paga): sem líquido, sem rateio, sem % de participação;
+//       - sem o bloco "O que já entrou para você", sem a coluna "Valor líquido", sem Indicadores;
+//       - a coluna BOLETO por unidade: abrir, copiar o link e mandar por WhatsApp (o coordenador
+//         escolhe o contato no próprio WhatsApp; nada de disparo, nada de telefone — ver a regra
+//         "Asaas: link, não disparo").
+//     A fonte é `units[].atoESinal.parcelas`, que a rota só manda quando a SESSÃO é comercial.
+//     Sem esse campo, a tela do coordenador NÃO cai para o bruto do incorporador: ela avisa.
 
 // ── TIPOS DO PAYLOAD (allowlist da rota /api/incorporador/carteira) ──────────
 
@@ -88,7 +119,33 @@ type LiquidoDaUnidade = {
   semLiquido: number;
 };
 
+/**
+ * Uma parcela de Ato ou Sinal como o COORDENADOR a vê (espelho de `ParcelaDeAtoESinal` na rota).
+ * Valor cheio, sem líquido, com o boleto. Só chega na sessão comercial.
+ */
+type ParcelaDeAtoESinal = {
+  boletoUrl: null | string;
+  diasDeAtraso: number;
+  id: string;
+  /** O vencimento já passou (paga ou não): o denominador da inadimplência, como no bruto. */
+  jaVenceu: boolean;
+  numero: string;
+  pagoEm: null | string;
+  /** Paga com pagamento no mês corrente: o card "Recuperação". */
+  pagoNoMes: boolean;
+  perfil: "Ato" | "Sinal";
+  situacao: "a_vencer" | "paga" | "vencida";
+  /** O principal, valor cheio da parcela. */
+  valor: number;
+  /** Em aberto com encargos quando vencida; 0 nas demais. */
+  valorEmAberto: number;
+  valorPago: number;
+  vencimento: null | string;
+};
+
 type UnidadeDaTela = {
+  /** SÓ na sessão comercial: as parcelas de Ato e Sinal da unidade (modo coordenador). */
+  atoESinal?: { parcelas: ParcelaDeAtoESinal[] };
   block: null | string;
   client: null | string;
   code: string;
@@ -112,6 +169,8 @@ type UnidadeDaTela = {
 type EmpreendimentoDaTela = { id: string; nome: string };
 
 type Dados = {
+  /** SÓ na sessão comercial: `true` = a leitura de Ato e Sinal bateu no teto e está incompleta. */
+  atoESinalParcial?: boolean;
   bruto: null | Resumo;
   empreendimentos?: EmpreendimentoDaTela[];
   filtro?: null | string;
@@ -142,6 +201,10 @@ type ParcelaDaUnidade = {
 
 const brl = (valor: number): string =>
   valor.toLocaleString("pt-BR", { currency: "BRL", maximumFractionDigits: 0, style: "currency" });
+
+/** Com centavos: só na mensagem de WhatsApp do boleto, onde o valor é o que o cliente vai pagar. */
+const brlExato = (valor: number): string =>
+  valor.toLocaleString("pt-BR", { currency: "BRL", minimumFractionDigits: 2, style: "currency" });
 
 const inteiro = (valor: number): string => valor.toLocaleString("pt-BR");
 
@@ -185,11 +248,13 @@ type FiltroDaCarteira = "em_dia" | "inadimplente" | "todos";
 type ColunaDaCarteira = "codigo" | "faturado" | "liquido" | "situacao" | "vencido" | "vgv";
 type OrdemDaCarteira = { coluna: ColunaDaCarteira; direcao: "asc" | "desc" };
 
-function filtrarUnidades(
-  units: UnidadeDaTela[],
+// Genéricas em `U` só para o modo coordenador passar a unidade recortada (com as parcelas de Ato e
+// Sinal) e receber o mesmo tipo de volta. A lógica não mudou.
+function filtrarUnidades<U extends UnidadeDaTela>(
+  units: U[],
   busca: string,
   status: FiltroDaCarteira,
-): UnidadeDaTela[] {
+): U[] {
   const alvo = busca.trim().toLowerCase();
 
   return units.filter((unit) => {
@@ -205,7 +270,7 @@ function filtrarUnidades(
   });
 }
 
-function ordenarUnidades(units: UnidadeDaTela[], ordem: OrdemDaCarteira): UnidadeDaTela[] {
+function ordenarUnidades<U extends UnidadeDaTela>(units: U[], ordem: OrdemDaCarteira): U[] {
   const fator = ordem.direcao === "asc" ? 1 : -1;
 
   return [...units].sort((a, b) => {
@@ -227,9 +292,148 @@ function ordenarUnidades(units: UnidadeDaTela[], ordem: OrdemDaCarteira): Unidad
   });
 }
 
+// ── O RECORTE DO COORDENADOR (Ato e Sinal, valor cheio) ─────────────────────
+
+/** A unidade como o coordenador a vê: os agregados refeitos SÓ com Ato e Sinal, mais as parcelas. */
+type UnidadeRecortada = UnidadeDaTela & { parcelas: ParcelaDeAtoESinal[] };
+
+/** Os 8 cards do coordenador — a mesma leitura dos cards do bruto, só que sobre Ato e Sinal. */
+type ResumoDeAtoESinal = {
+  aReceber: number;
+  clientes: number;
+  contratos: number;
+  /** Contratos com mais de 3 parcelas vencidas (a régua de `criticalContracts` do bruto). */
+  criticos: number;
+  /** Já em 0–100: vencido ÷ previsto até hoje (a valor presente, como o bruto). */
+  inadimplenciaPct: number;
+  inadimplentes: number;
+  pago: number;
+  parcelasVencidas: number;
+  recuperacao: number;
+  total: number;
+  unidades: UnidadeRecortada[];
+  vencido: number;
+};
+
+/**
+ * Soma os cards e refaz cada unidade SÓ com as parcelas de Ato e Sinal — no cliente, a partir do
+ * que a rota mandou em `units[].atoESinal`.
+ *
+ * ⚠️ NUNCA a partir do `bruto`: ele soma o financiamento inteiro. Os números daqui são o valor
+ * CHEIO (o que o cliente paga), e a régua de cada card é a do bruto, aplicada ao recorte:
+ *   • total = principal da carteira ativa; pago = principal das pagas; vencido = em aberto COM
+ *     encargos das vencidas; a receber = principal das a vencer (em dia);
+ *   • inadimplência = vencido ÷ previsto até hoje (só o que já venceu, pago ou não);
+ *   • recuperação = o pago das quitadas no mês corrente; críticos = contratos com >3 vencidas.
+ * Unidade sem nenhuma parcela de Ato e Sinal fica FORA da lista: para o coordenador ela não tem o
+ * que mostrar. Cliente conta por nome (a rota não manda id de pessoa): dois lotes do mesmo
+ * comprador são UM cliente, como no bruto.
+ */
+function recortarAtoESinal(units: UnidadeDaTela[]): ResumoDeAtoESinal {
+  const unidades: UnidadeRecortada[] = [];
+  const clientes = new Set<string>();
+  const inadimplentes = new Set<string>();
+  let aReceber = 0;
+  let criticos = 0;
+  let pago = 0;
+  let parcelasVencidas = 0;
+  let previstoAteHoje = 0;
+  let recuperacao = 0;
+  let total = 0;
+  let vencido = 0;
+
+  for (const unit of units) {
+    const parcelas = unit.atoESinal?.parcelas ?? [];
+    if (parcelas.length === 0) continue;
+
+    let uAReceber = 0;
+    let uMaxDias = 0;
+    let uPago = 0;
+    let uTotal = 0;
+    let uVencidas = 0;
+    let uVencido = 0;
+
+    for (const parcela of parcelas) {
+      uTotal += parcela.valor;
+      if (parcela.situacao === "paga") {
+        uPago += parcela.valor;
+        if (parcela.pagoNoMes) recuperacao += parcela.valorPago;
+      } else if (parcela.situacao === "vencida") {
+        uVencido += parcela.valorEmAberto;
+        uVencidas += 1;
+        uMaxDias = Math.max(uMaxDias, parcela.diasDeAtraso);
+      } else {
+        uAReceber += parcela.valor;
+      }
+      if (parcela.jaVenceu) previstoAteHoje += parcela.valor;
+    }
+
+    unidades.push({
+      ...unit,
+      // O líquido não existe neste modo: nem o dado, nem a coluna.
+      liquido: null,
+      maxOverdueDays: uMaxDias,
+      overdueAmount: uVencido,
+      overdueInstallments: uVencidas,
+      paidAmount: uPago,
+      parcelas,
+      toReceiveAmount: uAReceber,
+      totalContract: uTotal,
+    });
+
+    const chaveDoCliente = unit.client?.trim().toLowerCase() || `unidade:${unit.id}`;
+    clientes.add(chaveDoCliente);
+    if (uVencidas > 0) inadimplentes.add(chaveDoCliente);
+    if (uVencidas > 3) criticos += 1;
+
+    aReceber += uAReceber;
+    pago += uPago;
+    parcelasVencidas += uVencidas;
+    total += uTotal;
+    vencido += uVencido;
+  }
+
+  return {
+    aReceber,
+    clientes: clientes.size,
+    contratos: unidades.length,
+    criticos,
+    inadimplenciaPct: previstoAteHoje > 0 ? (vencido / previstoAteHoje) * 100 : 0,
+    inadimplentes: inadimplentes.size,
+    pago,
+    parcelasVencidas,
+    recuperacao,
+    total,
+    unidades,
+    vencido,
+  };
+}
+
+/**
+ * A parcela que a coluna Boleto mostra na linha da unidade: a vencida mais antiga; sem vencida, a
+ * próxima a vencer; tudo pago, nenhuma. A lista já chega ordenada por vencimento, então o primeiro
+ * `find` de cada situação é o certo.
+ */
+function parcelaEmFoco(parcelas: ParcelaDeAtoESinal[]): ParcelaDeAtoESinal | null {
+  return (
+    parcelas.find((p) => p.situacao === "vencida") ??
+    parcelas.find((p) => p.situacao === "a_vencer") ??
+    null
+  );
+}
+
 // ── A TELA ──────────────────────────────────────────────────────────────────
 
-export function TelaCarteira() {
+export function TelaCarteira({
+  modo = "incorporador",
+}: {
+  /**
+   * `incorporador` (padrão) = a tela aprovada, sem mudança nenhuma. `coordenador` = o recorte do
+   * Hércules (ver o cabeçalho do arquivo): quem passa é o PortalIncorporador, pelo tipo do portal.
+   */
+  modo?: "coordenador" | "incorporador";
+}) {
+  const coordenador = modo === "coordenador";
   const [dados, setDados] = useState<Dados | null>(null);
   const [erro, setErro] = useState<null | string>(null);
   const [carregando, setCarregando] = useState(true);
@@ -334,11 +538,37 @@ export function TelaCarteira() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtroExtrato]);
 
-  if (carregando && !dados) return <Aviso texto="Carregando a carteira…" />;
+  // O recorte do coordenador, calculado UMA vez por carga: o cabeçalho e a aba leem daqui.
+  // No modo incorporador é `null` e não custa nada.
+  const recorte = useMemo(
+    () => (coordenador && dados?.units ? recortarAtoESinal(dados.units) : null),
+    [coordenador, dados],
+  );
+
+  if (carregando && !dados) {
+    return <Aviso texto={coordenador ? "Carregando as parcelas…" : "Carregando a carteira…"} />;
+  }
   if (erro) return <Aviso texto={erro} tom="erro" />;
 
   if (!dados || dados.semCarteira || !dados.bruto) {
-    return <Aviso texto="Nenhum empreendimento com carteira administrada pela Careli." />;
+    return (
+      <Aviso
+        texto={
+          coordenador
+            ? "Nenhum empreendimento com parcelas para mostrar."
+            : "Nenhum empreendimento com carteira administrada pela Careli."
+        }
+      />
+    );
+  }
+
+  // ⚠️ FAIL-CLOSED. O recorte de Ato e Sinal só vem quando a SESSÃO é comercial. Se a tela foi
+  // aberta em modo coordenador e o payload não trouxe o campo, ela NÃO cai para o bruto do
+  // incorporador (que tem financiamento e líquido): avisa e para.
+  const semRecorte =
+    coordenador && (dados.units ?? []).length > 0 && !(dados.units ?? []).some((u) => u.atoESinal);
+  if (semRecorte) {
+    return <Aviso texto="As parcelas de ato e sinal não estão disponíveis nesta sessão." tom="erro" />;
   }
 
   const empreendimentos = dados.empreendimentos ?? [];
@@ -348,11 +578,21 @@ export function TelaCarteira() {
       {/* ── CABEÇALHO: o que está sendo olhado, por onde trocar, e as abas ──── */}
       <header>
         <h1 style={{ color: T.text, fontSize: 20, fontWeight: 600, margin: "0 0 4px" }}>
-          Carteira
+          {coordenador ? "Parcelas" : "Carteira"}
         </h1>
         <p style={{ color: T.muted, fontSize: 13.5, margin: 0 }}>
-          {inteiro(dados.bruto.contracts)} contratos, {brl(dados.bruto.totalPortfolio)} de
-          carteira administrada pela Careli.
+          {coordenador && recorte ? (
+            // O coordenador lê o valor CHEIO de ato e sinal — nada de "administrada pela Careli",
+            // nada de líquido, rateio ou participação, em texto nenhum deste modo.
+            <>
+              {inteiro(recorte.contratos)} contratos · {brl(recorte.total)} em ato e sinal.
+            </>
+          ) : (
+            <>
+              {inteiro(dados.bruto.contracts)} contratos, {brl(dados.bruto.totalPortfolio)} de
+              carteira administrada pela Careli.
+            </>
+          )}
           {consultadoEm ? (
             // O "carimbo" do BI: aqui o dado é vivo, então a hora é a da consulta.
             <span>
@@ -386,21 +626,27 @@ export function TelaCarteira() {
           </div>
         ) : null}
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-          <Pilula
-            ativo={aba === "carteira"}
-            onClick={() => setAba("carteira")}
-            rotulo="Carteira"
-          />
-          <Pilula
-            ativo={aba === "indicadores"}
-            onClick={() => setAba("indicadores")}
-            rotulo="Indicadores"
-          />
-        </div>
+        {/* O coordenador não tem Indicadores (receita líquida, rateio): sem toggle, a aba
+            nunca sai de "carteira" e os efeitos de ?indicadores=1 nunca disparam. */}
+        {coordenador ? null : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+            <Pilula
+              ativo={aba === "carteira"}
+              onClick={() => setAba("carteira")}
+              rotulo="Carteira"
+            />
+            <Pilula
+              ativo={aba === "indicadores"}
+              onClick={() => setAba("indicadores")}
+              rotulo="Indicadores"
+            />
+          </div>
+        )}
       </header>
 
-      {aba === "carteira" ? (
+      {coordenador && recorte ? (
+        <AbaParcelasDoCoordenador parcial={dados.atoESinalParcial === true} resumo={recorte} />
+      ) : aba === "carteira" ? (
         <AbaCarteira bruto={dados.bruto} liquido={dados.liquido} units={dados.units ?? []} />
       ) : (
         <AbaIndicadores
@@ -738,6 +984,510 @@ function AbaCarteira({
     </>
   );
 }
+
+// ── ABA PARCELAS DO COORDENADOR (a sub-visão Carteira, só Ato e Sinal, valor cheio) ─────────
+// A mesma estrutura da AbaCarteira (os 8 cards + a tabela por unidade), com o que o Lucas pediu
+// em 02/09/2026 (ver o cabeçalho): sem o bloco do líquido, sem a coluna "Valor líquido", com a
+// coluna BOLETO. O clique na linha não abre o modal (que mostra o financiamento inteiro e o "Seu
+// líquido"): ele expande as parcelas de Ato e Sinal da unidade, cada uma com as ações do boleto.
+
+function AbaParcelasDoCoordenador({
+  parcial,
+  resumo,
+}: {
+  parcial: boolean;
+  resumo: ResumoDeAtoESinal;
+}) {
+  const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState<FiltroDaCarteira>("todos");
+  const [ordem, setOrdem] = useState<OrdemDaCarteira>({ coluna: "vencido", direcao: "desc" });
+  const [abertas, setAbertas] = useState<Set<string>>(() => new Set());
+
+  const visiveis = useMemo(
+    () => ordenarUnidades(filtrarUnidades(resumo.unidades, busca, filtro), ordem),
+    [busca, filtro, ordem, resumo.unidades],
+  );
+
+  const parteRecebida = resumo.total ? (resumo.pago / resumo.total) * 100 : 0;
+
+  function alternar(id: string) {
+    setAbertas((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(id)) proximo.delete(id);
+      else proximo.add(id);
+      return proximo;
+    });
+  }
+
+  return (
+    <>
+      {parcial ? (
+        <p style={{ color: T.danger, fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
+          A carteira deste recorte é muito grande e a leitura foi limitada: os valores podem estar
+          incompletos. Escolha um empreendimento para ver a lista inteira.
+        </p>
+      ) : null}
+
+      {/* ── OS 8 CARDS, sobre ATO E SINAL, valor cheio ───────────────────────
+          Mesmos rótulos e dicas dos cards do incorporador; só a base mudou. */}
+      <section
+        style={{
+          display: "grid",
+          gap: 8,
+          gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
+        }}
+      >
+        <CartaoDaCarteira
+          dica={`${inteiro(resumo.contratos)} contrato(s)`}
+          rotulo="Ato e sinal"
+          valor={brl(resumo.total)}
+        />
+        <CartaoDaCarteira
+          dica={`${pct(parteRecebida)} de ato e sinal`}
+          rotulo="Recebido"
+          valor={brl(resumo.pago)}
+        />
+        <CartaoDaCarteira dica="parcelas em dia" rotulo="A receber" valor={brl(resumo.aReceber)} />
+        <CartaoDaCarteira
+          dica={`${inteiro(resumo.parcelasVencidas)} parcela(s) · ${inteiro(resumo.inadimplentes)} cliente(s)`}
+          rotulo="Vencido"
+          tom={resumo.vencido > 0 ? "alerta" : undefined}
+          valor={brl(resumo.vencido)}
+        />
+        <CartaoDaCarteira
+          dica={`${inteiro(resumo.criticos)} contrato(s) crítico(s)`}
+          rotulo="Inadimplência"
+          tom={resumo.inadimplenciaPct > 0 ? "alerta" : undefined}
+          // Já em 0–100 (recortarAtoESinal multiplica UMA vez): aqui não se multiplica de novo.
+          valor={pct(resumo.inadimplenciaPct)}
+        />
+        <CartaoDaCarteira dica="pago no mês" rotulo="Recuperação" valor={brl(resumo.recuperacao)} />
+        <CartaoDaCarteira dica="com ato ou sinal" rotulo="Clientes" valor={inteiro(resumo.clientes)} />
+        <CartaoDaCarteira
+          dica="com parcela vencida"
+          rotulo="Inadimplentes"
+          tom={resumo.inadimplentes > 0 ? "alerta" : undefined}
+          valor={inteiro(resumo.inadimplentes)}
+        />
+      </section>
+
+      {/* ── A TABELA POR UNIDADE, sem "Valor líquido", com BOLETO ───────────── */}
+      <section style={{ ...cartao, overflow: "hidden", padding: 0 }}>
+        <div
+          style={{
+            alignItems: "center",
+            borderBottom: `1px solid ${T.border}`,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 12,
+            justifyContent: "space-between",
+            padding: "12px 16px",
+          }}
+        >
+          <h2 style={titulo}>
+            Parcelas por unidade{" "}
+            <span style={{ color: T.muted, fontSize: 12, fontWeight: 500 }}>
+              ({inteiro(visiveis.length)})
+            </span>
+          </h2>
+          <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <label
+              style={{
+                alignItems: "center",
+                background: T.soft,
+                border: `1px solid ${T.border}`,
+                borderRadius: 10,
+                display: "flex",
+                gap: 8,
+                minWidth: 220,
+                padding: "0 12px",
+              }}
+            >
+              <Search aria-hidden="true" size={15} style={{ color: T.muted, flexShrink: 0 }} />
+              <input
+                onChange={(evento) => setBusca(evento.target.value)}
+                placeholder="Unidade, comprador, imobiliária"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: T.text,
+                  flex: 1,
+                  fontFamily: fonte,
+                  fontSize: 13.5,
+                  minWidth: 0,
+                  outline: "none",
+                  padding: "8px 0",
+                }}
+                value={busca}
+              />
+            </label>
+            <select
+              onChange={(evento) => setFiltro(evento.target.value as FiltroDaCarteira)}
+              style={seletor}
+              value={filtro}
+            >
+              <option value="todos">Todas</option>
+              <option value="inadimplente">Inadimplentes</option>
+              <option value="em_dia">Em dia</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ maxHeight: "58vh", overflow: "auto" }}>
+          <table style={{ borderCollapse: "collapse", fontSize: 13, minWidth: 1120, width: "100%" }}>
+            <thead style={{ position: "sticky", top: 0, zIndex: 5 }}>
+              <tr style={{ background: T.soft }}>
+                <CabecalhoOrdenavel coluna="codigo" ordem={ordem} onOrdenar={setOrdem} rotulo="Unidade" />
+                <th style={cabecalho}>Comprador / Imobiliária</th>
+                <CabecalhoOrdenavel coluna="faturado" ordem={ordem} onOrdenar={setOrdem} rotulo="Faturado" />
+                <CabecalhoOrdenavel alinhar="right" coluna="vgv" ordem={ordem} onOrdenar={setOrdem} rotulo="Ato e sinal" />
+                <th style={{ ...cabecalho, textAlign: "right" }}>Pago</th>
+                <th style={{ ...cabecalho, textAlign: "right" }}>A receber</th>
+                <CabecalhoOrdenavel alinhar="right" coluna="vencido" ordem={ordem} onOrdenar={setOrdem} rotulo="Vencido" />
+                <CabecalhoOrdenavel coluna="situacao" ordem={ordem} onOrdenar={setOrdem} rotulo="Situação" />
+                <th style={{ ...cabecalho, textAlign: "center" }}>Contrato</th>
+                {/* O pedido do Lucas (02/09/2026): o boleto, para encaminhar ao cliente ou corretor. */}
+                <th style={{ ...cabecalho, textAlign: "center" }}>Boleto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visiveis.map((unit) => {
+                const aberta = abertas.has(unit.id);
+                const foco = parcelaEmFoco(unit.parcelas);
+
+                return (
+                  <UnidadeDoCoordenador
+                    aberta={aberta}
+                    foco={foco}
+                    key={unit.id}
+                    onAlternar={() => alternar(unit.id)}
+                    unit={unit}
+                  />
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {visiveis.length === 0 ? (
+          <p style={{ color: T.muted, fontSize: 13, margin: 0, padding: 24, textAlign: "center" }}>
+            Nenhuma unidade nesse filtro.
+          </p>
+        ) : null}
+      </section>
+    </>
+  );
+}
+
+/**
+ * Uma unidade na tabela do coordenador: a linha principal e, aberta, as parcelas de Ato e Sinal.
+ *
+ * A linha mostra o boleto da parcela EM FOCO (`parcelaEmFoco`); quando a unidade tem mais de uma
+ * parcela, o clique abre uma linha por parcela, cada uma com as três ações. Componente próprio
+ * (e não um map inline) porque cada linha tem o próprio estado de "copiado".
+ */
+function UnidadeDoCoordenador({
+  aberta,
+  foco,
+  onAlternar,
+  unit,
+}: {
+  aberta: boolean;
+  foco: ParcelaDeAtoESinal | null;
+  onAlternar: () => void;
+  unit: UnidadeRecortada;
+}) {
+  // Sempre dá para abrir (unidade sem parcela nem entra na lista): com tudo pago, a linha não tem
+  // parcela em foco, e é na lista aberta que o comprovante da paga continua ao alcance.
+  const podeAbrir = unit.parcelas.length > 0;
+
+  return (
+    <>
+      <tr
+        onClick={podeAbrir ? onAlternar : undefined}
+        style={{ cursor: podeAbrir ? "pointer" : "default" }}
+        title={podeAbrir ? "Ver as parcelas de ato e sinal desta unidade" : undefined}
+      >
+        <td style={{ ...celula, paddingLeft: 16 }}>
+          <p style={{ color: T.text, fontSize: 13, fontWeight: 600, margin: 0 }}>{unit.code}</p>
+          <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
+            {[unit.block, unit.lot].filter(Boolean).join(" / ")}
+            {unit.empreendimento ? ` · ${unit.empreendimento}` : ""}
+          </p>
+        </td>
+        <td style={celula}>
+          {unit.client ? (
+            <p
+              style={{
+                color: T.text,
+                fontSize: 12,
+                fontWeight: 600,
+                margin: 0,
+                maxWidth: 240,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {unit.client}
+            </p>
+          ) : (
+            <span style={{ color: T.muted, fontSize: 12 }}>-</span>
+          )}
+          {unit.imobiliaria ? (
+            <p
+              style={{
+                color: T.muted,
+                fontSize: 12,
+                margin: 0,
+                maxWidth: 240,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {unit.imobiliaria}
+            </p>
+          ) : null}
+        </td>
+        <td style={{ ...celula, whiteSpace: "nowrap" }}>{dia(unit.faturadoAt)}</td>
+        <td style={{ ...celula, color: T.text, fontWeight: 500, textAlign: "right", whiteSpace: "nowrap" }}>
+          {brl(unit.totalContract)}
+          <p style={{ color: T.muted, fontSize: 10.5, fontWeight: 400, margin: 0 }}>
+            {inteiro(unit.parcelas.length)} parcela(s)
+          </p>
+        </td>
+        <td style={{ ...celula, textAlign: "right", whiteSpace: "nowrap" }}>{brl(unit.paidAmount)}</td>
+        <td style={{ ...celula, textAlign: "right", whiteSpace: "nowrap" }}>{brl(unit.toReceiveAmount)}</td>
+        <td
+          style={{
+            ...celula,
+            color: unit.overdueAmount ? T.danger : T.sub,
+            fontWeight: unit.overdueAmount ? 600 : 400,
+            textAlign: "right",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {unit.overdueAmount ? brl(unit.overdueAmount) : "-"}
+        </td>
+        <td style={{ ...celula, whiteSpace: "nowrap" }}>
+          <SituacaoDaUnidade unit={unit} />
+        </td>
+        <td style={{ ...celula, textAlign: "center" }}>
+          <BotaoDeContrato unit={unit} />
+        </td>
+        <td style={{ ...celula, textAlign: "center", whiteSpace: "nowrap" }}>
+          {foco ? (
+            <>
+              <p style={{ color: T.muted, fontSize: 10.5, margin: "0 0 4px" }}>
+                {foco.perfil} {foco.numero} · {dia(foco.vencimento)}
+              </p>
+              <AcoesDeBoleto parcela={foco} unit={unit} />
+            </>
+          ) : (
+            <span style={{ color: T.muted, fontSize: 11.5 }} title="Ato e sinal pagos">
+              Quitados
+            </span>
+          )}
+          {podeAbrir ? (
+            <button
+              onClick={(evento) => {
+                evento.stopPropagation();
+                onAlternar();
+              }}
+              style={{
+                alignItems: "center",
+                background: "transparent",
+                border: "none",
+                color: T.sub,
+                cursor: "pointer",
+                display: "inline-flex",
+                fontFamily: fonte,
+                fontSize: 11,
+                gap: 3,
+                marginTop: 4,
+                padding: 0,
+              }}
+              type="button"
+            >
+              {inteiro(unit.parcelas.length)} parcelas
+              <ChevronDown
+                aria-hidden="true"
+                size={12}
+                style={{ transform: aberta ? "rotate(180deg)" : undefined, transition: "transform .15s" }}
+              />
+            </button>
+          ) : null}
+        </td>
+      </tr>
+
+      {aberta ? (
+        <tr>
+          <td colSpan={10} style={{ background: T.soft, borderBottom: `1px solid ${T.border}`, padding: "6px 16px 10px 32px" }}>
+            <table style={{ borderCollapse: "collapse", fontSize: 12.5, width: "100%" }}>
+              <thead>
+                <tr>
+                  <th style={{ ...cabecalho, borderBottom: "none" }}>Parcela</th>
+                  <th style={{ ...cabecalho, borderBottom: "none" }}>Vencimento</th>
+                  <th style={{ ...cabecalho, borderBottom: "none" }}>Pagamento</th>
+                  <th style={{ ...cabecalho, borderBottom: "none", textAlign: "right" }}>Valor</th>
+                  <th style={{ ...cabecalho, borderBottom: "none" }}>Situação</th>
+                  <th style={{ ...cabecalho, borderBottom: "none", textAlign: "center" }}>Boleto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unit.parcelas.map((parcela) => (
+                  <tr key={parcela.id}>
+                    <td style={{ ...celula, borderBottom: "none", color: T.text, fontWeight: 600, whiteSpace: "nowrap" }}>
+                      {parcela.perfil} {parcela.numero}
+                    </td>
+                    <td style={{ ...celula, borderBottom: "none", whiteSpace: "nowrap" }}>{dia(parcela.vencimento)}</td>
+                    <td style={{ ...celula, borderBottom: "none", whiteSpace: "nowrap" }}>
+                      {parcela.pagoEm ? dia(parcela.pagoEm) : "-"}
+                    </td>
+                    <td style={{ ...celula, borderBottom: "none", color: T.text, fontWeight: 500, textAlign: "right", whiteSpace: "nowrap" }}>
+                      {brl(parcela.valor)}
+                    </td>
+                    <td style={{ ...celula, borderBottom: "none", whiteSpace: "nowrap" }}>
+                      <PilulaDeAtoESinal parcela={parcela} />
+                    </td>
+                    <td style={{ ...celula, borderBottom: "none", textAlign: "center", whiteSpace: "nowrap" }}>
+                      <AcoesDeBoleto parcela={parcela} unit={unit} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
+function PilulaDeAtoESinal({ parcela }: { parcela: ParcelaDeAtoESinal }) {
+  if (parcela.situacao === "paga") return <PilulaBase cor={T.ok} fundo={T.okBg} texto="Paga" />;
+  if (parcela.situacao === "vencida") {
+    return (
+      <PilulaBase
+        cor={T.danger}
+        fundo={T.dangerBg}
+        texto={`Vencida${parcela.diasDeAtraso ? ` · ${parcela.diasDeAtraso}d` : ""}`}
+      />
+    );
+  }
+  return <PilulaBase cor={T.sub} fundo={T.soft} texto="A vencer" />;
+}
+
+/**
+ * A mensagem que vai no WhatsApp com o boleto. Curta, em português, com o que o cliente precisa
+ * para reconhecer a cobrança: empreendimento, unidade, parcela, vencimento, valor e o link.
+ *
+ * ⚠️ SEM TELEFONE. `wa.me/?text=` abre o WhatsApp com o texto pronto e o coordenador ESCOLHE o
+ * contato lá (cliente ou corretor): a tela não sabe para quem vai, e não deve saber. Negrito no
+ * WhatsApp é UM asterisco. Sem travessão em texto para fora.
+ */
+function mensagemDoBoleto(unit: UnidadeRecortada, parcela: ParcelaDeAtoESinal, url: string): string {
+  const onde = unit.empreendimento ? `${unit.empreendimento}, unidade ${unit.code}` : `unidade ${unit.code}`;
+  const atraso =
+    parcela.situacao === "vencida" && parcela.diasDeAtraso > 0
+      ? ` (vencida há ${parcela.diasDeAtraso} dias)`
+      : "";
+
+  return [
+    `Olá! Segue o boleto do *${parcela.perfil} ${parcela.numero}* de ${onde}.`,
+    `Vencimento: ${dia(parcela.vencimento)}${atraso}`,
+    `Valor: ${brlExato(parcela.valor)}`,
+    url,
+  ].join("\n");
+}
+
+/**
+ * As três ações do boleto (pedido do Lucas, 02/09/2026): abrir, copiar o link, mandar por
+ * WhatsApp. Sem link no Asaas, "-". Cada clique para a propagação: a linha da unidade também
+ * reage ao clique (abre as parcelas), e abrir um boleto não pode abrir a lista junto.
+ */
+function AcoesDeBoleto({ parcela, unit }: { parcela: ParcelaDeAtoESinal; unit: UnidadeRecortada }) {
+  const [copiado, setCopiado] = useState(false);
+
+  useEffect(() => {
+    if (!copiado) return;
+    const relogio = setTimeout(() => setCopiado(false), 1500);
+    return () => clearTimeout(relogio);
+  }, [copiado]);
+
+  if (!parcela.boletoUrl) {
+    return (
+      <span style={{ color: T.muted, fontSize: 12 }} title="Parcela sem boleto no Asaas">
+        -
+      </span>
+    );
+  }
+
+  const url: string = parcela.boletoUrl;
+  const paga = parcela.situacao === "paga";
+
+  async function copiar(evento: MouseEvent<HTMLButtonElement>) {
+    evento.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiado(true);
+    } catch {
+      // Sem clipboard (http, permissão negada): o link continua ao alcance pelo botão de abrir.
+      window.prompt("Copie o link do boleto:", url);
+    }
+  }
+
+  return (
+    <span style={{ alignItems: "center", display: "inline-flex", gap: 4, opacity: paga ? 0.55 : 1 }}>
+      <a
+        href={url}
+        onClick={(evento) => evento.stopPropagation()}
+        rel="noopener noreferrer"
+        style={botaoIcone}
+        target="_blank"
+        title={paga ? "Parcela paga: abrir o comprovante no Asaas" : "Abrir o boleto no Asaas"}
+      >
+        <ExternalLink aria-hidden="true" size={13} />
+      </a>
+      <button
+        onClick={copiar}
+        style={{ ...botaoIcone, cursor: "pointer", fontFamily: fonte }}
+        title={copiado ? "Link copiado" : "Copiar o link do boleto"}
+        type="button"
+      >
+        {copiado ? (
+          <span style={{ color: T.ok, fontSize: 10, fontWeight: 700 }}>ok</span>
+        ) : (
+          <Copy aria-hidden="true" size={13} />
+        )}
+      </button>
+      <a
+        href={`https://wa.me/?text=${encodeURIComponent(mensagemDoBoleto(unit, parcela, url))}`}
+        onClick={(evento) => evento.stopPropagation()}
+        rel="noopener noreferrer"
+        style={botaoIcone}
+        target="_blank"
+        title="Encaminhar pelo WhatsApp (você escolhe o contato)"
+      >
+        <MessageCircle aria-hidden="true" size={13} />
+      </a>
+    </span>
+  );
+}
+
+/** O botão-ícone das ações do boleto: o mesmo desenho do botão de contrato, um pouco menor. */
+const botaoIcone = {
+  alignItems: "center",
+  background: T.soft,
+  border: `1px solid ${T.border}`,
+  borderRadius: 8,
+  color: T.sub,
+  display: "inline-flex",
+  height: 26,
+  justifyContent: "center",
+  padding: 0,
+  width: 26,
+} as const;
 
 // ── ABA INDICADORES (o BI de Gestão de Carteira) ────────────────────────────
 

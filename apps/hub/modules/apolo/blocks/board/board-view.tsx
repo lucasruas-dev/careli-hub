@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Building2,
@@ -73,6 +73,96 @@ import { StatusDisparos } from "./status-disparos";
 import { StatusPixPrevenda } from "./status-pix";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
+
+// ─── A PORTA DO BOARD ────────────────────────────────────────────────────────────────────────
+//
+// O Board tem DUAS portas desde 02/09/2026: a tela interna do Apolo (Bearer do hub, rotas
+// /api/apolo/board/**) e a aba Cadastro do produto no Hércules, o portal dos coordenadores
+// (cookie do portal, rotas /api/incorporador/board/** recortadas pelo produto). Lucas: *"deixa
+// cadastro mesmo e traz a mesma visão do apolo, imobiliária e cads"*. Um componente, duas portas:
+// o que muda é SÓ onde cada fetch bate e como se autentica, e isso mora aqui.
+//
+// ⚠️ SEM AS PROPS, NADA MUDA: `API_PADRAO` é exatamente o que o Board sempre fez (prefixo
+// /api/apolo/board, Bearer de `getApoloAccessToken`, tudo visível).
+//
+// O contexto existe porque quem faz fetch está espalhado em subcomponentes (a ficha lado a lado,
+// as caixinhas de habilitação, o card): passar a porta por prop atravessaria dez assinaturas.
+
+/** O que pode ficar de fora numa porta que não tem a rota (ou o direito) correspondente. */
+export type OcultavelDoBoard =
+  | "avisarLote"
+  | "c2xSync"
+  | "disparos"
+  | "documentos"
+  | "pix"
+  | "serasa";
+
+export type BoardApi = {
+  /** Prefixo das rotas do board ("/api/apolo/board" ou "/api/incorporador/board"). */
+  base: string;
+  /** Query anexada a TODA URL (ex.: "emp=pai:<uuid>"): é o recorte do portal em cada chamada. */
+  query?: string;
+  /** Sem Bearer do hub: o cookie da sessão vai sozinho. */
+  semToken: boolean;
+};
+
+type PortaDoBoard = {
+  api: BoardApi;
+  /** Empreendimento travado (seletor escondido; o servidor já recortou). `null` = seletor livre. */
+  fixo: null | string[];
+  ocultar: Set<OcultavelDoBoard>;
+};
+
+const API_PADRAO: BoardApi = { base: "/api/apolo/board", semToken: false };
+
+const BoardPortaContext = createContext<PortaDoBoard>({
+  api: API_PADRAO,
+  fixo: null,
+  ocultar: new Set(),
+});
+
+const usePortaDoBoard = () => useContext(BoardPortaContext);
+
+// Os cabeçalhos de cada chamada: Bearer do hub, ou nada (o cookie do portal vai sozinho).
+// ⚠️ `getApoloAccessToken` LANÇA sem sessão do hub — e o coordenador do portal não tem uma.
+async function cabecalhosDoBoard(
+  api: BoardApi,
+  extra: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  if (api.semToken) return { ...extra };
+  const token = await getApoloAccessToken();
+  return { Authorization: `Bearer ${token}`, ...extra };
+}
+
+// As URLs do board pela porta em uso. A query (o `emp` do portal) entra em TODAS.
+function rotasDoBoard(api: BoardApi) {
+  const comQuery = (url: string) =>
+    api.query ? `${url}${url.includes("?") ? "&" : "?"}${api.query}` : url;
+  const custom = api.base !== API_PADRAO.base;
+  const id = (entityId: string) => encodeURIComponent(entityId);
+  return {
+    // Documentos: no hub moram em /api/apolo/documentos; no portal ficam por baixo do [id] do
+    // board, para passar pelo MESMO escopo das demais rotas.
+    documento: (entityId: string, docId: string) =>
+      comQuery(
+        custom
+          ? `${api.base}/${id(entityId)}/documentos/${encodeURIComponent(docId)}`
+          : `/api/apolo/documentos/${docId}`,
+      ),
+    documentos: (entityId: string) =>
+      comQuery(
+        custom
+          ? `${api.base}/${id(entityId)}/documentos`
+          : `/api/apolo/documentos?entityId=${id(entityId)}`,
+      ),
+    etapa: (entityId: string) => comQuery(`${api.base}/${id(entityId)}/etapa`),
+    ficha: (entityId: string) => comQuery(`${api.base}/${id(entityId)}`),
+    fila: () => comQuery(api.base),
+    habilitar: (entityId: string) => comQuery(`${api.base}/${id(entityId)}/habilitar`),
+    historico: (entityId: string) => comQuery(`${api.base}/${id(entityId)}/historico`),
+    identidade: (entityId: string) => comQuery(`${api.base}/${id(entityId)}/identidade`),
+  };
+}
 
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 
@@ -318,12 +408,36 @@ type EventoHistorico = {
 type Mensagem = { autor: string; em: string; id: string; texto: string };
 
 export function BoardView({
+  api: apiProp,
+  empreendimentosFixos,
+  ocultar: ocultarProp,
   onOpenEntity,
 }: {
+  // A PORTA (ver "A PORTA DO BOARD" acima). Sem ela: /api/apolo/board com Bearer do hub.
+  api?: BoardApi;
+  // Empreendimento travado: o seletor some e o filtro por nome desliga (o servidor já recortou).
+  // Lista vazia = travado no que a rota devolver em `empreendimentos` (só o rótulo muda).
+  empreendimentosFixos?: string[];
+  // O que esta porta não tem: Serasa, subir para o C2X, avisar em lote, disparos, PIX, documentos.
+  ocultar?: OcultavelDoBoard[];
   // Abre a ficha do cliente no CRM do Apolo (mesma navegação dos relacionamentos). Vem do
   // ApoloPage (openEntityInCrm): busca por nome e seleciona pela id certa.
   onOpenEntity?: (name: string, entityId: string) => void;
 } = {}) {
+  // Por VALOR, não por identidade: a ficha do produto passa `api` e `ocultar` inline, e recriar
+  // as rotas a cada render faria `carregarFila` mudar a cada render → refetch em loop.
+  const chaveDaPorta = JSON.stringify([apiProp ?? null, empreendimentosFixos ?? null, ocultarProp ?? []]);
+  const porta = useMemo<PortaDoBoard>(
+    () => ({
+      api: apiProp ?? API_PADRAO,
+      fixo: empreendimentosFixos ?? null,
+      ocultar: new Set(ocultarProp ?? []),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chaveDaPorta],
+  );
+  const rotas = useMemo(() => rotasDoBoard(porta.api), [porta]);
+
   const [itens, setItens] = useState<ItemFila[]>([]);
   const [analistas, setAnalistas] = useState<Analista[]>([]);
   // Lista canônica de empreendimentos, vinda do servidor. Ver `empreendimentosDisponiveis`.
@@ -418,12 +532,12 @@ export function BoardView({
     nuncaRebaixar?: boolean,
   ): Promise<{ error?: string; etapa?: string; ok: boolean }> => {
     try {
-      const token = await getApoloAccessToken();
+      const headers = await cabecalhosDoBoard(porta.api, { "Content-Type": "application/json" });
       // `enterpriseId` do card: diz ao servidor QUAL CAD desta pessoa está sendo movida.
       const enterpriseId = itens.find((item) => item.id === entityId)?.enterpriseId ?? null;
-      const resposta = await fetch(`/api/apolo/board/${encodeURIComponent(entityId)}/etapa`, {
+      const resposta = await fetch(rotas.etapa(entityId), {
         body: JSON.stringify({ enterpriseId, etapa, motivo, nuncaRebaixar }),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers,
         method: "PATCH",
       });
       const corpo = (await resposta.json().catch(() => null)) as {
@@ -468,15 +582,11 @@ export function BoardView({
     corpoDaDecisao: Record<string, unknown>,
   ): Promise<{ error?: string; ok: boolean; resumo?: string }> => {
     try {
-      const token = await getApoloAccessToken();
-      const resposta = await fetch(
-        `/api/apolo/board/${encodeURIComponent(entityId)}/habilitar`,
-        {
-          body: JSON.stringify(corpoDaDecisao),
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          method: "POST",
-        },
-      );
+      const resposta = await fetch(rotas.habilitar(entityId), {
+        body: JSON.stringify(corpoDaDecisao),
+        headers: await cabecalhosDoBoard(porta.api, { "Content-Type": "application/json" }),
+        method: "POST",
+      });
       const corpo = (await resposta.json().catch(() => null)) as {
         data?: { resumo?: string };
         error?: string;
@@ -800,10 +910,9 @@ export function BoardView({
   // CPF corrigido e afins passam a refletir sem F5.
   const carregarFila = useCallback(async () => {
     try {
-      const accessToken = await getApoloAccessToken();
-      const response = await fetch("/api/apolo/board", {
+      const response = await fetch(rotas.fila(), {
         cache: "no-store",
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: await cabecalhosDoBoard(porta.api),
       });
       const payload = (await response.json()) as {
         data?: {
@@ -913,7 +1022,7 @@ export function BoardView({
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [porta.api, rotas]);
 
   useEffect(() => {
     void carregarFila();
@@ -1087,583 +1196,604 @@ export function BoardView({
   // --- validação em TELA CHEIA (decisão do Lucas: fila e validação disputavam a mesma largura) ---
   if (selecionado) {
     return (
-      <section className="flex h-full min-h-0 flex-col gap-3">
-        <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
-          <button
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle"
-            onClick={() => setSelecionado(null)}
-            type="button"
-          >
-            <ArrowLeft aria-hidden="true" className="size-4" />
-            Voltar para a fila
-          </button>
+      <BoardPortaContext.Provider value={porta}>
+        <section className="flex h-full min-h-0 flex-col gap-3">
+          <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+            <button
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle"
+              onClick={() => setSelecionado(null)}
+              type="button"
+            >
+              <ArrowLeft aria-hidden="true" className="size-4" />
+              Voltar para a fila
+            </button>
 
-          <div className="flex items-center gap-2">
-            {/* Atalho pro cadastro do cliente no CRM, sem sair pra pesquisar. */}
-            {onOpenEntity ? (
+            <div className="flex items-center gap-2">
+              {/* Atalho pro cadastro do cliente no CRM, sem sair pra pesquisar. */}
+              {onOpenEntity ? (
+                <button
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle"
+                  onClick={() => onOpenEntity(selecionado.nome, selecionado.id)}
+                  type="button"
+                >
+                  <ExternalLink aria-hidden="true" className="size-4" />
+                  Abrir no CRM
+                </button>
+              ) : null}
+              {/* Quem abriu assumiu: fica explícito de quem é a análise. */}
+              {analistaAberto ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-subtle px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
+                  <span className="flex size-4 items-center justify-center rounded-full bg-inverse text-[8px] font-bold text-brand-ink">
+                    {iniciais(analistaAberto)}
+                  </span>
+                  {analistaAberto}
+                </span>
+              ) : null}
+              <span className="text-xs text-ink-muted">
+                {indiceAberto + 1} de {visiveis.length}
+              </span>
               <button
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle"
-                onClick={() => onOpenEntity(selecionado.nome, selecionado.id)}
+                className="inline-flex h-9 items-center rounded-lg border border-line px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle disabled:opacity-40"
+                disabled={indiceAberto <= 0}
+                onClick={() => irPara(-1)}
                 type="button"
               >
-                <ExternalLink aria-hidden="true" className="size-4" />
-                Abrir no CRM
+                Anterior
               </button>
-            ) : null}
-            {/* Quem abriu assumiu: fica explícito de quem é a análise. */}
-            {analistaAberto ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-subtle px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
-                <span className="flex size-4 items-center justify-center rounded-full bg-inverse text-[8px] font-bold text-brand-ink">
-                  {iniciais(analistaAberto)}
-                </span>
-                {analistaAberto}
+              <button
+                className="inline-flex h-9 items-center rounded-lg border border-line px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle disabled:opacity-40"
+                disabled={indiceAberto < 0 || indiceAberto >= visiveis.length - 1}
+                onClick={() => irPara(1)}
+                type="button"
+              >
+                Próximo
+              </button>
+            </div>
+          </header>
+
+          {/* O SERVIDOR RECUSOU. Antes essa recusa era engolida e a tela seguia mostrando o avanço;
+              é dela que nasce a sensação de "o cliente voltou sozinho". Fica em vermelho, com o
+              motivo que veio do servidor, até a próxima tentativa. */}
+          {avisoAcao ? (
+            <p className="m-0 flex items-start gap-2 rounded-xl border border-line bg-subtle px-4 py-3 text-sm text-ink">
+              <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-ink-muted" />
+              <span>{avisoAcao}</span>
+            </p>
+          ) : null}
+
+          {erroEtapa ? (
+            <p className="m-0 flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
+              <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+              <span>
+                <strong className="font-semibold">A etapa não foi gravada.</strong> {erroEtapa}
               </span>
-            ) : null}
-            <span className="text-xs text-ink-muted">
-              {indiceAberto + 1} de {visiveis.length}
-            </span>
-            <button
-              className="inline-flex h-9 items-center rounded-lg border border-line px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle disabled:opacity-40"
-              disabled={indiceAberto <= 0}
-              onClick={() => irPara(-1)}
-              type="button"
-            >
-              Anterior
-            </button>
-            <button
-              className="inline-flex h-9 items-center rounded-lg border border-line px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle disabled:opacity-40"
-              disabled={indiceAberto < 0 || indiceAberto >= visiveis.length - 1}
-              onClick={() => irPara(1)}
-              type="button"
-            >
-              Próximo
-            </button>
+            </p>
+          ) : null}
+
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-line bg-surface p-5">
+            <DetalheBoard
+              emCorrecao={Boolean(emCorrecao[selecionado.id])}
+              emRevisao={Boolean(emRevisao[selecionado.id])}
+              etapaAtual={progresso[selecionado.id] ?? 0}
+              indeferido={Boolean(indeferidos[selecionado.id])}
+              item={selecionado}
+              mensagens={(mensagens[selecionado.id] ?? []).length}
+              onAbrirChat={() => setPainelAberto(true)}
+              onAprovarRestricao={() => setModalRestricao(true)}
+              onAvancar={(etapaAtualId) => avancarEtapa(selecionado, etapaAtualId)}
+              onCorrecao={() => setModalMotivo("correcao")}
+              onHabilitar={habilitarImobiliaria}
+              onIdentidadeSalva={() => void carregarFila()}
+              onCreditoResultado={(r) => {
+                // O crédito moveu a etapa NO SERVIDOR; aqui a tela só reflete o que ele decidiu, sem
+                // esperar o reload da fila. São TRÊS desfechos, não dois:
+                //   aprovado + pré-venda ligada  -> prevenda (índice 2)
+                //   aprovado + pré-venda DESLIGADA -> credenciado (índice 3), pulando o PIX
+                //   reprovado -> fica na Análise de crédito com o desvio de revisão
+                // ⚠️ O caso "credenciado" faltava aqui e a barra travava na Análise de crédito mesmo
+                // com o banco já em credenciado (achado do Lucas, 05/08, testando a Vovo Braga no
+                // Vale do Ouro, que está com a pré-venda desligada).
+                // A posição sai da MESMA ponte que o reload da fila usa (`indiceDaEtapa`), que lê a
+                // trilha DESTE item. Antes os números viviam soltos aqui, e bastava o servidor passar
+                // a devolver uma etapa nova para a barra parar de acompanhar.
+                const alvo = selecionado.id;
+                const indice = indiceDaEtapa(selecionado, r.etapa);
+                if (indice !== undefined) {
+                  setProgresso((prev) => ({ ...prev, [alvo]: indice }));
+                }
+                if (r.etapa === "revisao") {
+                  // Ancorado NA Análise de crédito, com o desvio de revisão.
+                  setEmRevisao((prev) => ({ ...prev, [alvo]: true }));
+                } else if (r.etapa) {
+                  setEmRevisao((prev) => ({ ...prev, [alvo]: false }));
+                  setIndeferidos((prev) => ({ ...prev, [alvo]: false }));
+                }
+                registrarEvento(
+                  alvo,
+                  r.aprovado ? "aprovacao" : "sistema",
+                  r.aprovado
+                    ? r.etapa === "credenciado"
+                      ? "Crédito aprovado: credenciado direto (pré-venda desligada)"
+                      : "Crédito aprovado: seguiu para a pré-venda"
+                    : "Crédito reprovado: enviado para revisão",
+                );
+              }}
+              onEnviarGestao={() => enviarParaRevisao(selecionado.id)}
+              onIndeferir={() => setModalMotivo("indeferir")}
+              onReabrir={() => reabrir(selecionado.id)}
+              onVoltar={(etapaAtualId) => {
+                // Voltar da imobiliária = reabrir o credenciamento (o papel volta para review).
+                // Ela não tem etapa de esteira para onde voltar.
+                if (selecionado.papel === "imobiliaria") {
+                  reabrir(selecionado.id);
+                  return;
+                }
+
+                // Voltar é decisão humana e a esteira permite (só o AUTOMÁTICO é que não rebaixa).
+                // Mas grava, como tudo o mais: o "voltei o card e no dia seguinte ele estava lá na
+                // frente de novo" é a mesma queixa vista pelo avesso.
+                const destino = etapaAtualId === "credito" ? "validacao" : "credito";
+                void moverEtapa(selecionado.id, destino, {
+                  aplicar: (etapaGravada) => {
+                    const indice = indiceDaEtapa(selecionado, etapaGravada);
+                    if (indice !== undefined) {
+                      setProgresso((prev) => ({ ...prev, [selecionado.id]: indice }));
+                    }
+                  },
+                  evento: ["etapa", "Etapa devolvida pelo operador"],
+                });
+              }}
+            />
           </div>
-        </header>
 
-        {/* O SERVIDOR RECUSOU. Antes essa recusa era engolida e a tela seguia mostrando o avanço;
-            é dela que nasce a sensação de "o cliente voltou sozinho". Fica em vermelho, com o
-            motivo que veio do servidor, até a próxima tentativa. */}
-        {avisoAcao ? (
-          <p className="m-0 flex items-start gap-2 rounded-xl border border-line bg-subtle px-4 py-3 text-sm text-ink">
-            <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-ink-muted" />
-            <span>{avisoAcao}</span>
-          </p>
-        ) : null}
+          {/* Recusa e correção exigem motivo: popup antes de decidir. */}
+          {modalMotivo ? (
+            <ModalMotivo
+              imob={selecionado.papel === "imobiliaria"}
+              onCancelar={() => setModalMotivo(null)}
+              onConfirmar={(motivo) => {
+                if (modalMotivo === "correcao") enviarParaCorrecao(selecionado.id, motivo);
+                else indeferir(selecionado.id, motivo);
+                setModalMotivo(null);
+              }}
+              tipo={modalMotivo}
+            />
+          ) : null}
 
-        {erroEtapa ? (
-          <p className="m-0 flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
-            <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-            <span>
-              <strong className="font-semibold">A etapa não foi gravada.</strong> {erroEtapa}
-            </span>
-          </p>
-        ) : null}
+          {/* PROBLEMA 3 (Lucas, 04/08): override da coordenação. Exige a evidência do de-acordo
+              (PDF/PNG/JPEG) antes de destravar o crédito reprovado. */}
+          {modalRestricao ? (
+            <ModalAprovarRestricao
+              nome={toTitleCase(selecionado.nome)}
+              onCancelar={() => setModalRestricao(false)}
+              onConfirmar={async (payload) => {
+                const r = await aprovarComRestricao(selecionado.id, payload);
+                if (r.ok) setModalRestricao(false);
+                return r;
+              }}
+            />
+          ) : null}
 
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-line bg-surface p-5">
-          <DetalheBoard
-            emCorrecao={Boolean(emCorrecao[selecionado.id])}
-            emRevisao={Boolean(emRevisao[selecionado.id])}
-            etapaAtual={progresso[selecionado.id] ?? 0}
-            indeferido={Boolean(indeferidos[selecionado.id])}
-            item={selecionado}
-            mensagens={(mensagens[selecionado.id] ?? []).length}
-            onAbrirChat={() => setPainelAberto(true)}
-            onAprovarRestricao={() => setModalRestricao(true)}
-            onAvancar={(etapaAtualId) => avancarEtapa(selecionado, etapaAtualId)}
-            onCorrecao={() => setModalMotivo("correcao")}
-            onHabilitar={habilitarImobiliaria}
-            onIdentidadeSalva={() => void carregarFila()}
-            onCreditoResultado={(r) => {
-              // O crédito moveu a etapa NO SERVIDOR; aqui a tela só reflete o que ele decidiu, sem
-              // esperar o reload da fila. São TRÊS desfechos, não dois:
-              //   aprovado + pré-venda ligada  -> prevenda (índice 2)
-              //   aprovado + pré-venda DESLIGADA -> credenciado (índice 3), pulando o PIX
-              //   reprovado -> fica na Análise de crédito com o desvio de revisão
-              // ⚠️ O caso "credenciado" faltava aqui e a barra travava na Análise de crédito mesmo
-              // com o banco já em credenciado (achado do Lucas, 05/08, testando a Vovo Braga no
-              // Vale do Ouro, que está com a pré-venda desligada).
-              // A posição sai da MESMA ponte que o reload da fila usa (`indiceDaEtapa`), que lê a
-              // trilha DESTE item. Antes os números viviam soltos aqui, e bastava o servidor passar
-              // a devolver uma etapa nova para a barra parar de acompanhar.
-              const alvo = selecionado.id;
-              const indice = indiceDaEtapa(selecionado, r.etapa);
-              if (indice !== undefined) {
-                setProgresso((prev) => ({ ...prev, [alvo]: indice }));
-              }
-              if (r.etapa === "revisao") {
-                // Ancorado NA Análise de crédito, com o desvio de revisão.
-                setEmRevisao((prev) => ({ ...prev, [alvo]: true }));
-              } else if (r.etapa) {
-                setEmRevisao((prev) => ({ ...prev, [alvo]: false }));
-                setIndeferidos((prev) => ({ ...prev, [alvo]: false }));
-              }
-              registrarEvento(
-                alvo,
-                r.aprovado ? "aprovacao" : "sistema",
-                r.aprovado
-                  ? r.etapa === "credenciado"
-                    ? "Crédito aprovado: credenciado direto (pré-venda desligada)"
-                    : "Crédito aprovado: seguiu para a pré-venda"
-                  : "Crédito reprovado: enviado para revisão",
-              );
-            }}
-            onEnviarGestao={() => enviarParaRevisao(selecionado.id)}
-            onIndeferir={() => setModalMotivo("indeferir")}
-            onReabrir={() => reabrir(selecionado.id)}
-            onVoltar={(etapaAtualId) => {
-              // Voltar da imobiliária = reabrir o credenciamento (o papel volta para review).
-              // Ela não tem etapa de esteira para onde voltar.
-              if (selecionado.papel === "imobiliaria") {
-                reabrir(selecionado.id);
-                return;
-              }
-
-              // Voltar é decisão humana e a esteira permite (só o AUTOMÁTICO é que não rebaixa).
-              // Mas grava, como tudo o mais: o "voltei o card e no dia seguinte ele estava lá na
-              // frente de novo" é a mesma queixa vista pelo avesso.
-              const destino = etapaAtualId === "credito" ? "validacao" : "credito";
-              void moverEtapa(selecionado.id, destino, {
-                aplicar: (etapaGravada) => {
-                  const indice = indiceDaEtapa(selecionado, etapaGravada);
-                  if (indice !== undefined) {
-                    setProgresso((prev) => ({ ...prev, [selecionado.id]: indice }));
-                  }
-                },
-                evento: ["etapa", "Etapa devolvida pelo operador"],
-              });
-            }}
-          />
-        </div>
-
-        {/* Recusa e correção exigem motivo: popup antes de decidir. */}
-        {modalMotivo ? (
-          <ModalMotivo
-            imob={selecionado.papel === "imobiliaria"}
-            onCancelar={() => setModalMotivo(null)}
-            onConfirmar={(motivo) => {
-              if (modalMotivo === "correcao") enviarParaCorrecao(selecionado.id, motivo);
-              else indeferir(selecionado.id, motivo);
-              setModalMotivo(null);
-            }}
-            tipo={modalMotivo}
-          />
-        ) : null}
-
-        {/* PROBLEMA 3 (Lucas, 04/08): override da coordenação. Exige a evidência do de-acordo
-            (PDF/PNG/JPEG) antes de destravar o crédito reprovado. */}
-        {modalRestricao ? (
-          <ModalAprovarRestricao
-            nome={toTitleCase(selecionado.nome)}
-            onCancelar={() => setModalRestricao(false)}
-            onConfirmar={async (payload) => {
-              const r = await aprovarComRestricao(selecionado.id, payload);
-              if (r.ok) setModalRestricao(false);
-              return r;
-            }}
-          />
-        ) : null}
-
-        {/* Chat e histórico em POPUP (preferência do Lucas): a conferência fica com a tela toda. */}
-        {painelAberto ? (
-          <ModalChatHistorico
-            eventos={historicoDoItem(selecionado, eventos[selecionado.id] ?? [])}
-            mensagens={mensagens[selecionado.id] ?? []}
-            nome={toTitleCase(selecionado.nome)}
-            onEnviar={(texto) => enviarMensagem(selecionado.id, texto)}
-            onFechar={() => setPainelAberto(false)}
-          />
-        ) : null}
-      </section>
+          {/* Chat e histórico em POPUP (preferência do Lucas): a conferência fica com a tela toda. */}
+          {painelAberto ? (
+            <ModalChatHistorico
+              eventos={historicoDoItem(selecionado, eventos[selecionado.id] ?? [])}
+              mensagens={mensagens[selecionado.id] ?? []}
+              nome={toTitleCase(selecionado.nome)}
+              onEnviar={(texto) => enviarMensagem(selecionado.id, texto)}
+              onFechar={() => setPainelAberto(false)}
+            />
+          ) : null}
+        </section>
+      </BoardPortaContext.Provider>
     );
   }
 
   // --- fila em TABELA cheia ---
   return (
-    <section className="flex h-full min-h-0 flex-col gap-3">
-      <header className="shrink-0 rounded-xl border border-line bg-surface px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Sem título: o nome da tela já vem do sidebar do Apolo. */}
-          <p className="m-0 min-w-0 text-xs text-ink-muted">
-            Tudo que entra no lançamento passa por aqui: imobiliárias, corretores e CADs.
-          </p>
-          <div className="flex items-center gap-2">
-            {/* Mesmo alternador do board da Iris. */}
-            <div className="inline-flex shrink-0 rounded-lg border border-line/70 bg-subtle/70 p-0.5">
-              <button
-                aria-label="Visão kanban"
-                className={`inline-flex size-8 items-center justify-center rounded-md transition-colors ${
-                  visao === "kanban"
-                    ? "bg-surface text-ink shadow-sm"
-                    : "text-ink-muted hover:text-ink"
-                }`}
-                onClick={() => {
-                  // O quadro sempre abre nas CADs (decisão do Lucas); trocar é um clique na aba.
-                  setFiltro("prospect");
-                  setVisao("kanban");
-                }}
-                title="Kanban"
-                type="button"
-              >
-                <LayoutGrid className="size-4" aria-hidden="true" />
-              </button>
-              <button
-                aria-label="Visão lista"
-                className={`inline-flex size-8 items-center justify-center rounded-md transition-colors ${
-                  visao === "tabela"
-                    ? "bg-surface text-ink shadow-sm"
-                    : "text-ink-muted hover:text-ink"
-                }`}
-                onClick={() => setVisao("tabela")}
-                title="Lista"
-                type="button"
-              >
-                <List className="size-4" aria-hidden="true" />
-              </button>
+    <BoardPortaContext.Provider value={porta}>
+      <section className="flex h-full min-h-0 flex-col gap-3">
+        <header className="shrink-0 rounded-xl border border-line bg-surface px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Sem título: o nome da tela já vem do sidebar do Apolo. */}
+            <p className="m-0 min-w-0 text-xs text-ink-muted">
+              Tudo que entra no lançamento passa por aqui: imobiliárias, corretores e CADs.
+            </p>
+            <div className="flex items-center gap-2">
+              {/* Mesmo alternador do board da Iris. */}
+              <div className="inline-flex shrink-0 rounded-lg border border-line/70 bg-subtle/70 p-0.5">
+                <button
+                  aria-label="Visão kanban"
+                  className={`inline-flex size-8 items-center justify-center rounded-md transition-colors ${
+                    visao === "kanban"
+                      ? "bg-surface text-ink shadow-sm"
+                      : "text-ink-muted hover:text-ink"
+                  }`}
+                  onClick={() => {
+                    // O quadro sempre abre nas CADs (decisão do Lucas); trocar é um clique na aba.
+                    setFiltro("prospect");
+                    setVisao("kanban");
+                  }}
+                  title="Kanban"
+                  type="button"
+                >
+                  <LayoutGrid className="size-4" aria-hidden="true" />
+                </button>
+                <button
+                  aria-label="Visão lista"
+                  className={`inline-flex size-8 items-center justify-center rounded-md transition-colors ${
+                    visao === "tabela"
+                      ? "bg-surface text-ink shadow-sm"
+                      : "text-ink-muted hover:text-ink"
+                  }`}
+                  onClick={() => setVisao("tabela")}
+                  title="Lista"
+                  type="button"
+                >
+                  <List className="size-4" aria-hidden="true" />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="mt-3 flex gap-1">
-          {(
-            [
-              // No kanban não existe "Todos": os funis são diferentes.
-              ...(visao === "kanban" ? [] : [["todos", "Todos"] as const]),
-              // CADs primeiro: é o volume do dia a dia.
-              ["prospect", "CADs"] as const,
-              ["imobiliaria", "Imobiliárias"] as const,
-            ] as const
-          ).map(([valor, rotulo]) => {
-            const total = itens.filter((item) =>
-              valor === "todos"
-                ? true
-                : valor === "imobiliaria"
-                  ? item.papel === "imobiliaria"
-                  : item.papel !== "imobiliaria",
-            ).length;
-            return (
-              <button
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  filtro === valor ? "bg-inverse text-brand-ink" : "text-ink-soft hover:bg-subtle"
-                }`}
-                key={valor}
-                onClick={() => setFiltro(valor)}
-                type="button"
-              >
-                {rotulo}
-                <span
-                  className={`rounded-full px-1.5 text-[10px] ${
-                    filtro === valor ? "bg-white/20" : "bg-subtle"
-                  }`}
-                >
-                  {total}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Busca, empreendimento e ordenação valem pras duas visões. */}
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <label className="flex h-9 min-w-[200px] flex-1 items-center gap-2 rounded-lg border border-line/70 bg-surface px-3">
-            <Search aria-hidden="true" className="size-4 shrink-0 text-[#A07C3B]" />
-            <input
-              className="min-w-0 flex-1 bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
-              onChange={(event) => setBusca(event.target.value)}
-              placeholder="Buscar por nome ou documento…"
-              value={busca}
-            />
-          </label>
-
-          <select
-            className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
-            onChange={(event) => setEmpreendimento(event.target.value)}
-            value={empreendimento}
-          >
-            <option value="todos">Todos os empreendimentos</option>
-            {empreendimentosDisponiveis.map((nome) => (
-              <option key={nome} value={nome}>
-                {toTitleCase(nome)}
-              </option>
-            ))}
-          </select>
-
-          {/* AVISAR O COORDENADOR — só com um empreendimento escolhido: a mensagem é DELE, e
-              "todos os empreendimentos" mandaria a CAD de um loteamento para o coordenador de
-              outro. Ver `avisarCoordenador`. */}
-          {empreendimento !== "todos" && enterpriseIdDoFiltro() ? (
-            <button
-              className="h-9 rounded-lg border border-line/70 bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors hover:bg-subtle disabled:opacity-50"
-              disabled={loteAviso?.enviando}
-              onClick={() => void avisarCoordenador(Boolean(loteAviso?.total))}
-              title="Avisa o coordenador deste empreendimento sobre as CADs da esteira"
-              type="button"
-            >
-              {loteAviso?.enviando
-                ? "Enviando…"
-                : loteAviso?.total
-                  ? "Confirmar envio"
-                  : "Avisar coordenador"}
-            </button>
-          ) : null}
-
-          {/* Filtro por etapa: mostra a contagem junto, para saber onde a fila está parada
-              sem precisar abrir o kanban. */}
-          <select
-            className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
-            onChange={(event) => setEtapaFiltro(event.target.value)}
-            value={etapaFiltro}
-          >
-            <option value="todas">Todas as etapas</option>
-            {colunasDoTipo(filtro === "imobiliaria", itens).map((coluna) => {
-              const quantos = itens.filter(
-                (item) =>
-                  colunaDoItem(
-                    item,
-                    progresso[item.id] ?? 0,
-                    Boolean(indeferidos[item.id]),
-                    Boolean(emRevisao[item.id]),
-                    Boolean(emCorrecao[item.id]),
-                  ) === coluna.id,
+          <div className="mt-3 flex gap-1">
+            {(
+              [
+                // No kanban não existe "Todos": os funis são diferentes.
+                ...(visao === "kanban" ? [] : [["todos", "Todos"] as const]),
+                // CADs primeiro: é o volume do dia a dia.
+                ["prospect", "CADs"] as const,
+                ["imobiliaria", "Imobiliárias"] as const,
+              ] as const
+            ).map(([valor, rotulo]) => {
+              const total = itens.filter((item) =>
+                valor === "todos"
+                  ? true
+                  : valor === "imobiliaria"
+                    ? item.papel === "imobiliaria"
+                    : item.papel !== "imobiliaria",
               ).length;
               return (
-                <option key={coluna.id} value={coluna.id}>
-                  {coluna.label} ({quantos})
-                </option>
+                <button
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    filtro === valor ? "bg-inverse text-brand-ink" : "text-ink-soft hover:bg-subtle"
+                  }`}
+                  key={valor}
+                  onClick={() => setFiltro(valor)}
+                  type="button"
+                >
+                  {rotulo}
+                  <span
+                    className={`rounded-full px-1.5 text-[10px] ${
+                      filtro === valor ? "bg-white/20" : "bg-subtle"
+                    }`}
+                  >
+                    {total}
+                  </span>
+                </button>
               );
             })}
-          </select>
-
-          {/* Falha de envio: o chip só existe quando há alguma — sem erro, sem ruído na tela. */}
-          {itens.some((item) => item.erroEnvio) ? (
-            <button
-              className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold transition-colors ${
-                soErros
-                  ? "border-rose-300 bg-rose-600 text-white"
-                  : "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
-              }`}
-              onClick={() => setSoErros((v) => !v)}
-              type="button"
-            >
-              <AlertTriangle aria-hidden="true" className="size-4" />
-              {itens.filter((item) => item.erroEnvio).length} com erro de envio
-            </button>
-          ) : null}
-
-          {/* PIX da pré-venda: separa quem pagou de quem só recebeu a cobrança. */}
-          <select
-            className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
-            onChange={(event) => setPagoFiltro(event.target.value as typeof pagoFiltro)}
-            value={pagoFiltro}
-          >
-            <option value="todos">PIX: todos</option>
-            <option value="pagos">
-              PIX pago ({itens.filter((item) => item.pagoEm).length})
-            </option>
-            <option value="pendentes">
-              PIX pendente ({itens.filter((item) => !item.pagoEm).length})
-            </option>
-          </select>
-
-          <select
-            className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
-            onChange={(event) => {
-              setColunaOrdem(null);
-              setOrdem(event.target.value as typeof ordem);
-            }}
-            value={ordem}
-          >
-            <option value="antigos">Mais antigos primeiro</option>
-            <option value="recentes">Mais recentes primeiro</option>
-            <option value="nome">Nome (A–Z)</option>
-          </select>
-        </div>
-      </header>
-
-      {visao === "kanban" ? (
-        <KanbanBoard
-          analistaDe={(id) =>
-            analistas.find((pessoa) => pessoa.id === analistaPorItem[id])?.nome ?? ""
-          }
-          carregando={carregando}
-          emCorrecao={emCorrecao}
-          emRevisao={emRevisao}
-          filtro={filtro}
-          indeferidos={indeferidos}
-          itens={visiveis}
-          onAbrir={abrirItem}
-          onSubirC2x={subirParaC2x}
-          progresso={progresso}
-        />
-      ) : (
-      <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-line bg-surface">
-        {carregando ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 aria-hidden="true" className="size-5 animate-spin text-ink-muted" />
           </div>
-        ) : visiveis.length === 0 ? (
-          <p className="py-16 text-center text-sm text-ink-muted">Nada aguardando validação.</p>
-        ) : (
-          <table className="w-full min-w-[880px] border-collapse text-sm">
-            <thead className="sticky top-0 z-10">
-              <tr className="border-b border-line bg-subtle text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                <ThOrdenavel
-                  campo="nome"
-                  className="px-4 py-2.5"
-                  estado={colunaOrdem}
-                  onOrdenar={setColunaOrdem}
+
+          {/* Busca, empreendimento e ordenação valem pras duas visões. */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <label className="flex h-9 min-w-[200px] flex-1 items-center gap-2 rounded-lg border border-line/70 bg-surface px-3">
+              <Search aria-hidden="true" className="size-4 shrink-0 text-[#A07C3B]" />
+              <input
+                className="min-w-0 flex-1 bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
+                onChange={(event) => setBusca(event.target.value)}
+                placeholder="Buscar por nome ou documento…"
+                value={busca}
+              />
+            </label>
+
+            {porta.fixo ? (
+              // PRODUTO TRAVADO (a aba Cadastro do produto no portal): o servidor já recortou a
+              // fila pelo empreendimento; aqui fica só o rótulo. Lista vazia = o que a rota
+              // devolveu em `empreendimentos`.
+              <span className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line/70 bg-subtle/60 px-3 text-sm font-medium text-ink">
+                <Building2 aria-hidden="true" className="size-4 text-[#A07C3B]" />
+                {(porta.fixo.length ? porta.fixo : catalogoEmpreendimentos)
+                  .map((nome) => toTitleCase(nome))
+                  .join(" · ") || "Produto"}
+              </span>
+            ) : (
+              <>
+                <select
+                  className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
+                  onChange={(event) => setEmpreendimento(event.target.value)}
+                  value={empreendimento}
                 >
-                  Quem
-                </ThOrdenavel>
-                <ThOrdenavel campo="etapa" estado={colunaOrdem} onOrdenar={setColunaOrdem}>
-                  Etapa
-                </ThOrdenavel>
-                <th className="px-3 py-2.5">Analista</th>
-                <ThOrdenavel
-                  campo="documento"
-                  estado={colunaOrdem}
-                  onOrdenar={setColunaOrdem}
-                >
-                  Documento
-                </ThOrdenavel>
-                <ThOrdenavel
-                  campo="empreendimento"
-                  estado={colunaOrdem}
-                  onOrdenar={setColunaOrdem}
-                >
-                  Empreendimento
-                </ThOrdenavel>
-                <ThOrdenavel campo="chegada" estado={colunaOrdem} onOrdenar={setColunaOrdem}>
-                  Chegou em
-                </ThOrdenavel>
-                <th className="px-4 py-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {visiveis.map((item) => {
-                const imob = item.papel === "imobiliaria";
-                return (
-                  <tr
-                    className="cursor-pointer border-b border-line/70 transition-colors last:border-b-0 hover:bg-[#A07C3B]/8"
-                    key={item.id}
-                    onClick={() => abrirItem(item)}
+                  <option value="todos">Todos os empreendimentos</option>
+                  {empreendimentosDisponiveis.map((nome) => (
+                    <option key={nome} value={nome}>
+                      {toTitleCase(nome)}
+                    </option>
+                  ))}
+                </select>
+
+                {/* AVISAR O COORDENADOR — só com um empreendimento escolhido: a mensagem é DELE, e
+                    "todos os empreendimentos" mandaria a CAD de um loteamento para o coordenador de
+                    outro. Ver `avisarCoordenador`. Some na porta que não tem a rota (o portal: o
+                    coordenador É quem seria avisado). */}
+                {empreendimento !== "todos" &&
+                enterpriseIdDoFiltro() &&
+                !porta.ocultar.has("avisarLote") ? (
+                  <button
+                    className="h-9 rounded-lg border border-line/70 bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors hover:bg-subtle disabled:opacity-50"
+                    disabled={loteAviso?.enviando}
+                    onClick={() => void avisarCoordenador(Boolean(loteAviso?.total))}
+                    title="Avisa o coordenador deste empreendimento sobre as CADs da esteira"
+                    type="button"
                   >
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2.5">
-                        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-line bg-subtle text-ink-muted">
-                          {imob ? (
-                            <Building2 aria-hidden="true" className="size-4" />
-                          ) : (
-                            <UserRound aria-hidden="true" className="size-4" />
-                          )}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="m-0 flex items-center gap-1.5 truncate text-sm font-semibold text-ink">
-                            <span className="truncate">{toTitleCase(item.nome)}</span>
-                            {item.erroEnvio ? (
-                              <span
-                                className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
-                                title="Falha no envio da cobrança ou do recibo"
-                              >
-                                <AlertTriangle aria-hidden="true" className="size-2.5" /> envio
-                              </span>
-                            ) : null}
-                            {/* Não conseguiu subir para o C2X: motivo no tooltip. */}
-                            <SeloC2x erro={item.c2xErro} falha={item.c2xFalha} />
-                            {item.pagoEm ? (
-                              <span
-                                className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
-                                title={`PIX confirmado em ${new Date(item.pagoEm).toLocaleString(
-                                  "pt-BR",
-                                  { timeZone: "America/Sao_Paulo" },
-                                )}`}
-                              >
-                                <Check aria-hidden="true" className="size-2.5" /> PIX pago
-                              </span>
-                            ) : null}
-                          </p>
-                          <p className="m-0 truncate text-[11px] text-ink-muted">
-                            {imob ? "Imobiliária" : "CAD · prospect"}
-                            {/* Quem indicou a CAD: vem da importação do Asana. O corretor é o
-                                nome que o formulário trouxe, às vezes só o primeiro nome. */}
-                            {item.imobiliaria ? ` · ${item.imobiliaria}` : ""}
-                            {item.corretor ? ` · ${item.corretor}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    {/* Etapa do workflow: mesma cor/rótulo das colunas do kanban. */}
-                    <td className="px-3 py-2.5">
-                      <EtapaChip
-                        coluna={colunaDoItem(
-                          item,
-                          progresso[item.id] ?? 0,
-                          Boolean(indeferidos[item.id]),
-                          Boolean(emRevisao[item.id]),
-                          Boolean(emCorrecao[item.id]),
-                        )}
-                        imob={imob}
-                      />
-                    </td>
+                    {loteAviso?.enviando
+                      ? "Enviando…"
+                      : loteAviso?.total
+                        ? "Confirmar envio"
+                        : "Avisar coordenador"}
+                  </button>
+                ) : null}
+              </>
+            )}
 
-                    {/* Analista: quem está cuidando. O clique no select não abre o item. */}
-                    <td className="px-3 py-2.5" onClick={(event) => event.stopPropagation()}>
-                      <select
-                        className="h-8 max-w-[150px] rounded-lg border border-line/70 bg-surface px-2 text-xs text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
-                        onChange={(event) =>
-                          setAnalistaPorItem((prev) => ({
-                            ...prev,
-                            [item.id]: event.target.value,
-                          }))
-                        }
-                        value={analistaPorItem[item.id] ?? ""}
-                      >
-                        <option value="">Sem analista</option>
-                        {analistas.map((pessoa) => (
-                          <option key={pessoa.id} value={pessoa.id}>
-                            {pessoa.nome}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-
-                    <td className="px-3 py-2.5 text-ink-soft">{item.documento || "—"}</td>
-                    <td className="px-3 py-2.5">
-                      {item.empreendimentos.length ? (
-                        <div className="flex flex-wrap gap-1">
-                          {item.empreendimentos.map((nome) => (
-                            <span
-                              className="rounded border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-1.5 py-0.5 text-[11px] font-medium text-[#7A5E2C] dark:text-[#d9b877]"
-                              key={nome}
-                            >
-                              {toTitleCase(nome)}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-ink-muted">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <p className="m-0 text-sm text-ink-soft">{chegadaEm(item.criadoEm)}</p>
-                      <p className="m-0 text-[11px] text-ink-muted">
-                        há {esperaDesde(item.criadoEm)}
-                      </p>
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <span className="inline-flex items-center rounded-lg border border-line bg-subtle px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
-                        Validar
-                      </span>
-                    </td>
-                  </tr>
+            {/* Filtro por etapa: mostra a contagem junto, para saber onde a fila está parada
+                sem precisar abrir o kanban. */}
+            <select
+              className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
+              onChange={(event) => setEtapaFiltro(event.target.value)}
+              value={etapaFiltro}
+            >
+              <option value="todas">Todas as etapas</option>
+              {colunasDoTipo(filtro === "imobiliaria", itens).map((coluna) => {
+                const quantos = itens.filter(
+                  (item) =>
+                    colunaDoItem(
+                      item,
+                      progresso[item.id] ?? 0,
+                      Boolean(indeferidos[item.id]),
+                      Boolean(emRevisao[item.id]),
+                      Boolean(emCorrecao[item.id]),
+                    ) === coluna.id,
+                ).length;
+                return (
+                  <option key={coluna.id} value={coluna.id}>
+                    {coluna.label} ({quantos})
+                  </option>
                 );
               })}
-            </tbody>
-          </table>
+            </select>
+
+            {/* Falha de envio: o chip só existe quando há alguma — sem erro, sem ruído na tela. */}
+            {itens.some((item) => item.erroEnvio) ? (
+              <button
+                className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold transition-colors ${
+                  soErros
+                    ? "border-rose-300 bg-rose-600 text-white"
+                    : "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+                }`}
+                onClick={() => setSoErros((v) => !v)}
+                type="button"
+              >
+                <AlertTriangle aria-hidden="true" className="size-4" />
+                {itens.filter((item) => item.erroEnvio).length} com erro de envio
+              </button>
+            ) : null}
+
+            {/* PIX da pré-venda: separa quem pagou de quem só recebeu a cobrança. */}
+            <select
+              className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
+              onChange={(event) => setPagoFiltro(event.target.value as typeof pagoFiltro)}
+              value={pagoFiltro}
+            >
+              <option value="todos">PIX: todos</option>
+              <option value="pagos">
+                PIX pago ({itens.filter((item) => item.pagoEm).length})
+              </option>
+              <option value="pendentes">
+                PIX pendente ({itens.filter((item) => !item.pagoEm).length})
+              </option>
+            </select>
+
+            <select
+              className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
+              onChange={(event) => {
+                setColunaOrdem(null);
+                setOrdem(event.target.value as typeof ordem);
+              }}
+              value={ordem}
+            >
+              <option value="antigos">Mais antigos primeiro</option>
+              <option value="recentes">Mais recentes primeiro</option>
+              <option value="nome">Nome (A–Z)</option>
+            </select>
+          </div>
+        </header>
+
+        {visao === "kanban" ? (
+          <KanbanBoard
+            analistaDe={(id) =>
+              analistas.find((pessoa) => pessoa.id === analistaPorItem[id])?.nome ?? ""
+            }
+            carregando={carregando}
+            emCorrecao={emCorrecao}
+            emRevisao={emRevisao}
+            filtro={filtro}
+            indeferidos={indeferidos}
+            itens={visiveis}
+            onAbrir={abrirItem}
+            onSubirC2x={subirParaC2x}
+            progresso={progresso}
+          />
+        ) : (
+        <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-line bg-surface">
+          {carregando ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 aria-hidden="true" className="size-5 animate-spin text-ink-muted" />
+            </div>
+          ) : visiveis.length === 0 ? (
+            <p className="py-16 text-center text-sm text-ink-muted">Nada aguardando validação.</p>
+          ) : (
+            <table className="w-full min-w-[880px] border-collapse text-sm">
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b border-line bg-subtle text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                  <ThOrdenavel
+                    campo="nome"
+                    className="px-4 py-2.5"
+                    estado={colunaOrdem}
+                    onOrdenar={setColunaOrdem}
+                  >
+                    Quem
+                  </ThOrdenavel>
+                  <ThOrdenavel campo="etapa" estado={colunaOrdem} onOrdenar={setColunaOrdem}>
+                    Etapa
+                  </ThOrdenavel>
+                  <th className="px-3 py-2.5">Analista</th>
+                  <ThOrdenavel
+                    campo="documento"
+                    estado={colunaOrdem}
+                    onOrdenar={setColunaOrdem}
+                  >
+                    Documento
+                  </ThOrdenavel>
+                  <ThOrdenavel
+                    campo="empreendimento"
+                    estado={colunaOrdem}
+                    onOrdenar={setColunaOrdem}
+                  >
+                    Empreendimento
+                  </ThOrdenavel>
+                  <ThOrdenavel campo="chegada" estado={colunaOrdem} onOrdenar={setColunaOrdem}>
+                    Chegou em
+                  </ThOrdenavel>
+                  <th className="px-4 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {visiveis.map((item) => {
+                  const imob = item.papel === "imobiliaria";
+                  return (
+                    <tr
+                      className="cursor-pointer border-b border-line/70 transition-colors last:border-b-0 hover:bg-[#A07C3B]/8"
+                      key={item.id}
+                      onClick={() => abrirItem(item)}
+                    >
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-line bg-subtle text-ink-muted">
+                            {imob ? (
+                              <Building2 aria-hidden="true" className="size-4" />
+                            ) : (
+                              <UserRound aria-hidden="true" className="size-4" />
+                            )}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="m-0 flex items-center gap-1.5 truncate text-sm font-semibold text-ink">
+                              <span className="truncate">{toTitleCase(item.nome)}</span>
+                              {item.erroEnvio ? (
+                                <span
+                                  className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+                                  title="Falha no envio da cobrança ou do recibo"
+                                >
+                                  <AlertTriangle aria-hidden="true" className="size-2.5" /> envio
+                                </span>
+                              ) : null}
+                              {/* Não conseguiu subir para o C2X: motivo no tooltip. */}
+                              <SeloC2x erro={item.c2xErro} falha={item.c2xFalha} />
+                              {item.pagoEm ? (
+                                <span
+                                  className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                  title={`PIX confirmado em ${new Date(item.pagoEm).toLocaleString(
+                                    "pt-BR",
+                                    { timeZone: "America/Sao_Paulo" },
+                                  )}`}
+                                >
+                                  <Check aria-hidden="true" className="size-2.5" /> PIX pago
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="m-0 truncate text-[11px] text-ink-muted">
+                              {imob ? "Imobiliária" : "CAD · prospect"}
+                              {/* Quem indicou a CAD: vem da importação do Asana. O corretor é o
+                                  nome que o formulário trouxe, às vezes só o primeiro nome. */}
+                              {item.imobiliaria ? ` · ${item.imobiliaria}` : ""}
+                              {item.corretor ? ` · ${item.corretor}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      {/* Etapa do workflow: mesma cor/rótulo das colunas do kanban. */}
+                      <td className="px-3 py-2.5">
+                        <EtapaChip
+                          coluna={colunaDoItem(
+                            item,
+                            progresso[item.id] ?? 0,
+                            Boolean(indeferidos[item.id]),
+                            Boolean(emRevisao[item.id]),
+                            Boolean(emCorrecao[item.id]),
+                          )}
+                          imob={imob}
+                        />
+                      </td>
+
+                      {/* Analista: quem está cuidando. O clique no select não abre o item. */}
+                      <td className="px-3 py-2.5" onClick={(event) => event.stopPropagation()}>
+                        <select
+                          className="h-8 max-w-[150px] rounded-lg border border-line/70 bg-surface px-2 text-xs text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
+                          onChange={(event) =>
+                            setAnalistaPorItem((prev) => ({
+                              ...prev,
+                              [item.id]: event.target.value,
+                            }))
+                          }
+                          value={analistaPorItem[item.id] ?? ""}
+                        >
+                          <option value="">Sem analista</option>
+                          {analistas.map((pessoa) => (
+                            <option key={pessoa.id} value={pessoa.id}>
+                              {pessoa.nome}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+
+                      <td className="px-3 py-2.5 text-ink-soft">{item.documento || "—"}</td>
+                      <td className="px-3 py-2.5">
+                        {item.empreendimentos.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {item.empreendimentos.map((nome) => (
+                              <span
+                                className="rounded border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-1.5 py-0.5 text-[11px] font-medium text-[#7A5E2C] dark:text-[#d9b877]"
+                                key={nome}
+                              >
+                                {toTitleCase(nome)}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-ink-muted">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <p className="m-0 text-sm text-ink-soft">{chegadaEm(item.criadoEm)}</p>
+                        <p className="m-0 text-[11px] text-ink-muted">
+                          há {esperaDesde(item.criadoEm)}
+                        </p>
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <span className="inline-flex items-center rounded-lg border border-line bg-subtle px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
+                          Validar
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
         )}
-      </div>
-      )}
-    </section>
+      </section>
+    </BoardPortaContext.Provider>
   );
 }
 
@@ -2607,8 +2737,10 @@ function BotaoSubirC2x({
 }) {
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<ResultadoSubidaC2x | null>(null);
+  // A porta sem a rota de sync (o portal comercial) não oferece o botão.
+  const { ocultar } = usePortaDoBoard();
 
-  if (!foraDoC2x(item.c2xFalha)) return null;
+  if (ocultar.has("c2xSync") || !foraDoC2x(item.c2xFalha)) return null;
 
   const clicar = async () => {
     // Trava de clique duplo: criar cadastro no C2X não tem desfazer, e o endpoint é genérico
@@ -2863,6 +2995,8 @@ function DetalheBoard({
   // Mesma ideia do `onAvancar`: o Board nomeia a etapa, não conta posições.
   onVoltar: (etapaAtualId: string) => void;
 }) {
+  // O que esta porta não mostra (ver "A PORTA DO BOARD").
+  const { ocultar } = usePortaDoBoard();
   const imob = item.papel === "imobiliaria";
   const etapas = etapasDoItem(item);
   const indice = Math.min(etapaAtual, etapas.length - 1);
@@ -3053,7 +3187,7 @@ function DetalheBoard({
           nenhum para mostrar — 5 das 7 etapas não avisavam ninguém, e o bloco apareceria sempre
           vazio. Com os avisos de etapa ligados, é aqui que se vê se o corretor foi avisado, em
           que número e se a mensagem falhou. */}
-      <StatusDisparos entityId={item.id} />
+      {ocultar.has("disparos") ? null : <StatusDisparos entityId={item.id} />}
 
       <div className="flex items-center justify-between gap-2 border-t border-line pt-4">
         <div className="flex items-center gap-2">
@@ -3115,14 +3249,17 @@ function DetalheBoard({
                 <AlertTriangle aria-hidden="true" className="size-4" />
                 Enviar para correção
               </button>
-              <button
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#7C3AED] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#6D28D9]"
-                onClick={onAprovarRestricao}
-                type="button"
-              >
-                <ShieldCheck aria-hidden="true" className="size-4" />
-                Aprovar com restrição (coordenação)
-              </button>
+              {/* O override passa pela rota do Serasa: na porta sem ela, a decisão é da Careli. */}
+              {ocultar.has("serasa") ? null : (
+                <button
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#7C3AED] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#6D28D9]"
+                  onClick={onAprovarRestricao}
+                  type="button"
+                >
+                  <ShieldCheck aria-hidden="true" className="size-4" />
+                  Aprovar com restrição (coordenação)
+                </button>
+              )}
             </>
           ) : concluida ? null : (
             <>
@@ -3232,6 +3369,8 @@ function PainelEtapa({
   papelStatus?: null | string;
 }) {
   const Icon = etapa.icon;
+  // O que esta porta não mostra (ver "A PORTA DO BOARD").
+  const { ocultar } = usePortaDoBoard();
   return (
     <div className="rounded-xl border border-line bg-subtle/40 p-5">
       <div className="flex items-start gap-3">
@@ -3271,10 +3410,21 @@ function PainelEtapa({
         </>
       ) : null}
       {etapa.id === "credito" ? (
-        <CreditoSerasa entityId={entityId} onResultado={onCreditoResultado} />
+        ocultar.has("serasa") ? (
+          // A consulta ao Serasa é da Careli (rota interna, com custo por consulta). O
+          // coordenador acompanha o resultado pela etapa; quem consulta é o time.
+          <p className="m-0 mt-4 rounded-xl border border-line bg-surface px-4 py-3 text-xs text-ink-muted">
+            A análise de crédito é feita pela Careli. Quando o resultado sair, a CAD anda sozinha
+            para a próxima etapa.
+          </p>
+        ) : (
+          <CreditoSerasa entityId={entityId} onResultado={onCreditoResultado} />
+        )
       ) : null}
       {/* Pré-venda: o ciclo do PIX (gerou -> enviou -> recebeu), com os erros à vista. */}
-      {etapa.id === "prevenda" ? <StatusPixPrevenda entityId={entityId} /> : null}
+      {etapa.id === "prevenda" && !ocultar.has("pix") ? (
+        <StatusPixPrevenda entityId={entityId} />
+      ) : null}
     </div>
   );
 }
@@ -3854,6 +4004,9 @@ function ValidacaoLadoALado({
   // uma vez só, e aqui a gente recarregava apenas a ficha. Ver o comentário de `carregarFila`.
   onIdentidadeSalva?: () => void;
 }) {
+  // A porta em uso (ver "A PORTA DO BOARD"): rotas e cabeçalhos de cada fetch daqui.
+  const porta = usePortaDoBoard();
+  const rotas = useMemo(() => rotasDoBoard(porta.api), [porta.api]);
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [ativo, setAtivo] = useState<DocItem | null>(null);
@@ -3882,10 +4035,9 @@ function ValidacaoLadoALado({
     }
     setAbrindoHistorico(true);
     try {
-      const accessToken = await getApoloAccessToken();
-      const resposta = await fetch(`/api/apolo/board/${entityId}/historico`, {
+      const resposta = await fetch(rotas.historico(entityId), {
         cache: "no-store",
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: await cabecalhosDoBoard(porta.api),
       });
       const corpo = (await resposta.json()) as { data?: { edicoes: Edicao[] } };
       setHistorico(corpo.data?.edicoes ?? []);
@@ -3941,11 +4093,7 @@ function ValidacaoLadoALado({
     setErroSalvar(null);
 
     try {
-      const accessToken = await getApoloAccessToken();
-      const headers = {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      };
+      const headers = await cabecalhosDoBoard(porta.api, { "Content-Type": "application/json" });
 
       const nomeNovo = rascunho.__nome;
       const docNovo = rascunho.__documento;
@@ -3954,7 +4102,7 @@ function ValidacaoLadoALado({
         nomeNovo !== undefined || docNovo !== undefined || tipoNovo !== undefined;
 
       if (mexeuNaIdentidade) {
-        const resposta = await fetch(`/api/apolo/board/${entityId}/identidade`, {
+        const resposta = await fetch(rotas.identidade(entityId), {
           body: JSON.stringify({
             documento: docNovo ?? ficha.entidade.documento,
             motivo: "Correcao na validacao da CAD",
@@ -3984,7 +4132,7 @@ function ValidacaoLadoALado({
       );
 
       if (Object.keys(paraGravar).length > 0) {
-        const resposta = await fetch(`/api/apolo/board/${entityId}`, {
+        const resposta = await fetch(rotas.ficha(entityId), {
           body: JSON.stringify({ campos: paraGravar }),
           headers,
           method: "PATCH",
@@ -3997,9 +4145,9 @@ function ValidacaoLadoALado({
 
       // Recarrega do servidor: a identidade mudou em outra tabela, e refletir só o rascunho
       // mostraria a tela "certa" com o banco em outro estado.
-      const recarregada = await fetch(`/api/apolo/board/${entityId}`, {
+      const recarregada = await fetch(rotas.ficha(entityId), {
         cache: "no-store",
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: await cabecalhosDoBoard(porta.api),
       });
       const payload = (await recarregada.json()) as { data?: Ficha };
       if (payload.data) setFicha(payload.data);
@@ -4024,22 +4172,21 @@ function ValidacaoLadoALado({
     setCarregando(true);
     void (async () => {
       try {
-        const accessToken = await getApoloAccessToken();
-        const headers = { Authorization: `Bearer ${accessToken}` };
+        const headers = await cabecalhosDoBoard(porta.api);
         const [resDocs, resFicha] = await Promise.all([
-          fetch(`/api/apolo/documentos?entityId=${encodeURIComponent(entityId)}`, {
-            cache: "no-store",
-            headers,
-          }),
-          fetch(`/api/apolo/board/${entityId}`, { cache: "no-store", headers }),
+          // A porta sem documentos (ver `ocultar`) não lista nada: a ficha vem sozinha.
+          porta.ocultar.has("documentos")
+            ? null
+            : fetch(rotas.documentos(entityId), { cache: "no-store", headers }),
+          fetch(rotas.ficha(entityId), { cache: "no-store", headers }),
         ]);
         // ⚠️ /api/apolo/documentos devolve { documents } na RAIZ, sem envelope `data` —
         // diferente de /api/apolo/board/[id], que usa { data }. Ler data.documents aqui fazia
         // a lista vir SEMPRE vazia: a validação nunca mostrou documento nenhum, e só dava para
         // perceber depois que passou a existir documento para mostrar.
-        const payloadDocs = (await resDocs.json()) as {
-          documents?: DocItem[];
-        };
+        const payloadDocs = resDocs
+          ? ((await resDocs.json()) as { documents?: DocItem[] })
+          : {};
         const payloadFicha = (await resFicha.json()) as { data?: Ficha };
         const lista = (payloadDocs.documents ?? []).filter((doc) => doc.hasFile);
         if (!alive) return;
@@ -4055,7 +4202,7 @@ function ValidacaoLadoALado({
     return () => {
       alive = false;
     };
-  }, [entityId]);
+  }, [entityId, porta, rotas]);
 
   // Cada arquivo é servido por URL assinada (bucket privado).
   useEffect(() => {
@@ -4068,10 +4215,9 @@ function ValidacaoLadoALado({
     setZoom(1);
     void (async () => {
       try {
-        const accessToken = await getApoloAccessToken();
-        const response = await fetch(`/api/apolo/documentos/${ativo.id}`, {
+        const response = await fetch(rotas.documento(entityId, ativo.id), {
           cache: "no-store",
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: await cabecalhosDoBoard(porta.api),
         });
         const payload = (await response.json()) as { url?: string };
         if (alive) setUrl(payload.url ?? null);
@@ -4084,7 +4230,7 @@ function ValidacaoLadoALado({
     return () => {
       alive = false;
     };
-  }, [ativo]);
+  }, [ativo, entityId, porta.api, rotas]);
 
   const ehPdf = (nome: string | null) => /\.pdf$/i.test(nome ?? "");
 
@@ -4429,6 +4575,9 @@ function HabilitarEmpreendimentos({
   // produto novo" de "reativar credenciamento derrubado", e a segunda vira beco sem saida.
   papelStatus?: null | string;
 }) {
+  // A porta em uso (ver "A PORTA DO BOARD").
+  const porta = usePortaDoBoard();
+  const rotas = useMemo(() => rotasDoBoard(porta.api), [porta.api]);
   const [lista, setLista] = useState<
     { enterpriseId: string; habilitado: boolean; label: string }[] | null
   >(null);
@@ -4444,11 +4593,9 @@ function HabilitarEmpreendimentos({
     let ativo = true;
     void (async () => {
       try {
-        const token = await getApoloAccessToken();
-        const resposta = await fetch(
-          `/api/apolo/board/${encodeURIComponent(entityId)}/habilitar`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
+        const resposta = await fetch(rotas.habilitar(entityId), {
+          headers: await cabecalhosDoBoard(porta.api),
+        });
         const corpo = (await resposta.json().catch(() => null)) as {
           data?: {
             empreendimentos?: { enterpriseId: string; habilitado: boolean; label: string }[];
@@ -4474,7 +4621,7 @@ function HabilitarEmpreendimentos({
     return () => {
       ativo = false;
     };
-  }, [entityId]);
+  }, [entityId, porta.api, rotas]);
 
   if (lista === null) {
     return (
