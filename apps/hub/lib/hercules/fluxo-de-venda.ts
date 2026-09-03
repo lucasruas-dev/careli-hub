@@ -9,7 +9,9 @@
 // cinco passos; os dois terminais vão para o quadro de perdas. Misturá-los faria "cancelado"
 // parecer uma fase da venda, e o coordenador contaria como pipeline o que já morreu.
 
-import { periodicidadeDaTaxa } from "@/lib/apolo/planos-comerciais-c2x";
+// ⚠️ DA RÉGUA PURA, e não de `planos-comerciais-c2x`: aquele módulo importa o driver do MySQL, e
+// este roda também no navegador. A importação errada quebrava o build com "node:buffer".
+import { periodicidadeDaTaxa } from "@/lib/apolo/periodicidade-da-taxa";
 
 export type EtapaDoFluxo = "assinatura" | "contrato" | "faturado" | "proposta" | "reservado";
 export type EtapaDaProposta = EtapaDoFluxo | "cancelado" | "distrato";

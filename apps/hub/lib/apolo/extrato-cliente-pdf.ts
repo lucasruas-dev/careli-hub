@@ -16,7 +16,7 @@
 // da própria marca.
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
 
-import { periodicidadeDaTaxa } from "@/lib/apolo/planos-comerciais-c2x";
+import { periodicidadeDaTaxa } from "@/lib/apolo/periodicidade-da-taxa";
 import { CARELI_LOGO_PNG_BASE64 } from "@/lib/apolo/careli-logo";
 import {
   contarParcelas,

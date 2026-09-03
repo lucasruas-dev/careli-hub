@@ -1,3 +1,8 @@
+import { CORTE_ANUAL, periodicidadeDaTaxa } from "@/lib/apolo/periodicidade-da-taxa";
+
+// A régua vive num módulo PURO: ela é usada pela tela do Hércules, e este arquivo carrega o mysql2.
+export { periodicidadeDaTaxa };
+
 import type { RowDataPacket } from "mysql2";
 
 import { getHadesDbPool } from "@/lib/guardian/db";
@@ -46,31 +51,6 @@ type LinhaC2x = RowDataPacket & {
   slot: string;
   tabela: null | string;
 };
-
-/**
- * A partir de que valor a taxa do C2X é ANUAL.
- *
- * ⚠️ O SCHEMA DO LEGADO NÃO DIZ A UNIDADE. `contractual_interest` guarda 8.0000 na Lavra do
- * Ouro (ao ano) e 0.6434 no Villa Paris (ao mês) — a mesma taxa econômica, gravada de dois
- * jeitos. Os valores que existem no banco são 0, 0.5, 0.6434, 0.7207, 0.8, 6 e 8: há um vão
- * enorme entre 0,8 e 6, e nenhum juro imobiliário real fica entre eles. O corte em 2 cai no
- * meio do vão com folga dos dois lados.
- *
- * Mesmo assim é PALPITE, e palpite sobre dinheiro não pode ficar mudo: a tela de cadastro
- * mostra a leitura ao operador para ele confirmar, e o que ele confirmar passa a valer.
- */
-const CORTE_ANUAL = 2;
-
-/**
- * A taxa crua do C2X é ao ANO ou ao MÊS?
- *
- * Exportada porque a régua deixou de servir só ao cadastro de planos: a ficha da unidade no
- * Hércules escreve o fluxo do contrato ("156x · IPCA anual · juros 0,72% a.m.") e precisa da mesma
- * leitura. Duplicar um corte que decide unidade de JUROS é o tipo de cópia que envelhece torto.
- */
-export function periodicidadeDaTaxa(taxa: null | number | undefined): "anual" | "mensal" {
-  return typeof taxa === "number" && taxa >= CORTE_ANUAL ? "anual" : "mensal";
-}
 
 const INDICE_POR_NOME: Record<string, IndiceCorrecao> = {
   "IGPM-ANUAL": "IGPM_ANUAL",
