@@ -107,7 +107,7 @@ const FLUXO: ReadonlyArray<{
   { cor: "#c9962b", etapa: "reservado", icone: Bookmark, rotulo: "Reserva" },
   { cor: "#3c73c0", etapa: "proposta", icone: FileText, rotulo: "Proposta" },
   { cor: "#7d5cba", etapa: "contrato", icone: FileSignature, rotulo: "Contrato" },
-  { cor: "#2f93a3", etapa: "assinatura", icone: Signature, rotulo: "Assinatura" },
+  { cor: "#a8447f", etapa: "assinatura", icone: Signature, rotulo: "Assinatura" },
   { cor: "#2f7d4a", etapa: "faturado", icone: Receipt, rotulo: "Faturamento" },
 ];
 
@@ -136,7 +136,7 @@ const listrado = (cor: string, sombra: string) =>
   `repeating-linear-gradient(135deg, ${cor} 0 4px, ${sombra} 4px 8px)`;
 
 const COR_DA_ETAPA: Record<EtapaDoEspelho, string> = {
-  assinatura: "#4bb3c3",
+  assinatura: "#c9569c",
   bloqueada: "#e08276",
   contrato: "#9b7ed0",
   disponivel: "var(--inc-soft)",
