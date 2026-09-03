@@ -288,12 +288,17 @@ function loteSelecionadoNoEspelho(doc: Document): null | { lote: string; quadra:
   return m ? { lote: m[2]!, quadra: m[1]! } : null;
 }
 
-/** "31/08/2026 14:20" — num histórico a hora importa: dois eventos do mesmo dia têm ordem. */
-function diaEHora(iso: null | string): string {
-  if (!iso) return "—";
-  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso);
-  if (m) return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
-  return dia(iso);
+/** "31/08/26" — a data curta da coluna da linha do tempo. */
+function diaCurto(iso: null | string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ""));
+  // `noUncheckedIndexedAccess`: o grupo existe se o regex casou, mas o compilador não sabe.
+  return m ? `${m[3]}/${m[2]}/${(m[1] ?? "").slice(2)}` : "—";
+}
+
+/** "14:20". Dois eventos do mesmo dia têm ordem, e num histórico ela importa. */
+function hora(iso: null | string): string {
+  const m = /[T ](\d{2}):(\d{2})/.exec(String(iso ?? ""));
+  return m ? `${m[1]}:${m[2]}` : "";
 }
 
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -1605,9 +1610,13 @@ function Historico({ unidadeId }: { unidadeId: null | string }) {
   const [propostas, setPropostas] = useState(0);
   const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">("pronto");
   const [tudo, setTudo] = useState(false);
+  const [so, setSo] = useState<"assinatura" | "pagamento" | "tudo">("tudo");
+  const [desde, setDesde] = useState("");
 
   useEffect(() => {
     setTudo(false);
+    setSo("tudo");
+    setDesde("");
     if (!unidadeId) {
       setEventos([]);
       setPropostas(0);
@@ -1643,20 +1652,71 @@ function Historico({ unidadeId }: { unidadeId: null | string }) {
     };
   }, [unidadeId]);
 
+  // Os anos que existem neste histórico — o filtro de data não oferece ano vazio.
+  const anos = useMemo(
+    () => [...new Set(eventos.map((e) => e.quando.slice(0, 4)))].sort((a, b) => b.localeCompare(a)),
+    [eventos],
+  );
+
+  const filtrados = useMemo(
+    () =>
+      eventos.filter(
+        (e) => (so === "tudo" || e.tipo === so) && (!desde || e.quando.startsWith(desde)),
+      ),
+    [desde, eventos, so],
+  );
+
   if (!unidadeId) return null;
 
-  const visiveis = tudo ? eventos : eventos.slice(0, 12);
+  const visiveis = tudo ? filtrados : filtrados.slice(0, 15);
+  const pagos = eventos
+    .filter((e) => e.tipo === "pagamento" && e.valor)
+    .reduce((a, e) => a + (e.valor ?? 0), 0);
 
   return (
     <Cartao
-      rolagem
+      barra={
+        eventos.length > 0 ? (
+          <>
+            {/* ⚠️ FILTRO DE TIPO E DE DATA (Lucas, 03/09/2026: *"colocar um filtro de data"*). Um
+                lote com trinta registros vira uma parede; a pergunta real costuma ser "o que
+                aconteceu de dinheiro" ou "o que houve neste ano". */}
+            {(
+              [
+                ["tudo", `Tudo ${eventos.length}`],
+                ["pagamento", "Pagamentos"],
+                ["assinatura", "Assinaturas"],
+              ] as const
+            ).map(([chave, rotulo]) => (
+              <Pilula
+                ativo={so === chave}
+                key={chave}
+                onClick={() => setSo(chave)}
+                rotulo={rotulo}
+              />
+            ))}
+            <Filtro
+              aoMudar={setDesde}
+              opcoes={anos}
+              rotuloDeTodos="Todo o período"
+              valor={desde}
+            />
+            {pagos > 0 ? (
+              <span style={{ color: T.ok, fontSize: 11.5, fontWeight: 650, marginLeft: "auto" }}>
+                {dinheiro(pagos)} pagos
+              </span>
+            ) : null}
+          </>
+        ) : null
+      }
       direita={
         propostas > 0 ? (
           <span style={{ color: T.muted, fontSize: 11.5 }}>
-            {inteiro(propostas)} proposta(s) · {inteiro(eventos.length)} registro(s)
+            {inteiro(propostas)} proposta(s)
           </span>
         ) : null
       }
+      rolagem
       titulo="Histórico da unidade"
     >
       {estado === "carregando" ? (
@@ -1669,58 +1729,98 @@ function Historico({ unidadeId }: { unidadeId: null | string }) {
         <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
           Nada registrado nesta unidade. Ela nunca teve proposta.
         </p>
+      ) : filtrados.length === 0 ? (
+        <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Nada com esse filtro.</p>
       ) : (
         <>
+          {/* ⚠️ O DESENHO É UMA LINHA DO TEMPO, e não uma lista de parágrafos. A data fica numa
+              coluna fixa à esquerda e o fato à direita: o olho desce pela data procurando "quando",
+              que é como se lê histórico. Antes tudo era texto corrido e o Lucas achou "estranho". */}
           <div style={{ display: "grid", gap: 0 }}>
-            {visiveis.map((e, i) => (
-              <div
-                key={e.id}
-                style={{
-                  borderTop: i === 0 ? "none" : `1px dashed ${T.border}`,
-                  display: "grid",
-                  gap: 2,
-                  padding: "8px 0",
-                }}
-              >
-                <div
-                  style={{ alignItems: "baseline", display: "flex", gap: 8, justifyContent: "space-between" }}
-                >
-                  <b style={{ fontSize: 12.5 }}>
-                    {/* ⚠️ PAGAMENTO E ASSINATURA GANHAM MARCA. Numa lista de trinta linhas de
-                        etapa, o dinheiro que entrou e a assinatura são o que o olho procura. */}
-                    {e.tipo === "pagamento" ? (
-                      <span style={{ color: T.ok, marginRight: 5 }}>●</span>
-                    ) : e.tipo === "assinatura" ? (
-                      <span style={{ color: "#a8447f", marginRight: 5 }}>●</span>
-                    ) : null}
-                    {e.fato}
-                    {e.valor ? (
-                      <span style={{ color: T.ok, fontWeight: 650 }}> · {dinheiro(e.valor)}</span>
-                    ) : null}
-                  </b>
-                  <span
+            {visiveis.map((e, i) => {
+              const anterior = visiveis[i - 1];
+              // O nome do cliente só aparece quando MUDA: repetir "ALEXANDRE" em doze linhas
+              // seguidas era metade do ruído da lista.
+              const mostrarCliente = e.cliente && e.cliente !== anterior?.cliente;
+              const cor =
+                e.tipo === "pagamento" ? T.ok : e.tipo === "assinatura" ? "#a8447f" : T.border;
+
+              return (
+                <div key={e.id}>
+                  {mostrarCliente ? (
+                    <div
+                      style={{
+                        color: T.sub,
+                        fontSize: 11,
+                        fontWeight: 650,
+                        letterSpacing: ".03em",
+                        paddingTop: i === 0 ? 0 : 12,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {e.cliente}
+                    </div>
+                  ) : null}
+
+                  <div
                     style={{
-                      color: T.muted,
-                      fontSize: 11.5,
-                      fontVariantNumeric: "tabular-nums",
-                      whiteSpace: "nowrap",
+                      display: "grid",
+                      gap: 10,
+                      gridTemplateColumns: "62px 8px minmax(0, 1fr)",
+                      padding: "7px 0",
                     }}
                   >
-                    {diaEHora(e.quando)}
-                  </span>
+                    <span
+                      style={{
+                        color: T.muted,
+                        fontSize: 11,
+                        fontVariantNumeric: "tabular-nums",
+                        lineHeight: 1.35,
+                        paddingTop: 1,
+                      }}
+                    >
+                      {diaCurto(e.quando)}
+                      <br />
+                      <span style={{ opacity: 0.75 }}>{hora(e.quando)}</span>
+                    </span>
+
+                    {/* O fio da linha do tempo, com o ponto do evento. */}
+                    <span style={{ display: "grid", justifyItems: "center", position: "relative" }}>
+                      <span
+                        style={{
+                          background: cor,
+                          borderRadius: "50%",
+                          height: 7,
+                          marginTop: 5,
+                          width: 7,
+                        }}
+                      />
+                      <span style={{ background: T.border, flex: 1, width: 1 }} />
+                    </span>
+
+                    <span style={{ display: "grid", gap: 1, minWidth: 0 }}>
+                      <b style={{ fontSize: 12.5, lineHeight: 1.35 }}>
+                        {e.fato}
+                        {e.valor ? (
+                          <span style={{ color: T.ok }}> · {dinheiro(e.valor)}</span>
+                        ) : null}
+                      </b>
+                      {e.quem ? (
+                        <span style={{ color: T.muted, fontSize: 11 }}>{e.quem}</span>
+                      ) : null}
+                      {e.observacao ? (
+                        <span style={{ color: T.muted, fontSize: 11, opacity: 0.85 }}>
+                          {e.observacao}
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
                 </div>
-                {e.cliente ? (
-                  <span style={{ color: T.sub, fontSize: 11.5 }}>{e.cliente}</span>
-                ) : null}
-                <span style={{ color: T.muted, fontSize: 11 }}>
-                  {e.quem ? `por ${e.quem}` : "sem autor registrado"}
-                  {e.observacao ? ` · ${e.observacao}` : ""}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          {eventos.length > 12 && !tudo ? (
+          {filtrados.length > 15 && !tudo ? (
             <button
               onClick={() => setTudo(true)}
               style={{
@@ -1738,7 +1838,7 @@ function Historico({ unidadeId }: { unidadeId: null | string }) {
               }}
               type="button"
             >
-              Ver os {inteiro(eventos.length)} registros
+              Ver os {inteiro(filtrados.length)} registros
             </button>
           ) : null}
         </>

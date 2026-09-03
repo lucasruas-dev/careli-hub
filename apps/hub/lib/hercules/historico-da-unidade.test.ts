@@ -152,6 +152,48 @@ describe("historicoDaUnidade · pagamento e assinatura", () => {
     expect(eventos[0]?.observacao).not.toContain("077");
   });
 
+  it("⚠️ a linha diz a AÇÃO, não o nome da coisa", () => {
+    // "Ato · R$ 1.000" não diz se foi pago (Lucas: "eu não sei se foi pago, se foi assinado, tem
+    // que vir a ação"). Num registro de auditoria, supor é o que não pode acontecer.
+    const eventos = historicoDaUnidade(
+      [proposta({ id: "p1" })],
+      [],
+      [
+        evento({ descricao: "Ato", tipo: "pagamento" }),
+        evento({ descricao: "Sinal 2 de 5", quando: "2024-08-02T10:00:00Z", tipo: "pagamento" }),
+        evento({
+          descricao: "Assinatura · Assinar como parte",
+          quando: "2024-08-03T10:00:00Z",
+          tipo: "assinatura",
+        }),
+        evento({
+          descricao: "Assinatura · Assinar como testemunha",
+          quando: "2024-08-04T10:00:00Z",
+          tipo: "assinatura",
+        }),
+      ],
+    );
+
+    expect(eventos.map((e) => e.fato)).toEqual([
+      "Assinado como testemunha",
+      "Assinado como parte",
+      "Sinal 2 de 5 pago",
+      "Ato pago",
+      // A abertura da proposta fecha a lista: ela é o evento mais antigo do lote.
+      "Proposta aberta · GURGEL",
+    ]);
+  });
+
+  it("⚠️ CNPJ tem a própria máscara", () => {
+    // A primeira versão cortava em "doc. 1-87", que não identifica nada e parecia defeito.
+    const eventos = historicoDaUnidade(
+      [proposta({ id: "p1" })],
+      [],
+      [evento({ documento: "11.115.899/0001-04", tipo: "assinatura" })],
+    );
+    expect(eventos[0]?.observacao).toBe("**.115.899/0001-**");
+  });
+
   it("o valor vem como texto do Postgres e vira número", () => {
     const eventos = historicoDaUnidade(
       [proposta({ id: "p1" })],

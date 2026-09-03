@@ -90,11 +90,44 @@ export type EventoDaUnidade = {
   valor: null | number;
 };
 
-/** `077.655.646-09` → `***.655.646-**`. O suficiente para conferir, sem expor o documento. */
+/**
+ * `077.655.646-09` → `***.655.646-**`; CNPJ → `**.***.899/0001-**`.
+ *
+ * ⚠️ A PRIMEIRA VERSÃO CORTAVA O CNPJ EM "doc. 1-87", que não identifica nada e ainda parecia
+ * defeito. Documento de empresa tem 14 dígitos e merece a própria máscara: some com a raiz e com o
+ * verificador, mostra o miolo, que é o que se confere de olho.
+ */
 function mascarar(documento: string): string {
   const so = documento.replace(/\D/g, "");
-  if (so.length !== 11) return `doc. ${documento.slice(-4)}`;
-  return `***.${so.slice(3, 6)}.${so.slice(6, 9)}-**`;
+  if (so.length === 11) return `***.${so.slice(3, 6)}.${so.slice(6, 9)}-**`;
+  if (so.length === 14) return `**.${so.slice(2, 5)}.${so.slice(5, 8)}/${so.slice(8, 12)}-**`;
+  return so.length > 4 ? `***${so.slice(-4)}` : "documento";
+}
+
+/**
+ * O que aconteceu, com o VERBO — e não o nome da coisa.
+ *
+ * ⚠️ "Ato · R$ 1.000" NÃO DIZ SE FOI PAGO (Lucas, 03/09/2026: *"eu não sei se foi pago, se foi
+ * assinado, tem que vir a ação"*). Num histórico, cada linha precisa dizer o FATO: "Ato pago",
+ * "Assinado como parte". O substantivo sozinho deixa o leitor supondo — e num registro de auditoria
+ * supor é o que não pode acontecer.
+ *
+ * ⚠️ E AQUI, E NÃO NA CARGA: reescrever o texto no importador obrigaria a reimportar 19.531 linhas
+ * a cada ajuste de palavra. A carga guarda o dado cru do C2X ("Assinar como parte", que é o nome do
+ * tipo lá); a frase é da tela.
+ */
+function acaoDoEvento(tipo: string, descricao: null | string): string {
+  const bruto = texto(descricao);
+
+  if (tipo === "pagamento") return bruto ? `${bruto} pago` : "Pagamento";
+
+  if (tipo === "assinatura") {
+    // "Assinatura · Assinar como parte" → "Assinado como parte".
+    const papel = bruto?.replace(/^Assinatura\s*·\s*/i, "").replace(/^Assinar\s+/i, "");
+    return papel && papel.toLowerCase() !== "assinatura" ? `Assinado ${papel}` : "Assinado";
+  }
+
+  return bruto ?? "Registro";
 }
 
 const texto = (v: null | string | undefined): null | string => {
@@ -173,7 +206,7 @@ export function historicoDaUnidade(
     const valor = e.valor === null || e.valor === undefined ? null : Number(e.valor);
     eventos.push({
       cliente: texto(p?.cliente_nome ?? null),
-      fato: texto(e.descricao) ?? (e.tipo === "pagamento" ? "Pagamento" : "Assinatura"),
+      fato: acaoDoEvento(e.tipo, e.descricao),
       id: `${e.tipo}:${e.proposta_id}:${e.quando}:${texto(e.quem) ?? ""}`,
       observacao: e.documento ? mascarar(e.documento) : null,
       propostaId: e.proposta_id,
