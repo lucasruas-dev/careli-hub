@@ -118,6 +118,17 @@ const CADASTRO: LinhaDoCadastro[] = [
 
 const permitir = (...ids: string[]) => new Set(ids);
 
+/**
+ * O estoque na forma nova, montado das MESMAS linhas do C2X que estes testes já usavam.
+ *
+ * ⚠️ A FONTE DOS NÚMEROS MUDOU PARA O PANTEON (04/09/2026), mas o que estes testes medem é o
+ * AGRUPAMENTO (pai, filhos, espelho, escopo) — e ele não mudou. Derivar o mapa das linhas de
+ * sempre mantém os números idênticos e deixa cada teste continuar falando do que ele fala.
+ */
+const estoqueDeTeste = new Map(
+  [...linhasReaisDoC2x(C2X).entries()].map(([id, linha]) => [id, linha.scenario]),
+);
+
 describe("linhasReaisDoC2x", () => {
   it("desfaz o agrupamento de ENTERPRISE_GROUPS: uma linha por enterprise_id real", () => {
     const reais = linhasReaisDoC2x(C2X);
@@ -131,6 +142,7 @@ describe("linhasReaisDoC2x", () => {
 describe("Vale do Ouro: pai com espelho + 3 filhos", () => {
   const painel = montarPainelDeProdutos({
     cadastro: CADASTRO,
+    estoque: estoqueDeTeste,
     linhasDoC2x: C2X,
     permitidos: permitir("35", "37", "36", "41"),
   });
@@ -168,6 +180,7 @@ describe("Vale do Ouro: pai com espelho + 3 filhos", () => {
   it("sessão que só carrega o espelho vê o pai com o número do espelho, sem etapas", () => {
     const soEspelho = montarPainelDeProdutos({
       cadastro: CADASTRO,
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("35"),
     });
@@ -184,6 +197,7 @@ describe("Vale do Ouro: pai com espelho + 3 filhos", () => {
     expect(unica(painel.linhas).aviso).toBeNull();
     const garden = montarPainelDeProdutos({
       cadastro: CADASTRO,
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("39"),
     });
@@ -193,6 +207,7 @@ describe("Vale do Ouro: pai com espelho + 3 filhos", () => {
   it("espelho SEM rótulo no C2X (LAB 31) ganha o aviso genérico quando tem filho cadastrado", () => {
     const soLab = montarPainelDeProdutos({
       cadastro: CADASTRO,
+      estoque: estoqueDeTeste,
       linhasDoC2x: [...C2X, c2x({ code: "LAB", id: "31", name: "LAGOA BONITA", scenario: cenario({ total: 412 }) })],
       permitidos: permitir("31"),
     });
@@ -206,6 +221,7 @@ describe("Garden: pai sem filho", () => {
   it("usa o cenário do próprio c2x id, com o código do pai", () => {
     const painel = montarPainelDeProdutos({
       cadastro: CADASTRO,
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("39"),
     });
@@ -224,6 +240,7 @@ describe("Lavra do Ouro: pai SEM c2x, filhos com", () => {
   it("aparece pelos filhos e soma os dois, mesmo com o C2X entregando o grupo agrupado", () => {
     const painel = montarPainelDeProdutos({
       cadastro: CADASTRO,
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("4", "1"),
     });
@@ -238,6 +255,7 @@ describe("Lavra do Ouro: pai SEM c2x, filhos com", () => {
   it("pai sem c2x e sem filho autorizado não aparece", () => {
     const painel = montarPainelDeProdutos({
       cadastro: CADASTRO,
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("39"),
     });
@@ -249,6 +267,7 @@ describe("escopo parcial: a gleba do Fernando", () => {
   it("Lagoa Bonita com 1 etapa e SÓ a soma dela — nada do Raposo nem do Paulo", () => {
     const painel = montarPainelDeProdutos({
       cadastro: CADASTRO,
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("33"),
     });
@@ -265,6 +284,7 @@ describe("escopo parcial: a gleba do Fernando", () => {
   it("o dono do conjunto (sessão com o grupo expandido) vê as três glebas", () => {
     const painel = montarPainelDeProdutos({
       cadastro: CADASTRO,
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       // `idsDaSessao` devolve o id do grupo E as divisões; o grupo não tem linha real e cai fora.
       permitidos: permitir("group:Lagoa Bonita", "33", "27", "32"),
@@ -280,6 +300,7 @@ describe("empreendimento fora do cadastro", () => {
   it("vira linha simples com o nome do C2X apresentável", () => {
     const painel = montarPainelDeProdutos({
       cadastro: CADASTRO,
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("29"),
     });
@@ -297,6 +318,7 @@ describe("empreendimento fora do cadastro", () => {
   it("sem cadastro nenhum, tudo vira linha simples (degradação)", () => {
     const painel = montarPainelDeProdutos({
       cadastro: [],
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("39", "33"),
     });
@@ -311,6 +333,7 @@ describe("empreendimento fora do cadastro", () => {
     // o 35 vem junto com as divisões. Sem cadastro, o VLO (298) somava com os 338 dos filhos.
     const painel = montarPainelDeProdutos({
       cadastro: [],
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("35", "37", "36", "41", "39", "33"),
     });
@@ -322,6 +345,7 @@ describe("empreendimento fora do cadastro", () => {
   it("na degradação, espelho SOZINHO na sessão continua aparecendo, com o aviso de histórico", () => {
     const painel = montarPainelDeProdutos({
       cadastro: [],
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("35", "39"),
     });
@@ -334,6 +358,7 @@ describe("empreendimento fora do cadastro", () => {
   it("id autorizado que o C2X não tem não vira linha", () => {
     const painel = montarPainelDeProdutos({
       cadastro: CADASTRO,
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("999", "group:Nada"),
     });
@@ -345,6 +370,7 @@ describe("empreendimento fora do cadastro", () => {
 describe("ordem e cards do topo", () => {
   const painel = montarPainelDeProdutos({
     cadastro: CADASTRO,
+    estoque: estoqueDeTeste,
     linhasDoC2x: C2X,
     permitidos: permitir("35", "37", "36", "41", "31", "33", "27", "32", "39", "4", "1", "29"),
   });
@@ -374,6 +400,7 @@ describe("ordem e cards do topo", () => {
         linha({ c2xEnterpriseId: "39", codigo: "GDN", id: "gdn", nome: "Garden" }),
         linha({ c2xEnterpriseId: "777", codigo: "GD2", id: "gd2", nome: "Garden 2", paiId: "gdn" }),
       ],
+      estoque: estoqueDeTeste,
       linhasDoC2x: C2X,
       permitidos: permitir("39", "777"),
     });

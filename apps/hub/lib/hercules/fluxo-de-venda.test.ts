@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { agregarFluxo, ETAPAS_DO_FLUXO, type PropostaDaCarga, type UnidadeDoMapa } from "./fluxo-de-venda";
+import { agregarFluxo, ETAPAS_DO_FLUXO, type PropostaDaCarga, type UnidadeDoMapa,
+  estoquePorEmpreendimento,
+} from "./fluxo-de-venda";
 
 const proposta = (p: Partial<PropostaDaCarga> & { etapa: string }): PropostaDaCarga => ({
   cliente_documento: null,
@@ -331,5 +333,117 @@ describe("agregarFluxo", () => {
 
     expect(r.motivos).toEqual([{ motivo: "DATA DE VENCIMENTO DIVERGENTE", n: 1 }]);
     expect(r.perdas.canceladas).toBe(3);
+  });
+});
+
+// ── UMA FONTE SÓ PARA AS UNIDADES ───────────────────────────────────────────
+describe("estoquePorEmpreendimento", () => {
+  const unidade = (
+    id: string,
+    enterpriseId: string,
+    situacao: string,
+    preco = 100_000,
+  ): UnidadeDoMapa => ({
+    codigo: `U${id}`,
+    enterprise_id: enterpriseId,
+    id,
+    lote: null,
+    preco_tabela: preco,
+    quadra: null,
+    situacao,
+  });
+
+  const proposta = (unidadeId: string, etapa: string, desde: string) =>
+    ({
+      cliente_documento: null,
+      cliente_nome: null,
+      codigo: null,
+      contrato_parcelas: null,
+      criado_em_c2x: desde,
+      data_assinatura: null,
+      data_ato: null,
+      data_faturamento: null,
+      empreendimento_codigo: null,
+      etapa,
+      etapa_c2x: null,
+      etapa_desde: desde,
+      id: `p-${unidadeId}-${etapa}`,
+      imobiliaria_nome: null,
+      motivo: null,
+      plano_correcao: null,
+      plano_juros: null,
+      plano_nome: null,
+      plano_parcelas: null,
+      plano_personalizado: null,
+      unidade_id: unidadeId,
+      unidade_nome: null,
+      valor: 100_000,
+    }) as PropostaDaCarga;
+
+  it("separa por empreendimento e soma o valor", () => {
+    const estoque = estoquePorEmpreendimento({
+      propostas: [],
+      unidades: [
+        unidade("1", "39", "disponivel", 150_000),
+        unidade("2", "39", "bloqueada", 200_000),
+        unidade("3", "40", "vendida", 90_000),
+      ],
+    });
+
+    expect(estoque.get("39")?.disponivel.units).toBe(1);
+    expect(estoque.get("39")?.disponivel.value).toBe(150_000);
+    expect(estoque.get("39")?.bloqueado.units).toBe(1);
+    expect(estoque.get("39")?.total).toEqual({ units: 2, value: 350_000 });
+    expect(estoque.get("40")?.vendido.units).toBe(1);
+  });
+
+  it("⚠️ a NEGOCIAÇÃO volta pela proposta, e não pela situação", () => {
+    // O C2X tinha cinco estados (`sale_status_id`), `hercules_unidades.situacao` tem quatro: "em
+    // negociação" se perdeu na importação. A proposta viva devolve isso — e com mais detalhe.
+    const estoque = estoquePorEmpreendimento({
+      propostas: [
+        proposta("1", "proposta", "2026-08-01"),
+        proposta("2", "contrato", "2026-08-02"),
+        proposta("3", "assinatura", "2026-08-03"),
+        proposta("4", "faturado", "2026-08-04"),
+        proposta("5", "reservado", "2026-08-05"),
+      ],
+      unidades: [
+        unidade("1", "39", "disponivel"),
+        unidade("2", "39", "disponivel"),
+        unidade("3", "39", "disponivel"),
+        unidade("4", "39", "disponivel"),
+        unidade("5", "39", "disponivel"),
+      ],
+    });
+
+    expect(estoque.get("39")?.negociacao.units).toBe(3);
+    expect(estoque.get("39")?.vendido.units).toBe(1);
+    expect(estoque.get("39")?.reservado.units).toBe(1);
+    expect(estoque.get("39")?.disponivel.units).toBe(0);
+  });
+
+  it("⚠️ a proposta REFINA, mas nunca rebaixa para livre", () => {
+    // Sem proposta vale o cadastro, e vendida continua ocupada: dizer que um lote vendido está
+    // livre é convidar a segunda venda.
+    const estoque = estoquePorEmpreendimento({
+      propostas: [proposta("1", "cancelado", "2026-08-01")],
+      unidades: [unidade("1", "39", "vendida")],
+    });
+    expect(estoque.get("39")?.vendido.units).toBe(1);
+    expect(estoque.get("39")?.disponivel.units).toBe(0);
+  });
+
+  it("entre duas propostas vivas vale a MAIS RECENTE", () => {
+    const estoque = estoquePorEmpreendimento({
+      propostas: [proposta("1", "faturado", "2026-01-01"), proposta("1", "reservado", "2026-08-01")],
+      unidades: [unidade("1", "39", "vendida")],
+    });
+    expect(estoque.get("39")?.reservado.units).toBe(1);
+    expect(estoque.get("39")?.vendido.units).toBe(0);
+  });
+
+  it("empreendimento sem unidade não vira linha", () => {
+    expect(estoquePorEmpreendimento({ propostas: [], unidades: [] }).size).toBe(0);
   });
 });

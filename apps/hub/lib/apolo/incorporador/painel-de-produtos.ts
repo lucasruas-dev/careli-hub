@@ -151,21 +151,32 @@ export function linhasReaisDoC2x(linhas: ApoloEnterpriseRow[]): Map<string, Apol
 
 export function montarPainelDeProdutos(entrada: {
   cadastro: LinhaDoCadastro[];
+  /**
+   * O estoque de cada empreendimento, contado no PANTEON (`estoquePorEmpreendimento`).
+   *
+   * ⚠️ ELE MANDA NOS NÚMEROS, e o C2X ficou só com a moldura (nome, cidade, quais linhas existem).
+   * Lucas (04/09/2026), vendo o empreendimento de teste com 12 unidades na Venda e zero em
+   * Produtos: *"a informação de unidades tem que ser alimentada de um local somente"* — as duas
+   * telas respondiam a mesma pergunta por fontes diferentes. Medido no mesmo dia: as 5.528
+   * unidades batem uma a uma nos 35 empreendimentos, então trocar a fonte não mexe em número de
+   * ninguém; o que muda é que empreendimento do Panteon deixa de aparecer zerado.
+   */
+  estoque: Map<string, Cenario>;
   linhasDoC2x: ApoloEnterpriseRow[];
   /** Ids do C2X que a sessão autoriza (já expandidos por `idsDaSessao`). */
   permitidos: Set<string>;
 }): PainelDeProdutos {
-  const { cadastro, linhasDoC2x, permitidos } = entrada;
+  const { cadastro, estoque, linhasDoC2x, permitidos } = entrada;
 
   const reais = linhasReaisDoC2x(linhasDoC2x);
   const filhosDe = filhosDoCadastro(cadastro);
   const consumidos = new Set<string>();
   const montadas: Array<{ linha: LinhaDoPainel; vendendo: boolean }> = [];
 
-  // Filho autorizado sem linha no C2X (id errado no cadastro) entra ZERADO, e não some: sumir
-  // esconderia o erro de cadastro; zero na tela é o que faz alguém corrigir.
+  // Empreendimento sem unidade no Panteon entra ZERADO, e não some: sumir esconderia o erro de
+  // cadastro (ou a carga que não rodou); zero na tela é o que faz alguém corrigir.
   const cenarioDe = (c2xId: null | string): Cenario =>
-    (c2xId ? reais.get(c2xId)?.scenario : undefined) ?? cenarioVazio();
+    (c2xId ? estoque.get(c2xId) : undefined) ?? cenarioVazio();
 
   for (const pai of cadastro) {
     if (pai.paiId !== null) continue;

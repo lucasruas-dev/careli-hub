@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-04-unidades-do-panteon",
+    deployedAt: "2026-09-04T09:05:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "As unidades passam a ser contadas no Panteon, e não mais no sistema antigo: Produtos e Venda mostram o mesmo número.",
+              "A coluna Em negociação agora sai da proposta, então ela distingue o que está em proposta, contrato ou assinatura.",
+              "Empreendimento cadastrado só no Panteon aparece com o estoque dele, em vez de zerado.",
+            ],
+            screen: "Produtos",
+          },
+        ],
+      },
+    ],
+    rollback: "da4cc7eb",
+    technical: {
+      done: "UMA FONTE SO PARA AS UNIDADES. Lucas (04/09/2026), vendo o empreendimento de teste com 12 unidades na tela Venda e ZERO em Produtos: *\"a informacao de unidades tem que ser alimentada de um local somente\"* e *\"eu havia solicitado para importar todas as unidades do c2x e o panteon tem que ler do panteon\"*. A Venda ja contava `hercules_unidades`; Produtos contava `enterprise_unities` do MySQL legado, por `sale_status_id`. ⚠️ A TROCA FOI MEDIDA ANTES, e e o que a autoriza: comparando os dois lados empreendimento a empreendimento, as 5.528 unidades batem UMA A UMA nos 35 empreendimentos (script de leitura pura nos dois bancos) — nenhum numero de incorporador se mexe. O unico id que existe so de um lado e o 9001, o de teste. ⚠️ A IMPORTACAO PERDEU UM ESTADO: o legado tem cinco (`sale_status_id` 1..5) e `hercules_unidades.situacao` tem quatro — \"em negociacao\" nao veio. Em vez de acrescentar a coluna, a negociacao volta pela PROPOSTA (`estoquePorEmpreendimento`, com a MESMA regua de `agregarFluxo`: a proposta viva mais recente refina a situacao, e a situacao nunca e rebaixada para livre). Fica mais rico do que a coluna que substitui — o legado sabia \"negociando\", a proposta sabe se e proposta, contrato ou assinatura — e, sobretudo, e a MESMA regra das duas telas. O C2X continua entrando para a MOLDURA (quais linhas existem, nome e cidade de quem nao esta no cadastro do Panteon), nunca para contar unidade. A leitura pagina nas duas consultas: o PostgREST corta em 1.000 linhas sem erro, e sao 5.528 unidades e 4.857 propostas — sem paginar a tela mostraria um estoque truncado que PARECE certo. Falha na leitura nao derruba o painel: as linhas aparecem zeradas e o agrupamento continua. Cinco testes novos em `estoquePorEmpreendimento` (inclusive o de nao rebaixar vendida para livre e o da proposta mais recente); os 20 do painel seguem verdes com o mapa derivado das mesmas linhas de sempre. Typecheck limpo; 2.389 testes verdes em 179 arquivos; build ok.",
+      motivation:
+        "Duas telas respondendo a mesma pergunta por fontes diferentes é como o número passa a depender de qual tela a pessoa abriu.",
+    },
+    title: "As unidades têm uma fonte só: o Panteon",
+    type: "melhoria",
+    version: "1.276.0",
+  },
+  {
     buildTag: "2026-09-04-coordenador-do-panteon-2",
     deployedAt: "2026-09-04T08:15:00-03:00",
     internal: true,

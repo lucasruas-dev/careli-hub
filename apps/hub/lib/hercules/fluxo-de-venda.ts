@@ -554,3 +554,105 @@ export function agregarFluxo({
     },
   };
 }
+
+// ── O ESTOQUE POR EMPREENDIMENTO, PARA A TELA PRODUTOS ──────────────────────
+//
+// Lucas (04/09/2026), vendo o empreendimento de teste com 12 unidades na Venda e ZERO em Produtos:
+// *"a informação de unidades tem que ser alimentada de um local somente"* e *"eu havia solicitado
+// para importar todas as unidades do c2x e o panteon tem que ler do panteon"*.
+//
+// ⚠️ ERAM DUAS FONTES PARA A MESMA PERGUNTA. A Venda conta `hercules_unidades` (Panteon); Produtos
+// contava o C2X, por `sale_status_id`. Medido em 04/09: as 5.528 unidades batem uma a uma nos 35
+// empreendimentos — o que divergia era a CLASSIFICAÇÃO, porque o legado tem cinco estados e
+// `hercules_unidades.situacao` tem quatro: "em negociação" se perdeu na importação.
+//
+// ⚠️ E A NEGOCIAÇÃO VOLTA PELA PROPOSTA, que é melhor do que a coluna perdida. O C2X sabia
+// "negociando"; a proposta do Panteon sabe se está em proposta, contrato ou assinatura — a mesma
+// régua que já pinta a grade da Venda. Uma fonte, e mais rica do que a que ela substitui.
+
+/** Os cinco baldes da tela Produtos, na régua do Panteon. */
+export type BaldeDoProduto = "bloqueado" | "disponivel" | "negociacao" | "reservado" | "vendido";
+
+export type EstoqueDoEmpreendimento = Record<BaldeDoProduto, { units: number; value: number }> & {
+  total: { units: number; value: number };
+};
+
+const BALDES_DO_PRODUTO: BaldeDoProduto[] = [
+  "disponivel",
+  "reservado",
+  "negociacao",
+  "vendido",
+  "bloqueado",
+];
+
+function estoqueVazio(): EstoqueDoEmpreendimento {
+  const vazio = {} as EstoqueDoEmpreendimento;
+  for (const balde of BALDES_DO_PRODUTO) vazio[balde] = { units: 0, value: 0 };
+  vazio.total = { units: 0, value: 0 };
+  return vazio;
+}
+
+/**
+ * Em qual balde da tela Produtos esta etapa cai.
+ *
+ * ⚠️ FATURADO É VENDIDO, e as etapas do meio são NEGOCIAÇÃO. A tela Produtos responde "quanto do
+ * estoque está livre, andando ou fora"; o detalhe de proposta/contrato/assinatura é a pergunta da
+ * tela Venda, e repeti-lo aqui daria cinco colunas novas numa tela que serve para outra coisa.
+ */
+export function baldeDaEtapa(etapa: EtapaDoEspelho): BaldeDoProduto {
+  switch (etapa) {
+    case "assinatura":
+    case "contrato":
+    case "proposta":
+      return "negociacao";
+    case "bloqueada":
+      return "bloqueado";
+    case "faturado":
+    case "vendida":
+      return "vendido";
+    case "reservada":
+    case "reservado":
+      return "reservado";
+    default:
+      return "disponivel";
+  }
+}
+
+/**
+ * O estoque de cada empreendimento, pela MESMA régua da tela Venda.
+ *
+ * ⚠️ A PROPOSTA VIVA REFINA, MAS NUNCA REBAIXA PARA LIVRE — o mesmo cuidado de `agregarFluxo`:
+ * sem proposta vale o cadastro, e "vendida" ou "reservada" continuam ocupadas. Dizer que um lote
+ * vendido está livre é convidar a segunda venda.
+ */
+export function estoquePorEmpreendimento(entrada: {
+  propostas: PropostaDaCarga[];
+  unidades: UnidadeDoMapa[];
+}): Map<string, EstoqueDoEmpreendimento> {
+  const vivaPorUnidade = new Map<string, { desde: string; etapa: EtapaDoFluxo }>();
+  for (const p of entrada.propostas) {
+    if (!p.unidade_id || !ehDoFluxo(p.etapa)) continue;
+    const desde = String(p.etapa_desde ?? p.criado_em_c2x ?? "");
+    const atual = vivaPorUnidade.get(p.unidade_id);
+    if (!atual || desde > atual.desde) vivaPorUnidade.set(p.unidade_id, { desde, etapa: p.etapa });
+  }
+
+  const porEmpreendimento = new Map<string, EstoqueDoEmpreendimento>();
+
+  for (const u of entrada.unidades) {
+    const id = String(u.enterprise_id);
+    const estoque = porEmpreendimento.get(id) ?? estoqueVazio();
+    const etapa = vivaPorUnidade.get(u.id)?.etapa ?? etapaDaSituacao(u.situacao);
+    const balde = baldeDaEtapa(etapa);
+    const valor = numero(u.preco_tabela);
+
+    estoque[balde].units += 1;
+    estoque[balde].value += valor;
+    estoque.total.units += 1;
+    estoque.total.value += valor;
+
+    porEmpreendimento.set(id, estoque);
+  }
+
+  return porEmpreendimento;
+}
