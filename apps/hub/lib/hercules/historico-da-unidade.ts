@@ -259,13 +259,22 @@ export function eventosDaReserva(reservas: ReservaDoHistorico[]): EventoDaUnidad
 
   for (const r of reservas) {
     const cliente = titularDaReserva(r.proponentes);
-    const onde = r.imobiliaria_nome ? ` pela ${r.imobiliaria_nome}` : "";
+
+    // ⚠️ O FATO NÃO CARREGA A IMOBILIÁRIA, e isso foi um erro que o Lucas pegou na primeira leitura:
+    // "Reserva criada pela RAIANE IMOBILIARIA" diz que a imobiliária FEZ a reserva, quando quem fez
+    // foi o coordenador — *"a reserva tem que vir criada por quem criou, que no caso foi reservada
+    // pelo meu usuário"*. A imobiliária é quem VENDE, não quem agiu; ela desce para o contexto da
+    // linha, junto do que o coordenador anotou.
+    const contexto = [
+      r.imobiliaria_nome ? `Imobiliária: ${r.imobiliaria_nome}` : null,
+      r.observacao?.trim() || null,
+    ].filter(Boolean);
 
     eventos.push({
       cliente,
-      fato: `Reserva criada${onde}`,
+      fato: "Reserva criada",
       id: `reserva:${r.id}:criada`,
-      observacao: r.observacao,
+      observacao: contexto.length > 0 ? contexto.join("\n") : null,
       propostaId: `reserva:${r.id}`,
       quando: r.criado_em,
       quem: r.criado_por_nome,

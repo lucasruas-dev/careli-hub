@@ -226,10 +226,10 @@ describe("eventosDaReserva", () => {
     // embaixo de uma reserva ativa (Lucas, 04/09/2026: *"o histórico não está ligado"*).
     const eventos = eventosDaReserva([RESERVA]);
     expect(eventos).toHaveLength(1);
-    expect(eventos[0]?.fato).toBe("Reserva criada pela Raiane Imobiliaria");
+    expect(eventos[0]?.fato).toBe("Reserva criada");
     expect(eventos[0]?.cliente).toBe("Maria da Silva");
     expect(eventos[0]?.quem).toBe("Lucas Ruas");
-    expect(eventos[0]?.observacao).toBe("Cliente viaja quinta.");
+    expect(eventos[0]?.observacao).toContain("Cliente viaja quinta.");
   });
 
   it("⚠️ cancelada e vencida são linhas SEPARADAS, com a data de cada uma", () => {
@@ -243,8 +243,19 @@ describe("eventosDaReserva", () => {
         situacao: "cancelada",
       },
     ]);
-    expect(cancelada.map((e) => e.fato)).toEqual(["Reserva cancelada", "Reserva criada pela Raiane Imobiliaria"]);
+    expect(cancelada.map((e) => e.fato)).toEqual(["Reserva cancelada", "Reserva criada"]);
     expect(cancelada[0]?.observacao).toBe("Cliente desistiu");
+  });
+
+  it("⚠️ QUEM CRIOU é quem criou, e não a imobiliária", () => {
+    // A primeira versão escrevia "Reserva criada pela RAIANE IMOBILIARIA", que atribui o ato a
+    // quem não o praticou. Lucas, 04/09/2026: *"a reserva tem que vir criada por quem criou, que no
+    // caso foi reservada pelo meu usuário"*. A imobiliária é quem VENDE; ela desce para o contexto.
+    const [criada] = eventosDaReserva([RESERVA]);
+    expect(criada?.fato).toBe("Reserva criada");
+    expect(criada?.fato).not.toContain("Raiane");
+    expect(criada?.quem).toBe("Lucas Ruas");
+    expect(criada?.observacao).toContain("Imobiliária: Raiane Imobiliaria");
   });
 
   it("vencida entra pela data de validade", () => {
@@ -262,9 +273,10 @@ describe("eventosDaReserva", () => {
 
   it("sem imobiliária e sem proponente, a linha ainda existe", () => {
     const magra = eventosDaReserva([
-      { ...RESERVA, imobiliaria_nome: null, proponentes: [] },
+      { ...RESERVA, imobiliaria_nome: null, observacao: null, proponentes: [] },
     ]);
     expect(magra[0]?.fato).toBe("Reserva criada");
     expect(magra[0]?.cliente).toBeNull();
+    expect(magra[0]?.observacao).toBeNull();
   });
 });

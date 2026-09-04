@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-04-quem-criou-a-reserva",
+    deployedAt: "2026-09-04T10:45:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "No histórico, a reserva aparece criada por quem realmente a criou. A imobiliária desceu para a linha de baixo, junto da observação.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "a5a2c535",
+    technical: {
+      done: "A LINHA ATRIBUIA O ATO A QUEM NAO O PRATICOU. O historico escrevia \"Reserva criada pela RAIANE IMOBILIARIA\", e o Lucas pegou na primeira leitura: *\"esta errado, a reserva tem que vir criada por quem criou, que no caso foi reservada pelo meu usuario\"*. Ele tem razao e o erro e de vocabulario, nao de dado: `criado_por_nome` sempre esteve certo na linha de baixo — o que estava errado era a FRASE, que juntava a imobiliaria ao verbo. A imobiliaria e quem VENDE, nao quem agiu. Agora o fato e so \"Reserva criada\", o autor continua em `quem`, e a imobiliaria desce para o contexto da linha (\"Imobiliaria: X\"), junto do que o coordenador anotou — duas informacoes que pertencem ao mesmo lugar sem disputar o verbo. Teste novo trava as duas pontas: o fato NAO contem o nome da imobiliaria, e `quem` e o autor. Typecheck limpo; 2.404 testes verdes; build ok.",
+      motivation:
+        "Num registro de auditoria, dizer que a imobiliária criou a reserva é afirmar um fato falso sobre quem fez o quê.",
+    },
+    title: "O histórico diz quem criou a reserva",
+    type: "correcao",
+    version: "1.277.3",
+  },
+  {
     buildTag: "2026-09-04-trilha-em-setas",
     deployedAt: "2026-09-04T10:25:00-03:00",
     modules: [
