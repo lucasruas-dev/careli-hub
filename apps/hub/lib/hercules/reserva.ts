@@ -176,7 +176,7 @@ export type DadosDoAviso = {
   cpf: string;
   empreendimento: string;
   imobiliaria: string;
-  /** `RS-000123` — o COD da venda. É por ele que se acha a venda depois, e é o que o corretor anota. */
+  /** `000123` — o COD da venda. É por ele que se acha a venda depois, e é o que o corretor anota. */
   codigo: string;
   /** "Quadra 12 · Lote 06", como a tela escreve. */
   unidade: string;

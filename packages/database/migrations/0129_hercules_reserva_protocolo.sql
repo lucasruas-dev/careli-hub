@@ -1,17 +1,17 @@
--- 0129 · O PROTOCOLO DA VENDA — nasce na reserva e acompanha até o contrato
+-- 0129 · O CÓDIGO DA VENDA — nasce na reserva e acompanha até o contrato
 --
 -- Lucas (04/09/2026): *"uma outra coisa que senti falta foi dos protocolos, eu gosto muito de
 -- protocolo"* e, precisando o desenho: *"código de reserva, que vira depois código de proposta, que
 -- vira depois código de contrato"*.
 --
--- ⚠️ É UM NÚMERO SÓ, E O PREFIXO É QUE MUDA. RS-000123 vira PR-000123 e depois CT-000123: a mesma
--- venda, o mesmo número, do primeiro telefonema até a assinatura. Três protocolos independentes
--- fariam o corretor ter três números para a mesma negociação — e, na hora de procurar, ninguém
--- lembraria qual deles anotou.
+-- ⚠️ É UM NÚMERO SÓ, E ELE NÃO MUDA. `000123` na reserva é `000123` no contrato assinado seis meses
+-- depois. A primeira versão trocava o prefixo por fase (RS → PR → CT) e o Lucas desfez na hora:
+-- *"eu não gosto do RS, acho que tem que ser um código somente, aí ele vai existir unicamente
+-- independente do estágio"*. Um código que muda de cara não é o mesmo código — e a fase quem diz é
+-- a tela, que já mostra a etapa ao lado.
 --
--- ⚠️ POR ISSO A COLUNA GUARDA O NÚMERO, e não o texto. Gravar "RS-000123" obrigaria a reescrever a
--- linha a cada etapa (e a errar quando alguém voltasse atrás); com o número, o prefixo é derivado
--- de onde a venda ESTÁ, na hora de mostrar — uma verdade só, em `protocoloDaVenda`.
+-- ⚠️ A COLUNA GUARDA O NÚMERO CRU, e a forma (`000123`) sai de `codigoDaVenda`, num lugar só, para
+-- tela e mensagem não divergirem.
 --
 -- ⚠️ O MECANISMO É O DA IRIS (0025, `next_caredesk_ticket_protocol`): sequência + lpad 6. Quem
 -- atende já lê "AT-000123" o dia inteiro; um segundo formato na mesma casa seria uma regra a mais
@@ -24,7 +24,7 @@
 create sequence if not exists public.hercules_protocolo_seq;
 
 comment on sequence public.hercules_protocolo_seq is
-  'O numero do protocolo da venda: nasce na reserva (RS-), segue na proposta (PR-) e no contrato (CT-).';
+  'O numero do COD da venda: nasce na reserva e segue o mesmo na proposta, no contrato e na assinatura.';
 
 grant usage, select on sequence public.hercules_protocolo_seq to service_role;
 
@@ -43,4 +43,4 @@ create unique index if not exists hercules_reservas_protocolo_uidx
   on public.hercules_reservas (protocolo_numero);
 
 comment on column public.hercules_reservas.protocolo_numero is
-  'O numero cru (123). O texto que aparece na tela sai de protocoloDaVenda(numero, etapa): RS-000123 na reserva, PR-000123 na proposta, CT-000123 do contrato em diante.';
+  'O numero cru (123). O COD que aparece na tela sai de codigoDaVenda(numero): 000123, o MESMO em toda fase da venda.';

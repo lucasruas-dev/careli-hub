@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-04-cod-unico",
+    deployedAt: "2026-09-04T10:10:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "O COD passou a ser um número só, igual em todas as fases da venda: 000123 na reserva é 000123 no contrato.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "a37e994f",
+    technical: {
+      done: "O COD DEIXOU DE MUDAR DE PREFIXO. A versao de uma hora atras trocava a letra por fase (RS na reserva, PR na proposta, CT no contrato) e o Lucas desfez ao ver: *\"eu nao gosto do RS, acho que tem que ser um codigo somente, ae ele vai existir unicamente independente do estagio\"*. Ele tem razao pelo motivo mais simples: um codigo que muda de cara NAO E o mesmo codigo — o corretor anota 000123 na reserva e e isso que ele diz no telefone seis meses depois, com o contrato assinado. E a fase quem diz e a TELA, que ja mostra a etapa ao lado; carregar isso no numero cria uma segunda coisa para conferir. `codigoDaVenda` perdeu o parametro de etapa e o mapa de prefixos; `faseDoCodigo` foi apagada (nao ha mais prefixo para interpretar). `numeroDoCodigo` continua ignorando um prefixo de letras, de proposito: alguem pode ter anotado um `RS-000123` nas horas em que ele existiu, e a busca aceita. Nada muda no banco — a coluna sempre guardou o NUMERO CRU, e era so a forma que era decidida no codigo; os comentarios da coluna e da sequencia foram atualizados em producao. Typecheck limpo; 2.398 testes verdes; build ok.",
+      motivation:
+        "Um código que muda de nome a cada etapa obriga a decorar em que fase a venda estava quando alguém anotou o número.",
+    },
+    title: "O COD é um número só, em todas as fases",
+    type: "correcao",
+    version: "1.277.1",
+  },
+  {
     buildTag: "2026-09-04-cod-da-venda",
     deployedAt: "2026-09-04T09:55:00-03:00",
     modules: [

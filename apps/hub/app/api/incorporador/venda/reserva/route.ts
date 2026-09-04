@@ -224,7 +224,6 @@ export async function POST(request: Request) {
 
     const codigo = codigoDaVenda(
       (criada as null | { protocolo_numero?: null | number })?.protocolo_numero,
-      "reservado",
     );
 
     const avisos = await avisar(admin, {

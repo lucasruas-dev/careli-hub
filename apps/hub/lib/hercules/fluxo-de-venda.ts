@@ -117,7 +117,7 @@ export type PassoDoFluxo = {
 export type LinhaDaLista = {
   cliente: null | string;
   /**
-   * `RS-000123` — o COD da venda, na fase em que ela está.
+   * `000123` — o COD da venda. O MESMO em toda fase: ver `codigoDaVenda`.
    *
    * ⚠️ NULO NAS PROPOSTAS IMPORTADAS DO C2X, e isso é fiel ao que existe: o legado não tem código,
    * e inventar um agora daria número novo para venda antiga toda vez que a carga rodasse. Só as
@@ -527,7 +527,7 @@ export function agregarFluxo({
     ),
     lista: propostas.map((p) => ({
       cliente: p.cliente_nome,
-      codigo: p.protocolo_numero ? codigoDaVenda(p.protocolo_numero, p.etapa) : null,
+      codigo: p.protocolo_numero ? codigoDaVenda(p.protocolo_numero) : null,
       observacao: p.observacao ?? null,
       desde: dataDaEtapa(p),
       etapa: p.etapa,

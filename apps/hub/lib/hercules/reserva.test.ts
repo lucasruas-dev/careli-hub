@@ -123,7 +123,7 @@ describe("mascararCpf", () => {
 describe("avisosDaReserva", () => {
   const DADOS = {
     cliente: "Maria da Silva",
-    codigo: "RS-000123",
+    codigo: "000123",
     corretor: "João Souza",
     cpf: "529.982.247-25",
     empreendimento: "Vale do Ouro",
@@ -173,7 +173,7 @@ describe("avisosDaReserva", () => {
     // anota o número que chegou no WhatsApp e liga com ele na mão. Código que só existe na tela
     // obriga a abrir a tela para descobrir o código.
     for (const aviso of avisosDaReserva(DADOS)) {
-      expect(aviso.texto).toContain("RS-000123");
+      expect(aviso.texto).toContain("000123");
       expect(aviso.texto).toContain("COD");
     }
   });
