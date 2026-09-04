@@ -107,3 +107,95 @@ describe("resolverCodigosDoPedido", () => {
     expect(resolver("99")).toEqual([]);
   });
 });
+
+// ── O EMPREENDIMENTO QUE SÓ EXISTE NO PANTEON ───────────────────────────────
+//
+// ⚠️ ELE RESPONDIA 404 NOS DOIS CAMINHOS, e o sintoma enganava: o produto aparecia no seletor (que
+// lê o cadastro do Panteon) e as unidades estavam gravadas, mas a Venda dizia "Produto não
+// encontrado" — porque a tradução id → código passa pelo catálogo, que é um select em `enterprises`
+// do MySQL do legado. Achado no empreendimento de teste do Lucas (TST/9001, 04/09/2026).
+describe("resolverCodigosDoPedido · empreendimento só do Panteon", () => {
+  const PROPRIOS = [{ codigo: "TST", enterpriseId: "9001" }];
+  const CADASTRO = [linha({ c2xEnterpriseId: "9001", codigo: "TST", id: "uuid-tst" })];
+
+  it("entra em 'todos os empreendimentos'", () => {
+    const codes = resolverCodigosDoPedido({
+      cadastro: [],
+      catalogo: CATALOGO,
+      codesAutorizados: ["GDN", "TST"],
+      empreendimentos: empreendimentosDoPortal(CATALOGO, ["GDN"]),
+      pedido: null,
+      permitidos: new Set(),
+      proprios: PROPRIOS,
+    });
+    expect(codes).toContain("TST");
+    expect(codes).toContain("GDN");
+  });
+
+  it("responde ao pedido pelo id do PAI do cadastro", () => {
+    const codes = resolverCodigosDoPedido({
+      cadastro: CADASTRO,
+      catalogo: CATALOGO,
+      codesAutorizados: ["TST"],
+      empreendimentos: empreendimentosDoPortal(CATALOGO, []),
+      pedido: "pai:uuid-tst",
+      permitidos: new Set(["9001"]),
+      proprios: PROPRIOS,
+    });
+    expect(codes).toEqual(["TST"]);
+  });
+
+  it("responde ao pedido pelo id numérico", () => {
+    const codes = resolverCodigosDoPedido({
+      cadastro: CADASTRO,
+      catalogo: CATALOGO,
+      codesAutorizados: ["TST"],
+      empreendimentos: empreendimentosDoPortal(CATALOGO, []),
+      pedido: "9001",
+      permitidos: new Set(["9001"]),
+      proprios: PROPRIOS,
+    });
+    expect(codes).toEqual(["TST"]);
+  });
+
+  it("⚠️ continua FAIL-CLOSED: fora do escopo não passa", () => {
+    // A expansão cruza com o escopo da sessão E o código é cruzado com os autorizados. Tirar
+    // qualquer uma das duas camadas abriria produto de outro coordenador.
+    expect(
+      resolverCodigosDoPedido({
+        cadastro: CADASTRO,
+        catalogo: CATALOGO,
+        codesAutorizados: ["GDN"],
+        empreendimentos: empreendimentosDoPortal(CATALOGO, ["GDN"]),
+        pedido: "9001",
+        permitidos: new Set(["9001"]),
+        proprios: PROPRIOS,
+      }),
+    ).toEqual([]);
+
+    expect(
+      resolverCodigosDoPedido({
+        cadastro: CADASTRO,
+        catalogo: CATALOGO,
+        codesAutorizados: ["TST"],
+        empreendimentos: empreendimentosDoPortal(CATALOGO, []),
+        pedido: "9001",
+        permitidos: new Set(),
+        proprios: PROPRIOS,
+      }),
+    ).toEqual([]);
+  });
+
+  it("pedir OUTRO produto não traz o do Panteon junto", () => {
+    const codes = resolverCodigosDoPedido({
+      cadastro: [],
+      catalogo: CATALOGO,
+      codesAutorizados: ["GDN", "TST"],
+      empreendimentos: empreendimentosDoPortal(CATALOGO, ["GDN"]),
+      pedido: "GARDEN",
+      permitidos: new Set(),
+      proprios: PROPRIOS,
+    });
+    expect(codes).not.toContain("TST");
+  });
+});

@@ -61,20 +61,44 @@ export function resolverCodigosDoPedido(entrada: {
   empreendimentos: EmpreendimentoDoPortal[];
   pedido: null | string | undefined;
   permitidos: Set<string>;
+  /**
+   * Os empreendimentos que existem SÓ no Panteon (ver `soDoPanteon`), com o id do C2X que o
+   * cadastro guarda para eles.
+   *
+   * ⚠️ SEM ELES O PRODUTO RESPONDE 404 nos DOIS caminhos, porque a tradução id → código passa pelo
+   * catálogo, que é um select em `enterprises` do legado. Foi o que aconteceu com o empreendimento
+   * de teste: as unidades estavam gravadas, o produto aparecia no seletor (que lê o cadastro do
+   * Panteon), e a Venda respondia "Produto não encontrado".
+   */
+  proprios?: { codigo: string; enterpriseId: string }[];
 }): string[] {
   const { cadastro, catalogo, codesAutorizados, empreendimentos, pedido, permitidos } = entrada;
+  const proprios = entrada.proprios ?? [];
   const limpo = String(pedido ?? "").trim();
 
   if (!pedidoPrecisaDeExpansao(limpo)) {
-    return codesDoRecorte(empreendimentos, pedido);
+    const doCatalogo = codesDoRecorte(empreendimentos, pedido);
+    // Sem pedido, "todos" inclui os do Panteon; com pedido, só quando é o código dele.
+    const dosProprios = proprios
+      .filter((p) => !limpo || p.codigo.toUpperCase() === limpo.toUpperCase())
+      .map((p) => p.codigo);
+    return [...new Set([...doCatalogo, ...dosProprios])];
   }
 
   const autorizados = new Set(
     codesAutorizados.map((code) => String(code ?? "").trim().toUpperCase()).filter(Boolean),
   );
   const ids = expandirIdDoPainel(limpo, cadastro, permitidos);
+  const idsPedidos = new Set(ids.map(String));
 
-  return codigosDosIdsDoC2x(catalogo, ids).filter((code) => autorizados.has(code));
+  // ⚠️ O `.filter(autorizados)` continua valendo para os dois: a expansão já cruzou com o escopo
+  // da sessão, e o código ainda precisa estar entre os autorizados. Fail-closed nas duas camadas.
+  return [
+    ...new Set([
+      ...codigosDosIdsDoC2x(catalogo, ids),
+      ...proprios.filter((p) => idsPedidos.has(p.enterpriseId)).map((p) => p.codigo),
+    ]),
+  ].filter((code) => autorizados.has(code.toUpperCase()));
 }
 
 /**
@@ -89,9 +113,12 @@ export async function codigosDoPedido(entrada: {
   codesAutorizados: string[];
   empreendimentos: EmpreendimentoDoPortal[];
   pedido: null | string | undefined;
+  /** Ver o campo homônimo em `resolverCodigosDoPedido`. */
+  proprios?: { codigo: string; enterpriseId: string }[];
   sessao: SessaoIncorporador;
 }): Promise<CodigosDoPedido> {
   const { catalogo, codesAutorizados, empreendimentos, pedido, sessao } = entrada;
+  const proprios = entrada.proprios ?? [];
   const limpo = String(pedido ?? "").trim();
 
   if (!pedidoPrecisaDeExpansao(limpo)) {
@@ -103,6 +130,7 @@ export async function codigosDoPedido(entrada: {
         empreendimentos,
         pedido,
         permitidos: new Set(),
+        proprios,
       }),
       ok: true,
     };
@@ -134,6 +162,7 @@ export async function codigosDoPedido(entrada: {
       empreendimentos,
       pedido: limpo,
       permitidos,
+      proprios,
     }),
     ok: true,
   };

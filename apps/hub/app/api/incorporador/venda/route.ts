@@ -89,6 +89,7 @@ export async function GET(request: Request) {
     codesAutorizados: codesComProprios,
     empreendimentos: empreendimentosDoPortal(catalogo, codesAutorizados),
     pedido: new URL(request.url).searchParams.get("emp"),
+    proprios,
     sessao: auth.sessao,
   });
 
