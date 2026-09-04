@@ -326,3 +326,44 @@ export function eventosDaReserva(reservas: ReservaDoHistorico[]): EventoDaUnidad
 
   return eventos.sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0));
 }
+
+// ── A COR DA LINHA DO TEMPO ─────────────────────────────────────────────────
+//
+// ⚠️ ESTA CLASSIFICAÇÃO MORA AQUI, JUNTO DE QUEM ESCREVE OS FATOS, e a razão é um defeito real:
+// a régua vivia no componente, procurando o radical "reservad", e quando o fato do Panteon passou
+// a ser "Reserva criada" (04/09/2026) ele deixou de casar — o ponto do evento caiu no cinza de
+// transição comum, numa tela onde a reserva tem cor própria em todo lugar. O Lucas viu na hora:
+// *"a cor da reserva não está na mesma cor"*.
+//
+// Com a classificação ao lado dos textos, quem mudar uma frase esbarra na régua que a lê; e o teste
+// confere os fatos que ESTE arquivo emite, coisa que um regex escondido no componente não permitia.
+
+export type ClasseDoFato =
+  | "assinatura"
+  | "cancelado"
+  | "contrato"
+  | "faturado"
+  | "pagamento"
+  | "proposta"
+  | "reserva"
+  | "transicao";
+
+/**
+ * Em que família este fato entra — é ela que decide a cor do ponto na linha do tempo.
+ *
+ * ⚠️ A ORDEM DOS TESTES É A REGRA. "Reserva cancelada" é CANCELAMENTO, não reserva: o vermelho tem
+ * que vencer, senão o que se procura na lista some no meio do amarelo.
+ */
+export function classeDoFato(fato: string, tipo?: EventoDaUnidade["tipo"]): ClasseDoFato {
+  if (tipo === "pagamento") return "pagamento";
+  if (tipo === "assinatura") return "assinatura";
+
+  const texto = String(fato ?? "").toLowerCase();
+  if (/cancelad|reprovad|distrat/.test(texto)) return "cancelado";
+  if (/faturad|finalizad/.test(texto)) return "faturado";
+  if (/assinatura/.test(texto)) return "assinatura";
+  if (/contrato/.test(texto)) return "contrato";
+  if (/proposta|análise|analise/.test(texto)) return "proposta";
+  if (/reserva/.test(texto)) return "reserva";
+  return "transicao";
+}

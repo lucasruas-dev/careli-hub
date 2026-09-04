@@ -15,7 +15,11 @@ import type { LucideIcon } from "lucide-react";
 
 import { ETAPAS_DO_FLUXO } from "@/lib/hercules/fluxo-de-venda";
 import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
-import type { EventoDaUnidade } from "@/lib/hercules/historico-da-unidade";
+import {
+  type ClasseDoFato,
+  classeDoFato,
+  type EventoDaUnidade,
+} from "@/lib/hercules/historico-da-unidade";
 
 import { toTitleCase } from "@/lib/format/name-case";
 import { formatarTelefoneGuardado } from "@/lib/hercules/paises";
@@ -316,18 +320,22 @@ function loteSelecionadoNoEspelho(doc: Document): null | { lote: string; quadra:
  * obrigaria a aprender duas. Cancelado e distratado saem em vermelho — antes ficavam no cinza das
  * transições comuns, escondidos no meio da lista.
  */
-function corDoEvento(e: EventoDaUnidade): string {
-  if (e.tipo === "pagamento") return T.ok;
-  if (e.tipo === "assinatura") return COR_DA_ETAPA.assinatura;
+// ⚠️ QUEM CLASSIFICA É A LIB, junto de quem escreve os fatos (`classeDoFato`). A régua já morou
+// aqui, procurando o radical "reservad", e ficou para trás quando o fato virou "Reserva criada":
+// o ponto caiu no cinza de transição comum. Aqui fica só a tradução de família para cor.
+const COR_DA_CLASSE: Record<ClasseDoFato, string> = {
+  assinatura: COR_DA_ETAPA.assinatura,
+  cancelado: T.danger,
+  contrato: COR_DA_ETAPA.contrato,
+  faturado: COR_DA_ETAPA.faturado,
+  pagamento: T.ok,
+  proposta: COR_DA_ETAPA.proposta,
+  reserva: COR_DA_ETAPA.reservado,
+  transicao: T.border,
+};
 
-  const fato = e.fato.toLowerCase();
-  if (/cancelad|reprovad|distrat/.test(fato)) return T.danger;
-  if (/faturad|finalizad/.test(fato)) return COR_DA_ETAPA.faturado;
-  if (/assinatura/.test(fato)) return COR_DA_ETAPA.assinatura;
-  if (/contrato/.test(fato)) return COR_DA_ETAPA.contrato;
-  if (/proposta|análise|analise/.test(fato)) return COR_DA_ETAPA.proposta;
-  if (/reservad/.test(fato)) return COR_DA_ETAPA.reservado;
-  return T.border;
+function corDoEvento(e: EventoDaUnidade): string {
+  return COR_DA_CLASSE[classeDoFato(e.fato, e.tipo)];
 }
 
 /** "31/08/26" — a data curta da coluna da linha do tempo. */

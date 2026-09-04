@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-04-cor-da-reserva",
+    deployedAt: "2026-09-04T16:35:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "No histórico da unidade, a reserva voltou a aparecer na cor da reserva — estava saindo no cinza das transições comuns.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "21b4cddb",
+    technical: {
+      done: "A COR DO PONTO NA LINHA DO TEMPO saia do radical `reservad`, testado por um regex dentro do componente. Em 04/09 o fato do Panteon passou a ser \"Reserva criada\" — que NAO casa com \"reservad\" — e o evento caiu no cinza de transicao comum, numa tela onde reserva e amarela em todo lugar. ⚠️ A CLASSIFICACAO MUDOU DE CASA: `classeDoFato` agora vive em `lib/hercules/historico-da-unidade.ts`, ao lado de quem ESCREVE os fatos, e o componente so traduz familia em cor. Era o defeito de fundo: a regua que le os textos morava longe de quem os escreve, entao mudar uma frase nao esbarrava nela. Teste novo percorre os fatos que `eventosDaReserva` emite e exige que nenhum caia em \"transicao\" por engano — e trava a ordem que faz \"Reserva cancelada\" ser VERMELHA, e nao amarela: o cancelamento e o que se procura na lista. 2.520 testes verdes.",
+      motivation:
+        "Corrigir a frase do historico em 04/09 deixou a regua de cor para tras, e o ponto da reserva ficou cinza.",
+    },
+    title: "A reserva volta a ter a cor da reserva no histórico",
+    type: "correcao",
+    version: "1.280.1",
+  },
+  {
     buildTag: "2026-09-04-simulador-sem-plano",
     deployedAt: "2026-09-04T16:10:00-03:00",
     modules: [

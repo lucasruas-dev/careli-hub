@@ -5,6 +5,7 @@ import {
   historicoDaUnidade,
   type MovimentoDoHistorico,
   type PropostaDoHistorico,
+  classeDoFato,
   eventosDaReserva,
   type ReservaDoHistorico,
 } from "./historico-da-unidade";
@@ -282,5 +283,51 @@ describe("eventosDaReserva", () => {
     expect(magra[0]?.fato).toBe("Reserva criada");
     expect(magra[0]?.cliente).toBeNull();
     expect(magra[0]?.observacao).toBeNull();
+  });
+});
+
+describe("classeDoFato", () => {
+  // ⚠️ ESTE TESTE EXISTE POR CAUSA DE UM DEFEITO REAL. A régua de cor vivia no componente,
+  // procurando o radical "reservad", e o fato do Panteon virou "Reserva criada": deixou de casar, e
+  // o ponto da linha do tempo apareceu cinza numa tela onde reserva é amarela em todo lugar. Com a
+  // classificação ao lado de quem escreve os textos, mudar a frase e esquecer a cor quebra aqui.
+  it("todo fato que este arquivo emite tem família — nenhum cai em transição por engano", () => {
+    const reserva: ReservaDoHistorico = {
+      cancelada_em: "2026-09-04T18:00:00Z",
+      cancelada_motivo: "Cliente desistiu",
+      cancelada_por_nome: "Lucas Ruas",
+      criado_em: "2026-09-01T12:00:00Z",
+      criado_por_nome: "Lucas Ruas",
+      id: "r1",
+      observacao: null,
+      proponentes: [{ cpf: "529.982.247-25", nome: "Maria da Silva" }],
+      situacao: "cancelada",
+      validade_em: "2026-09-07T02:59:59Z",
+    };
+
+    const familias = eventosDaReserva([reserva]).map((e) => ({
+      classe: classeDoFato(e.fato, e.tipo),
+      fato: e.fato,
+    }));
+
+    expect(familias).toContainEqual({ classe: "reserva", fato: "Reserva criada" });
+    // ⚠️ CANCELAMENTO VENCE A RESERVA: o vermelho é o que se procura na lista.
+    expect(familias).toContainEqual({ classe: "cancelado", fato: "Reserva cancelada" });
+    expect(familias.every((f) => f.classe !== "transicao")).toBe(true);
+  });
+
+  it("a reserva vencida também é da família reserva", () => {
+    expect(classeDoFato("Reserva vencida")).toBe("reserva");
+  });
+
+  it("pagamento e assinatura vêm do tipo, não do texto", () => {
+    expect(classeDoFato("qualquer coisa", "pagamento")).toBe("pagamento");
+    expect(classeDoFato("qualquer coisa", "assinatura")).toBe("assinatura");
+  });
+
+  it("o que não se encaixa é transição comum", () => {
+    expect(classeDoFato("Em análise de documentos")).toBe("proposta");
+    expect(classeDoFato("Distrato registrado")).toBe("cancelado");
+    expect(classeDoFato("Alguma coisa nova")).toBe("transicao");
   });
 });
