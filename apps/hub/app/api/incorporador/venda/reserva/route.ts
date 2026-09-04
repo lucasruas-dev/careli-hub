@@ -13,8 +13,13 @@ import {
 } from "@/lib/hercules/quem-pode-vender";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import {
+  type AvisoDaReserva,
   avisosDaReserva,
+  avisosDeCancelamento,
+  conferirCancelamento,
   conferirReserva,
+  motivoEscrito,
+  type PedidoDeCancelamento,
   type PedidoDeReserva,
 } from "@/lib/hercules/reserva";
 
@@ -228,18 +233,173 @@ export async function POST(request: Request) {
 
     const avisos = await avisar(admin, {
       corretorId: pedido.corretorEntityId ?? null,
-      codigo,
       empreendimento: { c2xId: String(unidade.enterprise_id), nome: empreendimento.nome },
       imobiliariaId: pedido.imobiliariaEntityId,
-      proponente: pedido.proponente,
-      unidade: comoSeEscreve(unidade),
-      validadeEm: pedido.validadeEm,
+      textos: (nomes) =>
+        avisosDaReserva({
+          cliente: pedido.proponente.nome,
+          codigo,
+          corretor: nomes.corretor,
+          cpf: pedido.proponente.cpf,
+          empreendimento: empreendimento.nome,
+          imobiliaria: nomes.imobiliaria,
+          unidade: comoSeEscreve(unidade),
+          validadeEm: pedido.validadeEm,
+        }),
     });
 
     return NextResponse.json({ data: { avisos, codigo, id: criada?.id ?? null } });
   } catch (erro) {
     console.error("[hercules][reserva] falha ao reservar", erro);
     return NextResponse.json({ error: "Não foi possível reservar agora." }, { status: 503 });
+  }
+}
+
+// ── O CANCELAMENTO ──────────────────────────────────────────────────────────
+//
+// Lucas (04/09/2026): *"da reserva eu tenho dois caminhos, gerar proposta ou cancelar"*.
+//
+// ⚠️ PATCH, E NÃO DELETE. A reserva cancelada continua existindo: é ela que responde "quem tinha
+// este lote em agosto e por que soltou". Apagar a linha apagaria a resposta — e o histórico da
+// unidade lê justamente `cancelada_em` para montar o evento.
+//
+// ⚠️ A UNIDADE VOLTA A `disponivel` ANTES DO AVISO. Se o WhatsApp falhar, o lote já está livre para
+// vender; o contrário — lote preso porque uma mensagem não saiu — custaria uma venda.
+export async function PATCH(request: Request) {
+  const auth = autorizar(request);
+  if (!auth.ok) return auth.response;
+
+  const admin = createApoloAdminClient();
+  if (!admin) {
+    return NextResponse.json({ error: "Configuração indisponível." }, { status: 503 });
+  }
+
+  let corpo: Partial<PedidoDeCancelamento>;
+  try {
+    corpo = (await request.json()) as typeof corpo;
+  } catch {
+    return NextResponse.json({ error: "Pedido inválido." }, { status: 400 });
+  }
+
+  const pedido: PedidoDeCancelamento = {
+    detalhe: typeof corpo.detalhe === "string" ? corpo.detalhe : null,
+    motivo: String(corpo.motivo ?? "").trim(),
+    unidadeId: String(corpo.unidadeId ?? "").trim(),
+  };
+
+  const erros = conferirCancelamento(pedido);
+  if (erros.length > 0) {
+    return NextResponse.json({ erros }, { status: 422 });
+  }
+
+  try {
+    const permitidos = new Set(await idsDaSessao(auth.sessao));
+
+    const { data } = await admin
+      .from("hercules_unidades")
+      .select("id,codigo,quadra,lote,situacao,preco_tabela,enterprise_id")
+      .eq("workspace_id", WORKSPACE)
+      .eq("id", pedido.unidadeId)
+      .maybeSingle();
+
+    const unidade = data as null | UnidadeDaReserva;
+    if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
+      return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
+    }
+
+    const { data: viva } = await admin
+      .from("hercules_reservas")
+      .select(
+        "id, situacao, protocolo_numero, proponentes, imobiliaria_entity_id, corretor_entity_id, empreendimento_id",
+      )
+      .eq("workspace_id", WORKSPACE)
+      .eq("unidade_id", unidade.id)
+      .in("situacao", ["ativa", "proposta"])
+      .maybeSingle();
+
+    const reserva = viva as null | {
+      corretor_entity_id: null | string;
+      empreendimento_id: string;
+      id: string;
+      imobiliaria_entity_id: null | string;
+      proponentes: unknown;
+      protocolo_numero: null | number;
+      situacao: string;
+    };
+
+    if (!reserva) {
+      return NextResponse.json(
+        { error: "Não há reserva ativa nesta unidade." },
+        { status: 409 },
+      );
+    }
+
+    // ⚠️ RESERVA QUE JÁ VIROU PROPOSTA NÃO SE CANCELA POR AQUI. A partir dali quem representa a
+    // venda é a proposta, com condições comerciais gravadas — cancelar a reserva por baixo dela
+    // deixaria uma proposta viva apontando para um lote disponível.
+    if (reserva.situacao !== "ativa") {
+      return NextResponse.json(
+        { error: "Esta reserva já virou proposta. O cancelamento é o da proposta." },
+        { status: 409 },
+      );
+    }
+
+    const motivo = motivoEscrito(pedido.motivo, pedido.detalhe);
+    const agora = new Date().toISOString();
+
+    const { error } = await admin
+      .from("hercules_reservas")
+      .update({
+        atualizado_em: agora,
+        cancelada_em: agora,
+        cancelada_motivo: motivo,
+        cancelada_por: auth.sessao.usuarioId,
+        cancelada_por_nome: auth.sessao.usuarioNome,
+        situacao: "cancelada",
+      })
+      .eq("id", reserva.id)
+      // ⚠️ A CONDIÇÃO REPETIDA NÃO É PARANOIA: dois coordenadores no mesmo lote, e o segundo
+      // clique cancelaria de novo uma reserva já cancelada, disparando um segundo WhatsApp.
+      .eq("situacao", "ativa");
+
+    if (error) throw new Error(error.message);
+
+    await admin
+      .from("hercules_unidades")
+      .update({ atualizado_em: agora, situacao: "disponivel" })
+      .eq("id", unidade.id);
+
+    const cadastro = await carregarCadastroDeEmpreendimentos();
+    const nomeDoEmpreendimento =
+      cadastro.find((l) => l.id === reserva.empreendimento_id)?.nome ?? "empreendimento";
+
+    const titular = Array.isArray(reserva.proponentes)
+      ? (reserva.proponentes[0] as null | { nome?: unknown })
+      : null;
+    const codigo = codigoDaVenda(reserva.protocolo_numero);
+
+    const avisos = reserva.imobiliaria_entity_id
+      ? await avisar(admin, {
+          corretorId: reserva.corretor_entity_id,
+          empreendimento: { c2xId: String(unidade.enterprise_id), nome: nomeDoEmpreendimento },
+          imobiliariaId: reserva.imobiliaria_entity_id,
+          textos: (nomes) =>
+            avisosDeCancelamento({
+              cliente: typeof titular?.nome === "string" ? titular.nome : "cliente",
+              codigo,
+              corretor: nomes.corretor,
+              empreendimento: nomeDoEmpreendimento,
+              imobiliaria: nomes.imobiliaria,
+              motivo,
+              unidade: comoSeEscreve(unidade),
+            }),
+        })
+      : [];
+
+    return NextResponse.json({ data: { avisos, codigo, id: reserva.id } });
+  } catch (erro) {
+    console.error("[hercules][reserva] falha ao cancelar", erro);
+    return NextResponse.json({ error: "Não foi possível cancelar agora." }, { status: 503 });
   }
 }
 
@@ -258,10 +418,15 @@ async function avisar(
     corretorId: null | string;
     empreendimento: { c2xId: string; nome: string };
     imobiliariaId: string;
-    proponente: { cpf: string; nome: string; telefone: string };
-    codigo: string;
-    unidade: string;
-    validadeEm: string;
+    /**
+     * O que cada um vai ler, montado com os nomes que só esta função conhece.
+     *
+     * ⚠️ É FUNÇÃO, E NÃO TEXTO PRONTO: quem chama sabe o ASSUNTO (reserva criada, reserva
+     * cancelada) mas não sabe o nome da imobiliária nem o do corretor — os dois saem do
+     * `apolo_entities` que esta busca aqui. Passar texto pronto obrigaria cada chamador a repetir
+     * essa consulta, e "quem recebe e como envia" viraria dois lugares.
+     */
+    textos: (nomes: { corretor: null | string; imobiliaria: string }) => AvisoDaReserva[];
   },
 ): Promise<ResultadoDoAviso[]> {
   if (!admin) return [];
@@ -302,15 +467,9 @@ async function avisar(
       }
     }
 
-    const textos = avisosDaReserva({
-      cliente: dados.proponente.nome,
-      codigo: dados.codigo,
+    const textos = dados.textos({
       corretor: dados.corretorId ? (nomePorId.get(dados.corretorId) ?? null) : null,
-      cpf: dados.proponente.cpf,
-      empreendimento: dados.empreendimento.nome,
       imobiliaria: nomePorId.get(dados.imobiliariaId) ?? "Imobiliária",
-      unidade: dados.unidade,
-      validadeEm: dados.validadeEm,
     });
 
     // ⚠️ O COORDENADOR VEM DO C2X, E CAI NO PANTEON QUANDO NÃO EXISTE LÁ. Empreendimento que só

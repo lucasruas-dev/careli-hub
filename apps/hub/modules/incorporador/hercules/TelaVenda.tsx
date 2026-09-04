@@ -22,6 +22,7 @@ import { formatarTelefoneGuardado } from "@/lib/hercules/paises";
 
 import { T, useTemaDoPortal } from "../tema";
 import { Pilula } from "./AssinaturasDoProduto";
+import { ModalDeCancelamento } from "./ModalDeCancelamento";
 import { ModalDeReserva } from "./ModalDeReserva";
 import { SimuladorDeProposta } from "./SimuladorDeProposta";
 
@@ -253,6 +254,20 @@ function comoSeEscreve(
 }
 
 /**
+ * "Quadra 03 · Lote 07" — o nome da unidade por extenso, como as modais o escrevem no título.
+ *
+ * ⚠️ É A MESMA FRASE QUE VAI NO WHATSAPP, de propósito: o corretor lê "Quadra 03 · Lote 07" no
+ * celular e precisa reconhecer exatamente isso quando abrir a tela. "0307" na tela e "Quadra 03"
+ * na mensagem seriam duas maneiras de dizer o mesmo lote, e alguém teria que traduzir uma na outra.
+ */
+function comoSeLe(u: UnidadeNoMapa): string {
+  const escrita = comoSeEscreve(u.codigo, u.quadra, u.lote);
+  const partes = escrita.unidade.split(" ");
+  if (partes.length < 2) return escrita.unidade;
+  return `Quadra ${partes[0]} · Lote ${partes[1]}`;
+}
+
+/**
  * Como a data se chama em cada etapa.
  *
  * ⚠️ "Desde" NÃO DIZ NADA (Lucas, 03/09/2026: *"colocar Data de faturamento (quando for
@@ -369,6 +384,7 @@ export function TelaVenda() {
   const [foco, setFoco] = useState<null | Foco>(null);
   const [simulando, setSimulando] = useState<null | UnidadeNoMapa>(null);
   const [reservando, setReservando] = useState<null | UnidadeNoMapa>(null);
+  const [cancelando, setCancelando] = useState<null | UnidadeNoMapa>(null);
   const [recado, setRecado] = useState<null | string>(null);
   const [modoDoEstoque, setModoDoEstoque] = useState<"grade" | "mapa">("grade");
   // Abre em 12 meses: o mês corrente sozinho, no dia 3, mostraria quase nada.
@@ -788,13 +804,30 @@ export function TelaVenda() {
           }}
           unidade={{
             id: reservando.id,
-            nome: (() => {
-              const e = comoSeEscreve(reservando.codigo, reservando.quadra, reservando.lote);
-              return `Quadra ${e.unidade.split(" ")[0]} · Lote ${e.unidade.split(" ")[1] ?? ""}`.trim();
-            })(),
+            nome: comoSeLe(reservando),
             produto: mapaDoProduto?.nome ?? "",
           }}
           valorDaUnidade={reservando.preco}
+        />
+      ) : null}
+
+      {/* ⚠️ CANCELAR É O OUTRO CAMINHO DA RESERVA (Lucas, 04/09/2026: *"da reserva eu tenho dois
+          caminhos, gerar proposta ou cancelar"*), e por isso mora ao lado dela, com o mesmo
+          desfecho: fecha, recarrega a tela e deixa o recado na faixa. */}
+      {cancelando ? (
+        <ModalDeCancelamento
+          onCancelada={(mensagem) => {
+            setCancelando(null);
+            setRecado(mensagem);
+            // O lote voltou a ser vendável: sem recarregar, ele continuaria amarelo até o F5.
+            void carregar(recorte || emp, janela);
+          }}
+          onFechar={() => setCancelando(null)}
+          unidade={{
+            id: cancelando.id,
+            nome: comoSeLe(cancelando),
+            produto: mapaDoProduto?.nome ?? "",
+          }}
         />
       ) : null}
 
@@ -802,6 +835,7 @@ export function TelaVenda() {
       {visao === "mesa" ? (
         <Mesa
           aoFocar={setFoco}
+          aoCancelar={setCancelando}
           aoReservar={setReservando}
           aoSimular={setSimulando}
           aoTrocarModo={setModoDoEstoque}
@@ -825,6 +859,7 @@ export function TelaVenda() {
 // ── A MESA ──────────────────────────────────────────────────────────────────
 
 function Mesa({
+  aoCancelar,
   aoFocar,
   aoReservar,
   aoSimular,
@@ -838,6 +873,7 @@ function Mesa({
   mapaDoProduto,
   modo,
 }: {
+  aoCancelar: (u: null | UnidadeNoMapa) => void;
   aoFocar: (f: null | Foco) => void;
   aoReservar: (u: null | UnidadeNoMapa) => void;
   aoSimular: (u: null | UnidadeNoMapa) => void;
@@ -1442,6 +1478,7 @@ function Mesa({
             </p>
           )}
           <AcoesDaUnidade
+            aoCancelar={() => aoCancelar(unidadeEmFoco)}
             aoReservar={() => aoReservar(unidadeEmFoco)}
             unidade={unidadeEmFoco}
           />
@@ -1811,9 +1848,11 @@ function TrilhaDoFluxo({ etapa }: { etapa: null | string }) {
 const PROXIMA_FASE = "Entra na próxima fase da venda.";
 
 function AcoesDaUnidade({
+  aoCancelar,
   aoReservar,
   unidade,
 }: {
+  aoCancelar: () => void;
   aoReservar: () => void;
   unidade: null | UnidadeNoMapa;
 }) {
@@ -1840,14 +1879,24 @@ function AcoesDaUnidade({
     },
     {
       ativo: false,
-      motivo: reservada ? PROXIMA_FASE : "Precisa de uma reserva ativa.",
+      motivo: reservada
+        ? "Em construção: o desenho da proposta vai para o seu OK antes."
+        : "Precisa de uma reserva ativa.",
       rotulo: "Gerar proposta",
     },
     { ativo: false, motivo: PROXIMA_FASE, rotulo: "Enviar para contrato" },
+    // ⚠️ CANCELAR SÓ NA RESERVA, e não em qualquer unidade não disponível. Uma unidade vendida
+    // também deixa de ser disponível, e ali cancelar significa DISTRATO — outro ato, com outras
+    // consequências. O botão que serve para as duas coisas é o botão que alguém clica errado.
     {
-      ativo: false,
-      motivo: unidade && !disponivel ? PROXIMA_FASE : "Não há o que cancelar nesta unidade.",
-      rotulo: "Cancelar",
+      ativo: reservada,
+      aoClicar: aoCancelar,
+      motivo: !unidade
+        ? "Escolha uma unidade."
+        : reservada
+          ? "Cancela a reserva; a unidade volta para a disponibilidade e os três são avisados."
+          : "Não há reserva para cancelar nesta unidade.",
+      rotulo: "Cancelar reserva",
     },
   ];
 

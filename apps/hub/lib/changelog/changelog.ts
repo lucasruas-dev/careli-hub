@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-04-cancelar-reserva",
+    deployedAt: "2026-09-04T13:30:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "Reserva agora tem o caminho de volta: o botão Cancelar reserva fica ativo quando a unidade está reservada.",
+              "Ao cancelar, você escolhe o motivo (a lista tem os mais comuns e um campo livre) — ele vai na mensagem e fica no histórico da unidade.",
+              "A unidade volta para a disponibilidade na hora, e corretor, imobiliária e coordenador recebem o aviso pelo WhatsApp do Relacionamento.",
+              "O histórico passou a dizer quem cancelou, do mesmo jeito que já dizia quem criou.",
+              "As bandeiras dos países aparecem de verdade no campo de telefone (antes o Windows desenhava só as letras: BR, DE, PT).",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "fa411b3d",
+    technical: {
+      done: "CANCELAR A RESERVA, PONTA A PONTA (Lucas, 04/09/2026: *\"da reserva eu tenho dois caminhos, gerar proposta ou cancelar, tem que habilitar esses dois botoes quando esta na etapa de reserva\"*). PATCH em `/api/incorporador/venda/reserva`: escopo pelo cookie, reserva viva da unidade, `situacao='cancelada'` + motivo + quem, unidade de volta a `disponivel`, e os tres avisos. ⚠️ PATCH E NAO DELETE: a reserva cancelada e quem responde \"quem tinha este lote em agosto e por que soltou\" — e o historico le `cancelada_em` para montar o evento. ⚠️ O UPDATE REPETE `.eq('situacao','ativa')`: dois coordenadores no mesmo lote, e o segundo clique cancelaria de novo, disparando um segundo WhatsApp. ⚠️ RESERVA QUE JA VIROU PROPOSTA responde 409 e nao cancela por aqui: dali em diante quem representa a venda e a proposta, e cancelar a reserva por baixo dela deixaria proposta viva sobre lote disponivel. ⚠️ O BOTAO SO ACENDE NA RESERVA, e nao em toda unidade nao disponivel: unidade vendida tambem nao esta disponivel, e ali cancelar significa DISTRATO — botao que serve para as duas coisas e botao que se clica errado. MOTIVO E LISTA + TEXTO LIVRE (`MOTIVOS_DE_CANCELAMENTO`): campo livre puro devolve catorze frases para quatro motivos, e lista fechada faz escolher o motivo errado para conseguir salvar; \"Outro\" sem detalhe nao passa na validacao. Nenhum botao da modal se chama \"Cancelar\" — quem desiste clica em *Voltar*. MIGRATION 0130 (aplicada em prod com OK): `cancelada_por` e `cancelada_por_nome` — o motivo ja existia desde a 0125, quem cancelou nao. `comoFoiOAviso` saiu da modal para `lib/hercules/reserva.ts`, agora testada, e `avisar()` na rota passou a receber os textos por funcao: quem chama sabe o assunto, mas o nome da imobiliaria e do corretor so esta ali. BANDEIRA VIROU SVG (`BandeiraDoPais.tsx`, pacote `country-flag-icons` que a Iris ja usa): ⚠️ o Windows NAO desenha emoji de bandeira — 🇧🇷 e o par de regional indicators B+R e, sem glifo, o navegador desenha as duas LETRAS; era o \"BR\" do print. Um teste confere que todo pais de `PAISES` tem bandeira no mapa do componente, porque lista e mapa vivem em arquivos diferentes e o esquecimento seria silencioso. Typecheck limpo; 2.512 testes verdes.",
+      motivation:
+        "A reserva so tinha ida: uma vez reservado, o lote ficava preso ate vencer sozinho, sem ninguem conseguir soltar pela tela.",
+    },
+    title: "Cancelar a reserva, com motivo e aviso",
+    type: "novidade",
+    version: "1.279.0",
+  },
+  {
     buildTag: "2026-09-04-telefone-e-ordem",
     deployedAt: "2026-09-04T11:45:00-03:00",
     modules: [

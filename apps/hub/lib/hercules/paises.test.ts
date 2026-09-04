@@ -1,24 +1,13 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
-  bandeira,
   buscarPaises,
   formatarTelefoneDoPais,
+  PAISES,
   telefoneComPais,
 } from "./paises";
-
-describe("bandeira", () => {
-  it("monta a bandeira a partir do ISO2", () => {
-    expect(bandeira("BR")).toBe("🇧🇷");
-    expect(bandeira("pt")).toBe("🇵🇹");
-    expect(bandeira("US")).toBe("🇺🇸");
-  });
-
-  it("o que não é ISO2 vira globo, e não um quadrado quebrado", () => {
-    expect(bandeira("")).toBe("🌐");
-    expect(bandeira("BRA")).toBe("🌐");
-  });
-});
 
 describe("buscarPaises", () => {
   it("⚠️ busca SEM ACENTO, porque ninguém digita trema com pressa", () => {
@@ -70,5 +59,26 @@ describe("telefoneComPais", () => {
 
   it("sem número não monta nada", () => {
     expect(telefoneComPais("", "55")).toBe("");
+  });
+});
+
+describe("a bandeira de cada país", () => {
+  // ⚠️ ESTE TESTE EXISTE PORQUE A LISTA E O MAPA VIVEM EM ARQUIVOS DIFERENTES. A bandeira é SVG
+  // (`BandeiraDoPais.tsx`) — emoji não desenha no Windows —, e quem adicionar um país aqui sem
+  // adicionar lá veria um globo no lugar da bandeira, sem erro nenhum. É texto de propósito: o
+  // componente é JSX, e importá-lo custaria um ambiente de teste inteiro para conferir 60 siglas.
+  const fonte = readFileSync(
+    new URL(
+      "../../modules/incorporador/hercules/BandeiraDoPais.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const mapa = fonte.slice(fonte.indexOf("const POR_ISO2"));
+
+  it("todo país da lista tem bandeira no mapa do componente", () => {
+    const siglas = new Set(mapa.split(/[^A-Z]+/));
+    const semBandeira = PAISES.filter((p) => !siglas.has(p.iso2));
+    expect(semBandeira.map((p) => p.nome)).toEqual([]);
   });
 });

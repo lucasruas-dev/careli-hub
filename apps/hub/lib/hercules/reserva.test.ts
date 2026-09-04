@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   avisosDaReserva,
+  avisosDeCancelamento,
+  comoFoiOAviso,
+  conferirCancelamento,
   conferirReserva,
   mascararCpf,
+  motivoEscrito,
   type PedidoDeReserva,
   PRAZO_MAXIMO_EM_DIAS,
   reservaComoLinhaDoFluxo,
@@ -240,5 +244,118 @@ describe("reservaComoLinhaDoFluxo", () => {
     // O jsonb aceita qualquer forma; a carga do salão pode gravar diferente.
     const linha = reservaComoLinhaDoFluxo({ ...RESERVA, proponentes: null }, UNIDADE, "VOC");
     expect(linha.cliente_nome).toBeNull();
+  });
+});
+
+describe("conferirCancelamento", () => {
+  const BASE = { detalhe: null, motivo: "Cliente desistiu", unidadeId: "uni-1" };
+
+  it("aceita um motivo da lista", () => {
+    expect(conferirCancelamento(BASE)).toEqual([]);
+  });
+
+  it("motivo em branco não passa", () => {
+    expect(conferirCancelamento({ ...BASE, motivo: "" }).map((e) => e.campo)).toEqual(["motivo"]);
+  });
+
+  it("motivo inventado não passa — a lista é a régua", () => {
+    expect(conferirCancelamento({ ...BASE, motivo: "porque sim" }).map((e) => e.campo)).toEqual([
+      "motivo",
+    ]);
+  });
+
+  it('⚠️ "Outro" SEM detalhe não é motivo', () => {
+    expect(conferirCancelamento({ ...BASE, motivo: "Outro" }).map((e) => e.campo)).toEqual([
+      "detalhe",
+    ]);
+    expect(
+      conferirCancelamento({ detalhe: "trocou de loteamento", motivo: "Outro", unidadeId: "uni-1" }),
+    ).toEqual([]);
+  });
+
+  it("sem unidade não cancela nada", () => {
+    expect(conferirCancelamento({ ...BASE, unidadeId: "" }).map((e) => e.campo)).toEqual([
+      "unidade",
+    ]);
+  });
+});
+
+describe("motivoEscrito", () => {
+  it("junta o motivo e o detalhe", () => {
+    expect(motivoEscrito("Outro", "cliente sumiu")).toBe("Outro · cliente sumiu");
+  });
+
+  it("sem detalhe fica só o motivo", () => {
+    expect(motivoEscrito("Cliente desistiu", "  ")).toBe("Cliente desistiu");
+    expect(motivoEscrito("Cliente desistiu", null)).toBe("Cliente desistiu");
+  });
+});
+
+describe("avisosDeCancelamento", () => {
+  const DADOS = {
+    cliente: "Maria da Silva",
+    codigo: "000123",
+    corretor: "João Corretor",
+    empreendimento: "Vale do Ouro",
+    imobiliaria: "Raiane Imobiliária",
+    motivo: "Cliente desistiu",
+    unidade: "Quadra 12 · Lote 06",
+  };
+
+  it("fala com os três, cada um do seu jeito", () => {
+    const avisos = avisosDeCancelamento(DADOS);
+    expect(avisos.map((a) => a.papel)).toEqual(["corretor", "imobiliaria", "coordenador"]);
+    for (const aviso of avisos) {
+      expect(aviso.texto).toContain("Quadra 12 · Lote 06");
+      expect(aviso.texto).toContain("Cliente desistiu");
+      expect(aviso.texto).toContain("000123");
+    }
+  });
+
+  it("⚠️ diz que a unidade VOLTOU para a disponibilidade — é o que muda para quem lê", () => {
+    for (const aviso of avisosDeCancelamento(DADOS)) {
+      expect(aviso.texto.toLowerCase()).toContain("disponibilidade");
+    }
+  });
+
+  it("⚠️ NÃO repete o CPF: ele já circulou no aviso da reserva", () => {
+    const juntos = avisosDeCancelamento(DADOS)
+      .map((a) => a.texto)
+      .join(" ");
+    expect(juntos).not.toContain("CPF");
+  });
+
+  it("negrito de WhatsApp é UM asterisco", () => {
+    for (const aviso of avisosDeCancelamento(DADOS)) {
+      expect(aviso.texto).not.toContain("**");
+    }
+  });
+
+  it("sem corretor a frase continua de pé", () => {
+    const avisos = avisosDeCancelamento({ ...DADOS, corretor: null });
+    expect(avisos.find((a) => a.papel === "coordenador")?.texto).toContain("não informado");
+  });
+});
+
+describe("comoFoiOAviso", () => {
+  it("todos avisados", () => {
+    expect(
+      comoFoiOAviso([
+        { ok: true, para: "corretor" },
+        { ok: true, para: "imobiliaria" },
+      ]),
+    ).toBe("Aviso enviado para corretor e imobiliária.");
+  });
+
+  it("⚠️ falta de telefone é acionável — diz ONDE resolver", () => {
+    const frase = comoFoiOAviso([
+      { ok: true, para: "corretor" },
+      { motivo: "sem telefone", ok: false, para: "imobiliaria" },
+    ]);
+    expect(frase).toContain("não tem telefone cadastrado");
+  });
+
+  it("ninguém avisado não vira silêncio", () => {
+    expect(comoFoiOAviso([])).toBe("O aviso não chegou a ser enviado.");
   });
 });

@@ -6,7 +6,8 @@
 // ⚠️ POR QUE UMA LISTA NOVA, se `lib/iris/phone-country.ts` já tem uma. Aquela responde a pergunta
 // inversa — "de que país é este número que chegou?" — e para isso bastam código e ISO2. Um SELETOR
 // precisa do NOME (é por ele que se busca) e de uma ordem que faça sentido para quem escolhe. O que
-// não se duplica é a bandeira: ela continua saindo do ISO2, pela mesma conta de code points.
+// não vem daqui é a BANDEIRA: emoji de bandeira não desenha no Windows (🇧🇷 vira "BR"), então ela é
+// SVG, no componente `modules/incorporador/hercules/BandeiraDoPais.tsx`.
 //
 // ⚠️ A LISTA NÃO É O MUNDO INTEIRO, de propósito: são os países de onde vêm compradores da carteira
 // (América, Europa ocidental, os de trabalho brasileiro no exterior) mais os grandes. Uma lista de
@@ -20,18 +21,6 @@ export type Pais = {
   iso2: string;
   nome: string;
 };
-
-/**
- * A bandeira em emoji, a partir do ISO2.
- *
- * Cada letra vira o "regional indicator symbol" correspondente (A = U+1F1E6), e o par forma a
- * bandeira. É a mesma conta de `lib/iris/phone-country.ts`.
- */
-export function bandeira(iso2: string): string {
-  const limpo = String(iso2 ?? "").trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(limpo)) return "🌐";
-  return String.fromCodePoint(...[...limpo].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
-}
 
 /** O Brasil vem primeiro porque é o caso de quase toda reserva; o resto, em ordem alfabética. */
 export const PAISES: Pais[] = [

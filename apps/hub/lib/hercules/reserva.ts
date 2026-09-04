@@ -254,6 +254,146 @@ export function avisosDaReserva(dados: DadosDoAviso): AvisoDaReserva[] {
   ];
 }
 
+// ── O CANCELAMENTO DA RESERVA ───────────────────────────────────────────────
+//
+// Lucas (04/09/2026): *"da reserva eu tenho dois caminhos, gerar proposta ou cancelar, tem que
+// habilitar esses dois botões quando está na etapa de reserva"*.
+//
+// ⚠️ CANCELAR É UM CAMINHO, NÃO UM ERRO. A unidade volta para a disponibilidade na hora e os três
+// que foram avisados da reserva precisam ser avisados de novo — o corretor que recebeu "o lote é
+// seu até quinta" não pode descobrir pelo mapa que deixou de ser.
+
+/**
+ * Os motivos que a tela oferece.
+ *
+ * ⚠️ LISTA + TEXTO LIVRE, e não só texto livre. Cancelamento é o dado que vira pergunta no mês
+ * seguinte ("por que perdemos 14 reservas no Vale do Ouro?"), e campo livre puro devolve catorze
+ * frases diferentes para quatro motivos. A lista responde essa pergunta; o "Outro" existe porque
+ * uma lista fechada faria a pessoa escolher o motivo errado para conseguir salvar.
+ */
+export const MOTIVOS_DE_CANCELAMENTO = [
+  "Cliente desistiu",
+  "Cliente não retornou",
+  "Trocou de unidade",
+  "Crédito não aprovado",
+  "Reserva feita por engano",
+  "Prazo esgotado",
+  "Outro",
+] as const;
+
+export type MotivoDeCancelamento = (typeof MOTIVOS_DE_CANCELAMENTO)[number];
+
+export type PedidoDeCancelamento = {
+  /** O texto livre. Obrigatório só quando o motivo é "Outro". */
+  detalhe?: null | string;
+  motivo: string;
+  unidadeId: string;
+};
+
+export type ErroDoCancelamento = { campo: "detalhe" | "motivo" | "unidade"; mensagem: string };
+
+/** O que impede este cancelamento de acontecer. */
+export function conferirCancelamento(pedido: PedidoDeCancelamento): ErroDoCancelamento[] {
+  const erros: ErroDoCancelamento[] = [];
+
+  if (!pedido.unidadeId) {
+    erros.push({ campo: "unidade", mensagem: "Escolha a unidade." });
+  }
+
+  const motivo = (pedido.motivo ?? "").trim();
+  if (!motivo) {
+    erros.push({ campo: "motivo", mensagem: "Diga por que a reserva está sendo cancelada." });
+  } else if (!(MOTIVOS_DE_CANCELAMENTO as readonly string[]).includes(motivo)) {
+    erros.push({ campo: "motivo", mensagem: "Motivo desconhecido." });
+  }
+
+  // ⚠️ "OUTRO" SEM DETALHE NÃO É MOTIVO. Gravar a palavra "Outro" sozinha é o mesmo que não
+  // perguntar — e a pergunta só se faz uma vez, na hora do cancelamento.
+  if (motivo === "Outro" && (pedido.detalhe ?? "").trim().length < 3) {
+    erros.push({ campo: "detalhe", mensagem: "Escreva o motivo." });
+  }
+
+  return erros;
+}
+
+/** "Cliente desistiu" ou "Outro · trocou de loteamento" — o que fica gravado e o que a tela lê. */
+export function motivoEscrito(motivo: string, detalhe?: null | string): string {
+  const extra = (detalhe ?? "").trim();
+  if (!extra) return motivo.trim();
+  return `${motivo.trim()} · ${extra}`;
+}
+
+export type DadosDoCancelamento = {
+  cliente: string;
+  /** `000123` — o mesmo COD do aviso de reserva. É por ele que o corretor liga perguntando. */
+  codigo: string;
+  corretor: null | string;
+  empreendimento: string;
+  imobiliaria: string;
+  motivo: string;
+  unidade: string;
+};
+
+/**
+ * As mensagens do cancelamento, uma por destinatário.
+ *
+ * ⚠️ O MOTIVO VAI PARA OS TRÊS, inclusive o texto livre. Quem recebeu a reserva no WhatsApp merece
+ * saber por que ela caiu — "a unidade voltou para a disponibilidade" sem motivo faz o corretor
+ * ligar para o coordenador perguntar exatamente isso.
+ *
+ * ⚠️ NÃO REPETE O CPF. Ele já circulou no aviso da reserva; repetir documento a cada mensagem é
+ * espalhar dado pessoal sem ganho — o nome e o COD bastam para identificar de qual venda se fala.
+ */
+export function avisosDeCancelamento(dados: DadosDoCancelamento): AvisoDaReserva[] {
+  const lote = `*${dados.unidade}* (${dados.empreendimento})`;
+  const cod = dados.codigo ? ` COD *${dados.codigo}*.` : "";
+
+  return [
+    {
+      papel: "corretor",
+      texto: [
+        `Olá, ${dados.corretor ?? "tudo bem"}!`,
+        "",
+        `A reserva da unidade ${lote}, de *${dados.cliente}*, foi *cancelada*.`,
+        `Motivo: ${dados.motivo}.${cod}`,
+        "",
+        "A unidade já voltou para a disponibilidade e pode ser reservada de novo.",
+      ].join("\n"),
+    },
+    {
+      papel: "imobiliaria",
+      texto: [
+        `Olá, ${dados.imobiliaria}!`,
+        "",
+        `A reserva da unidade ${lote}, de *${dados.cliente}*, foi *cancelada*.`,
+        `Motivo: ${dados.motivo}.${cod}`,
+        dados.corretor ? `Corretor: *${dados.corretor}*.` : "",
+        "",
+        "A unidade voltou para a disponibilidade.",
+      ]
+        .filter((l, i, todas) => l !== "" || todas[i - 1] !== "")
+        .join("\n"),
+    },
+    {
+      papel: "coordenador",
+      texto: [
+        `Reserva cancelada em ${dados.empreendimento}.`,
+        "",
+        `Unidade: ${lote}`,
+        `Cliente: *${dados.cliente}*`,
+        `Imobiliária: *${dados.imobiliaria}*`,
+        dados.corretor ? `Corretor: *${dados.corretor}*` : "Corretor: não informado",
+        `Motivo: *${dados.motivo}*`,
+        dados.codigo ? `COD: *${dados.codigo}*` : "",
+        "",
+        "A unidade voltou para a disponibilidade.",
+      ]
+        .filter((l, i, todas) => l !== "" || todas[i - 1] !== "")
+        .join("\n"),
+    },
+  ];
+}
+
 // ── A RESERVA DENTRO DO FLUXO ───────────────────────────────────────────────
 //
 // ⚠️ A RESERVA VIRA UMA LINHA DO FLUXO, e não um caso especial em cada consumidor. A tela Venda
@@ -367,4 +507,49 @@ export function reservaComoLinhaDoFluxo(
     unidade_nome: nomeDaUnidade,
     valor: unidade?.preco_tabela ?? null,
   };
+}
+
+/**
+ * O que dizer sobre os avisos, em uma frase.
+ *
+ * ⚠️ "SEM AVISO PARA: IMOBILIARIA" NÃO INFORMA O SUFICIENTE — foi o que o Lucas leu na primeira
+ * reserva de verdade. Quem lê precisa saber o que JÁ FOI e o que fazer sobre o que não foi, e "não
+ * tem telefone cadastrado" é acionável porque diz onde resolver.
+ */
+export function comoFoiOAviso(
+  avisos: Array<{ motivo?: string; ok: boolean; para: string }>,
+): string {
+  const nome: Record<string, string> = {
+    coordenador: "coordenador",
+    corretor: "corretor",
+    imobiliaria: "imobiliária",
+  };
+  const escrever = (lista: string[]) =>
+    lista.length <= 1
+      ? (lista[0] ?? "")
+      : `${lista.slice(0, -1).join(", ")} e ${lista[lista.length - 1]}`;
+  const nomes = (lista: Array<{ para: string }>) => [
+    ...new Set(lista.map((a) => nome[a.para] ?? a.para)),
+  ];
+
+  if (avisos.length === 0) return "O aviso não chegou a ser enviado.";
+
+  const foram = nomes(avisos.filter((a) => a.ok));
+  const faltaram = avisos.filter((a) => !a.ok);
+
+  if (faltaram.length === 0) return `Aviso enviado para ${escrever(foram)}.`;
+
+  const semTelefone = nomes(faltaram.filter((a) => a.motivo === "sem telefone"));
+  const outros = nomes(faltaram.filter((a) => a.motivo !== "sem telefone"));
+
+  const partes: string[] = [];
+  if (foram.length > 0) partes.push(`Aviso enviado para ${escrever(foram)}`);
+  if (semTelefone.length > 0) {
+    partes.push(
+      `${escrever(semTelefone)} ${semTelefone.length > 1 ? "não têm" : "não tem"} telefone cadastrado`,
+    );
+  }
+  if (outros.length > 0) partes.push(`falhou para ${escrever(outros)}`);
+
+  return `${partes.join("; ")}.`;
 }

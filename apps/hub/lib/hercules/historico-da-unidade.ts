@@ -237,6 +237,7 @@ export function historicoDaUnidade(
 export type ReservaDoHistorico = {
   cancelada_em: null | string;
   cancelada_motivo: null | string;
+  cancelada_por_nome?: null | string;
   corretor_nome?: null | string;
   criado_em: string;
   criado_por_nome: null | string;
@@ -295,7 +296,7 @@ export function eventosDaReserva(reservas: ReservaDoHistorico[]): EventoDaUnidad
         observacao: r.cancelada_motivo,
         propostaId: `reserva:${r.id}`,
         quando: r.cancelada_em,
-        quem: null,
+        quem: r.cancelada_por_nome ?? null,
         tipo: "etapa",
         valor: null,
       });

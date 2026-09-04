@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
 import {
-  bandeira,
   BRASIL,
   buscarPaises,
   formatarTelefoneDoPais,
@@ -13,12 +12,15 @@ import {
 } from "@/lib/hercules/paises";
 import type { CorretorQueVende, ImobiliariaQueVende } from "@/lib/hercules/quem-pode-vender";
 import {
+  comoFoiOAviso,
   conferirReserva,
   type ErroDaReserva,
   PRAZO_PADRAO_EM_DIAS,
   PRAZOS_SUGERIDOS,
   vencimentoEmDias,
 } from "@/lib/hercules/reserva";
+
+import { BandeiraDoPais } from "./BandeiraDoPais";
 
 import { T } from "../tema";
 
@@ -655,7 +657,7 @@ function CampoDeTelefone({
           title={pais.nome}
           type="button"
         >
-          <span style={{ fontSize: 15, lineHeight: 1 }}>{bandeira(pais.iso2)}</span>
+          <BandeiraDoPais altura={12} iso2={pais.iso2} nome={pais.nome} />
           <span style={{ fontSize: 12.5 }}>+{pais.ddi}</span>
         </button>
 
@@ -721,7 +723,7 @@ function CampoDeTelefone({
               }}
               type="button"
             >
-              <span style={{ fontSize: 15 }}>{bandeira(p.iso2)}</span>
+              <BandeiraDoPais altura={12} iso2={p.iso2} nome={p.nome} />
               <span style={{ flex: 1 }}>{p.nome}</span>
               <span style={{ color: T.muted }}>+{p.ddi}</span>
             </button>
@@ -741,47 +743,4 @@ function CampoDeTelefone({
 
 function Erro({ texto }: { texto: string }) {
   return <p style={{ color: T.danger, fontSize: 11.5, margin: "5px 0 0" }}>{texto}</p>;
-}
-
-/**
- * O que dizer sobre os avisos, em uma frase.
- *
- * ⚠️ "SEM AVISO PARA: IMOBILIARIA" NÃO INFORMA O SUFICIENTE — foi o que o Lucas leu na primeira
- * reserva de verdade. Quem lê precisa saber o que JÁ FOI e o que fazer sobre o que não foi, e "não
- * tem telefone cadastrado" é acionável porque diz onde resolver.
- */
-function comoFoiOAviso(avisos: Array<{ motivo?: string; ok: boolean; para: string }>): string {
-  const nome: Record<string, string> = {
-    coordenador: "coordenador",
-    corretor: "corretor",
-    imobiliaria: "imobiliária",
-  };
-  const escrever = (lista: string[]) =>
-    lista.length <= 1
-      ? (lista[0] ?? "")
-      : `${lista.slice(0, -1).join(", ")} e ${lista[lista.length - 1]}`;
-  const nomes = (lista: Array<{ para: string }>) => [
-    ...new Set(lista.map((a) => nome[a.para] ?? a.para)),
-  ];
-
-  if (avisos.length === 0) return "O aviso não chegou a ser enviado.";
-
-  const foram = nomes(avisos.filter((a) => a.ok));
-  const faltaram = avisos.filter((a) => !a.ok);
-
-  if (faltaram.length === 0) return `Aviso enviado para ${escrever(foram)}.`;
-
-  const semTelefone = nomes(faltaram.filter((a) => a.motivo === "sem telefone"));
-  const outros = nomes(faltaram.filter((a) => a.motivo !== "sem telefone"));
-
-  const partes: string[] = [];
-  if (foram.length > 0) partes.push(`Aviso enviado para ${escrever(foram)}`);
-  if (semTelefone.length > 0) {
-    partes.push(
-      `${escrever(semTelefone)} ${semTelefone.length > 1 ? "não têm" : "não tem"} telefone cadastrado`,
-    );
-  }
-  if (outros.length > 0) partes.push(`falhou para ${escrever(outros)}`);
-
-  return `${partes.join("; ")}.`;
 }
