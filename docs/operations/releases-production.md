@@ -5665,3 +5665,52 @@ Registro de producao:
 - Status: `EM PRODUCAO`.
 - Proxima acao: `Lucas validar; Zeus fechar o editor de minutas`.
 
+
+## 2026-09-03 · v1.275.0 — Hercules: reserva de unidade, simulador refeito, entrada minima por empreendimento
+
+- Commit: `642162bd`.
+- Deployment novo: `dpl_7bgykcHX6Q4hEqBbTM9CXrK8Jgts` (READY, alias `c2x.app.br` aplicado).
+- Deployment anterior: `dpl_F3vaoBa1LnPpN5AESu6ccCNe4C5F` (`96178e46`) — e o ROLLBACK.
+- Dominio alvo autorizado: `https://c2x.app.br` (OK explicito do Lucas: *"comita tudo e sobe em prod"*).
+- ⚠️ ESTE DEPLOY LEVOU 34 COMMITS, e nao so o de hoje: a 1.274.0 (ficha do produto enxuta,
+  Contratos com filtro, juro do extrato com a unidade certa, consolidado sem contar o Vale do Ouro
+  quatro vezes) estava commitada mas NUNCA tinha subido — `origin/main` ainda era o `96178e46` da
+  emissao de boletos em blocos. O changelog ja tinha a entrada da 1.274.0; a 1.275.0 entrou por
+  cima.
+- Arquivos incluidos: 22 (rota e lib da reserva, `quem-pode-vender`, `composicoes`,
+  `SimuladorDeProposta`, `ModalDeReserva`, `TelaVenda`, aba de politica comercial,
+  `enterprise-settings`, `politica-comercial`, `fluxo-de-venda`, rota `/venda`, layout raiz,
+  `public/chronos-recording-signal.js`, migration 0128, changelog).
+- Arquivos EXCLUIDOS de proposito: `.tmpc2x/`, `.tmpr/`, `.tmpxl/`,
+  `pagamentos-carteira-compartilhada.csv`, `public/_folhas-teste.html` (residuo de trabalho, um
+  deles com dado de carteira) e a bancada temporaria do simulador
+  (`app/publico/lab-simulador` + `BancadaDoSimulador.tsx`), que foi APAGADA antes do commit.
+- Migrations aplicadas em producao (`bxgukywoxgivlrhjkwjx`), as duas com OK explicito do Lucas:
+  - `0125_hercules_reservas` — 20 colunas, 3 checks, RLS ligado, indice parcial
+    `hercules_reservas_uma_viva_por_unidade` conferido. Tabela vazia no deploy.
+  - `0128_apolo_entrada_minima_percentual` — coluna + CHECK 0..100 em
+    `apolo_enterprise_settings`. Cadastrado 8% no Garden (39) e 10% nos outros nove que vendem;
+    Recanto do Vale (nao vende) e Lagoa Bonita (so existe como `group:` em settings) ficaram nulos,
+    caindo no padrao da casa.
+- Validacoes executadas:
+  - `npm --prefix apps/hub run check-types`: limpo;
+  - `npm --prefix apps/hub run build`: `Compiled successfully`, rota
+    `/api/incorporador/venda/reserva` no bundle;
+  - `npx vitest run --config vitest.config.ts lib` a partir de `apps/hub`: 177 arquivos, 2.371
+    testes verdes. ⚠️ Rodar da RAIZ do monorepo faz `masterplan-estado.test.ts` falhar por
+    `process.cwd()` — nao e regressao, e o diretorio de trabalho.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: 200; `/comercial/gurgel`: 200;
+  - `/api/incorporador/venda/reserva?unidade=x` sem cookie: 401;
+  - `/chronos-recording-signal.js`: 200, servindo o START/END_RECORDING.
+- Riscos conhecidos:
+  - ⚠️ A RESERVA DISPARA WHATSAPP REAL para corretor, imobiliaria e coordenador, pelo Evolution do
+    Relacionamento. Nao ha modo de ensaio. Nenhuma reserva foi criada ate o deploy.
+  - O prazo padrao de 3 dias (teto 30) foi ESCOLHA DO ZEUS: nao existe prazo de reserva escrito em
+    lugar nenhum do repositorio. Falta o Lucas dizer o numero da casa.
+  - O piso do Garden ficou em 8% por causa de UM plano (Investidor Parcelado); o plano Normal de
+    la esta em 10%, como em todos os outros. Reversivel num campo da tela.
+  - Gerar proposta, enviar para contrato e cancelar aparecem apagados na ficha: sao a proxima fase.
+- Pendencias: validacao visual do Lucas (reserva ponta a ponta, simulador, campo da politica).
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas validar a reserva com um lote de teste; definir o prazo padrao da casa`.
