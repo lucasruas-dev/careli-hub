@@ -219,3 +219,95 @@ export function historicoDaUnidade(
 
   return eventos.sort((a, b) => b.quando.localeCompare(a.quando));
 }
+
+// ── A RESERVA NASCIDA NO PANTEON, NA LINHA DO TEMPO ─────────────────────────
+//
+// Lucas (04/09/2026), olhando a ficha do lote que ele mesmo tinha acabado de reservar: *"o
+// histórico não está ligado"* — a tela dizia "nada registrado nesta unidade, ela nunca teve
+// proposta" embaixo de uma reserva ativa, com cliente e data logo acima.
+//
+// ⚠️ O HISTÓRICO INTEIRO LIA SÓ O QUE VEIO DO C2X: propostas, etapas e eventos importados. O que
+// nasce aqui não passava por nenhuma dessas três tabelas, e a unidade parecia virgem — a pior
+// resposta possível numa tela cujo trabalho é dizer o que já aconteceu.
+//
+// ⚠️ CADA RESERVA VIRA ATÉ TRÊS LINHAS, e não uma: criada, cancelada e vencida são fatos
+// diferentes, em datas diferentes, e uma linha só ("reserva") esconderia justamente o que a pessoa
+// quer saber quando abre o histórico — por que ela não está mais de pé.
+
+export type ReservaDoHistorico = {
+  cancelada_em: null | string;
+  cancelada_motivo: null | string;
+  criado_em: string;
+  criado_por_nome: null | string;
+  id: string;
+  imobiliaria_nome?: null | string;
+  observacao: null | string;
+  proponentes: unknown;
+  situacao: string;
+  validade_em: null | string;
+};
+
+/** O nome do titular, para a linha dizer de quem é a reserva. */
+function titularDaReserva(proponentes: unknown): null | string {
+  const lista = Array.isArray(proponentes) ? proponentes : [];
+  const primeiro = lista[0] as null | undefined | { nome?: unknown };
+  return typeof primeiro?.nome === "string" && primeiro.nome.trim() ? primeiro.nome.trim() : null;
+}
+
+export function eventosDaReserva(reservas: ReservaDoHistorico[]): EventoDaUnidade[] {
+  const eventos: EventoDaUnidade[] = [];
+
+  for (const r of reservas) {
+    const cliente = titularDaReserva(r.proponentes);
+    const onde = r.imobiliaria_nome ? ` pela ${r.imobiliaria_nome}` : "";
+
+    eventos.push({
+      cliente,
+      fato: `Reserva criada${onde}`,
+      id: `reserva:${r.id}:criada`,
+      observacao: r.observacao,
+      propostaId: `reserva:${r.id}`,
+      quando: r.criado_em,
+      quem: r.criado_por_nome,
+      tipo: "etapa",
+      valor: null,
+    });
+
+    if (r.cancelada_em) {
+      eventos.push({
+        cliente,
+        fato: "Reserva cancelada",
+        id: `reserva:${r.id}:cancelada`,
+        observacao: r.cancelada_motivo,
+        propostaId: `reserva:${r.id}`,
+        quando: r.cancelada_em,
+        quem: null,
+        tipo: "etapa",
+        valor: null,
+      });
+    }
+
+    // ⚠️ VENCIDA É DEDUZIDA, e por isso só entra quando a reserva NÃO foi cancelada nem virou
+    // proposta: nesses casos o que encerrou a reserva foi outra coisa, e dizer "venceu" seria
+    // inventar um fato que não aconteceu.
+    if (
+      r.situacao === "expirada" &&
+      !r.cancelada_em &&
+      r.validade_em
+    ) {
+      eventos.push({
+        cliente,
+        fato: "Reserva vencida",
+        id: `reserva:${r.id}:vencida`,
+        observacao: null,
+        propostaId: `reserva:${r.id}`,
+        quando: r.validade_em,
+        quem: null,
+        tipo: "etapa",
+        valor: null,
+      });
+    }
+  }
+
+  return eventos.sort((a, b) => (a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0));
+}

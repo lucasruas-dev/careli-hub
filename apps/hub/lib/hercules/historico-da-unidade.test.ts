@@ -5,6 +5,8 @@ import {
   historicoDaUnidade,
   type MovimentoDoHistorico,
   type PropostaDoHistorico,
+  eventosDaReserva,
+  type ReservaDoHistorico,
 } from "./historico-da-unidade";
 
 const proposta = (p: Partial<PropostaDoHistorico> & { id: string }): PropostaDoHistorico => ({
@@ -201,5 +203,68 @@ describe("historicoDaUnidade · pagamento e assinatura", () => {
       [evento({ tipo: "pagamento", valor: "1234.56" })],
     );
     expect(eventos[0]?.valor).toBe(1234.56);
+  });
+});
+
+// ── A RESERVA DO PANTEON NA LINHA DO TEMPO ──────────────────────────────────
+describe("eventosDaReserva", () => {
+  const RESERVA: ReservaDoHistorico = {
+    cancelada_em: null,
+    cancelada_motivo: null,
+    criado_em: "2026-09-04T12:00:00.000Z",
+    criado_por_nome: "Lucas Ruas",
+    id: "res-1",
+    imobiliaria_nome: "Raiane Imobiliaria",
+    observacao: "Cliente viaja quinta.",
+    proponentes: [{ cpf: "529.982.247-25", nome: "Maria da Silva", telefone: "62991234567" }],
+    situacao: "ativa",
+    validade_em: "2026-09-07T02:59:59.000Z",
+  };
+
+  it("⚠️ a reserva nascida aqui APARECE — era o buraco todo", () => {
+    // O histórico lia só as três tabelas vindas do C2X, e a ficha dizia "nunca teve proposta"
+    // embaixo de uma reserva ativa (Lucas, 04/09/2026: *"o histórico não está ligado"*).
+    const eventos = eventosDaReserva([RESERVA]);
+    expect(eventos).toHaveLength(1);
+    expect(eventos[0]?.fato).toBe("Reserva criada pela Raiane Imobiliaria");
+    expect(eventos[0]?.cliente).toBe("Maria da Silva");
+    expect(eventos[0]?.quem).toBe("Lucas Ruas");
+    expect(eventos[0]?.observacao).toBe("Cliente viaja quinta.");
+  });
+
+  it("⚠️ cancelada e vencida são linhas SEPARADAS, com a data de cada uma", () => {
+    // Uma linha só ("reserva") esconderia justamente o que a pessoa quer saber ao abrir o
+    // histórico: por que ela não está mais de pé.
+    const cancelada = eventosDaReserva([
+      {
+        ...RESERVA,
+        cancelada_em: "2026-09-05T10:00:00.000Z",
+        cancelada_motivo: "Cliente desistiu",
+        situacao: "cancelada",
+      },
+    ]);
+    expect(cancelada.map((e) => e.fato)).toEqual(["Reserva cancelada", "Reserva criada pela Raiane Imobiliaria"]);
+    expect(cancelada[0]?.observacao).toBe("Cliente desistiu");
+  });
+
+  it("vencida entra pela data de validade", () => {
+    const vencida = eventosDaReserva([{ ...RESERVA, situacao: "expirada" }]);
+    expect(vencida.map((e) => e.fato)).toContain("Reserva vencida");
+    expect(vencida.find((e) => e.fato === "Reserva vencida")?.quando).toBe(RESERVA.validade_em);
+  });
+
+  it("⚠️ o que virou proposta NÃO ganha linha de vencida", () => {
+    // A reserva acabou porque a venda andou, não porque o prazo passou: dizer "venceu" seria
+    // inventar um fato que não aconteceu.
+    const virouProposta = eventosDaReserva([{ ...RESERVA, situacao: "proposta" }]);
+    expect(virouProposta.map((e) => e.fato)).not.toContain("Reserva vencida");
+  });
+
+  it("sem imobiliária e sem proponente, a linha ainda existe", () => {
+    const magra = eventosDaReserva([
+      { ...RESERVA, imobiliaria_nome: null, proponentes: [] },
+    ]);
+    expect(magra[0]?.fato).toBe("Reserva criada");
+    expect(magra[0]?.cliente).toBeNull();
   });
 });

@@ -1714,9 +1714,14 @@ function Miudo({ rotulo, valor }: { rotulo: string; valor: string }) {
 // cabeçalho responde uma pergunta; quem acompanha uma venda faz outras duas — quanto já andou e
 // quanto falta —, e é isso que a trilha responde sem clique nenhum.
 //
-// ⚠️ AS CUMPRIDAS GANHAM CHECK, e não só uma cor mais fraca: num traço de cinco degraus, "antes" e
-// "depois" pintados só por tom ficam iguais para quem olha de relance — e a diferença entre eles é
-// a informação inteira.
+// ⚠️ AS CUMPRIDAS GANHAM CHECK, e não só uma cor mais fraca: num caminho de cinco degraus, "antes"
+// e "depois" pintados só por tom ficam iguais para quem olha de relance — e a diferença entre eles
+// é a informação inteira.
+//
+// ⚠️ SETAS, E NÃO TRAÇOS (Lucas, 04/09/2026: *"queria tipo uma setinha em vez de linha"*). Cinco
+// barras paralelas são cinco coisas do lado uma da outra; a seta diz que uma leva à outra, que é o
+// que um fluxo é. Cada degrau avança sobre o próximo com `clip-path`, e a margem negativa encaixa
+// a ponta no recorte do seguinte — sem ela sobra uma fresta branca no meio do caminho.
 
 function TrilhaDoFluxo({ etapa }: { etapa: null | string }) {
   // Fora do caminho (disponível, bloqueada, vendida sem proposta) não há trilha para mostrar: a
@@ -1724,40 +1729,56 @@ function TrilhaDoFluxo({ etapa }: { etapa: null | string }) {
   const atual = ETAPAS_DO_FLUXO.indexOf(etapa as EtapaDoFluxo);
   if (atual < 0) return null;
 
+  // A ponta da seta, em pixels. Entra duas vezes em cada degrau: o recorte da direita (a ponta que
+  // avança) e o da esquerda (o encaixe que recebe a ponta do anterior).
+  const PONTA = 9;
+
   return (
-    <div style={{ display: "flex", gap: 2, margin: "0 0 12px" }}>
+    <div style={{ display: "flex", margin: "0 0 12px" }}>
       {ETAPAS_DO_FLUXO.map((passo, i) => {
         const cumprida = i < atual;
         const ehAtual = i === atual;
-        const cor = COR_DA_ETAPA[passo] ?? T.soft;
+        const primeiro = i === 0;
+        const ultimo = i === ETAPAS_DO_FLUXO.length - 1;
+
+        // ⚠️ O DEGRAU AVANÇA SOBRE O PRÓXIMO, e é isso que faz a seta ler como caminho: o recorte
+        // da direita é uma ponta, o da esquerda é o encaixe dela, e a margem negativa junta os
+        // dois. Sem a sobreposição sobra uma fresta branca entre os degraus.
+        // ⚠️ O ÚLTIMO NÃO TEM PONTA: o caminho acaba nele, e uma seta apontando para fora
+        // prometeria um passo que não existe.
+        const direita = ultimo
+          ? "100% 0, 100% 100%"
+          : `calc(100% - ${PONTA}px) 0, 100% 50%, calc(100% - ${PONTA}px) 100%`;
+        const recorte = primeiro
+          ? `polygon(0 0, ${direita}, 0 100%)`
+          : `polygon(0 0, ${direita}, 0 100%, ${PONTA}px 50%)`;
 
         return (
-          <div key={passo} style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                background: ehAtual ? cor : cumprida ? T.sub : T.border,
-                borderRadius: 2,
-                height: 3,
-                opacity: cumprida ? 0.5 : 1,
-              }}
-            />
-            <div
-              style={{
-                alignItems: "center",
-                color: ehAtual ? T.text : cumprida ? T.sub : T.muted,
-                display: "flex",
-                fontSize: 10,
-                fontWeight: ehAtual ? 700 : 500,
-                gap: 3,
-                marginTop: 5,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {cumprida ? <Check aria-hidden size={10} strokeWidth={3} /> : null}
+          <div
+            key={passo}
+            style={{
+              alignItems: "center",
+              background: ehAtual ? T.gold : cumprida ? T.soft : T.card,
+              border: ehAtual ? "none" : `1px solid ${T.border}`,
+              clipPath: recorte,
+              color: ehAtual ? T.btnFg : cumprida ? T.sub : T.muted,
+              display: "flex",
+              flex: 1,
+              fontSize: 10,
+              fontWeight: ehAtual ? 700 : 500,
+              gap: 3,
+              justifyContent: "center",
+              marginLeft: primeiro ? 0 : -PONTA,
+              minWidth: 0,
+              overflow: "hidden",
+              padding: `5px ${PONTA + 2}px 5px ${primeiro ? PONTA : PONTA * 2}px`,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {cumprida ? <Check aria-hidden size={10} strokeWidth={3} /> : null}
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
               {ROTULO_DA_ETAPA[passo] ?? passo}
-            </div>
+            </span>
           </div>
         );
       })}

@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-04-trilha-em-setas",
+    deployedAt: "2026-09-04T10:25:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "O histórico da unidade passou a mostrar as reservas feitas aqui: criada, cancelada e vencida, cada uma com data, quem fez e a observação.",
+              "A trilha do fluxo virou um caminho de setas, em vez de traços soltos.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "9204e2cf",
+    technical: {
+      done: "O HISTORICO NAO MOSTRAVA A RESERVA. Lucas (04/09/2026), olhando a ficha do lote que ele mesmo tinha acabado de reservar: *\"o historico nao esta ligado\"* — a tela dizia \"nunca teve proposta\" logo abaixo de uma reserva ativa, com cliente e data acima. ⚠️ ERAM DUAS TRAVAS NA MESMA LINHA, e a segunda so aparece lendo a rota: (1) `historicoDaUnidade` lia so as tres tabelas vindas do C2X (propostas, etapas, eventos), e o que nasce aqui nao passa por nenhuma delas; (2) a rota DESISTIA quando nao havia proposta (`return` antecipado com lista vazia), que e exatamente o caso de todo lote reservado no Panteon pela primeira vez — corrigir so a leitura nao teria resolvido. `eventosDaReserva` (5 testes) devolve ate TRES linhas por reserva, e nao uma: criada, cancelada e vencida sao fatos diferentes em datas diferentes, e uma linha so esconderia justamente o que se quer saber ao abrir o historico (por que ela nao esta mais de pe). ⚠️ VENCIDA E DEDUZIDA, entao so entra quando a reserva nao foi cancelada nem virou proposta: nesses casos o que a encerrou foi outra coisa, e dizer \"venceu\" inventaria um fato. O escopo da reserva e conferido pela UNIDADE contra `idsDaSessao` (ela nao guarda o codigo do empreendimento no formato da sessao), antes da leitura; falha ali devolve lista vazia e o que veio do C2X continua aparecendo. A TRILHA VIROU SETAS (*\"queria tipo uma setinha em vez de linha\"*): cinco barras paralelas sao cinco coisas lado a lado, a seta diz que uma leva a outra. Cada degrau avanca sobre o proximo com `clip-path` e margem negativa encaixa a ponta no recorte do seguinte — sem ela sobra uma fresta branca no meio do caminho. O ULTIMO nao tem ponta: o caminho acaba nele, e uma seta apontando para fora prometeria um passo que nao existe. Conferido nos DOIS temas numa bancada temporaria (apagada antes do commit), porque clip-path e facil de errar e a tela exige sessao. Typecheck limpo; 2.403 testes verdes; build ok.",
+      motivation:
+        "Um histórico que diz “nada aconteceu” embaixo de uma reserva ativa é pior do que não ter histórico: ele afirma o contrário do que a tela mostra logo acima.",
+    },
+    title: "O histórico enxerga a reserva, e a trilha virou setas",
+    type: "correcao",
+    version: "1.277.2",
+  },
+  {
     buildTag: "2026-09-04-cod-unico",
     deployedAt: "2026-09-04T10:10:00-03:00",
     internal: true,
