@@ -19,6 +19,8 @@
 // com elas esconderia que alguém mexeu naquela proposta naquele dia, que é metade do que uma
 // auditoria procura.
 
+import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
+
 /** Os onze estágios do C2X pelo nome real. */
 const ESTAGIO: Record<number, string> = {
   1: "Reservado",
@@ -74,6 +76,13 @@ export type EventoImportado = {
 export type EventoDaUnidade = {
   /** Quem estava comprando naquele momento. A unidade passa por várias pessoas. */
   cliente: null | string;
+  /**
+   * `000123` — o COD da venda, quando o evento tem um.
+   *
+   * ⚠️ NULO NO QUE VEIO DO C2X, e isso é fiel: o legado não tem código, e inventar um daria número
+   * novo para venda antiga a cada carga. Só o que nasceu no Panteon tem.
+   */
+  codigo: null | string;
   /** O que aconteceu, em uma frase. */
   fato: string;
   id: string;
@@ -167,6 +176,7 @@ export function historicoDaUnidade(
   for (const p of propostas) {
     if (!p.criado_em_c2x) continue;
     eventos.push({
+      codigo: null,
       cliente: texto(p.cliente_nome),
       fato: texto(p.imobiliaria_nome)
         ? `Proposta aberta · ${texto(p.imobiliaria_nome)}`
@@ -187,6 +197,7 @@ export function historicoDaUnidade(
   for (const m of movimentos) {
     const p = porProposta.get(m.proposta_id);
     eventos.push({
+      codigo: null,
       cliente: texto(p?.cliente_nome ?? null),
       fato: fraseDoMovimento(m),
       id: `mov:${m.proposta_id}:${m.quando}:${m.de_c2x ?? "-"}:${m.para_c2x ?? "-"}`,
@@ -205,6 +216,7 @@ export function historicoDaUnidade(
     const p = porProposta.get(e.proposta_id);
     const valor = e.valor === null || e.valor === undefined ? null : Number(e.valor);
     eventos.push({
+      codigo: null,
       cliente: texto(p?.cliente_nome ?? null),
       fato: acaoDoEvento(e.tipo, e.descricao),
       id: `${e.tipo}:${e.proposta_id}:${e.quando}:${texto(e.quem) ?? ""}`,
@@ -245,6 +257,8 @@ export type ReservaDoHistorico = {
   imobiliaria_nome?: null | string;
   observacao: null | string;
   proponentes: unknown;
+  /** O numero cru do COD. A forma sai de codigoDaVenda, num lugar so. */
+  protocolo_numero?: null | number;
   situacao: string;
   validade_em: null | string;
 };
@@ -261,6 +275,10 @@ export function eventosDaReserva(reservas: ReservaDoHistorico[]): EventoDaUnidad
 
   for (const r of reservas) {
     const cliente = titularDaReserva(r.proponentes);
+    // ⚠️ O COD ENTRA EM TODOS OS TRÊS EVENTOS da reserva (Lucas, 04/09/2026: *"aqui pode vir o
+    // código também"*). Ele já viajava para o WhatsApp e já era BUSCÁVEL na lista — mas não
+    // aparecia em lugar nenhum, então dava para procurar por um número que a tela nunca mostrou.
+    const codigo = codigoDaVenda(r.protocolo_numero) || null;
 
     // ⚠️ O FATO NÃO CARREGA A IMOBILIÁRIA, e isso foi um erro que o Lucas pegou na primeira leitura:
     // "Reserva criada pela RAIANE IMOBILIARIA" diz que a imobiliária FEZ a reserva, quando quem fez
@@ -278,6 +296,7 @@ export function eventosDaReserva(reservas: ReservaDoHistorico[]): EventoDaUnidad
 
     eventos.push({
       cliente,
+      codigo,
       fato: "Reserva criada",
       id: `reserva:${r.id}:criada`,
       observacao: contexto.length > 0 ? contexto.join("\n") : null,
@@ -291,6 +310,7 @@ export function eventosDaReserva(reservas: ReservaDoHistorico[]): EventoDaUnidad
     if (r.cancelada_em) {
       eventos.push({
         cliente,
+        codigo,
         fato: "Reserva cancelada",
         id: `reserva:${r.id}:cancelada`,
         observacao: r.cancelada_motivo,
@@ -312,6 +332,7 @@ export function eventosDaReserva(reservas: ReservaDoHistorico[]): EventoDaUnidad
     ) {
       eventos.push({
         cliente,
+        codigo,
         fato: "Reserva vencida",
         id: `reserva:${r.id}:vencida`,
         observacao: null,

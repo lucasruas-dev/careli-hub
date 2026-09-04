@@ -316,6 +316,41 @@ describe("classeDoFato", () => {
     expect(familias.every((f) => f.classe !== "transicao")).toBe(true);
   });
 
+  it("o COD viaja nos eventos da reserva — a lista ja o buscava sem mostrar", () => {
+    const [criada] = eventosDaReserva([
+      {
+        cancelada_em: null,
+        cancelada_motivo: null,
+        criado_em: "2026-09-01T12:00:00Z",
+        criado_por_nome: "Lucas Ruas",
+        id: "r9",
+        observacao: null,
+        proponentes: [{ cpf: "529.982.247-25", nome: "Maria da Silva" }],
+        protocolo_numero: 3,
+        situacao: "ativa",
+        validade_em: null,
+      },
+    ]);
+    expect(criada?.codigo).toBe("000003");
+  });
+
+  it("⚠️ o que veio do C2X fica SEM codigo: o legado nao tem, e inventar daria numero novo a cada carga", () => {
+    const [semProtocolo] = eventosDaReserva([
+      {
+        cancelada_em: null,
+        cancelada_motivo: null,
+        criado_em: "2026-09-01T12:00:00Z",
+        criado_por_nome: null,
+        id: "r10",
+        observacao: null,
+        proponentes: [],
+        situacao: "ativa",
+        validade_em: null,
+      },
+    ]);
+    expect(semProtocolo?.codigo).toBeNull();
+  });
+
   it("a reserva vencida também é da família reserva", () => {
     expect(classeDoFato("Reserva vencida")).toBe("reserva");
   });

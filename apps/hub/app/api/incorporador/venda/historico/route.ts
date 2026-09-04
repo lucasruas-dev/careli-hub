@@ -160,7 +160,7 @@ async function lerReservas(
     const { data } = await supabase
       .from("hercules_reservas")
       .select(
-        "id,proponentes,situacao,criado_em,criado_por_nome,observacao,validade_em,cancelada_em,cancelada_motivo,cancelada_por_nome,imobiliaria_entity_id,corretor_entity_id",
+        "id,proponentes,situacao,criado_em,criado_por_nome,observacao,validade_em,cancelada_em,cancelada_motivo,cancelada_por_nome,protocolo_numero,imobiliaria_entity_id,corretor_entity_id",
       )
       .eq("workspace_id", "careli")
       .eq("unidade_id", unidadeId)

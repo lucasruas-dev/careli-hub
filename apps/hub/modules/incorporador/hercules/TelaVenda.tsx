@@ -1333,7 +1333,25 @@ function Mesa({
                   >
                     <td style={celula}>
                       <b>{l.unidade ?? "—"}</b>
-                      <div style={{ color: T.muted, fontSize: 11.5 }}>{l.produto ?? ""}</div>
+                      {/* ⚠️ O COD SÓ APARECE ONDE EXISTE: as 4.857 propostas importadas não têm
+                          código (o legado não tem), e escrever "—" em quase toda linha da lista
+                          faria a coluna dizer sobretudo "não sei". Ele desce para o segundo nível
+                          da célula, ao lado do produto, e a busca — que já aceitava o COD — deixa
+                          de procurar por um número invisível. */}
+                      <div style={{ color: T.muted, display: "flex", fontSize: 11.5, gap: 6 }}>
+                        <span>{l.produto ?? ""}</span>
+                        {l.codigo ? (
+                          <span
+                            style={{
+                              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                              fontWeight: 600,
+                              letterSpacing: ".04em",
+                            }}
+                          >
+                            {l.codigo}
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td style={celula}>{l.cliente ? toTitleCase(l.cliente) : "—"}</td>
                     <td style={celula}>{l.imobiliaria ? toTitleCase(l.imobiliaria) : "—"}</td>
@@ -2519,6 +2537,25 @@ function Historico({ unidadeId }: { unidadeId: null | string }) {
                     <span style={{ display: "grid", gap: 1, minWidth: 0 }}>
                       <b style={{ fontSize: 12.5, lineHeight: 1.35 }}>
                         {e.fato}
+                        {/* ⚠️ O COD FICA JUNTO DO FATO (Lucas, 04/09/2026: *"aqui pode vir o código
+                            também"*). Ele já ia no WhatsApp e já era buscável nesta tela, mas não
+                            aparecia em lugar nenhum — dava para procurar por um número que a tela
+                            nunca mostrou. Monoespaçado, como no resto do portal: é para conferir
+                            dígito a dígito com o que chegou na mensagem. */}
+                        {e.codigo ? (
+                          <span
+                            style={{
+                              color: T.muted,
+                              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              letterSpacing: ".04em",
+                            }}
+                          >
+                            {" "}
+                            · {e.codigo}
+                          </span>
+                        ) : null}
                         {e.valor ? (
                           <span style={{ color: T.ok }}> · {dinheiro(e.valor)}</span>
                         ) : null}

@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-04-cod-na-tela",
+    deployedAt: "2026-09-04T17:20:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "O COD da venda agora aparece na tela: no histórico da unidade, ao lado do fato, e na lista, embaixo da unidade.",
+              "É o mesmo número que chega no WhatsApp — dá para conferir dígito a dígito e buscar por ele.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "395f12b0",
+    technical: {
+      done: "O COD JA EXISTIA EM TODO LUGAR MENOS NA TELA (Lucas: *\"aqui pode vir o codigo tambem\"*). Ele nasce na reserva (0129), viaja nas tres mensagens de WhatsApp e JA ERA BUSCAVEL na lista analitica (`contem(l.codigo, procurado)`) — mas nao era exibido em canto nenhum: dava para procurar por um numero que a tela nunca mostrou. `EventoDaUnidade` ganhou `codigo`, preenchido em `eventosDaReserva` a partir de `protocolo_numero` (a rota do historico passou a selecionar a coluna), e a lista mostra o COD no segundo nivel da celula da unidade, junto do produto. ⚠️ SO ONDE EXISTE: as 4.857 propostas importadas nao tem codigo, porque o legado nao tem, e escrever \"—\" em quase toda linha faria a coluna dizer sobretudo \"nao sei\" — inventar um daria numero novo para venda antiga a cada carga. Monoespacado nos dois lugares, como no resto do portal: e para conferir digito a digito com o que chegou na mensagem. Dois testes novos: o COD viaja no evento, e reserva sem protocolo fica nula em vez de virar \"000000\". 2.522 testes verdes.",
+      motivation:
+        "O codigo ja ia no WhatsApp e ja era buscavel, mas nao aparecia na tela — quem recebia a mensagem nao tinha onde conferir.",
+    },
+    title: "O COD da venda aparece no histórico e na lista",
+    type: "melhoria",
+    version: "1.280.2",
+  },
+  {
     buildTag: "2026-09-04-cor-da-reserva",
     deployedAt: "2026-09-04T16:35:00-03:00",
     internal: true,
