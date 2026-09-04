@@ -155,3 +155,85 @@ export async function podemVender(
 
   return { ok: true };
 }
+
+// ── O COORDENADOR, QUANDO ELE NÃO VEM DO C2X ────────────────────────────────
+//
+// ⚠️ O COORDENADOR DE VENDAS MORA NO LEGADO (`players`, relação `coordenador_vendas`), e é de lá
+// que `coordenadoresDosEmpreendimentos` o tira. Isso funciona para os empreendimentos que existem
+// no C2X — e deixa sem coordenador todo empreendimento que só existe no Panteon: o de TESTE
+// (Lucas, 03/09/2026: *"um empreendimento em produção, mas ele será para teste (...) eu posso ser
+// coordenador"*) e, no futuro, qualquer produto novo antes de ser cadastrado no legado.
+//
+// ⚠️ VÍNCULO, E NÃO COLUNA NOVA. `apolo_relationships` já é onde o Apolo guarda "esta pessoa tem
+// este papel neste empreendimento", com o mesmo formato do vínculo de imobiliária
+// (`metadata.enterpriseId`). Uma coluna em `apolo_enterprise_settings` pediria migration para
+// guardar o que a tabela de vínculos já sabe guardar.
+//
+// ⚠️ É FALLBACK, NÃO SUBSTITUIÇÃO: quem chama só cai aqui quando o C2X não devolveu ninguém. Um
+// coordenador cadastrado no Panteon nunca esconde o coordenador de verdade do legado.
+
+export type CoordenadorDoPanteon = {
+  nome: string;
+  telefone: null | string;
+};
+
+export async function coordenadoresDoPanteon(
+  admin: SupabaseClient,
+  enterpriseIds: string[],
+): Promise<CoordenadorDoPanteon[]> {
+  const alvos = new Set(enterpriseIds.map((id) => String(id).trim()).filter(Boolean));
+  if (alvos.size === 0) return [];
+
+  const { data, error } = await admin
+    .from("apolo_relationships")
+    .select("entity_id, status, metadata")
+    .eq("relationship_type", "coordenador")
+    .limit(500);
+
+  if (error) {
+    // Falha aqui não pode derrubar a reserva: ela já está gravada quando o aviso sai.
+    console.error("[hercules] falha ao ler coordenador do Panteon", error);
+    return [];
+  }
+
+  const ids = [
+    ...new Set(
+      ((data ?? []) as Array<{
+        entity_id: string;
+        metadata: null | { enterpriseId?: null | number | string };
+        status: null | string;
+      }>)
+        .filter((l) => l.status !== "archived")
+        .filter((l) => alvos.has(String(l.metadata?.enterpriseId ?? "").trim()))
+        .map((l) => l.entity_id),
+    ),
+  ];
+  if (ids.length === 0) return [];
+
+  const [{ data: entidades }, { data: contatos }] = await Promise.all([
+    admin.from("apolo_entities").select("id, display_name").in("id", ids),
+    admin
+      .from("apolo_contacts")
+      .select("entity_id, value, is_primary")
+      .eq("contact_type", "phone")
+      .in("entity_id", ids),
+  ]);
+
+  const telefonePorId = new Map<string, string>();
+  for (const c of (contatos ?? []) as Array<{
+    entity_id: string;
+    is_primary: boolean | null;
+    value: null | string;
+  }>) {
+    const valor = (c.value ?? "").trim();
+    if (!valor) continue;
+    if (c.is_primary === true || !telefonePorId.has(c.entity_id)) {
+      telefonePorId.set(c.entity_id, valor);
+    }
+  }
+
+  return ((entidades ?? []) as Array<{ display_name: null | string; id: string }>).map((e) => ({
+    nome: (e.display_name ?? "").trim() || "Coordenador",
+    telefone: telefonePorId.get(e.id) ?? null,
+  }));
+}

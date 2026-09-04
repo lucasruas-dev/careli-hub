@@ -6,6 +6,7 @@ import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import {
+  coordenadoresDoPanteon,
   familiaDoEmpreendimento,
   podemVender,
   quemPodeVender,
@@ -304,11 +305,23 @@ async function avisar(
       validadeEm: dados.validadeEm,
     });
 
-    const coordenadores = await coordenadoresDosEmpreendimentos(
+    // ⚠️ O COORDENADOR VEM DO C2X, E CAI NO PANTEON QUANDO NÃO EXISTE LÁ. Empreendimento que só
+    // existe aqui — o de teste, e qualquer produto novo antes de ser cadastrado no legado — ficaria
+    // sem ninguém para avisar. O fallback nunca esconde o coordenador de verdade: só entra quando a
+    // consulta ao legado volta vazia.
+    const doC2x = await coordenadoresDosEmpreendimentos(
       admin,
       [{ enterpriseId: dados.empreendimento.c2xId, label: dados.empreendimento.nome }],
       loadApoloEnterpriseCadastro,
     );
+    const coordenadores =
+      doC2x.length > 0
+        ? doC2x
+        : (await coordenadoresDoPanteon(admin, [dados.empreendimento.c2xId])).map((c) => ({
+            empreendimentos: [],
+            nome: c.nome,
+            telefone: c.telefone,
+          }));
 
     const destinos: Array<{ entityId: string; papel: string; telefone: null | string }> = [];
     if (dados.corretorId) {

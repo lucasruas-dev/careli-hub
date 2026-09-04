@@ -15,7 +15,7 @@ import {
   espelhosADescartar,
   semEspelhoDuplicado,
 } from "@/lib/hercules/sem-espelho-duplicado";
-import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
+import { carregarCadastroDeEmpreendimentos, soDoPanteon } from "@/lib/hercules/cadastro";
 import { expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
 import {
   agregarFluxo,
@@ -64,14 +64,29 @@ export async function GET(request: Request) {
   if (!supabase) return indisponivel();
 
   const codesAutorizados = await codigosDaSessao(auth.sessao);
-  if (codesAutorizados.length === 0) return indisponivel();
+
+  // ⚠️ O ESCOPO DO PORTAL É TRADUZIDO EM CÓDIGOS PELO CATÁLOGO DO C2X, e empreendimento que só
+  // existe no Panteon não tem código lá. Sem esta linha ele some da tela inteira — sem produto no
+  // seletor, sem lote no mapa, e o botão Reservar nunca fica clicável. É tradução, não permissão:
+  // `soDoPanteon` filtra pelos ids que a sessão JÁ traz.
+  const catalogoDoC2x = await catalogoDeEmpreendimentos(Date.now());
+  const idsNoC2x = new Set(catalogoDoC2x.flatMap((e) => e.stageIds.map(String)));
+  const cadastroDoPanteon = await carregarCadastroDeEmpreendimentos();
+  const proprios = soDoPanteon(
+    cadastroDoPanteon,
+    await idsDaSessao(auth.sessao),
+    idsNoC2x,
+  );
+  const codesComProprios = [...new Set([...codesAutorizados, ...proprios.map((p) => p.codigo)])];
+
+  if (codesComProprios.length === 0) return indisponivel();
 
   // O MESMO `emp` das rotas irmas, resolvido pela MESMA funcao: entende "pai:<uuid>" do cadastro,
   // o id numerico de um filho e o id do catalogo. Cadastro fora do ar = 503 (resposta pronta).
-  const catalogo = await catalogoDeEmpreendimentos(Date.now());
+  const catalogo = catalogoDoC2x;
   const resolvido = await codigosDoPedido({
     catalogo,
-    codesAutorizados,
+    codesAutorizados: codesComProprios,
     empreendimentos: empreendimentosDoPortal(catalogo, codesAutorizados),
     pedido: new URL(request.url).searchParams.get("emp"),
     sessao: auth.sessao,
@@ -102,7 +117,7 @@ export async function GET(request: Request) {
     // espelho VLO (298 unidades, 165 propostas, R$ 1,5 mi faturado) somado a VOC + VOL + VOR, que
     // são os MESMOS lotes. As 114 unidades do espelho marcadas "vendida" sem proposta nenhuma eram
     // o rastro disso na grade.
-    const cadastro = await carregarCadastroDeEmpreendimentos();
+    const cadastro = cadastroDoPanteon;
 
     const idsDoPedido = new Set<string>();
     const doPedido = new Set(codesDoPedido);
@@ -111,6 +126,10 @@ export async function GET(request: Request) {
         const id = emp.stageIds[i];
         if (id && doPedido.has(code)) idsDoPedido.add(String(id));
       });
+    }
+    // Os do Panteon entram pelo cadastro, que é a única fonte que os conhece.
+    for (const proprio of proprios) {
+      if (doPedido.has(proprio.codigo)) idsDoPedido.add(proprio.enterpriseId);
     }
 
     const fora = espelhosADescartar(cadastro, {

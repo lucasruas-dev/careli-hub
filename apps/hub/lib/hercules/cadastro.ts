@@ -103,3 +103,30 @@ export async function carregarCadastroDeEmpreendimentos(): Promise<LinhaDoCadast
 
   return saida;
 }
+
+/**
+ * Os empreendimentos que existem SÓ no Panteon, dentro de um escopo de sessão.
+ *
+ * ⚠️ SEM ISSO ELES NÃO APARECEM EM LUGAR NENHUM. O escopo do portal é traduzido em CÓDIGOS pelo
+ * catálogo do C2X (`codigosDaSessao` → `catalogoDeEmpreendimentos`, que é um select em `enterprises`
+ * do legado). Empreendimento cujo `c2x_enterprise_id` não existe lá — o de TESTE, e qualquer produto
+ * cadastrado aqui antes de subir para o legado — não vira código, e sem código a tela Venda não
+ * carrega as unidades dele: o mapa fica sem o lote e o botão Reservar nunca chega a existir.
+ *
+ * ⚠️ NÃO AMPLIA PERMISSÃO. Só devolve o que JÁ está no escopo recebido: a função filtra pelos ids
+ * da sessão, nunca acrescenta um empreendimento que o usuário não teria direito de ver. É tradução,
+ * como `codesDosIds` — e do mesmo jeito que lá, o que a sessão não traz não sai daqui.
+ */
+export function soDoPanteon(
+  cadastro: LinhaDoCadastro[],
+  idsDaSessao: string[],
+  idsDoCatalogoC2x: Set<string>,
+): { codigo: string; enterpriseId: string }[] {
+  const permitidos = new Set(idsDaSessao.map((id) => String(id).trim()).filter(Boolean));
+  if (permitidos.size === 0) return [];
+
+  return cadastro
+    .filter((l) => l.c2xEnterpriseId && permitidos.has(l.c2xEnterpriseId))
+    .filter((l) => !idsDoCatalogoC2x.has(l.c2xEnterpriseId as string))
+    .map((l) => ({ codigo: l.codigo, enterpriseId: l.c2xEnterpriseId as string }));
+}

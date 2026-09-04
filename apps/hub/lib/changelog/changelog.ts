@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-04-coordenador-do-panteon",
+    deployedAt: "2026-09-04T08:15:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "O aviso de reserva chega ao coordenador mesmo em empreendimento que só existe no Panteon.",
+              "Empreendimento cadastrado só no Panteon passa a aparecer na tela, com as unidades dele.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "642162bd",
+    technical: {
+      done: "O COORDENADOR DE VENDAS SEMPRE VEIO DO C2X (`players`, relacao `coordenador_vendas`, via `coordenadoresDosEmpreendimentos`), e por isso empreendimento que existe SO no Panteon ficava sem ninguem para avisar na reserva. Aparece agora porque o Lucas pediu um empreendimento de teste dentro da producao (*\"um empreendimento em producao, mas ele sera para teste (...) eu posso ser coordenador\"*), mas vale para qualquer produto novo antes de ser cadastrado no legado. `coordenadoresDoPanteon` le um vinculo `coordenador` em `apolo_relationships` (`metadata.enterpriseId`), o MESMO formato do vinculo de imobiliaria — nao precisou de coluna nova nem de migration para guardar o que a tabela de vinculos ja sabe guardar. ⚠️ E FALLBACK, NUNCA SUBSTITUICAO: a rota so consulta o Panteon quando a consulta ao legado volta VAZIA, entao um coordenador cadastrado aqui nunca esconde o coordenador de verdade. Falha de leitura devolve lista vazia e registra no log, porque a reserva ja esta gravada quando o aviso sai — derrubar o aviso nao pode derrubar a venda. Dados de teste criados em producao no mesmo dia (fora do codigo): empreendimento TST/9001 com 12 unidades, id que nao existe no C2X de proposito, RAIANE IMOBILIARIA vinculada (sem telefone, nao recebe), Lucas e Nivea como corretores e Lucas como coordenador. ⚠️ E O EMPREENDIMENTO DO PANTEON NAO APARECIA NA TELA — achado por uma varredura adversarial ANTES do teste do Lucas, e nao pelo teste falhando. A rota /api/incorporador/venda nao usa `idsDaSessao` para carregar unidade: ela traduz o escopo em CODIGOS pelo `catalogoDeEmpreendimentos`, que e um select em `enterprises` do MySQL do legado. Id que nao existe la nao vira codigo, e sem codigo nao ha produto no seletor, nem lote no mapa, nem `unidadeEmFoco` — o botao Reservar nunca ficaria clicavel, e a API responderia normalmente a um clique que ninguem consegue dar. `soDoPanteon` (com teste) acrescenta os empreendimentos do cadastro proprio que a sessao JA autoriza; e traducao, nao permissao — filtra pelos ids da sessao e nunca inclui o que ela nao traz. Typecheck limpo; 2.379 testes verdes em 179 arquivos; build ok.",
+      motivation:
+        "Sem isso não há como testar a reserva ponta a ponta sem mandar WhatsApp para cliente, corretor e coordenador de verdade.",
+    },
+    title: "Reserva: o coordenador pode ser cadastrado no Panteon",
+    type: "melhoria",
+    version: "1.275.1",
+  },
+  {
     buildTag: "2026-09-03-hercules-reserva-e-simulador",
     deployedAt: "2026-09-03T20:45:00-03:00",
     modules: [
