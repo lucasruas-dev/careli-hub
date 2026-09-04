@@ -3,6 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
+import {
+  bandeira,
+  BRASIL,
+  buscarPaises,
+  formatarTelefoneDoPais,
+  type Pais,
+  telefoneComPais,
+} from "@/lib/hercules/paises";
 import type { CorretorQueVende, ImobiliariaQueVende } from "@/lib/hercules/quem-pode-vender";
 import {
   conferirReserva,
@@ -67,6 +75,7 @@ export function ModalDeReserva({
   const [nome, setNome] = useState("");
   const [cpf, setCpf] = useState("");
   const [telefone, setTelefone] = useState("");
+  const [pais, setPais] = useState<Pais>(BRASIL);
   const [dias, setDias] = useState<number>(PRAZO_PADRAO_EM_DIAS);
   const [observacao, setObservacao] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -150,9 +159,12 @@ export function ModalDeReserva({
 
   const pedido = {
     corretorEntityId: corretorId,
+    ddi: pais.ddi,
     observacao,
     imobiliariaEntityId: imobiliariaEscolhida?.id ?? "",
-    proponente: { cpf, nome, telefone },
+    // ⚠️ O TELEFONE VAI COM O PAÍS NA FRENTE, sempre: é assim que o gateway entrega, e guardar sem
+    // o código deixaria um número estrangeiro indistinguível de um nacional depois.
+    proponente: { cpf, nome, telefone: telefoneComPais(telefone, pais.ddi) },
     unidadeId: unidade.id,
     validadeEm,
   };
@@ -413,11 +425,12 @@ export function ModalDeReserva({
                   placeholder="CPF"
                   valor={cpf}
                 />
-                <Campo
-                  aoMudar={setTelefone}
+                <CampoDeTelefone
+                  aoMudarNumero={setTelefone}
+                  aoMudarPais={setPais}
                   erro={erroDe("telefone")}
-                  placeholder="Telefone com DDD"
-                  valor={telefone}
+                  numero={telefone}
+                  pais={pais}
                 />
               </div>
             </div>
@@ -591,6 +604,136 @@ function Campo({
         style={{ ...campo, border: `1px solid ${erro ? T.danger : T.border}` }}
         value={valor}
       />
+      {erro ? <Erro texto={erro} /> : null}
+    </div>
+  );
+}
+
+/**
+ * O telefone do cliente: bandeira, código do país e o número com a cara certa.
+ *
+ * Lucas (04/09/2026): *"deixar o telefone no formato do telefone, e habilitar também telefones
+ * estrangeiros, trazer a bandeira dos países e o código para gente preencher (buscar)"*.
+ *
+ * ⚠️ NÃO DISCA NADA — ele foi explícito (*"não quero discar aqui não"*). Isto é um campo de
+ * entrada; o telefone só aparece para leitura na ficha, e lá também sem link de chamada.
+ *
+ * ⚠️ A MÁSCARA É SÓ DO BRASIL. `(31) 98765-4321` é a forma que todo brasileiro reconhece; nos
+ * outros países cada um tem a sua, e várias mudam por região — uma máscara errada deixa um número
+ * certo com cara de errado. Fora do Brasil o número sai agrupado de três em três, como se dita.
+ */
+function CampoDeTelefone({
+  aoMudarNumero,
+  aoMudarPais,
+  erro,
+  numero,
+  pais,
+}: {
+  aoMudarNumero: (v: string) => void;
+  aoMudarPais: (p: Pais) => void;
+  erro: null | string;
+  numero: string;
+  pais: Pais;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const achados = buscarPaises(busca);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          onClick={() => setAberto((a) => !a)}
+          style={{
+            ...campo,
+            alignItems: "center",
+            display: "flex",
+            gap: 5,
+            justifyContent: "center",
+            width: 92,
+          }}
+          title={pais.nome}
+          type="button"
+        >
+          <span style={{ fontSize: 15, lineHeight: 1 }}>{bandeira(pais.iso2)}</span>
+          <span style={{ fontSize: 12.5 }}>+{pais.ddi}</span>
+        </button>
+
+        <input
+          inputMode="tel"
+          onChange={(e) => aoMudarNumero(soDigitos(e.target.value))}
+          placeholder={pais.ddi === "55" ? "(31) 98765-4321" : "Número com DDD"}
+          style={{
+            ...campo,
+            border: `1px solid ${erro ? T.danger : T.border}`,
+            flex: 1,
+          }}
+          value={formatarTelefoneDoPais(numero, pais.ddi)}
+        />
+      </div>
+
+      {aberto ? (
+        <div
+          style={{
+            background: T.card,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            boxShadow: T.sombra,
+            left: 0,
+            maxHeight: 260,
+            overflow: "auto",
+            padding: 8,
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            width: 280,
+            zIndex: 5,
+          }}
+        >
+          <input
+            autoFocus
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar país ou código"
+            style={{ ...campo, marginBottom: 6 }}
+            value={busca}
+          />
+          {achados.map((p) => (
+            <button
+              key={`${p.iso2}-${p.ddi}`}
+              onClick={() => {
+                aoMudarPais(p);
+                setAberto(false);
+                setBusca("");
+              }}
+              style={{
+                alignItems: "center",
+                background: p.iso2 === pais.iso2 ? T.soft : "transparent",
+                border: "none",
+                borderRadius: 7,
+                color: T.text,
+                cursor: "pointer",
+                display: "flex",
+                font: "inherit",
+                fontSize: 12.5,
+                gap: 8,
+                padding: "6px 8px",
+                textAlign: "left",
+                width: "100%",
+              }}
+              type="button"
+            >
+              <span style={{ fontSize: 15 }}>{bandeira(p.iso2)}</span>
+              <span style={{ flex: 1 }}>{p.nome}</span>
+              <span style={{ color: T.muted }}>+{p.ddi}</span>
+            </button>
+          ))}
+          {achados.length === 0 ? (
+            <p style={{ color: T.muted, fontSize: 11.5, margin: "6px 8px" }}>
+              Nenhum país com esse nome ou código.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {erro ? <Erro texto={erro} /> : null}
     </div>
   );

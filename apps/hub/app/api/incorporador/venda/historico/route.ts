@@ -160,18 +160,24 @@ async function lerReservas(
     const { data } = await supabase
       .from("hercules_reservas")
       .select(
-        "id,proponentes,situacao,criado_em,criado_por_nome,observacao,validade_em,cancelada_em,cancelada_motivo,imobiliaria_entity_id",
+        "id,proponentes,situacao,criado_em,criado_por_nome,observacao,validade_em,cancelada_em,cancelada_motivo,imobiliaria_entity_id,corretor_entity_id",
       )
       .eq("workspace_id", "careli")
       .eq("unidade_id", unidadeId)
       .order("criado_em", { ascending: false })
       .limit(50);
 
-    const linhas = (data ?? []) as Array<ReservaDoHistorico & { imobiliaria_entity_id: null | string }>;
+    const linhas = (data ?? []) as Array<
+      ReservaDoHistorico & { corretor_entity_id: null | string; imobiliaria_entity_id: null | string }
+    >;
     if (linhas.length === 0) return [];
 
-    // O nome da imobiliária, para a linha não mostrar um uuid.
-    const ids = [...new Set(linhas.map((l) => l.imobiliaria_entity_id).filter(Boolean))] as string[];
+    // Os nomes da imobiliária e do corretor, para a linha não mostrar uuid.
+    const ids = [
+      ...new Set(
+        linhas.flatMap((l) => [l.imobiliaria_entity_id, l.corretor_entity_id]).filter(Boolean),
+      ),
+    ] as string[];
     const nomePorId = new Map<string, string>();
     if (ids.length > 0) {
       const { data: entidades } = await supabase
@@ -190,6 +196,7 @@ async function lerReservas(
 
     return linhas.map((l) => ({
       ...l,
+      corretor_nome: l.corretor_entity_id ? (nomePorId.get(l.corretor_entity_id) ?? null) : null,
       imobiliaria_nome: l.imobiliaria_entity_id
         ? (nomePorId.get(l.imobiliaria_entity_id) ?? null)
         : null,

@@ -237,6 +237,7 @@ export function historicoDaUnidade(
 export type ReservaDoHistorico = {
   cancelada_em: null | string;
   cancelada_motivo: null | string;
+  corretor_nome?: null | string;
   criado_em: string;
   criado_por_nome: null | string;
   id: string;
@@ -265,8 +266,12 @@ export function eventosDaReserva(reservas: ReservaDoHistorico[]): EventoDaUnidad
     // foi o coordenador — *"a reserva tem que vir criada por quem criou, que no caso foi reservada
     // pelo meu usuário"*. A imobiliária é quem VENDE, não quem agiu; ela desce para o contexto da
     // linha, junto do que o coordenador anotou.
+    // ⚠️ O CORRETOR ENTRA JUNTO (Lucas, 04/09/2026: *"acho que pode vir o nome do corretor"*). Ele
+    // é quem atende o cliente: numa reserva de seis meses atrás, saber a imobiliária sem saber a
+    // pessoa deixa quem lê com meia resposta.
     const contexto = [
       r.imobiliaria_nome ? `Imobiliária: ${r.imobiliaria_nome}` : null,
+      r.corretor_nome ? `Corretor: ${r.corretor_nome}` : null,
       r.observacao?.trim() || null,
     ].filter(Boolean);
 

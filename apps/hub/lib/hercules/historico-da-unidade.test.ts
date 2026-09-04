@@ -211,6 +211,7 @@ describe("eventosDaReserva", () => {
   const RESERVA: ReservaDoHistorico = {
     cancelada_em: null,
     cancelada_motivo: null,
+    corretor_nome: "João Souza",
     criado_em: "2026-09-04T12:00:00.000Z",
     criado_por_nome: "Lucas Ruas",
     id: "res-1",
@@ -256,6 +257,9 @@ describe("eventosDaReserva", () => {
     expect(criada?.fato).not.toContain("Raiane");
     expect(criada?.quem).toBe("Lucas Ruas");
     expect(criada?.observacao).toContain("Imobiliária: Raiane Imobiliaria");
+    // O corretor entra junto: numa reserva de meses atrás, a imobiliária sem a pessoa é meia
+    // resposta (Lucas, 04/09/2026: *"acho que pode vir o nome do corretor"*).
+    expect(criada?.observacao).toContain("Corretor: João Souza");
   });
 
   it("vencida entra pela data de validade", () => {
@@ -273,7 +277,7 @@ describe("eventosDaReserva", () => {
 
   it("sem imobiliária e sem proponente, a linha ainda existe", () => {
     const magra = eventosDaReserva([
-      { ...RESERVA, imobiliaria_nome: null, observacao: null, proponentes: [] },
+      { ...RESERVA, corretor_nome: null, imobiliaria_nome: null, observacao: null, proponentes: [] },
     ]);
     expect(magra[0]?.fato).toBe("Reserva criada");
     expect(magra[0]?.cliente).toBeNull();

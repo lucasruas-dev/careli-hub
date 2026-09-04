@@ -18,6 +18,7 @@ import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/
 import type { EventoDaUnidade } from "@/lib/hercules/historico-da-unidade";
 
 import { toTitleCase } from "@/lib/format/name-case";
+import { formatarTelefoneGuardado } from "@/lib/hercules/paises";
 
 import { T, useTemaDoPortal } from "../tema";
 import { Pilula } from "./AssinaturasDoProduto";
@@ -1446,11 +1447,15 @@ function Mesa({
           />
         </Cartao>
 
+        {/* ⚠️ O HISTÓRICO VEM ANTES DO SIMULADOR (Lucas, 04/09/2026: *"você podia trocar histórico
+            pelo simulador (...) falo a ordem"*). Quem abre um lote quer primeiro saber o que já
+            aconteceu nele — quem reservou, quando, o que foi anotado. O simulador é a próxima
+            ação, e ação vem depois de entender a situação. */}
+        <Historico unidadeId={idEmFoco} />
+
         <div style={{ flex: "0 0 auto" }}>
           <BotaoDoSimulador aoAbrir={() => aoSimular(unidadeEmFoco)} unidade={unidadeEmFoco} />
         </div>
-
-        <Historico unidadeId={idEmFoco} />
       </div>
     </div>
   );
@@ -1683,7 +1688,10 @@ function ClienteDaVenda({ nome, unidadeId }: { nome: string; unidadeId: null | s
             <>
               <Miudo rotulo="Nome" valor={dados.nome ?? "—"} />
               <Miudo rotulo="CPF" valor={dados.documento ?? "não cadastrado"} />
-              <Miudo rotulo="Telefone" valor={dados.telefone ?? "não cadastrado"} />
+              <Miudo
+                rotulo="Telefone"
+                valor={formatarTelefoneGuardado(dados.telefone) || "não cadastrado"}
+              />
             </>
           ) : (
             <span style={{ color: T.muted, fontSize: 11.5 }}>

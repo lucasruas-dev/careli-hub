@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-04-telefone-e-ordem",
+    deployedAt: "2026-09-04T11:45:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "O telefone do cliente agora tem formato: (31) 98765-4321, tanto ao digitar quanto ao consultar.",
+              "Dá para cadastrar telefone de fora do Brasil: escolha o país pela bandeira, buscando por nome ou código.",
+              "O histórico subiu para antes do simulador, e mostra também o corretor da reserva.",
+              "Na mensagem do corretor, a unidade volta para a disponibilidade — não mais “para o mapa”.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "33d69501",
+    technical: {
+      done: "TELEFONE COM FORMATO E COM PAIS (Lucas, 04/09/2026: *\"deixar o telefone no formato do telefone, e habilitar tambem telefones estrangeiros, trazer a bandeira dos paises e o codigo para gente preencher (buscar)\"*). NOVO `lib/hercules/paises.ts` (11 testes) com 60 paises — os de onde vem comprador da carteira mais os grandes; uma lista de 195 linhas com Kiribati nao ajuda ninguem a achar Portugal mais rapido. A bandeira sai do ISO2 pela mesma conta de code points de `lib/iris/phone-country.ts`; o que justifica a lista nova e o NOME, que aquela nao tem porque responde a pergunta inversa (\"de que pais e este numero que chegou?\"). ⚠️ A MASCARA E SO DO BRASIL: nos outros paises cada um tem a sua e varias mudam por regiao — mascara errada deixa numero certo com cara de errado. Fora do Brasil o numero sai agrupado de tres em tres, como se dita. ⚠️ `telefoneComPais` NAO REPETE O DDI ja digitado: colar \"+55 31 98765-4321\" com o Brasil escolhido daria 5555319..., um numero que nao existe, e o erro so apareceria quando a mensagem nao chegasse. ⚠️ E `formatarTelefoneGuardado` existe porque a ficha mostrava `31983013616` — formatar na entrada e esquecer a saida deixa o dado bonito so para quem digitou. A validacao passou a aceitar estrangeiro (6 a 15 digitos): tentar validar cada pais seria errar em todos, e quem sabe se o numero esta certo e o gateway, quando entrega. ⚠️ NADA DISCA — ele foi explicito (*\"nao quero discar aqui nao\"*): o campo e de entrada e a ficha so mostra, sem link de chamada. O HISTORICO SUBIU para antes do simulador (*\"voce podia trocar historico pelo simulador (...) falo a ordem\"*): quem abre um lote quer primeiro saber o que ja aconteceu nele; o simulador e a proxima acao, e acao vem depois de entender a situacao. E ele mostra o CORRETOR junto da imobiliaria (*\"acho que pode vir o nome do corretor\"*) — numa reserva de meses atras, a imobiliaria sem a pessoa e meia resposta. A mensagem do corretor diz \"volta para a disponibilidade\" no lugar de \"volta para o mapa\". Typecheck limpo; 2.415 testes verdes; build ok.",
+      motivation:
+        "Um telefone escrito como 31983013616 é o número certo num formato que ninguém lê de primeira — e cliente de fora do Brasil simplesmente não cabia no campo.",
+    },
+    title: "Telefone com formato e país, e o histórico antes do simulador",
+    type: "melhoria",
+    version: "1.278.0",
+  },
+  {
     buildTag: "2026-09-04-quem-criou-a-reserva",
     deployedAt: "2026-09-04T10:45:00-03:00",
     internal: true,

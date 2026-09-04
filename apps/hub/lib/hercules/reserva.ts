@@ -29,6 +29,8 @@ export type ProponenteDaReserva = {
 export type PedidoDeReserva = {
   /** O corretor. Opcional: a reserva pode sair no nome só da imobiliária. */
   corretorEntityId?: null | string;
+  /** O código de país do telefone do cliente, só dígitos. Ausente = Brasil. */
+  ddi?: null | string;
   imobiliariaEntityId: string;
   proponente: ProponenteDaReserva;
   unidadeId: string;
@@ -62,8 +64,16 @@ export type ErroDaReserva = {
  * ⚠️ NÃO É PRECIOSISMO: a reserva DISPARA mensagem para esse número. Aceitar "9999" grava uma
  * reserva cujo aviso nunca chega, e ninguém descobre até o cliente ligar cobrando.
  */
-export function telefoneParecePossivel(bruto: string): boolean {
+export function telefoneParecePossivel(bruto: string, ddi = "55"): boolean {
   const d = soDigitos(bruto);
+
+  // ⚠️ FORA DO BRASIL A REGRA É OUTRA, e tentar validar cada país seria errar em todos: o
+  // comprimento varia de 6 a 15 dígitos e o formato muda até por região. Aqui só se confere que há
+  // número suficiente para existir; quem sabe se o número está certo é o gateway, quando entrega.
+  if (String(ddi).replace(/\D/g, "") !== "55") {
+    return d.length >= 6 && d.length <= 15;
+  }
+
   // 10 = fixo com DDD; 11 = celular com DDD; 12/13 = com DDI 55.
   if (d.length < 10 || d.length > 13) return false;
   const nacional = d.length > 11 && d.startsWith("55") ? d.slice(2) : d;
@@ -109,7 +119,7 @@ export function conferirReserva(
     erros.push({ campo: "cpf", mensagem: "CPF inválido." });
   }
 
-  if (!telefoneParecePossivel(pedido.proponente.telefone)) {
+  if (!telefoneParecePossivel(pedido.proponente.telefone, pedido.ddi ?? "55")) {
     erros.push({
       campo: "telefone",
       mensagem: "Telefone com DDD, para o aviso da reserva chegar.",
@@ -215,7 +225,7 @@ export function avisosDaReserva(dados: DadosDoAviso): AvisoDaReserva[] {
         `A unidade ${lote} está *reservada* para ${cliente}.`,
         `A reserva vale até *${ate}*. ${cod}`.trim(),
         "",
-        "Depois desse prazo a unidade volta para o mapa automaticamente. Para seguir com a venda, gere a proposta antes do vencimento.",
+        "Depois desse prazo a unidade volta para a disponibilidade automaticamente. Para seguir com a venda, gere a proposta antes do vencimento.",
       ].join("\n"),
     },
     {
