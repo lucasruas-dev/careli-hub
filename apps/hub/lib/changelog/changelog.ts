@@ -36,6 +36,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-04-cod-da-venda",
+    deployedAt: "2026-09-04T09:55:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "Toda reserva ganha um COD (RS-000123). É o mesmo número da venda inteira: vira PR- na proposta e CT- no contrato, então com o número do contrato você chega em tudo que aconteceu antes.",
+              "O COD vai nas mensagens de WhatsApp e na busca — dá para achar a venda digitando só o número.",
+              "No topo da ficha, a trilha do fluxo: as etapas já cumpridas aparecem marcadas, a atual acesa e as que faltam apagadas.",
+              "Clicar no nome do cliente mostra nome, CPF e telefone dele.",
+              "Campo de observações na reserva, para anotar o que foi combinado.",
+              "O aviso depois de reservar virou uma faixa no alto (antes ocupava uma coluna inteira ao lado do estoque) e diz quem foi avisado e quem ficou sem aviso, com o motivo.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+      {
+        module: "Portal comercial",
+        screens: [
+          {
+            items: [
+              "O portal da Gurgel passou a usar as cores da marca deles: o azul-marinho nos botões e o azul royal no que está selecionado.",
+            ],
+            screen: "Todas",
+          },
+        ],
+      },
+    ],
+    rollback: "c6154b24",
+    technical: {
+      done: "O COD DA VENDA (migration 0129). Lucas (04/09/2026): *\"eu gosto muito de protocolo\"*, *\"codigo de reserva, que vira depois codigo de proposta, que vira depois codigo de contrato\"*, *\"no contrato a gente devia apontar um numero de contrato que com esse numero a gente tem a vida dessa venda toda mapeada\"* e *\"em vez de protocolo vamos tratar como COD\"*. ⚠️ UM NUMERO, TRES PREFIXOS: a coluna guarda o NUMERO CRU (`hercules_reservas.protocolo_numero`, sequencia `hercules_protocolo_seq`) e o texto sai de `codigoDaVenda(numero, etapa)` — RS na reserva, PR na proposta, CT do contrato em diante. Gravar \"RS-000123\" obrigaria a reescrever a linha a cada etapa e a errar quando alguem voltasse atras. Assinatura e faturamento continuam CT de proposito: depois que o contrato existe, o documento e ele. O mecanismo e o do `AT-` da Iris (0025): sequencia atomica + lpad 6, nunca `count(*) + 1` — no salao sao dezenas de tablets na mesma tela. `numeroDoCodigo` aceita as tres formas que a pessoa tem na mao (CT-000123, 000123, 123), porque exigir o formato exato transformaria a busca num quiz sobre a convencao. 10 testes. O COD vai nas TRES mensagens (*\"isso tem que ir na mensagem tambem\"*): codigo que so existe na tela obriga a abrir a tela para descobrir o codigo. A FAIXA DO RECADO saiu de dentro do flex que divide a tela — ela nascia como COLUNA verde vazia de altura inteira ao lado do estoque (*\"nao gostei desse painel na esquerda\"*) — e o texto passou a dizer o que aconteceu: \"Aviso enviado para corretor e coordenador; imobiliaria nao tem telefone cadastrado\" no lugar de \"sem aviso para: imobiliaria\", que nao diz onde resolver. TRILHA DO FLUXO (*\"um workflow, para gente ver ele caminhando nas etapas\"*, *\"concluindo as que ele ja passou\"*): as cumpridas ganham CHECK e nao so um tom mais fraco — num traco de cinco degraus, antes e depois pintados so por cor ficam iguais de relance, e a diferenca entre eles e a informacao inteira. Fora do caminho (disponivel, bloqueada) a trilha nao aparece. CONTATO DO CLIENTE em rota propria, SOB DEMANDA: o telefone de 4.857 clientes nao viaja com a lista para quem so queria ver o funil. Duas fontes (proponente da reserva; ou o cadastro do Apolo casado pelo `document_masked`, que e como o sync do C2X grava o documento — procurar pelo hash devolveria nada justamente para quem veio do legado). CPF mascarado, telefone inteiro: um serve para conferir, o outro e o que ele pediu para ver. OBSERVACOES na reserva: a coluna existia desde a 0125, faltava a porta; campo livre e nao lista de motivos, porque o que se anota e o que a conversa teve de particular. CORES DA GURGEL: os dois hex saem do PROPRIO logo (amostrei o PNG 651x518 — 60.464 px sao #000E3C e 21.604 sao #3268B2). Cada tom com um papel: o marinho e o peso (botao), o royal e o realce (selecao). No escuro eles trocam, porque #000E3C sobre #0a0a0a e quase invisivel. Por SLUG e nao por tipo de portal — a cor e da empresa. Typecheck limpo; 2.401 testes verdes em 179 arquivos; build ok.",
+      motivation:
+        "Sem um número, achar uma venda depende de lembrar o nome do cliente e o lote. Com ele, o corretor anota o que chegou no WhatsApp e a venda inteira volta.",
+    },
+    title: "A venda ganhou COD, e a ficha ganhou a trilha do fluxo",
+    type: "novidade",
+    version: "1.277.0",
+  },
+  {
     buildTag: "2026-09-04-unidades-do-panteon",
     deployedAt: "2026-09-04T09:05:00-03:00",
     modules: [

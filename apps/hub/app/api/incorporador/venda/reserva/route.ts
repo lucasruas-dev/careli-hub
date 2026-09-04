@@ -11,6 +11,7 @@ import {
   podemVender,
   quemPodeVender,
 } from "@/lib/hercules/quem-pode-vender";
+import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import {
   avisosDaReserva,
   conferirReserva,
@@ -201,7 +202,7 @@ export async function POST(request: Request) {
         validade_em: pedido.validadeEm,
         workspace_id: WORKSPACE,
       })
-      .select("id")
+      .select("id, protocolo_numero")
       .maybeSingle();
 
     if (error) {
@@ -221,8 +222,14 @@ export async function POST(request: Request) {
       .update({ atualizado_em: new Date().toISOString(), situacao: "reservada" })
       .eq("id", unidade.id);
 
+    const codigo = codigoDaVenda(
+      (criada as null | { protocolo_numero?: null | number })?.protocolo_numero,
+      "reservado",
+    );
+
     const avisos = await avisar(admin, {
       corretorId: pedido.corretorEntityId ?? null,
+      codigo,
       empreendimento: { c2xId: String(unidade.enterprise_id), nome: empreendimento.nome },
       imobiliariaId: pedido.imobiliariaEntityId,
       proponente: pedido.proponente,
@@ -230,7 +237,7 @@ export async function POST(request: Request) {
       validadeEm: pedido.validadeEm,
     });
 
-    return NextResponse.json({ data: { avisos, id: criada?.id ?? null } });
+    return NextResponse.json({ data: { avisos, codigo, id: criada?.id ?? null } });
   } catch (erro) {
     console.error("[hercules][reserva] falha ao reservar", erro);
     return NextResponse.json({ error: "Não foi possível reservar agora." }, { status: 503 });
@@ -253,6 +260,7 @@ async function avisar(
     empreendimento: { c2xId: string; nome: string };
     imobiliariaId: string;
     proponente: { cpf: string; nome: string; telefone: string };
+    codigo: string;
     unidade: string;
     validadeEm: string;
   },
@@ -297,6 +305,7 @@ async function avisar(
 
     const textos = avisosDaReserva({
       cliente: dados.proponente.nome,
+      codigo: dados.codigo,
       corretor: dados.corretorId ? (nomePorId.get(dados.corretorId) ?? null) : null,
       cpf: dados.proponente.cpf,
       empreendimento: dados.empreendimento.nome,

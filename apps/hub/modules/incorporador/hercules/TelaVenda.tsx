@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bookmark,
+  Check,
   FileSignature,
   FileText,
   Grid2x2,
@@ -718,6 +719,45 @@ export function TelaVenda() {
         })}
       </div>
 
+      {/* ⚠️ A FAIXA FICA FORA DO FLEX DE BAIXO. Ela nasceu dentro dele e virou uma COLUNA verde
+          vazia do lado do estoque, ocupando a altura toda da tela (Lucas, 04/09/2026: *"não gostei
+          desse painel na esquerda mostrando a reserva"*). Aqui ela é o que devia ser: uma linha
+          acima do conteúdo, que empurra o resto para baixo e some quando fechada. */}
+      {recado ? (
+        <div
+          style={{
+            alignItems: "center",
+            background: T.okBg,
+            border: `1px solid ${T.ok}`,
+            borderRadius: 10,
+            color: T.ok,
+            display: "flex",
+            fontSize: 12.5,
+            gap: 12,
+            justifyContent: "space-between",
+            margin: "0 0 12px",
+            padding: "9px 12px",
+          }}
+        >
+          <span>{recado}</span>
+          <button
+            onClick={() => setRecado(null)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: T.ok,
+              cursor: "pointer",
+              font: "inherit",
+              fontSize: 12,
+              fontWeight: 700,
+              padding: 0,
+            }}
+            type="button"
+          >
+            fechar
+          </button>
+        </div>
+      ) : null}
       <div style={{ display: "flex", flex: "1 1 auto", minHeight: 0 }}>
       {/* ⚠️ A MODAL VIVE AQUI, e não dentro da Mesa: ela cobre a tela inteira, e um <dialog> preso
           a uma coluna herdaria o `overflow: hidden` dela. */}
@@ -757,41 +797,6 @@ export function TelaVenda() {
         />
       ) : null}
 
-      {recado ? (
-        <div
-          style={{
-            alignItems: "center",
-            background: T.okBg,
-            border: `1px solid ${T.ok}`,
-            borderRadius: 10,
-            color: T.ok,
-            display: "flex",
-            fontSize: 12.5,
-            gap: 12,
-            justifyContent: "space-between",
-            margin: "0 0 10px",
-            padding: "9px 12px",
-          }}
-        >
-          <span>{recado}</span>
-          <button
-            onClick={() => setRecado(null)}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: T.ok,
-              cursor: "pointer",
-              font: "inherit",
-              fontSize: 12,
-              fontWeight: 700,
-              padding: 0,
-            }}
-            type="button"
-          >
-            fechar
-          </button>
-        </div>
-      ) : null}
 
       {visao === "mesa" ? (
         <Mesa
@@ -912,7 +917,10 @@ function Mesa({
       lista.filter(
         (l) =>
           (!imobiliaria || l.imobiliaria === imobiliaria) &&
+          // ⚠️ O COD ENTRA NA BUSCA, e é o primeiro lugar em que alguém o usa: quem recebeu o
+          // número no WhatsApp digita ele aqui para achar a venda.
           (contem(l.unidade, procurado) ||
+            contem(l.codigo, procurado) ||
             contem(l.cliente, procurado) ||
             contem(l.imobiliaria, procurado) ||
             contem(l.produto, procurado)),
@@ -1360,6 +1368,7 @@ function Mesa({
         >
           {unidadeEmFoco || propostaEmFoco ? (
             <>
+              <TrilhaDoFluxo etapa={propostaEmFoco?.etapa ?? unidadeEmFoco?.etapa ?? null} />
               {unidadeEmFoco?.preco ? (
                 <Linha rotulo="Valor de tabela" valor={dinheiro(unidadeEmFoco.preco)} />
               ) : null}
@@ -1368,6 +1377,13 @@ function Mesa({
                   {/* ⚠️ ETAPA E PRODUTO SAÍRAM DA LISTA (Lucas, 03/09/2026): a etapa já está no selo
                       aqui em cima e o produto no filtro do topo. Repetir os dois gastava duas linhas
                       da ficha para dizer o que a tela já dizia duas vezes. */}
+                  {/* ⚠️ O COD VEM PRIMEIRO (Lucas, 04/09/2026: *"eu gosto muito de protocolo"*,
+                      *"em vez de protocolo vamos tratar como COD"*). É o número que ele fala no
+                      telefone: aparece antes de data e valor porque é por ele que se ACHA a venda,
+                      não por eles. */}
+                  {propostaEmFoco.codigo ? (
+                    <Linha rotulo="COD" valor={propostaEmFoco.codigo} />
+                  ) : null}
                   <Linha
                     rotulo={rotuloDaData(propostaEmFoco.etapa)}
                     valor={dia(propostaEmFoco.desde)}
@@ -1376,10 +1392,30 @@ function Mesa({
                     rotulo="Valor negociado"
                     valor={propostaEmFoco.valor ? dinheiro(propostaEmFoco.valor) : "—"}
                   />
-                  <Linha rotulo="Cliente" valor={toTitleCase(propostaEmFoco.cliente) || "—"} />
+                  <ClienteDaVenda
+                    nome={toTitleCase(propostaEmFoco.cliente) || "—"}
+                    unidadeId={idEmFoco}
+                  />
                   <Linha rotulo="Imobiliária" valor={toTitleCase(propostaEmFoco.imobiliaria) || "—"} />
                   {/* O FLUXO do contrato, não o nome do plano — a mesma escrita do extrato. */}
                   <Linha rotulo="Plano" valor={propostaEmFoco.plano ?? "—"} />
+                  {propostaEmFoco.observacao ? (
+                    <div style={{ borderTop: `1px dashed ${T.border}`, marginTop: 8, paddingTop: 8 }}>
+                      <div style={{ color: T.muted, fontSize: 10.5, fontWeight: 650 }}>
+                        Observações
+                      </div>
+                      <p
+                        style={{
+                          color: T.sub,
+                          fontSize: 12.5,
+                          margin: "3px 0 0",
+                          whiteSpace: "pre-wrap",
+                        }}
+                      >
+                        {propostaEmFoco.observacao}
+                      </p>
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 // ⚠️ SEM PROPOSTA VIVA NÃO É ERRO: é lote livre, e é o começo normal de uma venda.
@@ -1539,6 +1575,192 @@ function ModalDoSimulador({
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * O nome do cliente, que ao ser clicado mostra como falar com ele.
+ *
+ * Lucas (04/09/2026): *"como eu posso ter os dados do cliente da reserva, pode ser que eu queira
+ * ligar para ele (...) tipo um link ao clicar no nome"*, e depois *"acho que ligar não, só mostrar
+ * mesmo"*.
+ *
+ * ⚠️ BUSCA SÓ NO CLIQUE. O telefone poderia vir junto da lista, mas são 4.857 linhas: o contato de
+ * milhares de clientes ficaria no navegador de quem só queria ver o funil. Aqui sai uma unidade por
+ * vez, quando alguém pede.
+ *
+ * ⚠️ O CPF APARECE MASCARADO e o telefone inteiro: o documento serve para conferir que é a pessoa
+ * certa, o telefone é o que ele pediu para ver. Mascarar o telefone não serviria para nada.
+ */
+function ClienteDaVenda({ nome, unidadeId }: { nome: string; unidadeId: null | string }) {
+  const [aberto, setAberto] = useState(false);
+  const [dados, setDados] = useState<
+    null | { documento: null | string; nome: null | string; telefone: null | string }
+  >(null);
+  const [buscando, setBuscando] = useState(false);
+
+  // Trocar de unidade fecha o que estava aberto: senão o painel mostraria o contato do lote
+  // anterior sob o nome do novo, que é o pior tipo de erro num dado de contato.
+  useEffect(() => {
+    setAberto(false);
+    setDados(null);
+  }, [unidadeId]);
+
+  async function abrir() {
+    if (aberto) {
+      setAberto(false);
+      return;
+    }
+    setAberto(true);
+    if (dados || !unidadeId) return;
+
+    setBuscando(true);
+    try {
+      const r = await fetch(
+        `/api/incorporador/venda/cliente?unidade=${encodeURIComponent(unidadeId)}`,
+        { cache: "no-store" },
+      );
+      const texto = await r.text();
+      const corpo = texto ? (JSON.parse(texto) as { data?: typeof dados }) : {};
+      setDados(corpo.data ?? null);
+    } catch {
+      setDados(null);
+    } finally {
+      setBuscando(false);
+    }
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          alignItems: "baseline",
+          borderTop: `1px dashed ${T.border}`,
+          display: "flex",
+          gap: 10,
+          justifyContent: "space-between",
+          padding: "7px 0",
+        }}
+      >
+        <span style={{ color: T.sub, fontSize: 12.5 }}>Cliente</span>
+        <button
+          onClick={() => void abrir()}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: T.text,
+            cursor: unidadeId ? "pointer" : "default",
+            font: "inherit",
+            fontSize: 12.5,
+            fontWeight: 650,
+            padding: 0,
+            textAlign: "right",
+            textDecoration: unidadeId ? "underline" : "none",
+            textDecorationStyle: "dotted",
+            textUnderlineOffset: 3,
+          }}
+          type="button"
+        >
+          {nome}
+        </button>
+      </div>
+
+      {aberto ? (
+        <div
+          style={{
+            background: T.soft,
+            borderRadius: 8,
+            display: "grid",
+            gap: 4,
+            margin: "0 0 8px",
+            padding: "8px 10px",
+          }}
+        >
+          {buscando ? (
+            <span style={{ color: T.muted, fontSize: 11.5 }}>Buscando…</span>
+          ) : dados ? (
+            <>
+              <Miudo rotulo="Nome" valor={dados.nome ?? "—"} />
+              <Miudo rotulo="CPF" valor={dados.documento ?? "não cadastrado"} />
+              <Miudo rotulo="Telefone" valor={dados.telefone ?? "não cadastrado"} />
+            </>
+          ) : (
+            <span style={{ color: T.muted, fontSize: 11.5 }}>
+              Sem contato cadastrado para esta unidade.
+            </span>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Miudo({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div style={{ display: "flex", gap: 10, justifyContent: "space-between" }}>
+      <span style={{ color: T.muted, fontSize: 11.5 }}>{rotulo}</span>
+      <span style={{ fontSize: 11.5, fontWeight: 600 }}>{valor}</span>
+    </div>
+  );
+}
+
+// ── A TRILHA DO FLUXO ───────────────────────────────────────────────────────
+//
+// Lucas (04/09/2026): *"vamos colocar no topo desse painel um workflow, para gente ver ele
+// caminhando nas etapas?"* e *"concluindo as que ele já passou"*.
+//
+// ⚠️ O SELO SOZINHO DIZ ONDE ESTÁ, MAS NÃO DE ONDE VEIO NEM O QUE FALTA. "Reserva" no canto do
+// cabeçalho responde uma pergunta; quem acompanha uma venda faz outras duas — quanto já andou e
+// quanto falta —, e é isso que a trilha responde sem clique nenhum.
+//
+// ⚠️ AS CUMPRIDAS GANHAM CHECK, e não só uma cor mais fraca: num traço de cinco degraus, "antes" e
+// "depois" pintados só por tom ficam iguais para quem olha de relance — e a diferença entre eles é
+// a informação inteira.
+
+function TrilhaDoFluxo({ etapa }: { etapa: null | string }) {
+  // Fora do caminho (disponível, bloqueada, vendida sem proposta) não há trilha para mostrar: a
+  // venda não começou, ou não passou por aqui. Um traço todo apagado só ocuparia espaço.
+  const atual = ETAPAS_DO_FLUXO.indexOf(etapa as EtapaDoFluxo);
+  if (atual < 0) return null;
+
+  return (
+    <div style={{ display: "flex", gap: 2, margin: "0 0 12px" }}>
+      {ETAPAS_DO_FLUXO.map((passo, i) => {
+        const cumprida = i < atual;
+        const ehAtual = i === atual;
+        const cor = COR_DA_ETAPA[passo] ?? T.soft;
+
+        return (
+          <div key={passo} style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                background: ehAtual ? cor : cumprida ? T.sub : T.border,
+                borderRadius: 2,
+                height: 3,
+                opacity: cumprida ? 0.5 : 1,
+              }}
+            />
+            <div
+              style={{
+                alignItems: "center",
+                color: ehAtual ? T.text : cumprida ? T.sub : T.muted,
+                display: "flex",
+                fontSize: 10,
+                fontWeight: ehAtual ? 700 : 500,
+                gap: 3,
+                marginTop: 5,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {cumprida ? <Check aria-hidden size={10} strokeWidth={3} /> : null}
+              {ROTULO_DA_ETAPA[passo] ?? passo}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

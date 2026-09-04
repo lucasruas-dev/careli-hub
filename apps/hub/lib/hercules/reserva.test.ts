@@ -123,6 +123,7 @@ describe("mascararCpf", () => {
 describe("avisosDaReserva", () => {
   const DADOS = {
     cliente: "Maria da Silva",
+    codigo: "RS-000123",
     corretor: "João Souza",
     cpf: "529.982.247-25",
     empreendimento: "Vale do Ouro",
@@ -165,6 +166,28 @@ describe("avisosDaReserva", () => {
     const porPapel = new Map(avisos.map((a) => [a.papel, a.texto]));
     expect(porPapel.get("imobiliaria")).toContain("Reserva no nome da imobiliária");
     expect(porPapel.get("coordenador")).toContain("Corretor: não informado");
+  });
+
+  it("⚠️ o COD vai nas TRÊS mensagens", () => {
+    // Lucas, 04/09/2026: *"isso tem que ir na mensagem também"*. É ali que ele serve: o corretor
+    // anota o número que chegou no WhatsApp e liga com ele na mão. Código que só existe na tela
+    // obriga a abrir a tela para descobrir o código.
+    for (const aviso of avisosDaReserva(DADOS)) {
+      expect(aviso.texto).toContain("RS-000123");
+      expect(aviso.texto).toContain("COD");
+    }
+  });
+
+  it("sem código, a frase não fica com buraco onde ele estaria", () => {
+    // O COD é interpolado no fim de uma frase pronta; sem ele não pode sobrar espaço dobrado nem
+    // linha terminando em branco, que é como um texto montado por concatenação denuncia a falta.
+    for (const aviso of avisosDaReserva({ ...DADOS, codigo: "" })) {
+      expect(aviso.texto).not.toContain("COD");
+      for (const linha of aviso.texto.split("\n")) {
+        expect(linha).not.toMatch(/ {2}/u);
+        expect(linha).toBe(linha.trimEnd());
+      }
+    }
   });
 
   it("o coordenador vê imobiliária, corretor e vencimento", () => {

@@ -62,6 +62,31 @@ const TOKENS_ESCUROS = `
     color-scheme: dark !important;
 `;
 
+// A COR DA MARCA DO PORTAL — o azul da Gurgel no lugar do preto.
+//
+// Lucas (04/09/2026): *"para a gurgel, vamos fazer um agrado para eles, vamos deixar o tom de azul
+// da marca dele ser essa cor destaque? em vez dos botões serem pretos ser da cor da marca dele"* e,
+// depois: *"trabalha os dois tons"*.
+//
+// ⚠️ OS DOIS HEX SAÍRAM DO PRÓPRIO LOGO, e não de um palpite: amostrando o PNG da marca
+// (651×518), 60.464 pixels são #000E3C (o marinho do triângulo externo e do texto) e 21.604 são
+// #3268B2 (o royal do triângulo interno). São essas as duas cores da identidade deles.
+//
+// ⚠️ E CADA TOM TEM O SEU PAPEL, que é o que "trabalhar os dois" significa aqui: o MARINHO é o
+// peso — botão principal, a ação que se toma —, e o ROYAL é o realce — a seleção, o que está
+// escolhido. Usar um só faria o portal inteiro virar um bloco azul sem hierarquia.
+//
+// ⚠️ NO ESCURO OS PAPÉIS TROCAM DE TOM. #000E3C sobre um fundo #0a0a0a é quase invisível: no tema
+// escuro o botão passa a ser o ROYAL, e o realce clareia para #6f9ede, que se separa do fundo.
+// A regra do arquivo continua valendo — nenhuma cor tem sua única definição no bloco escuro.
+const MARCA_GURGEL_CLARA = `
+    --inc-btn-bg:#000e3c; --inc-btn-fg:#ffffff; --inc-gold:#3268b2;
+`;
+
+const MARCA_GURGEL_ESCURA = `
+    --inc-btn-bg:#3268b2; --inc-btn-fg:#ffffff; --inc-gold:#6f9ede;
+`;
+
 // A MARCA SEGUE O TEMA ESCOLHIDO, não mais o do aparelho: com escolha explícita e a troca só na
 // media query, o cliente que pedisse o escuro veria o símbolo escuro sobre o fundo escuro. Duas
 // <img> em vez de <picture> com media, porque o mesmo mecanismo serve para quem só tem UMA versão
@@ -109,6 +134,10 @@ export const TEMA_CSS = `
   :root:has(.inc) {${TOKENS_CLAROS}  }
   :root:has(.inc), :root:has(.inc) body { background: var(--inc-page); }
 
+  /* A marca do portal, quando ele tem uma. Vem DEPOIS dos tokens para sobrescrever os três. */
+  .inc--gurgel {${MARCA_GURGEL_CLARA}  }
+  :root:has(.inc--gurgel) {${MARCA_GURGEL_CLARA}  }
+
   /* ── 2. O APARELHO decide, enquanto ninguém escolheu ────────────────────────
      O :not([data-inc-tema="claro"]) é o guarda: sem ele, quem está com o sistema no escuro e
      pediu o portal claro continuaria no escuro, e metade do alternador não funcionaria.
@@ -119,6 +148,8 @@ export const TEMA_CSS = `
     :root:not([data-inc-tema="claro"]) .inc {${TOKENS_ESCUROS}  }
     :root:not([data-inc-tema="claro"]) .inc {${MARCA_ESCURA}  }
     :root:not([data-inc-tema="claro"]):has(.inc) {${TOKENS_ESCUROS}  }
+    :root:not([data-inc-tema="claro"]) .inc--gurgel {${MARCA_GURGEL_ESCURA}  }
+    :root:not([data-inc-tema="claro"]):has(.inc--gurgel) {${MARCA_GURGEL_ESCURA}  }
   }
 
   /* ── 3. A ESCOLHA EXPLÍCITA vence nos dois sentidos ─────────────────────────
@@ -128,6 +159,8 @@ export const TEMA_CSS = `
   :root[data-inc-tema="escuro"] .inc {${TOKENS_ESCUROS}  }
   :root[data-inc-tema="escuro"] .inc {${MARCA_ESCURA}  }
   :root[data-inc-tema="escuro"]:has(.inc) {${TOKENS_ESCUROS}  }
+  :root[data-inc-tema="escuro"] .inc--gurgel {${MARCA_GURGEL_ESCURA}  }
+  :root[data-inc-tema="escuro"]:has(.inc--gurgel) {${MARCA_GURGEL_ESCURA}  }
 
   /* ── A CASCA DO PORTAL: menu à esquerda, conteúdo à direita ─────────────────
      Lucas, 12/08: "no sidebar lateral queria ter poucas abas: CRM - Vendas - Carteira".
@@ -550,4 +583,14 @@ export function Marca({
       ) : null}
     </>
   );
+}
+
+/**
+ * A classe de marca do portal, quando ele tem cor própria.
+ *
+ * ⚠️ POR SLUG, e não por tipo de portal: a cor é da EMPRESA. Se amanhã outro portal ganhar a dele,
+ * entra uma linha aqui e um bloco no CSS — e nenhum outro portal muda de cara por tabela.
+ */
+export function classeDaMarca(slug: string): string {
+  return slug.trim().toLowerCase() === "gurgel" ? "inc--gurgel" : "";
 }

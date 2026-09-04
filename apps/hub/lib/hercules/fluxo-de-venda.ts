@@ -13,6 +13,8 @@
 // este roda também no navegador. A importação errada quebrava o build com "node:buffer".
 import { periodicidadeDaTaxa } from "@/lib/apolo/periodicidade-da-taxa";
 
+import { codigoDaVenda } from "./codigo-da-venda";
+
 export type EtapaDoFluxo = "assinatura" | "contrato" | "faturado" | "proposta" | "reservado";
 export type EtapaDaProposta = EtapaDoFluxo | "cancelado" | "distrato";
 
@@ -70,6 +72,9 @@ export type PropostaDaCarga = {
   plano_juros: null | number | string;
   plano_parcelas: null | number;
   plano_personalizado: boolean | null;
+  /** O número cru do código. Só as reservas do Panteon têm; ver `LinhaDaLista.codigo`. */
+  protocolo_numero?: null | number;
+  observacao?: null | string;
   cliente_nome: null | string;
   codigo: null | string;
   criado_em_c2x: null | string;
@@ -111,7 +116,17 @@ export type PassoDoFluxo = {
 
 export type LinhaDaLista = {
   cliente: null | string;
+  /**
+   * `RS-000123` — o COD da venda, na fase em que ela está.
+   *
+   * ⚠️ NULO NAS PROPOSTAS IMPORTADAS DO C2X, e isso é fiel ao que existe: o legado não tem código,
+   * e inventar um agora daria número novo para venda antiga toda vez que a carga rodasse. Só as
+   * reservas nascidas no Panteon têm.
+   */
+  codigo: null | string;
   desde: null | string;
+  /** O que o coordenador anotou ao reservar. Só existe no que nasce no Panteon. */
+  observacao: null | string;
   etapa: string;
   id: string;
   imobiliaria: null | string;
@@ -512,6 +527,8 @@ export function agregarFluxo({
     ),
     lista: propostas.map((p) => ({
       cliente: p.cliente_nome,
+      codigo: p.protocolo_numero ? codigoDaVenda(p.protocolo_numero, p.etapa) : null,
+      observacao: p.observacao ?? null,
       desde: dataDaEtapa(p),
       etapa: p.etapa,
       id: p.id,

@@ -4,7 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ALVO_TOQUE, fonte } from "@/modules/publico/ui/tokens";
 
-import { AlternadorDeTema, Marca, ProvedorDeTema, T, TEMA_CSS } from "./tema";
+import {
+  AlternadorDeTema,
+  classeDaMarca,
+  Marca,
+  ProvedorDeTema,
+  T,
+  TEMA_CSS,
+} from "./tema";
 
 import {
   ehPortalComercial,
@@ -229,7 +236,7 @@ function Moldura({
   const assinaPanteon = portalAssinaPanteon(slug, tipo);
   return (
     <div
-      className="inc"
+      className={["inc", classeDaMarca(slug)].filter(Boolean).join(" ")}
       style={{
         alignItems: "center",
         background: T.page,
@@ -622,7 +629,12 @@ function Portal({
   return (
     // `inc--comercial` é o gancho do TEMA_CSS para a área de trabalho maior (miolo com menos
     // padding, rodapé fino, body sem rolagem no desktop) e para a lateral recolhível.
-    <div className={comercial ? "inc inc--comercial" : "inc"} style={{ background: T.page, fontFamily: fonte }}>
+    <div
+      className={[comercial ? "inc inc--comercial" : "inc", classeDaMarca(sessao.incorporador.slug)]
+        .filter(Boolean)
+        .join(" ")}
+      style={{ background: T.page, fontFamily: fonte }}
+    >
       <style>{TEMA_CSS}</style>
 
       <div className="inc-shell">

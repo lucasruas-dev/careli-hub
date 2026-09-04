@@ -176,6 +176,8 @@ export type DadosDoAviso = {
   cpf: string;
   empreendimento: string;
   imobiliaria: string;
+  /** `RS-000123` — o COD da venda. É por ele que se acha a venda depois, e é o que o corretor anota. */
+  codigo: string;
   /** "Quadra 12 · Lote 06", como a tela escreve. */
   unidade: string;
   validadeEm: string;
@@ -198,6 +200,11 @@ export function avisosDaReserva(dados: DadosDoAviso): AvisoDaReserva[] {
   const ate = DIA.format(new Date(dados.validadeEm));
   const lote = `*${dados.unidade}* (${dados.empreendimento})`;
   const cliente = `*${dados.cliente}* (CPF ${mascararCpf(dados.cpf)})`;
+  // ⚠️ O COD ENTRA NA MENSAGEM porque é ali que ele serve (Lucas, 04/09/2026: *"isso tem que ir na
+  // mensagem também"*): o corretor anota o número que chegou no WhatsApp e é com ele que liga
+  // perguntando da venda. Código que só existe na tela obriga a abrir a tela para descobrir o
+  // código.
+  const cod = dados.codigo ? `COD *${dados.codigo}*.` : "";
 
   return [
     {
@@ -206,7 +213,7 @@ export function avisosDaReserva(dados: DadosDoAviso): AvisoDaReserva[] {
         `Olá, ${dados.corretor ?? "tudo bem"}!`,
         "",
         `A unidade ${lote} está *reservada* para ${cliente}.`,
-        `A reserva vale até *${ate}*.`,
+        `A reserva vale até *${ate}*. ${cod}`.trim(),
         "",
         "Depois desse prazo a unidade volta para o mapa automaticamente. Para seguir com a venda, gere a proposta antes do vencimento.",
       ].join("\n"),
@@ -218,7 +225,7 @@ export function avisosDaReserva(dados: DadosDoAviso): AvisoDaReserva[] {
         "",
         `A unidade ${lote} foi *reservada* para ${cliente}.`,
         dados.corretor ? `Corretor responsável: *${dados.corretor}*.` : "Reserva no nome da imobiliária.",
-        `Válida até *${ate}*.`,
+        `Válida até *${ate}*. ${cod}`.trim(),
       ].join("\n"),
     },
     {
@@ -231,6 +238,7 @@ export function avisosDaReserva(dados: DadosDoAviso): AvisoDaReserva[] {
         `Imobiliária: *${dados.imobiliaria}*`,
         dados.corretor ? `Corretor: *${dados.corretor}*` : "Corretor: não informado",
         `Vence em *${ate}*`,
+        dados.codigo ? `COD: *${dados.codigo}*` : "",
       ].join("\n"),
     },
   ];
@@ -252,7 +260,9 @@ export type ReservaDoFluxo = {
   criado_em: string;
   id: string;
   imobiliaria_nome: null | string;
+  observacao?: null | string;
   proponentes: unknown;
+  protocolo_numero?: null | number;
   unidade_id: string;
   validade_em: null | string;
 };
@@ -301,11 +311,13 @@ export function reservaComoLinhaDoFluxo(
   id: string;
   imobiliaria_nome: null | string;
   motivo: null | string;
+  observacao: null | string;
   plano_correcao: null;
   plano_juros: null;
   plano_nome: null;
   plano_parcelas: null;
   plano_personalizado: null;
+  protocolo_numero: null | number;
   unidade_id: null | string;
   unidade_nome: null | string;
   valor: null | number;
@@ -334,11 +346,13 @@ export function reservaComoLinhaDoFluxo(
     // A reserva não tem plano nem valor negociado: o que existe é o preço de tabela do lote, e é
     // ele que entra no VGV do funil — dizer zero encolheria o pipeline sem motivo.
     motivo: null,
+    observacao: reserva.observacao ?? null,
     plano_correcao: null,
     plano_juros: null,
     plano_nome: null,
     plano_parcelas: null,
     plano_personalizado: null,
+    protocolo_numero: reserva.protocolo_numero ?? null,
     unidade_id: reserva.unidade_id,
     unidade_nome: nomeDaUnidade,
     valor: unidade?.preco_tabela ?? null,

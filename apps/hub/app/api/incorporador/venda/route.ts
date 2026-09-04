@@ -319,7 +319,9 @@ async function lerReservasVivas(
     criado_em: string;
     id: string;
     imobiliaria_entity_id: null | string;
+    observacao: null | string;
     proponentes: unknown;
+    protocolo_numero: null | number;
     unidade_id: string;
     validade_em: null | string;
   }> = [];
@@ -327,7 +329,9 @@ async function lerReservasVivas(
   for (let de = 0; de < ids.length; de += 100) {
     const { data, error } = await supabase
       .from("hercules_reservas")
-      .select("id,unidade_id,proponentes,imobiliaria_entity_id,corretor_entity_id,criado_em,validade_em")
+      .select(
+        "id,unidade_id,proponentes,imobiliaria_entity_id,corretor_entity_id,criado_em,validade_em,protocolo_numero,observacao",
+      )
       .eq("workspace_id", "careli")
       .in("situacao", ["ativa", "proposta"])
       .in("unidade_id", ids.slice(de, de + 100));
@@ -367,7 +371,9 @@ async function lerReservasVivas(
         imobiliaria_nome: linha.imobiliaria_entity_id
           ? (nomePorId.get(linha.imobiliaria_entity_id) ?? null)
           : null,
+        observacao: linha.observacao,
         proponentes: linha.proponentes,
+        protocolo_numero: linha.protocolo_numero,
         unidade_id: linha.unidade_id,
         validade_em: linha.validade_em,
       },

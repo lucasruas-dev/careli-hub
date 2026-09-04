@@ -68,6 +68,7 @@ export function ModalDeReserva({
   const [cpf, setCpf] = useState("");
   const [telefone, setTelefone] = useState("");
   const [dias, setDias] = useState<number>(PRAZO_PADRAO_EM_DIAS);
+  const [observacao, setObservacao] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erroDoServidor, setErroDoServidor] = useState<null | string>(null);
   const [tentou, setTentou] = useState(false);
@@ -149,6 +150,7 @@ export function ModalDeReserva({
 
   const pedido = {
     corretorEntityId: corretorId,
+    observacao,
     imobiliariaEntityId: imobiliariaEscolhida?.id ?? "",
     proponente: { cpf, nome, telefone },
     unidadeId: unidade.id,
@@ -174,7 +176,7 @@ export function ModalDeReserva({
       const texto = await r.text();
       const corpo = texto
         ? (JSON.parse(texto) as {
-            data?: { avisos: Array<{ ok: boolean; para: string }> };
+            data?: { avisos: Array<{ motivo?: string; ok: boolean; para: string }>; codigo?: string };
             erros?: ErroDaReserva[];
             error?: string;
           })
@@ -187,11 +189,10 @@ export function ModalDeReserva({
         return;
       }
 
-      const semAviso = (corpo.data?.avisos ?? []).filter((a) => !a.ok);
+      // O COD na frente do recado: é o que ele vai anotar, e some da tela quando a faixa fecha.
+      const cod = corpo.data?.codigo ? `${corpo.data.codigo} · ` : "";
       onReservado(
-        semAviso.length === 0
-          ? `${unidade.nome} reservada. Corretor, imobiliária e coordenador avisados.`
-          : `${unidade.nome} reservada. Sem aviso para: ${semAviso.map((a) => a.para).join(", ")}.`,
+        `${cod}${unidade.nome} reservada. ${comoFoiOAviso(corpo.data?.avisos ?? [])}`,
       );
     } catch {
       setErroDoServidor("Não foi possível reservar agora.");
@@ -459,6 +460,26 @@ export function ModalDeReserva({
             {erroDe("validade") ? <Erro texto={erroDe("validade")!} /> : null}
           </section>
 
+          {/* ⚠️ CAMPO LIVRE, E NÃO UMA LISTA DE MOTIVOS (Lucas, 04/09/2026: *"vamos colocar um
+              novo campo para reserva, comentário, assim damos ao usuário um campo para fazer suas
+              observações"*). O que se anota numa reserva é o que a conversa teve de particular —
+              "cliente viaja quinta", "quer o lote do lado se liberar" —, e isso não cabe em opção
+              de menu. A coluna já existia na tabela desde a 0125; faltava a porta. */}
+          <section style={bloco}>
+            <div style={rotulo}>Observações</div>
+            <textarea
+              maxLength={500}
+              onChange={(e) => setObservacao(e.target.value)}
+              placeholder="O que foi combinado, o que o cliente pediu, o que lembrar depois."
+              rows={3}
+              style={{ ...campo, lineHeight: 1.45, resize: "vertical" }}
+              value={observacao}
+            />
+            <p style={{ color: T.muted, fontSize: 11, margin: "6px 0 0" }}>
+              Fica na reserva, para quem abrir depois. Não vai na mensagem do WhatsApp.
+            </p>
+          </section>
+
           {erroDoServidor ? <Erro texto={erroDoServidor} /> : null}
         </div>
 
@@ -577,4 +598,47 @@ function Campo({
 
 function Erro({ texto }: { texto: string }) {
   return <p style={{ color: T.danger, fontSize: 11.5, margin: "5px 0 0" }}>{texto}</p>;
+}
+
+/**
+ * O que dizer sobre os avisos, em uma frase.
+ *
+ * ⚠️ "SEM AVISO PARA: IMOBILIARIA" NÃO INFORMA O SUFICIENTE — foi o que o Lucas leu na primeira
+ * reserva de verdade. Quem lê precisa saber o que JÁ FOI e o que fazer sobre o que não foi, e "não
+ * tem telefone cadastrado" é acionável porque diz onde resolver.
+ */
+function comoFoiOAviso(avisos: Array<{ motivo?: string; ok: boolean; para: string }>): string {
+  const nome: Record<string, string> = {
+    coordenador: "coordenador",
+    corretor: "corretor",
+    imobiliaria: "imobiliária",
+  };
+  const escrever = (lista: string[]) =>
+    lista.length <= 1
+      ? (lista[0] ?? "")
+      : `${lista.slice(0, -1).join(", ")} e ${lista[lista.length - 1]}`;
+  const nomes = (lista: Array<{ para: string }>) => [
+    ...new Set(lista.map((a) => nome[a.para] ?? a.para)),
+  ];
+
+  if (avisos.length === 0) return "O aviso não chegou a ser enviado.";
+
+  const foram = nomes(avisos.filter((a) => a.ok));
+  const faltaram = avisos.filter((a) => !a.ok);
+
+  if (faltaram.length === 0) return `Aviso enviado para ${escrever(foram)}.`;
+
+  const semTelefone = nomes(faltaram.filter((a) => a.motivo === "sem telefone"));
+  const outros = nomes(faltaram.filter((a) => a.motivo !== "sem telefone"));
+
+  const partes: string[] = [];
+  if (foram.length > 0) partes.push(`Aviso enviado para ${escrever(foram)}`);
+  if (semTelefone.length > 0) {
+    partes.push(
+      `${escrever(semTelefone)} ${semTelefone.length > 1 ? "não têm" : "não tem"} telefone cadastrado`,
+    );
+  }
+  if (outros.length > 0) partes.push(`falhou para ${escrever(outros)}`);
+
+  return `${partes.join("; ")}.`;
 }
