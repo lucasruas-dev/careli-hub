@@ -59,6 +59,9 @@ type Cockpit = {
 /** Qual campo mandou por último — é ele que a conta obedece. */
 type Comando = "condicoes" | "parcela";
 
+/** O prazo de partida quando o produto não tem plano cadastrado. Editável na tela. */
+const PARCELAS_SEM_PLANO = 120;
+
 /** O que o cartão grande da direita mostra, venha de onde vier. */
 type Leitura = {
   anuais: { quantidade: number; valor: number };
@@ -214,22 +217,32 @@ export function SimuladorDeProposta({
             valor: valorDaUnidade,
           }).parcela
         : 0,
-      parcelas: maisLongo?.parcelas ?? 0,
+      // ⚠️ SEM PLANO, UM PRAZO DE PARTIDA — e não zero. Com zero parcelas não existe conta
+      // possível, e a tela abria morta no produto sem plano cadastrado. 120 é ponto de partida
+      // editável, não regra da casa: o plano NORMAL do C2X vai de 37 a 200 parcelas, e não existe
+      // um número que sirva a todos.
+      parcelas: maisLongo?.parcelas ?? PARCELAS_SEM_PLANO,
       valor: valorDaUnidade,
     });
   }, [entradaMinimaPercentual, planosDaConta, unidade, valorDaUnidade]);
 
   // ── A conta montada à mão, quando o comando veio das condições ───────────
+  //
+  // ⚠️ SEM PLANO A CONTA CONTINUA, e isso não é detalhe: até 04/09/2026 esta função devolvia
+  // `null` quando o produto não tinha plano no C2X, e a coluna da direita ficava EM BRANCO. Foi o
+  // que o Lucas viu no empreendimento de teste ("está dando erro, não abriu a simulação") — a tela
+  // dizia "a conta sai sem juros e sem correção" e não fazia conta nenhuma. Sem plano, a conta é a
+  // simples: divide o saldo pelo prazo, sem juros e sem correção.
   const montada = useMemo(() => {
-    if (!plano) return null;
-    const parcelas = cockpit.parcelas > 0 ? cockpit.parcelas : plano.parcelas;
+    const parcelas = cockpit.parcelas > 0 ? cockpit.parcelas : (plano?.parcelas ?? 0);
+    if (parcelas <= 0) return null;
     return {
       ...montarProposta({
         baloesQuantidade: cockpit.anuaisQuantidade,
         baloesValor: cockpit.anuaisValor,
         entrada: cockpit.entrada,
         parcelas,
-        taxaAoMes: plano.taxaAoMes,
+        taxaAoMes: plano?.taxaAoMes ?? 0,
         valor: cockpit.valor,
       }),
       parcelas,
@@ -239,7 +252,6 @@ export function SimuladorDeProposta({
   /** O chão da casa para este lote — 10% do valor negociado, e acompanha o valor editado. */
   const minimoDaEntrada = entradaMinima(cockpit.valor, entradaMinimaPercentual);
   const pisoEmPercentual = entradaMinimaPercentual ?? ENTRADA_MINIMA_PERCENTUAL;
-  const entradaAbaixoDoMinimo = abaixoDoMinimo(cockpit.entrada, minimoDaEntrada);
 
   /** Quantos aniversários cabem no prazo — o teto de reforços anuais. */
   const aniversarios = Math.floor((cockpit.parcelas > 0 ? cockpit.parcelas : (plano?.parcelas ?? 0)) / 12);
@@ -501,7 +513,8 @@ export function SimuladorDeProposta({
             </>
           ) : (
             <p style={{ color: T.muted, fontSize: 11.5, margin: "8px 0 0" }}>
-              Nenhum plano cadastrado para este produto: a conta sai sem juros e sem correção.
+              Nenhum plano cadastrado para este produto: a conta sai sem juros e sem correção,
+              e o prazo abaixo é só um ponto de partida — edite à vontade.
             </p>
           )}
         </Bloco>

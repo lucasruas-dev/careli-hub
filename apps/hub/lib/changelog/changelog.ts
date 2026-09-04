@@ -36,6 +36,40 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-04-simulador-sem-plano",
+    deployedAt: "2026-09-04T16:10:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "O simulador voltou a funcionar em empreendimento sem plano no C2X: antes a coluna da direita ficava em branco.",
+              "Os planos comerciais agora também podem ser cadastrados no Panteon, e o que estiver cadastrado aqui vale sobre o legado.",
+              "Atualizar a página não devolve mais para o começo: a aba e o empreendimento em que você estava voltam sozinhos.",
+            ],
+            screen: "Venda",
+          },
+          {
+            items: [
+              "No tema escuro, o texto que sumia voltou a aparecer — a lista da Venda e o histórico da unidade estavam com letra preta sobre fundo preto.",
+            ],
+            screen: "Portal (tema escuro)",
+          },
+        ],
+      },
+    ],
+    rollback: "6fec4908",
+    technical: {
+      done: "O SIMULADOR ABRIA VAZIO NO EMPREENDIMENTO DE TESTE (Lucas: *\"esta dando erro, nao abriu a simulacao\"*), e eram TRES travas na mesma tela. (1) `lerPlanosDoC2x` e a unica fonte de plano e consulta `commercial_plans` do MySQL por `code`: empreendimento que so existe no Panteon chega com lista vazia. NOVO `lib/hercules/planos-do-panteon.ts` le `temis_planos` — a tabela que sempre foi o destino desses planos aqui, vazia desde a 0120 — e `planosPreferindoOPanteon` une as duas fontes POR EMPREENDIMENTO: misturar plano a plano daria dois \"PLANO NORMAL\" com prazos diferentes na mesma lista, e o simulador resolve plano por NOME. Cada uniao e conferida na leitura e o que nao bater cai no padrao da casa (⚠️ SACOC, nao Price: sao 21 dos 24, e cair no mais raro por erro de digitacao anunciaria parcela que o boleto nao vai cobrar). (2) `montada` devolvia `null` quando nao havia plano — a tela dizia \"a conta sai sem juros e sem correcao\" e nao fazia conta nenhuma; agora a conta segue com taxa zero. (3) O cockpit abria com ZERO parcelas, e sem prazo nao existe conta: sem plano, parte de 120, editavel, e a tela diz que e ponto de partida. Quatro planos de teste criados em `temis_planos` para o 9001 (com OK do Lucas), o unico empreendimento sem espelho no legado. O F5 DEIXOU DE VOLTAR AO COMECO (*\"toda vez que eu atualizo a pagina volta para o inicio\"*): a aba do portal e o empreendimento da Venda ficam no `localStorage`, restaurados DEPOIS de montar (ler no `useState` divergiria do HTML do servidor) e so quando ainda existem — aba de outro portal deixaria o corpo sem ramo para renderizar, e id de produto fora do escopo pediria uma tela que o servidor recusa. E O TEXTO QUE SUMIA NO TEMA ESCURO (*\"texto sumiu\"*, com o print do historico, e a lista da Venda com unidade/cliente/imobiliaria apagados): ⚠️ a classe `.inc` definia os TOKENS e nao a `color`, entao todo texto que nao declara cor herdava — e a heranca termina no <body>, que o navegador pinta de PRETO. No claro passava despercebido (preto sobre fundo claro se le); no escuro era preto sobre preto. Uma linha resolve a arvore inteira do portal, inclusive o que ainda vier. Vai junto, sem estar ligado a nenhuma rota ainda, o gerador `lib/hercules/proposta-pdf.ts` (pdf-lib, Helvetica, quatro testes) — a proposta em PDF que o Lucas aprovou no mockup. Typecheck limpo; 2.516 testes verdes.",
+      motivation:
+        "O empreendimento de teste existe so no Panteon, e o simulador nao sabia procurar plano fora do legado — abria com a direita em branco e zero parcelas.",
+    },
+    title: "O simulador funciona sem plano no legado, e o F5 não perde o lugar",
+    type: "correcao",
+    version: "1.280.0",
+  },
+  {
     buildTag: "2026-09-04-cancelar-reserva",
     deployedAt: "2026-09-04T13:30:00-03:00",
     modules: [

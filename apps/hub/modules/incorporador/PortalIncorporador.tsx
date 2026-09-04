@@ -134,6 +134,41 @@ function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug, tipo }: DadosDoPort
     ehPortalComercial(tipo) || ehPortalSoProdutos(slug) ? "produtos" : "vendas",
   );
 
+  // ⚠️ O F5 NÃO PODE VOLTAR PARA O COMEÇO (Lucas, 04/09/2026: *"toda vez que eu atualizo a página
+  // volta para o início, tem que ficar no mesmo lugar"*). Quem está conferindo uma venda recarrega
+  // a tela o tempo todo, e cada recarga custava dois cliques para voltar de onde saiu.
+  //
+  // ⚠️ RESTAURA DEPOIS DE MONTAR, e não no `useState` inicial: `localStorage` não existe no
+  // servidor, e ler ali faria o HTML do servidor divergir do primeiro render do cliente. É o mesmo
+  // caminho do tema e da sidebar, logo acima.
+  //
+  // ⚠️ E CONFERE SE A ABA AINDA EXISTE NESTE PORTAL: as abas variam por tipo e por slug, e uma
+  // chave guardada num portal que não a tem deixaria o corpo sem nenhum ramo para renderizar —
+  // tela branca, sem erro.
+  useEffect(() => {
+    if (!sessao) return;
+    try {
+      const guardada = window.localStorage.getItem(chaveDaAba(slug));
+      if (!guardada) return;
+      const disponiveis = abasDoPortal(sessao.incorporador.slug, tipo).map((a) => a.chave);
+      if (disponiveis.includes(guardada as Aba)) setAba(guardada as Aba);
+    } catch {
+      /* navegador sem storage: fica na aba padrão */
+    }
+  }, [sessao, slug, tipo]);
+
+  const irParaAba = useCallback(
+    (proxima: Aba) => {
+      setAba(proxima);
+      try {
+        window.localStorage.setItem(chaveDaAba(slug), proxima);
+      } catch {
+        /* sem storage, a escolha só não sobrevive ao F5 */
+      }
+    },
+    [slug],
+  );
+
   const carregarSessao = useCallback(async () => {
     try {
       const resposta = await fetch("/api/incorporador/sessao", { cache: "no-store" });
@@ -199,7 +234,7 @@ function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug, tipo }: DadosDoPort
       }}
       logoEscuraUrl={logoEscuraUrl}
       logoUrl={logoUrl}
-      onAba={setAba}
+      onAba={irParaAba}
       sessao={sessao}
       tipo={tipo}
     />
@@ -539,6 +574,9 @@ const ABAS_SO_PRODUTOS: ItemDeAba[] = [
 // venda ACONTECE — reserva, proposta, contrato, assinatura, faturamento — e onde o coordenador olha
 // se está vendendo bem. Pedido do Lucas: *"vamos criar a tela Venda, que vai ser a tela que vamos
 // fazer o processo de reserva, proposta e emissão de contratos"*.
+/** A aba em que a pessoa estava, por portal: o F5 volta para onde ela parou. */
+const chaveDaAba = (slug: string) => `inc:aba:${slug}`;
+
 const ABAS_COMERCIAL: ItemDeAba[] = [
   { chave: "crm", icone: ContactRound, rotulo: "CRM" },
   { chave: "produtos", icone: LandPlot, rotulo: "Produtos" },

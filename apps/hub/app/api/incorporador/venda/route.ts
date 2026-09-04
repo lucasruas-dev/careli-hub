@@ -23,6 +23,10 @@ import {
   type PropostaDaCarga,
   type UnidadeDoMapa,
 } from "@/lib/hercules/fluxo-de-venda";
+import {
+  lerPlanosDoPanteon,
+  planosPreferindoOPanteon,
+} from "@/lib/hercules/planos-do-panteon";
 import { reservaComoLinhaDoFluxo } from "@/lib/hercules/reserva";
 
 /** As etapas da esteira que já PARARAM: virou credenciado, ou não seguiu. */
@@ -218,15 +222,24 @@ export async function GET(request: Request) {
       };
     }
 
-    // ⚠️ O PLANO COMERCIAL AINDA VEM DO C2X, e é o último dado desta tela que vem de lá. Os planos
-    // moram em `enterprises` (quatro colunas: à vista, curto, investidor, normal) e `temis_planos`,
-    // que é o destino deles no Panteon, está vazia — a frente da Têmis é quem vai preenchê-la, com
-    // categoria e minuta ligadas. Popular por fora agora atrapalharia aquele cadastro; quando ele
-    // existir, troca-se a fonte aqui e mais nada.
+    // ── OS PLANOS COMERCIAIS, DE DUAS FONTES ──────────────────────────────
     //
-    // ⚠️ FALHA NÃO DERRUBA A TELA: sem plano o simulador cai na conta simples, que é o que ele já
-    // fazia. Perder a Venda inteira porque o legado não respondeu seria pior.
-    const planos = await lerPlanosDoC2x(codes).catch(() => ({ ok: false }) as const);
+    // ⚠️ O PANTEON PRIMEIRO, O LEGADO DEPOIS. Até 04/09/2026 o simulador só conhecia o C2X, e por
+    // isso abria vazio em empreendimento que existe só aqui: o de teste, e qualquer produto novo
+    // antes de ser cadastrado no legado. Foi o que o Lucas viu ("está dando erro, não abriu a
+    // simulação"). `temis_planos` — que sempre foi o destino desses planos no Panteon — passa a
+    // ser lida, e o que estiver cadastrada lá vence o legado NAQUELE empreendimento.
+    //
+    // ⚠️ FALHA NÃO DERRUBA A TELA, dos dois lados: sem plano o simulador cai na conta simples, que
+    // é o que ele já fazia. Perder a Venda inteira porque o legado não respondeu seria pior.
+    const [doC2x, doPanteon] = await Promise.all([
+      lerPlanosDoC2x(codes).catch(() => ({ ok: false }) as const),
+      lerPlanosDoPanteon(supabase, [...idsDoEscopo]).catch((erro) => {
+        console.error("[incorporador/venda] planos do panteon", erro);
+        return [];
+      }),
+    ]);
+    const planos = planosPreferindoOPanteon(doC2x.ok ? doC2x.empreendimentos : [], doPanteon);
 
     // ── AS RESERVAS NASCIDAS NO PANTEON ───────────────────────────────────
     //
@@ -284,7 +297,7 @@ export async function GET(request: Request) {
             unidades,
           }),
           entradaMinima,
-          planos: planos.ok ? planos.empreendimentos.flatMap((e) => e.planos) : [],
+          planos: planos.flatMap((e) => e.planos),
         },
       },
       { headers: { "Cache-Control": "no-store" } },

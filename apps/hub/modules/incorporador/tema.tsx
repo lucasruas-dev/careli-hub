@@ -105,6 +105,15 @@ const MARCA_ESCURA = `
 
 export const TEMA_CSS = `
   .inc {${TOKENS_CLAROS}  }
+
+  /* ⚠️ A COR DO TEXTO PRECISA SER DECLARADA AQUI, e a falta dela deixava texto INVISÍVEL no tema
+     escuro (Lucas, 04/09/2026, com o print do histórico: *"texto sumiu"*, e a lista da Venda com
+     unidade, cliente e imobiliária apagados). O bloco de tokens só define VARIÁVEIS; quem não
+     escreve \`color\` herda — e a herança acaba no <body>, que o navegador pinta de preto por
+     padrão. No claro isso passava despercebido porque preto sobre fundo claro se lê; no escuro é
+     preto sobre preto. Uma linha aqui alcança toda a árvore do portal, incluindo o que ainda vier. */
+  .inc { color: var(--inc-text); }
+
   .inc .marca-clara { display: inline-block; }
   .inc .marca-escura { display: none; }
 

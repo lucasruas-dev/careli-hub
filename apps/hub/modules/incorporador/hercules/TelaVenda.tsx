@@ -444,13 +444,19 @@ export function TelaVenda() {
             data?: { linhas?: { filhos?: Produto["filhos"]; id: string; nome: string }[] };
           };
           if (vivo) {
-            setProdutos(
-              (j.data?.linhas ?? []).map((l) => ({
-                filhos: l.filhos ?? [],
-                id: l.id,
-                nome: l.nome,
-              })),
-            );
+            const lista = (j.data?.linhas ?? []).map((l) => ({
+              filhos: l.filhos ?? [],
+              id: l.id,
+              nome: l.nome,
+            }));
+            setProdutos(lista);
+
+            // ⚠️ O F5 VOLTA PARA O PRODUTO EM QUE ELE ESTAVA (Lucas, 04/09/2026: *"toda vez que eu
+            // atualizo a página volta para o início, tem que ficar no mesmo lugar"*). Só depois da
+            // lista chegar, e só se o produto ainda estiver nela: escopo muda, produto sai do ar, e
+            // um id guardado que não existe mais pediria uma tela que o servidor recusa com 404.
+            const guardado = empreendimentoGuardado();
+            if (guardado && lista.some((p) => p.id === guardado)) setEmp(guardado);
           }
         }
 
@@ -583,6 +589,7 @@ export function TelaVenda() {
               aria-label="Empreendimento"
               onChange={(e) => {
                 setEmp(e.target.value);
+                guardarEmpreendimento(e.target.value);
                 // Trocar de produto sem zerar o recorte deixaria um filho de OUTRO pai escolhido.
                 setRecorte("");
                 setFoco(null);
@@ -1844,6 +1851,27 @@ function TrilhaDoFluxo({ etapa }: { etapa: null | string }) {
 // ⚠️ E O ESTADO MANDA. Reservar só existe em unidade DISPONÍVEL — é a regra dele ("se a unidade
 // estiver disponível, ter um botão para reservar"). Nas outras etapas o botão continua visível,
 // apagado, dizendo por quê: sumir faria o coordenador procurar o botão em vez de ler a ficha.
+
+// ── ONDE ELE PAROU ─────────────────────────────────────────────────────────
+// Guardado no navegador, por pessoa, como o tema e a lateral recolhida do portal. Nao vai para o
+// servidor: e preferencia de uso, nao dado de venda.
+const CHAVE_DO_EMPREENDIMENTO = "hercules:venda:emp";
+
+function empreendimentoGuardado(): null | string {
+  try {
+    return window.localStorage.getItem(CHAVE_DO_EMPREENDIMENTO);
+  } catch {
+    return null;
+  }
+}
+
+function guardarEmpreendimento(id: string): void {
+  try {
+    window.localStorage.setItem(CHAVE_DO_EMPREENDIMENTO, id);
+  } catch {
+    /* sem storage, a escolha so nao sobrevive ao F5 */
+  }
+}
 
 const PROXIMA_FASE = "Entra na próxima fase da venda.";
 
