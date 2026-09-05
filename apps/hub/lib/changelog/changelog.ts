@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-05-acoes-da-ficha",
+    deployedAt: "2026-09-05T16:20:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "Clicando numa linha da **lista**, a ficha agora abre com os botões ativos — antes só funcionava clicando no lote da grade.",
+              "Os botões da ficha ganharam cor: **Gerar proposta** em verde, **Cancelar** em vermelho.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "fd181839",
+    technical: {
+      done: "DUAS PORTAS, UM LOTE (Lucas: *\"quando eu clico no analítico, não aparece nenhum botão; quando eu clico na grade aparece\"*). ⚠️ CLICAR NA LISTA FOCA UMA PROPOSTA, NÃO UM LOTE: o `foco` tem dois tipos, e `unidadeEmFoco` só lia o `tipo: \"unidade\"`. Pela lista ele saía nulo e os QUATRO botões apagavam com \"Escolha uma unidade\" — numa ficha que estava mostrando o cliente, o valor, o plano e o histórico daquele lote. A proposta carrega o `unidadeId` justamente para isto. ⚠️ A REGRA VIROU MÓDULO PURO COM TESTE (`lib/hercules/unidade-em-foco.ts`), e não por gosto: ela errou das DUAS pontas no mesmo dia. De manhã era o retrato do clique envelhecendo (quem gerava a proposta e olhava a mesma ficha via o mapa repintado, mas o botão ainda dizia \"Cancelar reserva\" e a rota respondia 409 apontando para um botão que a tela não oferecia); agora era a lista não chegando ao lote. Os dois erros apagam botões numa ficha que está mostrando o lote certo, e nenhum aparece em teste de função pura enquanto a decisão morar dentro do componente. O mapa fresco vence o retrato; o retrato é fallback SÓ do clique na grade (pela lista não há retrato, e inventar um seria pior que devolver nada). ⚠️ E A COR DIZ O QUE O CLIQUE FAZ: \"Gerar proposta\" e \"Cancelar proposta\" são vizinhos, do mesmo tamanho e com rótulos parecidos, e quem está com o cliente no telefone lê o primeiro que parecer certo. Verde para o que anda, vermelho para o que desfaz — em fundo lavado com borda e texto no tom, não em bloco cheio: quatro sólidos coloridos brigam entre si e nenhum vira o principal (o Lucas já reprovou esse excesso no PDF). O único sólido continua sendo o Reservar, que abre o fluxo. 2.742 testes verdes; typecheck e lint limpos.",
+      motivation:
+        "A ficha aberta pela lista mostrava tudo do lote e não deixava fazer nada com ele — e a diferença para a grade não tinha explicação nenhuma para quem usa.",
+    },
+    title: "As ações da ficha, pela lista e com cor",
+    type: "correcao",
+    version: "1.282.1",
+  },
+  {
     buildTag: "2026-09-05-gerar-proposta",
     deployedAt: "2026-09-05T14:30:00-03:00",
     modules: [

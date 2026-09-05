@@ -14,6 +14,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { ETAPAS_DO_FLUXO } from "@/lib/hercules/fluxo-de-venda";
+import { unidadeEmFoco as acharUnidadeEmFoco } from "@/lib/hercules/unidade-em-foco";
 import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
 import {
   type ClasseDoFato,
@@ -1125,12 +1126,17 @@ function Mesa({
   // depois de um cancelamento bem-sucedido o "Reservar" segue apagado num lote já disponível.
   // Procurar a versão fresca no `mapa` recém-carregado conserta os quatro de uma vez; o retrato só
   // permanece quando a unidade saiu do recorte atual, e aí ele é tudo o que existe.
-  const unidadeDoClique = foco?.tipo === "unidade" ? foco.unidade : null;
-  const unidadeEmFoco = unidadeDoClique
-    ? ((dados?.mapa ?? [])
-        .flatMap((g) => g.unidades)
-        .find((u) => u.id === unidadeDoClique.id) ?? unidadeDoClique)
-    : null;
+  //
+  // ⚠️ E A LISTA TAMBÉM PRECISA CHEGAR NA UNIDADE. Clicar numa linha do analítico foca uma
+  // PROPOSTA, não um lote — e enquanto `unidadeEmFoco` só olhava o foco do tipo "unidade", a ficha
+  // aberta pela lista vinha com os quatro botões apagados dizendo "Escolha uma unidade", numa tela
+  // que estava mostrando o cliente, o valor e o histórico daquele lote. Pela grade funcionava, e a
+  // diferença não tinha explicação nenhuma para quem usa. A proposta carrega o `unidadeId`
+  // justamente para isto (ver `LinhaDaLista.unidadeId`): as duas portas levam ao mesmo lote.
+  // A regra vive em `lib/hercules/unidade-em-foco.ts`, pura e com teste: ela já errou das duas
+  // pontas no mesmo dia (retrato velho e lista sem lote), e cada erro apagou os quatro botões numa
+  // ficha que estava mostrando o lote certo.
+  const unidadeEmFoco = acharUnidadeEmFoco(foco, (dados?.mapa ?? []).flatMap((g) => g.unidades));
   // ⚠️ SÓ A PROPOSTA VIVA VIRA A FICHA DA UNIDADE. O Lucas pegou isto olhando o VOC 06 07: o lote
   // aparecia "Disponível" e a ficha mostrava cliente, imobiliária, plano e "Data do cancelamento" —
   // eu casava pelo id da unidade sem olhar a etapa, e pegava a proposta CANCELADA como se fosse a
@@ -2089,12 +2095,24 @@ function AcoesDaUnidade({
   /** Proposta do legado pintando o lote: a tela diz Proposta, mas o cancelamento é lá. */
   const propostaDoLegado = unidade?.etapa === "proposta" && propostaViva?.origem !== "panteon";
 
+  /**
+   * ⚠️ A COR DIZ O QUE O CLIQUE FAZ, e é por isso que ela não é enfeite aqui. Os quatro botões
+   * ficam lado a lado, com rótulos parecidos e do mesmo tamanho: "Gerar proposta" e "Cancelar
+   * proposta" são vizinhos e opostos, e quem está com o cliente no telefone lê o primeiro que
+   * parecer certo. Verde para o que ANDA, vermelho para o que DESFAZ.
+   *
+   * ⚠️ FUNDO SUAVE, NÃO BLOCO CHEIO. Quatro botões sólidos coloridos brigam entre si e nenhum vira
+   * o principal — o Lucas já reprovou esse excesso no PDF (*"ficou ruim, muito chamativo"*). O tom
+   * mora na borda e no texto, sobre um fundo lavado; o único sólido continua sendo o Reservar, que
+   * é a ação de abertura do fluxo.
+   */
   const acoes: Array<{
     ativo: boolean;
     aoClicar?: () => void;
     motivo: string;
     principal?: boolean;
     rotulo: string;
+    tom?: "avanca" | "desfaz";
   }> = [
     {
       ativo: Boolean(unidade) && disponivel,
@@ -2119,6 +2137,7 @@ function AcoesDaUnidade({
           ? "Confere a CAD do cliente da reserva, monta as condições e gera a proposta com o PDF."
           : "Precisa de uma reserva ativa.",
       rotulo: "Gerar proposta",
+      tom: "avanca",
     },
     { ativo: false, motivo: PROXIMA_FASE, rotulo: "Enviar para contrato" },
     // ⚠️ CANCELAR SÓ NA RESERVA, e não em qualquer unidade não disponível. Uma unidade vendida
@@ -2140,6 +2159,7 @@ function AcoesDaUnidade({
       // proposta faria a pessoa pensar que desfaz só o passo anterior e que a proposta continua de
       // pé — quando o que cai é a proposta inteira, com aviso para as três pontas.
       rotulo: proposta ? "Cancelar proposta" : "Cancelar reserva",
+      tom: "desfaz",
     },
   ];
 
@@ -2160,10 +2180,35 @@ function AcoesDaUnidade({
           disabled={!acao.ativo}
           onClick={acao.aoClicar}
           style={{
-            background: acao.ativo && acao.principal ? T.btnBg : T.soft,
-            border: `1px solid ${acao.ativo ? "transparent" : T.border}`,
+            background: !acao.ativo
+              ? T.soft
+              : acao.principal
+                ? T.btnBg
+                : acao.tom === "avanca"
+                  ? T.okBg
+                  : acao.tom === "desfaz"
+                    ? T.dangerBg
+                    : T.soft,
+            // Apagado mantém a borda cinza de sempre: sem ela o botão inativo some do grupo.
+            border: `1px solid ${
+              !acao.ativo
+                ? T.border
+                : acao.tom === "avanca"
+                  ? T.ok
+                  : acao.tom === "desfaz"
+                    ? T.danger
+                    : "transparent"
+            }`,
             borderRadius: 8,
-            color: acao.ativo ? (acao.principal ? T.btnFg : T.text) : T.muted,
+            color: !acao.ativo
+              ? T.muted
+              : acao.principal
+                ? T.btnFg
+                : acao.tom === "avanca"
+                  ? T.ok
+                  : acao.tom === "desfaz"
+                    ? T.danger
+                    : T.text,
             cursor: acao.ativo ? "pointer" : "default",
             font: "inherit",
             fontSize: 12,
