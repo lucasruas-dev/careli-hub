@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { soDigitos } from "@/lib/apolo/documento";
 import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { createApoloAdminClient } from "@/lib/apolo/server";
-import { mascararCpf } from "@/lib/hercules/reserva";
+import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
 
 // OS DADOS DE CONTATO DO CLIENTE DE UMA UNIDADE.
 //
@@ -17,9 +16,12 @@ import { mascararCpf } from "@/lib/hercules/reserva";
 // no navegador de quem só queria ver o funil. Aqui ele sai de uma unidade por vez, quando alguém
 // clica no nome.
 //
-// ⚠️ O CPF VAI MASCARADO, o telefone não. O documento serve para CONFERIR que é a pessoa certa
-// (***.982.247-** basta para isso); o telefone é o dado que ele pediu para ver, e mascarado não
-// serviria para nada.
+// ⚠️ O CPF VAI INTEIRO (Lucas, 05/09/2026: *"pode liberar o cpf aqui"*). Ele nasceu mascarado —
+// "***.982.247-** basta para conferir que é a pessoa certa" —, mas quem abre esta ficha é o
+// coordenador do comercial, e ele precisa do número para preencher contrato, consultar crédito e
+// achar a pessoa no C2X. Mascarado, o dado obrigava a abrir outra tela para o mesmo fim. A porta
+// continua estreita: a rota é do portal COMERCIAL (`autorizarComercial`), sai uma unidade por vez
+// e só para quem tem o empreendimento no escopo da sessão.
 //
 // ⚠️ DUAS FONTES, porque a venda pode ter nascido dos dois lados: a reserva do Panteon guarda o
 // proponente em `proponentes` (nome, cpf, telefone digitados na hora); a proposta importada do C2X
@@ -82,7 +84,7 @@ export async function GET(request: Request) {
       const p = titular as { cpf?: unknown; nome?: unknown; telefone?: unknown };
       return NextResponse.json({
         data: {
-          documento: typeof p.cpf === "string" && p.cpf ? mascararCpf(p.cpf) : null,
+          documento: typeof p.cpf === "string" && p.cpf ? formatarDocumento(soDigitos(p.cpf)) : null,
           fonte: "reserva",
           nome: typeof p.nome === "string" ? p.nome : null,
           telefone: typeof p.telefone === "string" ? p.telefone : null,
@@ -139,7 +141,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       data: {
-        documento: documento ? mascararCpf(documento) : null,
+        documento: documento ? formatarDocumento(soDigitos(documento)) : null,
         fonte: "apolo",
         nome: doC2x.cliente_nome,
         telefone,

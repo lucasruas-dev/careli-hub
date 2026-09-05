@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 
+import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
 import { codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { carregarCadastroDeEmpreendimentos, soDoPanteon } from "@/lib/hercules/cadastro";
 import {
   type EventoDaUnidade,
   type EventoImportado,
@@ -57,7 +59,22 @@ export async function GET(request: Request) {
   }
 
   try {
-    const codes = await codigosDaSessao(auth.sessao);
+    // ⚠️ O CÓDIGO DO EMPREENDIMENTO É TRADUZIDO PELO CATÁLOGO DO C2X, E NEM TODO PRODUTO ESTÁ LÁ.
+    // `codigosDaSessao` só sabe traduzir o que o legado conhece; um empreendimento que nasceu no
+    // Panteon (o ZZ TESTE é o caso vivo, id 9001) não tem código no C2X e some deste `.in()` — a
+    // proposta gerada AGORA MESMO ficava fora do histórico do lote, com a ficha mostrando só
+    // "Reserva criada" e nenhum sinal do passo seguinte. A reserva aparecia porque `lerReservas`
+    // entra por outro caminho (unidade + sessão), o que fazia o buraco parecer coisa da proposta.
+    // A mesma expansão que a rota `/venda` faz para o produto não sumir do seletor e do mapa.
+    const codesAutorizados = await codigosDaSessao(auth.sessao);
+    const catalogoDoC2x = await catalogoDeEmpreendimentos(Date.now());
+    const idsNoC2x = new Set(catalogoDoC2x.flatMap((e) => e.stageIds.map(String)));
+    const proprios = soDoPanteon(
+      await carregarCadastroDeEmpreendimentos(),
+      await idsDaSessao(auth.sessao),
+      idsNoC2x,
+    );
+    const codes = [...new Set([...codesAutorizados, ...proprios.map((p) => p.codigo)])];
     if (codes.length === 0) {
       return NextResponse.json({ error: "Não foi possível carregar o histórico." }, { status: 503 });
     }

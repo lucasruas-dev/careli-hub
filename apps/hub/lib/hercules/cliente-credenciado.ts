@@ -105,7 +105,7 @@ const DIA = new Intl.DateTimeFormat("pt-BR", {
   year: "numeric",
 });
 
-type LinhaDaEsteira = {
+export type LinhaDaEsteira = {
   atualizado_em: null | string;
   chegou_em: null | string;
   created_at: null | string;
@@ -170,6 +170,24 @@ export async function credenciadoParaVender(
 
   const linhas = await lerEsteira(admin, entityIds, escopo);
 
+  return decidirPelasLinhas(linhas, entityIds);
+}
+
+/**
+ * A RÉGUA, separada da leitura: dadas as linhas de esteira de UMA pessoa, ela está credenciada?
+ *
+ * ⚠️ EXTRAÍDA PARA QUE A BUSCA DE PROPONENTES USE EXATAMENTE ESTA, e não uma segunda parecida.
+ * A tela de proposta pergunta por uma pessoa de cada vez; a busca pergunta por dezenas ao mesmo
+ * tempo, e escrever a decisão de novo lá seria criar duas réguas que envelhecem separadas — a
+ * segunda liberando quem a primeira barra, no mesmo empreendimento e no mesmo dia.
+ *
+ * `entityIds` serve só para o caso "achei a pessoa mas ela não tem CAD nenhuma neste escopo":
+ * a resposta carrega um id para a tela conseguir abrir a ficha dela mesmo assim.
+ */
+export function decidirPelasLinhas(
+  linhas: LinhaDaEsteira[],
+  entityIds: string[],
+): CredenciamentoDoTitular {
   // A régua tem DUAS METADES, e trocar a ordem delas quebra uma das duas:
   //
   // 1) ⚠️ DENTRO DA MESMA CAD, A LINHA MAIS RECENTE MANDA — por isso o corte por CAD vem

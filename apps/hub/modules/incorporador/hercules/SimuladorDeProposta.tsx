@@ -877,8 +877,17 @@ export function SimuladorDeProposta({
           </p>
         )}
 
-        {/* AS ALTERNATIVAS: mesma parcela, outro arranjo de entrada e reforço. */}
-        {alternativas.length > 0 ? (
+        {/* AS ALTERNATIVAS: mesma parcela, outro arranjo de entrada e reforço.
+            ⚠️ SÓ NO SIMULADOR (Lucas, 05/09/2026: *"essas outras composições, deixa somente no
+            simulador, aqui quanto mais objetivo for melhor (...) pois ali pode ocorrer testes de
+            cenário com mais frequência"*). São dois momentos diferentes: no simulador a pessoa
+            está EXPLORANDO — cinco arranjos lado a lado é o serviço; na hora de gerar a proposta
+            ela já decidiu, e cinco alternativas embaixo do que ela escolheu convidam a recomeçar
+            uma conversa que já terminou, num formulário que precisa acabar.
+            ⚠️ `aoMudarCondicoes` É O SINAL, e não uma prop nova: ela já é a única diferença entre
+            os dois usos (ausente = simulador da ficha; presente = modal de proposta). Um segundo
+            interruptor para a mesma distinção daria dois lugares para eles discordarem. */}
+        {!aoMudarCondicoes && alternativas.length > 0 ? (
           <div>
             <div style={{ ...rotuloDeSecao, marginBottom: 8 }}>
               Outras composições com {dinheiro(parcelaDeReferencia)} por mês

@@ -36,6 +36,38 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-05-proposta-no-historico",
+    deployedAt: "2026-09-05T18:20:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A proposta gerada aparece no histórico do lote** — ela estava sendo gravada certo, mas sumia da ficha.",
+              "**Enviar para contrato** ficou ativo: é o segundo caminho da proposta, ao lado de cancelar.",
+              "A etapa já cumprida fica **verde** na faixa do fluxo, em vez de cinza.",
+              "As **outras composições** saíram da tela de gerar proposta e ficaram só no simulador, onde se testa cenário.",
+              "A tela de gerar proposta ficou maior e não tem mais barra de rolagem.",
+              "No PDF, o nome do comprador e os títulos das seções ficaram em negrito — antes se confundiam com os cabeçalhos das tabelas.",
+              "O CPF do cliente aparece inteiro na ficha de contato.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "3df42b8e",
+    technical: {
+      done: "A PROPOSTA SUMIA DA FICHA DO LOTE (Lucas, testando a primeira proposta gerada em produção: *\"geramos proposta, contudo o histórico da unidade não atualizou\"*). ⚠️ A CAUSA NÃO ERA A PROPOSTA, ERA A TRADUÇÃO DO EMPREENDIMENTO: a rota de histórico filtra por `empreendimento_codigo` usando `codigosDaSessao`, que traduz os ids da sessão em códigos PELO CATÁLOGO DO C2X — e o ZZ TESTE (9001) nasceu no Panteon e não existe no legado. Sem código, o `.in()` descartava a linha. A reserva aparecia porque `lerReservas` entra por outro caminho (unidade + sessão), e foi isso que fez o buraco parecer defeito da proposta. A rota `/venda` já resolvia o mesmo problema com `soDoPanteon` (senão o produto sumiria do seletor e do mapa); o histórico não tinha a expansão. ⚠️ VALE PARA TODO EMPREENDIMENTO QUE NASCER NO PANTEON, não só para o de teste — hoje é só o ZZ TESTE, mas a migração do financeiro por empreendimento vai criar outros. ENVIAR PARA CONTRATO (*\"depois da proposta gerada, tenho dois caminhos, cancelar e enviar para contrato, pode habilitar\"*): rota própria em `/venda/contrato`, move a proposta nativa de `proposta` para `contrato` com a mesma trava de clique duplo das irmãs (`.eq(\"etapa\",\"proposta\")` + `.select()`) e a mesma conferência de `propostaId` contra tela velha. ⚠️ NÃO GERA MINUTA E NÃO DISPARA WHATSAPP, e as duas coisas são deliberadas: a minuta é da Têmis e ainda não está ligada; e \"entrou na fila do jurídico\" não muda nada na mão do cliente hoje — a reserva, a proposta e os cancelamentos avisam porque cada um deles muda o que ele TEM (um lote segurado, um preço com prazo, um papel que deixou de valer). O aviso fica reservado para o dia em que a minuta sair. ⚠️ A UNIDADE NÃO MUDA nesta transição: ela está ocupada desde a reserva, e quem sabe em que passo a venda está é a proposta viva. VERDE NO DEGRAU CUMPRIDO (*\"aqui também pode colocar um verde indicando que foi concluído\"*): ele já tinha o ✓, mas na mesma cor do degrau que ainda não aconteceu — num fluxo de cinco passos lido de relance, quem responde \"até onde essa venda chegou\" é a cor, não um ícone de 10px. AS OUTRAS COMPOSIÇÕES SAÍRAM DA MODAL (*\"deixa somente no simulador, aqui quanto mais objetivo for melhor (...) pois ali pode ocorrer testes de cenário com mais frequência\"*): são dois momentos diferentes — no simulador se explora, e cinco arranjos lado a lado é o serviço; na hora de gerar, a decisão já foi tomada, e cinco alternativas embaixo dela convidam a recomeçar uma conversa que acabou. O sinal é a própria prop `aoMudarCondicoes`, que já era a única diferença entre os dois usos: um segundo interruptor para a mesma distinção daria dois lugares para eles discordarem. O TETO DE 900px ERA A BARRA DE ROLAGEM (*\"aumenta essa tela para não ter barra de rolagem\"*): numa tela de 1080 sobravam mais de 100px sem uso e o cockpit rolava assim mesmo; na montagem o limite passou a ser só a janela (92vh), e a largura foi de 1280 para 1440. NO PDF, TÍTULO DE SEÇÃO E CABEÇALHO DE COLUNA ERAM QUASE O MESMO (*\"coloca em negrito o nome do cliente e os títulos (...) tá misturando\"*): 6,6pt em #5a6778 contra 6,2pt em #94a3b8 — quatro décimos de ponto e um tom. Com \"PAGAMENTO DA ENTRADA\" logo acima de \"PARCELA · VENCIMENTO · VALOR\", não dava para saber onde a seção começava. O título virou 7,6pt escuro; o cabeçalho segue miúdo e claro, que é o papel dele. O nome de quem compra ganhou negrito, e a coluna passou a poder pedir destaque do VALOR (não do cabeçalho). O CPF INTEIRO NA FICHA (*\"pode liberar o cpf aqui\"*): ele nascera mascarado, mas quem abre essa ficha é o coordenador do comercial, que precisa do número para contrato e consulta de crédito — mascarado, obrigava a abrir outra tela para o mesmo fim. A porta continua estreita: rota do portal comercial, uma unidade por vez, só no escopo da sessão. 2.742 testes verdes; typecheck e lint limpos.",
+      motivation:
+        "A primeira proposta gerada em produção saiu certa no banco e no WhatsApp, mas não aparecia na ficha do lote — e o passo seguinte dela estava apagado.",
+    },
+    title: "A proposta na ficha do lote, e o caminho para o contrato",
+    type: "correcao",
+    version: "1.282.2",
+  },
+  {
     buildTag: "2026-09-05-acoes-da-ficha",
     deployedAt: "2026-09-05T16:20:00-03:00",
     modules: [

@@ -200,11 +200,23 @@ function regua(ctx: Ctx, y: number, cor = LINE, espessura = 0.5, de = M, ate = A
 }
 
 /** O título de seção: rótulo espaçado à esquerda e uma régua fina ocupando o resto da linha. */
+/**
+ * O título de uma seção da folha.
+ *
+ * ⚠️ ELE PRECISA SE SEPARAR DO CABEÇALHO DE COLUNA (Lucas, 05/09/2026: *"coloca em negrito o nome
+ * do cliente e os títulos — condições do financiamento, pagamento da entrada, reajuste da parcela
+ * — tá misturando"*). Os dois eram versaletes cinzas quase iguais: 6,6pt em #5a6778 contra 6,2pt
+ * em #94a3b8 — quatro décimos de ponto e um tom de diferença. Lado a lado ("PAGAMENTO DA ENTRADA"
+ * logo acima de "PARCELA · VENCIMENTO · VALOR"), o leitor não sabia onde uma seção começava e a
+ * tabela dela terminava. Agora o título é maior e ESCURO; o cabeçalho segue miúdo e claro, que é o
+ * papel dele.
+ */
 function tituloDaSecao(ctx: Ctx, titulo: string): void {
   const escrito = espacado(titulo);
-  texto(ctx, escrito, M, 6.6, { bold: true, cor: SOFT });
-  regua(ctx, ctx.y + 2, LINE, 0.5, M + ctx.bold.widthOfTextAtSize(escrito, 6.6) + 7);
-  ctx.y -= 12;
+  const size = 7.6;
+  texto(ctx, escrito, M, size, { bold: true, cor: INK });
+  regua(ctx, ctx.y + 2, LINE, 0.5, M + ctx.bold.widthOfTextAtSize(escrito, size) + 7);
+  ctx.y -= 13;
 }
 
 /** Quebra o parágrafo na largura disponível, palavra a palavra. */
@@ -225,7 +237,13 @@ function quebrar(valor: string, font: PDFFont, size: number, largura: number): s
   return linhas;
 }
 
-type Coluna = { alinhamento?: "direita" | "esquerda"; largura: number; titulo: string };
+type Coluna = {
+  alinhamento?: "direita" | "esquerda";
+  largura: number;
+  /** Destaca o VALOR da coluna (não o cabeçalho). Serve ao nome de quem compra. */
+  negrito?: boolean;
+  titulo: string;
+};
 
 function cabecalhoDaTabela(ctx: Ctx, colunas: Coluna[], xs: number[]): void {
   colunas.forEach((c, i) => {
@@ -287,7 +305,7 @@ function tabela(
           textoDireita(ctx, valor, direita, 8.6);
         }
       } else {
-        texto(ctx, valor, xs[i]!, 8.6);
+        texto(ctx, valor, xs[i]!, 8.6, c.negrito ? { bold: true, cor: INK } : undefined);
       }
     });
     ctx.y -= 6;
@@ -418,7 +436,8 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
   tabela(
     ctx,
     [
-      { largura: LARGURA * 0.5, titulo: "Nome" },
+      // O nome de quem compra é o dado mais consultado da folha: ele fica em negrito.
+      { largura: LARGURA * 0.5, negrito: true, titulo: "Nome" },
       { largura: LARGURA * 0.28, titulo: "CPF" },
       {
         alinhamento: "direita",

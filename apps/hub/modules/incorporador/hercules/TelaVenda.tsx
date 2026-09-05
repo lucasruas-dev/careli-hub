@@ -459,6 +459,44 @@ export function TelaVenda() {
     }
   }, []);
 
+  /**
+   * Leva a proposta aceita para a fase de contrato.
+   *
+   * ⚠️ SEM MODAL, E DE PROPÓSITO. As outras três ações do fluxo perguntam alguma coisa antes —
+   * condições, motivo do cancelamento, dados da reserva. Esta não tem o que perguntar: é o
+   * coordenador dizendo "o cliente aceitou". Uma caixa de confirmação só para repetir o rótulo do
+   * botão viraria um clique a mais em cima do que ele acabou de decidir.
+   *
+   * ⚠️ E ELA RECARREGA A TELA. O lote muda de cor no mapa, a faixa do funil anda uma casa e o
+   * histórico ganha a linha nova — sem isso, a única prova de que funcionou seria o recado verde.
+   */
+  const enviarParaContrato = useCallback(
+    async (u: null | UnidadeNoMapa) => {
+      if (!u) return;
+      try {
+        const r = await fetch("/api/incorporador/venda/contrato", {
+          body: JSON.stringify({ unidadeId: u.id }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+        const j = (await r.json().catch(() => null)) as null | {
+          data?: { codigo?: string };
+          error?: string;
+        };
+        if (!r.ok) {
+          setRecado(j?.error ?? "Não foi possível enviar para contrato.");
+          return;
+        }
+        const cod = j?.data?.codigo ? `${j.data.codigo} · ` : "";
+        setRecado(`${cod}${comoSeLe(u)} foi para a fase de contrato.`);
+        void carregar(recorte || emp, janela);
+      } catch {
+        setRecado("Não foi possível enviar para contrato agora.");
+      }
+    },
+    [carregar, emp, janela, recorte],
+  );
+
   // ── O LUGAR ONDE ELE PAROU, RESTAURADO ANTES DA PRIMEIRA CONSULTA ────────
   //
   // ⚠️ DEPOIS DE MONTAR, e não no `useState` inicial: `localStorage` não existe no servidor, e ler
@@ -960,6 +998,7 @@ export function TelaVenda() {
         <Mesa
           aoFocar={setFoco}
           aoCancelar={setCancelando}
+          aoEnviarParaContrato={enviarParaContrato}
           aoGerarProposta={setPropondo}
           aoReservar={setReservando}
           aoSimular={setSimulando}
@@ -985,6 +1024,7 @@ export function TelaVenda() {
 
 function Mesa({
   aoCancelar,
+  aoEnviarParaContrato,
   aoFocar,
   aoGerarProposta,
   aoReservar,
@@ -1000,6 +1040,7 @@ function Mesa({
   modo,
 }: {
   aoCancelar: (u: null | UnidadeNoMapa) => void;
+  aoEnviarParaContrato: (u: null | UnidadeNoMapa) => void;
   aoFocar: (f: null | Foco) => void;
   aoGerarProposta: (u: null | UnidadeNoMapa) => void;
   aoReservar: (u: null | UnidadeNoMapa) => void;
@@ -1643,6 +1684,7 @@ function Mesa({
           )}
           <AcoesDaUnidade
             aoCancelar={() => aoCancelar(unidadeEmFoco)}
+            aoEnviarParaContrato={() => aoEnviarParaContrato(unidadeEmFoco)}
             aoGerarProposta={() => aoGerarProposta(unidadeEmFoco)}
             aoReservar={() => aoReservar(unidadeEmFoco)}
             propostaViva={propostaEmFoco}
@@ -1969,14 +2011,20 @@ function TrilhaDoFluxo({ etapa }: { etapa: null | string }) {
             key={passo}
             style={{
               alignItems: "center",
-              background: ehAtual ? T.gold : cumprida ? T.soft : T.card,
-              border: ehAtual ? "none" : `1px solid ${T.border}`,
+              // ⚠️ O DEGRAU CUMPRIDO É VERDE (Lucas, 05/09/2026: *"aqui também pode colocar um
+              // verde indicando que foi concluído"*). Ele já tinha o ✓, mas em cinza — a mesma cor
+              // do degrau que ainda não aconteceu, com um ícone pequeno como única diferença. Num
+              // fluxo de cinco passos lido de relance, o que responde "até onde essa venda chegou"
+              // é a COR, não o ícone: agora o caminho andado se separa do que falta sem precisar
+              // procurar. O verde é o mesmo `ok` do resto do portal, em fundo lavado.
+              background: ehAtual ? T.gold : cumprida ? T.okBg : T.card,
+              border: ehAtual ? "none" : `1px solid ${cumprida ? T.ok : T.border}`,
               clipPath: recorte,
-              color: ehAtual ? T.btnFg : cumprida ? T.sub : T.muted,
+              color: ehAtual ? T.btnFg : cumprida ? T.ok : T.muted,
               display: "flex",
               flex: 1,
               fontSize: 10,
-              fontWeight: ehAtual ? 700 : 500,
+              fontWeight: ehAtual || cumprida ? 700 : 500,
               gap: 3,
               justifyContent: "center",
               marginLeft: primeiro ? 0 : -PONTA,
@@ -2060,16 +2108,16 @@ function guardarLugar(lugar: LugarGuardado): void {
   }
 }
 
-const PROXIMA_FASE = "Entra na próxima fase da venda.";
-
 function AcoesDaUnidade({
   aoCancelar,
+  aoEnviarParaContrato,
   aoGerarProposta,
   aoReservar,
   propostaViva,
   unidade,
 }: {
   aoCancelar: () => void;
+  aoEnviarParaContrato: () => void;
   aoGerarProposta: () => void;
   /**
    * A proposta viva do lote, quando há — usada para saber se ela é NATIVA.
@@ -2139,7 +2187,24 @@ function AcoesDaUnidade({
       rotulo: "Gerar proposta",
       tom: "avanca",
     },
-    { ativo: false, motivo: PROXIMA_FASE, rotulo: "Enviar para contrato" },
+    // ⚠️ O SEGUNDO CAMINHO DA PROPOSTA (Lucas, 05/09/2026: *"depois da proposta gerada, tenho dois
+    // caminhos, cancelar e enviar para contrato, pode habilitar"*). Ele MARCA que a proposta foi
+    // aceita e entrou na fila do jurídico — não gera minuta, que é da Têmis e ainda não está
+    // ligada aqui. Por isso também não dispara WhatsApp: "entrou na fila" não muda nada na mão do
+    // cliente hoje, e o aviso fica reservado para o dia em que a minuta sair de verdade.
+    {
+      ativo: proposta,
+      aoClicar: aoEnviarParaContrato,
+      motivo: !unidade
+        ? "Escolha uma unidade."
+        : proposta
+          ? "Marca a proposta como aceita e leva a venda para a fase de contrato."
+          : propostaDoLegado
+            ? "Esta proposta veio do C2X: o contrato dela é feito lá."
+            : "Precisa de uma proposta gerada.",
+      rotulo: "Enviar para contrato",
+      tom: "avanca",
+    },
     // ⚠️ CANCELAR SÓ NA RESERVA, e não em qualquer unidade não disponível. Uma unidade vendida
     // também deixa de ser disponível, e ali cancelar significa DISTRATO — outro ato, com outras
     // consequências. O botão que serve para as duas coisas é o botão que alguém clica errado.

@@ -465,10 +465,16 @@ export function ModalDeProposta({
           color: T.text,
           display: "flex",
           flexDirection: "column",
-          height: naMontagem ? "min(92vh, 900px)" : undefined,
-          maxHeight: "min(92vh, 900px)",
+          // ⚠️ O TETO DE 900px ERA O QUE CRIAVA A BARRA DE ROLAGEM (Lucas, 05/09/2026: *"aumenta
+          // essa tela para não ter barra de rolagem"*). Numa tela de 1080 sobravam mais de 100px
+          // de altura sem uso, e o cockpit da esquerda — lote, parcela, entrada, cobrança, um
+          // embaixo do outro — rolava mesmo com espaço livre logo abaixo da modal. Na montagem o
+          // limite passa a ser só a janela; o 900 continua valendo no modo estreito (o portão),
+          // que é curto e não deve esticar numa tela grande.
+          height: naMontagem ? "92vh" : undefined,
+          maxHeight: naMontagem ? "92vh" : "min(92vh, 900px)",
           overflow: "hidden",
-          width: naMontagem ? "min(96vw, 1280px)" : "min(94vw, 620px)",
+          width: naMontagem ? "min(97vw, 1440px)" : "min(94vw, 620px)",
         }}
       >
         <div
