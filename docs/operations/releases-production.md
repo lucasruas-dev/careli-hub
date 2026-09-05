@@ -5714,3 +5714,83 @@ Registro de producao:
 - Pendencias: validacao visual do Lucas (reserva ponta a ponta, simulador, campo da politica).
 - Status: `EM PRODUCAO`.
 - Proxima acao: `Lucas validar a reserva com um lote de teste; definir o prazo padrao da casa`.
+
+## 2026-09-05 · v1.282.0 — Hercules: gerar e cancelar proposta, da reserva ao PDF
+
+- Autorizacao: OK explicito do Lucas para as duas migrations e para o push na `main`.
+- Commit: `fd181839`. Rollback: `359dea03` (v1.281.0).
+- Deployment: `dpl_GWdHv3KnoJNhphasFovdRQtCJbd7`, target production, `READY`,
+  alias `c2x.app.br` (`aliasError: null`).
+- Entrega: o segundo passo da venda na tela Venda do Hercules, com os DOIS caminhos.
+  - GERAR: titular e o da reserva e nao se troca (o servidor ignora titular vindo no corpo);
+    CAD do titular tem que estar credenciada no empreendimento; proponentes adicionais com % que
+    fecha 100%; entrada em divisao simples (partes iguais, dia 10 ou 20, meses subsequentes);
+    validade de 3/5/7/10 dias CALCULADA NO SERVIDOR (a tela manda o numero de dias); PDF com logo
+    do empreendimento, compradores, condicoes, fluxo da entrada, anuais e tabela de reajuste;
+    disparo para coordenador, imobiliaria e corretor com o PDF anexo.
+  - CANCELAR: motivo obrigatorio de lista fechada; tres linhas mudam juntas (proposta ->
+    `cancelado`, reserva -> `cancelada`, unidade -> `disponivel`), NESSA ORDEM e conferindo cada
+    passo; os tres sao avisados de que o PDF nao vale mais; evento na ficha do lote.
+- Migrations aplicadas em producao (`bxgukywoxgivlrhjkwjx`), as duas com OK explicito:
+  - `0132_hercules_proposta_validade` — coluna `validade_em timestamptz` + indice parcial
+    (`origem='panteon' and etapa='proposta'`). As 4.857 importadas ficam nulas: o C2X nao tem
+    prazo de proposta.
+  - `0133_hercules_propostas_rls` — RLS ligada e grants de `anon` revogados em
+    `hercules_propostas`, `hercules_proposta_etapas` e `hercules_proposta_eventos`.
+    ⚠️ ISTO ERA VAZAMENTO ABERTO, medido antes com `set local role anon`: 4.857 propostas com nome
+    e CPF legiveis pela chave que vai no bundle do navegador, com INSERT/UPDATE/DELETE. Lapso da
+    0126/0127 — toda irma da familia (0112, 0123, 0125) fechava ao nascer. Conferido depois:
+    `anon` recebe `permission denied`, `service_role` le as 4.857.
+- Conferencia adversarial: duas rodadas (9 lentes + 6 lentes, 3 ceticos por achado, 128 agentes).
+  22 + 15 achados julgados; os que sobreviveram foram corrigidos neste commit. Os dois mais
+  graves ja estavam EM PRODUCAO antes desta entrega:
+  - FURO DE AUTORIZACAO: as seis rotas de `venda/` passavam so por `autorizar`, que nao olha o
+    TIPO do portal — e o cookie `apolo_inc` do incorporador e o mesmo do comercial. O dono de um
+    loteamento podia, por HTTP e sem a aba Venda aparecer para ele, reservar/propor/cancelar no
+    proprio empreendimento, disparando WhatsApp em nome da Careli. Trocado por
+    `autorizarComercial`, que ja existia em `board-do-portal.ts` e que `contratos/route.ts` ja
+    usava. Ver [[reference-rotas-incorporador-exigem-autorizar-comercial]].
+  - AVISO DA IMOBILIARIA NUNCA SAIU: 5 de 5 disparos de reserva falharam com "sem telefone".
+    A busca filtrava `contact_type = 'phone'` e a RAIANE IMOBILIARIA tem `whatsapp` + `email`.
+    Medido: das 5.745 entidades com contato, 3.941 tem APENAS `whatsapp` (69% invisiveis para um
+    disparo que sai por WhatsApp). Regra extraida para `lib/hercules/telefone-do-aviso.ts` com
+    teste. Ver [[reference-disparo-contact-type-whatsapp]].
+  - Outras correcoes: tres UPDATEs que engoliam erro e podiam deixar lote preso e invisivel para
+    as duas telas; `.select()` no flip da reserva no POST (zero linhas passava por sucesso e
+    deixava proposta viva sobre lote livre); cancelamento endereçado so pela unidade podia
+    derrubar a proposta de OUTRO cliente (a tela passou a mandar qual proposta esta vendo);
+    cartao "A financiar" nao abatia valor presente dos reforcos e discordava do PDF em ate
+    R$ 38.656; chip "%" da entrada arredondava no real e nascia abaixo do proprio piso; reduzir o
+    prazo nao reduzia os reforcos anuais (baloes vencendo depois da ultima mensal, mensal 23%
+    menor); PDF prometia reajuste em plano sem juros e sem indice; `comPropostaViva` nao filtrava
+    `origem` (reserva sumia do funil em unidade com proposta antiga do C2X — 4 unidades hoje);
+    byte NUL no arquivo do portao da CAD deixava o grep cego; retrato da unidade nao
+    ressincronizava e o botao oferecia o cancelamento errado.
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` limpo nos arquivos do modulo (os 1.902
+  warnings do repo sao preexistentes, 0 errors); `npx vitest run` a partir de `apps/hub`:
+  203 arquivos, 2.734 testes verdes. ⚠️ Rodar da RAIZ faz `masterplan-estado.test.ts` falhar por
+  `process.cwd()` — nao e regressao.
+- Healthchecks pos-deploy: `https://c2x.app.br` 200; deployment `READY` com alias de producao
+  aplicado; leitura pelo `service_role` intacta apos a RLS (4.857 propostas, 12.295 etapas,
+  19.531 eventos, 3 reservas vivas).
+- Riscos conhecidos:
+  - ⚠️ GERAR E CANCELAR DISPARAM WHATSAPP REAL para os tres, sem modo de ensaio. E agora a
+    IMOBILIARIA passa a receber pela primeira vez — antes ficava de fora sem ninguem notar.
+  - ⚠️ O FLUXO NUNCA RODOU PONTA A PONTA CONTRA O BANCO REAL. Conferido antes do deploy: zero
+    propostas com `origem='panteon'` e zero disparos `tipo='hercules_proposta'`. Os 2.734 testes
+    cobrem a logica, nao a integracao. Falta a passada completa (reservar -> propor -> cancelar ->
+    reservar de novo) num lote do ZZ TESTE, conferindo os tres WhatsApps, a ficha e o mapa a cada
+    passo. Os dois indices parciais foram lidos e liberam a unidade no fim do ciclo
+    (`cancelado` fora do predicado da proposta, `cancelada` fora do da reserva), mas leitura de
+    predicado nao substitui ver rodar.
+  - As 4 reservas vivas estao todas no ZZ TESTE (`9001`), que e onde o ensaio vai acontecer.
+  - Prazo padrao da proposta em 7 dias: ESCOLHA DO ZEUS, nao ha numero escrito na casa. Falta o
+    Lucas dizer.
+  - Nao corrigido, anotado: `hercules_unidades.situacao` nao e escrita pela proposta, entao a
+    proxima carga de unidades do C2X reescreve o lote para `disponivel`; `validade_em`,
+    `condicoes`, `reserva_id` e `cliente_entity_id` nao tem leitor ainda; o PDF sobe para
+    `apolo-documents/hercules-propostas/` mas o caminho nao e gravado em coluna nenhuma (so a URL
+    assinada de 60 min dentro do WhatsApp); os eventos da ficha sao carimbados em UTC, entao
+    cancelamento do fim da tarde aparece no dia seguinte (ja acontece com os da reserva).
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas fazer a passada ponta a ponta num lote do ZZ TESTE e definir o prazo padrao`.
