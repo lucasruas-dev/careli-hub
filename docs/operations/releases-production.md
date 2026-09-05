@@ -5794,3 +5794,49 @@ Registro de producao:
     cancelamento do fim da tarde aparece no dia seguinte (ja acontece com os da reserva).
 - Status: `EM PRODUCAO`.
 - Proxima acao: `Lucas fazer a passada ponta a ponta num lote do ZZ TESTE e definir o prazo padrao`.
+
+## 2026-09-05 · v1.282.1 — Hercules: as acoes da ficha, pela lista e com cor
+
+- Autorizacao: OK explicito do Lucas ("pode subir").
+- Commit: `3df42b8e`. Rollback: `fd181839` (v1.282.0).
+- Reportado pelo Lucas testando a v1.282.0 em producao: *"quando eu clico no analitico, nao
+  aparece nenhum botao; quando eu clico na grade aparece o botao"* + *"aproveita colore esses
+  botoes de acoes, cancelar, gerar proposta"*.
+- Correcao: clicar numa linha da LISTA foca uma PROPOSTA, nao um lote, e `unidadeEmFoco` so lia o
+  foco do tipo "unidade". Pela lista ele saia nulo e os QUATRO botoes apagavam com "Escolha uma
+  unidade" — numa ficha que ja mostrava o cliente, o valor, o plano e o historico daquele lote.
+  A `LinhaDaLista` carrega `unidadeId` justamente para isto.
+  ⚠️ A REGRA VIROU MODULO PURO COM TESTE (`lib/hercules/unidade-em-foco.ts`, 8 testes) porque errou
+  das DUAS pontas no mesmo dia: de manha o retrato do clique envelhecia (botao oferecendo "Cancelar
+  reserva" num lote que ja era proposta, com a rota respondendo 409 e apontando para um botao que a
+  tela nao mostrava); a tarde a lista nao chegava ao lote. Os dois apagam botoes numa ficha que
+  esta mostrando o lote certo, e nenhum aparece em teste enquanto a decisao morar no componente.
+  O mapa fresco vence o retrato; o retrato e fallback SO do clique na grade.
+- Cor dos botoes: verde no que anda (Gerar proposta), vermelho no que desfaz (Cancelar), em fundo
+  lavado com borda e texto no tom. Nao em bloco cheio: quatro solidos coloridos brigam entre si e
+  nenhum vira o principal (o Lucas ja reprovou esse excesso no PDF). O unico solido continua sendo
+  o Reservar, que abre o fluxo.
+- Dados de teste criados no ZZ TESTE (9001), a pedido do Lucas — escrita direta no banco, com OK:
+  - 6 entidades `pf` em `apolo_entities`, CPFs 999.999.001-00 a 999.999.006-15 (validados contra
+    `cpfValido` do repo antes de gravar), com `metadata.origem = 'teste-hercules'` para dar para
+    varrer e apagar depois;
+  - 6 contatos `whatsapp` em `apolo_contacts` (status `pending` — o CHECK aceita
+    verified/pending/attention/blocked, nao `active`);
+  - 6 CADs `credenciado` em `apolo_esteira` no `enterprise_id = '9001'`, vinculadas a RAIANE
+    IMOBILIARIA e ao corretor LUCAS MOREIRA RUAS.
+  - ⚠️ O ZZ TESTE NAO TINHA NENHUMA CAD, e as duas reservas de teste ja existentes (Carlos Henrique
+    Souza e Jorge Amado) usam o CPF `058.183.866-19`, que no Apolo e LUCAS MOREIRA RUAS e nao tinha
+    CAD em empreendimento nenhum. O primeiro clique em "Gerar proposta" levaria "cliente nao
+    credenciado". Esse CPF tambem foi credenciado no 9001 (as DUAS entidades duplicadas dele —
+    ver a licao das 619 duplicatas do sync).
+  - Conferido depois: os 6 passam pelo caminho de `credenciadoParaVender` (busca por
+    `document_hash`, depois `apolo_esteira` no escopo).
+- PROVA DA CORRECAO DO WHATSAPP EM PRODUCAO: no cancelamento de reserva que o Lucas fez as
+  19:01 UTC de 05/09, os TRES disparos sairam `enviado`, incluindo a IMOBILIARIA — que havia
+  falhado com "sem telefone" em 5 de 5 tentativas anteriores. Ver
+  [[reference-disparo-contact-type-whatsapp]].
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` limpo nos arquivos tocados; `npx vitest run`
+  a partir de `apps/hub`: 204 arquivos, 2.742 testes verdes.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas fazer a passada ponta a ponta (reservar -> propor -> cancelar -> reservar de
+  novo) com um dos 6 clientes novos, e definir o prazo padrao da proposta`.
