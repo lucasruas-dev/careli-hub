@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bookmark,
   Check,
@@ -398,7 +398,19 @@ export function TelaVenda() {
   // Abre em 12 meses: o mês corrente sozinho, no dia 3, mostraria quase nada.
   const [janela, setJanela] = useState<string>("12m");
 
+  // ⚠️ A ÚLTIMA CHAMADA É A QUE VALE, E ISSO NÃO É PRECAUÇÃO TEÓRICA. Sem este contador a tela
+  // mostrou o escopo INTEIRO com o seletor marcando um produto só (Lucas, 05/09/2026: *"parou de
+  // filtrar"* — 11 reservas na tela para 3 no banco). A corrida nasceu junto com a memória do
+  // último produto: na abertura saem DUAS chamadas, a inicial sem filtro e a do produto restaurado
+  // do `localStorage`. A sem filtro carrega 5.528 unidades e demora mais, então ela responde POR
+  // ÚLTIMO e sobrescreve a resposta certa que já tinha chegado — o seletor fica certo e o conteúdo,
+  // errado. Guardar o número do pedido e descartar o que não for o mais novo resolve os dois casos:
+  // a restauração e o clique rápido entre produtos.
+  const pedidoEmVoo = useRef(0);
+
   const carregar = useCallback(async (alvo: string, qualJanela: string) => {
+    pedidoEmVoo.current += 1;
+    const meu = pedidoEmVoo.current;
     setCarregando(true);
     setErro(null);
     try {
@@ -414,15 +426,22 @@ export function TelaVenda() {
       const sufixo = busca.toString() ? `?${busca}` : "";
       const r = await fetch(`/api/incorporador/venda${sufixo}`, { cache: "no-store" });
       const j = (await r.json().catch(() => null)) as null | { data?: FluxoDeVenda; error?: string };
+
+      // Chegou tarde: outro pedido saiu depois deste, e é a resposta dele que vale.
+      if (meu !== pedidoEmVoo.current) return;
+
       if (!r.ok || !j?.data) {
         setErro(j?.error ?? "Não foi possível carregar o fluxo de venda.");
         return;
       }
       setDados(j.data);
     } catch {
-      setErro("Não foi possível carregar o fluxo de venda.");
+      if (meu === pedidoEmVoo.current) setErro("Não foi possível carregar o fluxo de venda.");
     } finally {
-      setCarregando(false);
+      // ⚠️ O "CARREGANDO" TAMBÉM É DO ÚLTIMO. Sem esta conferência, a resposta velha apagava o aviso
+      // de carregando enquanto o pedido novo ainda estava em voo, e a tela ficava parada parecendo
+      // pronta, mostrando o conteúdo do pedido anterior.
+      if (meu === pedidoEmVoo.current) setCarregando(false);
     }
   }, []);
 

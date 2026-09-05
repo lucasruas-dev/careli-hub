@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-05-filtro-da-venda",
+    deployedAt: "2026-09-05T09:40:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "O filtro por empreendimento voltou a valer: a tela mostrava o estoque inteiro com um produto só escolhido no alto.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "7d4582f3",
+    technical: {
+      done: "A TELA MOSTRAVA O ESCOPO INTEIRO COM O SELETOR NUM PRODUTO SO (Lucas: *\"parou de filtrar\"* — 11 reservas na tela para 3 no banco, e 104 quadras no lugar das 12 do ZZ TESTE). ⚠️ E UMA CORRIDA, e ela NASCEU JUNTO COM A MEMORIA DO ULTIMO PRODUTO que subiu ontem (v1.280.0): na abertura passaram a sair DUAS chamadas a /api/incorporador/venda — a inicial sem filtro e a do produto restaurado do localStorage. A sem filtro carrega as 5.528 unidades e demora mais; ela responde POR ULTIMO e sobrescreve a resposta certa que ja tinha chegado. Por isso o seletor ficava certo e o conteudo errado — e por isso so aparecia depois que alguem tinha escolhido um produto alguma vez. `carregar` passou a numerar cada pedido e a descartar a resposta que nao for a do pedido mais novo, inclusive no `setCarregando` do finally (sem isso a resposta velha apagava o aviso de carregando com o pedido novo ainda em voo). Vale tambem para o clique rapido entre produtos, que tinha a mesma corrida sem ninguem ter notado. 2.522 testes verdes; typecheck limpo.",
+      motivation:
+        "A memoria do ultimo produto, que subiu ontem, criou uma segunda chamada na abertura — e a resposta mais lenta, sem filtro, chegava por ultimo e vencia.",
+    },
+    title: "O filtro por empreendimento voltou a valer",
+    type: "correcao",
+    version: "1.280.3",
+  },
+  {
     buildTag: "2026-09-04-cod-na-tela",
     deployedAt: "2026-09-04T17:20:00-03:00",
     modules: [
