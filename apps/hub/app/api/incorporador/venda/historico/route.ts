@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { autorizar, codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
   type EventoDaUnidade,
@@ -42,7 +43,7 @@ export const runtime = "nodejs";
 export const maxDuration = 20;
 
 export async function GET(request: Request) {
-  const auth = autorizar(request);
+  const auth = autorizarComercial(request);
   if (!auth.ok) return auth.response;
 
   const unidade = (new URL(request.url).searchParams.get("unidade") ?? "").trim();
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
       // reserva logo acima já mostra; sem plano e prazo o histórico não diz em que condições a
       // proposta saiu. `contrato_parcelas` antes de `plano_parcelas`: um é a venda, o outro o molde.
       .select(
-        "id,codigo,cliente_nome,imobiliaria_nome,criado_em_c2x,criado_em,criado_por_nome,protocolo_numero,plano_nome,plano_parcelas,contrato_parcelas,observacao,etapa,valor",
+        "id,codigo,cliente_nome,imobiliaria_nome,criado_em_c2x,criado_em,criado_por_nome,protocolo_numero,plano_nome,plano_parcelas,contrato_parcelas,observacao,etapa,valor,cancelada_em,cancelada_motivo,cancelada_por_nome",
       )
       .eq("workspace_id", "careli")
       .eq("unidade_id", unidade)

@@ -45,6 +45,17 @@ const ESTAGIO: Record<number, string> = {
  * COD vem de `protocolo_numero`, copiado da reserva.
  */
 export type PropostaDoHistorico = {
+  /**
+   * O cancelamento da proposta nativa — os mesmos três campos que a reserva já usa.
+   *
+   * ⚠️ NÃO VÊM DE `hercules_proposta_etapas`. Os movimentos do C2X moram lá, mas a proposta que
+   * nasce aqui não escreve naquela tabela: sem estes campos, "Proposta cancelada" simplesmente não
+   * apareceria na ficha do lote — o lote voltaria para a disponibilidade sem nada explicando por
+   * quê, que é justamente a pergunta que o histórico existe para responder.
+   */
+  cancelada_em?: null | string;
+  cancelada_motivo?: null | string;
+  cancelada_por_nome?: null | string;
   cliente_nome: null | string;
   codigo: null | string;
   /** O prazo CONTRATADO. Ver `plano_parcelas`: aquele é o molde, este é a venda. */
@@ -252,6 +263,25 @@ export function historicoDaUnidade(
       // sido dele. A nativa sabe: é o usuário da sessão que clicou em "Gerar proposta".
       quem: nativa ? texto(p.criado_por_nome) : null,
     });
+
+    // ⚠️ O CANCELAMENTO É O PAR DA ABERTURA, e sem ele a ficha do lote fica com a metade que não
+    // explica nada: "Proposta gerada" em setembro e a unidade disponível em outubro, sem uma linha
+    // dizendo o que aconteceu no meio. O motivo é o que o coordenador procura quando alguém
+    // pergunta por que este lote soltou — a mesma razão pela qual a reserva já grava o dela.
+    if (p.cancelada_em) {
+      eventos.push({
+        cliente: texto(p.cliente_nome),
+        codigo: nativa ? codigoDaVenda(p.protocolo_numero) || null : null,
+        fato: "Proposta cancelada",
+        id: `cancelada:${p.id}`,
+        observacao: texto(p.cancelada_motivo),
+        propostaId: p.id,
+        quando: p.cancelada_em,
+        quem: texto(p.cancelada_por_nome),
+        tipo: "etapa",
+        valor: null,
+      });
+    }
   }
 
   for (const m of movimentos) {

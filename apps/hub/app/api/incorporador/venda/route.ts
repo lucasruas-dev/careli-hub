@@ -7,7 +7,8 @@ import {
 } from "@/lib/apolo/incorporador/codigos-do-pedido";
 import { lerEsteiraDoEscopo } from "@/lib/apolo/incorporador/crm";
 import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
-import { autorizar, codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient } from "@/lib/apolo/server";
@@ -99,13 +100,17 @@ export const COLUNAS_DA_PROPOSTA = [
   // aqui o que o coordenador anotou ao reservar desaparecia quando a reserva virava proposta.
   "observacao",
   "criado_em_c2x",
+  // ⚠️ SEM ESTA COLUNA O RECORTE DE `comPropostaViva` VIRA O CONTRÁRIO DELE MESMO: o campo chegaria
+  // `undefined`, nenhuma proposta casaria com 'panteon', e a proposta nativa deixaria de esconder a
+  // reserva que ela substituiu — a mesma unidade apareceria duas vezes no funil, dobrando o VGV.
+  "origem",
 ] as const;
 
 const indisponivel = () =>
   NextResponse.json({ error: "Não foi possível carregar o fluxo de venda agora." }, { status: 503 });
 
 export async function GET(request: Request) {
-  const auth = autorizar(request);
+  const auth = autorizarComercial(request);
   if (!auth.ok) return auth.response;
 
   const supabase = createApoloAdminClient();
@@ -301,9 +306,20 @@ export async function GET(request: Request) {
     // de virar proposta (é ela que trava a unidade, pelo índice parcial da 0125), e a proposta
     // nativa é uma linha nova aqui: sem este recorte a MESMA unidade entraria no funil duas vezes,
     // uma em `reservado` e outra em `proposta`, dobrando também o VGV do pipeline.
+    // ⚠️ SÓ A PROPOSTA NATIVA SUBSTITUI A RESERVA, e por isso o recorte inclui `origem`. A leitura
+    // acima traz a tabela inteira, e nela moram as 4.857 propostas importadas do C2X — 2.592 delas
+    // em etapa viva. Sem este filtro, uma reserva feita hoje numa unidade que tem proposta ANTIGA
+    // do legado era descartada do funil, da lista, do VGV e da camada de reservas do mapa, sem
+    // erro e sem log: o coordenador via "reservado com sucesso" e a reserva não aparecia. Medido
+    // no banco: 4 unidades hoje estão `disponivel` (reserváveis pela tela) com proposta c2x viva.
     const comPropostaViva = new Set(
       propostas
-        .filter((p) => p.unidade_id && (ETAPAS_DO_FLUXO as readonly string[]).includes(p.etapa))
+        .filter(
+          (p) =>
+            p.unidade_id &&
+            p.origem === "panteon" &&
+            (ETAPAS_DO_FLUXO as readonly string[]).includes(p.etapa),
+        )
         .map((p) => String(p.unidade_id)),
     );
     const reservas = await lerReservasVivas(supabase, unidades, comPropostaViva).catch((erro) => {

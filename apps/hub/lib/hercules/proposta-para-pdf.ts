@@ -24,21 +24,12 @@ import {
 } from "@/lib/apolo/planos-comerciais";
 
 import type { Cronograma, ParcelaDoCronograma } from "./cronograma";
-import { dataEscrita, diaDoCalendario } from "./proposta";
+import { dataEscrita } from "./proposta";
 import type {
   CompradorDaProposta,
   ParcelaDaProposta,
   PropostaParaPdf,
 } from "./proposta-pdf";
-
-/**
- * Quantos dias a proposta vale.
- *
- * ⚠️ ESTÁ NO PAPEL PORQUE O PREÇO NÃO É ETERNO: a tabela reajusta e a unidade pode ser vendida
- * para outro cliente enquanto esta proposta circula no WhatsApp. Sete dias é o prazo que o
- * comercial pratica; o dia exato vai escrito para ninguém precisar contar.
- */
-export const VALIDADE_DA_PROPOSTA_EM_DIAS = 7;
 
 export type CompradorDaFolha = {
   cpf: string;
@@ -60,7 +51,12 @@ export type DadosDaFolha = {
   compradores: CompradorDaFolha[];
   cronograma: Cronograma;
   diaDeVencimento: number;
-  /** ISO do instante em que a proposta foi gerada. Vira a data de emissão e a base da validade. */
+  /**
+   * ISO do instante em que a proposta foi gerada — a data de emissão impressa no cabeçalho.
+   *
+   * ⚠️ ELE NÃO É MAIS A BASE DA VALIDADE (ver `validadeEmIso`). Enquanto a validade saía daqui,
+   * reimprimir o documento em outro dia mudava até quando ele dizia valer.
+   */
   emitidaEmIso: string;
   empreendimento: string;
   logoC2x: null | Uint8Array;
@@ -74,6 +70,20 @@ export type DadosDaFolha = {
     nome: string;
     uf: null | string;
   };
+  /**
+   * Até quando esta proposta vale — o ISO que está GRAVADO em `hercules_propostas.validade_em`.
+   *
+   * ⚠️ VEM DE FORA, E NÃO SE CALCULA AQUI. Até a 0132 a folha somava sete dias à emissão na hora de
+   * imprimir, e por isso a mesma proposta reimpressa em dezembro dizia que valia até dezembro: o
+   * documento anunciava a data do dia da impressão, não a que foi prometida ao comprador. A validade
+   * é parte da promessa, então ela é lida de onde a promessa ficou registrada.
+   *
+   * ⚠️ NULO É "NÃO ANUNCIE PRAZO", e não "sem prazo" nem um padrão inventado: as 4.857 propostas
+   * importadas do C2X não têm validade nenhuma (a coluna nasceu nula para elas), e imprimir uma data
+   * qualquer nelas seria escrever no papel do cliente um vencimento que ninguém combinou. Sem data,
+   * a frase da folha continua de pé — só não promete até quando.
+   */
+  validadeEmIso: null | string;
   valorNegociado: number;
 };
 
@@ -91,7 +101,14 @@ function reais(valor: number): string {
 
 /** "250,00" — número com duas casas, na vírgula do país. */
 function decimal(valor: number): string {
-  return (Number.isFinite(valor) ? valor : 0).toFixed(2).replace(".", ",");
+  // ⚠️ COM SEPARADOR DE MILHAR, como todo número do documento. Sem ele um lote de chácara saía
+  // "20000,00 m²" no subtítulo, ao lado de valores escritos "R$ 20.000,00" — a mesma folha usando
+  // duas convenções. `toLocaleString` aqui é seguro: o resultado passa por `seguro()` antes de ir
+  // para a Helvetica, e pt-BR só produz dígitos, ponto e vírgula.
+  return (Number.isFinite(valor) ? valor : 0).toLocaleString("pt-BR", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  });
 }
 
 /** "60%", "33,33%" — sem casas quando é redondo, porque "60,00%" se lê pior. */
@@ -128,20 +145,6 @@ function porExtenso(dia: string): string {
   const mes = MESES[Number(partes[2]) - 1];
   if (!mes) return "";
   return `${partes[3]} de ${mes} de ${partes[1]}`;
-}
-
-/**
- * `dias` dias depois de um `YYYY-MM-DD`, ainda como dia.
- *
- * ⚠️ MEIA-NOITE **UTC** NOS DOIS SENTIDOS. Somar em milissegundos só é seguro porque entra e sai
- * em UTC: com fuso local no meio, um dia de 23h (horário de verão, que ainda existe em outros
- * países e no histórico do Brasil) faria a validade cair no dia anterior.
- */
-function somarDias(dia: string, dias: number): string {
-  const partes = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dia ?? "").trim());
-  if (!partes?.[1] || !partes[2] || !partes[3]) return "";
-  const base = Date.UTC(Number(partes[1]), Number(partes[2]) - 1, Number(partes[3]));
-  return new Date(base + dias * 86_400_000).toISOString().slice(0, 10);
 }
 
 /** "1 de 2" + a data por extenso, que é como o fluxo aparece na folha. */
@@ -203,8 +206,10 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
   const primeiraDaEntrada = cronograma.entrada[0] ?? null;
   const primeiraDeTodas = primeiraDaEntrada ?? primeiraMensal;
 
-  const emitidaEm = diaDoCalendario(dados.emitidaEmIso) ?? "";
-  const valeAte = emitidaEm ? somarDias(emitidaEm, VALIDADE_DA_PROPOSTA_EM_DIAS) : "";
+  // ⚠️ `dataEscrita` LÊ O ISO NO FUSO DA OPERAÇÃO (−03:00), e é isso que faz a validade sair no dia
+  // certo: ela é gravada no FIM do dia (23:59:59 em Brasília, ou seja, 02:59:59Z do dia seguinte),
+  // e ler esse instante em UTC anunciaria o dia de depois — um dia a mais de preço garantido.
+  const valeAte = dataEscrita(dados.validadeEmIso);
 
   const compradores: CompradorDaProposta[] = dados.compradores.map((c) => ({
     documento: formatarDocumento(c.cpf),
@@ -298,10 +303,14 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
     });
   }
 
+  // ⚠️ SEM DATA A FRASE PERDE O PRAZO, NÃO A RESSALVA. A confirmação de disponibilidade e a
+  // aprovação de crédito valem em toda proposta; o "valem até" é que depende de alguém ter
+  // prometido um prazo. Escrever "valem até " com o espaço vazio no fim seria pior do que não
+  // escrever: o comprador leria como defeito do documento.
   observacoes.push({
-    texto: `Os valores acima valem até ${dataEscrita(
-      valeAte,
-    )} e estão sujeitos à confirmação de disponibilidade da unidade e à aprovação de crédito.`,
+    texto: valeAte
+      ? `Os valores acima valem até ${valeAte} e estão sujeitos à confirmação de disponibilidade da unidade e à aprovação de crédito.`
+      : "Os valores acima estão sujeitos à confirmação de disponibilidade da unidade e à aprovação de crédito.",
     titulo: "Sobre esta proposta.",
   });
 
@@ -333,10 +342,15 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
       ate: dataEscrita(faixa.ate),
       de: dataEscrita(faixa.de),
       parcelas: `${faixa.parcelaInicial} a ${faixa.parcelaFinal}`,
-      periodo: periodoDoCiclo(faixa.ciclo),
+      // ⚠️ FAIXA ÚNICA NÃO É "1º ANO". Quando a parcela não muda, a única linha cobre o contrato
+      // inteiro — rotulá-la "1º ano" fazia a folha dizer "1º ano | 1 a 120 | 10/11/2026 a
+      // 10/10/2036", um primeiro ano de dez anos, e deixava o leitor procurando os anos seguintes
+      // que a tabela não tem.
+      periodo: cronograma.reajustes.length === 1 ? "Todo o contrato" : periodoDoCiclo(faixa.ciclo),
       temIpca: faixa.temIpca,
       valor: reais(faixa.valor),
     })),
+    temReajuste: temDegrau || temCorrecao,
     subtitulo,
     unidade: dados.unidade.nome,
   };

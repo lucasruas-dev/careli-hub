@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 
 import {
+  conferirCancelamentoDaProposta,
+  MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA,
+} from "@/lib/hercules/proposta";
+import {
   comoFoiOAviso,
   conferirCancelamento,
   MOTIVOS_DE_CANCELAMENTO,
@@ -23,15 +27,60 @@ import { T } from "../tema";
 // uma ligação para o coordenador — se ele lembrar. Por isso a lista aparece antes do botão, e não
 // como um campo opcional escondido.
 
+/**
+ * O que esta modal cancela.
+ *
+ * ⚠️ MESMA MODAL, DOIS ATOS — e a diferença está só nos dados, não no desenho. Duplicar as 300
+ * linhas para trocar a rota e a lista de motivos criaria duas telas que precisam ser corrigidas
+ * juntas para sempre, e a segunda é a que fica para trás.
+ *
+ * ⚠️ OS MOTIVOS NÃO SÃO OS MESMOS: quem cancela proposta já mandou condições ao cliente, e por isso
+ * a lista dela tem "Condições não aceitas" e "Cliente pediu outro plano" — recusas que na reserva
+ * ainda não existiam.
+ */
+const ALVOS = {
+  proposta: {
+    aviso: "A unidade volta para a disponibilidade na hora, e o PDF que já foi enviado deixa de valer.",
+    conferir: conferirCancelamentoDaProposta,
+    feito: "Proposta",
+    motivos: MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA as readonly string[],
+    rota: "/api/incorporador/venda/proposta",
+    titulo: "Cancelar a proposta de",
+    verbo: "Cancelar proposta",
+  },
+  reserva: {
+    aviso: "A unidade volta para a disponibilidade na hora e pode ser reservada por outra pessoa.",
+    conferir: conferirCancelamento,
+    feito: "Reserva",
+    motivos: MOTIVOS_DE_CANCELAMENTO as readonly string[],
+    rota: "/api/incorporador/venda/reserva",
+    titulo: "Cancelar a reserva de",
+    verbo: "Cancelar reserva",
+  },
+} as const;
+
 export function ModalDeCancelamento({
+  alvo = "reserva",
   onCancelada,
   onFechar,
+  propostaId,
   unidade,
 }: {
+  /** `reserva` (o padrão, que já estava no ar) ou `proposta`. */
+  alvo?: "proposta" | "reserva";
   onCancelada: (mensagem: string) => void;
   onFechar: () => void;
+  /**
+   * A proposta que ESTA tela está mostrando. Vai no corpo para o servidor conferir.
+   *
+   * ⚠️ SEM ELE, UMA ABA VELHA CANCELA A PROPOSTA DE OUTRO CLIENTE — a busca do servidor é por
+   * unidade, e a unidade pode ter ganhado outra proposta desde que esta tela carregou. Só faz
+   * sentido no alvo `proposta`; a reserva se endereça pela unidade como sempre.
+   */
+  propostaId?: null | string;
   unidade: { id: string; nome: string; produto: string };
 }) {
+  const oQue = ALVOS[alvo];
   const [motivo, setMotivo] = useState<string>("");
   const [detalhe, setDetalhe] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -51,8 +100,13 @@ export function ModalDeCancelamento({
     };
   }, [onFechar]);
 
-  const pedido = { detalhe, motivo, unidadeId: unidade.id };
-  const erros = conferirCancelamento(pedido);
+  const pedido = {
+    detalhe,
+    motivo,
+    ...(alvo === "proposta" && propostaId ? { propostaId } : {}),
+    unidadeId: unidade.id,
+  };
+  const erros = oQue.conferir(pedido);
   const erroDe = (campo: "detalhe" | "motivo") =>
     tentou ? (erros.find((e) => e.campo === campo)?.mensagem ?? null) : null;
 
@@ -63,7 +117,7 @@ export function ModalDeCancelamento({
 
     setEnviando(true);
     try {
-      const r = await fetch("/api/incorporador/venda/reserva", {
+      const r = await fetch(oQue.rota, {
         body: JSON.stringify(pedido),
         headers: { "content-type": "application/json" },
         method: "PATCH",
@@ -91,7 +145,7 @@ export function ModalDeCancelamento({
 
       const cod = corpo.data?.codigo ? `${corpo.data.codigo} · ` : "";
       onCancelada(
-        `${cod}Reserva de ${unidade.nome} cancelada. A unidade voltou para a disponibilidade. ${comoFoiOAviso(
+        `${cod}${oQue.feito} de ${unidade.nome} cancelada. A unidade voltou para a disponibilidade. ${comoFoiOAviso(
           corpo.data?.avisos ?? [],
         )}`,
       );
@@ -137,7 +191,9 @@ export function ModalDeCancelamento({
           }}
         >
           <div>
-            <b style={{ fontSize: 14 }}>Cancelar a reserva de {unidade.nome}</b>
+            <b style={{ fontSize: 14 }}>
+              {oQue.titulo} {unidade.nome}
+            </b>
             <div style={{ color: T.muted, fontSize: 11.5 }}>{unidade.produto}</div>
           </div>
           <button
@@ -172,7 +228,11 @@ export function ModalDeCancelamento({
               padding: "10px 12px",
             }}
           >
-            A unidade volta para a disponibilidade na hora e pode ser reservada por outra pessoa.
+            {/* ⚠️ O `{" "}` SEGURA O ESPAÇO ENTRE AS DUAS FRASES. Enquanto isto era um texto só em
+                duas linhas, o compilador juntava as linhas com um espaço; virando expressão + texto,
+                ele remove a quebra inteira e não repõe nada — e o parágrafo saía "…por outra
+                pessoa.Corretor, imobiliária e…", colado, na modal de reserva que já está no ar. */}
+            {oQue.aviso}{" "}
             Corretor, imobiliária e coordenador recebem o aviso com o motivo.
           </p>
 
@@ -198,7 +258,7 @@ export function ModalDeCancelamento({
             </div>
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {MOTIVOS_DE_CANCELAMENTO.map((m) => {
+              {oQue.motivos.map((m) => {
                 const escolhido = m === motivo;
                 return (
                   <button
@@ -288,7 +348,7 @@ export function ModalDeCancelamento({
             }}
             type="button"
           >
-            {enviando ? "Cancelando…" : "Cancelar reserva"}
+            {enviando ? "Cancelando…" : oQue.verbo}
           </button>
         </div>
       </div>

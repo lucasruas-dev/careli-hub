@@ -468,3 +468,48 @@ describe("historicoDaUnidade — a proposta nativa", () => {
     expect(classeDoFato(evento?.fato ?? "", evento?.tipo)).toBe("proposta");
   });
 });
+
+describe("⚠️ o cancelamento da proposta nativa aparece na ficha do lote", () => {
+  const NATIVA = proposta({
+    cancelada_em: "2026-09-10T14:00:00Z",
+    cancelada_motivo: "Crédito não aprovado",
+    cancelada_por_nome: "Lucas Ruas",
+    criado_em: "2026-09-05T12:00:00Z",
+    criado_em_c2x: null,
+    criado_por_nome: "Lucas Ruas",
+    etapa: "cancelado",
+    id: "prop-nativa",
+    protocolo_numero: 3,
+  });
+
+  it("gera o par abertura + cancelamento, o mais recente no topo", () => {
+    // Sem o par, a ficha ficava com "Proposta gerada" em setembro e a unidade disponível em
+    // outubro, sem uma linha dizendo o que aconteceu no meio.
+    // A lista desce do mais novo para o mais velho, que é como a ficha se lê.
+    const fatos = historicoDaUnidade([NATIVA], [], []).map((e) => e.fato);
+    expect(fatos).toContain("Proposta gerada");
+    expect(fatos).toContain("Proposta cancelada");
+    expect(fatos.indexOf("Proposta cancelada")).toBeLessThan(fatos.indexOf("Proposta gerada"));
+  });
+
+  it("carrega o motivo e quem cancelou — é o que o coordenador procura", () => {
+    const cancelamento = historicoDaUnidade([NATIVA], [], []).find(
+      (e) => e.fato === "Proposta cancelada",
+    );
+    expect(cancelamento?.observacao).toBe("Crédito não aprovado");
+    expect(cancelamento?.quem).toBe("Lucas Ruas");
+    expect(cancelamento?.quando).toBe("2026-09-10T14:00:00Z");
+  });
+
+  it("proposta sem cancelamento não ganha o evento", () => {
+    const viva = proposta({
+      criado_em: "2026-09-05T12:00:00Z",
+      criado_em_c2x: null,
+      etapa: "proposta",
+      id: "prop-viva",
+    });
+    expect(historicoDaUnidade([viva], [], []).map((e) => e.fato)).not.toContain(
+      "Proposta cancelada",
+    );
+  });
+});

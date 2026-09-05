@@ -7,7 +7,8 @@ import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos"
 import { soDigitos } from "@/lib/apolo/documento";
 import { APOLO_DOCS_BUCKET } from "@/lib/apolo/documentos";
 import { chaveDaLogo } from "@/lib/apolo/enterprise-logos";
-import { autorizar, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
@@ -27,14 +28,23 @@ import {
 } from "@/lib/hercules/planos-do-panteon";
 import {
   avisosDaProposta,
+  avisosDeCancelamentoDaProposta,
   type CompradorDoPedido,
+  conferirCancelamentoDaProposta,
   diaDoCalendario,
+  type PedidoDeCancelamentoDaProposta,
   type PedidoDeProposta,
+  PRAZO_PADRAO_DA_PROPOSTA,
+  PRAZOS_DA_PROPOSTA,
   conferirProposta,
 } from "@/lib/hercules/proposta";
 import { montarPropostaPdf } from "@/lib/hercules/proposta-pdf";
 import { montarFolhaDaProposta } from "@/lib/hercules/proposta-para-pdf";
 import { familiaDoEmpreendimento } from "@/lib/hercules/quem-pode-vender";
+// ⚠️ O PRAZO DA PROPOSTA USA O CÁLCULO DA RESERVA de propósito: `vencimentoEmDias` já põe o fim no
+// último segundo do dia no fuso da operação (−03:00), que é o que a pessoa entende por "vale até
+// quinta". Uma segunda conta aqui daria dois vencimentos diferentes na mesma venda.
+import { motivoEscrito, vencimentoEmDias } from "@/lib/hercules/reserva";
 
 // A PROPOSTA DA UNIDADE — o segundo passo da venda, saindo da reserva que já existe.
 //
@@ -44,7 +54,7 @@ import { familiaDoEmpreendimento } from "@/lib/hercules/quem-pode-vender";
 // empreendimento"*, *"depois vem a montagem no simulador"* e *"ao gerar, a proposta fica cadastrada
 // e o PDF vai por WhatsApp para coordenador, imobiliária e corretor"*.
 //
-// ⚠️ O ESQUELETO É O DA ROTA DE RESERVA, e de propósito: `autorizar`, escopo do COOKIE por
+// ⚠️ O ESQUELETO É O DA ROTA DE RESERVA, e de propósito: `autorizarComercial`, escopo do COOKIE por
 // `idsDaSessao` (nunca do corpo), unidade fora do escopo respondendo 404 igual a inexistente — o
 // 403 não pode virar oráculo de "existe, mas não é sua" —, e o aviso que NÃO derruba a gravação.
 //
@@ -262,7 +272,7 @@ async function nomesDasEntidades(
 }
 
 export async function GET(request: Request) {
-  const auth = autorizar(request);
+  const auth = autorizarComercial(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -387,7 +397,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = autorizar(request);
+  const auth = autorizarComercial(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -407,6 +417,7 @@ export async function POST(request: Request) {
     planoNome?: unknown;
     primeiraParcelaEm?: unknown;
     unidadeId?: unknown;
+    prazoEmDias?: unknown;
     valorNegociado?: unknown;
   };
   try {
@@ -511,6 +522,37 @@ export async function POST(request: Request) {
     const entradaMinimaPercentual = await pisoDaEntrada(admin, c2xId);
     const primeiraParcelaEm = String(corpo.primeiraParcelaEm ?? "").trim();
 
+    // ── ATÉ QUANDO ESTA PROPOSTA VALE ──────────────────────────────────────
+    //
+    // ⚠️ QUEM CONFERE A DATA É `conferirProposta`, E POR ISSO ELA TEM QUE ENTRAR NO PEDIDO. A régua
+    // já recusa data ilegível, data no passado e prazo acima de `PRAZO_MAXIMO_DA_PROPOSTA` — mas só
+    // roda sobre o que está no objeto: um campo esquecido aqui não vira erro, vira coluna nula, e a
+    // proposta nasce sem prazo com o PDF anunciando preço sem data de fim.
+    //
+    // ⚠️ AUSENTE CAI NO PRAZO PADRÃO; ILEGÍVEL, NÃO. A tela manda a data escolhida nos chips, mas um
+    // cliente que ainda não conhece o campo (a tela em cache do navegador, ou uma chamada antiga)
+    // continuaria gerando proposta — e recusá-lo por 422 pararia a venda por causa de um campo que
+    // ele não sabe existir. O padrão de 7 dias é o mesmo prazo que o papel já imprimia antes da
+    // 0132, então o silêncio de quem não manda nada continua valendo o que sempre valeu. Já
+    // "quinta que vem" é uma escolha ERRADA, não uma ausência: cair no padrão aí seria corrigir em
+    // silêncio o que a pessoa digitou e prometer ao cliente uma data que ninguém escolheu.
+    //
+    // ⚠️ `??` NÃO TROCA STRING VAZIA — o campo vazio do formulário chega como `""`, e `"" ?? padrão`
+    // continua `""`. Por isso o teste é explícito.
+    // ⚠️ QUEM CONTA OS DIAS É O SERVIDOR, e a tela manda só QUANTOS. A versão anterior recebia a
+    // data pronta, e isso punha o relógio do navegador para decidir quando a proposta vence: quem
+    // abrisse a modal às 23h55 e enviasse às 00h05 gravaria o prazo contado a partir de ONTEM — três
+    // dias de chip virando dois e pouco —, e uma aba deixada aberta além do prazo passava a receber
+    // 422 numa data que ninguém digitou, sem jeito de consertar clicando no mesmo prazo. Com o
+    // número de dias, a data nasce do relógio de quem valida, e o formato deixa de existir como
+    // problema: nada de data curta ancorando em meia-noite UTC e gravando um dia a menos do que o
+    // papel imprime.
+    const prazoPedido = numeroDoCorpo(corpo.prazoEmDias);
+    const prazoEmDias = (PRAZOS_DA_PROPOSTA as readonly number[]).includes(prazoPedido)
+      ? prazoPedido
+      : PRAZO_PADRAO_DA_PROPOSTA;
+    const validadeEm = vencimentoEmDias(new Date().toISOString(), prazoEmDias);
+
     const pedido: PedidoDeProposta = {
       anuaisQuantidade:
         corpo.anuaisQuantidade === null || corpo.anuaisQuantidade === undefined
@@ -528,6 +570,7 @@ export async function POST(request: Request) {
       primeiraParcelaEm,
       reservaId: reserva.id,
       unidadeId: unidade.id,
+      validadeEm,
       valorNegociado: numeroDoCorpo(corpo.valorNegociado),
       vencimentoDia: numeroDoCorpo(corpo.diaDeVencimento),
     };
@@ -660,6 +703,10 @@ export async function POST(request: Request) {
         reserva_id: reserva.id,
         unidade_id: unidade.id,
         unidade_nome: unidadeEscrita,
+        // ⚠️ A VALIDADE FICA GRAVADA, e é ela que o documento repete depois. Antes da 0132 o PDF
+        // somava sete dias na hora de imprimir: a mesma proposta reimpressa em dezembro dizia que
+        // valia até dezembro, e o papel do cliente deixava de bater com o que foi prometido.
+        validade_em: pedido.validadeEm,
         valor: pedido.valorNegociado,
         workspace_id: WORKSPACE,
       })
@@ -684,16 +731,40 @@ export async function POST(request: Request) {
     // ⚠️ ELA CONTINUA TRAVANDO A UNIDADE (o índice parcial cobre `ativa` e `proposta`), e continua
     // sendo o histórico de quem reservou. O `.eq("situacao", "ativa")` repete a condição de
     // propósito: dois cliques no mesmo segundo não podem converter a mesma reserva duas vezes.
-    const { error: erroDaReserva } = await admin
+    // ⚠️ O `.select()` NÃO É ENFEITE: sem ele, update que casa ZERO linhas devolve `error: null` e
+    // passa por sucesso. E o zero-linhas aqui tem um cenário real — a reserva foi CANCELADA por
+    // outra pessoa nos segundos entre a leitura (passo 2) e este ponto, que demora o quanto levam
+    // o credenciamento, o cadastro, o catálogo do C2X e os planos. Nesse caso a reserva já saiu de
+    // `ativa`, a unidade já voltou para `disponivel`, os três já receberam "reserva cancelada" —
+    // e seguir daqui gravaria uma proposta viva sobre um lote livre, que aceitaria reserva de
+    // outro cliente enquanto o primeiro anda com um PDF de preço na mão.
+    const { data: movida, error: erroDaReserva } = await admin
       .from("hercules_reservas")
       .update({ atualizado_em: agora, situacao: "proposta" })
       .eq("id", reserva.id)
-      .eq("situacao", "ativa");
+      .eq("situacao", "ativa")
+      .select("id");
 
     if (erroDaReserva) {
       // Não derruba: a proposta já existe e é ela que representa a venda. O funil não duplica
       // porque `/venda` descarta a reserva da unidade que já tem proposta viva.
       console.error("[hercules][proposta] falha ao mover a reserva", erroDaReserva);
+    } else if (!movida || movida.length === 0) {
+      // ⚠️ DESFAZ A PROPOSTA QUE ACABOU DE NASCER. Ela é de segundos atrás, ninguém foi avisado
+      // ainda (o passo 9 vem depois) e nenhum PDF saiu: apagá-la é mais honesto do que deixar uma
+      // venda viva sobre um lote que a tela mostra livre. O `delete` é seguro justamente porque
+      // esta linha não teve tempo de virar referência de nada.
+      console.error("[hercules][proposta] a reserva saiu de 'ativa' durante a geração", {
+        propostaId,
+        reservaId: reserva.id,
+      });
+      if (propostaId) {
+        await admin.from("hercules_propostas").delete().eq("id", propostaId);
+      }
+      return NextResponse.json(
+        { error: "A reserva desta unidade foi cancelada enquanto a proposta era montada." },
+        { status: 409 },
+      );
     }
 
     // ── 9. O PDF e os três avisos ──────────────────────────────────────────
@@ -827,6 +898,8 @@ async function avisar(
       propostaId: dados.propostaId,
       unidade: dados.unidade,
       unidadeEscrita: dados.unidadeEscrita,
+      // A MESMA data que acabou de ir para `validade_em`: o papel repete o que ficou gravado.
+      validadeEmIso: dados.pedido.validadeEm,
       valorNegociado: dados.pedido.valorNegociado,
       plano: dados.plano,
     });
@@ -846,6 +919,7 @@ async function avisar(
       parcelas: dados.cronograma.mensais.length,
       primeiraParcelaEm: dados.pedido.primeiraParcelaEm,
       unidade: dados.unidadeEscrita,
+      validadeEm: dados.pedido.validadeEm,
       valorNegociado: dados.pedido.valorNegociado,
       vencimentoDia: dados.pedido.vencimentoDia,
     });
@@ -900,6 +974,8 @@ async function guardarOPdf(
     propostaId: null | string;
     unidade: UnidadeDaProposta;
     unidadeEscrita: string;
+    /** O ISO gravado em `hercules_propostas.validade_em`, não um prazo recontado na impressão. */
+    validadeEmIso: string;
     valorNegociado: number;
   },
 ): Promise<null | { fileName: string; url: string }> {
@@ -925,6 +1001,7 @@ async function guardarOPdf(
         nome: dados.unidadeEscrita,
         uf: dados.empreendimento.uf,
       },
+      validadeEmIso: dados.validadeEmIso,
       valorNegociado: dados.valorNegociado,
     });
 
@@ -986,5 +1063,255 @@ async function logoDoEmpreendimento(
     return new Uint8Array(await data.arrayBuffer());
   } catch {
     return null;
+  }
+}
+
+// ── O CANCELAMENTO DA PROPOSTA ──────────────────────────────────────────────
+//
+// Lucas (05/09/2026), escolhendo construir isto antes de subir o Gerar proposta: *"da reserva eu
+// tenho dois caminhos"* — e a proposta também precisa dos dois.
+//
+// ⚠️ SEM ESTA ROTA, CADA "GERAR PROPOSTA" TIRAVA UM LOTE DO ESTOQUE PARA SEMPRE. Com a unidade em
+// `proposta` os quatro botões da tela apagam, e o PATCH da reserva responde "o cancelamento é o da
+// proposta" — apontando para uma rota que não existia. Cliente desiste, crédito reprova, o
+// coordenador errou o plano: a rotina do comercial deixava o lote preso, com o PDF e o preço já na
+// mão de três pessoas de fora, e o único jeito de soltar era UPDATE na mão no banco.
+//
+// ⚠️ TRÊS LINHAS MUDAM JUNTAS, e nenhuma é opcional: a PROPOSTA vira `cancelado`, a RESERVA que ela
+// consumiu sai de `proposta` para `cancelada`, e a UNIDADE volta para `disponivel`. Esquecer a
+// reserva prenderia o lote de outro jeito, mais difícil de enxergar: o índice
+// `hercules_reservas_uma_viva_por_unidade` barra nova reserva enquanto a situação for 'ativa' ou
+// 'proposta', então a unidade apareceria disponível na tela e recusaria a próxima reserva com erro
+// de banco.
+//
+// ⚠️ PATCH, E NÃO DELETE — a mesma razão da reserva. A proposta cancelada continua respondendo
+// "quem tinha este lote e por quê", e o histórico da unidade lê `cancelada_em` para montar o evento.
+export async function PATCH(request: Request) {
+  const auth = autorizarComercial(request);
+  if (!auth.ok) return auth.response;
+
+  const admin = createApoloAdminClient();
+  if (!admin) {
+    return NextResponse.json({ error: "Configuração indisponível." }, { status: 503 });
+  }
+
+  let corpo: Partial<PedidoDeCancelamentoDaProposta>;
+  try {
+    corpo = (await request.json()) as typeof corpo;
+  } catch {
+    return NextResponse.json({ error: "Pedido inválido." }, { status: 400 });
+  }
+
+  const pedido: PedidoDeCancelamentoDaProposta = {
+    detalhe: typeof corpo.detalhe === "string" ? corpo.detalhe : null,
+    motivo: String(corpo.motivo ?? "").trim(),
+    propostaId: typeof corpo.propostaId === "string" ? corpo.propostaId.trim() || null : null,
+    unidadeId: String(corpo.unidadeId ?? "").trim(),
+  };
+
+  const erros = conferirCancelamentoDaProposta(pedido);
+  if (erros.length > 0) {
+    return NextResponse.json({ erros }, { status: 422 });
+  }
+
+  try {
+    const permitidos = new Set(await idsDaSessao(auth.sessao));
+
+    const { data } = await admin
+      .from("hercules_unidades")
+      .select("id,codigo,quadra,lote,situacao,preco_tabela,enterprise_id,area")
+      .eq("workspace_id", WORKSPACE)
+      .eq("id", pedido.unidadeId)
+      .maybeSingle();
+
+    const unidade = data as null | UnidadeDaProposta;
+    if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
+      return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
+    }
+
+    // ⚠️ SÓ A PROPOSTA NATIVA E ABERTA. `origem = 'panteon'` mantém de fora as 4.857 importadas do
+    // C2X — cancelar por aqui uma venda que mora no legado escreveria no Panteon um cancelamento
+    // que o C2X nunca saberia, e os dois passariam a discordar sobre o mesmo lote.
+    const { data: linha } = await admin
+      .from("hercules_propostas")
+      .select(
+        "id, etapa, protocolo_numero, codigo, compradores, cliente_nome, reserva_id, imobiliaria_entity_id, corretor_entity_id, empreendimento_id",
+      )
+      .eq("workspace_id", WORKSPACE)
+      .eq("unidade_id", unidade.id)
+      .eq("origem", "panteon")
+      .eq("etapa", "proposta")
+      .maybeSingle();
+
+    const proposta = linha as null | {
+      cliente_nome: null | string;
+      codigo: null | string;
+      compradores: unknown;
+      corretor_entity_id: null | string;
+      empreendimento_id: null | string;
+      etapa: string;
+      id: string;
+      imobiliaria_entity_id: null | string;
+      protocolo_numero: null | number;
+      reserva_id: null | string;
+    };
+
+    if (!proposta) {
+      return NextResponse.json({ error: "Não há proposta aberta nesta unidade." }, { status: 409 });
+    }
+
+    // ⚠️ A TELA DIZ QUAL PROPOSTA ELA ESTÁ VENDO, e aqui as duas têm que ser a mesma. Ver o aviso
+    // em `PedidoDeCancelamentoDaProposta`: sem esta conferência, uma aba aberta desde cedo cancela
+    // a proposta que nasceu depois — de outro cliente, com outro corretor, e os três recebem o
+    // aviso com o nome errado. Opcional para não quebrar quem já tem a tela carregada sem o campo.
+    if (pedido.propostaId && pedido.propostaId !== proposta.id) {
+      return NextResponse.json(
+        { error: "Esta unidade já tem outra proposta. Recarregue a tela antes de cancelar." },
+        { status: 409 },
+      );
+    }
+
+    const motivo = motivoEscrito(pedido.motivo, pedido.detalhe);
+    const agora = new Date().toISOString();
+
+    const { data: cancelada, error } = await admin
+      .from("hercules_propostas")
+      .update({
+        atualizado_em: agora,
+        cancelada_em: agora,
+        cancelada_motivo: motivo,
+        cancelada_por: auth.sessao.usuarioId,
+        cancelada_por_nome: auth.sessao.usuarioNome,
+        etapa: "cancelado",
+        // ⚠️ O MAPA PINTA PELA PROPOSTA DE `etapa_desde` MAIS RECENTE. Sem mexer nesta data, o
+        // cancelamento entraria no histórico com o carimbo da geração e o lote poderia continuar
+        // pintado como proposto.
+        etapa_desde: agora,
+      })
+      .eq("id", proposta.id)
+      // ⚠️ A CONDIÇÃO REPETIDA É A TRAVA DO CLIQUE DUPLO, igual à da reserva: sem ela, dois
+      // coordenadores no mesmo lote cancelam duas vezes e saem dois WhatsApps de cancelamento.
+      .eq("etapa", "proposta")
+      .select("id");
+
+    if (error) throw new Error(error.message);
+
+    // ⚠️ SEM LINHA CASADA, NINGUÉM AVISA NINGUÉM. Outra sessão chegou primeiro: a proposta já não
+    // está em `proposta`, e seguir daqui mandaria o segundo aviso e devolveria "cancelado" para
+    // quem não cancelou nada.
+    if (!cancelada || cancelada.length === 0) {
+      return NextResponse.json(
+        { error: "Esta proposta acabou de ser cancelada em outra tela." },
+        { status: 409 },
+      );
+    }
+
+    // A reserva que virou esta proposta volta a ser história. Ver o aviso do topo: sem isto a
+    // unidade aparece livre e recusa a próxima reserva.
+    //
+    // ⚠️ A RESERVA CAI ANTES DA UNIDADE, E O ERRO É LIDO. Esta ordem não é estética: são três
+    // gravações sem transação (o cliente do Supabase não tem uma), e a única forma de nenhuma
+    // falha deixar lote preso é soltar a unidade POR ÚLTIMO, depois que as duas linhas que a
+    // travam já caíram. Engolir o erro daqui — que era o que este bloco fazia — produzia o pior
+    // estado possível: unidade `disponivel` com a reserva parada em `proposta`, que a tela Venda
+    // NÃO ENXERGA (ela só lê reserva `ativa`) e que o índice
+    // `hercules_reservas_uma_viva_por_unidade` continua ocupando. O lote aparecia verde, o botão
+    // Reservar acendia, e o insert morria em 23505 traduzido como "acabou de ser reservada por
+    // outra pessoa" — mandando o coordenador procurar um colega que não existe. Sem log, sem
+    // saída pela tela, para sempre: exatamente o lote preso que esta rota veio acabar.
+    if (proposta.reserva_id) {
+      // ⚠️ SÓ A SITUAÇÃO, SEM OS CAMPOS `cancelada_*` — e a diferença é o que a ficha do lote conta.
+      // Esta reserva não foi cancelada por ninguém: ela foi CONSUMIDA pela proposta lá atrás, e
+      // agora cai junto com ela. Preenchendo `cancelada_em` aqui, `eventosDaReserva` passava a
+      // emitir "Reserva cancelada" ao lado de "Proposta cancelada" — duas linhas vermelhas no
+      // MESMO segundo, com o mesmo motivo, o mesmo COD e o mesmo autor, para um clique só. A
+      // segunda registra um ato que ninguém praticou, na tela cuja regra é justamente não atribuir
+      // ato a quem não o praticou. O que aconteceu tem um nome, e ele já está na linha de cima.
+      const { error: erroDaReserva } = await admin
+        .from("hercules_reservas")
+        .update({ atualizado_em: agora, situacao: "cancelada" })
+        .eq("id", proposta.reserva_id)
+        .in("situacao", ["ativa", "proposta"]);
+
+      if (erroDaReserva) {
+        console.error("[hercules][proposta] falha ao cancelar a reserva de origem", erroDaReserva);
+        // ⚠️ PARA AQUI, COM A UNIDADE AINDA PRESA — e isso é de propósito. A proposta já está
+        // `cancelado`, então este mesmo botão funciona de novo assim que a pessoa tentar outra
+        // vez; parar antes de soltar a unidade mantém o estado CONSISTENTE (lote travado, os três
+        // ainda sem aviso) em vez de deixá-lo travado e anunciado como livre.
+        return NextResponse.json(
+          { error: "A proposta foi cancelada, mas a reserva não. Tente de novo em instantes." },
+          { status: 503 },
+        );
+      }
+    }
+
+    // ⚠️ A UNIDADE VOLTA ANTES DO AVISO, como no cancelamento da reserva: se o WhatsApp falhar, o
+    // lote já está livre para vender. O contrário — lote preso porque uma mensagem não saiu —
+    // custaria uma venda. Mas o erro é LIDO: unidade parada em `reservada` sem reserva nem
+    // proposta viva vira etapa `reservada` no funil e apaga os quatro botões da tela — outro lote
+    // preso, pela outra ponta.
+    const { error: erroDaUnidade } = await admin
+      .from("hercules_unidades")
+      .update({ atualizado_em: agora, situacao: "disponivel" })
+      .eq("id", unidade.id);
+
+    if (erroDaUnidade) {
+      console.error("[hercules][proposta] falha ao liberar a unidade", erroDaUnidade);
+      return NextResponse.json(
+        { error: "A proposta foi cancelada, mas a unidade não foi liberada. Chame o suporte." },
+        { status: 503 },
+      );
+    }
+
+    const cadastro = await carregarCadastroDeEmpreendimentos();
+    const nomeDoEmpreendimento =
+      cadastro.find((l) => l.id === proposta.empreendimento_id)?.nome ??
+      // Proposta sem `empreendimento_id` gravado ainda tem o id do C2X na unidade: o nome vai na
+      // mensagem que três pessoas leem, e "empreendimento" no lugar dele é um recado sem endereço.
+      cadastro.find((l) => String(l.c2xEnterpriseId) === String(unidade.enterprise_id))?.nome ??
+      "empreendimento";
+
+    const titular = Array.isArray(proposta.compradores)
+      ? (proposta.compradores[0] as null | { nome?: unknown })
+      : null;
+    const cliente =
+      (typeof titular?.nome === "string" && titular.nome.trim()) ||
+      proposta.cliente_nome ||
+      "cliente";
+    const codigo = proposta.codigo || codigoDaVenda(proposta.protocolo_numero);
+
+    // Proposta sem imobiliária não tem para quem avisar: o registro do disparo pendura na ficha
+    // dela, inclusive o do coordenador. É a mesma regra do cancelamento da reserva.
+    let avisos: ResultadoDoAviso[] = [];
+    const imobiliariaId = proposta.imobiliaria_entity_id;
+    if (imobiliariaId) {
+      const destinatarios = await destinatariosDaVenda(admin, {
+        corretorId: proposta.corretor_entity_id,
+        empreendimento: { c2xId: String(unidade.enterprise_id), nome: nomeDoEmpreendimento },
+        imobiliariaId,
+      });
+      avisos = await avisarSobreAVenda(admin, {
+        corretorId: proposta.corretor_entity_id,
+        destinatarios,
+        imobiliariaId,
+        origem: "proposta:cancelamento",
+        textos: avisosDeCancelamentoDaProposta({
+          cliente,
+          codigo,
+          corretor: destinatarios.corretor?.nome ?? null,
+          empreendimento: nomeDoEmpreendimento,
+          imobiliaria: destinatarios.imobiliaria.nome,
+          motivo,
+          unidade: nomeDaUnidade(unidade),
+        }),
+        tipo: "hercules_proposta",
+      });
+    }
+
+    return NextResponse.json({ data: { avisos, codigo, id: proposta.id } });
+  } catch (erro) {
+    console.error("[hercules][proposta] falha ao cancelar", erro);
+    return NextResponse.json({ error: "Não foi possível cancelar agora." }, { status: 503 });
   }
 }

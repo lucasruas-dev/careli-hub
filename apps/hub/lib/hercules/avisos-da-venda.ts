@@ -28,6 +28,11 @@ import {
 import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
 
 import { coordenadoresDoPanteon } from "./quem-pode-vender";
+import {
+  type ContatoDoAviso,
+  telefonesPorEntidade,
+  TIPOS_DE_CONTATO_DO_AVISO,
+} from "./telefone-do-aviso";
 
 /** Só o `from` e o `storage` não entram: aqui é leitura de entidade e contato, e o disparo. */
 type Cliente = SupabaseClient;
@@ -80,10 +85,15 @@ export async function destinatariosDaVenda(
   try {
     const [{ data: entidades }, { data: contatos }] = await Promise.all([
       admin.from("apolo_entities").select("id, display_name, legal_name, trade_name").in("id", ids),
+      // ⚠️ `whatsapp` VEM JUNTO, E ELE É A MAIORIA. Buscando só `contact_type = 'phone'`, o disparo
+      // ficava cego para 3.941 das 5.745 entidades com contato — que têm o número cadastrado como
+      // `whatsapp` e nenhum como `phone`. É a explicação dos 5 avisos de reserva que falharam com
+      // "sem telefone" para a RAIANE IMOBILIARIA, 100% das tentativas: ela tem `whatsapp` e
+      // `email`, nunca teve `phone`. E a ironia é que o canal do disparo É o WhatsApp.
       admin
         .from("apolo_contacts")
-        .select("entity_id, value, is_primary")
-        .eq("contact_type", "phone")
+        .select("entity_id, value, is_primary, contact_type")
+        .in("contact_type", [...TIPOS_DE_CONTATO_DO_AVISO])
         .in("entity_id", ids),
     ]);
 
@@ -97,19 +107,9 @@ export async function destinatariosDaVenda(
       nomePorId.set(e.id, (e.trade_name || e.display_name || e.legal_name || "").trim() || "—");
     }
 
-    const telefonePorId = new Map<string, string>();
-    for (const c of (contatos ?? []) as Array<{
-      entity_id: string;
-      is_primary: boolean | null;
-      value: null | string;
-    }>) {
-      const valor = (c.value ?? "").trim();
-      if (!valor) continue;
-      // O primário ganha; na falta dele, o primeiro que tiver número.
-      if (c.is_primary === true || !telefonePorId.has(c.entity_id)) {
-        telefonePorId.set(c.entity_id, valor);
-      }
-    }
+    // A preferência (whatsapp > phone, primário desempata) vive em `telefone-do-aviso.ts`, com
+    // teste: é a regra que estava errada e mandou cinco avisos de reserva para lugar nenhum.
+    const telefonePorId = telefonesPorEntidade((contatos ?? []) as ContatoDoAviso[]);
 
     const doC2x = await coordenadoresDosEmpreendimentos(
       admin,

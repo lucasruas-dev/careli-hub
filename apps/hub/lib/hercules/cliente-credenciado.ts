@@ -369,7 +369,13 @@ function maisRecentePorCad(linhas: LinhaDaEsteira[]): LinhaDaEsteira[] {
   const porCad = new Map<string, LinhaDaEsteira>();
 
   for (const linha of linhas) {
-    const chave = `${linha.entity_id} ${String(linha.enterprise_id ?? "")}`;
+    // ⚠️ SEPARADOR IMPRIMÍVEL, E DE PROPÓSITO. Aqui já houve um `\0` cru — que funciona em
+    // JavaScript, mas faz o grep e o ripgrep classificarem o ARQUIVO INTEIRO como binário e
+    // pularem: procurar `maisRecentePorCad` devolvia "Binary file matches", sem a linha. Este é o
+    // portão que decide se a CAD do cliente está credenciada, e a auditoria desta casa é busca por
+    // texto — um arquivo que a busca não enxerga é um arquivo que toda varredura futura declara
+    // inexistente. `::` não aparece em uuid nem em `group:Nome`, então separa igual.
+    const chave = `${linha.entity_id}::${String(linha.enterprise_id ?? "")}`;
     const atual = porCad.get(chave);
 
     if (!atual || doMaisRecente(linha, atual) < 0) {

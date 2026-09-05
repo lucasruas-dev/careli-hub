@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { soDigitos } from "@/lib/apolo/documento";
-import { autorizar, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { mascararCpf } from "@/lib/hercules/reserva";
 
@@ -36,7 +37,7 @@ type Contato = {
 };
 
 export async function GET(request: Request) {
-  const auth = autorizar(request);
+  const auth = autorizarComercial(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();

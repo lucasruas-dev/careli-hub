@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
 
 import { montarCronograma } from "./cronograma";
-import { montarFolhaDaProposta, VALIDADE_DA_PROPOSTA_EM_DIAS } from "./proposta-para-pdf";
+import { montarFolhaDaProposta } from "./proposta-para-pdf";
+import { vencimentoEmDias } from "./reserva";
 
 /** O plano mais comum da casa: SACOC, sem juros — 21 dos 24 empreendimentos são SACOC. */
 const SACOC_SEM_JUROS: PlanoComercial = {
@@ -52,6 +53,9 @@ const BASE = {
   logoC2x: null,
   logoEmpreendimento: null,
   unidade: { area: 250, cidade: "Goiânia", nome: "Quadra 03 · Lote 07", uf: "GO" },
+  // A validade GRAVADA com a proposta: sete dias contados na geração, terminando no fim do dia 11
+  // em Brasília. Ela chega pronta na folha — o papel não a recalcula.
+  validadeEmIso: vencimentoEmDias("2026-09-04T12:00:00.000Z", 7),
   valorNegociado: 100_000,
 };
 
@@ -98,12 +102,47 @@ describe("montarFolhaDaProposta — o exemplo que o Lucas ditou", () => {
     });
   });
 
-  it("a validade sai escrita, sete dias depois da emissão", () => {
-    const folha = folhaDoExemplo();
-    const sobreAProposta = folha.observacoes.find((o) => o.titulo === "Sobre esta proposta.");
+  it("a validade sai escrita, e é a que foi gravada com a proposta", () => {
+    const sobreAProposta = folhaDoExemplo().observacoes.find(
+      (o) => o.titulo === "Sobre esta proposta.",
+    );
 
-    expect(VALIDADE_DA_PROPOSTA_EM_DIAS).toBe(7);
+    // A validade gravada termina em 11/09 às 23:59:59 de Brasília (02:59:59Z do dia 12): lida em
+    // UTC, o papel anunciaria 12/09 — um dia a mais de preço garantido.
     expect(sobreAProposta?.texto).toContain("valem até 11/09/2026");
+  });
+
+  it("⚠️ reimpressa em dezembro, a folha repete a data PROMETIDA — não conta de novo", () => {
+    // Era o defeito: a validade saía de "emissão + 7 dias", calculada na hora de imprimir. Uma
+    // segunda via tirada em dezembro dizia valer até dezembro, e o papel do cliente deixava de bater
+    // com o que o corretor combinou em setembro. A data é parte da promessa, e promessa não se
+    // recalcula.
+    const reimpressa = montarFolhaDaProposta({
+      ...BASE,
+      cronograma: montarCronograma(CONDICOES),
+      emitidaEmIso: "2026-12-20T12:00:00.000Z",
+      plano: SACOC_SEM_JUROS,
+    });
+    const sobreAProposta = reimpressa.observacoes.find((o) => o.titulo === "Sobre esta proposta.");
+
+    expect(sobreAProposta?.texto).toContain("valem até 11/09/2026");
+    expect(sobreAProposta?.texto).not.toContain("dezembro");
+    expect(sobreAProposta?.texto).not.toContain("/12/2026");
+  });
+
+  it("⚠️ proposta SEM validade gravada não inventa data, e a ressalva continua de pé", () => {
+    // As 4.857 importadas do C2X têm `validade_em` nula: o legado não guarda prazo de proposta.
+    // Imprimir "valem até " com o espaço vazio seria pior do que não prometer prazo nenhum.
+    const semPrazo = montarFolhaDaProposta({
+      ...BASE,
+      cronograma: montarCronograma(CONDICOES),
+      plano: SACOC_SEM_JUROS,
+      validadeEmIso: null,
+    });
+    const sobreAProposta = semPrazo.observacoes.find((o) => o.titulo === "Sobre esta proposta.");
+
+    expect(sobreAProposta?.texto).not.toContain("valem até");
+    expect(sobreAProposta?.texto).toContain("aprovação de crédito");
   });
 
   it("o subtítulo junta produto, área e cidade", () => {
@@ -240,5 +279,62 @@ describe("⚠️ o que a folha promete tem que ser o que o contrato cumpre", () 
 
     expect(folha.destaques[0]?.detalhe).toBe("");
     expect(folha.subtitulo).toBe("Garden · Goiânia, GO");
+  });
+});
+
+describe("⚠️ o plano que NÃO reajusta não pode prometer reajuste", () => {
+  /** O PLANO INVESTIDOR como está cadastrado: 36 parcelas, sem juros e sem índice. */
+  const INVESTIDOR: PlanoComercial = {
+    ...SACOC_SEM_JUROS,
+    indiceCorrecao: "SEM_CORRECAO",
+    jurosTaxa: null,
+    nome: "INVESTIDOR",
+    parcelas: 36,
+  };
+
+  const folhaDoInvestidor = () =>
+    montarFolhaDaProposta({
+      ...BASE,
+      cronograma: montarCronograma({
+        ...CONDICOES,
+        entradaValor: 60_000,
+        parcelasMensais: 36,
+        plano: INVESTIDOR,
+        valorNegociado: 200_000,
+      }),
+      plano: INVESTIDOR,
+      valorNegociado: 200_000,
+    });
+
+  it("declara que não há reajuste, para o PDF não imprimir a seção como se houvesse", () => {
+    // Sem esta distinção a folha saía com o título "Reajuste da parcela" e a frase "os reajustes
+    // seguintes seguem a mesma regra, sempre no aniversário" num contrato de parcela fixa —
+    // prometendo ao comprador um aumento que ele não tem, no papel que circula por WhatsApp.
+    expect(folhaDoInvestidor().temReajuste).toBe(false);
+  });
+
+  it("não abre a observação sobre reajuste", () => {
+    const titulos = folhaDoInvestidor().observacoes.map((o) => o.titulo);
+    expect(titulos).not.toContain("Sobre o reajuste.");
+  });
+
+  it("⚠️ faixa única não se chama '1º ano': ela cobre o contrato inteiro", () => {
+    // "1º ano | 1 a 36" é um primeiro ano de três anos, e deixava o leitor procurando os anos
+    // seguintes que a tabela não tem.
+    const faixas = folhaDoInvestidor().reajustes;
+    expect(faixas).toHaveLength(1);
+    expect(faixas[0]?.periodo).toBe("Todo o contrato");
+    expect(faixas[0]?.parcelas).toBe("1 a 36");
+  });
+
+  it("o plano COM degrau continua dizendo que reajusta, e numera os anos", () => {
+    const folha = montarFolhaDaProposta({
+      ...BASE,
+      cronograma: montarCronograma({ ...CONDICOES, plano: SACOC_COM_JUROS }),
+      plano: SACOC_COM_JUROS,
+    });
+    expect(folha.temReajuste).toBe(true);
+    expect(folha.reajustes.length).toBeGreaterThan(1);
+    expect(folha.reajustes[0]?.periodo).toBe("1º ano");
   });
 });

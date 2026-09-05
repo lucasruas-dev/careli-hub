@@ -5,6 +5,13 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  dataEscrita,
+  PRAZO_PADRAO_DA_PROPOSTA,
+  PRAZOS_DA_PROPOSTA,
+} from "@/lib/hercules/proposta";
+import { vencimentoEmDias } from "@/lib/hercules/reserva";
+
 // OS TRÊS DEFEITOS DA MODAL DE PROPOSTA, TRAVADOS.
 //
 // ⚠️ POR QUE UM TESTE DE TELA, E NÃO DE LIB. Os três são de COMPORTAMENTO da modal, e nenhum
@@ -227,6 +234,81 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+
+// ATÉ QUANDO A PROPOSTA VALE.
+//
+// ⚠️ O RELÓGIO É CONGELADO, E SÓ ELE. `vencimentoEmDias` responde em função de "hoje", e um teste
+// que calcula o esperado depois do clique erraria na virada da meia-noite de Brasília — uma falha
+// que aparece uma vez por ano, de madrugada, e some quando alguém vai olhar. `toFake: ["Date"]`
+// deixa `setTimeout` e o scheduler do React reais: falsificá-los junto trava o `act` esperando um
+// tempo que ninguém adianta.
+describe("até quando a proposta vale", () => {
+  beforeEach(() => {
+    // O instante REAL, congelado: a primeira parcela do dublê é "daqui a 30 dias" de verdade, e
+    // mover o relógio para uma data inventada faria a régua recusá-la por estar no passado.
+    vi.useFakeTimers({ now: new Date(), toFake: ["Date"] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** O que a tela promete para um prazo — "11/09/2026", pela mesma conta da reserva. */
+  const dataDe = (dias: number) => dataEscrita(vencimentoEmDias(new Date().toISOString(), dias));
+
+  it("oferece os prazos da lib com o padrão já marcado", async () => {
+    await abrir();
+    clicar(botao("Montar as condições"));
+
+    // ⚠️ A LISTA É LIDA DA LIB, e não escrita à mão aqui. Um `[3, 5, 7, 10]` no teste passaria a
+    // aprovar a tela velha no dia em que o Lucas trocar os prazos: os dois lados têm que sair da
+    // MESMA constante para o teste ter alguma opinião sobre a tela.
+    expect(PRAZOS_DA_PROPOSTA.map((d) => botao(`${d} dias`).getAttribute("aria-pressed"))).toEqual(
+      PRAZOS_DA_PROPOSTA.map((d) => String(d === PRAZO_PADRAO_DA_PROPOSTA)),
+    );
+    expect(alvo.textContent).toContain(`Vence em ${dataDe(PRAZO_PADRAO_DA_PROPOSTA)}`);
+  });
+
+  it("manda no POST a data do prazo escolhido, e não a do padrão", async () => {
+    const enviados: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, opcoes?: { body?: string; method?: string }) => {
+        if (opcoes?.method === "POST") {
+          enviados.push(String(opcoes.body ?? ""));
+          return {
+            ok: true,
+            text: async () => JSON.stringify({ data: { avisos: [], codigo: "PRP-9" } }),
+          };
+        }
+        return { ok: true, text: async () => JSON.stringify({ data: portao }) };
+      }),
+    );
+
+    await abrir();
+    clicar(botao("Montar as condições"));
+    clicar(botao("3 dias"));
+
+    expect(botao("3 dias").getAttribute("aria-pressed")).toBe("true");
+    expect(botao(`${PRAZO_PADRAO_DA_PROPOSTA} dias`).getAttribute("aria-pressed")).toBe("false");
+    expect(alvo.textContent).toContain(`Vence em ${dataDe(3)}`);
+
+    await act(async () => {
+      clicar(botao("Gerar proposta"));
+    });
+
+    // ⚠️ O QUE VAI NO CORPO É O NÚMERO DE DIAS, NÃO A DATA. Com a data pronta, quem decidia o
+    // vencimento era o relógio do NAVEGADOR: abrir a modal às 23h55 e enviar às 00h05 gravava o
+    // prazo contado a partir de ontem, e o chip de 3 dias entregava dois e pouco ao cliente. O
+    // servidor conta com o relógio dele; a data ao lado dos chips é prévia.
+    const corpo = JSON.parse(enviados[0] ?? "{}") as {
+      prazoEmDias?: number;
+      validadeEm?: string;
+    };
+    expect(corpo.prazoEmDias).toBe(3);
+    expect(corpo.validadeEm).toBeUndefined();
+  });
+});
 
 describe("SONDA", () => {
   function blocos() {

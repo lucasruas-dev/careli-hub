@@ -96,6 +96,17 @@ export type PropostaParaPdf = {
   logoEmpreendimento: null | Uint8Array;
   observacoes: Array<{ texto: string; titulo: string }>;
   reajustes: FaixaDeReajuste[];
+  /**
+   * Se a parcela deste plano REALMENTE muda ao longo do contrato (degrau de juros ou índice).
+   *
+   * ⚠️ NEM TODO PLANO REAJUSTA. O PLANO INVESTIDOR, que está cadastrado e ativo, tem 36 parcelas,
+   * juros nulos e índice SEM_CORRECAO: a parcela é a mesma do começo ao fim. Sem esta distinção a
+   * folha saía com a seção "Reajuste da parcela" e a frase "os reajustes seguintes seguem a mesma
+   * regra, sempre no aniversário" impressas num contrato que não tem reajuste nenhum — prometendo
+   * ao comprador um aumento que ele não vai ter, no papel que circula por WhatsApp. A observação
+   * já sabia se calar (`temDegrau || temCorrecao` em `proposta-para-pdf.ts`); a tabela não sabia.
+   */
+  temReajuste: boolean;
   /** "Garden · 250,00 m² · Goiânia, GO" */
   subtitulo: string;
   /** "Quadra 03 · Lote 07" */
@@ -488,7 +499,10 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
   // ── REAJUSTE ─────────────────────────────────────────────────────────────
   if (dados.reajustes.length > 0) {
     ctx.y -= 12;
-    tituloDaSecao(ctx, "Reajuste da parcela");
+    // ⚠️ O TÍTULO SEGUE O CONTRATO, NÃO A TABELA. Num plano sem degrau e sem índice a mesma tabela
+    // continua útil (ela diz quanto é a parcela e de quando até quando), mas chamá-la de
+    // "Reajuste da parcela" anuncia um reajuste que não existe.
+    tituloDaSecao(ctx, dados.temReajuste ? "Reajuste da parcela" : "Parcelas mensais");
     tabela(
       ctx,
       [
@@ -500,7 +514,10 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
       ],
       dados.reajustes.map((r) => [r.periodo, r.parcelas, r.de, r.ate, r.valor]),
       {
-        continuacao: "os reajustes seguintes seguem a mesma regra, sempre no aniversário",
+        // A frase da continuação só faz sentido quando há reajustes seguintes de que falar.
+        continuacao: dados.temReajuste
+          ? "os reajustes seguintes seguem a mesma regra, sempre no aniversário"
+          : undefined,
         sufixos: dados.reajustes.map((r) => (r.temIpca ? "+ IPCA" : null)),
       },
     );
@@ -551,11 +568,26 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
 
   ctx.paginas.forEach((pagina, i) => {
     const centro = (valor: string, size: number, y: number, cor = MUTE) => {
-      pagina.drawText(seguro(valor), {
+      // ⚠️ CENTRALIZAR SEM MEDIR EMPURRA O TEXTO PARA FORA DA PÁGINA. `x` é `(largura − texto)/2`,
+      // e quando o texto é mais largo que a folha esse número fica NEGATIVO: a linha começa antes
+      // da margem esquerda e termina depois da direita, cortada pela borda do papel. O rodapé é
+      // justamente onde entram nomes reais de três pessoas ("Atendimento: Raiane Imobiliária ·
+      // Nívea Ferreira | Coordenação de vendas: ..."), que é o caso mais longo do documento.
+      let texto = seguro(valor);
+      const util = A4.w - 2 * M;
+      if (font.widthOfTextAtSize(texto, size) > util) {
+        // Corta pelo fim até caber, com reticências de três pontos — o caractere "…" não existe no
+        // WinAnsi e faria o encode lançar na hora de gravar.
+        while (texto.length > 4 && font.widthOfTextAtSize(`${texto}...`, size) > util) {
+          texto = texto.slice(0, -1);
+        }
+        texto = `${texto.trimEnd()}...`;
+      }
+      pagina.drawText(texto, {
         color: cor,
         font,
         size,
-        x: (A4.w - font.widthOfTextAtSize(seguro(valor), size)) / 2,
+        x: (A4.w - font.widthOfTextAtSize(texto, size)) / 2,
         y,
       });
     };

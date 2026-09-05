@@ -42,6 +42,17 @@ export type Composicao = {
   entrada: number;
   /** Quanto a entrada representa do valor negociado. */
   entradaPercentual: number;
+  /**
+   * O saldo que vira série mensal, JÁ DESCONTADO o valor presente dos reforços.
+   *
+   * ⚠️ NÃO É `valor − entrada`. Os reforços anuais vencem lá na frente e entram na conta pelo que
+   * valem HOJE, não pelo valor de face — é assim que `montarProposta` calcula e é o número que o
+   * PDF imprime como "Financiado". A tela recalculava `valor − entrada` por conta própria e
+   * mostrava R$ 180.000 onde o papel do cliente dizia R$ 166.111,11, na mesma venda. Pior: no
+   * SACOC a parcela é `financiado ÷ n`, então o cartão se contradizia sozinho — anunciava
+   * R$ 1.384,26 embaixo de um saldo que daria R$ 1.500,00.
+   */
+  financiado: number;
   /** A do PRIMEIRO ciclo no SACOC — a que o C2X emite no primeiro ano. Ver `montarProposta`. */
   parcela: number;
   parcelas: number;
@@ -185,6 +196,7 @@ export function composicoesQueFecham(entrada: {
           anuais: { quantidade, valor: valorAnual },
           entrada: arredondada,
           entradaPercentual: valor > 0 ? (arredondada / valor) * 100 : 0,
+          financiado: montada.financiado,
           parcela: montada.parcela,
           parcelas: plano.parcelas,
           plano: plano.nome,

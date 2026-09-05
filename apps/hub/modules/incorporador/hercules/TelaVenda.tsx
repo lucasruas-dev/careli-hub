@@ -906,6 +906,10 @@ export function TelaVenda() {
           desfecho: fecha, recarrega a tela e deixa o recado na faixa. */}
       {cancelando ? (
         <ModalDeCancelamento
+          // ⚠️ O ALVO SAI DA ETAPA DA UNIDADE, e não de um segundo estado: são os dois únicos
+          // pontos do fluxo em que o botão acende, e guardar o alvo à parte abriria a chance de
+          // ele discordar da unidade que está na tela — cancelar a proposta de um lote reservado.
+          alvo={cancelando.etapa === "proposta" ? "proposta" : "reserva"}
           onCancelada={(mensagem) => {
             setCancelando(null);
             setRecado(mensagem);
@@ -913,6 +917,14 @@ export function TelaVenda() {
             void carregar(recorte || emp, janela);
           }}
           onFechar={() => setCancelando(null)}
+          // ⚠️ A PROPOSTA QUE ESTA TELA ESTÁ VENDO, não a que o servidor achar. Mesma regra do
+          // painel (a viva da unidade); com ela o servidor recusa o cancelamento quando a unidade
+          // ganhou outra proposta desde que esta aba carregou — ver a trava no corpo do PATCH.
+          propostaId={
+            (dados?.lista ?? []).find(
+              (l) => l.unidadeId === cancelando.id && ehEtapaViva(l.etapa),
+            )?.id ?? null
+          }
           unidade={{
             id: cancelando.id,
             nome: comoSeLe(cancelando),
@@ -1104,7 +1116,21 @@ function Mesa({
 
   // O que o painel mostra. Vindo do mapa, a proposta é achada pelo id da unidade — a mais recente,
   // porque a lista já chega ordenada por `etapa_desde` decrescente.
-  const unidadeEmFoco = foco?.tipo === "unidade" ? foco.unidade : null;
+  // ⚠️ O RETRATO DO CLIQUE ENVELHECE, E ELE MANDA EM QUATRO COISAS. `foco` guarda o OBJETO da
+  // unidade como ela estava quando alguém clicou nela, e nada o ressincroniza depois que a tela
+  // recarrega: quem reserva, gera a proposta e volta a olhar a MESMA ficha vê o mapa repintado e a
+  // trilha do fluxo em "Proposta" — mas o chip continua dizendo "Reserva", o botão continua
+  // dizendo "Cancelar reserva", a modal fala com a rota da RESERVA (409: "Esta reserva já virou
+  // proposta. O cancelamento é o da proposta", apontando para um botão que a tela não oferece), e
+  // depois de um cancelamento bem-sucedido o "Reservar" segue apagado num lote já disponível.
+  // Procurar a versão fresca no `mapa` recém-carregado conserta os quatro de uma vez; o retrato só
+  // permanece quando a unidade saiu do recorte atual, e aí ele é tudo o que existe.
+  const unidadeDoClique = foco?.tipo === "unidade" ? foco.unidade : null;
+  const unidadeEmFoco = unidadeDoClique
+    ? ((dados?.mapa ?? [])
+        .flatMap((g) => g.unidades)
+        .find((u) => u.id === unidadeDoClique.id) ?? unidadeDoClique)
+    : null;
   // ⚠️ SÓ A PROPOSTA VIVA VIRA A FICHA DA UNIDADE. O Lucas pegou isto olhando o VOC 06 07: o lote
   // aparecia "Disponível" e a ficha mostrava cliente, imobiliária, plano e "Data do cancelamento" —
   // eu casava pelo id da unidade sem olhar a etapa, e pegava a proposta CANCELADA como se fosse a
@@ -1613,6 +1639,7 @@ function Mesa({
             aoCancelar={() => aoCancelar(unidadeEmFoco)}
             aoGerarProposta={() => aoGerarProposta(unidadeEmFoco)}
             aoReservar={() => aoReservar(unidadeEmFoco)}
+            propostaViva={propostaEmFoco}
             unidade={unidadeEmFoco}
           />
         </Cartao>
@@ -2033,15 +2060,34 @@ function AcoesDaUnidade({
   aoCancelar,
   aoGerarProposta,
   aoReservar,
+  propostaViva,
   unidade,
 }: {
   aoCancelar: () => void;
   aoGerarProposta: () => void;
+  /**
+   * A proposta viva do lote, quando há — usada para saber se ela é NATIVA.
+   *
+   * ⚠️ SÓ A NATIVA SE CANCELA POR AQUI. Há 14 propostas do C2X em etapa `proposta` (vendas correndo
+   * no legado), e elas pintam o lote igual às daqui: sem esta conferência o botão "Cancelar
+   * proposta" acendia nelas e a rota respondia "Não há proposta aberta nesta unidade" numa ficha
+   * que acabava de dizer Proposta — um beco sem explicação.
+   */
+  propostaViva?: null | { id: string; origem: null | string };
   aoReservar: () => void;
   unidade: null | UnidadeNoMapa;
 }) {
   const disponivel = unidade?.etapa === "disponivel";
   const reservada = unidade?.etapa === "reservado";
+  // ⚠️ A PROPOSTA TAMBÉM TEM VOLTA. Sem esta etapa aqui, gerar a proposta tirava o lote do estoque
+  // para sempre: os quatro botões apagavam, a rota da reserva mandava procurar "o cancelamento da
+  // proposta" e não havia nenhum — cliente que desiste ou reprova no crédito deixava a unidade
+  // presa, com o preço já circulando por WhatsApp, e só SQL na mão a soltava.
+  // ⚠️ E SÓ A NATIVA: a etapa `proposta` do espelho não distingue quem nasceu aqui de quem veio da
+  // carga do legado, e a rota só cancela a nativa. Ver `propostaViva`.
+  const proposta = unidade?.etapa === "proposta" && propostaViva?.origem === "panteon";
+  /** Proposta do legado pintando o lote: a tela diz Proposta, mas o cancelamento é lá. */
+  const propostaDoLegado = unidade?.etapa === "proposta" && propostaViva?.origem !== "panteon";
 
   const acoes: Array<{
     ativo: boolean;
@@ -2079,14 +2125,21 @@ function AcoesDaUnidade({
     // também deixa de ser disponível, e ali cancelar significa DISTRATO — outro ato, com outras
     // consequências. O botão que serve para as duas coisas é o botão que alguém clica errado.
     {
-      ativo: reservada,
+      ativo: reservada || proposta,
       aoClicar: aoCancelar,
       motivo: !unidade
         ? "Escolha uma unidade."
-        : reservada
-          ? "Cancela a reserva; a unidade volta para a disponibilidade e os três são avisados."
-          : "Não há reserva para cancelar nesta unidade.",
-      rotulo: "Cancelar reserva",
+        : proposta
+          ? "Cancela a proposta; a unidade volta para a disponibilidade, os três são avisados e o PDF deixa de valer."
+          : reservada
+            ? "Cancela a reserva; a unidade volta para a disponibilidade e os três são avisados."
+            : propostaDoLegado
+              ? "Esta proposta veio do C2X: o cancelamento dela é feito lá."
+              : "Não há reserva nem proposta para cancelar nesta unidade.",
+      // ⚠️ O RÓTULO SEGUE O QUE VAI SER CANCELADO. "Cancelar reserva" numa unidade que já está em
+      // proposta faria a pessoa pensar que desfaz só o passo anterior e que a proposta continua de
+      // pé — quando o que cai é a proposta inteira, com aviso para as três pontas.
+      rotulo: proposta ? "Cancelar proposta" : "Cancelar reserva",
     },
   ];
 

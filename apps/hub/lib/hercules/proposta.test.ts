@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
 
+import { vencimentoEmDias } from "./reserva";
+
 import {
   avisosDaProposta,
+  avisosDeCancelamentoDaProposta,
+  conferirCancelamentoDaProposta,
   conferirProposta,
+  MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA,
   type DadosDoAvisoDaProposta,
   dataEscrita,
   diaDoCalendario,
   type PedidoDeProposta,
   VENCIMENTO_DIA_MAXIMO,
+  PRAZO_PADRAO_DA_PROPOSTA,
+  PRAZOS_DA_PROPOSTA,
 } from "./proposta";
 import { mascararCpf } from "./reserva";
 
@@ -24,6 +31,7 @@ const PEDIDO: PedidoDeProposta = {
   primeiraParcelaEm: "2026-10-10",
   reservaId: "res-1",
   unidadeId: "uni-1",
+  validadeEm: "2026-09-11T02:59:59.000Z",
   valorNegociado: 178_100,
   vencimentoDia: 10,
 };
@@ -51,6 +59,7 @@ describe("conferirProposta", () => {
         primeiraParcelaEm: "",
         reservaId: "",
         unidadeId: "",
+        validadeEm: "",
         valorNegociado: 0,
         vencimentoDia: 31,
       },
@@ -66,6 +75,7 @@ describe("conferirProposta", () => {
       "reserva",
       "titular",
       "unidade",
+      "validade",
       "valor",
       "vencimentoDia",
     ]);
@@ -302,6 +312,8 @@ const DADOS: DadosDoAvisoDaProposta = {
   parcelas: 120,
   primeiraParcelaEm: "2026-10-10",
   unidade: "Quadra 12 · Lote 06",
+  // A validade GRAVADA com a proposta, a mesma do PEDIDO: fim do dia 11/09 no fuso da operação.
+  validadeEm: "2026-09-11T02:59:59.000Z",
   valorNegociado: 178_100,
   vencimentoDia: 10,
 };
@@ -440,6 +452,185 @@ describe("avisosDaProposta", () => {
   it("as três dizem que o PDF vai anexado", () => {
     for (const aviso of avisosDaProposta(DADOS)) {
       expect(aviso.texto).toContain("PDF");
+    }
+  });
+
+  it("⚠️ as três dizem até quando a proposta vale", () => {
+    // Quem circula é o WhatsApp, não o PDF: condição sem prazo é lida como preço parado no tempo, e
+    // o corretor repassa a mensagem como veio.
+    for (const aviso of avisosDaProposta(DADOS)) {
+      expect(aviso.texto).toContain("*10/09/2026*");
+    }
+  });
+
+  it("⚠️ a validade é a GRAVADA e vira o dia em Brasília, não o dia em UTC", () => {
+    // A validade termina às 23:59:59 do fuso da operação, que é 02:59:59Z do dia seguinte: lida em
+    // UTC, a mensagem prometeria um dia a mais de preço garantido.
+    const avisos = avisosDaProposta({ ...DADOS, validadeEm: "2026-09-11T02:59:59.000Z" });
+    for (const aviso of avisos) {
+      expect(aviso.texto).not.toContain("11/09/2026");
+    }
+  });
+
+  it("sem validade a linha some, em vez de sair pela metade", () => {
+    // As propostas importadas do C2X não têm prazo. "Válida até *" sem o dia seria uma mensagem
+    // quebrada na conversa com o cliente.
+    for (const aviso of avisosDaProposta({ ...DADOS, validadeEm: null })) {
+      expect(aviso.texto).not.toContain("válida até");
+      expect(aviso.texto).not.toContain("Válida até");
+      expect(aviso.texto).not.toContain("\n\n\n");
+    }
+  });
+});
+
+describe("a validade da proposta", () => {
+  // Lucas (05/09/2026): *"vamos fazer igual a reserva, colocar os dias de prazo, 3 - 5 - 7 - 10"*.
+  it("os prazos são os que a tela oferece, e são maiores que os da reserva", () => {
+    expect([...PRAZOS_DA_PROPOSTA]).toEqual([3, 5, 7, 10]);
+    expect(PRAZOS_DA_PROPOSTA).toContain(PRAZO_PADRAO_DA_PROPOSTA);
+  });
+
+  it("sem validade não há proposta", () => {
+    expect(campos({ ...PEDIDO, validadeEm: "" })).toContain("validade");
+    expect(campos({ ...PEDIDO, validadeEm: "quinta que vem" })).toContain("validade");
+  });
+
+  it("⚠️ validade no passado é recusada — proposta vencida não é proposta", () => {
+    expect(campos({ ...PEDIDO, validadeEm: "2026-09-01T12:00:00.000Z" })).toContain("validade");
+  });
+
+  it("⚠️ e há teto: preço congelado sem data não é proposta, é promessa", () => {
+    const longe = new Date(Date.parse(AGORA) + 45 * 86_400_000).toISOString();
+    expect(campos({ ...PEDIDO, validadeEm: longe })).toContain("validade");
+  });
+
+  it("o prazo da tela cabe no teto — os quatro", () => {
+    for (const dias of PRAZOS_DA_PROPOSTA) {
+      const ate = vencimentoEmDias(AGORA, dias);
+      expect(campos({ ...PEDIDO, validadeEm: ate })).not.toContain("validade");
+    }
+  });
+});
+
+describe("⚠️ reforço anual não cabe além do prazo", () => {
+  it("recusa mais reforços do que o contrato tem aniversários", () => {
+    // O defeito que isto prende: escolher 6 reforços num plano de 120 meses e depois reduzir o
+    // prazo para 60 deixava os 6 de pé. Dois balões vencendo DEPOIS da última mensal, a "última
+    // parcela" do PDF caindo em novembro de 2032 num contrato de 60 meses e — porque os reforços
+    // são abatidos a valor presente — a mensal impressa 23% menor do que a que o cliente vai pagar.
+    const erros = conferirProposta(
+      { ...PEDIDO, anuaisQuantidade: 6, anuaisValor: 30_000, parcelas: 60 },
+      AGORA,
+    );
+    expect(erros.map((e) => e.campo)).toContain("anuais");
+    expect(erros.find((e) => e.campo === "anuais")?.mensagem).toContain("no máximo 5");
+  });
+
+  it("aceita exatamente os aniversários que cabem", () => {
+    expect(
+      conferirProposta({ ...PEDIDO, anuaisQuantidade: 5, anuaisValor: 30_000, parcelas: 60 }, AGORA),
+    ).toEqual([]);
+  });
+
+  it("⚠️ contrato de menos de um ano não comporta reforço anual", () => {
+    const erros = conferirProposta(
+      { ...PEDIDO, anuaisQuantidade: 1, anuaisValor: 10_000, parcelas: 6 },
+      AGORA,
+    );
+    expect(erros.find((e) => e.campo === "anuais")?.mensagem).toContain("menos de 12 parcelas");
+  });
+});
+
+describe("conferirCancelamentoDaProposta", () => {
+  const PEDIDO_OK = { detalhe: null, motivo: "Cliente desistiu", unidadeId: "uni-1" };
+
+  it("aceita um motivo da lista", () => {
+    expect(conferirCancelamentoDaProposta(PEDIDO_OK)).toEqual([]);
+  });
+
+  it("recusa motivo fora da lista", () => {
+    // Sem a lista fechada, o motivo vira texto livre e o histórico da unidade deixa de responder
+    // "por que este lote soltou" em linguagem que dê para contar.
+    const erros = conferirCancelamentoDaProposta({ ...PEDIDO_OK, motivo: "porque sim" });
+    expect(erros.map((e) => e.campo)).toContain("motivo");
+  });
+
+  it("⚠️ 'Outro' sem detalhe é cancelamento sem motivo", () => {
+    expect(
+      conferirCancelamentoDaProposta({ ...PEDIDO_OK, motivo: "Outro" }).map((e) => e.campo),
+    ).toContain("detalhe");
+    expect(
+      conferirCancelamentoDaProposta({
+        detalhe: "o cliente achou o lote pequeno",
+        motivo: "Outro",
+        unidadeId: "uni-1",
+      }),
+    ).toEqual([]);
+  });
+
+  it("exige a unidade", () => {
+    expect(
+      conferirCancelamentoDaProposta({ ...PEDIDO_OK, unidadeId: "  " }).map((e) => e.campo),
+    ).toContain("unidade");
+  });
+
+  it("⚠️ os motivos NÃO são os da reserva: a proposta já mostrou preço ao cliente", () => {
+    const motivos = MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA as readonly string[];
+    expect(motivos).toContain("Condições não aceitas");
+    expect(motivos).toContain("Cliente pediu outro plano");
+    // "Reserva feita por engano" não cabe aqui: o engano é da proposta, que já saiu no papel.
+    expect(motivos).not.toContain("Reserva feita por engano");
+  });
+});
+
+describe("avisosDeCancelamentoDaProposta", () => {
+  const DADOS = {
+    cliente: "Maria da Silva",
+    codigo: "000003",
+    corretor: "Nívea Ferreira",
+    empreendimento: "Garden",
+    imobiliaria: "Raiane Imobiliária",
+    motivo: "Crédito não aprovado",
+    unidade: "Quadra 03 · Lote 07",
+  };
+
+  it("fala com os três", () => {
+    expect(avisosDeCancelamentoDaProposta(DADOS).map((a) => a.papel)).toEqual([
+      "corretor",
+      "imobiliaria",
+      "coordenador",
+    ]);
+  });
+
+  it("⚠️ diz que o PDF não vale mais — é a única coisa que desfaz o papel já enviado", () => {
+    // O documento está no celular de três pessoas e não some de lá. Sem esta frase o corretor
+    // segue com um preço na mão que a casa não sustenta mais.
+    const paraFora = avisosDeCancelamentoDaProposta(DADOS).filter((a) => a.papel !== "coordenador");
+    expect(paraFora).toHaveLength(2);
+    for (const aviso of paraFora) expect(aviso.texto).toContain("não vale mais");
+  });
+
+  it("todas dizem o motivo e que a unidade voltou", () => {
+    for (const aviso of avisosDeCancelamentoDaProposta(DADOS)) {
+      expect(aviso.texto).toContain("Crédito não aprovado");
+      expect(aviso.texto.toLowerCase()).toContain("disponibilidade");
+    }
+  });
+
+  it("⚠️ sem corretor não sobra linha em branco nem 'null' no meio da mensagem", () => {
+    const avisos = avisosDeCancelamentoDaProposta({ ...DADOS, corretor: null });
+    for (const aviso of avisos) {
+      expect(aviso.texto).not.toContain("null");
+      expect(aviso.texto).not.toContain("\n\n\n");
+    }
+    // O coordenador é quem precisa saber que o corretor não estava registrado.
+    const coord = avisos.find((a) => a.papel === "coordenador");
+    expect(coord?.texto).toContain("não informado");
+  });
+
+  it("sem COD a mensagem não inventa um código vazio", () => {
+    for (const aviso of avisosDeCancelamentoDaProposta({ ...DADOS, codigo: null })) {
+      expect(aviso.texto).not.toContain("COD *");
     }
   });
 });

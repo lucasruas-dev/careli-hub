@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { autorizar, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
   avisarSobreAVenda,
@@ -64,7 +65,7 @@ type UnidadeDaReserva = {
 };
 
 export async function GET(request: Request) {
-  const auth = autorizar(request);
+  const auth = autorizarComercial(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -107,7 +108,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = autorizar(request);
+  const auth = autorizarComercial(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -269,7 +270,7 @@ export async function POST(request: Request) {
 // ⚠️ A UNIDADE VOLTA A `disponivel` ANTES DO AVISO. Se o WhatsApp falhar, o lote já está livre para
 // vender; o contrário — lote preso porque uma mensagem não saiu — custaria uma venda.
 export async function PATCH(request: Request) {
-  const auth = autorizar(request);
+  const auth = autorizarComercial(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();

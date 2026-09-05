@@ -74,6 +74,9 @@ describe("participacoesIguais", () => {
           primeiraParcelaEm: "2026-10-10",
           reservaId: "r1",
           unidadeId: "u1",
+          // Fora do assunto deste teste (que só olha os erros de participação), mas obrigatória: sem
+          // validade a régua recusa a proposta inteira.
+          validadeEm: "2026-09-11T23:59:59-03:00",
           valorNegociado: 200_000,
           vencimentoDia: 10,
         },

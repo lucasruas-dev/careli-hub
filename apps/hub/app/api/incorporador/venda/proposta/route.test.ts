@@ -15,6 +15,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // (`conferirProposta`) e o cronograma são os DE VERDADE, senão o teste provaria só a si mesmo.
 
 const estado = vi.hoisted(() => ({
+  apagado: [] as Array<{ tabela: string }>,
+  /** Simula a reserva ter saído de 'ativa' entre a leitura e o flip: update casa ZERO linhas. */
+  reservaJaSaiu: false,
   atualizado: [] as Array<{ linha: Record<string, unknown>; tabela: string }>,
   credenciado: true,
   inserido: [] as Array<{ linha: Record<string, unknown>; tabela: string }>,
@@ -46,11 +49,18 @@ const PLANO = {
 };
 
 vi.mock("@/lib/apolo/incorporador/escopo", () => ({
-  autorizar: () => ({
-    ok: true,
-    sessao: { usuarioId: "user-1", usuarioNome: "Lucas Ruas" },
-  }),
   idsDaSessao: async () => ["39"],
+}));
+
+// ⚠️ O PORTÃO É `autorizarComercial`, E NÃO `autorizar`. A diferença é o `tipo` da sessão: as rotas
+// de venda ficavam abertas a QUALQUER cookie `apolo_inc` válido, e o do incorporador é o mesmo dos
+// portais de loteador — o dono do empreendimento podia cancelar por HTTP a proposta do time
+// comercial e disparar WhatsApp em nome da Careli, sem que a aba Venda sequer apareça para ele.
+vi.mock("@/lib/apolo/incorporador/board-do-portal", () => ({
+  autorizarComercial: () => ({
+    ok: true,
+    sessao: { tipo: "comercial", usuarioId: "user-1", usuarioNome: "Lucas Ruas" },
+  }),
 }));
 
 vi.mock("@/lib/apolo/catalogo-empreendimentos", () => ({
@@ -115,17 +125,33 @@ vi.mock("@/lib/hercules/proposta-pdf", () => ({
 
 vi.mock("@/lib/apolo/server", () => {
   const consulta = (tabela: string) => {
-    const feito: { insert: null | Record<string, unknown>; update: boolean } = {
+    const feito: {
+      insert: null | Record<string, unknown>;
+      select: boolean;
+      update: boolean;
+    } = {
       insert: null,
+      select: false,
       update: false,
     };
     const alvo: Record<string, unknown> = {
       then: (aceitar: (r: unknown) => unknown, recusar?: (e: unknown) => unknown) =>
         Promise.resolve(responder(tabela, feito)).then(aceitar, recusar),
     };
-    for (const metodo of ["eq", "in", "limit", "maybeSingle", "order", "range", "select", "single"]) {
+    for (const metodo of ["eq", "in", "limit", "maybeSingle", "order", "range", "single"]) {
       alvo[metodo] = () => alvo;
     }
+    // ⚠️ `update().select()` DEVOLVE AS LINHAS QUE CASARAM, e é assim que a rota descobre a corrida
+    // (zero linhas = alguém chegou antes). O mock precisa saber que o select foi pedido, senão
+    // devolve `null` para tudo e todo update parece uma corrida perdida.
+    alvo.select = () => {
+      feito.select = true;
+      return alvo;
+    };
+    alvo.delete = () => {
+      estado.apagado.push({ tabela });
+      return alvo;
+    };
     alvo.insert = (linha: Record<string, unknown>) => {
       feito.insert = linha;
       estado.inserido.push({ linha, tabela });
@@ -141,10 +167,15 @@ vi.mock("@/lib/apolo/server", () => {
 
   const responder = (
     tabela: string,
-    feito: { insert: null | Record<string, unknown>; update: boolean },
+    feito: { insert: null | Record<string, unknown>; select: boolean; update: boolean },
   ) => {
     if (feito.insert) return { data: { id: "prop-1" }, error: null };
-    if (feito.update) return { data: null, error: null };
+    // Update com `.select()`: uma linha casada, como no caminho feliz do PostgREST.
+    if (feito.update) {
+      if (!feito.select) return { data: null, error: null };
+      const casou = tabela === "hercules_reservas" && estado.reservaJaSaiu ? [] : [{ id: "linha-1" }];
+      return { data: casou, error: null };
+    }
     if (tabela === "hercules_unidades") return { data: UNIDADE, error: null };
     if (tabela === "hercules_reservas") return { data: estado.reserva, error: null };
     if (tabela === "apolo_enterprise_settings") {
@@ -227,9 +258,11 @@ const pedir = (corpo: Record<string, unknown>) =>
 const gravada = () => estado.inserido.find((i) => i.tabela === "hercules_propostas")?.linha ?? {};
 
 beforeEach(() => {
+  estado.apagado = [];
   estado.atualizado = [];
   estado.credenciado = true;
   estado.inserido = [];
+  estado.reservaJaSaiu = false;
   estado.reserva = {
     corretor_entity_id: "corr-1",
     criado_em: "2026-09-01T12:00:00.000Z",
@@ -326,5 +359,32 @@ describe("POST — a proposta gravada", () => {
     });
     expect(r.status).toBe(422);
     expect(estado.inserido).toHaveLength(0);
+  });
+});
+
+describe("⚠️ a reserva cancelada durante a geração não deixa proposta órfã", () => {
+  it("desfaz a proposta e recusa quando o flip da reserva não casa linha nenhuma", async () => {
+    // O cenário: o POST lê a reserva 'ativa' e só então busca credenciamento, cadastro, catálogo do
+    // C2X e planos — vários segundos. Nesse meio-tempo outro coordenador cancela a reserva, a
+    // unidade volta para 'disponivel' e os três recebem "reserva cancelada". Sem o `.select()`, o
+    // update que casa ZERO linhas devolve `error: null` e passava por sucesso: a proposta ficava
+    // viva sobre um lote livre, que aceitaria reserva de outro cliente enquanto o primeiro anda com
+    // um PDF de preço na mão.
+    estado.reservaJaSaiu = true;
+
+    const r = await pedir({});
+
+    expect(r.status).toBe(409);
+    expect(((await r.json()) as { error: string }).error).toContain(
+      "cancelada enquanto a proposta era montada",
+    );
+    // A proposta recém-nascida foi apagada: ninguém foi avisado e nenhum PDF saiu.
+    expect(estado.apagado.some((a) => a.tabela === "hercules_propostas")).toBe(true);
+  });
+
+  it("no caminho normal a proposta fica de pé e nada é apagado", async () => {
+    const r = await pedir({});
+    expect(r.status).toBe(200);
+    expect(estado.apagado).toEqual([]);
   });
 });

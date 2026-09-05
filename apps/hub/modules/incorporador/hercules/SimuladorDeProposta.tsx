@@ -376,7 +376,11 @@ export function SimuladorDeProposta({
       anuais: melhor.anuais,
       composicao: melhor,
       entrada: melhor.entrada,
-      financiado: Math.max(0, cockpit.valor - melhor.entrada),
+      // ⚠️ VEM DA COMPOSIÇÃO, NÃO DE `valor − entrada`: os reforços anuais são abatidos pelo que
+      // valem hoje, e é este o número que o PDF imprime como "Financiado". Recalcular aqui fazia a
+      // tela e o papel discordarem em milhares na mesma venda — e o ramo `montada`, logo acima,
+      // sempre usou `montada.financiado`, então as duas metades da mesma tela também discordavam.
+      financiado: melhor.financiado,
       origem: "composicao",
       parcela: melhor.parcela,
       parcelas: melhor.parcelas,
@@ -1166,7 +1170,14 @@ function CampoDeEntrada({
         <CampoEmReais aoMudar={aoMudar} rotulo="" valor={valor} />
       ) : (
         <CampoEmPorcento
-          aoMudar={(p) => aoMudar(Math.round((valorDoLote * p) / 100))}
+          // ⚠️ ARREDONDA NO CENTAVO, NÃO NO REAL. 10% de R$ 145.451 é R$ 14.545,10; arredondando
+          // para o real inteiro dava R$ 14.545 e o campo nascia DEZ CENTAVOS abaixo do piso — com
+          // a tela acusando, logo abaixo, "Abaixo do mínimo de 10% (R$ 14.545)", porque a frase
+          // arredonda o piso para o mesmo número que o campo mostra. A pessoa lia que R$ 14.545 é
+          // menor que R$ 14.545 e a proposta era recusada na hora de gerar. Acontece em todo lote
+          // cujo valor termina em 1, 2, 3 ou 4. É o mesmo defeito que `entradaDoPlano` já corrigiu
+          // lá em cima, reintroduzido no campo ao lado.
+          aoMudar={(p) => aoMudar(Math.round(valorDoLote * p) / 100)}
           valor={pct}
         />
       )}

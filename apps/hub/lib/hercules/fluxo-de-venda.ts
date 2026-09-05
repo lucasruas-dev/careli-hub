@@ -88,6 +88,14 @@ export type PropostaDaCarga = {
   id: string;
   imobiliaria_nome: null | string;
   motivo: null | string;
+  /**
+   * `'c2x'` (veio da carga do legado) ou `'panteon'` (nasceu aqui).
+   *
+   * ⚠️ SÓ A NATIVA SUBSTITUI A RESERVA. As duas convivem na mesma tabela, e quem lê sem separar
+   * trata proposta importada de anos atrás como se fosse a que acabou de ser gerada na tela.
+   * Opcional porque nem toda leitura pede a coluna — mas quem decidir por ela precisa pedi-la.
+   */
+  origem?: null | string;
   plano_nome: null | string;
   unidade_id: null | string;
   unidade_nome: null | string;
@@ -129,6 +137,16 @@ export type LinhaDaLista = {
   observacao: null | string;
   etapa: string;
   id: string;
+  /**
+   * `'panteon'` (nasceu aqui) ou `'c2x'` (veio da carga do legado).
+   *
+   * ⚠️ A TELA PRECISA SABER PORQUE SÓ A NATIVA SE CANCELA AQUI. Há 14 propostas do C2X em etapa
+   * `proposta` — vendas correndo no legado, não lixo antigo —, e elas pintam o lote igual a uma
+   * nativa. Sem esta distinção o botão "Cancelar proposta" acendia nelas e a rota respondia "Não
+   * há proposta aberta nesta unidade" numa ficha que acabava de dizer Proposta: um beco sem
+   * explicação, na tela em que o coordenador decide se liga para o cliente.
+   */
+  origem: null | string;
   imobiliaria: null | string;
   /** O FLUXO do contrato — "60x · IPCA ANUAL · juros 8% a.a." —, não o nome do plano. */
   plano: null | string;
@@ -533,6 +551,7 @@ export function agregarFluxo({
       etapa: p.etapa,
       id: p.id,
       imobiliaria: p.imobiliaria_nome,
+      origem: p.origem ?? null,
       plano: fluxoDoPlano(p),
       produto: p.empreendimento_codigo,
       unidade: p.unidade_nome,

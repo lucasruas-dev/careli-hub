@@ -240,3 +240,42 @@ describe("⚠️ composicoesQueFecham em SACOC — o plano de 21 dos 24 empreend
     }
   });
 });
+
+describe("⚠️ o financiado da composição é o mesmo que o PDF imprime", () => {
+  it("desconta o valor presente dos reforços, e não o valor de face", () => {
+    // O defeito que isto prende: a tela mostrava `valor − entrada` no cartão "A financiar" e o PDF
+    // imprimia o saldo com os balões descontados a valor presente. Na mesma venda, com 3 reforços
+    // de R$ 15.000 num contrato de 120 meses, eram R$ 38.656 de diferença entre o número que o
+    // coordenador leu na mesa e o que o comprador recebeu no papel.
+    const r = composicoesQueFecham({
+      parcelaAlvo: 1_200,
+      planos: PLANOS_SACOC,
+      valor: 200_000,
+    });
+
+    const comReforco = r.filter((c) => c.anuais.quantidade > 0);
+    expect(comReforco.length).toBeGreaterThan(0);
+
+    for (const c of comReforco) {
+      // O financiado é MENOR que `valor − entrada`, porque os balões abatem parte do saldo…
+      expect(c.financiado).toBeLessThan(200_000 - c.entrada);
+      // …e é exatamente `valor − entrada − valorPresenteDosBaloes`, que é a conta do cronograma.
+      const plano = PLANOS_SACOC.find((p) => p.nome === c.plano);
+      expect(plano).toBeDefined();
+      const presente = valorPresenteDosBaloes(
+        c.anuais.quantidade,
+        c.anuais.valor,
+        plano?.taxaAoMes ?? 0,
+      );
+      expect(c.financiado).toBeCloseTo(200_000 - c.entrada - presente, 2);
+    }
+  });
+
+  it("no SACOC a parcela anunciada é o financiado dividido pelo prazo", () => {
+    // A contradição que isto prende: o cartão mostrava saldo de R$ 180.000 e, logo abaixo, parcela
+    // de R$ 1.384,26 — mas 180.000 ÷ 120 é R$ 1.500,00. Os dois números do mesmo cartão não
+    // fechavam entre si, porque só um deles conhecia os reforços.
+    const r = composicoesQueFecham({ parcelaAlvo: 1_500, planos: PLANOS_SACOC, valor: 200_000 });
+    for (const c of r) expect(c.parcela).toBeCloseTo(c.financiado / c.parcelas, 2);
+  });
+});

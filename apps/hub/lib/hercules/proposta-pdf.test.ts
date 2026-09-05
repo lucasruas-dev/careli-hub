@@ -76,6 +76,7 @@ const EXEMPLO: PropostaParaPdf = {
     { ate: "10/11/2029", de: "10/12/2028", parcelas: "25 a 36", periodo: "3º ano", temIpca: true, valor: "R$ 668,20" },
   ],
   subtitulo: "Garden · 250,00 m² · Goiânia, GO",
+  temReajuste: true,
   unidade: "Quadra 03 · Lote 07",
 };
 

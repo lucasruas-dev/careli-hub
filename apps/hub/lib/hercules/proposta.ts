@@ -65,6 +65,14 @@ export type PedidoDeProposta = {
   primeiraParcelaEm: string;
   reservaId: string;
   unidadeId: string;
+  /**
+   * Até quando a proposta vale, em ISO.
+   *
+   * ⚠️ PREÇO TEM PRAZO. A tabela sobe, o lote é vendido para outro, o crédito vence — uma proposta
+   * sem validade é uma promessa que o comercial não consegue cumprir seis meses depois, com o papel
+   * na mão do cliente. O prazo é escolhido na tela, como na reserva.
+   */
+  validadeEm: string;
   valorNegociado: number;
   /** 10 ou 20 na tela; 1 a 28 na regra do servidor. */
   vencimentoDia: number;
@@ -78,6 +86,27 @@ export type PedidoDeProposta = {
  * um acerto pontual com o cliente não pode ser recusado por não estar nesta lista.
  */
 export const DIAS_DE_VENCIMENTO = [10, 20] as const;
+
+/**
+ * Por quantos dias a proposta vale — os atalhos que a tela oferece com um clique.
+ *
+ * Lucas (05/09/2026): *"vamos fazer igual a reserva, colocar os dias de prazo, 3 - 5 - 7 - 10"*.
+ *
+ * ⚠️ SÃO MAIORES QUE OS DA RESERVA, e a diferença é do negócio: a reserva segura o lote e por isso
+ * é curta (1 a 7 dias); a proposta espera o cliente decidir, conversar com a família e o crédito
+ * andar. Repetir a lista da reserva aqui daria um prazo apertado no passo mais lento da venda.
+ */
+export const PRAZOS_DA_PROPOSTA = [3, 5, 7, 10] as const;
+
+/**
+ * ⚠️ ESCOLHA MINHA, e não regra da casa — a mesma ressalva do prazo da reserva. Não existe validade
+ * de proposta escrita em lugar nenhum do repositório: 7 dias é o que estava no mockup que o Lucas
+ * aprovou, e vale até ele dizer o número.
+ */
+export const PRAZO_PADRAO_DA_PROPOSTA = 7;
+
+/** Acima disso não é proposta com prazo, é preço congelado sem data. */
+export const PRAZO_MAXIMO_DA_PROPOSTA = 30;
 
 /**
  * O último dia do mês que existe em TODO mês.
@@ -102,6 +131,7 @@ export type ErroDaProposta = {
     | "reserva"
     | "titular"
     | "unidade"
+    | "validade"
     | "valor"
     | "vencimentoDia";
   mensagem: string;
@@ -273,6 +303,24 @@ export function conferirProposta(
     erros.push({ campo: "anuais", mensagem: "Informe o valor de cada reforço anual." });
   }
 
+  // ⚠️ REFORÇO ANUAL CAI NO ANIVERSÁRIO, ENTÃO SÓ CABEM OS ANIVERSÁRIOS QUE O PRAZO TEM. Sem esta
+  // régua, quem escolhia 6 reforços num plano de 120 meses e depois reduzia o prazo para 60 saía
+  // com dois balões vencendo DEPOIS da última mensal: o PDF imprimia "última parcela" em novembro
+  // de 2032 num contrato de 60 meses, e como os 6 reforços são abatidos a valor presente a mensal
+  // impressa caía para R$ 2.188,56 onde os 4 que realmente cabem dariam R$ 2.843,94 — 23% a menos,
+  // no papel que vai por WhatsApp para o cliente. A varredura automática (`composicoesQueFecham`)
+  // já respeitava o prazo; o caminho manual e esta rota não respeitavam.
+  const aniversariosDoPrazo = Math.floor((pedido.parcelas ?? 0) / 12);
+  if (anuaisQuantidadeOk && anuaisQuantidade > aniversariosDoPrazo) {
+    erros.push({
+      campo: "anuais",
+      mensagem:
+        aniversariosDoPrazo > 0
+          ? `Em ${pedido.parcelas} parcelas cabem no máximo ${aniversariosDoPrazo} reforços anuais.`
+          : "Um contrato de menos de 12 parcelas não comporta reforço anual.",
+    });
+  }
+
   if (!(pedido.valorNegociado > 0)) {
     erros.push({ campo: "valor", mensagem: "Informe o valor negociado." });
   } else if (entradaEhNumero) {
@@ -352,6 +400,29 @@ export function conferirProposta(
     });
   }
 
+  // ── ATÉ QUANDO A PROPOSTA VALE ──────────────────────────────────────────
+  //
+  // ⚠️ AQUI A COMPARAÇÃO É POR INSTANTE, e não por dia como na primeira parcela — são perguntas
+  // diferentes. A parcela é uma data de cobrança, e cobrar "hoje" é legítimo; a validade é um
+  // limite que já passou ou não passou, e uma proposta que vence hoje às 8h não vale às 14h.
+  // `vencimentoEmDias` (o mesmo da reserva) coloca o fim no último segundo do dia, então o prazo de
+  // 3 dias vale até o fim do terceiro — que é o que a pessoa entende por "vale até quinta".
+  const validade = Date.parse(pedido.validadeEm ?? "");
+  const agora = Date.parse(agoraIso);
+  if (!Number.isFinite(validade)) {
+    erros.push({ campo: "validade", mensagem: "Informe até quando a proposta vale." });
+  } else if (Number.isFinite(agora) && validade <= agora) {
+    erros.push({ campo: "validade", mensagem: "A validade da proposta tem que ser no futuro." });
+  } else if (
+    Number.isFinite(agora) &&
+    validade - agora > PRAZO_MAXIMO_DA_PROPOSTA * 86_400_000
+  ) {
+    erros.push({
+      campo: "validade",
+      mensagem: `A proposta vale no máximo por ${PRAZO_MAXIMO_DA_PROPOSTA} dias.`,
+    });
+  }
+
   return erros;
 }
 
@@ -393,6 +464,14 @@ export type DadosDoAvisoDaProposta = {
   primeiraParcelaEm: string;
   /** "Quadra 12 · Lote 06", como a tela escreve. */
   unidade: string;
+  /**
+   * Até quando a proposta vale — o mesmo ISO que foi gravado, não um prazo recontado aqui.
+   *
+   * ⚠️ AUSENTE OU ILEGÍVEL TIRA A LINHA, em vez de escrever meia frase. Quem esquecer de passar a
+   * data manda uma mensagem sem prazo (que é o que as propostas importadas do C2X têm), e não uma
+   * mensagem prometendo "vale até " sem o dia — o corretor repassa o texto ao cliente como veio.
+   */
+  validadeEm?: null | string;
   valorNegociado: number;
   vencimentoDia: number;
 };
@@ -431,6 +510,11 @@ function reais(valor: number): string {
  * ⚠️ O COD VAI NAS TRÊS. É por ele que se acha a venda depois: quem recebeu a reserva no WhatsApp
  * anotou aquele número, e a proposta é a mesma venda. Mensagem sem COD obriga a abrir a tela para
  * descobrir de qual venda se fala.
+ *
+ * ⚠️ E A VALIDADE VAI NAS TRÊS TAMBÉM, pelo mesmo motivo que ela vai no PDF: preço tem prazo. A
+ * data que aparece aqui é a que foi GRAVADA com a proposta — quem chama passa `validadeEm`, e esta
+ * função não conta dias nenhum. Recontar o prazo na hora de escrever a mensagem faria o texto e o
+ * documento discordarem sobre a mesma promessa.
  */
 export function avisosDaProposta(dados: DadosDoAvisoDaProposta): AvisoDaProposta[] {
   const lote = `*${dados.unidade}* (${dados.empreendimento})`;
@@ -451,6 +535,12 @@ export function avisosDaProposta(dados: DadosDoAvisoDaProposta): AvisoDaProposta
     ? `*${dados.parcelas}x de ${reais(dados.parcela)}*`
     : `*${dados.parcelas}x a partir de ${reais(dados.parcela)}* (com reajuste anual)`;
   const vencimento = `todo dia *${dados.vencimentoDia}*`;
+  // ⚠️ O PRAZO VAI NAS TRÊS, e curto: é WhatsApp. A mensagem é o que circula — o PDF fica no anexo
+  // que nem sempre se abre no celular —, e uma condição sem data de validade é lida como preço
+  // parado no tempo. É a mesma frase da reserva ("A reserva vale até *DD/MM*"), no mesmo formato de
+  // data do resto da mensagem, para o corretor não ter que traduzir dois formatos na mesma conversa.
+  const ate = dataEscrita(dados.validadeEm);
+  const vale = ate ? `Proposta válida até *${ate}*.` : null;
   const anexo = "O PDF da proposta vai em anexo.";
   const outros = dados.compradores > 1 ? `Compradores: *${dados.compradores}*` : null;
 
@@ -475,6 +565,7 @@ export function avisosDaProposta(dados: DadosDoAvisoDaProposta): AvisoDaProposta
         `Valor negociado: *${reais(dados.valorNegociado)}*`,
         `Entrada: ${entrada}`,
         `Parcelas: ${mensais}, ${vencimento}`,
+        vale,
         "",
         `${anexo} Confira com o cliente antes de seguir para a minuta.`,
       ]),
@@ -491,6 +582,7 @@ export function avisosDaProposta(dados: DadosDoAvisoDaProposta): AvisoDaProposta
         "",
         `Entrada ${entrada}`,
         `Parcelas ${mensais}, ${vencimento}`,
+        vale,
         "",
         anexo,
       ]),
@@ -509,9 +601,155 @@ export function avisosDaProposta(dados: DadosDoAvisoDaProposta): AvisoDaProposta
         `Entrada: ${entrada}`,
         `Parcelas: ${mensais}`,
         `Vencimento: ${vencimento}`,
+        // O quadro do coordenador é uma lista de rótulos; a mesma data entra aqui como campo, e não
+        // como frase, para ele conferir de cima a baixo sem ler um parágrafo no meio da lista.
+        ate ? `Válida até: *${ate}*` : null,
         dados.codigo ? `COD: *${dados.codigo}*` : null,
         "",
         anexo,
+      ]),
+    },
+  ];
+}
+
+// ── O CANCELAMENTO DA PROPOSTA ──────────────────────────────────────────────
+//
+// Lucas (04/09/2026), sobre a reserva: *"da reserva eu tenho dois caminhos, gerar proposta ou
+// cancelar"*. A proposta herda a mesma regra, e por um motivo que só aparece depois do clique: sem
+// a volta, cada "Gerar proposta" tirava um lote do estoque PARA SEMPRE. Cliente desiste, crédito
+// reprova, o coordenador errou o plano — a rotina do comercial — e a unidade ficava em `proposta`,
+// invendável pela tela e pela API, com o preço já circulando por WhatsApp na mão de três pessoas.
+// O único jeito de soltar era UPDATE na mão no banco.
+
+/**
+ * ⚠️ NÃO SÃO OS MESMOS MOTIVOS DA RESERVA, e a diferença é o que aconteceu no meio. Quem cancela
+ * proposta já mandou condições ao cliente: ele pode ter recusado o preço, pedido outro plano ou
+ * sumido depois de ler o PDF. "Reserva feita por engano" também não cabe — o engano aqui é da
+ * proposta, que já saiu no papel.
+ */
+export const MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA = [
+  "Cliente desistiu",
+  "Condições não aceitas",
+  "Cliente pediu outro plano",
+  "Trocou de unidade",
+  "Crédito não aprovado",
+  "Proposta feita por engano",
+  "Prazo da proposta esgotado",
+  "Outro",
+] as const;
+
+export type PedidoDeCancelamentoDaProposta = {
+  /** O texto livre. Obrigatório só quando o motivo é "Outro". */
+  detalhe?: null | string;
+  motivo: string;
+  /**
+   * A proposta que a TELA está vendo. Opcional, e é uma trava contra tela velha.
+   *
+   * ⚠️ ENDEREÇAR SÓ PELA UNIDADE CANCELA A PROPOSTA DE OUTRO CLIENTE. A aba fica aberta a manhã
+   * toda: às 9h o coordenador A vê o lote 12 em proposta, do João; às 9h20 o coordenador B cancela
+   * essa proposta, reserva o mesmo lote para a Maria e gera a proposta dela; às 9h40 A, que não
+   * recarregou, clica em "Cancelar proposta" — e a busca por unidade acha a proposta da MARIA, viva
+   * e legítima. Ela cai, a reserva dela cai junto, e os três recebem "a proposta de Maria foi
+   * cancelada. Motivo: Cliente desistiu". A modal só mostra o nome da unidade, então A nunca
+   * percebe. Com o id, o servidor recusa e manda recarregar.
+   */
+  propostaId?: null | string;
+  unidadeId: string;
+};
+
+export type ErroDoCancelamentoDaProposta = {
+  campo: "detalhe" | "motivo" | "unidade";
+  mensagem: string;
+};
+
+/** O que impede este cancelamento de acontecer. */
+export function conferirCancelamentoDaProposta(
+  pedido: PedidoDeCancelamentoDaProposta,
+): ErroDoCancelamentoDaProposta[] {
+  const erros: ErroDoCancelamentoDaProposta[] = [];
+
+  if (!String(pedido.unidadeId ?? "").trim()) {
+    erros.push({ campo: "unidade", mensagem: "Escolha a unidade." });
+  }
+
+  const motivo = String(pedido.motivo ?? "").trim();
+  if (!motivo) {
+    erros.push({ campo: "motivo", mensagem: "Diga por que a proposta está sendo cancelada." });
+  } else if (!(MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA as readonly string[]).includes(motivo)) {
+    erros.push({ campo: "motivo", mensagem: "Escolha um motivo da lista." });
+  }
+
+  // ⚠️ "OUTRO" SEM DETALHE É UM CANCELAMENTO SEM MOTIVO. A proposta cancelada continua no
+  // histórico da unidade respondendo "por que este lote soltou" — e "Outro", sozinho, não responde.
+  if (motivo === "Outro" && !String(pedido.detalhe ?? "").trim()) {
+    erros.push({ campo: "detalhe", mensagem: "Escreva o motivo." });
+  }
+
+  return erros;
+}
+
+export type DadosDoCancelamentoDaProposta = {
+  cliente: string;
+  codigo: null | string;
+  corretor: null | string;
+  empreendimento: string;
+  imobiliaria: string;
+  motivo: string;
+  unidade: string;
+};
+
+/**
+ * As três mensagens do cancelamento.
+ *
+ * ⚠️ ELAS DIZEM QUE O PDF NÃO VALE MAIS, e isso é o ponto. O documento já está no celular das três
+ * pessoas e não some de lá; a mensagem é a única coisa que o desfaz. Sem essa frase, o corretor
+ * segue com um papel de preço na mão e o cliente assina uma condição que a casa não sustenta mais.
+ */
+export function avisosDeCancelamentoDaProposta(
+  dados: DadosDoCancelamentoDaProposta,
+): AvisoDaProposta[] {
+  const lote = `*${dados.unidade}* (${dados.empreendimento})`;
+  const cod = dados.codigo ? ` COD *${dados.codigo}*.` : "";
+  const juntar = (linhas: string[]) =>
+    linhas.filter((l, i, todas) => l !== "" || (i > 0 && todas[i - 1] !== "")).join("\n");
+
+  return [
+    {
+      papel: "corretor",
+      texto: juntar([
+        `Olá, ${dados.corretor ?? "tudo bem"}!`,
+        "",
+        `A proposta da unidade ${lote}, de *${dados.cliente}*, foi *cancelada*.`,
+        `Motivo: ${dados.motivo}.${cod}`,
+        "",
+        "O PDF que foi enviado não vale mais. A unidade já voltou para a disponibilidade e pode ser reservada de novo.",
+      ]),
+    },
+    {
+      papel: "imobiliaria",
+      texto: juntar([
+        `Olá, ${dados.imobiliaria}!`,
+        "",
+        `A proposta da unidade ${lote}, de *${dados.cliente}*, foi *cancelada*.`,
+        `Motivo: ${dados.motivo}.${cod}`,
+        dados.corretor ? `Corretor: *${dados.corretor}*.` : "",
+        "",
+        "O PDF que foi enviado não vale mais. A unidade voltou para a disponibilidade.",
+      ]),
+    },
+    {
+      papel: "coordenador",
+      texto: juntar([
+        `Proposta cancelada em ${dados.empreendimento}.`,
+        "",
+        `Unidade: ${lote}`,
+        `Cliente: *${dados.cliente}*`,
+        `Imobiliária: *${dados.imobiliaria}*`,
+        dados.corretor ? `Corretor: *${dados.corretor}*` : "Corretor: não informado",
+        `Motivo: *${dados.motivo}*`,
+        dados.codigo ? `COD: *${dados.codigo}*` : "",
+        "",
+        "A unidade voltou para a disponibilidade.",
       ]),
     },
   ];

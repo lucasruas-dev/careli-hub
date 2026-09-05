@@ -11,6 +11,8 @@ import {
   dataEscrita,
   type ErroDaProposta,
   type PedidoDeProposta,
+  PRAZO_PADRAO_DA_PROPOSTA,
+  PRAZOS_DA_PROPOSTA,
 } from "@/lib/hercules/proposta";
 import {
   faltaParaFechar,
@@ -18,7 +20,7 @@ import {
   participacoesIguais,
   somaDasParticipacoes,
 } from "@/lib/hercules/proposta-na-tela";
-import { comoFoiOAviso } from "@/lib/hercules/reserva";
+import { comoFoiOAviso, vencimentoEmDias } from "@/lib/hercules/reserva";
 
 import { type CondicoesDaProposta, SimuladorDeProposta } from "./SimuladorDeProposta";
 
@@ -49,9 +51,11 @@ import { T } from "../tema";
 // (`cliente-credenciado.ts`), que é quem sabe ler a esteira, e a tela só a mostra.
 //
 // ⚠️ NENHUM NÚMERO NASCE AQUI. Preço, planos e piso de entrada vêm do GET; parcela, entrada e
-// prazo vêm do simulador; as datas e a série vêm de `montarCronograma`, a MESMA função que o PDF e
-// a rota usam. O que esta tela faz com dinheiro é escrever o que recebeu — duas contas para o mesmo
-// boleto é como a PA e o carnê passam a discordar.
+// prazo de parcelamento vêm do simulador; as datas e a série vêm de `montarCronograma`, a MESMA
+// função que o PDF e a rota usam; os dias de validade e o padrão vêm de `proposta.ts`
+// (`PRAZOS_DA_PROPOSTA`), e a data que eles produzem, de `vencimentoEmDias`. O que esta tela faz
+// com dinheiro e com prazo é escrever o que recebeu — duas contas para o mesmo boleto é como a PA
+// e o carnê passam a discordar.
 
 type CredenciamentoNaTela = {
   credenciado: boolean;
@@ -136,6 +140,16 @@ export function ModalDeProposta({
   const [novo, setNovo] = useState({ cpf: "", nome: "", participacao: "" });
   const [erroDoNovo, setErroDoNovo] = useState<null | string>(null);
   const [condicoes, setCondicoes] = useState<CondicoesDaProposta | null>(null);
+  /**
+   * Por quantos dias a proposta vale.
+   *
+   * ⚠️ MORA AQUI, E NÃO DENTRO DO SIMULADOR. O prazo não é condição comercial: ele não muda
+   * parcela, entrada nem plano, e `CondicoesDaProposta` é justamente o que o cockpit calcula e
+   * devolve. Guardá-lo lá dentro faria a validade viajar junto com dinheiro por um caminho que
+   * existe para dinheiro, e o dia em que o simulador for reaproveitado em outra tela ele levaria
+   * junto uma regra de prazo que não é dele.
+   */
+  const [prazoEmDias, setPrazoEmDias] = useState<number>(PRAZO_PADRAO_DA_PROPOSTA);
   const [enviando, setEnviando] = useState(false);
   const [erroDoServidor, setErroDoServidor] = useState<null | string>(null);
   const [tentou, setTentou] = useState(false);
@@ -200,6 +214,25 @@ export function ModalDeProposta({
   // que a tem nas dependências: uma função nova a cada render faria o efeito rodar em laço.
   const receberCondicoes = useCallback((c: CondicoesDaProposta | null) => setCondicoes(c), []);
 
+  /**
+   * Até quando a proposta vale, em ISO — o fim do dia do último dia do prazo.
+   *
+   * ⚠️ A CONTA É DE `vencimentoEmDias`, A MESMA DA RESERVA. Ela é quem sabe que o fim do prazo é o
+   * último segundo do dia no fuso da operação (−03:00 fixo): uma conta escrita aqui com
+   * `Date.now() + dias * 86_400_000` faria a proposta de 7 dias vencer às 14h da quinta, no meio
+   * do expediente em que o cliente ia responder, e ainda erraria o dia para quem gera de noite.
+   */
+  // ⚠️ ISTO AQUI É SÓ A PRÉVIA — QUEM CONTA OS DIAS DE VERDADE É O SERVIDOR. A tela envia o NÚMERO
+  // de dias, não esta data: com a data pronta, quem decidia o vencimento era o relógio do
+  // navegador, e abrir a modal às 23h55 para enviar às 00h05 gravava o prazo contado a partir de
+  // ontem — o chip dizia três dias e o cliente recebia dois e pouco. Uma aba deixada aberta além do
+  // prazo passava a receber 422 sobre uma data que ninguém digitou, e clicar no mesmo prazo não
+  // recalculava nada. Aqui a data existe para a frase "vence em 11/09"; o que vale é o número.
+  const validadeEm = useMemo(
+    () => vencimentoEmDias(new Date().toISOString(), prazoEmDias),
+    [prazoEmDias],
+  );
+
   const participacoes = compradores.map((c) => c.participacao);
   const soma = somaDasParticipacoes(participacoes);
   const falta = faltaParaFechar(participacoes);
@@ -220,6 +253,7 @@ export function ModalDeProposta({
     primeiraParcelaEm: condicoes?.primeiraParcelaEm ?? "",
     reservaId: portao?.reserva.id ?? "",
     unidadeId: unidade.id,
+    validadeEm,
     valorNegociado: condicoes?.valorNegociado ?? 0,
     vencimentoDia: condicoes?.diaDeVencimento ?? 0,
   };
@@ -361,6 +395,11 @@ export function ModalDeProposta({
           parcelasMensais: condicoes.parcelasMensais,
           planoNome: condicoes.planoNome,
           primeiraParcelaEm: condicoes.primeiraParcelaEm,
+          // ⚠️ VAI O NÚMERO DE DIAS, E NÃO A DATA. Quem transforma prazo em vencimento é o servidor,
+          // com o relógio dele: a data pronta punha o relógio do navegador para decidir quando a
+          // proposta vence, e uma modal aberta antes da meia-noite gravava o prazo contado a partir
+          // de ontem. A data que a tela mostra ao lado dos chips é prévia, e prévia não se envia.
+          prazoEmDias,
           unidadeId: unidade.id,
           valorNegociado: condicoes.valorNegociado,
         }),
@@ -527,6 +566,19 @@ export function ModalDeProposta({
                     erro={fluxo.erro}
                     semComposicao={condicoes === null}
                     semPlano={condicoes !== null && planoDaProposta === null}
+                  />
+
+                  {/* ⚠️ O PRAZO FICA NO RODAPÉ, JUNTO DO BOTÃO — e não no cockpit do simulador. Ele
+                      não é condição comercial: não muda parcela, entrada nem plano, e nada do que
+                      está acima se recalcula quando ele troca. O que ele decide é o ATO de gerar
+                      ("até quando este papel vale"), e é aqui, na mesma linha de leitura do "o que
+                      vai sair" e do clique, que a pessoa confere a promessa inteira antes de
+                      soltá-la. No meio do cockpit ele viraria mais um campo de simulação, e o
+                      coordenador acabaria mexendo nele enquanto procura a parcela. */}
+                  <PrazoDaProposta
+                    aoMudar={setPrazoEmDias}
+                    dias={prazoEmDias}
+                    validadeEm={validadeEm}
                   />
 
                   {tentou && erros.length > 0 ? (
@@ -919,6 +971,66 @@ function FluxoQueVaiSair({
           primeira em <b>{dataEscrita(primeiraAnual.vencimento)}</b>
         </span>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Até quando a proposta vale — os quatro atalhos e a data que eles produzem.
+ *
+ * Lucas (05/09/2026): *"vamos fazer igual a reserva, colocar os dias de prazo, 3 - 5 - 7 - 10"*.
+ *
+ * ⚠️ A LISTA E O PADRÃO VÊM DA LIB, IMPORTADOS. Um `[3, 5, 7, 10]` escrito aqui seria a segunda
+ * regra de prazo do módulo: no dia em que ele pedir 15 dias, `PRAZOS_DA_PROPOSTA` mudaria e a tela
+ * continuaria oferecendo os quatro antigos, sem ninguém errar nada de propósito. Quem decide o
+ * teto (`PRAZO_MAXIMO_DA_PROPOSTA`) é `conferirProposta`, dos dois lados.
+ *
+ * ⚠️ E A DATA É ESCRITA POR `dataEscrita`, a mesma do fluxo acima e do WhatsApp. Ela lê o ISO no
+ * fuso da operação; um `toLocaleDateString` sem `timeZone` mostraria o dia seguinte para quem
+ * abrir a tela num navegador em UTC, e o "vale até" da tela discordaria do PDF.
+ */
+function PrazoDaProposta({
+  aoMudar,
+  dias,
+  validadeEm,
+}: {
+  aoMudar: (dias: number) => void;
+  dias: number;
+  validadeEm: string;
+}) {
+  return (
+    <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
+      <span style={{ ...rotulo, marginBottom: 0 }}>Vale por</span>
+      {PRAZOS_DA_PROPOSTA.map((d) => (
+        <button
+          // ⚠️ QUAL ESTÁ ESCOLHIDO NÃO PODE SER SÓ A COR DA BORDA. Um grupo de chips onde a
+          // escolha só existe em pixel não diz nada a leitor de tela nem a teste: é `aria-pressed`
+          // que conta que este é o prazo em vigor, e é por ele que o teste confere o padrão.
+          aria-pressed={dias === d}
+          key={d}
+          onClick={() => aoMudar(d)}
+          style={{
+            background: dias === d ? T.soft : "transparent",
+            border: `1px solid ${dias === d ? T.gold : T.border}`,
+            borderRadius: 999,
+            color: dias === d ? T.text : T.sub,
+            cursor: "pointer",
+            font: "inherit",
+            fontSize: 12,
+            fontWeight: 600,
+            padding: "5px 12px",
+          }}
+          type="button"
+        >
+          {/* "dias" seco, sem o singular do chip da reserva: o prazo mais curto daqui é 3, e um
+              ternário para um caso que `PRAZOS_DA_PROPOSTA` não tem é código que ninguém executa
+              — o TypeScript, com a lista literal na mão, chega a acusar a comparação impossível. */}
+          {d} dias
+        </button>
+      ))}
+      <span style={{ color: T.muted, fontSize: 11.5 }}>
+        Vence em <b style={{ color: T.sub }}>{dataEscrita(validadeEm)}</b>, no fim do dia.
+      </span>
     </div>
   );
 }
