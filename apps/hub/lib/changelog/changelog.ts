@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-05-onde-eu-parei",
+    deployedAt: "2026-09-05T10:05:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "Atualizar a página devolve você para onde estava: a visão (Painel ou Venda), a etapa do funil, o modo do estoque, a janela de tempo e o produto.",
+              "A tela também deixou de consultar o servidor duas vezes ao abrir.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "8bb0e265",
+    technical: {
+      done: "O LUGAR NAO ERA SO O EMPREENDIMENTO (Lucas: *\"estou na aba vendas, quando eu atualizo volta para aba painel\"*). A primeira versao guardava so o produto, e o que ele chama de aba e a VISAO da tela (panorama/mesa) — que nao estava guardada. Agora e o conjunto: visao, etapa do funil, modo do estoque, janela e recorte, alem do produto. ⚠️ UMA CHAVE SO, com tudo num objeto: seis chaves separadas dariam seis leituras, seis escritas e a chance de restaurar METADE do estado (um recorte de um produto que nao e mais o escolhido). ⚠️ CADA CAMPO E CONFERIDO contra a lista valida de hoje — etapa que saiu do fluxo, janela que deixou de existir ou produto fora do escopo voltariam como estado impossivel, e a tela renderizaria uma faixa vazia sem dizer por que. O `emp` e a excecao: so pode ser conferido contra a lista de produtos, que chega depois, e por isso e validado la (some o produto, some o recorte junto). ⚠️ E A RESTAURACAO ACONTECE ANTES DA PRIMEIRA CONSULTA: ate aqui a tela pedia o escopo INTEIRO (5.528 unidades) e, um instante depois, pedia de novo com o produto restaurado — duas consultas pesadas por abertura numa casa que ja teve incidente de fatura por chamada demais, e foi essa dobra que criou a corrida do \"parou de filtrar\" de hoje cedo. Guardar virou um efeito unico, e nao um `guardar` em cada onClick: sao seis estados trocados em oito lugares da tela, e um esquecido seria um campo que volta errado. Typecheck limpo; 2.522 testes verdes.",
+      motivation:
+        "Guardar so o produto nao bastava: o F5 continuava devolvendo para o Painel, que e onde ninguem estava.",
+    },
+    title: "A tela Venda volta para onde você estava",
+    type: "melhoria",
+    version: "1.281.0",
+  },
+  {
     buildTag: "2026-09-05-filtro-da-venda",
     deployedAt: "2026-09-05T09:40:00-03:00",
     modules: [

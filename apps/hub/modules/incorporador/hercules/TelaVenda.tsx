@@ -389,6 +389,16 @@ export function TelaVenda() {
   const [recorte, setRecorte] = useState<string>("");
   const [visao, setVisao] = useState<"mesa" | "panorama">("panorama");
   const [etapa, setEtapa] = useState<"disponivel" | EtapaDoFluxo>("reservado");
+  /**
+   * O lugar guardado já foi lido? Só depois disso a tela consulta o servidor.
+   *
+   * ⚠️ ESPERAR CUSTA MENOS DO QUE CARREGAR DUAS VEZES. Sem esta trava a tela pedia o escopo INTEIRO
+   * (5.528 unidades) e, um instante depois, pedia de novo já com o produto restaurado — duas
+   * consultas pesadas por abertura, numa casa que já teve incidente de fatura por chamada demais.
+   * E foi essa dobra que criou a corrida do "parou de filtrar": a primeira resposta chegava por
+   * último e vencia.
+   */
+  const [lugarLido, setLugarLido] = useState(false);
   const [foco, setFoco] = useState<null | Foco>(null);
   const [simulando, setSimulando] = useState<null | UnidadeNoMapa>(null);
   const [reservando, setReservando] = useState<null | UnidadeNoMapa>(null);
@@ -445,12 +455,50 @@ export function TelaVenda() {
     }
   }, []);
 
+  // ── O LUGAR ONDE ELE PAROU, RESTAURADO ANTES DA PRIMEIRA CONSULTA ────────
+  //
+  // ⚠️ DEPOIS DE MONTAR, e não no `useState` inicial: `localStorage` não existe no servidor, e ler
+  // ali faria o HTML do servidor divergir do primeiro render do cliente.
+  //
+  // ⚠️ CADA CAMPO É CONFERIDO CONTRA A LISTA VÁLIDA DE HOJE. Uma etapa que saiu do fluxo, uma
+  // janela que deixou de existir ou um recorte de outro produto voltariam como estado impossível —
+  // e a tela renderizaria uma faixa vazia sem dizer por quê. O `emp` é a exceção: ele só pode ser
+  // conferido contra a lista de produtos, que chega depois, e por isso é validado lá embaixo.
+  useEffect(() => {
+    const lugar = lugarGuardado();
+
+    if (lugar.visao === "mesa" || lugar.visao === "panorama") setVisao(lugar.visao);
+    if (lugar.modoDoEstoque === "grade" || lugar.modoDoEstoque === "mapa") {
+      setModoDoEstoque(lugar.modoDoEstoque);
+    }
+    if (lugar.janela && JANELAS.some((j) => j.id === lugar.janela)) setJanela(lugar.janela);
+    if (
+      lugar.etapa === "disponivel" ||
+      (lugar.etapa && ETAPAS_DO_FLUXO.some((e) => e === lugar.etapa))
+    ) {
+      setEtapa(lugar.etapa as "disponivel" | EtapaDoFluxo);
+    }
+    if (lugar.emp) setEmp(lugar.emp);
+    if (lugar.recorte) setRecorte(lugar.recorte);
+
+    setLugarLido(true);
+  }, []);
+
   // ⚠️ O RECORTE SUBSTITUI O PAI NA CONSULTA, e não soma a ele: o filho já é um pedaço do pai, e
   // mandar os dois pediria o mesmo lote duas vezes. Sem recorte, vale o pai — e aí o servidor
   // expande para TODOS os filhos, deixando o espelho de fora.
   useEffect(() => {
+    if (!lugarLido) return;
     void carregar(recorte || emp, janela);
-  }, [carregar, emp, janela, recorte]);
+  }, [carregar, emp, janela, lugarLido, recorte]);
+
+  // ⚠️ GUARDA O LUGAR A CADA MUDANÇA, e não em cada `onClick`: são seis estados trocados em oito
+  // lugares diferentes da tela, e um `guardar` esquecido num deles seria um campo que volta errado
+  // — o tipo de defeito que ninguém percebe até o F5 devolver metade do lugar.
+  useEffect(() => {
+    if (!lugarLido) return;
+    guardarLugar({ emp, etapa, janela, modoDoEstoque, recorte, visao });
+  }, [emp, etapa, janela, lugarLido, modoDoEstoque, recorte, visao]);
 
   // DUAS FONTES, e cada uma responde uma pergunta diferente:
   //   • o PAINEL diz quais são os produtos e quem é filho de quem (é ele que agrupa o pai);
@@ -478,12 +526,18 @@ export function TelaVenda() {
             }));
             setProdutos(lista);
 
-            // ⚠️ O F5 VOLTA PARA O PRODUTO EM QUE ELE ESTAVA (Lucas, 04/09/2026: *"toda vez que eu
-            // atualizo a página volta para o início, tem que ficar no mesmo lugar"*). Só depois da
-            // lista chegar, e só se o produto ainda estiver nela: escopo muda, produto sai do ar, e
-            // um id guardado que não existe mais pediria uma tela que o servidor recusa com 404.
-            const guardado = empreendimentoGuardado();
-            if (guardado && lista.some((p) => p.id === guardado)) setEmp(guardado);
+            // ⚠️ O PRODUTO RESTAURADO PRECISA AINDA EXISTIR. Ele foi aplicado antes desta lista
+            // chegar (para a tela não consultar duas vezes), então é aqui que se confere: escopo
+            // muda, produto sai do ar, e um id guardado que não existe mais pediria uma tela que o
+            // servidor recusa com 404. Some o produto, some o recorte junto — um filho sem o pai
+            // escolhido é um filtro que a tela não sabe desenhar.
+            setEmp((atual) => {
+              if (atual && !lista.some((p) => p.id === atual)) {
+                setRecorte("");
+                return "";
+              }
+              return atual;
+            });
           }
         }
 
@@ -616,7 +670,6 @@ export function TelaVenda() {
               aria-label="Empreendimento"
               onChange={(e) => {
                 setEmp(e.target.value);
-                guardarEmpreendimento(e.target.value);
                 // Trocar de produto sem zerar o recorte deixaria um filho de OUTRO pai escolhido.
                 setRecorte("");
                 setFoco(null);
@@ -1898,23 +1951,50 @@ function TrilhaDoFluxo({ etapa }: { etapa: null | string }) {
 // apagado, dizendo por quê: sumir faria o coordenador procurar o botão em vez de ler a ficha.
 
 // ── ONDE ELE PAROU ─────────────────────────────────────────────────────────
-// Guardado no navegador, por pessoa, como o tema e a lateral recolhida do portal. Nao vai para o
-// servidor: e preferencia de uso, nao dado de venda.
-const CHAVE_DO_EMPREENDIMENTO = "hercules:venda:emp";
+//
+// Lucas (05/09/2026): *"a ideia é que ao sair da tela ou carregar fica onde eu estava (...) estou na
+// aba vendas, quando eu atualizo volta para aba painel"*.
+//
+// ⚠️ O LUGAR NÃO É SÓ O EMPREENDIMENTO. A primeira versão guardava só o produto escolhido, e o F5
+// continuava devolvendo para o Painel — porque o que ele chama de "aba" aqui é a VISÃO da tela
+// (Painel/Venda), e ela não estava guardada. "Onde eu estava" é o conjunto: a visão, a etapa do
+// funil aberta, o modo do estoque, a janela de tempo e o recorte, além do produto.
+//
+// ⚠️ UMA CHAVE SÓ, com tudo dentro. Seis chaves separadas dariam seis leituras, seis escritas e a
+// possibilidade de restaurar metade do estado — um recorte de um produto que não é mais o
+// escolhido, por exemplo. Como objeto, o estado volta inteiro ou não volta.
+//
+// Vive no navegador, por pessoa, como o tema e a lateral recolhida do portal: é preferência de uso,
+// não dado de venda, e não tem por que viajar até o servidor.
+const CHAVE_DO_LUGAR = "hercules:venda:lugar";
 
-function empreendimentoGuardado(): null | string {
+type LugarGuardado = {
+  emp?: string;
+  etapa?: string;
+  janela?: string;
+  modoDoEstoque?: string;
+  recorte?: string;
+  visao?: string;
+};
+
+function lugarGuardado(): LugarGuardado {
   try {
-    return window.localStorage.getItem(CHAVE_DO_EMPREENDIMENTO);
+    const cru = window.localStorage.getItem(CHAVE_DO_LUGAR);
+    if (!cru) return {};
+    const lido = JSON.parse(cru) as unknown;
+    // ⚠️ O QUE VEM DO STORAGE É TEXTO DE FORA, e uma versão antiga pode ter gravado outro formato:
+    // sem esta conferência, um `null` guardado viraria acesso a propriedade de null na leitura.
+    return lido && typeof lido === "object" ? (lido as LugarGuardado) : {};
   } catch {
-    return null;
+    return {};
   }
 }
 
-function guardarEmpreendimento(id: string): void {
+function guardarLugar(lugar: LugarGuardado): void {
   try {
-    window.localStorage.setItem(CHAVE_DO_EMPREENDIMENTO, id);
+    window.localStorage.setItem(CHAVE_DO_LUGAR, JSON.stringify(lugar));
   } catch {
-    /* sem storage, a escolha so nao sobrevive ao F5 */
+    /* sem storage, a escolha só não sobrevive ao F5 */
   }
 }
 
