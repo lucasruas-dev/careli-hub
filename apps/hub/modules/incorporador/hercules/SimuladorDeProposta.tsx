@@ -18,7 +18,9 @@ import {
   type PlanoDaComposicao,
 } from "@/lib/hercules/composicoes";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
-import { montarProposta } from "@/lib/hercules/simulacao";
+import { DIAS_DE_VENCIMENTO } from "@/lib/hercules/proposta";
+import { lerPercentualDigitado, proximoVencimento } from "@/lib/hercules/proposta-na-tela";
+import { montarProposta, sistemaDoCadastro } from "@/lib/hercules/simulacao";
 
 import { T } from "../tema";
 
@@ -44,7 +46,16 @@ import { T } from "../tema";
 // leva para lá de uma vez.
 //
 // ⚠️ E NADA AQUI GRAVA. *"a ideia é ter um local que o usuário possa fazer algumas simulações sem
-// ter que vincular a nada e nem gerar proposta"* — o gerador de proposta real vem depois, na venda.
+// ter que vincular a nada e nem gerar proposta"* — quem grava é a rota, chamada pela
+// `ModalDeProposta`.
+//
+// ⚠️ A MONTAGEM DA PROPOSTA REUSA ESTA TELA, e o que ela ganhou para isso é UMA prop opcional:
+// `aoMudarCondicoes` (Lucas, 04/09/2026, desenhando o "Gerar proposta" *"em cima do simulador que
+// já existe"*). Com ela, o cockpit mostra os dois campos que só a proposta precisa — dia de
+// vencimento e data da primeira parcela da entrada — e a composição da tela sobe para quem chamou.
+// SEM ela, nada muda: é o mesmo simulador do botão "Abrir simulador" da ficha, que continua sendo
+// simulação livre. Uma segunda cópia do simulador "com gravação" seria a segunda conta de dinheiro
+// da casa, e as duas divergiriam no primeiro conserto feito só de um lado.
 
 type Cockpit = {
   anuaisQuantidade: number;
@@ -92,12 +103,58 @@ const dinheiro = (v: number) =>
 const dinheiroExato = (v: number) =>
   `R$ ${v.toLocaleString("pt-BR", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
 
+/**
+ * A composição que está NA TELA, do jeito que a proposta precisa dela.
+ *
+ * ⚠️ É O QUE O CARTÃO GRANDE MOSTRA, e não o que o cockpit guarda. Quando a pessoa parte da parcela
+ * do cliente, o cockpit ainda tem a entrada antiga enquanto a direita já mostra a composição
+ * recomendada: subir o cockpit geraria uma proposta diferente da que ela está lendo. Sobe o que
+ * está escrito na tela — e por isso `entradaVezes` e `valorNegociado`, que só existem no cockpit,
+ * vêm de lá.
+ *
+ * ⚠️ E NÃO SOBE CRONOGRAMA NENHUM. Datas e série de parcelas são de `montarCronograma`, que a
+ * `ModalDeProposta` e o PDF chamam com estas mesmas condições. Duas versões do calendário seriam
+ * duas datas de vencimento para o mesmo boleto.
+ */
+export type CondicoesDaProposta = {
+  anuaisQuantidade: number;
+  anuaisValor: number;
+  /** 10 ou 20, os dois que a cobrança da casa usa. */
+  diaDeVencimento: number;
+  entradaValor: number;
+  entradaVezes: number;
+  /** A mensal do PRIMEIRO ciclo, que é a que a tela anuncia. Ver `parcelaFixa` em `proposta.ts`. */
+  parcela: number;
+  parcelasMensais: number;
+  planoNome: string;
+  /** `YYYY-MM-DD` — o dia em que a primeira parcela da ENTRADA vence. */
+  primeiraParcelaEm: string;
+  valorNegociado: number;
+};
+
 export function SimuladorDeProposta({
+  aoMudarCondicoes,
   entradaMinimaPercentual = null,
   planos,
   unidade,
   valorDaUnidade,
 }: {
+  /**
+   * Quem vai GERAR a proposta com o que está na tela.
+   *
+   * ⚠️ OPCIONAL, E É A ÚNICA DIFERENÇA ENTRE OS DOIS USOS. Ausente (o botão "Abrir simulador" da
+   * ficha), o simulador é o de sempre: sem os campos de cobrança e sem ninguém escutando. Presente
+   * (a `ModalDeProposta`), aparecem o dia de vencimento e a data da primeira parcela, e cada mexida
+   * sobe a composição inteira.
+   *
+   * ⚠️ RECEBE `null` QUANDO NÃO HÁ COMPOSIÇÃO NA TELA — parcela que não fecha em plano nenhum, ou
+   * produto sem plano cadastrado. É o que faz o botão "Gerar proposta" ficar apagado em vez de
+   * mandar ao servidor uma proposta montada em cima de zeros.
+   *
+   * ⚠️ PRECISA SER ESTÁVEL (`useCallback`). Ela entra nas dependências do efeito que a chama; uma
+   * função nova a cada render do pai faria o efeito rodar em laço.
+   */
+  aoMudarCondicoes?: (condicoes: CondicoesDaProposta | null) => void;
   /**
    * A % minima de entrada DESTE empreendimento, da aba Politica Comercial.
    *
@@ -116,6 +173,13 @@ export function SimuladorDeProposta({
   // como limite cortaria as composições sem ninguém ter pedido, e a lista aparecia vazia sem
   // explicação. Teto é o que o cliente TEM; o valor do plano é só um ponto de partida.
   const [entradaEhTeto, setEntradaEhTeto] = useState(false);
+  // ⚠️ OS DOIS CAMPOS DA COBRANÇA VIVEM AQUI MESMO SEM A PROP. Estado condicional não existe em
+  // React, e tentar criá-lo com um hook dentro de `if` quebra a ordem dos hooks. Sem a prop eles
+  // simplesmente não são desenhados nem lidos por ninguém.
+  const [diaDeVencimento, setDiaDeVencimento] = useState<number>(DIAS_DE_VENCIMENTO[0]);
+  const [primeiraParcelaEm, setPrimeiraParcelaEm] = useState<string>(() =>
+    proximoVencimento(new Date().toISOString(), DIAS_DE_VENCIMENTO[0]),
+  );
   const [cockpit, setCockpit] = useState<Cockpit>({
     anuaisQuantidade: 0,
     anuaisValor: 0,
@@ -137,6 +201,10 @@ export function SimuladorDeProposta({
         entradaPercentual: p.entradaPercentual,
         nome: p.nome,
         parcelas: p.parcelas,
+        // ⚠️ O SISTEMA VEM JUNTO DESDE 04/09/2026, e é o que impedia a tela e o PDF de contarem a
+        // mesma história: sem ele a conta era Price para todo mundo, e no SACOC (21 dos 24
+        // empreendimentos) o cartão anunciava R$ 2.157,44 onde o documento dizia R$ 1.500,00.
+        sistemaAmortizacao: sistemaDoCadastro(p.sistemaAmortizacao),
         taxaAoMes: taxaMensal(p as unknown as PlanoComercial),
       })),
     [planos],
@@ -166,6 +234,7 @@ export function SimuladorDeProposta({
           baloesValor: 0,
           entrada,
           parcelas: p.parcelas,
+          sistemaAmortizacao: p.sistemaAmortizacao,
           taxaAoMes: p.taxaAoMes,
           valor: cockpit.valor,
         });
@@ -213,6 +282,7 @@ export function SimuladorDeProposta({
             baloesValor: 0,
             entrada,
             parcelas: maisLongo.parcelas,
+            sistemaAmortizacao: maisLongo.sistemaAmortizacao,
             taxaAoMes: maisLongo.taxaAoMes,
             valor: valorDaUnidade,
           }).parcela
@@ -242,6 +312,10 @@ export function SimuladorDeProposta({
         baloesValor: cockpit.anuaisValor,
         entrada: cockpit.entrada,
         parcelas,
+        // ⚠️ SEM PLANO, O SISTEMA NÃO MUDA NADA — a taxa é zero e Price, SAC e SACOC caem todos em
+        // `financiado ÷ prazo`. Fica o SACOC porque é onde a cascata de `calcularParcela` manda o
+        // que não se declarou, e é o que o cronograma vai usar para o mesmo produto.
+        sistemaAmortizacao: plano?.sistemaAmortizacao ?? "sacoc",
         taxaAoMes: plano?.taxaAoMes ?? 0,
         valor: cockpit.valor,
       }),
@@ -324,6 +398,38 @@ export function SimuladorDeProposta({
       c.plano !== principal.plano ||
       c.anuais.quantidade !== principal.anuais.quantidade,
   );
+
+  // ⚠️ A COMPOSIÇÃO SOBE POR EFEITO, e não por um callback em cada `onChange`. São nove campos que
+  // mexem no mesmo resultado (valor, parcela, entrada, vezes, prazo, reforço, plano, dia,
+  // data), e chamar o pai em cada um deles significaria lembrar de chamar em todos — o campo
+  // esquecido geraria uma proposta com o número velho. Aqui a fonte é o que a tela está mostrando:
+  // mudou o que está escrito, sobe.
+  useEffect(() => {
+    if (!aoMudarCondicoes) return;
+    aoMudarCondicoes(
+      principal
+        ? {
+            anuaisQuantidade: principal.anuais.quantidade,
+            anuaisValor: principal.anuais.valor,
+            diaDeVencimento,
+            entradaValor: principal.entrada,
+            entradaVezes: cockpit.entradaVezes,
+            parcela: principal.parcela,
+            parcelasMensais: principal.parcelas,
+            planoNome: principal.plano,
+            primeiraParcelaEm,
+            valorNegociado: cockpit.valor,
+          }
+        : null,
+    );
+  }, [
+    aoMudarCondicoes,
+    cockpit.entradaVezes,
+    cockpit.valor,
+    diaDeVencimento,
+    primeiraParcelaEm,
+    principal,
+  ]);
 
   function usarComposicao(c: Composicao) {
     setCockpit((atual) => ({
@@ -427,6 +533,66 @@ export function SimuladorDeProposta({
             </span>
           </div>
         </Bloco>
+
+        {/* ⚠️ SÓ NA PROPOSTA, e por isso preso à prop. Numa simulação livre não existe primeira
+            parcela: o coordenador está olhando quanto o cliente paga por mês, e um campo de data
+            pedindo um dia que não vai virar boleto nenhum é campo para ninguém preencher.
+
+            Lucas (04/09/2026): *"com a data da primeira parcela da entrada as demais segue na data
+            que ele escolheu e de acordo com o parcelamento"*. Quem espalha essa data pelo
+            calendário é `montarCronograma`; aqui só se escolhe o ponto de partida. */}
+        {aoMudarCondicoes ? (
+          <Bloco
+            nota="A entrada começa nesta data; as mensais seguem no dia de vencimento, mês a mês."
+            titulo="Cobrança"
+          >
+            <div style={{ color: T.muted, fontSize: 11, fontWeight: 650, marginBottom: 5 }}>
+              Dia de vencimento
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {DIAS_DE_VENCIMENTO.map((d) => (
+                <button
+                  key={d}
+                  onClick={() => {
+                    setDiaDeVencimento(d);
+                    // ⚠️ TROCAR O CHIP REESCREVE A DATA, e é o que ele pediu ("já preenchida com o
+                    // próximo dia escolhido"). Manter 10/10 depois de escolher o dia 20 deixaria a
+                    // entrada vencendo num dia e o boleto mensal em outro, sem ninguém ter pedido.
+                    // Quem quiser outra data digita depois — a digitada só se perde se ele clicar
+                    // no chip de novo.
+                    setPrimeiraParcelaEm(proximoVencimento(new Date().toISOString(), d));
+                  }}
+                  style={{
+                    background: diaDeVencimento === d ? T.soft : "transparent",
+                    border: `1px solid ${diaDeVencimento === d ? T.gold : T.border}`,
+                    borderRadius: 999,
+                    color: diaDeVencimento === d ? T.text : T.sub,
+                    cursor: "pointer",
+                    font: "inherit",
+                    fontSize: 12,
+                    fontWeight: 650,
+                    padding: "5px 14px",
+                  }}
+                  type="button"
+                >
+                  dia {d}
+                </button>
+              ))}
+            </div>
+
+            <label style={{ display: "grid", gap: 3, marginTop: 10 }}>
+              <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>
+                Primeira parcela da entrada
+              </span>
+              <input
+                onChange={(e) => setPrimeiraParcelaEm(e.target.value)}
+                style={campo}
+                type="date"
+                value={primeiraParcelaEm}
+              />
+            </label>
+          </Bloco>
+        ) : null}
 
         <Bloco nota="Reforços que abatem o saldo e derrubam a mensalidade." titulo="Parcelas anuais">
           <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
@@ -754,9 +920,12 @@ export function SimuladorDeProposta({
           </div>
         ) : null}
 
+        {/* ⚠️ O RODAPÉ MUDA COM O USO. Dizer "nada aqui vincula a unidade nem gera proposta" na
+            modal que está gerando a proposta seria a tela desmentindo o botão logo abaixo dela. */}
         <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
-          Simulação livre: nada aqui vincula a unidade nem gera proposta. Conta feita nesta tela, com
-          os planos cadastrados do empreendimento.
+          {aoMudarCondicoes
+            ? "Estas são as condições que vão para a proposta. Conta feita com os planos cadastrados do empreendimento."
+            : "Simulação livre: nada aqui vincula a unidade nem gera proposta. Conta feita nesta tela, com os planos cadastrados do empreendimento."}
         </p>
       </div>
     </div>
@@ -1041,7 +1210,9 @@ function CampoEmPorcento({ aoMudar, valor }: { aoMudar: (n: number) => void; val
   const [texto, setTexto] = useState(escreve(valor));
 
   useEffect(() => {
-    setTexto((atual) => (lerPorcento(atual) === Math.round(valor * 100) / 100 ? atual : escreve(valor)));
+    setTexto((atual) =>
+      lerPercentualDigitado(atual) === Math.round(valor * 100) / 100 ? atual : escreve(valor),
+    );
   }, [valor]);
 
   return (
@@ -1051,7 +1222,7 @@ function CampoEmPorcento({ aoMudar, valor }: { aoMudar: (n: number) => void; val
         onBlur={() => setTexto(escreve(valor))}
         onChange={(e) => {
           setTexto(e.target.value);
-          aoMudar(lerPorcento(e.target.value));
+          aoMudar(lerPercentualDigitado(e.target.value));
         }}
         placeholder="0"
         style={{ ...campo, paddingRight: 28 }}
@@ -1082,13 +1253,6 @@ function CampoEmPorcento({ aoMudar, valor }: { aoMudar: (n: number) => void; val
  */
 function abaixoDoMinimo(valor: number, minimo: number): boolean {
   return valor > 0 && Math.round(valor * 100) < Math.round(minimo * 100);
-}
-
-/** "12,5" e "12.5" viram 12,5; o resto vira 0. Percentual não é dinheiro: não tem separador de milhar. */
-function lerPorcento(texto: string): number {
-  const limpo = texto.replace(/[^\d,.]/g, "").replace(",", ".");
-  const n = Number.parseFloat(limpo);
-  return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
 }
 
 function Contador({

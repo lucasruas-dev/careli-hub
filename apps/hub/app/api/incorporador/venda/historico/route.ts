@@ -32,6 +32,11 @@ import {
 // leitura só olhava as três tabelas vindas do C2X, e a rota DESISTIA quando não havia proposta
 // nenhuma (o `return` antecipado), que é exatamente o caso de todo lote reservado aqui pela
 // primeira vez. O escopo da reserva é conferido pela UNIDADE, contra `idsDaSessao`.
+//
+// ⚠️ E A PROPOSTA NATIVA ENTRA PELA MESMA LEITURA das importadas — ela mora em
+// `hercules_propostas` como as 4.857 do legado (ver 0131). O que ela NÃO tem é `criado_em_c2x`, e
+// era isso que a apagava da linha do tempo: a montagem pulava toda proposta sem essa data, então a
+// proposta gerada aqui não aparecia na ficha do lote embaixo da reserva que a originou.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 20;
@@ -58,10 +63,19 @@ export async function GET(request: Request) {
 
     const { data: propostas, error: erroPropostas } = await supabase
       .from("hercules_propostas")
-      .select("id,codigo,cliente_nome,imobiliaria_nome,criado_em_c2x,etapa,valor")
+      // ⚠️ AS SEIS COLUNAS DA PROPOSTA NATIVA VÊM JUNTO, e não são luxo: sem `criado_em` ela não
+      // tem data (o `criado_em_c2x` dela é nulo) e o evento é DESCARTADO pela linha do tempo; sem
+      // `criado_por_nome` e `protocolo_numero` a linha nasce sem autor e sem COD, que é o que a
+      // reserva logo acima já mostra; sem plano e prazo o histórico não diz em que condições a
+      // proposta saiu. `contrato_parcelas` antes de `plano_parcelas`: um é a venda, o outro o molde.
+      .select(
+        "id,codigo,cliente_nome,imobiliaria_nome,criado_em_c2x,criado_em,criado_por_nome,protocolo_numero,plano_nome,plano_parcelas,contrato_parcelas,observacao,etapa,valor",
+      )
       .eq("workspace_id", "careli")
       .eq("unidade_id", unidade)
       .in("empreendimento_codigo", codes)
+      // A ordem daqui é só a da leitura: quem manda na linha do tempo é o `sort` por `quando` da
+      // montagem, que junta proposta, movimento, evento importado e reserva no mesmo eixo.
       .order("criado_em_c2x", { ascending: false });
 
     if (erroPropostas) throw new Error(erroPropostas.message);

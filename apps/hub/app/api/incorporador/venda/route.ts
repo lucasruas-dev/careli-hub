@@ -20,6 +20,7 @@ import { expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
 import {
   agregarFluxo,
   type CadsDoEscopo,
+  ETAPAS_DO_FLUXO,
   type PropostaDaCarga,
   type UnidadeDoMapa,
 } from "@/lib/hercules/fluxo-de-venda";
@@ -56,6 +57,49 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const PAGINA = 1000;
+
+/**
+ * As colunas de `hercules_propostas` que a tela Venda lê.
+ *
+ * ⚠️ COLUNA QUE FALTA AQUI NÃO DÁ ERRO NENHUM: o PostgREST devolve a linha sem o campo, o objeto
+ * chega com `undefined` e a tela mostra um vazio que parece dado. Foi o que aconteceu com
+ * `protocolo_numero`: `agregarFluxo` monta `codigo` a partir dele, e o COD que a reserva mostrava
+ * SUMIA justamente quando a venda avançava para proposta — na lista e na busca por código, que é
+ * onde o coordenador procura pelo número que ditou no telefone. O COD segue a venda de ponta a
+ * ponta (ver `codigo-da-venda.ts`); a leitura tem que segui-lo também.
+ *
+ * ⚠️ EXPORTADA POR CAUSA DISSO. O teste confere que todo campo que a agregação lê está na lista —
+ * é a única forma de uma coluna esquecida quebrar em vez de escrever `null` na tela.
+ */
+export const COLUNAS_DA_PROPOSTA = [
+  "id",
+  "codigo",
+  "protocolo_numero",
+  "empreendimento_codigo",
+  "unidade_id",
+  "unidade_nome",
+  "etapa",
+  "etapa_c2x",
+  "etapa_desde",
+  "cliente_nome",
+  "cliente_documento",
+  "imobiliaria_nome",
+  "valor",
+  "plano_nome",
+  "plano_parcelas",
+  "contrato_parcelas",
+  "plano_correcao",
+  "plano_juros",
+  "plano_personalizado",
+  "data_ato",
+  "data_assinatura",
+  "data_faturamento",
+  "motivo",
+  // Pelo mesmo motivo do COD: `agregarFluxo` põe a observação na linha da lista, e sem a coluna
+  // aqui o que o coordenador anotou ao reservar desaparecia quando a reserva virava proposta.
+  "observacao",
+  "criado_em_c2x",
+] as const;
 
 const indisponivel = () =>
   NextResponse.json({ error: "Não foi possível carregar o fluxo de venda agora." }, { status: 503 });
@@ -149,16 +193,19 @@ export async function GET(request: Request) {
     for (let de = 0; ; de += PAGINA) {
       const { data, error } = await supabase
         .from("hercules_propostas")
-        .select(
-          "id,codigo,empreendimento_codigo,unidade_id,unidade_nome,etapa,etapa_c2x,etapa_desde,cliente_nome,cliente_documento,imobiliaria_nome,valor,plano_nome,plano_parcelas,contrato_parcelas,plano_correcao,plano_juros,plano_personalizado,data_ato,data_assinatura,data_faturamento,motivo,criado_em_c2x",
-        )
+        .select(COLUNAS_DA_PROPOSTA.join(","))
         .eq("workspace_id", "careli")
         .in("empreendimento_codigo", codes)
         .order("etapa_desde", { ascending: false })
         .range(de, de + PAGINA - 1);
 
       if (error) throw new Error(error.message);
-      propostas.push(...((data ?? []) as PropostaDaCarga[]));
+      // ⚠️ O CAST PASSA POR `unknown` PORQUE A LISTA DE COLUNAS É UMA CONSTANTE. O supabase-js só
+      // infere a forma da linha quando o `select` é um literal escrito ali; com uma string montada
+      // ele devolve `GenericStringError[]`, e a conversão direta não compila. A garantia de que as
+      // colunas batem com `PropostaDaCarga` é o teste desta pasta, que recorta a linha pela mesma
+      // constante e faz a agregação rodar em cima do recorte.
+      propostas.push(...((data ?? []) as unknown as PropostaDaCarga[]));
       if ((data?.length ?? 0) < PAGINA) break;
     }
 
@@ -250,7 +297,16 @@ export async function GET(request: Request) {
     //
     // ⚠️ FALHA AQUI NÃO DERRUBA A TELA. Sem as reservas o coordenador vê o fluxo importado, que é
     // o que ele via ontem; perder a Venda inteira porque a tabela nova respondeu mal seria pior.
-    const reservas = await lerReservasVivas(supabase, unidades).catch((erro) => {
+    // ⚠️ A UNIDADE QUE JÁ TEM PROPOSTA SAI DA CONTA DAS RESERVAS. A reserva continua VIVA depois
+    // de virar proposta (é ela que trava a unidade, pelo índice parcial da 0125), e a proposta
+    // nativa é uma linha nova aqui: sem este recorte a MESMA unidade entraria no funil duas vezes,
+    // uma em `reservado` e outra em `proposta`, dobrando também o VGV do pipeline.
+    const comPropostaViva = new Set(
+      propostas
+        .filter((p) => p.unidade_id && (ETAPAS_DO_FLUXO as readonly string[]).includes(p.etapa))
+        .map((p) => String(p.unidade_id)),
+    );
+    const reservas = await lerReservasVivas(supabase, unidades, comPropostaViva).catch((erro) => {
       console.error("[incorporador/venda] reservas", erro);
       return [] as PropostaDaCarga[];
     });
@@ -322,6 +378,7 @@ export async function GET(request: Request) {
 async function lerReservasVivas(
   supabase: ReturnType<typeof createApoloAdminClient>,
   unidades: UnidadeDoMapa[],
+  comPropostaViva: Set<string>,
 ): Promise<PropostaDaCarga[]> {
   if (!supabase || unidades.length === 0) return [];
 
@@ -346,7 +403,12 @@ async function lerReservasVivas(
         "id,unidade_id,proponentes,imobiliaria_entity_id,corretor_entity_id,criado_em,validade_em,protocolo_numero,observacao",
       )
       .eq("workspace_id", "careli")
-      .in("situacao", ["ativa", "proposta"])
+      // ⚠️ SÓ A `ativa` É LINHA DO FLUXO. A reserva `proposta` continua viva (ela é quem trava a
+      // unidade), mas quem representa a venda a partir dali é a linha de `hercules_propostas`, com
+      // as condições comerciais gravadas. Trazer as duas contava a mesma unidade duas vezes no
+      // funil. O `comPropostaViva` abaixo é o cinto: cobre a reserva que ficou para trás quando a
+      // conversão gravou a proposta e falhou ao mover a situação.
+      .eq("situacao", "ativa")
       .in("unidade_id", ids.slice(de, de + 100));
 
     if (error) throw new Error(error.message);
@@ -375,32 +437,34 @@ async function lerReservasVivas(
     }
   }
 
-  return linhas.map((linha) => {
-    const unidade = porId.get(linha.unidade_id) ?? null;
-    return reservaComoLinhaDoFluxo(
-      {
-        criado_em: linha.criado_em,
-        id: linha.id,
-        imobiliaria_nome: linha.imobiliaria_entity_id
-          ? (nomePorId.get(linha.imobiliaria_entity_id) ?? null)
+  return linhas
+    .filter((linha) => !comPropostaViva.has(String(linha.unidade_id)))
+    .map((linha) => {
+      const unidade = porId.get(linha.unidade_id) ?? null;
+      return reservaComoLinhaDoFluxo(
+        {
+          criado_em: linha.criado_em,
+          id: linha.id,
+          imobiliaria_nome: linha.imobiliaria_entity_id
+            ? (nomePorId.get(linha.imobiliaria_entity_id) ?? null)
+            : null,
+          observacao: linha.observacao,
+          proponentes: linha.proponentes,
+          protocolo_numero: linha.protocolo_numero,
+          unidade_id: linha.unidade_id,
+          validade_em: linha.validade_em,
+        },
+        unidade
+          ? {
+              codigo: unidade.codigo,
+              lote: unidade.lote,
+              // ⚠️ `numeric` do Postgres chega como STRING no PostgREST. Sem o Number, o VGV do
+              // funil somaria "136521.00" com um número e viraria concatenação silenciosa.
+              preco_tabela: unidade.preco_tabela == null ? null : Number(unidade.preco_tabela),
+              quadra: unidade.quadra,
+            }
           : null,
-        observacao: linha.observacao,
-        proponentes: linha.proponentes,
-        protocolo_numero: linha.protocolo_numero,
-        unidade_id: linha.unidade_id,
-        validade_em: linha.validade_em,
-      },
-      unidade
-        ? {
-            codigo: unidade.codigo,
-            lote: unidade.lote,
-            // ⚠️ `numeric` do Postgres chega como STRING no PostgREST. Sem o Number, o VGV do
-            // funil somaria "136521.00" com um número e viraria concatenação silenciosa.
-            preco_tabela: unidade.preco_tabela == null ? null : Number(unidade.preco_tabela),
-            quadra: unidade.quadra,
-          }
-        : null,
-      null,
-    ) as PropostaDaCarga;
-  });
+        null,
+      ) as PropostaDaCarga;
+    });
 }

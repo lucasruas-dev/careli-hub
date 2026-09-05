@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   // da função e a tela some em produção, funcionando só na máquina de quem desenvolveu.
   outputFileTracingIncludes: {
     "/api/incorporador/masterplan": ["./masterplans-internos/**"],
+    // A proposta em PDF carimba a marca do C2X no rodape, lida do disco. `public/` e servido pelo
+    // CDN e NAO vai sozinho para o filesystem da funcao: sem esta linha o arquivo existe no
+    // ambiente de quem desenvolveu e some em producao, e a folha sai sem a marca.
+    "/api/incorporador/venda/proposta": ["./public/c2x-logo.png"],
   },
   async headers() {
     return [

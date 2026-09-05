@@ -36,13 +36,33 @@ const ESTAGIO: Record<number, string> = {
   11: "Distratado",
 };
 
+/**
+ * Uma proposta da unidade — a importada do C2X e a que NASCEU aqui.
+ *
+ * ⚠️ OS CAMPOS DA NATIVA SÃO OPCIONAIS PORQUE AS 4.857 IMPORTADAS NÃO OS TÊM. `criado_em_c2x` é o
+ * que separa as duas: nulo = a proposta nasceu no Panteon, e aí quem responde "quando" é
+ * `criado_em` (NOT NULL na tabela desde a 0126), quem responde "por quem" é `criado_por_nome` e o
+ * COD vem de `protocolo_numero`, copiado da reserva.
+ */
 export type PropostaDoHistorico = {
   cliente_nome: null | string;
   codigo: null | string;
+  /** O prazo CONTRATADO. Ver `plano_parcelas`: aquele é o molde, este é a venda. */
+  contrato_parcelas?: null | number;
+  /** Quando a linha nasceu no Panteon. Só serve de data quando `criado_em_c2x` é nulo. */
+  criado_em?: null | string;
   criado_em_c2x: null | string;
+  /** Quem gerou a proposta aqui. O C2X não guarda quem abriu as dele. */
+  criado_por_nome?: null | string;
   etapa: string;
   id: string;
   imobiliaria_nome: null | string;
+  observacao?: null | string;
+  plano_nome?: null | string;
+  /** O prazo do MOLDE. Entra só quando o contrato não tem o dele. */
+  plano_parcelas?: null | number;
+  /** O número cru do COD. A forma sai de `codigoDaVenda`, num lugar só. */
+  protocolo_numero?: null | number;
   valor: null | number | string;
 };
 
@@ -161,6 +181,28 @@ function fraseDoMovimento(m: MovimentoDoHistorico): string {
 }
 
 /**
+ * O contexto da proposta nascida aqui: com quem ela foi feita, em que prazo e o que ficou anotado.
+ *
+ * ⚠️ AS CONDIÇÕES ENTRAM PORQUE SÃO METADE DA PERGUNTA. Um histórico que diz "Proposta gerada" e
+ * nada mais obriga quem lê a abrir o PDF para saber se aquela proposta era de 60x ou de 180x — e é
+ * comparando as propostas que morreram que o coordenador entende por que o lote não vendeu.
+ *
+ * ⚠️ O PRAZO É O CONTRATADO, E O MOLDE SÓ NA FALTA DELE — a mesma precedência de `fluxoDoPlano`
+ * (lib/hercules/fluxo-de-venda.ts). Estampar `plano_parcelas` direto escreveria "180x" no histórico
+ * de uma proposta de 120x, porque 180 é o tamanho do produto, não o desta venda.
+ */
+function contextoDaProposta(p: PropostaDoHistorico): null | string {
+  const parcelas = p.contrato_parcelas ?? p.plano_parcelas ?? null;
+  const plano = [texto(p.plano_nome), parcelas ? `${parcelas}x` : null].filter(Boolean).join(" · ");
+  const linhas = [
+    texto(p.imobiliaria_nome) ? `Imobiliária: ${texto(p.imobiliaria_nome)}` : null,
+    plano ? `Plano: ${plano}` : null,
+    texto(p.observacao),
+  ].filter(Boolean);
+  return linhas.length > 0 ? linhas.join("\n") : null;
+}
+
+/**
  * Monta a linha do tempo do lote: a abertura de cada proposta mais cada movimento dela.
  *
  * A ordem é a mais recente primeiro — é assim que se lê histórico procurando "o que houve agora".
@@ -174,23 +216,41 @@ export function historicoDaUnidade(
   const eventos: EventoDaUnidade[] = [];
 
   for (const p of propostas) {
-    if (!p.criado_em_c2x) continue;
+    // ⚠️ A PROPOSTA NATIVA ENTRA PELO `criado_em`, e é por isso que este laço não pula mais quem
+    // está sem `criado_em_c2x`. O `continue` de antes descartava justamente a proposta que nasce
+    // aqui: quem gerou, quando e em que condições sumia da ficha do lote — na MESMA tela em que a
+    // reserva que a originou já aparecia. Sem data nenhuma (linha quebrada) ela continua fora: um
+    // evento sem "quando" não tem lugar numa linha do tempo.
+    const nativa = !p.criado_em_c2x;
+    const quando = p.criado_em_c2x ?? texto(p.criado_em);
+    if (!quando) continue;
+
     eventos.push({
-      codigo: null,
+      // ⚠️ O COD SÓ EXISTE NO QUE NASCEU AQUI — o legado não tem código, e inventar um daria número
+      // novo para venda antiga a cada carga. Na nativa ele é o MESMO da reserva, copiado no ato da
+      // geração: é o número que amarra o histórico ao WhatsApp e à busca da lista.
+      codigo: nativa ? codigoDaVenda(p.protocolo_numero) || null : null,
       cliente: texto(p.cliente_nome),
-      fato: texto(p.imobiliaria_nome)
-        ? `Proposta aberta · ${texto(p.imobiliaria_nome)}`
-        : "Proposta aberta",
+      // ⚠️ QUEM GEROU NÃO É A IMOBILIÁRIA — a mesma correção que a reserva já sofreu (Lucas,
+      // 04/09/2026: *"a reserva tem que vir criada por quem criou"*). "Proposta gerada · GURGEL"
+      // diria que a imobiliária agiu, quando quem clicou foi o coordenador; ela desce para o
+      // contexto, junto do prazo contratado. O texto da importada fica como estava, porque lá não
+      // há autor nenhum para confundir com ela.
+      fato: nativa
+        ? "Proposta gerada"
+        : texto(p.imobiliaria_nome)
+          ? `Proposta aberta · ${texto(p.imobiliaria_nome)}`
+          : "Proposta aberta",
       id: `abertura:${p.id}`,
-      observacao: texto(p.codigo) ? `Proposta ${texto(p.codigo)}` : null,
+      observacao: nativa ? contextoDaProposta(p) : texto(p.codigo) ? `Proposta ${texto(p.codigo)}` : null,
       propostaId: p.id,
-      quando: p.criado_em_c2x,
+      quando,
       tipo: "etapa",
       valor: null,
       // ⚠️ O C2X NÃO GUARDA QUEM ABRIU a proposta — só quem a moveu depois. Deixar em branco é o
       // honesto; pôr o autor do primeiro movimento seria atribuir a alguém um ato que pode não ter
-      // sido dele.
-      quem: null,
+      // sido dele. A nativa sabe: é o usuário da sessão que clicou em "Gerar proposta".
+      quem: nativa ? texto(p.criado_por_nome) : null,
     });
   }
 

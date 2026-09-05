@@ -12,6 +12,8 @@
 // pedida, cada plano tem UMA entrada que fecha exatamente — é conta fechada, não busca: sai de
 // `entradaParaAParcela`. O que a varredura acrescenta é o reforço anual, que baixa a entrada.
 
+import type { SistemaAmortizacao } from "@/lib/apolo/planos-comerciais";
+
 import { entradaParaAParcela, montarProposta } from "./simulacao";
 
 export type PlanoDaComposicao = {
@@ -19,6 +21,17 @@ export type PlanoDaComposicao = {
   entradaPercentual: number;
   nome: string;
   parcelas: number;
+  /**
+   * Como o plano divide o saldo — e, portanto, de quanto é a parcela.
+   *
+   * ⚠️ NÃO É ENFEITE, E FALTAVA AQUI ATÉ 04/09/2026. Sem este campo a varredura calculava Price
+   * para todo mundo, inclusive nos 21 de 24 empreendimentos que vendem em SACOC: para a MESMA
+   * parcela pedida, a entrada que a lista oferecia saía errada, e a parcela de volta no cartão
+   * discordava do PDF gerado logo em seguida (que sempre respeitou o sistema, via
+   * `montarCronograma`). Quem monta um `PlanoDaComposicao` a partir do cadastro converte a string
+   * com `sistemaDoCadastro`, para cair onde `calcularParcela` cai quando o campo vem estranho.
+   */
+  sistemaAmortizacao: SistemaAmortizacao;
   /** Taxa MENSAL já convertida. Quem converte é `taxaMensal`, do cadastro de planos. */
   taxaAoMes: number;
 };
@@ -29,10 +42,17 @@ export type Composicao = {
   entrada: number;
   /** Quanto a entrada representa do valor negociado. */
   entradaPercentual: number;
+  /** A do PRIMEIRO ciclo no SACOC — a que o C2X emite no primeiro ano. Ver `montarProposta`. */
   parcela: number;
   parcelas: number;
   plano: string;
-  /** Entrada + parcelas + reforços. */
+  /**
+   * Entrada + a série mensal INTEIRA + reforços.
+   *
+   * ⚠️ NÃO É `parcela × parcelas` FORA DA PRICE: no SACOC a parcela sobe no aniversário, e o total
+   * vem de `somaDasMensais`. Multiplicar a parcela do primeiro ano pelo prazo tirava R$ 72 mil de
+   * um contrato de 120 meses a 8% a.a. — e é este número que ordena o desempate da lista.
+   */
   total: number;
 };
 
@@ -126,11 +146,17 @@ export function composicoesQueFecham(entrada: {
           : Array.from({ length: Math.min(6, aniversarios) }, (_, i) => i + 1);
 
       for (const quantidade of quantidades) {
+        // ⚠️ A INVERSÃO É A DO SISTEMA DO PLANO. Ver `fatorDoFinanciado`, em `simulacao.ts`: no
+        // SACOC o saldo que a parcela pedida paga é `parcela × n` (amortização pura), e não o valor
+        // presente de uma série Price. Usar a inversão errada devolvia, para a mesma parcela, uma
+        // entrada mais alta do que a necessária — e a composição voltava ao cartão com uma parcela
+        // que o contrato não emite.
         const { entrada: exata, sobra } = entradaParaAParcela({
           baloesQuantidade: quantidade,
           baloesValor: valorAnual,
           parcela: parcelaAlvo,
           parcelas: plano.parcelas,
+          sistemaAmortizacao: plano.sistemaAmortizacao,
           taxaAoMes: plano.taxaAoMes,
           valor,
         });
@@ -150,6 +176,7 @@ export function composicoesQueFecham(entrada: {
           baloesValor: valorAnual,
           entrada: arredondada,
           parcelas: plano.parcelas,
+          sistemaAmortizacao: plano.sistemaAmortizacao,
           taxaAoMes: plano.taxaAoMes,
           valor,
         });

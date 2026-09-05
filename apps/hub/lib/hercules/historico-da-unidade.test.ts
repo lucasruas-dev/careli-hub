@@ -366,3 +366,105 @@ describe("classeDoFato", () => {
     expect(classeDoFato("Alguma coisa nova")).toBe("transicao");
   });
 });
+
+// ── A PROPOSTA QUE NASCEU NO PANTEON ────────────────────────────────────────
+//
+// ⚠️ ESTE BLOCO EXISTE POR CAUSA DE UM DEFEITO REAL: o laço da abertura começava com
+// `if (!p.criado_em_c2x) continue`, e a proposta gerada aqui não tem essa data. Quem gerou, quando
+// e em que condições sumia da ficha do lote — na MESMA tela em que a reserva que a originou já
+// aparecia. Quem trocar a régua da data esbarra aqui.
+describe("historicoDaUnidade — a proposta nativa", () => {
+  const NATIVA: PropostaDoHistorico = {
+    cliente_nome: "MARIA DA SILVA",
+    codigo: null,
+    contrato_parcelas: 120,
+    criado_em: "2026-09-04T15:00:00.000Z",
+    criado_em_c2x: null,
+    criado_por_nome: "Lucas Ruas",
+    etapa: "proposta",
+    id: "prop-nativa",
+    imobiliaria_nome: "GURGEL",
+    observacao: "Cliente pediu vencimento no dia 20.",
+    plano_nome: "NORMAL",
+    plano_parcelas: 180,
+    protocolo_numero: 123,
+    valor: 178_100,
+  };
+
+  it("⚠️ aparece na linha do tempo, com autor e COD", () => {
+    const [evento] = historicoDaUnidade([NATIVA], []);
+
+    expect(evento?.fato).toBe("Proposta gerada");
+    expect(evento?.quando).toBe(NATIVA.criado_em);
+    expect(evento?.quem).toBe("Lucas Ruas");
+    expect(evento?.cliente).toBe("MARIA DA SILVA");
+    // O MESMO COD da reserva, copiado na geração: é ele que amarra a venda de ponta a ponta.
+    expect(evento?.codigo).toBe("000123");
+  });
+
+  it("⚠️ o prazo do contexto é o CONTRATADO, e não o do molde", () => {
+    // O plano do C2X é MOLDE: 180 é o tamanho do produto, 120 é o que o coordenador digitou. Foi
+    // este mesmo engano que estampou "144x" no extrato de um contrato de 62 parcelas.
+    const [evento] = historicoDaUnidade([NATIVA], []);
+    expect(evento?.observacao).toContain("Plano: NORMAL · 120x");
+    expect(evento?.observacao).not.toContain("180x");
+  });
+
+  it("o molde entra SÓ quando o contrato não tem prazo próprio", () => {
+    const [evento] = historicoDaUnidade([{ ...NATIVA, contrato_parcelas: null }], []);
+    expect(evento?.observacao).toContain("Plano: NORMAL · 180x");
+  });
+
+  it("⚠️ quem gerou é o coordenador; a imobiliária desce para o contexto", () => {
+    // A mesma correção que a reserva já sofreu: "Proposta gerada · GURGEL" diria que a imobiliária
+    // agiu, quando quem clicou foi o usuário da sessão.
+    const [evento] = historicoDaUnidade([NATIVA], []);
+    expect(evento?.fato).not.toContain("GURGEL");
+    expect(evento?.observacao).toContain("Imobiliária: GURGEL");
+    expect(evento?.observacao).toContain("Cliente pediu vencimento no dia 20.");
+  });
+
+  it("⚠️ NÃO duplica com a reserva: são dois fatos, com ids diferentes", () => {
+    // A rota monta as duas listas e as junta. A reserva criada e a proposta gerada são eventos
+    // distintos, em datas distintas — o que não pode é a mesma coisa contada duas vezes.
+    const daProposta = historicoDaUnidade([NATIVA], []);
+    const daReserva = eventosDaReserva([
+      {
+        cancelada_em: null,
+        cancelada_motivo: null,
+        criado_em: "2026-09-01T12:00:00.000Z",
+        criado_por_nome: "Lucas Ruas",
+        id: "res-1",
+        observacao: null,
+        proponentes: [{ cpf: "529.982.247-25", nome: "Maria da Silva" }],
+        protocolo_numero: 123,
+        situacao: "proposta",
+        validade_em: "2026-09-07T02:59:59.000Z",
+      },
+    ]);
+
+    const juntos = [...daProposta, ...daReserva];
+    expect(juntos.map((e) => e.fato)).toEqual(["Proposta gerada", "Reserva criada"]);
+    expect(new Set(juntos.map((e) => e.id)).size).toBe(juntos.length);
+  });
+
+  it("a proposta importada do C2X continua exatamente como era", () => {
+    const [evento] = historicoDaUnidade([proposta({ id: "p1" })], []);
+    expect(evento?.fato).toBe("Proposta aberta · GURGEL");
+    // O legado não guarda quem abriu, e não tem código: inventar qualquer um dos dois seria
+    // escrever no histórico algo que não aconteceu.
+    expect(evento?.quem).toBeNull();
+    expect(evento?.codigo).toBeNull();
+  });
+
+  it("sem data nenhuma a linha fica fora: evento sem 'quando' não tem lugar", () => {
+    expect(
+      historicoDaUnidade([{ ...NATIVA, criado_em: null, criado_em_c2x: null }], []),
+    ).toEqual([]);
+  });
+
+  it("'Proposta gerada' é da família proposta — a cor do ponto na linha do tempo", () => {
+    const [evento] = historicoDaUnidade([NATIVA], []);
+    expect(classeDoFato(evento?.fato ?? "", evento?.tipo)).toBe("proposta");
+  });
+});

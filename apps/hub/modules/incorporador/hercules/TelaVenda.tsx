@@ -27,6 +27,7 @@ import { formatarTelefoneGuardado } from "@/lib/hercules/paises";
 import { T, useTemaDoPortal } from "../tema";
 import { Pilula } from "./AssinaturasDoProduto";
 import { ModalDeCancelamento } from "./ModalDeCancelamento";
+import { ModalDeProposta } from "./ModalDeProposta";
 import { ModalDeReserva } from "./ModalDeReserva";
 import { SimuladorDeProposta } from "./SimuladorDeProposta";
 
@@ -52,8 +53,9 @@ import { SimuladorDeProposta } from "./SimuladorDeProposta";
 // ⚠️ CANCELADO E DISTRATO NÃO SÃO PASSOS. São saídas do caminho, e vivem no quadro de perdas do
 // Panorama — a régua está em `lib/hercules/fluxo-de-venda.ts`, com teste.
 //
-// ⚠️ O QUE AINDA NÃO EXISTE ESTÁ DITO NA TELA, não escondido atrás de um botão morto. Reservar e
-// gerar proposta gravando no Panteon dependem da 0125 (reservas), ainda não aplicada.
+// ⚠️ O QUE AINDA NÃO EXISTE ESTÁ DITO NA TELA, não escondido atrás de um botão morto. Reservar,
+// gerar proposta e cancelar já gravam no Panteon (migrations 0125 e 0131); "Enviar para contrato"
+// continua apagado, com o motivo no `title`.
 //
 // ⚠️ O ESTOQUE TEM DUAS VISTAS NO MESMO LUGAR: quadrados e mapa (Lucas, 03/09/2026: *"vamos dar a
 // opção do usuário de selecionar se ele quer ver essa tela quadrados, ou mapa (...) não é para
@@ -403,6 +405,7 @@ export function TelaVenda() {
   const [simulando, setSimulando] = useState<null | UnidadeNoMapa>(null);
   const [reservando, setReservando] = useState<null | UnidadeNoMapa>(null);
   const [cancelando, setCancelando] = useState<null | UnidadeNoMapa>(null);
+  const [propondo, setPropondo] = useState<null | UnidadeNoMapa>(null);
   const [recado, setRecado] = useState<null | string>(null);
   const [modoDoEstoque, setModoDoEstoque] = useState<"grade" | "mapa">("grade");
   // Abre em 12 meses: o mês corrente sozinho, no dia 3, mostraria quase nada.
@@ -919,10 +922,32 @@ export function TelaVenda() {
       ) : null}
 
 
+      {/* ⚠️ O OUTRO CAMINHO DA RESERVA, e mora ao lado do cancelamento pelo mesmo motivo — cobre a
+          tela inteira e presa a uma coluna herdaria o `overflow: hidden` dela. O desfecho também é
+          o mesmo: fecha, deixa o recado na faixa com o COD na frente e recarrega, porque o lote sai
+          de "reservado" e entra em "proposta" — sem recarregar ele continuaria na etapa antiga na
+          faixa, na grade e no mapa até o F5. */}
+      {propondo ? (
+        <ModalDeProposta
+          onFechar={() => setPropondo(null)}
+          onGerada={(mensagem) => {
+            setPropondo(null);
+            setRecado(mensagem);
+            void carregar(recorte || emp, janela);
+          }}
+          unidade={{
+            id: propondo.id,
+            nome: comoSeLe(propondo),
+            produto: mapaDoProduto?.nome ?? "",
+          }}
+        />
+      ) : null}
+
       {visao === "mesa" ? (
         <Mesa
           aoFocar={setFoco}
           aoCancelar={setCancelando}
+          aoGerarProposta={setPropondo}
           aoReservar={setReservando}
           aoSimular={setSimulando}
           aoTrocarModo={setModoDoEstoque}
@@ -948,6 +973,7 @@ export function TelaVenda() {
 function Mesa({
   aoCancelar,
   aoFocar,
+  aoGerarProposta,
   aoReservar,
   aoSimular,
   aoTrocarModo,
@@ -962,6 +988,7 @@ function Mesa({
 }: {
   aoCancelar: (u: null | UnidadeNoMapa) => void;
   aoFocar: (f: null | Foco) => void;
+  aoGerarProposta: (u: null | UnidadeNoMapa) => void;
   aoReservar: (u: null | UnidadeNoMapa) => void;
   aoSimular: (u: null | UnidadeNoMapa) => void;
   aoTrocarModo: (m: "grade" | "mapa") => void;
@@ -1584,6 +1611,7 @@ function Mesa({
           )}
           <AcoesDaUnidade
             aoCancelar={() => aoCancelar(unidadeEmFoco)}
+            aoGerarProposta={() => aoGerarProposta(unidadeEmFoco)}
             aoReservar={() => aoReservar(unidadeEmFoco)}
             unidade={unidadeEmFoco}
           />
@@ -1941,7 +1969,8 @@ function TrilhaDoFluxo({ etapa }: { etapa: null | string }) {
 // Lucas (03/09/2026): *"vamos inserir os botões de reservar, gerar propostas, enviar para contrato
 // e o botão de cancelar"*, e detalhou o fluxo da RESERVA — *"depois a gente continua"*.
 //
-// ⚠️ OS QUATRO APARECEM DESDE JÁ, e três dizem que ainda não fazem nada. Mostrar só o que funciona
+// ⚠️ OS QUATRO APARECEM DESDE JÁ, e o que ainda não existe diz isso. Hoje sobrou um — "Enviar para
+// contrato"; reservar, gerar proposta e cancelar já gravam no Panteon. Mostrar só o que funciona
 // esconderia o desenho do fluxo de quem usa a tela; um botão que some e volta a cada release é pior
 // do que um botão que diz "vem depois". O que NÃO pode é botão que parece pronto e não faz nada:
 // por isso eles ficam apagados e com o motivo no title.
@@ -2002,10 +2031,12 @@ const PROXIMA_FASE = "Entra na próxima fase da venda.";
 
 function AcoesDaUnidade({
   aoCancelar,
+  aoGerarProposta,
   aoReservar,
   unidade,
 }: {
   aoCancelar: () => void;
+  aoGerarProposta: () => void;
   aoReservar: () => void;
   unidade: null | UnidadeNoMapa;
 }) {
@@ -2030,11 +2061,17 @@ function AcoesDaUnidade({
       principal: true,
       rotulo: "Reservar",
     },
+    // ⚠️ SÓ EM CIMA DE UMA RESERVA (Lucas, 04/09/2026: *"da reserva eu tenho dois caminhos, gerar
+    // proposta ou cancelar"*). A proposta herda o cliente e a unidade da reserva; sem ela não há
+    // titular definido nem lote travado, e o portão da modal não teria de quem conferir a CAD.
     {
-      ativo: false,
-      motivo: reservada
-        ? "Em construção: o desenho da proposta vai para o seu OK antes."
-        : "Precisa de uma reserva ativa.",
+      ativo: reservada,
+      aoClicar: aoGerarProposta,
+      motivo: !unidade
+        ? "Escolha uma unidade."
+        : reservada
+          ? "Confere a CAD do cliente da reserva, monta as condições e gera a proposta com o PDF."
+          : "Precisa de uma reserva ativa.",
       rotulo: "Gerar proposta",
     },
     { ativo: false, motivo: PROXIMA_FASE, rotulo: "Enviar para contrato" },

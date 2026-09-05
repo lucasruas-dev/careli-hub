@@ -6,15 +6,48 @@ import {
   entradaMinima,
   type PlanoDaComposicao,
 } from "./composicoes";
-import { montarProposta } from "./simulacao";
+import { montarProposta, valorPresenteDosBaloes } from "./simulacao";
 
+/**
+ * ⚠️ ESTES PLANOS SÃO PRICE, E ISSO PASSOU A SER DECLARADO EM 04/09/2026.
+ *
+ * Até essa data `PlanoDaComposicao` não carregava o sistema de amortização e a varredura calculava
+ * Price para todo mundo — inclusive nos 21 de 24 empreendimentos que vendem em SACOC. Os números
+ * congelados na suíte abaixo são os DE ENTÃO, e continuam valendo: eles descrevem um plano Price,
+ * que é o que os três agora dizem ser. O comportamento em SACOC — que é o da maioria da casa, e o
+ * que mudou de verdade — está na suíte do fim do arquivo.
+ */
 const PLANOS: PlanoDaComposicao[] = [
-  { entradaPercentual: 20, nome: "Investidor", parcelas: 24, taxaAoMes: 0.0072 },
-  { entradaPercentual: 20, nome: "Curto", parcelas: 36, taxaAoMes: 0.0072 },
-  { entradaPercentual: 10, nome: "Normal", parcelas: 156, taxaAoMes: 0.0072 },
+  {
+    entradaPercentual: 20,
+    nome: "Investidor",
+    parcelas: 24,
+    sistemaAmortizacao: "price",
+    taxaAoMes: 0.0072,
+  },
+  {
+    entradaPercentual: 20,
+    nome: "Curto",
+    parcelas: 36,
+    sistemaAmortizacao: "price",
+    taxaAoMes: 0.0072,
+  },
+  {
+    entradaPercentual: 10,
+    nome: "Normal",
+    parcelas: 156,
+    sistemaAmortizacao: "price",
+    taxaAoMes: 0.0072,
+  },
 ];
 
-describe("composicoesQueFecham", () => {
+/** Os mesmos três planos como a casa de fato vende: SACOC, a parcela é a amortização pura. */
+const PLANOS_SACOC: PlanoDaComposicao[] = PLANOS.map((p) => ({
+  ...p,
+  sistemaAmortizacao: "sacoc",
+}));
+
+describe("composicoesQueFecham (planos PRICE — os números antigos, que continuam valendo aqui)", () => {
   it("devolve uma composição por plano, partindo da parcela", () => {
     const r = composicoesQueFecham({ parcelaAlvo: 3_450, planos: PLANOS, valor: 136_521 });
 
@@ -127,6 +160,7 @@ describe("composicoesQueFecham", () => {
         baloesValor: c.anuais.valor,
         entrada: c.entrada,
         parcelas: c.parcelas,
+        sistemaAmortizacao: "price",
         taxaAoMes: 0.0072,
         valor: 136_521,
       });
@@ -147,5 +181,62 @@ describe("composicoesQueFecham", () => {
     expect(composicoesQueFecham({ parcelaAlvo: 0, planos: PLANOS, valor: 136_521 })).toEqual([]);
     expect(composicoesQueFecham({ parcelaAlvo: 3_450, planos: PLANOS, valor: 0 })).toEqual([]);
     expect(composicoesQueFecham({ parcelaAlvo: 3_450, planos: [], valor: 136_521 })).toEqual([]);
+  });
+});
+
+describe("⚠️ composicoesQueFecham em SACOC — o plano de 21 dos 24 empreendimentos", () => {
+  it("a parcela de volta é a amortização pura do saldo, e não a Price", () => {
+    // A composição que a lista devolve tem que ser a mesma que o cronograma vai emitir: sem isto, o
+    // corretor lê uma parcela no cartão e o PDF gerado em seguida traz outra.
+    const r = composicoesQueFecham({ parcelaAlvo: 3_450, planos: PLANOS_SACOC, valor: 136_521 });
+
+    expect(r.length).toBeGreaterThan(0);
+    for (const c of r) {
+      const vp = valorPresenteDosBaloes(c.anuais.quantidade, c.anuais.valor, 0.0072);
+      expect(c.parcela).toBeCloseTo((136_521 - c.entrada - vp) / c.parcelas, 2);
+      expect(c.parcela).toBeLessThanOrEqual(3_450 + 0.01);
+    }
+  });
+
+  it("⚠️ para a MESMA parcela, o SACOC pede muito menos entrada que a conta antiga", () => {
+    // O cenário medido em 04/09/2026: lote de R$ 200.000, cliente que pode pagar R$ 1.500 por mês,
+    // 120 meses a 8% a.a. Em SACOC 120 × 1.500 amortizam R$ 180.000 e a entrada é R$ 20.000; pela
+    // inversão da Price — a que a varredura usava para todo mundo — a mesma parcela pedia mais de
+    // R$ 70 mil de entrada, e a lista escondia a proposta que a casa de fato vende.
+    const plano = { entradaPercentual: 10, nome: "Normal", parcelas: 120, taxaAoMes: 0.0064340 };
+    const sacoc = composicoesQueFecham({
+      anuaisPossiveis: [0],
+      parcelaAlvo: 1_500,
+      planos: [{ ...plano, sistemaAmortizacao: "sacoc" }],
+      valor: 200_000,
+    });
+    const price = composicoesQueFecham({
+      anuaisPossiveis: [0],
+      parcelaAlvo: 1_500,
+      planos: [{ ...plano, sistemaAmortizacao: "price" }],
+      valor: 200_000,
+    });
+
+    expect(sacoc[0]?.entrada).toBe(20_000);
+    expect(sacoc[0]?.parcela).toBeCloseTo(1_500, 2);
+    expect(price[0]?.entrada).toBeGreaterThan(70_000);
+  });
+
+  it("⚠️ parcela que amortiza o lote inteiro antes do prazo não vira composição", () => {
+    // 156 × 3.450 = R$ 538.200 amortizados num lote de R$ 136.521: em SACOC essa parcela paga o
+    // lote quatro vezes. O plano longo SAI da lista, em vez de aparecer com entrada zero.
+    const r = composicoesQueFecham({ parcelaAlvo: 3_450, planos: PLANOS_SACOC, valor: 136_521 });
+    expect(r.some((c) => c.parcelas === 156)).toBe(false);
+    for (const c of r) expect(c.entrada).toBeGreaterThan(0);
+  });
+
+  it("⚠️ o total soma a série inteira, com o degrau do aniversário dentro", () => {
+    // `parcela × prazo` esconderia os juros que o SACOC cobra a partir do 13º mês — e a lista
+    // ordena o desempate por total.
+    const r = composicoesQueFecham({ parcelaAlvo: 3_450, planos: PLANOS_SACOC, valor: 136_521 });
+    for (const c of r) {
+      const face = c.anuais.quantidade * c.anuais.valor;
+      expect(c.total).toBeGreaterThan(c.entrada + c.parcela * c.parcelas + face);
+    }
   });
 });

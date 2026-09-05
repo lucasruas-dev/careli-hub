@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
 
-import { coordenadoresDosEmpreendimentos, enviarPeloRelacionamento } from "@/lib/apolo/disparo-credenciamento";
 import { autorizar, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
-import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
 import { createApoloAdminClient } from "@/lib/apolo/server";
-import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import {
-  coordenadoresDoPanteon,
+  avisarSobreAVenda,
+  destinatariosDaVenda,
+  type ResultadoDoAviso as ResultadoDoAvisoDaVenda,
+} from "@/lib/hercules/avisos-da-venda";
+import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
+import { nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
+import {
   familiaDoEmpreendimento,
   podemVender,
   quemPodeVender,
 } from "@/lib/hercules/quem-pode-vender";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import {
-  type AvisoDaReserva,
   avisosDaReserva,
   avisosDeCancelamento,
   conferirCancelamento,
@@ -60,14 +62,6 @@ type UnidadeDaReserva = {
   quadra: null | string;
   situacao: string;
 };
-
-/** "Quadra 12 · Lote 06" — como a tela escreve, e como a mensagem precisa dizer. */
-function comoSeEscreve(unidade: UnidadeDaReserva): string {
-  if (unidade.quadra && unidade.lote) return `Quadra ${unidade.quadra} · Lote ${unidade.lote}`;
-  const padrao = /^([A-Za-z]{2,4})(\d{2})(\d{2})$/.exec(unidade.codigo.trim());
-  if (padrao) return `Quadra ${padrao[2]} · Lote ${padrao[3]}`;
-  return unidade.codigo;
-}
 
 export async function GET(request: Request) {
   const auth = autorizar(request);
@@ -231,21 +225,30 @@ export async function POST(request: Request) {
       (criada as null | { protocolo_numero?: null | number })?.protocolo_numero,
     );
 
-    const avisos = await avisar(admin, {
+    // Os nomes primeiro, os textos depois: quem escreve a mensagem precisa saber o nome da
+    // imobiliaria e o do corretor, e os dois saem do `apolo_entities` que a lib de avisos le.
+    const destinatarios = await destinatariosDaVenda(admin, {
       corretorId: pedido.corretorEntityId ?? null,
       empreendimento: { c2xId: String(unidade.enterprise_id), nome: empreendimento.nome },
       imobiliariaId: pedido.imobiliariaEntityId,
-      textos: (nomes) =>
-        avisosDaReserva({
-          cliente: pedido.proponente.nome,
-          codigo,
-          corretor: nomes.corretor,
-          cpf: pedido.proponente.cpf,
-          empreendimento: empreendimento.nome,
-          imobiliaria: nomes.imobiliaria,
-          unidade: comoSeEscreve(unidade),
-          validadeEm: pedido.validadeEm,
-        }),
+    });
+
+    const avisos = await avisarSobreAVenda(admin, {
+      corretorId: pedido.corretorEntityId ?? null,
+      destinatarios,
+      imobiliariaId: pedido.imobiliariaEntityId,
+      origem: "reserva:whatsapp",
+      textos: avisosDaReserva({
+        cliente: pedido.proponente.nome,
+        codigo,
+        corretor: destinatarios.corretor?.nome ?? null,
+        cpf: pedido.proponente.cpf,
+        empreendimento: empreendimento.nome,
+        imobiliaria: destinatarios.imobiliaria.nome,
+        unidade: nomeDaUnidade(unidade),
+        validadeEm: pedido.validadeEm,
+      }),
+      tipo: "hercules_reserva",
     });
 
     return NextResponse.json({ data: { avisos, codigo, id: criada?.id ?? null } });
@@ -378,154 +381,37 @@ export async function PATCH(request: Request) {
       : null;
     const codigo = codigoDaVenda(reserva.protocolo_numero);
 
-    const avisos = reserva.imobiliaria_entity_id
-      ? await avisar(admin, {
-          corretorId: reserva.corretor_entity_id,
-          empreendimento: { c2xId: String(unidade.enterprise_id), nome: nomeDoEmpreendimento },
-          imobiliariaId: reserva.imobiliaria_entity_id,
-          textos: (nomes) =>
-            avisosDeCancelamento({
-              cliente: typeof titular?.nome === "string" ? titular.nome : "cliente",
-              codigo,
-              corretor: nomes.corretor,
-              empreendimento: nomeDoEmpreendimento,
-              imobiliaria: nomes.imobiliaria,
-              motivo,
-              unidade: comoSeEscreve(unidade),
-            }),
-        })
-      : [];
+    // Reserva sem imobiliaria nao tem para quem avisar: o registro do disparo pendura na ficha
+    // dela, inclusive o do coordenador.
+    const imobiliariaId = reserva.imobiliaria_entity_id;
+    let avisos: ResultadoDoAvisoDaVenda[] = [];
+    if (imobiliariaId) {
+      const destinatarios = await destinatariosDaVenda(admin, {
+        corretorId: reserva.corretor_entity_id,
+        empreendimento: { c2xId: String(unidade.enterprise_id), nome: nomeDoEmpreendimento },
+        imobiliariaId,
+      });
+      avisos = await avisarSobreAVenda(admin, {
+        corretorId: reserva.corretor_entity_id,
+        destinatarios,
+        imobiliariaId,
+        origem: "reserva:whatsapp",
+        textos: avisosDeCancelamento({
+          cliente: typeof titular?.nome === "string" ? titular.nome : "cliente",
+          codigo,
+          corretor: destinatarios.corretor?.nome ?? null,
+          empreendimento: nomeDoEmpreendimento,
+          imobiliaria: destinatarios.imobiliaria.nome,
+          motivo,
+          unidade: nomeDaUnidade(unidade),
+        }),
+        tipo: "hercules_reserva",
+      });
+    }
 
     return NextResponse.json({ data: { avisos, codigo, id: reserva.id } });
   } catch (erro) {
     console.error("[hercules][reserva] falha ao cancelar", erro);
     return NextResponse.json({ error: "Não foi possível cancelar agora." }, { status: 503 });
-  }
-}
-
-type ResultadoDoAviso = { motivo?: string; ok: boolean; para: string };
-
-/**
- * Avisa corretor, imobiliária e coordenador — pelo número do Relacionamento.
- *
- * ⚠️ NUNCA LANÇA. A reserva já está gravada quando esta função roda: uma exceção aqui viraria um
- * 503 numa operação que deu certo, e o coordenador reservaria de novo por cima do índice único.
- * Cada destinatário volta com o seu resultado, e a tela diz quem ficou sem aviso.
- */
-async function avisar(
-  admin: ReturnType<typeof createApoloAdminClient>,
-  dados: {
-    corretorId: null | string;
-    empreendimento: { c2xId: string; nome: string };
-    imobiliariaId: string;
-    /**
-     * O que cada um vai ler, montado com os nomes que só esta função conhece.
-     *
-     * ⚠️ É FUNÇÃO, E NÃO TEXTO PRONTO: quem chama sabe o ASSUNTO (reserva criada, reserva
-     * cancelada) mas não sabe o nome da imobiliária nem o do corretor — os dois saem do
-     * `apolo_entities` que esta busca aqui. Passar texto pronto obrigaria cada chamador a repetir
-     * essa consulta, e "quem recebe e como envia" viraria dois lugares.
-     */
-    textos: (nomes: { corretor: null | string; imobiliaria: string }) => AvisoDaReserva[];
-  },
-): Promise<ResultadoDoAviso[]> {
-  if (!admin) return [];
-
-  try {
-    const [{ data: entidades }, { data: contatos }] = await Promise.all([
-      admin
-        .from("apolo_entities")
-        .select("id, display_name, legal_name, trade_name")
-        .in("id", [dados.imobiliariaId, dados.corretorId].filter(Boolean) as string[]),
-      admin
-        .from("apolo_contacts")
-        .select("entity_id, value, is_primary")
-        .eq("contact_type", "phone")
-        .in("entity_id", [dados.imobiliariaId, dados.corretorId].filter(Boolean) as string[]),
-    ]);
-
-    const nomePorId = new Map<string, string>();
-    for (const e of (entidades ?? []) as Array<{
-      display_name: null | string;
-      id: string;
-      legal_name: null | string;
-      trade_name: null | string;
-    }>) {
-      nomePorId.set(e.id, (e.trade_name || e.display_name || e.legal_name || "").trim() || "—");
-    }
-
-    const telefonePorId = new Map<string, string>();
-    for (const c of (contatos ?? []) as Array<{
-      entity_id: string;
-      is_primary: boolean | null;
-      value: null | string;
-    }>) {
-      const valor = (c.value ?? "").trim();
-      if (!valor) continue;
-      if (c.is_primary === true || !telefonePorId.has(c.entity_id)) {
-        telefonePorId.set(c.entity_id, valor);
-      }
-    }
-
-    const textos = dados.textos({
-      corretor: dados.corretorId ? (nomePorId.get(dados.corretorId) ?? null) : null,
-      imobiliaria: nomePorId.get(dados.imobiliariaId) ?? "Imobiliária",
-    });
-
-    // ⚠️ O COORDENADOR VEM DO C2X, E CAI NO PANTEON QUANDO NÃO EXISTE LÁ. Empreendimento que só
-    // existe aqui — o de teste, e qualquer produto novo antes de ser cadastrado no legado — ficaria
-    // sem ninguém para avisar. O fallback nunca esconde o coordenador de verdade: só entra quando a
-    // consulta ao legado volta vazia.
-    const doC2x = await coordenadoresDosEmpreendimentos(
-      admin,
-      [{ enterpriseId: dados.empreendimento.c2xId, label: dados.empreendimento.nome }],
-      loadApoloEnterpriseCadastro,
-    );
-    const coordenadores =
-      doC2x.length > 0
-        ? doC2x
-        : (await coordenadoresDoPanteon(admin, [dados.empreendimento.c2xId])).map((c) => ({
-            empreendimentos: [],
-            nome: c.nome,
-            telefone: c.telefone,
-          }));
-
-    const destinos: Array<{ entityId: string; papel: string; telefone: null | string }> = [];
-    if (dados.corretorId) {
-      destinos.push({
-        entityId: dados.corretorId,
-        papel: "corretor",
-        telefone: telefonePorId.get(dados.corretorId) ?? null,
-      });
-    }
-    destinos.push({
-      entityId: dados.imobiliariaId,
-      papel: "imobiliaria",
-      telefone: telefonePorId.get(dados.imobiliariaId) ?? null,
-    });
-    for (const c of coordenadores) {
-      destinos.push({ entityId: dados.imobiliariaId, papel: "coordenador", telefone: c.telefone });
-    }
-
-    const resultados = await Promise.all(
-      destinos.map(async (destino) => {
-        const texto = textos.find((t) => t.papel === destino.papel)?.texto;
-        if (!texto) return { motivo: "sem texto", ok: false, para: destino.papel };
-        const r = await enviarPeloRelacionamento(admin, {
-          destinatario: destino.papel,
-          entityId: destino.entityId,
-          origem: "reserva:whatsapp",
-          telefone: destino.telefone,
-          texto,
-          tipo: "hercules_reserva",
-        });
-        return { motivo: r.erro, ok: r.ok, para: destino.papel };
-      }),
-    );
-
-    return resultados;
-  } catch (erro) {
-    console.error("[hercules][reserva] falha ao avisar", erro);
-    return [];
   }
 }

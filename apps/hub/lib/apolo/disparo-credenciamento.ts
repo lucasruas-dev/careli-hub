@@ -1,7 +1,7 @@
 import { cadastroEfetivo } from "@/lib/apolo/cadastro-efetivo";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { sendEvolutionDirectText } from "@/lib/iris/evolution-api";
+import { sendEvolutionDirectMedia, sendEvolutionDirectText } from "@/lib/iris/evolution-api";
 
 import {
   mensagemCoordenadorHabilitacao,
@@ -294,6 +294,19 @@ export async function corretoresDaImobiliaria(
 export async function enviarPeloRelacionamento(
   client: SupabaseClient,
   input: {
+    /**
+     * Documento que vai junto; o texto vira a legenda dele. Ausente = mensagem de texto puro.
+     *
+     * ⚠️ É O MESMO CAMINHO DA CAD EM PRODUÇÃO (`lib/apolo/esteira-avisos.ts`, que manda a CAD em
+     * PDF por `sendEvolutionDirectMedia`), e entrou aqui em 04/09/2026 para a PROPOSTA: o PDF vai
+     * para corretor, imobiliária e coordenador pelo Relacionamento, e sem o anexo a rota da
+     * proposta teria que montar um segundo envio — com um segundo `apolo_disparos` para lembrar de
+     * gravar, que é justamente o que esta função existe para não deixar acontecer.
+     *
+     * ⚠️ `url` E NÃO `base64`: a Vercel carregaria o PDF inteiro na memória da função, e o
+     * gateway baixa sozinho. A URL precisa estar viva quando ele baixar (assinada com folga).
+     */
+    anexo?: null | { fileName: string; url: string };
     destinatario: string;
     entityId: string;
     // De ONDE partiu o envio. Default `relacionamento:whatsapp` (o disparo automático da
@@ -312,7 +325,18 @@ export async function enviarPeloRelacionamento(
     return { erro: "sem telefone", ok: false };
   }
 
-  const r = await sendEvolutionDirectText({ telefone: numero, text: input.texto });
+  // ⚠️ COM ANEXO O TEXTO VIRA LEGENDA, e não uma segunda mensagem. Duas mensagens seguidas
+  // chegariam fora de ordem com frequência (o gateway não garante sequência) e o corretor leria o
+  // PDF antes de saber do que se trata.
+  const r = input.anexo
+    ? await sendEvolutionDirectMedia({
+        caption: input.texto,
+        fileName: input.anexo.fileName,
+        mimeType: "application/pdf",
+        telefone: numero,
+        url: input.anexo.url,
+      })
+    : await sendEvolutionDirectText({ telefone: numero, text: input.texto });
 
   await registrar(client, {
     ...input,
