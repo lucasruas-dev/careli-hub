@@ -14,6 +14,7 @@
 
 import type { SistemaAmortizacao } from "@/lib/apolo/planos-comerciais";
 
+import { pisoDaEntradaNoPrazo } from "./faixa-do-plano";
 import { entradaParaAParcela, montarProposta } from "./simulacao";
 
 export type PlanoDaComposicao = {
@@ -133,7 +134,43 @@ export function composicoesQueFecham(entrada: {
 }): Composicao[] {
   const { anuaisPossiveis = [0, 15_000, 20_000, 25_000, 30_000], parcelaAlvo, planos, valor } = entrada;
   const teto = entrada.tetoDaEntrada ?? null;
-  const piso = milhar(entradaMinima(valor, entrada.entradaMinimaPercentual));
+  const pisoDaCasa = milhar(entradaMinima(valor, entrada.entradaMinimaPercentual));
+
+  /**
+   * O piso de CADA plano — o da casa ou o da faixa dele, o que for maior.
+   *
+   * ⚠️ A VARREDURA RECOMENDAVA EXATAMENTE O QUE A TELA RECUSA. Ancorando todos os planos no piso da
+   * casa, a lista saía ordenada por menor entrada e a PRIMEIRA — a que a modal marca "Recomendada"
+   * e a única que ela mostra — vinha do plano mais curto com a entrada mais baixa: INVESTIDOR 36x
+   * com R$ 14.000 (10%) num lote de R$ 140.000, onde a faixa exige R$ 56.000 (40%). O coordenador
+   * clicava em Gerar e o PDF saía com R$ 42.000 de entrada a menos do que a tabela manda; se em vez
+   * disso ele clicasse em Editar, o campo Entrada acusava na hora "Abaixo do mínimo de 40%" — a
+   * tela recusando o número que ela mesma tinha acabado de recomendar.
+   *
+   * ⚠️ CADA PLANO TEM O SEU, e não há um piso único da varredura: o prazo do plano É a faixa dele.
+   */
+  const pisoDoPlano = (plano: PlanoDaComposicao) =>
+    // ⚠️ O ARREDONDAMENTO PARA CIMA NÃO PODE PASSAR DO LOTE. `milhar` existe para transformar
+    // "entrada de R$ 27.304" em conversa de mesa ("R$ 28.000"), e isso é bom em plano parcelado —
+    // mas no plano À VISTA o piso é 100% do valor, e milhar(138.500) devolve R$ 139.000: uma
+    // entrada MAIOR que o lote. A composição saía recomendada e `conferirProposta` a recusava logo
+    // depois com "a entrada não pode passar do valor negociado" — a tela oferecendo o que ela mesma
+    // proíbe, sem saída para o coordenador.
+    Math.min(
+      valor,
+      milhar(
+        pisoDaEntradaNoPrazo({
+          parcelas: plano.parcelas,
+          pisoDaCasaEmReais: pisoDaCasa,
+          planos: planos.map((p) => ({
+            entradaPercentual: p.entradaPercentual,
+            nome: p.nome,
+            parcelas: p.parcelas,
+          })),
+          valorNegociado: valor,
+        }).emReais,
+      ),
+    );
 
   if (parcelaAlvo <= 0 || valor <= 0) return [];
 
@@ -179,7 +216,14 @@ export function composicoesQueFecham(entrada: {
         // abaixo do mínimo da casa, a composição continua válida: com a entrada no piso a parcela
         // sai MENOR do que a pedida, que é a favor do cliente. Descartar esconderia a melhor
         // notícia da mesa ("cabe, e ainda sobra").
-        const arredondada = Math.max(piso, milhar(exata));
+        const arredondada = Math.max(pisoDoPlano(plano), milhar(exata));
+
+        // ⚠️ ENTRADA QUE COBRE O LOTE INTEIRO NÃO É COMPOSIÇÃO — é venda à vista, e ela não
+        // responde a pergunta que foi feita. Quem digitou "o cliente paga R$ 4.000 por mês" recebia
+        // como única recomendação o plano À VISTA com entrada de 100% e "R$ 0,00 por mês, 1 vez", e
+        // o PDF saía com "Parcela 1 de 1: R$ 0,00" para alguém que acabou de dizer que pode pagar
+        // quatro mil. Vender à vista continua possível: basta escolher o plano na tabela.
+        if (arredondada >= valor) continue;
         if (teto !== null && arredondada > teto) continue;
 
         const montada = montarProposta({

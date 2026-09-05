@@ -79,6 +79,18 @@ export type PropostaDoHistorico = {
 
 export type MovimentoDoHistorico = {
   autor_nome: null | string;
+  /**
+   * A etapa em TEXTO — o formato das transições que nascem aqui.
+   *
+   * ⚠️ O C2X MOVE POR ID (`de_c2x`/`para_c2x`) E O PANTEON MOVE POR NOME. A tabela guarda os dois
+   * pares desde a carga, e a frase precisa entender ambos: enquanto ela só lia os ids, uma
+   * transição nativa — "proposta → contrato", gravada com `de: 'proposta'` — virava "Registro
+   * atualizado" e o coordenador não via o passo que ele mesmo acabara de dar. Foi o que aconteceu
+   * com o primeiro "Enviar para contrato": a etapa mudou, o mapa repintou, e o histórico não
+   * contou.
+   */
+  de?: null | string;
+  para?: null | string;
   de_c2x: null | number;
   motivo: null | string;
   observacao: null | string;
@@ -182,9 +194,30 @@ const texto = (v: null | string | undefined): null | string => {
  * neste estágio", não "veio de lá"; inventar uma origem seria escrever no histórico algo que não
  * aconteceu.
  */
+/** Como cada etapa do Panteon se escreve na linha do tempo. */
+const ETAPA_ESCRITA: Record<string, string> = {
+  assinatura: "Em assinatura",
+  cancelado: "Cancelado",
+  contrato: "Contrato",
+  distrato: "Distrato",
+  faturado: "Faturado",
+  proposta: "Proposta",
+  reservado: "Reserva",
+};
+
+function comoSeEscreveAEtapa(valor: null | string | undefined): null | string {
+  const cru = String(valor ?? "").trim().toLowerCase();
+  if (!cru) return null;
+  return ETAPA_ESCRITA[cru] ?? cru;
+}
+
 function fraseDoMovimento(m: MovimentoDoHistorico): string {
-  const de = m.de_c2x ? (ESTAGIO[m.de_c2x] ?? `Estágio ${m.de_c2x}`) : null;
-  const para = m.para_c2x ? (ESTAGIO[m.para_c2x] ?? `Estágio ${m.para_c2x}`) : null;
+  // ⚠️ O ID DO C2X PRIMEIRO, O TEXTO DO PANTEON DEPOIS: os movimentos importados só têm o id, e os
+  // daqui só têm o nome. Ler um formato só faz metade das transições virar "Registro atualizado".
+  const de = m.de_c2x ? (ESTAGIO[m.de_c2x] ?? `Estágio ${m.de_c2x}`) : comoSeEscreveAEtapa(m.de);
+  const para = m.para_c2x
+    ? (ESTAGIO[m.para_c2x] ?? `Estágio ${m.para_c2x}`)
+    : comoSeEscreveAEtapa(m.para);
 
   if (de && para) return `${de} → ${para}`;
   if (para) return para;
@@ -290,7 +323,7 @@ export function historicoDaUnidade(
       codigo: null,
       cliente: texto(p?.cliente_nome ?? null),
       fato: fraseDoMovimento(m),
-      id: `mov:${m.proposta_id}:${m.quando}:${m.de_c2x ?? "-"}:${m.para_c2x ?? "-"}`,
+      id: `mov:${m.proposta_id}:${m.quando}:${m.de_c2x ?? m.de ?? "-"}:${m.para_c2x ?? m.para ?? "-"}`,
       observacao: texto(m.motivo) ?? texto(m.observacao),
       propostaId: m.proposta_id,
       quando: m.quando,

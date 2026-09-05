@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-05-hercules-entrega-a-temis",
+    deployedAt: "2026-09-05T20:30:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Enviar para contrato entrega a proposta à Têmis**: o trabalho entra na fila do jurídico com o vínculo para a venda, e a Têmis puxa dali cliente, compradores, condições e o PDF — sem redigitar nada.",
+              "**O histórico se atualiza na hora.** Reservar, gerar, enviar para contrato e cancelar passaram a refazer a ficha do lote; antes ela ficava mostrando os eventos de antes, às vezes de outro cliente.",
+              "**A entrada mínima agora depende do prazo.** Em 30 parcelas o mínimo é o do plano que comporta 30 (no ZZ TESTE, 40%); em 48, o de 60 parcelas (20%). Cada card de plano mostra a sua %.",
+              "**Dá para montar o valor de cada parcela da entrada.** Somar menos que o combinado é recusado; somar mais é aceito e a entrada passa a ser a soma, com o financiado caindo junto.",
+              "A tela de gerar proposta mostra a **prévia do fluxo** — entrada com datas, reajuste por ano e reforços —, no lugar do resumo de duas linhas.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "03d4e5fb",
+    technical: {
+      done: "O HÉRCULES FECHOU O CICLO (Lucas: *\"o importante é fechar o Hércules\"*, *\"vamos somente entregar na Têmis, depois vamos trabalhar nela\"*, *\"Hércules entrega a PROPOSTA\"*). ⚠️ A TÊMIS JÁ ESPERAVA: o canal `hercules` existe em `CanalDoTrabalho` desde que a fila nasceu, o tipo `contrato` está entre os cinco serviços, e `temis_trabalhos` tem `venda_id` e `aberto_por` desde o começo — ninguém preenchia, e a auditoria da casa já registrava a falta. `abrirTrabalho` passou a gravar os dois. ⚠️ `venda_id` É A PRÓPRIA ENTREGA: é dele que a Têmis tira cliente, compradores com participação, condições, plano, cronograma e o PDF; sem ele o card entra como pedido solto e a minuta nasce de um formulário em branco. ⚠️ O HÉRCULES NÃO FAZ CONTRATO — `tipo: contrato` é o SERVIÇO que ela vai executar. Se a Têmis recusar, a venda anda e a tela avisa em letras claras: travar a venda porque a fila do jurídico caiu deixaria o coordenador clicando de novo por cima de uma etapa que não aceita ser movida duas vezes. O HISTÓRICO CONGELAVA (*\"histórico tem que ser atualizado quando fazemos alguma coisa em tempo real\"*, *\"gerei proposta, enviei para contrato\"* e nada aparecia): o efeito que busca o histórico só dependia do ID DO LOTE, e nenhuma das quatro ações muda o id — a ficha exibia os eventos do cliente ANTERIOR enquanto o topo já mostrava o novo. Cada carga do fluxo passou a carimbar um selo que o histórico observa. E as transições NATIVAS não apareciam nem depois de recarregar: o C2X move por ID (`de_c2x`) e o Panteon move por NOME (`de`/`para`), e a linha do tempo só lia os ids — \"proposta → contrato\" virava \"Registro atualizado\". Agora a rota grava o movimento e a frase entende os dois formatos; assinatura e faturamento funcionam sozinhos quando existirem. A FAIXA DO PRAZO (*\"se eu colocar 30 vezes eu não posso ter uma entrada menor que 56k, pois está dentro do plano investidor; se eu colocar 48, 28k\"*): o plano da faixa é o de MENOR prazo que comporta o parcelamento, e o piso da casa continua por baixo — vence o maior. ⚠️ ISTO MUDA O QUE `entradaPercentual` SIGNIFICA: era lido como sugestão de preenchimento e virou mínimo por faixa. ⚠️ E ELA É RÉGUA EM TRÊS LUGARES, não um: `conferirProposta` (a única porta do POST), a varredura `composicoesQueFecham` e a tela. A primeira versão só pintava o campo de vermelho — o botão gerava assim mesmo, e a varredura recomendava como PRIMEIRA opção exatamente o que a tela recusava em seguida (Investidor 36x com 10% num lote onde a faixa exige 40%: R$ 42.000 a menos no PDF). A ENTRADA MONTADA (*\"o que não pode é ser MENOR; maior pode, e ao ser maior, atualizar o valor de entrada\"*): régua assimétrica, tudo em centavos inteiros, com \"fixar\" para o caso \"a primeira é 10 mil, divide o resto\". ⚠️ A MONTAGEM SE INVALIDA SOZINHA — ela guarda a entrada, o número de vezes E o comando para os quais foi feita. Guardar só a lista a deixava PENDURADA: montar 4× R$ 14.000 no Investidor e trocar para o Normal fazia a tela anunciar entrada de R$ 14.000 com 120× de R$ 1.050 enquanto o PDF cobrava R$ 56.000 em 4× e 120× de R$ 700; e trocar para o comando \"parcela\" — que NÃO mexe no cockpit — fazia o cartão dizer \"entrada R$ 28.000, 60× de R$ 1.866,67\" com o papel saindo R$ 22.500 acima e R$ 375/mês abaixo. Fechando: parcela zerada sumia da série mas continuava contando meses (carência que ninguém negociou); o arredondamento do piso para cima pedia entrada MAIOR que o lote no plano à vista; a varredura respondia \"o cliente paga R$ 4.000/mês\" com venda à vista e o PDF imprimia \"Parcela 1 de 1 · R$ 0,00\"; e a mensagem de WhatsApp prometia parcelas iguais numa entrada desigual. Cinco conferências adversariais (~280 agentes) — cada rodada achou defeito real, inclusive nas correções da anterior. 2.818 testes verdes (207 arquivos); typecheck e lint limpos.",
+      motivation:
+        "O ciclo da venda parava na proposta: o contrato não chegava ao jurídico, o histórico não contava o que tinha acabado de acontecer, e as duas regras de entrada que o Lucas ditou não eram régua em lugar nenhum.",
+    },
+    title: "O Hércules entrega a proposta à Têmis",
+    type: "novidade",
+    version: "1.283.0",
+  },
+  {
     buildTag: "2026-09-05-proposta-no-historico",
     deployedAt: "2026-09-05T18:20:00-03:00",
     modules: [

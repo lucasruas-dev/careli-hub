@@ -107,14 +107,30 @@ describe("composicoesQueFecham (planos PRICE — os números antigos, que contin
     // Empreendimento que aceita venda sem entrada é cadastrável; tratar 0 como "não cadastrado"
     // desfaria essa decisão em silêncio.
     expect(entradaMinima(136_521, 0)).toBe(0);
+  });
+
+  it("⚠️ mas a FAIXA DO PLANO continua valendo, mesmo com o piso da casa em zero", () => {
+    // Lucas (05/09/2026): *"se eu colocar 48 eu não posso ter uma entrada menor que 28k, pois está
+    // dentro do plano curto"*. O piso da casa é o chão GERAL da Careli; a faixa é a regra do
+    // PRODUTO, e as duas são mínimos — vence o maior. Um empreendimento que queira vender sem
+    // entrada declara isso na TABELA, cadastrando um plano com 0%: é ela a fonte do que se pode
+    // vender, e foi por não conhecê-la que a varredura recomendava o que a tela recusava em
+    // seguida.
     const r = composicoesQueFecham({
       entradaMinimaPercentual: 0,
       parcelaAlvo: 3_450,
       planos: PLANOS,
       valor: 136_521,
     });
-    const minimaDelas = Math.min(...r.map((c) => c.entrada));
-    expect(minimaDelas).toBeLessThan(entradaMinima(136_521));
+
+    for (const c of r) {
+      const plano = PLANOS.find((p) => p.nome === c.plano);
+      expect(plano, c.plano).toBeDefined();
+      // A entrada de cada composição respeita o percentual do plano que a produziu.
+      expect(c.entrada, `${c.plano}: ${c.entrada}`).toBeGreaterThanOrEqual(
+        (136_521 * (plano?.entradaPercentual ?? 0)) / 100,
+      );
+    }
   });
 
   it("nulo cai no padrão da casa", () => {

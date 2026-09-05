@@ -94,6 +94,16 @@ export type CondicoesDoCronograma = {
   anuaisValor: number;
   /** 10 ou 20 na tela de hoje, mas a função recebe um número: ver o aviso em `somarMeses`. */
   diaDeVencimento: number;
+  /**
+   * Os valores de CADA parcela da entrada, quando o coordenador montou à mão.
+   *
+   * ⚠️ AUSENTE = PARTES IGUAIS, que é o caso da esmagadora maioria e o comportamento de sempre.
+   * Presente, manda: Lucas (05/09/2026) pediu poder montar "10 mil na primeira, o resto dividido",
+   * e a soma dessas parcelas é que vira o total da entrada — inclusive quando ela PASSA do valor
+   * combinado (*"maior pode; ao ser maior, atualizar o valor de entrada"*). Quem confere a régua é
+   * `conferirEntradaMontada`; aqui a lista chega já aprovada, e o cronograma só a agenda.
+   */
+  entradaParcelas?: null | number[];
   entradaValor: number;
   entradaVezes: number;
   parcelasMensais: number;
@@ -282,7 +292,12 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
 
   // ── Entrada ──
   const vezes = entradaValor > 0 ? Math.max(0, Math.trunc(condicoes.entradaVezes)) : 0;
-  const valoresDaEntrada = repartirEmPartesIguais(entradaValor, vezes);
+  // ⚠️ A LISTA MONTADA À MÃO VENCE A DIVISÃO IGUAL — e só ela, quando vier com valores de verdade.
+  // Uma lista vazia ou com zeros (a tela ainda preenchendo) cairia num cronograma de entrada zero,
+  // com o financiado inteiro na série mensal: por isso ela precisa somar mais que zero para valer.
+  const montada = (condicoes.entradaParcelas ?? []).filter((v) => Number.isFinite(v) && v > 0);
+  const valoresDaEntrada =
+    montada.length > 0 ? montada : repartirEmPartesIguais(entradaValor, vezes);
   const listaDaEntrada: ParcelaDoCronograma[] = valoresDaEntrada.map((valor, i) => ({
     numero: i + 1,
     total: valoresDaEntrada.length,
@@ -294,7 +309,14 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // ⚠️ SEM ENTRADA, A PRIMEIRA MENSAL É A PRÓPRIA DATA INFORMADA. "Mês seguinte à última da
   // entrada" não define nada quando não existe entrada — e adiar um mês de graça daria ao
   // comprador um mês de carência que ninguém negociou.
-  const primeiraMensal = somarMeses(origem, vezes, diaDeVencimento);
+  //
+  // ⚠️ CONTA AS PARCELAS QUE EXISTEM, E NÃO `entradaVezes`. Os dois coincidem na divisão igual, mas
+  // não na montagem à mão: uma lista com valores zerados (a tela em preenchimento, ou alguém que
+  // fixou uma parcela e zerou as outras) perde essas linhas no filtro acima e fica com menos
+  // parcelas do que `entradaVezes` diz. Contando pelo número declarado, as mensais começavam meses
+  // depois do fim da entrada REAL — meses de carência que ninguém negociou, no papel que vai para o
+  // cliente. O que manda é a série que foi agendada.
+  const primeiraMensal = somarMeses(origem, listaDaEntrada.length, diaDeVencimento);
 
   // ── Anuais ──
   //
@@ -389,9 +411,15 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // mensal é a que o C2X emite, e ele emite todas iguais. Ajustar a última em um centavo para
   // fechar o total anunciaria no papel um boleto que o sistema nunca vai gerar — e o papel tem que
   // anunciar o que vai ser emitido.
-  const listaDasMensais: ParcelaDoCronograma[] = Array.from({ length: mensais }, (_, k) => ({
+  // ⚠️ SEM SALDO NÃO HÁ SÉRIE MENSAL. Quando a entrada cobre o lote inteiro (venda à vista, plano
+  // de 100%), o financiado é zero e a série sairia com o prazo declarado e valor R$ 0,00 em cada
+  // linha: o PDF imprimia "Parcela 1 de 1 · R$ 0,00" e a mensagem de WhatsApp anunciava "1x a
+  // partir de R$ 0,00 (com reajuste anual)". Um boleto de zero real não existe, e prometer um no
+  // papel do comprador é pior do que não ter seção nenhuma.
+  const quantasMensais = financiado > 0 ? mensais : 0;
+  const listaDasMensais: ParcelaDoCronograma[] = Array.from({ length: quantasMensais }, (_, k) => ({
     numero: k + 1,
-    total: mensais,
+    total: quantasMensais,
     valor: emReais(valorDaMensal(k + 1)),
     vencimento: escreverDia(somarMeses(primeiraMensal, k, diaDeVencimento)),
   }));

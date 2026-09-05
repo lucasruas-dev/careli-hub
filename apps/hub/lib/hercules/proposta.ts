@@ -25,6 +25,7 @@
 import { cpfValido } from "@/lib/apolo/documento";
 
 import { entradaMinima } from "./composicoes";
+import { type PlanoDaFaixa, pisoDaEntradaNoPrazo } from "./faixa-do-plano";
 import { mascararCpf } from "./reserva";
 
 /**
@@ -56,6 +57,26 @@ export type PedidoDeProposta = {
   compradores: CompradorDoPedido[];
   /** A % mínima de entrada DESTE empreendimento. Nulo/ausente = padrão da casa. */
   entradaMinimaPercentual?: null | number;
+  /**
+   * A TABELA do empreendimento — os planos, com prazo e percentual de entrada.
+   *
+   * ⚠️ SEM ELA A FAIXA NÃO É RÉGUA, É COR DE TEXTO. A regra do Lucas (*"se eu colocar 30 vezes eu
+   * não posso ter uma entrada menor que 56k"*) nasceu pintando o campo de vermelho na tela — e o
+   * botão gerava assim mesmo, porque aqui só existia o piso da casa (10%). Uma proposta de 30x com
+   * 10% de entrada saía no PDF e no WhatsApp sem um único erro de validação. Quem avisa é a tela;
+   * quem RECUSA tem que ser esta função, que é a única por onde o POST passa.
+   *
+   * Ausente = só o piso da casa, que é o comportamento de quem ainda não manda a tabela.
+   */
+  planosDaTabela?: null | PlanoDaFaixa[];
+  /**
+   * Os valores de CADA parcela da entrada, quando o coordenador montou à mão.
+   *
+   * ⚠️ AUSENTE = PARTES IGUAIS, o caminho de sempre. Presente, a SOMA dela é a entrada de verdade —
+   * ver a régua assimétrica em `conferirEntradaMontada`: menor que o combinado é recusado, maior é
+   * aceito e vira o novo valor.
+   */
+  entradaParcelas?: null | number[];
   /** O total da entrada, em reais. É ele que se divide em `entradaVezes` partes iguais. */
   entradaValor: number;
   entradaVezes: number;
@@ -303,6 +324,27 @@ export function conferirProposta(
     erros.push({ campo: "anuais", mensagem: "Informe o valor de cada reforço anual." });
   }
 
+  // ⚠️ A ENTRADA MONTADA NÃO PODE SOMAR MENOS QUE A COMBINADA. Ela chega da tela já conferida,
+  // mas a régua do servidor não pode confiar nisso: um corpo montado à mão passaria uma entrada de
+  // R$ 1.000 em quatro parcelas dizendo que o combinado eram R$ 28.000, e a proposta sairia com o
+  // financiado errado e a parcela subestimada no papel do cliente. Maior continua valendo — quem
+  // sobe a entrada para a soma é `montarCronograma`, que agenda a lista como ela veio.
+  if (pedido.entradaParcelas && pedido.entradaParcelas.length > 0) {
+    const soma = pedido.entradaParcelas.reduce(
+      (total, v) => total + (Number.isFinite(v) ? Math.round(v * 100) : 0),
+      0,
+    );
+    if (entradaEhNumero && soma < Math.round(pedido.entradaValor * 100)) {
+      erros.push({
+        campo: "entrada",
+        mensagem: "As parcelas da entrada somam menos que o valor da entrada.",
+      });
+    }
+    if (pedido.entradaParcelas.some((v) => !Number.isFinite(v) || v <= 0)) {
+      erros.push({ campo: "entrada", mensagem: "Toda parcela da entrada precisa de um valor." });
+    }
+  }
+
   // ⚠️ REFORÇO ANUAL CAI NO ANIVERSÁRIO, ENTÃO SÓ CABEM OS ANIVERSÁRIOS QUE O PRAZO TEM. Sem esta
   // régua, quem escolhia 6 reforços num plano de 120 meses e depois reduzia o prazo para 60 saía
   // com dois balões vencendo DEPOIS da última mensal: o PDF imprimia "última parcela" em novembro
@@ -326,7 +368,18 @@ export function conferirProposta(
   } else if (entradaEhNumero) {
     // ⚠️ O PISO SAI DE `entradaMinima`, NÃO DE UMA CONTA NOVA AQUI. Ela é quem sabe que a % vem do
     // empreendimento (o Garden vende a 8%) e que nulo cai no padrão da casa, mas zero é zero.
-    const piso = entradaMinima(pedido.valorNegociado, pedido.entradaMinimaPercentual);
+    //
+    // ⚠️ E A FAIXA DO PRAZO APERTA POR CIMA DELE. `pisoDaEntradaNoPrazo` devolve o maior entre o
+    // piso da casa e o do plano que comporta o parcelamento pedido — é a regra que o Lucas ditou, e
+    // é AQUI que ela vira recusa. Sem a tabela (`planosDaTabela` ausente) sobra o piso da casa, que
+    // é o comportamento de sempre.
+    const doPrazo = pisoDaEntradaNoPrazo({
+      parcelas: pedido.parcelas,
+      pisoDaCasaEmReais: entradaMinima(pedido.valorNegociado, pedido.entradaMinimaPercentual),
+      planos: pedido.planosDaTabela ?? [],
+      valorNegociado: pedido.valorNegociado,
+    });
+    const piso = doPrazo.emReais;
 
     // ⚠️ A COMPARAÇÃO É EM CENTAVOS INTEIROS. 10% de R$ 178.100 dá 17810.000000000002 em ponto
     // flutuante, e a tela chegou a dizer "abaixo do mínimo" para uma entrada de exatamente
@@ -334,7 +387,17 @@ export function conferirProposta(
     if (centavos(pedido.entradaValor) < centavos(piso)) {
       erros.push({
         campo: "entrada",
-        mensagem: `A entrada mínima deste empreendimento é R$ ${piso.toFixed(2).replace(".", ",")}.`,
+        // ⚠️ A FRASE DIZ DE ONDE VEM A EXIGÊNCIA. "A entrada mínima é R$ 56.000" num empreendimento
+        // que vende a 10% parece erro do sistema; "em 30 parcelas (faixa do PLANO INVESTIDOR)"
+        // explica a escada e diz o que fazer — alongar o prazo ou aumentar a entrada.
+        // ⚠️ `reais()` E NÃO `toFixed`: o `toFixed(2).replace(".", ",")` escrevia "R$ 56000,00" —
+        // sem separador de milhar, fora do padrão de todo o resto da tela, do PDF e do WhatsApp.
+        // Numa frase que recusa a venda, o número é o que a pessoa lê primeiro.
+        mensagem: doPrazo.faixa
+          ? `Em ${pedido.parcelas} parcelas a entrada mínima é ${reais(piso)} (faixa do ${
+              doPrazo.faixa.nome
+            }, ${doPrazo.faixa.entradaPercentual}%).`
+          : `A entrada mínima deste empreendimento é ${reais(piso)}.`,
       });
     }
 
@@ -433,6 +496,13 @@ export type AvisoDaProposta = {
 };
 
 export type DadosDoAvisoDaProposta = {
+  /**
+   * O valor da PRIMEIRA parcela da entrada, quando ela difere das demais.
+   *
+   * ⚠️ SÓ IMPORTA NA ENTRADA MONTADA À MÃO. Na divisão igual ele é redundante — a própria frase já
+   * diz o total e o número de vezes. Ausente = a mensagem não menciona.
+   */
+  entradaPrimeira?: null | number;
   cliente: string;
   /** `000123` — o COD da venda, o MESMO desde a reserva. */
   codigo: string;
@@ -525,9 +595,22 @@ export function avisosDaProposta(dados: DadosDoAvisoDaProposta): AvisoDaProposta
   // "R$ 17.810,00 em 2x, a primeira em 10/10/2026" — a entrada dividida em partes iguais, que é
   // como o Lucas a explicou na mesa. O desconto de valor presente não entra: entrada não se
   // desconta.
+  //
+  // ⚠️ COM ENTRADA MONTADA À MÃO, "EM 4x" PROMETE PARCELAS IGUAIS QUE NÃO EXISTEM. Quem monta
+  // 10.000 + 6.000 + 6.000 + 6.000 recebia "R$ 28.000,00 em 4x" — e o corretor, lendo isso no
+  // celular, divide por quatro e diz ao cliente que a primeira é R$ 7.000. O valor da primeira é o
+  // que ele precisa saber para conversar, e é a única linha da mensagem em que ele repara antes de
+  // responder. Só entra quando as parcelas de fato diferem: escrever "a 1ª de R$ 7.000" numa
+  // divisão igual é ruído.
+  const primeiraDiferente =
+    dados.entradaPrimeira !== null &&
+    dados.entradaPrimeira !== undefined &&
+    dados.entradaVezes > 1 &&
+    Math.round(dados.entradaPrimeira * 100) !==
+      Math.round((dados.entradaTotal / dados.entradaVezes) * 100);
   const entrada = `*${reais(dados.entradaTotal)}* em *${dados.entradaVezes}x*${
-    desde ? `, a primeira em *${desde}*` : ""
-  }`;
+    primeiraDiferente ? `, a 1ª de *${reais(dados.entradaPrimeira as number)}*` : ""
+  }${desde ? `, a primeira em *${desde}*` : ""}`;
   // ⚠️ "120x DE" É PROMESSA DE PARCELA ÚNICA, e no SACOC ela não se cumpre: a parcela muda no 13º
   // mês. Quem reajusta ganha "a partir de" e a lembrança do reajuste anual — uma frase, não um
   // parágrafo, porque isto é WhatsApp e ninguém lê o segundo parágrafo antes de responder.

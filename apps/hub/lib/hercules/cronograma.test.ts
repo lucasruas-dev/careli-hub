@@ -479,3 +479,125 @@ describe("a data que não existe no calendário", () => {
     expect(montarCronograma(condicoes("2028-02-29")).entrada[0]?.vencimento).toBe("2028-02-29");
   });
 });
+
+describe("⚠️ a entrada montada à mão", () => {
+  const BASE = {
+    anuaisQuantidade: 0,
+    anuaisValor: 0,
+    diaDeVencimento: 10,
+    entradaValor: 28_000,
+    entradaVezes: 4,
+    parcelasMensais: 60,
+    plano: SACOC_SEM_JUROS,
+    primeiraParcelaDaEntrada: "2026-10-10",
+    valorNegociado: 140_000,
+  };
+
+  it("sem lista, continua dividindo em partes iguais", () => {
+    const c = montarCronograma(BASE);
+    expect(c.entrada.map((p) => p.valor)).toEqual([7_000, 7_000, 7_000, 7_000]);
+  });
+
+  it("com lista, ela manda — e as datas continuam mês a mês no dia escolhido", () => {
+    // O caso do Lucas: "10 mil na primeira, o resto dividido".
+    const c = montarCronograma({ ...BASE, entradaParcelas: [10_000, 6_000, 6_000, 6_000] });
+    expect(c.entrada.map((p) => p.valor)).toEqual([10_000, 6_000, 6_000, 6_000]);
+    expect(c.entrada.map((p) => p.vencimento)).toEqual([
+      "2026-10-10",
+      "2026-11-10",
+      "2026-12-10",
+      "2027-01-10",
+    ]);
+    expect(c.totais.entrada).toBe(28_000);
+  });
+
+  it("⚠️ somando MAIS que o combinado, o financiado CAI junto", () => {
+    // *"maior pode; ao ser maior, atualizar o valor de entrada"* — e o resto da conta acompanha,
+    // senão o papel sairia com uma entrada maior e a mesma parcela de antes.
+    const c = montarCronograma({ ...BASE, entradaParcelas: [10_000, 7_000, 7_000, 7_000] });
+    expect(c.totais.entrada).toBe(31_000);
+    expect(c.totais.financiado).toBe(109_000); // 140.000 − 31.000
+  });
+
+  it("lista com zeros (tela em preenchimento) não vira entrada zero", () => {
+    // Sem esta guarda o cronograma sairia com o financiado inteiro na série mensal.
+    const c = montarCronograma({ ...BASE, entradaParcelas: [0, 0, 0, 0] });
+    expect(c.totais.entrada).toBe(28_000);
+  });
+
+  it("lista nula é o mesmo que não mandar nada", () => {
+    const c = montarCronograma({ ...BASE, entradaParcelas: null });
+    expect(c.entrada.map((p) => p.valor)).toEqual([7_000, 7_000, 7_000, 7_000]);
+  });
+});
+
+describe("⚠️ a montagem com parcela zerada não dá carência de graça", () => {
+  const BASE_Z = {
+    anuaisQuantidade: 0,
+    anuaisValor: 0,
+    diaDeVencimento: 10,
+    entradaValor: 28_000,
+    entradaVezes: 4,
+    parcelasMensais: 60,
+    plano: SACOC_SEM_JUROS,
+    primeiraParcelaDaEntrada: "2026-10-10",
+    valorNegociado: 140_000,
+  };
+
+  it("as mensais começam depois da última entrada REAL, e não do `entradaVezes` declarado", () => {
+    // Com [15.000, 0, 0, 13.000] as duas linhas zeradas somem da série: a entrada tem 2 parcelas,
+    // não 4. Contando pelo número declarado, a primeira mensal caía dois meses depois do fim da
+    // entrada — dois meses de carência que ninguém negociou, no papel do cliente.
+    const c = montarCronograma({ ...BASE_Z, entradaParcelas: [15_000, 0, 0, 13_000] });
+
+    expect(c.entrada).toHaveLength(2);
+    expect(c.entrada.map((p) => p.vencimento)).toEqual(["2026-10-10", "2026-11-10"]);
+    expect(c.mensais[0]?.vencimento).toBe("2026-12-10");
+  });
+
+  it("na divisão igual nada muda: os dois números coincidem", () => {
+    const c = montarCronograma(BASE_Z);
+    expect(c.entrada).toHaveLength(4);
+    expect(c.mensais[0]?.vencimento).toBe("2027-02-10");
+  });
+});
+
+describe("⚠️ venda à vista não imprime boleto de R$ 0,00", () => {
+  it("entrada cobrindo o lote inteiro não gera série mensal", () => {
+    // O plano À VISTA (1x, 100%) zerava o financiado e a série saía com o prazo declarado e valor
+    // R$ 0,00 em cada linha: o PDF imprimia "Parcela 1 de 1 · R$ 0,00" e o WhatsApp anunciava
+    // "1x a partir de R$ 0,00 (com reajuste anual)" para o comprador.
+    const c = montarCronograma({
+      anuaisQuantidade: 0,
+      anuaisValor: 0,
+      diaDeVencimento: 10,
+      entradaValor: 140_000,
+      entradaVezes: 1,
+      parcelasMensais: 1,
+      plano: SACOC_SEM_JUROS,
+      primeiraParcelaDaEntrada: "2026-10-10",
+      valorNegociado: 140_000,
+    });
+
+    expect(c.totais.entrada).toBe(140_000);
+    expect(c.totais.financiado).toBe(0);
+    expect(c.mensais).toEqual([]);
+    expect(c.reajustes).toEqual([]);
+  });
+
+  it("com saldo, a série continua saindo normalmente", () => {
+    const c = montarCronograma({
+      anuaisQuantidade: 0,
+      anuaisValor: 0,
+      diaDeVencimento: 10,
+      entradaValor: 14_000,
+      entradaVezes: 1,
+      parcelasMensais: 120,
+      plano: SACOC_SEM_JUROS,
+      primeiraParcelaDaEntrada: "2026-10-10",
+      valorNegociado: 140_000,
+    });
+    expect(c.mensais).toHaveLength(120);
+    expect(c.mensais[0]?.valor).toBe(1_050);
+  });
+});

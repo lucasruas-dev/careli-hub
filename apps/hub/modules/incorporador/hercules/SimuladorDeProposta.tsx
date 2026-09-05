@@ -17,6 +17,12 @@ import {
   entradaMinima,
   type PlanoDaComposicao,
 } from "@/lib/hercules/composicoes";
+import {
+  conferirEntradaMontada,
+  partesIguais,
+  redistribuirDemais,
+} from "@/lib/hercules/entrada-montada";
+import { pisoDaEntradaNoPrazo } from "@/lib/hercules/faixa-do-plano";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
 import { DIAS_DE_VENCIMENTO } from "@/lib/hercules/proposta";
 import { lerPercentualDigitado, proximoVencimento } from "@/lib/hercules/proposta-na-tela";
@@ -97,6 +103,10 @@ function entradaDoPlano(valor: number, percentual: number, minimo: null | number
   return Math.max(entradaMinima(valor, minimo), Math.ceil((valor * percentual) / 100));
 }
 
+/** Dois valores em reais são o mesmo dinheiro? Compara em centavos, como o resto do módulo. */
+const centavosIguais = (a: number, b: number) =>
+  Math.round((Number.isFinite(a) ? a : 0) * 100) === Math.round((Number.isFinite(b) ? b : 0) * 100);
+
 const dinheiro = (v: number) =>
   `R$ ${Math.round(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
 
@@ -121,6 +131,8 @@ export type CondicoesDaProposta = {
   anuaisValor: number;
   /** 10 ou 20, os dois que a cobrança da casa usa. */
   diaDeVencimento: number;
+  /** Os valores de cada parcela da entrada, quando montados à mão. Nulo = partes iguais. */
+  entradaParcelas: null | number[];
   entradaValor: number;
   entradaVezes: number;
   /** A mensal do PRIMEIRO ciclo, que é a que a tela anuncia. Ver `parcelaFixa` em `proposta.ts`. */
@@ -134,6 +146,7 @@ export type CondicoesDaProposta = {
 
 export function SimuladorDeProposta({
   aoMudarCondicoes,
+  previa,
   entradaMinimaPercentual = null,
   planos,
   unidade,
@@ -156,6 +169,19 @@ export function SimuladorDeProposta({
    */
   aoMudarCondicoes?: (condicoes: CondicoesDaProposta | null) => void;
   /**
+   * O que preenche a coluna direita no modo proposta.
+   *
+   * ⚠️ QUEM MONTA É QUEM TEM O CRONOGRAMA. A prévia é o calendário inteiro (entrada com datas,
+   * faixas de reajuste, reforços), e esse objeto nasce na `ModalDeProposta`, que já o monta para o
+   * rodapé e para o PDF. Recebê-lo pronto evita a terceira versão do calendário da casa — e mantém
+   * este arquivo sendo o que ele é: a conta, não o papel.
+   *
+   * ⚠️ E ELA OCUPA O LUGAR DAS ALTERNATIVAS, que saíram daqui a pedido do Lucas. Sem nada no lugar
+   * sobrava um vazio de meia tela embaixo do cartão de resultado ("tem um espaço grande, UI está
+   * ruim") — e o que falta ali é justamente o que o cliente vai receber.
+   */
+  previa?: React.ReactNode;
+  /**
    * A % minima de entrada DESTE empreendimento, da aba Politica Comercial.
    *
    * Nulo = nao cadastrado, e vale o padrao da casa. E o que permite o Garden vender a 8% enquanto
@@ -168,6 +194,27 @@ export function SimuladorDeProposta({
   valorDaUnidade: number;
 }) {
   const [comando, setComando] = useState<Comando>("condicoes");
+  /**
+   * Os valores de cada parcela da entrada, quando o coordenador montou à mão.
+   *
+   * ⚠️ `null` É O PADRÃO, e quer dizer "divide igual" — o comportamento de sempre, para quem não
+   * quiser mexer em nada ter exatamente o resultado de antes. Só vira lista quando ele pede.
+   */
+  /**
+   * Os valores de cada parcela da entrada, quando o coordenador montou à mão.
+   *
+   * ⚠️ ELA GUARDA A ENTRADA E O NÚMERO DE VEZES PARA OS QUAIS FOI FEITA, e isso é o que a torna
+   * segura. Uma lista solta fica PENDURADA quando a base muda: montar 4 × R$ 14.000 no plano
+   * INVESTIDOR (entrada R$ 56.000) e depois clicar no NORMAL (entrada R$ 14.000) deixava as quatro
+   * linhas antigas de pé — a tela anunciava entrada de R$ 14.000 e 120× de R$ 1.050, e o PDF que
+   * saía por WhatsApp cobrava R$ 56.000 em 4× e 120× de R$ 700. Guardando a base, a montagem se
+   * invalida sozinha em TODOS os caminhos que mexem na entrada (trocar plano, usar uma composição,
+   * digitar outro valor, partir da parcela), em vez de depender de alguém lembrar de resetá-la em
+   * cada um deles.
+   */
+  const [montagemCrua, setMontagemCrua] = useState<
+    null | { base: number; parcelas: number[]; vezes: number }
+  >(null);
   const [planoAtivo, setPlanoAtivo] = useState<null | string>(null);
   // ⚠️ SÓ VIRA TETO SE ELE DIGITOU. O campo Entrada nasce preenchido pelo plano — usar esse número
   // como limite cortaria as composições sem ninguém ter pedido, e a lista aparecia vazia sem
@@ -303,6 +350,31 @@ export function SimuladorDeProposta({
   // que o Lucas viu no empreendimento de teste ("está dando erro, não abriu a simulação") — a tela
   // dizia "a conta sai sem juros e sem correção" e não fazia conta nenhuma. Sem plano, a conta é a
   // simples: divide o saldo pelo prazo, sem juros e sem correção.
+  /**
+   * A montagem que ainda VALE para a entrada de agora.
+   *
+   * ⚠️ A BASE É `cockpit.entrada`, que é a entrada que o campo mostra e sobre a qual as parcelas
+   * foram digitadas. Quando ela muda — por plano, por composição, por digitação —, a montagem
+   * antiga deixa de existir e a tela volta a dividir igual, que é o único estado que sempre fecha.
+   */
+  // ⚠️ E SÓ VALE NO COMANDO "CONDIÇÕES", que é quando o cartão mostra a conta MONTADA. Guardar a
+  // base contra `cockpit.entrada` não bastava: o caminho "parcela" não mexe no cockpit — ele troca
+  // a entrada que o CARTÃO mostra (a da composição recomendada) e deixa a montagem antiga de pé por
+  // baixo. O resultado era a pior combinação possível: o cartão anunciava "entrada R$ 28.000, 60×
+  // de R$ 1.866,67" e o pedido subia com a entrada da montagem, R$ 50.500 — o PDF saía com
+  // R$ 22.500 a mais de entrada e R$ 375 a menos por mês do que o coordenador acabara de ler e
+  // prometer ao cliente. A composição recomendada traz a PRÓPRIA entrada; montar parcelas sobre ela
+  // só faz sentido depois de "Editar" (`usarComposicao`), que devolve o comando para "condições".
+  const parcelasDaEntrada =
+    montagemCrua &&
+    comando === "condicoes" &&
+    centavosIguais(montagemCrua.base, cockpit.entrada) &&
+    montagemCrua.vezes === cockpit.entradaVezes
+      ? montagemCrua.parcelas
+      : null;
+
+  const montagem = conferirEntradaMontada(cockpit.entrada, parcelasDaEntrada ?? [cockpit.entrada]);
+
   const montada = useMemo(() => {
     const parcelas = cockpit.parcelas > 0 ? cockpit.parcelas : (plano?.parcelas ?? 0);
     if (parcelas <= 0) return null;
@@ -310,7 +382,12 @@ export function SimuladorDeProposta({
       ...montarProposta({
         baloesQuantidade: cockpit.anuaisQuantidade,
         baloesValor: cockpit.anuaisValor,
-        entrada: cockpit.entrada,
+        // ⚠️ A ENTRADA É A DA MONTAGEM, e não a do cockpit. Quando as parcelas somam MAIS que o
+        // combinado, é a soma que vira a entrada (regra do Lucas) — e o cartão grande da direita é
+        // onde o coordenador está olhando quando clica em Gerar. Enquanto esta conta usava o valor
+        // antigo, o cartão anunciava entrada, financiado, parcela e total de uma proposta, e o PDF
+        // que saía por WhatsApp trazia outra: a mesma venda contada de dois jeitos, na mesma tela.
+        entrada: montagem.entrada,
         parcelas,
         // ⚠️ SEM PLANO, O SISTEMA NÃO MUDA NADA — a taxa é zero e Price, SAC e SACOC caem todos em
         // `financiado ÷ prazo`. Fica o SACOC porque é onde a cascata de `calcularParcela` manda o
@@ -321,11 +398,43 @@ export function SimuladorDeProposta({
       }),
       parcelas,
     };
-  }, [cockpit, plano]);
+  }, [cockpit, montagem.entrada, plano]);
 
   /** O chão da casa para este lote — 10% do valor negociado, e acompanha o valor editado. */
-  const minimoDaEntrada = entradaMinima(cockpit.valor, entradaMinimaPercentual);
-  const pisoEmPercentual = entradaMinimaPercentual ?? ENTRADA_MINIMA_PERCENTUAL;
+  // ⚠️ O PISO DA ENTRADA DEPENDE DO PRAZO (Lucas, 05/09/2026: *"se eu colocar o parcelamento de 30
+  // vezes eu não posso ter uma entrada menor que 56k, pois está dentro do plano investidor; se eu
+  // colocar 48 eu não posso ter uma entrada menor que 28k"*). A tabela do empreendimento é uma
+  // ESCADA — prazo curto custa entrada alta —, e até aqui o `entradaPercentual` de cada plano era
+  // lido só como sugestão de preenchimento: a tela aceitava 30 parcelas com os 10% da casa, uma
+  // condição que nenhum plano sustenta, e ela saía no papel do cliente. Agora o piso é o do plano
+  // que COMPORTA o parcelamento pedido, com o piso da casa continuando por baixo.
+  const pisoDoPrazo = pisoDaEntradaNoPrazo({
+    // ⚠️ O MESMO FALLBACK DE `montada` E `aniversarios`, e não `cockpit.parcelas` cru. Apagar o
+    // campo Parcelas para redigitar grava 0 (`Number("") || 0`), e com 0 a faixa não acha plano
+    // nenhum: o piso despencava para o da casa e o rótulo passava a "Mínimo de 10%" — enquanto o
+    // input voltava a exibir 36, o cartão dizia "36 vezes" e o efeito subia `parcelasMensais: 36`.
+    // Bastava clicar fora para ficar estável: uma proposta de 36 parcelas com entrada de 10%, com a
+    // tela endossando, onde a faixa exige 40%.
+    parcelas: cockpit.parcelas > 0 ? cockpit.parcelas : (plano?.parcelas ?? 0),
+    pisoDaCasaEmReais: entradaMinima(cockpit.valor, entradaMinimaPercentual),
+    planos: planosDaConta,
+    valorNegociado: cockpit.valor,
+  });
+  const minimoDaEntrada = pisoDoPrazo.emReais;
+  /**
+   * A entrada montada à mão, conferida.
+   *
+   * ⚠️ SEM MONTAGEM ELA FECHA SOZINHA: com `parcelasDaEntrada` nulo o resultado é a entrada do
+   * cockpit, `ok: true` e excedente zero — ou seja, o caminho de sempre passa por aqui sem mudar
+   * de comportamento. Com montagem, é ela quem diz qual é a entrada de verdade.
+   */
+
+  /** De quem é a régua: o plano da faixa quando ele aperta, senão o piso da casa. */
+  const faixaDoPiso = pisoDoPrazo.faixa;
+  const pisoEmPercentual =
+    faixaDoPiso && cockpit.valor > 0 && minimoDaEntrada > entradaMinima(cockpit.valor, entradaMinimaPercentual)
+      ? faixaDoPiso.entradaPercentual
+      : (entradaMinimaPercentual ?? ENTRADA_MINIMA_PERCENTUAL);
 
   /** Quantos aniversários cabem no prazo — o teto de reforços anuais. */
   const aniversarios = Math.floor((cockpit.parcelas > 0 ? cockpit.parcelas : (plano?.parcelas ?? 0)) / 12);
@@ -360,7 +469,8 @@ export function SimuladorDeProposta({
       return {
         anuais: { quantidade: cockpit.anuaisQuantidade, valor: cockpit.anuaisValor },
         composicao: null,
-        entrada: cockpit.entrada,
+        // A mesma entrada da conta acima: o cartão mostra o que vai ser gravado.
+        entrada: montagem.entrada,
         financiado: montada.financiado,
         origem: "montada",
         parcela: montada.parcela,
@@ -416,8 +526,12 @@ export function SimuladorDeProposta({
             anuaisQuantidade: principal.anuais.quantidade,
             anuaisValor: principal.anuais.valor,
             diaDeVencimento,
-            entradaValor: principal.entrada,
+            // ⚠️ QUANDO HÁ MONTAGEM, A ENTRADA É A SOMA DELA — inclusive quando passa do
+            // combinado, que é o caso em que o cliente paga mais no ato. Sem isto o papel sairia
+            // com a entrada antiga e um fluxo somando outro valor.
+            entradaValor: parcelasDaEntrada ? montagem.entrada : principal.entrada,
             entradaVezes: cockpit.entradaVezes,
+            entradaParcelas: parcelasDaEntrada,
             parcela: principal.parcela,
             parcelasMensais: principal.parcelas,
             planoNome: principal.plano,
@@ -431,6 +545,11 @@ export function SimuladorDeProposta({
     cockpit.entradaVezes,
     cockpit.valor,
     diaDeVencimento,
+    // ⚠️ A MONTAGEM ENTRA NAS DEPENDÊNCIAS. Sem ela, digitar um valor de parcela da entrada não
+    // subiria nada: o pai continuaria com a composição antiga, e o botão "Gerar proposta" mandaria
+    // ao servidor uma entrada diferente da que está escrita na tela.
+    montagem.entrada,
+    parcelasDaEntrada,
     primeiraParcelaEm,
     principal,
   ]);
@@ -484,7 +603,6 @@ export function SimuladorDeProposta({
         </Bloco>
 
         <Bloco
-          nota="É como o comprador fala. A tela varre os planos e devolve as composições que fecham nesse valor."
           titulo="Quanto o cliente paga por mês"
         >
           <CampoEmReais
@@ -505,14 +623,7 @@ export function SimuladorDeProposta({
           />
         </Bloco>
 
-        <Bloco
-          nota={
-            entradaEhTeto
-              ? "Digitada: vira o teto da busca — só entram composições que cabem nela."
-              : "Veio do plano. Digite o que o cliente tem e ela passa a limitar a busca."
-          }
-          titulo="Entrada"
-        >
+        <Bloco titulo="Entrada">
           <CampoDeEntrada
             aoMudar={(v) => {
               setCockpit((a) => ({ ...a, entrada: v }));
@@ -526,7 +637,10 @@ export function SimuladorDeProposta({
           />
           <div style={{ alignItems: "center", display: "flex", gap: 8, marginTop: 8 }}>
             <Contador
-              aoMudar={(n) => setCockpit((a) => ({ ...a, entradaVezes: n }))}
+              aoMudar={(n) => {
+                // A montagem se invalida sozinha: ela guarda para quantas vezes foi feita.
+                setCockpit((a) => ({ ...a, entradaVezes: n }));
+              }}
               maximo={12}
               valor={cockpit.entradaVezes}
             />
@@ -535,7 +649,140 @@ export function SimuladorDeProposta({
                 ? `vezes de ${dinheiro(cockpit.entrada / cockpit.entradaVezes)}`
                 : "à vista"}
             </span>
+            {/* ⚠️ SÓ APARECE PARCELADO (Lucas, 05/09/2026: *"quando a entrada for parcelada, temos
+                que dar opção do usuário poder montar os valores em cada parcela"*). Numa entrada à
+                vista não há o que montar, e o link ali seria um convite para uma tela vazia. */}
+            {cockpit.entradaVezes > 1 ? (
+              <button
+                onClick={() =>
+                  setMontagemCrua(
+                    parcelasDaEntrada
+                      ? null
+                      : {
+                          base: cockpit.entrada,
+                          parcelas: partesIguais(cockpit.entrada, cockpit.entradaVezes),
+                          vezes: cockpit.entradaVezes,
+                        },
+                  )
+                }
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: T.gold,
+                  cursor: "pointer",
+                  font: "inherit",
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  marginLeft: "auto",
+                  padding: 0,
+                }}
+                type="button"
+              >
+                {parcelasDaEntrada ? "dividir igual" : "montar valores"}
+              </button>
+            ) : null}
           </div>
+
+          {/* AS PARCELAS MONTADAS À MÃO.
+              ⚠️ A RÉGUA É ASSIMÉTRICA, e é regra comercial: somar MENOS que o combinado é vender
+              por menos do que foi negociado — o financiado cresce e a parcela sobe. Somar MAIS é o
+              cliente pagando mais no ato, e aí o excedente não é erro: ele VIRA a entrada. */}
+          {parcelasDaEntrada ? (
+            <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
+              {parcelasDaEntrada.map((valor, i) => (
+                <div
+                  key={i}
+                  style={{ alignItems: "center", display: "flex", gap: 8 }}
+                >
+                  <span
+                    style={{
+                      color: T.muted,
+                      fontSize: 11,
+                      fontWeight: 650,
+                      minWidth: 58,
+                    }}
+                  >
+                    {i + 1}ª parcela
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <CampoEmReais
+                      aoMudar={(v) =>
+                        setMontagemCrua((atual) =>
+                          atual
+                            ? {
+                                ...atual,
+                                parcelas: atual.parcelas.map((antigo, j) => (j === i ? v : antigo)),
+                              }
+                            : atual,
+                        )
+                      }
+                      rotulo=""
+                      valor={valor}
+                    />
+                  </div>
+                  {/* "A primeira é 10 mil, divide o resto" — o caso que o coordenador descreve na
+                      mesa, num clique em vez de três contas na calculadora. */}
+                  {parcelasDaEntrada.length > 1 ? (
+                    <button
+                      onClick={() =>
+                        setMontagemCrua((atual) =>
+                          atual
+                            ? {
+                                ...atual,
+                                parcelas: redistribuirDemais(cockpit.entrada, atual.parcelas, i),
+                              }
+                            : atual,
+                        )
+                      }
+                      style={{
+                        background: "transparent",
+                        border: `1px solid ${T.border}`,
+                        borderRadius: 7,
+                        color: T.sub,
+                        cursor: "pointer",
+                        font: "inherit",
+                        fontSize: 10.5,
+                        padding: "4px 8px",
+                        whiteSpace: "nowrap",
+                      }}
+                      title="Mantém esta parcela e divide o restante entre as outras"
+                      type="button"
+                    >
+                      fixar
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+
+              <div
+                style={{
+                  alignItems: "baseline",
+                  borderTop: `1px dashed ${T.border}`,
+                  display: "flex",
+                  gap: 8,
+                  justifyContent: "space-between",
+                  paddingTop: 6,
+                }}
+              >
+                <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>Somando</span>
+                <b style={{ color: montagem.ok ? T.text : T.danger, fontSize: 12.5 }}>
+                  {dinheiroExato(montagem.soma)}
+                </b>
+              </div>
+
+              {!montagem.ok ? (
+                <span style={{ color: T.danger, fontSize: 11 }}>
+                  Faltam {dinheiroExato(montagem.falta)} para fechar a entrada.
+                </span>
+              ) : montagem.excedente > 0 ? (
+                <span style={{ color: T.ok, fontSize: 11 }}>
+                  {dinheiroExato(montagem.excedente)} acima do combinado — a entrada passa a ser{" "}
+                  {dinheiroExato(montagem.entrada)}.
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
         </Bloco>
 
         {/* ⚠️ SÓ NA PROPOSTA, e por isso preso à prop. Numa simulação livre não existe primeira
@@ -547,7 +794,6 @@ export function SimuladorDeProposta({
             calendário é `montarCronograma`; aqui só se escolhe o ponto de partida. */}
         {aoMudarCondicoes ? (
           <Bloco
-            nota="A entrada começa nesta data; as mensais seguem no dia de vencimento, mês a mês."
             titulo="Cobrança"
           >
             <div style={{ color: T.muted, fontSize: 11, fontWeight: 650, marginBottom: 5 }}>
@@ -598,7 +844,7 @@ export function SimuladorDeProposta({
           </Bloco>
         ) : null}
 
-        <Bloco nota="Reforços que abatem o saldo e derrubam a mensalidade." titulo="Parcelas anuais">
+        <Bloco titulo="Parcelas anuais">
           <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
             {/* ⚠️ O TETO É O PRAZO: o k-ésimo reforço cai no mês 12k, e um contrato de 24 meses só
                 tem dois aniversários. Deixar subir além disso cobraria depois da última parcela. */}
@@ -743,7 +989,12 @@ export function SimuladorDeProposta({
                     {dinheiro(t.parcela)}
                   </div>
                   <div style={{ color: T.muted, fontSize: 11 }}>
-                    {t.plano.parcelas}x · entrada {dinheiro(t.entrada)}
+                    {/* ⚠️ O % VEM JUNTO (Lucas, 05/09/2026: *"pode colocar o % de cada plano
+                        aqui"*). Os quatro cards são a ESCADA do produto — prazo curto, entrada
+                        alta —, e só com o valor em reais a escada não se lê: R$ 14.000 e
+                        R$ 56.000 são dois números soltos até virarem 10% e 40%. É o mesmo
+                        percentual que agora decide o piso da entrada pelo prazo escolhido. */}
+                    {t.plano.parcelas}x · entrada {dinheiro(t.entrada)} ({t.plano.entradaPercentual}%)
                   </div>
                   <div style={{ color: T.muted, fontSize: 10.5, marginTop: 2 }}>
                     {INDICES[
@@ -823,10 +1074,18 @@ export function SimuladorDeProposta({
               }}
             >
               <Dado
+                // ⚠️ COM ENTRADA MONTADA, "4 × R$ 7.750" É MENTIRA. A nota divide o total pelo
+                // número de vezes, e numa montagem desigual (10.000 + 7.000 + 7.000 + 7.000) essa
+                // divisão descreve parcelas que não existem — bem embaixo do número certo, no
+                // cartão que o coordenador está lendo quando clica em Gerar. Montada, ela anuncia
+                // a PRIMEIRA, que é a que a conversa com o cliente usa; o resto está listado logo
+                // ao lado, linha a linha.
                 nota={
-                  cockpit.entradaVezes > 1
-                    ? `${cockpit.entradaVezes} × ${dinheiro(principal.entrada / cockpit.entradaVezes)}`
-                    : `${Math.round((principal.entrada / (cockpit.valor || 1)) * 100)}% do valor`
+                  parcelasDaEntrada && parcelasDaEntrada.length > 1
+                    ? `${parcelasDaEntrada.length}× · 1ª de ${dinheiro(parcelasDaEntrada[0] ?? 0)}`
+                    : cockpit.entradaVezes > 1
+                      ? `${cockpit.entradaVezes} × ${dinheiro(principal.entrada / cockpit.entradaVezes)}`
+                      : `${Math.round((principal.entrada / (cockpit.valor || 1)) * 100)}% do valor`
                 }
                 rotulo="Entrada"
                 valor={dinheiro(principal.entrada)}
@@ -876,6 +1135,8 @@ export function SimuladorDeProposta({
               : "Diga quanto o cliente paga por mês, ou escolha um plano acima."}
           </p>
         )}
+
+        {previa}
 
         {/* AS ALTERNATIVAS: mesma parcela, outro arranjo de entrada e reforço.
             ⚠️ SÓ NO SIMULADOR (Lucas, 05/09/2026: *"essas outras composições, deixa somente no
@@ -980,6 +1241,15 @@ const botaoDiscreto = {
   padding: "6px 16px",
 } as const;
 
+/**
+ * ⚠️ AS NOTAS DE RODAPÉ DOS BLOCOS SAÍRAM (Lucas, 05/09/2026: *"esses textos eu acho poluição"*).
+ * Elas explicavam a mecânica da tela — "vira o teto da busca", "veio do plano", "reforços que
+ * abatem o saldo" — e faziam sentido no dia em que a tela nasceu. Num cockpit de seis blocos, cada
+ * um com duas linhas cinzas embaixo, o que se lê é o cinza: a explicação de cada campo empurra o
+ * campo seguinte para baixo e cria a barra de rolagem que o Lucas pediu para tirar. O que o campo
+ * faz, ele diz fazendo; a prop `nota` continua existindo para o cartão de resultado, onde ela
+ * qualifica um NÚMERO ("depois da entrada e dos reforços") em vez de ensinar a usar a tela.
+ */
 function Bloco({
   children,
   nota,

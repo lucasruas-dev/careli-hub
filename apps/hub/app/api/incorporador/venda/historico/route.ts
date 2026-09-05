@@ -113,7 +113,7 @@ export async function GET(request: Request) {
 
     const { data: movimentos, error: erroMovimentos } = await supabase
       .from("hercules_proposta_etapas")
-      .select("proposta_id,de_c2x,para_c2x,quando,autor_nome,motivo,observacao")
+      .select("proposta_id,de_c2x,para_c2x,de,para,quando,autor_nome,motivo,observacao")
       .in(
         "proposta_id",
         daUnidade.map((p) => p.id),

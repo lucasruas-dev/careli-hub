@@ -513,3 +513,59 @@ describe("⚠️ o cancelamento da proposta nativa aparece na ficha do lote", ()
     );
   });
 });
+
+describe("⚠️ a transição que nasce no Panteon aparece na linha do tempo", () => {
+  it("'proposta → contrato' vira frase, e não 'Registro atualizado'", () => {
+    // Lucas: *"tudo tem que ter histórico; exemplo: encaminhei para contrato e não apareceu"*.
+    // O C2X move por ID e o Panteon move por NOME; lendo só os ids, a transição daqui sumia.
+    const nativa = proposta({
+      criado_em: "2026-09-05T12:00:00Z",
+      criado_em_c2x: null,
+      etapa: "contrato",
+      id: "prop-1",
+    });
+    const eventos = historicoDaUnidade(
+      [nativa],
+      [
+        movimento({
+          de: "proposta",
+          de_c2x: null,
+          para: "contrato",
+          para_c2x: null,
+          proposta_id: "prop-1",
+          quando: "2026-09-05T18:55:00Z",
+        }),
+      ],
+      [],
+    );
+    expect(eventos.map((e) => e.fato)).toContain("Proposta → Contrato");
+  });
+
+  it("o movimento importado do C2X continua lendo pelos ids", () => {
+    const eventos = historicoDaUnidade(
+      [proposta({ id: "prop-2" })],
+      [movimento({ de_c2x: 1, para_c2x: 9, proposta_id: "prop-2" })],
+      [],
+    );
+    expect(eventos.map((e) => e.fato)).toContain("Reservado → Proposta realizada");
+  });
+
+  it("movimento sem origem nem destino continua sendo 'Registro atualizado'", () => {
+    // São 3.831 linhas assim na carga: gravação do C2X sem troca de estágio.
+    const eventos = historicoDaUnidade(
+      [proposta({ id: "prop-3" })],
+      [movimento({ de: null, de_c2x: null, para: null, para_c2x: null, proposta_id: "prop-3" })],
+      [],
+    );
+    expect(eventos.map((e) => e.fato)).toContain("Registro atualizado");
+  });
+
+  it("etapa nativa desconhecida não quebra: sai como veio", () => {
+    const eventos = historicoDaUnidade(
+      [proposta({ id: "prop-4" })],
+      [movimento({ de: null, de_c2x: null, para: "etapa-nova", para_c2x: null, proposta_id: "prop-4" })],
+      [],
+    );
+    expect(eventos.map((e) => e.fato)).toContain("etapa-nova");
+  });
+});

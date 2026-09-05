@@ -147,6 +147,22 @@ function numeroDoBanco(valor: null | number | string | undefined): null | number
  * `entradaVezes` vazio viraria 0 e `parcelasMensais` vazio viraria 0 sem ninguém reclamar). Campo
  * ausente tem que chegar em `conferirProposta` como NaN, que é o que ela sabe recusar.
  */
+/**
+ * A entrada montada à mão, como ela chega do corpo.
+ *
+ * ⚠️ NÃO CONFIA NO QUE VEIO: cada item vira número, o que não for número finito e positivo cai
+ * fora, e lista sem nada sobrando volta `null` — que é "divide igual", o caminho de sempre. Um
+ * `["10000"]` de um cliente desatualizado, ou um `[null, 0]` de uma tela em preenchimento, não
+ * podem virar cronograma.
+ */
+function parcelasDoCorpo(valor: unknown): null | number[] {
+  if (!Array.isArray(valor)) return null;
+  const limpas = valor
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v) && v > 0);
+  return limpas.length > 0 ? limpas : null;
+}
+
 function numeroDoCorpo(valor: unknown): number {
   if (valor === null || valor === undefined || valor === "") return Number.NaN;
   return Number(valor);
@@ -411,6 +427,7 @@ export async function POST(request: Request) {
     compradores?: unknown;
     diaDeVencimento?: unknown;
     entradaValor?: unknown;
+    entradaParcelas?: unknown;
     entradaVezes?: unknown;
     observacao?: unknown;
     parcelasMensais?: unknown;
@@ -565,6 +582,7 @@ export async function POST(request: Request) {
       compradores,
       entradaMinimaPercentual,
       entradaValor: numeroDoCorpo(corpo.entradaValor),
+      entradaParcelas: parcelasDoCorpo(corpo.entradaParcelas),
       entradaVezes: numeroDoCorpo(corpo.entradaVezes),
       parcelas: numeroDoCorpo(corpo.parcelasMensais),
       primeiraParcelaEm,
@@ -585,6 +603,16 @@ export async function POST(request: Request) {
       codigoDoEmpreendimento(catalogo, empreendimento, c2xId),
     );
     const plano = planos.find((p) => p.nome.trim() === planoNome) ?? null;
+
+    // ⚠️ A TABELA VAI JUNTO PARA A RÉGUA, e é o que faz a faixa do prazo VALER. Sem estes planos,
+    // `conferirProposta` só conhece o piso da casa (10%) e uma proposta de 30 parcelas com entrada
+    // de 10% passa inteira — a regra que o Lucas ditou existiria só como texto vermelho na tela.
+    // Os planos já estão carregados aqui para conferir o `planoNome`; é a mesma leitura.
+    pedido.planosDaTabela = planos.map((p) => ({
+      entradaPercentual: p.entradaPercentual,
+      nome: p.nome,
+      parcelas: p.parcelas,
+    }));
 
     const erros: Array<{ campo: string; mensagem: string }> = [
       ...conferirProposta(pedido, new Date().toISOString()),
@@ -614,6 +642,7 @@ export async function POST(request: Request) {
         anuaisValor: pedido.anuaisValor ?? 0,
         diaDeVencimento: pedido.vencimentoDia,
         entradaValor: pedido.entradaValor,
+        entradaParcelas: pedido.entradaParcelas,
         entradaVezes: pedido.entradaVezes,
         parcelasMensais: pedido.parcelas,
         plano,
@@ -912,6 +941,9 @@ async function avisar(
       cpf: dados.titular.cpf,
       empreendimento: dados.empreendimento.nome,
       entradaTotal: dados.cronograma.totais.entrada,
+      // A primeira parcela da entrada, para a mensagem não prometer parcelas iguais numa entrada
+      // montada à mão. Sai do cronograma, que é a série de verdade.
+      entradaPrimeira: dados.cronograma.entrada[0]?.valor ?? null,
       entradaVezes: dados.cronograma.entrada.length,
       imobiliaria: destinatarios.imobiliaria.nome,
       parcela: primeiraMensal?.valor ?? 0,

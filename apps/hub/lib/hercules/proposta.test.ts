@@ -634,3 +634,174 @@ describe("avisosDeCancelamentoDaProposta", () => {
     }
   });
 });
+
+describe("⚠️ a régua da entrada montada no servidor", () => {
+  it("aceita a montagem que fecha o combinado", () => {
+    expect(
+      conferirProposta(
+        { ...PEDIDO, entradaParcelas: [10_000, 7_810], entradaValor: 17_810, entradaVezes: 2 },
+        AGORA,
+      ),
+    ).toEqual([]);
+  });
+
+  it("⚠️ aceita somar MAIS: o cliente pode pagar mais no ato", () => {
+    expect(
+      conferirProposta(
+        { ...PEDIDO, entradaParcelas: [15_000, 10_000], entradaValor: 17_810, entradaVezes: 2 },
+        AGORA,
+      ),
+    ).toEqual([]);
+  });
+
+  it("⚠️ recusa somar MENOS — a tela confere, mas o servidor não confia nela", () => {
+    // Um corpo montado à mão passaria entrada de R$ 1.000 em quatro parcelas dizendo que o
+    // combinado eram R$ 17.810, e a proposta sairia com o financiado errado e a parcela
+    // subestimada no papel do cliente.
+    const erros = conferirProposta(
+      { ...PEDIDO, entradaParcelas: [500, 500], entradaValor: 17_810, entradaVezes: 2 },
+      AGORA,
+    );
+    expect(erros.find((e) => e.campo === "entrada")?.mensagem).toContain("somam menos");
+  });
+
+  it("recusa parcela zerada ou negativa dentro da montagem", () => {
+    const erros = conferirProposta(
+      { ...PEDIDO, entradaParcelas: [17_810, 0], entradaValor: 17_810, entradaVezes: 2 },
+      AGORA,
+    );
+    expect(erros.find((e) => e.campo === "entrada")?.mensagem).toContain("precisa de um valor");
+  });
+
+  it("sem montagem, nada muda — é o caminho de sempre", () => {
+    expect(conferirProposta({ ...PEDIDO, entradaParcelas: null }, AGORA)).toEqual([]);
+    expect(conferirProposta({ ...PEDIDO, entradaParcelas: [] }, AGORA)).toEqual([]);
+  });
+
+  it("⚠️ a soma é em centavos: 8.905,01 + 8.904,99 fecha 17.810", () => {
+    expect(
+      conferirProposta(
+        { ...PEDIDO, entradaParcelas: [8_905.01, 8_904.99], entradaValor: 17_810, entradaVezes: 2 },
+        AGORA,
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("⚠️ a faixa do prazo é RÉGUA, e não só cor de texto na tela", () => {
+  /** A tabela do ZZ TESTE, num lote de R$ 140.000. */
+  const TABELA = [
+    { entradaPercentual: 10, nome: "PLANO NORMAL", parcelas: 120 },
+    { entradaPercentual: 20, nome: "PLANO CURTO", parcelas: 60 },
+    { entradaPercentual: 40, nome: "PLANO INVESTIDOR", parcelas: 36 },
+  ];
+  const NO_LOTE = {
+    ...PEDIDO,
+    entradaVezes: 1,
+    planosDaTabela: TABELA,
+    valorNegociado: 140_000,
+  };
+
+  it("recusa 30 parcelas com os 10% da casa — o caso que o Lucas ditou", () => {
+    // Antes disto, a tela pintava "Abaixo do mínimo de 40%" e o botão gerava assim mesmo: o PDF
+    // saía por WhatsApp com R$ 42.000 de entrada a menos do que a tabela manda.
+    const erros = conferirProposta(
+      { ...NO_LOTE, entradaValor: 14_000, parcelas: 30 },
+      AGORA,
+    );
+    const daEntrada = erros.find((e) => e.campo === "entrada");
+    expect(daEntrada).toBeDefined();
+    expect(daEntrada?.mensagem).toContain("56.000,00");
+    // A frase diz de quem é a régua: sem isso, "mínimo R$ 56.000" num produto que vende a 10%
+    // parece defeito do sistema.
+    expect(daEntrada?.mensagem).toContain("PLANO INVESTIDOR");
+  });
+
+  it("aceita 30 parcelas com os 40% que a faixa exige", () => {
+    expect(
+      conferirProposta({ ...NO_LOTE, entradaValor: 56_000, parcelas: 30 }, AGORA),
+    ).toEqual([]);
+  });
+
+  it("48 parcelas caem no CURTO: 28k passa, 14k não", () => {
+    expect(conferirProposta({ ...NO_LOTE, entradaValor: 28_000, parcelas: 48 }, AGORA)).toEqual([]);
+    expect(
+      conferirProposta({ ...NO_LOTE, entradaValor: 14_000, parcelas: 48 }, AGORA).some(
+        (e) => e.campo === "entrada",
+      ),
+    ).toBe(true);
+  });
+
+  it("no prazo longo vale o piso da casa, e 10% passa", () => {
+    expect(
+      conferirProposta({ ...NO_LOTE, entradaValor: 14_000, parcelas: 120 }, AGORA),
+    ).toEqual([]);
+  });
+
+  it("⚠️ sem a tabela, sobra o piso da casa — o comportamento de quem ainda não a manda", () => {
+    // A rota passa `planosDaTabela`; um chamador antigo que não passe não pode quebrar.
+    expect(
+      conferirProposta(
+        { ...NO_LOTE, entradaValor: 14_000, parcelas: 30, planosDaTabela: null },
+        AGORA,
+      ),
+    ).toEqual([]);
+  });
+
+  it("a régua da entrada montada também respeita a faixa", () => {
+    // Montar 4 parcelas que somam 14k num prazo de 30 não escapa da faixa.
+    const erros = conferirProposta(
+      {
+        ...NO_LOTE,
+        entradaParcelas: [3_500, 3_500, 3_500, 3_500],
+        entradaValor: 14_000,
+        entradaVezes: 4,
+        parcelas: 30,
+      },
+      AGORA,
+    );
+    expect(erros.some((e) => e.campo === "entrada")).toBe(true);
+  });
+});
+
+describe("⚠️ a mensagem não promete parcelas iguais numa entrada montada", () => {
+  const AVISO: DadosDoAvisoDaProposta = {
+    cliente: "Maria da Silva",
+    codigo: "000003",
+    compradores: 1,
+    corretor: "Nívea",
+    cpf: "52998224725",
+    empreendimento: "ZZ TESTE",
+    entradaTotal: 28_000,
+    entradaVezes: 4,
+    imobiliaria: "Raiane",
+    parcela: 1_866.67,
+    parcelaFixa: false,
+    parcelas: 60,
+    primeiraParcelaEm: "2026-10-10",
+    unidade: "Quadra 01 · Lote 04",
+    validadeEm: "2026-09-12T02:59:59.000Z",
+    valorNegociado: 140_000,
+    vencimentoDia: 10,
+  };
+
+  it("com parcelas desiguais, diz o valor da primeira", () => {
+    // O corretor lê "R$ 28.000 em 4x" no celular, divide por quatro e promete R$ 7.000 ao cliente.
+    const textos = avisosDaProposta({ ...AVISO, entradaPrimeira: 10_000 });
+    for (const t of textos.filter((x) => x.papel !== "coordenador")) {
+      expect(t.texto).toContain("a 1ª de");
+      expect(t.texto).toContain("10.000,00");
+    }
+  });
+
+  it("na divisão igual não polui a frase", () => {
+    // 28.000 / 4 = 7.000: dizer "a 1ª de R$ 7.000" é ruído.
+    const textos = avisosDaProposta({ ...AVISO, entradaPrimeira: 7_000 });
+    for (const t of textos) expect(t.texto).not.toContain("a 1ª de");
+  });
+
+  it("sem o campo, a frase é a de sempre", () => {
+    const textos = avisosDaProposta(AVISO);
+    for (const t of textos) expect(t.texto).not.toContain("a 1ª de");
+  });
+});

@@ -247,9 +247,23 @@ export function ModalDeProposta({
       titular: c.titular,
     })),
     entradaMinimaPercentual: portao?.entradaMinimaPercentual ?? null,
+    // ⚠️ OS DOIS CAMPOS QUE FALTAVAM AQUI DESARMAVAM METADE DA RÉGUA NA TELA. Sem
+    // `entradaParcelas`, a conferência do cliente não via a montagem: uma entrada montada somando
+    // MENOS que o combinado deixava o botão "Gerar proposta" aceso, e a pessoa só descobria o
+    // problema no 422 do servidor, depois de clicar. Sem `planosDaTabela`, a faixa do prazo não era
+    // conferida aqui — mesma coisa com a proposta de 30x a 10%.
+    //
+    // ⚠️ É A MESMA RÉGUA DOS DOIS LADOS, e é isso que a torna útil: a tela adianta a conversa, o
+    // servidor decide. Alimentar só um dos dois faz a tela prometer o que a rota recusa.
+    entradaParcelas: condicoes?.entradaParcelas ?? null,
     entradaValor: condicoes?.entradaValor ?? 0,
     entradaVezes: condicoes?.entradaVezes ?? 0,
     parcelas: condicoes?.parcelasMensais ?? 0,
+    planosDaTabela: (portao?.planos ?? []).map((p) => ({
+      entradaPercentual: p.entradaPercentual,
+      nome: p.nome,
+      parcelas: p.parcelas,
+    })),
     primeiraParcelaEm: condicoes?.primeiraParcelaEm ?? "",
     reservaId: portao?.reserva.id ?? "",
     unidadeId: unidade.id,
@@ -290,6 +304,7 @@ export function ModalDeProposta({
           anuaisValor: condicoes.anuaisValor,
           diaDeVencimento: condicoes.diaDeVencimento,
           entradaValor: condicoes.entradaValor,
+          entradaParcelas: condicoes.entradaParcelas,
           entradaVezes: condicoes.entradaVezes,
           parcelasMensais: condicoes.parcelasMensais,
           plano: planoDaProposta as unknown as PlanoComercial,
@@ -391,6 +406,7 @@ export function ModalDeProposta({
           })),
           diaDeVencimento: condicoes.diaDeVencimento,
           entradaValor: condicoes.entradaValor,
+          entradaParcelas: condicoes.entradaParcelas,
           entradaVezes: condicoes.entradaVezes,
           parcelasMensais: condicoes.parcelasMensais,
           planoNome: condicoes.planoNome,
@@ -553,6 +569,14 @@ export function ModalDeProposta({
                     aoMudarCondicoes={receberCondicoes}
                     entradaMinimaPercentual={portao.entradaMinimaPercentual}
                     planos={portao.planos}
+                    previa={
+                      fluxo.cronograma ? (
+                        <PreviaDaProposta
+                          cronograma={fluxo.cronograma}
+                          diaDeVencimento={condicoes?.diaDeVencimento ?? 0}
+                        />
+                      ) : null
+                    }
                     unidade={unidade.nome}
                     valorDaUnidade={portao.unidade.preco}
                   />
@@ -568,7 +592,6 @@ export function ModalDeProposta({
                 >
                   <FluxoQueVaiSair
                     cronograma={fluxo.cronograma}
-                    diaDeVencimento={condicoes?.diaDeVencimento ?? 0}
                     erro={fluxo.erro}
                     semComposicao={condicoes === null}
                     semPlano={condicoes !== null && planoDaProposta === null}
@@ -896,21 +919,26 @@ export function ModalDeProposta({
 }
 
 /**
- * O rodapé da montagem: a entrada datada e a parcela, como o comprador vai ler.
+ * O que impede a proposta de sair — e só isso.
  *
- * ⚠️ TUDO SAI DO CRONOGRAMA, INCLUSIVE AS DATAS. Nenhum número é recalculado aqui — nem o valor de
- * cada parte da entrada, nem o dia da primeira mensal. O que a tela promete no clique é o que o PDF
- * imprime depois, porque os dois leem a mesma função.
+ * ⚠️ O RESUMO DE TEXTO SAIU DAQUI (Lucas, 05/09/2026: *"ainda ficou esse texto"*, e antes: *"não
+ * precisa, podia ter um botão para ter uma prévia da proposta"*). Ele contava em duas linhas
+ * corridas o que a `PreviaDaProposta` agora mostra em tabela, com todas as datas e todas as faixas
+ * de reajuste — dizer a mesma coisa duas vezes, uma delas pior, é o que fazia o rodapé parecer
+ * sobra. O que este componente ainda faz é o que a prévia NÃO pode fazer: explicar por que não há
+ * prévia nenhuma (sem composição, sem plano cadastrado, condições que não fecham um cronograma).
+ *
+ * ⚠️ E ELE NÃO SOME QUANDO ESTÁ TUDO CERTO: devolve `null`, e o rodapé fica só com o prazo e o
+ * botão. Um espaço vazio reservado "para o caso de dar erro" empurraria o botão para baixo em toda
+ * proposta que dá certo.
  */
 function FluxoQueVaiSair({
   cronograma,
-  diaDeVencimento,
   erro,
   semComposicao,
   semPlano,
 }: {
   cronograma: null | ReturnType<typeof montarCronograma>;
-  diaDeVencimento: number;
   erro: null | string;
   semComposicao: boolean;
   semPlano: boolean;
@@ -934,49 +962,220 @@ function FluxoQueVaiSair({
     return <p style={{ color: T.danger, fontSize: 12, margin: 0 }}>{erro}</p>;
   }
 
-  const primeiraDaEntrada = cronograma.entrada[0];
-  const primeiraMensal = cronograma.mensais[0];
-  const primeiraAnual = cronograma.anuais[0];
+  // Deu tudo certo: quem conta o que vai sair é a `PreviaDaProposta`, na coluna de cima.
+  return null;
+}
+
+/**
+ * A PRÉVIA DO QUE VAI PARA O PAPEL — o fluxo de pagamento inteiro, antes de gerar.
+ *
+ * Lucas (05/09/2026): *"podia ter um botão para ter uma prévia da proposta"* e, olhando a coluna
+ * direita vazia depois que as alternativas saíram: *"como podemos aproveitar melhor essa tela? tem
+ * um espaço grande, UI está ruim"*.
+ *
+ * ⚠️ AS DUAS COISAS SÃO A MESMA COISA. O espaço que sobrou é exatamente onde a prévia deve morar:
+ * quem está montando a proposta quer ver o que o cliente vai receber, e isso é o CALENDÁRIO — as
+ * datas da entrada, quando a mensal começa, quanto ela vira em cada aniversário. O rodapé resumia
+ * tudo isso em duas linhas de texto corrido ("Entrada R$ 14.000,00 em 1x, a primeira de..."), que
+ * é o que cabe num rodapé e não é o que a pergunta pede.
+ *
+ * ⚠️ É O MESMO `montarCronograma` DO PDF E DA ROTA. Não há uma segunda conta aqui: o que esta
+ * prévia desenha é o objeto que vai virar papel. Uma prévia com conta própria seria a terceira
+ * versão do calendário da casa — e a que ninguém confere.
+ */
+function PreviaDaProposta({
+  cronograma,
+  diaDeVencimento,
+}: {
+  cronograma: ReturnType<typeof montarCronograma>;
+  diaDeVencimento: number;
+}) {
+  const tituloDaSecao = {
+    color: T.muted,
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  } as const;
+
+  const celula = { fontSize: 11.5, padding: "5px 0" } as const;
+  const cabecalho = { ...tituloDaSecao, fontSize: 9.5, paddingBottom: 4 } as const;
+
+  /**
+   * ⚠️ O FLUXO LONGO É CORTADO, E O CORTE É DECLARADO. Um contrato de 120 mensais não cabe em
+   * tela nenhuma, e listar as quatro primeiras sem dizer que há mais faria a prévia mentir por
+   * omissão. As mensais têm a tabela de reajuste, que conta a série inteira em quatro linhas.
+   */
+  const MAX = 6;
+  const entrada = cronograma.entrada.slice(0, MAX);
+  const anuais = cronograma.anuais.slice(0, MAX);
 
   return (
-    <div
-      style={{
-        background: T.card,
-        border: `1px solid ${T.border}`,
-        borderRadius: 10,
-        display: "grid",
-        gap: 4,
-        padding: "9px 12px",
-      }}
-    >
-      <div style={{ ...rotulo, marginBottom: 2 }}>O que vai sair</div>
-      {primeiraDaEntrada ? (
-        <span style={{ fontSize: 12.5 }}>
-          Entrada <b>{dinheiro(cronograma.totais.entrada)}</b> em{" "}
-          <b>{cronograma.entrada.length}x</b>, a primeira de{" "}
-          <b>{dinheiro(primeiraDaEntrada.valor)}</b> em{" "}
-          <b>{dataEscrita(primeiraDaEntrada.vencimento)}</b>
-        </span>
-      ) : (
-        <span style={{ color: T.muted, fontSize: 12.5 }}>Sem entrada.</span>
-      )}
-      {primeiraMensal ? (
-        <span style={{ fontSize: 12.5 }}>
-          Depois <b>{cronograma.mensais.length}x</b> de{" "}
-          <b>{dinheiro(primeiraMensal.valor)}</b>, todo dia <b>{diaDeVencimento}</b>, a primeira em{" "}
-          <b>{dataEscrita(primeiraMensal.vencimento)}</b>
-          {/* ⚠️ O AVISO DO DEGRAU. No SACOC a parcela sobe no 13º mês, e anunciar "120x de X" sem
-              dizer isso é a promessa que o boleto do ano seguinte desmente — o mesmo cuidado que
-              `avisosDaProposta` tem no texto do WhatsApp. */}
-          {cronograma.reajustes.length > 1 ? " (o valor muda no aniversário do contrato)" : ""}
-        </span>
-      ) : null}
-      {primeiraAnual ? (
-        <span style={{ fontSize: 12.5 }}>
-          E <b>{cronograma.anuais.length}x</b> de <b>{dinheiro(primeiraAnual.valor)}</b> ao ano, a
-          primeira em <b>{dataEscrita(primeiraAnual.vencimento)}</b>
-        </span>
-      ) : null}
+    <div style={{ display: "grid", gap: 16 }}>
+      <div>
+        <div style={{ ...tituloDaSecao, marginBottom: 6 }}>Prévia da proposta</div>
+        <div style={{ color: T.muted, fontSize: 11 }}>
+          É este o fluxo que vai no PDF e no WhatsApp do cliente.
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gap: 16,
+          // Duas colunas quando há espaço: entrada de um lado, reajuste do outro. A largura da
+          // coluna direita da modal comporta, e empilhado sobra o mesmo vazio de antes.
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+        }}
+      >
+        {/* ── PAGAMENTO DA ENTRADA ── */}
+        <section
+          style={{
+            background: T.card,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            padding: "10px 12px",
+          }}
+        >
+          <div style={{ ...tituloDaSecao, marginBottom: 6 }}>Pagamento da entrada</div>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={{ ...cabecalho, textAlign: "left" }}>Parcela</th>
+                <th style={{ ...cabecalho, textAlign: "left" }}>Vencimento</th>
+                <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entrada.map((p) => (
+                <tr key={p.numero} style={{ borderTop: `1px solid ${T.border}` }}>
+                  <td style={{ ...celula, color: T.sub }}>
+                    {p.numero} de {p.total}
+                  </td>
+                  <td style={celula}>{dataEscrita(p.vencimento)}</td>
+                  <td style={{ ...celula, fontWeight: 650, textAlign: "right" }}>
+                    {dinheiro(p.valor)}
+                  </td>
+                </tr>
+              ))}
+              {cronograma.entrada.length > MAX ? (
+                <tr>
+                  <td colSpan={3} style={{ ...celula, color: T.muted, fontSize: 10.5 }}>
+                    e mais {cronograma.entrada.length - MAX}, no mesmo dia dos meses seguintes
+                  </td>
+                </tr>
+              ) : null}
+              <tr style={{ borderTop: `1px solid ${T.border}` }}>
+                <td colSpan={2} style={{ ...celula, fontWeight: 700 }}>
+                  Total da entrada
+                </td>
+                <td style={{ ...celula, fontWeight: 700, textAlign: "right" }}>
+                  {dinheiro(cronograma.totais.entrada)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        {/* ── AS MENSAIS, PELA TABELA DE REAJUSTE ──
+            ⚠️ NÃO SE LISTA 120 PARCELAS: a série inteira cabe em quatro linhas quando se conta por
+            FAIXA — de tal parcela a tal parcela, neste período, vale este valor. É a mesma tabela
+            que o PDF imprime, e é o que responde "quanto meu cliente vai pagar daqui a três anos". */}
+        <section
+          style={{
+            background: T.card,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            padding: "10px 12px",
+          }}
+        >
+          <div style={{ ...tituloDaSecao, marginBottom: 6 }}>
+            {cronograma.reajustes.length > 1 ? "Reajuste da parcela" : "Parcelas mensais"}
+          </div>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={{ ...cabecalho, textAlign: "left" }}>Período</th>
+                <th style={{ ...cabecalho, textAlign: "left" }}>Parcelas</th>
+                <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cronograma.reajustes.map((f) => (
+                <tr key={f.ciclo} style={{ borderTop: `1px solid ${T.border}` }}>
+                  <td style={{ ...celula, color: T.sub }}>
+                    {cronograma.reajustes.length === 1 ? "Todo o contrato" : `${f.ciclo}º ano`}
+                  </td>
+                  <td style={celula}>
+                    {f.parcelaInicial} a {f.parcelaFinal}
+                  </td>
+                  <td style={{ ...celula, fontWeight: 650, textAlign: "right" }}>
+                    {dinheiro(f.valor)}
+                    {f.temIpca ? <span style={{ color: T.muted }}> + IPCA</span> : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ color: T.muted, fontSize: 10.5, marginTop: 6 }}>
+            Todo dia {diaDeVencimento}, a primeira em{" "}
+            {dataEscrita(cronograma.mensais[0]?.vencimento ?? "")}.
+          </div>
+        </section>
+
+        {/* ── AS ANUAIS, SÓ QUANDO EXISTEM ──
+            Lucas: *"se tem anuais, tem que ter também o fluxo delas"*. Sem reforço, uma seção
+            dizendo "não há" gastaria espaço para não dizer nada. */}
+        {anuais.length > 0 ? (
+          <section
+            style={{
+              background: T.card,
+              border: `1px solid ${T.border}`,
+              borderRadius: 10,
+              padding: "10px 12px",
+            }}
+          >
+            <div style={{ ...tituloDaSecao, marginBottom: 6 }}>Parcelas anuais</div>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead>
+                <tr>
+                  <th style={{ ...cabecalho, textAlign: "left" }}>Parcela</th>
+                  <th style={{ ...cabecalho, textAlign: "left" }}>Vencimento</th>
+                  <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {anuais.map((p) => (
+                  <tr key={p.numero} style={{ borderTop: `1px solid ${T.border}` }}>
+                    <td style={{ ...celula, color: T.sub }}>
+                      {p.numero} de {p.total}
+                    </td>
+                    <td style={celula}>{dataEscrita(p.vencimento)}</td>
+                    <td style={{ ...celula, fontWeight: 650, textAlign: "right" }}>
+                      {dinheiro(p.valor)}
+                    </td>
+                  </tr>
+                ))}
+                {cronograma.anuais.length > MAX ? (
+                  <tr>
+                    <td colSpan={3} style={{ ...celula, color: T.muted, fontSize: 10.5 }}>
+                      e mais {cronograma.anuais.length - MAX}, um por ano
+                    </td>
+                  </tr>
+                ) : null}
+                <tr style={{ borderTop: `1px solid ${T.border}` }}>
+                  <td colSpan={2} style={{ ...celula, fontWeight: 700 }}>
+                    Total dos reforços
+                  </td>
+                  <td style={{ ...celula, fontWeight: 700, textAlign: "right" }}>
+                    {dinheiro(cronograma.totais.anuais)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }

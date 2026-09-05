@@ -408,6 +408,8 @@ export function TelaVenda() {
   const [cancelando, setCancelando] = useState<null | UnidadeNoMapa>(null);
   const [propondo, setPropondo] = useState<null | UnidadeNoMapa>(null);
   const [recado, setRecado] = useState<null | string>(null);
+  /** Sobe a cada carga do fluxo. O histórico da ficha o observa para refazer a busca dele. */
+  const [versaoDosDados, setVersaoDosDados] = useState(0);
   const [modoDoEstoque, setModoDoEstoque] = useState<"grade" | "mapa">("grade");
   // Abre em 12 meses: o mês corrente sozinho, no dia 3, mostraria quase nada.
   const [janela, setJanela] = useState<string>("12m");
@@ -449,6 +451,14 @@ export function TelaVenda() {
         return;
       }
       setDados(j.data);
+      // ⚠️ O SELO É O QUE FAZ O HISTÓRICO SE ATUALIZAR (Lucas, 05/09/2026: *"histórico tem que ser
+      // atualizado quando fazemos alguma coisa em tempo real; reservei e não veio atualização"* e,
+      // depois de gerar e enviar para contrato: *"histórico não atualiza"*). O efeito que busca o
+      // histórico só dependia de `unidadeId`, e nenhuma das quatro ações muda o id do lote — a
+      // ficha ficava mostrando os eventos de antes, inclusive de OUTRO cliente, enquanto o mapa,
+      // a faixa e a lista já tinham andado. Incrementar aqui, no fim de cada carga, é o sinal de
+      // que o servidor tem coisa nova para contar.
+      setVersaoDosDados((v) => v + 1);
     } catch {
       if (meu === pedidoEmVoo.current) setErro("Não foi possível carregar o fluxo de venda.");
     } finally {
@@ -480,7 +490,7 @@ export function TelaVenda() {
           method: "POST",
         });
         const j = (await r.json().catch(() => null)) as null | {
-          data?: { codigo?: string };
+          data?: { avisoDaTemis?: null | string; codigo?: string; trabalhoId?: null | string };
           error?: string;
         };
         if (!r.ok) {
@@ -488,7 +498,16 @@ export function TelaVenda() {
           return;
         }
         const cod = j?.data?.codigo ? `${j.data.codigo} · ` : "";
-        setRecado(`${cod}${comoSeLe(u)} foi para a fase de contrato.`);
+        // ⚠️ O RECADO DIZ SE O CONTRATO CHEGOU NA TÊMIS. A venda anda de etapa mesmo quando a fila
+        // do jurídico recusa o trabalho — e sem esta frase o coordenador sairia achando que o
+        // documento está sendo feito, quando ninguém do outro lado recebeu pedido nenhum.
+        setRecado(
+          j?.data?.trabalhoId
+            ? `${cod}${comoSeLe(u)} foi para contrato: a proposta foi entregue à Têmis.`
+            : `${cod}${comoSeLe(u)} foi para a fase de contrato, mas a proposta NÃO chegou à Têmis${
+                j?.data?.avisoDaTemis ? ` (${j.data.avisoDaTemis})` : ""
+              }. Avise o jurídico.`,
+        );
         void carregar(recorte || emp, janela);
       } catch {
         setRecado("Não foi possível enviar para contrato agora.");
@@ -999,6 +1018,7 @@ export function TelaVenda() {
           aoFocar={setFoco}
           aoCancelar={setCancelando}
           aoEnviarParaContrato={enviarParaContrato}
+          versaoDosDados={versaoDosDados}
           aoGerarProposta={setPropondo}
           aoReservar={setReservando}
           aoSimular={setSimulando}
@@ -1038,9 +1058,12 @@ function Mesa({
   livres,
   mapaDoProduto,
   modo,
+  versaoDosDados,
 }: {
   aoCancelar: (u: null | UnidadeNoMapa) => void;
   aoEnviarParaContrato: (u: null | UnidadeNoMapa) => void;
+  /** Sobe a cada carga do fluxo: é o sinal que faz o histórico da ficha se refazer. */
+  versaoDosDados: number;
   aoFocar: (f: null | Foco) => void;
   aoGerarProposta: (u: null | UnidadeNoMapa) => void;
   aoReservar: (u: null | UnidadeNoMapa) => void;
@@ -1696,7 +1719,7 @@ function Mesa({
             pelo simulador (...) falo a ordem"*). Quem abre um lote quer primeiro saber o que já
             aconteceu nele — quem reservou, quando, o que foi anotado. O simulador é a próxima
             ação, e ação vem depois de entender a situação. */}
-        <Historico unidadeId={idEmFoco} />
+        <Historico unidadeId={idEmFoco} versao={versaoDosDados} />
 
         <div style={{ flex: "0 0 auto" }}>
           <BotaoDoSimulador aoAbrir={() => aoSimular(unidadeEmFoco)} unidade={unidadeEmFoco} />
@@ -2198,7 +2221,7 @@ function AcoesDaUnidade({
       motivo: !unidade
         ? "Escolha uma unidade."
         : proposta
-          ? "Marca a proposta como aceita e leva a venda para a fase de contrato."
+          ? "Entrega a proposta à Têmis, que faz o contrato, e leva a venda para a fase de contrato."
           : propostaDoLegado
             ? "Esta proposta veio do C2X: o contrato dela é feito lá."
             : "Precisa de uma proposta gerada.",
@@ -2598,7 +2621,21 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
 // ⚠️ E O EIXO É O LOTE, NÃO A PROPOSTA. O lote 01 04 do Portal dos Vales teve proposta de sete
 // clientes diferentes em quatro dias antes de vender: por isso cada evento diz de quem era a
 // proposta naquele momento.
-function Historico({ unidadeId }: { unidadeId: null | string }) {
+function Historico({
+  unidadeId,
+  versao,
+}: {
+  unidadeId: null | string;
+  /**
+   * Muda a cada carga do fluxo de venda — é o sinal para refazer a busca.
+   *
+   * ⚠️ SEM ELE O HISTÓRICO CONGELAVA NA PRIMEIRA ABERTURA. Reservar, gerar proposta, enviar para
+   * contrato e cancelar recarregam a tela, mas nenhuma dessas ações muda o ID do lote: o efeito
+   * daqui só dependia dele, e a ficha continuava contando a história de antes — no caso mais
+   * grave, os eventos do cliente ANTERIOR, enquanto o topo já mostrava o novo.
+   */
+  versao: number;
+}) {
   const [eventos, setEventos] = useState<EventoDaUnidade[]>([]);
   const [propostas, setPropostas] = useState(0);
   const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">("pronto");
@@ -2643,7 +2680,10 @@ function Historico({ unidadeId }: { unidadeId: null | string }) {
     return () => {
       vivo = false;
     };
-  }, [unidadeId]);
+    // ⚠️ `versao` ENTRA AQUI, e é o que refaz a busca depois de cada ação. Os filtros são
+    // reiniciados junto de propósito: um recorte de "só pagamentos" aplicado antes esconderia
+    // justamente o evento que a pessoa acabou de criar.
+  }, [unidadeId, versao]);
 
   // Os anos que existem neste histórico — o filtro de data não oferece ano vazio.
   const anos = useMemo(

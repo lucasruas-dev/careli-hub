@@ -109,6 +109,16 @@ export async function trabalhosDoBoard(input?: {
 }
 
 export type NovoTrabalho = {
+  /**
+   * Quem abriu, quando o pedido nasceu de uma sessão de usuário.
+   *
+   * ⚠️ AS COLUNAS SEMPRE EXISTIRAM E NINGUÉM AS PREENCHIA — `aberto_por` e `venda_id` estão em
+   * `temis_trabalhos` desde que a tabela nasceu, e a auditoria da casa já tinha registrado a falta.
+   * Um trabalho sem autor é um documento que ninguém pediu; sem `venda_id`, é um contrato que a
+   * Têmis não consegue ligar de volta à venda que o originou — e ela precisa dessa volta para saber
+   * o cliente, as condições e o lote sem o operador digitar tudo de novo.
+   */
+  abertoPor?: null | string;
   canal: CanalDoTrabalho;
   clienteCpf: null | string;
   clienteNome: string;
@@ -121,6 +131,8 @@ export type NovoTrabalho = {
   tipo: TipoDeTrabalho;
   trabalhoOrigemId?: null | string;
   unidade: string;
+  /** A proposta do Hércules que virou este trabalho. É por ela que a Têmis volta à venda. */
+  vendaId?: null | string;
 };
 
 /**
@@ -146,6 +158,7 @@ export async function abrirTrabalho(
   const { data, error } = await supabase
     .from("temis_trabalhos")
     .insert({
+      aberto_por: novo.abertoPor ?? null,
       canal: novo.canal,
       cliente_cpf: novo.clienteCpf,
       cliente_nome: novo.clienteNome,
@@ -158,6 +171,7 @@ export async function abrirTrabalho(
       tipo: novo.tipo,
       trabalho_origem_id: novo.trabalhoOrigemId ?? null,
       unidade: novo.unidade,
+      venda_id: novo.vendaId ?? null,
       workspace_id: "careli",
     })
     .select("id")
