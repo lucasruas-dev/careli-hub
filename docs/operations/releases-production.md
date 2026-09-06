@@ -6000,3 +6000,25 @@ Achados que viraram correcao no mesmo lote:
   Lucas confirmou a autoria e os dois receberam `etapa_por = 'Lucas Ruas'`.
 - Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.858 testes verdes (208 arquivos).
 - Status: `EM PRODUCAO`.
+
+## 2026-09-06 · v1.286.0 — Temis: o board filtrava por um empreendimento invisivel
+
+- Autorizacao: OK explicito do Lucas ("tem o meu ok").
+- Commit: `9daf6f08`. Rollback: `63cca2f8` (v1.285.0).
+- Reportado pelo Lucas: *"a solicitacao nao chegou na Temis dentro do Panteon (...) Contratos
+  dentro do Hercules, chegou, mas aqui tem que ser uma visualizacao da Temis do Panteon"*.
+- ⚠️ OS CARDS ESTAVAM LA O TEMPO TODO. Medido: `temis_trabalhos` tem 6 linhas, duas criadas as
+  15:13 (cancelamento do Otavio) e 15:19 (contrato do Henrique), ambas `canal='hercules'` com
+  `proposta_id` preenchido — a correcao da FK da v1.284.0 funcionou.
+- CAUSA: `TemisPage` esconde o seletor de empreendimento na tela Board (o comentario ao lado dele
+  diz "o Board mostra todos os empreendimentos de uma vez") e continuava passando
+  `enterpriseId={escolhido.id}` ao kanban. `escolhido` nasce como o PRIMEIRO empreendimento da
+  lista, entao o board filtrava por um produto invisivel e introcavel — por isso mostrava zero ate
+  nas quatro linhas antigas do Garden e da Lavra. O codigo fazia o contrario do comentario ao lado.
+- `trabalhosDoBoard` devolvia lista vazia no erro do select, em silencio: "Nada aqui" e identico a
+  uma fila vazia. Continua devolvendo vazio (board quebrado e pior que board vazio), agora com log.
+- "Cancelamento solicitado" no lugar de "Cancelamento pedido a Temis" no historico da unidade.
+- Marcacao visual do pedido: faixa acima da trilha, "Cancelamento solicitado · aguardando o
+  juridico". A ETAPA NAO MUDA de proposito; a faixa some quando o carimbo cair.
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.858 testes verdes (208 arquivos).
+- Status: `EM PRODUCAO`.

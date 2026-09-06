@@ -36,6 +36,44 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-06-o-board-da-temis-mostra-tudo",
+    deployedAt: "2026-09-06T16:00:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O board voltou a mostrar os trabalhos.** Ele filtrava por um empreendimento que a tela não exibia e ninguém podia trocar — então aparecia vazio mesmo com card na fila. Agora mostra todos, como o cabeçalho já prometia.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "A venda com cancelamento pedido ao jurídico **agora se anuncia na ficha do lote**: uma faixa acima da trilha diz *Cancelamento solicitado · aguardando o jurídico*. A etapa continua Contrato — quem desfaz é o jurídico.",
+              "No histórico, o evento passou a ser **Cancelamento solicitado** (ou *Distrato solicitado*), sem o nome do módulo no meio da frase.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "63cca2f8",
+    technical: {
+      done: "OS CARDS ESTAVAM LÁ O TEMPO TODO (Lucas: *\"a solicitação não chegou na Têmis dentro do Panteon (...) Contratos dentro do Hércules, chegou, mas aqui tem que ser uma visualização da Têmis do Panteon\"*). Medido: `temis_trabalhos` tem 6 linhas, duas criadas hoje às 15:13 e 15:19, as duas com `canal='hercules'` e `proposta_id` preenchido — a correção da FK da v1.284.0 funcionou. O board do Hércules mostrava as duas; o da Têmis mostrava ZERO em todas as colunas, inclusive nas quatro antigas do Garden e da Lavra. ⚠️ A CAUSA: `TemisPage` esconde o seletor de empreendimento na tela Board — o comentário ao lado dele diz \"o Board mostra todos os empreendimentos de uma vez\" — e continuava passando `enterpriseId={escolhido.id}` ao kanban; `escolhido` nasce como o PRIMEIRO empreendimento da lista, então o board filtrava por um produto invisível e introcável. O código fazia o contrário do que o comentário ao lado dele prometia. E `trabalhosDoBoard` devolvia lista vazia no erro do select — decisão certa, board quebrado é pior que board vazio — mas em SILÊNCIO: uma coluna renomeada derrubaria o board inteiro sem rastro, e o \"Nada aqui\" é idêntico nos dois casos. Agora o erro vai para o log. A MARCAÇÃO DO PEDIDO: a etapa NÃO muda de propósito (mexer nela devolveria o lote ao estoque com o contrato de pé), então a trilha seguia dizendo \"Contrato\" e nada contava que havia um distrato em curso; a faixa lê `cancelamentoPedidoEm` e some sozinha quando a Têmis concluir. 2.858 testes verdes (208 arquivos); typecheck e lint limpos.",
+      motivation:
+        "O jurídico não via os pedidos que o comercial mandava — e o board dizia \"Nada aqui\" com a mesma cara de uma fila realmente vazia.",
+    },
+    title: "O board da Têmis mostra o que chegou",
+    type: "correcao",
+    version: "1.286.0",
+  },
+  {
     buildTag: "2026-09-06-o-sistema-apura-o-cancelamento",
     deployedAt: "2026-09-06T14:30:00-03:00",
     modules: [
