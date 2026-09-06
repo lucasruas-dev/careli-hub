@@ -6,6 +6,7 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import { nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
+import { apurarFatosDoContrato } from "@/lib/hercules/fatos-do-contrato";
 import { classificarCancelamento } from "@/lib/temis/cancelamento";
 import { abrirTrabalho } from "@/lib/temis/trabalhos-db";
 
@@ -27,13 +28,17 @@ import { abrirTrabalho } from "@/lib/temis/trabalhos-db";
 // em contrato até a Têmis concluir — o que fica é o CARIMBO do pedido, que é o que impede o segundo
 // card e o que a tela lê para trocar o botão.
 //
-// ⚠️ OS DOIS FATOS SÃO DECLARADOS, E ISSO ESTÁ DITO NA TELA. Não existe fonte confiável deles no
-// Panteon: `hercules_proposta_eventos` só é escrita pela carga do C2X (a venda nativa nasce com
-// zero eventos, por construção) e mente por omissão até no legado — são 1.979 propostas `faturado`
-// com apenas 914 tendo evento de pagamento. Adivinhar a partir daí classificaria como
-// "cancelamento" um contrato pago, que é justamente o caso com dinheiro do cliente no meio.
-// Perguntar a quem está com o processo na mão é menos elegante e mais honesto; o jurídico confere
-// depois, e o pedido registra quem respondeu o quê.
+// ⚠️ OS DOIS FATOS QUEM APURA É O SERVIDOR, e não quem clica. Lucas (06/09/2026), vendo a primeira
+// versão perguntar: *"essas informações do cancelamento de contrato é o sistema que tem que saber e
+// dar opção com base nisso, não é o usuário que faz"*. A apuração está em
+// `lib/hercules/fatos-do-contrato.ts` e lê o que está gravado: eventos de assinatura e de pagamento
+// da proposta, mais as datas dela. Zero eventos numa venda que nasceu aqui NÃO é ignorância — é
+// resposta, e o GET desta rota devolve a apuração para a tela mostrar antes de confirmar.
+//
+// ⚠️ E O AJUSTE MANUAL EXISTE, MAS É EXCEÇÃO DECLARADA. Pagamento por fora do sistema (PIX na mão
+// do corretor) não deixa rastro nenhum aqui, e classificar como cancelamento simples um caso com
+// dinheiro do cliente é o erro caro. Quem ajusta assume: o pedido grava que a classificação foi
+// corrigida à mão, e o card da Têmis diz isso em letras claras para o jurídico conferir.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -41,6 +46,89 @@ const WORKSPACE = "careli";
 
 /** As etapas em que o desfazer já é do jurídico. A mesma lista de `acao-de-cancelamento.ts`. */
 const DEPOIS_DO_CONTRATO = ["assinatura", "contrato", "faturado"];
+
+/**
+ * O QUE O SISTEMA SABE, para a tela mostrar antes de perguntar qualquer coisa.
+ *
+ * ⚠️ ELE NÃO DECIDE NADA — só conta. Quem grava é o POST, que refaz a apuração no momento da
+ * escrita: entre abrir a modal e confirmar pode entrar um pagamento, e a classificação que vale é a
+ * do instante em que o pedido nasce.
+ */
+export async function GET(request: Request) {
+  const auth = autorizarComercial(request);
+  if (!auth.ok) return auth.response;
+
+  const admin = createApoloAdminClient();
+  if (!admin) {
+    return NextResponse.json({ error: "Configuração indisponível." }, { status: 503 });
+  }
+
+  const unidadeId = (new URL(request.url).searchParams.get("unidade") ?? "").trim();
+  if (!unidadeId) {
+    return NextResponse.json({ error: "Unidade não informada." }, { status: 400 });
+  }
+
+  try {
+    const permitidos = new Set(await idsDaSessao(auth.sessao));
+    const { data: linhaDaUnidade } = await admin
+      .from("hercules_unidades")
+      .select("id,enterprise_id")
+      .eq("workspace_id", WORKSPACE)
+      .eq("id", unidadeId)
+      .maybeSingle();
+
+    const unidade = linhaDaUnidade as null | { enterprise_id: string; id: string };
+    if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
+      return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
+    }
+
+    const { data: linha, error } = await admin
+      .from("hercules_propostas")
+      .select("id,data_assinatura,data_ato,data_faturamento")
+      .eq("workspace_id", WORKSPACE)
+      .eq("unidade_id", unidade.id)
+      .eq("origem", "panteon")
+      .is("cancelada_em", null)
+      .in("etapa", DEPOIS_DO_CONTRATO)
+      .order("etapa_desde", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    const proposta = linha as null | {
+      data_assinatura: null | string;
+      data_ato: null | string;
+      data_faturamento: null | string;
+      id: string;
+    };
+    if (!proposta) {
+      return NextResponse.json(
+        { error: "Esta unidade não tem contrato do Panteon para cancelar." },
+        { status: 409 },
+      );
+    }
+
+    const fatos = await lerFatosDoContrato(admin, proposta);
+    const classificacao = classificarCancelamento(fatos);
+
+    return NextResponse.json({
+      data: {
+        assinaturaCompleta: fatos.assinaturaCompleta,
+        comoSoube: fatos.comoSoube,
+        devolveValores: classificacao.devolveValores,
+        houvePagamento: fatos.houvePagamento,
+        porque: classificacao.porque,
+        tipo: classificacao.tipo,
+      },
+    });
+  } catch (erro) {
+    console.error("[hercules][cancelamento] falha ao apurar os fatos", erro);
+    return NextResponse.json(
+      { error: "Não foi possível apurar a situação deste contrato agora." },
+      { status: 503 },
+    );
+  }
+}
 
 export async function POST(request: Request) {
   const auth = autorizarComercial(request);
@@ -52,8 +140,8 @@ export async function POST(request: Request) {
   }
 
   let corpo: {
-    assinaturaCompleta?: unknown;
-    houvePagamento?: unknown;
+    /** A correção manual, quando o coordenador diz que a apuração não bate. */
+    ajuste?: unknown;
     motivo?: unknown;
     unidadeId?: unknown;
   };
@@ -72,14 +160,6 @@ export async function POST(request: Request) {
   // jurídico por que este contrato está sendo desfeito, e ela vira o texto do card na fila.
   if (motivo.length < 3) {
     return NextResponse.json({ error: "Diga o motivo do cancelamento." }, { status: 422 });
-  }
-  // ⚠️ AS DUAS RESPOSTAS SÃO OBRIGATÓRIAS E BOOLEANAS. `undefined` virando `false` classificaria
-  // como cancelamento simples um contrato assinado e pago — o caso que exige distrato e devolução.
-  if (typeof corpo.assinaturaCompleta !== "boolean" || typeof corpo.houvePagamento !== "boolean") {
-    return NextResponse.json(
-      { error: "Responda as duas perguntas sobre o contrato." },
-      { status: 422 },
-    );
   }
 
   try {
@@ -111,7 +191,7 @@ export async function POST(request: Request) {
     const { data: linhaDaProposta, error: erroDaProposta } = await admin
       .from("hercules_propostas")
       .select(
-        "id,codigo,protocolo_numero,cliente_nome,cliente_documento,etapa,empreendimento_codigo,empreendimento_id,cancelamento_pedido_em",
+        "id,codigo,protocolo_numero,cliente_nome,cliente_documento,etapa,empreendimento_codigo,empreendimento_id,cancelamento_pedido_em,data_assinatura,data_ato,data_faturamento",
       )
       .eq("workspace_id", WORKSPACE)
       .eq("unidade_id", unidade.id)
@@ -130,6 +210,9 @@ export async function POST(request: Request) {
       cliente_documento: null | string;
       cliente_nome: null | string;
       codigo: null | string;
+      data_assinatura: null | string;
+      data_ato: null | string;
+      data_faturamento: null | string;
       empreendimento_codigo: null | string;
       empreendimento_id: null | string;
       etapa: string;
@@ -150,10 +233,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const classificacao = classificarCancelamento({
-      assinaturaCompleta: corpo.assinaturaCompleta,
-      houvePagamento: corpo.houvePagamento,
-    });
+    // ⚠️ A APURAÇÃO É REFEITA AQUI, mesmo com o GET já tendo respondido à tela: entre abrir a modal
+    // e confirmar pode entrar um pagamento, e é a apuração do momento da gravação que vale. O corpo
+    // não manda mais os fatos — quando ele traz `ajuste`, é uma correção declarada, não a fonte.
+    const fatos = await lerFatosDoContrato(admin, proposta);
+    const comAjuste = ajusteDoCorpo(corpo.ajuste);
+    const classificacao = classificarCancelamento(comAjuste ?? fatos);
     const agora = new Date().toISOString();
     const cod = proposta.codigo || codigoDaVenda(proposta.protocolo_numero) || "—";
 
@@ -231,11 +316,18 @@ export async function POST(request: Request) {
         empreendimentoCodigo: proposta.empreendimento_codigo || doCadastro?.codigo || "—",
         empreendimentoId: String(unidade.enterprise_id),
         empreendimentoNome: doCadastro?.nome || "Empreendimento",
-        // ⚠️ AS RESPOSTAS VÃO ESCRITAS NO CARD. O jurídico precisa saber em cima de que fatos a
-        // classificação foi feita — e de quem eles vieram — para conferir antes de redigir.
-        observacao: `Pedido de cancelamento pela tela Venda do Hércules · COD ${cod} · motivo: ${motivo} · assinatura completa: ${
-          corpo.assinaturaCompleta ? "sim" : "não"
-        } · houve pagamento: ${corpo.houvePagamento ? "sim" : "não"} · ${classificacao.porque}`,
+        // ⚠️ O CARD DIZ DE ONDE VIERAM OS FATOS. O jurídico precisa conferir a classificação antes
+        // de redigir, e a diferença entre "o sistema apurou" e "alguém corrigiu à mão" é
+        // exatamente o que ele vai querer olhar primeiro.
+        observacao: `Pedido de cancelamento pela tela Venda do Hércules · COD ${cod} · motivo: ${motivo} · ${
+          comAjuste
+            ? `AJUSTE MANUAL de ${auth.sessao.usuarioNome ?? "quem pediu"}: assinatura completa: ${
+                comAjuste.assinaturaCompleta ? "sim" : "não"
+              }, houve pagamento: ${comAjuste.houvePagamento ? "sim" : "não"} (o sistema apurou: ${
+                fatos.comoSoube.assinatura
+              }, ${fatos.comoSoube.pagamento})`
+            : `apurado pelo sistema: ${fatos.comoSoube.assinatura}, ${fatos.comoSoube.pagamento}`
+        } · ${classificacao.porque}`,
         propostaId: proposta.id,
         tipo: classificacao.tipo,
         unidade: nomeDaUnidade(unidade),
@@ -307,4 +399,52 @@ export async function POST(request: Request) {
       { status: 503 },
     );
   }
+}
+
+/**
+ * A correção declarada, quando ela vem — e só quando vem inteira.
+ *
+ * ⚠️ MEIO AJUSTE NÃO EXISTE. Aceitar um campo só faria o outro cair no `false` do JavaScript, e
+ * "não pagou" por omissão é o erro que cancela sem devolver dinheiro do cliente.
+ */
+function ajusteDoCorpo(
+  bruto: unknown,
+): null | { assinaturaCompleta: boolean; houvePagamento: boolean } {
+  if (!bruto || typeof bruto !== "object") return null;
+  const a = bruto as { assinaturaCompleta?: unknown; houvePagamento?: unknown };
+  if (typeof a.assinaturaCompleta !== "boolean" || typeof a.houvePagamento !== "boolean") {
+    return null;
+  }
+  return { assinaturaCompleta: a.assinaturaCompleta, houvePagamento: a.houvePagamento };
+}
+
+/**
+ * O que está gravado sobre este contrato — a fonte da classificação.
+ *
+ * ⚠️ FALHA DE LEITURA NÃO VIRA "NÃO PAGOU". Um erro no select devolveria silêncio, e silêncio aqui
+ * significa cancelamento simples: exatamente a classificação errada para um contrato pago. Por isso
+ * a exceção sobe e vira 503 na tela, em vez de virar um pedido classificado no escuro.
+ */
+async function lerFatosDoContrato(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  proposta: {
+    data_assinatura: null | string;
+    data_ato: null | string;
+    data_faturamento: null | string;
+    id: string;
+  },
+) {
+  const { data, error } = await admin
+    .from("hercules_proposta_eventos")
+    .select("tipo")
+    .eq("proposta_id", proposta.id)
+    .limit(500);
+
+  if (error) throw new Error(error.message);
+
+  return apurarFatosDoContrato((data ?? []) as Array<{ tipo: string }>, {
+    data_assinatura: proposta.data_assinatura,
+    data_ato: proposta.data_ato,
+    data_faturamento: proposta.data_faturamento,
+  });
 }

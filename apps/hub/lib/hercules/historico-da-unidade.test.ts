@@ -590,9 +590,27 @@ describe("a etapa da proposta conta o passo que o movimento não contou", () => 
     expect(eventos[0]?.fato).toBe("Enviada para contrato");
   });
 
-  it("⚠️ não estampa autor: a etapa guarda QUANDO, não QUEM", () => {
-    // `criado_por_nome` é de quem gerou a proposta. Reaproveitá-lo aqui diria que essa pessoa moveu
-    // a venda, que é outra afirmação — e o histórico é o lugar onde ela seria lida como prova.
+  it("mostra QUEM moveu, lendo `etapa_por`", () => {
+    // Lucas (06/09/2026), olhando o evento derivado: *"faltou a informação de quem"*. A transição
+    // passou a carimbar o autor na própria proposta, na mesma escrita da etapa.
+    const eventos = historicoDaUnidade(
+      [
+        nativa({
+          etapa: "contrato",
+          etapa_desde: "2026-09-05T22:58:22Z",
+          etapa_por: "Lucas Ruas",
+          id: "p1",
+        }),
+      ],
+      [],
+    );
+    expect(eventos.find((e) => e.fato === "Enviada para contrato")?.quem).toBe("Lucas Ruas");
+  });
+
+  it("⚠️ NUNCA usa `criado_por_nome` como autor do movimento", () => {
+    // Ele é de quem GEROU a proposta. Reaproveitá-lo aqui diria que essa pessoa moveu a venda, que
+    // é outra afirmação — e o histórico é o lugar onde ela seria lida como prova. Vazio é melhor
+    // que errado: é o que acontece nas vendas movidas antes de a coluna existir.
     const eventos = historicoDaUnidade(
       [
         nativa({

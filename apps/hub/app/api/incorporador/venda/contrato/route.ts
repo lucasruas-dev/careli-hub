@@ -126,6 +126,11 @@ export async function POST(request: Request) {
         // ⚠️ O MAPA PINTA PELA PROPOSTA DE `etapa_desde` MAIS RECENTE: sem esta data o lote
         // continuaria pintado como proposta e o funil não andaria.
         etapa_desde: agora,
+        // ⚠️ E QUEM MOVEU FICA NA PRÓPRIA PROPOSTA. A linha de movimento também guarda o autor, mas
+        // ela é um `insert` à parte que não derruba a transição quando falha — e foi assim que as
+        // duas vendas de 05/09 ficaram no histórico sem "por quem". O carimbo aqui anda junto com a
+        // etapa, na mesma escrita: ou os dois vão, ou nenhum vai.
+        etapa_por: auth.sessao.usuarioNome ?? null,
       })
       .eq("id", proposta.id)
       // Trava de clique duplo, como nas irmãs: sem ela, dois coordenadores movem a mesma proposta

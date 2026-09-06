@@ -84,6 +84,16 @@ export type PropostaDoHistorico = {
    * em `historicoDaUnidade`.
    */
   etapa_desde?: null | string;
+  /**
+   * QUEM MOVEU A VENDA PARA A ETAPA ATUAL.
+   *
+   * ⚠️ O EVENTO DERIVADO NASCEU SEM AUTOR, e o Lucas viu na primeira olhada (06/09/2026): *"faltou
+   * a informação de quem"*. Eu tinha argumentado que a etapa guarda QUANDO e não QUEM — o que era
+   * verdade, e a resposta certa não era aceitar isso: era passar a guardar. Reaproveitar
+   * `criado_por_nome` continua fora de questão (ele é de quem GEROU a proposta, e afirmar que essa
+   * pessoa moveu a venda é outra coisa), mas a transição sabe quem clicou e agora escreve.
+   */
+  etapa_por?: null | string;
   id: string;
   imobiliaria_nome: null | string;
   observacao?: null | string;
@@ -408,13 +418,14 @@ export function historicoDaUnidade(
         codigo: codigoDaVenda(p.protocolo_numero) || null,
         fato: fatoDaEtapa,
         id: `etapa:${p.id}:${etapaAgora}`,
-        // ⚠️ SEM AUTOR, DE PROPÓSITO. A etapa guarda quando, não quem: estampar aqui quem gerou a
-        // proposta diria que foi essa pessoa que a moveu, e não é a mesma coisa. Quando o
-        // movimento é gravado, é ele que aparece — com o nome certo.
         observacao: null,
         propostaId: p.id,
         quando: quandoDaEtapa,
-        quem: null,
+        // ⚠️ O AUTOR VEM DE `etapa_por`, E NUNCA DE `criado_por_nome`. Quem gerou a proposta não é
+        // necessariamente quem a moveu, e o histórico é o lugar onde essa frase seria lida como
+        // prova. Vazio continua sendo melhor que errado: as duas vendas movidas antes de a coluna
+        // existir aparecem sem autor até alguém preencher o que de fato aconteceu.
+        quem: texto(p.etapa_por),
         tipo: "etapa",
         valor: null,
       });

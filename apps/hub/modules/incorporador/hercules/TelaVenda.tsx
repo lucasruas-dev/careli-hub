@@ -561,7 +561,10 @@ export function TelaVenda() {
   const pedirCancelamento = useCallback(
     async (
       u: null | UnidadeNoMapa,
-      resposta: { assinaturaCompleta: boolean; houvePagamento: boolean; motivo: string },
+      resposta: {
+        ajuste: null | { assinaturaCompleta: boolean; houvePagamento: boolean };
+        motivo: string;
+      },
     ) => {
       if (!u) return;
       setEnviandoPedido(true);
@@ -1094,6 +1097,7 @@ export function TelaVenda() {
                 cliente: viva?.cliente ?? null,
                 codigo: viva?.codigo ?? null,
                 unidade: comoSeLe(pedindoCancelamento),
+                unidadeId: pedindoCancelamento.id,
               }}
             />
           );
