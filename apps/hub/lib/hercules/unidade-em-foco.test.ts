@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { idDaUnidadeEmFoco, unidadeEmFoco } from "./unidade-em-foco";
+import { idDaUnidadeEmFoco, propostaEmFoco, unidadeEmFoco } from "./unidade-em-foco";
 
 type Lote = { etapa: string; id: string };
 
@@ -58,5 +58,33 @@ describe("qual lote a ficha mostra", () => {
     const daLista = { proposta: { unidadeId: "uni-1" }, tipo: "proposta" as const };
     expect(unidadeEmFoco(daGrade, [])?.id).toBe("uni-1");
     expect(unidadeEmFoco(daLista, [])).toBeNull();
+  });
+});
+
+describe("propostaEmFoco", () => {
+  const viva = (etapa: string) => ["assinatura", "contrato", "proposta", "reservado"].includes(etapa);
+  const antiga = { etapa: "contrato", id: "p1", unidadeId: "u1" };
+  const fresca = { cancelamentoPedidoEm: "2026-09-06T13:00:00Z", etapa: "contrato", id: "p1", unidadeId: "u1" };
+
+  it("⚠️ a versão FRESCA vence o retrato do clique", () => {
+    // Pela lista, o clique guarda o objeto como ele estava. Sem esta releitura, o pedido de
+    // cancelamento já gravado não apagava o botão: o coordenador respondia tudo de novo e levava 409.
+    const escolhida = propostaEmFoco({ proposta: antiga, tipo: "proposta" }, [fresca], viva);
+    expect(escolhida).toBe(fresca);
+  });
+
+  it("sem a proposta na lista, cai na viva do lote", () => {
+    const outra = { etapa: "proposta", id: "p9", unidadeId: "u1" };
+    expect(propostaEmFoco({ proposta: antiga, tipo: "proposta" }, [outra], viva)).toBe(outra);
+  });
+
+  it("sem nada na lista, o retrato ainda mostra alguma coisa", () => {
+    expect(propostaEmFoco({ proposta: antiga, tipo: "proposta" }, [], viva)).toBe(antiga);
+  });
+
+  it("pelo clique na grade, a viva do lote — e nada quando não há", () => {
+    expect(propostaEmFoco({ tipo: "unidade" }, [fresca], viva)).toBe(fresca);
+    expect(propostaEmFoco({ tipo: "unidade" }, [{ etapa: "cancelado", id: "p2", unidadeId: "u1" }], viva)).toBeNull();
+    expect(propostaEmFoco(null, [], viva)).toBeNull();
   });
 });

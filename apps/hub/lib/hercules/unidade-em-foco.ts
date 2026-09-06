@@ -51,3 +51,36 @@ export function unidadeEmFoco<U extends UnidadeIdentificavel>(
 
   return foco && foco.tipo === "unidade" ? foco.unidade : null;
 }
+
+/** O mínimo que a decisão da PROPOSTA em foco precisa saber de uma linha da lista. */
+export type PropostaIdentificavel = { etapa: string; id: string; unidadeId: null | string };
+
+/**
+ * A proposta que a ficha mostra: a versão FRESCA da lista, com o retrato do clique como fallback.
+ *
+ * ⚠️ O MESMO DEFEITO DA UNIDADE, UM ANDAR ABAIXO. Clicar numa linha do analítico guardava o OBJETO
+ * da proposta como ele estava no clique, e nada o ressincronizava: depois de pedir o cancelamento
+ * do contrato — pedido gravado, faixa verde, linha nova no histórico — o botão continuava aceso,
+ * porque o retrato congelado ainda dizia que não havia pedido nenhum. O coordenador clicava de
+ * novo, respondia as duas perguntas, digitava o motivo outra vez e levava 409. Pela GRADE
+ * funcionava, porque ali a proposta é relida da lista; a diferença entre as duas portas não tem
+ * explicação nenhuma para quem usa.
+ *
+ * ⚠️ A ORDEM É: a MESMA proposta relida, depois a viva do lote, depois o retrato. Cair direto na
+ * "viva do lote" quando o id sumiu da lista trocaria a proposta que ele está olhando por outra da
+ * mesma unidade — que é justamente o cenário em que a ficha precisa dizer a verdade.
+ */
+export function propostaEmFoco<P extends PropostaIdentificavel>(
+  foco: null | { proposta: P; tipo: "proposta" } | { tipo: "unidade" },
+  propostasDaUnidade: P[],
+  estaViva: (etapa: string) => boolean,
+): null | P {
+  if (foco?.tipo === "proposta") {
+    return (
+      propostasDaUnidade.find((p) => p.id === foco.proposta.id) ??
+      propostasDaUnidade.find((p) => estaViva(p.etapa)) ??
+      foco.proposta
+    );
+  }
+  return propostasDaUnidade.find((p) => estaViva(p.etapa)) ?? null;
+}

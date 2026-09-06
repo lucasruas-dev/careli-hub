@@ -15,7 +15,10 @@ import type { LucideIcon } from "lucide-react";
 
 import { acaoDeCancelamento } from "@/lib/hercules/acao-de-cancelamento";
 import { ETAPAS_DO_FLUXO } from "@/lib/hercules/fluxo-de-venda";
-import { unidadeEmFoco as acharUnidadeEmFoco } from "@/lib/hercules/unidade-em-foco";
+import {
+  propostaEmFoco as acharPropostaEmFoco,
+  unidadeEmFoco as acharUnidadeEmFoco,
+} from "@/lib/hercules/unidade-em-foco";
 import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
 import {
   type ClasseDoFato,
@@ -504,8 +507,17 @@ export function TelaVenda() {
       if (!u) return;
       setEnviandoContrato(true);
       try {
+        // ⚠️ O ID DA PROPOSTA QUE A MODAL MOSTROU VAI JUNTO. A rota já sabe recusar ("Esta unidade
+        // já tem outra proposta. Recarregue a tela antes de seguir"), e a trava nunca disparava
+        // porque ninguém mandava o campo. Com a confirmação no meio do caminho, a janela ficou
+        // maior: enquanto a modal está aberta com o COD do João, outra pessoa pode cancelar essa
+        // proposta e gerar uma da Maria no mesmo lote — e o clique moveria a da Maria, com o card
+        // saindo no nome dela. A modal existe para ele dizer "não era essa"; ela não pode mentir.
+        const viva = (dados?.lista ?? []).find(
+          (l) => l.unidadeId === u.id && ehEtapaViva(l.etapa),
+        );
         const r = await fetch("/api/incorporador/venda/contrato", {
-          body: JSON.stringify({ unidadeId: u.id }),
+          body: JSON.stringify({ propostaId: viva?.id ?? null, unidadeId: u.id }),
           headers: { "content-type": "application/json" },
           method: "POST",
         });
@@ -1337,10 +1349,8 @@ function Mesa({
   const propostasDaUnidade = unidadeEmFoco
     ? (dados?.lista ?? []).filter((l) => l.unidadeId === unidadeEmFoco.id)
     : [];
-  const propostaEmFoco =
-    foco?.tipo === "proposta"
-      ? foco.proposta
-      : (propostasDaUnidade.find((l) => ehEtapaViva(l.etapa)) ?? null);
+  // ⚠️ A FRESCA VENCE O RETRATO — a mesma regra da unidade, um andar abaixo. Ver `propostaEmFoco`.
+  const propostaEmFoco = acharPropostaEmFoco(foco, propostasDaUnidade, ehEtapaViva);
 
   // A última que caiu, quando não há viva: o lote está livre, mas já teve história — e o coordenador
   // que vai oferecê-lo merece saber disso antes de ligar para o cliente.
