@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Ban,
   Bookmark,
   Check,
   FileSignature,
@@ -1776,7 +1777,10 @@ function Mesa({
         >
           {unidadeEmFoco || propostaEmFoco ? (
             <>
-              <TrilhaDoFluxo etapa={propostaEmFoco?.etapa ?? unidadeEmFoco?.etapa ?? null} />
+              <TrilhaDoFluxo
+                etapa={propostaEmFoco?.etapa ?? unidadeEmFoco?.etapa ?? null}
+                pedidoDeCancelamento={propostaEmFoco?.cancelamentoPedidoEm ?? null}
+              />
               {unidadeEmFoco?.preco ? (
                 <Linha rotulo="Valor de tabela" valor={dinheiro(unidadeEmFoco.preco)} />
               ) : null}
@@ -2144,7 +2148,14 @@ function Miudo({ rotulo, valor }: { rotulo: string; valor: string }) {
 // que um fluxo é. Cada degrau avança sobre o próximo com `clip-path`, e a margem negativa encaixa
 // a ponta no recorte do seguinte — sem ela sobra uma fresta branca no meio do caminho.
 
-function TrilhaDoFluxo({ etapa }: { etapa: null | string }) {
+function TrilhaDoFluxo({
+  etapa,
+  pedidoDeCancelamento,
+}: {
+  etapa: null | string;
+  /** Quando existe, a venda está com cancelamento solicitado e esperando o jurídico. */
+  pedidoDeCancelamento?: null | string;
+}) {
   // Fora do caminho (disponível, bloqueada, vendida sem proposta) não há trilha para mostrar: a
   // venda não começou, ou não passou por aqui. Um traço todo apagado só ocuparia espaço.
   const atual = ETAPAS_DO_FLUXO.indexOf(etapa as EtapaDoFluxo);
@@ -2155,7 +2166,34 @@ function TrilhaDoFluxo({ etapa }: { etapa: null | string }) {
   const PONTA = 9;
 
   return (
-    <div style={{ display: "flex", margin: "0 0 12px" }}>
+    <>
+      {/* ⚠️ A VENDA COM PEDIDO ABERTO PRECISA SE ANUNCIAR (Lucas, 06/09/2026: *"temos que colocar
+          alguma etapa ou marcação visual"*). A etapa NÃO muda — quem desfaz é o jurídico, e mexer
+          nela devolveria o lote ao estoque com o contrato ainda de pé —, então a trilha continua
+          dizendo "Contrato" e nada na tela contava que havia um distrato em curso. A faixa é o
+          recado: ela some sozinha no dia em que a Têmis concluir e o carimbo cair. */}
+      {pedidoDeCancelamento ? (
+        <div
+          style={{
+            alignItems: "center",
+            background: T.dangerBg,
+            border: `1px solid ${T.danger}`,
+            borderRadius: 8,
+            color: T.danger,
+            display: "flex",
+            fontSize: 11.5,
+            fontWeight: 700,
+            gap: 6,
+            margin: "0 0 8px",
+            padding: "6px 10px",
+          }}
+        >
+          <Ban aria-hidden="true" size={13} />
+          Cancelamento solicitado · aguardando o jurídico
+        </div>
+      ) : null}
+
+      <div style={{ display: "flex", margin: "0 0 12px" }}>
       {ETAPAS_DO_FLUXO.map((passo, i) => {
         const cumprida = i < atual;
         const ehAtual = i === atual;
@@ -2209,7 +2247,8 @@ function TrilhaDoFluxo({ etapa }: { etapa: null | string }) {
           </div>
         );
       })}
-    </div>
+      </div>
+    </>
   );
 }
 

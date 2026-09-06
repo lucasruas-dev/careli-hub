@@ -116,7 +116,16 @@ export async function trabalhosDoBoard(input?: {
   if (input?.enterpriseIds) consulta = consulta.in("enterprise_id", input.enterpriseIds);
 
   const { data, error } = await consulta;
-  if (error || !data) return [];
+  // ⚠️ LISTA VAZIA POR ERRO É INDISTINGUÍVEL DE FILA VAZIA, e o board diz "Nada aqui" nas duas. Foi
+  // assim que o Lucas passou a tarde de 06/09 achando que os pedidos não chegavam à Têmis — ali a
+  // causa era outra (um filtro invisível), mas o silêncio desta linha é a mesma armadilha: uma
+  // coluna que mudou de nome derrubaria o board inteiro sem deixar rastro. Devolver vazio continua
+  // certo — board quebrado é pior que board vazio —, o que faltava era o log.
+  if (error) {
+    console.error("[temis] falha ao ler o board", error);
+    return [];
+  }
+  if (!data) return [];
   return (data as LinhaCrua[]).map(mapear);
 }
 

@@ -390,7 +390,11 @@ export function historicoDaUnidade(
         // ⚠️ O TIPO ENTRA NO FATO. "Cancelamento pedido" e "Distrato pedido" são processos
         // diferentes do outro lado — um mexe em dinheiro do cliente, o outro não —, e quem lê a
         // ficha do lote está justamente perguntando em qual dos dois esta venda entrou.
-        fato: tipo === "distrato" ? "Distrato pedido à Têmis" : "Cancelamento pedido à Têmis",
+        // ⚠️ "SOLICITADO", E NÃO "PEDIDO À TÊMIS" (Lucas, 06/09/2026: *"aqui pode ser cancelamento
+        // solicitado"*). Quem lê a ficha do lote quer saber o que aconteceu com a VENDA; para onde
+        // o pedido foi é detalhe de bastidor, e o nome do módulo no meio da frase rouba a leitura
+        // do fato.
+        fato: tipo === "distrato" ? "Distrato solicitado" : "Cancelamento solicitado",
         id: `pedido:${p.id}`,
         // ⚠️ O MOTIVO É METADE DO EVENTO. "Distrato pedido" sem o porquê obriga quem lê a abrir a
         // fila do jurídico para entender o que houve com este lote — a mesma razão pela qual o

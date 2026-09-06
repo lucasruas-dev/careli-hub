@@ -141,7 +141,15 @@ export function TemisPage() {
             // Quem passa o dia em contrato precisa ver o que está na mão dele hoje. O que o board
             // antigo mostrava não se perdeu: virou a tela Setup, onde é o lugar dele.
             <div className="p-3">
-              <TemisKanban enterpriseId={escolhido?.id ?? null} />
+              {/* ⚠️ SEM FILTRO, E O CÓDIGO NÃO FAZIA O QUE O COMENTÁRIO AO LADO DO SELETOR PROMETE.
+                  O cabeçalho esconde o seletor no Board justamente porque "o Board mostra todos os
+                  empreendimentos de uma vez" — e o kanban continuava recebendo `escolhido.id`, que
+                  nasce como o PRIMEIRO empreendimento da lista. O board filtrava por um produto
+                  invisível, sem jeito de ver qual nem de trocar: Lucas (06/09/2026) mandou dois
+                  trabalhos para a Têmis, viu os dois no board do Hércules e encontrou aqui
+                  "Entrada 0 · Confecção 0 · Em assinatura 0 · Finalizado 0". Os cards estavam lá o
+                  tempo todo — foram criados às 15:13 e 15:19 e a consulta não os pedia. */}
+              <TemisKanban enterpriseId={null} />
             </div>
           ) : (
             <Setup

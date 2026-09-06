@@ -684,10 +684,10 @@ describe("a etapa da proposta conta o passo que o movimento não contou", () => 
     );
 
     const pedido = eventos.find((e) => e.id.startsWith("pedido:"));
-    expect(pedido?.fato).toBe("Distrato pedido à Têmis");
+    expect(pedido?.fato).toBe("Distrato solicitado");
     expect(pedido?.quem).toBe("Lucas Ruas");
     // O mais recente primeiro: o pedido fica acima do envio para contrato.
-    expect(eventos[0]?.fato).toBe("Distrato pedido à Têmis");
+    expect(eventos[0]?.fato).toBe("Distrato solicitado");
   });
 
   it("cancelamento simples nao vira distrato na frase", () => {
@@ -703,7 +703,7 @@ describe("a etapa da proposta conta o passo que o movimento não contou", () => 
       [],
     );
     expect(eventos.find((e) => e.id.startsWith("pedido:"))?.fato).toBe(
-      "Cancelamento pedido à Têmis",
+      "Cancelamento solicitado",
     );
   });
 
@@ -718,8 +718,8 @@ describe("a etapa da proposta conta o passo que o movimento não contou", () => 
     expect(classeDoFato("Enviada para contrato")).toBe("contrato");
     // ⚠️ O PAR TEM QUE TER A MESMA COR. "Distrato pedido" casava com `distrat` e saía vermelho;
     // "Cancelamento pedido" não casa com `cancelad` e caía em cinza de transição.
-    expect(classeDoFato("Cancelamento pedido à Têmis")).toBe("cancelado");
-    expect(classeDoFato("Distrato pedido à Têmis")).toBe("cancelado");
+    expect(classeDoFato("Cancelamento solicitado")).toBe("cancelado");
+    expect(classeDoFato("Distrato solicitado")).toBe("cancelado");
     expect(classeDoFato("Enviada para assinatura")).toBe("assinatura");
     expect(classeDoFato("Faturada")).toBe("faturado");
     expect(classeDoFato("Distrato")).toBe("cancelado");
