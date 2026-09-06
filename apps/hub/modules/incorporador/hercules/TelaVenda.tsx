@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import { acaoDeCancelamento } from "@/lib/hercules/acao-de-cancelamento";
 import { ETAPAS_DO_FLUXO } from "@/lib/hercules/fluxo-de-venda";
 import { unidadeEmFoco as acharUnidadeEmFoco } from "@/lib/hercules/unidade-em-foco";
 import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
@@ -28,6 +29,8 @@ import { formatarTelefoneGuardado } from "@/lib/hercules/paises";
 import { T, useTemaDoPortal } from "../tema";
 import { Pilula } from "./AssinaturasDoProduto";
 import { ModalDeCancelamento } from "./ModalDeCancelamento";
+import { ModalDeContrato } from "./ModalDeContrato";
+import { ModalDePedidoDeCancelamento } from "./ModalDePedidoDeCancelamento";
 import { ModalDeProposta } from "./ModalDeProposta";
 import { ModalDeReserva } from "./ModalDeReserva";
 import { SimuladorDeProposta } from "./SimuladorDeProposta";
@@ -406,6 +409,19 @@ export function TelaVenda() {
   const [simulando, setSimulando] = useState<null | UnidadeNoMapa>(null);
   const [reservando, setReservando] = useState<null | UnidadeNoMapa>(null);
   const [cancelando, setCancelando] = useState<null | UnidadeNoMapa>(null);
+  /**
+   * A unidade cujo envio para contrato está esperando confirmação.
+   *
+   * ⚠️ O CLIQUE DIRETO ERA UM RISCO (Lucas, 05/09/2026: *"tem que ter um botão para confirmar o
+   * envio para contrato (...) pois senão pode clicar errado e dar problema"*). O botão fica no meio
+   * de outros três, do mesmo tamanho, e o que ele dispara não volta: a venda muda de etapa, um
+   * trabalho entra na fila do jurídico e o "Gerar proposta" apaga.
+   */
+  const [mandandoParaContrato, setMandandoParaContrato] = useState<null | UnidadeNoMapa>(null);
+  const [enviandoContrato, setEnviandoContrato] = useState(false);
+  /** A venda em contrato cujo cancelamento está sendo pedido à Têmis. */
+  const [pedindoCancelamento, setPedindoCancelamento] = useState<null | UnidadeNoMapa>(null);
+  const [enviandoPedido, setEnviandoPedido] = useState(false);
   const [propondo, setPropondo] = useState<null | UnidadeNoMapa>(null);
   const [recado, setRecado] = useState<null | string>(null);
   /** Sobe a cada carga do fluxo. O histórico da ficha o observa para refazer a busca dele. */
@@ -483,6 +499,7 @@ export function TelaVenda() {
   const enviarParaContrato = useCallback(
     async (u: null | UnidadeNoMapa) => {
       if (!u) return;
+      setEnviandoContrato(true);
       try {
         const r = await fetch("/api/incorporador/venda/contrato", {
           body: JSON.stringify({ unidadeId: u.id }),
@@ -511,6 +528,58 @@ export function TelaVenda() {
         void carregar(recorte || emp, janela);
       } catch {
         setRecado("Não foi possível enviar para contrato agora.");
+      } finally {
+        setEnviandoContrato(false);
+        setMandandoParaContrato(null);
+      }
+    },
+    [carregar, emp, janela, recorte],
+  );
+
+  /**
+   * O PEDIDO DE CANCELAMENTO DEPOIS DO CONTRATO.
+   *
+   * ⚠️ A ÚNICA COISA QUE MUDA NO PANTEON É O CARIMBO DO PEDIDO. A etapa da venda fica como está: se
+   * a tela devolvesse o lote ao estoque aqui, ele poderia ser vendido de novo com um contrato ainda
+   * de pé do outro lado. O que anda é a fila do jurídico.
+   */
+  const pedirCancelamento = useCallback(
+    async (
+      u: null | UnidadeNoMapa,
+      resposta: { assinaturaCompleta: boolean; houvePagamento: boolean; motivo: string },
+    ) => {
+      if (!u) return;
+      setEnviandoPedido(true);
+      try {
+        const r = await fetch("/api/incorporador/venda/cancelamento-de-contrato", {
+          body: JSON.stringify({ ...resposta, unidadeId: u.id }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+        const j = (await r.json().catch(() => null)) as null | {
+          data?: { codigo?: string; devolveValores?: boolean; tipo?: string };
+          error?: string;
+        };
+        if (!r.ok) {
+          setRecado(j?.error ?? "Não foi possível pedir o cancelamento.");
+          return;
+        }
+        const cod = j?.data?.codigo ? `${j.data.codigo} · ` : "";
+        // ⚠️ O RECADO DIZ O TIPO, porque é a informação que muda o que acontece depois: distrato
+        // com devolução manda o jurídico atrás dos dados bancários do cliente.
+        setRecado(
+          `${cod}${comoSeLe(u)}: pedido de ${
+            j?.data?.tipo === "distrato" ? "distrato" : "cancelamento"
+          } aberto na Têmis${
+            j?.data?.devolveValores ? ", com devolução de valores" : ""
+          }. A venda continua em contrato até o jurídico concluir.`,
+        );
+        void carregar(recorte || emp, janela);
+      } catch {
+        setRecado("Não foi possível pedir o cancelamento agora.");
+      } finally {
+        setEnviandoPedido(false);
+        setPedindoCancelamento(null);
       }
     },
     [carregar, emp, janela, recorte],
@@ -962,6 +1031,57 @@ export function TelaVenda() {
       {/* ⚠️ CANCELAR É O OUTRO CAMINHO DA RESERVA (Lucas, 04/09/2026: *"da reserva eu tenho dois
           caminhos, gerar proposta ou cancelar"*), e por isso mora ao lado dela, com o mesmo
           desfecho: fecha, recarrega a tela e deixa o recado na faixa. */}
+      {/* ⚠️ A CONFIRMAÇÃO MOSTRA A PROPOSTA, e não uma pergunta genérica. "Tem certeza?" não ajuda
+          ninguém a perceber que clicou no lote errado; ver o COD, o cliente e o valor é o que faz
+          alguém dizer "não era essa". Os dados saem da lista já carregada — a mesma proposta viva
+          que a ficha mostra —, sem uma segunda ida ao servidor para confirmar o que está na tela. */}
+      {mandandoParaContrato ? (
+        (() => {
+          const viva = (dados?.lista ?? []).find(
+            (l) => l.unidadeId === mandandoParaContrato.id && ehEtapaViva(l.etapa),
+          );
+          return (
+            <ModalDeContrato
+              aoConfirmar={() => void enviarParaContrato(mandandoParaContrato)}
+              aoFechar={() => setMandandoParaContrato(null)}
+              enviando={enviandoContrato}
+              proposta={{
+                cliente: viva?.cliente ?? null,
+                codigo: viva?.codigo ?? null,
+                imobiliaria: viva?.imobiliaria ?? null,
+                plano: viva?.plano ?? null,
+                produto: mapaDoProduto?.nome ?? "",
+                unidade: comoSeLe(mandandoParaContrato),
+                valor: viva?.valor ?? null,
+              }}
+            />
+          );
+        })()
+      ) : null}
+
+      {/* ⚠️ DEPOIS DO CONTRATO O CANCELAMENTO É UM PEDIDO, e por isso é outra modal: as duas
+          perguntas que classificam o caso (assinou? pagou?) não existem no cancelamento da reserva
+          nem no da proposta, e a promessa aqui é outra — a venda NÃO volta ao estoque. */}
+      {pedindoCancelamento ? (
+        (() => {
+          const viva = (dados?.lista ?? []).find(
+            (l) => l.unidadeId === pedindoCancelamento.id && ehEtapaViva(l.etapa),
+          );
+          return (
+            <ModalDePedidoDeCancelamento
+              aoConfirmar={(resposta) => void pedirCancelamento(pedindoCancelamento, resposta)}
+              aoFechar={() => setPedindoCancelamento(null)}
+              enviando={enviandoPedido}
+              venda={{
+                cliente: viva?.cliente ?? null,
+                codigo: viva?.codigo ?? null,
+                unidade: comoSeLe(pedindoCancelamento),
+              }}
+            />
+          );
+        })()
+      ) : null}
+
       {cancelando ? (
         <ModalDeCancelamento
           // ⚠️ O ALVO SAI DA ETAPA DA UNIDADE, e não de um segundo estado: são os dois únicos
@@ -1017,9 +1137,10 @@ export function TelaVenda() {
         <Mesa
           aoFocar={setFoco}
           aoCancelar={setCancelando}
-          aoEnviarParaContrato={enviarParaContrato}
+          aoEnviarParaContrato={setMandandoParaContrato}
           versaoDosDados={versaoDosDados}
           aoGerarProposta={setPropondo}
+          aoPedirCancelamento={setPedindoCancelamento}
           aoReservar={setReservando}
           aoSimular={setSimulando}
           aoTrocarModo={setModoDoEstoque}
@@ -1047,6 +1168,7 @@ function Mesa({
   aoEnviarParaContrato,
   aoFocar,
   aoGerarProposta,
+  aoPedirCancelamento,
   aoReservar,
   aoSimular,
   aoTrocarModo,
@@ -1066,6 +1188,7 @@ function Mesa({
   versaoDosDados: number;
   aoFocar: (f: null | Foco) => void;
   aoGerarProposta: (u: null | UnidadeNoMapa) => void;
+  aoPedirCancelamento: (u: null | UnidadeNoMapa) => void;
   aoReservar: (u: null | UnidadeNoMapa) => void;
   aoSimular: (u: null | UnidadeNoMapa) => void;
   aoTrocarModo: (m: "grade" | "mapa") => void;
@@ -1662,6 +1785,7 @@ function Mesa({
                     unidadeId={idEmFoco}
                   />
                   <Linha rotulo="Imobiliária" valor={toTitleCase(propostaEmFoco.imobiliaria) || "—"} />
+                  <Linha rotulo="Corretor" valor={toTitleCase(propostaEmFoco.corretor) || "—"} />
                   {/* O FLUXO do contrato, não o nome do plano — a mesma escrita do extrato. */}
                   <Linha rotulo="Plano" valor={propostaEmFoco.plano ?? "—"} />
                   {propostaEmFoco.observacao ? (
@@ -1709,6 +1833,7 @@ function Mesa({
             aoCancelar={() => aoCancelar(unidadeEmFoco)}
             aoEnviarParaContrato={() => aoEnviarParaContrato(unidadeEmFoco)}
             aoGerarProposta={() => aoGerarProposta(unidadeEmFoco)}
+            aoPedirCancelamento={() => aoPedirCancelamento(unidadeEmFoco)}
             aoReservar={() => aoReservar(unidadeEmFoco)}
             propostaViva={propostaEmFoco}
             unidade={unidadeEmFoco}
@@ -2135,6 +2260,7 @@ function AcoesDaUnidade({
   aoCancelar,
   aoEnviarParaContrato,
   aoGerarProposta,
+  aoPedirCancelamento,
   aoReservar,
   propostaViva,
   unidade,
@@ -2142,6 +2268,8 @@ function AcoesDaUnidade({
   aoCancelar: () => void;
   aoEnviarParaContrato: () => void;
   aoGerarProposta: () => void;
+  /** Depois do contrato o cancelamento é PEDIDO à Têmis, e é outra tela e outra rota. */
+  aoPedirCancelamento: () => void;
   /**
    * A proposta viva do lote, quando há — usada para saber se ela é NATIVA.
    *
@@ -2150,7 +2278,7 @@ function AcoesDaUnidade({
    * proposta" acendia nelas e a rota respondia "Não há proposta aberta nesta unidade" numa ficha
    * que acabava de dizer Proposta — um beco sem explicação.
    */
-  propostaViva?: null | { id: string; origem: null | string };
+  propostaViva?: null | { cancelamentoPedidoEm?: null | string; id: string; origem: null | string };
   aoReservar: () => void;
   unidade: null | UnidadeNoMapa;
 }) {
@@ -2165,6 +2293,15 @@ function AcoesDaUnidade({
   const proposta = unidade?.etapa === "proposta" && propostaViva?.origem === "panteon";
   /** Proposta do legado pintando o lote: a tela diz Proposta, mas o cancelamento é lá. */
   const propostaDoLegado = unidade?.etapa === "proposta" && propostaViva?.origem !== "panteon";
+
+  // Qual dos três cancelamentos cabe aqui — ver `lib/hercules/acao-de-cancelamento.ts`.
+  const cancelamento = acaoDeCancelamento({
+    etapa: unidade?.etapa ?? null,
+    pedidoAberto: Boolean(propostaViva?.cancelamentoPedidoEm),
+    propostaDoLegado,
+    propostaNativa: proposta,
+    vendaNativa: propostaViva?.origem === "panteon",
+  });
 
   /**
    * ⚠️ A COR DIZ O QUE O CLIQUE FAZ, e é por isso que ela não é enfeite aqui. Os quatro botões
@@ -2228,25 +2365,17 @@ function AcoesDaUnidade({
       rotulo: "Enviar para contrato",
       tom: "avanca",
     },
-    // ⚠️ CANCELAR SÓ NA RESERVA, e não em qualquer unidade não disponível. Uma unidade vendida
-    // também deixa de ser disponível, e ali cancelar significa DISTRATO — outro ato, com outras
-    // consequências. O botão que serve para as duas coisas é o botão que alguém clica errado.
+    // ⚠️ CANCELAR NÃO É UM ATO SÓ, E QUEM SABE QUAL É A LIB. Na reserva e na proposta o coordenador
+    // desfaz e o lote volta ao estoque na hora; depois que a venda foi para contrato, quem desfaz é
+    // o jurídico e o que existe aqui é um PEDIDO. O comentário antigo desta lista dizia que "o botão
+    // que serve para as duas coisas é o botão que alguém clica errado" — continua valendo, e é por
+    // isso que são três rótulos, três modais e três rotas, decididos em `acaoDeCancelamento` (com
+    // teste próprio) e não numa escada de ternários aqui dentro.
     {
-      ativo: reservada || proposta,
-      aoClicar: aoCancelar,
-      motivo: !unidade
-        ? "Escolha uma unidade."
-        : proposta
-          ? "Cancela a proposta; a unidade volta para a disponibilidade, os três são avisados e o PDF deixa de valer."
-          : reservada
-            ? "Cancela a reserva; a unidade volta para a disponibilidade e os três são avisados."
-            : propostaDoLegado
-              ? "Esta proposta veio do C2X: o cancelamento dela é feito lá."
-              : "Não há reserva nem proposta para cancelar nesta unidade.",
-      // ⚠️ O RÓTULO SEGUE O QUE VAI SER CANCELADO. "Cancelar reserva" numa unidade que já está em
-      // proposta faria a pessoa pensar que desfaz só o passo anterior e que a proposta continua de
-      // pé — quando o que cai é a proposta inteira, com aviso para as três pontas.
-      rotulo: proposta ? "Cancelar proposta" : "Cancelar reserva",
+      ativo: Boolean(unidade) && cancelamento.tipo !== null,
+      aoClicar: cancelamento.tipo === "pedido" ? aoPedirCancelamento : aoCancelar,
+      motivo: !unidade ? "Escolha uma unidade." : cancelamento.motivo,
+      rotulo: cancelamento.rotulo,
       tom: "desfaz",
     },
   ];

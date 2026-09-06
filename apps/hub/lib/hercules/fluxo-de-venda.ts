@@ -77,6 +77,10 @@ export type PropostaDaCarga = {
   observacao?: null | string;
   cliente_nome: null | string;
   codigo: null | string;
+  /** Quem vendeu. A carga do C2X traz o nome pronto; a reserva do Panteon copia o dela. */
+  /** Quando o cancelamento foi PEDIDO à Têmis. A venda segue na etapa até o jurídico decidir. */
+  cancelamento_pedido_em?: null | string;
+  corretor_nome?: null | string;
   criado_em_c2x: null | string;
   data_assinatura: null | string;
   data_ato: null | string;
@@ -132,6 +136,23 @@ export type LinhaDaLista = {
    * reservas nascidas no Panteon têm.
    */
   codigo: null | string;
+  /**
+   * Quem vendeu.
+   *
+   * ⚠️ ELE FALTAVA NA FICHA (Lucas, 05/09/2026: *"trazer o nome do corretor também no descritivo da
+   * unidade"*). A ficha mostrava cliente, imobiliária e plano — e o corretor, que é quem o
+   * coordenador liga para cobrar o andamento, só aparecia no histórico, na linha da reserva, se
+   * alguém rolasse até lá.
+   */
+  /**
+   * O pedido de cancelamento aberto na Têmis.
+   *
+   * ⚠️ É O QUE IMPEDE O SEGUNDO CARD. Sem ele na lista, o botão "Solicitar cancelamento" continua
+   * aceso depois do pedido feito, e o segundo clique abre outro trabalho para o mesmo contrato —
+   * com o jurídico sem saber qual dos dois vale.
+   */
+  cancelamentoPedidoEm: null | string;
+  corretor: null | string;
   desde: null | string;
   /** O que o coordenador anotou ao reservar. Só existe no que nasce no Panteon. */
   observacao: null | string;
@@ -546,6 +567,8 @@ export function agregarFluxo({
     lista: propostas.map((p) => ({
       cliente: p.cliente_nome,
       codigo: p.protocolo_numero ? codigoDaVenda(p.protocolo_numero) : null,
+      cancelamentoPedidoEm: p.cancelamento_pedido_em ?? null,
+      corretor: p.corretor_nome ?? null,
       observacao: p.observacao ?? null,
       desde: dataDaEtapa(p),
       etapa: p.etapa,

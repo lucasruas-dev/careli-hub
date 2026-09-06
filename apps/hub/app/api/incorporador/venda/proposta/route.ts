@@ -432,6 +432,8 @@ export async function POST(request: Request) {
     observacao?: unknown;
     parcelasMensais?: unknown;
     planoNome?: unknown;
+    /** Pede o PDF de prévia e para antes de gravar — ver o passo 6.5. */
+    previa?: unknown;
     primeiraParcelaEm?: unknown;
     unidadeId?: unknown;
     prazoEmDias?: unknown;
@@ -678,6 +680,54 @@ export async function POST(request: Request) {
       ? nomes.get(reserva.corretor_entity_id) || null
       : null;
     const unidadeEscrita = nomeDaUnidade(unidade);
+
+    // ── 6½. A PRÉVIA PARA AQUI ─────────────────────────────────────────────
+    //
+    // Lucas (05/09/2026): *"podia ter um botão para ter uma prévia da proposta"*.
+    //
+    // ⚠️ É A MESMA ROTA, E ESSE É O PONTO. Escopo, reserva viva, titular, CAD credenciada, régua da
+    // proposta (com a faixa do prazo), plano e cronograma já rodaram — todos exatamente como no
+    // caminho que grava. Uma rota separada teria de repetir os sete passos, e no dia em que um
+    // deles mudasse a prévia passaria a mostrar um papel que o "Gerar" não produz mais.
+    //
+    // ⚠️ E ELA PARA ANTES DA PRIMEIRA ESCRITA. Daqui para baixo é `insert`, unidade ocupada,
+    // reserva consumida e três WhatsApps; a prévia devolve o papel e encerra. Se a régua recusar,
+    // ela recusa igual — quem não pode gerar também não precisa de prévia de uma proposta que não
+    // vai existir, e o coordenador vê o mesmo 422 que veria ao gerar.
+    if (corpo.previa === true) {
+      const bytes = await bytesDoPdfDaProposta(
+        admin,
+        {
+          atendimento: {
+            coordenador: auth.sessao.usuarioNome ?? null,
+            corretor: nomeDoCorretor,
+            imobiliaria: nomeDaImobiliaria,
+            telefone: telefoneEscrito(titular.telefone),
+          },
+          codigo,
+          compradores,
+          cronograma,
+          diaDeVencimento: pedido.vencimentoDia,
+          empreendimento,
+          enterpriseId: c2xId,
+          plano,
+          propostaId: null,
+          unidade,
+          unidadeEscrita,
+          validadeEmIso: validadeEm,
+          valorNegociado: pedido.valorNegociado,
+        },
+        true,
+      );
+
+      return new NextResponse(new Uint8Array(bytes), {
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Disposition": `inline; filename="Previa-${codigo || "proposta"}.pdf"`,
+          "Content-Type": "application/pdf",
+        },
+      });
+    }
 
     const { data: criada, error } = await admin
       .from("hercules_propostas")
@@ -986,58 +1036,76 @@ async function avisar(
   }
 }
 
+/** Tudo o que a folha precisa saber. O mesmo objeto serve à prévia e ao documento definitivo. */
+type DadosDoPdfDaProposta = {
+  atendimento: {
+    coordenador: null | string;
+    corretor: null | string;
+    imobiliaria: null | string;
+    telefone: null | string;
+  };
+  codigo: string;
+  compradores: CompradorDoPedido[];
+  cronograma: ReturnType<typeof montarCronograma>;
+  diaDeVencimento: number;
+  empreendimento: LinhaDoCadastro;
+  enterpriseId: string;
+  plano: PlanoComercial;
+  propostaId: null | string;
+  unidade: UnidadeDaProposta;
+  unidadeEscrita: string;
+  /** O ISO gravado em `hercules_propostas.validade_em`, não um prazo recontado na impressão. */
+  validadeEmIso: string;
+  valorNegociado: number;
+};
+
+/**
+ * OS BYTES DO PDF — a mesma montagem para a prévia e para o documento que vai por WhatsApp.
+ *
+ * ⚠️ UMA MONTAGEM SÓ, DE PROPÓSITO. Uma prévia montada por outro caminho seria um papel que
+ * concorda com o definitivo até o dia em que um dos dois mudar — e quem confere a prévia está
+ * justamente conferindo o que o cliente vai receber. `previa` muda só a tarja.
+ */
+async function bytesDoPdfDaProposta(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  dados: DadosDoPdfDaProposta,
+  previa = false,
+): Promise<Uint8Array> {
+  const folha = montarFolhaDaProposta({
+    atendimento: dados.atendimento,
+    codigo: dados.codigo,
+    compradores: dados.compradores.map((c) => ({
+      cpf: c.cpf,
+      nome: c.nome,
+      participacao: c.participacao,
+    })),
+    cronograma: dados.cronograma,
+    diaDeVencimento: dados.diaDeVencimento,
+    emitidaEmIso: new Date().toISOString(),
+    empreendimento: dados.empreendimento.nome,
+    logoC2x: logoDoC2x(),
+    logoEmpreendimento: await logoDoEmpreendimento(admin, dados.enterpriseId),
+    plano: dados.plano,
+    unidade: {
+      area: numeroDoBanco(dados.unidade.area),
+      cidade: dados.empreendimento.cidade,
+      nome: dados.unidadeEscrita,
+      uf: dados.empreendimento.uf,
+    },
+    validadeEmIso: dados.validadeEmIso,
+    valorNegociado: dados.valorNegociado,
+  });
+
+  return montarPropostaPdf({ ...folha, previa });
+}
+
 /** O PDF montado, guardado no storage e com link assinado. `null` quando qualquer etapa falha. */
 async function guardarOPdf(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
-  dados: {
-    atendimento: {
-      coordenador: null | string;
-      corretor: null | string;
-      imobiliaria: null | string;
-      telefone: null | string;
-    };
-    codigo: string;
-    compradores: CompradorDoPedido[];
-    cronograma: ReturnType<typeof montarCronograma>;
-    diaDeVencimento: number;
-    empreendimento: LinhaDoCadastro;
-    enterpriseId: string;
-    plano: PlanoComercial;
-    propostaId: null | string;
-    unidade: UnidadeDaProposta;
-    unidadeEscrita: string;
-    /** O ISO gravado em `hercules_propostas.validade_em`, não um prazo recontado na impressão. */
-    validadeEmIso: string;
-    valorNegociado: number;
-  },
+  dados: DadosDoPdfDaProposta,
 ): Promise<null | { fileName: string; url: string }> {
   try {
-    const folha = montarFolhaDaProposta({
-      atendimento: dados.atendimento,
-      codigo: dados.codigo,
-      compradores: dados.compradores.map((c) => ({
-        cpf: c.cpf,
-        nome: c.nome,
-        participacao: c.participacao,
-      })),
-      cronograma: dados.cronograma,
-      diaDeVencimento: dados.diaDeVencimento,
-      emitidaEmIso: new Date().toISOString(),
-      empreendimento: dados.empreendimento.nome,
-      logoC2x: logoDoC2x(),
-      logoEmpreendimento: await logoDoEmpreendimento(admin, dados.enterpriseId),
-      plano: dados.plano,
-      unidade: {
-        area: numeroDoBanco(dados.unidade.area),
-        cidade: dados.empreendimento.cidade,
-        nome: dados.unidadeEscrita,
-        uf: dados.empreendimento.uf,
-      },
-      validadeEmIso: dados.validadeEmIso,
-      valorNegociado: dados.valorNegociado,
-    });
-
-    const bytes = await montarPropostaPdf(folha);
+    const bytes = await bytesDoPdfDaProposta(admin, dados);
     // O id da proposta é o nome do arquivo: um por proposta, sem sobrescrever a do vizinho. Sem
     // id (gravação que não devolveu a linha) o COD serve, porque ele também é único.
     const nome = dados.propostaId || dados.codigo || `${Date.now()}`;

@@ -56,6 +56,17 @@ export type PropostaDoHistorico = {
   cancelada_em?: null | string;
   cancelada_motivo?: null | string;
   cancelada_por_nome?: null | string;
+  /**
+   * O PEDIDO de cancelamento feito à Têmis depois que a venda foi para contrato.
+   *
+   * ⚠️ PEDIDO NÃO É BAIXA. A venda continua na etapa em que está até o jurídico concluir; o que
+   * estes três campos contam é que alguém abriu o pedido, quando e de que tipo ele foi
+   * classificado. Sem isto na linha do tempo, um contrato em processo de distrato fica
+   * indistinguível de um contrato andando normalmente.
+   */
+  cancelamento_pedido_em?: null | string;
+  cancelamento_pedido_por?: null | string;
+  cancelamento_pedido_tipo?: null | string;
   cliente_nome: null | string;
   codigo: null | string;
   /** O prazo CONTRATADO. Ver `plano_parcelas`: aquele é o molde, este é a venda. */
@@ -66,6 +77,12 @@ export type PropostaDoHistorico = {
   /** Quem gerou a proposta aqui. O C2X não guarda quem abriu as dele. */
   criado_por_nome?: null | string;
   etapa: string;
+  /**
+   * QUANDO A PROPOSTA ENTROU NA ETAPA EM QUE ESTÁ. É o carimbo que a própria transição grava, e é
+   * o que permite mostrar o passo mesmo quando a linha de movimento não existe — ver a derivação
+   * em `historicoDaUnidade`.
+   */
+  etapa_desde?: null | string;
   id: string;
   imobiliaria_nome: null | string;
   observacao?: null | string;
@@ -211,6 +228,34 @@ function comoSeEscreveAEtapa(valor: null | string | undefined): null | string {
   return ETAPA_ESCRITA[cru] ?? cru;
 }
 
+/**
+ * O QUE A PRÓPRIA PROPOSTA CONTA QUANDO NINGUÉM GRAVOU O MOVIMENTO.
+ *
+ * Lucas (06/09/2026), olhando a ficha de um lote em Contrato: *"histórico não atualiza, gerei
+ * proposta, enviei para contrato"*. A venda estava em `contrato` desde 19:58:22 e a linha do tempo
+ * parava em "Proposta gerada", às 19:57.
+ *
+ * ⚠️ A LINHA DO MOVIMENTO É UM SEGUNDO REGISTRO, E ELE PODE NÃO EXISTIR. Quem move a venda grava
+ * duas coisas: a etapa na proposta e uma linha em `hercules_proposta_etapas`. A segunda é um
+ * `insert` à parte que, por decisão nossa, não derruba a transição quando falha — o preço é o
+ * histórico ficar sem a linha, e foi exatamente o que aconteceu nas duas vendas movidas antes de
+ * aquele `insert` existir. Derivar da etapa fecha o buraco dos dois lados: conserta o que já
+ * passou sem escrever nada no banco, e aguenta a falha do `insert` daqui para a frente.
+ *
+ * ⚠️ E É A ETAPA QUEM MANDA, PORQUE ELA É A VERDADE DA TELA. O cartão do topo lê `etapa`; se a
+ * linha do tempo lesse só a tabela de movimentos, as duas metades da mesma ficha continuariam
+ * discordando — que é a forma mais rápida de alguém parar de confiar no histórico.
+ *
+ * Fora daqui ficam `proposta`, `reservado` e `cancelado`: a proposta gerada, a reserva e o
+ * cancelamento já entram na linha do tempo por caminho próprio, e repetir viraria evento dobrado.
+ */
+const ETAPA_DERIVADA: Record<string, string> = {
+  assinatura: "Enviada para assinatura",
+  contrato: "Enviada para contrato",
+  distrato: "Distrato",
+  faturado: "Faturada",
+};
+
 function fraseDoMovimento(m: MovimentoDoHistorico): string {
   // ⚠️ O ID DO C2X PRIMEIRO, O TEXTO DO PANTEON DEPOIS: os movimentos importados só têm o id, e os
   // daqui só têm o nome. Ler um formato só faz metade das transições virar "Registro atualizado".
@@ -258,6 +303,14 @@ export function historicoDaUnidade(
 ): EventoDaUnidade[] {
   const porProposta = new Map(propostas.map((p) => [p.id, p]));
   const eventos: EventoDaUnidade[] = [];
+
+  // ⚠️ O DESTINO DE CADA MOVIMENTO JÁ GRAVADO, para a derivação da etapa não dobrar o evento.
+  // Quando a linha existe ela é melhor do que a derivada — traz autor e motivo —, então é ela que
+  // fica. Só o formato do Panteon entra aqui: a proposta importada não é derivada (ela chegou com
+  // a linha do tempo inteira do legado), e por isso `para_c2x` não precisa ser traduzido.
+  const destinosJaGravados = new Set(
+    movimentos.map((m) => `${m.proposta_id}:${String(m.para ?? "").trim().toLowerCase()}`),
+  );
 
   for (const p of propostas) {
     // ⚠️ A PROPOSTA NATIVA ENTRA PELO `criado_em`, e é por isso que este laço não pula mais quem
@@ -311,6 +364,53 @@ export function historicoDaUnidade(
         propostaId: p.id,
         quando: p.cancelada_em,
         quem: texto(p.cancelada_por_nome),
+        tipo: "etapa",
+        valor: null,
+      });
+    }
+
+    // O PEDIDO DE CANCELAMENTO — ver os campos `cancelamento_pedido_*`.
+    const pedidoEm = texto(p.cancelamento_pedido_em);
+    if (pedidoEm) {
+      const tipo = String(p.cancelamento_pedido_tipo ?? "").trim().toLowerCase();
+      eventos.push({
+        cliente: texto(p.cliente_nome),
+        codigo: nativa ? codigoDaVenda(p.protocolo_numero) || null : null,
+        // ⚠️ O TIPO ENTRA NO FATO. "Cancelamento pedido" e "Distrato pedido" são processos
+        // diferentes do outro lado — um mexe em dinheiro do cliente, o outro não —, e quem lê a
+        // ficha do lote está justamente perguntando em qual dos dois esta venda entrou.
+        fato: tipo === "distrato" ? "Distrato pedido à Têmis" : "Cancelamento pedido à Têmis",
+        id: `pedido:${p.id}`,
+        observacao: null,
+        propostaId: p.id,
+        quando: pedidoEm,
+        quem: texto(p.cancelamento_pedido_por),
+        tipo: "etapa",
+        valor: null,
+      });
+    }
+
+    // O PASSO QUE A ETAPA CONTA E O MOVIMENTO NÃO CONTOU — ver `ETAPA_DERIVADA`.
+    //
+    // ⚠️ SÓ NA PROPOSTA NASCIDA AQUI. A importada chega do C2X com as transições dela em
+    // `hercules_proposta_etapas`; derivar em cima disso duplicaria a linha do tempo de 4.857
+    // vendas, e cada uma dessas linhas já tem autor e data de verdade.
+    const etapaAgora = String(p.etapa ?? "").trim().toLowerCase();
+    const fatoDaEtapa = ETAPA_DERIVADA[etapaAgora];
+    const quandoDaEtapa = texto(p.etapa_desde);
+    if (nativa && fatoDaEtapa && quandoDaEtapa && !destinosJaGravados.has(`${p.id}:${etapaAgora}`)) {
+      eventos.push({
+        cliente: texto(p.cliente_nome),
+        codigo: codigoDaVenda(p.protocolo_numero) || null,
+        fato: fatoDaEtapa,
+        id: `etapa:${p.id}:${etapaAgora}`,
+        // ⚠️ SEM AUTOR, DE PROPÓSITO. A etapa guarda quando, não quem: estampar aqui quem gerou a
+        // proposta diria que foi essa pessoa que a moveu, e não é a mesma coisa. Quando o
+        // movimento é gravado, é ele que aparece — com o nome certo.
+        observacao: null,
+        propostaId: p.id,
+        quando: quandoDaEtapa,
+        quem: null,
         tipo: "etapa",
         valor: null,
       });

@@ -86,8 +86,10 @@ export async function GET(request: Request) {
       // `criado_por_nome` e `protocolo_numero` a linha nasce sem autor e sem COD, que é o que a
       // reserva logo acima já mostra; sem plano e prazo o histórico não diz em que condições a
       // proposta saiu. `contrato_parcelas` antes de `plano_parcelas`: um é a venda, o outro o molde.
+      // E `etapa_desde` é a hora em que a venda entrou na etapa atual: sem ela a linha do tempo não
+      // mostra o passo cujo movimento ninguém gravou — ver `ETAPA_DERIVADA` na montagem.
       .select(
-        "id,codigo,cliente_nome,imobiliaria_nome,criado_em_c2x,criado_em,criado_por_nome,protocolo_numero,plano_nome,plano_parcelas,contrato_parcelas,observacao,etapa,valor,cancelada_em,cancelada_motivo,cancelada_por_nome",
+        "id,codigo,cliente_nome,imobiliaria_nome,criado_em_c2x,criado_em,criado_por_nome,protocolo_numero,plano_nome,plano_parcelas,contrato_parcelas,observacao,etapa,etapa_desde,valor,cancelada_em,cancelada_motivo,cancelada_por_nome,cancelamento_pedido_em,cancelamento_pedido_por,cancelamento_pedido_tipo",
       )
       .eq("workspace_id", "careli")
       .eq("unidade_id", unidade)

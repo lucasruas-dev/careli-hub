@@ -85,6 +85,11 @@ export const COLUNAS_DA_PROPOSTA = [
   "cliente_nome",
   "cliente_documento",
   "imobiliaria_nome",
+  // Quem vendeu — a ficha da unidade mostra ao lado da imobiliária.
+  "corretor_nome",
+  // ⚠️ SEM ELA O BOTÃO NUNCA APAGA: a tela usa este carimbo para saber que o pedido de cancelamento
+  // já foi aberto na Têmis, e o segundo clique abriria um segundo card para o mesmo contrato.
+  "cancelamento_pedido_em",
   "valor",
   "plano_nome",
   "plano_parcelas",

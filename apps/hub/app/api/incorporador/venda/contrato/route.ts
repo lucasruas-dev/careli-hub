@@ -186,12 +186,11 @@ export async function POST(request: Request) {
     // `venda_id` e `aberto_por` desde o começo — só ninguém as preenchia, o que a auditoria da casa
     // já tinha registrado como pendência. O que faltava era o Hércules bater na porta.
     //
-    // ⚠️ `venda_id` É A PRÓPRIA ENTREGA, e não um enfeite de rastreabilidade: é ele que aponta para
-    // a PROPOSTA, e é da proposta que a Têmis tira tudo o que precisa — cliente, compradores e suas
-    // participações, condições, plano, cronograma e o PDF que o cliente já recebeu. Sem ele, o card
-    // entra na fila como um pedido solto e a minuta nasce de um formulário em branco, que é
-    // exatamente o retrabalho que ligar os dois módulos veio acabar. É o que faz o "depois vamos
-    // trabalhar nela" ser possível.
+    // ⚠️ O VÍNCULO COM A PROPOSTA É A PRÓPRIA ENTREGA, e não um enfeite de rastreabilidade: é dela
+    // que a Têmis tira tudo o que precisa — cliente, compradores e suas participações, condições,
+    // plano, cronograma e o PDF que o cliente já recebeu. Sem ele, o card entra na fila como um
+    // pedido solto e a minuta nasce de um formulário em branco, que é exatamente o retrabalho que
+    // ligar os dois módulos veio acabar. É o que faz o "depois vamos trabalhar nela" ser possível.
     //
     // ⚠️ NÃO DERRUBA A TRANSIÇÃO SE FALHAR. A venda já está em `contrato` no Hércules; recusar aqui
     // deixaria a venda parada num passo que já aconteceu, e o operador clicaria de novo por cima de
@@ -217,9 +216,18 @@ export async function POST(request: Request) {
         observacao: `Proposta entregue pela tela Venda do Hércules · COD ${
           proposta.codigo || codigoDaVenda(proposta.protocolo_numero) || "—"
         }`,
+        // A PROPOSTA E O VINCULO QUE FUNCIONA.
+        //
+        // Media em 06/09/2026: `temis_trabalhos` tinha 4 linhas (as de seed) e NENHUMA criada
+        // depois de 05/09 — as duas vendas despachadas naquele dia nao abriram card. A causa e a
+        // chave estrangeira: `venda_id` referencia `hercules_vendas`, que tem zero linhas, e o que
+        // se mandava ali era o id de uma PROPOSTA. Toda tentativa violava a FK, `abrirTrabalho`
+        // devolvia o erro e a tela avisava — mas o juridico nunca recebeu pedido nenhum. A coluna
+        // certa nasceu na migration 0134; `venda_id` fica reservada para quando `hercules_vendas`
+        // for preenchida de verdade (e de la que o catalogo de variaveis da minuta le a venda).
+        propostaId: proposta.id,
         tipo: "contrato",
         unidade: nomeDaUnidade(unidade),
-        vendaId: proposta.id,
       });
 
       if (aberto.ok) trabalhoId = aberto.id;

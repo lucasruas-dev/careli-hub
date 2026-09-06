@@ -157,14 +157,42 @@ const unidade = { id: "unidade-1", nome: "Q1 L2", produto: "Garden" };
 let alvo: HTMLDivElement;
 let raiz: Root;
 
-/** Responde ao GET do portão; o POST cada teste arma como precisa. */
+/**
+ * O QUE A BUSCA DE PROPONENTE ENCONTRA — cada teste arma antes de digitar.
+ *
+ * ⚠️ O NOME DO SEGUNDO COMPRADOR DEIXOU DE SER DIGITADO (Lucas, 05/09/2026: *"os demais
+ * proponentes têm que ser buscados; eu digitei o nome da Larissa, deveria puxar a CAD dela"*).
+ * Quem entra na proposta vem da base, com a CAD conferida — por isso o CPF não é mais um campo de
+ * texto e sim o que veio junto da pessoa escolhida.
+ */
+type EncontradoNaBusca = {
+  credenciado: boolean;
+  cpf: string;
+  etapa: null | string;
+  id: string;
+  motivo: null | string;
+  nome: string;
+};
+let daBusca: EncontradoNaBusca[] = [];
+
+/** Responde ao GET do portão e ao da busca; o POST cada teste arma como precisa. */
 function fetchDoPortao(aoPostar?: () => Promise<{ corpo: string; ok: boolean }>) {
-  return vi.fn(async (_url: string, opcoes?: { method?: string }) => {
+  return vi.fn(async (url: string, opcoes?: { method?: string }) => {
     if (opcoes?.method === "POST") {
       const r = aoPostar
         ? await aoPostar()
         : { corpo: JSON.stringify({ data: { avisos: [], codigo: "PRP-1" } }), ok: true };
       return { ok: r.ok, text: async () => r.corpo };
+    }
+    // ⚠️ A BUSCA LÊ POR `json()`, o portão por `text()`. Os dois vêm no mesmo dublê porque a modal
+    // dispara os dois GETs na mesma sessão, e responder o portão à busca era o que fazia a lista de
+    // candidatos receber um corpo de outro formato.
+    if (String(url).includes("/venda/proponentes")) {
+      return {
+        json: async () => ({ data: { encontrados: daBusca } }),
+        ok: true,
+        text: async () => JSON.stringify({ data: { encontrados: daBusca } }),
+      };
     }
     return { ok: true, text: async () => JSON.stringify({ data: portao }) };
   });
@@ -218,6 +246,7 @@ beforeEach(() => {
   alvo = document.createElement("div");
   document.body.appendChild(alvo);
   raiz = createRoot(alvo);
+  daBusca = [];
   vi.stubGlobal("fetch", fetchDoPortao());
 });
 
@@ -261,11 +290,56 @@ describe("voltar ao portão", () => {
 });
 
 describe("adicionar proponente", () => {
-  async function preencherProponente(nome: string, cpf: string) {
-    const nomeInput = alvo.querySelector<HTMLInputElement>('input[placeholder="Nome completo"]');
-    const cpfInput = alvo.querySelector<HTMLInputElement>('input[placeholder="CPF"]');
-    digitar(nomeInput as HTMLInputElement, nome);
-    digitar(cpfInput as HTMLInputElement, cpf);
+  /** O campo que virou busca. O CPF ao lado é só leitura: ele vem da CAD escolhida. */
+  function campoDaBusca(): HTMLInputElement {
+    const campo = alvo.querySelector<HTMLInputElement>(
+      'input[placeholder="Buscar por nome ou CPF na base"]',
+    );
+    if (!campo) throw new Error("O campo de busca do proponente não está na tela.");
+    return campo;
+  }
+
+  /**
+   * A linha da pessoa na lista de candidatos.
+   *
+   * ⚠️ PELO NOME EM NEGRITO, e não pelo texto do botão inteiro: a linha traz nome E CPF (e o motivo
+   * de quem não passa), então comparar o `textContent` todo nunca casaria.
+   */
+  function candidato(nome: string): HTMLButtonElement {
+    const achado = [...alvo.querySelectorAll("button")].find(
+      (b) => b.querySelector("b")?.textContent?.trim() === nome,
+    );
+    if (!achado) throw new Error(`"${nome}" não apareceu na busca.`);
+    return achado;
+  }
+
+  /**
+   * Espera o debounce de 300ms e o GET pousarem.
+   *
+   * ⚠️ TEMPO DE VERDADE, e não relógio falso. Ligar `vi.useFakeTimers` aqui congelaria também o
+   * `Date.now` de que a modal tira a validade da proposta, e o teste passaria a medir a data errada
+   * — 320ms de espera real custam menos que essa confusão.
+   */
+  async function esperarABusca() {
+    await act(async () => {
+      await new Promise((pronto) => setTimeout(pronto, 320));
+    });
+  }
+
+  /**
+   * O caminho que o coordenador faz: digita, a base responde, ele escolhe e informa a %.
+   *
+   * ⚠️ A % É OBRIGATÓRIA desde 05/09/2026: ela vai escrita no contrato, e a tela parou de escolher
+   * por omissão. O helper preenche um valor porque quase todo teste daqui quer o proponente NA
+   * LISTA; quem testa a régua da % passa outro valor (ou vazio) de propósito.
+   */
+  async function escolherProponente(nome: string, cpf: string, participacao = "40") {
+    daBusca = [{ credenciado: true, cpf, etapa: null, id: `cad-${cpf}`, motivo: null, nome }];
+    digitar(campoDaBusca(), nome);
+    await esperarABusca();
+    clicar(candidato(nome));
+    const pctInput = alvo.querySelector<HTMLInputElement>('input[placeholder="% no contrato"]');
+    if (participacao) digitar(pctInput as HTMLInputElement, participacao);
     clicar(botao("Adicionar"));
   }
 
@@ -274,7 +348,7 @@ describe("adicionar proponente", () => {
 
     // O cenário real: a reserva é do João, o coordenador vai adicionar a esposa e cola o CPF do
     // próprio João — formatado, porque o campo formata enquanto ele digita.
-    await preencherProponente("Maria da Silva", "529.982.247-25");
+    await escolherProponente("Maria da Silva", "529.982.247-25");
 
     expect(alvo.textContent).toContain("Este CPF já está entre os compradores.");
     // Sem a régua, a lista ficaria "João 50% / João 50%", somando 100% redondos, e o PDF sairia
@@ -286,19 +360,105 @@ describe("adicionar proponente", () => {
   it("recusa CPF que não passa no dígito verificador", async () => {
     await abrir();
 
-    await preencherProponente("Maria da Silva", "111.111.111-11");
+    await escolherProponente("Maria da Silva", "111.111.111-11");
 
     expect(alvo.textContent).toContain("CPF inválido. Confira os números antes de adicionar.");
     expect(alvo.textContent).not.toContain("Maria da Silva");
   });
 
-  it("aceita o proponente novo com CPF válido e divide a participação", async () => {
+  it("aceita o proponente novo com CPF válido, e o titular fica com o que sobra", async () => {
     await abrir();
 
-    await preencherProponente("Maria de Souza", CPF_DA_ESPOSA);
+    // 40% para a esposa: o titular vai a 60%, e a soma fecha sem pedir dois números.
+    await escolherProponente("Maria de Souza", CPF_DA_ESPOSA, "40");
 
     expect(alvo.textContent).toContain("Maria de Souza");
     expect(alvo.textContent).toContain("Soma 100%");
+  });
+
+  it("⚠️ sem a %, não adiciona — ela vai escrita no contrato", async () => {
+    // Lucas (05/09/2026): *"% não é opcional, ela é uma informação que vai estar no contrato"*.
+    // Antes, em branco, a tela dividia igualmente por conta própria — decidindo a partilha por
+    // omissão, num número que vai para a minuta e para o cartório.
+    await abrir();
+
+    await escolherProponente("Maria de Souza", CPF_DA_ESPOSA, "");
+
+    expect(alvo.textContent).toContain("Informe a % de participação");
+    expect(alvo.textContent).not.toContain("Maria de Souza");
+  });
+
+  it("recusa participação de 100% para o proponente: sobraria zero para o titular", async () => {
+    await abrir();
+
+    await escolherProponente("Maria de Souza", CPF_DA_ESPOSA, "100");
+
+    expect(alvo.textContent).toContain("menor que 100%");
+  });
+
+  it("⚠️ o CPF não se digita: ele vem da CAD escolhida", async () => {
+    // Um campo livre aqui seria a porta que a busca acabou de fechar — bastaria digitar onze
+    // dígitos para pôr no contrato alguém que o Apolo nunca viu.
+    await abrir();
+
+    const cpf = alvo.querySelector<HTMLInputElement>('input[placeholder="CPF (vem da CAD)"]');
+    expect(cpf?.disabled).toBe(true);
+  });
+
+  it("sem CAD no empreendimento, diz o que fazer em vez de 'nada encontrado'", async () => {
+    // Lucas (05/09/2026): *"se não estiver credenciada, fala que CAD não encontrada"*. A frase
+    // precisa dizer o passo seguinte: "nada encontrado" deixa o coordenador sem saber se digitou
+    // errado ou se falta a CAD, e a resposta muda o que ele faz agora.
+    await abrir();
+
+    daBusca = [];
+    digitar(campoDaBusca(), "Larissa");
+    await esperarABusca();
+
+    expect(alvo.textContent).toContain("CAD não encontrada neste empreendimento");
+  });
+
+  it("⚠️ quem não está credenciado aparece com o motivo, e não pode ser escolhido", async () => {
+    // Sumir da lista faria o coordenador concluir que a pessoa não tem cadastro, quando ela tem e
+    // está em análise de crédito — e ele abriria uma CAD duplicada por cima da que já existe.
+    await abrir();
+
+    daBusca = [
+      {
+        credenciado: false,
+        cpf: CPF_DA_ESPOSA,
+        etapa: "analise_credito",
+        id: "cad-2",
+        motivo: "CAD em análise de crédito",
+        nome: "Larissa Andrade",
+      },
+    ];
+    digitar(campoDaBusca(), "Larissa");
+    await esperarABusca();
+
+    expect(alvo.textContent).toContain("CAD em análise de crédito");
+    expect(candidato("Larissa Andrade").disabled).toBe(true);
+  });
+
+  it("⚠️ resposta fora do formato não derruba a modal: a lista fica vazia", async () => {
+    // Um 200 com outro corpo (proxy, rota que mudou de contrato) guardava `undefined` na lista, e o
+    // render seguinte quebrava a modal inteira — levando junto as condições já montadas.
+    await abrir();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        String(url).includes("/venda/proponentes")
+          ? { json: async () => ({ data: { outraCoisa: true } }), ok: true }
+          : { ok: true, text: async () => JSON.stringify({ data: portao }) },
+      ),
+    );
+    digitar(campoDaBusca(), "Larissa");
+    await esperarABusca();
+
+    expect(alvo.textContent).toContain("CAD não encontrada neste empreendimento");
+    // A modal continua de pé: o portão segue à vista.
+    expect(alvo.textContent).toContain("O cliente da reserva");
   });
 });
 

@@ -5840,3 +5840,57 @@ Registro de producao:
 - Status: `EM PRODUCAO`.
 - Proxima acao: `Lucas fazer a passada ponta a ponta (reservar -> propor -> cancelar -> reservar de
   novo) com um dos 6 clientes novos, e definir o prazo padrao da proposta`.
+
+## 2026-09-05 · v1.282.2 — Hercules: a proposta na ficha do lote, e o caminho para o contrato
+
+- Autorizacao: OK explicito do Lucas ("pode subir").
+- Commit: `03d4e5fb`. Rollback: `3df42b8e` (v1.282.1).
+- Reportado pelo Lucas na primeira proposta gerada em producao: *"geramos proposta, contudo o
+  historico da unidade nao atualizou"*.
+- Causa: nao era a proposta, era a TRADUCAO DO EMPREENDIMENTO. A rota de historico filtra por
+  `empreendimento_codigo` usando `codigosDaSessao`, que traduz pelo catalogo do C2X — e o ZZ TESTE
+  nasceu no Panteon, nao existe no legado. Sem codigo, o `.in()` descartava a linha. A reserva
+  aparecia porque `lerReservas` entra por outro caminho, o que fez o buraco parecer defeito da
+  proposta. A rota /venda ja resolvia com `soDoPanteon`; o historico nao tinha a expansao.
+  ⚠️ Vale para TODO empreendimento que nascer no Panteon.
+- Tambem neste lote, tudo pedido pelo Lucas testando ao vivo:
+  - ENVIAR PARA CONTRATO habilitado, com rota propria e a mesma trava de clique duplo das irmas.
+    Nao gera minuta (e da Temis) e nao dispara WhatsApp.
+  - Verde na etapa concluida da trilha; CPF inteiro na ficha; a modal sem barra de rolagem.
+  - As quatro notas explicativas saiam da modal e do PDF: *"esses textos eu acho poluicao"*.
+- Status: `EM PRODUCAO`.
+
+## 2026-09-05 · v1.283.0 — Hercules: entrega a proposta a Temis, e o historico anda junto
+
+- Autorizacao: OK explicito do Lucas ("pode rodar" / "pode subir").
+- Commit: `64e82503`. Rollback: `03d4e5fb` (v1.282.2).
+- Fecha o ciclo da venda: reservar -> propor -> enviar para contrato, com o contrato chegando na
+  fila do juridico.
+- A TEMIS JA ESPERAVA: o canal `hercules` existe em `CanalDoTrabalho` desde que a fila nasceu, o
+  tipo `contrato` esta entre os cinco servicos, e `temis_trabalhos` tem `venda_id` e `aberto_por`
+  desde o comeco — ninguem preenchia. `venda_id` e a propria entrega: e dele que a Temis tira
+  cliente, compradores, condicoes, plano e o PDF. Se a Temis recusar, a venda anda e a tela avisa.
+- O HISTORICO CONGELAVA: o efeito que o busca so dependia do ID DO LOTE, e nenhuma das quatro acoes
+  muda o id — a ficha exibia os eventos do cliente ANTERIOR enquanto o topo ja mostrava o novo. E
+  as transicoes nativas nao apareciam nem recarregando: o C2X move por id, o Panteon move por nome,
+  e a linha do tempo so lia os ids.
+- A FAIXA DO PRAZO (*"se eu colocar 30 vezes eu nao posso ter uma entrada menor que 56k"*): o plano
+  da faixa e o de MENOR prazo que comporta o parcelamento. Isto muda o que `entradaPercentual`
+  significa — era sugestao, virou minimo. E ela e regua em TRES lugares: `conferirProposta`, a
+  varredura e a tela. A primeira versao so pintava de vermelho, e a varredura recomendava como
+  primeira opcao exatamente o que a tela recusava em seguida.
+- A ENTRADA MONTADA (*"o que nao pode e ser MENOR; maior pode, e ao ser maior, atualizar o valor de
+  entrada"*): regua assimetrica, centavos inteiros, com "fixar". A montagem se invalida sozinha —
+  guarda a entrada, as vezes E o comando para os quais foi feita.
+- Fechando: parcela zerada dava carencia de graca; o arredondamento do piso pedia entrada maior que
+  o lote no plano a vista; a varredura respondia "o cliente paga 4 mil por mes" com venda a vista;
+  o PDF imprimia "Parcela 1 de 1 · R$ 0,00".
+- Migrations aplicadas com OK: 0132 (`validade_em`) e 0133 (RLS de `hercules_propostas` — a tabela
+  estava com RLS DESLIGADA e 4.857 CPFs legiveis pela chave publica; conferido depois que `anon`
+  recebe `permission denied` e `service_role` le as 4.857).
+- Furo de autorizacao corrigido no mesmo lote: as 6 rotas de `venda/` usavam `autorizar`, que valida
+  a sessao mas NAO ve o TIPO do portal. Passaram a usar `autorizarComercial`.
+- Conferencia: cinco rodadas adversariais (~280 agentes); cada rodada achou defeito real, inclusive
+  nas correcoes da anterior.
+- Validacoes: `npx tsc --noEmit` limpo; 2.818 testes verdes (207 arquivos).
+- Status: `EM PRODUCAO`.

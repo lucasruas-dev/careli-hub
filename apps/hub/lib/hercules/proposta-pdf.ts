@@ -37,6 +37,10 @@ const SOFT = rgb(0.353, 0.404, 0.471); // #5a6778
 const MUTE = rgb(0.58, 0.639, 0.722); // #94a3b8
 const LINE = rgb(0.886, 0.91, 0.941); // #e2e8f0
 const HAIR = rgb(0.945, 0.961, 0.976); // #f1f5f9
+// A tarja da prévia. Âmbar, e não vermelho: vermelho no rodapé de uma proposta lê-se como recusa
+// ou erro, e o que a tarja diz é "ainda não" — o mesmo tom que a tela usa para atenção.
+const AVISO_FUNDO = rgb(0.996, 0.949, 0.78); // #fef2c7
+const AVISO_TINTA = rgb(0.475, 0.333, 0.024); // #795506
 
 export type ParcelaDaProposta = {
   /** "1 de 2" */
@@ -95,6 +99,18 @@ export type PropostaParaPdf = {
   /** PNG ou JPG da logo do empreendimento. Ausente = o espaço fica vazio, e o papel sai assim mesmo. */
   logoEmpreendimento: null | Uint8Array;
   observacoes: Array<{ texto: string; titulo: string }>;
+  /**
+   * A folha é uma PRÉVIA: as condições existem, a proposta não.
+   *
+   * Lucas (05/09/2026): *"podia ter um botão para ter uma prévia da proposta"* — ver o papel antes
+   * de clicar num botão que cadastra a venda, muda a etapa da unidade e manda três WhatsApps.
+   *
+   * ⚠️ E A PRÉVIA PRECISA SE DENUNCIAR NO PAPEL. Um PDF idêntico ao definitivo sai da tela e vira
+   * anexo de WhatsApp em dois toques; do outro lado, o cliente guarda como proposta um documento
+   * que não existe no sistema, com preço que ninguém reservou. A tarja é o que impede que a prévia
+   * seja usada como proposta — por isso ela vai no papel, e não só na tela que o gerou.
+   */
+  previa?: boolean;
   reajustes: FaixaDeReajuste[];
   /**
    * Se a parcela deste plano REALMENTE muda ao longo do contrato (degrau de juros ou índice).
@@ -620,6 +636,32 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
 
     if (linhaDoAtendimento) centro(linhaDoAtendimento, 6.6, 78);
     centro(`${ctx.topo} · Página ${i + 1} de ${ctx.paginas.length}`, 6.6, 68);
+
+    // A TARJA DA PRÉVIA — em TODAS as páginas, e não só na primeira.
+    //
+    // ⚠️ QUEM RECEBE UM PDF POR WHATSAPP ABRE NUMA PÁGINA QUALQUER. Carimbar só a folha de rosto
+    // deixaria as outras indistinguíveis da proposta de verdade, que é justamente o que a tarja
+    // existe para evitar. Fica no pé, sobre o rodapé: no topo ela brigaria com a logo do
+    // empreendimento e com o COD, que é o que o coordenador procura primeiro.
+    if (dados.previa) {
+      const aviso = "PRÉVIA - documento sem validade: a proposta ainda não foi gerada";
+      const tamanho = 7.4;
+      const largura = bold.widthOfTextAtSize(seguro(aviso), tamanho);
+      pagina.drawRectangle({
+        color: AVISO_FUNDO,
+        height: 15,
+        width: largura + 16,
+        x: (A4.w - (largura + 16)) / 2,
+        y: 26,
+      });
+      pagina.drawText(seguro(aviso), {
+        color: AVISO_TINTA,
+        font: bold,
+        size: tamanho,
+        x: (A4.w - largura) / 2,
+        y: 30.5,
+      });
+    }
 
     if (marca) {
       const altura = 14;

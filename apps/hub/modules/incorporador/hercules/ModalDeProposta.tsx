@@ -20,9 +20,13 @@ import {
   participacoesIguais,
   somaDasParticipacoes,
 } from "@/lib/hercules/proposta-na-tela";
+import type { ProponenteEncontrado } from "@/lib/hercules/busca-de-proponente";
 import { comoFoiOAviso, vencimentoEmDias } from "@/lib/hercules/reserva";
 
-import { type CondicoesDaProposta, SimuladorDeProposta } from "./SimuladorDeProposta";
+import {
+  type CondicoesDaProposta,
+  SimuladorDeProposta,
+} from "./SimuladorDeProposta";
 
 import { T } from "../tema";
 
@@ -80,7 +84,13 @@ type PortaoDaProposta = {
   entradaMinimaPercentual: null | number;
   planos: PlanoDaVenda[];
   reserva: ReservaNaTela;
-  unidade: { enterpriseId: string; id: string; nome: string; preco: number; produto: string };
+  unidade: {
+    enterpriseId: string;
+    id: string;
+    nome: string;
+    preco: number;
+    produto: string;
+  };
 };
 
 /**
@@ -107,7 +117,10 @@ const CAMPOS_DO_PORTAO: ErroDaProposta["campo"][] = [
   "titular",
 ];
 
-const MOEDA = new Intl.NumberFormat("pt-BR", { currency: "BRL", style: "currency" });
+const MOEDA = new Intl.NumberFormat("pt-BR", {
+  currency: "BRL",
+  style: "currency",
+});
 
 /** "R$ 178.100,00" — com espaço comum, e não o não quebrável do `Intl` (ver `reais` em `proposta.ts`). */
 const dinheiro = (valor: number): string =>
@@ -139,6 +152,17 @@ export function ModalDeProposta({
   const [compradores, setCompradores] = useState<CompradorNaTela[]>([]);
   const [novo, setNovo] = useState({ cpf: "", nome: "", participacao: "" });
   const [erroDoNovo, setErroDoNovo] = useState<null | string>(null);
+  /** Os candidatos que a base devolveu para o que está escrito no campo de nome. */
+  const [candidatos, setCandidatos] = useState<ProponenteEncontrado[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  /**
+   * A CAD escolhida na lista.
+   *
+   * ⚠️ ELA É O QUE AUTORIZA O "ADICIONAR". Enquanto for nula, o que está no campo é só um texto de
+   * busca: sem CAD escolhida não há CPF, e sem CPF não há comprador. É isto que fecha a porta que a
+   * digitação livre deixava aberta.
+   */
+  const [escolhido, setEscolhido] = useState<null | ProponenteEncontrado>(null);
   const [condicoes, setCondicoes] = useState<CondicoesDaProposta | null>(null);
   /**
    * Por quantos dias a proposta vale.
@@ -149,8 +173,12 @@ export function ModalDeProposta({
    * existe para dinheiro, e o dia em que o simulador for reaproveitado em outra tela ele levaria
    * junto uma regra de prazo que não é dele.
    */
-  const [prazoEmDias, setPrazoEmDias] = useState<number>(PRAZO_PADRAO_DA_PROPOSTA);
+  const [prazoEmDias, setPrazoEmDias] = useState<number>(
+    PRAZO_PADRAO_DA_PROPOSTA,
+  );
   const [enviando, setEnviando] = useState(false);
+  /** A prévia no ar. Estado próprio: ela não prende a modal como o envio prende. */
+  const [buscandoPrevia, setBuscandoPrevia] = useState(false);
   const [erroDoServidor, setErroDoServidor] = useState<null | string>(null);
   const [tentou, setTentou] = useState(false);
 
@@ -186,7 +214,9 @@ export function ModalDeProposta({
           : {};
         if (!vivo) return;
         if (!r.ok || !corpo.data) {
-          setFalhaDoPortao(corpo.error ?? "Não foi possível abrir a proposta desta unidade.");
+          setFalhaDoPortao(
+            corpo.error ?? "Não foi possível abrir a proposta desta unidade.",
+          );
           return;
         }
         setPortao(corpo.data);
@@ -202,7 +232,8 @@ export function ModalDeProposta({
           },
         ]);
       } catch {
-        if (vivo) setFalhaDoPortao("Não foi possível abrir a proposta desta unidade.");
+        if (vivo)
+          setFalhaDoPortao("Não foi possível abrir a proposta desta unidade.");
       }
     })();
     return () => {
@@ -212,7 +243,10 @@ export function ModalDeProposta({
 
   // ⚠️ ESTÁVEL, POR CAUSA DO EFEITO DO SIMULADOR. Ele chama esta função de dentro de um `useEffect`
   // que a tem nas dependências: uma função nova a cada render faria o efeito rodar em laço.
-  const receberCondicoes = useCallback((c: CondicoesDaProposta | null) => setCondicoes(c), []);
+  const receberCondicoes = useCallback(
+    (c: CondicoesDaProposta | null) => setCondicoes(c),
+    [],
+  );
 
   /**
    * Até quando a proposta vale, em ISO — o fim do dia do último dia do prazo.
@@ -274,10 +308,13 @@ export function ModalDeProposta({
 
   // ⚠️ A MESMA RÉGUA DOS DOIS LADOS, como na reserva: `conferirProposta` roda aqui para apagar o
   // botão e roda de novo na rota, que é quem grava. A tela adianta a conversa; ela não decide.
-  const erros = portao ? conferirProposta(pedido, new Date().toISOString()) : [];
+  const erros = portao
+    ? conferirProposta(pedido, new Date().toISOString())
+    : [];
   const errosDoPortao = erros.filter((e) => CAMPOS_DO_PORTAO.includes(e.campo));
   const credenciado = portao?.credenciamento.credenciado === true;
-  const podeMontar = Boolean(portao) && credenciado && errosDoPortao.length === 0;
+  const podeMontar =
+    Boolean(portao) && credenciado && errosDoPortao.length === 0;
 
   const planoDaProposta = useMemo(
     () => portao?.planos.find((p) => p.nome === condicoes?.planoNome) ?? null,
@@ -316,7 +353,10 @@ export function ModalDeProposta({
     } catch (erro) {
       return {
         cronograma: null,
-        erro: erro instanceof Error ? erro.message : "Estas condições não fecham um cronograma.",
+        erro:
+          erro instanceof Error
+            ? erro.message
+            : "Estas condições não fecham um cronograma.",
       };
     }
   }, [condicoes, planoDaProposta]);
@@ -331,7 +371,10 @@ export function ModalDeProposta({
    * Quem fica apagado é o botão do PORTÃO, onde o motivo está a dois centímetros dele.
    */
   const propostaInteira =
-    podeMontar && Boolean(condicoes) && erros.length === 0 && fluxo.cronograma !== null;
+    podeMontar &&
+    Boolean(condicoes) &&
+    erros.length === 0 &&
+    fluxo.cronograma !== null;
 
   /**
    * Entra mais um comprador na lista.
@@ -359,20 +402,38 @@ export function ModalDeProposta({
       setErroDoNovo("Este CPF já está entre os compradores.");
       return;
     }
-    setErroDoNovo(null);
+    // ⚠️ A % NÃO É OPCIONAL (Lucas, 05/09/2026: *"% não é opcional, ela é uma informação que vai
+    // estar no contrato, não pode ser opcional"*). Ela nasceu como conveniência — em branco, a tela
+    // dividia igualmente — e a conveniência escondia uma decisão jurídica: quanto do imóvel é de
+    // cada um sai escrito na minuta e vai para o cartório. Deixar o sistema escolher por omissão é
+    // deixar o sistema decidir a partilha; e 50/50 "óbvio" do casal deixa de ser óbvio no dia em que
+    // um deles entrou com a entrada inteira.
     const digitada = lerPercentualDigitado(novo.participacao);
+    if (!(digitada > 0)) {
+      setErroDoNovo("Informe a % de participação: ela vai no contrato.");
+      return;
+    }
+    if (digitada >= 100) {
+      setErroDoNovo("A participação do proponente tem que ser menor que 100%.");
+      return;
+    }
+
+    setErroDoNovo(null);
     setCompradores((atuais) => {
-      const lista: CompradorNaTela[] = [
-        ...atuais,
+      // ⚠️ O TITULAR ABSORVE O RESTANTE, e é isto que mantém a soma em 100% sem pedir dois números
+      // para a mesma conta: quem digita 40% para a esposa está dizendo que o titular fica com 60%.
+      // Os DEMAIS proponentes ficam como estão — eles já tiveram a sua % informada quando entraram.
+      const dosOutros = atuais
+        .filter((c) => !c.titular)
+        .reduce((total, c) => total + c.participacao, 0);
+      const doTitular = Math.round((100 - dosOutros - digitada) * 100) / 100;
+
+      return [
+        ...atuais.map((c) =>
+          c.titular ? { ...c, participacao: Math.max(0, doTitular) } : c,
+        ),
         { cpf, nome, participacao: digitada, telefone: null, titular: false },
       ];
-      // ⚠️ SEM PARTICIPAÇÃO DIGITADA, DIVIDE IGUAL. É o caso do casal (50/50) e o dos irmãos
-      // (33,34 / 33,33 / 33,33), que é a esmagadora maioria — e sai fechando 100% de primeira, em
-      // vez de nascer com um zero que a régua recusa. Quem quer 70/30 digita e a lista fica como
-      // ele escreveu.
-      if (digitada > 0) return lista;
-      const iguais = participacoesIguais(lista.length);
-      return lista.map((c, i) => ({ ...c, participacao: iguais[i] ?? 0 }));
     });
     setNovo({ cpf: "", nome: "", participacao: "" });
   }
@@ -387,6 +448,144 @@ export function ModalDeProposta({
     });
   }
 
+  /**
+   * Busca na base enquanto ele digita.
+   *
+   * ⚠️ ESPERA 300ms ANTES DE PERGUNTAR. Sem isso sai uma consulta por tecla — dez requisições para
+   * escrever "Larissa", numa casa que já teve incidente de fatura por chamada demais. E o termo
+   * curto nem chega ao servidor: a régua de `termoDaBusca` roda dos dois lados.
+   */
+  useEffect(() => {
+    const termo = novo.nome.trim();
+    if (escolhido || termo.length === 0) {
+      setCandidatos([]);
+      setBuscando(false);
+      return;
+    }
+
+    let vivo = true;
+    setBuscando(true);
+    const t = setTimeout(() => {
+      void (async () => {
+        try {
+          const r = await fetch(
+            `/api/incorporador/venda/proponentes?unidade=${encodeURIComponent(
+              unidade.id,
+            )}&q=${encodeURIComponent(termo)}`,
+            { cache: "no-store" },
+          );
+          const j = (await r.json().catch(() => null)) as null | {
+            data?: { encontrados: ProponenteEncontrado[] };
+          };
+          if (!vivo) return;
+          // ⚠️ CONFERE QUE É LISTA, e não só que a resposta veio. `r.ok` com um corpo de outro
+          // formato (um 200 de proxy, uma rota que mudou de contrato) guardaria `undefined` aqui, e
+          // o `candidatos.length` do render seguinte derrubaria a modal inteira — com as condições
+          // que o coordenador acabou de montar dentro dela.
+          const achados = j?.data?.encontrados;
+          setCandidatos(r.ok && Array.isArray(achados) ? achados : []);
+        } catch {
+          if (vivo) setCandidatos([]);
+        } finally {
+          if (vivo) setBuscando(false);
+        }
+      })();
+    }, 300);
+
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+  }, [escolhido, novo.nome, unidade.id]);
+
+  /**
+   * O corpo do pedido — o MESMO para a prévia e para a geração.
+   *
+   * ⚠️ UM OBJETO SÓ, DE PROPÓSITO. Se a prévia montasse o dela, bastaria um campo esquecido para o
+   * papel conferido sair diferente do papel gerado — e a prévia existe justamente para o
+   * coordenador conferir o que vai ser enviado.
+   */
+  function corpoDoPedido(condicoesAgora: NonNullable<typeof condicoes>) {
+    return {
+      anuaisQuantidade: condicoesAgora.anuaisQuantidade,
+      anuaisValor: condicoesAgora.anuaisValor,
+      compradores: compradores.map((c) => ({
+        cpf: c.cpf,
+        nome: c.nome,
+        participacao: c.participacao,
+        ...(c.telefone ? { telefone: c.telefone } : {}),
+      })),
+      diaDeVencimento: condicoesAgora.diaDeVencimento,
+      entradaValor: condicoesAgora.entradaValor,
+      entradaParcelas: condicoesAgora.entradaParcelas,
+      entradaVezes: condicoesAgora.entradaVezes,
+      parcelasMensais: condicoesAgora.parcelasMensais,
+      planoNome: condicoesAgora.planoNome,
+      primeiraParcelaEm: condicoesAgora.primeiraParcelaEm,
+      // ⚠️ VAI O NÚMERO DE DIAS, E NÃO A DATA. Quem transforma prazo em vencimento é o servidor,
+      // com o relógio dele: a data pronta punha o relógio do navegador para decidir quando a
+      // proposta vence, e uma modal aberta antes da meia-noite gravava o prazo contado a partir
+      // de ontem. A data que a tela mostra ao lado dos chips é prévia, e prévia não se envia.
+      prazoEmDias,
+      unidadeId: unidade.id,
+      valorNegociado: condicoesAgora.valorNegociado,
+    };
+  }
+
+  /**
+   * VER O PAPEL ANTES DE GERAR (Lucas, 05/09/2026: *"podia ter um botão para ter uma prévia da
+   * proposta"*).
+   *
+   * ⚠️ A ABA ABRE ANTES DO `fetch`, e não depois. Chamar `window.open` já com o PDF pronto seria
+   * chamá-lo fora do clique — todo navegador com bloqueio de pop-up engole essa janela, e o
+   * coordenador clica num botão que não faz nada.
+   */
+  async function verPrevia() {
+    setTentou(true);
+    setErroDoServidor(null);
+    if (!condicoes || !propostaInteira) return;
+
+    const aba = window.open("", "_blank", "noopener");
+    setBuscandoPrevia(true);
+    try {
+      const r = await fetch("/api/incorporador/venda/proposta", {
+        body: JSON.stringify({ ...corpoDoPedido(condicoes), previa: true }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+
+      if (!r.ok) {
+        aba?.close();
+        const corpo = (await r.json().catch(() => null)) as null | {
+          erros?: ErroDaProposta[];
+          error?: string;
+        };
+        setErroDoServidor(
+          corpo?.error ??
+            corpo?.erros?.map((e) => e.mensagem).join(" ") ??
+            "Não foi possível montar a prévia.",
+        );
+        return;
+      }
+
+      const endereco = URL.createObjectURL(await r.blob());
+      if (aba) aba.location.href = endereco;
+      // ⚠️ SEM ABA NÃO HÁ SILÊNCIO: o bloqueio de pop-up é do navegador, e sem este recado o botão
+      // simplesmente não responde.
+      else
+        setErroDoServidor(
+          "Libere as janelas deste site no navegador para ver a prévia.",
+        );
+      // O endereço vive enquanto a aba carrega; segurá-lo para sempre vazaria o PDF na memória.
+      setTimeout(() => URL.revokeObjectURL(endereco), 60_000);
+    } catch {
+      aba?.close();
+      setErroDoServidor("Não foi possível montar a prévia agora.");
+    } finally {
+      setBuscandoPrevia(false);
+    }
+  }
+
   async function gerar() {
     setTentou(true);
     setErroDoServidor(null);
@@ -395,30 +594,7 @@ export function ModalDeProposta({
     setEnviando(true);
     try {
       const r = await fetch("/api/incorporador/venda/proposta", {
-        body: JSON.stringify({
-          anuaisQuantidade: condicoes.anuaisQuantidade,
-          anuaisValor: condicoes.anuaisValor,
-          compradores: compradores.map((c) => ({
-            cpf: c.cpf,
-            nome: c.nome,
-            participacao: c.participacao,
-            ...(c.telefone ? { telefone: c.telefone } : {}),
-          })),
-          diaDeVencimento: condicoes.diaDeVencimento,
-          entradaValor: condicoes.entradaValor,
-          entradaParcelas: condicoes.entradaParcelas,
-          entradaVezes: condicoes.entradaVezes,
-          parcelasMensais: condicoes.parcelasMensais,
-          planoNome: condicoes.planoNome,
-          primeiraParcelaEm: condicoes.primeiraParcelaEm,
-          // ⚠️ VAI O NÚMERO DE DIAS, E NÃO A DATA. Quem transforma prazo em vencimento é o servidor,
-          // com o relógio dele: a data pronta punha o relógio do navegador para decidir quando a
-          // proposta vence, e uma modal aberta antes da meia-noite gravava o prazo contado a partir
-          // de ontem. A data que a tela mostra ao lado dos chips é prévia, e prévia não se envia.
-          prazoEmDias,
-          unidadeId: unidade.id,
-          valorNegociado: condicoes.valorNegociado,
-        }),
+        body: JSON.stringify(corpoDoPedido(condicoes)),
         headers: { "content-type": "application/json" },
         method: "POST",
       });
@@ -505,7 +681,8 @@ export function ModalDeProposta({
         >
           <div>
             <b style={{ fontSize: 14 }}>
-              {naMontagem ? "Condições da proposta" : "Gerar proposta"} · {unidade.nome}
+              {naMontagem ? "Condições da proposta" : "Gerar proposta"} ·{" "}
+              {unidade.nome}
             </b>
             <div style={{ color: T.muted, fontSize: 11.5 }}>
               {portao?.reserva.codigo ? `COD ${portao.reserva.codigo} · ` : ""}
@@ -541,11 +718,15 @@ export function ModalDeProposta({
 
         {falhaDoPortao ? (
           <div style={{ padding: 16 }}>
-            <p style={{ color: T.danger, fontSize: 13, margin: 0 }}>{falhaDoPortao}</p>
+            <p style={{ color: T.danger, fontSize: 13, margin: 0 }}>
+              {falhaDoPortao}
+            </p>
           </div>
         ) : !portao ? (
           <div style={{ padding: 16 }}>
-            <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Carregando…</p>
+            <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
+              Carregando…
+            </p>
           </div>
         ) : (
           <>
@@ -564,7 +745,14 @@ export function ModalDeProposta({
                   minHeight: 0,
                 }}
               >
-                <div style={{ background: T.page, flex: "1 1 auto", minHeight: 0, padding: 14 }}>
+                <div
+                  style={{
+                    background: T.page,
+                    flex: "1 1 auto",
+                    minHeight: 0,
+                    padding: 14,
+                  }}
+                >
                   <SimuladorDeProposta
                     aoMudarCondicoes={receberCondicoes}
                     entradaMinimaPercentual={portao.entradaMinimaPercentual}
@@ -613,7 +801,10 @@ export function ModalDeProposta({
                   {tentou && erros.length > 0 ? (
                     <div style={{ display: "grid", gap: 3 }}>
                       {erros.map((e) => (
-                        <Erro key={`${e.campo}-${e.mensagem}`} texto={e.mensagem} />
+                        <Erro
+                          key={`${e.campo}-${e.mensagem}`}
+                          texto={e.mensagem}
+                        />
                       ))}
                     </div>
                   ) : null}
@@ -633,31 +824,60 @@ export function ModalDeProposta({
                         caminho que faz a proposta nascer sem ninguém ficar sabendo. */}
                     <span
                       role="status"
-                      style={{ color: enviando ? T.sub : T.muted, fontSize: 11.5 }}
+                      style={{
+                        color: enviando ? T.sub : T.muted,
+                        fontSize: 11.5,
+                      }}
                     >
                       {enviando
                         ? "Gerando a proposta e enviando o PDF por WhatsApp. Não feche esta janela até terminar."
                         : "Ao gerar, a proposta fica cadastrada e o PDF vai por WhatsApp para coordenador, imobiliária e corretor."}
                     </span>
-                    <button
-                      disabled={enviando}
-                      onClick={gerar}
-                      style={{
-                        background: enviando ? T.soft : T.btnBg,
-                        border: `1px solid ${enviando ? T.border : "transparent"}`,
-                        borderRadius: 9,
-                        color: enviando ? T.muted : T.btnFg,
-                        cursor: enviando ? "default" : "pointer",
-                        font: "inherit",
-                        fontSize: 13,
-                        fontWeight: 650,
-                        padding: "9px 20px",
-                        whiteSpace: "nowrap",
-                      }}
-                      type="button"
-                    >
-                      {enviando ? "Gerando…" : "Gerar proposta"}
-                    </button>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {/* ⚠️ DISCRETO AO LADO DO SÓLIDO. Dois botões do mesmo peso lado a lado fazem
+                          o coordenador clicar no que está mais perto do dedo — e aqui um deles
+                          cadastra a venda e dispara três WhatsApps. O que anda é o cheio; o que só
+                          mostra o papel é de contorno. */}
+                      <button
+                        disabled={enviando || buscandoPrevia}
+                        onClick={verPrevia}
+                        style={{
+                          background: "transparent",
+                          border: `1px solid ${T.border}`,
+                          borderRadius: 9,
+                          color: enviando || buscandoPrevia ? T.muted : T.sub,
+                          cursor:
+                            enviando || buscandoPrevia ? "default" : "pointer",
+                          font: "inherit",
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          padding: "9px 14px",
+                          whiteSpace: "nowrap",
+                        }}
+                        type="button"
+                      >
+                        {buscandoPrevia ? "Montando…" : "Ver prévia"}
+                      </button>
+                      <button
+                        disabled={enviando}
+                        onClick={gerar}
+                        style={{
+                          background: enviando ? T.soft : T.btnBg,
+                          border: `1px solid ${enviando ? T.border : "transparent"}`,
+                          borderRadius: 9,
+                          color: enviando ? T.muted : T.btnFg,
+                          cursor: enviando ? "default" : "pointer",
+                          font: "inherit",
+                          fontSize: 13,
+                          fontWeight: 650,
+                          padding: "9px 20px",
+                          whiteSpace: "nowrap",
+                        }}
+                        type="button"
+                      >
+                        {enviando ? "Gerando…" : "Gerar proposta"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -674,19 +894,33 @@ export function ModalDeProposta({
                 overflow: "hidden",
               }}
             >
-              <div style={{ display: "grid", gap: 14, overflow: "auto", padding: 16 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gap: 14,
+                  overflow: "auto",
+                  padding: 16,
+                }}
+              >
                 <section style={bloco}>
                   <div style={rotulo}>O cliente da reserva</div>
-                  <div style={{ alignItems: "baseline", display: "flex", gap: 8 }}>
-                    <b style={{ fontSize: 13.5 }}>{portao.reserva.titular.nome}</b>
+                  <div
+                    style={{ alignItems: "baseline", display: "flex", gap: 8 }}
+                  >
+                    <b style={{ fontSize: 13.5 }}>
+                      {portao.reserva.titular.nome}
+                    </b>
                     <span style={{ color: T.muted, fontSize: 11.5 }}>
-                      {formatarDocumento(soDigitos(portao.reserva.titular.cpf)) ||
-                        portao.reserva.titular.cpf}
+                      {formatarDocumento(
+                        soDigitos(portao.reserva.titular.cpf),
+                      ) || portao.reserva.titular.cpf}
                     </span>
                   </div>
                   <div style={{ color: T.muted, fontSize: 11.5, marginTop: 2 }}>
                     {portao.reserva.imobiliaria?.nome ?? "Sem imobiliária"}
-                    {portao.reserva.corretor ? ` · ${portao.reserva.corretor.nome}` : ""}
+                    {portao.reserva.corretor
+                      ? ` · ${portao.reserva.corretor.nome}`
+                      : ""}
                   </div>
 
                   {/* ⚠️ O SELO É A DECISÃO, e vem inteiro do servidor. Verde: segue. Vermelho: a frase
@@ -701,8 +935,15 @@ export function ModalDeProposta({
                       padding: "8px 11px",
                     }}
                   >
-                    <b style={{ color: credenciado ? T.ok : T.danger, fontSize: 12 }}>
-                      {credenciado ? "CAD credenciada neste empreendimento" : "CAD não credenciada"}
+                    <b
+                      style={{
+                        color: credenciado ? T.ok : T.danger,
+                        fontSize: 12,
+                      }}
+                    >
+                      {credenciado
+                        ? "CAD credenciada neste empreendimento"
+                        : "CAD não credenciada"}
                     </b>
                     <div style={{ color: T.sub, fontSize: 11.5, marginTop: 2 }}>
                       {credenciado
@@ -712,9 +953,11 @@ export function ModalDeProposta({
                     </div>
                   </div>
 
-                  <p style={{ color: T.muted, fontSize: 11, margin: "8px 0 0" }}>
-                    O cliente é o da reserva e não se troca. Para trocar, cancele a reserva e reserve
-                    de novo.
+                  <p
+                    style={{ color: T.muted, fontSize: 11, margin: "8px 0 0" }}
+                  >
+                    O cliente é o da reserva e não se troca. Para trocar,
+                    cancele a reserva e reserve de novo.
                   </p>
                 </section>
 
@@ -745,7 +988,13 @@ export function ModalDeProposta({
                           </div>
                         </span>
 
-                        <span style={{ alignItems: "center", display: "flex", gap: 8 }}>
+                        <span
+                          style={{
+                            alignItems: "center",
+                            display: "flex",
+                            gap: 8,
+                          }}
+                        >
                           {/* ⚠️ COM UM COMPRADOR SÓ O CAMPO NEM APARECE: ele tem 100%, e digitar isso
                               seria trabalho para confirmar o óbvio. */}
                           {compradores.length > 1 ? (
@@ -753,14 +1002,18 @@ export function ModalDeProposta({
                               aoMudar={(v) =>
                                 setCompradores((atuais) =>
                                   atuais.map((outro, j) =>
-                                    j === i ? { ...outro, participacao: v } : outro,
+                                    j === i
+                                      ? { ...outro, participacao: v }
+                                      : outro,
                                   ),
                                 )
                               }
                               valor={c.participacao}
                             />
                           ) : (
-                            <span style={{ color: T.muted, fontSize: 12 }}>100%</span>
+                            <span style={{ color: T.muted, fontSize: 12 }}>
+                              100%
+                            </span>
                           )}
                           {c.titular ? null : (
                             <button
@@ -789,8 +1042,17 @@ export function ModalDeProposta({
                         marginTop: 8,
                       }}
                     >
-                      <span style={{ color: falta === 0 ? T.ok : T.muted, fontSize: 11.5 }}>
-                        Soma {soma.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%
+                      <span
+                        style={{
+                          color: falta === 0 ? T.ok : T.muted,
+                          fontSize: 11.5,
+                        }}
+                      >
+                        Soma{" "}
+                        {soma.toLocaleString("pt-BR", {
+                          maximumFractionDigits: 2,
+                        })}
+                        %
                         {falta === 0
                           ? " · fecha"
                           : falta > 0
@@ -801,7 +1063,10 @@ export function ModalDeProposta({
                         onClick={() =>
                           setCompradores((atuais) => {
                             const iguais = participacoesIguais(atuais.length);
-                            return atuais.map((c, i) => ({ ...c, participacao: iguais[i] ?? 0 }));
+                            return atuais.map((c, i) => ({
+                              ...c,
+                              participacao: iguais[i] ?? 0,
+                            }));
                           })
                         }
                         style={{
@@ -826,43 +1091,174 @@ export function ModalDeProposta({
                   ))}
 
                   {/* ── ADICIONAR PROPONENTE ──────────────────────────────── */}
-                  <div style={{ borderTop: `1px dashed ${T.border}`, marginTop: 12, paddingTop: 12 }}>
-                    <div style={{ ...rotulo, marginBottom: 6 }}>Adicionar proponente</div>
+                  <div
+                    style={{
+                      borderTop: `1px dashed ${T.border}`,
+                      marginTop: 12,
+                      paddingTop: 12,
+                    }}
+                  >
+                    <div style={{ ...rotulo, marginBottom: 6 }}>
+                      Adicionar proponente
+                    </div>
                     <div style={{ display: "grid", gap: 6 }}>
-                      <input
-                        onChange={(e) => setNovo((a) => ({ ...a, nome: e.target.value }))}
-                        placeholder="Nome completo"
-                        style={campo}
-                        value={novo.nome}
-                      />
-                      <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 110px 96px" }}>
+                      {/* ⚠️ O NOME É BUSCA, NÃO DIGITAÇÃO (Lucas, 05/09/2026: *"os demais proponentes
+                          têm que ser buscados; eu digitei o nome da Larissa, deveria puxar a CAD dela
+                          caso a mesma tenha uma CAD credenciada (nome, CPF); se não estiver
+                          credenciada, fala que CAD não encontrada"*). Digitar criava um comprador que
+                          o Apolo nunca viu — sem CAD, sem crédito analisado — e ele entrava no PDF,
+                          na minuta e no contrato como se fosse cadastrado. */}
+                      <div style={{ position: "relative" }}>
                         <input
-                          onChange={(e) =>
-                            setNovo((a) => ({
-                              ...a,
-                              cpf: formatarDocumento(soDigitos(e.target.value).slice(0, 11)) ||
-                                e.target.value,
-                            }))
-                          }
-                          placeholder="CPF"
+                          onChange={(e) => {
+                            const texto = e.target.value;
+                            setNovo((a) => ({ ...a, cpf: "", nome: texto }));
+                            setEscolhido(null);
+                            setErroDoNovo(null);
+                          }}
+                          placeholder="Buscar por nome ou CPF na base"
                           style={campo}
+                          value={novo.nome}
+                        />
+
+                        {/* A lista de candidatos, ancorada no campo. */}
+                        {novo.nome.trim().length > 0 && !escolhido ? (
+                          <div
+                            style={{
+                              background: T.page,
+                              border: `1px solid ${T.border}`,
+                              borderRadius: 10,
+                              boxShadow: T.sombra,
+                              display: "grid",
+                              left: 0,
+                              maxHeight: 220,
+                              overflow: "auto",
+                              position: "absolute",
+                              right: 0,
+                              top: "calc(100% + 4px)",
+                              zIndex: 5,
+                            }}
+                          >
+                            {buscando ? (
+                              <span
+                                style={{
+                                  color: T.muted,
+                                  fontSize: 11.5,
+                                  padding: "9px 12px",
+                                }}
+                              >
+                                Procurando…
+                              </span>
+                            ) : candidatos.length === 0 ? (
+                              // ⚠️ A FRASE DIZ O QUE FAZER. "Nada encontrado" deixa o coordenador
+                              // sem saber se digitou errado ou se falta a CAD — e a resposta muda o
+                              // que ele faz em seguida.
+                              <span
+                                style={{
+                                  color: T.muted,
+                                  fontSize: 11.5,
+                                  padding: "9px 12px",
+                                }}
+                              >
+                                CAD não encontrada neste empreendimento. Abra a
+                                CAD do proponente antes de incluí-lo na
+                                proposta.
+                              </span>
+                            ) : (
+                              candidatos.map((c) => (
+                                <button
+                                  disabled={!c.credenciado}
+                                  key={c.id}
+                                  onClick={() => {
+                                    setEscolhido(c);
+                                    setNovo((a) => ({
+                                      ...a,
+                                      cpf: c.cpf,
+                                      nome: c.nome,
+                                    }));
+                                    setErroDoNovo(null);
+                                  }}
+                                  style={{
+                                    background: "transparent",
+                                    border: "none",
+                                    borderBottom: `1px solid ${T.border}`,
+                                    cursor: c.credenciado
+                                      ? "pointer"
+                                      : "default",
+                                    display: "grid",
+                                    font: "inherit",
+                                    gap: 2,
+                                    opacity: c.credenciado ? 1 : 0.6,
+                                    padding: "8px 12px",
+                                    textAlign: "left",
+                                  }}
+                                  type="button"
+                                >
+                                  <b style={{ fontSize: 12.5 }}>{c.nome}</b>
+                                  <span
+                                    style={{ color: T.muted, fontSize: 11 }}
+                                  >
+                                    {c.cpf}
+                                    {/* ⚠️ QUEM NÃO PASSA APARECE COM O MOTIVO, e não some da lista:
+                                        sumir faria o coordenador concluir que a pessoa não tem
+                                        cadastro, quando ela tem e está em análise de crédito. */}
+                                    {c.credenciado
+                                      ? null
+                                      : ` · ${c.motivo ?? "CAD não credenciada"}`}
+                                  </span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 6,
+                          gridTemplateColumns: "1fr 110px 96px",
+                        }}
+                      >
+                        {/* ⚠️ O CPF NÃO SE DIGITA MAIS: ele vem da CAD escolhida. Um campo livre aqui
+                            seria a porta que a busca acabou de fechar. */}
+                        <input
+                          disabled
+                          placeholder="CPF (vem da CAD)"
+                          style={{ ...campo, background: T.soft, color: T.sub }}
                           value={novo.cpf}
                         />
                         <input
                           inputMode="decimal"
-                          onChange={(e) => setNovo((a) => ({ ...a, participacao: e.target.value }))}
-                          placeholder="% (opcional)"
+                          onChange={(e) =>
+                            setNovo((a) => ({
+                              ...a,
+                              participacao: e.target.value,
+                            }))
+                          }
+                          placeholder="% no contrato"
                           style={campo}
                           value={novo.participacao}
                         />
-                        <button onClick={adicionarProponente} style={botaoDiscreto} type="button">
+                        <button
+                          onClick={adicionarProponente}
+                          style={botaoDiscreto}
+                          type="button"
+                        >
                           Adicionar
                         </button>
                       </div>
                     </div>
                     {erroDoNovo ? <Erro texto={erroDoNovo} /> : null}
-                    <p style={{ color: T.muted, fontSize: 11, margin: "6px 0 0" }}>
-                      Sem a %, a tela divide igualmente entre todos os compradores.
+                    <p
+                      style={{
+                        color: T.muted,
+                        fontSize: 11,
+                        margin: "6px 0 0",
+                      }}
+                    >
+                      A % de cada comprador vai escrita no contrato. O titular
+                      fica com o que sobra, e a soma tem que fechar 100%.
                     </p>
                   </div>
                 </section>
@@ -946,15 +1342,16 @@ function FluxoQueVaiSair({
   if (semComposicao) {
     return (
       <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>
-        Monte as condições acima: nenhuma composição fecha com o que está na tela.
+        Monte as condições acima: nenhuma composição fecha com o que está na
+        tela.
       </p>
     );
   }
   if (semPlano) {
     return (
       <p style={{ color: T.danger, fontSize: 12, margin: 0 }}>
-        Este produto não tem plano comercial cadastrado, e a proposta sai do plano. Cadastre em
-        Política Comercial antes de gerar.
+        Este produto não tem plano comercial cadastrado, e a proposta sai do
+        plano. Cadastre em Política Comercial antes de gerar.
       </p>
     );
   }
@@ -990,8 +1387,11 @@ function PreviaDaProposta({
   cronograma: ReturnType<typeof montarCronograma>;
   diaDeVencimento: number;
 }) {
+  // ⚠️ MESMO DEGRAU DE CINZA DO SIMULADOR. As três tabelas da prévia (entrada, reajuste, reforços)
+  // são visualmente idênticas, e o título é a única coisa que as separa: no cinza mais claro da
+  // paleta ele pesava menos que os números que ele nomeia.
   const tituloDaSecao = {
-    color: T.muted,
+    color: T.sub,
     fontSize: 10,
     fontWeight: 700,
     letterSpacing: 0.6,
@@ -999,7 +1399,11 @@ function PreviaDaProposta({
   } as const;
 
   const celula = { fontSize: 11.5, padding: "5px 0" } as const;
-  const cabecalho = { ...tituloDaSecao, fontSize: 9.5, paddingBottom: 4 } as const;
+  const cabecalho = {
+    ...tituloDaSecao,
+    fontSize: 9.5,
+    paddingBottom: 4,
+  } as const;
 
   /**
    * ⚠️ O FLUXO LONGO É CORTADO, E O CORTE É DECLARADO. Um contrato de 120 mensais não cabe em
@@ -1013,9 +1417,8 @@ function PreviaDaProposta({
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div>
-        <div style={{ ...tituloDaSecao, marginBottom: 6 }}>Prévia da proposta</div>
-        <div style={{ color: T.muted, fontSize: 11 }}>
-          É este o fluxo que vai no PDF e no WhatsApp do cliente.
+        <div style={{ ...tituloDaSecao, marginBottom: 6 }}>
+          Prévia da proposta
         </div>
       </div>
 
@@ -1037,7 +1440,9 @@ function PreviaDaProposta({
             padding: "10px 12px",
           }}
         >
-          <div style={{ ...tituloDaSecao, marginBottom: 6 }}>Pagamento da entrada</div>
+          <div style={{ ...tituloDaSecao, marginBottom: 6 }}>
+            Pagamento da entrada
+          </div>
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead>
               <tr>
@@ -1048,20 +1453,29 @@ function PreviaDaProposta({
             </thead>
             <tbody>
               {entrada.map((p) => (
-                <tr key={p.numero} style={{ borderTop: `1px solid ${T.border}` }}>
+                <tr
+                  key={p.numero}
+                  style={{ borderTop: `1px solid ${T.border}` }}
+                >
                   <td style={{ ...celula, color: T.sub }}>
                     {p.numero} de {p.total}
                   </td>
                   <td style={celula}>{dataEscrita(p.vencimento)}</td>
-                  <td style={{ ...celula, fontWeight: 650, textAlign: "right" }}>
+                  <td
+                    style={{ ...celula, fontWeight: 650, textAlign: "right" }}
+                  >
                     {dinheiro(p.valor)}
                   </td>
                 </tr>
               ))}
               {cronograma.entrada.length > MAX ? (
                 <tr>
-                  <td colSpan={3} style={{ ...celula, color: T.muted, fontSize: 10.5 }}>
-                    e mais {cronograma.entrada.length - MAX}, no mesmo dia dos meses seguintes
+                  <td
+                    colSpan={3}
+                    style={{ ...celula, color: T.muted, fontSize: 10.5 }}
+                  >
+                    e mais {cronograma.entrada.length - MAX}, no mesmo dia dos
+                    meses seguintes
                   </td>
                 </tr>
               ) : null}
@@ -1090,7 +1504,9 @@ function PreviaDaProposta({
           }}
         >
           <div style={{ ...tituloDaSecao, marginBottom: 6 }}>
-            {cronograma.reajustes.length > 1 ? "Reajuste da parcela" : "Parcelas mensais"}
+            {cronograma.reajustes.length > 1
+              ? "Reajuste da parcela"
+              : "Parcelas mensais"}
           </div>
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead>
@@ -1102,16 +1518,25 @@ function PreviaDaProposta({
             </thead>
             <tbody>
               {cronograma.reajustes.map((f) => (
-                <tr key={f.ciclo} style={{ borderTop: `1px solid ${T.border}` }}>
+                <tr
+                  key={f.ciclo}
+                  style={{ borderTop: `1px solid ${T.border}` }}
+                >
                   <td style={{ ...celula, color: T.sub }}>
-                    {cronograma.reajustes.length === 1 ? "Todo o contrato" : `${f.ciclo}º ano`}
+                    {cronograma.reajustes.length === 1
+                      ? "Todo o contrato"
+                      : `${f.ciclo}º ano`}
                   </td>
                   <td style={celula}>
                     {f.parcelaInicial} a {f.parcelaFinal}
                   </td>
-                  <td style={{ ...celula, fontWeight: 650, textAlign: "right" }}>
+                  <td
+                    style={{ ...celula, fontWeight: 650, textAlign: "right" }}
+                  >
                     {dinheiro(f.valor)}
-                    {f.temIpca ? <span style={{ color: T.muted }}> + IPCA</span> : null}
+                    {f.temIpca ? (
+                      <span style={{ color: T.muted }}> + IPCA</span>
+                    ) : null}
                   </td>
                 </tr>
               ))}
@@ -1135,30 +1560,42 @@ function PreviaDaProposta({
               padding: "10px 12px",
             }}
           >
-            <div style={{ ...tituloDaSecao, marginBottom: 6 }}>Parcelas anuais</div>
+            <div style={{ ...tituloDaSecao, marginBottom: 6 }}>
+              Parcelas anuais
+            </div>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead>
                 <tr>
                   <th style={{ ...cabecalho, textAlign: "left" }}>Parcela</th>
-                  <th style={{ ...cabecalho, textAlign: "left" }}>Vencimento</th>
+                  <th style={{ ...cabecalho, textAlign: "left" }}>
+                    Vencimento
+                  </th>
                   <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
                 </tr>
               </thead>
               <tbody>
                 {anuais.map((p) => (
-                  <tr key={p.numero} style={{ borderTop: `1px solid ${T.border}` }}>
+                  <tr
+                    key={p.numero}
+                    style={{ borderTop: `1px solid ${T.border}` }}
+                  >
                     <td style={{ ...celula, color: T.sub }}>
                       {p.numero} de {p.total}
                     </td>
                     <td style={celula}>{dataEscrita(p.vencimento)}</td>
-                    <td style={{ ...celula, fontWeight: 650, textAlign: "right" }}>
+                    <td
+                      style={{ ...celula, fontWeight: 650, textAlign: "right" }}
+                    >
                       {dinheiro(p.valor)}
                     </td>
                   </tr>
                 ))}
                 {cronograma.anuais.length > MAX ? (
                   <tr>
-                    <td colSpan={3} style={{ ...celula, color: T.muted, fontSize: 10.5 }}>
+                    <td
+                      colSpan={3}
+                      style={{ ...celula, color: T.muted, fontSize: 10.5 }}
+                    >
                       e mais {cronograma.anuais.length - MAX}, um por ano
                     </td>
                   </tr>
@@ -1167,7 +1604,9 @@ function PreviaDaProposta({
                   <td colSpan={2} style={{ ...celula, fontWeight: 700 }}>
                     Total dos reforços
                   </td>
-                  <td style={{ ...celula, fontWeight: 700, textAlign: "right" }}>
+                  <td
+                    style={{ ...celula, fontWeight: 700, textAlign: "right" }}
+                  >
                     {dinheiro(cronograma.totais.anuais)}
                   </td>
                 </tr>
@@ -1204,7 +1643,14 @@ function PrazoDaProposta({
   validadeEm: string;
 }) {
   return (
-    <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
+    <div
+      style={{
+        alignItems: "center",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 8,
+      }}
+    >
       <span style={{ ...rotulo, marginBottom: 0 }}>Vale por</span>
       {PRAZOS_DA_PROPOSTA.map((d) => (
         <button
@@ -1234,7 +1680,8 @@ function PrazoDaProposta({
         </button>
       ))}
       <span style={{ color: T.muted, fontSize: 11.5 }}>
-        Vence em <b style={{ color: T.sub }}>{dataEscrita(validadeEm)}</b>, no fim do dia.
+        Vence em <b style={{ color: T.sub }}>{dataEscrita(validadeEm)}</b>, no
+        fim do dia.
       </span>
     </div>
   );
@@ -1259,12 +1706,16 @@ function CampoDeParticipacao({
 
   useEffect(() => {
     setTexto((atual) =>
-      lerPercentualDigitado(atual) === Math.round(valor * 100) / 100 ? atual : escreve(valor),
+      lerPercentualDigitado(atual) === Math.round(valor * 100) / 100
+        ? atual
+        : escreve(valor),
     );
   }, [valor]);
 
   return (
-    <span style={{ alignItems: "center", display: "flex", position: "relative" }}>
+    <span
+      style={{ alignItems: "center", display: "flex", position: "relative" }}
+    >
       <input
         inputMode="decimal"
         onBlur={() => setTexto(escreve(valor))}
@@ -1300,7 +1751,7 @@ const bloco = {
 } as const;
 
 const rotulo = {
-  color: T.muted,
+  color: T.sub,
   fontSize: 10.5,
   fontWeight: 700,
   letterSpacing: ".06em",
@@ -1339,5 +1790,9 @@ const botaoDiscretoApagado = {
 } as const;
 
 function Erro({ texto }: { texto: string }) {
-  return <p style={{ color: T.danger, fontSize: 11.5, margin: "5px 0 0" }}>{texto}</p>;
+  return (
+    <p style={{ color: T.danger, fontSize: 11.5, margin: "5px 0 0" }}>
+      {texto}
+    </p>
+  );
 }

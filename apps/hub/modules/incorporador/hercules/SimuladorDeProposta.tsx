@@ -1008,13 +1008,19 @@ export function SimuladorDeProposta({
         </div>
 
         {/* ⚠️ UMA LEITURA SÓ PARA OS DOIS CAMINHOS — ver o cabeçalho do arquivo. */}
+        {/* ⚠️ ESTE CARTÃO NÃO É MAIS UM BLOCO IGUAL AOS OUTROS (Lucas, 05/09/2026: *"tô achando que
+            falta uns destaques, está muito tudo igual, difícil visualmente"*). Ele é a RESPOSTA —
+            "quanto meu cliente vai pagar" —, e estava com o mesmo fundo, a mesma borda e o mesmo
+            padding dos seis blocos de preenchimento que ficam em volta. O que muda: fundo próprio,
+            borda mais presente e mais ar. Nada de cor nova: a única cor aqui continua sendo o verde
+            da composição recomendada, que já significava alguma coisa. */}
         {principal ? (
           <div
             style={{
-              background: T.card,
-              border: `1px solid ${principal.origem === "composicao" ? T.ok : T.border}`,
-              borderRadius: 12,
-              padding: 16,
+              background: T.soft,
+              border: `1.5px solid ${principal.origem === "composicao" ? T.ok : T.sub}`,
+              borderRadius: 14,
+              padding: 18,
             }}
           >
             <div
@@ -1046,7 +1052,8 @@ export function SimuladorDeProposta({
             </div>
 
             <div style={{ alignItems: "baseline", display: "flex", gap: 10, marginBottom: 4 }}>
-              <b style={{ fontSize: 30, fontVariantNumeric: "tabular-nums", fontWeight: 650 }}>
+              {/* O NÚMERO QUE A CONVERSA COM O CLIENTE USA. É o primeiro que tem de ser lido. */}
+              <b style={{ fontSize: 34, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>
                 {dinheiroExato(principal.parcela)}
               </b>
               <span style={{ color: T.muted, fontSize: 13 }}>
@@ -1221,8 +1228,11 @@ const campo = {
   width: "100%",
 } as const;
 
+// ⚠️ O TÍTULO DA SEÇÃO SAIU DE `T.muted`. Com seis blocos empilhados, um título no cinza mais
+// claro da paleta pesa menos que o próprio conteúdo — e é ele que diz onde a pessoa está. Um degrau
+// de cinza (`T.sub`) resolve sem gastar um pixel de altura, que é o que falta nesta modal.
 const rotuloDeSecao = {
-  color: T.muted,
+  color: T.sub,
   fontSize: 10.5,
   fontWeight: 700,
   letterSpacing: ".06em",

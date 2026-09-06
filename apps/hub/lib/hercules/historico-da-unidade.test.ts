@@ -569,3 +569,152 @@ describe("⚠️ a transição que nasce no Panteon aparece na linha do tempo", 
     expect(eventos.map((e) => e.fato)).toContain("etapa-nova");
   });
 });
+
+describe("a etapa da proposta conta o passo que o movimento não contou", () => {
+  // Lucas (06/09/2026), na ficha de um lote em Contrato: "histórico não atualiza, gerei proposta,
+  // enviei para contrato". A venda estava em `contrato` desde 19:58:22 e a linha do tempo parava
+  // em "Proposta gerada", 19:57 — porque o movimento é um insert à parte, e ele não existia.
+  const nativa = (p: Partial<PropostaDoHistorico> & { id: string }): PropostaDoHistorico =>
+    proposta({ criado_em: "2026-09-05T22:57:00Z", criado_em_c2x: null, protocolo_numero: 6, ...p });
+
+  it("mostra o envio para contrato mesmo sem linha de movimento", () => {
+    const eventos = historicoDaUnidade(
+      [nativa({ etapa: "contrato", etapa_desde: "2026-09-05T22:58:22Z", id: "p1" })],
+      [],
+    );
+
+    const passo = eventos.find((e) => e.fato === "Enviada para contrato");
+    expect(passo?.quando).toBe("2026-09-05T22:58:22Z");
+    expect(passo?.codigo).toBe("000006");
+    // Mais recente primeiro: o passo fica ACIMA da geração da proposta.
+    expect(eventos[0]?.fato).toBe("Enviada para contrato");
+  });
+
+  it("⚠️ não estampa autor: a etapa guarda QUANDO, não QUEM", () => {
+    // `criado_por_nome` é de quem gerou a proposta. Reaproveitá-lo aqui diria que essa pessoa moveu
+    // a venda, que é outra afirmação — e o histórico é o lugar onde ela seria lida como prova.
+    const eventos = historicoDaUnidade(
+      [
+        nativa({
+          criado_por_nome: "Lucas Ruas",
+          etapa: "contrato",
+          etapa_desde: "2026-09-05T22:58:22Z",
+          id: "p1",
+        }),
+      ],
+      [],
+    );
+    expect(eventos.find((e) => e.fato === "Enviada para contrato")?.quem).toBeNull();
+  });
+
+  it("⚠️ com o movimento gravado, não dobra o evento — e quem fica é o movimento, com autor", () => {
+    const eventos = historicoDaUnidade(
+      [nativa({ etapa: "contrato", etapa_desde: "2026-09-06T12:00:00Z", id: "p1" })],
+      [
+        movimento({
+          autor_nome: "Lucas Ruas",
+          de: "proposta",
+          de_c2x: null,
+          para: "contrato",
+          para_c2x: null,
+          proposta_id: "p1",
+          quando: "2026-09-06T12:00:00Z",
+        }),
+      ],
+    );
+
+    expect(eventos.filter((e) => e.fato === "Enviada para contrato")).toHaveLength(0);
+    expect(eventos.find((e) => e.fato === "Proposta → Contrato")?.quem).toBe("Lucas Ruas");
+  });
+
+  it("⚠️ a proposta importada do C2X não é derivada", () => {
+    // As 4.857 do legado chegam com a linha do tempo inteira em `hercules_proposta_etapas`; derivar
+    // por cima dobraria o histórico de todas elas.
+    const eventos = historicoDaUnidade(
+      [proposta({ etapa: "contrato", etapa_desde: "2024-07-18T12:00:00Z", id: "p1" })],
+      [],
+    );
+    expect(eventos.map((e) => e.fato)).not.toContain("Enviada para contrato");
+  });
+
+  it("não repete o que a linha do tempo já conta por outro caminho", () => {
+    // Proposta, reserva e cancelamento entram por conta própria; derivar viraria evento dobrado.
+    for (const etapa of ["proposta", "reservado", "cancelado"]) {
+      const eventos = historicoDaUnidade(
+        [nativa({ etapa, etapa_desde: "2026-09-05T22:58:22Z", id: "p1" })],
+        [],
+      );
+      expect(eventos.filter((e) => e.id.startsWith("etapa:"))).toHaveLength(0);
+    }
+  });
+
+  it("o pedido de cancelamento aparece, com o tipo e quem pediu", () => {
+    // Pedido nao e baixa: a venda segue em contrato ate o juridico concluir. Sem esta linha, um
+    // contrato em processo de distrato fica igual a um contrato andando normalmente.
+    const eventos = historicoDaUnidade(
+      [
+        nativa({
+          cancelamento_pedido_em: "2026-09-06T13:00:00Z",
+          cancelamento_pedido_por: "Lucas Ruas",
+          cancelamento_pedido_tipo: "distrato",
+          etapa: "contrato",
+          etapa_desde: "2026-09-05T22:58:22Z",
+          id: "p1",
+        }),
+      ],
+      [],
+    );
+
+    const pedido = eventos.find((e) => e.id.startsWith("pedido:"));
+    expect(pedido?.fato).toBe("Distrato pedido à Têmis");
+    expect(pedido?.quem).toBe("Lucas Ruas");
+    // O mais recente primeiro: o pedido fica acima do envio para contrato.
+    expect(eventos[0]?.fato).toBe("Distrato pedido à Têmis");
+  });
+
+  it("cancelamento simples nao vira distrato na frase", () => {
+    const eventos = historicoDaUnidade(
+      [
+        nativa({
+          cancelamento_pedido_em: "2026-09-06T13:00:00Z",
+          cancelamento_pedido_tipo: "cancelamento",
+          etapa: "contrato",
+          id: "p1",
+        }),
+      ],
+      [],
+    );
+    expect(eventos.find((e) => e.id.startsWith("pedido:"))?.fato).toBe(
+      "Cancelamento pedido à Têmis",
+    );
+  });
+
+  it("sem a hora da etapa não inventa data", () => {
+    const eventos = historicoDaUnidade([nativa({ etapa: "contrato", id: "p1" })], []);
+    expect(eventos.filter((e) => e.id.startsWith("etapa:"))).toHaveLength(0);
+  });
+
+  it("os passos derivados nascem com a cor certa na trilha", () => {
+    // A bolinha da linha do tempo sai de `classeDoFato`, que le a FRASE. Um fato novo com palavra
+    // fora do vocabulario dela cairia em "transicao" — cinza, no meio de eventos coloridos.
+    expect(classeDoFato("Enviada para contrato")).toBe("contrato");
+    expect(classeDoFato("Enviada para assinatura")).toBe("assinatura");
+    expect(classeDoFato("Faturada")).toBe("faturado");
+    expect(classeDoFato("Distrato")).toBe("cancelado");
+  });
+
+  it("cobre os outros passos que a venda alcança", () => {
+    const casos: Array<[string, string]> = [
+      ["assinatura", "Enviada para assinatura"],
+      ["distrato", "Distrato"],
+      ["faturado", "Faturada"],
+    ];
+    for (const [etapa, fato] of casos) {
+      const eventos = historicoDaUnidade(
+        [nativa({ etapa, etapa_desde: "2026-09-05T22:58:22Z", id: "p1" })],
+        [],
+      );
+      expect(eventos.map((e) => e.fato)).toContain(fato);
+    }
+  });
+});

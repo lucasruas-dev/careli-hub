@@ -122,8 +122,6 @@ const { ModalDeProposta } = await import("./ModalDeProposta");
 
 /** O CPF do titular, cru como o GET entrega. Válido de verdade — `cpfValido` confere o dígito. */
 const CPF_DO_TITULAR = "52998224725";
-/** Outro CPF válido, o da esposa que o coordenador deveria ter digitado. */
-const CPF_DA_ESPOSA = "11144477735";
 
 const portao = {
   credenciamento: { credenciado: true, desde: "2026-01-10", etapa: null, motivo: null },
@@ -184,33 +182,12 @@ function clicar(elemento: Element) {
   });
 }
 
-/**
- * Digitar num `input` controlado do React.
- *
- * ⚠️ O `value` VAI PELO SETTER NATIVO. Atribuir `input.value = "x"` direto faz o React não perceber
- * a mudança (ele guarda o último valor no nó) e o `onChange` roda com o texto velho.
- */
-function digitar(input: HTMLInputElement, valor: string) {
-  const setter = Object.getOwnPropertyDescriptor(
-    window.HTMLInputElement.prototype,
-    "value",
-  )?.set;
-  act(() => {
-    setter?.call(input, valor);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-}
-
 function botao(texto: string): HTMLButtonElement {
   const achado = [...alvo.querySelectorAll("button")].find(
     (b) => b.textContent?.trim() === texto,
   );
   if (!achado) throw new Error(`Botão "${texto}" não está na tela.`);
   return achado;
-}
-
-function campoDoSimulador(): HTMLInputElement | null {
-  return alvo.querySelector<HTMLInputElement>('[data-teste="rascunho-do-simulador"]');
 }
 
 /** Monta a modal e espera o GET do portão pousar. */
@@ -307,32 +284,5 @@ describe("até quando a proposta vale", () => {
     };
     expect(corpo.prazoEmDias).toBe(3);
     expect(corpo.validadeEm).toBeUndefined();
-  });
-});
-
-describe("SONDA", () => {
-  function blocos() {
-    const card = alvo.querySelector("div > div") as HTMLElement;
-    const filhos = [...alvo.querySelectorAll<HTMLElement>("div")].filter(
-      (d) => d.style.flexDirection === "column" && (d.style.display === "none" || d.style.display === "flex"),
-    );
-    return { card, filhos: filhos.map((d) => [d.style.display, (d.textContent ?? "").slice(0, 40)]) };
-  }
-
-  it("sonda os dois momentos", async () => {
-    await abrir();
-    console.log("PORTAO SO:", JSON.stringify(blocos().filhos));
-    clicar(botao("Montar as condicoes".replace("condicoes", "condições")));
-    console.log("NA MONTAGEM:", JSON.stringify(blocos().filhos));
-    console.log("visivel simultaneo?", alvo.textContent?.includes("O cliente da reserva"));
-    clicar(botao("Voltar"));
-    console.log("DE VOLTA:", JSON.stringify(blocos().filhos));
-    // proponente meio digitado sobrevive a ida e volta?
-    const nomeInput = alvo.querySelector<HTMLInputElement>('input[placeholder="Nome completo"]');
-    digitar(nomeInput as HTMLInputElement, "Maria meio digitada");
-    clicar(botao("Montar as condições"));
-    clicar(botao("Voltar"));
-    console.log("RASCUNHO DO PROPONENTE:", alvo.querySelector<HTMLInputElement>('input[placeholder="Nome completo"]')?.value);
-    expect(true).toBe(true);
   });
 });

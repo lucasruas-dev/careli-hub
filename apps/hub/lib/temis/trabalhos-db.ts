@@ -36,6 +36,7 @@ type LinhaCrua = {
   id: string;
   iris_ticket_id: null | string;
   observacao: null | string;
+  proposta_id: null | string;
   tipo: string;
   trabalho_origem_id: null | string;
   unidade: string;
@@ -45,10 +46,18 @@ export type TrabalhoDoBoard = Trabalho & {
   canal: CanalDoTrabalho;
   evidenciaPath: null | string;
   irisTicketId: null | string;
+  /**
+   * A proposta do Hercules que originou o trabalho.
+   *
+   * LIDA, e nao so gravada: e por ela que a Temis volta a venda e encontra cliente, compradores com
+   * participacao, condicoes, plano, cronograma e o PDF que o cliente ja recebeu. Uma coluna que so
+   * recebe insert nao liga modulo nenhum.
+   */
+  propostaId: null | string;
 };
 
 const CAMPOS =
-  "id, tipo, estagio, estagio_desde, enterprise_id, enterprise_codigo, enterprise_nome, unidade, cliente_nome, cliente_cpf, atividades_feitas, observacao, canal, iris_ticket_id, evidencia_path, trabalho_origem_id, criado_em";
+  "id, tipo, estagio, estagio_desde, enterprise_id, enterprise_codigo, enterprise_nome, unidade, cliente_nome, cliente_cpf, atividades_feitas, observacao, canal, iris_ticket_id, evidencia_path, trabalho_origem_id, proposta_id, criado_em";
 
 function mapear(l: LinhaCrua): TrabalhoDoBoard {
   return {
@@ -65,6 +74,7 @@ function mapear(l: LinhaCrua): TrabalhoDoBoard {
     id: l.id,
     irisTicketId: l.iris_ticket_id,
     observacao: l.observacao,
+    propostaId: l.proposta_id,
     tipo: l.tipo as TipoDeTrabalho,
     trabalhoOrigemId: l.trabalho_origem_id,
     unidade: l.unidade,
@@ -132,6 +142,14 @@ export type NovoTrabalho = {
   trabalhoOrigemId?: null | string;
   unidade: string;
   /** A proposta do Hércules que virou este trabalho. É por ela que a Têmis volta à venda. */
+  /**
+   * A PROPOSTA do Hercules. E este o vinculo que funciona hoje.
+   *
+   * `vendaId` aponta para `hercules_vendas`, que tem ZERO linhas — toda tentativa de gravar ali o
+   * id de uma proposta viola a chave estrangeira, e foi assim que as duas vendas despachadas em
+   * 05/09/2026 nao abriram card nenhum (ver a migration 0134).
+   */
+  propostaId?: null | string;
   vendaId?: null | string;
 };
 
@@ -168,6 +186,7 @@ export async function abrirTrabalho(
       evidencia_path: novo.evidenciaPath ?? null,
       iris_ticket_id: novo.irisTicketId ?? null,
       observacao: novo.observacao ?? null,
+      proposta_id: novo.propostaId ?? null,
       tipo: novo.tipo,
       trabalho_origem_id: novo.trabalhoOrigemId ?? null,
       unidade: novo.unidade,

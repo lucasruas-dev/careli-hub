@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-06-hercules-a-entrega-que-nao-chegava",
+    deployedAt: "2026-09-06T12:00:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A proposta agora chega mesmo à Têmis.** As duas vendas enviadas para contrato ontem não abriram card nenhum na fila do jurídico: o vínculo apontava para uma tabela vazia e o registro era recusado toda vez. A tela avisava, o pedido não existia.",
+              "**Depois do contrato existe saída.** A unidade em contrato ficava com os quatro botões apagados, sem jeito de desfazer um envio errado. Agora tem **Solicitar cancelamento**: duas perguntas (assinou? pagou?) e o sistema decide se o caso é cancelamento ou distrato com devolução, abrindo o pedido na Têmis. A venda continua em contrato até o jurídico concluir.",
+              "**O histórico conta o envio para contrato** — inclusive nas duas vendas de ontem, que apareciam paradas em \"Proposta gerada\". A linha do tempo passou a ler a etapa da própria venda, e não só o registro de movimento.",
+              "**Prévia do PDF antes de gerar**: o botão *Ver prévia* abre a folha exatamente como ela vai sair, com tarja de prévia, sem cadastrar a proposta nem disparar WhatsApp.",
+              "**Os demais proponentes vêm da base.** O nome deixou de ser digitado: busca por nome ou CPF, o CPF vem da CAD, e quem não está credenciado aparece com o motivo em vez de sumir. Sem CAD no empreendimento, a tela diz o que fazer.",
+              "A **% de participação virou obrigatória** (ela vai escrita no contrato), o **corretor** entrou na ficha da unidade, e **enviar para contrato pede confirmação** mostrando COD, cliente, imobiliária, plano e valor.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "64e82503",
+    technical: {
+      done: "A ENTREGA À TÊMIS NUNCA FUNCIONOU, E A MEDIÇÃO É O ACHADO DO DIA. `temis_trabalhos` tinha 4 linhas (as de seed) e NENHUMA criada depois de 05/09, com as duas vendas despachadas naquele dia (COD 000005 às 18:56 e COD 000006 às 19:58) sem card nenhum. Causa: `temis_trabalhos_venda_id_fkey` referencia `hercules_vendas`, que tem ZERO linhas, e o Hércules mandava ali o id de uma PROPOSTA — a FK era violada em toda tentativa, `abrirTrabalho` devolvia o erro e a rota, por desenho, não derruba a transição. ⚠️ A COLUNA NOVA (0134) E NÃO O REAPONTAMENTO DA ANTIGA: `hercules_vendas` é de onde o catálogo de variáveis da minuta tira valor, entrada, sinal, dia de vencimento e `plano_snapshot`; ela está vazia porque a venda ainda não é gravada lá, e gravá-la hoje esbarra em `plano_id not null`, que a proposta não tem. As duas convivem — `proposta_id` é a venda de hoje, `venda_id` fica reservada. E a coluna é LIDA no board, não só escrita. O HISTÓRICO PASSOU A DERIVAR A ETAPA (`ETAPA_DERIVADA`): a linha do movimento é um `insert` à parte que não derruba a transição quando falha, e o preço era o histórico ficar sem o passo — exatamente o que aconteceu nas duas vendas movidas antes de aquele insert existir. Derivar de `etapa_desde` conserta o passado sem escrever no banco e aguenta a falha do insert daqui para a frente; o movimento gravado continua vencendo (ele traz autor e motivo), e só a proposta NATIVA é derivada — as 4.857 importadas já chegam com a linha do tempo do legado. A PRÉVIA É A MESMA ROTA, com `previa: true` parando no passo 6½: escopo, reserva viva, titular, CAD credenciada, régua (com a faixa do prazo) e cronograma já rodaram, e é isso que garante que o papel conferido é o papel gerado — uma rota separada repetiria os sete passos e envelheceria calada. A tarja vai em TODAS as páginas: quem recebe PDF por WhatsApp abre numa página qualquer. O CANCELAMENTO PÓS-CONTRATO é PEDIDO, não baixa: `classificarCancelamento` (que existia e ninguém chamava) decide entre cancelamento e distrato pelos dois fatos, e a etapa da venda NÃO se mexe — marcá-la cancelada devolveria o lote ao estoque com um contrato de pé do outro lado. ⚠️ OS DOIS FATOS SÃO DECLARADOS, e está dito na tela: `hercules_proposta_eventos` só é escrita pela carga do C2X e mente por omissão até no legado (1.979 propostas `faturado`, 914 com evento de pagamento). O carimbo é gravado com `.is(null)` + `.select()` antes de abrir o card — sem o `.select()` o PostgREST devolve zero linhas com sucesso e o segundo clique passaria por \"gravou\" — e é desfeito quando a Têmis não recebe. Conferência adversarial em duas rodadas. 2.842 testes verdes (207 arquivos); typecheck e lint limpos.",
+      motivation:
+        "O Lucas mandou fechar tudo o que estava pendente. O que apareceu no caminho foi maior do que os pendentes: a entrega ao jurídico, anunciada como pronta ontem, nunca tinha saído do lugar.",
+    },
+    title: "A entrega ao jurídico que não chegava",
+    type: "correcao",
+    version: "1.284.0",
+  },
+  {
     buildTag: "2026-09-05-hercules-entrega-a-temis",
     deployedAt: "2026-09-05T20:30:00-03:00",
     modules: [
