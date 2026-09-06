@@ -9,6 +9,7 @@ import {
   type TipoDeTrabalho,
   NOME_DO_TIPO,
   atividadesDoEstagio,
+  prazoDeEmissao,
   progresso,
   situacaoDoPrazo,
 } from "@/lib/temis/trabalhos";
@@ -70,6 +71,22 @@ const CLASSE_DO_TIPO: Record<TipoDeTrabalho, string> = {
   contrato: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
   distrato: "bg-rose-200 text-rose-900 dark:bg-rose-500/25 dark:text-rose-200",
 };
+
+/**
+ * "2026-09-06T18:19:00Z" → "06/09".
+ *
+ * ⚠️ NO FUSO DA OPERAÇÃO (−03:00), e não em UTC: um trabalho aberto às 21h de Brasília é gravado no
+ * dia seguinte em UTC, e o card diria que o pedido chegou amanhã.
+ */
+function dataCurta(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  });
+}
 
 /** `12345678901` → `123.456.789-01`. */
 function cpfLegivel(bruto: null | string): null | string {
@@ -246,6 +263,8 @@ function Card({
 }) {
   const p = progresso(trabalho);
   const prazo = situacaoDoPrazo(trabalho);
+  // A promessa de ponta a ponta: "quando o contrato fica pronto?", que é a pergunta do comercial.
+  const emissao = prazoDeEmissao(trabalho);
   const doEstagio = atividadesDoEstagio(trabalho.tipo, trabalho.estagio);
   const feitas = new Set(trabalho.atividadesFeitas);
 
@@ -289,6 +308,28 @@ function Card({
         ) : null}
         <p className="mt-0.5 text-[0.7rem] text-ink-muted">
           {trabalho.empreendimentoCodigo} · {trabalho.unidade}
+        </p>
+
+        {/* ⚠️ QUANDO CHEGOU E PARA QUANDO ESTÁ (Lucas, 06/09/2026: *"pode continuar trazer o prazo,
+            emissão de contrato 24 horas úteis"*, *"pode colocar no card a data de envio"*). O
+            "há N dias" sozinho conta o tempo decorrido e não responde a pergunta de quem mandou o
+            contrato: quando ele volta pronto. A data de envio é o outro lado da mesma conta — sem
+            ela, "vence em 09/09" não diz se o pedido é de ontem ou da semana passada. */}
+        <p className="mt-1 text-[0.7rem] text-ink-muted">
+          Enviado {dataCurta(trabalho.criadoEm)}
+          {emissao ? (
+            <>
+              {" · "}
+              <span
+                className={
+                  emissao.estourou ? "font-bold text-red-600 dark:text-red-400" : "font-semibold"
+                }
+              >
+                emissão em {emissao.escrito}
+                {emissao.estourou ? " (vencido)" : ` · até ${dataCurta(emissao.em.toISOString())}`}
+              </span>
+            </>
+          ) : null}
         </p>
 
         {/* ⚠️ O CHECKLIST É TRABALHO DE QUEM EXECUTA, e o board do comercial não executa nada

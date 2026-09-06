@@ -286,3 +286,83 @@ export function progresso(trabalho: Pick<Trabalho, "atividadesFeitas" | "estagio
   const feitas = new Set(trabalho.atividadesFeitas);
   return { feitas: doEstagio.filter((a) => feitas.has(a.texto)).length, total: doEstagio.length };
 }
+
+/**
+ * O PRAZO DE EMISSÃO — o que a casa promete ao comercial, em HORAS ÚTEIS.
+ *
+ * Lucas (06/09/2026), sobre o card no board do comercial: *"pode continuar trazer o prazo, emissão
+ * de contrato 24 horas úteis"*.
+ *
+ * ⚠️ É OUTRA MEDIDA, E NÃO A SOMA DAS ATIVIDADES. `situacaoDoPrazo` responde "o que está na minha
+ * mão HOJE está atrasado?" — pergunta de quem executa, por estágio. Esta responde "quando o
+ * contrato fica pronto?", que é a única pergunta do comercial, e ela é de ponta a ponta: da hora em
+ * que o pedido chegou até o documento sair para assinatura. Somar os prazos por atividade daria
+ * outro número (três dias, no contrato) e prometeria ao comercial algo que ninguém combinou.
+ *
+ * ⚠️ 24 HORAS ÚTEIS É UM DIA ÚTIL, e não três turnos de oito horas. É como a casa fala e como o
+ * cliente entende: pedido de hoje, contrato amanhã — sexta vira segunda. A conta é `diasUteis`, a
+ * mesma do resto do módulo, e por isso a constante é expressa em horas mas dividida por 24: é o
+ * número da promessa que fica escrito aqui, não a unidade interna.
+ *
+ * ⚠️ O CANCELAMENTO E O DISTRATO NÃO TÊM ESTA PROMESSA. Neles o prazo depende de apuração de
+ * valores e de decisão do jurídico; carimbar 24 horas no card seria prometer, para quem lê, uma
+ * data que ninguém pode cumprir.
+ */
+export const HORAS_UTEIS_DE_EMISSAO: Partial<Record<TipoDeTrabalho, number>> = {
+  contrato: 24,
+};
+
+/** As etapas em que a emissão ainda está acontecendo — depois delas o documento já saiu. */
+const EMITINDO: EstagioDoTrabalho[] = ["entrada", "confeccao"];
+
+export type PrazoDeEmissao = {
+  /** Quando o documento tem de estar pronto. */
+  em: Date;
+  /** O que escrever no card: "24h úteis". */
+  escrito: string;
+  /** Já passou da hora e o documento não saiu. */
+  estourou: boolean;
+};
+
+/**
+ * Até quando este trabalho tem de virar documento.
+ *
+ * `null` quando o tipo não tem promessa (cancelamento, distrato, cessão) ou quando a emissão já
+ * aconteceu — passado o despacho para assinatura, o prazo que corre é o do cliente assinar, e esse
+ * não é nosso.
+ */
+export function prazoDeEmissao(
+  trabalho: Pick<Trabalho, "criadoEm" | "estagio" | "tipo">,
+  agora: Date = new Date(),
+): null | PrazoDeEmissao {
+  const horas = HORAS_UTEIS_DE_EMISSAO[trabalho.tipo];
+  if (!horas || !EMITINDO.includes(trabalho.estagio)) return null;
+
+  const inicio = new Date(trabalho.criadoEm);
+  if (Number.isNaN(inicio.getTime())) return null;
+
+  const em = somarDiasUteis(inicio, Math.max(1, Math.round(horas / 24)));
+  return {
+    em,
+    escrito: horas === 24 ? "24h úteis" : `${horas}h úteis`,
+    estourou: agora > em,
+  };
+}
+
+/**
+ * A data N dias ÚTEIS depois, mantendo a hora.
+ *
+ * ⚠️ SÁBADO E DOMINGO NÃO CONTAM, pela mesma razão de `diasUteis`: pedido de sexta com prazo de um
+ * dia útil vence na segunda, e não no sábado — cobrar por um dia em que ninguém trabalha faz o
+ * board mentir sobre atraso.
+ */
+function somarDiasUteis(de: Date, dias: number): Date {
+  const fim = new Date(de.getTime());
+  let restantes = dias;
+  while (restantes > 0) {
+    fim.setUTCDate(fim.getUTCDate() + 1);
+    const dia = fim.getUTCDay();
+    if (dia !== 0 && dia !== 6) restantes -= 1;
+  }
+  return fim;
+}

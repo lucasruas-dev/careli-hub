@@ -6,9 +6,11 @@ import {
   diasUteis,
   estagiosDoTipo,
   podeAvancar,
+  prazoDeEmissao,
   progresso,
   proximoEstagio,
   situacaoDoPrazo,
+  type EstagioDoTrabalho,
   type TipoDeTrabalho,
 } from "./trabalhos";
 
@@ -183,5 +185,69 @@ describe("progresso", () => {
       tipo: "contrato",
     });
     expect(p).toEqual({ feitas: 1, total: 2 });
+  });
+});
+
+describe("prazoDeEmissao", () => {
+  const trabalho = (p: { criadoEm: string; estagio: EstagioDoTrabalho; tipo: TipoDeTrabalho }) => p;
+
+  it("contrato prometido em 24 horas úteis vence no próximo dia útil", () => {
+    // Lucas (06/09/2026): *"emissão de contrato 24 horas úteis"*. 24h úteis é UM dia útil — é como
+    // a casa fala e como o cliente entende: pedido de hoje, contrato amanhã.
+    const p = prazoDeEmissao(
+      trabalho({ criadoEm: "2026-09-08T18:00:00Z", estagio: "entrada", tipo: "contrato" }),
+      new Date("2026-09-08T19:00:00Z"),
+    );
+    expect(p?.escrito).toBe("24h úteis");
+    expect(p?.em.toISOString().slice(0, 10)).toBe("2026-09-09");
+    expect(p?.estourou).toBe(false);
+  });
+
+  it("⚠️ sexta vence na SEGUNDA: sábado e domingo não contam", () => {
+    // Cobrar por um dia em que ninguém trabalha faz o board mentir sobre atraso — a mesma razão
+    // pela qual `diasUteis` existe.
+    const p = prazoDeEmissao(
+      trabalho({ criadoEm: "2026-09-11T18:00:00Z", estagio: "entrada", tipo: "contrato" }),
+      new Date("2026-09-11T19:00:00Z"),
+    );
+    // 11/09/2026 é sexta; um dia útil depois é segunda, 14/09.
+    expect(p?.em.toISOString().slice(0, 10)).toBe("2026-09-14");
+  });
+
+  it("passou da hora e o documento não saiu: estourou", () => {
+    const p = prazoDeEmissao(
+      trabalho({ criadoEm: "2026-09-08T12:00:00Z", estagio: "confeccao", tipo: "contrato" }),
+      new Date("2026-09-11T12:00:00Z"),
+    );
+    expect(p?.estourou).toBe(true);
+  });
+
+  it("⚠️ depois do despacho não há mais prazo NOSSO: quem demora é quem assina", () => {
+    expect(
+      prazoDeEmissao(
+        trabalho({ criadoEm: "2026-09-08T12:00:00Z", estagio: "assinatura", tipo: "contrato" }),
+      ),
+    ).toBeNull();
+    expect(
+      prazoDeEmissao(
+        trabalho({ criadoEm: "2026-09-08T12:00:00Z", estagio: "finalizado", tipo: "contrato" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("⚠️ cancelamento e distrato NÃO têm promessa de 24h", () => {
+    // Neles o prazo depende de apuração de valores e de decisão do jurídico; carimbar uma data no
+    // card seria prometer, para quem lê, algo que ninguém pode cumprir.
+    for (const tipo of ["cancelamento", "distrato", "cessao"] as TipoDeTrabalho[]) {
+      expect(
+        prazoDeEmissao(trabalho({ criadoEm: "2026-09-08T12:00:00Z", estagio: "entrada", tipo })),
+      ).toBeNull();
+    }
+  });
+
+  it("data ilegível não vira prazo inventado", () => {
+    expect(
+      prazoDeEmissao(trabalho({ criadoEm: "ontem", estagio: "entrada", tipo: "contrato" })),
+    ).toBeNull();
   });
 });
