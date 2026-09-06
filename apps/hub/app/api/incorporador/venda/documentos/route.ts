@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { APOLO_DOCS_BUCKET } from "@/lib/apolo/documentos";
 import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
-import { createApoloAdminClient } from "@/lib/apolo/server";
+import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import {
   agruparPorProtocolo,
@@ -99,6 +99,7 @@ async function vendaDoLote(
   const proposta = daProposta as null | {
     cliente_documento: null | string;
     cliente_entity_id: null | string;
+    // (o CPF vira hash antes de ser gravado — ver `hashDoCpf` abaixo)
     empreendimento_codigo: null | string;
     id: string;
     protocolo_numero: null | number;
@@ -109,7 +110,7 @@ async function vendaDoLote(
       // DECIDIU o credenciamento; um CPF pode resolver para várias entidades (fichas duplicadas
       // existem, e há migration escrita para mesclá-las), e "a primeira" poria o documento na ficha
       // errada.
-      clienteDocumento: proposta.cliente_documento,
+      clienteDocumentoHash: hashDoCpf(proposta.cliente_documento),
       clienteEntityId: proposta.cliente_entity_id,
       empreendimentoCodigo: proposta.empreendimento_codigo,
       propostaId: proposta.id,
@@ -141,7 +142,7 @@ async function vendaDoLote(
   const cpf = typeof primeiro?.cpf === "string" ? primeiro.cpf.replace(/\D/g, "") : "";
 
   return {
-    clienteDocumento: cpf || null,
+    clienteDocumentoHash: hashDoCpf(cpf),
     clienteEntityId: null as null | string,
     empreendimentoCodigo: null,
     propostaId: null as null | string,
@@ -325,7 +326,7 @@ export async function POST(request: Request) {
       .from("hercules_documentos")
       .insert({
         caminho,
-        cliente_documento: venda.clienteDocumento,
+        cliente_documento_hash: venda.clienteDocumentoHash,
         cliente_entity_id: venda.clienteEntityId,
         empreendimento_codigo: venda.empreendimentoCodigo,
         enviado_por: auth.sessao.usuarioId ?? null,
@@ -359,4 +360,17 @@ export async function POST(request: Request) {
     console.error("[hercules][documentos] falha ao guardar", erro);
     return NextResponse.json({ error: "Não foi possível guardar o documento." }, { status: 503 });
   }
+}
+
+/**
+ * O CPF do cliente como o Apolo o guarda: HASH, nunca texto.
+ *
+ * ⚠️ O APOLO NÃO TEM CPF EM TEXTO PARA CASAR. `apolo_entities` guarda `document_hash` e
+ * `document_masked` — não existe coluna com os dígitos. Guardar o CPF puro aqui daria um campo que
+ * nunca casaria com nada do outro lado (e ainda seria dado sensível a mais numa tabela nova). O
+ * hash é o mesmo de `hashIdentifier("cpf", ...)`, que é a chave que o dedup da casa já usa.
+ */
+function hashDoCpf(bruto: null | string): null | string {
+  const digitos = String(bruto ?? "").replace(/\D/g, "");
+  return digitos.length >= 11 ? hashIdentifier("cpf", digitos) : null;
 }

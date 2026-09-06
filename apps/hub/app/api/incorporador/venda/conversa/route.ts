@@ -115,17 +115,23 @@ export async function GET(request: Request) {
       .select("id,protocolo_numero,tipo,texto,autor_nome,criado_em")
       .eq("workspace_id", WORKSPACE)
       .eq("unidade_id", unidade.id)
-      // ⚠️ A CONVERSA LÊ-SE DE CIMA PARA BAIXO, ao contrário do histórico. Chat com a mensagem mais
-      // nova no topo obriga a ler de trás para frente para entender o que foi combinado.
-      .order("criado_em", { ascending: true })
+      // ⚠️ AS MAIS RECENTES, E A ORDEM SE INVERTE DEPOIS. Ler `ascending` com `limit` traz as 500
+      // MAIS ANTIGAS: passando disso, a conversa congelaria no passado e nenhuma mensagem nova
+      // apareceria — sem erro nenhum, que é o pior jeito de um chat parar de funcionar. O corte,
+      // quando existir, cai no começo da conversa, que é onde ele dói menos.
+      .order("criado_em", { ascending: false })
       .limit(500);
 
     if (error) throw new Error(error.message);
 
-    const mensagens = ((data ?? []) as Array<{ protocolo_numero: null | number }>).map((m) => ({
-      ...m,
-      codigo: codigoDaVenda(m.protocolo_numero) || null,
-    }));
+    // ⚠️ A CONVERSA LÊ-SE DE CIMA PARA BAIXO, ao contrário do histórico ao lado: chat com a mensagem
+    // mais nova no topo obriga a ler de trás para frente para entender o que foi combinado.
+    const mensagens = ((data ?? []) as Array<{ protocolo_numero: null | number }>)
+      .map((m) => ({
+        ...m,
+        codigo: codigoDaVenda(m.protocolo_numero) || null,
+      }))
+      .reverse();
 
     return NextResponse.json(
       { data: { mensagens } },

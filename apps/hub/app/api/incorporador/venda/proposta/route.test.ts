@@ -194,6 +194,10 @@ vi.mock("@/lib/apolo/server", () => {
   };
 
   return {
+    // ⚠️ O DUBLÊ PRECISA EXPORTAR TUDO O QUE A ROTA IMPORTA DO MÓDULO. `hashIdentifier` entrou
+    // quando o PDF da proposta passou a ser registrado como documento (ele monta o elo com a ficha
+    // do cliente no Apolo); sem esta linha ele chega `undefined`, a chamada quebra e a rota devolve
+    // 503 — um erro que parece da proposta e é do mock.
     createApoloAdminClient: () => ({
       from: (tabela: string) => consulta(tabela),
       storage: {
@@ -207,6 +211,7 @@ vi.mock("@/lib/apolo/server", () => {
         }),
       },
     }),
+    hashIdentifier: (tipo: string, valor: string) => `hash:${tipo}:${valor}`,
   };
 });
 

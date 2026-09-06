@@ -65,8 +65,15 @@ create table if not exists public.hercules_documentos (
   -- ⚠️ E O CPF ANDA JUNTO porque o documento chega ANTES da proposta: na fase de reserva nao ha
   -- `cliente_entity_id` (a reserva guarda o CPF do titular em jsonb). Com os dois campos, o leitor
   -- do Apolo casa pela entidade OU pelo documento, e nada fica invisivel esperando a proposta.
-  cliente_entity_id     uuid references public.apolo_entities (id) on delete set null,
-  cliente_documento     text,
+  --
+  -- ⚠️ O DOCUMENTO VAI COMO HASH, E NAO EM TEXTO. O Apolo NAO guarda CPF em texto: `apolo_entities`
+  -- tem `document_hash` e `document_masked`, e os digitos nao existem em coluna nenhuma. Guardar o
+  -- CPF puro aqui daria um campo que nunca casaria com nada do outro lado — e ainda seria dado
+  -- sensivel a mais numa tabela nova. O hash e o mesmo de `hashIdentifier("cpf", ...)`, a chave que
+  -- o dedup da casa ja usa; o leitor compara com as DUAS fontes do Apolo (`document_hash` e
+  -- `apolo_entity_identifiers.value_hash`, porque a primeira so e preenchida por quem nasce la).
+  cliente_entity_id       uuid references public.apolo_entities (id) on delete set null,
+  cliente_documento_hash  text,
 
   enviado_por           text,
   enviado_por_nome      text,
@@ -87,9 +94,9 @@ create index if not exists hercules_documentos_por_protocolo
 create index if not exists hercules_documentos_por_cliente
   on public.hercules_documentos (cliente_entity_id)
   where cliente_entity_id is not null;
-create index if not exists hercules_documentos_por_cpf
-  on public.hercules_documentos (cliente_documento)
-  where cliente_documento is not null;
+create index if not exists hercules_documentos_por_documento
+  on public.hercules_documentos (cliente_documento_hash)
+  where cliente_documento_hash is not null;
 
 -- ── CONVERSA ────────────────────────────────────────────────────────────────
 --

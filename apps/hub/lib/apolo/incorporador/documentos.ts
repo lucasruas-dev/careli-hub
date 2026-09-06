@@ -26,6 +26,7 @@ import { pessoaNoEscopo } from "./pessoa-no-escopo";
 import type { TipoDaFicha } from "./crm";
 import type { SessaoIncorporador } from "./sessao";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
+import { codigosDaSessao } from "@/lib/apolo/incorporador/escopo";
 
 // ── TIPOS DO PAYLOAD ────────────────────────────────────────────────────────
 
@@ -216,7 +217,7 @@ export async function montarDocumentos({
       ? listApoloDocuments(admin, "entidade", pessoa.entityId).catch(() => [])
       : Promise.resolve([]),
     lerAnexosDoC2x(c2xUserId),
-    admin ? lerDocumentosDaVenda(admin, pessoa.entityId) : Promise.resolve([]),
+    admin ? lerDocumentosDaVenda(admin, pessoa.entityId, await codigosDaSessao(sessao)) : Promise.resolve([]),
   ]);
 
   return {
@@ -241,41 +242,107 @@ export async function montarDocumentos({
  * ⚠️ FALHA AQUI NÃO DERRUBA A ABA: as outras três fontes continuam. Uma lista a menos é ruim; a
  * ficha inteira em branco por causa de uma tabela nova é pior.
  */
-async function lerDocumentosDaVenda(
+/**
+ * ⚠️ EXPORTADA PORQUE SÃO DOIS LEITORES, e esquecer o segundo é o erro clássico desta casa: o
+ * portal do incorporador (aqui) e o painel interno do CRM (`/api/apolo/documentos`). O pedido do
+ * Lucas — *"esses documentos também têm que existir no apolo"* — só está cumprido quando o
+ * documento aparece nas DUAS fichas; cumprido em uma só, ele parece funcionar para quem testa pelo
+ * portal e não existe para quem trabalha no CRM.
+ */
+export async function lerDocumentosDaVenda(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
   entityId: string,
+  /**
+   * Os códigos de empreendimento que a sessão enxerga.
+   *
+   * ⚠️ A PESSOA ESTAR NO ESCOPO NÃO PÕE TUDO DELA NO ESCOPO. Um comprador pode ter venda em dois
+   * produtos, e o coordenador de um deles não tem por que ver o documento do outro — a ficha prova
+   * a PESSOA, e este recorte prova o PRODUTO. `undefined` = sem recorte (o CRM interno, que já
+   * enxerga a casa toda).
+   */
+  codigosPermitidos?: string[],
 ): Promise<DocumentoDaVendaNoApolo[]> {
   try {
-    const { data: pessoa } = await admin
-      .from("apolo_entities")
-      .select("document")
-      .eq("id", entityId)
-      .maybeSingle();
+    const hashes = await hashesDaPessoa(admin, entityId);
+    const recortar = codigosPermitidos && codigosPermitidos.length > 0;
 
-    const cpf = String((pessoa as null | { document: null | string })?.document ?? "").replace(
-      /\D/g,
-      "",
-    );
+    // ⚠️ `.or()` COM VALOR INTERPOLADO É FILTRO MONTADO COMO STRING, e o PostgREST lê vírgula e
+    // parêntese como sintaxe. Aqui os dois lados são valores controlados (um uuid e hashes hex),
+    // mas o formato do filtro continua sendo texto — por isso a busca é feita em DUAS consultas
+    // com `.eq`/`.in`, e o resultado é unido em memória. Uma dessas consultas não impede a outra.
+    const base = () => {
+      const consulta = admin
+        .from("hercules_documentos")
+        .select(CAMPOS_DO_DOCUMENTO_DA_VENDA)
+        .eq("workspace_id", "careli")
+        .is("removido_em", null);
+      return recortar
+        ? consulta.in("empreendimento_codigo", codigosPermitidos as string[])
+        : consulta;
+    };
 
-    const filtro = cpf
-      ? `cliente_entity_id.eq.${entityId},cliente_documento.eq.${cpf}`
-      : `cliente_entity_id.eq.${entityId}`;
+    const [porEntidade, porDocumento] = await Promise.all([
+      base().eq("cliente_entity_id", entityId).order("criado_em", { ascending: false }).limit(200),
+      hashes.length > 0
+        ? base()
+            .in("cliente_documento_hash", hashes)
+            .order("criado_em", { ascending: false })
+            .limit(200)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
 
-    const { data, error } = await admin
-      .from("hercules_documentos")
-      .select("id,nome,tipo,protocolo_numero,criado_em")
-      .eq("workspace_id", "careli")
-      .is("removido_em", null)
-      .or(filtro)
-      .order("criado_em", { ascending: false })
-      .limit(200);
+    if (porEntidade.error) throw new Error(porEntidade.error.message);
+    if (porDocumento.error) throw new Error(porDocumento.error.message);
 
-    if (error) throw new Error(error.message);
-    return (data ?? []) as DocumentoDaVendaNoApolo[];
+    // O mesmo documento pode vir pelos dois caminhos (entidade E hash): a união é por id.
+    const porId = new Map<string, DocumentoDaVendaNoApolo>();
+    for (const linha of [
+      ...((porEntidade.data ?? []) as DocumentoDaVendaNoApolo[]),
+      ...((porDocumento.data ?? []) as DocumentoDaVendaNoApolo[]),
+    ]) {
+      porId.set(linha.id, linha);
+    }
+
+    return [...porId.values()].sort((a, b) => b.criado_em.localeCompare(a.criado_em));
   } catch (erro) {
     console.error("[incorporador/documentos] falha ao ler os documentos da venda", erro);
     return [];
   }
+}
+
+const CAMPOS_DO_DOCUMENTO_DA_VENDA = "id,nome,tipo,protocolo_numero,criado_em";
+
+/**
+ * Os hashes de documento desta pessoa — as DUAS fontes.
+ *
+ * ⚠️ O APOLO NÃO GUARDA CPF EM TEXTO. `apolo_entities` tem `document_hash` e `document_masked`; os
+ * dígitos não existem em coluna nenhuma. E `document_hash` só é preenchido por quem NASCE no Apolo
+ * (eram 153 de 4.286): o sync do C2X grava nulo ali e põe o CPF em
+ * `apolo_entity_identifiers.value_hash`. Ler só a primeira coluna é ser cego para quase toda a
+ * base — é a mesma lição que `entidadesDoDocumento` já carrega em `cliente-credenciado.ts`.
+ */
+export async function hashesDaPessoa(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  entityId: string,
+): Promise<string[]> {
+  const [daEntidade, dosIdentificadores] = await Promise.all([
+    admin.from("apolo_entities").select("document_hash").eq("id", entityId).maybeSingle(),
+    admin.from("apolo_entity_identifiers").select("value_hash").eq("entity_id", entityId),
+  ]);
+
+  // ⚠️ ERRO AQUI NÃO PODE VIRAR "a pessoa não tem documento". Silêncio nas duas consultas devolveria
+  // lista vazia, e o documento da fase de reserva sumiria da ficha sem nada explicando — o mesmo
+  // tipo de falha calada que já custou caro nesta casa.
+  if (daEntidade.error) throw new Error(daEntidade.error.message);
+  if (dosIdentificadores.error) throw new Error(dosIdentificadores.error.message);
+
+  const hashes = new Set<string>();
+  const daColuna = (daEntidade.data as null | { document_hash: null | string })?.document_hash;
+  if (daColuna) hashes.add(daColuna);
+  for (const linha of (dosIdentificadores.data ?? []) as Array<{ value_hash: null | string }>) {
+    if (linha.value_hash) hashes.add(linha.value_hash);
+  }
+  return [...hashes];
 }
 
 // ── ABERTURA (um documento por vez, com a posse reconferida) ────────────────
@@ -366,32 +433,35 @@ export async function abrirDocumento({
     // O documento da venda é achado por entidade OU por CPF (na fase de reserva não há entidade),
     // então as duas condições entram na consulta que já filtra pelo id: um id chutado de outra
     // venda não casa e vira 404, sem nunca gerar a URL para conferir depois.
-    const { data: quem } = await admin
-      .from("apolo_entities")
-      .select("document")
-      .eq("id", pessoa.entityId)
-      .maybeSingle();
-
-    const cpf = String((quem as null | { document: null | string })?.document ?? "").replace(
-      /\D/g,
-      "",
-    );
-    const filtro = cpf
-      ? `cliente_entity_id.eq.${pessoa.entityId},cliente_documento.eq.${cpf}`
-      : `cliente_entity_id.eq.${pessoa.entityId}`;
-
+    // ⚠️ A POSSE É REFEITA PELA PESSOA, e não pelo id sozinho — a MESMA regra do ramo `apolo` acima.
+    // O documento da venda pertence à pessoa por `cliente_entity_id` OU pelo hash do documento (na
+    // fase de reserva ainda não há entidade), então a leitura busca o id e confere o dono depois,
+    // em memória: um id de outra venda não casa e vira 404, sem nunca gerar a URL para conferir
+    // depois.
     const { data } = await admin
       .from("hercules_documentos")
-      .select("id,caminho")
+      .select("id,caminho,cliente_entity_id,cliente_documento_hash")
       .eq("workspace_id", "careli")
       .eq("id", alvo)
       .is("removido_em", null)
-      .or(filtro)
       .limit(1)
-      .returns<Array<{ caminho: string; id: string }>>();
+      .returns<
+        Array<{
+          caminho: string;
+          cliente_documento_hash: null | string;
+          cliente_entity_id: null | string;
+          id: string;
+        }>
+      >();
 
     const linha = data?.[0];
     if (!linha?.caminho) return { ok: false, status: 404 };
+
+    const daPessoa =
+      linha.cliente_entity_id === pessoa.entityId ||
+      (linha.cliente_documento_hash !== null &&
+        (await hashesDaPessoa(admin, pessoa.entityId)).includes(linha.cliente_documento_hash));
+    if (!daPessoa) return { ok: false, status: 404 };
 
     const assinada = await admin.storage
       .from("apolo-documents")

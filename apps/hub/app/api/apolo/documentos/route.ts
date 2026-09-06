@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
+import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
+import { lerDocumentosDaVenda } from "@/lib/apolo/incorporador/documentos";
 import {
   listApoloDocuments,
   uploadApoloDocument,
@@ -60,8 +62,35 @@ export async function GET(request: Request) {
 
   try {
     const documents = await listApoloDocuments(adminClient, target.scope, target.ownerId);
+
+    // ⚠️ O DOCUMENTO DA VENDA ENTRA AQUI TAMBÉM (Lucas, 06/09/2026: *"esses documentos também têm
+    // que existir no apolo"*). Ele NÃO é copiado para `apolo_documents` — os bytes já estão no
+    // mesmo bucket, e copiar a linha traria o `entity_id NOT NULL`, o DELETE com autorização de
+    // leitura e a poluição da conferência da CAD (ver a 0136). O que ele precisa é APARECER, e
+    // aparecer nas DUAS fichas: esta, do CRM interno, e a do portal do incorporador.
+    //
+    // ⚠️ SÓ NO ESCOPO DE ENTIDADE. O documento da venda pertence a uma PESSOA; no escopo de
+    // empreendimento não há a quem atribuí-lo.
+    const daVenda =
+      target.scope === "entidade"
+        ? (await lerDocumentosDaVenda(adminClient, target.ownerId)).map((d) => ({
+            createdAt: d.criado_em,
+            documentType: d.tipo,
+            fileName: d.nome,
+            hasFile: true,
+            id: d.id,
+            // O COD na frente: aqui o eixo é a pessoa, e ela pode ter documento de duas vendas.
+            label: codigoDaVenda(d.protocolo_numero)
+              ? `${codigoDaVenda(d.protocolo_numero)} · ${d.nome}`
+              : d.nome,
+            sizeBytes: null,
+            status: "ready",
+            uploadedBy: null,
+          }))
+        : [];
+
     return NextResponse.json(
-      { documents },
+      { documents: [...documents, ...daVenda] },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

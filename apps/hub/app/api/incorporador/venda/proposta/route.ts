@@ -12,7 +12,7 @@ import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
-import { createApoloAdminClient } from "@/lib/apolo/server";
+import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 import { avisarSobreAVenda, destinatariosDaVenda } from "@/lib/hercules/avisos-da-venda";
 import { carregarCadastroDeEmpreendimentos, type LinhaDoCadastro } from "@/lib/hercules/cadastro";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
@@ -868,6 +868,10 @@ export async function POST(request: Request) {
     // coordenador tentaria de novo por cima do índice único.
     const avisos = await avisar(admin, {
       c2xId,
+      // O elo do PDF com a ficha do cliente no Apolo — a mesma entidade que decidiu o
+      // credenciamento, e o hash do CPF do titular. Ver a 0136.
+      clienteDocumentoHash: hashIdentifier("cpf", cpfDoTitular),
+      clienteEntityId: credenciamento.entityId,
       codigo,
       compradores,
       corretorId: reserva.corretor_entity_id,
@@ -877,6 +881,7 @@ export async function POST(request: Request) {
       pedido,
       plano,
       propostaId,
+      protocolo: reserva.protocolo_numero,
       titular,
       unidade,
       unidadeEscrita,
@@ -942,6 +947,9 @@ async function avisar(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
   dados: {
     c2xId: string;
+    /** O elo do PDF com a ficha do cliente no Apolo. Ver a 0136. */
+    clienteDocumentoHash: null | string;
+    clienteEntityId: null | string;
     codigo: string;
     compradores: CompradorDoPedido[];
     corretorId: null | string;
@@ -951,6 +959,8 @@ async function avisar(
     pedido: PedidoDeProposta;
     plano: PlanoComercial;
     propostaId: null | string;
+    /** O COD em número — é ele que agrupa o documento na aba. */
+    protocolo: null | number;
     titular: Proponente;
     unidade: UnidadeDaProposta;
     unidadeEscrita: string;
@@ -983,12 +993,15 @@ async function avisar(
         imobiliaria: destinatarios.imobiliaria.nome,
         telefone: destinatarios.imobiliaria.telefone,
       },
+      clienteDocumentoHash: dados.clienteDocumentoHash,
+      clienteEntityId: dados.clienteEntityId,
       codigo: dados.codigo,
       compradores: dados.compradores,
       cronograma: dados.cronograma,
       diaDeVencimento: dados.pedido.vencimentoDia,
       empreendimento: dados.empreendimento,
       enterpriseId: dados.c2xId,
+      protocolo: dados.protocolo,
       propostaId: dados.propostaId,
       unidade: dados.unidade,
       unidadeEscrita: dados.unidadeEscrita,
@@ -1066,7 +1079,12 @@ type DadosDoPdfDaProposta = {
   empreendimento: LinhaDoCadastro;
   enterpriseId: string;
   plano: PlanoComercial;
+  /** O elo com o Apolo, para o PDF aparecer na ficha do cliente. Ver a 0136. */
+  clienteDocumentoHash?: null | string;
+  clienteEntityId?: null | string;
   propostaId: null | string;
+  /** O COD em número — é ele que agrupa o documento na aba. */
+  protocolo?: null | number;
   unidade: UnidadeDaProposta;
   unidadeEscrita: string;
   /** O ISO gravado em `hercules_propostas.validade_em`, não um prazo recontado na impressão. */
@@ -1132,6 +1150,48 @@ async function guardarOPdf(
     if (up.error) {
       console.error("[hercules][proposta] falha ao guardar o PDF", up.error);
       return null;
+    }
+
+    // ⚠️ O PDF DA PROPOSTA ENTRA NA ABA DOCUMENTOS (Lucas, 06/09/2026: *"a proposta, bem como o
+    // contrato, boletos também podem ser guardados nessa aba de documentos"*). O arquivo já estava
+    // no bucket desde a v1.282.0; o que faltava era a linha que o torna ACHÁVEL — sem ela, o papel
+    // que o cliente recebeu por WhatsApp só existia no histórico do disparo.
+    //
+    // ⚠️ NÃO DERRUBA A PROPOSTA SE FALHAR. A proposta está gravada, a unidade andou e o WhatsApp vai
+    // sair; recusar aqui desfaria uma venda por causa de um registro de conveniência. E o `upsert`
+    // do arquivo é por COD, então gerar de novo não duplica o objeto — a linha, sim, é conferida
+    // antes, para o mesmo COD não virar dois documentos na aba.
+    if (dados.propostaId) {
+      try {
+        const { data: jaTem } = await admin
+          .from("hercules_documentos")
+          .select("id")
+          .eq("workspace_id", WORKSPACE)
+          .eq("proposta_id", dados.propostaId)
+          .eq("tipo", "proposta")
+          .is("removido_em", null)
+          .limit(1);
+
+        if (!((jaTem ?? []) as unknown[]).length) {
+          await admin.from("hercules_documentos").insert({
+            caminho,
+            cliente_documento_hash: dados.clienteDocumentoHash ?? null,
+            cliente_entity_id: dados.clienteEntityId ?? null,
+            empreendimento_codigo: dados.empreendimento.codigo ?? null,
+            enviado_por_nome: dados.atendimento.coordenador,
+            mime: "application/pdf",
+            nome: `Proposta ${dados.codigo}.pdf`,
+            proposta_id: dados.propostaId,
+            protocolo_numero: dados.protocolo ?? null,
+            tamanho_bytes: bytes.byteLength,
+            tipo: "proposta",
+            unidade_id: dados.unidade.id,
+            workspace_id: WORKSPACE,
+          });
+        }
+      } catch (erro) {
+        console.error("[hercules][proposta] falha ao registrar o PDF como documento", erro);
+      }
     }
 
     const assinada = await admin.storage

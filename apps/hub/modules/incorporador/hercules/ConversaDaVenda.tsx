@@ -46,9 +46,18 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
   const [tipo, setTipo] = useState<TipoDaMensagem>("mensagem");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<null | string>(null);
-  const fim = useRef<HTMLDivElement | null>(null);
+  const rolagem = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * ⚠️ A CARGA DE UM LOTE NÃO PODE POUSAR EM OUTRO. O `pedido` é o selo desta chamada: se ela
+   * demorar e a pessoa clicar noutro lote no meio, a resposta antiga chega depois — e sem o selo
+   * ela sobrescreveria a conversa do lote que está na tela AGORA, com o texto de outro cliente.
+   * É o mesmo defeito que a ficha já teve com o histórico.
+   */
+  const pedido = useRef(0);
 
   const carregar = useCallback(async () => {
+    const meu = ++pedido.current;
     if (!unidadeId) {
       setMensagens([]);
       return;
@@ -62,6 +71,7 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
       const j = (await r.json().catch(() => null)) as null | {
         data?: { mensagens: MensagemDaVenda[] };
       };
+      if (meu !== pedido.current) return;
       if (!r.ok || !j?.data) {
         setEstado("erro");
         return;
@@ -69,20 +79,31 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
       setMensagens(j.data.mensagens);
       setEstado("pronto");
     } catch {
-      setEstado("erro");
+      if (meu === pedido.current) setEstado("erro");
     }
   }, [unidadeId]);
 
+  // ⚠️ TROCAR DE LOTE ESVAZIA A LISTA NA HORA. Sem isto, a conversa do lote anterior fica na tela
+  // enquanto a nova carrega — e ela parece ser deste cliente.
   useEffect(() => {
+    setMensagens([]);
     setTexto("");
     setErro(null);
+  }, [unidadeId]);
+
+  // ⚠️ O `versao` NÃO APAGA O QUE ESTÁ SENDO DIGITADO. Ele sobe a cada carga do fluxo (reservar,
+  // gerar proposta, cancelar), e limpar o campo aí faria a pessoa perder um parágrafo escrito à mão
+  // por causa de uma ação que ela mesma fez noutro canto da tela.
+  useEffect(() => {
     void carregar();
   }, [carregar, versao]);
 
-  // ⚠️ ROLA PARA O FIM AO CHEGAR MENSAGEM, e não a cada render: quem abre a aba quer ver o que foi
-  // dito por último, que é onde a conversa parou.
+  // ⚠️ ROLA A LISTA, E NÃO A PÁGINA. `scrollIntoView` sobe por todos os ancestrais que rolam: numa
+  // ficha que já rola por dentro, ele levava os botões de ação para fora da vista a cada mensagem.
+  // Aqui a rolagem é do próprio painel, direto no `scrollTop`.
   useEffect(() => {
-    fim.current?.scrollIntoView({ block: "end" });
+    const lista = rolagem.current;
+    if (lista) lista.scrollTop = lista.scrollHeight;
   }, [mensagens.length]);
 
   async function enviar() {
@@ -107,8 +128,20 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
       }
       // ⚠️ ENTRA NA LISTA SEM RECARREGAR A CONVERSA INTEIRA: a resposta já traz a linha gravada,
       // com o id e a hora do servidor. Refazer o GET aqui piscaria a tela por nada.
-      setMensagens((atuais) => [...atuais, j.data!.mensagem]);
+      //
+      // ⚠️ E A CARGA EM VOO É INVALIDADA. Um GET disparado antes deste POST responderia DEPOIS, com
+      // uma lista que não tem esta mensagem — e ela sumiria da tela segundos após aparecer, com a
+      // pessoa achando que não registrou.
+      pedido.current += 1;
+      const nova = j.data.mensagem;
+      setMensagens((atuais) =>
+        atuais.some((m) => m.id === nova.id) ? atuais : [...atuais, nova],
+      );
       setTexto("");
+      // ⚠️ O TIPO NÃO GRUDA. Formalização é a exceção, não o modo: deixá-lo aceso faria a mensagem
+      // seguinte — um comentário qualquer — nascer carimbada como registro formal, que é o que
+      // alguém procura numa auditoria.
+      setTipo("mensagem");
     } catch {
       setErro("Não foi possível registrar agora.");
     } finally {
@@ -126,7 +159,7 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
-      <div style={{ display: "grid", gap: 8, minHeight: 0, overflow: "auto" }}>
+      <div ref={rolagem} style={{ display: "grid", gap: 8, minHeight: 0, overflow: "auto" }}>
         {estado === "carregando" && mensagens.length === 0 ? (
           <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>Carregando…</p>
         ) : estado === "erro" ? (
@@ -189,7 +222,6 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
             );
           })
         )}
-        <div ref={fim} />
       </div>
 
       <div style={{ borderTop: `1px solid ${T.border}`, display: "grid", gap: 6, paddingTop: 10 }}>
@@ -218,11 +250,18 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
 
         <textarea
           disabled={enviando}
+          // ⚠️ O CORTE É AVISADO ANTES, e não depois. O servidor apara em 4.000; sem o `maxLength`,
+          // uma formalização longa seria gravada pela metade e a pessoa só descobriria relendo.
+          maxLength={4000}
           onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => {
             // ⚠️ ENTER MANDA, SHIFT+ENTER QUEBRA LINHA — o gesto de todo chat. Sem isso, quem
             // escreve rápido manda a mensagem pela metade procurando o botão.
-            if (e.key === "Enter" && !e.shiftKey) {
+            //
+            // ⚠️ E NÃO NO MEIO DE UM ACENTO. Teclado que compõe caractere (o "ã" de "não", o
+            // corretor do celular) usa Enter para CONFIRMAR a composição: sem esta guarda, escrever
+            // "não" manda a mensagem em "n~". `isComposing` é o sinal padrão do navegador.
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               void enviar();
             }
