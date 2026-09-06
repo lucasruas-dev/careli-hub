@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-06-chat-documentos-historico",
+    deployedAt: "2026-09-06T18:30:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A ficha do lote ganhou três abas: Chat, Documentos e Histórico.** O chat abre primeiro — é onde se registra o que foi combinado, com autor e hora. Mensagem, observação e formalização; nada se edita e nada se apaga.",
+              "**Documentos agrupados por COD.** Cada venda tem o seu grupo, então o documento de quem desistiu não se mistura com o do comprador atual. Até 20 MB por arquivo, em PDF, imagem, Word ou Excel.",
+              "**O PDF da proposta entra sozinho na aba**, com selo de documento do sistema.",
+              "**E tudo isso aparece também na ficha do cliente no Apolo** — no portal e no CRM interno —, com o COD na frente do nome.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "af89cfa3",
+    technical: {
+      done: "AS TRÊS ABAS (Lucas, 06/09/2026: *\"terei que ter um chat para relatar, tirar dúvidas, informar de forma formalizada (...) documentos é para transitar documentos referente àquela reserva, proposta de forma segura e formalizada\"*, *\"os documentos têm que ser agrupados por protocolo, código\"*, *\"deixa o chat como principal\"* e *\"esses documentos também têm que existir no apolo\"*). ⚠️ O AGRUPADOR É O PROTOCOLO: um lote passa por várias vendas — o 01 04 do Portal dos Vales teve proposta de sete clientes em quatro dias — e o protocolo nasce na reserva e a proposta o COPIA. ⚠️ \"TAMBÉM EXISTIR NO APOLO\" NÃO É COPIAR LINHA, É O APOLO LER: os bytes já vivem no bucket `apolo-documents`, e copiar para `apolo_documents` traria três defeitos medidos — `entity_id` é NOT NULL lá (e o documento nasce quando o cliente pode não ter entidade), o DELETE daquela rota roda com autorização de LEITURA e apagaria arquivo e linha, e o visualizador da esteira monta uma aba por documento sem filtrar tipo (contrato e boleto no meio do RG, na tela em que se aprova a CAD, e a correção de titular rodando OCR pago em todos). `montarDocumentos` ganhou a QUARTA fonte, e a rota interna do CRM também — são DOIS leitores, e cumprir um só faria o documento existir para quem testa pelo portal e não para quem trabalha no CRM. ⚠️ O ELO É POR HASH: `apolo_entities` NÃO tem coluna `document` (só `document_hash` e `document_masked`), e minha primeira versão pedia essa coluna inexistente — com o `error` descartado, virava lista vazia e o elo morria em silêncio. O casamento usa `hashIdentifier(\"cpf\", ...)` contra as DUAS fontes (`document_hash`, só preenchido por quem nasce no Apolo — 153 de 4.286 —, e `apolo_entity_identifiers.value_hash`, onde o sync do C2X põe o resto). ⚠️ O TETO DE 4 MB ERA REGRESSÃO MINHA: 4,5 MB é o limite do CORPO de uma function da Vercel e só vale para quem manda o arquivo POR ELA; o portal já tinha o caminho certo na aba do LSoft (o servidor ASSINA, o navegador grava direto no Storage). Agora 20 MB, o mesmo do Apolo e do LSoft. Conferência adversarial de 119 agentes: o pior achado foi `registrar` gravando linha para arquivo INEXISTENTE (o `.info()` caía no tamanho declarado pelo navegador, então um POST direto criava documento fantasma na aba e na ficha do cliente — e o bucket não tem teto próprio, então aquele `.info()` era a única cobrança de tamanho); também caíram a rolagem do chat que não existia (`overflow` sem teto de altura), o contador de propostas virado código morto, o tipo de mensagem vazando entre lotes, o Enter mandando no meio da composição de acento, e o GET que pedia as 500 mensagens MAIS ANTIGAS. 2.883 testes verdes (209 arquivos); typecheck e lint limpos.",
+      motivation:
+        "O que se combina sobre uma venda vivia em WhatsApp e memória, e o documento que circulava não tinha onde ficar — nem do lado da venda, nem na ficha do cliente.",
+    },
+    title: "Chat, documentos e histórico na ficha do lote",
+    type: "novidade",
+    version: "1.287.0",
+  },
+  {
     buildTag: "2026-09-06-o-board-da-temis-mostra-tudo",
     deployedAt: "2026-09-06T16:00:00-03:00",
     modules: [

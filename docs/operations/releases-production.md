@@ -6022,3 +6022,44 @@ Achados que viraram correcao no mesmo lote:
   juridico". A ETAPA NAO MUDA de proposito; a faixa some quando o carimbo cair.
 - Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.858 testes verdes (208 arquivos).
 - Status: `EM PRODUCAO`.
+
+## 2026-09-06 · v1.287.0 — Hercules: chat, documentos e historico na ficha do lote
+
+- Autorizacao: OK explicito do Lucas ("tem o meu ok") para as tabelas e para o push.
+- Commits: `9748209d` + `1e073e63` + `56c464ad`. Rollback: `af89cfa3` (v1.286.0).
+- Migration 0136 aplicada (`hercules_documentos` e `hercules_conversas`, RLS ligada sem policy).
+
+### O desenho
+
+- ⚠️ O AGRUPADOR E O PROTOCOLO, e nao a unidade: um lote passa por varias vendas (o 01 04 do Portal
+  dos Vales teve proposta de sete clientes em quatro dias), e o protocolo nasce na reserva e a
+  proposta o COPIA.
+- ⚠️ "TAMBEM EXISTIR NO APOLO" E O APOLO LER, e nao copiar linha. Os bytes ja vivem no bucket
+  `apolo-documents`. Copiar para `apolo_documents` traria tres defeitos MEDIDOS: `entity_id` NOT
+  NULL (e o documento nasce quando o cliente pode nao ter entidade); o DELETE daquela rota roda com
+  autorizacao de LEITURA e apaga arquivo E linha; e o visualizador da esteira monta uma aba por
+  documento sem filtrar tipo — contrato e boleto no meio do RG, na tela em que se aprova a CAD, com
+  a correcao de titular rodando OCR pago em todos. `montarDocumentos` ganhou a QUARTA fonte, e a
+  rota interna do CRM tambem (sao DOIS leitores).
+- ⚠️ O ELO E POR HASH. `apolo_entities` NAO tem coluna `document` — so `document_hash` e
+  `document_masked`. A primeira versao pedia a coluna inexistente e, com o `error` descartado,
+  virava lista vazia: o elo morria em silencio. O casamento usa `hashIdentifier("cpf", ...)` contra
+  as DUAS fontes (`document_hash`, so preenchido por quem nasce no Apolo — 153 de 4.286 —, e
+  `apolo_entity_identifiers.value_hash`, onde o sync do C2X poe o resto).
+- ⚠️ O TETO DE 4 MB ERA REGRESSAO AUTOINFLIGIDA: 4,5 MB e o limite do CORPO de uma function da
+  Vercel e so vale para quem manda o arquivo POR ELA. O portal ja tinha o caminho certo na aba do
+  LSoft. Agora 20 MB, o mesmo do Apolo e do LSoft.
+
+### Conferencia adversarial (119 agentes, 5 lentes, 3 ceticos por achado)
+
+- ⚠️ `registrar` GRAVAVA LINHA PARA ARQUIVO INEXISTENTE: o `.info()` caia no tamanho declarado pelo
+  navegador, entao um POST direto com caminho inventado criava documento fantasma na aba e na ficha
+  do cliente. E o bucket nao tem teto proprio (`file_size_limit` nulo), entao aquele `.info()` era
+  a UNICA cobranca de tamanho. Sem `size` numerico, agora nao ha registro.
+- A rolagem do chat nao existia (`overflow: auto` sem teto de altura); o contador de propostas
+  virou codigo morto ao sair do cartao; o tipo da mensagem vazava entre lotes; o Enter mandava no
+  meio da composicao de acento ("nao" saia "n~"); o GET pedia as 500 mensagens MAIS ANTIGAS.
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.883 testes verdes (209 arquivos).
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas conferir as tres abas na ficha de um lote com reserva, e o documento
+  aparecendo na ficha do cliente no Apolo`.
