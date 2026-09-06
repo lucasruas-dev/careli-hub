@@ -89,6 +89,9 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
     setMensagens([]);
     setTexto("");
     setErro(null);
+    // O tipo também é do lote: "Formalização" escolhida numa venda não pode carimbar a mensagem
+    // seguinte, de outro cliente.
+    setTipo("mensagem");
   }, [unidadeId]);
 
   // ⚠️ O `versao` NÃO APAGA O QUE ESTÁ SENDO DIGITADO. Ele sobe a cada carga do fluxo (reservar,
@@ -159,7 +162,19 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
-      <div ref={rolagem} style={{ display: "grid", gap: 8, minHeight: 0, overflow: "auto" }}>
+      {/* ⚠️ A ALTURA TEM DE SER LIMITADA PARA HAVER ROLAGEM. `overflow: auto` sem teto não rola: o
+          bloco cresce, o `scrollTop` vira no-op e o campo de escrever desce para fora da vista a
+          cada mensagem nova. O teto é em `vh` porque a coluna da ficha já tem a altura dela. */}
+      <div
+        ref={rolagem}
+        style={{
+          display: "grid",
+          gap: 8,
+          maxHeight: "min(46vh, 420px)",
+          minHeight: 0,
+          overflow: "auto",
+        }}
+      >
         {estado === "carregando" && mensagens.length === 0 ? (
           <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>Carregando…</p>
         ) : estado === "erro" ? (

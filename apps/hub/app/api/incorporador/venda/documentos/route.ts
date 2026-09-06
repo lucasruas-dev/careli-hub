@@ -27,7 +27,9 @@ import {
 //
 // ⚠️ O LINK DE LEITURA É ASSINADO NA HORA E NÃO SE GUARDA. Guardar a URL assinada na tabela faria o
 // documento nascer com um endereço que expira — e um link expirado guardado é pior que link
-// nenhum: ele parece funcionar até alguém clicar. O que fica gravado é o CAMINHO no bucket.
+// nenhum: ele parece funcionar até alguém clicar. O que fica gravado é o CAMINHO no bucket, e a
+// pasta é a da UNIDADE (`prefixoDaUnidade`, na lib): o protocolo pode nascer entre assinar e
+// registrar, e quem agrupa é a coluna.
 //
 // ⚠️ NADA SE APAGA AQUI. Documento formalizado existe para ser lido depois, inclusive contra quem o
 // subiu. A tabela tem `removido_em` para quando isso for preciso, e vai exigir uma rota própria com
@@ -50,7 +52,6 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const WORKSPACE = "careli";
-const PASTA = "hercules/documentos";
 /** Quanto tempo o link de leitura vale. Curto: ele é para abrir agora, não para colar num e-mail. */
 const VALIDADE_DO_LINK = 60 * 10;
 
@@ -240,6 +241,7 @@ export async function POST(request: Request) {
     caminho?: unknown;
     nome?: unknown;
     observacao?: unknown;
+    /** Só o `preparar` usa: no `registrar` quem mede é o Storage. */
     tamanho?: unknown;
     tipoDoArquivo?: unknown;
     unidadeId?: unknown;
@@ -299,10 +301,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Caminho do arquivo inválido." }, { status: 422 });
     }
 
-    // O tamanho REAL do que foi gravado. A trava do cliente pode ser burlada.
+    // ⚠️ O `.info()` É A PROVA DE QUE O ARQUIVO EXISTE, e não só a medida do tamanho. A primeira
+    // versão caía no número que o NAVEGADOR declarou quando ele falhava — e aí um POST direto com
+    // `acao: "registrar"`, um caminho inventado dentro da própria pasta e `tamanho: 1` criava a
+    // linha SEM upload nenhum: um cartão "Distrato assinado.pdf" na aba, com autor e hora, que abre
+    // em 503 mas que quem audita lê como documento existente. Sem `size` numérico não há registro.
+    //
+    // ⚠️ E O TETO DE 20 MB DEPENDE DELE. O bucket não tem limite próprio (conferido:
+    // `file_size_limit` nulo), então esta é a única cobrança de tamanho que existe — aceitar o
+    // número do cliente a tornava decorativa.
     const info = await admin.storage.from(APOLO_DOCS_BUCKET).info(caminho);
-    const real = !info.error && typeof info.data?.size === "number" ? info.data.size : null;
-    const tamanho = real ?? (Number.isFinite(Number(corpo.tamanho)) ? Number(corpo.tamanho) : -1);
+    const tamanho = !info.error && typeof info.data?.size === "number" ? info.data.size : -1;
     if (tamanho < 0) {
       return NextResponse.json(
         { error: "O arquivo não foi encontrado no armazenamento. Tente enviar de novo." },

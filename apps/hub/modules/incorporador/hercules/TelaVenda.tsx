@@ -3638,8 +3638,11 @@ function Historico({
   // títulos para a mesma coisa, e a rolagem passa a ser de um dos dois — nunca dos dois juntos.
   if (semCartao) {
     return (
-      <div style={{ display: "grid", gap: 10 }}>
-        {filtros ? (
+      // ⚠️ OS FILTROS FICAM FORA DO QUE ROLA, como faziam na barra do cartão. Um filtro que sobe
+      // junto com a lista obriga a voltar ao topo para refinar — e é justamente descendo a lista
+      // que se percebe o que precisa ser filtrado.
+      <div style={{ display: "grid", gap: 10, gridTemplateRows: "auto 1fr", minHeight: 0 }}>
+        {filtros || propostas > 0 ? (
           <div
             style={{
               alignItems: "center",
@@ -3649,9 +3652,16 @@ function Historico({
             }}
           >
             {filtros}
+            {/* ⚠️ O CONTADOR DE PROPOSTAS NÃO SOME só porque o cartão passou a ser de fora: ele é
+                a única coisa na tela que diz quantas vendas este lote já teve. */}
+            {propostas > 0 ? (
+              <span style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}>
+                {inteiro(propostas)} proposta(s)
+              </span>
+            ) : null}
           </div>
         ) : null}
-        {corpo}
+        <div style={{ minHeight: 0, overflow: "auto" }}>{corpo}</div>
       </div>
     );
   }
