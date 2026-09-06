@@ -5972,3 +5972,31 @@ Achados que viraram correcao no mesmo lote:
     caminho a janela ficou maior: da para confirmar o COD do Joao e mover a proposta da Maria.
 - Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.848 testes verdes (207 arquivos).
 - Status: `EM PRODUCAO`.
+
+## 2026-09-06 · v1.285.0 — Hercules: o sistema apura o cancelamento, e a etapa diz quem moveu
+
+- Autorizacao: OK explicito do Lucas ("tem o meu ok") para a 0135, o backfill e o push.
+- Commit: `04067eaa`. Rollback: `5ba80212` (v1.284.1).
+
+### 1. "O sistema que tem que saber, nao e o usuario que faz"
+
+- ⚠️ ELE ESTA CERTO, E EU TINHA ESCOLHIDO O CAMINHO ERRADO. A primeira versao perguntava "assinou?"
+  e "pagou?" porque eu havia concluido que nao existia fonte confiavel. Medido antes de reescrever:
+  as 3 propostas nativas tem ZERO eventos, `data_assinatura` nula nas tres e `primeiro_sinal` em
+  10/09/2026 — uma data no FUTURO. Zero eventos NAO e ignorancia: e resposta.
+- `apurarFatosDoContrato` (novo, 9 testes) le eventos de assinatura e de pagamento mais as datas da
+  propria proposta. ⚠️ `primeiro_sinal` NAO ENTRA — le-lo como pagamento classificaria como
+  distrato com devolucao toda venda recem-criada. A apuracao e conservadora nos dois sentidos:
+  qualquer sinal conta como "sim", porque nao achar onde ha e o erro caro.
+- A modal abre mostrando o que o sistema encontrou e a classificacao; o coordenador le e confirma.
+  O ajuste manual fica escondido atras de "Nao confere com o que voce sabe?", para o unico caso que
+  escapa (PIX na mao do corretor). O POST refaz a apuracao no momento da gravacao.
+
+### 2. "Faltou a informacao de quem"
+
+- A transicao carimba `etapa_por` na MESMA escrita da etapa (0135): ou os dois vao, ou nenhum vai.
+  ⚠️ `criado_por_nome` continua fora de questao — ele e de quem GEROU a proposta.
+- BACKFILL DECLARADO: os COD 000005 e 000006 foram movidos antes de qualquer registro existir. O
+  Lucas confirmou a autoria e os dois receberam `etapa_por = 'Lucas Ruas'`.
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.858 testes verdes (208 arquivos).
+- Status: `EM PRODUCAO`.

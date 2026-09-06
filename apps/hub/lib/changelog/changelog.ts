@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-06-o-sistema-apura-o-cancelamento",
+    deployedAt: "2026-09-06T14:30:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**O cancelamento de contrato deixou de perguntar.** A tela abre mostrando o que o sistema encontrou na venda — assinaturas e pagamentos registrados — e já diz se o caso vai como cancelamento ou como distrato com devolução. Você lê e confirma.",
+              "Se você souber de algo que não está no sistema (um pagamento por fora, por exemplo), dá para corrigir a classificação: o card do jurídico avisa que ela foi ajustada à mão e mostra ao lado o que o sistema tinha apurado.",
+              "**O histórico da unidade agora diz quem moveu a venda para contrato**, e não só quando.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "5ba80212",
+    technical: {
+      done: "\"O SISTEMA QUE TEM QUE SABER, NÃO É O USUÁRIO QUE FAZ\" (Lucas, 06/09/2026, vendo a modal perguntar \"assinou?\" e \"pagou?\"). ⚠️ ELE ESTÁ CERTO E EU TINHA ESCOLHIDO O CAMINHO ERRADO: perguntei porque havia concluído que não existia fonte confiável — `hercules_proposta_eventos` só é escrita pela carga do C2X e a venda nativa nasce com zero eventos. Medido antes de reescrever: as 3 propostas nativas têm ZERO eventos, `data_assinatura` nula nas três e `primeiro_sinal` em 10/09/2026, uma data no FUTURO. Zero eventos NÃO é ignorância, é resposta — uma venda cuja minuta a Têmis ainda nem gera e cujo primeiro vencimento não chegou não tem assinatura nem pagamento. `apurarFatosDoContrato` (novo, 9 testes) lê os eventos de assinatura e de pagamento mais as datas da própria proposta. ⚠️ `primeiro_sinal` NÃO ENTRA, e é a armadilha óbvia: lê-lo como pagamento classificaria como distrato com devolução toda venda recém-criada, devolvendo dinheiro que ninguém pagou — há teste só para travar essa tentação. A apuração é conservadora nos DOIS sentidos: qualquer sinal (evento, data preenchida, faturamento) conta como sim, porque não achar onde há é o erro caro. O ajuste manual sobrevive escondido, para o único caso que escapa a qualquer apuração (PIX na mão do corretor não deixa rastro): quem ajusta assume, e o card diz isso ao jurídico com a apuração do sistema ao lado. O POST refaz a apuração no momento da gravação — entre abrir a modal e confirmar pode entrar um pagamento. \"FALTOU A INFORMAÇÃO DE QUEM\": o evento derivado nascia sem autor, e eu tinha argumentado que \"a etapa guarda QUANDO, não QUEM\" — era fato, e a resposta certa não era aceitar o fato, era passar a guardar. A transição carimba `etapa_por` na MESMA escrita da etapa (0135): ou os dois vão, ou nenhum vai. ⚠️ `criado_por_nome` continua fora de questão — ele é de quem GEROU a proposta, e afirmar que essa pessoa moveu a venda é outra coisa, no lugar onde a frase seria lida como prova. Os COD 000005 e 000006 foram movidos antes de qualquer registro existir e receberam backfill declarado, com o Lucas confirmando a autoria. 2.858 testes verdes (208 arquivos); typecheck e lint limpos.",
+      motivation:
+        "A tela pedia ao coordenador dois fatos que o próprio sistema tinha gravados, e aceitava a resposta dele como verdade — num número que decide se o cliente recebe dinheiro de volta.",
+    },
+    title: "O sistema apura o cancelamento",
+    type: "melhoria",
+    version: "1.285.0",
+  },
+  {
     buildTag: "2026-09-06-hercules-a-entrega-que-nao-chegava",
     deployedAt: "2026-09-06T12:00:00-03:00",
     modules: [
