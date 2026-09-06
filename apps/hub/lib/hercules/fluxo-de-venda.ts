@@ -137,14 +137,6 @@ export type LinhaDaLista = {
    */
   codigo: null | string;
   /**
-   * Quem vendeu.
-   *
-   * ⚠️ ELE FALTAVA NA FICHA (Lucas, 05/09/2026: *"trazer o nome do corretor também no descritivo da
-   * unidade"*). A ficha mostrava cliente, imobiliária e plano — e o corretor, que é quem o
-   * coordenador liga para cobrar o andamento, só aparecia no histórico, na linha da reserva, se
-   * alguém rolasse até lá.
-   */
-  /**
    * O pedido de cancelamento aberto na Têmis.
    *
    * ⚠️ É O QUE IMPEDE O SEGUNDO CARD. Sem ele na lista, o botão "Solicitar cancelamento" continua
@@ -152,6 +144,15 @@ export type LinhaDaLista = {
    * com o jurídico sem saber qual dos dois vale.
    */
   cancelamentoPedidoEm: null | string;
+  /**
+   * Quem vendeu.
+   *
+   * ⚠️ ELE FALTAVA NA FICHA (Lucas, 05/09/2026: *"trazer o nome do corretor também no descritivo da
+   * unidade"*). A ficha mostrava cliente, imobiliária e plano — e o corretor, que é quem o
+   * coordenador liga para cobrar o andamento, só aparecia no histórico, na linha da reserva, se
+   * alguém rolasse até lá. A linha da RESERVA também o carrega desde então: é lá que ele é
+   * escolhido.
+   */
   corretor: null | string;
   desde: null | string;
   /** O que o coordenador anotou ao reservar. Só existe no que nasce no Panteon. */

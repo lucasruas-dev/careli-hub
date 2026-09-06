@@ -382,7 +382,12 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
     y: A4.h - 40,
   };
 
-  doc.setTitle(`Proposta ${seguro(dados.codigo)} - ${seguro(dados.unidade)}`);
+  // ⚠️ O TÍTULO DO ARQUIVO TAMBÉM DIZ QUE É PRÉVIA. Ele é o que aparece na aba do navegador e no
+  // gerenciador de arquivos de quem baixa: um PDF chamado "Proposta 000006" desmente a tarja
+  // impressa dentro dele, e é pelo nome que alguém decide reenviar o arquivo.
+  doc.setTitle(
+    `${dados.previa ? "PREVIA - " : ""}Proposta ${seguro(dados.codigo)} - ${seguro(dados.unidade)}`,
+  );
   doc.setProducer("Panteon");
   doc.setCreator("C2X");
 

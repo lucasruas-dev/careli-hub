@@ -20,7 +20,7 @@ import {
   participacoesIguais,
   somaDasParticipacoes,
 } from "@/lib/hercules/proposta-na-tela";
-import type { ProponenteEncontrado } from "@/lib/hercules/busca-de-proponente";
+import { type ProponenteEncontrado, termoDaBusca } from "@/lib/hercules/busca-de-proponente";
 import { comoFoiOAviso, vencimentoEmDias } from "@/lib/hercules/reserva";
 
 import {
@@ -155,6 +155,16 @@ export function ModalDeProposta({
   /** Os candidatos que a base devolveu para o que está escrito no campo de nome. */
   const [candidatos, setCandidatos] = useState<ProponenteEncontrado[]>([]);
   const [buscando, setBuscando] = useState(false);
+  /**
+   * A busca FALHOU (rede, 500, sessão caída) — diferente de "não achou".
+   *
+   * ⚠️ AS DUAS COISAS DIZIAM A MESMA FRASE, e a frase manda agir: "CAD não encontrada, abra a CAD
+   * antes de incluí-lo". Numa falha de servidor isso é uma instrução errada — o corretor abre uma
+   * CAD duplicada para alguém que já tem a dele credenciada.
+   */
+  const [falhouABusca, setFalhouABusca] = useState(false);
+  /** A lista fechada por clique fora ou Escape, sem perder o que já foi digitado. */
+  const [listaFechada, setListaFechada] = useState(false);
   /**
    * A CAD escolhida na lista.
    *
@@ -417,6 +427,24 @@ export function ModalDeProposta({
       setErroDoNovo("A participação do proponente tem que ser menor que 100%.");
       return;
     }
+    // ⚠️ A CONTA É CONTRA O QUE JÁ FOI DADO, e não só contra 100. Com um proponente de 70% na lista,
+    // digitar 50% para o segundo levava o titular a −20% — e o `Math.max(0, ...)` abaixo zerava a
+    // parte dele CALADO, deixando a soma em 120% num número que vai escrito na minuta e no cartório.
+    const jaDadoAosOutros =
+      Math.round(
+        compradores.filter((c) => !c.titular).reduce((total, c) => total + c.participacao, 0) * 100,
+      ) / 100;
+    const sobraParaOTitular = Math.round((100 - jaDadoAosOutros - digitada) * 100) / 100;
+    if (sobraParaOTitular <= 0) {
+      setErroDoNovo(
+        jaDadoAosOutros > 0
+          ? `Os demais proponentes já somam ${jaDadoAosOutros}%. Sobra no máximo ${
+              Math.round((100 - jaDadoAosOutros) * 100) / 100
+            }% para este, e o titular precisa ficar com alguma parte.`
+          : "A participação do proponente tem que ser menor que 100%.",
+      );
+      return;
+    }
 
     setErroDoNovo(null);
     setCompradores((atuais) => {
@@ -457,9 +485,14 @@ export function ModalDeProposta({
    */
   useEffect(() => {
     const termo = novo.nome.trim();
-    if (escolhido || termo.length === 0) {
+    // ⚠️ A MESMA RÉGUA DOS DOIS LADOS, e não só no servidor. Uma letra digitada disparava consulta
+    // e voltava vazia, e a tela anunciava "CAD não encontrada" para quem tinha acabado de encostar
+    // no teclado — a frase mais cara da modal, dita cedo demais.
+    const decidido = termoDaBusca(termo);
+    if (escolhido || termo.length === 0 || decidido.tipo === "curto") {
       setCandidatos([]);
       setBuscando(false);
+      setFalhouABusca(false);
       return;
     }
 
@@ -483,9 +516,14 @@ export function ModalDeProposta({
           // o `candidatos.length` do render seguinte derrubaria a modal inteira — com as condições
           // que o coordenador acabou de montar dentro dela.
           const achados = j?.data?.encontrados;
-          setCandidatos(r.ok && Array.isArray(achados) ? achados : []);
+          const deuCerto = r.ok && Array.isArray(achados);
+          setCandidatos(deuCerto ? achados : []);
+          setFalhouABusca(!deuCerto);
         } catch {
-          if (vivo) setCandidatos([]);
+          if (vivo) {
+            setCandidatos([]);
+            setFalhouABusca(true);
+          }
         } finally {
           if (vivo) setBuscando(false);
         }
@@ -545,7 +583,11 @@ export function ModalDeProposta({
     setErroDoServidor(null);
     if (!condicoes || !propostaInteira) return;
 
-    const aba = window.open("", "_blank", "noopener");
+    // ⚠️ SEM `noopener` NAS FEATURES: com ele, `window.open` devolve NULL por especificação — o
+    // recado de pop-up bloqueado apareceria em TODO clique, com uma aba em branco órfã aberta ao
+    // lado, e a prévia nunca abriria. O opener é cortado na mão logo abaixo, que dá a mesma
+    // proteção sem o efeito colateral.
+    const aba = window.open("", "_blank");
     setBuscandoPrevia(true);
     try {
       const r = await fetch("/api/incorporador/venda/proposta", {
@@ -569,7 +611,11 @@ export function ModalDeProposta({
       }
 
       const endereco = URL.createObjectURL(await r.blob());
-      if (aba) aba.location.href = endereco;
+      if (aba) {
+        // A aba é nossa e o destino é um `blob:` deste documento; ainda assim ela vai sem opener.
+        aba.opener = null;
+        aba.location.href = endereco;
+      }
       // ⚠️ SEM ABA NÃO HÁ SILÊNCIO: o bloqueio de pop-up é do navegador, e sem este recado o botão
       // simplesmente não responde.
       else
@@ -859,7 +905,10 @@ export function ModalDeProposta({
                         {buscandoPrevia ? "Montando…" : "Ver prévia"}
                       </button>
                       <button
-                        disabled={enviando}
+                        // ⚠️ TAMBÉM APAGADO ENQUANTO A PRÉVIA MONTA: os dois botões são vizinhos, e
+                        // gerar a proposta enquanto se espera para CONFERI-LA é exatamente o clique
+                        // que a prévia existe para evitar.
+                        disabled={enviando || buscandoPrevia}
                         onClick={gerar}
                         style={{
                           background: enviando ? T.soft : T.btnBg,
@@ -1108,21 +1157,43 @@ export function ModalDeProposta({
                           credenciada, fala que CAD não encontrada"*). Digitar criava um comprador que
                           o Apolo nunca viu — sem CAD, sem crédito analisado — e ele entrava no PDF,
                           na minuta e no contrato como se fosse cadastrado. */}
-                      <div style={{ position: "relative" }}>
+                      <div
+                        onBlur={(e) => {
+                          // ⚠️ A LISTA COBRE A % E O "ADICIONAR" enquanto está aberta, e antes só
+                          // fechava ao escolher alguém: quem desistia da busca ficava sem alcançar
+                          // os dois campos que vêm logo abaixo. Fecha ao sair do bloco (campo +
+                          // lista), e não a cada blur do input — senão o clique no candidato
+                          // fecharia a lista antes de virar clique.
+                          if (!e.currentTarget.contains(e.relatedTarget as null | Node)) {
+                            setListaFechada(true);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          // ⚠️ O ESCAPE AQUI NÃO CHEGA NA MODAL. Sem isto, fechar a lista com Esc
+                          // fechava a modal inteira — com as condições montadas dentro.
+                          if (e.key === "Escape" && !listaFechada) {
+                            e.stopPropagation();
+                            setListaFechada(true);
+                          }
+                        }}
+                        style={{ position: "relative" }}
+                      >
                         <input
                           onChange={(e) => {
                             const texto = e.target.value;
                             setNovo((a) => ({ ...a, cpf: "", nome: texto }));
                             setEscolhido(null);
                             setErroDoNovo(null);
+                            setListaFechada(false);
                           }}
+                          onFocus={() => setListaFechada(false)}
                           placeholder="Buscar por nome ou CPF na base"
                           style={campo}
                           value={novo.nome}
                         />
 
                         {/* A lista de candidatos, ancorada no campo. */}
-                        {novo.nome.trim().length > 0 && !escolhido ? (
+                        {novo.nome.trim().length > 0 && !escolhido && !listaFechada ? (
                           <div
                             style={{
                               background: T.page,
@@ -1149,6 +1220,19 @@ export function ModalDeProposta({
                               >
                                 Procurando…
                               </span>
+                            ) : falhouABusca ? (
+                              // ⚠️ FALHA NÃO É AUSÊNCIA. Dizer "abra a CAD" quando o servidor caiu
+                              // manda abrir uma CAD duplicada para quem já tem a dele credenciada.
+                              <span
+                                style={{
+                                  color: T.danger,
+                                  fontSize: 11.5,
+                                  padding: "9px 12px",
+                                }}
+                              >
+                                Não foi possível consultar a base agora. Tente
+                                de novo em instantes.
+                              </span>
                             ) : candidatos.length === 0 ? (
                               // ⚠️ A FRASE DIZ O QUE FAZER. "Nada encontrado" deixa o coordenador
                               // sem saber se digitou errado ou se falta a CAD — e a resposta muda o
@@ -1167,7 +1251,11 @@ export function ModalDeProposta({
                             ) : (
                               candidatos.map((c) => (
                                 <button
-                                  disabled={!c.credenciado}
+                                  // ⚠️ SEM CPF NÃO DÁ PARA ESCOLHER. O campo ao lado é só leitura:
+                                  // escolher alguém cujo documento não veio deixaria o proponente
+                                  // sem CPF e sem como digitá-lo — um beco. A rota monta o CPF a
+                                  // partir do documento da entidade, que pode vir vazio.
+                                  disabled={!c.credenciado || !cpfValido(c.cpf)}
                                   key={c.id}
                                   onClick={() => {
                                     setEscolhido(c);
@@ -1182,9 +1270,10 @@ export function ModalDeProposta({
                                     background: "transparent",
                                     border: "none",
                                     borderBottom: `1px solid ${T.border}`,
-                                    cursor: c.credenciado
-                                      ? "pointer"
-                                      : "default",
+                                    cursor:
+                                      c.credenciado && cpfValido(c.cpf)
+                                        ? "pointer"
+                                        : "default",
                                     display: "grid",
                                     font: "inherit",
                                     gap: 2,
@@ -1203,7 +1292,9 @@ export function ModalDeProposta({
                                         sumir faria o coordenador concluir que a pessoa não tem
                                         cadastro, quando ela tem e está em análise de crédito. */}
                                     {c.credenciado
-                                      ? null
+                                      ? cpfValido(c.cpf)
+                                        ? null
+                                        : " · sem CPF no cadastro"
                                       : ` · ${c.motivo ?? "CAD não credenciada"}`}
                                   </span>
                                 </button>

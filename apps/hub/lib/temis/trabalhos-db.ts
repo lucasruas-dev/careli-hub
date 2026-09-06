@@ -49,9 +49,11 @@ export type TrabalhoDoBoard = Trabalho & {
   /**
    * A proposta do Hercules que originou o trabalho.
    *
-   * LIDA, e nao so gravada: e por ela que a Temis volta a venda e encontra cliente, compradores com
-   * participacao, condicoes, plano, cronograma e o PDF que o cliente ja recebeu. Uma coluna que so
-   * recebe insert nao liga modulo nenhum.
+   * ⚠️ SOBE ATE O BOARD, e nao para no insert: e por este id que a Temis vai buscar cliente,
+   * compradores com participacao, condicoes, plano, cronograma e o PDF que o cliente ja recebeu.
+   * Nenhuma TELA dela consome o campo ainda — o Lucas pediu "somente entregar o contrato na Temis,
+   * depois vamos trabalhar nela" —, mas o dado chega inteiro em quem ler o board, que e o que faz
+   * o "depois" ser possivel sem uma segunda migration.
    */
   propostaId: null | string;
 };
@@ -141,7 +143,6 @@ export type NovoTrabalho = {
   tipo: TipoDeTrabalho;
   trabalhoOrigemId?: null | string;
   unidade: string;
-  /** A proposta do Hércules que virou este trabalho. É por ela que a Têmis volta à venda. */
   /**
    * A PROPOSTA do Hercules. E este o vinculo que funciona hoje.
    *

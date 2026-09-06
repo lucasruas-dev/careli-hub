@@ -407,6 +407,15 @@ export function avisosDeCancelamento(dados: DadosDoCancelamento): AvisoDaReserva
 // caminho, e conta no funil.
 
 export type ReservaDoFluxo = {
+  /**
+   * Quem vendeu.
+   *
+   * ⚠️ ELE FALTAVA JUSTAMENTE ONDE FOI ESCOLHIDO. O corretor entrou na ficha da unidade a pedido do
+   * Lucas (05/09/2026), mas a linha da RESERVA não o carregava: a ficha de um lote reservado —
+   * a tela em que o corretor acabou de ser selecionado — mostrava "Corretor: —", e o nome só
+   * aparecia depois que a reserva virava proposta.
+   */
+  corretor_nome?: null | string;
   criado_em: string;
   id: string;
   imobiliaria_nome: null | string;
@@ -450,6 +459,7 @@ export function reservaComoLinhaDoFluxo(
   cliente_nome: null | string;
   codigo: null | string;
   contrato_parcelas: null;
+  corretor_nome: null | string;
   criado_em_c2x: null | string;
   data_assinatura: null;
   data_ato: null;
@@ -483,6 +493,7 @@ export function reservaComoLinhaDoFluxo(
     cliente_nome: dono.nome || null,
     codigo: null,
     contrato_parcelas: null,
+    corretor_nome: reserva.corretor_nome ?? null,
     criado_em_c2x: reserva.criado_em,
     data_assinatura: null,
     data_ato: null,

@@ -5894,3 +5894,64 @@ Registro de producao:
   nas correcoes da anterior.
 - Validacoes: `npx tsc --noEmit` limpo; 2.818 testes verdes (207 arquivos).
 - Status: `EM PRODUCAO`.
+
+## 2026-09-06 · v1.284.0 — Hercules: a entrega ao juridico que nunca chegou
+
+- Autorizacao: OK explicito do Lucas ("tem o meu ok") para a migration 0134 E para o push na main.
+- Commit: `4b5da0db` + correcoes da conferencia. Rollback: `64e82503` (v1.283.0).
+- ⚠️ MIGRATION 0134 APLICADA ANTES DO DEPLOY, e tinha de ser: o lote le
+  `hercules_propostas.cancelamento_pedido_em` em `COLUNAS_DA_PROPOSTA` e
+  `temis_trabalhos.proposta_id` em `CAMPOS`. Deploy sem a migration derrubaria a tela Venda inteira
+  (503) e esvaziaria os dois boards da Temis, em silencio.
+
+### O ACHADO DO DIA: a entrega a Temis nunca funcionou
+
+- Medido no banco antes de escrever qualquer linha: `temis_trabalhos` = 4 linhas (as de seed),
+  ZERO criadas depois de 05/09, `hercules_vendas` = 0 linhas. As duas vendas despachadas para
+  contrato em 05/09 (COD 000005 as 18:56 e COD 000006 as 19:58) NAO abriram card nenhum.
+- Causa: `temis_trabalhos_venda_id_fkey` referencia `hercules_vendas`, que esta vazia, e o Hercules
+  mandava ali o id de uma PROPOSTA. A FK era violada em toda tentativa. `abrirTrabalho` devolvia o
+  erro e a rota, por desenho, nao derruba a transicao — a venda andava, a tela avisava em letras
+  pequenas e o juridico nunca soube.
+- Conserto: coluna NOVA `temis_trabalhos.proposta_id` (FK para `hercules_propostas`), lida tambem
+  no board. `venda_id` fica reservada: `hercules_vendas` e de onde o catalogo de variaveis da minuta
+  tira valor, entrada, sinal, dia de vencimento e `plano_snapshot`, e grava-la hoje esbarra em
+  `plano_id not null`, que a proposta nao tem.
+- ⚠️ Registrado em [[reference-temis-venda-id-fk-vazia]].
+
+### O que mais entrou
+
+- HISTORICO derivando a etapa (`ETAPA_DERIVADA`): a linha do movimento e um insert a parte que nao
+  derruba a transicao quando falha, e o preco era o historico ficar sem o passo. Derivar de
+  `etapa_desde` conserta o COD 000005 e o 000006 SEM escrever no banco. So a proposta NATIVA e
+  derivada; o movimento gravado continua vencendo (traz autor e motivo).
+- CANCELAMENTO POS-CONTRATO: a unidade em `contrato` ficava com os quatro botoes apagados.
+  "Solicitar cancelamento" abre um PEDIDO na Temis (`classificarCancelamento` decide entre
+  cancelamento e distrato pelos dois fatos) e NAO mexe na etapa da venda. Os dois fatos sao
+  DECLARADOS e isso esta dito na tela: `hercules_proposta_eventos` so e escrita pela carga do C2X e
+  mente por omissao ate no legado (1.979 propostas `faturado`, 914 com evento de pagamento).
+- PREVIA DO PDF: a MESMA rota com `previa: true`, parando no passo 6.5 — antes de qualquer escrita
+  (provado por leitura: nenhum insert/update/storage/WhatsApp antes daquele ponto). Tarja em todas
+  as paginas e no titulo do arquivo.
+- BUSCA DE PROPONENTE com tela; % de participacao obrigatoria; confirmacao do envio para contrato;
+  corretor na ficha (inclusive na RESERVADA, que e onde ele e escolhido); destaques na modal.
+
+### Conferencia adversarial (2 rodadas, ~90 agentes)
+
+Achados que viraram correcao no mesmo lote:
+- `window.open(url, "_blank", "noopener")` devolve NULL por especificacao — a previa NUNCA abriria,
+  deixando aba em branco orfa a cada clique;
+- a previa imprimia no rodape o TELEFONE DO CLIENTE (o PDF real traz o da imobiliaria) e o nome de
+  quem clicou no lugar do coordenador da venda — agora sai de `destinatariosDaVenda`, a mesma fonte;
+- o segundo proponente com % alta demais ZERAVA o titular calado (soma a 120%);
+- falha de servidor na busca dizia "CAD nao encontrada, abra a CAD" — instrucao errada que faz
+  abrir CAD duplicada;
+- a lista de candidatos nao fechava e cobria o campo de % e o botao Adicionar;
+- "Cancelamento pedido a Temis" caia em cinza de transicao (a raiz `cancelament` nao casa com
+  `cancelad`) ao lado do "Distrato pedido" vermelho;
+- o desfazer do carimbo era cego (sem `.select()`, sem checar `error`) e podia travar o botao para
+  sempre; o card orfao agora e procurado antes de abrir o segundo.
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.844 testes verdes (207 arquivos).
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas conferir na tela — o historico do lote 01 03 deve mostrar "Enviada para
+  contrato" as 19:58 de 05/09, e a Temis deve receber card no proximo envio`.

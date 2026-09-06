@@ -65,6 +65,7 @@ export type PropostaDoHistorico = {
    * indistinguível de um contrato andando normalmente.
    */
   cancelamento_pedido_em?: null | string;
+  cancelamento_pedido_motivo?: null | string;
   cancelamento_pedido_por?: null | string;
   cancelamento_pedido_tipo?: null | string;
   cliente_nome: null | string;
@@ -381,7 +382,10 @@ export function historicoDaUnidade(
         // ficha do lote está justamente perguntando em qual dos dois esta venda entrou.
         fato: tipo === "distrato" ? "Distrato pedido à Têmis" : "Cancelamento pedido à Têmis",
         id: `pedido:${p.id}`,
-        observacao: null,
+        // ⚠️ O MOTIVO É METADE DO EVENTO. "Distrato pedido" sem o porquê obriga quem lê a abrir a
+        // fila do jurídico para entender o que houve com este lote — a mesma razão pela qual o
+        // cancelamento da proposta já mostra o dele.
+        observacao: texto(p.cancelamento_pedido_motivo),
         propostaId: p.id,
         quando: pedidoEm,
         quem: texto(p.cancelamento_pedido_por),
@@ -603,7 +607,11 @@ export function classeDoFato(fato: string, tipo?: EventoDaUnidade["tipo"]): Clas
   if (tipo === "assinatura") return "assinatura";
 
   const texto = String(fato ?? "").toLowerCase();
-  if (/cancelad|reprovad|distrat/.test(texto)) return "cancelado";
+  // ⚠️ `cancelament` ENTRA AO LADO DE `cancelad`: "Cancelamento pedido à Têmis" não casa com
+  // "cancelad" (a raiz muda de letra), e caía em "transicao" — bolinha cinza, do lado do "Distrato
+  // pedido à Têmis" que casa com `distrat` e sai vermelho. Dois pedidos da mesma natureza com cores
+  // diferentes na mesma linha do tempo.
+  if (/cancelad|cancelament|reprovad|distrat/.test(texto)) return "cancelado";
   if (/faturad|finalizad/.test(texto)) return "faturado";
   if (/assinatura/.test(texto)) return "assinatura";
   if (/contrato/.test(texto)) return "contrato";

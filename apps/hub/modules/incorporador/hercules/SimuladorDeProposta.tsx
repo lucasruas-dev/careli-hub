@@ -1018,9 +1018,15 @@ export function SimuladorDeProposta({
           <div
             style={{
               background: T.soft,
-              border: `1.5px solid ${principal.origem === "composicao" ? T.ok : T.sub}`,
+              // ⚠️ O NEUTRO NÃO PODE GRITAR MAIS QUE O VERDE. `T.sub` é cinza-escuro de TEXTO: numa
+              // borda de 1,5px ele pesa mais que o `T.ok` da composição recomendada, e a cor que
+              // significa alguma coisa passaria a ser a menos visível das duas. O que destaca este
+              // cartão é o fundo próprio e a espessura; a cor continua reservada ao recomendado.
+              border: `1.5px solid ${principal.origem === "composicao" ? T.ok : T.border}`,
               borderRadius: 14,
-              padding: 18,
+              // ⚠️ O PADDING NÃO CRESCEU. Esta coluna já rola por dentro, e o Lucas pediu a modal
+              // "sem barra de rolagem": o destaque tem que sair do contraste, não de altura nova.
+              padding: 16,
             }}
           >
             <div

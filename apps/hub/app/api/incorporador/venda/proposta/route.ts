@@ -695,14 +695,29 @@ export async function POST(request: Request) {
     // ela recusa igual — quem não pode gerar também não precisa de prévia de uma proposta que não
     // vai existir, e o coordenador vê o mesmo 422 que veria ao gerar.
     if (corpo.previa === true) {
+      // ⚠️ O RODAPÉ SAI DA MESMA FONTE DO PDF DEFINITIVO, e não de atalhos daqui. A primeira versão
+      // montava o atendimento à mão e errava duas linhas do papel que o coordenador está
+      // conferindo: punha o nome de QUEM CLICOU no lugar do coordenador da venda, e imprimia o
+      // TELEFONE DO CLIENTE onde o documento traz o da imobiliária — um dado do comprador num papel
+      // que circula por WhatsApp. `destinatariosDaVenda` é leitura pura (não dispara nada) e é ela
+      // que o `guardarOPdf` usa; sem imobiliária na reserva, o rodapé sai sem a linha, que é o
+      // mesmo que aconteceria lá.
+      const paraORodape = reserva.imobiliaria_entity_id
+        ? await destinatariosDaVenda(admin, {
+            corretorId: reserva.corretor_entity_id,
+            empreendimento: { c2xId, nome: empreendimento.nome },
+            imobiliariaId: reserva.imobiliaria_entity_id,
+          }).catch(() => null)
+        : null;
+
       const bytes = await bytesDoPdfDaProposta(
         admin,
         {
           atendimento: {
-            coordenador: auth.sessao.usuarioNome ?? null,
-            corretor: nomeDoCorretor,
-            imobiliaria: nomeDaImobiliaria,
-            telefone: telefoneEscrito(titular.telefone),
+            coordenador: paraORodape?.coordenadores[0]?.nome ?? null,
+            corretor: paraORodape?.corretor?.nome ?? nomeDoCorretor,
+            imobiliaria: paraORodape?.imobiliaria.nome ?? nomeDaImobiliaria,
+            telefone: paraORodape?.imobiliaria.telefone ?? null,
           },
           codigo,
           compradores,

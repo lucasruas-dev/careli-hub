@@ -438,9 +438,19 @@ async function lerReservasVivas(
 
   if (linhas.length === 0) return [];
 
-  // O nome da imobiliária, para a lista e o ranking não mostrarem um uuid.
+  // Os nomes da imobiliária E DO CORRETOR, para a lista e o ranking não mostrarem um uuid.
+  //
+  // ⚠️ O CORRETOR ENTROU NA MESMA LEITURA, e não numa segunda. Ele é lido da reserva desde sempre
+  // (`corretor_entity_id`) e era descartado aqui: a ficha do lote RESERVADO — a tela em que ele
+  // acabou de ser escolhido — mostrava "Corretor: —", e o nome só aparecia quando a reserva virava
+  // proposta. Uma consulta a mais para o mesmo `apolo_entities` seria pagar duas vezes pela mesma
+  // pergunta.
   const imobiliarias = [
-    ...new Set(linhas.map((l) => l.imobiliaria_entity_id).filter((id): id is string => Boolean(id))),
+    ...new Set(
+      linhas
+        .flatMap((l) => [l.imobiliaria_entity_id, l.corretor_entity_id])
+        .filter((id): id is string => Boolean(id)),
+    ),
   ];
   const nomePorId = new Map<string, string>();
   if (imobiliarias.length > 0) {
@@ -464,6 +474,9 @@ async function lerReservasVivas(
       const unidade = porId.get(linha.unidade_id) ?? null;
       return reservaComoLinhaDoFluxo(
         {
+          corretor_nome: linha.corretor_entity_id
+            ? (nomePorId.get(linha.corretor_entity_id) ?? null)
+            : null,
           criado_em: linha.criado_em,
           id: linha.id,
           imobiliaria_nome: linha.imobiliaria_entity_id

@@ -58,10 +58,16 @@ create index if not exists temis_trabalhos_por_proposta
 -- existe e está testada). Por isso estas colunas guardam o PEDIDO, e não a baixa: a etapa da venda
 -- não se mexe aqui. Quem fecha é a Têmis, e isso ainda não existe — enquanto não existir, o carimbo
 -- é o que impede o mesmo pedido de ser aberto duas vezes e o que a tela lê para trocar o botão.
+--
+-- ⚠️ O MOTIVO FICA AQUI, E NAO SO NO CARD. Ele e obrigatorio na tela e ja vai escrito na observacao
+-- do trabalho da Temis; guardado so la, o historico da unidade mostraria "Distrato pedido a Temis"
+-- sem uma linha dizendo por que — e o porque e exatamente o que alguem procura seis meses depois,
+-- do lado de ca, sem abrir a fila do juridico.
 alter table public.hercules_propostas
-  add column if not exists cancelamento_pedido_em    timestamptz,
-  add column if not exists cancelamento_pedido_tipo  text,
-  add column if not exists cancelamento_pedido_por   text;
+  add column if not exists cancelamento_pedido_em      timestamptz,
+  add column if not exists cancelamento_pedido_motivo  text,
+  add column if not exists cancelamento_pedido_tipo    text,
+  add column if not exists cancelamento_pedido_por     text;
 
 comment on column public.hercules_propostas.cancelamento_pedido_em is
   'Quando o cancelamento foi PEDIDO à Têmis. A venda continua na etapa em que está até o jurídico decidir.';

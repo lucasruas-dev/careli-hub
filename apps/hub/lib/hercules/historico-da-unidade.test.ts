@@ -698,6 +698,10 @@ describe("a etapa da proposta conta o passo que o movimento não contou", () => 
     // A bolinha da linha do tempo sai de `classeDoFato`, que le a FRASE. Um fato novo com palavra
     // fora do vocabulario dela cairia em "transicao" — cinza, no meio de eventos coloridos.
     expect(classeDoFato("Enviada para contrato")).toBe("contrato");
+    // ⚠️ O PAR TEM QUE TER A MESMA COR. "Distrato pedido" casava com `distrat` e saía vermelho;
+    // "Cancelamento pedido" não casa com `cancelad` e caía em cinza de transição.
+    expect(classeDoFato("Cancelamento pedido à Têmis")).toBe("cancelado");
+    expect(classeDoFato("Distrato pedido à Têmis")).toBe("cancelado");
     expect(classeDoFato("Enviada para assinatura")).toBe("assinatura");
     expect(classeDoFato("Faturada")).toBe("faturado");
     expect(classeDoFato("Distrato")).toBe("cancelado");

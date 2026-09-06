@@ -233,6 +233,19 @@ describe("reservaComoLinhaDoFluxo", () => {
     expect(linha.imobiliaria_nome).toBe("Gurgel Imóveis");
   });
 
+  it("⚠️ traz o CORRETOR: a ficha do lote reservado é onde ele acabou de ser escolhido", () => {
+    // Sem isto, a ficha de um lote reservado mostrava "Corretor: —" e o nome só aparecia quando a
+    // reserva virava proposta — na tela em que ninguém mais precisa procurar por ele.
+    const linha = reservaComoLinhaDoFluxo(
+      { ...RESERVA, corretor_nome: "Nívea Ferreira" },
+      UNIDADE,
+      "VOC",
+    );
+    expect(linha.corretor_nome).toBe("Nívea Ferreira");
+    // Reserva sem corretor continua válida — o campo some da ficha, não quebra a linha.
+    expect(reservaComoLinhaDoFluxo(RESERVA, UNIDADE, "VOC").corretor_nome).toBeNull();
+  });
+
   it("não estoura com proponentes vazio nem sem unidade", () => {
     const linha = reservaComoLinhaDoFluxo({ ...RESERVA, proponentes: [] }, null, null);
     expect(linha.cliente_nome).toBeNull();

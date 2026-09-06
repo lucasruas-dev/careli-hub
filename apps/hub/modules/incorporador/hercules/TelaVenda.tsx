@@ -488,10 +488,13 @@ export function TelaVenda() {
   /**
    * Leva a proposta aceita para a fase de contrato.
    *
-   * ⚠️ SEM MODAL, E DE PROPÓSITO. As outras três ações do fluxo perguntam alguma coisa antes —
-   * condições, motivo do cancelamento, dados da reserva. Esta não tem o que perguntar: é o
-   * coordenador dizendo "o cliente aceitou". Uma caixa de confirmação só para repetir o rótulo do
-   * botão viraria um clique a mais em cima do que ele acabou de decidir.
+   * ⚠️ COM MODAL, E EU TINHA DECIDIDO O CONTRÁRIO. O primeiro desenho mandava direto — "é o
+   * coordenador dizendo que o cliente aceitou, não há o que perguntar" —, e o Lucas pediu a
+   * confirmação (05/09/2026: *"tem que ter um botão para confirmar o envio para contrato, pois
+   * senão pode clicar errado e dar problema"*). Ele está certo: o botão fica no meio de outros três,
+   * do mesmo tamanho, e o que ele dispara não volta — a venda muda de etapa, um trabalho entra na
+   * fila do jurídico e o "Gerar proposta" apaga. A modal mostra a PROPOSTA (COD, cliente, plano,
+   * valor), que é o que faz alguém perceber que clicou no lote errado.
    *
    * ⚠️ E ELA RECARREGA A TELA. O lote muda de cor no mapa, a faixa do funil anda uma casa e o
    * histórico ganha a linha nova — sem isso, a única prova de que funcionou seria o recado verde.
@@ -561,9 +564,13 @@ export function TelaVenda() {
           error?: string;
         };
         if (!r.ok) {
+          // ⚠️ A MODAL FICA ABERTA NO ERRO. Ela guarda duas respostas e um motivo escrito à mão;
+          // fechar em qualquer falha (rede, 502 da Têmis) obriga a pessoa a responder tudo de novo
+          // para tentar outra vez — e a segunda digitação do motivo nunca sai igual à primeira.
           setRecado(j?.error ?? "Não foi possível pedir o cancelamento.");
           return;
         }
+        setPedindoCancelamento(null);
         const cod = j?.data?.codigo ? `${j.data.codigo} · ` : "";
         // ⚠️ O RECADO DIZ O TIPO, porque é a informação que muda o que acontece depois: distrato
         // com devolução manda o jurídico atrás dos dados bancários do cliente.
@@ -579,7 +586,6 @@ export function TelaVenda() {
         setRecado("Não foi possível pedir o cancelamento agora.");
       } finally {
         setEnviandoPedido(false);
-        setPedindoCancelamento(null);
       }
     },
     [carregar, emp, janela, recorte],

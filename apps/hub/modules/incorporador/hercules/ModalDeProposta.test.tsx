@@ -357,13 +357,27 @@ describe("adicionar proponente", () => {
     expect(alvo.textContent).toContain("100%");
   });
 
-  it("recusa CPF que não passa no dígito verificador", async () => {
+  it("⚠️ candidato sem CPF utilizável nem chega a ser escolhido", async () => {
+    // O campo de CPF ao lado é só leitura: escolher alguém cujo documento não veio (ou veio
+    // quebrado) deixaria o proponente sem CPF e sem como digitá-lo — um beco. A rota monta o CPF a
+    // partir do documento da entidade, que pode chegar vazio.
     await abrir();
 
-    await escolherProponente("Maria da Silva", "111.111.111-11");
+    daBusca = [
+      {
+        credenciado: true,
+        cpf: "111.111.111-11",
+        etapa: null,
+        id: "cad-3",
+        motivo: null,
+        nome: "Maria da Silva",
+      },
+    ];
+    digitar(campoDaBusca(), "Maria da Silva");
+    await esperarABusca();
 
-    expect(alvo.textContent).toContain("CPF inválido. Confira os números antes de adicionar.");
-    expect(alvo.textContent).not.toContain("Maria da Silva");
+    expect(candidato("Maria da Silva").disabled).toBe(true);
+    expect(alvo.textContent).toContain("sem CPF no cadastro");
   });
 
   it("aceita o proponente novo com CPF válido, e o titular fica com o que sobra", async () => {
@@ -394,6 +408,20 @@ describe("adicionar proponente", () => {
     await escolherProponente("Maria de Souza", CPF_DA_ESPOSA, "100");
 
     expect(alvo.textContent).toContain("menor que 100%");
+  });
+
+  it("⚠️ o segundo proponente não pode zerar o titular em silêncio", async () => {
+    // Com um proponente de 70% na lista, digitar 50% para o próximo levava o titular a −20%, e a
+    // tela grampeava em zero sem dizer nada: a soma ia a 120% num número que vai escrito na minuta.
+    await abrir();
+
+    await escolherProponente("Maria de Souza", CPF_DA_ESPOSA, "70");
+    expect(alvo.textContent).toContain("Maria de Souza");
+
+    await escolherProponente("Carlos Souza", "12345678909", "50");
+
+    expect(alvo.textContent).toContain("já somam 70%");
+    expect(alvo.textContent).not.toContain("Carlos Souza");
   });
 
   it("⚠️ o CPF não se digita: ele vem da CAD escolhida", async () => {
@@ -456,7 +484,10 @@ describe("adicionar proponente", () => {
     digitar(campoDaBusca(), "Larissa");
     await esperarABusca();
 
-    expect(alvo.textContent).toContain("CAD não encontrada neste empreendimento");
+    // ⚠️ E A FRASE É A DA FALHA, não a da ausência: "abra a CAD" num servidor fora do ar manda o
+    // corretor abrir uma CAD duplicada para quem já tem a dele credenciada.
+    expect(alvo.textContent).toContain("Não foi possível consultar a base agora");
+    expect(alvo.textContent).not.toContain("CAD não encontrada neste empreendimento");
     // A modal continua de pé: o portão segue à vista.
     expect(alvo.textContent).toContain("O cliente da reserva");
   });

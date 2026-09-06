@@ -104,7 +104,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
     }
 
-    const { data: linhaDaProposta } = await admin
+    // ⚠️ O ERRO DO SELECT NÃO PODE VIRAR 409. Descartá-lo faz uma falha de banco (coluna que não
+    // existe, tabela indisponível) chegar ao coordenador como "esta unidade não tem contrato do
+    // Panteon para cancelar" — uma frase que ele acredita, porque é plausível, e que o manda
+    // procurar o problema no lugar errado.
+    const { data: linhaDaProposta, error: erroDaProposta } = await admin
       .from("hercules_propostas")
       .select(
         "id,codigo,protocolo_numero,cliente_nome,cliente_documento,etapa,empreendimento_codigo,empreendimento_id,cancelamento_pedido_em",
@@ -114,6 +118,11 @@ export async function POST(request: Request) {
       .eq("origem", "panteon")
       .is("cancelada_em", null)
       .in("etapa", DEPOIS_DO_CONTRATO)
+      // ⚠️ A MAIS RECENTE, E UMA SÓ. `maybeSingle()` sobre duas linhas vivas lança, e a unidade que
+      // já teve venda desfeita e refeita pode ter mais de uma: sem ordem, o erro chegaria como
+      // "não foi possível" numa tela que mostra o contrato na cara de quem clicou.
+      .order("etapa_desde", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     const proposta = linhaDaProposta as null | {
@@ -127,6 +136,7 @@ export async function POST(request: Request) {
       id: string;
       protocolo_numero: null | number;
     };
+    if (erroDaProposta) throw new Error(erroDaProposta.message);
     if (!proposta) {
       return NextResponse.json(
         { error: "Esta unidade não tem contrato do Panteon para cancelar." },
@@ -151,11 +161,12 @@ export async function POST(request: Request) {
     // impede o segundo card. Dois cliques rápidos no mesmo botão — o caso real de quem não vê a
     // tela responder — abririam dois pedidos para o mesmo contrato, e quem lê o board não teria
     // como saber qual dos dois vale.
-    const { data: carimbadas } = await admin
+    const { data: carimbadas, error: erroDoCarimbo } = await admin
       .from("hercules_propostas")
       .update({
         atualizado_em: agora,
         cancelamento_pedido_em: agora,
+        cancelamento_pedido_motivo: motivo,
         cancelamento_pedido_por: auth.sessao.usuarioNome ?? null,
         cancelamento_pedido_tipo: classificacao.tipo,
       })
@@ -165,6 +176,11 @@ export async function POST(request: Request) {
       // o segundo clique passaria por "gravou" sem ter gravado nada.
       .select("id");
 
+    // ⚠️ FALHA DE ESCRITA NÃO É "JÁ EXISTE". Zero linhas por causa do `is null` significa que outro
+    // clique chegou primeiro; zero linhas por causa de um erro do banco significa outra coisa
+    // completamente — e mandar "já existe um pedido" faria o coordenador procurar na fila do
+    // jurídico um card que ninguém abriu.
+    if (erroDoCarimbo) throw new Error(erroDoCarimbo.message);
     if (!carimbadas || carimbadas.length === 0) {
       return NextResponse.json(
         { error: "Já existe um pedido de cancelamento na Têmis para esta venda." },
@@ -181,6 +197,32 @@ export async function POST(request: Request) {
     let trabalhoId: null | string = null;
     let avisoDaTemis: null | string = null;
     try {
+      // ⚠️ O CARD PODE JÁ EXISTIR SEM O CARIMBO. Se numa tentativa anterior o insert commitou e a
+      // resposta se perdeu (timeout, cold start), o carimbo foi desfeito e o trabalho FICOU na
+      // fila: abrir outro daria dois pedidos para o mesmo contrato, com o jurídico sem saber qual
+      // vale. Procurar antes custa uma leitura e fecha a única janela que o rollback não fecha.
+      const { data: jaNaFila } = await admin
+        .from("temis_trabalhos")
+        .select("id")
+        .eq("proposta_id", proposta.id)
+        .in("tipo", ["cancelamento", "distrato"])
+        .neq("estagio", "finalizado")
+        .limit(1);
+
+      const antigo = (jaNaFila ?? [])[0] as undefined | { id: string };
+      if (antigo) {
+        return NextResponse.json({
+          data: {
+            codigo: cod,
+            devolveValores: classificacao.devolveValores,
+            jaExistia: true,
+            porque: classificacao.porque,
+            tipo: classificacao.tipo,
+            trabalhoId: antigo.id,
+          },
+        });
+      }
+
       const aberto = await abrirTrabalho({
         abertoPor: auth.sessao.usuarioId,
         canal: "hercules",
@@ -213,20 +255,37 @@ export async function POST(request: Request) {
     // contrato, não há nada feito do outro lado: sem card, o pedido não existe, e deixar a marca de
     // pé travaria o botão para sempre num contrato sem pedido nenhum na fila.
     if (!trabalhoId) {
-      await admin
+      // ⚠️ O DESFAZER TAMBÉM SE CONFERE. Sem `.select()` e sem olhar o `error`, um rollback que não
+      // acontece passa por feito — e o carimbo fica de pé apontando um pedido que não existe,
+      // travando o botão PARA SEMPRE numa venda sem card nenhum na fila. A frase muda conforme o
+      // que de fato ficou no banco: mandar "nada foi registrado" quando o carimbo sobreviveu faria
+      // o coordenador tentar de novo contra uma trava que ele não vê.
+      const { data: limpas, error: erroDoDesfazer } = await admin
         .from("hercules_propostas")
         .update({
           cancelamento_pedido_em: null,
+          cancelamento_pedido_motivo: null,
           cancelamento_pedido_por: null,
           cancelamento_pedido_tipo: null,
         })
-        .eq("id", proposta.id);
+        .eq("id", proposta.id)
+        .select("id");
+
+      const desfeito = !erroDoDesfazer && (limpas?.length ?? 0) > 0;
+      if (!desfeito) {
+        console.error("[hercules][cancelamento] o carimbo do pedido ficou de pé", {
+          erro: erroDoDesfazer?.message ?? null,
+          proposta: proposta.id,
+        });
+      }
 
       return NextResponse.json(
         {
-          error: `O pedido não chegou à Têmis${
-            avisoDaTemis ? ` (${avisoDaTemis})` : ""
-          }. Nada foi registrado; avise o jurídico.`,
+          error: `O pedido não chegou à Têmis${avisoDaTemis ? ` (${avisoDaTemis})` : ""}. ${
+            desfeito
+              ? "Nada foi registrado; avise o jurídico."
+              : "A marca do pedido ficou registrada e o botão não vai aceitar nova tentativa: avise o jurídico e peça para o time do Panteon limpar a marca."
+          }`,
         },
         { status: 502 },
       );
