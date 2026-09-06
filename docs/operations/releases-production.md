@@ -5955,3 +5955,20 @@ Achados que viraram correcao no mesmo lote:
 - Status: `EM PRODUCAO`.
 - Proxima acao: `Lucas conferir na tela — o historico do lote 01 03 deve mostrar "Enviada para
   contrato" as 19:58 de 05/09, e a Temis deve receber card no proximo envio`.
+
+## 2026-09-06 · v1.284.1 — Hercules: a ficha pela lista tambem enxerga o que acabou de acontecer
+
+- Autorizacao: OK explicito do Lucas ("tem o meu ok").
+- Commit: `cff5985e`. Rollback: `56d2f6ba` (v1.284.0).
+- Os dois ultimos achados da conferencia adversarial (114 agentes, 6 lentes, 3 ceticos por achado),
+  que chegaram depois do push da v1.284.0:
+  - A PROPOSTA EM FOCO ERA UM RETRATO. Clicar numa linha do analitico guardava o objeto como ele
+    estava no clique, e nada o ressincronizava: depois de pedir o cancelamento do contrato — pedido
+    gravado, faixa verde, linha nova no historico — o botao continuava aceso, e o segundo clique
+    levava 409 depois de responder tudo de novo. Pela GRADE funcionava. Virou funcao pura com teste
+    ao lado de `unidade-em-foco.ts`, que ja consertou o defeito irmao para o LOTE.
+  - O ENVIO PARA CONTRATO PASSOU A MANDAR `propostaId`. A trava contra aba velha existe na rota
+    desde a v1.282.2 e NUNCA disparava porque ninguem mandava o campo. Com a confirmacao no meio do
+    caminho a janela ficou maior: da para confirmar o COD do Joao e mover a proposta da Maria.
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.848 testes verdes (207 arquivos).
+- Status: `EM PRODUCAO`.
