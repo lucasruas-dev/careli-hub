@@ -25,10 +25,20 @@ import { lerC2xUserId } from "./ficha-cadastro";
 import { pessoaNoEscopo } from "./pessoa-no-escopo";
 import type { TipoDaFicha } from "./crm";
 import type { SessaoIncorporador } from "./sessao";
+import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 
 // ── TIPOS DO PAYLOAD ────────────────────────────────────────────────────────
 
-export type FonteDoDocumento = "apolo" | "c2x" | "contrato";
+/**
+ * ⚠️ "venda" É A QUARTA FONTE, e ela existe porque o Lucas pediu que o documento trocado na tela de
+ * Venda do Hércules *"também exista no Apolo"* (06/09/2026). Ele NÃO é copiado para
+ * `apolo_documents`: os bytes já vivem no mesmo bucket, e copiar a linha traria três defeitos
+ * medidos — `entity_id` é NOT NULL lá (e o documento nasce quando o cliente pode não ter entidade),
+ * o DELETE daquela rota roda com autorização de LEITURA e apagaria arquivo e linha, e o
+ * visualizador da esteira monta uma aba por documento sem filtrar tipo, pondo contrato e boleto no
+ * meio do RG na tela em que se aprova a CAD. Uma linha só, dois leitores.
+ */
+export type FonteDoDocumento = "apolo" | "c2x" | "contrato" | "venda";
 
 export type DocumentoDoPortal = {
   /** false = só metadado (anexo preso no S3 do C2X); o botão fica desabilitado com tooltip. */
@@ -54,6 +64,40 @@ export function docsDoApolo(itens: ApoloDocumentItem[]): DocumentoDoPortal[] {
     nome: item.label || item.fileName || "Documento",
     tipo: item.documentType || null,
   }));
+}
+
+/** O que a leitura de `hercules_documentos` devolve para esta lista. */
+export type DocumentoDaVendaNoApolo = {
+  criado_em: string;
+  id: string;
+  nome: string;
+  protocolo_numero: null | number;
+  tipo: string;
+};
+
+/**
+ * Fonte (d): o que foi trocado na tela de Venda, na aba Documentos do lote.
+ *
+ * ⚠️ O COD ENTRA NO NOME, e não some num campo à parte: no Apolo o eixo é a PESSOA, e a mesma
+ * pessoa pode ter documento de duas vendas. Sem o protocolo escrito, dois "RG.pdf" na lista da
+ * ficha ficam indistinguíveis — e é justamente o agrupamento que a aba do Hércules garante e esta
+ * tela não tem.
+ */
+export function docsDaVenda(
+  itens: DocumentoDaVendaNoApolo[],
+  codigoDaVenda: (protocolo: null | number | undefined) => string,
+): DocumentoDoPortal[] {
+  return itens.map((item) => {
+    const cod = codigoDaVenda(item.protocolo_numero);
+    return {
+      abrivel: true,
+      criadoEm: item.criado_em || null,
+      fonte: "venda" as const,
+      id: item.id,
+      nome: cod ? `${cod} · ${item.nome}` : item.nome,
+      tipo: item.tipo || null,
+    };
+  });
 }
 
 /**
@@ -167,21 +211,71 @@ export async function montarDocumentos({
   const admin = createApoloAdminClient();
   const c2xUserId = admin ? await lerC2xUserId(admin, pessoa.entityId) : null;
 
-  const [docsApolo, anexos] = await Promise.all([
+  const [docsApolo, anexos, daVenda] = await Promise.all([
     admin
       ? listApoloDocuments(admin, "entidade", pessoa.entityId).catch(() => [])
       : Promise.resolve([]),
     lerAnexosDoC2x(c2xUserId),
+    admin ? lerDocumentosDaVenda(admin, pessoa.entityId) : Promise.resolve([]),
   ]);
 
   return {
     documentos: [
       ...docsDoApolo(docsApolo),
+      ...docsDaVenda(daVenda, codigoDaVenda),
       ...contratosAssinados(pessoa.unidadesDaPessoa),
       ...anexosDoC2x(anexos),
     ],
     ok: true,
   };
+}
+
+/**
+ * Os documentos que a venda trocou, desta pessoa.
+ *
+ * ⚠️ DOIS CAMINHOS, E OS DOIS PRECISAM EXISTIR. O documento gravado depois da proposta traz
+ * `cliente_entity_id`; o que chegou na fase de RESERVA só tem o CPF (a reserva guarda o titular em
+ * jsonb, sem entidade). Ler só pela entidade esconderia da ficha justamente o RG que se pede para
+ * abrir a CAD — e ninguém entenderia por que ele "sumiu".
+ *
+ * ⚠️ FALHA AQUI NÃO DERRUBA A ABA: as outras três fontes continuam. Uma lista a menos é ruim; a
+ * ficha inteira em branco por causa de uma tabela nova é pior.
+ */
+async function lerDocumentosDaVenda(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  entityId: string,
+): Promise<DocumentoDaVendaNoApolo[]> {
+  try {
+    const { data: pessoa } = await admin
+      .from("apolo_entities")
+      .select("document")
+      .eq("id", entityId)
+      .maybeSingle();
+
+    const cpf = String((pessoa as null | { document: null | string })?.document ?? "").replace(
+      /\D/g,
+      "",
+    );
+
+    const filtro = cpf
+      ? `cliente_entity_id.eq.${entityId},cliente_documento.eq.${cpf}`
+      : `cliente_entity_id.eq.${entityId}`;
+
+    const { data, error } = await admin
+      .from("hercules_documentos")
+      .select("id,nome,tipo,protocolo_numero,criado_em")
+      .eq("workspace_id", "careli")
+      .is("removido_em", null)
+      .or(filtro)
+      .order("criado_em", { ascending: false })
+      .limit(200);
+
+    if (error) throw new Error(error.message);
+    return (data ?? []) as DocumentoDaVendaNoApolo[];
+  } catch (erro) {
+    console.error("[incorporador/documentos] falha ao ler os documentos da venda", erro);
+    return [];
+  }
 }
 
 // ── ABERTURA (um documento por vez, com a posse reconferida) ────────────────
@@ -258,6 +352,50 @@ export async function abrirDocumento({
     const assinada = await admin.storage
       .from(linha.storage_bucket ?? "apolo-documents")
       .createSignedUrl(linha.storage_path, URL_TTL_SEGUNDOS);
+
+    if (assinada.error || !assinada.data?.signedUrl) return { ok: false, status: 502 };
+
+    return { ok: true, tipo: "url", url: assinada.data.signedUrl };
+  }
+
+  if (fonte === "venda") {
+    const admin = createApoloAdminClient();
+    if (!admin) return { ok: false, status: 503 };
+
+    // ⚠️ A POSSE É REFEITA PELA PESSOA, e não pelo id sozinho — a MESMA regra do ramo `apolo` acima.
+    // O documento da venda é achado por entidade OU por CPF (na fase de reserva não há entidade),
+    // então as duas condições entram na consulta que já filtra pelo id: um id chutado de outra
+    // venda não casa e vira 404, sem nunca gerar a URL para conferir depois.
+    const { data: quem } = await admin
+      .from("apolo_entities")
+      .select("document")
+      .eq("id", pessoa.entityId)
+      .maybeSingle();
+
+    const cpf = String((quem as null | { document: null | string })?.document ?? "").replace(
+      /\D/g,
+      "",
+    );
+    const filtro = cpf
+      ? `cliente_entity_id.eq.${pessoa.entityId},cliente_documento.eq.${cpf}`
+      : `cliente_entity_id.eq.${pessoa.entityId}`;
+
+    const { data } = await admin
+      .from("hercules_documentos")
+      .select("id,caminho")
+      .eq("workspace_id", "careli")
+      .eq("id", alvo)
+      .is("removido_em", null)
+      .or(filtro)
+      .limit(1)
+      .returns<Array<{ caminho: string; id: string }>>();
+
+    const linha = data?.[0];
+    if (!linha?.caminho) return { ok: false, status: 404 };
+
+    const assinada = await admin.storage
+      .from("apolo-documents")
+      .createSignedUrl(linha.caminho, URL_TTL_SEGUNDOS);
 
     if (assinada.error || !assinada.data?.signedUrl) return { ok: false, status: 502 };
 

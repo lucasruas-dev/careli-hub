@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import type { ApoloCarteiraUnit } from "@/lib/apolo/carteira";
 import type { ApoloDocumentItem } from "@/lib/apolo/documentos";
 
+import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import {
+  docsDaVenda,
   anexosDoC2x,
   contratosAssinados,
   docsDoApolo,
@@ -151,5 +153,49 @@ describe("anexosDoC2x", () => {
   it("blob sem nome de arquivo não vira card (não há o que mostrar)", () => {
     expect(anexosDoC2x([linha({ filename: "  " })])).toEqual([]);
     expect(anexosDoC2x([linha({ filename: null })])).toEqual([]);
+  });
+});
+
+describe("docsDaVenda", () => {
+  it("⚠️ o COD entra no nome: no Apolo o eixo é a PESSOA, não a venda", () => {
+    // A mesma pessoa pode ter documento de duas vendas. Sem o protocolo escrito, dois "RG.pdf" na
+    // ficha ficam indistinguíveis — e o agrupamento por protocolo, que a aba do Hércules garante,
+    // não existe nesta tela.
+    const lista = docsDaVenda(
+      [
+        {
+          criado_em: "2026-09-06T12:00:00Z",
+          id: "d1",
+          nome: "RG.pdf",
+          protocolo_numero: 6,
+          tipo: "documento",
+        },
+      ],
+      codigoDaVenda,
+    );
+
+    expect(lista[0]?.nome).toBe("000006 · RG.pdf");
+    expect(lista[0]?.fonte).toBe("venda");
+    expect(lista[0]?.abrivel).toBe(true);
+  });
+
+  it("sem protocolo, o nome sai limpo — e o documento não some", () => {
+    const lista = docsDaVenda(
+      [
+        {
+          criado_em: "2026-09-06T12:00:00Z",
+          id: "d2",
+          nome: "Comprovante.pdf",
+          protocolo_numero: null,
+          tipo: "documento",
+        },
+      ],
+      codigoDaVenda,
+    );
+    expect(lista[0]?.nome).toBe("Comprovante.pdf");
+  });
+
+  it("lista vazia não vira nada", () => {
+    expect(docsDaVenda([], codigoDaVenda)).toEqual([]);
   });
 });

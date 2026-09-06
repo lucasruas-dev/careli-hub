@@ -1741,6 +1741,10 @@ const ROTULO_DA_FONTE: Record<DocumentoDoPortal["fonte"], string> = {
   apolo: "Cadastro",
   c2x: "Guardado no C2X",
   contrato: "Contrato",
+  // ⚠️ "Venda" DIZ DE ONDE VEIO, e é o que separa o documento trocado na negociação do que a CAD
+  // colheu. O nome do arquivo já traz o COD na frente, porque aqui o eixo é a PESSOA: a mesma
+  // pessoa pode ter documento de duas vendas, e sem o protocolo dois "RG.pdf" ficam iguais.
+  venda: "Venda",
 };
 
 function DocumentosDaFicha({ id, tipo }: { id: string; tipo: TipoDaFicha }) {

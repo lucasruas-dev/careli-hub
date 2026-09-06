@@ -1,0 +1,286 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import {
+  NOME_DO_TIPO_DE_MENSAGEM,
+  type TipoDaMensagem,
+} from "@/lib/hercules/documentos-da-venda";
+
+import { T } from "../tema";
+
+// A CONVERSA DA VENDA — o registro interno do lote.
+//
+// Lucas (06/09/2026): *"terei que ter um chat para relatar, tirar dúvidas, informar de forma
+// formalizada (...) o chat é onde vai ficar os registros de conversas, formalizações,
+// observações"*. E: *"deixa o chat como principal, primeiro chat - documentos - histórico"*.
+//
+// ⚠️ NÃO É A IRIS. A Iris fala COM O CLIENTE, por WhatsApp e e-mail, com fila e dono. Aqui é o que
+// a casa combina sobre a venda: o que o coordenador acertou com o corretor, o que o jurídico
+// respondeu, a observação que explica por que o desconto saiu daquele tamanho. Nada daqui sai para
+// fora — e é por isso que serve de prova depois.
+//
+// ⚠️ A CONVERSA LÊ-SE DE CIMA PARA BAIXO, ao contrário do histórico ao lado. Chat com a mensagem
+// mais nova no topo obriga a ler de trás para frente para entender o que foi combinado.
+
+type MensagemDaVenda = {
+  autor_nome: null | string;
+  codigo: null | string;
+  criado_em: string;
+  id: string;
+  texto: string;
+  tipo: string;
+};
+
+/** O tom de cada tipo. Só a formalização ganha destaque: ela é a que alguém procura depois. */
+const TOM: Record<string, { fundo: string; traco: string }> = {
+  formalizacao: { fundo: T.okBg, traco: T.ok },
+  mensagem: { fundo: "transparent", traco: T.border },
+  observacao: { fundo: T.soft, traco: T.border },
+};
+
+export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | string; versao: number }) {
+  const [mensagens, setMensagens] = useState<MensagemDaVenda[]>([]);
+  const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">("pronto");
+  const [texto, setTexto] = useState("");
+  const [tipo, setTipo] = useState<TipoDaMensagem>("mensagem");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<null | string>(null);
+  const fim = useRef<HTMLDivElement | null>(null);
+
+  const carregar = useCallback(async () => {
+    if (!unidadeId) {
+      setMensagens([]);
+      return;
+    }
+    setEstado("carregando");
+    try {
+      const r = await fetch(
+        `/api/incorporador/venda/conversa?unidade=${encodeURIComponent(unidadeId)}`,
+        { cache: "no-store" },
+      );
+      const j = (await r.json().catch(() => null)) as null | {
+        data?: { mensagens: MensagemDaVenda[] };
+      };
+      if (!r.ok || !j?.data) {
+        setEstado("erro");
+        return;
+      }
+      setMensagens(j.data.mensagens);
+      setEstado("pronto");
+    } catch {
+      setEstado("erro");
+    }
+  }, [unidadeId]);
+
+  useEffect(() => {
+    setTexto("");
+    setErro(null);
+    void carregar();
+  }, [carregar, versao]);
+
+  // ⚠️ ROLA PARA O FIM AO CHEGAR MENSAGEM, e não a cada render: quem abre a aba quer ver o que foi
+  // dito por último, que é onde a conversa parou.
+  useEffect(() => {
+    fim.current?.scrollIntoView({ block: "end" });
+  }, [mensagens.length]);
+
+  async function enviar() {
+    const limpo = texto.trim();
+    if (!unidadeId || limpo.length === 0 || enviando) return;
+
+    setEnviando(true);
+    setErro(null);
+    try {
+      const r = await fetch("/api/incorporador/venda/conversa", {
+        body: JSON.stringify({ texto: limpo, tipo, unidadeId }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      const j = (await r.json().catch(() => null)) as null | {
+        data?: { mensagem: MensagemDaVenda };
+        error?: string;
+      };
+      if (!r.ok || !j?.data) {
+        setErro(j?.error ?? "Não foi possível registrar.");
+        return;
+      }
+      // ⚠️ ENTRA NA LISTA SEM RECARREGAR A CONVERSA INTEIRA: a resposta já traz a linha gravada,
+      // com o id e a hora do servidor. Refazer o GET aqui piscaria a tela por nada.
+      setMensagens((atuais) => [...atuais, j.data!.mensagem]);
+      setTexto("");
+    } catch {
+      setErro("Não foi possível registrar agora.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (!unidadeId) {
+    return (
+      <p style={{ color: T.muted, fontSize: 12.5, margin: 0, padding: "18px 2px" }}>
+        Escolha uma unidade para ver a conversa.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
+      <div style={{ display: "grid", gap: 8, minHeight: 0, overflow: "auto" }}>
+        {estado === "carregando" && mensagens.length === 0 ? (
+          <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>Carregando…</p>
+        ) : estado === "erro" ? (
+          <p style={{ color: T.danger, fontSize: 12.5, margin: 0 }}>
+            Não foi possível carregar a conversa.
+          </p>
+        ) : mensagens.length === 0 ? (
+          <p style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
+            Nada registrado ainda. O que for combinado aqui fica gravado com autor e hora — é o que
+            explica esta venda para quem olhar depois.
+          </p>
+        ) : (
+          mensagens.map((m) => {
+            const tom = TOM[m.tipo] ?? TOM.mensagem!;
+            return (
+              <article
+                key={m.id}
+                style={{
+                  background: tom.fundo,
+                  borderLeft: `2px solid ${tom.traco}`,
+                  display: "grid",
+                  gap: 3,
+                  padding: "6px 0 6px 10px",
+                }}
+              >
+                <div style={{ alignItems: "baseline", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  <b style={{ fontSize: 12 }}>{m.autor_nome ?? "—"}</b>
+                  <span style={{ color: T.muted, fontSize: 11 }}>{quando(m.criado_em)}</span>
+                  {m.tipo !== "mensagem" ? (
+                    <span
+                      style={{
+                        color: m.tipo === "formalizacao" ? T.ok : T.muted,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: 0.4,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {NOME_DO_TIPO_DE_MENSAGEM[m.tipo as TipoDaMensagem] ?? m.tipo}
+                    </span>
+                  ) : null}
+                  {/* O COD amarra a mensagem à venda: o mesmo lote pode ter tido outras. */}
+                  {m.codigo ? (
+                    <span
+                      style={{
+                        color: T.muted,
+                        fontFamily: "ui-monospace, monospace",
+                        fontSize: 10.5,
+                        marginLeft: "auto",
+                      }}
+                    >
+                      {m.codigo}
+                    </span>
+                  ) : null}
+                </div>
+                <p style={{ fontSize: 12.5, lineHeight: 1.5, margin: 0, whiteSpace: "pre-wrap" }}>
+                  {m.texto}
+                </p>
+              </article>
+            );
+          })
+        )}
+        <div ref={fim} />
+      </div>
+
+      <div style={{ borderTop: `1px solid ${T.border}`, display: "grid", gap: 6, paddingTop: 10 }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          {(["mensagem", "observacao", "formalizacao"] as const).map((opcao) => (
+            <button
+              key={opcao}
+              onClick={() => setTipo(opcao)}
+              style={{
+                background: tipo === opcao ? T.text : "transparent",
+                border: `1px solid ${tipo === opcao ? T.text : T.border}`,
+                borderRadius: 999,
+                color: tipo === opcao ? T.page : T.sub,
+                cursor: "pointer",
+                font: "inherit",
+                fontSize: 11.5,
+                fontWeight: 600,
+                padding: "4px 12px",
+              }}
+              type="button"
+            >
+              {NOME_DO_TIPO_DE_MENSAGEM[opcao]}
+            </button>
+          ))}
+        </div>
+
+        <textarea
+          disabled={enviando}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => {
+            // ⚠️ ENTER MANDA, SHIFT+ENTER QUEBRA LINHA — o gesto de todo chat. Sem isso, quem
+            // escreve rápido manda a mensagem pela metade procurando o botão.
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void enviar();
+            }
+          }}
+          placeholder="Registrar algo sobre esta venda…"
+          rows={2}
+          style={{
+            background: T.page,
+            border: `1px solid ${T.border}`,
+            borderRadius: 9,
+            color: T.text,
+            font: "inherit",
+            fontSize: 12.5,
+            padding: "8px 10px",
+            resize: "vertical",
+          }}
+          value={texto}
+        />
+
+        {erro ? <span style={{ color: T.danger, fontSize: 11.5 }}>{erro}</span> : null}
+
+        <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <span style={{ color: T.muted, fontSize: 11, marginRight: "auto" }}>
+            Fica gravado com seu nome e a hora. Não se apaga.
+          </span>
+          <button
+            disabled={enviando || texto.trim().length === 0}
+            onClick={() => void enviar()}
+            style={{
+              background: texto.trim().length === 0 ? T.soft : T.btnBg,
+              border: `1px solid ${texto.trim().length === 0 ? T.border : "transparent"}`,
+              borderRadius: 9,
+              color: texto.trim().length === 0 ? T.muted : T.btnFg,
+              cursor: texto.trim().length === 0 ? "default" : "pointer",
+              font: "inherit",
+              fontSize: 12.5,
+              fontWeight: 650,
+              padding: "7px 16px",
+            }}
+            type="button"
+          >
+            {enviando ? "Registrando…" : "Registrar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** "06/09 15:13" — no fuso da operação, como o resto da tela. */
+function quando(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  });
+}

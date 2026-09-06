@@ -20,7 +20,11 @@ import {
   propostaEmFoco as acharPropostaEmFoco,
   unidadeEmFoco as acharUnidadeEmFoco,
 } from "@/lib/hercules/unidade-em-foco";
-import type { EtapaDoEspelho, EtapaDoFluxo, FluxoDeVenda } from "@/lib/hercules/fluxo-de-venda";
+import type {
+  EtapaDoEspelho,
+  EtapaDoFluxo,
+  FluxoDeVenda,
+} from "@/lib/hercules/fluxo-de-venda";
 import {
   type ClasseDoFato,
   classeDoFato,
@@ -32,6 +36,8 @@ import { formatarTelefoneGuardado } from "@/lib/hercules/paises";
 
 import { T, useTemaDoPortal } from "../tema";
 import { Pilula } from "./AssinaturasDoProduto";
+import { ConversaDaVenda } from "./ConversaDaVenda";
+import { DocumentosDaVenda } from "./DocumentosDaVenda";
 import { ModalDeCancelamento } from "./ModalDeCancelamento";
 import { ModalDeContrato } from "./ModalDeContrato";
 import { ModalDePedidoDeCancelamento } from "./ModalDePedidoDeCancelamento";
@@ -137,8 +143,18 @@ const FLUXO: ReadonlyArray<{
   { cor: "#98a2b3", etapa: "disponivel", icone: Grid2x2, rotulo: "Disponível" },
   { cor: "#c9962b", etapa: "reservado", icone: Bookmark, rotulo: "Reserva" },
   { cor: "#3c73c0", etapa: "proposta", icone: FileText, rotulo: "Proposta" },
-  { cor: "#7d5cba", etapa: "contrato", icone: FileSignature, rotulo: "Contrato" },
-  { cor: "#454c5c", etapa: "assinatura", icone: Signature, rotulo: "Assinatura" },
+  {
+    cor: "#7d5cba",
+    etapa: "contrato",
+    icone: FileSignature,
+    rotulo: "Contrato",
+  },
+  {
+    cor: "#454c5c",
+    etapa: "assinatura",
+    icone: Signature,
+    rotulo: "Assinatura",
+  },
   { cor: "#2f7d4a", etapa: "faturado", icone: Receipt, rotulo: "Faturamento" },
 ];
 
@@ -199,9 +215,11 @@ const ROTULO_DA_ETAPA: Record<EtapaDoEspelho, string> = Object.fromEntries(
 const FUNDO_ESCURO = new Set<EtapaDoEspelho>(["assinatura"]);
 
 const textoNoQuadrado = (etapa: EtapaDoEspelho) =>
-  etapa === "disponivel" ? T.muted : FUNDO_ESCURO.has(etapa) ? "rgb(255 255 255 / .9)" : "rgb(0 0 0 / .6)";
-
-
+  etapa === "disponivel"
+    ? T.muted
+    : FUNDO_ESCURO.has(etapa)
+      ? "rgb(255 255 255 / .9)"
+      : "rgb(0 0 0 / .6)";
 
 const dinheiro = (v: number) =>
   v >= 1_000_000
@@ -224,7 +242,11 @@ const dia = (iso: null | string) => {
  * desde julho desaparecer da tela em setembro, escondendo justamente o que precisa de atenção. A
  * régua está em `lib/hercules/fluxo-de-venda.ts`, com teste.
  */
-const JANELAS: ReadonlyArray<{ id: string; meses: null | number; rotulo: string }> = [
+const JANELAS: ReadonlyArray<{
+  id: string;
+  meses: null | number;
+  rotulo: string;
+}> = [
   { id: "mes", meses: 1, rotulo: "Este mês" },
   { id: "3m", meses: 3, rotulo: "3 meses" },
   { id: "12m", meses: 12, rotulo: "12 meses" },
@@ -234,7 +256,9 @@ const JANELAS: ReadonlyArray<{ id: string; meses: null | number; rotulo: string 
 /** A competência de N meses atrás, no formato AAAA-MM que a rota espera. */
 function competenciaDe(mesesAtras: number): string {
   const hoje = new Date();
-  const d = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - mesesAtras, 1));
+  const d = new Date(
+    Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - mesesAtras, 1),
+  );
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
@@ -257,12 +281,18 @@ function comoSeEscreve(
 ): { recorte: null | string; unidade: string } {
   if (quadra && lote) {
     const m = /^([A-Za-z]{2,4})/.exec(codigo.trim());
-    return { recorte: m ? m[1]!.toUpperCase() : null, unidade: `${quadra} ${lote}` };
+    return {
+      recorte: m ? m[1]!.toUpperCase() : null,
+      unidade: `${quadra} ${lote}`,
+    };
   }
 
   const padrao = /^([A-Za-z]{2,4})(\d{2})(\d{2})$/.exec(codigo.trim());
   if (padrao) {
-    return { recorte: padrao[1]!.toUpperCase(), unidade: `${padrao[2]} ${padrao[3]}` };
+    return {
+      recorte: padrao[1]!.toUpperCase(),
+      unidade: `${padrao[2]} ${padrao[3]}`,
+    };
   }
   return { recorte: null, unidade: codigo };
 }
@@ -315,7 +345,9 @@ const rotuloDaData = (etapa: string) => ROTULO_DA_DATA[etapa] ?? "Data";
  * casar por código não acharia nada justamente no produto que mais precisa. Quadra e lote são o
  * lote físico, e não mudam com o recorte.
  */
-function loteSelecionadoNoEspelho(doc: Document): null | { lote: string; quadra: string } {
+function loteSelecionadoNoEspelho(
+  doc: Document,
+): null | { lote: string; quadra: string } {
   const texto = doc.getElementById("fQL")?.textContent?.trim();
   if (!texto) return null;
   const m = /Quadra\s*([^\s·]+)\s*·\s*Lote\s*(\S+)/i.exec(texto);
@@ -379,9 +411,23 @@ const ROTULO_TERMINAL: Record<string, string> = {
  * que decide a cor do lote na grade e o que entra na faixa. Duplicá-la seria criar um segundo lugar
  * para alguém esquecer de mexer.
  */
-const ehEtapaViva = (etapa: string) => (ETAPAS_DO_FLUXO as readonly string[]).includes(etapa);
+const ehEtapaViva = (etapa: string) =>
+  (ETAPAS_DO_FLUXO as readonly string[]).includes(etapa);
 
-const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const MESES = [
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+  "jul",
+  "ago",
+  "set",
+  "out",
+  "nov",
+  "dez",
+];
 const mesCurto = (mes: string) => {
   const [ano, m] = mes.split("-");
   return `${MESES[Number(m) - 1] ?? m}/${String(ano).slice(2)}`;
@@ -421,10 +467,12 @@ export function TelaVenda() {
    * de outros três, do mesmo tamanho, e o que ele dispara não volta: a venda muda de etapa, um
    * trabalho entra na fila do jurídico e o "Gerar proposta" apaga.
    */
-  const [mandandoParaContrato, setMandandoParaContrato] = useState<null | UnidadeNoMapa>(null);
+  const [mandandoParaContrato, setMandandoParaContrato] =
+    useState<null | UnidadeNoMapa>(null);
   const [enviandoContrato, setEnviandoContrato] = useState(false);
   /** A venda em contrato cujo cancelamento está sendo pedido à Têmis. */
-  const [pedindoCancelamento, setPedindoCancelamento] = useState<null | UnidadeNoMapa>(null);
+  const [pedindoCancelamento, setPedindoCancelamento] =
+    useState<null | UnidadeNoMapa>(null);
   const [enviandoPedido, setEnviandoPedido] = useState(false);
   const [propondo, setPropondo] = useState<null | UnidadeNoMapa>(null);
   const [recado, setRecado] = useState<null | string>(null);
@@ -460,8 +508,13 @@ export function TelaVenda() {
         busca.set("ate", competenciaDe(0));
       }
       const sufixo = busca.toString() ? `?${busca}` : "";
-      const r = await fetch(`/api/incorporador/venda${sufixo}`, { cache: "no-store" });
-      const j = (await r.json().catch(() => null)) as null | { data?: FluxoDeVenda; error?: string };
+      const r = await fetch(`/api/incorporador/venda${sufixo}`, {
+        cache: "no-store",
+      });
+      const j = (await r.json().catch(() => null)) as null | {
+        data?: FluxoDeVenda;
+        error?: string;
+      };
 
       // Chegou tarde: outro pedido saiu depois deste, e é a resposta dele que vale.
       if (meu !== pedidoEmVoo.current) return;
@@ -480,7 +533,8 @@ export function TelaVenda() {
       // que o servidor tem coisa nova para contar.
       setVersaoDosDados((v) => v + 1);
     } catch {
-      if (meu === pedidoEmVoo.current) setErro("Não foi possível carregar o fluxo de venda.");
+      if (meu === pedidoEmVoo.current)
+        setErro("Não foi possível carregar o fluxo de venda.");
     } finally {
       // ⚠️ O "CARREGANDO" TAMBÉM É DO ÚLTIMO. Sem esta conferência, a resposta velha apagava o aviso
       // de carregando enquanto o pedido novo ainda estava em voo, e a tela ficava parada parecendo
@@ -518,12 +572,19 @@ export function TelaVenda() {
           (l) => l.unidadeId === u.id && ehEtapaViva(l.etapa),
         );
         const r = await fetch("/api/incorporador/venda/contrato", {
-          body: JSON.stringify({ propostaId: viva?.id ?? null, unidadeId: u.id }),
+          body: JSON.stringify({
+            propostaId: viva?.id ?? null,
+            unidadeId: u.id,
+          }),
           headers: { "content-type": "application/json" },
           method: "POST",
         });
         const j = (await r.json().catch(() => null)) as null | {
-          data?: { avisoDaTemis?: null | string; codigo?: string; trabalhoId?: null | string };
+          data?: {
+            avisoDaTemis?: null | string;
+            codigo?: string;
+            trabalhoId?: null | string;
+          };
           error?: string;
         };
         if (!r.ok) {
@@ -570,11 +631,14 @@ export function TelaVenda() {
       if (!u) return;
       setEnviandoPedido(true);
       try {
-        const r = await fetch("/api/incorporador/venda/cancelamento-de-contrato", {
-          body: JSON.stringify({ ...resposta, unidadeId: u.id }),
-          headers: { "content-type": "application/json" },
-          method: "POST",
-        });
+        const r = await fetch(
+          "/api/incorporador/venda/cancelamento-de-contrato",
+          {
+            body: JSON.stringify({ ...resposta, unidadeId: u.id }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          },
+        );
         const j = (await r.json().catch(() => null)) as null | {
           data?: { codigo?: string; devolveValores?: boolean; tipo?: string };
           error?: string;
@@ -619,11 +683,13 @@ export function TelaVenda() {
   useEffect(() => {
     const lugar = lugarGuardado();
 
-    if (lugar.visao === "mesa" || lugar.visao === "panorama") setVisao(lugar.visao);
+    if (lugar.visao === "mesa" || lugar.visao === "panorama")
+      setVisao(lugar.visao);
     if (lugar.modoDoEstoque === "grade" || lugar.modoDoEstoque === "mapa") {
       setModoDoEstoque(lugar.modoDoEstoque);
     }
-    if (lugar.janela && JANELAS.some((j) => j.id === lugar.janela)) setJanela(lugar.janela);
+    if (lugar.janela && JANELAS.some((j) => j.id === lugar.janela))
+      setJanela(lugar.janela);
     if (
       lugar.etapa === "disponivel" ||
       (lugar.etapa && ETAPAS_DO_FLUXO.some((e) => e === lugar.etapa))
@@ -668,7 +734,13 @@ export function TelaVenda() {
 
         if (rPainel.ok) {
           const j = (await rPainel.json()) as {
-            data?: { linhas?: { filhos?: Produto["filhos"]; id: string; nome: string }[] };
+            data?: {
+              linhas?: {
+                filhos?: Produto["filhos"];
+                id: string;
+                nome: string;
+              }[];
+            };
           };
           if (vivo) {
             const lista = (j.data?.linhas ?? []).map((l) => ({
@@ -696,7 +768,9 @@ export function TelaVenda() {
         if (rCards.ok) {
           // ⚠️ O PAYLOAD É `{ data: { produtos } }`, e não a lista solta: eu li errado uma vez e a
           // tela quebrou com "produtos.filter is not a function" antes de desenhar qualquer coisa.
-          const j = (await rCards.json()) as { data?: { produtos?: CardDeProduto[] } };
+          const j = (await rCards.json()) as {
+            data?: { produtos?: CardDeProduto[] };
+          };
           if (vivo) setCards(j.data?.produtos ?? []);
         }
       } catch {
@@ -711,7 +785,10 @@ export function TelaVenda() {
   // Nas cinco etapas do fluxo a lista é de PROPOSTAS; no estoque não existe proposta, e o que o
   // coordenador precisa ver é a lista de lotes livres para vender.
   const daEtapa = useMemo(
-    () => (etapa === "disponivel" ? [] : (dados?.lista ?? []).filter((l) => l.etapa === etapa)),
+    () =>
+      etapa === "disponivel"
+        ? []
+        : (dados?.lista ?? []).filter((l) => l.etapa === etapa),
     [dados, etapa],
   );
 
@@ -742,7 +819,9 @@ export function TelaVenda() {
     const nome = produtoEscolhido.nome.trim().toLowerCase();
     return (
       cards.find(
-        (c) => (c.masterplanInterno ?? c.masterplanUrl) && c.nome.trim().toLowerCase() === nome,
+        (c) =>
+          (c.masterplanInterno ?? c.masterplanUrl) &&
+          c.nome.trim().toLowerCase() === nome,
       ) ?? null
     );
   }, [cards, produtoEscolhido]);
@@ -782,16 +861,34 @@ export function TelaVenda() {
           justifyContent: "space-between",
         }}
       >
-        <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+          }}
+        >
           <Pilula
             ativo={visao === "panorama"}
             onClick={() => setVisao("panorama")}
             rotulo="Painel"
           />
-          <Pilula ativo={visao === "mesa"} onClick={() => setVisao("mesa")} rotulo="Venda" />
+          <Pilula
+            ativo={visao === "mesa"}
+            onClick={() => setVisao("mesa")}
+            rotulo="Venda"
+          />
         </div>
 
-        <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+          }}
+        >
           {/* A janela só muda o Panorama; na Mesa ela ficaria sem efeito e confundiria. */}
           {visao === "panorama" ? (
             <select
@@ -1015,170 +1112,179 @@ export function TelaVenda() {
         </div>
       ) : null}
       <div style={{ display: "flex", flex: "1 1 auto", minHeight: 0 }}>
-      {/* ⚠️ A MODAL VIVE AQUI, e não dentro da Mesa: ela cobre a tela inteira, e um <dialog> preso
+        {/* ⚠️ A MODAL VIVE AQUI, e não dentro da Mesa: ela cobre a tela inteira, e um <dialog> preso
           a uma coluna herdaria o `overflow: hidden` dela. */}
-      {simulando ? (
-        <ModalDoSimulador
-          // ⚠️ O PISO É DO EMPREENDIMENTO DO LOTE, e não do escopo: num pai com filhos há mais de
-          // um produto na tela, e eles podem ter mínimos diferentes.
-          entradaMinimaPercentual={dados?.entradaMinima?.[simulando.enterpriseId] ?? null}
-          nome={mapaDoProduto?.nome ?? "Simulação"}
-          onFechar={() => setSimulando(null)}
-          planos={dados?.planos ?? []}
-          unidade={simulando}
-        />
-      ) : null}
+        {simulando ? (
+          <ModalDoSimulador
+            // ⚠️ O PISO É DO EMPREENDIMENTO DO LOTE, e não do escopo: num pai com filhos há mais de
+            // um produto na tela, e eles podem ter mínimos diferentes.
+            entradaMinimaPercentual={
+              dados?.entradaMinima?.[simulando.enterpriseId] ?? null
+            }
+            nome={mapaDoProduto?.nome ?? "Simulação"}
+            onFechar={() => setSimulando(null)}
+            planos={dados?.planos ?? []}
+            unidade={simulando}
+          />
+        ) : null}
 
-      {/* ⚠️ A MODAL DE RESERVA VIVE AQUI PELO MESMO MOTIVO DA DO SIMULADOR: cobre a tela toda, e
+        {/* ⚠️ A MODAL DE RESERVA VIVE AQUI PELO MESMO MOTIVO DA DO SIMULADOR: cobre a tela toda, e
           presa a uma coluna herdaria o `overflow: hidden` dela. */}
-      {reservando ? (
-        <ModalDeReserva
-          onFechar={() => setReservando(null)}
-          onReservado={(mensagem) => {
-            setReservando(null);
-            setRecado(mensagem);
-            // A unidade mudou de situação: a tela recarrega para o mapa, a grade e o funil
-            // contarem a reserva nova. Sem isso o lote continuaria verde até o próximo F5.
-            void carregar(recorte || emp, janela);
-          }}
-          unidade={{
-            id: reservando.id,
-            nome: comoSeLe(reservando),
-            produto: mapaDoProduto?.nome ?? "",
-          }}
-          valorDaUnidade={reservando.preco}
-        />
-      ) : null}
+        {reservando ? (
+          <ModalDeReserva
+            onFechar={() => setReservando(null)}
+            onReservado={(mensagem) => {
+              setReservando(null);
+              setRecado(mensagem);
+              // A unidade mudou de situação: a tela recarrega para o mapa, a grade e o funil
+              // contarem a reserva nova. Sem isso o lote continuaria verde até o próximo F5.
+              void carregar(recorte || emp, janela);
+            }}
+            unidade={{
+              id: reservando.id,
+              nome: comoSeLe(reservando),
+              produto: mapaDoProduto?.nome ?? "",
+            }}
+            valorDaUnidade={reservando.preco}
+          />
+        ) : null}
 
-      {/* ⚠️ CANCELAR É O OUTRO CAMINHO DA RESERVA (Lucas, 04/09/2026: *"da reserva eu tenho dois
+        {/* ⚠️ CANCELAR É O OUTRO CAMINHO DA RESERVA (Lucas, 04/09/2026: *"da reserva eu tenho dois
           caminhos, gerar proposta ou cancelar"*), e por isso mora ao lado dela, com o mesmo
           desfecho: fecha, recarrega a tela e deixa o recado na faixa. */}
-      {/* ⚠️ A CONFIRMAÇÃO MOSTRA A PROPOSTA, e não uma pergunta genérica. "Tem certeza?" não ajuda
+        {/* ⚠️ A CONFIRMAÇÃO MOSTRA A PROPOSTA, e não uma pergunta genérica. "Tem certeza?" não ajuda
           ninguém a perceber que clicou no lote errado; ver o COD, o cliente e o valor é o que faz
           alguém dizer "não era essa". Os dados saem da lista já carregada — a mesma proposta viva
           que a ficha mostra —, sem uma segunda ida ao servidor para confirmar o que está na tela. */}
-      {mandandoParaContrato ? (
-        (() => {
-          const viva = (dados?.lista ?? []).find(
-            (l) => l.unidadeId === mandandoParaContrato.id && ehEtapaViva(l.etapa),
-          );
-          return (
-            <ModalDeContrato
-              aoConfirmar={() => void enviarParaContrato(mandandoParaContrato)}
-              aoFechar={() => setMandandoParaContrato(null)}
-              enviando={enviandoContrato}
-              proposta={{
-                cliente: viva?.cliente ?? null,
-                codigo: viva?.codigo ?? null,
-                imobiliaria: viva?.imobiliaria ?? null,
-                plano: viva?.plano ?? null,
-                produto: mapaDoProduto?.nome ?? "",
-                unidade: comoSeLe(mandandoParaContrato),
-                valor: viva?.valor ?? null,
-              }}
-            />
-          );
-        })()
-      ) : null}
+        {mandandoParaContrato
+          ? (() => {
+              const viva = (dados?.lista ?? []).find(
+                (l) =>
+                  l.unidadeId === mandandoParaContrato.id &&
+                  ehEtapaViva(l.etapa),
+              );
+              return (
+                <ModalDeContrato
+                  aoConfirmar={() =>
+                    void enviarParaContrato(mandandoParaContrato)
+                  }
+                  aoFechar={() => setMandandoParaContrato(null)}
+                  enviando={enviandoContrato}
+                  proposta={{
+                    cliente: viva?.cliente ?? null,
+                    codigo: viva?.codigo ?? null,
+                    imobiliaria: viva?.imobiliaria ?? null,
+                    plano: viva?.plano ?? null,
+                    produto: mapaDoProduto?.nome ?? "",
+                    unidade: comoSeLe(mandandoParaContrato),
+                    valor: viva?.valor ?? null,
+                  }}
+                />
+              );
+            })()
+          : null}
 
-      {/* ⚠️ DEPOIS DO CONTRATO O CANCELAMENTO É UM PEDIDO, e por isso é outra modal: as duas
+        {/* ⚠️ DEPOIS DO CONTRATO O CANCELAMENTO É UM PEDIDO, e por isso é outra modal: as duas
           perguntas que classificam o caso (assinou? pagou?) não existem no cancelamento da reserva
           nem no da proposta, e a promessa aqui é outra — a venda NÃO volta ao estoque. */}
-      {pedindoCancelamento ? (
-        (() => {
-          const viva = (dados?.lista ?? []).find(
-            (l) => l.unidadeId === pedindoCancelamento.id && ehEtapaViva(l.etapa),
-          );
-          return (
-            <ModalDePedidoDeCancelamento
-              aoConfirmar={(resposta) => void pedirCancelamento(pedindoCancelamento, resposta)}
-              aoFechar={() => setPedindoCancelamento(null)}
-              enviando={enviandoPedido}
-              venda={{
-                cliente: viva?.cliente ?? null,
-                codigo: viva?.codigo ?? null,
-                unidade: comoSeLe(pedindoCancelamento),
-                unidadeId: pedindoCancelamento.id,
-              }}
-            />
-          );
-        })()
-      ) : null}
+        {pedindoCancelamento
+          ? (() => {
+              const viva = (dados?.lista ?? []).find(
+                (l) =>
+                  l.unidadeId === pedindoCancelamento.id &&
+                  ehEtapaViva(l.etapa),
+              );
+              return (
+                <ModalDePedidoDeCancelamento
+                  aoConfirmar={(resposta) =>
+                    void pedirCancelamento(pedindoCancelamento, resposta)
+                  }
+                  aoFechar={() => setPedindoCancelamento(null)}
+                  enviando={enviandoPedido}
+                  venda={{
+                    cliente: viva?.cliente ?? null,
+                    codigo: viva?.codigo ?? null,
+                    unidade: comoSeLe(pedindoCancelamento),
+                    unidadeId: pedindoCancelamento.id,
+                  }}
+                />
+              );
+            })()
+          : null}
 
-      {cancelando ? (
-        <ModalDeCancelamento
-          // ⚠️ O ALVO SAI DA ETAPA DA UNIDADE, e não de um segundo estado: são os dois únicos
-          // pontos do fluxo em que o botão acende, e guardar o alvo à parte abriria a chance de
-          // ele discordar da unidade que está na tela — cancelar a proposta de um lote reservado.
-          alvo={cancelando.etapa === "proposta" ? "proposta" : "reserva"}
-          onCancelada={(mensagem) => {
-            setCancelando(null);
-            setRecado(mensagem);
-            // O lote voltou a ser vendável: sem recarregar, ele continuaria amarelo até o F5.
-            void carregar(recorte || emp, janela);
-          }}
-          onFechar={() => setCancelando(null)}
-          // ⚠️ A PROPOSTA QUE ESTA TELA ESTÁ VENDO, não a que o servidor achar. Mesma regra do
-          // painel (a viva da unidade); com ela o servidor recusa o cancelamento quando a unidade
-          // ganhou outra proposta desde que esta aba carregou — ver a trava no corpo do PATCH.
-          propostaId={
-            (dados?.lista ?? []).find(
-              (l) => l.unidadeId === cancelando.id && ehEtapaViva(l.etapa),
-            )?.id ?? null
-          }
-          unidade={{
-            id: cancelando.id,
-            nome: comoSeLe(cancelando),
-            produto: mapaDoProduto?.nome ?? "",
-          }}
-        />
-      ) : null}
+        {cancelando ? (
+          <ModalDeCancelamento
+            // ⚠️ O ALVO SAI DA ETAPA DA UNIDADE, e não de um segundo estado: são os dois únicos
+            // pontos do fluxo em que o botão acende, e guardar o alvo à parte abriria a chance de
+            // ele discordar da unidade que está na tela — cancelar a proposta de um lote reservado.
+            alvo={cancelando.etapa === "proposta" ? "proposta" : "reserva"}
+            onCancelada={(mensagem) => {
+              setCancelando(null);
+              setRecado(mensagem);
+              // O lote voltou a ser vendável: sem recarregar, ele continuaria amarelo até o F5.
+              void carregar(recorte || emp, janela);
+            }}
+            onFechar={() => setCancelando(null)}
+            // ⚠️ A PROPOSTA QUE ESTA TELA ESTÁ VENDO, não a que o servidor achar. Mesma regra do
+            // painel (a viva da unidade); com ela o servidor recusa o cancelamento quando a unidade
+            // ganhou outra proposta desde que esta aba carregou — ver a trava no corpo do PATCH.
+            propostaId={
+              (dados?.lista ?? []).find(
+                (l) => l.unidadeId === cancelando.id && ehEtapaViva(l.etapa),
+              )?.id ?? null
+            }
+            unidade={{
+              id: cancelando.id,
+              nome: comoSeLe(cancelando),
+              produto: mapaDoProduto?.nome ?? "",
+            }}
+          />
+        ) : null}
 
-
-      {/* ⚠️ O OUTRO CAMINHO DA RESERVA, e mora ao lado do cancelamento pelo mesmo motivo — cobre a
+        {/* ⚠️ O OUTRO CAMINHO DA RESERVA, e mora ao lado do cancelamento pelo mesmo motivo — cobre a
           tela inteira e presa a uma coluna herdaria o `overflow: hidden` dela. O desfecho também é
           o mesmo: fecha, deixa o recado na faixa com o COD na frente e recarrega, porque o lote sai
           de "reservado" e entra em "proposta" — sem recarregar ele continuaria na etapa antiga na
           faixa, na grade e no mapa até o F5. */}
-      {propondo ? (
-        <ModalDeProposta
-          onFechar={() => setPropondo(null)}
-          onGerada={(mensagem) => {
-            setPropondo(null);
-            setRecado(mensagem);
-            void carregar(recorte || emp, janela);
-          }}
-          unidade={{
-            id: propondo.id,
-            nome: comoSeLe(propondo),
-            produto: mapaDoProduto?.nome ?? "",
-          }}
-        />
-      ) : null}
+        {propondo ? (
+          <ModalDeProposta
+            onFechar={() => setPropondo(null)}
+            onGerada={(mensagem) => {
+              setPropondo(null);
+              setRecado(mensagem);
+              void carregar(recorte || emp, janela);
+            }}
+            unidade={{
+              id: propondo.id,
+              nome: comoSeLe(propondo),
+              produto: mapaDoProduto?.nome ?? "",
+            }}
+          />
+        ) : null}
 
-      {visao === "mesa" ? (
-        <Mesa
-          aoFocar={setFoco}
-          aoCancelar={setCancelando}
-          aoEnviarParaContrato={setMandandoParaContrato}
-          versaoDosDados={versaoDosDados}
-          aoGerarProposta={setPropondo}
-          aoPedirCancelamento={setPedindoCancelamento}
-          aoReservar={setReservando}
-          aoSimular={setSimulando}
-          aoTrocarModo={setModoDoEstoque}
-          carregando={carregando}
-          dados={dados}
-          etapa={etapa}
-          foco={foco}
-          lista={daEtapa}
-          livres={livres}
-          mapaDoProduto={mapaDoProduto}
-          modo={modoDoEstoque}
-        />
-      ) : (
-        <Panorama dados={dados} />
-      )}
+        {visao === "mesa" ? (
+          <Mesa
+            aoFocar={setFoco}
+            aoCancelar={setCancelando}
+            aoEnviarParaContrato={setMandandoParaContrato}
+            versaoDosDados={versaoDosDados}
+            aoGerarProposta={setPropondo}
+            aoPedirCancelamento={setPedindoCancelamento}
+            aoReservar={setReservando}
+            aoSimular={setSimulando}
+            aoTrocarModo={setModoDoEstoque}
+            carregando={carregando}
+            dados={dados}
+            etapa={etapa}
+            foco={foco}
+            lista={daEtapa}
+            livres={livres}
+            mapaDoProduto={mapaDoProduto}
+            modo={modoDoEstoque}
+          />
+        ) : (
+          <Panorama dados={dados} />
+        )}
       </div>
     </div>
   );
@@ -1280,9 +1386,14 @@ function Mesa({
   const procurado = normalizar(busca);
 
   const imobiliarias = useMemo(
-    () => [...new Set(lista.map((l) => l.imobiliaria).filter((n): n is string => Boolean(n)))].sort(
-      (a, b) => a.localeCompare(b, "pt-BR"),
-    ),
+    () =>
+      [
+        ...new Set(
+          lista
+            .map((l) => l.imobiliaria)
+            .filter((n): n is string => Boolean(n)),
+        ),
+      ].sort((a, b) => a.localeCompare(b, "pt-BR")),
     [lista],
   );
 
@@ -1303,7 +1414,10 @@ function Mesa({
   );
 
   const quadras = useMemo(
-    () => [...new Set(livres.map((u) => u.quadra ?? u.grupo))].sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true })),
+    () =>
+      [...new Set(livres.map((u) => u.quadra ?? u.grupo))].sort((a, b) =>
+        a.localeCompare(b, "pt-BR", { numeric: true }),
+      ),
     [livres],
   );
 
@@ -1346,7 +1460,10 @@ function Mesa({
   // A regra vive em `lib/hercules/unidade-em-foco.ts`, pura e com teste: ela já errou das duas
   // pontas no mesmo dia (retrato velho e lista sem lote), e cada erro apagou os quatro botões numa
   // ficha que estava mostrando o lote certo.
-  const unidadeEmFoco = acharUnidadeEmFoco(foco, (dados?.mapa ?? []).flatMap((g) => g.unidades));
+  const unidadeEmFoco = acharUnidadeEmFoco(
+    foco,
+    (dados?.mapa ?? []).flatMap((g) => g.unidades),
+  );
   // ⚠️ SÓ A PROPOSTA VIVA VIRA A FICHA DA UNIDADE. O Lucas pegou isto olhando o VOC 06 07: o lote
   // aparecia "Disponível" e a ficha mostrava cliente, imobiliária, plano e "Data do cancelamento" —
   // eu casava pelo id da unidade sem olhar a etapa, e pegava a proposta CANCELADA como se fosse a
@@ -1355,7 +1472,11 @@ function Mesa({
     ? (dados?.lista ?? []).filter((l) => l.unidadeId === unidadeEmFoco.id)
     : [];
   // ⚠️ A FRESCA VENCE O RETRATO — a mesma regra da unidade, um andar abaixo. Ver `propostaEmFoco`.
-  const propostaEmFoco = acharPropostaEmFoco(foco, propostasDaUnidade, ehEtapaViva);
+  const propostaEmFoco = acharPropostaEmFoco(
+    foco,
+    propostasDaUnidade,
+    ehEtapaViva,
+  );
 
   // A última que caiu, quando não há viva: o lote está livre, mas já teve história — e o coordenador
   // que vai oferecê-lo merece saber disso antes de ligar para o cliente.
@@ -1390,31 +1511,40 @@ function Mesa({
       >
         <Cartao
           direita={
-            <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <div
+              style={{
+                alignItems: "center",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+              }}
+            >
               {modo === "grade"
-                ? LEGENDA.filter((l) => (estoque[l.etapa] ?? 0) > 0).map(({ etapa: chave, rotulo: nome }) => (
-                    <span
-                      key={chave}
-                      style={{
-                        color: T.muted,
-                        fontSize: 11.5,
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      <i
+                ? LEGENDA.filter((l) => (estoque[l.etapa] ?? 0) > 0).map(
+                    ({ etapa: chave, rotulo: nome }) => (
+                      <span
+                        key={chave}
                         style={{
-                          background: COR_DA_ETAPA[chave],
-                          borderRadius: 3,
-                          display: "inline-block",
-                          height: 10,
-                          marginRight: 5,
-                          width: 10,
+                          color: T.muted,
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
                         }}
-                      />
-                      {nome} {inteiro(estoque[chave] ?? 0)}
-                    </span>
-                  ))
+                      >
+                        <i
+                          style={{
+                            background: COR_DA_ETAPA[chave],
+                            borderRadius: 3,
+                            display: "inline-block",
+                            height: 10,
+                            marginRight: 5,
+                            width: 10,
+                          }}
+                        />
+                        {nome} {inteiro(estoque[chave] ?? 0)}
+                      </span>
+                    ),
+                  )
                 : null}
 
               {/* A escolha da vista. Só aparece com um produto que TEM masterplan. */}
@@ -1462,65 +1592,86 @@ function Mesa({
                   gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
                 }}
               >
-            {grupos.map((g) => (
-              <div key={g.grupo}>
-                <div
-                  style={{
-                    color: T.muted,
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    letterSpacing: ".06em",
-                    marginBottom: 5,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {g.grupo}
-                </div>
-                <div style={{ display: "grid", gap: 3, gridTemplateColumns: "repeat(6, 1fr)" }}>
-                  {g.unidades.slice(0, 60).map((u) => (
-                    <button
-                      key={u.codigo}
-                      onClick={() => aoFocar({ tipo: "unidade", unidade: u })}
+                {grupos.map((g) => (
+                  <div key={g.grupo}>
+                    <div
                       style={{
-                        aspectRatio: "1 / 1.25",
-                        background: COR_DA_ETAPA[u.etapa] ?? T.soft,
-                        border: 0,
-                        borderRadius: 3,
-                        color: textoNoQuadrado(u.etapa),
-                        cursor: "pointer",
-                        display: "grid",
-                        font: "inherit",
-                        fontSize: 8.5,
-                        fontWeight: 600,
-                        outline: idEmFoco === u.id ? `2.5px solid ${T.text}` : undefined,
-                        outlineOffset: 1,
-                        padding: 0,
-                        placeItems: "center",
+                        color: T.muted,
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        letterSpacing: ".06em",
+                        marginBottom: 5,
+                        textTransform: "uppercase",
                       }}
-                      // O código aparece aqui com a conotação de código, como o Lucas pediu: é a
-                      // única porta onde ele serve, para quem precisa cruzar com o backend.
-                      title={`${comoSeEscreve(u.codigo, u.quadra, u.lote).unidade} · ${
-                        ROTULO_DA_ETAPA[u.etapa] ?? u.etapa
-                      } · código ${u.codigo}`}
-                      type="button"
                     >
-                      {u.lote ?? ""}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
+                      {g.grupo}
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 3,
+                        gridTemplateColumns: "repeat(6, 1fr)",
+                      }}
+                    >
+                      {g.unidades.slice(0, 60).map((u) => (
+                        <button
+                          key={u.codigo}
+                          onClick={() =>
+                            aoFocar({ tipo: "unidade", unidade: u })
+                          }
+                          style={{
+                            aspectRatio: "1 / 1.25",
+                            background: COR_DA_ETAPA[u.etapa] ?? T.soft,
+                            border: 0,
+                            borderRadius: 3,
+                            color: textoNoQuadrado(u.etapa),
+                            cursor: "pointer",
+                            display: "grid",
+                            font: "inherit",
+                            fontSize: 8.5,
+                            fontWeight: 600,
+                            outline:
+                              idEmFoco === u.id
+                                ? `2.5px solid ${T.text}`
+                                : undefined,
+                            outlineOffset: 1,
+                            padding: 0,
+                            placeItems: "center",
+                          }}
+                          // O código aparece aqui com a conotação de código, como o Lucas pediu: é a
+                          // única porta onde ele serve, para quem precisa cruzar com o backend.
+                          title={`${comoSeEscreve(u.codigo, u.quadra, u.lote).unidade} · ${
+                            ROTULO_DA_ETAPA[u.etapa] ?? u.etapa
+                          } · código ${u.codigo}`}
+                          type="button"
+                        >
+                          {u.lote ?? ""}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
 
               {!carregando && grupos.length === 0 ? (
-                <p style={{ color: T.muted, fontSize: 13, margin: 0, textAlign: "center" }}>
+                <p
+                  style={{
+                    color: T.muted,
+                    fontSize: 13,
+                    margin: 0,
+                    textAlign: "center",
+                  }}
+                >
                   Nenhuma unidade no recorte.
                 </p>
               ) : null}
               {(dados?.mapa.length ?? 0) > 30 ? (
-                <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-                  Mostrando 30 de {inteiro(dados?.mapa.length ?? 0)} quadras. Escolha um
-                  empreendimento no alto para ver o estoque inteiro dele.
+                <p
+                  style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}
+                >
+                  Mostrando 30 de {inteiro(dados?.mapa.length ?? 0)} quadras.
+                  Escolha um empreendimento no alto para ver o estoque inteiro
+                  dele.
                 </p>
               ) : null}
             </>
@@ -1542,7 +1693,9 @@ function Mesa({
                   rotuloDeTodos="Todas as quadras"
                   valor={quadra}
                 />
-                <span style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}>
+                <span
+                  style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}
+                >
                   {inteiro(livresFiltrados.length)} de {inteiro(livres.length)}
                 </span>
               </>
@@ -1551,7 +1704,13 @@ function Mesa({
             titulo={`Disponíveis · ${inteiro(livres.length)}`}
           >
             <div style={{ margin: "-16px", overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
+              <table
+                style={{
+                  borderCollapse: "collapse",
+                  fontSize: 13,
+                  width: "100%",
+                }}
+              >
                 <thead>
                   <tr>
                     {["Unidade", "Valor de tabela"].map((c, i) => (
@@ -1583,13 +1742,23 @@ function Mesa({
                       }}
                     >
                       <td style={celula}>
-                        <b>{comoSeEscreve(u.codigo, u.quadra ?? u.grupo, u.lote).unidade}</b>
+                        <b>
+                          {
+                            comoSeEscreve(u.codigo, u.quadra ?? u.grupo, u.lote)
+                              .unidade
+                          }
+                        </b>
                         <div style={{ color: T.muted, fontSize: 11.5 }}>
-                          {comoSeEscreve(u.codigo, u.quadra ?? u.grupo, u.lote).recorte ?? ""}
+                          {comoSeEscreve(u.codigo, u.quadra ?? u.grupo, u.lote)
+                            .recorte ?? ""}
                         </div>
                       </td>
                       <td
-                        style={{ ...celula, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
+                        style={{
+                          ...celula,
+                          fontVariantNumeric: "tabular-nums",
+                          textAlign: "right",
+                        }}
                       >
                         {u.preco ? dinheiro(u.preco) : "—"}
                       </td>
@@ -1597,7 +1766,14 @@ function Mesa({
                   ))}
                   {livresFiltrados.length === 0 ? (
                     <tr>
-                      <td colSpan={2} style={{ ...celula, color: T.muted, textAlign: "center" }}>
+                      <td
+                        colSpan={2}
+                        style={{
+                          ...celula,
+                          color: T.muted,
+                          textAlign: "center",
+                        }}
+                      >
                         {carregando
                           ? "Carregando…"
                           : livres.length > 0
@@ -1616,112 +1792,153 @@ function Mesa({
             ) : null}
           </Cartao>
         ) : (
-        <Cartao
-          barra={
-            <>
-              <Busca
-                aoMudar={setBusca}
-                placeholder="Buscar unidade, cliente ou imobiliária"
-                valor={busca}
-              />
-              <Filtro
-                aoMudar={setImobiliaria}
-                opcoes={imobiliarias}
-                rotuloDeTodos="Todas as imobiliárias"
-                valor={imobiliaria}
-              />
-              <span style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}>
-                {inteiro(listaFiltrada.length)} de {inteiro(lista.length)}
-              </span>
-            </>
-          }
-          rolagem
-          titulo={`${rotulo} · ${inteiro(lista.length)}`}
-        >
-          <div style={{ margin: "-16px", overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
-              <thead>
-                <tr>
-                  {["Unidade", "Cliente", "Imobiliária", rotuloDaData(etapa), "Valor"].map((c, i) => (
-                    <th
-                      key={c}
+          <Cartao
+            barra={
+              <>
+                <Busca
+                  aoMudar={setBusca}
+                  placeholder="Buscar unidade, cliente ou imobiliária"
+                  valor={busca}
+                />
+                <Filtro
+                  aoMudar={setImobiliaria}
+                  opcoes={imobiliarias}
+                  rotuloDeTodos="Todas as imobiliárias"
+                  valor={imobiliaria}
+                />
+                <span
+                  style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}
+                >
+                  {inteiro(listaFiltrada.length)} de {inteiro(lista.length)}
+                </span>
+              </>
+            }
+            rolagem
+            titulo={`${rotulo} · ${inteiro(lista.length)}`}
+          >
+            <div style={{ margin: "-16px", overflowX: "auto" }}>
+              <table
+                style={{
+                  borderCollapse: "collapse",
+                  fontSize: 13,
+                  width: "100%",
+                }}
+              >
+                <thead>
+                  <tr>
+                    {[
+                      "Unidade",
+                      "Cliente",
+                      "Imobiliária",
+                      rotuloDaData(etapa),
+                      "Valor",
+                    ].map((c, i) => (
+                      <th
+                        key={c}
+                        style={{
+                          color: T.muted,
+                          fontSize: 10.5,
+                          fontWeight: 650,
+                          letterSpacing: ".05em",
+                          padding: "10px 12px",
+                          textAlign: i === 4 ? "right" : "left",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {listaFiltrada.slice(0, 150).map((l) => (
+                    <tr
+                      key={l.id}
+                      onClick={() => aoFocar({ proposta: l, tipo: "proposta" })}
                       style={{
-                        color: T.muted,
-                        fontSize: 10.5,
-                        fontWeight: 650,
-                        letterSpacing: ".05em",
-                        padding: "10px 12px",
-                        textAlign: i === 4 ? "right" : "left",
-                        whiteSpace: "nowrap",
+                        background:
+                          propostaEmFoco?.id === l.id ? T.soft : undefined,
+                        cursor: "pointer",
                       }}
                     >
-                      {c}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {listaFiltrada.slice(0, 150).map((l) => (
-                  <tr
-                    key={l.id}
-                    onClick={() => aoFocar({ proposta: l, tipo: "proposta" })}
-                    style={{
-                      background: propostaEmFoco?.id === l.id ? T.soft : undefined,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <td style={celula}>
-                      <b>{l.unidade ?? "—"}</b>
-                      {/* ⚠️ O COD SÓ APARECE ONDE EXISTE: as 4.857 propostas importadas não têm
+                      <td style={celula}>
+                        <b>{l.unidade ?? "—"}</b>
+                        {/* ⚠️ O COD SÓ APARECE ONDE EXISTE: as 4.857 propostas importadas não têm
                           código (o legado não tem), e escrever "—" em quase toda linha da lista
                           faria a coluna dizer sobretudo "não sei". Ele desce para o segundo nível
                           da célula, ao lado do produto, e a busca — que já aceitava o COD — deixa
                           de procurar por um número invisível. */}
-                      <div style={{ color: T.muted, display: "flex", fontSize: 11.5, gap: 6 }}>
-                        <span>{l.produto ?? ""}</span>
-                        {l.codigo ? (
-                          <span
-                            style={{
-                              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                              fontWeight: 600,
-                              letterSpacing: ".04em",
-                            }}
-                          >
-                            {l.codigo}
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td style={celula}>{l.cliente ? toTitleCase(l.cliente) : "—"}</td>
-                    <td style={celula}>{l.imobiliaria ? toTitleCase(l.imobiliaria) : "—"}</td>
-                    <td style={{ ...celula, color: T.muted }}>{dia(l.desde)}</td>
-                    <td
-                      style={{ ...celula, fontVariantNumeric: "tabular-nums", textAlign: "right" }}
-                    >
-                      {l.valor ? dinheiro(l.valor) : "—"}
-                    </td>
-                  </tr>
-                ))}
-                {listaFiltrada.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} style={{ ...celula, color: T.muted, textAlign: "center" }}>
-                      {carregando
-                        ? "Carregando…"
-                        : lista.length > 0
-                          ? "Nenhuma proposta com esse filtro."
-                          : "Nenhuma proposta nesta etapa."}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-          {listaFiltrada.length > 150 ? (
-            <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-              Mostrando as 150 mais recentes de {inteiro(listaFiltrada.length)}.
-            </p>
-          ) : null}
-        </Cartao>
+                        <div
+                          style={{
+                            color: T.muted,
+                            display: "flex",
+                            fontSize: 11.5,
+                            gap: 6,
+                          }}
+                        >
+                          <span>{l.produto ?? ""}</span>
+                          {l.codigo ? (
+                            <span
+                              style={{
+                                fontFamily:
+                                  "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                fontWeight: 600,
+                                letterSpacing: ".04em",
+                              }}
+                            >
+                              {l.codigo}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td style={celula}>
+                        {l.cliente ? toTitleCase(l.cliente) : "—"}
+                      </td>
+                      <td style={celula}>
+                        {l.imobiliaria ? toTitleCase(l.imobiliaria) : "—"}
+                      </td>
+                      <td style={{ ...celula, color: T.muted }}>
+                        {dia(l.desde)}
+                      </td>
+                      <td
+                        style={{
+                          ...celula,
+                          fontVariantNumeric: "tabular-nums",
+                          textAlign: "right",
+                        }}
+                      >
+                        {l.valor ? dinheiro(l.valor) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {listaFiltrada.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        style={{
+                          ...celula,
+                          color: T.muted,
+                          textAlign: "center",
+                        }}
+                      >
+                        {carregando
+                          ? "Carregando…"
+                          : lista.length > 0
+                            ? "Nenhuma proposta com esse filtro."
+                            : "Nenhuma proposta nesta etapa."}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+            {listaFiltrada.length > 150 ? (
+              <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
+                Mostrando as 150 mais recentes de{" "}
+                {inteiro(listaFiltrada.length)}.
+              </p>
+            ) : null}
+          </Cartao>
         )}
       </div>
 
@@ -1764,25 +1981,37 @@ function Mesa({
           titulo={
             unidadeEmFoco
               ? [
-                  comoSeEscreve(unidadeEmFoco.codigo, unidadeEmFoco.quadra, unidadeEmFoco.lote)
-                    .recorte,
-                  comoSeEscreve(unidadeEmFoco.codigo, unidadeEmFoco.quadra, unidadeEmFoco.lote)
-                    .unidade,
+                  comoSeEscreve(
+                    unidadeEmFoco.codigo,
+                    unidadeEmFoco.quadra,
+                    unidadeEmFoco.lote,
+                  ).recorte,
+                  comoSeEscreve(
+                    unidadeEmFoco.codigo,
+                    unidadeEmFoco.quadra,
+                    unidadeEmFoco.lote,
+                  ).unidade,
                 ]
                   .filter(Boolean)
                   .join(" · ")
-              : [propostaEmFoco?.produto, propostaEmFoco?.unidade].filter(Boolean).join(" · ") ||
-                "Nada escolhido"
+              : [propostaEmFoco?.produto, propostaEmFoco?.unidade]
+                  .filter(Boolean)
+                  .join(" · ") || "Nada escolhido"
           }
         >
           {unidadeEmFoco || propostaEmFoco ? (
             <>
               <TrilhaDoFluxo
                 etapa={propostaEmFoco?.etapa ?? unidadeEmFoco?.etapa ?? null}
-                pedidoDeCancelamento={propostaEmFoco?.cancelamentoPedidoEm ?? null}
+                pedidoDeCancelamento={
+                  propostaEmFoco?.cancelamentoPedidoEm ?? null
+                }
               />
               {unidadeEmFoco?.preco ? (
-                <Linha rotulo="Valor de tabela" valor={dinheiro(unidadeEmFoco.preco)} />
+                <Linha
+                  rotulo="Valor de tabela"
+                  valor={dinheiro(unidadeEmFoco.preco)}
+                />
               ) : null}
               {propostaEmFoco ? (
                 <>
@@ -1802,19 +2031,41 @@ function Mesa({
                   />
                   <Linha
                     rotulo="Valor negociado"
-                    valor={propostaEmFoco.valor ? dinheiro(propostaEmFoco.valor) : "—"}
+                    valor={
+                      propostaEmFoco.valor
+                        ? dinheiro(propostaEmFoco.valor)
+                        : "—"
+                    }
                   />
                   <ClienteDaVenda
                     nome={toTitleCase(propostaEmFoco.cliente) || "—"}
                     unidadeId={idEmFoco}
                   />
-                  <Linha rotulo="Imobiliária" valor={toTitleCase(propostaEmFoco.imobiliaria) || "—"} />
-                  <Linha rotulo="Corretor" valor={toTitleCase(propostaEmFoco.corretor) || "—"} />
+                  <Linha
+                    rotulo="Imobiliária"
+                    valor={toTitleCase(propostaEmFoco.imobiliaria) || "—"}
+                  />
+                  <Linha
+                    rotulo="Corretor"
+                    valor={toTitleCase(propostaEmFoco.corretor) || "—"}
+                  />
                   {/* O FLUXO do contrato, não o nome do plano — a mesma escrita do extrato. */}
                   <Linha rotulo="Plano" valor={propostaEmFoco.plano ?? "—"} />
                   {propostaEmFoco.observacao ? (
-                    <div style={{ borderTop: `1px dashed ${T.border}`, marginTop: 8, paddingTop: 8 }}>
-                      <div style={{ color: T.muted, fontSize: 10.5, fontWeight: 650 }}>
+                    <div
+                      style={{
+                        borderTop: `1px dashed ${T.border}`,
+                        marginTop: 8,
+                        paddingTop: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: T.muted,
+                          fontSize: 10.5,
+                          fontWeight: 650,
+                        }}
+                      >
                         Observações
                       </div>
                       <p
@@ -1835,14 +2086,28 @@ function Mesa({
                 // Mas se ele JÁ TEVE proposta, isso é dito — em uma linha, sem os dados do cliente
                 // antigo, que não têm por que aparecer na ficha de um lote que está à venda.
                 <>
-                  <p style={{ color: T.muted, fontSize: 12.5, margin: "8px 0 0" }}>
+                  <p
+                    style={{
+                      color: T.muted,
+                      fontSize: 12.5,
+                      margin: "8px 0 0",
+                    }}
+                  >
                     Nenhuma proposta em andamento nesta unidade.
                   </p>
                   {ultimaQueCaiu ? (
-                    <p style={{ color: T.muted, fontSize: 11.5, margin: "6px 0 0" }}>
+                    <p
+                      style={{
+                        color: T.muted,
+                        fontSize: 11.5,
+                        margin: "6px 0 0",
+                      }}
+                    >
                       A última{" "}
-                      {ROTULO_TERMINAL[ultimaQueCaiu.etapa]?.toLowerCase() ?? "encerrada"} em{" "}
-                      {dia(ultimaQueCaiu.desde)}. O histórico abaixo conta o resto.
+                      {ROTULO_TERMINAL[ultimaQueCaiu.etapa]?.toLowerCase() ??
+                        "encerrada"}{" "}
+                      em {dia(ultimaQueCaiu.desde)}. O histórico abaixo conta o
+                      resto.
                     </p>
                   ) : null}
                 </>
@@ -1868,10 +2133,13 @@ function Mesa({
             pelo simulador (...) falo a ordem"*). Quem abre um lote quer primeiro saber o que já
             aconteceu nele — quem reservou, quando, o que foi anotado. O simulador é a próxima
             ação, e ação vem depois de entender a situação. */}
-        <Historico unidadeId={idEmFoco} versao={versaoDosDados} />
+        <PainelDaVenda unidadeId={idEmFoco} versao={versaoDosDados} />
 
         <div style={{ flex: "0 0 auto" }}>
-          <BotaoDoSimulador aoAbrir={() => aoSimular(unidadeEmFoco)} unidade={unidadeEmFoco} />
+          <BotaoDoSimulador
+            aoAbrir={() => aoSimular(unidadeEmFoco)}
+            unidade={unidadeEmFoco}
+          />
         </div>
       </div>
     </div>
@@ -1988,7 +2256,14 @@ function ModalDoSimulador({
           </button>
         </div>
 
-        <div style={{ background: T.page, flex: "1 1 auto", minHeight: 0, padding: 14 }}>
+        <div
+          style={{
+            background: T.page,
+            flex: "1 1 auto",
+            minHeight: 0,
+            padding: 14,
+          }}
+        >
           <SimuladorDeProposta
             entradaMinimaPercentual={entradaMinimaPercentual}
             planos={planos}
@@ -2015,11 +2290,19 @@ function ModalDoSimulador({
  * ⚠️ O CPF APARECE MASCARADO e o telefone inteiro: o documento serve para conferir que é a pessoa
  * certa, o telefone é o que ele pediu para ver. Mascarar o telefone não serviria para nada.
  */
-function ClienteDaVenda({ nome, unidadeId }: { nome: string; unidadeId: null | string }) {
+function ClienteDaVenda({
+  nome,
+  unidadeId,
+}: {
+  nome: string;
+  unidadeId: null | string;
+}) {
   const [aberto, setAberto] = useState(false);
-  const [dados, setDados] = useState<
-    null | { documento: null | string; nome: null | string; telefone: null | string }
-  >(null);
+  const [dados, setDados] = useState<null | {
+    documento: null | string;
+    nome: null | string;
+    telefone: null | string;
+  }>(null);
   const [buscando, setBuscando] = useState(false);
 
   // Trocar de unidade fecha o que estava aberto: senão o painel mostraria o contato do lote
@@ -2107,7 +2390,9 @@ function ClienteDaVenda({ nome, unidadeId }: { nome: string; unidadeId: null | s
               <Miudo rotulo="CPF" valor={dados.documento ?? "não cadastrado"} />
               <Miudo
                 rotulo="Telefone"
-                valor={formatarTelefoneGuardado(dados.telefone) || "não cadastrado"}
+                valor={
+                  formatarTelefoneGuardado(dados.telefone) || "não cadastrado"
+                }
               />
             </>
           ) : (
@@ -2194,59 +2479,63 @@ function TrilhaDoFluxo({
       ) : null}
 
       <div style={{ display: "flex", margin: "0 0 12px" }}>
-      {ETAPAS_DO_FLUXO.map((passo, i) => {
-        const cumprida = i < atual;
-        const ehAtual = i === atual;
-        const primeiro = i === 0;
-        const ultimo = i === ETAPAS_DO_FLUXO.length - 1;
+        {ETAPAS_DO_FLUXO.map((passo, i) => {
+          const cumprida = i < atual;
+          const ehAtual = i === atual;
+          const primeiro = i === 0;
+          const ultimo = i === ETAPAS_DO_FLUXO.length - 1;
 
-        // ⚠️ O DEGRAU AVANÇA SOBRE O PRÓXIMO, e é isso que faz a seta ler como caminho: o recorte
-        // da direita é uma ponta, o da esquerda é o encaixe dela, e a margem negativa junta os
-        // dois. Sem a sobreposição sobra uma fresta branca entre os degraus.
-        // ⚠️ O ÚLTIMO NÃO TEM PONTA: o caminho acaba nele, e uma seta apontando para fora
-        // prometeria um passo que não existe.
-        const direita = ultimo
-          ? "100% 0, 100% 100%"
-          : `calc(100% - ${PONTA}px) 0, 100% 50%, calc(100% - ${PONTA}px) 100%`;
-        const recorte = primeiro
-          ? `polygon(0 0, ${direita}, 0 100%)`
-          : `polygon(0 0, ${direita}, 0 100%, ${PONTA}px 50%)`;
+          // ⚠️ O DEGRAU AVANÇA SOBRE O PRÓXIMO, e é isso que faz a seta ler como caminho: o recorte
+          // da direita é uma ponta, o da esquerda é o encaixe dela, e a margem negativa junta os
+          // dois. Sem a sobreposição sobra uma fresta branca entre os degraus.
+          // ⚠️ O ÚLTIMO NÃO TEM PONTA: o caminho acaba nele, e uma seta apontando para fora
+          // prometeria um passo que não existe.
+          const direita = ultimo
+            ? "100% 0, 100% 100%"
+            : `calc(100% - ${PONTA}px) 0, 100% 50%, calc(100% - ${PONTA}px) 100%`;
+          const recorte = primeiro
+            ? `polygon(0 0, ${direita}, 0 100%)`
+            : `polygon(0 0, ${direita}, 0 100%, ${PONTA}px 50%)`;
 
-        return (
-          <div
-            key={passo}
-            style={{
-              alignItems: "center",
-              // ⚠️ O DEGRAU CUMPRIDO É VERDE (Lucas, 05/09/2026: *"aqui também pode colocar um
-              // verde indicando que foi concluído"*). Ele já tinha o ✓, mas em cinza — a mesma cor
-              // do degrau que ainda não aconteceu, com um ícone pequeno como única diferença. Num
-              // fluxo de cinco passos lido de relance, o que responde "até onde essa venda chegou"
-              // é a COR, não o ícone: agora o caminho andado se separa do que falta sem precisar
-              // procurar. O verde é o mesmo `ok` do resto do portal, em fundo lavado.
-              background: ehAtual ? T.gold : cumprida ? T.okBg : T.card,
-              border: ehAtual ? "none" : `1px solid ${cumprida ? T.ok : T.border}`,
-              clipPath: recorte,
-              color: ehAtual ? T.btnFg : cumprida ? T.ok : T.muted,
-              display: "flex",
-              flex: 1,
-              fontSize: 10,
-              fontWeight: ehAtual || cumprida ? 700 : 500,
-              gap: 3,
-              justifyContent: "center",
-              marginLeft: primeiro ? 0 : -PONTA,
-              minWidth: 0,
-              overflow: "hidden",
-              padding: `5px ${PONTA + 2}px 5px ${primeiro ? PONTA : PONTA * 2}px`,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {cumprida ? <Check aria-hidden size={10} strokeWidth={3} /> : null}
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-              {ROTULO_DA_ETAPA[passo] ?? passo}
-            </span>
-          </div>
-        );
-      })}
+          return (
+            <div
+              key={passo}
+              style={{
+                alignItems: "center",
+                // ⚠️ O DEGRAU CUMPRIDO É VERDE (Lucas, 05/09/2026: *"aqui também pode colocar um
+                // verde indicando que foi concluído"*). Ele já tinha o ✓, mas em cinza — a mesma cor
+                // do degrau que ainda não aconteceu, com um ícone pequeno como única diferença. Num
+                // fluxo de cinco passos lido de relance, o que responde "até onde essa venda chegou"
+                // é a COR, não o ícone: agora o caminho andado se separa do que falta sem precisar
+                // procurar. O verde é o mesmo `ok` do resto do portal, em fundo lavado.
+                background: ehAtual ? T.gold : cumprida ? T.okBg : T.card,
+                border: ehAtual
+                  ? "none"
+                  : `1px solid ${cumprida ? T.ok : T.border}`,
+                clipPath: recorte,
+                color: ehAtual ? T.btnFg : cumprida ? T.ok : T.muted,
+                display: "flex",
+                flex: 1,
+                fontSize: 10,
+                fontWeight: ehAtual || cumprida ? 700 : 500,
+                gap: 3,
+                justifyContent: "center",
+                marginLeft: primeiro ? 0 : -PONTA,
+                minWidth: 0,
+                overflow: "hidden",
+                padding: `5px ${PONTA + 2}px 5px ${primeiro ? PONTA : PONTA * 2}px`,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {cumprida ? (
+                <Check aria-hidden size={10} strokeWidth={3} />
+              ) : null}
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                {ROTULO_DA_ETAPA[passo] ?? passo}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </>
   );
@@ -2337,7 +2626,11 @@ function AcoesDaUnidade({
    * proposta" acendia nelas e a rota respondia "Não há proposta aberta nesta unidade" numa ficha
    * que acabava de dizer Proposta — um beco sem explicação.
    */
-  propostaViva?: null | { cancelamentoPedidoEm?: null | string; id: string; origem: null | string };
+  propostaViva?: null | {
+    cancelamentoPedidoEm?: null | string;
+    id: string;
+    origem: null | string;
+  };
   aoReservar: () => void;
   unidade: null | UnidadeNoMapa;
 }) {
@@ -2349,9 +2642,11 @@ function AcoesDaUnidade({
   // presa, com o preço já circulando por WhatsApp, e só SQL na mão a soltava.
   // ⚠️ E SÓ A NATIVA: a etapa `proposta` do espelho não distingue quem nasceu aqui de quem veio da
   // carga do legado, e a rota só cancela a nativa. Ver `propostaViva`.
-  const proposta = unidade?.etapa === "proposta" && propostaViva?.origem === "panteon";
+  const proposta =
+    unidade?.etapa === "proposta" && propostaViva?.origem === "panteon";
   /** Proposta do legado pintando o lote: a tela diz Proposta, mas o cancelamento é lá. */
-  const propostaDoLegado = unidade?.etapa === "proposta" && propostaViva?.origem !== "panteon";
+  const propostaDoLegado =
+    unidade?.etapa === "proposta" && propostaViva?.origem !== "panteon";
 
   // Qual dos três cancelamentos cabe aqui — ver `lib/hercules/acao-de-cancelamento.ts`.
   const cancelamento = acaoDeCancelamento({
@@ -2432,7 +2727,8 @@ function AcoesDaUnidade({
     // teste próprio) e não numa escada de ternários aqui dentro.
     {
       ativo: Boolean(unidade) && cancelamento.tipo !== null,
-      aoClicar: cancelamento.tipo === "pedido" ? aoPedirCancelamento : aoCancelar,
+      aoClicar:
+        cancelamento.tipo === "pedido" ? aoPedirCancelamento : aoCancelar,
       motivo: !unidade ? "Escolha uma unidade." : cancelamento.motivo,
       rotulo: cancelamento.rotulo,
       tom: "desfaz",
@@ -2516,7 +2812,9 @@ function BotaoDoSimulador({
   aoAbrir: () => void;
   unidade: null | UnidadeNoMapa;
 }) {
-  const nome = unidade ? comoSeEscreve(unidade.codigo, unidade.quadra, unidade.lote) : null;
+  const nome = unidade
+    ? comoSeEscreve(unidade.codigo, unidade.quadra, unidade.lote)
+    : null;
 
   return (
     <Cartao titulo="Simulador de proposta">
@@ -2562,7 +2860,8 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
     );
   }
 
-  const faturadas = dados.fluxo.find((f) => f.etapa === "faturado")?.quantidade ?? 0;
+  const faturadas =
+    dados.fluxo.find((f) => f.etapa === "faturado")?.quantidade ?? 0;
   const emAndamento = dados.fluxo
     .filter((f) => f.etapa !== "faturado")
     .reduce((a, f) => a + f.quantidade, 0);
@@ -2597,7 +2896,11 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
           rotulo="VGV faturado"
           valor={dinheiro(dados.totais.vgvFaturado)}
         />
-        <Kpi nota="das propostas faturadas" rotulo="Ticket médio" valor={dinheiro(ticket)} />
+        <Kpi
+          nota="das propostas faturadas"
+          rotulo="Ticket médio"
+          valor={dinheiro(ticket)}
+        />
         <Kpi
           nota="propostas vivas, fora do faturamento"
           rotulo="Em andamento"
@@ -2635,15 +2938,38 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
                 empreendimentos a esteira não recorta, e aí a CAD não aparece. */}
             {dados.cads
               ? [
-                  { n: dados.cads.total, nota: `${inteiro(dados.cads.emCorrecao)} em correção`, rotulo: "CADs geradas" },
-                  { n: dados.cads.credenciados, nota: `${inteiro(dados.cads.reprovadas)} reprovadas`, rotulo: "Credenciados" },
+                  {
+                    n: dados.cads.total,
+                    nota: `${inteiro(dados.cads.emCorrecao)} em correção`,
+                    rotulo: "CADs geradas",
+                  },
+                  {
+                    n: dados.cads.credenciados,
+                    nota: `${inteiro(dados.cads.reprovadas)} reprovadas`,
+                    rotulo: "Credenciados",
+                  },
                 ].map((c) => (
                   <div key={c.rotulo} style={{ display: "grid", gap: 4 }}>
-                    <div style={{ display: "flex", fontSize: 12.5, justifyContent: "space-between" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        fontSize: 12.5,
+                        justifyContent: "space-between",
+                      }}
+                    >
                       <span style={{ color: T.sub }}>{c.rotulo}</span>
-                      <b style={{ fontVariantNumeric: "tabular-nums" }}>{inteiro(c.n)}</b>
+                      <b style={{ fontVariantNumeric: "tabular-nums" }}>
+                        {inteiro(c.n)}
+                      </b>
                     </div>
-                    <div style={{ background: T.soft, borderRadius: 5, height: 20, overflow: "hidden" }}>
+                    <div
+                      style={{
+                        background: T.soft,
+                        borderRadius: 5,
+                        height: 20,
+                        overflow: "hidden",
+                      }}
+                    >
                       <i
                         style={{
                           background: T.muted,
@@ -2653,7 +2979,9 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
                         }}
                       />
                     </div>
-                    <span style={{ color: T.muted, fontSize: 11 }}>{c.nota}</span>
+                    <span style={{ color: T.muted, fontSize: 11 }}>
+                      {c.nota}
+                    </span>
                   </div>
                 ))
               : null}
@@ -2662,12 +2990,27 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
               const passo = FLUXO.find((x) => x.etapa === f.etapa);
               return (
                 <div key={f.etapa} style={{ display: "grid", gap: 4 }}>
-                  <div style={{ display: "flex", fontSize: 12.5, justifyContent: "space-between" }}>
-                    <span style={{ color: T.sub }}>{passo?.rotulo ?? f.etapa}</span>
-                    <b style={{ fontVariantNumeric: "tabular-nums" }}>{inteiro(f.quantidade)}</b>
+                  <div
+                    style={{
+                      display: "flex",
+                      fontSize: 12.5,
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span style={{ color: T.sub }}>
+                      {passo?.rotulo ?? f.etapa}
+                    </span>
+                    <b style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {inteiro(f.quantidade)}
+                    </b>
                   </div>
                   <div
-                    style={{ background: T.soft, borderRadius: 5, height: 20, overflow: "hidden" }}
+                    style={{
+                      background: T.soft,
+                      borderRadius: 5,
+                      height: 20,
+                      overflow: "hidden",
+                    }}
                   >
                     <i
                       style={{
@@ -2678,7 +3021,9 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
                       }}
                     />
                   </div>
-                  <span style={{ color: T.muted, fontSize: 11 }}>{dinheiro(f.vgv)}</span>
+                  <span style={{ color: T.muted, fontSize: 11 }}>
+                    {dinheiro(f.vgv)}
+                  </span>
                 </div>
               );
             })}
@@ -2687,39 +3032,52 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
             {dados.periodo.de
               ? `Desempenho de ${mesCurto(dados.periodo.de)} a ${mesCurto(dados.periodo.ate ?? dados.periodo.de)}: ${inteiro(dados.periodo.propostasNoPeriodo)} propostas na janela.`
               : `${inteiro(dados.totais.propostas)} propostas no escopo, com o histórico inteiro desde 2023.`}{" "}
-            As barras de reserva para baixo são o pipeline de HOJE, que a janela não filtra;{" "}
-            {inteiro(perdidas)} saíram do caminho e não aparecem nelas.
+            As barras de reserva para baixo são o pipeline de HOJE, que a janela
+            não filtra; {inteiro(perdidas)} saíram do caminho e não aparecem
+            nelas.
           </p>
         </Cartao>
 
         <Cartao titulo="Quem está vendendo">
           {dados.ranking.length > 0 ? (
             <div style={{ margin: "-16px", overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
+              <table
+                style={{
+                  borderCollapse: "collapse",
+                  fontSize: 13,
+                  width: "100%",
+                }}
+              >
                 <thead>
                   <tr>
-                    {["Imobiliária", "Propostas", "Vendidas", "VGV"].map((c, i) => (
-                      <th
-                        key={c}
-                        style={{
-                          color: T.muted,
-                          fontSize: 10.5,
-                          fontWeight: 650,
-                          padding: "10px 12px",
-                          textAlign: i === 0 ? "left" : "right",
-                        }}
-                      >
-                        {c}
-                      </th>
-                    ))}
+                    {["Imobiliária", "Propostas", "Vendidas", "VGV"].map(
+                      (c, i) => (
+                        <th
+                          key={c}
+                          style={{
+                            color: T.muted,
+                            fontSize: 10.5,
+                            fontWeight: 650,
+                            padding: "10px 12px",
+                            textAlign: i === 0 ? "left" : "right",
+                          }}
+                        >
+                          {c}
+                        </th>
+                      ),
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {dados.ranking.slice(0, 10).map((r) => (
                     <tr key={r.imobiliaria}>
                       <td style={celula}>{toTitleCase(r.imobiliaria)}</td>
-                      <td style={{ ...celula, textAlign: "right" }}>{inteiro(r.propostas)}</td>
-                      <td style={{ ...celula, textAlign: "right" }}>{inteiro(r.vendidas)}</td>
+                      <td style={{ ...celula, textAlign: "right" }}>
+                        {inteiro(r.propostas)}
+                      </td>
+                      <td style={{ ...celula, textAlign: "right" }}>
+                        {inteiro(r.vendidas)}
+                      </td>
                       <td
                         style={{
                           ...celula,
@@ -2735,17 +3093,36 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
               </table>
             </div>
           ) : (
-            <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Sem imobiliária no recorte.</p>
+            <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
+              Sem imobiliária no recorte.
+            </p>
           )}
         </Cartao>
       </div>
 
       <Cartao titulo="Mês a mês">
         {dados.serie.length > 0 ? (
-          <div style={{ alignItems: "flex-end", display: "flex", gap: 8, minHeight: 140 }}>
+          <div
+            style={{
+              alignItems: "flex-end",
+              display: "flex",
+              gap: 8,
+              minHeight: 140,
+            }}
+          >
             {dados.serie.slice(-18).map((s) => (
-              <div key={s.mes} style={{ display: "grid", flex: 1, gap: 5, justifyItems: "center" }}>
-                <b style={{ fontSize: 11, fontVariantNumeric: "tabular-nums" }}>{s.faturadas}</b>
+              <div
+                key={s.mes}
+                style={{
+                  display: "grid",
+                  flex: 1,
+                  gap: 5,
+                  justifyItems: "center",
+                }}
+              >
+                <b style={{ fontSize: 11, fontVariantNumeric: "tabular-nums" }}>
+                  {s.faturadas}
+                </b>
                 <div
                   style={{
                     background: T.gold,
@@ -2764,15 +3141,20 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
                     width: "100%",
                   }}
                 />
-                <span style={{ color: T.muted, fontSize: 10 }}>{mesCurto(s.mes)}</span>
+                <span style={{ color: T.muted, fontSize: 10 }}>
+                  {mesCurto(s.mes)}
+                </span>
               </div>
             ))}
           </div>
         ) : (
-          <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Sem série no recorte.</p>
+          <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
+            Sem série no recorte.
+          </p>
         )}
         <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-          Dourado é faturamento; a barra vermelha embaixo é o que caiu no mesmo mês.
+          Dourado é faturamento; a barra vermelha embaixo é o que caiu no mesmo
+          mês.
         </p>
       </Cartao>
 
@@ -2780,17 +3162,31 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
         {dados.motivos.length > 0 ? (
           <div style={{ display: "grid", gap: 8 }}>
             {dados.motivos.slice(0, 10).map((m) => (
-              <div key={m.motivo} style={{ display: "flex", justifyContent: "space-between" }}>
+              <div
+                key={m.motivo}
+                style={{ display: "flex", justifyContent: "space-between" }}
+              >
                 <span style={{ color: T.sub, fontSize: 12.5 }}>{m.motivo}</span>
-                <b style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>{m.n}</b>
+                <b
+                  style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}
+                >
+                  {m.n}
+                </b>
               </div>
             ))}
           </div>
         ) : null}
-        <p style={{ color: T.sub, fontSize: 13, margin: dados.motivos.length > 0 ? "12px 0 0" : 0 }}>
-          De {inteiro(perdidas)} propostas que caíram, {inteiro(comMotivo)} têm motivo registrado. O
-          legado tinha o campo e ele quase nunca foi preenchido; quando o cancelamento passar a
-          acontecer aqui, o motivo vira obrigatório e este quadro deixa de ser um número solto.
+        <p
+          style={{
+            color: T.sub,
+            fontSize: 13,
+            margin: dados.motivos.length > 0 ? "12px 0 0" : 0,
+          }}
+        >
+          De {inteiro(perdidas)} propostas que caíram, {inteiro(comMotivo)} têm
+          motivo registrado. O legado tinha o campo e ele quase nunca foi
+          preenchido; quando o cancelamento passar a acontecer aqui, o motivo
+          vira obrigatório e este quadro deixa de ser um número solto.
         </p>
       </Cartao>
     </div>
@@ -2809,10 +3205,95 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
 // ⚠️ E O EIXO É O LOTE, NÃO A PROPOSTA. O lote 01 04 do Portal dos Vales teve proposta de sete
 // clientes diferentes em quatro dias antes de vender: por isso cada evento diz de quem era a
 // proposta naquele momento.
-function Historico({
+/**
+ * AS TRÊS ABAS DA VENDA — chat, documentos e histórico.
+ *
+ * Lucas (06/09/2026): *"teremos nessa aba de histórico mais duas abas, documentos e chat (...) o
+ * chat é onde vai ficar os registros de conversas, formalizações, observações, enfim, e histórico
+ * fica sendo histórico mesmo"*. E, sobre a ordem: *"deixa o chat como principal, primeiro chat -
+ * documentos - histórico"*.
+ *
+ * ⚠️ O CHAT ABRE PRIMEIRO PORQUE É ONDE SE TRABALHA. O histórico responde "o que aconteceu" — uma
+ * pergunta que se faz de vez em quando, e que a máquina escreve sozinha. O chat é onde a pessoa
+ * ESCREVE, e é o único dos três que fica vazio se ninguém abrir.
+ *
+ * ⚠️ CADA ABA CARREGA SÓ QUANDO É ABERTA, e continua montada depois. São três rotas diferentes:
+ * abrir as três de uma vez custaria três consultas por clique em lote, para responder uma pergunta
+ * que quase nunca é feita; desmontar ao trocar de aba perderia o que estivesse digitado no chat.
+ */
+function PainelDaVenda({
   unidadeId,
   versao,
 }: {
+  unidadeId: null | string;
+  versao: number;
+}) {
+  const [aba, setAba] = useState<"chat" | "documentos" | "historico">("chat");
+  const [visitadas, setVisitadas] = useState<Set<string>>(
+    () => new Set(["chat"]),
+  );
+
+  useEffect(() => {
+    // Trocar de lote recomeça no chat e esquece o que já foi carregado: a aba aberta era do lote
+    // anterior, e manter a escolha faria a ficha nova abrir num painel que ainda mostra o antigo.
+    setAba("chat");
+    setVisitadas(new Set(["chat"]));
+  }, [unidadeId]);
+
+  const escolher = (qual: "chat" | "documentos" | "historico") => {
+    setAba(qual);
+    setVisitadas((atuais) =>
+      atuais.has(qual) ? atuais : new Set([...atuais, qual]),
+    );
+  };
+
+  return (
+    <Cartao
+      barra={
+        <>
+          {(
+            [
+              ["chat", "Chat"],
+              ["documentos", "Documentos"],
+              ["historico", "Histórico"],
+            ] as const
+          ).map(([chave, rotulo]) => (
+            <Pilula
+              ativo={aba === chave}
+              key={chave}
+              onClick={() => escolher(chave)}
+              rotulo={rotulo}
+            />
+          ))}
+        </>
+      }
+      rolagem
+      titulo="Venda"
+    >
+      <div style={{ display: aba === "chat" ? "block" : "none" }}>
+        <ConversaDaVenda unidadeId={unidadeId} versao={versao} />
+      </div>
+      <div style={{ display: aba === "documentos" ? "block" : "none" }}>
+        {visitadas.has("documentos") ? (
+          <DocumentosDaVenda unidadeId={unidadeId} versao={versao} />
+        ) : null}
+      </div>
+      <div style={{ display: aba === "historico" ? "block" : "none" }}>
+        {visitadas.has("historico") ? (
+          <Historico semCartao unidadeId={unidadeId} versao={versao} />
+        ) : null}
+      </div>
+    </Cartao>
+  );
+}
+
+function Historico({
+  semCartao,
+  unidadeId,
+  versao,
+}: {
+  /** Dentro das abas o cartão é de fora: dois cartões aninhados viram duas molduras. */
+  semCartao?: boolean;
   unidadeId: null | string;
   /**
    * Muda a cada carga do fluxo de venda — é o sinal para refazer a busca.
@@ -2826,7 +3307,9 @@ function Historico({
 }) {
   const [eventos, setEventos] = useState<EventoDaUnidade[]>([]);
   const [propostas, setPropostas] = useState(0);
-  const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">("pronto");
+  const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">(
+    "pronto",
+  );
   const [tudo, setTudo] = useState(false);
   const [so, setSo] = useState<"assinatura" | "pagamento" | "tudo">("tudo");
   const [desde, setDesde] = useState("");
@@ -2875,7 +3358,10 @@ function Historico({
 
   // Os anos que existem neste histórico — o filtro de data não oferece ano vazio.
   const anos = useMemo(
-    () => [...new Set(eventos.map((e) => e.quando.slice(0, 4)))].sort((a, b) => b.localeCompare(a)),
+    () =>
+      [...new Set(eventos.map((e) => e.quando.slice(0, 4)))].sort((a, b) =>
+        b.localeCompare(a),
+      ),
     [eventos],
   );
 
@@ -2916,68 +3402,65 @@ function Historico({
     .filter((e) => e.tipo === "pagamento" && e.valor)
     .reduce((a, e) => a + (e.valor ?? 0), 0);
 
-  return (
-    <Cartao
-      barra={
-        eventos.length > 0 ? (
-          <>
-            {/* ⚠️ FILTRO DE TIPO E DE DATA (Lucas, 03/09/2026: *"colocar um filtro de data"*). Um
+  const filtros =
+    eventos.length > 0 ? (
+      <>
+        {/* ⚠️ FILTRO DE TIPO E DE DATA (Lucas, 03/09/2026: *"colocar um filtro de data"*). Um
                 lote com trinta registros vira uma parede; a pergunta real costuma ser "o que
                 aconteceu de dinheiro" ou "o que houve neste ano". */}
-            {(
-              [
-                ["tudo", `Tudo ${eventos.length}`],
-                ["pagamento", "Pagamentos"],
-                ["assinatura", "Assinaturas"],
-              ] as const
-            ).map(([chave, rotulo]) => (
-              <Pilula
-                ativo={so === chave}
-                key={chave}
-                onClick={() => setSo(chave)}
-                rotulo={rotulo}
-              />
-            ))}
-            <select
-              aria-label="Período"
-              onChange={(e) => setDesde(e.target.value)}
-              style={{
-                background: T.soft,
-                border: `1px solid ${T.border}`,
-                borderRadius: 999,
-                color: T.text,
-                cursor: "pointer",
-                font: "inherit",
-                fontSize: 12.5,
-                fontWeight: 600,
-                padding: "6px 10px",
-              }}
-              value={desde}
-            >
-              {opcoesDeData.map((o) => (
-                <option key={o.valor} value={o.valor}>
-                  {o.rotulo}
-                </option>
-              ))}
-            </select>
-            {pagos > 0 ? (
-              <span style={{ color: T.ok, fontSize: 11.5, fontWeight: 650, marginLeft: "auto" }}>
-                {dinheiro(pagos)} pagos
-              </span>
-            ) : null}
-          </>
-        ) : null
-      }
-      direita={
-        propostas > 0 ? (
-          <span style={{ color: T.muted, fontSize: 11.5 }}>
-            {inteiro(propostas)} proposta(s)
+        {(
+          [
+            ["tudo", `Tudo ${eventos.length}`],
+            ["pagamento", "Pagamentos"],
+            ["assinatura", "Assinaturas"],
+          ] as const
+        ).map(([chave, rotulo]) => (
+          <Pilula
+            ativo={so === chave}
+            key={chave}
+            onClick={() => setSo(chave)}
+            rotulo={rotulo}
+          />
+        ))}
+        <select
+          aria-label="Período"
+          onChange={(e) => setDesde(e.target.value)}
+          style={{
+            background: T.soft,
+            border: `1px solid ${T.border}`,
+            borderRadius: 999,
+            color: T.text,
+            cursor: "pointer",
+            font: "inherit",
+            fontSize: 12.5,
+            fontWeight: 600,
+            padding: "6px 10px",
+          }}
+          value={desde}
+        >
+          {opcoesDeData.map((o) => (
+            <option key={o.valor} value={o.valor}>
+              {o.rotulo}
+            </option>
+          ))}
+        </select>
+        {pagos > 0 ? (
+          <span
+            style={{
+              color: T.ok,
+              fontSize: 11.5,
+              fontWeight: 650,
+              marginLeft: "auto",
+            }}
+          >
+            {dinheiro(pagos)} pagos
           </span>
-        ) : null
-      }
-      rolagem
-      titulo="Histórico da unidade"
-    >
+        ) : null}
+      </>
+    ) : null;
+
+  const corpo = (
+    <>
       {estado === "carregando" ? (
         <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Carregando…</p>
       ) : estado === "erro" ? (
@@ -2989,7 +3472,9 @@ function Historico({
           Nada registrado nesta unidade. Ela nunca teve proposta.
         </p>
       ) : filtrados.length === 0 ? (
-        <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>Nada com esse filtro.</p>
+        <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
+          Nada com esse filtro.
+        </p>
       ) : (
         <>
           {/* ⚠️ O DESENHO É UMA LINHA DO TEMPO, e não uma lista de parágrafos. A data fica numa
@@ -3000,7 +3485,8 @@ function Historico({
               const anterior = visiveis[i - 1];
               // O nome do cliente só aparece quando MUDA: repetir "ALEXANDRE" em doze linhas
               // seguidas era metade do ruído da lista.
-              const mostrarCliente = e.cliente && e.cliente !== anterior?.cliente;
+              const mostrarCliente =
+                e.cliente && e.cliente !== anterior?.cliente;
               // ⚠️ A TRANSIÇÃO GANHA A COR DA ETAPA DE DESTINO (Lucas, 03/09/2026: *"deixar essas
               // transições reserva - proposta na cor que estamos usando para marcar na grade,
               // cancelamento em vermelho"*). A grade já ensinou o olho: azul é proposta, violeta é
@@ -3048,7 +3534,13 @@ function Historico({
                     </span>
 
                     {/* O fio da linha do tempo, com o ponto do evento. */}
-                    <span style={{ display: "grid", justifyItems: "center", position: "relative" }}>
+                    <span
+                      style={{
+                        display: "grid",
+                        justifyItems: "center",
+                        position: "relative",
+                      }}
+                    >
                       <span
                         style={{
                           background: cor,
@@ -3058,7 +3550,9 @@ function Historico({
                           width: 7,
                         }}
                       />
-                      <span style={{ background: T.border, flex: 1, width: 1 }} />
+                      <span
+                        style={{ background: T.border, flex: 1, width: 1 }}
+                      />
                     </span>
 
                     <span style={{ display: "grid", gap: 1, minWidth: 0 }}>
@@ -3073,7 +3567,8 @@ function Historico({
                           <span
                             style={{
                               color: T.muted,
-                              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                              fontFamily:
+                                "ui-monospace, SFMono-Regular, Menlo, monospace",
                               fontSize: 11,
                               fontWeight: 600,
                               letterSpacing: ".04em",
@@ -3084,14 +3579,25 @@ function Historico({
                           </span>
                         ) : null}
                         {e.valor ? (
-                          <span style={{ color: T.ok }}> · {dinheiro(e.valor)}</span>
+                          <span style={{ color: T.ok }}>
+                            {" "}
+                            · {dinheiro(e.valor)}
+                          </span>
                         ) : null}
                       </b>
                       {e.quem ? (
-                        <span style={{ color: T.muted, fontSize: 11 }}>{e.quem}</span>
+                        <span style={{ color: T.muted, fontSize: 11 }}>
+                          {e.quem}
+                        </span>
                       ) : null}
                       {e.observacao ? (
-                        <span style={{ color: T.muted, fontSize: 11, opacity: 0.85 }}>
+                        <span
+                          style={{
+                            color: T.muted,
+                            fontSize: 11,
+                            opacity: 0.85,
+                          }}
+                        >
                           {e.observacao}
                         </span>
                       ) : null}
@@ -3125,6 +3631,45 @@ function Historico({
           ) : null}
         </>
       )}
+    </>
+  );
+
+  // ⚠️ DENTRO DAS ABAS O CARTÃO É DE FORA. Dois cartões aninhados viram duas molduras com dois
+  // títulos para a mesma coisa, e a rolagem passa a ser de um dos dois — nunca dos dois juntos.
+  if (semCartao) {
+    return (
+      <div style={{ display: "grid", gap: 10 }}>
+        {filtros ? (
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 6,
+            }}
+          >
+            {filtros}
+          </div>
+        ) : null}
+        {corpo}
+      </div>
+    );
+  }
+
+  return (
+    <Cartao
+      barra={filtros}
+      direita={
+        propostas > 0 ? (
+          <span style={{ color: T.muted, fontSize: 11.5 }}>
+            {inteiro(propostas)} proposta(s)
+          </span>
+        ) : null
+      }
+      rolagem
+      titulo="Histórico da unidade"
+    >
+      {corpo}
     </Cartao>
   );
 }
@@ -3146,11 +3691,23 @@ function Busca({
   valor: string;
 }) {
   return (
-    <span style={{ alignItems: "center", display: "inline-flex", gap: 6, position: "relative" }}>
+    <span
+      style={{
+        alignItems: "center",
+        display: "inline-flex",
+        gap: 6,
+        position: "relative",
+      }}
+    >
       <Search
         aria-hidden="true"
         size={13}
-        style={{ color: T.muted, left: 10, pointerEvents: "none", position: "absolute" }}
+        style={{
+          color: T.muted,
+          left: 10,
+          pointerEvents: "none",
+          position: "absolute",
+        }}
       />
       <input
         onChange={(e) => aoMudar(e.target.value)}
@@ -3310,7 +3867,9 @@ function Cartao({
           padding: "13px 16px",
         }}
       >
-        <h2 style={{ color: T.text, fontSize: 14, fontWeight: 650, margin: 0 }}>{titulo}</h2>
+        <h2 style={{ color: T.text, fontSize: 14, fontWeight: 650, margin: 0 }}>
+          {titulo}
+        </h2>
         {direita}
       </div>
       {barra ? (
@@ -3340,7 +3899,15 @@ function Cartao({
   );
 }
 
-function Kpi({ nota, rotulo, valor }: { nota: string; rotulo: string; valor: string }) {
+function Kpi({
+  nota,
+  rotulo,
+  valor,
+}: {
+  nota: string;
+  rotulo: string;
+  valor: string;
+}) {
   return (
     <div
       style={{
@@ -3362,7 +3929,12 @@ function Kpi({ nota, rotulo, valor }: { nota: string; rotulo: string; valor: str
         {rotulo}
       </span>
       <div
-        style={{ fontSize: 23, fontVariantNumeric: "tabular-nums", fontWeight: 650, marginTop: 6 }}
+        style={{
+          fontSize: 23,
+          fontVariantNumeric: "tabular-nums",
+          fontWeight: 650,
+          marginTop: 6,
+        }}
       >
         {valor}
       </div>
@@ -3383,7 +3955,15 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: string }) {
       }}
     >
       <span style={{ color: T.sub, fontSize: 12.5 }}>{rotulo}</span>
-      <b style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums", fontWeight: 650 }}>{valor}</b>
+      <b
+        style={{
+          fontSize: 12.5,
+          fontVariantNumeric: "tabular-nums",
+          fontWeight: 650,
+        }}
+      >
+        {valor}
+      </b>
     </div>
   );
 }
