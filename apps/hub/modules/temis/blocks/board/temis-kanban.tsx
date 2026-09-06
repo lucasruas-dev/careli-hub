@@ -57,12 +57,18 @@ type TrabalhoDaTela = {
 
 type Colunas = { descricao: string; id: EstagioDoTrabalho; nome: string }[];
 
+// ⚠️ O QUE DESFAZ A VENDA É VERMELHO (Lucas, 06/09/2026: *"cancelamento em vermelho"*). O
+// cancelamento estava em cinza, do lado do contrato em verde — a única cor do board que importa
+// para quem passa os olhos é a que separa "a venda anda" de "a venda cai", e ela não existia.
+// ⚠️ O DISTRATO VAI JUNTO, em tom mais forte: ele é o MESMO ato com outro instrumento (e é o que
+// mexe em dinheiro do cliente). Deixá-lo azul ao lado de um cancelamento vermelho faria dois
+// parentes parecerem coisas diferentes no mesmo quadro.
 const CLASSE_DO_TIPO: Record<TipoDeTrabalho, string> = {
-  cancelamento: "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300",
+  cancelamento: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
   cancelamento_correcao: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
   cessao: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
   contrato: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  distrato: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
+  distrato: "bg-rose-200 text-rose-900 dark:bg-rose-500/25 dark:text-rose-200",
 };
 
 /** `12345678901` → `123.456.789-01`. */
@@ -189,7 +195,14 @@ export function TemisKanban({
                     {coluna.nome}
                     <span className="text-xs font-semibold text-ink-muted">{cards.length}</span>
                   </h3>
-                  <p className="text-[0.7rem] text-ink-muted">{coluna.descricao}</p>
+                  {/* ⚠️ "Chegou e ninguém pegou", "No D4Sign esperando os signatários" — isso é
+                      recado de QUEM EXECUTA. No board do comercial (Lucas, 06/09/2026: *"é somente
+                      informativo (...) aqui é para eles verem onde está os contratos e somente. a
+                      parte de operação vai ficar na Têmis mesmo"*) o nome da coluna já responde a
+                      pergunta que eles têm: em que passo o contrato está. */}
+                  {somenteLeitura ? null : (
+                    <p className="text-[0.7rem] text-ink-muted">{coluna.descricao}</p>
+                  )}
                 </header>
 
                 {cards.length === 0 ? (
@@ -246,7 +259,13 @@ function Card({
             : "border-line"
       }`}
     >
-      <button className="w-full text-left" onClick={aoAbrir} type="button">
+      {/* Sem nada para revelar, o card do comercial deixa de ser clicável: um clique que não faz
+          nada é pior do que um bloco que não promete clique. */}
+      <button
+        className={`w-full text-left ${somenteLeitura ? "cursor-default" : ""}`}
+        onClick={somenteLeitura ? undefined : aoAbrir}
+        type="button"
+      >
         <div className="flex items-center justify-between gap-2">
           <span
             className={`rounded-full px-1.5 py-0.5 text-[0.65rem] font-bold ${CLASSE_DO_TIPO[trabalho.tipo]}`}
@@ -272,14 +291,18 @@ function Card({
           {trabalho.empreendimentoCodigo} · {trabalho.unidade}
         </p>
 
-        {doEstagio.length > 0 ? (
+        {/* ⚠️ O CHECKLIST É TRABALHO DE QUEM EXECUTA, e o board do comercial não executa nada
+            (Lucas, 06/09/2026: *"é somente informativo (...) a parte de operação vai ficar na Têmis
+            mesmo"*). O contador "0 de 1 nesta etapa" media o andamento do jurídico dentro do
+            passo; para o comercial, a resposta é o passo — e o passo é a coluna. */}
+        {!somenteLeitura && doEstagio.length > 0 ? (
           <p className="mt-1.5 text-[0.7rem] font-semibold text-ink-muted">
             {p.feitas} de {p.total} nesta etapa
           </p>
         ) : null}
       </button>
 
-      {aberto ? (
+      {aberto && !somenteLeitura ? (
         <div className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">
           {doEstagio.map((a) => (
             <ItemDoChecklist
@@ -300,6 +323,9 @@ function Card({
                 ? "Hércules · emissão de contrato"
                 : "Coordenação"}
           </p>
+          {/* ⚠️ A OBSERVAÇÃO É O BILHETE PARA O JURÍDICO, e sai escrita pelo sistema: "apurado pelo
+              sistema: nenhuma assinatura registrada...". Ela serve a quem vai redigir o
+              instrumento; no board do comercial é ruído sobre o que eles foram ver ali. */}
           {trabalho.observacao ? (
             <p className="text-[0.7rem] italic text-ink-muted">{trabalho.observacao}</p>
           ) : null}
