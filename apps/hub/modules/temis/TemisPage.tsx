@@ -7,7 +7,6 @@ import type { ApoloEnterpriseRow, ApoloEnterprisesData } from "@/lib/apolo/empre
 import { temisScreens, type TemisScreen } from "@/lib/temis/catalog";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
-import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 import { TemisSidebar } from "@/modules/temis/blocks/shell/temis-sidebar";
 import { TemisBoard } from "@/modules/temis/blocks/board/temis-board";
 import { TemisKanban } from "@/modules/temis/blocks/board/temis-kanban";
@@ -216,22 +215,20 @@ function Cabecalho({
 // ⚠️ SÃO ABAS, E NÃO UMA LISTA SÓ FILTRADA. Uma lista com os quatro tipos misturados faria alguém
 // publicar como contrato o texto que encerra contrato — e o erro só apareceria no primeiro distrato
 // gerado, com o documento já na mão do cliente.
-// ⚠️ A ESTRUTURA VEM PRIMEIRO, E AS ABAS DE DOCUMENTO DEPOIS (Lucas, 07/09/2026: *"a primeira
-// coisa que vamos fazer é revisitar a estrutura de confecção de minutas"*, e antes disso: *"eu
-// havia explicado como eu queria ter as dependências, eu não vi onde eu crio as categorias"*).
+// ⚠️ AQUI SE ESCREVEM OS DOCUMENTOS, E SÓ ISSO — a divisão que o Lucas fechou em 07/09/2026:
+// *"na Têmis a gente cria somente as minutas e os termos. O vínculo acontece no Apolo"*, e
+// *"lá eu puxo as minutas feitas aqui para aquele determinado empreendimento e faço o vínculo"*.
 //
-// ⚠️ ELE NÃO ACHOU PORQUE NÃO ESTAVA AQUI. A cadeia que ele desenhou — empreendimento → categoria →
-// plano → minuta, com a decisão final no plano (*"o que define qual minuta usar é o plano de
-// pagamento"*) — já existia construída, e bem: `PlanosComerciaisTab` cria categoria, cria plano,
-// vincula a minuta e conta quantos planos estão prontos para gerar contrato. Só que ela mora na
-// ficha do empreendimento, no APOLO, e quem passa o dia em contrato trabalha AQUI.
+// ⚠️ EU TINHA TRAZIDO A TELA DE PLANOS PARA CÁ, E ELE PEGOU NA HORA: *"não tínhamos acordado que a
+// Têmis não iria gerar plano comercial?"*. Tínhamos — inclusive nesta mesma conversa, quando ele
+// perguntou onde criava categoria e eu respondi que plano e categoria são do comercial. A pergunta
+// dele *"não vi onde eu crio as categorias"* não pedia a tela aqui: pedia saber ONDE ela está.
 //
-// ⚠️ E É A MESMA TELA, NÃO UMA CÓPIA. É a mesma decisão já tomada com a `MinutasTab` logo abaixo:
-// duas telas que criam plano seriam duas verdades sobre o que o empreendimento vende, e a segunda
-// envelheceria calada. O cadastro continua sendo um só; o que muda é que ele passa a ser alcançável
-// de onde o trabalho acontece.
+// A divisão que vale: o JURÍDICO escreve o documento (Têmis) e o COMERCIAL diz qual plano assina
+// qual documento (Apolo, ficha do empreendimento, aba Planos comerciais — que já lista as minutas
+// feitas aqui e faz o vínculo). Duas telas criando plano seriam duas portas para o mesmo cadastro,
+// e a segunda é sempre a que alguém usa sem saber que a primeira existe.
 const ABAS_DO_SETUP: { rotulo: string; tipo: string }[] = [
-  { rotulo: "Planos e minutas", tipo: "estrutura" },
   { rotulo: "Minuta do contrato", tipo: "contrato" },
   { rotulo: "Termo de cessão", tipo: "cessao" },
   { rotulo: "Termo de distrato", tipo: "distrato" },
@@ -253,9 +250,7 @@ function Setup({
   empreendimentos: ApoloEnterpriseRow[];
   escolhido: ApoloEnterpriseRow | null;
 }) {
-  // Abre na estrutura: antes de escrever a minuta, o jurídico precisa saber para qual plano ela
-  // vale — e é essa a pergunta que a primeira tela responde.
-  const [aba, setAba] = useState<string>("estrutura");
+  const [aba, setAba] = useState<string>("contrato");
 
   if (!escolhido) {
     return (
@@ -294,22 +289,12 @@ function Setup({
       {/* ⚠️ A `key` LEVA O TIPO JUNTO. Sem ela, trocar de aba reaproveitaria o componente com a
           minuta anterior ainda aberta no editor — e o texto do distrato apareceria sob o título
           de contrato. */}
-      {aba === "estrutura" ? (
-        <div className="min-h-0 flex-1 overflow-auto">
-          <PlanosComerciaisTab
-            enterpriseId={escolhido.id}
-            key={`${escolhido.id}:estrutura`}
-            name={escolhido.name}
-          />
-        </div>
-      ) : (
-        <MinutasTab
-          enterpriseId={escolhido.id}
-          key={`${escolhido.id}:${aba}`}
-          name={escolhido.name}
-          tipo={aba}
-        />
-      )}
+      <MinutasTab
+        enterpriseId={escolhido.id}
+        key={`${escolhido.id}:${aba}`}
+        name={escolhido.name}
+        tipo={aba}
+      />
     </div>
   );
 }
