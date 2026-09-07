@@ -45,6 +45,35 @@ type LinhaDeMinuta = {
   versao: number;
 };
 
+/**
+ * O NOME de quem está mexendo, a partir do id da sessão.
+ *
+ * ⚠️ A LINHA GUARDA O NOME, E NÃO A CHAVE. `temis_minutas` tem `criado_por` (uuid) desde a 0113 e
+ * ninguém nunca o preencheu — e, mesmo preenchido, uuid não responde "quem alterou esta minuta".
+ * Guardar o nome é o padrão que o Hércules já usa (`criado_por_nome`, `cancelada_por_nome`): a
+ * linha se explica sozinha anos depois, mesmo que a pessoa saia da empresa e o cadastro dela mude.
+ *
+ * ⚠️ FALHA AQUI NÃO DERRUBA O SALVAMENTO. Ficar sem o nome do autor é ruim; perder a minuta que a
+ * pessoa acabou de escrever, por causa de uma consulta de conveniência, é pior.
+ */
+async function nomeDeQuem(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  userId: string,
+): Promise<null | string> {
+  try {
+    const { data } = await admin
+      .from("hub_users")
+      .select("display_name,email")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const pessoa = data as null | { display_name: null | string; email: null | string };
+    return pessoa?.display_name?.trim() || pessoa?.email?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request: Request) {
   const auth = await authorizeApoloRead(request);
   if (!auth.ok) return auth.response;
@@ -61,7 +90,7 @@ export async function GET(request: Request) {
     const { data, error } = await admin
       .from("temis_minutas")
       .select(
-        "id, enterprise_id, nome, descricao, tipo, situacao, versao, versao_anterior_id, conteudo, conteudo_html, origem_arquivo_nome, variaveis, publicada_em, criado_em, atualizado_em",
+        "id, enterprise_id, nome, descricao, tipo, situacao, versao, versao_anterior_id, conteudo, conteudo_html, origem_arquivo_nome, variaveis, publicada_em, criado_em, atualizado_em, criado_por_nome, atualizado_por_nome",
       )
       .eq("workspace_id", "careli")
       .eq("id", id)
@@ -85,7 +114,7 @@ export async function GET(request: Request) {
   let consulta = admin
     .from("temis_minutas")
     .select(
-      "id, nome, descricao, tipo, situacao, versao, origem_arquivo_nome, variaveis, publicada_em, criado_em, atualizado_em",
+      "id, nome, descricao, tipo, situacao, versao, origem_arquivo_nome, variaveis, publicada_em, criado_em, atualizado_em, criado_por_nome, atualizado_por_nome",
     )
     .eq("workspace_id", "careli")
     .eq("enterprise_id", enterpriseId);
@@ -102,7 +131,41 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Não consegui listar as minutas." }, { status: 502 });
   }
 
-  return NextResponse.json({ data: { minutas: (data ?? []) as LinhaDeMinuta[] } });
+  // ── QUANTOS PLANOS ASSINAM POR CADA MINUTA ────────────────────────────────
+  //
+  // Lucas (07/09/2026): *"aqui seria uma tela de informação, além de trazer quem criou, última
+  // atualização, queria a informação de quantos contratos foram emitidos nessa minuta/versão"*.
+  //
+  // ⚠️ CONTRATO EMITIDO AINDA NÃO TEM DE ONDE SAIR — e dizer isso é mais útil do que mostrar um zero
+  // que parece medida. Não existe no repositório a peça que gera contrato a partir da minuta (o
+  // "motor"), então nenhum contrato foi emitido por nenhuma versão. O número nasce no dia em que
+  // essa peça nascer, e ele vem daqui.
+  //
+  // O que EXISTE hoje e responde metade da pergunta: quantos PLANOS apontam para cada minuta. É o
+  // que diz se mexer nela é seguro — uma minuta usada por três planos é o contrato de três formas
+  // de pagamento diferentes.
+  const minutas = (data ?? []) as LinhaDeMinuta[];
+  const usos = new Map<string, number>();
+
+  if (minutas.length > 0) {
+    const { data: planos } = await admin
+      .from("temis_planos")
+      .select("minuta_id")
+      .eq("workspace_id", "careli")
+      .eq("enterprise_id", enterpriseId)
+      .not("minuta_id", "is", null);
+
+    for (const linha of (planos ?? []) as Array<{ minuta_id: null | string }>) {
+      if (!linha.minuta_id) continue;
+      usos.set(linha.minuta_id, (usos.get(linha.minuta_id) ?? 0) + 1);
+    }
+  }
+
+  return NextResponse.json({
+    data: {
+      minutas: minutas.map((m) => ({ ...m, planosQueUsam: usos.get(m.id) ?? 0 })),
+    },
+  });
 }
 
 type CorpoDeMinuta = {
@@ -184,12 +247,17 @@ export async function POST(request: Request) {
   }
 
   const auditoria = html ? auditar(html) : null;
+  const autor = await nomeDeQuem(admin, auth.userId);
 
   const { data, error } = await admin
     .from("temis_minutas")
     .insert({
+      atualizado_por_nome: autor,
       conteudo: corpo?.conteudo ?? null,
       conteudo_html: html,
+      criado_por: auth.userId,
+      // Quem cria também é quem alterou por último, até alguém mais salvar por cima.
+      criado_por_nome: autor,
       descricao: corpo?.descricao ?? null,
       enterprise_id: enterpriseId,
       nome,
@@ -223,7 +291,9 @@ export async function PATCH(request: Request) {
 
   const { data: atual, error: erroLeitura } = await admin
     .from("temis_minutas")
-    .select("id, enterprise_id, nome, descricao, tipo, situacao, versao, conteudo, conteudo_html, origem_arquivo_nome")
+    .select(
+      "id, enterprise_id, nome, descricao, tipo, situacao, versao, conteudo, conteudo_html, origem_arquivo_nome, criado_por_nome",
+    )
     .eq("workspace_id", "careli")
     .eq("id", id)
     .maybeSingle();
@@ -345,8 +415,13 @@ export async function PATCH(request: Request) {
     const { data: nova, error } = await admin
       .from("temis_minutas")
       .insert({
+        // ⚠️ A VERSÃO NOVA HERDA O CRIADOR DA ANTERIOR. Ela é a mesma minuta um passo adiante, e não
+        // um documento novo: quem escreveu a v1 continua sendo o autor da v2, e quem abriu a v2
+        // aparece como quem alterou por último.
+        atualizado_por_nome: await nomeDeQuem(admin, auth.userId),
         conteudo: corpo.conteudo ?? atual.conteudo,
         conteudo_html: html,
+        criado_por_nome: (atual as { criado_por_nome?: null | string }).criado_por_nome ?? null,
         descricao: corpo.descricao ?? atual.descricao,
         enterprise_id: atual.enterprise_id,
         nome: corpo.nome?.trim() || atual.nome,
@@ -373,6 +448,9 @@ export async function PATCH(request: Request) {
     .from("temis_minutas")
     .update({
       atualizado_em: agora,
+      // ⚠️ SÓ O "ALTERADO POR" MUDA AQUI. Quem CRIOU a minuta continua sendo quem criou: sobrescrever
+      // os dois a cada salvamento apagaria a origem do documento no primeiro ajuste de vírgula.
+      atualizado_por_nome: await nomeDeQuem(admin, auth.userId),
       conteudo: corpo.conteudo ?? atual.conteudo,
       conteudo_html: html,
       descricao: corpo.descricao ?? atual.descricao,

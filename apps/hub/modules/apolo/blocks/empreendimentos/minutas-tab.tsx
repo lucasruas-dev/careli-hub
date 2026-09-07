@@ -7,9 +7,12 @@ import {
   FileText,
   Info,
   Loader2,
+  Pencil,
   Plus,
   Save,
   Send,
+  Trash2,
+  X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -66,7 +69,19 @@ type Props = {
 
 type LinhaDeMinuta = {
   atualizado_em: string;
+  /** Quem salvou por último. Diferente de quem criou: ver a 0137. */
+  atualizado_por_nome?: null | string;
   criado_em: string;
+  criado_por_nome?: null | string;
+  /**
+   * Quantos planos assinam por esta minuta.
+   *
+   * ⚠️ NÃO É "CONTRATOS EMITIDOS", e a diferença importa. O Lucas pediu o número de contratos
+   * gerados por versão; esse número ainda não existe, porque a peça que gera contrato a partir da
+   * minuta não foi construída. Este aqui responde a metade que dá para responder hoje: mexer numa
+   * minuta usada por três planos é mexer no contrato de três formas de pagamento.
+   */
+  planosQueUsam?: number;
   descricao: null | string;
   id: string;
   nome: string;
@@ -103,6 +118,12 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
   const [erro, setErro] = useState<null | string>(null);
   const [aviso, setAviso] = useState<null | string>(null);
   const [recarregar, setRecarregar] = useState(0);
+
+  /** O id da minuta sendo arquivada, para o botão dela — e só o dela — girar. */
+  const [arquivando, setArquivando] = useState<null | string>(null);
+  const [abrindoNova, setAbrindoNova] = useState(false);
+  /** Na janela: a minuta nasce a partir de um .docx do loteador, ou em branco? */
+  const [vaiImportar, setVaiImportar] = useState(true);
 
   const [aberta, setAberta] = useState<MinutaAberta | null>(null);
   const [documento, setDocumento] = useState<NoDoDocumento[]>(documentoVazio());
@@ -200,12 +221,60 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
         return;
       }
       setNomeNovo("");
+      setAbrindoNova(false);
       setRecarregar((n) => n + 1);
       await abrir(corpo.data.id);
+      // ⚠️ QUEM DISSE QUE IA IMPORTAR PRECISA SER LEMBRADO DISSO NO EDITOR. O botão "Importar .docx"
+      // vive na barra do editor, e não aqui; em vez de forçar um clique de fora — que quebra no dia
+      // em que a barra mudar —, a folha em branco abre com o recado apontando para ele.
+      if (vaiImportar) {
+        setAviso("Minuta criada. Use “Importar .docx” na barra para subir o arquivo do loteador.");
+      }
     } catch {
       setErro("Falha de rede ao criar a minuta.");
     } finally {
       setCriando(false);
+    }
+  };
+
+  /**
+   * Arquiva a minuta.
+   *
+   * ⚠️ ARQUIVA, NÃO APAGA — e o botão diz "Excluir" porque é o gesto que a pessoa procura. A rota
+   * recusa quando há plano apontando para ela, e é a recusa que importa: apagar em silêncio
+   * desfaria o vínculo do plano, que continuaria ativo e sem minuta, e a venda só travaria lá na
+   * frente, na hora de gerar o contrato.
+   *
+   * ⚠️ E PERGUNTA ANTES. A lista fica ao lado do botão de editar, e os dois têm o mesmo tamanho.
+   */
+  const arquivar = async (minuta: LinhaDeMinuta) => {
+    const usada = minuta.planosQueUsam ?? 0;
+    const aviso =
+      usada > 0
+        ? `"${minuta.nome}" é usada por ${usada === 1 ? "1 plano" : `${usada} planos`}. Excluir?`
+        : `Excluir "${minuta.nome}" (v${minuta.versao})?`;
+    if (!window.confirm(aviso)) return;
+
+    setArquivando(minuta.id);
+    setErro(null);
+    setAviso(null);
+    try {
+      const token = await getApoloAccessToken();
+      const r = await fetch(`/api/temis/minutas?id=${encodeURIComponent(minuta.id)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        method: "DELETE",
+      });
+      const corpo = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) {
+        setErro(corpo.error ?? "Não consegui excluir a minuta.");
+        return;
+      }
+      setAviso(`"${minuta.nome}" foi excluída.`);
+      setRecarregar((n) => n + 1);
+    } catch {
+      setErro("Falha de rede ao excluir a minuta.");
+    } finally {
+      setArquivando(null);
     }
   };
 
@@ -333,9 +402,11 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
         <header className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5">
+          {/* ⚠️ O VOLTAR DIZ "VOLTAR" (Lucas, 07/09/2026: *"coloca botões de voltar"*). Era uma seta
+              sozinha, do tamanho de um ícone de enfeite, ao lado do nome da minuta: quem entra no
+              editor de um documento de 27 páginas precisa enxergar a saída sem procurar. */}
           <button
-            aria-label="Voltar para a lista de minutas"
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-subtle text-ink-muted transition-colors hover:text-ink"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-subtle px-3 text-sm font-semibold text-ink transition-colors hover:bg-subtle/70"
             onClick={() => {
               if (sujo && !window.confirm("Há alterações não salvas. Sair mesmo assim?")) return;
               setAberta(null);
@@ -345,6 +416,7 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
             type="button"
           >
             <ArrowLeft aria-hidden="true" className="size-4" />
+            Voltar
           </button>
 
           <div className="min-w-0 flex-1">
@@ -446,31 +518,129 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
           </div>
         </div>
 
+        {/* ⚠️ O BOTÃO VIVE ACESO, E A PERGUNTA VEM DEPOIS (Lucas, 07/09/2026: *"acho que o botão de
+            adicionar tem que estar habilitado, aí abre um popup perguntando nome, se vai importar
+            arquivo ou não"*). Antes ele nascia apagado esperando alguém digitar num campo solto ao
+            lado — um botão desabilitado sem dizer por quê é a tela recusando o clique antes de a
+            pessoa saber que precisava preencher algo. */}
         <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-          <input
-            className="h-9 min-w-64 flex-1 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-line-strong"
-            onChange={(e) => setNomeNovo(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void criar();
-            }}
-            placeholder="Nome da minuta (ex.: JDG-COMPRA-E-VENDA-NORMAL)"
-            value={nomeNovo}
-          />
           <button
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={criando || !nomeNovo.trim()}
-            onClick={() => void criar()}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90"
+            onClick={() => {
+              setNomeNovo("");
+              setVaiImportar(true);
+              setAbrindoNova(true);
+            }}
             type="button"
           >
-            {criando ? (
-              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-            ) : (
-              <Plus aria-hidden="true" className="size-4" />
-            )}
+            <Plus aria-hidden="true" className="size-4" />
             Nova minuta
           </button>
         </div>
       </section>
+
+      {/* ── A JANELA DA MINUTA NOVA ──────────────────────────────────────── */}
+      {abrindoNova ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-6"
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && !criando) setAbrindoNova(false);
+          }}
+          role="presentation"
+        >
+          <div
+            aria-labelledby="titulo-minuta-nova"
+            aria-modal="true"
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface shadow-xl"
+            role="dialog"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+              <h4 className="m-0 text-sm font-semibold text-ink" id="titulo-minuta-nova">
+                Nova minuta em {name}
+              </h4>
+              <button
+                aria-label="Fechar"
+                className="inline-flex size-8 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle disabled:opacity-40"
+                disabled={criando}
+                onClick={() => setAbrindoNova(false)}
+                type="button"
+              >
+                <X aria-hidden="true" className="size-4" />
+              </button>
+            </div>
+
+            <div className="grid gap-4 px-4 py-4">
+              <label className="grid gap-1.5">
+                <span className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+                  Nome da minuta
+                </span>
+                <input
+                  autoFocus
+                  className="h-9 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-line-strong"
+                  onChange={(e) => setNomeNovo(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && nomeNovo.trim()) void criar();
+                  }}
+                  placeholder="ex.: JDG-COMPRA-E-VENDA-NORMAL"
+                  value={nomeNovo}
+                />
+              </label>
+
+              <fieldset className="m-0 grid gap-2 border-0 p-0">
+                <legend className="mb-1 p-0 text-xs font-semibold uppercase tracking-wide text-ink-soft">
+                  Como o texto entra
+                </legend>
+                {/* ⚠️ A PERGUNTA É A DO FLUXO REAL: *"o fluxo é subir a minuta que chega do
+                    loteador"*. Importar é o caminho comum, e por isso é o marcado. */}
+                {(
+                  [
+                    ["sim", "Vou importar o .docx do loteador"],
+                    ["nao", "Começar em branco e escrever aqui"],
+                  ] as const
+                ).map(([valor, rotulo]) => (
+                  <label
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-ink transition-colors hover:bg-subtle/50"
+                    key={valor}
+                  >
+                    <input
+                      checked={vaiImportar === (valor === "sim")}
+                      className="size-4"
+                      name="como-entra"
+                      onChange={() => setVaiImportar(valor === "sim")}
+                      type="radio"
+                    />
+                    {rotulo}
+                  </label>
+                ))}
+              </fieldset>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-line px-4 py-3">
+              <button
+                className="inline-flex h-9 items-center rounded-lg border border-line bg-surface px-4 text-sm font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-40"
+                disabled={criando}
+                onClick={() => setAbrindoNova(false)}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={criando || !nomeNovo.trim()}
+                onClick={() => void criar()}
+                type="button"
+              >
+                {criando ? (
+                  <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+                ) : (
+                  <Plus aria-hidden="true" className="size-4" />
+                )}
+                Criar e abrir
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {aviso ? <Faixa tom="ok">{aviso}</Faixa> : null}
       {erro ? <Faixa tom="erro">{erro}</Faixa> : null}
@@ -492,28 +662,73 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
             const quantas = Array.isArray(m.variaveis) ? m.variaveis.length : 0;
 
             return (
-              <li className="border-b border-line last:border-b-0" key={m.id}>
-                <button
-                  className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-subtle/50"
-                  onClick={() => void abrir(m.id)}
-                  type="button"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="m-0 flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
-                      {m.nome}
-                      <span
-                        className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${situacao.cor}`}
-                      >
-                        {situacao.rotulo} · v{m.versao}
+              <li
+                className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3 last:border-b-0"
+                key={m.id}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="m-0 flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                    {m.nome}
+                    <span
+                      className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${situacao.cor}`}
+                    >
+                      {situacao.rotulo} · v{m.versao}
+                    </span>
+                    {/* ⚠️ QUANTOS PLANOS ASSINAM POR ELA. Mexer numa minuta usada por três planos é
+                        mexer no contrato de três formas de pagamento — e isso tem de estar visível
+                        ANTES de alguém abrir para editar. */}
+                    {m.planosQueUsam ? (
+                      <span className="rounded-md bg-subtle px-1.5 py-0.5 text-[10px] font-semibold text-ink-soft">
+                        {m.planosQueUsam === 1 ? "1 plano usa" : `${m.planosQueUsam} planos usam`}
                       </span>
+                    ) : null}
+                  </p>
+
+                  <p className="m-0 mt-0.5 text-xs text-ink-muted">
+                    {quantas > 0 ? `${quantas} variáveis · ` : "sem variáveis marcadas · "}
+                    {m.origem_arquivo_nome ? `${m.origem_arquivo_nome} · ` : ""}
+                    {/* ⚠️ A DATA SOZINHA NÃO RESPONDE A PERGUNTA QUE SE FAZ quando o contrato sai
+                        errado: quem mexeu. Criador e último editor são pessoas diferentes com
+                        frequência — o jurídico redige, o coordenador ajusta. */}
+                    {m.atualizado_por_nome
+                      ? `alterada por ${m.atualizado_por_nome} em ${data(m.atualizado_em)}`
+                      : `alterada em ${data(m.atualizado_em)}`}
+                    {m.criado_por_nome ? ` · criada por ${m.criado_por_nome}` : ""}
+                  </p>
+
+                  {/* Enquanto o motor não existir, este número não tem de onde sair — e dizer isso
+                      é mais honesto do que estampar um zero que parece medida. */}
+                  {m.situacao === "publicada" ? (
+                    <p className="m-0 mt-0.5 text-[11px] text-ink-soft">
+                      Contratos emitidos por esta versão: ainda não medido — a geração de contrato
+                      não foi construída.
                     </p>
-                    <p className="m-0 mt-0.5 text-xs text-ink-muted">
-                      {quantas > 0 ? `${quantas} variáveis · ` : "sem variáveis marcadas · "}
-                      {m.origem_arquivo_nome ? `${m.origem_arquivo_nome} · ` : ""}
-                      alterada em {data(m.atualizado_em)}
-                    </p>
-                  </div>
-                </button>
+                  ) : null}
+                </div>
+
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink transition-colors hover:bg-subtle"
+                    onClick={() => void abrir(m.id)}
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" className="size-3.5" />
+                    Editar
+                  </button>
+                  <button
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                    disabled={arquivando === m.id}
+                    onClick={() => void arquivar(m)}
+                    type="button"
+                  >
+                    {arquivando === m.id ? (
+                      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 aria-hidden="true" className="size-3.5" />
+                    )}
+                    Excluir
+                  </button>
+                </div>
               </li>
             );
           })}
