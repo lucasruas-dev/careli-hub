@@ -23,6 +23,12 @@ import { T } from "../tema";
 // ⚠️ A CONVERSA LÊ-SE DE CIMA PARA BAIXO, ao contrário do histórico ao lado. Chat com a mensagem
 // mais nova no topo obriga a ler de trás para frente para entender o que foi combinado.
 //
+// ⚠️ CLEAN, COMO UM CHAT (Lucas, 07/09/2026: *"tira essas frases de não registrado, fica tudo
+// gravado, deixa clean, tipo um campo de mensagens do whatsapp, deixa no rodapé do painel"*). As
+// duas frases que estavam aqui — o "nada registrado ainda" e o "fica gravado com seu nome e a hora"
+// — explicavam o que a pessoa descobre ao escrever a primeira linha, e ocupavam o lugar do que
+// importa. O campo mora no rodapé porque é onde a mão vai.
+//
 // ⚠️ SÓ A CAIXA DE TEXTO (Lucas, 06/09/2026: *"deixa somente a caixa de texto, não precisa dessas
 // abas, mensagem, observação"*, e *"não precisa, vi o código aqui"* sobre o COD repetido em cada
 // linha). Eu tinha posto três pílulas de tipo antes de alguém ter escrito a primeira frase aqui —
@@ -48,9 +54,17 @@ const TOM: Record<string, { fundo: string; traco: string }> = {
   observacao: { fundo: T.soft, traco: T.border },
 };
 
-export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | string; versao: number }) {
+export function ConversaDaVenda({
+  unidadeId,
+  versao,
+}: {
+  unidadeId: null | string;
+  versao: number;
+}) {
   const [mensagens, setMensagens] = useState<MensagemDaVenda[]>([]);
-  const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">("pronto");
+  const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">(
+    "pronto",
+  );
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<null | string>(null);
@@ -155,23 +169,40 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
 
   if (!unidadeId) {
     return (
-      <p style={{ color: T.muted, fontSize: 12.5, margin: 0, padding: "18px 2px" }}>
+      <p
+        style={{
+          color: T.muted,
+          fontSize: 12.5,
+          margin: 0,
+          padding: "18px 2px",
+        }}
+      >
         Escolha uma unidade para ver a conversa.
       </p>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
-      {/* ⚠️ A ALTURA TEM DE SER LIMITADA PARA HAVER ROLAGEM. `overflow: auto` sem teto não rola: o
-          bloco cresce, o `scrollTop` vira no-op e o campo de escrever desce para fora da vista a
-          cada mensagem nova. O teto é em `vh` porque a coluna da ficha já tem a altura dela. */}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
+      {/* ⚠️ A LISTA OCUPA O QUE SOBRA E O CAMPO FICA NO RODAPÉ (Lucas, 07/09/2026: *"deixa clean,
+          tipo um campo de mensagens do whatsapp, deixa no rodapé do painel"*). É o `flex: 1` com
+          `minHeight: 0` que faz a rolagem existir: sem o `minHeight`, um filho de flex nunca encolhe
+          abaixo do próprio conteúdo, o bloco cresce, e o campo de escrever desce para fora da vista
+          a cada mensagem nova. */}
       <div
         ref={rolagem}
         style={{
           display: "grid",
+          flex: 1,
           gap: 8,
-          maxHeight: "min(46vh, 420px)",
           minHeight: 0,
           overflow: "auto",
         }}
@@ -183,10 +214,10 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
             Não foi possível carregar a conversa.
           </p>
         ) : mensagens.length === 0 ? (
-          <p style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
-            Nada registrado ainda. O que for combinado aqui fica gravado com autor e hora — é o que
-            explica esta venda para quem olhar depois.
-          </p>
+          // ⚠️ VAZIO É VAZIO, sem explicação. O painel em branco com o campo embaixo já diz o que
+          // fazer; a frase que estava aqui ensinava o que a pessoa descobre escrevendo a primeira
+          // linha — e o dono já reprovou texto de instrução em tela duas vezes.
+          <div />
         ) : (
           mensagens.map((m) => {
             const tom = TOM[m.tipo] ?? TOM.mensagem!;
@@ -201,9 +232,18 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
                   padding: "6px 0 6px 10px",
                 }}
               >
-                <div style={{ alignItems: "baseline", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <div
+                  style={{
+                    alignItems: "baseline",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 6,
+                  }}
+                >
                   <b style={{ fontSize: 12 }}>{m.autor_nome ?? "—"}</b>
-                  <span style={{ color: T.muted, fontSize: 11 }}>{quando(m.criado_em)}</span>
+                  <span style={{ color: T.muted, fontSize: 11 }}>
+                    {quando(m.criado_em)}
+                  </span>
                   {m.tipo !== "mensagem" ? (
                     <span
                       style={{
@@ -214,11 +254,19 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
                         textTransform: "uppercase",
                       }}
                     >
-                      {NOME_DO_TIPO_DE_MENSAGEM[m.tipo as TipoDaMensagem] ?? m.tipo}
+                      {NOME_DO_TIPO_DE_MENSAGEM[m.tipo as TipoDaMensagem] ??
+                        m.tipo}
                     </span>
                   ) : null}
                 </div>
-                <p style={{ fontSize: 12.5, lineHeight: 1.5, margin: 0, whiteSpace: "pre-wrap" }}>
+                <p
+                  style={{
+                    fontSize: 12.5,
+                    lineHeight: 1.5,
+                    margin: 0,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
                   {m.texto}
                 </p>
               </article>
@@ -227,7 +275,14 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
         )}
       </div>
 
-      <div style={{ borderTop: `1px solid ${T.border}`, display: "grid", gap: 6, paddingTop: 10 }}>
+      <div
+        style={{
+          borderTop: `1px solid ${T.border}`,
+          display: "grid",
+          gap: 6,
+          paddingTop: 10,
+        }}
+      >
         <textarea
           disabled={enviando}
           // ⚠️ O CORTE É AVISADO ANTES, e não depois. O servidor apara em 4.000; sem o `maxLength`,
@@ -241,7 +296,11 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
             // ⚠️ E NÃO NO MEIO DE UM ACENTO. Teclado que compõe caractere (o "ã" de "não", o
             // corretor do celular) usa Enter para CONFIRMAR a composição: sem esta guarda, escrever
             // "não" manda a mensagem em "n~". `isComposing` é o sinal padrão do navegador.
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
               e.preventDefault();
               void enviar();
             }
@@ -261,12 +320,18 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
           value={texto}
         />
 
-        {erro ? <span style={{ color: T.danger, fontSize: 11.5 }}>{erro}</span> : null}
+        {erro ? (
+          <span style={{ color: T.danger, fontSize: 11.5 }}>{erro}</span>
+        ) : null}
 
-        <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <span style={{ color: T.muted, fontSize: 11, marginRight: "auto" }}>
-            Fica gravado com seu nome e a hora. Não se apaga.
-          </span>
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            gap: 8,
+            justifyContent: "flex-end",
+          }}
+        >
           <button
             disabled={enviando || texto.trim().length === 0}
             onClick={() => void enviar()}
@@ -283,7 +348,9 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
             }}
             type="button"
           >
-            {enviando ? "Registrando…" : "Registrar"}
+            {/* "Enviar", e não "Registrar" (Lucas, 07/09/2026). O gesto é o de qualquer chat, e o
+                nome do gesto tem de ser o que a pessoa já conhece. */}
+            {enviando ? "Enviando…" : "Enviar"}
           </button>
         </div>
       </div>

@@ -2191,14 +2191,11 @@ function Mesa({
             pelo simulador (...) falo a ordem"*). Quem abre um lote quer primeiro saber o que já
             aconteceu nele — quem reservou, quando, o que foi anotado. O simulador é a próxima
             ação, e ação vem depois de entender a situação. */}
-        <PainelDaVenda unidadeId={idEmFoco} versao={versaoDosDados} />
-
-        <div style={{ flex: "0 0 auto" }}>
-          <BotaoDoSimulador
-            aoAbrir={() => aoSimular(unidadeEmFoco)}
-            unidade={unidadeEmFoco}
-          />
-        </div>
+        <PainelDaVenda
+          aoSimular={unidadeEmFoco ? () => aoSimular(unidadeEmFoco) : null}
+          unidadeId={idEmFoco}
+          versao={versaoDosDados}
+        />
       </div>
     </div>
   );
@@ -2856,57 +2853,6 @@ function AcoesDaUnidade({
   );
 }
 
-/**
- * O botão que abre o simulador de proposta.
- *
- * ⚠️ NÃO DEPENDE MAIS DO MASTERPLAN. Enquanto o simulador era um iframe do espelho, produto sem
- * mapa publicado era produto sem simulador — e o botão ficava cinza numa tela em que tudo o mais
- * funcionava. Agora a conta é React puro sobre os planos do empreendimento: basta o lote ter preço.
- */
-function BotaoDoSimulador({
-  aoAbrir,
-  unidade,
-}: {
-  aoAbrir: () => void;
-  unidade: null | UnidadeNoMapa;
-}) {
-  const nome = unidade
-    ? comoSeEscreve(unidade.codigo, unidade.quadra, unidade.lote)
-    : null;
-
-  return (
-    <Cartao titulo="Simulador de proposta">
-      <div style={{ display: "grid", gap: 10 }}>
-        <p style={{ color: T.muted, fontSize: 12.5, margin: 0 }}>
-          {unidade
-            ? `Monta o plano de pagamento do lote ${nome?.unidade} partindo do que o cliente pode pagar por mês, sobre a tabela do empreendimento. Simulação livre: não vincula o lote nem gera proposta.`
-            : "Escolha um lote no quadro ou na lista para montar o plano de pagamento dele."}
-        </p>
-
-        <button
-          disabled={!unidade}
-          onClick={aoAbrir}
-          style={{
-            background: unidade ? T.btnBg : T.soft,
-            border: "none",
-            borderRadius: 9,
-            color: unidade ? T.btnFg : T.muted,
-            cursor: unidade ? "pointer" : "default",
-            font: "inherit",
-            fontSize: 13,
-            fontWeight: 650,
-            padding: "10px 14px",
-            width: "100%",
-          }}
-          type="button"
-        >
-          Abrir simulador
-        </button>
-      </div>
-    </Cartao>
-  );
-}
-
 // ── O PANORAMA ──────────────────────────────────────────────────────────────
 
 function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
@@ -3280,9 +3226,12 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
  * que quase nunca é feita; desmontar ao trocar de aba perderia o que estivesse digitado no chat.
  */
 function PainelDaVenda({
+  aoSimular,
   unidadeId,
   versao,
 }: {
+  /** `null` quando não há lote em foco: o simulador precisa de um preço para trabalhar. */
+  aoSimular: (() => void) | null;
   unidadeId: null | string;
   versao: number;
 }) {
@@ -3323,20 +3272,67 @@ function PainelDaVenda({
               rotulo={rotulo}
             />
           ))}
+
+          {/* ⚠️ O SIMULADOR VIROU BOTÃO, e não tem mais cartão próprio (Lucas, 07/09/2026: *"vamos
+              tirar esse painel de simulador e deixar ele como um botão no painel de venda"*). Ele
+              ocupava um bloco inteiro da coluna — título, parágrafo e botão — para uma ação de um
+              clique, e empurrava para baixo o que se lê. Aqui ele fica onde a venda está, à direita
+              das abas: presente, sem tomar a coluna. */}
+          {aoSimular ? (
+            <button
+              onClick={aoSimular}
+              style={{
+                background: "transparent",
+                border: `1px solid ${T.border}`,
+                borderRadius: 999,
+                color: T.sub,
+                cursor: "pointer",
+                font: "inherit",
+                fontSize: 11.5,
+                fontWeight: 600,
+                marginLeft: "auto",
+                padding: "5px 12px",
+              }}
+              type="button"
+            >
+              Simulador
+            </button>
+          ) : null}
         </>
       }
-      rolagem
+      maxAltura="58vh"
       titulo="Venda"
     >
-      <div style={{ display: aba === "chat" ? "block" : "none" }}>
+      {/* ⚠️ `height: 100%` NAS TRÊS, e não só na do chat: é isso que faz o campo de escrever colar no
+          rodapé em vez de subir junto com a lista. `display: none` mantém a aba montada — trocar de
+          aba não pode perder o que estiver digitado. */}
+      <div
+        style={{
+          display: aba === "chat" ? "block" : "none",
+          height: "100%",
+          minHeight: 0,
+        }}
+      >
         <ConversaDaVenda unidadeId={unidadeId} versao={versao} />
       </div>
-      <div style={{ display: aba === "documentos" ? "block" : "none" }}>
+      <div
+        style={{
+          display: aba === "documentos" ? "block" : "none",
+          height: "100%",
+          minHeight: 0,
+        }}
+      >
         {visitadas.has("documentos") ? (
           <DocumentosDaVenda unidadeId={unidadeId} versao={versao} />
         ) : null}
       </div>
-      <div style={{ display: aba === "historico" ? "block" : "none" }}>
+      <div
+        style={{
+          display: aba === "historico" ? "block" : "none",
+          height: "100%",
+          minHeight: 0,
+        }}
+      >
         {visitadas.has("historico") ? (
           <Historico semCartao unidadeId={unidadeId} versao={versao} />
         ) : null}
@@ -3699,7 +3695,14 @@ function Historico({
       // ⚠️ OS FILTROS FICAM FORA DO QUE ROLA, como faziam na barra do cartão. Um filtro que sobe
       // junto com a lista obriga a voltar ao topo para refinar — e é justamente descendo a lista
       // que se percebe o que precisa ser filtrado.
-      <div style={{ display: "grid", gap: 10, gridTemplateRows: "auto 1fr", minHeight: 0 }}>
+      <div
+        style={{
+          display: "grid",
+          gap: 10,
+          gridTemplateRows: "auto 1fr",
+          minHeight: 0,
+        }}
+      >
         {filtros || propostas > 0 ? (
           <div
             style={{
@@ -3713,7 +3716,9 @@ function Historico({
             {/* ⚠️ O CONTADOR DE PROPOSTAS NÃO SOME só porque o cartão passou a ser de fora: ele é
                 a única coisa na tela que diz quantas vendas este lote já teve. */}
             {propostas > 0 ? (
-              <span style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}>
+              <span
+                style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}
+              >
                 {inteiro(propostas)} proposta(s)
               </span>
             ) : null}
