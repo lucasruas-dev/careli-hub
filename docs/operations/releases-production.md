@@ -6139,3 +6139,22 @@ Achados que viraram correcao no mesmo lote:
   cumprir a regra do Lucas — "o contrato e o do plano". Barato agora, caro depois.
 - Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.883 testes verdes (209 arquivos).
 - Status: `EM PRODUCAO`.
+
+## 2026-09-07 · v1.290.1 — Temis: a Temis nao cria plano comercial
+
+- Autorizacao: OK explicito do Lucas ("tem o meu ok").
+- Commit: `6caa754c`. Rollback: `95225744` (v1.290.0).
+- Lucas, vendo a v1.290.0: *"nao tinhamos acordado que a temis nao iria gerar plano comercial?"*.
+- ⚠️ EU MESMO TINHA ESCRITO A REGRA NESTA CONVERSA, umas mensagens antes: quando ele perguntou onde
+  criava categoria, respondi que plano e categoria sao do COMERCIAL e que a Temis mostraria a arvore
+  SO DE LEITURA. E entao trouxe a tela inteira, com "Novo plano" e "Criar categoria".
+- A PERGUNTA DELE NAO PEDIA A TELA AQUI: *"nao vi onde eu crio as categorias"* pedia saber ONDE ela
+  esta. Mover a tela foi responder outra coisa — e criar uma segunda porta para o mesmo cadastro.
+- A divisao, na palavra dele: *"na temis a gente cria somente as minutas e os termos. O vinculo
+  acontece no apolo"* e *"la eu puxo as minutas feitas aqui para aquele determinado empreendimento e
+  faco o vinculo"*. O campo "Minuta que este plano assina" ja existe no cadastro do plano desde a
+  0111 — nao havia nada a construir.
+- FICA da v1.290.0 o que nao dependia disso: o envio para contrato conferindo minuta publicada
+  (`servicoDisponivel`, escrita em 02/09 e ate ontem sem chamador) e o editor em portugues.
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.883 testes verdes (209 arquivos).
+- Status: `EM PRODUCAO`.
