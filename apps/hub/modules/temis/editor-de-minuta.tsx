@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, X } from "lucide-react";
+import { Check, ChevronRight, Plus, X } from "lucide-react";
 import type { Value } from "platejs";
 import {
   Plate,
@@ -15,6 +15,7 @@ import { Toaster } from "sonner";
 import { discussionPlugin } from "@/components/editor/plugins/discussion-kit";
 import { Editor, EditorContainer } from "@/components/ui/editor";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { type BlocoPronto, BLOCOS_PRONTOS, nosDoBloco } from "@/lib/temis/blocos-prontos";
 import type { NoDoDocumento } from "@/lib/temis/documento-html";
 import { migrarAlinhamentoAntigo } from "@/lib/temis/migrar-documento";
 import { setMinutaAtualParaUpload } from "@/lib/temis/upload-midia";
@@ -207,13 +208,130 @@ function Miolo({ jaUsadas, somenteLeitura }: { jaUsadas: Set<string>; somenteLei
       </EditorContainer>
 
       {painelAberto && !somenteLeitura ? (
-        <PainelDeVariaveis
+        <PainelLateral
           aoFechar={() => editor.setOption(TemisToolbarPlugin, "painelAberto", false)}
           editor={editor}
           jaUsadas={jaUsadas}
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * O painel ao lado, com duas abas: os BLOCOS prontos e as VARIÁVEIS.
+ *
+ * Pedido do Lucas (07/09/2026): *"podia ter um bloco de Partes, e já meio que trazer pronto, bloco
+ * de preços e tal, isso ia facilitar"*. Montar a qualificação das partes variável a variável são
+ * ~20 cliques e ~20 chances de escolher o nome errado; o bloco entrega o parágrafo inteiro já
+ * marcado, com os pares de bloco fechados.
+ *
+ * ⚠️ A ABA QUE ABRE DEPENDE DO DOCUMENTO. Minuta ainda sem nenhuma variável é minuta que está
+ * começando: abre em Blocos, que é o que essa pessoa precisa. Minuta com marcação abre em
+ * Variáveis, porque quem já tem o texto está ajustando marca a marca.
+ */
+function PainelLateral({
+  aoFechar,
+  editor,
+  jaUsadas,
+}: {
+  aoFechar: () => void;
+  editor: PlateEditor;
+  jaUsadas: Set<string>;
+}) {
+  const [aba, setAba] = useState<"blocos" | "variaveis">(
+    jaUsadas.size === 0 ? "blocos" : "variaveis",
+  );
+
+  return (
+    <aside className="flex w-80 shrink-0 flex-col border-l border-line bg-surface">
+      <div className="flex items-center justify-between gap-2 border-b border-line px-2 py-2">
+        <div className="flex gap-1">
+          {(["blocos", "variaveis"] as const).map((qual) => (
+            <button
+              className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                aba === qual
+                  ? "bg-inverse text-brand-ink"
+                  : "text-ink-muted hover:bg-subtle hover:text-ink"
+              }`}
+              key={qual}
+              onClick={() => setAba(qual)}
+              type="button"
+            >
+              {qual === "blocos" ? "Blocos" : "Variáveis"}
+              {qual === "variaveis" && jaUsadas.size > 0 ? (
+                <span className="ml-1 font-normal normal-case opacity-70">{jaUsadas.size}</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+        <button
+          aria-label="Fechar o painel"
+          className="flex size-7 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
+          onClick={aoFechar}
+          type="button"
+        >
+          <X aria-hidden="true" className="size-4" />
+        </button>
+      </div>
+
+      {aba === "blocos" ? (
+        <ListaDeBlocos editor={editor} />
+      ) : (
+        <ListaDeVariaveis editor={editor} jaUsadas={jaUsadas} />
+      )}
+    </aside>
+  );
+}
+
+/**
+ * Os blocos prontos — um clique põe a cláusula inteira na folha.
+ *
+ * ⚠️ O BLOCO ENTRA NO PONTO DO CURSOR, e as variáveis são PROMOVIDAS na entrada: o texto `[nome]`
+ * vira o nó de variável pelo mesmo caminho do que é colado e do que vem do .docx
+ * (`promoverVariaveisNoValor`). Sem isso o chip não se forma, o painel não conta a variável e o
+ * negrito aplicado depois partiria o nome no meio — o defeito que imprimiu `[nome_cl</strong>iente]`
+ * no primeiro contrato de teste do JDG.
+ */
+function ListaDeBlocos({ editor }: { editor: PlateEditor }) {
+  const inserir = (bloco: BlocoPronto) => {
+    // `paraOEditor` é a mesma fronteira do documento inteiro (ver o topo): NoDoDocumento[] e Value
+    // são a mesma coisa em memória, e a conversão vive só aqui.
+    editor.tf.insertNodes(promoverVariaveisNoValor(paraOEditor(nosDoBloco(bloco))));
+    editor.tf.focus();
+  };
+
+  return (
+    <>
+      <p className="m-0 border-b border-line px-3 py-2 text-[10px] leading-tight text-ink-muted">
+        A cláusula entra onde o cursor está, com as variáveis já marcadas. A redação é sua: ajuste
+        depois de inserir.
+      </p>
+
+      <div className="min-h-0 flex-1 overflow-auto p-1.5">
+        {BLOCOS_PRONTOS.map((bloco) => (
+          <button
+            className="group mb-1 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-subtle"
+            key={bloco.id}
+            onClick={() => inserir(bloco)}
+            // Sem isto o clique tira o foco da folha e o bloco entra no lugar errado.
+            onMouseDown={(e) => e.preventDefault()}
+            type="button"
+          >
+            <Plus
+              aria-hidden="true"
+              className="mt-0.5 size-3.5 shrink-0 text-ink-muted transition-colors group-hover:text-ink"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold text-ink">{bloco.rotulo}</span>
+              <span className="mt-0.5 block text-[10px] leading-tight text-ink-soft">
+                {bloco.descricao}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -229,12 +347,10 @@ function Miolo({ jaUsadas, somenteLeitura }: { jaUsadas: Set<string>; somenteLei
  * jurídico faz o tempo todo é "já marquei o cônjuge do segundo?" — e a resposta precisa estar à
  * vista, não a três cliques de distância.
  */
-function PainelDeVariaveis({
-  aoFechar,
+function ListaDeVariaveis({
   editor,
   jaUsadas,
 }: {
-  aoFechar: () => void;
   editor: PlateEditor;
   jaUsadas: Set<string>;
 }) {
@@ -248,24 +364,7 @@ function PainelDeVariaveis({
   const filtro = busca.trim().toLowerCase();
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l border-line bg-surface">
-      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2.5">
-        <h5 className="m-0 text-xs font-semibold uppercase tracking-wide text-ink-soft">
-          Variáveis
-          <span className="ml-1.5 font-normal normal-case text-ink-muted">
-            {jaUsadas.size} no texto
-          </span>
-        </h5>
-        <button
-          aria-label="Fechar o painel de variáveis"
-          className="flex size-7 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
-          onClick={aoFechar}
-          type="button"
-        >
-          <X aria-hidden="true" className="size-4" />
-        </button>
-      </div>
-
+    <>
       <div className="border-b border-line p-2">
         <input
           className="h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-line-strong"
@@ -373,6 +472,6 @@ function PainelDeVariaveis({
           );
         })}
       </div>
-    </aside>
+    </>
   );
 }

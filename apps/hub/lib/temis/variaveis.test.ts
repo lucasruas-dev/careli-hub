@@ -10,7 +10,9 @@ import {
   ORDEM_DOS_GRUPOS,
   rotuloDoGrupo,
   VARIAVEIS_DO_CONTRATO,
+  posicaoDoAnexo,
   variaveisDoTexto,
+  variaveisDeAnexo,
   variaveisPendentes,
 } from "./variaveis";
 
@@ -110,6 +112,7 @@ describe("toda variável nasce do Panteon — Lucas, 02/09/2026: 'esquece c2x co
       "hercules_vendas",
       "pendente",
       "sistema",
+      "temis_categorias",
       "temis_planos",
     ]);
     for (const v of VARIAVEIS_DO_CONTRATO) {
@@ -121,9 +124,30 @@ describe("toda variável nasce do Panteon — Lucas, 02/09/2026: 'esquece c2x co
     // ⚠️ ESTA LISTA É O BACKLOG. Cada nome aqui é um dado que o contrato precisa e nenhuma tabela
     // do Panteon tem. Quando alguém criar a coluna, troca a fonte em `variaveis.ts` e tira daqui.
     // Nenhum deles vai buscar no legado — o valor sai vazio até existir.
-    const pendentes = variaveisPendentes().map((v) => v.nome).sort();
+    // As peças que não são texto (capa, os 8 anexos e os pares deles) também estão pendentes, mas
+    // são GERADAS em laço e conferidas no bloco de baixo — listar as 26 aqui só encheria a lista de
+    // ruído e esconderia o backlog de verdade.
+    const pendentes = variaveisPendentes()
+      .map((v) => v.nome)
+      .filter((n) => posicaoDoAnexo(n) === null && n !== "capa_contrato" && n !== "anexos_do_contrato")
+      .sort();
     expect(pendentes).toEqual(
       [
+        // A VENDEDORA (incorporador/SPE). O cadastro existe como entidade PJ do Apolo; falta a
+        // coluna que diz QUAL entidade vende cada categoria (`vendedor_entity_id`, migration
+        // escrita e esperando o OK). Enquanto isso, o parágrafo das partes sai vazio.
+        "vendedora_bairro",
+        "vendedora_cep",
+        "vendedora_cidade",
+        "vendedora_cnpj",
+        "vendedora_natureza_juridica",
+        "vendedora_nome_fantasia",
+        "vendedora_numero",
+        "vendedora_razao_social",
+        "vendedora_representante_cpf",
+        "vendedora_representante_nome",
+        "vendedora_rua",
+        "vendedora_uf",
         "bairro_coordenadora_vendas",
         "cep_coordenadora_vendas",
         "cidade_coordenadora_vendas",
@@ -139,6 +163,88 @@ describe("toda variável nasce do Panteon — Lucas, 02/09/2026: 'esquece c2x co
         "valor_total_comissao",
       ].sort(),
     );
+  });
+
+  // ── OS ANEXOS SÃO POSIÇÃO, NÃO TIPO ───────────────────────────────────────
+  // Lucas, 07/09/2026: *"não queria esses nomes já de uma vez, dei somente exemplos"* e *"podemos
+  // ter já definido os campos anexo, 1,2,3 — se não vamos ter muitas variáveis se for buscar pelo
+  // nome"*.
+  // ⚠️ A QUANTIDADE VEM DO CADASTRO: *"não precisa deixar 20 campos, à medida que eu vou importando
+  // os anexos vai fazendo essa conta"*. Nenhuma posição vive no catálogo estático.
+  it("não fixa quantidade nenhuma de anexos no catálogo", () => {
+    const noCatalogo = VARIAVEIS_DO_CONTRATO.filter((v) => posicaoDoAnexo(v.nome) !== null);
+    expect(noCatalogo).toEqual([]);
+  });
+
+  it("gera uma trinca por anexo importado, com o nome do arquivo no rótulo", () => {
+    const geradas = variaveisDeAnexo(["Convenção de condomínio", "Memorial descritivo"]);
+    expect(geradas.map((v) => v.nome)).toEqual([
+      "anexo_1",
+      "anexo_1_nome",
+      "inicio_tem_anexo_1",
+      "fim_tem_anexo_1",
+      "anexo_2",
+      "anexo_2_nome",
+      "inicio_tem_anexo_2",
+      "fim_tem_anexo_2",
+    ]);
+    // "Anexo 3" numa lista de doze não diz nada a quem escreve a minuta, e escolher o anexo errado
+    // é um defeito que só aparece no papel assinado.
+    expect(geradas[0]?.rotulo).toBe("Anexo 1 — Convenção de condomínio");
+    expect(geradas[1]?.tipo).toBe("texto");
+    expect(geradas[1]?.exemplo).toBe("Convenção de condomínio");
+  });
+
+  it("nenhum anexo importado, nenhuma variável", () => {
+    expect(variaveisDeAnexo([])).toEqual([]);
+  });
+
+  it("aguenta anexo sem nome, sem inventar rótulo", () => {
+    const [arquivo] = variaveisDeAnexo(["  "]);
+    expect(arquivo?.rotulo).toBe("Anexo 1");
+  });
+
+  // Mesmo fora do catálogo, quem audita a minuta precisa reconhecer o anexo — senão `[anexo_3]`
+  // legítimo cai no aviso feito para pegar `[nome_clientes]` digitado errado.
+  it("acharVariavel reconhece o anexo mesmo sem ele estar no catálogo", () => {
+    for (const nome of ["anexo_3", "anexo_3_nome", "inicio_tem_anexo_3", "fim_tem_anexo_3"]) {
+      expect(acharVariavel(nome), nome).toBeDefined();
+    }
+    expect(acharVariavel("anexo_3")?.tipo).toBe("anexo");
+    expect(acharVariavel("anexo_3_nome")?.tipo).toBe("texto");
+    expect(acharVariavel("anexo_100")).toBeUndefined();
+  });
+
+  it("não conhece tipo de anexo nenhum — planta e convenção vêm do cadastro", () => {
+    for (const inventado of ["anexo_planta", "anexo_convencao", "anexo_memorial", "anexo_matricula"]) {
+      expect(acharVariavel(inventado), inventado).toBeUndefined();
+      expect(posicaoDoAnexo(inventado), inventado).toBeNull();
+    }
+  });
+
+  it("lê a posição dos três formatos, e recusa o que está fora da faixa", () => {
+    expect(posicaoDoAnexo("anexo_3")).toBe(3);
+    expect(posicaoDoAnexo("inicio_tem_anexo_3")).toBe(3);
+    expect(posicaoDoAnexo("fim_tem_anexo_3")).toBe(3);
+    // ⚠️ Fora da faixa é nome inventado, e a tela precisa reclamar dele como reclama de
+    // `[nome_clientes]` — senão o contrato sai com `[anexo_99]` impresso.
+    expect(posicaoDoAnexo("anexo_20")).toBe(20);
+    expect(posicaoDoAnexo("anexo_3_nome")).toBe(3);
+    expect(posicaoDoAnexo("anexo_100")).toBeNull();
+    expect(posicaoDoAnexo("anexo_0")).toBeNull();
+    expect(posicaoDoAnexo("anexo_01")).toBeNull();
+    expect(posicaoDoAnexo("anexos_do_contrato")).toBeNull();
+    expect(posicaoDoAnexo("nome_cliente")).toBeNull();
+  });
+
+  it("todo anexo está pendente: não há tabela de anexo em lugar nenhum ainda", () => {
+    const pendentes = new Set(variaveisPendentes().map((v) => v.nome));
+    expect(pendentes.has("capa_contrato")).toBe(true);
+    expect(pendentes.has("anexos_do_contrato")).toBe(true);
+    // E as posições geradas também: não há tabela de anexo em unidade, categoria nem empreendimento.
+    for (const v of variaveisDeAnexo(["Convenção", "Memorial"])) {
+      expect(v.fonte.tabela, v.nome).toBe("pendente");
+    }
   });
 
   it("o comprador vem do cadastro (apolo_entities + ficha da esteira)", () => {

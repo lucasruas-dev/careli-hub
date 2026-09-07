@@ -39,6 +39,7 @@
 //    `variaveisDoTexto`.
 
 export type GrupoDeVariavel =
+  | "anexo"
   | "bloco"
   | "comprador"
   | "conjuge"
@@ -49,9 +50,11 @@ export type GrupoDeVariavel =
   | "gerado"
   | "plano"
   | "unidade"
-  | "valores";
+  | "valores"
+  | "vendedora";
 
 export type TipoDeVariavel =
+  | "anexo"
   | "bloco_fim"
   | "bloco_inicio"
   | "data"
@@ -80,6 +83,7 @@ export type TabelaDoPanteon =
   | "hercules_vendas"
   | "pendente"
   | "sistema"
+  | "temis_categorias"
   | "temis_planos";
 
 export type FonteDaVariavel = {
@@ -212,10 +216,249 @@ const EMPREENDIMENTO_VARS: VariavelDoContrato[] = [
   { exemplo: "R$ 500,00", fonte: { campo: "taxa_cessao", tabela: "apolo_enterprise_settings" }, grupo: "empreendimento", nome: "empreendimento_taxa_cessao", origem: "Configuração do empreendimento (Apolo)", rotulo: "Taxa de cessão", tipo: "dinheiro" },
 ];
 
+// ── VENDEDORA (o incorporador ou a SPE) ──────────────────────────────────────
+//
+// Lucas, 07/09/2026, mandando o parágrafo real de um contrato do JDG: *"aqui é os dados do
+// incorporador ou spe, vai estar no sistema também"* — e, logo depois, o motivo de não bastar
+// prender isso ao empreendimento: *"acho legal ter pois agora com as categorias, eu posso dentro de
+// um mesmo empreendimento ter dois vendedores"*.
+//
+// ⚠️ QUEM VENDE É A CATEGORIA, NÃO O EMPREENDIMENTO. É a mesma lógica que já vale para a minuta
+// (`temis_categorias.minuta_id`): a categoria é o recorte que assina contrato próprio, e quem assina
+// do lado de lá pode mudar junto. A cadeia de leitura é:
+//
+//     unidade → categoria → vendedor_entity_id      (o caso do recorte)
+//              ↘ sem categoria → o vendedor do empreendimento   (o caso de todo dia)
+//
+// ⚠️ A VENDEDORA É UMA `apolo_entities` PJ, e não um cadastro novo — é o MESMO caminho da
+// imobiliária, que já está neste catálogo: razão social em `legal_name`, CNPJ e natureza jurídica na
+// ficha de PJ (`ficha.empresa`), sede em `ficha.endereco`. `apolo_incorporadores` (0083) existe para
+// o ACESSO ao portal (slug, logo, o que ele enxerga) e não guarda CNPJ nem endereço; o elo entre os
+// dois é o `entity_id` que ela já tem.
+//
+// ⚠️ A COLUNA `vendedor_entity_id` AINDA NÃO EXISTE — a migration está escrita e espera o OK. Até
+// aplicá-la, estas variáveis saem vazias no contrato, como qualquer outra pendente.
+// ⚠️ PENDENTE, e não `apolo_entities`. A entidade existe e os campos existem — o que não existe é a
+// coluna que diz QUAL entidade vende: sem `vendedor_entity_id`, o motor não tem por onde começar a
+// leitura, e uma fonte que aponta para uma tabela real faria a tela prometer um valor que sai
+// vazio. Quando a migration for aplicada, estas duas viram `apolo_entities` / `apolo_esteira` e os
+// nomes saem da lista de pendentes no teste.
+const VENDEDORA = (campo: string): FonteDaVariavel =>
+  PENDENTE(`apolo_entities.${campo} do vendedor_entity_id da categoria (coluna a criar)`);
+const VENDEDORA_FICHA = (caminho: string): FonteDaVariavel =>
+  PENDENTE(`apolo_esteira.ficha.${caminho} do vendedor_entity_id da categoria (coluna a criar)`);
+
+const VENDEDORA_VARS: VariavelDoContrato[] = [
+  { exemplo: "BILL EMPREENDIMENTOS IMOBILIÁRIOS EIRELI", fonte: VENDEDORA("legal_name"), grupo: "vendedora", nome: "vendedora_razao_social", origem: "Cadastro da vendedora (incorporador/SPE)", rotulo: "Razão social da vendedora", tipo: "texto" },
+  { exemplo: "Bill Empreendimentos", fonte: VENDEDORA("trade_name"), grupo: "vendedora", nome: "vendedora_nome_fantasia", origem: "Cadastro da vendedora (incorporador/SPE)", rotulo: "Nome fantasia da vendedora", tipo: "texto" },
+  { exemplo: "sociedade empresária limitada", fonte: VENDEDORA_FICHA("empresa.naturezaJuridica"), grupo: "vendedora", nome: "vendedora_natureza_juridica", origem: "Cadastro da vendedora (incorporador/SPE)", rotulo: "Natureza jurídica da vendedora", tipo: "texto" },
+  { exemplo: "31.492.339/0001-86", fonte: VENDEDORA_FICHA("empresa.cnpj"), grupo: "vendedora", nome: "vendedora_cnpj", origem: "Cadastro da vendedora (incorporador/SPE)", rotulo: "CNPJ da vendedora", tipo: "texto" },
+  { exemplo: "RUA MANACÁ", fonte: VENDEDORA_FICHA("endereco.logradouro"), grupo: "vendedora", nome: "vendedora_rua", origem: "Sede da vendedora", rotulo: "Logradouro da sede", tipo: "texto" },
+  { exemplo: "32", fonte: VENDEDORA_FICHA("endereco.numero"), grupo: "vendedora", nome: "vendedora_numero", origem: "Sede da vendedora", rotulo: "Número da sede", tipo: "texto" },
+  { exemplo: "ELDORADO", fonte: VENDEDORA_FICHA("endereco.bairro"), grupo: "vendedora", nome: "vendedora_bairro", origem: "Sede da vendedora", rotulo: "Bairro da sede", tipo: "texto" },
+  { exemplo: "CONTAGEM", fonte: VENDEDORA_FICHA("endereco.cidade"), grupo: "vendedora", nome: "vendedora_cidade", origem: "Sede da vendedora", rotulo: "Cidade da sede", tipo: "texto" },
+  // ⚠️ A SIGLA, NÃO O ESTADO POR EXTENSO. O contrato do JDG escreve "MINAS GERAIS" e a ficha guarda
+  // "MG": quem quiser o nome inteiro escreve na minuta, porque inventar aqui um "por extenso" de UF
+  // faria o mesmo estrago do "trezentos metros quadrados metros quadrados" (ver por-extenso.ts).
+  { exemplo: "MG", fonte: VENDEDORA_FICHA("endereco.uf"), grupo: "vendedora", nome: "vendedora_uf", origem: "Sede da vendedora", rotulo: "UF da sede", tipo: "texto" },
+  { exemplo: "32.310-230", fonte: VENDEDORA_FICHA("endereco.cep"), grupo: "vendedora", nome: "vendedora_cep", origem: "Sede da vendedora", rotulo: "CEP da sede", tipo: "texto" },
+  // O representante legal é um relacionamento do grafo (`apolo_relationships.relationship_type =
+  // representante_legal`, gravado pelo cadastro de PJ), não uma coluna da entidade.
+  { exemplo: "JOSÉ CARLOS BILL", fonte: VENDEDORA("display_name do representante_legal em apolo_relationships"), grupo: "vendedora", nome: "vendedora_representante_nome", origem: "Representante legal da vendedora", rotulo: "Representante legal", tipo: "texto" },
+  { exemplo: "123.456.789-00", fonte: VENDEDORA_FICHA("identificacao.cpf do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_cpf", origem: "Representante legal da vendedora", rotulo: "CPF do representante legal", tipo: "texto" },
+  // A categoria que decidiu qual vendedora sai — útil no cabeçalho da minuta e para conferir o que
+  // o motor escolheu quando o empreendimento tem mais de uma.
+  { exemplo: "Condomínio", fonte: { campo: "nome (categoria da unidade vendida)", tabela: "temis_categorias" }, grupo: "vendedora", nome: "categoria_nome", origem: "Categoria da unidade vendida", rotulo: "Nome da categoria", tipo: "texto" },
+];
+
+// ── ANEXOS: AS PEÇAS DO CONTRATO QUE NÃO SÃO TEXTO ───────────────────────────
+//
+// Lucas, 07/09/2026: *"muita peça do contrato são PDF prontos que podemos somente anexar, isso
+// ajuda, por exemplo, convenção de condomínios e tal"*; *"vai ter situação que cada contrato tem que
+// trazer a planta específica daquela unidade, então no campo de cadastro de unidades temos que ter
+// opção de anexar arquivos que tem que ir como variável para dentro do contrato"*; e *"quero também
+// ter um campo para capa"* — um arquivo pronto, desenhado fora do Panteon.
+//
+// ⚠️ O CONTRATO É UMA MONTAGEM, não um documento só: capa + corpo + anexos. Só o corpo se escreve
+// no editor. As outras duas peças são arquivos, e cada uma tem um dono diferente:
+//
+//     CAPA            cadastro da MINUTA        vale para toda venda que usar aquela minuta
+//     ANEXO FIXO      categoria (ou empreend.)  convenção, memorial — vale para o recorte inteiro
+//     ANEXO DA UNIDADE cadastro da UNIDADE      a planta daquele lote, e só dele
+//
+// ⚠️ ESTA VARIÁVEL NÃO VIRA TEXTO — ela marca ONDE o arquivo entra. `[anexo_planta]` no meio de uma
+// cláusula insere a planta ali; a mesma variável ausente do texto faz o arquivo entrar no fim, na
+// ordem dos anexos. É o mesmo comportamento de `[imagem_unidade]`, que já existe e recorta o
+// masterplan.
+//
+// ⚠️ TUDO AQUI ESTÁ PENDENTE: não há tabela de anexo de unidade nem campo de capa na minuta. Os
+// nomes ficam no catálogo para a minuta já poder reconhecê-los (e para o editor oferecer), e saem
+// vazios até as colunas existirem. Ver `project_contrato_pecas_anexos`.
+const ANEXO = (onde: string): FonteDaVariavel => PENDENTE(`anexo ${onde} — tabela a construir`);
+
+const ANEXOS: VariavelDoContrato[] = [
+  { exemplo: "(capa do contrato)", fonte: ANEXO("da minuta (capa_path em temis_minutas)"), grupo: "anexo", nome: "capa_contrato", origem: "Capa cadastrada na minuta", rotulo: "Capa do contrato", tipo: "anexo" },
+  // O curinga: tudo que estiver marcado como anexo de contrato entra aqui, na ordem do cadastro. É
+  // o que evita ter de criar uma variável nova a cada PDF que o jurídico inventar.
+  //
+  // ⚠️ ELE TRAZ O QUE AINDA NÃO FOI POSICIONADO. Se a minuta já pôs `[anexo_planta]` no meio de uma
+  // cláusula, a planta não entra de novo pelo curinga — senão a mesma página sai duas vezes no
+  // contrato, e ninguém percebe até o cliente perguntar.
+  { exemplo: "(os anexos restantes, na ordem)", fonte: ANEXO("os da unidade e do recorte que não foram posicionados no texto"), grupo: "anexo", nome: "anexos_do_contrato", origem: "Os anexos que o texto não posicionou", rotulo: "Os demais anexos", tipo: "anexo" },
+];
+
+// ── OS ANEXOS SÃO POSIÇÕES, NÃO NOMES ────────────────────────────────────────
+//
+// Duas correções do Lucas, em sequência (07/09/2026). Primeiro, sobre eu ter escrito `anexo_planta`,
+// `anexo_convencao`, `anexo_memorial` e `anexo_matricula` no código: *"não queria esses nomes já de
+// uma vez, dei somente exemplos"*. Depois, sobre a alternativa de deixar o nome livre: *"mas acho
+// que podemos ter já definido os campos anexo, 1,2,3 — se não vamos ter muitas variáveis se for
+// buscar pelo nome"*.
+//
+// Ele está certo nas duas. Uma lista de TIPOS fixos pediria deploy a cada PDF novo que uma
+// incorporadora inventasse (ART, laudo ambiental, regulamento interno…). Mas o nome livre criaria um
+// catálogo sem fundo: cada empreendimento inventaria as suas chaves, e o painel de variáveis — que
+// hoje já tem 280 linhas — viraria uma lista que ninguém percorre.
+//
+// A POSIÇÃO resolve os dois: `[anexo_1]` num empreendimento é a convenção; em outro, a ART. O que
+// cada número É fica no cadastro, e a minuta é do empreendimento — quem escreve sabe o que numerou.
+//
+// ⚠️ E A QUANTIDADE VEM DO CADASTRO, NÃO DO CÓDIGO. Lucas: *"não precisa deixar 20 campos, à medida
+// que eu vou importando os anexos vai fazendo essa conta"*. Não existe lista fixa de posições aqui:
+// o painel oferece tantas quantas o empreendimento tiver importado — três anexos, três variáveis.
+// Vinte posições vazias no painel seriam vinte linhas que não levam a lugar nenhum, e ainda dariam
+// a impressão de que existe um teto.
+//
+// O LIMITE DE 99 abaixo não é um teto de negócio: é sanidade de formato. Ele existe para que
+// `[anexo_0]`, `[anexo_007]` e `[anexo_9999]` — digitação errada, não anexo — caiam no mesmo aviso
+// de "variável desconhecida" que pega `[nome_clientes]`, em vez de saírem impressos no contrato.
+//
+// ⚠️ A POSIÇÃO É ESCOLHIDA NO CADASTRO, não pela ordem em que os arquivos foram enviados. Se fosse
+// pela ordem de upload, anexar um arquivo novo empurraria todos os outros e as minutas publicadas
+// passariam a imprimir a peça errada — sem erro nenhum, no contrato assinado. Quem cadastra escolhe
+// o número, e o número é o contrato entre o cadastro e a minuta.
+//
+// ⚠️ E OS TRÊS NÍVEIS COMPARTILHAM A NUMERAÇÃO. O anexo 1 pode estar cadastrado na unidade
+// (a planta daquele lote), na categoria (a convenção do condomínio) ou no empreendimento; o mais
+// específico vence — unidade sobre categoria, categoria sobre empreendimento. É a mesma precedência
+// da minuta, e é o que permite "a planta é do lote, a convenção é de todos" sem cadastrar 400 vezes.
+
+/** Prefixo da variável de anexo: `[anexo_1]`, `[anexo_2]`, … */
+export const PREFIXO_ANEXO = "anexo_";
+
+/** Prefixo do par que só imprime o trecho quando aquela posição tem arquivo: `[inicio_tem_anexo_1]`. */
+export const PREFIXO_BLOCO_DE_ANEXO = "tem_anexo_";
+
+/** Sufixo da variável que traz o NOME do anexo como texto: `[anexo_1_nome]`. */
+export const SUFIXO_NOME_DO_ANEXO = "_nome";
+
+/** Sanidade de FORMATO, não teto de negócio — ver a nota acima. */
+const MAIOR_POSICAO_ACEITA = 99;
+
+/**
+ * A posição que a variável de anexo aponta, ou null.
+ *
+ * Aceita `anexo_3`, `inicio_tem_anexo_3` e `fim_tem_anexo_3`. Devolve null para o que não é anexo e
+ * para o que não é posição plausível (`anexo_0`, `anexo_007`, `anexo_9999`): esses são erro de
+ * digitação, e a tela precisa reclamar deles como reclama de `[nome_clientes]`.
+ */
+export function posicaoDoAnexo(nome: string): null | number {
+  const semLado = nome.startsWith("inicio_")
+    ? nome.slice("inicio_".length)
+    : nome.startsWith("fim_")
+      ? nome.slice("fim_".length)
+      : nome;
+  const cru = semLado.startsWith(PREFIXO_BLOCO_DE_ANEXO)
+    ? semLado.slice(PREFIXO_BLOCO_DE_ANEXO.length)
+    : semLado.startsWith(PREFIXO_ANEXO)
+      ? semLado.slice(PREFIXO_ANEXO.length)
+      : null;
+  if (cru === null) return null;
+  // `anexo_1_nome` é a MESMA posição do `anexo_1`: o rótulo do arquivo, em texto.
+  const soONumero = cru.endsWith(SUFIXO_NOME_DO_ANEXO)
+    ? cru.slice(0, -SUFIXO_NOME_DO_ANEXO.length)
+    : cru;
+  if (!/^[1-9][0-9]*$/.test(soONumero)) return null;
+  const posicao = Number(soONumero);
+  return posicao <= MAIOR_POSICAO_ACEITA ? posicao : null;
+}
+
+/**
+ * As variáveis dos anexos que aquele empreendimento importou — uma trinca por anexo.
+ *
+ * Recebe os NOMES na ordem das posições: `["Convenção de condomínio", "Memorial descritivo"]` dá
+ * duas posições, e o painel mostra "Anexo 1 — Convenção de condomínio". É o que o Lucas pediu ao
+ * fechar o desenho: *"pode trazer o nome do anexo que foi importado na hora de ir para o contrato,
+ * ou se tiver algo para nomear os anexos"*.
+ *
+ * ⚠️ O NOME É VARIÁVEL, e não só rótulo de tela. `[anexo_1_nome]` no texto faz a cláusula se
+ * escrever sozinha — "ANEXO I — Convenção de condomínio" sem ninguém digitar o título. Sem ela, o
+ * jurídico datilografa o nome na minuta, e no dia em que o arquivo é trocado o contrato passa a
+ * anunciar um documento com o nome do anterior.
+ *
+ * ⚠️ Nada disto vive no catálogo estático — a quantidade vem do cadastro, não do código.
+ */
+export function variaveisDeAnexo(nomes: readonly string[]): VariavelDoContrato[] {
+  const saida: VariavelDoContrato[] = [];
+  const lista = nomes.slice(0, MAIOR_POSICAO_ACEITA);
+  for (const [indice, cru] of lista.entries()) {
+    const posicao = indice + 1;
+    const nomeDoAnexo = cru.trim();
+    const fonte = ANEXO(`na posição ${posicao} (unidade, categoria ou empreendimento)`);
+    const origem = nomeDoAnexo
+      ? `"${nomeDoAnexo}", cadastrado na posição ${posicao}`
+      : `Arquivo cadastrado na posição ${posicao}`;
+    saida.push(
+      {
+        exemplo: `(o arquivo da posição ${posicao})`,
+        fonte,
+        grupo: "anexo",
+        nome: `${PREFIXO_ANEXO}${posicao}`,
+        origem,
+        // ⚠️ O RÓTULO CARREGA O NOME REAL. "Anexo 3" numa lista de doze não diz nada a quem escreve
+        // a minuta — e escolher o anexo errado é um defeito que só aparece no papel assinado.
+        rotulo: nomeDoAnexo ? `Anexo ${posicao} — ${nomeDoAnexo}` : `Anexo ${posicao}`,
+        tipo: "anexo",
+      },
+      {
+        exemplo: nomeDoAnexo || `(nome do anexo ${posicao})`,
+        fonte,
+        grupo: "anexo",
+        nome: `${PREFIXO_ANEXO}${posicao}${SUFIXO_NOME_DO_ANEXO}`,
+        origem,
+        rotulo: nomeDoAnexo ? `Nome do anexo ${posicao} ("${nomeDoAnexo}")` : `Nome do anexo ${posicao}`,
+        tipo: "texto",
+      },
+      // ⚠️ O PAR EXISTE PORQUE A POSIÇÃO PODE ESTAR VAZIA. A cláusula que anuncia "a planta é
+      // reproduzida a seguir:" e não traz nada é pior do que não existir — o contrato assinado
+      // promete uma peça que não está lá. Com o par, a frase inteira some junto com o arquivo.
+      {
+        exemplo: "",
+        fonte,
+        grupo: "bloco",
+        nome: `inicio_${PREFIXO_BLOCO_DE_ANEXO}${posicao}`,
+        origem: `Sai só quando a posição ${posicao} tem arquivo`,
+        rotulo: `Início — só quando o anexo ${posicao} existe`,
+        tipo: "bloco_inicio",
+      },
+      {
+        exemplo: "",
+        fonte,
+        grupo: "bloco",
+        nome: `fim_${PREFIXO_BLOCO_DE_ANEXO}${posicao}`,
+        origem: `Sai só quando a posição ${posicao} tem arquivo`,
+        rotulo: `Fim — só quando o anexo ${posicao} existe`,
+        tipo: "bloco_fim",
+      },
+    );
+  }
+  return saida;
+}
+
 // ── VALORES DA VENDA ─────────────────────────────────────────────────────────
 const VALORES: VariavelDoContrato[] = [
-  { exemplo: "R$ 185.400,00", fonte: VENDA("valor_negociado"), grupo: "valores", nome: "valor_imovel_venda", origem: "Preço da venda", rotulo: "Valor do imóvel", tipo: "dinheiro" },
-  { exemplo: "cento e oitenta e cinco mil e quatrocentos reais", extensoDe: "valor_imovel_venda", fonte: EXTENSO_DE("valor_imovel_venda"), grupo: "valores", nome: "valor_imovel_venda_extenso", origem: "Escrito pelo sistema", rotulo: "Valor do imóvel por extenso", tipo: "extenso" },
+  { exemplo: "R$ 185.400,00", fonte: VENDA("valor_negociado"), grupo: "valores", nome: "valor_imovel_venda", origem: "Preço da venda", rotulo: "Valor da unidade", tipo: "dinheiro" },
+  { exemplo: "cento e oitenta e cinco mil e quatrocentos reais", extensoDe: "valor_imovel_venda", fonte: EXTENSO_DE("valor_imovel_venda"), grupo: "valores", nome: "valor_imovel_venda_extenso", origem: "Escrito pelo sistema", rotulo: "Valor da unidade por extenso", tipo: "extenso" },
   { exemplo: "R$ 185.400,00", fonte: VENDA("valor_negociado"), grupo: "valores", nome: "preco_venda", origem: "Preço da venda", rotulo: "Preço de venda", tipo: "dinheiro" },
   { exemplo: "cento e oitenta e cinco mil e quatrocentos reais", extensoDe: "preco_venda", fonte: EXTENSO_DE("preco_venda"), grupo: "valores", nome: "preco_venda_extenso", origem: "Escrito pelo sistema", rotulo: "Preço de venda por extenso", tipo: "extenso" },
   { exemplo: "R$ 148.320,00", fonte: VENDA("valor_negociado - valor_entrada - valor_sinal"), grupo: "valores", nome: "valor_divida_financiada", origem: "Preço menos entrada e sinal", rotulo: "Valor financiado", tipo: "dinheiro" },
@@ -259,6 +502,35 @@ const PLANO_DA_VENDA: VariavelDoContrato[] = [
   { exemplo: "12% ao ano", fonte: PLANO("juros_taxa + juros_periodicidade (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_juros", origem: "Plano da venda", rotulo: "Juros do plano", tipo: "texto" },
   { exemplo: "IPCA anual", fonte: PLANO("indice_correcao (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_indice_correcao", origem: "Plano da venda", rotulo: "Índice de correção do plano", tipo: "texto" },
   { exemplo: "SACOC", fonte: PLANO("sistema_amortizacao (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_sistema_amortizacao", origem: "Plano da venda", rotulo: "Sistema de amortização do plano", tipo: "texto" },
+  // AS ANUAIS (migration 0138). Lucas, ao ver o cadastro do plano: *"aqui faltou as anuais, pode ter
+  // plano que já vem configurado isso"*. ⚠️ NEM TODO PLANO TEM — o par `inicio_tem_anuais`/
+  // `fim_tem_anuais` é o que faz o parágrafo sumir quando não há, em vez de imprimir "0 parcelas de".
+  // A coluna é CHECK "os dois ou nenhum", então basta uma condição para os dois.
+  { exemplo: "10", fonte: PLANO("anuais_quantidade (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_anuais_quantidade", origem: "Parcelas anuais do plano", rotulo: "Quantidade de parcelas anuais", tipo: "numero" },
+  { exemplo: "R$ 8.000,00", fonte: PLANO("anuais_valor (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_anuais_valor", origem: "Parcelas anuais do plano", rotulo: "Valor da parcela anual", tipo: "dinheiro" },
+  { exemplo: "oito mil reais", extensoDe: "plano_anuais_valor", fonte: EXTENSO_DE("plano_anuais_valor"), grupo: "plano", nome: "plano_anuais_valor_extenso", origem: "Escrito pelo sistema", rotulo: "Valor da parcela anual por extenso", tipo: "extenso" },
+];
+
+/** Blocos que não repetem por comprador: dependem do PLANO, não de quem compra. */
+const BLOCOS_DO_PLANO: VariavelDoContrato[] = [
+  {
+    exemplo: "",
+    fonte: PLANO("anuais_quantidade não nulo (via hercules_vendas.plano_snapshot)"),
+    grupo: "bloco",
+    nome: "inicio_tem_anuais",
+    origem: "Sai só quando o plano tem parcelas anuais",
+    rotulo: "Início — só quando o plano tem anuais",
+    tipo: "bloco_inicio",
+  },
+  {
+    exemplo: "",
+    fonte: PLANO("anuais_quantidade não nulo (via hercules_vendas.plano_snapshot)"),
+    grupo: "bloco",
+    nome: "fim_tem_anuais",
+    origem: "Sai só quando o plano tem parcelas anuais",
+    rotulo: "Fim — só quando o plano tem anuais",
+    tipo: "bloco_fim",
+  },
 ];
 
 // ── CORRETAGEM ───────────────────────────────────────────────────────────────
@@ -345,8 +617,41 @@ function expandirPorComprador(bases: Base[]): VariavelDoContrato[] {
   return saida;
 }
 
+// ── O LAÇO: ESCREVE UMA VEZ, REPETE POR COMPRADOR ────────────────────────────
+//
+// Decisão do Lucas em 07/09/2026: *"não vamos rodar contrato mais no c2x, tudo será via panteon"*.
+// Sem a obrigação de gerar no legado, a minuta deixa de repetir a qualificação cinco vezes com os
+// sufixos `_2`…`_5` — que custavam ~90 marcadores e 15 pares de bloco, e ainda assim paravam
+// calados no sexto comprador. O trecho entre `[inicio_cada_comprador]` e `[fim_cada_comprador]` sai
+// uma vez por comprador da venda, sem teto, e o cônjuge de cada um nasce do `[inicio_dados_conjuge]`
+// de dentro do laço.
+//
+// ⚠️ OS SUFIXOS CONTINUAM NO CATÁLOGO, e não é indecisão: as 41 minutas do legado ainda vão ser
+// importadas, e enquanto não forem convertidas o painel precisa reconhecer o que elas trazem. O que
+// se escreve NOVO usa o laço — é o que os blocos prontos (`blocos-prontos.ts`) inserem.
+const LACO_COMPRADOR: VariavelDoContrato[] = [
+  {
+    exemplo: "",
+    fonte: SISTEMA("repete o trecho por hercules_vendas.participantes"),
+    grupo: "bloco",
+    nome: "inicio_cada_comprador",
+    origem: "Repete o trecho, um por comprador da venda",
+    rotulo: "Início — para cada comprador",
+    tipo: "bloco_inicio",
+  },
+  {
+    exemplo: "",
+    fonte: SISTEMA("repete o trecho por hercules_vendas.participantes"),
+    grupo: "bloco",
+    nome: "fim_cada_comprador",
+    origem: "Repete o trecho, um por comprador da venda",
+    rotulo: "Fim — para cada comprador",
+    tipo: "bloco_fim",
+  },
+];
+
 function expandirBlocos(): VariavelDoContrato[] {
-  const saida: VariavelDoContrato[] = [];
+  const saida: VariavelDoContrato[] = [...LACO_COMPRADOR];
 
   for (const [indice, sufixo] of SUFIXOS.entries()) {
     const ordinal = indice + 1;
@@ -435,9 +740,12 @@ export const VARIAVEIS_DO_CONTRATO: VariavelDoContrato[] = [
   ...expandirBlocos(),
   ...UNIDADE,
   ...EMPREENDIMENTO_VARS,
+  ...VENDEDORA_VARS,
+  ...ANEXOS,
   ...VALORES,
   ...expandirPlanos(),
   ...PLANO_DA_VENDA,
+  ...BLOCOS_DO_PLANO,
   ...CORRETAGEM,
   ...CONTRATO,
   ...GERADOS,
@@ -447,7 +755,15 @@ const PORNOME = new Map(VARIAVEIS_DO_CONTRATO.map((v) => [v.nome, v]));
 
 /** A variável, se o Temis souber preenchê-la. */
 export function acharVariavel(nome: string): undefined | VariavelDoContrato {
-  return PORNOME.get(nome);
+  const doCatalogo = PORNOME.get(nome);
+  if (doCatalogo) return doCatalogo;
+  // ⚠️ OS ANEXOS NÃO ESTÃO NO CATÁLOGO ESTÁTICO — a quantidade vem do cadastro, não do código. Mas
+  // quem AUDITA a minuta chama esta função, e sem este caminho um `[anexo_3]` legítimo cairia no
+  // mesmo aviso de "variável desconhecida" que existe para pegar `[nome_clientes]` digitado errado.
+  // O resultado sai sem o nome do arquivo (quem tem o nome é o cadastro); serve para reconhecer.
+  const posicao = posicaoDoAnexo(nome);
+  if (posicao === null) return undefined;
+  return variaveisDeAnexo(Array.from({ length: posicao }, () => "")).find((v) => v.nome === nome);
 }
 
 /** As variáveis que o Panteon ainda não tem de onde tirar. Para a tela avisar — e para o backlog. */
@@ -579,7 +895,14 @@ export function extensosOrfaos(texto: string): string[] {
   const orfaos: string[] = [];
   for (const nome of presentes) {
     const v = PORNOME.get(nome);
-    if (v?.extensoDe && !presentes.has(v.extensoDe)) orfaos.push(nome);
+    if (!v?.extensoDe || presentes.has(v.extensoDe)) continue;
+    // ⚠️ DATA POR EXTENSO SOZINHA NÃO É ÓRFÃ — é a norma do fecho de contrato. Todo instrumento
+    // termina em "João Monlevade/MG, sete de setembro de dois mil e vinte e seis"; ninguém escreve
+    // "07/09/2026 (sete de setembro…)". A regra existe para DINHEIRO, onde o extenso sem o número
+    // perde o valor. Sem esta exceção, toda minuta com o fecho normal levaria um aviso falso ao
+    // publicar — e aviso que sempre aparece é aviso que ninguém lê.
+    if (PORNOME.get(v.extensoDe)?.tipo === "data") continue;
+    orfaos.push(nome);
   }
   return orfaos.sort();
 }
@@ -587,6 +910,7 @@ export function extensosOrfaos(texto: string): string[] {
 /** Rótulo do grupo, para o menu do editor. */
 export function rotuloDoGrupo(grupo: GrupoDeVariavel): string {
   const mapa: Record<GrupoDeVariavel, string> = {
+    anexo: "Anexos e capa",
     bloco: "Blocos condicionais",
     comprador: "Comprador",
     conjuge: "Cônjuge",
@@ -598,12 +922,14 @@ export function rotuloDoGrupo(grupo: GrupoDeVariavel): string {
     plano: "Planos de pagamento",
     unidade: "Unidade",
     valores: "Valores da venda",
+    vendedora: "Vendedora (incorporador/SPE)",
   };
   return mapa[grupo];
 }
 
 /** A ordem em que os grupos aparecem no menu: do mais usado ao mais raro. */
 export const ORDEM_DOS_GRUPOS: GrupoDeVariavel[] = [
+  "vendedora",
   "comprador",
   "conjuge",
   "empresa",
@@ -613,6 +939,7 @@ export const ORDEM_DOS_GRUPOS: GrupoDeVariavel[] = [
   "plano",
   "corretagem",
   "contrato",
+  "anexo",
   "gerado",
   "bloco",
 ];

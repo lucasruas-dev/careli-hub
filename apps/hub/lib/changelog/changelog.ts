@@ -36,6 +36,60 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-07-minuta-com-blocos-prontos",
+    deployedAt: "2026-09-07T20:00:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Blocos prontos no editor da minuta.** Uma aba nova ao lado das Variáveis, com sete cláusulas já escritas e já marcadas: Partes, Objeto, Preço, Fluxo (tabela), Fluxo (escrito), Corretagem, Anexos e o Foro com as assinaturas. Um clique põe a cláusula inteira na folha; a redação é sua, a marcação vem pronta.",
+              "**A qualificação dos compradores se escreve UMA vez.** O trecho entre *para cada comprador* se repete sozinho conforme a venda tiver dois, três ou cinco, e o cônjuge de cada um nasce junto. Antes eram cinco blocos iguais, ~90 marcadores, e o sexto comprador não saía no papel.",
+              "**O fluxo de pagamento em dois formatos**: o quadro de parcelas, ou o Quadro Resumo em parágrafos como o do Lagoa Bonita, com a condição suspensiva do sinal. Use um ou o outro, nunca os dois.",
+              "**A vendedora virou variável.** Razão social, CNPJ, natureza jurídica, sede e representante legal do incorporador ou da SPE.",
+              "**Anexos por posição**, com o nome do arquivo importado. A linha *ANEXO I — Convenção de condomínio* se escreve sozinha, e some inteira quando aquele anexo não existe.",
+              "Onde se lia *imóvel*, agora se lê **unidade**.",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O mesmo e-mail não entra em duas pessoas.** Ao subir a CAD, o sistema avisa de quem já é aquele endereço e não deixa salvar.",
+              "**O campo de e-mail ficou em destaque** no titular e no cônjuge, avisando que é ali que o contrato chega para assinar.",
+            ],
+            screen: "Cadastro (CAD)",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "**Caixa de e-mail desligada agora é ignorada de verdade.** Antes, desligar um canal fazia cada e-mail dele ficar dando voltas na fila a cada 5 minutos, sem virar nada.",
+            ],
+            screen: "Central de e-mail",
+          },
+        ],
+      },
+    ],
+    rollback: "146f0344",
+    technical: {
+      done: "OS BLOCOS PRONTOS SÃO A RESPOSTA A *\"podia ter um bloco de Partes, e já meio que trazer pronto, bloco de preços e tal, isso ia facilitar\"* (Lucas, 07/09/2026). Marcar uma minuta variável a variável é o trabalho mais caro da Têmis — só a qualificação das partes tem ~20 marcas, e cada uma é uma chance de escolher a errada (`[nome_cliente]` no lugar de `[nome_conjuge]` sai impresso e ninguém vê). ⚠️ TODA VARIÁVEL DOS BLOCOS EXISTE NO CATÁLOGO, e há teste que confere nome por nome: nome inventado vira `[assim]` impresso no papel, que foi como `[Nome]` e `[CPF]` entraram nas minutas do legado. O LAÇO substitui os sufixos `_2`…`_5` — decisão de *\"não vamos rodar contrato mais no c2x\"*: sem a obrigação de gerar no legado, a minuta não precisa mais escrever a qualificação cinco vezes, e o teto de cinco compradores (que falhava CALADO no sexto) deixa de existir. A VENDEDORA vem da CATEGORIA e não do empreendimento — *\"agora com as categorias, eu posso dentro de um mesmo empreendimento ter dois vendedores\"* —, com queda para o empreendimento; 0141 põe `vendedor_entity_id` nos dois níveis com `on delete restrict`, porque apagar a entidade que assinou deixaria o contrato seguinte sem vendedora, sem erro nenhum. Ela é uma `apolo_entities` PJ, o MESMO caminho da imobiliária: `apolo_incorporadores` serve ao acesso do portal e não guarda CNPJ nem endereço. OS ANEXOS levaram três tentativas até acertar: tipos fixos (*\"não queria esses nomes já de uma vez, dei somente exemplos\"*), nome livre (*\"vamos ter muitas variáveis se for buscar pelo nome\"*) e vinte posições fixas (*\"não precisa deixar 20 campos, à medida que eu vou importando os anexos vai fazendo essa conta\"*). O modelo final não guarda posição nenhuma no catálogo: `variaveisDeAnexo(nomes)` gera a trinca por anexo importado, e `acharVariavel` resolve o padrão — sem isso um `[anexo_3]` legítimo cairia no aviso feito para pegar `[nome_clientes]` digitado errado. ⚠️ A POSIÇÃO É ESCOLHIDA NO CADASTRO, nunca pela ordem de upload: anexar um arquivo novo empurraria os outros e as minutas publicadas passariam a imprimir a peça errada. O E-MAIL ÚNICO nasceu do estudo da API do D4Sign: lá o signatário É o e-mail — não há campo de nome nem de CPF no signatário, a rubrica se vincula por endereço e o webhook devolve o e-mail como única chave (uuid e identification_number vêm nulos para quem não tem conta lá, que é todo comprador nosso). ⚠️ MEDIDO ANTES DE TRAVAR: 26 e-mails repetidos, 54 pessoas, e o pior caso são TRÊS — um corretor cujo e-mail está em duas fichas de cliente; um contrato desses iria para o corretor assinar no lugar do cliente. A trava fica no ponto de persistência que todas as portas de CAD atravessam, e a mensagem diz DE QUEM é o endereço: \"e-mail já cadastrado\" mandaria o operador inventar um para destravar a tela. Recusa hash (18 valores em `apolo_contacts` são resíduo de mascaramento, não endereço) e contato inativo. ⚠️ A REGRA NOVA NÃO ALCANÇA O PASSADO: os 54 continuam lá. NA IRIS, `ignored` foi separado de `skipped`: o poll busca `is:unread` de 5 em 5 minutos e deixava não-lido de propósito o que não casava canal — desligar um canal ativo faria cada e-mail dele voltar para sempre (~50/dia no de cobrança, relidos 288 vezes por dia). Agora canal DESLIGADO marca lido e sai do caminho; canal INEXISTENTE continua esperando, que é a rede de segurança original. 2.965 testes verdes (212 arquivos); typecheck e lint limpos.",
+      motivation:
+        "Montar uma minuta do zero era marcar ~90 variáveis à mão, uma a uma. E o contrato eletrônico impõe uma regra que o cadastro não tinha: cada pessoa precisa do seu próprio e-mail, porque é por ele que a assinatura identifica quem assinou.",
+    },
+    title: "A minuta que se escreve sozinha",
+    type: "novidade",
+    version: "1.293.0",
+  },
+  {
     buildTag: "2026-09-07-categorias-do-empreendimento",
     deployedAt: "2026-09-07T17:30:00-03:00",
     modules: [

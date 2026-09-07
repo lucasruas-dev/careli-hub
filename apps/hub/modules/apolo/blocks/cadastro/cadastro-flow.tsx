@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Download,
+  FileSignature,
   FileText,
   Loader2,
   Lock,
@@ -2689,6 +2690,7 @@ function StepIdentificacao({
             />
             <div className="sm:col-span-2">
               <EmailField
+                assinaContrato
                 value={perfil.email}
                 onChange={(v) => onPerfilChange({ email: v })}
               />
@@ -2787,6 +2789,7 @@ function StepIdentificacao({
                     />
                     <div className="sm:col-span-2">
                       <EmailField
+                        assinaContrato
                         value={conjuge.email}
                         bloquear={perfil.email}
                         bloqueioMsg="O e-mail do cônjuge não pode ser igual ao do titular."
@@ -5238,12 +5241,30 @@ function PhoneField({
   );
 }
 
+/**
+ * ⚠️ ESTE E-MAIL É A IDENTIDADE DA PESSOA NA ASSINATURA ELETRÔNICA.
+ *
+ * Pedido do Lucas (07/09/2026): *"coloca um destaque nesse campo na hora que o usuário está
+ * cadastrando, avisando que esse e-mail será o que receberá o contrato para assinatura"*.
+ *
+ * Não é zelo de formulário: no D4Sign o signatário É o e-mail — não existe campo de nome nem de CPF
+ * no cadastro de signatário, a rubrica se vincula por endereço e o webhook devolve o e-mail como
+ * única chave utilizável. Quem digita aqui um endereço errado (ou o do corretor) faz o contrato ir
+ * para a pessoa errada, e quem digita o mesmo endereço em duas pessoas faz um contrato assinado em
+ * que não se sabe quem assinou. Nenhum dos dois dá erro: sai no papel.
+ *
+ * O aviso aparece ANTES de digitar, não depois — o objetivo é mudar o que a pessoa escreve, não
+ * explicar depois por que travou.
+ */
 function EmailField({
+  assinaContrato,
   bloqueioMsg,
   bloquear,
   onChange,
   value,
 }: {
+  /** Esta pessoa assina o contrato: mostra o aviso de que é aqui que o documento chega. */
+  assinaContrato?: boolean;
   bloqueioMsg?: string;
   bloquear?: string;
   onChange: (value: string) => void;
@@ -5261,10 +5282,24 @@ function EmailField({
       ? bloqueioMsg ?? "E-mail já utilizado."
       : "Formato válido. Enviaremos um e-mail de confirmação.";
   return (
-    <div className="rounded-lg border border-line bg-surface px-3 py-2">
+    <div
+      className={`rounded-lg border bg-surface px-3 py-2 ${
+        assinaContrato ? "border-amber-300 dark:border-amber-500/40" : "border-line"
+      }`}
+    >
       <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
         E-mail
       </div>
+      {assinaContrato ? (
+        <p className="m-0 mb-1.5 flex items-start gap-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] leading-tight text-amber-800 dark:bg-amber-500/12 dark:text-amber-300">
+          <FileSignature aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+          <span>
+            <strong className="font-semibold">É aqui que o contrato chega para assinar.</strong>{" "}
+            Confirme o endereço com a própria pessoa: cada uma precisa do seu, e é por ele que a
+            assinatura eletrônica identifica quem assinou.
+          </span>
+        </p>
+      ) : null}
       <div className="flex items-center gap-2">
         <Mail className="size-3.5 shrink-0 text-ink-muted" aria-hidden="true" />
         <input

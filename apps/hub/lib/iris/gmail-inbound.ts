@@ -30,8 +30,12 @@ type ChannelRow = {
   config: Record<string, unknown> | null;
   external_account_id: string | null;
   id: string;
+  /** "active" | "inactive". O canal DESLIGADO continua casando — ver `ingestOne`. */
+  status: string | null;
   workspace_id: string | null;
 };
+
+const COLUNAS_DO_CANAL = "id,external_account_id,config,workspace_id,status";
 
 type ContactRow = {
   display_name: string | null;
@@ -40,12 +44,25 @@ type ContactRow = {
   metadata: Record<string, unknown> | null;
 };
 
-type IngestOutcome = "appended" | "created" | "skipped";
+// ⚠️ "ignored" NÃO É "skipped", e a diferença é o que impede uma pilha infinita de não-lidas.
+//
+// `skipped`  = não achei canal para este e-mail. Pode ser um grupo que ainda vamos cadastrar, então
+//              a mensagem fica UNREAD de propósito: se o canal nascer amanhã, ela é ingerida.
+// `ignored`  = achei o canal, e ele está DESLIGADO. Isso é uma decisão, não uma lacuna — a mensagem
+//              é marcada como lida e sai do caminho.
+//
+// Sem essa distinção, desligar um canal ativo faria cada e-mail dele ficar não-lido para sempre, e
+// o poll (que busca `is:unread`, de 5 em 5 minutos) reprocessaria a pilha inteira a cada rodada,
+// crescendo sem teto. No canal de cobrança isso seriam ~50 mensagens novas por dia, relidas 288
+// vezes por dia — e nenhuma delas viraria nada.
+type IngestOutcome = "appended" | "created" | "ignored" | "skipped";
 
 export type GmailInboundSummary = {
   appended: number;
   created: number;
   errors: number;
+  /** Casou um canal DESLIGADO: não virou ticket, e foi marcado como lido. */
+  ignored: number;
   mailbox: string;
   ok: boolean;
   processed: number;
@@ -62,6 +79,7 @@ export async function ingestGmailInbox({
     appended: 0,
     created: 0,
     errors: 0,
+    ignored: 0,
     mailbox,
     ok: false,
     processed: 0,
@@ -104,6 +122,11 @@ export async function ingestGmailInbox({
       } else if (outcome === "appended") {
         summary.appended += 1;
         await markGmailMessageRead(id);
+      } else if (outcome === "ignored") {
+        // Canal DESLIGADO: marca lido para a mensagem sair da busca `is:unread`. Sem isto, cada
+        // e-mail do canal desligado voltaria a cada 5 minutos, para sempre.
+        summary.ignored += 1;
+        await markGmailMessageRead(id);
       } else {
         summary.skipped += 1;
       }
@@ -144,6 +167,20 @@ async function ingestOne(
   if (!channel) {
     // Nem thread nem canal por destinatário (nem Contato nem Cacá). Não vira ticket.
     return "skipped";
+  }
+
+  // ⚠️ CANAL DESLIGADO SAI AQUI, e antes de qualquer escrita: não vira ticket, não vira contato, não
+  // vira mensagem. É como a Iris deixa de atender uma caixa sem que a caixa deixe de existir no
+  // Google — o pedido do Lucas em 07/09/2026: *"eu quero deixar no google, só quero tirar da iris
+  // esses e-mails"*. O caso real é o `cobranca@`: 3.721 mensagens de robô do Asaas ("Foi gerada uma
+  // nova cobrança", "Não registramos o pagamento de…"), 1.189 tickets, e ZERO respostas em 23 dias.
+  //
+  // Repare que o teste vem DEPOIS de casar o canal, não antes: é o canal desligado que precisa ser
+  // encontrado para ser ignorado. Se a busca filtrasse `status='active'`, este e-mail cairia em
+  // "sem canal" e ficaria não-lido para sempre (ver o comentário de `IngestOutcome`) — ou, pior,
+  // escorregaria para o canal da caixa robô e o entulho só mudaria de fila.
+  if ((channel.status ?? "active") !== "active") {
+    return "ignored";
   }
 
   const ingestSince = readChannelIngestSince(channel);
@@ -197,9 +234,8 @@ async function findEmailChannel(
 
   const { data, error } = await client
     .from("caredesk_channels")
-    .select("id,external_account_id,config,workspace_id")
+    .select(COLUNAS_DO_CANAL)
     .eq("kind", "email")
-    .eq("status", "active")
     .in("external_account_id", recipients);
 
   if (error) {
@@ -254,10 +290,9 @@ async function findChannelByExistingThread(
 
   const { data: channel, error: channelError } = await client
     .from("caredesk_channels")
-    .select("id,external_account_id,config,workspace_id")
+    .select(COLUNAS_DO_CANAL)
     .eq("id", ticket.channel_id)
     .eq("kind", "email")
-    .eq("status", "active")
     .maybeSingle<ChannelRow>();
 
   if (channelError) {

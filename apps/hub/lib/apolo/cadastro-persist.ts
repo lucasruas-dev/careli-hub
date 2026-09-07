@@ -3,6 +3,7 @@
 // corretor, fornecedor...) reusam esta camada depois. Escreve coordenadamente nas tabelas
 // apolo_* (via service role; RLS so libera SELECT), espelhando o que o sync do C2X ja faz.
 // Ver [[project_apolo_cadastro_prospect]], [[project_apolo_crm_grafo]].
+import { conflitoDeEmailRepetido } from "@/lib/apolo/email-unico";
 import { lerCadsDaEsteira, normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
 import { conflitoDeNucleoFamiliar, mensagemDeConflito } from "@/lib/apolo/nucleo-familiar";
 import { normalizarProfissaoLivre } from "@/lib/apolo/profissao";
@@ -333,6 +334,29 @@ export async function createApoloEntity(
   // No PJ o contato é da EMPRESA (empresa.email/telefone); no PF, do perfil. Sem isto o telefone
   // e o e-mail digitados no PJ não viravam contato e a ficha mostrava "-".
   const email = text(isPj ? empresa.email : perfil.email);
+
+  // UM E-MAIL, UMA PESSOA. Lucas (07/09/2026): *"temos que travar bem travado o e-mail, não podemos
+  // ter o mesmo e-mail para duas pessoas"* · *"esse e-mail tem que ser validado lá na hora que eu
+  // estou subindo a cad"*.
+  //
+  // ⚠️ A ASSINATURA ELETRÔNICA IDENTIFICA A PESSOA PELO E-MAIL. No D4Sign não existe campo de nome
+  // nem de CPF no signatário: o vínculo da rubrica e a chave do webhook são o endereço. Dois
+  // signatários com o mesmo e-mail produzem um contrato assinado em que não se sabe quem assinou —
+  // e isso não dá erro em lugar nenhum, sai no papel.
+  //
+  // ⚠️ FORA DO `if (dedupPorDocumento)` DE PROPÓSITO: aquele bloco é opt-in, e esta trava vale para
+  // TODA porta de entrada de CAD (wizard interno, link público, imobiliária), que é o que o
+  // "bem travado" pede. Roda depois das outras duas porque é a mais cara: consulta por texto.
+  const conflitoEmail = await conflitoDeEmailRepetido({
+    adminClient,
+    email,
+    // A própria ficha que esta CAD vai atualizar não conta contra ela mesma.
+    ignorarEntityIds: anexarEm ? [anexarEm] : [],
+  });
+
+  if (conflitoEmail) {
+    return { entityIdExistente: conflitoEmail.donos[0]?.entityId, error: conflitoEmail.mensagem, ok: false };
+  }
   const telefone = text(isPj ? empresa.telefone : perfil.telefone);
   const location = { city: text(endereco.cidade), state: text(endereco.uf) };
 
