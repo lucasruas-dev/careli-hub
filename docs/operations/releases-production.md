@@ -6158,3 +6158,25 @@ Achados que viraram correcao no mesmo lote:
   (`servicoDisponivel`, escrita em 02/09 e ate ontem sem chamador) e o editor em portugues.
 - Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.883 testes verdes (209 arquivos).
 - Status: `EM PRODUCAO`.
+
+## 2026-09-07 · v1.291.0 — Temis: minutas com acoes e autoria
+
+- Autorizacao: OK explicito do Lucas ("tem o meu ok"), para a migration 0137 e o push.
+- Commit: `35c13faa`. Rollback: `6024670f` (v1.290.1).
+- Cinco pedidos dele olhando o Setup do JDG:
+  1. *"o botao de adicionar tem que estar habilitado, ae abre um popup perguntando nome, se vai
+     importar arquivo ou nao"* — ele nascia APAGADO esperando alguem digitar num campo solto.
+  2. *"temos que ter o botao de editar, excluir"*. ⚠️ O EXCLUIR ARQUIVA, NAO APAGA, e avisa quantos
+     planos usam: apagar desfaria o vinculo do plano em silencio, e a venda so travaria na hora de
+     gerar o contrato.
+  3. *"trazer quem foi a pessoa que editou, criou por ultimo"* (0137). ⚠️ SAO DOIS CAMPOS: quem cria
+     e quem altera por ultimo costumam ser pessoas diferentes (o juridico redige, o coordenador
+     ajusta), e guardar so o ultimo apagaria a origem do documento no primeiro ajuste de virgula. A
+     versao nova HERDA o criador. O campo guarda o NOME e nao a chave — `criado_por` (uuid) existe
+     desde a 0113 e nunca foi preenchido, e uuid nao responde "quem alterou esta minuta".
+  4. *"coloca botoes de voltar"* — era uma seta do tamanho de um enfeite ao lado do nome.
+  5. *"quantos contratos foram emitidos nessa minuta/versao"*. ⚠️ NAO TEM DE ONDE SAIR: a peca que
+     gera contrato a partir da minuta nao existe no repositorio. A versao publicada diz isso, em vez
+     de estampar um zero que parece medida. O que existe virou selo: quantos PLANOS assinam por ela.
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.883 testes verdes (209 arquivos).
+- Status: `EM PRODUCAO`.

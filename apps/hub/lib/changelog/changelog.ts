@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-07-minutas-com-acoes-e-autoria",
+    deployedAt: "2026-09-07T15:00:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Nova minuta agora abre uma janela** perguntando o nome e se você vai importar o .docx do loteador ou começar em branco. O botão fica sempre disponível.",
+              "**Editar e Excluir em cada minuta.** O excluir avisa quantos planos usam aquela minuta antes de confirmar — e arquiva, mantendo o rastro, em vez de apagar.",
+              "**A lista diz quem criou e quem alterou por último**, além da data. E mostra quantos planos assinam por cada minuta.",
+              "O botão de voltar do editor agora tem a palavra *Voltar*.",
+            ],
+            screen: "Setup",
+          },
+        ],
+      },
+    ],
+    rollback: "6024670f",
+    technical: {
+      done: "Cinco pedidos do Lucas olhando o Setup do JDG. (1) *\"o botão de adicionar tem que estar habilitado, aí abre um popup perguntando nome, se vai importar arquivo ou não\"* — ele nascia APAGADO esperando alguém digitar num campo solto ao lado, e botão desabilitado sem dizer por quê é a tela recusando o clique antes de a pessoa saber que faltava algo. (2) Editar e Excluir por linha; ⚠️ O EXCLUIR ARQUIVA, NÃO APAGA, e pergunta antes dizendo quantos planos usam: apagar desfaria o vínculo do plano em silêncio — ele continuaria ativo e sem minuta, e a venda só travaria na hora de gerar o contrato. (3) Autoria (0137): são DOIS campos, não um, porque quem CRIA e quem altera por ÚLTIMO costumam ser pessoas diferentes (o jurídico redige, o coordenador ajusta) e guardar só o último apagaria a origem do documento no primeiro ajuste de vírgula; a versão nova HERDA o criador da anterior, porque é a mesma minuta um passo adiante. ⚠️ O campo guarda o NOME e não a chave: `criado_por` (uuid) existe desde a 0113 e nunca foi preenchido — e uuid não responde \"quem alterou esta minuta\"; o nome faz a linha se explicar sozinha anos depois, mesmo que a pessoa saia da empresa. (4) O voltar era uma seta do tamanho de um enfeite ao lado do nome. (5) *\"quantos contratos foram emitidos nessa minuta/versão\"*: ⚠️ ESSE NÚMERO NÃO TEM DE ONDE SAIR — a peça que gera contrato a partir da minuta não existe no repositório —, e em vez de estampar um zero que parece medida, a versão publicada diz que ainda não foi medido e por quê; o que existe e responde metade da pergunta virou selo: quantos PLANOS assinam por aquela minuta. 2.883 testes verdes (209 arquivos); typecheck e lint limpos.",
+      motivation:
+        "A lista de minutas mostrava só nome e data: não dava para editar, excluir, saber quem mexeu nem perceber que aquele documento é o contrato de três planos.",
+    },
+    title: "Minutas com ações e autoria",
+    type: "melhoria",
+    version: "1.291.0",
+  },
+  {
     buildTag: "2026-09-07-temis-estrutura-e-portugues",
     deployedAt: "2026-09-07T13:00:00-03:00",
     modules: [
