@@ -47,6 +47,8 @@ const SALE_STATUS = {
 export type ApoloEnterpriseTab =
   | "cadastro"
   | "carteira"
+  // As etapas do produto consolidado, com as unidades de cada uma. Só existe no agrupado.
+  | "filhos"
   | "mapa"
   // Planos de pagamento do Temis. Fica separada de "politica" de propósito: a política é o acordo
   // com o incorporador (comissão, gestão de carteira) e vem do C2X; o plano é o que o CLIENTE

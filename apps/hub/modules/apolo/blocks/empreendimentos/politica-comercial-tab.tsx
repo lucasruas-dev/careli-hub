@@ -306,7 +306,7 @@ export function PoliticaComercialTab({
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         {faixa}
-        <CategoriasTab enterpriseId={enterpriseId} name={name} />
+        <CategoriasTab codigo={codes[0] ?? code} enterpriseId={enterpriseId} name={name} />
       </div>
     );
   }

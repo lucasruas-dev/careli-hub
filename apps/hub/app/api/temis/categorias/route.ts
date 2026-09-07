@@ -40,14 +40,29 @@ function empreendimentoDaUrl(request: Request): null | string {
 async function empreendimentoDasCategorias(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
   enterpriseId: string,
+  codigo?: null | string,
 ): Promise<string> {
   try {
-    const { data } = await admin
+    // ⚠️ A FICHA CONSOLIDADA NÃO TEM ID DE EMPREENDIMENTO. Quando o produto é agrupado, o Apolo
+    // monta a linha com `id: "group:Lagoa Bonita"` — um rótulo, não uma chave: não existe
+    // `enterprise_id` igual a isso em tabela nenhuma. Foi assim que as duas categorias do Lagoa
+    // Bonita, criadas e carimbadas em 495 lotes, apareceram como "nenhuma categoria" na tela.
+    //
+    // O caminho de volta é o CÓDIGO de uma das etapas (LBF, LBR, LBP), que a ficha já tem em mãos:
+    // dele se acha o empreendimento, e do empreendimento se sobe ao pai.
+    const porGrupo = enterpriseId.startsWith("group:");
+    const chave = porGrupo ? (codigo ?? "").trim() : enterpriseId;
+    if (porGrupo && !chave) return enterpriseId;
+
+    const consulta = admin
       .from("hercules_empreendimentos")
       .select("pai_id")
-      .eq("workspace_id", WORKSPACE)
-      .eq("c2x_enterprise_id", enterpriseId)
-      .maybeSingle();
+      .eq("workspace_id", WORKSPACE);
+
+    const { data } = await (porGrupo
+      ? consulta.eq("codigo", chave)
+      : consulta.eq("c2x_enterprise_id", chave)
+    ).maybeSingle();
 
     const paiId = (data as null | { pai_id: null | string })?.pai_id;
     if (!paiId) return enterpriseId;
@@ -81,7 +96,11 @@ export async function GET(request: Request) {
   const admin = createApoloAdminClient();
   if (!admin) return NextResponse.json({ error: "Supabase indisponível." }, { status: 503 });
 
-  const dono = await empreendimentoDasCategorias(admin, enterpriseId);
+  const dono = await empreendimentoDasCategorias(
+    admin,
+    enterpriseId,
+    new URL(request.url).searchParams.get("codigo"),
+  );
 
   const { data, error } = await admin
     .from("temis_categorias")
@@ -167,7 +186,11 @@ export async function POST(request: Request) {
       // dentro de condomínio. Uma tabela separada para o segundo nível impediria o terceiro.
       categoria_pai_id: corpo?.categoriaPaiId ?? null,
       // A categoria nasce no PAI, para o filho não ter cadastro próprio do mesmo recorte.
-      enterprise_id: await empreendimentoDasCategorias(admin, enterpriseId),
+      enterprise_id: await empreendimentoDasCategorias(
+        admin,
+        enterpriseId,
+        new URL(request.url).searchParams.get("codigo"),
+      ),
       nome,
       ordem: corpo?.ordem ?? 0,
       workspace_id: WORKSPACE,

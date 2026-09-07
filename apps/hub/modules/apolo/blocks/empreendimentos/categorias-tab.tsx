@@ -35,9 +35,20 @@ type Categoria = {
   unidades?: number;
 };
 
-type Props = { enterpriseId: string; name: string };
+type Props = {
+  /**
+   * O código de UMA etapa, quando a ficha é a consolidada.
+   *
+   * ⚠️ A FICHA CONSOLIDADA NÃO TEM ID DE EMPREENDIMENTO: o Apolo monta a linha do produto agrupado
+   * com `id: "group:Lagoa Bonita"`, que é rótulo e não chave. O código é o caminho de volta ao
+   * cadastro — e daí ao pai, onde as categorias moram.
+   */
+  codigo?: null | string;
+  enterpriseId: string;
+  name: string;
+};
 
-export function CategoriasTab({ enterpriseId, name }: Props) {
+export function CategoriasTab({ codigo, enterpriseId, name }: Props) {
   const [categorias, setCategorias] = useState<Categoria[] | null>(null);
   const [erro, setErro] = useState<null | string>(null);
   const [aviso, setAviso] = useState<null | string>(null);
@@ -54,7 +65,9 @@ export function CategoriasTab({ enterpriseId, name }: Props) {
     try {
       const token = await getApoloAccessToken();
       const r = await fetch(
-        `/api/temis/categorias?enterpriseId=${encodeURIComponent(enterpriseId)}`,
+        `/api/temis/categorias?enterpriseId=${encodeURIComponent(enterpriseId)}${
+          codigo ? `&codigo=${encodeURIComponent(codigo)}` : ""
+        }`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const corpo = (await r.json().catch(() => ({}))) as {
@@ -71,7 +84,7 @@ export function CategoriasTab({ enterpriseId, name }: Props) {
       setErro("Falha de rede ao carregar as categorias.");
       setCategorias([]);
     }
-  }, [enterpriseId]);
+  }, [codigo, enterpriseId]);
 
   useEffect(() => {
     void carregar();
@@ -87,7 +100,9 @@ export function CategoriasTab({ enterpriseId, name }: Props) {
     try {
       const token = await getApoloAccessToken();
       const r = await fetch(
-        `/api/temis/categorias?enterpriseId=${encodeURIComponent(enterpriseId)}`,
+        `/api/temis/categorias?enterpriseId=${encodeURIComponent(enterpriseId)}${
+          codigo ? `&codigo=${encodeURIComponent(codigo)}` : ""
+        }`,
         {
           body: JSON.stringify({ categoriaPaiId: criandoSob, nome }),
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

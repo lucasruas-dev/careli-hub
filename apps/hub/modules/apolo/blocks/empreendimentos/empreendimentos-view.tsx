@@ -85,6 +85,7 @@ import { toTitleCase } from "@/lib/format/name-case";
 import { getApoloAccessToken } from "../../data/apolo-operations";
 import { MapaTab } from "./masterplan-mapa";
 import { fileToBase64 } from "../../lib/document-capture";
+import { FilhosTab } from "@/modules/apolo/blocks/empreendimentos/filhos-tab";
 import {
   aoClicarNaColuna,
   type ColunaDaOrdem,
@@ -141,6 +142,12 @@ const detailTabs = [
   { icon: MapPinned, id: "unidades", label: "Unidades" },
   // Mapa entra logo depois de Unidades: é a MESMA informação de estoque, vista na planta.
   { icon: MapIcon, id: "mapa", label: "Mapa" },
+  // ⚠️ SÓ APARECE NO PRODUTO AGRUPADO (Lucas, 07/09/2026: *"acho que pode até vir aqui uma aba
+  // filhos"*, *"trazer os filhos com suas respectivas unidades"*). A ficha consolidada esconde de
+  // onde vem o número: o Lagoa Bonita diz 412 unidades, e esse 412 é a soma de LBF, LBP e LBR —
+  // três empreendimentos no C2X que a tela junta numa linha. Num produto simples a aba não existe,
+  // porque uma aba vazia é uma pergunta que a tela faz e responde sozinha.
+  { icon: Layers, id: "filhos", label: "Etapas" },
   { icon: TrendingUp, id: "vendas", label: "Vendas" },
   // "Carteira" com o ícone de carteira do Hades (WalletCards).
   { icon: WalletCards, id: "carteira", label: "Carteira" },
@@ -552,6 +559,10 @@ function EnterpriseDetail({
         {detailTabs.map((item) => {
           const active = tab === item.id;
 
+          // ⚠️ "Etapas" SÓ NO PRODUTO AGRUPADO. Num empreendimento simples ela abriria para dizer
+          // "não tem etapa" — uma pergunta que a tela faz e responde sozinha.
+          if (item.id === "filhos" && row.stages.length === 0) return null;
+
           return (
             <button
               className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
@@ -594,6 +605,7 @@ function EnterpriseDetail({
         {tab === "carteira" ? (
           <CarteiraTab onOpenEntity={onOpenEntity} row={row} />
         ) : null}
+        {tab === "filhos" ? <FilhosTab row={row} /> : null}
         {tab === "vendas" ? (
           <VendasTab onOpenEntity={onOpenEntity} row={row} />
         ) : null}
