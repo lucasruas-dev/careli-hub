@@ -36,6 +36,41 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-07-categorias-do-empreendimento",
+    deployedAt: "2026-09-07T17:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Políticas comerciais agora tem abas: Gestão e comissão, Categorias e Planos.** Planos deixou de ser uma aba solta no topo da ficha.",
+              "**Categorias**: o recorte do empreendimento que assina um contrato próprio — fase, condomínio, loteamento, lotes caucionados. Aceita subcategoria em qualquer profundidade e mostra quantos lotes cada uma tem.",
+              "**O Lagoa Bonita já nasce com as duas**: Condomínio (400 lotes) e Loteamento (95), carimbados pelo prefixo da quadra.",
+              "Ao criar um plano, dá para **criar a categoria ali mesmo**, sem sair do formulário.",
+            ],
+            screen: "Empreendimento",
+          },
+          {
+            items: [
+              "**A tabela ordena por qualquer coluna e abre em ordem alfabética.** Antes vinha por tamanho, e o empreendimento que você procura podia estar na décima linha.",
+            ],
+            screen: "Empreendimentos",
+          },
+        ],
+      },
+    ],
+    rollback: "d936ef01",
+    technical: {
+      done: "A CATEGORIA FOI REDEFINIDA, e a definição é do Lucas (07/09/2026): *\"pode ser fase, condomínio e loteamento, lotes caucionados, TUDO QUE EU PRECISAR TER UMA MINUTA ESPECÍFICA EU TENHO QUE TER COMO CATEGORIA\"*. O critério não é geográfico nem comercial (*\"pode ser os dois\"*) — é DOCUMENTAL. Isso fecha a cadeia que faltava para gerar contrato: unidade → categoria → planos da categoria → plano da venda → minuta; até aqui a ponta esquerda não existia e a regra dele (*\"o que define qual minuta usar é o plano de pagamento\"*) começava no meio da corrente. 0139: categoria hierárquica (`on delete restrict` — apagar uma com filhas levaria um pedaço da estrutura sem ninguém pedir) e `hercules_unidades.categoria_id` (`set null` — apagar a categoria não pode apagar o lote); ⚠️ nulo é o ESTADO NORMAL: *\"quando eu tiver categorias sim as unidades vão apontar; se eu não tiver, não aponta\"*. 0140: o mesmo plano em várias categorias, com a minuta em DOIS níveis — a da categoria é a de todo dia, a do vínculo é a exceção; a minuta morava no PLANO e isso amarrava duas perguntas num campo só (quanto o cliente paga, e o que ele assina). ⚠️ NADA A MIGRAR, E É POR ISSO QUE FOI HOJE: 4 planos em produção, nenhum com categoria, nenhum com minuta. 0138: anuais no plano, com CHECK exigindo quantidade e valor juntos. ⚠️ LBF/LBP/LBR SÃO A GAMBIARRA DO LEGADO (*\"isso é porque o legado não tem essa arquitetura que estamos fazendo no Panteon, estamos exatamente resolvendo isso\"*): a categoria nasce no PAI e o filho lê de lá. O carimbo foi nos dois níveis porque a RESERVA nasce no pai e a PROPOSTA nos filhos (medido: 156 x 536) — é ponte, não arquitetura. E a contagem conta LOTE e não registro: o mesmo terreno existe duas vezes, e somar linhas diria 750 onde há 400. A ordenação da tabela é regra pura com 10 testes: coluna numérica começa no MAIOR, o nome em A→Z, e o nome desempata toda ordenação numérica — sem isso as linhas com zero reservado trocam de lugar entre renderizações. 2.893 testes verdes (210 arquivos); typecheck e lint limpos.",
+      motivation:
+        "Não havia como dizer que um grupo de lotes assina um contrato diferente — e é disso que o Lagoa Bonita precisa, com condomínio e loteamento no mesmo produto.",
+    },
+    title: "As categorias do empreendimento",
+    type: "novidade",
+    version: "1.292.0",
+  },
+  {
     buildTag: "2026-09-07-minutas-com-acoes-e-autoria",
     deployedAt: "2026-09-07T15:00:00-03:00",
     modules: [

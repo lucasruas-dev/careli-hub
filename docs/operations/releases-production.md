@@ -6180,3 +6180,40 @@ Achados que viraram correcao no mesmo lote:
      de estampar um zero que parece medida. O que existe virou selo: quantos PLANOS assinam por ela.
 - Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.883 testes verdes (209 arquivos).
 - Status: `EM PRODUCAO`.
+
+## 2026-09-07 · v1.292.0 — Apolo: as categorias do empreendimento
+
+- Autorizacao: OK explicito do Lucas, para as migrations 0138/0139/0140, o carimbo e o push.
+- Commits: `aac9d0b5` + `9a78e195`. Rollback: `d936ef01` (v1.291.0).
+
+### A categoria foi REDEFINIDA
+
+- Lucas: *"pode ser fase, condominio e loteamento, lotes caucionados, TUDO QUE EU PRECISAR TER UMA
+  MINUTA ESPECIFICA EU TENHO QUE TER COMO CATEGORIA"* e *"pode ser os dois, tanto geografica quanto
+  comercial"*. O criterio nao e geografia nem canal: e DOCUMENTAL.
+- Isso fecha a cadeia que faltava para gerar contrato:
+  `unidade -> categoria -> planos da categoria -> plano da venda -> minuta`.
+- 0139: hierarquia (`on delete restrict`) + `hercules_unidades.categoria_id` (`set null`).
+  ⚠️ NULO E O ESTADO NORMAL — 5.540 unidades, e so o Lagoa Bonita tem recorte.
+- 0140: o mesmo plano em varias categorias, minuta em DOIS niveis (categoria = todo dia; vinculo =
+  excecao). A minuta saiu do PLANO, que amarrava duas perguntas num campo so.
+- ⚠️ NADA A MIGRAR, E POR ISSO FOI HOJE: 4 planos, nenhum com categoria, nenhum com minuta.
+- 0138: anuais no plano, com CHECK exigindo quantidade e valor juntos.
+
+### O Lagoa Bonita, e a licao sobre o legado
+
+- ⚠️ LBF/LBP/LBR SAO A GAMBIARRA DO LEGADO (*"isso e porque o legado nao tem essa arquitetura que
+  estamos fazendo no Panteon, estamos exatamente resolvendo isso"*). A categoria nasce no PAI e o
+  filho le de la; duplicar nos tres seria trazer a limitacao do C2X para ca.
+- Carimbo pelo prefixo da quadra, com OK: Condominio 400 lotes, Loteamento 95. Zero fora do padrao.
+- ⚠️ O carimbo foi nos DOIS niveis porque a RESERVA nasce no pai e a PROPOSTA nos filhos (medido:
+  156 x 536 propostas). E ponte, nao arquitetura.
+- ⚠️ A contagem conta LOTE, nao registro: o mesmo terreno existe duas vezes, e somar linhas diria
+  750 onde ha 400.
+
+### Fica na fila
+
+- O historico do Lagoa Bonita esta partido entre pai e filhos. Nao e conserto: e a arquitetura do
+  legado que este modelo substitui. Vale decidir se as vendas novas nascem todas no pai.
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.893 testes verdes (210 arquivos).
+- Status: `EM PRODUCAO`.
