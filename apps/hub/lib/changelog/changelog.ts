@@ -36,6 +36,45 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-07-temis-estrutura-e-portugues",
+    deployedAt: "2026-09-07T13:00:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O Setup abre em Planos e minutas.** A estrutura que você desenhou — empreendimento, categoria, plano e a minuta que cada plano usa — agora está aqui, e não só na ficha do empreendimento no Apolo.",
+              "**O editor fala português.** Cerca de 360 textos traduzidos: menu de IA, menu de barra, formatação, tabela, mídia e comentários. A IA também passou a responder em português.",
+              "Saíram do menu de IA as opções *Gerar exemplo em MDX* e *Gerar exemplo em Markdown* — vieram na biblioteca e não têm o que fazer numa minuta.",
+            ],
+            screen: "Setup",
+          },
+        ],
+      },
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Enviar para contrato agora confere se há minuta publicada** no empreendimento. Se não houver, recusa dizendo o que cadastrar e onde — em vez de deixar o card chegar ao jurídico sem documento possível.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "e9d4eb5f",
+    technical: {
+      done: "A ESTRUTURA JÁ EXISTIA — ELE NÃO ACHOU PORQUE NÃO ESTAVA NA TÊMIS. Lucas (07/09/2026): *\"eu havia explicado como eu queria ter as dependências, eu não vi onde eu crio as categorias\"*. A cadeia que ele desenhou em 01/09 (empreendimento → categoria → plano → minuta, decisão final no plano: *\"o que define qual minuta usar é o plano de pagamento\"*) estava construída e bem: `PlanosComerciaisTab` cria categoria, cria plano, vincula minuta e conta os planos prontos para gerar contrato — só que mora na ficha do empreendimento no APOLO, e quem passa o dia em contrato trabalha na Têmis, que até agora só mostrava abas por TIPO de documento. É a MESMA tela, não uma cópia (a decisão já tomada com a `MinutasTab`): duas telas criando plano seriam duas verdades sobre o que o empreendimento vende, e a segunda envelheceria calada. ⚠️ E O ENVIO PARA CONTRATO PASSOU A CONFERIR: `servicoDisponivel` foi escrita em 02/09 e NUNCA teve chamador — medido, as duas primeiras vendas reais caíram no ZZ TESTE, que tem ZERO minutas publicadas, e o card chegava ao jurídico sem documento possível. TRADUÇÃO: ~360 textos em 43 arquivos, feita por seis agentes em grupos disjuntos mais uma varredura final. Os dois itens de exemplo técnico foram REMOVIDOS em vez de traduzidos. ⚠️ Os prompts NÃO foram traduzidos — são ordem para o modelo, não texto de tela, e carregam marcadores que o editor injeta (`{editor}`, `<Block>`); reescrevê-los mudaria o comportamento. A instrução de idioma vai anexada a cada um, numa constante só, porque um editor em português com IA respondendo em inglês é o mesmo defeito um passo adiante. Ficaram em inglês de propósito: nomes de fonte do sistema (traduzir quebra a renderização de emoji), todo `value` de item de menu (comparado com ===), estados do código e nomes de tecla. 2.883 testes verdes (209 arquivos); typecheck e lint limpos.",
+      motivation:
+        "A estrutura de confecção estava no módulo errado e o editor inteiro falava inglês — as duas coisas que o dono apontou como a maior dor da Têmis.",
+    },
+    title: "A estrutura da Têmis, e o editor em português",
+    type: "melhoria",
+    version: "1.290.0",
+  },
+  {
     buildTag: "2026-09-07-chat-clean-e-simulador-em-botao",
     deployedAt: "2026-09-07T09:30:00-03:00",
     modules: [

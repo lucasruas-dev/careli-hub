@@ -6104,3 +6104,38 @@ Achados que viraram correcao no mesmo lote:
   das abas, e o componente antigo saiu junto (51 linhas).
 - Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.883 testes verdes (209 arquivos).
 - Status: `EM PRODUCAO`.
+
+## 2026-09-07 · v1.290.0 — Temis: a estrutura de confeccao, e o editor em portugues
+
+- Autorizacao: OK explicito do Lucas ("tem o meu ok").
+- Commits: `197e0bc8` + `3e998c51`. Rollback: `e9d4eb5f` (v1.289.0).
+
+### A estrutura ja existia — ele nao achou porque nao estava na Temis
+
+- Lucas: *"eu havia explicado como eu queria ter as dependencias, eu nao vi onde eu crio as
+  categorias"*. A cadeia de 01/09 (empreendimento -> categoria -> plano -> minuta, decisao final no
+  plano) estava CONSTRUIDA e bem: `PlanosComerciaisTab` cria categoria, cria plano, vincula minuta e
+  conta os planos prontos para gerar contrato. So que mora na ficha do empreendimento, no APOLO.
+- E a MESMA tela, nao uma copia — a decisao ja tomada com a `MinutasTab`. Duas telas criando plano
+  seriam duas verdades sobre o que o empreendimento vende, e a segunda envelheceria calada.
+- ⚠️ `servicoDisponivel` foi escrita em 02/09 e NUNCA teve chamador. Medido: as duas primeiras
+  vendas reais cairam no ZZ TESTE, que tem ZERO minutas publicadas — o card chegava ao juridico e
+  nao havia documento possivel. Agora o envio recusa antes, dizendo o que cadastrar e onde.
+
+### O editor em portugues
+
+- ~360 textos em 43 arquivos, por seis agentes em grupos disjuntos + varredura final.
+- "Gerar exemplo em MDX" e "Gerar exemplo em Markdown" foram REMOVIDOS, nao traduzidos.
+- ⚠️ Os prompts NAO foram traduzidos (sao ordem para o modelo e carregam marcadores que o editor
+  injeta); a instrucao de idioma vai ANEXADA a cada um, senao o editor ficaria em portugues com a
+  IA respondendo em ingles.
+- Em ingles de proposito: nomes de FONTE do sistema (traduzir quebra emoji), todo `value` de item de
+  menu (comparado com ===), estados do codigo e nomes de tecla.
+
+### Achado que fica para o proximo passo
+
+- ⚠️ A PROPOSTA GUARDA SO O NOME DO PLANO ("PLANO NORMAL"), sem vinculo com `temis_planos`
+  (`plano_c2x_id` nulo nas 4 propostas nativas). Sem esse vinculo o motor de contrato nao tem como
+  cumprir a regra do Lucas — "o contrato e o do plano". Barato agora, caro depois.
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.883 testes verdes (209 arquivos).
+- Status: `EM PRODUCAO`.
