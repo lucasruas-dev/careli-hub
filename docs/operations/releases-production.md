@@ -6086,3 +6086,21 @@ Achados que viraram correcao no mesmo lote:
   o juridico esta desfazendo seria a tela contando duas historias sobre a mesma linha.
 - Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.883 testes verdes (209 arquivos).
 - Status: `EM PRODUCAO`.
+
+## 2026-09-07 · v1.289.0 — Hercules: o chat como chat, e o simulador em um botao
+
+- Autorizacao: OK explicito do Lucas ("tem meu ok").
+- Commit: `77fc38bc`. Rollback: `df957aa7` (v1.288.0).
+- Pedido: *"aqui muda para enviar e tira essas frases de nao registrado, fica tudo gravado, deixa
+  clean, tipo um campo de mensagens do whatsapp, deixa no rodape do painel. vamos tirar esse painel
+  de simulador e deixar ele como um botao no painel de venda"*.
+- As duas frases removidas ensinavam o que a pessoa descobre ao escrever a primeira linha.
+  "Registrar" virou "ENVIAR": o gesto e o de qualquer chat.
+- ⚠️ O CAMPO NO RODAPE EXIGIU ALTURA NA CADEIA INTEIRA — cartao com `maxAltura`, as tres abas com
+  `height: 100%`, a lista com `flex: 1` e `minHeight: 0`. O `minHeight` nao e enfeite: sem ele um
+  filho de flex nao encolhe abaixo do proprio conteudo, a rolagem nao existe e o campo desce para
+  fora da vista a cada mensagem — o mesmo defeito que a conferencia de ontem apontou.
+- O simulador ocupava um cartao inteiro para uma acao de UM clique; virou botao discreto a direita
+  das abas, e o componente antigo saiu junto (51 linhas).
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.883 testes verdes (209 arquivos).
+- Status: `EM PRODUCAO`.

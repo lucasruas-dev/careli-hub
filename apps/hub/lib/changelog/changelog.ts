@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-07-chat-clean-e-simulador-em-botao",
+    deployedAt: "2026-09-07T09:30:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**O chat ficou como um chat**: sem os avisos de \"nada registrado ainda\" e \"fica gravado com seu nome\", com o campo colado no rodapé do painel e o botão dizendo **Enviar**.",
+              "**O simulador virou um botão** ao lado das abas, no próprio painel da Venda. O cartão que ele ocupava na coluna saiu.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "df957aa7",
+    technical: {
+      done: "Lucas (07/09/2026): *\"aqui muda para enviar e tira essas frases de não registrado, fica tudo gravado, deixa clean, tipo um campo de mensagens do whatsapp, deixa no rodapé do painel. vamos tirar esse painel de simulador e deixar ele como um botão no painel de venda\"*. As duas frases removidas ensinavam o que a pessoa descobre ao escrever a primeira linha, e ocupavam o lugar do que importa; \"Registrar\" virou \"Enviar\" porque o gesto é o de qualquer chat e o nome do gesto tem de ser o que a pessoa já conhece. ⚠️ O CAMPO NO RODAPÉ EXIGIU ALTURA DE VERDADE NA CADEIA INTEIRA — cartão com `maxAltura`, as três abas com `height: 100%`, a lista com `flex: 1` e `minHeight: 0` — e o `minHeight` não é enfeite: sem ele um filho de flex nunca encolhe abaixo do próprio conteúdo, a lista cresce, a rolagem não existe e o campo desce para fora da vista a cada mensagem, que é o mesmo defeito que a conferência de ontem apontou no `overflow` sem teto. O SIMULADOR ocupava um cartão inteiro — título, parágrafo e botão de largura cheia — para uma ação de UM clique, empurrando para baixo o que se lê; virou botão discreto à direita das abas, e o componente antigo saiu junto (51 linhas) em vez de virar código morto. 2.883 testes verdes (209 arquivos); typecheck e lint limpos.",
+      motivation:
+        "O chat se explicava em vez de deixar escrever, e o simulador tomava uma coluna inteira para caber um clique.",
+    },
+    title: "O chat como chat, e o simulador em um botão",
+    type: "melhoria",
+    version: "1.289.0",
+  },
+  {
     buildTag: "2026-09-06-chat-simples-e-entrega-prevista",
     deployedAt: "2026-09-06T19:30:00-03:00",
     modules: [
