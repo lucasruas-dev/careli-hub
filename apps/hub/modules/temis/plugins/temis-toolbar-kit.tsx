@@ -1,7 +1,7 @@
 "use client";
 
 import { importDocx } from "@platejs/docx-io";
-import { Braces, FileUp, Loader2, PanelRight, Search } from "lucide-react";
+import { Braces, FileUp, Loader2, PanelRight, Search, Wand2 } from "lucide-react";
 import type { PluginConfig, Value } from "platejs";
 import {
   createTPlatePlugin,
@@ -37,6 +37,10 @@ type OpcoesDaBarra = {
   aoAvisar: ((aviso: string) => void) | null;
   buscaAberta: boolean;
   importando: boolean;
+  /** O agente está lendo a minuta agora. Trava o botão e mostra que há trabalho em curso. */
+  marcando: boolean;
+  /** Sobe quando alguém pede a marcação: o painel escuta e dispara a leitura. */
+  pedidoDeMarcacao: number;
   painelAberto: boolean;
 };
 
@@ -46,6 +50,8 @@ export const TemisToolbarPlugin = createTPlatePlugin<PluginConfig<"fixed-toolbar
     aoAvisar: null,
     buscaAberta: false,
     importando: false,
+    marcando: false,
+    pedidoDeMarcacao: 0,
     // ⚠️ ABERTO POR PADRÃO. Pedido do Lucas (01/09/2026): "a ideia das variveis, é abrir ao lado e
     // trazer elas separadas por grupos, seria mais facil de visualizar".
     painelAberto: true,
@@ -75,6 +81,7 @@ function BarraDaTemis() {
           <ToolbarGroup>
             <BotaoImportarDocx />
             <BotaoBuscar />
+            <BotaoSuperAgente />
             <BotaoVariaveis />
           </ToolbarGroup>
         )}
@@ -179,9 +186,50 @@ function BotaoBuscar() {
 }
 
 /**
- * Mostra/esconde o painel de variáveis. O painel vive AO LADO da folha, não aqui — ver a nota em
- * `PainelDeVariaveis` (editor-de-minuta.tsx). Este botão só o esconde quando o jurídico quer a
- * folha inteira para reler.
+ * O SUPER AGENTE — lê a minuta e diz onde cada variável entra.
+ *
+ * Pedido do Lucas (07/09/2026): *"um super agente que consiga inserir as variáveis, olhar o texto e
+ * identificar onde as variáveis vão, e conhece todas as variáveis"*. Roda em Opus 5.
+ *
+ * ⚠️ ELE PROPÕE, NÃO REESCREVE. O botão não muda uma vírgula do contrato: manda o texto, recebe uma
+ * lista de "este trecho é esta variável", e cada proposta é aceita por quem está lendo. A razão está
+ * inteira em `lib/temis/marcar-variaveis.ts` — a curta é que uma IA reescrevendo instrumento
+ * jurídico muda palavra que ninguém pediu, e ninguém confere 60 mil caracteres para achar.
+ *
+ * O botão só levanta um pedido; quem lê o documento e chama a rota é o painel, que já tem o valor em
+ * mãos. Assim a barra não precisa conhecer o conteúdo da folha.
+ */
+function BotaoSuperAgente() {
+  const { setOption } = useEditorPlugin(TemisToolbarPlugin);
+  const marcando = usePluginOption(TemisToolbarPlugin, "marcando");
+  const pedidos = usePluginOption(TemisToolbarPlugin, "pedidoDeMarcacao");
+
+  return (
+    <ToolbarButton
+      className="data-[state=on]:bg-[#A07C3B] data-[state=on]:text-white"
+      disabled={marcando}
+      onClick={() => {
+        // Abre o painel junto: é lá que as propostas aparecem, e sem isso o clique não teria
+        // resposta visível.
+        setOption("painelAberto", true);
+        setOption("pedidoDeMarcacao", pedidos + 1);
+      }}
+      tooltip={
+        marcando
+          ? "Lendo a minuta…"
+          : "Ler a minuta e propor onde entram as variáveis (não altera o texto)"
+      }
+    >
+      {marcando ? <Loader2 className="animate-spin" /> : <Wand2 />}
+      <span className="hidden xl:inline">{marcando ? "Lendo…" : "Marcar variáveis"}</span>
+    </ToolbarButton>
+  );
+}
+
+/**
+ * Mostra/esconde o painel lateral. Ele vive AO LADO da folha, não aqui — ver a nota em
+ * `PainelLateral` (editor-de-minuta.tsx). Este botão só o esconde quando o jurídico quer a folha
+ * inteira para reler.
  */
 function BotaoVariaveis() {
   const { setOption } = useEditorPlugin(TemisToolbarPlugin);

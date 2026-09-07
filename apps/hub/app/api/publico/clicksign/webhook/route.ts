@@ -52,6 +52,32 @@ function headersSeguros(request: Request): Record<string, string> {
   return saida;
 }
 
+/**
+ * As chaves de primeiro nível do corpo — a FORMA do evento, sem o conteúdo.
+ *
+ * É o que responde as perguntas da descoberta ("o corpo é JSON ou form-data?", "o nome do evento
+ * vem em `event` ou em `type`?", "vem `signer` ou `signers`?") sem levar CPF nenhum para o log.
+ * Para form-data, devolve os nomes dos campos.
+ */
+function chavesDePrimeiroNivel(cru: string): string[] {
+  if (!cru) return [];
+  try {
+    const corpo: unknown = JSON.parse(cru);
+    if (corpo && typeof corpo === "object" && !Array.isArray(corpo)) {
+      return Object.keys(corpo as Record<string, unknown>).slice(0, 40);
+    }
+    return [Array.isArray(corpo) ? "(array)" : `(${typeof corpo})`];
+  } catch {
+    // Não é JSON: provavelmente form-data (o formato em que o webhook do D4Sign chega, apesar de a
+    // doc mostrar JSON). Os NOMES dos campos são seguros; os valores não.
+    try {
+      return [...new URLSearchParams(cru).keys()].slice(0, 40);
+    } catch {
+      return ["(corpo ilegível)"];
+    }
+  }
+}
+
 export async function POST(request: Request) {
   // ⚠️ LÊ COMO TEXTO, e não como JSON. É o único jeito de ver o que realmente chegou: se vier
   // form-data (como no D4Sign), `request.json()` devolveria vazio sem erro e a descoberta terminaria
@@ -60,15 +86,24 @@ export async function POST(request: Request) {
 
   const tipoDoCorpo = request.headers.get("content-type") ?? "(sem content-type)";
 
+  // ⚠️ O CORPO NÃO VAI PARA O LOG, e isto é correção de um defeito real que a revisão pegou. O
+  // payload de um evento `sign` traz nome, e-mail, CPF, IP e geolocalização de quem assinou —
+  // exatamente o rastro pessoal que `guardian/d4sign-consulta.ts` se recusa a deixar entrar até no
+  // TIPO. Log da Vercel é legível por qualquer pessoa com acesso ao projeto e sai em drain; e, pior
+  // para a própria descoberta, tem retenção curta: o payload que motivou esta fase não estaria mais
+  // lá na semana que vem.
+  //
+  // O que vai é o ESQUELETO: o formato (é JSON ou form-data?), o tamanho, os cabeçalhos e as chaves
+  // de primeiro nível. É disso que a descoberta precisa — saber a FORMA do evento, não o conteúdo.
+  // O conteúdo passa a ser guardado quando a tabela `temis_assinatura_eventos` existir, que é o
+  // molde do `apolo_asaas_eventos` e resolve retenção e privacidade de uma vez.
   console.info("[clicksign][webhook] evento recebido", {
+    chavesDoCorpo: chavesDePrimeiroNivel(cru),
+    headers: headersSeguros(request),
     // O carimbo é NOSSO: o horário do provedor pode vir sem fuso, ou não vir.
     recebidoEm: new Date().toISOString(),
-    tipoDoCorpo,
     tamanhoDoCorpo: cru.length,
-    headers: headersSeguros(request),
-    // Teto de 20 mil caracteres: um payload gigante não pode entupir o log (e a conta dele).
-    corpo: cru.slice(0, 20_000),
-    truncado: cru.length > 20_000,
+    tipoDoCorpo,
   });
 
   // Sempre 200: nesta fase, qualquer outra resposta faria a Clicksign reenviar o mesmo evento por

@@ -43,7 +43,12 @@ export function TemisPage() {
     void (async () => {
       try {
         const token = await getApoloAccessToken();
-        const r = await fetch("/api/apolo/empreendimentos", {
+        // ⚠️ `incluirTeste=1` é EXCLUSIVO DA TÊMIS. O empreendimento de teste fica fora da listagem
+        // padrão porque a mesma lista alimenta carteira, cobrança e extrato — um produto de mentira
+        // ali estragaria soma de VGV e relatório financeiro. Aqui ele é justamente o que se quer:
+        // redigir e publicar minuta contra um empreendimento que não tem cliente de verdade.
+        // Lucas (07/09/2026): *"libera ele ae testamos lá"*.
+        const r = await fetch("/api/apolo/empreendimentos?incluirTeste=1", {
           cache: "no-store",
           headers: { Authorization: `Bearer ${token}` },
         });

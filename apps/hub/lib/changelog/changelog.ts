@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-07-super-agente-da-minuta",
+    deployedAt: "2026-09-07T23:00:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O agente lê a minuta e diz onde cada variável entra.** Botão *Marcar variáveis* na barra: ele percorre o contrato inteiro, conhece as 280 variáveis do catálogo e propõe o que vira o quê.",
+              "**Ele não mexe no seu texto.** Cada proposta mostra o trecho do contrato e a variável sugerida; você aceita uma a uma e vê onde cada uma cai.",
+              "**O que a conferência recusou também aparece**, com o motivo — variável inventada, trecho que não bate com o texto, trecho que se repete no documento.",
+              "**O empreendimento de teste agora aparece** no seletor da Têmis, para redigir minuta sem tocar em produto de verdade.",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+    ],
+    rollback: "9a3e3177",
+    technical: {
+      done: "O PEDIDO, NA PALAVRA DELE (07/09/2026): *\"um super agente que consiga inserir as variáveis, olhar o texto e identificar onde as variáveis vão, e conhece todas as variáveis, pode subir para opus 5\"*. Roda em `CLAUDE_MODEL.frontier` (Opus 5) com o catálogo inteiro no prompt — nome, rótulo, fonte e EXEMPLO de cada variável; é o exemplo que faz o modelo reconhecer o padrão no texto em vez de adivinhar pelo nome. ⚠️ ELE PROPÕE, NÃO REESCREVE, e esta é a decisão que sustenta tudo: uma IA devolvendo o contrato reescrito muda palavra que ninguém pediu (\"resolvido\" vira \"rescindido\", uma vírgula muda quem paga o ITBI) e ninguém confere 60 mil caracteres para achar a diferença; pior, escreveria `[nome do cliente]` no lugar de `[nome_cliente]`, que é exatamente como `[Nome]` e `[CPF]` entraram nas minutas do legado e saíram impressos. Aqui ela devolve pares {trecho, variável} e o texto jurídico não passa por ela de volta. ⚠️ QUATRO RECUSAS NO SERVIDOR, cada uma por um estrago diferente: variável fora do catálogo (o modelo vê \"CPF do fiador\" e propõe `[cpf_fiador]`); trecho parafraseado (citou \"Joao\" e o texto diz \"JOÃO\" — substituir pelo aproximado mexeria no instrumento); trecho REPETIDO (\"CPF n.º\" aparece cinco vezes numa minuta de cinco compradores, e marcar a primeira ocorrência marca o comprador errado em silêncio); e trecho já marcado (`[[nome_cliente]]`). ⚠️ UM TESTE MEU FALHOU E VIROU REGRA: propus marcar a quadra pelo trecho \"12\", que também vive dentro de \"123.456.789-00\" — o CPF viraria número de quadra no contrato, sem erro nenhum. `achar-trecho.ts` faz a volta do texto para os NÓS, porque marcar no texto e reconstruir o documento perderia negrito, tabela e quebra de cláusula; ele aguenta trecho PARTIDO entre nós (metade em negrito é o caso comum, e é o mesmo fenômeno do `[nome_cl</strong>iente]` do JDG) e trata o limite entre dois nós com lados opostos para início e fim, senão a seleção nasce degenerada. A faixa é procurada DE NOVO no clique: a posição veio de quando o agente leu, e se a folha mudou não se aplica nada. NÃO HÁ \"APLICAR TUDO\", de propósito — em contrato, revisar em lote é não revisar. ⚠️ O EMPREENDIMENTO DE TESTE não podia sair de `EXCLUDED_ENTERPRISE_CODES` (a lista alimenta ~15 leituras: carteira, cobrança, extrato, credenciamento), então virou opt-in por chamada, só na Têmis; e no caminho a lista alimentava placeholders E parâmetros da query em pontos diferentes do arquivo — mudar um sem o outro mandaria 4 valores para 3 interrogações e o MySQL recusaria tudo. 3.020 testes verdes (215 arquivos); typecheck e lint limpos.",
+      motivation:
+        "Marcar uma minuta variável a variável é o trabalho mais caro da Têmis: só a qualificação das partes tem ~20 marcas, e cada uma é uma chance de escolher a errada — que sai impressa e ninguém vê.",
+    },
+    title: "O agente que marca a minuta",
+    type: "novidade",
+    version: "1.294.0",
+  },
+  {
     buildTag: "2026-09-07-clicksign-webhook-descoberta",
     deployedAt: "2026-09-07T21:30:00-03:00",
     modules: [

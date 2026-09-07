@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Plus, X } from "lucide-react";
+import { Check, ChevronRight, Plus, Wand2, X } from "lucide-react";
 import type { Value } from "platejs";
 import {
   Plate,
@@ -21,10 +21,13 @@ import { migrarAlinhamentoAntigo } from "@/lib/temis/migrar-documento";
 import { setMinutaAtualParaUpload } from "@/lib/temis/upload-midia";
 import { useAuth } from "@/providers/auth-provider";
 
+import { faixaDoTrecho, textoDoDocumento } from "./plugins/achar-trecho";
+
 import { EditorKitTemis } from "./editor-kit-temis";
 import { TemisToolbarPlugin } from "./plugins/temis-toolbar-kit";
 import { inserirVariavel } from "./plugins/variavel-input-kit";
 import {
+  noDeVariavel,
   origemPendente,
   promoverVariaveisNoValor,
   VARIAVEIS_POR_GRUPO,
@@ -239,28 +242,58 @@ function PainelLateral({
   editor: PlateEditor;
   jaUsadas: Set<string>;
 }) {
-  const [aba, setAba] = useState<"blocos" | "variaveis">(
-    jaUsadas.size === 0 ? "blocos" : "variaveis",
-  );
+  const [aba, setAba] = useState<Aba>(jaUsadas.size === 0 ? "blocos" : "variaveis");
+  const [propostas, setPropostas] = useState<null | RespostaDoAgente>(null);
+  const pedidos = usePluginOption(TemisToolbarPlugin, "pedidoDeMarcacao");
+
+  // O botão da barra só levanta um pedido; quem lê o documento e chama a rota é este painel, que
+  // já tem o editor em mãos. Assim a barra não precisa conhecer o conteúdo da folha.
+  useEffect(() => {
+    if (pedidos === 0) return;
+    let cancelado = false;
+
+    const marcar = async () => {
+      editor.setOption(TemisToolbarPlugin, "marcando", true);
+      setAba("agente");
+      setPropostas(null);
+      try {
+        const resposta = await pedirMarcacao(textoDoDocumento(editor.children));
+        if (!cancelado) setPropostas(resposta);
+      } finally {
+        if (!cancelado) editor.setOption(TemisToolbarPlugin, "marcando", false);
+      }
+    };
+
+    void marcar();
+    return () => {
+      cancelado = true;
+    };
+  }, [editor, pedidos]);
+
+  const abas: { chave: Aba; conta?: number; rotulo: string }[] = [
+    { chave: "blocos", rotulo: "Blocos" },
+    { chave: "variaveis", conta: jaUsadas.size, rotulo: "Variáveis" },
+    { chave: "agente", conta: propostas?.propostas.length, rotulo: "Agente" },
+  ];
 
   return (
     <aside className="flex w-80 shrink-0 flex-col border-l border-line bg-surface">
       <div className="flex items-center justify-between gap-2 border-b border-line px-2 py-2">
         <div className="flex gap-1">
-          {(["blocos", "variaveis"] as const).map((qual) => (
+          {abas.map((a) => (
             <button
-              className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
-                aba === qual
+              className={`rounded-lg px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                aba === a.chave
                   ? "bg-inverse text-brand-ink"
                   : "text-ink-muted hover:bg-subtle hover:text-ink"
               }`}
-              key={qual}
-              onClick={() => setAba(qual)}
+              key={a.chave}
+              onClick={() => setAba(a.chave)}
               type="button"
             >
-              {qual === "blocos" ? "Blocos" : "Variáveis"}
-              {qual === "variaveis" && jaUsadas.size > 0 ? (
-                <span className="ml-1 font-normal normal-case opacity-70">{jaUsadas.size}</span>
+              {a.rotulo}
+              {a.conta ? (
+                <span className="ml-1 font-normal normal-case opacity-70">{a.conta}</span>
               ) : null}
             </button>
           ))}
@@ -275,12 +308,184 @@ function PainelLateral({
         </button>
       </div>
 
-      {aba === "blocos" ? (
-        <ListaDeBlocos editor={editor} />
-      ) : (
-        <ListaDeVariaveis editor={editor} jaUsadas={jaUsadas} />
-      )}
+      {aba === "blocos" ? <ListaDeBlocos editor={editor} /> : null}
+      {aba === "variaveis" ? <ListaDeVariaveis editor={editor} jaUsadas={jaUsadas} /> : null}
+      {aba === "agente" ? (
+        <ListaDoAgente
+          aoAplicar={(p) => {
+            aplicarProposta(editor, p);
+            setPropostas((atual) =>
+              atual
+                ? { ...atual, propostas: atual.propostas.filter((x) => x.trecho !== p.trecho) }
+                : atual,
+            );
+          }}
+          resposta={propostas}
+        />
+      ) : null}
     </aside>
+  );
+}
+
+type Aba = "agente" | "blocos" | "variaveis";
+
+type PropostaDoAgente = {
+  motivo: string;
+  nome: string;
+  origem: string;
+  posicao: number;
+  rotulo: string;
+  trecho: string;
+};
+
+type RespostaDoAgente = {
+  erro?: string;
+  propostas: PropostaDoAgente[];
+  recusadas: { motivo: string; nome: string; trecho: string }[];
+};
+
+async function pedirMarcacao(texto: string): Promise<RespostaDoAgente> {
+  try {
+    const r = await fetch("/api/temis/minutas/marcar", {
+      body: JSON.stringify({ texto }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const corpo = (await r.json().catch(() => ({}))) as Partial<RespostaDoAgente> & {
+      erro?: string;
+    };
+    if (!r.ok) {
+      return { erro: corpo.erro ?? "O agente não respondeu.", propostas: [], recusadas: [] };
+    }
+    return {
+      propostas: corpo.propostas ?? [],
+      recusadas: corpo.recusadas ?? [],
+    };
+  } catch {
+    return { erro: "Falha de rede ao chamar o agente.", propostas: [], recusadas: [] };
+  }
+}
+
+/**
+ * Troca o trecho pela variável, no documento.
+ *
+ * ⚠️ ACHA A FAIXA DE NOVO, NA HORA DO CLIQUE. A posição veio do texto de quando o agente leu; se
+ * alguém editou a folha nesse meio-tempo, ela não vale mais. `faixaDoTrecho` devolve null quando o
+ * trecho sumiu ou passou a aparecer duas vezes — e aí não se aplica nada, em vez de marcar por
+ * aproximação.
+ */
+function aplicarProposta(editor: PlateEditor, proposta: PropostaDoAgente) {
+  const faixa = faixaDoTrecho(editor.children, proposta.trecho);
+  if (!faixa) return;
+
+  const at = { anchor: faixa.inicio, focus: faixa.fim };
+  editor.tf.removeNodes({ at, empty: true });
+  editor.tf.delete({ at });
+  editor.tf.insertNodes(noDeVariavel(proposta.nome) as never, { at: faixa.inicio, select: true });
+  editor.tf.focus();
+}
+
+/**
+ * O QUE O AGENTE PROPÔS.
+ *
+ * ⚠️ CADA PROPOSTA É ACEITA UMA A UMA, e não há "aplicar tudo". Num contrato, revisar em lote é o
+ * mesmo que não revisar: o operador clicaria uma vez e as 80 marcações entrariam sem ninguém ter
+ * olhado — inclusive a que confunde o cônjuge com o segundo comprador, que é o erro mais provável
+ * do modelo e o mais difícil de achar depois.
+ *
+ * ⚠️ E O QUE FOI RECUSADO APARECE, com o motivo. Não é erro escondido: é a rede de segurança se
+ * mostrando, e é como quem usa aprende onde o agente erra.
+ */
+function ListaDoAgente({
+  aoAplicar,
+  resposta,
+}: {
+  aoAplicar: (p: PropostaDoAgente) => void;
+  resposta: null | RespostaDoAgente;
+}) {
+  const marcando = usePluginOption(TemisToolbarPlugin, "marcando");
+
+  if (marcando) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <Wand2 aria-hidden="true" className="size-5 animate-pulse text-ink-muted" />
+        <p className="m-0 text-xs text-ink-soft">
+          Lendo a minuta inteira e procurando onde cada variável entra. Contrato longo leva alguns
+          minutos.
+        </p>
+      </div>
+    );
+  }
+
+  if (!resposta) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <Wand2 aria-hidden="true" className="size-5 text-ink-muted" />
+        <p className="m-0 text-xs text-ink-soft">
+          Clique em <strong className="font-semibold text-ink">Marcar variáveis</strong> na barra: o
+          agente lê a minuta e propõe onde cada uma entra. Ele não altera o seu texto — você aceita
+          uma a uma.
+        </p>
+      </div>
+    );
+  }
+
+  if (resposta.erro) {
+    return <p className="m-0 p-5 text-xs text-rose-600 dark:text-rose-300">{resposta.erro}</p>;
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-auto p-1.5">
+      {resposta.propostas.length === 0 ? (
+        <p className="m-0 px-3 py-4 text-xs text-ink-soft">
+          O agente não achou nada novo para marcar. Se a minuta já está marcada, é isso mesmo.
+        </p>
+      ) : (
+        <p className="m-0 px-3 py-2 text-[10px] leading-tight text-ink-muted">
+          {resposta.propostas.length} proposta(s). Clique para aplicar — uma a uma, para você ver
+          onde cada uma cai.
+        </p>
+      )}
+
+      {resposta.propostas.map((p) => (
+        <button
+          className="group mb-1 flex w-full flex-col items-start gap-1 rounded-lg px-2 py-2 text-left transition-colors hover:bg-subtle"
+          key={`${p.posicao}-${p.nome}`}
+          onClick={() => aoAplicar(p)}
+          onMouseDown={(e) => e.preventDefault()}
+          type="button"
+        >
+          <span className="flex w-full items-center gap-1.5">
+            <Wand2 aria-hidden="true" className="size-3 shrink-0 text-ink-muted" />
+            <span className="flex-1 truncate text-xs font-medium text-ink">{p.rotulo}</span>
+          </span>
+          {/* O trecho é o que o operador precisa ver: é o pedaço do CONTRATO que vai sumir. */}
+          <span className="w-full truncate rounded bg-subtle px-1.5 py-1 text-[10px] italic text-ink-soft">
+            “{p.trecho}”
+          </span>
+          <span className="pl-[1.125rem] font-mono text-[10px] text-ink-muted">[{p.nome}]</span>
+          {p.motivo ? (
+            <span className="pl-[1.125rem] text-[10px] leading-tight text-ink-soft">{p.motivo}</span>
+          ) : null}
+        </button>
+      ))}
+
+      {resposta.recusadas.length > 0 ? (
+        <section className="mt-2 border-t border-line pt-2">
+          <p className="m-0 px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+            {resposta.recusadas.length} recusada(s) pela conferência
+          </p>
+          {resposta.recusadas.map((r, i) => (
+            <p
+              className="m-0 px-3 py-1 text-[10px] leading-tight text-amber-700 dark:text-amber-300"
+              key={`${r.nome}-${i}`}
+            >
+              {r.motivo}
+            </p>
+          ))}
+        </section>
+      ) : null}
+    </div>
   );
 }
 

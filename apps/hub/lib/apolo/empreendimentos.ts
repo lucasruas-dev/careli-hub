@@ -135,9 +135,35 @@ type EnterpriseQueryRow = RowDataPacket & {
   vendido_value: string | number | null;
 };
 
-export async function loadApoloEnterprises(): Promise<
-  { data: ApoloEnterprisesData; ok: true } | { error: string; ok: false }
-> {
+/**
+ * O EMPREENDIMENTO DE TESTE, e por que ele é exceção em vez de estar na lista.
+ *
+ * Lucas, 07/09/2026, com a tela de minutas aberta: *"o empreendimento teste não aparece para gente
+ * fazer minuta"*, *"libera ele ae testamos lá"*.
+ *
+ * ⚠️ NÃO DÁ PARA TIRÁ-LO DE `EXCLUDED_ENTERPRISE_CODES`. Aquela lista é usada em ~15 leituras —
+ * carteira, cobrança, extrato, credenciamento, análises da CACÁ. Removendo o TSC de lá, o
+ * empreendimento de teste passa a aparecer em relatório financeiro e em soma de VGV, e ninguém
+ * associaria o número errado do mês que vem a esta conversa. É exatamente o caso do
+ * [[reference_camada_nova_exige_varrer_leitores]]: mexer na fonte comum atinge quem você não viu.
+ *
+ * Por isso a liberação é POR CHAMADA e opt-in: só quem pede recebe. A Têmis pede, porque redigir
+ * minuta contra um empreendimento de mentira é justamente o que se quer poder fazer; o resto da
+ * casa continua sem enxergar.
+ *
+ * ⚠️ E SÓ O TESTE É LIBERADO. `SDT`, `LAB` e `LAG` continuam fora sempre: eles não são teste, são
+ * masterplan e aditivo da Lagoa Bonita — registros que duplicariam unidade de verdade.
+ */
+const CODIGO_DE_TESTE = "TSC";
+
+export type OpcoesDosEmpreendimentos = {
+  /** Traz o empreendimento de TESTE junto. Só a Têmis usa — ver a nota acima. */
+  incluirTeste?: boolean;
+};
+
+export async function loadApoloEnterprises(
+  opcoes: OpcoesDosEmpreendimentos = {},
+): Promise<{ data: ApoloEnterprisesData; ok: true } | { error: string; ok: false }> {
   const poolResult = getHadesDbPool();
 
   if (!poolResult.ok) {
@@ -147,7 +173,11 @@ export async function loadApoloEnterprises(): Promise<
     };
   }
 
-  const placeholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+  const excluidos = opcoes.incluirTeste
+    ? EXCLUDED_ENTERPRISE_CODES.filter((codigo) => codigo !== CODIGO_DE_TESTE)
+    : EXCLUDED_ENTERPRISE_CODES;
+
+  const placeholders = excluidos.map(() => "?").join(", ");
   const balde = sqlDoBalde("u");
   const [rows] = await poolResult.pool.query<EnterpriseQueryRow[]>(
     `select
@@ -183,7 +213,12 @@ export async function loadApoloEnterprises(): Promise<
      order by e.code`,
     // Os status saíram dos parâmetros: agora eles vivem dentro do CASE de sqlDoBalde, que é
     // texto fixo do nosso código (nunca entrada de usuário) e por isso pode ser interpolado.
-    [...EXCLUDED_ENTERPRISE_CODES],
+    //
+    // ⚠️ TEM DE SER `excluidos`, E NÃO A CONSTANTE. Os placeholders acima são contados a partir
+    // desta mesma lista: usar a constante aqui mandaria 4 parâmetros para 3 interrogações, e o
+    // MySQL recusaria a query inteira. É o defeito clássico de quem torna uma lista fixa variável e
+    // esquece de varrer os leitores dela.
+    [...excluidos],
   );
 
   const mapped = rows.map(mapEnterpriseRow);
@@ -346,15 +381,22 @@ function playerSelect(column: string, alias: string): string {
 }
 
 // Cadastro do empreendimento (uma ficha por CÓDIGO — o produto consolidado tem N).
+//
+// ⚠️ ACEITA O TESTE quando quem chama já o recebeu na listagem. Sem isto, o empreendimento aparece
+// no seletor da Têmis e a ficha dele volta vazia — pior que não aparecer, porque parece defeito.
 export async function loadApoloEnterpriseCadastro(
   codes: string[],
+  opcoes: OpcoesDosEmpreendimentos = {},
 ): Promise<
   | { cadastros: ApoloEnterpriseCadastro[]; ok: true }
   | { error: string; ok: false }
 > {
+  const bloqueados = opcoes.incluirTeste
+    ? EXCLUDED_ENTERPRISE_CODES.filter((codigo) => codigo !== CODIGO_DE_TESTE)
+    : EXCLUDED_ENTERPRISE_CODES;
   const validCodes = codes
     .map((code) => code.trim().toUpperCase())
-    .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
+    .filter((code) => code && !bloqueados.includes(code));
 
   if (!validCodes.length) {
     return { cadastros: [], ok: true };
@@ -555,12 +597,16 @@ type UnitQueryRow = RowDataPacket & {
 // Unidades de um empreendimento (ou do produto consolidado: aceita N códigos).
 export async function loadApoloEnterpriseUnits(
   codes: string[],
+  opcoes: OpcoesDosEmpreendimentos = {},
 ): Promise<
   { ok: true; units: ApoloEnterpriseUnit[] } | { error: string; ok: false }
 > {
+  const bloqueados = opcoes.incluirTeste
+    ? EXCLUDED_ENTERPRISE_CODES.filter((codigo) => codigo !== CODIGO_DE_TESTE)
+    : EXCLUDED_ENTERPRISE_CODES;
   const validCodes = codes
     .map((code) => code.trim().toUpperCase())
-    .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
+    .filter((code) => code && !bloqueados.includes(code));
 
   if (!validCodes.length) {
     return { ok: true, units: [] };
