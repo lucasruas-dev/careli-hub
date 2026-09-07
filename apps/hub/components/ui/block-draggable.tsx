@@ -328,7 +328,7 @@ const DragHandle = React.memo(function DragHandle({
           <GripVertical className="text-muted-foreground" />
         </div>
       </TooltipTrigger>
-      <TooltipContent>Drag to move</TooltipContent>
+      <TooltipContent>Arraste para mover</TooltipContent>
     </Tooltip>
   );
 });

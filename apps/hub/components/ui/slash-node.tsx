@@ -58,11 +58,12 @@ type Group = {
 
 const groups: Group[] = [
   {
-    group: 'AI',
+    group: 'IA',
     items: [
       {
         focusEditor: false,
         icon: <SparklesIcon />,
+        label: 'IA',
         value: 'AI',
         onSelect: (editor) => {
           editor.getApi(AIChatPlugin).aiChat.show();
@@ -71,78 +72,78 @@ const groups: Group[] = [
     ],
   },
   {
-    group: 'Basic blocks',
+    group: 'Blocos básicos',
     items: [
       {
         icon: <PilcrowIcon />,
-        keywords: ['paragraph'],
-        label: 'Text',
+        keywords: ['paragrafo', 'parágrafo'],
+        label: 'Texto',
         value: KEYS.p,
       },
       {
         icon: <Heading1Icon />,
-        keywords: ['title', 'h1'],
-        label: 'Heading 1',
+        keywords: ['titulo', 'título', 'h1'],
+        label: 'Título 1',
         value: KEYS.h1,
       },
       {
         icon: <Heading2Icon />,
-        keywords: ['subtitle', 'h2'],
-        label: 'Heading 2',
+        keywords: ['subtitulo', 'subtítulo', 'h2'],
+        label: 'Título 2',
         value: KEYS.h2,
       },
       {
         icon: <Heading3Icon />,
-        keywords: ['subtitle', 'h3'],
-        label: 'Heading 3',
+        keywords: ['subtitulo', 'subtítulo', 'h3'],
+        label: 'Título 3',
         value: KEYS.h3,
       },
       {
         icon: <ListIcon />,
-        keywords: ['unordered', 'ul', '-'],
-        label: 'Bulleted list',
+        keywords: ['lista', 'marcadores', 'ul', '-'],
+        label: 'Lista com marcadores',
         value: KEYS.ul,
       },
       {
         icon: <ListOrdered />,
-        keywords: ['ordered', 'ol', '1'],
-        label: 'Numbered list',
+        keywords: ['lista', 'numerada', 'ol', '1'],
+        label: 'Lista numerada',
         value: KEYS.ol,
       },
       {
         icon: <Square />,
-        keywords: ['checklist', 'task', 'checkbox', '[]'],
-        label: 'To-do list',
+        keywords: ['tarefas', 'checklist', 'caixa de selecao', '[]'],
+        label: 'Lista de tarefas',
         value: KEYS.listTodo,
       },
       {
         icon: <ChevronRightIcon />,
-        keywords: ['collapsible', 'expandable'],
-        label: 'Toggle',
+        keywords: ['recolhivel', 'expansivel'],
+        label: 'Alternar',
         value: KEYS.toggle,
       },
       {
         icon: <Code2 />,
         keywords: ['```'],
-        label: 'Code Block',
+        label: 'Bloco de código',
         value: KEYS.codeBlock,
       },
       {
         icon: <Table />,
-        label: 'Table',
+        label: 'Tabela',
         value: KEYS.table,
       },
       {
         icon: <Quote />,
-        keywords: ['citation', 'blockquote', 'quote', '>'],
-        label: 'Blockquote',
+        keywords: ['citacao', 'citação', 'bloco de citacao', '>'],
+        label: 'Citação',
         value: KEYS.blockquote,
       },
       {
-        description: 'Insert a highlighted block.',
+        description: 'Inserir um bloco destacado.',
         icon: <LightbulbIcon />,
-        keywords: ['note'],
-        label: 'Callout',
+        keywords: ['nota'],
+        label: 'Destaque',
         value: KEYS.callout,
       },
     ].map((item) => ({
@@ -153,23 +154,23 @@ const groups: Group[] = [
     })),
   },
   {
-    group: 'Advanced blocks',
+    group: 'Blocos avançados',
     items: [
       {
         icon: <TableOfContentsIcon />,
-        keywords: ['toc'],
-        label: 'Table of contents',
+        keywords: ['sumario', 'sumário', 'indice', 'índice', 'toc'],
+        label: 'Sumário',
         value: KEYS.toc,
       },
       {
         icon: <Columns3Icon />,
-        label: '3 columns',
+        label: '3 colunas',
         value: 'action_three_columns',
       },
       {
         focusEditor: false,
         icon: <RadicalIcon />,
-        label: 'Equation',
+        label: 'Equação',
         value: KEYS.equation,
       },
       // Excalidraw removido: o kit não está instalado no editor da Têmis (ver editor-kit.tsx).
@@ -183,7 +184,7 @@ const groups: Group[] = [
           'flowchart',
           'mermaid',
         ],
-        label: 'Code Drawing',
+        label: 'Diagrama de código',
         value: KEYS.codeDrawing,
       },
     ].map((item) => ({
@@ -194,26 +195,26 @@ const groups: Group[] = [
     })),
   },
   {
-    group: 'Inline',
+    group: 'Em linha',
     items: [
       {
         focusEditor: true,
         icon: <CalendarIcon />,
-        keywords: ['time'],
-        label: 'Date',
+        keywords: ['data', 'hora'],
+        label: 'Data',
         value: KEYS.date,
       },
       {
         focusEditor: true,
         icon: <SuperscriptIcon />,
-        keywords: ['citation', 'fn', 'footnote', '[^]'],
-        label: 'Footnote',
+        keywords: ['nota', 'rodape', 'rodapé', 'fn', '[^]'],
+        label: 'Nota de rodapé',
         value: 'action_footnote',
       },
       {
         focusEditor: false,
         icon: <RadicalIcon />,
-        label: 'Inline Equation',
+        label: 'Equação em linha',
         value: KEYS.inlineEquation,
       },
     ].map((item) => ({
@@ -236,7 +237,7 @@ export function SlashInputElement(
         <InlineComboboxInput />
 
         <InlineComboboxContent>
-          <InlineComboboxEmpty>No results</InlineComboboxEmpty>
+          <InlineComboboxEmpty>Nada encontrado</InlineComboboxEmpty>
 
           {groups.map(({ group, items }) => (
             <InlineComboboxGroup key={group}>

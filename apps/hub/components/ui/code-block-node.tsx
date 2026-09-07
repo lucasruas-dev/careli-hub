@@ -162,7 +162,7 @@ export function CodeBlockElement({
               variant="ghost"
               className="size-6 text-xs"
               onClick={() => formatCodeBlock(editor, { element })}
-              title="Format code"
+              title="Formatar código"
             >
               <BracesIcon className="!size-3.5 text-muted-foreground" />
             </Button>
@@ -232,9 +232,9 @@ function CodeBlockCombobox({
             className="h-9"
             value={searchValue}
             onValueChange={(value) => setSearchValue(value)}
-            placeholder="Search language..."
+            placeholder="Buscar linguagem..."
           />
-          <CommandEmpty>No language found.</CommandEmpty>
+          <CommandEmpty>Nenhuma linguagem encontrada.</CommandEmpty>
 
           <CommandList className="h-[344px] overflow-y-auto">
             <CommandGroup>
@@ -305,7 +305,7 @@ function CopyButton({
       }}
       {...props}
     >
-      <span className="sr-only">Copy</span>
+      <span className="sr-only">Copiar</span>
       {hasCopied ? (
         <CheckIcon className="!size-3" />
       ) : (

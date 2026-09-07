@@ -23,42 +23,42 @@ const useUploadErrorToast = () => {
     switch (code) {
       case UploadErrorCode.INVALID_FILE_SIZE: {
         toast.error(
-          `The size of files ${data.files
+          `O tamanho dos arquivos ${data.files
             .map((f) => f.name)
-            .join(', ')} is invalid`
+            .join(', ')} é inválido`
         );
 
         break;
       }
       case UploadErrorCode.INVALID_FILE_TYPE: {
         toast.error(
-          `The type of files ${data.files
+          `O tipo dos arquivos ${data.files
             .map((f) => f.name)
-            .join(', ')} is invalid`
+            .join(', ')} é inválido`
         );
 
         break;
       }
       case UploadErrorCode.TOO_LARGE: {
         toast.error(
-          `The size of files ${data.files
+          `O tamanho dos arquivos ${data.files
             .map((f) => f.name)
-            .join(', ')} is too large than ${data.maxFileSize}`
+            .join(', ')} passa do limite de ${data.maxFileSize}`
         );
 
         break;
       }
       case UploadErrorCode.TOO_LESS_FILES: {
         toast.error(
-          `The mini um number of files is ${data.minFileCount} for ${data.fileType}`
+          `O número mínimo de arquivos é ${data.minFileCount} para ${data.fileType}`
         );
 
         break;
       }
       case UploadErrorCode.TOO_MANY_FILES: {
         toast.error(
-          `The maximum number of files is ${data.maxFileCount} ${
-            data.fileType ? `for ${data.fileType}` : ''
+          `O número máximo de arquivos é ${data.maxFileCount} ${
+            data.fileType ? `para ${data.fileType}` : ''
           }`
         );
 

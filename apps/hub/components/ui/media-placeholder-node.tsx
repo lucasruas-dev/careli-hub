@@ -28,22 +28,22 @@ const CONTENT: Record<
 > = {
   [KEYS.audio]: {
     accept: ['audio/*'],
-    content: 'Add an audio file',
+    content: 'Adicionar um arquivo de áudio',
     icon: <AudioLines />,
   },
   [KEYS.file]: {
     accept: ['*'],
-    content: 'Add a file',
+    content: 'Adicionar um arquivo',
     icon: <FileUp />,
   },
   [KEYS.img]: {
     accept: ['image/*'],
-    content: 'Add an image',
+    content: 'Adicionar uma imagem',
     icon: <ImageIcon />,
   },
   [KEYS.video]: {
     accept: ['video/*'],
-    content: 'Add a video',
+    content: 'Adicionar um vídeo',
     icon: <Film />,
   },
 };
@@ -62,7 +62,7 @@ export const PlaceholderElement = withHOC(
 
     // noUncheckedIndexedAccess: mediaType fora do mapa cai no genérico "arquivo"
     const currentContent = CONTENT[element.mediaType] ??
-      CONTENT[KEYS.file] ?? { accept: ['*'], content: 'Add a file', icon: <FileUp /> };
+      CONTENT[KEYS.file] ?? { accept: ['*'], content: 'Adicionar um arquivo', icon: <FileUp /> };
 
     const isImage = element.mediaType === KEYS.img;
 

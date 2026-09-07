@@ -69,7 +69,7 @@ export function BulletedListToolbarButton() {
             >
               <div className="flex items-center gap-2">
                 <div className="size-2 rounded-full border border-current bg-current" />
-                Default
+                Padrão
               </div>
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -81,7 +81,7 @@ export function BulletedListToolbarButton() {
             >
               <div className="flex items-center gap-2">
                 <div className="size-2 rounded-full border border-current" />
-                Circle
+                Círculo
               </div>
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -93,7 +93,7 @@ export function BulletedListToolbarButton() {
             >
               <div className="flex items-center gap-2">
                 <div className="size-2 border border-current bg-current" />
-                Square
+                Quadrado
               </div>
             </DropdownMenuItem>
           </DropdownMenuGroup>
@@ -156,7 +156,7 @@ export function NumberedListToolbarButton() {
                 })
               }
             >
-              Lower Alpha (a, b, c)
+              Letras minúsculas (a, b, c)
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() =>
@@ -165,7 +165,7 @@ export function NumberedListToolbarButton() {
                 })
               }
             >
-              Upper Alpha (A, B, C)
+              Letras maiúsculas (A, B, C)
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() =>
@@ -174,7 +174,7 @@ export function NumberedListToolbarButton() {
                 })
               }
             >
-              Lower Roman (i, ii, iii)
+              Romanos minúsculos (i, ii, iii)
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() =>
@@ -183,7 +183,7 @@ export function NumberedListToolbarButton() {
                 })
               }
             >
-              Upper Roman (I, II, III)
+              Romanos maiúsculos (I, II, III)
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>
@@ -199,7 +199,7 @@ export function TodoListToolbarButton(
   const { props: buttonProps } = useIndentTodoToolBarButton(state);
 
   return (
-    <ToolbarButton {...props} {...buttonProps} tooltip="Todo">
+    <ToolbarButton {...props} {...buttonProps} tooltip="Lista de tarefas">
       <ListTodoIcon />
     </ToolbarButton>
   );

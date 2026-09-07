@@ -48,7 +48,7 @@ export function BlockSuggestionCard({
   const [hovering, setHovering] = React.useState(false);
 
   const suggestionText2Array = (text: string) => {
-    if (text === BLOCK_SUGGESTION_TOKEN) return ['line breaks'];
+    if (text === BLOCK_SUGGESTION_TOKEN) return ['quebras de linha'];
 
     return text.split(BLOCK_SUGGESTION_TOKEN).filter(Boolean);
   };
@@ -99,7 +99,7 @@ export function BlockSuggestionCard({
             {suggestion.type === 'remove' &&
               getRemoveSummaryItems(suggestion.text!).map((text, index) => (
                 <div key={index} className="flex items-center gap-2">
-                  <span className="text-muted-foreground text-sm">Delete:</span>
+                  <span className="text-muted-foreground text-sm">Excluir:</span>
 
                   <span key={index} className="text-sm">
                     {text}
@@ -110,10 +110,10 @@ export function BlockSuggestionCard({
             {suggestion.type === 'insert' &&
               suggestionText2Array(suggestion.newText!).map((text, index) => (
                 <div key={index} className="flex items-center gap-2">
-                  <span className="text-muted-foreground text-sm">Add:</span>
+                  <span className="text-muted-foreground text-sm">Adicionar:</span>
 
                   <span key={index} className="text-sm">
-                    {text || 'line breaks'}
+                    {text || 'quebras de linha'}
                   </span>
                 </div>
               ))}
@@ -127,8 +127,8 @@ export function BlockSuggestionCard({
                         key={index}
                         className="flex items-start gap-2 text-brand/80"
                       >
-                        <span className="text-sm">with:</span>
-                        <span className="text-sm">{text || 'line breaks'}</span>
+                        <span className="text-sm">por:</span>
+                        <span className="text-sm">{text || 'quebras de linha'}</span>
                       </div>
                     </React.Fragment>
                   )
@@ -138,9 +138,9 @@ export function BlockSuggestionCard({
                   <React.Fragment key={index}>
                     <div key={index} className="flex items-start gap-2">
                       <span className="text-muted-foreground text-sm">
-                        {index === 0 ? 'Replace:' : 'Delete:'}
+                        {index === 0 ? 'Substituir:' : 'Excluir:'}
                       </span>
-                      <span className="text-sm">{text || 'line breaks'}</span>
+                      <span className="text-sm">{text || 'quebras de linha'}</span>
                     </div>
                   </React.Fragment>
                 ))}

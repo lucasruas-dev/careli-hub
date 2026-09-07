@@ -44,22 +44,22 @@ export function ModeToolbarButton(props: DropdownMenuProps) {
   > = {
     editing: {
       icon: <PenIcon />,
-      label: 'Editing',
+      label: 'Edição',
     },
     suggestion: {
       icon: <PencilLineIcon />,
-      label: 'Suggestion',
+      label: 'Sugestão',
     },
     viewing: {
       icon: <EyeIcon />,
-      label: 'Viewing',
+      label: 'Visualização',
     },
   };
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen} modal={false} {...props}>
       <DropdownMenuTrigger asChild>
-        <ToolbarButton pressed={open} tooltip="Editing mode" isDropdown>
+        <ToolbarButton pressed={open} tooltip="Modo de edição" isDropdown>
           {item[value].icon}
           <span className="hidden lg:inline">{item[value].label}</span>
         </ToolbarButton>

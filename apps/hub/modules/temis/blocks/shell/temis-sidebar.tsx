@@ -40,9 +40,9 @@ export function TemisSidebar({
                 <FileSignature aria-hidden="true" className="size-[18px]" />
               </Link>
             </Tooltip>
-            <Tooltip content="Expandir sidebar" placement="right">
+            <Tooltip content="Expandir barra lateral" placement="right">
               <button
-                aria-label="Expandir sidebar"
+                aria-label="Expandir barra lateral"
                 className="grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-muted outline-none transition hover:border-line-strong hover:bg-black/[0.05] hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B] dark:border-white/[0.08] dark:hover:border-white/[0.16] dark:hover:bg-white/[0.07]"
                 onClick={aoAlternar}
                 type="button"
@@ -67,9 +67,9 @@ export function TemisSidebar({
                 </span>
               </span>
             </Link>
-            <Tooltip content="Recolher sidebar" placement="right">
+            <Tooltip content="Recolher barra lateral" placement="right">
               <button
-                aria-label="Recolher sidebar"
+                aria-label="Recolher barra lateral"
                 className="grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-muted outline-none transition hover:border-line-strong hover:bg-black/[0.05] hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B] dark:border-white/[0.08] dark:hover:border-white/[0.16] dark:hover:bg-white/[0.07]"
                 onClick={aoAlternar}
                 type="button"

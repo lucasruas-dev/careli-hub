@@ -69,7 +69,7 @@ const getNavigationAttributes = (
 const getFootnotePreviewLabel = (text?: string) => {
   const normalized = text?.replace(/\s+/g, ' ').trim();
 
-  if (!normalized) return 'Empty footnote';
+  if (!normalized) return 'Nota de rodapé vazia';
 
   return normalized.length > 48
     ? `${normalized.slice(0, 45).trimEnd()}...`
@@ -82,7 +82,7 @@ const getReferenceContextLabel = (
   index: number
 ) => {
   const parentEntry = editor.api.parent(path);
-  const fallback = `Reference ${index + 1}`;
+  const fallback = `Referência ${index + 1}`;
 
   if (!parentEntry) return fallback;
 
@@ -197,7 +197,7 @@ export function FootnoteReferenceElement(
             <div className="space-y-2">
               {isResolved ? (
                 <div className="text-sm leading-relaxed">
-                  No preview available.
+                  Sem prévia disponível.
                 </div>
               ) : (
                 <Button
@@ -212,7 +212,7 @@ export function FootnoteReferenceElement(
                     setHoverOpen(false);
                   }}
                 >
-                  Create definition for [^{identifier}]
+                  Criar definição para [^{identifier}]
                 </Button>
               )}
             </div>
@@ -293,7 +293,7 @@ export function FootnoteDefinitionElement(
                   hasMultipleReferences ? referencePickerOpen : undefined
                 }
                 aria-haspopup={hasMultipleReferences ? 'dialog' : undefined}
-                aria-label={`Back to reference ${identifier}`}
+                aria-label={`Voltar para a referência ${identifier}`}
                 className="min-w-3 cursor-pointer rounded-xs text-muted-foreground text-xs tabular-nums underline-offset-2 hover:text-foreground focus:ring-2 focus:ring-ring focus:ring-offset-1"
                 onClick={(event) => {
                   event.preventDefault();
@@ -381,7 +381,7 @@ export function FootnoteDefinitionElement(
                   });
                 }}
               >
-                Renumber to [^{duplicateReplacementIdentifier}]
+                Renumerar para [^{duplicateReplacementIdentifier}]
               </Button>
             ) : null}
           </div>
@@ -449,7 +449,7 @@ export function FootnoteInputElement(props: PlateElementProps) {
 
         <InlineComboboxContent className="my-1.5 w-72">
           {showCreateOption || filteredIdentifiers.length > 0 ? null : (
-            <InlineComboboxEmpty>No footnotes</InlineComboboxEmpty>
+            <InlineComboboxEmpty>Nenhuma nota de rodapé</InlineComboboxEmpty>
           )}
 
           <InlineComboboxGroup>
@@ -462,7 +462,7 @@ export function FootnoteInputElement(props: PlateElementProps) {
                   <span className="font-mono text-muted-foreground">
                     [^{proposedIdentifier}]
                   </span>
-                  <span className="truncate">: New footnote...</span>
+                  <span className="truncate">: Nova nota de rodapé...</span>
                 </span>
               </InlineComboboxItem>
             ) : null}

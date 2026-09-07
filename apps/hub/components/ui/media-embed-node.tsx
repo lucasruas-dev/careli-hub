@@ -100,7 +100,7 @@ export const MediaEmbedElement = withHOC(
                         isVideo && 'border-0',
                         focused && selected && 'ring-2 ring-ring ring-offset-2'
                       )}
-                      title="embed"
+                      title="Conteúdo incorporado"
                       src={embed!.url}
                       allowFullScreen
                     />
@@ -128,7 +128,7 @@ export const MediaEmbedElement = withHOC(
             </Resizable>
 
             <Caption style={{ width }} align={align}>
-              <CaptionTextarea placeholder="Write a caption..." />
+              <CaptionTextarea placeholder="Escreva uma legenda..." />
             </Caption>
           </figure>
 

@@ -911,14 +911,14 @@ function TableFloatingToolbarContent({
         contentEditable={false}
       >
         <ToolbarGroup>
-          <ColorDropdownMenu tooltip="Background color">
+          <ColorDropdownMenu tooltip="Cor de fundo">
             <PaintBucketIcon />
           </ColorDropdownMenu>
           {canMerge && onMerge && (
             <ToolbarButton
               onClick={onMerge}
               onMouseDown={(e) => e.preventDefault()}
-              tooltip="Merge cells"
+              tooltip="Mesclar células"
             >
               <CombineIcon />
             </ToolbarButton>
@@ -927,7 +927,7 @@ function TableFloatingToolbarContent({
             <ToolbarButton
               onClick={onSplit}
               onMouseDown={(e) => e.preventDefault()}
-              tooltip="Split cell"
+              tooltip="Dividir célula"
             >
               <SquareSplitHorizontalIcon />
             </ToolbarButton>
@@ -935,7 +935,7 @@ function TableFloatingToolbarContent({
 
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <ToolbarButton tooltip="Cell borders">
+              <ToolbarButton tooltip="Bordas da célula">
                 <Grid2X2Icon />
               </ToolbarButton>
             </DropdownMenuTrigger>
@@ -947,7 +947,7 @@ function TableFloatingToolbarContent({
 
           {singleCellMode && (
             <ToolbarGroup>
-              <ToolbarButton tooltip="Delete table" {...buttonProps}>
+              <ToolbarButton tooltip="Excluir tabela" {...buttonProps}>
                 <Trash2Icon />
               </ToolbarButton>
             </ToolbarGroup>
@@ -959,21 +959,21 @@ function TableFloatingToolbarContent({
             <ToolbarButton
               onClick={onInsertRowBefore}
               onMouseDown={(e) => e.preventDefault()}
-              tooltip="Insert row before"
+              tooltip="Inserir linha acima"
             >
               <ArrowUp />
             </ToolbarButton>
             <ToolbarButton
               onClick={onInsertRowAfter}
               onMouseDown={(e) => e.preventDefault()}
-              tooltip="Insert row after"
+              tooltip="Inserir linha abaixo"
             >
               <ArrowDown />
             </ToolbarButton>
             <ToolbarButton
               onClick={onDeleteRow}
               onMouseDown={(e) => e.preventDefault()}
-              tooltip="Delete row"
+              tooltip="Excluir linha"
             >
               <XIcon />
             </ToolbarButton>
@@ -985,21 +985,21 @@ function TableFloatingToolbarContent({
             <ToolbarButton
               onClick={onInsertColumnBefore}
               onMouseDown={(e) => e.preventDefault()}
-              tooltip="Insert column before"
+              tooltip="Inserir coluna à esquerda"
             >
               <ArrowLeft />
             </ToolbarButton>
             <ToolbarButton
               onClick={onInsertColumnAfter}
               onMouseDown={(e) => e.preventDefault()}
-              tooltip="Insert column after"
+              tooltip="Inserir coluna à direita"
             >
               <ArrowRight />
             </ToolbarButton>
             <ToolbarButton
               onClick={onDeleteColumn}
               onMouseDown={(e) => e.preventDefault()}
-              tooltip="Delete column"
+              tooltip="Excluir coluna"
             >
               <XIcon />
             </ToolbarButton>
@@ -1042,28 +1042,28 @@ function TableBordersDropdownMenuContent(
           onCheckedChange={getOnSelectTableBorder('top')}
         >
           <BorderTopIcon />
-          <div>Top Border</div>
+          <div>Borda superior</div>
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={hasRightBorder}
           onCheckedChange={getOnSelectTableBorder('right')}
         >
           <BorderRightIcon />
-          <div>Right Border</div>
+          <div>Borda direita</div>
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={hasBottomBorder}
           onCheckedChange={getOnSelectTableBorder('bottom')}
         >
           <BorderBottomIcon />
-          <div>Bottom Border</div>
+          <div>Borda inferior</div>
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={hasLeftBorder}
           onCheckedChange={getOnSelectTableBorder('left')}
         >
           <BorderLeftIcon />
-          <div>Left Border</div>
+          <div>Borda esquerda</div>
         </DropdownMenuCheckboxItem>
       </DropdownMenuGroup>
 
@@ -1073,14 +1073,14 @@ function TableBordersDropdownMenuContent(
           onCheckedChange={getOnSelectTableBorder('none')}
         >
           <BorderNoneIcon />
-          <div>No Border</div>
+          <div>Sem borda</div>
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={hasOuterBorders}
           onCheckedChange={getOnSelectTableBorder('outer')}
         >
           <BorderAllIcon />
-          <div>Outside Borders</div>
+          <div>Bordas externas</div>
         </DropdownMenuCheckboxItem>
       </DropdownMenuGroup>
     </DropdownMenuContent>
@@ -1125,7 +1125,7 @@ function ColorDropdownMenu({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="start">
-        <ToolbarMenuGroup label="Colors">
+        <ToolbarMenuGroup label="Cores">
           <ColorDropdownMenuItems
             className="px-2"
             colors={DEFAULT_COLORS}
@@ -1135,7 +1135,7 @@ function ColorDropdownMenu({
         <DropdownMenuGroup>
           <DropdownMenuItem className="p-2" onClick={onClearColor}>
             <EraserIcon />
-            <span>Clear</span>
+            <span>Limpar</span>
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>

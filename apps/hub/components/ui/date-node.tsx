@@ -37,7 +37,7 @@ export function DateElement(props: PlateElementProps<TDateElement>) {
       {element.date || element.rawDate ? (
         getDateDisplayLabel(element)
       ) : (
-        <span>Pick a date</span>
+        <span>Escolher uma data</span>
       )}
     </span>
   );

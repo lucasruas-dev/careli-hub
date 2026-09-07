@@ -47,7 +47,7 @@ export function EquationElementStatic(
         ) : (
           <div className="flex h-7 w-full items-center gap-2 whitespace-nowrap text-muted-foreground text-sm">
             <RadicalIcon className="size-6 text-muted-foreground/80" />
-            <div>Add a Tex equation</div>
+            <div>Adicionar uma equação Tex</div>
           </div>
         )}
       </div>
@@ -113,7 +113,7 @@ export function EquationElementDocx(
   if (!element.texExpression || element.texExpression.length === 0) {
     return (
       <SlateElement {...props}>
-        <p style={{ color: '#888', fontStyle: 'italic' }}>[Empty equation]</p>
+        <p style={{ color: '#888', fontStyle: 'italic' }}>[Equação vazia]</p>
         {props.children}
       </SlateElement>
     );
@@ -148,7 +148,7 @@ export function InlineEquationElementDocx(
   if (!element.texExpression || element.texExpression.length === 0) {
     return (
       <SlateElement {...props} as="span">
-        <span style={{ color: '#888', fontStyle: 'italic' }}>[equation]</span>
+        <span style={{ color: '#888', fontStyle: 'italic' }}>[equação]</span>
         {props.children}
       </SlateElement>
     );

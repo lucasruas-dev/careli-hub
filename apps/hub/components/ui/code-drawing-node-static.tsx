@@ -17,7 +17,7 @@ export function CodeDrawingElementStatic({
           <pre className="m-0 overflow-x-auto font-mono text-sm leading-[normal] [tab-size:2] print:break-inside-avoid">
             <code className="block w-full">
               {(props.element.data?.code as string) ||
-                'Enter your code here...'}
+                'Escreva seu código aqui...'}
             </code>
           </pre>
         </div>

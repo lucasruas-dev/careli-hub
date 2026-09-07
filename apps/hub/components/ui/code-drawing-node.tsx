@@ -79,7 +79,7 @@ function createDebouncedCodeDrawingRenderer(
         }
       } catch (err) {
         if (lastRequestId === requestId) {
-          setError(err instanceof Error ? err.message : 'Rendering failed');
+          setError(err instanceof Error ? err.message : 'Falha ao renderizar');
           setImage('');
         }
       } finally {
@@ -252,7 +252,7 @@ export function CodeDrawingElement(
               variant="ghost"
               className="size-8"
               onClick={handleDownload}
-              title="Export"
+              title="Exportar"
             >
               <DownloadIcon className="size-4" />
             </Button>
@@ -262,7 +262,7 @@ export function CodeDrawingElement(
             variant="ghost"
             className="size-8"
             onClick={removeNode}
-            title="Delete"
+            title="Excluir"
           >
             <Trash2 className="size-4" />
           </Button>
@@ -516,7 +516,7 @@ function CodeDrawingTextarea({
               readOnly={readOnly}
               className="m-0 h-full w-full resize-none overflow-auto border-0 bg-transparent p-0 font-mono text-sm outline-none"
               style={{ minHeight: `${DEFAULT_MIN_HEIGHT}px` }}
-              placeholder="Enter your code here..."
+              placeholder="Digite seu código aqui..."
               spellCheck={false}
             />
           </code>
@@ -571,17 +571,17 @@ function CodeDrawingPreviewArea({
             'flex flex-1 items-center justify-center rounded-md bg-muted/30 p-4'
           }
         >
-          {loading && <div className="text-muted-foreground">Loading...</div>}
+          {loading && <div className="text-muted-foreground">Carregando...</div>}
           {!loading && image && (
             <img
               src={image}
-              alt="Code drawing"
+              alt="Diagrama de código"
               className="max-h-full max-w-full object-contain"
             />
           )}
           {!loading && !image && (
             <div className="text-muted-foreground">
-              {code.trim() ? 'Rendering...' : 'Preview will appear here'}
+              {code.trim() ? 'Renderizando...' : 'A prévia aparece aqui'}
             </div>
           )}
         </div>

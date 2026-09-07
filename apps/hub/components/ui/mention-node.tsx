@@ -98,7 +98,7 @@ export function MentionInputElement(
         </span>
 
         <InlineComboboxContent className="my-1.5">
-          <InlineComboboxEmpty>No results</InlineComboboxEmpty>
+          <InlineComboboxEmpty>Nada encontrado</InlineComboboxEmpty>
 
           <InlineComboboxGroup>
             {MENTIONABLES.map((item) => (

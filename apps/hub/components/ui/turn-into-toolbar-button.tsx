@@ -43,98 +43,98 @@ import { ToolbarButton, ToolbarMenuGroup } from './toolbar';
 export const turnIntoItems = [
   {
     icon: <PilcrowIcon />,
-    keywords: ['paragraph'],
-    label: 'Text',
+    keywords: ['paragrafo'],
+    label: 'Texto',
     value: KEYS.p,
   },
   {
     icon: <Heading1Icon />,
-    keywords: ['title', 'h1'],
-    label: 'Heading 1',
+    keywords: ['titulo', 'h1'],
+    label: 'Título 1',
     value: 'h1',
   },
   {
     icon: <Heading2Icon />,
-    keywords: ['subtitle', 'h2'],
-    label: 'Heading 2',
+    keywords: ['subtitulo', 'h2'],
+    label: 'Título 2',
     value: 'h2',
   },
   {
     icon: <Heading3Icon />,
-    keywords: ['subtitle', 'h3'],
-    label: 'Heading 3',
+    keywords: ['subtitulo', 'h3'],
+    label: 'Título 3',
     value: 'h3',
   },
   {
     icon: <Heading4Icon />,
-    keywords: ['subtitle', 'h4'],
-    label: 'Heading 4',
+    keywords: ['subtitulo', 'h4'],
+    label: 'Título 4',
     value: 'h4',
   },
   {
     icon: <Heading5Icon />,
-    keywords: ['subtitle', 'h5'],
-    label: 'Heading 5',
+    keywords: ['subtitulo', 'h5'],
+    label: 'Título 5',
     value: 'h5',
   },
   {
     icon: <Heading6Icon />,
-    keywords: ['subtitle', 'h6'],
-    label: 'Heading 6',
+    keywords: ['subtitulo', 'h6'],
+    label: 'Título 6',
     value: 'h6',
   },
   {
     icon: <ListIcon />,
-    keywords: ['unordered', 'ul', '-'],
-    label: 'Bulleted list',
+    keywords: ['nao ordenada', 'ul', '-'],
+    label: 'Lista com marcadores',
     value: KEYS.ul,
   },
   {
     icon: <ListOrderedIcon />,
-    keywords: ['ordered', 'ol', '1'],
-    label: 'Numbered list',
+    keywords: ['ordenada', 'ol', '1'],
+    label: 'Lista numerada',
     value: KEYS.ol,
   },
   {
     icon: <SquareIcon />,
-    keywords: ['checklist', 'task', 'checkbox', '[]'],
-    label: 'To-do list',
+    keywords: ['checklist', 'tarefa', 'caixa de selecao', '[]'],
+    label: 'Lista de tarefas',
     value: KEYS.listTodo,
   },
   {
     icon: <ChevronRightIcon />,
-    keywords: ['collapsible', 'expandable'],
-    label: 'Toggle list',
+    keywords: ['recolhivel', 'expansivel'],
+    label: 'Lista alternável',
     value: KEYS.toggle,
   },
   {
     icon: <FileCodeIcon />,
     keywords: ['```'],
-    label: 'Code',
+    label: 'Código',
     value: KEYS.codeBlock,
   },
   {
     icon: <Code2 />,
     keywords: [
       'code-drawing',
-      'diagram',
+      'diagrama',
       'plantuml',
       'graphviz',
-      'flowchart',
+      'fluxograma',
       'mermaid',
     ],
-    label: 'Code Drawing',
+    label: 'Desenho de código',
     value: KEYS.codeDrawing,
   },
   {
     icon: <QuoteIcon />,
-    keywords: ['citation', 'blockquote', '>'],
-    label: 'Quote',
+    keywords: ['citacao', 'blockquote', '>'],
+    label: 'Citação',
     value: KEYS.blockquote,
   },
   {
     icon: <Columns3Icon />,
-    label: '3 columns',
+    label: '3 colunas',
     value: 'action_three_columns',
   },
 ];
@@ -160,7 +160,7 @@ export function TurnIntoToolbarButton(props: DropdownMenuProps) {
         <ToolbarButton
           className="min-w-[125px]"
           pressed={open}
-          tooltip="Turn into"
+          tooltip="Transformar em"
           isDropdown
         >
           {selectedItem?.label /* noUncheckedIndexedAccess: turnIntoItems[0] pode ser undefined */}
@@ -180,7 +180,7 @@ export function TurnIntoToolbarButton(props: DropdownMenuProps) {
           onValueChange={(type) => {
             setBlockType(editor, type);
           }}
-          label="Turn into"
+          label="Transformar em"
         >
           {turnIntoItems.map(({ icon, label, value: itemValue }) => (
             <DropdownMenuRadioItem

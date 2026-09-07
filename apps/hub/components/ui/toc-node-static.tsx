@@ -43,7 +43,7 @@ export function TocElementStatic(props: SlateElementProps) {
           ))
         ) : (
           <div className="text-gray-500 text-sm">
-            Create a heading to display the table of contents.
+            Crie um título para montar o sumário.
           </div>
         )}
       </div>
@@ -137,7 +137,7 @@ export function TocElementDocx(props: SlateElementProps) {
           ))
         ) : (
           <p style={{ color: '#666', fontSize: '10pt' }}>
-            Create a heading to display the table of contents.
+            Crie um título para montar o sumário.
           </p>
         )}
       </div>
