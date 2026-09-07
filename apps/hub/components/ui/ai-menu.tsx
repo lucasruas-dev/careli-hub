@@ -275,6 +275,16 @@ const AICommentIcon = () => (
   </svg>
 );
 
+/**
+ * ⚠️ A INSTRUÇÃO DE IDIOMA É SEPARADA DO PROMPT, e é por isso que ela existe. Os prompts abaixo são
+ * ordens para o MODELO, não texto de tela: traduzi-los mudaria o comportamento dele (e vários
+ * carregam marcadores que o editor injeta — `{editor}`, `<Block>`, `<Document>`). Mas um editor
+ * inteiro em português com uma IA que responde em inglês é o mesmo defeito que o Lucas apontou,
+ * só que um passo adiante. A linha vai ANEXADA a cada prompt, em vez de reescrever os originais.
+ */
+const EM_PORTUGUES =
+  "\n\nResponda SEMPRE em português do Brasil, no mesmo registro do texto original.";
+
 const aiChatItems = {
   accept: {
     icon: <Check />,
@@ -301,7 +311,7 @@ const aiChatItems = {
       editor.getApi(AIChatPlugin).aiChat.submit(input, {
         mode: 'insert',
         prompt:
-          'Please comment on the following content and provide reasonable and meaningful feedback.',
+          'Please comment on the following content and provide reasonable and meaningful feedback.' + EM_PORTUGUES,
         toolName: 'comment',
       });
     },
@@ -346,7 +356,7 @@ Start writing a new paragraph AFTER <Document> ONLY ONE SENTENCE`
     onSelect: ({ editor, input }) => {
       void editor.getApi(AIChatPlugin).aiChat.submit(input, {
         prompt:
-          'Add a small number of contextually relevant emojis within each block only. You may insert emojis, but do not remove, replace, or rewrite existing text, and do not modify Markdown syntax, links, or line breaks.',
+          'Add a small number of contextually relevant emojis within each block only. You may insert emojis, but do not remove, replace, or rewrite existing text, and do not modify Markdown syntax, links, or line breaks.' + EM_PORTUGUES,
         toolName: 'edit',
       });
     },
@@ -372,30 +382,8 @@ Start writing a new paragraph AFTER <Document> ONLY ONE SENTENCE`
     onSelect: ({ editor, input }) => {
       void editor.getApi(AIChatPlugin).aiChat.submit(input, {
         prompt:
-          'Fix spelling, grammar, and punctuation errors within each block only, without changing meaning, tone, or adding new information.',
+          'Fix spelling, grammar, and punctuation errors within each block only, without changing meaning, tone, or adding new information.' + EM_PORTUGUES,
         toolName: 'edit',
-      });
-    },
-  },
-  generateMarkdownSample: {
-    icon: <BookOpenCheck />,
-    label: 'Gerar exemplo em Markdown',
-    value: 'generateMarkdownSample',
-    onSelect: ({ editor, input }) => {
-      void editor.getApi(AIChatPlugin).aiChat.submit(input, {
-        prompt: 'Generate a markdown sample',
-        toolName: 'generate',
-      });
-    },
-  },
-  generateMdxSample: {
-    icon: <BookOpenCheck />,
-    label: 'Gerar exemplo em MDX',
-    value: 'generateMdxSample',
-    onSelect: ({ editor, input }) => {
-      void editor.getApi(AIChatPlugin).aiChat.submit(input, {
-        prompt: 'Generate a mdx sample',
-        toolName: 'generate',
       });
     },
   },
@@ -406,7 +394,7 @@ Start writing a new paragraph AFTER <Document> ONLY ONE SENTENCE`
     onSelect: ({ editor, input }) => {
       void editor.getApi(AIChatPlugin).aiChat.submit(input, {
         prompt:
-          'Improve the writing for clarity and flow, without changing meaning or adding new information.',
+          'Improve the writing for clarity and flow, without changing meaning or adding new information.' + EM_PORTUGUES,
         toolName: 'edit',
       });
     },
@@ -429,7 +417,7 @@ Start writing a new paragraph AFTER <Document> ONLY ONE SENTENCE`
     onSelect: ({ editor, input }) => {
       void editor.getApi(AIChatPlugin).aiChat.submit(input, {
         prompt:
-          'Make the content longer by elaborating on existing ideas within each block only, without changing meaning or adding new information.',
+          'Make the content longer by elaborating on existing ideas within each block only, without changing meaning or adding new information.' + EM_PORTUGUES,
         toolName: 'edit',
       });
     },
@@ -441,7 +429,7 @@ Start writing a new paragraph AFTER <Document> ONLY ONE SENTENCE`
     onSelect: ({ editor, input }) => {
       void editor.getApi(AIChatPlugin).aiChat.submit(input, {
         prompt:
-          'Make the content shorter by reducing verbosity within each block only, without changing meaning or removing essential information.',
+          'Make the content shorter by reducing verbosity within each block only, without changing meaning or removing essential information.' + EM_PORTUGUES,
         toolName: 'edit',
       });
     },
@@ -461,7 +449,7 @@ Start writing a new paragraph AFTER <Document> ONLY ONE SENTENCE`
     onSelect: ({ editor, input }) => {
       void editor.getApi(AIChatPlugin).aiChat.submit(input, {
         prompt:
-          'Simplify the language by using clearer and more straightforward wording within each block only, without changing meaning or adding new information.',
+          'Simplify the language by using clearer and more straightforward wording within each block only, without changing meaning or adding new information.' + EM_PORTUGUES,
         toolName: 'edit',
       });
     },
@@ -522,8 +510,6 @@ const menuStateItems: Record<
     {
       items: [
         aiChatItems.comment,
-        aiChatItems.generateMdxSample,
-        aiChatItems.generateMarkdownSample,
         aiChatItems.continueWrite,
         aiChatItems.summarize,
         aiChatItems.explain,

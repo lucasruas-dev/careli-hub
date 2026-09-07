@@ -55,15 +55,17 @@ export function BlockSuggestionCard({
 
   const getRemoveSummaryItems = (text: string) => {
     const items = suggestionText2Array(text).map((item) => {
-      if (item === 'column_group') return 'Column';
-      if (item === 'code_block') return 'Code Block';
+      // 'column_group'/'code_block' sao chaves de tipo de no do Plate: nao traduzir o lado ===.
+      if (item === 'column_group') return 'Coluna';
+      if (item === 'code_block') return 'Bloco de código';
 
       return item;
     });
 
-    if (items.includes('Table')) return ['Table'];
-    if (items.includes('Code Block')) return ['Code Block'];
-    if (items.includes('Column')) return ['Column'];
+    // 'Table' vem do texto da sugestao (dado de origem), por isso a comparacao segue em ingles.
+    if (items.includes('Table')) return ['Tabela'];
+    if (items.includes('Bloco de código')) return ['Bloco de código'];
+    if (items.includes('Coluna')) return ['Coluna'];
 
     return items;
   };

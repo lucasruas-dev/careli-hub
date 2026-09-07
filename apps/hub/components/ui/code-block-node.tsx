@@ -35,7 +35,7 @@ type CodeBlockElementProps = PlateElementProps<TCodeBlockElement> & {
 
 const codeBlockLanguages: { label: string; value: string }[] = [
   { label: 'Auto', value: 'auto' },
-  { label: 'Plain Text', value: 'plaintext' },
+  { label: 'Texto simples', value: 'plaintext' },
   { label: 'ABAP', value: 'abap' },
   { label: 'Agda', value: 'agda' },
   { label: 'Arduino', value: 'arduino' },
@@ -220,7 +220,7 @@ function CodeBlockCombobox({
           aria-expanded={open}
           role="combobox"
         >
-          {getCodeBlockLanguageLabel(value) ?? 'Plain Text'}
+          {getCodeBlockLanguageLabel(value) ?? 'Texto simples'}
         </Button>
       </PopoverTrigger>
       <PopoverContent
