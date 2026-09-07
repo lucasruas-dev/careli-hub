@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-06-chat-simples-e-entrega-prevista",
+    deployedAt: "2026-09-06T19:30:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**O chat ficou só com a caixa de texto.** Sem escolher tipo antes de escrever, e sem o COD repetido em cada mensagem.",
+              "**A lista de contratos mostra a entrega prevista** — 24 horas úteis depois do despacho, contadas em dia útil (sexta vira segunda).",
+              "**Contrato com cancelamento pedido se anuncia na lista**: um fio vermelho na borda da linha e, no lugar da data de entrega, *Cancelamento solicitado*.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "b30a8939",
+    technical: {
+      done: "TRÊS PEDIDOS DO LUCAS OLHANDO A v1.287.0. (1) *\"deixa somente a caixa de texto, não precisa dessas abas, mensagem, observação\"* — ele está certo: eu tinha posto três pílulas de tipo antes de alguém ter escrito a primeira frase ali, três decisões pedidas de graça a quem só quer registrar uma coisa, e a errada delas carimba a mensagem como registro formal. ⚠️ A COLUNA `tipo` FICA no banco e a tela continua sabendo pintar o que vier diferente: no dia em que a formalização precisar existir, ela nasce de um gesto próprio sobre uma mensagem já escrita, e não de um seletor que todos atravessam. (2) *\"não precisa, vi o código aqui\"* — o COD saiu de cada linha do chat: ele amarrava a mensagem à venda, mas num chat em que TODAS são da mesma venda o número repetido é ruído, e o que ele identificava já está na ficha em volta. (3) *\"aqui pode trazer a data de entrega prevista\"* + *\"os contratos que estão em cancelamento têm que vir falando, ou trazer uma cor vermelha, algo mais discreto\"*: a coluna Entrega prevista aparece SÓ na etapa contrato — a promessa de 24 horas úteis é da EMISSÃO, e nas outras etapas não há o que prometer (reserva e proposta esperam o cliente, assinatura espera quem assina); uma coluna vazia em quatro das seis diria sobretudo \"não sei\". A conta é a MESMA de `prazoDeEmissao` na Têmis (um dia útil, sexta vira segunda): duas contas para a mesma promessa dariam duas datas para o mesmo contrato — a que o comercial lê e a que o jurídico vê no card. O cancelamento fala em duas medidas discretas: fio vermelho de 2px na borda da linha (fundo pintado numa lista de contratos vivos lê-se como erro do sistema) e a frase no lugar da data. ⚠️ QUEM PEDIU CANCELAMENTO NÃO TEM ENTREGA PREVISTA: prometer data de contrato para uma venda que o jurídico está desfazendo seria a tela contando duas histórias sobre a mesma linha. 2.883 testes verdes (209 arquivos); typecheck e lint limpos.",
+      motivation:
+        "O chat pedia três decisões antes da primeira palavra, e a lista de contratos não dizia nem quando o documento fica pronto nem qual venda está sendo desfeita.",
+    },
+    title: "O chat sem seletor e a entrega prevista",
+    type: "melhoria",
+    version: "1.288.0",
+  },
+  {
     buildTag: "2026-09-06-chat-documentos-historico",
     deployedAt: "2026-09-06T18:30:00-03:00",
     modules: [

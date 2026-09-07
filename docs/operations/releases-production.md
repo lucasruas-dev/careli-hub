@@ -6063,3 +6063,26 @@ Achados que viraram correcao no mesmo lote:
 - Status: `EM PRODUCAO`.
 - Proxima acao: `Lucas conferir as tres abas na ficha de um lote com reserva, e o documento
   aparecendo na ficha do cliente no Apolo`.
+
+## 2026-09-06 · v1.288.0 — Hercules: o chat sem seletor, e a lista dizendo o que cada contrato espera
+
+- Autorizacao: OK explicito do Lucas ("tem o meu ok").
+- Commit: `21dacccc`. Rollback: `b30a8939` (v1.287.0).
+- Tres pedidos dele olhando a v1.287.0 em producao:
+  - *"deixa somente a caixa de texto, nao precisa dessas abas, mensagem, observacao"*. ⚠️ ELE ESTA
+    CERTO: eram tres decisoes pedidas de graca a quem so quer registrar uma coisa, e a errada delas
+    carimba a mensagem como registro formal. A COLUNA `tipo` FICA no banco e a tela continua sabendo
+    pintar o que vier diferente — no dia em que a formalizacao precisar existir, ela nasce de um
+    gesto proprio sobre uma mensagem ja escrita.
+  - *"nao precisa, vi o codigo aqui"*: o COD saiu de cada linha do chat. Num chat em que TODAS as
+    mensagens sao da mesma venda, o numero repetido e ruido.
+  - *"aqui pode trazer a data de entrega prevista"* + *"os contratos que estao em cancelamento tem
+    que vir falando, ou trazer uma cor vermelha, algo mais discreto"*: coluna "Entrega prevista" SO
+    na etapa contrato (a promessa de 24h uteis e da EMISSAO; nas outras etapas nao ha o que
+    prometer), com a MESMA conta de `prazoDeEmissao` da Temis — duas contas dariam duas datas para o
+    mesmo contrato. O cancelamento fala com fio vermelho de 2px na borda da linha (fundo pintado se
+    leria como erro do sistema) e a frase no lugar da data.
+- ⚠️ QUEM PEDIU CANCELAMENTO NAO TEM ENTREGA PREVISTA: prometer data de contrato para uma venda que
+  o juridico esta desfazendo seria a tela contando duas historias sobre a mesma linha.
+- Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.883 testes verdes (209 arquivos).
+- Status: `EM PRODUCAO`.
