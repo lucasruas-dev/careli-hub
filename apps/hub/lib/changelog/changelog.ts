@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-07-clicksign-webhook-descoberta",
+    deployedAt: "2026-09-07T21:30:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**A Clicksign já tem para onde falar.** A porta que recebe os avisos de assinatura foi aberta — por enquanto ela só anota o que chega, para aprendermos o formato antes de ligar no fluxo do contrato. Nada muda na tela ainda.",
+            ],
+            screen: "Assinatura (bastidor)",
+          },
+        ],
+      },
+    ],
+    rollback: "c4fa3d7c",
+    technical: {
+      done: "A ROTA NASCE BURRA DE PROPÓSITO — `app/api/publico/clicksign/webhook/route.ts` lê o corpo, registra headers e payload no log e responde 200. Não escreve em banco, não confere HMAC, não dispara nada. ⚠️ ELA LÊ COMO TEXTO, E NÃO COMO JSON, e é a decisão central deste recorte: no D4Sign a doc mostra o webhook como JSON e ele chega em FORM-DATA — um `request.json()` recebe vazio e não falha de forma óbvia, e a integração inteira parece funcionar sem nunca processar nada. Programar o parser a partir da documentação é como se erra aqui; esta rota existe para descobrir o que a Clicksign FAZ. Mesma fase por que o webhook do Asaas passou (o comentário \"modo DESCOBERTA da bancada\" está lá até hoje). ⚠️ RESPONDER 200 RÁPIDO É A FUNÇÃO PRINCIPAL: provedor de assinatura reenvia quando não recebe 200, e retentativa em cima de rota lenta vira tempestade — por isso `maxDuration` 10 e zero await de banco ou rede. Os headers vão para o log com os portadores de credencial omitidos, mas o cabeçalho da ASSINATURA fica: é o que precisamos descobrir (no D4Sign o `Content-Hmac` é calculado sobre o UUID do DOCUMENTO e não sobre o corpo, então é igual em todos os eventos daquele documento — autentica origem, não protege replay; a Clicksign anuncia HMAC SHA256, que muda o desenho da idempotência se for sobre o corpo). Prefixo `/api/publico/clicksign` liberado no lockdown, no molde do Asaas — máquina-a-máquina não tem como manter sessão. ⚠️ SEM O PREFIXO A URL RESPONDE 401 e o evento se perde sem retentativa útil: medido antes de subir. DUAS CORREÇÕES DE VOCABULÁRIO DE STATUS, achadas ao pausar o canal de cobrança da Iris: (1) `caredesk_channels.status` é enum `planned|active|paused|archived` — `inactive` não existe, e o banco recusou o primeiro update; o canal foi para `paused` e o código, que testa `!== \"active\"`, já cobria. (2) ⚠️ MAIS SÉRIO: `email-unico.ts` pulava contato com `status === \"inactive\"`, e `apolo_contacts` aceita `verified|pending|attention|blocked` — a linha NUNCA disparava. Passou a pular `blocked`. Efeito prático hoje é nulo (os 5.591 contatos de e-mail estão todos em `pending`), mas a regra prometida agora existe. 2.965 testes verdes; typecheck e lint limpos.",
+      motivation:
+        "O Lucas cadastrou os webhooks no painel da Clicksign e a URL respondia 401 — cada evento disparado a partir dali se perderia, sem forma de recuperar.",
+    },
+    title: "A porta da Clicksign",
+    type: "melhoria",
+    version: "1.293.1",
+  },
+  {
     buildTag: "2026-09-07-minuta-com-blocos-prontos",
     deployedAt: "2026-09-07T20:00:00-03:00",
     modules: [

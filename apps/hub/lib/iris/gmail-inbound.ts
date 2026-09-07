@@ -30,7 +30,7 @@ type ChannelRow = {
   config: Record<string, unknown> | null;
   external_account_id: string | null;
   id: string;
-  /** "active" | "inactive". O canal DESLIGADO continua casando — ver `ingestOne`. */
+  /** `planned | active | paused | archived`. O canal PAUSADO continua casando — ver `ingestOne`. */
   status: string | null;
   workspace_id: string | null;
 };
@@ -48,8 +48,10 @@ type ContactRow = {
 //
 // `skipped`  = não achei canal para este e-mail. Pode ser um grupo que ainda vamos cadastrar, então
 //              a mensagem fica UNREAD de propósito: se o canal nascer amanhã, ela é ingerida.
-// `ignored`  = achei o canal, e ele está DESLIGADO. Isso é uma decisão, não uma lacuna — a mensagem
-//              é marcada como lida e sai do caminho.
+// `ignored`  = achei o canal, e ele NÃO ESTÁ ATIVO (`paused`, `archived` ou `planned`). Isso é uma
+//              decisão, não uma lacuna — a mensagem é marcada como lida e sai do caminho.
+//              ⚠️ O teste é `!== "active"`, e não `=== "paused"`: um canal `archived` ou `planned`
+//              também não deve virar ticket, e listar valor por valor deixaria o próximo de fora.
 //
 // Sem essa distinção, desligar um canal ativo faria cada e-mail dele ficar não-lido para sempre, e
 // o poll (que busca `is:unread`, de 5 em 5 minutos) reprocessaria a pilha inteira a cada rodada,
@@ -61,7 +63,7 @@ export type GmailInboundSummary = {
   appended: number;
   created: number;
   errors: number;
-  /** Casou um canal DESLIGADO: não virou ticket, e foi marcado como lido. */
+  /** Casou um canal fora do ar (paused/archived): não virou ticket, e foi marcado como lido. */
   ignored: number;
   mailbox: string;
   ok: boolean;
@@ -123,8 +125,8 @@ export async function ingestGmailInbox({
         summary.appended += 1;
         await markGmailMessageRead(id);
       } else if (outcome === "ignored") {
-        // Canal DESLIGADO: marca lido para a mensagem sair da busca `is:unread`. Sem isto, cada
-        // e-mail do canal desligado voltaria a cada 5 minutos, para sempre.
+        // Canal pausado/arquivado: marca lido para a mensagem sair da busca `is:unread`. Sem isto, cada
+        // e-mail dele voltaria a cada 5 minutos, para sempre.
         summary.ignored += 1;
         await markGmailMessageRead(id);
       } else {
@@ -169,7 +171,7 @@ async function ingestOne(
     return "skipped";
   }
 
-  // ⚠️ CANAL DESLIGADO SAI AQUI, e antes de qualquer escrita: não vira ticket, não vira contato, não
+  // ⚠️ CANAL NÃO-ATIVO SAI AQUI, e antes de qualquer escrita: não vira ticket, não vira contato, não
   // vira mensagem. É como a Iris deixa de atender uma caixa sem que a caixa deixe de existir no
   // Google — o pedido do Lucas em 07/09/2026: *"eu quero deixar no google, só quero tirar da iris
   // esses e-mails"*. O caso real é o `cobranca@`: 3.721 mensagens de robô do Asaas ("Foi gerada uma

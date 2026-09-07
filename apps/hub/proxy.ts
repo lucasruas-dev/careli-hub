@@ -93,6 +93,11 @@ const PUBLIC_API_PREFIXES = [
   "/api/publico/prometeu/masterplan",
   // Webhook do Asaas (pre-venda): maquina-a-maquina, valida por token proprio (asaas-access-token).
   "/api/publico/asaas",
+  // Webhook da Clicksign (assinatura de contrato): maquina-a-maquina, sem sessao por desenho — a
+  // Clicksign nao tem como logar no hub. ⚠️ EM MODO DESCOBERTA: a rota so registra o evento no log
+  // e responde 200; nao escreve em banco e nao dispara nada. A conferencia do HMAC entra junto com
+  // o processador, quando soubermos em que cabecalho a assinatura vem e sobre o que e' calculada.
+  "/api/publico/clicksign",
   // BI publico de vendas do Vale do Ouro (pedido do Lucas, 01/08): o link circula com diretoria
   // e parceiros FORA do hub. A rota devolve APENAS agregados (contagens, somas, ranking de
   // imobiliarias) — nenhum dado pessoal de comprador. CDN cacheia 60s (custo). Liberada UMA A UMA.

@@ -115,8 +115,11 @@ export function conferirEmailUnico({
  * normalizado nem sempre está preenchido nas linhas antigas vindas do sync — comparar só por ele
  * deixaria passar exatamente os cadastros mais velhos, que são os que têm mais repetição.
  *
- * ⚠️ CONTATO INATIVO NÃO CONTA. Um e-mail marcado como inativo é justamente o endereço que alguém
- * já corrigiu; travar a CAD por causa dele obrigaria o operador a inventar um endereço para passar.
+ * ⚠️ CONTATO BLOQUEADO NÃO CONTA. `apolo_contacts.status` aceita `verified | pending | attention |
+ * blocked` (0026) — e `blocked` é o endereço que alguém já tirou de circulação. Travar a CAD por
+ * causa dele obrigaria o operador a inventar um endereço para passar, que é o dado errado indo para
+ * o contrato. ⚠️ E hoje TODOS os 5.591 contatos de e-mail estão `pending`: na prática esta linha
+ * ainda não exclui ninguém, e é isso mesmo — ela existe para o dia em que alguém bloquear um.
  */
 export async function conflitoDeEmailRepetido(params: {
   adminClient: AdminClient;
@@ -147,7 +150,7 @@ export async function conflitoDeEmailRepetido(params: {
     status: null | string;
     value: null | string;
   }[]) {
-    if ((linha.status ?? "active") === "inactive") continue;
+    if (linha.status === "blocked") continue;
     const email = normalizarEmail(linha.normalized_value ?? linha.value);
     if (email !== alvo) continue;
     if (!linha.entity_id || ignorar.has(linha.entity_id)) continue;
