@@ -48,3 +48,20 @@ export const temisScreens: {
     label: "Setup",
   },
 ];
+
+/**
+ * O empreendimento, como a Têmis precisa dele: escolher no seletor e passar o id para as abas.
+ *
+ * ⚠️ NÃO É O `ApoloEnterpriseRow`, e a diferença é o ponto. Aquele carrega o cenário comercial
+ * inteiro (unidades por status, VGV, etapas, incorporador) porque a ficha do Apolo mostra isso; a
+ * Têmis só escolhe e vincula. Carregar o cenário aqui obrigaria a listagem a passar pelo C2X — e foi
+ * exatamente isso que deixou o "ZZ TESTE" de fora, porque ele nasceu no Panteon e lá não tem linha.
+ *
+ * ⚠️ O `id` É A CHAVE DO VÍNCULO, não um uuid: é por ele que minuta, plano e categoria se amarram ao
+ * empreendimento, e ele pode ser `group:Lagoa Bonita` — rótulo, não id de tabela nenhuma.
+ */
+export type EmpreendimentoDaTemis = {
+  code: string;
+  id: string;
+  name: string;
+};

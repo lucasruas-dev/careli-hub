@@ -3,7 +3,7 @@
 import { AlertTriangle, Check, FileSignature, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import type { ApoloEnterpriseRow } from "@/lib/apolo/empreendimentos";
+import type { EmpreendimentoDaTemis } from "@/lib/temis/catalog";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
 // O BOARD DA TÊMIS.
@@ -62,7 +62,7 @@ export function TemisBoard({
   empreendimentos,
 }: {
   aoAbrirEmpreendimento: (id: string) => void;
-  empreendimentos: ApoloEnterpriseRow[];
+  empreendimentos: EmpreendimentoDaTemis[];
 }) {
   const [contagens, setContagens] = useState<null | Record<string, Contagem>>(null);
   const [recebemCad, setRecebemCad] = useState<null | Set<string>>(null);

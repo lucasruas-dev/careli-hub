@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-07-temis-so-quem-recebe-cad",
+    deployedAt: "2026-09-07T23:40:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O seletor mostra só os empreendimentos que estão recebendo CAD** — 12 em vez de 38. Sai da frente o catálogo inteiro do C2X, com produtos já vendidos e encerrados.",
+              "**O ZZ TESTE aparece.** Ele não estava escondido: nasceu no Panteon e a tela lia a lista do C2X, onde ele não existe.",
+            ],
+            screen: "Têmis",
+          },
+        ],
+      },
+    ],
+    rollback: "b413a782",
+    technical: {
+      done: "Lucas (07/09/2026): *\"na temis, pode deixar somente os empreendimentos que estamos recebendo cads\"*, depois de eu ter liberado o empreendimento de teste ERRADO. Ele avisou: *\"o empreendimento que eu estou falando é o que estamos testando no hercules, zz\"*. ⚠️ O ZZ NUNCA ESTEVE FILTRADO: o \"ZZ TESTE\" (código TST, enterprise_id 9001) nasceu em `hercules_empreendimentos` em 04/09/2026 — *\"a partir de hoje vamos cadastrar os empreendimentos dentro do panteon\"* —, e a tela lia `/api/apolo/empreendimentos`, que consulta o C2X, onde ele não tem linha. O que eu tinha liberado antes era o TSC, um teste do legado; essa mudança foi desfeita (era código morto, e mexia numa lista usada em ~15 leituras: carteira, cobrança, extrato, credenciamento). A FONTE É O PORTÃO `apolo_enterprise_settings.recepcao_cad` — a mesma decisão tomada na tela do empreendimento, e a MESMA que `/api/temis/board` já usava; qualquer outro critério criaria uma segunda definição de \"ativo\" para a mesma pergunta. Medido: 12 com o portão aberto, e o TST entre eles por direito (8 CADs na esteira, a última em 05/09). ⚠️ O QUE QUASE QUEBREI: montar a lista a partir do cadastro do Panteon parecia mais limpo e traria LBF, LBP e LBR SEPARADOS — as minutas do Lagoa Bonita estão vinculadas ao id consolidado `group:Lagoa Bonita`, que é rótulo e não id de tabela nenhuma, e sumiriam da tela em silêncio. O portão já fala a língua dos vínculos, inclusive a do consolidado. O tipo `EmpreendimentoDaTemis` (id, code, name) substitui o `ApoloEnterpriseRow` na Têmis: aquele carrega cenário comercial inteiro porque a ficha do Apolo mostra isso, e carregá-lo aqui é o que obrigava a listagem a passar pelo C2X. 3.020 testes verdes; typecheck e lint limpos.",
+      motivation:
+        "O seletor listava 38 empreendimentos, a maioria já vendida, e não mostrava justamente o de teste onde o time está trabalhando.",
+    },
+    title: "A Têmis mostra só o que está em jogo",
+    type: "melhoria",
+    version: "1.294.1",
+  },
+  {
     buildTag: "2026-09-07-super-agente-da-minuta",
     deployedAt: "2026-09-07T23:00:00-03:00",
     modules: [

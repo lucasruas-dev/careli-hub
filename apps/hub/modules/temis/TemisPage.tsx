@@ -3,8 +3,8 @@
 import { AlertTriangle, Building2, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import type { ApoloEnterpriseRow, ApoloEnterprisesData } from "@/lib/apolo/empreendimentos";
-import { temisScreens, type TemisScreen } from "@/lib/temis/catalog";
+
+import { type EmpreendimentoDaTemis, temisScreens, type TemisScreen } from "@/lib/temis/catalog";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
 import { TemisSidebar } from "@/modules/temis/blocks/shell/temis-sidebar";
@@ -33,7 +33,7 @@ export function TemisPage() {
   const [tela, setTela] = useState<TemisScreen>("board");
   const [recolhida, setRecolhida] = useState(false);
 
-  const [empreendimentos, setEmpreendimentos] = useState<ApoloEnterpriseRow[] | null>(null);
+  const [empreendimentos, setEmpreendimentos] = useState<EmpreendimentoDaTemis[] | null>(null);
   const [erro, setErro] = useState<null | string>(null);
   const [escolhidoId, setEscolhidoId] = useState<null | string>(null);
 
@@ -43,17 +43,20 @@ export function TemisPage() {
     void (async () => {
       try {
         const token = await getApoloAccessToken();
-        // ⚠️ `incluirTeste=1` é EXCLUSIVO DA TÊMIS. O empreendimento de teste fica fora da listagem
-        // padrão porque a mesma lista alimenta carteira, cobrança e extrato — um produto de mentira
-        // ali estragaria soma de VGV e relatório financeiro. Aqui ele é justamente o que se quer:
-        // redigir e publicar minuta contra um empreendimento que não tem cliente de verdade.
-        // Lucas (07/09/2026): *"libera ele ae testamos lá"*.
-        const r = await fetch("/api/apolo/empreendimentos?incluirTeste=1", {
+        // ⚠️ ROTA PRÓPRIA DA TÊMIS, e não a listagem geral do Apolo. Lucas (07/09/2026): *"na temis,
+        // pode deixar somente os empreendimentos que estamos recebendo cads"*. A listagem do Apolo
+        // traz o catálogo inteiro do C2X (38 produtos, muitos já vendidos e encerrados) e NÃO traz o
+        // que nasceu no Panteon — foi assim que o "ZZ TESTE" do Hércules ficou de fora, porque ele
+        // simplesmente não existe no C2X.
+        //
+        // A rota nova lê o PORTÃO (`apolo_enterprise_settings.recepcao_cad`), que já é a decisão de
+        // "este produto está recebendo cadastro" tomada na tela do empreendimento. Doze hoje.
+        const r = await fetch("/api/temis/empreendimentos", {
           cache: "no-store",
           headers: { Authorization: `Bearer ${token}` },
         });
         const corpo = (await r.json().catch(() => ({}))) as {
-          data?: ApoloEnterprisesData;
+          data?: { rows: EmpreendimentoDaTemis[] };
           error?: string;
         };
 
@@ -64,9 +67,7 @@ export function TemisPage() {
           return;
         }
 
-        // ⚠️ O ESPELHO FICA DE FORA. Linhas marcadas como `mirror` são o MESMO estoque de outras
-        // (o Vale do Ouro histórico); deixá-las aqui faria o operador cadastrar a minuta na cópia.
-        const linhas = corpo.data.rows.filter((row) => !row.mirror);
+        const linhas = corpo.data.rows;
         setEmpreendimentos(linhas);
 
         // Retoma o último empreendimento, porque quem trabalha em contrato passa o dia no mesmo.
@@ -176,8 +177,8 @@ function Cabecalho({
   tela,
 }: {
   aoEscolher: (id: string) => void;
-  empreendimentos: ApoloEnterpriseRow[] | null;
-  escolhido: ApoloEnterpriseRow | null;
+  empreendimentos: EmpreendimentoDaTemis[] | null;
+  escolhido: EmpreendimentoDaTemis | null;
   tela: TemisScreen;
 }) {
   const descricao = temisScreens.find((t) => t.id === tela)?.description ?? "";
@@ -252,8 +253,8 @@ function Setup({
   escolhido,
 }: {
   aoAbrirEmpreendimento: (id: string) => void;
-  empreendimentos: ApoloEnterpriseRow[];
-  escolhido: ApoloEnterpriseRow | null;
+  empreendimentos: EmpreendimentoDaTemis[];
+  escolhido: EmpreendimentoDaTemis | null;
 }) {
   const [aba, setAba] = useState<string>("contrato");
 
