@@ -7,6 +7,8 @@ import type { PoliticaComercialDoEmpreendimento } from "@/lib/apolo/politica-com
 import { ENTRADA_MINIMA_PERCENTUAL } from "@/lib/hercules/composicoes";
 
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { CategoriasTab } from "@/modules/apolo/blocks/empreendimentos/categorias-tab";
+import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 
 // ABA POLÍTICAS COMERCIAIS do empreendimento.
 //
@@ -24,10 +26,38 @@ import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 // viraria dado cadastrado sem ninguém ter decidido.
 
 type Props = {
+  /** Em qual sub-aba abrir. Serve ao link antigo que apontava para "Planos". */
+  abaInicial?: SubAba;
   code: string;
   codes: string[];
+  enterpriseId: string;
   name: string;
 };
+
+/**
+ * AS TRÊS FACES DA POLÍTICA COMERCIAL.
+ *
+ * Lucas (07/09/2026): *"acho que planos tem que estar dentro das políticas comerciais, uma aba"* e,
+ * sobre a criação de categoria estar na aba de planos, *"está no lugar errado isso, não devia estar
+ * em planos"*.
+ *
+ * ⚠️ ERAM TRÊS ABAS IRMÃS NO PRIMEIRO NÍVEL dizendo a mesma coisa em pedaços: a política é o acordo
+ * com o incorporador (comissão, entrada mínima, split), a categoria organiza o que ele vende, e o
+ * plano é como o cliente paga. Quem configura uma configura as três na mesma sentada — e a
+ * categoria, que só existe para agrupar planos, estava escondida no rodapé da lista de planos.
+ *
+ * ⚠️ A CATEGORIA GANHA ABA PRÓPRIA, e não é excesso de tela: ela é o que separa público interno de
+ * externo no mesmo empreendimento (o JDG tem seis planos, três de cada), e essa decisão vem ANTES
+ * de cadastrar plano. Enterrada no fim de outra lista, ninguém a encontrava — foi exatamente o que
+ * aconteceu.
+ */
+type SubAba = "categorias" | "gestao" | "planos";
+
+const SUB_ABAS: { id: SubAba; rotulo: string }[] = [
+  { id: "gestao", rotulo: "Gestão e comissão" },
+  { id: "categorias", rotulo: "Categorias" },
+  { id: "planos", rotulo: "Planos" },
+];
 
 /**
  * O padrão da casa, quando o empreendimento não cadastrou o seu.
@@ -41,7 +71,14 @@ const PADRAO_DA_CASA = ENTRADA_MINIMA_PERCENTUAL;
 const pct = (v: null | number): string =>
   v === null ? "—" : `${v.toLocaleString("pt-BR", { maximumFractionDigits: 3 })}%`;
 
-export function PoliticaComercialTab({ code, codes, name }: Props) {
+export function PoliticaComercialTab({
+  abaInicial = "gestao",
+  code,
+  codes,
+  enterpriseId,
+  name,
+}: Props) {
+  const [subAba, setSubAba] = useState<SubAba>(abaInicial);
   const [politicas, setPoliticas] = useState<PoliticaComercialDoEmpreendimento[] | null>(null);
   const [erro, setErro] = useState<null | string>(null);
 
@@ -246,8 +283,47 @@ export function PoliticaComercialTab({ code, codes, name }: Props) {
       (entradaCadastrada === null ? "" : String(entradaCadastrada).replace(".", ",")))
     : "";
 
+  const faixa = (
+    <div className="flex flex-wrap gap-1 border-b border-line px-5 pt-4">
+      {SUB_ABAS.map((x) => (
+        <button
+          className={`rounded-t-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+            subAba === x.id
+              ? "bg-surface text-ink shadow-[inset_0_-2px_0_0_currentColor]"
+              : "text-ink-muted hover:text-ink"
+          }`}
+          key={x.id}
+          onClick={() => setSubAba(x.id)}
+          type="button"
+        >
+          {x.rotulo}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (subAba === "categorias") {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {faixa}
+        <CategoriasTab enterpriseId={enterpriseId} name={name} />
+      </div>
+    );
+  }
+
+  if (subAba === "planos") {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {faixa}
+        <PlanosComerciaisTab enterpriseId={enterpriseId} name={name} />
+      </div>
+    );
+  }
+
   return (
-    <div className="grid gap-4 p-5">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {faixa}
+      <div className="grid gap-4 p-5">
       {/* ── A GESTÃO DE CARTEIRA: o que é NOSSO ─────────────────────────── */}
       <section className="overflow-hidden rounded-2xl border border-line bg-surface">
         <div className="flex items-start gap-3 border-b border-line bg-subtle/40 px-4 py-3">
@@ -546,6 +622,7 @@ export function PoliticaComercialTab({ code, codes, name }: Props) {
           </div>
         </section>
       ) : null}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { authorizeApoloWrite } from "@/lib/apolo/auth";
+import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // CATEGORIAS DO TEMIS — o agrupamento livre de planos dentro do empreendimento.
@@ -15,9 +15,75 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const WORKSPACE = "careli";
+
 function empreendimentoDaUrl(request: Request): null | string {
   const valor = new URL(request.url).searchParams.get("enterpriseId")?.trim();
   return valor || null;
+}
+
+/**
+ * As categorias do empreendimento, com quantos lotes cada uma tem.
+ *
+ * ⚠️ A CONTAGEM DE LOTES É O QUE TORNA A EXCLUSÃO HONESTA. Apagar uma categoria devolve os lotes
+ * dela à regra geral do produto — e quem clica precisa saber que são doze, e não zero, ANTES de
+ * confirmar.
+ */
+export async function GET(request: Request) {
+  const auth = await authorizeApoloRead(request);
+  if (!auth.ok) return auth.response;
+
+  const enterpriseId = empreendimentoDaUrl(request);
+  if (!enterpriseId) return NextResponse.json({ error: "Informe o empreendimento." }, { status: 400 });
+
+  const admin = createApoloAdminClient();
+  if (!admin) return NextResponse.json({ error: "Supabase indisponível." }, { status: 503 });
+
+  const { data, error } = await admin
+    .from("temis_categorias")
+    .select("id,nome,categoria_pai_id,ordem")
+    .eq("workspace_id", WORKSPACE)
+    .eq("enterprise_id", enterpriseId)
+    .order("ordem", { ascending: true })
+    .order("nome", { ascending: true });
+
+  if (error) {
+    return NextResponse.json({ error: "Não consegui ler as categorias." }, { status: 502 });
+  }
+
+  const linhas = (data ?? []) as Array<{
+    categoria_pai_id: null | string;
+    id: string;
+    nome: string;
+  }>;
+
+  const porCategoria = new Map<string, number>();
+  if (linhas.length > 0) {
+    const { data: unidades } = await admin
+      .from("hercules_unidades")
+      .select("categoria_id")
+      .eq("workspace_id", WORKSPACE)
+      .in(
+        "categoria_id",
+        linhas.map((c) => c.id),
+      );
+
+    for (const linha of (unidades ?? []) as Array<{ categoria_id: null | string }>) {
+      if (!linha.categoria_id) continue;
+      porCategoria.set(linha.categoria_id, (porCategoria.get(linha.categoria_id) ?? 0) + 1);
+    }
+  }
+
+  return NextResponse.json({
+    data: {
+      categorias: linhas.map((c) => ({
+        categoriaPaiId: c.categoria_pai_id,
+        id: c.id,
+        nome: c.nome,
+        unidades: porCategoria.get(c.id) ?? 0,
+      })),
+    },
+  });
 }
 
 export async function POST(request: Request) {
@@ -27,7 +93,11 @@ export async function POST(request: Request) {
   const enterpriseId = empreendimentoDaUrl(request);
   if (!enterpriseId) return NextResponse.json({ error: "Informe o empreendimento." }, { status: 400 });
 
-  const corpo = (await request.json().catch(() => null)) as null | { nome?: string; ordem?: number };
+  const corpo = (await request.json().catch(() => null)) as null | {
+    categoriaPaiId?: null | string;
+    nome?: string;
+    ordem?: number;
+  };
   const nome = corpo?.nome?.trim();
   if (!nome) return NextResponse.json({ error: "A categoria precisa de um nome." }, { status: 400 });
 
@@ -37,10 +107,14 @@ export async function POST(request: Request) {
   const { data, error } = await admin
     .from("temis_categorias")
     .insert({
+      // ⚠️ A SUBCATEGORIA É A MESMA TABELA, apontando para a mãe. *"eu posso criar uma subcategoria
+      // da categoria"* — e a profundidade é do negócio: condomínio dentro de loteamento, fase
+      // dentro de condomínio. Uma tabela separada para o segundo nível impediria o terceiro.
+      categoria_pai_id: corpo?.categoriaPaiId ?? null,
       enterprise_id: enterpriseId,
       nome,
       ordem: corpo?.ordem ?? 0,
-      workspace_id: "careli",
+      workspace_id: WORKSPACE,
     })
     .select("id")
     .single();
@@ -123,6 +197,35 @@ export async function DELETE(request: Request) {
 
   const admin = createApoloAdminClient();
   if (!admin) return NextResponse.json({ error: "Supabase indisponível." }, { status: 503 });
+
+  // ⚠️ SUBCATEGORIA PRIMEIRO. A 0139 poe `on delete restrict` na autorreferencia, entao o banco
+  // recusaria — mas com o erro cru do Postgres, que nao diz a ninguem o que fazer. Conferir aqui
+  // devolve a frase com o NOME das filhas, que e o que a pessoa precisa para desmontar de baixo
+  // para cima.
+  const { data: filhas, error: erroFilhas } = await admin
+    .from("temis_categorias")
+    .select("nome")
+    .eq("workspace_id", "careli")
+    .eq("categoria_pai_id", id);
+
+  if (erroFilhas) {
+    return NextResponse.json(
+      { error: "Não consegui conferir as subcategorias." },
+      { status: 503 },
+    );
+  }
+
+  const dentro = (filhas ?? []) as Array<{ nome: string }>;
+  if (dentro.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Esta categoria tem ${dentro.length === 1 ? "a subcategoria" : "as subcategorias"} ${dentro
+          .map((c) => `"${c.nome}"`)
+          .join(", ")}. Exclua ${dentro.length === 1 ? "ela" : "elas"} antes.`,
+      },
+      { status: 409 },
+    );
+  }
 
   // ⚠️ CONTA OS PLANOS ANTES. O banco tem `on delete set null`, então apagar a categoria NÃO daria
   // erro: os planos apenas perderiam a organização em silêncio, e no JDG isso significa seis planos

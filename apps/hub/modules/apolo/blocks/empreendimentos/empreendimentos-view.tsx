@@ -9,7 +9,7 @@ import { AdicionarUnidades } from "@/modules/apolo/blocks/empreendimentos/adicio
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
 import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 import { PoliticaComercialTab } from "@/modules/apolo/blocks/empreendimentos/politica-comercial-tab";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   ArrowLeft,
@@ -17,6 +17,7 @@ import {
   BadgeDollarSign,
   Ban,
   ChevronRight,
+  ChevronUp,
   ContactRound,
   CreditCard,
   ExternalLink,
@@ -84,6 +85,12 @@ import { toTitleCase } from "@/lib/format/name-case";
 import { getApoloAccessToken } from "../../data/apolo-operations";
 import { MapaTab } from "./masterplan-mapa";
 import { fileToBase64 } from "../../lib/document-capture";
+import {
+  aoClicarNaColuna,
+  type ColunaDaOrdem,
+  ORDEM_INICIAL,
+  ordenarEmpreendimentos,
+} from "@/lib/apolo/ordem-dos-empreendimentos";
 
 // O papel do player NESTE empreendimento (os demais papéis dele vivem na ficha da entidade).
 const playerRoleLabels: Record<ApoloEnterprisePlayer["relation"], string> = {
@@ -140,11 +147,14 @@ const detailTabs = [
   { icon: Network, id: "relacionamentos", label: "Relacionamentos" },
   // Políticas comerciais fica ANTES do Setup: é regra de negócio do produto (comissão, entrada,
   // gestão de carteira), e o Setup é a configuração operacional do Apolo.
+  //
+  // ⚠️ PLANOS E CATEGORIAS ENTRARAM AQUI DENTRO, como sub-abas (Lucas, 07/09/2026: *"acho que
+  // planos tem que estar dentro das políticas comerciais, uma aba"*, e sobre a criação de categoria
+  // na aba de planos: *"está no lugar errado isso, não devia estar em planos"*). Eram três abas
+  // irmãs no primeiro nível dizendo a mesma coisa em pedaços — a política é o acordo com o
+  // incorporador, a categoria organiza o que ele vende, e o plano é como o cliente paga. Quem
+  // configura uma configura as três na mesma sentada.
   { icon: Percent, id: "politica", label: "Políticas comerciais" },
-  // Planos vem LOGO DEPOIS da política, e a distância entre as duas é a que o negócio tem: a
-  // política é o acordo com o incorporador; o plano é o que o cliente assina. É o plano da venda
-  // que decide a minuta do contrato (Temis).
-  { icon: CreditCard, id: "planos", label: "Planos" },
   // Minutas fica ao lado de Planos porque as duas contam a mesma história: o plano decide QUAL
   // minuta a venda usa, e a minuta é o texto que o comprador assina.
   { icon: FileSignature, id: "minutas", label: "Minutas" },
@@ -198,6 +208,17 @@ export function EmpreendimentosScreen({
 }) {
   // `selected` = linha marcada, que FILTRA os cards.
   const [selected, setSelected] = useState<ApoloEnterpriseRow | null>(null);
+  const [ordem, setOrdem] = useState(ORDEM_INICIAL);
+
+  const ordenarPor = (coluna: ColunaDaOrdem) =>
+    setOrdem((atual) => aoClicarNaColuna(atual, coluna));
+
+  // ⚠️ A ORDEM É DO CLIENTE. São 38 linhas na tela toda: reordenar aqui é imediato e não gasta uma
+  // ida ao servidor a cada clique de cabeçalho.
+  const linhasOrdenadas = useMemo(
+    () => ordenarEmpreendimentos(data?.rows ?? [], ordem),
+    [data?.rows, ordem],
+  );
 
   if (loading && !data) {
     return <SkeletonScreen />;
@@ -273,32 +294,30 @@ export function EmpreendimentosScreen({
         <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full min-w-[900px] border-collapse text-sm">
             <thead className="sticky top-0 z-10">
+              {/* ⚠️ TODA COLUNA ORDENA, E A TABELA ABRE PELO NOME (Lucas, 07/09/2026: *"o botão de
+                  ordenar nessa tabela, e sempre inicia com ordem alfabética"*). A ordem antiga era a
+                  que o SQL devolvia — unidades decrescente —, e ninguém a tinha escolhido: o Cidade
+                  Jardim ficava sempre em cima por ter 532 lotes, e quem PROCURA um empreendimento
+                  pelo nome varria a lista inteira. */}
               <tr className="border-b border-line bg-subtle text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                <th className="px-4 py-2.5 font-semibold">Empreendimento</th>
-                <th className="px-3 py-2.5 text-right font-semibold">
-                  Unidades
-                </th>
-                <th className="px-3 py-2.5 text-right font-semibold">
-                  Disponível
-                </th>
-                <th className="px-3 py-2.5 text-right font-semibold">
-                  Reservado
-                </th>
-                <th className="px-3 py-2.5 text-right font-semibold">
-                  Negociação
-                </th>
-                <th className="px-3 py-2.5 text-right font-semibold">
-                  Vendido
-                </th>
-                <th className="px-3 py-2.5 text-right font-semibold">
-                  Bloqueado
-                </th>
-                <th className="px-3 py-2.5 text-right font-semibold">VGV</th>
+                <Coluna
+                  aoOrdenar={ordenarPor}
+                  coluna="nome"
+                  ordem={ordem}
+                  rotulo="Empreendimento"
+                />
+                <Coluna aoOrdenar={ordenarPor} coluna="unidades" numerica ordem={ordem} rotulo="Unidades" />
+                <Coluna aoOrdenar={ordenarPor} coluna="disponivel" numerica ordem={ordem} rotulo="Disponível" />
+                <Coluna aoOrdenar={ordenarPor} coluna="reservado" numerica ordem={ordem} rotulo="Reservado" />
+                <Coluna aoOrdenar={ordenarPor} coluna="negociacao" numerica ordem={ordem} rotulo="Negociação" />
+                <Coluna aoOrdenar={ordenarPor} coluna="vendido" numerica ordem={ordem} rotulo="Vendido" />
+                <Coluna aoOrdenar={ordenarPor} coluna="bloqueado" numerica ordem={ordem} rotulo="Bloqueado" />
+                <Coluna aoOrdenar={ordenarPor} coluna="vgv" numerica ordem={ordem} rotulo="VGV" />
                 <th className="px-4 py-2.5 font-semibold" />
               </tr>
             </thead>
             <tbody>
-              {data.rows.map((row) => (
+              {linhasOrdenadas.map((row: ApoloEnterpriseRow) => (
                 <EnterpriseRows
                   key={row.id}
                   onOpen={onDetailChange}
@@ -312,6 +331,53 @@ export function EmpreendimentosScreen({
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * Um cabeçalho que ordena.
+ *
+ * ⚠️ A SETA SÓ APARECE NA COLUNA ATIVA, e aponta para onde a lista está indo. Uma seta apagada em
+ * todas as colunas seria decoração; a que aparece diz qual ordenação está valendo agora — que é a
+ * pergunta de quem bate o olho numa tabela já ordenada por outra pessoa.
+ */
+function Coluna({
+  aoOrdenar,
+  coluna,
+  numerica = false,
+  ordem,
+  rotulo,
+}: {
+  aoOrdenar: (coluna: ColunaDaOrdem) => void;
+  coluna: ColunaDaOrdem;
+  numerica?: boolean;
+  ordem: { coluna: ColunaDaOrdem; direcao: "asc" | "desc" };
+  rotulo: string;
+}) {
+  const ativa = ordem.coluna === coluna;
+
+  return (
+    <th
+      aria-sort={ativa ? (ordem.direcao === "asc" ? "ascending" : "descending") : "none"}
+      className={`py-2.5 font-semibold ${numerica ? "px-3 text-right" : "px-4"}`}
+      scope="col"
+    >
+      <button
+        className={`inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide transition-colors hover:text-ink ${
+          ativa ? "text-ink" : "text-ink-muted"
+        }`}
+        onClick={() => aoOrdenar(coluna)}
+        type="button"
+      >
+        {rotulo}
+        <ChevronUp
+          aria-hidden="true"
+          className={`size-3 transition-transform ${ativa ? "opacity-100" : "opacity-0"} ${
+            ativa && ordem.direcao === "desc" ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+    </th>
   );
 }
 
@@ -535,11 +601,22 @@ function EnterpriseDetail({
           <PoliticaComercialTab
             code={row.code}
             codes={row.codes}
+            enterpriseId={row.id}
             name={row.name}
           />
         ) : null}
+        {/* ⚠️ "planos" CONTINUA ACEITO como aba, e isso não é resíduo: o tipo `ApoloEnterpriseTab`
+            é o que o ApoloPage guarda para o "voltar" trazer a pessoa de volta à aba onde estava, e
+            há links salvos apontando para ela. Em vez de dar tela em branco a quem chegar por um
+            deles, cai na política — que é onde os planos moram agora. */}
         {tab === "planos" ? (
-          <PlanosComerciaisTab enterpriseId={row.id} name={row.name} />
+          <PoliticaComercialTab
+            abaInicial="planos"
+            code={row.code}
+            codes={row.codes}
+            enterpriseId={row.id}
+            name={row.name}
+          />
         ) : null}
         {tab === "minutas" ? (
           <MinutasTab enterpriseId={row.id} name={row.name} />

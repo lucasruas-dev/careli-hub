@@ -162,6 +162,8 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
 
   const [categoriaNova, setCategoriaNova] = useState("");
   const [criandoCategoria, setCriandoCategoria] = useState(false);
+  /** O campo de categoria do FORMULÁRIO virou entrada de texto (ver a nota no seletor). */
+  const [criandoAqui, setCriandoAqui] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -355,13 +357,23 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
           method: "POST",
         },
       );
-      const corpo = (await resposta.json().catch(() => ({}))) as { error?: string };
+      const corpo = (await resposta.json().catch(() => ({}))) as {
+        data?: { id: string };
+        error?: string;
+      };
 
       if (!resposta.ok) {
         setErro(corpo.error ?? "Não foi possível criar a categoria.");
         return;
       }
       setCategoriaNova("");
+      setCriandoAqui(false);
+      // ⚠️ A CATEGORIA RECÉM-CRIADA JÁ ENTRA NO PLANO QUE ESTÁ SENDO ESCRITO. Quem a criou estava no
+      // meio do formulário porque precisava dela AGORA; deixá-la só na lista obrigaria a abrir o
+      // seletor de novo para escolher o que acabou de nascer.
+      if (corpo.data?.id) {
+        setRascunho((atual) => (atual ? { ...atual, categoriaId: corpo.data!.id } : atual));
+      }
       setAviso(`Categoria "${nome}" criada.`);
       setRecarregar((n) => n + 1);
     } catch {
@@ -463,11 +475,24 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
       {/* ── O FORMULÁRIO ─────────────────────────────────────────────────── */}
       {rascunho ? (
         <Formulario
+          abrirCategoriaNova={() => {
+            setCategoriaNova("");
+            setCriandoAqui(true);
+          }}
           aoCancelar={() => setRascunho(null)}
           aoMudar={setRascunho}
           aoSalvar={() => void salvar()}
+          cancelarCategoria={() => {
+            setCategoriaNova("");
+            setCriandoAqui(false);
+          }}
+          categoriaNova={categoriaNova}
           categorias={carga.categorias}
+          criandoAqui={criandoAqui}
+          criandoCategoria={criandoCategoria}
+          criarCategoria={criarCategoria}
           entradaTexto={entradaTexto}
+          mudarCategoriaNova={setCategoriaNova}
           jurosTexto={jurosTexto}
           minutas={carga.minutas}
           mudarEntrada={setEntradaTexto}
@@ -729,11 +754,18 @@ function LinhaDoPlano({
 }
 
 function Formulario({
+  abrirCategoriaNova,
   aoCancelar,
   aoMudar,
   aoSalvar,
+  cancelarCategoria,
+  categoriaNova,
   categorias,
+  criandoAqui,
+  criandoCategoria,
+  criarCategoria,
   entradaTexto,
+  mudarCategoriaNova,
   jurosTexto,
   minutas,
   mudarEntrada,
@@ -745,10 +777,18 @@ function Formulario({
   rascunho,
   salvando,
 }: {
+  abrirCategoriaNova: () => void;
   aoCancelar: () => void;
   aoMudar: (r: Rascunho) => void;
   aoSalvar: () => void;
+  cancelarCategoria: () => void;
+  categoriaNova: string;
   categorias: CategoriaDoTemis[];
+  /** O campo de categoria virou entrada de texto, aqui dentro do formulário. */
+  criandoAqui: boolean;
+  criandoCategoria: boolean;
+  criarCategoria: () => Promise<void>;
+  mudarCategoriaNova: (valor: string) => void;
   entradaTexto: string;
   jurosTexto: string;
   minutas: MinutaResumida[];
@@ -803,20 +843,73 @@ function Formulario({
             />
           </label>
 
+          {/* ⚠️ A CATEGORIA SE CRIA AQUI, e não no rodapé da página (Lucas, 07/09/2026, com o
+              formulário aberto e o seletor oferecendo só "Sem categoria": *"não vi onde eu coloco
+              as categorias"*). O campo existia — no fim da aba, depois da lista de planos, longe da
+              vista de quem está preenchendo o formulário. Quem precisa de uma categoria descobre
+              isso no momento em que abre este seletor e não encontra a que queria; mandá-lo fechar
+              o formulário, rolar a página e voltar é perder o que ele já digitou. */}
           <label className="grid gap-1.5">
             <span className={rotulo}>Categoria</span>
-            <select
-              className={campo}
-              onChange={(e) => aoMudar({ ...rascunho, categoriaId: e.target.value || null })}
-              value={rascunho.categoriaId ?? ""}
-            >
-              <option value="">Sem categoria</option>
-              {categorias.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
+            {criandoAqui ? (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  className={campo}
+                  onChange={(e) => mudarCategoriaNova(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void criarCategoria();
+                    }
+                    if (e.key === "Escape") cancelarCategoria();
+                  }}
+                  placeholder="Nome da categoria (ex.: Externa)"
+                  value={categoriaNova}
+                />
+                <button
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-40"
+                  disabled={criandoCategoria || !categoriaNova.trim()}
+                  onClick={() => void criarCategoria()}
+                  type="button"
+                >
+                  {criandoCategoria ? (
+                    <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+                  ) : (
+                    <Check aria-hidden="true" className="size-4" />
+                  )}
+                </button>
+                <button
+                  aria-label="Cancelar"
+                  className="inline-flex h-9 shrink-0 items-center rounded-lg border border-line bg-surface px-3 text-sm text-ink-muted transition-colors hover:bg-subtle"
+                  onClick={cancelarCategoria}
+                  type="button"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <select
+                className={campo}
+                onChange={(e) => {
+                  // A opção de criar não é uma categoria: ela abre o campo, sem mexer no rascunho.
+                  if (e.target.value === "__nova__") {
+                    abrirCategoriaNova();
+                    return;
+                  }
+                  aoMudar({ ...rascunho, categoriaId: e.target.value || null });
+                }}
+                value={rascunho.categoriaId ?? ""}
+              >
+                <option value="">Sem categoria</option>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                  </option>
+                ))}
+                <option value="__nova__">+ Criar categoria…</option>
+              </select>
+            )}
           </label>
         </div>
 
