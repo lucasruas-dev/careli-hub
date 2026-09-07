@@ -235,6 +235,36 @@ const dia = (iso: null | string) => {
 };
 
 /**
+ * Quando o contrato fica pronto: 24 HORAS ÚTEIS depois do despacho.
+ *
+ * Lucas (06/09/2026): *"aqui pode trazer a data de entrega prevista"*, *"emissão de contrato 24
+ * horas úteis"*.
+ *
+ * ⚠️ 24 HORAS ÚTEIS É UM DIA ÚTIL, e sexta vira segunda — a mesma conta de `prazoDeEmissao` na
+ * Têmis, que é quem promete o prazo do outro lado. Duas contas para a mesma promessa dariam duas
+ * datas para o mesmo contrato: a que o comercial lê aqui e a que o jurídico vê no card.
+ */
+function entregaPrevista(desde: null | string): string {
+  if (!desde) return "—";
+  const base = new Date(desde);
+  if (Number.isNaN(base.getTime())) return "—";
+
+  const fim = new Date(base.getTime());
+  let restantes = 1;
+  while (restantes > 0) {
+    fim.setUTCDate(fim.getUTCDate() + 1);
+    const semana = fim.getUTCDay();
+    if (semana !== 0 && semana !== 6) restantes -= 1;
+  }
+  return fim.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+  });
+}
+
+/**
  * As janelas do Panorama.
  *
  * ⚠️ A JANELA VALE PARA O DESEMPENHO, NUNCA PARA A FAIXA DO FLUXO. A faixa é o pipeline VIVO — "3
@@ -1831,8 +1861,14 @@ function Mesa({
                       "Cliente",
                       "Imobiliária",
                       rotuloDaData(etapa),
+                      // ⚠️ SÓ EM CONTRATO (Lucas, 06/09/2026: *"aqui pode trazer a data de entrega
+                      // prevista"*). A promessa de 24 horas úteis é da EMISSÃO do contrato; nas
+                      // outras etapas não há o que prometer — reserva e proposta esperam o cliente,
+                      // e assinatura espera quem assina. Uma coluna vazia em quatro das seis
+                      // etapas diria sobretudo "não sei".
+                      ...(etapa === "contrato" ? ["Entrega prevista"] : []),
                       "Valor",
-                    ].map((c, i) => (
+                    ].map((c, i, todas) => (
                       <th
                         key={c}
                         style={{
@@ -1841,7 +1877,7 @@ function Mesa({
                           fontWeight: 650,
                           letterSpacing: ".05em",
                           padding: "10px 12px",
-                          textAlign: i === 4 ? "right" : "left",
+                          textAlign: i === todas.length - 1 ? "right" : "left",
                           whiteSpace: "nowrap",
                         }}
                       >
@@ -1858,6 +1894,14 @@ function Mesa({
                       style={{
                         background:
                           propostaEmFoco?.id === l.id ? T.soft : undefined,
+                        // ⚠️ UM FIO VERMELHO NA BORDA, E NÃO A LINHA PINTADA (Lucas, 06/09/2026:
+                        // *"os contratos que estão em cancelamento têm que vir falando, ou trazer
+                        // uma cor vermelha, algo mais discreto"*). Fundo vermelho numa lista de
+                        // contratos vivos lê-se como erro do sistema; o fio diz "esta é diferente"
+                        // sem gritar, e a coluna ao lado escreve o que ela tem de diferente.
+                        borderLeft: l.cancelamentoPedidoEm
+                          ? `2px solid ${T.danger}`
+                          : "2px solid transparent",
                         cursor: "pointer",
                       }}
                     >
@@ -1900,6 +1944,20 @@ function Mesa({
                       <td style={{ ...celula, color: T.muted }}>
                         {dia(l.desde)}
                       </td>
+                      {etapa === "contrato" ? (
+                        <td style={{ ...celula, color: T.muted }}>
+                          {/* ⚠️ QUEM PEDIU CANCELAMENTO NÃO TEM ENTREGA PREVISTA: prometer data de
+                              contrato para uma venda que o jurídico está desfazendo seria a tela
+                              contando duas histórias sobre a mesma linha. */}
+                          {l.cancelamentoPedidoEm ? (
+                            <span style={{ color: T.danger, fontWeight: 600 }}>
+                              Cancelamento solicitado
+                            </span>
+                          ) : (
+                            entregaPrevista(l.desde)
+                          )}
+                        </td>
+                      ) : null}
                       <td
                         style={{
                           ...celula,
@@ -1914,7 +1972,7 @@ function Mesa({
                   {listaFiltrada.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={etapa === "contrato" ? 6 : 5}
                         style={{
                           ...celula,
                           color: T.muted,

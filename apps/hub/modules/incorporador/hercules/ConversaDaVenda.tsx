@@ -22,6 +22,15 @@ import { T } from "../tema";
 //
 // ⚠️ A CONVERSA LÊ-SE DE CIMA PARA BAIXO, ao contrário do histórico ao lado. Chat com a mensagem
 // mais nova no topo obriga a ler de trás para frente para entender o que foi combinado.
+//
+// ⚠️ SÓ A CAIXA DE TEXTO (Lucas, 06/09/2026: *"deixa somente a caixa de texto, não precisa dessas
+// abas, mensagem, observação"*, e *"não precisa, vi o código aqui"* sobre o COD repetido em cada
+// linha). Eu tinha posto três pílulas de tipo antes de alguém ter escrito a primeira frase aqui —
+// três decisões pedidas de graça a quem só quer registrar uma coisa — e o COD em toda mensagem, num
+// chat em que todas são da mesma venda. A COLUNA `tipo` FICA no banco e a tela continua sabendo
+// pintar o que vier diferente: no dia em que a formalização precisar existir, ela nasce de um gesto
+// próprio sobre uma mensagem já escrita, e não de um seletor que todos atravessam para escrever
+// qualquer coisa.
 
 type MensagemDaVenda = {
   autor_nome: null | string;
@@ -43,7 +52,6 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
   const [mensagens, setMensagens] = useState<MensagemDaVenda[]>([]);
   const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">("pronto");
   const [texto, setTexto] = useState("");
-  const [tipo, setTipo] = useState<TipoDaMensagem>("mensagem");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<null | string>(null);
   const rolagem = useRef<HTMLDivElement | null>(null);
@@ -89,9 +97,6 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
     setMensagens([]);
     setTexto("");
     setErro(null);
-    // O tipo também é do lote: "Formalização" escolhida numa venda não pode carimbar a mensagem
-    // seguinte, de outro cliente.
-    setTipo("mensagem");
   }, [unidadeId]);
 
   // ⚠️ O `versao` NÃO APAGA O QUE ESTÁ SENDO DIGITADO. Ele sobe a cada carga do fluxo (reservar,
@@ -117,7 +122,7 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
     setErro(null);
     try {
       const r = await fetch("/api/incorporador/venda/conversa", {
-        body: JSON.stringify({ texto: limpo, tipo, unidadeId }),
+        body: JSON.stringify({ texto: limpo, unidadeId }),
         headers: { "content-type": "application/json" },
         method: "POST",
       });
@@ -141,10 +146,6 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
         atuais.some((m) => m.id === nova.id) ? atuais : [...atuais, nova],
       );
       setTexto("");
-      // ⚠️ O TIPO NÃO GRUDA. Formalização é a exceção, não o modo: deixá-lo aceso faria a mensagem
-      // seguinte — um comentário qualquer — nascer carimbada como registro formal, que é o que
-      // alguém procura numa auditoria.
-      setTipo("mensagem");
     } catch {
       setErro("Não foi possível registrar agora.");
     } finally {
@@ -216,19 +217,6 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
                       {NOME_DO_TIPO_DE_MENSAGEM[m.tipo as TipoDaMensagem] ?? m.tipo}
                     </span>
                   ) : null}
-                  {/* O COD amarra a mensagem à venda: o mesmo lote pode ter tido outras. */}
-                  {m.codigo ? (
-                    <span
-                      style={{
-                        color: T.muted,
-                        fontFamily: "ui-monospace, monospace",
-                        fontSize: 10.5,
-                        marginLeft: "auto",
-                      }}
-                    >
-                      {m.codigo}
-                    </span>
-                  ) : null}
                 </div>
                 <p style={{ fontSize: 12.5, lineHeight: 1.5, margin: 0, whiteSpace: "pre-wrap" }}>
                   {m.texto}
@@ -240,29 +228,6 @@ export function ConversaDaVenda({ unidadeId, versao }: { unidadeId: null | strin
       </div>
 
       <div style={{ borderTop: `1px solid ${T.border}`, display: "grid", gap: 6, paddingTop: 10 }}>
-        <div style={{ display: "flex", gap: 6 }}>
-          {(["mensagem", "observacao", "formalizacao"] as const).map((opcao) => (
-            <button
-              key={opcao}
-              onClick={() => setTipo(opcao)}
-              style={{
-                background: tipo === opcao ? T.text : "transparent",
-                border: `1px solid ${tipo === opcao ? T.text : T.border}`,
-                borderRadius: 999,
-                color: tipo === opcao ? T.page : T.sub,
-                cursor: "pointer",
-                font: "inherit",
-                fontSize: 11.5,
-                fontWeight: 600,
-                padding: "4px 12px",
-              }}
-              type="button"
-            >
-              {NOME_DO_TIPO_DE_MENSAGEM[opcao]}
-            </button>
-          ))}
-        </div>
-
         <textarea
           disabled={enviando}
           // ⚠️ O CORTE É AVISADO ANTES, e não depois. O servidor apara em 4.000; sem o `maxLength`,
