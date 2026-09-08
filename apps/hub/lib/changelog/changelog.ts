@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-o-agente-le-duas-vezes",
+    deployedAt: "2026-09-08T02:40:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O agente lê a minuta duas vezes.** Na segunda, ele releia o documento com a própria lista na mão e procura só o que passou — foro, assinaturas, quadro-resumo e valores, que é onde a primeira leitura sempre rareia.",
+              "**Ele parou de propor negrito no que já está em negrito.** Recebia o texto sem formatação e não tinha como saber: das 24 propostas do primeiro teste, 24 eram isso.",
+              "**Ele enxerga os marcadores vermelhos.** `[nacionalidade]` escrito pelo loteador virava chip e sumia do texto que o agente lia — agora ele vê e propõe a variável certa no lugar.",
+              "**A lista diz o que ele entendeu**: \"18 variáveis · 2 blocos\" em vez de só um número.",
+              "**As leituras pararam de truncar.** O que aparecia como \"1 de 2 partes falharam\" era a resposta batendo no limite de tamanho, no meio do JSON.",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+    ],
+    rollback: "900d1656",
+    technical: {
+      done: "Quatro defeitos, todos meus, achados pelo teste do Lucas com a minuta do Aldeia da Cachoeira (50.770 caracteres, 51 lacunas em colchete). ⚠️ 1. O NÓ DE VARIÁVEL CONTAVA COMO COMPRIMENTO ZERO no texto mandado ao modelo. A importação promove `[nacionalidade]` a nó (chip VERMELHO, porque a nossa é `nacionalidade_cliente`), e a partir daí o texto do agente tinha um BURACO exatamente onde estava a lacuna: ele não podia propor a correção do que não via. Agora o nó vira o pedaço virtual `[nome]`, e a faixa sobre ele EXPANDE para fora (ao contrário do separador de parágrafo, que colapsa para dentro) — sem isso, `delete` não apagaria o chip e a substituição produziria `[nacionalidade_cliente][nacionalidade]`. ⚠️ 2. `max_tokens` ERA 16 MIL e a resposta truncava no meio do JSON; `lerPropostas` falhava e a parte inteira virava erro, com o sintoma inútil \"1 de 2 partes falharam\". Agora 48 mil, e as partes passaram de 25k para 45k de texto — menos cortes, e cada corte cego custa contexto (o agente que lê só o meio não sabe se aquele CPF é do comprador ou do representante da vendedora). ⚠️ 3. NEGRITO ÀS CEGAS. O modelo recebe texto puro e não enxerga marcas; o conhecimento agora proíbe negrito em passe automático (só quando alguém pedir na conversa) e `trechoJaEmNegrito` descarta no cliente o que já está marcado. ⚠️ 4. A SEGUNDA LEITURA, que é a mudança de método, não de modelo. Lucas: *\"se te pedir para montar essa minuta você vai conseguir, queria era esse tipo de inteligência\"*. Uma pessoa não entrega a primeira lista que escreve: relê com ela na mão e pergunta \"o que passou?\". A rota aceita `jaPropostas` no corpo e, quando vem lista, roda a RELEITURA com um prompt que aponta onde a primeira leitura costuma falhar. ⚠️ SÃO DUAS REQUISIÇÕES, e não duas chamadas numa só: somar dois Opus nos 300s da Vercel colocaria as duas em risco de estourar junto, e timeout volta como TEXTO, não JSON. A releitura que falha vira nota de rodapé — nunca derruba a lista da primeira. 3.110 testes verdes; typecheck limpo.",
+      motivation:
+        "O agente devolveu 24 propostas e todas eram negrito em título que já estava em negrito. Não era o modelo: eram quatro defeitos no que eu mandava para ele e no método.",
+    },
+    title: "O agente lê a minuta duas vezes",
+    type: "correcao",
+    version: "1.295.1",
+  },
+  {
     buildTag: "2026-09-08-super-agente-e-contrato-de-corretagem",
     deployedAt: "2026-09-08T02:10:00-03:00",
     modules: [

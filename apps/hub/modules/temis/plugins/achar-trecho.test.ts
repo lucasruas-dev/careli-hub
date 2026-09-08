@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { faixaDoTrecho, pedacosDeTexto, textoDoDocumento } from "./achar-trecho";
+import { faixaDoTrecho, pedacosDeTexto, textoDoDocumento, trechoJaEmNegrito } from "./achar-trecho";
 
 // ⚠️ ESTA CAMADA DECIDE ONDE A VARIÁVEL É INSERIDA. Um offset errado marca o pedaço errado do
 // contrato — e o resultado parece certo na tela até alguém ler o papel assinado.
@@ -41,20 +41,63 @@ describe("percorrer o documento", () => {
     const { pedacos } = pedacosDeTexto(valor);
     // O último é o separador do parágrafo: existe no texto, não existe no documento.
     expect(pedacos.filter((x) => !x.virtual)).toEqual([
-      { caminho: [0, 0], inicio: 0, texto: "abc" },
-      { caminho: [0, 1], inicio: 3, texto: "def" },
+      { caminho: [0, 0], inicio: 0, negrito: false, texto: "abc" },
+      { caminho: [0, 1], inicio: 3, negrito: false, texto: "def" },
     ]);
   });
 
-  // ⚠️ O NÓ DE VARIÁVEL É VOID DE TEXTO VAZIO. Se ele contasse `[nome_cliente]` como texto, todos os
-  // offsets seguintes sairiam deslocados em 14 caracteres e a marcação cairia no lugar errado.
-  it("conta o nó de variável como comprimento zero", () => {
+  // ⚠️ O NÓ DE VARIÁVEL APARECE COMO `[nome]`, e isso mudou em 08/09/2026. Antes ele contava como
+  // comprimento zero — verdade na folha, desastre para o agente: a minuta do Aldeia da Cachoeira
+  // chega com `[nacionalidade]` escrito pelo loteador, a importação transforma isso num chip
+  // (vermelho, porque não está no catálogo), e a partir daí o texto que o agente lia tinha um
+  // BURACO exatamente onde estava a lacuna. Ele não podia propor a correção do que não via.
+  it("mostra o nó de variável como [nome], para o agente enxergar", () => {
     const valor = doc([
       { text: "Eu, " },
       { children: [{ text: "" }], nome: "nome_cliente", type: "variavel" },
       { text: ", casado" },
     ]);
-    expect(textoDoDocumento(valor)).toBe("Eu, , casado");
+    expect(textoDoDocumento(valor)).toBe("Eu, [nome_cliente], casado");
+  });
+
+  it("mostra também o chip vermelho, que é o que o agente precisa corrigir", () => {
+    const valor = doc([
+      { text: "COMPRADOR: " },
+      { children: [{ text: "" }], nome: "nacionalidade", type: "variavel" },
+      { text: ", casado" },
+    ]);
+    expect(textoDoDocumento(valor)).toContain("[nacionalidade]");
+  });
+});
+
+describe("a faixa sobre um chip existente", () => {
+  // ⚠️ A FAIXA TEM DE ABRANGER O VOID, e não encostar nele. Se ela colapsasse para dentro como o
+  // separador faz, `delete` não apagaria o chip e a substituição produziria
+  // `[nacionalidade_cliente][nacionalidade]` — duas variáveis coladas no contrato.
+  const comChip = () =>
+    doc([
+      { text: "COMPRADOR: " },
+      { children: [{ text: "" }], nome: "nacionalidade", type: "variavel" },
+      { text: ", casado" },
+    ]);
+
+  it("acha o chip pelo nome e devolve uma faixa que o contém", () => {
+    const faixa = faixaDoTrecho(comChip(), "[nacionalidade]");
+    expect(faixa).not.toBeNull();
+    // Começa no FIM do texto anterior e termina no COMEÇO do próximo: o void fica no meio.
+    expect(faixa?.inicio).toEqual({ offset: 11, path: [0, 0] });
+    expect(faixa?.fim).toEqual({ offset: 0, path: [0, 2] });
+  });
+
+  it("acha um trecho que atravessa o chip", () => {
+    const faixa = faixaDoTrecho(comChip(), "COMPRADOR: [nacionalidade], casado");
+    expect(faixa?.inicio.path).toEqual([0, 0]);
+    expect(faixa?.fim.path).toEqual([0, 2]);
+  });
+
+  it("o texto ao redor do chip continua achável", () => {
+    expect(faixaDoTrecho(comChip(), "COMPRADOR:")).not.toBeNull();
+    expect(faixaDoTrecho(comChip(), "casado")).not.toBeNull();
   });
 });
 
@@ -149,5 +192,36 @@ describe("a busca tolera a forma, e só a forma", () => {
 
   it("não acha quando a pontuação é diferente", () => {
     expect(faixaDoTrecho(doc([{ text: "CPF n.º 111" }]), "CPF no 111")).toBeNull();
+  });
+});
+
+describe("negrito no que já é negrito", () => {
+  // ⚠️ 24 PROPOSTAS, TODAS INÚTEIS. Foi o que o agente devolveu para a minuta do Aldeia da Cachoeira
+  // em 08/09/2026: negrito em títulos de cláusula que já estavam em negrito. Ele lê texto puro e não
+  // tem como saber — esta é a barreira do lado de cá.
+  it("reconhece o trecho inteiro em negrito", () => {
+    const valor = doc([{ bold: true, text: "CLÁUSULA PRIMEIRA — DAS PARTES" }]);
+    expect(trechoJaEmNegrito(valor, "CLÁUSULA PRIMEIRA")).toBe(true);
+  });
+
+  it("não reconhece o que está sem negrito", () => {
+    const valor = doc([{ text: "CLÁUSULA PRIMEIRA — DAS PARTES" }]);
+    expect(trechoJaEmNegrito(valor, "CLÁUSULA PRIMEIRA")).toBe(false);
+  });
+
+  // ⚠️ MEIO EM NEGRITO É "NÃO ESTÁ EM NEGRITO". A proposta continua valendo: é justamente o caso do
+  // título que alguém marcou pela metade, que é onde o negrito do agente ajuda de verdade.
+  it("meio em negrito não conta como negrito", () => {
+    const valor = doc([{ bold: true, text: "CLÁUSULA " }, { text: "PRIMEIRA" }]);
+    expect(trechoJaEmNegrito(valor, "CLÁUSULA PRIMEIRA")).toBe(false);
+  });
+
+  it("trecho que não existe devolve false — quem não achou não decide", () => {
+    expect(trechoJaEmNegrito(doc([{ bold: true, text: "abc" }]), "xyz")).toBe(false);
+  });
+
+  it("um trecho que atravessa parágrafos não é reprovado pelo separador", () => {
+    const valor = doc([{ bold: true, text: "fim do um" }], [{ bold: true, text: "começo do dois" }]);
+    expect(trechoJaEmNegrito(valor, "um começo")).toBe(true);
   });
 });

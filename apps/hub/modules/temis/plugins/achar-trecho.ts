@@ -15,9 +15,24 @@ import { casarTrecho } from "@/lib/temis/casar-trecho";
 // feita sobre o texto CONCATENADO de todos os nós, e o resultado é convertido de volta em
 // (caminho, posição).
 //
-// ⚠️ E O NÓ DE VARIÁVEL NÃO ENTRA NA CONCATENAÇÃO COM O SEU NOME. Ele é um void cujo texto é vazio;
-// se contássemos `[nome_cliente]` como texto, os offsets de tudo que vem depois sairiam errados e a
-// marcação cairia deslocada. Ele conta como comprimento ZERO — que é o que ele é na folha.
+// ⚠️ O NÓ DE VARIÁVEL ENTRA NO TEXTO COMO `[nome]`, e isso mudou em 08/09/2026 depois de um teste
+// real do Lucas. Ele contava como comprimento ZERO — o que é verdade na folha, e era um desastre
+// para o agente:
+//
+//   A minuta do Aldeia da Cachoeira chega com `[nacionalidade]` escrito pelo loteador. Na
+//   importação, `promoverVariaveisNoValor` transforma isso num nó (chip VERMELHO, porque
+//   `nacionalidade` não está no catálogo — a nossa é `nacionalidade_cliente`). A partir daí o texto
+//   que o agente recebia tinha um BURACO exatamente onde estava a lacuna, e ele não podia propor a
+//   correção do que não conseguia ver. Lucas, olhando o painel: *"achei pouco as variáveis a serem
+//   inseridas"*.
+//
+// Agora o nó vira o pedaço virtual `[nome]`: o agente lê o documento como ele se lê na tela, e
+// consegue propor trocar `[nacionalidade]` por `[nacionalidade_cliente]`.
+//
+// ⚠️ E OS OFFSETS CONTINUAM CERTOS porque o pedaço é VIRTUAL — ele existe no texto e não é um lugar
+// onde o cursor possa entrar. A diferença para o separador de parágrafo é o LADO para onde ele
+// dobra: o separador colapsa para DENTRO (ele não deve ser selecionado), e a variável expande para
+// FORA (a seleção precisa ABRANGER o void para conseguir apagá-lo).
 //
 // ⚠️ E OS PARÁGRAFOS SÃO SEPARADOS POR QUEBRA DE LINHA. Até 08/09/2026 não eram, e esse era o maior
 // defeito do agente: o texto que ele lia chegava com o fim de uma cláusula colado no começo da
@@ -29,14 +44,21 @@ import { casarTrecho } from "@/lib/temis/casar-trecho";
 // que caia dentro dele não tem caminho no Slate — ele é dobrado para o fim do nó anterior, que é a
 // mesma posição na tela.
 
-/** Um nó de texto do documento e onde ele fica. `virtual` marca o separador entre parágrafos. */
+/**
+ * Um nó de texto do documento e onde ele fica.
+ *
+ * `virtual` marca os dois pedaços que existem no TEXTO e não são um lugar onde o cursor entra:
+ *   "separador"  a quebra de linha entre parágrafos — colapsa para dentro
+ *   "variavel"   o `[nome]` de um nó de variável — expande para fora, para poder ser apagado
+ */
 type Pedaco = {
   caminho: number[];
   /** Onde o texto deste nó começa, no texto concatenado do documento. */
   inicio: number;
+  /** ⚠️ Serve a UMA coisa: descartar proposta de negrito no que já está em negrito. Ver o fim deste arquivo. */
+  negrito?: boolean;
   texto: string;
-  /** Separador de parágrafo: existe no texto, não existe no documento. */
-  virtual?: boolean;
+  virtual?: "separador" | "variavel";
 };
 
 export type PontoNoDocumento = { offset: number; path: number[] };
@@ -98,15 +120,37 @@ export function pedacosDeTexto(nos: readonly unknown[]): { pedacos: Pedaco[]; te
 
       if (ehTexto(no)) {
         if (no.text !== "" && precisaSeparar && jaTeveTexto) {
-          pedacos.push({ caminho: [], inicio: texto.length, texto: "\n", virtual: true });
+          pedacos.push({ caminho: [], inicio: texto.length, texto: "\n", virtual: "separador" });
           texto += "\n";
           precisaSeparar = false;
         }
         // Texto vazio (o filho obrigatório de um void, por exemplo) continua no mapa: o Slate
         // precisa dele como destino de seleção.
-        pedacos.push({ caminho, inicio: texto.length, texto: no.text });
+        pedacos.push({
+          caminho,
+          inicio: texto.length,
+          negrito: (no as { bold?: unknown }).bold === true,
+          texto: no.text,
+        });
         texto += no.text;
         if (no.text !== "") jaTeveTexto = true;
+        continue;
+      }
+
+      // ⚠️ O NÓ DE VARIÁVEL NÃO DESCE NOS FILHOS. Ele é void: o filho é um texto vazio que serve de
+      // âncora de seleção para o Slate, e emiti-lo como pedaço real colocaria um lugar de cursor
+      // DENTRO do `[nome]` — de onde uma faixa não consegue sair para apagar o nó inteiro.
+      const nomeDaVariavel = (no as { nome?: unknown })?.nome;
+      if ((no as { type?: unknown })?.type === "variavel" && typeof nomeDaVariavel === "string") {
+        if (precisaSeparar && jaTeveTexto) {
+          pedacos.push({ caminho: [], inicio: texto.length, texto: "\n", virtual: "separador" });
+          texto += "\n";
+          precisaSeparar = false;
+        }
+        const marca = `[${nomeDaVariavel}]`;
+        pedacos.push({ caminho, inicio: texto.length, texto: marca, virtual: "variavel" });
+        texto += marca;
+        jaTeveTexto = true;
         continue;
       }
 
@@ -141,15 +185,27 @@ function pontoDoOffset(
         : offset > p.inicio && offset <= fim;
     if (!dentro) continue;
 
-    // ⚠️ O SEPARADOR NÃO É UM LUGAR. Ele não existe no documento: um ponto que caia nele é dobrado
-    // para o vizinho real do lado certo — o fim do parágrafo anterior, ou o começo do próximo.
+    // ⚠️ NENHUM DOS DOIS VIRTUAIS É UM LUGAR — mas eles dobram para lados OPOSTOS.
+    //
+    //   SEPARADOR  colapsa para DENTRO: um ponto nele vira o começo do próximo parágrafo (início) ou
+    //              o fim do anterior (fim). É a mesma posição na tela, e nada dele é selecionado.
+    //   VARIÁVEL   expande para FORA: o início vira o FIM do texto anterior e o fim vira o COMEÇO do
+    //              próximo, de modo que a faixa ABRANJA o void. Sem isso, `delete` não apagaria o
+    //              chip e a substituição produziria `[nacionalidade_cliente][nacionalidade]`.
     if (p.virtual) {
-      if (lado === "fim") {
+      const paraTras = () => {
         const anterior = [...pedacos.slice(0, indice)].reverse().find((x) => !x.virtual);
         return anterior ? { offset: anterior.texto.length, path: anterior.caminho } : null;
+      };
+      const paraFrente = () => {
+        const seguinte = pedacos.slice(indice + 1).find((x) => !x.virtual);
+        return seguinte ? { offset: 0, path: seguinte.caminho } : null;
+      };
+
+      if (p.virtual === "variavel") {
+        return lado === "inicio" ? (paraTras() ?? paraFrente()) : (paraFrente() ?? paraTras());
       }
-      const seguinte = pedacos.slice(indice + 1).find((x) => !x.virtual);
-      return seguinte ? { offset: 0, path: seguinte.caminho } : null;
+      return lado === "fim" ? paraTras() : paraFrente();
     }
 
     return { offset: offset - p.inicio, path: p.caminho };
@@ -201,4 +257,39 @@ export function faixaDoTrecho(
 /** O texto do documento, como a IA vai lê-lo. */
 export function textoDoDocumento(nos: readonly unknown[]): string {
   return pedacosDeTexto(nos).texto;
+}
+
+/**
+ * O trecho já está inteiro em negrito?
+ *
+ * ⚠️ ISTO EXISTE PARA DESCARTAR PROPOSTA QUE NÃO MUDA NADA, e nasceu de um teste real. Em 08/09/2026
+ * o agente devolveu 24 propostas para a minuta do Aldeia da Cachoeira e TODAS eram "pôr em negrito"
+ * — em títulos de cláusula que já estavam em negrito. Lucas: *"achei pouco as variáveis a serem
+ * inseridas, ainda não está legal"*.
+ *
+ * A causa é estrutural e não tem conserto do lado do modelo: ele recebe TEXTO PURO, sem formatação,
+ * e não tem como saber o que já está marcado. O conhecimento do agente agora manda não propor
+ * negrito num passe automático; esta função é a segunda barreira, para quando ele propuser mesmo
+ * assim ou quando alguém pedir negrito na conversa em algo que já tem.
+ *
+ * ⚠️ TRECHO NÃO ENCONTRADO devolve `false`, e não `true`: quem não achou não decide. A proposta cai
+ * depois, na conferência de faixa, que é o lugar certo para isso.
+ */
+export function trechoJaEmNegrito(
+  nos: readonly unknown[],
+  trecho: string,
+  contexto?: string,
+): boolean {
+  const { pedacos, texto } = pedacosDeTexto(nos);
+  const achado = casarTrecho(texto, trecho, contexto);
+  if (achado.situacao !== "achou") return false;
+
+  const { fim, inicio } = achado.casamento;
+  // Só os pedaços REAIS que têm texto dentro da faixa: o separador e o `[nome]` da variável não
+  // carregam marca, e exigir negrito neles reprovaria todo trecho que atravessa um parágrafo.
+  const dentro = pedacos.filter(
+    (p) => !p.virtual && p.texto !== "" && p.inicio < fim && p.inicio + p.texto.length > inicio,
+  );
+
+  return dentro.length > 0 && dentro.every((p) => p.negrito === true);
 }

@@ -28,7 +28,7 @@ import { setMinutaAtualParaUpload } from "@/lib/temis/upload-midia";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { useAuth } from "@/providers/auth-provider";
 
-import { faixaDoTrecho, textoDoDocumento } from "./plugins/achar-trecho";
+import { faixaDoTrecho, textoDoDocumento, trechoJaEmNegrito } from "./plugins/achar-trecho";
 import { noDeQuebraDePagina } from "./plugins/quebra-de-pagina-base";
 
 import { EditorKitTemis } from "./editor-kit-temis";
@@ -425,7 +425,11 @@ type RespostaDaConversa = RespostaDoAgente & { resposta: string };
  * Partir também melhora o resultado: o modelo lendo 25 mil caracteres erra menos que lendo 136 mil,
  * e uma parte que falha não leva as outras junto.
  */
-const TAMANHO_DA_PARTE = 25_000;
+// ⚠️ 25 MIL PARTIA DEMAIS, e partir tem um custo que não é só de tempo: cada parte é lida SOZINHA,
+// sem o resto do contrato. O agente que lê só o meio do documento não sabe se aquele "CPF n.º" é do
+// comprador ou do representante da vendedora — e a decisão de qual variável usar depende
+// exatamente disso. Menos cortes, decisões melhores.
+const TAMANHO_DA_PARTE = 45_000;
 
 /**
  * Corta o texto em pedaços, SEMPRE em quebra de linha.
@@ -450,10 +454,15 @@ function partirEmPedacos(texto: string): string[] {
   return partes;
 }
 
-async function umaParte(texto: string, token: string): Promise<RespostaDoAgente> {
+async function umaParte(
+  texto: string,
+  token: string,
+  jaPropostas?: PropostaDoAgente[],
+): Promise<RespostaDoAgente> {
   try {
     const r = await fetch("/api/temis/minutas/marcar", {
-      body: JSON.stringify({ texto }),
+      // Com `jaPropostas`, a rota faz a RELEITURA: procura só o que a primeira leitura deixou passar.
+      body: JSON.stringify({ jaPropostas: jaPropostas ?? [], texto }),
       // ⚠️ O TOKEN É OBRIGATÓRIO, e esquecê-lo foi o defeito que fez o agente responder 401 no
       // primeiro teste real. A rota exige `authorizeApoloRead` como todas as do módulo; o resto da
       // Têmis já manda o `Bearer` e eu não mandei aqui.
@@ -575,13 +584,43 @@ async function pedirMarcacao(texto: string): Promise<RespostaDoAgente> {
     recusadas.push(...r.recusadas);
   }
 
+  // ⚠️ A SEGUNDA LEITURA — é ela que separa "marcou o começo" de "preparou a minuta". Lucas
+  // (08/09/2026): *"se te pedir para montar essa minuta você vai conseguir, queria era esse tipo de
+  // inteligência"*. Uma pessoa não entrega a primeira lista que escreve: ela relê o documento com a
+  // lista na mão e pergunta "o que passou?". A primeira leitura é minuciosa nas partes e no imóvel,
+  // e vai rareando — foro, assinaturas e quadro-resumo quase sempre ficam de fora.
+  //
+  // ⚠️ ELA NUNCA DERRUBA A PRIMEIRA. Se a releitura falhar, a lista original continua valendo: 30
+  // propostas na tela é infinitamente melhor do que um erro no lugar delas.
+  for (const [indice, parte] of partes.entries()) {
+    const daParte = propostas.filter((p) => parte.includes(p.trecho));
+    const r = await umaParte(parte, token, daParte);
+    if (r.erro) {
+      // A releitura que falha vira nota de rodapé, não erro da operação.
+      falhas.push(`Na segunda leitura da parte ${indice + 1}: ${r.erro}`);
+      continue;
+    }
+    // ⚠️ SEM REPETIR. A chave é tipo+nome+trecho: a releitura pode legitimamente propor OUTRA
+    // variável para o mesmo trecho (viu que aquele CPF é do representante, não do comprador), e as
+    // duas devem aparecer. O que não pode é a mesma proposta duas vezes — a pessoa clicaria na
+    // segunda depois de aplicar a primeira e não entenderia por que nada acontece.
+    const vistas = new Set(propostas.map((p) => `${p.tipo ?? "variavel"}|${p.nome}|${p.trecho}`));
+    for (const nova of r.propostas) {
+      if (!vistas.has(`${nova.tipo ?? "variavel"}|${nova.nome}|${nova.trecho}`)) propostas.push(nova);
+    }
+    recusadas.push(...r.recusadas);
+  }
+
   return {
-    // Falhar em uma parte não apaga o que as outras acharam — o erro vira aviso, não tela vazia.
+    // ⚠️ FALHA VIRA AVISO, NUNCA TELA VAZIA. Perder uma parte não apaga o que as outras acharam — e
+    // dizer QUANTAS propostas sobreviveram importa mais do que dizer quantas chamadas falharam:
+    // "1 de 2 partes falharam" fez o Lucas achar que o resultado estava truncado quando o problema
+    // era outro (o JSON estourava o limite de saída).
     erro:
-      falhas.length === partes.length
+      propostas.length === 0 && falhas.length > 0
         ? falhas[0]
         : falhas.length > 0
-          ? `${falhas.length} de ${partes.length} partes falharam; o resto foi lido.`
+          ? `${propostas.length} proposta(s) vieram, mas ${falhas.length} leitura(s) falharam — pode ter ficado coisa de fora. Mande marcar de novo para completar.`
           : undefined,
     propostas,
     recusadas,
@@ -828,10 +867,25 @@ function CorpoDoAgente({
   // triagem do servidor confere contra a parte; esta é a conferência contra o documento todo.
   // Mostrar uma proposta que o clique recusaria seria pior que não mostrar: o operador clicaria,
   // nada aconteceria, e ele não saberia por quê.
-  const aplicaveis = resposta.propostas.filter((p) =>
-    faixaDoTrecho(editor.children, p.trecho, p.contexto),
+  const aplicaveis = resposta.propostas.filter(
+    (p) =>
+      faixaDoTrecho(editor.children, p.trecho, p.contexto) &&
+      // ⚠️ NEGRITO NO QUE JÁ É NEGRITO NÃO ENTRA NA LISTA. O agente lê texto puro e não enxerga
+      // formatação: em 08/09/2026 ele devolveu 24 propostas e todas eram negrito em título que já
+      // estava em negrito. Mostrar isso faria a pessoa clicar 24 vezes para não mudar nada.
+      !(p.tipo === "negrito" && trechoJaEmNegrito(editor.children, p.trecho, p.contexto)),
   );
   const semLugar = resposta.propostas.length - aplicaveis.length;
+  // ⚠️ A CONTA POR TIPO É O QUE DIZ SE O PASSE FOI BOM. "24 propostas" esconde que as 24 eram
+  // negrito; "18 variáveis · 2 blocos" diz na hora o que o agente entendeu do contrato.
+  const porTipo = ["variavel", "envolver", "quebra", "negrito"]
+    .map((t) => ({
+      n: aplicaveis.filter((p) => (p.tipo ?? "variavel") === t).length,
+      rotulo: { envolver: "bloco", negrito: "negrito", quebra: "quebra", variavel: "variável" }[t] ?? t,
+    }))
+    .filter((x) => x.n > 0)
+    .map((x) => `${x.n} ${x.rotulo}${x.n > 1 ? (x.rotulo === "variável" ? "is" : "s") : ""}`)
+    .join(" · ");
 
   return (
     <div className="min-h-0 flex-1 overflow-auto p-1.5">
@@ -858,8 +912,8 @@ function CorpoDoAgente({
             Aplicar as {aplicaveis.length}
           </button>
           <p className="m-0 text-[10px] leading-tight text-ink-muted">
-            Ou clique uma a uma, para ver onde cada uma cai. Ctrl+Z desfaz.
-            {semLugar > 0 ? ` ${semLugar} não casou com o texto e ficou de fora.` : ""}
+            {porTipo}. Ou clique uma a uma, para ver onde cada uma cai. Ctrl+Z desfaz.
+            {semLugar > 0 ? ` ${semLugar} ficou de fora (não casou com o texto, ou não mudaria nada).` : ""}
           </p>
         </div>
       )}

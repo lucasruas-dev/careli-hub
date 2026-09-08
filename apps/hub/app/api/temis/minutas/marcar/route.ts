@@ -29,6 +29,35 @@ import { catalogoParaOModelo, CONHECIMENTO_DA_TEMIS } from "@/lib/temis/agente-c
 // ⚠️ OPUS 5 (`CLAUDE_MODEL.frontier`), e não o modelo padrão: a tarefa é ler um contrato de 60 mil
 // caracteres e casar trechos com um catálogo de ~280 nomes parecidos entre si (`nome_cliente` x
 // `nome_conjuge` x `nome_cliente_2`). Errar aqui é marcar o cônjuge como comprador.
+//
+// ⚠️ SÃO DUAS PASSADAS, E É AQUI QUE MORA A DIFERENÇA. Lucas, 08/09/2026, depois do primeiro teste
+// com a minuta do Aldeia da Cachoeira: *"achei pouco as variáveis a serem inseridas, ainda não está
+// legal, o que podemos fazer? Pois se te pedir para montar essa minuta você vai conseguir — queria
+// era esse tipo de inteligência"*.
+//
+// Ele está certo, e a diferença não era de modelo: era de MÉTODO. Uma pessoa preparando essa minuta
+// não entrega a primeira lista que escreve — ela relê o documento com a lista na mão e pergunta "o
+// que passou?". Uma passada só é ótima nas primeiras seções (partes, imóvel) e vai rareando: as
+// qualificações do começo são fáceis, e o modelo dá o trabalho por feito antes do fim.
+//
+// Então:
+//
+//   PASSADA 1   lê o texto e propõe.
+//   PASSADA 2   recebe o TEXTO e a LISTA da primeira, e procura só o que ficou de fora — seção por
+//               seção, com a pergunta explícita "que dado deste contrato ainda está escrito aqui?".
+//
+// As duas listas são unidas e passam pela mesma triagem. É o padrão do crítico de completude, e ele
+// custa o dobro de uma passada — o que é barato perto de um jurídico marcando 60 variáveis à mão.
+//
+// ⚠️ E SÃO DUAS REQUISIÇÕES, NÃO DUAS CHAMADAS NUMA SÓ. O teto da função na Vercel é 300 segundos, e
+// uma leitura de 45 mil caracteres por um modelo de fronteira, com resposta longa, come uma boa
+// parte disso. Somar as duas na mesma requisição colocaria as DUAS passadas em risco de estourar
+// junto — e um timeout aqui volta como TEXTO, não como JSON, então nem a mensagem de erro chega
+// ([[reference_vercel_timeout_vira_erro_de_json]]). Separadas, cada uma tem os 300 segundos
+// inteiros, e a segunda pode falhar sem levar a primeira junto.
+//
+// Quem orquestra é a TELA: manda a primeira rodada, recebe as propostas, e manda a segunda passando
+// o que já veio (`jaPropostas` no corpo).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 // Contrato inteiro num modelo de fronteira: precisa de fôlego. O teto da Vercel é 300.
@@ -49,8 +78,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const corpo = (await request.json().catch(() => ({}))) as { texto?: unknown };
+  const corpo = (await request.json().catch(() => ({}))) as {
+    jaPropostas?: unknown;
+    texto?: unknown;
+  };
   const texto = typeof corpo.texto === "string" ? corpo.texto : "";
+  // Quando vem lista, esta requisição é a RELEITURA: procura o que a primeira deixou passar.
+  const jaPropostas = lerPropostas(
+    typeof corpo.jaPropostas === "string" ? corpo.jaPropostas : JSON.stringify({ propostas: corpo.jaPropostas ?? [] }),
+  );
+  const ehReleitura = (jaPropostas?.length ?? 0) > 0;
 
   if (!texto.trim()) {
     return NextResponse.json({ erro: "Sem texto para marcar." }, { status: 400 });
@@ -68,15 +105,21 @@ export async function POST(request: Request) {
   let bruto = "";
   try {
     const resposta = await cliente.messages.create({
-      max_tokens: 16_000,
+      // ⚠️ 16 MIL TRUNCAVA A RESPOSTA, e o sintoma era "1 de 2 partes falharam" sem explicação: o
+      // JSON vinha cortado no meio, `lerPropostas` não conseguia lê-lo, e a parte inteira virava
+      // erro. Uma minuta de 50 mil caracteres rende 60 a 100 propostas, cada uma com trecho e
+      // contexto — passa fácil de 16 mil tokens de saída.
+      max_tokens: 48_000,
       messages: [
         {
-          content: `CATÁLOGO DE VARIÁVEIS:\n${catalogoParaOModelo()}\n\n---\n\nTEXTO DA MINUTA:\n\n${texto}`,
+          content: ehReleitura
+            ? `CATÁLOGO DE VARIÁVEIS:\n${catalogoParaOModelo()}\n\n---\n\nTEXTO DA MINUTA:\n\n${texto}\n\n---\n\nO QUE JÁ FOI PROPOSTO NA PRIMEIRA LEITURA (${jaPropostas?.length ?? 0}):\n${listaDoQueJaVeio(jaPropostas ?? [])}`
+            : `CATÁLOGO DE VARIÁVEIS:\n${catalogoParaOModelo()}\n\n---\n\nTEXTO DA MINUTA:\n\n${texto}`,
           role: "user",
         },
       ],
       model: CLAUDE_MODEL.frontier,
-      system: CONHECIMENTO_DA_TEMIS,
+      system: ehReleitura ? `${CONHECIMENTO_DA_TEMIS}\n\n${RELEITURA}` : CONHECIMENTO_DA_TEMIS,
     });
     // Só os blocos de texto: a resposta pode trazer outros tipos (raciocínio, uso de ferramenta),
     // e concatenar tudo cegamente colocaria lixo dentro do JSON que vamos ler.
@@ -156,3 +199,52 @@ function lerPropostas(bruto: string): null | Proposta[] {
     return null;
   }
 }
+
+/**
+ * A lista do que a primeira leitura já propôs, como o modelo precisa ver.
+ *
+ * ⚠️ É ELA QUE TORNA A RELEITURA DIFERENTE DE RODAR DUAS VEZES. Sem a lista, a segunda chamada
+ * devolveria mais ou menos as mesmas propostas — as fáceis, do começo do documento. Com a lista, a
+ * pergunta muda de "o que tem aqui?" para "o que ficou de fora?", que é a pergunta que uma pessoa
+ * faz na segunda leitura.
+ */
+function listaDoQueJaVeio(propostas: Proposta[]): string {
+  if (propostas.length === 0) return "(nada)";
+  return propostas
+    .map((p) => `- [${p.nome || p.tipo || "?"}] sobre "${cortarParaLista(p.trecho)}"`)
+    .join("\n");
+}
+
+function cortarParaLista(t: string): string {
+  const limpo = (t ?? "").replace(/\s+/g, " ").trim();
+  return limpo.length > 60 ? `${limpo.slice(0, 60)}…` : limpo;
+}
+
+const RELEITURA = `# ESTA É A SEGUNDA LEITURA
+
+Você já leu esta minuta uma vez e produziu a lista que está no fim da mensagem. Agora releia o
+documento com essa lista na mão e ache O QUE FICOU DE FORA.
+
+Não repita nada da lista. Não comente o que já foi proposto. Devolva SÓ o que falta.
+
+⚠️ ONDE A PRIMEIRA LEITURA COSTUMA FALHAR — procure nestes lugares primeiro:
+
+1. NO FIM DO DOCUMENTO. A primeira leitura é minuciosa nas partes e no imóvel, e vai rareando: foro,
+   assinaturas, quadro-resumo, cláusulas de tributos e de rescisão quase sempre ficam sem marcação.
+2. NOS VALORES. Preço, sinal, entrada, saldo, prazo, dia de vencimento, comissão — e o POR EXTENSO
+   de cada um deles, que é uma variável separada e é esquecida com frequência.
+3. NAS REPETIÇÕES. O nome do comprador e a identificação do lote costumam aparecer três ou quatro
+   vezes no contrato (qualificação, objeto, quadro-resumo, assinatura). A primeira leitura marca a
+   primeira ocorrência e esquece as outras — use "contexto" para desambiguar cada uma.
+4. NO CABEÇALHO E NO RODAPÉ DAS SEÇÕES. Títulos com o nome do empreendimento, "QUADRA X - LOTE Y",
+   a cidade e a data.
+5. NAS LACUNAS DISCRETAS: um "____" curto no meio de uma frase, um "(extenso)" vazio, um "[●]".
+6. NOS BLOCOS CONDICIONAIS que ninguém propôs: o trecho do cônjuge, o do segundo comprador, o que só
+   vale para pessoa jurídica. Se o documento tem uma qualificação de cônjuge solta, ela precisa de
+   "envolver".
+
+Percorra o documento inteiro, do título à última assinatura. Se você não achar nada, devolva
+{"propostas":[]} — mas antes confira o fim do contrato, que é onde quase sempre há coisa.
+
+Mesmo formato de saída de sempre, e as mesmas regras (trecho copiado, único ou com contexto, nome do
+catálogo). Sem cerca de código.`;
