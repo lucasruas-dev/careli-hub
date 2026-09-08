@@ -38,6 +38,7 @@
 // `@font-face` em base64 via `estiloExtra`, e não confiar na fonte do sistema.
 
 import type { Browser, PDFOptions } from "puppeteer-core";
+import { regrasDoDocumento } from "./css-do-documento";
 
 /** Margem do contrato, nos quatro lados. Aceita qualquer unidade que o Chromium entenda. */
 export type MargensDoPdf = {
@@ -105,6 +106,7 @@ const TIMEOUT_PADRAO_MS = 30_000;
  */
 const CSS_BASE = `
   html, body { margin: 0; padding: 0; }
+  ${regrasDoDocumento("body")}
   body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;

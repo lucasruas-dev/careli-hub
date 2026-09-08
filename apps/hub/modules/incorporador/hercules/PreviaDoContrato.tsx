@@ -4,6 +4,7 @@ import { AlertTriangle, FileText, Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { regrasParaATela } from "@/lib/temis/css-do-documento";
 
 import { T } from "../tema";
 
@@ -17,9 +18,18 @@ import { T } from "../tema";
 // custa um clique; o mesmo contrato descoberto depois de assinado custa um aditivo, uma conversa
 // com o cliente e, quando envolve preço, uma renegociação.
 //
-// ⚠️ E ELA MOSTRA O QUE FALTOU, EM CIMA. As variáveis sem valor saem impressas no corpo como
-// `[cpf_cliente]` — de propósito, para saltarem aos olhos —, mas procurá-las no meio de 50 mil
-// caracteres é o trabalho que esta tela existe para poupar. A lista fica no topo, antes do texto.
+// ⚠️ AQUI NÃO SE EMITE CONTRATO, E POR ISSO NÃO HÁ AVISO TÉCNICO. Lucas, 08/09/2026: *"não precisa
+// ter aquele escrito de alerta de emissão, pois na Gurgel não há emissão de contrato, é somente uma
+// prévia. Essas mensagens têm que estar dentro da Têmis"*.
+//
+// A distinção é de PAPÉIS, não de tela. No portal quem olha é o comercial, e o que ele quer saber é
+// como o contrato ficou para aquele cliente — uma lista de nomes de variável entre colchetes não lhe
+// diz o que fazer, porque preencher cadastro e ajustar minuta não é trabalho dele. Na Têmis quem
+// olha é o jurídico, e ali a mesma lista é a pauta do dia.
+//
+// ⚠️ O QUE FALTA CONTINUA VISÍVEL NO CORPO, nos dois lugares: `[cpf_cliente]` sai impresso no texto,
+// como manda `preencherContrato`. O que muda é só o resumo do topo — quem lê o contrato inteiro vê
+// o buraco de qualquer jeito, que é o ponto.
 
 type Resposta = {
   avisos?: string[];
@@ -32,9 +42,12 @@ type Resposta = {
 
 export function PreviaDoContrato({
   aoFechar,
+  comAvisos = false,
   propostaId,
 }: {
   aoFechar: () => void;
+  /** Liga o resumo do que falta. Só a Têmis usa: ver a nota do topo. */
+  comAvisos?: boolean;
   propostaId: string;
 }) {
   const [carregando, setCarregando] = useState(true);
@@ -72,8 +85,8 @@ export function PreviaDoContrato({
     };
   }, [propostaId]);
 
-  const semValor = resposta?.semValor ?? [];
-  const avisos = resposta?.avisos ?? [];
+  const semValor = comAvisos ? (resposta?.semValor ?? []) : [];
+  const avisos = comAvisos ? (resposta?.avisos ?? []) : [];
 
   return (
     <div
@@ -117,15 +130,21 @@ export function PreviaDoContrato({
             <div style={{ color: T.text, fontSize: 13.5, fontWeight: 700 }}>
               Prévia do contrato
             </div>
-            {resposta?.minuta ? (
-              <div style={{ color: T.muted, fontSize: 11 }}>
-                {resposta.minuta.nome}
-                {resposta.minuta.versao ? ` · v${resposta.minuta.versao}` : ""}
-                {resposta.vezesDoLaco
-                  ? ` · ${resposta.vezesDoLaco} ${resposta.vezesDoLaco === 1 ? "comprador" : "compradores"}`
-                  : ""}
-              </div>
-            ) : null}
+            {/* ⚠️ DIZ QUE NÃO EMITE. O portal mostra o contrato para conferência do comercial; a
+                emissão, quando existir, é da Têmis. Sem esta linha alguém fecha a tela achando que
+                o contrato foi gerado. */}
+            <div style={{ color: T.muted, fontSize: 11 }}>
+              {resposta?.minuta ? (
+                <>
+                  {resposta.minuta.nome}
+                  {resposta.minuta.versao ? ` · v${resposta.minuta.versao}` : ""}
+                  {resposta.vezesDoLaco
+                    ? ` · ${resposta.vezesDoLaco} ${resposta.vezesDoLaco === 1 ? "comprador" : "compradores"}`
+                    : ""}
+                  {comAvisos ? "" : " · conferência, não emite"}
+                </>
+              ) : null}
+            </div>
           </div>
           <button
             aria-label="Fechar"
@@ -214,23 +233,27 @@ export function PreviaDoContrato({
                 </div>
               ) : null}
 
-              {/* ⚠️ A FOLHA IMITA O PAPEL — fundo branco, largura de página, serifa. A prévia serve
-                  para conferir o contrato, e conferir um contrato com a cara do editor esconde
-                  justamente os problemas de diagramação que só aparecem no papel.
+              {/* ⚠️ A FOLHA IMITA O PAPEL — fundo branco, margem de página, serifa. Conferir um
+                  contrato com a cara do editor esconde justamente os problemas de diagramação que
+                  só aparecem no papel.
+
+                  ⚠️ AS REGRAS SÃO AS MESMAS DO PDF (`css-do-documento.ts`), e é isso que faz a
+                  conferência valer: se a tela usasse um CSS e o papel outro, aprovar aqui não
+                  provaria nada sobre o que o cliente recebe. Elas precisam vir num `<style>` porque
+                  o conteúdo entra por `dangerouslySetInnerHTML` — estilo inline no container não
+                  alcança os `<p>` de dentro, e o preflight do Tailwind já zerou a margem deles.
 
                   ⚠️ O HTML VEM DO NOSSO SERIALIZADOR, sobre a nossa minuta e os nossos dados — não é
                   conteúdo de terceiro. */}
+              <style>{regrasParaATela(".previa-do-contrato")}</style>
               <div
+                className="previa-do-contrato"
                 dangerouslySetInnerHTML={{ __html: resposta?.html ?? "" }}
                 style={{
                   background: "#fff",
                   border: `1px solid ${T.border}`,
                   borderRadius: 8,
-                  color: "#111",
-                  fontFamily: "Georgia, 'Times New Roman', serif",
-                  fontSize: 13,
-                  lineHeight: 1.55,
-                  padding: "32px 40px",
+                  padding: "40px 48px",
                 }}
               />
             </>

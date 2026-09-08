@@ -66,6 +66,9 @@ type LinhaDaProposta = {
   cliente_nome: null | string;
   compradores: unknown;
   condicoes: unknown;
+  /** ⚠️ Nomes DESNORMALIZADOS — são o que as 4.857 propostas importadas têm. Ver a nota da corretagem. */
+  corretor_nome: null | string;
+  imobiliaria_nome: null | string;
   /**
    * O PRAZO CONTRATADO — o único número de parcelas que é desta venda.
    *
@@ -224,7 +227,7 @@ export async function dadosDaProposta(
     sb
       .from("hercules_propostas")
       .select(
-        "cliente_documento, cliente_nome, compradores, condicoes, contrato_parcelas, dia_vencimento, empreendimento_id, plano_nome, unidade_id, valor",
+        "cliente_documento, cliente_nome, compradores, condicoes, contrato_parcelas, corretor_nome, dia_vencimento, empreendimento_id, imobiliaria_nome, plano_nome, unidade_id, valor",
       )
       .eq("id", propostaId)
       .maybeSingle(),
@@ -763,6 +766,25 @@ function gerais(
     por("__empreendimento_id", texto(empreendimento.c2x_enterprise_id));
   } else {
     avisos.push("A proposta não aponta para nenhum empreendimento.");
+  }
+
+  // ── CORRETAGEM ──
+  //
+  // ⚠️ O "VINCULADO" É A IMOBILIÁRIA, E O CORRETOR ENTRA SÓ QUANDO NÃO HÁ UMA. É a mesma precedência
+  // do split do C2X: quem recebe a comissão é a imobiliária quando ela existe, e o corretor autônomo
+  // quando a venda foi direta. Inverter faria o contrato de corretagem nomear como beneficiário
+  // quem não recebe.
+  //
+  // ⚠️ E AQUI SE LÊ O NOME DESNORMALIZADO DA PROPOSTA, não a entidade do Apolo. Nas propostas
+  // importadas do C2X — que são a esmagadora maioria — `imobiliaria_nome` está preenchido e o
+  // vínculo com `apolo_entities` não existe. Buscar pela entidade deixaria o contrato de corretagem
+  // SEM BENEFICIÁRIO em quase toda venda de hoje. O nome basta para o texto; CRECI, CNPJ e contato
+  // continuam pendentes e aparecem na lista de conferência da Têmis.
+  const vinculado = texto(proposta.imobiliaria_nome) || texto(proposta.corretor_nome);
+  if (vinculado) {
+    por("nome_vinculado", vinculado);
+    por("imobiliaria_nome", texto(proposta.imobiliaria_nome));
+    por("corretor_nome", texto(proposta.corretor_nome));
   }
 
   // ── VALORES ──

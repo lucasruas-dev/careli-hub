@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-o-contrato-com-cara-de-contrato",
+    deployedAt: "2026-09-08T13:20:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A prévia ganhou a cara de contrato** — parágrafos separados, títulos respirando, serifa. Antes o texto saía num bloco corrido.",
+              "**E parou de falar em emitir.** No portal a prévia é para conferir; a lista do que falta é trabalho do jurídico e ficou na Têmis.",
+              "**A imobiliária (ou o corretor) da venda passou a sair no contrato** — é o beneficiário do contrato de corretagem.",
+            ],
+            screen: "Prévia do contrato",
+          },
+        ],
+      },
+    ],
+    rollback: "85ca9f63",
+    technical: {
+      done: "⚠️ O DESCONFIGURADO ERA O RESET DO TAILWIND. O preflight zera a margem de TODOS os elementos, inclusive dos `<p>` que entram por `dangerouslySetInnerHTML` — na tela o contrato virava um bloco corrido, com o título encostado no parágrafo. ⚠️ E O PDF TINHA O MESMO BURACO PELO MOTIVO OPOSTO: o `CSS_BASE` de `html-para-pdf.ts` resolve PAGINAÇÃO (órfãs, viúvas, quebra em tabela) e não dizia nada sobre tipografia, então o Chromium caía no padrão dele. Duas telas, dois resultados para o MESMO contrato. `lib/temis/css-do-documento.ts` passa a ser a fonte única, usada pela prévia e pelo PDF — se a tela usasse um CSS e o papel outro, conferir na tela não provaria nada sobre o papel, que é o trabalho que a prévia veio fazer. Inclui `overflow-wrap` e `hyphens`, porque `[regime_casamento_cliente]` no meio da frase são 25 caracteres sem espaço que o navegador não quebra: era daí que vinham as palavras espalhadas pela justificação. ⚠️ OS AVISOS SAÍRAM DO PORTAL, e a distinção é de PAPÉIS. Lucas: *\"não precisa ter aquele escrito de alerta de emissão, pois na Gurgel não há emissão de contrato, é somente uma prévia; essas mensagens têm que estar dentro da Têmis\"*. No portal quem olha é o comercial, e uma lista de nomes de variável não lhe diz o que fazer — preencher cadastro e ajustar minuta não é trabalho dele. O que falta continua VISÍVEL NO CORPO nos dois lugares. ⚠️ O VINCULADO LÊ O NOME DESNORMALIZADO DA PROPOSTA, não a entidade: nas propostas importadas do C2X — a esmagadora maioria — `imobiliaria_nome` está preenchido e o vínculo com `apolo_entities` não existe. Buscar pela entidade deixaria o contrato de corretagem SEM BENEFICIÁRIO em quase toda venda de hoje. Imobiliária vence corretor, como no split do C2X. 3.226 testes verdes; typecheck limpo.",
+      motivation:
+        "A primeira prévia gerada de verdade saiu com o texto num bloco corrido — e falando em emitir, num portal onde não se emite nada.",
+    },
+    title: "O contrato com cara de contrato",
+    type: "correcao",
+    version: "1.297.3",
+  },
+  {
     buildTag: "2026-09-08-o-laco-dentro-do-paragrafo",
     deployedAt: "2026-09-08T12:45:00-03:00",
     modules: [
@@ -65,7 +93,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "5c052b2b",
     technical: {
-      done: "Achado gerando o PRIMEIRO contrato real (Veredas do Ouro, unidade 01 12): `vezesDoLaco` saiu ZERO e o `[fim_cada_comprador]` foi impresso no meio do texto. ⚠️ A MINUTA REAL PÕE O LAÇO DENTRO DE UM `<p>`: `[inicio_cada_comprador]` no começo da qualificação e `[fim_cada_comprador]` depois do ponto final, os dois inline. O motor só sabia expandir quando os marcadores envolviam parágrafos inteiros. `expandirInline` repete o TRECHO (não o parágrafo), preservando a diagramação que o jurídico escolheu. ⚠️ E O DONO PASSOU A SAIR DO NÓ, não do pai: num laço inline os nós de dois compradores viram irmãos no MESMO parágrafo, e ler o dono do parágrafo fazia o contrato de um casal sair com o primeiro comprador duas vezes — o defeito do legado, reencenado. Pego por teste. ⚠️ MARCADOR DE BLOCO ÓRFÃO VIRA NADA: é a única família de nomes que some em silêncio, porque nunca foi conteúdo — é instrução para o motor, e instrução impressa no contrato do cliente é pior que instrução perdida. ⚠️ E UM ESPAÇO ENTRE AS CÓPIAS quando o texto não o traz: sem isso, dois compradores saíam \"…CPF nº 137.MARIA SOUZA, brasileira…\", colados. ⚠️ A PRÉVIA NÃO ACHAVA A MINUTA DO VEREDAS mesmo com ela publicada: três empreendimentos (LOX, PDX, RDX) têm `c2x_enterprise_id` NULO, e é por esse id que a minuta é indexada. Agora a unidade serve de segundo caminho, e a mensagem distingue as três causas em vez de mandar publicar de novo. ⚠️ ⚠️ E O CASO REAL NÃO ERA NENHUM DOS DOIS FÁCEIS: medido na minuta publicada do Veredas, `[inicio_cada_comprador]` está DENTRO do parágrafo 5 (depois do título "I. CONTRATANTE(S):") e `[fim_cada_comprador]` DENTRO do parágrafo 8, com três parágrafos inteiros entre eles. Nem envolve blocos inteiros, nem cabe num parágrafo só. O motor agora parte o bloco de início e o de fim, repete o miolo, e deixa FORA do laço o que vem antes do primeiro marcador e depois do último — senão o contrato de dois compradores teria duas seções "I. CONTRATANTE(S)". Provado contra a minuta real com 1, 2, 3 e 5 compradores: laço na conta certa, cada cônjuge com o seu dono, nenhum cônjuge indevido, título uma vez só, zero marcador vazado. A BARRA HORIZONTAL do simulador vinha de `1fr` nos atalhos (que nunca encolhe abaixo do conteúdo) somado ao campo de desconto novo; a coluna passou a `overflowX: hidden` e a grade a `minmax(0, 1fr)`. 3.221 testes verdes; typecheck limpo.",
+      done: "Achado gerando o PRIMEIRO contrato real (Veredas do Ouro, unidade 01 12): `vezesDoLaco` saiu ZERO e o `[fim_cada_comprador]` foi impresso no meio do texto. ⚠️ A MINUTA REAL PÕE O LAÇO DENTRO DE UM `<p>`: `[inicio_cada_comprador]` no começo da qualificação e `[fim_cada_comprador]` depois do ponto final, os dois inline. O motor só sabia expandir quando os marcadores envolviam parágrafos inteiros. `expandirInline` repete o TRECHO (não o parágrafo), preservando a diagramação que o jurídico escolheu. ⚠️ E O DONO PASSOU A SAIR DO NÓ, não do pai: num laço inline os nós de dois compradores viram irmãos no MESMO parágrafo, e ler o dono do parágrafo fazia o contrato de um casal sair com o primeiro comprador duas vezes — o defeito do legado, reencenado. Pego por teste. ⚠️ MARCADOR DE BLOCO ÓRFÃO VIRA NADA: é a única família de nomes que some em silêncio, porque nunca foi conteúdo — é instrução para o motor, e instrução impressa no contrato do cliente é pior que instrução perdida. ⚠️ E UM ESPAÇO ENTRE AS CÓPIAS quando o texto não o traz: sem isso, dois compradores saíam \"…CPF nº 137.MARIA SOUZA, brasileira…\", colados. ⚠️ A PRÉVIA NÃO ACHAVA A MINUTA DO VEREDAS mesmo com ela publicada: três empreendimentos (LOX, PDX, RDX) têm `c2x_enterprise_id` NULO, e é por esse id que a minuta é indexada. Agora a unidade serve de segundo caminho, e a mensagem distingue as três causas em vez de mandar publicar de novo. ⚠️ ⚠️ E O CASO REAL NÃO ERA NENHUM DOS DOIS FÁCEIS: medido na minuta publicada do Veredas, `[inicio_cada_comprador]` está DENTRO do parágrafo 5 (depois do título I. CONTRATANTE(S)) e `[fim_cada_comprador]` DENTRO do parágrafo 8, com três parágrafos inteiros entre eles. Nem envolve blocos inteiros, nem cabe num parágrafo só. O motor agora parte o bloco de início e o de fim, repete o miolo, e deixa FORA do laço o que vem antes do primeiro marcador e depois do último — senão o contrato de dois compradores teria duas seções I. CONTRATANTE(S). Provado contra a minuta real com 1, 2, 3 e 5 compradores: laço na conta certa, cada cônjuge com o seu dono, nenhum cônjuge indevido, título uma vez só, zero marcador vazado. A BARRA HORIZONTAL do simulador vinha de `1fr` nos atalhos (que nunca encolhe abaixo do conteúdo) somado ao campo de desconto novo; a coluna passou a `overflowX: hidden` e a grade a `minmax(0, 1fr)`. 3.221 testes verdes; typecheck limpo.",
       motivation:
         "O primeiro contrato gerado de verdade — e ele saiu com o marcador do laço impresso no meio.",
     },
