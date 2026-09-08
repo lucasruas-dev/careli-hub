@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-agente-em-partes-e-blocos",
+    deployedAt: "2026-09-08T00:20:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O agente lê contrato grande.** A minuta do Villa Paris tem 136 mil caracteres e a leitura estourava o tempo, mostrando só \"o agente não respondeu\". Agora ele lê em partes, e uma parte que falha não derruba as outras.",
+              "**Um botão de IA só.** Saiu o botão genérico do editor, que reescrevia o texto selecionado — num contrato, é ele que transformaria `[nome_cliente]` em `[nome do cliente]`.",
+              "**A barra parou de estourar** — os nomes dos botões só aparecem em tela larga.",
+              "**Os blocos agora abrem.** Clicar no bloco mostra as variáveis daquele assunto, filtradas; o ⊕ ao lado insere a cláusula inteira. Antes, clicar despejava o texto todo na folha.",
+              "**O agente não propõe mais `_2`, `_3`.** Esses sufixos são do sistema antigo; aqui a qualificação se escreve uma vez e o contrato repete sozinho.",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+    ],
+    rollback: "2755819d",
+    technical: {
+      done: "CINCO CORREÇÕES QUE O LUCAS ACHOU TESTANDO com a minuta REAL do Villa Paris no ZZ TESTE — 178 variáveis, 136.781 caracteres. (1) ⚠️ O AGENTE MORRIA NO CONTRATO GRANDE: mandei o documento inteiro numa chamada só ao Opus 5 e a função estourou os 300 s; o timeout da Vercel volta como TEXTO e não JSON, então nem a mensagem de erro chegava ([[reference_vercel_timeout_vira_erro_de_json]]) — a tela dizia só \"o agente não respondeu\". Agora vai em pedaços de 25 mil caracteres, cortados SEMPRE em quebra de linha (cortar no meio partiria uma cláusula e o modelo proporia trechos que não existem inteiros), em série (seis chamadas paralelas a um modelo de fronteira batem no limite de concorrência), e falha de uma parte vira aviso em vez de tela vazia. ⚠️ E A TELA SÓ MOSTRA O QUE DÁ PARA APLICAR: com o texto em partes, um trecho pode ser único DENTRO da parte e repetido no documento inteiro (\"CPF n.º\" é o caso) — a triagem do servidor confere contra a parte, e a tela confere contra o documento todo antes de exibir; mostrar proposta que o clique recusaria é pior que não mostrar. (2) *\"tem dois botões de AI\"*: o `AIToolbarButton` saiu do `fixed-toolbar-buttons.tsx` — ÚNICA edição nossa nesse arquivo gerado pelo CLI do Plate, com aviso no lugar para quem regenerar. Ele reescreve o texto selecionado, e num editor de contrato é o caminho para `[nome do cliente]` sair impresso. (3) Rótulos dos nossos botões passaram a `2xl:inline`: a barra já carrega ~40 botões do Plate e o nosso saía cortado como \"Mar…\". (4) *\"ao clicar no bloco Partes, ele substituiu pelo bloco\"* — inserir virou botão PRÓPRIO (⊕) e o clique na linha abre as variáveis daquele assunto, filtradas do próprio texto do bloco: *\"acho que pode deixar os dois\"*. ⚠️ Ação que MUDA o documento não pode ser o gesto de quem só quer olhar. (5) *\"aqui não tem essa coisa de cliente 2 e tal\"*: o prompt passou a proibir os sufixos _2.._5 e a mandar ignorar os blocos repetidos — aquele texto inteiro vai ser substituído pela repetição, e marcá-lo é trabalho jogado fora. ⚠️ A CONFERÊNCIA DE BLOCOS PROVOU-SE no contrato real: apontou os 8 pares mal fechados do Villa Paris, entre eles o `[inicio_dados_cliente_2]` aberto sem fechar — os mesmos que eu tinha previsto lendo o texto. 3.020 testes verdes; typecheck e lint limpos.",
+      motivation:
+        "O agente não conseguia ler a minuta de verdade: morria de timeout no primeiro contrato real que encontrou.",
+    },
+    title: "O agente aguenta o contrato inteiro",
+    type: "melhoria",
+    version: "1.294.2",
+  },
+  {
     buildTag: "2026-09-07-temis-so-quem-recebe-cad",
     deployedAt: "2026-09-07T23:40:00-03:00",
     modules: [

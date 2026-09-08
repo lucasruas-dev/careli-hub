@@ -12,12 +12,10 @@ import {
   PaintBucketIcon,
   StrikethroughIcon,
   UnderlineIcon,
-  WandSparklesIcon,
 } from 'lucide-react';
 import { KEYS } from 'platejs';
 import { useEditorReadOnly } from 'platejs/react';
 
-import { AIToolbarButton } from './ai-toolbar-button';
 import { AlignToolbarButton } from './align-toolbar-button';
 import { CommentToolbarButton } from './comment-toolbar-button';
 import { EmojiToolbarButton } from './emoji-toolbar-button';
@@ -59,11 +57,18 @@ export function FixedToolbarButtons() {
             <RedoToolbarButton />
           </ToolbarGroup>
 
-          <ToolbarGroup>
-            <AIToolbarButton tooltip="Comandos de IA">
-              <WandSparklesIcon />
-            </AIToolbarButton>
-          </ToolbarGroup>
+          {/* ⚠️ O BOTÃO DE IA GENÉRICO SAIU, e é a única edição nossa neste arquivo gerado pelo CLI
+              do Plate. Quem regenerar precisa refazer esta remoção.
+
+              Motivo: ele reescreve o texto selecionado ("melhore este parágrafo", "resuma"), e num
+              editor de CONTRATO isso é perigoso — a IA não conhece o catálogo e transforma
+              `[nome_cliente]` em `[nome do cliente]`, que sai impresso no papel assinado. Foi assim
+              que `[Nome]` e `[CPF]` entraram nas minutas do legado.
+
+              O que fica no lugar é o botão "Agente" da barra da Têmis
+              (`modules/temis/plugins/temis-toolbar-kit.tsx`): ele conhece as ~280 variáveis, PROPÕE
+              em vez de reescrever, e cada proposta é conferida antes de chegar à tela.
+              Lucas (07/09/2026): *"tem dois botões de AI"*. */}
 
           <ToolbarGroup>
             <ExportToolbarButton>

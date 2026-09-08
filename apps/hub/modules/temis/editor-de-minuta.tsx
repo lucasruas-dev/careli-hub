@@ -15,9 +15,15 @@ import { Toaster } from "sonner";
 import { discussionPlugin } from "@/components/editor/plugins/discussion-kit";
 import { Editor, EditorContainer } from "@/components/ui/editor";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { type BlocoPronto, BLOCOS_PRONTOS, nosDoBloco } from "@/lib/temis/blocos-prontos";
+import {
+  type BlocoPronto,
+  BLOCOS_PRONTOS,
+  nosDoBloco,
+  textoDoBloco,
+} from "@/lib/temis/blocos-prontos";
 import type { NoDoDocumento } from "@/lib/temis/documento-html";
 import { migrarAlinhamentoAntigo } from "@/lib/temis/migrar-documento";
+import { acharVariavel, variaveisDoTexto } from "@/lib/temis/variaveis";
 import { setMinutaAtualParaUpload } from "@/lib/temis/upload-midia";
 import { useAuth } from "@/providers/auth-provider";
 
@@ -312,6 +318,7 @@ function PainelLateral({
       {aba === "variaveis" ? <ListaDeVariaveis editor={editor} jaUsadas={jaUsadas} /> : null}
       {aba === "agente" ? (
         <ListaDoAgente
+          editor={editor}
           aoAplicar={(p) => {
             aplicarProposta(editor, p);
             setPropostas((atual) =>
@@ -344,26 +351,100 @@ type RespostaDoAgente = {
   recusadas: { motivo: string; nome: string; trecho: string }[];
 };
 
-async function pedirMarcacao(texto: string): Promise<RespostaDoAgente> {
+/**
+ * ⚠️ O CONTRATO VAI EM PARTES, e isso saiu de uma falha real. Na primeira tentativa com o Villa
+ * Paris — 136.781 caracteres — a chamada única estourou o tempo da função e a tela mostrou só "o
+ * agente não respondeu": o timeout da Vercel volta como TEXTO, não como JSON, então nem a mensagem
+ * de erro chegava ([[reference_vercel_timeout_vira_erro_de_json]]).
+ *
+ * Partir também melhora o resultado: o modelo lendo 25 mil caracteres erra menos que lendo 136 mil,
+ * e uma parte que falha não leva as outras junto.
+ */
+const TAMANHO_DA_PARTE = 25_000;
+
+/**
+ * Corta o texto em pedaços, SEMPRE em quebra de linha.
+ *
+ * ⚠️ NUNCA NO MEIO DE UMA LINHA. Cortar em qualquer posição partiria uma cláusula ao meio, e o
+ * modelo proporia trechos que não existem inteiros em parte nenhuma — todos recusados depois pela
+ * triagem, com cara de agente burro.
+ */
+function partirEmPedacos(texto: string): string[] {
+  if (texto.length <= TAMANHO_DA_PARTE) return [texto];
+
+  const partes: string[] = [];
+  let atual = "";
+  for (const linha of texto.split("\n")) {
+    if (atual.length + linha.length + 1 > TAMANHO_DA_PARTE && atual) {
+      partes.push(atual);
+      atual = "";
+    }
+    atual += (atual ? "\n" : "") + linha;
+  }
+  if (atual) partes.push(atual);
+  return partes;
+}
+
+async function umaParte(texto: string): Promise<RespostaDoAgente> {
   try {
     const r = await fetch("/api/temis/minutas/marcar", {
       body: JSON.stringify({ texto }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
     });
-    const corpo = (await r.json().catch(() => ({}))) as Partial<RespostaDoAgente> & {
-      erro?: string;
-    };
-    if (!r.ok) {
-      return { erro: corpo.erro ?? "O agente não respondeu.", propostas: [], recusadas: [] };
+    // ⚠️ LÊ COMO TEXTO ANTES DE TENTAR JSON: um timeout da Vercel devolve HTML, e `r.json()`
+    // rejeitaria — engolindo a única pista do que aconteceu.
+    const cru = await r.text().catch(() => "");
+    let corpo: (Partial<RespostaDoAgente> & { erro?: string }) | null = null;
+    try {
+      corpo = cru ? (JSON.parse(cru) as Partial<RespostaDoAgente> & { erro?: string }) : null;
+    } catch {
+      corpo = null;
     }
-    return {
-      propostas: corpo.propostas ?? [],
-      recusadas: corpo.recusadas ?? [],
-    };
+
+    if (!r.ok || !corpo) {
+      return {
+        erro:
+          corpo?.erro ??
+          (r.status === 504 || !corpo
+            ? "O agente demorou demais nesta parte do contrato. As outras partes seguiram."
+            : `O agente respondeu ${r.status}.`),
+        propostas: [],
+        recusadas: [],
+      };
+    }
+    return { propostas: corpo.propostas ?? [], recusadas: corpo.recusadas ?? [] };
   } catch {
     return { erro: "Falha de rede ao chamar o agente.", propostas: [], recusadas: [] };
   }
+}
+
+async function pedirMarcacao(texto: string): Promise<RespostaDoAgente> {
+  const partes = partirEmPedacos(texto);
+  const propostas: PropostaDoAgente[] = [];
+  const recusadas: RespostaDoAgente["recusadas"] = [];
+  const falhas: string[] = [];
+
+  // Em série, de propósito: são chamadas caras a um modelo de fronteira, e disparar seis de uma vez
+  // bate no limite de concorrência e devolve erro em todas.
+  for (const parte of partes) {
+    const r = await umaParte(parte);
+    if (r.erro) falhas.push(r.erro);
+    propostas.push(...r.propostas);
+    recusadas.push(...r.recusadas);
+  }
+
+  return {
+    // Falhar em uma parte não apaga o que as outras acharam — o erro vira aviso, não tela vazia.
+    erro:
+      falhas.length === partes.length
+        ? falhas[0]
+        : falhas.length > 0
+          ? `${falhas.length} de ${partes.length} partes falharam; o resto foi lido.`
+          : undefined,
+    propostas,
+    recusadas,
+  };
 }
 
 /**
@@ -398,9 +479,11 @@ function aplicarProposta(editor: PlateEditor, proposta: PropostaDoAgente) {
  */
 function ListaDoAgente({
   aoAplicar,
+  editor,
   resposta,
 }: {
   aoAplicar: (p: PropostaDoAgente) => void;
+  editor: PlateEditor;
   resposta: null | RespostaDoAgente;
 }) {
   const marcando = usePluginOption(TemisToolbarPlugin, "marcando");
@@ -430,24 +513,37 @@ function ListaDoAgente({
     );
   }
 
-  if (resposta.erro) {
-    return <p className="m-0 p-5 text-xs text-rose-600 dark:text-rose-300">{resposta.erro}</p>;
-  }
+  // ⚠️ SÓ MOSTRA O QUE DÁ PARA APLICAR. O contrato vai ao modelo EM PARTES, e um trecho pode ser
+  // único dentro da sua parte e aparecer duas vezes no documento inteiro — "CPF n.º" é o caso. A
+  // triagem do servidor confere contra a parte; esta é a conferência contra o documento todo.
+  // Mostrar uma proposta que o clique recusaria seria pior que não mostrar: o operador clicaria,
+  // nada aconteceria, e ele não saberia por quê.
+  const aplicaveis = resposta.propostas.filter((p) => faixaDoTrecho(editor.children, p.trecho));
+  const semLugar = resposta.propostas.length - aplicaveis.length;
 
   return (
     <div className="min-h-0 flex-1 overflow-auto p-1.5">
-      {resposta.propostas.length === 0 ? (
+      {resposta.erro ? (
+        <p className="m-0 mb-1 rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-tight text-amber-800 dark:bg-amber-500/12 dark:text-amber-300">
+          {resposta.erro}
+        </p>
+      ) : null}
+
+      {aplicaveis.length === 0 ? (
         <p className="m-0 px-3 py-4 text-xs text-ink-soft">
-          O agente não achou nada novo para marcar. Se a minuta já está marcada, é isso mesmo.
+          {resposta.propostas.length > 0
+            ? "As propostas do agente não casaram com o texto atual. Se você editou a folha depois de mandar marcar, peça de novo."
+            : "O agente não achou nada novo para marcar. Se a minuta já está marcada, é isso mesmo."}
         </p>
       ) : (
         <p className="m-0 px-3 py-2 text-[10px] leading-tight text-ink-muted">
-          {resposta.propostas.length} proposta(s). Clique para aplicar — uma a uma, para você ver
-          onde cada uma cai.
+          {aplicaveis.length} proposta(s). Clique para aplicar — uma a uma, para você ver onde cada
+          uma cai.
+          {semLugar > 0 ? ` ${semLugar} não casou com o texto e ficou de fora.` : ""}
         </p>
       )}
 
-      {resposta.propostas.map((p) => (
+      {aplicaveis.map((p) => (
         <button
           className="group mb-1 flex w-full flex-col items-start gap-1 rounded-lg px-2 py-2 text-left transition-colors hover:bg-subtle"
           key={`${p.posicao}-${p.nome}`}
@@ -499,7 +595,9 @@ function ListaDoAgente({
  * no primeiro contrato de teste do JDG.
  */
 function ListaDeBlocos({ editor }: { editor: PlateEditor }) {
-  const inserir = (bloco: BlocoPronto) => {
+  const [aberto, setAberto] = useState<null | string>(null);
+
+  const inserirClausula = (bloco: BlocoPronto) => {
     // `paraOEditor` é a mesma fronteira do documento inteiro (ver o topo): NoDoDocumento[] e Value
     // são a mesma coisa em memória, e a conversão vive só aqui.
     editor.tf.insertNodes(promoverVariaveisNoValor(paraOEditor(nosDoBloco(bloco))));
@@ -509,32 +607,83 @@ function ListaDeBlocos({ editor }: { editor: PlateEditor }) {
   return (
     <>
       <p className="m-0 border-b border-line px-3 py-2 text-[10px] leading-tight text-ink-muted">
-        A cláusula entra onde o cursor está, com as variáveis já marcadas. A redação é sua: ajuste
-        depois de inserir.
+        Clique no bloco para ver as variáveis daquele assunto. O{" "}
+        <Plus aria-hidden="true" className="inline size-3" /> insere a cláusula inteira, já marcada.
       </p>
 
       <div className="min-h-0 flex-1 overflow-auto p-1.5">
-        {BLOCOS_PRONTOS.map((bloco) => (
-          <button
-            className="group mb-1 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-subtle"
-            key={bloco.id}
-            onClick={() => inserir(bloco)}
-            // Sem isto o clique tira o foco da folha e o bloco entra no lugar errado.
-            onMouseDown={(e) => e.preventDefault()}
-            type="button"
-          >
-            <Plus
-              aria-hidden="true"
-              className="mt-0.5 size-3.5 shrink-0 text-ink-muted transition-colors group-hover:text-ink"
-            />
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-semibold text-ink">{bloco.rotulo}</span>
-              <span className="mt-0.5 block text-[10px] leading-tight text-ink-soft">
-                {bloco.descricao}
-              </span>
-            </span>
-          </button>
-        ))}
+        {BLOCOS_PRONTOS.map((bloco) => {
+          const expandido = aberto === bloco.id;
+          // As variáveis QUE AQUELE ASSUNTO USA, na ordem em que aparecem na cláusula. É o filtro
+          // que o Lucas pediu: *"ter o bloco das variáveis que faz parte das partes"*. Sem
+          // repetição — a cláusula cita `[nome_cliente]` no corpo e na linha de assinatura.
+          const nomes = [...new Set(variaveisDoTexto(textoDoBloco(bloco)))];
+
+          return (
+            <section className="mb-1" key={bloco.id}>
+              <div className="flex items-start gap-1">
+                <button
+                  className="flex min-w-0 flex-1 items-start gap-1.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-subtle"
+                  onClick={() => setAberto(expandido ? null : bloco.id)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  type="button"
+                >
+                  <ChevronRight
+                    aria-hidden="true"
+                    className={`mt-0.5 size-3.5 shrink-0 text-ink-muted transition-transform ${
+                      expandido ? "rotate-90" : ""
+                    }`}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-semibold text-ink">{bloco.rotulo}</span>
+                    <span className="mt-0.5 block text-[10px] leading-tight text-ink-soft">
+                      {expandido ? bloco.descricao : `${nomes.length} variáveis`}
+                    </span>
+                  </span>
+                </button>
+
+                {/* ⚠️ INSERIR A CLÁUSULA É UM BOTÃO PRÓPRIO, e não o clique na linha. Antes, clicar
+                    no bloco despejava o texto inteiro na folha — o Lucas clicou em "Partes" para ver
+                    o que era e levou a cláusula. Ação que MUDA o documento não pode ser o gesto de
+                    quem só quer olhar. */}
+                <button
+                  aria-label={`Inserir a cláusula ${bloco.rotulo}`}
+                  className="mt-1.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-inverse hover:text-brand-ink"
+                  onClick={() => inserirClausula(bloco)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  title={`Inserir a cláusula inteira: ${bloco.rotulo}`}
+                  type="button"
+                >
+                  <Plus aria-hidden="true" className="size-4" />
+                </button>
+              </div>
+
+              {expandido
+                ? nomes.map((nome) => {
+                    const v = acharVariavel(nome);
+                    return (
+                      <button
+                        className="flex w-full flex-col items-start gap-0.5 rounded-lg py-1.5 pl-7 pr-2 text-left transition-colors hover:bg-subtle"
+                        key={nome}
+                        onClick={() => {
+                          inserirVariavel(editor, nome);
+                          editor.tf.focus();
+                        }}
+                        onMouseDown={(e) => e.preventDefault()}
+                        title={`Inserir [${nome}]`}
+                        type="button"
+                      >
+                        <span className="w-full truncate text-xs text-ink">
+                          {v?.rotulo ?? nome}
+                        </span>
+                        <span className="font-mono text-[10px] text-ink-muted">[{nome}]</span>
+                      </button>
+                    );
+                  })
+                : null}
+            </section>
+          );
+        })}
       </div>
     </>
   );

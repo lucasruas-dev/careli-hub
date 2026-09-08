@@ -70,8 +70,13 @@ REGRAS DURAS:
 4. NÃO proponha nada sobre texto que já está entre colchetes: já é variável.
 5. NÃO proponha para dados da VENDEDORA que estão escritos no corpo (razão social, CNPJ e endereço
    dela), a menos que o catálogo tenha a variável correspondente.
-6. Atenção ao SUFIXO: o segundo comprador usa _2, o terceiro _3, e assim por diante. Dentro do
-   bloco do 2º comprador, o cônjuge é [nome_conjuge_2] — nunca [nome_conjuge].
+6. ⚠️ NÃO USE OS SUFIXOS _2, _3, _4, _5. Eles são do sistema ANTIGO, onde a qualificação do
+   comprador era escrita cinco vezes na minuta. No Panteon a qualificação se escreve UMA vez e o
+   contrato a repete sozinho por comprador. Proponha sempre a variável SEM sufixo:
+   [nome_cliente], [cpf_cliente], [nome_conjuge] — nunca [nome_cliente_2].
+   Se você encontrar no texto o bloco repetido do 2º, 3º, 4º ou 5º comprador, NÃO proponha nada
+   ali: aquele trecho inteiro vai ser substituído pela repetição, e marcá-lo seria trabalho jogado
+   fora.
 7. Não proponha nada de que você não tenha certeza. Proposta a menos é barata; proposta errada
    num contrato assinado, não.
 
