@@ -126,16 +126,64 @@ function expandirLaco(
       continue;
     }
 
-    // ⚠️ O LAÇO TAMBÉM VIVE DENTRO DE UM PARÁGRAFO, e este ramo é o que faz a minuta real funcionar.
-    // Descoberto em 08/09/2026, gerando o primeiro contrato do Veredas do Ouro: os marcadores
-    // estavam INLINE, os dois no mesmo `<p>` da qualificação, e o motor — que só sabia expandir
-    // parágrafos inteiros — não achou o par, deixou `vezesDoLaco` em zero e o `[fim_cada_comprador]`
-    // saiu impresso no meio do contrato.
+    // ⚠️ O LAÇO DA MINUTA REAL NÃO É NENHUM DOS CASOS FÁCEIS. Medido na minuta publicada do Veredas
+    // do Ouro em 08/09/2026: `[inicio_cada_comprador]` está DENTRO do parágrafo 5 e
+    // `[fim_cada_comprador]` DENTRO do parágrafo 8 — ele não envolve blocos inteiros (o primeiro
+    // caso, acima) nem cabe num parágrafo só. Ele ATRAVESSA parágrafos, começando e terminando no
+    // meio de dois deles, com três parágrafos inteiros entre os dois.
+    //
+    // Enquanto isto não existia, `vezesDoLaco` saía ZERO na minuta de verdade: o par nunca era
+    // achado, o marcador de fim era impresso no contrato e um segundo comprador simplesmente não
+    // aparecia. O contrato de um casal saía com uma pessoa só.
     const filhos = no.children;
     if (Array.isArray(filhos) && filhos.some((f) => abreLaco(f))) {
-      const dentro = expandirInline(filhos, dados);
-      vezes += dentro.vezes;
-      saida.push({ ...no, children: dentro.filhos });
+      // Os dois no MESMO parágrafo: repete o trecho ali dentro.
+      if (filhos.some((f) => fechaLaco(f))) {
+        const dentro = expandirInline(filhos, dados);
+        vezes += dentro.vezes;
+        saida.push({ ...no, children: dentro.filhos });
+        continue;
+      }
+
+      // Atravessa parágrafos: acha onde ele fecha, mais adiante.
+      const ondeFecha = acharBlocoQueFecha(nos, i);
+      if (ondeFecha < 0) {
+        // Par quebrado: o marcador some e o texto fica, como no caso de blocos irmãos.
+        saida.push({ ...no, children: filhos.filter((f) => !abreLaco(f)) });
+        continue;
+      }
+
+      const antesDoInicio = filhos.slice(0, filhos.findIndex((f) => abreLaco(f)));
+      const depoisDoInicio = filhos.slice(filhos.findIndex((f) => abreLaco(f)) + 1);
+
+      const doFim = nos[ondeFecha];
+      const filhosDoFim = (doFim?.children ?? []) as (NoDeTexto | NoDoDocumento)[];
+      const posicaoDoFim = filhosDoFim.findIndex((f) => fechaLaco(f));
+      const antesDoFim = filhosDoFim.slice(0, posicaoDoFim);
+      const depoisDoFim = filhosDoFim.slice(posicaoDoFim + 1);
+
+      const doMeio = nos.slice(i + 1, ondeFecha);
+
+      // ⚠️ O QUE VEM ANTES DO MARCADOR FICA FORA DO LAÇO. No Veredas é o "I. CONTRATANTE(S):" do
+      // começo do parágrafo — um título que não pode ser repetido uma vez por comprador.
+      if (antesDoInicio.length > 0) saida.push({ ...no, children: antesDoInicio });
+
+      for (const [indice, comprador] of dados.compradores.entries()) {
+        vezes += 1;
+        if (depoisDoInicio.length > 0) {
+          saida.push(
+            marcarDono({ ...no, children: depoisDoInicio } as NoDoDocumento, indice, comprador),
+          );
+        }
+        for (const doCorpo of doMeio) saida.push(marcarDono(doCorpo, indice, comprador));
+        if (antesDoFim.length > 0 && doFim) {
+          saida.push(marcarDono({ ...doFim, children: antesDoFim } as NoDoDocumento, indice, comprador));
+        }
+      }
+
+      if (depoisDoFim.length > 0 && doFim) saida.push({ ...doFim, children: depoisDoFim });
+
+      i = ondeFecha;
       continue;
     }
 
@@ -159,6 +207,33 @@ function expandirLaco(
   }
 
   return { nos: saida, vezes };
+}
+
+/**
+ * O bloco, mais adiante, que contém o `[fim_cada_comprador]` deste laço.
+ *
+ * ⚠️ CONTA OS ANINHADOS pelos marcadores que cada bloco carrega, e não pelos blocos: um laço dentro
+ * de outro (uma lista de compradores dentro de uma cláusula repetida) fecharia no lugar errado.
+ */
+function acharBlocoQueFecha(nos: readonly NoDoDocumento[], inicio: number): number {
+  let profundidade = 0;
+  for (let i = inicio + 1; i < nos.length; i += 1) {
+    const filhos = nos[i]?.children;
+    if (abreLaco(nos[i])) profundidade += 1;
+    else if (fechaLaco(nos[i])) {
+      if (profundidade === 0) return i;
+      profundidade -= 1;
+    }
+    if (!Array.isArray(filhos)) continue;
+    for (const f of filhos) {
+      if (abreLaco(f)) profundidade += 1;
+      else if (fechaLaco(f)) {
+        if (profundidade === 0) return i;
+        profundidade -= 1;
+      }
+    }
+  }
+  return -1;
 }
 
 /**

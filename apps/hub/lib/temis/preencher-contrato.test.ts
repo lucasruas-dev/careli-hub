@@ -384,3 +384,91 @@ describe("o laço dentro de um parágrafo", () => {
     expect(texto(r.nos)).toBe("CASADO casado com ESPOSA; SOLTEIRO;");
   });
 });
+
+describe("o laço que ATRAVESSA parágrafos — o caso da minuta real", () => {
+  // ⚠️ ESTE É O FORMATO DA MINUTA PUBLICADA DO VEREDAS DO OURO, medido em 08/09/2026:
+  // `[inicio_cada_comprador]` está DENTRO do parágrafo 5, depois do título "I. CONTRATANTE(S):", e
+  // `[fim_cada_comprador]` DENTRO do parágrafo 8 — com três parágrafos inteiros entre os dois.
+  //
+  // Não é nenhum dos dois casos fáceis: não envolve blocos inteiros e não cabe num parágrafo só.
+  // Enquanto isto não existiu, `vezesDoLaco` saía ZERO na minuta de verdade — o par nunca era
+  // achado, o marcador de fim ia impresso para o contrato e o SEGUNDO COMPRADOR SIMPLESMENTE NÃO
+  // APARECIA. O contrato de um casal saía com uma pessoa só.
+  const minuta = [
+    p("I. CONTRATANTE(S):", v("inicio_cada_comprador"), v("nome_cliente"), ", CPF ", v("cpf_cliente")),
+    p("Estado civil: ", v("estado_civil_cliente")),
+    p(v("inicio_dados_conjuge"), "Casado com ", v("nome_conjuge"), v("fim_dados_conjuge")),
+    p("Percentual: ", v("percentual_cliente"), v("fim_cada_comprador"), " II. CONTRATADO(S):"),
+    p("Cláusula primeira."),
+  ];
+
+  const gente = (nome: string, casado: boolean): DadosDoComprador => ({
+    ehPessoaFisica: true,
+    temConjuge: casado,
+    valores: {
+      cpf_cliente: `CPF-${nome}`,
+      estado_civil_cliente: casado ? "Casado" : "Solteiro",
+      nome_cliente: nome,
+      nome_conjuge: `ESPOSA-${nome}`,
+      percentual_cliente: "50%",
+    },
+  });
+
+  it("um comprador: o contrato sai inteiro, sem marcador", () => {
+    const r = preencherContrato(minuta, { compradores: [gente("RAFAEL", true)], gerais: {} });
+    expect(r.vezesDoLaco).toBe(1);
+    const t = texto(r.nos);
+    expect(t).toContain("RAFAEL");
+    expect(t).toContain("ESPOSA-RAFAEL");
+    expect(t).not.toMatch(/\[(inicio|fim)_/);
+  });
+
+  it("dois compradores: cada um com o seu, e o título NÃO se repete", () => {
+    const r = preencherContrato(minuta, {
+      compradores: [gente("RAFAEL", true), gente("MARIA", false)],
+      gerais: {},
+    });
+    expect(r.vezesDoLaco).toBe(2);
+    const t = texto(r.nos);
+    expect(t).toContain("RAFAEL");
+    expect(t).toContain("MARIA");
+    // ⚠️ O QUE VEM ANTES DO MARCADOR FICA FORA DO LAÇO. "I. CONTRATANTE(S):" é título de seção: se
+    // entrasse na repetição, o contrato de dois compradores teria duas seções I.
+    expect((t.match(/I\. CONTRATANTE/g) ?? []).length).toBe(1);
+    // E o que vem DEPOIS do fim também: "II. CONTRATADO(S):" abre a próxima seção.
+    expect((t.match(/II\. CONTRATADO/g) ?? []).length).toBe(1);
+  });
+
+  it("o cônjuge é de cada um — o solteiro não herda a esposa do casado", () => {
+    const r = preencherContrato(minuta, {
+      compradores: [gente("RAFAEL", true), gente("MARIA", false), gente("JOAO", true)],
+      gerais: {},
+    });
+    const t = texto(r.nos);
+    expect(t).toContain("ESPOSA-RAFAEL");
+    expect(t).toContain("ESPOSA-JOAO");
+    expect(t).not.toContain("ESPOSA-MARIA");
+    expect((t.match(/Casado com/g) ?? []).length).toBe(2);
+  });
+
+  it("cinco compradores: os cinco saem", () => {
+    const nomes = ["A", "B", "C", "D", "E"];
+    const r = preencherContrato(minuta, {
+      compradores: nomes.map((n, i) => gente(n, i % 2 === 0)),
+      gerais: {},
+    });
+    expect(r.vezesDoLaco).toBe(5);
+    for (const n of nomes) expect(texto(r.nos), n).toContain(`CPF-${n}`);
+  });
+
+  it("par quebrado não engole o contrato nem imprime o marcador", () => {
+    const r = preencherContrato(
+      [p("ANTES", v("inicio_cada_comprador"), v("nome_cliente")), p("DEPOIS")],
+      { compradores: [gente("X", false)], gerais: {} },
+    );
+    const t = texto(r.nos);
+    expect(t).toContain("ANTES");
+    expect(t).toContain("DEPOIS");
+    expect(t).not.toMatch(/\[(inicio|fim)_/);
+  });
+});
