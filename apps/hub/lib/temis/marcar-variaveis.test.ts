@@ -176,3 +176,136 @@ describe("a mensagem da recusa", () => {
     expect(m.length).toBeLessThan(120);
   });
 });
+
+describe("o agente faz mais do que marcar variável", () => {
+  // Lucas, 08/09/2026: *"ela precisa entender como eu coloco o comprador, a vendedora, as demais
+  // variáveis, ela tem que ler, interpretar e fazer"* e *"vindo colocando as quebras de páginas,
+  // inserir os negritos, os quadros quando precisar"*.
+
+  it("envolve um trecho num par de bloco", () => {
+    const texto = "e MARIA DE SOUZA, cônjuge, que a este comparece.";
+    const { aceitas } = triarPropostas(texto, [
+      { motivo: "só sai quando há cônjuge", nome: "dados_conjuge", tipo: "envolver", trecho: "e MARIA DE SOUZA, cônjuge, que a este comparece." },
+    ]);
+    expect(aceitas).toHaveLength(1);
+    expect(aplicarPropostas(texto, aceitas)).toBe(
+      "[inicio_dados_conjuge]e MARIA DE SOUZA, cônjuge, que a este comparece.[fim_dados_conjuge]",
+    );
+  });
+
+  // ⚠️ UM BLOCO SÓ COM O `inicio_` VAZARIA O TRECHO ATÉ O FIM DO CONTRATO. Por isso o par tem de
+  // existir inteiro no catálogo antes de a proposta chegar à tela.
+  it("recusa par de bloco que não existe", () => {
+    const { aceitas, recusadas } = triarPropostas("qualquer texto aqui", [
+      { motivo: "inventado", nome: "dados_fiador", tipo: "envolver", trecho: "qualquer texto" },
+    ]);
+    expect(aceitas).toEqual([]);
+    expect(recusadas[0]?.motivo).toBe("par_desconhecido");
+  });
+
+  it("aceita o nome do par escrito com inicio_ na frente", () => {
+    const { aceitas } = triarPropostas("trecho do cônjuge", [
+      { motivo: "x", nome: "inicio_dados_conjuge", tipo: "envolver", trecho: "trecho do cônjuge" },
+    ]);
+    expect(aceitas).toHaveLength(1);
+  });
+
+  it("propõe quebra de página antes de um trecho", () => {
+    const { aceitas } = triarPropostas("fim do contrato de venda CONTRATO DE CORRETAGEM", [
+      { motivo: "começa em folha nova", tipo: "quebra", trecho: "CONTRATO DE CORRETAGEM" },
+    ]);
+    expect(aceitas).toHaveLength(1);
+    expect(aceitas[0]?.tipo).toBe("quebra");
+  });
+
+  it("propõe negrito num título de cláusula", () => {
+    const { aceitas } = triarPropostas("texto CLÁUSULA PRIMEIRA — DAS PARTES texto", [
+      { motivo: "título de cláusula", tipo: "negrito", trecho: "CLÁUSULA PRIMEIRA — DAS PARTES" },
+    ]);
+    expect(aceitas[0]?.tipo).toBe("negrito");
+  });
+
+  // ⚠️ NEGRITO NÃO EXISTE EM TEXTO PURO. Inventar `**` aqui produziria asterisco impresso no
+  // contrato — a aplicação de verdade acontece no documento do editor, onde negrito é uma marca.
+  it("não inventa marcação de negrito no texto puro", () => {
+    const texto = "CLÁUSULA PRIMEIRA";
+    const { aceitas } = triarPropostas(texto, [
+      { motivo: "título", tipo: "negrito", trecho: "CLÁUSULA PRIMEIRA" },
+    ]);
+    expect(aplicarPropostas(texto, aceitas)).toBe(texto);
+  });
+
+  it("sem tipo continua sendo variável — é o formato da primeira versão", () => {
+    const { aceitas } = triarPropostas("o CPF 123.456.789-00 do comprador", [
+      { motivo: "cpf", nome: "cpf_cliente", trecho: "123.456.789-00" },
+    ]);
+    expect(aceitas[0]?.tipo).toBe("variavel");
+  });
+
+  it("envolver e marcar podem conviver no mesmo texto", () => {
+    const texto = "JOÃO DA SILVA e MARIA, cônjuge.";
+    const { aceitas } = triarPropostas(texto, [
+      { motivo: "nome", nome: "nome_cliente", trecho: "JOÃO DA SILVA" },
+      { motivo: "cônjuge", nome: "dados_conjuge", tipo: "envolver", trecho: "e MARIA, cônjuge." },
+    ]);
+    expect(aplicarPropostas(texto, aceitas)).toBe(
+      "[nome_cliente] [inicio_dados_conjuge]e MARIA, cônjuge.[fim_dados_conjuge]",
+    );
+  });
+});
+
+describe("a busca tolerante deixou de derrubar proposta boa", () => {
+  // ⚠️ ESTES CASOS DERRUBAVAM 17 DAS 28 PROPOSTAS. Nenhum deles muda uma letra do contrato: são o
+  // que o Word faz sozinho com o texto e o que sobrevive à importação do .docx.
+
+  it("aceita o trecho citado sem o espaço duro do original", () => {
+    const { aceitas } = triarPropostas("portador do CPF n.º 123.456.789-00, casado", [
+      { motivo: "cpf", nome: "cpf_cliente", trecho: "123.456.789-00" },
+    ]);
+    expect(aceitas).toHaveLength(1);
+  });
+
+  it("aceita o trecho citado com um espaço onde o original tem dois", () => {
+    const { aceitas } = triarPropostas("o nome  JOÃO DA SILVA  aparece", [
+      { motivo: "nome", nome: "nome_cliente", trecho: "JOÃO DA SILVA" },
+    ]);
+    expect(aceitas).toHaveLength(1);
+  });
+
+  // ⚠️ E CONTINUA RECUSANDO O QUE IMPORTA: ambiguidade e trecho inexistente. A tolerância é de
+  // forma, nunca de conteúdo.
+  it("continua recusando trecho que aparece duas vezes", () => {
+    const { recusadas } = triarPropostas("CPF 111 e CPF 222", [
+      { motivo: "cpf", nome: "cpf_cliente", trecho: "CPF" },
+    ]);
+    expect(recusadas[0]?.motivo).toBe("trecho_ambiguo");
+  });
+});
+
+describe("colchete do loteador não é variável nossa", () => {
+  // ⚠️ ISSO SALVOU UMA MINUTA INTEIRA. A do Aldeia da Cachoeira (Lucas, 08/09/2026) marca as 51
+  // lacunas com colchetes — `[NOME COMPLETO]`, `[nacionalidade]`, `[●]`. A regra antiga recusava
+  // qualquer trecho entre colchetes como "já marcado", e o agente devolveria zero proposta para o
+  // documento todo, sem nenhum sintoma além de um painel vazio.
+
+  it("aceita substituir a lacuna que o loteador escreveu entre colchetes", () => {
+    const { aceitas } = triarPropostas("[nacionalidade], [estado civil], inscrito no CPF", [
+      { motivo: "lacuna do loteador", nome: "nacionalidade_cliente", trecho: "[nacionalidade]" },
+    ]);
+    expect(aceitas).toHaveLength(1);
+  });
+
+  it("continua recusando o que já é variável NOSSA", () => {
+    const { recusadas } = triarPropostas("o [cpf_cliente] do comprador", [
+      { motivo: "cpf", nome: "cpf_cliente", trecho: "[cpf_cliente]" },
+    ]);
+    expect(recusadas[0]?.motivo).toBe("ja_marcado");
+  });
+
+  it("aceita a lacuna de bolinha, que nem parece nome de variável", () => {
+    const { aceitas } = triarPropostas("LOTE Nº [●], integrante do empreendimento", [
+      { motivo: "lacuna do lote", nome: "numero_lote", trecho: "[●]" },
+    ]);
+    expect(aceitas).toHaveLength(1);
+  });
+});

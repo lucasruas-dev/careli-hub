@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Plus, Wand2, X } from "lucide-react";
+import { Check, ChevronRight, Loader2, Plus, SendHorizontal, Wand2, X } from "lucide-react";
 import type { Value } from "platejs";
 import {
   Plate,
@@ -29,6 +29,7 @@ import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { useAuth } from "@/providers/auth-provider";
 
 import { faixaDoTrecho, textoDoDocumento } from "./plugins/achar-trecho";
+import { noDeQuebraDePagina } from "./plugins/quebra-de-pagina-base";
 
 import { EditorKitTemis } from "./editor-kit-temis";
 import { TemisToolbarPlugin } from "./plugins/temis-toolbar-kit";
@@ -251,7 +252,42 @@ function PainelLateral({
 }) {
   const [aba, setAba] = useState<Aba>(jaUsadas.size === 0 ? "blocos" : "variaveis");
   const [propostas, setPropostas] = useState<null | RespostaDoAgente>(null);
+  // A CONVERSA. Lucas, 08/09/2026: *"acho que pode ter um chat entre o usuário e o agente"*.
+  const [conversa, setConversa] = useState<MensagemDaConversa[]>([]);
+  const [conversando, setConversando] = useState(false);
   const pedidos = usePluginOption(TemisToolbarPlugin, "pedidoDeMarcacao");
+
+  /**
+   * Manda a pergunta e trata a resposta.
+   *
+   * ⚠️ A PERGUNTA ENTRA NA TELA ANTES DA RESPOSTA VOLTAR. Uma chamada a modelo de fronteira sobre um
+   * contrato leva dezenas de segundos; sem a mensagem aparecer na hora, quem perguntou acha que o
+   * clique não pegou e pergunta de novo.
+   *
+   * ⚠️ E AS PROPOSTAS DA CONVERSA ENTRAM NA MESMA LISTA das do botão. Uma segunda lista faria a
+   * pessoa procurar em dois lugares o que ela aplica no mesmo gesto — e a triagem que as validou é
+   * exatamente a mesma.
+   */
+  const perguntar = async (pergunta: string) => {
+    const historico: MensagemDaConversa[] = [...conversa, { conteudo: pergunta, papel: "usuario" }];
+    setConversa(historico);
+    setConversando(true);
+    try {
+      const r = await conversarComOAgente(textoDoDocumento(editor.children), historico);
+      setConversa((atual) => [
+        ...atual,
+        { conteudo: r.erro ?? r.resposta, papel: "agente" },
+      ]);
+      if (r.propostas.length > 0 || r.recusadas.length > 0) {
+        setPropostas((atual) => ({
+          propostas: [...(atual?.propostas ?? []), ...r.propostas],
+          recusadas: [...(atual?.recusadas ?? []), ...r.recusadas],
+        }));
+      }
+    } finally {
+      setConversando(false);
+    }
+  };
 
   // O botão da barra só levanta um pedido; quem lê o documento e chama a rota é este painel, que
   // já tem o editor em mãos. Assim a barra não precisa conhecer o conteúdo da folha.
@@ -319,12 +355,30 @@ function PainelLateral({
       {aba === "variaveis" ? <ListaDeVariaveis editor={editor} jaUsadas={jaUsadas} /> : null}
       {aba === "agente" ? (
         <ListaDoAgente
+          conversa={conversa}
+          conversando={conversando}
+          aoPerguntar={(t) => void perguntar(t)}
           editor={editor}
           aoAplicar={(p) => {
             aplicarProposta(editor, p);
             setPropostas((atual) =>
               atual
                 ? { ...atual, propostas: atual.propostas.filter((x) => x.trecho !== p.trecho) }
+                : atual,
+            );
+          }}
+          aoAplicarTodas={(lista) => {
+            // ⚠️ DE TRÁS PARA A FRENTE. Cada aplicação muda o documento; começar pelo fim mantém as
+            // posições das anteriores válidas. (`aplicarProposta` reacha o trecho a cada vez, mas a
+            // ordem ainda importa: um trecho curto pode passar a aparecer duas vezes depois de uma
+            // substituição à frente dele, e aí ele seria pulado sem motivo.)
+            const aplicadas = new Set<string>();
+            for (const p of [...lista].sort((a, b) => b.posicao - a.posicao)) {
+              if (aplicarProposta(editor, p)) aplicadas.add(p.trecho);
+            }
+            setPropostas((atual) =>
+              atual
+                ? { ...atual, propostas: atual.propostas.filter((x) => !aplicadas.has(x.trecho)) }
                 : atual,
             );
           }}
@@ -338,11 +392,16 @@ function PainelLateral({
 type Aba = "agente" | "blocos" | "variaveis";
 
 type PropostaDoAgente = {
+  /** O que a proposta vai fazer, em português — vem escrito do servidor. */
+  acao: string;
+  /** A âncora que torna o trecho único (ver `lib/temis/casar-trecho.ts`). Vazia quando não precisa. */
+  contexto?: string;
   motivo: string;
   nome: string;
   origem: string;
   posicao: number;
   rotulo: string;
+  tipo?: "envolver" | "negrito" | "quebra" | "variavel";
   trecho: string;
 };
 
@@ -351,6 +410,11 @@ type RespostaDoAgente = {
   propostas: PropostaDoAgente[];
   recusadas: { motivo: string; nome: string; trecho: string }[];
 };
+
+/** Uma volta da conversa. `agente` também carrega o erro, quando há — ele fala, não some. */
+type MensagemDaConversa = { conteudo: string; papel: "agente" | "usuario" };
+
+type RespostaDaConversa = RespostaDoAgente & { resposta: string };
 
 /**
  * ⚠️ O CONTRATO VAI EM PARTES, e isso saiu de uma falha real. Na primeira tentativa com o Villa
@@ -423,6 +487,66 @@ async function umaParte(texto: string, token: string): Promise<RespostaDoAgente>
   }
 }
 
+/**
+ * Uma volta de conversa com o agente.
+ *
+ * ⚠️ A MINUTA VAI INTEIRA, SEM PARTIR. O botão parte o contrato em pedaços de 25 mil caracteres
+ * porque varre tudo; a conversa é uma pergunta sobre um documento, e partir aqui daria seis
+ * respostas diferentes para a mesma pergunta. A rota corta no teto e AVISA que cortou — resposta
+ * incompleta com aviso é melhor do que seis respostas.
+ */
+async function conversarComOAgente(
+  texto: string,
+  mensagens: MensagemDaConversa[],
+): Promise<RespostaDaConversa> {
+  let token: null | string = null;
+  try {
+    token = await getApoloAccessToken();
+  } catch {
+    token = null;
+  }
+  if (!token) {
+    return { erro: "Sessão expirada. Recarregue a página.", propostas: [], recusadas: [], resposta: "" };
+  }
+
+  try {
+    const r = await fetch("/api/temis/minutas/conversar", {
+      body: JSON.stringify({ mensagens, texto }),
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      method: "POST",
+    });
+    // Lê como texto antes de tentar JSON: um timeout da Vercel devolve HTML, e `r.json()` rejeitaria
+    // engolindo a única pista do que aconteceu.
+    const cru = await r.text().catch(() => "");
+    let corpo: (Partial<RespostaDaConversa> & { erro?: string }) | null = null;
+    try {
+      corpo = cru ? (JSON.parse(cru) as Partial<RespostaDaConversa> & { erro?: string }) : null;
+    } catch {
+      corpo = null;
+    }
+
+    if (!r.ok || !corpo) {
+      return {
+        erro:
+          corpo?.erro ??
+          (r.status === 504 || !corpo
+            ? "O agente demorou demais para responder. Tente uma pergunta mais curta."
+            : `O agente respondeu ${r.status}.`),
+        propostas: [],
+        recusadas: [],
+        resposta: "",
+      };
+    }
+    return {
+      propostas: corpo.propostas ?? [],
+      recusadas: corpo.recusadas ?? [],
+      resposta: corpo.resposta ?? "",
+    };
+  } catch {
+    return { erro: "Falha de rede ao falar com o agente.", propostas: [], recusadas: [], resposta: "" };
+  }
+}
+
 async function pedirMarcacao(texto: string): Promise<RespostaDoAgente> {
   // ⚠️ SEM TOKEN NÃO SE CHAMA. `getApoloAccessToken` devolve null quando a sessão caiu, e mandar a
   // requisição assim mesmo devolveria 401 — que foi exatamente o "O agente respondeu 401" do
@@ -465,77 +589,248 @@ async function pedirMarcacao(texto: string): Promise<RespostaDoAgente> {
 }
 
 /**
- * Troca o trecho pela variável, no documento.
+ * Faz no documento o que a proposta diz.
  *
  * ⚠️ ACHA A FAIXA DE NOVO, NA HORA DO CLIQUE. A posição veio do texto de quando o agente leu; se
  * alguém editou a folha nesse meio-tempo, ela não vale mais. `faixaDoTrecho` devolve null quando o
- * trecho sumiu ou passou a aparecer duas vezes — e aí não se aplica nada, em vez de marcar por
- * aproximação.
+ * trecho sumiu ou passou a aparecer duas vezes — e aí não se aplica nada, em vez de agir por
+ * aproximação. Devolve `true` quando aplicou, para quem aplica em lote saber o que entrou.
+ *
+ * ⚠️ SÃO QUATRO OPERAÇÕES, e nenhuma delas reescreve texto. Pedido do Lucas (08/09/2026): *"vindo
+ * colocando as quebras de páginas, inserir os negritos, os quadros quando precisar"* — e o quadro é
+ * o caso "variavel", porque a tabela do contrato já existe como `[tabela_geral_pagamentos]`.
  */
-function aplicarProposta(editor: PlateEditor, proposta: PropostaDoAgente) {
-  const faixa = faixaDoTrecho(editor.children, proposta.trecho);
-  if (!faixa) return;
+function aplicarProposta(editor: PlateEditor, proposta: PropostaDoAgente): boolean {
+  const faixa = faixaDoTrecho(editor.children, proposta.trecho, proposta.contexto);
+  if (!faixa) return false;
 
   const at = { anchor: faixa.inicio, focus: faixa.fim };
-  editor.tf.removeNodes({ at, empty: true });
-  editor.tf.delete({ at });
-  editor.tf.insertNodes(noDeVariavel(proposta.nome) as never, { at: faixa.inicio, select: true });
+
+  switch (proposta.tipo) {
+    // O par de bloco entra como TEXTO, nas duas pontas do trecho. Ele não é um nó de variável: é o
+    // marcador que o motor de geração lê, e é assim que ele já aparece nos blocos prontos.
+    //
+    // ⚠️ O FIM ENTRA PRIMEIRO. Inserir no começo empurraria o fim alguns caracteres para a frente, e
+    // o marcador de fechamento cairia dentro do trecho — envolvendo menos do que se pediu.
+    case "envolver": {
+      const cru = proposta.nome.replace(/^(inicio|fim)_/, "");
+      editor.tf.insertText(`[fim_${cru}]`, { at: faixa.fim });
+      editor.tf.insertText(`[inicio_${cru}]`, { at: faixa.inicio });
+      break;
+    }
+    case "negrito": {
+      editor.tf.setNodes({ bold: true }, { at, match: (n) => "text" in (n as object), split: true });
+      break;
+    }
+    // ⚠️ A QUEBRA VAI ANTES DO BLOCO INTEIRO, não no meio do parágrafo. O trecho citado é o título
+    // da peça ("CONTRATO PARTICULAR DE CORRETAGEM"), e quebrar no meio dele deixaria a primeira
+    // palavra órfã no fim da folha anterior.
+    case "quebra": {
+      const bloco = faixa.inicio.path.slice(0, 1);
+      editor.tf.insertNodes(noDeQuebraDePagina() as never, { at: bloco });
+      break;
+    }
+    default: {
+      editor.tf.removeNodes({ at, empty: true });
+      editor.tf.delete({ at });
+      editor.tf.insertNodes(noDeVariavel(proposta.nome) as never, { at: faixa.inicio, select: true });
+    }
+  }
+
   editor.tf.focus();
+  return true;
 }
 
 /**
  * O QUE O AGENTE PROPÔS.
  *
- * ⚠️ CADA PROPOSTA É ACEITA UMA A UMA, e não há "aplicar tudo". Num contrato, revisar em lote é o
- * mesmo que não revisar: o operador clicaria uma vez e as 80 marcações entrariam sem ninguém ter
- * olhado — inclusive a que confunde o cônjuge com o segundo comprador, que é o erro mais provável
- * do modelo e o mais difícil de achar depois.
+ * ⚠️ APLICAR TODAS EXISTE, e é o pedido do Lucas (08/09/2026): *"ao clicar em inserir ela coloca as
+ * variáveis para gente"*. A versão anterior só aceitava uma a uma, por medo de o operador aprovar 80
+ * marcações sem olhar. Mas numa minuta de 30 páginas o clique-a-clique era o próprio trabalho manual
+ * que o agente veio eliminar — e a revisão de verdade acontece depois, lendo a folha, onde o erro
+ * aparece no lugar em que ele importa.
+ *
+ * A rede de segurança que sobra é a que sempre valeu: nenhuma proposta muda o texto jurídico (só
+ * troca um trecho por variável, envolve num bloco, quebra a página ou põe negrito), tudo passou pela
+ * triagem do catálogo, e o desfazer do editor desmancha o lote inteiro de uma vez.
  *
  * ⚠️ E O QUE FOI RECUSADO APARECE, com o motivo. Não é erro escondido: é a rede de segurança se
  * mostrando, e é como quem usa aprende onde o agente erra.
  */
 function ListaDoAgente({
   aoAplicar,
+  aoAplicarTodas,
+  aoPerguntar,
+  conversa,
+  conversando,
   editor,
   resposta,
 }: {
   aoAplicar: (p: PropostaDoAgente) => void;
+  aoAplicarTodas: (ps: PropostaDoAgente[]) => void;
+  aoPerguntar: (pergunta: string) => void;
+  conversa: MensagemDaConversa[];
+  conversando: boolean;
   editor: PlateEditor;
   resposta: null | RespostaDoAgente;
 }) {
   const marcando = usePluginOption(TemisToolbarPlugin, "marcando");
 
-  if (marcando) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-        <Wand2 aria-hidden="true" className="size-5 animate-pulse text-ink-muted" />
-        <p className="m-0 text-xs text-ink-soft">
-          Lendo a minuta inteira e procurando onde cada variável entra. Contrato longo leva alguns
-          minutos.
-        </p>
-      </div>
-    );
-  }
+  // ⚠️ A CONVERSA FICA SEMPRE DISPONÍVEL, inclusive antes da primeira varredura e enquanto ela roda.
+  // Ela é o outro caminho para o agente, não um extra da varredura: dá para começar perguntando
+  // "essa minuta usa qual formato de fluxo?" sem mandar marcar nada.
+  const conteudo = marcando ? (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+      <Wand2 aria-hidden="true" className="size-5 animate-pulse text-ink-muted" />
+      <p className="m-0 text-xs text-ink-soft">
+        Lendo a minuta inteira e procurando onde cada variável entra. Contrato longo leva alguns
+        minutos.
+      </p>
+    </div>
+  ) : !resposta ? (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+      <Wand2 aria-hidden="true" className="size-5 text-ink-muted" />
+      <p className="m-0 text-xs text-ink-soft">
+        Clique em <strong className="font-semibold text-ink">Marcar variáveis</strong> na barra para
+        ele ler a minuta inteira — ou pergunte aqui embaixo. Ele conhece o catálogo e o texto na
+        tela, e não altera nada sem você aplicar.
+      </p>
+    </div>
+  ) : (
+    <CorpoDoAgente
+      aoAplicar={aoAplicar}
+      aoAplicarTodas={aoAplicarTodas}
+      editor={editor}
+      resposta={resposta}
+    />
+  );
 
-  if (!resposta) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-        <Wand2 aria-hidden="true" className="size-5 text-ink-muted" />
-        <p className="m-0 text-xs text-ink-soft">
-          Clique em <strong className="font-semibold text-ink">Marcar variáveis</strong> na barra: o
-          agente lê a minuta e propõe onde cada uma entra. Ele não altera o seu texto — você aceita
-          uma a uma.
-        </p>
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+        {conteudo}
+        <Conversa conversa={conversa} conversando={conversando} />
       </div>
-    );
-  }
+      <CampoDaConversa aoPerguntar={aoPerguntar} ocupado={conversando} />
+    </div>
+  );
+}
+
+/**
+ * As bolhas da conversa.
+ *
+ * ⚠️ O ERRO APARECE COMO FALA DO AGENTE, e não como faixa vermelha. "A IA não respondeu, tente de
+ * novo" no lugar da resposta mantém a conversa legível: quem lê de cima para baixo entende que
+ * aquela pergunta ficou sem resposta, em vez de ver um aviso solto sem saber a qual pergunta ele
+ * se refere.
+ */
+function Conversa({
+  conversa,
+  conversando,
+}: {
+  conversa: MensagemDaConversa[];
+  conversando: boolean;
+}) {
+  if (conversa.length === 0 && !conversando) return null;
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-line p-3">
+      {conversa.map((m, i) => (
+        <div
+          className={
+            m.papel === "usuario"
+              ? "self-end rounded-xl rounded-br-sm bg-[#A07C3B] px-2.5 py-1.5 text-[11px] leading-snug text-white max-w-[85%]"
+              : "self-start whitespace-pre-wrap rounded-xl rounded-bl-sm bg-subtle px-2.5 py-1.5 text-[11px] leading-snug text-ink max-w-[92%]"
+          }
+          key={`${m.papel}-${i}`}
+        >
+          {m.conteudo}
+        </div>
+      ))}
+      {conversando ? (
+        <span className="self-start px-2.5 text-[11px] italic text-ink-muted">Pensando…</span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * O campo de perguntar.
+ *
+ * ⚠️ ENTER MANDA, SHIFT+ENTER QUEBRA A LINHA. É a convenção de todo chat, e quem está no meio de uma
+ * revisão não quer procurar botão. O botão continua lá para quem prefere clicar.
+ */
+function CampoDaConversa({
+  aoPerguntar,
+  ocupado,
+}: {
+  aoPerguntar: (pergunta: string) => void;
+  ocupado: boolean;
+}) {
+  const [texto, setTexto] = useState("");
+
+  const mandar = () => {
+    const limpo = texto.trim();
+    if (!limpo || ocupado) return;
+    setTexto("");
+    aoPerguntar(limpo);
+  };
+
+  return (
+    <div className="flex items-end gap-1.5 border-t border-line p-2">
+      <textarea
+        className="max-h-32 min-h-[2.25rem] flex-1 resize-none rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] leading-snug text-ink outline-none placeholder:text-ink-muted focus:border-[#A07C3B]"
+        disabled={ocupado}
+        onChange={(e) => setTexto(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            mandar();
+          }
+        }}
+        placeholder="Pergunte ou mande fazer: “esse é o cônjuge, não o comprador”"
+        rows={1}
+        value={texto}
+      />
+      <button
+        aria-label="Perguntar ao agente"
+        className="rounded-lg bg-[#A07C3B] px-2 py-2 text-white transition-colors hover:bg-[#8A6A32] disabled:opacity-40"
+        disabled={ocupado || texto.trim() === ""}
+        onClick={mandar}
+        onMouseDown={(e) => e.preventDefault()}
+        type="button"
+      >
+        {ocupado ? (
+          <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+        ) : (
+          <SendHorizontal aria-hidden="true" className="size-3.5" />
+        )}
+      </button>
+    </div>
+  );
+}
+
+/** A lista de propostas — o resultado da varredura e o que a conversa acrescentou a ela. */
+function CorpoDoAgente({
+  aoAplicar,
+  aoAplicarTodas,
+  editor,
+  resposta,
+}: {
+  aoAplicar: (p: PropostaDoAgente) => void;
+  aoAplicarTodas: (ps: PropostaDoAgente[]) => void;
+  editor: PlateEditor;
+  resposta: RespostaDoAgente;
+}) {
 
   // ⚠️ SÓ MOSTRA O QUE DÁ PARA APLICAR. O contrato vai ao modelo EM PARTES, e um trecho pode ser
   // único dentro da sua parte e aparecer duas vezes no documento inteiro — "CPF n.º" é o caso. A
   // triagem do servidor confere contra a parte; esta é a conferência contra o documento todo.
   // Mostrar uma proposta que o clique recusaria seria pior que não mostrar: o operador clicaria,
   // nada aconteceria, e ele não saberia por quê.
-  const aplicaveis = resposta.propostas.filter((p) => faixaDoTrecho(editor.children, p.trecho));
+  const aplicaveis = resposta.propostas.filter((p) =>
+    faixaDoTrecho(editor.children, p.trecho, p.contexto),
+  );
   const semLugar = resposta.propostas.length - aplicaveis.length;
 
   return (
@@ -553,11 +848,20 @@ function ListaDoAgente({
             : "O agente não achou nada novo para marcar. Se a minuta já está marcada, é isso mesmo."}
         </p>
       ) : (
-        <p className="m-0 px-3 py-2 text-[10px] leading-tight text-ink-muted">
-          {aplicaveis.length} proposta(s). Clique para aplicar — uma a uma, para você ver onde cada
-          uma cai.
-          {semLugar > 0 ? ` ${semLugar} não casou com o texto e ficou de fora.` : ""}
-        </p>
+        <div className="px-3 py-2">
+          <button
+            className="mb-1.5 w-full rounded-lg bg-[#A07C3B] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#8A6A32]"
+            onClick={() => aoAplicarTodas(aplicaveis)}
+            onMouseDown={(e) => e.preventDefault()}
+            type="button"
+          >
+            Aplicar as {aplicaveis.length}
+          </button>
+          <p className="m-0 text-[10px] leading-tight text-ink-muted">
+            Ou clique uma a uma, para ver onde cada uma cai. Ctrl+Z desfaz.
+            {semLugar > 0 ? ` ${semLugar} não casou com o texto e ficou de fora.` : ""}
+          </p>
+        </div>
       )}
 
       {aplicaveis.map((p) => (
@@ -572,11 +876,15 @@ function ListaDoAgente({
             <Wand2 aria-hidden="true" className="size-3 shrink-0 text-ink-muted" />
             <span className="flex-1 truncate text-xs font-medium text-ink">{p.rotulo}</span>
           </span>
-          {/* O trecho é o que o operador precisa ver: é o pedaço do CONTRATO que vai sumir. */}
+          {/* O trecho é o que o operador precisa ver: é o pedaço do CONTRATO que vai mudar. */}
           <span className="w-full truncate rounded bg-subtle px-1.5 py-1 text-[10px] italic text-ink-soft">
             “{p.trecho}”
           </span>
-          <span className="pl-[1.125rem] font-mono text-[10px] text-ink-muted">[{p.nome}]</span>
+          {/* ⚠️ A AÇÃO POR EXTENSO, e não só o nome da variável. Quando a proposta é uma quebra de
+              página ou um negrito não há nome nenhum, e "[]" na tela não diz nada a quem revisa. */}
+          <span className="pl-[1.125rem] font-mono text-[10px] text-ink-muted">
+            {p.tipo && p.tipo !== "variavel" ? p.acao : `[${p.nome}]`}
+          </span>
           {p.motivo ? (
             <span className="pl-[1.125rem] text-[10px] leading-tight text-ink-soft">{p.motivo}</span>
           ) : null}

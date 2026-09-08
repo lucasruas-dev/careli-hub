@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-super-agente-e-contrato-de-corretagem",
+    deployedAt: "2026-09-08T02:10:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O agente virou preparador de minuta.** Além de marcar variáveis, ele agora propõe **quebra de página**, **negrito** nos títulos e **envolver um trecho num bloco condicional** (o cônjuge que só sai quando existe). O quadro de parcelas datilografado ele troca pela variável que o motor escreve a partir do plano.",
+              "**Chat com o agente.** Pergunte, corrija (\"esse aí é o cônjuge, não o comprador\") ou mande fazer. Ele responde e propõe na mesma volta, e a proposta cai na mesma lista de aplicar.",
+              "**Aplicar todas.** Numa minuta de 30 páginas, o clique-a-clique era o próprio trabalho manual que o agente veio eliminar. Ctrl+Z desfaz o lote.",
+              "**Ele lê minuta em branco.** As que chegam com lacunas (\"CPF sob o n.º ____\") ou com colchetes do loteador (`[NOME COMPLETO]`, `[●]`) agora são entendidas — antes ele as ignorava.",
+              "**Quebra de página**, enfim: botão na barra, linha tracejada visível na folha, e corte de verdade no PDF.",
+              "**Bloco pronto do contrato de corretagem** — o contrato inteiro, em folha própria, com a coordenadora de vendas.",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+    ],
+    rollback: "bdbecaa2",
+    technical: {
+      done: "⚠️ O AGENTE LIA OS PARÁGRAFOS COLADOS, e era isso que derrubava 17 das 28 propostas no teste do Lucas. `textoDoDocumento` concatenava os nós sem separador: o texto que o modelo recebia trazia \"…deste instrumento.II – INTERMEDIADORES…\". Ele lia palavras que não existem e citava trechos com o espaço que consertava na leitura — que depois não casavam. Agora há quebra de linha entre blocos, com pedaço VIRTUAL no mapa (o separador não existe em nó nenhum; um ponto que caia nele é dobrado para o vizinho). Junto veio `lib/temis/casar-trecho.ts`: busca tolerante a espaço duro do Word, espaço dobrado, aspas e traços curvos — só FORMA, nunca conteúdo (acento e pontuação continuam valendo). ⚠️ AS QUATRO MINUTAS DE EXEMPLO MUDARAM O DESENHO. A do Jardim das Gerais vem com 31 lacunas `________________`, todas ambíguas: criei a ÂNCORA DE CONTEXTO — a proposta cita a frase inteira para localizar, e só a lacuna é substituída. A do Aldeia da Cachoeira marca 51 lacunas com COLCHETES (`[NOME COMPLETO]`, `[nacionalidade]`, `[●]`) e a regra que eu tinha escrito mandava ignorar tudo entre colchetes — o agente teria pulado a minuta inteira e devolvido zero proposta, sem sintoma além de um painel vazio. A pergunta agora é \"esse nome está no NOSSO catálogo?\", não \"tem colchete?\". ⚠️ O CONHECIMENTO É UM MÓDULO SÓ (`lib/temis/agente-conhecimento.ts`): arquitetura da Têmis, como identificar de quem é o dado, e o catálogo gerado de `variaveis.ts`. As duas rotas (botão e conversa) usam a mesma cabeça — com cópias, o agente da conversa passaria a raciocinar com uma regra que o do botão não conhece. ⚠️ A QUEBRA DE PÁGINA É UM NÓ VOID, não um estilo no parágrafo: propriedade invisível é editada por acidente e só se descobre no PDF assinado, e a quebra do fim do contrato de corretagem não tem parágrafo depois para carregar o estilo. No HTML sai `break-before:page` E `page-break-before:always` (a nova e a antiga: o Chromium honra as duas, e quebra ignorada não dá erro). ⚠️ O CONTRATO DE CORRETAGEM TINHA UM DEFEITO NO TEXTO ORIGINAL: o item 4.1 usava `[valor_imovel_venda]` e o 4.3 (custo total) usava `[preco_venda]` — dois nomes para o MESMO campo. O contrato sairia com o custo total igual ao preço do lote, logo abaixo da frase que promete \"a soma do preço do lote e da comissão\". Criei `valor_custo_total_aquisicao`. O CRECI da coordenadora, que vinha digitado três vezes, e os percentuais do rateio (3%/4%) viraram variáveis — a comissão já varia por empreendimento. Novo: ordem de assinatura por PAPEL (`lib/assinatura/ordem.ts`), com a migration 0142 escrita e NÃO aplicada. 3.101 testes verdes; typecheck e lint limpos.",
+      motivation:
+        "O agente marcava variável e só; e metade do que ele propunha era descartado por um defeito nosso de leitura, não por erro dele.",
+    },
+    title: "O super agente, e o contrato de corretagem",
+    type: "melhoria",
+    version: "1.295.0",
+  },
+  {
     buildTag: "2026-09-08-agente-autenticado-e-partes-separadas",
     deployedAt: "2026-09-08T01:10:00-03:00",
     modules: [

@@ -30,10 +30,16 @@ export type EstiloDaLinha =
   | "aviso"
   /** Parágrafo comum do contrato, justificado. */
   | "corpo"
+  /** Linha de ficha ("Nome: [x]"), à esquerda e SEM justificar — justificar espalharia os espaços. */
+  | "ficha"
   /** Marcador de bloco sozinho na linha (`[inicio_cada_comprador]`), como o legado escreve. */
   | "marcador"
+  /** Quebra de página: o que vem depois começa em folha nova. Ver `quebra-de-pagina-base.ts`. */
+  | "quebra"
   /** Título da cláusula, em negrito. */
-  | "titulo";
+  | "titulo"
+  /** Cabeçalho de um documento que começa em folha nova: negrito e centralizado. */
+  | "titulo_centro";
 
 export type LinhaDoBloco = {
   estilo: EstiloDaLinha;
@@ -253,6 +259,236 @@ const CORRETAGEM: BlocoPronto = {
   rotulo: "Corretagem",
 };
 
+// -- O CONTRATO DE CORRETAGEM, INTEIRO ---------------------------------------
+//
+// Lucas, 08/09/2026: *"o contrato de corretagem e padrao, podemos fazer um bloco so com ele.
+// Lembrando que temos que trazer o nome da coordenadora de vendas, segue ele para deixar ele padrao,
+// quando ele entra tem que ter a quebra de pagina inicial e no final"*. O texto abaixo e o que ele
+// mandou, clausula por clausula.
+//
+// ATENCAO: NAO CONFUNDIR COM O BLOCO `corretagem`. Aquele e UMA CLAUSULA dentro do contrato de venda
+// ("a intermediacao foi feita por..."). Este e um CONTRATO SEPARADO, com partes, foro e assinaturas
+// proprias, que viaja junto com a venda. Os dois convivem: o comprador assina os dois.
+//
+// ATENCAO: ELE COMECA E TERMINA COM QUEBRA DE PAGINA. Foi pedido explicito, e a razao e juridica: um
+// contrato que comeca no meio da folha do contrato anterior parece clausula daquele contrato. As
+// duas quebras vem dentro do bloco para ninguem precisar lembrar de po-las.
+//
+// O QUE FOI TROCADO POR VARIAVEL no texto que ele mandou, e por que:
+//
+//   "RESIDENCIAL VILLA PARIS"     -> [empreendimento_nome]     o bloco e padrao, serve a todos
+//   "WLM INCORPORACOES..."        -> as [vendedora_*]          a vendedora vem da CATEGORIA
+//   "Joao Monlevade/MG"           -> [empreendimento_cidade]   municipio e foro seguem o produto
+//   "CRECI: 8.015" (tres vezes)   -> [creci_coordenadora_vendas]
+//   "3%" e "4%"                   -> [percentual_comissao_*]   a comissao ja varia por empreendimento
+//   os sufixos _2.._5             -> [inicio_cada_comprador]   ver a nota do laco, acima
+//
+// ATENCAO: AS TESTEMUNHAS FICARAM ESCRITAS, com nome e CPF, como no texto que ele mandou. E a unica
+// coisa aqui que nao e variavel, e e decisao consciente: testemunha nao tem cadastro no Panteon, e
+// inventar um campo pendente para ela deixaria duas linhas em branco no contrato assinado. Quem
+// trocar de testemunha edita a minuta -- mesmo trabalho de trocar um cadastro, e visivel.
+//
+// ATENCAO: "IMOVEL" APARECE AQUI, e e de proposito. O vocabulario da casa e "unidade" (Lucas,
+// 07/09/2026), e a participacao do comprador diz "da unidade" tambem neste texto. Mas as clausulas
+// de intermediacao citam a Lei no 6.530/1978 e o CDC, onde o bem e o *imovel* -- reescrever isso
+// mudaria a citacao legal, nao o vocabulario. Por isso o teste da regra da unidade abre excecao
+// nominal para este bloco, em vez de afrouxar para todos.
+//
+// ATENCAO: "Area: [area_lote]" SEM "m2" DEPOIS. A variavel ja traz a unidade ("300,00 m2"); escrever
+// "[area_lote] m2" como no original imprimiria "300,00 m2 m2" -- o mesmo defeito que produziu
+// "trezentos metros quadrados metros quadrados" no contrato auditado do Villa Paris.
+const CONTRATO_CORRETAGEM: BlocoPronto = {
+  descricao: "O contrato de corretagem completo, em folha propria, com a coordenadora de vendas.",
+  id: "contrato-corretagem",
+  linhas: [
+    { estilo: "quebra", texto: "" },
+    { estilo: "titulo_centro", texto: "CONTRATO PARTICULAR DE CORRETAGEM IMOBILIÁRIA" },
+    { estilo: "titulo_centro", texto: "[empreendimento_nome]" },
+    { estilo: "titulo_centro", texto: "QUADRA [numero_quadra] — LOTE [numero_lote]" },
+    { estilo: "corpo", texto: "Pelo presente instrumento particular, de um lado:" },
+    { estilo: "titulo", texto: "I – CONTRATANTE(S)" },
+    { estilo: "marcador", texto: "[inicio_cada_comprador]" },
+    { estilo: "corpo", texto: "[inicio_dados_cliente_pf][nome_cliente], de nacionalidade [nacionalidade_cliente], [estado_civil_cliente], [inicio_dados_conjuge][regime_casamento_cliente], [fim_dados_conjuge][profissao_cliente], portador do CPF n.º [cpf_cliente], e do e-mail: [email_cliente] e de telefone: [telefone_cliente],[inicio_dados_conjuge] e [nome_conjuge], de nacionalidade [nacionalidade_conjuge], [profissao_conjuge], portador do CPF n.º [cpf_conjuge], e do e-mail: [email_conjuge] e de telefone: [telefone_conjuge],[fim_dados_conjuge] residente(s) e domiciliado(s) no endereço [rua_cliente], [numero_cliente], [bairro_cliente], [cidade_cliente], [cep_cliente].[fim_dados_cliente_pf][inicio_dados_cliente_pj][nome_fantasia_cliente], pessoa jurídica de direito privado, CNPJ [cnpj_cliente], com sede na [rua_cliente], [numero_cliente], [bairro_cliente], [cidade_cliente], [cep_cliente], e-mail: [email_cliente], neste ato representada por seus representantes legais e/ou procuradores, conforme disposições de seu Contrato Social.[fim_dados_cliente_pj] O(s) COMPRADOR(ES) e DEVEDOR(ES) FIDUCIANTE(S) detém(êm) a fração ideal correspondente a [percentual_cliente] sobre os direitos possessórios da unidade objeto deste instrumento." },
+    { estilo: "marcador", texto: "[fim_cada_comprador]" },
+    { estilo: "corpo", texto: "Doravante denominado(s), individual ou conjuntamente, CONTRATANTE(S) ou COMPRADOR(ES). Havendo mais de um CONTRATANTE, todos declaram ciência das obrigações assumidas neste instrumento e respondem na forma da legislação aplicável pelas obrigações por eles contratadas." },
+    { estilo: "titulo", texto: "II – INTERMEDIADORES E BENEFICIÁRIOS DA CORRETAGEM" },
+    { estilo: "titulo", texto: "2.1. COORDENADORA DE VENDAS" },
+    { estilo: "ficha", texto: "Nome: [nome_fantasia_coordenadora_vendas]" },
+    { estilo: "ficha", texto: "CNPJ: [cnpj_coordenadora_vendas]" },
+    { estilo: "ficha", texto: "CRECI: [creci_coordenadora_vendas]" },
+    { estilo: "ficha", texto: "Endereço: [rua_coordenadora_vendas], [numero_coordenadora_vendas], [bairro_coordenadora_vendas], [cidade_coordenadora_vendas], [cep_coordenadora_vendas]" },
+    { estilo: "ficha", texto: "Telefone: [telefone_coordenadora_vendas]" },
+    { estilo: "ficha", texto: "E-mail: [email_coordenadora_vendas]" },
+    { estilo: "corpo", texto: "doravante denominada COORDENADORA DE VENDAS." },
+    { estilo: "titulo", texto: "2.2. CORRETOR(ES) / INTERMEDIADOR(ES)" },
+    { estilo: "ficha", texto: "Nome: [nome_vinculado]" },
+    { estilo: "ficha", texto: "CNPJ: [cpf_cnpj_vinculado]" },
+    { estilo: "ficha", texto: "CRECI: [creci_vinculado]" },
+    { estilo: "ficha", texto: "Telefone: [telefone_vinculado]" },
+    { estilo: "ficha", texto: "E-mail: [email_vinculado]" },
+    { estilo: "corpo", texto: "A COORDENADORA DE VENDAS e os demais profissionais acima identificados serão denominados, em conjunto, INTERMEDIADORES, respeitada a individualização de cada beneficiário da remuneração." },
+    { estilo: "titulo", texto: "III – IDENTIFICAÇÃO DO NEGÓCIO IMOBILIÁRIO" },
+    { estilo: "corpo", texto: "3.1. O presente contrato refere-se exclusivamente aos serviços de intermediação imobiliária relacionados à aquisição do seguinte imóvel:" },
+    { estilo: "ficha", texto: "Empreendimento: [empreendimento_nome]" },
+    { estilo: "ficha", texto: "Quadra: [numero_quadra]" },
+    { estilo: "ficha", texto: "Lote: [numero_lote]" },
+    { estilo: "ficha", texto: "Área: [area_lote]" },
+    { estilo: "ficha", texto: "Município: [empreendimento_cidade]/[empreendimento_uf]" },
+    { estilo: "corpo", texto: "VENDEDORA: [vendedora_razao_social], [vendedora_natureza_juridica], inscrita no CNPJ sob o nº [vendedora_cnpj], com sede na [vendedora_rua], nº [vendedora_numero], bairro [vendedora_bairro], CEP [vendedora_cep], [vendedora_cidade]/[vendedora_uf]." },
+    { estilo: "corpo", texto: "3.2. Os INTERMEDIADORES declaram possuir autorização para atuar na comercialização e intermediação das unidades do empreendimento, dentro dos limites de suas atribuições profissionais." },
+    { estilo: "corpo", texto: "3.3. A atuação dos INTERMEDIADORES não lhes confere poderes para assumir obrigações em nome da VENDEDORA, modificar condições do negócio, conceder descontos, alterar preço, fluxo financeiro, características do imóvel, prazos, condições de entrega ou qualquer disposição do Instrumento Particular de Venda e Compra de Imóvel com Alienação Fiduciária em Garantia e Outras Avenças, salvo mediante autorização expressa da VENDEDORA." },
+    { estilo: "titulo", texto: "IV – QUADRO-RESUMO DA CORRETAGEM" },
+    { estilo: "titulo", texto: "4.1. PREÇO DO LOTE" },
+    { estilo: "corpo", texto: "[valor_imovel_venda] ([valor_imovel_venda_extenso])." },
+    { estilo: "titulo", texto: "4.2. VALOR TOTAL DA COMISSÃO DE CORRETAGEM" },
+    { estilo: "corpo", texto: "[valor_total_comissao] ([valor_total_comissao_extenso])" },
+    { estilo: "titulo", texto: "4.3. CUSTO TOTAL DA AQUISIÇÃO" },
+    { estilo: "corpo", texto: "O custo total da aquisição corresponde à soma do preço do lote e da comissão de corretagem:" },
+    { estilo: "corpo", texto: "[valor_custo_total_aquisicao] ([valor_custo_total_aquisicao_extenso])" },
+    { estilo: "corpo", texto: "O valor da comissão de corretagem é expressamente destacado do preço do lote, ainda que seu fluxo de pagamento seja operacionalmente vinculado ao fluxo das parcelas de SINAL/ATO estabelecido no Instrumento Particular de Venda e Compra." },
+    { estilo: "titulo", texto: "4.4. BENEFICIÁRIOS DA COMISSÃO" },
+    { estilo: "ficha", texto: "Nome: [nome_fantasia_coordenadora_vendas]" },
+    { estilo: "ficha", texto: "CNPJ: [cnpj_coordenadora_vendas]" },
+    { estilo: "ficha", texto: "CRECI: [creci_coordenadora_vendas]" },
+    { estilo: "ficha", texto: "Percentual de Comissão de Corretagem: [percentual_comissao_coordenadora_vendas]" },
+    { estilo: "ficha", texto: "Valor de Comissão de Corretagem: [valor_pago_coordenadora_vendas]" },
+    { estilo: "ficha", texto: "Nome: [nome_vinculado]" },
+    { estilo: "ficha", texto: "CNPJ: [cpf_cnpj_vinculado]" },
+    { estilo: "ficha", texto: "CRECI: [creci_vinculado]" },
+    { estilo: "ficha", texto: "Percentual de Comissão de Corretagem: [percentual_comissao_vinculado]" },
+    { estilo: "ficha", texto: "Valor de Comissão de Corretagem: [valor_corretagem_menos_coordenadora_vendas]" },
+    { estilo: "corpo", texto: "O valor total e os beneficiários deverão corresponder integralmente às informações constantes do Quadro-Resumo do Instrumento Particular de Venda e Compra." },
+    { estilo: "titulo", texto: "V – DO OBJETO DA CORRETAGEM" },
+    { estilo: "corpo", texto: "5.1. O presente contrato tem por objeto a remuneração dos serviços de intermediação imobiliária realizados pelos INTERMEDIADORES, compreendendo a aproximação das partes, apresentação do imóvel, fornecimento das informações inerentes à negociação e atuação destinada à celebração do Instrumento Particular de Venda e Compra de Imóvel com Alienação Fiduciária em Garantia e Outras Avenças do imóvel identificado neste contrato." },
+    { estilo: "corpo", texto: "5.2. Os INTERMEDIADORES deverão atuar com diligência, prudência, transparência e observância das normas profissionais aplicáveis, prestando ao(s) CONTRATANTE(S) as informações relacionadas à negociação que sejam de seu conhecimento e possam influenciar a decisão de aquisição." },
+    { estilo: "corpo", texto: "5.3. Os serviços de corretagem não compreendem assessoria jurídica, contábil, tributária, técnica de engenharia ou qualquer serviço diverso da atividade de intermediação imobiliária." },
+    { estilo: "titulo", texto: "VI – DA REMUNERAÇÃO E DO RESULTADO DA INTERMEDIAÇÃO" },
+    { estilo: "corpo", texto: "6.1. Pela prestação dos serviços de intermediação, o(s) CONTRATANTE(S) pagará(ão) aos INTERMEDIADORES a comissão total estabelecida no item 4.2, observada a distribuição individualizada prevista no item 4.4." },
+    { estilo: "corpo", texto: "6.2. Considera-se alcançado o resultado útil da intermediação com a efetiva celebração do Instrumento Particular de Venda e Compra de Imóvel com Alienação Fiduciária em Garantia e Outras Avenças entre o(s) CONTRATANTE(S) e a VENDEDORA." },
+    { estilo: "corpo", texto: "6.3. Alcançado o resultado da intermediação, a remuneração da corretagem torna-se devida, ficando o seu pagamento submetido aos vencimentos e ao fluxo financeiro definidos neste instrumento." },
+    { estilo: "corpo", texto: "6.4. A comissão de corretagem constitui remuneração autônoma pelos serviços de intermediação e não se confunde com sinal, arras, entrada ou parcela destinada à amortização do preço do lote." },
+    { estilo: "titulo", texto: "VII – DO FLUXO DE PAGAMENTO DA COMISSÃO DE CORRETAGEM" },
+    { estilo: "corpo", texto: "7.1. A comissão de corretagem será paga em conformidade com o fluxo financeiro das parcelas de SINAL/ATO previsto no item 6.1 do Instrumento Particular de Venda e Compra, observada a divisão e destinação dos valores entre o preço do lote e os respectivos beneficiários da corretagem." },
+    { estilo: "corpo", texto: "7.2. A vinculação ao fluxo financeiro do SINAL/ATO possui finalidade exclusivamente operacional, permanecendo os valores de corretagem juridicamente individualizados e distintos dos valores destinados à VENDEDORA para pagamento do preço do lote." },
+    { estilo: "titulo", texto: "VIII – DO MEIO EXCLUSIVO DE PAGAMENTO" },
+    { estilo: "corpo", texto: "8.1. O pagamento da comissão de corretagem deverá ser realizado, preferencialmente, por meio de boleto bancário ou cobrança PIX emitidos e disponibilizados pelo ASAAS, conforme as instruções encaminhadas ao(s) COMPRADOR(ES). Excepcionalmente, será admitido o pagamento em dinheiro, desde que previamente autorizado e formalmente recebido pela INTERMEDIADORA ou por pessoa expressamente autorizada para esse fim, mediante emissão de recibo ou documento equivalente que identifique o pagador, o valor recebido, a data do pagamento, a unidade imobiliária a que se refere e o beneficiário da comissão." },
+    { estilo: "corpo", texto: "8.2. Serão considerados meios válidos e oficiais para pagamento da comissão de corretagem:" },
+    { estilo: "corpo", texto: "I – boleto bancário emitido pelo ASAAS;" },
+    { estilo: "corpo", texto: "II – cobrança PIX, mediante QR Code e/ou chave PIX expressamente disponibilizada pelo ASAAS para a respectiva cobrança; ou" },
+    { estilo: "corpo", texto: "III – pagamento em dinheiro, em caráter excepcional, desde que realizado na forma prevista no item 8.1 e acompanhado da respectiva comprovação de recebimento." },
+    { estilo: "corpo", texto: "8.3. Não serão reconhecidos como forma válida de pagamento depósitos, transferências bancárias, PIX para chaves diversas das oficialmente indicadas, pagamentos a terceiros não autorizados ou quaisquer outros meios distintos daqueles previstos no item 8.2, salvo autorização prévia, expressa e documentada da INTERMEDIADORA." },
+    { estilo: "corpo", texto: "8.4. Qualquer solicitação de pagamento da comissão por meio diverso dos previstos nesta cláusula deverá ser desconsiderada pelo(s) CONTRATANTE(S), que deverá(ão) solicitar nova cobrança oficial pelos canais informados para atendimento." },
+    { estilo: "corpo", texto: "8.5. Os INTERMEDIADORES não poderão solicitar que o(s) CONTRATANTE(S) efetue(m) o pagamento da comissão para conta bancária, chave PIX ou terceiro diferente daquele indicado na cobrança oficial emitida pelo ASAAS." },
+    { estilo: "corpo", texto: "8.6. A comissão será considerada paga somente após a efetiva liquidação da cobrança emitida pelo ASAAS e a confirmação do respectivo crédito no sistema." },
+    { estilo: "corpo", texto: "8.7. Quando tecnicamente disponível, o ASAAS poderá realizar a divisão automática dos valores entre os respectivos beneficiários da corretagem, conforme a composição indicada neste contrato, sem que tal procedimento altere o valor total devido pelo(s) CONTRATANTE(S)." },
+    { estilo: "corpo", texto: "8.8. A eventual divisão interna promovida pelo ASAAS entre os beneficiários não atribui ao(s) CONTRATANTE(S) responsabilidade pelo repasse ou distribuição posterior da comissão, considerando-se cumprida sua obrigação mediante a liquidação integral da cobrança oficial." },
+    { estilo: "corpo", texto: "8.9. O não recebimento ou a indisponibilidade do boleto ou da cobrança PIX deverá ser comunicado pelo(s) CONTRATANTE(S) antes do vencimento, para emissão de segunda via ou disponibilização de nova cobrança pelo ASAAS." },
+    { estilo: "corpo", texto: "8.10. Não poderão ser imputados ao(s) CONTRATANTE(S) encargos decorrentes exclusivamente da indisponibilidade do meio oficial de pagamento quando comprovadamente não lhes for imputável." },
+    { estilo: "titulo", texto: "IX – DA IMPONTUALIDADE" },
+    { estilo: "corpo", texto: "9.1. O pagamento de parcela da comissão após o respectivo vencimento ficará sujeito, sobre o valor efetivamente vencido e não pago, aos seguintes encargos:" },
+    { estilo: "corpo", texto: "I – multa moratória de 2% (dois por cento);" },
+    { estilo: "corpo", texto: "II – juros de mora de 1% (um por cento) ao mês, calculados pro rata die; e" },
+    { estilo: "corpo", texto: "III – atualização monetária pela variação positiva do IPCA/IBGE, calculada do vencimento até a data do efetivo pagamento." },
+    { estilo: "corpo", texto: "9.2. O inadimplemento de parcela da corretagem não autoriza o(s) CONTRATANTE(S) a utilizar meio de pagamento diverso do ASAAS, permanecendo obrigatória a emissão da respectiva cobrança oficial." },
+    { estilo: "corpo", texto: "9.3. O recebimento de parcela posterior não importa novação, remissão, renúncia ou quitação de eventual parcela anterior ainda pendente." },
+    { estilo: "corpo", texto: "9.4. O inadimplemento da comissão de corretagem não implica, por si só, resolução automática do Instrumento Particular de Venda e Compra, cuja mora, resolução e demais consequências observarão exclusivamente aquele instrumento e a legislação aplicável." },
+    { estilo: "titulo", texto: "X – DA NÃO CONCLUSÃO DO NEGÓCIO" },
+    { estilo: "corpo", texto: "10.1. Caso o Instrumento Particular de Venda e Compra não seja efetivamente celebrado entre o(s) CONTRATANTE(S) e a VENDEDORA, não se considerará alcançado o resultado da intermediação para os fins deste contrato." },
+    { estilo: "corpo", texto: "10.2. Na hipótese prevista no item anterior, eventuais valores pagos antecipadamente a título de corretagem serão restituídos ao(s) CONTRATANTE(S), observada a legislação aplicável." },
+    { estilo: "corpo", texto: "10.3. O disposto nesta cláusula não se confunde com eventual desistência ou desfazimento ocorrido após a celebração do Instrumento Particular de Venda e Compra, hipótese em que serão observadas as cláusulas seguintes." },
+    { estilo: "titulo", texto: "XI – DA DESISTÊNCIA, DISTRATO E RESOLUÇÃO DO NEGÓCIO" },
+    { estilo: "corpo", texto: "11.1. Uma vez alcançado o resultado da intermediação e celebrado o Instrumento Particular de Venda e Compra, eventual desistência posterior do(s) CONTRATANTE(S), distrato ou resolução do negócio não acarretará, por si só, a extinção automática da remuneração decorrente dos serviços de corretagem efetivamente prestados, observados os direitos e limitações estabelecidos pela legislação aplicável." },
+    { estilo: "corpo", texto: "O Código Civil estabelece que a remuneração do corretor é devida uma vez alcançado o resultado previsto no contrato de mediação." },
+    { estilo: "corpo", texto: "11.2. Na hipótese de exercício válido do direito de arrependimento legalmente assegurado ao consumidor, serão observadas as consequências previstas na legislação, inclusive quanto à restituição dos valores eventualmente pagos." },
+    { estilo: "corpo", texto: "Quando a contratação estiver sujeita ao art. 49 do CDC, o consumidor dispõe de sete dias para desistência e os valores pagos durante o período de reflexão devem ser devolvidos." },
+    { estilo: "corpo", texto: "11.3. Na hipótese de resolução da compra e venda por fato exclusivamente imputável à VENDEDORA, os efeitos eventualmente incidentes sobre os valores da corretagem observarão a legislação aplicável e as circunstâncias concretas do desfazimento." },
+    { estilo: "titulo", texto: "XII – DOS COMPROVANTES E DOCUMENTOS FISCAIS" },
+    { estilo: "corpo", texto: "12.1. O comprovante de liquidação emitido pelo ASAAS comprovará o pagamento da respectiva cobrança, sem prejuízo da emissão do documento fiscal ou recibo pertinente pelo beneficiário da comissão." },
+    { estilo: "corpo", texto: "12.2. Cada beneficiário será responsável pela emissão dos documentos fiscais legalmente exigíveis correspondentes aos valores por ele recebidos." },
+    { estilo: "corpo", texto: "12.3. Os valores comprovadamente pagos a título de corretagem poderão ser utilizados pelo(s) CONTRATANTE(S) para fins fiscais e tributários na forma da legislação vigente, cabendo-lhes conservar os respectivos comprovantes e documentos fiscais." },
+    { estilo: "titulo", texto: "XIII – DAS RESPONSABILIDADES DOS INTERMEDIADORES" },
+    { estilo: "corpo", texto: "13.1. Os INTERMEDIADORES obrigam-se a:" },
+    { estilo: "corpo", texto: "a) prestar informações claras e adequadas relacionadas à intermediação;" },
+    { estilo: "corpo", texto: "b) identificar corretamente o imóvel objeto da negociação;" },
+    { estilo: "corpo", texto: "c) preservar a confidencialidade das informações recebidas, ressalvadas as hipóteses legais de compartilhamento;" },
+    { estilo: "corpo", texto: "d) não prometer condições que não estejam formalmente autorizadas pela VENDEDORA;" },
+    { estilo: "corpo", texto: "e) informar corretamente o preço, a comissão, o fluxo comercial e os beneficiários da corretagem;" },
+    { estilo: "corpo", texto: "f) orientar o(s) CONTRATANTE(S) a realizar qualquer pagamento de corretagem exclusivamente pelos meios previstos na Cláusula VIII; e" },
+    { estilo: "corpo", texto: "g) manter regular sua habilitação profissional quando legalmente exigida." },
+    { estilo: "corpo", texto: "A intermediação de compra e venda de imóveis é atividade atribuída aos profissionais habilitados nos termos da Lei nº 6.530/1978." },
+    { estilo: "titulo", texto: "XIV – DAS DECLARAÇÕES DO(S) CONTRATANTE(S)" },
+    { estilo: "corpo", texto: "14.1. O(s) CONTRATANTE(S) declara(m), para todos os fins, que previamente à contratação:" },
+    { estilo: "corpo", texto: "a) teve/tiveram conhecimento do preço do lote;" },
+    { estilo: "corpo", texto: "b) teve/tiveram conhecimento do valor total da comissão de corretagem;" },
+    { estilo: "corpo", texto: "c) recebeu/receberam informação sobre os respectivos beneficiários;" },
+    { estilo: "corpo", texto: "d) recebeu/receberam informação acerca do custo total da aquisição;" },
+    { estilo: "corpo", texto: "e) compreendeu/compreenderam que a comissão é obrigação autônoma e distinta do preço do lote;" },
+    { estilo: "corpo", texto: "f) está/estão ciente(s) de que o pagamento da corretagem acompanha o fluxo das parcelas de sinal/entrada do Instrumento Particular de Venda e Compra;" },
+    { estilo: "corpo", texto: "g) está/estão ciente(s) de que somente boleto ou PIX emitidos pelo ASAAS poderão ser utilizados para pagamento da comissão; e" },
+    { estilo: "corpo", texto: "h) teve/tiveram oportunidade de ler este instrumento antes de sua assinatura." },
+    { estilo: "corpo", texto: "A separação e o destaque prévio da corretagem seguem a lógica de transparência exigida pela legislação de loteamentos, que determina a indicação do valor, das condições de pagamento e do beneficiário." },
+    { estilo: "titulo", texto: "XV – DA INTEGRAÇÃO COM O INSTRUMENTO PARTICULAR DE VENDA E COMPRA" },
+    { estilo: "corpo", texto: "15.1. O presente instrumento deverá ser interpretado em conjunto com o Instrumento Particular de Venda e Compra de Imóvel com Alienação Fiduciária em Garantia e Outras Avenças do respectivo lote, especialmente quanto:" },
+    { estilo: "corpo", texto: "a) à identificação da unidade;" },
+    { estilo: "corpo", texto: "b) ao preço do lote;" },
+    { estilo: "corpo", texto: "c) ao custo total da aquisição;" },
+    { estilo: "corpo", texto: "d) ao valor da comissão de corretagem;" },
+    { estilo: "corpo", texto: "e) aos beneficiários;" },
+    { estilo: "corpo", texto: "f) aos vencimentos; e" },
+    { estilo: "corpo", texto: "g) ao fluxo das parcelas de SINAL/ATO." },
+    { estilo: "corpo", texto: "15.2. Em nenhuma hipótese poderá haver duplicidade de cobrança da comissão de corretagem." },
+    { estilo: "corpo", texto: "15.3. O valor total da comissão indicado neste contrato deverá corresponder ao valor de corretagem informado no Quadro-Resumo do Instrumento Particular de Venda e Compra." },
+    { estilo: "corpo", texto: "15.4. Eventual alteração posterior no fluxo financeiro das parcelas de SINAL/ATO que repercuta no vencimento das parcelas da corretagem somente produzirá efeitos sobre este instrumento quando formalmente comunicada e aceita pelos beneficiários afetados." },
+    { estilo: "corpo", texto: "15.5. A comissão de corretagem, embora considerada para determinação do custo total da aquisição, não integra o preço do lote e não amortiza o saldo devedor imobiliário, salvo disposição expressa e juridicamente aplicável em sentido diverso." },
+    { estilo: "titulo", texto: "XVI – DO TRATAMENTO DE DADOS PESSOAIS" },
+    { estilo: "corpo", texto: "16.1. Os dados pessoais fornecidos pelo(s) CONTRATANTE(S) poderão ser tratados na medida necessária à execução deste contrato, à intermediação imobiliária, emissão e gestão das cobranças pelo ASAAS, emissão de documentos fiscais, atendimento a obrigações legais e regulatórias, prevenção à fraude e exercício regular de direitos." },
+    { estilo: "corpo", texto: "16.2. Os dados poderão ser compartilhados, na extensão necessária, com a VENDEDORA, INTERMEDIADORES, plataforma ou instituição responsável pelo processamento dos pagamentos, prestadores de serviços, autoridades públicas e demais terceiros cuja participação seja necessária à execução do negócio ou ao cumprimento de obrigação legal." },
+    { estilo: "titulo", texto: "XVII – DAS COMUNICAÇÕES" },
+    { estilo: "corpo", texto: "17.1. As comunicações relacionadas a este contrato poderão ser realizadas por e-mail, WhatsApp, plataforma de assinatura eletrônica ou outro canal oficial que permita identificar a origem e o conteúdo da comunicação." },
+    { estilo: "corpo", texto: "17.2. O(s) CONTRATANTE(S) obriga(m)-se a manter seus dados de contato atualizados." },
+    { estilo: "corpo", texto: "17.3. Alterações de dados bancários ou meios de pagamento não serão comunicadas mediante envio de conta particular ou chave PIX de terceiro, devendo toda cobrança válida permanecer obrigatoriamente vinculada ao ASAAS." },
+    { estilo: "titulo", texto: "XVIII – DO TÍTULO EXECUTIVO E DAS ASSINATURAS" },
+    { estilo: "corpo", texto: "18.1. Este instrumento poderá constituir título executivo extrajudicial quando preenchidos os requisitos estabelecidos na legislação processual civil para obrigação líquida, certa e exigível." },
+    { estilo: "corpo", texto: "18.2. As partes reconhecem como válidas as assinaturas eletrônicas ou digitais apostas neste contrato por plataforma que permita a identificação dos signatários e assegure a integridade do documento." },
+    { estilo: "corpo", texto: "18.3. O presente instrumento obriga as partes e seus sucessores, respeitados os direitos assegurados pela legislação aplicável." },
+    { estilo: "titulo", texto: "XIX – DAS DISPOSIÇÕES GERAIS" },
+    { estilo: "corpo", texto: "19.1. A tolerância de qualquer das partes em relação ao descumprimento de obrigação não constituirá novação, renúncia ou alteração contratual." },
+    { estilo: "corpo", texto: "19.2. A eventual invalidade ou ineficácia de disposição específica não prejudicará as demais cláusulas, que permanecerão válidas na extensão juridicamente possível." },
+    { estilo: "corpo", texto: "19.3. Nenhuma promessa, declaração ou condição comercial realizada verbalmente modificará este contrato ou o Instrumento Particular de Venda e Compra." },
+    { estilo: "corpo", texto: "19.4. Os INTERMEDIADORES não garantem valorização futura do imóvel, aprovação de financiamento, obtenção de licenças, possibilidade de exercício de atividade comercial específica ou quaisquer resultados estranhos aos serviços de intermediação." },
+    { estilo: "corpo", texto: "19.5. Este instrumento substitui entendimentos anteriores relacionados especificamente às condições de pagamento da comissão de corretagem do imóvel aqui identificado." },
+    { estilo: "titulo", texto: "XX – DO FORO" },
+    { estilo: "corpo", texto: "20.1. Fica eleito o foro da Comarca de [empreendimento_cidade]/[empreendimento_uf] para dirimir eventuais controvérsias decorrentes deste contrato, sem prejuízo do foro legalmente assegurado ao consumidor quando aplicável." },
+    { estilo: "corpo", texto: "E, por estarem de acordo, as partes firmam o presente instrumento por meio de assinatura eletrônica ou digital." },
+    { estilo: "assinatura", texto: "[empreendimento_cidade]/[empreendimento_uf], [data_emissao_contrato]." },
+    { estilo: "assinatura", texto: "(Assinado eletronicamente)" },
+    { estilo: "assinatura", texto: "[nome_fantasia_coordenadora_vendas]" },
+    { estilo: "assinatura", texto: "COORDENADORA DE VENDAS" },
+    { estilo: "assinatura", texto: "(Assinado eletronicamente)" },
+    { estilo: "assinatura", texto: "[nome_vinculado]" },
+    { estilo: "assinatura", texto: "ASSOCIADO" },
+    { estilo: "marcador", texto: "[inicio_cada_comprador]" },
+    { estilo: "assinatura", texto: "(Assinado eletronicamente)" },
+    { estilo: "assinatura", texto: "[inicio_dados_cliente_pf][nome_cliente][fim_dados_cliente_pf][inicio_dados_cliente_pj][nome_fantasia_cliente][fim_dados_cliente_pj]" },
+    { estilo: "assinatura", texto: "COMPROMISSÁRIO(A) COMPRADOR(A)" },
+    { estilo: "marcador", texto: "[inicio_dados_conjuge]" },
+    { estilo: "assinatura", texto: "(Assinado eletronicamente)" },
+    { estilo: "assinatura", texto: "[nome_conjuge]" },
+    { estilo: "assinatura", texto: "CÔNJUGE" },
+    { estilo: "marcador", texto: "[fim_dados_conjuge]" },
+    { estilo: "marcador", texto: "[fim_cada_comprador]" },
+    { estilo: "corpo", texto: "Testemunhas:" },
+    { estilo: "assinatura", texto: "(Assinado eletronicamente)" },
+    { estilo: "assinatura", texto: "Nome: VALERIO MANCUZO DE FIGUEIREDO" },
+    { estilo: "assinatura", texto: "CPF: 001.539.686-05" },
+    { estilo: "assinatura", texto: "(Assinado eletronicamente)" },
+    { estilo: "assinatura", texto: "Nome: PAOLA CARLA DE CASTRO LINHARES" },
+    { estilo: "assinatura", texto: "CPF: 092.158.996-42" },
+    { estilo: "quebra", texto: "" },
+  ],
+  rotulo: "Contrato de corretagem",
+};
+
 const ANEXOS: BlocoPronto = {
   // OS ANEXOS — pedido do Lucas em 07/09/2026: *"ae podemos ter o bloco dos anexo"*, depois de
   // explicar que *"muita peça do contrato são PDF prontos que podemos somente anexar"* e que *"vai
@@ -355,6 +591,7 @@ export const BLOCOS_PRONTOS: BlocoPronto[] = [
   FLUXO_TABELA,
   FLUXO_ESCRITO,
   CORRETAGEM,
+  CONTRATO_CORRETAGEM,
   ANEXOS,
   FECHO,
 ];
@@ -371,10 +608,19 @@ function paragrafo(linha: LinhaDoBloco): NoDoDocumento {
       return { align: "center", children: [texto], type: "p" };
     case "aviso":
       return { children: [{ ...texto, italic: true }], type: "p" };
+    case "ficha":
+      return { children: [texto], type: "p" };
     case "marcador":
       return { children: [texto], type: "p" };
+    // ⚠️ O ÚNICO NÓ DAQUI QUE NÃO É `p`. A quebra é um void de bloco (ver
+    // `modules/temis/plugins/quebra-de-pagina-base.ts`): o `texto` da linha é ignorado de propósito,
+    // porque conteúdo dentro dela vira linha em branco no topo da folha nova.
+    case "quebra":
+      return { children: [{ text: "" }], type: "quebra_pagina" };
     case "titulo":
       return { children: [{ ...texto, bold: true }], type: "p" };
+    case "titulo_centro":
+      return { align: "center", children: [{ ...texto, bold: true }], type: "p" };
     default:
       return { align: "justify", children: [texto], type: "p" };
   }

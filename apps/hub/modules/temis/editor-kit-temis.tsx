@@ -7,6 +7,7 @@ import { EditorKit } from "@/components/editor/editor-kit";
 import { discussionPlugin } from "@/components/editor/plugins/discussion-kit";
 
 import { FindReplaceKit } from "./plugins/find-replace-kit";
+import { QuebraDePaginaKit } from "./plugins/quebra-de-pagina-kit";
 import { TemisToolbarKit } from "./plugins/temis-toolbar-kit";
 import { VariavelInputKit } from "./plugins/variavel-input-kit";
 import { VariavelKit } from "./plugins/variavel-kit";
@@ -57,6 +58,7 @@ export const EditorKitTemis = [
   }),
   ...VariavelKit,
   ...VariavelInputKit,
+  ...QuebraDePaginaKit,
   ...FindReplaceKit,
   ...TemisToolbarKit,
 ];

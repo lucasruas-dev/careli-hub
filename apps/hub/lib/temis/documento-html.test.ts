@@ -799,3 +799,27 @@ describe("o texto puro, para contar e procurar", () => {
     expect(documentoParaTexto(doc)).toBe("dentro");
   });
 });
+
+describe("a quebra de página", () => {
+  // Lucas, 08/09/2026: *"queria saber onde é a quebra de página"* — não era. O corte da folha era o
+  // que o motor de impressão decidisse, o que serve a um documento de leitura e não a um contrato,
+  // onde a peça anexa começa em folha nova.
+  const quebra: NoDoDocumento = { children: [{ text: "" }], type: "quebra_pagina" };
+
+  // ⚠️ AS DUAS PROPRIEDADES, e não uma. `break-before` é a moderna; `page-break-before` a antiga.
+  // O Chromium honra as duas, mas nem todo motor de PDF entende a nova — e uma quebra ignorada não
+  // dá erro: só sai o contrato com o anexo emendado no fim da página anterior.
+  it("vira as duas propriedades de CSS", () => {
+    expect(documentoParaHtml([quebra])).toBe(
+      '<div style="break-before:page;page-break-before:always"></div>',
+    );
+  });
+
+  it("sai vazia — conteúdo dentro dela viraria linha em branco no topo da folha nova", () => {
+    expect(documentoParaHtml([quebra])).not.toContain("<br");
+  });
+
+  it("não existe no texto puro: é diagramação, não conteúdo", () => {
+    expect(documentoParaTexto([p("antes"), quebra, p("depois")])).toBe("antes\n\ndepois");
+  });
+});

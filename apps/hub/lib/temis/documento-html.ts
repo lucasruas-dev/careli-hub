@@ -323,6 +323,9 @@ function textoDoNo(no: NoDeTexto | NoDoDocumento): string {
   const tipo = no.type ?? "";
   if (tipo === "variavel") return variavelParaTexto(no);
   if (tipo === "toc") return "";
+  // A quebra de página é diagramação, não conteúdo: no texto puro (que `variaveisDoTexto` e
+  // `conferirBlocos` leem) ela não existe.
+  if (tipo === "quebra_pagina") return "";
   if (tipo === "img") return textoDosNos(no.caption);
   if (tipo === "date") return dataParaTexto(no.date);
   if (tipo === "mention") return `@${no.value ?? ""}`;
@@ -444,6 +447,15 @@ function blocoParaHtml(ctx: Contexto, no: NoDoDocumento, dentroDeLista = false):
   const tipo = no.type ?? "p";
 
   if (tipo === "hr") return "<hr />";
+
+  // ⚠️ A QUEBRA DE PÁGINA É CSS, E SÃO DUAS PROPRIEDADES. `break-before` é a moderna e
+  // `page-break-before` a antiga: o Chromium honra as duas, mas nem todo motor de PDF entende a
+  // nova, e uma quebra ignorada não dá erro — só sai o contrato com a peça anexa emendada no fim da
+  // página anterior. Escrever as duas custa 28 caracteres.
+  //
+  // ⚠️ SEM `<br />` DENTRO. A `<div>` é vazia de propósito: qualquer conteúdo aqui vira uma linha em
+  // branco no topo da folha nova.
+  if (tipo === "quebra_pagina") return '<div style="break-before:page;page-break-before:always"></div>';
 
   // ── Inline: variável, link, menção, data, fórmula, nota ───────────────────
   if (tipo === "variavel") return variavelParaHtml(no);

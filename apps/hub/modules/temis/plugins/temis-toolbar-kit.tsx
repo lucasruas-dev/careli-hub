@@ -1,7 +1,7 @@
 "use client";
 
 import { importDocx } from "@platejs/docx-io";
-import { Braces, FileUp, Loader2, PanelRight, Search, Wand2 } from "lucide-react";
+import { Braces, FileUp, Loader2, PanelRight, Scissors, Search, Wand2 } from "lucide-react";
 import type { PluginConfig, Value } from "platejs";
 import {
   createTPlatePlugin,
@@ -16,6 +16,7 @@ import { FixedToolbarButtons } from "@/components/ui/fixed-toolbar-buttons";
 import { ToolbarButton, ToolbarGroup } from "@/components/ui/toolbar";
 
 import { BarraDeBusca } from "./find-replace-kit";
+import { noDeQuebraDePagina } from "./quebra-de-pagina-base";
 import { promoverVariaveisNoValor } from "./variavel-kit-base";
 
 // A BARRA FIXA DA TÊMIS — a barra completa do Plate UI mais os três botões que são nossos.
@@ -80,6 +81,7 @@ function BarraDaTemis() {
         {somenteLeitura ? null : (
           <ToolbarGroup>
             <BotaoImportarDocx />
+            <BotaoQuebraDePagina />
             <BotaoBuscar />
             <BotaoSuperAgente />
             <BotaoVariaveis />
@@ -166,6 +168,33 @@ function BotaoImportarDocx() {
         type="file"
       />
     </>
+  );
+}
+
+/**
+ * Inserir uma quebra de página no ponto do cursor.
+ *
+ * Pergunta do Lucas (08/09/2026): *"queria saber onde é a quebra de página"* — não era. O contrato
+ * era texto corrido e o corte da folha era o que o motor de impressão decidisse, o que serve para um
+ * documento de leitura e não serve para um instrumento onde a peça anexa começa em folha nova.
+ *
+ * ⚠️ ELA ENTRA COMO BLOCO PRÓPRIO, ANTES DA LINHA ATUAL. Inserir "depois" pareceria mais natural ao
+ * clicar, mas quem pede a quebra está com o cursor no começo do trecho que quer empurrar para a
+ * folha seguinte — é o gesto do Word (Ctrl+Enter), e é o que o bloco de corretagem faz sozinho.
+ */
+function BotaoQuebraDePagina() {
+  const { editor } = useEditorPlugin(TemisToolbarPlugin);
+
+  return (
+    <ToolbarButton
+      onClick={() => {
+        editor.tf.focus();
+        editor.tf.insertNodes(noDeQuebraDePagina());
+      }}
+      tooltip="Quebra de página — o texto seguinte começa em uma folha nova"
+    >
+      <Scissors />
+    </ToolbarButton>
   );
 }
 

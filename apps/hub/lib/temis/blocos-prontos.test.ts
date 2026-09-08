@@ -25,6 +25,7 @@ describe("blocos prontos", () => {
       "fluxo-tabela",
       "fluxo-escrito",
       "corretagem",
+      "contrato-corretagem",
       "anexos",
       "fecho",
     ]);
@@ -102,11 +103,25 @@ describe("o laço por comprador", () => {
 
 describe("a participação é DA UNIDADE", () => {
   // Lucas, 07/09/2026: *"em vez de ser detentor de 100% do imóvel, troca para unidade"*.
-  it("não escreve 'imóvel' em bloco nenhum", () => {
-    for (const bloco of BLOCOS_PRONTOS) {
+  //
+  // ⚠️ O CONTRATO DE CORRETAGEM É A EXCEÇÃO, e é uma exceção do LUCAS, não uma folga do teste. Ele
+  // mandou o texto pronto em 08/09/2026 e lá "imóvel" é o bem negociado, no vocabulário da Lei nº
+  // 6.530/1978 e do CDC que as cláusulas citam — trocar por "unidade" mudaria a citação legal. O que
+  // a regra dele protege é a PARTICIPAÇÃO do comprador, e essa diz "da unidade" também lá: é o teste
+  // logo abaixo. A exceção é NOMINAL de propósito: um bloco novo que escrever "imóvel" por descuido
+  // continua sendo pego.
+  it.each(BLOCOS_PRONTOS.filter((b) => b.id !== "contrato-corretagem").map((b) => [b.id, b] as const))(
+    "%s não escreve 'imóvel'",
+    (_id, bloco) => {
       expect(textoDoBloco(bloco).toLowerCase()).not.toContain("imóvel");
       expect(textoDoBloco(bloco).toLowerCase()).not.toContain("imovel");
-    }
+    },
+  );
+
+  it("liga a participação à unidade também no contrato de corretagem", () => {
+    expect(textoDoBloco(acharBlocoPronto("contrato-corretagem") as never)).toContain(
+      "[percentual_cliente] sobre os direitos possessórios da unidade",
+    );
   });
 
   it("liga o percentual do comprador à unidade", () => {
@@ -225,6 +240,72 @@ describe("os anexos", () => {
   });
 });
 
+describe("o contrato de corretagem", () => {
+  // Lucas, 08/09/2026: *"o contrato de corretagem é padrão, podemos fazer um bloco só com ele...
+  // quando ele entra tem que ter a quebra de página inicial e no final"*.
+  const bloco = () => acharBlocoPronto("contrato-corretagem") as never;
+
+  it("começa e termina em folha nova", () => {
+    const estilos = (acharBlocoPronto("contrato-corretagem") as unknown as {
+      linhas: { estilo: string }[];
+    }).linhas.map((l) => l.estilo);
+    expect(estilos[0]).toBe("quebra");
+    expect(estilos[estilos.length - 1]).toBe("quebra");
+  });
+
+  it("traz a coordenadora de vendas, que era o pedido", () => {
+    const texto = textoDoBloco(bloco());
+    for (const nome of [
+      "nome_fantasia_coordenadora_vendas",
+      "cnpj_coordenadora_vendas",
+      // ⚠️ O CRECI vinha DIGITADO três vezes no texto original ("CRECI: 8.015"). Número de registro
+      // profissional muda, e uma minuta que o repete em três lugares esquece um deles na hora de
+      // atualizar — sem que nada acuse, porque um CRECI errado é um número válido.
+      "creci_coordenadora_vendas",
+      "valor_pago_coordenadora_vendas",
+      "percentual_comissao_coordenadora_vendas",
+    ]) {
+      expect(texto, nome).toContain(`[${nome}]`);
+    }
+  });
+
+  // ⚠️ O DEFEITO QUE O TEXTO ORIGINAL TINHA. O item 4.1 (preço do lote) usava `[valor_imovel_venda]`
+  // e o 4.3 (custo total) usava `[preco_venda]` — dois nomes para o MESMO campo
+  // (`hercules_vendas.valor_negociado`). O contrato sairia com o custo total igual ao preço do lote,
+  // logo abaixo da frase que promete "a soma do preço do lote e da comissão". Nenhum motor acusaria:
+  // os dois números existem e são válidos.
+  it("não confunde o custo total com o preço do lote", () => {
+    const texto = textoDoBloco(bloco());
+    expect(texto).toContain("[valor_imovel_venda]");
+    expect(texto).toContain("[valor_custo_total_aquisicao]");
+    expect(texto).not.toContain("[preco_venda]");
+  });
+
+  it("não repete o empreendimento nem a comarca escritos à mão", () => {
+    const texto = textoDoBloco(bloco());
+    expect(texto).not.toContain("VILLA PARIS");
+    expect(texto).not.toContain("João Monlevade");
+    expect(texto).not.toContain("WLM");
+  });
+
+  it("assina por comprador e por cônjuge, dentro do laço", () => {
+    const texto = textoDoBloco(bloco());
+    const ultimoAbre = texto.lastIndexOf("[inicio_cada_comprador]");
+    const ultimoFecha = texto.lastIndexOf("[fim_cada_comprador]");
+    expect(texto.lastIndexOf("[nome_conjuge]")).toBeGreaterThan(ultimoAbre);
+    expect(texto.lastIndexOf("[nome_conjuge]")).toBeLessThan(ultimoFecha);
+  });
+
+  it("não traz os sufixos de comprador do legado", () => {
+    expect(textoDoBloco(bloco())).not.toMatch(/\[[a-z_]+_[2-5]\]/);
+  });
+
+  // ⚠️ A ÁREA JÁ TRAZ A UNIDADE. O original escrevia "Área: [area_lote] m²" e sairia "300,00 m² m²".
+  it("não escreve m² depois da área", () => {
+    expect(textoDoBloco(bloco())).not.toContain("[area_lote] m");
+  });
+});
+
 describe("os parágrafos que vão para a folha", () => {
   it("dá um parágrafo por linha", () => {
     const bloco = acharBlocoPronto("objeto") as never as { linhas: unknown[] };
@@ -252,9 +333,14 @@ describe("os parágrafos que vão para a folha", () => {
     expect(corpo?.children).toHaveLength(1);
   });
 
-  it("todo parágrafo é do tipo p", () => {
+  // ⚠️ A QUEBRA DE PÁGINA É O ÚNICO NÓ QUE NÃO É `p`. Ela é um void de bloco do editor (ver
+  // `modules/temis/plugins/quebra-de-pagina-base.ts`) e no contrato vira só CSS de quebra. Sem essa
+  // exceção o teste proibiria a única coisa que o Lucas pediu para o bloco de corretagem.
+  it("todo parágrafo é do tipo p, menos a quebra de página", () => {
     for (const bloco of BLOCOS_PRONTOS) {
-      for (const no of nosDoBloco(bloco)) expect(no.type).toBe("p");
+      for (const no of nosDoBloco(bloco)) {
+        expect(["p", "quebra_pagina"]).toContain(no.type);
+      }
     }
   });
 });

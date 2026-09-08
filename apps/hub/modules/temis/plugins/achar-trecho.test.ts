@@ -13,9 +13,13 @@ describe("percorrer o documento", () => {
     expect(textoDoDocumento(valor)).toBe("COMPRADOR: JOÃO DA SILVA");
   });
 
-  it("atravessa parágrafos", () => {
+  // ⚠️ COM QUEBRA DE LINHA ENTRE ELES. Até 08/09/2026 os parágrafos vinham colados
+  // ("primeirosegundo"), e era o maior defeito do agente: ele lia "…deste instrumento.II –
+  // INTERMEDIADORES…" e citava trechos com o espaço que consertava sozinho na leitura — que depois
+  // não casavam. Lucas viu o resultado: *"11 propostas… 17 não casou com o texto"*.
+  it("separa parágrafos por quebra de linha", () => {
     const valor = doc([{ text: "primeiro" }], [{ text: "segundo" }]);
-    expect(textoDoDocumento(valor)).toBe("primeirosegundo");
+    expect(textoDoDocumento(valor)).toBe("primeiro\nsegundo");
   });
 
   it("desce em estrutura aninhada (tabela)", () => {
@@ -28,13 +32,15 @@ describe("percorrer o documento", () => {
         type: "table",
       },
     ];
-    expect(textoDoDocumento(valor)).toBe("célula Acélula B");
+    // Célula também é bloco: sem a quebra, "célula A" e "célula B" viravam uma palavra só.
+    expect(textoDoDocumento(valor)).toBe("célula A\ncélula B");
   });
 
   it("guarda o caminho e o início de cada nó de texto", () => {
     const valor = doc([{ text: "abc" }, { text: "def" }]);
     const { pedacos } = pedacosDeTexto(valor);
-    expect(pedacos).toEqual([
+    // O último é o separador do parágrafo: existe no texto, não existe no documento.
+    expect(pedacos.filter((x) => !x.virtual)).toEqual([
       { caminho: [0, 0], inicio: 0, texto: "abc" },
       { caminho: [0, 1], inicio: 3, texto: "def" },
     ]);
@@ -69,9 +75,12 @@ describe("achar a faixa do trecho", () => {
     expect(faixa?.fim).toEqual({ offset: 9, path: [0, 2] });
   });
 
+  // ⚠️ O SEPARADOR NÃO É UM LUGAR NO DOCUMENTO. Ele existe no texto que a IA lê, mas não em nó
+  // nenhum: um ponto que caísse nele não teria caminho no Slate. Aqui a faixa começa no fim do
+  // primeiro parágrafo e termina no começo do segundo, que é o que se vê na tela.
   it("acha um trecho que atravessa parágrafos", () => {
     const valor = doc([{ text: "fim do um" }], [{ text: "começo do dois" }]);
-    const faixa = faixaDoTrecho(valor, "umcomeço");
+    const faixa = faixaDoTrecho(valor, "um começo");
     expect(faixa?.inicio.path).toEqual([0, 0]);
     expect(faixa?.fim.path).toEqual([1, 0]);
   });
@@ -101,5 +110,44 @@ describe("achar a faixa do trecho", () => {
   it("documento vazio não quebra", () => {
     expect(faixaDoTrecho([], "qualquer")).toBeNull();
     expect(textoDoDocumento([])).toBe("");
+  });
+});
+
+describe("a busca tolera a forma, e só a forma", () => {
+  // ⚠️ ESTES SÃO OS CASOS QUE DERRUBAVAM AS 17 PROPOSTAS. Nenhum deles muda uma letra do contrato —
+  // são o que o Word faz sozinho com o texto enquanto alguém digita, e o que sobrevive à importação.
+
+  it("acha apesar do espaço duro do Word", () => {
+    // U+00A0 entre "n.º" e o número: na tela é um espaço; no `indexOf`, outro caractere.
+    const valor = doc([{ text: "portador do CPF n.º\u00A0123.456.789-00, casado" }]);
+    expect(faixaDoTrecho(valor, "CPF n.º 123.456.789-00")).not.toBeNull();
+  });
+
+  it("acha apesar do espaço dobrado", () => {
+    const valor = doc([{ text: "o valor de  R$ 100,00 será pago" }]);
+    expect(faixaDoTrecho(valor, "o valor de R$ 100,00")).not.toBeNull();
+  });
+
+  it("acha apesar das aspas e do travessão curvos", () => {
+    const valor = doc([{ text: "a “VENDEDORA” – doravante assim chamada" }]);
+    expect(faixaDoTrecho(valor, 'a "VENDEDORA" - doravante')).not.toBeNull();
+  });
+
+  it("devolve a posição do texto ORIGINAL, não do normalizado", () => {
+    const valor = doc([{ text: "Eu,  JOÃO, casado" }]);
+    const faixa = faixaDoTrecho(valor, "JOÃO");
+    // Dois espaços depois da vírgula: no normalizado o nome começa em 4, no original em 5.
+    expect(faixa?.inicio).toEqual({ offset: 5, path: [0, 0] });
+    expect(faixa?.fim).toEqual({ offset: 9, path: [0, 0] });
+  });
+
+  // ⚠️ A TOLERÂNCIA PARA NA FORMA. Acento e letra continuam valendo — "quase achar" o trecho é o que
+  // faz a substituição cair no lugar errado do contrato.
+  it("não acha quando o acento é diferente", () => {
+    expect(faixaDoTrecho(doc([{ text: "José da Silva" }]), "Jose da Silva")).toBeNull();
+  });
+
+  it("não acha quando a pontuação é diferente", () => {
+    expect(faixaDoTrecho(doc([{ text: "CPF n.º 111" }]), "CPF no 111")).toBeNull();
   });
 });

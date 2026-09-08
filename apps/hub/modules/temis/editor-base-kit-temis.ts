@@ -3,6 +3,8 @@ import { KEYS } from "platejs";
 
 import { BaseEditorKit } from "@/components/editor/editor-base-kit";
 
+import { BaseQuebraDePaginaPlugin } from "./plugins/quebra-de-pagina-base";
+import { QuebraDePaginaElementStatic } from "./plugins/quebra-de-pagina-node-static";
 import { BaseVariavelPlugin, REGRAS_MARKDOWN_VARIAVEL } from "./plugins/variavel-kit-base";
 import { VariavelElementStatic } from "./plugins/variavel-node-static";
 
@@ -28,4 +30,5 @@ export const BaseEditorKitTemis = [
       : plugin,
   ),
   BaseVariavelPlugin.withComponent(VariavelElementStatic),
+  BaseQuebraDePaginaPlugin.withComponent(QuebraDePaginaElementStatic),
 ];

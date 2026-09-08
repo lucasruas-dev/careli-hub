@@ -3,11 +3,13 @@ import { NextResponse } from "next/server";
 import { authorizeApoloRead } from "@/lib/apolo/auth";
 import { CLAUDE_MODEL, getAnthropicClient } from "@/lib/ai/claude";
 import {
+  descreverProposta,
   motivoDaRecusa,
   type Proposta,
+  type TipoDeProposta,
   triarPropostas,
 } from "@/lib/temis/marcar-variaveis";
-import { descreverFonte, ORDEM_DOS_GRUPOS, rotuloDoGrupo, VARIAVEIS_DO_CONTRATO } from "@/lib/temis/variaveis";
+import { catalogoParaOModelo, CONHECIMENTO_DA_TEMIS } from "@/lib/temis/agente-conhecimento";
 
 // O SUPER AGENTE DA MINUTA — lê o texto e diz onde cada variável entra.
 //
@@ -34,54 +36,6 @@ export const maxDuration = 300;
 
 /** Quanto texto aceitamos de uma vez. Acima disso, a tela manda por partes. */
 const TETO_DE_TEXTO = 120_000;
-
-/**
- * O catálogo, como o modelo precisa ver: nome, o que é, de onde vem e um exemplo.
- *
- * ⚠️ O EXEMPLO É O QUE MAIS AJUDA. "cpf_conjuge · CPF do cônjuge · 987.654.321-00" faz o modelo
- * reconhecer o padrão no texto; só o nome faria ele adivinhar pelo rótulo.
- */
-function catalogoParaOModelo(): string {
-  const linhas: string[] = [];
-  for (const grupo of ORDEM_DOS_GRUPOS) {
-    const doGrupo = VARIAVEIS_DO_CONTRATO.filter((v) => v.grupo === grupo);
-    if (doGrupo.length === 0) continue;
-    linhas.push(`\n## ${rotuloDoGrupo(grupo)}`);
-    for (const v of doGrupo) {
-      const exemplo = v.exemplo ? ` — ex.: ${v.exemplo}` : "";
-      linhas.push(`- [${v.nome}] ${v.rotulo} (${descreverFonte(v.fonte)})${exemplo}`);
-    }
-  }
-  return linhas.join("\n");
-}
-
-const INSTRUCOES = `Você marca minutas de contrato imobiliário da Careli.
-
-Sua tarefa: ler o texto e dizer QUAIS TRECHOS devem virar variáveis do catálogo.
-
-REGRAS DURAS:
-1. Só proponha variáveis que estão no catálogo abaixo. Nome que não está lá é recusado.
-2. O campo "trecho" deve ser uma cópia EXATA e LITERAL do texto — mesmos acentos, mesma
-   pontuação, mesmos espaços. Não corrija, não parafraseie, não normalize.
-3. O trecho deve ser ÚNICO no documento. Se o valor aparece mais de uma vez (um CPF citado em dois
-   parágrafos), inclua palavras vizinhas suficientes para que aquele trecho só exista uma vez —
-   mas apenas o que vira variável fica no "trecho".
-   ⚠️ Cuidado com números curtos: "12" da quadra também aparece dentro de "123.456.789-00".
-4. NÃO proponha nada sobre texto que já está entre colchetes: já é variável.
-5. NÃO proponha para dados da VENDEDORA que estão escritos no corpo (razão social, CNPJ e endereço
-   dela), a menos que o catálogo tenha a variável correspondente.
-6. ⚠️ NÃO USE OS SUFIXOS _2, _3, _4, _5. Eles são do sistema ANTIGO, onde a qualificação do
-   comprador era escrita cinco vezes na minuta. No Panteon a qualificação se escreve UMA vez e o
-   contrato a repete sozinho por comprador. Proponha sempre a variável SEM sufixo:
-   [nome_cliente], [cpf_cliente], [nome_conjuge] — nunca [nome_cliente_2].
-   Se você encontrar no texto o bloco repetido do 2º, 3º, 4º ou 5º comprador, NÃO proponha nada
-   ali: aquele trecho inteiro vai ser substituído pela repetição, e marcá-lo seria trabalho jogado
-   fora.
-7. Não proponha nada de que você não tenha certeza. Proposta a menos é barata; proposta errada
-   num contrato assinado, não.
-
-Devolva SOMENTE um JSON, sem cercas de código e sem comentário, no formato:
-{"propostas":[{"trecho":"...","nome":"nome_da_variavel","motivo":"por que, em até 10 palavras"}]}`;
 
 export async function POST(request: Request) {
   const autorizacao = await authorizeApoloRead(request);
@@ -122,7 +76,7 @@ export async function POST(request: Request) {
         },
       ],
       model: CLAUDE_MODEL.frontier,
-      system: INSTRUCOES,
+      system: CONHECIMENTO_DA_TEMIS,
     });
     // Só os blocos de texto: a resposta pode trazer outros tipos (raciocínio, uso de ferramenta),
     // e concatenar tudo cegamente colocaria lixo dentro do JSON que vamos ler.
@@ -148,11 +102,18 @@ export async function POST(request: Request) {
     // A ordem de aplicação é de trás para a frente; a tela mostra na ordem do texto, que é como
     // quem revisa lê.
     propostas: [...aceitas].sort((a, b) => a.posicao - b.posicao).map((a) => ({
+      // O que a proposta VAI FAZER, escrito em português: a tela mostra isso, e não o nome cru.
+      acao: descreverProposta(a),
+      // ⚠️ O CONTEXTO VIAJA ATÉ A TELA. Ela reacha o trecho no clique (o documento pode ter mudado),
+      // e sem a mesma âncora a lacuna voltaria a ser ambígua exatamente onde a triagem a resolveu.
+      contexto: a.contexto ?? "",
       motivo: a.motivo,
       nome: a.nome,
-      origem: a.variavel.origem,
+      // Só o tipo `variavel` tem origem e rótulo de catálogo; os outros descrevem a si mesmos.
+      origem: a.variavel?.origem ?? "",
       posicao: a.posicao,
-      rotulo: a.variavel.rotulo,
+      rotulo: a.variavel?.rotulo ?? descreverProposta(a),
+      tipo: a.tipo,
       trecho: a.trecho,
     })),
     // O que foi recusado é informação, não erro escondido: mostra que a rede de segurança agiu.
@@ -183,8 +144,12 @@ function lerPropostas(bruto: string): null | Proposta[] {
     return corpo.propostas
       .filter((p): p is Record<string, unknown> => Boolean(p) && typeof p === "object")
       .map((p) => ({
+        contexto: typeof p.contexto === "string" ? p.contexto : undefined,
         motivo: typeof p.motivo === "string" ? p.motivo : "",
         nome: typeof p.nome === "string" ? p.nome : "",
+        // Tipo desconhecido não é recusado aqui: a triagem trata como `variavel`, que é o que a
+        // primeira versão do agente devolvia e o que ele faz na esmagadora maioria das vezes.
+        tipo: typeof p.tipo === "string" ? (p.tipo as TipoDeProposta) : undefined,
         trecho: typeof p.trecho === "string" ? p.trecho : "",
       }));
   } catch {

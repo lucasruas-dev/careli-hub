@@ -80,12 +80,28 @@ export function ehTerminal(estado: EstadoDaAssinatura): boolean {
  * que sabe representar — senão a informação de QUEM é aquela pessoa no contrato se perde na saída, e
  * é ela que a Têmis mostra na tela e o jurídico confere.
  */
-export type PapelNoContrato = "comprador" | "conjuge" | "vendedora" | "testemunha" | "interveniente";
+export type PapelNoContrato =
+  | "comprador"
+  | "conjuge"
+  | "vendedora"
+  | "coordenadora"
+  | "corretor"
+  | "testemunha"
+  | "interveniente";
 
+/**
+ * Os papéis, NA ORDEM EM QUE UM CONTRATO COSTUMA SER ASSINADO.
+ *
+ * ⚠️ A ORDEM DA LISTA NÃO É ENFEITE: ela é o padrão de `lib/assinatura/ordem.ts`, e é a ordem que o
+ * Lucas faz hoje na mão. Reordenar aqui reordena a assinatura de todo contrato que não tenha regra
+ * própria — mexer nisto é mexer na operação, não na apresentação.
+ */
 export const PAPEIS: PapelNoContrato[] = [
   "comprador",
   "conjuge",
   "vendedora",
+  "coordenadora",
+  "corretor",
   "testemunha",
   "interveniente",
 ];
@@ -94,6 +110,10 @@ export function rotuloDoPapel(papel: PapelNoContrato): string {
   const mapa: Record<PapelNoContrato, string> = {
     comprador: "Comprador",
     conjuge: "Cônjuge",
+    // Os dois do contrato de CORRETAGEM, que assinam junto com o de venda e compra: a coordenadora
+    // de vendas e o corretor/imobiliária que intermediou.
+    coordenadora: "Coordenadora de vendas",
+    corretor: "Corretor / imobiliária",
     interveniente: "Interveniente",
     testemunha: "Testemunha",
     vendedora: "Vendedora",

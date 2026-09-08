@@ -165,6 +165,17 @@ describe("toda variável nasce do Panteon — Lucas, 02/09/2026: 'esquece c2x co
         "numero_coordenadora_vendas",
         "rua_coordenadora_vendas",
         "telefone_coordenadora_vendas",
+        // Novos em 08/09/2026, com o contrato de corretagem: o CRECI vinha DIGITADO tres vezes no
+        // texto, e os percentuais do rateio (3% / 4%) tambem. A comissao ja varia por
+        // empreendimento no legado (VAL 7,5%, VLO 6%), entao numero fixo na minuta sai errado no
+        // empreendimento seguinte sem que nada acuse.
+        "creci_coordenadora_vendas",
+        "percentual_comissao_coordenadora_vendas",
+        "percentual_comissao_vinculado",
+        // ⚠️ O CUSTO TOTAL NAO E O PRECO: e preco + comissao. Sem variavel propria a minuta cai em
+        // [preco_venda], que e o MESMO campo de [valor_imovel_venda], e o contrato imprime o custo
+        // total igual ao preco do lote logo abaixo da frase que promete "a soma".
+        "valor_custo_total_aquisicao",
         "valor_corretagem_menos_coordenadora_vendas",
         "valor_garantia_fiduciaria",
         "valor_pago_coordenadora_vendas",
