@@ -1696,6 +1696,11 @@ function CampoDoLote({
   rotulo: string;
 }) {
   const [texto, setTexto] = useState("");
+  // ⚠️ O SENTIDO É UM BOTÃO, NÃO UM SINAL DIGITADO. Na primeira versão o desconto exigia escrever
+  // "-10", e o Lucas testou digitando "10": virou acréscimo. *"Eu não vi como dou desconto, os teste
+  // só aumentaram o valor, acho que devia ter um botão de + e -"*. Ninguém digita o menos — e o
+  // resultado de esquecê-lo não é um erro na tela, é uma proposta com o preço para cima.
+  const [sentido, setSentido] = useState<-1 | 1>(-1);
   const temAjuste = preco.emReais !== 0;
   const desconto = preco.emReais < 0;
 
@@ -1713,15 +1718,24 @@ function CampoDoLote({
     aoMudarAjuste({ modo, valor: ajuste.valor });
   }
 
+  /** O número que a pessoa digitou, sempre positivo — o sinal vem do botão. */
+  function numeroDigitado(cru: string): number {
+    const limpo = cru.replace(/[\s+-]/g, "").replace(/\./g, "").replace(",", ".");
+    if (!limpo) return 0;
+    const n = Number(limpo);
+    return Number.isFinite(n) ? Math.abs(n) : 0;
+  }
+
   function mudarValor(cru: string) {
     setTexto(cru);
-    const limpo = cru.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-    if (limpo === "" || limpo === "-" || limpo === "+") {
-      aoMudarAjuste({ ...ajuste, valor: 0 });
-      return;
-    }
-    const n = Number(limpo);
-    aoMudarAjuste({ ...ajuste, valor: Number.isFinite(n) ? n : 0 });
+    aoMudarAjuste({ ...ajuste, valor: sentido * numeroDigitado(cru) });
+  }
+
+  function mudarSentido(novo: -1 | 1) {
+    setSentido(novo);
+    // ⚠️ TROCAR O SENTIDO REAPROVEITA O NÚMERO. Quem digitou 10 e percebeu que era desconto clica no
+    // menos e vê o resultado virar na hora — em vez de apagar e redigitar.
+    aoMudarAjuste({ ...ajuste, valor: novo * numeroDigitado(texto) });
   }
 
   return (
@@ -1751,6 +1765,41 @@ function CampoDoLote({
       </div>
 
       <div style={{ display: "flex", gap: 6 }}>
+        {/* ⚠️ O SENTIDO VEM PRIMEIRO, à esquerda: é a decisão que muda o resultado de lado, e ela
+            precisa ser vista antes de o número ser digitado. O menos nasce escolhido porque
+            desconto é o caso comum — e porque, se alguém não reparar no par de botões, errar para
+            menos é uma proposta que precisa de aprovação, não uma que sai cara para o cliente. */}
+        <div
+          style={{
+            border: `1px solid ${T.border}`,
+            borderRadius: 8,
+            display: "flex",
+            overflow: "hidden",
+          }}
+        >
+          {([-1, 1] as const).map((s) => (
+            <button
+              aria-label={s === -1 ? "Desconto" : "Acréscimo"}
+              key={s}
+              onClick={() => mudarSentido(s)}
+              onMouseDown={(e) => e.preventDefault()}
+              style={{
+                background: sentido === s ? (s === -1 ? T.danger : T.ok) : "transparent",
+                border: "none",
+                color: sentido === s ? "#fff" : T.muted,
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 700,
+                lineHeight: 1,
+                padding: "0 11px",
+              }}
+              title={s === -1 ? "Desconto" : "Acréscimo"}
+              type="button"
+            >
+              {s === -1 ? "−" : "+"}
+            </button>
+          ))}
+        </div>
         <div
           style={{
             border: `1px solid ${T.border}`,
@@ -1771,7 +1820,7 @@ function CampoDoLote({
                 cursor: "pointer",
                 fontSize: 12,
                 fontWeight: 600,
-                padding: "0 10px",
+                padding: "0 9px",
               }}
               type="button"
             >
@@ -1782,7 +1831,7 @@ function CampoDoLote({
         <input
           inputMode="decimal"
           onChange={(e) => mudarValor(e.target.value)}
-          placeholder="desconto ou acréscimo"
+          placeholder={sentido === -1 ? "desconto" : "acréscimo"}
           style={{
             background: T.card,
             border: `1px solid ${temAjuste ? T.gold : T.border}`,

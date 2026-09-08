@@ -36,6 +36,44 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-nome-de-plano-livre",
+    deployedAt: "2026-09-08T12:30:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**O desconto ganhou botão.** Antes era preciso digitar `-10` para descontar; agora escolhe-se − ou + e digita-se o número.",
+            ],
+            screen: "Simulador de proposta",
+          },
+        ],
+      },
+      {
+        module: "Setup",
+        screens: [
+          {
+            items: [
+              "**O nome do plano ficou livre.** Dois planos \"Normal\" no mesmo empreendimento agora podem existir — é o caso do Veredas, um em Price e outro em SACOC.",
+              "**\"Sistema\" virou \"Tabela\"** — Tabela Price, Tabela SACOC, Tabela SAC. É a palavra do contrato e a que o corretor usa com o cliente.",
+            ],
+            screen: "Empreendimentos · Planos",
+          },
+        ],
+      },
+    ],
+    rollback: "552b0293",
+    technical: {
+      done: "Migration 0143, APLICADA: cai  (unique) e entra um índice comum no lugar. ⚠️ O CASO DO LUCAS MOSTRA QUE A REGRA ESTAVA ERRADA, e não que ele estava contornando-a: dois planos \"Normal\" são legítimos quando a diferença entre eles é a TABELA de amortização, e a trava obrigava a inventar nome (\"Normal 2\", \"Normal Price\") — nome inventado para satisfazer o banco vira nome impresso na proposta do cliente. ⚠️ O SLOT FICA DE PÉ:  continua, porque slot é POSIÇÃO (qual plano sai em cada coluna da folha da PA) e não etiqueta; dois planos disputando o mesmo slot fariam a folha imprimir um por sorteio, no salão de lançamento com o cliente na frente. Nome é etiqueta, slot é posição — soltar os dois juntos trocaria uma trava chata por um defeito silencioso. ⚠️ CONSEQUÊNCIA REGISTRADA: nada mais garante que um nome identifique um plano, e o simulador procura plano por NOME hoje ( nem seleciona o uid=197609(lucas) gid=197609 groups=197609) — é por isso que levar o uid=197609(lucas) gid=197609 groups=197609 até a proposta virou o próximo passo da cadeia de contrato. A mensagem de erro do 23505 deixou de repetir a explicação do nome, que virou mentira. ⚠️ E O DESCONTO GANHOU BOTÃO DE SENTIDO: na v1.296.0 ele dependia de a pessoa digitar o sinal de menos, e no primeiro teste o Lucas digitou \"10\" e o preço SUBIU — *\"eu não vi como dou desconto, os teste só aumentaram o valor, acho que devia ter um botão de + e -\"*. Ninguém digita o menos, e esquecê-lo não dá erro na tela: dá uma proposta com o preço para cima. Agora o sentido é um par de botões (− vermelho, + verde), o número é sempre positivo, e trocar o sentido REAPROVEITA o que já foi digitado. O menos nasce escolhido: desconto é o caso comum, e errar para menos produz uma proposta que precisa de aprovação, não uma que sai cara para o cliente. 3.201 testes verdes.",
+      motivation:
+        "Lucas, ao cadastrar o segundo plano do Veredas: *\"eu não queria rotular os nomes dos planos, acho que esse rótulo pode e deve ser editável\"*.",
+    },
+    title: "Nome de plano livre",
+    type: "melhoria",
+    version: "1.297.1",
+  },
+  {
     buildTag: "2026-09-08-o-contrato-se-preenche",
     deployedAt: "2026-09-08T12:10:00-03:00",
     modules: [

@@ -72,10 +72,11 @@ const INDICES: { rotulo: string; valor: string }[] = [
   { rotulo: "INCC-M mensal", valor: "INCC_M_MENSAL" },
 ];
 
+// ⚠️ "TABELA" É A PALAVRA DA CASA — ver `rotuloDoSistema`. Os valores continuam os do banco.
 const SISTEMAS: { rotulo: string; valor: string }[] = [
-  { rotulo: "SACOC — amortização pura", valor: "sacoc" },
-  { rotulo: "Price — parcela fixa", valor: "price" },
-  { rotulo: "SAC — parcela decrescente", valor: "sac" },
+  { rotulo: "Tabela SACOC — amortização pura", valor: "sacoc" },
+  { rotulo: "Tabela Price — parcela fixa", valor: "price" },
+  { rotulo: "Tabela SAC — parcela decrescente", valor: "sac" },
 ];
 
 const SLOTS: { rotulo: string; valor: string }[] = [
@@ -984,7 +985,7 @@ function Formulario({
           </label>
 
           <label className="grid gap-1.5">
-            <span className={rotulo}>Sistema</span>
+            <span className={rotulo}>Tabela</span>
             <select
               className={campo}
               onChange={(e) => aoMudar({ ...rascunho, sistemaAmortizacao: e.target.value })}

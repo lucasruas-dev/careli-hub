@@ -152,7 +152,11 @@ function explicarErro(codigo: string, mensagem: string): string {
   if (codigo === "23505" && mensagem.includes("slot")) {
     return "Já existe um plano ativo nessa posição da proposta. Troque a posição ou desative o outro.";
   }
-  if (codigo === "23505") return "Já existe um plano com esse nome neste empreendimento.";
+  // ⚠️ O NOME DEIXOU DE SER ÚNICO na migration 0143 (Lucas: dois planos "Normal" no Veredas, um em
+  // Price e outro em SACOC, são legítimos — a diferença entre eles é a TABELA). Se um 23505 chegar
+  // aqui sem ser do slot, é uma trava que ninguém previu: melhor dizer isso do que repetir uma
+  // explicação que virou mentira.
+  if (codigo === "23505") return "Esse plano conflita com outro já cadastrado.";
   if (codigo === "23514" && mensagem.includes("entrada")) {
     return "A entrada é um percentual de 0 a 100 — 20 significa 20%.";
   }

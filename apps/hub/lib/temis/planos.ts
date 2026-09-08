@@ -178,12 +178,20 @@ export function rotuloDoIndice(indice: string): string {
   return mapa[indice] ?? indice;
 }
 
-/** Rótulo do sistema de amortização, com o que ele significa para a parcela. */
+/**
+ * Rótulo da tabela de amortização, com o que ela significa para a parcela.
+ *
+ * ⚠️ "TABELA", E NÃO "SISTEMA" (Lucas, 08/09/2026: *"aproveita e troca, em vez de sistema,
+ * tabela"*). É a palavra do contrato — o do Aldeia escreve "TABELA PRICE – SISTEMA FRANCÊS DE
+ * AMORTIZAÇÃO" — e é a que o corretor usa na frente do cliente. A coluna do banco continua
+ * `sistema_amortizacao`: renomeá-la mexeria em migration, rota e três telas para trocar uma palavra
+ * que só aparece para gente.
+ */
 export function rotuloDoSistema(sistema: string): string {
   const mapa: Record<string, string> = {
-    price: "Price — parcela fixa",
-    sac: "SAC — parcela decrescente",
-    sacoc: "SACOC — amortização pura",
+    price: "Tabela Price — parcela fixa",
+    sac: "Tabela SAC — parcela decrescente",
+    sacoc: "Tabela SACOC — amortização pura",
   };
   return mapa[sistema] ?? sistema;
 }
