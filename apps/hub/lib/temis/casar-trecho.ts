@@ -141,13 +141,13 @@ export function casarTrecho(
 
   const pista = normalizarParaBusca(contexto ?? "").texto.trim();
   if (pista) {
-    const ondeContexto = base.texto.indexOf(pista);
-    if (ondeContexto < 0) return { situacao: "nao_encontrado" };
-    // ⚠️ CONTEXTO REPETIDO NÃO SERVE DE ÂNCORA. Se ele próprio aparece duas vezes, escolher a
-    // primeira só empurra a ambiguidade um nível para dentro — e escondida, que é pior.
-    if (base.texto.indexOf(pista, ondeContexto + 1) >= 0) return { situacao: "ambiguo" };
-    janelaInicio = ondeContexto;
-    janelaFim = ondeContexto + pista.length;
+    const ancora = acharAncora(base.texto, pista, alvo);
+    // ⚠️ A RECUSA PRECISA DIZER A VERDADE. Sem âncora, o motivo é do ALVO, não do contexto: um
+    // trecho que aparece três vezes no documento é AMBÍGUO, e chamar isso de "não encontrado"
+    // manda quem revisa procurar um trecho que está lá, na frente dele, três vezes.
+    if (!ancora) return { situacao: apareceMaisDeUmaVez(base.texto, alvo) ? "ambiguo" : "nao_encontrado" };
+    janelaInicio = ancora.inicio;
+    janelaFim = ancora.fim;
   }
 
   const janela = base.texto.slice(janelaInicio, janelaFim);
@@ -164,4 +164,69 @@ export function casarTrecho(
   // último é o que mantém o recorte colado no trecho: usar o índice do caractere seguinte engoliria
   // os espaços que a normalização colapsou logo depois dele.
   return { casamento: { fim: ultimo + 1, inicio }, situacao: "achou" };
+}
+
+/**
+ * A janela onde procurar o trecho, a partir do contexto.
+ *
+ * ⚠️ O CONTEXTO É ÂNCORA, NÃO CONDIÇÃO — e essa distinção custou uma rodada de teste do Lucas.
+ *
+ * Em 08/09/2026 ele mandou aplicar 52 propostas de uma vez na minuta do Aldeia da Cachoeira. Várias
+ * não entraram, em silêncio. A mais visível foi a mais importante do contrato: `[NOME COMPLETO]`,
+ * que deveria virar `[nome_cliente]`.
+ *
+ * A causa é a ordem de aplicação. As propostas são aplicadas DE TRÁS PARA A FRENTE, de propósito:
+ * cada substituição muda o documento, e começar pelo fim mantém as posições das anteriores. Só que
+ * o contexto de uma proposta cerca o trecho dos DOIS lados:
+ *
+ *     contexto: "FIDUCIANTE(S): [NOME COMPLETO], [nacionalidade]"
+ *                                ↑ o trecho      ↑ isto vem DEPOIS, e já virou
+ *                                                  [nacionalidade_cliente]
+ *
+ * Quando a vez do `[NOME COMPLETO]` chegava, o contexto exato não existia mais no documento — e o
+ * casamento falhava, apesar de o trecho estar lá, intacto e único.
+ *
+ * A saída é deixar o contexto CEDER PELA PONTA QUE MUDOU, sem deixar de desambiguar:
+ *
+ *   1. o contexto inteiro          — o caso normal, e o mais preciso;
+ *   2. só o PREFIXO até o trecho   — aplicando de trás para a frente, tudo que vem ANTES ainda está
+ *                                    intacto, então este é o pedaço confiável do contexto;
+ *   3. o trecho sozinho, se for ÚNICO no documento — sem ambiguidade, contexto nenhum é necessário.
+ *
+ * ⚠️ O PASSO 3 NÃO AFROUXA A REGRA. `[●]` aparece dezenas de vezes na minuta do Aldeia: para ele o
+ * passo 3 nunca vale, e a proposta continua caindo como ambígua em vez de cair no lugar errado. Só
+ * o trecho que é único no documento inteiro dispensa âncora — e para esse o contexto era enfeite.
+ */
+function acharAncora(
+  texto: string,
+  pista: string,
+  alvo: string,
+): null | { fim: number; inicio: number } {
+  const soUmaVez = (agulha: string) => {
+    const onde = texto.indexOf(agulha);
+    return onde >= 0 && texto.indexOf(agulha, onde + 1) < 0 ? onde : -1;
+  };
+
+  // 1. O contexto inteiro.
+  const inteiro = soUmaVez(pista);
+  if (inteiro >= 0) return { fim: inteiro + pista.length, inicio: inteiro };
+
+  // 2. O prefixo até o trecho — a metade que a aplicação de trás para a frente não tocou.
+  const ondeAlvoNaPista = pista.indexOf(alvo);
+  if (ondeAlvoNaPista > 0) {
+    const prefixo = pista.slice(0, ondeAlvoNaPista);
+    const so = soUmaVez(prefixo);
+    // A janela vai do prefixo até o fim do documento: o trecho está logo depois dele, e a busca
+    // dentro da janela ainda reprova se ele aparecer duas vezes daí para a frente.
+    if (so >= 0) return { fim: texto.length, inicio: so };
+  }
+
+  // 3. Sem âncora nenhuma — só vale se o trecho for único no documento inteiro.
+  return soUmaVez(alvo) >= 0 ? { fim: texto.length, inicio: 0 } : null;
+}
+
+/** O trecho está no documento mais de uma vez — o que faz dele ambíguo quando nada o ancora. */
+function apareceMaisDeUmaVez(texto: string, agulha: string): boolean {
+  const onde = texto.indexOf(agulha);
+  return onde >= 0 && texto.indexOf(agulha, onde + 1) >= 0;
 }

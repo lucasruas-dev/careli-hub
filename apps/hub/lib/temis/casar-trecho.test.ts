@@ -123,8 +123,18 @@ describe("o contexto desambigua a lacuna", () => {
     expect(casarTrecho(texto, "____", "o CPF ____ do titular").situacao).toBe("ambiguo");
   });
 
-  it("recusa quando o contexto não existe no texto", () => {
+  // ⚠️ RECUSA NOS DOIS CASOS — o que mudou em 08/09/2026 foi o MOTIVO, e ele ficou mais honesto.
+  // Antes isto era "não encontrado"; mas a linha existe na minuta, várias vezes. O que falta não é
+  // o trecho, é o que decide QUAL deles — e mandar quem revisa procurar um trecho que está na frente
+  // dele três vezes é pior do que dizer a verdade.
+  it("recusa como AMBÍGUO quando o contexto não ancora e o trecho se repete", () => {
     expect(casarTrecho(minuta, "________________", "inscrito no CNPJ sob o n.º").situacao).toBe(
+      "ambiguo",
+    );
+  });
+
+  it("e continua sendo 'não encontrado' quando o trecho realmente não existe", () => {
+    expect(casarTrecho(minuta, "trecho que nao esta na minuta", "contexto qualquer").situacao).toBe(
       "nao_encontrado",
     );
   });
@@ -133,5 +143,53 @@ describe("o contexto desambigua a lacuna", () => {
     expect(casarTrecho(minuta, "NOME COMPLETO", "domiciliado na Rua ________________, n.º").situacao).toBe(
       "nao_encontrado",
     );
+  });
+});
+
+describe("o contexto cede pela ponta que já mudou", () => {
+  // ⚠️ O CASO REAL DE 08/09/2026. O Lucas mandou aplicar 52 propostas de uma vez na minuta do Aldeia
+  // da Cachoeira, e a mais importante do contrato não entrou, em silêncio: `[NOME COMPLETO]`, que
+  // vira `[nome_cliente]`. As propostas são aplicadas DE TRÁS PARA A FRENTE (cada substituição muda
+  // o documento, e começar pelo fim mantém as posições das anteriores) — então, quando chegava a vez
+  // dela, o `[nacionalidade]` que estava no contexto DEPOIS do trecho já tinha virado
+  // `[nacionalidade_cliente]`, e o contexto exato não existia mais.
+  const depoisDeAplicarOVizinho =
+    "COMPRADOR(ES) E DEVEDOR(ES) FIDUCIANTE(S): [NOME COMPLETO], [nacionalidade_cliente], casado";
+  const contextoComoOAgenteViu =
+    "FIDUCIANTE(S): [NOME COMPLETO], [nacionalidade]";
+
+  it("acha o trecho mesmo com o contexto já alterado à frente dele", () => {
+    const r = casarTrecho(depoisDeAplicarOVizinho, "[NOME COMPLETO]", contextoComoOAgenteViu);
+    expect(r.situacao).toBe("achou");
+    if (r.situacao !== "achou") return;
+    expect(depoisDeAplicarOVizinho.slice(r.casamento.inicio, r.casamento.fim)).toBe("[NOME COMPLETO]");
+  });
+
+  // ⚠️ E A REGRA NÃO AFROUXOU. `[●]` aparece dezenas de vezes na minuta do Aldeia: para ele nenhuma
+  // das saídas vale, e a proposta continua caindo como ambígua — que é o certo. Cair no lugar errado
+  // num contrato assinado é pior do que não cair.
+  it("continua reprovando o trecho repetido quando o contexto não ancora", () => {
+    const texto = "Nome: [●]\nCPF: [●]\nData: [●]";
+    expect(casarTrecho(texto, "[●]", "contexto que sumiu do documento").situacao).toBe("ambiguo");
+  });
+
+  it("usa o prefixo do contexto para desambiguar um trecho repetido", () => {
+    const texto = "TESTEMUNHA 1\nNome: [●]\nTESTEMUNHA 2\nNome: [●]";
+    // O contexto do agente citava o que vem depois e mudou; o prefixo "TESTEMUNHA 2 Nome:" basta.
+    const r = casarTrecho(texto, "[●]", "TESTEMUNHA 2\nNome: [●] CPF: [●]");
+    expect(r.situacao).toBe("achou");
+    if (r.situacao !== "achou") return;
+    // Casou o SEGUNDO, que é o que o prefixo ancorou.
+    expect(r.casamento.inicio).toBeGreaterThan(texto.indexOf("TESTEMUNHA 2"));
+  });
+
+  it("contexto que aparece duas vezes continua ambíguo, não vira busca solta", () => {
+    const texto = "CPF n.º [●] do comprador\nCPF n.º [●] do comprador";
+    expect(casarTrecho(texto, "[●]", "CPF n.º [●] do comprador").situacao).toBe("ambiguo");
+  });
+
+  it("trecho único dispensa contexto — para ele o contexto era enfeite", () => {
+    const r = casarTrecho("o [NOME COMPLETO] assina", "[NOME COMPLETO]", "contexto inexistente");
+    expect(r.situacao).toBe("achou");
   });
 });

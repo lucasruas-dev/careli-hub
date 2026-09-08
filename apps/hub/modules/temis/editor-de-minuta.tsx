@@ -372,13 +372,25 @@ function PainelLateral({
             // posições das anteriores válidas. (`aplicarProposta` reacha o trecho a cada vez, mas a
             // ordem ainda importa: um trecho curto pode passar a aparecer duas vezes depois de uma
             // substituição à frente dele, e aí ele seria pulado sem motivo.)
+            // ⚠️ O QUE NÃO ENTRA TEM DE APARECER. Em 08/09/2026 o Lucas aplicou 52 propostas de uma
+            // vez e algumas não entraram em SILÊNCIO — inclusive a mais importante do contrato, o
+            // `[NOME COMPLETO]` que vira `[nome_cliente]`. Ele só descobriu relendo o documento
+            // inteiro à mão, que é exatamente o trabalho que o agente veio poupar.
             const aplicadas = new Set<string>();
+            let falharam = 0;
             for (const p of [...lista].sort((a, b) => b.posicao - a.posicao)) {
               if (aplicarProposta(editor, p)) aplicadas.add(p.trecho);
+              else falharam += 1;
             }
             setPropostas((atual) =>
               atual
-                ? { ...atual, propostas: atual.propostas.filter((x) => !aplicadas.has(x.trecho)) }
+                ? {
+                    ...atual,
+                    // As que falharam FICAM na lista, para a pessoa clicar uma a uma e ver onde cada
+                    // uma cairia — clicando, o trecho é reachado no documento como ele está agora.
+                    aplicouComFalha: falharam,
+                    propostas: atual.propostas.filter((x) => !aplicadas.has(x.trecho)),
+                  }
                 : atual,
             );
           }}
@@ -406,6 +418,8 @@ type PropostaDoAgente = {
 };
 
 type RespostaDoAgente = {
+  /** Quantas o "Aplicar as N" não conseguiu encaixar — elas continuam na lista, para clicar uma a uma. */
+  aplicouComFalha?: number;
   erro?: string;
   propostas: PropostaDoAgente[];
   recusadas: { motivo: string; nome: string; trecho: string }[];
@@ -928,6 +942,14 @@ function CorpoDoAgente({
             {porTipo}. Ou clique uma a uma, para ver onde cada uma cai. Ctrl+Z desfaz.
             {semLugar > 0 ? ` ${semLugar} ficou de fora (não casou com o texto, ou não mudaria nada).` : ""}
           </p>
+          {resposta.aplicouComFalha ? (
+            <p className="m-0 mt-1 rounded-lg bg-amber-50 px-2 py-1.5 text-[10px] leading-tight text-amber-800 dark:bg-amber-500/12 dark:text-amber-300">
+              {resposta.aplicouComFalha === 1
+                ? "1 proposta não encaixou e continua na lista abaixo."
+                : `${resposta.aplicouComFalha} propostas não encaixaram e continuam na lista abaixo.`}{" "}
+              Clique nelas uma a uma: o trecho é procurado de novo no texto como ele está agora.
+            </p>
+          ) : null}
         </div>
       )}
 

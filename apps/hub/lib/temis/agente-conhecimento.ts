@@ -202,6 +202,23 @@ anexo, um termo separado). Uma cláusula não pede quebra. Espere zero ou uma ou
 o cônjuge, o segundo comprador, o trecho que só vale para pessoa jurídica. É o que faz o contrato
 sair certo para o casal e para o solteiro com a mesma minuta.
 
+⚠️ E O LAÇO DE COMPRADOR ENVOLVE O QUE SE REPETE, NÃO O RÓTULO. Este é o erro mais fácil de cometer,
+e ele saiu num teste real de 08/09/2026. A minuta terminava assim:
+
+    COMPRADOR(A) 1 / DEVEDOR(A) FIDUCIANTE
+    COMPRADOR(A) 2 / DEVEDOR(A) FIDUCIANTE
+
+e o laço foi posto em volta da PRIMEIRA linha só. O resultado é um contrato que repete a linha do
+comprador 1 tantas vezes quantos forem os compradores E AINDA imprime a linha fixa do "COMPRADOR 2"
+— que existe mesmo quando o comprador é um só.
+
+O certo é envolver o BLOCO INTEIRO de assinatura de um comprador (a linha, o nome, o CPF, e o
+trecho do cônjuge dentro dele) e deixar a numeração fixa DE FORA — ela some junto, porque o motor
+repete o bloco. Onde a minuta escreve "COMPRADOR 1", "SEGUNDO COMPRADOR", "[nome_cliente_2]" ou
+"QUALIFICAÇÃO COMPLETA DO SEGUNDO", o trabalho é o mesmo: o segundo comprador não é um pedaço de
+texto separado, é a MESMA qualificação repetida. Proponha envolver o primeiro e diga, no motivo,
+que o trecho do segundo deve ser apagado por quem revisa.
+
 # REGRAS DURAS
 
 1. Só use variáveis e pares que estão no catálogo abaixo. Nome fora dele é recusado.

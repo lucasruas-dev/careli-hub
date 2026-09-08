@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-o-que-nao-entra-aparece",
+    deployedAt: "2026-09-08T08:20:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**A proposta que não encaixa parou de sumir em silêncio.** Aplicando 52 de uma vez, algumas não entravam — inclusive o `[NOME COMPLETO]`, a variável mais importante do contrato. Agora a tela diz quantas foram e elas continuam na lista.",
+              "**E quase todas passaram a encaixar.** O contexto que o agente usa para mirar agora cede pela ponta que já mudou, em vez de reprovar a proposta inteira.",
+              "**O agente aprendeu onde vai o laço de compradores** — em volta do bloco de assinatura inteiro, não da linha \"COMPRADOR 1\".",
+              "**A recusa passou a dizer a verdade**: um trecho que aparece três vezes é \"ambíguo\", não \"não encontrado\".",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+    ],
+    rollback: "a97e2635",
+    technical: {
+      done: "Teste real do Lucas: 52 propostas aplicadas de uma vez na minuta do Aldeia da Cachoeira (50.770 caracteres). ⚠️ A FALHA ERA DA ORDEM DE APLICAÇÃO. O lote aplica DE TRÁS PARA A FRENTE de propósito — cada substituição muda o documento, e começar pelo fim mantém as posições das anteriores. Só que o contexto que o agente manda para mirar cerca o trecho dos DOIS lados: o de `[NOME COMPLETO]` era \"FIDUCIANTE(S): [NOME COMPLETO], [nacionalidade]\", e quando chegava a vez dele o `[nacionalidade]` já tinha virado `[nacionalidade_cliente]` — contexto inexistente, casamento reprovado, proposta descartada sem aviso. `acharAncora` agora tenta em cascata: o contexto inteiro, depois só o PREFIXO até o trecho (aplicando de trás para a frente, tudo que vem antes está intacto), e por fim o trecho sozinho SE ele for único no documento. ⚠️ ISSO NÃO AFROUXA A REGRA: `[●]` aparece dezenas de vezes na minuta do Aldeia, então para ele o último passo nunca vale e a proposta continua caindo como ambígua em vez de cair no lugar errado — num contrato assinado, cair errado é pior do que não cair. ⚠️ E A RECUSA FICOU HONESTA: sem âncora, o motivo é do ALVO, não do contexto — trecho que aparece três vezes é \"ambiguo\", e chamar isso de \"nao_encontrado\" mandava quem revisa procurar um trecho que está na frente dele, três vezes. ⚠️ O LOTE CONTA AS FALHAS e a tela mostra: as que não entraram FICAM na lista, para clicar uma a uma (o clique reacha o trecho no documento como ele está agora). ⚠️ E O CONHECIMENTO GANHOU O LAÇO DE COMPRADOR: no teste ele envolveu só a linha \"COMPRADOR(A) 1\" e deixou a linha fixa do \"COMPRADOR(A) 2\" fora — o que produziria um contrato repetindo o primeiro E imprimindo a linha do segundo mesmo com um comprador só. 3.120 testes verdes; typecheck limpo.",
+      motivation:
+        "O agente propôs 49 variáveis e o documento saiu com menos. As que não encaixavam eram descartadas sem aviso, e o Lucas só descobriu relendo o contrato inteiro à mão — o trabalho que o agente veio poupar.",
+    },
+    title: "O que não entra aparece",
+    type: "correcao",
+    version: "1.295.3",
+  },
+  {
     buildTag: "2026-09-08-o-agente-tinha-90-segundos",
     deployedAt: "2026-09-08T03:10:00-03:00",
     modules: [
