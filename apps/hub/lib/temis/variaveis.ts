@@ -114,11 +114,54 @@ type Base = Omit<VariavelDoContrato, "nome"> & { base: string };
 
 // ── FONTES QUE SE REPETEM ────────────────────────────────────────────────────
 //
-// A ficha do CAD vive em `apolo_esteira.ficha` (jsonb, migration 0058): `identificacao`, `perfil`,
-// `endereco`, `conjuge`, `empresa` — o shape é o de `lib/apolo/cadastro-persist.ts`. O nome de
-// exibição e a razão social têm coluna própria em `apolo_entities`.
+// A ficha do CAD vive em `apolo_esteira.ficha` (jsonb, migration 0058).
+//
+// ⚠️ A FICHA É PLANA, e este catálogo dizia que era aninhada. Corrigido em 08/09/2026, depois de
+// medir: das 577 fichas em produção, ZERO têm as chaves `identificacao`, `perfil`, `endereco`,
+// `conjuge` ou `empresa`. Tudo vive na RAIZ, em camelCase — `dataNascimento`, `nacionalidade`,
+// `estadoCivilId`, `logradouro`, `conjugeNome`. Os três caminhos que gravam ficha (a migration
+// 0058, o PATCH do board em `board-do-servidor.ts` e a importação do Asana) gravam plano.
+//
+// O shape aninhado EXISTE, e é de onde veio o erro: é o DTO que a leitura do MOSTQI devolve ao
+// wizard (`app/api/apolo/cadastro/route.ts`), com `identificacao.cpf`, `endereco.logradouro` e
+// `perfil`. Só que ele é efêmero — a rota responde e nada é gravado assim.
+//
+// ⚠️ E O CPF NÃO ESTÁ NA FICHA. Nem o CNPJ. Os dois moram em `apolo_entities.document_masked`, que
+// guarda o documento COMPLETO E FORMATADO apesar do nome da coluna ("123.456.789-00"). Um motor que
+// procurasse `ficha.cpf` acharia `undefined` em 100% das fichas.
+//
+// ⚠️ E A FICHA É A CAMADA DE CIMA, NÃO A ÚNICA. No cadastro pelo wizard, endereço, contato e cônjuge
+// nascem em `apolo_addresses`, `apolo_contacts` e `apolo_relationships` — a ficha só recebe o que
+// alguém editou depois, pela tela de validação. Quem lê resolve campo a campo com a ficha ganhando
+// (`unirEndereco` e `unirConjuge` em `lib/apolo/cadastro-cascata.ts`), e é assim que o motor de
+// contrato vai ter de ler: só a ficha perderia o endereço de quem nunca foi editado à mão.
+//
+// ⚠️ E OS `*Id` SÃO NÚMEROS, NÃO TEXTO. `estadoCivilId: "2"` é "Casado (a)"; `regimeBensId: "1"` é
+// "Comunhão parcial de bens". A tradução vive em `lib/apolo/c2x-fields.ts` (e
+// `c2x-professions.ts`, com 234 profissões) e é OBRIGATÓRIA: sem ela o contrato sai com o número.
 const ENTIDADE = (campo: string): FonteDaVariavel => ({ campo, tabela: "apolo_entities" });
 const FICHA = (caminho: string): FonteDaVariavel => ({ campo: `ficha.${caminho}`, tabela: "apolo_esteira" });
+/** Campo da ficha que TAMBÉM existe em outra tabela — a ficha ganha, a outra é a base. Ver a nota acima. */
+const FICHA_OU = (caminho: string, outra: string): FonteDaVariavel => ({
+  campo: `ficha.${caminho} (ou ${outra}, quando a ficha não tem)`,
+  tabela: "apolo_esteira",
+});
+/** O documento do titular: CPF ou CNPJ, completo e com máscara, na coluna da entidade. */
+const DOCUMENTO: FonteDaVariavel = {
+  campo: "document_masked (o documento COMPLETO, apesar do nome)",
+  tabela: "apolo_entities",
+};
+/**
+ * Um `*Id` que precisa ser traduzido para o rótulo antes de entrar no contrato.
+ *
+ * ⚠️ O NÚMERO É O VOCABULÁRIO HERDADO, mas a tradução é NOSSA e local: as listas vivem em
+ * `lib/apolo/c2x-fields.ts` e `lib/apolo/c2x-professions.ts`, dentro do Panteon. Nada aqui consulta
+ * o legado — o nome dos arquivos é herança, não dependência.
+ */
+const FICHA_ID = (chave: string, catalogo: string): FonteDaVariavel => ({
+  campo: `ficha.${chave} → rótulo em ${catalogo}`,
+  tabela: "apolo_esteira",
+});
 const UNIDADE_ = (campo: string): FonteDaVariavel => ({ campo, tabela: "hercules_unidades" });
 const VENDA = (campo: string): FonteDaVariavel => ({ campo, tabela: "hercules_vendas" });
 const PLANO = (campo: string): FonteDaVariavel => ({ campo, tabela: "temis_planos" });
@@ -132,22 +175,22 @@ const EXTENSO_DE = (nome: string): FonteDaVariavel => SISTEMA(`por-extenso.ts so
 const COMPRADOR: Base[] = [
   { base: "nome_cliente", exemplo: "THIAGO HENRIQUE DE SOUZA", fonte: ENTIDADE("display_name"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Nome", tipo: "texto" },
   { base: "identificacao_cliente", exemplo: "COMPRADOR", fonte: VENDA("participantes[].papel"), grupo: "comprador", origem: "Papel na venda", rotulo: "Identificação (comprador, cedente…)", tipo: "texto" },
-  { base: "nacionalidade_cliente", exemplo: "brasileiro", fonte: FICHA("identificacao.nacionalidade"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Nacionalidade", tipo: "texto" },
-  { base: "estado_civil_cliente", exemplo: "casado", fonte: FICHA("perfil.estadoCivilId"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Estado civil", tipo: "texto" },
-  { base: "regime_casamento_cliente", exemplo: "comunhão parcial de bens", fonte: FICHA("perfil.regimeBensId"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Regime de casamento", tipo: "texto" },
-  { base: "profissao_cliente", exemplo: "engenheiro", fonte: FICHA("perfil.profissaoId / perfil.profissaoOutro"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Profissão", tipo: "texto" },
-  { base: "cpf_cliente", exemplo: "123.456.789-00", fonte: FICHA("identificacao.cpf"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "CPF", tipo: "texto" },
+  { base: "nacionalidade_cliente", exemplo: "brasileiro", fonte: FICHA("nacionalidade"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Nacionalidade", tipo: "texto" },
+  { base: "estado_civil_cliente", exemplo: "casado", fonte: FICHA_ID("estadoCivilId", "a lista de estados civis"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Estado civil", tipo: "texto" },
+  { base: "regime_casamento_cliente", exemplo: "comunhão parcial de bens", fonte: FICHA_ID("regimeBensId", "a lista de regimes de bens"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Regime de casamento", tipo: "texto" },
+  { base: "profissao_cliente", exemplo: "engenheiro", fonte: FICHA_ID("profissaoId (ou profissaoOutro, texto livre)", "a lista de profissões"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Profissão", tipo: "texto" },
+  { base: "cpf_cliente", exemplo: "123.456.789-00", fonte: DOCUMENTO, grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "CPF", tipo: "texto" },
   // O RG chega pela importação do Asana (`asana-import.ts` grava `rg` e `orgaoEmissor` na ficha);
   // o wizard de cadastro manual ainda não o pede.
   { base: "rg_cliente", exemplo: "MG-12.345.678", fonte: FICHA("rg + orgaoEmissor"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "RG", tipo: "texto" },
-  { base: "data_nascimento_cliente", exemplo: "15/03/1985", fonte: FICHA("identificacao.dataNascimento"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Data de nascimento", tipo: "data" },
-  { base: "email_cliente", exemplo: "thiago@exemplo.com.br", fonte: FICHA("perfil.email"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "E-mail", tipo: "texto" },
-  { base: "telefone_cliente", exemplo: "(31) 99999-0000", fonte: FICHA("perfil.telefone"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Telefone", tipo: "texto" },
-  { base: "rua_cliente", exemplo: "Rua das Acácias", fonte: FICHA("endereco.logradouro"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Logradouro", tipo: "texto" },
-  { base: "numero_cliente", exemplo: "150", fonte: FICHA("endereco.numero"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Número", tipo: "texto" },
-  { base: "bairro_cliente", exemplo: "Centro", fonte: FICHA("endereco.bairro"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Bairro", tipo: "texto" },
-  { base: "cidade_cliente", exemplo: "João Monlevade/MG", fonte: FICHA("endereco.cidade + endereco.uf"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Cidade/UF", tipo: "texto" },
-  { base: "cep_cliente", exemplo: "35930-000", fonte: FICHA("endereco.cep"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "CEP", tipo: "texto" },
+  { base: "data_nascimento_cliente", exemplo: "15/03/1985", fonte: FICHA("dataNascimento"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Data de nascimento", tipo: "data" },
+  { base: "email_cliente", exemplo: "thiago@exemplo.com.br", fonte: FICHA_OU("email", "apolo_contacts"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "E-mail", tipo: "texto" },
+  { base: "telefone_cliente", exemplo: "(31) 99999-0000", fonte: FICHA_OU("telefone", "apolo_contacts"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Telefone", tipo: "texto" },
+  { base: "rua_cliente", exemplo: "Rua das Acácias", fonte: FICHA_OU("logradouro", "apolo_addresses"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Logradouro", tipo: "texto" },
+  { base: "numero_cliente", exemplo: "150", fonte: FICHA_OU("numero", "apolo_addresses"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Número", tipo: "texto" },
+  { base: "bairro_cliente", exemplo: "Centro", fonte: FICHA_OU("bairro", "apolo_addresses"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Bairro", tipo: "texto" },
+  { base: "cidade_cliente", exemplo: "João Monlevade/MG", fonte: FICHA_OU("cidade + uf", "apolo_addresses"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Cidade/UF", tipo: "texto" },
+  { base: "cep_cliente", exemplo: "35930-000", fonte: FICHA_OU("cep", "apolo_addresses"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "CEP", tipo: "texto" },
   { base: "percentual_cliente", exemplo: "50%", fonte: VENDA("participantes[].percentual"), grupo: "comprador", origem: "Participação definida na venda", rotulo: "Percentual de participação", tipo: "texto" },
 ];
 
@@ -155,17 +198,17 @@ const COMPRADOR: Base[] = [
 const EMPRESA: Base[] = [
   { base: "razao_social_cliente", exemplo: "SOUZA PARTICIPAÇÕES LTDA.", fonte: ENTIDADE("legal_name"), grupo: "empresa", origem: "Cadastro PJ", rotulo: "Razão social", tipo: "texto" },
   { base: "nome_fantasia_cliente", exemplo: "Souza Participações", fonte: ENTIDADE("trade_name"), grupo: "empresa", origem: "Cadastro PJ", rotulo: "Nome fantasia", tipo: "texto" },
-  { base: "cnpj_cliente", exemplo: "11.115.899/0001-04", fonte: FICHA("empresa.cnpj"), grupo: "empresa", origem: "Cadastro PJ", rotulo: "CNPJ", tipo: "texto" },
+  { base: "cnpj_cliente", exemplo: "11.115.899/0001-04", fonte: DOCUMENTO, grupo: "empresa", origem: "Cadastro PJ", rotulo: "CNPJ", tipo: "texto" },
 ];
 
 // ── CÔNJUGE (um por comprador) ───────────────────────────────────────────────
 const CONJUGE: Base[] = [
-  { base: "nome_conjuge", exemplo: "MARIA DE SOUZA", fonte: FICHA("conjuge.nome"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "Nome do cônjuge", tipo: "texto" },
-  { base: "nacionalidade_conjuge", exemplo: "brasileira", fonte: FICHA("conjuge.nacionalidade"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "Nacionalidade do cônjuge", tipo: "texto" },
-  { base: "profissao_conjuge", exemplo: "professora", fonte: FICHA("conjuge.profissaoId / conjuge.profissaoOutro"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "Profissão do cônjuge", tipo: "texto" },
-  { base: "cpf_conjuge", exemplo: "987.654.321-00", fonte: FICHA("conjuge.cpf"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "CPF do cônjuge", tipo: "texto" },
-  { base: "email_conjuge", exemplo: "maria@exemplo.com.br", fonte: FICHA("conjuge.email"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "E-mail do cônjuge", tipo: "texto" },
-  { base: "telefone_conjuge", exemplo: "(31) 98888-0000", fonte: FICHA("conjuge.telefone"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "Telefone do cônjuge", tipo: "texto" },
+  { base: "nome_conjuge", exemplo: "MARIA DE SOUZA", fonte: FICHA_OU("conjugeNome", "apolo_relationships"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "Nome do cônjuge", tipo: "texto" },
+  { base: "nacionalidade_conjuge", exemplo: "brasileira", fonte: FICHA_OU("conjugeNacionalidade", "apolo_relationships"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "Nacionalidade do cônjuge", tipo: "texto" },
+  { base: "profissao_conjuge", exemplo: "professora", fonte: FICHA_ID("conjugeProfissaoId (ou conjugeProfissaoOutro)", "a lista de profissões"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "Profissão do cônjuge", tipo: "texto" },
+  { base: "cpf_conjuge", exemplo: "987.654.321-00", fonte: FICHA_OU("conjugeCpf", "apolo_relationships"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "CPF do cônjuge", tipo: "texto" },
+  { base: "email_conjuge", exemplo: "maria@exemplo.com.br", fonte: FICHA_OU("conjugeEmail", "apolo_relationships"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "E-mail do cônjuge", tipo: "texto" },
+  { base: "telefone_conjuge", exemplo: "(31) 98888-0000", fonte: FICHA_OU("conjugeTelefone", "apolo_relationships"), grupo: "conjuge", origem: "Cônjuge no cadastro (CAD)", rotulo: "Telefone do cônjuge", tipo: "texto" },
 ];
 
 // ── BLOCOS CONDICIONAIS (repetem por comprador) ──────────────────────────────
@@ -251,33 +294,33 @@ const VENDEDORA_FICHA = (caminho: string): FonteDaVariavel =>
 const VENDEDORA_VARS: VariavelDoContrato[] = [
   { exemplo: "BILL EMPREENDIMENTOS IMOBILIÁRIOS EIRELI", fonte: VENDEDORA("legal_name"), grupo: "vendedora", nome: "vendedora_razao_social", origem: "Cadastro da vendedora (incorporador/SPE)", rotulo: "Razão social da vendedora", tipo: "texto" },
   { exemplo: "Bill Empreendimentos", fonte: VENDEDORA("trade_name"), grupo: "vendedora", nome: "vendedora_nome_fantasia", origem: "Cadastro da vendedora (incorporador/SPE)", rotulo: "Nome fantasia da vendedora", tipo: "texto" },
-  { exemplo: "sociedade empresária limitada", fonte: VENDEDORA_FICHA("empresa.naturezaJuridica"), grupo: "vendedora", nome: "vendedora_natureza_juridica", origem: "Cadastro da vendedora (incorporador/SPE)", rotulo: "Natureza jurídica da vendedora", tipo: "texto" },
-  { exemplo: "31.492.339/0001-86", fonte: VENDEDORA_FICHA("empresa.cnpj"), grupo: "vendedora", nome: "vendedora_cnpj", origem: "Cadastro da vendedora (incorporador/SPE)", rotulo: "CNPJ da vendedora", tipo: "texto" },
-  { exemplo: "RUA MANACÁ", fonte: VENDEDORA_FICHA("endereco.logradouro"), grupo: "vendedora", nome: "vendedora_rua", origem: "Sede da vendedora", rotulo: "Logradouro da sede", tipo: "texto" },
-  { exemplo: "32", fonte: VENDEDORA_FICHA("endereco.numero"), grupo: "vendedora", nome: "vendedora_numero", origem: "Sede da vendedora", rotulo: "Número da sede", tipo: "texto" },
-  { exemplo: "ELDORADO", fonte: VENDEDORA_FICHA("endereco.bairro"), grupo: "vendedora", nome: "vendedora_bairro", origem: "Sede da vendedora", rotulo: "Bairro da sede", tipo: "texto" },
-  { exemplo: "CONTAGEM", fonte: VENDEDORA_FICHA("endereco.cidade"), grupo: "vendedora", nome: "vendedora_cidade", origem: "Sede da vendedora", rotulo: "Cidade da sede", tipo: "texto" },
+  { exemplo: "sociedade empresária limitada", fonte: VENDEDORA_FICHA("naturezaJuridica"), grupo: "vendedora", nome: "vendedora_natureza_juridica", origem: "Cadastro da vendedora (incorporador/SPE)", rotulo: "Natureza jurídica da vendedora", tipo: "texto" },
+  { exemplo: "31.492.339/0001-86", fonte: VENDEDORA("document_masked (o documento completo)"), grupo: "vendedora", nome: "vendedora_cnpj", origem: "Cadastro da vendedora (incorporador/SPE)", rotulo: "CNPJ da vendedora", tipo: "texto" },
+  { exemplo: "RUA MANACÁ", fonte: VENDEDORA_FICHA("logradouro (ou apolo_addresses)"), grupo: "vendedora", nome: "vendedora_rua", origem: "Sede da vendedora", rotulo: "Logradouro da sede", tipo: "texto" },
+  { exemplo: "32", fonte: VENDEDORA_FICHA("numero (ou apolo_addresses)"), grupo: "vendedora", nome: "vendedora_numero", origem: "Sede da vendedora", rotulo: "Número da sede", tipo: "texto" },
+  { exemplo: "ELDORADO", fonte: VENDEDORA_FICHA("bairro (ou apolo_addresses)"), grupo: "vendedora", nome: "vendedora_bairro", origem: "Sede da vendedora", rotulo: "Bairro da sede", tipo: "texto" },
+  { exemplo: "CONTAGEM", fonte: VENDEDORA_FICHA("cidade (ou apolo_addresses)"), grupo: "vendedora", nome: "vendedora_cidade", origem: "Sede da vendedora", rotulo: "Cidade da sede", tipo: "texto" },
   // ⚠️ A SIGLA, NÃO O ESTADO POR EXTENSO. O contrato do JDG escreve "MINAS GERAIS" e a ficha guarda
   // "MG": quem quiser o nome inteiro escreve na minuta, porque inventar aqui um "por extenso" de UF
   // faria o mesmo estrago do "trezentos metros quadrados metros quadrados" (ver por-extenso.ts).
-  { exemplo: "MG", fonte: VENDEDORA_FICHA("endereco.uf"), grupo: "vendedora", nome: "vendedora_uf", origem: "Sede da vendedora", rotulo: "UF da sede", tipo: "texto" },
-  { exemplo: "32.310-230", fonte: VENDEDORA_FICHA("endereco.cep"), grupo: "vendedora", nome: "vendedora_cep", origem: "Sede da vendedora", rotulo: "CEP da sede", tipo: "texto" },
+  { exemplo: "MG", fonte: VENDEDORA_FICHA("uf (ou apolo_addresses)"), grupo: "vendedora", nome: "vendedora_uf", origem: "Sede da vendedora", rotulo: "UF da sede", tipo: "texto" },
+  { exemplo: "32.310-230", fonte: VENDEDORA_FICHA("cep (ou apolo_addresses)"), grupo: "vendedora", nome: "vendedora_cep", origem: "Sede da vendedora", rotulo: "CEP da sede", tipo: "texto" },
   // O representante legal é um relacionamento do grafo (`apolo_relationships.relationship_type =
   // representante_legal`, gravado pelo cadastro de PJ), não uma coluna da entidade.
   { exemplo: "JOSÉ CARLOS BILL", fonte: VENDEDORA("display_name do representante_legal em apolo_relationships"), grupo: "vendedora", nome: "vendedora_representante_nome", origem: "Representante legal da vendedora", rotulo: "Representante legal", tipo: "texto" },
-  { exemplo: "123.456.789-00", fonte: VENDEDORA_FICHA("identificacao.cpf do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_cpf", origem: "Representante legal da vendedora", rotulo: "CPF do representante legal", tipo: "texto" },
+  { exemplo: "123.456.789-00", fonte: VENDEDORA_FICHA("document_masked do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_cpf", origem: "Representante legal da vendedora", rotulo: "CPF do representante legal", tipo: "texto" },
   // ⚠️ A QUALIFICAÇÃO REAL TRAZ MAIS QUE NOME E CPF. Lucas (07/09/2026), com o contrato do Villa
   // Paris na tela: *"trazer no bloco das partes o e-mail dos sócios"*. Lá está escrito o
   // representante inteiro — nacionalidade, estado civil, profissão, nascimento, filiação, RG, CPF,
   // endereço e e-mail. Sem essas variáveis, cada uma delas fica DIGITADA na minuta, e o contrato do
   // ano que vem sai com o sócio que saiu da empresa.
-  { exemplo: "carlos@exemplo.com.br", fonte: VENDEDORA_FICHA("perfil.email do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_email", origem: "Representante legal da vendedora", rotulo: "E-mail do representante legal", tipo: "texto" },
-  { exemplo: "(31) 99999-0000", fonte: VENDEDORA_FICHA("perfil.telefone do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_telefone", origem: "Representante legal da vendedora", rotulo: "Telefone do representante legal", tipo: "texto" },
-  { exemplo: "brasileiro", fonte: VENDEDORA_FICHA("identificacao.nacionalidade do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_nacionalidade", origem: "Representante legal da vendedora", rotulo: "Nacionalidade do representante", tipo: "texto" },
-  { exemplo: "casado", fonte: VENDEDORA_FICHA("perfil.estadoCivilId do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_estado_civil", origem: "Representante legal da vendedora", rotulo: "Estado civil do representante", tipo: "texto" },
-  { exemplo: "empresário", fonte: VENDEDORA_FICHA("perfil.profissaoId do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_profissao", origem: "Representante legal da vendedora", rotulo: "Profissão do representante", tipo: "texto" },
+  { exemplo: "carlos@exemplo.com.br", fonte: VENDEDORA_FICHA("email do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_email", origem: "Representante legal da vendedora", rotulo: "E-mail do representante legal", tipo: "texto" },
+  { exemplo: "(31) 99999-0000", fonte: VENDEDORA_FICHA("telefone do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_telefone", origem: "Representante legal da vendedora", rotulo: "Telefone do representante legal", tipo: "texto" },
+  { exemplo: "brasileiro", fonte: VENDEDORA_FICHA("nacionalidade do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_nacionalidade", origem: "Representante legal da vendedora", rotulo: "Nacionalidade do representante", tipo: "texto" },
+  { exemplo: "casado", fonte: VENDEDORA_FICHA("estadoCivilId do representante_legal → rótulo"), grupo: "vendedora", nome: "vendedora_representante_estado_civil", origem: "Representante legal da vendedora", rotulo: "Estado civil do representante", tipo: "texto" },
+  { exemplo: "empresário", fonte: VENDEDORA_FICHA("profissaoId do representante_legal → rótulo"), grupo: "vendedora", nome: "vendedora_representante_profissao", origem: "Representante legal da vendedora", rotulo: "Profissão do representante", tipo: "texto" },
   { exemplo: "MG-4.332.087", fonte: VENDEDORA_FICHA("rg + orgaoEmissor do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_rg", origem: "Representante legal da vendedora", rotulo: "RG do representante", tipo: "texto" },
-  { exemplo: "18/03/1968", fonte: VENDEDORA_FICHA("identificacao.dataNascimento do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_nascimento", origem: "Representante legal da vendedora", rotulo: "Nascimento do representante", tipo: "data" },
+  { exemplo: "18/03/1968", fonte: VENDEDORA_FICHA("dataNascimento do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_nascimento", origem: "Representante legal da vendedora", rotulo: "Nascimento do representante", tipo: "data" },
   { exemplo: "Rua Coronel Fabriciano, 225, Aclimação, João Monlevade/MG", fonte: VENDEDORA_FICHA("endereco do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_endereco", origem: "Representante legal da vendedora", rotulo: "Endereço do representante", tipo: "texto" },
   // A categoria que decidiu qual vendedora sai — útil no cabeçalho da minuta e para conferir o que
   // o motor escolheu quando o empreendimento tem mais de uma.
@@ -557,10 +600,10 @@ const COORDENADORA = (campo: string): FonteDaVariavel => PENDENTE(`coordenadora 
 
 const CORRETAGEM: VariavelDoContrato[] = [
   { exemplo: "IMOBILIÁRIA CENTRAL LTDA.", fonte: VINCULADO("display_name"), grupo: "corretagem", nome: "nome_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "Nome do vinculado", tipo: "texto" },
-  { exemplo: "11.222.333/0001-44", fonte: VINCULADO_FICHA("empresa.cnpj / identificacao.cpf"), grupo: "corretagem", nome: "cpf_cnpj_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "CPF/CNPJ do vinculado", tipo: "texto" },
-  { exemplo: "CRECI 12345", fonte: VINCULADO_FICHA("empresa.creci"), grupo: "corretagem", nome: "creci_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "CRECI do vinculado", tipo: "texto" },
-  { exemplo: "(31) 3333-0000", fonte: VINCULADO_FICHA("empresa.telefone / perfil.telefone"), grupo: "corretagem", nome: "telefone_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "Telefone do vinculado", tipo: "texto" },
-  { exemplo: "contato@imobiliaria.com.br", fonte: VINCULADO_FICHA("empresa.email / perfil.email"), grupo: "corretagem", nome: "email_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "E-mail do vinculado", tipo: "texto" },
+  { exemplo: "11.222.333/0001-44", fonte: VINCULADO("document_masked (o documento completo, PF ou PJ)"), grupo: "corretagem", nome: "cpf_cnpj_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "CPF/CNPJ do vinculado", tipo: "texto" },
+  { exemplo: "CRECI 12345", fonte: VINCULADO_FICHA("creci"), grupo: "corretagem", nome: "creci_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "CRECI do vinculado", tipo: "texto" },
+  { exemplo: "(31) 3333-0000", fonte: VINCULADO_FICHA("telefone (ou apolo_contacts)"), grupo: "corretagem", nome: "telefone_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "Telefone do vinculado", tipo: "texto" },
+  { exemplo: "contato@imobiliaria.com.br", fonte: VINCULADO_FICHA("email (ou apolo_contacts)"), grupo: "corretagem", nome: "email_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "E-mail do vinculado", tipo: "texto" },
   { exemplo: "Careli Vendas", fonte: COORDENADORA("nome fantasia"), grupo: "corretagem", nome: "nome_fantasia_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Coordenadora de vendas", tipo: "texto" },
   { exemplo: "11.115.899/0001-04", fonte: COORDENADORA("CNPJ"), grupo: "corretagem", nome: "cnpj_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "CNPJ da coordenadora", tipo: "texto" },
   { exemplo: "Avenida Central", fonte: COORDENADORA("logradouro"), grupo: "corretagem", nome: "rua_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Logradouro da coordenadora", tipo: "texto" },
@@ -599,11 +642,14 @@ const CORRETAGEM: VariavelDoContrato[] = [
   { exemplo: "cento e noventa e seis mil quinhentos e vinte e quatro reais", extensoDe: "valor_custo_total_aquisicao", fonte: EXTENSO_DE("valor_custo_total_aquisicao"), grupo: "corretagem", nome: "valor_custo_total_aquisicao_extenso", origem: "Escrito pelo sistema", rotulo: "Custo total por extenso", tipo: "extenso" },
   // Novos em 02/09/2026: imobiliária e corretor separados, cada um pelo seu vínculo na venda.
   { exemplo: "IMOBILIÁRIA CENTRAL LTDA.", fonte: ENTIDADE("display_name (imobiliaria_entity_id da venda)"), grupo: "corretagem", nome: "imobiliaria_nome", origem: "Imobiliária da venda", rotulo: "Nome da imobiliária", tipo: "texto" },
-  { exemplo: "11.222.333/0001-44", fonte: FICHA("empresa.cnpj (imobiliaria_entity_id da venda)"), grupo: "corretagem", nome: "imobiliaria_cnpj", origem: "Imobiliária da venda", rotulo: "CNPJ da imobiliária", tipo: "texto" },
-  { exemplo: "CRECI J-1234", fonte: FICHA("empresa.creci (imobiliaria_entity_id da venda)"), grupo: "corretagem", nome: "imobiliaria_creci", origem: "Imobiliária da venda", rotulo: "CRECI da imobiliária", tipo: "texto" },
+  { exemplo: "11.222.333/0001-44", fonte: ENTIDADE("document_masked (imobiliaria_entity_id da venda)"), grupo: "corretagem", nome: "imobiliaria_cnpj", origem: "Imobiliária da venda", rotulo: "CNPJ da imobiliária", tipo: "texto" },
+  { exemplo: "CRECI J-1234", fonte: FICHA("creci (imobiliaria_entity_id da venda)"), grupo: "corretagem", nome: "imobiliaria_creci", origem: "Imobiliária da venda", rotulo: "CRECI da imobiliária", tipo: "texto" },
   { exemplo: "CARLOS ALBERTO LIMA", fonte: ENTIDADE("display_name (corretor_entity_id da venda)"), grupo: "corretagem", nome: "corretor_nome", origem: "Corretor da venda", rotulo: "Nome do corretor", tipo: "texto" },
-  { exemplo: "111.222.333-44", fonte: FICHA("identificacao.cpf (corretor_entity_id da venda)"), grupo: "corretagem", nome: "corretor_cpf", origem: "Corretor da venda", rotulo: "CPF do corretor", tipo: "texto" },
-  { exemplo: "CRECI 12345", fonte: FICHA("corretores[].creci (corretor_entity_id da venda)"), grupo: "corretagem", nome: "corretor_creci", origem: "Corretor da venda", rotulo: "CRECI do corretor", tipo: "texto" },
+  { exemplo: "111.222.333-44", fonte: ENTIDADE("document_masked (corretor_entity_id da venda)"), grupo: "corretagem", nome: "corretor_cpf", origem: "Corretor da venda", rotulo: "CPF do corretor", tipo: "texto" },
+  // ⚠️ `corretores` É UM ARRAY NA RAIZ DA FICHA, e ele existe mesmo — não é nível inventado como os
+  // que foram corrigidos em 08/09/2026. Mas ele fica na ficha da IMOBILIÁRIA, não na do corretor:
+  // quem procurar o CRECI na ficha do próprio corretor não acha nada.
+  { exemplo: "CRECI 12345", fonte: FICHA("corretores[].creci — na ficha da IMOBILIÁRIA, casando pelo CPF do corretor"), grupo: "corretagem", nome: "corretor_creci", origem: "Corretor da venda", rotulo: "CRECI do corretor", tipo: "texto" },
 ];
 
 // ── CONTRATO E TRECHOS GERADOS ───────────────────────────────────────────────

@@ -268,12 +268,59 @@ describe("toda variável nasce do Panteon — Lucas, 02/09/2026: 'esquece c2x co
 
   it("o comprador vem do cadastro (apolo_entities + ficha da esteira)", () => {
     expect(acharVariavel("nome_cliente")?.fonte).toEqual({ campo: "display_name", tabela: "apolo_entities" });
-    expect(acharVariavel("cpf_cliente")?.fonte.tabela).toBe("apolo_esteira");
-    expect(acharVariavel("cpf_cliente")?.fonte.campo).toBe("ficha.identificacao.cpf");
-    expect(acharVariavel("nome_conjuge")?.fonte.campo).toBe("ficha.conjuge.nome");
     // Do 2º comprador em diante a fonte diz de qual participante da venda o valor sai.
     expect(acharVariavel("nome_cliente_2")?.fonte.tabela).toBe("apolo_entities");
     expect(acharVariavel("nome_cliente_2")?.fonte.campo).toContain("participante 2");
+  });
+
+  // ⚠️ ESTE TESTE GUARDAVA A CRENÇA ERRADA, e por isso ele existe agora ao contrário. Até
+  // 08/09/2026 ele exigia que `cpf_cliente` viesse de `ficha.identificacao.cpf` — um caminho que
+  // NÃO EXISTE. Medido no banco: das 577 fichas em produção, ZERO têm a chave `identificacao`, e
+  // NENHUMA tem `cpf`. O shape aninhado é o DTO efêmero que a leitura do MOSTQI devolve ao wizard
+  // (`app/api/apolo/cadastro/route.ts`) e que nunca é gravado.
+  //
+  // Ninguém percebeu porque o motor de contrato ainda não existe: hoje o `fonte` é o que a tela
+  // mostra ao jurídico. No dia em que o motor lesse o catálogo ao pé da letra, TODAS as variáveis de
+  // ficha sairiam vazias no contrato — sem erro nenhum, porque `undefined` vira string vazia.
+  it("a ficha é PLANA, e o documento não está nela", () => {
+    // O CPF e o CNPJ moram na coluna da entidade, que guarda o documento COMPLETO apesar do nome.
+    expect(acharVariavel("cpf_cliente")?.fonte.tabela).toBe("apolo_entities");
+    expect(acharVariavel("cpf_cliente")?.fonte.campo).toContain("document_masked");
+    expect(acharVariavel("cnpj_cliente")?.fonte.tabela).toBe("apolo_entities");
+
+    // As chaves da ficha são camelCase na RAIZ — nada de `identificacao.`, `perfil.`, `endereco.`.
+    expect(acharVariavel("nome_conjuge")?.fonte.campo).toContain("ficha.conjugeNome");
+    expect(acharVariavel("rua_cliente")?.fonte.campo).toContain("ficha.logradouro");
+    expect(acharVariavel("nacionalidade_cliente")?.fonte.campo).toBe("ficha.nacionalidade");
+  });
+
+  it("nenhuma fonte de ficha promete um nível que o jsonb não tem", () => {
+    const aninhados = ["identificacao.", "perfil.", "endereco.", "conjuge.", "empresa."];
+    const mentirosas = VARIAVEIS_DO_CONTRATO.filter(
+      (v) =>
+        v.fonte.tabela === "apolo_esteira" &&
+        aninhados.some((nivel) => (v.fonte.campo ?? "").includes(`ficha.${nivel}`)),
+    );
+    expect(mentirosas.map((v) => v.nome)).toEqual([]);
+  });
+
+  // ⚠️ O ENDEREÇO E O CONTATO NÃO SÃO SÓ DA FICHA. No cadastro pelo wizard eles nascem em
+  // `apolo_addresses` e `apolo_contacts`; a ficha só recebe o que alguém editou depois, na tela de
+  // validação. Um motor que lesse só a ficha perderia o endereço de quem nunca foi editado à mão —
+  // e o comentário de `cadastro-cascata.ts` mede isso: só 10 das 343 CADs do lançamento têm linha
+  // em `apolo_addresses`, o endereço das outras 314 está solto na ficha. As duas pontas existem.
+  it("diz onde mais procurar o que a ficha pode não ter", () => {
+    for (const nome of ["rua_cliente", "cep_cliente", "email_cliente", "telefone_cliente"]) {
+      expect(acharVariavel(nome)?.fonte.campo, nome).toMatch(/apolo_(addresses|contacts)/);
+    }
+  });
+
+  // ⚠️ O `*Id` É NÚMERO, E O CONTRATO PRECISA DO RÓTULO. `estadoCivilId: "2"` impresso no contrato
+  // é um defeito que ninguém vê na tela e todo mundo vê no papel.
+  it("avisa que os *Id precisam virar rótulo", () => {
+    for (const nome of ["estado_civil_cliente", "regime_casamento_cliente", "profissao_cliente"]) {
+      expect(acharVariavel(nome)?.fonte.campo, nome).toContain("→");
+    }
   });
 
   it("a unidade vem do Hércules", () => {
@@ -323,9 +370,13 @@ describe("toda variável nasce do Panteon — Lucas, 02/09/2026: 'esquece c2x co
       expect(v?.fonte.campo, nome).toBe(campo);
     }
     // Imobiliária e corretor, separados, cada um pelo seu vínculo na venda.
+    // ⚠️ O CNPJ MUDOU DE CASA em 08/09/2026, junto com o CPF do comprador: o documento do titular
+    // nunca esteve na ficha — ele mora em `apolo_entities.document_masked`, completo e com máscara.
     expect(acharVariavel("imobiliaria_nome")?.fonte.tabela).toBe("apolo_entities");
-    expect(acharVariavel("imobiliaria_cnpj")?.fonte.tabela).toBe("apolo_esteira");
+    expect(acharVariavel("imobiliaria_cnpj")?.fonte.tabela).toBe("apolo_entities");
     expect(acharVariavel("corretor_nome")?.fonte.tabela).toBe("apolo_entities");
+    expect(acharVariavel("corretor_cpf")?.fonte.tabela).toBe("apolo_entities");
+    // O CRECI continua na ficha — mas na da IMOBILIÁRIA, dentro do array `corretores`.
     expect(acharVariavel("corretor_creci")?.fonte.tabela).toBe("apolo_esteira");
     // E os novos com sufixo de comprador existem até o 5º.
     expect(acharVariavel("rg_cliente_5")).toBeDefined();
