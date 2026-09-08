@@ -145,7 +145,14 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
         document.body.append(link);
         link.click();
         link.remove();
-        URL.revokeObjectURL(url);
+        // ⚠️ A REVOGAÇÃO ESPERA. Revogar na mesma linha do clique é uma corrida com o navegador: em
+        // alguns casos ele ainda não começou a ler o blob quando a URL deixa de existir, e o
+        // download morre CALADO — nada lança, nenhum erro aparece na tela, e a pessoa clica de novo
+        // achando que não clicou direito. Foi o que o Isac relatou em 08/09/2026, e a mesma sessão
+        // dele funcionou noutra máquina, que é a assinatura de um problema de navegador e não de
+        // permissão. Os outros cinco downloads do sistema já adiavam (60s em `painel-contratos` e
+        // em `empreendimentos-view`, 4s no cadastro); esta era a única linha que revogava na hora.
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       } catch {
         setErroPdf("Não foi possível gerar o PDF.");
       } finally {

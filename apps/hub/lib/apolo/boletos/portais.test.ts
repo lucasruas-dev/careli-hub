@@ -7,10 +7,16 @@ import { carteirasDoPortal, portalEmiteBoletos, portalPodeEmitir } from "./porta
 // verde por engano, alguém emite dívida na carteira do vizinho.
 
 describe("quem enxerga carteira de boleto", () => {
-  it("os dois portais do Cecílio veem as nove carteiras", () => {
-    // ⚠️ ELAS ENTRARAM EM DUAS ETAPAS, e nenhuma por semelhança: primeiro os quatro edifícios da CER
-    // (*"vamos fazer o CER primeiro"*), e as outras cinco quando o Lucas autorizou (*"pode subir os
-    // demais empreendimentos que vamos fazer"*, 01/09/2026).
+  it("os dois portais do Cecílio veem as dez carteiras", () => {
+    // ⚠️ ELAS ENTRARAM EM TRÊS ETAPAS, e nenhuma por semelhança: primeiro os quatro edifícios da CER
+    // (*"vamos fazer o CER primeiro"*), depois as outras cinco quando o Lucas autorizou (*"pode subir
+    // os demais empreendimentos que vamos fazer"*, 01/09/2026), e o Vale do Ouro - 2 em 08/09/2026
+    // (*"precisamos criar os boletos do vale do ouro desses clientes"*).
+    //
+    // ⚠️ ESTE TESTE É A TRAVA, e ela pegou uma carteira de verdade: em 08/09/2026 o Vale do Ouro foi
+    // cadastrado, importado e publicado, e a aba não apareceu na tela porque ninguém a autorizou
+    // aqui. A lista explícita é o que obriga a autorização a ser um ato, e não um efeito colateral
+    // de cadastrar um empreendimento.
     //
     // A carteira "teste" fica de fora desta lista de propósito: ela existe para o boleto de
     // conferência e sai daqui quando servir. Ver o teste seguinte.
@@ -27,6 +33,7 @@ describe("quem enxerga carteira de boleto", () => {
         "giant-towers",
         "guaimbe",
         "on-sky",
+        "vale-do-ouro-2",
         "vale-do-sol",
       ]);
     }

@@ -36,6 +36,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-aba-do-vale-do-ouro-e-download-do-extrato",
+    deployedAt: "2026-09-08T15:40:00-03:00",
+    modules: [
+      {
+        module: "CER",
+        screens: [
+          {
+            items: [
+              "**A aba do Vale do Ouro - 2 apareceu.** Faltava autorizar o portal a enxergá-la — cadastrar o empreendimento não basta, e é assim de propósito.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O PDF do extrato parou de morrer calado.** Em alguns navegadores o arquivo chegava e o download não acontecia, sem erro nenhum na tela.",
+            ],
+            screen: "CRM 360 · Financeiro",
+          },
+        ],
+      },
+    ],
+    rollback: "8193d41c",
+    technical: {
+      done: "⚠️ A TRAVA DO PORTAL FUNCIONOU, e pegou uma carteira de verdade: o Vale do Ouro - 2 foi cadastrado em `empreendimentos.ts`, importado e publicado — e a aba NÃO apareceu, porque `CARTEIRAS_DO_PORTAL` é uma lista EXPLÍCITA e ele não estava nela. O comentário de lá diz por quê: cada linha é uma cobrança que um portal externo passa a poder criar em nome de uma empresa; mostrar carteira errada num portal é vazamento, deixar emitir nela é dívida no CNPJ de outro. A autorização é um ato separado de propósito, e o teste que trava a lista foi atualizado com a explicação. ⚠️ E O DOWNLOAD DO EXTRATO: `URL.revokeObjectURL` era chamado na MESMA LINHA do clique, uma corrida com o navegador — em alguns casos ele ainda não começou a ler o blob quando a URL deixa de existir, e o download morre SEM LANÇAR: nenhum erro na tela, e a pessoa clica de novo achando que não clicou direito. Foi o relato do Isac em 08/09/2026, e a mesma sessão dele funcionou noutra máquina — a assinatura de problema de navegador, não de permissão. Investigado por três agentes com refutação: ele é `leader` e `active`, a rota exige o papel mais baixo que existe (`authorizeApoloRead`, que aceita até `viewer`), e em 4 dias houve 37 requisições ao extrato em produção, TODAS 200, sem um 401 ou 403. Os outros cinco downloads do sistema já adiavam a revogação (60s em dois, 4s no cadastro); esta era a única linha que revogava na hora. 3.236 testes verdes.",
+      motivation:
+        "A aba nova não apareceu na tela, e um colaborador não conseguia baixar o extrato — dois sintomas sem erro visível.",
+    },
+    title: "A aba que faltava e o download que sumia",
+    type: "correcao",
+    version: "1.298.1",
+  },
+  {
     buildTag: "2026-09-08-vale-do-ouro-2-na-emissao",
     deployedAt: "2026-09-08T15:10:00-03:00",
     modules: [

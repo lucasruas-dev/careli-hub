@@ -30,6 +30,14 @@ const TODAS_AS_CARTEIRAS = [
   "on-sky",
   "guaimbe",
   "giant-towers",
+  // O loteamento do Vitor, autorizado pelo Lucas em 08/09/2026: *"precisamos criar os boletos do
+  // vale do ouro desses clientes, ae quero que suba igual temos as outras carteiras"*.
+  //
+  // ⚠️ REGISTRAR O EMPREENDIMENTO NÃO BASTA — E ESSA TRAVA FUNCIONOU. Em 08/09/2026 a carteira foi
+  // cadastrada em `empreendimentos.ts`, importada e publicada, e a aba NÃO apareceu na tela: o
+  // portal não a enxergava porque ela não estava nesta lista. É o desenho fazendo o seu trabalho —
+  // a linha aqui é a autorização, e ela é separada de propósito.
+  "vale-do-ouro-2",
   // ⚠️ AS CARTEIRAS DE TESTE, uma por conta do Asaas (ver `empreendimentos.ts`). O Lucas as mantém
   // para validar cada chave antes do primeiro envio real: *"quero testar todas as contas antes de
   // enviar"* (01/09/2026). Saem juntas quando servirem.
