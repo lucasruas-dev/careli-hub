@@ -29,6 +29,11 @@ import {
 } from 'platejs';
 
 const ACTION_THREE_COLUMNS = 'action_three_columns';
+// Duas colunas, pedido do Lucas em 08/09/2026: *"eu não consigo colocar uma imagem ao lado da outra
+// não?"*. O kit do Plate só oferecia três, e duas é o caso do contrato — duas plantas, duas
+// assinaturas, a foto ao lado do texto. Quem quer duas com três disponíveis deixa uma vazia, e a
+// coluna vazia vira um vão no PDF que ninguém entende de onde veio.
+const ACTION_TWO_COLUMNS = 'action_two_columns';
 const ACTION_FOOTNOTE = 'action_footnote';
 
 const insertList = (editor: PlateEditor, type: string) => {
@@ -63,6 +68,8 @@ const insertBlockMap: Record<
   [KEYS.ul]: insertList,
   [ACTION_THREE_COLUMNS]: (editor) =>
     insertColumnGroup(editor, { columns: 3, select: true }),
+  [ACTION_TWO_COLUMNS]: (editor) =>
+    insertColumnGroup(editor, { columns: 2, select: true }),
   [KEYS.audio]: (editor) => insertAudioPlaceholder(editor, { select: true }),
   [KEYS.callout]: (editor) => insertCallout(editor, { select: true }),
   [KEYS.codeBlock]: (editor) => insertCodeBlock(editor, { select: true }),
@@ -189,6 +196,7 @@ const setBlockMap: Record<
   [KEYS.ol]: setList,
   [KEYS.ul]: setList,
   [ACTION_THREE_COLUMNS]: (editor) => toggleColumnGroup(editor, { columns: 3 }),
+  [ACTION_TWO_COLUMNS]: (editor) => toggleColumnGroup(editor, { columns: 2 }),
   [KEYS.codeBlock]: (editor) => toggleCodeBlock(editor),
 };
 

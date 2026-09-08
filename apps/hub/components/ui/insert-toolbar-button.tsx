@@ -168,6 +168,11 @@ const groups: Group[] = [
       },
       {
         icon: <Columns3Icon />,
+        label: '2 colunas (lado a lado)',
+        value: 'action_two_columns',
+      },
+      {
+        icon: <Columns3Icon />,
         label: '3 colunas',
         value: 'action_three_columns',
       },

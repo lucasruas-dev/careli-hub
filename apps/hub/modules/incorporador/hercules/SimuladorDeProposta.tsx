@@ -28,6 +28,13 @@ import { DIAS_DE_VENCIMENTO } from "@/lib/hercules/proposta";
 import { lerPercentualDigitado, proximoVencimento } from "@/lib/hercules/proposta-na-tela";
 import { montarProposta, sistemaDoCadastro } from "@/lib/hercules/simulacao";
 
+import {
+  type AjusteDePreco,
+  aplicarAjuste,
+  descreverAjuste,
+  SEM_AJUSTE,
+} from "@/lib/hercules/ajuste-de-preco";
+
 import { T } from "../tema";
 
 // O SIMULADOR DE PROPOSTA DO COMERCIAL.
@@ -227,6 +234,14 @@ export function SimuladorDeProposta({
   const [primeiraParcelaEm, setPrimeiraParcelaEm] = useState<string>(() =>
     proximoVencimento(new Date().toISOString(), DIAS_DE_VENCIMENTO[0]),
   );
+  // ⚠️ O AJUSTE É ESTADO PRÓPRIO, e o preço da proposta passa a ser DERIVADO dele. Antes o campo do
+  // lote guardava o valor final e mais nada: depois de salvar, ninguém sabia se R$ 142.500 tinham
+  // sido um desconto de 5%, uma tabela desatualizada ou um erro de digitação — e a tela só dizia
+  // "editado". Lucas, 08/09/2026: *"desconto em valor ou % que influencia o valor da proposta, isso
+  // não pode mudar o valor original de tabela"*.
+  const [ajuste, setAjuste] = useState<AjusteDePreco>(SEM_AJUSTE);
+  const preco = useMemo(() => aplicarAjuste(valorDaUnidade, ajuste), [ajuste, valorDaUnidade]);
+
   const [cockpit, setCockpit] = useState<Cockpit>({
     anuaisQuantidade: 0,
     anuaisValor: 0,
@@ -318,6 +333,10 @@ export function SimuladorDeProposta({
     setPlanoAtivo(maisLongo?.nome ?? null);
     setComando("condicoes");
     setEntradaEhTeto(false);
+    // ⚠️ TROCOU DE UNIDADE, ZERA O DESCONTO. Um desconto de 5% que sobrevivesse à troca de lote
+    // seria aplicado a um preço que ninguém negociou — e como este efeito também reescreve o valor,
+    // deixar o ajuste de pé faria a tela mostrar a tabela do lote novo com o desconto do antigo.
+    setAjuste(SEM_AJUSTE);
     setCockpit({
       anuaisQuantidade: 0,
       anuaisValor: 0,
@@ -342,6 +361,14 @@ export function SimuladorDeProposta({
       valor: valorDaUnidade,
     });
   }, [entradaMinimaPercentual, planosDaConta, unidade, valorDaUnidade]);
+
+  // ⚠️ O AJUSTE REFAZ A CONTA INTEIRA. Mudar o preço sem refazer parcela e entrada deixaria a tela
+  // mostrando um total novo com o financiamento velho — e o cronograma que vai para a proposta sairia
+  // do preço antigo, sem ninguém ver. Só age quando o valor REALMENTE mudou, senão o efeito brigaria
+  // com quem está digitando a parcela.
+  useEffect(() => {
+    setCockpit((a) => (a.valor === preco.valor ? a : { ...a, valor: preco.valor }));
+  }, [preco.valor]);
 
   // ── A conta montada à mão, quando o comando veio das condições ───────────
   //
@@ -594,11 +621,11 @@ export function SimuladorDeProposta({
         }}
       >
         <Bloco titulo="O lote">
-          <CampoEmReais
-            aoMudar={(v) => setCockpit((a) => ({ ...a, valor: v }))}
-            direita={valorDaUnidade === cockpit.valor ? "valor de tabela" : "editado"}
+          <CampoDoLote
+            ajuste={ajuste}
+            aoMudarAjuste={setAjuste}
+            preco={preco}
             rotulo={`Lote ${unidade}`}
-            valor={cockpit.valor}
           />
         </Bloco>
 
@@ -1635,6 +1662,175 @@ function Dado({ nota, rotulo, valor }: { nota: string; rotulo: string; valor: st
         {valor}
       </div>
       <div style={{ color: T.muted, fontSize: 10.5 }}>{nota}</div>
+    </div>
+  );
+}
+
+// ── O CAMPO DO LOTE, COM DESCONTO ───────────────────────────────────────────
+//
+// Lucas, 08/09/2026: *"não temos um campo para dar desconto ou aumentar o preço caso o usuário
+// entenda que deva aumentar. Acho que aqui pode ficar isso, desconto em valor ou % que influencia o
+// valor da proposta — isso não pode mudar o valor original de tabela"*.
+//
+// ⚠️ SÃO TRÊS LINHAS, E A ORDEM IMPORTA: tabela (leitura), ajuste (o único campo), proposta (o
+// resultado). Antes havia um campo só, que guardava o valor final: quem desse 5% de desconto digitava
+// 142.500 por cima de 150.000 e a tela dizia "editado" — e ninguém mais sabia se aquilo tinha sido um
+// desconto concedido, uma tabela desatualizada ou um erro de digitação.
+//
+// ⚠️ UM CAMPO PARA OS DOIS SENTIDOS. Negativo desconta, positivo acresce. Dois controles para a mesma
+// ideia obrigariam quem revisa a olhar em dois lugares para saber o que aconteceu com o preço.
+//
+// ⚠️ E ELE MOSTRA SEMPRE AS DUAS MEDIDAS. Digitou `-5` em %, a linha do meio responde `− R$ 7.500,00`;
+// digitou `-7.500` em R$, ela responde `5%`. Quem aprova desconto pensa em percentual e quem fecha a
+// proposta pensa em reais — a conta de cabeça entre os dois é onde nasce o erro que só aparece no
+// contrato assinado.
+function CampoDoLote({
+  ajuste,
+  aoMudarAjuste,
+  preco,
+  rotulo,
+}: {
+  ajuste: AjusteDePreco;
+  aoMudarAjuste: (a: AjusteDePreco) => void;
+  preco: ReturnType<typeof aplicarAjuste>;
+  rotulo: string;
+}) {
+  const [texto, setTexto] = useState("");
+  const temAjuste = preco.emReais !== 0;
+  const desconto = preco.emReais < 0;
+
+  // Enquanto a pessoa digita, o texto é dela — reescrever a cada tecla move o cursor e apaga o
+  // sinal de menos que ela acabou de escrever. Só volta a seguir o estado quando o ajuste é zerado
+  // de fora (troca de unidade, por exemplo).
+  useEffect(() => {
+    if (ajuste.valor === 0) setTexto("");
+  }, [ajuste.valor]);
+
+  function mudarModo(modo: AjusteDePreco["modo"]) {
+    // ⚠️ O NÚMERO NÃO É CONVERTIDO NA TROCA DE MODO. "-5" em percentual virando "-R$ 5,00" seria
+    // uma conta que ninguém pediu; e converter para o equivalente (-R$ 7.500) mudaria o que a
+    // pessoa escreveu. Ela trocou de moeda: o número é reinterpretado, e ela vê o resultado na hora.
+    aoMudarAjuste({ modo, valor: ajuste.valor });
+  }
+
+  function mudarValor(cru: string) {
+    setTexto(cru);
+    const limpo = cru.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+    if (limpo === "" || limpo === "-" || limpo === "+") {
+      aoMudarAjuste({ ...ajuste, valor: 0 });
+      return;
+    }
+    const n = Number(limpo);
+    aoMudarAjuste({ ...ajuste, valor: Number.isFinite(n) ? n : 0 });
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <span style={{ alignItems: "baseline", display: "flex", justifyContent: "space-between" }}>
+        <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>{rotulo}</span>
+        <span style={{ color: T.muted, fontSize: 10.5 }}>tabela</span>
+      </span>
+      {/* ⚠️ A TABELA NÃO É CAMPO. Ela é o número que o pedido do Lucas manda preservar, e deixá-la
+          editável devolveria exatamente o problema que este bloco veio resolver. Quem precisa
+          corrigir o preço de tabela faz isso no cadastro da unidade, não aqui. */}
+      <div
+        style={{
+          alignItems: "center",
+          background: T.soft,
+          border: `1px solid ${T.border}`,
+          borderRadius: 8,
+          display: "flex",
+          fontSize: 14,
+          fontVariantNumeric: "tabular-nums",
+          gap: 6,
+          height: 34,
+          padding: "0 10px",
+        }}
+      >
+        <span>{dinheiroExato(preco.tabela)}</span>
+      </div>
+
+      <div style={{ display: "flex", gap: 6 }}>
+        <div
+          style={{
+            border: `1px solid ${T.border}`,
+            borderRadius: 8,
+            display: "flex",
+            overflow: "hidden",
+          }}
+        >
+          {(["percentual", "reais"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => mudarModo(m)}
+              onMouseDown={(e) => e.preventDefault()}
+              style={{
+                background: ajuste.modo === m ? T.gold : "transparent",
+                border: "none",
+                color: ajuste.modo === m ? "#fff" : T.muted,
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 600,
+                padding: "0 10px",
+              }}
+              type="button"
+            >
+              {m === "percentual" ? "%" : "R$"}
+            </button>
+          ))}
+        </div>
+        <input
+          inputMode="decimal"
+          onChange={(e) => mudarValor(e.target.value)}
+          placeholder="desconto ou acréscimo"
+          style={{
+            background: T.card,
+            border: `1px solid ${temAjuste ? T.gold : T.border}`,
+            borderRadius: 8,
+            color: T.text,
+            flex: 1,
+            fontSize: 13,
+            fontVariantNumeric: "tabular-nums",
+            height: 34,
+            minWidth: 0,
+            outline: "none",
+            padding: "0 10px",
+          }}
+          value={texto}
+        />
+      </div>
+
+      {/* ⚠️ O AVISO DE RECORTE. Quem quis dar R$ 500 e digitou -500 com o botão em "%" precisa ver
+          que o pedido não coube — senão a proposta sai por um centavo e o PDF sai junto. */}
+      {preco.limitado ? (
+        <span style={{ color: T.danger, fontSize: 10.5, lineHeight: 1.35 }}>
+          O ajuste pedido não cabe no preço e foi limitado. Confira se o botão está no % ou no R$
+          certo.
+        </span>
+      ) : null}
+
+      <div style={{ borderTop: `1px solid ${T.border}`, display: "grid", gap: 4, paddingTop: 8 }}>
+        {temAjuste ? (
+          <span style={{ alignItems: "baseline", display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: T.muted, fontSize: 11 }}>{descreverAjuste(preco)}</span>
+            <span
+              style={{
+                color: desconto ? T.danger : T.ok,
+                fontSize: 12,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {desconto ? "−" : "+"} {dinheiroExato(Math.abs(preco.emReais))}
+            </span>
+          </span>
+        ) : null}
+        <span style={{ alignItems: "baseline", display: "flex", justifyContent: "space-between" }}>
+          <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>Proposta</span>
+          <span style={{ fontSize: 17, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>
+            {dinheiroExato(preco.valor)}
+          </span>
+        </span>
+      </div>
     </div>
   );
 }

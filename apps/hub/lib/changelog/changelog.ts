@@ -36,6 +36,45 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-desconto-sem-perder-a-tabela",
+    deployedAt: "2026-09-08T11:30:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Desconto e acréscimo no lote, sem mexer no preço de tabela.** Em % ou em reais, no mesmo campo: negativo desconta, positivo acresce.",
+              "**Ele mostra sempre as duas medidas.** Você digita −5% e ele responde − R$ 7.500,00; digita −7.500 e ele responde 5%.",
+              "**E avisa quando o ajuste não cabe** — quem quis dar R$ 500 e digitou −500 com o botão no % vê o aviso em vez de uma proposta de um centavo.",
+            ],
+            screen: "Simulador de proposta",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Duas colunas, para pôr uma imagem ao lado da outra** — dois logos no cabeçalho, duas plantas, duas assinaturas. Está no botão + , em Blocos avançados, e no menu do /.",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+    ],
+    rollback: "e317ef93",
+    technical: {
+      done: "⚠️ O DESCONTO EXISTE PORQUE DIGITAR POR CIMA DO PREÇO PERDE A INFORMAÇÃO. O campo do lote já era editável, mas depois de salvar ninguém sabia se R$ 142.500 tinham sido um desconto de 5%, uma tabela desatualizada ou um erro de digitação — a tela só dizia \"editado\". Agora a tabela é linha de LEITURA (não campo: deixá-la editável devolveria o problema) e o preço da proposta é DERIVADO dela mais o ajuste. `lib/hercules/ajuste-de-preco.ts`, 21 testes: conta em CENTAVOS INTEIROS porque `150000 * 0.95` em ponto flutuante dá 142499.99999999997 e esse número iria impresso no contrato; o ajuste mostrado é o EFETIVO e não o pedido (quem digita −500.000 num lote de 150.000 vê o desconto real de R$ 149.999,99, senão a subtração da tela não fecha com o total da própria tela); piso de UM CENTAVO, não zero. ⚠️ A COMISSÃO ACOMPANHA O VALOR VENDIDO — decisão do Lucas, e é o que o dinheiro real já fazia: o split do Asaas incide sobre o valor PAGO de cada parcela, então descontar encolhe a comissão na mesma proporção sem ninguém recalcular nada. Quem diverge é o dossiê jurídico do Hades, que calcula corretagem sobre `enterprise_unities.price` (a tabela) — para as vendas do legado continua certo, para as novas com desconto não; anotado no fim do arquivo. ⚠️ O AJUSTE MORRE NA TROCA DE UNIDADE: um desconto de 5% que sobrevivesse seria aplicado a um preço que ninguém negociou. ⚠️ MEDIDO E AINDA ABERTO: a régua do servidor (`conferirProposta`) só exige `valorNegociado > 0` — não há piso, teto nem alçada, e dá para gerar proposta de R$ 1,00 num lote de R$ 178.100. O teto deste arquivo é sanidade de digitação (100%), NÃO regra comercial; o molde para a alçada é a entrada mínima (migration 0128, cadastro por empreendimento + régua dupla). Falta ainda gravar o retrato da tabela e o ajuste na proposta — precisa de migration. ⚠️ AS DUAS COLUNAS: o `insertColumnGroup` do Plate já existia mas só era oferecido com TRÊS, e quem quer duas com três disponíveis deixa uma vazia, que vira um vão no PDF. O serializador do contrato já sabia emitir coluna como `<table>` sem borda — o formato que sobrevive à conversão para PDF. 3.141 testes verdes; typecheck limpo.",
+      motivation:
+        "Lucas: *\"não temos um campo para dar desconto ou aumentar o preço (…) isso não pode mudar o valor original de tabela\"* e, montando o cabeçalho do contrato com dois logos: *\"eu não consigo colocar uma imagem ao lado da outra não?\"*.",
+    },
+    title: "Desconto no lote, sem perder a tabela",
+    type: "melhoria",
+    version: "1.296.0",
+  },
+  {
     buildTag: "2026-09-08-o-que-nao-entra-aparece",
     deployedAt: "2026-09-08T08:20:00-03:00",
     modules: [
