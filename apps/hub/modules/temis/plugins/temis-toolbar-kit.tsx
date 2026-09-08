@@ -145,7 +145,6 @@ function BotaoImportarDocx() {
         tooltip="Importar .docx por cima deste documento"
       >
         {importando ? <Loader2 className="animate-spin" /> : <FileUp />}
-        <span className="hidden 2xl:inline">.docx</span>
       </ToolbarButton>
       <input
         accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -221,9 +220,6 @@ function BotaoSuperAgente() {
       }
     >
       {marcando ? <Loader2 className="animate-spin" /> : <Wand2 />}
-      {/* ⚠️ RÓTULO CURTO: com "Marcar variáveis" a barra estourava e o botão saía cortado como
-          "Mar…" — a barra já carrega os ~40 botões do Plate. O tooltip diz o que ele faz. */}
-      <span className="hidden 2xl:inline">{marcando ? "Lendo…" : "Agente"}</span>
     </ToolbarButton>
   );
 }
@@ -245,7 +241,6 @@ function BotaoVariaveis() {
       tooltip={aberto ? "Esconder as variáveis" : "Mostrar as variáveis"}
     >
       {aberto ? <PanelRight /> : <Braces />}
-      <span className="hidden 2xl:inline">Variáveis</span>
     </ToolbarButton>
   );
 }

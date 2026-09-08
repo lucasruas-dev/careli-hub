@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-agente-autenticado-e-partes-separadas",
+    deployedAt: "2026-09-08T01:10:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O agente voltou a funcionar.** Ele respondia 401: a chamada não mandava a credencial da sessão.",
+              "**O bloco Partes virou dois** — vendedora e compradores. Eles mudam por motivos diferentes: a vendedora, quando o incorporador troca de representante; o comprador, a cada venda.",
+              "**O representante da vendedora ganhou qualificação inteira**: e-mail, telefone, nacionalidade, estado civil, profissão, RG, nascimento e endereço.",
+              "**A barra ficou só com os ícones**, para parar de cortar os nomes dos botões.",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+    ],
+    rollback: "c3b74edf",
+    technical: {
+      done: "⚠️ O 401 ERA ERRO MEU, PURO: a rota `/api/temis/minutas/marcar` exige `authorizeApoloRead` como toda rota do módulo, e a minha chamada não mandava o `Authorization: Bearer`. O resto da Têmis manda; eu esqueci nessa. Agora manda, e quando `getApoloAccessToken` devolve null (sessão caída) a tela diz \"sessão expirada\" em vez de repetir um número. ⚠️ O BLOCO PARTES VIROU DOIS — Lucas (07/09/2026): *\"acho separar, podemos ter o sub bloco da vendedora e dos compradores\"*. Não é organização: a qualificação da VENDEDORA muda quando o incorporador troca de representante ou de endereço (uma vez a cada anos, e vale para todos os contratos daquele produto) e a dos COMPRADORES muda a cada venda; num bloco só, quem quer ajustar uma insere as duas para usar metade. O REPRESENTANTE ganhou 8 variáveis — *\"trazer no bloco das partes o e-mail dos sócios\"* —, medidas do contrato real do Villa Paris, que qualifica o sócio inteiro: e-mail, telefone, nacionalidade, estado civil, profissão, RG, nascimento e endereço. ⚠️ SEM VARIÁVEL, ESSES DADOS FICAM DIGITADOS NA MINUTA, e no dia em que o sócio sair da empresa o contrato continua saindo com o nome dele — ninguém caça isso no meio de 60 mil caracteres. Todas seguem PENDENTE (falta `vendedor_entity_id` apontar a entidade) e a tela mostra o selo. A barra perdeu os rótulos dos nossos três botões: com ~40 botões do Plate na mesma linha, qualquer texto nosso a fazia estourar e o botão saía cortado (\"Mar…\", \"Variáve…\"); o tooltip diz o que cada um faz. 3.024 testes verdes; typecheck e lint limpos.",
+      motivation:
+        "O agente não respondia por falta de credencial, e o bloco de Partes misturava a vendedora (que muda a cada anos) com o comprador (que muda a cada venda).",
+    },
+    title: "O agente autenticado, e as Partes separadas",
+    type: "melhoria",
+    version: "1.294.3",
+  },
+  {
     buildTag: "2026-09-08-agente-em-partes-e-blocos",
     deployedAt: "2026-09-08T00:20:00-03:00",
     modules: [

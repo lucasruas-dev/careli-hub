@@ -266,6 +266,19 @@ const VENDEDORA_VARS: VariavelDoContrato[] = [
   // representante_legal`, gravado pelo cadastro de PJ), não uma coluna da entidade.
   { exemplo: "JOSÉ CARLOS BILL", fonte: VENDEDORA("display_name do representante_legal em apolo_relationships"), grupo: "vendedora", nome: "vendedora_representante_nome", origem: "Representante legal da vendedora", rotulo: "Representante legal", tipo: "texto" },
   { exemplo: "123.456.789-00", fonte: VENDEDORA_FICHA("identificacao.cpf do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_cpf", origem: "Representante legal da vendedora", rotulo: "CPF do representante legal", tipo: "texto" },
+  // ⚠️ A QUALIFICAÇÃO REAL TRAZ MAIS QUE NOME E CPF. Lucas (07/09/2026), com o contrato do Villa
+  // Paris na tela: *"trazer no bloco das partes o e-mail dos sócios"*. Lá está escrito o
+  // representante inteiro — nacionalidade, estado civil, profissão, nascimento, filiação, RG, CPF,
+  // endereço e e-mail. Sem essas variáveis, cada uma delas fica DIGITADA na minuta, e o contrato do
+  // ano que vem sai com o sócio que saiu da empresa.
+  { exemplo: "carlos@exemplo.com.br", fonte: VENDEDORA_FICHA("perfil.email do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_email", origem: "Representante legal da vendedora", rotulo: "E-mail do representante legal", tipo: "texto" },
+  { exemplo: "(31) 99999-0000", fonte: VENDEDORA_FICHA("perfil.telefone do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_telefone", origem: "Representante legal da vendedora", rotulo: "Telefone do representante legal", tipo: "texto" },
+  { exemplo: "brasileiro", fonte: VENDEDORA_FICHA("identificacao.nacionalidade do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_nacionalidade", origem: "Representante legal da vendedora", rotulo: "Nacionalidade do representante", tipo: "texto" },
+  { exemplo: "casado", fonte: VENDEDORA_FICHA("perfil.estadoCivilId do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_estado_civil", origem: "Representante legal da vendedora", rotulo: "Estado civil do representante", tipo: "texto" },
+  { exemplo: "empresário", fonte: VENDEDORA_FICHA("perfil.profissaoId do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_profissao", origem: "Representante legal da vendedora", rotulo: "Profissão do representante", tipo: "texto" },
+  { exemplo: "MG-4.332.087", fonte: VENDEDORA_FICHA("rg + orgaoEmissor do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_rg", origem: "Representante legal da vendedora", rotulo: "RG do representante", tipo: "texto" },
+  { exemplo: "18/03/1968", fonte: VENDEDORA_FICHA("identificacao.dataNascimento do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_nascimento", origem: "Representante legal da vendedora", rotulo: "Nascimento do representante", tipo: "data" },
+  { exemplo: "Rua Coronel Fabriciano, 225, Aclimação, João Monlevade/MG", fonte: VENDEDORA_FICHA("endereco do representante_legal"), grupo: "vendedora", nome: "vendedora_representante_endereco", origem: "Representante legal da vendedora", rotulo: "Endereço do representante", tipo: "texto" },
   // A categoria que decidiu qual vendedora sai — útil no cabeçalho da minuta e para conferir o que
   // o motor escolheu quando o empreendimento tem mais de uma.
   { exemplo: "Condomínio", fonte: { campo: "nome (categoria da unidade vendida)", tabela: "temis_categorias" }, grupo: "vendedora", nome: "categoria_nome", origem: "Categoria da unidade vendida", rotulo: "Nome da categoria", tipo: "texto" },

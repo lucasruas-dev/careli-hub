@@ -18,7 +18,8 @@ import { acharVariavel, conferirBlocos, extensosOrfaos, variaveisDoTexto } from 
 describe("blocos prontos", () => {
   it("tem os blocos na ordem em que o contrato é escrito", () => {
     expect(BLOCOS_PRONTOS.map((b) => b.id)).toEqual([
-      "partes",
+      "partes-vendedora",
+      "partes-compradores",
       "objeto",
       "preco",
       "fluxo-tabela",
@@ -35,7 +36,7 @@ describe("blocos prontos", () => {
   });
 
   it("acha pelo id, e devolve undefined no que não existe", () => {
-    expect(acharBlocoPronto("partes")?.rotulo).toBe("Partes");
+    expect(acharBlocoPronto("partes-vendedora")?.rotulo).toBe("Partes — vendedora");
     expect(acharBlocoPronto("clausula-inventada")).toBeUndefined();
   });
 
@@ -73,7 +74,7 @@ describe("blocos prontos", () => {
 
 describe("o laço por comprador", () => {
   it("qualifica o comprador uma vez só, sem os sufixos do legado", () => {
-    const texto = textoDoBloco(acharBlocoPronto("partes") as never);
+    const texto = textoDoBloco(acharBlocoPronto("partes-compradores") as never);
     expect(texto).toContain("[inicio_cada_comprador]");
     expect(texto).toContain("[fim_cada_comprador]");
     // ⚠️ Nenhum `_2`…`_5`: é a decisão de 07/09/2026 (contrato só no Panteon). Um sufixo que
@@ -82,7 +83,7 @@ describe("o laço por comprador", () => {
   });
 
   it("põe o cônjuge DENTRO do laço, para nascer de cada comprador", () => {
-    const texto = textoDoBloco(acharBlocoPronto("partes") as never);
+    const texto = textoDoBloco(acharBlocoPronto("partes-compradores") as never);
     const abre = texto.indexOf("[inicio_cada_comprador]");
     const conjuge = texto.indexOf("[inicio_dados_conjuge]");
     const fecha = texto.indexOf("[fim_cada_comprador]");
@@ -109,7 +110,7 @@ describe("a participação é DA UNIDADE", () => {
   });
 
   it("liga o percentual do comprador à unidade", () => {
-    expect(textoDoBloco(acharBlocoPronto("partes") as never)).toContain(
+    expect(textoDoBloco(acharBlocoPronto("partes-compradores") as never)).toContain(
       "detentor de [percentual_cliente] da unidade",
     );
   });
@@ -119,16 +120,32 @@ describe("a vendedora", () => {
   // *"aqui é os dados do incorporador ou spe, vai estar no sistema também"* — e a vendedora pode
   // mudar dentro do mesmo empreendimento, por categoria.
   it("é qualificada por variável, não escrita à mão", () => {
-    const texto = textoDoBloco(acharBlocoPronto("partes") as never);
+    const texto = textoDoBloco(acharBlocoPronto("partes-vendedora") as never);
     for (const nome of [
       "vendedora_razao_social",
       "vendedora_natureza_juridica",
       "vendedora_cnpj",
       "vendedora_cidade",
       "vendedora_representante_nome",
+      // ⚠️ O contrato real do Villa Paris qualifica o representante INTEIRO. Lucas (07/09/2026):
+      // *"trazer no bloco das partes o e-mail dos sócios"*. Sem variável, esses dados ficam
+      // digitados na minuta — e o contrato do ano que vem sai com o sócio que já saiu da empresa.
+      "vendedora_representante_email",
+      "vendedora_representante_rg",
+      "vendedora_representante_endereco",
     ]) {
       expect(texto).toContain(`[${nome}]`);
     }
+  });
+
+  // ⚠️ DOIS BLOCOS, E NÃO UM: *"acho separar, podemos ter o sub bloco da vendedora e dos
+  // compradores"*. Eles mudam por motivos diferentes — a vendedora muda quando o incorporador troca
+  // de representante (uma vez a cada anos, valendo para todos os contratos); o comprador muda a
+  // cada venda.
+  it("mora num bloco separado do comprador", () => {
+    const compradores = textoDoBloco(acharBlocoPronto("partes-compradores") as never);
+    expect(compradores).not.toContain("[vendedora_razao_social]");
+    expect(compradores).toContain("[nome_cliente]");
   });
 
   it("assina o contrato pelo nome, no fecho", () => {

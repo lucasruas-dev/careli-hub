@@ -25,6 +25,7 @@ import type { NoDoDocumento } from "@/lib/temis/documento-html";
 import { migrarAlinhamentoAntigo } from "@/lib/temis/migrar-documento";
 import { acharVariavel, variaveisDoTexto } from "@/lib/temis/variaveis";
 import { setMinutaAtualParaUpload } from "@/lib/temis/upload-midia";
+import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { useAuth } from "@/providers/auth-provider";
 
 import { faixaDoTrecho, textoDoDocumento } from "./plugins/achar-trecho";
@@ -385,11 +386,14 @@ function partirEmPedacos(texto: string): string[] {
   return partes;
 }
 
-async function umaParte(texto: string): Promise<RespostaDoAgente> {
+async function umaParte(texto: string, token: string): Promise<RespostaDoAgente> {
   try {
     const r = await fetch("/api/temis/minutas/marcar", {
       body: JSON.stringify({ texto }),
-      headers: { "Content-Type": "application/json" },
+      // ⚠️ O TOKEN É OBRIGATÓRIO, e esquecê-lo foi o defeito que fez o agente responder 401 no
+      // primeiro teste real. A rota exige `authorizeApoloRead` como todas as do módulo; o resto da
+      // Têmis já manda o `Bearer` e eu não mandei aqui.
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       method: "POST",
     });
     // ⚠️ LÊ COMO TEXTO ANTES DE TENTAR JSON: um timeout da Vercel devolve HTML, e `r.json()`
@@ -420,6 +424,19 @@ async function umaParte(texto: string): Promise<RespostaDoAgente> {
 }
 
 async function pedirMarcacao(texto: string): Promise<RespostaDoAgente> {
+  // ⚠️ SEM TOKEN NÃO SE CHAMA. `getApoloAccessToken` devolve null quando a sessão caiu, e mandar a
+  // requisição assim mesmo devolveria 401 — que foi exatamente o "O agente respondeu 401" do
+  // primeiro teste real, quando eu nem estava mandando o cabeçalho.
+  let token: null | string = null;
+  try {
+    token = await getApoloAccessToken();
+  } catch {
+    token = null;
+  }
+  if (!token) {
+    return { erro: "Sessão expirada. Recarregue a página.", propostas: [], recusadas: [] };
+  }
+
   const partes = partirEmPedacos(texto);
   const propostas: PropostaDoAgente[] = [];
   const recusadas: RespostaDoAgente["recusadas"] = [];
@@ -428,7 +445,7 @@ async function pedirMarcacao(texto: string): Promise<RespostaDoAgente> {
   // Em série, de propósito: são chamadas caras a um modelo de fronteira, e disparar seis de uma vez
   // bate no limite de concorrência e devolve erro em todas.
   for (const parte of partes) {
-    const r = await umaParte(parte);
+    const r = await umaParte(parte, token);
     if (r.erro) falhas.push(r.erro);
     propostas.push(...r.propostas);
     recusadas.push(...r.recusadas);

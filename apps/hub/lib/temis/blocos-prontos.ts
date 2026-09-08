@@ -58,16 +58,31 @@ export type BlocoPronto = {
 const ABRE_COMPRADOR = "[inicio_cada_comprador]";
 const FECHA_COMPRADOR = "[fim_cada_comprador]";
 
-const PARTES: BlocoPronto = {
-  descricao: "Vendedora e compradores qualificados, com PF, PJ e cônjuge já separados.",
-  id: "partes",
+// ⚠️ AS PARTES SÃO DOIS BLOCOS, e não um. Lucas (07/09/2026): *"acho separar, podemos ter o sub
+// bloco da vendedora e dos compradores"*.
+//
+// Não é organização: são coisas que mudam por motivos diferentes. A qualificação da VENDEDORA muda
+// quando o incorporador troca de representante ou de endereço — uma vez a cada anos, e vale para
+// todos os contratos daquele produto. A dos COMPRADORES muda a cada venda. Quem está ajustando uma
+// não quer a outra na frente, e num bloco só a pessoa insere as duas para usar metade.
+const PARTES_VENDEDORA: BlocoPronto = {
+  descricao: "A qualificação da vendedora, com CNPJ, sede e representante legal.",
+  id: "partes-vendedora",
   linhas: [
     { estilo: "titulo", texto: "CLÁUSULA PRIMEIRA — DAS PARTES" },
     {
       estilo: "corpo",
       texto:
-        "[vendedora_razao_social], pessoa jurídica de direito privado, [vendedora_natureza_juridica], inscrita no CNPJ sob o nº [vendedora_cnpj], com sede na [vendedora_rua], [vendedora_numero], [vendedora_bairro], [vendedora_cidade], [vendedora_uf], CEP [vendedora_cep], neste ato representada por [vendedora_representante_nome], inscrito no CPF sob o nº [vendedora_representante_cpf], doravante denominada VENDEDORA.",
+        "VENDEDORA E CREDORA FIDUCIÁRIA: [vendedora_razao_social], pessoa jurídica de direito privado, [vendedora_natureza_juridica], inscrita no CNPJ sob o nº [vendedora_cnpj], com sede na [vendedora_rua], [vendedora_numero], [vendedora_bairro], [vendedora_cidade], [vendedora_uf], CEP [vendedora_cep], neste ato representada por [vendedora_representante_nome], [vendedora_representante_nacionalidade], [vendedora_representante_estado_civil], [vendedora_representante_profissao], nascido em [vendedora_representante_nascimento], portador do RG nº [vendedora_representante_rg] e do CPF nº [vendedora_representante_cpf], residente em [vendedora_representante_endereco], e-mail [vendedora_representante_email], telefone [vendedora_representante_telefone], doravante denominada VENDEDORA.",
     },
+  ],
+  rotulo: "Partes — vendedora",
+};
+
+const PARTES_COMPRADORES: BlocoPronto = {
+  descricao: "Os compradores qualificados, com PF, PJ e cônjuge já separados.",
+  id: "partes-compradores",
+  linhas: [
     { estilo: "corpo", texto: "E, de outro lado, na qualidade de COMPRADORES:" },
     { estilo: "marcador", texto: ABRE_COMPRADOR },
     {
@@ -82,7 +97,7 @@ const PARTES: BlocoPronto = {
     },
     { estilo: "marcador", texto: FECHA_COMPRADOR },
   ],
-  rotulo: "Partes",
+  rotulo: "Partes — compradores",
 };
 
 const OBJETO: BlocoPronto = {
@@ -333,7 +348,8 @@ const FECHO: BlocoPronto = {
  * uma minuta do zero desce a lista clicando, e o documento sai na ordem certa sem reordenar nada.
  */
 export const BLOCOS_PRONTOS: BlocoPronto[] = [
-  PARTES,
+  PARTES_VENDEDORA,
+  PARTES_COMPRADORES,
   OBJETO,
   PRECO,
   FLUXO_TABELA,
