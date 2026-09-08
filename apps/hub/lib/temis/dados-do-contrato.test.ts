@@ -1157,3 +1157,78 @@ describe("o telefone do comprador", () => {
     expect(dados.compradores[1]!.valores.telefone_cliente).toBe("(31) 98888-0000");
   });
 });
+
+describe("o ruído de carga não vira endereço", () => {
+  // ⚠️ SAIU IMPRESSO NUM CONTRATO REAL, em 08/09/2026: "residente e domiciliado na Endereco
+  // cadastral, nº [numero_cliente]". Não é o endereço de ninguém — é um rótulo que uma carga pôs na
+  // coluna `street` de 4.633 linhas de `apolo_addresses`.
+  //
+  // ⚠️ E ISSO É PIOR QUE O CAMPO VAZIO: `[rua_cliente]` impresso salta aos olhos e entra na lista de
+  // avisos; "Endereco cadastral" parece preenchido, passa pela conferência e chega ao cartório.
+  it('"Endereco cadastral" vira ausência, e entra nos avisos', async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_addresses: [
+          {
+            city: "Belo Horizonte",
+            complement: null,
+            district: "Centro",
+            entity_id: THIAGO,
+            number: "100",
+            postal_code: "30000-000",
+            state: "MG",
+            street: "Endereco cadastral",
+          },
+        ],
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    expect(r.dados.compradores[0]?.valores.rua_cliente).toBeUndefined();
+    // O resto do endereço continua valendo: só a rua era ruído.
+    expect(r.dados.compradores[0]?.valores.bairro_cliente).toBe("Centro");
+  });
+
+  it("uma rua de verdade continua passando", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_addresses: [
+          {
+            city: "Belo Horizonte",
+            complement: null,
+            district: "Centro",
+            entity_id: THIAGO,
+            number: "100",
+            postal_code: "30000-000",
+            state: "MG",
+            street: "Rua Sem Nome",
+          },
+        ],
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+    expect(r.dados.compradores[0]?.valores.rua_cliente).toBe("Rua Sem Nome");
+  });
+});

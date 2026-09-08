@@ -549,7 +549,10 @@ function umComprador(entrada: {
     uf: texto(endereco?.state),
   });
   if (enderecoUnido) {
-    por("rua_cliente", enderecoUnido.logradouro);
+    // ⚠️ `textoUtil` E NÃO O VALOR CRU: 4.633 cadastros têm a string "Endereco cadastral" gravada na
+    // coluna da rua, e ela saiu impressa num contrato real ("residente e domiciliado na Endereco
+    // cadastral, nº..."). Ver `RUIDO_DE_CARGA`.
+    por("rua_cliente", textoUtil(enderecoUnido.logradouro));
     por("numero_cliente", enderecoUnido.numero);
     por("bairro_cliente", enderecoUnido.bairro);
     por("cep_cliente", enderecoUnido.cep);
@@ -932,6 +935,31 @@ function texto(v: unknown): string {
   if (typeof v === "string") return v.trim();
   if (v == null) return "";
   return String(v).trim();
+}
+
+/**
+ * Textos de PREENCHIMENTO que alguma carga gravou como se fossem dado.
+ *
+ * ⚠️ ISTO SAIU IMPRESSO NUM CONTRATO REAL, em 08/09/2026: *"residente e domiciliado na Endereco
+ * cadastral, nº [numero_cliente]"*. Não era o endereço de ninguém — é um rótulo que uma carga pôs
+ * na coluna `street` de **4.633** linhas de `apolo_addresses`, e que passou por toda a cascata como
+ * se fosse uma rua.
+ *
+ * ⚠️ E ISSO É PIOR DO QUE O CAMPO VAZIO. Um `[rua_cliente]` impresso salta aos olhos de quem
+ * confere e vira linha na lista de avisos; "Endereco cadastral" no meio da qualificação parece
+ * preenchido, passa pela conferência e chega ao cartório. Um dado que não identifica ninguém não é
+ * dado: aqui ele volta a ser ausência.
+ *
+ * ⚠️ A LISTA É CURTA E LITERAL DE PROPÓSITO. Adivinhar "endereço que parece falso" por heurística
+ * apagaria rua de verdade — existe "Rua Sem Nome" no Brasil. Só entra aqui o que foi MEDIDO no
+ * banco como preenchimento em massa.
+ */
+const RUIDO_DE_CARGA = new Set(["endereco cadastral", "endereço cadastral"]);
+
+/** O texto, ou vazio quando ele é só um rótulo de carga. Ver `RUIDO_DE_CARGA`. */
+function textoUtil(v: unknown): string {
+  const t = texto(v);
+  return RUIDO_DE_CARGA.has(t.toLowerCase()) ? "" : t;
 }
 
 function objeto(v: unknown): null | Record<string, unknown> {

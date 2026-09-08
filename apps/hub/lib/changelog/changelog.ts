@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-endereco-cadastral-nao-e-endereco",
+    deployedAt: "2026-09-08T13:30:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**\"Endereco cadastral\" parou de sair como se fosse a rua do cliente.** São 4.633 cadastros com esse texto de preenchimento gravado no lugar do endereço — e ele saiu impresso num contrato real.",
+            ],
+            screen: "Motor de contrato",
+          },
+        ],
+      },
+    ],
+    rollback: "d254bcd1",
+    technical: {
+      done: "Achado no segundo contrato gerado de verdade: *\"residente e domiciliado na Endereco cadastral, nº [numero_cliente]\"*. Não é o endereço de ninguém — é um rótulo que uma carga pôs na coluna `street` de 4.633 linhas de `apolo_addresses`, e que atravessava a cascata inteira como se fosse uma rua. ⚠️ E ISSO É PIOR QUE O CAMPO VAZIO: um `[rua_cliente]` impresso salta aos olhos de quem confere e vira linha na lista de avisos; \"Endereco cadastral\" no meio da qualificação PARECE preenchido, passa pela conferência e chega ao cartório. `textoUtil` devolve ausência para o que está em `RUIDO_DE_CARGA`. ⚠️ A LISTA É CURTA E LITERAL DE PROPÓSITO: adivinhar \"endereço que parece falso\" por heurística apagaria rua de verdade — existe \"Rua Sem Nome\" no Brasil, e há teste garantindo que ela passa. Só entra o que foi MEDIDO como preenchimento em massa; varri o resto de `apolo_addresses` e este é o único caso acima de 200 linhas. 3.228 testes verdes.",
+      motivation:
+        "O contrato imprimiu um endereço que não existe, com cara de endereço de verdade.",
+    },
+    title: "\"Endereco cadastral\" não é endereço",
+    type: "correcao",
+    version: "1.297.4",
+  },
+  {
     buildTag: "2026-09-08-o-contrato-com-cara-de-contrato",
     deployedAt: "2026-09-08T13:20:00-03:00",
     modules: [
