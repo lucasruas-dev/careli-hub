@@ -50,17 +50,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ erro: "Proposta não encontrada." }, { status: 404 });
   }
 
+  const doEmpreendimento = resolvido.dados.gerais.__empreendimento_id ?? "";
+  const daUnidade = resolvido.dados.gerais.__unidade_enterprise_id ?? "";
+  // ⚠️ DOIS CAMINHOS PARA O MESMO ID, e o segundo salvou o primeiro teste real. A minuta é indexada
+  // por `enterprise_id` (o id do C2X), e três empreendimentos do Hércules — LOX, PDX e RDX — têm
+  // esse campo NULO: para eles a busca ia com string vazia e NENHUMA minuta seria achada nunca. A
+  // unidade guarda o mesmo id na sua própria coluna, e ela costuma estar preenchida quando a do
+  // empreendimento não está, porque veio de outra carga.
   const minuta = await acharMinuta(sb, {
-    empreendimentoId: resolvido.dados.gerais.__empreendimento_id ?? "",
+    empreendimentoId: doEmpreendimento || daUnidade,
     pedida: typeof corpo.minutaId === "string" ? corpo.minutaId : "",
   });
 
   if (!minuta) {
+    // ⚠️ A MENSAGEM DIZ O QUE ELE PROCUROU. "Não há minuta publicada" é verdadeiro para dois
+    // problemas MUITO diferentes — a minuta realmente não existe, ou a proposta não sabe a que
+    // empreendimento pertence — e mandar publicar de novo uma minuta que já está publicada é o
+    // caminho mais curto para alguém achar que o sistema está quebrado. Foi o que aconteceu no
+    // primeiro teste, em 08/09/2026: a minuta do Veredas estava publicada e a tela mandou publicar.
+    // ⚠️ TRÊS CAUSAS DIFERENTES, TRÊS FRASES. "Não há minuta publicada" era verdadeiro para as três,
+    // e mandar publicar de novo uma minuta que JÁ ESTÁ publicada é o caminho mais curto para alguém
+    // achar que o sistema está quebrado — foi o que aconteceu no primeiro teste, em 08/09/2026.
+    const alvo = doEmpreendimento || daUnidade;
+    const causa = alvo
+      ? `Procurei a minuta publicada do empreendimento ${alvo} e não achei nenhuma do tipo "contrato". Publique a minuta na Têmis e tente de novo.`
+      : "O empreendimento desta proposta não tem o código que liga às minutas (é o caso de LOX, PDX e RDX). Sem ele não há por onde procurar — e não adianta publicar de novo.";
     return NextResponse.json(
-      {
-        erro:
-          "Não há minuta de contrato PUBLICADA para este empreendimento. Publique a minuta na Têmis e tente de novo.",
-      },
+      { erro: `Não consegui montar o contrato. ${causa}` },
       { status: 409 },
     );
   }

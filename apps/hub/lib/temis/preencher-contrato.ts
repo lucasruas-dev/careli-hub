@@ -126,27 +126,32 @@ function expandirLaco(
       continue;
     }
 
-    // O laço pode estar DENTRO de um parágrafo (marcadores inline), não só entre eles.
+    // ⚠️ O LAÇO TAMBÉM VIVE DENTRO DE UM PARÁGRAFO, e este ramo é o que faz a minuta real funcionar.
+    // Descoberto em 08/09/2026, gerando o primeiro contrato do Veredas do Ouro: os marcadores
+    // estavam INLINE, os dois no mesmo `<p>` da qualificação, e o motor — que só sabia expandir
+    // parágrafos inteiros — não achou o par, deixou `vezesDoLaco` em zero e o `[fim_cada_comprador]`
+    // saiu impresso no meio do contrato.
     const filhos = no.children;
-    if (Array.isArray(filhos) && filhos.some((f) => !ehTexto(f) && abreLaco(f as NoDoDocumento))) {
-      const dentro = expandirLaco(filhos.filter((f): f is NoDoDocumento => !ehTexto(f)), dados);
+    if (Array.isArray(filhos) && filhos.some((f) => abreLaco(f))) {
+      const dentro = expandirInline(filhos, dados);
       vezes += dentro.vezes;
-      saida.push({ ...no, children: dentro.nos });
+      saida.push({ ...no, children: dentro.filhos });
       continue;
     }
 
-    if (Array.isArray(filhos) && filhos.some((f) => !ehTexto(f))) {
-      const dentro = expandirLaco(
-        filhos.map((f) => (ehTexto(f) ? ({ children: [f], type: "__texto__" } as NoDoDocumento) : f)),
-        dados,
-      );
-      vezes += dentro.vezes;
-      saida.push({
-        ...no,
-        children: dentro.nos.flatMap((n) =>
-          n.type === "__texto__" ? ((n.children ?? []) as (NoDeTexto | NoDoDocumento)[]) : [n],
-        ),
-      });
+    // Sem laço aqui: desce nos filhos, que podem ter um mais abaixo (célula de tabela, item de lista).
+    if (Array.isArray(filhos) && filhos.some((f) => !ehTexto(f) && Array.isArray((f as NoDoDocumento).children))) {
+      const filhosNovos: (NoDeTexto | NoDoDocumento)[] = [];
+      for (const f of filhos) {
+        if (ehTexto(f)) {
+          filhosNovos.push(f);
+          continue;
+        }
+        const um = expandirLaco([f as NoDoDocumento], dados);
+        vezes += um.vezes;
+        filhosNovos.push(...um.nos);
+      }
+      saida.push({ ...no, children: filhosNovos });
       continue;
     }
 
@@ -154,6 +159,95 @@ function expandirLaco(
   }
 
   return { nos: saida, vezes };
+}
+
+/**
+ * O laço quando ele vive DENTRO de um parágrafo.
+ *
+ * ⚠️ AQUI SE REPETE O TRECHO, NÃO O PARÁGRAFO. A minuta do Veredas escreve a qualificação inteira num
+ * `<p>` só, com `[inicio_cada_comprador]` logo no começo e `[fim_cada_comprador]` depois do ponto
+ * final — repetir o parágrafo produziria um bloco por comprador (o que também seria aceitável), mas
+ * repetir o TRECHO mantém a diagramação que o jurídico escolheu, que é uma qualificação seguida da
+ * outra no mesmo parágrafo. Quem quiser um parágrafo por comprador põe os marcadores FORA do `<p>`,
+ * e cai no outro ramo.
+ *
+ * ⚠️ E O TEXTO ENTRE OS MARCADORES VIAJA JUNTO. A primeira versão deste ramo filtrava os nós de
+ * texto para poder recursar, e com isso apagava as vírgulas, os "e" e os "residente e domiciliado
+ * na" — tudo que não fosse variável sumia da qualificação.
+ */
+function expandirInline(
+  filhos: readonly (NoDeTexto | NoDoDocumento)[],
+  dados: DadosDoContrato,
+): { filhos: (NoDeTexto | NoDoDocumento)[]; vezes: number } {
+  const saida: (NoDeTexto | NoDoDocumento)[] = [];
+  let vezes = 0;
+
+  for (let i = 0; i < filhos.length; i += 1) {
+    const f = filhos[i];
+    if (f === undefined) continue;
+
+    if (!abreLaco(f)) {
+      // ⚠️ O `[fim_]` ÓRFÃO NÃO SAI IMPRESSO. Um par quebrado (ou um fim que sobrou de uma edição)
+      // vira nada, e não `[fim_cada_comprador]` no meio do contrato do cliente.
+      if (!fechaLaco(f)) saida.push(f);
+      continue;
+    }
+
+    const fim = acharFimInline(filhos, i);
+    if (fim < 0) continue;
+
+    const corpo = filhos.slice(i + 1, fim);
+    for (const [indice, comprador] of dados.compradores.entries()) {
+      vezes += 1;
+      // ⚠️ UM ESPAÇO ENTRE AS CÓPIAS, quando o texto não o traz. A qualificação costuma terminar em
+      // ponto final, e sem isto o contrato de dois compradores imprime "…CPF nº 137.MARIA SOUZA,
+      // brasileira…" — coladas. Só entra quando falta: se a minuta já termina o trecho com espaço,
+      // ponto-e-vírgula ou " e ", nada é acrescentado, e a diagramação escolhida pelo jurídico é
+      // respeitada.
+      if (indice > 0 && precisaDeEspaco(saida, corpo)) saida.push({ text: " " });
+      for (const doCorpo of corpo) {
+        saida.push(
+          ehTexto(doCorpo) ? doCorpo : marcarDono(doCorpo as NoDoDocumento, indice, comprador),
+        );
+      }
+    }
+    i = fim;
+  }
+
+  return { filhos: saida, vezes };
+}
+
+/**
+ * A cópia anterior terminou colada na próxima?
+ *
+ * Olha o último caractere já emitido e o primeiro do trecho que vem. Um nó de VARIÁVEL nas pontas
+ * conta como "não é espaço": o valor dela é um nome ou um número, nunca um separador.
+ */
+function precisaDeEspaco(
+  jaEmitido: readonly (NoDeTexto | NoDoDocumento)[],
+  corpo: readonly (NoDeTexto | NoDoDocumento)[],
+): boolean {
+  const ultimo = jaEmitido[jaEmitido.length - 1];
+  const fimAnterior = ehTexto(ultimo) ? ultimo.text : "";
+  if (/\s$/.test(fimAnterior)) return false;
+
+  const primeiro = corpo[0];
+  const comecoSeguinte = ehTexto(primeiro) ? primeiro.text : "";
+  return !/^\s/.test(comecoSeguinte);
+}
+
+/** ⚠️ CONTA OS ANINHADOS, como a versão de bloco. */
+function acharFimInline(filhos: readonly (NoDeTexto | NoDoDocumento)[], inicio: number): number {
+  let profundidade = 0;
+  for (let i = inicio + 1; i < filhos.length; i += 1) {
+    const f = filhos[i];
+    if (abreLaco(f)) profundidade += 1;
+    else if (fechaLaco(f)) {
+      if (profundidade === 0) return i;
+      profundidade -= 1;
+    }
+  }
+  return -1;
 }
 
 function abreLaco(no: unknown): boolean {
@@ -228,10 +322,10 @@ function resolverNo(
     const alvo = filho as NoDoDocumento;
     const nome = nomeDaVariavel(alvo);
     if (nome) {
-      finais.push(textoDaVariavel(alvo, nome, dados, semValor, dono));
+      finais.push(textoDaVariavel(alvo, nome, dados, semValor, donoDoNo(alvo) ?? dono));
       continue;
     }
-    finais.push(resolverNo(alvo, dados, semValor, dono));
+    finais.push(resolverNo(alvo, dados, semValor, donoDoNo(alvo) ?? dono));
   }
 
   return limpar({ ...no, children: finais });
@@ -273,8 +367,13 @@ function aplicarPares(
       continue;
     }
 
-    if (condicaoLigada(chave, dados, dono)) {
-      saida.push(...aplicarPares(filhos.slice(i + 1, fim), dados, dono));
+    // ⚠️ O DONO SAI DO MARCADOR, e não do parágrafo. Ver `donoDoNo`: num laço inline os nós de dois
+    // compradores são irmãos no mesmo `<p>`, e é o `[inicio_dados_conjuge]` copiado que sabe de quem
+    // ele é. Usar o dono do pai fazia o cônjuge do primeiro comprador aparecer na qualificação de
+    // todos — o defeito do legado, reencenado.
+    const doMarcador = donoDoNo(filho) ?? dono;
+    if (condicaoLigada(chave, dados, doMarcador)) {
+      saida.push(...aplicarPares(filhos.slice(i + 1, fim), dados, doMarcador));
     }
     i = fim;
   }
@@ -354,6 +453,16 @@ function textoDaVariavel(
   dono: null | number,
 ): NoDeTexto {
   const marcas = marcasDoNo(no);
+
+  // ⚠️ MARCADOR DE BLOCO ÓRFÃO VIRA NADA, e nunca `[fim_cada_comprador]` no papel. Ele chega aqui
+  // quando o par está quebrado — uma edição que apagou metade, um `[fim_]` colado sem o `[inicio_]`.
+  // É a única família de nomes que some em silêncio, e a razão é que ela nunca foi conteúdo: é
+  // instrução para este motor, e instrução impressa no contrato do cliente é pior do que instrução
+  // perdida. Todo o resto que falta continua saindo visível, como manda a nota do topo.
+  if (nome.startsWith(PREFIXO_INICIO) || nome.startsWith(PREFIXO_FIM)) {
+    return { ...marcas, text: "" };
+  }
+
   const valor = valorDaVariavel(nome, dados, dono);
 
   if (valor === null) {
@@ -426,6 +535,19 @@ function podarVazios(nos: readonly NoDoDocumento[]): NoDoDocumento[] {
 }
 
 // ── AJUDANTES ───────────────────────────────────────────────────────────────
+
+/**
+ * De quem é este nó.
+ *
+ * ⚠️ O DONO VIAJA NO NÓ, e quem o lê tem de olhar o NÓ, não o pai. Num laço inline os nós de dois
+ * compradores viram irmãos dentro do MESMO parágrafo — o parágrafo não tem dono nenhum, e cada
+ * filho carrega o seu. Ler só o do pai fazia o contrato de dois compradores sair com o primeiro
+ * repetido duas vezes, que foi o defeito pego pelo teste do laço inline em 08/09/2026.
+ */
+function donoDoNo(no: unknown): null | number {
+  const v = (no as Record<string, unknown>)?.[DONO];
+  return typeof v === "number" ? v : null;
+}
 
 function ehTexto(no: unknown): no is NoDeTexto {
   return typeof (no as NoDeTexto)?.text === "string";

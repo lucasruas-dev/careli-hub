@@ -14,8 +14,13 @@
 //     apolo_esteira.ficha   nacionalidade, estado civil, regime, profissão, RG, nascimento
 //     apolo_addresses       o endereço de quem foi cadastrado pelo wizard e nunca editado
 //     apolo_contacts        e-mail e telefone, idem
-//     apolo_relationships   o cônjuge, idem
-//     hercules_propostas    a participação de cada um na compra
+//     apolo_relationships   o cônjuge, idem — e SÓ o vínculo vivo (ver `camadasDoCadastro`)
+//     hercules_propostas    a participação de cada um, e o telefone do comprador não titular
+//
+// ⚠️ O JSONB DA PROPOSTA TEM DUAS GRAFIAS, e é a armadilha desta leitura: a proposta nativa grava
+// `cpf`/`participacao`, e as 4.857 importadas do C2X gravam `documento`/`percentual`. Ver a nota de
+// `CompradorDaProposta` — ler uma grafia só não devolve lista vazia, devolve um comprador com nome
+// e sem documento, e a qualificação inteira sai em branco sem que a reserva do titular dispare.
 //
 // ⚠️ A FICHA É A CAMADA DE CIMA, NÃO A ÚNICA — e um resolvedor que lesse só ela perderia o endereço
 // de quase todo mundo. Medido em `cadastro-cascata.ts`: só 10 das 343 CADs do lançamento têm linha
@@ -82,6 +87,8 @@ type LinhaDaUnidade = {
   area: null | number | string;
   area_extenso: null | string;
   codigo: null | string;
+  /** O id do C2X, o MESMO que `temis_minutas.enterprise_id` usa. Ver a nota em `__unidade_enterprise_id`. */
+  enterprise_id: null | string;
   lote: null | string;
   matricula: null | string;
   matricula_livro: null | string;
@@ -232,7 +239,7 @@ export async function dadosDaProposta(
           sb
             .from("hercules_unidades")
             .select(
-              "area, area_extenso, codigo, lote, matricula, matricula_livro, preco_extenso, preco_tabela, quadra, tipo_unidade",
+              "area, area_extenso, codigo, enterprise_id, lote, matricula, matricula_livro, preco_extenso, preco_tabela, quadra, tipo_unidade",
             )
             .eq("id", proposta.unidade_id)
             .maybeSingle(),
@@ -471,9 +478,9 @@ function umComprador(entrada: {
 
   const nomeDaProposta = texto(daProposta.nome);
   const nome = texto(entidade?.display_name) || nomeDaProposta;
-  // ⚠️ O DOCUMENTO SE RECONSTRÓI DOS DÍGITOS, e não se copia da coluna. Ver `documentoImprimivel`:
-  // `document_masked` guarda a FRASE "Documento em revisao" quando o número não fecha, e cadastros
-  // antigos ainda trazem a forma mascarada.
+  // ⚠️ O DOCUMENTO SE RECONSTRÓI DOS DÍGITOS, e não se copia de onde veio. Ver `documentoImprimivel`:
+  // meio CPF atravessa `formatarDocumento` intacto e sai impresso, e `document_masked` guarda o
+  // número sem pontuação em parte das linhas.
   const documento =
     documentoImprimivel(digitos) || documentoImprimivel(texto(entidade?.document_masked));
 
@@ -728,6 +735,13 @@ function gerais(
     );
   }
 
+  // ⚠️ O MESMO ID, PELA UNIDADE. Três empreendimentos (LOX, PDX, RDX) têm `c2x_enterprise_id` nulo,
+  // e a minuta é indexada por esse id — para eles a prévia nunca acharia minuta. A unidade carrega o
+  // mesmo número na sua própria coluna, vindo de outra carga, e serve de segundo caminho. Prefixo
+  // `__` pelo mesmo motivo do outro: nenhuma minuta escreve `[__unidade_enterprise_id]`.
+  const unidadeEnterpriseId = texto(unidade?.enterprise_id);
+  if (unidadeEnterpriseId) por("__unidade_enterprise_id", unidadeEnterpriseId);
+
   // ── EMPREENDIMENTO ──
   if (empreendimento) {
     por("empreendimento_nome", texto(empreendimento.nome));
@@ -951,17 +965,20 @@ function percentual(valor: number): string {
 /**
  * O documento como ele vai para o papel: `123.456.789-00` / `11.115.899/0001-04`.
  *
- * ⚠️ `document_masked` NEM SEMPRE TEM UM DOCUMENTO DENTRO. Quando os dígitos não fecham 11 nem 14, o
- * cadastro grava na coluna a FRASE "Documento em revisao" (`cadastro-persist.ts`), e os cadastros
- * anteriores a 22/jul ainda trazem a forma mascarada de verdade (`***.***.***-35`). Copiar a coluna
- * para o contrato imprimiria "portador do CPF Documento em revisao" — o defeito exato do RG e da
- * cidade: um campo que PARECE preenchido, some da lista de avisos, passa por qualquer conferência
- * automática e por nenhuma humana. Sem 11 ou 14 dígitos não há documento, a variável não existe, e
- * `[cpf_cliente]` volta a aparecer no papel.
+ * ⚠️ MEIO CPF NÃO É UM CPF. `formatarDocumento` DEVOLVE A ENTRADA quando os dígitos não fecham 11
+ * nem 14 — é o mesmo comportamento de `formatDateBR`, e a mesma armadilha: `cli_cpf` no legado é
+ * texto livre, e um número truncado atravessava a importação e saía impresso como "portador do CPF
+ * 1234567890". É o defeito exato do RG e da cidade logo acima — um campo que PARECE preenchido,
+ * some da lista de avisos e passa por qualquer conferência automática e por nenhuma humana. Sem 11
+ * ou 14 dígitos a variável não existe, `[cpf_cliente]` volta a aparecer no papel e o aviso dispara.
  *
- * ⚠️ E ELE REFORMATA SEMPRE, em vez de confiar no que está gravado: a mesma coluna guarda
- * "12345678900" cru em parte das linhas, e um CPF sem pontuação num contrato é o tipo de detalhe
- * que o cartório devolve.
+ * ⚠️ E ELE REFORMATA SEMPRE, em vez de copiar o que está gravado. `document_masked` guarda o
+ * documento COMPLETO na maioria das linhas, mas não em todas: parte delas tem "12345678900" cru, e
+ * um CPF sem pontuação num contrato é o tipo de detalhe que o cartório devolve. A coluna também
+ * guarda a frase "Documento em revisao" (`cadastro-persist.ts`) e, nos cadastros anteriores a
+ * 22/jul, a máscara de verdade (`***.***.***-35`) — nenhuma das duas chega até aqui hoje, porque a
+ * entidade é CASADA pelo documento e essas linhas não casam com ninguém; passar por esta função é o
+ * que garante que continuem não chegando se o casamento mudar.
  */
 function documentoImprimivel(bruto: unknown): string {
   const d = soDigitos(texto(bruto));

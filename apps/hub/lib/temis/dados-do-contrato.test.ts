@@ -45,6 +45,16 @@ function clienteFalso(porTabela: Linhas, tabelasLidas?: string[]) {
 const THIAGO = "aaaaaaaa-0000-0000-0000-000000000001";
 const EMPRESA = "aaaaaaaa-0000-0000-0000-000000000002";
 
+/** A entidade do Thiago como `apolo_entities` a devolve. */
+const ENTIDADE_THIAGO = {
+  display_name: "THIAGO HENRIQUE DE SOUZA",
+  document_masked: "123.456.789-00",
+  entity_kind: "pf",
+  id: THIAGO,
+  legal_name: null,
+  trade_name: null,
+};
+
 /** A proposta nativa mínima: um comprador, uma unidade, um empreendimento e o cronograma. */
 function proposta(over: Linhas = {}): Linhas {
   return {
@@ -860,5 +870,290 @@ describe("as condições e a data", () => {
 
     expect(dados.compradores[0]!.valores.data_nascimento_cliente).toBe("15/03/1985");
     expect(dados.compradores[0]!.valores.rg_cliente).toBe("MG-12.345.678 SSP/MG");
+  });
+});
+
+// ── AS REGRESSÕES DA REVISÃO DE 08/09/2026 ───────────────────────────────────
+//
+// Cada bloco daqui para baixo é um defeito que estava no código e chegava ao papel. Todos passam
+// pelo mesmo caminho dos de cima; o que muda é a forma da linha que o banco devolve.
+
+describe("a proposta IMPORTADA do C2X (4.857 delas)", () => {
+  // ⚠️ O JSONB DELAS TEM OUTRAS CHAVES. `scripts/hercules/importar-fluxo-de-venda.mjs` grava
+  // `{ c2x_user_id, documento, nome, percentual, titular }`; a proposta nativa grava
+  // `{ cpf, nome, participacao, telefone, titular }`. Lendo só a segunda grafia a lista NÃO fica
+  // vazia — ela fica com um comprador de nome e sem documento, e a reserva de `cliente_documento`
+  // nunca dispara. O resultado era a qualificação inteira em branco em toda proposta antiga.
+  const compradorImportado = {
+    c2x_user_id: 4199,
+    documento: "123.456.789-00",
+    nome: "THIAGO HENRIQUE DE SOUZA",
+    percentual: 60,
+    titular: true,
+  };
+
+  it("casa a entidade pelo `documento` e traz a qualificação inteira", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [ENTIDADE_THIAGO],
+        apolo_esteira: [{ enterprise_id: "39", entity_id: THIAGO, ficha: FICHA_DO_THIAGO }],
+        hercules_empreendimentos: EMPREENDIMENTO,
+        hercules_propostas: proposta({ compradores: [compradorImportado], condicoes: null }),
+      }),
+    ))!;
+
+    const v = dados.compradores[0]!.valores;
+    expect(v.cpf_cliente).toBe("123.456.789-00");
+    expect(v.nacionalidade_cliente).toBe("brasileiro");
+    expect(v.estado_civil_cliente).toBe("Casado (a)");
+    expect(v.rua_cliente).toBe("Rua das Acácias");
+    // `percentual`, e não `participacao`.
+    expect(v.percentual_cliente).toBe("60%");
+  });
+
+  it("não avisa 'sem cadastro no Apolo' para quem TEM cadastro", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [ENTIDADE_THIAGO],
+        apolo_esteira: [{ enterprise_id: "39", entity_id: THIAGO, ficha: FICHA_DO_THIAGO }],
+        hercules_propostas: proposta({ compradores: [compradorImportado], condicoes: null }),
+      }),
+    ))!;
+    expect(r.avisos.join(" ")).not.toContain("sem cadastro no Apolo");
+  });
+
+  it("a PJ importada continua PJ — senão o bloco [inicio_dados_cliente_pj] some do contrato", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          compradores: [
+            {
+              c2x_user_id: 7,
+              documento: "11115899000104",
+              nome: "Souza Participações",
+              titular: true,
+            },
+          ],
+          condicoes: null,
+        }),
+      }),
+    ))!;
+    expect(dados.compradores[0]!.ehPessoaFisica).toBe(false);
+    expect(dados.compradores[0]!.valores.cnpj_cliente).toBe("11.115.899/0001-04");
+  });
+});
+
+describe("o documento que não é um documento", () => {
+  it("CPF incompleto na proposta NÃO vira campo preenchido — e entra nos avisos", async () => {
+    // ⚠️ `formatarDocumento` DEVOLVE A ENTRADA quando os dígitos não fecham 11 nem 14. O `cli_cpf`
+    // do legado é texto livre, e um CPF truncado atravessava a importação e saía impresso como
+    // "portador do CPF 1234567890": um campo que PARECE preenchido, some da lista de quem vai
+    // conferir e passa por qualquer leitura automática.
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        // A entidade existe e guarda o MESMO número truncado: o aviso que se espera é "falta CPF",
+        // e não "sem cadastro no Apolo".
+        apolo_entities: [{ ...ENTIDADE_THIAGO, document_masked: "1234567890" }],
+        apolo_esteira: [{ enterprise_id: "39", entity_id: THIAGO, ficha: FICHA_DO_THIAGO }],
+        hercules_propostas: proposta({
+          compradores: [{ cpf: "1234567890", nome: "THIAGO", participacao: 100, titular: true }],
+        }),
+      }),
+    ))!;
+
+    expect(r.dados.compradores[0]!.valores.cpf_cliente).toBeUndefined();
+    const aviso = r.avisos.find((a) => a.includes("falta"));
+    expect(aviso, r.avisos.join(" | ")).toContain("CPF");
+  });
+
+  it("o documento gravado CRU sai pontuado — cartório não recebe 12345678900", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [{ ...ENTIDADE_THIAGO, document_masked: "12345678900" }],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+    expect(dados.compradores[0]!.valores.cpf_cliente).toBe("123.456.789-00");
+  });
+
+  it("CPF do cônjuge pela metade não vira campo preenchido", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [ENTIDADE_THIAGO],
+        apolo_relationships: [
+          {
+            entity_id: THIAGO,
+            label: "MARIA DE SOUZA",
+            metadata: { cpf: "987654" },
+            status: "verified",
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+    expect(dados.compradores[0]!.valores.nome_conjuge).toBe("MARIA DE SOUZA");
+    expect(dados.compradores[0]!.valores.cpf_conjuge).toBeUndefined();
+  });
+});
+
+describe("o cônjuge ARQUIVADO", () => {
+  it("não entra no contrato nem liga o bloco [inicio_dados_conjuge]", async () => {
+    // ⚠️ `apolo_relationships` NÃO APAGA: desfazer o vínculo grava `status = "archived"`. Lido como
+    // se estivesse vivo, o contrato vai a cartório qualificando — e pedindo a assinatura de — uma
+    // pessoa que saiu do negócio.
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [ENTIDADE_THIAGO],
+        apolo_esteira: [{ enterprise_id: "39", entity_id: THIAGO, ficha: FICHA_DO_THIAGO }],
+        apolo_relationships: [
+          {
+            entity_id: THIAGO,
+            label: "EX-CÔNJUGE",
+            metadata: { arquivadoEm: "2026-08-01T12:00:00Z", cpf: "98765432100" },
+            status: "archived",
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    expect(r.dados.compradores[0]!.temConjuge).toBe(false);
+    expect(r.dados.compradores[0]!.valores.nome_conjuge).toBeUndefined();
+  });
+
+  it("mas o vivo que vem DEPOIS do arquivado continua sendo lido", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [ENTIDADE_THIAGO],
+        apolo_relationships: [
+          { entity_id: THIAGO, label: "EX-CÔNJUGE", metadata: {}, status: "archived" },
+          {
+            entity_id: THIAGO,
+            label: "MARIA DE SOUZA",
+            metadata: { cpf: "98765432100" },
+            status: "verified",
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+    expect(dados.compradores[0]!.valores.nome_conjuge).toBe("MARIA DE SOUZA");
+  });
+
+  it("status NULO (vínculo antigo) continua valendo — silêncio não é arquivamento", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [ENTIDADE_THIAGO],
+        apolo_relationships: [
+          { entity_id: THIAGO, label: "MARIA DE SOUZA", metadata: {}, status: null },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+    expect(dados.compradores[0]!.valores.nome_conjuge).toBe("MARIA DE SOUZA");
+  });
+});
+
+describe("o empreendimento que a prévia usa para achar a minuta", () => {
+  it("sai como o id do C2X, que é o que temis_minutas.enterprise_id guarda", async () => {
+    // ⚠️ SEM ESTA CHAVE A PRÉVIA NÃO ACHA MINUTA NENHUMA. `/api/temis/contrato/previa` procura a
+    // minuta publicada por `dados.gerais.__empreendimento_id`; com string vazia a busca não casa e
+    // TODA prévia responde "Não há minuta de contrato PUBLICADA para este empreendimento".
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_empreendimentos: EMPREENDIMENTO,
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+    expect(dados.gerais.__empreendimento_id).toBe("39");
+  });
+
+  it("sem empreendimento, a chave não existe — e o aviso diz por quê", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({ hercules_propostas: proposta({ empreendimento_id: null }) }),
+    ))!;
+    expect(r.dados.gerais.__empreendimento_id).toBeUndefined();
+    expect(r.avisos.join(" ")).toContain("nenhum empreendimento");
+  });
+});
+
+describe("o prazo do contrato", () => {
+  it("vem de contrato_parcelas mesmo sem cronograma — é o caso das importadas", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({ condicoes: null, contrato_parcelas: 62 }),
+      }),
+    ))!;
+    expect(dados.gerais.prazo_meses_amortizacao).toBe("62");
+    expect(dados.gerais.prazo_meses_amortizacao_extenso).toBe("sessenta e dois");
+  });
+
+  it("a coluna ganha do tamanho do cronograma", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({ hercules_propostas: proposta({ contrato_parcelas: 62 }) }),
+    ))!;
+    // O fixture tem 120 mensais gravadas; o prazo contratado é 62.
+    expect(dados.gerais.prazo_meses_amortizacao).toBe("62");
+  });
+
+  it("sem a coluna, o cronograma responde", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({ hercules_propostas: proposta() }),
+    ))!;
+    expect(dados.gerais.prazo_meses_amortizacao).toBe("120");
+  });
+});
+
+describe("o telefone do comprador", () => {
+  it("whatsapp ganha de phone — 3.941 entidades só têm a linha de whatsapp", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_contacts: [
+          { contact_type: "phone", entity_id: THIAGO, value: "(31) 3851-0000" },
+          { contact_type: "whatsapp", entity_id: THIAGO, value: "(31) 99999-0000" },
+        ],
+        apolo_entities: [ENTIDADE_THIAGO],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+    expect(dados.compradores[0]!.valores.telefone_cliente).toBe("(31) 99999-0000");
+  });
+
+  it("o segundo comprador cai no telefone do jsonb — é o único contato que ele tem", async () => {
+    // ⚠️ O PROPONENTE QUE NÃO É TITULAR pode não ter reserva, CAD nem entidade no Apolo. A rota que
+    // grava a proposta diz isso em nota: o jsonb é o único lugar onde o contato dele existe.
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          compradores: [
+            { cpf: "12345678900", nome: "THIAGO", participacao: 60, telefone: null, titular: true },
+            {
+              cpf: "98765432100",
+              nome: "MARIA",
+              participacao: 40,
+              telefone: "(31) 98888-0000",
+              titular: false,
+            },
+          ],
+        }),
+      }),
+    ))!;
+    expect(dados.compradores[1]!.valores.telefone_cliente).toBe("(31) 98888-0000");
   });
 });

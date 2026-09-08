@@ -36,6 +36,44 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-o-laco-dentro-do-paragrafo",
+    deployedAt: "2026-09-08T12:45:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O contrato de dois compradores parou de sair com o primeiro repetido.** O laço da minuta real vive dentro de um parágrafo, e o motor só sabia repetir parágrafos inteiros.",
+              "**A prévia diz o que procurou** quando não acha a minuta, em vez de mandar publicar uma que já está publicada.",
+            ],
+            screen: "Motor de contrato",
+          },
+        ],
+      },
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**O simulador perdeu a barra de rolagem lateral** — ela escondia metade do campo de desconto.",
+            ],
+            screen: "Simulador de proposta",
+          },
+        ],
+      },
+    ],
+    rollback: "5c052b2b",
+    technical: {
+      done: "Achado gerando o PRIMEIRO contrato real (Veredas do Ouro, unidade 01 12): `vezesDoLaco` saiu ZERO e o `[fim_cada_comprador]` foi impresso no meio do texto. ⚠️ A MINUTA REAL PÕE O LAÇO DENTRO DE UM `<p>`: `[inicio_cada_comprador]` no começo da qualificação e `[fim_cada_comprador]` depois do ponto final, os dois inline. O motor só sabia expandir quando os marcadores envolviam parágrafos inteiros. `expandirInline` repete o TRECHO (não o parágrafo), preservando a diagramação que o jurídico escolheu. ⚠️ E O DONO PASSOU A SAIR DO NÓ, não do pai: num laço inline os nós de dois compradores viram irmãos no MESMO parágrafo, e ler o dono do parágrafo fazia o contrato de um casal sair com o primeiro comprador duas vezes — o defeito do legado, reencenado. Pego por teste. ⚠️ MARCADOR DE BLOCO ÓRFÃO VIRA NADA: é a única família de nomes que some em silêncio, porque nunca foi conteúdo — é instrução para o motor, e instrução impressa no contrato do cliente é pior que instrução perdida. ⚠️ E UM ESPAÇO ENTRE AS CÓPIAS quando o texto não o traz: sem isso, dois compradores saíam \"…CPF nº 137.MARIA SOUZA, brasileira…\", colados. ⚠️ A PRÉVIA NÃO ACHAVA A MINUTA DO VEREDAS mesmo com ela publicada: três empreendimentos (LOX, PDX, RDX) têm `c2x_enterprise_id` NULO, e é por esse id que a minuta é indexada. Agora a unidade serve de segundo caminho, e a mensagem distingue as três causas em vez de mandar publicar de novo. ⚠️ A BARRA HORIZONTAL do simulador vinha de `1fr` nos atalhos (que nunca encolhe abaixo do conteúdo) somado ao campo de desconto novo; a coluna passou a `overflowX: hidden` e a grade a `minmax(0, 1fr)`. 3.221 testes verdes; typecheck limpo.",
+      motivation:
+        "O primeiro contrato gerado de verdade — e ele saiu com o marcador do laço impresso no meio.",
+    },
+    title: "O laço dentro do parágrafo",
+    type: "correcao",
+    version: "1.297.2",
+  },
+  {
     buildTag: "2026-09-08-nome-de-plano-livre",
     deployedAt: "2026-09-08T12:30:00-03:00",
     modules: [

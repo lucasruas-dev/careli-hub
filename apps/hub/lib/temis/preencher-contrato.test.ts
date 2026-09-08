@@ -303,3 +303,84 @@ describe("o documento continua válido", () => {
     expect(html).toContain("SÓ");
   });
 });
+
+describe("o laço dentro de um parágrafo", () => {
+  // ⚠️ É ASSIM QUE A MINUTA REAL ESCREVE. Descoberto em 08/09/2026 gerando o primeiro contrato do
+  // Veredas do Ouro: os marcadores estavam INLINE, os dois no mesmo <p> da qualificação. O motor só
+  // sabia expandir parágrafos inteiros, não achou o par, e o `[fim_cada_comprador]` saiu IMPRESSO no
+  // meio do contrato — com `vezesDoLaco` marcando zero.
+  const minuta = [
+    p("I. CONTRATANTE(S):"),
+    p(
+      v("inicio_cada_comprador"),
+      v("nome_cliente"),
+      ", inscrito no CPF sob o nº ",
+      v("cpf_cliente"),
+      ".",
+      v("fim_cada_comprador"),
+    ),
+    p("II. CONTRATADO(S):"),
+  ];
+
+  it("repete a qualificação dentro do próprio parágrafo", () => {
+    const r = preencherContrato(minuta, {
+      compradores: [
+        comprador("RAFAEL", { valores: { cpf_cliente: "137", nome_cliente: "RAFAEL" } }),
+        comprador("MARIA", { valores: { cpf_cliente: "246", nome_cliente: "MARIA" } }),
+      ],
+      gerais: {},
+    });
+    expect(r.vezesDoLaco).toBe(2);
+    expect(texto(r.nos)).toBe(
+      "I. CONTRATANTE(S): RAFAEL, inscrito no CPF sob o nº 137. MARIA, inscrito no CPF sob o nº 246. II. CONTRATADO(S):",
+    );
+  });
+
+  // ⚠️ O TEXTO ENTRE OS MARCADORES VIAJA JUNTO. A primeira versão filtrava os nós de texto para poder
+  // recursar, e com isso apagava as vírgulas, os "e" e o "inscrito no CPF sob o nº" — tudo que não
+  // fosse variável sumia da qualificação.
+  it("não perde a pontuação nem as palavras entre as variáveis", () => {
+    const r = preencherContrato(minuta, {
+      compradores: [comprador("RAFAEL", { valores: { cpf_cliente: "137", nome_cliente: "RAFAEL" } })],
+      gerais: {},
+    });
+    expect(texto(r.nos)).toContain("inscrito no CPF sob o nº");
+  });
+
+  it("o marcador de fim órfão não sai impresso", () => {
+    const r = preencherContrato([p("texto ", v("fim_cada_comprador"), " mais texto")], {
+      compradores: [comprador("X")],
+      gerais: {},
+    });
+    expect(texto(r.nos)).not.toContain("fim_cada_comprador");
+    expect(r.semValor).not.toContain("fim_cada_comprador");
+  });
+
+  it("o cônjuge dentro do laço inline é de cada comprador", () => {
+    const r = preencherContrato(
+      [
+        p(
+          v("inicio_cada_comprador"),
+          v("nome_cliente"),
+          v("inicio_dados_conjuge"),
+          " casado com ",
+          v("nome_conjuge"),
+          v("fim_dados_conjuge"),
+          "; ",
+          v("fim_cada_comprador"),
+        ),
+      ],
+      {
+        compradores: [
+          comprador("CASADO", {
+            temConjuge: true,
+            valores: { nome_cliente: "CASADO", nome_conjuge: "ESPOSA" },
+          }),
+          comprador("SOLTEIRO", { valores: { nome_cliente: "SOLTEIRO" } }),
+        ],
+        gerais: {},
+      },
+    );
+    expect(texto(r.nos)).toBe("CASADO casado com ESPOSA; SOLTEIRO;");
+  });
+});

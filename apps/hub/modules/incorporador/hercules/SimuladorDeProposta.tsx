@@ -616,7 +616,13 @@ export function SimuladorDeProposta({
           gap: 10,
           gridAutoRows: "min-content",
           minHeight: 0,
-          overflow: "auto",
+          // ⚠️ ROLA SÓ NA VERTICAL. Lucas, 08/09/2026: *"não queria o simulador com barra de
+          // rolagem"*. Com `overflow: auto` nos dois eixos, qualquer filho um pixel mais largo que a
+          // coluna (o campo de desconto, a fila de atalhos) criava uma barra horizontal — e barra
+          // horizontal dentro de um modal esconde metade de um campo sem avisar. Aqui o excesso é
+          // cortado, o que obriga os filhos a caberem de verdade.
+          overflowX: "hidden",
+          overflowY: "auto",
           paddingRight: 4,
         }}
       >
@@ -1331,8 +1337,12 @@ function Atalhos({
       style={{
         display: "grid",
         gap: 5,
-        gridTemplateColumns: `repeat(${valores.length}, 1fr)`,
+        // ⚠️ `minmax(0, 1fr)` E NÃO `1fr`: com `1fr` a coluna nunca fica menor que o conteúdo, e
+        // "R$ 4.000" empurrava a grade inteira para além da largura do cockpit — era daí que vinha
+        // a barra de rolagem horizontal do modal.
+        gridTemplateColumns: `repeat(${valores.length}, minmax(0, 1fr))`,
         marginTop: 8,
+        minWidth: 0,
       }}
     >
       {valores.map((v) => (
@@ -1764,7 +1774,7 @@ function CampoDoLote({
         <span>{dinheiroExato(preco.tabela)}</span>
       </div>
 
-      <div style={{ display: "flex", gap: 6 }}>
+      <div style={{ display: "flex", gap: 6, minWidth: 0 }}>
         {/* ⚠️ O SENTIDO VEM PRIMEIRO, à esquerda: é a decisão que muda o resultado de lado, e ela
             precisa ser vista antes de o número ser digitado. O menos nasce escolhido porque
             desconto é o caso comum — e porque, se alguém não reparar no par de botões, errar para
@@ -1774,6 +1784,7 @@ function CampoDoLote({
             border: `1px solid ${T.border}`,
             borderRadius: 8,
             display: "flex",
+            flexShrink: 0,
             overflow: "hidden",
           }}
         >
@@ -1805,6 +1816,7 @@ function CampoDoLote({
             border: `1px solid ${T.border}`,
             borderRadius: 8,
             display: "flex",
+            flexShrink: 0,
             overflow: "hidden",
           }}
         >
