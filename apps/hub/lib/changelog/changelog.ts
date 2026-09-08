@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-o-agente-tinha-90-segundos",
+    deployedAt: "2026-09-08T03:10:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O agente tinha 90 segundos para ler um contrato inteiro.** O cliente de IA da casa é o mesmo do WhatsApp, onde a resposta média é de 9 segundos — e ele abortava a leitura da minuta antes de terminar. Agora são 280.",
+              "**Quando ele falha, a tela diz o motivo.** \"A IA não respondeu\" virou \"a IA não respondeu: timeout\" — foram duas rodadas de teste às cegas por causa disso.",
+              "**A tela parou de dizer que ele não achou nada** quando na verdade ele nem chegou a ler.",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+    ],
+    rollback: "315662a2",
+    technical: {
+      done: "⚠️ A CAUSA ERA O TIMEOUT DO CLIENTE COMPARTILHADO, e ela explica as duas falhas que o Lucas viu (o \"1 de 2 partes falharam\" e o \"a IA não respondeu\" com zero variáveis). `getAnthropicClient()` nasce com `timeout: 90_000` e `maxRetries: 1` — decisão certa e documentada para o webhook do WhatsApp, onde a mediana da CACÁ é 8,7s e um timeout longo segura a função serverless com o cliente pendurado. Ler 45 mil caracteres de contrato e escrever 80 propostas com trecho e contexto não cabe em 90 segundos: o SDK abortava, e a rota devolvia a mensagem genérica. As duas rotas da Têmis passam `{ timeout: 280_000 }` na requisição (o cliente segue com o default de 90s para todo o resto), com margem para os 300 de `maxDuration` — o que estourar estoura como erro nosso, com mensagem, em vez do timeout mudo da Vercel, que volta como HTML e não como JSON. ⚠️ E AS CHAMADAS VIRARAM STREAM. Duas razões: numa chamada comum não há tráfego enquanto o modelo escreve, e qualquer proxy no caminho pode derrubar a conexão por ociosidade; e a própria Anthropic recusa requisição não-streaming quando o `max_tokens` pedido é grande o bastante para a resposta demorar demais. `finalMessage()` espera o fim, então nada muda para quem lê o JSON. ⚠️ `max_tokens` VOLTOU DE 48 MIL PARA 32 MIL: no Opus 5 ele é teto de RACIOCÍNIO MAIS RESPOSTA, e um valor acima do teto do modelo é recusado com 400 — que chega à tela como \"a IA não respondeu\", sem dizer o motivo. A parte ficou em 30 mil caracteres, meio-termo medido: 25 mil partia demais (cada corte é cego, e quem lê só o meio não sabe se aquele CPF é do comprador ou do representante da vendedora) e 45 mil não terminava a tempo. ⚠️ E O ERRO REAL CHEGA À TELA, cortado em 200 caracteres e sem nada do conteúdo do contrato: a mensagem genérica custou duas rodadas de teste do Lucas às cegas. 3.114 testes verdes; typecheck e lint limpos.",
+      motivation:
+        "O agente devolveu zero variáveis e \"a IA não respondeu\". Não era o modelo nem o tamanho da minuta: o cliente HTTP abortava a leitura em 90 segundos.",
+    },
+    title: "O agente tinha 90 segundos",
+    type: "correcao",
+    version: "1.295.2",
+  },
+  {
     buildTag: "2026-09-08-o-agente-le-duas-vezes",
     deployedAt: "2026-09-08T02:40:00-03:00",
     modules: [

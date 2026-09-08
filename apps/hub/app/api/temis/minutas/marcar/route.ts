@@ -66,6 +66,22 @@ export const maxDuration = 300;
 /** Quanto texto aceitamos de uma vez. Acima disso, a tela manda por partes. */
 const TETO_DE_TEXTO = 120_000;
 
+/**
+ * ⚠️ O CLIENTE COMPARTILHADO ABORTA EM 90 SEGUNDOS, E FOI ISSO QUE DERRUBOU O AGENTE.
+ *
+ * `getAnthropicClient()` é o mesmo de toda a casa e nasce com `timeout: 90_000` — uma decisão certa
+ * para o webhook do WhatsApp, onde a mediana da CACÁ é 8,7 segundos e um timeout longo segura a
+ * função serverless com o cliente pendurado (ver a nota em `lib/ai/claude.ts`).
+ *
+ * Ler 45 mil caracteres de contrato e devolver 80 propostas NÃO cabe em 90 segundos. O SDK abortava
+ * a chamada, a rota devolvia "a IA não respondeu" e a tela mostrava zero variáveis. Era isso — e não
+ * o tamanho da resposta — o "1 de 2 partes falharam" que o Lucas viu nos dois testes.
+ *
+ * 280 segundos deixa margem para os 300 de `maxDuration`: o que estourar aqui estoura como erro
+ * nosso, com mensagem, em vez de virar o timeout mudo da Vercel (que volta como HTML, não JSON).
+ */
+const TEMPO_DE_LEITURA = 280_000;
+
 export async function POST(request: Request) {
   const autorizacao = await authorizeApoloRead(request);
   if (!autorizacao.ok) return autorizacao.response;
@@ -104,12 +120,26 @@ export async function POST(request: Request) {
 
   let bruto = "";
   try {
-    const resposta = await cliente.messages.create({
-      // ⚠️ 16 MIL TRUNCAVA A RESPOSTA, e o sintoma era "1 de 2 partes falharam" sem explicação: o
-      // JSON vinha cortado no meio, `lerPropostas` não conseguia lê-lo, e a parte inteira virava
-      // erro. Uma minuta de 50 mil caracteres rende 60 a 100 propostas, cada uma com trecho e
-      // contexto — passa fácil de 16 mil tokens de saída.
-      max_tokens: 48_000,
+    // ⚠️ STREAM, E NÃO `create`. Duas razões, e as duas doem em produção:
+    //
+    // 1. A CONEXÃO FICA VIVA. Numa chamada comum o servidor da Anthropic só responde quando termina
+    //    de escrever, e no meio disso não há tráfego nenhum — qualquer proxy no caminho (o da
+    //    Vercel inclusive) pode considerar a conexão ociosa e derrubá-la. Com stream, cada pedaço
+    //    que chega é atividade.
+    // 2. A PRÓPRIA ANTHROPIC RECUSA requisição não-streaming quando o `max_tokens` pedido é grande
+    //    o bastante para a resposta demorar demais. Pedimos 32 mil.
+    //
+    // O `finalMessage()` espera o fim e devolve a mensagem inteira, então nada muda daqui para
+    // baixo: quem lê o JSON continua lendo de uma vez só.
+    const resposta = await cliente.messages.stream({
+      // ⚠️ 16 MIL TRUNCAVA A RESPOSTA. Uma minuta de 50 mil caracteres rende 60 a 100 propostas,
+      // cada uma com trecho e contexto — passa fácil de 16 mil tokens de saída, e o JSON vinha
+      // cortado no meio.
+      //
+      // ⚠️ MAS NÃO SUBA ISTO SEM LIMITE. No Opus 5 o `max_tokens` é teto de RACIOCÍNIO MAIS
+      // RESPOSTA (ver a nota em `lib/ai/claude.ts`), e um valor acima do teto do modelo é recusado
+      // na hora, com 400 — que chega à tela como "a IA não respondeu", sem dizer o motivo.
+      max_tokens: 32_000,
       messages: [
         {
           content: ehReleitura
@@ -120,15 +150,23 @@ export async function POST(request: Request) {
       ],
       model: CLAUDE_MODEL.frontier,
       system: ehReleitura ? `${CONHECIMENTO_DA_TEMIS}\n\n${RELEITURA}` : CONHECIMENTO_DA_TEMIS,
-    });
+    }, { timeout: TEMPO_DE_LEITURA }).finalMessage();
     // Só os blocos de texto: a resposta pode trazer outros tipos (raciocínio, uso de ferramenta),
     // e concatenar tudo cegamente colocaria lixo dentro do JSON que vamos ler.
     bruto = resposta.content
       .map((bloco) => (bloco.type === "text" ? bloco.text : ""))
       .join("");
   } catch (e) {
-    console.error("[temis][marcar] falha ao chamar o modelo", e instanceof Error ? e.message : e);
-    return NextResponse.json({ erro: "A IA não respondeu. Tente de novo." }, { status: 502 });
+    // ⚠️ O MOTIVO PRECISA CHEGAR À TELA. "A IA não respondeu" sozinho custou duas rodadas de teste
+    // do Lucas: o erro real era o timeout de 90s do cliente compartilhado, e a mensagem genérica
+    // não deixava ninguém suspeitar disso. Aqui vai a mensagem do SDK — que diz "timeout",
+    // "max_tokens" ou o código do erro —, e nada do conteúdo do contrato.
+    const motivo = e instanceof Error ? e.message : String(e);
+    console.error("[temis][marcar] falha ao chamar o modelo", motivo);
+    return NextResponse.json(
+      { erro: `A IA não respondeu: ${motivo.slice(0, 200)}` },
+      { status: 502 },
+    );
   }
 
   const propostas = lerPropostas(bruto);

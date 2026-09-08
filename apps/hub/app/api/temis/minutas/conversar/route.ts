@@ -110,7 +110,8 @@ export async function POST(request: Request) {
 
   let bruto = "";
   try {
-    const resposta = await cliente.messages.create({
+    // Stream pelo mesmo motivo da rota de marcar: mantém a conexão viva na leitura de um contrato.
+    const resposta = await cliente.messages.stream({
       max_tokens: 8_000,
       messages: [
         {
@@ -134,11 +135,18 @@ export async function POST(request: Request) {
       ],
       model: CLAUDE_MODEL.frontier,
       system: `${CONHECIMENTO_DA_TEMIS}\n\n${COMO_CONVERSAR}`,
-    });
+      // ⚠️ O CLIENTE COMPARTILHADO ABORTA EM 90 SEGUNDOS — certo para o webhook do WhatsApp, curto
+      // demais para uma pergunta sobre um contrato de 50 mil caracteres. Ver a nota gêmea em
+      // `minutas/marcar/route.ts`.
+    }, { timeout: 280_000 }).finalMessage();
     bruto = resposta.content.map((bloco) => (bloco.type === "text" ? bloco.text : "")).join("");
   } catch (e) {
-    console.error("[temis][conversar] falha ao chamar o modelo", e instanceof Error ? e.message : e);
-    return NextResponse.json({ erro: "A IA não respondeu. Tente de novo." }, { status: 502 });
+    const motivo = e instanceof Error ? e.message : String(e);
+    console.error("[temis][conversar] falha ao chamar o modelo", motivo);
+    return NextResponse.json(
+      { erro: `A IA não respondeu: ${motivo.slice(0, 200)}` },
+      { status: 502 },
+    );
   }
 
   const { fala, propostas } = separar(bruto);

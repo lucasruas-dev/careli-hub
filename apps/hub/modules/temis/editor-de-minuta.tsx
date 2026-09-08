@@ -425,11 +425,18 @@ type RespostaDaConversa = RespostaDoAgente & { resposta: string };
  * Partir também melhora o resultado: o modelo lendo 25 mil caracteres erra menos que lendo 136 mil,
  * e uma parte que falha não leva as outras junto.
  */
-// ⚠️ 25 MIL PARTIA DEMAIS, e partir tem um custo que não é só de tempo: cada parte é lida SOZINHA,
-// sem o resto do contrato. O agente que lê só o meio do documento não sabe se aquele "CPF n.º" é do
-// comprador ou do representante da vendedora — e a decisão de qual variável usar depende
-// exatamente disso. Menos cortes, decisões melhores.
-const TAMANHO_DA_PARTE = 45_000;
+// ⚠️ O TAMANHO DA PARTE É UM EQUILÍBRIO ENTRE DUAS COISAS QUE PUXAM PARA LADOS OPOSTOS.
+//
+//   PARTE GRANDE   decide melhor. Cada parte é lida SOZINHA: o agente que enxerga só o meio do
+//                  documento não sabe se aquele "CPF n.º" é do comprador ou do representante da
+//                  vendedora — e essa é exatamente a decisão que ele precisa tomar.
+//   PARTE PEQUENA  cabe no tempo. Cada leitura é uma requisição com teto de 300 segundos na Vercel,
+//                  e o modelo escreve 80 propostas com trecho e contexto para uma minuta cheia.
+//
+// 30 mil é o meio-termo medido em 08/09/2026: a minuta do Aldeia (50.770 caracteres) vira duas
+// partes com folga de tempo, e cada uma ainda carrega seção inteira — as partes, o imóvel, o preço.
+// Já foi 25 mil (partia demais) e 45 mil (uma leitura só não terminava a tempo).
+const TAMANHO_DA_PARTE = 30_000;
 
 /**
  * Corta o texto em pedaços, SEMPRE em quebra de linha.
@@ -897,9 +904,15 @@ function CorpoDoAgente({
 
       {aplicaveis.length === 0 ? (
         <p className="m-0 px-3 py-4 text-xs text-ink-soft">
-          {resposta.propostas.length > 0
-            ? "As propostas do agente não casaram com o texto atual. Se você editou a folha depois de mandar marcar, peça de novo."
-            : "O agente não achou nada novo para marcar. Se a minuta já está marcada, é isso mesmo."}
+          {/* ⚠️ ERRO E "NÃO ACHOU NADA" SÃO COISAS DIFERENTES, e mostrar os dois juntos custou uma
+              rodada de teste: a tela dizia "a IA não respondeu" E "o agente não achou nada novo" ao
+              mesmo tempo, o que sugere que ele leu e não viu nada — quando na verdade ele nem
+              chegou a ler. Com erro, a faixa de cima já explicou; aqui não se afirma mais nada. */}
+          {resposta.erro
+            ? "A leitura não chegou a terminar — veja o aviso acima e mande de novo."
+            : resposta.propostas.length > 0
+              ? "As propostas do agente não casaram com o texto atual. Se você editou a folha depois de mandar marcar, peça de novo."
+              : "O agente não achou nada novo para marcar. Se a minuta já está marcada, é isso mesmo."}
         </p>
       ) : (
         <div className="px-3 py-2">
