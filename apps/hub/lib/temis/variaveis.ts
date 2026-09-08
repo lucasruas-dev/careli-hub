@@ -597,11 +597,28 @@ const BLOCOS_DO_PLANO: VariavelDoContrato[] = [
 // ── CORRETAGEM ───────────────────────────────────────────────────────────────
 //
 // O "vinculado" é a imobiliária OU o corretor da venda (`hercules_vendas.imobiliaria_entity_id` /
-// `corretor_entity_id`, ambos `apolo_entities`). A COORDENADORA DE VENDAS não tem cadastro no
-// Panteon: fica pendente até existir.
+// `corretor_entity_id`, ambos `apolo_entities`).
+//
+// ⚠️ A COORDENADORA DE VENDAS DEIXOU DE SER PENDENTE EM 08/09/2026. A migration 0145 pôs
+// `coordenadora_entity_id` em `apolo_enterprise_settings`: o empreendimento aponta a entidade, e os
+// nove campos do bloco "a." saem do cadastro dela no Apolo, pelo mesmo caminho do vínculo da
+// imobiliária. Sem o apontamento, os nove voltam a ser colchete no papel — que é o aviso para
+// alguém cadastrar, não um defeito.
 const VINCULADO = (campo: string): FonteDaVariavel => ({ campo: `${campo} (imobiliaria_entity_id ou corretor_entity_id da venda)`, tabela: "apolo_entities" });
 const VINCULADO_FICHA = (campo: string): FonteDaVariavel => ({ campo: `ficha.${campo} (imobiliaria_entity_id ou corretor_entity_id da venda)`, tabela: "apolo_esteira" });
-const COORDENADORA = (campo: string): FonteDaVariavel => PENDENTE(`coordenadora de vendas do empreendimento — sem cadastro no Panteon (${campo})`);
+const COORDENADORA = (campo: string): FonteDaVariavel => ({
+  campo: `${campo} (coordenadora_entity_id do empreendimento, em apolo_enterprise_settings)`,
+  tabela: "apolo_entities",
+});
+/**
+ * A comissão do empreendimento — as duas colunas da 0145, percentual sobre o valor VENDIDO.
+ *
+ * ⚠️ PALIATIVO ATÉ JANEIRO, palavra do Lucas: *"em janeiro vamos migrar o financeiro, ou seja até lá,
+ * vamos fazer um paliativo"*. O rateio de verdade vem de `split_enterprise_group_values` (C2X) com a
+ * migração do financeiro; estas duas colunas existem para fechar o contrato de corretagem, que saía
+ * com sete lacunas no papel.
+ */
+const COMISSAO = (campo: string): FonteDaVariavel => ({ campo, tabela: "apolo_enterprise_settings" });
 
 const CORRETAGEM: VariavelDoContrato[] = [
   { exemplo: "IMOBILIÁRIA CENTRAL LTDA.", fonte: VINCULADO("display_name"), grupo: "corretagem", nome: "nome_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "Nome do vinculado", tipo: "texto" },
@@ -609,35 +626,44 @@ const CORRETAGEM: VariavelDoContrato[] = [
   { exemplo: "CRECI 12345", fonte: VINCULADO_FICHA("creci"), grupo: "corretagem", nome: "creci_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "CRECI do vinculado", tipo: "texto" },
   { exemplo: "(31) 3333-0000", fonte: VINCULADO_FICHA("telefone (ou apolo_contacts)"), grupo: "corretagem", nome: "telefone_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "Telefone do vinculado", tipo: "texto" },
   { exemplo: "contato@imobiliaria.com.br", fonte: VINCULADO_FICHA("email (ou apolo_contacts)"), grupo: "corretagem", nome: "email_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "E-mail do vinculado", tipo: "texto" },
-  { exemplo: "Careli Vendas", fonte: COORDENADORA("nome fantasia"), grupo: "corretagem", nome: "nome_fantasia_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Coordenadora de vendas", tipo: "texto" },
-  { exemplo: "11.115.899/0001-04", fonte: COORDENADORA("CNPJ"), grupo: "corretagem", nome: "cnpj_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "CNPJ da coordenadora", tipo: "texto" },
-  { exemplo: "Avenida Central", fonte: COORDENADORA("logradouro"), grupo: "corretagem", nome: "rua_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Logradouro da coordenadora", tipo: "texto" },
-  { exemplo: "1000", fonte: COORDENADORA("número"), grupo: "corretagem", nome: "numero_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Número da coordenadora", tipo: "texto" },
-  { exemplo: "Centro", fonte: COORDENADORA("bairro"), grupo: "corretagem", nome: "bairro_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Bairro da coordenadora", tipo: "texto" },
-  { exemplo: "Belo Horizonte/MG", fonte: COORDENADORA("cidade/UF"), grupo: "corretagem", nome: "cidade_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Cidade da coordenadora", tipo: "texto" },
-  { exemplo: "30110-000", fonte: COORDENADORA("CEP"), grupo: "corretagem", nome: "cep_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "CEP da coordenadora", tipo: "texto" },
-  { exemplo: "(31) 3333-1111", fonte: COORDENADORA("telefone"), grupo: "corretagem", nome: "telefone_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Telefone da coordenadora", tipo: "texto" },
-  { exemplo: "vendas@careli.adm.br", fonte: COORDENADORA("e-mail"), grupo: "corretagem", nome: "email_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "E-mail da coordenadora", tipo: "texto" },
+  { exemplo: "Careli Vendas", fonte: COORDENADORA("trade_name (ou display_name, quando a entidade não tem fantasia)"), grupo: "corretagem", nome: "nome_fantasia_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Coordenadora de vendas", tipo: "texto" },
+  { exemplo: "11.115.899/0001-04", fonte: COORDENADORA("document_masked (o documento completo, CNPJ ou CPF)"), grupo: "corretagem", nome: "cnpj_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "CNPJ da coordenadora", tipo: "texto" },
+  { exemplo: "Avenida Central", fonte: COORDENADORA("apolo_addresses.street, ou metadata.cadastro.logradouro"), grupo: "corretagem", nome: "rua_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Logradouro da coordenadora", tipo: "texto" },
+  { exemplo: "1000", fonte: COORDENADORA("apolo_addresses.number, ou metadata.cadastro.numero"), grupo: "corretagem", nome: "numero_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Número da coordenadora", tipo: "texto" },
+  { exemplo: "Centro", fonte: COORDENADORA("apolo_addresses.district, ou metadata.cadastro.bairro"), grupo: "corretagem", nome: "bairro_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Bairro da coordenadora", tipo: "texto" },
+  { exemplo: "Belo Horizonte/MG", fonte: COORDENADORA("apolo_addresses.city + state, no formato Cidade/UF"), grupo: "corretagem", nome: "cidade_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Cidade da coordenadora", tipo: "texto" },
+  { exemplo: "30110-000", fonte: COORDENADORA("apolo_addresses.postal_code, ou metadata.cadastro.cep"), grupo: "corretagem", nome: "cep_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "CEP da coordenadora", tipo: "texto" },
+  { exemplo: "(31) 3333-1111", fonte: COORDENADORA("apolo_contacts.whatsapp (ou phone)"), grupo: "corretagem", nome: "telefone_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Telefone da coordenadora", tipo: "texto" },
+  { exemplo: "vendas@careli.adm.br", fonte: COORDENADORA("apolo_contacts.email"), grupo: "corretagem", nome: "email_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "E-mail da coordenadora", tipo: "texto" },
   // ⚠️ O CRECI DA COORDENADORA VIRA VARIÁVEL, e não fica digitado na minuta. O contrato de
   // corretagem que o Lucas mandou em 08/09/2026 traz "CRECI: 8.015" escrito TRÊS vezes no mesmo
   // documento. Registro profissional muda (renovação, transferência de jurisdição, troca da pessoa
   // jurídica que coordena) — e uma minuta com o número digitado em três lugares é uma minuta em que
   // a atualização esquece um deles, e ninguém confere um número no meio de vinte cláusulas.
-  { exemplo: "8.015", fonte: COORDENADORA("CRECI"), grupo: "corretagem", nome: "creci_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "CRECI da coordenadora", tipo: "texto" },
-  // A comissão por empreendimento não tem coluna no Panteon (o legado a tinha por empreendimento:
-  // VAL 7,5%, VLO 6%). Pendente até o Hércules cadastrá-la.
-  { exemplo: "R$ 11.124,00", fonte: PENDENTE("percentual de comissão do empreendimento × valor_negociado — sem coluna"), grupo: "corretagem", nome: "valor_total_comissao", origem: "Comissão do empreendimento sobre o preço", rotulo: "Comissão total", tipo: "dinheiro" },
+  { exemplo: "8.015", fonte: PENDENTE("CRECI da coordenadora — nenhuma tabela do Panteon tem a coluna"), grupo: "corretagem", nome: "creci_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "CRECI da coordenadora", tipo: "texto" },
+  // ⚠️ A COMISSÃO DEIXOU DE SER PENDENTE EM 08/09/2026, e o total é a SOMA DAS DUAS PONTAS. A
+  // migration 0145 pôs `comissao_coordenadora_percentual` e `comissao_imobiliaria_percentual` em
+  // `apolo_enterprise_settings`: as duas são percentual sobre o valor VENDIDO, e o total do contrato
+  // é a soma delas — que é o que o próprio texto afirma ("o valor de [valor_total_comissao] …
+  // refere-se à intermediação, sendo que a quantia … será destinada à COORDENADORA … e … destinada
+  // aos ASSOCIADOS"). Quem faz a conta é `dados-do-contrato.ts`, em centavos inteiros.
+  //
+  // ⚠️ E NULO NÃO É ZERO. Percentual não cadastrado não escreve a variável, e o colchete volta ao
+  // papel como aviso; percentual ZERO é decisão e imprime R$ 0,00. É PALIATIVO até a migração do
+  // financeiro em janeiro — palavra do Lucas.
+  { exemplo: "R$ 11.124,00", fonte: COMISSAO("(comissao_coordenadora_percentual + comissao_imobiliaria_percentual) × o valor da proposta"), grupo: "corretagem", nome: "valor_total_comissao", origem: "Comissão do empreendimento sobre o preço", rotulo: "Comissão total", tipo: "dinheiro" },
   { exemplo: "onze mil cento e vinte e quatro reais", extensoDe: "valor_total_comissao", fonte: EXTENSO_DE("valor_total_comissao"), grupo: "corretagem", nome: "valor_total_comissao_extenso", origem: "Escrito pelo sistema", rotulo: "Comissão total por extenso", tipo: "extenso" },
-  { exemplo: "R$ 3.708,00", fonte: PENDENTE("rateio da comissão — sem coluna"), grupo: "corretagem", nome: "valor_pago_coordenadora_vendas", origem: "Rateio da comissão", rotulo: "Parte da coordenadora", tipo: "dinheiro" },
+  { exemplo: "R$ 3.708,00", fonte: COMISSAO("comissao_coordenadora_percentual × o valor da proposta"), grupo: "corretagem", nome: "valor_pago_coordenadora_vendas", origem: "Rateio da comissão", rotulo: "Parte da coordenadora", tipo: "dinheiro" },
   { exemplo: "três mil setecentos e oito reais", extensoDe: "valor_pago_coordenadora_vendas", fonte: EXTENSO_DE("valor_pago_coordenadora_vendas"), grupo: "corretagem", nome: "valor_pago_coordenadora_vendas_extenso", origem: "Escrito pelo sistema", rotulo: "Parte da coordenadora por extenso", tipo: "extenso" },
-  { exemplo: "R$ 7.416,00", fonte: PENDENTE("rateio da comissão — sem coluna"), grupo: "corretagem", nome: "valor_corretagem_menos_coordenadora_vendas", origem: "Rateio da comissão", rotulo: "Corretagem menos a coordenadora", tipo: "dinheiro" },
+  { exemplo: "R$ 7.416,00", fonte: COMISSAO("comissao_imobiliaria_percentual × o valor da proposta"), grupo: "corretagem", nome: "valor_corretagem_menos_coordenadora_vendas", origem: "Rateio da comissão", rotulo: "Corretagem menos a coordenadora", tipo: "dinheiro" },
   { exemplo: "sete mil quatrocentos e dezesseis reais", extensoDe: "valor_corretagem_menos_coordenadora_vendas", fonte: EXTENSO_DE("valor_corretagem_menos_coordenadora_vendas"), grupo: "corretagem", nome: "valor_corretagem_menos_coordenadora_vendas_extenso", origem: "Escrito pelo sistema", rotulo: "Corretagem menos coordenadora por extenso", tipo: "extenso" },
   // ⚠️ O RATEIO É POR PERCENTUAL, E O PERCENTUAL NÃO É CONSTANTE. O contrato de 08/09/2026 escreve
-  // 3% para a coordenadora e 4% para o corretor — mas a comissão já é POR EMPREENDIMENTO no legado
-  // (VAL 7,5%, VLO 6%: ver `reference_c2x_comissao_por_empreendimento`), e um contrato com o
-  // percentual digitado sai errado no empreendimento seguinte sem que nada acuse.
-  { exemplo: "3%", fonte: PENDENTE("percentual do rateio da coordenadora — sem coluna"), grupo: "corretagem", nome: "percentual_comissao_coordenadora_vendas", origem: "Rateio da comissão", rotulo: "Percentual da coordenadora", tipo: "texto" },
-  { exemplo: "4%", fonte: PENDENTE("percentual do rateio do vinculado — sem coluna"), grupo: "corretagem", nome: "percentual_comissao_vinculado", origem: "Rateio da comissão", rotulo: "Percentual do vinculado", tipo: "texto" },
+  // 3% para a coordenadora e 4% para o corretor — mas a comissão é POR EMPREENDIMENTO (no legado,
+  // VAL 7,5% e VLO 6%: ver `reference_c2x_comissao_por_empreendimento`), e um contrato com o
+  // percentual digitado sai errado no empreendimento seguinte sem que nada acuse. Por isso os dois
+  // são variável, e desde a 0145 saem da coluna do empreendimento em vez do colchete.
+  { exemplo: "3%", fonte: COMISSAO("comissao_coordenadora_percentual"), grupo: "corretagem", nome: "percentual_comissao_coordenadora_vendas", origem: "Rateio da comissão", rotulo: "Percentual da coordenadora", tipo: "texto" },
+  { exemplo: "4%", fonte: COMISSAO("comissao_imobiliaria_percentual"), grupo: "corretagem", nome: "percentual_comissao_vinculado", origem: "Rateio da comissão", rotulo: "Percentual do vinculado", tipo: "texto" },
   // ⚠️ O CUSTO TOTAL NÃO É O PREÇO. Ele é preço do lote MAIS a comissão, e é o número que o
   // contrato de corretagem chama de "custo total da aquisição" (item 4.3). Sem variável própria, a
   // minuta cai em `[preco_venda]` — que é o MESMO campo de `[valor_imovel_venda]` do item 4.1 — e o

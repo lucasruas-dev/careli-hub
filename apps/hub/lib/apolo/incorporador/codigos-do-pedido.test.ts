@@ -6,8 +6,9 @@ import type { LinhaDoCadastro } from "@/lib/hercules/cadastro";
 import { pedidoPrecisaDeExpansao, resolverCodigosDoPedido } from "./codigos-do-pedido";
 import { empreendimentosDoPortal } from "./empreendimentos-do-portal";
 
-// O catálogo REAL do C2X: a Lagoa Bonita chega AGRUPADA ("group:Lagoa Bonita", sem linha "33");
-// o Vale do Ouro vem solto (VOC/VOL/VOR não estão em ENTERPRISE_GROUPS).
+// O catálogo REAL do C2X: a Lagoa Bonita chega AGRUPADA ("group:Lagoa Bonita", sem linha "33").
+// ⚠️ O VALE DO OURO TAMBÉM, DESDE 08/09/2026 — VOC/VOL/VOR entraram em ENTERPRISE_GROUPS, então
+// aqui eles chegam como "group:Vale do Ouro". O VLO (35) é ESPELHO e continua linha solta.
 const CATALOGO = agrupar([
   { code: "LBF", id: 33, name: "LAGOA BONITA" },
   { code: "LBR", id: 27, name: "LAGOA BONITA" },

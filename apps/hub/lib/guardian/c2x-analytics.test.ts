@@ -15,13 +15,19 @@ import {
 //   quadra/lote em VOC (37, 157 un) + VOL (36, 141 un). Somar os três conta o loteamento duas
 //   vezes; o espelho, porém, não pode sumir do sistema (masterplan, CADs da esteira, painel do
 //   coordenador vivem nele).
+// Remedido em 08/09/2026, já com a terceira carteira: VLO 298 · VOC 157 · VOL 141 · VOR 3. O
+// cruzamento do espelho com as três, por quadra+lote, dá 301 pares, NENHUM com o mesmo id no C2X
+// e 63 com situação divergente — o espelho está parado, e por isso nunca entra em soma.
 
 describe("ENTERPRISE_MIRRORS", () => {
   it("o VLO é espelho e aponta para as divisões vivas", () => {
     const vlo = findEnterpriseMirror("VLO");
 
     expect(vlo).not.toBeNull();
-    expect(vlo?.divisions).toEqual(["VOC", "VOL"]);
+    // ⚠️ O VOR ENTROU EM 08/09/2026. `divisions` é quem responde "quem está vivo no lugar do
+    // espelho" — o filtro do motor da CACÁ (`filtroEmpreendimento`) traduz "VLO" nesta lista —,
+    // e sem o VOR a resposta escondia as 3 unidades da carteira de extras.
+    expect(vlo?.divisions).toEqual(["VOC", "VOL", "VOR"]);
     expect(MIRROR_ENTERPRISE_CODES).toContain("VLO");
   });
 
@@ -75,12 +81,22 @@ describe("displayEnterprise", () => {
   it("o espelho NÃO colapsa com as divisões: os quatro têm o mesmo nome no C2X", () => {
     // Era aqui que o motor da CACÁ perdia a conta: `return name` dava a MESMA chave para os
     // quatro "VALE DO OURO", e a agregação por rótulo somava o loteamento duas vezes.
+    //
+    // ⚠️ AS TRÊS VIVAS PASSARAM A COLAPSAR ENTRE SI EM 08/09/2026, e isso é o pedido: com o Vale
+    // do Ouro em ENTERPRISE_GROUPS elas devolvem o `display` do grupo ("Vale do Ouro"), então o
+    // ranking e as vendas por empreendimento mostram UMA linha em vez de três — o mesmo que já
+    // fazem com Lagoa Bonita e Lavra do Ouro. Não é soma dobrada: as três são carteiras
+    // diferentes, e o espelho continua com chave própria.
     const espelho = displayEnterprise("VLO", "VALE DO OURO");
     const voc = displayEnterprise("VOC", "VALE DO OURO");
     const vol = displayEnterprise("VOL", "VALE DO OURO");
+    const vor = displayEnterprise("VOR", "VALE DO OURO - EXTRAS");
 
-    expect(voc).toBe("VALE DO OURO");
-    expect(vol).toBe("VALE DO OURO");
+    expect(voc).toBe("Vale do Ouro");
+    expect(vol).toBe("Vale do Ouro");
+    // ⚠️ O VOR MUDOU DE RÓTULO: solto, ele saía como "VALE DO OURO - EXTRAS" e virava uma linha
+    // separada em toda agregação por nome. Agora é a mesma do Vale do Ouro.
+    expect(vor).toBe("Vale do Ouro");
     expect(espelho).not.toBe(voc);
     expect(espelho).toContain("histórico");
   });

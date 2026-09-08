@@ -621,3 +621,114 @@ describe("a oração do regime de bens", () => {
     expect(t).not.toContain("SOLTEIRO, Solteiro (a) , casado");
   });
 });
+
+// ── A CARA DA VARIÁVEL E O VÃO DO BLOCO CORTADO ──────────────────────────────
+//
+// Dois defeitos que só apareceram quando o motor rodou sobre a minuta REAL do ZZ TESTE, em
+// 08/09/2026, e que o contrato do Otávio (viúvo) e o do Rodrigo (solteiro) mostravam lado a lado.
+describe("o valor herda a cara do chip", () => {
+  // ⚠️ ESTA É A FORMA REAL DO NÓ NO BANCO. O `variavel` é void e inline: as marcas ficam no FILHO,
+  // e o nó só tem type/nome/id/children. Medido: dos 102 nós da minuta, ZERO têm marca no nó e 48
+  // têm no filho.
+  const chip = (nome: string, marcas: Record<string, unknown> = {}): NoDoDocumento => ({
+    children: [{ text: "", ...marcas }],
+    nome,
+    type: "variavel",
+  });
+
+  it("negrito e fonte do filho vão para o valor", () => {
+    const html = documentoParaHtml(
+      preencherContrato(
+        [p("Eu, ", chip("nome_cliente", { bold: true, fontFamily: "Lucida Sans Unicode" }), ".")],
+        { compradores: [comprador("THIAGO SOUZA")], gerais: {} },
+      ).nos,
+    );
+
+    expect(html).toContain("THIAGO SOUZA");
+    expect(html).toMatch(/<(strong|b)[^>]*>[^<]*THIAGO SOUZA/);
+    expect(html).toContain("Lucida Sans Unicode");
+  });
+
+  // ⚠️ O NÓ VENCE O FILHO quando os dois trazem a marca — é a precedência declarada em `marcasDoNo`.
+  it("marca no próprio nó continua vencendo a do filho", () => {
+    const no = { ...chip("nome_cliente", { bold: true }), bold: false } as NoDoDocumento;
+    const html = documentoParaHtml(
+      preencherContrato([p(no)], { compradores: [comprador("THIAGO")], gerais: {} }).nos,
+    );
+
+    expect(html).toContain("THIAGO");
+    expect(html).not.toMatch(/<(strong|b)>/);
+  });
+
+  // Sem marca em lugar nenhum, o valor sai limpo e herda o CSS do documento. Não inventa negrito.
+  it("chip sem marca nenhuma sai sem marca nenhuma", () => {
+    const html = documentoParaHtml(
+      preencherContrato([p(chip("nome_cliente"))], {
+        compradores: [comprador("THIAGO")],
+        gerais: {},
+      }).nos,
+    );
+
+    expect(html).toContain("THIAGO");
+    expect(html).not.toMatch(/<(strong|b|em|i)>/);
+  });
+});
+
+describe("o parágrafo que esvaziou no corte", () => {
+  // ⚠️ ESTA É A FORMA REAL DO PARÁGRAFO DO CÔNJUGE na minuta do ZZ TESTE: os dois textos vazios
+  // estão FORA do par, então sobrevivem ao corte e o parágrafo termina com dois filhos. A contagem
+  // de filhos dizia "não está vazio", ele passava inteiro e saía como <p><br /></p> — uma linha em
+  // branco no lugar exato da qualificação do cônjuge, no contrato de quem não tem cônjuge.
+  const minuta = [
+    p("Comprador: ", v("nome_cliente")),
+    {
+      children: [
+        { text: "" },
+        v("inicio_dados_conjuge"),
+        { text: "E, na qualidade de cônjuge, " },
+        v("nome_conjuge"),
+        v("fim_dados_conjuge"),
+        { text: "" },
+      ],
+      type: "p",
+    } as NoDoDocumento,
+    p("Cláusula primeira."),
+  ];
+
+  it("sem cônjuge, o parágrafo some inteiro — não vira linha em branco", () => {
+    const r = preencherContrato(minuta, {
+      compradores: [comprador("OTAVIO REZENDE CAMPOS", { temConjuge: false })],
+      gerais: {},
+    });
+
+    expect(r.nos).toHaveLength(2);
+    expect(documentoParaHtml(r.nos)).not.toContain("<br />");
+    expect(texto(r.nos)).toBe("Comprador: OTAVIO REZENDE CAMPOS Cláusula primeira.");
+  });
+
+  it("com cônjuge, o parágrafo fica", () => {
+    const r = preencherContrato(minuta, {
+      compradores: [
+        comprador("HENRIQUE", {
+          temConjuge: true,
+          valores: { nome_cliente: "HENRIQUE", nome_conjuge: "PATRÍCIA SALES DO VALE" },
+        }),
+      ],
+      gerais: {},
+    });
+
+    expect(r.nos).toHaveLength(3);
+    expect(texto(r.nos)).toContain("E, na qualidade de cônjuge, PATRÍCIA SALES DO VALE");
+  });
+
+  // ⚠️ A LINHA EM BRANCO DE DIAGRAMAÇÃO NÃO PODE SUMIR JUNTO. O jurídico a coloca de propósito
+  // entre cláusulas, e o sinal que separa uma da outra é ter tido conteúdo ANTES do corte.
+  it("linha em branco que já era vazia na minuta continua lá", () => {
+    const r = preencherContrato(
+      [p("Cláusula primeira."), p(""), p("Cláusula segunda.")],
+      { compradores: [comprador("X")], gerais: {} },
+    );
+
+    expect(r.nos).toHaveLength(3);
+  });
+});

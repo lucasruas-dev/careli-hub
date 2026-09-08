@@ -1442,3 +1442,298 @@ describe("a bandeira de casado", () => {
     expect((await comEstadoCivil(null))!.ehCasado).toBeUndefined();
   });
 });
+
+// ── A CORRETAGEM ─────────────────────────────────────────────────────────────
+//
+// As lacunas que o contrato de corretagem imprimia entre colchetes até 08/09/2026. A comissão virou
+// DADO do empreendimento na migration 0145 — paliativo até a migração do financeiro, palavra do
+// Lucas — e é percentual sobre o valor VENDIDO, com o total sendo a soma das duas pontas.
+describe("a comissão de corretagem e a coordenadora de vendas", () => {
+  const COORDENADORA = "bbbbbbbb-0000-0000-0000-000000000001";
+
+  /** A entidade da coordenadora como `apolo_entities` a devolve: PJ, com fantasia e razão social. */
+  const ENTIDADE_COORDENADORA = {
+    display_name: "CARELI VENDAS LTDA",
+    document_masked: "11.115.899/0001-04",
+    entity_kind: "pj",
+    id: COORDENADORA,
+    legal_name: "CARELI VENDAS E INTERMEDIACAO LTDA",
+    metadata: null,
+    trade_name: "Careli Vendas",
+  };
+
+  /**
+   * ⚠️ `numeric` CHEGA COMO STRING do PostgREST, e o fixture repete isso de propósito: é assim que
+   * `comissao_coordenadora_percentual` aparece na resposta real, e um `typeof === "number"` no
+   * caminho leria a comissão inteira como ausente.
+   */
+  const AJUSTES = {
+    comissao_coordenadora_percentual: "1.500",
+    comissao_imobiliaria_percentual: "5.000",
+    coordenadora_entity_id: COORDENADORA,
+  };
+
+  function cliente(
+    entrada: {
+      ajustes?: Linhas | null;
+      chave?: string;
+      empreendimento?: Linhas;
+      proposta?: Linhas;
+      unidade?: Linhas;
+    } = {},
+  ) {
+    return clienteFalso({
+      apolo_addresses: (f: Record<string, unknown>) =>
+        f.entity_id === COORDENADORA
+          ? [
+              {
+                city: "Belo Horizonte",
+                complement: null,
+                district: "Funcionários",
+                entity_id: COORDENADORA,
+                number: "1000",
+                postal_code: "30110-000",
+                state: "MG",
+                street: "Avenida Central",
+              },
+            ]
+          : [],
+      apolo_contacts: (f: Record<string, unknown>) =>
+        f.entity_id === COORDENADORA
+          ? [
+              { contact_type: "whatsapp", entity_id: COORDENADORA, value: "(31) 3333-1111" },
+              { contact_type: "email", entity_id: COORDENADORA, value: "vendas@careli.adm.br" },
+            ]
+          : [],
+      // A mesma tabela responde pelos compradores (por `.in`, sem `.eq`) e pela coordenadora.
+      apolo_entities: (f: Record<string, unknown>) =>
+        f.id === COORDENADORA ? ENTIDADE_COORDENADORA : [ENTIDADE_THIAGO],
+      // ⚠️ A CHAVE É O ID DO C2X: o duplo só devolve a linha quando a consulta perguntou por "39",
+      // que é o `c2x_enterprise_id` do empreendimento. Perguntar pelo uuid não acha nada.
+      apolo_enterprise_settings: (f: Record<string, unknown>) =>
+        entrada.ajustes && f.enterprise_id === (entrada.chave ?? "39") ? entrada.ajustes : null,
+      hercules_empreendimentos: entrada.empreendimento ?? EMPREENDIMENTO,
+      hercules_propostas: entrada.proposta ?? proposta(),
+      hercules_unidades: entrada.unidade ?? UNIDADE,
+    });
+  }
+
+  it("os três valores e os três extensos: 1,5% e 5% de R$ 185.400", async () => {
+    const g = (await dadosDaProposta("p1", cliente({ ajustes: AJUSTES })))!.dados.gerais;
+
+    // 185.400 × 1,5% = 2.781,00 · 185.400 × 5% = 9.270,00 · total 12.051,00.
+    expect(g.valor_pago_coordenadora_vendas).toBe("R$ 2.781,00");
+    expect(g.valor_pago_coordenadora_vendas_extenso).toBe("dois mil setecentos e oitenta e um reais");
+    expect(g.valor_corretagem_menos_coordenadora_vendas).toBe("R$ 9.270,00");
+    expect(g.valor_corretagem_menos_coordenadora_vendas_extenso).toBe(
+      "nove mil duzentos e setenta reais",
+    );
+    expect(g.valor_total_comissao).toBe("R$ 12.051,00");
+    expect(g.valor_total_comissao_extenso).toBe("doze mil e cinquenta e um reais");
+
+    expect(g.percentual_comissao_coordenadora_vendas).toBe("1,5%");
+    expect(g.percentual_comissao_vinculado).toBe("5%");
+  });
+
+  // ⚠️ O TOTAL É A SOMA DAS DUAS LINHAS IMPRESSAS, e este é o valor que prova a diferença: R$
+  // 170.010,08 a 1,5% e 5% dá 2.550,15 e 8.500,50, que somam 11.050,65. A mesma conta em reais dá
+  // 11050.6552 e imprimiria R$ 11.050,66 — um centavo a mais do que as duas quantias que a frase do
+  // contrato manda somar, na mesma linha.
+  it("valor quebrado não vaza dízima nem desencontra o total das partes", async () => {
+    const g = (await dadosDaProposta(
+      "p1",
+      cliente({ ajustes: AJUSTES, proposta: proposta({ valor: 170010.08 }) }),
+    ))!.dados.gerais;
+
+    expect(g.valor_pago_coordenadora_vendas).toBe("R$ 2.550,15");
+    expect(g.valor_corretagem_menos_coordenadora_vendas).toBe("R$ 8.500,50");
+    expect(g.valor_total_comissao).toBe("R$ 11.050,65");
+
+    // Nenhum número com mais de duas casas depois da vírgula chega ao papel.
+    for (const nome of Object.keys(g)) {
+      expect(g[nome], nome).not.toMatch(/,\d{3,}/);
+    }
+  });
+
+  it("os nove campos da coordenadora saem do cadastro dela no Apolo", async () => {
+    const g = (await dadosDaProposta("p1", cliente({ ajustes: AJUSTES })))!.dados.gerais;
+
+    expect(g.nome_fantasia_coordenadora_vendas).toBe("Careli Vendas");
+    expect(g.cnpj_coordenadora_vendas).toBe("11.115.899/0001-04");
+    expect(g.rua_coordenadora_vendas).toBe("Avenida Central");
+    expect(g.numero_coordenadora_vendas).toBe("1000");
+    expect(g.bairro_coordenadora_vendas).toBe("Funcionários");
+    // "Cidade/UF" é o formato que o catálogo declara — e a UF sozinha não seria uma cidade.
+    expect(g.cidade_coordenadora_vendas).toBe("Belo Horizonte/MG");
+    expect(g.cep_coordenadora_vendas).toBe("30110-000");
+    // ⚠️ WHATSAPP, NÃO `phone`: é o tipo que a maioria das entidades do Apolo tem.
+    expect(g.telefone_coordenadora_vendas).toBe("(31) 3333-1111");
+    expect(g.email_coordenadora_vendas).toBe("vendas@careli.adm.br");
+  });
+
+  it("entidade sem `trade_name` cai no `display_name` — 19 das 590 PJ estão assim", async () => {
+    const sb = clienteFalso({
+      apolo_entities: (f: Record<string, unknown>) =>
+        f.id === COORDENADORA ? { ...ENTIDADE_COORDENADORA, trade_name: null } : [ENTIDADE_THIAGO],
+      apolo_enterprise_settings: AJUSTES,
+      hercules_empreendimentos: EMPREENDIMENTO,
+      hercules_propostas: proposta(),
+      hercules_unidades: UNIDADE,
+    });
+    const g = (await dadosDaProposta("p1", sb))!.dados.gerais;
+    expect(g.nome_fantasia_coordenadora_vendas).toBe("CARELI VENDAS LTDA");
+  });
+
+  // ⚠️ NULO NÃO É ZERO, e esta é a metade "nulo": a variável NÃO entra no dicionário, o motor
+  // imprime `[valor_total_comissao]` no papel e o colchete é o aviso para alguém cadastrar.
+  it("percentual nulo não escreve a variável — o colchete volta ao papel", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      cliente({
+        ajustes: {
+          ...AJUSTES,
+          comissao_coordenadora_percentual: null,
+          comissao_imobiliaria_percentual: null,
+        },
+      }),
+    ))!;
+    const g = r.dados.gerais;
+
+    expect(g.valor_pago_coordenadora_vendas).toBeUndefined();
+    expect(g.valor_pago_coordenadora_vendas_extenso).toBeUndefined();
+    expect(g.valor_corretagem_menos_coordenadora_vendas).toBeUndefined();
+    expect(g.valor_total_comissao).toBeUndefined();
+    expect(g.valor_total_comissao_extenso).toBeUndefined();
+    expect(g.percentual_comissao_coordenadora_vendas).toBeUndefined();
+    expect(g.percentual_comissao_vinculado).toBeUndefined();
+
+    expect(r.avisos.join(" | ")).toContain("percentuais de comissão");
+  });
+
+  // ⚠️ E ESTA É A OUTRA METADE: zero é DECISÃO (empreendimento em que aquela ponta não recebe) e
+  // imprime R$ 0,00. Um contrato que imprime R$ 0,00 foi decidido; um que imprime o colchete foi
+  // esquecido — e o resolvedor tem de saber a diferença.
+  it("percentual ZERO imprime R$ 0,00, e não o colchete", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      cliente({ ajustes: { ...AJUSTES, comissao_coordenadora_percentual: "0.000" } }),
+    ))!;
+    const g = r.dados.gerais;
+
+    expect(g.valor_pago_coordenadora_vendas).toBe("R$ 0,00");
+    expect(g.valor_pago_coordenadora_vendas_extenso).toBe("zero reais");
+    expect(g.percentual_comissao_coordenadora_vendas).toBe("0%");
+    // O total continua sendo a soma: 0 + 9.270,00.
+    expect(g.valor_total_comissao).toBe("R$ 9.270,00");
+    // Zero é decisão: não vira aviso de "falta cadastrar".
+    expect(r.avisos.join(" | ")).not.toContain("percentual da coordenadora");
+  });
+
+  // ⚠️ COM UMA PONTA SÓ, A SOMA É DESCONHECIDA. Escrever a que existe no lugar do total imprimiria
+  // uma comissão menor do que a combinada, em cima da frase que diz que o total é a intermediação.
+  it("um percentual só escreve a sua linha e deixa o total em branco", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      cliente({ ajustes: { ...AJUSTES, comissao_imobiliaria_percentual: null } }),
+    ))!;
+    const g = r.dados.gerais;
+
+    expect(g.valor_pago_coordenadora_vendas).toBe("R$ 2.781,00");
+    expect(g.valor_corretagem_menos_coordenadora_vendas).toBeUndefined();
+    expect(g.valor_total_comissao).toBeUndefined();
+    expect(r.avisos.join(" | ")).toContain("percentual da imobiliária");
+  });
+
+  // ⚠️ UM AVISO, E NÃO NOVE. Sem coordenadora apontada são nove variáveis vazias e uma causa só;
+  // listá-las campo a campo esconderia os outros avisos no meio.
+  it("sem `coordenadora_entity_id`, nenhum dos nove campos — e UM aviso só", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      cliente({ ajustes: { ...AJUSTES, coordenadora_entity_id: null } }),
+    ))!;
+    const g = r.dados.gerais;
+
+    for (const nome of [
+      "bairro_coordenadora_vendas",
+      "cep_coordenadora_vendas",
+      "cidade_coordenadora_vendas",
+      "cnpj_coordenadora_vendas",
+      "email_coordenadora_vendas",
+      "nome_fantasia_coordenadora_vendas",
+      "numero_coordenadora_vendas",
+      "rua_coordenadora_vendas",
+      "telefone_coordenadora_vendas",
+    ]) {
+      expect(g[nome], nome).toBeUndefined();
+    }
+
+    // Os valores continuam saindo: quem falta é o NOME de quem recebe, não o quanto.
+    expect(g.valor_pago_coordenadora_vendas).toBe("R$ 2.781,00");
+
+    const daCoordenadora = r.avisos.filter((a) => a.includes("coordenadora de vendas"));
+    expect(daCoordenadora, r.avisos.join(" | ")).toHaveLength(1);
+  });
+
+  // ⚠️ ID ÓRFÃO É "SEM COORDENADORA", E NÃO ERRO. A 0145 deixou a coluna sem foreign key de
+  // propósito, porque `apolo_entities` recebe merge e arquivamento.
+  it("id que não acha entidade nenhuma vira a mesma lacuna visível", async () => {
+    const sb = clienteFalso({
+      apolo_entities: (f: Record<string, unknown>) => (f.id ? null : [ENTIDADE_THIAGO]),
+      apolo_enterprise_settings: AJUSTES,
+      hercules_empreendimentos: EMPREENDIMENTO,
+      hercules_propostas: proposta(),
+      hercules_unidades: UNIDADE,
+    });
+    const r = (await dadosDaProposta("p1", sb))!;
+
+    expect(r.dados.gerais.nome_fantasia_coordenadora_vendas).toBeUndefined();
+    expect(r.avisos.join(" | ")).toContain("coordenadora de vendas");
+  });
+
+  // ⚠️ A CHAVE É O `c2x_enterprise_id`, E NÃO O UUID. Medido em 08/09/2026: `enterprise_id` é a
+  // chave primária de `apolo_enterprise_settings`, é TEXTO, e 13 dos 38 empreendimentos têm linha lá
+  // casando por ele. Mandar o uuid devolveria zero linha em TODO contrato, calado.
+  it("procura os ajustes pelo id do C2X, nunca pelo uuid do Hércules", async () => {
+    const sb = clienteFalso({
+      apolo_enterprise_settings: (f: Record<string, unknown>) =>
+        f.enterprise_id === "eeeeeeee-0000-0000-0000-000000000001" ? AJUSTES : null,
+      hercules_empreendimentos: EMPREENDIMENTO,
+      hercules_propostas: proposta(),
+      hercules_unidades: UNIDADE,
+    });
+    const g = (await dadosDaProposta("p1", sb))!.dados.gerais;
+    expect(g.valor_total_comissao).toBeUndefined();
+  });
+
+  // ⚠️ LOX, PDX E RDX NÃO TÊM `c2x_enterprise_id`, e são 1.822 propostas (medido em 08/09/2026).
+  // Para eles a unidade carrega o id na própria coluna — o mesmo segundo caminho de
+  // `__unidade_enterprise_id`.
+  it("empreendimento sem id do C2X cai no id da unidade", async () => {
+    const g = (await dadosDaProposta(
+      "p1",
+      cliente({
+        ajustes: AJUSTES,
+        chave: "13",
+        empreendimento: { ...EMPREENDIMENTO, c2x_enterprise_id: null },
+        unidade: { ...UNIDADE, enterprise_id: "13" },
+      }),
+    ))!.dados.gerais;
+
+    expect(g.valor_total_comissao).toBe("R$ 12.051,00");
+  });
+
+  // ⚠️ SEM VALOR NÃO HÁ COMISSÃO, e o aviso disso já existe ("não tem valor negociado"): repetir a
+  // mesma causa em três linhas novas afogaria o resto da lista.
+  it("proposta sem valor não inventa comissão, mas mantém os percentuais", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      cliente({ ajustes: AJUSTES, proposta: proposta({ valor: null }) }),
+    ))!;
+    const g = r.dados.gerais;
+
+    expect(g.valor_total_comissao).toBeUndefined();
+    expect(g.valor_pago_coordenadora_vendas).toBeUndefined();
+    expect(g.percentual_comissao_coordenadora_vendas).toBe("1,5%");
+    expect(r.avisos.join(" | ")).toContain("valor negociado");
+  });
+});

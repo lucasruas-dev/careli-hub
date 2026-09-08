@@ -60,11 +60,17 @@ function unica<T>(lista: T[]): T {
 // ── O C2X como `loadApoloEnterprises` entrega ───────────────────────────────
 // Vale do Ouro solto (espelho VLO parado + três divisões vivas), Garden simples, Vista Alegre
 // simples, e Lagoa Bonita / Lavra do Ouro JÁ AGRUPADAS por ENTERPRISE_GROUPS (com `stages`).
+//
+// ⚠️ DE PROPÓSITO SOLTO, mesmo depois de 08/09/2026, quando o Vale do Ouro entrou em
+// ENTERPRISE_GROUPS: o painel do Hércules agrupa pelo CADASTRO DO PANTEON e a primeira coisa que
+// ele faz é desfazer o agrupamento do Apolo (`linhasReaisDoC2x`, coberto pelo teste "desfaz o
+// agrupamento de ENTERPRISE_GROUPS"). A fixture solta prova que os números por enterprise_id são
+// os mesmos vindo de um jeito ou do outro — é a forma que o painel produz internamente.
 const VLO = c2x({
   code: "VLO",
   id: "35",
   mirror: true,
-  mirrorLabel: "Histórico · mesmos lotes de VOC + VOL",
+  mirrorLabel: "Histórico · mesmos lotes de VOC + VOL + VOR",
   name: "VALE DO OURO",
   // ⚠️ Os 118 "em negociação" que já viraram venda nos filhos — o número parado.
   scenario: cenario({ negociacao: 118, total: 298, vendido: 100 }),
@@ -190,7 +196,7 @@ describe("Vale do Ouro: pai com espelho + 3 filhos", () => {
     expect(vale.etapas).toBe(0);
     expect(vale.scenario.negociacao.units).toBe(118);
     // ⚠️ Número parado apresentado como vivo: a linha avisa, com o rótulo do C2X.
-    expect(vale.aviso).toBe("Histórico · mesmos lotes de VOC + VOL");
+    expect(vale.aviso).toBe("Histórico · mesmos lotes de VOC + VOL + VOR");
   });
 
   it("pai pela soma dos filhos, e pai sem filho (Garden), não têm aviso", () => {
@@ -351,7 +357,7 @@ describe("empreendimento fora do cadastro", () => {
     });
     const vale = painel.linhas.find((l) => l.id === "35");
     expect(vale?.codigo).toBe("VLO");
-    expect(vale?.aviso).toBe("Histórico · mesmos lotes de VOC + VOL");
+    expect(vale?.aviso).toBe("Histórico · mesmos lotes de VOC + VOL + VOR");
     expect(painel.linhas.find((l) => l.id === "39")?.aviso).toBeNull();
   });
 

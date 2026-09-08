@@ -397,6 +397,10 @@ function resolverNo(
   const resolvidos = semOracaoDoRegime(aplicarPares(filhos, dados, dono), dados, dono);
   const finais: (NoDeTexto | NoDoDocumento)[] = [];
 
+  // ⚠️ TINHA CONTEÚDO ANTES? É o que separa "esvaziou no corte" de "já nascia vazio". Ver
+  // `VAZIO_POR_CORTE` abaixo.
+  const tinhaConteudo = filhos.some((f) => (ehTexto(f) ? f.text !== "" : true));
+
   for (const filho of resolvidos) {
     if (ehTexto(filho)) {
       finais.push(filho);
@@ -408,10 +412,15 @@ function resolverNo(
       finais.push(textoDaVariavel(alvo, nome, dados, semValor, donoDoNo(alvo) ?? dono));
       continue;
     }
-    finais.push(resolverNo(alvo, dados, semValor, donoDoNo(alvo) ?? dono));
+    const resolvido = resolverNo(alvo, dados, semValor, donoDoNo(alvo) ?? dono);
+    // O filho que esvaziou no corte não entra: um `<td>` ou um `<li>` vazio abre o mesmo vão que o
+    // parágrafo, e aqui é o único lugar que sabe que ele existiu.
+    if (!esvaziouNoCorte(resolvido)) finais.push(resolvido);
   }
 
-  return limpar({ ...no, children: finais });
+  const pronto = limpar({ ...no, children: finais });
+  const ficouVazio = finais.every((f) => ehTexto(f) && f.text === "");
+  return tinhaConteudo && ficouVazio ? marcarVazioPorCorte(pronto) : pronto;
 }
 
 const REGIME = "regime_casamento_cliente";
@@ -666,15 +675,42 @@ function limpar(no: NoDoDocumento): NoDoDocumento {
 }
 
 /**
+ * O carimbo de "este nó esvaziou por causa do corte".
+ *
+ * ⚠️ É UM SÍMBOLO, E NÃO UMA CHAVE DE TEXTO, exatamente ao contrário do `DONO`. Símbolo não
+ * atravessa `JSON.stringify` nem aparece no serializador, então ele não pode vazar para o
+ * documento gravado nem virar atributo no HTML — e por isso não precisa ser apagado depois, que é
+ * o cuidado que o `DONO` exige em `limpar`.
+ */
+const VAZIO_POR_CORTE = Symbol("vazioPorCorte");
+
+function marcarVazioPorCorte(no: NoDoDocumento): NoDoDocumento {
+  return { ...no, [VAZIO_POR_CORTE]: true } as NoDoDocumento;
+}
+
+function esvaziouNoCorte(no: unknown): boolean {
+  return (no as Record<symbol, unknown>)?.[VAZIO_POR_CORTE] === true;
+}
+
+/**
  * Remove o parágrafo que ficou completamente vazio depois do corte.
  *
  * ⚠️ SÓ O QUE FICOU VAZIO POR CAUSA DO CORTE, e nunca o que já era vazio na minuta: linha em branco
  * entre cláusulas é diagramação, e o jurídico as coloca de propósito. O sinal é ter tido filho
  * ANTES: um parágrafo que só continha `[inicio_dados_conjuge]…[fim_dados_conjuge]` de um solteiro
  * fica sem nada, e imprimi-lo abriria um vão no contrato que ninguém sabe explicar.
+ *
+ * ⚠️ E "SEM NADA" QUASE NUNCA É ZERO FILHOS, que era o buraco desta função. Medido no contrato do
+ * Otávio (viúvo) em 08/09/2026: o parágrafo do cônjuge guarda `[{text:""}, [inicio_dados_conjuge],
+ * …, [fim_dados_conjuge], {text:""}]` — os dois textos vazios estão FORA do par, então sobrevivem
+ * ao corte e o parágrafo termina com DOIS filhos. A contagem dizia "não está vazio", ele passava
+ * inteiro e saía no papel como `<p><br /></p>`: uma linha em branco no lugar exato da qualificação
+ * do cônjuge, no contrato de quem não tem cônjuge. Agora quem decide é o carimbo, posto por
+ * `resolverNo`, que é o único ponto que viu o antes e o depois.
  */
 function podarVazios(nos: readonly NoDoDocumento[]): NoDoDocumento[] {
   return nos.filter((no) => {
+    if (esvaziouNoCorte(no)) return false;
     if (!Array.isArray(no.children)) return true;
     if (no.children.length > 0) return true;
     // Chegou aqui com zero filhos: ou nasceu assim (o serializador emite `<p></p>`, que é a linha em
@@ -709,23 +745,45 @@ function nomeDaVariavel(no: unknown): null | string {
   return typeof alvo.nome === "string" ? alvo.nome : null;
 }
 
-/** As marcas de texto que o nó de variável carrega, para o valor sair com a mesma cara. */
+const MARCAS_DE_TEXTO = [
+  "backgroundColor",
+  "bold",
+  "color",
+  "fontFamily",
+  "fontSize",
+  "italic",
+  "strikethrough",
+  "subscript",
+  "superscript",
+  "underline",
+] as const;
+
+/**
+ * As marcas de texto que o valor da variável herda, para ele sair com a mesma cara do parágrafo.
+ *
+ * ⚠️ NO PLATE, A CARA DO CHIP MORA NO FILHO, e era essa a metade que faltava. O nó `variavel` é um
+ * elemento void INLINE: ele guarda `type`, `nome`, `id` e um `children` de um texto vazio — e é
+ * NESSE filho que o editor grava `bold`, `color` e `fontFamily`. Medido na minuta do ZZ TESTE em
+ * 08/09/2026: dos 102 nós de variável, ZERO têm marca no próprio nó e 48 têm no filho. Lendo só o
+ * nó, todo valor saía sem negrito e sem a fonte da minuta — num parágrafo em Lucida Sans o nome do
+ * comprador voltava para a serifa padrão do documento, e o "COMPRADOR" que a minuta pediu em
+ * negrito saía leve.
+ *
+ * O nó continua vindo primeiro: se um dia ele carregar marca própria, ela vence a do filho.
+ */
 function marcasDoNo(no: NoDoDocumento): Omit<NoDeTexto, "text"> {
-  const cru = no as unknown as Record<string, unknown>;
+  const doFilho = (no.children ?? []).find((f) => ehTexto(f));
+  return {
+    ...soAsMarcas(doFilho as unknown as Record<string, unknown> | undefined),
+    ...soAsMarcas(no as unknown as Record<string, unknown>),
+  } as Omit<NoDeTexto, "text">;
+}
+
+function soAsMarcas(cru: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!cru) return {};
   const marcas: Record<string, unknown> = {};
-  for (const chave of [
-    "backgroundColor",
-    "bold",
-    "color",
-    "fontFamily",
-    "fontSize",
-    "italic",
-    "strikethrough",
-    "subscript",
-    "superscript",
-    "underline",
-  ]) {
+  for (const chave of MARCAS_DE_TEXTO) {
     if (cru[chave] !== undefined) marcas[chave] = cru[chave];
   }
-  return marcas as Omit<NoDeTexto, "text">;
+  return marcas;
 }

@@ -17,7 +17,7 @@ import {
 import { autorizar, codigosDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { numeroDaParcela } from "@/lib/apolo/numero-da-parcela";
-import { loadPoliticaComercial } from "@/lib/apolo/politica-comercial";
+import { type DadosDoApolo, loadPoliticaComercial } from "@/lib/apolo/politica-comercial";
 import { type PoliticaDoEmpreendimento } from "@/lib/apolo/liquido-incorporador";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { getHadesDbPool } from "@/lib/guardian/db";
@@ -405,19 +405,30 @@ export async function GET(request: Request) {
       .select("enterprise_id, code, gestao_carteira_percentual")
       .limit(2000);
 
-    const gestaoPorId = new Map<string, null | number>(
+    // ⚠️ SÓ A GESTÃO DE CARTEIRA VAI PREENCHIDA, e é de propósito: esta rota calcula o líquido do
+    // incorporador, e as comissões da coordenadora e da imobiliária (migration 0145) são cadastro
+    // do contrato de corretagem, não entram nessa conta. Os demais campos vão nulos, que é o mesmo
+    // que esta rota via antes de eles existirem.
+    const doApolo = new Map<string, DadosDoApolo>(
       ((settings ?? []) as Array<{
         enterprise_id: string;
         gestao_carteira_percentual: null | number | string;
       }>).map((linha) => [
         String(linha.enterprise_id),
-        linha.gestao_carteira_percentual == null
-          ? null
-          : Number(linha.gestao_carteira_percentual),
+        {
+          comissaoCoordenadoraPercentual: null,
+          comissaoImobiliariaPercentual: null,
+          coordenadoraEntityId: null,
+          entradaMinimaPercentual: null,
+          gestaoCarteiraPercentual:
+            linha.gestao_carteira_percentual == null
+              ? null
+              : Number(linha.gestao_carteira_percentual),
+        },
       ]),
     );
 
-    const politicas = await loadPoliticaComercial(codes, gestaoPorId);
+    const politicas = await loadPoliticaComercial(codes, doApolo);
     if (politicas.ok) {
       for (const p of politicas.politicas) {
         politicaPorCode.set(p.code, {

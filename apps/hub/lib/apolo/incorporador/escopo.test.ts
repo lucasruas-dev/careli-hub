@@ -9,13 +9,14 @@ import { empreendimentosPermitidos, type SessaoIncorporador } from "./sessao";
 // autorizado?" — sem banco. A parte que consulta o C2X (`unidadeNoEscopo`) é integração e depende
 // do legado; o que dá para travar aqui é a REGRA, que é onde o erro custa vazamento.
 //
-// Catálogo REAL do C2X, lido em 17/08/2026.
+// Catálogo REAL do C2X, lido em 17/08/2026 (o VOR conferido em 08/09/2026: 3 unidades).
 const CATALOGO = agrupar([
   { code: "LBF", id: 33, name: "LAGOA BONITA" },
   { code: "LBR", id: 27, name: "LAGOA BONITA" },
   { code: "LBP", id: 32, name: "LAGOA BONITA" },
   { code: "VOC", id: 37, name: "VALE DO OURO" },
   { code: "VOL", id: 36, name: "VALE DO OURO" },
+  { code: "VOR", id: 41, name: "VALE DO OURO - EXTRAS" },
   { code: "JDG", id: 40, name: "JARDIM DAS GERAIS" },
 ]);
 
@@ -77,12 +78,28 @@ describe("a equivalência de grupo dentro do escopo", () => {
     expect(autorizados.has(canon("group:Lagoa Bonita"))).toBe(true);
   });
 
-  it("⚠️ VOC e VOL NÃO se alcançam: o Vale do Ouro não é grupo no catálogo", () => {
-    // É exatamente o vazamento que está no backlog. O Cecílio tem o VOC; se um dia alguém puser o
-    // Vale do Ouro em ENTERPRISE_GROUPS, este teste quebra e é aí que se decide na mão.
+  it("⚠️ VOC e VOL passam a CANONIZAR juntos — e quem separa a leitura é a assimetria", () => {
+    // ⚠️ ESTE TESTE MUDOU DE LADO EM 08/09/2026, e a versão anterior pedia exatamente isto: "se
+    // um dia alguém puser o Vale do Ouro em ENTERPRISE_GROUPS, este teste quebra e é aí que se
+    // decide na mão". Decidido: o Vale do Ouro virou grupo (Lucas, comparando com o portal da
+    // Gurgel: *"na tela da gurgel, vale do ouro está agrupado, no apolo não"*), então o
+    // `canonizador` passa a dizer que 37 e 36 são o MESMO empreendimento — igual ao que já dizia
+    // das três glebas do Lagoa Bonita.
+    //
+    // ⚠️ ISSO NÃO ABRE A CARTEIRA DO LINO PARA O CECÍLIO. Quem recorta a LEITURA do portal é
+    // `codigosDaSessao`/`idsDaSessao`, e as duas mantêm a assimetria (o id do GRUPO abre as
+    // divisões; o id de uma DIVISÃO vale só por ela) — provado no bloco "uma divisão NÃO alcança
+    // as divisões irmãs", no fim deste arquivo, onde `codes(["37"])` continua devolvendo só VOC.
+    //
+    // O `canonizador` é usado onde a equivalência é a REGRA, não o vazamento: a habilitação de
+    // imobiliária, que vale para o empreendimento inteiro. O efeito lá é FECHAR, não abrir — o
+    // coordenador que cobre só o VOC passa a receber 409 ("a decisão é da Careli") em vez de
+    // habilitar sozinho, que é o mesmo tratamento que uma gleba solta do Lagoa Bonita já recebia.
     const autorizados = new Set(empreendimentosPermitidos(sessao(["37"])).map(canon));
 
-    expect(autorizados.has(canon("36"))).toBe(false);
+    expect(canon("37")).toBe("group:Vale do Ouro");
+    expect(canon("36")).toBe("group:Vale do Ouro");
+    expect(autorizados.has(canon("36"))).toBe(true);
   });
 
   it("os códigos do grupo saem completos, para as leituras do C2X", () => {
@@ -106,6 +123,12 @@ describe("idsDaSessao (a tradução para as tabelas do Apolo)", () => {
   // — a divisão ("33") e o grupo ("group:Lagoa Bonita"). A função de verdade lê o catálogo do C2X,
   // que aqui está congelado em CATALOGO.
   const canon = canonizador(CATALOGO);
+  // ⚠️ ESTE ATALHO CANONIZA, E A `idsDaSessao` DE VERDADE NÃO — divergência achada em 08/09/2026,
+  // ao pôr o Vale do Ouro em ENTERPRISE_GROUPS. A função real (escopo.ts) só abre as divisões
+  // quando a sessão traz o id do GRUPO; id de divisão vale por ele mesmo e NÃO devolve o id do
+  // grupo. Enquanto o Vale do Ouro estava solto, os dois caminhos davam a mesma resposta para
+  // "37" e a diferença não aparecia em teste nenhum. O que a produção faz está provado por
+  // `idsDaSessaoReal`, abaixo; este atalho fica porque descreve o formato do retorno.
   const idsAutorizados = (permitidos: string[]): string[] => {
     const autorizados = new Set(permitidos.map(canon));
 
@@ -119,6 +142,24 @@ describe("idsDaSessao (a tradução para as tabelas do Apolo)", () => {
     ];
   };
 
+  /** A regra de `idsDaSessao` (escopo.ts) copiada linha a linha, sem tocar no C2X. */
+  const idsDaSessaoReal = (permitidos: string[]): string[] => {
+    const daSessao = new Set(permitidos.map((id) => String(id).trim()));
+    const ids: string[] = [];
+
+    for (const emp of CATALOGO) {
+      if (daSessao.has(emp.id)) {
+        ids.push(emp.id, ...emp.stageIds);
+        continue;
+      }
+      for (const stageId of emp.stageIds) {
+        if (daSessao.has(String(stageId))) ids.push(String(stageId));
+      }
+    }
+
+    return [...new Set([...ids, ...permitidos])];
+  };
+
   it("quem tem o GRUPO alcança o id do grupo e o de cada divisão", () => {
     const ids = idsAutorizados(empreendimentosPermitidos(sessao(["group:Lagoa Bonita"])));
 
@@ -128,6 +169,11 @@ describe("idsDaSessao (a tradução para as tabelas do Apolo)", () => {
     expect(ids).toContain("32");
   });
 
+  // ⚠️ ESTE É O ATALHO, NÃO A PRODUÇÃO. `idsDaSessaoReal(["33"])` devolve só ["33"]: a função de
+  // verdade NÃO acrescenta o id do grupo quando a sessão traz uma divisão. Divergência anotada em
+  // 08/09/2026 e deixada como está — mexer nela é decisão de escopo do portal, não do
+  // agrupamento do Vale do Ouro. Efeito prático: uma CAD gravada como "group:Lagoa Bonita" não é
+  // alcançada por quem tem só a gleba, que é o comportamento fail-closed descrito no escopo.ts.
   it("quem tem UMA divisão também alcança o id do grupo (é o mesmo empreendimento)", () => {
     expect(idsAutorizados(empreendimentosPermitidos(sessao(["33"])))).toContain(
       "group:Lagoa Bonita",
@@ -135,11 +181,16 @@ describe("idsDaSessao (a tradução para as tabelas do Apolo)", () => {
   });
 
   it("⚠️ e NÃO alcança o empreendimento do vizinho", () => {
-    const ids = idsAutorizados(empreendimentosPermitidos(sessao(["37"])));
+    // ⚠️ MEDIDO PELA REGRA REAL, não pelo atalho canonizado. Desde que o Vale do Ouro virou grupo
+    // (08/09/2026), o atalho acima devolveria 36 junto com 37 — a produção não devolve, e é isto
+    // que precisa continuar valendo: o VOC é a carteira do Cecílio e o VOL a do Lino.
+    const ids = idsDaSessaoReal(empreendimentosPermitidos(sessao(["37"])));
 
     expect(ids).toContain("37");
     expect(ids).not.toContain("36");
     expect(ids).not.toContain("40");
+    // O id do GRUPO também fica fora: quem tem uma divisão não vira dono do conjunto.
+    expect(ids).not.toContain("group:Vale do Ouro");
   });
 });
 
@@ -211,8 +262,10 @@ describe("uma divisão NÃO alcança as divisões irmãs", () => {
     expect(codes(CATALOGO, ["group:Lagoa Bonita"]).sort()).toEqual(["LBF", "LBP", "LBR"]);
   });
 
-  it("empreendimento simples segue igual", () => {
+  it("empreendimento simples segue igual, e a divisão do Vale do Ouro também", () => {
     expect(codes(CATALOGO, ["40"])).toEqual(["JDG"]);
+    // ⚠️ O 37 DEIXOU DE SER SIMPLES em 08/09/2026 (virou divisão do grupo "Vale do Ouro"), e a
+    // resposta continua a mesma: id de divisão devolve só o código dela.
     expect(codes(CATALOGO, ["37"])).toEqual(["VOC"]);
   });
 

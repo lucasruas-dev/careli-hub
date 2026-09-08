@@ -112,13 +112,40 @@ describe("espelho do Vale do Ouro na tela de empreendimentos", () => {
     expect(vlo?.scenario.total.units).toBe(298);
   });
 
-  it("as divisões vivas seguem normais e somáveis", () => {
-    for (const code of ["VOC", "VOL", "VOR"]) {
-      const row = dados.rows.find((entry) => entry.code === code);
+  it("as divisões vivas seguem normais e somáveis, agora DENTRO da linha agrupada", () => {
+    // ⚠️ AS TRÊS DEIXARAM DE SER LINHA DE PRIMEIRO NÍVEL em 08/09/2026, quando o Vale do Ouro
+    // entrou em ENTERPRISE_GROUPS (Lucas: *"na tela da gurgel, vale do ouro está agrupado, no
+    // apolo não"*). Elas viraram `stages` do produto consolidado — o mesmo lugar onde LBF/LBR/LBP
+    // já viviam —, e é isto que faz a tela desenhar "(3 etapas)" com o chevron em vez de três
+    // linhas de mesmo nome e mesma cidade.
+    const grupo = dados.rows.find((row) => row.id === "group:Vale do Ouro");
 
-      expect(row?.mirror).toBe(false);
-      expect(row?.mirrorLabel).toBeNull();
+    expect(grupo).toBeDefined();
+    expect(grupo?.mirror).toBe(false);
+    expect([...(grupo?.stages ?? [])].map((stage) => stage.code).sort()).toEqual([
+      "VOC",
+      "VOL",
+      "VOR",
+    ]);
+    // 141 (VOL) + 157 (VOC) + 3 (VOR) = 301, contra as 298 do espelho.
+    expect(grupo?.scenario.total.units).toBe(301);
+
+    for (const code of ["VOC", "VOL", "VOR"]) {
+      const stage = grupo?.stages.find((entry) => entry.code === code);
+
+      expect(stage?.mirror).toBe(false);
+      expect(stage?.mirrorLabel).toBeNull();
     }
+  });
+
+  it("🔴 o ESPELHO ficou de fora do grupo, e continua linha própria", () => {
+    // Se o VLO entrasse como etapa, `sumScenarios` até o descartaria pela marca de espelho — mas
+    // a linha dele sumiria da listagem, e é por ela que se chega ao masterplan (MASTERPLAN = 35)
+    // e às CADs da esteira.
+    const grupo = dados.rows.find((row) => row.id === "group:Vale do Ouro");
+
+    expect(grupo?.codes).not.toContain("VLO");
+    expect(dados.rows.some((row) => row.code === "VLO" && row.mirror)).toBe(true);
   });
 
   it("a soma das linhas somáveis bate com o total", () => {

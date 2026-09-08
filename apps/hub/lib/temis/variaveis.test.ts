@@ -156,30 +156,18 @@ describe("toda variável nasce do Panteon — Lucas, 02/09/2026: 'esquece c2x co
         "vendedora_representante_telefone",
         "vendedora_rua",
         "vendedora_uf",
-        "bairro_coordenadora_vendas",
-        "cep_coordenadora_vendas",
-        "cidade_coordenadora_vendas",
-        "cnpj_coordenadora_vendas",
-        "email_coordenadora_vendas",
-        "nome_fantasia_coordenadora_vendas",
-        "numero_coordenadora_vendas",
-        "rua_coordenadora_vendas",
-        "telefone_coordenadora_vendas",
-        // Novos em 08/09/2026, com o contrato de corretagem: o CRECI vinha DIGITADO tres vezes no
-        // texto, e os percentuais do rateio (3% / 4%) tambem. A comissao ja varia por
-        // empreendimento no legado (VAL 7,5%, VLO 6%), entao numero fixo na minuta sai errado no
-        // empreendimento seguinte sem que nada acuse.
+        // ⚠️ A COORDENADORA E A COMISSAO SAIRAM DAQUI EM 08/09/2026. A migration 0145 pos os dois
+        // percentuais e `coordenadora_entity_id` em `apolo_enterprise_settings`: os nove campos de
+        // cadastro, os tres valores, os dois extensos de cada um e os dois percentuais agora tem
+        // fonte de verdade, e quem os resolve e `dados-do-contrato.ts`. Sobrou o CRECI, que nao tem
+        // coluna em tabela nenhuma do Panteon.
         "creci_coordenadora_vendas",
-        "percentual_comissao_coordenadora_vendas",
-        "percentual_comissao_vinculado",
         // ⚠️ O CUSTO TOTAL NAO E O PRECO: e preco + comissao. Sem variavel propria a minuta cai em
         // [preco_venda], que e o MESMO campo de [valor_imovel_venda], e o contrato imprime o custo
-        // total igual ao preco do lote logo abaixo da frase que promete "a soma".
+        // total igual ao preco do lote logo abaixo da frase que promete "a soma". A comissao ja
+        // existe desde a 0145; a SOMA e que continua sem ninguem para faze-la.
         "valor_custo_total_aquisicao",
-        "valor_corretagem_menos_coordenadora_vendas",
         "valor_garantia_fiduciaria",
-        "valor_pago_coordenadora_vendas",
-        "valor_total_comissao",
       ].sort(),
     );
   });

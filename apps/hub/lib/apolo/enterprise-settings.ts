@@ -533,13 +533,6 @@ export async function setEnterpriseCredenciamento(input: {
   return { ok: true };
 }
 
-// Salva SÓ o limite de crédito do empreendimento, SEM tocar `credenciamento_ativo`.
-//
-// Não usa upsert: um upsert com onConflict que omitisse `credenciamento_ativo` dependeria do
-// default do banco no caminho de INSERT, e sobrescreveria o flag no caminho de UPDATE. Aqui a
-// linha existente vira UPDATE (só o limite muda) e a inexistente vira INSERT com o flag no
-// default explícito (false) — empreendimento novo não nasce "na ativa". Cada escrita CHECA o
-// `error` (lição de 21/jul: upsert em NOT NULL sem default falhava em silêncio).
 /**
  * A % de gestão de carteira do empreendimento: quanto das parcelas do financiamento fica com o
  * INCORPORADOR.
@@ -549,17 +542,63 @@ export async function setEnterpriseCredenciamento(input: {
  * desse empreendimento". Por isso o zero e o nulo são coisas diferentes aqui, e apagar o campo é
  * uma ação com significado: some a carteira daquele empreendimento no portal do incorporador.
  *
- * É o único campo da política comercial que nasce no Apolo — o resto (comissão, entrada, parcelas
- * do sinal) continua vindo do C2X, que tem prioridade no financeiro.
+ * Foi o PRIMEIRO campo da política comercial a nascer no Apolo (17/08); depois vieram a entrada
+ * mínima (0128) e o rateio da corretagem (0145). O resto — comissão total, parcelas do sinal,
+ * split — continua vindo do C2X, que tem prioridade no financeiro até a migração de janeiro.
  *
  * Percentual de 0 a 100, do jeito que o Lucas fala e que a tela do C2X mostra: 97 no Recanto,
- * 97,5 no Vista Alegre, 96 na Lavra do Ouro.
+ * 97,5 no Vista Alegre, 96 na Lavra do Ouro. O UPDATE/INSERT é o do `gravarPercentual` abaixo.
  */
-export async function setEnterpriseGestaoCarteira(input: {
+export function setEnterpriseGestaoCarteira(input: {
   adminClient: AdminClient;
   code?: null | string;
   enterpriseId: string;
   percentual: null | number;
+  updatedBy?: null | string;
+}): Promise<{ error?: string; ok: boolean }> {
+  return gravarPercentual({
+    ...input,
+    coluna: "gestao_carteira_percentual",
+    rotulo: "gestao de carteira",
+  });
+}
+
+/** As colunas de percentual de `apolo_enterprise_settings` que o operador edita na tela. */
+type ColunaPercentual =
+  | "comissao_coordenadora_percentual"
+  | "comissao_imobiliaria_percentual"
+  | "entrada_minima_percentual"
+  | "gestao_carteira_percentual";
+
+/**
+ * O SETTER DE PERCENTUAL: um só para as quatro colunas, porque as quatro se comportam igual.
+ *
+ * ⚠️ ISTO ERA CÓDIGO COPIADO, e a cópia já estava em duas. Gestão de carteira e entrada mínima
+ * nasceram idênticas — mesma normalização, mesma faixa 0..100, mesmo UPDATE/INSERT — mudando só a
+ * coluna e a frase do erro. Com as duas comissões da migration 0145 seriam QUATRO cópias, e a
+ * próxima correção de comportamento (um caso novo de `tabelaAusente`, um formato de erro) teria
+ * quatro lugares onde esquecer uma.
+ *
+ * ⚠️ `null` CHEGA AQUI E É GRAVADO COMO `null`, nunca convertido em zero. Nas quatro colunas nulo é
+ * "não cadastrado" e zero é uma decisão — regra que a `entrada_minima_percentual` (0128) fixou e
+ * que a 0145 repete para as comissões. Transformar um no outro apagaria a diferença entre um campo
+ * que ninguém preencheu e um empreendimento onde aquela ponta realmente não recebe nada.
+ *
+ * ⚠️ NÃO USA UPSERT, pelo mesmo motivo do limite de crédito: um upsert que omitisse
+ * `credenciamento_ativo` dependeria do default do banco no INSERT e sobrescreveria o flag no
+ * UPDATE. Linha existente vira UPDATE (só a coluna pedida muda); linha inexistente vira INSERT com
+ * o flag em `false` explícito — empreendimento novo não nasce "na ativa" por causa de um
+ * percentual. Cada escrita CHECA o `error` (lição de 21/jul: upsert em NOT NULL sem default falhava
+ * em silêncio).
+ */
+async function gravarPercentual(input: {
+  adminClient: AdminClient;
+  code?: null | string;
+  coluna: ColunaPercentual;
+  enterpriseId: string;
+  percentual: null | number;
+  /** Entra na frase "A {rotulo} precisa estar entre 0 e 100%." — em minúsculas e sem acento. */
+  rotulo: string;
   updatedBy?: null | string;
 }): Promise<{ error?: string; ok: boolean }> {
   const enterpriseId = (input.enterpriseId ?? "").trim();
@@ -570,7 +609,7 @@ export async function setEnterpriseGestaoCarteira(input: {
   // Fora de 0..100 é digitação errada (98,5 e 985 são fáceis de confundir num campo). Barra aqui
   // com mensagem em vez de deixar o CHECK do banco devolver erro cru.
   if (percentual !== null && (percentual < 0 || percentual > 100)) {
-    return { error: "A gestao de carteira precisa estar entre 0 e 100%.", ok: false };
+    return { error: `A ${input.rotulo} precisa estar entre 0 e 100%.`, ok: false };
   }
 
   const { data: existente, error: erroLeitura } = await input.adminClient
@@ -587,7 +626,7 @@ export async function setEnterpriseGestaoCarteira(input: {
     const { error } = await input.adminClient
       .from(TABLE)
       .update({
-        gestao_carteira_percentual: percentual,
+        [input.coluna]: percentual,
         updated_at: new Date().toISOString(),
         updated_by: input.updatedBy ?? null,
       })
@@ -599,11 +638,11 @@ export async function setEnterpriseGestaoCarteira(input: {
 
   const { error } = await input.adminClient.from(TABLE).insert({
     code: input.code ?? null,
-    // Mesmo cuidado do limite de crédito: cadastrar a gestão de carteira de um empreendimento sem
-    // settings NÃO pode ligar o credenciamento por acidente.
+    // Mesmo cuidado do limite de crédito: cadastrar um percentual de um empreendimento sem settings
+    // NÃO pode ligar o credenciamento por acidente.
     credenciamento_ativo: false,
     enterprise_id: enterpriseId,
-    gestao_carteira_percentual: percentual,
+    [input.coluna]: percentual,
     updated_at: new Date().toISOString(),
     updated_by: input.updatedBy ?? null,
   });
@@ -623,20 +662,98 @@ export async function setEnterpriseGestaoCarteira(input: {
  * casa (10%) quando vem nulo; gravar 0 é uma decisão diferente e legítima (empreendimento que
  * aceita venda sem entrada), e as duas precisam continuar distinguíveis.
  */
-export async function setEnterpriseEntradaMinima(input: {
+export function setEnterpriseEntradaMinima(input: {
   adminClient: AdminClient;
   code?: null | string;
   enterpriseId: string;
   percentual: null | number;
   updatedBy?: null | string;
 }): Promise<{ error?: string; ok: boolean }> {
+  return gravarPercentual({
+    ...input,
+    coluna: "entrada_minima_percentual",
+    rotulo: "entrada minima",
+  });
+}
+
+/**
+ * A % SOBRE O VALOR VENDIDO DESTINADA À COORDENADORA DE VENDAS (migration 0145).
+ *
+ * Lucas (08/09/2026): *"em janeiro vamos migrar o financeiro, ou seja até lá, vamos fazer um
+ * paliativo, nessa tela coloca comissão para coordenadora e imobiliária, vou apontar e vc tira esse
+ * valor do valor total vendido. mas isso é paliativo"*.
+ *
+ * ⚠️ É SOBRE O VALOR VENDIDO, não sobre a comissão. É a mesma base do `total_value_commission` do
+ * C2X, e é isso que permite conferir a SOMA desta com a da imobiliária contra o número do legado.
+ *
+ * ⚠️ E É PALIATIVO, a palavra é dele: o rateio de verdade é o `split_enterprises` do C2X, que vem
+ * para o Panteon com a migração do financeiro. O que estas duas colunas resolvem hoje é o contrato
+ * de corretagem, que sai do papel com as lacunas à mostra.
+ */
+export function setEnterpriseComissaoCoordenadora(input: {
+  adminClient: AdminClient;
+  code?: null | string;
+  enterpriseId: string;
+  percentual: null | number;
+  updatedBy?: null | string;
+}): Promise<{ error?: string; ok: boolean }> {
+  return gravarPercentual({
+    ...input,
+    coluna: "comissao_coordenadora_percentual",
+    rotulo: "comissao da coordenadora",
+  });
+}
+
+/**
+ * A % SOBRE O VALOR VENDIDO DESTINADA AOS ASSOCIADOS — imobiliária e corretor (migration 0145).
+ *
+ * ⚠️ É A IRMÃ DA DE CIMA, e as duas SOMADAS é que dão a comissão total do contrato. É o que o texto
+ * do contrato de corretagem afirma: o total "refere-se à intermediação", uma parte "destinada ao
+ * pagamento da COORDENADORA DE VENDAS" e o resto "destinada aos ASSOCIADOS".
+ */
+export function setEnterpriseComissaoImobiliaria(input: {
+  adminClient: AdminClient;
+  code?: null | string;
+  enterpriseId: string;
+  percentual: null | number;
+  updatedBy?: null | string;
+}): Promise<{ error?: string; ok: boolean }> {
+  return gravarPercentual({
+    ...input,
+    coluna: "comissao_imobiliaria_percentual",
+    rotulo: "comissao da imobiliaria",
+  });
+}
+
+// Formato canônico do uuid do Postgres. Serve só para recusar lixo digitado antes de bater no
+// banco: id que EXISTE, mas aponta para entidade arquivada ou fundida, é problema de quem lê (a
+// migration 0145 não criou FK de propósito), não de quem grava.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * QUEM É A COORDENADORA DE VENDAS do empreendimento: a entidade (`apolo_entities`) de onde saem
+ * nome, CNPJ, endereço, telefone e e-mail do bloco "a. COORDENADORA DE VENDAS" do contrato.
+ *
+ * ⚠️ SEM ELA OS PERCENTUAIS NÃO BASTAM. A comissão sai calculada e o bloco continua com cinco
+ * colchetes no papel — que é exatamente a lacuna que este paliativo existe para fechar.
+ *
+ * ⚠️ STRING VAZIA É `null`, e apagar tem significado: "não há coordenadora cadastrada para este
+ * empreendimento". Mesma disciplina dos percentuais irmãos.
+ */
+export async function setEnterpriseCoordenadora(input: {
+  adminClient: AdminClient;
+  code?: null | string;
+  enterpriseId: string;
+  entityId: null | string;
+  updatedBy?: null | string;
+}): Promise<{ error?: string; ok: boolean }> {
   const enterpriseId = (input.enterpriseId ?? "").trim();
   if (!enterpriseId) return { error: "Empreendimento invalido.", ok: false };
 
-  const percentual = normalizarPercentual(input.percentual);
+  const entityId = (input.entityId ?? "").trim() || null;
 
-  if (percentual !== null && (percentual < 0 || percentual > 100)) {
-    return { error: "A entrada minima precisa estar entre 0 e 100%.", ok: false };
+  if (entityId !== null && !UUID.test(entityId)) {
+    return { error: "Coordenadora invalida: selecione uma entidade da busca.", ok: false };
   }
 
   const { data: existente, error: erroLeitura } = await input.adminClient
@@ -653,7 +770,7 @@ export async function setEnterpriseEntradaMinima(input: {
     const { error } = await input.adminClient
       .from(TABLE)
       .update({
-        entrada_minima_percentual: percentual,
+        coordenadora_entity_id: entityId,
         updated_at: new Date().toISOString(),
         updated_by: input.updatedBy ?? null,
       })
@@ -665,11 +782,11 @@ export async function setEnterpriseEntradaMinima(input: {
 
   const { error } = await input.adminClient.from(TABLE).insert({
     code: input.code ?? null,
-    // Mesmo cuidado das irmãs: cadastrar a entrada mínima de um empreendimento sem settings NÃO
-    // pode ligar o credenciamento por acidente.
+    // Mesmo cuidado das irmãs: apontar a coordenadora de um empreendimento sem settings NÃO pode
+    // ligar o credenciamento por acidente.
     credenciamento_ativo: false,
+    coordenadora_entity_id: entityId,
     enterprise_id: enterpriseId,
-    entrada_minima_percentual: percentual,
     updated_at: new Date().toISOString(),
     updated_by: input.updatedBy ?? null,
   });

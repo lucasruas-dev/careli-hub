@@ -125,6 +125,44 @@ type LinhaDaEntidade = {
   trade_name: null | string;
 };
 
+/**
+ * As duas comissões e a coordenadora do empreendimento (`apolo_enterprise_settings`, migration 0145).
+ *
+ * ⚠️ OS PERCENTUAIS SÃO SOBRE O VALOR VENDIDO, E NÃO SOBRE A COMISSÃO. É a decisão do Lucas em
+ * 08/09/2026 — *"vou apontar e vc tira esse valor do valor total vendido"* — e é o que faz o total
+ * do contrato ser a SOMA das duas pontas, exatamente como o texto da minuta afirma: o total "refere-se
+ * à intermediação", uma parte vai "à COORDENADORA DE VENDAS" e o resto "aos ASSOCIADOS".
+ *
+ * ⚠️ E ISTO É PALIATIVO ATÉ JANEIRO, palavra do Lucas. O rateio de verdade mora no C2X
+ * (`split_enterprise_groups` → `split_enterprise_group_values`: quatro grupos, seis perfis) e vem com
+ * a migração do financeiro. Duas colunas não o substituem — elas resolvem o contrato de corretagem.
+ */
+type LinhaDaComissao = {
+  comissao_coordenadora_percentual: null | number | string;
+  comissao_imobiliaria_percentual: null | number | string;
+  coordenadora_entity_id: null | string;
+};
+
+/** Os nove campos do bloco "a. COORDENADORA DE VENDAS", já prontos para o papel. */
+type CadastroDaCoordenadora = {
+  bairro: string;
+  cep: string;
+  /** "Belo Horizonte/MG" — cidade e UF juntas, como o catálogo declara. */
+  cidade: string;
+  documento: string;
+  email: string;
+  nome: string;
+  numero: string;
+  rua: string;
+  telefone: string;
+};
+
+/** O que a política comercial do empreendimento respondeu sobre a corretagem desta venda. */
+type ComissaoDaVenda = {
+  coordenadora: CadastroDaCoordenadora | null;
+  percentuais: LinhaDaComissao | null;
+};
+
 type LinhaDaEsteira = { enterprise_id: null | string; entity_id: string; ficha: unknown };
 
 type LinhaDoEndereco = {
@@ -219,10 +257,14 @@ type CondicoesGravadas = {
  * Devolve `null` quando a proposta não existe. `avisos` é o que faltou, em frases curtas, para a
  * tela mostrar a quem vai conferir o contrato antes de mandá-lo para assinatura.
  *
- * ⚠️ AVISO SÓ PARA O QUE DEVERIA ESTAR LÁ E NÃO ESTÁ. Vendedora, corretagem e anexos estão marcados
+ * ⚠️ AVISO SÓ PARA O QUE DEVERIA ESTAR LÁ E NÃO ESTÁ. Vendedora e anexos continuam marcados
  * `pendente` no catálogo — o Panteon ainda não guarda esses dados, e listá-los aqui poria trinta
  * linhas em TODO contrato. É a mesma razão pela qual `extensosOrfaos` abre exceção para a data por
  * extenso: aviso que sempre aparece é aviso que ninguém lê.
+ *
+ * ⚠️ A COMISSÃO SAIU DESSA LISTA EM 08/09/2026, e por isso ela avisa. Desde a migration 0145 os dois
+ * percentuais e a coordenadora são DADO do empreendimento, editável na aba Políticas comerciais: o
+ * que falta agora tem onde ser preenchido, e um aviso que alguém pode resolver é aviso que se lê.
  */
 export async function dadosDaProposta(
   propostaId: string,
@@ -269,14 +311,21 @@ export async function dadosDaProposta(
     cadastroDoVinculado(sb, proposta.imobiliaria_entity_id, proposta.corretor_entity_id),
   ]);
 
-  const compradores = await montarCompradores(sb, proposta, empreendimento, avisos);
+  // ⚠️ A COMISSÃO É UMA SEGUNDA VIAGEM, e não cabe no `Promise.all` de cima: a chave de
+  // `apolo_enterprise_settings` só se conhece DEPOIS de ler o empreendimento (ver
+  // `comissaoDoEmpreendimento`). Mas ela roda junto com os compradores, que é a leitura cara — assim
+  // as duas viagens extras não somam tempo à prévia do contrato.
+  const [compradores, comissao] = await Promise.all([
+    montarCompradores(sb, proposta, empreendimento, avisos),
+    comissaoDoEmpreendimento(sb, empreendimento, unidade),
+  ]);
 
   return {
     avisos,
     dados: {
       compradores,
       condicoes: condicoesDoContrato(proposta),
-      gerais: gerais(proposta, unidade, empreendimento, doVinculado, avisos),
+      gerais: gerais(proposta, unidade, empreendimento, doVinculado, comissao, avisos),
     },
   };
 }
@@ -521,6 +570,135 @@ async function cadastroDoVinculado(
     email: primeiroContato(contatos, ["email"]),
     // ⚠️ WHATSAPP PRIMEIRO. No Apolo o `whatsapp` é o tipo que a maioria das entidades tem; ler só
     // `phone` deixaria o contrato de corretagem sem telefone na maior parte das vendas.
+    telefone: primeiroContato(contatos, ["whatsapp", "phone"]),
+  };
+}
+
+/**
+ * A comissão do empreendimento e o cadastro da coordenadora de vendas.
+ *
+ * ⚠️ A CHAVE DE `apolo_enterprise_settings` É O ID DO C2X, NÃO O UUID DO HÉRCULES. Medido em
+ * 08/09/2026: `enterprise_id` é a CHAVE PRIMÁRIA da tabela, é TEXTO, e casa com
+ * `hercules_empreendimentos.c2x_enterprise_id` — 13 dos 38 empreendimentos têm linha lá, todas
+ * casando por esse texto. Mandar `proposta.empreendimento_id` (um uuid) devolveria zero linha e a
+ * comissão sairia em branco em TODO contrato, sem erro nenhum. É a mesma chave de
+ * `__empreendimento_id` e de `temis_minutas.enterprise_id`.
+ *
+ * ⚠️ E TRÊS EMPREENDIMENTOS NÃO TÊM ESSE ID: LOX, PDX e RDX estão com `c2x_enterprise_id` NULO e
+ * respondem por 1.822 propostas (777 do RDX, 573 do LOX, 472 do PDX, medidos em 08/09/2026) — os
+ * mesmos três da nota de `__unidade_enterprise_id`. Para eles a unidade carrega o id na própria
+ * coluna, e é por ela que a leitura passa. Hoje isso não muda uma linha do papel (nenhuma das
+ * divisões desses três tem linha de settings), e existe para que cadastrar a comissão pela tela
+ * funcione nos três sem uma segunda correção depois.
+ */
+async function comissaoDoEmpreendimento(
+  sb: SupabaseClient,
+  empreendimento: LinhaDoEmpreendimento | null,
+  unidade: LinhaDaUnidade | null,
+): Promise<ComissaoDaVenda> {
+  const chave = texto(empreendimento?.c2x_enterprise_id) || texto(unidade?.enterprise_id);
+  if (!chave) return { coordenadora: null, percentuais: null };
+
+  const percentuais = await umaLinha<LinhaDaComissao>(
+    sb
+      .from("apolo_enterprise_settings")
+      .select(
+        "comissao_coordenadora_percentual, comissao_imobiliaria_percentual, coordenadora_entity_id",
+      )
+      .eq("enterprise_id", chave)
+      .maybeSingle(),
+    "apolo_enterprise_settings",
+  );
+
+  return {
+    coordenadora: await cadastroDaCoordenadora(sb, texto(percentuais?.coordenadora_entity_id)),
+    percentuais,
+  };
+}
+
+/**
+ * O cadastro da coordenadora de vendas — os nove campos que o bloco "a." do contrato imprime.
+ *
+ * ⚠️ ID ÓRFÃO É "SEM COORDENADORA", E NÃO ERRO. A 0145 deixou a coluna SEM foreign key de propósito
+ * (`apolo_entities` recebe merge e arquivamento, e uma FK rígida transformaria uma limpeza de
+ * cadastro em erro de gravação numa tela que não tem nada a ver com isso). Aqui o id que não acha
+ * ninguém vira a mesma lacuna visível de sempre: os colchetes no papel e um aviso na conferência.
+ *
+ * ⚠️ E O ENDEREÇO PASSA PELA MESMA CASCATA DO COMPRADOR. A coordenadora é um cadastro do Apolo como
+ * outro qualquer, e o endereço dela pode estar em `apolo_addresses` (587 das 591 entidades PJ têm
+ * linha lá, medido em 08/09/2026) ou em `metadata.cadastro`, a camada que o wizard grava e que
+ * ficava sem ser lida (50 das 591). `unirEndereco` é a mesma regra que a CAD assinada e o envio ao
+ * C2X seguem — uma segunda precedência aqui faria o contrato divergir do papel já assinado.
+ */
+async function cadastroDaCoordenadora(
+  sb: SupabaseClient,
+  id: string,
+): Promise<CadastroDaCoordenadora | null> {
+  if (!id) return null;
+
+  const [entidade, contatos, enderecos] = await Promise.all([
+    umaLinha<LinhaDaEntidade>(
+      sb
+        .from("apolo_entities")
+        .select("display_name, document_masked, entity_kind, id, legal_name, metadata, trade_name")
+        .eq("id", id)
+        .maybeSingle(),
+      "apolo_entities",
+    ),
+    varias<LinhaDoContato>(
+      sb
+        .from("apolo_contacts")
+        .select("contact_type, entity_id, value")
+        .eq("entity_id", id)
+        .order("is_primary", { ascending: false }),
+      "apolo_contacts",
+    ),
+    varias<LinhaDoEndereco>(
+      sb
+        .from("apolo_addresses")
+        .select("city, complement, district, entity_id, number, postal_code, state, street")
+        .eq("entity_id", id)
+        .order("is_primary", { ascending: false }),
+      "apolo_addresses",
+    ),
+  ]);
+
+  if (!entidade) return null;
+
+  const primeiro = enderecos[0] ?? null;
+  const endereco = unirEndereco(cadastroDaEntidade(null, entidade), {
+    bairro: texto(primeiro?.district),
+    cep: texto(primeiro?.postal_code),
+    cidade: texto(primeiro?.city),
+    complemento: texto(primeiro?.complement),
+    logradouro: texto(primeiro?.street),
+    numero: texto(primeiro?.number),
+    uf: texto(primeiro?.state),
+  });
+
+  return {
+    bairro: texto(endereco?.bairro),
+    cep: texto(endereco?.cep),
+    // ⚠️ A UF SOZINHA NÃO É UMA CIDADE — o mesmo corte de `cidade_cliente`. Juntar o que existir
+    // faria o contrato dizer que a coordenadora fica "em MG": endereço que parece preenchido, não
+    // entra nos avisos e não localiza ninguém.
+    cidade: endereco?.cidade ? [endereco.cidade, endereco.uf].filter(Boolean).join("/") : "",
+    // ⚠️ CPF TAMBÉM VALE AQUI, apesar de a variável se chamar `cnpj_coordenadora_vendas`: a linha do
+    // contrato é "CPF/CNPJ DA COORDENADORA DE VENDAS", e coordenar venda como pessoa física é
+    // possível. `documentoImprimivel` é quem barra o documento truncado, dos dois tipos.
+    documento: documentoImprimivel(texto(entidade.document_masked)),
+    email: primeiroContato(contatos, ["email"]),
+    // ⚠️ NOME FANTASIA PRIMEIRO, COM O `display_name` DE RESERVA. A variável se chama
+    // `nome_fantasia_coordenadora_vendas` e `trade_name` é o campo certo — mas 19 das 590 entidades
+    // PJ do Apolo estão sem ele (medido em 08/09/2026), e as 19 têm `display_name`. Sem a reserva o
+    // bloco sairia sem nome com o cadastro ali do lado.
+    nome: texto(entidade.trade_name) || texto(entidade.display_name) || texto(entidade.legal_name),
+    numero: texto(endereco?.numero),
+    // Ver `RUIDO_DE_CARGA`: "Endereco cadastral" está na coluna `street` de 4.633 linhas e já saiu
+    // impresso num contrato real.
+    rua: textoUtil(endereco?.logradouro),
+    // ⚠️ WHATSAPP ANTES DE `phone` — a mesma ordem de `cadastroDoVinculado`, pelo mesmo motivo:
+    // 3.941 entidades só têm a linha `whatsapp`.
     telefone: primeiroContato(contatos, ["whatsapp", "phone"]),
   };
 }
@@ -774,6 +952,7 @@ function gerais(
   unidade: LinhaDaUnidade | null,
   empreendimento: LinhaDoEmpreendimento | null,
   doVinculado: null | { documento: string; email: string; telefone: string },
+  comissao: ComissaoDaVenda,
   avisos: string[],
 ): Record<string, string> {
   const g: Record<string, string> = {};
@@ -914,6 +1093,83 @@ function gerais(
   } else {
     parDeDinheiro("valor_imovel_venda", valor);
     parDeDinheiro("preco_venda", valor);
+  }
+
+  // ── A COMISSÃO E A COORDENADORA DE VENDAS ──
+  //
+  // ⚠️ ESTA SEÇÃO FICA DEPOIS DO PREÇO, e não junto do bloco de corretagem lá em cima, porque as três
+  // linhas de dinheiro são percentual SOBRE O VALOR VENDIDO: elas dependem do `valor` que a seção
+  // anterior acabou de ler.
+  //
+  // ⚠️ NULO NÃO É ZERO, e essa distinção é a razão de ser do bloco. Percentual não cadastrado NÃO
+  // escreve a variável: o motor imprime `[valor_total_comissao]` no papel, e o colchete é o aviso
+  // para alguém cadastrar. Percentual ZERO é decisão — empreendimento em que aquela ponta não recebe
+  // — e imprime R$ 0,00. Um contrato que imprime R$ 0,00 foi decidido; um que imprime o colchete foi
+  // esquecido. Ver a migration 0145.
+  //
+  // ⚠️ E O TOTAL É A SOMA DAS DUAS LINHAS IMPRESSAS, somada em CENTAVOS INTEIROS. Medido: uma venda
+  // de R$ 170.010,08 a 1,5% e 5% imprime R$ 2.550,15 e R$ 8.500,50 — que somam R$ 11.050,65. A
+  // mesma conta feita em reais dá 11050.6552, que vira R$ 11.050,66 no papel: um centavo A MAIS do
+  // que as duas quantias que o próprio contrato manda somar, na mesma frase. Um documento que se
+  // contradiz por um centavo é um documento que volta do jurídico.
+  const pctCoordenadora = numero(comissao.percentuais?.comissao_coordenadora_percentual);
+  const pctVinculado = numero(comissao.percentuais?.comissao_imobiliaria_percentual);
+
+  por("percentual_comissao_coordenadora_vendas", pctCoordenadora === null ? "" : percentual(pctCoordenadora));
+  por("percentual_comissao_vinculado", pctVinculado === null ? "" : percentual(pctVinculado));
+
+  if (valor !== null) {
+    const emCentavos = Math.round(valor * 100);
+    const daCoordenadora = pctCoordenadora === null ? null : parteEmCentavos(emCentavos, pctCoordenadora);
+    const doVinculadoEmCentavos = pctVinculado === null ? null : parteEmCentavos(emCentavos, pctVinculado);
+
+    if (daCoordenadora !== null) {
+      parDeDinheiro("valor_pago_coordenadora_vendas", daCoordenadora / 100);
+    }
+    if (doVinculadoEmCentavos !== null) {
+      parDeDinheiro("valor_corretagem_menos_coordenadora_vendas", doVinculadoEmCentavos / 100);
+    }
+    // ⚠️ O TOTAL SÓ EXISTE COM AS DUAS PONTAS. Com uma delas nula a soma é DESCONHECIDA, e escrever a
+    // outra sozinha no lugar dela imprimiria no contrato uma comissão total menor do que a combinada
+    // — em cima da frase que diz que o total "refere-se à intermediação". Melhor o colchete.
+    if (daCoordenadora !== null && doVinculadoEmCentavos !== null) {
+      parDeDinheiro("valor_total_comissao", (daCoordenadora + doVinculadoEmCentavos) / 100);
+    }
+  }
+
+  if (comissao.coordenadora) {
+    por("nome_fantasia_coordenadora_vendas", comissao.coordenadora.nome);
+    por("cnpj_coordenadora_vendas", comissao.coordenadora.documento);
+    por("rua_coordenadora_vendas", comissao.coordenadora.rua);
+    por("numero_coordenadora_vendas", comissao.coordenadora.numero);
+    por("bairro_coordenadora_vendas", comissao.coordenadora.bairro);
+    por("cidade_coordenadora_vendas", comissao.coordenadora.cidade);
+    por("cep_coordenadora_vendas", comissao.coordenadora.cep);
+    por("telefone_coordenadora_vendas", comissao.coordenadora.telefone);
+    por("email_coordenadora_vendas", comissao.coordenadora.email);
+  }
+
+  // ⚠️ UM AVISO POR CAUSA, E NÃO UM POR CAMPO. Sem coordenadora cadastrada são NOVE variáveis vazias
+  // e uma frase só; sem os percentuais são seis e outra frase. É a mesma regra de `conferir`: aviso
+  // repetido esconde os outros no meio.
+  if (pctCoordenadora === null && pctVinculado === null) {
+    avisos.push(
+      "O empreendimento não tem os percentuais de comissão cadastrados: os valores da corretagem saem em branco.",
+    );
+  } else if (pctCoordenadora === null) {
+    avisos.push(
+      "O empreendimento não tem o percentual da coordenadora: a parte dela e a comissão total saem em branco.",
+    );
+  } else if (pctVinculado === null) {
+    avisos.push(
+      "O empreendimento não tem o percentual da imobiliária: a parte dos associados e a comissão total saem em branco.",
+    );
+  }
+
+  if (!comissao.coordenadora) {
+    avisos.push(
+      "O empreendimento não tem coordenadora de vendas cadastrada: nome, CNPJ, endereço, telefone e e-mail dela saem em branco.",
+    );
   }
 
   const dia = numero(proposta.dia_vencimento);
@@ -1155,6 +1411,23 @@ function emReais(valor: number): string {
   const sinal = valor < 0 ? "-" : "";
   const [inteiro = "0", centavos = "00"] = Math.abs(valor).toFixed(2).split(".");
   return `${sinal}R$ ${milhar(inteiro)},${centavos}`;
+}
+
+/**
+ * Uma parte percentual de um valor, em CENTAVOS INTEIROS.
+ *
+ * ⚠️ A CONTA É EM CENTAVOS PORQUE O CONTRATO MANDA SOMAR AS DUAS PARTES. `emReais` e
+ * `dinheiroPorExtenso` arredondam no fim e escondem a sujeira do ponto flutuante em cada linha
+ * isolada (R$ 185.400 a 1,234% é 2287.8360000000002), mas o TOTAL cai um centavo fora das duas
+ * parcelas impressas logo acima dele: medido, R$ 170.010,08 a 1,5% e 5% imprime R$ 2.550,15 e
+ * R$ 8.500,50, soma R$ 11.050,65 em centavos e R$ 11.050,66 em reais. É o mesmo cuidado de
+ * `ajuste-de-preco.ts`, e pela mesma razão: dinheiro se soma inteiro.
+ *
+ * ⚠️ E O ARREDONDAMENTO É O DO CENTAVO, não o da casa decimal do percentual: R$ 187.333,33 a 1,5%
+ * são 2809,99995 reais, que vão ao papel como R$ 2.810,00.
+ */
+function parteEmCentavos(valorEmCentavos: number, taxa: number): number {
+  return Math.round((valorEmCentavos * taxa) / 100);
 }
 
 /** `300` → `300,00`. O número sem unidade nenhuma — quem escreve "m²" é quem chama. */

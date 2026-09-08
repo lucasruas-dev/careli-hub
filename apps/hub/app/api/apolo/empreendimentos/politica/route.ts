@@ -1,19 +1,27 @@
 import { NextResponse } from "next/server";
 
 import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
-import { setEnterpriseEntradaMinima, setEnterpriseGestaoCarteira } from "@/lib/apolo/enterprise-settings";
-import { loadPoliticaComercial } from "@/lib/apolo/politica-comercial";
+import {
+  setEnterpriseComissaoCoordenadora,
+  setEnterpriseComissaoImobiliaria,
+  setEnterpriseCoordenadora,
+  setEnterpriseEntradaMinima,
+  setEnterpriseGestaoCarteira,
+} from "@/lib/apolo/enterprise-settings";
+import { type DadosDoApolo, loadPoliticaComercial } from "@/lib/apolo/politica-comercial";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // POLÍTICA COMERCIAL DO EMPREENDIMENTO — as duas fontes, com a precedência do Lucas (17/08/2026):
 //
 //   GET   → junta o que vem do C2X (comissão total, entrada mínima, parcelas do sinal, split da
-//           cadeia por papel) com a % de gestão de carteira que mora no Apolo, e devolve os avisos
-//           quando a política do legado está furada.
-//   PATCH → grava SÓ a % de gestão de carteira. O resto é do C2X, que é read-only.
+//           cadeia por papel) com o que mora no Apolo (gestão de carteira, entrada mínima e, desde
+//           a migration 0145, o rateio da corretagem), e devolve os avisos quando a política do
+//           legado está furada.
+//   PATCH → grava SÓ o que é do Apolo. O resto é do C2X, que é read-only.
 //
-// AUTORIZAÇÃO: leitura no GET; ESCRITA no PATCH. A % define quanto o incorporador recebe e se a
-// aba Carteira aparece para ele — quem só visualiza não muda isso.
+// AUTORIZAÇÃO: leitura no GET; ESCRITA no PATCH. Os percentuais definem quanto o incorporador
+// recebe, se a aba Carteira aparece para ele e o que o contrato de corretagem imprime — quem só
+// visualiza não muda isso.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -46,7 +54,9 @@ export async function GET(request: Request) {
   // operador estaria a um clique de gravar esse vazio falso por cima do percentual real.
   const { data: settings, error: erroSettings } = await adminClient
     .from("apolo_enterprise_settings")
-    .select("enterprise_id, gestao_carteira_percentual, entrada_minima_percentual")
+    .select(
+      "enterprise_id, gestao_carteira_percentual, entrada_minima_percentual, comissao_coordenadora_percentual, comissao_imobiliaria_percentual, coordenadora_entity_id",
+    )
     .limit(2000);
 
   if (erroSettings) {
@@ -56,45 +66,92 @@ export async function GET(request: Request) {
     );
   }
 
-  const gestaoPorEnterpriseId = new Map<string, null | number>(
+  // numeric do Postgres pode voltar string; e `undefined` (coluna ausente numa leitura antiga)
+  // conta como nulo, que é "não cadastrado".
+  const pct = (v: null | number | string | undefined): null | number =>
+    v === null || v === undefined || v === "" ? null : Number(v);
+
+  const doApolo = new Map<string, DadosDoApolo>(
     ((settings ?? []) as Array<{
+      comissao_coordenadora_percentual: null | number | string;
+      comissao_imobiliaria_percentual: null | number | string;
+      coordenadora_entity_id: null | string;
+      entrada_minima_percentual: null | number | string;
       enterprise_id: string;
       gestao_carteira_percentual: null | number | string;
     }>).map((linha) => [
       String(linha.enterprise_id),
-      linha.gestao_carteira_percentual === null ||
-      linha.gestao_carteira_percentual === undefined
-        ? null
-        : Number(linha.gestao_carteira_percentual),
+      {
+        comissaoCoordenadoraPercentual: pct(linha.comissao_coordenadora_percentual),
+        comissaoImobiliariaPercentual: pct(linha.comissao_imobiliaria_percentual),
+        coordenadoraEntityId: (linha.coordenadora_entity_id ?? "").trim() || null,
+        entradaMinimaPercentual: pct(linha.entrada_minima_percentual),
+        gestaoCarteiraPercentual: pct(linha.gestao_carteira_percentual),
+      },
     ]),
   );
 
-  const entradaMinimaPorEnterpriseId = new Map<string, null | number>(
-    ((settings ?? []) as Array<{
-      enterprise_id: string;
-      entrada_minima_percentual: null | number | string;
-    }>).map((linha) => [
-      String(linha.enterprise_id),
-      linha.entrada_minima_percentual === null || linha.entrada_minima_percentual === undefined
-        ? null
-        : Number(linha.entrada_minima_percentual),
-    ]),
-  );
-
-  const resultado = await loadPoliticaComercial(
-    codes,
-    gestaoPorEnterpriseId,
-    entradaMinimaPorEnterpriseId,
-  );
+  const resultado = await loadPoliticaComercial(codes, doApolo);
 
   if (!resultado.ok) {
     return NextResponse.json({ error: resultado.error }, { status: 502 });
   }
 
+  const nomes = await lerNomesDasCoordenadoras(
+    adminClient,
+    resultado.politicas.map((p) => p.coordenadoraEntityId),
+  );
+
+  const politicas = resultado.politicas.map((p) => ({
+    ...p,
+    // Id que não resolve (entidade arquivada ou fundida — a 0145 não criou FK de propósito) fica
+    // com nome nulo, e a tela mostra a mesma lacuna de "coordenadora não cadastrada".
+    coordenadoraNome: p.coordenadoraEntityId ? (nomes.get(p.coordenadoraEntityId) ?? null) : null,
+  }));
+
   return NextResponse.json(
-    { data: { politicas: resultado.politicas } },
+    { data: { politicas } },
     { headers: { "Cache-Control": "no-store" } },
   );
+}
+
+/**
+ * Resolve o `display_name` das coordenadoras apontadas, numa consulta só.
+ *
+ * ⚠️ EM LOTES DE 100, e não num `.in()` gigante: o PostgREST manda o filtro na URL, e algumas
+ * centenas de uuid estouram o limite do servidor — a leitura volta como erro de rede, sem dizer
+ * por quê. São poucos empreendimentos por chamada hoje, mas o lote é o que impede a surpresa
+ * quando a tela passar a pedir todos de uma vez.
+ *
+ * ⚠️ FALHA AQUI NÃO DERRUBA O GET, ao contrário da leitura das settings acima: um nome que não veio
+ * é uma LACUNA (o operador vê "coordenadora não cadastrada" e vai apontar de novo), enquanto uma
+ * settings que não veio viraria uma AFIRMAÇÃO falsa sobre o negócio — e o operador estaria a um
+ * clique de gravar esse vazio por cima do percentual real. As duas coisas são diferentes.
+ */
+async function lerNomesDasCoordenadoras(
+  adminClient: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  ids: Array<null | string>,
+): Promise<Map<string, string>> {
+  const alvos = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  const nomes = new Map<string, string>();
+  if (alvos.length === 0) return nomes;
+
+  for (let inicio = 0; inicio < alvos.length; inicio += 100) {
+    const lote = alvos.slice(inicio, inicio + 100);
+    const { data, error } = await adminClient
+      .from("apolo_entities")
+      .select("id, display_name")
+      .in("id", lote);
+
+    if (error) continue;
+
+    for (const linha of (data ?? []) as Array<{ display_name: null | string; id: string }>) {
+      const nome = (linha.display_name ?? "").trim();
+      if (nome) nomes.set(String(linha.id), nome);
+    }
+  }
+
+  return nomes;
 }
 
 export async function PATCH(request: Request) {
@@ -108,6 +165,12 @@ export async function PATCH(request: Request) {
 
   let corpo: {
     code?: null | string;
+    // Rateio da corretagem (migration 0145). Mesma regra dos dois de baixo: ausente = não mexeu;
+    // null = limpou ("não cadastrado", que é diferente de zero).
+    comissaoCoordenadoraPercentual?: null | number | string;
+    comissaoImobiliariaPercentual?: null | number | string;
+    // A entidade da coordenadora de vendas. null = "não há coordenadora apontada".
+    coordenadoraEntityId?: null | string;
     /** Uma divisão (compatível) ou várias, quando o empreendimento tem fases/glebas. */
     enterpriseId?: string;
     enterpriseIds?: string[];
@@ -141,20 +204,85 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Informe o empreendimento." }, { status: 400 });
   }
 
-  const mexeuNaGestao = "gestaoCarteiraPercentual" in corpo;
-  const mexeuNaEntrada = "entradaMinimaPercentual" in corpo;
+  // Os campos graváveis, na ordem em que a tela os mostra. `in` (e não `!== undefined`) porque
+  // ausente e `null` significam coisas diferentes: não mexeu × limpou.
+  const CAMPOS = [
+    "gestaoCarteiraPercentual",
+    "entradaMinimaPercentual",
+    "comissaoCoordenadoraPercentual",
+    "comissaoImobiliariaPercentual",
+    "coordenadoraEntityId",
+  ] as const;
 
-  if (!mexeuNaGestao && !mexeuNaEntrada) {
+  const tocados = CAMPOS.filter((campo) => campo in corpo);
+
+  if (tocados.length === 0) {
     return NextResponse.json({ error: "Nada para salvar." }, { status: 400 });
   }
 
-  // ⚠️ UM CAMPO POR VEZ. A tela salva cada linha da política sozinha, e mandar os dois juntos
+  // ⚠️ UM CAMPO POR VEZ. A tela salva cada linha da política sozinha, e mandar dois juntos
   // significaria sobrescrever o que o operador não tocou com o valor que a tela tinha em memória.
-  if (mexeuNaGestao && mexeuNaEntrada) {
+  if (tocados.length > 1) {
     return NextResponse.json(
       { error: "Salve um campo por vez." },
       { status: 400 },
     );
+  }
+
+  const campo = tocados[0];
+  // Redundante para o negócio, obrigatório para o TypeScript (`noUncheckedIndexedAccess`): a
+  // checagem de tamanho acima já garante exatamente um campo.
+  if (!campo) {
+    return NextResponse.json({ error: "Nada para salvar." }, { status: 400 });
+  }
+
+  const gravados: string[] = [];
+
+  // ⚠️ RELATA O QUE JÁ GRAVOU. Uma falha no meio deixa o empreendimento inconsistente, e o operador
+  // precisa saber disso para corrigir — não pode ler "não salvou" e ir embora.
+  const relatarFalha = (erro: string | undefined) =>
+    NextResponse.json(
+      {
+        error:
+          gravados.length > 0
+            ? `${erro} Atenção: ${gravados.length} de ${enterpriseIds.length} divisões já foram salvas (${gravados.join(", ")}). Tente de novo para igualar as demais.`
+            : erro,
+        gravados,
+      },
+      { status: 400 },
+    );
+
+  // A COORDENADORA não é percentual: é um uuid (ou o vazio, que apaga o apontamento). Caminho
+  // próprio, mesma disciplina de laço e de relato das divisões.
+  if (campo === "coordenadoraEntityId") {
+    const bruto = corpo.coordenadoraEntityId;
+
+    if (bruto !== null && bruto !== undefined && typeof bruto !== "string") {
+      return NextResponse.json({ error: "Coordenadora invalida." }, { status: 400 });
+    }
+
+    const entityId = (bruto ?? "").trim() || null;
+
+    for (const enterpriseId of enterpriseIds) {
+      const gravado = await setEnterpriseCoordenadora({
+        adminClient,
+        code: corpo.code ?? null,
+        enterpriseId,
+        entityId,
+        updatedBy: auth.userId,
+      });
+
+      if (!gravado.ok) return relatarFalha(gravado.error);
+      gravados.push(enterpriseId);
+    }
+
+    return NextResponse.json({
+      data: {
+        campo,
+        coordenadoraEntityId: entityId,
+        divisoes: gravados.length,
+      },
+    });
   }
 
   const lerPercentual = (bruto: null | number | string | undefined): null | number =>
@@ -164,9 +292,7 @@ export async function PATCH(request: Request) {
         ? Number(bruto.replace(",", "."))
         : Number(bruto);
 
-  const percentual = lerPercentual(
-    mexeuNaGestao ? corpo.gestaoCarteiraPercentual : corpo.entradaMinimaPercentual,
-  );
+  const percentual = lerPercentual(corpo[campo]);
 
   if (percentual !== null && !Number.isFinite(percentual)) {
     return NextResponse.json(
@@ -175,46 +301,34 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const gravados: string[] = [];
+  const SETTER_DO_CAMPO = {
+    comissaoCoordenadoraPercentual: setEnterpriseComissaoCoordenadora,
+    comissaoImobiliariaPercentual: setEnterpriseComissaoImobiliaria,
+    entradaMinimaPercentual: setEnterpriseEntradaMinima,
+    gestaoCarteiraPercentual: setEnterpriseGestaoCarteira,
+  } as const;
 
   for (const enterpriseId of enterpriseIds) {
-    const gravado = mexeuNaGestao
-      ? await setEnterpriseGestaoCarteira({
-          adminClient,
-          code: corpo.code ?? null,
-          enterpriseId,
-          percentual,
-          updatedBy: auth.userId,
-        })
-      : await setEnterpriseEntradaMinima({
-          adminClient,
-          code: corpo.code ?? null,
-          enterpriseId,
-          percentual,
-          updatedBy: auth.userId,
-        });
+    const gravado = await SETTER_DO_CAMPO[campo]({
+      adminClient,
+      code: corpo.code ?? null,
+      enterpriseId,
+      percentual,
+      updatedBy: auth.userId,
+    });
 
-    if (!gravado.ok) {
-      // Relata O QUE JÁ GRAVOU. Uma falha no meio deixa o empreendimento inconsistente, e o
-      // operador precisa saber disso para corrigir — não pode ler "não salvou" e ir embora.
-      return NextResponse.json(
-        {
-          error:
-            gravados.length > 0
-              ? `${gravado.error} Atenção: ${gravados.length} de ${enterpriseIds.length} divisões já foram salvas (${gravados.join(", ")}). Tente de novo para igualar as demais.`
-              : gravado.error,
-          gravados,
-        },
-        { status: 400 },
-      );
-    }
+    if (!gravado.ok) return relatarFalha(gravado.error);
 
     gravados.push(enterpriseId);
   }
 
   return NextResponse.json({
     data: {
+      campo,
       divisoes: gravados.length,
+      // ⚠️ O NOME DA CHAVE É HISTÓRICO: ela sempre carregou o valor DO CAMPO GRAVADO, qualquer que
+      // fosse ele (a entrada mínima já saía por aqui). Mantida como está para não quebrar quem lê;
+      // o `campo` acima é quem diz de que percentual se trata.
       gestaoCarteiraPercentual: percentual,
       // A tela usa isto para dizer "sem gestão de carteira" em vez de mostrar 0%.
       semGestao: percentual === null,

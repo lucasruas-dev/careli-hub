@@ -36,7 +36,14 @@ export const EXCLUDED_ENTERPRISE_CODES = ["TSC", "SDT", "LAB", "LAG"];
 //   • VOC (37) — 157 unidades · R$ 13.744.472,00 (carteira do Cecílio);
 //   • VOL (36) — 141 unidades · R$ 14.024.417,00 (carteira do Lino).
 //   157 + 141 = 298 unidades e 13.744.472 + 14.024.417 = 27.768.889 — o espelho, ao centavo.
-// (VOR/41, "VALE DO OURO - EXTRAS", é empreendimento de verdade, não espelho.)
+//
+// ⚠️ O VOR (41, "VALE DO OURO - EXTRAS") NASCEU DEPOIS DESTE TEXTO e é a TERCEIRA carteira viva:
+// 3 unidades. Ele NÃO é espelho — vende, tem registro próprio —, mas é Vale do Ouro, então entra
+// nas `divisions` (é o conjunto que responde por "quanto tem o Vale do Ouro") e no grupo
+// consolidado abaixo. Medido em 08/09/2026, por código: VLO 298 · VOC 157 · VOL 141 · VOR 3.
+// Cruzando o espelho com as três carteiras vivas por quadra+lote: 301 pares, NENHUM com o mesmo
+// id no C2X (são registros diferentes no legado) e 63 com situação divergente — o espelho está
+// parado, e é mais uma razão para ele nunca entrar em soma.
 //
 // Quem soma os três conta o Vale do Ouro DUAS VEZES. Medido na tela "todos os empreendimentos"
 // do Apolo em 18/08/2026: 4.560 un / R$ 1.068.042.231,43 quando o certo é 4.262 un /
@@ -68,12 +75,16 @@ export type EnterpriseMirror = {
 export const ENTERPRISE_MIRRORS: EnterpriseMirror[] = [
   {
     code: "VLO",
-    divisions: ["VOC", "VOL"],
-    label: "Histórico · mesmos lotes de VOC + VOL",
+    // ⚠️ O VOR ENTROU EM 08/09/2026. A lista tinha sido escrita antes de a carteira de extras
+    // existir, e `divisions` é quem responde "quem está vivo no lugar do espelho": sem o VOR, a
+    // pergunta "quanto tem o VLO" devolvia 298 unidades de VOC + VOL e escondia as 3 do VOR.
+    divisions: ["VOC", "VOL", "VOR"],
+    label: "Histórico · mesmos lotes de VOC + VOL + VOR",
     note:
-      "Registro do Vale do Ouro antes da divisão VLO → VOC + VOL. Fica de fora de toda soma " +
-      "(as 298 unidades são as mesmas das carteiras vivas), mas segue no ar porque é a casa do " +
-      "masterplan, das CADs da esteira e do painel do coordenador.",
+      "Registro do Vale do Ouro antes da divisão VLO → VOC + VOL, hoje com o VOR (extras) ao " +
+      "lado das duas. Fica de fora de toda soma (as 298 unidades do espelho são as mesmas das " +
+      "carteiras vivas, que somam 301), mas segue no ar porque é a casa do masterplan, das CADs " +
+      "da esteira e do painel do coordenador.",
   },
 ];
 
@@ -111,6 +122,16 @@ export const ENTERPRISE_GROUPS: { display: string; codes: string[] }[] = [
   { codes: ["RDP", "RPC", "RPS"], display: "Rio de Pedras" },
   { codes: ["PDV", "PVS"], display: "Portal dos Vales" },
   { codes: ["LBF", "LBR", "LBP"], display: "Lagoa Bonita" },
+  // ⚠️ O ESPELHO (VLO) NÃO ENTRA AQUI, e é de propósito. O grupo é a SOMA das etapas: pôr o VLO
+  // junto somaria o loteamento duas vezes em toda agregação — exatamente o que
+  // `ANALYTICS_EXCLUDED_ENTERPRISE_CODES` existe para impedir. Ele continua linha própria, e o
+  // `displayEnterprise` devolve "(histórico)" para ele.
+  //
+  // Lucas (08/09/2026), comparando com o portal da Gurgel: *"na tela da gurgel, vale do ouro está
+  // agrupado, no apolo não"*. Sem esta entrada, a tela de Empreendimentos do Apolo mostrava
+  // QUATRO linhas com o mesmo nome e a mesma cidade (VLO, VOC, VOL, VOR), porque a divisão
+  // VLO → VOC + VOL foi feita depois de a lista ter sido escrita.
+  { codes: ["VOC", "VOL", "VOR"], display: "Vale do Ouro" },
 ];
 
 // Sub-empreendimentos (GLEBAS) da Lagoa Bonita: cada código é a gleba de um responsável.

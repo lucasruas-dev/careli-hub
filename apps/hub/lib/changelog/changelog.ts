@@ -36,6 +36,57 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-comissao-coordenadora-e-vale-do-ouro",
+    deployedAt: "2026-09-08T18:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Rateio da corretagem, no empreendimento.** Novo bloco na aba Políticas comerciais: quem é a coordenadora de vendas e quanto ela e a imobiliária levam sobre o valor vendido. A soma aparece ao lado da comissão do C2X, para conferir.",
+              "**O Vale do Ouro virou uma linha só.** Ele aparecia quatro vezes na lista; agora agrupa VOC, VOL e VOR, como o Rio de Pedras. O registro histórico (VLO) segue à parte.",
+            ],
+            screen: "Empreendimentos",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O contrato de corretagem preenche a coordenadora e a comissão.** Nome, CNPJ, endereço, telefone e e-mail da coordenadora, mais os três valores do rateio e os respectivos por extenso.",
+              "**As variáveis saem com a formatação da minuta.** O negrito e a fonte que a minuta pediu vinham se perdendo: o valor aparecia em fonte diferente do parágrafo em volta.",
+              "**Sumiu a linha em branco no contrato de quem não tem cônjuge.** O parágrafo do cônjuge virava um vão no papel, no lugar exato da qualificação que não existe.",
+            ],
+            screen: "Contrato · Prévia",
+          },
+        ],
+      },
+      {
+        module: "CER",
+        screens: [
+          {
+            items: [
+              "**Vale do Ouro - 2 com a carteira de setembro.** Nove clientes prontos para emissão, com CPF e unidade conferidos.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "ea1d02eb",
+    technical: {
+      done: "⚠️ A COMISSÃO É PALIATIVO, E A PALAVRA É DO LUCAS: *\"em janeiro vamos migrar o financeiro, ou seja até lá, vamos fazer um paliativo, nessa tela coloca comissão para coordenadora e imobiliária, vou apontar e vc tira esse valor do valor total vendido\"*. O rateio de verdade mora no C2X (`split_enterprises` → grupos por tipo de pagamento → percentuais por perfil) e vem para o Panteon com o financeiro. Migration 0145: `comissao_coordenadora_percentual`, `comissao_imobiliaria_percentual` e `coordenadora_entity_id` em `apolo_enterprise_settings`, a mesma tabela da entrada mínima (precedente da 0128). ⚠️ NULO NÃO É ZERO em nenhum dos dois: nulo é 'não cadastrado' e deixa o colchete visível no papel; zero é decisão e imprime R$ 0,00. ⚠️ E A CONTA É EM CENTAVOS INTEIROS: R$ 170.010,08 a 1,5% e 5% dá R$ 2.550,15 + R$ 8.500,50 = R$ 11.050,65 em centavos e R$ 11.050,66 em reais — um centavo a mais do que as duas quantias que a frase do contrato manda somar. ⚠️ A COORDENADORA JÁ EXISTIA no Panteon (FABRICIO GURGEL NEGOCIOS IMOBILIARIOS, CNPJ 36.766.011/0001-24, com `profileNames: [\"Coordenadora de venda\"]` vindo do C2X) — o que faltava era o cadastro: o logradouro dela era o literal 'Endereco cadastral', e dos três WhatsApp marcados como principais DOIS tinham o número errado (dígitos trocados de (31) 99199-1442). Apontada nos 16 empreendimentos que vendem. ⚠️ AS MARCAS DA VARIÁVEL MORAM NO FILHO: no Plate o nó `variavel` é void inline e guarda `bold`/`color`/`fontFamily` em `children[0]`; `marcasDoNo` lia só o nó. Medido na minuta do ZZ TESTE: dos 102 chips, ZERO têm marca no nó e 48 têm no filho. ⚠️ E O PARÁGRAFO DO CÔNJUGE NÃO FICAVA COM ZERO FILHOS: os dois textos vazios que ladeiam o par sobrevivem ao corte, então `podarVazios` (que contava filhos) o deixava passar e ele saía como `<p><br /></p>`. Agora quem decide é um carimbo posto por `resolverNo`, o único ponto que viu o antes e o depois. ⚠️ O AGRUPAMENTO DO VALE DO OURO: `ENTERPRISE_GROUPS` é lista explícita e a divisão VLO→VOC+VOL foi feita depois dela; o VOR nem no registro de espelhos estava. O VLO fica FORA do grupo (é espelho: 298 unidades que repetem as 301 das divisões vivas, e entrar somaria o loteamento duas vezes). Conferido o efeito em cada leitor: Board sem mudança (medido: 681 CADs no 35, 1 no 36, zero no 37 e no 41), motor da CACÁ passa a somar três divisões numa linha, painel do coordenador tem lista própria e não muda. ⚠️ E O SYNC DE ENDEREÇO: `buildAddressRows` gravava o rótulo 'Endereco cadastral' e só cidade/UF porque a consulta lia apenas `cities` e `states` — o C2X sempre teve rua, número, bairro e CEP em `addresses`, e 424 das 426 imobiliárias os têm. A origem foi corrigida; as 4.634 linhas já gravadas dependem de um backfill separado. 3.267 testes verdes, typecheck limpo.",
+      motivation:
+        "O contrato de corretagem saía com sete lacunas, o Vale do Ouro aparecia quatro vezes na lista e a carteira de setembro dele não existia.",
+    },
+    title: "A comissão, a coordenadora e o Vale do Ouro",
+    type: "novidade",
+    version: "1.300.0",
+  },
+  {
     buildTag: "2026-09-08-regime-de-bens-imobiliaria-e-imagens",
     deployedAt: "2026-09-08T16:40:00-03:00",
     modules: [

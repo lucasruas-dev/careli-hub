@@ -198,6 +198,13 @@ type C2xCrmAggregateRow = RowDataPacket & {
 };
 
 type C2xUserRow = RowDataPacket & {
+  // O endereco COMPLETO do legado, da tabela `addresses` (polimorfica, ownertable_type = 'User').
+  // Ver `buildAddressRows`: por anos so cidade/UF vinham, e a rua era um rotulo.
+  address_complement: string | null;
+  address_district: string | null;
+  address_number: string | null;
+  address_street: string | null;
+  address_zipcode: string | null;
   billed_request_count: number | string | null;
   cellphone: string | null;
   cnpj: string | null;
@@ -3060,11 +3067,29 @@ function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
         order by addr.updated_at desc, addr.id desc
         limit 1
       ) as location_label,
+      nullif(trim(addr_user.address), '') as address_street,
+      nullif(trim(addr_user.number), '') as address_number,
+      nullif(trim(addr_user.complement), '') as address_complement,
+      nullif(trim(addr_user.district), '') as address_district,
+      nullif(trim(addr_user.zipcode), '') as address_zipcode,
       u.updated_at
     from users u
     left join profiles p on p.id = u.profile_id
     left join person_types pt on pt.id = u.person_type_id
     left join users linked on linked.id = u.vinculed_by_id
+    -- ⚠️ A MESMA LINHA QUE location_label ESCOLHE, e por isso a ordenacao e identica: a mais
+    -- recente por updated_at, desempatada pelo id. Se as duas divergissem, o contrato sairia com a
+    -- rua de um endereco e a cidade de outro.
+    -- ⚠️ E NADA DE CRASE AQUI: a consulta vive dentro de um template literal, e uma crase de
+    -- comentario o FECHA no meio -- o erro que sai e de sintaxe, dezenas de linhas abaixo.
+    left join addresses addr_user on addr_user.id = (
+      select a2.id
+      from addresses a2
+      where a2.ownertable_type = 'User'
+        and a2.ownertable_id = u.id
+      order by a2.updated_at desc, a2.id desc
+      limit 1
+    )
     left join (
       select
         participants.user_id,
@@ -3965,23 +3990,49 @@ function buildContactRows(user: C2xUserRow, syncedAt: string) {
     }));
 }
 
+/**
+ * O endereço do cadastro do C2X.
+ *
+ * ⚠️ POR ANOS ISTO GRAVOU UM RÓTULO NO LUGAR DA RUA. A linha saía com `street: "Endereco
+ * cadastral"` e só cidade/UF, e o legado sempre teve o resto: medido em 08/09/2026, das 426
+ * imobiliárias do C2X, **424 têm rua, número, bairro E CEP** em `addresses`. Ninguém tinha
+ * consultado essas colunas — o `location_label` da consulta só lia `cities` e `states`.
+ *
+ * O estrago não foi um campo vazio, foi pior: `[rua_cliente]` em branco salta aos olhos de quem
+ * confere; "Endereco cadastral" no meio da qualificação PARECE preenchido e chega ao cartório —
+ * foi o que aconteceu num contrato real, e é a razão de `RUIDO_DE_CARGA` existir na Têmis.
+ *
+ * ⚠️ E O RÓTULO CONTINUA AQUI COMO ÚLTIMO RECURSO. Quem tem cidade e não tem rua ainda precisa de
+ * uma linha de endereço, senão a cidade também se perde; `textoUtil` (dados-do-contrato.ts) já
+ * trata esse texto como ausência, então ele não vaza para o papel.
+ */
 function buildAddressRows(user: C2xUserRow, syncedAt: string) {
   const location = splitLocation(user.location_label);
+  const street = (user.address_street ?? "").trim();
 
-  if (!location.city && !location.state) {
+  if (!location.city && !location.state && !street) {
     return [];
   }
+
+  const texto = (v: null | string) => {
+    const limpo = (v ?? "").trim();
+    return limpo || null;
+  };
 
   return [
     {
       city: location.city,
+      complement: texto(user.address_complement),
+      district: texto(user.address_district),
       entity_id: deterministicUuid(`apolo:c2x:users:${user.id}`),
       id: deterministicUuid(`apolo:c2x:users:${user.id}:address:primary`),
       is_primary: true,
       label: "Principal",
+      number: texto(user.address_number),
+      postal_code: texto(user.address_zipcode),
       state: location.state,
       status: "pending",
-      street: "Endereco cadastral",
+      street: street || "Endereco cadastral",
       updated_at: syncedAt,
     },
   ];

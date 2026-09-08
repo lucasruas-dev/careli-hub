@@ -63,12 +63,52 @@ export type GrupoDeSplit = {
   total: number;
 };
 
+/**
+ * O QUE O APOLO GUARDA sobre a política daquele empreendimento — tudo o que vem de
+ * `apolo_enterprise_settings`, num objeto só por `enterprise_id`.
+ *
+ * ⚠️ É UM PARÂMETRO, NÃO CINCO. Esta função já recebia dois `Map` posicionais (gestão de carteira e
+ * entrada mínima) e a 0145 traria mais três; a essa altura a ordem dos argumentos vira armadilha —
+ * trocar dois `Map<string, null | number>` de lugar compila, roda, e grava entrada mínima onde
+ * deveria estar a comissão. Um objeto nomeado por empreendimento não tem esse buraco.
+ */
+export type DadosDoApolo = {
+  comissaoCoordenadoraPercentual: null | number;
+  comissaoImobiliariaPercentual: null | number;
+  coordenadoraEntityId: null | string;
+  entradaMinimaPercentual: null | number;
+  gestaoCarteiraPercentual: null | number;
+};
+
 export type PoliticaComercialDoEmpreendimento = {
   code: string;
+  /**
+   * A % sobre o valor VENDIDO destinada à coordenadora de vendas, cadastrada NO APOLO
+   * (migration 0145). Nulo = não cadastrado; zero = decidido.
+   */
+  comissaoCoordenadoraApolo: null | number;
+  /**
+   * A % sobre o valor VENDIDO destinada aos associados (imobiliária/corretor), cadastrada NO APOLO.
+   *
+   * ⚠️ A SOMA DESTA COM A DA COORDENADORA é a comissão total do contrato de corretagem, e é ela que
+   * a tela põe ao lado do `comissaoTotal` do C2X para o operador conferir.
+   */
+  comissaoImobiliariaApolo: null | number;
   /** `total_value_commission` — percentual sobre o VALOR DO LOTE. */
   comissaoTotal: null | number;
   /** `commissioning_incorporador`. */
   comissaoIncorporador: null | number;
+  /** A entidade (`apolo_entities`) apontada como coordenadora de vendas. */
+  coordenadoraEntityId: null | string;
+  /**
+   * O `display_name` da coordenadora.
+   *
+   * ⚠️ QUEM RESOLVE É A ROTA, não esta função: aqui só existe o legado (MySQL do C2X) e o que o
+   * chamador entregou. Chamador que não faz a consulta em `apolo_entities` recebe `null` — e nulo
+   * com `coordenadoraEntityId` preenchido significa "o id não resolveu", que é o caso da entidade
+   * arquivada ou fundida (a 0145 não criou FK de propósito). A tela trata os dois como lacuna.
+   */
+  coordenadoraNome: null | string;
   enterpriseId: string;
   /** `initial_input_value` — entrada mínima (ato + sinal) SEGUNDO O C2X. Read-only, não trava. */
   entradaMinima: null | number;
@@ -316,13 +356,12 @@ function gestaoDoSplit(grupos: GrupoDeSplit[]): null | number {
 }
 
 /**
- * Lê a política dos empreendimentos pedidos. `gestaoCarteiraApolo` entra por quem chama (o Apolo
- * é o dono desse campo), para esta função ficar restrita ao legado e continuar testável.
+ * Lê a política dos empreendimentos pedidos. O que é do Apolo entra por quem chama (o Apolo é o
+ * dono desses campos), para esta função ficar restrita ao legado e continuar testável.
  */
 export async function loadPoliticaComercial(
   codes: string[],
-  gestaoPorEnterpriseId: Map<string, null | number> = new Map(),
-  entradaMinimaPorEnterpriseId: Map<string, null | number> = new Map(),
+  doApolo: Map<string, DadosDoApolo> = new Map(),
 ): Promise<
   { error: string; ok: false } | { ok: true; politicas: PoliticaComercialDoEmpreendimento[] }
 > {
@@ -357,7 +396,8 @@ export async function loadPoliticaComercial(
 
     const politicas = rows.map((linha) => {
       const enterpriseId = String(linha.enterprise_id);
-      const doApolo = gestaoPorEnterpriseId.get(enterpriseId) ?? null;
+      const apolo = doApolo.get(enterpriseId);
+      const gestaoApolo = apolo?.gestaoCarteiraPercentual ?? null;
       // Linha sem política vem com tudo nulo pelo `left join`: o `total_value_commission` nulo E o
       // `loteador_percentage` nulo juntos significam que não existe registro.
       const temPolitica =
@@ -370,17 +410,22 @@ export async function loadPoliticaComercial(
       const gestaoSplit = gestaoDoSplit(grupos);
 
       return {
-        avisos: conferir(temPolitica ? linha : undefined, doApolo, gestaoSplit),
+        avisos: conferir(temPolitica ? linha : undefined, gestaoApolo, gestaoSplit),
         gestaoCarteiraSplit: gestaoSplit,
         splitCadastrado: grupos,
         splitNome: doSplit?.nome ?? null,
         code: (linha.code ?? "").trim(),
+        comissaoCoordenadoraApolo: apolo?.comissaoCoordenadoraPercentual ?? null,
+        comissaoImobiliariaApolo: apolo?.comissaoImobiliariaPercentual ?? null,
         comissaoIncorporador: numero(linha.commissioning_incorporador),
         comissaoTotal: numero(linha.total_value_commission),
+        coordenadoraEntityId: apolo?.coordenadoraEntityId ?? null,
+        // Quem resolve o nome é a rota (ver o comentário do campo): aqui só há o legado.
+        coordenadoraNome: null,
         enterpriseId,
         entradaMinima: numero(linha.initial_input_value),
-        entradaMinimaApolo: entradaMinimaPorEnterpriseId.get(enterpriseId) ?? null,
-        gestaoCarteiraApolo: doApolo,
+        entradaMinimaApolo: apolo?.entradaMinimaPercentual ?? null,
+        gestaoCarteiraApolo: gestaoApolo,
         gestaoCarteiraC2x: numero(linha.loteador_percentage),
         gestaoCarteiraCareliC2x: numero(linha.careli_percentage),
         jurosAtraso: numero(linha.non_compliance_interest),
