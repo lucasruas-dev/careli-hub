@@ -36,6 +36,53 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-o-contrato-se-preenche",
+    deployedAt: "2026-09-08T12:10:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O contrato se preenche.** A minuta publicada mais os dados da proposta viram o documento pronto — o que até hoje era uma caixinha marcada à mão no board.",
+              "**A qualificação se repete sozinha, uma por comprador.** Casal, três compradores, pessoa jurídica: a minuta escreve uma vez e o motor repete quantas a venda pedir.",
+              "**O cônjuge, o trecho de PF e o de PJ entram ou somem** conforme cada comprador — o defeito que já saiu impresso num contrato do Villa Paris.",
+              "**O que falta aparece impresso**, como `[cpf_cliente]`, em vez de sumir. Contrato com buraco visível é constrangedor; contrato com o CPF ausente chega ao cartório.",
+            ],
+            screen: "Motor de contrato",
+          },
+          {
+            items: [
+              "**Prévia do contrato na ficha da proposta** — o contrato preenchido na tela, antes de virar PDF e antes de qualquer envio.",
+              "**Com a lista do que conferir no topo**: as variáveis sem valor e os dados que faltaram no cadastro.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+      {
+        module: "Setup",
+        screens: [
+          {
+            items: [
+              "**As cores dos status agora são as mesmas do Hércules** — verde, âmbar, roxo, azul e vermelho saem de uma paleta só.",
+            ],
+            screen: "Empreendimentos · Unidades",
+          },
+        ],
+      },
+    ],
+    rollback: "7225669a",
+    technical: {
+      done: "⚠️ O MOTOR NÃO EXISTIA. Até esta manhã as ~280 variáveis do catálogo eram lidas SÓ por auditoria e pelo editor: nada substituía `[nome_cliente]` por um nome, e \"Gerar o contrato pela minuta\" era uma caixinha que alguém marcava no board. ⚠️ ELE TRABALHA SOBRE OS NÓS, não sobre o HTML: no documento do editor a variável já é um nó (`{type:\"variavel\", nome}`), marcadores de bloco inclusive. No HTML seria preciso achar `[inicio_dados_conjuge]` entre as tags e adivinhar quais `<p>` remover junto — e tag órfã num contrato é cláusula que some ou dobra. ⚠️ A ORDEM DAS ETAPAS É O CONTRATO DO MÓDULO: (1) o laço `[inicio_cada_comprador]` é expandido, um por comprador; (2) só então os pares `dados_conjuge`/`_pf`/`_pj`/`tem_anexo_N` perguntam ao dado DA SUA CÓPIA; (3) o que sobrou vira texto. Inverter 1 e 2 faria o cônjuge do primeiro comprador sair repetido em todas as qualificações — o defeito do legado. ⚠️ O QUE NÃO SE CONHECE FICA LIGADO: um par novo que o motor não interpreta sai impresso, porque cláusula que some de contrato assinado é o pior defeito possível. ⚠️ O RESOLVEDOR LÊ SEIS FONTES para montar um comprador (apolo_entities, apolo_esteira.ficha, apolo_addresses, apolo_contacts, apolo_relationships, hercules_propostas) e reusa `unirEndereco`/`unirConjuge`: só 10 das 343 CADs do lançamento têm linha em `apolo_addresses` e as outras 333 têm o endereço solto na ficha — quem lê uma fonte só perde metade das pessoas. Os `*Id` viram rótulo (`estadoCivilId: \"2\"` impresso no papel é o defeito que ninguém vê na tela). ⚠️ E O ÓRGÃO SOZINHO NÃO É UM RG: sem o número, `rg_cliente` não é escrita, senão o contrato sai com \"portador da cédula de identidade nº SSP/MG\". A prévia é LEITURA PURA — não grava linha nem arquivo, e por isso pode ser gerada quantas vezes for preciso. TABELA PRICE conferida contra a fórmula dos livros em quatro casos (diferença 1e-13), com as duas provas que importam: o valor presente das parcelas devolve o principal e o saldo zera na última. 3.201 testes verdes; typecheck limpo; lint sem erros.",
+      motivation:
+        "Lucas: *\"garante então a construção para a gente emitir contratos, precisamos testar isso hoje\"* e *\"deveria ter um campo para visualização do contrato preenchido, tipo uma prévia antes de enviar\"*.",
+    },
+    title: "O contrato se preenche",
+    type: "melhoria",
+    version: "1.297.0",
+  },
+  {
     buildTag: "2026-09-08-desconto-sem-perder-a-tabela",
     deployedAt: "2026-09-08T11:30:00-03:00",
     modules: [

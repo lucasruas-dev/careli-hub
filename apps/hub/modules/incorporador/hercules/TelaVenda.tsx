@@ -43,6 +43,7 @@ import { ModalDeContrato } from "./ModalDeContrato";
 import { ModalDePedidoDeCancelamento } from "./ModalDePedidoDeCancelamento";
 import { ModalDeProposta } from "./ModalDeProposta";
 import { ModalDeReserva } from "./ModalDeReserva";
+import { PreviaDoContrato } from "./PreviaDoContrato";
 import { SimuladorDeProposta } from "./SimuladorDeProposta";
 
 // A TELA VENDA — onde o coordenador VENDE, e onde ele olha se está vendendo bem.
@@ -1404,6 +1405,8 @@ function Mesa({
   // filtros, buscar. Sempre ter isso como padrão em visões analíticas"*). A busca zera ao trocar de
   // etapa: o texto que fazia sentido em "reserva" quase nunca faz em "faturamento", e um filtro
   // esquecido mostra lista vazia sem explicar por quê.
+  // A proposta cuja prévia está aberta. Null = nenhuma.
+  const [previaDe, setPreviaDe] = useState<null | string>(null);
   const [busca, setBusca] = useState("");
   const [imobiliaria, setImobiliaria] = useState("");
   const [quadra, setQuadra] = useState("");
@@ -1515,8 +1518,14 @@ function Mesa({
   const idEmFoco = unidadeEmFoco?.id ?? propostaEmFoco?.unidadeId ?? null;
 
   return (
-    // ⚠️ `alignItems: start` SAIU. Ele encolhia as colunas para a altura do conteúdo, e era isso
-    // que jogava a rolagem para a página inteira. Agora as duas esticam e rolam por dentro.
+    <>
+    {/* ⚠️ O MODAL FICA FORA DA GRADE. Ele é `position: fixed`, então dentro da coluna ele herdaria o
+        `overflow` dela e a folha do contrato ficaria recortada na metade. */}
+    {previaDe ? (
+      <PreviaDoContrato aoFechar={() => setPreviaDe(null)} propostaId={previaDe} />
+    ) : null}
+    {/* ⚠️ `alignItems: start` SAIU. Ele encolhia as colunas para a altura do conteúdo, e era isso
+        que jogava a rolagem para a página inteira. Agora as duas esticam e rolam por dentro. */}
     <div
       style={{
         display: "grid",
@@ -2109,6 +2118,27 @@ function Mesa({
                   />
                   {/* O FLUXO do contrato, não o nome do plano — a mesma escrita do extrato. */}
                   <Linha rotulo="Plano" valor={propostaEmFoco.plano ?? "—"} />
+                  {/* ⚠️ A PRÉVIA MORA NA FICHA DA PROPOSTA, e não numa tela à parte: é aqui que
+                      alguém já está olhando o negócio inteiro — cliente, unidade, valor e plano —
+                      quando decide emitir. Pedido do Lucas em 08/09/2026. */}
+                  <button
+                    onClick={() => setPreviaDe(propostaEmFoco.id)}
+                    style={{
+                      background: "transparent",
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 8,
+                      color: T.text,
+                      cursor: "pointer",
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      marginTop: 8,
+                      padding: "7px 10px",
+                      width: "100%",
+                    }}
+                    type="button"
+                  >
+                    Prévia do contrato
+                  </button>
                   {propostaEmFoco.observacao ? (
                     <div
                       style={{
@@ -2198,6 +2228,7 @@ function Mesa({
         />
       </div>
     </div>
+    </>
   );
 }
 

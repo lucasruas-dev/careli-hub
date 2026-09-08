@@ -1,0 +1,864 @@
+// Regressões de `dados-do-contrato.ts` — cada teste aqui é um jeito de o contrato sair errado.
+//
+// ⚠️ NADA DE BANCO. O cliente é um duplo que devolve linhas por tabela; o que se prova é a REGRA
+// (precedência, tradução de id, extensos, PF × PJ), não o SQL. As linhas usadas são cópias fiéis do
+// formato real: `document_masked` com o documento COMPLETO, ficha PLANA em camelCase, cônjuge no
+// `label` + `metadata` do relacionamento.
+
+import { describe, expect, it } from "vitest";
+
+import { dadosDaProposta, dataPorExtenso, hojeEmBrasilia } from "./dados-do-contrato";
+
+type Linhas = Record<string, unknown>;
+
+/**
+ * Duplo encadeável do Supabase.
+ *
+ * `.select`, `.eq`, `.in` e `.order` devolvem o próprio objeto; `maybeSingle()` e o `await` direto
+ * resolvem no que o mapa tem para aquela tabela. É o bastante: este módulo lê, não escreve.
+ */
+function clienteFalso(porTabela: Linhas, tabelasLidas?: string[]) {
+  const construir = (tabela: string) => {
+    const resposta = () => ({ data: porTabela[tabela] ?? null, error: null });
+    const encadeia: Record<string, unknown> = new Proxy(
+      {},
+      {
+        get(_alvo, prop: string) {
+          if (prop === "maybeSingle") return () => Promise.resolve(resposta());
+          if (prop === "then") {
+            return (resolver: (r: unknown) => unknown) => Promise.resolve(resolver(resposta()));
+          }
+          return () => encadeia;
+        },
+      },
+    );
+    return encadeia;
+  };
+  return {
+    from: (tabela: string) => {
+      tabelasLidas?.push(tabela);
+      return construir(tabela);
+    },
+  } as never;
+}
+
+const THIAGO = "aaaaaaaa-0000-0000-0000-000000000001";
+const EMPRESA = "aaaaaaaa-0000-0000-0000-000000000002";
+
+/** A proposta nativa mínima: um comprador, uma unidade, um empreendimento e o cronograma. */
+function proposta(over: Linhas = {}): Linhas {
+  return {
+    cliente_documento: "12345678900",
+    cliente_nome: "THIAGO HENRIQUE DE SOUZA",
+    compradores: [
+      { cpf: "123.456.789-00", nome: "THIAGO HENRIQUE DE SOUZA", participacao: 60, titular: true },
+    ],
+    condicoes: {
+      anuais: [],
+      entrada: [{ numero: 1, total: 1, valor: 37080, vencimento: "2026-10-10" }],
+      mensais: Array.from({ length: 120 }, (_, k) => ({ numero: k + 1, valor: 1236 })),
+      totais: { anuais: 0, entrada: 37080, financiado: 148320, geral: 185400, mensais: 148320 },
+    },
+    dia_vencimento: 10,
+    empreendimento_id: "eeeeeeee-0000-0000-0000-000000000001",
+    plano_nome: "Normal 120x",
+    unidade_id: "dddddddd-0000-0000-0000-000000000001",
+    valor: 185400,
+    ...over,
+  };
+}
+
+const UNIDADE = {
+  area: 300,
+  area_extenso: null,
+  codigo: "JDG0617",
+  lote: "07",
+  matricula: "45.678",
+  matricula_livro: "3",
+  preco_extenso: null,
+  preco_tabela: 185400,
+  quadra: "12",
+  tipo_unidade: "lote",
+};
+
+const EMPREENDIMENTO = {
+  c2x_enterprise_id: "39",
+  cidade: "João Monlevade",
+  codigo: "JDG",
+  nome: "Jardim das Gerais",
+  uf: "MG",
+};
+
+/** A ficha do CAD como ela existe em produção: PLANA, camelCase, ids em texto. */
+const FICHA_DO_THIAGO = {
+  bairro: "Centro",
+  cep: "35930-000",
+  cidade: "João Monlevade",
+  dataNascimento: "1985-03-15",
+  estadoCivilId: "2",
+  logradouro: "Rua das Acácias",
+  nacionalidade: "brasileiro",
+  numero: "150",
+  orgaoEmissor: "SSP/MG",
+  profissaoId: "3",
+  regimeBensId: "1",
+  rg: "MG-12.345.678",
+  uf: "MG",
+};
+
+describe("a proposta que não existe", () => {
+  it("devolve null — e não um contrato vazio", async () => {
+    const r = await dadosDaProposta("nao-existe", clienteFalso({}));
+    expect(r).toBeNull();
+  });
+
+  it("não vai atrás de unidade, empreendimento nem cadastro", async () => {
+    const tabelas: string[] = [];
+    await dadosDaProposta("nao-existe", clienteFalso({}, tabelas));
+    expect(tabelas).toEqual(["hercules_propostas"]);
+  });
+});
+
+describe("os *Id da ficha viram rótulo", () => {
+  it("estado civil, regime de bens e profissão saem escritos, nunca em número", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO HENRIQUE DE SOUZA",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        apolo_esteira: [{ enterprise_id: "39", entity_id: THIAGO, ficha: FICHA_DO_THIAGO }],
+        hercules_empreendimentos: EMPREENDIMENTO,
+        hercules_propostas: proposta(),
+        hercules_unidades: UNIDADE,
+      }),
+    ))!;
+
+    const v = dados.compradores[0]!.valores;
+    expect(v.estado_civil_cliente).toBe("Casado (a)");
+    expect(v.regime_casamento_cliente).toBe("Comunhão parcial de bens");
+    expect(v.profissao_cliente).toBe("ADMINISTRADOR(A)");
+    // ⚠️ A TRAVA DE VERDADE: nenhum dos três pode ser o número cru.
+    expect(v.estado_civil_cliente).not.toBe("2");
+    expect(v.regime_casamento_cliente).not.toBe("1");
+    expect(v.profissao_cliente).not.toBe("3");
+  });
+
+  it("id fora do catálogo NÃO vira o número — a chave some e o motor imprime [estado_civil_cliente]", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        apolo_esteira: [
+          {
+            enterprise_id: "39",
+            entity_id: THIAGO,
+            ficha: { ...FICHA_DO_THIAGO, estadoCivilId: "99" },
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    expect(dados.compradores[0]!.valores.estado_civil_cliente).toBeUndefined();
+  });
+
+  it("profissaoOutro (texto livre) ganha do id — foi o que o operador escolheu escrever", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        apolo_esteira: [
+          {
+            enterprise_id: "39",
+            entity_id: THIAGO,
+            ficha: { ...FICHA_DO_THIAGO, profissaoOutro: "Perito em rochas ornamentais" },
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    expect(dados.compradores[0]!.valores.profissao_cliente).toBe("Perito em rochas ornamentais");
+  });
+});
+
+describe("os extensos saem em par com o número", () => {
+  it("área, preço, valor, entrada, financiado, prazo e dia de vencimento", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_empreendimentos: EMPREENDIMENTO,
+        hercules_propostas: proposta(),
+        hercules_unidades: UNIDADE,
+      }),
+    ))!;
+
+    const g = dados.gerais;
+    expect(g.area_lote).toBe("300,00 m²");
+    // ⚠️ SEM A UNIDADE REPETIDA: foi "trezentos metros quadrados metros quadrados" que saiu no
+    // contrato real do Villa Paris.
+    expect(g.area_lote_extenso).toBe("trezentos metros quadrados");
+
+    expect(g.valor_imovel_venda).toBe("R$ 185.400,00");
+    expect(g.valor_imovel_venda_extenso).toBe("cento e oitenta e cinco mil e quatrocentos reais");
+    // Os dois nomes do mesmo preço: as minutas do legado usam os dois.
+    expect(g.preco_venda).toBe(g.valor_imovel_venda);
+    expect(g.preco_venda_extenso).toBe(g.valor_imovel_venda_extenso);
+
+    expect(g.valor_entrada).toBe("R$ 37.080,00");
+    expect(g.valor_entrada_extenso).toBe("trinta e sete mil e oitenta reais");
+    expect(g.valor_divida_financiada).toBe("R$ 148.320,00");
+
+    expect(g.prazo_meses_amortizacao).toBe("120");
+    expect(g.prazo_meses_amortizacao_extenso).toBe("cento e vinte");
+
+    expect(g.dia_vencimento).toBe("10");
+    expect(g.dia_vencimento_extenso).toBe("dez");
+
+    expect(g.numero_quadra_extenso).toBe("doze");
+    expect(g.numero_lote_extenso).toBe("sete");
+
+    // ⚠️ TODO `x` COM EXTENSO NO CATÁLOGO SAI COM O PAR. Um valor sem o extenso ao lado faz o
+    // contrato imprimir "R$ 185.400,00 ([valor_imovel_venda_extenso])".
+    for (const nome of Object.keys(g)) {
+      if (nome.endsWith("_extenso")) continue;
+      const par = `${nome}_extenso`;
+      if (par in g) expect(g[par]).toBeTruthy();
+    }
+  });
+
+  it("o extenso GRAVADO na unidade ganha do escrito na hora", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta(),
+        hercules_unidades: { ...UNIDADE, area_extenso: "trezentos metros quadrados certos" },
+      }),
+    ))!;
+    expect(dados.gerais.area_lote_extenso).toBe("trezentos metros quadrados certos");
+  });
+
+  it("quadra com LETRA não ganha extenso — 'zero' no contrato é pior do que nada", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta(),
+        hercules_unidades: { ...UNIDADE, quadra: "A" },
+      }),
+    ))!;
+    expect(dados.gerais.numero_quadra).toBe("A");
+    expect(dados.gerais.numero_quadra_extenso).toBeUndefined();
+  });
+});
+
+describe("o cônjuge", () => {
+  const entidade = [
+    {
+      display_name: "THIAGO",
+      document_masked: "123.456.789-00",
+      entity_kind: "pf",
+      id: THIAGO,
+      legal_name: null,
+      trade_name: null,
+    },
+  ];
+
+  it("vem do RELACIONAMENTO quando a ficha não o tem — quem foi cadastrado pelo wizard e nunca editado", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: entidade,
+        apolo_esteira: [{ enterprise_id: "39", entity_id: THIAGO, ficha: FICHA_DO_THIAGO }],
+        apolo_relationships: [
+          {
+            entity_id: THIAGO,
+            label: "MARIA DE SOUZA",
+            metadata: {
+              cpf: "98765432100",
+              email: "maria@exemplo.com.br",
+              nacionalidade: "brasileira",
+              phone: "(31) 98888-0000",
+              profissaoId: "4",
+            },
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    const comprador = dados.compradores[0]!;
+    // ⚠️ SEM ISTO O BLOCO `[inicio_dados_conjuge]` SOME e o contrato vai a cartório sem o assinante
+    // que a comunhão de bens exige.
+    expect(comprador.temConjuge).toBe(true);
+    expect(comprador.valores.nome_conjuge).toBe("MARIA DE SOUZA");
+    expect(comprador.valores.cpf_conjuge).toBe("987.654.321-00");
+    expect(comprador.valores.nacionalidade_conjuge).toBe("brasileira");
+    expect(comprador.valores.telefone_conjuge).toBe("(31) 98888-0000");
+    expect(comprador.valores.profissao_conjuge).toBe("ADVOGADO(A)");
+  });
+
+  it("a ficha ganha campo a campo do relacionamento — é o nome que o cliente assinou", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: entidade,
+        apolo_esteira: [
+          {
+            enterprise_id: "39",
+            entity_id: THIAGO,
+            ficha: { ...FICHA_DO_THIAGO, conjugeNome: "MARIA DE SOUZA LIMA" },
+          },
+        ],
+        apolo_relationships: [
+          {
+            entity_id: THIAGO,
+            label: "MARIA DE SOUZA",
+            metadata: { cpf: "98765432100", phone: "(31) 98888-0000" },
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    const v = dados.compradores[0]!.valores;
+    expect(v.nome_conjuge).toBe("MARIA DE SOUZA LIMA");
+    // O que a ficha não tem continua vindo do relacionamento.
+    expect(v.cpf_conjuge).toBe("987.654.321-00");
+  });
+
+  it("casado sem cônjuge nenhum vira AVISO, e o bloco fica desligado", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: entidade,
+        apolo_esteira: [{ enterprise_id: "39", entity_id: THIAGO, ficha: FICHA_DO_THIAGO }],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    expect(r.dados.compradores[0]!.temConjuge).toBe(false);
+    expect(r.avisos.join(" ")).toContain("não tem cônjuge cadastrado");
+  });
+});
+
+describe("pessoa física e pessoa jurídica", () => {
+  it("PF sai com CPF e sem razão social", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO HENRIQUE DE SOUZA",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    const comprador = dados.compradores[0]!;
+    expect(comprador.ehPessoaFisica).toBe(true);
+    expect(comprador.valores.cpf_cliente).toBe("123.456.789-00");
+    expect(comprador.valores.cnpj_cliente).toBeUndefined();
+    expect(comprador.valores.razao_social_cliente).toBeUndefined();
+  });
+
+  it("PJ sai com CNPJ, razão social e nome fantasia — e nunca com CPF", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "Souza Participações",
+            document_masked: "11.115.899/0001-04",
+            entity_kind: "pj",
+            id: EMPRESA,
+            legal_name: "SOUZA PARTICIPAÇÕES LTDA.",
+            trade_name: "Souza Participações",
+          },
+        ],
+        hercules_propostas: proposta({
+          compradores: [
+            { cpf: "11.115.899/0001-04", nome: "Souza Participações", participacao: 100, titular: true },
+          ],
+        }),
+      }),
+    ))!;
+
+    const comprador = dados.compradores[0]!;
+    // ⚠️ É ISTO QUE DECIDE QUAL PARÁGRAFO SAI. No contrato do Villa Paris o bloco de PJ saiu impresso
+    // num comprador pessoa física.
+    expect(comprador.ehPessoaFisica).toBe(false);
+    expect(comprador.valores.cnpj_cliente).toBe("11.115.899/0001-04");
+    expect(comprador.valores.razao_social_cliente).toBe("SOUZA PARTICIPAÇÕES LTDA.");
+    expect(comprador.valores.nome_fantasia_cliente).toBe("Souza Participações");
+    expect(comprador.valores.cpf_cliente).toBeUndefined();
+  });
+
+  it("sem cadastro no Apolo, o TAMANHO do documento decide: 14 dígitos é CNPJ", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          compradores: [{ cpf: "11115899000104", nome: "Souza Participações", titular: true }],
+        }),
+      }),
+    ))!;
+    expect(dados.compradores[0]!.ehPessoaFisica).toBe(false);
+    expect(dados.compradores[0]!.valores.cnpj_cliente).toBe("11.115.899/0001-04");
+  });
+});
+
+describe("as seis fontes do comprador", () => {
+  it("o endereço da FICHA aparece mesmo sem linha em apolo_addresses (333 das 343 CADs)", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        apolo_esteira: [{ enterprise_id: "39", entity_id: THIAGO, ficha: FICHA_DO_THIAGO }],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    const v = dados.compradores[0]!.valores;
+    expect(v.rua_cliente).toBe("Rua das Acácias");
+    expect(v.numero_cliente).toBe("150");
+    expect(v.bairro_cliente).toBe("Centro");
+    expect(v.cep_cliente).toBe("35930-000");
+    expect(v.cidade_cliente).toBe("João Monlevade/MG");
+  });
+
+  it("o endereço de apolo_addresses aparece quando a ficha não o tem", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_addresses: [
+          {
+            city: "Contagem",
+            complement: null,
+            district: "Eldorado",
+            entity_id: THIAGO,
+            number: "32",
+            postal_code: "32310-230",
+            state: "MG",
+            street: "Rua Manacá",
+          },
+        ],
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        apolo_esteira: [
+          { enterprise_id: "39", entity_id: THIAGO, ficha: { nacionalidade: "brasileiro" } },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    expect(dados.compradores[0]!.valores.rua_cliente).toBe("Rua Manacá");
+    expect(dados.compradores[0]!.valores.cidade_cliente).toBe("Contagem/MG");
+  });
+
+  it("UF sem cidade e órgão emissor sem RG NÃO viram campo preenchido", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        // Meia-verdade nos dois campos: o cadastro tem o acessório e não tem o essencial.
+        apolo_esteira: [
+          {
+            enterprise_id: "39",
+            entity_id: THIAGO,
+            ficha: { ...FICHA_DO_THIAGO, cidade: "", orgaoEmissor: "SSP/MG", rg: "", uf: "MG" },
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    const v = r.dados.compradores[0]!.valores;
+    // ⚠️ "residente e domiciliado em MG" e "portador da identidade SSP/MG" PARECEM preenchidos:
+    // passam por qualquer conferência automática e por nenhuma humana, tarde demais.
+    expect(v.cidade_cliente).toBeUndefined();
+    expect(v.rg_cliente).toBeUndefined();
+    // E, por não existirem, os dois entram na lista de quem vai conferir.
+    expect(r.avisos.join(" ")).toContain("RG");
+  });
+
+  it("e-mail e telefone caem em apolo_contacts quando a ficha não os tem", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_contacts: [
+          { contact_type: "email", entity_id: THIAGO, value: "thiago@exemplo.com.br" },
+          { contact_type: "whatsapp", entity_id: THIAGO, value: "(31) 99999-0000" },
+        ],
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    expect(dados.compradores[0]!.valores.email_cliente).toBe("thiago@exemplo.com.br");
+    expect(dados.compradores[0]!.valores.telefone_cliente).toBe("(31) 99999-0000");
+  });
+
+  it("a ficha DO EMPREENDIMENTO da proposta ganha da mais recente de outro loteamento", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        // A ordem é a que o PostgREST devolveu: a mais recente primeiro, e ela é de OUTRO
+        // empreendimento. Sem o desempate por `enterprise_id`, o contrato do JDG sairia com o
+        // endereço que a pessoa deu ao comprar no Vale do Ouro.
+        apolo_esteira: [
+          { enterprise_id: "35", entity_id: THIAGO, ficha: { logradouro: "Rua do Vale do Ouro" } },
+          { enterprise_id: "39", entity_id: THIAGO, ficha: FICHA_DO_THIAGO },
+        ],
+        hercules_empreendimentos: EMPREENDIMENTO,
+        hercules_propostas: proposta(),
+        hercules_unidades: UNIDADE,
+      }),
+    ))!;
+
+    expect(dados.compradores[0]!.valores.rua_cliente).toBe("Rua das Acácias");
+  });
+
+  it("casa o CPF do jsonb com o document_masked, que guarda o documento COM máscara", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO HENRIQUE DE SOUZA",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        // A proposta gravou só os dígitos; a entidade tem a máscara. As duas formas viajam no
+        // mesmo `.in()`, então o casamento acontece de qualquer lado.
+        hercules_propostas: proposta({
+          compradores: [{ cpf: "12345678900", nome: "Thiago", participacao: 100, titular: true }],
+        }),
+      }),
+    ))!;
+
+    expect(dados.compradores[0]!.valores.nome_cliente).toBe("THIAGO HENRIQUE DE SOUZA");
+  });
+});
+
+describe("a ordem e a quantidade de compradores", () => {
+  it("o titular vai na frente — é dele a primeira qualificação da minuta", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          compradores: [
+            { cpf: "98765432100", nome: "MARIA", participacao: 40, titular: false },
+            { cpf: "12345678900", nome: "THIAGO", participacao: 60, titular: true },
+          ],
+        }),
+      }),
+    ))!;
+
+    expect(dados.compradores.map((c) => c.valores.nome_cliente)).toEqual(["THIAGO", "MARIA"]);
+    expect(dados.compradores[0]!.valores.percentual_cliente).toBe("60%");
+    expect(dados.compradores[1]!.valores.percentual_cliente).toBe("40%");
+  });
+
+  it("proposta importada do C2X, com o jsonb vazio, cai nas colunas do titular", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({ hercules_propostas: proposta({ compradores: [], condicoes: null }) }),
+    ))!;
+
+    expect(dados.compradores).toHaveLength(1);
+    expect(dados.compradores[0]!.valores.nome_cliente).toBe("THIAGO HENRIQUE DE SOUZA");
+    expect(dados.compradores[0]!.valores.cpf_cliente).toBe("123.456.789-00");
+  });
+
+  it("sem comprador nenhum, avisa em vez de devolver um contrato calado", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          cliente_documento: null,
+          cliente_nome: null,
+          compradores: [],
+        }),
+      }),
+    ))!;
+
+    expect(r.dados.compradores).toEqual([]);
+    expect(r.avisos.join(" ")).toContain("não tem comprador nenhum");
+  });
+});
+
+describe("os avisos", () => {
+  it("comprador sem cadastro no Apolo dá UM aviso, não doze", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({ hercules_propostas: proposta() }),
+    ))!;
+
+    const doComprador = r.avisos.filter((a) => a.startsWith("THIAGO"));
+    expect(doComprador).toHaveLength(1);
+    expect(doComprador[0]).toContain("sem cadastro no Apolo");
+  });
+
+  it("lista campo a campo o que falta em quem TEM cadastro", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        apolo_esteira: [
+          {
+            enterprise_id: "39",
+            entity_id: THIAGO,
+            ficha: { ...FICHA_DO_THIAGO, rg: "", estadoCivilId: "1", regimeBensId: "" },
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    // ⚠️ PROCURA PELO CONTEÚDO, não pelo prefixo exato: o aviso é prefixado com o nome COMO ELE ESTÁ
+    // no cadastro ("THIAGO HENRIQUE DE SOUZA"), e casar o prefixo exato faz o teste quebrar por um
+    // detalhe do fixture em vez de por um defeito do código.
+    const aviso = r.avisos.find((a) => a.includes("falta"));
+    expect(aviso, r.avisos.join(" | ")).toBeDefined();
+    expect(aviso).toContain("RG");
+    // ⚠️ SOLTEIRO NÃO É COBRADO POR REGIME DE BENS — aviso que sempre aparece é aviso que ninguém lê.
+    expect(r.avisos.join(" ")).not.toContain("regime de bens");
+  });
+
+  it("unidade e empreendimento ausentes, cronograma nulo: cada um com o seu aviso", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          condicoes: null,
+          empreendimento_id: null,
+          unidade_id: null,
+        }),
+      }),
+    ))!;
+
+    const tudo = r.avisos.join(" | ");
+    expect(tudo).toContain("nenhuma unidade");
+    expect(tudo).toContain("nenhum empreendimento");
+    expect(tudo).toContain("não tem cronograma gravado");
+    expect(r.dados.gerais.numero_lote).toBeUndefined();
+    expect(r.dados.gerais.prazo_meses_amortizacao).toBeUndefined();
+  });
+
+  it("unidade sem matrícula avisa — a qualificação do imóvel depende dela", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta(),
+        hercules_unidades: { ...UNIDADE, matricula: null },
+      }),
+    ))!;
+    expect(r.avisos.join(" ")).toContain("não tem matrícula");
+  });
+
+  it("leitura que FALHA não vira 'não tem': quebra", async () => {
+    const quebrado = {
+      from: () => ({
+        eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: "timeout" } }) }),
+        select: function () {
+          return this;
+        },
+      }),
+    } as never;
+
+    await expect(dadosDaProposta("p1", quebrado)).rejects.toThrow(/hercules_propostas/);
+  });
+});
+
+describe("as condições e a data", () => {
+  it("plano com anuais liga o par [inicio_tem_anuais]", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          condicoes: {
+            anuais: [{ valor: 8000 }, { valor: 8000 }],
+            mensais: [{ valor: 1000 }],
+            totais: { entrada: 10000, financiado: 90000 },
+          },
+        }),
+      }),
+    ))!;
+
+    expect(dados.condicoes?.tem_anuais).toBe(true);
+    expect(dados.gerais.plano_anuais_quantidade).toBe("2");
+    expect(dados.gerais.plano_anuais_valor).toBe("R$ 8.000,00");
+    expect(dados.gerais.plano_anuais_valor_extenso).toBe("oito mil reais");
+  });
+
+  it("plano SEM anuais desliga o par — senão o contrato anuncia '0 parcelas de'", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({ hercules_propostas: proposta() }),
+    ))!;
+    expect(dados.condicoes?.tem_anuais).toBe(false);
+    expect(dados.gerais.plano_anuais_quantidade).toBeUndefined();
+  });
+
+  it("a data de emissão sai nos dois formatos", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({ hercules_propostas: proposta() }),
+    ))!;
+    expect(dados.gerais.data_emissao_contrato).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    expect(dados.gerais.data_emissao_contrato_extenso).toMatch(/^\d{1,2} de \p{L}+ de \d{4}$/u);
+  });
+
+  it("hoje é o dia de BRASÍLIA, e não o da máquina que gerou", () => {
+    // 08/09/2026 às 23h30 de Brasília já é 09/09 em UTC. O contrato tem que dizer 08.
+    expect(hojeEmBrasilia(new Date("2026-09-09T02:30:00Z"))).toBe("2026-09-08");
+    expect(hojeEmBrasilia(new Date("2026-09-08T12:00:00Z"))).toBe("2026-09-08");
+  });
+
+  it("a data por extenso não leva zero à esquerda: é frase, não tabela", () => {
+    expect(dataPorExtenso("2026-09-08")).toBe("8 de setembro de 2026");
+    expect(dataPorExtenso("2026-12-25")).toBe("25 de dezembro de 2026");
+    expect(dataPorExtenso("nao e data")).toBe("");
+  });
+
+  it("data de nascimento ilegível não vai para o papel", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        apolo_esteira: [
+          {
+            enterprise_id: "39",
+            entity_id: THIAGO,
+            ficha: { ...FICHA_DO_THIAGO, dataNascimento: "nao informado" },
+          },
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    expect(dados.compradores[0]!.valores.data_nascimento_cliente).toBeUndefined();
+  });
+
+  it("data de nascimento boa sai em DD/MM/AAAA", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        apolo_esteira: [{ enterprise_id: "39", entity_id: THIAGO, ficha: FICHA_DO_THIAGO }],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    expect(dados.compradores[0]!.valores.data_nascimento_cliente).toBe("15/03/1985");
+    expect(dados.compradores[0]!.valores.rg_cliente).toBe("MG-12.345.678 SSP/MG");
+  });
+});

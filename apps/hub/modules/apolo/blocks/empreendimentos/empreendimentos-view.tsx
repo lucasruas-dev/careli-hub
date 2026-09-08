@@ -11,6 +11,8 @@ import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/plan
 import { PoliticaComercialTab } from "@/modules/apolo/blocks/empreendimentos/politica-comercial-tab";
 import { useEffect, useRef, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+
+import { CLASSES_DO_SELO, situacaoConhecida } from "@/lib/hercules/cores-de-situacao";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -2101,18 +2103,11 @@ function PartyLink({
 }
 
 function UnitStatusPill({ unit }: { unit: ApoloEnterpriseUnit }) {
-  const tone = {
-    bloqueado:
-      "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/12 dark:text-rose-300",
-    disponivel:
-      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/12 dark:text-emerald-300",
-    negociacao:
-      "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/12 dark:text-violet-300",
-    reservado:
-      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300",
-    vendido:
-      "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/12 dark:text-blue-300",
-  }[unit.bucket];
+  // ⚠️ A PALETA VEM DE UM LUGAR SÓ (Lucas, 08/09/2026: *"vamos colocar as cores padrão? A mesma
+  // cores que temos hoje no Hércules para os status"*). As famílias já eram as mesmas nas duas
+  // telas; o que divergia era o tom, e duas telas do mesmo sistema mostrando o mesmo lote em dois
+  // azuis diferentes faz a pessoa duvidar se está olhando a mesma coisa.
+  const tone = CLASSES_DO_SELO[situacaoConhecida(unit.bucket)];
 
   return (
     <span
