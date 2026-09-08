@@ -243,7 +243,7 @@ export async function dadosDaProposta(
 
   if (!proposta) return null;
 
-  const [unidade, empreendimento] = await Promise.all([
+  const [unidade, empreendimento, doVinculado] = await Promise.all([
     proposta.unidade_id
       ? umaLinha<LinhaDaUnidade>(
           sb
@@ -266,6 +266,7 @@ export async function dadosDaProposta(
           "hercules_empreendimentos",
         )
       : Promise.resolve(null),
+    cadastroDoVinculado(sb, proposta.imobiliaria_entity_id, proposta.corretor_entity_id),
   ]);
 
   const compradores = await montarCompradores(sb, proposta, empreendimento, avisos);
@@ -275,7 +276,7 @@ export async function dadosDaProposta(
     dados: {
       compradores,
       condicoes: condicoesDoContrato(proposta),
-      gerais: gerais(proposta, unidade, empreendimento, avisos),
+      gerais: gerais(proposta, unidade, empreendimento, doVinculado, avisos),
     },
   };
 }
@@ -481,6 +482,49 @@ async function camadasDoCadastro(
   return { conjuges, contatos, enderecos, fichas };
 }
 
+/**
+ * O cadastro da imobiliária (ou do corretor) da venda, quando a proposta guarda o vínculo.
+ *
+ * ⚠️ A IMOBILIÁRIA VENCE O CORRETOR, e é a mesma precedência do split do C2X: quem recebe a
+ * comissão é a imobiliária quando ela existe, e o corretor autônomo quando a venda foi direta.
+ * Inverter faria o contrato de corretagem nomear como beneficiário quem não recebe.
+ *
+ * ⚠️ SÓ AS PROPOSTAS NASCIDAS NO PANTEON TÊM ESSE VÍNCULO. As importadas do C2X guardam apenas o
+ * nome em texto (`imobiliaria_nome`), e para elas ele não será reconstruído — decisão do Lucas em
+ * 08/09/2026: *"o que foi gerado antes do Panteon, deixa sem mesmo"*. Reconciliar por nome casaria
+ * pouco mais de um terço e criaria vínculo ERRADO nos outros, que é pior do que campo vazio num
+ * contrato de corretagem.
+ */
+async function cadastroDoVinculado(
+  sb: SupabaseClient,
+  imobiliariaId: null | string,
+  corretorId: null | string,
+): Promise<null | { documento: string; email: string; telefone: string }> {
+  const id = imobiliariaId ?? corretorId;
+  if (!id) return null;
+
+  const [entidade, contatos] = await Promise.all([
+    umaLinha<LinhaDaEntidade>(
+      sb.from("apolo_entities").select("document_masked, id").eq("id", id).maybeSingle(),
+      "apolo_entities",
+    ),
+    varias<LinhaDoContato>(
+      sb.from("apolo_contacts").select("contact_type, entity_id, value").eq("entity_id", id),
+      "apolo_contacts",
+    ),
+  ]);
+
+  if (!entidade) return null;
+
+  return {
+    documento: documentoImprimivel(texto(entidade.document_masked)),
+    email: primeiroContato(contatos, ["email"]),
+    // ⚠️ WHATSAPP PRIMEIRO. No Apolo o `whatsapp` é o tipo que a maioria das entidades tem; ler só
+    // `phone` deixaria o contrato de corretagem sem telefone na maior parte das vendas.
+    telefone: primeiroContato(contatos, ["whatsapp", "phone"]),
+  };
+}
+
 function umComprador(entrada: {
   avisos: string[];
   conjuge: LinhaDoRelacionamento | null;
@@ -648,7 +692,21 @@ function umComprador(entrada: {
     valores,
   });
 
-  return { ehPessoaFisica, temConjuge: Boolean(conjuge), valores };
+  return { ehCasado: ehCasado(ficha), ehPessoaFisica, temConjuge: Boolean(conjuge), valores };
+}
+
+/**
+ * Casado ou em união estável — os dois estados civis que têm regime de bens.
+ *
+ * ⚠️ SEM ESTADO CIVIL A RESPOSTA É `undefined`, E NÃO `false`. Quem não preencheu a ficha fica com a
+ * cláusula do regime LIGADA e com o `[regime_casamento_cliente]` visível no papel, que é o aviso que
+ * faz alguém completar o cadastro. Devolver `false` apagaria a oração de um casado sem ficha — e o
+ * contrato iria a cartório sem dizer o regime de bens, calado.
+ */
+function ehCasado(ficha: null | Record<string, unknown>): boolean | undefined {
+  const civil = texto(ficha?.estadoCivilId);
+  if (!civil) return undefined;
+  return civil === "2" || civil === "6";
 }
 
 /** O que faltou neste comprador, numa frase só. Ver a nota de `dadosDaProposta` sobre ruído. */
@@ -715,6 +773,7 @@ function gerais(
   proposta: LinhaDaProposta,
   unidade: LinhaDaUnidade | null,
   empreendimento: LinhaDoEmpreendimento | null,
+  doVinculado: null | { documento: string; email: string; telefone: string },
   avisos: string[],
 ): Record<string, string> {
   const g: Record<string, string> = {};
@@ -832,14 +891,17 @@ function gerais(
     por("corretor_nome", texto(proposta.corretor_nome));
   }
 
-  // ⚠️ PENDENTE, e o caminho já está aberto: quando a proposta tem `imobiliaria_entity_id` (as
-  // nascidas no Panteon têm, vindo da reserva), o cadastro da entidade dá `cpf_cnpj_vinculado`,
-  // `telefone_vinculado` e `email_vinculado` — 590 de 590 PJ têm documento e 589 têm contato.
-  // As 4.857 importadas do C2X têm só o nome em texto, e para elas o vínculo NÃO será reconstruído:
-  // decisão do Lucas em 08/09/2026, *"o que foi gerado antes do Panteon, deixa sem mesmo"*.
-  //
+  // ⚠️ O CADASTRO DA IMOBILIÁRIA SÓ ENTRA COM VÍNCULO. Ver `cadastroDoVinculado`: as propostas
+  // nascidas no Panteon guardam `imobiliaria_entity_id` (vem da reserva) e daí saem documento,
+  // telefone e e-mail; as importadas do C2X têm só o nome, e ficam com estes três em branco.
+  if (doVinculado) {
+    por("cpf_cnpj_vinculado", doVinculado.documento);
+    por("telefone_vinculado", doVinculado.telefone);
+    por("email_vinculado", doVinculado.email);
+  }
+
   // ⚠️ O CRECI NÃO ESTÁ NO PANTEON. Ele existe no C2X (`users.creci_number`) e não foi importado —
-  // nenhuma tabela daqui tem a coluna.
+  // nenhuma tabela daqui tem a coluna. Fica em branco e aparece na conferência da Têmis.
 
   // ── VALORES ──
   //

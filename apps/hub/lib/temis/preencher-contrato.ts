@@ -34,6 +34,14 @@ export type DadosDoComprador = {
   temConjuge: boolean;
   /** `[inicio_dados_cliente_pj]` quando falso; `_pf` quando verdadeiro. */
   ehPessoaFisica: boolean;
+  /**
+   * Casado ou em união estável — o que liga `[inicio_dados_casado]` e o que decide se a oração do
+   * regime de bens sai no papel. Ver `semOracaoDoRegime`.
+   *
+   * ⚠️ INDEFINIDO NÃO É "NÃO CASADO". Quem não informa fica com a cláusula LIGADA, pela mesma regra
+   * de `condicaoLigada`: cláusula a mais alguém vê e tira; cláusula a menos vai a cartório calada.
+   */
+  ehCasado?: boolean;
   valores: Record<string, string>;
 };
 
@@ -386,7 +394,7 @@ function resolverNo(
   const filhos = no.children;
   if (!Array.isArray(filhos)) return limpar(no);
 
-  const resolvidos = aplicarPares(filhos, dados, dono);
+  const resolvidos = semOracaoDoRegime(aplicarPares(filhos, dados, dono), dados, dono);
   const finais: (NoDeTexto | NoDoDocumento)[] = [];
 
   for (const filho of resolvidos) {
@@ -404,6 +412,67 @@ function resolverNo(
   }
 
   return limpar({ ...no, children: finais });
+}
+
+const REGIME = "regime_casamento_cliente";
+
+/**
+ * O texto que ANUNCIA o regime de bens: "casado sob o regime de", "sob o regime da comunhão".
+ * É o gatilho do corte — sem ele, nada é apagado.
+ */
+const ANUNCIA_O_REGIME = /regime|casad/i;
+
+/**
+ * Quem não é casado não leva a oração do regime de bens.
+ *
+ * ⚠️ O PROBLEMA NÃO É O CAMPO VAZIO, É A ORAÇÃO QUE SOBRA. A minuta do Lucas escreve, em texto
+ * corrido, `[estado_civil_cliente]`, casado sob o regime de `[regime_casamento_cliente]` — e num
+ * comprador solteiro o motor imprimia "Solteiro (a), casado sob o regime de
+ * [regime_casamento_cliente]". Esconder só a variável não resolve: sobraria "Solteiro (a), casado
+ * sob o regime de ,", que é pior, porque parece redação e não erro. Some a oração inteira.
+ *
+ * ⚠️ E O CORTE É ANTES DAS VARIÁVEIS VIRAREM TEXTO, de propósito. Depois disso o nó anterior pode
+ * ser o VALOR de outra variável — o "Solteiro (a)" do estado civil — e recortar ali comeria o dado
+ * do cadastro em vez da redação da minuta.
+ *
+ * ⚠️ O GATILHO É DUPLO: o comprador não ser casado E o texto anterior anunciar o regime. Sem a
+ * segunda condição, uma minuta que escrevesse a variável sozinha perderia a vírgula do vizinho.
+ *
+ * A forma CERTA de escrever isto numa minuta nova é o par `[inicio_dados_casado]` … `[fim_dados_
+ * casado]`, que já existe. Isto aqui é o conserto de quem já foi escrito sem ele — e as 41 minutas
+ * a migrar do legado estão todas nesse caso.
+ */
+function semOracaoDoRegime(
+  filhos: readonly (NoDeTexto | NoDoDocumento)[],
+  dados: DadosDoContrato,
+  dono: null | number,
+): (NoDeTexto | NoDoDocumento)[] {
+  const saida = [...filhos];
+
+  // De trás para frente: remover um item não desloca os índices que ainda faltam olhar.
+  for (let i = saida.length - 1; i >= 0; i -= 1) {
+    const filho = saida[i];
+    if (!filho || ehTexto(filho) || nomeDaVariavel(filho) !== REGIME) continue;
+
+    const comprador = dados.compradores[donoDoNo(filho) ?? dono ?? 0];
+    if (comprador?.ehCasado !== false) continue;
+
+    saida.splice(i, 1);
+
+    const anterior = i > 0 ? saida[i - 1] : undefined;
+    if (!anterior || !ehTexto(anterior)) continue;
+    saida[i - 1] = { ...anterior, text: semAOracao(anterior.text) };
+  }
+
+  return saida;
+}
+
+/** Corta da última vírgula até o fim, quando o que vem depois dela anuncia o regime. */
+function semAOracao(bruto: string): string {
+  const corte = Math.max(bruto.lastIndexOf(","), bruto.lastIndexOf(";"));
+  const oracao = corte >= 0 ? bruto.slice(corte) : bruto;
+  if (!ANUNCIA_O_REGIME.test(oracao)) return bruto;
+  return corte >= 0 ? bruto.slice(0, corte) : "";
 }
 
 /**
@@ -488,6 +557,7 @@ function condicaoLigada(chave: string, dados: DadosDoContrato, dono: null | numb
   if (chave === "dados_conjuge") return comprador?.temConjuge === true;
   if (chave === "dados_cliente_pf") return comprador?.ehPessoaFisica !== false;
   if (chave === "dados_cliente_pj") return comprador?.ehPessoaFisica === false;
+  if (chave === "dados_casado") return comprador?.ehCasado !== false;
 
   // Os sufixados do legado: `dados_cliente_3` sai só quando existe um terceiro comprador.
   const legado = /^dados_cliente_([2-5])$/.exec(chave);
@@ -496,6 +566,11 @@ function condicaoLigada(chave: string, dados: DadosDoContrato, dono: null | numb
   const conjugeLegado = /^dados_conjuge_([2-5])$/.exec(chave);
   if (conjugeLegado?.[1]) {
     return dados.compradores[Number(conjugeLegado[1]) - 1]?.temConjuge === true;
+  }
+
+  const casadoLegado = /^dados_casado_([2-5])$/.exec(chave);
+  if (casadoLegado?.[1]) {
+    return dados.compradores[Number(casadoLegado[1]) - 1]?.ehCasado !== false;
   }
 
   const pfLegado = /^dados_cliente_pf_([2-5])$/.exec(chave);

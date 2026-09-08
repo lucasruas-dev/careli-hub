@@ -75,6 +75,12 @@ nenhum.
 Em todos os casos, o texto ao redor ("inscrito no CPF sob o n.º") é do contrato e CONTINUA no lugar:
 ele não faz parte do trecho, só do contexto.
 
+⚠️ A ORAÇÃO DO REGIME DE BENS VAI DENTRO DE [inicio_dados_casado]. O texto "casado sob o regime de"
+é redação da minuta, não variável, e num comprador solteiro ele sairia impresso do mesmo jeito.
+Sempre que marcar [regime_casamento_cliente], embrulhe a oração inteira que o introduz:
+[inicio_dados_casado]casado sob o regime de [regime_casamento_cliente][fim_dados_casado].
+A vírgula que separa a oração das vizinhas fica FORA do par.
+
 ⚠️ UMA LACUNA PODE VALER DUAS VARIÁVEIS. "[estado civil e regime de bens]" corresponde a
 [estado_civil_cliente] e [regime_casamento_cliente]. Nesse caso proponha UMA substituição, pela
 variável principal, e deixe a outra para quem revisa — não invente um trecho que não existe.

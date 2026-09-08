@@ -16,10 +16,22 @@ type Linhas = Record<string, unknown>;
  *
  * `.select`, `.eq`, `.in` e `.order` devolvem o próprio objeto; `maybeSingle()` e o `await` direto
  * resolvem no que o mapa tem para aquela tabela. É o bastante: este módulo lê, não escreve.
+ *
+ * ⚠️ A MESMA TABELA É LIDA POR DOIS MOTIVOS. `apolo_entities` responde pelos compradores (por
+ * `.in("document_masked", …)`) e pela imobiliária da venda (por `.eq("id", …)`), e `apolo_contacts`
+ * idem. Por isso o valor do mapa também pode ser uma FUNÇÃO: ela recebe os `.eq` daquela consulta e
+ * devolve as linhas. Um valor comum continua valendo para todas.
  */
 function clienteFalso(porTabela: Linhas, tabelasLidas?: string[]) {
   const construir = (tabela: string) => {
-    const resposta = () => ({ data: porTabela[tabela] ?? null, error: null });
+    const filtros: Record<string, unknown> = {};
+    const linhas = () => {
+      const bruto = porTabela[tabela];
+      return typeof bruto === "function"
+        ? (bruto as (f: Record<string, unknown>) => unknown)(filtros)
+        : bruto;
+    };
+    const resposta = () => ({ data: linhas() ?? null, error: null });
     const encadeia: Record<string, unknown> = new Proxy(
       {},
       {
@@ -27,6 +39,12 @@ function clienteFalso(porTabela: Linhas, tabelasLidas?: string[]) {
           if (prop === "maybeSingle") return () => Promise.resolve(resposta());
           if (prop === "then") {
             return (resolver: (r: unknown) => unknown) => Promise.resolve(resolver(resposta()));
+          }
+          if (prop === "eq") {
+            return (coluna: string, valor: unknown) => {
+              filtros[coluna] = valor;
+              return encadeia;
+            };
           }
           return () => encadeia;
         },
@@ -1325,5 +1343,102 @@ describe("as armadilhas achadas pela auditoria de 08/09/2026", () => {
       }),
     ))!;
     expect(r.dados.compradores[0]?.valores.nome_cliente).toBe("A ORIGINAL");
+  });
+});
+
+// ── A IMOBILIÁRIA DA VENDA ───────────────────────────────────────────────────
+//
+// Lucas, 08/09/2026, sobre o contrato do Rodrigo na prévia: *"falta informação da imobiliaria"*.
+// O nome saía (vem desnormalizado na proposta); CNPJ, telefone e e-mail, não.
+describe("o cadastro da imobiliária entra pelo vínculo", () => {
+  const IMOBILIARIA = "cccccccc-0000-0000-0000-000000000001";
+
+  function comVinculo(over: Linhas = {}) {
+    return clienteFalso({
+      apolo_contacts: (f: Record<string, unknown>) =>
+        f.entity_id === IMOBILIARIA
+          ? [
+              { contact_type: "whatsapp", entity_id: IMOBILIARIA, value: "3197250-6566" },
+              { contact_type: "email", entity_id: IMOBILIARIA, value: "raiane@c2x.tec.br" },
+            ]
+          : [],
+      apolo_entities: (f: Record<string, unknown>) =>
+        f.id === IMOBILIARIA
+          ? { document_masked: "60.054.065/0001-41", id: IMOBILIARIA }
+          : [ENTIDADE_THIAGO],
+      hercules_empreendimentos: EMPREENDIMENTO,
+      hercules_propostas: proposta({
+        imobiliaria_entity_id: IMOBILIARIA,
+        imobiliaria_nome: "RAIANE IMOBILIARIA",
+        ...over,
+      }),
+      hercules_unidades: UNIDADE,
+    });
+  }
+
+  it("CNPJ, telefone e e-mail saem do cadastro da entidade vinculada", async () => {
+    const r = await dadosDaProposta("p1", comVinculo());
+    const g = r!.dados.gerais;
+
+    expect(g.nome_vinculado).toBe("RAIANE IMOBILIARIA");
+    expect(g.cpf_cnpj_vinculado).toBe("60.054.065/0001-41");
+    expect(g.telefone_vinculado).toBe("3197250-6566");
+    expect(g.email_vinculado).toBe("raiane@c2x.tec.br");
+  });
+
+  // ⚠️ SEM VÍNCULO, OS TRÊS FICAM EM BRANCO — e é o certo. É o caso das propostas importadas do C2X,
+  // que guardam só o nome. Inventar o cadastro a partir do nome poria o CNPJ de OUTRA imobiliária
+  // num contrato de corretagem.
+  it("proposta importada, só com o nome, não ganha cadastro nenhum", async () => {
+    const sb = clienteFalso({
+      apolo_entities: [ENTIDADE_THIAGO],
+      hercules_empreendimentos: EMPREENDIMENTO,
+      hercules_propostas: proposta({ imobiliaria_nome: "IMOBILIÁRIA ANTIGA" }),
+      hercules_unidades: UNIDADE,
+    });
+    const g = (await dadosDaProposta("p1", sb))!.dados.gerais;
+
+    expect(g.nome_vinculado).toBe("IMOBILIÁRIA ANTIGA");
+    expect(g.cpf_cnpj_vinculado).toBeUndefined();
+    expect(g.telefone_vinculado).toBeUndefined();
+    expect(g.email_vinculado).toBeUndefined();
+  });
+});
+
+// ── QUEM TEM REGIME DE BENS ──────────────────────────────────────────────────
+//
+// A bandeira que apaga a oração "casado sob o regime de" no papel de quem é solteiro.
+// Ver `semOracaoDoRegime` em preencher-contrato.ts.
+describe("a bandeira de casado", () => {
+  async function comEstadoCivil(estadoCivilId: null | string) {
+    const sb = clienteFalso({
+      apolo_entities: [ENTIDADE_THIAGO],
+      apolo_esteira: [
+        {
+          enterprise_id: "39",
+          entity_id: THIAGO,
+          ficha: estadoCivilId === null
+            ? { ...FICHA_DO_THIAGO, estadoCivilId: undefined }
+            : { ...FICHA_DO_THIAGO, estadoCivilId },
+        },
+      ],
+      hercules_empreendimentos: EMPREENDIMENTO,
+      hercules_propostas: proposta(),
+      hercules_unidades: UNIDADE,
+    });
+    return (await dadosDaProposta("p1", sb))!.dados.compradores[0];
+  }
+
+  it("casado (2) e união estável (6) têm regime; os outros não", async () => {
+    expect((await comEstadoCivil("2"))!.ehCasado).toBe(true);
+    expect((await comEstadoCivil("6"))!.ehCasado).toBe(true);
+    expect((await comEstadoCivil("1"))!.ehCasado).toBe(false);
+    expect((await comEstadoCivil("5"))!.ehCasado).toBe(false);
+  });
+
+  // ⚠️ SEM ESTADO CIVIL A RESPOSTA É INDEFINIDA, e não `false`: a oração fica no papel com o
+  // colchete à mostra, que é o que faz alguém completar o cadastro. Ver a nota da função.
+  it("ficha sem estado civil não vira 'não casado'", async () => {
+    expect((await comEstadoCivil(null))!.ehCasado).toBeUndefined();
   });
 });

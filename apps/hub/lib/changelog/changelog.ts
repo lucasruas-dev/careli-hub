@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-regime-de-bens-imobiliaria-e-imagens",
+    deployedAt: "2026-09-08T16:40:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Solteiro não sai mais \"casado sob o regime de\".** A oração do regime de bens some inteira de quem não é casado, em vez de deixar a frase pela metade no papel.",
+              "**A imobiliária da venda entra com CNPJ, telefone e e-mail.** Antes só o nome aparecia no contrato de corretagem.",
+              "**As imagens ficam onde a minuta mandou.** O logo alinhado à direita aparecia à esquerda na prévia e à direita no PDF — o mesmo contrato, dois papéis diferentes.",
+            ],
+            screen: "Contrato · Prévia",
+          },
+        ],
+      },
+    ],
+    rollback: "f2f5dbe8",
+    technical: {
+      done: "⚠️ O PROBLEMA NÃO ERA O CAMPO VAZIO, ERA A ORAÇÃO QUE SOBRAVA. A minuta escreve, em texto corrido, `[estado_civil_cliente]`, casado sob o regime de `[regime_casamento_cliente]` — e num comprador solteiro o motor imprimia \"Solteiro (a), casado sob o regime de [regime_casamento_cliente]\". O cadastro do Rodrigo estava CERTO: solteiro não tem regime de bens. Esconder só a variável deixaria \"Solteiro (a), casado sob o regime de ,\", que é pior — parece redação, não erro. `semOracaoDoRegime` (preencher-contrato.ts) apaga a oração inteira, ANTES de as variáveis virarem texto (depois disso o nó anterior pode ser o VALOR de outra variável, e o corte comeria o dado do cadastro). O gatilho é duplo: o comprador não ser casado E o texto anterior anunciar o regime. ⚠️ E SEM ESTADO CIVIL A RESPOSTA É `undefined`, NÃO `false`: quem não preencheu a ficha fica com a cláusula visível e o colchete no papel, que é o que faz alguém completar o cadastro — apagar ali mandaria um casado a cartório sem dizer o regime, calado. Para minuta NOVA existe agora o par `[inicio_dados_casado]`, e o agente que marca a minuta passa a propô-lo; isto aqui é o conserto de quem já foi escrito sem ele, que são as 41 a migrar do legado. ⚠️ A IMOBILIÁRIA: `cadastroDoVinculado` lê `apolo_entities` + `apolo_contacts` pelo `imobiliaria_entity_id` da proposta (imobiliária vence corretor, a mesma precedência do split), com WhatsApp antes de `phone`. As propostas importadas do C2X guardam só o nome e seguem sem os três — reconciliar por nome criaria vínculo ERRADO na maioria. ⚠️ A IMAGEM: `text-align` na `<figure>` não move imagem nenhuma na tela, porque o preflight do Tailwind declara `img { display: block }` — e movia no PDF, que o Chromium renderiza sem preflight. Agora o lado vem de margem automática, inline na própria imagem, e os dois renderizadores chegam ao mesmo lugar. 460 testes da Têmis verdes, typecheck limpo.",
+      motivation:
+        "Lucas conferindo o contrato do Rodrigo na prévia: o regime de bens não veio, faltava a imobiliária e as imagens estavam desalinhadas.",
+    },
+    title: "O regime de bens, a imobiliária e o lugar das imagens",
+    type: "correcao",
+    version: "1.299.0",
+  },
+  {
     buildTag: "2026-09-08-aba-do-vale-do-ouro-e-download-do-extrato",
     deployedAt: "2026-09-08T15:40:00-03:00",
     modules: [

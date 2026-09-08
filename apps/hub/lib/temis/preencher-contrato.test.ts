@@ -472,3 +472,152 @@ describe("o laço que ATRAVESSA parágrafos — o caso da minuta real", () => {
     expect(t).not.toMatch(/\[(inicio|fim)_/);
   });
 });
+
+// ── A ORAÇÃO DO REGIME DE BENS ───────────────────────────────────────────────
+//
+// Lucas, 08/09/2026, olhando o contrato do Rodrigo (solteiro) na prévia: *"regime do casamento não
+// veio"* — e, no mesmo minuto, *"não é você preencher, é o sistema preencher"*. O cadastro estava
+// CERTO: Rodrigo é solteiro e não tem regime de bens. O que estava errado era o papel, que dizia
+// "Solteiro (a), casado sob o regime de [regime_casamento_cliente]".
+describe("a oração do regime de bens", () => {
+  // É a redação exata da minuta "Teste Minuta - Clicksing", do ZZ TESTE: a variável do estado civil,
+  // o texto corrido ", casado sob o regime de " e a variável do regime — nenhum par condicional.
+  const qualificacao = [
+    p(
+      v("nome_cliente"),
+      ", ",
+      v("nacionalidade_cliente"),
+      ", ",
+      v("estado_civil_cliente"),
+      ", casado sob o regime de ",
+      v("regime_casamento_cliente"),
+      ", ",
+      v("profissao_cliente"),
+      ", portador do CPF ",
+      v("cpf_cliente"),
+    ),
+  ];
+
+  const pessoa = (nome: string, casado: boolean): DadosDoComprador => ({
+    ehCasado: casado,
+    ehPessoaFisica: true,
+    temConjuge: casado,
+    valores: {
+      cpf_cliente: "111.222.333-44",
+      estado_civil_cliente: casado ? "Casado (a)" : "Solteiro (a)",
+      nacionalidade_cliente: "Brasileiro",
+      nome_cliente: nome,
+      profissao_cliente: "Corretor",
+      ...(casado ? { regime_casamento_cliente: "Comunhão parcial de bens" } : {}),
+    },
+  });
+
+  it("no solteiro, a oração inteira some — não sobra nem o colchete nem a frase", () => {
+    const r = preencherContrato(qualificacao, {
+      compradores: [pessoa("RODRIGO TAVARES LIMA", false)],
+      gerais: {},
+    });
+    const t = texto(r.nos);
+
+    expect(t).toBe(
+      "RODRIGO TAVARES LIMA, Brasileiro, Solteiro (a), Corretor, portador do CPF 111.222.333-44",
+    );
+    expect(t).not.toContain("regime");
+    expect(t).not.toContain("casado sob");
+  });
+
+  it("no casado, a oração fica inteira, com o regime escrito", () => {
+    const r = preencherContrato(qualificacao, {
+      compradores: [pessoa("HENRIQUE SALES DO VALE", true)],
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe(
+      "HENRIQUE SALES DO VALE, Brasileiro, Casado (a), casado sob o regime de Comunhão parcial de bens, Corretor, portador do CPF 111.222.333-44",
+    );
+  });
+
+  // ⚠️ ESTA É A DIFERENÇA ENTRE "NÃO SE APLICA" E "FALTA NO CADASTRO". Sem estado civil na ficha o
+  // resolvedor devolve `ehCasado` indefinido, e aí a cláusula tem de SAIR VISÍVEL: é o colchete no
+  // papel que faz alguém completar o cadastro antes de o contrato ir a cartório.
+  it("sem estado civil no cadastro, a oração fica — e o colchete aparece", () => {
+    const r = preencherContrato(qualificacao, {
+      compradores: [
+        { ehPessoaFisica: true, temConjuge: false, valores: { nome_cliente: "SEM FICHA" } },
+      ],
+      gerais: {},
+    });
+    const t = texto(r.nos);
+
+    expect(t).toContain("casado sob o regime de [regime_casamento_cliente]");
+    expect(r.semValor).toContain("regime_casamento_cliente");
+  });
+
+  // ⚠️ O CORTE NÃO PODE COMER O VIZINHO. Quando o texto anterior não anuncia o regime, some só a
+  // variável: apagar até a vírgula ali levaria embora a nacionalidade.
+  it("quando o texto anterior não fala de regime, só a variável sai", () => {
+    const r = preencherContrato(
+      [p(v("nacionalidade_cliente"), ", natural de Belo Horizonte ", v("regime_casamento_cliente"))],
+      {
+        compradores: [
+          {
+            ehCasado: false,
+            ehPessoaFisica: true,
+            temConjuge: false,
+            valores: { nacionalidade_cliente: "Brasileiro" },
+          },
+        ],
+        gerais: {},
+      },
+    );
+
+    expect(texto(r.nos)).toBe("Brasileiro, natural de Belo Horizonte");
+  });
+
+  // A forma CERTA de escrever isto numa minuta nova. Aqui o motor nem precisa do corte: o par
+  // condicional já resolve, e é o que o agente da minuta passa a propor.
+  it("com [inicio_dados_casado], o par condicional resolve sozinho", () => {
+    const comPar = [
+      p(
+        v("estado_civil_cliente"),
+        ", ",
+        v("inicio_dados_casado"),
+        "casado sob o regime de ",
+        v("regime_casamento_cliente"),
+        v("fim_dados_casado"),
+        " e residente nesta capital",
+      ),
+    ];
+
+    const solteiro = preencherContrato(comPar, {
+      compradores: [pessoa("RODRIGO", false)],
+      gerais: {},
+    });
+    expect(texto(solteiro.nos)).toBe("Solteiro (a), e residente nesta capital");
+
+    const casado = preencherContrato(comPar, {
+      compradores: [pessoa("HENRIQUE", true)],
+      gerais: {},
+    });
+    expect(texto(casado.nos)).toBe(
+      "Casado (a), casado sob o regime de Comunhão parcial de bens e residente nesta capital",
+    );
+  });
+
+  // ⚠️ NO LAÇO, CADA COMPRADOR RESPONDE POR SI. Num casal em que só um é casado — dois irmãos
+  // comprando juntos, por exemplo — o dono do nó é que decide, e não o primeiro da lista.
+  it("dois compradores: a oração some no solteiro e fica no casado", () => {
+    const r = preencherContrato(
+      [
+        p(v("inicio_cada_comprador"), v("nome_cliente"), ", ", v("estado_civil_cliente")),
+        p(", casado sob o regime de ", v("regime_casamento_cliente"), v("fim_cada_comprador")),
+      ],
+      { compradores: [pessoa("CASADO", true), pessoa("SOLTEIRO", false)], gerais: {} },
+    );
+    const t = texto(r.nos);
+
+    expect(t).toContain("CASADO, Casado (a) , casado sob o regime de Comunhão parcial de bens");
+    expect(t).toContain("SOLTEIRO, Solteiro (a)");
+    expect(t).not.toContain("SOLTEIRO, Solteiro (a) , casado");
+  });
+});

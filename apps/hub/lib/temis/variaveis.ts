@@ -220,6 +220,11 @@ const BLOCOS_POR_COMPRADOR: { fim: string; fonte: FonteDaVariavel; inicio: strin
   { fim: "fim_dados_cliente_pf", fonte: SISTEMA("decide por apolo_entities.entity_kind = pf"), inicio: "inicio_dados_cliente_pf", rotulo: "Só quando o comprador é pessoa FÍSICA" },
   { fim: "fim_dados_cliente_pj", fonte: SISTEMA("decide por apolo_entities.entity_kind = pj"), inicio: "inicio_dados_cliente_pj", rotulo: "Só quando o comprador é pessoa JURÍDICA" },
   { fim: "fim_dados_conjuge", fonte: SISTEMA("decide por apolo_esteira.ficha.conjuge"), inicio: "inicio_dados_conjuge", rotulo: "Só quando o comprador tem cônjuge" },
+  // ⚠️ ESTE PAR É A ORAÇÃO DO REGIME DE BENS, e existe porque "casado sob o regime de" é TEXTO da
+  // minuta, não variável: num comprador solteiro a frase saía inteira, seguida do colchete vazio.
+  // Escreva `[inicio_dados_casado]casado sob o regime de [regime_casamento_cliente][fim_dados_
+  // casado]` e a oração some sozinha para quem não é casado.
+  { fim: "fim_dados_casado", fonte: SISTEMA("decide por apolo_esteira.ficha.estadoCivilId — casado ou união estável"), inicio: "inicio_dados_casado", rotulo: "Só quando o comprador é casado ou tem união estável" },
 ];
 
 // ── UNIDADE ──────────────────────────────────────────────────────────────────

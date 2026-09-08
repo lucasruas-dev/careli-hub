@@ -566,7 +566,24 @@ function blocoParaHtml(ctx: Contexto, no: NoDoDocumento, dentroDeLista = false):
     const figcaption = legenda
       ? `<figcaption style="font-size:0.9em;color:#555">${escaparHtml(legenda)}</figcaption>`
       : "";
-    return `<figure style="margin:8px 0;text-align:${alinhamento}"><img src="${src}" alt="${escaparHtml(legenda)}" style="max-width:100%${larguraDaMidia(no.width)}" />${figcaption}</figure>`;
+    // ⚠️ A IMAGEM ALINHA POR MARGEM, E NÃO POR `text-align` DO PAI. Lucas, 08/09/2026: *"as imagens
+    // ainda estão desalinhada"* — e estavam só na TELA. `text-align` só move o que é inline, e o
+    // preflight do Tailwind declara `img { display: block }`: na prévia o logo do cabeçalho, que a
+    // minuta manda para a direita, encostava na esquerda; no PDF, que o Chromium renderiza sem o
+    // preflight, ele ia para a direita. O mesmo contrato, dois papéis diferentes — que é exatamente
+    // o que `css-do-documento.ts` existe para impedir.
+    //
+    // Com `display:block` declarado aqui e a margem automática do lado certo, os dois renderizadores
+    // chegam ao mesmo lugar, sem depender de nenhuma folha de estilo externa. O `text-align` fica na
+    // `<figure>` porque a LEGENDA continua sendo texto, e é ela que ele alinha.
+    const margem =
+      alinhamento === "right"
+        ? "margin:0 0 0 auto"
+        : alinhamento === "center"
+          ? "margin:0 auto"
+          : "margin:0 auto 0 0";
+    const estilo = `display:block;${margem};max-width:100%${larguraDaMidia(no.width)}`;
+    return `<figure style="margin:8px 0;text-align:${alinhamento}"><img src="${src}" alt="${escaparHtml(legenda)}" style="${estilo}" />${figcaption}</figure>`;
   }
   if (tipo === "video" || tipo === "audio" || tipo === "file" || tipo === "media_embed") {
     // Contrato é papel: o que se imprime é o link, com o nome do arquivo quando houver.

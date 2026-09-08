@@ -495,7 +495,7 @@ describe("mídia — o contrato é papel", () => {
     ];
     expect(documentoParaHtml(doc)).toBe(
       '<figure style="margin:8px 0;text-align:center">' +
-        '<img src="https://x.supabase.co/storage/v1/object/sign/apolo-documents/temis-minutas/1/a.png?token=t&amp;x=1" alt="Planta do lote" style="max-width:100%;width:320px" />' +
+        '<img src="https://x.supabase.co/storage/v1/object/sign/apolo-documents/temis-minutas/1/a.png?token=t&amp;x=1" alt="Planta do lote" style="display:block;margin:0 auto;max-width:100%;width:320px" />' +
         '<figcaption style="font-size:0.9em;color:#555">Planta do lote</figcaption>' +
         "</figure>",
     );
@@ -505,8 +505,24 @@ describe("mídia — o contrato é papel", () => {
   it("imagem sem legenda nem largura, alinhada à esquerda", () => {
     const doc: NoDoDocumento[] = [{ align: "left", children: [{ text: "" }], type: "img", url: "u.png" }];
     expect(documentoParaHtml(doc)).toBe(
-      '<figure style="margin:8px 0;text-align:left"><img src="u.png" alt="" style="max-width:100%" /></figure>',
+      '<figure style="margin:8px 0;text-align:left"><img src="u.png" alt="" style="display:block;margin:0 auto 0 0;max-width:100%" /></figure>',
     );
+  });
+
+  // ⚠️ ESTE É O DEFEITO QUE O LUCAS VIU EM 08/09/2026: *"as imagens ainda estão desalinhada"*. O
+  // `text-align` da `<figure>` não move imagem nenhuma na tela, porque o preflight do Tailwind
+  // declara `img { display: block }` — e movia no PDF, que o Chromium renderiza sem o preflight.
+  // A margem automática decide o lugar sem depender de folha de estilo nenhuma.
+  it("o lado da imagem vem da margem, não do text-align do pai", () => {
+    const naPosicao = (align: string) =>
+      documentoParaHtml([{ align, children: [{ text: "" }], type: "img", url: "u.png", width: 92 }]);
+
+    expect(naPosicao("right")).toContain('style="display:block;margin:0 0 0 auto;max-width:100%;width:92px"');
+    expect(naPosicao("center")).toContain('style="display:block;margin:0 auto;max-width:100%;width:92px"');
+    expect(naPosicao("left")).toContain('style="display:block;margin:0 auto 0 0;max-width:100%;width:92px"');
+
+    // O `text-align` continua na figure: é ele que alinha a LEGENDA.
+    expect(naPosicao("right")).toContain('<figure style="margin:8px 0;text-align:right">');
   });
 
   it("largura em string (percentual) vai como está", () => {

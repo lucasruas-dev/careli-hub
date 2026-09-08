@@ -74,7 +74,14 @@ export function regrasDoDocumento(escopo: string): string {
   ${escopo} table { border-collapse: collapse; margin: 10px 0; width: 100%; }
   ${escopo} th, ${escopo} td { padding: 5px 7px; vertical-align: top; }
 
-  ${escopo} img { max-width: 100%; height: auto; }
+  /* ⚠️ display:block AQUI TAMBÉM, e de propósito repetido: o serializador já o escreve inline em
+     cada imagem, mas uma minuta importada de .docx pode trazer um img sem estilo nenhum. Com o
+     preflight do Tailwind na tela e sem ele no PDF, deixar isso ao acaso faz a mesma imagem cair em
+     lugares diferentes nos dois. Ver a nota do img em documento-html.ts.
+
+     ⚠️ E NADA DE CRASE NESTE ARQUIVO: as regras vivem dentro de um template literal, e uma crase
+     de comentário o FECHA no meio — o erro que sai é de sintaxe, trinta linhas abaixo. */
+  ${escopo} img { display: block; max-width: 100%; height: auto; }
   ${escopo} figure { margin: 10px 0; }
 
   ${escopo} blockquote {
