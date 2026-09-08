@@ -35,6 +35,7 @@ export type ContaAsaas =
   | "guaimbe"
   | "gurgel"
   | "on-sky"
+  | "vale-do-ouro"
   | "vale-do-sol";
 
 type Definicao = {
@@ -55,6 +56,11 @@ const CONTAS: Record<ContaAsaas, Definicao> = {
   guaimbe: { rotulo: "Guaimbé", variavel: "ASAAS_GUAIMBE_API_KEY" },
   gurgel: { rotulo: "Gurgel", variavel: "ASAAS_GURGEL_API_KEY" },
   "on-sky": { rotulo: "On Sky", variavel: "ASAAS_ON_SKY_API_KEY" },
+  // ⚠️ VALE DO OURO E VALE DO SOL SÃO CONTAS DIFERENTES, e os nomes se parecem o bastante para
+  // trocar. O do OURO é o loteamento (lotes, quadra e lote na descrição); o do SOL é o prédio.
+  // Trocar as duas emitiria boleto na conta errada — dinheiro caindo na carteira de outro
+  // empreendimento, que só aparece na conciliação do mês seguinte.
+  "vale-do-ouro": { rotulo: "Vale do Ouro", variavel: "ASAAS_VALE_DO_OURO_API_KEY" },
   "vale-do-sol": { rotulo: "Vale do Sol", variavel: "ASAAS_VALE_DO_SOL_API_KEY" },
 };
 

@@ -48,10 +48,18 @@ export type EmpreendimentoDeBoleto = {
 };
 
 /**
- * ⚠️ O VALE DO OURO ESTÁ DE FORA POR DECISÃO EXPLÍCITA (Lucas, 31/08: *"tirando o vale do
- * ouro"*). Ele tem aba no arquivo e continua sendo cobrado pelo caminho de sempre. Deixá-lo
- * cadastrado aqui com `conta: null` seria pior: apareceria na tela como "faltando configurar",
- * e alguém acabaria configurando.
+ * ⚠️ O VALE DO OURO ENTROU EM 08/09/2026, e até então estava de fora por decisão explícita (Lucas,
+ * 31/08: *"tirando o vale do ouro"*). Ele mesmo reviu: *"eu havia entendido errado, achei que era
+ * para ficar de fora, mas eu estava errado, vamos precisar emitir desses"*.
+ *
+ * ⚠️ O NOME TEM O "- 2", e é o dele: *"coloca como Vale do Ouro - 2, por enquanto"*. "Vale do Ouro"
+ * já nomeia uma carteira do outro lado (o VLO do C2X, hoje dividido em VOC e VOL), e duas coisas
+ * diferentes com o mesmo nome numa tela de cobrança levam alguém a emitir na carteira errada.
+ *
+ * ⚠️ E A CARTEIRA DELE ESTAVA ESCONDIDA NO LSOFT. A categoria 69 chama-se "Loteamento José Lino" —
+ * o nome antigo do loteamento —, e por isso a extração de agosto não a encontrou: a documentação
+ * apontava a 129 (outro uso) e o filtro de classe era o do Garden (16.3), enquanto aqui as parcelas
+ * estão na classe 17 com subclasse vazia. São 11 clientes e 619 parcelas.
  */
 export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
   {
@@ -71,6 +79,19 @@ export const EMPREENDIMENTOS_DE_BOLETO: EmpreendimentoDeBoleto[] = [
     origem: "lsoft",
     slug: "vale-do-sol",
     tipoDeUnidade: "apartamento",
+  },
+  {
+    aba: "BOLETOS VALE OURO",
+    // ⚠️ A CHAVE É O NOME EXATO gravado em `lsoft_parcelas.empreendimento` pela importação — com o
+    // "- 2" e com os espaços. A tela casa por igualdade: um caractere de diferença aqui não dá erro,
+    // devolve uma carteira vazia, e quem olha conclui que não há nada a emitir.
+    chaveLsoft: "Vale do Ouro - 2",
+    conta: "vale-do-ouro",
+    nome: "Vale do Ouro - 2",
+    origem: "lsoft",
+    slug: "vale-do-ouro-2",
+    // Loteamento: o cliente lê "unidade lote", como no Garden.
+    tipoDeUnidade: "lote",
   },
   {
     aba: "BOLETOS ON SKY",

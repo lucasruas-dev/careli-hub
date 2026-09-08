@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-vale-do-ouro-2-na-emissao",
+    deployedAt: "2026-09-08T15:10:00-03:00",
+    modules: [
+      {
+        module: "CER",
+        screens: [
+          {
+            items: [
+              "**O Vale do Ouro - 2 entrou na emissão de boletos** — 11 clientes e 619 parcelas, com 11 vencendo em setembro.",
+              "**A carteira estava escondida no LSoft:** ela é a categoria 69, cadastrada como \"Loteamento José Lino\", e por isso nenhuma extração anterior a encontrou.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "c18cd6d6",
+    technical: {
+      done: "Lucas revendo a própria decisão de 31/08 (*\"tirando o vale do ouro\"*): *\"eu havia entendido errado, achei que era para ficar de fora, mas eu estava errado, vamos precisar emitir desses\"*. ⚠️ A CARTEIRA NÃO ESTAVA ONDE A DOCUMENTAÇÃO DIZIA. No LSoft ela é a CATEGORIA 69, cadastrada como \"Loteamento José Lino\" — o nome antigo do loteamento. A referência apontava a 129 (outro uso), e o filtro de classe da extração de agosto era o do Garden (16.3), enquanto aqui as parcelas estão na classe 17 com SUBCLASSE VAZIA: repetir o filtro dos outros devolveria zero, e zero numa extração parece \"não tem\" e não \"filtrei errado\". O que provou ser a carteira certa não foi o nome, foram os CLIENTES: os 10 da planilha do Vitor estão lá, e mais um (Leandro Sales Moreira, 1 parcela). ⚠️ O NOME LEVA \"- 2\" por decisão do Lucas: \"Vale do Ouro\" já nomeia uma carteira do outro lado (o VLO do C2X, dividido em VOC e VOL), e duas coisas iguais numa tela de cobrança levam alguém a emitir na conta errada. Migration 0144 recria o CHECK de `lsoft_parcelas.empreendimento` com o terceiro nome — a trava CONTINUA existindo porque, sem ela, uma importação com \"vale do ouro\" minúsculo cria carteira fantasma: as parcelas entram, ninguém erra, e a tela (que casa pelo nome exato) não mostra nenhuma. Lote e quadra saíram do texto livre de OBSERVACOES em 599/599, batendo cliente a cliente com a planilha. Falta a chave `ASAAS_VALE_DO_OURO_API_KEY` na Vercel — sem ela a aba aparece desabilitada, que é o comportamento certo. 3.236 testes verdes.",
+      motivation:
+        "Dez compradores de lote que não estavam nem no Panteon nem no C2X, e precisavam de boleto em setembro.",
+    },
+    title: "Vale do Ouro - 2 na emissão",
+    type: "melhoria",
+    version: "1.298.0",
+  },
+  {
     buildTag: "2026-09-08-auditoria-das-variaveis",
     deployedAt: "2026-09-08T14:00:00-03:00",
     modules: [

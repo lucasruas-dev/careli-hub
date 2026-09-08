@@ -67,7 +67,9 @@ type LinhaDaProposta = {
   compradores: unknown;
   condicoes: unknown;
   /** ⚠️ Nomes DESNORMALIZADOS — são o que as 4.857 propostas importadas têm. Ver a nota da corretagem. */
+  corretor_entity_id: null | string;
   corretor_nome: null | string;
+  imobiliaria_entity_id: null | string;
   imobiliaria_nome: null | string;
   /**
    * O PRAZO CONTRATADO — o único número de parcelas que é desta venda.
@@ -112,6 +114,8 @@ type LinhaDoEmpreendimento = {
 type LinhaDaEntidade = {
   created_at?: null | string;
   display_name: null | string;
+  /** ⚠️ `metadata.cadastro` é a TERCEIRA camada do cadastro. Ver `cadastroDaEntidade`. */
+  metadata?: unknown;
   /** `active` / `review` / `archived`. O merge do Apolo arquiva a duplicada e esvazia. */
   status?: null | string;
   document_masked: null | string;
@@ -230,7 +234,7 @@ export async function dadosDaProposta(
     sb
       .from("hercules_propostas")
       .select(
-        "cliente_documento, cliente_nome, compradores, condicoes, contrato_parcelas, corretor_nome, dia_vencimento, empreendimento_id, imobiliaria_nome, plano_nome, unidade_id, valor",
+        "cliente_documento, cliente_nome, compradores, condicoes, contrato_parcelas, corretor_entity_id, corretor_nome, dia_vencimento, empreendimento_id, imobiliaria_entity_id, imobiliaria_nome, plano_nome, unidade_id, valor",
       )
       .eq("id", propostaId)
       .maybeSingle(),
@@ -309,7 +313,7 @@ async function montarCompradores(
       ? await varias<LinhaDaEntidade>(
           sb
             .from("apolo_entities")
-            .select("created_at, display_name, document_masked, entity_kind, id, legal_name, status, trade_name")
+            .select("created_at, display_name, document_masked, entity_kind, id, legal_name, metadata, status, trade_name")
             .in("document_masked", [...variantes])
             // ⚠️ ORDEM EXPLÍCITA PORQUE O MESMO CPF PODE TER DUAS ENTIDADES. O dedup do Apolo é por
             // `document_hash` e o backfill de 22/08 zerou parte dele.
@@ -360,7 +364,10 @@ async function montarCompradores(
       digitos,
       endereco: entidade ? (enderecos.get(entidade.id) ?? null) : null,
       entidade,
-      ficha: entidade ? (fichas.get(entidade.id) ?? null) : null,
+      // ⚠️ AS DUAS CAMADAS DO CADASTRO, unidas aqui. A ficha da esteira é o que alguém corrigiu na
+      // tela; `metadata.cadastro` é o que o wizard capturou na entrada — e era ignorado, deixando
+      // 222 estados civis, 212 nascimentos e 205 profissões sem chegar ao contrato.
+      ficha: cadastroDaEntidade(entidade ? (fichas.get(entidade.id) ?? null) : null, entidade),
     });
   });
 }
@@ -825,6 +832,15 @@ function gerais(
     por("corretor_nome", texto(proposta.corretor_nome));
   }
 
+  // ⚠️ PENDENTE, e o caminho já está aberto: quando a proposta tem `imobiliaria_entity_id` (as
+  // nascidas no Panteon têm, vindo da reserva), o cadastro da entidade dá `cpf_cnpj_vinculado`,
+  // `telefone_vinculado` e `email_vinculado` — 590 de 590 PJ têm documento e 589 têm contato.
+  // As 4.857 importadas do C2X têm só o nome em texto, e para elas o vínculo NÃO será reconstruído:
+  // decisão do Lucas em 08/09/2026, *"o que foi gerado antes do Panteon, deixa sem mesmo"*.
+  //
+  // ⚠️ O CRECI NÃO ESTÁ NO PANTEON. Ele existe no C2X (`users.creci_number`) e não foi importado —
+  // nenhuma tabela daqui tem a coluna.
+
   // ── VALORES ──
   //
   // ⚠️ O MESMO NÚMERO COM DOIS NOMES, DE PROPÓSITO. `valor_imovel_venda` e `preco_venda` são os dois
@@ -965,6 +981,49 @@ function dataBR(valor: string): string {
 }
 
 // ── AJUDANTES ────────────────────────────────────────────────────────────────
+
+/**
+ * O cadastro do comprador, unindo as DUAS camadas onde ele pode estar.
+ *
+ * ⚠️ O WIZARD NÃO ESCREVE NA FICHA DA ESTEIRA. `createApoloEntity` achata identidade, perfil e
+ * empresa num objeto plano e grava em `apolo_entities.metadata.cadastro`; a `apolo_esteira.ficha` só
+ * recebe o que alguém EDITOU depois, na tela de validação. São duas camadas do mesmo cadastro, e o
+ * resolvedor lia uma só.
+ *
+ * ⚠️ E ISSO DEIXAVA O CONTRATO EM BRANCO COM O DADO NA MÃO. Medido em 08/09/2026: 222 entidades têm
+ * estado civil, 212 têm nascimento, 205 profissão e 181 nacionalidade em `metadata.cadastro` — e
+ * NENHUMA delas era lida. Lucas, ao ver o contrato com metade da qualificação vazia: *"o que se
+ * refere a cadastro deveria estar dentro do Panteon, e esses serem usados na confecção das
+ * minutas"*. Estava dentro; não era usado.
+ *
+ * ⚠️ A FICHA GANHA, sempre. Ela é a correção feita à mão na tela de validação, e existir ali
+ * significa que alguém olhou e decidiu — o `metadata` é o que o wizard capturou na entrada.
+ *
+ * ⚠️ E O `rg` NÃO VEM DAQUI. `metadata.cadastro` tem `orgaoEmissor` em 201 entidades e `rg` em ZERO:
+ * unir os dois em bloco traria o órgão sozinho, e `rg_cliente` voltaria a imprimir "portador da
+ * cédula de identidade nº SSP/MG" — o defeito que a trava do número fechou hoje de manhã.
+ */
+function cadastroDaEntidade(
+  ficha: null | Record<string, unknown>,
+  entidade: LinhaDaEntidade | null | undefined,
+): null | Record<string, unknown> {
+  const doWizard = objeto((objeto(entidade?.metadata) ?? {}).cadastro);
+  if (!doWizard) return ficha;
+  if (!ficha) return semOrgaoSolto(doWizard);
+  // A ficha por cima: chave preenchida nela vence a do wizard.
+  const unido: Record<string, unknown> = { ...semOrgaoSolto(doWizard) };
+  for (const [k, v] of Object.entries(ficha)) {
+    if (v !== null && v !== undefined && v !== "") unido[k] = v;
+  }
+  return unido;
+}
+
+/** O órgão emissor sem o número do RG não é um RG. Ver a nota de `cadastroDaEntidade`. */
+function semOrgaoSolto(cadastro: Record<string, unknown>): Record<string, unknown> {
+  if (texto(cadastro.rg)) return cadastro;
+  const { orgaoEmissor: _fora, ...resto } = cadastro;
+  return resto;
+}
 
 /** A entidade que o merge do Apolo arquivou — ela fica sem ficha, sem contato e sem endereço. */
 function ehArquivada(e: LinhaDaEntidade): boolean {
