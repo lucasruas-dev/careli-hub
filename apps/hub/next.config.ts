@@ -33,6 +33,19 @@ const nextConfig: NextConfig = {
     // ⚠️ O CAMINHO SOBE DOIS NÍVEIS porque o npm workspace içou o pacote para o `node_modules` da
     // RAIZ do monorepo, não para `apps/hub/node_modules`.
     // Medido: com estas quatro linhas a função fecha em 71,1 MB (teto da Vercel: 250 MB).
+    //
+    // ⚠️ SÃO DUAS ROTAS QUE ABREM O CHROMIUM, E CADA FUNÇÃO PRECISA DA PRÓPRIA LINHA. O
+    // `outputFileTracingIncludes` é por rota: `/api/temis/contrato/gerar` importa o MESMO
+    // `gerarPdfDoHtml`, mas sobe como outra função — sem a entrada dela, o bundle vai com o código
+    // do pacote e sem os `.br`, e a falha só aparece em produção ("The input directory ... does not
+    // exist"), porque em dev o Chrome é o do sistema. Quem acrescentar uma terceira rota que
+    // imprima PDF acrescenta a linha aqui, ou repete esse erro.
+    "/api/temis/contrato/gerar": [
+      "../../node_modules/@sparticuz/chromium/bin/chromium.br",
+      "../../node_modules/@sparticuz/chromium/bin/fonts.tar.br",
+      "../../node_modules/@sparticuz/chromium/bin/swiftshader.tar.br",
+      "../../node_modules/@sparticuz/chromium/bin/al2023.tar.br",
+    ],
     "/api/temis/pdf": [
       "../../node_modules/@sparticuz/chromium/bin/chromium.br",
       "../../node_modules/@sparticuz/chromium/bin/fonts.tar.br",

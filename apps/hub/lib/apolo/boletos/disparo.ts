@@ -162,11 +162,17 @@ export function previaDoBoleto(dados: DadosDoDisparo): null | string {
  *
  * ⚠️ NÃO É CRÍTICO. Se a gravação falhar, a mensagem JÁ foi enviada: derrubar o disparo por causa do
  * registro faria o operador reenviar e o cliente receber duas vezes.
+ *
+ * ⚠️ MARCA A PARCELA, E NÃO A UNIDADE. Onde há duas cobranças na mesma unidade no mesmo mês (a
+ * mensal e a entrada), um UPDATE só por unidade e competência marcaria as DUAS como enviadas com
+ * uma mensagem só — e a tela diria que o cliente recebeu o boleto da entrada que ninguém mandou.
+ * `sequencia` ausente é 1, que é o que sempre foi.
  */
 export async function registrarDisparo(input: {
   competencia: string;
   empreendimento: string;
   erro: null | string;
+  sequencia?: null | number;
   unidade: string;
 }): Promise<void> {
   try {
@@ -183,7 +189,8 @@ export async function registrarDisparo(input: {
       .eq("workspace_id", "careli")
       .eq("empreendimento", input.empreendimento)
       .eq("unidade", input.unidade)
-      .eq("competencia", input.competencia);
+      .eq("competencia", input.competencia)
+      .eq("sequencia", Number(input.sequencia ?? 1) || 1);
   } catch {
     // Ver a nota acima: registro é conveniência, a mensagem já saiu.
   }

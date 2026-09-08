@@ -50,6 +50,14 @@ type Carteira = {
 
 type ParcelaAEmitir = {
   bloqueio: null | string;
+  /**
+   * A identidade da linha: `Q10 L03`, ou `Q10 L03#2` quando a unidade tem DUAS cobranças no mês.
+   *
+   * ⚠️ É ELA QUE VAI PARA A ROTA, e não a unidade. O LUCAS AGUIAR (Vale do Ouro - 2, Q10 L03) tem a
+   * mensal de R$ 1.666,67 no dia 10 e a ENTRADA de R$ 8.750,00 no dia 20, no mesmo setembro: sem a
+   * chave, marcar uma linha emitiria as duas, e editar o valor de uma escreveria na outra.
+   */
+  chave: string;
   /** ⚠️ O CPF/CNPJ INTEIRO, para conferir e corrigir na tela. Pedido do Lucas (02/09/2026). */
   contato: null | string;
   documento: null | string;
@@ -63,14 +71,69 @@ type ParcelaAEmitir = {
   totalParcelas: null | number;
   nome: string;
   nomeNaPlanilha: string;
+  /** "Mensal", "Entrada" — o que distingue duas cobranças da mesma unidade. Nulo = não há outra. */
+  rotulo: null | string;
+  sequencia: number;
   unidade: string;
   valor: null | number;
   vencimentoDia: null | number;
 };
 
-/** A chave de uma linha na tela: a unidade sozinha se repete entre carteiras. */
-const chaveDaLinha = (p: { empreendimento: string; unidade: string }) =>
-  `${p.empreendimento}|${p.unidade}`;
+/**
+ * A chave de uma linha na tela.
+ *
+ * ⚠️ EMPREENDIMENTO + CHAVE DA PARCELA, e não a unidade. A unidade sozinha se repete entre
+ * carteiras (as seis de teste têm TODAS a unidade `TESTE-01`) e, desde a 0146, também dentro da
+ * mesma carteira: a mensal e a entrada do Lucas Aguiar são as duas `Q10 L03` em setembro.
+ */
+const chaveDaLinha = (p: { chave: string; empreendimento: string }) =>
+  `${p.empreendimento}|${p.chave}`;
+
+/**
+ * O que distingue esta linha da outra da mesma unidade — só quando há outra.
+ *
+ * ⚠️ DUAS LINHAS IGUAIS PARECEM ERRO DE CADASTRO, e é assim que se apaga a certa. O rótulo vem da
+ * carga (o texto livre do LSoft diz "ENTRADA"); quando ele falta, a contagem da parcela ainda
+ * separa as duas — "2/60" e "3/4" não são a mesma cobrança.
+ */
+function distintivoDaParcela(p: {
+  parcelaAtual: null | number;
+  rotulo: null | string;
+  sequencia: number;
+  totalParcelas: null | number;
+}): null | string {
+  if (p.rotulo) return p.rotulo;
+  if (p.sequencia <= 1) return null;
+  if (p.parcelaAtual !== null && p.totalParcelas !== null) {
+    return `${p.parcelaAtual}/${p.totalParcelas}`;
+  }
+  return `cobrança ${p.sequencia}`;
+}
+
+/** A mesma distinção em texto corrido, para as frases que listam nomes entre parênteses. */
+function rotuloNaLista(p: { rotulo?: null | string; unidade: string }): string {
+  return p.rotulo ? `${p.unidade} · ${p.rotulo}` : p.unidade;
+}
+
+/** O selo cinza ao lado da unidade. Discreto: é conferência, não alerta. */
+function RotuloDaParcela({ texto }: { texto: string }) {
+  return (
+    <span
+      style={{
+        background: T.soft,
+        border: `1px solid ${T.border}`,
+        borderRadius: 6,
+        color: T.sub,
+        fontSize: 11,
+        marginLeft: 6,
+        padding: "1px 5px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {texto}
+    </span>
+  );
+}
 
 type EventoDoBoleto = {
   autor: null | string;
@@ -92,6 +155,8 @@ type Historico = {
 };
 
 type BoletoEmitido = {
+  /** A identidade da parcela — ver `ParcelaAEmitir.chave`. É por ela que as ações agem. */
+  chave: string;
   cobranca: string;
   contato: null | string;
   documento: null | string;
@@ -100,6 +165,9 @@ type BoletoEmitido = {
   link: null | string;
   nome: string;
   pagamento: null | string;
+  /** "Mensal", "Entrada" — só quando a unidade tem mais de uma cobrança no mês. */
+  rotulo: null | string;
+  sequencia: number;
   situacao: string;
   unidade: string;
   valor: number;
@@ -110,9 +178,11 @@ type BoletoEmitido = {
 };
 
 type Previa = {
+  chave: string;
   contato: null | string;
   impedimento: null | string;
   nome: string;
+  rotulo: null | string;
   texto: null | string;
   unidade: string;
 };
@@ -121,7 +191,15 @@ type Envio = {
   canal: string;
   empreendimento: string;
   enviados: number;
-  envios: { erro: null | string; nome: string; ok: boolean; telefone?: null | string; unidade: string }[];
+  envios: {
+    chave: string;
+    erro: null | string;
+    nome: string;
+    ok: boolean;
+    rotulo?: null | string;
+    telefone?: null | string;
+    unidade: string;
+  }[];
   falhas: number;
 };
 
@@ -136,6 +214,7 @@ type Emissao = {
   /** Unidades que ficaram para a proxima rodada porque o lote chegou perto do teto de tempo. */
   restantes?: number;
   resultados: {
+    chave: string;
     cobranca: null | string;
     erro: null | string;
     ja_existia: boolean;
@@ -1124,7 +1203,11 @@ function AEmitir({
               // ⚠️ MANDA AS UNIDADES SEMPRE, mesmo com nada marcado (`alvo` e a lista inteira
               // da aba). Antes, sem selecao, a tela pedia "a carteira do slug" e o servidor
               // decidia o tamanho — e um pedido sem tamanho nao se divide em blocos.
-              aoEmitir(alvo.map((p) => ({ empreendimento: p.empreendimento, unidade: p.unidade })))
+              // ⚠️ A CHAVE DA PARCELA VAI NO CAMPO `unidade`, que é o que `blocosDaEmissao` e a
+              // rota esperam: para as 4.094 linhas de sempre a chave É a unidade, e só a segunda
+              // cobrança de um mês ganha sufixo. Mandar a unidade crua aqui emitiria as DUAS
+              // parcelas do Lucas Aguiar quando ele marcou uma.
+              aoEmitir(alvo.map((p) => ({ empreendimento: p.empreendimento, unidade: p.chave })))
             }
             style={{
               alignItems: "center",
@@ -1260,7 +1343,7 @@ function AEmitir({
           </thead>
           <tbody>
             {linhas.map((p) => (
-              <tr key={`${p.empreendimento}|${p.unidade}`} style={{ borderTop: `1px solid ${T.border}` }}>
+              <tr key={chaveDaLinha(p)} style={{ borderTop: `1px solid ${T.border}` }}>
                 {podeEmitir ? (
                   <td style={{ padding: "7px 8px" }}>
                     <input
@@ -1280,10 +1363,10 @@ function AEmitir({
                   <CelulaEditavel
                     ajuda="Nome que sai no boleto"
                     aoSalvar={(nv) =>
-                      acaoNaUnidade(p.empreendimento, p.unidade, { acao: "cadastro", nome: nv })
+                      acaoNaUnidade(p.empreendimento, p.chave, { acao: "cadastro", nome: nv })
                     }
                     largura={230}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="nome do cliente"
                     valor={p.nome}
                   />
@@ -1307,16 +1390,23 @@ function AEmitir({
                   <CelulaEditavel
                     ajuda="Quadra e lote (ou apartamento). Renomeia em todas as competências."
                     aoSalvar={(nv) =>
-                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                      acaoNaUnidade(p.empreendimento, p.chave, {
                         acao: "renomear",
                         unidadeNova: nv,
                       })
                     }
                     largura={96}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="unidade"
                     valor={p.unidade}
                   />
+                  {/* ⚠️ DUAS LINHAS NA MESMA UNIDADE PARECEM ERRO DE CADASTRO, e quem acha que é
+                      repetição apaga a errada. O LUCAS AGUIAR (Q10 L03) tem a mensal e a ENTRADA
+                      vencendo no mesmo setembro: o rótulo é o que faz as duas se explicarem sem
+                      ninguém abrir a linha. Só aparece quando há mais de uma. */}
+                  {distintivoDaParcela(p) ? (
+                    <RotuloDaParcela texto={distintivoDaParcela(p)!} />
+                  ) : null}
                 </td>
                 <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                   {/* ⚠️ A PARCELA SAI NA MENSAGEM ("Referente a: Parcela 9 de 36"). Quando a conta
@@ -1327,13 +1417,13 @@ function AEmitir({
                       ajuda="Parcela atual"
                       alinharADireita
                       aoSalvar={(nv) =>
-                        acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acaoNaUnidade(p.empreendimento, p.chave, {
                           acao: "cadastro",
                           parcelaAtual: nv.replace(/\D/g, ""),
                         })
                       }
                       largura={38}
-                      ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                      ocupado={ocupado === chaveDaLinha(p)}
                       placeholder="—"
                       valor={p.parcelaAtual === null ? "" : String(p.parcelaAtual)}
                     />
@@ -1341,13 +1431,13 @@ function AEmitir({
                     <CelulaEditavel
                       ajuda="Total de parcelas"
                       aoSalvar={(nv) =>
-                        acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acaoNaUnidade(p.empreendimento, p.chave, {
                           acao: "cadastro",
                           totalParcelas: nv.replace(/\D/g, ""),
                         })
                       }
                       largura={38}
-                      ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                      ocupado={ocupado === chaveDaLinha(p)}
                       placeholder="—"
                       valor={p.totalParcelas === null ? "" : String(p.totalParcelas)}
                     />
@@ -1357,14 +1447,14 @@ function AEmitir({
                   <CelulaEditavel
                     ajuda={`CPF ou CNPJ de ${p.nome}`}
                     aoSalvar={(novo) =>
-                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                      acaoNaUnidade(p.empreendimento, p.chave, {
                         acao: "cadastro",
                         documento: novo,
                       })
                     }
                     invalido={Boolean(p.documento) && !p.documentoValido}
                     largura={150}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="sem CPF"
                     valor={documentoLegivel(p.documento)}
                   />
@@ -1373,13 +1463,13 @@ function AEmitir({
                   <CelulaEditavel
                     ajuda={`Telefone de ${p.nome} — é por ele que o link chega`}
                     aoSalvar={(nv) =>
-                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                      acaoNaUnidade(p.empreendimento, p.chave, {
                         acao: "cadastro",
                         telefone: nv,
                       })
                     }
                     largura={132}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="sem telefone"
                     valor={p.contato ?? ""}
                   />
@@ -1391,13 +1481,13 @@ function AEmitir({
                     aoSalvar={(nv) => {
                       const n = valorDigitado(nv);
                       if (n === null) return Promise.resolve(false);
-                      return acaoNaUnidade(p.empreendimento, p.unidade, {
+                      return acaoNaUnidade(p.empreendimento, p.chave, {
                         acao: "cadastro",
                         valor: n,
                       });
                     }}
                     largura={104}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="sem valor"
                     valor={valorParaOCampo(p.valor)}
                   />
@@ -1406,13 +1496,13 @@ function AEmitir({
                   <CelulaEditavel
                     ajuda="Dia do vencimento (1 a 31)"
                     aoSalvar={(novo) =>
-                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                      acaoNaUnidade(p.empreendimento, p.chave, {
                         acao: "cadastro",
                         vencimentoDia: Number(novo.replace(/\D/g, "")),
                       })
                     }
                     largura={46}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="dia"
                     valor={p.vencimentoDia ? String(p.vencimentoDia) : ""}
                   />
@@ -1538,7 +1628,7 @@ function Emitidos({
         </thead>
         <tbody>
           {boletos.map((b) => {
-            const chave = `${b.empreendimento}|${b.unidade}`;
+            const chave = `${b.empreendimento}|${b.chave}`;
             const estaAberta = aberta === chave;
             const colunas = mostrarPredio ? 12 : 11;
 
@@ -1548,7 +1638,7 @@ function Emitidos({
                     linha que abrisse um modal abaixo mostrando o histórico"*. O link do boleto para
                     a propagação, senão abrir o boleto abriria o painel junto. */}
                 <tr
-                  onClick={() => aoAbrir(b.empreendimento, b.unidade)}
+                  onClick={() => aoAbrir(b.empreendimento, b.chave)}
                   style={{
                     background: estaAberta ? T.soft : "transparent",
                     borderTop: `1px solid ${T.border}`,
@@ -1570,7 +1660,13 @@ function Emitidos({
                       {nomeDoPredio(b.empreendimento)}
                     </td>
                   ) : null}
-                  <td style={{ color: T.sub, padding: "8px 10px" }}>{b.unidade}</td>
+                  {/* ⚠️ DUAS LINHAS NA MESMA UNIDADE NÃO SÃO ERRO DE CADASTRO. O rótulo diz
+                      qual é qual — "Mensal" e "Entrada" —, e sem ele o operador cancela a certa
+                      achando que apagou a repetida. */}
+                  <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
+                    {b.unidade}
+                    {b.rotulo ? <RotuloDaParcela texto={b.rotulo} /> : null}
+                  </td>
                   <td style={{ color: T.sub, padding: "8px 10px", whiteSpace: "nowrap" }}>
                     {b.documento ?? "—"}
                   </td>
@@ -1711,7 +1807,7 @@ function PainelDoBoleto({
       setEditando(false);
       return;
     }
-    const ok = await acaoNaUnidade(boleto.empreendimento, boleto.unidade, { acao: "editar", edicao });
+    const ok = await acaoNaUnidade(boleto.empreendimento, boleto.chave, { acao: "editar", edicao });
     if (ok) setEditando(false);
   };
 
@@ -1862,7 +1958,7 @@ function PainelDoBoleto({
           <button
             disabled={ocupado}
             onClick={() =>
-              void acaoNaUnidade(boleto.empreendimento, boleto.unidade, {
+              void acaoNaUnidade(boleto.empreendimento, boleto.chave, {
                 acao: "enviar",
                 canal: "template",
                 confirmar: true,
@@ -1891,7 +1987,7 @@ function PainelDoBoleto({
               <button
                 disabled={ocupado}
                 onClick={() =>
-                  void acaoNaUnidade(boleto.empreendimento, boleto.unidade, {
+                  void acaoNaUnidade(boleto.empreendimento, boleto.chave, {
                     acao: "cancelar",
                   }).then(() => setConfirmandoCancelar(false))
                 }
@@ -2086,7 +2182,7 @@ function PainelDeEnvio({
       {prontos.length > 1 ? (
         <p style={{ color: T.sub, fontSize: 13, margin: 0 }}>
           Os outros {prontos.length - 1} recebem a mesma mensagem, com os dados de cada um:{" "}
-          {prontos.slice(1, 6).map((p) => `${p.nome} (${p.unidade})`).join(", ")}
+          {prontos.slice(1, 6).map((p) => `${p.nome} (${rotuloNaLista(p)})`).join(", ")}
           {prontos.length > 6 ? ` e mais ${prontos.length - 6}` : ""}.
         </p>
       ) : null}
@@ -2094,7 +2190,7 @@ function PainelDeEnvio({
       {travados.length > 0 ? (
         <Aviso tom="alerta">
           {travados.length} não recebem:{" "}
-          {travados.map((p) => `${p.nome} (${p.unidade}) — ${p.impedimento}`).join("; ")}
+          {travados.map((p) => `${p.nome} (${rotuloNaLista(p)}) — ${p.impedimento}`).join("; ")}
         </Aviso>
       ) : null}
 
@@ -2156,8 +2252,8 @@ function ResultadoDoEnvio({ envio }: { envio: Envio }) {
       {envio.envios
         .filter((e) => e.erro)
         .map((e) => (
-          <Aviso key={e.unidade} tom="erro">
-            {e.nome} ({e.unidade}): {e.erro}
+          <Aviso key={e.chave} tom="erro">
+            {e.nome} ({rotuloNaLista(e)}): {e.erro}
           </Aviso>
         ))}
     </div>
@@ -2240,17 +2336,17 @@ function ForaDaEmissao({
           <tbody>
             {linhas.map((p) => (
               <tr
-                key={`${p.empreendimento}|${p.unidade}`}
+                key={chaveDaLinha(p)}
                 style={{ borderTop: `1px solid ${T.border}` }}
               >
                 <td style={{ padding: "5px 8px" }}>
                   <CelulaEditavel
                     ajuda="Nome que sai no boleto"
                     aoSalvar={(nv) =>
-                      acaoNaUnidade(p.empreendimento, p.unidade, { acao: "cadastro", nome: nv })
+                      acaoNaUnidade(p.empreendimento, p.chave, { acao: "cadastro", nome: nv })
                     }
                     largura={230}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="nome do cliente"
                     valor={p.nome}
                   />
@@ -2267,16 +2363,23 @@ function ForaDaEmissao({
                   <CelulaEditavel
                     ajuda="Quadra e lote (ou apartamento). Renomeia em todas as competências."
                     aoSalvar={(nv) =>
-                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                      acaoNaUnidade(p.empreendimento, p.chave, {
                         acao: "renomear",
                         unidadeNova: nv,
                       })
                     }
                     largura={96}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="unidade"
                     valor={p.unidade}
                   />
+                  {/* ⚠️ DUAS LINHAS NA MESMA UNIDADE PARECEM ERRO DE CADASTRO, e quem acha que é
+                      repetição apaga a errada. O LUCAS AGUIAR (Q10 L03) tem a mensal e a ENTRADA
+                      vencendo no mesmo setembro: o rótulo é o que faz as duas se explicarem sem
+                      ninguém abrir a linha. Só aparece quando há mais de uma. */}
+                  {distintivoDaParcela(p) ? (
+                    <RotuloDaParcela texto={distintivoDaParcela(p)!} />
+                  ) : null}
                 </td>
                 <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
                   {/* ⚠️ A PARCELA SAI NA MENSAGEM ("Referente a: Parcela 9 de 36"). Quando a conta
@@ -2287,13 +2390,13 @@ function ForaDaEmissao({
                       ajuda="Parcela atual"
                       alinharADireita
                       aoSalvar={(nv) =>
-                        acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acaoNaUnidade(p.empreendimento, p.chave, {
                           acao: "cadastro",
                           parcelaAtual: nv.replace(/\D/g, ""),
                         })
                       }
                       largura={38}
-                      ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                      ocupado={ocupado === chaveDaLinha(p)}
                       placeholder="—"
                       valor={p.parcelaAtual === null ? "" : String(p.parcelaAtual)}
                     />
@@ -2301,13 +2404,13 @@ function ForaDaEmissao({
                     <CelulaEditavel
                       ajuda="Total de parcelas"
                       aoSalvar={(nv) =>
-                        acaoNaUnidade(p.empreendimento, p.unidade, {
+                        acaoNaUnidade(p.empreendimento, p.chave, {
                           acao: "cadastro",
                           totalParcelas: nv.replace(/\D/g, ""),
                         })
                       }
                       largura={38}
-                      ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                      ocupado={ocupado === chaveDaLinha(p)}
                       placeholder="—"
                       valor={p.totalParcelas === null ? "" : String(p.totalParcelas)}
                     />
@@ -2317,14 +2420,14 @@ function ForaDaEmissao({
                   <CelulaEditavel
                     ajuda={`CPF ou CNPJ de ${p.nome}`}
                     aoSalvar={(novo) =>
-                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                      acaoNaUnidade(p.empreendimento, p.chave, {
                         acao: "cadastro",
                         documento: novo,
                       })
                     }
                     invalido={Boolean(p.documento) && !p.documentoValido}
                     largura={150}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="sem CPF"
                     valor={documentoLegivel(p.documento)}
                   />
@@ -2333,13 +2436,13 @@ function ForaDaEmissao({
                   <CelulaEditavel
                     ajuda={`Telefone de ${p.nome} — é por ele que o link chega`}
                     aoSalvar={(nv) =>
-                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                      acaoNaUnidade(p.empreendimento, p.chave, {
                         acao: "cadastro",
                         telefone: nv,
                       })
                     }
                     largura={132}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="sem telefone"
                     valor={p.contato ?? ""}
                   />
@@ -2351,13 +2454,13 @@ function ForaDaEmissao({
                     aoSalvar={(nv) => {
                       const n = valorDigitado(nv);
                       if (n === null) return Promise.resolve(false);
-                      return acaoNaUnidade(p.empreendimento, p.unidade, {
+                      return acaoNaUnidade(p.empreendimento, p.chave, {
                         acao: "cadastro",
                         valor: n,
                       });
                     }}
                     largura={104}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="sem valor"
                     valor={valorParaOCampo(p.valor)}
                   />
@@ -2366,13 +2469,13 @@ function ForaDaEmissao({
                   <CelulaEditavel
                     ajuda="Dia do vencimento (1 a 31)"
                     aoSalvar={(novo) =>
-                      acaoNaUnidade(p.empreendimento, p.unidade, {
+                      acaoNaUnidade(p.empreendimento, p.chave, {
                         acao: "cadastro",
                         vencimentoDia: Number(novo.replace(/\D/g, "")),
                       })
                     }
                     largura={46}
-                    ocupado={ocupado === `${p.empreendimento}|${p.unidade}`}
+                    ocupado={ocupado === chaveDaLinha(p)}
                     placeholder="dia"
                     valor={p.vencimentoDia ? String(p.vencimentoDia) : ""}
                   />

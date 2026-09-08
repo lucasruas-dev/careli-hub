@@ -164,6 +164,9 @@ describe("ler de volta o que foi emitido", () => {
     expect(lerReferencia("boleto:ed-rubi:301:2026-09")).toEqual({
       competencia: "2026-09",
       empreendimento: "ed-rubi",
+      // A referência de sempre não diz sequência, e ela é 1: é a primeira (e única) cobrança da
+      // unidade no mês. Todas as já emitidas têm este formato.
+      sequencia: 1,
       unidade: "301",
     });
   });
@@ -172,5 +175,90 @@ describe("ler de volta o que foi emitido", () => {
     expect(lerReferencia("proposta-avulsa-123")).toBeNull();
     expect(lerReferencia(null)).toBeNull();
     expect(lerReferencia("boleto:incompleta")).toBeNull();
+    // Sexta parte, ou sequência que não é número: não é referência nossa.
+    expect(lerReferencia("boleto:garden:Q07-L24:2026-09:2:3")).toBeNull();
+    expect(lerReferencia("boleto:garden:Q07-L24:2026-09:x")).toBeNull();
+    expect(lerReferencia("boleto:garden:Q07-L24:2026-09:0")).toBeNull();
+  });
+});
+
+// ── DUAS COBRANÇAS NA MESMA UNIDADE, NO MESMO MÊS ───────────────────────────
+//
+// O LUCAS AGUIAR SOARES (Vale do Ouro - 2, Q10 L03) tem em setembro/2026 a mensal de R$ 1.666,67
+// vencendo dia 10 e a ENTRADA de R$ 8.750,00 vencendo dia 20. Pedido do Lucas (08/09/2026):
+// *"Cria duas linhas vou verificar, ae se for o caso fazemos emissão separado"*.
+describe("a segunda cobrança da mesma unidade no mesmo mês", () => {
+  const cobranca = (ref: null | string) => ({
+    customer: "c",
+    dueDate: "2026-09-20",
+    externalReference: ref,
+    id: "p",
+    status: "PENDING",
+    value: 8750,
+  });
+
+  it("tem referência PRÓPRIA — senão a consulta acha a primeira e ela nunca sai", () => {
+    const mensal = referenciaDaCobranca({
+      competencia: "2026-09",
+      empreendimento: "vale-do-ouro-2",
+      sequencia: 1,
+      unidade: "Q10 L03",
+    });
+    const entrada = referenciaDaCobranca({
+      competencia: "2026-09",
+      empreendimento: "vale-do-ouro-2",
+      sequencia: 2,
+      unidade: "Q10 L03",
+    });
+
+    expect(mensal).toBe("boleto:vale-do-ouro-2:Q10-L03:2026-09");
+    expect(entrada).toBe("boleto:vale-do-ouro-2:Q10-L03:2026-09:2");
+    expect(mensal).not.toBe(entrada);
+  });
+
+  it("a sequência 1 não muda a referência de NENHUM boleto já emitido", () => {
+    // ⚠️ É A CONDIÇÃO DE NÃO QUEBRAR O PASSADO. O Asaas casa `externalReference` por igualdade
+    // exata: se a sequência 1 acrescentasse `:1`, as 315 cobranças de setembro deixariam de casar e
+    // voltariam TODAS para a lista de "a emitir", prontas para serem cobradas de novo.
+    const semSequencia = referenciaDaCobranca({
+      competencia: "2026-09",
+      empreendimento: "guaimbe",
+      unidade: "307",
+    });
+    for (const seq of [undefined, null, 1]) {
+      expect(
+        referenciaDaCobranca({
+          competencia: "2026-09",
+          empreendimento: "guaimbe",
+          sequencia: seq,
+          unidade: "307",
+        }),
+      ).toBe(semSequencia);
+    }
+    expect(semSequencia).toBe("boleto:guaimbe:307:2026-09");
+  });
+
+  it("volta da referência com a sequência intacta", () => {
+    expect(lerReferencia("boleto:vale-do-ouro-2:Q10-L03:2026-09:2")).toEqual({
+      competencia: "2026-09",
+      empreendimento: "vale-do-ouro-2",
+      sequencia: 2,
+      unidade: "Q10-L03",
+    });
+  });
+
+  it("a listagem do mês NÃO deixa a segunda de fora", () => {
+    // ⚠️ ERA O FILTRO POR `endsWith(":2026-09")`. A entrada termina em `:2026-09:2` e sumiria da
+    // listagem inteira: não apareceria em "emitidos", não seria achada para reenviar nem cancelar,
+    // e a linha voltaria para "a emitir" como se nunca tivesse saído.
+    const lista = [
+      cobranca("boleto:vale-do-ouro-2:Q10-L03:2026-09"),
+      cobranca("boleto:vale-do-ouro-2:Q10-L03:2026-09:2"),
+      cobranca("boleto:vale-do-ouro-2:Q10-L03:2026-08:2"),
+      cobranca("proposta-avulsa-123"),
+    ];
+    const so = apenasDaCompetencia(lista as never, "2026-09");
+    expect(so).toHaveLength(2);
+    expect(so.map((c) => lerReferencia(c.externalReference)!.sequencia)).toEqual([1, 2]);
   });
 });

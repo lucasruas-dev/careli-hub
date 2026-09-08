@@ -166,7 +166,21 @@ type UnidadeDaTela = {
   totalContract: number;
 };
 
-type EmpreendimentoDaTela = { id: string; nome: string };
+/**
+ * Um produto do seletor: o PAI, com os recortes (filhos) dentro.
+ *
+ * ⚠️ ISTO É A ARQUITETURA DA CASA, dita pelo Lucas (03/09/2026): *"o Pai sempre será a nossa
+ * referência para tudo, o filho são recortes, visões do pai"*, e o pedido: *"não vai ter três Vale
+ * do Ouro, vai ter UM Vale do Ouro e quando tiver filhos trazer um subfiltro para caso o usuário
+ * queira ver somente aquele recorte"*. É o mesmo desenho da tela Venda (produto + subfiltro), e
+ * quem monta a lista é `produtosDoPortal`, no servidor, pelo cadastro do Panteon.
+ */
+type EmpreendimentoDaTela = {
+  /** Os recortes autorizados. Vazio (ou ausente) = produto sem divisão, e o subfiltro não aparece. */
+  filhos?: { id: string; nome: string }[];
+  id: string;
+  nome: string;
+};
 
 type Dados = {
   /** SÓ na sessão comercial: `true` = a leitura de Ato e Sinal bateu no teto e está incompleta. */
@@ -438,6 +452,12 @@ export function TelaCarteira({
   const [erro, setErro] = useState<null | string>(null);
   const [carregando, setCarregando] = useState(true);
   const [empSelecionado, setEmpSelecionado] = useState<null | string>(null);
+  // ⚠️ O RECORTE SUBSTITUI O PAI NA CONSULTA, e não soma a ele: o filho já é um pedaço do pai, e
+  // mandar os dois pediria as mesmas parcelas duas vezes. Sem recorte vale o pai — e aí o servidor
+  // expande para TODOS os filhos autorizados, deixando o espelho de fora. (A mesma regra da tela
+  // Venda; quem expande é `codigosDoPedido`.)
+  const [recorteSelecionado, setRecorteSelecionado] = useState<null | string>(null);
+  const alvo = recorteSelecionado ?? empSelecionado;
   const [aba, setAba] = useState<"carteira" | "indicadores">("carteira");
   const [consultadoEm, setConsultadoEm] = useState<Date | null>(null);
 
@@ -509,18 +529,18 @@ export function TelaCarteira({
   }, []);
 
   useEffect(() => {
-    void carregar(empSelecionado);
-  }, [carregar, empSelecionado]);
+    void carregar(alvo);
+  }, [alvo, carregar]);
 
   // Abre a aba Indicadores (ou troca o empreendimento com ela aberta) → busca o dado dela.
   useEffect(() => {
     if (aba !== "indicadores") return;
-    if (indicadoresDe === (empSelecionado ?? "") && indicadores) return;
-    void carregarIndicadores(empSelecionado, filtroExtrato);
+    if (indicadoresDe === (alvo ?? "") && indicadores) return;
+    void carregarIndicadores(alvo, filtroExtrato);
     // `filtroExtrato` NÃO entra nas dependências de propósito: quem reage a ele é o efeito
     // abaixo. Juntar os dois faria a primeira abertura disparar duas buscas.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aba, carregarIndicadores, empSelecionado, indicadores, indicadoresDe]);
+  }, [aba, alvo, carregarIndicadores, indicadores, indicadoresDe]);
 
   // ⚠️ MUDOU O FILTRO → NOVA BUSCA, com respiro para a digitação. O extrato é filtrado no
   // servidor desde 20/08/2026 (antes o filtro varria só as linhas que tinham sobrado do teto, e
@@ -528,10 +548,10 @@ export function TelaCarteira({
   // consulta por tecla; os seletores também passam por ele, e 300ms não se percebe num clique.
   useEffect(() => {
     if (aba !== "indicadores") return;
-    if (indicadoresDe !== (empSelecionado ?? "")) return;
+    if (indicadoresDe !== (alvo ?? "")) return;
 
     const relogio = setTimeout(() => {
-      void carregarIndicadores(empSelecionado, filtroExtrato);
+      void carregarIndicadores(alvo, filtroExtrato);
     }, 300);
 
     return () => clearTimeout(relogio);
@@ -572,6 +592,17 @@ export function TelaCarteira({
   }
 
   const empreendimentos = dados.empreendimentos ?? [];
+  // O produto escolhido é quem diz se existe subfiltro: os recortes moram dentro dele.
+  //
+  // ⚠️ COM UM PRODUTO SÓ ELE JÁ ESTÁ ESCOLHIDO. A fileira de chips não aparece nesse caso (chip
+  // único é ruído), e sem esta linha o portal de um incorporador que tem só o Vale do Ouro ficaria
+  // sem NENHUM seletor — perderia os recortes junto com a fileira que não precisava.
+  const produtoEscolhido =
+    (empSelecionado
+      ? empreendimentos.find((emp) => emp.id === empSelecionado)
+      : empreendimentos.length === 1
+        ? empreendimentos[0]
+        : undefined) ?? null;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -608,19 +639,57 @@ export function TelaCarteira({
           ) : null}
         </p>
 
+        {/* ── OS PRODUTOS: um chip por PAI ──────────────────────────────────── */}
+        {/* ⚠️ UM VALE DO OURO, E NÃO QUATRO. A lista vem do cadastro do Panteon
+            (`produtosDoPortal`), a mesma fonte de Produtos, Venda e Contratos; antes ela era
+            montada pela lista fixa em código (`ENTERPRISE_GROUPS`), e como os quatro registros
+            do Vale do Ouro têm o MESMO nome no C2X sobrava chip repetido — o do espelho abrindo
+            vazio (VLO: zero parcelas em carteira ativa, medido em 08/09/2026). */}
         {empreendimentos.length > 1 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
             <Pilula
               ativo={empSelecionado === null}
-              onClick={() => setEmpSelecionado(null)}
+              onClick={() => {
+                setEmpSelecionado(null);
+                setRecorteSelecionado(null);
+              }}
               rotulo="Todos"
             />
             {empreendimentos.map((emp) => (
               <Pilula
                 ativo={empSelecionado === emp.id}
                 key={emp.id}
-                onClick={() => setEmpSelecionado(emp.id)}
+                onClick={() => {
+                  setEmpSelecionado(emp.id);
+                  // Trocar de produto sem zerar o recorte deixaria um filho de OUTRO pai escolhido.
+                  setRecorteSelecionado(null);
+                }}
                 rotulo={emp.nome}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {/* ── O SUBFILTRO: os recortes DENTRO do produto escolhido ───────────── */}
+        {/* ⚠️ SÓ APARECE COM FILHOS, e é o desenho da tela Venda. Pedido do Lucas (03/09/2026):
+            *"quando tiver filhos trazer um subfiltro para caso o usuário queira ver somente
+            aquele recorte"*. Produto sem divisão não mostra nada — e com UM recorte autorizado
+            também não: "Todo o Vale do Ouro" e o único filho devolvem a mesma parcela, e seletor
+            com uma opção só é ruído. É o caso da sessão que só tem o VOC. O recorte SUBSTITUI o
+            pai na consulta: mandar os dois pediria a mesma parcela duas vezes. */}
+        {(produtoEscolhido?.filhos?.length ?? 0) > 1 ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+            <Pilula
+              ativo={recorteSelecionado === null}
+              onClick={() => setRecorteSelecionado(null)}
+              rotulo={`Todo o ${produtoEscolhido?.nome ?? "empreendimento"}`}
+            />
+            {(produtoEscolhido?.filhos ?? []).map((filho) => (
+              <Pilula
+                ativo={recorteSelecionado === filho.id}
+                key={filho.id}
+                onClick={() => setRecorteSelecionado(filho.id)}
+                rotulo={filho.nome}
               />
             ))}
           </div>

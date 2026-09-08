@@ -236,7 +236,11 @@ for (let i = 0; i < linhas.length; i += 500) {
   const lote = linhas.slice(i, i + 500);
   const { data, error } = await supabase
     .from("boletos_parcelas")
-    .upsert(lote, { onConflict: "workspace_id,empreendimento,unidade,competencia" })
+    // ⚠️ A CHAVE ÚNICA GANHOU `sequencia` NA 0146 (duas cobranças na mesma unidade no mesmo mês:
+    // a mensal e a entrada). O `onConflict` precisa nomear a chave INTEIRA — com a lista antiga o
+    // PostgREST não acha o índice e a carga do mês inteiro para. Sem `sequencia` no payload, o
+    // DEFAULT 1 vale, que é o que estas cargas sempre gravaram.
+    .upsert(lote, { onConflict: "workspace_id,empreendimento,unidade,competencia,sequencia" })
     .select("id");
   if (error) {
     console.error(`\n❌ lote ${i / 500 + 1}: ${error.message}`);

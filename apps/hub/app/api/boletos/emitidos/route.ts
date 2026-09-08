@@ -36,6 +36,13 @@ export type BoletoEmitido = {
   link: null | string;
   nome: string;
   pagamento: null | string;
+  /**
+   * Separa duas cobranças da MESMA unidade no MESMO mês (a mensal e a entrada).
+   *
+   * ⚠️ SEM ISTO, DUAS LINHAS DA MESMA UNIDADE FICAM INDISTINGUÍVEIS aqui — e quem conferir a
+   * listagem vai ler "o mesmo boleto duas vezes" onde há duas cobranças legítimas.
+   */
+  sequencia: number;
   situacao: string;
   unidade: string;
   valor: number;
@@ -141,6 +148,7 @@ export async function GET(request: Request) {
         // Sem cadastro, a descrição da cobrança ainda diz de quem é — melhor que campo vazio.
         nome: cadastro?.nome ?? c.description ?? "(sem cadastro)",
         pagamento,
+        sequencia: ref.sequencia,
         situacao: c.status,
         unidade: ref.unidade,
         valor: c.value,
@@ -154,7 +162,8 @@ export async function GET(request: Request) {
     (a, b) =>
       a.empreendimento.localeCompare(b.empreendimento) ||
       a.vencimento.localeCompare(b.vencimento) ||
-      a.unidade.localeCompare(b.unidade, "pt-BR", { numeric: true }),
+      a.unidade.localeCompare(b.unidade, "pt-BR", { numeric: true }) ||
+      a.sequencia - b.sequencia,
   );
 
   return NextResponse.json(

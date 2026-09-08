@@ -36,6 +36,64 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-contrato-guardado-fontes-e-pai-filho",
+    deployedAt: "2026-09-08T22:30:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**A prévia virou documento.** Botão que gera o PDF do contrato e o guarda — ele aparece na aba Documentos da unidade e na ficha do cliente, sem precisar salvar nada à mão.",
+              "**Gerar de novo cria uma versão nova.** Nada se apaga: a mais recente é a que vale, e a anterior fica marcada como substituída. O botão avisa antes que vai gerar a versão 2.",
+              "**Contrato com lacuna não é gerado.** Se faltar dado, a tela diz o que falta em vez de produzir um papel com colchete no meio. O rascunho continua sendo a prévia.",
+            ],
+            screen: "Contrato · Prévia",
+          },
+          {
+            items: [
+              "**Seletor de fonte na barra**, com as nove famílias que existem em qualquer Word — e a Georgia como padrão do contrato.",
+              "**\"Fonte padrão em todo o documento\"** limpa de uma vez a fonte que veio colada do Word. A minuta de hoje carrega 280 trechos assim.",
+              "**O card mostra o contrato gerado**, com a versão, e abre o arquivo direto do quadro.",
+            ],
+            screen: "Editor de minutas",
+          },
+        ],
+      },
+      {
+        module: "Portal comercial",
+        screens: [
+          {
+            items: [
+              "**O Vale do Ouro virou um produto só.** Eram quatro linhas com o mesmo nome; agora é uma, e ao clicar aparecem os recortes VOC, VOL e VOR. A Lagoa Bonita, que tinha o mesmo problema, veio junto.",
+            ],
+            screen: "Financeiro · Parcelas",
+          },
+        ],
+      },
+      {
+        module: "CER",
+        screens: [
+          {
+            items: [
+              "**Duas cobranças na mesma unidade no mesmo mês agora cabem** — o caso da mensal e da entrada vencendo juntas. Cada linha traz o rótulo (Mensal, Entrada) para ninguém confundir com cadastro duplicado.",
+            ],
+            screen: "Boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "7cf0b6e3",
+    technical: {
+      done: "⚠️ O CONTRATO É GUARDADO EM `hercules_documentos`, NA PASTA DA UNIDADE, e não numa tabela nova: é a única pasta que `caminhoDaUnidadeValido` aceita na abertura pelo portal, e a tabela já tem DOIS leitores ligados (aba Documentos e ficha do cliente no Apolo), então \"existe no Apolo\" sai sem código. O storage da Têmis foi descartado porque a chave dele é a MINUTA — arquivar o contrato de João debaixo do modelo é a gaveta do formulário, não a do comprador. Zero migrations para isso. ⚠️ QUAL VERSÃO VALE É DERIVADO, não uma coluna de estado que alguém precisa lembrar de virar: `contratoVigente` decide por data com desempate por versão, e a versão vive no NOME do arquivo. ⚠️ E A LACUNA BLOQUEIA: o arquivo cai numa gaveta com dois leitores que não são quem gerou, e o que os dois respeitam é o `tipo`, que é justamente o que pinta o selo de \"vale como prova\". Medido na proposta do ZZ TESTE: zero lacunas, a trava não fecha a porta. ⚠️ UM DEFEITO CALADO ACHADO PELO TESTE: o nome do arquivo lia `gerais.nome_cliente`, que NÃO EXISTE em `gerais` — `nome_cliente` é escrito por comprador, dentro do laço. O arquivo saía sem o nome de ninguém. ⚠️ MEDIDO COM CHROME LOCAL na proposta 641f22ac: 166.859 bytes, 4 páginas, ~2,5s, e a paginação bate com a prévia; forçando uma família só (simulando o lambda) dá as mesmas 4 páginas. ⚠️ E O `outputFileTracingIncludes` É POR ROTA: `/api/temis/contrato/gerar` importa o mesmo `gerarPdfDoHtml` mas sobe como outra função — sem a entrada dela o bundle vai sem os `.br` e a falha só aparece em produção. ⚠️ A FONTE: o `FontFamilyPlugin` do Plate só sabe PÔR (a transformação inteira é `addMark`; não há `removeMark` — conferido no dist), então a limpeza vai por `editor.tf.unsetNodes` com `at: []`, e o `match` procura pela PROP e não pelo tipo, porque o plugin é injetado nos parágrafos. Teste prova que negrito, tamanho e cor sobrevivem. E `lining-nums` não é declaração morta: a `georgia.ttf` do Windows 11 (5.59) declara `lnum`/`onum`/`pnum`/`tnum` no GSUB — medido no arquivo. ⚠️ O FINANCEIRO deixou de usar a lista fixa `ENTERPRISE_GROUPS` e passou a derivar do cadastro (`hercules_empreendimentos.pai_id`), com `codigosDoPedido` traduzindo o filtro — o mesmo caminho de Produtos, Venda e Contratos. Medido no C2X: os quatro registros do Vale do Ouro têm o `name` IDÊNTICO, e o chip do espelho abria vazio (VOC 13.242 parcelas, VOL 13.150, VOR 104, VLO 0). A assimetria do escopo está provada em teste: sessão com a divisão 37 recebe o produto com codes [VOC], nunca o grupo. ⚠️ OS BOLETOS: a chave virou `unidade + competência + SEQUÊNCIA` (migration 0146). `parcela_atual` foi medido e recusado — é NULO em 9 das 4.094 linhas, e nulo não colide em UNIQUE no Postgres, então a trava sumiria justamente ali; e no LSoft há 342 grupos com duas parcelas do mesmo cliente e lote no mesmo mês com o MESMO número de parcela. A sequência 1 não aparece na chave nem na referência do Asaas, senão as 315 cobranças de setembro deixariam de casar e voltariam para \"a emitir\". Três defeitos que teriam quebrado calados: a trava `emissao_iniciada_em` travava a UNIDADE (a entrada nunca emitiria), `apenasDaCompetencia` filtrava por `endsWith(\":2026-09\")` (a entrada some da listagem) e três scripts de carga — incluindo o mensal do Garden — usavam o `onConflict` antigo e parariam depois da migration. 3.340 testes verdes, typecheck limpo, build medido.",
+      motivation:
+        "A cadeia do contrato parava na prévia, o Vale do Ouro aparecia quatro vezes no Financeiro e duas parcelas no mesmo mês não cabiam na carteira.",
+    },
+    title: "O contrato que fica guardado",
+    type: "novidade",
+    version: "1.301.0",
+  },
+  {
     buildTag: "2026-09-08-comissao-coordenadora-e-vale-do-ouro",
     deployedAt: "2026-09-08T18:20:00-03:00",
     modules: [

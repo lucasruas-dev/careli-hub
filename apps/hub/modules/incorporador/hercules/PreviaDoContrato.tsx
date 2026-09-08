@@ -1,17 +1,18 @@
 "use client";
 
-import { AlertTriangle, FileText, Loader2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle2, ExternalLink, FileDown, FileText, Loader2, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { regrasParaATela } from "@/lib/temis/css-do-documento";
+import { contratoVigente } from "@/lib/temis/contrato-guardado";
 
 import { T } from "../tema";
 
 // A PRÉVIA DO CONTRATO NA TELA — a minuta preenchida com os dados da proposta.
 //
 // Lucas, 08/09/2026: *"eu havia falado que deveria ter um campo para visualização do contrato
-// preenchido, tipo uma prévia antes de enviar, isso foi construído?"*. Não estava: até esta manhã
+// preenchido, tipo uma prévia antes de enviar, isso foi construído?"*. Não estava: até aquela manhã
 // não existia motor nenhum, e as variáveis marcadas na minuta eram lidas só por auditoria.
 //
 // ⚠️ ESTA É A TELA DE CONFERÊNCIA, e é onde o erro sai barato. Um contrato errado descoberto aqui
@@ -30,6 +31,28 @@ import { T } from "../tema";
 // ⚠️ O QUE FALTA CONTINUA VISÍVEL NO CORPO, nos dois lugares: `[cpf_cliente]` sai impresso no texto,
 // como manda `preencherContrato`. O que muda é só o resumo do topo — quem lê o contrato inteiro vê
 // o buraco de qualquer jeito, que é o ponto.
+//
+// ── GERAR E GUARDAR (09/09/2026) ────────────────────────────────────────────
+//
+// ⚠️ O BOTÃO NÃO BAIXA UM ARQUIVO: ELE GUARDA. Um "baixar PDF" produziria um contrato que existe
+// só na pasta de downloads de quem clicou — e a pergunta seguinte ("cadê o contrato do Henrique?")
+// não teria resposta no sistema. O que este botão faz é gravar o documento na gaveta da venda
+// (`hercules_documentos`), de onde a aba Documentos, a ficha do cliente no Apolo e o card da Têmis
+// já sabem ler.
+//
+// ⚠️ ELE RECUSA COM VARIÁVEL EM BRANCO, e a recusa é do servidor — a tela só antecipa o motivo. Ver
+// a decisão medida em `lib/temis/contrato-guardado.ts`.
+//
+// ⚠️ E ELE DIZ QUE VAI CRIAR UMA VERSÃO NOVA ANTES DE CRIAR. Descobrir que se gerou a v2 depois de
+// gerada é a ordem errada de descobrir, num documento que vai a cartório.
+
+type ContratoGuardado = {
+  criadoEm: string;
+  id: string;
+  nome: string;
+  observacao?: null | string;
+  versao: null | number;
+};
 
 type Resposta = {
   avisos?: string[];
@@ -52,6 +75,10 @@ export function PreviaDoContrato({
 }) {
   const [carregando, setCarregando] = useState(true);
   const [resposta, setResposta] = useState<null | Resposta>(null);
+  const [guardados, setGuardados] = useState<ContratoGuardado[]>([]);
+  const [gerando, setGerando] = useState(false);
+  const [erroDaGeracao, setErroDaGeracao] = useState<null | string>(null);
+  const [gerado, setGerado] = useState<null | { id: string; nome: string; versao: number }>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -59,16 +86,33 @@ export function PreviaDoContrato({
       setCarregando(true);
       try {
         const token = await getApoloAccessToken();
-        const r = await fetch("/api/temis/contrato/previa", {
-          body: JSON.stringify({ propostaId }),
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          method: "POST",
-        });
-        const dados = (await r.json().catch(() => ({}))) as Resposta;
-        if (vivo) setResposta(dados);
+        const cabecalho = {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        };
+
+        // ⚠️ AS DUAS LEITURAS JUNTAS. Saber o que JÁ foi gerado é o que muda o texto do botão de
+        // "Gerar contrato" para "Gerar a versão 2" — e essa frase é a única chance de alguém parar
+        // antes de criar uma segunda folha por engano. Pedir depois faria o botão nascer mentindo.
+        const [previa, jaGuardados] = await Promise.all([
+          fetch("/api/temis/contrato/previa", {
+            body: JSON.stringify({ propostaId }),
+            headers: cabecalho,
+            method: "POST",
+          }),
+          fetch(`/api/temis/contrato/gerar?proposta=${encodeURIComponent(propostaId)}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          }),
+        ]);
+
+        const dados = (await previa.json().catch(() => ({}))) as Resposta;
+        const lista = (await jaGuardados.json().catch(() => ({}))) as {
+          data?: { contratos: ContratoGuardado[] };
+        };
+        if (vivo) {
+          setResposta(dados);
+          setGuardados(lista.data?.contratos ?? []);
+        }
       } catch (e) {
         // ⚠️ O MOTIVO CHEGA À TELA. Uma prévia que falha calada manda a pessoa tentar de novo sem
         // saber o que mudar — e foi exatamente o que custou duas rodadas de teste no agente da
@@ -85,8 +129,71 @@ export function PreviaDoContrato({
     };
   }, [propostaId]);
 
-  const semValor = comAvisos ? (resposta?.semValor ?? []) : [];
+  const gerar = useCallback(async () => {
+    setGerando(true);
+    setErroDaGeracao(null);
+    try {
+      const token = await getApoloAccessToken();
+      const r = await fetch("/api/temis/contrato/gerar", {
+        body: JSON.stringify({ propostaId }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        method: "POST",
+      });
+      const j = (await r.json().catch(() => ({}))) as {
+        data?: { documentoId: string; nome: string; versao: number };
+        erro?: string;
+      };
+      if (!r.ok || !j.data) throw new Error(j.erro ?? `Não foi possível gerar (${r.status}).`);
+
+      setGerado({ id: j.data.documentoId, nome: j.data.nome, versao: j.data.versao });
+      setGuardados((antes) => [
+        {
+          criadoEm: new Date().toISOString(),
+          id: j.data!.documentoId,
+          nome: j.data!.nome,
+          versao: j.data!.versao,
+        },
+        ...antes,
+      ]);
+    } catch (e) {
+      setErroDaGeracao(e instanceof Error ? e.message : "Não foi possível gerar o contrato.");
+    } finally {
+      setGerando(false);
+    }
+  }, [propostaId]);
+
+  /**
+   * ⚠️ A ABA É ABERTA ANTES DO `await` — a URL é assinada no servidor, e um `window.open` depois da
+   * ida e volta acontece fora do gesto do usuário: o navegador o bloqueia como pop-up e o clique
+   * "não faz nada".
+   */
+  const abrir = useCallback(async (documentoId: string) => {
+    const aba = window.open("", "_blank", "noopener,noreferrer");
+    try {
+      const token = await getApoloAccessToken();
+      const r = await fetch(
+        `/api/temis/contrato/gerar?documento=${encodeURIComponent(documentoId)}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      const j = (await r.json().catch(() => ({}))) as { data?: { url: string }; erro?: string };
+      if (!r.ok || !j.data?.url) throw new Error(j.erro ?? "Não foi possível abrir o contrato.");
+      if (aba) aba.location.href = j.data.url;
+      else window.location.href = j.data.url;
+    } catch (e) {
+      aba?.close();
+      setErroDaGeracao(e instanceof Error ? e.message : "Não foi possível abrir o contrato.");
+    }
+  }, []);
+
+  const semValor = resposta?.semValor ?? [];
+  const semValorVisivel = comAvisos ? semValor : [];
   const avisos = comAvisos ? (resposta?.avisos ?? []) : [];
+  const vigente = contratoVigente(guardados);
+  const proximaVersao = (vigente?.versao ?? guardados.length) + 1;
+  const podeGerar = !carregando && !resposta?.erro && Boolean(resposta?.html) && semValor.length === 0;
 
   return (
     <div
@@ -193,7 +300,7 @@ export function PreviaDoContrato({
             </p>
           ) : (
             <>
-              {semValor.length > 0 || avisos.length > 0 ? (
+              {semValorVisivel.length > 0 || avisos.length > 0 ? (
                 <div
                   style={{
                     background: T.dangerBg,
@@ -215,13 +322,13 @@ export function PreviaDoContrato({
                     <AlertTriangle aria-hidden="true" size={13} />
                     Confira antes de emitir
                   </div>
-                  {semValor.length > 0 ? (
+                  {semValorVisivel.length > 0 ? (
                     <p style={{ color: T.sub, fontSize: 11.5, margin: "6px 0 0" }}>
-                      {semValor.length === 1
+                      {semValorVisivel.length === 1
                         ? "1 variável ficou sem valor e saiu impressa no texto: "
-                        : `${semValor.length} variáveis ficaram sem valor e saíram impressas no texto: `}
+                        : `${semValorVisivel.length} variáveis ficaram sem valor e saíram impressas no texto: `}
                       <span style={{ fontFamily: "ui-monospace, monospace" }}>
-                        {semValor.join(", ")}
+                        {semValorVisivel.join(", ")}
                       </span>
                     </p>
                   ) : null}
@@ -259,6 +366,143 @@ export function PreviaDoContrato({
             </>
           )}
         </div>
+
+        {/* ── O RODAPÉ: GERAR E GUARDAR ─────────────────────────────────────
+            ⚠️ ELE FICA FORA DA ÁREA QUE ROLA. Um botão que só aparece no fim de 27 páginas é um
+            botão que ninguém acha — e o contrato não é lido de cima a baixo toda vez. */}
+        {resposta?.erro ? null : (
+          <div
+            style={{
+              borderTop: `1px solid ${T.border}`,
+              display: "grid",
+              gap: 8,
+              padding: "10px 16px 12px",
+            }}
+          >
+            {gerado ? (
+              <div
+                style={{
+                  alignItems: "flex-start",
+                  background: T.okBg,
+                  borderRadius: 10,
+                  color: T.ok,
+                  display: "flex",
+                  fontSize: 12,
+                  gap: 8,
+                  padding: "9px 11px",
+                }}
+              >
+                <CheckCircle2 aria-hidden="true" size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span style={{ minWidth: 0 }}>
+                  <b>Contrato guardado.</b> {gerado.nome}
+                  <span style={{ color: T.sub, display: "block", fontSize: 11.5 }}>
+                    Está na aba Documentos desta venda, na ficha do cliente no Apolo e no card da
+                    Têmis.
+                  </span>
+                </span>
+              </div>
+            ) : null}
+
+            {erroDaGeracao ? (
+              <p
+                style={{
+                  background: T.dangerBg,
+                  borderRadius: 10,
+                  color: T.danger,
+                  fontSize: 12,
+                  margin: 0,
+                  padding: "9px 11px",
+                }}
+              >
+                {erroDaGeracao}
+              </p>
+            ) : null}
+
+            {/* ⚠️ O QUE JÁ EXISTE APARECE ANTES DE SE GERAR MAIS UM — e continua aparecendo DEPOIS
+                de gerar. A primeira versão desta tela escondia o botão quando a geração acabava de
+                acontecer, e o efeito era o pior possível: a pessoa clicava "Gerar", lia "contrato
+                guardado" e não tinha como VER o papel que acabara de criar. */}
+            {vigente ? (
+              <button
+                onClick={() => void abrir(vigente.id)}
+                style={{
+                  alignItems: "center",
+                  background: "transparent",
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 8,
+                  color: T.text,
+                  cursor: "pointer",
+                  display: "flex",
+                  fontSize: 11.5,
+                  gap: 6,
+                  padding: "7px 10px",
+                  textAlign: "left",
+                }}
+                type="button"
+              >
+                <ExternalLink aria-hidden="true" size={12} style={{ flexShrink: 0 }} />
+                <span style={{ minWidth: 0 }}>
+                  {gerado ? "Abrir o contrato que acabou de sair" : "Abrir o contrato guardado"}
+                  {vigente.versao ? ` (versão ${vigente.versao})` : ""}
+                </span>
+              </button>
+            ) : null}
+
+            <button
+              disabled={!podeGerar || gerando}
+              onClick={() => void gerar()}
+              style={{
+                alignItems: "center",
+                background: podeGerar && !gerando ? T.gold : "transparent",
+                border: `1px solid ${podeGerar && !gerando ? T.gold : T.border}`,
+                borderRadius: 8,
+                color: podeGerar && !gerando ? "#1a1a1a" : T.muted,
+                cursor: podeGerar && !gerando ? "pointer" : "not-allowed",
+                display: "flex",
+                fontSize: 12.5,
+                fontWeight: 700,
+                gap: 7,
+                justifyContent: "center",
+                padding: "9px 12px",
+                width: "100%",
+              }}
+              title={
+                semValor.length > 0
+                  ? "O contrato tem campos em branco. Complete o cadastro ou a minuta antes de gerar."
+                  : undefined
+              }
+              type="button"
+            >
+              {gerando ? (
+                <Loader2 aria-hidden="true" className="animate-spin" size={13} />
+              ) : (
+                <FileDown aria-hidden="true" size={13} />
+              )}
+              {gerando
+                ? "Gerando o PDF…"
+                : guardados.length > 0
+                  ? `Gerar a versão ${proximaVersao} do contrato`
+                  : "Gerar e guardar o contrato"}
+            </button>
+
+            {/* ⚠️ O MOTIVO DA TRAVA, NA LÍNGUA DE QUEM ESTÁ OLHANDO. Na Têmis (comAvisos) os nomes
+                das variáveis são a pauta do dia; no portal eles não dizem nada a quem não mexe em
+                cadastro nem em minuta — ali o recado útil é quantos campos faltam e de quem é a
+                bola. Sem uma frase qualquer, o botão apagado vira "o sistema quebrou". */}
+            {semValor.length > 0 ? (
+              <p style={{ color: T.muted, fontSize: 11, margin: 0 }}>
+                {comAvisos
+                  ? `${semValor.length === 1 ? "1 variável está" : `${semValor.length} variáveis estão`} sem valor e o documento não pode ser gerado: ${semValor.join(", ")}.`
+                  : `${semValor.length === 1 ? "1 campo do contrato está" : `${semValor.length} campos do contrato estão`} em branco. A Têmis precisa completar o cadastro ou a minuta antes de o documento ser gerado.`}
+              </p>
+            ) : guardados.length > 0 && !gerado ? (
+              <p style={{ color: T.muted, fontSize: 11, margin: 0 }}>
+                Já existe contrato guardado. Gerar de novo cria uma versão nova; a anterior continua
+                na gaveta, marcada como substituída.
+              </p>
+            ) : null}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -10,17 +10,20 @@ import {
   type FiltroDoExtrato,
   type SituacaoDaParcela,
 } from "@/lib/apolo/incorporador/carteira-liquida";
-import {
-  codesDoRecorte,
-  empreendimentosDoPortal,
-} from "@/lib/apolo/incorporador/empreendimentos-do-portal";
-import { autorizar, codigosDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { codigosDoPedido } from "@/lib/apolo/incorporador/codigos-do-pedido";
+import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
+import { autorizar, codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
+import { produtosDoPortal } from "@/lib/apolo/incorporador/produtos-do-portal";
 import { numeroDaParcela } from "@/lib/apolo/numero-da-parcela";
 import { type DadosDoApolo, loadPoliticaComercial } from "@/lib/apolo/politica-comercial";
 import { type PoliticaDoEmpreendimento } from "@/lib/apolo/liquido-incorporador";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { getHadesDbPool } from "@/lib/guardian/db";
+import {
+  carregarCadastroDeEmpreendimentos,
+  type LinhaDoCadastro,
+} from "@/lib/hercules/cadastro";
 
 // A CARTEIRA DO INCORPORADOR: o bruto que a Careli administra e o LÍQUIDO que é dele.
 //
@@ -36,7 +39,7 @@ import { getHadesDbPool } from "@/lib/guardian/db";
 //   • `bruto`            — o resumo da carteira (mesma matemática do Hades, de propósito);
 //   • `liquido`          — a soma do líquido do incorporador (split real primeiro, fórmula depois);
 //   • `units`            — a carteira POR UNIDADE, já com o líquido de cada uma casado por id;
-//   • `empreendimentos`  — os empreendimentos da sessão (id + nome), para a tela montar o seletor;
+//   • `empreendimentos`  — os empreendimentos da sessão (id + nome + recortes), para o seletor;
 //   • `indicadores`      — os KPIs do BI de Gestão de Carteira, SÓ quando `?indicadores=1`.
 //
 // ⚠️ OS INDICADORES MORAM NESTA ROTA, e não numa sub-rota. Decisão documentada: os KPIs saem das
@@ -72,6 +75,22 @@ import { getHadesDbPool } from "@/lib/guardian/db";
 // ⚠️ A DECISÃO É DO COOKIE, NUNCA DA URL. Não existe `?modo=` nem `?boletos=`: quem diz se o link
 // de boleto por unidade atravessa é `sessao.tipo` (assinado). Para o incorporador o campo nem
 // existe no payload — a tela dele continua recebendo exatamente o que recebia.
+//
+// O SELETOR VEM DO CADASTRO DESDE 08/09/2026, e não mais da lista fixa em código. Lucas, olhando
+// o Financeiro do /comercial/gurgel: *"ainda continua aparecendo 4 vale do ouro. por favor revisa
+// isso, não pode ter esses, o conceito de pai e filho tem que ficar muito bem definido"* — e o
+// modelo: *"o pai é que organiza tudo, os filhos vêm do pai. o filho é um recorte do pai"*.
+//
+// O Financeiro era a ÚNICA aba do portal comercial que ainda montava os chips com
+// `empreendimentosDoPortal(catalogo, …)`, que agrupa por `ENTERPRISE_GROUPS` (lista fixa em
+// `lib/guardian/c2x-analytics.ts`); Produtos, Venda e Contratos já derivam de
+// `hercules_empreendimentos.pai_id`. Como os QUATRO registros do Vale do Ouro têm o `name`
+// idêntico no C2X ("VALE DO OURO": 35 VLO, 36 VOL, 37 VOC, 41 VOR), o que sobrava fora da lista
+// virava chip repetido — e o do espelho abria VAZIO (medido em 08/09/2026: VOC 13.242 parcelas em
+// carteira ativa, VOL 13.150, VOR 104, VLO ZERO). Agora quem agrupa é `produtosDoPortal`, pelas
+// MESMAS primitivas do painel de Produtos, e o `?code=` é resolvido por `codigosDoPedido` — o
+// tradutor que as rotas de vendas, assinaturas e contratos já usam, e que entende os três
+// formatos ("pai:<uuid>", id numérico do filho, id do catálogo).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -367,22 +386,61 @@ export async function GET(request: Request) {
   // se monta, e é só DENTRO dela que o pedido da tela consegue escolher.
   const codesAutorizados = await codigosDaSessao(auth.sessao);
   const catalogo = await catalogoDeEmpreendimentos(Date.now());
-  const empreendimentos = empreendimentosDoPortal(catalogo, codesAutorizados);
+  const doCatalogo = empreendimentosDoPortal(catalogo, codesAutorizados);
+
+  // ⚠️ O CADASTRO É ENRIQUECIMENTO, O ESCOPO NÃO (a mesma regra da rota do painel de Produtos).
+  // Cadastro fora do ar degrada para a lista do catálogo — a tela de antes, com o Vale do Ouro
+  // repetido — em vez de derrubar o Financeiro inteiro. Quem recorta continua sendo o cookie.
+  const [cadastro, permitidos] = await Promise.all([
+    carregarCadastroDeEmpreendimentos().catch((): LinhaDoCadastro[] => []),
+    idsDaSessao(auth.sessao),
+  ]);
+
+  const produtos = produtosDoPortal({
+    cadastro,
+    catalogo,
+    codesAutorizados,
+    doCatalogo,
+    permitidos: new Set(permitidos),
+  });
 
   // Código da divisão interna -> nome de mercado. É com este mapa que a unidade e o extrato saem
   // rotulados com o empreendimento que o cliente conhece, nunca com a divisão da Careli.
+  //
+  // ⚠️ O NOME É O DO PAI, e por isso o cadastro escreve por CIMA do catálogo: a unidade do Cecílio
+  // sai como "Vale do Ouro", nunca como "Vale do Ouro · VOC". O catálogo entra primeiro como base
+  // para nenhum código ficar sem rótulo — inclusive o do espelho, que o cadastro consome.
   const nomePorCode = new Map<string, string>();
-  for (const emp of empreendimentos) {
+  for (const emp of doCatalogo) {
     for (const code of emp.codes) nomePorCode.set(code.toUpperCase(), emp.nome);
   }
+  for (const produto of produtos) {
+    for (const code of produto.codes) nomePorCode.set(code.toUpperCase(), produto.nome);
+  }
 
-  // O filtro só ESTREITA. Primeiro tenta como id do seletor (o mesmo formato da rota de vendas,
-  // inclusive "group:…"); se não casar, tenta como id de empreendimento da sessão (o formato
-  // antigo, que a rota sempre aceitou). Nos dois caminhos o resultado é subconjunto da sessão.
-  let codes = codesAutorizados;
+  // O filtro só ESTREITA, e a tradução mora em `codigosDoPedido` — o MESMO tradutor das rotas de
+  // vendas, assinaturas e contratos. Ele entende os três formatos que o seletor pode mandar:
+  // "pai:<uuid>" (o produto do cadastro), o id numérico do C2X (o recorte escolhido dentro dele) e
+  // o id do catálogo ("group:…", "35" — o formato antigo, que um link guardado ainda usa). Nos
+  // três o resultado é subconjunto da sessão: a expansão cruza com `idsDaSessao` e o código ainda
+  // é cruzado com `codesAutorizados`.
+  // ⚠️ "TODOS" É A SOMA DOS PRODUTOS, e não a lista crua de códigos: o espelho que um pai já
+  // consumiu (o VLO, quando VOC/VOL/VOR estão no escopo) fica de fora, porque somar pai e filhos
+  // é contar o mesmo loteamento duas vezes. Medido em 08/09/2026, o número de hoje não se mexe —
+  // o VLO tem ZERO parcelas em carteira ativa —, mas o consolidado do Apolo já foi mordido
+  // exatamente por isso (4.560 unidades onde o certo eram 4.262), e aqui o modelo fica fechado.
+  // Sem cadastro, `produtos` é a lista do catálogo e a soma volta a ser a de antes.
+  let codes = [...new Set(produtos.flatMap((produto) => produto.codes))];
   if (filtro) {
-    const porSeletor = codesDoRecorte(empreendimentos, filtro);
-    codes = porSeletor.length > 0 ? porSeletor : await codigosDaSessao(auth.sessao, filtro);
+    const resolvido = await codigosDoPedido({
+      catalogo,
+      codesAutorizados,
+      empreendimentos: doCatalogo,
+      pedido: filtro,
+      sessao: auth.sessao,
+    });
+    if (!resolvido.ok) return resolvido.response;
+    codes = resolvido.codes;
   }
 
   // Pedido que não sobra nada = o cliente pediu empreendimento que não é dele. Devolve vazio, e
@@ -493,8 +551,14 @@ export async function GET(request: Request) {
         // O que a Careli administra: contratos, inadimplência, a receber. É o mesmo número da
         // tela interna, de propósito — carteira que diverge entre nós e o cliente vira reunião.
         bruto: bruta.data.summary,
-        // O seletor da tela. `id` é o que volta em `?code` para estreitar a visão.
-        empreendimentos: empreendimentos.map((emp) => ({ id: emp.id, nome: emp.nome })),
+        // O seletor da tela: um produto (o PAI) por chip, com os recortes dentro. `id` é o que
+        // volta em `?code` para estreitar a visão — "pai:<uuid>" no produto, o id do C2X no
+        // recorte, e os dois passam por `codigosDoPedido` na volta.
+        empreendimentos: produtos.map((produto) => ({
+          filhos: produto.filhos.map((filho) => ({ id: filho.id, nome: filho.nome })),
+          id: produto.id,
+          nome: produto.nome,
+        })),
         filtro,
         // Os KPIs do BI de Gestão de Carteira (só com `?indicadores=1`). Percentuais já em 0–100.
         indicadores: liquida.ok ? liquida.data.indicadores : null,

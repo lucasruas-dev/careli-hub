@@ -9,9 +9,16 @@
 // de setembro nunca foi gerada: por isso a aba abriu com "A EMITIR R$ 0,00" enquanto o dado estava
 // no banco o tempo todo. É o mesmo desenho do Garden e do Vale do Sol, que já têm as suas.
 //
-// ⚠️ A UNIDADE É A CHAVE DA COBRANÇA (unique de workspace + empreendimento + unidade + competência),
-// e aqui ela mora em TEXTO LIVRE: a coluna `quadra` do espelho está NULA em 6 das 11 parcelas de
-// setembro porque o importador não reconheceu a grafia. A quadra sai de `observacoes`.
+// ⚠️ A UNIDADE É A CHAVE DA COBRANÇA (unique de workspace + empreendimento + unidade + competência
+// + SEQUÊNCIA, desde a 0146), e aqui ela mora em TEXTO LIVRE: a coluna `quadra` do espelho está
+// NULA em 6 das 11 parcelas de setembro porque o importador não reconheceu a grafia. A quadra sai
+// de `observacoes`.
+//
+// ⚠️ DUAS PARCELAS NA MESMA UNIDADE AGORA CABEM, E CONTINUAM SENDO UM FATO A CONFERIR. O LUCAS
+// AGUIAR SOARES (Q10 L03) tem a mensal de R$ 1.666,67 no dia 10 e a ENTRADA de R$ 8.750,00 no dia
+// 20, as duas em setembro/2026 — pedido do Lucas (08/09/2026): *"Cria duas linhas vou verificar,
+// ae se for o caso fazemos emissão separado"*. Elas entram com sequências 1 e 2 e SAEM LISTADAS na
+// tela do script: duas cobranças para a mesma pessoa no mesmo mês é coisa que alguém precisa ver.
 //
 // ⚠️ "QUADRA P10" É A QUADRA 10, e isto foi CONFERIDO, não deduzido: cruzando as dez unidades desta
 // carteira com a planilha de lotes do Vitor, as dez batem uma a uma (LUCAS AGUIAR Q10-L3, RAMON
@@ -103,7 +110,8 @@ function loteDaLinha(p) {
 }
 
 const linhas = [];
-const conflitos = new Map();
+/** unidade -> as parcelas dela nesta competência. Mais de uma = duas cobranças no mesmo mês. */
+const porUnidade = new Map();
 
 for (const p of parcelas ?? []) {
   const cliente = porCodigo.get(p.cliente_codigo);
@@ -131,35 +139,74 @@ for (const p of parcelas ?? []) {
   };
 
   const chave = `${linha.unidade}`;
-  if (!conflitos.has(chave)) conflitos.set(chave, []);
-  conflitos.get(chave).push(linha);
+  if (!porUnidade.has(chave)) porUnidade.set(chave, []);
+  porUnidade.get(chave).push(linha);
   linhas.push(linha);
+}
+
+/**
+ * O rótulo que a tela mostra ao lado da unidade quando há mais de uma cobrança no mês.
+ *
+ * ⚠️ SAI DO TEXTO LIVRE DO LSOFT, e é a única fonte que existe. `observacoes` traz "LOTE: 3 QUADRA
+ * P10 VALE DO OURO ENTRADA" na parcela de R$ 8.750,00 e "... 60X 1666,67" na mensal. Deduzir da
+ * contagem seria adivinhar: "3 de 4" não diz por si que é entrada.
+ *
+ * ⚠️ NULO QUANDO A UNIDADE TEM UMA SÓ. Rótulo em linha que não disputa nada é ruído, e ruído em
+ * tela de cobrança é o que faz o operador parar de ler os avisos.
+ */
+function rotuloDaLinha(linha, quantasNaUnidade) {
+  if (quantasNaUnidade < 2) return null;
+  const obs = linha.observacoes.toUpperCase();
+  if (/\bENTRADA\b/.test(obs)) return "Entrada";
+  if (/\bSINAL\b/.test(obs)) return "Sinal";
+  if (/\bINTERCALADA\b/.test(obs)) return "Intercalada";
+  if (/\bANUAL\b/.test(obs)) return "Anual";
+  return "Mensal";
+}
+
+// ⚠️ A SEQUÊNCIA NASCE AQUI, E A ORDEM É A DO VENCIMENTO. Ela é o discriminador da chave única: a
+// mensal do dia 10 fica com 1 e a entrada do dia 20 com 2. Ordenar por vencimento (e por valor
+// quando o dia empata) faz a mesma carga rodada duas vezes atribuir as MESMAS sequências — sem
+// isso, a segunda rodada trocaria as duas de lugar e o upsert escreveria o valor de uma na outra.
+for (const [, doGrupo] of porUnidade) {
+  doGrupo.sort((a, b) => a.vencimentoDia - b.vencimentoDia || a.valor - b.valor);
+  doGrupo.forEach((linha, i) => {
+    linha.sequencia = i + 1;
+    linha.rotulo = rotuloDaLinha(linha, doGrupo.length);
+  });
 }
 
 console.log(`\nCARTEIRA ${EMPREENDIMENTO} · competência ${competencia}`);
 console.log(`${linhas.length} parcelas, ${codigos.length} clientes.\n`);
 
 console.log("UNIDADE     CLIENTE                          VALOR         VENC  PARC     CPF");
-for (const l of linhas.sort((a, b) => a.unidade.localeCompare(b.unidade))) {
+for (const l of linhas.sort(
+  (a, b) => a.unidade.localeCompare(b.unidade) || a.sequencia - b.sequencia,
+)) {
   console.log(
     `${(l.unidade || "(SEM UNIDADE)").padEnd(11)} ${l.nome.slice(0, 30).padEnd(32)} ` +
       `${("R$ " + l.valor.toFixed(2)).padStart(12)}  dia ${String(l.vencimentoDia).padStart(2)}  ` +
       `${String(l.parcelaAtual).padStart(3)}/${String(l.totalParcelas).padEnd(3)} ` +
       `${l.documento ? l.documento.length === 11 ? "CPF ok" : "CNPJ" : "SEM DOC"}` +
-      `${l.contato ? "" : "  SEM CONTATO"}`,
+      `${l.contato ? "" : "  SEM CONTATO"}` +
+      `${l.rotulo ? `  [${l.rotulo} · seq ${l.sequencia}]` : ""}`,
   );
 }
 
-// ⚠️ A UNICIDADE É (workspace, empreendimento, unidade, competência): duas parcelas da MESMA
-// unidade no mesmo mês não cabem na tabela, e escolher uma delas sozinho seria decidir quanto
-// cobrar. Estas saem separadas para alguém decidir.
-const duplicadas = [...conflitos.entries()].filter(([, v]) => v.length > 1);
+// ⚠️ AS DUAS ENTRAM, E CONTINUAM SENDO UM FATO VISÍVEL. A chave única ganhou `sequencia` na 0146,
+// então a mensal e a entrada da mesma unidade cabem — mas duas cobranças para a mesma pessoa no
+// mesmo mês é exatamente o que a trava existe para NÃO acontecer por acidente. Gravar em silêncio
+// seria trocar um erro barulhento por um erro calado.
+const duplicadas = [...porUnidade.entries()].filter(([, v]) => v.length > 1);
 if (duplicadas.length > 0) {
-  console.log("\n⚠️ MAIS DE UMA PARCELA NA MESMA UNIDADE — não cabem as duas, decida qual emitir:");
+  console.log("\n⚠️ MAIS DE UMA COBRANÇA NA MESMA UNIDADE — as duas entram, CONFIRA se é isso:");
   for (const [unidade, itens] of duplicadas) {
     console.log(`  ${unidade} · ${itens[0].nome}`);
     for (const i of itens) {
-      console.log(`     R$ ${i.valor.toFixed(2)} · vence dia ${i.vencimentoDia} · ${i.observacoes}`);
+      console.log(
+        `     seq ${i.sequencia} · ${String(i.rotulo ?? "—").padEnd(11)} · ` +
+          `R$ ${i.valor.toFixed(2)} · vence dia ${i.vencimentoDia} · ${i.observacoes}`,
+      );
     }
   }
 }
@@ -174,24 +221,26 @@ if (!gravar) {
   process.exit(0);
 }
 
-// ⚠️ O CONFLITO NÃO TRAVA A CARTEIRA INTEIRA, mas também não se resolve sozinho. Com
-// `--pular-conflitos` as unidades limpas entram e as disputadas ficam de fora, LISTADAS: assim
-// nove clientes recebem no dia certo enquanto um caso espera decisão humana. Sem a flag, nada
-// entra — porque gravar metade em silêncio é o jeito de a outra metade ser esquecida.
+// ⚠️ `--pular-conflitos` VIROU ESCAPE, E NÃO O CAMINHO NORMAL. Antes da 0146 a segunda parcela não
+// cabia na tabela e a flag era o que deixava as nove unidades limpas entrarem enquanto a disputada
+// esperava decisão humana. Agora as duas entram; a flag continua existindo para quem quiser gravar
+// só o incontroverso — e, se usada, diz em voz alta o que ficou de fora.
 const pularConflitos = process.argv.includes("--pular-conflitos");
-const unidadesEmConflito = new Set(duplicadas.map(([unidade]) => unidade));
-
-if (duplicadas.length > 0 && !pularConflitos) {
-  console.log("\nNÃO GRAVEI: resolva as unidades com mais de uma parcela, ou use --pular-conflitos.");
-  process.exit(1);
-}
+const unidadesEmConflito = new Set(
+  pularConflitos ? duplicadas.map(([unidade]) => unidade) : [],
+);
 
 const aGravar = linhas.filter((l) => !unidadesEmConflito.has(l.unidade));
 
 if (unidadesEmConflito.size > 0) {
   console.log(
-    `\nDeixando de fora ${unidadesEmConflito.size} unidade(s) em conflito: ` +
-      [...unidadesEmConflito].join(", "),
+    `\n--pular-conflitos: deixando de fora ${unidadesEmConflito.size} unidade(s) com mais de uma ` +
+      `cobrança: ${[...unidadesEmConflito].join(", ")}`,
+  );
+} else if (duplicadas.length > 0) {
+  console.log(
+    `\nGravando as ${duplicadas.reduce((a, [, v]) => a + v.length, 0)} cobranças das ` +
+      `${duplicadas.length} unidade(s) acima — cada uma com a sua sequência.`,
   );
 }
 
@@ -202,6 +251,8 @@ const paraParcelas = aGravar.map((l) => ({
   nome: l.nome,
   origem: "lsoft",
   parcela_atual: l.parcelaAtual,
+  rotulo: l.rotulo,
+  sequencia: l.sequencia,
   total_parcelas: l.totalParcelas,
   unidade: l.unidade,
   unidade_incerta: l.unidadeIncerta,
@@ -210,22 +261,36 @@ const paraParcelas = aGravar.map((l) => ({
   workspace_id: l.workspace,
 }));
 
+// ⚠️ O `onConflict` PRECISA SER A CHAVE ÚNICA INTEIRA. Com a lista antiga (sem `sequencia`) o
+// PostgREST não acha o índice e devolve erro; pior seria se achasse um índice parcial, porque aí a
+// segunda cobrança entraria como linha nova a cada rodada.
 const { error: erroGravar } = await sb
   .from("boletos_parcelas")
-  .upsert(paraParcelas, { onConflict: "workspace_id,empreendimento,unidade,competencia" });
+  .upsert(paraParcelas, {
+    onConflict: "workspace_id,empreendimento,unidade,competencia,sequencia",
+  });
 if (erroGravar) throw new Error(`boletos_parcelas: ${erroGravar.message}`);
 
 // O documento é da PESSOA e vive por unidade — é o que o boleto usa como pagador.
-const paraDocumentos = aGravar
-  .filter((l) => l.unidade && l.documento)
-  .map((l) => ({
+//
+// ⚠️ UMA LINHA POR UNIDADE, E ISSO DEIXOU DE SER AUTOMÁTICO. Com duas cobranças na mesma unidade, o
+// `map` direto produz o MESMO cadastro duas vezes no mesmo upsert, e o Postgres recusa o lote
+// inteiro: "ON CONFLICT DO UPDATE command cannot affect row a second time". Não é aviso, é a carga
+// não acontecendo.
+const cadastroPorUnidade = new Map();
+for (const l of aGravar) {
+  if (!l.unidade || !l.documento) continue;
+  if (cadastroPorUnidade.has(l.unidade)) continue;
+  cadastroPorUnidade.set(l.unidade, {
     contato: l.contato,
     documento: l.documento,
     empreendimento: l.empreendimento,
     nome: l.nome,
     unidade: l.unidade,
     workspace_id: l.workspace,
-  }));
+  });
+}
+const paraDocumentos = [...cadastroPorUnidade.values()];
 
 const { error: erroDocs } = await sb
   .from("boletos_documentos")

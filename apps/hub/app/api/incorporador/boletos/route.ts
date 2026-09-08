@@ -31,7 +31,9 @@ import {
 } from "@/lib/apolo/boletos/disparo";
 import { empreendimentoPorSlug } from "@/lib/apolo/boletos/empreendimentos";
 import {
+  chaveDaParcela,
   divergenciasDeNome,
+  lerChaveDaParcela,
   loteDaCompetencia,
   parcelasDaCompetencia,
 } from "@/lib/apolo/boletos/parcelas";
@@ -88,6 +90,24 @@ function intervaloDaCompetencia(competencia: string): { fim: string; inicio: str
 }
 
 /**
+ * A chave com que os dois lados se acham: a parcela no banco e a cobrança que voltou do Asaas.
+ *
+ * ⚠️ NORMALIZA A UNIDADE, E DEPOIS ACRESCENTA A SEQUÊNCIA. A referência da cobrança troca espaço
+ * por hífen (`Q07 L24` → `Q07-L24`) e 235 das 315 unidades de setembro têm espaço — ver
+ * `chaveDeUnidade`. A sequência entra por último, e só a partir da segunda: assim as cobranças já
+ * emitidas continuam casando pelo mesmo texto de antes.
+ */
+function chaveDeCasamento(
+  empreendimento: string,
+  unidade: null | string | undefined,
+  sequencia?: null | number,
+): string {
+  const seq = Number(sequencia ?? 1);
+  const sufixo = Number.isInteger(seq) && seq > 1 ? `#${seq}` : "";
+  return `${empreendimento}|${chaveDeUnidade(unidade)}${sufixo}`;
+}
+
+/**
  * A cobrança está vencida?
  *
  * ⚠️ O STATUS DO ASAAS MANDA. Ele conhece o feriado e a compensação; derivar só da data marcaria como
@@ -122,11 +142,17 @@ export async function GET(request: Request) {
   // ⚠️ Chamada à parte, e não junto da listagem: o histórico exige uma consulta por unidade mais a
   // leitura do status de entrega, e carregá-lo para as 11 linhas de uma vez transformaria a abertura
   // da tela em dezenas de consultas para responder algo que ninguém pediu ainda.
+  // ⚠️ O PARÂMETRO É A CHAVE DA PARCELA, e não a unidade: `Q10 L03` ou `Q10 L03#2`. O evento é
+  // gravado com a mesma chave, então a entrada e a mensal têm históricos separados — "mandei o
+  // link" precisa dizer QUAL boleto foi. O cadastro, esse continua sendo achado pela UNIDADE: o CPF
+  // é da pessoa, e as duas cobranças são do mesmo comprador.
   const historicoDe = (url.searchParams.get("historico") ?? "").trim();
   if (historicoDe) {
     const doEmpreendimento = (url.searchParams.get("empreendimento") ?? "").trim().toLowerCase();
     // A mesma trava do POST: sessão de um portal não lê o histórico da carteira de outro.
     if (!portalPodeEmitir(auth.sessao.slug, doEmpreendimento)) return fora();
+
+    const daChave = lerChaveDaParcela(historicoDe);
 
     const [eventos, documentos] = await Promise.all([
       historicoDoBoleto({
@@ -137,7 +163,7 @@ export async function GET(request: Request) {
       documentosDoEmpreendimento(doEmpreendimento),
     ]);
 
-    const cadastro = documentos.get(historicoDe);
+    const cadastro = documentos.get(daChave.unidade);
     return NextResponse.json(
       {
         data: {
@@ -270,6 +296,11 @@ export async function GET(request: Request) {
 
     return {
       bloqueio,
+      // ⚠️ É POR ELA QUE A LINHA É SELECIONADA, EDITADA E EMITIDA — a unidade sozinha já não
+      // identifica a cobrança onde há duas no mesmo mês. Ver `chaveDaParcela`.
+      chave: p.chave,
+      rotulo: p.rotulo,
+      sequencia: p.sequencia,
       // ⚠️ O CPF veio do cadastro de OUTRA unidade da mesma pessoa: a tela avisa, para o operador
       // conferir antes de emitir em vez de descobrir depois.
       documentoHerdado,
@@ -303,7 +334,8 @@ export async function GET(request: Request) {
     (a, b) =>
       a.empreendimento.localeCompare(b.empreendimento) ||
       (a.vencimentoDia ?? 99) - (b.vencimentoDia ?? 99) ||
-      a.unidade.localeCompare(b.unidade, "pt-BR", { numeric: true }),
+      a.unidade.localeCompare(b.unidade, "pt-BR", { numeric: true }) ||
+      a.sequencia - b.sequencia,
   );
 
   // O QUE JÁ FOI EMITIDO, direto do Asaas.
@@ -319,8 +351,10 @@ export async function GET(request: Request) {
   // ⚠️ INDEXADO PELA CHAVE NORMALIZADA. A referência da cobrança volta com hífen no lugar do
   // espaço; comparar cru deixaria 235 das 315 unidades sem casar. Ver `chaveDeUnidade`.
   const porChave = new Map(
-    parcelas.map((p) => [`${p.empreendimento}|${chaveDeUnidade(p.unidade)}`, p]),
+    parcelas.map((p) => [chaveDeCasamento(p.empreendimento, p.unidade, p.sequencia), p]),
   );
+  // ⚠️ OS DOCUMENTOS SÃO POR UNIDADE, SEM SEQUÊNCIA. O CPF é da pessoa: as duas cobranças da mesma
+  // unidade apontam para o MESMO cadastro, e é assim que tem de ser.
   const documentosPorChave = new Map(
     [...documentos].map(([k, v]) => {
       const [emp, uni] = k.split("|");
@@ -347,9 +381,16 @@ export async function GET(request: Request) {
       const cadastro = documentosPorChave.get(`${ref.empreendimento}|${chaveDeUnidade(ref.unidade)}`);
       const pagamento = c.paymentDate ?? c.clientPaymentDate ?? null;
 
-      const parcela = porChave.get(`${ref.empreendimento}|${chaveDeUnidade(ref.unidade)}`);
+      const parcela = porChave.get(
+        chaveDeCasamento(ref.empreendimento, ref.unidade, ref.sequencia),
+      );
 
       boletos.push({
+        // A chave da parcela, para a tela agir sobre ESTA cobrança e não sobre a outra da mesma
+        // unidade. Vem da parcela quando ela existe (grafia com espaço); da referência, se não.
+        chave:
+          parcela?.chave ??
+          chaveDaParcela({ sequencia: ref.sequencia, unidade: ref.unidade }),
         cobranca: c.id,
         // ⚠️ O TELEFONE INTEIRO, e não mascarado: é o campo que o operador confere quando o cliente
         // diz que não recebeu, e mascarado ele não serve para nada. Pedido do Lucas (01/09/2026):
@@ -361,6 +402,9 @@ export async function GET(request: Request) {
         link: c.bankSlipUrl ?? c.invoiceUrl ?? null,
         nome: cadastro?.nome ?? c.description ?? "(sem cadastro)",
         pagamento,
+        // O recado que distingue as duas cobranças da mesma unidade ("Mensal", "Entrada").
+        rotulo: parcela?.rotulo ?? null,
+        sequencia: ref.sequencia,
         situacao: c.status,
         // A unidade como está no banco (com espaço), não a da referência (com hífen).
         unidade: parcela?.unidade ?? ref.unidade,
@@ -378,19 +422,24 @@ export async function GET(request: Request) {
     (a, b) =>
       a.empreendimento.localeCompare(b.empreendimento) ||
       a.vencimento.localeCompare(b.vencimento) ||
-      a.unidade.localeCompare(b.unidade, "pt-BR", { numeric: true }),
+      a.unidade.localeCompare(b.unidade, "pt-BR", { numeric: true }) ||
+      a.sequencia - b.sequencia,
   );
 
-  // ⚠️ A UNIDADE QUE JÁ TEM BOLETO SAI DA LISTA DE "A EMITIR". Sem isto ela apareceria nos dois
+  // ⚠️ A PARCELA QUE JÁ TEM BOLETO SAI DA LISTA DE "A EMITIR". Sem isto ela apareceria nos dois
   // lados e o contador diria que faltam onze quando já saíram onze.
-  const emitidas = new Set(boletos.map((b) => `${b.empreendimento}|${b.unidade}`));
+  //
+  // ⚠️ E É POR PARCELA, NÃO POR UNIDADE. Com a chave só na unidade, emitir a mensal do Lucas
+  // Aguiar tiraria a ENTRADA da lista junto — ela sumiria da tela sem nunca ter sido cobrada, que é
+  // o modo silencioso de esquecer R$ 8.750,00.
+  const emitidas = new Set(boletos.map((b) => `${b.empreendimento}|${b.chave}`));
 
   return NextResponse.json(
     {
       data: {
         aEmitir: aEmitir.map((p) => ({
           ...p,
-          jaEmitido: emitidas.has(`${p.empreendimento}|${p.unidade}`),
+          jaEmitido: emitidas.has(`${p.empreendimento}|${p.chave}`),
         })),
         boletos,
         carteiras,
@@ -435,9 +484,24 @@ type Corpo = {
   competencia?: unknown;
   confirmar?: unknown;
   empreendimento?: unknown;
-  /** As unidades a emitir ou enviar. Ausente = todas as da carteira do mês. */
+  /**
+   * As parcelas a emitir ou enviar. Ausente = todas as da carteira do mês.
+   *
+   * ⚠️ SÃO CHAVES DE PARCELA, E NÃO UNIDADES CRUAS — `Q10 L03` ou `Q10 L03#2`. Quem manda a unidade
+   * crua continua acertando a primeira cobrança dela, que é o que a unidade sempre significou aqui.
+   * Ver `chaveDaParcela`.
+   */
   unidades?: unknown;
 };
+
+/** A primeira chave do corpo, já partida em unidade e sequência. */
+function chavePedida(corpo: Corpo): null | { chave: string; sequencia: number; unidade: string } {
+  const bruta = Array.isArray(corpo.unidades)
+    ? String((corpo.unidades as unknown[])[0] ?? "").trim()
+    : "";
+  if (!bruta) return null;
+  return { chave: bruta, ...lerChaveDaParcela(bruta) };
+}
 
 export async function POST(request: Request) {
   const auth = autorizar(request);
@@ -476,12 +540,11 @@ export async function POST(request: Request) {
   // ⚠️ CANCELAR NÃO DESFAZ O QUE O CLIENTE JÁ VIU. O boleto pode estar no aplicativo do banco ou
   // agendado; o cancelamento impede o pagamento futuro, e quem cancela precisa avisar a pessoa.
   if (String(corpo.acao ?? "") === "cancelar") {
-    const unidade = Array.isArray(corpo.unidades)
-      ? String((corpo.unidades as unknown[])[0] ?? "").trim()
-      : "";
-    if (!unidade) {
+    const pedida = chavePedida(corpo);
+    if (!pedida) {
       return NextResponse.json({ error: "informe a unidade a cancelar" }, { status: 400 });
     }
+    const unidade = pedida.chave;
 
     const cobrancas = await listarCobrancas(conta, intervaloDaCompetencia(competencia));
     if (!cobrancas.ok) {
@@ -491,9 +554,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // ⚠️ A SEQUÊNCIA ENTRA NA COMPARAÇÃO. Sem ela, cancelar a entrada acharia a MENSAL — as duas
+    // são da mesma unidade — e o operador cancelaria a cobrança errada acreditando ter cancelado a
+    // que pediu. Cancelamento não tem desfazer.
     const alvo = apenasDaCompetencia(cobrancas.data, competencia).find((c) => {
       const ref = lerReferencia(c.externalReference);
-      return ref?.empreendimento === slug && chaveDeUnidade(ref.unidade) === chaveDeUnidade(unidade);
+      return (
+        ref?.empreendimento === slug &&
+        chaveDeCasamento(slug, ref.unidade, ref.sequencia) ===
+          chaveDeCasamento(slug, pedida.unidade, pedida.sequencia)
+      );
     });
 
     if (!alvo) {
@@ -556,10 +626,13 @@ export async function POST(request: Request) {
   // ⚠️ RECUSA SE JÁ HÁ BOLETO EMITIDO. A cobrança no Asaas guarda a unidade ANTIGA na referência;
   // renomear aqui deixaria o boleto emitido órfão — sem histórico, sem reenvio e sem cancelamento.
   // Cancele a cobrança, renomeie e emita de novo.
+  //
+  // ⚠️ RENOMEIA A UNIDADE INTEIRA, E NÃO UMA PARCELA. Onde há duas cobranças no mesmo mês (a mensal
+  // e a entrada), as duas são do mesmo lote físico e do mesmo comprador: mover só uma criaria uma
+  // unidade fantasma com metade da dívida. Por isso a chave que chega é partida e só a UNIDADE é
+  // usada aqui.
   if (String(corpo.acao ?? "") === "renomear") {
-    const de = Array.isArray(corpo.unidades)
-      ? String((corpo.unidades as unknown[])[0] ?? "").trim()
-      : "";
+    const de = chavePedida(corpo)?.unidade ?? "";
     const para = String((corpo as { unidadeNova?: unknown }).unidadeNova ?? "")
       .replace(/\s+/g, " ")
       .trim();
@@ -587,6 +660,8 @@ export async function POST(request: Request) {
 
     const cobrancas = await listarCobrancas(conta, intervaloDaCompetencia(competencia));
     if (cobrancas.ok) {
+      // Qualquer uma das cobranças da unidade barra o rename: todas guardam o nome ANTIGO na
+      // referência, e renomear deixaria as duas órfãs.
       const jaEmitida = apenasDaCompetencia(cobrancas.data, competencia).some((c) => {
         const ref = lerReferencia(c.externalReference);
         return ref?.empreendimento === slug && chaveDeUnidade(ref.unidade) === chaveDeUnidade(de);
@@ -619,13 +694,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ de, ok: true, para, unidade: para });
   }
 
+  // ⚠️ DOIS DESTINOS, E A CHAVE DE CADA UM É DIFERENTE. Documento, nome e telefone vão para
+  // `boletos_documentos`, que é por UNIDADE — o CPF é da pessoa, e as duas cobranças de um mês são
+  // do mesmo comprador. Valor, vencimento e parcela vão para `boletos_parcelas`, que agora é por
+  // unidade E SEQUÊNCIA: corrigir o valor da entrada não pode mexer no da mensal.
   if (String(corpo.acao ?? "") === "cadastro") {
-    const unidade = Array.isArray(corpo.unidades)
-      ? String((corpo.unidades as unknown[])[0] ?? "").trim()
-      : "";
-    if (!unidade) {
+    const pedida = chavePedida(corpo);
+    if (!pedida) {
       return NextResponse.json({ error: "informe a unidade" }, { status: 400 });
     }
+    const unidade = pedida.unidade;
+    const sequencia = pedida.sequencia;
 
     const c = corpo as {
       documento?: unknown;
@@ -660,7 +739,7 @@ export async function POST(request: Request) {
       }
 
       const daCompetencia = await parcelasDaCompetencia({ competencia, empreendimentos: [slug] });
-      const parcela = daCompetencia.find((x) => x.unidade === unidade);
+      const parcela = daCompetencia.find((x) => x.chave === pedida.chave);
 
       // ⚠️ UPSERT, PORQUE A LINHA PODE NAO EXISTIR. Quem esta sem CPF costuma estar sem cadastro
       // nenhum em `boletos_documentos`; um UPDATE simples nao afetaria linha alguma e devolveria
@@ -752,7 +831,8 @@ export async function POST(request: Request) {
         .eq("workspace_id", "careli")
         .eq("empreendimento", slug)
         .eq("unidade", unidade)
-        .eq("competencia", competencia);
+        .eq("competencia", competencia)
+        .eq("sequencia", sequencia);
       if (error) {
         return NextResponse.json(
           { error: `não consegui salvar a parcela: ${error.message}` },
@@ -776,13 +856,16 @@ export async function POST(request: Request) {
       if (!Number.isFinite(valor) || valor <= 0) {
         return NextResponse.json({ error: "o valor precisa ser maior que zero" }, { status: 400 });
       }
+      // ⚠️ E SÓ ESTA PARCELA. Sem `sequencia`, corrigir a mensal do Lucas Aguiar de R$ 1.666,67
+      // escreveria o mesmo valor na ENTRADA de R$ 8.750,00 — sem erro, e sem ninguém ver.
       const { error } = await supabase
         .from("boletos_parcelas")
         .update({ valor })
         .eq("workspace_id", "careli")
         .eq("empreendimento", slug)
         .eq("unidade", unidade)
-        .eq("competencia", competencia);
+        .eq("competencia", competencia)
+        .eq("sequencia", sequencia);
       if (error) {
         return NextResponse.json(
           { error: `não consegui salvar o valor: ${error.message}` },
@@ -814,7 +897,9 @@ export async function POST(request: Request) {
         .eq("workspace_id", "careli")
         .eq("empreendimento", slug)
         .eq("unidade", unidade)
-        .eq("competencia", competencia);
+        .eq("competencia", competencia)
+        // A mensal vence dia 10 e a entrada dia 20, na mesma unidade: sem isto as duas viram uma.
+        .eq("sequencia", sequencia);
       if (error) {
         return NextResponse.json(
           { error: `não consegui salvar o vencimento: ${error.message}` },
@@ -827,7 +912,7 @@ export async function POST(request: Request) {
     if (mudou.length === 0) {
       return NextResponse.json({ error: "nada para salvar" }, { status: 400 });
     }
-    return NextResponse.json({ mudou, ok: true, unidade });
+    return NextResponse.json({ mudou, ok: true, unidade: pedida.chave });
   }
 
   if (String(corpo.acao ?? "") === "editar") {
@@ -837,16 +922,16 @@ export async function POST(request: Request) {
       valor?: unknown;
       vencimento?: unknown;
     };
-    const unidade = Array.isArray(corpo.unidades)
-      ? String((corpo.unidades as unknown[])[0] ?? "").trim()
-      : "";
-    if (!unidade) {
+    const pedida = chavePedida(corpo);
+    if (!pedida) {
       return NextResponse.json({ error: "informe a unidade a editar" }, { status: 400 });
     }
+    const unidade = pedida.unidade;
 
     const mudou: string[] = [];
 
-    // O telefone é nosso: muda no cadastro e vale do próximo envio em diante.
+    // O telefone é nosso: muda no cadastro e vale do próximo envio em diante. Por UNIDADE, porque o
+    // cadastro é da pessoa.
     if (typeof e.telefone === "string") {
       const supabase = createApoloAdminClient();
       if (supabase) {
@@ -882,9 +967,16 @@ export async function POST(request: Request) {
           { status: 502 },
         );
       }
+      // ⚠️ A SEQUÊNCIA ENTRA AQUI TAMBÉM. Mudar valor ou vencimento gera boleto NOVO no Asaas, com
+      // a linha digitável antiga morta: acertar a cobrança errada da mesma unidade mataria um
+      // boleto que o cliente já pode ter no aplicativo do banco.
       const alvo = apenasDaCompetencia(cobrancas.data, competencia).find((c) => {
         const ref = lerReferencia(c.externalReference);
-        return ref?.empreendimento === slug && chaveDeUnidade(ref.unidade) === chaveDeUnidade(unidade);
+        return (
+          ref?.empreendimento === slug &&
+          chaveDeCasamento(slug, ref.unidade, ref.sequencia) ===
+            chaveDeCasamento(slug, pedida.unidade, pedida.sequencia)
+        );
       });
       if (!alvo) {
         return NextResponse.json(
@@ -906,7 +998,7 @@ export async function POST(request: Request) {
         mudou,
         // ⚠️ Valor ou vencimento novos = boleto novo no Asaas: a linha digitável antiga morreu.
         precisaReenviar: mudou.includes("valor") || mudou.includes("vencimento"),
-        unidade,
+        unidade: pedida.chave,
       },
     });
   }
@@ -937,21 +1029,25 @@ export async function POST(request: Request) {
       );
     }
 
-    // unidade -> a cobrança daquela unidade nesta competência.
-    const porUnidade = new Map<string, (typeof cobrancas.data)[number]>();
+    // chave da parcela -> a cobrança dela nesta competência.
+    //
+    // ⚠️ INDEXADO POR PARCELA, E NÃO POR UNIDADE. Com duas cobranças na mesma unidade, a segunda
+    // sobrescreveria a primeira neste mapa e as duas mensagens sairiam com o MESMO link — o cliente
+    // receberia dois avisos do boleto da entrada e nenhum do da mensal.
+    const porParcela = new Map<string, (typeof cobrancas.data)[number]>();
     for (const c of apenasDaCompetencia(cobrancas.data, competencia)) {
       const ref = lerReferencia(c.externalReference);
-      if (ref?.empreendimento === slug) porUnidade.set(chaveDeUnidade(ref.unidade), c);
+      if (ref?.empreendimento === slug) {
+        porParcela.set(chaveDeCasamento(slug, ref.unidade, ref.sequencia), c);
+      }
     }
 
-    const alvos = parcelas.filter(
-      (p) => !p.bloqueio && (!pedidas || pedidas.has(p.unidade)),
-    );
+    const alvos = parcelas.filter((p) => !p.bloqueio && (!pedidas || pedidas.has(p.chave)));
 
     // ⚠️ ENSAIO POR PADRÃO, COMO NA EMISSÃO. Sem `confirmar: true` devolve a PRÉVIA do texto que
     // cada cliente receberia. Mensagem enviada não volta, e o operador precisa ler o que vai sair.
     const previas = alvos.map((p) => {
-      const cobranca = porUnidade.get(chaveDeUnidade(p.unidade));
+      const cobranca = porParcela.get(chaveDeCasamento(slug, p.unidade, p.sequencia));
       const cadastro = documentos.get(p.unidade);
       const link = cobranca?.bankSlipUrl ?? cobranca?.invoiceUrl ?? "";
 
@@ -971,6 +1067,8 @@ export async function POST(request: Request) {
       });
 
       return {
+        // A identidade da linha; `unidade` e `rotulo` são o que a tela mostra.
+        chave: p.chave,
         contato: cadastro?.contato ?? null,
         impedimento: !cobranca
           ? "o boleto ainda não foi emitido"
@@ -980,6 +1078,8 @@ export async function POST(request: Request) {
               ? "faltou dado para montar a mensagem"
               : null,
         nome: cadastro?.nome ?? p.nome,
+        rotulo: p.rotulo,
+        sequencia: p.sequencia,
         texto,
         unidade: p.unidade,
       };
@@ -998,16 +1098,18 @@ export async function POST(request: Request) {
       if (previa.impedimento) {
         envios.push({
           canal,
+          chave: previa.chave,
           erro: previa.impedimento,
           nome: previa.nome,
           ok: false,
+          rotulo: previa.rotulo,
           unidade: previa.unidade,
         });
         continue;
       }
 
-      const cobranca = porUnidade.get(chaveDeUnidade(previa.unidade))!;
-      const parcela = parcelas.find((x) => x.unidade === previa.unidade)!;
+      const cobranca = porParcela.get(chaveDeCasamento(slug, previa.unidade, previa.sequencia))!;
+      const parcela = parcelas.find((x) => x.chave === previa.chave)!;
       const cadastro = documentos.get(previa.unidade)!;
 
       const r = await dispararBoleto({
@@ -1030,8 +1132,11 @@ export async function POST(request: Request) {
         competencia,
         empreendimento: slug,
         erro: r.erro,
+        sequencia: previa.sequencia,
         unidade: previa.unidade,
       });
+      // ⚠️ O EVENTO É GRAVADO COM A CHAVE DA PARCELA, e não com a unidade. É o que separa o
+      // histórico das duas cobranças da mesma unidade: "mandei o link" precisa dizer qual boleto.
       await registrarEvento({
         autor: auth.sessao.slug,
         canal: r.canal,
@@ -1041,15 +1146,17 @@ export async function POST(request: Request) {
         ok: r.ok,
         telefone: r.telefone,
         tipo: "envio",
-        unidade: previa.unidade,
+        unidade: previa.chave,
         waMessageId: r.messageId,
       });
 
       envios.push({
         canal: r.canal,
+        chave: previa.chave,
         erro: r.erro,
         nome: cadastro.nome,
         ok: r.ok,
+        rotulo: previa.rotulo,
         telefone: r.telefone,
         unidade: previa.unidade,
       });
@@ -1074,11 +1181,14 @@ export async function POST(request: Request) {
   // ── EMITIR ────────────────────────────────────────────────────────────────
   const lote = await loteDaCompetencia({ competencia, empreendimento: slug });
 
-  // Recorte por unidade, para o operador emitir um boleto só sem mandar o lote inteiro.
+  // Recorte por parcela, para o operador emitir um boleto só sem mandar o lote inteiro.
+  //
+  // ⚠️ FILTRA PELA CHAVE, E NÃO PELA UNIDADE. Pedir `Q10 L03` traria a mensal E a entrada: o Lucas
+  // marcaria uma linha e sairiam duas cobranças, uma delas de R$ 8.750,00 que ninguém escolheu.
   const pedidas = Array.isArray(corpo.unidades)
     ? new Set((corpo.unidades as unknown[]).map((u) => String(u).trim()).filter(Boolean))
     : null;
-  const itens = pedidas ? lote.itens.filter((i) => pedidas.has(i.unidade)) : lote.itens;
+  const itens = pedidas ? lote.itens.filter((i) => pedidas.has(i.chave)) : lote.itens;
 
   if (pedidas && itens.length === 0) {
     return NextResponse.json(
@@ -1107,6 +1217,7 @@ export async function POST(request: Request) {
           impedimentos,
           itens: itens.map((i) => ({
             nome: i.nome,
+            chave: i.chave,
             referencia: i.referencia,
             unidade: i.unidade,
             valor: i.valor,
@@ -1125,6 +1236,9 @@ export async function POST(request: Request) {
   const resultados = [];
   // A trava contra emissão simultânea vive no banco; ver o comentário dentro do laço.
   const supabaseDaEmissao = createApoloAdminClient();
+  // ⚠️ OS `id` DAS LINHAS TRAVADAS, E NÃO AS UNIDADES. A soltura no fim usava `.in("unidade", …)`,
+  // que com duas parcelas na mesma unidade liberaria a que NÃO foi travada por esta requisição — e
+  // a trava contra o clique duplo deixaria de valer justamente para a segunda cobrança.
   const travadas: string[] = [];
 
   // Por onde o envio automático sai. Ausente = emite e não manda nada.
@@ -1151,11 +1265,12 @@ export async function POST(request: Request) {
 
   for (const item of itens) {
     if (Date.now() - comecouOLote > TETO_DO_LOTE_MS) {
-      naoProcessadas.push(item.unidade);
+      naoProcessadas.push(item.chave);
       continue;
     }
 
     const base = {
+      chave: item.chave,
       cobranca: null as null | string,
       enviado: false,
       envioErro: null as null | string,
@@ -1181,6 +1296,11 @@ export async function POST(request: Request) {
     //
     // ⚠️ E A MARCA EXPIRA EM 5 MINUTOS. Se o processo morrer entre marcar e criar, a parcela
     // ficaria travada para sempre e ninguém emitiria — pior do que o problema original.
+    //
+    // ⚠️ A TRAVA É DA PARCELA, E NÃO DA UNIDADE. Sem `sequencia`, travar a mensal do Lucas Aguiar
+    // marcaria a linha da ENTRADA junto (o UPDATE alcança as duas), e a entrada — que vem logo
+    // depois no mesmo laço — encontraria a própria marca e se recusaria a emitir: a segunda
+    // cobrança NUNCA sairia, e o motivo apareceria como "já há uma emissão em curso".
     const limite = new Date(Date.now() - 5 * 60_000).toISOString();
     const trava = supabaseDaEmissao
       ? await supabaseDaEmissao
@@ -1190,17 +1310,18 @@ export async function POST(request: Request) {
           .eq("empreendimento", slug)
           .eq("unidade", item.unidade)
           .eq("competencia", competencia)
+          .eq("sequencia", item.sequencia)
           .or(`emissao_iniciada_em.is.null,emissao_iniciada_em.lt.${limite}`)
           .select("id")
       : null;
     if (trava && !trava.error && (trava.data?.length ?? 0) === 0) {
       resultados.push({
         ...base,
-        erro: "já há uma emissão em curso para esta unidade — aguarde e recarregue a tela",
+        erro: "já há uma emissão em curso para esta parcela — aguarde e recarregue a tela",
       });
       continue;
     }
-    travadas.push(item.unidade);
+    for (const linha of (trava?.data ?? []) as { id: string }[]) travadas.push(linha.id);
 
     // ⚠️ CONSULTA ANTES DE CRIAR, SEMPRE. Alguém vai clicar duas vezes, ou a conexão vai cair no meio
     // e a rodada será repetida. Sem isto o cliente recebe dois boletos do mesmo mês.
@@ -1243,6 +1364,8 @@ export async function POST(request: Request) {
       continue;
     }
 
+    // O evento fica sob a chave da parcela: com duas cobranças na mesma unidade, um histórico só
+    // não diria qual delas foi emitida, reenviada ou cancelada.
     await registrarEvento({
       autor: auth.sessao.slug,
       cobrancaId: boleto.data.id,
@@ -1250,7 +1373,7 @@ export async function POST(request: Request) {
       empreendimento: slug,
       ok: true,
       tipo: "emissao",
-      unidade: item.unidade,
+      unidade: item.chave,
     });
 
     const link = boleto.data.bankSlipUrl ?? boleto.data.invoiceUrl ?? null;
@@ -1260,7 +1383,7 @@ export async function POST(request: Request) {
     // emitido e válido: o que falta é o aviso, e o botão de reenviar resolve. Desfazer a emissão por
     // causa do WhatsApp seria cancelar uma cobrança correta por um problema de recado.
     if (canalAutomatico && link) {
-      const parcela = parcelasDoLote.find((x) => x.unidade === item.unidade);
+      const parcela = parcelasDoLote.find((x) => x.chave === item.chave);
       const envio = await dispararBoleto({
         canal: canalAutomatico,
         competencia,
@@ -1284,6 +1407,7 @@ export async function POST(request: Request) {
         competencia,
         empreendimento: slug,
         erro: envio.erro,
+        sequencia: item.sequencia,
         unidade: item.unidade,
       });
       await registrarEvento({
@@ -1294,7 +1418,7 @@ export async function POST(request: Request) {
         ok: envio.ok,
         telefone: envio.telefone,
         tipo: "envio",
-        unidade: item.unidade,
+        unidade: item.chave,
         waMessageId: envio.messageId,
       });
 
@@ -1315,13 +1439,11 @@ export async function POST(request: Request) {
   // não o fato de já existir cobrança — quem impede o segundo boleto depois é a consulta ao Asaas
   // pela referência. Deixá-la presa faria a próxima rodada legítima ser recusada até expirar.
   if (supabaseDaEmissao && travadas.length > 0) {
+    // Pelo `id`, que é exatamente o que esta requisição marcou — ver a nota em `travadas`.
     await supabaseDaEmissao
       .from("boletos_parcelas")
       .update({ emissao_iniciada_em: null })
-      .eq("workspace_id", "careli")
-      .eq("empreendimento", slug)
-      .eq("competencia", competencia)
-      .in("unidade", travadas);
+      .in("id", travadas);
   }
 
   return NextResponse.json(

@@ -17,6 +17,7 @@ import { ToolbarButton, ToolbarGroup } from "@/components/ui/toolbar";
 
 import { BarraDeBusca } from "./find-replace-kit";
 import { noDeQuebraDePagina } from "./quebra-de-pagina-base";
+import { SeletorDeFonte } from "./seletor-de-fonte";
 import { promoverVariaveisNoValor } from "./variavel-kit-base";
 
 // A BARRA FIXA DA TÊMIS — a barra completa do Plate UI mais os três botões que são nossos.
@@ -66,7 +67,7 @@ export const TemisToolbarKit = [TemisToolbarPlugin];
 
 function BarraDaTemis() {
   const somenteLeitura = useEditorReadOnly();
-  const { setOption } = useEditorPlugin(TemisToolbarPlugin);
+  const { getOption, setOption } = useEditorPlugin(TemisToolbarPlugin);
   const buscaAberta = usePluginOption(TemisToolbarPlugin, "buscaAberta");
 
   return (
@@ -79,13 +80,23 @@ function BarraDaTemis() {
         </div>
 
         {somenteLeitura ? null : (
-          <ToolbarGroup>
-            <BotaoImportarDocx />
-            <BotaoQuebraDePagina />
-            <BotaoBuscar />
-            <BotaoSuperAgente />
-            <BotaoVariaveis />
-          </ToolbarGroup>
+          <>
+            {/* ⚠️ A FONTE ENTRA AQUI E NÃO AO LADO DO TAMANHO. O grupo do tamanho vive no
+                `fixed-toolbar-buttons.tsx`, que é gerado pelo CLI do Plate — a única edição nossa lá
+                (a remoção do botão de IA genérico) já vem com o aviso de que uma regeração a
+                apaga. O que é nosso mora deste lado da barra. */}
+            <ToolbarGroup>
+              <SeletorDeFonte aoAvisar={(aviso) => getOption("aoAvisar")?.(aviso)} />
+            </ToolbarGroup>
+
+            <ToolbarGroup>
+              <BotaoImportarDocx />
+              <BotaoQuebraDePagina />
+              <BotaoBuscar />
+              <BotaoSuperAgente />
+              <BotaoVariaveis />
+            </ToolbarGroup>
+          </>
         )}
       </FixedToolbar>
 

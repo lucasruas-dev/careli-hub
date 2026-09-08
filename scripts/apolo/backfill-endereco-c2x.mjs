@@ -181,11 +181,29 @@ if (!gravar) {
 // ── 5. A GRAVAÇÃO ───────────────────────────────────────────────────────────
 // ⚠️ UM UPDATE POR LINHA, EM LOTES. Upsert aqui exigiria mandar a linha inteira e devolveria a
 // NULO tudo que este script não conhece (label, is_primary, status, metadata, country).
+// ⚠️ QUATRO MIL E SEISCENTAS CHAMADAS DERRUBAM A CONEXÃO EM ALGUM PONTO, e derrubaram: a primeira
+// execução morreu em 250/4.634 com `fetch failed`, que é falha de rede, não do dado. Sem repetição
+// o script pararia no meio e — como ele é idempotente, tocando só a linha que ainda tem o rótulo —
+// alguém teria de rodar de novo sem saber quantas faltavam.
+async function comRepeticao(tarefa, quem) {
+  let ultimoErro = null;
+  for (let tentativa = 1; tentativa <= 4; tentativa += 1) {
+    try {
+      const { error } = await tarefa();
+      if (!error) return;
+      ultimoErro = error.message;
+    } catch (e) {
+      ultimoErro = e instanceof Error ? e.message : String(e);
+    }
+    await new Promise((ok) => setTimeout(ok, 400 * tentativa));
+  }
+  throw new Error(`update ${quem}: ${ultimoErro}`);
+}
+
 let feitos = 0;
 for (const linha of aGravar) {
   const { id, ...campos } = linha;
-  const { error } = await sb.from("apolo_addresses").update(campos).eq("id", id);
-  if (error) throw new Error(`update ${id}: ${error.message}`);
+  await comRepeticao(() => sb.from("apolo_addresses").update(campos).eq("id", id), id);
   feitos += 1;
   if (feitos % 250 === 0) console.log(`  ${feitos}/${aGravar.length}`);
 }

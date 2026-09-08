@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertTriangle, Clock, Loader2 } from "lucide-react";
+import { AlertTriangle, Clock, ExternalLink, FileCheck2, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import {
   type Atividade,
   type EstagioDoTrabalho,
@@ -37,11 +38,21 @@ import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 // (checkbox travado, nenhum POST: quem faz o card andar continua sendo a Têmis). Sem as três, o
 // comportamento interno é exatamente o de antes.
 
+type ContratoDoCard = {
+  criadoEm: string;
+  id: string;
+  nome: string;
+  observacao?: null | string;
+  versao: null | number;
+};
+
 type TrabalhoDaTela = {
   atividadesFeitas: string[];
   canal: "coordenador" | "hercules" | "iris";
   clienteCpf: null | string;
   clienteNome: string;
+  /** O que já foi gerado e guardado desta proposta. Vazio = ainda não há papel. */
+  contratos?: ContratoDoCard[];
   criadoEm: string;
   empreendimentoCodigo: string;
   empreendimentoNome: string;
@@ -170,6 +181,39 @@ export function TemisKanban({
     [carregar, rota, semToken, somenteLeitura],
   );
 
+  /**
+   * Abre o contrato guardado numa aba.
+   *
+   * ⚠️ A ABA É ABERTA ANTES DO `await`, e não depois. A URL do arquivo é assinada no servidor, o
+   * que leva uma ida e volta; um `window.open` depois dela acontece fora do gesto do usuário e o
+   * navegador o bloqueia como pop-up — o clique "não faz nada" e ninguém descobre por quê.
+   *
+   * ⚠️ SÓ NA TÊMIS. No board do comercial (`semToken`) quem autentica é o cookie do portal, e esta
+   * rota pede o Bearer do hub: o botão nem aparece lá. O coordenador abre o mesmo arquivo pela aba
+   * Documentos da venda, que é a porta dele.
+   */
+  const abrirContrato = useCallback(
+    async (documentoId: string) => {
+      const aba = window.open("", "_blank", "noopener,noreferrer");
+      setErro(null);
+      try {
+        const token = await getApoloAccessToken();
+        const r = await fetch(
+          `/api/temis/contrato/gerar?documento=${encodeURIComponent(documentoId)}`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        );
+        const j = (await r.json()) as { data?: { url: string }; erro?: string };
+        if (!r.ok || !j.data?.url) throw new Error(j.erro ?? `Falhou (${r.status}).`);
+        if (aba) aba.location.href = j.data.url;
+        else window.location.href = j.data.url;
+      } catch (e) {
+        aba?.close();
+        setErro(e instanceof Error ? e.message : "Não consegui abrir o contrato.");
+      }
+    },
+    [],
+  );
+
   const porEstagio = useMemo(() => {
     const mapa = new Map<EstagioDoTrabalho, TrabalhoDaTela[]>();
     for (const t of trabalhos ?? []) {
@@ -229,6 +273,7 @@ export function TemisKanban({
                     <Card
                       aberto={aberto === t.id}
                       aoAbrir={() => setAberto(aberto === t.id ? null : t.id)}
+                      aoAbrirContrato={(documentoId) => void abrirContrato(documentoId)}
                       aoMarcar={(atividade, feita) => void marcar(t.id, atividade, feita)}
                       key={t.id}
                       ocupado={ocupado === t.id}
@@ -249,6 +294,7 @@ export function TemisKanban({
 function Card({
   aberto,
   aoAbrir,
+  aoAbrirContrato,
   aoMarcar,
   ocupado,
   somenteLeitura,
@@ -256,11 +302,17 @@ function Card({
 }: {
   aberto: boolean;
   aoAbrir: () => void;
+  aoAbrirContrato: (documentoId: string) => void;
   aoMarcar: (atividade: string, feita: boolean) => void;
   ocupado: boolean;
   somenteLeitura: boolean;
   trabalho: TrabalhoDaTela;
 }) {
+  const contratos = trabalho.contratos ?? [];
+  // ⚠️ VALE A GERAÇÃO MAIS RECENTE, e a regra mora na lib com teste. Duas versões guardadas são o
+  // caso normal (alguém consertou um dado e gerou de novo); mostrar as duas com o mesmo peso é o
+  // caminho mais curto para despachar a versão errada para assinatura.
+  const vigente = contratoVigente(contratos);
   const p = progresso(trabalho);
   const prazo = situacaoDoPrazo(trabalho);
   // A promessa de ponta a ponta: "quando o contrato fica pronto?", que é a pergunta do comercial.
@@ -341,10 +393,60 @@ function Card({
             {p.feitas} de {p.total} nesta etapa
           </p>
         ) : null}
+
+        {/* ⚠️ "O DOCUMENTO EXISTE" É INFORMAÇÃO DE RELANCE, e por isso fica na FACE do card, não
+            dentro do checklist. A pergunta de quem olha a coluna Confecção é "o que ainda não tem
+            papel?" — se a resposta exigisse abrir card por card, o board voltaria a depender de
+            memória. Vale nos dois boards: no do comercial ele responde "meu contrato saiu?", que é
+            a pergunta que hoje vira ligação. */}
+        {vigente ? (
+          <p className="mt-1.5 flex items-center gap-1 text-[0.7rem] font-semibold text-emerald-700 dark:text-emerald-300">
+            <FileCheck2 aria-hidden="true" className="shrink-0" size={11} />
+            Contrato gerado
+            {vigente.versao && vigente.versao > 1 ? ` · v${vigente.versao}` : ""}
+            <span className="font-normal text-ink-muted">{dataCurta(vigente.criadoEm)}</span>
+          </p>
+        ) : null}
       </button>
 
       {aberto && !somenteLeitura ? (
         <div className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">
+          {/* ⚠️ O ARQUIVO ABRE PELO CARD, e é aqui que a Têmis deixa de trabalhar de memória: o item
+              "Gerar o contrato pela minuta do empreendimento" existia como caixinha para marcar, e
+              nada no board dizia se o papel tinha saído. Cada versão aparece; a que vale vem
+              primeiro, marcada — as outras ficam legíveis porque nada se apaga nesta gaveta, e
+              porque quem audita precisa ver que houve uma segunda geração. */}
+          {contratos.length > 0 ? (
+            <div className="mb-1 flex flex-col gap-1">
+              {[...contratos]
+                .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))
+                .map((c) => {
+                  const ehVigente = vigente?.id === c.id;
+                  return (
+                    <button
+                      className={`flex items-start gap-1.5 rounded-md border px-2 py-1.5 text-left text-[0.7rem] transition-colors hover:bg-subtle/60 ${
+                        ehVigente
+                          ? "border-emerald-300/70 text-ink dark:border-emerald-500/40"
+                          : "border-line text-ink-muted"
+                      }`}
+                      key={c.id}
+                      onClick={() => aoAbrirContrato(c.id)}
+                      type="button"
+                    >
+                      <ExternalLink aria-hidden="true" className="mt-0.5 shrink-0" size={11} />
+                      <span className="min-w-0">
+                        <span className="block break-words font-semibold">{c.nome}</span>
+                        <span className="block text-[0.65rem] text-ink-muted">
+                          {ehVigente ? "versão vigente" : "versão anterior"} ·{" "}
+                          {dataCurta(c.criadoEm)}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          ) : null}
+
           {doEstagio.map((a) => (
             <ItemDoChecklist
               atividade={a}

@@ -264,14 +264,20 @@ export async function listarCobrancas(
   return { data: todas, ok: true };
 }
 
-/** As cobranças que vieram desta tela, por competência — as outras da conta ficam de fora. */
+/**
+ * As cobranças que vieram desta tela, por competência — as outras da conta ficam de fora.
+ *
+ * ⚠️ LÊ A REFERÊNCIA, E NÃO O FINAL DELA. Antes o filtro era `endsWith(":2026-09")`, e a segunda
+ * cobrança de uma unidade termina em `:2026-09:2` — ela ficaria de fora da listagem inteira: não
+ * apareceria em "emitidos", não seria achada para reenviar, cancelar ou editar, e a linha voltaria
+ * para "a emitir" como se nunca tivesse saído.
+ */
 export function apenasDaCompetencia(
   cobrancas: CobrancaListada[],
   competencia: string,
 ): CobrancaListada[] {
-  const sufixo = `:${competencia}`;
   return cobrancas.filter(
-    (c) => (c.externalReference ?? "").startsWith("boleto:") && (c.externalReference ?? "").endsWith(sufixo),
+    (c) => lerReferencia(c.externalReference)?.competencia === competencia,
   );
 }
 
@@ -294,12 +300,33 @@ export function chaveDeUnidade(unidade: null | string | undefined): string {
   return String(unidade ?? "").trim().replace(/\s+/g, "-").toUpperCase();
 }
 
+/**
+ * O empreendimento, a unidade, a competência e a sequência de volta, a partir da referência.
+ *
+ * ⚠️ QUATRO PARTES E CINCO PARTES SÃO AS DUAS VÁLIDAS, e não é transição: a quinta só existe
+ * quando a unidade tem mais de uma cobrança no mês. `boleto:garden:Q07-L24:2026-09` é a primeira
+ * (sequência 1) e continua sendo lida assim — é o formato de TODAS as cobranças já emitidas.
+ * `boleto:vale-do-ouro-2:Q10-L03:2026-09:2` é a segunda, a entrada que vence no mesmo mês.
+ *
+ * Sem isto, a entrada e a mensal do Lucas Aguiar teriam a mesma referência: a consulta que impede
+ * emissão duplicada acharia a mensal, diria "já existe", e a entrada nunca sairia.
+ */
 export function lerReferencia(
   referencia: null | string | undefined,
-): null | { competencia: string; empreendimento: string; unidade: string } {
+): null | { competencia: string; empreendimento: string; sequencia: number; unidade: string } {
   const partes = (referencia ?? "").split(":");
-  if (partes.length !== 4 || partes[0] !== "boleto") return null;
-  return { competencia: partes[3]!, empreendimento: partes[1]!, unidade: partes[2]! };
+  if (partes.length !== 4 && partes.length !== 5) return null;
+  if (partes[0] !== "boleto") return null;
+
+  const sequencia = partes.length === 5 ? Number(partes[4]) : 1;
+  if (!Number.isInteger(sequencia) || sequencia < 1) return null;
+
+  return {
+    competencia: partes[3]!,
+    empreendimento: partes[1]!,
+    sequencia,
+    unidade: partes[2]!,
+  };
 }
 
 /** Confere que a chave responde e de quem é a conta — antes de emitir 142 boletos. */
@@ -415,17 +442,26 @@ export function descricaoDoBoleto(input: {
 }
 
 /**
- * A referência de uma cobrança: empreendimento, unidade e competência.
+ * A referência de uma cobrança: empreendimento, unidade, competência e — só a partir da segunda
+ * cobrança da mesma unidade no mesmo mês — a sequência.
  *
  * Formato estável e legível no painel do Asaas — quem abrir lá vê de onde veio sem consultar nada.
+ *
+ * ⚠️ A SEQUÊNCIA 1 NÃO ENTRA, E ISSO NÃO É ESTÉTICA. O Asaas casa `externalReference` por igualdade
+ * exata: acrescentar `:1` às cobranças de sempre faria TODAS as já emitidas deixarem de casar, e
+ * cada uma delas voltaria para a lista de "a emitir" pronta para ser cobrada de novo. Foi o que a
+ * troca de espaço por hífen já causou uma vez — ver `chaveDeUnidade`.
  */
 export function referenciaDaCobranca(input: {
   competencia: string;
   empreendimento: string;
+  sequencia?: null | number;
   unidade: string;
 }): string {
   const unidade = input.unidade.trim().replace(/\s+/g, "-");
-  return `boleto:${input.empreendimento}:${unidade}:${input.competencia}`;
+  const sequencia = Number(input.sequencia ?? 1);
+  const sufixo = Number.isInteger(sequencia) && sequencia > 1 ? `:${sequencia}` : "";
+  return `boleto:${input.empreendimento}:${unidade}:${input.competencia}${sufixo}`;
 }
 
 // ── DESFAZER E CORRIGIR ─────────────────────────────────────────────────────

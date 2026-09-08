@@ -11,6 +11,7 @@
 
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
+import { type ContratoNoCard, contratosDasPropostas } from "./contrato-guardado-db";
 import {
   type EstagioDoTrabalho,
   type TipoDeTrabalho,
@@ -44,6 +45,19 @@ type LinhaCrua = {
 
 export type TrabalhoDoBoard = Trabalho & {
   canal: CanalDoTrabalho;
+  /**
+   * Os contratos JÁ GERADOS desta proposta, do mais novo para o mais antigo.
+   *
+   * ⚠️ É ISTO QUE ANEXA O DOCUMENTO AO CARD. O elo é `proposta_id`, presente nas duas tabelas —
+   * nenhuma coluna nova, nenhuma migration. Sem ele o board dizia "Gerar o contrato pela minuta do
+   * empreendimento" como atividade a marcar e não sabia se o papel existia: o jurídico marcava o
+   * item olhando a memória, e o card andava para "Em assinatura" sem nada para despachar.
+   *
+   * ⚠️ VEM VAZIO NO CARD SEM PROPOSTA, e isso é o normal de hoje: os quatro cards antigos do Garden
+   * e da Lavra nasceram antes do elo (`proposta_id` nulo). A lista vazia é a resposta certa para
+   * eles — não é erro.
+   */
+  contratos: ContratoNoCard[];
   evidenciaPath: null | string;
   irisTicketId: null | string;
   /**
@@ -67,6 +81,8 @@ function mapear(l: LinhaCrua): TrabalhoDoBoard {
     canal: l.canal as CanalDoTrabalho,
     clienteCpf: l.cliente_cpf,
     clienteNome: l.cliente_nome,
+    // Preenchido só em `trabalhosDoBoard`, numa consulta por lote — ver a nota do campo.
+    contratos: [],
     criadoEm: l.criado_em,
     empreendimentoCodigo: l.enterprise_codigo,
     empreendimentoNome: l.enterprise_nome,
@@ -126,7 +142,25 @@ export async function trabalhosDoBoard(input?: {
     return [];
   }
   if (!data) return [];
-  return (data as LinhaCrua[]).map(mapear);
+
+  const trabalhos = (data as LinhaCrua[]).map(mapear);
+
+  // ⚠️ UMA CONSULTA A MAIS PARA O BOARD INTEIRO, e não uma por card. O board tem sete linhas hoje e
+  // não deve passar de algumas dezenas, mas "uma consulta por card" é o tipo de conta que só dói
+  // quando a fila cresce — e aí ninguém liga o board lento a esta linha. `contratosDasPropostas`
+  // já sai sem consultar quando nenhum card tem proposta, que é o caso do board antigo.
+  const contratos = await contratosDasPropostas(
+    supabase,
+    trabalhos.map((t) => t.propostaId ?? "").filter(Boolean),
+  );
+
+  for (const trabalho of trabalhos) {
+    if (trabalho.propostaId) {
+      trabalho.contratos = contratos.get(trabalho.propostaId) ?? [];
+    }
+  }
+
+  return trabalhos;
 }
 
 export type NovoTrabalho = {

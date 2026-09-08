@@ -1,3 +1,5 @@
+import { PILHA_GEORGIA } from "./fontes-do-contrato";
+
 // COMO O CONTRATO SE PARECE — a tipografia do documento, num lugar só.
 //
 // Lucas, 08/09/2026, vendo a primeira prévia gerada de verdade: *"ficou desconfigurado"*. E estava:
@@ -26,12 +28,26 @@
  *
  * ⚠️ E A SERIFA É DELIBERADA. Contrato se lê em serifa no Brasil inteiro; um contrato em Arial
  * levanta a sobrancelha de quem assina antes de a primeira cláusula ser lida.
+ *
+ * ⚠️ A PILHA VEM DE `fontes-do-contrato.ts`, que é a mesma lista do seletor da barra. Antes o valor
+ * estava escrito aqui à mão: "Georgia (padrão)" no seletor e uma pilha diferente no piso seriam duas
+ * fontes com o mesmo nome, e a diferença só apareceria na folha impressa.
  */
 export const CSS_DO_DOCUMENTO = `
-  font-family: Georgia, "Times New Roman", Times, serif;
+  font-family: ${PILHA_GEORGIA};
   font-size: 12pt;
   line-height: 1.5;
   color: #111;
+
+  /* ⚠️ A GEORGIA USA ALGARISMOS DE ALTURA VARIÁVEL: o 3, 4, 7 e 9 descem abaixo da linha de base,
+     como letras com perna. Em texto corrido é bonito; num instrumento cheio de valor, data e tabela
+     de parcelas é ruído — "R$ 9.800,00" e "05/09/2026" saem serrilhados, e uma coluna de valores
+     deixa de alinhar. Esta linha pede à fonte o conjunto de altura fixa.
+
+     Medido em 08/09/2026 na georgia.ttf do Windows 11 (Version 5.59): a tabela GSUB declara as
+     features lnum, onum, pnum e tnum — ou seja, o conjunto alinhado EXISTE na fonte e esta
+     declaração tem o que ativar. Numa fonte sem lnum, ela simplesmente não faz nada. */
+  font-variant-numeric: lining-nums;
 `;
 
 /**

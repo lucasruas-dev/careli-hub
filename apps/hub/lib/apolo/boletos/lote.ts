@@ -32,12 +32,19 @@ export type LinhaParaEmitir = LinhaDaPlanilha & {
 };
 
 export type ItemDoLote = {
+  /**
+   * A identidade da parcela do lado de fora: `Q10 L03`, ou `Q10 L03#2` quando a unidade tem duas
+   * cobranças no mês. É o que a tela seleciona e o que o corpo do POST manda. Ver `chaveDaParcela`.
+   */
+  chave: string;
   /** O CPF/CNPJ, só dígitos, vindo de `boletos_documentos`. */
   documento: string;
   nome: string;
   /** A descrição que vai no boleto e separa as carteiras no extrato da conta. */
   descricao: string;
   referencia: string;
+  /** Separa duas cobranças da MESMA unidade no MESMO mês. 1 = a única, ou a primeira. */
+  sequencia: number;
   unidade: string;
   valor: number;
   /** `2026-09-15`. */
@@ -156,6 +163,12 @@ export function prepararLote(input: {
     }
 
     itens.push({
+      // ⚠️ ESTE CAMINHO É O DA PLANILHA, E A PLANILHA TEM UMA LINHA POR UNIDADE. A segunda cobrança
+      // da mesma unidade no mesmo mês (a entrada do Vale do Ouro - 2) nasce da carga do LSoft e vem
+      // por `loteDaCompetencia`, que lê `boletos_parcelas`. Aqui a sequência é sempre 1, e afirmar
+      // isso é melhor do que deixar o campo ambíguo.
+      chave: unidade,
+      sequencia: 1,
       contato: cadastro.contato,
       // A unidade some da descrição quando não se pode garantir qual é — ver `unidadeIncerta`.
       descricao: descricao(
