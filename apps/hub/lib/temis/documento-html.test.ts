@@ -823,3 +823,43 @@ describe("a quebra de página", () => {
     expect(documentoParaTexto([p("antes"), quebra, p("depois")])).toBe("antes\n\ndepois");
   });
 });
+
+describe("a quebra suave dentro do parágrafo", () => {
+  // ⚠️ O CABEÇALHO DA MINUTA REAL É UM PARÁGRAFO SÓ, com dois `\n` — o que o Shift+Enter produz.
+  // Medido no Veredas do Ouro em 08/09/2026. Em HTML o `\n` colapsa em espaço, e as três linhas
+  // centralizadas do editor saíam TODAS NUMA LINHA no contrato gerado. Lucas, comparando as telas:
+  // *"tá vendo como está diagramado corretamente, mas na hora que gera a prévia muda tudo"*.
+  it("vira <br /> no HTML do contrato", () => {
+    const html = documentoParaHtml([
+      {
+        align: "center",
+        children: [{ text: "CONTRATO DE CORRETAGEM\nLOTEAMENTO VEREDAS DO OURO\nQUADRA 03" }],
+        type: "p",
+      },
+    ]);
+    expect(html).toContain("CONTRATO DE CORRETAGEM<br />LOTEAMENTO VEREDAS DO OURO<br />QUADRA 03");
+    // E o alinhamento continua onde estava.
+    expect(html).toContain("text-align:center");
+  });
+
+  it("preserva as marcas em volta da quebra", () => {
+    const html = documentoParaHtml([
+      { children: [{ bold: true, text: "TÍTULO\nSUBTÍTULO" }], type: "p" },
+    ]);
+    expect(html).toContain("<strong>TÍTULO<br />SUBTÍTULO</strong>");
+  });
+
+  // Windows escreve `\r\n`; o `\r` sozinho é de arquivos antigos. Nenhum dos dois pode virar dois
+  // `<br />` nem sobrar como caractere de controle no meio do contrato.
+  it("trata \r\n como UMA quebra", () => {
+    const html = documentoParaHtml([{ children: [{ text: "A\r\nB" }], type: "p" }]);
+    expect(html).toContain("A<br />B");
+    expect(html).not.toContain("<br /><br />");
+  });
+
+  it("texto sem quebra continua igual", () => {
+    expect(documentoParaHtml([{ children: [{ text: "linha simples" }], type: "p" }])).toContain(
+      "linha simples",
+    );
+  });
+});

@@ -131,6 +131,32 @@ export function escaparHtml(texto: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * O texto do documento, com as QUEBRAS SUAVES preservadas.
+ *
+ * ⚠️ O `
+` DENTRO DE UM TRECHO É UMA QUEBRA DE LINHA DE VERDADE — a que o Shift+Enter produz — e em
+ * HTML ele colapsa em espaço. Medido em 08/09/2026 na minuta publicada do Veredas do Ouro: o
+ * cabeçalho inteiro é UM parágrafo com dois `
+`:
+ *
+ *     "CONTRATO DE CORRETAGEM IMOBILIÁRIA
+LOTEAMENTO VEREDAS DO OURO
+QUADRA [x] – LOTE [y]"
+ *
+ * No editor são três linhas centralizadas; no contrato gerado saíam TODAS NUMA LINHA SÓ. Lucas, ao
+ * comparar as duas telas: *"tá vendo como está diagramado corretamente, mas na hora que gera a
+ * prévia muda tudo"*.
+ *
+ * ⚠️ E A CORREÇÃO É AQUI, NO SERIALIZADOR, e não no CSS. `white-space: pre-wrap` resolveria a
+ * quebra e traria junto todo o resto: cada indentação do JSON viraria espaço visível no papel, e o
+ * texto justificado deixaria de colapsar os espaços múltiplos que o jurídico digitou sem querer. O
+ * `<br />` diz exatamente o que aconteceu — uma quebra de linha —, e vale igual na tela e no PDF.
+ */
+function textoComQuebras(texto: string): string {
+  return escaparHtml(texto).replace(/\r\n|\r|\n/g, "<br />");
+}
+
 function ehTexto(no: NoDeTexto | NoDoDocumento): no is NoDeTexto {
   return typeof (no as NoDeTexto).text === "string" && !(no as NoDoDocumento).type;
 }
@@ -230,7 +256,7 @@ function pedacoDeTexto(no: NoDeTexto): null | PedacoInline {
     chaveDasMarcas: chaveDasMarcas(no),
     estilo: estiloDoTexto(no),
     marcas: no,
-    miolo: escaparHtml(no.text),
+    miolo: textoComQuebras(no.text),
   };
 }
 
@@ -439,7 +465,7 @@ function larguraDaMidia(width: number | string | undefined): string {
 
 /** A linha de código de um `code_block`: só texto, escapado, sem quebrar em `<p>`. */
 function linhaDeCodigo(no: NoDeTexto | NoDoDocumento): string {
-  if (ehTexto(no)) return escaparHtml(no.text);
+  if (ehTexto(no)) return textoComQuebras(no.text);
   return (no.children ?? []).map(linhaDeCodigo).join("");
 }
 

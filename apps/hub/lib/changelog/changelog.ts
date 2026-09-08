@@ -48,6 +48,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
             ],
             screen: "Motor de contrato",
           },
+          {
+            items: [
+              "**O cabeçalho voltou a ter três linhas.** No editor o título, o loteamento e a quadra/lote são linhas separadas dentro do mesmo parágrafo — no contrato gerado saíam todas coladas numa linha só.",
+            ],
+            screen: "Prévia e PDF",
+          },
         ],
       },
     ],
