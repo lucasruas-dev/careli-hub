@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-08-auditoria-das-variaveis",
+    deployedAt: "2026-09-08T14:00:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Pessoa física parou de sair como empresa no contrato.** Cinco compradores reais têm CPF e estão marcados como PJ no cadastro — o CPF ia impresso no lugar do CNPJ e a qualificação inteira sumia.",
+              "**O contrato parou de sair diferente a cada geração.** Quando o mesmo CPF tem duas entidades, a escolha não era estável.",
+              "**E parou de preferir o cadastro morto:** 415 duplicados têm a entidade arquivada e vazia como a mais antiga, e era ela que ganhava — atingindo 262 propostas do Vale do Ouro.",
+            ],
+            screen: "Motor de contrato",
+          },
+        ],
+      },
+    ],
+    rollback: "e9f3ce04",
+    technical: {
+      done: "Achados por auditoria adversarial das ~280 variáveis (12 agentes, 712 consultas, cada grupo verificado por um cético). ⚠️ 1. PESSOA FÍSICA SAINDO COMO EMPRESA: SEIS entidades têm documento de 11 dígitos e `entity_kind = pj`, e CINCO são compradoras de propostas reais (uma é MEI). O contrato gravava o CPF no slot do CNPJ, FORMATADO COMO CPF, e o par `[inicio_dados_cliente_pj]` substituía o de pessoa física — estado civil, regime de bens e cônjuge sumiam do papel. E a conferência não avisava, porque só cobra CNPJ e razão social quando não é PF, e os dois estavam preenchidos: zero avisos, contrato pronto para assinar. É o defeito do Villa Paris na direção oposta. Agora o DOCUMENTO vence o `entity_kind`: 11 dígitos é CPF, 14 é CNPJ, e nenhum cadastro mal marcado muda isso. ⚠️ 2. A ENTIDADE ARQUIVADA GANHAVA: de 622 CPFs duplicados, 415 têm como mais antiga a arquivada pelo merge — e as 415 estão VAZIAS, sem ficha, contato ou endereço. Atingia 262 propostas em três empreendimentos do Vale do Ouro, o próximo da fila depois do Veredas: o contrato sairia sem cidade, sem telefone e sem e-mail, com o cadastro completo ali do lado. ⚠️ 3. E `created_at` NÃO DESEMPATAVA: 18 documentos duplicados foram gravados no MESMO MICROSSEGUNDO (um no Veredas), e aí quem volta primeiro é decisão do planner — o mesmo contrato, gerado duas vezes, saía diferente. O `id` fecha a ordem: arbitrário, mas ESTÁVEL. 3.236 testes verdes; typecheck limpo.",
+      motivation:
+        "A auditoria das variáveis achou contrato que sai errado sem avisar, e contrato que sai diferente a cada vez.",
+    },
+    title: "A auditoria das variáveis",
+    type: "correcao",
+    version: "1.297.5",
+  },
+  {
     buildTag: "2026-09-08-endereco-cadastral-nao-e-endereco",
     deployedAt: "2026-09-08T13:30:00-03:00",
     modules: [

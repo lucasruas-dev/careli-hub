@@ -1232,3 +1232,98 @@ describe("o ruído de carga não vira endereço", () => {
     expect(r.dados.compradores[0]?.valores.rua_cliente).toBe("Rua Sem Nome");
   });
 });
+
+describe("as armadilhas achadas pela auditoria de 08/09/2026", () => {
+  const entidade = (over: Record<string, unknown>) => ({
+    created_at: "2026-01-01T00:00:00Z",
+    display_name: "FULANO",
+    document_masked: "123.456.789-00",
+    entity_kind: "pf",
+    id: THIAGO,
+    legal_name: null,
+    status: "active",
+    trade_name: null,
+    ...over,
+  });
+
+  // ⚠️ SEIS ENTIDADES TÊM CPF E `entity_kind = 'pj'`, e CINCO são compradoras de propostas reais
+  // (uma delas um MEI). O contrato gravava o CPF no slot do CNPJ, formatado como CPF, e o bloco de
+  // pessoa jurídica substituía o de física: estado civil, regime e cônjuge SUMIAM do papel. E a
+  // conferência não avisava, porque ela só cobra CNPJ e razão social quando não é PF — e os dois
+  // estavam preenchidos.
+  it("CPF de 11 dígitos é pessoa física, mesmo com entity_kind='pj'", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [entidade({ entity_kind: "pj", legal_name: "FULANO MEI LTDA" })],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    const c = r.dados.compradores[0]!;
+    expect(c.ehPessoaFisica).toBe(true);
+    expect(c.valores.cpf_cliente).toBe("123.456.789-00");
+    // O CPF não pode aparecer no slot do CNPJ — era esse o defeito.
+    expect(c.valores.cnpj_cliente).toBeUndefined();
+  });
+
+  it("14 dígitos continua sendo pessoa jurídica", async () => {
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          entidade({
+            document_masked: "11.115.899/0001-04",
+            entity_kind: "pf",
+            legal_name: "EMPRESA LTDA",
+          }),
+        ],
+        hercules_propostas: proposta({
+          cliente_documento: "11115899000104",
+          compradores: [
+            { cpf: "11.115.899/0001-04", nome: "EMPRESA LTDA", participacao: 100, titular: true },
+          ],
+        }),
+      }),
+    ))!;
+    expect(r.dados.compradores[0]?.ehPessoaFisica).toBe(false);
+  });
+
+  // ⚠️ DE 622 CPFs DUPLICADOS, 415 têm como mais antiga a entidade ARQUIVADA pelo merge — e as 415
+  // estão vazias, sem ficha, contato ou endereço. Isso atingia 262 propostas no Vale do Ouro: o
+  // contrato sairia sem cidade, sem telefone e sem e-mail, com o cadastro completo ali do lado.
+  it("a entidade arquivada perde para a viva, mesmo sendo mais antiga", async () => {
+    const outra = "aaaaaaaa-0000-0000-0000-0000000000ff";
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          entidade({
+            created_at: "2020-01-01T00:00:00Z",
+            display_name: "A ARQUIVADA",
+            id: outra,
+            status: "archived",
+          }),
+          entidade({ created_at: "2026-01-01T00:00:00Z", display_name: "A VIVA", status: "active" }),
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+    expect(r.dados.compradores[0]?.valores.nome_cliente).toBe("A VIVA");
+  });
+
+  it("entre duas vivas, a mais antiga continua ganhando", async () => {
+    const outra = "aaaaaaaa-0000-0000-0000-0000000000ff";
+    const r = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          entidade({ created_at: "2020-01-01T00:00:00Z", display_name: "A ORIGINAL", id: outra }),
+          entidade({ created_at: "2026-01-01T00:00:00Z", display_name: "A NOVA" }),
+        ],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+    expect(r.dados.compradores[0]?.valores.nome_cliente).toBe("A ORIGINAL");
+  });
+});

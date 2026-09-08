@@ -110,7 +110,10 @@ type LinhaDoEmpreendimento = {
 };
 
 type LinhaDaEntidade = {
+  created_at?: null | string;
   display_name: null | string;
+  /** `active` / `review` / `archived`. O merge do Apolo arquiva a duplicada e esvazia. */
+  status?: null | string;
   document_masked: null | string;
   entity_kind: null | string;
   id: string;
@@ -306,21 +309,37 @@ async function montarCompradores(
       ? await varias<LinhaDaEntidade>(
           sb
             .from("apolo_entities")
-            .select("display_name, document_masked, entity_kind, id, legal_name, trade_name")
+            .select("created_at, display_name, document_masked, entity_kind, id, legal_name, status, trade_name")
             .in("document_masked", [...variantes])
             // ⚠️ ORDEM EXPLÍCITA PORQUE O MESMO CPF PODE TER DUAS ENTIDADES. O dedup do Apolo é por
-            // `document_hash` e o backfill de 22/08 zerou parte dele; sem `order`, qual das duas
-            // volta primeiro é decisão do planner e muda entre execuções — o mesmo contrato,
-            // gerado duas vezes, sairia com nomes diferentes. A mais antiga é a CAD original.
-            .order("created_at", { ascending: true }),
+            // `document_hash` e o backfill de 22/08 zerou parte dele.
+            //
+            // ⚠️ E A MAIS ANTIGA ERA A ESCOLHA ERRADA. Medido em 08/09/2026: de 622 CPFs duplicados,
+            // 415 têm como mais antiga a entidade ARQUIVADA pelo merge — e as 415 estão VAZIAS, sem
+            // ficha, sem contato e sem endereço. Isso atingia 262 propostas em três empreendimentos
+            // do Vale do Ouro, o próximo da fila depois do Veredas: o contrato sairia sem cidade,
+            // sem telefone e sem e-mail, com o cadastro completo ali do lado.
+            //
+            // ⚠️ E `created_at` NÃO DESEMPATA SOZINHO: 18 documentos duplicados foram gravados no
+            // MESMO MICROSSEGUNDO (um deles no Veredas), e aí quem volta primeiro é decisão do
+            // planner — o mesmo contrato, gerado duas vezes, sai diferente. O `id` fecha a ordem:
+            // é arbitrário, mas é ESTÁVEL, que é o que importa.
+            .order("status", { ascending: true })
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true }),
           "apolo_entities",
         )
       : [];
 
+  // ⚠️ A ARQUIVADA SÓ ENTRA SE NÃO HOUVER OUTRA. O `order("status")` acima já traz `active` antes de
+  // `archived` alfabeticamente — mas depender disso seria depender de um acaso do alfabeto, que a
+  // primeira renomeação de status quebraria em silêncio. Aqui a regra está escrita.
   const porDocumento = new Map<string, LinhaDaEntidade>();
   for (const e of entidades) {
     const chave = soDigitos(e.document_masked ?? "");
-    if (chave && !porDocumento.has(chave)) porDocumento.set(chave, e);
+    if (!chave) continue;
+    const atual = porDocumento.get(chave);
+    if (!atual || (ehArquivada(atual) && !ehArquivada(e))) porDocumento.set(chave, e);
   }
 
   const ids = [...new Set(entidades.map((e) => e.id).filter(Boolean))];
@@ -473,11 +492,27 @@ function umComprador(entrada: {
   };
 
   // ⚠️ O TIPO DECIDE QUAL PARÁGRAFO SAI, e errar aqui é o defeito do Villa Paris (bloco de pessoa
-  // jurídica impresso num comprador pessoa física). Sem entidade cadastrada, o tamanho do documento
-  // responde: 14 dígitos é CNPJ, e nenhuma outra coisa é.
-  const ehPessoaFisica = entidade
-    ? texto(entidade.entity_kind).toLowerCase() !== "pj"
-    : digitos.length !== 14;
+  // jurídica impresso num comprador pessoa física).
+  //
+  // ⚠️ O DOCUMENTO VENCE O `entity_kind` QUANDO OS DOIS DISCORDAM, e isso foi medido em 08/09/2026:
+  // SEIS entidades têm documento de 11 dígitos — um CPF — e `entity_kind = 'pj'`, e CINCO delas são
+  // compradoras de propostas reais (José Carlos de Arruda, no Cidade Jardim, é um MEI). No contrato
+  // dessas pessoas o CPF era gravado no slot do CNPJ, formatado como CPF ("894.473.446-15" onde o
+  // texto anuncia um CNPJ), e o bloco `[inicio_dados_cliente_pj]` substituía o de pessoa física: a
+  // qualificação inteira — estado civil, regime de bens, cônjuge — SUMIA do papel.
+  //
+  // ⚠️ E NINGUÉM ERA AVISADO. A conferência só cobra `cnpj_cliente` e `razao_social_cliente` quando
+  // o comprador não é PF, e os dois estavam preenchidos: zero avisos, contrato pronto para assinar.
+  //
+  // O tamanho do documento é o fato mais duro que existe aqui: 11 dígitos é CPF, 14 é CNPJ, e nenhum
+  // cadastro mal marcado muda isso. O `entity_kind` só decide quando o documento não responde.
+  const ehPessoaFisica = digitos.length === 11
+    ? true
+    : digitos.length === 14
+      ? false
+      : entidade
+        ? texto(entidade.entity_kind).toLowerCase() !== "pj"
+        : true;
 
   const nomeDaProposta = texto(daProposta.nome);
   const nome = texto(entidade?.display_name) || nomeDaProposta;
@@ -930,6 +965,11 @@ function dataBR(valor: string): string {
 }
 
 // ── AJUDANTES ────────────────────────────────────────────────────────────────
+
+/** A entidade que o merge do Apolo arquivou — ela fica sem ficha, sem contato e sem endereço. */
+function ehArquivada(e: LinhaDaEntidade): boolean {
+  return texto(e.status).toLowerCase() === "archived";
+}
 
 function texto(v: unknown): string {
   if (typeof v === "string") return v.trim();
