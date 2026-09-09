@@ -197,3 +197,18 @@ export type ProvedorDeAssinatura = {
   /** Manda o contrato para assinatura. */
   enviar: (pedido: PedidoDeAssinatura) => Promise<EnvioFeito>;
 };
+
+/**
+ * A chave que casa um signatario da tela com a pessoa montada no servidor.
+ *
+ * ⚠️ PAPEL + NOME, E NAO O E-MAIL. O e-mail e justamente o que pode estar sendo trocado; usa-lo
+ * como chave faria a troca nunca casar. O indice da lista tambem nao serve: a ordem muda conforme
+ * a regra de assinatura escolhida, entao o item 2 da tela pode nao ser o item 2 do servidor.
+ *
+ * ⚠️ E ELA VIVE AQUI, e nao em `envio-db.ts`, porque roda nos dois lados: `envio-db` puxa o cliente
+ * do Supabase, o storage e o cliente da Clicksign, e importa-lo do modal levaria tudo isso para o
+ * bundle do navegador.
+ */
+export function chaveDoSignatario(papel: string, nome: string): string {
+  return `${papel}|${nome.trim().toLowerCase()}`;
+}

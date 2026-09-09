@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-09-email-do-signatario-editavel",
+    deployedAt: "2026-09-09T12:35:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Dá para corrigir o e-mail de quem assina, na hora de enviar.** Vem preenchido com o que está na ficha; o que você mudar vale só para aquele envio e não altera o cadastro do cliente.",
+              "**E-mail repetido continua barrado.** Se você digitar num signatário o endereço que já é de outro, o envio para antes de criar qualquer coisa na Clicksign — é a mesma trava de sempre, agora também sobre o que se digita.",
+            ],
+            screen: "Enviar para assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "f285bcf3",
+    technical: {
+      done: "⚠️ O E-MAIL DECIDE PARA ONDE O CONTRATO VAI, e ele vinha da ficha sem chance de correção. No ZZ TESTE os endereços são fictícios (`@zzteste.careli.dev`) e nenhum convite chegaria; num contrato de verdade é o comprador que deu o e-mail errado no cadastro. Lucas, 09/09/2026: *\"coloca o meu e-mail e da nivea\"*. ⚠️ A TROCA VALE SÓ PARA ESTE ENVIO, e não volta para a ficha — a mesma disciplina da ordem (*\"o que mudar aqui vale só para este envio\"*). Corrigir cadastro é outro gesto, em outra tela, feito por quem cuida do cadastro. ⚠️ E ELA ENTRA ANTES DE `conferirSignatarios`, NÃO DEPOIS. Passando por fora, a tela poderia produzir exatamente a armadilha que a conferência existe para pegar: titular e cônjuge com o mesmo endereço, que quebra o envio COM O ENVELOPE JÁ CRIADO ([[reference_d4sign_escrita_armadilhas]]). Há teste provando que um e-mail digitado que duplica outro é recusado com 409, sem nenhuma chamada à API e sem abrir registro. ⚠️ A CHAVE QUE CASA A TELA COM O SERVIDOR É `papel|nome`, e não o e-mail — que é justamente o que está sendo trocado, e usá-lo como chave faria a troca nunca casar — nem o índice da lista, que muda conforme a ordem escolhida: o item 2 da tela pode não ser o item 2 do servidor. ⚠️ `chaveDoSignatario` VIVE EM `tipos.ts`, e não em `envio-db.ts`: ela roda nos dois lados, e `envio-db` puxa o cliente do Supabase, o storage e o cliente da Clicksign — importá-lo do modal levaria tudo isso para o bundle do navegador. ⚠️ E O QUE CHEGA DO NAVEGADOR É SANEADO na rota (`lerEmailsEscolhidos`): chave e valor têm de ser texto e o valor precisa parecer e-mail, porque o destino é um envelope de produção que não se apaga. A validação de verdade continua sendo da Clicksign; a regex aqui é simples de propósito, para não recusar endereço legítimo com `+`, subdomínio ou TLD longo. 3.475 testes verdes, typecheck limpo.",
+      motivation: "O e-mail vinha da ficha e não dava para corrigir na hora do envio — e é ele que decide para onde o contrato vai.",
+    },
+    title: "O e-mail de quem assina",
+    type: "melhoria",
+    version: "1.305.0",
+  },
+  {
     buildTag: "2026-09-09-dois-botoes-no-card-da-temis",
     deployedAt: "2026-09-09T12:10:00-03:00",
     modules: [

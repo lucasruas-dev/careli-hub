@@ -59,6 +59,7 @@ export async function POST(request: Request) {
   if (!autorizacao.ok) return autorizacao.response;
 
   const corpo = (await request.json().catch(() => ({}))) as {
+    emails?: unknown;
     mensagem?: unknown;
     ordem?: unknown;
     prazoEmDias?: unknown;
@@ -99,7 +100,17 @@ export async function POST(request: Request) {
   const ordemEscolhida: null | RegraDeOrdem =
     corpo.ordem && typeof corpo.ordem === "object" ? lerRegraDeOrdem(corpo.ordem) : null;
 
+  // ⚠️ O E-MAIL TROCADO NA TELA VALE SÓ PARA ESTE ENVIO, como a ordem — não volta para a ficha do
+  // cliente. Lucas, 09/09/2026: *"coloca o meu e-mail e da nivea"*, com os do ZZ TESTE sendo
+  // fictícios; num contrato de verdade é o comprador que deu o e-mail errado no cadastro, e
+  // corrigir a ficha é outro gesto, em outra tela, feito por quem cuida do cadastro.
+  //
+  // ⚠️ E ENTRA SANEADO: só chave e valor de texto, e o valor precisa PARECER e-mail. Um objeto
+  // solto do navegador viraria e-mail inventado dentro de um envelope que não se apaga.
+  const emailsEscolhidos = lerEmailsEscolhidos(corpo.emails);
+
   const enviado = await enviarContratoParaAssinatura(sb, {
+    emailsEscolhidos,
     ordemEscolhida,
     propostaId,
     usuarioId: autorizacao.userId,
@@ -156,6 +167,31 @@ function corpoDaResposta(preparo: Extract<Awaited<ReturnType<typeof prepararEnvi
 }
 
 /** Em que ambiente a conta aponta. Ver a nota do topo. */
+/**
+ * Os e-mails escolhidos na tela, saneados — `null` quando não veio nada aproveitável.
+ *
+ * ⚠️ NÃO CONFIA NO NAVEGADOR. Chave e valor têm de ser texto, e o valor tem de parecer e-mail:
+ * o destino disso é um envelope de produção que não se apaga, com o nome de um comprador de
+ * verdade. Um `{}` ou um objeto aninhado vindo daqui não pode virar signatário.
+ *
+ * ⚠️ A CONFERÊNCIA DE VERDADE CONTINUA SENDO `conferirSignatarios`, lá no preparo — é ela que
+ * recusa e-mail repetido entre titular e cônjuge. Esta função só garante que o que chega é do
+ * formato certo, e não que o conjunto faz sentido.
+ */
+function lerEmailsEscolhidos(bruto: unknown): null | Record<string, string> {
+  if (!bruto || typeof bruto !== "object" || Array.isArray(bruto)) return null;
+  const limpo: Record<string, string> = {};
+  for (const [chave, valor] of Object.entries(bruto as Record<string, unknown>)) {
+    if (typeof valor !== "string") continue;
+    const email = valor.trim();
+    // Simples de propósito: quem valida e-mail de verdade é a Clicksign, e uma regex ambiciosa
+    // aqui recusaria endereço legítimo (`+`, subdomínio, TLD longo).
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) continue;
+    limpo[chave] = email;
+  }
+  return Object.keys(limpo).length > 0 ? limpo : null;
+}
+
 function ambiente() {
   const cfg = conferirConfiguracao();
   return {

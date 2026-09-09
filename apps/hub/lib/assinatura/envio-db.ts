@@ -16,7 +16,7 @@ import { moverCardDaTemis } from "./estado-db";
 import { ordenarSignatarios, type RegraDeOrdem } from "./ordem";
 import { descreverOrigem, type OrigemDaRegra, regraDeOrdemDaVenda } from "./ordem-db";
 import { conferirSignatarios, type Pessoa, signatariosDoContrato } from "./signatarios";
-import type { Signatario } from "./tipos";
+import { chaveDoSignatario, type Signatario } from "./tipos";
 
 // O ENVIO, DO LADO DO BANCO — juntar o papel, quem assina e a ordem, e registrar o que saiu.
 //
@@ -73,6 +73,7 @@ export async function prepararEnvio(
   sb: SupabaseClient,
   propostaId: string,
   ordemEscolhida?: null | RegraDeOrdem,
+  emailsEscolhidos?: null | Record<string, string>,
 ): Promise<FalhaNoPreparo | PreparoDoEnvio> {
   const contrato = await contratoVigenteDaProposta(sb, propostaId);
   if (!contrato.ok) return contrato;
@@ -96,7 +97,22 @@ export async function prepararEnvio(
 
   const regra = ordemEscolhida ?? doCadastro.regra;
   const origemDaRegra: OrigemDaRegra = doCadastro.origem;
-  const veredito = conferirSignatarios(montagem.pessoas);
+  // ⚠️ O E-MAIL TROCADO NA TELA VALE SO PARA ESTE ENVIO, e nao volta para o cadastro — a mesma
+  // disciplina da ordem. Lucas, 09/09/2026: *"coloca o meu e-mail e da nivea"*. No ZZ TESTE os
+  // e-mails da ficha sao ficticios (`@zzteste.careli.dev`) e nenhum convite chegaria; num contrato
+  // de verdade, e o caso do comprador que deu o e-mail errado no cadastro.
+  //
+  // ⚠️ E A TROCA ENTRA ANTES DE `conferirSignatarios`, nao depois: e essa conferencia que recusa
+  // e-mail repetido entre titular e conjuge, e trocar por fora dela deixaria passar justamente a
+  // armadilha que ela existe para pegar ([[reference_d4sign_escrita_armadilhas]]).
+  const pessoas = emailsEscolhidos
+    ? montagem.pessoas.map((p) => {
+        const escolhido = emailsEscolhidos[chaveDoSignatario(p.papel, p.nome)];
+        return escolhido && escolhido.trim() ? { ...p, email: escolhido.trim() } : p;
+      })
+    : montagem.pessoas;
+
+  const veredito = conferirSignatarios(pessoas);
 
   return {
     avisos: montagem.avisos,
@@ -109,7 +125,7 @@ export async function prepararEnvio(
       ? "escolhida agora, só para este envio"
       : descreverOrigem(origemDaRegra),
     regra,
-    signatarios: ordenarSignatarios(montagem.pessoas, regra),
+    signatarios: ordenarSignatarios(pessoas, regra),
   };
 }
 
@@ -131,6 +147,8 @@ export type FalhaAoEnviar = { erro: string; ok: false; status: 400 | 404 | 409 |
 export async function enviarContratoParaAssinatura(
   sb: SupabaseClient,
   pedido: {
+    /** E-mails trocados na tela, por `chaveDoSignatario`. Valem so para este envio. */
+    emailsEscolhidos?: null | Record<string, string>;
     mensagem?: string;
     ordemEscolhida?: null | RegraDeOrdem;
     prazoEmDias?: number;
@@ -140,7 +158,12 @@ export async function enviarContratoParaAssinatura(
   },
   porta?: PortaDaClicksign,
 ): Promise<EnvioFeito | FalhaAoEnviar> {
-  const preparo = await prepararEnvio(sb, pedido.propostaId, pedido.ordemEscolhida);
+  const preparo = await prepararEnvio(
+    sb,
+    pedido.propostaId,
+    pedido.ordemEscolhida,
+    pedido.emailsEscolhidos,
+  );
   if (!preparo.ok) return preparo;
 
   // ⚠️ A RECUSA ACONTECE AQUI, ANTES DE EXISTIR ENVELOPE. E-mail repetido entre o titular e o

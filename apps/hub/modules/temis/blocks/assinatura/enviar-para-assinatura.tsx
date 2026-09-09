@@ -4,7 +4,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, Loader2, Send, X } from "lucide-reac
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ordenarSignatarios } from "@/lib/assinatura/ordem";
-import { type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
+import { chaveDoSignatario, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
 // MANDAR O CONTRATO PARA ASSINATURA — a última tela antes do ponto sem volta.
@@ -63,6 +63,8 @@ export function EnviarParaAssinatura({
   // A ordem editada NESTE envio. Nasce igual à do cadastro e nunca volta para lá.
   const [ordenada, setOrdenada] = useState(false);
   const [papeis, setPapeis] = useState<PapelNoContrato[]>([]);
+  /** E-mails trocados na tela, por chaveDoSignatario. Vazio = vale o que veio da ficha. */
+  const [emails, setEmails] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let vivo = true;
@@ -132,7 +134,7 @@ export function EnviarParaAssinatura({
     try {
       const accessToken = await getApoloAccessToken();
       const resposta = await fetch("/api/temis/assinatura/enviar", {
-        body: JSON.stringify({ ordem: { ordenada, papeis }, propostaId }),
+        body: JSON.stringify({ emails, ordem: { ordenada, papeis }, propostaId }),
         headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
         method: "POST",
       });
@@ -246,23 +248,45 @@ export function EnviarParaAssinatura({
             <p className="m-0 mt-4 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
               Quem assina ({emOrdem.length})
             </p>
+            {/* ⚠️ O E-MAIL É EDITÁVEL, E VALE SÓ PARA ESTE ENVIO. Lucas, 09/09/2026: *"coloca o
+                meu e-mail e da nivea"* — no ZZ TESTE os e-mails da ficha são fictícios
+                (`@zzteste.careli.dev`) e nenhum convite chegaria. Num contrato de verdade, é o
+                comprador que deu o e-mail errado no cadastro: dá para corrigir aqui sem parar o
+                envio, e sem mexer na ficha dele por um caminho que não é o do cadastro.
+
+                ⚠️ É O CAMPO QUE DECIDE PARA ONDE VAI O CONTRATO. Por isso ele é um input de
+                verdade, com o valor à vista — e não um "editar" escondido atrás de um ícone. */}
             <div className="mt-1.5 grid gap-1.5">
-              {emOrdem.map((s) => (
-                <div
-                  className="flex items-center gap-2 rounded-lg border border-line bg-subtle/40 px-2.5 py-2"
-                  key={s.email || s.nome}
-                >
-                  <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-inverse text-[11px] font-semibold text-white">
-                    {ordenada ? s.ordem : "•"}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-semibold text-ink">{s.nome}</span>
-                    <span className="block truncate text-[0.7rem] text-ink-muted">
-                      {s.papelRotulo} · {s.email || "sem e-mail"}
+              {emOrdem.map((s) => {
+                const chave = chaveDoSignatario(s.papel, s.nome);
+                return (
+                  <div
+                    className="flex items-center gap-2 rounded-lg border border-line bg-subtle/40 px-2.5 py-2"
+                    key={chave}
+                  >
+                    <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-inverse text-[11px] font-semibold text-white">
+                      {ordenada ? s.ordem : "•"}
                     </span>
-                  </span>
-                </div>
-              ))}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-semibold text-ink">
+                        {s.nome}
+                      </span>
+                      <span className="block text-[0.7rem] text-ink-muted">{s.papelRotulo}</span>
+                      <input
+                        aria-label={`E-mail de ${s.nome}`}
+                        className="mt-1 w-full rounded border border-line bg-surface px-1.5 py-1 text-[0.72rem] text-ink outline-none focus-visible:border-ink"
+                        disabled={enviando}
+                        onChange={(e) =>
+                          setEmails((atual) => ({ ...atual, [chave]: e.target.value }))
+                        }
+                        placeholder="sem e-mail"
+                        type="email"
+                        value={emails[chave] ?? s.email}
+                      />
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             {/* ── A ORDEM ── */}

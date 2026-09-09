@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DadosDoContrato } from "@/lib/temis/preencher-contrato";
 
 import type { Opcoes } from "./clicksign/cliente";
+import { chaveDoSignatario } from "./tipos";
 
 // ⚠️ `dadosDaProposta` É SUBSTITUÍDO, e não exercitado: ele lê seis tabelas do Apolo e já tem teste
 // próprio (`lib/temis/dados-do-contrato.test.ts`). O que ESTE arquivo testa é o que acontece DEPOIS
@@ -280,6 +281,57 @@ describe("o envio", () => {
   // ⚠️ A ARMADILHA CONHECIDA: o cônjuge que compartilha a caixa do titular. Deixá-la falhar na API
   // deixaria um envelope criado com metade dos signatários dentro — numa conta de produção onde o
   // rascunho só se apaga enquanto ninguém ativou.
+  // ⚠️ O E-MAIL TROCADO NA TELA É O QUE DECIDE PARA ONDE O CONTRATO VAI. No ZZ TESTE os da ficha
+  // são fictícios (`@zzteste.careli.dev`) e nenhum convite chegaria; num contrato de verdade é o
+  // comprador que deu o e-mail errado no cadastro. Lucas, 09/09/2026: *"coloca o meu e-mail e da
+  // nivea"*.
+  it("o e-mail trocado na tela é o que vai no envelope", async () => {
+    const escritas: Escrita[] = [];
+    const { chamadas, porta } = portaFalsa();
+
+    const r = await enviarContratoParaAssinatura(
+      clienteFalso(cenario(), escritas),
+      {
+        emailsEscolhidos: {
+          [chaveDoSignatario("comprador", "Henrique Sales do Vale")]: "lucas.ruas@careli.adm.br",
+        },
+        propostaId: PROPOSTA,
+      },
+      porta,
+    );
+
+    expect(r.ok).toBe(true);
+    const criacaoDeSignatario = chamadas.find((c) => c.caminho.endsWith("/signers"));
+    expect(JSON.stringify(criacaoDeSignatario?.corpo)).toContain("lucas.ruas@careli.adm.br");
+    expect(JSON.stringify(criacaoDeSignatario?.corpo)).not.toContain("zzteste.careli.dev");
+  });
+
+  // ⚠️ A TROCA ENTRA ANTES DA CONFERÊNCIA, e não depois: se passasse por fora, dava para produzir
+  // pela tela exatamente a armadilha que a conferência existe para pegar — titular e cônjuge com o
+  // mesmo endereço, que quebra o envio com o envelope já criado.
+  it("e-mail trocado que DUPLICA outro é recusado, como se viesse da ficha", async () => {
+    const escritas: Escrita[] = [];
+    const { chamadas, porta } = portaFalsa();
+
+    const r = await enviarContratoParaAssinatura(
+      clienteFalso(cenario(), escritas),
+      {
+        emailsEscolhidos: {
+          [chaveDoSignatario("conjuge", "Patrícia Sales do Vale")]: "henrique.vale@zzteste.careli.dev",
+        },
+        propostaId: PROPOSTA,
+      },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toContain("MESMO e-mail");
+    expect(chamadas).toHaveLength(0);
+    expect(escritas).toHaveLength(0);
+  });
+
   it("RECUSA e-mail repetido ANTES de tocar a API e antes de abrir registro", async () => {
     vi.mocked(dadosDaProposta).mockResolvedValue({
       avisos: [],
