@@ -93,14 +93,22 @@ describe("o fluxo do envelope", () => {
 
   // ⚠️ A v1 PEDIA DATA-URI E A v3 NÃO. Mandar `data:application/pdf;base64,` faz o arquivo chegar
   // corrompido — dentro de um envelope que a API aceitou.
-  it("sobe o PDF em base64 CRU, sem o prefixo data:", async () => {
+  it("sobe o PDF como data-URI, com o prefixo que a v3 exige", async () => {
     const { chamadas, porta } = duplo();
     await enviarParaAssinatura(pedido([pessoa("A Silva", "a@x.com", "comprador", 1)]), porta);
 
     const upload = chamadas.find((c) => c.caminho.endsWith("/documents"));
-    const attrs = (upload?.corpo as { data: { attributes: Record<string, string> } }).data.attributes;
-    expect(attrs.content_base64).toBe("JVBERg==");
-    expect(attrs.content_base64.startsWith("data:")).toBe(false);
+    // Tipado com as chaves que o teste checa, e não como `Record<string, string>`: sob
+    // `noUncheckedIndexedAccess` o Record devolve `string | undefined` e o `.startsWith`
+    // não compila. Nomear os campos também documenta o que a v3 espera no upload.
+    const attrs = (
+      upload?.corpo as { data: { attributes: { content_base64: string; filename: string } } }
+    ).data.attributes;
+    // ⚠️ Este teste já afirmou o CONTRÁRIO (que ia cru). A doc oficial da v3 mostra o data-URI
+    // nos dois lugares onde há exemplo de requisição, e errar aqui quebra o passo 2 — quando o
+    // envelope do passo 1 já existe e já custou.
+    expect(attrs.content_base64).toBe("data:application/pdf;base64,JVBERg==");
+    expect(attrs.content_base64.startsWith("data:application/pdf;base64,")).toBe(true);
     expect(attrs.filename.endsWith(".pdf")).toBe(true);
   });
 

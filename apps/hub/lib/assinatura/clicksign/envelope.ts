@@ -153,10 +153,17 @@ export async function enviarParaAssinatura(
       corpo: {
         data: {
           attributes: {
-            // ⚠️ BASE64 CRU, SEM O PREFIXO `data:application/pdf;base64,`. A v1 da Clicksign pedia
-            // data-URI e a v3 não: mandar o prefixo faz o arquivo chegar corrompido, e o sintoma é
-            // um PDF ilegível DENTRO de um envelope que a API aceitou.
-            content_base64: Buffer.from(pedido.arquivo.bytes).toString("base64"),
+            // ⚠️ COM O PREFIXO `data:application/pdf;base64,` — e este comentário já esteve
+            // ESCRITO AO CONTRÁRIO aqui, afirmando que a v3 não queria o data-URI. A doc oficial
+            // diz o oposto, em dois lugares (conferido em 09/09/2026): o tutorial "Veja como
+            // funciona na prática" mostra `"content_base64": "data:application/pdf;base64,..."`,
+            // e a página "Documentos" descreve o campo como quatro partes — `data:`, o MIME, o
+            // token `base64` e os dados.
+            //
+            // ⚠️ E ERRAR AQUI CUSTA DINHEIRO: este é o passo 2. O envelope do passo 1 JÁ EXISTE
+            // na conta quando esta chamada falha, e envelope de produção não se apaga depois de
+            // ativado — só se cancela, e o cancelado fica na lista para sempre.
+            content_base64: `data:application/pdf;base64,${Buffer.from(pedido.arquivo.bytes).toString("base64")}`,
             filename: comExtensaoPdf(pedido.arquivo.nome),
             // ⚠️ ESTE É O ÚNICO CAMPO NOSSO QUE VOLTA NO WEBHOOK. Ver o topo.
             metadata: metadadosDoDocumento(pedido.identidade),

@@ -171,7 +171,12 @@ export async function chamar<T = unknown>(caminho: string, opcoes: Opcoes = {}):
       body: opcoes.corpo === undefined ? undefined : JSON.stringify(opcoes.corpo),
       headers: {
         Accept: mime(opcoes.tipoDeConteudo ?? "jsonapi"),
-        Authorization: cabecalhoDeAutorizacao(cfg.token, opcoes.esquema ?? "bearer"),
+        // ⚠️ O TOKEN VAI CRU, SEM "Bearer" — conferido na doc oficial da v3 em 09/09/2026, nas
+        // duas páginas que mostram requisição: "Primeiros passos" (`--header 'Authorization:
+        // {{access_token}}'`) e "Veja como funciona na prática" (`--header "Authorization:
+        // $access_token"`). O default era `bearer` e teria dado 401 na PRIMEIRA chamada real.
+        // É a mesma pancada do write do C2X, invertida — lá o erro foi PÔR o Bearer.
+        Authorization: cabecalhoDeAutorizacao(cfg.token, opcoes.esquema ?? "cru"),
         "Content-Type": mime(opcoes.tipoDeConteudo ?? "jsonapi"),
       },
       method: metodo,

@@ -287,6 +287,7 @@ export function TemisKanban({
                         // porta quem fecha é `autorizarEmissaoDeContrato`.
                         semToken || somenteLeitura ? null : (id) => setEnviando(id)
                       }
+                      aoMarcar={(atividade, feita) => void marcar(t.id, atividade, feita)}
                       key={t.id}
                       ocupado={ocupado === t.id}
                       somenteLeitura={somenteLeitura}

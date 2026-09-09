@@ -177,4 +177,43 @@ describe("a leitura do evento", () => {
     expect(lerEventoDoWebhook("{{{").evento).toBe("");
     expect(lerEventoDoWebhook("").documentoId).toBeNull();
   });
+
+  // ⚠️ OS TRÊS ABAIXO GUARDAM UM BUG QUE PASSOU PELOS TESTES ANTIGOS. A leitura fazia
+  // `objeto(raiz.document) ?? objeto(evento.document) ?? objeto(dados.document)`, e como
+  // `objeto()` devolve `{}` — que não é nullish — os dois últimos nunca eram alcançados. Todos
+  // os testes de id punham `document` na RAIZ, o único formato em que aquilo funcionava por
+  // acaso. Se a Clicksign mandasse aninhado, o contrato ficava preso em "aguardando" calado.
+
+  it("acha o id quando o documento vem aninhado em event.document", () => {
+    const lido = lerEventoDoWebhook(
+      JSON.stringify({ event: { document: { id: "doc_9" }, name: "auto_close" } }),
+    );
+    expect(lido.documentoId).toBe("doc_9");
+    expect(lido.evento).toBe("auto_close");
+  });
+
+  it("acha o id quando vem em data.document, que é o formato JSON:API da v3", () => {
+    const lido = lerEventoDoWebhook(
+      JSON.stringify({ data: { document: { id: "doc_9" } }, event: { name: "sign" } }),
+    );
+    expect(lido.documentoId).toBe("doc_9");
+  });
+
+  it("a raiz continua ganhando de um aninhado vazio", () => {
+    const lido = lerEventoDoWebhook(
+      JSON.stringify({
+        data: { document: {} },
+        document: { id: "da_raiz" },
+        event: { name: "sign" },
+      }),
+    );
+    expect(lido.documentoId).toBe("da_raiz");
+  });
+
+  it("acha o envelope aninhado em data.envelope", () => {
+    const lido = lerEventoDoWebhook(
+      JSON.stringify({ data: { envelope: { id: "env_5" } }, event: { name: "auto_close" } }),
+    );
+    expect(lido.envelopeId).toBe("env_5");
+  });
 });

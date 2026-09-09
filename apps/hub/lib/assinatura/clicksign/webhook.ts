@@ -184,9 +184,17 @@ export function lerEventoDoWebhook(corpoCru: string): EventoDaClicksign {
   const evento = objeto(raiz.event);
   const dados = objeto(raiz.data);
   const atributos = objeto(dados.attributes);
-  const documento = objeto(raiz.document) ?? objeto(evento.document) ?? objeto(dados.document);
-  const envelope = objeto(raiz.envelope) ?? objeto(evento.envelope) ?? objeto(dados.envelope);
-  const signatario = objeto(raiz.signer) ?? objeto(evento.signer) ?? objeto(dados.signer);
+  // ⚠️ `primeiroObjeto`, E NÃO `??`. Aqui havia `objeto(a) ?? objeto(b) ?? objeto(c)`, e os dois
+  // últimos eram CÓDIGO MORTO: `objeto()` nunca devolve nullish — devolve `{}` quando o valor não
+  // é objeto, e `{}` não aciona o `??`. Só a raiz era lida de verdade.
+  //
+  // O estrago: se a Clicksign entregar o documento aninhado — em `event.document` (formato antigo)
+  // ou em `data.document` (JSON:API, que é o formato que a v3 usa) — `documentoId` e `envelopeId`
+  // voltariam AMBOS nulos, `acharEnvelope` não teria por onde procurar e o contrato ficaria em
+  // "aguardando" para sempre. E calado: a rota responde 200, então a Clicksign não reenvia.
+  const documento = primeiroObjeto(raiz.document, evento.document, dados.document);
+  const envelope = primeiroObjeto(raiz.envelope, evento.envelope, dados.envelope);
+  const signatario = primeiroObjeto(raiz.signer, evento.signer, dados.signer);
 
   return {
     documentoId:
@@ -211,6 +219,20 @@ function objeto(bruto: unknown): Record<string, unknown> {
   return bruto && typeof bruto === "object" && !Array.isArray(bruto)
     ? (bruto as Record<string, unknown>)
     : {};
+}
+
+/**
+ * O primeiro dos candidatos que é um objeto COM ALGUMA COISA DENTRO, ou `{}`.
+ *
+ * ⚠️ É o que `??` não faz sobre `objeto()`: como o vazio dele é `{}` e não `null`, encadear com
+ * `??` para no primeiro candidato sempre. Aqui a pergunta certa não é "existe?", é "tem conteúdo?".
+ */
+function primeiroObjeto(...candidatos: unknown[]): Record<string, unknown> {
+  for (const c of candidatos) {
+    const o = objeto(c);
+    if (Object.keys(o).length > 0) return o;
+  }
+  return {};
 }
 
 function texto(bruto: unknown): string {
