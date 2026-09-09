@@ -1,17 +1,14 @@
 "use client";
 
-import { AlertTriangle, Clock, ExternalLink, FileCheck2, Loader2, Send } from "lucide-react";
+import { AlertTriangle, Clock, ExternalLink, FileCheck2, FileText, Loader2, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import {
-  type Atividade,
   type EstagioDoTrabalho,
   type TipoDeTrabalho,
   NOME_DO_TIPO,
-  atividadesDoEstagio,
   prazoDeEmissao,
-  progresso,
   situacaoDoPrazo,
 } from "@/lib/temis/trabalhos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
@@ -187,6 +184,50 @@ export function TemisKanban({
   );
 
   /**
+   * Gera o contrato da proposta e guarda — o mesmo caminho da prévia do Hércules.
+   *
+   * ⚠️ AQUI, E NÃO SÓ NO HÉRCULES, porque o quadro é onde o time de contratos trabalha. Antes o
+   * botão de gerar vivia só na tela de Venda: quem estava no board marcava "Gerar o contrato pela
+   * minuta" na checklist, o card andava, e nada tinha sido gerado. O card do Henrique chegou a
+   * "finalizado" com as cinco atividades marcadas, sem contrato e sem envelope.
+   *
+   * ⚠️ E A LACUNA CONTINUA BLOQUEANDO: quem recusa é a rota, que devolve o que falta. O botão não
+   * repete a validação — repetir daria duas verdades sobre o mesmo contrato.
+   */
+  const gerarContrato = useCallback(
+    async (id: string, propostaId: string) => {
+      if (somenteLeitura) return;
+      setOcupado(id);
+      setErro(null);
+      try {
+        const token = semToken ? null : await getApoloAccessToken();
+        const r = await fetch("/api/temis/contrato/gerar", {
+          body: JSON.stringify({ propostaId }),
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          method: "POST",
+        });
+        const j = (await r.json()) as { erro?: string; faltando?: string[] };
+        if (!r.ok) {
+          throw new Error(
+            j.faltando?.length
+              ? `Falta preencher: ${j.faltando.join(", ")}.`
+              : (j.erro ?? `Falhou (${r.status}).`),
+          );
+        }
+        await carregar();
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : "Não consegui gerar o contrato.");
+      } finally {
+        setOcupado(null);
+      }
+    },
+    [carregar, semToken, somenteLeitura],
+  );
+
+  /**
    * Abre o contrato guardado numa aba.
    *
    * ⚠️ A ABA É ABERTA ANTES DO `await`, e não depois. A URL do arquivo é assinada no servidor, o
@@ -287,6 +328,11 @@ export function TemisKanban({
                         // porta quem fecha é `autorizarEmissaoDeContrato`.
                         semToken || somenteLeitura ? null : (id) => setEnviando(id)
                       }
+                      aoGerarContrato={
+                        semToken || somenteLeitura
+                          ? null
+                          : (propostaId) => void gerarContrato(t.id, propostaId)
+                      }
                       aoMarcar={(atividade, feita) => void marcar(t.id, atividade, feita)}
                       key={t.id}
                       ocupado={ocupado === t.id}
@@ -324,6 +370,7 @@ function Card({
   aoAbrir,
   aoAbrirContrato,
   aoEnviarParaAssinatura,
+  aoGerarContrato,
   aoMarcar,
   ocupado,
   somenteLeitura,
@@ -334,6 +381,8 @@ function Card({
   aoAbrirContrato: (documentoId: string) => void;
   /** `null` no board só-leitura do portal comercial: lá o botão não existe. */
   aoEnviarParaAssinatura: null | ((propostaId: string) => void);
+  /** `null` pelo mesmo motivo: gerar contrato é ação de quem emite. */
+  aoGerarContrato: null | ((propostaId: string) => void);
   aoMarcar: (atividade: string, feita: boolean) => void;
   ocupado: boolean;
   somenteLeitura: boolean;
@@ -344,12 +393,32 @@ function Card({
   // caso normal (alguém consertou um dado e gerou de novo); mostrar as duas com o mesmo peso é o
   // caminho mais curto para despachar a versão errada para assinatura.
   const vigente = contratoVigente(contratos);
-  const p = progresso(trabalho);
   const prazo = situacaoDoPrazo(trabalho);
   // A promessa de ponta a ponta: "quando o contrato fica pronto?", que é a pergunta do comercial.
   const emissao = prazoDeEmissao(trabalho);
-  const doEstagio = atividadesDoEstagio(trabalho.tipo, trabalho.estagio);
-  const feitas = new Set(trabalho.atividadesFeitas);
+
+  /**
+   * Qual das duas ações este card oferece — `null` quando nenhuma.
+   *
+   * ⚠️ O ESTÁGIO PEDE, MAS O FATO DECIDE. O Lucas pediu "na entrada, gerar contrato; em contrato,
+   * enviar para assinatura", e é isso que a ordem abaixo faz. Só que `enviar` também exige o
+   * contrato vigente EXISTIR: um card que chegou à confecção sem nada gerado (o caso do Henrique,
+   * que atravessou a esteira na marcação) mostraria um botão de enviar que só produz erro. Nesse
+   * caso ele volta a oferecer `gerar`, que é o passo que de fato falta.
+   *
+   * ⚠️ E SÓ PARA CONTRATO. Cessão, distrato e cancelamento têm documento próprio e caminho
+   * próprio; dar-lhes o botão de gerar contrato mandaria a minuta errada.
+   */
+  const acao: "enviar" | "gerar" | null =
+    trabalho.tipo !== "contrato" || !trabalho.propostaId
+      ? null
+      : vigente
+        ? trabalho.estagio === "entrada" || trabalho.estagio === "confeccao"
+          ? "enviar"
+          : null
+        : trabalho.estagio === "entrada" || trabalho.estagio === "confeccao"
+          ? "gerar"
+          : null;
 
   return (
     <article
@@ -415,15 +484,6 @@ function Card({
           ) : null}
         </p>
 
-        {/* ⚠️ O CHECKLIST É TRABALHO DE QUEM EXECUTA, e o board do comercial não executa nada
-            (Lucas, 06/09/2026: *"é somente informativo (...) a parte de operação vai ficar na Têmis
-            mesmo"*). O contador "0 de 1 nesta etapa" media o andamento do jurídico dentro do
-            passo; para o comercial, a resposta é o passo — e o passo é a coluna. */}
-        {!somenteLeitura && doEstagio.length > 0 ? (
-          <p className="mt-1.5 text-[0.7rem] font-semibold text-ink-muted">
-            {p.feitas} de {p.total} nesta etapa
-          </p>
-        ) : null}
 
         {/* ⚠️ "O DOCUMENTO EXISTE" É INFORMAÇÃO DE RELANCE, e por isso fica na FACE do card, não
             dentro do checklist. A pergunta de quem olha a coluna Confecção é "o que ainda não tem
@@ -483,7 +543,33 @@ function Card({
               card e `hercules_documentos` — `venda_id` aponta para uma tabela vazia). Os quatro
               cards antigos do Garden e da Lavra nasceram sem esse elo, e para eles o botão não
               aparece: mostrá-lo daria um clique que só produz erro. */}
-          {aoEnviarParaAssinatura && vigente && trabalho.propostaId ? (
+          {/* ⚠️ UMA AÇÃO POR ESTÁGIO, E É A AÇÃO DE VERDADE. Regra do Lucas em 09/09/2026, depois
+              de ver o card do Henrique chegar a "finalizado" com as cinco atividades marcadas, sem
+              contrato e sem envelope: *"eu fui clicando, ele andou na esteira mas acho que não
+              aconteceu nada"* · *"deixa somente esses dois botões"* · *"na entrada, gerar contrato
+              — em contrato, enviar para assinatura"*.
+
+              O checklist saiu do card: marcar "Gerar o contrato pela minuta" não gerava nada, e o
+              card andava mesmo assim. O que move agora é o fato — gerar produz o PDF guardado,
+              enviar cria o envelope na Clicksign.
+
+              ⚠️ De "Em assinatura" para "Finalizado" ainda faltam as condições (Lucas, 09/09:
+              *"depois de assinatura vai ter algumas condições para finalizado"*). Enquanto elas
+              não existem, aquele trecho não ganha botão nenhum — botão que não faz a coisa é
+              exatamente o que estamos tirando daqui. */}
+          {acao === "gerar" && aoGerarContrato && trabalho.propostaId ? (
+            <button
+              className="mb-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-line bg-subtle/40 px-2 py-1.5 text-[0.7rem] font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-50"
+              disabled={ocupado}
+              onClick={() => aoGerarContrato(trabalho.propostaId as string)}
+              type="button"
+            >
+              <FileText aria-hidden="true" size={11} />
+              {ocupado ? "Gerando…" : "Gerar contrato"}
+            </button>
+          ) : null}
+
+          {acao === "enviar" && aoEnviarParaAssinatura && trabalho.propostaId ? (
             <button
               className="mb-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-line bg-subtle/40 px-2 py-1.5 text-[0.7rem] font-semibold text-ink transition-colors hover:bg-subtle"
               onClick={() => aoEnviarParaAssinatura(trabalho.propostaId as string)}
@@ -493,17 +579,6 @@ function Card({
               Enviar para assinatura
             </button>
           ) : null}
-
-          {doEstagio.map((a) => (
-            <ItemDoChecklist
-              atividade={a}
-              aoMarcar={aoMarcar}
-              feita={feitas.has(a.texto)}
-              key={a.texto}
-              ocupado={ocupado}
-              somenteLeitura={somenteLeitura}
-            />
-          ))}
 
           {/* O rastro fica visível ao abrir: é o que prova de onde veio a solicitação. */}
           <p className="mt-1 text-[0.65rem] text-ink-muted">
@@ -522,45 +597,5 @@ function Card({
         </div>
       ) : null}
     </article>
-  );
-}
-
-function ItemDoChecklist({
-  aoMarcar,
-  atividade,
-  feita,
-  ocupado,
-  somenteLeitura,
-}: {
-  aoMarcar: (atividade: string, feita: boolean) => void;
-  atividade: Atividade;
-  feita: boolean;
-  ocupado: boolean;
-  somenteLeitura: boolean;
-}) {
-  return (
-    <label
-      className={`flex items-start gap-1.5 text-[0.72rem] leading-snug text-ink ${
-        somenteLeitura ? "cursor-default" : "cursor-pointer"
-      }`}
-    >
-      {/* No portal o checkbox é só o retrato do que a Têmis já fez: travado, sem `onChange`
-          alcançável — e `marcar` recusa por cima, caso alguém destrave o input por fora. */}
-      <input
-        checked={feita}
-        className="mt-0.5"
-        disabled={ocupado || somenteLeitura}
-        onChange={(e) => aoMarcar(atividade.texto, e.target.checked)}
-        type="checkbox"
-      />
-      <span className={feita ? "text-ink-muted line-through" : ""}>
-        {atividade.texto}
-        {/* ⚠️ ATIVIDADE DE CLIENTE É DITA, e não escondida: quem olha precisa saber que aquele item
-            não depende da equipe antes de cobrar alguém por ele. */}
-        {atividade.quem === "cliente" ? (
-          <span className="ml-1 text-[0.62rem] text-ink-muted">(com o cliente)</span>
-        ) : null}
-      </span>
-    </label>
   );
 }

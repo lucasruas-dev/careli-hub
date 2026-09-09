@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-09-dois-botoes-no-card-da-temis",
+    deployedAt: "2026-09-09T12:10:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O card tem as duas ações, e elas fazem a coisa.** Na Entrada, *Gerar contrato*. Depois de gerado, *Enviar para assinatura*.",
+              "**Saiu a lista de caixinhas.** Marcar “Gerar o contrato” não gerava nada e o card andava assim mesmo — dava para chegar ao fim da esteira sem contrato e sem envelope. Agora o que move o card é o fato: o contrato existir, o envelope existir.",
+              "**Não precisa mais sair do quadro para gerar.** Antes o botão de gerar só existia na tela de Venda do Hércules.",
+            ],
+            screen: "Quadro de contratos",
+          },
+        ],
+      },
+    ],
+    rollback: "0616eb57",
+    technical: {
+      done: "⚠️ O CARD ANDAVA NA MARCAÇÃO, NÃO NO FATO — e o card do Henrique Sales do Vale provou: chegou a `finalizado` com as CINCO atividades marcadas, `tem_contrato_gerado: false` e `tem_envelope: false`. As atividades eram texto puro (`{estagio, prazoDias, quem, texto}`) e `podeAvancar` era “todas as caixinhas do estágio marcadas”: nada consultava o mundo real. Lucas, 09/09/2026: *\"eu fui clicando, ele andou na esteira mas acho que não aconteceu nada\"* · *\"deixa somente esses dois botões\"* · *\"na entrada, gerar contrato — em contrato, enviar para assinatura\"*. ⚠️ O ESTÁGIO PEDE, MAS O FATO DECIDE: `acao` dá `gerar` na entrada/confecção sem contrato vigente e `enviar` quando o vigente existe — um card que chegou à confecção sem nada gerado (o caso do Henrique) volta a oferecer `gerar`, que é o passo que de fato falta, em vez de um botão de enviar que só produz erro. E só para `tipo === contrato`: cessão, distrato e cancelamento têm documento próprio, e dar-lhes o botão mandaria a minuta errada. ⚠️ POR QUE O BOTÃO DE ENVIAR NUNCA APARECEU ANTES: a condição era `aoEnviarParaAssinatura && vigente && propostaId`, e `vigente` é o contrato GERADO — como o botão de gerar vivia só no Hércules e ninguém gerou, o botão de enviar ficou escondido o tempo todo enquanto a esteira era percorrida na mão. ⚠️ A LACUNA CONTINUA BLOQUEANDO, e quem recusa é a rota: o botão novo não repete a validação (repetir daria duas verdades sobre o mesmo contrato), só mostra o que voltou em `faltando`. ⚠️ SAÍRAM JUNTOS o contador “N de M nesta etapa” (sem checklist ele congelaria em 0 de N) e o `ItemDoChecklist`, mais os imports que só serviam a eles. O `marcar` continua no componente e a rota de atividade continua de pé — o avanço automático não foi tocado. ⚠️ PENDÊNCIA REGISTRADA: de “Em assinatura” para “Finalizado” faltam as condições (Lucas: *\"depois de assinatura vai ter algumas condições para finalizado\"*). Enquanto não existem, aquele trecho NÃO ganhou botão — botão que não faz a coisa é justamente o que este deploy tira. 3.473 testes verdes, typecheck limpo.",
+      motivation: "Dava para percorrer a esteira inteira marcando caixinha, sem gerar contrato nenhum e sem mandar nada para assinatura.",
+    },
+    title: "Os dois botões que fazem a coisa",
+    type: "melhoria",
+    version: "1.304.0",
+  },
+  {
     buildTag: "2026-09-09-contrato-vai-para-assinatura",
     deployedAt: "2026-09-09T11:30:00-03:00",
     modules: [
