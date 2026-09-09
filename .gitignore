@@ -51,3 +51,7 @@ yarn-error.log*
 # Dumps de auditoria e scripts soltos gerados durante investigacao (nao sao codigo do produto)
 /audit-*.json
 /scratch-*.mjs
+
+# subproduto de teste: lib/hercules/proposta-pdf.test.ts grava aqui a cada rodada.
+# Ja voltou duas vezes por `git add -A` em worktree novo (c6d67eb9 tirou, 7f5ccafb trouxe).
+.tmpr/
