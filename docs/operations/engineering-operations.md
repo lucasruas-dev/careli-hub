@@ -41920,3 +41920,46 @@ objeto, não pelo registro). Só a 0147 faltava.
 ⚠️ **O código ainda NÃO está em produção.** A cadeia da Clicksign (4.042 linhas, 155 testes
 verdes, typecheck exit 0) está na branch `wip/gerar-proposta`. As tabelas existem e estão
 vazias; nenhum envelope foi criado na conta real. O deploy é autorização separada.
+
+## 2026-09-09 — v1.303.0 em produção: o contrato vai para assinatura
+
+**Autorização:** Lucas, 09/09/2026, *"tem o ok"*.
+
+`7f5ccafb..0616eb57` · deployment `dpl_9it3gGA8fMj7X8jLrks3VTnF1PrT` · **READY** ·
+rollback `7f5ccafb` (1.302.0). 41 arquivos, 6.665 linhas, 5 commits.
+
+**Verificado depois do deploy:** `c2x.app.br` 200 · `/api/temis/assinatura/enviar` 401
+(existe, exige sessão) · `/api/temis/assinatura/diagnostico` 401 · webhook alcançável e
+recusando POST sem HMAC com `{"ok":false,"erro":"assinatura inválida"}` — a rota respondendo
+por si, não o gate (o `/api/publico/clicksign` está na allowlist do proxy, linha 100).
+
+### A revisão adversarial se pagou
+
+Seis frentes lendo o caminho de envio, três céticos por achado, antes do primeiro envelope
+real. Três sobreviveram, e os dois primeiros eram contra a **doc oficial da v3**:
+
+1. **O token ia com `Bearer` e a v3 quer ele cru** — 401 na primeira chamada. E a sonda que
+   existe para responder isso (`sondarCabecalho`) não alimentava o envio, só o diagnóstico.
+2. **O PDF ia em base64 cru e a v3 quer `data:application/pdf;base64,`** — e o comentário
+   afirmava o contrário da doc. Quebra no PASSO 2, com o envelope do passo 1 já criado e já
+   pago.
+3. **O `??` sobre `objeto()` matava os fallbacks do webhook** — `objeto()` devolve `{}`, que
+   não é nullish. Com o documento aninhado (o formato JSON:API da própria v3), o contrato
+   ficaria em "aguardando" para sempre, calado.
+
+Mais a prop `aoMarcar` que sumiu do `<Card>` no merge (o `tsc` já recusava o build).
+
+### Outras três coisas resolvidas no caminho
+
+- **Colisão de migration**: a minha nasceu 0147 e a outra sessão já usara 0147/0148 →
+  renumerada para **0149**. No banco não houve colisão (versões são timestamps).
+- **A branch estava 5 commits atrás da produção** — main integrada antes de subir.
+- **Três arquivos com dado de cliente soltos no repo**, um deles em `public/` (seria servido
+  sem login, o mesmo erro do Garden). Movidos para fora do repositório, e `.tmpr/` foi para o
+  `.gitignore` — o PDF de teste já tinha voltado duas vezes por `git add -A`.
+
+3.473 testes verdes, typecheck limpo.
+
+⚠️ **NENHUM ENVELOPE FOI CRIADO AINDA.** O teste é clique do Lucas, no ZZ TESTE, na conta de
+PRODUÇÃO da Clicksign — envelope tem custo e, ativado, não se apaga. Antes de clicar vale
+abrir `/api/temis/assinatura/diagnostico`, que testa a conexão sem criar nada.
