@@ -147,6 +147,8 @@ export type FalhaAoEnviar = { erro: string; ok: false; status: 400 | 404 | 409 |
 export async function enviarContratoParaAssinatura(
   sb: SupabaseClient,
   pedido: {
+    /** Mandar sem CPF neste envio — a Clicksign valida o documento contra a Receita. */
+    semCpf?: boolean;
     /** E-mails trocados na tela, por `chaveDoSignatario`. Valem so para este envio. */
     emailsEscolhidos?: null | Record<string, string>;
     mensagem?: string;
@@ -206,6 +208,7 @@ export async function enviarContratoParaAssinatura(
     signatarios: preparo.signatarios,
     ...(pedido.mensagem ? { mensagem: pedido.mensagem } : {}),
     ...(pedido.prazoEmDias ? { prazoEmDias: pedido.prazoEmDias } : {}),
+    ...(pedido.semCpf ? { semCpf: true } : {}),
   };
 
   const resultado = await enviarParaAssinatura(paraEnviar, porta);

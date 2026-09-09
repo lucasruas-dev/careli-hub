@@ -64,6 +64,7 @@ export async function POST(request: Request) {
     ordem?: unknown;
     prazoEmDias?: unknown;
     propostaId?: unknown;
+    semCpf?: unknown;
   };
 
   const propostaId = typeof corpo.propostaId === "string" ? corpo.propostaId.trim() : "";
@@ -111,6 +112,7 @@ export async function POST(request: Request) {
 
   const enviado = await enviarContratoParaAssinatura(sb, {
     emailsEscolhidos,
+    semCpf: corpo.semCpf === true,
     ordemEscolhida,
     propostaId,
     usuarioId: autorizacao.userId,

@@ -203,6 +203,31 @@ describe("a ordem vira `group`", () => {
     expect(signers[1]?.documentation).toBe("999.999.004-53");
   });
 
+  // ⚠️ A CLICKSIGN VALIDA O CPF CONTRA A RECEITA. O do ZZ TESTE é fictício: passa no dígito
+  // verificador e mesmo assim volta 422 `documentation - inválido`. Sem esta saída, o teste não
+  // andaria — e, pior, um cliente real com CPF suspenso na Receita travaria do mesmo jeito.
+  it("com `semCpf`, não manda documentação nenhuma", async () => {
+    const { chamadas, porta } = duplo();
+    await enviarParaAssinatura(
+      {
+        ...pedido([{ ...pessoa("A Silva", "a@x.com", "comprador", 1), cpf: "999.999.004-53" }]),
+        semCpf: true,
+      },
+      porta,
+    );
+
+    const attrs = (
+      chamadas.find((c) => c.caminho.endsWith("/signers"))?.corpo as {
+        data: { attributes: Record<string, unknown> };
+      }
+    ).data.attributes;
+    expect(attrs.has_documentation).toBe(false);
+    expect(attrs.documentation).toBeUndefined();
+    // O resto do signatário continua inteiro: sem CPF não quer dizer sem identificação.
+    expect(attrs.email).toBe("a@x.com");
+    expect(attrs.name).toBe("A Silva");
+  });
+
   // ⚠️ O CPF CHEGA DO CADASTRO DE DOIS JEITOS — com máscara e sem —, e a Clicksign só aceita um.
   // Se o formato dependesse de como alguém digitou na ficha, o envio quebraria para uns clientes e
   // não para outros, o que é o tipo de defeito que demora a aparecer.

@@ -50,6 +50,19 @@ export type PedidoDeEnvio = {
    * vez de virar 422 no meio do fluxo — com o envelope já criado.
    */
   prazoEmDias?: number;
+  /**
+   * Mandar SEM o CPF, para este envio.
+   *
+   * ⚠️ EXISTE PORQUE A CLICKSIGN VALIDA O CPF CONTRA A RECEITA. O do ZZ TESTE é fictício
+   * (`999.999.004-53`): passa no dígito verificador e mesmo assim volta 422
+   * `documentation - inválido`, porque o número não existe no cadastro oficial. Lucas,
+   * 09/09/2026: *"vamos sem cpf"*.
+   *
+   * ⚠️ E SERVE ALÉM DO TESTE: CPF suspenso na Receita, ou com nome desatualizado, recusa igual —
+   * e aí o contrato de um cliente real ficaria travado sem caminho. Sem CPF, a Clicksign não pede
+   * documento na hora de assinar e a autenticação fica só no e-mail.
+   */
+  semCpf?: boolean;
   /** Já com `ordem` resolvida por `ordenarSignatarios`. */
   signatarios: readonly Signatario[];
 };
@@ -186,7 +199,12 @@ export async function enviarParaAssinatura(
   try {
     for (const pessoa of pedido.signatarios) {
       const criado = await porta<RespostaComId>(`/envelopes/${envelopeId}/signers`, {
-        corpo: { data: { attributes: atributosDoSignatario(pessoa), type: "signers" } },
+        corpo: {
+          data: {
+            attributes: atributosDoSignatario(pessoa, pedido.semCpf === true),
+            type: "signers",
+          },
+        },
         metodo: "POST",
       });
       const id = String(criado?.data?.id ?? "");
@@ -301,8 +319,11 @@ function atributosDoEnvelope(nome: string, pedido: PedidoDeEnvio): Record<string
   return atributos;
 }
 
-function atributosDoSignatario(pessoa: Signatario): Record<string, unknown> {
-  const digitos = String(pessoa.cpf ?? "").replace(/\D/g, "");
+function atributosDoSignatario(
+  pessoa: Signatario,
+  semCpf = false,
+): Record<string, unknown> {
+  const digitos = semCpf ? "" : String(pessoa.cpf ?? "").replace(/\D/g, "");
   // ⚠️ SÓ CPF, NUNCA CNPJ. O campo `documentation` da Clicksign é o CPF de uma PESSOA; um comprador
   // PJ tem 14 dígitos e mandá-los ali faz o cadastro do signatário ser recusado. Quem assina por uma
   // empresa é o representante — e o CPF dele é que entraria, quando o Panteon o tiver.

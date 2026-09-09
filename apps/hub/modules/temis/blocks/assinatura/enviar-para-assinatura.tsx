@@ -65,6 +65,8 @@ export function EnviarParaAssinatura({
   const [papeis, setPapeis] = useState<PapelNoContrato[]>([]);
   /** E-mails trocados na tela, por chaveDoSignatario. Vazio = vale o que veio da ficha. */
   const [emails, setEmails] = useState<Record<string, string>>({});
+  /** Pedir CPF na assinatura. Ligado por padrao; desligar vale so para este envio. */
+  const [pedirCpf, setPedirCpf] = useState(true);
 
   useEffect(() => {
     let vivo = true;
@@ -134,7 +136,12 @@ export function EnviarParaAssinatura({
     try {
       const accessToken = await getApoloAccessToken();
       const resposta = await fetch("/api/temis/assinatura/enviar", {
-        body: JSON.stringify({ emails, ordem: { ordenada, papeis }, propostaId }),
+        body: JSON.stringify({
+          emails,
+          ordem: { ordenada, papeis },
+          propostaId,
+          semCpf: !pedirCpf,
+        }),
         headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
         method: "POST",
       });
@@ -287,6 +294,45 @@ export function EnviarParaAssinatura({
                   </div>
                 );
               })}
+            </div>
+
+            {/* ── O CPF ──
+                ⚠️ A CLICKSIGN VALIDA O CPF CONTRA A RECEITA, e é por isso que este controle
+                existe. O CPF do ZZ TESTE é fictício (`999.999.004-53`): passa no dígito
+                verificador e mesmo assim volta 422 `documentation - inválido`, porque o número
+                não existe no cadastro oficial. Lucas, 09/09/2026: *"vamos sem cpf"*.
+
+                ⚠️ E SERVE ALÉM DO TESTE: CPF suspenso na Receita, ou com o nome desatualizado
+                lá, recusa igual — e sem esta saída o contrato de um cliente real ficaria travado
+                sem caminho, com o envelope já criado. */}
+            <div className="mt-4 rounded-lg border border-line p-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="m-0 text-xs font-semibold text-ink">Pedir CPF na assinatura</p>
+                  <p className="m-0 mt-0.5 text-[0.7rem] text-ink-muted">
+                    {pedirCpf
+                      ? "A Clicksign confere o CPF na Receita. Se o cadastro tiver CPF fictício ou irregular, o envio é recusado."
+                      : "O contrato sai sem CPF: quem assina se autentica só pelo e-mail."}
+                  </p>
+                </div>
+                <button
+                  aria-checked={pedirCpf}
+                  aria-label="Pedir CPF na assinatura"
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    pedirCpf ? "bg-inverse" : "bg-line-strong"
+                  }`}
+                  disabled={enviando}
+                  onClick={() => setPedirCpf((v) => !v)}
+                  role="switch"
+                  type="button"
+                >
+                  <span
+                    className={`inline-block size-3.5 rounded-full bg-white shadow transition-transform ${
+                      pedirCpf ? "translate-x-5" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             {/* ── A ORDEM ── */}

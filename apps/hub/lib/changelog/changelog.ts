@@ -36,6 +36,31 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-09-enviar-sem-cpf",
+    deployedAt: "2026-09-09T16:15:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Dá para mandar o contrato sem pedir CPF.** Um interruptor novo na tela de envio, ligado por padrão. A Clicksign confere o CPF na Receita, e cadastro com CPF irregular fazia o envio ser recusado sem saída.",
+            ],
+            screen: "Enviar para assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "49c8a767",
+    technical: {
+      done: "⚠️ A CLICKSIGN VALIDA O CPF CONTRA A RECEITA FEDERAL, e é isso que derrubou a segunda tentativa do primeiro envio real. O `999.999.004-53` do ZZ TESTE **passa no dígito verificador** (conferido na mão) e mesmo assim volta 422 `documentation - inválido`, porque o número não existe no cadastro oficial. O erro mudou de 400 (*\"não está em um formato válido\"*, corrigido na 1.306.0) para 422 (*\"inválido\"*) — a máscara passou, o número não. Nenhum ajuste de formato resolveria. Lucas, 09/09/2026: *\"vamos sem cpf\"*. ⚠️ E NÃO VIROU EXCEÇÃO DO ZZ TESTE, virou controle: CPF suspenso na Receita, ou com nome desatualizado lá, recusa igual — e sem esta saída o contrato de um cliente REAL ficaria travado sem caminho, com o envelope já criado. O interruptor nasce LIGADO, e o texto sob ele muda com o estado, para ninguém desligar sem saber do que está abrindo mão. ⚠️ COM `semCpf`, `has_documentation: false` E O CAMPO NÃO VAI. Não é \"mandar vazio\": com a bandeira ligada (o default deles) a Clicksign PEDE CPF e data de nascimento na hora de assinar, e um signatário sem documento ficaria travado na tela do provedor sem ter o que digitar. O resto do signatário continua inteiro — sem CPF não é sem identificação. ⚠️ VALE SÓ PARA ESTE ENVIO, como a ordem e o e-mail: não toca o cadastro. 3.477 testes verdes, typecheck limpo.",
+      motivation: "A Clicksign valida o CPF na Receita, e o cadastro do ZZ TESTE tem CPF fictício — o envio era recusado sem caminho de saída.",
+    },
+    title: "Enviar sem pedir CPF",
+    type: "melhoria",
+    version: "1.307.0",
+  },
+  {
     buildTag: "2026-09-09-cpf-formatado-na-clicksign",
     deployedAt: "2026-09-09T15:55:00-03:00",
     modules: [
