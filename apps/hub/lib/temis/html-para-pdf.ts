@@ -118,6 +118,23 @@ const CSS_BASE = `
   tr, td, th { break-inside: avoid; page-break-inside: avoid; }
   h1, h2, h3, h4, h5, h6 { break-after: avoid; page-break-after: avoid; }
   .pagina-nova { break-before: page; page-break-before: always; }
+
+  /* ⚠️ O MARCA-TEXTO É FERRAMENTA DE REVISÃO E NÃO VAI AO PAPEL. Decisão do Lucas, 08/09/2026.
+     Ele chega por dois caminhos, e os dois precisam ser desligados: a tag mark, do botão de
+     realce, e o background-color que o botão de cor de fundo grava no trecho de texto
+     (estiloDoTexto, em documento-html.ts). Quem destaca um trecho para conferir está falando com
+     um colega, não com o comprador — e um contrato assinado com parágrafo amarelo não tem
+     desfazer.
+
+     ⚠️ E ISSO SÓ EXISTE AQUI, no CSS do PDF, porque na TELA o realce precisa aparecer: é lá que
+     ele serve. A prévia e o papel divergem neste ponto de propósito, e é a única divergência
+     deliberada entre os dois.
+
+     ⚠️ O SELETOR ATINGE SÓ TEXTO. Callout e célula de tabela pintam o fundo no elemento de
+     BLOCO (div, td), e esses continuam imprimindo — foi para eles que o print-color-adjust acima
+     foi ligado. Trocar por um "background: none" geral apagaria os dois. */
+  mark { background-color: transparent; color: inherit; }
+  span[style*="background-color"] { background-color: transparent !important; }
 `;
 
 /**

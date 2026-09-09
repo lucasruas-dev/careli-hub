@@ -15,6 +15,15 @@ export type EnterpriseSetting = {
   // Toggle da Análise de Crédito (default true na migration). Ligado ⇒ o limite de crédito é
   // exigido; desligado ⇒ a etapa de crédito é ignorada na esteira.
   analiseCreditoHabilitada: boolean;
+  // ORDEM DE ASSINATURA (migration 0142). `assinaturaOrdenada` ligado ⇒ os signatários assinam em
+  // fila, na ordem de `assinaturaOrdem` (lista de PAPÉIS, do primeiro ao último); desligado ⇒ todos
+  // ao mesmo tempo, que é o comportamento de hoje em 18 de 18 empreendimentos (medido 08/09/2026).
+  //
+  // ⚠️ `assinaturaOrdem` NULA É O ESTADO NORMAL, e não "lista vazia": nula significa "usa a ordem
+  // padrão da casa" (comprador → cônjuge → vendedora → …). Uma lista vazia gravada diria que NENHUM
+  // papel tem posição, e todo mundo assinaria por último — que não é o que ninguém quis dizer.
+  assinaturaOrdem: null | string[];
+  assinaturaOrdenada: boolean;
   // Toggle do Comprovante de renda (default FALSE na migration 0095). Ligado ⇒ o envio da CAD
   // exige o comprovante de renda do cliente (um entre extrato bancário dos últimos 3 meses,
   // contracheque ou declaração de imposto de renda). Desligado ⇒ a CAD segue como hoje.
@@ -44,6 +53,8 @@ export type EnterpriseSetting = {
 
 type SettingRow = {
   analise_credito_habilitada: boolean | null;
+  assinatura_ordem: unknown;
+  assinatura_ordenada: boolean | null;
   code: string | null;
   comprovante_renda_habilitado: boolean | null;
   credenciamento_ativo: boolean | null;
@@ -85,6 +96,22 @@ function normalizarPercentual(v: null | number | string | undefined): null | num
   return Math.round(n * 1000) / 1000;
 }
 
+/**
+ * O jsonb da ordem de assinatura, lido como lista de papéis.
+ *
+ * ⚠️ SÓ STRINGS, E SÓ SE FOR UM ARRAY. A coluna é `jsonb` livre: um dia alguém grava um objeto ali
+ * por engano, e um `as string[]` faria a tela renderizar `[object Object]` como se fosse um papel.
+ * Quem valida QUAIS papéis existem é `lerRegraDeOrdem` (lib/assinatura/ordem.ts) — aqui a pergunta
+ * é só de forma.
+ *
+ * ⚠️ NULO ≠ VAZIO. Nulo é "usa a ordem padrão da casa"; uma lista vazia gravada é uma decisão
+ * (nenhum papel tem posição). Converter um no outro apagaria a diferença.
+ */
+function listaDePapeis(bruto: unknown): null | string[] {
+  if (!Array.isArray(bruto)) return null;
+  return bruto.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+}
+
 // A tabela pode não existir ainda (migration pendente): trata como "sem settings".
 function tabelaAusente(error: { code?: string; message?: string } | null): boolean {
   if (!error) return false;
@@ -102,7 +129,7 @@ export async function listEnterpriseSettings(
   const completa = await adminClient
     .from(TABLE)
     .select(
-      "enterprise_id, code, credenciamento_ativo, limite_credito, valor_pix, analise_credito_habilitada, prevenda_habilitada, comprovante_renda_habilitado, recepcao_cad, recepcao_imobiliaria",
+      "enterprise_id, code, credenciamento_ativo, limite_credito, valor_pix, analise_credito_habilitada, prevenda_habilitada, comprovante_renda_habilitado, recepcao_cad, recepcao_imobiliaria, assinatura_ordenada, assinatura_ordem",
     )
     .limit(2000);
 
@@ -119,6 +146,8 @@ export async function listEnterpriseSettings(
       ...(r as Omit<
         SettingRow,
         | "analise_credito_habilitada"
+        | "assinatura_ordem"
+        | "assinatura_ordenada"
         | "comprovante_renda_habilitado"
         | "prevenda_habilitada"
         | "recepcao_cad"
@@ -126,6 +155,10 @@ export async function listEnterpriseSettings(
         | "valor_pix"
       >),
       analise_credito_habilitada: null,
+      // Colunas da migration 0142 ausentes: nulo = ordem padrão da casa, com todos assinando ao
+      // mesmo tempo — o comportamento de antes da 0142.
+      assinatura_ordem: null,
+      assinatura_ordenada: null,
       comprovante_renda_habilitado: null,
       prevenda_habilitada: null,
       // Colunas da migration 0110 ausentes: null vira "ligado" (flagPadraoLigado), o mesmo
@@ -142,6 +175,10 @@ export async function listEnterpriseSettings(
   for (const row of data) {
     out[row.enterprise_id] = {
       analiseCreditoHabilitada: flagPadraoLigado(row.analise_credito_habilitada),
+      // A ordem NASCE DESLIGADA (default da coluna 0142): ligá-la na carteira inteira mudaria o
+      // comportamento de contratos que hoje saem em paralelo, sem ninguém ter pedido.
+      assinaturaOrdem: listaDePapeis(row.assinatura_ordem),
+      assinaturaOrdenada: flagPadraoDesligado(row.assinatura_ordenada),
       comprovanteRendaHabilitado: flagPadraoDesligado(row.comprovante_renda_habilitado),
       credenciamentoAtivo: Boolean(row.credenciamento_ativo),
       limiteCredito: normalizarLimite(row.limite_credito),
@@ -392,6 +429,100 @@ export function setEnterpriseRecepcaoImobiliaria(input: {
   updatedBy?: string | null;
 }): Promise<{ error?: string; ok: boolean }> {
   return setEnterpriseFlag({ ...input, coluna: "recepcao_imobiliaria" });
+}
+
+/**
+ * A ORDEM DE ASSINATURA do empreendimento (migration 0142).
+ *
+ * Lucas, 08/09/2026: *"a ordem de assinatura queremos criar dentro do empreendimento, em uma aba de
+ * setup (claro que temos que ter a opção de alterar antes de enviar o contrato, mas vem preenchido
+ * por padrão)"*. Este é o "vem preenchido por padrão"; o "alterar antes de enviar" é a tela de
+ * envio, que NÃO grava aqui.
+ *
+ * ⚠️ AS DUAS COLUNAS VÃO NA MESMA ESCRITA, e não uma por vez como os percentuais da política. Elas
+ * são UMA decisão: "assinam em ordem, e nesta ordem". Gravadas em duas chamadas, uma falha no meio
+ * deixaria `assinatura_ordenada = true` com a lista antiga — o empreendimento passaria a assinar em
+ * fila numa ordem que ninguém aprovou, e a tela diria que salvou metade.
+ *
+ * ⚠️ A LISTA VAI COMO VEIO DA TELA, sem validar QUAIS papéis existem — de propósito. Quem sanea é
+ * `lerRegraDeOrdem` na LEITURA (`lib/assinatura/ordem.ts`), que descarta o papel desconhecido e
+ * completa o que falta. É a mesma escolha da 0142: recusar a regra inteira por causa de um papel
+ * renomeado faria o contrato voltar, calado, ao paralelo — justamente o trabalho manual que isto
+ * veio eliminar.
+ *
+ * ⚠️ `null` NA LISTA É "ORDEM PADRÃO DA CASA", e apagar tem significado. Mesma disciplina do
+ * `vendedor_entity_id` e dos percentuais: nulo é uma resposta, não a falta dela.
+ */
+export async function setEnterpriseOrdemDeAssinatura(input: {
+  adminClient: AdminClient;
+  code?: null | string;
+  enterpriseId: string;
+  ordem: null | string[];
+  ordenada: boolean;
+  updatedBy?: null | string;
+}): Promise<{ error?: string; ok: boolean }> {
+  const enterpriseId = (input.enterpriseId ?? "").trim();
+  if (!enterpriseId) return { error: "Empreendimento invalido.", ok: false };
+
+  const ordem = Array.isArray(input.ordem)
+    ? input.ordem.map((p) => String(p ?? "").trim()).filter(Boolean)
+    : null;
+
+  const campos = {
+    assinatura_ordem: ordem,
+    assinatura_ordenada: Boolean(input.ordenada),
+    updated_at: new Date().toISOString(),
+    updated_by: input.updatedBy ?? null,
+  };
+
+  const colunaAusente = (error: { message?: string } | null) =>
+    /assinatura_orde/i.test(error?.message ?? "") && /column|does not exist/i.test(error?.message ?? "");
+  const erroColunaAusente = () => ({
+    error: "As colunas da ordem de assinatura ainda nao existem (migration 0142 pendente).",
+    ok: false as const,
+  });
+
+  const { data: existente, error: erroLeitura } = await input.adminClient
+    .from(TABLE)
+    .select("enterprise_id")
+    .eq("enterprise_id", enterpriseId)
+    .maybeSingle<{ enterprise_id: string }>();
+
+  if (erroLeitura && !tabelaAusente(erroLeitura)) {
+    return { error: `Nao foi possivel salvar: ${erroLeitura.message}`, ok: false };
+  }
+
+  if (existente) {
+    const { error } = await input.adminClient
+      .from(TABLE)
+      .update(campos)
+      .eq("enterprise_id", enterpriseId);
+
+    if (error) {
+      if (colunaAusente(error)) return erroColunaAusente();
+      return { error: `Nao foi possivel salvar: ${error.message}`, ok: false };
+    }
+    return { ok: true };
+  }
+
+  const { error } = await input.adminClient.from(TABLE).insert({
+    ...campos,
+    code: input.code ?? null,
+    // Mesmo cuidado das irmãs: cadastrar a ordem de um empreendimento sem settings NÃO pode ligar o
+    // credenciamento por acidente.
+    credenciamento_ativo: false,
+    enterprise_id: enterpriseId,
+  });
+
+  if (error) {
+    if (tabelaAusente(error)) {
+      return { error: "Tabela de settings do empreendimento ainda nao existe.", ok: false };
+    }
+    if (colunaAusente(error)) return erroColunaAusente();
+    return { error: `Nao foi possivel salvar: ${error.message}`, ok: false };
+  }
+
+  return { ok: true };
 }
 
 /**

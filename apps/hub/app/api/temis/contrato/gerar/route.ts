@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { authorizeApoloRead } from "@/lib/apolo/auth";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import {
+  autorizarEmissaoDeContrato,
+  autorizarLeituraDeContrato,
+} from "@/lib/temis/autorizacao";
 import { montarContratoDaProposta } from "@/lib/temis/contrato-da-proposta";
 import { podeGerarContrato } from "@/lib/temis/contrato-guardado";
 import {
@@ -40,14 +43,19 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 /**
- * ⚠️ `authorizeApoloRead`, A MESMA DA PRÉVIA E DO BOARD DA TÊMIS — e não a de escrita. O botão
- * mora na tela onde a prévia já abriu: se a geração exigisse um papel maior, quem consegue conferir
- * o contrato leria "Usuario sem acesso" ao clicar no botão do lado, sem entender por quê. É a régua
- * que `/api/temis/trabalhos` já usa para POST (marcar atividade, abrir solicitação), que também
- * gravam.
+ * ⚠️ EMITIR CONTRATO NÃO É A MESMA PORTA DE CONFERIR CONTRATO — e até 08/09/2026 era. Esta rota
+ * autorizava com `authorizeApoloRead`, o papel mais baixo que existe, justificada assim: "o botão
+ * mora na tela onde a prévia já abriu; se a geração exigisse um papel maior, quem consegue conferir
+ * não conseguiria gerar". O raciocínio está errado para este caso, e o Lucas apontou por que ao ver
+ * o botão no portal comercial da Gurgel: *"estou como coordenador, não pode ter esse botão de gerar
+ * contrato, isso é somente o time administrativo interno"*. Conferir e emitir são de gente
+ * diferente; que as duas coisas caibam na mesma tela não faz delas o mesmo direito.
+ *
+ * ⚠️ QUEM DECIDE É `autorizarEmissaoDeContrato`, E É O ÚNICO LUGAR (`lib/temis/autorizacao.ts`) —
+ * a etapa 2 troca o recorte por permissão (`temis:manage`) lá dentro, sem voltar aqui.
  */
 export async function POST(request: Request) {
-  const autorizacao = await authorizeApoloRead(request);
+  const autorizacao = await autorizarEmissaoDeContrato(request);
   if (!autorizacao.ok) return autorizacao.response;
 
   const corpo = (await request.json().catch(() => ({}))) as {
@@ -124,9 +132,17 @@ export async function POST(request: Request) {
  * ⚠️ A LISTA EXISTE PARA A TELA SABER O QUE ELA VAI FAZER ANTES DE FAZER. Sem ela, o botão diz
  * "Gerar contrato" mesmo quando já existe uma versão guardada, e quem clica descobre que criou a v2
  * depois de criada — num documento jurídico, essa é a ordem errada de descobrir.
+ *
+ * ⚠️ O GET NÃO SOBE PARA O RECORTE DO POST, E A ASSIMETRIA É A DECISÃO. Abrir o contrato que já
+ * existe é conferência — é o que o comercial faz na prévia, e é o botão "Abrir o contrato guardado"
+ * que continua no rodapé do portal. Fechar esta leitura junto com a emissão apagaria esse botão e
+ * faria o botão da Têmis mentir sobre a versão, sem esconder nada: as mesmas linhas de
+ * `hercules_documentos` já abrem com esta régua na aba Documentos da venda e na ficha do cliente no
+ * Apolo. O que impede um id qualquer de virar link assinado é o `tipo = contrato`, em
+ * `abrirContratoGuardado` — e não o papel de quem pede.
  */
 export async function GET(request: Request) {
-  const autorizacao = await authorizeApoloRead(request);
+  const autorizacao = await autorizarLeituraDeContrato(request);
   if (!autorizacao.ok) return autorizacao.response;
 
   const sb = createApoloAdminClient();

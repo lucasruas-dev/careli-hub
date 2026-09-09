@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Clock, ExternalLink, FileCheck2, Loader2 } from "lucide-react";
+import { AlertTriangle, Clock, ExternalLink, FileCheck2, Loader2, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
@@ -15,6 +15,7 @@ import {
   situacaoDoPrazo,
 } from "@/lib/temis/trabalhos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { EnviarParaAssinatura } from "@/modules/temis/blocks/assinatura/enviar-para-assinatura";
 
 // O BOARD DA TÊMIS — kanban do trabalho, e não painel de configuração.
 //
@@ -62,6 +63,8 @@ type TrabalhoDaTela = {
   id: string;
   irisTicketId: null | string;
   observacao: null | string;
+  /** A proposta de onde o contrato saiu. É a chave do envio para assinatura. */
+  propostaId?: null | string;
   tipo: TipoDeTrabalho;
   trabalhoOrigemId: null | string;
   unidade: string;
@@ -125,6 +128,8 @@ export function TemisKanban({
   const [erro, setErro] = useState<null | string>(null);
   const [aberto, setAberto] = useState<null | string>(null);
   const [ocupado, setOcupado] = useState<null | string>(null);
+  /** A proposta cujo contrato está indo para assinatura (o modal aberto). */
+  const [enviando, setEnviando] = useState<null | string>(null);
 
   const carregar = useCallback(async () => {
     setErro(null);
@@ -274,7 +279,14 @@ export function TemisKanban({
                       aberto={aberto === t.id}
                       aoAbrir={() => setAberto(aberto === t.id ? null : t.id)}
                       aoAbrirContrato={(documentoId) => void abrirContrato(documentoId)}
-                      aoMarcar={(atividade, feita) => void marcar(t.id, atividade, feita)}
+                      aoEnviarParaAssinatura={
+                        // ⚠️ SÓ NA TÊMIS, e pelo mesmo motivo de `abrirContrato`: a rota de envio
+                        // pede o Bearer do hub e o recorte de EMITIR contrato (admin/leader). No
+                        // board do comercial (`semToken` / `somenteLeitura`) o botão nem aparece —
+                        // esconder o que a pessoa não pode fazer é diferente de fechar a porta, e a
+                        // porta quem fecha é `autorizarEmissaoDeContrato`.
+                        semToken || somenteLeitura ? null : (id) => setEnviando(id)
+                      }
                       key={t.id}
                       ocupado={ocupado === t.id}
                       somenteLeitura={somenteLeitura}
@@ -287,6 +299,21 @@ export function TemisKanban({
           })}
         </div>
       </div>
+
+      {/* ⚠️ O MODAL VIVE FORA DAS COLUNAS, e não dentro do card. Dentro, ele herdaria o `overflow`
+          da coluna do kanban e apareceria cortado (ou preso à rolagem lateral) — e o botão que
+          confirma o envio ficaria fora da tela. */}
+      {enviando ? (
+        <EnviarParaAssinatura
+          aoFechar={() => {
+            setEnviando(null);
+            // O card acabou de mudar de estado (o envio move o trabalho para "em assinatura"):
+            // recarrega para o board não continuar mostrando o passo anterior.
+            void carregar();
+          }}
+          propostaId={enviando}
+        />
+      ) : null}
     </div>
   );
 }
@@ -295,6 +322,7 @@ function Card({
   aberto,
   aoAbrir,
   aoAbrirContrato,
+  aoEnviarParaAssinatura,
   aoMarcar,
   ocupado,
   somenteLeitura,
@@ -303,6 +331,8 @@ function Card({
   aberto: boolean;
   aoAbrir: () => void;
   aoAbrirContrato: (documentoId: string) => void;
+  /** `null` no board só-leitura do portal comercial: lá o botão não existe. */
+  aoEnviarParaAssinatura: null | ((propostaId: string) => void);
   aoMarcar: (atividade: string, feita: boolean) => void;
   ocupado: boolean;
   somenteLeitura: boolean;
@@ -445,6 +475,22 @@ function Card({
                   );
                 })}
             </div>
+          ) : null}
+
+          {/* ⚠️ O BOTÃO SÓ EXISTE COM CONTRATO GERADO E COM PROPOSTA. Sem o papel não há o que
+              assinar; sem a proposta não há por onde achá-lo (`proposta_id` é o único elo entre o
+              card e `hercules_documentos` — `venda_id` aponta para uma tabela vazia). Os quatro
+              cards antigos do Garden e da Lavra nasceram sem esse elo, e para eles o botão não
+              aparece: mostrá-lo daria um clique que só produz erro. */}
+          {aoEnviarParaAssinatura && vigente && trabalho.propostaId ? (
+            <button
+              className="mb-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-line bg-subtle/40 px-2 py-1.5 text-[0.7rem] font-semibold text-ink transition-colors hover:bg-subtle"
+              onClick={() => aoEnviarParaAssinatura(trabalho.propostaId as string)}
+              type="button"
+            >
+              <Send aria-hidden="true" size={11} />
+              Enviar para assinatura
+            </button>
           ) : null}
 
           {doEstagio.map((a) => (

@@ -1,7 +1,7 @@
 "use client";
 
 import { FontFamilyPlugin } from "@platejs/basic-styles/react";
-import { CaseSensitive, Eraser, WandSparkles } from "lucide-react";
+import { Eraser, WandSparkles } from "lucide-react";
 import { KEYS } from "platejs";
 import { useEditorPlugin, useEditorSelector } from "platejs/react";
 import { useState } from "react";
@@ -34,10 +34,11 @@ import {
 // devolver o trecho ao piso do documento é preciso a API do editor — `removeMarks` na seleção,
 // `unsetNodes` no documento inteiro. Por isso os dois primeiros itens não passam pelo plugin.
 //
-// ⚠️ ELE MORA NA BARRA DA TÊMIS, e não colado ao seletor de tamanho, porque o vizinho de tamanho
-// (`components/ui/fixed-toolbar-buttons.tsx`) é gerado pelo CLI do Plate e pode ser regerado — a
-// única edição nossa lá (a remoção do botão de IA genérico) já carrega esse aviso. Aqui o botão é
-// nosso e sobrevive a uma regeração.
+// ⚠️ ELE FICA COLADO AO SELETOR DE TAMANHO (08/09/2026). Antes vivia na ponta direita da barra, e a
+// justificativa era o arquivo, não o desenho: o vizinho de tamanho morava no
+// `components/ui/fixed-toolbar-buttons.tsx`, gerado pelo CLI do Plate. Desde que a barra da Têmis
+// passou a montar os botões um a um (`temis-toolbar-kit.tsx`), o par fonte+tamanho fica no mesmo
+// grupo — é onde o Word e o Google Docs põem, e é onde a mão procura.
 
 type Props = {
   /**
@@ -59,7 +60,11 @@ export function SeletorDeFonte({ aoAvisar }: Props) {
     [],
   );
 
-  const rotulo = nomeDaPilha(pilhaAtual) ?? "Georgia (padrão)";
+  // ⚠️ O RÓTULO PERDEU O "(padrão)" QUANDO O BOTÃO GANHOU LARGURA FIXA. Com `w-[136px]` sobram
+  // ~108 px para o texto: "Times New Roman" (~100 px em text-sm) cabe inteiro, "Georgia (padrão)"
+  // sairia como "Georgia (padr…" — meia palavra é pior do que informação nenhuma. Quem precisa da
+  // palavra "padrão" a lê no tooltip do botão e nos dois primeiros itens do menu.
+  const rotulo = nomeDaPilha(pilhaAtual) ?? "Georgia";
 
   /** Devolve o trecho selecionado ao piso do documento, tirando a marca dele. */
   const limparSelecao = () => {
@@ -94,9 +99,21 @@ export function SeletorDeFonte({ aoAvisar }: Props) {
   return (
     <DropdownMenu modal={false} onOpenChange={setAberto} open={aberto}>
       <DropdownMenuTrigger asChild>
-        <ToolbarButton className="min-w-[150px]" isDropdown pressed={aberto} tooltip="Fonte do texto">
-          <CaseSensitive />
-          <span className="truncate">{rotulo}</span>
+        {/* ⚠️ LARGURA FIXA E SEM ÍCONE. Era `min-w-[150px]` mais o ícone `CaseSensitive`, e um
+            MÍNIMO cresce com o rótulo: as duas minutas que estão no Panteon têm 280 trechos em
+            "Lucida Sans Unicode" (a contagem está no cabeçalho de `lib/temis/fontes-do-contrato.ts`)
+            e, medido no navegador em 08/09/2026 contra o CSS deste app, esse rótulo levava o botão a
+            203 px. O botão mudava de tamanho conforme o cursor andava pelo texto, e a barra inteira
+            andava junto. Fixo em 136 px, o vizinho não se mexe. O ícone saiu porque o nome da fonte
+            já é o ícone — é o que o Word e o Google Docs fazem — e os 24 px dele viraram texto:
+            "Times New Roman", o rótulo mais longo da lista, cabe inteiro. */}
+        <ToolbarButton
+          className="w-[136px] [&>div:first-of-type]:min-w-0"
+          isDropdown
+          pressed={aberto}
+          tooltip="Fonte do texto (o padrão do contrato é Georgia)"
+        >
+          <span className="min-w-0 truncate">{rotulo}</span>
         </ToolbarButton>
       </DropdownMenuTrigger>
 

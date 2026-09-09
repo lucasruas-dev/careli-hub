@@ -7,6 +7,7 @@ import {
   setEnterpriseComprovanteRenda,
   setEnterpriseCredenciamento,
   setEnterpriseLimiteCredito,
+  setEnterpriseOrdemDeAssinatura,
   setEnterprisePrevenda,
   setEnterpriseRecepcaoCad,
   setEnterpriseRecepcaoImobiliaria,
@@ -23,7 +24,9 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 //            `comprovanteRendaHabilitado` (Comprovante de renda, que é só um flag — não tem valor
 //            a configurar) e os portões públicos `recepcaoCad` / `recepcaoImobiliaria` (migration
 //            0110 — CAD e habilitação de imobiliária abrem em momentos diferentes; caso Recanto
-//            do Vale). Cada campo é opcional; a tela envia só o que o operador mexeu.
+//            do Vale) e a ORDEM DE ASSINATURA (`assinaturaOrdenada` + `assinaturaOrdem`, migration
+//            0142 — estes DOIS andam juntos, porque são uma decisão só). Cada campo é opcional; a
+//            tela envia só o que o operador mexeu.
 // O GET devolve todos os campos por empreendimento.
 //
 // AUTORIZAÇÃO: GET usa leitura (`authorizeApoloRead`); POST e PATCH usam ESCRITA
@@ -103,6 +106,10 @@ export async function PATCH(request: Request) {
 
   let body: {
     analiseCreditoHabilitada?: boolean;
+    // ORDEM DE ASSINATURA (migration 0142). ⚠️ OS DOIS VÊM JUNTOS, sempre: são uma decisão só
+    // ("assinam em ordem, e nesta ordem"). `assinaturaOrdem` nula = ordem padrão da casa.
+    assinaturaOrdem?: null | string[];
+    assinaturaOrdenada?: boolean;
     code?: string;
     comprovanteRendaHabilitado?: boolean;
     enterpriseId?: string;
@@ -129,6 +136,7 @@ export async function PATCH(request: Request) {
   const invalido = (v: number | null) => v !== null && (!Number.isFinite(v) || v < 0);
 
   const mexeuAnalise = "analiseCreditoHabilitada" in body;
+  const mexeuOrdem = "assinaturaOrdenada" in body || "assinaturaOrdem" in body;
   const mexeuLimite = "limiteCredito" in body;
   const mexeuPrevenda = "prevendaHabilitada" in body;
   const mexeuRenda = "comprovanteRendaHabilitado" in body;
@@ -164,6 +172,33 @@ export async function PATCH(request: Request) {
       { error: "Informe o valor do PIX para habilitar a pré-venda." },
       { status: 400 },
     );
+  }
+
+  // ORDEM DE ASSINATURA: as duas colunas numa escrita só — ver `setEnterpriseOrdemDeAssinatura`.
+  //
+  // ⚠️ A LISTA PRECISA SER DE STRINGS OU NULA. `assinatura_ordem` é `jsonb` livre: um objeto vindo
+  // do navegador entraria na coluna e a leitura seguinte devolveria papel `[object Object]`. Quem
+  // valida QUAIS papéis existem é `lerRegraDeOrdem` na leitura; aqui a pergunta é só de forma.
+  if (mexeuOrdem) {
+    const bruta = body.assinaturaOrdem;
+    const listaValida =
+      bruta === null ||
+      bruta === undefined ||
+      (Array.isArray(bruta) && bruta.every((p) => typeof p === "string"));
+
+    if (!listaValida || ("assinaturaOrdenada" in body && typeof body.assinaturaOrdenada !== "boolean")) {
+      return NextResponse.json({ error: "Ordem de assinatura invalida." }, { status: 400 });
+    }
+
+    const r = await setEnterpriseOrdemDeAssinatura({
+      adminClient,
+      code: body.code,
+      enterpriseId: body.enterpriseId,
+      ordem: Array.isArray(bruta) ? bruta : null,
+      ordenada: Boolean(body.assinaturaOrdenada),
+      updatedBy: auth.userId,
+    });
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 });
   }
 
   // Flags primeiro (podem criar a linha), depois os valores (encontram a linha e fazem UPDATE).
@@ -261,6 +296,8 @@ export async function PATCH(request: Request) {
   return NextResponse.json({
     data: {
       analiseCreditoHabilitada: body.analiseCreditoHabilitada,
+      assinaturaOrdem: mexeuOrdem ? (body.assinaturaOrdem ?? null) : undefined,
+      assinaturaOrdenada: mexeuOrdem ? Boolean(body.assinaturaOrdenada) : undefined,
       comprovanteRendaHabilitado: body.comprovanteRendaHabilitado,
       limiteCredito: limite,
       prevendaHabilitada: body.prevendaHabilitada,

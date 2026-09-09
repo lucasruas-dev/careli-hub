@@ -133,7 +133,7 @@ function mime(tipo: TipoDeConteudo): string {
   return tipo === "jsonapi" ? "application/vnd.api+json" : "application/json";
 }
 
-type Opcoes = {
+export type Opcoes = {
   /** Corpo JSON. Ausente = a chamada não manda corpo. */
   corpo?: unknown;
   /** Sobrepõe o esquema do token — usado pela sonda do diagnóstico. */
@@ -211,6 +211,19 @@ export async function chamar<T = unknown>(caminho: string, opcoes: Opcoes = {}):
     });
   }
 }
+
+/**
+ * A PORTA DA CLICKSIGN — a assinatura de `chamar`, nomeada para poder ser TROCADA.
+ *
+ * ⚠️ EXISTE PARA O TESTE NÃO PRECISAR DA CONTA REAL, e isso não é preciosismo de arquitetura: a
+ * conta configurada é de PRODUÇÃO (Lucas, 08/09/2026: o sandbox deles está com problema), o
+ * envelope criado tem CUSTO e, depois de ativado, NÃO SE APAGA. Um teste que chamasse a API de
+ * verdade deixaria lixo pago e permanente na conta a cada `vitest run`.
+ *
+ * Quem envia recebe esta porta por parâmetro e usa `chamar` como padrão; o teste passa um duplo que
+ * grava o que foi pedido e devolve o que a doc diz que volta.
+ */
+export type PortaDaClicksign = <T = unknown>(caminho: string, opcoes?: Opcoes) => Promise<T>;
 
 /**
  * SONDA: qual combinação de cabeçalho a conta aceita?

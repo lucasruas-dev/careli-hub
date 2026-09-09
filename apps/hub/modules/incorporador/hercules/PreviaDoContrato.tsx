@@ -45,6 +45,24 @@ import { T } from "../tema";
 //
 // ⚠️ E ELE DIZ QUE VAI CRIAR UMA VERSÃO NOVA ANTES DE CRIAR. Descobrir que se gerou a v2 depois de
 // gerada é a ordem errada de descobrir, num documento que vai a cartório.
+//
+// ── QUEM EMITE: A PROP `podeGerar` (08/09/2026) ─────────────────────────────
+//
+// ⚠️ A PRÉVIA É DE TODO MUNDO; A EMISSÃO NÃO. Lucas, vendo "Gerar e guardar o contrato" no rodapé
+// com o portal comercial da Gurgel aberto: *"estou como coordenador, não pode ter esse botão de
+// gerar contrato, isso é somente o time administrativo interno"*; e a régua: *"para o perfil da
+// gurgel, comercial, pode tirar. Na Têmis só quem tiver relacionado ao setor de contratos e os
+// admin"*. Conferir e emitir são de gente diferente — o botão sai, a folha fica inteira.
+//
+// ⚠️ É PROP EXPLÍCITA, NÃO CHEIRO DE ROTA. Um `usePathname().startsWith("/comercial")` acertaria
+// hoje e erraria no dia em que a prévia abrisse num terceiro lugar — e erraria calado, mostrando o
+// botão. Sem valor-padrão, a tela nova não compila sem dizer o que quer.
+//
+// ⚠️ ESCONDER O BOTÃO NÃO É A TRAVA. A rota `/api/temis/contrato/gerar` é chamável direto; quem
+// fecha é `autorizarEmissaoDeContrato` (`lib/temis/autorizacao.ts`). Esta prop é a metade da tela.
+//
+// ⚠️ "ABRIR O CONTRATO GUARDADO" FICA, e fica de propósito: ver o documento já emitido é
+// conferência, não emissão — e é justamente o que o comercial precisa fazer no portal.
 
 type ContratoGuardado = {
   criadoEm: string;
@@ -66,11 +84,18 @@ type Resposta = {
 export function PreviaDoContrato({
   aoFechar,
   comAvisos = false,
+  podeGerar,
   propostaId,
 }: {
   aoFechar: () => void;
   /** Liga o resumo do que falta. Só a Têmis usa: ver a nota do topo. */
   comAvisos?: boolean;
+  /**
+   * Mostra (ou não) a AÇÃO de emitir. Sem valor-padrão de propósito: quem abrir esta prévia numa
+   * tela nova é obrigado a declarar se ali se emite contrato — herdar "sim" por omissão é como o
+   * botão foi parar no portal comercial. Ver a nota "QUEM EMITE" acima.
+   */
+  podeGerar: boolean;
   propostaId: string;
 }) {
   const [carregando, setCarregando] = useState(true);
@@ -193,7 +218,13 @@ export function PreviaDoContrato({
   const avisos = comAvisos ? (resposta?.avisos ?? []) : [];
   const vigente = contratoVigente(guardados);
   const proximaVersao = (vigente?.versao ?? guardados.length) + 1;
-  const podeGerar = !carregando && !resposta?.erro && Boolean(resposta?.html) && semValor.length === 0;
+  // O CONTRATO ESTÁ EM CONDIÇÃO DE SER EMITIDO — nada a ver com quem está olhando. Quem decide o
+  // DIREITO é a prop `podeGerar`; isto aqui decide se o botão, quando existe, está aceso.
+  const prontoParaGerar =
+    !carregando && !resposta?.erro && Boolean(resposta?.html) && semValor.length === 0;
+  // ⚠️ O RODAPÉ SOME INTEIRO QUANDO NÃO SOBRA AÇÃO NENHUMA. Sem isto, o portal ganharia uma faixa
+  // com borda e 12px de padding embaixo da folha — a moldura de um botão que foi embora.
+  const temRodape = !resposta?.erro && (podeGerar || Boolean(vigente) || Boolean(erroDaGeracao));
 
   return (
     <div
@@ -248,7 +279,10 @@ export function PreviaDoContrato({
                   {resposta.vezesDoLaco
                     ? ` · ${resposta.vezesDoLaco} ${resposta.vezesDoLaco === 1 ? "comprador" : "compradores"}`
                     : ""}
-                  {comAvisos ? "" : " · conferência, não emite"}
+                  {/* ⚠️ A FRASE SEGUE A AÇÃO, NÃO O AVISO. Ela promete "não emite", e quem
+                      cumpre a promessa é `podeGerar` — amarrá-la a `comAvisos` faria a linha
+                      mentir na primeira tela que ligasse um sem o outro. */}
+                  {podeGerar ? "" : " · conferência, não emite"}
                 </>
               ) : null}
             </div>
@@ -369,8 +403,11 @@ export function PreviaDoContrato({
 
         {/* ── O RODAPÉ: GERAR E GUARDAR ─────────────────────────────────────
             ⚠️ ELE FICA FORA DA ÁREA QUE ROLA. Um botão que só aparece no fim de 27 páginas é um
-            botão que ninguém acha — e o contrato não é lido de cima a baixo toda vez. */}
-        {resposta?.erro ? null : (
+            botão que ninguém acha — e o contrato não é lido de cima a baixo toda vez.
+
+            ⚠️ SEM `podeGerar` SÓ SOBREVIVE O QUE NÃO EMITE: abrir o contrato guardado e o recado de
+            erro (que também é o erro de ABRIR — ver `abrir()`). O resto do rodapé é a emissão. */}
+        {!temRodape ? null : (
           <div
             style={{
               borderTop: `1px solid ${T.border}`,
@@ -448,48 +485,54 @@ export function PreviaDoContrato({
               </button>
             ) : null}
 
-            <button
-              disabled={!podeGerar || gerando}
-              onClick={() => void gerar()}
-              style={{
-                alignItems: "center",
-                background: podeGerar && !gerando ? T.gold : "transparent",
-                border: `1px solid ${podeGerar && !gerando ? T.gold : T.border}`,
-                borderRadius: 8,
-                color: podeGerar && !gerando ? "#1a1a1a" : T.muted,
-                cursor: podeGerar && !gerando ? "pointer" : "not-allowed",
-                display: "flex",
-                fontSize: 12.5,
-                fontWeight: 700,
-                gap: 7,
-                justifyContent: "center",
-                padding: "9px 12px",
-                width: "100%",
-              }}
-              title={
-                semValor.length > 0
-                  ? "O contrato tem campos em branco. Complete o cadastro ou a minuta antes de gerar."
-                  : undefined
-              }
-              type="button"
-            >
-              {gerando ? (
-                <Loader2 aria-hidden="true" className="animate-spin" size={13} />
-              ) : (
-                <FileDown aria-hidden="true" size={13} />
-              )}
-              {gerando
-                ? "Gerando o PDF…"
-                : guardados.length > 0
-                  ? `Gerar a versão ${proximaVersao} do contrato`
-                  : "Gerar e guardar o contrato"}
-            </button>
+            {!podeGerar ? null : (
+              <button
+                disabled={!prontoParaGerar || gerando}
+                onClick={() => void gerar()}
+                style={{
+                  alignItems: "center",
+                  background: prontoParaGerar && !gerando ? T.gold : "transparent",
+                  border: `1px solid ${prontoParaGerar && !gerando ? T.gold : T.border}`,
+                  borderRadius: 8,
+                  color: prontoParaGerar && !gerando ? "#1a1a1a" : T.muted,
+                  cursor: prontoParaGerar && !gerando ? "pointer" : "not-allowed",
+                  display: "flex",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  gap: 7,
+                  justifyContent: "center",
+                  padding: "9px 12px",
+                  width: "100%",
+                }}
+                title={
+                  semValor.length > 0
+                    ? "O contrato tem campos em branco. Complete o cadastro ou a minuta antes de gerar."
+                    : undefined
+                }
+                type="button"
+              >
+                {gerando ? (
+                  <Loader2 aria-hidden="true" className="animate-spin" size={13} />
+                ) : (
+                  <FileDown aria-hidden="true" size={13} />
+                )}
+                {gerando
+                  ? "Gerando o PDF…"
+                  : guardados.length > 0
+                    ? `Gerar a versão ${proximaVersao} do contrato`
+                    : "Gerar e guardar o contrato"}
+              </button>
+            )}
 
             {/* ⚠️ O MOTIVO DA TRAVA, NA LÍNGUA DE QUEM ESTÁ OLHANDO. Na Têmis (comAvisos) os nomes
                 das variáveis são a pauta do dia; no portal eles não dizem nada a quem não mexe em
                 cadastro nem em minuta — ali o recado útil é quantos campos faltam e de quem é a
-                bola. Sem uma frase qualquer, o botão apagado vira "o sistema quebrou". */}
-            {semValor.length > 0 ? (
+                bola. Sem uma frase qualquer, o botão apagado vira "o sistema quebrou".
+
+                ⚠️ AS DUAS FRASES ANDAM COM O BOTÃO. Elas explicam por que ele está apagado e o que
+                acontece ao clicar; sem botão viram legenda de nada — e, no portal, ressuscitariam
+                pela porta dos fundos o aviso de emissão que o Lucas mandou tirar de lá. */}
+            {!podeGerar ? null : semValor.length > 0 ? (
               <p style={{ color: T.muted, fontSize: 11, margin: 0 }}>
                 {comAvisos
                   ? `${semValor.length === 1 ? "1 variável está" : `${semValor.length} variáveis estão`} sem valor e o documento não pode ser gerado: ${semValor.join(", ")}.`

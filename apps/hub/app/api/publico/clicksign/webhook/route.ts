@@ -1,36 +1,49 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
-// WEBHOOK DA CLICKSIGN — modo DESCOBERTA.
+import { createApoloAdminClient } from "@/lib/apolo/server";
+import { lerConfiguracao } from "@/lib/assinatura/clicksign/cliente";
+import {
+  conferirAssinaturaDoWebhook,
+  lerEventoDoWebhook,
+} from "@/lib/assinatura/clicksign/webhook";
+import {
+  aplicarEventoDaClicksign,
+  registrarEventoDeAssinatura,
+} from "@/lib/assinatura/estado-db";
+import { ehFalhaDeAutenticacao } from "@/lib/assinatura/traduzir";
+
+// WEBHOOK DA CLICKSIGN — quem confere quem está falando, e o que move o contrato.
 //
 // Lucas, 07/09/2026, com o painel da Clicksign aberto: *"está pedindo a url do webhook"*, e antes
 // disso *"o sandbox está com problemas, vamos de prod mesmo"*.
 //
-// ⚠️ ESTA ROTA AINDA NÃO PROCESSA NADA, E ISSO É DE PROPÓSITO. Ela existe para a URL cadastrada no
-// painel ter para onde apontar HOJE, e para descobrirmos o formato real dos eventos antes de
-// escrever o processador. O Asaas passou por exatamente esta fase (ver a nota de "modo DESCOBERTA
-// da bancada" em `app/api/publico/asaas/webhook/route.ts`), e ela evita o erro mais caro de
-// integração de webhook: escrever o parser a partir da documentação e descobrir em produção que o
-// corpo chega em outro formato. No D4Sign é literalmente isso — a doc mostra JSON e o webhook chega
-// em form-data; um `request.json()` recebe vazio e não falha de forma óbvia.
+// ⚠️ ATÉ 08/09/2026 ESTA ROTA NÃO PROCESSAVA NADA — era o modo DESCOBERTA, e isso era correto
+// enquanto não havia envio: a URL precisava existir para o painel aceitar o cadastro, e o formato
+// real dos eventos era desconhecido. Agora que o contrato SAI daqui, um endpoint público sem
+// conferência é outra coisa: qualquer um que saiba a URL manda um POST dizendo que o contrato foi
+// assinado, o card vai para "finalizado" e o documento segue sem ninguém ter assinado nada.
 //
-// ⚠️ RESPONDER 200 RÁPIDO É A FUNÇÃO PRINCIPAL. Provedor de assinatura reenvia o evento quando não
-// recebe 200, e retentativa em cima de rota lenta vira tempestade. Aqui não há consulta a banco, não
-// há disparo, não há await de rede: lê o corpo, registra, responde.
+// ⚠️ A REGRA É UMA SÓ: O QUE NÃO CONFERE NÃO MOVE NADA. Fica registrado (é assim que se descobre um
+// forjado, e é assim que se descobre que o cabeçalho do HMAC não é o que supomos — ver
+// `lib/assinatura/clicksign/webhook.ts`), e não vira estado.
 //
-// ⚠️ NADA DE SEGREDO NO LOG. Os headers são registrados para descobrirmos COMO a Clicksign assina o
-// callback, mas os que carregam credencial saem antes de imprimir.
+// ⚠️ RESPONDER RÁPIDO CONTINUA SENDO A FUNÇÃO PRINCIPAL. Provedor reenvia o evento quando não recebe
+// 200, e retentativa em cima de rota lenta vira tempestade. Por isso o trabalho de banco roda em
+// `after()`: a resposta sai antes de qualquer consulta.
 //
-// O QUE VEM DEPOIS (com OK do Lucas): a tabela `temis_assinatura_eventos` no molde de
-// `apolo_asaas_eventos` (payload cru, headers, carimbo NOSSO de recebimento, chave de idempotência),
-// a conferência do HMAC e o processador que move o card da Têmis.
-// Ver [[reference_d4sign_escrita_armadilhas]] e [[project_contrato_so_no_panteon]].
+// ⚠️ E O CORPO NÃO VAI PARA O `console`. O payload de um `sign` traz nome, e-mail, CPF, IP e
+// geolocalização de quem assinou; log da Vercel é legível por qualquer pessoa com acesso ao projeto,
+// sai em drain e tem retenção curta. O conteúdo agora tem lugar próprio — `temis_assinatura_eventos`
+// (migration 0147), no molde de `apolo_asaas_eventos` —, que é onde privacidade e retenção se
+// resolvem de uma vez. No console fica só o ESQUELETO.
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-// Não faz trabalho: o teto baixo é a garantia de que nunca vai segurar a conexão do provedor.
-export const maxDuration = 10;
+// O trabalho roda em `after()`; o teto baixo continua sendo a garantia de que a rota nunca segura a
+// conexão do provedor.
+export const maxDuration = 15;
 
-/** Cabeçalhos que NÃO podem ir para o log — carregam credencial. */
+/** Cabeçalhos que NÃO podem ser guardados — carregam credencial. */
 const SEGREDOS = new Set([
   "authorization",
   "cookie",
@@ -43,22 +56,15 @@ function headersSeguros(request: Request): Record<string, string> {
   const saida: Record<string, string> = {};
   for (const [chave, valor] of request.headers.entries()) {
     const nome = chave.toLowerCase();
-    // ⚠️ A ASSINATURA DO CALLBACK FICA, e é o motivo de registrar headers: precisamos descobrir em
-    // que cabeçalho a Clicksign manda o HMAC e sobre o que ele é calculado. No D4Sign o
-    // `Content-Hmac` é sobre o UUID do documento e não sobre o corpo — autentica origem, não
-    // protege replay, e isso muda o desenho da idempotência.
+    // ⚠️ A ASSINATURA DO CALLBACK FICA, e é o motivo de registrar headers: é assim que se descobre
+    // em QUE cabeçalho a Clicksign manda o HMAC — a doc da v3 não diz. O valor de um HMAC não é
+    // segredo reutilizável (ele vale para um corpo só), então guardá-lo não abre porta nenhuma.
     saida[nome] = SEGREDOS.has(nome) ? "(omitido)" : valor;
   }
   return saida;
 }
 
-/**
- * As chaves de primeiro nível do corpo — a FORMA do evento, sem o conteúdo.
- *
- * É o que responde as perguntas da descoberta ("o corpo é JSON ou form-data?", "o nome do evento
- * vem em `event` ou em `type`?", "vem `signer` ou `signers`?") sem levar CPF nenhum para o log.
- * Para form-data, devolve os nomes dos campos.
- */
+/** As chaves de primeiro nível — a FORMA do evento, sem o conteúdo. É o que vai para o console. */
 function chavesDePrimeiroNivel(cru: string): string[] {
   if (!cru) return [];
   try {
@@ -79,40 +85,112 @@ function chavesDePrimeiroNivel(cru: string): string[] {
 }
 
 export async function POST(request: Request) {
-  // ⚠️ LÊ COMO TEXTO, e não como JSON. É o único jeito de ver o que realmente chegou: se vier
-  // form-data (como no D4Sign), `request.json()` devolveria vazio sem erro e a descoberta terminaria
-  // com a conclusão errada — "a Clicksign manda corpo vazio".
+  // ⚠️ LÊ COMO TEXTO, E ISSO NÃO É SÓ PELA DESCOBERTA: o HMAC é calculado sobre o corpo CRU. Um
+  // `request.json()` seguido de `JSON.stringify` mudaria espaços e ordem de chaves, e a conferência
+  // falharia em todo evento legítimo.
   const cru = await request.text().catch(() => "");
+  const headers = headersSeguros(request);
 
-  const tipoDoCorpo = request.headers.get("content-type") ?? "(sem content-type)";
+  const verificacao = conferirAssinaturaDoWebhook({
+    corpoCru: cru,
+    headers: request.headers,
+    segredo: lerConfiguracao()?.webhookSecret ?? null,
+  });
 
-  // ⚠️ O CORPO NÃO VAI PARA O LOG, e isto é correção de um defeito real que a revisão pegou. O
-  // payload de um evento `sign` traz nome, e-mail, CPF, IP e geolocalização de quem assinou —
-  // exatamente o rastro pessoal que `guardian/d4sign-consulta.ts` se recusa a deixar entrar até no
-  // TIPO. Log da Vercel é legível por qualquer pessoa com acesso ao projeto e sai em drain; e, pior
-  // para a própria descoberta, tem retenção curta: o payload que motivou esta fase não estaria mais
-  // lá na semana que vem.
-  //
-  // O que vai é o ESQUELETO: o formato (é JSON ou form-data?), o tamanho, os cabeçalhos e as chaves
-  // de primeiro nível. É disso que a descoberta precisa — saber a FORMA do evento, não o conteúdo.
-  // O conteúdo passa a ser guardado quando a tabela `temis_assinatura_eventos` existir, que é o
-  // molde do `apolo_asaas_eventos` e resolve retenção e privacidade de uma vez.
+  const evento = lerEventoDoWebhook(cru);
+
   console.info("[clicksign][webhook] evento recebido", {
+    assinatura: verificacao.ok ? `ok (${verificacao.cabecalho})` : verificacao.porQue,
     chavesDoCorpo: chavesDePrimeiroNivel(cru),
-    headers: headersSeguros(request),
+    // Só os NOMES dos cabeçalhos no console: é o que responde "em qual deles vem o HMAC?".
+    cabecalhos: Object.keys(headers),
+    evento: evento.evento || "(não identificado)",
+    falhaDeAutenticacaoDoSignatario: ehFalhaDeAutenticacao(evento.evento),
     // O carimbo é NOSSO: o horário do provedor pode vir sem fuso, ou não vir.
     recebidoEm: new Date().toISOString(),
     tamanhoDoCorpo: cru.length,
-    tipoDoCorpo,
   });
 
-  // Sempre 200: nesta fase, qualquer outra resposta faria a Clicksign reenviar o mesmo evento por
-  // horas. O que não soubermos tratar fica registrado no log, e é dele que sai o processador.
+  const payload = payloadParaGuardar(cru);
+
+  if (!verificacao.ok) {
+    // ⚠️ O EVENTO QUE NÃO PASSA AINDA É REGISTRADO. Ver `registrarEventoDeAssinatura`: é a única
+    // pista de um POST forjado, e é como se descobre que o cabeçalho do HMAC não é o que supomos.
+    after(async () => {
+      const sb = createApoloAdminClient();
+      if (!sb) return;
+      await registrarEventoDeAssinatura(sb, {
+        aplicado: false,
+        assinaturaCabecalho: null,
+        assinaturaConferida: false,
+        evento,
+        headers,
+        payload,
+      });
+    });
+
+    // ⚠️ AS DUAS RESPOSTAS SÃO DIFERENTES DE PROPÓSITO. `sem-segredo` é problema NOSSO de
+    // configuração (a chave não chegou, ou chegou vazia por estar "Sensitive" na Vercel): devolver
+    // 401 faria a Clicksign reenviar por horas um evento que nunca vai passar — 200 encerra a
+    // entrega e o log grita. `nao-bate` / `sem-assinatura` é alguém batendo na porta, e aí 401 é a
+    // resposta certa.
+    if (verificacao.porQue === "sem-segredo") {
+      console.error("[clicksign][webhook] EVENTO IGNORADO:", verificacao.motivo);
+      return NextResponse.json({ ok: true, aplicado: false, motivo: "sem-segredo" });
+    }
+
+    console.warn("[clicksign][webhook] EVENTO RECUSADO:", verificacao.motivo);
+    return NextResponse.json({ ok: false, erro: "assinatura inválida" }, { status: 401 });
+  }
+
+  const cabecalho = verificacao.cabecalho;
+
+  after(async () => {
+    const sb = createApoloAdminClient();
+    if (!sb) {
+      console.error("[clicksign][webhook] Supabase indisponível: o evento conferido não foi aplicado.");
+      return;
+    }
+
+    const aplicacao = await aplicarEventoDaClicksign(sb, evento);
+    console.info("[clicksign][webhook] evento aplicado?", {
+      aplicado: aplicacao.aplicado,
+      estado: aplicacao.estado,
+      evento: evento.evento,
+      motivo: aplicacao.motivo,
+    });
+
+    await registrarEventoDeAssinatura(sb, {
+      aplicado: aplicacao.aplicado,
+      assinaturaCabecalho: cabecalho,
+      assinaturaConferida: true,
+      evento,
+      headers,
+      payload,
+    });
+  });
+
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * O corpo, pronto para a coluna `jsonb`.
+ *
+ * ⚠️ CORPO QUE NÃO É JSON NÃO PODE SER DESCARTADO. O webhook do D4Sign chega em form-data apesar de
+ * a doc mostrar JSON, e o da Clicksign não tem exemplo documentado nenhum. Guardar o texto cru
+ * embrulhado é o que permite escrever o parser a partir do que chegou de verdade.
+ */
+function payloadParaGuardar(cru: string): unknown {
+  if (!cru) return null;
+  try {
+    return JSON.parse(cru);
+  } catch {
+    return { __cru: cru.slice(0, 20_000) };
+  }
 }
 
 // A Clicksign (como vários provedores) pode fazer um GET de verificação ao cadastrar a URL.
 // Responder 200 aqui é o que faz o painel aceitar o cadastro.
 export function GET() {
-  return NextResponse.json({ ok: true, servico: "clicksign-webhook", modo: "descoberta" });
+  return NextResponse.json({ ok: true, servico: "clicksign-webhook" });
 }

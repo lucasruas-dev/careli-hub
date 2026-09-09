@@ -1520,9 +1520,22 @@ function Mesa({
   return (
     <>
     {/* ⚠️ O MODAL FICA FORA DA GRADE. Ele é `position: fixed`, então dentro da coluna ele herdaria o
-        `overflow` dela e a folha do contrato ficaria recortada na metade. */}
+        `overflow` dela e a folha do contrato ficaria recortada na metade.
+
+        ⚠️ `podeGerar={false}`: AQUI SE CONFERE, NÃO SE EMITE. Lucas, 08/09/2026, no portal comercial
+        da Gurgel em perfil de coordenador: *"estou como coordenador, não pode ter esse botão de
+        gerar contrato, isso é somente o time administrativo interno"*. A folha continua inteira — a
+        conferência é justamente o que o comercial faz nesta tela — e "Abrir o contrato guardado"
+        continua no rodapé: ver o documento já emitido não é emitir.
+
+        ⚠️ E ISTO NÃO É A TRAVA, É A METADE DELA. Quem fecha a rota é `autorizarEmissaoDeContrato`
+        (`lib/temis/autorizacao.ts`); esconder botão só resolve o que se vê. */}
     {previaDe ? (
-      <PreviaDoContrato aoFechar={() => setPreviaDe(null)} propostaId={previaDe} />
+      <PreviaDoContrato
+        aoFechar={() => setPreviaDe(null)}
+        podeGerar={false}
+        propostaId={previaDe}
+      />
     ) : null}
     {/* ⚠️ `alignItems: start` SAIU. Ele encolhia as colunas para a altura do conteúdo, e era isso
         que jogava a rolagem para a página inteira. Agora as duas esticam e rolam por dentro. */}

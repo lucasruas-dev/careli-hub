@@ -21,6 +21,10 @@ const estado = vi.hoisted(() => ({
   htmlImpresso: [] as string[],
   inseridos: [] as Record<string, unknown>[],
   minutaVazia: false,
+  // O papel do Hub de quem está chamando, e por qual portão cada método passou. É o que prova que a
+  // emissão deixou de aceitar sessão de leitura.
+  papel: "admin" as "admin" | "leader" | "operator" | "viewer",
+  portoes: [] as string[],
   proposta: {
     cliente_documento: "12345678901",
     cliente_entity_id: "ent-1",
@@ -38,15 +42,30 @@ const estado = vi.hoisted(() => ({
   >,
 }));
 
-vi.mock("@/lib/apolo/auth", () => ({
-  authorizeApoloRead: async (request: Request) => {
+// ⚠️ OS DOIS PORTÕES SÃO SIMULADOS PELO PAPEL, e cada chamada deixa o nome no rastro. Sem isso o
+// teste provaria só que "alguma" autorização foi chamada — e trocar de volta para a de leitura
+// passaria verde. As listas de papel de verdade têm teste próprio em `lib/temis/autorizacao.test.ts`.
+vi.mock("@/lib/apolo/auth", () => {
+  const portao = (nome: string, papeis: string[]) => async (request: Request) => {
+    estado.portoes.push(nome);
     const header = request.headers.get("authorization") ?? "";
     if (!/^Bearer\s+\S+/i.test(header)) {
       return { ok: false, response: Response.json({ erro: "sem sessão" }, { status: 401 }) };
     }
+    if (!papeis.includes(estado.papel)) {
+      return {
+        ok: false,
+        response: Response.json({ error: "Usuario sem acesso ao Apolo." }, { status: 403 }),
+      };
+    }
     return { ok: true, userId: "user-1" };
-  },
-}));
+  };
+
+  return {
+    authorizeApoloCoordenacao: portao("coordenacao", ["admin", "leader"]),
+    authorizeApoloRead: portao("read", ["admin", "leader", "operator", "viewer"]),
+  };
+});
 
 // ⚠️ O CHROMIUM NÃO SOBE NO TESTE, mas o HTML que ele receberia é GUARDADO — é a única forma de
 // provar que o papel impresso é o mesmo que a tela mostrou.
@@ -215,6 +234,8 @@ beforeEach(() => {
   estado.htmlImpresso = [];
   estado.inseridos = [];
   estado.minutaVazia = false;
+  estado.papel = "admin";
+  estado.portoes = [];
   estado.proposta = {
     cliente_documento: "12345678901",
     cliente_entity_id: "ent-1",
@@ -369,6 +390,66 @@ describe("o portão", () => {
     );
     expect(r.status).toBe(401);
     expect(estado.htmlImpresso).toHaveLength(0);
+  });
+
+  // ⚠️ O QUE ESTA SEÇÃO TRAVA (08/09/2026): emitir contrato saiu da porta de leitura. Lucas, no
+  // portal comercial da Gurgel: *"estou como coordenador, não pode ter esse botão de gerar
+  // contrato, isso é somente o time administrativo interno"*. Esconder o botão não bastava — a rota
+  // aceitava qualquer sessão de leitura, e rota é chamável direto.
+  it("o POST passa pelo portão da coordenação, não pelo de leitura", async () => {
+    await POST(pedido({ propostaId: PROPOSTA }));
+    expect(estado.portoes[0]).toBe("coordenacao");
+  });
+
+  it("sessão de só leitura não emite contrato: 403, e nada toca o bucket nem a tabela", async () => {
+    for (const papel of ["operator", "viewer"] as const) {
+      estado.papel = papel;
+      const r = await POST(pedido({ propostaId: PROPOSTA }));
+      expect(r.status).toBe(403);
+    }
+
+    expect(estado.htmlImpresso).toHaveLength(0);
+    expect(estado.subidos).toHaveLength(0);
+    expect(estado.inseridos).toHaveLength(0);
+  });
+
+  it("a coordenação emite: admin e leader passam", async () => {
+    for (const papel of ["admin", "leader"] as const) {
+      estado.papel = papel;
+      const r = await POST(pedido({ propostaId: PROPOSTA }));
+      expect(r.status).toBe(200);
+    }
+    expect(estado.inseridos).toHaveLength(2);
+  });
+
+  // ⚠️ A LEITURA NÃO SOBE JUNTO, E É DE PROPÓSITO. Abrir o contrato que já existe é conferência —
+  // é o botão "Abrir o contrato guardado" que fica no rodapé do portal depois de o de emitir sair.
+  it("quem só lê continua abrindo o contrato já guardado", async () => {
+    await POST(pedido({ propostaId: PROPOSTA }));
+    estado.contratosJaGuardados = [
+      {
+        caminho: String(estado.inseridos[0]!.caminho),
+        criado_em: "2026-09-09T10:00:00Z",
+        id: "doc-1",
+        nome: String(estado.inseridos[0]!.nome),
+        observacao: null,
+        proposta_id: PROPOSTA,
+      },
+    ];
+
+    estado.papel = "viewer";
+    const r = await GET(
+      new Request("https://x/api/temis/contrato/gerar?documento=doc-1", { headers: AUTORIZADO }),
+    );
+    expect(r.status).toBe(200);
+    expect(estado.portoes.at(-1)).toBe("read");
+
+    const lista = await GET(
+      new Request(`https://x/api/temis/contrato/gerar?proposta=${PROPOSTA}`, {
+        headers: AUTORIZADO,
+      }),
+    );
+    expect(lista.status).toBe(200);
   });
 
   it("o GET devolve o link assinado do contrato guardado", async () => {

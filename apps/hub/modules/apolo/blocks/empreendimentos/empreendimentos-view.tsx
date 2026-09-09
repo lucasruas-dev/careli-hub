@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/client";
 import { AdicionarUnidades } from "@/modules/apolo/blocks/empreendimentos/adicionar-unidades";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
+import { OrdemDeAssinaturaCard } from "@/modules/apolo/blocks/empreendimentos/ordem-de-assinatura-card";
 import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 import { PoliticaComercialTab } from "@/modules/apolo/blocks/empreendimentos/politica-comercial-tab";
 import { useEffect, useRef, useMemo, useState } from "react";
@@ -635,12 +636,19 @@ function EnterpriseDetail({
         {tab === "minutas" ? (
           <MinutasTab enterpriseId={row.id} name={row.name} />
         ) : null}
+        {/* ⚠️ O SETUP TEM DOIS BLOCOS AGORA, e a ordem entre eles não é acaso: o credenciamento é a
+            configuração da ENTRADA (quem manda CAD, o que a esteira exige) e a ordem de assinatura
+            é a da SAÍDA (como o contrato sai para assinar). Quem configura um empreendimento novo
+            percorre a venda inteira de cima para baixo. */}
         {tab === "setup" ? (
-          <CredenciamentoCard
-            code={row.code}
-            enterpriseId={row.id}
-            name={row.name}
-          />
+          <div className="grid gap-3">
+            <CredenciamentoCard
+              code={row.code}
+              enterpriseId={row.id}
+              name={row.name}
+            />
+            <OrdemDeAssinaturaCard code={row.code} enterpriseId={row.id} />
+          </div>
         ) : null}
       </section>
     </div>

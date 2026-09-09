@@ -41897,3 +41897,26 @@ Pendente: contas dos coordenadores no Setup > Comercial; VDO e GDN (download do 
 segmentacao do VOR (3 lotes em dois filhos); JDG com 19 lotes no desenho sem unidade; decisoes do Hercules
 interno (reserva em tabela propria; alargar `temis_planos`; situacao derivada) — recomendacoes enviadas.
 
+
+## 2026-09-09 — Migration 0147 (envelopes de assinatura) aplicada em produção
+
+**Autorização:** Lucas, 09/09/2026, *"pode seguir com as migrations"*.
+
+Aplicada em `bxgukywoxgivlrhjkwjx`: `temis_envelopes` (21 colunas, 3 FKs para
+`hercules_propostas`/`hercules_documentos`/`hercules_unidades`, 4 índices) e
+`temis_assinatura_eventos` (11 colunas, 2 índices). RLS ligado nas duas, sem policy — o
+mesmo padrão das outras cinco `temis_*`; quem escreve é o service role
+(`createApoloAdminClient`), tanto na rota de envio quanto no webhook.
+
+**Conferido antes de aplicar:** as três tabelas de FK existem e todas têm `id` uuid; as 5
+tabelas `temis_*` já viviam com RLS ligado e zero policies. **Depois:** insert de prova
+dentro de `begin/rollback` — defaults, check de `estado` e o jsonb de signatários aceitos, e
+a tabela ficou com 0 linhas.
+
+**Levantamento do resto:** 0136 a 0146 já estavam todas no banco (0136–0140, 0143 e 0144
+tinham sido aplicadas por SQL direto, sem entrar no registro de migrations — conferi por
+objeto, não pelo registro). Só a 0147 faltava.
+
+⚠️ **O código ainda NÃO está em produção.** A cadeia da Clicksign (4.042 linhas, 155 testes
+verdes, typecheck exit 0) está na branch `wip/gerar-proposta`. As tabelas existem e estão
+vazias; nenhum envelope foi criado na conta real. O deploy é autorização separada.
