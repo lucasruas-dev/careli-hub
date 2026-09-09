@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-09-historico-paginado-da-iris",
+    deployedAt: "2026-09-09T08:10:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "**O histórico deixou de parar em ontem.** Ele mostrava só os atendimentos encerrados nas últimas horas e não avisava que havia mais — o resto ficava no banco, invisível.",
+              "**Botão \"Carregar atendimentos mais antigos\"** no fim da lista. Cada clique busca no banco um período a mais para trás; quando acaba, a tela diz que acabou.",
+              "**O botão aparece também quando a busca não acha nada** — é justamente aí que o próximo lote costuma trazer o atendimento procurado, porque o filtro só enxerga o que já foi carregado.",
+            ],
+            screen: "Histórico",
+          },
+        ],
+      },
+    ],
+    rollback: "e4abeb70",
+    technical: {
+      done: "⚠️ O HISTÓRICO MOSTRAVA 32 HORAS E DIZIA QUE MOSTRAVA TUDO. Medido em 09/09/2026 na produção: `caredesk_tickets` tinha 5.869 encerrados e a carga levava 400 (`iris-data-client.ts`, `.limit(400)`), então 5.469 eram invisíveis. Os 400 cobriam de 07/09 23:48 a 09/09 07:57; o encerrado mais antigo do banco é de 25/06. De 1.558 clientes com atendimento, 283 apareciam — 1.275 sumiam inteiros. Na tela o cabeçalho dizia \"337 encerrados\" (400 menos o recorte de central). Caso concreto conferido no navegador: RAIANE SANTOS OLIVEIRA tem 38 encerrados entre 15/07 e 02/09, e buscar \"RAIANE\" no Histórico devolvia UM resultado — um e-mail da Careli que casou pelo corpo da mensagem, nenhum dos 38 dela. ⚠️ E O COMENTÁRIO PROMETIA UMA PEÇA QUE NÃO EXISTIA: a linha 215 afirmava que \"o histórico busca no banco quando precisa de um antigo\". Não buscava — `iris-history-view.tsx` não tinha um único `fetch`, só filtrava em memória a lista recebida por prop. Era por isso que ninguém via o buraco. O GATILHO de agora: às 20h de domingo 07/09 um fechamento em massa encerrou 1.152 tickets de e-mail de uma vez (2,9× a janela inteira), e a janela útil caiu de ~6 dias para 1,5 — meses de histórico saíram da tela num golpe. Composição medida das 400 vagas: 259 são e-mail de 12 contatos-robô (Mercado Pago, C6, Catho, ASAAS, Magalu) contra 141 de WhatsApp cobrindo 138 clientes. ⚠️ NÃO SE AUMENTOU O `.limit(400)`: os ids viajam na URL das leituras dependentes e foi ampliar aquela janela que derrubou a Iris antes. `loadIrisHistoricoAnterior` pagina pedindo UM a mais que o limite para saber se ainda há passado, sem consulta de contagem. TRÊS ARMADILHAS COBERTAS: a régua de acesso virou função única (`aplicarReguaDeAcessoAosTickets`) em vez de reescrita na paginação — a cópia esqueceria o `.in(\"queue_id\")` e o lote antigo traria fila que o usuário não enxerga, calado; os lotes vivem FORA do `irisData`, senão o refresh de 90s apagaria o que acabou de ser paginado; e entram ANTES do recorte de central, senão o atendimento apareceria na central errada. `cursorDoHistorico` ignora os 490 abertos que convivem na mesma lista sem `closedAt` — sem isso o cursor seria nulo e o lote seguinte repetiria as mesmas linhas para sempre. 9 testes na peça pura. ⚠️ SEGURANÇA, no mesmo deploy (migrations 0147 e 0148, já aplicadas): três views sem `security_invoker` e cinco tabelas com RLS desligada respondiam a quem tinha só a chave publicável do bundle, sem sessão — provado por HTTP, 248 clientes com CPF completo, 251 na view por empreendimento, 4.761 linhas de carteira, e `anon` com DELETE nas cinco tabelas. Agora 401 e RLS ligada; `service_role` intacto (as três views só são lidas por client admin). E `get_hub_role_from_auth_metadata` lia `coalesce(app_metadata, user_metadata)`, sendo que `user_metadata` é escrito pelo próprio usuário no signup: `signUp({data:{role:'admin'}})` nascia admin ATIVO, e o gate de 160 rotas e 82 policies só olha papel + status. Passou a ler só `app_metadata`, com piso `viewer` e `status` inicial `disabled`. Medido antes e depois: a escalada saiu de `admin` para `viewer`, os papéis legítimos não mudaram, divergência zero nos 11 usuários e a ACL com `supabase_auth_admin` preservada. 3.276 testes verdes, typecheck e lint limpos.",
+      motivation:
+        "O histórico da Iris mostrava pouco mais de um dia de atendimentos encerrados e não oferecia caminho para ver o resto.",
+    },
+    title: "O histórico da Iris que vai até o começo",
+    type: "correcao",
+    version: "1.302.0",
+  },
+  {
     buildTag: "2026-09-08-contrato-guardado-fontes-e-pai-filho",
     deployedAt: "2026-09-08T22:30:00-03:00",
     modules: [

@@ -40,21 +40,29 @@ export type IrisHistoryViewHelpers = {
 const emptyHistoryTickets: IrisHistoryTicket[] = [];
 
 export function IrisHistoryView({
+  carregandoMais = false,
+  erroAoCarregarMais = null,
   focus,
   helpers,
+  onCarregarMais,
   onClearFocus,
   onOpenAttendance,
   onSelectTicket,
   renderers,
+  temMais = false,
   ticketQueueHelpers,
   tickets,
 }: {
+  carregandoMais?: boolean;
+  erroAoCarregarMais?: null | string;
   focus: IrisHistoryFocus | null;
   helpers: IrisHistoryViewHelpers;
+  onCarregarMais?: () => void;
   onClearFocus: () => void;
   onOpenAttendance: (ticketId: string) => void;
   onSelectTicket: (ticketId: string) => void;
   renderers: IrisTicketQueueRenderers;
+  temMais?: boolean;
   ticketQueueHelpers: IrisTicketQueueHelpers;
   tickets: IrisHistoryTicket[];
 }) {
@@ -271,6 +279,44 @@ export function IrisHistoryView({
                 }
               />
             )}
+
+            {/* ⚠️ O RODAPE FICA DENTRO DA LISTA, E ATE QUANDO ELA ESTA VAZIA. O filtro de busca
+                roda so' sobre o que ja' foi carregado: se o atendimento procurado e' de agosto,
+                a tela mostra "nenhum ticket encontrado" e o proximo lote e' justamente o que vai
+                trazer ele. Esconder o botao no vazio deixaria o usuario sem saida. */}
+            {onCarregarMais ? (
+              <div className="flex flex-col items-center gap-2 border-t border-line/70 bg-subtle/40 px-4 py-4">
+                {temMais ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={onCarregarMais}
+                      disabled={carregandoMais}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#A07C3B]/30 bg-surface px-4 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#fff8ec] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Clock3 className="size-4" aria-hidden="true" />
+                      {carregandoMais
+                        ? "Buscando atendimentos anteriores..."
+                        : "Carregar atendimentos mais antigos"}
+                    </button>
+                    <p className="text-[11px] font-medium text-ink-muted">
+                      O historico comeca pelos mais recentes. Cada clique busca
+                      no banco um periodo a mais para tras.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[11px] font-medium text-ink-muted">
+                    Fim do historico: todos os atendimentos encerrados ja foram
+                    carregados.
+                  </p>
+                )}
+                {erroAoCarregarMais ? (
+                  <p className="text-[11px] font-semibold text-rose-600">
+                    {erroAoCarregarMais}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
