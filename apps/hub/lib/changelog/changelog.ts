@@ -36,6 +36,53 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-09-contrato-vai-para-assinatura",
+    deployedAt: "2026-09-09T11:30:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O contrato vai para assinatura pelo próprio quadro.** O botão aparece no card, mostra quem vai assinar e em que ordem, e deixa você mudar antes de mandar.",
+              "**Quem assina vem preenchido.** Compradores, cônjuges e a vendedora saem do próprio contrato, na ordem que o empreendimento (ou a categoria) definiu — sem digitar e-mail à mão.",
+              "**Depois de enviado, o card anda sozinho.** Quando o cliente assina, a Clicksign avisa o Panteon e o contrato muda de coluna sem ninguém mexer.",
+            ],
+            screen: "Quadro de contratos",
+          },
+          {
+            items: [
+              "**Gerar contrato agora é só do time administrativo.** Quem é do comercial continua vendo o contrato e a prévia, mas o botão de gerar não aparece mais.",
+              "**O realce fica na tela e some no papel.** Marcar um trecho em amarelo para conferência não sai mais impresso no PDF.",
+            ],
+            screen: "Contrato · Prévia",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Aba de Setup com a ordem de assinatura.** Você define de uma vez quem assina primeiro naquele empreendimento, e vale para todo contrato dali em diante.",
+              "**Dá para ter uma ordem só para a categoria.** Quando a categoria tem regra própria, ela ganha do empreendimento; quando não tem, herda.",
+            ],
+            screen: "Empreendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "7f5ccafb",
+    technical: {
+      done: "⚠️ A LINHA DO ENVELOPE NASCE ANTES DA CHAMADA (migration 0149). Se a criação fosse gravada só DEPOIS da resposta, uma queda no meio (timeout da Vercel, 502, a função morrendo) deixaria um envelope pago e PERMANENTE na conta de produção do qual o Panteon não teria notícia nenhuma — envelope ativado não se apaga, só se cancela, e o cancelado fica na lista. A ordem é: grava a intenção, chama, carimba. Linha com `enviado_em is null` e `falha is null` é envio que começou e não terminou, e isso é alarme visível, não silêncio. ⚠️ TRÊS DEFEITOS ACHADOS POR REVISÃO ADVERSARIAL ANTES DO PRIMEIRO ENVIO — seis frentes lendo o caminho, três céticos por achado, e os três sobreviveram; os dois primeiros contra a DOC OFICIAL da v3, conferida em 09/09. (1) O TOKEN IA COM `Bearer` E A v3 QUER ELE CRU: o default era `bearer`, então toda chamada tomaria 401 na primeira, e a sonda que existe justamente para responder isso (`sondarCabecalho`) não alimentava o envio, só o diagnóstico. (2) O PDF IA EM BASE64 CRU E A v3 QUER `data:application/pdf;base64,` — e o comentário afirmava, como fato, o contrário da doc. Este é o defeito CARO: quebra no passo 2, quando o envelope do passo 1 já existe e já custou; e se a API aceitasse o cru gravando lixo, o sintoma seria PDF ilegível dentro de envelope válido. (3) O `??` SOBRE `objeto()` MATAVA OS FALLBACKS DO WEBHOOK: `objeto()` devolve `{}`, que não é nullish, então `objeto(a) ?? objeto(b) ?? objeto(c)` sempre parava na raiz. Com o documento aninhado em `event.document` ou `data.document` (o formato JSON:API da própria v3) o id voltava nulo, o envelope não era encontrado e o contrato ficava em \"aguardando\" PARA SEMPRE — calado, porque a rota responde 200 e não há reenvio. Virou `primeiroObjeto`, que escolhe o primeiro com conteúdo, com quatro testes novos nos formatos aninhados; os antigos punham `document` sempre na raiz, o único lugar onde o bug não aparecia. ⚠️ OS SIGNATÁRIOS VÃO CONGELADOS em jsonb com papel, e-mail e a ORDEM QUE VALEU NAQUELE ENVIO: o operador pode ter mudado a ordem só para aquele contrato, e o cadastro do empreendimento muda depois — ler do cadastro na hora de mostrar faria a tela mentir sobre um envelope que já saiu. ⚠️ E A ORDEM É POR PAPEL, não por pessoa: quem assina muda a cada venda (outro comprador, outro cônjuge, às vezes três), o que não muda é \"a vendedora assina depois dos compradores\". ⚠️ `estado` FALA A LÍNGUA DA CASA, nunca o status cru do provedor: `closed` NÃO é sinônimo de assinado (o `deadline_partial_signature_action` fecha o envelope com as assinaturas que tiver); o cru fica ao lado, em `estado_cru`. ⚠️ O WEBHOOK REGISTRA O EVENTO QUE NÃO PASSOU no HMAC em vez de descartá-lo: um POST forjado é a informação mais útil que aquele endpoint dá, e um evento legítimo que não bate é o sinal de que o cabeçalho não é o que supomos (a doc da v3 não documenta o nome dele). Nos dois casos o que NÃO acontece é mover o contrato. ⚠️ A MIGRATION FOI RENUMERADA DE 0147 PARA 0149: a outra sessão já tinha usado 0147 (gate de papel) e 0148. No banco não houve colisão — as versões do Supabase são timestamps e os nomes diferem —, era conflito só de nome de arquivo. ⚠️ E A EMISSÃO PASSOU A TER PONTO ÚNICO em `lib/temis/autorizacao.ts` (coordenação para emitir, leitura para ver), depois de o botão de gerar aparecer para o perfil comercial. Medido: 11 usuários, todos com papel em `app_metadata`, 9 podem emitir — ninguém perdeu acesso com o gate novo que veio da main. 3.473 testes verdes, typecheck limpo.",
+      motivation:
+        "O contrato era gerado e guardado, mas parava ali: mandar para assinatura ainda era trabalho manual fora do Panteon.",
+    },
+    title: "O contrato vai para assinatura",
+    type: "novidade",
+    version: "1.303.0",
+  },
+  {
     buildTag: "2026-09-09-historico-paginado-da-iris",
     deployedAt: "2026-09-09T08:10:00-03:00",
     modules: [
