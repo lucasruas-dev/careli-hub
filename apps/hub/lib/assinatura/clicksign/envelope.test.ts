@@ -197,7 +197,28 @@ describe("a ordem vira `group`", () => {
     expect(signers[0]?.has_documentation).toBe(false);
     expect(signers[0]?.documentation).toBeUndefined();
     expect(signers[1]?.has_documentation).toBe(true);
-    expect(signers[1]?.documentation).toBe("99999900453");
+    // ⚠️ COM MÁSCARA. Este teste já afirmou `"99999900453"` — e foi exatamente isso que derrubou o
+    // PRIMEIRO ENVIO REAL: 400 com `/data/attributes/documentation não está em um formato válido`.
+    // A doc do endpoint pede *"o CPF do signatário formatado (ex: 000.000.000-00)"*.
+    expect(signers[1]?.documentation).toBe("999.999.004-53");
+  });
+
+  // ⚠️ O CPF CHEGA DO CADASTRO DE DOIS JEITOS — com máscara e sem —, e a Clicksign só aceita um.
+  // Se o formato dependesse de como alguém digitou na ficha, o envio quebraria para uns clientes e
+  // não para outros, o que é o tipo de defeito que demora a aparecer.
+  it("normaliza o CPF: entre como entrar, sai formatado", async () => {
+    const { chamadas, porta } = duplo();
+    await enviarParaAssinatura(
+      pedido([{ ...pessoa("C Lima", "c@x.com", "comprador", 1), cpf: "99999900453" }]),
+      porta,
+    );
+
+    const attrs = (
+      chamadas.find((c) => c.caminho.endsWith("/signers"))?.corpo as {
+        data: { attributes: Record<string, unknown> };
+      }
+    ).data.attributes;
+    expect(attrs.documentation).toBe("999.999.004-53");
   });
 
   // ⚠️ O CAMPO É O CPF DE UMA PESSOA. Um CNPJ (14 dígitos) ali faz o cadastro do signatário ser

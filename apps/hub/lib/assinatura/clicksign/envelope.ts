@@ -302,11 +302,23 @@ function atributosDoEnvelope(nome: string, pedido: PedidoDeEnvio): Record<string
 }
 
 function atributosDoSignatario(pessoa: Signatario): Record<string, unknown> {
-  const cpf = String(pessoa.cpf ?? "").replace(/\D/g, "");
+  const digitos = String(pessoa.cpf ?? "").replace(/\D/g, "");
   // ⚠️ SÓ CPF, NUNCA CNPJ. O campo `documentation` da Clicksign é o CPF de uma PESSOA; um comprador
   // PJ tem 14 dígitos e mandá-los ali faz o cadastro do signatário ser recusado. Quem assina por uma
   // empresa é o representante — e o CPF dele é que entraria, quando o Panteon o tiver.
-  const temCpf = cpf.length === 11;
+  const temCpf = digitos.length === 11;
+
+  // ⚠️ COM MÁSCARA, `000.000.000-00` — e o código mandava só os 11 dígitos, o que derrubou o
+  // PRIMEIRO ENVIO REAL (09/09/2026): a Clicksign devolveu 400 com
+  // `/data/attributes/documentation não está em um formato válido`. A doc do endpoint é explícita:
+  // *"Informe o CPF do signatário formatado (ex: 000.000.000-00)"*.
+  //
+  // ⚠️ E OS DÍGITOS CONTINUAM SENDO A FONTE, com a máscara montada aqui: o CPF chega do cadastro
+  // ora `999.999.004-53`, ora `99999900453`, e reaproveitar o que veio faria o formato depender de
+  // como alguém digitou na ficha.
+  const cpfFormatado = temCpf
+    ? `${digitos.slice(0, 3)}.${digitos.slice(3, 6)}.${digitos.slice(6, 9)}-${digitos.slice(9)}`
+    : "";
 
   return {
     // ⚠️ `group` COMEÇA EM 1, e é aqui que a ordem de assinatura vira comportamento. Nossa
@@ -318,7 +330,7 @@ function atributosDoSignatario(pessoa: Signatario): Record<string, unknown> {
     // deles) a Clicksign PEDE CPF e data de nascimento na hora de assinar; um comprador cujo
     // cadastro não tem CPF ficaria travado na tela do provedor, sem ter o que digitar.
     has_documentation: temCpf,
-    ...(temCpf ? { documentation: cpf } : {}),
+    ...(temCpf ? { documentation: cpfFormatado } : {}),
     email: pessoa.email.trim(),
     name: pessoa.nome.trim(),
     // ⚠️ PODE RECUSAR, e isso é deliberado. Sem `refusable` o comprador que não concorda simplesmente

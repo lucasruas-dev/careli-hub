@@ -36,6 +36,31 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-09-cpf-formatado-na-clicksign",
+    deployedAt: "2026-09-09T15:55:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O contrato agora chega na Clicksign.** O primeiro envio parou no cadastro de quem assina, por causa do formato do CPF; corrigido.",
+            ],
+            screen: "Enviar para assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "070357a4",
+    technical: {
+      done: "⚠️ O CPF IA SÓ COM DÍGITOS E A v3 QUER COM MÁSCARA. O primeiro envio real (09/09/2026) chegou até o passo 3 e a Clicksign devolveu 400: `/data/attributes/documentation documentation não está em um formato válido`. O código fazia `replace(/\\D/g, \"\")` e mandava `99999900453`; a doc do endpoint de signatário pede *\"o CPF do signatário formatado (ex: 000.000.000-00)\"*. E o teste cravava `\"99999900453\"`, ou seja, guardava o defeito. ⚠️ OS DÍGITOS CONTINUAM SENDO A FONTE e a máscara é montada no código: o CPF chega do cadastro ora `999.999.004-53`, ora `99999900453`, e reaproveitar o que veio faria o formato depender de como alguém digitou na ficha — quebrando para uns clientes e não para outros. Teste novo prova os dois caminhos de entrada. ⚠️ É O TERCEIRO CAMPO DO MESMO TIPO: token com `Bearer` (a v3 quer cru), PDF em base64 cru (a v3 quer data-URI) e agora o CPF sem máscara. Nos três o código afirmava o CONTRÁRIO da doc, com comentário confiante em cima. Os dois primeiros a revisão adversarial pegou antes de custar; este só apareceu no envio real porque é o passo 3. ✅ E O REGISTRO FUNCIONOU COMO PROJETADO: a linha nasceu ANTES da chamada, guardou a falha em `falha`, ficou com `envelope_id` nulo e `estado: rascunho` — foi por ela que se soube exatamente onde parou. O rascunho foi apagado na Clicksign e nada ficou pendente na conta. ⚠️ CONFERIDO O RESTO DO CAMINHO antes de subir: `role` é sempre `\"sign\"` e os requisitos são `{action: agree, role: sign}` e `{action: provide_evidence, auth: email}`, exatamente os valores do tutorial oficial; ativar e notificar têm payload mínimo. 3.477 testes verdes, typecheck limpo.",
+      motivation: "O primeiro envio real chegou na Clicksign e parou no passo dos signatários: o CPF ia sem máscara e a API só aceita formatado.",
+    },
+    title: "O CPF que a Clicksign aceita",
+    type: "correcao",
+    version: "1.306.0",
+  },
+  {
     buildTag: "2026-09-09-email-do-signatario-editavel",
     deployedAt: "2026-09-09T12:35:00-03:00",
     modules: [
