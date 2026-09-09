@@ -142,12 +142,17 @@ import {
   enrichTicketsWithCrm360,
   ensureOperatorIdentity,
   loadIrisData,
+  loadIrisHistoricoAnterior,
   loadTicketMessages,
   mapMessageRow,
   mapQueueRow,
   mapTicketProfileRow,
   withIrisTimeout,
 } from "./data/iris-data-client";
+import {
+  cursorDoHistorico,
+  mesclarTicketsDoHistorico,
+} from "./lib/historico-paginacao";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
@@ -649,6 +654,17 @@ export function IrisPage({
   const [historyFocus, setHistoryFocus] = useState<IrisHistoryFocus | null>(
     null,
   );
+  // OS LOTES ANTIGOS DO HISTÓRICO, buscados sob demanda pelo botão "Carregar mais".
+  //
+  // ⚠️ VIVEM FORA DO `irisData` DE PROPÓSITO. A carga da tela se refaz sozinha a cada 90s (e a
+  // cada evento do realtime): se estes tickets morassem lá dentro, todo refresh apagaria o que o
+  // usuário acabou de paginar e o botão pareceria não funcionar.
+  const [historicoExtras, setHistoricoExtras] = useState<IrisTicket[]>([]);
+  const [historicoCarregando, setHistoricoCarregando] = useState(false);
+  const [historicoErro, setHistoricoErro] = useState<string | null>(null);
+  // Começa `true` porque a carga traz um recorte e quase sempre há passado atrás dele; vira
+  // `false` só quando o banco disser que acabou.
+  const [historicoTemMais, setHistoricoTemMais] = useState(true);
   // Sidebar recolhida = preferência pura → durável (localStorage), sobrevive à sessão.
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedState(
     `${persistScope}.sidebarCollapsed`,
@@ -1120,10 +1136,89 @@ export function IrisPage({
   // Daqui pra baixo `irisData` É o recorte da central. Todas as views leem dele e
   // ficam separadas sem saber que a central existe: "a mesma estrutura, somente a
   // separação" (Lucas, 15/08). O Setup é a exceção e recebe o bruto.
+  // ⚠️ OS LOTES PAGINADOS ENTRAM ANTES DO RECORTE DE CENTRAL, e isso não é detalhe: se fossem
+  // concatenados depois, o atendimento antigo apareceria na central errada — a única regra de
+  // central do arquivo é esta linha, e o que não passa por ela não obedece a ela.
   const irisData = useMemo(
-    () => recortarDadosPorCentral(irisDataBruto, centralAtiva),
-    [irisDataBruto, centralAtiva],
+    () =>
+      recortarDadosPorCentral(
+        historicoExtras.length > 0
+          ? {
+              ...irisDataBruto,
+              tickets: mesclarTicketsDoHistorico(
+                irisDataBruto.tickets,
+                historicoExtras,
+              ),
+            }
+          : irisDataBruto,
+        centralAtiva,
+      ),
+    [irisDataBruto, historicoExtras, centralAtiva],
   );
+
+  // "CARREGAR MAIS": busca no banco o pedaço de histórico anterior ao que já está na tela.
+  const carregarMaisHistorico = useCallback(async () => {
+    if (historicoCarregando || !loadFromSupabase) {
+      return;
+    }
+
+    // ⚠️ O CURSOR SAI DO BRUTO, NÃO DO RECORTE POR CENTRAL. Com o recorte, uma central de poucos
+    // atendimentos daria um cursor recente e cada clique voltaria a pedir linhas que já estão
+    // carregadas — o botão pareceria travado. Pelo bruto o cursor só anda para trás.
+    const cursor = cursorDoHistorico(
+      mesclarTicketsDoHistorico(irisDataBruto.tickets, historicoExtras),
+    );
+
+    if (!cursor) {
+      setHistoricoTemMais(false);
+      return;
+    }
+
+    setHistoricoCarregando(true);
+    setHistoricoErro(null);
+
+    try {
+      const lote = await withIrisTimeout(
+        loadIrisHistoricoAnterior({
+          antesDe: cursor,
+          operatorUserId,
+          queueSlugFilter: scopedQueueSlug,
+          // A MESMA régua de acesso da carga da tela: paginar não pode abrir fila fechada.
+          viewerUserId: hubUser?.id ?? null,
+        }),
+        IRIS_QUEUE_LOAD_TIMEOUT_MS,
+        "histórico da Iris",
+      );
+
+      // Mesmo enriquecimento do CRM 360 da carga normal — sem ele o lote antigo chegaria com o
+      // telefone cru onde os outros mostram o nome do cliente.
+      const enriquecido = await enrichIrisDataWithCrm360({
+        ...emptyIrisData,
+        tickets: lote.tickets,
+      });
+
+      setHistoricoExtras((atuais) =>
+        mesclarTicketsDoHistorico(atuais, enriquecido.tickets),
+      );
+      setHistoricoTemMais(lote.temMais);
+    } catch (error) {
+      console.error("[iris][historico] falha ao carregar o lote anterior", error);
+      setHistoricoErro(
+        "Nao foi possivel carregar os atendimentos anteriores. Tente de novo.",
+      );
+    } finally {
+      setHistoricoCarregando(false);
+    }
+  }, [
+    enrichIrisDataWithCrm360,
+    historicoCarregando,
+    historicoExtras,
+    hubUser?.id,
+    irisDataBruto.tickets,
+    loadFromSupabase,
+    operatorUserId,
+    scopedQueueSlug,
+  ]);
 
   // Ref espelho do ticket aberto: o handler do realtime le sem re-assinar o canal.
   const selectedTicketIdRef = useRef(selectedTicketId);
@@ -1588,9 +1683,13 @@ export function IrisPage({
             />
           ) : activeView === "historico" ? (
             <IrisHistoryView
+              carregandoMais={historicoCarregando}
+              erroAoCarregarMais={historicoErro}
               focus={historyFocus}
               helpers={irisHistoryViewHelpers}
+              onCarregarMais={loadFromSupabase ? carregarMaisHistorico : undefined}
               renderers={irisTicketQueueRenderers}
+              temMais={historicoTemMais}
               ticketQueueHelpers={irisTicketQueueHelpers}
               tickets={irisData.tickets}
               onClearFocus={() => setHistoryFocus(null)}

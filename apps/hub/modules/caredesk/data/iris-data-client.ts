@@ -76,6 +76,98 @@ const IRIS_CRM360_MISSING_TTL_MS = 10 * 60 * 1000;
 // A rota /api/iris/apolo/phone-match aceita no maximo 100 telefones por chamada.
 const IRIS_CRM360_LOTE_DE_TELEFONES = 100;
 
+// As colunas do ticket. Fora da `loadIrisData` porque a paginação do histórico
+// (`loadIrisHistoricoAnterior`) lê a MESMA linha: duas listas de colunas divergindo é campo que
+// chega nulo só no lote antigo.
+const SELECT_TICKETS =
+  "id,protocol,contact_id,queue_id,profile_id,channel_id,status,priority,subject,source_module,source_entity_type,source_context,assigned_to_user_id,opened_at,first_response_due_at,resolution_due_at,first_responded_at,resolved_at,closed_at,metadata,created_at,updated_at";
+
+// Os ids viajam na URL do PostgREST. Lista longa demais estoura o tamanho da requisicao: o
+// Supabase responde 400 e a tela inteira morre com "nao foi possivel carregar a operacao" (foi o
+// que derrubou a Iris ao ampliar a janela de tickets). Por isso TODA leitura por lista de ids
+// vai em lotes — na carga da tela e na paginacao do historico.
+const LOTE_DE_IDS = 100;
+
+async function lerEmLotes<Row>(
+  ids: string[],
+  ler: (lote: string[]) => PromiseLike<{ data: Row[] | null; error: unknown }>,
+): Promise<{ data: Row[]; error: unknown }> {
+  const lotes: string[][] = [];
+
+  for (let inicio = 0; inicio < ids.length; inicio += LOTE_DE_IDS) {
+    lotes.push(ids.slice(inicio, inicio + LOTE_DE_IDS));
+  }
+
+  // Em paralelo: sequencial somaria um round-trip por lote numa tela que ja e pesada.
+  const respostas = await Promise.all(lotes.map((lote) => ler(lote)));
+  const linhas: Row[] = [];
+
+  for (const resposta of respostas) {
+    if (resposta.error) {
+      return { data: linhas, error: resposta.error };
+    }
+
+    linhas.push(...(resposta.data ?? []));
+  }
+
+  return { data: linhas, error: null };
+}
+
+/**
+ * A RÉGUA DE ACESSO AOS TICKETS, NUM LUGAR SÓ.
+ *
+ * ⚠️ ELA NÃO PODE TER DUAS VERSÕES. Quem lê ticket é a carga da tela e, desde 09/09/2026,
+ * também a paginação do histórico. Reescrever o filtro na mão no segundo lugar é como nasce o
+ * furo: bastaria a cópia esquecer o `.in("queue_id", ...)` para o lote antigo trazer atendimento
+ * de fila que o usuário não enxerga — e ninguém veria, porque a tela não acusa nada.
+ */
+function aplicarReguaDeAcessoAosTickets(
+  query: any,
+  {
+    normalizedQueueSlugFilter,
+    operatorUserId,
+    queues,
+    scopedQueueIds,
+    viewerScope,
+  }: {
+    normalizedQueueSlugFilter?: null | string;
+    operatorUserId?: null | string;
+    queues: IrisQueueConfig[];
+    scopedQueueIds: string[];
+    viewerScope: HubUserScope | null;
+  },
+) {
+  let comRegua = query;
+
+  if (operatorUserId) {
+    comRegua = comRegua.eq("assigned_to_user_id", operatorUserId);
+  }
+
+  // Régua de acesso nos TICKETS: só os das filas que o usuário enxerga — senão
+  // esconder a fila não adiantaria nada (o ticket dela apareceria assim mesmo).
+  // Ticket sem fila segue a mesma regra da fila sem vínculo: só adm.
+  if (viewerScope && !isAdminProfile(viewerScope.profile)) {
+    // ⚠️ SEM FILA VISÍVEL É LISTA VAZIA, NÃO UMA SENTINELA DE TEXTO. Antes isto era
+    // `.eq("queue_id", "__iris_sem_fila_visivel__")`, e `queue_id` é UUID: o Postgres recusava a
+    // string, a consulta virava exceção e a tela mostrava o erro genérico de carga. Quem não tinha
+    // fila nenhuma via "Nao foi possivel carregar a operacao do Iris" em vez de descobrir que o
+    // problema era acesso — e o `.in()` com lista vazia já devolve zero linhas, sem inventar
+    // valor nenhum.
+    comRegua = comRegua.in(
+      "queue_id",
+      queues.map((queue) => queue.id),
+    );
+  }
+
+  if (normalizedQueueSlugFilter) {
+    comRegua = scopedQueueIds.length
+      ? comRegua.in("queue_id", scopedQueueIds)
+      : comRegua.eq("queue_id", "__iris_queue_scope_not_found__");
+  }
+
+  return comRegua;
+}
+
 export async function loadIrisData({
   operatorUserId,
   queueSlugFilter,
@@ -170,39 +262,23 @@ export async function loadIrisData({
   // com uma operadora que não conseguia vê-lo, enquanto a cliente mandava mensagem sem resposta.
   //
   // Agora são DUAS leituras com a MESMA régua de acesso: todos os ABERTOS (sem janela de data) e
-  // só os ENCERRADOS recentes (o histórico busca no banco quando precisa de um antigo).
-  const SELECT_TICKETS =
-    "id,protocol,contact_id,queue_id,profile_id,channel_id,status,priority,subject,source_module,source_entity_type,source_context,assigned_to_user_id,opened_at,first_response_due_at,resolution_due_at,first_responded_at,resolved_at,closed_at,metadata,created_at,updated_at";
-
-  const montarQueryTickets = () => {
-    let query = supabase.from("caredesk_tickets").select(SELECT_TICKETS);
-
-    if (operatorUserId) {
-      query = query.eq("assigned_to_user_id", operatorUserId);
-    }
-
-    // Régua de acesso nos TICKETS: só os das filas que o usuário enxerga — senão
-    // esconder a fila não adiantaria nada (o ticket dela apareceria assim mesmo).
-    // Ticket sem fila segue a mesma regra da fila sem vínculo: só adm.
-    if (viewerScope && !isAdminProfile(viewerScope.profile)) {
-      // ⚠️ SEM FILA VISÍVEL É LISTA VAZIA, NÃO UMA SENTINELA DE TEXTO. Antes isto era
-      // `.eq("queue_id", "__iris_sem_fila_visivel__")`, e `queue_id` é UUID: o Postgres recusava a
-      // string, a consulta virava exceção e a tela mostrava o erro genérico de carga. Quem não tinha
-      // fila nenhuma via "Nao foi possivel carregar a operacao do Iris" em vez de descobrir que o
-      // problema era acesso — e o `.in()` com lista vazia já devolve zero linhas, sem inventar
-      // valor nenhum.
-      const visibleQueueIds = queues.map((queue) => queue.id);
-      query = query.in("queue_id", visibleQueueIds);
-    }
-
-    if (normalizedQueueSlugFilter) {
-      query = scopedQueueIds.length
-        ? query.in("queue_id", scopedQueueIds)
-        : query.eq("queue_id", "__iris_queue_scope_not_found__");
-    }
-
-    return query;
-  };
+  // só os ENCERRADOS recentes.
+  //
+  // ⚠️ O RESTO DO HISTÓRICO VEM POR `loadIrisHistoricoAnterior`, SOB DEMANDA. Até 09/09/2026 este
+  // comentário dizia que "o histórico busca no banco quando precisa de um antigo" — e não buscava:
+  // a tela só filtrava em memória o que esta função tinha trazido. Medido naquele dia: 5.869
+  // encerrados no banco, 400 aqui, e a janela real era de 32 horas.
+  const montarQueryTickets = () =>
+    aplicarReguaDeAcessoAosTickets(
+      supabase.from("caredesk_tickets").select(SELECT_TICKETS),
+      {
+        normalizedQueueSlugFilter,
+        operatorUserId,
+        queues,
+        scopedQueueIds,
+        viewerScope,
+      },
+    );
 
   const ticketsAbertosQuery = montarQueryTickets()
     .neq("status", "closed")
@@ -276,39 +352,6 @@ export async function loadIrisData({
   const assignedUserIds = unique(
     ticketsRows.map((ticket) => ticket.assigned_to_user_id).filter(Boolean),
   );
-
-  // Os ids abaixo viajam na URL do PostgREST. Lista longa demais estoura o tamanho da
-  // requisicao: o Supabase responde 400 e a tela inteira morre com "nao foi possivel
-  // carregar a operacao" (foi o que derrubou a Iris ao ampliar a janela de tickets).
-  // Por isso TODA leitura por lista de ids vai em lotes.
-  const LOTE_DE_IDS = 100;
-
-  async function lerEmLotes<Row>(
-    ids: string[],
-    ler: (
-      lote: string[],
-    ) => PromiseLike<{ data: Row[] | null; error: unknown }>,
-  ): Promise<{ data: Row[]; error: unknown }> {
-    const lotes: string[][] = [];
-
-    for (let inicio = 0; inicio < ids.length; inicio += LOTE_DE_IDS) {
-      lotes.push(ids.slice(inicio, inicio + LOTE_DE_IDS));
-    }
-
-    // Em paralelo: sequencial somaria um round-trip por lote numa tela que ja e pesada.
-    const respostas = await Promise.all(lotes.map((lote) => ler(lote)));
-    const linhas: Row[] = [];
-
-    for (const resposta of respostas) {
-      if (resposta.error) {
-        return { data: linhas, error: resposta.error };
-      }
-
-      linhas.push(...(resposta.data ?? []));
-    }
-
-    return { data: linhas, error: null };
-  }
 
   const [contactsResult, messagesResult, assignedUsersResult] =
     await Promise.all([
@@ -503,6 +546,221 @@ export async function loadIrisData({
       ),
       ...groupConversations,
     ],
+  };
+}
+
+/** Tamanho do lote que o botão "Carregar mais" do histórico traz por clique. */
+export const IRIS_HISTORICO_LOTE = 200;
+
+/**
+ * O PRÓXIMO PEDAÇO DO HISTÓRICO, sob demanda — a peça que o comentário da `loadIrisData`
+ * prometia e que não existia.
+ *
+ * ⚠️ POR QUE ELA PRECISOU EXISTIR. Medido em 09/09/2026 na produção: 5.869 atendimentos
+ * encerrados no banco, 400 na tela, 5.469 invisíveis. A janela real era de 32 horas (07/09 23:48
+ * → 09/09 07:57) num banco cujo encerrado mais antigo é de 25/06, e de 1.558 clientes com
+ * atendimento só 283 apareciam. O gatilho foi o fechamento automático de 1.152 tickets às 20h de
+ * 07/09: um lote quase 3× maior que a janela inteira, que empurrou meses de histórico para fora
+ * da tela de uma vez.
+ *
+ * ⚠️ NÃO AUMENTE O `.limit(400)` DA CARGA PARA RESOLVER ISSO. Os ids dos tickets viajam na URL
+ * das leituras dependentes, e foi ampliar aquela janela que derrubou a Iris antes (está no
+ * comentário do `lerEmLotes`). Paginar é justamente o caminho que não repete aquele erro: cada
+ * clique traz um lote pequeno e as dependentes continuam indo de 100 em 100.
+ *
+ * @param antesDe `closed_at` (ISO) do encerrado mais antigo que já está na tela — o cursor vem de
+ *                `cursorDoHistorico`. Sem ele não há de onde continuar.
+ * @returns Os tickets do lote e se ainda há mais para trás (para a tela esconder o botão no fim).
+ */
+export async function loadIrisHistoricoAnterior({
+  antesDe,
+  limite = IRIS_HISTORICO_LOTE,
+  operatorUserId,
+  queueSlugFilter,
+  viewerUserId,
+}: {
+  antesDe: string;
+  limite?: number;
+  operatorUserId?: null | string;
+  queueSlugFilter?: null | string;
+  viewerUserId?: null | string;
+}): Promise<{ temMais: boolean; tickets: IrisTicket[] }> {
+  const supabase = getHubSupabaseClient();
+
+  if (!supabase || !antesDe) {
+    return { temMais: false, tickets: [] };
+  }
+
+  const normalizedQueueSlugFilter =
+    normalizeOptionalIrisQueueSlug(queueSlugFilter);
+
+  // As mesmas leituras de apoio da carga da tela, e pelo mesmo motivo: sem fila não há régua de
+  // acesso, e sem perfil/canal o ticket antigo chega à lista sem rótulo nenhum.
+  const [queuesResult, scopesResult, profilesResult, channelsResult] =
+    await Promise.all([
+      supabase
+        .from("caredesk_queues")
+        .select(
+          "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy,metadata",
+        )
+        .order("name", { ascending: true }),
+      supabase
+        .from("caredesk_queue_scopes")
+        .select("queue_id,department_id,sector_id"),
+      supabase
+        .from("caredesk_ticket_profiles")
+        .select(
+          "id,queue_id,name,slug,category,priority,sla_first_response_minutes,sla_resolution_minutes,description,required_fields,status",
+        ),
+      supabase
+        .from("caredesk_channels")
+        .select("id,name,kind,status,external_account_id"),
+    ]);
+
+  const falhaDeApoio = [
+    queuesResult,
+    scopesResult,
+    profilesResult,
+    channelsResult,
+  ].find((resultado) => resultado.error);
+
+  if (falhaDeApoio?.error) {
+    throw falhaDeApoio.error;
+  }
+
+  const scopesByQueue = new Map<string, IrisQueueScope[]>();
+  for (const row of (scopesResult.data ?? []) as any[]) {
+    const lista = scopesByQueue.get(row.queue_id as string) ?? [];
+    lista.push({
+      departmentId: row.department_id as string,
+      sectorId: (row.sector_id as string | null) ?? null,
+    });
+    scopesByQueue.set(row.queue_id as string, lista);
+  }
+
+  const allQueues = (queuesResult.data ?? []).map((row: any) =>
+    mapQueueRow(row, scopesByQueue.get(row.id) ?? []),
+  );
+  const viewerScope = await loadViewerScope(supabase, viewerUserId);
+  const queues = viewerScope
+    ? allQueues.filter((queue) => canSeeResource(viewerScope, queue.scopes))
+    : allQueues;
+  const scopedQueueIds = normalizedQueueSlugFilter
+    ? queues
+        .filter((queue) => isSameIrisQueueScope(queue, normalizedQueueSlugFilter))
+        .map((queue) => queue.id)
+    : [];
+
+  // Pede UM a mais do que vai entregar: é assim que a tela sabe se ainda há passado para trás
+  // sem precisar de uma segunda consulta de contagem.
+  const ticketsResult = await aplicarReguaDeAcessoAosTickets(
+    supabase.from("caredesk_tickets").select(SELECT_TICKETS),
+    {
+      normalizedQueueSlugFilter,
+      operatorUserId,
+      queues,
+      scopedQueueIds,
+      viewerScope,
+    },
+  )
+    .eq("status", "closed")
+    .lt("closed_at", antesDe)
+    .order("closed_at", { ascending: false })
+    .limit(limite + 1);
+
+  if (ticketsResult.error) {
+    throw ticketsResult.error;
+  }
+
+  const encontrados = (ticketsResult.data ?? []) as any[];
+  const temMais = encontrados.length > limite;
+  const ticketsRows = temMais ? encontrados.slice(0, limite) : encontrados;
+
+  if (ticketsRows.length === 0) {
+    return { temMais: false, tickets: [] };
+  }
+
+  const ticketIds = ticketsRows.map((ticket) => ticket.id);
+  const contactIds = unique(
+    ticketsRows.map((ticket) => ticket.contact_id).filter(Boolean),
+  );
+  const assignedUserIds = unique(
+    ticketsRows.map((ticket) => ticket.assigned_to_user_id).filter(Boolean),
+  );
+
+  const [contactsResult, messagesResult, assignedUsersResult] =
+    await Promise.all([
+      lerEmLotes(contactIds, (lote) =>
+        supabase
+          .from("caredesk_contacts")
+          .select(
+            "id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload",
+          )
+          .in("id", lote),
+      ),
+      // ⚠️ POUCAS MENSAGENS POR TICKET, DE PROPÓSITO. Aqui só se monta a prévia da linha do
+      // histórico; a conversa inteira é carregada ao abrir o atendimento. Pedir 300 por lote,
+      // como a carga da tela faz, gastaria o orçamento nas conversas longas e deixaria os
+      // demais tickets do lote sem prévia nenhuma — o mesmo efeito que criou a "segunda
+      // passada" lá em cima.
+      lerEmLotes(ticketIds, (lote) =>
+        supabase
+          .from("caredesk_messages")
+          .select(
+            "id,ticket_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
+          )
+          .in("ticket_id", lote)
+          .order("created_at", { ascending: false })
+          .limit(lote.length * 5),
+      ),
+      lerEmLotes(assignedUserIds, (lote) =>
+        supabase
+          .from("hub_users")
+          .select("id,display_name,avatar_url")
+          .in("id", lote),
+      ),
+    ]);
+
+  const falhaDependente = [
+    contactsResult,
+    messagesResult,
+    assignedUsersResult,
+  ].find((resultado) => resultado.error);
+
+  if (falhaDependente?.error) {
+    throw falhaDependente.error;
+  }
+
+  const queueById = new Map(queues.map((queue) => [queue.id, queue]));
+  const channelById = new Map(
+    (channelsResult.data ?? []).map((channel: any) => [channel.id, channel]),
+  );
+  const profileById = new Map(
+    (profilesResult.data ?? []).map((profile: any) => [profile.id, profile]),
+  );
+  const contactById = new Map(
+    (contactsResult.data ?? []).map((contact: any) => [contact.id, contact]),
+  );
+  const assignedUserById = new Map(
+    (assignedUsersResult.data ?? []).map((user: any) => [user.id, user]),
+  );
+  const messagesByTicket = groupMessagesByTicket(messagesResult.data ?? []);
+
+  return {
+    temMais,
+    tickets: ticketsRows.map((ticket) =>
+      mapTicketRow({
+        assignedUser: ticket.assigned_to_user_id
+          ? assignedUserById.get(ticket.assigned_to_user_id)
+          : null,
+        channel: ticket.channel_id ? channelById.get(ticket.channel_id) : null,
+        contact: ticket.contact_id ? contactById.get(ticket.contact_id) : null,
+        messages: messagesByTicket.get(ticket.id) ?? [],
+        profile: ticket.profile_id ? profileById.get(ticket.profile_id) : null,
+        queue: ticket.queue_id ? (queueById.get(ticket.queue_id) ?? null) : null,
+        row: ticket,
+      }),
+    ),
   };
 }
 
