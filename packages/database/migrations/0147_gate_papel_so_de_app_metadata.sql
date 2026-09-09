@@ -1,4 +1,4 @@
--- 0146 — O PAPEL DO HUB PARA DE VIR DO METADATA QUE O PRÓPRIO USUÁRIO ESCREVE.
+-- 0147 — O PAPEL DO HUB PARA DE VIR DO METADATA QUE O PRÓPRIO USUÁRIO ESCREVE.
 --
 -- ⚠️ QUALQUER PESSOA PODIA NASCER `admin` NO PANTEON, e isso foi MEDIDO em 08/09/2026, não
 -- deduzido: `get_hub_role_from_auth_metadata('{}', '{"role":"admin"}')` devolvia `admin`. A cadeia
