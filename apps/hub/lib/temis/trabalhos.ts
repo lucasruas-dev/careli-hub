@@ -21,7 +21,13 @@
 //    prazos em cada atividade"*. Por isso a atividade PERTENCE A UM ESTÁGIO: sem essa amarração não
 //    há como saber que o estágio acabou, e o board volta a depender de alguém arrastar card.
 
-export type EstagioDoTrabalho = "assinatura" | "confeccao" | "entrada" | "finalizado";
+export type EstagioDoTrabalho =
+  | "analise"
+  | "assinatura"
+  | "contrato"
+  | "faturado"
+  | "indeferido"
+  | "prazo_legal";
 
 export type TipoDeTrabalho =
   | "cancelamento"
@@ -30,16 +36,60 @@ export type TipoDeTrabalho =
   | "contrato"
   | "distrato";
 
+/**
+ * AS CINCO ETAPAS, do mockup aprovado em 09/09/2026
+ * (`docs/mockups/temis-quadro-e-tela-de-trabalho.html`).
+ *
+ * ⚠️ "CONTRATO" AGORA É DUAS COISAS, e a semelhança vai enganar alguém: `tipo` tem o valor
+ * `contrato` (o QUE se produz) e a etapa 2 se chama `contrato` (ONDE o trabalho está). Um
+ * `tipo === "contrato"` e um `estagio === "contrato"` respondem perguntas diferentes. Foi o
+ * vocabulário aprovado, e é o mesmo do funil do Hércules (`lib/hercules/fluxo-de-venda.ts`).
+ *
+ * ⚠️ `indeferido` NÃO ESTÁ NESTA LISTA porque não é etapa do caminho: é uma saída. Ele aparece
+ * como coluna própria no quadro (ver `COLUNAS_DO_QUADRO`), e nenhum trabalho "avança" para ele.
+ */
 export const ESTAGIOS: {
   descricao: string;
   id: EstagioDoTrabalho;
   nome: string;
 }[] = [
-  { descricao: "Chegou e ninguém pegou.", id: "entrada", nome: "Entrada" },
-  { descricao: "Produzindo o documento.", id: "confeccao", nome: "Confecção" },
-  { descricao: "No D4Sign, esperando os signatários.", id: "assinatura", nome: "Em assinatura" },
-  { descricao: "Assinado e arquivado.", id: "finalizado", nome: "Finalizado" },
+  { descricao: "Chegou do Hércules. Conferir e abrir o contrato.", id: "analise", nome: "Análise" },
+  {
+    descricao: "Gerado. Conferir quem assina antes de mandar.",
+    id: "contrato",
+    nome: "Contrato",
+  },
+  {
+    descricao: "Na Clicksign, com o cliente.",
+    id: "assinatura",
+    nome: "Em assinatura",
+  },
+  {
+    descricao: "7 dias de arrependimento e a entrada.",
+    id: "prazo_legal",
+    nome: "Prazo legal",
+  },
+  { descricao: "Prazo cumprido e entrada paga.", id: "faturado", nome: "Faturado" },
 ];
+
+/**
+ * O ROTULO DA ULTIMA ETAPA MUDA COM O TIPO.
+ *
+ * "Faturado" só faz sentido para contrato: cessão, distrato e cancelamento não faturam nada — eles
+ * se assinam e se arquivam. O VALOR gravado é o mesmo (`faturado`), para o banco não precisar de
+ * um estado por tipo; o que muda é a palavra na tela.
+ */
+export function nomeDoEstagio(
+  estagio: EstagioDoTrabalho,
+  tipo: TipoDeTrabalho,
+): string {
+  if (estagio === "indeferido") return "Indeferido";
+  if (estagio === "faturado" && tipo !== "contrato") return "Concluído";
+  return ESTAGIOS.find((e) => e.id === estagio)?.nome ?? estagio;
+}
+
+/** O quadro mostra as etapas do caminho MAIS a coluna de indeferidos, sempre no fim. */
+export const COLUNA_INDEFERIDO = "indeferido" as const;
 
 /**
  * Cada tipo passa pelo estágio de assinatura?
@@ -61,10 +111,23 @@ export const EXIGE_ASSINATURA: Record<TipoDeTrabalho, boolean> = {
   distrato: true,
 };
 
+/**
+ * O caminho de cada tipo.
+ *
+ * ⚠️ SÓ O CONTRATO TEM AS CINCO. Lucas (10/09/2026), sobre cessão, distrato e cancelamento:
+ * *"Caminho próprio, mais curto"*. Eles não têm prazo de arrependimento nem entrada a pagar — o
+ * documento se assina e se arquiva. Fazê-los passar por "Prazo legal" criaria uma etapa que nunca
+ * fecha, e um card parado ali para sempre é pior do que uma etapa a menos.
+ *
+ * ⚠️ E O CANCELAMENTO NÃO ASSINA (`EXIGE_ASSINATURA`), então pula também a etapa 3.
+ */
 export function estagiosDoTipo(tipo: TipoDeTrabalho): EstagioDoTrabalho[] {
+  if (tipo === "contrato") {
+    return ["analise", "contrato", "assinatura", "prazo_legal", "faturado"];
+  }
   return EXIGE_ASSINATURA[tipo]
-    ? ["entrada", "confeccao", "assinatura", "finalizado"]
-    : ["entrada", "confeccao", "finalizado"];
+    ? ["analise", "contrato", "assinatura", "faturado"]
+    : ["analise", "contrato", "faturado"];
 }
 
 export type Atividade = {
@@ -94,20 +157,20 @@ export const ATIVIDADES: Record<TipoDeTrabalho, Atividade[]> = {
   // ⚠️ NASCE LIGADO A UM CONTRATO QUE JÁ EXISTE, e a primeira atividade é dizer qual: sem isso
   // ninguém sabe o que está sendo corrigido.
   cancelamento_correcao: [
-    { estagio: "entrada", prazoDias: 1, quem: "nos", texto: "Identificar o contrato original e o que está errado" },
-    { estagio: "confeccao", prazoDias: 1, quem: "nos", texto: "Gerar o documento de correção" },
-    { estagio: "confeccao", prazoDias: 1, quem: "nos", texto: "Definir signatários e a ordem de assinatura" },
+    { estagio: "analise", prazoDias: 1, quem: "nos", texto: "Identificar o contrato original e o que está errado" },
+    { estagio: "contrato", prazoDias: 1, quem: "nos", texto: "Gerar o documento de correção" },
+    { estagio: "contrato", prazoDias: 1, quem: "nos", texto: "Definir signatários e a ordem de assinatura" },
     { estagio: "assinatura", prazoDias: 1, quem: "nos", texto: "Despachar para assinatura" },
     { estagio: "assinatura", prazoDias: 5, quem: "cliente", texto: "Colher as assinaturas" },
-    { estagio: "finalizado", prazoDias: 1, quem: "nos", texto: "Atualizar o cadastro do cliente e a unidade" },
+    { estagio: "faturado", prazoDias: 1, quem: "nos", texto: "Atualizar o cadastro do cliente e a unidade" },
   ],
   // ⚠️ SEM ASSINATURA E SEM APURAÇÃO: sem pagamento e sem assinatura o contrato não chegou a se
   // formar — não há o que distratar nem o que devolver. Quem decide isso é `cancelamento.ts`, pelos
   // fatos, e não quem abre a solicitação.
   cancelamento: [
-    { estagio: "entrada", prazoDias: 1, quem: "nos", texto: "Registrar o motivo do cancelamento" },
-    { estagio: "confeccao", prazoDias: 1, quem: "nos", texto: "Gerar o termo de cancelamento" },
-    { estagio: "finalizado", prazoDias: 1, quem: "nos", texto: "Liberar a unidade para venda" },
+    { estagio: "analise", prazoDias: 1, quem: "nos", texto: "Registrar o motivo do cancelamento" },
+    { estagio: "contrato", prazoDias: 1, quem: "nos", texto: "Gerar o termo de cancelamento" },
+    { estagio: "faturado", prazoDias: 1, quem: "nos", texto: "Liberar a unidade para venda" },
   ],
   // ⚠️ A CESSÃO CANCELA O CONTRATO ANTIGO E CRIA UM NOVO, nas mesmas condições. Decisão do Lucas
   // (02/09/2026): *"ae cancela o contrato antigo e nasce um novo nas mesmas condições"*. Não é
@@ -127,32 +190,44 @@ export const ATIVIDADES: Record<TipoDeTrabalho, Atividade[]> = {
   // de propósito: elas impedem a solicitação de nascer, e vivem em `cessao.ts`. Como atividade, o
   // card atravessaria metade do board para morrer, com o cedente já avisado de que a cessão andava.
   cessao: [
-    { estagio: "entrada", prazoDias: 1, quem: "nos", texto: "Conferir o cessionário e o cadastro dele no Apolo" },
-    { estagio: "confeccao", prazoDias: 1, quem: "nos", texto: "Emitir a cobrança da taxa de cessão" },
-    { estagio: "confeccao", prazoDias: 5, quem: "cliente", texto: "Receber o pagamento da taxa" },
-    { estagio: "confeccao", prazoDias: 1, quem: "nos", texto: "Validar o pagamento da taxa" },
-    { estagio: "confeccao", prazoDias: 1, quem: "nos", texto: "Gerar o termo de cessão" },
-    { estagio: "confeccao", prazoDias: 1, quem: "nos", texto: "Definir signatários: cedente, cessionário e a Careli" },
+    { estagio: "analise", prazoDias: 1, quem: "nos", texto: "Conferir o cessionário e o cadastro dele no Apolo" },
+    { estagio: "contrato", prazoDias: 1, quem: "nos", texto: "Emitir a cobrança da taxa de cessão" },
+    { estagio: "contrato", prazoDias: 5, quem: "cliente", texto: "Receber o pagamento da taxa" },
+    { estagio: "contrato", prazoDias: 1, quem: "nos", texto: "Validar o pagamento da taxa" },
+    { estagio: "contrato", prazoDias: 1, quem: "nos", texto: "Gerar o termo de cessão" },
+    { estagio: "contrato", prazoDias: 1, quem: "nos", texto: "Definir signatários: cedente, cessionário e a Careli" },
     { estagio: "assinatura", prazoDias: 1, quem: "nos", texto: "Despachar para assinatura" },
     { estagio: "assinatura", prazoDias: 7, quem: "cliente", texto: "Colher as assinaturas" },
-    { estagio: "finalizado", prazoDias: 1, quem: "nos", texto: "Encerrar o contrato do cedente" },
-    { estagio: "finalizado", prazoDias: 1, quem: "nos", texto: "Abrir o contrato do cessionário nas mesmas condições" },
+    { estagio: "faturado", prazoDias: 1, quem: "nos", texto: "Encerrar o contrato do cedente" },
+    { estagio: "faturado", prazoDias: 1, quem: "nos", texto: "Abrir o contrato do cessionário nas mesmas condições" },
   ],
+  // ⚠️ AS DUAS ÚLTIMAS ETAPAS SÃO NOVAS (10/09/2026) e não têm nada a ver com produzir documento:
+  // são as condições que separam "assinado" de "vendido". Lucas (09/09): *"depois de assinatura
+  // vai ter algumas condições para finalizado"*.
+  //
+  // ⚠️ E OS 7 DIAS SÃO CORRIDOS, NÃO ÚTEIS. `prazoDias` conta dias úteis em todo o resto deste
+  // arquivo (`diasUteis`), porque mede TRABALHO NOSSO. O arrependimento é prazo do comprador e
+  // corre no calendário — sábado e domingo contam. Por isso quem manda na etapa 4 não é este
+  // `prazoDias`, e sim `arrependimento_inicio` mais sete dias corridos; o número aqui serve só
+  // para a cor do card não gritar antes da hora.
   contrato: [
-    { estagio: "entrada", prazoDias: 1, quem: "nos", texto: "Conferir a proposta e o plano vindos do Hércules" },
-    { estagio: "confeccao", prazoDias: 1, quem: "nos", texto: "Gerar o contrato pela minuta do empreendimento" },
-    { estagio: "confeccao", prazoDias: 1, quem: "nos", texto: "Definir signatários e a ordem de assinatura" },
+    { estagio: "analise", prazoDias: 1, quem: "nos", texto: "Conferir a proposta e o plano vindos do Hércules" },
+    { estagio: "contrato", prazoDias: 1, quem: "nos", texto: "Gerar o contrato pela minuta do empreendimento" },
+    { estagio: "contrato", prazoDias: 1, quem: "nos", texto: "Definir signatários e a ordem de assinatura" },
     { estagio: "assinatura", prazoDias: 1, quem: "nos", texto: "Despachar para assinatura" },
     { estagio: "assinatura", prazoDias: 7, quem: "cliente", texto: "Colher as assinaturas" },
+    { estagio: "prazo_legal", prazoDias: 5, quem: "cliente", texto: "Cumprir os 7 dias de arrependimento" },
+    { estagio: "prazo_legal", prazoDias: 5, quem: "cliente", texto: "Pagar a entrada" },
+    { estagio: "faturado", prazoDias: 1, quem: "nos", texto: "Faturar a venda e arquivar o contrato" },
   ],
   distrato: [
-    { estagio: "entrada", prazoDias: 1, quem: "nos", texto: "Registrar o motivo do distrato" },
-    { estagio: "confeccao", prazoDias: 3, quem: "nos", texto: "Apurar valores: pago, retenção e o que se devolve" },
-    { estagio: "confeccao", prazoDias: 1, quem: "nos", texto: "Gerar o termo de distrato" },
-    { estagio: "confeccao", prazoDias: 1, quem: "nos", texto: "Definir signatários" },
+    { estagio: "analise", prazoDias: 1, quem: "nos", texto: "Registrar o motivo do distrato" },
+    { estagio: "contrato", prazoDias: 3, quem: "nos", texto: "Apurar valores: pago, retenção e o que se devolve" },
+    { estagio: "contrato", prazoDias: 1, quem: "nos", texto: "Gerar o termo de distrato" },
+    { estagio: "contrato", prazoDias: 1, quem: "nos", texto: "Definir signatários" },
     { estagio: "assinatura", prazoDias: 1, quem: "nos", texto: "Despachar para assinatura" },
     { estagio: "assinatura", prazoDias: 7, quem: "cliente", texto: "Colher as assinaturas" },
-    { estagio: "finalizado", prazoDias: 1, quem: "nos", texto: "Liberar a unidade para venda" },
+    { estagio: "faturado", prazoDias: 1, quem: "nos", texto: "Liberar a unidade para venda" },
   ],
 };
 
@@ -313,7 +388,7 @@ export const HORAS_UTEIS_DE_EMISSAO: Partial<Record<TipoDeTrabalho, number>> = {
 };
 
 /** As etapas em que a emissão ainda está acontecendo — depois delas o documento já saiu. */
-const EMITINDO: EstagioDoTrabalho[] = ["entrada", "confeccao"];
+const EMITINDO: EstagioDoTrabalho[] = ["analise", "contrato"];
 
 export type PrazoDeEmissao = {
   /** Quando o documento tem de estar pronto. */

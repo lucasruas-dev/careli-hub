@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { lerEventoDoWebhook } from "@/lib/assinatura/clicksign/webhook";
+import type { EstagioDoTrabalho } from "@/lib/temis/trabalhos";
 
 import type { EventoDaClicksign } from "./clicksign/webhook";
 import { ehTerminal, type EstadoDaAssinatura } from "./tipos";
@@ -88,9 +90,9 @@ export async function aplicarEventoDaClicksign(
 
   // ⚠️ O CARD SÓ ANDA QUANDO O CONTRATO FECHA. Um `sign` isolado deixa o card onde está: ele
   // continua "em assinatura", que é a verdade — falta gente. Mover a cada assinatura faria o board
-  // piscar e diria "finalizado" com metade das assinaturas.
+  // piscar e diria "assinado" com metade das assinaturas.
   if (novo === "assinado" && linha.proposta_id) {
-    await moverCardDaTemis(sb, linha.proposta_id, "finalizado");
+    await concluirAssinaturaDoCard(sb, linha.proposta_id);
   }
 
   return { aplicado: true, estado: novo, motivo: `${atual} → ${novo}` };
@@ -158,15 +160,143 @@ async function acharEnvelope(
 export async function moverCardDaTemis(
   sb: SupabaseClient,
   propostaId: string,
-  estagio: "assinatura" | "finalizado",
+  estagio: EstagioDoTrabalho,
 ): Promise<void> {
   const { error } = await sb
     .from("temis_trabalhos")
     .update({ atualizado_em: new Date().toISOString(), estagio, estagio_desde: new Date().toISOString() })
     .eq("proposta_id", propostaId)
-    .neq("estagio", "finalizado");
+    // ⚠️ NÃO MEXE EM CARD QUE JÁ SAIU DO FLUXO. `faturado` é o fim; `indeferido` é uma decisão
+    // humana, e um webhook atrasado não pode desfazê-la.
+    .neq("estagio", "faturado")
+    .neq("estagio", "indeferido");
 
   if (error) console.error("[temis][card] falha ao mover o card da proposta", error);
+}
+
+/**
+ * O QUE ACONTECE COM O CARD QUANDO O ENVELOPE FECHA — e isto MUDOU com as cinco etapas.
+ *
+ * ⚠️ CONTRATO ASSINADO NÃO É CONTRATO PRONTO. Antes o card ia direto para "finalizado"; agora
+ * assinar é o fim da etapa 3, e sobram duas condições que ninguém dentro da Clicksign conhece:
+ * os 7 dias de arrependimento e a entrada paga. Por isso contrato vai para `prazo_legal`, onde
+ * a tela cobra as duas antes de liberar o faturamento.
+ *
+ * Cessão, distrato e cancelamento seguem para `faturado` (que a tela chama de "Concluído" neles):
+ * Lucas (10/09/2026) — *"Caminho próprio, mais curto"*. Não há arrependimento nem entrada.
+ *
+ * ⚠️ E É AQUI QUE NASCE A CONTAGEM DOS 7 DIAS. Lucas: contam da ÚLTIMA assinatura do COMPRADOR, e
+ * a vendedora não entra. Por isso a data é procurada nos eventos de assinatura, cruzando com o
+ * papel congelado em `temis_envelopes.signatarios` — a ordem de assinatura não serve, porque a
+ * vendedora pode estar no meio dela.
+ */
+export async function concluirAssinaturaDoCard(
+  sb: SupabaseClient,
+  propostaId: string,
+): Promise<void> {
+  const { data: card } = await sb
+    .from("temis_trabalhos")
+    .select("id, tipo")
+    .eq("proposta_id", propostaId)
+    .maybeSingle<{ id: string; tipo: string }>();
+
+  // Sem card não há o que mover — e isso não é erro: o envelope pode ter nascido fora do quadro.
+  if (!card) return;
+
+  const destino: EstagioDoTrabalho =
+    card.tipo === "contrato" ? "prazo_legal" : "faturado";
+
+  const remendo: Record<string, unknown> = {
+    atualizado_em: new Date().toISOString(),
+    estagio: destino,
+    estagio_desde: new Date().toISOString(),
+  };
+
+  if (destino === "prazo_legal") {
+    const inicio = await ultimaAssinaturaDeComprador(sb, propostaId);
+    // ⚠️ SEM A DATA DO COMPRADOR, VALE O FECHAMENTO — e é o lado seguro: se a vendedora assinou
+    // por último, o fechamento é DEPOIS da última assinatura de comprador, então o prazo termina
+    // mais tarde e a casa espera mais para faturar. O contrário (começar antes) encurtaria um
+    // prazo que é do cliente.
+    remendo.arrependimento_inicio = inicio ?? new Date().toISOString();
+  }
+
+  const { error } = await sb
+    .from("temis_trabalhos")
+    .update(remendo)
+    .eq("id", card.id)
+    .neq("estagio", "faturado")
+    .neq("estagio", "indeferido");
+
+  if (error) console.error("[temis][card] falha ao concluir a assinatura", error);
+}
+
+/**
+ * Quando o ÚLTIMO comprador assinou.
+ *
+ * `null` quando não dá para saber — envelope sem papéis congelados, ou nenhum evento de assinatura
+ * guardado. Quem chama decide o que fazer com a ausência.
+ */
+async function ultimaAssinaturaDeComprador(
+  sb: SupabaseClient,
+  propostaId: string,
+): Promise<null | string> {
+  const { data: envelope } = await sb
+    .from("temis_envelopes")
+    .select("envelope_id, signatarios")
+    .eq("proposta_id", propostaId)
+    .order("criado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ envelope_id: null | string; signatarios: unknown }>();
+
+  // ⚠️ `envelope_id` É O ID DO PROVEDOR, e não a chave da nossa tabela — é por ele que os eventos
+  // se ligam (`temis_assinatura_eventos.envelope_id`, text). Nulo = envio que começou e não
+  // terminou, e aí não há evento nenhum para procurar.
+  if (!envelope?.envelope_id) return null;
+
+  // ⚠️ COMPRADOR É QUEM NÃO É VENDEDORA. O papel vem congelado no envelope no momento do envio, e
+  // é a única fonte confiável: a ORDEM de assinatura não diz papel, e a vendedora pode estar no
+  // meio dela — que é justamente o caso que faria a conta errar.
+  const emailsDeComprador = new Set(
+    (Array.isArray(envelope.signatarios) ? envelope.signatarios : [])
+      .map((s) => s as { email?: string; papel?: string })
+      .filter((s) => String(s.papel ?? "").toLowerCase() !== "vendedora")
+      .map((s) => String(s.email ?? "").trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  if (emailsDeComprador.size === 0) return null;
+
+  // ⚠️ O E-MAIL NÃO TEM COLUNA: ele vive dentro do `payload` cru. Reusar `lerEventoDoWebhook` aqui
+  // é o que garante que a leitura de agora e a do webhook enxerguem o mesmo campo — o formato do
+  // corpo da Clicksign não está documentado, e um segundo leitor divergiria no primeiro evento
+  // que viesse com a forma inesperada.
+  const { data: eventos } = await sb
+    .from("temis_assinatura_eventos")
+    .select("payload, recebido_em")
+    .eq("envelope_id", envelope.envelope_id)
+    .eq("assinatura_conferida", true)
+    .order("recebido_em", { ascending: false });
+
+  for (const ev of (eventos ?? []) as { payload: unknown; recebido_em: string }[]) {
+    if (!ev.payload) continue;
+    let email = "";
+    try {
+      email = String(
+        lerEventoDoWebhook(JSON.stringify(ev.payload)).signatarioEmail ?? "",
+      )
+        .trim()
+        .toLowerCase();
+    } catch {
+      // Payload que não volta a ser JSON não derruba a conta: segue para o próximo evento.
+      continue;
+    }
+    // A lista vem do mais novo para o mais antigo: o primeiro comprador encontrado é o ÚLTIMO
+    // que assinou.
+    if (email && emailsDeComprador.has(email)) return ev.recebido_em;
+  }
+
+  return null;
 }
 
 /**

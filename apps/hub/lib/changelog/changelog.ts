@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-10-temis-cinco-etapas",
+    deployedAt: "2026-09-10T14:45:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O quadro agora tem cinco etapas:** Análise, Contrato, Em assinatura, Prazo legal e Faturado. As duas últimas são novas e respondem ao que faltava: assinar não é o fim.",
+              "**Contrato assinado vai para Prazo legal**, e não direto para o fim. Ali ficam as duas condições que sobram: os 7 dias de arrependimento e a entrada paga.",
+              "**Cessão, distrato e cancelamento têm caminho próprio, mais curto** — eles não têm arrependimento nem entrada, então assinar já conclui. Neles a última etapa se chama Concluído.",
+              "Nenhum card teve o prazo zerado na mudança: quem estava há seis dias em Confecção continua há seis dias em Contrato.",
+            ],
+            screen: "Quadro de contratos",
+          },
+        ],
+      },
+    ],
+    rollback: "367b0e18",
+    technical: {
+      done: "⚠️ A FUNDAÇÃO DO REDESENHO APROVADO EM 09/09 (`docs/mockups/temis-quadro-e-tela-de-trabalho.html`, salvo no repo hoje — ele vivia num diretório temporário do Claude e sumiria numa limpeza). As decisões do Lucas em 10/09 estão em `docs/operations/temis-redesenho-decisoes.md`. ⚠️ MIGRATION 0150: o check de `temis_trabalhos.estagio` aceitava quatro valores e recusava três dos nomes novos. Tradução aplicada em produção sobre 8 trabalhos vivos (entrada→analise, confeccao→contrato, finalizado→faturado), mais `prazo_legal` e `indeferido`. ⚠️ `estagio_desde` NÃO FOI TOCADO, e isso é o ponto: ele é a base de todos os prazos da tela, e a regra da casa é que não anda para trás. Renomear etapa não é avançar etapa — carimbar `now()` zeraria o atraso de todos os cards de uma vez e o quadro amanheceria verde mentindo. Conferido no banco depois de aplicar: os `estagio_desde` saíram idênticos ao retrato de antes. ⚠️ E ACHEI UM DEFEITO QUE A MIGRATION TERIA EXPOSTO EM SILÊNCIO: `moverCardDaTemis` gravava `\"finalizado\"` direto, valor que o check novo recusa — e o erro é engolido por um `console.error`. O contrato seria assinado na Clicksign e o card NÃO andaria, sem nada aparecer na tela. Agora `concluirAssinaturaDoCard` decide o destino pelo TIPO e é onde nasce `arrependimento_inicio`. ⚠️ OS 7 DIAS CONTAM DA ÚLTIMA ASSINATURA DO COMPRADOR (decisão do Lucas): a vendedora não entra na conta, então a data sai dos eventos guardados cruzados com o papel congelado em `temis_envelopes.signatarios` — a ORDEM de assinatura não serve, porque a vendedora pode estar no meio dela. Sem conseguir identificar, vale o fechamento do envelope, que é o lado seguro: se a vendedora assinou por último, o prazo termina mais tarde e a casa espera mais para faturar; o contrário encurtaria um prazo que é do cliente. O e-mail não tem coluna própria (vive no `payload` cru), e a leitura reusa `lerEventoDoWebhook` — um segundo leitor divergiria no primeiro evento com forma inesperada, e o formato do corpo da Clicksign não está documentado. ⚠️ CUIDADO COM A PALAVRA \"CONTRATO\", QUE AGORA É DUAS: `tipo = contrato` (o que se produz) e `estagio = contrato` (onde está). Anotado na migration e no código. Catálogo de motivos de indeferimento em `lib/temis/indeferimento.ts` (seis motivos + observação; `outro` exige explicação), com o check no banco recusando indeferido sem motivo — um card que volta dizendo só \"não\" não dá à pessoa do outro lado o que corrigir. Ainda NÃO entregues: a tela de trabalho, o botão de indeferir, os avisos e as etapas 4 e 5 operáveis. 3.506 testes verdes, typecheck limpo.",
+      motivation: "O quadro tinha quatro etapas e terminava em 'Finalizado' no momento da assinatura — mas assinar não é vender: faltam os 7 dias de arrependimento e a entrada paga.",
+    },
+    title: "As cinco etapas do quadro da Têmis",
+    type: "melhoria",
+    version: "1.310.0",
+  },
+  {
     buildTag: "2026-09-10-espelho-na-mesa",
     deployedAt: "2026-09-10T13:05:00-03:00",
     modules: [

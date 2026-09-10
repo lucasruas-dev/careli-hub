@@ -409,16 +409,20 @@ function Card({
    * ⚠️ E SÓ PARA CONTRATO. Cessão, distrato e cancelamento têm documento próprio e caminho
    * próprio; dar-lhes o botão de gerar contrato mandaria a minuta errada.
    */
+  // ⚠️ AS ETAPAS MUDARAM DE NOME em 10/09/2026 (`entrada` → `analise`, `confeccao` → `contrato`),
+  // e a regra continua a mesma: os dois botões só existem enquanto o documento está sendo
+  // produzido. Depois que o envelope sai, quem move o card é o webhook.
+  const produzindo =
+    trabalho.estagio === "analise" || trabalho.estagio === "contrato";
+
   const acao: "enviar" | "gerar" | null =
     trabalho.tipo !== "contrato" || !trabalho.propostaId
       ? null
-      : vigente
-        ? trabalho.estagio === "entrada" || trabalho.estagio === "confeccao"
+      : produzindo
+        ? vigente
           ? "enviar"
-          : null
-        : trabalho.estagio === "entrada" || trabalho.estagio === "confeccao"
-          ? "gerar"
-          : null;
+          : "gerar"
+        : null;
 
   return (
     <article

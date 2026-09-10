@@ -10,7 +10,12 @@ import { aplicarEventoDaClicksign } from "./estado-db";
 
 type Escrita = { payload: unknown; tabela: string };
 
-function clienteFalso(envelope: null | Record<string, unknown>, escritas: Escrita[]) {
+function clienteFalso(
+  envelope: null | Record<string, unknown>,
+  escritas: Escrita[],
+  // O card da Têmis daquela proposta. `null` = proposta sem card (envelope nascido fora do quadro).
+  card: null | Record<string, unknown> = { id: "card-1", tipo: "contrato" },
+) {
   const from = (tabela: string) => {
     const enc: Record<string, unknown> = {};
     for (const metodo of ["select", "eq", "neq", "order", "limit"]) enc[metodo] = () => enc;
@@ -19,7 +24,15 @@ function clienteFalso(envelope: null | Record<string, unknown>, escritas: Escrit
       return enc;
     };
     enc.maybeSingle = () =>
-      Promise.resolve({ data: tabela === "temis_envelopes" ? envelope : null, error: null });
+      Promise.resolve({
+        data:
+          tabela === "temis_envelopes"
+            ? envelope
+            : tabela === "temis_trabalhos"
+              ? card
+              : null,
+        error: null,
+      });
     enc.then = (aceitar: (r: unknown) => unknown) => Promise.resolve(aceitar({ data: null, error: null }));
     return enc;
   };
@@ -49,7 +62,10 @@ describe("o evento vira estado", () => {
     expect(escritas.map((e) => e.tabela)).not.toContain("temis_trabalhos");
   });
 
-  it("o fechamento leva a assinado e move o card", async () => {
+  // ⚠️ CONTRATO ASSINADO NÃO É CONTRATO PRONTO, e esta é a mudança de 10/09/2026. Antes o card ia
+  // direto para "finalizado"; agora assinar fecha a etapa 3, e sobram duas condições que a
+  // Clicksign não conhece: os 7 dias de arrependimento e a entrada paga.
+  it("o fechamento leva a assinado e manda o CONTRATO para o prazo legal", async () => {
     const escritas: Escrita[] = [];
     const r = await aplicarEventoDaClicksign(
       clienteFalso({ ...AGUARDANDO, estado: "parcial" }, escritas),
@@ -58,14 +74,51 @@ describe("o evento vira estado", () => {
 
     expect(r.estado).toBe("assinado");
     const card = escritas.find((e) => e.tabela === "temis_trabalhos")?.payload as {
+      arrependimento_inicio?: string;
       estagio: string;
     };
-    expect(card.estagio).toBe("finalizado");
+    expect(card.estagio).toBe("prazo_legal");
+    // ⚠️ E A CONTAGEM DOS 7 DIAS NASCE AQUI. Sem este carimbo a etapa 4 não teria de quando
+    // contar, e o prazo do comprador ficaria indefinido.
+    expect(card.arrependimento_inicio).toBeTruthy();
+
     // O carimbo de fechamento entra junto com o estado terminal.
     const envelope = escritas.find((e) => e.tabela === "temis_envelopes")?.payload as {
       fechado_em?: string;
     };
     expect(envelope.fechado_em).toBeTruthy();
+  });
+
+  // ⚠️ CESSÃO, DISTRATO E CANCELAMENTO TÊM CAMINHO PRÓPRIO (Lucas, 10/09/2026: *"Caminho próprio,
+  // mais curto"*): não há arrependimento nem entrada, então assinar já conclui.
+  it("cessão e distrato vão direto para o fim, sem prazo legal", async () => {
+    for (const tipo of ["cessao", "distrato", "cancelamento_correcao"]) {
+      const escritas: Escrita[] = [];
+      await aplicarEventoDaClicksign(
+        clienteFalso({ ...AGUARDANDO, estado: "parcial" }, escritas, { id: "card-1", tipo }),
+        evento("auto_close"),
+      );
+
+      const card = escritas.find((e) => e.tabela === "temis_trabalhos")?.payload as {
+        arrependimento_inicio?: string;
+        estagio: string;
+      };
+      expect(card.estagio, tipo).toBe("faturado");
+      // Sem prazo legal, não há contagem para começar.
+      expect(card.arrependimento_inicio, tipo).toBeUndefined();
+    }
+  });
+
+  // Envelope que nasceu fora do quadro não tem card — e isso não é erro nem escrita.
+  it("proposta sem card na Têmis não vira escrita", async () => {
+    const escritas: Escrita[] = [];
+    const r = await aplicarEventoDaClicksign(
+      clienteFalso({ ...AGUARDANDO, estado: "parcial" }, escritas, null),
+      evento("auto_close"),
+    );
+
+    expect(r.estado).toBe("assinado");
+    expect(escritas.map((e) => e.tabela)).not.toContain("temis_trabalhos");
   });
 
   // ⚠️ ESTADO TERMINAL NÃO REGRIDE — a proteção que falta na maioria das integrações de webhook.

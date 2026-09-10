@@ -25,19 +25,19 @@ const TIPOS: TipoDeTrabalho[] = [
 describe("o caminho de cada tipo", () => {
   // ⚠️ A DESISTÊNCIA NÃO ASSINA, e isso veio de correção do Lucas: eu tinha suposto o contrário.
   it("o cancelamento simples pula a assinatura; os outros quatro passam", () => {
-    expect(estagiosDoTipo("cancelamento")).toEqual(["entrada", "confeccao", "finalizado"]);
+    expect(estagiosDoTipo("cancelamento")).toEqual(["analise", "contrato", "faturado"]);
     for (const tipo of ["contrato", "distrato", "cancelamento_correcao", "cessao"] as const) {
       expect(estagiosDoTipo(tipo)).toContain("assinatura");
     }
   });
 
   it("o próximo estágio respeita o que o tipo pula", () => {
-    expect(proximoEstagio("cancelamento", "confeccao")).toBe("finalizado");
-    expect(proximoEstagio("contrato", "confeccao")).toBe("assinatura");
+    expect(proximoEstagio("cancelamento", "contrato")).toBe("faturado");
+    expect(proximoEstagio("contrato", "contrato")).toBe("assinatura");
   });
 
   it("o último estágio não tem próximo", () => {
-    for (const tipo of TIPOS) expect(proximoEstagio(tipo, "finalizado")).toBeNull();
+    for (const tipo of TIPOS) expect(proximoEstagio(tipo, "faturado")).toBeNull();
   });
 
   // ⚠️ ATIVIDADE NUM ESTÁGIO QUE O TIPO NÃO PERCORRE NUNCA SERIA FEITA, e o card ficaria preso:
@@ -64,7 +64,7 @@ describe("o caminho de cada tipo", () => {
 });
 
 describe("andar sozinho", () => {
-  const base = { estagio: "confeccao" as const, tipo: "contrato" as const };
+  const base = { estagio: "contrato" as const, tipo: "contrato" as const };
 
   it("não anda com atividade faltando", () => {
     expect(podeAvancar({ ...base, atividadesFeitas: [] })).toBe(false);
@@ -77,7 +77,7 @@ describe("andar sozinho", () => {
   });
 
   it("anda quando todas as do estágio estão feitas", () => {
-    const todas = atividadesDoEstagio("contrato", "confeccao").map((a) => a.texto);
+    const todas = atividadesDoEstagio("contrato", "contrato").map((a) => a.texto);
     expect(podeAvancar({ ...base, atividadesFeitas: todas })).toBe(true);
   });
 
@@ -89,7 +89,7 @@ describe("andar sozinho", () => {
 
   it("estágio sem atividade não anda sozinho", () => {
     expect(
-      podeAvancar({ atividadesFeitas: [], estagio: "finalizado", tipo: "contrato" }),
+      podeAvancar({ atividadesFeitas: [], estagio: "faturado", tipo: "contrato" }),
     ).toBe(false);
   });
 });
@@ -117,7 +117,7 @@ describe("dias úteis", () => {
 describe("o prazo", () => {
   const trabalho = {
     atividadesFeitas: [] as string[],
-    estagio: "confeccao" as const,
+    estagio: "contrato" as const,
     estagioDesde: "2026-09-07T10:00:00Z",
     tipo: "contrato" as const,
   };
@@ -170,7 +170,7 @@ describe("o prazo", () => {
   });
 
   it("nada faltando, nada a cobrar", () => {
-    const todas = atividadesDoEstagio("contrato", "confeccao").map((a) => a.texto);
+    const todas = atividadesDoEstagio("contrato", "contrato").map((a) => a.texto);
     const s = situacaoDoPrazo({ ...trabalho, atividadesFeitas: todas }, new Date("2026-10-01T10:00:00Z"));
     expect(s.prazo).toBeNull();
     expect(s.atrasado).toBe(false);
@@ -181,7 +181,7 @@ describe("progresso", () => {
   it("conta só as do estágio atual", () => {
     const p = progresso({
       atividadesFeitas: ["Gerar o contrato pela minuta do empreendimento", "Despachar para assinatura"],
-      estagio: "confeccao",
+      estagio: "contrato",
       tipo: "contrato",
     });
     expect(p).toEqual({ feitas: 1, total: 2 });
@@ -195,7 +195,7 @@ describe("prazoDeEmissao", () => {
     // Lucas (06/09/2026): *"emissão de contrato 24 horas úteis"*. 24h úteis é UM dia útil — é como
     // a casa fala e como o cliente entende: pedido de hoje, contrato amanhã.
     const p = prazoDeEmissao(
-      trabalho({ criadoEm: "2026-09-08T18:00:00Z", estagio: "entrada", tipo: "contrato" }),
+      trabalho({ criadoEm: "2026-09-08T18:00:00Z", estagio: "analise", tipo: "contrato" }),
       new Date("2026-09-08T19:00:00Z"),
     );
     expect(p?.escrito).toBe("24h úteis");
@@ -207,7 +207,7 @@ describe("prazoDeEmissao", () => {
     // Cobrar por um dia em que ninguém trabalha faz o board mentir sobre atraso — a mesma razão
     // pela qual `diasUteis` existe.
     const p = prazoDeEmissao(
-      trabalho({ criadoEm: "2026-09-11T18:00:00Z", estagio: "entrada", tipo: "contrato" }),
+      trabalho({ criadoEm: "2026-09-11T18:00:00Z", estagio: "analise", tipo: "contrato" }),
       new Date("2026-09-11T19:00:00Z"),
     );
     // 11/09/2026 é sexta; um dia útil depois é segunda, 14/09.
@@ -216,7 +216,7 @@ describe("prazoDeEmissao", () => {
 
   it("passou da hora e o documento não saiu: estourou", () => {
     const p = prazoDeEmissao(
-      trabalho({ criadoEm: "2026-09-08T12:00:00Z", estagio: "confeccao", tipo: "contrato" }),
+      trabalho({ criadoEm: "2026-09-08T12:00:00Z", estagio: "contrato", tipo: "contrato" }),
       new Date("2026-09-11T12:00:00Z"),
     );
     expect(p?.estourou).toBe(true);
@@ -230,7 +230,7 @@ describe("prazoDeEmissao", () => {
     ).toBeNull();
     expect(
       prazoDeEmissao(
-        trabalho({ criadoEm: "2026-09-08T12:00:00Z", estagio: "finalizado", tipo: "contrato" }),
+        trabalho({ criadoEm: "2026-09-08T12:00:00Z", estagio: "faturado", tipo: "contrato" }),
       ),
     ).toBeNull();
   });
@@ -240,14 +240,14 @@ describe("prazoDeEmissao", () => {
     // card seria prometer, para quem lê, algo que ninguém pode cumprir.
     for (const tipo of ["cancelamento", "distrato", "cessao"] as TipoDeTrabalho[]) {
       expect(
-        prazoDeEmissao(trabalho({ criadoEm: "2026-09-08T12:00:00Z", estagio: "entrada", tipo })),
+        prazoDeEmissao(trabalho({ criadoEm: "2026-09-08T12:00:00Z", estagio: "analise", tipo })),
       ).toBeNull();
     }
   });
 
   it("data ilegível não vira prazo inventado", () => {
     expect(
-      prazoDeEmissao(trabalho({ criadoEm: "ontem", estagio: "entrada", tipo: "contrato" })),
+      prazoDeEmissao(trabalho({ criadoEm: "ontem", estagio: "analise", tipo: "contrato" })),
     ).toBeNull();
   });
 });

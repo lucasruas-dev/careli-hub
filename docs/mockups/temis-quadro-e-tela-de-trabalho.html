@@ -1,0 +1,734 @@
+<title>Têmis · Quadro e Tela de Trabalho</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --ground: #f2f1ef;
+    --surface: #ffffff;
+    --surface-2: #f8f7f5;
+    --line: #dedcd7;
+    --line-soft: #eae8e4;
+    --ink: #16161a;
+    --ink-2: #56555f;
+    --ink-3: #8a8892;
+    --grafite: #2e2e36;
+    --ok: #1f7a4d;
+    --ok-bg: #e4f2ea;
+    --espera: #b45309;
+    --espera-bg: #fbf0dd;
+    --erro: #a8342a;
+    --erro-bg: #fae7e4;
+    --info: #2a5fd6;
+    --info-bg: #e6edfc;
+    --novo: #6b3fa0;
+    --novo-bg: #efe8f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #121214;
+      --surface: #1b1b1f;
+      --surface-2: #212126;
+      --line: #33333b;
+      --line-soft: #2a2a31;
+      --ink: #f0eff2;
+      --ink-2: #b0aeb8;
+      --ink-3: #807e88;
+      --grafite: #d6d4dc;
+      --ok: #6fc79a;
+      --ok-bg: #17301f;
+      --espera: #dfa652;
+      --espera-bg: #322415;
+      --erro: #e08b81;
+      --erro-bg: #331d1a;
+      --info: #7fa8f0;
+      --info-bg: #182238;
+      --novo: #b79ae0;
+      --novo-bg: #241a33;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #121214; --surface: #1b1b1f; --surface-2: #212126;
+    --line: #33333b; --line-soft: #2a2a31;
+    --ink: #f0eff2; --ink-2: #b0aeb8; --ink-3: #807e88; --grafite: #d6d4dc;
+    --ok: #6fc79a; --ok-bg: #17301f; --espera: #dfa652; --espera-bg: #322415;
+    --erro: #e08b81; --erro-bg: #331d1a; --info: #7fa8f0; --info-bg: #182238;
+    --novo: #b79ae0; --novo-bg: #241a33;
+  }
+
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .pag { max-width: 1180px; margin: 0 auto; padding: 40px 22px 100px; }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  header.topo { border-bottom: 2px solid var(--ink); padding-bottom: 16px; margin-bottom: 12px; }
+  .selo { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+          color: var(--ink-3); margin: 0 0 8px; }
+  h1 { font-size: clamp(26px, 4vw, 36px); font-weight: 700; letter-spacing: -.02em;
+       line-height: 1.1; margin: 0 0 10px; }
+  .lede { color: var(--ink-2); max-width: 66ch; margin: 0; font-size: 15px; }
+
+  h2 { font-size: 20px; font-weight: 700; letter-spacing: -.01em; margin: 0 0 3px; }
+  section { margin-top: 52px; }
+  .faixa { display: flex; align-items: baseline; gap: 11px; border-bottom: 1px solid var(--line);
+           padding-bottom: 11px; margin-bottom: 20px; }
+  .faixa .n { font-size: 12px; font-weight: 700; color: var(--ink-3); letter-spacing: .06em; }
+  .sub { color: var(--ink-3); font-size: 13px; margin: 0 0 18px; max-width: 70ch; }
+
+  /* ── o kanban ───────────────────────────────────────── */
+  .kanban { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  @media (max-width: 980px) { .kanban { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .kanban { grid-template-columns: 1fr; } }
+  .col { background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 11px; }
+  .col-topo { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 3px; }
+  .col-nome { font-size: 12.5px; font-weight: 700; }
+  .col-n { font-size: 12px; font-weight: 600; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .col-desc { font-size: 11px; color: var(--ink-3); line-height: 1.35; margin: 0 0 10px; min-height: 28px; }
+
+  .card { background: var(--surface-2); border: 1px solid var(--line); border-radius: 7px;
+          padding: 9px 10px; margin-bottom: 7px; font-size: 12px; }
+  .card:last-child { margin-bottom: 0; }
+  .card-nome { font-weight: 600; font-size: 12.5px; line-height: 1.25; }
+  .card-sub { color: var(--ink-3); font-size: 11px; margin-top: 2px; }
+  .tag { display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: .05em;
+         text-transform: uppercase; padding: 2px 6px; border-radius: 4px; margin-bottom: 5px; }
+  .t-contrato { background: var(--ok-bg); color: var(--ok); }
+  .t-cessao { background: var(--novo-bg); color: var(--novo); }
+  .t-distrato { background: var(--erro-bg); color: var(--erro); }
+
+  .linha-info { display: flex; align-items: center; gap: 5px; margin-top: 6px;
+                font-size: 11px; color: var(--ink-2); }
+  .pip { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .p-ok { background: var(--ok); } .p-espera { background: var(--espera); }
+  .p-erro { background: var(--erro); } .p-info { background: var(--info); }
+  .p-off { background: var(--line); }
+
+  .barrinha { display: flex; gap: 2px; margin-top: 7px; }
+  .barrinha i { height: 3px; flex: 1; border-radius: 2px; background: var(--line); }
+  .barrinha i.on { background: var(--ok); }
+  .barrinha i.agora { background: var(--espera); }
+
+  /* ── a tela de trabalho ─────────────────────────────── */
+  .tela { border: 1px solid var(--line); border-radius: 11px; overflow: hidden; background: var(--surface); }
+  .tela-topo { background: var(--grafite); color: var(--ground); padding: 12px 16px;
+               display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+  :root:not([data-theme="light"]) .tela-topo { color: #16161a; }
+  @media (prefers-color-scheme: light) { .tela-topo { color: #f2f1ef; } }
+  .tela-topo .quem { font-size: 14.5px; font-weight: 700; }
+  .tela-topo .onde { font-size: 11.5px; opacity: .8; margin-top: 1px; }
+  .passos { display: flex; gap: 4px; align-items: center; font-size: 10px; }
+  .passo { padding: 3px 8px; border-radius: 20px; border: 1px solid currentColor; opacity: .45; white-space: nowrap; }
+  .passo.atual { opacity: 1; background: currentColor; }
+  .passo.atual span { color: var(--grafite); font-weight: 700; }
+  .passo.feito { opacity: .8; }
+
+  .tela-corpo { display: grid; grid-template-columns: 1fr 268px; min-height: 300px; }
+  @media (max-width: 860px) { .tela-corpo { grid-template-columns: 1fr; } }
+  .trabalho { padding: 16px; border-right: 1px solid var(--line); }
+  @media (max-width: 860px) { .trabalho { border-right: none; border-bottom: 1px solid var(--line); } }
+  .fixo { padding: 14px; background: var(--surface-2); }
+  .fixo h4 { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+             color: var(--ink-3); margin: 0 0 8px; }
+  .fixo h4:not(:first-child) { margin-top: 18px; }
+  .fixo-item { font-size: 11.5px; color: var(--ink-2); padding: 5px 0;
+               border-bottom: 1px solid var(--line-soft); }
+  .fixo-item:last-child { border-bottom: none; }
+  .fixo-item b { color: var(--ink); font-weight: 600; }
+
+  .bloco { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .bloco h3 { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+              color: var(--ink-3); margin: 0 0 9px; }
+  .duas-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 720px) { .duas-col { grid-template-columns: 1fr; } }
+
+  .campo { display: flex; justify-content: space-between; gap: 10px; font-size: 12px;
+           padding: 4px 0; border-bottom: 1px solid var(--line-soft); }
+  .campo:last-child { border-bottom: none; }
+  .campo .k { color: var(--ink-3); }
+  .campo .v { font-weight: 500; text-align: right; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+         padding: 7px 13px; border-radius: 6px; border: 1px solid var(--line);
+         background: var(--surface); color: var(--ink); margin: 3px 5px 3px 0; }
+  .btn.forte { background: var(--grafite); color: var(--ground); border-color: var(--grafite); }
+  @media (prefers-color-scheme: light) { .btn.forte { color: #f2f1ef; } }
+  .btn.perigo { border-color: var(--erro); color: var(--erro); }
+
+  .doc { background: var(--surface-2); border: 1px dashed var(--line); border-radius: 7px;
+         padding: 26px 14px; text-align: center; color: var(--ink-3); font-size: 11.5px; }
+  .doc .pg { font-size: 26px; opacity: .35; }
+
+  .sig { display: flex; align-items: center; gap: 9px; padding: 8px 0;
+         border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+  .sig:last-child { border-bottom: none; }
+  .sig .ord { width: 20px; height: 20px; border-radius: 50%; background: var(--grafite);
+              color: var(--ground); display: grid; place-items: center; font-size: 10px;
+              font-weight: 700; flex: none; }
+  @media (prefers-color-scheme: light) { .sig .ord { color: #f2f1ef; } }
+  .sig .quem { flex: 1; min-width: 0; }
+  .sig .quem b { display: block; font-weight: 600; }
+  .sig .quem span { color: var(--ink-3); font-size: 11px; }
+  .sig .acao { color: var(--ink-3); font-size: 11px; white-space: nowrap; }
+
+  .estado { display: inline-flex; align-items: center; gap: 5px; font-size: 11px;
+            font-weight: 600; padding: 3px 8px; border-radius: 5px; }
+  .e-ok { background: var(--ok-bg); color: var(--ok); }
+  .e-espera { background: var(--espera-bg); color: var(--espera); }
+  .e-erro { background: var(--erro-bg); color: var(--erro); }
+  .e-info { background: var(--info-bg); color: var(--info); }
+
+  .nota { border-left: 3px solid var(--novo); background: var(--novo-bg);
+          padding: 11px 14px; border-radius: 0 7px 7px 0; font-size: 12.5px;
+          color: var(--ink-2); margin-top: 14px; }
+  .nota b { color: var(--ink); }
+  .nota.duvida { border-left-color: var(--espera); background: var(--espera-bg); }
+
+  .cronometro { display: flex; align-items: baseline; gap: 8px; }
+  .cronometro .num { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums;
+                     line-height: 1; letter-spacing: -.02em; }
+  .cronometro .un { font-size: 12px; color: var(--ink-3); }
+  .prazo-barra { display: flex; gap: 3px; margin-top: 10px; }
+  .prazo-barra i { height: 6px; flex: 1; border-radius: 3px; background: var(--line); }
+  .prazo-barra i.passou { background: var(--ok); }
+
+  .rodape { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--line);
+            color: var(--ink-3); font-size: 12px; }
+  ul.enxuta { margin: 8px 0 0; padding-left: 18px; }
+  ul.enxuta li { margin-bottom: 6px; }
+</style>
+
+<div class="pag">
+  <header class="topo">
+    <p class="selo">Panteon &middot; T&ecirc;mis &middot; mockup para validar</p>
+    <h1>O quadro e a tela de trabalho</h1>
+    <p class="lede">
+      Cinco etapas. O card do quadro <strong>informa</strong>; o clique abre a
+      <strong>tela de trabalho</strong> daquela etapa. Chat, documentos e hist&oacute;rico
+      ficam fixos nas cinco.
+    </p>
+  </header>
+
+  <!-- ══════════ O QUADRO ══════════ -->
+  <section style="margin-top:34px">
+    <div class="faixa"><span class="n">O QUADRO</span><h2>O que o card diz sem abrir</h2></div>
+    <p class="sub">
+      Hoje o card mostra CPF, unidade e data de cadastro &mdash; informa&ccedil;&atilde;o de
+      <em>de quem &eacute; o lote</em>. Aqui ele passa a mostrar <em>onde o processo est&aacute;</em>:
+      a barrinha conta as etapas, e as linhas com bolinha dizem o que falta.
+    </p>
+
+    <div class="kanban">
+      <div class="col">
+        <div class="col-topo"><span class="col-nome">An&aacute;lise</span><span class="col-n">3</span></div>
+        <p class="col-desc">Chegou do H&eacute;rcules. Conferir e abrir o contrato.</p>
+
+        <div class="card">
+          <span class="tag t-contrato">Contrato</span>
+          <div class="card-nome">Henrique Sales do Vale</div>
+          <div class="card-sub">TST &middot; Q01 L05 &middot; R$ 148.500</div>
+          <div class="linha-info"><i class="pip p-ok"></i> Documentos completos</div>
+          <div class="linha-info"><i class="pip p-espera"></i> Contrato ainda n&atilde;o aberto</div>
+          <div class="barrinha"><i class="agora"></i><i></i><i></i><i></i><i></i></div>
+        </div>
+
+        <div class="card">
+          <span class="tag t-cessao">Cess&atilde;o</span>
+          <div class="card-nome">Ailton Ilario Pinto</div>
+          <div class="card-sub">GDN &middot; Q07 L25</div>
+          <div class="linha-info"><i class="pip p-erro"></i> Falta CPF do cession&aacute;rio</div>
+          <div class="barrinha"><i class="agora"></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="col-topo"><span class="col-nome">Contrato</span><span class="col-n">2</span></div>
+        <p class="col-desc">Gerado. Conferir quem assina antes de mandar.</p>
+
+        <div class="card">
+          <span class="tag t-contrato">Contrato</span>
+          <div class="card-nome">Amauri dos Santos Oliveira</div>
+          <div class="card-sub">GDN &middot; Q05 L14 &middot; R$ 212.900</div>
+          <div class="linha-info"><i class="pip p-ok"></i> PDF gerado &middot; v2</div>
+          <div class="linha-info"><i class="pip p-espera"></i> 2 signat&aacute;rios &middot; sem ordem</div>
+          <div class="barrinha"><i class="on"></i><i class="agora"></i><i></i><i></i><i></i></div>
+        </div>
+
+        <div class="card">
+          <span class="tag t-distrato">Distrato</span>
+          <div class="card-nome">Tiago Eustaquio de Sousa</div>
+          <div class="card-sub">LOS &middot; LOS0302</div>
+          <div class="linha-info"><i class="pip p-erro"></i> Vendedora sem representante</div>
+          <div class="barrinha"><i class="on"></i><i class="agora"></i><i></i><i></i><i></i></div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="col-topo"><span class="col-nome">Em assinatura</span><span class="col-n">2</span></div>
+        <p class="col-desc">Na Clicksign, com o cliente.</p>
+
+        <div class="card">
+          <span class="tag t-contrato">Contrato</span>
+          <div class="card-nome">Breno Augusto Marinho Martins</div>
+          <div class="card-sub">GDN &middot; Q04 L13</div>
+          <div class="linha-info"><i class="pip p-ok"></i> 1 de 2 assinaram</div>
+          <div class="linha-info"><i class="pip p-espera"></i> h&aacute; 3 dias com o cliente</div>
+          <div class="barrinha"><i class="on"></i><i class="on"></i><i class="agora"></i><i></i><i></i></div>
+        </div>
+
+        <div class="card">
+          <span class="tag t-contrato">Contrato</span>
+          <div class="card-nome">Camila Prado Bittencourt</div>
+          <div class="card-sub">VOC &middot; Q03 L07</div>
+          <div class="linha-info"><i class="pip p-erro"></i> E-mail voltou &middot; n&atilde;o entregue</div>
+          <div class="linha-info"><i class="pip p-espera"></i> h&aacute; 8 dias sem abrir</div>
+          <div class="barrinha"><i class="on"></i><i class="on"></i><i class="agora"></i><i></i><i></i></div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="col-topo"><span class="col-nome">Prazo legal</span><span class="col-n">1</span></div>
+        <p class="col-desc">7 dias de arrependimento e a entrada.</p>
+
+        <div class="card">
+          <span class="tag t-contrato">Contrato</span>
+          <div class="card-nome">Otavio Rezende Campos</div>
+          <div class="card-sub">TST &middot; Q01 L03</div>
+          <div class="linha-info"><i class="pip p-ok"></i> Assinado por todos &middot; 05/09</div>
+          <div class="linha-info"><i class="pip p-espera"></i> dia 5 de 7 &middot; entrada vence 12/09</div>
+          <div class="barrinha"><i class="on"></i><i class="on"></i><i class="on"></i><i class="agora"></i><i></i></div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="col-topo"><span class="col-nome">Faturado</span><span class="col-n">1</span></div>
+        <p class="col-desc">Prazo cumprido e entrada paga.</p>
+
+        <div class="card">
+          <span class="tag t-contrato">Contrato</span>
+          <div class="card-nome">Rodrigo Tavares Lima</div>
+          <div class="card-sub">TST &middot; Q01 L04 &middot; R$ 165.200</div>
+          <div class="linha-info"><i class="pip p-ok"></i> Entrada paga 02/09</div>
+          <div class="barrinha"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nota">
+      <b>A barrinha de cinco tra&ccedil;os</b> &eacute; a mesma em todo card: mostra onde o
+      processo est&aacute; sem precisar ler a coluna. Verde = passou, &acirc;mbar = est&aacute; aqui.
+      &Eacute; o que deixa o quadro ser lido de longe.
+    </div>
+  </section>
+
+  <!-- ══════════ 1. ANÁLISE ══════════ -->
+  <section>
+    <div class="faixa"><span class="n">ETAPA 1</span><h2>An&aacute;lise</h2></div>
+    <p class="sub">Tudo que chegou do H&eacute;rcules, para conferir antes de abrir o contrato.</p>
+
+    <div class="tela">
+      <div class="tela-topo">
+        <div>
+          <div class="quem">Henrique Sales do Vale</div>
+          <div class="onde">TST &middot; Quadra 01 &middot; Lote 05 &middot; R$ 148.500 &middot; proposta COD 000007</div>
+        </div>
+        <div class="passos">
+          <span class="passo atual"><span>An&aacute;lise</span></span>
+          <span class="passo">Contrato</span>
+          <span class="passo">Assinatura</span>
+          <span class="passo">Prazo</span>
+          <span class="passo">Faturado</span>
+        </div>
+      </div>
+
+      <div class="tela-corpo">
+        <div class="trabalho">
+          <div class="duas-col">
+            <div class="bloco">
+              <h3>Proponentes</h3>
+              <div class="campo"><span class="k">Titular</span><span class="v">Henrique Sales do Vale</span></div>
+              <div class="campo"><span class="k">CPF</span><span class="v mono">999.999.004-53</span></div>
+              <div class="campo"><span class="k">Estado civil</span><span class="v">Casado &middot; comunh&atilde;o parcial</span></div>
+              <div class="campo"><span class="k">C&ocirc;njuge</span><span class="v">Patr&iacute;cia Sales do Vale</span></div>
+              <div class="campo"><span class="k">E-mail</span><span class="v">henrique.vale@&hellip;</span></div>
+            </div>
+            <div class="bloco">
+              <h3>Imobili&aacute;ria e proposta</h3>
+              <div class="campo"><span class="k">Imobili&aacute;ria</span><span class="v">Caio Silva Neg&oacute;cios</span></div>
+              <div class="campo"><span class="k">Corretor</span><span class="v">Caio M. Silva</span></div>
+              <div class="campo"><span class="k">Plano</span><span class="v">Normal &middot; 180x</span></div>
+              <div class="campo"><span class="k">Entrada</span><span class="v">R$ 14.850 em 3x</span></div>
+              <div class="campo"><span class="k">1&ordf; parcela</span><span class="v">10/10/2026</span></div>
+            </div>
+          </div>
+
+          <div class="bloco">
+            <h3>O contrato</h3>
+            <p style="margin:0 0 10px;font-size:12.5px;color:var(--ink-2)">
+              Abre a minuta <strong>j&aacute; preenchida e edit&aacute;vel</strong>. O que voc&ecirc; corrigir
+              aqui vale <strong>s&oacute; para este contrato</strong> &mdash; a minuta do empreendimento
+              n&atilde;o muda.
+            </p>
+            <button class="btn forte">Abrir contrato</button>
+            <button class="btn">Salvar edi&ccedil;&atilde;o</button>
+            <button class="btn forte">Gerar contrato &rarr;</button>
+            <button class="btn perigo">Indeferir</button>
+          </div>
+
+          <div class="nota duvida">
+            <b>Preciso de voc&ecirc;:</b> ao indeferir, o card sai do quadro, vai para uma coluna
+            pr&oacute;pria, ou fica marcado onde est&aacute;? E a unidade volta a ficar dispon&iacute;vel
+            para venda?
+          </div>
+        </div>
+
+        <div class="fixo">
+          <h4>Chat</h4>
+          <div class="fixo-item"><b>Nívea</b> &middot; conferi a certid&atilde;o, ok</div>
+          <div class="fixo-item"><b>Caio (imob.)</b> &middot; cliente pediu para adiantar</div>
+          <h4>Documentos</h4>
+          <div class="fixo-item"><b>RG e CPF</b> &middot; titular &middot; ok</div>
+          <div class="fixo-item"><b>Certid&atilde;o de casamento</b> &middot; ok</div>
+          <div class="fixo-item"><b>Comprovante de renda</b> &middot; ok</div>
+          <div class="fixo-item"><b>RG e CPF</b> &middot; c&ocirc;njuge &middot; ok</div>
+          <h4>Hist&oacute;rico</h4>
+          <div class="fixo-item">06/09 &middot; proposta entregue pelo H&eacute;rcules</div>
+          <div class="fixo-item">06/09 &middot; reserva confirmada</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 2. CONTRATO ══════════ -->
+  <section>
+    <div class="faixa"><span class="n">ETAPA 2</span><h2>Contrato</h2></div>
+    <p class="sub">O PDF de um lado, quem assina do outro. &Uacute;ltima confer&ecirc;ncia antes do envelope existir.</p>
+
+    <div class="tela">
+      <div class="tela-topo">
+        <div>
+          <div class="quem">Henrique Sales do Vale</div>
+          <div class="onde">TST &middot; Q01 L05 &middot; Contrato v1 gerado 09/09 16:20</div>
+        </div>
+        <div class="passos">
+          <span class="passo feito">An&aacute;lise</span>
+          <span class="passo atual"><span>Contrato</span></span>
+          <span class="passo">Assinatura</span>
+          <span class="passo">Prazo</span>
+          <span class="passo">Faturado</span>
+        </div>
+      </div>
+
+      <div class="tela-corpo">
+        <div class="trabalho">
+          <div class="duas-col">
+            <div>
+              <div class="bloco">
+                <h3>Quem assina</h3>
+                <div class="sig">
+                  <span class="ord">1</span>
+                  <span class="quem"><b>Henrique Sales do Vale</b><span>Comprador &middot; lucas.ruas@careli.adm.br</span></span>
+                  <span class="acao">editar &middot; excluir</span>
+                </div>
+                <div class="sig">
+                  <span class="ord">2</span>
+                  <span class="quem"><b>Patr&iacute;cia Sales do Vale</b><span>C&ocirc;njuge &middot; nivea.careli@careli.adm.br</span></span>
+                  <span class="acao">editar &middot; excluir</span>
+                </div>
+                <div class="sig">
+                  <span class="ord">3</span>
+                  <span class="quem"><b>Carlos Gurgel Neto</b><span>Vendedora &middot; sem representante cadastrado</span></span>
+                  <span class="acao" style="color:var(--erro)">resolver</span>
+                </div>
+                <div style="margin-top:10px">
+                  <span class="estado e-info">Assinam em ordem</span>
+                  <span class="estado e-espera" style="margin-left:5px">CPF ser&aacute; pedido</span>
+                </div>
+              </div>
+              <button class="btn forte">Enviar para assinatura &rarr;</button>
+              <button class="btn">Gerar de novo (v2)</button>
+            </div>
+
+            <div class="bloco" style="display:flex;flex-direction:column">
+              <h3>O papel que vai</h3>
+              <div class="doc" style="flex:1;display:grid;place-content:center">
+                <div class="pg">&#128441;</div>
+                <div style="margin-top:6px">Contrato &middot; TST0105 &middot; v1<br>4 p&aacute;ginas</div>
+                <div style="margin-top:8px;font-size:11px">o PDF aparece aqui, rol&aacute;vel</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="nota duvida">
+            <b>Preciso de voc&ecirc;:</b> excluir um signat&aacute;rio tira ele do envio, mas o PDF
+            j&aacute; foi gerado com ele dentro &mdash; o texto continua citando o c&ocirc;njuge.
+            Nesse caso o sistema <strong>regera o contrato sozinho</strong>, ou manda assim e o
+            operador decide?
+          </div>
+        </div>
+
+        <div class="fixo">
+          <h4>Chat</h4>
+          <div class="fixo-item"><b>Nívea</b> &middot; conferido, pode mandar</div>
+          <h4>Documentos</h4>
+          <div class="fixo-item"><b>Contrato v1</b> &middot; gerado 09/09</div>
+          <div class="fixo-item"><b>RG e CPF</b> &middot; titular</div>
+          <h4>Hist&oacute;rico</h4>
+          <div class="fixo-item">09/09 &middot; contrato gerado por Lucas</div>
+          <div class="fixo-item">09/09 &middot; minuta editada &middot; 2 trechos</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 3. EM ASSINATURA ══════════ -->
+  <section>
+    <div class="faixa"><span class="n">ETAPA 3</span><h2>Em assinatura</h2></div>
+    <p class="sub">Tela de monitoramento. O que a Clicksign avisa chega aqui sozinho, por webhook.</p>
+
+    <div class="tela">
+      <div class="tela-topo">
+        <div>
+          <div class="quem">Breno Augusto Marinho Martins</div>
+          <div class="onde">GDN &middot; Q04 L13 &middot; enviado 06/09 &middot; h&aacute; 3 dias com o cliente</div>
+        </div>
+        <div class="passos">
+          <span class="passo feito">An&aacute;lise</span>
+          <span class="passo feito">Contrato</span>
+          <span class="passo atual"><span>Assinatura</span></span>
+          <span class="passo">Prazo</span>
+          <span class="passo">Faturado</span>
+        </div>
+      </div>
+
+      <div class="tela-corpo">
+        <div class="trabalho">
+          <div class="bloco">
+            <h3>Quem j&aacute; assinou</h3>
+            <div class="sig">
+              <span class="ord" style="background:var(--ok)">&#10003;</span>
+              <span class="quem"><b>Breno A. M. Martins</b><span>Comprador &middot; assinou 07/09 &agrave;s 14:22</span></span>
+              <span class="acao"><span class="estado e-ok">assinado</span></span>
+            </div>
+            <div class="sig">
+              <span class="ord" style="background:var(--espera)">2</span>
+              <span class="quem"><b>Juliana M. Martins</b><span>C&ocirc;njuge &middot; abriu 07/09, n&atilde;o assinou</span></span>
+              <span class="acao"><span class="estado e-espera">visualizou</span></span>
+            </div>
+            <div class="sig">
+              <span class="ord" style="background:var(--erro)">!</span>
+              <span class="quem"><b>Carlos Gurgel Neto</b><span>Vendedora &middot; e-mail voltou: caixa inexistente</span></span>
+              <span class="acao"><span class="estado e-erro">n&atilde;o entregue</span></span>
+            </div>
+          </div>
+
+          <div class="duas-col">
+            <div class="bloco">
+              <h3>Cobrar assinatura</h3>
+              <p style="margin:0 0 10px;font-size:12.5px;color:var(--ink-2)">
+                Abre um ticket na <strong>&Iacute;ris</strong> com o template de cobran&ccedil;a,
+                j&aacute; ligado a este contrato.
+              </p>
+              <button class="btn forte">Cobrar pela &Iacute;ris</button>
+              <button class="btn">Reenviar convite</button>
+            </div>
+            <div class="bloco">
+              <h3>O envelope</h3>
+              <div class="campo"><span class="k">Estado</span><span class="v">Parcial &middot; 1 de 3</span></div>
+              <div class="campo"><span class="k">Prazo da Clicksign</span><span class="v">06/10/2026</span></div>
+              <div class="campo"><span class="k">Ordem</span><span class="v">Todos ao mesmo tempo</span></div>
+              <button class="btn perigo" style="margin-top:8px">Cancelar envelope</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="fixo">
+          <h4>Chat</h4>
+          <div class="fixo-item"><b>&Iacute;ris</b> &middot; ticket #4821 aberto</div>
+          <h4>Documentos</h4>
+          <div class="fixo-item"><b>Contrato v1</b> &middot; enviado</div>
+          <h4>Hist&oacute;rico</h4>
+          <div class="fixo-item">07/09 14:22 &middot; Breno assinou</div>
+          <div class="fixo-item">07/09 09:10 &middot; Juliana visualizou</div>
+          <div class="fixo-item">06/09 18:03 &middot; e-mail da vendedora falhou</div>
+          <div class="fixo-item">06/09 17:55 &middot; enviado por Lucas</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 4. PRAZO LEGAL ══════════ -->
+  <section>
+    <div class="faixa"><span class="n">ETAPA 4</span><h2>Prazo legal</h2></div>
+    <p class="sub">Sete dias de arrependimento, contados da assinatura, e a entrada a receber.</p>
+
+    <div class="tela">
+      <div class="tela-topo">
+        <div>
+          <div class="quem">Otavio Rezende Campos</div>
+          <div class="onde">TST &middot; Q01 L03 &middot; assinado por todos em 05/09</div>
+        </div>
+        <div class="passos">
+          <span class="passo feito">An&aacute;lise</span>
+          <span class="passo feito">Contrato</span>
+          <span class="passo feito">Assinatura</span>
+          <span class="passo atual"><span>Prazo</span></span>
+          <span class="passo">Faturado</span>
+        </div>
+      </div>
+
+      <div class="tela-corpo">
+        <div class="trabalho">
+          <div class="duas-col">
+            <div class="bloco">
+              <h3>Arrependimento</h3>
+              <div class="cronometro">
+                <span class="num">5</span><span class="un">de 7 dias corridos</span>
+              </div>
+              <div class="prazo-barra">
+                <i class="passou"></i><i class="passou"></i><i class="passou"></i>
+                <i class="passou"></i><i class="passou"></i><i></i><i></i>
+              </div>
+              <div class="campo" style="margin-top:11px">
+                <span class="k">&Uacute;ltima assinatura</span><span class="v">05/09/2026</span>
+              </div>
+              <div class="campo"><span class="k">Prazo termina</span><span class="v">12/09/2026</span></div>
+            </div>
+
+            <div class="bloco">
+              <h3>A entrada</h3>
+              <div class="campo"><span class="k">Forma</span><span class="v">Parcelada &middot; 3x</span></div>
+              <div class="campo"><span class="k">1&ordf; parcela</span><span class="v">R$ 4.950</span></div>
+              <div class="campo"><span class="k">Vencimento</span><span class="v">12/09/2026</span></div>
+              <div class="campo"><span class="k">Situa&ccedil;&atilde;o</span>
+                <span class="v"><span class="estado e-espera">a vencer</span></span></div>
+              <div style="margin-top:10px;font-size:11px;color:var(--ink-3)">
+                lido do C2X pelo painel de sinal &middot; atualiza a cada 5 min
+              </div>
+            </div>
+          </div>
+
+          <div class="bloco">
+            <h3>Para ir a Faturado</h3>
+            <div class="linha-info"><i class="pip p-espera"></i> 7 dias de arrependimento &mdash; faltam 2</div>
+            <div class="linha-info"><i class="pip p-espera"></i> entrada paga &mdash; vence 12/09</div>
+            <button class="btn forte" style="margin-top:11px;opacity:.5">Faturar &rarr;</button>
+            <span style="font-size:11.5px;color:var(--ink-3);margin-left:6px">libera quando as duas fecharem</span>
+          </div>
+
+          <div class="nota">
+            <b>Resolvido &mdash; e a pe&ccedil;a j&aacute; existe.</b> O pagamento vem do C2X, como
+            na carteira do Apolo hoje. E n&atilde;o precisa de nada novo:
+            <code>lib/apolo/painel-sinal.ts</code> j&aacute; l&ecirc; a entrada (Ato + Sinal, os
+            tipos 1 e 2 do legado), sabe o que foi pago, o que vai vencer e o que venceu sem pagar
+            &mdash; com cache de 5 minutos, porque o legado tem pool curto.
+            <ul class="enxuta">
+              <li>o elo &eacute; <code>hercules_propostas.origem_c2x_id</code> &rarr;
+                  <code>acquisition_requests.id</code>;</li>
+              <li>o bot&atilde;o &ldquo;Confirmar pagamento&rdquo; sai: quem confirma &eacute; o C2X,
+                  e ter dois lugares dizendo se o cliente pagou &eacute; pior que ter um.</li>
+            </ul>
+          </div>
+
+          <div class="nota duvida">
+            <b>Mas fica um fio solto:</b> venda que nasce no Panteon n&atilde;o chega ao C2X &mdash;
+            o endpoint de reserva nunca foi entregue. Enquanto for assim, a etapa 4 s&oacute;
+            enxerga pagamento de venda que passou pelo legado. Isso resolve para o que est&aacute;
+            em produ&ccedil;&atilde;o hoje; para a venda 100% Panteon, volta o problema.</div>
+        </div>
+
+        <div class="fixo">
+          <h4>Chat</h4>
+          <div class="fixo-item"><b>Nívea</b> &middot; cliente avisou que paga dia 12</div>
+          <h4>Documentos</h4>
+          <div class="fixo-item"><b>Contrato assinado</b> &middot; PDF do cofre</div>
+          <h4>Hist&oacute;rico</h4>
+          <div class="fixo-item">05/09 &middot; &uacute;ltima assinatura</div>
+          <div class="fixo-item">05/09 &middot; contrato finalizado na Clicksign</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 5. FATURADO ══════════ -->
+  <section>
+    <div class="faixa"><span class="n">ETAPA 5</span><h2>Faturado</h2></div>
+    <p class="sub">Prazo cumprido e entrada paga. O card fica como registro.</p>
+
+    <div class="tela">
+      <div class="tela-topo">
+        <div>
+          <div class="quem">Rodrigo Tavares Lima</div>
+          <div class="onde">TST &middot; Q01 L04 &middot; faturado 02/09</div>
+        </div>
+        <div class="passos">
+          <span class="passo feito">An&aacute;lise</span>
+          <span class="passo feito">Contrato</span>
+          <span class="passo feito">Assinatura</span>
+          <span class="passo feito">Prazo</span>
+          <span class="passo atual"><span>Faturado</span></span>
+        </div>
+      </div>
+
+      <div class="tela-corpo">
+        <div class="trabalho">
+          <div class="bloco">
+            <h3>O que ficou</h3>
+            <div class="campo"><span class="k">Contrato assinado</span>
+              <span class="v"><span class="estado e-ok">no cofre &middot; abrir</span></span></div>
+            <div class="campo"><span class="k">Assinaturas</span><span class="v">3 de 3 &middot; &uacute;ltima 26/08</span></div>
+            <div class="campo"><span class="k">Prazo legal</span><span class="v">cumprido 02/09</span></div>
+            <div class="campo"><span class="k">Entrada</span><span class="v">R$ 16.520 &middot; paga 02/09</span></div>
+            <div class="campo"><span class="k">Unidade</span><span class="v">TST0104 &middot; vendida</span></div>
+          </div>
+          <div class="nota">
+            <b>Daqui em diante &eacute; carteira</b>, n&atilde;o mais contrato: as parcelas seguem no
+            financeiro. O card fica como o registro do que aconteceu, com o papel assinado a um
+            clique.
+          </div>
+        </div>
+
+        <div class="fixo">
+          <h4>Chat</h4>
+          <div class="fixo-item" style="color:var(--ink-3)">sem mensagens novas</div>
+          <h4>Documentos</h4>
+          <div class="fixo-item"><b>Contrato assinado</b> &middot; 02/09</div>
+          <div class="fixo-item"><b>Comprovante da entrada</b></div>
+          <h4>Hist&oacute;rico</h4>
+          <div class="fixo-item">02/09 &middot; faturado</div>
+          <div class="fixo-item">02/09 &middot; entrada confirmada</div>
+          <div class="fixo-item">26/08 &middot; &uacute;ltima assinatura</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ O QUE FALTA DECIDIR ══════════ -->
+  <section>
+    <div class="faixa"><span class="n">ANTES DE CODAR</span><h2>O que preciso de voc&ecirc;</h2></div>
+
+    <div class="bloco" style="padding:18px 20px">
+      <p style="margin:0 0 14px;opacity:.55"><s><strong>1. O pagamento da entrada</strong></s>
+      &mdash; <strong>resolvido:</strong> vem do C2X, como na carteira do Apolo. O
+      <code>painel-sinal.ts</code> j&aacute; faz, e o elo &eacute; <code>origem_c2x_id</code>.</p>
+
+      <p style="margin:0 0 14px"><strong>2. Indeferimento</strong> &mdash; o card sai do quadro, ganha
+      coluna pr&oacute;pria, ou fica marcado? A unidade volta para venda?</p>
+
+      <p style="margin:0 0 14px"><strong>3. Os 7 dias contam de quando</strong> &mdash; da assinatura do
+      &uacute;ltimo comprador, ou do primeiro? A vendedora entra na conta?</p>
+
+      <p style="margin:0 0 14px"><strong>4. Cess&atilde;o, distrato e cancelamento</strong> &mdash; passam
+      pelas mesmas cinco etapas, ou t&ecirc;m caminho pr&oacute;prio? Hoje dividem o quadro.</p>
+
+      <p style="margin:0"><strong>5. Excluir signat&aacute;rio</strong> &mdash; o PDF j&aacute; foi gerado
+      com ele. Regera sozinho ou manda assim?</p>
+    </div>
+  </section>
+
+  <p class="rodape">
+    Mockup para validar &middot; T&ecirc;mis &middot; 09/09/2026 &middot; nenhuma linha de c&oacute;digo escrita
+  </p>
+</div>
