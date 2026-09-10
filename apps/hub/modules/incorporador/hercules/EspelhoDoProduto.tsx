@@ -7,7 +7,7 @@ import { type GeometriaDoMapa, MapaDeLotes } from "@/modules/espelho/MapaDeLotes
 
 import { T } from "../tema";
 
-// O ESPELHO DA MESA DE VENDA — o mapa do loteamento com as cores do FUNIL.
+// O ESPELHO DA MESA DE VENDA — o mapa do loteamento, em verde e azul.
 //
 // Lucas (10/09/2026): *"pq não tem o espelho no veredas aqui"*, e a escolha de migrar a Mesa para
 // a base nova.
@@ -19,10 +19,14 @@ import { T } from "../tema";
 // gerar mais um HTML. Esta tela lê a MESMA fonte do espelho público (`hercules_masterplans`), que
 // cobre os oito e cresce sozinha quando um masterplan novo é importado.
 //
-// ⚠️ MAS AS CORES SÃO AS DAQUI, E NÃO AS DE LÁ. Lucas (09/09/2026): *"esse é o padrão externo, o
-// interno é o que desenhamos e que está hoje com as cores referente aos status"*. O público vê
-// duas cores (dá para comprar ou não); quem trabalha o funil vê as nove etapas. É por isso que o
-// motor do mapa (`MapaDeLotes`) recebe a cor por fora: o desenho é o mesmo, a leitura não.
+// ⚠️ AS CORES DO MAPA SÃO AS MESMAS DOS DOIS LADOS DO LOGIN. Lucas (10/09/2026): *"as cores do
+// espelho permanece igual, verde e azul"* · *"o que muda é somente na grade"*. A régua de 09/09
+// (*"o interno é o que está hoje com as cores referente aos status"*) vale para a GRADE, que é
+// onde o funil se lê; no mapa, sobre foto aérea, nove tons viram mancha — e dois deles nem
+// pintariam, porque são gradiente e gradiente não é `fill` de SVG.
+//
+// O motor (`MapaDeLotes`) continua recebendo a cor por fora mesmo assim: é o que deixa as duas
+// telas compartilharem desenho, zoom e arraste sem uma amarrar a paleta da outra.
 
 export type LoteDaMesa = {
   codigo: string;
@@ -31,27 +35,20 @@ export type LoteDaMesa = {
 };
 
 /**
- * As cores das etapas, em versão SÓLIDA.
+ * ⚠️ O MAPA TEM DUAS CORES, E A GRADE TEM NOVE. Lucas (10/09/2026), vendo o espelho migrado: *"as
+ * cores do espelho permanece igual, verde e azul"*.
  *
- * ⚠️ DUAS DELAS SÃO GRADIENTE NA GRADE, E GRADIENTE NÃO É `fill` DE SVG. Na grade, `reservada` e
- * `vendida` saem listradas (`repeating-linear-gradient`) para distinguir "reservada sem proposta"
- * de "reserva do fluxo" e "vendida sem proposta" de "faturado" — um recurso que só existe em CSS.
- * No mapa, um `fill` com `repeating-linear-gradient` não pinta NADA: o lote sairia transparente,
- * que é exatamente o que quem olha lê como "disponível". Aqui elas viram a cor cheia
- * correspondente, e a diferença entre os dois pares fica no rótulo do painel.
+ * Não é contradição com a régua da casa, é divisão de trabalho entre as duas vistas da MESMA
+ * tela: no mapa a pergunta é onde ainda há lote livre, e nove tons sobre uma foto aérea viram
+ * mancha — os dois pares listrados (`reservada`/`vendida`) nem chegariam a pintar, porque
+ * gradiente não é `fill` de SVG. Na GRADE, que é desenho limpo em quadradinhos, as nove etapas
+ * continuam: é lá que o coordenador lê o funil.
+ *
+ * São exatamente as cores medidas no espelho do C2X, as mesmas do espelho público — para o mapa
+ * ser o mesmo mapa dos dois lados do login.
  */
-const COR_SOLIDA: Record<EtapaDoEspelho, string> = {
-  assinatura: "#454c5c",
-  bloqueada: "#e08276",
-  contrato: "#9b7ed0",
-  // O disponível é o único que não pinta: é a planta limpa, como no espelho público.
-  disponivel: "transparent",
-  faturado: "#3f9d5e",
-  proposta: "#5b8dd6",
-  reservada: "#f2c14e",
-  reservado: "#f2c14e",
-  vendida: "#3f9d5e",
-};
+const VERDE = "rgb(57, 143, 25)";
+const AZUL = "rgb(5, 68, 255)";
 
 export function EspelhoDoProduto({
   aoClicarNoLote,
@@ -125,9 +122,10 @@ export function EspelhoDoProduto({
         corDoLote={(codigo) => {
           const lote = porCodigo.get(codigo.trim().toUpperCase());
           // ⚠️ CONTORNO SEM UNIDADE NO RECORTE FICA SEM TINTA. Acontece quando o coordenador
-          // filtra por etapa: os lotes fora do filtro continuam desenhados, e pintá-los de uma cor
-          // qualquer diria que estão numa etapa que ninguém consultou.
-          return lote ? (COR_SOLIDA[lote.etapa] ?? "transparent") : "transparent";
+          // filtra por etapa: os lotes fora do filtro continuam desenhados, e pintá-los de azul
+          // diria "indisponível" sobre um lote que ninguém consultou.
+          if (!lote) return "transparent";
+          return lote.etapa === "disponivel" ? VERDE : AZUL;
         }}
         destacado={loteEmFoco ?? null}
         fundo={T.soft}
