@@ -1,5 +1,6 @@
 "use client";
 
+import { EspelhoDoProduto, type LoteDaMesa } from "./EspelhoDoProduto";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Ban,
@@ -34,7 +35,7 @@ import {
 import { toTitleCase } from "@/lib/format/name-case";
 import { formatarTelefoneGuardado } from "@/lib/hercules/paises";
 
-import { T, useTemaDoPortal } from "../tema";
+import { T } from "../tema";
 import { Pilula } from "./AssinaturasDoProduto";
 import { ConversaDaVenda } from "./ConversaDaVenda";
 import { DocumentosDaVenda } from "./DocumentosDaVenda";
@@ -363,27 +364,6 @@ const ROTULO_DA_DATA: Record<string, string> = {
 
 const rotuloDaData = (etapa: string) => ROTULO_DA_DATA[etapa] ?? "Data";
 
-/**
- * Lê a quadra e o lote que o espelho acabou de selecionar.
- *
- * ⚠️ O ESPELHO ESCREVE A IDENTIDADE DO LOTE NUM LUGAR SÓ: a ficha da coluna de unidade, no elemento
- * `#fQL`, no formato "Quadra 03 · Lote 01" (é o `rot` que o `mostraLote` do A-INTERNO preenche).
- * Como essa coluna está escondida pelo `so=espelho`, ela continua sendo preenchida — foi por isso
- * que a casca é escondida e não removida.
- *
- * ⚠️ E O CASAMENTO É POR QUADRA E LOTE, NUNCA PELO CÓDIGO. O espelho monta o id com o prefixo do
- * ARQUIVO ("VLO0301"), e no Vale do Ouro as unidades vivas são dos filhos ("VOC0301", "VOL..."):
- * casar por código não acharia nada justamente no produto que mais precisa. Quadra e lote são o
- * lote físico, e não mudam com o recorte.
- */
-function loteSelecionadoNoEspelho(
-  doc: Document,
-): null | { lote: string; quadra: string } {
-  const texto = doc.getElementById("fQL")?.textContent?.trim();
-  if (!texto) return null;
-  const m = /Quadra\s*([^\s·]+)\s*·\s*Lote\s*(\S+)/i.exec(texto);
-  return m ? { lote: m[2]!, quadra: m[1]! } : null;
-}
 
 /**
  * A cor do ponto na linha do tempo.
@@ -845,23 +825,50 @@ export function TelaVenda() {
   // lotes olhar, não outro desenho. Os cards trazem o mapa por id do C2X ou pelo id do card, e o
   // pai do painel ("pai:<uuid>") não bate com nenhum dos dois — por isso o encontro é pelo NOME,
   // que é o que os dois lados têm em comum.
+  // ⚠️ QUEM TEM ESPELHO VEM DO CADASTRO, e não mais de uma lista no código. Até 10/09/2026 o
+  // botão dependia de `MASTERPLANS_INTERNOS` — cinco arquivos HTML gerados à mão —, e três
+  // empreendimentos com masterplan publicado ficavam sem espelho na Mesa: Veredas do Ouro, Jardim
+  // das Gerais e Villa Paris. Lucas: *"pq não tem o espelho no veredas aqui"*. Agora a rota
+  // responde quais têm mapa publicado em `hercules_masterplans`, e a lista cresce sozinha a cada
+  // importação.
+  const [comEspelho, setComEspelho] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/incorporador/espelho?parte=disponiveis")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((corpo: null | { data?: { codigos?: string[] } }) => {
+        if (vivo && corpo?.data?.codigos) setComEspelho(new Set(corpo.data.codigos));
+      })
+      .catch(() => undefined);
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  /** O código do produto aberto que TEM mapa — é ele que o espelho carrega. */
+  const codeDoEspelho = useMemo(() => {
+    if (!produtoEscolhido) return null;
+    const nome = produtoEscolhido.nome.trim().toLowerCase();
+    const card = cards.find((c) => c.nome.trim().toLowerCase() === nome);
+    for (const code of [card?.code, ...(card?.enterpriseIds ?? [])]) {
+      const limpo = String(code ?? "").trim().toUpperCase();
+      if (limpo && comEspelho.has(limpo)) return limpo;
+    }
+    return null;
+  }, [cards, comEspelho, produtoEscolhido]);
+
   const mapaDoProduto = useMemo(() => {
     if (!produtoEscolhido) return null;
     const nome = produtoEscolhido.nome.trim().toLowerCase();
-    return (
-      cards.find(
-        (c) =>
-          (c.masterplanInterno ?? c.masterplanUrl) &&
-          c.nome.trim().toLowerCase() === nome,
-      ) ?? null
-    );
+    return cards.find((c) => c.nome.trim().toLowerCase() === nome) ?? null;
   }, [cards, produtoEscolhido]);
 
   // Trocar para "todos" (ou para um produto sem mapa) volta para a grade: deixar o modo
   // "mapa" aceso sem mapa para mostrar daria um painel vazio sem explicação.
   useEffect(() => {
-    if (!mapaDoProduto) setModoDoEstoque("grade");
-  }, [mapaDoProduto]);
+    if (!codeDoEspelho) setModoDoEstoque("grade");
+  }, [codeDoEspelho]);
 
   return (
     // ⚠️ A TELA TEM A ALTURA DO <main> E NÃO ROLA. O portal comercial já deixa o main com
@@ -1304,13 +1311,13 @@ export function TelaVenda() {
             aoReservar={setReservando}
             aoSimular={setSimulando}
             aoTrocarModo={setModoDoEstoque}
+            codeDoEspelho={codeDoEspelho}
             carregando={carregando}
             dados={dados}
             etapa={etapa}
             foco={foco}
             lista={daEtapa}
             livres={livres}
-            mapaDoProduto={mapaDoProduto}
             modo={modoDoEstoque}
           />
         ) : (
@@ -1332,13 +1339,13 @@ function Mesa({
   aoReservar,
   aoSimular,
   aoTrocarModo,
+  codeDoEspelho,
   carregando,
   dados,
   etapa,
   foco,
   lista,
   livres,
-  mapaDoProduto,
   modo,
   versaoDosDados,
 }: {
@@ -1353,53 +1360,22 @@ function Mesa({
   aoSimular: (u: null | UnidadeNoMapa) => void;
   aoTrocarModo: (m: "grade" | "mapa") => void;
   carregando: boolean;
+  /** O código do produto que TEM masterplan publicado. `null` esconde o botão "Espelho". */
+  codeDoEspelho: null | string;
   dados: FluxoDeVenda | null;
   etapa: "disponivel" | EtapaDoFluxo;
   foco: null | Foco;
   lista: FluxoDeVenda["lista"];
   livres: (UnidadeNoMapa & { grupo: string })[];
-  mapaDoProduto: null | CardDeProduto;
   modo: "grade" | "mapa";
 }) {
-  // O tema vai para o iframe do masterplan: outro documento não herda variável CSS de ninguém.
-  const { efetivo } = useTemaDoPortal();
   const rotulo = FLUXO.find((f) => f.etapa === etapa)?.rotulo ?? "Propostas";
 
-  // ⚠️ CLICAR NO LOTE DO ESPELHO ABRE A FICHA AO LADO (Lucas, 03/09/2026: *"quando eu clicar no
-  // lote na imagem, tem que interagir com o painel ao lado, esse que traz os dados"*). O espelho é
-  // um <iframe> de MESMA ORIGEM (a rota do portal), então dá para escutar o clique lá dentro sem
-  // postMessage nem tocar no arquivo aprovado do masterplan.
-  //
-  // ⚠️ O LISTENER ENTRA NO `onLoad`, e não uma vez só: o iframe recarrega quando o tema muda ou o
-  // produto troca, e um listener preso ao documento antigo morre com ele, deixando o clique mudo.
-  const aoClicarNoEspelho = useCallback(
-    (frame: HTMLIFrameElement) => {
-      const doc = frame.contentDocument;
-      if (!doc) return;
-
-      doc.addEventListener("click", (evento) => {
-        // O script do espelho só preenche a ficha DEPOIS do clique dele: o `setTimeout(0)` deixa a
-        // seleção acontecer antes de a gente ler o resultado.
-        const alvo = evento.target as Element | null;
-        if (!alvo || alvo.tagName.toLowerCase() !== "polygon") return;
-
-        window.setTimeout(() => {
-          const escolhido = loteSelecionadoNoEspelho(doc);
-          if (!escolhido) return;
-
-          const achada = (dados?.mapa ?? [])
-            .flatMap((g) => g.unidades)
-            .find(
-              (u) =>
-                String(u.quadra ?? "").trim() === escolhido.quadra &&
-                String(u.lote ?? "").trim() === escolhido.lote,
-            );
-          if (achada) aoFocar({ tipo: "unidade", unidade: achada });
-        }, 0);
-      });
-    },
-    [aoFocar, dados],
-  );
+  // ⚠️ O CLIQUE NO LOTE NÃO PRECISA MAIS DE PONTE ENTRE DOCUMENTOS. Enquanto o espelho era um
+  // <iframe> de HTML gerado, a ficha só reagia porque esta tela injetava um listener no documento
+  // de dentro a cada `onLoad`. Agora o mapa é um componente React desta mesma árvore, e o clique
+  // chega direto pelo `aoClicarNoLote` — sem escutar documento alheio e sem depender de o iframe
+  // recarregar no tema certo.
 
   // ⚠️ BUSCA E FILTRO SÃO PADRÃO EM VISÃO ANALÍTICA (Lucas, 03/09/2026: *"no analítico, coloca
   // filtros, buscar. Sempre ter isso como padrão em visões analíticas"*). A busca zera ao trocar de
@@ -1600,7 +1576,8 @@ function Mesa({
                 : null}
 
               {/* A escolha da vista. Só aparece com um produto que TEM masterplan. */}
-              {mapaDoProduto ? (
+              {/* O par Grade/Espelho só existe onde há masterplan publicado. */}
+              {codeDoEspelho ? (
                 <div style={{ display: "flex", gap: 6 }}>
                   <Pilula
                     ativo={modo === "grade"}
@@ -1618,22 +1595,24 @@ function Mesa({
           }
           titulo="Estoque"
         >
-          {/* ⚠️ O MASTERPLAN VIVE NUM <iframe> e não herda o tema: ele vai na query, como na tela
-              cheia antiga. A altura é fixa porque o card está num grid — sem ela o iframe colapsa
-              para zero e o mapa "não aparece". */}
-          {modo === "mapa" && mapaDoProduto?.masterplanInterno ? (
-            <iframe
-              onLoad={(e) => aoClicarNoEspelho(e.currentTarget)}
-              src={`/api/incorporador/masterplan?code=${encodeURIComponent(mapaDoProduto.masterplanInterno)}&tema=${efetivo}&so=espelho`}
-              style={{
-                background: T.soft,
-                border: `1px solid ${T.border}`,
-                borderRadius: 10,
-                display: "block",
-                height: "min(72vh, 720px)",
-                width: "100%",
+          {/* ⚠️ O ESPELHO DEIXOU DE SER UM <iframe> DE HTML GERADO À MÃO. Ele agora desenha a
+              mesma arte e a mesma geometria que o espelho público lê de `hercules_masterplans` —
+              oito empreendimentos em vez de cinco, sem preparo manual —, mas com as CORES DO
+              FUNIL, que são as desta tela. O motor do mapa (zoom, arraste, conter sem esticar) é
+              compartilhado em `modules/espelho/MapaDeLotes`. */}
+          {modo === "mapa" && codeDoEspelho ? (
+            <EspelhoDoProduto
+              aoClicarNoLote={(l: LoteDaMesa) => {
+                const u = (dados?.mapa ?? [])
+                  .flatMap((g) => g.unidades)
+                  .find((x) => x.id === l.id);
+                if (u) aoFocar({ tipo: "unidade", unidade: u });
               }}
-              title={`Espelho · ${mapaDoProduto.nome}`}
+              code={codeDoEspelho}
+              loteEmFoco={unidadeEmFoco?.codigo ?? null}
+              lotes={(dados?.mapa ?? []).flatMap((g) =>
+                g.unidades.map((u) => ({ codigo: u.codigo, etapa: u.etapa, id: u.id })),
+              )}
             />
           ) : (
             <>
