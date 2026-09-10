@@ -36,6 +36,55 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-10-espelho-publico",
+    deployedAt: "2026-09-10T12:15:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**O empreendimento agora tem uma aba de Links.** Três links prontos para copiar e mandar no WhatsApp: o espelho do empreendimento, o formulário de CAD e o credenciamento de imobiliária. Os dois últimos são links da casa — quem abre escolhe o empreendimento lá dentro —, e a aba diz isso com um selo, para ninguém mandar o link do CAD achando que já vem com o produto escolhido.",
+              "A mesma aba está no Apolo e no portal comercial, dentro do empreendimento.",
+            ],
+            screen: "Empreendimento · Links",
+          },
+          {
+            items: [
+              "**O espelho público:** um link curto e sem login que abre o mapa de lotes do loteamento. `c2x.app.br/e/veredas-do-ouro-xtynnyqj` — dá para ler em voz alta e digitar.",
+              "**Verde é o que dá para comprar; azul é todo o resto** — vendido, reservado, bloqueado, com proposta ou com contrato. As cores e a transparência são as mesmas do espelho que já roda hoje.",
+              "**Duas visões:** o mapa, com a planta por baixo, zoom pela roda do mouse e tela cheia; e a grade, com os lotes em quadradinhos por quadra. Empreendimento sem masterplan publicado abre direto na grade.",
+              "**Tema claro e escuro**, seguindo o aparelho de quem abre.",
+              "**Clicando no lote** abre o mesmo simulador da aba Vendas: desconto, parcela-alvo, entrada, anuais e as composições que fecham no valor. Com um botão para ver o reajuste da parcela, que vem fechado.",
+              "**Salvar em PDF** gera a folha da simulação com a logo do empreendimento, no nome `Empreendimento - Quadra - Lote.pdf`.",
+              "Não vai nome de cliente, corretor ou imobiliária — só o que o cliente precisa para escolher.",
+            ],
+            screen: "Espelho público",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O contrato assinado volta a aparecer como assinado.** A Clicksign avisa a assinatura com um identificador que o Panteon não estava reconhecendo, e o card ficava parado mesmo depois de o cliente assinar.",
+            ],
+            screen: "Quadro de contratos",
+          },
+        ],
+      },
+    ],
+    rollback: "bf3d44b7",
+    technical: {
+      done: "⚠️ A SITUAÇÃO VEM DO PANTEON, E SÓ DELE. Lucas (10/09/2026): *\"nada de olhar no c2x\"* · *\"temo cadastro de unidades\"*. Cadastro em `hercules_unidades`, processo em `hercules_propostas` e `hercules_reservas`; nenhuma consulta ao MySQL entra neste caminho. A régua é fail-closed — verde exige cadastro `disponivel` E nenhuma proposta aberta E nenhuma reserva viva; qualquer outra coisa (inclusive situação desconhecida) sai azul, porque verde é uma AFIRMAÇÃO pública. Medido: trava 3 lotes que o cadastro dava como disponíveis e têm proposta aberta. ⚠️ O PAI EMPRESTA O DESENHO, O FILHO DIZ O QUE ACONTECEU. Os oito masterplans publicados são de empreendimento sem pai; VOC/VOL/VOR e LBF/LBP/LBR herdam o do pai. O mesmo terreno existe nos dois cadastros com códigos diferentes (VLO0101 × VOL0101), e a chave é quadra+lote — única nos dois lados (298 de 298 no Vale do Ouro, 495 de 495 no Lagoa Bonita). O primeiro desenho tratava os dois registros como pares e ESCONDERIA 4 lotes à venda, porque o cadastro do pai está parado em 01/09 e diz `vendida` onde o filho diz `disponivel`; o teste pegou. ⚠️ TRÊS PEÇAS, TRÊS CACHES. Arte WebP e geometria JSON são imutáveis (versão no caminho, um ano); a situação é `no-store`, sem exceção — a rota irmã do telão rodou com `s-maxage=10` e projetou lote VERDE por 40s depois de reservado. O SVG de origem tem 2,8 a 24,9 MB e ~97% é foto; separado, o pior caso cai de 23,81 MB para 4,3 MB, e a arte o navegador baixa uma vez. Teto de 6000px e qualidade 92 (a 82 as letras de metragem achatavam no zoom). ⚠️ A ARTE VAI DENTRO DO SVG, e não ao lado. Como dois irmãos sobrepostos eles só ficam em registro enquanto o container tiver EXATAMENTE a proporção do viewBox: no primeiro pixel de diferença a imagem estica e o SVG não, e os contornos saem de cima dos lotes — foi o *\"ficou todo desconfigurado\"*. Dentro do SVG o alinhamento deixa de depender do CSS. As cores foram MEDIDAS no espelho do C2X (`show_map/35`), não escolhidas: azul rgb(5,68,255), verde rgb(57,143,25), fill-opacity 0.6, sem traço. ⚠️ O CLIQUE NO LOTE COM ZOOM: `setPointerCapture` no `pointerdown` redireciona o `click` para quem capturou, e o evento nascia na cena em vez do `<path>` — sem zoom funcionava, com zoom não. A cena só captura quando o ponteiro ANDA de verdade. ⚠️ O SIMULADOR É O MESMO COMPONENTE DA MESA DE VENDA, montado no espelho — não uma cópia. Ganhou a prop `vocabulario` (default `proposta`, mantendo a Mesa idêntica): no público vira \"Simulação montada\" e \"Valor simulado\", e a seção de cobrança some mesmo com `aoMudarCondicoes` presente, que é o que permite escutar a tela sem mostrar vencimento. O PDF usa `montarFolhaDaProposta` + `montarPropostaPdf` com `simulacao: true` — sem código, sem compradores, sem tabela de reajuste, com tarja própria; a bandeira vai nos DOIS (quem monta os textos e quem desenha), senão as observações continuam falando em proposta. ⚠️ O TOKEN TEM DISCRIMINANTE (`k: \"esp\"`) E É DETERMINÍSTICO: todos os links públicos assinam com a mesma SESSAO_CAD_SECRET, e sem o discriminante um token do telão do Prometeu — que nunca expira e já circula fora do hub — abriria espelho; teste dedicado cobre. O link curto é `/e/<apelido>-<8 chars da assinatura>`, e a rota nova precisou de uma linha no `auth-provider` (o gate de página é client-side e libera por prefixo). ⚠️ A PREPARAÇÃO É OFFLINE (`scripts/hercules/preparar-espelho.mts`, Node 24 rodando TypeScript nativo, sem dependência nova): 16000×9000 descomprimido são ~576 MB de RGBA, acima da folga de uma função serverless. 3.504 testes verdes (239 arquivos), typecheck limpo, verificado no mapa e na grade, desktop e celular.",
+      motivation: "O corretor não tinha o que mandar para o cliente ver o estoque: o masterplan vivia no C2X, atrás de login, e os links de CAD e imobiliária não estavam em lugar nenhum da tela do empreendimento.",
+    },
+    title: "Espelho público, com simulação e a aba de Links",
+    type: "novidade",
+    version: "1.308.0",
+  },
+  {
     buildTag: "2026-09-09-enviar-sem-cpf",
     deployedAt: "2026-09-09T16:15:00-03:00",
     modules: [

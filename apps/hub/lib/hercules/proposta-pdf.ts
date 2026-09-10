@@ -111,6 +111,19 @@ export type PropostaParaPdf = {
    * seja usada como proposta — por isso ela vai no papel, e não só na tela que o gerou.
    */
   previa?: boolean;
+  /**
+   * A folha é uma SIMULAÇÃO, e não uma proposta.
+   *
+   * ⚠️ MUDA QUATRO COISAS NO PAPEL, e cada uma porque a simulação não tem o que a proposta tem:
+   * o título deixa de dizer "Proposta de aquisição"; o CÓDIGO some do topo (não há venda, então
+   * não há COD — imprimir o código do lote ali faria o cliente guardar um número que não existe
+   * no sistema); a seção COMPRADORES some (ninguém foi qualificado, e o cabeçalho vazio "Nome |
+   * CPF" era um convite a preencher à mão); e a tarja passa a dizer o que a folha é.
+   *
+   * Lucas (10/09/2026), vendo o primeiro PDF: *"isso é uma simulação, ou seja, não precisa nome,
+   * reajuste sem codigo, é uma simulação, também destacar isso"*.
+   */
+  simulacao?: boolean;
   reajustes: FaixaDeReajuste[];
   /**
    * Se a parcela deste plano REALMENTE muda ao longo do contrato (degrau de juros ou índice).
@@ -378,7 +391,12 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
     font,
     page,
     paginas: [page],
-    topo: `Proposta ${dados.codigo} · ${dados.empreendimento} · ${dados.unidade}`,
+    // ⚠️ O RODAPÉ TAMBÉM É PAPEL DO CLIENTE. Sem esta distinção a folha da simulação saía com
+    // "Proposta VDO0923" no pé — o número do lote apresentado como número de proposta, na única
+    // linha que se repete em toda página.
+    topo: dados.simulacao
+      ? `Simulação · ${dados.empreendimento} · ${dados.unidade}`
+      : `Proposta ${dados.codigo} · ${dados.empreendimento} · ${dados.unidade}`,
     y: A4.h - 40,
   };
 
@@ -386,7 +404,9 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
   // gerenciador de arquivos de quem baixa: um PDF chamado "Proposta 000006" desmente a tarja
   // impressa dentro dele, e é pelo nome que alguém decide reenviar o arquivo.
   doc.setTitle(
-    `${dados.previa ? "PREVIA - " : ""}Proposta ${seguro(dados.codigo)} - ${seguro(dados.unidade)}`,
+    dados.simulacao
+      ? `Simulacao - ${seguro(dados.empreendimento)} - ${seguro(dados.unidade)}`
+      : `${dados.previa ? "PREVIA - " : ""}Proposta ${seguro(dados.codigo)} - ${seguro(dados.unidade)}`,
   );
   doc.setProducer("Panteon");
   doc.setCreator("C2X");
@@ -406,12 +426,32 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
     }
   }
 
-  textoDireita(ctx, espacado("Proposta de aquisição"), A4.w - M, 6.6, { cor: SOFT, y: topo + 2 });
-  textoDireita(ctx, dados.codigo, A4.w - M, 16.5, { bold: true, cor: INK, y: topo - 18 });
-  textoDireita(ctx, espacado(`Emitida em ${dados.emitidaEm}`), A4.w - M, 6.2, {
-    cor: MUTE,
-    y: topo - 28,
-  });
+  textoDireita(
+    ctx,
+    espacado(dados.simulacao ? "Simulação de pagamento" : "Proposta de aquisição"),
+    A4.w - M,
+    6.6,
+    { cor: SOFT, y: topo + 2 },
+  );
+  // ⚠️ SEM CÓDIGO NA SIMULAÇÃO. Não há venda, logo não há COD; o código do lote no lugar em que o
+  // coordenador procura o número da proposta faria o cliente guardar um identificador que o
+  // sistema não reconhece. No lugar dele, a folha diz o que é.
+  textoDireita(
+    ctx,
+    dados.simulacao ? "SIMULAÇÃO" : dados.codigo,
+    A4.w - M,
+    dados.simulacao ? 13 : 16.5,
+    { bold: true, cor: dados.simulacao ? AVISO_TINTA : INK, y: topo - 18 },
+  );
+  textoDireita(
+    ctx,
+    espacado(
+      dados.simulacao ? `Gerada em ${dados.emitidaEm}` : `Emitida em ${dados.emitidaEm}`,
+    ),
+    A4.w - M,
+    6.2,
+    { cor: MUTE, y: topo - 28 },
+  );
 
   ctx.y = topo - 40;
   regua(ctx, ctx.y, INK, 1.4);
@@ -449,6 +489,11 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
   regua(ctx, ctx.y, LINE);
 
   // ── COMPRADORES ──────────────────────────────────────────────────────────
+  //
+  // ⚠️ NA SIMULAÇÃO A SEÇÃO NÃO EXISTE. Sem comprador qualificado, ela saía como um cabeçalho
+  // "Nome | CPF" sobre uma linha em branco — que além de gastar papel para dizer que não há
+  // ninguém, parece um campo esperando ser preenchido à mão.
+  if (!dados.simulacao) {
   ctx.y -= 22;
   tituloDaSecao(ctx, "Compradores");
   // ⚠️ COM UM COMPRADOR SÓ A COLUNA NÃO EXISTE: "100%" ao lado de um nome sozinho é uma coluna
@@ -468,6 +513,7 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
     ],
     dados.compradores.map((c) => [c.nome, c.documento, mostraParticipacao ? c.participacao : ""]),
   );
+  }
 
   // ── CONDIÇÕES ────────────────────────────────────────────────────────────
   ctx.y -= 10;
@@ -537,7 +583,12 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
   }
 
   // ── REAJUSTE ─────────────────────────────────────────────────────────────
-  if (dados.reajustes.length > 0) {
+  //
+  // ⚠️ NA SIMULAÇÃO A TABELA NÃO VAI. Lucas (10/09/2026): *"tirar o reajuste das parcelas"*, e
+  // antes, sobre a tela: *"tem corretor que não gosta que o cliente ver o fluxo de reajuste de
+  // parcelas"*. Na tela ela existe atrás de um botão, que o corretor abre se quiser; no papel que
+  // ele ENCAMINHA, não — o documento sai da mão dele e ele não controla mais quem lê.
+  if (!dados.simulacao && dados.reajustes.length > 0) {
     ctx.y -= 12;
     // ⚠️ O TÍTULO SEGUE O CONTRATO, NÃO A TABELA. Num plano sem degrau e sem índice a mesma tabela
     // continua útil (ela diz quanto é a parcela e de quando até quando), mas chamá-la de
@@ -648,8 +699,10 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
     // deixaria as outras indistinguíveis da proposta de verdade, que é justamente o que a tarja
     // existe para evitar. Fica no pé, sobre o rodapé: no topo ela brigaria com a logo do
     // empreendimento e com o COD, que é o que o coordenador procura primeiro.
-    if (dados.previa) {
-      const aviso = "PRÉVIA - documento sem validade: a proposta ainda não foi gerada";
+    if (dados.previa || dados.simulacao) {
+      const aviso = dados.simulacao
+        ? "SIMULAÇÃO DE PAGAMENTO - não é proposta e não reserva o lote"
+        : "PRÉVIA - documento sem validade: a proposta ainda não foi gerada";
       const tamanho = 7.4;
       const largura = bold.widthOfTextAtSize(seguro(aviso), tamanho);
       pagina.drawRectangle({

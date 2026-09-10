@@ -19,6 +19,11 @@ const nextConfig: NextConfig = {
     // CDN e NAO vai sozinho para o filesystem da funcao: sem esta linha o arquivo existe no
     // ambiente de quem desenvolveu e some em producao, e a folha sai sem a marca.
     "/api/incorporador/venda/proposta": ["./public/c2x-logo.png"],
+    // ⚠️ O ESPELHO PUBLICO IMPRIME A MESMA FOLHA, E POR ISSO PRECISA DA MESMA LINHA. O
+    // `outputFileTracingIncludes` e POR ROTA: a rota da simulacao importa o mesmo
+    // `montarPropostaPdf`, mas sobe como outra funcao — sem esta entrada a marca do C2X existe na
+    // maquina de quem desenvolveu e some em producao, e o PDF do cliente sai sem ela.
+    "/api/publico/espelho/simulacao": ["./public/c2x-logo.png"],
     // O Chromium do contrato. Os `.br` (chromium, fontes, swiftshader, libs do Amazon Linux) são
     // abertos por caminho montado em tempo de execução, então o rastreador não os enxerga: ele
     // segue import, não `join(dirname(...), "..", "bin")`. Sem esta linha a função sobe com o

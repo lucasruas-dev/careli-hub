@@ -46,9 +46,16 @@ export type DadosDaFolha = {
     /** O telefone que o comprador liga se tiver dúvida. */
     telefone: null | string;
   };
-  /** `000123` — o COD da venda, o mesmo desde a reserva. */
+  /** `000123` — o COD da venda, o mesmo desde a reserva. Ignorado quando `simulacao`. */
   codigo: string;
   compradores: CompradorDaFolha[];
+  /**
+   * A folha é uma SIMULAÇÃO de pagamento, e não uma proposta.
+   *
+   * Muda o título, o topo (sem COD), a seção de compradores, a observação final e a tarja — ver
+   * `simulacao` em `proposta-pdf.ts`, que é quem desenha.
+   */
+  simulacao?: boolean;
   cronograma: Cronograma;
   diaDeVencimento: number;
   /**
@@ -289,7 +296,9 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
   // Escrever "reajusta todo ano" num plano SEM_CORRECAO e sem degrau prometeria ao comprador um
   // aumento que o contrato dele não tem, e ele leria isso como pegadinha.
   const temDegrau = cronograma.reajustes.length > 1;
-  if (temDegrau || temCorrecao) {
+  // A observação acompanha a TABELA: sem ela no papel, explicar o reajuste em prosa deixaria o
+  // leitor procurando uma seção que não existe.
+  if (!dados.simulacao && (temDegrau || temCorrecao)) {
     const sobreOsJuros = taxa
       ? ` Os valores da tabela acima consideram apenas os juros de ${taxa} previstos em contrato;`
       : " Os valores da tabela acima não embutem correção;";
@@ -308,10 +317,15 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
   // prometido um prazo. Escrever "valem até " com o espaço vazio no fim seria pior do que não
   // escrever: o comprador leria como defeito do documento.
   observacoes.push({
-    texto: valeAte
-      ? `Os valores acima valem até ${valeAte} e estão sujeitos à confirmação de disponibilidade da unidade e à aprovação de crédito.`
-      : "Os valores acima estão sujeitos à confirmação de disponibilidade da unidade e à aprovação de crédito.",
-    titulo: "Sobre esta proposta.",
+    // ⚠️ NA SIMULAÇÃO A FRASE MUDA DE SENTIDO, e não só de palavra. A proposta diz que os valores
+    // dependem de confirmação; a simulação precisa dizer, antes disso, que não é proposta e não
+    // segura o lote — é a diferença entre "vai confirmar" e "ainda não existe".
+    texto: dados.simulacao
+      ? "Esta é uma simulação de pagamento: não constitui proposta, não reserva a unidade e não vincula as partes. Os valores seguem a tabela vigente e podem mudar."
+      : valeAte
+        ? `Os valores acima valem até ${valeAte} e estão sujeitos à confirmação de disponibilidade da unidade e à aprovação de crédito.`
+        : "Os valores acima estão sujeitos à confirmação de disponibilidade da unidade e à aprovação de crédito.",
+    titulo: dados.simulacao ? "Sobre esta simulação." : "Sobre esta proposta.",
   });
 
   const local = [dados.unidade.cidade, dados.unidade.uf].filter(Boolean).join(", ");
@@ -350,6 +364,8 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
       temIpca: faixa.temIpca,
       valor: reais(faixa.valor),
     })),
+    // A bandeira segue para o desenhista: é ele que decide título, topo, compradores e tarja.
+    simulacao: dados.simulacao ?? false,
     temReajuste: temDegrau || temCorrecao,
     subtitulo,
     unidade: dados.unidade.nome,

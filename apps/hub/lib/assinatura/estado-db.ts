@@ -112,6 +112,16 @@ async function acharEnvelope(
   const tentativas: Array<[string, string]> = [];
   if (evento.documentoId) tentativas.push(["provedor_documento_id", evento.documentoId]);
   if (evento.envelopeId) tentativas.push(["envelope_id", evento.envelopeId]);
+  // ⚠️ O `metadata` É A REDE DE SEGURANÇA, e ele é NOSSO: foi o Panteon que o gravou no documento
+  // no momento do envio, e a Clicksign o devolve inteiro no webhook (conferido no primeiro evento
+  // real, 09/09/2026 — voltaram `proposta_id`, `documento_id`, `unidade`, `comprador` e `teste`).
+  //
+  // ⚠️ E ELE VEM POR ÚLTIMO DE PROPÓSITO. O id do provedor é mais específico: identifica ESTE
+  // envelope. A proposta pode ter mais de um envelope ao longo da vida (um recusado e um reenviado),
+  // e aí a busca por proposta pegaria o mais recente — que é o certo quando não há id nenhum, e o
+  // errado quando há. Primeiro o preciso, depois o que salva.
+  const propostaDoMetadata = String(evento.metadados?.proposta_id ?? "").trim();
+  if (propostaDoMetadata) tentativas.push(["proposta_id", propostaDoMetadata]);
 
   for (const [coluna, valor] of tentativas) {
     const { data, error } = await sb

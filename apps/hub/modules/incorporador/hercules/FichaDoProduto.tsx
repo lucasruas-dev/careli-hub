@@ -1,12 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowLeft, ContactRound, Grid2x2, Layers, Network } from "lucide-react";
+import { useCallback, useState } from "react";
+import {
+  ArrowLeft,
+  ContactRound,
+  Grid2x2,
+  Layers,
+  // Alias pelo mesmo motivo da view do Apolo: `Link` sombrearia o do next/link.
+  Link2 as LinkIcon,
+  Network,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import type { ApoloEnterpriseRow } from "@/lib/apolo/empreendimentos";
 import type { LinhaDoPainel } from "@/lib/apolo/incorporador/painel-de-produtos";
+import type { LinkPublico } from "@/lib/hercules/links-do-empreendimento";
 import { toTitleCase } from "@/lib/format/name-case";
+import { LinksTab } from "@/modules/apolo/blocks/empreendimentos/links-tab";
 import {
   KpiCard,
   bucketText,
@@ -70,7 +80,14 @@ import { UnidadesDoProduto } from "./UnidadesDoProduto";
 //     mesmo Board da Têmis com o mesmo recorte — e agora com filtro por empreendimento, que é o
 //     que a aba da ficha entregava a mais.
 /** As abas da ficha. O Resumo salta para as outras três pelo `onIr`. */
-export type AbaDaFicha = "cadastro" | "imobiliarias" | "resumo" | "unidades";
+export type AbaDaFicha =
+  | "cadastro"
+  | "imobiliarias"
+  // Os tres links publicos do produto. Lucas (10/09/2026): *"no perfil da gurgel vai ficar
+  // dentro de produtos, dentro do empreendimento"* — a ficha, e nao o menu do portal.
+  | "links"
+  | "resumo"
+  | "unidades";
 
 // Ícones na régua do Apolo: Resumo e Cadastro são os MESMOS da ficha interna (Layers e
 // ContactRound); Imobiliárias usa o de Relacionamentos (Network), que é o que elas são para o
@@ -80,6 +97,8 @@ const ABAS: ReadonlyArray<{ icone: LucideIcon; id: AbaDaFicha; rotulo: string }>
   { icone: ContactRound, id: "cadastro", rotulo: "Cadastro" },
   { icone: Network, id: "imobiliarias", rotulo: "Imobiliárias" },
   { icone: Grid2x2, id: "unidades", rotulo: "Unidades" },
+  // Links fecha a fila, como no Apolo: e o produto visto POR FORA.
+  { icone: LinkIcon, id: "links", rotulo: "Links" },
 ];
 
 export function FichaDoProduto({
@@ -95,6 +114,23 @@ export function FichaDoProduto({
 }) {
   // Abre no Resumo, como a ficha do Apolo.
   const [aba, setAba] = useState<AbaDaFicha>("resumo");
+
+  // A porta do PORTAL. Sem Authorization: o proxy libera /api/incorporador/* pelo cookie
+  // `apolo_inc`, e a rota recorta pelo escopo do token — `emp` so REDUZ o que a sessao ja tem.
+  // `useCallback` porque a LinksTab a usa como dependencia de efeito.
+  const buscarLinks = useCallback(async () => {
+    const resposta = await fetch(
+      `/api/incorporador/produto/links?emp=${encodeURIComponent(linha.id)}`,
+    );
+    const corpo = (await resposta.json().catch(() => ({}))) as {
+      data?: { doPai: boolean; links: LinkPublico[] };
+      error?: string;
+    };
+    if (!resposta.ok || !corpo.data) {
+      throw new Error(corpo.error ?? "Nao consegui carregar os links.");
+    }
+    return corpo.data;
+  }, [linha.id]);
   // O tema efetivo (já resolvido o "seguir o aparelho") vira o atributo que os `dark:` leem.
   const { efetivo } = useTemaDoPortal();
 
@@ -182,6 +218,7 @@ export function FichaDoProduto({
         {/* A tabela de unidades do Apolo, montada pela porta do portal. É a MESMA peça que morava
             dentro da Vendas — só perdeu as sub-abas em volta. */}
         {aba === "unidades" ? <UnidadesDoProduto emp={linha.id} row={row} /> : null}
+        {aba === "links" ? <LinksTab buscar={buscarLinks} /> : null}
       </section>
     </div>
   );

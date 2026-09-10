@@ -158,6 +158,7 @@ export function SimuladorDeProposta({
   planos,
   unidade,
   valorDaUnidade,
+  vocabulario = "proposta",
 }: {
   /**
    * Quem vai GERAR a proposta com o que está na tela.
@@ -199,7 +200,19 @@ export function SimuladorDeProposta({
   /** "12 06" — o lote, como a tela escreve. */
   unidade: string;
   valorDaUnidade: number;
+  /**
+   * Como a tela CHAMA o que está sendo montado.
+   *
+   * ⚠️ MUDA SÓ PALAVRA, NUNCA CONTA. O espelho público usa este mesmo simulador — a conta tem de
+   * ser a mesma, senão a parcela do site não bate com a que o corretor apresenta —, mas lá a
+   * palavra "proposta" não pode aparecer: proposta é o documento que nasce na Mesa de Venda, tem
+   * validade, protocolo e vincula a casa. Lucas (10/09/2026): *"não é proposta mas sim uma
+   * simulação de pagamento"* · *"é usar o mesmo gerador de proposta e tratar as nomenclaturas"*.
+   * O default mantém a Mesa de Venda exatamente como está.
+   */
+  vocabulario?: "proposta" | "simulacao";
 }) {
+  const ehSimulacao = vocabulario === "simulacao";
   const [comando, setComando] = useState<Comando>("condicoes");
   /**
    * Os valores de cada parcela da entrada, quando o coordenador montou à mão.
@@ -632,6 +645,7 @@ export function SimuladorDeProposta({
             aoMudarAjuste={setAjuste}
             preco={preco}
             rotulo={`Lote ${unidade}`}
+            rotuloDoValor={ehSimulacao ? "Valor simulado" : "Proposta"}
           />
         </Bloco>
 
@@ -825,7 +839,12 @@ export function SimuladorDeProposta({
             Lucas (04/09/2026): *"com a data da primeira parcela da entrada as demais segue na data
             que ele escolheu e de acordo com o parcelamento"*. Quem espalha essa data pelo
             calendário é `montarCronograma`; aqui só se escolhe o ponto de partida. */}
-        {aoMudarCondicoes ? (
+        {/* ⚠️ NO MODO SIMULAÇÃO A COBRANÇA NÃO APARECE, mesmo com `aoMudarCondicoes` presente.
+            O espelho público precisa da prop para saber o que está na tela (é o que vai no PDF),
+            mas dia de vencimento e data da primeira parcela são de PROPOSTA — Lucas (10/09/2026):
+            *"tira essa coisa de vencimento (...) como é um simulador"*. Antes as duas coisas
+            andavam juntas na mesma condição, e escutar a tela obrigava a mostrar o vencimento. */}
+        {aoMudarCondicoes && !ehSimulacao ? (
           <Bloco
             titulo="Cobrança"
           >
@@ -1085,7 +1104,9 @@ export function SimuladorDeProposta({
               >
                 {principal.origem === "composicao"
                   ? "Recomendada · menor entrada"
-                  : "Proposta montada"}
+                  : ehSimulacao
+                    ? "Simulação montada"
+                    : "Proposta montada"}
               </span>
               <span style={{ color: T.muted, fontSize: 11.5 }}>Plano {principal.plano}</span>
             </div>
@@ -1194,7 +1215,7 @@ export function SimuladorDeProposta({
             ⚠️ `aoMudarCondicoes` É O SINAL, e não uma prop nova: ela já é a única diferença entre
             os dois usos (ausente = simulador da ficha; presente = modal de proposta). Um segundo
             interruptor para a mesma distinção daria dois lugares para eles discordarem. */}
-        {!aoMudarCondicoes && alternativas.length > 0 ? (
+        {(!aoMudarCondicoes || ehSimulacao) && alternativas.length > 0 ? (
           <div>
             <div style={{ ...rotuloDeSecao, marginBottom: 8 }}>
               Outras composições com {dinheiro(parcelaDeReferencia)} por mês
@@ -1245,7 +1266,9 @@ export function SimuladorDeProposta({
         <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
           {aoMudarCondicoes
             ? "Estas são as condições que vão para a proposta. Conta feita com os planos cadastrados do empreendimento."
-            : "Simulação livre: nada aqui vincula a unidade nem gera proposta. Conta feita nesta tela, com os planos cadastrados do empreendimento."}
+            : ehSimulacao
+              ? "Simulação de pagamento com os planos cadastrados do empreendimento. Os valores e o prazo são confirmados com o corretor."
+              : "Simulação livre: nada aqui vincula a unidade nem gera proposta. Conta feita nesta tela, com os planos cadastrados do empreendimento."}
         </p>
       </div>
     </div>
@@ -1699,11 +1722,14 @@ function CampoDoLote({
   aoMudarAjuste,
   preco,
   rotulo,
+  rotuloDoValor,
 }: {
   ajuste: AjusteDePreco;
   aoMudarAjuste: (a: AjusteDePreco) => void;
   preco: ReturnType<typeof aplicarAjuste>;
   rotulo: string;
+  /** "Proposta" na Mesa de Venda; "Valor simulado" no espelho público. */
+  rotuloDoValor: string;
 }) {
   const [texto, setTexto] = useState("");
   // ⚠️ O SENTIDO É UM BOTÃO, NÃO UM SINAL DIGITADO. Na primeira versão o desconto exigia escrever
@@ -1886,7 +1912,9 @@ function CampoDoLote({
           </span>
         ) : null}
         <span style={{ alignItems: "baseline", display: "flex", justifyContent: "space-between" }}>
-          <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>Proposta</span>
+          <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>
+            {rotuloDoValor}
+          </span>
           <span style={{ fontSize: 17, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>
             {dinheiroExato(preco.valor)}
           </span>

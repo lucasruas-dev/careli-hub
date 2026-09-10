@@ -91,6 +91,18 @@ const PUBLIC_API_PREFIXES = [
   // validado DENTRO da rota. A resposta e' so' situacao por lote — nenhum comprador, nenhum
   // valor (licao do Garden). Liberada UMA A UMA, como as de cima.
   "/api/publico/prometeu/masterplan",
+  // ESPELHO PUBLICO do empreendimento: o mapa de lotes que o corretor manda para o cliente, por
+  // link sem login. As TRES rotas (arte, geometria, situacao) validam o token HS256 do link
+  // DENTRO delas (lib/hercules/link-do-espelho.ts), e o token tem discriminante proprio — um
+  // token do telao acima NAO abre espelho, e vice-versa, mesmo compartilhando o segredo.
+  //
+  // ⚠️ LIBERADO COMO PREFIXO, e aqui isso e' seguro por construcao: `/api/publico/espelho` so tem
+  // essas tres rotas, todas de leitura e todas com o mesmo gate. Rota nova criada abaixo deste
+  // caminho nasce PUBLICA — quem acrescentar uma tem de querer isso.
+  //
+  // A resposta traz situacao em duas cores, preco de tabela e area. Nunca comprador, corretor,
+  // imobiliaria, desconto ou etapa (licao do Garden, onde nome e preco sairam juntos).
+  "/api/publico/espelho",
   // Webhook do Asaas (pre-venda): maquina-a-maquina, valida por token proprio (asaas-access-token).
   "/api/publico/asaas",
   // Webhook da Clicksign (assinatura de contrato): maquina-a-maquina, sem sessao por desenho — a

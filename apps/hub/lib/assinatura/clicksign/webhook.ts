@@ -197,9 +197,24 @@ export function lerEventoDoWebhook(corpoCru: string): EventoDaClicksign {
   const signatario = primeiroObjeto(raiz.signer, evento.signer, dados.signer);
 
   return {
+    // ⚠️ `key` VEM ANTES DE `id`, E É ASSIM QUE A CLICKSIGN MANDA DE VERDADE. Medido no primeiro
+    // webhook real (09/09/2026, evento `signature_started`): o corpo traz
+    // `document: { key: "efef17a1-…", path: "/[TESTE] Contrato…", status: "running" }` — `key`, e
+    // não `id`. Procurando só por `id`, o parser devolvia null nos dois campos, `acharEnvelope`
+    // montava uma lista de tentativas VAZIA e o contrato não andava. E calado: a rota responde 200,
+    // então a Clicksign não reenvia.
     documentoId:
-      texto(documento.id) || texto(evento.document_id) || texto(raiz.document_id) || null,
-    envelopeId: texto(envelope.id) || texto(evento.envelope_id) || texto(raiz.envelope_id) || null,
+      texto(documento.key) ||
+      texto(documento.id) ||
+      texto(evento.document_id) ||
+      texto(raiz.document_id) ||
+      null,
+    envelopeId:
+      texto(envelope.key) ||
+      texto(envelope.id) ||
+      texto(evento.envelope_id) ||
+      texto(raiz.envelope_id) ||
+      null,
     // ⚠️ `event.name` VEM PRIMEIRO, e a ordem importa: no formato do envelope da v3 a raiz também
     // tem um `type` (o tipo do RECURSO em JSON:API, tipicamente "envelopes"), que não é o nome do
     // evento. Ler `type` antes faria todo evento ser traduzido como desconhecido.

@@ -123,11 +123,20 @@ export function AuthProvider({
   // /evento: se cair no redirect para /login, o cliente vê a tela do Panteon em vez da porta com a
   // marca dele. Quem valida a sessão é o servidor, pelo cookie assinado, dentro de cada rota.
   const isIncorporadorRoute = pathname?.startsWith("/incorporador") ?? false;
+  // ESPELHO PUBLICO no endereco curto: `/e/vale-do-ouro-3f9c2a7b`. Fica FORA de /publico/ porque
+  // o link e' feito para caber num WhatsApp e ser lido em voz alta (Lucas, 10/09/2026: *"o url
+  // tem que ser mais personalizada, esta longa"*). Quem autoriza e' o selo de 8 caracteres no fim
+  // do endereco — assinatura HS256 conferida DENTRO da pagina, que responde 404 quando nao bate.
+  // Nenhum dado do hub sai por aqui: a pagina le' cadastro de unidade e devolve situacao, preco
+  // de tabela e area.
+  const isEspelhoCurtoRoute =
+    pathname === "/e" || (pathname?.startsWith("/e/") ?? false);
   const isAuthBypassRoute =
     isLoginRoute ||
     isPublicChronosRoute ||
     isPublicPageRoute ||
     isEventoRoute ||
+    isEspelhoCurtoRoute ||
     isIncorporadorRoute;
   const hubUser = useMemo(
     () =>

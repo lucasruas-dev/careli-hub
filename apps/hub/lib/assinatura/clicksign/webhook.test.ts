@@ -210,6 +210,41 @@ describe("a leitura do evento", () => {
     expect(lido.documentoId).toBe("da_raiz");
   });
 
+  // ⚠️ ESTE É O FORMATO REAL, copiado do PRIMEIRO WEBHOOK que a Clicksign mandou de verdade
+  // (09/09/2026, 19:26:32 — o Lucas abrindo o contrato). Ele derrubou duas suposições nossas: o id
+  // vem em `document.key`, não em `document.id`, e não há objeto `envelope` nenhum no corpo. Com o
+  // parser procurando só por `id`, os dois campos voltavam null e o contrato não andava — calado,
+  // porque a rota responde 200 e a Clicksign não reenvia.
+  it("lê o formato REAL da Clicksign: `document.key` e o metadata nosso", () => {
+    const lido = lerEventoDoWebhook(
+      JSON.stringify({
+        document: {
+          key: "efef17a1-1de2-4d9f-9d69-6a7b8bb7e403",
+          metadata: {
+            comprador: "Henrique Sales do Vale",
+            origem: "panteon",
+            proposta_id: "641f22ac-6c4a-4133-afec-49fa7b7e1765",
+            teste: "true",
+            unidade: "TST0105",
+          },
+          path: "/[TESTE] Contrato - TST - TST0105 - Henrique Sales do Vale/Contrato.pdf",
+          status: "running",
+        },
+        event: {
+          data: { signer: { email: "lucas.ruas@careli.adm.br", key: "2b8c002f" } },
+          name: "signature_started",
+          occurred_at: "2026-09-09T16:26:31.790-03:00",
+        },
+      }),
+    );
+
+    expect(lido.evento).toBe("signature_started");
+    expect(lido.documentoId).toBe("efef17a1-1de2-4d9f-9d69-6a7b8bb7e403");
+    // O elo com a proposta volta inteiro — é ele que acha o envelope quando o id não casa.
+    expect(lido.metadados.proposta_id).toBe("641f22ac-6c4a-4133-afec-49fa7b7e1765");
+    expect(lido.metadados.teste).toBe("true");
+  });
+
   it("acha o envelope aninhado em data.envelope", () => {
     const lido = lerEventoDoWebhook(
       JSON.stringify({ data: { envelope: { id: "env_5" } }, event: { name: "auto_close" } }),

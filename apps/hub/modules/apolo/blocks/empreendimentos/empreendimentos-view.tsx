@@ -6,14 +6,16 @@ import {
   hasHubSupabaseConfig,
 } from "@/lib/supabase/client";
 import { AdicionarUnidades } from "@/modules/apolo/blocks/empreendimentos/adicionar-unidades";
+import { LinksTab } from "@/modules/apolo/blocks/empreendimentos/links-tab";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
 import { OrdemDeAssinaturaCard } from "@/modules/apolo/blocks/empreendimentos/ordem-de-assinatura-card";
 import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 import { PoliticaComercialTab } from "@/modules/apolo/blocks/empreendimentos/politica-comercial-tab";
-import { useEffect, useRef, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { CLASSES_DO_SELO, situacaoConhecida } from "@/lib/hercules/cores-de-situacao";
+import type { LinkPublico } from "@/lib/hercules/links-do-empreendimento";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -30,6 +32,9 @@ import {
   ImagePlus,
   LandPlot,
   Layers,
+  // Mesmo motivo do `Map as MapIcon` logo abaixo: `Link` sombrearia o `Link` do next/link se ele
+  // algum dia entrar neste arquivo.
+  Link2 as LinkIcon,
   Loader2,
   // Alias pra não sombrear o `Map` global neste arquivo de 4 mil linhas (convenção já usada
   // em squadops/address-catalog).
@@ -168,6 +173,10 @@ const detailTabs = [
   // Minutas fica ao lado de Planos porque as duas contam a mesma história: o plano decide QUAL
   // minuta a venda usa, e a minuta é o texto que o comprador assina.
   { icon: FileSignature, id: "minutas", label: "Minutas" },
+  // Links fica no fim, junto do Setup: as duas são sobre o produto POR FORA — o que se configura
+  // e o que se divulga. O espelho é o mapa, mas o link não é o mapa: a aba Mapa é para trabalhar,
+  // a aba Links é para mandar no WhatsApp.
+  { icon: LinkIcon, id: "links", label: "Links" },
   { icon: Settings, id: "setup", label: "Setup" },
 ] as const;
 
@@ -522,6 +531,28 @@ function EnterpriseDetail({
 }) {
   const setTab = onTabChange;
 
+  // A porta do APOLO para os links públicos. `useCallback` porque a LinksTab a tem como
+  // dependência do efeito: uma função nova a cada render refaria o fetch em laço.
+  //
+  // ⚠️ MANDA `row.codes`, E NÃO `row.code`. No produto consolidado o `code` é rótulo ("LBF + LBR
+  // + LBP") e não chave; é pelos códigos reais que se chega ao cadastro e, dele, ao pai dono do
+  // masterplan. É a mesma distinção que a aba de categorias documenta.
+  const buscarLinks = useCallback(async () => {
+    const token = await getApoloAccessToken();
+    const resposta = await fetch(
+      `/api/apolo/empreendimentos/links?codes=${encodeURIComponent(row.codes.join(","))}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const corpo = (await resposta.json().catch(() => ({}))) as {
+      data?: { doPai: boolean; links: LinkPublico[] };
+      error?: string;
+    };
+    if (!resposta.ok || !corpo.data) {
+      throw new Error(corpo.error ?? "Não consegui carregar os links.");
+    }
+    return corpo.data;
+  }, [row.codes]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <header className="flex shrink-0 items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5">
@@ -636,6 +667,7 @@ function EnterpriseDetail({
         {tab === "minutas" ? (
           <MinutasTab enterpriseId={row.id} name={row.name} />
         ) : null}
+        {tab === "links" ? <LinksTab buscar={buscarLinks} /> : null}
         {/* ⚠️ O SETUP TEM DOIS BLOCOS AGORA, e a ordem entre eles não é acaso: o credenciamento é a
             configuração da ENTRADA (quem manda CAD, o que a esteira exige) e a ordem de assinatura
             é a da SAÍDA (como o contrato sai para assinar). Quem configura um empreendimento novo

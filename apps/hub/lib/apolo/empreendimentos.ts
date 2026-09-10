@@ -49,6 +49,9 @@ export type ApoloEnterpriseTab =
   | "carteira"
   // As etapas do produto consolidado, com as unidades de cada uma. Só existe no agrupado.
   | "filhos"
+  // Os três links públicos do produto (espelho, CAD, imobiliária), prontos para copiar. Dois
+  // deles são links da CASA e não deste empreendimento — a aba diz isso na tela.
+  | "links"
   | "mapa"
   // Planos de pagamento do Temis. Fica separada de "politica" de propósito: a política é o acordo
   // com o incorporador (comissão, gestão de carteira) e vem do C2X; o plano é o que o CLIENTE
