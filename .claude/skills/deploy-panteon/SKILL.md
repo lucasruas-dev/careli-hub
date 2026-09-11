@@ -44,6 +44,12 @@ inofensivo). A remoção definitiva é manual, no painel Settings → Domains. N
    O campo `rollback` da entrada de changelog guarda esse commit.
 8. **Registrar:** `docs/operations/releases-production.md` (commit publicado, healthcheck, rollback)
    e um resumo curto em `docs/operations/engineering-operations.md`.
+9. ⚠️ **Atualizar o ROADMAP** — `apps/hub/lib/roadmap/roadmap.ts`. Todo item que subiu vira
+   `situacao: "entregue"` com `entregueEm` na data do deploy, e a `FRENTE_ATUAL` passa para o que
+   vem em seguida. Lucas (11/09/2026) pediu a tela "conectada a ti, quando entregarmos algo, tem
+   que ser atualizado" — e o único jeito de isso ser verdade é o passo morar aqui, no procedimento
+   do deploy, e não na lembrança de quem está com pressa. A tela do Zeus lê esse arquivo; item que
+   subiu e continua marcado como pendente faz a tela mentir para quem se orienta por ela.
 
 ## ⚠️ O changelog é obrigatório
 
