@@ -2,8 +2,11 @@
 
 > ⚠️ **ISTO É RASCUNHO, E FOI MONTADO PELO SISTEMA A PARTIR DO QUE O REPO JÁ SABE** — código,
 > comentários, migrations, diário de operações e memória. Cada afirmação traz a fonte entre
-> parênteses. Nada aqui foi confirmado pelo Lucas ainda; o que não deu para determinar está na
-> última seção, como pergunta.
+> parênteses.
+>
+> ⚠️ **EM 11/09/2026 O LUCAS RESPONDEU AS 58 PERGUNTAS**, e as respostas estão na última
+> seção — que **vence este corpo** onde os dois discordarem. O corpo é dedução do código;
+> a última seção é a palavra de quem decide.
 >
 > **Por que este documento existe.** O código desta casa registra bem as DECISÕES (os comentários
 > dizem o porquê), mas não registra o NEGÓCIO: quem é quem, quem paga a quem, o que acontece com o
@@ -239,8 +242,257 @@
 
 ---
 
-## O que falta confirmar
+---
 
-As perguntas em aberto moram em [`dominio-perguntas.md`](dominio-perguntas.md), com espaço para resposta. Cada resposta do Lucas volta para o corpo deste documento, com a data, e sai de lá.
+## O que o Lucas respondeu — 11/09/2026
 
-⚠️ Uma lista só: duas cópias das mesmas perguntas viram duas verdades no dia em que uma for respondida e a outra não.
+⚠️ **ESTA SEÇÃO TEM PRECEDÊNCIA SOBRE TODO O RESTO DO DOCUMENTO.** O que está acima foi
+deduzido do código; o que está aqui veio de quem decide. Onde os dois discordarem, vale este,
+e a divergência é um defeito a corrigir no código — não uma dúvida.
+
+As respostas estão **literais**, como ele escreveu. Parafrasear perderia o que só ele podia dizer.
+
+
+### Ciclo da venda
+
+**P01 · FATURADO significa exatamente "7 dias de arrependimento cumpridos + entrada paga", e mais nada? Em especial: precisa também que os boletos das mensais já estejam emitidos, ou o faturamento é anterior a isso?**
+
+> Exatamente isso que é o estagio de faturado - 7 dias de prazo de desistencia por parte dos compradores (começa a contar a partir da assinatura deles ou dele) mais a entrada paga. se for parcelado, a primeira parcela.
+
+**P02 · Se o comprador NÃO paga a entrada dentro do prazo, o que acontece com o card: cancelamento automático, distrato, ou fica parado em Prazo legal esperando decisão humana? E quantos dias de tolerância?**
+
+> Acho que podemos trocar o nome para Pré-faturamento pois assim fazemos a gestão disso, pois o cliente pode pagar a entrada e não assinar, pode assinar e não pagar, enquanto não tiver essas duas condições feitas fica parado no pré faturamento.
+
+**P23 · Prazo da RESERVA: qual é o número da casa? Hoje a tela oferece 1/2/3/5/7 dias com padrão 3 e teto de 30, mas isso foi escolha do agente, não regra sua. É um número único para todos os empreendimentos ou é combinado por empreendimento (e, nesse caso, vira campo na Política Comercial)?**
+
+> Então, nesse primeiro momento quero que o coordenador faça essa gestão de tempo de reserva, por isso não vamos determinar um prazo, vamos deixar o coordenador decidir.
+
+**P24 · Validade da PROPOSTA: 7 dias é o certo? Os atalhos hoje são 3/5/7/10 com padrão 7, também escolhidos pelo agente.**
+
+> Então, nesse primeiro momento quero que o coordenador faça essa gestão de tempo de proposta, por isso não vamos determinar um prazo, vamos deixar o coordenador decidir.
+
+**P25 · Quando a reserva vence sem virar proposta, o lote volta para disponível AUTOMATICAMENTE, ou alguém precisa clicar em cancelar? Hoje não existe nenhuma rotina que expire reserva sozinha.**
+
+> Por enquanto não teremos nenhuma ação apos vencimento, vamos deixar o coordenador decidir se ele mantem em reserva ou se derruba a reserva, ou proposta.
+
+**P26 · O proponente adicional (cônjuge, sócio) também precisa de CAD credenciada própria naquele empreendimento, ou basta a CAD do TITULAR? Hoje o sistema exige só a do titular.**
+
+> Todos os proponentes precisam ter cads credenciadas para aquele empreendimento. Conjuge não é proponente, ele faz parte da CAD do titular.
+
+**P27 · O desconto sobre a tabela tem ALÇADA? Por exemplo: acima de X% ou de X reais o coordenador não fecha sozinho e precisa de aprovação? Hoje a proposta congela o desconto (0151) mas nada o limita.**
+
+> Mais pra frente vamos criar essas alçadas comerciais, hoje vamos deixa sem essas travas.
+
+**P28 · O C2X tem DOIS estágios distintos, 4 Faturado e 6 Finalizado. O Panteon deve ter só "Faturado", ou precisa dos dois (por exemplo, Faturado = entrada paga e Finalizado = contrato registrado/arquivado)?**
+
+> Podemos trabalhar somente com Fatrurado.
+
+**P29 · Os 7 dias contam da última assinatura do comprador na Clicksign. E quando alguém assina FORA da Clicksign (papel, cartório, contrato antigo): a contagem passa a valer de que data, e quem carimba?**
+
+> Caso venha acontecer essa assinatura fisica, vai contar a partir do momento que foi assinado, contudo, nunca tivemos nenhuma situação de assinatura fisica, se um dia acontecer vamos criar uma forma de apontar assinatura ou pagamento manualmente.
+
+**P30 · A TAXA DE CESSÃO é valor fixo ou percentual? É a mesma para todos os empreendimentos, ou vira cadastro por empreendimento (como a entrada mínima virou na 0128)?**
+
+> %, cada empreendimento vai ter um valor especifico
+
+**P31 · Venda que nasce no Panteon não chega ao C2X, então a etapa Prazo legal não enxerga o pagamento da entrada dela. Enquanto o financeiro não migra, o time vai lançar essa entrada à mão no C2X para a Têmis ler, ou a Têmis precisa de um registro de pagamento próprio no Panteon?**
+
+> Então, a temis vai ter que enxergar a parte financeira que temos hoje no Panteon, ou seja, a unica coisa que estamos ainda com sync é a parte financeira, por exemplo a carteira de cada cliente é alimentada por esse sync, por isso que a temis para conseguir saber se foi pago ou não, quando atualizarmos essas parcelas dentro do panteon esse deve alimentar todas as frentes que precisam dessa informação.
+
+**P32 · A reserva pode nascer sem CORRETOR, só no nome da imobiliária, e o sistema aceita isso hoje. Isso é o desejado, ou toda reserva deveria ter um corretor nomeado (para efeito de comissão e de cobrança de andamento)?**
+
+> Não pode, temos que ter pelo menos 1 corretor cadastrado para imobiliaria, se a mesma não fizer o cadastro dos corretores, o sistema automaticamente aponta o representante legal como corretor.
+
+
+### Desfazer a venda
+
+**P03 · RETENÇÃO NO DISTRATO: o percentual é fixo por empreendimento (entraria como um campo em `apolo_enterprise_settings`, ao lado da taxa de cessão), ou varia por contrato conforme a cláusula da minuta que o cliente assinou? Hoje o sistema não calcula nada — é conta à mão.**
+
+> o ideal seria a gente apontar as % do distrato - cessão dentro das politicas. assim fica facil de personalizar ou padronizar.
+
+**P04 · A base da retenção é o total pago pelo cliente incluindo o ato/sinal, ou o ato fica retido integralmente e a retenção percentual incide só sobre as parcelas?**
+
+> temos que fazer esse calculo, basicamente o contrato fala exatamente o que acontece em casso de distrato. O ato nada mais é que um valor que é pago de forma antecipada. ou seja, é a formalização monetaria daquela compra. Normalmente usamos o ato em cenario de prévenda e lançamento pois nesses dois cenarios o cliente ainda vai ter que escolhar a unidade que quer comprar, esperar toda burocracia contratual. fazemos esse compromisso monetario só para validar o interesse do cliente em adquirir uma unidade. o que temos de verdade é a entrada e o funcionamento.  o ato faz parte do valor de entreda.
+
+**P05 · CESSÃO — a taxa de cessão fica com a Careli ou é repassada ao loteador? Isso muda se ela entra no cálculo do líquido do loteador.**
+
+> Vamos ter que ter essa configuração personalizada por empreendimento pai. ou seja, vamos apontar qual a % fica com a careli e qual fica com o incorporador.
+
+**P33 · A devolução ao cliente sai em parcela única ou parcelada? (O texto de exemplo do assistente de minutas fala em "até 12 parcelas", mas isso é ilustração de cláusula, não regra configurada — preciso saber se o número real é esse.)**
+
+> Vai de negociação, podemos ter o pagamento unico, ou parcelado. isso pode ser registrado na hora que eu estiver fazendo o acordo de distrato
+
+**P34 · DESISTÊNCIA DENTRO DOS 7 DIAS DE ARREPENDIMENTO: hoje a regra classificaria como distrato com devolução se o cliente já tiver pago qualquer coisa. Nesse caso a devolução é de 100% sem retenção, e isso deveria ser um quinto caso na classificação — ou o jurídico trata pela apuração manual mesmo?**
+
+> isso ae, dentro desse prazo o valor já pago é integralmente devolvido, apos esse prazo ae pode ser 100 ou somente os valores previstos em contrato
+
+**P35 · O cancelamento por desistência não passa por assinatura, mas gera um "termo de cancelamento". Esse termo é só arquivado internamente, ou o cliente precisa receber uma via (mesmo sem assinar)?**
+
+> os dois, vamos arquivar nos documentos do cliente e o cliente receberá um copia desse termo.
+
+**P36 · CANCELAMENTO POR CORREÇÃO: quem pode abrir — só o jurídico ao perceber o erro na conferência, ou o coordenador também pode pedir pela tela Venda quando descobre que o contrato saiu com dado errado?**
+
+> Todos podem abrir, coordenador, atendente, eu , qualquer pessoa pode abrir. a diferença que para o coordenador não vamos solicitar a evidência que está gerando essa ação (uma solicitação do corretor, do cliente, normalmente usamos prints de atendimento, audio de ligação)
+
+**P37 · No cancelamento por correção, o contrato original é encerrado e um novo é emitido (como na cessão), ou o mesmo contrato é regerado e reenviado para assinatura mantendo a mesma numeração/código?**
+
+> eu preciso cancelar ele na plataforma de assinatura e enviar o que foi corrigido para assinatura, então eu acho que sim, ele deve ser cancelado
+
+**P38 · CESSÃO — "nas mesmas condições" mantém o preço original do cedente inclusive os reajustes já aplicados, ou o contrato do cessionário nasce com o saldo a valor de hoje?**
+
+> nasce na mesma condição, é praticamente trocar o nome do proponente, tanto a parte comercial quanto as obrigações financeiras e juridicas, permanece a mesma coisa sem nenhuma alteração
+
+**P39 · CESSÃO — o cedente fica desobrigado de tudo ao assinar o termo, ou permanece como devedor solidário de alguma parte?**
+
+> Extamente, ao assinar ele não mais tem nenhuma obrigação com aquele contrato
+
+**P40 · CESSÃO — a trava de inadimplência é "qualquer parcela vencida e não paga" (é como está escrito hoje), ou existe tolerância, tipo só barrar acima de 30 dias de atraso?**
+
+> qualquer parcela não paga, se o contrato não estiver adiplemente, não tem como gerar a cessão
+
+**P41 · Depois que o jurídico conclui um cancelamento ou distrato, a unidade deve voltar para `disponivel` AUTOMATICAMENTE quando a última atividade for marcada, ou alguém precisa liberar manualmente na tela do Hércules? (Hoje não acontece nem uma coisa nem outra — a caixinha é marcada e nada muda do lado da venda.)**
+
+> pode fazer automaticamente
+
+**P42 · Para os 11 contratos que ainda correm no C2X: quando um deles é distratado lá, você quer que alguém abra um card na Têmis mesmo assim (só para o controle e o documento ficarem de um lado só), ou o Panteon fica fora desses até a migração de dezembro?**
+
+> tudo vai ocorrer dentro do panteon.
+
+**P43 · Os dados bancários para a devolução do distrato: você quer que o sistema colha isso na abertura do pedido (o coordenador pergunta ao cliente na hora), ou é o jurídico que busca depois, já na etapa de apuração de valores?**
+
+> essa informação tem que ser colhida na abertura.
+
+
+### Empreendimentos e legado
+
+**P06 · O `public/garden/interno-3634d57f.html`, que está no ar sem login mostrando nome de comprador e preço: posso remover agora que o espelho público existe, ou alguém ainda usa aquele link?**
+
+> Os produtos da cecilio fazem parte de um projeto a parte do panteon, mesmo usando quase toda estrutura, esse projeto da cecilio é um projeto que eu estou fazendo de forma personalizada, ou seja, a maioria das coisas que iremos criar vai servir para eles, contudo, teremos partes que vão divergir pois estou fazendo esse projeto personalizado, por isso que o linkpublico pode continuar a existir pois quem acessa ele é o time comercial interno.
+
+**P44 · A VIRADA já aconteceu? Desde 10/09 o espelho público lê situação só do Panteon, mas a memória de 09/09 diz que até a virada o pai (VLO) tem de ser alimentado pela LEITURA DOS FILHOS, e não pelo C2X. Hoje, 11/09, qual dos dois regimes está valendo para reserva e proposta do Vale do Ouro: o pai já é a origem, ou os filhos ainda mandam?**
+
+> hoje vale o Panteon, daqui a pouco vou fazer o ultimo sync
+
+**P45 · O `lib/apolo/espelho-masterplan.ts` (o que copia status do VLO para VOC/VOL dentro do C2X) pode ser APAGADO do repositório, ou você quer que ele fique parado no lugar por precaução? Enquanto existir, alguém pode religá-lo e desfazer 158 vendas.**
+
+> pode ficar parado pro precaução
+
+**P46 · A divergência VLO0305 "Reservado" × VOC0305 "Disponível" (a AR 4950, cliente 4928, sinal marcado para 10/09) continua aberta? Devo corrigir o VOC0305 para Reservado, ou o time já resolveu na tela?**
+
+> está com o adminsitrativo para analisar
+
+**P47 · Os 46 lotes bloqueados do VOL que estão com preço R$ 1,00: o time vai cadastrar o preço no C2X, ou eu mudo o BI para usar `sale_blocked` em vez de preço como prova de existência? A segunda opção muda o número dos DOIS painéis de uma vez.**
+
+> não precisa alterar nada ainda dessa frente.
+
+**P48 · Os 83 lotes do Lagoa Bonita que existem só no pai (LAB 31) e não estão em gleba nenhuma: eles pertencem a qual filho (LBF, LBP ou LBR), ou são área remanescente que nunca vai ser vendida?**
+
+> deveria pertencer alguem, mas como não fizemos deixa ele existe somente no pai.
+
+**P49 · As vendas NOVAS do Lagoa Bonita passam a nascer todas no PAI (como o Vale do Ouro vai passar a fazer), ou continuam nascendo reserva no pai e proposta no filho?**
+
+> Extamente, vai nascer no hercules dentro do pai
+
+**P50 · O ACP (Aldeia das Cachoeiras das Pedras, 42) está vendendo hoje? Ele tem recepção de CAD ligada e minuta, mas é o único dos 11 que não tem masterplan em lugar nenhum — preciso traçar o dele agora ou pode esperar?**
+
+> ele não vai ter espelho, somente grade
+
+**P51 · O RDV (Recanto do Vale, 43) já é produto vivo ou é cadastro novo ainda sem venda? Ele aparece no cadastro do Panteon mas não está na lista dos 11 que recebem CAD.**
+
+> Ele é o proximo empreendimento que vamos lançar, ou seja, no proximo mês vamos ativar ele para recepção de cad.
+
+**P52 · Guaimbé, Giant Towers, On Sky e os edifícios Rubi 5 / Jade 4 / Cristal 3 / Esmeralda: são empreendimentos da Careli que nunca entraram no C2X, ou são só CARTEIRAS de terceiros que a Careli administra? Pergunto porque isso decide se eles viram linha em `hercules_empreendimentos` ou ficam só no módulo de boletos.**
+
+> Esses são os empreendimentos que estão no projeto da Cecilio, ou seja, todo ele estará somente no panteon.
+
+**P53 · O Vale do Sol vai ser cadastrado como empreendimento no Panteon (com unidades, masterplan e espelho), ou continua existindo apenas dentro do LSoft e da emissão de boletos?**
+
+> Vai ser cadastrado no Panteon.
+
+**P54 · O evento Villa Paris no Prometeu continua sendo o laboratório de teste, ou aquele reset de 03/09 encerrou o uso como ensaio? E o EMPREENDIMENTO Villa Paris (RVP 38) segue vendendo normalmente, certo?**
+
+> isso, para o prometeu, pode finalizar e arquivar. já foi finalizado o evento de lançaemtno
+
+**P55 · O ZZ TESTE (TST, 9001) fica no ar indefinidamente como empreendimento de teste em produção, ou tem data para sair? Se fica, quer que ele seja escondido de alguma tela específica além das que já filtram por `recepcao_cad`?**
+
+> eu vou avisar quando ele deva sair, por enquanto pode deixar ele.
+
+**P56 · O Garden: o lote Q02 L18 (265 m², disponível, sem preço) e a quadra 10 renumerada (o C2X está com GDN1001..1013 e o masterplan com 1001..1014) continuam como estão, ou é hora de acertar isso na tela do C2X?**
+
+> deixa como estar no panteon.
+
+**P57 · A fase 2 do JDG (quadras 12 a 29, 173 lotes) continua encerrada, ou já há data de lançamento para eu retomar o desenho dos lotes?**
+
+> Acho que não vamos lançar a segunda fase do JDG.
+
+**P58 · O `hercules_unidades` é um retrato de 01/09 carregado à mão. Quer que eu ligue um cron para atualizá-lo, ou a decisão é que ele seja congelado de propósito até a virada, com a situação sempre vindo do processo do Panteon?**
+
+> Isso aqui vc pode fazer agora, fazer o ultimo sync com o c2x pois apartir de hoje toda reserva, proposta, contratos deve sair do panteon.
+
+
+### Quem e quem
+
+**P07 · A GURGEL é a COORDENADORA DE VENDAS que assina o contrato de corretagem, ou é uma imobiliária que também coordena os lançamentos? (no C2X ela é o usuário id 50 com perfil de imobiliária, mas o portal `/comercial/gurgel` é o 'portal do coordenador')**
+
+> Hoje temos 3 empresas no grupo, Gurgel - Careli - C2X. a gurgel é o braço comercial do grupo, a careli é o braço administrativo do grupo e a c2x a qual estamos abaixo é o braço tecnologico do grupo
+
+**P08 · A Gurgel é empresa do mesmo grupo da Careli, ou é parceira de fora? (a conta Asaas é 'GURGEL LANCAMENTOS IMOBILIARIOS' e a Iris trata a fila dela como 'o número do parceiro', mas o diário também a chama de 'filial Gurgel')**
+
+> Hoje temos 3 empresas no grupo, Gurgel - Careli - C2X. a gurgel é o braço comercial do grupo, a careli é o braço administrativo do grupo e a c2x a qual estamos abaixo é o braço tecnologico do grupo
+
+**P09 · A coordenadora de vendas é a MESMA em todos os empreendimentos, ou muda de empreendimento para empreendimento? (a 0145 guardou `coordenadora_entity_id` por empreendimento, e hoje nenhum está preenchido)**
+
+> então, hoje não teremos mais outra coordenadora que não seja a gurgel, mas isso pode mudar pois se entendermos que podemos estender os serviços da Careli para outras coordenadores ok, ae teremos varias, mas pro enquanto não tem essa diretriz, somente a a gurgel.
+
+**P10 · A coordenadora recebe comissão em TODA venda do empreendimento, ou só nas vendas trazidas pelas imobiliárias que ela credenciou?**
+
+> A gurgel é a responsavel por toda cadeia comercial do empreendimento, ou seja teoricamente toda % de comissão está sob a gestão da Gurgel. desse valor a gurgel tem que pagar a comissão das imobiliarias (que a maior fatia) e pagar toda estrutura administrativa. Fazemos a separação pois entendemos que a % das imobiliarias/corretor não tem negociação, é aquele valor pronto. Para facilitar o entendimento de receita, já "excluimos " da nossa visão. por isso que vamos cadastrar esses valores separados.
+
+**P11 · Quando a venda é direta, sem imobiliária, o percentual que a 0145 chama de 'comissão da imobiliária' vai inteiro para o corretor autônomo, ou o valor é outro?**
+
+> Ainda não temos esse cenário, mas na teoria o valor de comissão de imobiliaria não muda, se apontarmos que a imobiliaria deva ganhar 4% e a gurgel 2%, caso a venda seja direta, a imobiliaria ainda ganharia 4% e os outros 2% iria para o incorporador.
+
+**P12 · A coordenadora do contrato deve sair de `enterprises.coordenador_id`, que o C2X já preenche por empreendimento (CDV2 no Cidade Jardim), ou vai ser recadastrada à mão no Apolo mesmo?**
+
+> Essa informação tem que viver dentro do apolo, sim, vamos ter um cadastro de coordenadoras, podemos importar essa informação do C2X, mas daqui pra frente vamos nascer dentro do apolo.
+
+**P13 · O Ato vai 100% para a cadeia de comissão em TODOS os empreendimentos? (o BI dá fator 0 ao Ato e o código trata isso como fato; a sua explicação de 16/01 aplica o percentual à entrada inteira — o total fecha igual, a parcela não, e a carteira é regime de caixa)**
+
+> Então, em janeiro vou migrar a parte financeira para dentro do HUB, acontece que trabalhamos com split de pagamento e dentro do split eu posso configurar as % de cada pagamento. Hoje eu aponto dentro do cadastro do empreendimento o valor de prévenda, que é o ato. em janeiro, além de apontar esse valor eu vou apontar a divisão desse valo, assim como as demais parcelas da entrada e do financiamento.
+
+**P14 · A Careli recebe comissão de CAPTAÇÃO (perfil Captador, 6% no Recanto) só nos empreendimentos que ela captou, ou isso vale como regra em toda a carteira?**
+
+> Isso, o papel de captação pode ser atribuido para qualquer pessoa, seja ela corretor, imobiliaria, coordenação de venda enfim, no caso do Recanto, a careli que captou esse empreendimento para o grupo, logo ela recebe como captadora. Isso é uma coisa que mais pra frente vamos precisar organizar, para cada empreendimento eu preciso apontar o captador ou captadores
+
+**P15 · A Careli tem participação societária em algum empreendimento ou SPE, ou é sempre só prestadora de serviço (gestão de carteira + captação)?**
+
+> Hoje não, mas temos ideia no futuro dessa participação
+
+**P16 · Cada empreendimento novo nasce com uma SPE própria, ou a SPE pertence ao incorporador e serve vários empreendimentos?**
+
+> Isso vai depender. Todo empreendimento tem que ter uma SPE ativa, ela pode sim ser a mesma para varios empreendimentos, mas todo empreendimento tem que ter uma SPE. Normalmente a composição societaria da SPE tem a incorporadora, construtora, socios enfim,.
+
+**P17 · Quando o filho tem dono diferente do pai (VOC do Cecílio, VOL do Lino), a VENDEDORA do contrato é a empresa do filho ou a do pai? (hoje o código só lê categoria → empreendimento e pula o filho)**
+
+> então, o empreendimento tem que ter uma SPE, a SPE que é a vendedora. Acontece que os contratos filho tem que respeitar isso, o que pode mudar, é a parte de recebimento, minuta. no Vale do Ouro, a vendedora é a mesma para todas, mas as unidades do VOL cai em uma conta e a da VOC cai em outra conta, ou seja, para configurar essa necessidade eu precisei apontar dentro do sistema que aquele grupo de unidades pertence ao VOL que por sua vez caso venha ter venda dessas unidades a conta que vai gerar os boleto é uma, caso for as unidades do VOC a conta emissora, ou receptora daqueles valores é outra. Então os filho servem para atender esse tipo de necessidade.
+
+**P18 · O incorporador que tem portal é sempre o mesmo que assina como vendedora no contrato, ou existe caso em que o dono do portal é investidor e quem assina é outra empresa?**
+
+> Normalmente é quem assina e precisa de fazer gestão.
+
+**P19 · Quem cadastra os percentuais da 0145 na aba Política Comercial: o time da Careli, ou o coordenador pelo portal dele? (hoje a rota exige permissão de escrita do Apolo, que o coordenador não tem)**
+
+> Cadastro de potilica, %, tudo isso é responsabilidade da Careli
+
+**P20 · O 'Gerente' do split (IMO44 no Cidade Jardim) é sempre uma imobiliária, ou é um papel de pessoa? E o que ele faz que a imobiliária da venda não faz?**
+
+> O Gerente que hoje no panteon estamos chamando de coordenador, é um colaborador da Gurgel, o braço comercial. Como todos são Pj, no c2x cadastramos ele como imobiliaria, mas aqui no Panteon, vamos ter o cadastro correto que é de coordenador comercial. Quando estivemos trabalhando com o split dentro do Panteon, vamos precisar apontar a % do coordenador.
+
+**P21 · Os 5 cadastros de perfil 'Coordenadora de venda' no C2X são 5 empresas diferentes, ou são usuários da mesma coordenadora?**
+
+> São empresas diferente, pois antes de fechar sociedade com a Gurgel, a careli iria atender a varias coordenadoras, o que hoje não é mais uma estrategia nossa pois fechamos com a gurgel
+
+**P22 · Nos empreendimentos em que o mensal é 100% do incorporador (Lagoa Bonita LBP, Veredas do Ouro, Rio de Pedras e mais cinco), a Careli não é remunerada mesmo, ou ela cobra por fora da carteira?**
+
+> Isso, nesse caso, a careli não ira fazer a gestão de carteira do financiamento daquele empreendimento. iremos fazer a gestão somente da entrada.
+
