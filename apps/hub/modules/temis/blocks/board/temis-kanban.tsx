@@ -1,7 +1,9 @@
 "use client";
 
-import { AlertTriangle, Clock, ExternalLink, FileCheck2, FileText, Loader2, Send } from "lucide-react";
+import { AlertTriangle, Clock, FileCheck2, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { TelaDeTrabalho } from "@/modules/temis/blocks/trabalho/tela-de-trabalho";
 
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import {
@@ -123,8 +125,16 @@ export function TemisKanban({
   const [trabalhos, setTrabalhos] = useState<null | TrabalhoDaTela[]>(null);
   const [colunas, setColunas] = useState<Colunas>([]);
   const [erro, setErro] = useState<null | string>(null);
-  const [aberto, setAberto] = useState<null | string>(null);
-  const [ocupado, setOcupado] = useState<null | string>(null);
+  /**
+   * O card cuja TELA DE TRABALHO está aberta.
+   *
+   * ⚠️ A EXPANSÃO INLINE DO CARD ACABOU, e o `aberto` que a controlava saiu junto. Lucas
+   * (09/09/2026): *"ao clicar no card abrisse uma tela de trabalho"*. Manter os dois caminhos
+   * daria dois lugares para gerar o mesmo contrato — e a primeira tentativa deixou o estado vivo
+   * sem ninguém para acendê-lo, o que tornou "Gerar contrato" e "Enviar para assinatura"
+   * inalcançáveis sem nenhum erro aparecer. Agora as duas ações moram na tela de trabalho.
+   */
+  const [emTrabalho, setEmTrabalho] = useState<null | string>(null);
   /** A proposta cujo contrato está indo para assinatura (o modal aberto). */
   const [enviando, setEnviando] = useState<null | string>(null);
 
@@ -153,35 +163,6 @@ export function TemisKanban({
     void carregar();
   }, [carregar]);
 
-  const marcar = useCallback(
-    async (id: string, atividade: string, feita: boolean) => {
-      // ⚠️ A TRAVA DE LEITURA MORA AQUI, e não só no checkbox: um `disabled` esquecido numa
-      // versão futura do card não pode virar POST numa rota que nem aceita POST.
-      if (somenteLeitura) return;
-
-      setOcupado(id);
-      setErro(null);
-      try {
-        const token = semToken ? null : await getApoloAccessToken();
-        const r = await fetch(rota, {
-          body: JSON.stringify({ acao: "atividade", atividade, feita, id }),
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          method: "POST",
-        });
-        const j = (await r.json()) as { error?: string };
-        if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
-        await carregar();
-      } catch (e) {
-        setErro(e instanceof Error ? e.message : "Não consegui marcar a atividade.");
-      } finally {
-        setOcupado(null);
-      }
-    },
-    [carregar, rota, semToken, somenteLeitura],
-  );
 
   /**
    * Gera o contrato da proposta e guarda — o mesmo caminho da prévia do Hércules.
@@ -194,38 +175,6 @@ export function TemisKanban({
    * ⚠️ E A LACUNA CONTINUA BLOQUEANDO: quem recusa é a rota, que devolve o que falta. O botão não
    * repete a validação — repetir daria duas verdades sobre o mesmo contrato.
    */
-  const gerarContrato = useCallback(
-    async (id: string, propostaId: string) => {
-      if (somenteLeitura) return;
-      setOcupado(id);
-      setErro(null);
-      try {
-        const token = semToken ? null : await getApoloAccessToken();
-        const r = await fetch("/api/temis/contrato/gerar", {
-          body: JSON.stringify({ propostaId }),
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          method: "POST",
-        });
-        const j = (await r.json()) as { erro?: string; faltando?: string[] };
-        if (!r.ok) {
-          throw new Error(
-            j.faltando?.length
-              ? `Falta preencher: ${j.faltando.join(", ")}.`
-              : (j.erro ?? `Falhou (${r.status}).`),
-          );
-        }
-        await carregar();
-      } catch (e) {
-        setErro(e instanceof Error ? e.message : "Não consegui gerar o contrato.");
-      } finally {
-        setOcupado(null);
-      }
-    },
-    [carregar, semToken, somenteLeitura],
-  );
 
   /**
    * Abre o contrato guardado numa aba.
@@ -238,27 +187,6 @@ export function TemisKanban({
    * rota pede o Bearer do hub: o botão nem aparece lá. O coordenador abre o mesmo arquivo pela aba
    * Documentos da venda, que é a porta dele.
    */
-  const abrirContrato = useCallback(
-    async (documentoId: string) => {
-      const aba = window.open("", "_blank", "noopener,noreferrer");
-      setErro(null);
-      try {
-        const token = await getApoloAccessToken();
-        const r = await fetch(
-          `/api/temis/contrato/gerar?documento=${encodeURIComponent(documentoId)}`,
-          { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-        );
-        const j = (await r.json()) as { data?: { url: string }; erro?: string };
-        if (!r.ok || !j.data?.url) throw new Error(j.erro ?? `Falhou (${r.status}).`);
-        if (aba) aba.location.href = j.data.url;
-        else window.location.href = j.data.url;
-      } catch (e) {
-        aba?.close();
-        setErro(e instanceof Error ? e.message : "Não consegui abrir o contrato.");
-      }
-    },
-    [],
-  );
 
   const porEstagio = useMemo(() => {
     const mapa = new Map<EstagioDoTrabalho, TrabalhoDaTela[]>();
@@ -279,7 +207,25 @@ export function TemisKanban({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    // `relative` porque a tela de trabalho é um overlay absoluto por cima do quadro.
+    //
+    // ⚠️ E O PAI PRECISA TER ALTURA ENQUANTO ELA ESTÁ ABERTA. `inset-0` copia a altura de quem
+    // posiciona: sem a altura mínima, a tela de trabalho herdava a do QUADRO — que encolhe quando
+    // há poucos cards — e a análise inteira ficava espremida numa faixa de uns 600px, rolando por
+    // dentro com a metade de baixo da janela vazia. Lucas (10/09/2026): *"a tela está cortando"*.
+    <div
+      className={`relative flex flex-col gap-3 ${
+        emTrabalho ? "min-h-[calc(100vh-10rem)]" : ""
+      }`}
+    >
+      {emTrabalho ? (
+        <TelaDeTrabalho
+          aoEnviarParaAssinatura={(id) => setEnviando(id)}
+          aoFechar={() => setEmTrabalho(null)}
+          aoMudar={() => void carregar()}
+          trabalhoId={emTrabalho}
+        />
+      ) : null}
       {erro ? (
         <p className="flex items-start gap-2 rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm text-ink dark:border-red-500/40 dark:bg-red-500/10">
           <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0" size={14} /> {erro}
@@ -317,25 +263,12 @@ export function TemisKanban({
                 ) : (
                   cards.map((t) => (
                     <Card
-                      aberto={aberto === t.id}
-                      aoAbrir={() => setAberto(aberto === t.id ? null : t.id)}
-                      aoAbrirContrato={(documentoId) => void abrirContrato(documentoId)}
-                      aoEnviarParaAssinatura={
-                        // ⚠️ SÓ NA TÊMIS, e pelo mesmo motivo de `abrirContrato`: a rota de envio
-                        // pede o Bearer do hub e o recorte de EMITIR contrato (admin/leader). No
-                        // board do comercial (`semToken` / `somenteLeitura`) o botão nem aparece —
-                        // esconder o que a pessoa não pode fazer é diferente de fechar a porta, e a
-                        // porta quem fecha é `autorizarEmissaoDeContrato`.
-                        semToken || somenteLeitura ? null : (id) => setEnviando(id)
-                      }
-                      aoGerarContrato={
-                        semToken || somenteLeitura
-                          ? null
-                          : (propostaId) => void gerarContrato(t.id, propostaId)
-                      }
-                      aoMarcar={(atividade, feita) => void marcar(t.id, atividade, feita)}
+                      // ⚠️ O CARD SÓ INFORMA E ABRE. As ações (gerar contrato, enviar para
+                      // assinatura, abrir o PDF) migraram para a tela de trabalho — Lucas
+                      // (09/09/2026): *"queria ela informativa, ao clicar no card abrisse uma tela
+                      // de trabalho"*. No board só-leitura do comercial, o clique não abre nada.
+                      aoAbrir={somenteLeitura ? null : () => setEmTrabalho(t.id)}
                       key={t.id}
-                      ocupado={ocupado === t.id}
                       somenteLeitura={somenteLeitura}
                       trabalho={t}
                     />
@@ -366,25 +299,12 @@ export function TemisKanban({
 }
 
 function Card({
-  aberto,
   aoAbrir,
-  aoAbrirContrato,
-  aoEnviarParaAssinatura,
-  aoGerarContrato,
-  aoMarcar,
-  ocupado,
   somenteLeitura,
   trabalho,
 }: {
-  aberto: boolean;
-  aoAbrir: () => void;
-  aoAbrirContrato: (documentoId: string) => void;
-  /** `null` no board só-leitura do portal comercial: lá o botão não existe. */
-  aoEnviarParaAssinatura: null | ((propostaId: string) => void);
-  /** `null` pelo mesmo motivo: gerar contrato é ação de quem emite. */
-  aoGerarContrato: null | ((propostaId: string) => void);
-  aoMarcar: (atividade: string, feita: boolean) => void;
-  ocupado: boolean;
+  /** `null` no board só-leitura do portal comercial: lá o card não abre tela de trabalho. */
+  aoAbrir: null | (() => void);
   somenteLeitura: boolean;
   trabalho: TrabalhoDaTela;
 }) {
@@ -392,7 +312,7 @@ function Card({
   // ⚠️ VALE A GERAÇÃO MAIS RECENTE, e a regra mora na lib com teste. Duas versões guardadas são o
   // caso normal (alguém consertou um dado e gerou de novo); mostrar as duas com o mesmo peso é o
   // caminho mais curto para despachar a versão errada para assinatura.
-  const vigente = contratoVigente(contratos);
+  const vigente = contratoVigente<ContratoDoCard>(contratos);
   const prazo = situacaoDoPrazo(trabalho);
   // A promessa de ponta a ponta: "quando o contrato fica pronto?", que é a pergunta do comercial.
   const emissao = prazoDeEmissao(trabalho);
@@ -409,20 +329,6 @@ function Card({
    * ⚠️ E SÓ PARA CONTRATO. Cessão, distrato e cancelamento têm documento próprio e caminho
    * próprio; dar-lhes o botão de gerar contrato mandaria a minuta errada.
    */
-  // ⚠️ AS ETAPAS MUDARAM DE NOME em 10/09/2026 (`entrada` → `analise`, `confeccao` → `contrato`),
-  // e a regra continua a mesma: os dois botões só existem enquanto o documento está sendo
-  // produzido. Depois que o envelope sai, quem move o card é o webhook.
-  const produzindo =
-    trabalho.estagio === "analise" || trabalho.estagio === "contrato";
-
-  const acao: "enviar" | "gerar" | null =
-    trabalho.tipo !== "contrato" || !trabalho.propostaId
-      ? null
-      : produzindo
-        ? vigente
-          ? "enviar"
-          : "gerar"
-        : null;
 
   return (
     <article
@@ -438,7 +344,7 @@ function Card({
           nada é pior do que um bloco que não promete clique. */}
       <button
         className={`w-full text-left ${somenteLeitura ? "cursor-default" : ""}`}
-        onClick={somenteLeitura ? undefined : aoAbrir}
+        onClick={somenteLeitura ? undefined : (aoAbrir ?? undefined)}
         type="button"
       >
         <div className="flex items-center justify-between gap-2">
@@ -504,102 +410,10 @@ function Card({
         ) : null}
       </button>
 
-      {aberto && !somenteLeitura ? (
-        <div className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">
-          {/* ⚠️ O ARQUIVO ABRE PELO CARD, e é aqui que a Têmis deixa de trabalhar de memória: o item
-              "Gerar o contrato pela minuta do empreendimento" existia como caixinha para marcar, e
-              nada no board dizia se o papel tinha saído. Cada versão aparece; a que vale vem
-              primeiro, marcada — as outras ficam legíveis porque nada se apaga nesta gaveta, e
-              porque quem audita precisa ver que houve uma segunda geração. */}
-          {contratos.length > 0 ? (
-            <div className="mb-1 flex flex-col gap-1">
-              {[...contratos]
-                .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))
-                .map((c) => {
-                  const ehVigente = vigente?.id === c.id;
-                  return (
-                    <button
-                      className={`flex items-start gap-1.5 rounded-md border px-2 py-1.5 text-left text-[0.7rem] transition-colors hover:bg-subtle/60 ${
-                        ehVigente
-                          ? "border-emerald-300/70 text-ink dark:border-emerald-500/40"
-                          : "border-line text-ink-muted"
-                      }`}
-                      key={c.id}
-                      onClick={() => aoAbrirContrato(c.id)}
-                      type="button"
-                    >
-                      <ExternalLink aria-hidden="true" className="mt-0.5 shrink-0" size={11} />
-                      <span className="min-w-0">
-                        <span className="block break-words font-semibold">{c.nome}</span>
-                        <span className="block text-[0.65rem] text-ink-muted">
-                          {ehVigente ? "versão vigente" : "versão anterior"} ·{" "}
-                          {dataCurta(c.criadoEm)}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-            </div>
-          ) : null}
-
-          {/* ⚠️ O BOTÃO SÓ EXISTE COM CONTRATO GERADO E COM PROPOSTA. Sem o papel não há o que
-              assinar; sem a proposta não há por onde achá-lo (`proposta_id` é o único elo entre o
-              card e `hercules_documentos` — `venda_id` aponta para uma tabela vazia). Os quatro
-              cards antigos do Garden e da Lavra nasceram sem esse elo, e para eles o botão não
-              aparece: mostrá-lo daria um clique que só produz erro. */}
-          {/* ⚠️ UMA AÇÃO POR ESTÁGIO, E É A AÇÃO DE VERDADE. Regra do Lucas em 09/09/2026, depois
-              de ver o card do Henrique chegar a "finalizado" com as cinco atividades marcadas, sem
-              contrato e sem envelope: *"eu fui clicando, ele andou na esteira mas acho que não
-              aconteceu nada"* · *"deixa somente esses dois botões"* · *"na entrada, gerar contrato
-              — em contrato, enviar para assinatura"*.
-
-              O checklist saiu do card: marcar "Gerar o contrato pela minuta" não gerava nada, e o
-              card andava mesmo assim. O que move agora é o fato — gerar produz o PDF guardado,
-              enviar cria o envelope na Clicksign.
-
-              ⚠️ De "Em assinatura" para "Finalizado" ainda faltam as condições (Lucas, 09/09:
-              *"depois de assinatura vai ter algumas condições para finalizado"*). Enquanto elas
-              não existem, aquele trecho não ganha botão nenhum — botão que não faz a coisa é
-              exatamente o que estamos tirando daqui. */}
-          {acao === "gerar" && aoGerarContrato && trabalho.propostaId ? (
-            <button
-              className="mb-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-line bg-subtle/40 px-2 py-1.5 text-[0.7rem] font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-50"
-              disabled={ocupado}
-              onClick={() => aoGerarContrato(trabalho.propostaId as string)}
-              type="button"
-            >
-              <FileText aria-hidden="true" size={11} />
-              {ocupado ? "Gerando…" : "Gerar contrato"}
-            </button>
-          ) : null}
-
-          {acao === "enviar" && aoEnviarParaAssinatura && trabalho.propostaId ? (
-            <button
-              className="mb-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-line bg-subtle/40 px-2 py-1.5 text-[0.7rem] font-semibold text-ink transition-colors hover:bg-subtle"
-              onClick={() => aoEnviarParaAssinatura(trabalho.propostaId as string)}
-              type="button"
-            >
-              <Send aria-hidden="true" size={11} />
-              Enviar para assinatura
-            </button>
-          ) : null}
-
-          {/* O rastro fica visível ao abrir: é o que prova de onde veio a solicitação. */}
-          <p className="mt-1 text-[0.65rem] text-ink-muted">
-            {trabalho.canal === "iris"
-              ? `Atendimento · ticket ${trabalho.irisTicketId ?? "—"}`
-              : trabalho.canal === "hercules"
-                ? "Hércules · emissão de contrato"
-                : "Coordenação"}
-          </p>
-          {/* ⚠️ A OBSERVAÇÃO É O BILHETE PARA O JURÍDICO, e sai escrita pelo sistema: "apurado pelo
-              sistema: nenhuma assinatura registrada...". Ela serve a quem vai redigir o
-              instrumento; no board do comercial é ruído sobre o que eles foram ver ali. */}
-          {trabalho.observacao ? (
-            <p className="text-[0.7rem] italic text-ink-muted">{trabalho.observacao}</p>
-          ) : null}
-        </div>
-      ) : null}
+      {/* ⚠️ O CARD NÃO EXPANDE MAIS. As versões do contrato, os dois botões, o rastro e a
+          observação viviam aqui e agora moram na TELA DE TRABALHO — Lucas (09/09/2026): *"ao
+          clicar no card abrisse uma tela de trabalho"*. Dois lugares para gerar o mesmo
+          contrato seria pior do que um; o card volta a ser o que ele pediu: informativo. */}
     </article>
   );
 }

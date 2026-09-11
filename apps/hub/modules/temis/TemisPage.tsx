@@ -3,8 +3,11 @@
 import { AlertTriangle, Building2, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-
-import { type EmpreendimentoDaTemis, temisScreens, type TemisScreen } from "@/lib/temis/catalog";
+import {
+  type EmpreendimentoDaTemis,
+  temisScreens,
+  type TemisScreen,
+} from "@/lib/temis/catalog";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
 import { TemisSidebar } from "@/modules/temis/blocks/shell/temis-sidebar";
@@ -33,7 +36,9 @@ export function TemisPage() {
   const [tela, setTela] = useState<TemisScreen>("board");
   const [recolhida, setRecolhida] = useState(false);
 
-  const [empreendimentos, setEmpreendimentos] = useState<EmpreendimentoDaTemis[] | null>(null);
+  const [empreendimentos, setEmpreendimentos] = useState<
+    EmpreendimentoDaTemis[] | null
+  >(null);
   const [erro, setErro] = useState<null | string>(null);
   const [escolhidoId, setEscolhidoId] = useState<null | string>(null);
 
@@ -63,7 +68,9 @@ export function TemisPage() {
         if (cancelado) return;
 
         if (!r.ok || !corpo.data) {
-          setErro(corpo.error ?? "Não foi possível carregar os empreendimentos.");
+          setErro(
+            corpo.error ?? "Não foi possível carregar os empreendimentos.",
+          );
           return;
         }
 
@@ -72,7 +79,9 @@ export function TemisPage() {
 
         // Retoma o último empreendimento, porque quem trabalha em contrato passa o dia no mesmo.
         const lembrado =
-          typeof window === "undefined" ? null : window.localStorage.getItem(CHAVE_DO_EMPREENDIMENTO);
+          typeof window === "undefined"
+            ? null
+            : window.localStorage.getItem(CHAVE_DO_EMPREENDIMENTO);
         const valido = linhas.find((row) => row.id === lembrado);
         setEscolhidoId(valido?.id ?? linhas[0]?.id ?? null);
       } catch {
@@ -122,7 +131,10 @@ export function TemisPage() {
 
         {erro ? (
           <p className="m-0 flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
-            <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            <AlertTriangle
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0"
+            />
             {erro}
           </p>
         ) : null}
@@ -183,30 +195,35 @@ function Cabecalho({
 }) {
   const descricao = temisScreens.find((t) => t.id === tela)?.description ?? "";
 
+  // ⚠️ NO BOARD A FAIXA NÃO EXISTE — Lucas (10/09/2026): *"tira isso aí, para a gente ganhar
+  // tela"*. Ela carrega duas coisas: a descrição, que é decorativa, e o seletor de empreendimento,
+  // que é o motivo de ela existir. Só que o Board mostra todos os empreendimentos de uma vez, então
+  // lá o seletor não aparece e sobra uma linha inteira de altura para uma frase que ninguém lê —
+  // altura que faz falta na tela de trabalho, que abre por cima do quadro e herda o espaço dele.
+  if (tela === "board") return null;
+
   return (
     <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <p className="m-0 min-w-0 truncate text-xs text-ink-muted">{descricao}</p>
 
-      {/* O Board mostra todos os empreendimentos de uma vez; nas demais telas o seletor manda. */}
-      {tela === "board" ? null : (
-        <label className="flex items-center gap-2">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-subtle text-ink-muted">
-            <Building2 aria-hidden="true" className="size-4" />
-          </span>
-          <select
-            className="h-9 min-w-56 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none focus:border-line-strong"
-            disabled={!empreendimentos?.length}
-            onChange={(e) => aoEscolher(e.target.value)}
-            value={escolhido?.id ?? ""}
-          >
-            {(empreendimentos ?? []).map((row) => (
-              <option key={row.id} value={row.id}>
-                {row.code} · {row.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
+      {/* Nas demais telas o seletor manda: cada uma responde por UM empreendimento. */}
+      <label className="flex items-center gap-2">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-subtle text-ink-muted">
+          <Building2 aria-hidden="true" className="size-4" />
+        </span>
+        <select
+          className="h-9 min-w-56 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none focus:border-line-strong"
+          disabled={!empreendimentos?.length}
+          onChange={(e) => aoEscolher(e.target.value)}
+          value={escolhido?.id ?? ""}
+        >
+          {(empreendimentos ?? []).map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.code} · {row.name}
+            </option>
+          ))}
+        </select>
+      </label>
     </header>
   );
 }
@@ -262,8 +279,9 @@ function Setup({
     return (
       <div className="flex flex-col gap-3 p-3">
         <p className="m-0 max-w-prose px-1 text-xs text-ink-soft">
-          Escolha um empreendimento no seletor acima para ver e editar os documentos dele. A lista
-          abaixo mostra o que cada um já tem cadastrado.
+          Escolha um empreendimento no seletor acima para ver e editar os
+          documentos dele. A lista abaixo mostra o que cada um já tem
+          cadastrado.
         </p>
         <TemisBoard
           aoAbrirEmpreendimento={aoAbrirEmpreendimento}
