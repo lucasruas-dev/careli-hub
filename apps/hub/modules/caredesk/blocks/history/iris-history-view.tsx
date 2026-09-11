@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, Search } from "lucide-react";
+import { Clock3, Info, Search } from "lucide-react";
+
+import { avisoDoHistorico } from "../../lib/aviso-do-historico";
 
 import {
   IrisTicketListHeader,
@@ -175,6 +177,11 @@ export function IrisHistoryView({
   const headerBadgeLabel = focus
     ? `${helpers.formatCount(sourceTickets.length)} tickets do cliente`
     : `${helpers.formatCount(closedTickets.length)} encerrados`;
+  const aviso = avisoDoHistorico({
+    resultados: filteredTickets.length,
+    temFoco: Boolean(focus),
+    termo: search,
+  });
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -248,6 +255,18 @@ export function IrisHistoryView({
             />
           </label>
         </div>
+
+        {/* ⚠️ SÓ APARECE QUANDO ALGUÉM BUSCA SEM FOCO. É a única situação em que dá para
+            concluir errado que o atendimento sumiu — ver `lib/aviso-do-historico.ts`. */}
+        {aviso ? (
+          <div className="flex items-start gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/8 px-3 py-2">
+            <Info
+              className="mt-0.5 size-4 shrink-0 text-[#7A5E2C]"
+              aria-hidden="true"
+            />
+            <p className="text-xs font-medium text-[#7A5E2C]">{aviso}</p>
+          </div>
+        ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line/70">
           <IrisTicketListHeader />

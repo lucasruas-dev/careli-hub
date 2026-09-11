@@ -2,6 +2,7 @@ import type { RowDataPacket } from "mysql2/promise";
 
 import { getHadesDbPool } from "@/lib/guardian/db";
 
+import { repartirVenda, type ComissaoCadastrada } from "./comissao";
 import {
   atualizarParcela,
   extrairEncargosDoContrato,
@@ -49,8 +50,17 @@ export type DossieDados = {
   responsavelComercial: string | null;
 
   // 2. Dashboard — valores
-  valorTotalLote: number;
-  valorCorretagem: number;
+  //
+  // ⚠️ `null` É "NÃO APURADO", E NÃO PODE VIRAR ZERO. Sem a comissão cadastrada no Panteon não
+  // há como separar a corretagem do preço, e imprimir R$ 0,00 diria ao jurídico que a corretagem
+  // foi apurada e vale nada — o oposto do que se sabe.
+  valorTotalLote: null | number;
+  valorCorretagem: null | number;
+  /** As duas pontas da corretagem, quando cadastradas. */
+  corretagemCoordenadora: null | number;
+  corretagemImobiliaria: null | number;
+  /** A soma das duas % do cadastro do empreendimento no Panteon. */
+  comissaoPercentual: null | number;
   valorGlobal: number;
   totalPago: number;
   saldoDevedor: number;
@@ -153,6 +163,15 @@ export async function montarDadosDoDossie(input: {
   // % de correção monetária acumulada no período, digitado por quem gera o dossiê.
   // Entra na conta de cada parcela vencida; ausente = correção não somada.
   correcaoPercent?: number | null;
+  // As duas % do cadastro do empreendimento no Panteon (`apolo_enterprise_settings`).
+  //
+  // ⚠️ É UMA FUNÇÃO, NÃO UM VALOR, e de propósito: o `enterprise_id` que serve de chave só é
+  // conhecido DEPOIS de ler a negociação no C2X, e este arquivo não pode abrir o Supabase — o
+  // topo dele declara que é só-C2X. Quem passa a função é `gerar.ts`, que tem o client.
+  // Ausente ou devolvendo `null` = corretagem não apurada; ver `comissao.ts`.
+  comissao?:
+    | ((enterpriseId: string) => ComissaoCadastrada | null | Promise<ComissaoCadastrada | null>)
+    | null;
 }): Promise<DossieDados | null> {
   const poolResult = getHadesDbPool();
   if (!poolResult.ok) throw new Error("C2X indisponível.");
@@ -167,8 +186,7 @@ export async function montarDadosDoDossie(input: {
             eu.name AS unidade, eu.block AS quadra, eu.lot AS lote, eu.price,
             e.name AS empreendimento, e.id AS enterprise_id,
             cp.name AS plano, cp.parcels AS plano_parcelas, cp.initial_input_value,
-            cor.name AS corretor,
-            pol.total_value_commission AS comissao_percent
+            cor.name AS corretor
        FROM acquisition_requests ar
        JOIN enterprise_unities eu ON eu.id = ar.enterprise_unity_id
        JOIN enterprises e ON e.id = eu.enterprise_id
@@ -176,7 +194,6 @@ export async function montarDadosDoDossie(input: {
        LEFT JOIN users u ON u.id = ar.client_id
        LEFT JOIN users cor ON cor.id = ar.corretor_id
        LEFT JOIN commercial_plans cp ON cp.id = ar.commercial_plan_id
-       LEFT JOIN commercial_policies pol ON pol.enterprise_id = e.id
       WHERE ar.id = ?
       LIMIT 1`,
     [arId],
@@ -255,12 +272,30 @@ export async function montarDadosDoDossie(input: {
   const diasEmAtraso = vencidas.reduce((max, v) => Math.max(max, v.diasAtraso), 0);
 
   // ⚠️ enterprise_unities.price é o PREÇO TOTAL DA AQUISIÇÃO (lote + corretagem) — conferido no
-  // contrato real em 03/08. A corretagem sai do percentual da política comercial; sem política
-  // cadastrada, fica zero e o dossiê marca a linha como não apurada.
+  // contrato real em 03/08.
+  //
+  // ⚠️ E O PERCENTUAL VEM DO PANTEON, NÃO DAQUI. Até 11/09/2026 esta função lia
+  // `commercial_policies.total_value_commission` do próprio C2X; a regra do Lucas é que do legado
+  // só saem financeiro, pagamento e parcelas — comissão e plano são do Panteon. Quem lê o cadastro
+  // é `gerar.ts`, que tem o client do Supabase; aqui a comissão chega pronta, por parâmetro, e o
+  // arquivo continua sendo só-C2X como o topo dele declara.
   const precoTotal = n(negocio.price);
-  const comissaoPercent = n(negocio.comissao_percent);
-  const valorCorretagem = comissaoPercent > 0 ? precoTotal * (comissaoPercent / 100) : 0;
-  const valorTotalLote = precoTotal - valorCorretagem;
+  const enterpriseId = String(negocio.enterprise_id ?? "").trim();
+  // Falha na leitura do cadastro não derruba o dossiê: a peça sai com a corretagem "não apurada",
+  // que é honesto, em vez de não sair. Mesmo critério das tratativas em `gerar.ts`.
+  let comissaoCadastrada: ComissaoCadastrada | null = null;
+  if (input.comissao && enterpriseId) {
+    try {
+      comissaoCadastrada = await input.comissao(enterpriseId);
+    } catch {
+      comissaoCadastrada = null;
+    }
+  }
+  const reparticao = repartirVenda(precoTotal, {
+    coordenadoraPercent: comissaoCadastrada?.coordenadoraPercent ?? null,
+    imobiliariaPercent: comissaoCadastrada?.imobiliariaPercent ?? null,
+  });
+  const { valorCorretagem, valorTotalLote } = reparticao;
 
   const scoreCalc = calcularScore({
     acordoDescumprido: input.acordoDescumprido ?? false,
@@ -326,6 +361,9 @@ export async function montarDadosDoDossie(input: {
     totalPago,
     ultimoVencimentoAberto: ultimoAberto ? ultimoAberto.toLocaleDateString("pt-BR") : null,
     unidade: String(negocio.unidade ?? "-"),
+    comissaoPercentual: reparticao.percentualTotal,
+    corretagemCoordenadora: reparticao.corretagemCoordenadora,
+    corretagemImobiliaria: reparticao.corretagemImobiliaria,
     valorCorretagem,
     valorGlobal: precoTotal,
     valorInadimplenciaAtualizado: totais.atualizado,

@@ -572,23 +572,22 @@ export const IRIS_HISTORICO_LOTE = 200;
  *                `cursorDoHistorico`. Sem ele não há de onde continuar.
  * @returns Os tickets do lote e se ainda há mais para trás (para a tela esconder o botão no fim).
  */
-export async function loadIrisHistoricoAnterior({
-  antesDe,
-  limite = IRIS_HISTORICO_LOTE,
+async function carregarTicketsSobDemanda({
   operatorUserId,
   queueSlugFilter,
+  recorte,
   viewerUserId,
 }: {
-  antesDe: string;
-  limite?: number;
   operatorUserId?: null | string;
   queueSlugFilter?: null | string;
+  /** Os filtros próprios desta busca, aplicados DEPOIS da régua de acesso. */
+  recorte: (query: any) => any;
   viewerUserId?: null | string;
-}): Promise<{ temMais: boolean; tickets: IrisTicket[] }> {
+}): Promise<{ linhas: any[]; tickets: IrisTicket[] }> {
   const supabase = getHubSupabaseClient();
 
-  if (!supabase || !antesDe) {
-    return { temMais: false, tickets: [] };
+  if (!supabase) {
+    return { linhas: [], tickets: [] };
   }
 
   const normalizedQueueSlugFilter =
@@ -651,33 +650,30 @@ export async function loadIrisHistoricoAnterior({
         .map((queue) => queue.id)
     : [];
 
-  // Pede UM a mais do que vai entregar: é assim que a tela sabe se ainda há passado para trás
-  // sem precisar de uma segunda consulta de contagem.
-  const ticketsResult = await aplicarReguaDeAcessoAosTickets(
-    supabase.from("caredesk_tickets").select(SELECT_TICKETS),
-    {
-      normalizedQueueSlugFilter,
-      operatorUserId,
-      queues,
-      scopedQueueIds,
-      viewerScope,
-    },
-  )
-    .eq("status", "closed")
-    .lt("closed_at", antesDe)
-    .order("closed_at", { ascending: false })
-    .limit(limite + 1);
+  // ⚠️ O RECORTE VEM DEPOIS DA RÉGUA, NUNCA ANTES. A régua decide o que o usuário PODE ver; o
+  // recorte decide o que esta busca QUER. Inverter a ordem deixaria o filtro de fila para o fim
+  // e abriria a porta que `aplicarReguaDeAcessoAosTickets` existe para fechar.
+  const ticketsResult = await recorte(
+    aplicarReguaDeAcessoAosTickets(
+      supabase.from("caredesk_tickets").select(SELECT_TICKETS),
+      {
+        normalizedQueueSlugFilter,
+        operatorUserId,
+        queues,
+        scopedQueueIds,
+        viewerScope,
+      },
+    ),
+  );
 
   if (ticketsResult.error) {
     throw ticketsResult.error;
   }
 
-  const encontrados = (ticketsResult.data ?? []) as any[];
-  const temMais = encontrados.length > limite;
-  const ticketsRows = temMais ? encontrados.slice(0, limite) : encontrados;
+  const ticketsRows = (ticketsResult.data ?? []) as any[];
 
   if (ticketsRows.length === 0) {
-    return { temMais: false, tickets: [] };
+    return { linhas: [], tickets: [] };
   }
 
   const ticketIds = ticketsRows.map((ticket) => ticket.id);
@@ -747,7 +743,7 @@ export async function loadIrisHistoricoAnterior({
   const messagesByTicket = groupMessagesByTicket(messagesResult.data ?? []);
 
   return {
-    temMais,
+    linhas: ticketsRows,
     tickets: ticketsRows.map((ticket) =>
       mapTicketRow({
         assignedUser: ticket.assigned_to_user_id
@@ -762,6 +758,93 @@ export async function loadIrisHistoricoAnterior({
       }),
     ),
   };
+}
+
+/**
+ * O PRÓXIMO PEDAÇO DO HISTÓRICO, para trás no tempo — o botão "Carregar mais".
+ *
+ * @param antesDe `closed_at` (ISO) do encerrado mais antigo já na tela; vem de `cursorDoHistorico`.
+ */
+export async function loadIrisHistoricoAnterior({
+  antesDe,
+  limite = IRIS_HISTORICO_LOTE,
+  operatorUserId,
+  queueSlugFilter,
+  viewerUserId,
+}: {
+  antesDe: string;
+  limite?: number;
+  operatorUserId?: null | string;
+  queueSlugFilter?: null | string;
+  viewerUserId?: null | string;
+}): Promise<{ temMais: boolean; tickets: IrisTicket[] }> {
+  if (!antesDe) return { temMais: false, tickets: [] };
+
+  // Pede UM a mais do que vai entregar: é assim que a tela sabe se ainda há passado para trás
+  // sem precisar de uma segunda consulta de contagem.
+  const { linhas, tickets } = await carregarTicketsSobDemanda({
+    operatorUserId,
+    queueSlugFilter,
+    recorte: (query) =>
+      query
+        .eq("status", "closed")
+        .lt("closed_at", antesDe)
+        .order("closed_at", { ascending: false })
+        .limit(limite + 1),
+    viewerUserId,
+  });
+
+  const temMais = linhas.length > limite;
+
+  return { temMais, tickets: temMais ? tickets.slice(0, limite) : tickets };
+}
+
+/** Teto de tickets por cliente numa busca. Ninguém tem tanto, e é a rede contra consulta solta. */
+const IRIS_TICKETS_POR_CONTATO = 300;
+
+/**
+ * TODOS OS ATENDIMENTOS DE UM CLIENTE, buscados no banco na hora.
+ *
+ * ⚠️ POR QUE ISTO EXISTE, SE A PAGINAÇÃO JÁ TINHA SIDO FEITA. A paginação anda para trás na
+ * fila INTEIRA de encerrados, e isso não serve para procurar UMA pessoa. Caso real que abriu o
+ * chamado (11/09/2026): a cliente UEICINARA CRISTIANE DA CUNHA tem 9 atendimentos; ao abrir o
+ * histórico dela apareciam 3 (1 aberto e 2 encerrados). Os outros 6 estavam nas posições 1.992 a
+ * 5.586 da fila de encerrados — **26 cliques** em "Carregar mais" para alcançar o mais antigo.
+ * Tecnicamente acessível, na prática invisível.
+ *
+ * ⚠️ E O FOCO NÃO BUSCAVA NADA: `iris-history-view.tsx` faz `tickets.filter(...)` sobre a lista
+ * JÁ CARREGADA, então filtrar por cliente só encontrava o que a carga da tela já tinha trazido.
+ * Clicar no cliente parecia uma busca e era um filtro.
+ *
+ * A régua de acesso é a mesma da carga da tela — procurar por cliente não abre fila fechada.
+ */
+export async function loadIrisTicketsDoContato({
+  contactId,
+  operatorUserId,
+  queueSlugFilter,
+  viewerUserId,
+}: {
+  contactId: string;
+  operatorUserId?: null | string;
+  queueSlugFilter?: null | string;
+  viewerUserId?: null | string;
+}): Promise<IrisTicket[]> {
+  if (!contactId) return [];
+
+  const { tickets } = await carregarTicketsSobDemanda({
+    operatorUserId,
+    queueSlugFilter,
+    // Abertos E encerrados: o histórico com foco mostra os dois, e é isso que o operador espera
+    // ao clicar no cliente. Ordem por abertura desc — o mais recente primeiro.
+    recorte: (query) =>
+      query
+        .eq("contact_id", contactId)
+        .order("opened_at", { ascending: false })
+        .limit(IRIS_TICKETS_POR_CONTATO),
+    viewerUserId,
+  });
+
+  return tickets;
 }
 
 const GROUP_QUEUE_SLUG = "grupos-whatsapp";

@@ -4,6 +4,7 @@ import {
 } from "@/lib/apolo/documentos";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
 
+import type { ComissaoCadastrada } from "./comissao";
 import { montarDadosDoDossie, type DossieDados } from "./dados";
 import { gerarDossiePdf } from "./pdf";
 import { carregarTratativas } from "./tratativas";
@@ -65,6 +66,40 @@ async function entidadeDoCliente(
   return data?.[0]?.entity_id ?? null;
 }
 
+// AS DUAS % DE COMISSÃO DO EMPREENDIMENTO, do cadastro do Panteon.
+//
+// ⚠️ A CHAVE É O `enterprise_id` DO C2X GUARDADO COMO TEXTO. `apolo_enterprise_settings` é a
+// mesma tabela que o contrato de corretagem lê (`lib/temis/dados-do-contrato.ts:600-611`), e ler
+// daqui é o que faz o dossiê e o contrato falarem o mesmo número sobre o mesmo negócio.
+//
+// ⚠️ AUSÊNCIA NÃO É ZERO. Empreendimento sem linha, ou com linha e coluna nula, devolve `null` —
+// e `repartirVenda` marca a corretagem como não apurada. Medido em 11/09/2026: das 18 linhas da
+// tabela, 17 estão com as duas colunas vazias, então hoje quase todo dossiê cai nesse caminho.
+async function comissaoDoEmpreendimento(
+  client: AdminClient,
+  enterpriseId: string,
+): Promise<ComissaoCadastrada | null> {
+  const { data } = await client
+    .from("apolo_enterprise_settings")
+    .select("comissao_coordenadora_percentual, comissao_imobiliaria_percentual")
+    .eq("enterprise_id", enterpriseId)
+    .limit(1)
+    .returns<
+      Array<{
+        comissao_coordenadora_percentual: null | number;
+        comissao_imobiliaria_percentual: null | number;
+      }>
+    >();
+
+  const linha = data?.[0];
+  if (!linha) return null;
+
+  return {
+    coordenadoraPercent: linha.comissao_coordenadora_percentual,
+    imobiliariaPercent: linha.comissao_imobiliaria_percentual,
+  };
+}
+
 export async function gerarDossieJuridico(input: {
   acquisitionRequestId: number;
   client: AdminClient;
@@ -77,6 +112,11 @@ export async function gerarDossieJuridico(input: {
 }): Promise<{ error: string; ok: false } | { ok: true; resultado: DossieResultado }> {
   const dados = await montarDadosDoDossie({
     acquisitionRequestId: input.acquisitionRequestId,
+    // ⚠️ A COMISSÃO ENTRA POR AQUI, DO PANTEON. `dados.ts` é só-C2X por decisão declarada no topo
+    // dele, e a regra do Lucas (11/09/2026) é que do legado só saem financeiro, pagamento e
+    // parcelas. Vai como função porque a chave (`enterprise_id`) só aparece depois de ler a
+    // negociação: quem tem o client do Supabase é esta função, quem tem a chave é aquela.
+    comissao: (enterpriseId) => comissaoDoEmpreendimento(input.client, enterpriseId),
     correcaoPercent: input.correcaoPercent,
   });
   if (!dados) return { error: "Negociação não encontrada no C2X.", ok: false };

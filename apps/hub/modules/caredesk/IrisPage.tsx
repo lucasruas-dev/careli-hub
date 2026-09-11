@@ -143,6 +143,7 @@ import {
   ensureOperatorIdentity,
   loadIrisData,
   loadIrisHistoricoAnterior,
+  loadIrisTicketsDoContato,
   loadTicketMessages,
   mapMessageRow,
   mapQueueRow,
@@ -1215,6 +1216,74 @@ export function IrisPage({
     historicoExtras,
     hubUser?.id,
     irisDataBruto.tickets,
+    loadFromSupabase,
+    operatorUserId,
+    scopedQueueSlug,
+  ]);
+
+  // AO FOCAR UM CLIENTE, BUSCA OS ATENDIMENTOS DELE NO BANCO.
+  //
+  // ⚠️ PAGINAR NÃO RESOLVE PROCURAR UMA PESSOA, e o chamado de 11/09/2026 mostrou isso: a
+  // cliente UEICINARA CRISTIANE DA CUNHA tem 9 atendimentos e a tela mostrava 3. Os outros 6
+  // estavam entre as posições 1.992 e 5.586 da fila de encerrados — 26 cliques em "Carregar
+  // mais" para alcançar o mais antigo. O botão funciona; para achar um cliente, não serve.
+  //
+  // ⚠️ E O FOCO ERA SÓ UM FILTRO: `iris-history-view.tsx` faz `tickets.filter(...)` sobre a
+  // lista já carregada. Clicar no cliente parecia uma busca e não era.
+  const contatoFocado = historyFocus?.contactId ?? null;
+  useEffect(() => {
+    if (!contatoFocado || !loadFromSupabase) {
+      return;
+    }
+
+    let ativo = true;
+    setHistoricoCarregando(true);
+    setHistoricoErro(null);
+
+    void (async () => {
+      try {
+        const doCliente = await withIrisTimeout(
+          loadIrisTicketsDoContato({
+            contactId: contatoFocado,
+            operatorUserId,
+            queueSlugFilter: scopedQueueSlug,
+            viewerUserId: hubUser?.id ?? null,
+          }),
+          IRIS_QUEUE_LOAD_TIMEOUT_MS,
+          "atendimentos do cliente",
+        );
+
+        if (!ativo) return;
+
+        const enriquecido = await enrichIrisDataWithCrm360({
+          ...emptyIrisData,
+          tickets: doCliente,
+        });
+
+        if (!ativo) return;
+
+        setHistoricoExtras((atuais) =>
+          mesclarTicketsDoHistorico(atuais, enriquecido.tickets),
+        );
+      } catch (error) {
+        console.error("[iris][historico] falha ao buscar os atendimentos do cliente", error);
+        if (ativo) {
+          setHistoricoErro(
+            "Nao foi possivel buscar todos os atendimentos deste cliente. A lista pode estar incompleta.",
+          );
+        }
+      } finally {
+        if (ativo) setHistoricoCarregando(false);
+      }
+    })();
+
+    return () => {
+      ativo = false;
+    };
+  }, [
+    contatoFocado,
+    enrichIrisDataWithCrm360,
+    hubUser?.id,
     loadFromSupabase,
     operatorUserId,
     scopedQueueSlug,

@@ -24,6 +24,10 @@ import { Tooltip } from "@repo/uix";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
 import { DossieJuridicoModal } from "@/modules/guardian/attendance/components/DossieJuridicoModal";
 import { ProposalChat } from "@/modules/guardian/attendance/components/ProposalChat";
+import {
+  contratoDaSelecao,
+  unidadesEmAtraso,
+} from "@/lib/guardian/acordo-por-unidade";
 import { hasProposalUpdate } from "@/lib/guardian/proposal-seen";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
@@ -407,6 +411,41 @@ export function ProposalModal({
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(metaStringArray(meta, "c2x_parcelas")),
   );
+
+  // ⚠️ O ACORDO É DE UMA UNIDADE. Até 11/09/2026 esta tela dizia o contrário por escrito ("pode
+  // juntar parcelas de qualquer unidade"), e os dois únicos acordos de produção nasceram
+  // misturando dois contratos cada — sem como ratear a entrada entre eles depois.
+  const unidades = useMemo(() => unidadesEmAtraso(overdue), [overdue]);
+  const [contratoEscolhido, setContratoEscolhido] = useState<null | string>(() => {
+    const doAcordo = existing?.acquisitionRequestC2xId;
+    if (doAcordo) return String(doAcordo);
+    // Com uma unidade só não há escolha a fazer: já entra selecionada.
+    return unidades.length === 1 ? (unidades[0]?.acquisitionRequestId ?? null) : null;
+  });
+
+  // A lista de parcelas segue a unidade escolhida. Com nenhuma escolhida (cliente multi-unidade
+  // recém-aberto), a lista fica vazia e a tela pede a escolha — melhor que oferecer tudo junto.
+  const overdueDaUnidade = useMemo(
+    () =>
+      contratoEscolhido === null
+        ? []
+        : overdue.filter(
+            (item) => String(item.acquisitionRequestId) === contratoEscolhido,
+          ),
+    [contratoEscolhido, overdue],
+  );
+
+  // Trocar de unidade limpa a seleção: manter parcela da unidade anterior marcada é justamente
+  // como o acordo misturado nasce.
+  useEffect(() => {
+    setSelected((atual) => {
+      if (atual.size === 0) return atual;
+      const permitidas = new Set(overdueDaUnidade.map((item) => item.id));
+      const filtrada = new Set([...atual].filter((id) => permitidas.has(id)));
+
+      return filtrada.size === atual.size ? atual : filtrada;
+    });
+  }, [overdueDaUnidade]);
   const [promisedDate, setPromisedDate] = useState(
     existing?.promisedDate ?? todayInput(),
   );
@@ -449,7 +488,7 @@ export function ProposalModal({
       .map((unit) => unit.matricula)
       .filter(Boolean)
       .join(", ") || "-";
-  const selectedInstallments = overdue.filter((item) => selected.has(item.id));
+  const selectedInstallments = overdueDaUnidade.filter((item) => selected.has(item.id));
   const original = round2(
     selectedInstallments.reduce((sum, item) => sum + item.valueNumber, 0),
   );
@@ -533,11 +572,11 @@ export function ProposalModal({
   }
 
   const allSelected =
-    overdue.length > 0 && overdue.every((item) => selected.has(item.id));
+    overdueDaUnidade.length > 0 && overdueDaUnidade.every((item) => selected.has(item.id));
 
   function toggleAll() {
     setSelected(() =>
-      allSelected ? new Set<string>() : new Set(overdue.map((item) => item.id)),
+      allSelected ? new Set<string>() : new Set(overdueDaUnidade.map((item) => item.id)),
     );
   }
 
@@ -578,8 +617,16 @@ export function ProposalModal({
       },
     };
 
+    // ⚠️ A UNIDADE VAI NO CORPO, e é o que preenche `acquisition_request_c2x_id`. A coluna
+    // existe desde a migration 0036 e estava NULA em 7 de 7 compromissos: sem ela, nada no
+    // registro diz de qual unidade é o acordo, e o termo de formalização fica sem objeto.
+    // `contratoDaSelecao` recusa seleção que mistura contratos — cinto e suspensório com o
+    // filtro da tela, porque o modal pode ser reaberto sobre um acordo antigo já misturado.
+    const contratoDoAcordo = contratoDaSelecao(selectedInstallments);
+
     const body = isAcordo
       ? {
+          acquisitionRequestC2xId: contratoDoAcordo,
           channel: "manual",
           client: { id: client.id, name: client.nome },
           clientC2xId,
@@ -606,6 +653,7 @@ export function ProposalModal({
           })),
         }
       : {
+          acquisitionRequestC2xId: contratoDoAcordo,
           channel: "manual",
           client: { id: client.id, name: client.nome },
           clientC2xId,
@@ -703,12 +751,69 @@ export function ProposalModal({
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+          {/* ⚠️ A ESCOLHA DA UNIDADE VEM ANTES DAS PARCELAS, e só aparece quando há mais de uma:
+              com uma só não há decisão a tomar, e um seletor de um item é ruído. Cliente
+              multi-unidade abre SEM unidade escolhida de propósito — oferecer tudo junto é como
+              nasceram os dois acordos misturados de produção. */}
+          {unidades.length > 1 ? (
+            <section>
+              <p className="mb-2 text-xs font-semibold text-ink-muted">
+                {isAcordo ? "1 · Unidade" : "Unidade"}
+              </p>
+              <div className="grid gap-1.5">
+                {unidades.map((unidade) => {
+                  const escolhida =
+                    contratoEscolhido === unidade.acquisitionRequestId;
+
+                  return (
+                    <button
+                      key={unidade.acquisitionRequestId}
+                      type="button"
+                      onClick={() =>
+                        setContratoEscolhido(unidade.acquisitionRequestId)
+                      }
+                      className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                        escolhida
+                          ? "border-[#A07C3B] bg-[#A07C3B]/8"
+                          : "border-line/70 hover:bg-subtle"
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        <span className="font-semibold text-ink">
+                          {unidade.rotulo}
+                        </span>
+                        {unidade.unitLabel && unidade.unitLabel !== unidade.rotulo ? (
+                          <span className="text-ink-muted"> · {unidade.unitLabel}</span>
+                        ) : null}
+                      </span>
+                      <span className="shrink-0 text-ink-muted">
+                        {unidade.parcelas}{" "}
+                        {unidade.parcelas === 1 ? "parcela" : "parcelas"} ·{" "}
+                        <span className="font-semibold text-ink">
+                          {formatMoney(unidade.total)}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {contratoEscolhido === null ? (
+                <p className="mt-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                  Escolha a unidade para ver as parcelas. O acordo vale para uma
+                  unidade por vez.
+                </p>
+              ) : null}
+            </section>
+          ) : null}
+
           <section>
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="text-xs font-semibold text-ink-muted">
-                {isAcordo ? "1 · Parcelas em negociação" : "Parcelas em negociação"}
+                {isAcordo
+                  ? `${unidades.length > 1 ? "2" : "1"} · Parcelas em negociação`
+                  : "Parcelas em negociação"}
               </p>
-              {overdue.length > 1 ? (
+              {overdueDaUnidade.length > 1 ? (
                 <button
                   type="button"
                   onClick={toggleAll}
@@ -719,12 +824,12 @@ export function ProposalModal({
               ) : null}
             </div>
             <div className="max-h-52 overflow-y-auto rounded-lg border border-line/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-              {overdue.length === 0 ? (
+              {overdueDaUnidade.length === 0 ? (
                 <p className="px-3 py-4 text-xs text-ink-muted">
                   Sem parcelas vencidas para negociar.
                 </p>
               ) : (
-                overdue.map((item) => {
+                overdueDaUnidade.map((item) => {
                   const checked = selected.has(item.id);
                   return (
                     <button
@@ -754,9 +859,13 @@ export function ProposalModal({
                 })
               )}
             </div>
+            {/* ⚠️ ESTA FRASE DIZIA O OPOSTO ATÉ 11/09/2026 ("pode juntar parcelas de qualquer
+                unidade, cobrança é por cliente"), e era a regra da casa. O Lucas a reverteu: um
+                acordo que mistura unidades não permite dizer quanto da entrada é de cada uma, e
+                deixa o termo de formalização sem objeto. */}
             {isAcordo ? (
               <p className="mt-1 text-[11px] text-ink-muted">
-                Pode juntar parcelas de qualquer unidade (cobrança é por cliente).
+                O acordo vale para uma unidade por vez.
               </p>
             ) : null}
           </section>
