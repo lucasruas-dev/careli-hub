@@ -1,5 +1,9 @@
 # Perguntas em aberto — o domínio da Careli
 
+> 📌 **Responda na copia da mesa: `Desktop\PERGUNTAS-Panteon.md`.**
+> Este arquivo aqui e o registro versionado. As respostas entram por la e eu sincronizo.
+
+
 **Como usar:** escreva a resposta na linha `R:` de cada pergunta e salve. Não precisa formatar nem
 responder tudo — uma frase basta, e pode pular as que não interessam agora. Quando quiser, me diga
 "li as respostas" (ou só me mande trabalhar no tema) que eu leio o arquivo, levo cada resposta para
