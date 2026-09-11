@@ -1,6 +1,5 @@
 "use client";
 
-import { useAthenaTicketRecording } from "@/components/hub-support/athena-ticket-recording-provider";
 import {
   DESCANSO_ENTRE_FALAS_MS,
   falasDaHora,
@@ -10,10 +9,9 @@ import {
 import { FestoChat } from "@/components/hub-support/festo-chat";
 import { type EstadoDoFesto, FestoRobo } from "@/components/hub-support/festo-robo";
 import { falasDoTraje, trajeDaData } from "@/components/hub-support/festo-traje";
-import { HubTicketOpenForm } from "@/components/hub-support/hub-ticket-open-form";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import { useAuth } from "@/providers/auth-provider";
-import { ArrowLeft, X } from "lucide-react";
+import { X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -57,19 +55,7 @@ const FOLGA_DO_CLIQUE = 4;
 export function HubSupportDock() {
   const { hubUser } = useAuth();
   const pathname = usePathname();
-  const { isRecordingProtected, nativeTicketFormCount } =
-    useAthenaTicketRecording();
   const [open, setOpen] = useState(false);
-  /**
-   * O que o painel mostra: a conversa (o padrão) ou o formulário de chamado.
-   *
-   * ⚠️ O FORMULÁRIO NÃO FOI EMBORA, virou a segunda porta. É por ele que passam print, anexo e
-   * gravação de tela — que o chat ainda não aceita — e é ele que quem já sabe o que quer registrar
-   * usa sem conversar. Trocar uma coisa pela outra teria tirado do ar, no mesmo dia, a única forma
-   * de mandar evidência junto com o relato.
-   */
-  const [modo, setModo] = useState<"chamado" | "conversa">("conversa");
-  const [recordingMinimized, setRecordingMinimized] = useState(false);
   const [posicao, setPosicao] = useState<null | Posicao>(null);
   const [arrastando, setArrastando] = useState(false);
   const dockRef = useRef<HTMLDivElement>(null);
@@ -83,21 +69,8 @@ export function HubSupportDock() {
   const jaDitas = useRef<string[]>([]);
   const sumirFala = useRef<null | ReturnType<typeof setTimeout>>(null);
 
-  const shouldKeepTicketVisible =
-    isRecordingProtected && nativeTicketFormCount === 0;
-  const compactPanel =
-    recordingMinimized || (!open && shouldKeepTicketVisible);
-  const panelVisible = open || recordingMinimized || shouldKeepTicketVisible;
-  /**
-   * ⚠️ GRAVAÇÃO EM CURSO MANDA NO PAINEL. Quem está gravando a tela está no meio do formulário, e
-   * devolver essa pessoa para a conversa jogaria fora a gravação que ela acabou de fazer — o pior
-   * defeito possível numa ferramenta que existe para registrar evidência.
-   */
-  const mostrarFormulario =
-    modo === "chamado" || compactPanel || shouldKeepTicketVisible;
-
   useOutsideDismiss({
-    enabled: open && !recordingMinimized && !arrastando,
+    enabled: open && !arrastando,
     onDismiss: requestClose,
     ref: dockRef,
   });
@@ -178,7 +151,7 @@ export function HubSupportDock() {
    */
   useEffect(() => {
     const relogio = setInterval(() => {
-      if (open || recordingMinimized) return;
+      if (open) return;
       const agora = new Date();
       // ⚠️ NA DATA, A FALA DA DATA TEM PRECEDÊNCIA. Um "já tomou água?" na semana da pátria com a
       // bandeira na mão desperdiçaria a única coisa que faz o adereço valer: a piada de estar ali.
@@ -189,7 +162,7 @@ export function HubSupportDock() {
       dizer(sorteio.escolhida, 8);
     }, DESCANSO_ENTRE_FALAS_MS);
     return () => clearInterval(relogio);
-  }, [dizer, open, recordingMinimized]);
+  }, [dizer, open]);
 
   const aoDescer = useCallback((evento: React.PointerEvent<HTMLButtonElement>) => {
     const alvo = evento.currentTarget;
@@ -243,19 +216,15 @@ export function HubSupportDock() {
 
       // Não moveu: é clique. O balão sai de cena — o assunto agora é o painel.
       setFala(null);
-      if (compactPanel) {
-        restoreRecordingPanel();
-        return;
-      }
       setOpen((atualAberto) => !atualAberto);
     },
-    [compactPanel],
+    [],
   );
 
-  if (
-    !hubUser ||
-    (shouldHideGlobalAthena(pathname) && !shouldKeepTicketVisible)
-  ) {
+  // ⚠️ SEM EXCEÇÃO. Antes havia uma: gravação em curso fazia o Festos aparecer mesmo nas telas
+  // onde ele não devia — e era por ela que ele reaparecia no Hermes. Com o formulário fora do
+  // dock, não existe mais gravação para proteger, e a regra passa a valer como está escrita.
+  if (!hubUser || escondeOFestos(pathname)) {
     return null;
   }
 
@@ -284,43 +253,19 @@ export function HubSupportDock() {
           : undefined
       }
     >
-      {panelVisible ? (
-        <section
-          className={
-            compactPanel
-              ? "w-[min(24rem,calc(100vw-2rem))]"
-              : "w-[min(33rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
-          }
-        >
-          <header
-            className={`border-b border-slate-100 bg-[#101820] px-4 py-3 text-white ${
-              compactPanel ? "hidden" : ""
-            }`}
-          >
+      {open ? (
+        <section className="w-[min(33rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]">
+          <header className="border-b border-slate-100 bg-[#101820] px-4 py-3 text-white">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                {/* Do formulário dá para voltar à conversa; da conversa não há para onde voltar. */}
-                {modo === "chamado" && !shouldKeepTicketVisible ? (
-                  <button
-                    aria-label="Voltar para a conversa com o Festos"
-                    className="grid size-8 shrink-0 place-items-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
-                    onClick={() => setModo("conversa")}
-                    type="button"
-                  >
-                    <ArrowLeft className="size-4" aria-hidden="true" />
-                  </button>
-                ) : (
-                  <span className="grid size-11 shrink-0 place-items-center">
-                    {/* O cabecalho e preto nas duas telas: o robo precisa da versao clara. */}
-                    <FestoRobo className="size-11" noEscuro />
-                  </span>
-                )}
+                <span className="grid size-11 shrink-0 place-items-center">
+                  {/* O cabecalho e preto nas duas telas: o robo precisa da versao clara. */}
+                  <FestoRobo className="size-11" noEscuro />
+                </span>
                 <div className="min-w-0">
                   <p className="m-0 text-sm font-semibold">Festos</p>
                   <p className="m-0 mt-1 truncate text-xs text-white/65">
-                    {mostrarFormulario
-                      ? "Abrindo chamado. Pode anexar print ou gravação."
-                      : "Suporte do Panteon. Conte o que aconteceu."}
+                    Suporte do Panteon. Conte o que aconteceu.
                   </p>
                 </div>
               </div>
@@ -335,28 +280,13 @@ export function HubSupportDock() {
             </div>
           </header>
 
-          {mostrarFormulario ? (
-            <div
-              className={
-                compactPanel
-                  ? "p-0"
-                  : "max-h-[calc(100dvh-12rem)] overflow-y-auto p-4"
-              }
-            >
-              <HubTicketOpenForm
-                compactRecordingMode={compactPanel}
-                onRestoreRequest={restoreRecordingPanel}
-              />
-            </div>
-          ) : (
-            <FestoChat aoAbrirChamado={() => setModo("chamado")} />
-          )}
+          <FestoChat />
         </section>
       ) : null}
 
       {/* ⚠️ O BALÃO SÓ APARECE COM O PAINEL FECHADO. Com a conversa aberta, um balão flutuando ao
           lado seria uma segunda voz do mesmo Festos dizendo outra coisa. */}
-      {fala && !panelVisible ? (
+      {fala && !open ? (
         <div
           className="max-w-[15rem] self-end rounded-xl rounded-br-sm bg-inverse px-3 py-2 text-[12.5px] leading-snug text-surface shadow-[0_10px_26px_rgba(15,23,42,0.22)]"
           role="status"
@@ -366,10 +296,8 @@ export function HubSupportDock() {
       ) : null}
 
       <button
-        aria-expanded={open && !compactPanel}
-        aria-label={
-          compactPanel ? "Restaurar o Festos" : "Falar com o Festos — arraste para mover"
-        }
+        aria-expanded={open}
+        aria-label="Falar com o Festos — arraste para mover"
         // ⚠️ O BOTÃO CONTINUA TENDO 56px, mesmo sem o círculo desenhado: o fundo sumiu, a ÁREA
         // DE CLIQUE não. Sem isto o alvo viraria a silhueta do robô, com cantos vazios que não
         // respondem — e errar o clique no botão de suporte é o pior lugar para essa frustração.
@@ -406,23 +334,7 @@ export function HubSupportDock() {
   );
 
   function requestClose() {
-    if (isRecordingProtected) {
-      setOpen(false);
-      setRecordingMinimized(true);
-      return;
-    }
-
     setOpen(false);
-    setRecordingMinimized(false);
-    // A próxima abertura começa pela conversa. O painel desmonta ao fechar, então o formulário já
-    // perderia o que estivesse escrito de qualquer forma — voltar ao chat só alinha o que se vê ao
-    // que de fato sobrou.
-    setModo("conversa");
-  }
-
-  function restoreRecordingPanel() {
-    setRecordingMinimized(false);
-    setOpen(true);
   }
 }
 
@@ -435,10 +347,23 @@ function dentroDaTela(posicao: Posicao): Posicao {
   };
 }
 
-function shouldHideGlobalAthena(pathname: string) {
+/**
+ * Onde o Festos NÃO aparece.
+ *
+ * ⚠️ HERMES E O MOTIVO DESTA LISTA EXISTIR HOJE. Lucas, 11/09/2026, com o print do chat da
+ * Liderança aberto: *"hermes sem o festos"*. Ali a tela já é uma conversa, com campo de mensagem no
+ * mesmo canto: um segundo boneco flutuando por cima disputa o lugar e confunde quem está falando
+ * com quem. O Hermes entra pelas DUAS rotas — `/hermes` é a tela de hoje e `/pulsex` é o nome
+ * antigo do módulo, que ainda responde.
+ *
+ * O Zeus fica de fora porque é a casa do HelpDesk (quem atende não abre chamado consigo mesmo), e
+ * as telas de atendimento do Hades porque lá o operador já está numa conversa com o cliente.
+ */
+function escondeOFestos(pathname: string) {
   return (
     pathname.startsWith("/zeus") ||
     pathname.startsWith("/hermes") ||
+    pathname.startsWith("/pulsex") ||
     pathname.startsWith("/hades/cobranca") ||
     pathname.startsWith("/hades/atendimento")
   );

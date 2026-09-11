@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-11-abrir-chamado-e-com-o-festos",
+    deployedAt: "2026-09-11T18:30:00-03:00",
+    modules: [
+      {
+        module: "Suporte",
+        screens: [
+          {
+            items: [
+              "**Abrir chamado agora \u00e9 com o Festos.** O bot\u00e3o de formul\u00e1rio saiu da conversa: voc\u00ea conta o que aconteceu e, se for caso de registrar, ele abre o chamado com o que a conversa apurou \u2014 inclusive os prints que voc\u00ea mandou.",
+              "**Se voc\u00ea s\u00f3 quer registrar, diga isso a ele.** Uma frase basta; ele pergunta o que faltar e devolve o protocolo ali mesmo.",
+              "**O Festos n\u00e3o aparece mais no Hermes.** L\u00e1 a tela j\u00e1 \u00e9 uma conversa, com campo de mensagem no mesmo canto \u2014 dois bon\u00e9cos disputando o lugar s\u00f3 atrapalhava.",
+              "**Ele continua entendendo \u00e1udio**: voc\u00ea grava, vira texto no campo, e voc\u00ea confere antes de enviar.",
+            ],
+            screen: "Bot\u00e3o de suporte",
+          },
+        ],
+      },
+    ],
+    rollback: "d6072eda",
+    technical: {
+      done: "UMA PORTA S\u00d3. O dock perdeu o `HubTicketOpenForm`, o modo `chamado`, o painel compacto e toda a m\u00e1quina de grava\u00e7\u00e3o protegida (`isRecordingProtected` / `nativeTicketFormCount` / `recordingMinimized`). \u26a0\ufe0f ERA ESSA EXCE\u00c7\u00c3O QUE TRAZIA O FESTOS DE VOLTA AO HERMES: a condi\u00e7\u00e3o de esconder era `escondeOFestos(pathname) && !shouldKeepTicketVisible`, ent\u00e3o uma grava\u00e7\u00e3o em curso o fazia aparecer em TODA tela, inclusive nas da lista. Sem formul\u00e1rio no dock n\u00e3o h\u00e1 grava\u00e7\u00e3o para proteger, e a regra passou a valer como est\u00e1 escrita. A lista ganhou `/pulsex` junto de `/hermes` \u2014 o m\u00f3dulo responde pelos dois caminhos, e s\u00f3 um estava coberto. O formul\u00e1rio continua existindo e montado em `athena-agent-panel` e `AiCopilotDrawer`; o que saiu foi o atalho no dock. || VOZ REVERTIDA (commit 46045edc, que nunca chegou a produ\u00e7\u00e3o): Lucas, depois de ver o desenho pronto \u2014 *\"esquece a voz, deixa somente como texto, ele deve somente entender audio\"*. Sa\u00edram `lib/hub-support/festo-voz.ts`, `/api/hub/festo/voz`, `ouvirOFestos` e o bot\u00e3o de ouvir; ficou a TRANSCRI\u00c7\u00c3O (`/api/hub/festo/transcricao`, gpt-4o-mini-transcribe), que \u00e9 o sentido inverso e continua valendo. O motor de TTS do repo (`lib/iris/tts.ts`, que d\u00e1 voz \u00e0 CAC\u00c1) n\u00e3o foi tocado. || O system do agente ganhou uma linha dizendo que abrir chamado \u00e9 com ele e que n\u00e3o existe bot\u00e3o para mandar a pessoa procurar. 3.563 testes verdes, typecheck e lint limpos. \u26a0\ufe0f N\u00e3o verificado em tela: o hub exige login.",
+      motivation:
+        "Lucas: 'abrir chamado \u00e9 com o festos' · 'n\u00e3o precisa de um bot\u00e3o para abrir chamados' · 'hermes sem o festos'. O bot\u00e3o mantinha viva a ideia que a conversa veio substituir \u2014 a de que registrar \u00e9 um ato da pessoa, feito num formul\u00e1rio.",
+    },
+    title: "Abrir chamado \u00e9 com o Festos",
+    type: "melhoria",
+    version: "1.316.0",
+  },
+  {
     buildTag: "2026-09-11-o-festos-apura-enxerga-e-devolve",
     deployedAt: "2026-09-11T17:00:00-03:00",
     modules: [

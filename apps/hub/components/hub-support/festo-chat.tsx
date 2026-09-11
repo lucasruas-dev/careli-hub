@@ -11,12 +11,10 @@ import { FestoRobo } from "@/components/hub-support/festo-robo";
 import {
   falarComOFesto,
   type FalaDoChat,
-  ouvirOFestos,
   tokenDaSessao,
 } from "@/lib/hub-support/festo-cliente";
 import { useAuth } from "@/providers/auth-provider";
 import {
-  FileText,
   ImagePlus,
   Loader2,
   Mic,
@@ -24,7 +22,6 @@ import {
   Send,
   Square,
   Ticket,
-  Volume2,
   X,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -41,32 +38,19 @@ import { useEffect, useRef, useState } from "react";
 // contar o que houve, e o chamado passa a ser CONSEQUÊNCIA: nasce quando o assunto não se resolve
 // ali, e nasce preenchido pelo Festos. Muita coisa se resolve ali.
 //
-// ⚠️ O CHAMADO CONTINUA À MÃO, num botão visível o tempo todo. Tem gente que já sabe exatamente o
-// que quer registrar e não precisa de conversa; e quando o Festos não der conta, o caminho tem que
-// estar visível, não escondido atrás de uma negociação com o robô. Suporte que prende a pessoa numa
-// conversa é pior do que o formulário que ele substituiu.
+// ⚠️ E NÃO HÁ MAIS BOTÃO DE ABRIR CHAMADO. Lucas, 11/09/2026: *"abrir chamado é com o Festos"* e
+// *"não precisa de um botão para abrir chamados"*. O botão mantinha viva a ideia que a conversa veio
+// substituir — a de que registrar é um ato da PESSOA, feito num formulário. Aqui é ele quem abre, e
+// com o que a conversa apurou; quem chega sabendo o que quer registrar simplesmente conta em uma
+// frase, e o chamado nasce igual.
 //
-// ⚠️ PRINT, COLAR E VOZ ENTRAM AQUI; gravação de tela em vídeo continua no formulário. O motivo é
-// medido: a Claude lê imagem nativamente, mas não lê vídeo — o formulário contorna extraindo
-// quadros no navegador, e reproduzir isso dentro da conversa entregaria quadros soltos com o custo
-// de um upload de 120 MB. A voz vira TEXTO antes de ser enviada, e a pessoa revisa o que foi
-// entendido.
+// ⚠️ PRINT, COLAR E ÁUDIO ENTRAM AQUI; vídeo, não. A Claude lê imagem nativamente e não lê vídeo, e
+// a voz vira TEXTO antes de ser enviada, com a pessoa revisando o que foi entendido.
 
 type Fala = FalaDoChat & {
   /** O chamado que ESTA fala abriu. Vira o cartão com o protocolo. */
   chamado?: null | { protocolo: string; titulo: string };
-  /** A pessoa ditou esta fala em vez de digitar. Decide se o Festos responde falando. */
-  porVoz?: boolean;
 };
-
-/**
- * A pessoa quer ouvir as respostas?
- *
- * ⚠️ LEMBRADO POR NAVEGADOR, e não por conta: quem trabalha numa sala aberta e quem trabalha de
- * fone querem coisas opostas, e é a MÁQUINA que sabe disso — a mesma pessoa muda de resposta quando
- * senta em outro lugar.
- */
-const CHAVE_DA_VOZ = "panteon-festo-voz";
 
 /** Quantos prints cabem numa mensagem. O mesmo teto que a rota aplica do outro lado. */
 const PRINTS_POR_MENSAGEM = 2;
@@ -86,7 +70,7 @@ function abertura(primeiroNome: null | string): string {
   ].join(" ");
 }
 
-export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
+export function FestoChat() {
   const { hubUser } = useAuth();
   const pathname = usePathname();
   const primeiroNome = hubUser?.name?.trim().split(/\s+/)[0] ?? null;
@@ -102,49 +86,13 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
     encerrar: () => Promise<Blob | null>;
   }>(null);
   const [erro, setErro] = useState<null | string>(null);
-  /** Toca a resposta assim que ela chega. Desligado por padrão. */
-  const [respondeFalando, setRespondeFalando] = useState(false);
-  /**
-   * ⚠️ `null` ENQUANTO NÃO SE SABE. A rota diz se o Festos tem voz na primeira vez que alguém pede;
-   * antes disso o botão aparece (e some se vier 503). Perguntar antes, numa rota só para isso,
-   * custaria uma ida ao servidor em toda abertura do painel para uma informação que quase nunca
-   * muda.
-   */
-  const [temVoz, setTemVoz] = useState<boolean | null>(null);
-  /** Qual fala está tocando agora, pelo índice. */
-  const [tocando, setTocando] = useState<null | number>(null);
   const fim = useRef<HTMLDivElement>(null);
   const arquivo = useRef<HTMLInputElement>(null);
-  const audioAtual = useRef<HTMLAudioElement | null>(null);
-  /**
-   * A próxima mensagem foi ditada.
-   *
-   * ⚠️ REF, E NÃO ESTADO: entre transcrever e enviar não há nenhuma renderização que precise saber
-   * disso, e como estado ele entraria na dependência do envio e reagendaria efeito à toa.
-   */
-  const veioDeVoz = useRef(false);
 
   // A conversa acompanha a última fala, como qualquer chat.
   useEffect(() => {
     fim.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [falas, pensando, prints]);
-
-  useEffect(() => {
-    try {
-      setRespondeFalando(localStorage.getItem(CHAVE_DA_VOZ) === "1");
-    } catch {
-      // Sem armazenamento (aba privativa): fica desligado, que é o padrão seguro numa sala.
-    }
-  }, []);
-
-  // ⚠️ O ÁUDIO PARA QUANDO O PAINEL FECHA. Sem isto, fechar o suporte no meio de uma frase deixa o
-  // robô falando sozinho numa aba que ninguém está mais olhando.
-  useEffect(() => {
-    return () => {
-      audioAtual.current?.pause();
-      audioAtual.current = null;
-    };
-  }, []);
 
   async function juntarPrints(blobs: Blob[]) {
     const espaco = PRINTS_POR_MENSAGEM - prints.length;
@@ -163,56 +111,17 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
     }
   }
 
-  /**
-   * Toca (ou repete) a resposta do Festos.
-   *
-   * ⚠️ UMA VOZ POR VEZ. Clicar em duas respostas seguidas sem parar a primeira faria dois Festos
-   * falarem juntos — o defeito mais fácil de produzir e o mais desagradável de ouvir.
-   */
-  async function ouvir(indice: number, texto: string) {
-    audioAtual.current?.pause();
-    audioAtual.current = null;
-
-    if (tocando === indice) {
-      setTocando(null);
-      return;
-    }
-
-    setTocando(indice);
-
-    try {
-      const audio = await ouvirOFestos(texto);
-
-      if (!audio) {
-        // 503: ele ainda não tem voz escolhida. O botão some e não volta nesta sessão.
-        setTemVoz(false);
-        setTocando(null);
-        return;
-      }
-
-      setTemVoz(true);
-      audioAtual.current = audio;
-      audio.addEventListener("ended", () => setTocando(null), { once: true });
-      await audio.play();
-    } catch {
-      // Falha de rede ou autoplay bloqueado: o texto continua na tela, que é o que importa.
-      setTocando(null);
-    }
-  }
-
   async function enviar() {
     const pergunta = texto.trim();
     if ((!pergunta && prints.length === 0) || pensando) return;
 
     const imagens = prints;
-    const ditada = veioDeVoz.current;
-    veioDeVoz.current = false;
     setTexto("");
     setPrints([]);
     setErro(null);
     const comAPergunta: Fala[] = [
       ...falas,
-      { de: "pessoa", imagens, porVoz: ditada, texto: pergunta },
+      { de: "pessoa", imagens, texto: pergunta },
     ];
     setFalas(comAPergunta);
     setPensando(true);
@@ -231,27 +140,16 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
         tela: pathname,
       });
 
-      setFalas((atual) => {
-        const proximas: Fala[] = [
-          ...atual,
-          { chamado: resposta.chamado, de: "festo", texto: resposta.texto },
-        ];
-
-        // ⚠️ ELE FALA DE VOLTA PARA QUEM FALOU COM ELE. Quem gravou um áudio está com as mãos
-        // ocupadas ou não quer digitar; devolver só texto obriga a pessoa a voltar para a tela
-        // justamente quando ela escolheu não usar a tela. E o `play()` é permitido aqui porque
-        // quem enviou a mensagem já fez o gesto que o navegador exige.
-        if ((ditada || respondeFalando) && temVoz !== false) {
-          void ouvir(proximas.length - 1, resposta.texto);
-        }
-
-        return proximas;
-      });
+      setFalas((atual) => [
+        ...atual,
+        { chamado: resposta.chamado, de: "festo", texto: resposta.texto },
+      ]);
     } catch (e) {
-      // ⚠️ FALHA DO FESTOS NÃO PODE DEIXAR A PESSOA SEM CAMINHO. Se ele cair, o que não pode cair é
-      // o suporte: a mensagem aponta o botão de chamado, que não depende de modelo nenhum.
+      // ⚠️ QUANDO ELE CAI, A PESSOA PRECISA SABER O QUE FAZER. Não existe mais botão de chamado para
+      // apontar, então o que resta é o caminho humano — e dizer isso é melhor do que deixar um erro
+      // seco na tela de quem já estava com problema.
       setErro(
-        `${e instanceof Error ? e.message : "Não consegui responder agora."} Se preferir não esperar, abre o chamado aqui embaixo que alguém olha.`,
+        `${e instanceof Error ? e.message : "Não consegui responder agora."} Tenta de novo daqui a pouco; se for urgente, chama alguém do time.`,
       );
     } finally {
       setPensando(false);
@@ -268,7 +166,6 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
       setOcupado("transcrevendo");
       try {
         const transcrito = await transcreverVoz(audio, await tokenDaSessao());
-        veioDeVoz.current = true;
         // ⚠️ O TEXTO VAI PARA O CAMPO, e não direto para o Festos. A transcrição erra nome próprio
         // e número; deixar a pessoa ver e corrigir antes de enviar custa um segundo e evita um
         // chamado aberto com o relato trocado.
@@ -329,24 +226,6 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
                   <p className="m-0 whitespace-pre-wrap">{fala.texto}</p>
                 ) : null}
               </div>
-
-              {/* ⚠️ O BOTÃO DE OUVIR FICA FORA DO BALÃO, e pequeno. Dentro, competiria com o texto
-                  que a pessoa está lendo; e a voz é a alternativa à leitura, não um enfeite dela.
-                  Some de vez quando a rota diz que ele ainda não tem voz. */}
-              {fala.de === "festo" && fala.texto && temVoz !== false ? (
-                <button
-                  aria-label={tocando === indice ? "Parar" : "Ouvir a resposta"}
-                  className={`mb-1 grid size-7 shrink-0 place-items-center rounded-full transition-colors ${
-                    tocando === indice
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                  }`}
-                  onClick={() => void ouvir(indice, fala.texto)}
-                  type="button"
-                >
-                  <Volume2 aria-hidden="true" className="size-3.5" />
-                </button>
-              ) : null}
             </div>
 
             {/* ⚠️ O PROTOCOLO GANHA CARTÃO PRÓPRIO, e não fica só dentro do texto do Festos. É o
@@ -510,40 +389,6 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
               gravando ? "Parar" : ocupado === "transcrevendo" ? "Ouvindo…" : "Áudio"
             }
           />
-
-          {/* ⚠️ O INTERRUPTOR DA VOZ FICA AO LADO DO MICROFONE, e não numa tela de preferências:
-              quem precisa dele percebe isso no meio de uma conversa, com a mão no teclado — e
-              preferência que exige sair da tela para mudar é preferência que ninguém muda. */}
-          {temVoz !== false ? (
-            <BotaoDoChat
-              aoClicar={() => {
-                const proximo = !respondeFalando;
-                setRespondeFalando(proximo);
-                if (!proximo) {
-                  audioAtual.current?.pause();
-                  audioAtual.current = null;
-                  setTocando(null);
-                }
-                try {
-                  localStorage.setItem(CHAVE_DA_VOZ, proximo ? "1" : "0");
-                } catch {
-                  // Sem armazenamento: vale só nesta sessão.
-                }
-              }}
-              destacado={respondeFalando}
-              icone={<Volume2 aria-hidden="true" className="size-3.5" />}
-              rotulo={respondeFalando ? "Falando" : "Voz"}
-            />
-          ) : null}
-
-          <button
-            className="ml-auto flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
-            onClick={aoAbrirChamado}
-            type="button"
-          >
-            <FileText aria-hidden="true" className="size-3.5" />
-            Abrir chamado
-          </button>
         </div>
       </div>
     </div>
