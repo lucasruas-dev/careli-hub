@@ -416,3 +416,18 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .festo-bandeira-pano { animation: none !important }
 }
+
+/* O tchauzinho. ⚠️ O giro sai do PULSO (a base da mão), não do centro do círculo: girando pelo
+ * meio, a mão orbitaria em vez de acenar. */
+.festo-mao {
+  transform-origin: 88px 58px;
+  transform-box: fill-box;
+  animation: festo-tchau 1.1s ease-in-out infinite;
+}
+@keyframes festo-tchau {
+  0%, 100% { transform: rotate(-16deg) }
+  50% { transform: rotate(16deg) }
+}
+@media (prefers-reduced-motion: reduce) {
+  .festo-mao { animation: none !important }
+}

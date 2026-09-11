@@ -25,7 +25,9 @@ export type EstadoDoFesto =
   /** Um pulo só: alguém chegou perto. */
   | "pulando"
   /** Pula sem parar: tem resposta esperando. */
-  | "chamando";
+  | "chamando"
+  /** Dá tchauzinho. Para quando ele aparece só cumprimentando, sem nada a resolver. */
+  | "acenando";
 
 export function FestoRobo({
   className = "",
@@ -122,6 +124,21 @@ export function FestoRobo({
               <path d="M89.9 14.8 97.4 19.5l-7.5 4.7-7.5-4.7z" fill="#ffdf00" />
               <circle cx="89.9" cy="19.5" r="2.6" fill="#002776" />
             </g>
+          </g>
+        ) : null}
+
+        {/*
+          ⚠️ A MÃO SÓ EXISTE QUANDO ELE ACENA. O Festo não tem braços, e dar um par permanente a ele
+          mudaria o boneco inteiro — ele deixaria de ser uma cabeça flutuante e passaria a precisar
+          de corpo, ombros e proporção. Uma mão que aparece só no cumprimento resolve o gesto sem
+          redesenhar o personagem.
+        */}
+        {estado === "acenando" ? (
+          <g className="festo-mao">
+            <circle cx="88" cy="52" r="7.6" fill="url(#festoCasco)" />
+            <rect x="85.4" y="41" width="2.6" height="7" rx="1.3" fill="url(#festoLateral)" />
+            <rect x="89" y="41.6" width="2.6" height="6.4" rx="1.3" fill="url(#festoLateral)" />
+            <rect x="92.4" y="43.4" width="2.6" height="5.4" rx="1.3" fill="url(#festoLateral)" />
           </g>
         ) : null}
 

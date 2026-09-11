@@ -18,6 +18,7 @@ import {
   type AsanaCollaboratorPerformance,
   type AsanaTeamPerformanceSnapshot,
 } from "@/lib/asana-performance";
+import { FestoApresentacao } from "@/components/hub-support/festo-apresentacao";
 import { HubUserTicketsPanel } from "@/components/hub-support/hub-user-tickets-panel";
 import { HomeNovidadesPanel } from "@/components/panteon/home-novidades-panel";
 import { ProcessosLibrary } from "@/modules/processos/ProcessosLibrary";
@@ -273,6 +274,9 @@ export default function HomePage() {
         ) : (
           <>
             <section className="grid grid-cols-12 gap-5">
+              {/* ⚠️ ACIMA DO "MEU DIA", e só até terça: ele se apaga sozinho na data, sem
+                  ninguém lembrar de tirar. Ver `festo-apresentacao.tsx`. */}
+              <FestoApresentacao />
               <MeuDiaHomeCard className="col-span-12" />
               <HomeNovidadesPanel />
               <AsanaPerformancePanel

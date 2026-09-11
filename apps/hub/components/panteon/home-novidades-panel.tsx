@@ -1,6 +1,8 @@
 "use client";
 
 import { Surface } from "@repo/uix";
+import { FestoRobo } from "@/components/hub-support/festo-robo";
+import { festoAindaSeApresenta } from "@/components/hub-support/festo-apresentacao";
 import { Megaphone } from "lucide-react";
 
 import {
@@ -63,9 +65,18 @@ export function HomeNovidadesPanel() {
       <div className="absolute inset-0 flex flex-col p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <span className="grid size-8 place-items-center rounded-lg bg-[#A07C3B]/10 text-[#A07C3B]">
-            <Megaphone size={18} />
-          </span>
+          {/* ⚠️ O FESTO ACENA AQUI ATÉ TERÇA, e depois o megafone volta sozinho. É a mesma janela
+              da apresentação na home: ele passa cumprimentando onde o time já olha toda semana,
+              em vez de ganhar mais um espaço fixo na tela. */}
+          {festoAindaSeApresenta() ? (
+            <span className="grid size-9 place-items-center">
+              <FestoRobo className="size-9" estado="acenando" />
+            </span>
+          ) : (
+            <span className="grid size-8 place-items-center rounded-lg bg-[#A07C3B]/10 text-[#A07C3B]">
+              <Megaphone size={18} />
+            </span>
+          )}
           <div>
             <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[#A07C3B]">
               Novidades
