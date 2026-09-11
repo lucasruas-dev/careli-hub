@@ -14,6 +14,7 @@ import {
 import { useEffect, useState } from "react";
 
 import type { PoliticaComercialDoEmpreendimento } from "@/lib/apolo/politica-comercial";
+import { temAlteracaoNaoSalva } from "@/lib/apolo/politica-rascunho";
 import { ENTRADA_MINIMA_PERCENTUAL } from "@/lib/hercules/composicoes";
 
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
@@ -101,6 +102,14 @@ const CHAVE_DO_CAMPO: Record<CampoSalvavel, string> = {
 /** Número do banco → texto do campo, com a vírgula que o operador digita. Nulo vira vazio. */
 const paraCampo = (v: null | number): string =>
   v === null || v === undefined ? "" : String(v).replace(".", ",");
+
+/** O selo ao lado do botão Salvar: o que está no campo ainda não foi para o banco. */
+const AvisoNaoSalvo = () => (
+  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+    <AlertTriangle aria-hidden="true" className="size-3.5" />
+    não salvo
+  </span>
+);
 
 const ROTULO_DO_CAMPO: Record<CampoSalvavel, string> = {
   coordenadora: "Comissão da coordenadora",
@@ -491,6 +500,19 @@ export function PoliticaComercialTab({
     ? (rascunhoImobiliaria[ref.enterpriseId] ?? paraCampo(comissaoImobiliaria))
     : "";
 
+  // ⚠️ O CAMPO PRECISA DIZER QUANDO O QUE ESTÁ NELE NÃO ESTÁ NO BANCO. Em 11/09/2026 o Lucas
+  // abriu um chamado a partir desta tela: os campos mostravam "1,5" e "4,5" (que são o
+  // `placeholder`, não valor salvo) e a linha de baixo dizia "não cadastrado". Sem nada que
+  // separasse rascunho de gravado, a conclusão natural foi que o Panteon divergia do C2X.
+  const coordenadoraNaoSalva = temAlteracaoNaoSalva(
+    ref ? rascunhoCoordenadora[ref.enterpriseId] : undefined,
+    comissaoCoordenadora,
+  );
+  const imobiliariaNaoSalva = temAlteracaoNaoSalva(
+    ref ? rascunhoImobiliaria[ref.enterpriseId] : undefined,
+    comissaoImobiliaria,
+  );
+
   // ⚠️ A SOMA SÓ EXISTE SE ALGUMA DAS DUAS EXISTIR. Com as duas nulas o total é "não cadastrado",
   // NÃO 0% — imprimir zero afirmaria que ninguém recebe comissão neste empreendimento, que é uma
   // decisão de negócio que ninguém tomou. Com UMA preenchida, a soma é o que há: a outra ponta
@@ -878,6 +900,7 @@ export function PoliticaComercialTab({
                   {salvando ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
                   Salvar
                 </button>
+                {coordenadoraNaoSalva ? <AvisoNaoSalvo /> : null}
               </span>
             </label>
 
@@ -906,6 +929,7 @@ export function PoliticaComercialTab({
                   {salvando ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
                   Salvar
                 </button>
+                {imobiliariaNaoSalva ? <AvisoNaoSalvo /> : null}
               </span>
             </label>
           </div>
