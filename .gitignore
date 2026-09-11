@@ -55,3 +55,12 @@ yarn-error.log*
 # subproduto de teste: lib/hercules/proposta-pdf.test.ts grava aqui a cada rodada.
 # Ja voltou duas vezes por `git add -A` em worktree novo (c6d67eb9 tirou, 7f5ccafb trouxe).
 .tmpr/
+
+# Scratch de investigacao, no mesmo espirito do .tmpr/ acima: pastas de trabalho que ficam na
+# maquina e NAO sao codigo do produto (.tmpc2x/ com scripts .mjs que falam com o legado, .tmpxl/
+# com JSON extraido de planilha, .tmpsvg-* com pedaco de masterplan).
+# O `*.tmp` de cima nao pega nenhuma delas: ele casa com a EXTENSAO .tmp, e estas sao prefixo.
+# ⚠️ .tmpc2x/ guarda script de acesso ao C2X - exatamente o tipo de arquivo que nao pode entrar
+# num commit por engano.
+.tmp*/
+.tmpsvg-*
