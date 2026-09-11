@@ -1,13 +1,34 @@
 "use client";
 
+import {
+  capturarPrintDaTela,
+  comecarAGravarVoz,
+  imagensDoPaste,
+  prepararImagem,
+  transcreverVoz,
+} from "@/components/hub-support/festo-anexos";
 import { FestoRobo } from "@/components/hub-support/festo-robo";
-import { falarComOFesto, type FalaDoChat } from "@/lib/hub-support/festo-cliente";
+import {
+  falarComOFesto,
+  type FalaDoChat,
+  tokenDaSessao,
+} from "@/lib/hub-support/festo-cliente";
 import { useAuth } from "@/providers/auth-provider";
-import { FileText, Loader2, Send, Ticket } from "lucide-react";
+import {
+  FileText,
+  ImagePlus,
+  Loader2,
+  Mic,
+  MonitorUp,
+  Send,
+  Square,
+  Ticket,
+  X,
+} from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-// A CONVERSA COM O FESTO.
+// A CONVERSA COM O FESTOS.
 //
 // Lucas (11/09/2026), vendo o formulário abrir no lugar do chat: *"não foi essa tela que pensei,
 // pensei em um chat"*. E antes, corrigindo o enquadramento inteiro: *"não queria um canal de
@@ -23,14 +44,19 @@ import { useEffect, useRef, useState } from "react";
 // estar visível, não escondido atrás de uma negociação com o robô. Suporte que prende a pessoa numa
 // conversa é pior do que o formulário que ele substituiu.
 //
-// ⚠️ O QUE AINDA NÃO ESTÁ AQUI: anexo, print, áudio e gravação de tela continuam sendo do
-// formulário — o chat é texto. E o Festos ainda não LÊ o banco nem o código durante a conversa: ele
-// entende, orienta e registra. Quem quiser mandar a evidência junto usa o botão do chamado.
+// ⚠️ PRINT, COLAR E VOZ ENTRAM AQUI; gravação de tela em vídeo continua no formulário. O motivo é
+// medido: a Claude lê imagem nativamente, mas não lê vídeo — o formulário contorna extraindo
+// quadros no navegador, e reproduzir isso dentro da conversa entregaria quadros soltos com o custo
+// de um upload de 120 MB. A voz vira TEXTO antes de ser enviada, e a pessoa revisa o que foi
+// entendido.
 
 type Fala = FalaDoChat & {
   /** O chamado que ESTA fala abriu. Vira o cartão com o protocolo. */
   chamado?: null | { protocolo: string; titulo: string };
 };
+
+/** Quantos prints cabem numa mensagem. O mesmo teto que a rota aplica do outro lado. */
+const PRINTS_POR_MENSAGEM = 2;
 
 /**
  * A abertura, escrita e não gerada.
@@ -42,7 +68,7 @@ type Fala = FalaDoChat & {
 function abertura(primeiroNome: null | string): string {
   return [
     primeiroNome ? `Oi, ${primeiroNome}!` : "Oi!",
-    "Me conta o que aconteceu — pode ser do jeito que vier.",
+    "Me conta o que aconteceu — pode ser do jeito que vier, por escrito, por áudio ou mandando um print.",
     "Se for dúvida, eu respondo aqui mesmo. Se for problema, eu abro o chamado com o que a gente descobrir.",
   ].join(" ");
 }
@@ -55,22 +81,51 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
     { de: "festo", texto: abertura(primeiroNome) },
   ]);
   const [texto, setTexto] = useState("");
+  /** Os prints escolhidos e ainda não enviados. */
+  const [prints, setPrints] = useState<string[]>([]);
   const [pensando, setPensando] = useState(false);
+  const [ocupado, setOcupado] = useState<null | "print" | "transcrevendo">(null);
+  const [gravando, setGravando] = useState<null | {
+    encerrar: () => Promise<Blob | null>;
+  }>(null);
   const [erro, setErro] = useState<null | string>(null);
   const fim = useRef<HTMLDivElement>(null);
+  const arquivo = useRef<HTMLInputElement>(null);
 
   // A conversa acompanha a última fala, como qualquer chat.
   useEffect(() => {
     fim.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [falas, pensando]);
+  }, [falas, pensando, prints]);
+
+  async function juntarPrints(blobs: Blob[]) {
+    const espaco = PRINTS_POR_MENSAGEM - prints.length;
+    if (espaco <= 0) return;
+
+    const preparados = (
+      await Promise.all(blobs.slice(0, espaco).map(prepararImagem))
+    ).filter((imagem): imagem is string => Boolean(imagem));
+
+    if (preparados.length < blobs.slice(0, espaco).length) {
+      setErro("Alguma imagem não deu para usar. Tenta com um print menor.");
+    }
+
+    if (preparados.length) {
+      setPrints((atuais) => [...atuais, ...preparados].slice(0, PRINTS_POR_MENSAGEM));
+    }
+  }
 
   async function enviar() {
     const pergunta = texto.trim();
-    if (!pergunta || pensando) return;
+    if ((!pergunta && prints.length === 0) || pensando) return;
 
+    const imagens = prints;
     setTexto("");
+    setPrints([]);
     setErro(null);
-    const comAPergunta: Fala[] = [...falas, { de: "pessoa", texto: pergunta }];
+    const comAPergunta: Fala[] = [
+      ...falas,
+      { de: "pessoa", imagens, texto: pergunta },
+    ];
     setFalas(comAPergunta);
     setPensando(true);
 
@@ -80,6 +135,7 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
         // o Festos a imitar aquele tom fixo em toda primeira resposta.
         conversa: comAPergunta.slice(1).map((fala) => ({
           de: fala.de,
+          imagens: fala.imagens,
           texto: fala.texto,
         })),
         // A tela em que a pessoa está é o que separa "não consigo salvar" de "não consigo salvar na
@@ -92,7 +148,7 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
         { chamado: resposta.chamado, de: "festo", texto: resposta.texto },
       ]);
     } catch (e) {
-      // ⚠️ FALHA DO FESTO NÃO PODE DEIXAR A PESSOA SEM CAMINHO. Se ele cair, o que não pode cair é
+      // ⚠️ FALHA DO FESTOS NÃO PODE DEIXAR A PESSOA SEM CAMINHO. Se ele cair, o que não pode cair é
       // o suporte: a mensagem aponta o botão de chamado, que não depende de modelo nenhum.
       setErro(
         `${e instanceof Error ? e.message : "Não consegui responder agora."} Se preferir não esperar, abre o chamado aqui embaixo que alguém olha.`,
@@ -101,6 +157,41 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
       setPensando(false);
     }
   }
+
+  async function alternarGravacao() {
+    if (gravando) {
+      const audio = await gravando.encerrar();
+      setGravando(null);
+
+      if (!audio) return;
+
+      setOcupado("transcrevendo");
+      try {
+        const transcrito = await transcreverVoz(audio, await tokenDaSessao());
+        // ⚠️ O TEXTO VAI PARA O CAMPO, e não direto para o Festos. A transcrição erra nome próprio
+        // e número; deixar a pessoa ver e corrigir antes de enviar custa um segundo e evita um
+        // chamado aberto com o relato trocado.
+        setTexto((atual) => (atual ? `${atual} ${transcrito}` : transcrito));
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : "Não consegui entender o áudio.");
+      } finally {
+        setOcupado(null);
+      }
+      return;
+    }
+
+    const gravador = await comecarAGravarVoz();
+
+    if (!gravador) {
+      setErro("Não consegui usar o microfone. Confere a permissão do navegador?");
+      return;
+    }
+
+    setErro(null);
+    setGravando(gravador);
+  }
+
+  const podeEnviar = Boolean(texto.trim() || prints.length) && !pensando;
 
   return (
     <div className="flex h-[26rem] flex-col">
@@ -114,13 +205,28 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
                 <FestoRobo className="size-7 shrink-0" />
               ) : null}
               <div
-                className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[13px] leading-relaxed ${
+                className={`max-w-[80%] space-y-2 rounded-2xl px-3 py-2 text-[13px] leading-relaxed ${
                   fala.de === "pessoa"
                     ? "rounded-br-sm bg-slate-900 text-white"
                     : "rounded-bl-sm bg-slate-100 text-slate-800"
                 }`}
               >
-                {fala.texto}
+                {fala.imagens?.length ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {fala.imagens.map((imagem, posicao) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        alt="Print enviado"
+                        className="max-h-32 rounded-lg border border-white/20"
+                        key={posicao}
+                        src={imagem}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {fala.texto ? (
+                  <p className="m-0 whitespace-pre-wrap">{fala.texto}</p>
+                ) : null}
               </div>
             </div>
 
@@ -164,6 +270,31 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
       </div>
 
       <div className="border-t border-slate-100 p-3">
+        {prints.length ? (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {prints.map((imagem, posicao) => (
+              <div className="relative" key={posicao}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  alt="Print a enviar"
+                  className="h-14 rounded-lg border border-slate-200"
+                  src={imagem}
+                />
+                <button
+                  aria-label="Tirar este print"
+                  className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-slate-900 text-white"
+                  onClick={() =>
+                    setPrints((atuais) => atuais.filter((_, i) => i !== posicao))
+                  }
+                  type="button"
+                >
+                  <X aria-hidden="true" className="size-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <div className="flex items-end gap-2">
           <textarea
             aria-label="Conte o que aconteceu"
@@ -178,14 +309,25 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
                 void enviar();
               }
             }}
-            placeholder="Escreve aqui. Ex.: não consigo salvar a proposta"
+            // Colar print é o gesto de quem acabou de apertar PrintScreen. Texto continua colando
+            // normalmente: só entra aqui o que vier como arquivo de imagem.
+            onPaste={(ev) => {
+              const imagens = imagensDoPaste(ev);
+              if (imagens.length) {
+                ev.preventDefault();
+                void juntarPrints(imagens);
+              }
+            }}
+            placeholder={
+              gravando ? "Gravando… fale e toque no quadrado" : "Escreve, cola um print ou grava um áudio"
+            }
             rows={1}
             value={texto}
           />
           <button
             aria-label="Enviar"
             className="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-900 text-white transition-opacity disabled:opacity-40"
-            disabled={!texto.trim() || pensando}
+            disabled={!podeEnviar}
             onClick={() => void enviar()}
             type="button"
           >
@@ -193,15 +335,104 @@ export function FestoChat({ aoAbrirChamado }: { aoAbrirChamado: () => void }) {
           </button>
         </div>
 
-        <button
-          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 transition-colors hover:bg-slate-50"
-          onClick={aoAbrirChamado}
-          type="button"
-        >
-          <FileText aria-hidden="true" className="size-3.5" />
-          Prefiro abrir um chamado com print ou gravação
-        </button>
+        <div className="mt-2 flex items-center gap-1">
+          <input
+            accept="image/*"
+            className="hidden"
+            multiple
+            onChange={(ev) => {
+              const escolhidos = Array.from(ev.target.files ?? []);
+              ev.target.value = "";
+              if (escolhidos.length) void juntarPrints(escolhidos);
+            }}
+            ref={arquivo}
+            type="file"
+          />
+
+          <BotaoDoChat
+            aoClicar={async () => {
+              setOcupado("print");
+              const print = await capturarPrintDaTela();
+              setOcupado(null);
+              if (print) setPrints((atuais) => [...atuais, print].slice(0, PRINTS_POR_MENSAGEM));
+            }}
+            desabilitado={prints.length >= PRINTS_POR_MENSAGEM || ocupado !== null}
+            icone={
+              ocupado === "print" ? (
+                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+              ) : (
+                <MonitorUp aria-hidden="true" className="size-3.5" />
+              )
+            }
+            rotulo="Print da tela"
+          />
+
+          <BotaoDoChat
+            aoClicar={() => arquivo.current?.click()}
+            desabilitado={prints.length >= PRINTS_POR_MENSAGEM || ocupado !== null}
+            icone={<ImagePlus aria-hidden="true" className="size-3.5" />}
+            rotulo="Imagem"
+          />
+
+          <BotaoDoChat
+            aoClicar={alternarGravacao}
+            desabilitado={ocupado === "print" || ocupado === "transcrevendo"}
+            destacado={Boolean(gravando)}
+            icone={
+              ocupado === "transcrevendo" ? (
+                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+              ) : gravando ? (
+                <Square aria-hidden="true" className="size-3.5" />
+              ) : (
+                <Mic aria-hidden="true" className="size-3.5" />
+              )
+            }
+            rotulo={
+              gravando ? "Parar" : ocupado === "transcrevendo" ? "Ouvindo…" : "Áudio"
+            }
+          />
+
+          <button
+            className="ml-auto flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+            onClick={aoAbrirChamado}
+            type="button"
+          >
+            <FileText aria-hidden="true" className="size-3.5" />
+            Abrir chamado
+          </button>
+        </div>
       </div>
     </div>
+  );
+}
+
+function BotaoDoChat({
+  aoClicar,
+  desabilitado,
+  destacado,
+  icone,
+  rotulo,
+}: {
+  aoClicar: () => void | Promise<void>;
+  desabilitado?: boolean;
+  destacado?: boolean;
+  icone: React.ReactNode;
+  rotulo: string;
+}) {
+  return (
+    <button
+      className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-40 ${
+        destacado
+          ? "bg-rose-50 text-rose-600"
+          : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+      }`}
+      disabled={desabilitado}
+      onClick={() => void aoClicar()}
+      title={rotulo}
+      type="button"
+    >
+      {icone}
+      {rotulo}
+    </button>
   );
 }

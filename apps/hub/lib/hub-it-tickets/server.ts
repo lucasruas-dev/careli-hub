@@ -397,6 +397,122 @@ export async function listHubItTickets({
   }
 }
 
+/**
+ * O QUE A PESSOA ABRIU, SEM MEXER EM NADA.
+ *
+ * ⚠️ `listHubItTickets` ESCREVE. Ela chama `autoFinalizeStaleValidationRows`, que FECHA os
+ * chamados em validacao parados ha 3 dias (status para `fechado`, `resolved_at` carimbado, evento
+ * "Ticket encerrado" com ator nulo). Numa tela de board isso e a rotina de sempre; dentro de uma
+ * CONVERSA e outra coisa: a pessoa pergunta ao Festos "como esta meu chamado?" e, no instante da
+ * pergunta, o chamado dela e encerrado sem ninguem ter decidido nada. Perguntar nao pode fechar.
+ *
+ * ⚠️ E POR ISSO ESTA FUNCAO NAO HIDRATA. Nada de eventos, nada de anexos, nada de URL assinada:
+ * o que o agente precisa saber para nao duplicar um chamado e para responder "em que pe esta" cabe
+ * em seis colunas. Hidratar traria nota interna para perto do prompt e assinaria URL de arquivo a
+ * cada pergunta, por nada.
+ *
+ * O escopo e sempre o proprio usuario: o `id` vem da rota autenticada, nunca do turno do modelo.
+ */
+export async function chamadosDaPessoa(
+  userId: string,
+  limite = 15,
+): Promise<
+  Array<{
+    abertoEm: string;
+    modulo: string;
+    protocolo: string;
+    situacao: string;
+    titulo: string;
+  }>
+> {
+  const adminClient = createHubItTicketClient();
+  if (!adminClient) return [];
+
+  const { data, error } = await adminClient
+    .from("hub_it_tickets")
+    .select("protocol,title,module,status,created_at")
+    .eq("requested_by_user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limite);
+
+  if (error) {
+    console.error("[helpdesk][festo] falha ao ler os chamados da pessoa", error.message);
+    return [];
+  }
+
+  return (data ?? []).map((linha) => {
+    const row = linha as {
+      created_at: string;
+      module: string;
+      protocol: string;
+      status: HubItTicketStatus;
+      title: string;
+    };
+
+    return {
+      abertoEm: String(row.created_at ?? "").slice(0, 10),
+      modulo: row.module,
+      protocolo: row.protocol,
+      // O rotulo que a pessoa ve na tela, e nao o nome tecnico do status: dizer
+      // "em_homologacao" para quem perguntou do chamado e devolver jargao de banco.
+      situacao: hubItTicketStatusLabels[row.status] ?? row.status,
+      titulo: row.title,
+    };
+  });
+}
+
+/**
+ * OS CHAMADOS RECENTES DE TODO MUNDO, para o servidor procurar parecidos.
+ *
+ * ⚠️ ISTO NAO VAI PARA O MODELO, e essa e a regra que faz esta funcao ser aceitavel. Ela le com
+ * service-role e alcanca chamado de qualquer pessoa; quem a usa (`festo-leituras.ts`) compara os
+ * titulos NO SERVIDOR e devolve ao agente apenas quantos parecidos existem e em que pe esta o mais
+ * recente. Titulo alheio, protocolo alheio e nome de quem abriu nunca entram no prompt.
+ *
+ * ⚠️ E ELA TAMBEM NAO ESCREVE, pelo mesmo motivo da funcao acima.
+ */
+export async function chamadosRecentesParaComparar(limite = 200): Promise<
+  Array<{
+    abertoEm: string;
+    modulo: string;
+    protocolo: string;
+    situacao: HubItTicketStatus;
+    titulo: string;
+  }>
+> {
+  const adminClient = createHubItTicketClient();
+  if (!adminClient) return [];
+
+  const { data, error } = await adminClient
+    .from("hub_it_tickets")
+    .select("protocol,title,module,status,created_at")
+    .order("created_at", { ascending: false })
+    .limit(limite);
+
+  if (error) {
+    console.error("[helpdesk][festo] falha ao ler a fila para comparar", error.message);
+    return [];
+  }
+
+  return (data ?? []).map((linha) => {
+    const row = linha as {
+      created_at: string;
+      module: string;
+      protocol: string;
+      status: HubItTicketStatus;
+      title: string;
+    };
+
+    return {
+      abertoEm: String(row.created_at ?? "").slice(0, 10),
+      modulo: row.module,
+      protocolo: row.protocol,
+      situacao: row.status,
+      titulo: row.title,
+    };
+  });
+}
+
 export async function createHubItTicket({
   input,
   user,
@@ -1159,7 +1275,18 @@ ${resultado.responseText}`
  */
 export async function registrarAtendimentoDoFesto(
   protocolo: string,
-  atendimento: { tela: null | string; transcricao: string },
+  atendimento: {
+    /**
+     * Os chamados parecidos que o servidor achou na fila.
+     *
+     * ⚠️ ELES CHEGAM AQUI SEM TER PASSADO PELO MODELO. `procurar_chamado_parecido` devolve ao
+     * agente apenas quantos existem; os protocolos viajam por fora, porque sao de OUTRAS pessoas e
+     * a nota interna e o unico lugar onde podem aparecer.
+     */
+    parecidos?: readonly string[];
+    tela: null | string;
+    transcricao: string;
+  },
 ): Promise<void> {
   const adminClient = createHubItTicketClient();
   if (!adminClient) return;
@@ -1186,9 +1313,17 @@ export async function registrarAtendimentoDoFesto(
       message: "Festos · atendimento pelo chat",
       metadata: {
         fonte: "festo-chat",
+        parecidos: atendimento.parecidos ?? [],
         tela: atendimento.tela,
       },
-      technicalNote: atendimento.transcricao,
+      technicalNote: [
+        atendimento.parecidos?.length
+          ? `Chamados parecidos na fila: ${atendimento.parecidos.join(" · ")}`
+          : null,
+        atendimento.transcricao,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       ticketId: String((data as { id: string }).id),
       type: "triaged",
       visibleToRequester: false,
@@ -1198,6 +1333,186 @@ export async function registrarAtendimentoDoFesto(
       `[helpdesk][festo] falha ao registrar o atendimento de ${protocolo}`,
       erro instanceof Error ? erro.message : String(erro),
     );
+  }
+}
+
+/** O chamado resolvido, do tamanho que a devolutiva precisa. */
+export type ResumoParaDevolutiva = {
+  quemAbriu: string;
+  relato: string;
+  respostaAoUsuario: null | string;
+  resumoDaResolucao: null | string;
+  titulo: string;
+};
+
+/**
+ * LE O CHAMADO PARA A DEVOLUTIVA, e decide se ela cabe.
+ *
+ * ⚠️ DEVOLVE `null` QUANDO NAO CABE, e os tres casos importam:
+ * - chamado que nao chegou a validacao nem foi fechado: nao ha o que devolver ainda;
+ * - chamado sem `resolution_summary`: nao ha o que traduzir, e inventar seria pior que calar;
+ * - chamado que JA tem devolutiva do Festos: devolver de novo a cada clique de quem atende
+ *   encheria o historico da pessoa com o mesmo recado escrito de tres jeitos diferentes.
+ *
+ * ⚠️ E ELA NAO ESCREVE NADA. Mesma disciplina de `chamadosDaPessoa`: consultar nao pode ter efeito.
+ */
+export async function resumoParaDevolutiva(
+  protocolo: string,
+): Promise<null | ResumoParaDevolutiva> {
+  const adminClient = createHubItTicketClient();
+  if (!adminClient) return null;
+
+  const { data, error } = await adminClient
+    .from("hub_it_tickets")
+    .select(
+      "id,status,title,user_description,resolution_summary,admin_response,requester_name",
+    )
+    .eq("protocol", protocolo)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  const chamado = data as {
+    admin_response: null | string;
+    id: string;
+    requester_name: null | string;
+    resolution_summary: null | string;
+    status: HubItTicketStatus;
+    title: string;
+    user_description: null | string;
+  };
+
+  const chegouAoFim =
+    validationTicketStatuses.has(chamado.status) || chamado.status === "fechado";
+
+  if (!chegouAoFim || !chamado.resolution_summary?.trim()) {
+    return null;
+  }
+
+  const { data: jaDevolvido } = await adminClient
+    .from("hub_it_ticket_events")
+    .select("id")
+    .eq("ticket_id", chamado.id)
+    .eq("message", "Festos · devolutiva")
+    .limit(1);
+
+  if ((jaDevolvido ?? []).length > 0) {
+    return null;
+  }
+
+  return {
+    quemAbriu: chamado.requester_name ?? "",
+    relato: chamado.user_description ?? "",
+    respostaAoUsuario: chamado.admin_response,
+    resumoDaResolucao: chamado.resolution_summary,
+    titulo: chamado.title,
+  };
+}
+
+/**
+ * O FESTOS RESPONDE AO SOLICITANTE — e nao vira dono do chamado.
+ *
+ * Lucas (11/09/2026): *"eu nao quero ficar parando respondendo usuario se foi resolvido ou nao,
+ * devolver ele retorna ao usuario"*.
+ *
+ * ⚠️ POR QUE ESTA FUNCAO EXISTE, EM VEZ DE O AGENTE CHAMAR `updateHubItTicket`. Aquela funcao grava
+ * ONZE colunas de uma vez, sem condicional: `assigned_to_user_id = user.id` e os tres campos de
+ * nome/e-mail/avatar do responsavel (a partir da linha 756 de hoje), `last_response_by_*`, `status`
+ * (via `resolveAdminTicketNextStatus`, que arranca o chamado de "novo" so por existir um texto de
+ * resposta), `resolved_at` (ZERADO em toda atualizacao que nao feche) e `admin_response` (APAGADO
+ * quando a chamada nao manda um). Um agente respondendo por ali viraria responsavel por todos os
+ * chamados que tocasse — e, como o aviso de comentario do usuario vai para
+ * `assigned_to_user_id`, quem atende de verdade PARARIA de ser avisado deles.
+ *
+ * ⚠️ O EVENTO E `triaged`, E NAO `admin_reply`. Duas razoes, as duas medidas no codigo: (1) a tela
+ * do solicitante credita `triaged` ao Festos e qualquer outro tipo sem ator ao adm responsavel —
+ * ou seja, `admin_reply` faria um colega assinar o que o robo escreveu; (2) `admin_reply` E a
+ * metrica: o SLA de primeira resposta, o "tratados hoje" e o grafico diario do board contam esse
+ * tipo de evento sem olhar quem o criou. O robo respondendo por ali transformaria o SLA em ficcao.
+ *
+ * ⚠️ E ELA NAO MEXE NO CHAMADO. Nenhum UPDATE em `hub_it_tickets`: nem status, nem responsavel, nem
+ * data. So um evento visivel e um aviso. Quem decide se o chamado esta resolvido continua sendo
+ * gente — o robo de 3 dias ja e o exemplo do que acontece quando uma rotina fecha chamado sozinha.
+ */
+export async function registrarDevolutivaDoFesto(
+  protocolo: string,
+  devolutiva: {
+    /** De onde veio, para dar para separar depois: "resolucao", "encerramento", "chat". */
+    fonte: string;
+    /** O que sustenta a devolutiva: versao que corrigiu, chamado de origem. Opcional. */
+    referencia?: null | string;
+    /** O texto que o solicitante vai LER. */
+    texto: string;
+  },
+): Promise<boolean> {
+  const adminClient = createHubItTicketClient();
+  if (!adminClient) return false;
+
+  const texto = devolutiva.texto.trim();
+  if (!texto) return false;
+
+  try {
+    const { data, error } = await adminClient
+      .from("hub_it_tickets")
+      .select("id, protocol, requested_by_user_id, title")
+      .eq("protocol", protocolo)
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error(
+        `[helpdesk][festo] chamado ${protocolo} nao encontrado para a devolutiva`,
+        error?.message,
+      );
+      return false;
+    }
+
+    const chamado = data as {
+      id: string;
+      protocol: string;
+      requested_by_user_id: null | string;
+      title: string;
+    };
+
+    await insertTicketEvent(adminClient, {
+      // Ator nulo: o Festos nao e uma pessoa do hub. Nao existe linha dele em `hub_users`, e a FK
+      // de `created_by_user_id` recusaria um id inventado — a falha apareceria em producao, no
+      // meio do insert, e nao no typecheck.
+      createdByUserId: null,
+      message: "Festos · devolutiva",
+      metadata: {
+        fonte: devolutiva.fonte,
+        referencia: devolutiva.referencia ?? null,
+      },
+      technicalNote: texto,
+      ticketId: chamado.id,
+      type: "triaged",
+      visibleToRequester: true,
+    });
+
+    // ⚠️ AVISAR E METADE DO PEDIDO. Uma devolutiva que fica esperando a pessoa abrir o painel por
+    // acaso reproduz exatamente o silencio que esta frente existe para quebrar — foi assim que os
+    // 30 chamados parados chegaram a 27,9 dias de idade media.
+    if (chamado.requested_by_user_id) {
+      await publishHubNotification({
+        actionHref: `/zeus?ticket=${encodeURIComponent(chamado.protocol)}`,
+        body: `Chamado ${chamado.protocol}`,
+        context: { protocol: chamado.protocol },
+        kind: "atendimento",
+        moduleId: "zeus",
+        push: { url: `/zeus?ticket=${encodeURIComponent(chamado.protocol)}` },
+        recipientUserIds: [chamado.requested_by_user_id],
+        severity: "info",
+        title: `O Festos respondeu sobre: ${chamado.title}`,
+      });
+    }
+
+    return true;
+  } catch (erro) {
+    console.error(
+      `[helpdesk][festo] falha ao registrar a devolutiva de ${protocolo}`,
+      erro instanceof Error ? erro.message : String(erro),
+    );
+    return false;
   }
 }
 
@@ -2609,7 +2924,7 @@ function isHubItTicketAdmin(user: HubItTicketUserRow) {
   return user.role === "admin" || user.operational_profile === "adm";
 }
 
-function isAuthorizedHubItTicketAdmin(user: AuthorizedHubItTicketUser) {
+export function isAuthorizedHubItTicketAdmin(user: AuthorizedHubItTicketUser) {
   return user.role === "admin" || user.operationalProfile === "adm";
 }
 

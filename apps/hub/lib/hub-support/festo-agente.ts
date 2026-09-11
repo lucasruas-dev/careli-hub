@@ -5,14 +5,21 @@ import {
   runClaudeAgent,
 } from "@/lib/ai/claude-agent";
 import { getAnthropicClient, resolveClaudeModel } from "@/lib/ai/claude";
+import { PANTEON_CHANGELOG } from "@/lib/changelog/changelog";
 import {
+  anexosDaConversa,
   chamadoParaOHelpDesk,
   transcricaoDoAtendimento,
 } from "@/lib/hub-support/festo-chamado";
 import {
+  mudancasRecentes,
+  parecidosNaFila,
+} from "@/lib/hub-support/festo-leituras";
+import {
   type AuthorizedHubItTicketUser,
+  chamadosDaPessoa,
+  chamadosRecentesParaComparar,
   createHubItTicket,
-  listHubItTickets,
   registrarAtendimentoDoFesto,
 } from "@/lib/hub-it-tickets/server";
 import {
@@ -40,6 +47,15 @@ import {
 /** Uma fala da conversa, do jeito que o navegador manda. */
 export type FalaDaConversa = {
   de: "festo" | "pessoa";
+  /**
+   * Os prints que vieram junto, como data URL.
+   *
+   * ⚠️ AMOSTRA REDUZIDA, NUNCA O ARQUIVO CHEIO. O navegador reduz para 1.600px e exporta JPEG antes
+   * de mandar (`buildImageAnalysisSample`): um print de tela cheia em PNG passa de 3 MB, e o corpo
+   * de uma funcao da Vercel morre em ~4,5 MB — o 413 chegaria justamente para quem anexou a melhor
+   * evidencia. O arquivo bom, quando existe, vai para o chamado pelo formulario.
+   */
+  imagens?: string[];
   texto: string;
 };
 
@@ -85,8 +101,14 @@ const QUEM_E_O_FESTO = [
   "COMO VOCE ATENDE:",
   "1. Entenda o que aconteceu antes de qualquer coisa. Se o relato estiver vago, faca UMA pergunta por vez, sempre a mais util: em que tela, o que voce clicou, o que apareceu.",
   "2. Se for duvida de uso e voce souber a resposta, responda e encerre. Nao abra chamado para duvida respondida.",
-  "3. Se for erro, comportamento estranho, pedido de melhoria ou acesso, use a ferramenta abrir_chamado. Antes disso, confira com consultar_meus_chamados se a pessoa ja registrou isso.",
-  "4. Depois de abrir, diga o numero do protocolo, o que voce escreveu no chamado e o que vai acontecer agora. Curto.",
+  "3. Antes de concluir que e problema novo, APURE: consultar_mudancas_recentes diz se aquilo mudou no Panteon nas ultimas semanas, e procurar_chamado_parecido diz se o time ja esta tratando algo igual. Sao baratas, use.",
+  "4. Se for erro, comportamento estranho, pedido de melhoria ou acesso, use abrir_chamado. Antes disso, confira com consultar_meus_chamados se a propria pessoa ja registrou isso.",
+  "5. Depois de abrir, diga o numero do protocolo, o que voce escreveu no chamado e o que vai acontecer agora. Curto.",
+  "",
+  "O QUE VOCE APURA, E O QUE NAO APURA:",
+  "- Voce enxerga o que mudou no Panteon (changelog), os chamados da propria pessoa e QUANTOS chamados parecidos existem na fila.",
+  "- Voce NAO enxerga o banco de dados, o codigo, o log do servidor, nem o chamado de outra pessoa. Se a resposta depender disso, diga que vai registrar para quem consegue olhar.",
+  "- NUNCA cite numero de protocolo que nao seja da pessoa com quem voce esta falando.",
   "",
   "REGRAS QUE VOCE NAO QUEBRA:",
   "- Voce NAO conserta nada, NAO mexe em dado de ninguem e NAO faz alteracao no sistema. Voce entende, orienta e registra.",
@@ -142,6 +164,15 @@ export async function atenderComOFesto({
   // que o Festos escreveu seria confiar num modelo para transportar um identificador — e ele
   // erraria um dígito no dia em que estivesse resumindo bem.
   let chamadoAberto: null | { protocolo: string; titulo: string } = null;
+
+  /**
+   * ⚠️ O COFRE: os protocolos dos chamados parecidos NUNCA passam pelo modelo. `procurar_chamado_-
+   * parecido` le a fila inteira, que e de todo mundo, e devolve ao agente apenas QUANTOS existem.
+   * Os protocolos ficam aqui e entram direto na nota interna do chamado novo — onde so quem atende
+   * le. Se eles fossem para o prompt, bastaria o modelo se distrair uma vez para o chamado de outra
+   * pessoa aparecer na tela de quem perguntou.
+   */
+  let parecidosParaANotaInterna: string[] = [];
 
   const ferramentas: ClaudeAgentTool[] = [
     {
@@ -220,7 +251,12 @@ export async function atenderComOFesto({
         }
 
         const ticket = await createHubItTicket({
-          input: payload,
+          input: {
+            ...payload,
+            // Os prints que a pessoa mandou durante a conversa vao junto: sem isso, quem atende
+            // recebe a DESCRICAO do print em vez do print, e reproduz o erro do zero.
+            attachments: anexosDaConversa(conversa, agora),
+          },
           user: usuario,
         });
 
@@ -238,6 +274,7 @@ export async function atenderComOFesto({
         // atender precisa das palavras da pessoa: é na frase solta, a que não cabia no resumo, que
         // costuma estar a causa. Falha aqui não derruba o chamado — ele já está gravado.
         await registrarAtendimentoDoFesto(ticket.protocol, {
+          parecidos: parecidosParaANotaInterna,
           tela,
           transcricao: transcricaoDoAtendimento([
             ...conversa,
@@ -262,23 +299,108 @@ export async function atenderComOFesto({
         name: "consultar_meus_chamados",
       },
       run: async () => {
-        const tickets = await listHubItTickets({
-          includeDetails: false,
-          scope: "mine",
-          user: usuario,
-        });
+        // ⚠️ `chamadosDaPessoa` NO LUGAR DE `listHubItTickets`, e a diferenca nao e de estilo:
+        // a listagem completa chama `autoFinalizeStaleValidationRows` e FECHA os chamados em
+        // validacao parados ha 3 dias. Perguntar ao Festos "como esta meu chamado?" encerraria o
+        // chamado da pessoa no instante da pergunta, com a mensagem "Ticket encerrado" e sem
+        // ninguem ter decidido nada. Consultar nao pode escrever.
+        const chamados = await chamadosDaPessoa(usuario.id);
 
-        if (!tickets.length) {
+        if (!chamados.length) {
           return "Esta pessoa nunca abriu chamado.";
         }
 
-        return tickets
-          .slice(0, 12)
+        return chamados
           .map(
-            (ticket) =>
-              `${ticket.protocol} · ${ticket.status} · ${ticket.module} · ${ticket.title} · aberto em ${ticket.createdAt.slice(0, 10)}`,
+            (chamado) =>
+              `${chamado.protocolo} · ${chamado.situacao} · ${chamado.modulo} · ${chamado.titulo} · aberto em ${chamado.abertoEm}`,
           )
           .join("\n");
+      },
+    },
+    {
+      definition: {
+        description:
+          "Procura no changelog do Panteon o que mudou nas ultimas semanas e tem a ver com o que a pessoa esta descrevendo. Use quando o relato parecer algo que pode ja ter sido corrigido, ou quando ela disser que a tela mudou e ela nao entendeu.",
+        input_schema: {
+          properties: {
+            termos: {
+              description:
+                "As palavras do relato, com as palavras dela: o que nao funciona, em que tela, o nome do botao ou do campo.",
+              type: "string",
+            },
+          },
+          required: ["termos"],
+          type: "object",
+        },
+        name: "consultar_mudancas_recentes",
+      },
+      run: async (input) => {
+        const termos = typeof input.termos === "string" ? input.termos : "";
+        // ⚠️ SO OS ITENS AMIGAVEIS DO CHANGELOG. O campo tecnico de cada versao cita arquivo,
+        // migration e variavel de ambiente; e escrito para quem faz o deploy, e o Festos e proibido
+        // de falar disso. A garantia nao e pedir no prompt: e nao entregar o campo.
+        const achados = mudancasRecentes({
+          hoje: agora,
+          termos,
+          versoes: PANTEON_CHANGELOG.slice(0, 40).map((entrada) => ({
+            deployedAt: entrada.deployedAt,
+            itens: entrada.modules.flatMap((modulo) =>
+              modulo.screens.flatMap((tela) => tela.items),
+            ),
+            title: entrada.title,
+            version: entrada.version,
+          })),
+        });
+
+        if (!achados.length) {
+          return "Nada no changelog recente tem a ver com isso. Trate como problema novo.";
+        }
+
+        return [
+          "Mudancas recentes que casam com o relato:",
+          ...achados.map(
+            (achado) => `- versao ${achado.versao} (${achado.quando}): ${achado.item}`,
+          ),
+          "Se for isso, peca para a pessoa recarregar a tela com Ctrl+F5 e conferir. Se nao for, siga.",
+        ].join("\n");
+      },
+    },
+    {
+      definition: {
+        description:
+          "Confere se ja existe chamado parecido na fila do HelpDesk, de qualquer pessoa. Use ANTES de abrir um chamado novo. Voce recebe apenas quantos existem e em que pe esta o mais recente.",
+        input_schema: {
+          properties: {
+            termos: {
+              description: "O que a pessoa relatou, em poucas palavras, incluindo a tela.",
+              type: "string",
+            },
+          },
+          required: ["termos"],
+          type: "object",
+        },
+        name: "procurar_chamado_parecido",
+      },
+      run: async (input) => {
+        const termos = typeof input.termos === "string" ? input.termos : "";
+        const fila = await chamadosRecentesParaComparar();
+        const achado = parecidosNaFila({ chamados: fila, termos });
+
+        parecidosParaANotaInterna = achado.paraANotaInterna;
+
+        if (!achado.paraOAgente) {
+          return "Nao ha chamado parecido na fila. Se for problema, abra um novo.";
+        }
+
+        // ⚠️ NUMERO E SITUACAO, NUNCA O PROTOCOLO ALHEIO. O agente pode dizer "o time ja esta
+        // tratando algo parecido"; nao pode mandar a pessoa acompanhar o chamado de um colega, que
+        // e o que aconteceria no primeiro turno em que ele repetisse um protocolo que nao e dela.
+        return [
+          `Ja existem ${achado.paraOAgente.quantos} chamado(s) parecido(s) na fila; o mais recente esta em "${achado.paraOAgente.situacaoDoMaisRecente}".`,
+          "Diga que o time ja esta tratando algo parecido. NAO cite numero de protocolo de outra pessoa.",
+          "Abra o chamado dela assim mesmo se ela quiser acompanhar o proprio caso: eu anexo a relacao dos parecidos para quem for atender.",
+        ].join("\n");
       },
     },
   ];
@@ -289,8 +411,10 @@ export async function atenderComOFesto({
     cacheTtl: "5m",
     client,
     maxTokens: TETO_DE_TOKENS,
-    // Entender o relato, checar duplicata e então abrir: três passos, com folga para um tropeço.
-    maxToolIterations: 5,
+    // ⚠️ OITO PASSOS PORQUE AGORA SÃO QUATRO FERRAMENTAS. Com cinco, um turno que consulta o
+    // changelog, confere a fila, olha os chamados da pessoa e ainda abre o dela bate no teto no
+    // meio — e o modelo devolve o que tiver, que é a resposta pela metade.
+    maxToolIterations: 8,
     messages: paraOModelo(conversa),
     model: resolveClaudeModel(TIER_DO_FESTO),
     system: QUEM_E_O_FESTO,
@@ -340,7 +464,7 @@ function paraOModelo(
   conversa: readonly FalaDaConversa[],
 ): Anthropic.MessageParam[] {
   const falas = conversa.map((fala) => ({
-    content: fala.texto,
+    content: conteudoDaFala(fala),
     role: fala.de === "pessoa" ? ("user" as const) : ("assistant" as const),
   }));
 
@@ -350,4 +474,49 @@ function paraOModelo(
   }
 
   return falas.slice(primeira);
+}
+
+/**
+ * O conteudo de uma fala: texto, ou texto mais os prints.
+ *
+ * ⚠️ A IMAGEM VEM ANTES DO TEXTO no bloco, e isso nao e detalhe: a propria Anthropic recomenda a
+ * ordem, e na pratica ela muda a resposta — com o texto primeiro, o modelo ja formou a hipotese
+ * antes de olhar, e passa a descrever o que esperava ver em vez do que esta na tela.
+ *
+ * ⚠️ E SO O QUE PASSAR NO CRIVO ENTRA. Um data URL malformado derrubaria o turno inteiro com 400 da
+ * API, e o Festos "cairia" para quem colou um print — o pior momento possivel para ele falhar.
+ */
+function conteudoDaFala(
+  fala: FalaDaConversa,
+): Anthropic.ContentBlockParam[] | string {
+  const imagens = (fala.imagens ?? [])
+    .map(blocoDeImagem)
+    .filter((bloco): bloco is Anthropic.ImageBlockParam => bloco !== null);
+
+  if (imagens.length === 0) {
+    return fala.texto;
+  }
+
+  return [
+    ...imagens,
+    { text: fala.texto || "Segue o print.", type: "text" as const },
+  ];
+}
+
+/** O data URL vira bloco de imagem, ou `null` se nao for um formato que a API aceita. */
+function blocoDeImagem(dataUrl: string): Anthropic.ImageBlockParam | null {
+  const casou = /^data:(image\/(?:jpeg|png|gif|webp));base64,(.+)$/.exec(
+    String(dataUrl ?? ""),
+  );
+
+  if (!casou?.[1] || !casou[2]) return null;
+
+  return {
+    source: {
+      data: casou[2],
+      media_type: casou[1] as "image/gif" | "image/jpeg" | "image/png" | "image/webp",
+      type: "base64",
+    },
+    type: "image",
+  };
 }

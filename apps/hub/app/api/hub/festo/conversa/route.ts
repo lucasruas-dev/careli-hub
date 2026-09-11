@@ -29,6 +29,15 @@ export const maxDuration = 120;
 /** Quantas falas sobem por turno. O bastante para o assunto, longe do teto de contexto. */
 const TETO_DE_FALAS = 24;
 const TETO_POR_FALA = 4_000;
+/**
+ * ⚠️ DUAS IMAGENS POR FALA, E SO NAS TRES ULTIMAS. O corpo de uma funcao da Vercel morre em ~4,5 MB
+ * e cada print reduzido pesa algumas centenas de KB em base64: sem teto, uma conversa com seis
+ * prints passa a falhar com 413 no meio do atendimento. E o print que importa e o que a pessoa
+ * acabou de mandar — os antigos ja foram lidos e o que valia deles esta no texto da conversa.
+ */
+const IMAGENS_POR_FALA = 2;
+const FALAS_QUE_LEVAM_IMAGEM = 3;
+const TETO_DA_IMAGEM_EM_BYTES = 1_600_000;
 
 export async function POST(request: NextRequest) {
   const autorizacao = await authorizeHubItTicketRequest(request);
@@ -90,13 +99,41 @@ function lerConversa(valor: unknown): FalaDaConversa[] {
         ((fala as FalaDaConversa).de === "festo" ||
           (fala as FalaDaConversa).de === "pessoa") &&
         typeof (fala as FalaDaConversa).texto === "string" &&
-        (fala as FalaDaConversa).texto.trim().length > 0,
+        // Texto vazio passa quando vem print junto: mandar a imagem sem legenda e o gesto mais
+        // natural do mundo, e descartar essa fala faria o Festos responder ao que veio antes.
+        ((fala as FalaDaConversa).texto.trim().length > 0 ||
+          Array.isArray((fala as FalaDaConversa).imagens)),
     )
     .slice(-TETO_DE_FALAS)
-    .map((fala) => ({
+    .map((fala, indice, todas) => ({
       de: fala.de,
+      imagens:
+        indice >= todas.length - FALAS_QUE_LEVAM_IMAGEM
+          ? lerImagens(fala.imagens)
+          : [],
       texto: fala.texto.trim().slice(0, TETO_POR_FALA),
     }));
+}
+
+/**
+ * Os prints que vieram na fala.
+ *
+ * ⚠️ O CRIVO E O FORMATO, NAO A CONFIANCA. Isto vem do navegador: aceitar qualquer string que
+ * comece com `data:` deixaria passar SVG (que executa script quando renderizado) e arquivos que a
+ * API recusa com 400 — derrubando o turno inteiro por causa de um anexo. Sobra o que a Anthropic
+ * aceita: jpeg, png, gif e webp em base64.
+ */
+function lerImagens(valor: unknown): string[] {
+  if (!Array.isArray(valor)) return [];
+
+  return valor
+    .filter(
+      (imagem): imagem is string =>
+        typeof imagem === "string" &&
+        /^data:image\/(?:jpeg|png|gif|webp);base64,/.test(imagem) &&
+        imagem.length <= TETO_DA_IMAGEM_EM_BYTES,
+    )
+    .slice(0, IMAGENS_POR_FALA);
 }
 
 /**

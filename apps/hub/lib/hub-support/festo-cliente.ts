@@ -10,6 +10,8 @@ import { getHubSupabaseClient } from "@/lib/supabase/client";
 
 export type FalaDoChat = {
   de: "festo" | "pessoa";
+  /** Os prints que foram junto, já reduzidos, como data URL. */
+  imagens?: string[];
   texto: string;
 };
 
@@ -65,7 +67,7 @@ export async function falarComOFesto({
  * cada hora; uma cópia lida uma vez e reusada durante a conversa começaria a devolver 401 no meio
  * do atendimento — e o Festos pareceria ter caído justamente nas conversas longas.
  */
-async function tokenDaSessao(): Promise<string> {
+export async function tokenDaSessao(): Promise<string> {
   const client = getHubSupabaseClient();
 
   if (!client) {

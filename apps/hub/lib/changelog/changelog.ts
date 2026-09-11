@@ -36,6 +36,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-11-o-festos-apura-enxerga-e-devolve",
+    deployedAt: "2026-09-11T17:00:00-03:00",
+    modules: [
+      {
+        module: "Suporte",
+        screens: [
+          {
+            items: [
+              "**Manda print para o Festos.** Voc\u00ea pode colar (Ctrl+V), escolher uma imagem ou pedir para ele capturar a tela \u2014 e ele LE o print. Se virar chamado, as imagens v\u00e3o junto.",
+              "**Fala em vez de digitar.** O bot\u00e3o de \u00e1udio grava seu recado e transforma em texto no campo, para voc\u00ea conferir antes de enviar.",
+              "**Ele confere antes de abrir chamado.** Olha o que mudou no Panteon nas \u00faltimas semanas \u2014 se aquilo j\u00e1 foi corrigido, ele te diz e pede um Ctrl+F5 \u2014 e v\u00ea se o time j\u00e1 est\u00e1 tratando algo parecido.",
+              "**E ele volta para contar o que foi feito.** Quando a equipe resolve o seu chamado, o Festos traduz a resposta t\u00e9cnica e te avisa, em portugu\u00eas de gente, perguntando se resolveu.",
+              "**Perguntar pelo seu chamado parou de fechar o seu chamado.** Quem conversasse com o Festos sobre um chamado em valida\u00e7\u00e3o parado h\u00e1 mais de 3 dias via ele ser encerrado na hora, sem ter pedido.",
+            ],
+            screen: "Bot\u00e3o de suporte",
+          },
+        ],
+      },
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "**O HelpDesk mostra a devolutiva do Festos** no hist\u00f3rico do chamado, assinada por ele, sem mexer em respons\u00e1vel nem em status.",
+              "**Roadmap atualizado**: chat, apura\u00e7\u00e3o, print/\u00e1udio e devolutiva entregues; o que falta \u00e9 ele ler banco e c\u00f3digo, explicar a tela e a grava\u00e7\u00e3o dentro da conversa.",
+            ],
+            screen: "HelpDesk",
+          },
+        ],
+      },
+    ],
+    rollback: "4d5ae53f",
+    technical: {
+      done: "\u26a0\ufe0f O ACHADO QUE VEIO ANTES DAS TRES FRENTES: `listHubItTickets` ESCREVE. Ela chama `autoFinalizeStaleValidationRows` (linha 383), que fecha chamado em valida\u00e7\u00e3o parado h\u00e1 3 dias \u2014 status para `fechado`, `resolved_at` carimbado, evento \"Ticket encerrado\" com ator nulo. A ferramenta `consultar_meus_chamados`, que subiu de manh\u00e3, usava essa listagem: perguntar ao Festos encerrava o chamado de quem perguntou. Agora ela usa `chamadosDaPessoa`, um select direto que N\u00c3O hidrata e N\u00c3O escreve. Irm\u00e3: `chamadosRecentesParaComparar`. || APURA\u00c7\u00c3O (`lib/hub-support/festo-leituras.ts`, 11 testes): `consultar_mudancas_recentes` l\u00ea o changelog \u2014 s\u00f3 os itens amig\u00e1veis, nunca o `technical.done`, que cita arquivo e migration \u2014 numa janela de 45 dias; `procurar_chamado_parecido` varre a fila. \u26a0\ufe0f O RETORNO \u00c9 DIVIDIDO EM DOIS DE PROP\u00d3SITO: o agente recebe QUANTOS parecidos existem e a situa\u00e7\u00e3o do mais recente; os protocolos viajam por fora do modelo e entram na nota interna do chamado novo. Protocolo de terceiro nunca chega ao prompt \u2014 gating por frase no system \u00e9 o mecanismo fraco. A compara\u00e7\u00e3o \u00e9 por radical de 5 letras: um teste falhou provando que \"salvar\" n\u00e3o casava com \"salva\", e portugu\u00eas conjuga demais para compara\u00e7\u00e3o literal. Exig\u00eancia de DUAS palavras em comum segura o falso positivo. `maxToolIterations` foi de 5 para 8. || MULTIMODAL: `runClaudeAgent` j\u00e1 aceitava imagem (`Anthropic.MessageParam[]`, prova viva na CAC\u00c1) \u2014 zero mudan\u00e7a no motor. O navegador reduz o print com `buildImageAnalysisSample` (1.600px, JPEG 0,72) ANTES de subir, porque o corpo de uma fun\u00e7\u00e3o da Vercel morre em ~4,5 MB. Teto de 2 imagens por fala e s\u00f3 nas 3 \u00faltimas falas. O crivo da rota aceita s\u00f3 jpeg/png/gif/webp em base64: SVG executa script e um data URL torto derruba o turno com 400. Voz: `MediaRecorder` sem formato fixo (Safari n\u00e3o grava webm) \u2192 `/api/hub/festo/transcricao` (gpt-4o-mini-transcribe, o mesmo do HelpDesk; n\u00e3o existe transcri\u00e7\u00e3o pela Anthropic no repo) \u2192 o texto cai no CAMPO, para a pessoa revisar. || DEVOLUTIVA: `registrarDevolutivaDoFesto` grava UM evento e nada mais. \u26a0\ufe0f N\u00c3O USA `updateHubItTicket`, que grava 11 colunas incondicionalmente \u2014 carimba `assigned_to_user_id`, move status via `resolveAdminTicketNextStatus`, ZERA `resolved_at` e APAGA `admin_response` quando a chamada n\u00e3o manda um. Um agente por ali viraria dono de todo chamado que tocasse, e como o aviso de coment\u00e1rio do usu\u00e1rio vai para `assigned_to_user_id`, quem atende pararia de ser avisado. \u26a0\ufe0f E O EVENTO \u00c9 `triaged`, N\u00c3O `admin_reply`: a tela do solicitante credita `triaged` ao Festos e qualquer outro tipo sem ator ao adm respons\u00e1vel (um colega assinaria o que o rob\u00f4 escreveu); e `admin_reply` \u00c9 a m\u00e9trica \u2014 SLA de primeira resposta e \"tratados hoje\" contam esse tipo sem olhar quem criou. Ator nulo, como a triagem: n\u00e3o existe linha do Festos em `hub_users` e a FK recusaria um id inventado. Gatilho no `after()` do PATCH; `resumoParaDevolutiva` devolve nulo se o chamado n\u00e3o chegou a valida\u00e7\u00e3o, se n\u00e3o h\u00e1 resumo a traduzir, ou se o Festos j\u00e1 devolveu. Tier `default` (Sonnet), n\u00e3o `frontier`: traduzir par\u00e1grafo t\u00e9cnico em duas frases \u00e9 a tarefa mais f\u00e1cil deste agente. || 3.563 testes verdes em 244 arquivos, typecheck e lint limpos. \u26a0\ufe0f N\u00e3o verificado em tela: o hub exige login. As tr\u00eas frentes sa\u00edram de um mapeamento de 30 agentes sobre o repo, com verifica\u00e7\u00e3o adversarial \u2014 1 achado foi refutado e corrigido antes de virar c\u00f3digo.",
+      motivation:
+        "Lucas: 'pode subir e j\u00e1 come\u00e7a a trabalhar nas 3 coisas que falta'. Eram: apurar em vez de s\u00f3 registrar, aceitar print e \u00e1udio, e devolver o chamado ao usu\u00e1rio sem que algu\u00e9m precise parar para fazer isso.",
+    },
+    title: "O Festos apura, enxerga e devolve",
+    type: "novidade",
+    version: "1.315.0",
+  },
+  {
     buildTag: "2026-09-11-o-festos-passa-a-conversar",
     deployedAt: "2026-09-11T15:30:00-03:00",
     modules: [

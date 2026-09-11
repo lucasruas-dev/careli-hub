@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  anexosDaConversa,
   chamadoParaOHelpDesk,
   dataSugeridaDeEntrega,
   transcricaoDoAtendimento,
@@ -140,6 +141,62 @@ describe("chamadoParaOHelpDesk", () => {
     expect(chamado?.technicalSummary).toBe(
       "erro · O relatorio sai sem as linhas do mes passado.",
     );
+  });
+});
+
+describe("anexosDaConversa", () => {
+  const png = "data:image/png;base64,AAAABBBBCCCC";
+  const jpeg = "data:image/jpeg;base64,DDDDEEEE";
+
+  it("transforma os prints da conversa em anexos do chamado", () => {
+    const anexos = anexosDaConversa(
+      [{ imagens: [png] }, {}, { imagens: [jpeg] }],
+      CONTEXTO.hoje,
+    );
+
+    expect(anexos).toHaveLength(2);
+    expect(anexos[0]).toMatchObject({
+      dataUrl: png,
+      mimeType: "image/png",
+      type: "image",
+    });
+    expect(anexos[0]?.fileName).toMatch(/^print-do-chat-2026-09-11-.+-1\.png$/);
+    expect(anexos[1]?.mimeType).toBe("image/jpeg");
+  });
+
+  it("calcula o tamanho a partir do base64, e nao manda zero", () => {
+    // Zero passaria por cima da trava de tamanho do HelpDesk.
+    const [anexo] = anexosDaConversa([{ imagens: [png] }], CONTEXTO.hoje);
+
+    expect(anexo?.sizeBytes).toBe(9);
+  });
+
+  it("recusa o que nao for imagem que a API aceita", () => {
+    expect(
+      anexosDaConversa(
+        [
+          { imagens: ["data:image/svg+xml;base64,PHN2Zz4="] },
+          { imagens: ["https://exemplo.com/print.png"] },
+          { imagens: ["data:application/pdf;base64,AAAA"] },
+        ],
+        CONTEXTO.hoje,
+      ),
+    ).toEqual([]);
+  });
+
+  it("fica nos quatro mais recentes, como o formulario", () => {
+    const anexos = anexosDaConversa(
+      [{ imagens: [png, png, png] }, { imagens: [jpeg, jpeg, jpeg] }],
+      CONTEXTO.hoje,
+    );
+
+    expect(anexos).toHaveLength(4);
+    // Os que sobrevivem sao os do fim da conversa.
+    expect(anexos.filter((anexo) => anexo.mimeType === "image/jpeg")).toHaveLength(3);
+  });
+
+  it("devolve vazio quando a conversa foi so de texto", () => {
+    expect(anexosDaConversa([{}, { imagens: [] }], CONTEXTO.hoje)).toEqual([]);
   });
 });
 

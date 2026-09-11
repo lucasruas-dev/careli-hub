@@ -68,7 +68,7 @@ export type ItemDoRoadmap = {
  */
 export const FRENTE_ATUAL = {
   desde: "2026-09-11",
-  itens: ["PAN-106", "PAN-107", "PAN-104", "PAN-105"] as readonly string[],
+  itens: ["PAN-107", "PAN-105", "PAN-109", "PAN-112"] as readonly string[],
   porque:
     "Lucas: 'bora construir isso hoje então, foco'. A plataforma de atendimento ao usuário interno " +
     "com agente de nível 1 — mas começando pelo que para o silêncio, que é a causa medida das " +
@@ -944,16 +944,17 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
   },
   {
     id: "PAN-104",
-    evidencia: "lib/hub-it-tickets/server.ts:~734 (resolveAdminTicketNextStatus e o carimbo de assigned_to_*). Lucas: 'eu nao quero ficar parando respondendo usuario se foi resolvido ou nao, devolver ele retorna ao usuario'.",
+    entregueEm: "2026-09-11",
+    evidencia: "lib/hub-it-tickets/server.ts: registrarDevolutivaDoFesto + resumoParaDevolutiva; lib/hub-support/festo-devolutiva.ts traduz o resumo tecnico; gatilho no after() do PATCH de /api/hub/it-tickets. Evento `triaged` visivel ao solicitante, ator nulo, sem tocar em status nem em responsavel.",
     modulo: "Zeus",
-    porque: "Hoje toda resposta administrativa carimba o responsavel e move o status. Um agente conversando por essa porta viraria dono de tudo a cada frase e destruiria as metricas de fila - justamente as que vao provar se o nivel 1 funcionou. Sem isso, o agente nao pode fazer a devolutiva que o Lucas pediu.",
-    situacao: "proximo",
+    porque: "updateHubItTicket grava 11 colunas de uma vez: carimba responsavel, move status, zera resolved_at e pode APAGAR a resposta anterior. Um agente por ali viraria dono de todo chamado que tocasse - e, como o aviso de comentario do usuario vai para assigned_to_user_id, quem atende de verdade pararia de ser avisado. A porta propria grava UM evento e mais nada.",
+    situacao: "entregue",
     titulo: "Porta de escrita propria para o agente responder o usuario",
   },
   {
     id: "PAN-105",
     bloqueio: "Muda comportamento de producao (fecha chamado de gente). Espera OK do Lucas.",
-    evidencia: "server.ts:~499 autoFinalizeStaleValidationRows; 107 eventos de timeout contra 116 fechados, medido em 11/09/2026. So 57 dos 146 tem resolution_summary.",
+    evidencia: "server.ts:~499 autoFinalizeStaleValidationRows; 107 eventos de timeout contra 116 fechados, medido em 11/09/2026. So 57 dos 146 tem resolution_summary. ⚠️ E ELA DISPARA EM QUALQUER LISTAGEM: listHubItTickets a chama na linha 383, entao ate uma consulta fecha chamado. O Festos deixou de usar essa listagem (chamadosDaPessoa) por causa disso.",
     modulo: "Zeus",
     porque: "107 dos 116 chamados fechados foram encerrados pela rotina automatica de 3 dias, com ator nulo e a mensagem 'Ticket encerrado' - 92% dos 'Finalizado' sao abandono com outro nome. Enquanto isso existir, o placar do agente vai parecer otimo e nao vai medir nada.",
     situacao: "bloqueado",
@@ -966,28 +967,32 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     modulo: "Zeus",
     porque:
       "No formulario o primeiro ato da pessoa ja e abrir chamado: ela descreve o problema para uma fila e vai embora esperando. Na conversa o chamado vira consequencia, e nasce preenchido pelo agente, com a transcricao inteira gravada como nota interna para quem atender.",
-    situacao: "fazendo",
+    entregueEm: "2026-09-11",
+    situacao: "entregue",
     titulo: "Chat do Festos no lugar do formulario de chamado",
   },
   {
     id: "PAN-107",
+    bloqueio:
+      "Depende do PAN-096: o escopo de dados do agente pela permissao de quem pergunta. Sem isso, ler o banco no chat vira porta lateral.",
     evidencia:
-      "lib/hub-support/festo-agente.ts: hoje as ferramentas sao abrir_chamado e consultar_meus_chamados. Lucas: 'o agente pode solicitar que ele faca o processo, caminho daquele erro e acompanhar esse olhando dentro do codigo, banco para entender o motivo do erro'.",
+      "O que JA entrou (11/09): consultar_mudancas_recentes e procurar_chamado_parecido, em lib/hub-support/festo-leituras.ts. O que FALTA: ler o banco e o codigo. loadHubCodeContext (lib/squadops/hub-code-context.ts) varre o monorepo a cada pergunta e manda ate 72 KB ao modelo; queryPanteon (lib/analytics/query-panteon.ts) responde numero de gestao e hoje so existe atras do modo analista da CACA.",
     modulo: "Zeus",
     porque:
-      "O Festos entende e registra, mas nao APURA: nao le o chamado parecido de outra pessoa, nao confere no banco se o dado existe, nao sabe se aquilo caiu numa versao recente. Enquanto isso, cada relato vira trabalho humano de reproducao, que e a parte cara do atendimento.",
-    situacao: "proximo",
-    titulo: "Ferramentas de leitura para o Festos apurar durante a conversa",
+      "O Festos ja sabe o que mudou no Panteon e se o time ja trata algo parecido, mas nao confere no banco se o dado da pessoa existe nem le o codigo da tela. Esse degrau e o que transforma 'vou registrar' em 'achei o motivo' - e e tambem o que exige escopo por permissao, senao o chat vira porta lateral para dado de cliente.",
+    situacao: "bloqueado",
+    titulo: "Festos apurar no banco e no codigo durante a conversa",
   },
   {
     id: "PAN-108",
+    entregueEm: "2026-09-11",
     evidencia:
-      "O chat e texto; anexo, print, audio e gravacao de tela continuam so no formulario (hub-ticket-open-form.tsx). Lucas: 'capaz de reconhecer audio, imagem, arquivo prints, gravacao'.",
+      "components/hub-support/festo-anexos.ts (capturar tela, colar, escolher arquivo, gravar voz) + app/api/hub/festo/transcricao/route.ts. Os prints vao junto no chamado (anexosDaConversa, 5 testes). ⚠️ VIDEO FICOU DE FORA: a Claude nao le video, e o formulario contorna extraindo quadros no navegador.",
     modulo: "Zeus",
     porque:
-      "Print e gravacao sao o que transforma 'nao funciona' em relato reproduzivel, e hoje quem quer mandar evidencia precisa sair da conversa para o formulario. Audio ainda depende de transcricao, que e outra peca.",
-    situacao: "depois",
-    titulo: "Print, audio e gravacao dentro da conversa",
+      "Print e o que transforma 'nao funciona' em relato reproduzivel, e audio e o que faz quem esta irritado contar a historia inteira em dez segundos em vez de tres palavras. Antes disso, quem tinha evidencia precisava abandonar a conversa e recomecar no formulario.",
+    situacao: "entregue",
+    titulo: "Print, colar e audio dentro da conversa",
   },
   {
     id: "PAN-109",
@@ -1000,6 +1005,40 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
       "Boa parte do chamado nao e defeito, e alguem que nao sabe onde fica a acao. Um Festos que explica a tela resolve isso na hora e nao gera fila - mas so consegue explicar o que estiver descrito, e essa descricao ainda nao existe.",
     situacao: "depois",
     titulo: "Festos explicar como a tela funciona",
+  },
+  {
+    id: "PAN-110",
+    entregueEm: "2026-09-11",
+    evidencia:
+      "lib/hub-support/festo-leituras.ts (mudancasRecentes, parecidosNaFila, 11 testes) + as duas ferramentas em festo-agente.ts. A comparacao e por radical de 5 letras: 'salvar' precisa casar com 'salva', e um teste que falhou provou isso.",
+    modulo: "Zeus",
+    porque:
+      "Sem apurar, o Festos so sabia registrar. Agora ele confere se aquilo mudou no Panteon nas ultimas semanas (changelog) e se o time ja trata algo parecido - as duas classes de chamado que nao precisavam ter virado chamado.",
+    situacao: "entregue",
+    titulo: "Festos apura no changelog e na fila antes de abrir chamado",
+  },
+  {
+    id: "PAN-111",
+    entregueEm: "2026-09-11",
+    evidencia:
+      "lib/hub-it-tickets/server.ts: chamadosDaPessoa e chamadosRecentesParaComparar, que fazem select direto. A ferramenta do Festos usava listHubItTickets, que chama autoFinalizeStaleValidationRows na linha 383.",
+    modulo: "Zeus",
+    porque:
+      "Perguntar ao Festos 'como esta meu chamado?' encerrava o chamado da pessoa no instante da pergunta, se ele estivesse em validacao ha mais de 3 dias - com a mensagem 'Ticket encerrado' e ninguem tendo decidido nada. Achado pelo mapeamento das frentes, algumas horas depois de o chat subir.",
+    situacao: "entregue",
+    titulo: "Consultar chamado parou de FECHAR chamado",
+  },
+  {
+    id: "PAN-112",
+    bloqueio:
+      "A Claude nao le video. O formulario contorna extraindo quadros no navegador; dentro da conversa isso entregaria quadros soltos com o custo de um upload de ate 120 MB.",
+    evidencia:
+      "lib/iris/caca-media-analysis.ts:239-241 devolve null para video, com o comentario 'Claude le IMAGEM e PDF nativo. Video o Claude nao processa'. O caminho de quadros esta em components/hub-support/hub-ticket-evidence-utils.ts:103 (extractVideoFrameDataUrls).",
+    modulo: "Zeus",
+    porque:
+      "Gravar a tela e a unica forma de mostrar um erro que depende de sequencia - clicou aqui, depois ali, e ai quebrou. Continua no formulario, e o botao dele segue dentro da conversa; o que falta e decidir se vale trazer os quadros para o chat.",
+    situacao: "depois",
+    titulo: "Gravacao de tela dentro da conversa",
   },
 ];
 

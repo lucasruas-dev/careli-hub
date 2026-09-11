@@ -123,6 +123,54 @@ export function transcricaoDoAtendimento(
     .join("\n\n");
 }
 
+/**
+ * Os prints da conversa viram anexos do chamado.
+ *
+ * ⚠️ SEM ISTO, A EVIDÊNCIA MORRE NA CONVERSA. A pessoa manda o print, o Festos lê, entende, abre o
+ * chamado — e quem for atender recebe a descrição do print em vez do print. O trabalho de reproduzir
+ * o erro recomeça do zero, que é exatamente o custo que a plataforma existe para cortar.
+ *
+ * ⚠️ SÃO AS AMOSTRAS REDUZIDAS, e o chamado fica com elas. A amostra tem 1.600px e qualidade 0,72:
+ * boa para ler uma mensagem de erro, pobre para inspecionar um detalhe fino. Quem precisa mandar o
+ * arquivo bom continua tendo o formulário — e é por isso que o botão dele não saiu do chat.
+ *
+ * ⚠️ TETO DE QUATRO, os mais recentes. O formulário aceita quatro anexos; manter o mesmo número
+ * evita que o chamado aberto pelo Festos tenha uma regra que ninguém mais tem. E a conversa que
+ * rende mais de quatro prints é a conversa em que os primeiros já foram substituídos por outros
+ * melhores.
+ */
+export function anexosDaConversa(
+  conversa: readonly { imagens?: string[] }[],
+  agora: Date,
+): Array<{
+  dataUrl: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  type: "image";
+}> {
+  const carimbo = agora.toISOString().slice(0, 19).replace(/[:T]/g, "-");
+
+  return conversa
+    .flatMap((fala) => fala.imagens ?? [])
+    .filter((imagem) => /^data:image\/(?:jpeg|png|gif|webp);base64,/.test(imagem))
+    .slice(-4)
+    .map((dataUrl, indice) => {
+      const mimeType = /^data:([^;]+);/.exec(dataUrl)?.[1] ?? "image/jpeg";
+      const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+
+      return {
+        dataUrl,
+        fileName: `print-do-chat-${carimbo}-${indice + 1}.${mimeType.split("/")[1] ?? "jpg"}`,
+        mimeType,
+        // O tamanho real a partir do base64: 3 bytes para cada 4 caracteres. O campo é usado pela
+        // trava de tamanho do HelpDesk, e mandar zero passaria por cima dela.
+        sizeBytes: Math.ceil((base64.length * 3) / 4),
+        type: "image" as const,
+      };
+    });
+}
+
 function texto(valor: unknown): string {
   return typeof valor === "string" ? valor.trim() : "";
 }

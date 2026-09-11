@@ -5,9 +5,11 @@ import {
   createHubItTicket,
   isHubItTicketsSchemaMissingError,
   listHubItTickets,
+  resumoParaDevolutiva,
   updateHubItTicket,
 } from "@/lib/hub-it-tickets/server";
 import { triarChamadoNovo } from "@/lib/hub-it-tickets/triagem-automatica";
+import { devolverAoUsuarioComOFesto } from "@/lib/hub-support/festo-devolutiva";
 import type { HubItTicketListScope } from "@/lib/hub-it-tickets/types";
 
 export const dynamic = "force-dynamic";
@@ -142,6 +144,24 @@ export async function PATCH(request: NextRequest) {
       input,
       user: authorization.user,
     });
+
+    // ⚠️ A DEVOLUTIVA VAI DEPOIS DA RESPOSTA, com `after()`. Ela chama o modelo para traduzir o
+    // resumo técnico em duas frases de gente, e isso leva segundos: no caminho do PATCH, faria
+    // quem atendeu ficar olhando o botão girar por um texto que não é para ele.
+    //
+    // ⚠️ E ELA DECIDE SOZINHA SE CABE: `resumoParaDevolutiva` devolve nulo quando o chamado não
+    // chegou a validação, quando não há resumo técnico para traduzir, ou quando o Festos já
+    // devolveu este chamado — sem isso, cada clique de quem atende repetiria o mesmo recado para
+    // a pessoa, escrito de um jeito um pouco diferente.
+    if (ticket?.protocol) {
+      const protocolo = ticket.protocol;
+      after(async () => {
+        const resumo = await resumoParaDevolutiva(protocolo);
+        if (resumo) {
+          await devolverAoUsuarioComOFesto(protocolo, resumo);
+        }
+      });
+    }
 
     return Response.json(
       { ticket },
