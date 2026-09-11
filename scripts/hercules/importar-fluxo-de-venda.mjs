@@ -42,19 +42,26 @@ const env = Object.fromEntries(
     }),
 );
 
-// ⚠️ OS EMPREENDIMENTOS DE ENSAIO NAO ENTRAM NO PANTEON. Lucas (11/09/2026): *"esse sdt, tsc,
-// tudo que e teste nao precisa existir dentro do panteon"*.
+// ⚠️ O QUE NAO ENTRA NO PANTEON. Lucas (11/09/2026): *"esse sdt, tsc, tudo que e teste nao precisa
+// existir dentro do panteon"* e, depois, *"ADT pode ficar de fora tambem"*.
 //
-// ⚠️ E A LISTA E MEDIDA, NAO SUPOSTA. SDT tem 16 propostas e TSC tem 2, NENHUMA faturada, e o
-// cliente das duas e a propria Nivea — assinatura de ensaio. Ja o ADT, que aparecia no mesmo aviso
-// de "empreendimento sem cadastro no Panteon", e REAL: 31 propostas, DUAS FATURADAS, clientes de
-// verdade, de 14/12/2025 a 16/07/2026. Tratar os tres como iguais teria apagado venda faturada.
-const DE_ENSAIO = ["SDT", "TSC"];
+// A lista tem DUAS naturezas, e a distincao importa para quem mexer nisso depois:
+//
+//   SDT ("SERVIDOR DE TREINAMENTO") e TSC ("TESTE SPLIT CARELI") sao ENSAIO. As 18 propostas deles
+//   nunca foram faturadas e o cliente das duas e a propria Nivea.
+//
+//   ADT ("CARELI - ADITIVOS") NAO e ensaio: tem 31 propostas e DUAS FATURADAS, com clientes reais,
+//   de 14/12/2025 a 16/07/2026. Ele esta fora por DECISAO DE ESCOPO, tomada com esse numero na
+//   mesa: nao e um empreendimento, e um balcao de aditivos contratuais que o legado modelou como
+//   empreendimento para caber. Trazer isso para ca do jeito que esta ensinaria o Panteon a errar o
+//   modelo. ⚠️ A consequencia esta aceita e registrada: essas 31 propostas, as duas faturadas
+//   inclusive, NAO existem no Panteon — quem procurar por elas aqui nao acha.
+const FORA_DO_PANTEON = ["ADT", "SDT", "TSC"];
 const iExceto = process.argv.indexOf("--exceto");
 const EXCETO = new Set(
   iExceto > 0
     ? (process.argv[iExceto + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean)
-    : DE_ENSAIO,
+    : FORA_DO_PANTEON,
 );
 
 const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL;
@@ -224,7 +231,7 @@ const linhasUteis = linhas.filter(
 );
 if (EXCETO.size > 0) {
   const fora = linhas.length - linhasUteis.length;
-  console.log(`  fora da carga (ensaio ${[...EXCETO].join(", ")}): ${fora} propostas
+  console.log(`  fora do Panteon (${[...EXCETO].join(", ")}): ${fora} propostas
 `);
 }
 
