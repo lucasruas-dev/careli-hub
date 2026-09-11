@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-11-historico-busca-o-cliente-no-banco",
+    deployedAt: "2026-09-11T11:20:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "**Clicar no cliente passou a buscar os atendimentos dele no banco.** Antes a tela só filtrava o que já estava carregado, então atendimento antigo não aparecia — mesmo existindo.",
+              "**Agora vem tudo do cliente de uma vez**, em aberto e encerrado, sem depender de clicar em \"Carregar mais\" várias vezes.",
+            ],
+            screen: "Histórico",
+          },
+        ],
+      },
+    ],
+    rollback: "bf198501",
+    technical: {
+      done: "⚠️ A CORREÇÃO DE 09/09 (paginação, 1.302.0) NÃO RESOLVIA ESTE CASO, e o chamado de hoje provou. Reportado: \"não consegui ver todo o histórico de tickets da Ueicinara Cristiane Da Cunha\". MEDIDO no banco: 9 atendimentos (1 aberto, 8 encerrados, 20/07 a 11/09), todos no MESMO contato e na MESMA fila — não era contato duplicado. A tela mostrava 3: o aberto e os 2 encerrados dentro dos 400 da carga. Os outros 6 estavam nas posições 1.992, 2.642, 2.691, 4.286, 4.287 e 5.586 da fila de encerrados, o que dá 26 CLIQUES em \"Carregar mais\" para alcançar o mais antigo — tecnicamente acessível, na prática invisível. ⚠️ E O FOCO NUNCA BUSCOU NADA: `iris-history-view.tsx` faz `tickets.filter(...)` sobre a lista já carregada, então clicar no cliente parecia uma busca e era um filtro sobre o que a carga da tela tinha trazido. Paginar anda para trás na fila INTEIRA: serve para navegar no tempo, não para procurar UMA pessoa. O conserto é `loadIrisTicketsDoContato`, que busca por `contact_id` (abertos e encerrados, teto de 300) e mescla no mesmo `historicoExtras` da paginação, com dedup por id e a carga corrente vencendo. ⚠️ O MIOLO DA CARGA SOB DEMANDA FOI EXTRAÍDO, NÃO DUPLICADO: `carregarTicketsSobDemanda` recebe o recorte como função e o aplica sempre DEPOIS da régua de acesso — inverter a ordem deixaria o filtro de fila para o fim e abriria a porta que `aplicarReguaDeAcessoAosTickets` existe para fechar. A paginação virou uma casca fina sobre esse miolo. 3.537 testes verdes em 243 arquivos, typecheck e lint limpos. ⚠️ Não verificado em tela: o Hades e a Iris exigem login, e `IrisPage.tsx` tem `@ts-nocheck`. O caso de prova é a UEICINARA — o histórico dela tem que mostrar 9, não 3.",
+      motivation:
+        "Um operador não conseguia ver todo o histórico de uma cliente: a tela mostrava 3 dos 9 atendimentos, e os outros 6 exigiam 26 cliques para aparecer.",
+    },
+    title: "O histórico que acha o cliente",
+    type: "correcao",
+    version: "1.312.0",
+  },
+  {
     buildTag: "2026-09-11-acordo-por-unidade-e-corretagem-no-dossie",
     deployedAt: "2026-09-11T09:40:00-03:00",
     modules: [
