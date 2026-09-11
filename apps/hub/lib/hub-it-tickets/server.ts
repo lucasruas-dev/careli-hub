@@ -386,7 +386,8 @@ export async function listHubItTickets({
       return rows.map((row) => mapTicketRow(row, [], []));
     }
 
-    return hydrateTicketRows(adminClient, rows);
+    // A lista do board (scope 'all') e do adm; a do usuario e so a dele, sem nota interna.
+    return hydrateTicketRows(adminClient, rows, { veNotaInterna: canSeeAll });
   } catch (error) {
     if (shouldUseLocalFallback(error)) {
       return listLocalHubItTickets({ canSeeAll, protocol, userId: user.id });
@@ -484,7 +485,21 @@ export async function createHubItTicket({
       });
     }
 
-    const [hydratedTicket] = await hydrateTicketRows(adminClient, [ticket]);
+    // ⚠️ CHAMADO NOVO AVISA OS ADMS, e ate 11/09/2026 nao avisava ninguem: `createHubItTicket`
+    // gravava o ticket e os eventos e ia embora. O chamado ficava esperando alguem abrir o
+    // board por acaso — e a media dos 30 parados era de 27,9 dias.
+    await insertHelpDeskNotification({
+      actionHref: `/zeus?ticket=${encodeURIComponent(ticket.protocol)}`,
+      actorUserId: user.id,
+      protocol: ticket.protocol,
+      recipientUserIds: await admsDoHelpDesk(adminClient),
+      severity: normalizedInput.priority === "alta" ? "warning" : "info",
+      title: `Novo chamado no HelpDesk: ${normalizedInput.title}`,
+    });
+
+    const [hydratedTicket] = await hydrateTicketRows(adminClient, [ticket], {
+      veNotaInterna: isAuthorizedHubItTicketAdmin(user),
+    });
 
     return hydratedTicket;
   } catch (error) {
@@ -672,6 +687,10 @@ export async function updateHubItTicket({
         actorUserId: user.id,
         protocol: ticket.protocol,
         recipientUserId: ticket.assigned_to_user_id,
+        // Chamado sem dono: os adms. Ver `admsDoHelpDesk`.
+        recipientUserIds: ticket.assigned_to_user_id
+          ? undefined
+          : await admsDoHelpDesk(adminClient),
         severity: userAction === "customer_close" ? "success" : "warning",
         title:
           userAction === "customer_close"
@@ -681,7 +700,10 @@ export async function updateHubItTicket({
               : `Nova mensagem no HelpDesk ${ticket.protocol}`,
       });
 
-      const [hydratedTicket] = await hydrateTicketRows(adminClient, [ticket]);
+      // Este ramo e o do SOLICITANTE respondendo o proprio chamado.
+      const [hydratedTicket] = await hydrateTicketRows(adminClient, [ticket], {
+        veNotaInterna: isAuthorizedHubItTicketAdmin(user),
+      });
 
       return hydratedTicket;
     }
@@ -900,6 +922,22 @@ async function fetchAllPagedRows<T>(
 async function hydrateTicketRows(
   adminClient: HubItTicketsClient,
   rows: HubItTicketRow[],
+  /**
+   * Quem esta lendo enxerga NOTA INTERNA?
+   *
+   * ⚠️ ESTE PARAMETRO EXISTE PARA UM VAZAMENTO QUE AINDA NAO ACONTECEU, e e a ordem certa de
+   * consertar. Esta funcao busca os eventos com o client SERVICE-ROLE, que passa por cima da RLS
+   * da migration 0014 — a policy "solicitante le so o proprio" nao protege este caminho. Ate
+   * 11/09/2026 nada vazava por um motivo frágil: toda insercao passava `visibleToRequester: true`,
+   * entao nao havia nota interna nenhuma para vazar.
+   *
+   * No instante em que a triagem automatica comecar a gravar o diagnostico tecnico como nota
+   * interna, ela chegaria inteira ao solicitante — incluindo a suspeita de causa, o nome do arquivo
+   * e a duplicata com o chamado de outra pessoa. Por isso o filtro entra ANTES da primeira nota.
+   *
+   * `false` e o padrao de propósito: quem esquecer de passar ve menos, nunca mais.
+   */
+  opcoes: { veNotaInterna: boolean } = { veNotaInterna: false },
 ) {
   if (rows.length === 0) {
     return [];
@@ -938,7 +976,14 @@ async function hydrateTicketRows(
     loadHubItTicketEventActors(adminClient, actorIds),
     signHubItTicketAttachmentUrls(adminClient, attachmentRows),
   ]);
-  const eventsByTicketId = groupByTicketId(eventRows);
+  // ⚠️ O CORTE E AQUI, e nao na consulta: os eventos ja vieram do banco pelo service-role.
+  // Filtrar na query seria melhor, mas os anexos e os atores sao resolvidos a partir desta
+  // mesma lista — cortar antes mudaria o que se assina e o que se conta.
+  const eventsByTicketId = groupByTicketId(
+    opcoes.veNotaInterna
+      ? eventRows
+      : eventRows.filter((event) => event.visible_to_requester !== false),
+  );
   const attachmentsByTicketId = groupByTicketId(attachmentRows);
 
   return rows.map((row) =>
@@ -1009,15 +1054,56 @@ async function insertTicketEvent(
   }
 }
 
+/**
+ * Quem recebe o aviso quando o chamado NAO tem dono.
+ *
+ * ⚠️ SEM ISTO, O SILENCIO E POR CONSTRUCAO. Medido em 11/09/2026: os 30 chamados parados em "novo"
+ * estao TODOS com `assigned_to_user_id` nulo, porque esse campo so e preenchido na PRIMEIRA
+ * resposta de um adm. E a notificacao de comentario do usuario era enviada justamente para esse
+ * campo — ou seja, a pessoa abria o chamado, ninguem era avisado, ela voltava para cobrar, e a
+ * cobranca tambem caia no vazio. Duas vezes ignorada, sem ninguem ter feito nada errado.
+ *
+ * Falha aqui devolve lista vazia: o aviso e best-effort, o chamado e a fonte da verdade.
+ */
+async function admsDoHelpDesk(
+  adminClient: HubItTicketsClient,
+): Promise<string[]> {
+  if (!adminClient) return [];
+  try {
+    const { data, error } = await adminClient
+      .from("hub_users")
+      .select("id")
+      .eq("status", "active")
+      .in("operational_profile", ["adm"]);
+    if (error) {
+      console.error("[helpdesk] falha ao listar os adms", error.message);
+      return [];
+    }
+    return (data ?? []).map((linha) => String((linha as { id: string }).id));
+  } catch (erro) {
+    console.error("[helpdesk] erro ao listar os adms", erro);
+    return [];
+  }
+}
+
 async function insertHelpDeskNotification(input: {
   actionHref: string;
   actorUserId: string;
   protocol: string;
   recipientUserId?: string | null;
+  /** Os adms, para quando `recipientUserId` e nulo. Ver `admsDoHelpDesk`. */
+  recipientUserIds?: readonly string[];
   severity: HubNotificationSeverity;
   title: string;
 }) {
-  if (!input.recipientUserId || input.recipientUserId === input.actorUserId) {
+  // ⚠️ O DONO TEM PRECEDENCIA, e a lista e a REDE — nao o contrario. Avisar todo mundo num
+  // chamado que ja tem responsavel transforma notificacao em ruido, e ruido ignorado e o
+  // mesmo que silencio.
+  const destinatarios = (
+    input.recipientUserId ? [input.recipientUserId] : (input.recipientUserIds ?? [])
+  ).filter((id) => id && id !== input.actorUserId);
+
+  if (destinatarios.length === 0) {
     return;
   }
 
@@ -1030,7 +1116,7 @@ async function insertHelpDeskNotification(input: {
     kind: "atendimento",
     moduleId: "zeus",
     push: { url: input.actionHref },
-    recipientUserIds: [input.recipientUserId],
+    recipientUserIds: [...new Set(destinatarios)],
     severity: input.severity,
     title: input.title,
   });

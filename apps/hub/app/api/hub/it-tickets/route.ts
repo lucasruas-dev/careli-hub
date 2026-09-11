@@ -1,4 +1,4 @@
-import { type NextRequest } from "next/server";
+import { after, type NextRequest } from "next/server";
 
 import {
   authorizeHubItTicketRequest,
@@ -7,6 +7,7 @@ import {
   listHubItTickets,
   updateHubItTicket,
 } from "@/lib/hub-it-tickets/server";
+import { triarChamadoNovo } from "@/lib/hub-it-tickets/triagem-automatica";
 import type { HubItTicketListScope } from "@/lib/hub-it-tickets/types";
 
 export const dynamic = "force-dynamic";
@@ -82,6 +83,19 @@ export async function POST(request: NextRequest) {
       input,
       user: authorization.user,
     });
+
+    // ⚠️ A TRIAGEM RODA DEPOIS DA RESPOSTA, com `after()`, e nunca antes. Ela chama o modelo e
+    // leva segundos; colocada no caminho do POST, faria quem abriu o chamado ficar olhando um
+    // botão girando por uma análise que não é para ele — é para quem vai atender.
+    //
+    // ⚠️ E NÃO TEM `await`: o `after` já segura a função viva até terminar. `triarChamadoNovo`
+    // nunca lança, então uma falha dela não derruba o chamado que já foi gravado.
+    // `createHubItTicket` pode voltar indefinido no caminho de fallback local (sem Supabase),
+    // e aí não há protocolo nem o que triar.
+    if (ticket?.protocol) {
+      const protocolo = ticket.protocol;
+      after(() => triarChamadoNovo(protocolo));
+    }
 
     return Response.json(
       { ticket },
