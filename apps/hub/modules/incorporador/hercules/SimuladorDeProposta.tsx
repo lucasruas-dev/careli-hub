@@ -134,6 +134,15 @@ const dinheiroExato = (v: number) =>
  * duas datas de vencimento para o mesmo boleto.
  */
 export type CondicoesDaProposta = {
+  /**
+   * O desconto (ou acréscimo) que o coordenador deu, na moeda em que ele o pensou.
+   *
+   * ⚠️ ELE SOBE JUNTO PORQUE PRECISA SER GRAVADO. `valorNegociado` já vem com o ajuste aplicado, e
+   * até a 0151 era só isso que chegava ao banco — depois de salvo, ninguém sabia se R$ 142.500
+   * foram desconto de 5%, tabela desatualizada ou erro de digitação, que é textualmente o defeito
+   * que o `ajuste-de-preco.ts` foi escrito para evitar. `null` = sem ajuste.
+   */
+  ajuste: AjusteDePreco | null;
   anuaisQuantidade: number;
   anuaisValor: number;
   /** 10 ou 20, os dois que a cobrança da casa usa. */
@@ -563,6 +572,8 @@ export function SimuladorDeProposta({
     aoMudarCondicoes(
       principal
         ? {
+            // Ajuste zerado é "sem ajuste": o que interessa gravar é o desconto que existiu.
+            ajuste: ajuste.valor !== 0 ? ajuste : null,
             anuaisQuantidade: principal.anuais.quantidade,
             anuaisValor: principal.anuais.valor,
             diaDeVencimento,
@@ -581,6 +592,7 @@ export function SimuladorDeProposta({
         : null,
     );
   }, [
+    ajuste,
     aoMudarCondicoes,
     cockpit.entradaVezes,
     cockpit.valor,

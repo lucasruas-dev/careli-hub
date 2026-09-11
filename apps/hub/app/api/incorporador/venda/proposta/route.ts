@@ -13,6 +13,8 @@ import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
+import type { ModoDoAjuste } from "@/lib/hercules/ajuste-de-preco";
+
 import { avisarSobreAVenda, destinatariosDaVenda } from "@/lib/hercules/avisos-da-venda";
 import { carregarCadastroDeEmpreendimentos, type LinhaDoCadastro } from "@/lib/hercules/cadastro";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
@@ -422,6 +424,16 @@ export async function POST(request: Request) {
   }
 
   let corpo: {
+    /**
+     * O desconto (ou acréscimo) que o coordenador deu, na moeda em que ele o pensou.
+     *
+     * ⚠️ ELE É GRAVADO, e não só aplicado. `valorNegociado` já vem com o ajuste embutido; sem
+     * guardar de onde saiu, ninguém depois sabe se R$ 142.500 foram desconto de 5%, tabela
+     * desatualizada ou erro de digitação — e a Têmis não tem como apontar desconto na análise.
+     * Ver a 0151.
+     */
+    ajusteModo?: unknown;
+    ajusteValor?: unknown;
     anuaisQuantidade?: unknown;
     anuaisValor?: unknown;
     compradores?: unknown;
@@ -447,6 +459,28 @@ export async function POST(request: Request) {
 
   const unidadeId = String(corpo.unidadeId ?? "").trim();
   const planoNome = String(corpo.planoNome ?? "").trim();
+
+  // ⚠️ O AJUSTE É LIDO AQUI E NÃO INFLUENCIA O PREÇO — `valorNegociado` já chega com ele
+  // embutido, calculado por `aplicarAjuste` na mesma tela que o digitou. Recalcular aqui abriria
+  // a chance de o número gravado discordar do que o coordenador viu e o cliente leu no PDF.
+  // O que se guarda é a INTENÇÃO: em que moeda foi pensado e quanto foi dado.
+  //
+  // ⚠️ MODO INVÁLIDO VIRA "SEM AJUSTE", e não erro: o CHECK da 0151 só aceita 'percentual' ou
+  // 'reais', e deixar passar texto livre derrubaria a gravação da proposta inteira por causa de
+  // um campo acessório. Ajuste zerado também é nulo — "sem desconto" e "desconto de zero" são a
+  // mesma coisa para quem lê depois.
+  //
+  // ⚠️ E `Number.isFinite` NÃO É ENFEITE: `numeroDoCorpo` devolve NaN quando o campo não vem, e
+  // `NaN !== 0` é verdadeiro — sem esta trava, toda proposta sem ajuste tentaria gravar NaN na
+  // coluna numérica.
+  const modoDoAjuste = String(corpo.ajusteModo ?? "").trim();
+  const valorDoAjuste = numeroDoCorpo(corpo.ajusteValor);
+  const ajuste: null | { modo: ModoDoAjuste; valor: number } =
+    (modoDoAjuste === "percentual" || modoDoAjuste === "reais") &&
+    Number.isFinite(valorDoAjuste) &&
+    valorDoAjuste !== 0
+      ? { modo: modoDoAjuste, valor: valorDoAjuste }
+      : null;
 
   try {
     // ── 1. Escopo e unidade ────────────────────────────────────────────────
@@ -750,6 +784,12 @@ export async function POST(request: Request) {
         // A carga do C2X preenche esta coluna e ninguem a le hoje; gravada aqui para a proposta
         // nativa nao ser a unica linha da tabela com o campo em branco.
         aberta: true,
+        // ⚠️ O DESCONTO FICA REGISTRADO, E OS DOIS ANDAM JUNTOS (a constraint da 0151 exige):
+        // modo sem valor não diz quanto, valor sem modo não diz de quê. Ajuste ausente ou zerado
+        // grava NULO nos dois — "sem desconto" e "desconto de zero" são a mesma coisa para quem
+        // lê, e nulo é o que as 4.857 propostas importadas têm.
+        ajuste_modo: ajuste ? ajuste.modo : null,
+        ajuste_valor: ajuste ? ajuste.valor : null,
         cliente_documento: cpfDoTitular,
         // A CAD que DECIDIU o credenciamento — é por ela que se abre a ficha do cliente depois.
         cliente_entity_id: credenciamento.entityId,
@@ -790,6 +830,11 @@ export async function POST(request: Request) {
         // referência do plano que a originou. Quem lê os dois lado a lado enxerga o desconto de
         // prazo que o coordenador deu.
         plano_parcelas: plano.parcelas,
+        // ⚠️ CONGELADO, NÃO CONSULTADO. É o preço do lote NESTE instante. Ler o cadastro depois,
+        // na hora de analisar, faria o passado mudar toda vez que alguém corrigisse o preço da
+        // unidade — a proposta de agosto passaria a "ter desconto" porque o preço subiu em
+        // outubro. Ver a 0151.
+        preco_tabela: numeroDoBanco(unidade.preco_tabela),
         primeiro_sinal: diaDoCalendario(pedido.primeiraParcelaEm),
         // O COD é o MESMO da reserva, copiado: um número novo aqui quebraria a única coisa que
         // amarra a venda do primeiro telefonema ao contrato assinado.

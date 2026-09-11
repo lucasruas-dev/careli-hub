@@ -545,6 +545,11 @@ export function ModalDeProposta({
    */
   function corpoDoPedido(condicoesAgora: NonNullable<typeof condicoes>) {
     return {
+      // ⚠️ O AJUSTE VAI SEPARADO DO PREÇO, e não em vez dele: `valorNegociado` continua sendo o
+      // número que a tela mostrou e o PDF vai imprimir. Estes dois campos guardam de ONDE ele
+      // saiu — sem eles, a Têmis não tem como apontar desconto na análise. Ver a 0151.
+      ajusteModo: condicoesAgora.ajuste?.modo ?? null,
+      ajusteValor: condicoesAgora.ajuste?.valor ?? null,
       anuaisQuantidade: condicoesAgora.anuaisQuantidade,
       anuaisValor: condicoesAgora.anuaisValor,
       compradores: compradores.map((c) => ({
