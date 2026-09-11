@@ -101,8 +101,8 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     version: "1.313.0",
   },
   {
-    buildTag: "2026-09-11-historico-busca-o-cliente-no-banco",
-    deployedAt: "2026-09-11T11:20:00-03:00",
+    buildTag: "2026-09-11-atendimentos-do-cliente-completos",
+    deployedAt: "2026-09-11T11:35:00-03:00",
     modules: [
       {
         module: "Iris",
@@ -113,6 +113,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
               "**Agora vem tudo do cliente de uma vez**, em aberto e encerrado, sem depender de clicar em \"Carregar mais\" várias vezes.",
             ],
             screen: "Histórico",
+          },
+          {
+            items: [
+              "**O painel \"Atendimentos do cliente\" e o \"Ver tickets anteriores\" passaram a mostrar tudo.** Eram a mesma lista incompleta do Histórico, vista de outra tela: um cliente com 9 atendimentos aparecia com 3.",
+            ],
+            screen: "Atendimento",
           },
         ],
       },
@@ -125,7 +131,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     },
     title: "O histórico que acha o cliente",
     type: "correcao",
-    version: "1.312.0",
+    version: "1.312.1",
   },
   {
     buildTag: "2026-09-11-acordo-por-unidade-e-corretagem-no-dossie",

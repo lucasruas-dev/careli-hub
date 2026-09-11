@@ -1221,22 +1221,45 @@ export function IrisPage({
     scopedQueueSlug,
   ]);
 
-  // AO FOCAR UM CLIENTE, BUSCA OS ATENDIMENTOS DELE NO BANCO.
-  //
-  // ⚠️ PAGINAR NÃO RESOLVE PROCURAR UMA PESSOA, e o chamado de 11/09/2026 mostrou isso: a
-  // cliente UEICINARA CRISTIANE DA CUNHA tem 9 atendimentos e a tela mostrava 3. Os outros 6
-  // estavam entre as posições 1.992 e 5.586 da fila de encerrados — 26 cliques em "Carregar
-  // mais" para alcançar o mais antigo. O botão funciona; para achar um cliente, não serve.
-  //
-  // ⚠️ E O FOCO ERA SÓ UM FILTRO: `iris-history-view.tsx` faz `tickets.filter(...)` sobre a
-  // lista já carregada. Clicar no cliente parecia uma busca e não era.
-  const contatoFocado = historyFocus?.contactId ?? null;
+  // Ref espelho do ticket aberto: o handler do realtime le sem re-assinar o canal.
+  const selectedTicketIdRef = useRef(selectedTicketId);
+
   useEffect(() => {
-    if (!contatoFocado || !loadFromSupabase) {
-      return;
-    }
+    selectedTicketIdRef.current = selectedTicketId;
+  }, [selectedTicketId]);
+
+  const selectedTicket = useMemo(() => {
+    return (
+      irisData.tickets.find((ticket) => ticket.id === selectedTicketId) ??
+      irisData.tickets[0] ??
+      null
+    );
+  }, [irisData.tickets, selectedTicketId]);
+
+  // OS ATENDIMENTOS DO CLIENTE, BUSCADOS NO BANCO — no Histórico E no Atendimento.
+  //
+  // ⚠️ PAGINAR NÃO RESOLVE PROCURAR UMA PESSOA. Chamado de 11/09/2026: a cliente UEICINARA
+  // CRISTIANE DA CUNHA tem 9 atendimentos e a tela mostrava 3. Os outros 6 estavam entre as
+  // posições 1.992 e 5.586 da fila de encerrados — 26 cliques em "Carregar mais" para alcançar
+  // o mais antigo.
+  //
+  // ⚠️ E SÃO DUAS TELAS, NÃO UMA. O primeiro conserto olhou só a aba Histórico; o operador
+  // estava no ATENDIMENTO, onde o painel "Atendimentos do cliente" e o "Ver tickets anteriores"
+  // saem de `previousTickets` — que filtra `irisData.tickets`, a mesma lista carregada. Buscar
+  // só no foco do Histórico deixava o Atendimento igual. Por isso o gatilho é o contato EM
+  // CONTEXTO, venha ele do foco ou do ticket aberto.
+  const contatoEmContexto =
+    historyFocus?.contactId ?? selectedTicket?.contactId ?? null;
+  // Não repete a busca do mesmo contato: o operador abre e fecha ticket o tempo todo, e cada
+  // busca hidrata mensagens e contatos.
+  const contatosBuscadosRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!contatoEmContexto || !loadFromSupabase) return;
+    if (contatosBuscadosRef.current.has(contatoEmContexto)) return;
 
     let ativo = true;
+    contatosBuscadosRef.current.add(contatoEmContexto);
     setHistoricoCarregando(true);
     setHistoricoErro(null);
 
@@ -1244,7 +1267,7 @@ export function IrisPage({
       try {
         const doCliente = await withIrisTimeout(
           loadIrisTicketsDoContato({
-            contactId: contatoFocado,
+            contactId: contatoEmContexto,
             operatorUserId,
             queueSlugFilter: scopedQueueSlug,
             viewerUserId: hubUser?.id ?? null,
@@ -1266,7 +1289,9 @@ export function IrisPage({
           mesclarTicketsDoHistorico(atuais, enriquecido.tickets),
         );
       } catch (error) {
-        console.error("[iris][historico] falha ao buscar os atendimentos do cliente", error);
+        console.error("[iris] falha ao buscar os atendimentos do cliente", error);
+        // Deixa tentar de novo na próxima vez que este cliente aparecer.
+        contatosBuscadosRef.current.delete(contatoEmContexto);
         if (ativo) {
           setHistoricoErro(
             "Nao foi possivel buscar todos os atendimentos deste cliente. A lista pode estar incompleta.",
@@ -1281,28 +1306,13 @@ export function IrisPage({
       ativo = false;
     };
   }, [
-    contatoFocado,
+    contatoEmContexto,
     enrichIrisDataWithCrm360,
     hubUser?.id,
     loadFromSupabase,
     operatorUserId,
     scopedQueueSlug,
   ]);
-
-  // Ref espelho do ticket aberto: o handler do realtime le sem re-assinar o canal.
-  const selectedTicketIdRef = useRef(selectedTicketId);
-
-  useEffect(() => {
-    selectedTicketIdRef.current = selectedTicketId;
-  }, [selectedTicketId]);
-
-  const selectedTicket = useMemo(() => {
-    return (
-      irisData.tickets.find((ticket) => ticket.id === selectedTicketId) ??
-      irisData.tickets[0] ??
-      null
-    );
-  }, [irisData.tickets, selectedTicketId]);
 
   // Historico COMPLETO do ticket aberto, buscado sob demanda por ticket_id. A carga em
   // massa tem teto de 1000 msgs por workspace (PostgREST); aqui a conversa aberta nunca
