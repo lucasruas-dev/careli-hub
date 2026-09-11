@@ -1055,6 +1055,23 @@ async function insertTicketEvent(
 }
 
 /**
+ * QUEM ATENDE O HELPDESK — e, por isso, quem recebe os avisos.
+ *
+ * ⚠️ NAO E "QUEM E ADM", e essa foi a primeira versao errada. Filtrar por
+ * `operational_profile = 'adm'` traz duas pessoas, e uma delas nao atende chamado: medido em
+ * 11/09/2026, dos 146 chamados, 114 foram atendidos pelo Lucas e NENHUM pela Nivea. Avisar quem
+ * nao atende e o caminho mais curto para a notificacao virar ruido — e notificacao que vira ruido
+ * e desligada, o que devolveria o silencio que este aviso existe para quebrar.
+ *
+ * ⚠️ E POR QUE UMA LISTA, E NAO UMA COLUNA: uma coluna nova em `hub_users` exigiria migration (OK
+ * do Lucas a cada vez) para um dado que hoje tem UM valor e muda de ano em ano. A lista fica no
+ * codigo, versionada, e mudar quem atende e uma linha — sem banco, sem env, sem deploy de schema.
+ *
+ * Para incluir alguem: acrescente o e-mail aqui. Para tirar, remova.
+ */
+const ATENDEM_O_HELPDESK: readonly string[] = ["lucas.ruas@careli.adm.br"];
+
+/**
  * Quem recebe o aviso quando o chamado NAO tem dono.
  *
  * ⚠️ SEM ISTO, O SILENCIO E POR CONSTRUCAO. Medido em 11/09/2026: os 30 chamados parados em "novo"
@@ -1072,16 +1089,16 @@ async function admsDoHelpDesk(
   try {
     const { data, error } = await adminClient
       .from("hub_users")
-      .select("id")
+      .select("id, email")
       .eq("status", "active")
-      .in("operational_profile", ["adm"]);
+      .in("email", [...ATENDEM_O_HELPDESK]);
     if (error) {
-      console.error("[helpdesk] falha ao listar os adms", error.message);
+      console.error("[helpdesk] falha ao listar quem atende", error.message);
       return [];
     }
     return (data ?? []).map((linha) => String((linha as { id: string }).id));
   } catch (erro) {
-    console.error("[helpdesk] erro ao listar os adms", erro);
+    console.error("[helpdesk] erro ao listar quem atende", erro);
     return [];
   }
 }
