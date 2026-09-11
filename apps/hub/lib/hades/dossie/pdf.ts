@@ -46,6 +46,11 @@ const brl = (v: number | null | undefined) =>
     ? "não apurado"
     : v.toLocaleString("pt-BR", { currency: "BRL", style: "currency" });
 
+// O percentual da comissão como o cadastro guarda: 6 vira "6%", 6,5 vira "6,5%". Sem casa fixa
+// porque "6,00%" num documento jurídico sugere precisão que o cadastro não tem.
+const percentualBR = (v: number) =>
+  `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+
 // StandardFonts é WinAnsi: caractere fora da tabela quebra a geração inteira.
 const clean = (v: unknown): string =>
   String(v ?? "")
@@ -172,15 +177,52 @@ export async function gerarDossiePdf(
   secao("2. DASHBOARD EXECUTIVO");
   txt("Resumo Financeiro", M, 9, bold, INK);
   y -= 14;
-  tabela(
+  // ⚠️ A SEPARAÇÃO VENDA × CORRETAGEM É O PONTO DESTA TABELA, e por isso a corretagem vem aberta
+  // nas duas pontas cadastradas: o jurídico precisa enxergar quanto do preço é a unidade e quanto
+  // é a intermediação. O percentual sai junto para o leitor conferir a conta sem abrir o sistema.
+  //
+  // ⚠️ "NÃO APURADO" NÃO É R$ 0,00. Sem as duas % cadastradas no Panteon não há como separar, e a
+  // peça diz isso em vez de imprimir um zero que o leitor entenderia como corretagem inexistente.
+  // Medido em 11/09/2026: 17 dos 18 empreendimentos ainda estão sem o cadastro.
+  const linhasDeValor: Array<[string, string]> = [
     [
-      ["Valor Total do Lote", brl(d.valorTotalLote)],
-      ["Valor Total da Corretagem", d.valorCorretagem > 0 ? brl(d.valorCorretagem) : "não apurado"],
-      ["Valor Global da Negociação", brl(d.valorGlobal)],
-      ["Total Pago pelo Cliente", brl(d.totalPago)],
-      ["Saldo Total do Contrato (inclui parcelas a vencer)", brl(d.saldoDevedor)],
+      d.comissaoPercentual === null
+        ? "Valor de Venda da Unidade"
+        : `Valor de Venda da Unidade (${percentualBR(100 - d.comissaoPercentual)} do global)`,
+      d.valorTotalLote === null ? "não apurado" : brl(d.valorTotalLote),
     ],
-    [2, 3], // valor global e total pago em negrito
+    [
+      d.comissaoPercentual === null
+        ? "Valor Total da Corretagem"
+        : `Valor Total da Corretagem (${percentualBR(d.comissaoPercentual)} do global)`,
+      d.valorCorretagem === null ? "não apurado" : brl(d.valorCorretagem),
+    ],
+  ];
+
+  if (d.corretagemCoordenadora !== null) {
+    linhasDeValor.push([
+      "     Corretagem — coordenadora de vendas",
+      brl(d.corretagemCoordenadora),
+    ]);
+  }
+  if (d.corretagemImobiliaria !== null) {
+    linhasDeValor.push([
+      "     Corretagem — imobiliária",
+      brl(d.corretagemImobiliaria),
+    ]);
+  }
+
+  linhasDeValor.push(
+    ["Valor Global da Negociação", brl(d.valorGlobal)],
+    ["Total Pago pelo Cliente", brl(d.totalPago)],
+    ["Saldo Total do Contrato (inclui parcelas a vencer)", brl(d.saldoDevedor)],
+  );
+
+  tabela(
+    linhasDeValor,
+    // Global e total pago em negrito: os dois índices andam com o tamanho da lista, porque as
+    // duas linhas de detalhe da corretagem entram no meio só quando há cadastro.
+    [linhasDeValor.length - 3, linhasDeValor.length - 2],
   );
   y -= 6;
 
