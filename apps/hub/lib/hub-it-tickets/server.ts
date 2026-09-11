@@ -1055,6 +1055,92 @@ async function insertTicketEvent(
 }
 
 /**
+ * GRAVA O QUE A TRIAGEM AUTOMATICA ACHOU, como NOTA INTERNA no chamado.
+ *
+ * ⚠️ SEM ISTO A TRIAGEM RODAVA E SE PERDIA. A primeira versao de `triarChamadoNovo` chamava o
+ * modelo e escrevia o resultado no console do servidor — ou seja, gastava a chamada e nao deixava
+ * nada onde alguem fosse olhar. O diagnostico so vale se chega antes de quem vai atender.
+ *
+ * ⚠️ NOTA INTERNA, NAO RESPOSTA. `visibleToRequester: false`. O texto carrega suspeita de causa,
+ * duplicata e o protocolo de OUTRO chamado — que pode ser de outra pessoa. Responder o solicitante
+ * e outro ato, por uma porta que ainda nao existe: hoje toda resposta administrativa carimba o
+ * responsavel e move o status, e um agente falando por ali viraria dono de tudo a cada frase.
+ *
+ * ⚠️ E NAO MEXE EM NADA DO CHAMADO: nem status, nem categoria, nem responsavel. A triagem PROPOE;
+ * quem decide e quem atende. Deixar a IA reclassificar sozinha seria dar a ela o poder de esconder
+ * um chamado numa categoria errada sem ninguem ver.
+ */
+export async function registrarTriagemAutomatica(
+  protocolo: string,
+  resultado: {
+    autonomy: string;
+    confidence: string;
+    duplicateProtocol: null | string;
+    escalate: boolean;
+    internalNote: string;
+    resolvedByVersion: null | string;
+    responseText: string;
+    suggestedCategory: string;
+    suggestedPriority: string;
+  },
+): Promise<void> {
+  const adminClient = createHubItTicketClient();
+  if (!adminClient) return;
+
+  const { data, error } = await adminClient
+    .from("hub_it_tickets")
+    .select("id")
+    .eq("protocol", protocolo)
+    .maybeSingle();
+
+  if (error || !data) {
+    console.error(
+      `[helpdesk][triagem] chamado ${protocolo} nao encontrado para registrar`,
+      error?.message,
+    );
+    return;
+  }
+
+  // As linhas saem em ordem de utilidade para quem abre o chamado com pressa: o que fazer,
+  // por que, e so entao os detalhes.
+  const linhas = [
+    resultado.duplicateProtocol
+      ? `Parece duplicata de ${resultado.duplicateProtocol}.`
+      : null,
+    resultado.resolvedByVersion
+      ? `Pode ter sido resolvido na versao ${resultado.resolvedByVersion}.`
+      : null,
+    resultado.escalate ? "A triagem marcou para ESCALAR." : null,
+    `Sugestao: ${resultado.suggestedCategory} / prioridade ${resultado.suggestedPriority} · confianca ${resultado.confidence}.`,
+    resultado.internalNote ? `
+${resultado.internalNote}` : null,
+    resultado.responseText
+      ? `
+Rascunho de devolutiva (NAO enviado ao solicitante):
+${resultado.responseText}`
+      : null,
+  ].filter(Boolean);
+
+  await insertTicketEvent(adminClient, {
+    // ⚠️ AUTOR NULO DE PROPOSITO: nao existe pessoa por tras disto, e por o id de alguem aqui
+    // faria o historico dizer que um colega analisou um chamado que ele nunca abriu.
+    createdByUserId: null,
+    message: "Zeus · triagem automatica",
+    metadata: {
+      autonomia: resultado.autonomy,
+      confianca: resultado.confidence,
+      duplicata: resultado.duplicateProtocol,
+      fonte: "triagem-automatica",
+      versao: resultado.resolvedByVersion,
+    },
+    technicalNote: linhas.join("\n"),
+    ticketId: String((data as { id: string }).id),
+    type: "triaged",
+    visibleToRequester: false,
+  });
+}
+
+/**
  * QUEM ATENDE O HELPDESK — e, por isso, quem recebe os avisos.
  *
  * ⚠️ NAO E "QUEM E ADM", e essa foi a primeira versao errada. Filtrar por

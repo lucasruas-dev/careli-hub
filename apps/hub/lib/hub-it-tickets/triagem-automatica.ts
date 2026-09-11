@@ -21,6 +21,7 @@
 // "Finalizado" já distorce o placar; um segundo robô por cima disso apagaria o pouco que resta de
 // sinal.
 
+import { registrarTriagemAutomatica } from "@/lib/hub-it-tickets/server";
 import { runHubItTicketTriage } from "@/lib/hub-it-tickets/triage";
 
 /**
@@ -62,8 +63,15 @@ export async function triarChamadoNovo(protocolo: string): Promise<void> {
       user: AGENTE_DA_TRIAGEM,
     });
 
+    // ⚠️ A TRIAGEM SÓ VALE SE FICA ESCRITA ONDE ALGUÉM VAI OLHAR. A primeira versão desta função
+    // chamava o modelo e mandava o resultado para o console do servidor: gastava a chamada e não
+    // deixava nada no chamado. O diagnóstico precisa chegar antes de quem vai atender.
+    await registrarTriagemAutomatica(protocolo, resultado);
+
     console.info(
-      `[helpdesk][triagem] ${protocolo}: ${resultado.autonomy ?? "sem autonomia"}`,
+      `[helpdesk][triagem] ${protocolo}: ${resultado.autonomy} · ${resultado.confidence}${
+        resultado.duplicateProtocol ? ` · duplicata de ${resultado.duplicateProtocol}` : ""
+      }`,
     );
   } catch (erro) {
     // O motivo vai para o log do servidor: uma triagem que falha calada é indistinguível de uma
