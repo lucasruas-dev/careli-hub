@@ -1,10 +1,18 @@
 "use client";
 
 import { useAthenaTicketRecording } from "@/components/hub-support/athena-ticket-recording-provider";
+import {
+  DESCANSO_ENTRE_FALAS_MS,
+  falasDaHora,
+  SAUDACOES,
+  sortearSemRepetir,
+} from "@/components/hub-support/festo-conversa";
+import { type EstadoDoFesto, FestoRobo } from "@/components/hub-support/festo-robo";
+import { falasDoTraje, trajeDaData } from "@/components/hub-support/festo-traje";
 import { HubTicketOpenForm } from "@/components/hub-support/hub-ticket-open-form";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import { useAuth } from "@/providers/auth-provider";
-import { Headset, X } from "lucide-react";
+import { X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -57,6 +65,13 @@ export function HubSupportDock() {
   const dockRef = useRef<HTMLDivElement>(null);
   /** O que o ponteiro fez desde que desceu: para separar clique de arraste no `pointerup`. */
   const gesto = useRef<null | { moveu: boolean; x: number; y: number }>(null);
+  /** O que o Festo está dizendo agora. `null` = calado. */
+  const [fala, setFala] = useState<null | string>(null);
+  const [piscando, setPiscando] = useState(false);
+  const [pulando, setPulando] = useState(false);
+  /** As falas já ditas nesta aba, para o sorteio não repetir. Ver `sortearSemRepetir`. */
+  const jaDitas = useRef<string[]>([]);
+  const sumirFala = useRef<null | ReturnType<typeof setTimeout>>(null);
 
   const shouldKeepTicketVisible =
     isRecordingProtected && nativeTicketFormCount === 0;
@@ -96,6 +111,68 @@ export function HubSupportDock() {
     window.addEventListener("resize", aoRedimensionar);
     return () => window.removeEventListener("resize", aoRedimensionar);
   }, [posicao]);
+
+  /**
+   * Faz o Festo dizer alguma coisa por alguns segundos.
+   *
+   * ⚠️ O BALÃO É RECADO CURTO, e nunca atendimento. Correção do Lucas (11/09/2026), olhando um
+   * diagnóstico técnico dentro do balão: *"isso aqui é dentro do chat"*. O que ele descobriu, o
+   * que precisa de você e a devolutiva vão para a CONVERSA, onde ficam registrados; aqui só entra
+   * o que pode sumir sem perda.
+   */
+  const dizer = useCallback((texto: string, segundos: number) => {
+    setFala(texto);
+    if (sumirFala.current) clearTimeout(sumirFala.current);
+    sumirFala.current = setTimeout(() => setFala(null), segundos * 1000);
+  }, []);
+
+  // A piscada em intervalo IRREGULAR é o que faz parecer olho. De 5 em 5 segundos exatos, lê como
+  // led de aparelho — e aí o robô vira enfeite piscando, não alguém prestando atenção.
+  useEffect(() => {
+    let vivo = true;
+    let proxima: ReturnType<typeof setTimeout>;
+    const agenda = () => {
+      proxima = setTimeout(
+        () => {
+          if (!vivo) return;
+          setPiscando(true);
+          setTimeout(() => setPiscando(false), 260);
+          agenda();
+        },
+        4000 + Math.random() * 5000,
+      );
+    };
+    agenda();
+    return () => {
+      vivo = false;
+      clearTimeout(proxima);
+    };
+  }, []);
+
+  /**
+   * A fala espontânea: água, alongamento, bom dia.
+   *
+   * ⚠️ 2 A 3 VEZES POR DIA, e a raridade é o recurso. Foi assim que o Clippy virou piada: não pelo
+   * que dizia, mas por quantas vezes. Falando pouco, o balão continua sendo LIDO — o que importa no
+   * dia em que o recado for sério.
+   *
+   * ⚠️ E ELE NÃO FALA COM O PAINEL ABERTO: ali a pessoa está escrevendo um problema, e um "já tomou
+   * água?" por cima disso é exatamente o tipo de coisa que faz desligar o suporte.
+   */
+  useEffect(() => {
+    const relogio = setInterval(() => {
+      if (open || recordingMinimized) return;
+      const agora = new Date();
+      // ⚠️ NA DATA, A FALA DA DATA TEM PRECEDÊNCIA. Um "já tomou água?" na semana da pátria com a
+      // bandeira na mão desperdiçaria a única coisa que faz o adereço valer: a piada de estar ali.
+      const doTraje = falasDoTraje(trajeDaData(agora));
+      const catalogo = doTraje.length > 0 ? doTraje : falasDaHora(agora.getHours());
+      const sorteio = sortearSemRepetir(catalogo, jaDitas.current);
+      jaDitas.current = sorteio.jaDitas;
+      dizer(sorteio.escolhida, 8);
+    }, DESCANSO_ENTRE_FALAS_MS);
+    return () => clearInterval(relogio);
+  }, [dizer, open, recordingMinimized]);
 
   const aoDescer = useCallback((evento: React.PointerEvent<HTMLButtonElement>) => {
     const alvo = evento.currentTarget;
@@ -147,7 +224,8 @@ export function HubSupportDock() {
         return;
       }
 
-      // Não moveu: é clique.
+      // Não moveu: é clique. O balão sai de cena — o assunto agora é o painel.
+      setFala(null);
       if (compactPanel) {
         restoreRecordingPanel();
         return;
@@ -170,6 +248,12 @@ export function HubSupportDock() {
    * exatamente quando precisa dele.
    */
   const abaixo = posicao !== null && posicao.y < window.innerHeight / 2;
+
+  // ⚠️ UM ESTADO SÓ CHEGA AO ROBÔ, e a ordem é a da urgência: piscar é vida, pular é reação.
+  // Somar os dois faria o robô piscar no meio do pulo, que lê como defeito e não como expressão.
+  const estadoDoFesto: EstadoDoFesto = pulando
+    ? "pulando"
+    : "repouso";
 
   return (
     <div
@@ -198,8 +282,8 @@ export function HubSupportDock() {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <span className="grid size-11 shrink-0 place-items-center rounded-xl border border-[#A07C3B]/30 bg-[#101820] text-[#A07C3B] ring-1 ring-white/15">
-                  <Headset className="size-6" aria-hidden="true" />
+                <span className="grid size-11 shrink-0 place-items-center">
+                  <FestoRobo className="size-11" />
                 </span>
                 <div className="min-w-0">
                   <p className="m-0 text-sm font-semibold">Festo</p>
@@ -234,14 +318,36 @@ export function HubSupportDock() {
         </section>
       ) : null}
 
+      {/* ⚠️ O BALÃO SÓ APARECE COM O PAINEL FECHADO. Com a conversa aberta, um balão flutuando ao
+          lado seria uma segunda voz do mesmo Festo dizendo outra coisa. */}
+      {fala && !panelVisible ? (
+        <div
+          className="max-w-[15rem] self-end rounded-xl rounded-br-sm bg-inverse px-3 py-2 text-[12.5px] leading-snug text-surface shadow-[0_10px_26px_rgba(15,23,42,0.22)]"
+          role="status"
+        >
+          {fala}
+        </div>
+      ) : null}
+
       <button
         aria-expanded={open && !compactPanel}
         aria-label={
           compactPanel ? "Restaurar o Festo" : "Falar com o Festo — arraste para mover"
         }
-        className={`relative grid size-14 shrink-0 touch-none place-items-center rounded-full border border-[#A07C3B]/30 bg-[#101820] text-[#A07C3B] shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
-          arrastando ? "scale-105 cursor-grabbing" : "cursor-grab hover:-translate-y-0.5"
+        // ⚠️ O BOTÃO CONTINUA TENDO 56px, mesmo sem o círculo desenhado: o fundo sumiu, a ÁREA
+        // DE CLIQUE não. Sem isto o alvo viraria a silhueta do robô, com cantos vazios que não
+        // respondem — e errar o clique no botão de suporte é o pior lugar para essa frustração.
+        className={`relative grid size-14 shrink-0 touch-none place-items-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
+          arrastando ? "scale-105 cursor-grabbing" : "cursor-grab"
         }`}
+        onMouseEnter={() => {
+          if (open || arrastando) return;
+          setPulando(true);
+          setTimeout(() => setPulando(false), 640);
+          const sorteio = sortearSemRepetir(SAUDACOES, jaDitas.current);
+          jaDitas.current = sorteio.jaDitas;
+          dizer(sorteio.escolhida, 3);
+        }}
         onPointerCancel={() => {
           gesto.current = null;
           setArrastando(false);
@@ -252,10 +358,13 @@ export function HubSupportDock() {
         title="Festo · suporte do Panteon (arraste para mover)"
         type="button"
       >
-        <Headset className="size-7" aria-hidden="true" />
-        {/* O ponto verde diz que o suporte atende agora. Ver a nota do topo sobre o que falta:
-            quando o chat existir, ele passa a valer também como "tem resposta esperando você". */}
-        <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
+        <FestoRobo
+          className={`size-14 ${piscando ? "festo-piscando" : ""}`}
+          estado={estadoDoFesto}
+        />
+        {/* O ponto verde diz que o Festo atende agora. Quando o chat existir, ele vira o contador
+            de "tem resposta esperando você" — que é o recado que hoje ninguém recebe. */}
+        <span className="absolute right-0 top-0 size-3 rounded-full bg-emerald-500 ring-2 ring-canvas" />
       </button>
     </div>
   );

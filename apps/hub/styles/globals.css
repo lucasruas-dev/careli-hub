@@ -334,3 +334,85 @@ button {
 .careli-home .uix-workspace-layout__content {
   gap: 1.25rem;
 }
+
+/* ── O FESTO, o robô do suporte ──────────────────────────────────────────────
+ *
+ * Lucas (11/09/2026) desenhou o boneco comigo: robô com sorriso, sem círculo de fundo, animado.
+ * O componente é `components/hub-support/festo-robo.tsx`; aqui ficam a cor e o movimento.
+ *
+ * ⚠️ O CASCO TROCA COM O TEMA, e é isso que substitui o círculo escuro que ele tinha antes. Sem
+ * fundo, o robô perde a garantia de contraste: grafite sobre a tela clara, claro sobre a escura.
+ * O visor fica sempre preto nos dois, porque é ele que faz os olhos e o sorriso acenderem.
+ */
+.festo-robo .festo-casco-1 { stop-color: #48566b }
+.festo-robo .festo-casco-2 { stop-color: #2b3648 }
+.festo-robo .festo-casco-3 { stop-color: #161d29 }
+.festo-robo .festo-lat-1 { stop-color: #64748b }
+.festo-robo .festo-lat-2 { stop-color: #3b475a }
+.festo-robo .festo-brilho { fill: #ffffff; opacity: .18 }
+
+:root[data-uix-theme="dark"] .festo-robo .festo-casco-1 { stop-color: #ffffff }
+:root[data-uix-theme="dark"] .festo-robo .festo-casco-2 { stop-color: #e8edf3 }
+:root[data-uix-theme="dark"] .festo-robo .festo-casco-3 { stop-color: #b9c4d2 }
+:root[data-uix-theme="dark"] .festo-robo .festo-lat-1 { stop-color: #cbd5e1 }
+:root[data-uix-theme="dark"] .festo-robo .festo-lat-2 { stop-color: #94a3b8 }
+:root[data-uix-theme="dark"] .festo-robo .festo-brilho { opacity: .5 }
+
+/* ⚠️ A SOMBRA SUBSTITUI O FUNDO em outro ponto: ela é o que descola o robô da tela e diz que ele
+ * flutua por cima do conteúdo, em vez de ser um desenho colado nele. */
+.festo-robo { filter: drop-shadow(0 2px 3px rgb(15 23 42 / .34)) }
+
+.festo-corpo { animation: festo-flutua 3.4s ease-in-out infinite }
+.festo-antena { transform-origin: 50px 22px; animation: festo-balanca 3.4s ease-in-out infinite }
+.festo-olho { transform-origin: center; transform-box: fill-box }
+
+/* Um pulo só: alguém chegou perto. */
+.festo-pulando .festo-corpo { animation: festo-pula .62s cubic-bezier(.3, 1.4, .5, 1) 1 }
+/* Sem parar: tem resposta esperando, e some quando a pessoa abrir. */
+.festo-chamando .festo-corpo { animation: festo-pula .62s cubic-bezier(.3, 1.4, .5, 1) infinite }
+.festo-piscando .festo-olho { animation: festo-pisca .22s ease-in-out 1 }
+
+@keyframes festo-flutua {
+  0%, 100% { transform: translateY(0) }
+  50% { transform: translateY(-3.5px) }
+}
+@keyframes festo-pula {
+  0% { transform: translateY(0) scaleY(1) }
+  22% { transform: translateY(0) scaleY(.9) scaleX(1.06) }
+  52% { transform: translateY(-13px) scaleY(1.06) scaleX(.96) }
+  78% { transform: translateY(0) scaleY(.94) scaleX(1.04) }
+  100% { transform: translateY(0) scaleY(1) }
+}
+@keyframes festo-pisca {
+  0%, 100% { transform: scaleY(1) }
+  50% { transform: scaleY(.08) }
+}
+@keyframes festo-balanca {
+  0%, 100% { transform: rotate(-4deg) }
+  50% { transform: rotate(4deg) }
+}
+
+/* ⚠️ NÃO É DETALHE DE ACESSIBILIDADE, É ENJOO DE VERDADE: movimento periférico contínuo incomoda
+ * parte das pessoas, e um robô saltitante no canto da tela o dia inteiro é o caso clássico. */
+@media (prefers-reduced-motion: reduce) {
+  .festo-corpo,
+  .festo-antena,
+  .festo-olho,
+  .festo-pulando .festo-corpo,
+  .festo-chamando .festo-corpo { animation: none !important }
+}
+
+/* A bandeira acena. ⚠️ O `transform-origin` fica no MASTRO, não no centro do pano: girando pelo
+ * meio, a bandeira sairia do mastro a cada balanço — que é o erro clássico de bandeira animada. */
+.festo-bandeira-pano {
+  transform-origin: 80px 19px;
+  transform-box: fill-box;
+  animation: festo-acena 1.8s ease-in-out infinite;
+}
+@keyframes festo-acena {
+  0%, 100% { transform: rotate(-3deg) skewY(1.5deg) }
+  50% { transform: rotate(3deg) skewY(-1.5deg) }
+}
+@media (prefers-reduced-motion: reduce) {
+  .festo-bandeira-pano { animation: none !important }
+}
