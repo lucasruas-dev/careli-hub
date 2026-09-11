@@ -112,12 +112,22 @@ type Resposta = {
 
 export function PreviaDoContrato({
   aoFechar,
+  aoGerar,
   comAvisos = false,
   podeEditar = false,
   podeGerar,
   propostaId,
 }: {
   aoFechar: () => void;
+  /**
+   * O contrato acabou de ser gerado e guardado.
+   *
+   * ⚠️ QUEM ABRIU A PRÉVIA DECIDE O QUE FAZER DEPOIS, e é por isso que isto é um aviso e não uma
+   * navegação daqui. Na Têmis, gerar encerra a etapa: a tela fecha e o quadro mostra o recado. No
+   * portal comercial, que nem gera, ninguém escuta. Um `router.push` aqui dentro amarraria a prévia
+   * a uma tela só.
+   */
+  aoGerar?: (contrato: { nome: string; versao: number }) => void;
   /** Liga o resumo do que falta. Só a Têmis usa: ver a nota do topo. */
   comAvisos?: boolean;
   /**
@@ -231,6 +241,7 @@ export function PreviaDoContrato({
       if (!r.ok || !j.data) throw new Error(j.erro ?? `Não foi possível gerar (${r.status}).`);
 
       setGerado({ id: j.data.documentoId, nome: j.data.nome, versao: j.data.versao });
+      aoGerar?.({ nome: j.data.nome, versao: j.data.versao });
       setGuardados((antes) => [
         {
           criadoEm: new Date().toISOString(),
@@ -245,7 +256,7 @@ export function PreviaDoContrato({
     } finally {
       setGerando(false);
     }
-  }, [propostaId]);
+  }, [aoGerar, propostaId]);
 
   /**
    * Grava a alteração manual.
@@ -703,115 +714,84 @@ export function PreviaDoContrato({
               </p>
             ) : null}
 
+            {/* ⚠️ UM BOTÃO POR VEZ — Lucas (11/09/2026): *"deixa o botão de abrir, se abrir ter o
+                botão de fechar, não precisa ter os dois"* e *"não precisa de um botão de salvar,
+                automaticamente ao fechar o contrato salva"*.
+
+                O par ABRIR/FECHAR controla a EDIÇÃO, e nada mais: abriu, o texto fica editável;
+                fechou, o que foi escrito é salvo e a folha volta a ser só leitura. Antes eram três
+                botões ao mesmo tempo — alterar, salvar, sair sem salvar — e a pessoa tinha de
+                decidir qual era qual antes de poder escrever uma vírgula.
+
+                ⚠️ "DESCARTAR" SOBREVIVEU porque é a única saída de quem se arrependeu do que já
+                está salvo: ele apaga a alteração e devolve o texto da minuta. Fica pequeno, ao
+                lado, e só aparece quando existe alteração para jogar fora. */}
             {!podeEditar ? null : (
               <div style={{ display: "flex", gap: 8 }}>
-                {editando ? (
-                  <>
-                    <button
-                      disabled={salvando}
-                      onClick={() => void salvar()}
-                      style={{
-                        alignItems: "center",
-                        background: "transparent",
-                        border: `1px solid ${T.border}`,
-                        borderRadius: 8,
-                        color: T.text,
-                        cursor: salvando ? "wait" : "pointer",
-                        display: "flex",
-                        flex: 1,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        gap: 6,
-                        justifyContent: "center",
-                        padding: "8px 12px",
-                      }}
-                      type="button"
-                    >
-                      {salvando ? (
-                        <Loader2 aria-hidden="true" className="animate-spin" size={13} />
-                      ) : (
-                        <Save aria-hidden="true" size={13} />
-                      )}
-                      {salvando ? "Salvando…" : "Salvar a alteração"}
-                    </button>
+                <button
+                  disabled={salvando}
+                  onClick={() => {
+                    if (editando) {
+                      void salvar();
+                      return;
+                    }
+                    setFaxina([]);
+                    setEditando(true);
+                  }}
+                  style={{
+                    alignItems: "center",
+                    background: "transparent",
+                    border: `1px solid ${editando ? T.gold : T.border}`,
+                    borderRadius: 8,
+                    color: T.text,
+                    cursor: salvando ? "wait" : "pointer",
+                    display: "flex",
+                    flex: 1,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    gap: 6,
+                    justifyContent: "center",
+                    padding: "8px 12px",
+                  }}
+                  type="button"
+                >
+                  {salvando ? (
+                    <Loader2 aria-hidden="true" className="animate-spin" size={13} />
+                  ) : editando ? (
+                    <Save aria-hidden="true" size={13} />
+                  ) : (
+                    <Pencil aria-hidden="true" size={13} />
+                  )}
+                  {salvando
+                    ? "Salvando…"
+                    : editando
+                      ? "Fechar o contrato"
+                      : "Abrir o contrato"}
+                </button>
 
-                    {/* ⚠️ "SAIR SEM SALVAR" RECARREGA A FOLHA, e não só desliga a edição: o texto
-                        digitado está no DOM, não no React. Sem a releitura, desligar o
-                        `contentEditable` deixaria na tela um rascunho que o servidor não tem —
-                        e a próxima pessoa leria como contrato o que ninguém salvou. */}
-                    <button
-                      disabled={salvando}
-                      onClick={() => {
-                        setEditando(false);
-                        void carregar();
-                      }}
-                      style={{
-                        background: "transparent",
-                        border: `1px solid ${T.border}`,
-                        borderRadius: 8,
-                        color: T.muted,
-                        cursor: "pointer",
-                        fontSize: 12,
-                        padding: "8px 12px",
-                      }}
-                      type="button"
-                    >
-                      Sair sem salvar
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => {
-                        setFaxina([]);
-                        setEditando(true);
-                      }}
-                      style={{
-                        alignItems: "center",
-                        background: "transparent",
-                        border: `1px solid ${T.border}`,
-                        borderRadius: 8,
-                        color: T.text,
-                        cursor: "pointer",
-                        display: "flex",
-                        flex: 1,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        gap: 6,
-                        justifyContent: "center",
-                        padding: "8px 12px",
-                      }}
-                      type="button"
-                    >
-                      <Pencil aria-hidden="true" size={13} />
-                      {edicao ? "Continuar alterando" : "Alterar o contrato"}
-                    </button>
-
-                    {edicao ? (
-                      <button
-                        disabled={salvando}
-                        onClick={() => void descartar()}
-                        style={{
-                          alignItems: "center",
-                          background: "transparent",
-                          border: `1px solid ${T.border}`,
-                          borderRadius: 8,
-                          color: T.muted,
-                          cursor: "pointer",
-                          display: "flex",
-                          fontSize: 12,
-                          gap: 6,
-                          padding: "8px 12px",
-                        }}
-                        title="Joga fora a alteração e volta ao texto da minuta"
-                        type="button"
-                      >
-                        <Undo2 aria-hidden="true" size={13} />
-                        Descartar
-                      </button>
-                    ) : null}
-                  </>
-                )}
+                {!editando && edicao ? (
+                  <button
+                    disabled={salvando}
+                    onClick={() => void descartar()}
+                    style={{
+                      alignItems: "center",
+                      background: "transparent",
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 8,
+                      color: T.muted,
+                      cursor: "pointer",
+                      display: "flex",
+                      fontSize: 12,
+                      gap: 6,
+                      padding: "8px 12px",
+                    }}
+                    title="Joga fora a alteração e volta ao texto da minuta"
+                    type="button"
+                  >
+                    <Undo2 aria-hidden="true" size={13} />
+                    Descartar
+                  </button>
+                ) : null}
               </div>
             )}
 
@@ -821,6 +801,8 @@ export function PreviaDoContrato({
                 onClick={() => void gerar()}
                 style={{
                   alignItems: "center",
+                  // ⚠️ O DESTAQUE É DELE — Lucas: *"gerar contrato merece um destaque"*. É a ação
+                  // que encerra a etapa; o resto do rodapé é preparação para ela.
                   background: prontoParaGerar && !gerando ? T.gold : "transparent",
                   border: `1px solid ${prontoParaGerar && !gerando ? T.gold : T.border}`,
                   borderRadius: 8,
@@ -854,15 +836,16 @@ export function PreviaDoContrato({
                     botão encerra um trabalho: ele congela o texto em PDF, guarda na gaveta da
                     venda e o card anda. Onde não se altera nada, ele só gera o documento — e
                     chamar isso de "fechar" prometeria um efeito que ali não existe. */}
+                {/* ⚠️ O NOME É SEMPRE "GERAR", e isso é o conserto de uma ambiguidade que este
+                    botão carregava: onde dava para editar, ele se chamava "Fechar o contrato" — a
+                    mesma palavra que agora fecha a EDIÇÃO, logo acima. Duas ações vizinhas com o
+                    mesmo nome e efeitos completamente diferentes (uma salva texto, a outra emite um
+                    PDF e move o card) é o tipo de coisa que faz alguém clicar sem querer. */}
                 {gerando
                   ? "Gerando o PDF…"
-                  : podeEditar
-                    ? guardados.length > 0
-                      ? `Fechar de novo — versão ${proximaVersao}`
-                      : "Fechar o contrato"
-                    : guardados.length > 0
-                      ? `Gerar a versão ${proximaVersao} do contrato`
-                      : "Gerar e guardar o contrato"}
+                  : guardados.length > 0
+                    ? `Gerar a versão ${proximaVersao}`
+                    : "Gerar contrato"}
               </button>
             )}
 

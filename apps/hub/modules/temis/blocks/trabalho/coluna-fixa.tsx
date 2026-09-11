@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { VisorDeDocumento } from "@/modules/temis/blocks/trabalho/visor-de-documento";
 
 // CHAT · DOCUMENTOS · HISTÓRICO — a coluna que fica em TODAS as etapas.
 //
@@ -212,6 +213,9 @@ function Chat({
 function Documentos({ propostaId }: { propostaId: string }) {
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">("carregando");
+  /** O documento aberto no pop-up. `url` vazia = ainda buscando a URL assinada. */
+  const [vendo, setVendo] = useState<null | { nome: string; url: string }>(null);
+  const [erroDoDocumento, setErroDoDocumento] = useState<null | string>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -241,9 +245,24 @@ function Documentos({ propostaId }: { propostaId: string }) {
     };
   }, [propostaId]);
 
+  /**
+   * Abre o documento SEM SAIR DA TELA.
+   *
+   * Lucas (11/09/2026): *"ao clicar nos documentos está abrindo uma pagina no navegador em branco e
+   * abre no hub o documento, mas eu quero que abra na tela de trabalho que está, um pop up"*.
+   *
+   * ⚠️ E A ABA EM BRANCO TINHA CAUSA: `window.open("", "_blank", "noopener,noreferrer")` devolve
+   * `null` por especificação quando `noopener` está nas features. O código caía no `else` e mandava
+   * o HUB — a aba onde a pessoa estava trabalhando — para a URL do documento, deixando a aba nova
+   * vazia. Eram dois defeitos num: a aba órfã e a tela de trabalho perdida.
+   *
+   * ⚠️ AGORA NÃO SE ABRE ABA NENHUMA: a URL assinada vai para um `<iframe>` dentro do próprio
+   * painel. Ela É embutível porque esta rota assina SEM `download` — o contrato, que é assinado
+   * COM, precisaria de outro modo para caber num iframe.
+   */
   const abrir = useCallback(
     async (doc: Documento) => {
-      const janela = window.open("", "_blank", "noopener,noreferrer");
+      setVendo({ nome: doc.nome, url: "" });
       try {
         const token = await getApoloAccessToken();
         const r = await fetch(
@@ -251,14 +270,16 @@ function Documentos({ propostaId }: { propostaId: string }) {
           { headers: { Authorization: `Bearer ${token}` } },
         );
         const j = (await r.json().catch(() => ({}))) as { data?: { url: string } };
+
         if (j.data?.url) {
-          if (janela) janela.location.href = j.data.url;
-          else window.location.href = j.data.url;
+          setVendo({ nome: doc.nome, url: j.data.url });
         } else {
-          janela?.close();
+          setVendo(null);
+          setErroDoDocumento("Não consegui abrir este documento.");
         }
       } catch {
-        janela?.close();
+        setVendo(null);
+        setErroDoDocumento("Não consegui abrir este documento.");
       }
     },
     [propostaId],
@@ -291,9 +312,18 @@ function Documentos({ propostaId }: { propostaId: string }) {
         titulo="Do proponente"
         vazio="Nenhum documento no cadastro."
       />
+
+      {erroDoDocumento ? (
+        <p className="m-0 rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-600">
+          {erroDoDocumento}
+        </p>
+      ) : null}
+
+      {vendo ? <VisorDeDocumento aoFechar={() => setVendo(null)} documento={vendo} /> : null}
     </div>
   );
 }
+
 
 function Bloco({
   aoAbrir,

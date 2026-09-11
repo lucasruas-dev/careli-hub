@@ -36,6 +36,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-11-temis-fecha-a-etapa-do-contrato",
+    deployedAt: "2026-09-11T20:45:00-03:00",
+    modules: [
+      {
+        module: "Temis",
+        screens: [
+          {
+            items: [
+              "**O quadro se atualiza sozinho.** Chegou venda do H\u00e9rcules, o card aparece \u2014 sem F5. Ele recarrega quando voc\u00ea volta para a aba e de minuto em minuto enquanto est\u00e1 olhando.",
+              "**Gerar contrato passou a dizer o que fez:** a tela fecha, o quadro volta com **\"Contrato gerado \u2014 vers\u00e3o N\"** em destaque, e o card anda para a coluna Contrato sozinho.",
+              "**A etapa Prazo legal virou Pr\u00e9-venda.**",
+              "**Documento abre na pr\u00f3pria tela**, numa janela por cima do trabalho \u2014 e n\u00e3o mais numa aba do navegador. Esc fecha; quem quiser a tela cheia tem o link \"abrir em outra aba\".",
+              "**Acabou a aba em branco** ao clicar num documento \u2014 e o hub parou de ser substitu\u00eddo pelo PDF quando isso acontecia.",
+            ],
+            screen: "Quadro e tela de trabalho",
+          },
+          {
+            items: [
+              "**Um bot\u00e3o por vez:** *Abrir o contrato* deixa o texto edit\u00e1vel; *Fechar o contrato* salva e sai da edi\u00e7\u00e3o. Os bot\u00f5es de salvar e de sair sem salvar sa\u00edram \u2014 fechar j\u00e1 salva.",
+              "**Gerar contrato ganhou o destaque da tela**, e agora se chama sempre assim.",
+            ],
+            screen: "Pr\u00e9via do contrato",
+          },
+        ],
+      },
+    ],
+    rollback: "890e907c",
+    technical: {
+      done: "\u26a0\ufe0f O VISOR DE PDF DA TELA DE TRABALHO ESTAVA QUEBRADO E NINGU\u00c9M TINHA NOTADO: `abrirContratoGuardado` assinava a URL com `{ download: nome }`, o Storage responde `Content-Disposition: attachment`, e attachment dentro de um `<iframe>` N\u00c3O DESENHA \u2014 dispara download. A fun\u00e7\u00e3o ganhou o par\u00e2metro `modo: \"baixar\" | \"ver\"` e a rota aceita `?modo=ver`. || A ABA EM BRANCO TINHA UMA CAUSA \u00daNICA, em tr\u00eas lugares: `window.open(\"\", \"_blank\", \"noopener,noreferrer\")` devolve `null` por especifica\u00e7\u00e3o \u2014 a flag leva junto a refer\u00eancia. O `else` mandava a ABA DE TRABALHO para o PDF e a aba nova ficava vazia. Agora nenhum dos dois abre aba: `visor-de-documento.tsx` (novo, compartilhado) mostra o arquivo num modal com iframe, Esc, clique no fundo e sa\u00edda para aba como escolha. || O CARD ANDA NO SERVIDOR: `moverCardDaTemis(sb, propostaId, \"contrato\")` no fim do POST de gerar \u2014 ela pergunta a `estagiosDoTipo` antes de tocar em qualquer linha, ent\u00e3o card em assinatura n\u00e3o volta e o cancelamento da mesma proposta n\u00e3o \u00e9 arrastado junto. || O RODAP\u00c9: a fileira de tr\u00eas bot\u00f5es (alterar/salvar/sair sem salvar) virou UM que alterna abrir\u2194fechar, com `salvar()` no fechar \u2014 ele j\u00e1 fazia `setEditando(false)`. \u26a0\ufe0f O bot\u00e3o dourado se chamava \"Fechar o contrato\" onde dava para editar: duas a\u00e7\u00f5es vizinhas com o mesmo nome e efeitos diferentes (uma salva texto, a outra emite PDF e move card). Virou \"Gerar contrato\" sempre. || O QUADRO: `visibilitychange` + `focus` + intervalo de 60s guardado por `document.hidden` \u2014 aba em segundo plano n\u00e3o gera chamada nenhuma, porque a casa j\u00e1 teve fatura alta por polling. || ETAPA: s\u00f3 o r\u00f3tulo mudou (`trabalhos.ts`, campo `nome`); o valor no banco segue `prazo_legal`, sem migration e sem tocar no check da 0150. \u26a0\ufe0f \"Pr\u00e9-venda\" j\u00e1 nomeia o PIX de credenciamento do Apolo/Prometeu em quatro migrations \u2014 s\u00e3o coisas diferentes com a mesma palavra. || \u26a0\ufe0f N\u00c3O CORRIGIDO, esperando OK: a guarda anti-duplicidade de pedido de cancelamento (`cancelamento-de-contrato/route.ts`) compara com `'finalizado'`, valor que a 0150 apagou \u2014 o `.neq` n\u00e3o exclui ningu\u00e9m e o portal responde \"j\u00e1 existe\" at\u00e9 para cancelamento faturado. 3.563 testes verdes, typecheck e lint limpos. N\u00e3o verificado em tela: o hub exige login.",
+      motivation:
+        "Lucas rodou o fluxo do zero e listou o que atrapalhou: card que n\u00e3o aparecia sem F5, tr\u00eas bot\u00f5es disputando a mesma a\u00e7\u00e3o, gerar contrato que n\u00e3o dizia nada e n\u00e3o movia o card, e documento abrindo aba em branco por cima do hub.",
+    },
+    title: "A T\u00eamis fecha a etapa do contrato",
+    type: "melhoria",
+    version: "1.317.0",
+  },
+  {
     buildTag: "2026-09-11-abrir-chamado-e-com-o-festos",
     deployedAt: "2026-09-11T18:30:00-03:00",
     modules: [

@@ -137,6 +137,20 @@ export function TemisKanban({
   const [emTrabalho, setEmTrabalho] = useState<null | string>(null);
   /** A proposta cujo contrato está indo para assinatura (o modal aberto). */
   const [enviando, setEnviando] = useState<null | string>(null);
+  /**
+   * O recado de uma etapa que acabou de ser encerrada.
+   *
+   * ⚠️ ELE VIVE NO QUADRO, e não na tela que o produziu: a tela fecha no mesmo instante, e um aviso
+   * que morre junto com quem o escreveu nunca chega a ser lido. Some sozinho depois de alguns
+   * segundos — é confirmacao, nao alerta.
+   */
+  const [recado, setRecado] = useState<null | string>(null);
+
+  useEffect(() => {
+    if (!recado) return;
+    const relogio = setTimeout(() => setRecado(null), 8000);
+    return () => clearTimeout(relogio);
+  }, [recado]);
 
   const carregar = useCallback(async () => {
     setErro(null);
@@ -161,6 +175,38 @@ export function TemisKanban({
 
   useEffect(() => {
     void carregar();
+  }, [carregar]);
+
+  /**
+   * O QUADRO SE ATUALIZA SOZINHO ENQUANTO ALGUÉM O OLHA.
+   *
+   * Lucas (11/09/2026): *"enviei para contrato e não apareceu, tem que criar essa comunicação que
+   * ao enviar ele aparece, se ficar assim pode ser que o operador não atualiza a página e fica sem
+   * ver"*. O card nasce no banco quando o Hércules entrega a venda, e até agora o quadro só sabia
+   * disso se a pessoa recarregasse a página — ou seja, a fila crescia sem ninguém ver.
+   *
+   * ⚠️ SÓ COM A ABA VISÍVEL, e é isso que separa isto de um polling caro. `document.hidden` corta o
+   * relógio quando a aba vai para segundo plano: um quadro esquecido aberto a tarde inteira não
+   * gera nenhuma chamada. A casa já teve fatura alta por polling (o Hermes), e a regra que ficou é
+   * não pagar por tela que ninguém está olhando.
+   *
+   * ⚠️ E RECARREGA AO VOLTAR O FOCO, que é o caso real do dia a dia: o operador está no Hércules ou
+   * no WhatsApp, volta para a Têmis e quer ver o que chegou — sem esperar o próximo minuto.
+   */
+  useEffect(() => {
+    const aoVoltar = () => {
+      if (!document.hidden) void carregar();
+    };
+
+    const relogio = setInterval(aoVoltar, 60_000);
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
+
+    return () => {
+      clearInterval(relogio);
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("focus", aoVoltar);
+    };
   }, [carregar]);
 
 
@@ -220,11 +266,25 @@ export function TemisKanban({
     >
       {emTrabalho ? (
         <TelaDeTrabalho
+          aoConcluir={(recado) => {
+            // A ordem importa: o recado primeiro, a volta depois. Fechar a tela antes faria o
+            // quadro aparecer em branco por um instante e só então mostrar o aviso.
+            setRecado(recado);
+            void carregar();
+            setEmTrabalho(null);
+          }}
           aoEnviarParaAssinatura={(id) => setEnviando(id)}
           aoFechar={() => setEmTrabalho(null)}
           aoMudar={() => void carregar()}
           trabalhoId={emTrabalho}
         />
+      ) : null}
+      {/* ⚠️ O RECADO FICA NO TOPO E EM VERDE: e a confirmacao de que a etapa fechou. Sem ele, gerar
+          o contrato parecia nao ter feito nada — o modal fechava e o quadro voltava igual. */}
+      {recado ? (
+        <p className="flex items-start gap-2 rounded-lg border border-emerald-300/70 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
+          <FileCheck2 aria-hidden="true" className="mt-0.5 shrink-0" size={15} /> {recado}
+        </p>
       ) : null}
       {erro ? (
         <p className="flex items-start gap-2 rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm text-ink dark:border-red-500/40 dark:bg-red-500/10">

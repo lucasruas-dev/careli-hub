@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { moverCardDaTemis } from "@/lib/assinatura/estado-db";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
   autorizarEmissaoDeContrato,
@@ -134,6 +135,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ erro: guardado.erro }, { status: guardado.status });
   }
 
+  // ⚠️ O CARD ANDA QUANDO O CONTRATO EXISTE, e não quando alguém marca uma caixinha. Lucas
+  // (11/09/2026): *"Gerei o contrato e não moveu para contratos, ao gerar tem que mover"*. A coluna
+  // "Contrato" quer dizer exatamente "gerado, conferir quem assina antes de mandar" — era o único
+  // estágio do quadro que dependia de a pessoa lembrar de mover à mão.
+  //
+  // ⚠️ QUEM DECIDE SE PODE MOVER É `moverCardDaTemis`, que pergunta ao caminho do TIPO antes de
+  // tocar em qualquer linha: um card que já está em assinatura não volta, e o cancelamento da mesma
+  // proposta não é arrastado junto. Falha aqui não derruba a geração — o PDF já está guardado, e um
+  // card parado é bem menos grave que um contrato perdido.
+  await moverCardDaTemis(sb, propostaId, "contrato");
+
   return NextResponse.json({
     data: {
       avisos: montado.avisos,
@@ -172,7 +184,12 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const documentoId = (url.searchParams.get("documento") ?? "").trim();
   if (documentoId) {
-    const aberto = await abrirContratoGuardado(sb, documentoId);
+    // `?modo=ver` devolve a URL que desenha no iframe; sem ele, a que baixa o arquivo.
+    const aberto = await abrirContratoGuardado(
+      sb,
+      documentoId,
+      url.searchParams.get("modo") === "ver" ? "ver" : "baixar",
+    );
     if (!aberto.ok) return NextResponse.json({ erro: aberto.erro }, { status: aberto.status });
     return NextResponse.json(
       { data: { nome: aberto.nome, url: aberto.url } },

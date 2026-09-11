@@ -26,6 +26,7 @@ import {
 } from "@/lib/temis/trabalhos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { PreviaDoContrato } from "@/modules/incorporador/hercules/PreviaDoContrato";
+import { VisorDeDocumento } from "@/modules/temis/blocks/trabalho/visor-de-documento";
 import { ColunaFixa } from "@/modules/temis/blocks/trabalho/coluna-fixa";
 
 // A TELA DE TRABALHO — o que abre ao clicar num card do quadro.
@@ -82,11 +83,17 @@ type Card = {
 };
 
 export function TelaDeTrabalho({
+  aoConcluir,
   aoEnviarParaAssinatura,
   aoFechar,
   aoMudar,
   trabalhoId,
 }: {
+  /**
+   * Uma etapa foi encerrada aqui dentro: o quadro que recebe isto mostra o recado e volta a ser a
+   * tela. Hoje o único caso é a geração do contrato.
+   */
+  aoConcluir?: (recado: string) => void;
   /**
    * Abre o modal de envio, que vive no quadro.
    *
@@ -105,6 +112,8 @@ export function TelaDeTrabalho({
   const [ocupado, setOcupado] = useState(false);
   /** A proposta cuja prévia de contrato está aberta. `null` = nenhuma. */
   const [previa, setPrevia] = useState<null | string>(null);
+  /** A versao do contrato aberta por cima da tela. `url` vazia = buscando a URL assinada. */
+  const [contratoNaTela, setContratoNaTela] = useState<null | { nome: string; url: string }>(null);
   /**
    * O formulário de indeferimento está aberto.
    *
@@ -169,24 +178,33 @@ export function TelaDeTrabalho({
     }
   }, [aoMudar, carregar, propostaId]);
 
+  /**
+   * Abre uma versão do contrato SEM SAIR DA TELA.
+   *
+   * ⚠️ ANTES ISSO ABRIA ABA, E ABRIA ERRADO: `window.open("", "_blank", "noopener,noreferrer")`
+   * devolve `null` por especificação — a flag `noopener` leva junto a referência. O código caía no
+   * `else` e mandava a ABA DE TRABALHO para o PDF, deixando uma aba nova em branco. Lucas
+   * (11/09/2026): *"ao clicar nos documentos está abrindo uma pagina no navegador em branco e abre
+   * no hub o documento"*.
+   */
   const abrirContrato = useCallback(async (documentoId: string) => {
-    // A aba abre ANTES do await: o navegador bloqueia `window.open` fora do gesto do usuário.
-    const aba = window.open("", "_blank", "noopener,noreferrer");
+    setContratoNaTela({ nome: "Contrato", url: "" });
     try {
       const token = await getApoloAccessToken();
       const r = await fetch(
-        `/api/temis/contrato/gerar?documento=${encodeURIComponent(documentoId)}`,
+        `/api/temis/contrato/gerar?documento=${encodeURIComponent(documentoId)}&modo=ver`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      const j = (await r.json().catch(() => ({}))) as { data?: { url: string } };
+      const j = (await r.json().catch(() => ({}))) as {
+        data?: { nome?: string; url: string };
+      };
       if (j.data?.url) {
-        if (aba) aba.location.href = j.data.url;
-        else window.location.href = j.data.url;
+        setContratoNaTela({ nome: j.data.nome ?? "Contrato", url: j.data.url });
       } else {
-        aba?.close();
+        setContratoNaTela(null);
       }
     } catch {
-      aba?.close();
+      setContratoNaTela(null);
     }
   }, []);
 
@@ -253,9 +271,25 @@ export function TelaDeTrabalho({
           // contrato pode ajustar o texto que vai ser fechado. Abrir para conferir continua
           // sendo de todo mundo — e num cancelamento, onde o documento ainda é o contrato da
           // venda, a folha abre para leitura e nada mais.
+          // ⚠️ GERAR ENCERRA A ETAPA — Lucas (11/09/2026): *"cliquei no gerar contrato não
+          // aconteceu nada, acho que tem que dar uma mensagem contrato gerado e voltar para o
+          // board"*. O modal fechava e a tela ficava igual: sem recado, sem o card ter andado, sem
+          // nada que dissesse que o PDF existe.
+          aoGerar={(contrato) => {
+            setPrevia(null);
+            aoConcluir?.(`Contrato gerado — versão ${contrato.versao}. O card foi para Contrato.`);
+          }}
           podeEditar={ehContrato}
           podeGerar={ehContrato}
           propostaId={previa}
+        />
+      ) : null}
+
+      {/* O contrato aberto por cima da tela, e nao numa aba: quem confere precisa do fundo. */}
+      {contratoNaTela ? (
+        <VisorDeDocumento
+          aoFechar={() => setContratoNaTela(null)}
+          documento={contratoNaTela}
         />
       ) : null}
 
@@ -1005,8 +1039,11 @@ function VisorDoPdf({ documentoId }: { documentoId: string }) {
     void (async () => {
       try {
         const token = await getApoloAccessToken();
+        // ⚠️ `modo=ver` OU O IFRAME BAIXA O ARQUIVO. Sem ele a URL vem assinada com `download`, o
+        // Storage responde `Content-Disposition: attachment`, e attachment dentro de um iframe não
+        // desenha nada — dispara um download. O painel ficava vazio e o navegador salvava o PDF.
         const r = await fetch(
-          `/api/temis/contrato/gerar?documento=${encodeURIComponent(documentoId)}`,
+          `/api/temis/contrato/gerar?documento=${encodeURIComponent(documentoId)}&modo=ver`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         const j = (await r.json().catch(() => ({}))) as { data?: { url: string } };

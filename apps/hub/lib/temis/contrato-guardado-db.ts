@@ -320,6 +320,14 @@ export type AberturaDoContrato =
 export async function abrirContratoGuardado(
   sb: SupabaseClient,
   documentoId: string,
+  /**
+   * `ver` assina uma URL que o navegador DESENHA; `baixar` assina uma que ele SALVA.
+   *
+   * ⚠️ A DIFERENÇA É UM PARÂMETRO E MUDA TUDO PARA QUEM OLHA. Com `{ download }`, o Storage responde
+   * `Content-Disposition: attachment` — e attachment dentro de um `<iframe>` não desenha nada: ele
+   * dispara um download. Era por isso que mostrar o contrato na própria tela não funcionava.
+   */
+  modo: "baixar" | "ver" = "baixar",
 ): Promise<AberturaDoContrato> {
   const { data, error } = await sb
     .from("hercules_documentos")
@@ -340,7 +348,11 @@ export async function abrirContratoGuardado(
 
   const assinada = await sb.storage
     .from(APOLO_DOCS_BUCKET)
-    .createSignedUrl(linha.caminho, VALIDADE_DO_LINK_SEGUNDOS, { download: linha.nome });
+    .createSignedUrl(
+      linha.caminho,
+      VALIDADE_DO_LINK_SEGUNDOS,
+      modo === "ver" ? {} : { download: linha.nome },
+    );
 
   const url = assinada.data?.signedUrl;
   if (!url) return { erro: "Não foi possível abrir o contrato.", ok: false, status: 503 };

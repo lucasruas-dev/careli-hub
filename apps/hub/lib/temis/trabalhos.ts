@@ -67,7 +67,14 @@ export const ESTAGIOS: {
   {
     descricao: "7 dias de arrependimento e a entrada.",
     id: "prazo_legal",
-    nome: "Prazo legal",
+    // ⚠️ O VALOR NO BANCO CONTINUA `prazo_legal`, e só o rótulo muda — Lucas (11/09/2026): *"fluxo
+    // ainda está prazo legal, é para mudar para pré-venda"*. Trocar o id exigiria migration, mexer
+    // no check da 0150 e reescrever as linhas existentes, para render a mesma palavra na tela.
+    //
+    // ⚠️ E "PRÉ-VENDA" JÁ TEM DONO NO PANTEON: é o PIX de credenciamento do Apolo/Prometeu (quatro
+    // migrations usam o termo nesse sentido). Aqui ela nomeia outra coisa — os 7 dias de
+    // arrependimento antes do faturamento. Quem for cruzar os dois vocabulários precisa saber.
+    nome: "Pré-venda",
   },
   { descricao: "Prazo cumprido e entrada paga.", id: "faturado", nome: "Faturado" },
 ];
