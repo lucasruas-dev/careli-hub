@@ -286,12 +286,23 @@ function VerificaPrePush {
     }
     $mudados = @($mudados | Sort-Object -Unique | Where-Object { Test-Path (Join-Path $repo $_) })
 
-    if ($mudados.Count -gt 0 -and $mudados.Count -le 60) {
-      $relativos = @($mudados | ForEach-Object { $_ -replace '^apps/hub/', '' })
+    # ⚠️ O ESLINT RODA DE DENTRO DE apps/hub, e os caminhos têm que ser relativos A ELE. A primeira
+    # versao tirava o prefixo 'apps/hub/' mas continuava rodando da RAIZ, entao o eslint procurava
+    # os arquivos num lugar onde eles nao existem e barrava o push com 'No files matching the
+    # pattern'. Barrar por engano e pior do que nao checar: ensina a usar --no-verify.
+    $doHub = @($mudados | Where-Object { $_ -like 'apps/hub/*' })
+    if ($doHub.Count -gt 0 -and $doHub.Count -le 60) {
+      $relativos = @($doHub | ForEach-Object { $_ -replace '^apps/hub/', '' })
       Escreve "lintando $($relativos.Count) arquivo(s) deste push..." 'DarkGray'
-      & npx --prefix apps/hub eslint @relativos --max-warnings 0 2>&1 |
-        ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
-      if ($LASTEXITCODE -ne 0) {
+      Push-Location (Join-Path $repo 'apps/hub')
+      try {
+        & npx eslint @relativos --max-warnings 0 2>&1 |
+          ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+        $falhou = $LASTEXITCODE -ne 0
+      } finally {
+        Pop-Location
+      }
+      if ($falhou) {
         Recusa 'o lint acusou nos arquivos deste push' @('Sao apenas os arquivos que voce esta enviando.')
       }
     }
