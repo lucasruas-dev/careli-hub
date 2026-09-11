@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="pt-BR" data-uix-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Têmis · Tela de análise</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   A PALETA É A DO PANTEON, copiada de packages/uix/styles.css. Nenhum hex novo
+   foi inventado aqui: os mesmos tokens que o app inteiro usa, no claro e no
+   escuro, trocados pelo atributo data-uix-theme no <html> — exatamente como o
+   ThemeProvider faz em produção.
+   ═════════════════════════════════════════════════════════════════════════ */
+:root,:root[data-uix-theme="light"]{
+  color-scheme:light;
+  --uix-color-brand-primary:#a07c3b;  --uix-color-brand-foreground:#ffffff;
+  --uix-color-focus:#2563eb;
+  --uix-color-success:#14804a;  --uix-color-warning:#b7791f;  --uix-color-danger:#c24135;
+  --uix-surface-canvas:#f7f8fa; --uix-surface-base:#ffffff;
+  --uix-surface-raised:#ffffff; --uix-surface-subtle:#eef1f4; --uix-surface-inverse:#121722;
+  --uix-text-primary:#121722;   --uix-text-secondary:#485466; --uix-text-muted:#667085;
+  --uix-border-subtle:#dce2ea;  --uix-border-strong:#c5ceda;
+  --uix-font-sans:Arial,Helvetica,sans-serif;
+  --uix-font-mono:Consolas,Monaco,monospace;
+}
+:root[data-uix-theme="dark"]{
+  color-scheme:dark;
+  --uix-color-brand-foreground:#090d14;
+  --uix-surface-canvas:#090d14; --uix-surface-base:#121722;
+  --uix-surface-raised:#1f2633; --uix-surface-subtle:#30394a; --uix-surface-inverse:#ffffff;
+  --uix-text-primary:#f7f8fa;   --uix-text-secondary:#dce2ea; --uix-text-muted:#c5ceda;
+  --uix-border-subtle:#30394a;  --uix-border-strong:#485466;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--uix-surface-canvas);color:var(--uix-text-primary);
+  font-family:var(--uix-font-sans);font-size:14px;line-height:1.5}
+.wrap{max-width:1440px;margin:0 auto;padding:20px}
+
+/* ── a moldura do mockup (não faz parte da tela) ─────────────────────────── */
+.cabeca{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+h1{font-size:20px;margin:0 0 4px}
+.lede{color:var(--uix-text-muted);font-size:13px;margin:0}
+.tema{font:inherit;font-size:12px;font-weight:700;padding:8px 14px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--uix-border-subtle);background:var(--uix-surface-base);color:var(--uix-text-primary)}
+.aviso{background:var(--uix-color-brand-primary);color:var(--uix-color-brand-foreground);
+  padding:10px 16px;border-radius:8px;font-size:12.5px;margin:16px 0}
+
+/* ── A TELA ──────────────────────────────────────────────────────────────── */
+.tela{background:var(--uix-surface-base);border:1px solid var(--uix-border-subtle);
+  border-radius:12px;overflow:hidden}
+.topo{padding:14px 18px;border-bottom:1px solid var(--uix-border-subtle)}
+.quem{font-size:17px;font-weight:700;margin:0}
+.onde{font-size:12px;color:var(--uix-text-muted);margin:2px 0 0}
+.onde b{color:var(--uix-text-secondary);font-weight:700}
+
+/* A FAIXA DO FLUXO: setas encaixadas — a ponta de uma entra no entalhe da
+   seguinte, então a faixa lê como um caminho com direção. */
+.passos{display:flex;gap:2px;flex-wrap:wrap;margin-top:10px}
+.passo{font-size:11px;font-weight:700;padding:7px 15px 7px 23px;white-space:nowrap;
+  background:var(--uix-surface-subtle);color:var(--uix-text-muted);
+  clip-path:polygon(0 0,calc(100% - 9px) 0,100% 50%,calc(100% - 9px) 100%,0 100%,9px 50%)}
+.passo:first-child{padding-left:15px;border-radius:8px 0 0 8px;
+  clip-path:polygon(0 0,calc(100% - 9px) 0,100% 50%,calc(100% - 9px) 100%,0 100%)}
+.passo:last-child{padding-right:15px;border-radius:0 8px 8px 0;
+  clip-path:polygon(0 0,100% 0,100% 100%,0 100%,9px 50%)}
+.passo.feito{background:color-mix(in srgb,var(--uix-color-success) 14%,var(--uix-surface-base));
+  color:var(--uix-color-success)}
+.passo.atual{background:var(--uix-color-brand-primary);color:var(--uix-color-brand-foreground)}
+
+.corpo{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:16px;padding:16px}
+@media(max-width:1100px){.corpo{grid-template-columns:1fr}}
+.trabalho{display:grid;gap:14px;align-content:start;min-width:0}
+.duas{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:820px){.duas{grid-template-columns:1fr}}
+
+/* ── BLOCOS ──────────────────────────────────────────────────────────────── */
+.bloco{background:var(--uix-surface-raised);border:1px solid var(--uix-border-subtle);
+  border-radius:10px;padding:14px 16px}
+.bloco.destaque{background:var(--uix-surface-subtle);border-color:transparent}
+.bloco h3{margin:0;font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--uix-text-muted)}
+.tituloBloco{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.contagem{font-size:10.5px;font-weight:700;color:var(--uix-text-muted)}
+
+.campo{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:5px 0;border-bottom:1px dashed var(--uix-border-subtle)}
+.campo:last-child{border-bottom:0}
+.k{font-size:11.5px;color:var(--uix-text-muted);white-space:nowrap}
+.v{font-size:13px;font-weight:700;text-align:right}
+.v.mono{font-variant-numeric:tabular-nums}
+.v.falta{color:var(--uix-color-danger);font-weight:400}
+
+/* ── O PARECER: o que o operador precisa ver ANTES de qualquer outra coisa ─
+     Lucas (10/09/2026): *"se tiver desconto tem que vir falando, se tiver algo
+     fora tem que vir pontuando, o operador tem que ter todas as informações
+     para ele analisar"*. Por isso este bloco é o PRIMEIRO da coluna, e traz o
+     padrão ao lado do praticado — apontar sem mostrar contra o quê obriga o
+     operador a conferir na mão, que é justamente o trabalho que a tela existe
+     para poupar. */
+.achado{display:grid;grid-template-columns:4px 1fr auto;gap:0 12px;align-items:center;
+  border-radius:8px;padding:9px 12px 9px 0;margin-bottom:6px;overflow:hidden}
+.achado:last-child{margin-bottom:0}
+.achado .barra{align-self:stretch;border-radius:2px}
+.achado .oQue{font-size:12.5px;font-weight:700}
+.achado .contra{font-size:11px;color:var(--uix-text-secondary);margin-top:1px}
+.achado .contra b{font-variant-numeric:tabular-nums}
+.achado .grau{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  padding:3px 8px;border-radius:6px;white-space:nowrap}
+
+.achado.critico{background:color-mix(in srgb,var(--uix-color-danger) 9%,var(--uix-surface-raised))}
+.achado.critico .barra{background:var(--uix-color-danger)}
+.achado.critico .grau{background:color-mix(in srgb,var(--uix-color-danger) 16%,var(--uix-surface-raised));
+  color:var(--uix-color-danger)}
+
+.achado.atencao{background:color-mix(in srgb,var(--uix-color-warning) 11%,var(--uix-surface-raised))}
+.achado.atencao .barra{background:var(--uix-color-warning)}
+.achado.atencao .grau{background:color-mix(in srgb,var(--uix-color-warning) 18%,var(--uix-surface-raised));
+  color:var(--uix-color-warning)}
+
+.achado.ok{background:transparent;padding-top:5px;padding-bottom:5px}
+.achado.ok .barra{background:var(--uix-color-success)}
+.achado.ok .oQue{font-weight:400;color:var(--uix-text-secondary)}
+.achado.ok .grau{background:color-mix(in srgb,var(--uix-color-success) 14%,var(--uix-surface-raised));
+  color:var(--uix-color-success)}
+
+/* ── A PROPOSTA COMERCIAL ────────────────────────────────────────────────── */
+.numeros{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}
+@media(max-width:820px){.numeros{grid-template-columns:repeat(2,1fr)}}
+.num{background:var(--uix-surface-base);border:1px solid var(--uix-border-subtle);
+  border-radius:8px;padding:10px 12px}
+.num.marcado{border-color:var(--uix-color-danger)}
+.num .rot{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--uix-text-muted)}
+.num .val{font-size:19px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.num .det{font-size:10.5px;color:var(--uix-text-muted);margin-top:1px}
+.num .det.alerta{color:var(--uix-color-danger);font-weight:700}
+
+.fluxo{width:100%;border-collapse:collapse;font-size:12px}
+.fluxo th{text-align:left;font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--uix-text-muted);padding:6px 0;border-bottom:1px solid var(--uix-border-subtle)}
+.fluxo td{padding:6px 0;border-bottom:1px dashed var(--uix-border-subtle)}
+.fluxo td:last-child,.fluxo th:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.fluxo .fora{color:var(--uix-color-warning);font-weight:700}
+
+/* ── AÇÕES ───────────────────────────────────────────────────────────────── */
+/* OS BOTÕES SÃO BRANCOS — Lucas (10/09/2026): *"não gostei desse botão dourado não"*,
+   *"pode ser branco"*. Sem cor de fundo em ação nenhuma, o dourado da marca passa a
+   significar UMA coisa só na tela: em que etapa o card está. A ação que avança se
+   distingue por borda forte, não por cor; o indeferimento, por ser a única de contorno
+   vermelho. No escuro, "branco" é o token de superfície do tema, não o literal #fff. */
+.acoes{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:inherit;font-size:12px;font-weight:700;padding:9px 14px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--uix-border-subtle);background:var(--uix-surface-base);color:var(--uix-text-primary)}
+.btn.principal{border-color:var(--uix-border-strong);
+  box-shadow:inset 0 0 0 1px var(--uix-border-strong)}
+.btn.perigo{border-color:var(--uix-color-danger);color:var(--uix-color-danger)}
+
+/* ── A COLUNA FIXA ───────────────────────────────────────────────────────── */
+.fixo{display:grid;gap:12px;align-content:start;min-width:0}
+.fixo .bloco{padding:12px 14px}
+.item{padding:7px 0;border-bottom:1px dashed var(--uix-border-subtle);font-size:12px}
+.item:last-child{border-bottom:0}
+.item b{font-weight:700}
+.item .quando{display:block;font-size:10.5px;color:var(--uix-text-muted);margin-top:1px}
+.selo{display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;margin-left:4px;
+  background:color-mix(in srgb,var(--uix-color-success) 14%,var(--uix-surface-raised));color:var(--uix-color-success)}
+.selo.falta{background:color-mix(in srgb,var(--uix-color-danger) 14%,var(--uix-surface-raised));
+  color:var(--uix-color-danger)}
+.rodape{color:var(--uix-text-muted);font-size:13px;margin-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="cabeca">
+    <div>
+      <h1>Têmis · a tela de análise</h1>
+      <p class="lede">Etapa 1, tipo <b>contrato</b> (venda nova). Paleta e tokens do Panteon,
+        nos dois temas.</p>
+    </div>
+    <button class="tema" id="btnTema" type="button">Ver no escuro</button>
+  </div>
+
+  <div class="aviso">
+    <b>Mockup para você aprovar.</b> Os achados do parecer são <b>exemplos de formato</b> — quais
+    regras dá para calcular de verdade é o que estou levantando agora no banco.
+  </div>
+
+  <div class="tela">
+
+    <div class="topo">
+      <p class="quem">Henrique Sales do Vale</p>
+      <p class="onde">ZZ TESTE · Quadra 01 · Lote 05 · 350,00 m² · <b>R$ 145.000,00</b> ·
+        proposta <b>COD 000007</b> · entrou há <b>4 dias</b></p>
+      <div class="passos">
+        <span class="passo atual">Análise</span>
+        <span class="passo">Contrato</span>
+        <span class="passo">Assinatura</span>
+        <span class="passo">Prazo legal</span>
+        <span class="passo">Faturado</span>
+      </div>
+    </div>
+
+    <div class="corpo">
+      <div class="trabalho">
+
+        <!-- ═══ O PARECER — o primeiro bloco da tela ═══ -->
+        <div class="bloco">
+          <div class="tituloBloco">
+            <h3>Pontos de atenção</h3>
+            <span class="contagem">1 crítico · 2 a conferir · 4 conformes</span>
+          </div>
+
+          <div class="achado critico">
+            <div class="barra"></div>
+            <div>
+              <div class="oQue">Desconto de R$ 5.000,00 no valor do lote</div>
+              <div class="contra">tabela <b>R$ 150.000,00</b> → praticado <b>R$ 145.000,00</b>
+                · <b>3,33%</b> · R$ 428,57/m² → R$ 414,29/m² · sem aprovação registrada</div>
+            </div>
+            <span class="grau">Desconto</span>
+          </div>
+
+          <div class="achado atencao">
+            <div class="barra"></div>
+            <div>
+              <div class="oQue">Entrada parcelada fora do plano</div>
+              <div class="contra">PLANO NORMAL prevê entrada <b>à vista</b> → proposta traz
+                <b>2×</b> de R$ 7.250,00</div>
+            </div>
+            <span class="grau">Fora do plano</span>
+          </div>
+
+          <div class="achado atencao">
+            <div class="barra"></div>
+            <div>
+              <div class="oQue">Falta documento do cônjuge</div>
+              <div class="contra">RG e CPF de Patrícia Sales do Vale não enviados · ela assina
+                o contrato (comunhão parcial)</div>
+            </div>
+            <span class="grau">Documento</span>
+          </div>
+
+          <div class="achado ok">
+            <div class="barra"></div>
+            <div>
+              <div class="oQue">Entrada de 10% — no mínimo do ZZ TESTE</div>
+            </div>
+            <span class="grau">Ok</span>
+          </div>
+          <div class="achado ok">
+            <div class="barra"></div>
+            <div><div class="oQue">Prazo de 120 meses — dentro do plano</div></div>
+            <span class="grau">Ok</span>
+          </div>
+          <div class="achado ok">
+            <div class="barra"></div>
+            <div><div class="oQue">Imobiliária credenciada e ativa · corretor vinculado</div></div>
+            <span class="grau">Ok</span>
+          </div>
+          <div class="achado ok">
+            <div class="barra"></div>
+            <div><div class="oQue">CPF sem outra proposta ou reserva aberta</div></div>
+            <span class="grau">Ok</span>
+          </div>
+        </div>
+
+        <!-- ═══ A PROPOSTA COMERCIAL ═══ -->
+        <div class="bloco destaque">
+          <div class="tituloBloco"><h3>A proposta comercial</h3>
+            <span class="contagem">PLANO NORMAL · 120×</span></div>
+
+          <div class="numeros">
+            <div class="num marcado">
+              <div class="rot">Valor do lote</div>
+              <div class="val">R$ 145.000</div>
+              <div class="det alerta">tabela R$ 150.000 · −3,33%</div>
+            </div>
+            <div class="num">
+              <div class="rot">Entrada</div>
+              <div class="val">R$ 14.500</div>
+              <div class="det alerta">10% · 2× — plano prevê à vista</div>
+            </div>
+            <div class="num">
+              <div class="rot">A financiar</div>
+              <div class="val">R$ 130.500</div>
+              <div class="det">120 parcelas mensais</div>
+            </div>
+            <div class="num">
+              <div class="rot">Parcela</div>
+              <div class="val">R$ 1.087,50</div>
+              <div class="det">1ª em 10/11/2026</div>
+            </div>
+          </div>
+
+          <table class="fluxo">
+            <thead><tr><th>Condição</th><th>Na proposta</th><th>No plano</th></tr></thead>
+            <tbody>
+              <tr><td>Prazo</td><td>120 meses</td><td>120 meses</td></tr>
+              <tr><td>Entrada</td><td class="fora">2× de R$ 7.250,00</td><td>1× à vista</td></tr>
+              <tr><td>Juros</td><td>0,5% ao mês · SACOC</td><td>0,5% ao mês · SACOC</td></tr>
+              <tr><td>Correção</td><td>IPCA anual, no aniversário</td><td>IPCA anual</td></tr>
+              <tr><td>Parcelas anuais</td><td>sem reforço</td><td>sem reforço</td></tr>
+              <tr><td>Vencimento</td><td>todo dia 10</td><td>dia 5, 10, 15 ou 20</td></tr>
+              <tr><td><b>Total do contrato</b></td><td><b>R$ 145.000,00</b></td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ═══ AS PARTES ═══ -->
+        <div class="duas">
+          <div class="bloco">
+            <div class="tituloBloco"><h3>Proponente · titular</h3></div>
+            <div class="campo"><span class="k">Nome</span><span class="v">Henrique Sales do Vale</span></div>
+            <div class="campo"><span class="k">CPF</span><span class="v mono">999.999.004-53</span></div>
+            <div class="campo"><span class="k">Identidade</span><span class="v mono">MG-14.882.735</span></div>
+            <div class="campo"><span class="k">Nascimento</span><span class="v mono">12/03/1985</span></div>
+            <div class="campo"><span class="k">Estado civil</span><span class="v">Casado · comunhão parcial</span></div>
+            <div class="campo"><span class="k">Profissão</span><span class="v">Engenheiro</span></div>
+            <div class="campo"><span class="k">E-mail</span><span class="v">henrique@exemplo.com</span></div>
+            <div class="campo"><span class="k">Telefone</span><span class="v mono">(31) 99999-0004</span></div>
+            <div class="campo"><span class="k">Endereço</span><span class="v">Rua das Acácias, 240 · Centro</span></div>
+          </div>
+
+          <div class="bloco">
+            <div class="tituloBloco"><h3>Cônjuge · assina o contrato</h3></div>
+            <div class="campo"><span class="k">Nome</span><span class="v">Patrícia Sales do Vale</span></div>
+            <div class="campo"><span class="k">CPF</span><span class="v mono">888.888.004-21</span></div>
+            <div class="campo"><span class="k">Identidade</span><span class="v falta">não informada</span></div>
+            <div class="campo"><span class="k">Nascimento</span><span class="v falta">não informado</span></div>
+            <div class="campo"><span class="k">Profissão</span><span class="v falta">não informada</span></div>
+            <div class="campo"><span class="k">E-mail</span><span class="v">patricia@exemplo.com</span></div>
+            <div class="campo"><span class="k">Telefone</span><span class="v mono">(31) 98888-0004</span></div>
+            <div class="campo"><span class="k">Nacionalidade</span><span class="v">Brasileira</span></div>
+          </div>
+        </div>
+
+        <div class="duas">
+          <div class="bloco">
+            <div class="tituloBloco"><h3>Quem vendeu</h3></div>
+            <div class="campo"><span class="k">Imobiliária</span><span class="v">RAIANE IMOBILIARIA</span></div>
+            <div class="campo"><span class="k">Credenciamento</span><span class="v">ativo até 31/12/2026</span></div>
+            <div class="campo"><span class="k">Corretor</span><span class="v">LUCAS MOREIRA RUAS</span></div>
+            <div class="campo"><span class="k">Comissão</span><span class="v mono">5,0% · R$ 7.250,00</span></div>
+          </div>
+
+          <div class="bloco">
+            <div class="tituloBloco"><h3>A unidade</h3></div>
+            <div class="campo"><span class="k">Empreendimento</span><span class="v">ZZ TESTE</span></div>
+            <div class="campo"><span class="k">Quadra e lote</span><span class="v">01 · 05</span></div>
+            <div class="campo"><span class="k">Área</span><span class="v mono">350,00 m²</span></div>
+            <div class="campo"><span class="k">Situação</span><span class="v">reservada para esta proposta</span></div>
+            <div class="campo"><span class="k">Matrícula</span><span class="v falta">não informada</span></div>
+          </div>
+        </div>
+
+        <!-- ═══ O CONTRATO E AS AÇÕES ═══ -->
+        <div class="bloco">
+          <div class="tituloBloco"><h3>O contrato</h3></div>
+          <p style="margin:0 0 12px;font-size:12.5px;color:var(--uix-text-secondary)">
+            Abre a minuta <b>já preenchida e editável</b>. O que você corrigir vale
+            <b>só para este contrato</b> — a minuta do empreendimento não muda.
+          </p>
+          <div class="acoes">
+            <button class="btn" type="button">Abrir contrato</button>
+            <button class="btn" type="button">Salvar edição</button>
+            <button class="btn principal" type="button">Gerar contrato →</button>
+            <button class="btn perigo" type="button">Indeferir</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ═══ A COLUNA FIXA: nas cinco etapas ═══ -->
+      <div class="fixo">
+        <div class="bloco">
+          <div class="tituloBloco"><h3>Chat</h3></div>
+          <div class="item"><b>Nívea</b> · conferi a certidão, está ok
+            <span class="quando">hoje, 14:20</span></div>
+          <div class="item"><b>Caio (imobiliária)</b> · cliente pediu para adiantar a assinatura
+            <span class="quando">ontem, 17:05</span></div>
+        </div>
+
+        <div class="bloco">
+          <div class="tituloBloco"><h3>Documentos</h3><span class="contagem">3 de 5</span></div>
+          <div class="item"><b>RG e CPF</b> · titular <span class="selo">ok</span>
+            <span class="quando">06/09</span></div>
+          <div class="item"><b>Certidão de casamento</b> <span class="selo">ok</span>
+            <span class="quando">06/09</span></div>
+          <div class="item"><b>Comprovante de renda</b> <span class="selo">ok</span>
+            <span class="quando">06/09</span></div>
+          <div class="item"><b>RG e CPF</b> · cônjuge <span class="selo falta">falta</span></div>
+          <div class="item"><b>Comprovante de endereço</b> <span class="selo falta">falta</span></div>
+        </div>
+
+        <div class="bloco">
+          <div class="tituloBloco"><h3>Histórico</h3></div>
+          <div class="item">Proposta entregue pelo Hércules
+            <span class="quando">06/09 · Lucas Moreira Ruas</span></div>
+          <div class="item">Desconto aplicado · R$ 150.000 → R$ 145.000
+            <span class="quando">05/09 · Lucas Moreira Ruas</span></div>
+          <div class="item">Reserva confirmada
+            <span class="quando">05/09 · Lucas Moreira Ruas</span></div>
+          <div class="item">Sinal pago · R$ 7.250,00
+            <span class="quando">05/09</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="rodape">
+    As etapas 2 a 5 usam o mesmo esqueleto: muda o painel da esquerda, a coluna da direita fica.
+    E o <b>parecer muda por tipo</b> — num distrato ele aponta o que se analisa num distrato.
+  </p>
+
+</div>
+
+<script>
+// Só do mockup: no app quem troca data-uix-theme é o ThemeProvider.
+const raiz = document.documentElement, b = document.getElementById("btnTema");
+b.addEventListener("click", () => {
+  const escuro = raiz.getAttribute("data-uix-theme") === "dark";
+  raiz.setAttribute("data-uix-theme", escuro ? "light" : "dark");
+  b.textContent = escuro ? "Ver no escuro" : "Ver no claro";
+});
+</script>
+</body>
+</html>

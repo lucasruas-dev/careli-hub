@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Têmis · Tela de trabalho</title>
+<style>
+/* A PALETA É A DA CASA (`modules/incorporador/tema.tsx`), não uma nova: os mesmos tokens que o
+   portal e a Mesa de Venda usam. */
+:root{
+  --page:#f7f8fa; --card:#ffffff; --soft:#eef1f4;
+  --border:#dce2ea; --text:#121722; --sub:#485466; --muted:#667085;
+  --danger:#c24135; --danger-bg:#fdf3f2; --gold:#a07c3b;
+  --ok:#2f7d59; --ok-bg:#eef7f2;
+  --btn-bg:#121722; --btn-fg:#ffffff;
+  --sombra:0 12px 32px rgba(0,0,0,.14);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --page:#0b0d11; --card:#141821; --soft:#1b202b;
+    --border:#262c38; --text:#e8eaee; --sub:#aab3c0; --muted:#7d8798;
+    --danger:#e08276; --danger-bg:#2a1a18; --gold:#c9a25a;
+    --ok:#7cc4a1; --ok-bg:#16241d;
+    --btn-bg:#e8eaee; --btn-fg:#121722;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1440px;margin:0 auto;padding:20px}
+
+.aviso{background:var(--gold);color:#fff;padding:10px 16px;border-radius:10px;
+  font-size:12.5px;margin-bottom:16px}
+.aviso b{font-weight:700}
+
+/* ── A TELA ─────────────────────────────────────────────────────────── */
+.tela{background:var(--card);border:1px solid var(--border);border-radius:14px;
+  overflow:hidden;box-shadow:var(--sombra)}
+
+.topo{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:14px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.quem{font-size:17px;font-weight:700;margin:0}
+.onde{font-size:12px;color:var(--muted);margin:2px 0 0}
+.onde b{color:var(--sub);font-weight:600}
+
+/* A FAIXA DO FLUXO: setas encaixadas, não pílulas soltas. A ponta de uma entra no entalhe
+   da seguinte, então a faixa lê como um caminho com direção — dá para ver de onde o card
+   veio e para onde vai, que é o que a pílula solta não dizia. */
+.passos{display:flex;gap:2px;flex-wrap:wrap}
+.passo{font-size:11px;font-weight:600;padding:7px 15px 7px 23px;
+  background:var(--soft);color:var(--muted);white-space:nowrap;
+  clip-path:polygon(0 0,calc(100% - 9px) 0,100% 50%,calc(100% - 9px) 100%,0 100%,9px 50%)}
+/* a primeira não tem entalhe atrás, a última não tem ponta à frente */
+.passo:first-child{padding-left:15px;border-radius:8px 0 0 8px;
+  clip-path:polygon(0 0,calc(100% - 9px) 0,100% 50%,calc(100% - 9px) 100%,0 100%)}
+.passo:last-child{padding-right:15px;border-radius:0 8px 8px 0;
+  clip-path:polygon(0 0,100% 0,100% 100%,0 100%,9px 50%)}
+.passo.feito{background:var(--ok-bg);color:var(--ok)}
+.passo.atual{background:var(--gold);color:#fff}
+
+.corpo{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;padding:16px}
+@media(max-width:1100px){.corpo{grid-template-columns:1fr}}
+
+/* ── BLOCOS ─────────────────────────────────────────────────────────── */
+.trabalho{display:grid;gap:14px;align-content:start;min-width:0}
+.duas{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:820px){.duas{grid-template-columns:1fr}}
+
+.bloco{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.bloco.destaque{background:var(--soft)}
+.bloco h3{margin:0 0 10px;font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted)}
+
+.campo{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:5px 0;border-bottom:1px dashed var(--border)}
+.campo:last-child{border-bottom:0}
+.k{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.v{font-size:13px;font-weight:600;text-align:right}
+.v.mono{font-variant-numeric:tabular-nums}
+.v.falta{color:var(--danger);font-weight:500}
+
+/* A proposta comercial: os números que importam, grandes */
+.numeros{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}
+@media(max-width:820px){.numeros{grid-template-columns:repeat(2,1fr)}}
+.num{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.num .rot{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.num .val{font-size:19px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.num .det{font-size:10.5px;color:var(--muted);margin-top:1px}
+
+.fluxo{width:100%;border-collapse:collapse;font-size:12px}
+.fluxo th{text-align:left;font-size:9.5px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--border)}
+.fluxo td{padding:6px 0;border-bottom:1px dashed var(--border)}
+.fluxo td:last-child,.fluxo th:last-child{text-align:right;font-variant-numeric:tabular-nums}
+
+/* ── AÇÕES ──────────────────────────────────────────────────────────── */
+.acoes{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:inherit;font-size:12px;font-weight:600;padding:9px 14px;border-radius:9px;
+  border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer}
+.btn.forte{background:var(--btn-bg);color:var(--btn-fg);border-color:transparent}
+.btn.ouro{background:var(--gold);color:#fff;border-color:transparent}
+.btn.perigo{border-color:var(--danger);color:var(--danger)}
+
+/* ── A COLUNA FIXA ──────────────────────────────────────────────────── */
+.fixo{display:grid;gap:12px;align-content:start;min-width:0}
+.fixo .bloco{padding:12px 14px}
+.item{padding:7px 0;border-bottom:1px dashed var(--border);font-size:12px}
+.item:last-child{border-bottom:0}
+.item b{font-weight:600}
+.item .quando{display:block;font-size:10.5px;color:var(--muted);margin-top:1px}
+.selo{display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;
+  background:var(--ok-bg);color:var(--ok);margin-left:4px}
+.selo.falta{background:var(--danger-bg);color:var(--danger)}
+
+.nota{background:var(--soft);border-left:3px solid var(--gold);border-radius:8px;
+  padding:10px 12px;font-size:12px;color:var(--sub)}
+h1{font-size:20px;margin:0 0 4px}
+.lede{color:var(--muted);font-size:13px;margin:0 0 18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Têmis · a tela de trabalho</h1>
+  <p class="lede">
+    Etapa 1 — Análise. Blocos fechados, a proposta comercial inteira, e chat, documentos e
+    histórico fixos à direita.
+  </p>
+
+  <div class="aviso">
+    <b>Isto é um mockup para você aprovar.</b> Nenhuma linha de código foi escrita a partir dele.
+    Os dados são de uma proposta real do ZZ TESTE, para o formato ser conferível.
+  </div>
+
+  <div class="tela">
+
+    <!-- ── TOPO ─────────────────────────────────────────────────── -->
+    <div class="topo">
+      <div>
+        <p class="quem">Henrique Sales do Vale</p>
+        <p class="onde">
+          ZZ TESTE · Quadra 01 · Lote 05 · 350,00 m² ·
+          <b>R$ 145.000,00</b> · proposta <b>COD 000007</b>
+        </p>
+      </div>
+      <div class="passos">
+        <span class="passo atual">Análise</span>
+        <span class="passo">Contrato</span>
+        <span class="passo">Assinatura</span>
+        <span class="passo">Prazo legal</span>
+        <span class="passo">Faturado</span>
+      </div>
+    </div>
+
+    <!-- ── CORPO ────────────────────────────────────────────────── -->
+    <div class="corpo">
+
+      <div class="trabalho">
+
+        <!-- A PROPOSTA COMERCIAL, que é o que faltava -->
+        <div class="bloco destaque">
+          <h3>A proposta comercial</h3>
+
+          <div class="numeros">
+            <div class="num">
+              <div class="rot">Valor do lote</div>
+              <div class="val">R$ 145.000</div>
+              <div class="det">R$ 414,29 por m²</div>
+            </div>
+            <div class="num">
+              <div class="rot">Entrada</div>
+              <div class="val">R$ 14.500</div>
+              <div class="det">10% · 1× em 10/10/2026</div>
+            </div>
+            <div class="num">
+              <div class="rot">A financiar</div>
+              <div class="val">R$ 130.500</div>
+              <div class="det">120 parcelas mensais</div>
+            </div>
+            <div class="num">
+              <div class="rot">Parcela</div>
+              <div class="val">R$ 1.087,50</div>
+              <div class="det">1ª em 10/11/2026</div>
+            </div>
+          </div>
+
+          <table class="fluxo">
+            <thead>
+              <tr><th>Condição</th><th>Detalhe</th><th>Valor</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Plano</td><td>PLANO NORMAL · 120×</td><td>—</td></tr>
+              <tr><td>Correção</td><td>IPCA anual, no aniversário</td><td>—</td></tr>
+              <tr><td>Juros</td><td>0,5% ao mês · SACOC</td><td>—</td></tr>
+              <tr><td>Parcelas anuais</td><td>sem reforço</td><td>—</td></tr>
+              <tr><td>Vencimento</td><td>todo dia 10</td><td>—</td></tr>
+              <tr><td><b>Total do contrato</b></td><td>entrada + 120 parcelas</td><td><b>R$ 145.000,00</b></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- PROPONENTES E IMOBILIÁRIA, lado a lado -->
+        <div class="duas">
+          <div class="bloco">
+            <h3>Proponente · titular</h3>
+            <div class="campo"><span class="k">Nome</span><span class="v">Henrique Sales do Vale</span></div>
+            <div class="campo"><span class="k">CPF</span><span class="v mono">999.999.004-53</span></div>
+            <div class="campo"><span class="k">Identidade</span><span class="v mono">MG-14.882.735</span></div>
+            <div class="campo"><span class="k">Nascimento</span><span class="v mono">12/03/1985</span></div>
+            <div class="campo"><span class="k">Estado civil</span><span class="v">Casado · comunhão parcial</span></div>
+            <div class="campo"><span class="k">Profissão</span><span class="v">Engenheiro</span></div>
+            <div class="campo"><span class="k">E-mail</span><span class="v">henrique@exemplo.com</span></div>
+            <div class="campo"><span class="k">Telefone</span><span class="v mono">(31) 99999-0004</span></div>
+            <div class="campo"><span class="k">Endereço</span><span class="v">Rua das Acácias, 240 · Centro</span></div>
+            <div class="campo"><span class="k">Participação</span><span class="v">50%</span></div>
+          </div>
+
+          <div class="bloco">
+            <h3>Cônjuge</h3>
+            <div class="campo"><span class="k">Nome</span><span class="v">Patrícia Sales do Vale</span></div>
+            <div class="campo"><span class="k">CPF</span><span class="v mono">888.888.004-21</span></div>
+            <div class="campo"><span class="k">E-mail</span><span class="v">patricia@exemplo.com</span></div>
+            <div class="campo"><span class="k">Telefone</span><span class="v mono">(31) 98888-0004</span></div>
+            <div class="campo"><span class="k">Profissão</span><span class="v falta">não informado</span></div>
+            <div class="campo"><span class="k">Nacionalidade</span><span class="v">Brasileira</span></div>
+            <div class="campo"><span class="k">Participação</span><span class="v">50%</span></div>
+          </div>
+        </div>
+
+        <div class="duas">
+          <div class="bloco">
+            <h3>Quem vendeu</h3>
+            <div class="campo"><span class="k">Imobiliária</span><span class="v">RAIANE IMOBILIARIA</span></div>
+            <div class="campo"><span class="k">Corretor</span><span class="v">LUCAS MOREIRA RUAS</span></div>
+            <div class="campo"><span class="k">Origem</span><span class="v">Hércules · Mesa de Venda</span></div>
+          </div>
+
+          <div class="bloco">
+            <h3>A unidade</h3>
+            <div class="campo"><span class="k">Empreendimento</span><span class="v">ZZ TESTE</span></div>
+            <div class="campo"><span class="k">Quadra e lote</span><span class="v">01 · 05</span></div>
+            <div class="campo"><span class="k">Área</span><span class="v mono">350,00 m²</span></div>
+            <div class="campo"><span class="k">Matrícula</span><span class="v falta">não informada</span></div>
+          </div>
+        </div>
+
+        <!-- O CONTRATO E AS AÇÕES -->
+        <div class="bloco">
+          <h3>O contrato</h3>
+          <p style="margin:0 0 12px;font-size:12.5px;color:var(--sub)">
+            Abre a minuta <b>já preenchida e editável</b>. O que você corrigir aqui vale
+            <b>só para este contrato</b> — a minuta do empreendimento não muda.
+          </p>
+          <div class="acoes">
+            <button class="btn forte">Abrir contrato</button>
+            <button class="btn">Salvar edição</button>
+            <button class="btn ouro">Gerar contrato →</button>
+            <button class="btn perigo">Indeferir</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── A COLUNA FIXA: nas cinco etapas ──────────────────────── -->
+      <div class="fixo">
+        <div class="bloco">
+          <h3>Chat</h3>
+          <div class="item">
+            <b>Nívea</b> · conferi a certidão, está ok
+            <span class="quando">hoje, 14:20</span>
+          </div>
+          <div class="item">
+            <b>Caio (imobiliária)</b> · cliente pediu para adiantar a assinatura
+            <span class="quando">ontem, 17:05</span>
+          </div>
+        </div>
+
+        <div class="bloco">
+          <h3>Documentos</h3>
+          <div class="item">
+            <b>RG e CPF</b> · titular <span class="selo">ok</span>
+            <span class="quando">06/09</span>
+          </div>
+          <div class="item">
+            <b>Certidão de casamento</b> <span class="selo">ok</span>
+            <span class="quando">06/09</span>
+          </div>
+          <div class="item">
+            <b>Comprovante de renda</b> <span class="selo">ok</span>
+            <span class="quando">06/09</span>
+          </div>
+          <div class="item">
+            <b>RG e CPF</b> · cônjuge <span class="selo falta">falta</span>
+          </div>
+        </div>
+
+        <div class="bloco">
+          <h3>Histórico</h3>
+          <div class="item">
+            Proposta entregue pelo Hércules
+            <span class="quando">06/09 · Lucas Moreira Ruas</span>
+          </div>
+          <div class="item">
+            Reserva confirmada
+            <span class="quando">05/09 · Lucas Moreira Ruas</span>
+          </div>
+          <div class="item">
+            Sinal pago · R$ 14.500,00
+            <span class="quando">05/09</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="lede" style="margin-top:18px">
+    As etapas 2 a 5 seguem o mesmo esqueleto: muda o painel da esquerda, a coluna da direita fica.
+    Na etapa 2, a esquerda vira <b>quem assina</b> e a direita ganha o <b>PDF do contrato</b>.
+  </p>
+
+</div>
+</body>
+</html>
