@@ -8,7 +8,15 @@ import { Headset, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// O BOTÃO DE SUPORTE — o que a pessoa procura quando alguma coisa não funciona.
+// FESTO — o suporte do Panteon, e o botão que o abre.
+//
+// Lucas (11/09/2026) escolheu o nome, e encurtou logo em seguida: *"Hefesto, otimo"* e depois
+// *"Deixa Festo"*. Vem de Hefesto, o ferreiro dos deuses: quem conserta e forja — que é o que se
+// pede ao suporte. O apelido ficou sendo o nome.
+//
+// ⚠️ E O ENCURTAMENTO RESOLVEU UMA COLISÃO: "Hefesto" era, até 23/06/2026, como o agente de
+// engenharia (o Claude) se chamava, antes de tudo virar "Zeus". "Festo" não se confunde com aquilo
+// em nenhuma conversa antiga.
 //
 // Lucas (11/09/2026): *"eu quero mudar essa imagem, colocar uma imagem de central de suporte mesmo,
 // e outra coisa, está fixo, tem hora que atrapalha de ver a tela e tal, pode deixar solta"*.
@@ -194,14 +202,14 @@ export function HubSupportDock() {
                   <Headset className="size-6" aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
-                  <p className="m-0 text-sm font-semibold">Suporte Panteon</p>
+                  <p className="m-0 text-sm font-semibold">Festo</p>
                   <p className="m-0 mt-1 truncate text-xs text-white/65">
-                    Conte o que aconteceu — a gente resolve ou abre o chamado.
+                    Suporte do Panteon. Conte o que aconteceu.
                   </p>
                 </div>
               </div>
               <button
-                aria-label="Fechar o suporte"
+                aria-label="Fechar o Festo"
                 className="grid size-8 place-items-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
                 onClick={requestClose}
                 type="button"
@@ -229,7 +237,7 @@ export function HubSupportDock() {
       <button
         aria-expanded={open && !compactPanel}
         aria-label={
-          compactPanel ? "Restaurar o suporte" : "Abrir o suporte — arraste para mover"
+          compactPanel ? "Restaurar o Festo" : "Falar com o Festo — arraste para mover"
         }
         className={`relative grid size-14 shrink-0 touch-none place-items-center rounded-full border border-[#A07C3B]/30 bg-[#101820] text-[#A07C3B] shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
           arrastando ? "scale-105 cursor-grabbing" : "cursor-grab hover:-translate-y-0.5"
@@ -241,7 +249,7 @@ export function HubSupportDock() {
         onPointerDown={aoDescer}
         onPointerMove={aoMover}
         onPointerUp={aoSubir}
-        title="Suporte do Panteon (arraste para mover)"
+        title="Festo · suporte do Panteon (arraste para mover)"
         type="button"
       >
         <Headset className="size-7" aria-hidden="true" />
