@@ -48,7 +48,7 @@ type HubItTicketUserRow = {
   status: "active" | "archived" | "disabled";
 };
 
-type AuthorizedHubItTicketUser = {
+export type AuthorizedHubItTicketUser = {
   avatarUrl?: string | null;
   email: string;
   id: string;
@@ -1125,7 +1125,7 @@ ${resultado.responseText}`
     // ⚠️ AUTOR NULO DE PROPOSITO: nao existe pessoa por tras disto, e por o id de alguem aqui
     // faria o historico dizer que um colega analisou um chamado que ele nunca abriu.
     createdByUserId: null,
-    message: "Zeus · triagem automatica",
+    message: "Festos · triagem automatica",
     metadata: {
       autonomia: resultado.autonomy,
       confianca: resultado.confidence,
@@ -1138,6 +1138,67 @@ ${resultado.responseText}`
     type: "triaged",
     visibleToRequester: false,
   });
+}
+
+/**
+ * GRAVA A CONVERSA DO FESTO no chamado que ela gerou.
+ *
+ * Lucas (11/09/2026), pedindo o chat no lugar do formulario: *"lembrando que o agente vai ter que
+ * registrar o atendimento dentro da central de help, blz?"*.
+ *
+ * ⚠️ O REGISTRO E A CONVERSA INTEIRA, e nao o resumo dela. O resumo ja esta no chamado, no campo
+ * tecnico; o que se perde sem isto e a frase solta — a que a pessoa escreveu depois de o Festos
+ * perguntar, e que costuma carregar a causa. Quem atende le o relato original, nao a interpretacao.
+ *
+ * ⚠️ NOTA INTERNA (`visibleToRequester: false`), e nao por sigilo: quem conversou ja leu tudo isso
+ * na tela. Marcar como resposta faria o chamado nascer com uma "resposta" que ninguem escreveu para
+ * ela — e o painel do solicitante passaria a mostrar como novidade o que ela acabou de digitar.
+ *
+ * ⚠️ E NAO LANCA. O chamado ja esta gravado quando esta funcao roda; derrubar o atendimento
+ * porque o anexo da conversa falhou seria trocar o essencial pelo acessorio.
+ */
+export async function registrarAtendimentoDoFesto(
+  protocolo: string,
+  atendimento: { tela: null | string; transcricao: string },
+): Promise<void> {
+  const adminClient = createHubItTicketClient();
+  if (!adminClient) return;
+
+  try {
+    const { data, error } = await adminClient
+      .from("hub_it_tickets")
+      .select("id")
+      .eq("protocol", protocolo)
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error(
+        `[helpdesk][festo] chamado ${protocolo} nao encontrado para registrar o atendimento`,
+        error?.message,
+      );
+      return;
+    }
+
+    await insertTicketEvent(adminClient, {
+      // Autor nulo: o Festos nao e uma pessoa do hub, e carimbar o id de alguem faria o historico
+      // dizer que um colega atendeu um chamado em que nunca tocou.
+      createdByUserId: null,
+      message: "Festos · atendimento pelo chat",
+      metadata: {
+        fonte: "festo-chat",
+        tela: atendimento.tela,
+      },
+      technicalNote: atendimento.transcricao,
+      ticketId: String((data as { id: string }).id),
+      type: "triaged",
+      visibleToRequester: false,
+    });
+  } catch (erro) {
+    console.error(
+      `[helpdesk][festo] falha ao registrar o atendimento de ${protocolo}`,
+      erro instanceof Error ? erro.message : String(erro),
+    );
+  }
 }
 
 /**

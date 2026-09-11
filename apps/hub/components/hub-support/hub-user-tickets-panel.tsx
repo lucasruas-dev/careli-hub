@@ -806,7 +806,7 @@ function TicketDetail({
 
       <DetailBlock label="Relato enviado" value={ticket.userDescription} />
       <DetailBlock
-        label="Leitura tecnica da Athena"
+        label="Leitura tecnica do Festos"
         value={ticket.technicalSummary}
       />
 
@@ -1123,7 +1123,7 @@ function getCustomerHistoryActor(
         avatarUrl: null,
         email: null,
         id: "athena",
-        name: "Athena",
+        name: "Festos",
       },
       variant: "gold" as const,
     };

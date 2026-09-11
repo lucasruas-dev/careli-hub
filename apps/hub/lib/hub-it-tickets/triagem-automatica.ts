@@ -38,9 +38,9 @@ import { runHubItTicketTriage } from "@/lib/hub-it-tickets/triage";
  * autor nenhum.
  */
 const AGENTE_DA_TRIAGEM = {
-  email: "zeus@panteon.interno",
+  email: "festo@panteon.interno",
   id: "00000000-0000-0000-0000-000000000000",
-  name: "Zeus · triagem automática",
+  name: "Festos · triagem automática",
   operationalProfile: "adm",
   role: "admin",
 } as const;

@@ -6,7 +6,7 @@
 // comemorando"*.
 //
 // ⚠️ ADEREÇO, NUNCA FANTASIA. O que muda é o que ele SEGURA ou VESTE por cima — o robô continua o
-// mesmo boneco, com a mesma silhueta e o mesmo rosto. Redesenhar o Festo a cada data faria as
+// mesmo boneco, com a mesma silhueta e o mesmo rosto. Redesenhar o Festos a cada data faria as
 // pessoas perderem a referência visual do suporte quatro vezes por ano, justamente no elemento que
 // elas precisam achar sem pensar.
 //
@@ -14,13 +14,13 @@
 // no dia 20 e ninguém sorri. Alguns dias em volta da data mantêm a graça de ser uma aparição.
 //
 // ⚠️ A DATA É A DO NAVEGADOR DE QUEM OLHA, e não a do servidor. Um traje é enfeite: se o relógio da
-// máquina estiver errado, o pior que acontece é o Festo comemorar fora de hora, e ninguém perde
+// máquina estiver errado, o pior que acontece é o Festos comemorar fora de hora, e ninguém perde
 // trabalho por isso. Não vale uma consulta ao servidor.
 
 export type TrajeDoFesto = "bandeira-brasil" | "gorro-natal" | "nenhum";
 
 /**
- * O que o Festo veste na data.
+ * O que o Festos veste na data.
  *
  * Novas datas entram aqui, e em nenhum outro lugar: o desenho de cada adereço mora no componente,
  * mas quem decide QUANDO é esta função — que é pura, e por isso dá para testar sem montar tela.
@@ -38,7 +38,7 @@ export function trajeDaData(data: Date): TrajeDoFesto {
   return "nenhum";
 }
 
-/** O que o Festo diz quando está caracterizado. Entra no lugar da fala normal, na data. */
+/** O que o Festos diz quando está caracterizado. Entra no lugar da fala normal, na data. */
 export function falasDoTraje(traje: TrajeDoFesto): readonly string[] {
   if (traje === "bandeira-brasil") {
     return [

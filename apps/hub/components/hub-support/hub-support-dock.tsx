@@ -7,23 +7,24 @@ import {
   SAUDACOES,
   sortearSemRepetir,
 } from "@/components/hub-support/festo-conversa";
+import { FestoChat } from "@/components/hub-support/festo-chat";
 import { type EstadoDoFesto, FestoRobo } from "@/components/hub-support/festo-robo";
 import { falasDoTraje, trajeDaData } from "@/components/hub-support/festo-traje";
 import { HubTicketOpenForm } from "@/components/hub-support/hub-ticket-open-form";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import { useAuth } from "@/providers/auth-provider";
-import { X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // FESTO — o suporte do Panteon, e o botão que o abre.
 //
 // Lucas (11/09/2026) escolheu o nome, e encurtou logo em seguida: *"Hefesto, otimo"* e depois
-// *"Deixa Festo"*. Vem de Hefesto, o ferreiro dos deuses: quem conserta e forja — que é o que se
+// *"Deixa Festos"*. Vem de Hefesto, o ferreiro dos deuses: quem conserta e forja — que é o que se
 // pede ao suporte. O apelido ficou sendo o nome.
 //
 // ⚠️ E O ENCURTAMENTO RESOLVEU UMA COLISÃO: "Hefesto" era, até 23/06/2026, como o agente de
-// engenharia (o Claude) se chamava, antes de tudo virar "Zeus". "Festo" não se confunde com aquilo
+// engenharia (o Claude) se chamava, antes de tudo virar "Zeus". "Festos" não se confunde com aquilo
 // em nenhuma conversa antiga.
 //
 // Lucas (11/09/2026): *"eu quero mudar essa imagem, colocar uma imagem de central de suporte mesmo,
@@ -59,13 +60,22 @@ export function HubSupportDock() {
   const { isRecordingProtected, nativeTicketFormCount } =
     useAthenaTicketRecording();
   const [open, setOpen] = useState(false);
+  /**
+   * O que o painel mostra: a conversa (o padrão) ou o formulário de chamado.
+   *
+   * ⚠️ O FORMULÁRIO NÃO FOI EMBORA, virou a segunda porta. É por ele que passam print, anexo e
+   * gravação de tela — que o chat ainda não aceita — e é ele que quem já sabe o que quer registrar
+   * usa sem conversar. Trocar uma coisa pela outra teria tirado do ar, no mesmo dia, a única forma
+   * de mandar evidência junto com o relato.
+   */
+  const [modo, setModo] = useState<"chamado" | "conversa">("conversa");
   const [recordingMinimized, setRecordingMinimized] = useState(false);
   const [posicao, setPosicao] = useState<null | Posicao>(null);
   const [arrastando, setArrastando] = useState(false);
   const dockRef = useRef<HTMLDivElement>(null);
   /** O que o ponteiro fez desde que desceu: para separar clique de arraste no `pointerup`. */
   const gesto = useRef<null | { moveu: boolean; x: number; y: number }>(null);
-  /** O que o Festo está dizendo agora. `null` = calado. */
+  /** O que o Festos está dizendo agora. `null` = calado. */
   const [fala, setFala] = useState<null | string>(null);
   const [piscando, setPiscando] = useState(false);
   const [pulando, setPulando] = useState(false);
@@ -78,6 +88,13 @@ export function HubSupportDock() {
   const compactPanel =
     recordingMinimized || (!open && shouldKeepTicketVisible);
   const panelVisible = open || recordingMinimized || shouldKeepTicketVisible;
+  /**
+   * ⚠️ GRAVAÇÃO EM CURSO MANDA NO PAINEL. Quem está gravando a tela está no meio do formulário, e
+   * devolver essa pessoa para a conversa jogaria fora a gravação que ela acabou de fazer — o pior
+   * defeito possível numa ferramenta que existe para registrar evidência.
+   */
+  const mostrarFormulario =
+    modo === "chamado" || compactPanel || shouldKeepTicketVisible;
 
   useOutsideDismiss({
     enabled: open && !recordingMinimized && !arrastando,
@@ -113,7 +130,7 @@ export function HubSupportDock() {
   }, [posicao]);
 
   /**
-   * Faz o Festo dizer alguma coisa por alguns segundos.
+   * Faz o Festos dizer alguma coisa por alguns segundos.
    *
    * ⚠️ O BALÃO É RECADO CURTO, e nunca atendimento. Correção do Lucas (11/09/2026), olhando um
    * diagnóstico técnico dentro do balão: *"isso aqui é dentro do chat"*. O que ele descobriu, o
@@ -282,18 +299,32 @@ export function HubSupportDock() {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <span className="grid size-11 shrink-0 place-items-center">
-                  <FestoRobo className="size-11" />
-                </span>
+                {/* Do formulário dá para voltar à conversa; da conversa não há para onde voltar. */}
+                {modo === "chamado" && !shouldKeepTicketVisible ? (
+                  <button
+                    aria-label="Voltar para a conversa com o Festos"
+                    className="grid size-8 shrink-0 place-items-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
+                    onClick={() => setModo("conversa")}
+                    type="button"
+                  >
+                    <ArrowLeft className="size-4" aria-hidden="true" />
+                  </button>
+                ) : (
+                  <span className="grid size-11 shrink-0 place-items-center">
+                    <FestoRobo className="size-11" />
+                  </span>
+                )}
                 <div className="min-w-0">
-                  <p className="m-0 text-sm font-semibold">Festo</p>
+                  <p className="m-0 text-sm font-semibold">Festos</p>
                   <p className="m-0 mt-1 truncate text-xs text-white/65">
-                    Suporte do Panteon. Conte o que aconteceu.
+                    {mostrarFormulario
+                      ? "Abrindo chamado. Pode anexar print ou gravação."
+                      : "Suporte do Panteon. Conte o que aconteceu."}
                   </p>
                 </div>
               </div>
               <button
-                aria-label="Fechar o Festo"
+                aria-label="Fechar o Festos"
                 className="grid size-8 place-items-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
                 onClick={requestClose}
                 type="button"
@@ -303,23 +334,27 @@ export function HubSupportDock() {
             </div>
           </header>
 
-          <div
-            className={
-              compactPanel
-                ? "p-0"
-                : "max-h-[calc(100dvh-12rem)] overflow-y-auto p-4"
-            }
-          >
-            <HubTicketOpenForm
-              compactRecordingMode={compactPanel}
-              onRestoreRequest={restoreRecordingPanel}
-            />
-          </div>
+          {mostrarFormulario ? (
+            <div
+              className={
+                compactPanel
+                  ? "p-0"
+                  : "max-h-[calc(100dvh-12rem)] overflow-y-auto p-4"
+              }
+            >
+              <HubTicketOpenForm
+                compactRecordingMode={compactPanel}
+                onRestoreRequest={restoreRecordingPanel}
+              />
+            </div>
+          ) : (
+            <FestoChat aoAbrirChamado={() => setModo("chamado")} />
+          )}
         </section>
       ) : null}
 
       {/* ⚠️ O BALÃO SÓ APARECE COM O PAINEL FECHADO. Com a conversa aberta, um balão flutuando ao
-          lado seria uma segunda voz do mesmo Festo dizendo outra coisa. */}
+          lado seria uma segunda voz do mesmo Festos dizendo outra coisa. */}
       {fala && !panelVisible ? (
         <div
           className="max-w-[15rem] self-end rounded-xl rounded-br-sm bg-inverse px-3 py-2 text-[12.5px] leading-snug text-surface shadow-[0_10px_26px_rgba(15,23,42,0.22)]"
@@ -332,7 +367,7 @@ export function HubSupportDock() {
       <button
         aria-expanded={open && !compactPanel}
         aria-label={
-          compactPanel ? "Restaurar o Festo" : "Falar com o Festo — arraste para mover"
+          compactPanel ? "Restaurar o Festos" : "Falar com o Festos — arraste para mover"
         }
         // ⚠️ O BOTÃO CONTINUA TENDO 56px, mesmo sem o círculo desenhado: o fundo sumiu, a ÁREA
         // DE CLIQUE não. Sem isto o alvo viraria a silhueta do robô, com cantos vazios que não
@@ -355,14 +390,14 @@ export function HubSupportDock() {
         onPointerDown={aoDescer}
         onPointerMove={aoMover}
         onPointerUp={aoSubir}
-        title="Festo · suporte do Panteon (arraste para mover)"
+        title="Festos · suporte do Panteon (arraste para mover)"
         type="button"
       >
         <FestoRobo
           className={`size-14 ${piscando ? "festo-piscando" : ""}`}
           estado={estadoDoFesto}
         />
-        {/* O ponto verde diz que o Festo atende agora. Quando o chat existir, ele vira o contador
+        {/* O ponto verde diz que o Festos atende agora. Quando o chat existir, ele vira o contador
             de "tem resposta esperando você" — que é o recado que hoje ninguém recebe. */}
         <span className="absolute right-0 top-0 size-3 rounded-full bg-emerald-500 ring-2 ring-canvas" />
       </button>
@@ -378,6 +413,10 @@ export function HubSupportDock() {
 
     setOpen(false);
     setRecordingMinimized(false);
+    // A próxima abertura começa pela conversa. O painel desmonta ao fechar, então o formulário já
+    // perderia o que estivesse escrito de qualquer forma — voltar ao chat só alinha o que se vê ao
+    // que de fato sobrou.
+    setModo("conversa");
   }
 
   function restoreRecordingPanel() {

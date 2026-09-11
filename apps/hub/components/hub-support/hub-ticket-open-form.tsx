@@ -610,14 +610,14 @@ export function HubTicketOpenForm({
         ? "Preparando evidencia."
         : pendingAttachmentCount > 0 || lastRecordingFileName
           ? "Gravacao salva."
-          : "Athena minimizada.";
+          : "Festos minimizado.";
     const compactDescription = recordingKind
       ? "A janela foi minimizada para manter a gravacao ativa."
       : isProcessingRecording
-        ? "Aguarde alguns segundos enquanto a Athena prepara o anexo."
+        ? "Aguarde alguns segundos enquanto o Festos prepara o anexo."
         : pendingAttachmentCount > 0 || lastRecordingFileName
           ? "Volte para revisar a evidencia anexada e enviar o ticket."
-          : "Volte para a Athena para revisar a evidencia e enviar o ticket.";
+          : "Volte para o Festos para revisar a evidencia e enviar o ticket.";
     const compactActionLabel =
       pendingAttachmentCount > 0 || lastRecordingFileName
         ? "Revisar ticket"
@@ -831,7 +831,7 @@ export function HubTicketOpenForm({
       <label className="grid gap-1.5">
         <span className="flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-400">
           <Sparkles className="size-3.5 text-[#A07C3B]" />
-          Athena organizou tecnicamente
+          Festos organizou tecnicamente
         </span>
         <textarea
           className="min-h-28 resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs leading-5 text-slate-700 outline-none transition focus:border-[#A07C3B]/50 focus:ring-2 focus:ring-[#A07C3B]/10"
@@ -963,7 +963,7 @@ function EvidencePreviewList({
   if (attachments.length === 0) {
     return (
       <p className="m-0 mt-3 text-xs text-slate-500">
-        Athena le prints, audio e quadros do video, e registra arquivos anexados.
+        O Festos le prints, audio e quadros do video, e registra arquivos anexados.
       </p>
     );
   }
@@ -972,8 +972,8 @@ function EvidencePreviewList({
     <div className="mt-3 grid gap-2">
       <p className="m-0 text-xs font-semibold text-slate-500">
         {isAnalyzing
-          ? "Athena analisando evidencias..."
-          : "Evidencias lidas pela Athena."}
+          ? "Festos analisando evidencias..."
+          : "Evidencias lidas pelo Festos."}
       </p>
       {attachments.map((attachment) => (
         <AttachmentPreviewCard
@@ -1134,7 +1134,7 @@ function buildTechnicalSummary({
     `Relato original: ${description.trim()}`,
     "Evidencias consideradas:",
     buildEvidenceSummary(attachments),
-    "Triagem Athena: revisar rota, reproduzir fluxo informado, validar evidencias anexadas e devolver status ao usuario pelo Zeus.",
+    "Triagem do Festos: revisar rota, reproduzir fluxo informado, validar evidencias anexadas e devolver status ao usuario pelo Zeus.",
   ];
 
   return lines.join("\n");

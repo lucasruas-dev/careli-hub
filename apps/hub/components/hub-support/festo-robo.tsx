@@ -15,7 +15,7 @@
 //
 // ⚠️ E TUDO PARA COM `prefers-reduced-motion`. Movimento periférico contínuo causa enjoo em parte
 // das pessoas, e um robô saltitante no canto da tela o dia inteiro é o caso clássico. Quem tem a
-// preferência ligada vê o Festo parado — e ele continua funcionando igual.
+// preferência ligada vê o Festos parado — e ele continua funcionando igual.
 
 import { type TrajeDoFesto, trajeDaData } from "@/components/hub-support/festo-traje";
 
@@ -55,11 +55,11 @@ export function FestoRobo({
     >
       <defs>
         {/*
-          ⚠️ OS IDs SÃO FIXOS, E ISSO SÓ FUNCIONA PORQUE AS DEFINIÇÕES SÃO IDÊNTICAS. O Festo aparece
+          ⚠️ OS IDs SÃO FIXOS, E ISSO SÓ FUNCIONA PORQUE AS DEFINIÇÕES SÃO IDÊNTICAS. O Festos aparece
           no botão E no cabeçalho do painel ao mesmo tempo; com ids repetidos, o navegador resolve
           todas as referências na primeira definição da página. Como a cor de cada parada vem do CSS
           (`.festo-casco-1` e companhia), as duas instâncias pintam igual e ninguém percebe.
-          ⚠️ No dia em que uma instância precisar de cor PRÓPRIA — um Festo cinza numa tela, colorido
+          ⚠️ No dia em que uma instância precisar de cor PRÓPRIA — um Festos cinza numa tela, colorido
           em outra —, isto quebra em silêncio: a segunda herda a primeira. Aí os ids têm que passar a
           ser únicos por montagem (via `useId`), e não antes.
         */}
@@ -111,7 +111,7 @@ export function FestoRobo({
 
         {/*
           ⚠️ O ADERECO VEM DEPOIS DO ROSTO, e a ordem e a regra: nada que ele veste pode cobrir os
-          olhos nem o sorriso. E o rosto que faz as pessoas lerem o Festo como alguem; um chapeu por
+          olhos nem o sorriso. E o rosto que faz as pessoas lerem o Festos como alguem; um chapeu por
           cima dele troca personagem por fantasia.
         */}
         {vestido === "bandeira-brasil" ? (
@@ -128,7 +128,7 @@ export function FestoRobo({
         ) : null}
 
         {/*
-          ⚠️ A MÃO SÓ EXISTE QUANDO ELE ACENA. O Festo não tem braços, e dar um par permanente a ele
+          ⚠️ A MÃO SÓ EXISTE QUANDO ELE ACENA. O Festos não tem braços, e dar um par permanente a ele
           mudaria o boneco inteiro — ele deixaria de ser uma cabeça flutuante e passaria a precisar
           de corpo, ombros e proporção. Uma mão que aparece só no cumprimento resolve o gesto sem
           redesenhar o personagem.

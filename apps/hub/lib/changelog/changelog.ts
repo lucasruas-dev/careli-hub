@@ -36,6 +36,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-11-o-festos-passa-a-conversar",
+    deployedAt: "2026-09-11T15:30:00-03:00",
+    modules: [
+      {
+        module: "Suporte",
+        screens: [
+          {
+            items: [
+              "**O Festos agora conversa.** Clicando nele voc\u00ea cai num chat, e n\u00e3o mais num formul\u00e1rio: conta o que aconteceu com as suas palavras, ele pergunta o que faltar e responde na hora o que for d\u00favida.",
+              "**Quando for problema, ele mesmo abre o chamado** \u2014 com t\u00edtulo, m\u00f3dulo, tipo, prioridade e a leitura t\u00e9cnica j\u00e1 escritas. Voc\u00ea recebe o n\u00famero do protocolo ali na conversa.",
+              "**A conversa inteira fica gravada no chamado**, para quem for atender ler o seu relato do jeito que voc\u00ea contou, e n\u00e3o um resumo.",
+              "**Ele consulta os seus chamados anteriores** antes de abrir um novo, para n\u00e3o registrar duas vezes a mesma coisa \u2014 e para responder quando voc\u00ea perguntar do andamento.",
+              "**O formul\u00e1rio continua ali**, num bot\u00e3o dentro da conversa: \u00e9 por ele que voc\u00ea manda print, anexo ou grava\u00e7\u00e3o de tela.",
+              "**E o nome ficou Festos.**",
+            ],
+            screen: "Bot\u00e3o de suporte",
+          },
+        ],
+      },
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "**Roadmap atualizado** com a frente do atendimento: o chat entregue, e o que vem depois \u2014 o Festos apurar no banco e no c\u00f3digo durante a conversa, print e \u00e1udio dentro do chat, e ele explicar como a tela funciona.",
+            ],
+            screen: "Roadmap",
+          },
+        ],
+      },
+    ],
+    rollback: "6d11c195",
+    technical: {
+      done: "O CHAT DO FESTOS. `festo-chat.tsx` substitui o `HubTicketOpenForm` no dock \u2014 o formul\u00e1rio vira segunda porta, atr\u00e1s de um bot\u00e3o, e continua sendo o \u00fanico caminho de anexo/grava\u00e7\u00e3o (o chat \u00e9 texto). \u26a0\ufe0f GRAVA\u00c7\u00c3O EM CURSO MANDA NO PAINEL: `shouldKeepTicketVisible` for\u00e7a o formul\u00e1rio, porque devolver para a conversa quem est\u00e1 gravando a tela jogaria a evid\u00eancia fora. || O C\u00c9REBRO \u00c9 SERVIDOR: `lib/hub-support/festo-agente.ts` sobre `runClaudeAgent`, tier `frontier` (Opus 5, o mesmo que a CAC\u00c1 usa para falar com cliente), teto de 4.000 tokens porque no Opus 5 o max_tokens cobre racioc\u00ednio MAIS resposta. System em dois blocos: o est\u00e1vel (identidade, regras, mapa dos m\u00f3dulos) carrega o cache_control; quem fala, em que tela e que horas s\u00e3o v\u00e3o no vol\u00e1til, para n\u00e3o invalidar o prefixo a cada atendimento. Duas ferramentas: `abrir_chamado` e `consultar_meus_chamados`. \u26a0\ufe0f A DECIS\u00c3O DE ABRIR N\u00c3O VEM DO NAVEGADOR \u2014 a rota `/api/hub/festo/conversa` reusa `authorizeHubItTicketRequest`, que \u00e9 a MESMA autoriza\u00e7\u00e3o do HelpDesk, e o chamado nasce em nome do usu\u00e1rio autenticado; uma segunda defini\u00e7\u00e3o de 'quem pode abrir chamado' divergiria da primeira em algum momento. A tela sobe sem query string (id de cliente e protocolo n\u00e3o v\u00e3o para o prompt). || O PROTOCOLO SAI PELA FERRAMENTA, n\u00e3o pelo texto do modelo: ler o n\u00famero da frase seria confiar num modelo para transportar identificador. `lib/hub-support/festo-chamado.ts` \u00e9 puro e testado (10 testes): valida categoria/prioridade contra as listas, prop\u00f5e a data de entrega por prioridade em UTC (o `toISOString` sobre data local devolve o dia anterior antes das 21h em Bras\u00edlia), cai na tela como m\u00f3dulo e completa leitura t\u00e9cnica curta demais para a trava de 10 caracteres do `normalizeCreateInput`. `registrarAtendimentoDoFesto` grava a transcri\u00e7\u00e3o como NOTA INTERNA (`visibleToRequester: false`): quem conversou j\u00e1 leu, e marcar como resposta faria o chamado nascer com uma 'resposta' que ningu\u00e9m escreveu. || NOME: 'Athena' saiu dos textos do formul\u00e1rio e do painel do chamado, e o agente da triagem passou a assinar como Festos. Identificadores, arquivos, classes CSS e a chave de localStorage continuam `festo-*` de prop\u00f3sito \u2014 renomear `panteon-festo-apresentado` faria o card de apresenta\u00e7\u00e3o reaparecer para quem j\u00e1 dispensou. 3.547 testes verdes, typecheck e lint limpos. \u26a0\ufe0f N\u00e3o verificado em tela: o hub exige login.",
+      motivation:
+        "Lucas, abrindo o Festos em produ\u00e7\u00e3o: 'n\u00e3o foi essa tela que pensei, pensei em um chat'. O formul\u00e1rio fazia o primeiro ato da pessoa ser abrir um chamado; a conversa faz o primeiro ato ser contar o que houve \u2014 e boa parte se resolve a\u00ed, sem fila.",
+    },
+    title: "O Festos passa a conversar",
+    type: "novidade",
+    version: "1.314.0",
+  },
+  {
     buildTag: "2026-09-11-o-festo-chega-e-a-temis-analisa",
     deployedAt: "2026-09-11T11:30:00-03:00",
     modules: [
@@ -44,10 +86,10 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         screens: [
           {
             items: [
-              "**O Festo chegou.** Ele \u00e9 o novo integrante do time e cuida do suporte dentro do Panteon: est\u00e1 em todas as telas, num bot\u00e3o flutuante que voc\u00ea pode ARRASTAR para onde quiser \u2014 ele lembra onde foi deixado.",
+              "**O Festos chegou.** Ele \u00e9 o novo integrante do time e cuida do suporte dentro do Panteon: est\u00e1 em todas as telas, num bot\u00e3o flutuante que voc\u00ea pode ARRASTAR para onde quiser \u2014 ele lembra onde foi deixado.",
               "**Chamado novo agora avisa quem atende.** Antes o chamado era gravado e ficava esperando algu\u00e9m abrir o quadro por acaso: os 30 parados tinham 27,9 dias de idade m\u00e9dia.",
               "**Quem cobra resposta deixa de falar sozinho.** O aviso ia para o respons\u00e1vel do chamado, e chamado sem resposta n\u00e3o tem respons\u00e1vel \u2014 a cobran\u00e7a caa no vazio. Agora chega.",
-              "**O Festo faz a primeira leitura do chamado sozinho**, assim que voc\u00ea abre: procura chamado parecido, confere se aquilo j\u00e1 foi corrigido numa vers\u00e3o recente e deixa o diagn\u00f3stico pronto para quem for atender.",
+              "**O Festos faz a primeira leitura do chamado sozinho**, assim que voc\u00ea abre: procura chamado parecido, confere se aquilo j\u00e1 foi corrigido numa vers\u00e3o recente e deixa o diagn\u00f3stico pronto para quem for atender.",
             ],
             screen: "Bot\u00e3o de suporte",
           },
@@ -96,7 +138,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "O time recebia cr\u00edtica pelo suporte, e a causa era t\u00e9cnica: chamado nascia sem avisar ningu\u00e9m e quem cobrava era ignorado em sil\u00eancio. Junto, a T\u00eamis passou a mostrar o que se analisa em cada tipo de trabalho.",
     },
-    title: "O Festo chega, e a T\u00eamis passa a analisar",
+    title: "O Festos chega, e a T\u00eamis passa a analisar",
     type: "novidade",
     version: "1.313.0",
   },

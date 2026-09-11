@@ -14,7 +14,7 @@
 // pelo que dizia, mas por quantas vezes. Aqui o espontâneo fala 2 a 3 vezes por dia — raro o
 // bastante para ser lido quando aparecer, que é o que importa no dia em que o recado for sério.
 
-/** Quanto tempo o Festo fica calado entre uma fala espontânea e outra. */
+/** Quanto tempo o Festos fica calado entre uma fala espontânea e outra. */
 export const DESCANSO_ENTRE_FALAS_MS = 3 * 60 * 60 * 1000;
 
 /**

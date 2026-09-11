@@ -68,7 +68,7 @@ export type ItemDoRoadmap = {
  */
 export const FRENTE_ATUAL = {
   desde: "2026-09-11",
-  itens: ["PAN-100", "PAN-104", "PAN-105", "PAN-002"] as readonly string[],
+  itens: ["PAN-106", "PAN-107", "PAN-104", "PAN-105"] as readonly string[],
   porque:
     "Lucas: 'bora construir isso hoje então, foco'. A plataforma de atendimento ao usuário interno " +
     "com agente de nível 1 — mas começando pelo que para o silêncio, que é a causa medida das " +
@@ -958,6 +958,48 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     porque: "107 dos 116 chamados fechados foram encerrados pela rotina automatica de 3 dias, com ator nulo e a mensagem 'Ticket encerrado' - 92% dos 'Finalizado' sao abandono com outro nome. Enquanto isso existir, o placar do agente vai parecer otimo e nao vai medir nada.",
     situacao: "bloqueado",
     titulo: "Trocar o robo de 3 dias por lembrete honesto",
+  },
+  {
+    id: "PAN-106",
+    evidencia:
+      "components/hub-support/festo-chat.tsx + app/api/hub/festo/conversa/route.ts + lib/hub-support/festo-agente.ts (11/09/2026). Lucas, vendo o formulario abrir: 'nao foi essa tela que pensei, pensei em um chat'.",
+    modulo: "Zeus",
+    porque:
+      "No formulario o primeiro ato da pessoa ja e abrir chamado: ela descreve o problema para uma fila e vai embora esperando. Na conversa o chamado vira consequencia, e nasce preenchido pelo agente, com a transcricao inteira gravada como nota interna para quem atender.",
+    situacao: "fazendo",
+    titulo: "Chat do Festos no lugar do formulario de chamado",
+  },
+  {
+    id: "PAN-107",
+    evidencia:
+      "lib/hub-support/festo-agente.ts: hoje as ferramentas sao abrir_chamado e consultar_meus_chamados. Lucas: 'o agente pode solicitar que ele faca o processo, caminho daquele erro e acompanhar esse olhando dentro do codigo, banco para entender o motivo do erro'.",
+    modulo: "Zeus",
+    porque:
+      "O Festos entende e registra, mas nao APURA: nao le o chamado parecido de outra pessoa, nao confere no banco se o dado existe, nao sabe se aquilo caiu numa versao recente. Enquanto isso, cada relato vira trabalho humano de reproducao, que e a parte cara do atendimento.",
+    situacao: "proximo",
+    titulo: "Ferramentas de leitura para o Festos apurar durante a conversa",
+  },
+  {
+    id: "PAN-108",
+    evidencia:
+      "O chat e texto; anexo, print, audio e gravacao de tela continuam so no formulario (hub-ticket-open-form.tsx). Lucas: 'capaz de reconhecer audio, imagem, arquivo prints, gravacao'.",
+    modulo: "Zeus",
+    porque:
+      "Print e gravacao sao o que transforma 'nao funciona' em relato reproduzivel, e hoje quem quer mandar evidencia precisa sair da conversa para o formulario. Audio ainda depende de transcricao, que e outra peca.",
+    situacao: "depois",
+    titulo: "Print, audio e gravacao dentro da conversa",
+  },
+  {
+    id: "PAN-109",
+    bloqueio:
+      "Nao existe catalogo de telas no repo: o Festos so poderia explicar o que estiver escrito em algum lugar.",
+    evidencia:
+      "Lucas, sobre o diagnostico do agente: 'gostei, principalmente a parte de explicar a tela, ficaria show se ele explicasse como funciona'.",
+    modulo: "Zeus",
+    porque:
+      "Boa parte do chamado nao e defeito, e alguem que nao sabe onde fica a acao. Um Festos que explica a tela resolve isso na hora e nao gera fila - mas so consegue explicar o que estiver descrito, e essa descricao ainda nao existe.",
+    situacao: "depois",
+    titulo: "Festos explicar como a tela funciona",
   },
 ];
 

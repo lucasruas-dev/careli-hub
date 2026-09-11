@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 // A APRESENTAÇÃO DO FESTO AO TIME.
 //
 // Lucas (11/09/2026): *"de hoje até terça, na tela principal do panteon, vamos colocar o festo
-// grande para que o time possa conhece-lo? Eu sou o novo colaborador da C2X, me chamo Festo, estou
+// grande para que o time possa conhece-lo? Eu sou o novo colaborador da C2X, me chamo Festos, estou
 // muito ansioso para trabalhar com você"* — e, sobre o tamanho: *"pensei ele em meia tela mesmo"*.
 //
 // ⚠️ ELE SE APRESENTA COMO GENTE NOVA NA EQUIPE, e o texto é na primeira pessoa de propósito. Um
@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 // pessoas leem "mais um robô no meu caminho". Alguém chegando e se apresentando produz a outra — e
 // a diferença aparece na primeira vez que alguém precisar pedir ajuda.
 //
-// ⚠️ MEIA TELA É O PONTO, não exagero. Esta é a única vez em que o Festo vai ser visto grande o
+// ⚠️ MEIA TELA É O PONTO, não exagero. Esta é a única vez em que o Festos vai ser visto grande o
 // bastante para alguém reparar no rosto dele; no canto da tela ele tem 56 pixels. Quem vir isto uma
 // vez reconhece o bonequinho miúdo depois — que é exatamente o que esta semana precisa entregar.
 //
@@ -30,7 +30,7 @@ const CHAVE = "panteon-festo-apresentado";
 /**
  * A semana de apresentação ainda está correndo?
  *
- * ⚠️ UMA DATA SÓ, NUM LUGAR SÓ. O Festo aparece em dois pontos durante essa semana — o cartão
+ * ⚠️ UMA DATA SÓ, NUM LUGAR SÓ. O Festos aparece em dois pontos durante essa semana — o cartão
  * grande da home e o tchauzinho no painel de Novidades — e as duas coisas precisam acabar no mesmo
  * dia. Com a data copiada nos dois arquivos, um deles fica para trás na primeira vez que alguém
  * mudar o prazo, e o suporte passa a acenar num canto e não no outro.
@@ -69,7 +69,7 @@ export function FestoApresentacao() {
   return (
     <section className="relative col-span-12 grid min-h-[52vh] place-items-center overflow-hidden rounded-2xl border border-line bg-raised px-6 py-10 sm:px-10">
       <button
-        aria-label="Já conheci o Festo, pode fechar"
+        aria-label="Já conheci o Festos, pode fechar"
         className="absolute right-3 top-3 grid size-9 place-items-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
         onClick={dispensar}
         type="button"
@@ -87,7 +87,7 @@ export function FestoApresentacao() {
             Novo no time
           </p>
           <h2 className="m-0 mt-1.5 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
-            Oi! Eu sou o Festo.
+            Oi! Eu sou o Festos.
           </h2>
 
           <div className="mt-4 grid gap-3 text-[15px] leading-relaxed text-ink-soft">
@@ -124,7 +124,7 @@ export function FestoApresentacao() {
               onClick={dispensar}
               type="button"
             >
-              Prazer, Festo!
+              Prazer, Festos!
             </button>
           </div>
         </div>
