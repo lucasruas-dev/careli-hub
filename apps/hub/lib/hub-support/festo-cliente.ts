@@ -63,6 +63,41 @@ export async function falarComOFesto({
 }
 
 /**
+ * Pede a voz do Festos para um texto e devolve o áudio pronto para tocar.
+ *
+ * ⚠️ `null` QUANDO ELE NÃO TEM VOZ (HTTP 503). Enquanto o Lucas não escolher a voz na ElevenLabs, a
+ * rota recusa de propósito — e quem chama esconde o botão em vez de mostrar um erro. Um botão de
+ * ouvir que sempre falha é pior do que nenhum botão.
+ *
+ * ⚠️ O `Audio` NASCE AQUI E NÃO TOCA SOZINHO. Quem chama decide o momento do `play()`, porque o
+ * navegador só permite tocar em resposta a um gesto da pessoa — e o gesto pertence à tela, não a
+ * esta função.
+ */
+export async function ouvirOFestos(texto: string): Promise<HTMLAudioElement | null> {
+  const resposta = await fetch("/api/hub/festo/voz", {
+    body: JSON.stringify({ texto }),
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${await tokenDaSessao()}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!resposta.ok) {
+    return null;
+  }
+
+  const audio = new Audio(URL.createObjectURL(await resposta.blob()));
+
+  // A URL do blob vive enquanto o áudio existir; soltar depois de tocar evita segurar o arquivo na
+  // memória da aba durante uma conversa inteira.
+  audio.addEventListener("ended", () => URL.revokeObjectURL(audio.src), { once: true });
+
+  return audio;
+}
+
+/**
  * ⚠️ O TOKEN VEM DA SESSÃO VIVA, e não de um valor guardado. O Supabase renova o access token a
  * cada hora; uma cópia lida uma vez e reusada durante a conversa começaria a devolver 401 no meio
  * do atendimento — e o Festos pareceria ter caído justamente nas conversas longas.
