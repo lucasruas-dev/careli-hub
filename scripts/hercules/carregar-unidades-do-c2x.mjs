@@ -47,6 +47,23 @@ const GRAVAR = process.argv.includes("--gravar");
 // matrícula, extensos nem `segmento_id`. É o modo para corrigir a régua de vendido/negociação
 // (02/09/2026) sem passar por cima do que a tela ou a segmentação já ajustaram.
 const SO_SITUACAO = process.argv.includes("--so-situacao");
+// ⚠️ OS EMPREENDIMENTOS DE ENSAIO NAO ENTRAM NO PANTEON. Lucas (11/09/2026): *"esse sdt, tsc,
+// tudo que e teste nao precisa existir dentro do panteon"*.
+//
+// ⚠️ E A LISTA E MEDIDA, NAO SUPOSTA. SDT tem 16 propostas e TSC tem 2, NENHUMA faturada, e o
+// cliente das duas e a propria Nivea — assinatura de ensaio. Ja o ADT, que aparecia no mesmo aviso
+// de "empreendimento sem cadastro no Panteon", e REAL: 31 propostas, DUAS FATURADAS, clientes de
+// verdade, movimento de 14/12/2025 a 16/07/2026. Tratar os tres como iguais teria apagado um
+// empreendimento com venda faturada.
+//
+// O ZZ TESTE (TST, 9001) nao precisa entrar aqui: ele nasceu no Panteon e nao existe no legado.
+const DE_ENSAIO = ["SDT", "TSC"];
+const iExceto = process.argv.indexOf("--exceto");
+const EXCETO = new Set(
+  iExceto > 0
+    ? (process.argv[iExceto + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean)
+    : DE_ENSAIO,
+);
 const iEmp = process.argv.indexOf("--empreendimentos");
 const FILTRO = iEmp > 0 ? (process.argv[iEmp + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean) : null;
 
@@ -103,7 +120,13 @@ const [linhas] = await c.query(`
    order by e.code, u.name`);
 await c.end();
 
-const alvo = FILTRO ? linhas.filter((l) => FILTRO.includes(String(l.code))) : linhas;
+const alvo = (FILTRO ? linhas.filter((l) => FILTRO.includes(String(l.code))) : linhas).filter(
+  (l) => !EXCETO.has(String(l.code)),
+);
+if (EXCETO.size > 0) {
+  console.log(`  fora da carga (ensaio): ${[...EXCETO].join(", ")}
+`);
+}
 
 const registros = alvo.map((u) => ({
   area: numero(u.area),

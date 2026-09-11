@@ -42,6 +42,21 @@ const env = Object.fromEntries(
     }),
 );
 
+// ⚠️ OS EMPREENDIMENTOS DE ENSAIO NAO ENTRAM NO PANTEON. Lucas (11/09/2026): *"esse sdt, tsc,
+// tudo que e teste nao precisa existir dentro do panteon"*.
+//
+// ⚠️ E A LISTA E MEDIDA, NAO SUPOSTA. SDT tem 16 propostas e TSC tem 2, NENHUMA faturada, e o
+// cliente das duas e a propria Nivea — assinatura de ensaio. Ja o ADT, que aparecia no mesmo aviso
+// de "empreendimento sem cadastro no Panteon", e REAL: 31 propostas, DUAS FATURADAS, clientes de
+// verdade, de 14/12/2025 a 16/07/2026. Tratar os tres como iguais teria apagado venda faturada.
+const DE_ENSAIO = ["SDT", "TSC"];
+const iExceto = process.argv.indexOf("--exceto");
+const EXCETO = new Set(
+  iExceto > 0
+    ? (process.argv[iExceto + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean)
+    : DE_ENSAIO,
+);
+
 const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY;
 const GRAVAR = process.argv.includes("--gravar");
@@ -202,7 +217,18 @@ for (const h of historicos) {
 
 const semUnidade = [];
 const semEmpreendimento = new Set();
-const propostas = linhas.map((l) => {
+// O corte do ensaio acontece ANTES da montagem: assim os relatorios de contagem ja saem com
+// o numero que vai de fato para o Panteon, em vez de prometer um total que o insert nao cumpre.
+const linhasUteis = linhas.filter(
+  (l) => !EXCETO.has(String(l.emp_code ?? "").toUpperCase()),
+);
+if (EXCETO.size > 0) {
+  const fora = linhas.length - linhasUteis.length;
+  console.log(`  fora da carga (ensaio ${[...EXCETO].join(", ")}): ${fora} propostas
+`);
+}
+
+const propostas = linhasUteis.map((l) => {
   const unidade = l.unidade_c2x ? unidadePorC2x.get(Number(l.unidade_c2x)) : null;
   if (!unidade && l.unidade_c2x) semUnidade.push(l.id);
 
