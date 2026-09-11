@@ -36,6 +36,71 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-11-o-festo-chega-e-a-temis-analisa",
+    deployedAt: "2026-09-11T11:30:00-03:00",
+    modules: [
+      {
+        module: "Suporte",
+        screens: [
+          {
+            items: [
+              "**O Festo chegou.** Ele \u00e9 o novo integrante do time e cuida do suporte dentro do Panteon: est\u00e1 em todas as telas, num bot\u00e3o flutuante que voc\u00ea pode ARRASTAR para onde quiser \u2014 ele lembra onde foi deixado.",
+              "**Chamado novo agora avisa quem atende.** Antes o chamado era gravado e ficava esperando algu\u00e9m abrir o quadro por acaso: os 30 parados tinham 27,9 dias de idade m\u00e9dia.",
+              "**Quem cobra resposta deixa de falar sozinho.** O aviso ia para o respons\u00e1vel do chamado, e chamado sem resposta n\u00e3o tem respons\u00e1vel \u2014 a cobran\u00e7a caa no vazio. Agora chega.",
+              "**O Festo faz a primeira leitura do chamado sozinho**, assim que voc\u00ea abre: procura chamado parecido, confere se aquilo j\u00e1 foi corrigido numa vers\u00e3o recente e deixa o diagn\u00f3stico pronto para quem for atender.",
+            ],
+            screen: "Bot\u00e3o de suporte",
+          },
+        ],
+      },
+      {
+        module: "Temis",
+        screens: [
+          {
+            items: [
+              "**A tela de an\u00e1lise diz o que \u00e9 o trabalho.** O tipo (cancelamento, distrato, cess\u00e3o, contrato) virou etiqueta ao lado do nome, e o PEDIDO que abriu o card \u00e9 o primeiro bloco: motivo, contrato, o que o sistema apurou sobre assinatura e pagamento.",
+              "**A proposta comercial vem inteira**, com valor, entrada, parcelas e o fluxo de pagamento \u2014 e aponta DESCONTO em vermelho quando houve.",
+              "**O contrato pode ser alterado \u00e0 m\u00e3o antes de fechar**, direto na tela, com a altera\u00e7\u00e3o salva e identificada. Se o cadastro mudar depois da sua edi\u00e7\u00e3o, a tela avisa.",
+              "**O card para de andar sozinho para a coluna errada**: uma venda e o pedido de cancelamento dela eram movidos juntos quando o contrato ia assinar.",
+            ],
+            screen: "Tela de trabalho",
+          },
+        ],
+      },
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**A proposta guarda o pre\u00e7o de tabela do dia e o ajuste combinado.** Sem isso n\u00e3o havia como provar que houve desconto \u2014 e a T\u00eamis passa a apontar.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "**Aba Roadmap**: o que j\u00e1 foi entregue, o que est\u00e1 em curso, o que vem a seguir e o que est\u00e1 travado esperando decis\u00e3o \u2014 92 itens, com a frente atual em destaque.",
+            ],
+            screen: "Roadmap",
+          },
+        ],
+      },
+    ],
+    rollback: "5469dbb0",
+    technical: {
+      done: "O FESTO. `hub-support-dock.tsx` deixou de ser \u00edcone fixo: rob\u00f4 em SVG (`festo-robo.tsx`) com casco que troca pelo tema (grafite no claro, claro no escuro, via tokens uix) porque, sem o c\u00edrculo de fundo, o bot\u00e3o perdeu a garantia de contraste. Arrast\u00e1vel com posi\u00e7\u00e3o em localStorage, folga de 4px separando clique de arraste, re-encaixe no `resize` e painel que abre para o lado com espa\u00e7o. Fala por bal\u00e3o a cada 3h com sorteio SEM repeti\u00e7\u00e3o (`festo-conversa.ts`), e traje por data (`festo-traje.ts`: bandeira na semana da p\u00e1tria, gorro no Natal). Tudo para com `prefers-reduced-motion`. \u26a0\ufe0f O BAL\u00c3O \u00c9 RECADO CURTO; atendimento vai para a conversa, onde fica registrado. || HELPDESK \u2014 A CADEIA DO SIL\u00caNCIO, medida: `createHubItTicket` gravava e ia embora sem notificar, e a notifica\u00e7\u00e3o do coment\u00e1rio do usu\u00e1rio ia para `assigned_to_user_id`, s\u00f3 preenchido na PRIMEIRA resposta de um adm \u2014 com os 30 parados todos sem dono, a cobran\u00e7a era descartada em sil\u00eancio. A pessoa era ignorada duas vezes, por constru\u00e7\u00e3o. Agora notifica na cria\u00e7\u00e3o e usa quem ATENDE como rede (medido: 114 dos 146 chamados atendidos pelo Lucas, nenhum pela Nivea). A triagem, que existia e s\u00f3 rodava por clique, dispara na cria\u00e7\u00e3o via `after()`, grava NOTA INTERNA e nunca fecha chamado. \u26a0\ufe0f ANTES DISSO, o vazamento que ainda n\u00e3o tinha acontecido: `hydrateTicketRows` busca eventos com client service-role e N\u00c3O filtrava `visible_to_requester` \u2014 nada vazava s\u00f3 porque nenhuma insers\u00e3o marcava evento como interno, e a triagem cria a primeira. Filtro entrou ANTES, com padr\u00e3o `false`. || T\u00caMIS: `analise-do-trabalho.ts` + `comercial-da-analise.ts` leem o cronograma CONGELADO em `condicoes`, n\u00e3o as colunas de plano \u2014 medido: `plano_correcao` nulo numa proposta com 10 faixas de reajuste (1.012,50 \u2192 1.954,32). Desconto s\u00f3 aparece com ajuste REGISTRADO (0151), porque comparar `valor` com `preco_tabela` \u00e9 tautologia: a carga do C2X escreveu o mesmo n\u00famero nos dois lados em 4.856 de 4.863. Contrato edit\u00e1vel na 0152, faxinado no servidor, com sha-256 da base para avisar quando o cadastro mudar depois. `moverCardDaTemis` passou a perguntar a `estagiosDoTipo` antes de mover \u2014 uma proposta pode ter DOIS cards \u2014 e `concluirAssinaturaDoCard` deixou de usar `maybeSingle`, que com duas linhas devolve erro e fazia a fun\u00e7\u00e3o sair calada. || ROADMAP: `lib/roadmap/roadmap.ts`, molde do changelog, com `FRENTE_ATUAL`. 3.506 testes verdes, typecheck e lint limpos. \u26a0\ufe0f N\u00e3o verificado em tela: o hub exige login.",
+      motivation:
+        "O time recebia cr\u00edtica pelo suporte, e a causa era t\u00e9cnica: chamado nascia sem avisar ningu\u00e9m e quem cobrava era ignorado em sil\u00eancio. Junto, a T\u00eamis passou a mostrar o que se analisa em cada tipo de trabalho.",
+    },
+    title: "O Festo chega, e a T\u00eamis passa a analisar",
+    type: "novidade",
+    version: "1.313.0",
+  },
+  {
     buildTag: "2026-09-11-historico-busca-o-cliente-no-banco",
     deployedAt: "2026-09-11T11:20:00-03:00",
     modules: [
