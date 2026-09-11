@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { lerEventoDoWebhook } from "@/lib/assinatura/clicksign/webhook";
-import type { EstagioDoTrabalho } from "@/lib/temis/trabalhos";
+import type { EstagioDoTrabalho, TipoDeTrabalho } from "@/lib/temis/trabalhos";
+
+import { estagiosDoTipo } from "@/lib/temis/trabalhos";
 
 import type { EventoDaClicksign } from "./clicksign/webhook";
 import { ehTerminal, type EstadoDaAssinatura } from "./tipos";
@@ -162,16 +164,69 @@ export async function moverCardDaTemis(
   propostaId: string,
   estagio: EstagioDoTrabalho,
 ): Promise<void> {
+  const alvos = await cardsQueAceitam(sb, propostaId, estagio);
+  if (alvos.length === 0) return;
+
   const { error } = await sb
     .from("temis_trabalhos")
     .update({ atualizado_em: new Date().toISOString(), estagio, estagio_desde: new Date().toISOString() })
-    .eq("proposta_id", propostaId)
-    // ⚠️ NÃO MEXE EM CARD QUE JÁ SAIU DO FLUXO. `faturado` é o fim; `indeferido` é uma decisão
-    // humana, e um webhook atrasado não pode desfazê-la.
-    .neq("estagio", "faturado")
-    .neq("estagio", "indeferido");
+    .in("id", alvos);
 
   if (error) console.error("[temis][card] falha ao mover o card da proposta", error);
+}
+
+/**
+ * Quais cards desta proposta podem ir para este estágio.
+ *
+ * ⚠️ UMA PROPOSTA PODE TER MAIS DE UM CARD, e foi assim que o fluxo quebrou. Medido em
+ * 10/09/2026: a proposta do Henrique (Q01 L05) tem DOIS trabalhos abertos — a venda, de 06/09, e
+ * o pedido de cancelamento dela, de 08/09. Quando o envelope do CONTRATO foi enviado, o update
+ * casava só por `proposta_id` e empurrou os DOIS para "Em assinatura" — inclusive o
+ * cancelamento, que pela régua da casa nem passa por lá (`EXIGE_ASSINATURA.cancelamento` é
+ * `false`). O card ficou num estágio que não existe no caminho dele, e a faixa da tela de
+ * trabalho não tinha como marcar etapa nenhuma.
+ *
+ * ⚠️ A RÉGUA É O CAMINHO DO TIPO, e não uma lista de exceções. `estagiosDoTipo` já é a fonte
+ * única do que cada serviço percorre — quem move passa a perguntar a ela. Assim, o dia em que o
+ * cancelamento passar a assinar, muda uma linha em `trabalhos.ts` e este arquivo obedece.
+ *
+ * ⚠️ `faturado` E `indeferido` CONTINUAM DE FORA. `faturado` é o fim; `indeferido` é decisão
+ * humana, e um webhook atrasado não pode desfazê-la.
+ */
+async function cardsQueAceitam(
+  sb: SupabaseClient,
+  propostaId: string,
+  destino: EstagioDoTrabalho,
+): Promise<string[]> {
+  const { data, error } = await sb
+    .from("temis_trabalhos")
+    .select("id, tipo, estagio")
+    .eq("proposta_id", propostaId);
+
+  if (error) {
+    console.error("[temis][card] falha ao ler os cards da proposta", error.message);
+    return [];
+  }
+
+  const cards = (data ?? []) as { estagio: string; id: string; tipo: TipoDeTrabalho }[];
+  const podem = cards.filter(
+    (c) =>
+      c.estagio !== "faturado" &&
+      c.estagio !== "indeferido" &&
+      estagiosDoTipo(c.tipo).includes(destino),
+  );
+
+  // ⚠️ O CARD RECUSADO VAI PARA O LOG, e não some calado: "o envelope andou e o card não" é
+  // exatamente o tipo de divergência que ninguém descobre olhando o board.
+  for (const c of cards) {
+    if (!podem.includes(c) && c.estagio !== "faturado" && c.estagio !== "indeferido") {
+      console.warn(
+        `[temis][card] card ${c.id} (${c.tipo}) não vai para "${destino}": fora do caminho do tipo.`,
+      );
+    }
+  }
+
+  return podem.map((c) => c.id);
 }
 
 /**
@@ -194,11 +249,26 @@ export async function concluirAssinaturaDoCard(
   sb: SupabaseClient,
   propostaId: string,
 ): Promise<void> {
-  const { data: card } = await sb
+  // ⚠️ AQUI CABIA UM `maybeSingle`, E ELE FALHAVA CALADO. Uma proposta pode ter dois cards (a
+  // venda e o cancelamento dela — medido na proposta do Henrique em 10/09/2026), e o PostgREST
+  // responde ERRO a um `maybeSingle` que encontra duas linhas: `card` vinha nulo, a função
+  // voltava sem fazer nada e o contrato ASSINADO ficava parado em "Em assinatura" para sempre.
+  // Falha por silêncio no único ponto em que o board deveria andar sozinho.
+  const { data, error: erroDaLeitura } = await sb
     .from("temis_trabalhos")
-    .select("id, tipo")
-    .eq("proposta_id", propostaId)
-    .maybeSingle<{ id: string; tipo: string }>();
+    .select("id, tipo, estagio")
+    .eq("proposta_id", propostaId);
+
+  if (erroDaLeitura) {
+    console.error("[temis][card] falha ao ler os cards da proposta", erroDaLeitura.message);
+    return;
+  }
+
+  const cards = (data ?? []) as { estagio: string; id: string; tipo: TipoDeTrabalho }[];
+
+  // ⚠️ QUEM CONCLUI É QUEM ESTAVA ASSINANDO. Com dois cards na mesma proposta, mover os dois
+  // faria o cancelamento "concluir" por causa da assinatura do contrato da venda.
+  const card = cards.find((c) => c.estagio === "assinatura");
 
   // Sem card não há o que mover — e isso não é erro: o envelope pode ter nascido fora do quadro.
   if (!card) return;

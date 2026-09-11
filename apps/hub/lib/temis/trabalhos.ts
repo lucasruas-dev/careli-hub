@@ -130,6 +130,37 @@ export function estagiosDoTipo(tipo: TipoDeTrabalho): EstagioDoTrabalho[] {
     : ["analise", "contrato", "faturado"];
 }
 
+/**
+ * O caminho que a FAIXA do card mostra — o do tipo, mais o estágio onde o card realmente está.
+ *
+ * ⚠️ A FAIXA NÃO PODE CONTRADIZER O CARD. `estagiosDoTipo` responde "por onde este serviço
+ * passa"; o card responde "onde eu estou". Quando os dois discordam, desenhar só o primeiro apaga a
+ * faixa inteira: nenhuma etapa fica marcada como atual, e a tela deixa de dizer o que é a única
+ * coisa que ela sempre deveria dizer.
+ *
+ * ⚠️ E ISSO ACONTECEU DE VERDADE, não é defesa teórica: em 10/09/2026 havia um cancelamento
+ * parado em "Em assinatura" — estágio que o cancelamento não percorre. A causa era o envelope
+ * mover todos os cards da proposta (corrigido em `lib/assinatura/estado-db.ts`), mas o card errado
+ * já estava gravado, e o histórico não se reescreve sozinho.
+ *
+ * ⚠️ O INTRUSO ENTRA NA POSIÇÃO CANÔNICA (a ordem de `ESTAGIOS`), e não no fim. Jogado no fim,
+ * "Em assinatura" apareceria depois de "Concluído" e a faixa mentiria sobre a direção do caminho.
+ */
+export function caminhoDoCard(
+  tipo: TipoDeTrabalho,
+  estagio: EstagioDoTrabalho,
+): EstagioDoTrabalho[] {
+  const caminho = estagiosDoTipo(tipo);
+  if (estagio === "indeferido" || caminho.includes(estagio)) return caminho;
+
+  const ordem = ESTAGIOS.map((e) => e.id);
+  const onde = ordem.indexOf(estagio);
+  if (onde < 0) return caminho;
+
+  const antes = caminho.filter((e) => ordem.indexOf(e) < onde);
+  return [...antes, estagio, ...caminho.slice(antes.length)];
+}
+
 export type Atividade = {
   /** Quantos dias úteis depois de o card ENTRAR no estágio. */
   prazoDias: number;
