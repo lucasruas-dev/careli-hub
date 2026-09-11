@@ -6,6 +6,8 @@ import {
   autorizarLeituraDeContrato,
 } from "@/lib/temis/autorizacao";
 import { montarContratoDaProposta } from "@/lib/temis/contrato-da-proposta";
+import { variaveisAindaEmBranco } from "@/lib/temis/contrato-editado";
+import { lerEdicao } from "@/lib/temis/contrato-editado-db";
 import { podeGerarContrato } from "@/lib/temis/contrato-guardado";
 import {
   abrirContratoGuardado,
@@ -78,19 +80,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ erro: montado.erro }, { status: montado.status });
   }
 
-  // ⚠️ A CONFERÊNCIA NÃO PODE SUMIR NA HORA DE IMPRIMIR. Ver a decisão 1 em `contrato-guardado.ts`:
-  // um contrato com `[cpf_cliente]` impresso não vira arquivo. A lista volta para a tela.
-  const veredito = podeGerarContrato(montado.semValor);
+  // ⚠️ O QUE VIRA PAPEL É O TEXTO ALTERADO À MÃO, QUANDO ELE EXISTE (migration 0152). A regra
+  // escrita acima — "o HTML nasce no servidor, da minuta publicada" — continua valendo: o texto
+  // editado NÃO viaja neste pedido. Ele foi gravado antes, por `/api/temis/contrato/edicao`, numa
+  // linha com dono, hora e a impressão da base, e já passou pela faxina do servidor. O que esta
+  // rota aceita continua sendo só um id de proposta.
+  //
+  // ⚠️ E A EDIÇÃO SOBREVIVE À GERAÇÃO. A v2 deste contrato parte do mesmo texto ajustado: apagar
+  // a edição ao emitir faria a cláusula negociada desaparecer na primeira vez que alguém
+  // corrigisse uma vírgula no cadastro e gerasse de novo.
+  const edicao = await lerEdicao(sb, propostaId);
+  const html = edicao?.html ?? montado.html;
+
+  // ⚠️ A TRAVA MEDE O PAPEL, NÃO A MONTAGEM. Ver a decisão 1 em `contrato-guardado.ts`: um
+  // contrato com `[cpf_cliente]` impresso não vira arquivo — mas quem digitou o CPF por cima do
+  // colchete preencheu o contrato, e recusar mesmo assim mandaria a pessoa consertar o cadastro
+  // para poder imprimir um papel que já está certo.
+  const semValor = edicao
+    ? variaveisAindaEmBranco(html, montado.semValor)
+    : montado.semValor;
+  const veredito = podeGerarContrato(semValor);
   if (!veredito.ok) {
     return NextResponse.json(
-      { avisos: montado.avisos, erro: veredito.erro, semValor: montado.semValor },
+      { avisos: montado.avisos, erro: veredito.erro, semValor },
       { status: 409 },
     );
   }
 
   let pdf: Uint8Array;
   try {
-    pdf = await gerarPdfDoHtml(montado.html);
+    pdf = await gerarPdfDoHtml(html);
   } catch (e) {
     // A mensagem real vai para o log: o erro do Chromium cita caminho de binário e flag de linha de
     // comando — infraestrutura, que não ajuda quem está emitindo um contrato e não deve vazar.
@@ -102,6 +121,8 @@ export async function POST(request: Request) {
   }
 
   const guardado = await guardarContrato(sb, {
+    // Quem lê a gaveta precisa saber que este PDF não é o texto puro da minuta.
+    alteradoAMaoPor: edicao ? (edicao.editadoPorNome ?? "alguém da equipe") : null,
     geradoPor: autorizacao.userId,
     geradoPorNome: await nomeDoUsuario(sb, autorizacao.userId),
     identidade: montado.identidade,

@@ -296,25 +296,52 @@ export const TEMA_CSS = `
   }
 `;
 
+/**
+ * AS CORES DO PORTAL — e o que elas viram FORA dele.
+ *
+ * ⚠️ CADA TOKEN TEM FALLBACK DO PANTEON, e isso não é zelo: sem ele, uma peça do Hércules usada
+ * fora da casca `.inc` fica INVISÍVEL. As variáveis `--inc-*` só nascem no `TEMA_CSS` acima, sob os
+ * seletores `.inc` e `:root:has(.inc)`, e esse `<style>` só é montado pelo `PortalIncorporador` e
+ * pelo Espelho público. Em qualquer outro lugar `var(--inc-card)` fica SEM VALOR — e a regra do
+ * CSS para isso não é "ignora a linha": a declaração vira inválida em tempo de cálculo e a
+ * propriedade cai no valor INICIAL. `background` vira `transparent`, `border` perde o estilo e vira
+ * `none`, `box-shadow` vira `none`.
+ *
+ * ⚠️ FOI EXATAMENTE ISSO QUE O LUCAS VIU em 10/09/2026, abrindo a prévia do contrato dentro da
+ * Têmis: *"esse carregando está ruim"*. O modal de 900px estava lá, com o texto e o botão de fechar
+ * no lugar — só que sem fundo, sem borda e sem sombra, com o quadro aparecendo por baixo das
+ * letras. Não era um cartao mal desenhado: não havia cartão nenhum pintado.
+ *
+ * ⚠️ O `--inc-*` CONTINUA VENCENDO ONDE EXISTE, então o portal não muda um pixel. O fallback só
+ * dispara fora da casca, e aí a peça passa a seguir o claro/escuro do hub — os tokens `--uix-*` do
+ * ThemeProvider viram sozinhos nos dois temas.
+ *
+ * ⚠️ E O `gold` NÃO CAI NO BRAND. `--uix-color-brand-primary` é `#a07c3b` — o MESMO dourado —, e
+ * o Lucas já recusou dourado na Têmis duas vezes (*"não gostei desse botão dourado não"* · *"pode
+ * ser branco"*). Fora do portal ele vira grafite/branco (`surface-inverse`), que é o par que a
+ * própria Têmis já usa na ação principal (`coluna-fixa.tsx`).
+ */
 export const T = {
-  border: "var(--inc-border)",
-  btnBg: "var(--inc-btn-bg)",
-  btnFg: "var(--inc-btn-fg)",
-  card: "var(--inc-card)",
-  danger: "var(--inc-danger)",
-  dangerBg: "var(--inc-danger-bg)",
-  gold: "var(--inc-gold)",
-  muted: "var(--inc-muted)",
+  border: "var(--inc-border, var(--uix-border-subtle, #dce2ea))",
+  btnBg: "var(--inc-btn-bg, var(--uix-surface-inverse, #121722))",
+  btnFg: "var(--inc-btn-fg, var(--uix-surface-base, #ffffff))",
+  card: "var(--inc-card, var(--uix-surface-base, #ffffff))",
+  danger: "var(--inc-danger, var(--uix-color-danger, #c24135))",
+  // ⚠️ OS FUNDOS DE ESTADO LEVAM LITERAL TRANSLÚCIDO: o uix não tem par para eles, e um hex
+  // claro fixo (`#fdf3f2`) ficaria leitoso no tema escuro. Translúcido serve aos dois.
+  dangerBg: "var(--inc-danger-bg, rgb(194 65 53 / .12))",
+  gold: "var(--inc-gold, var(--uix-surface-inverse, #121722))",
+  muted: "var(--inc-muted, var(--uix-text-muted, #667085))",
   // O verde de ESTADO (adimplência, "em dia"). Nasceu hardcoded no Chip da TelaCrm; virou token
   // para a próxima tela que precisar do mesmo verde não duplicar o hex. É o par do `danger`.
-  ok: "var(--inc-ok)",
-  okBg: "var(--inc-ok-bg)",
-  page: "var(--inc-page)",
-  soft: "var(--inc-soft)",
+  ok: "var(--inc-ok, var(--uix-color-success, #14804a))",
+  okBg: "var(--inc-ok-bg, rgb(20 128 74 / .12))",
+  page: "var(--inc-page, var(--uix-surface-canvas, #f7f8fa))",
+  soft: "var(--inc-soft, var(--uix-surface-subtle, #eef1f4))",
   // A sombra de popover/modal, mais funda no tema escuro (sombra clara some no fundo preto).
-  sombra: "var(--inc-sombra)",
-  sub: "var(--inc-sub)",
-  text: "var(--inc-text)",
+  sombra: "var(--inc-sombra, var(--uix-shadow-md, 0 12px 32px rgb(18 23 34 / .18)))",
+  sub: "var(--inc-sub, var(--uix-text-secondary, #485466))",
+  text: "var(--inc-text, var(--uix-text-primary, #121722))",
 } as const;
 
 // ── A ESCOLHA DO TEMA, EM REACT ─────────────────────────────────────────────

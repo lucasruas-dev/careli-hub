@@ -145,6 +145,16 @@ export async function contratosDaProposta(
 // ── GUARDAR ─────────────────────────────────────────────────────────────────
 
 export type PedidoDeGuarda = {
+  /**
+   * O nome de quem alterou o contrato à mão antes desta geração, quando houve alteração.
+   *
+   * ⚠️ ISTO VAI PARA A OBSERVAÇÃO, e não é detalhe: os dois leitores da gaveta (a aba Documentos
+   * da venda e a ficha do cliente no Apolo) mostram o PDF com selo de "gerado pelo sistema". Um
+   * contrato com cláusula reescrita à mão exibido com o mesmo selo, sem uma palavra, faz o selo
+   * prometer mais do que ele sabe — e a pergunta "este texto é o da minuta?" fica sem resposta
+   * justamente para quem não estava na sala.
+   */
+  alteradoAMaoPor?: null | string;
   /** Empreendimento, unidade e titular — o nome do arquivo sai daqui. Vem de `ContratoMontado`. */
   identidade: IdentidadeDoContrato;
   geradoPor?: null | string;
@@ -231,7 +241,9 @@ export async function guardarContrato(
       nome,
       // ⚠️ A OBSERVAÇÃO DIZ DE ONDE O PAPEL VEIO. Ela é o único campo livre que os dois leitores já
       // mostram, e sem ela um PDF na aba não se distingue de um que alguém subiu à mão.
-      observacao: `Gerado pelo Panteon a partir da minuta publicada (versão ${versao}).`,
+      observacao: pedido.alteradoAMaoPor
+        ? `Gerado pelo Panteon (versão ${versao}) a partir da minuta publicada COM ALTERAÇÃO MANUAL de ${pedido.alteradoAMaoPor}.`
+        : `Gerado pelo Panteon a partir da minuta publicada (versão ${versao}).`,
       proposta_id: pedido.propostaId,
       protocolo_numero: proposta.protocolo_numero,
       tamanho_bytes: pedido.pdf.byteLength,
