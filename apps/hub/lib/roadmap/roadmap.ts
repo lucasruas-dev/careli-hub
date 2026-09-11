@@ -68,14 +68,14 @@ export type ItemDoRoadmap = {
  */
 export const FRENTE_ATUAL = {
   desde: "2026-09-11",
-  /** Os ids que esta frente ataca. Vazio é legítimo: a frente pode nascer antes dos itens. */
-  itens: ["PAN-002"] as readonly string[],
+  itens: ["PAN-100", "PAN-104", "PAN-105", "PAN-002"] as readonly string[],
   porque:
-    "O trabalho dos dias 10 e 11 está commitado e fora do ar: a tela de análise, o contrato " +
-    "editável, o congelamento do desconto e o conserto do card que não andava. Enquanto não sobe, " +
-    "o operador continua vendo a tela antiga — e a migration 0152 já está aplicada em produção, " +
-    "o que significa banco à frente do código.",
-  titulo: "Subir a Têmis para produção",
+    "Lucas: 'bora construir isso hoje então, foco'. A plataforma de atendimento ao usuário interno " +
+    "com agente de nível 1 — mas começando pelo que para o silêncio, que é a causa medida das " +
+    "críticas: o chamado nascia sem avisar ninguém, e a cobrança de quem cobrava era descartada " +
+    "porque o destinatário era o dono, e os 30 parados não têm dono. O agente com ferramentas vem " +
+    "depois, com a fila destravada e com métrica que não mente.",
+  titulo: "Plataforma de atendimento ao usuário interno",
 } as const;
 
 export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
@@ -846,6 +846,118 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     porque: "O documento passou a ter PRECEDÊNCIA sobre o que foi deduzido do código: onde os dois divergirem, a divergência é defeito a corrigir, não dúvida. É a base de todo este roadmap — empreendimentos, legado, financeiro e cadeia comercial.",
     situacao: "entregue",
     titulo: "Escrever o domínio da Careli com as 58 respostas do Lucas",
+  },
+  {
+    id: "PAN-093",
+    evidencia: "Lucas (11/09/2026): 'uma plataforma feita com superagentes para realizar atendimento ao usuario'; e a dor: 'nao estou dando conta de pensar e desenvolver os novos modulos, melhorias e atender a demanda interna nossa (...) estou recebendo muitas criticas'. Medido no mesmo dia: 30 tickets parados em hub_it_tickets, 27,9 dias de idade media, o mais antigo ha 66 dias.",
+    modulo: "Zeus",
+    porque: "Hoje o usuario preenche um formulario e espera. A plataforma troca isso por uma conversa que resolve na hora ou encaminha sabendo para onde - o ticket vira subproduto do atendimento, e nao o produto. Lucas corrigiu o enquadramento: 'nao queria um canal de abertura de ticket, queria uma plataforma de atendimento ao usuario'.",
+    situacao: "proximo",
+    titulo: "Chat de atendimento no hub, com agente de nivel 1",
+  },
+  {
+    id: "PAN-094",
+    evidencia: "Medido em 11/09/2026: dos 30 em status 'novo', 15 erro, 12 melhoria, 3 bug. hub_it_tickets ja tem a coluna category com esses valores.",
+    modulo: "Zeus",
+    porque: "Dos 30 chamados parados, 12 sao MELHORIA - nao precisam de conserto nenhum, precisam entrar no backlog e a pessoa saber que foi ouvida. Essa fatia sozinha e 40% da fila, e o agente a resolve so encaminhando direito.",
+    situacao: "proximo",
+    titulo: "Triagem automatica: duvida, melhoria ou erro",
+  },
+  {
+    id: "PAN-095",
+    evidencia: "apps/hub/app/api/squadops/copilot/route.ts (379 linhas) usa completeWithClaude e loadHubCodeContext; hoje autorizado so para admin do Zeus.",
+    modulo: "Zeus",
+    porque: "Lucas quer o agente 'conhecendo todos os modulos, tendo acesso ao codigo main, para que ele possa fazer um diagnostico preciso'. A peca existe: o copiloto do Zeus ja monta contexto de codigo e fala com o Claude - falta apontar para o usuario em vez de para o admin.",
+    situacao: "proximo",
+    titulo: "Diagnostico com leitura do codigo, no molde do copiloto do Zeus",
+  },
+  {
+    id: "PAN-096",
+    evidencia: "memory/reference_iris_vinculo_nome_vazamento.md (marcado CORRIGIR); e a fala do Lucas pedindo que o agente 'possa olhar o comportamento via banco para identificar o erro'.",
+    modulo: "Zeus",
+    porque: "O agente vai olhar o banco para diagnosticar. Se ele consultar sem herdar as permissoes de quem abriu o chamado, o atendimento vira porta lateral para dados que a pessoa nao veria pela tela. A casa ja teve vazamento assim na Iris, por vinculo de nome - isso precisa nascer certo, nao ser ajustado depois.",
+    situacao: "proximo",
+    titulo: "Escopo de dados do agente pela permissao de quem pergunta",
+  },
+  {
+    id: "PAN-097",
+    bloqueio: "Depende do chat existir primeiro.",
+    evidencia: "Lucas: 'se o agente ainda nao entendeu que ele possa solicitar print, video, evidencia, ou acompanhar o usuario em uma operacao assistida'.",
+    modulo: "Zeus",
+    porque: "Quando o agente nao entendeu, ele pede em vez de chutar - e um diagnostico com evidencia e o que separa um ticket util de um 'nao funciona'. hub_it_ticket_attachments ja existe.",
+    situacao: "depois",
+    titulo: "Pedir evidencia na conversa: print, video, operacao assistida",
+  },
+  {
+    id: "PAN-098",
+    bloqueio: "Depende da triagem e do diagnostico estarem de pe.",
+    evidencia: "Fala do Lucas + o padrao das tres sessoes da casa (memory/project_tres_sessoes_do_lucas.md): Zeus constroi, Dados mede, Plantao corrige.",
+    modulo: "Zeus",
+    porque: "Lucas pediu 'automacao de correcao'. O que se automatiza com seguranca e tudo ATE a correcao: reproduzir, diagnosticar, achar o arquivo, propor o diff, rodar o teste. Subir sozinho nao - o risco nao e o agente errar, e errar COM CONFIANCA e ninguem perceber ate o cliente ver.",
+    situacao: "depois",
+    titulo: "Ponte com o plantao: o agente prepara a correcao, o humano aprova",
+  },
+  {
+    id: "PAN-099",
+    bloqueio: "Depende do chat e da ligacao ticket-roadmap.",
+    evidencia: "Lucas: 'feito as correcoes, ou entregue as melhorias responder o usuario no help'. A ligacao com o roadmap ja existe: o item entregue tem entregueEm.",
+    modulo: "Zeus",
+    porque: "E o passo que fecha o ciclo e o que mais pesa na percepcao: a critica de hoje e menos sobre demora em corrigir e mais sobre SILENCIO - 28 dias sem nada visivel acontecer.",
+    situacao: "depois",
+    titulo: "Avisar o usuario quando a correcao ou a melhoria for entregue",
+  },
+  {
+    id: "PAN-100",
+    entregueEm: "2026-09-11",
+    evidencia: "Commit de 11/09/2026 em lib/hub-it-tickets/server.ts: insertHelpDeskNotification na criacao, com admsDoHelpDesk (operational_profile='adm').",
+    modulo: "Zeus",
+    porque: "createHubItTicket gravava o chamado e ia embora: ninguem era notificado, e o chamado esperava alguem abrir o board por acaso. E a causa direta dos 27,9 dias de idade media dos 30 parados.",
+    situacao: "entregue",
+    titulo: "Avisar os adms quando um chamado nasce",
+  },
+  {
+    id: "PAN-101",
+    entregueEm: "2026-09-11",
+    evidencia: "Medido em 11/09/2026: parados_sem_dono = 30 de 30. Corrigido no mesmo commit: recipientUserIds como rede quando nao ha dono.",
+    modulo: "Zeus",
+    porque: "A notificacao ia para assigned_to_user_id, que so e preenchido na PRIMEIRA resposta de um adm. Nos 30 parados o campo e nulo em todos - a cobranca do usuario era descartada em silencio. A pessoa era ignorada duas vezes, por construcao.",
+    situacao: "entregue",
+    titulo: "Cobranca do usuario em chamado sem dono chega a alguem",
+  },
+  {
+    id: "PAN-102",
+    entregueEm: "2026-09-11",
+    evidencia: "lib/hub-it-tickets/server.ts, parametro veNotaInterna com padrao false: quem esquecer de passar ve menos, nunca mais.",
+    modulo: "Zeus",
+    porque: "hydrateTicketRows busca os eventos com o client service-role e nao filtrava visible_to_requester - a RLS da 0014 nao protege esse caminho. Nada vazava por um motivo fragil: nenhuma insercao marcava evento como interno. A triagem grava a primeira nota interna da casa, entao o filtro tinha que entrar ANTES dela.",
+    situacao: "entregue",
+    titulo: "Nota interna para de vazar para o solicitante",
+  },
+  {
+    id: "PAN-103",
+    entregueEm: "2026-09-11",
+    evidencia: "lib/hub-it-tickets/triagem-automatica.ts + after() na rota POST. Escreve NOTA INTERNA e nao responde o usuario; nunca fecha chamado.",
+    modulo: "Zeus",
+    porque: "A triagem ja existia e so rodava por clique no board - ou seja, o diagnostico so existia para quem ja tinha ido olhar o chamado, que era justamente o que nao acontecia. Agora dispara na criacao, via after(), fora do caminho da resposta.",
+    situacao: "entregue",
+    titulo: "Triagem automatica na abertura do chamado",
+  },
+  {
+    id: "PAN-104",
+    evidencia: "lib/hub-it-tickets/server.ts:~734 (resolveAdminTicketNextStatus e o carimbo de assigned_to_*). Lucas: 'eu nao quero ficar parando respondendo usuario se foi resolvido ou nao, devolver ele retorna ao usuario'.",
+    modulo: "Zeus",
+    porque: "Hoje toda resposta administrativa carimba o responsavel e move o status. Um agente conversando por essa porta viraria dono de tudo a cada frase e destruiria as metricas de fila - justamente as que vao provar se o nivel 1 funcionou. Sem isso, o agente nao pode fazer a devolutiva que o Lucas pediu.",
+    situacao: "proximo",
+    titulo: "Porta de escrita propria para o agente responder o usuario",
+  },
+  {
+    id: "PAN-105",
+    bloqueio: "Muda comportamento de producao (fecha chamado de gente). Espera OK do Lucas.",
+    evidencia: "server.ts:~499 autoFinalizeStaleValidationRows; 107 eventos de timeout contra 116 fechados, medido em 11/09/2026. So 57 dos 146 tem resolution_summary.",
+    modulo: "Zeus",
+    porque: "107 dos 116 chamados fechados foram encerrados pela rotina automatica de 3 dias, com ator nulo e a mensagem 'Ticket encerrado' - 92% dos 'Finalizado' sao abandono com outro nome. Enquanto isso existir, o placar do agente vai parecer otimo e nao vai medir nada.",
+    situacao: "bloqueado",
+    titulo: "Trocar o robo de 3 dias por lembrete honesto",
   },
 ];
 
