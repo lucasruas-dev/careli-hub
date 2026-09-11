@@ -32,10 +32,19 @@ export type EstadoDoFesto =
 export function FestoRobo({
   className = "",
   estado = "repouso",
+  noEscuro = false,
   traje,
 }: {
   className?: string;
   estado?: EstadoDoFesto;
+  /**
+   * O fundo atras dele e escuro por decisao de layout (um cabecalho preto, por exemplo).
+   *
+   * ⚠️ ISTO NAO E "TEMA ESCURO". O casco ja troca com o tema da pagina; o que esta prop resolve e
+   * outra coisa: o robo sobre um fundo preto que existe nas DUAS telas. Sem ela, no tema claro o
+   * casco grafite caia sobre o preto do cabecalho e o robo sumia — foi o que o Lucas viu.
+   */
+  noEscuro?: boolean;
   /**
    * O adereco da data. Omitido, ele descobre sozinho pelo calendario de `festo-traje.ts`.
    *
@@ -50,7 +59,7 @@ export function FestoRobo({
   return (
     <svg
       aria-hidden="true"
-      className={`festo-robo festo-${estado} ${className}`}
+      className={`festo-robo festo-${estado} ${noEscuro ? "festo-no-escuro" : ""} ${className}`}
       viewBox="0 0 100 100"
     >
       <defs>

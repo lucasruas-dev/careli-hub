@@ -59,6 +59,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         screens: [
           {
             items: [
+              "**O Festos voltou a aparecer no cabeçalho do painel.** Sobre o fundo preto, no tema claro, ele ficava grafite sobre quase-preto e sumia.",
               "**O HelpDesk mostra a devolutiva do Festos** no hist\u00f3rico do chamado, assinada por ele, sem mexer em respons\u00e1vel nem em status.",
               "**Roadmap atualizado**: chat, apura\u00e7\u00e3o, print/\u00e1udio e devolutiva entregues; o que falta \u00e9 ele ler banco e c\u00f3digo, explicar a tela e a grava\u00e7\u00e3o dentro da conversa.",
             ],

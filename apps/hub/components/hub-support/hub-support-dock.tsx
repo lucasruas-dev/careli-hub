@@ -311,7 +311,8 @@ export function HubSupportDock() {
                   </button>
                 ) : (
                   <span className="grid size-11 shrink-0 place-items-center">
-                    <FestoRobo className="size-11" />
+                    {/* O cabecalho e preto nas duas telas: o robo precisa da versao clara. */}
+                    <FestoRobo className="size-11" noEscuro />
                   </span>
                 )}
                 <div className="min-w-0">

@@ -358,6 +358,25 @@ button {
 :root[data-uix-theme="dark"] .festo-robo .festo-lat-2 { stop-color: #94a3b8 }
 :root[data-uix-theme="dark"] .festo-robo .festo-brilho { opacity: .5 }
 
+/* ⚠️ E TEM UM TERCEIRO CASO, que nao e tema nenhum: o fundo ESCURO LOCAL. O cabecalho do painel do
+ * suporte e preto (#101820) nas duas telas, clara e escura — entao no tema CLARO o casco grafite
+ * caia sobre o preto e o robo sumia. Lucas, 11/09/2026, vendo o painel aberto: *"ele sumiu no fundo
+ * preto"*.
+ *
+ * ⚠️ A COR AQUI NAO PERGUNTA O TEMA, de proposito: quem usa `.festo-no-escuro` esta declarando que
+ * o fundo atras do robo e escuro por decisao de layout, e nao por causa da preferencia de quem
+ * olha. Amarrar isto ao tema devolveria o mesmo defeito com o sinal trocado no dia em que alguem
+ * puser o robo sobre um card claro dentro do modo escuro.
+ */
+.festo-no-escuro .festo-casco-1 { stop-color: #ffffff }
+.festo-no-escuro .festo-casco-2 { stop-color: #e8edf3 }
+.festo-no-escuro .festo-casco-3 { stop-color: #b9c4d2 }
+.festo-no-escuro .festo-lat-1 { stop-color: #cbd5e1 }
+.festo-no-escuro .festo-lat-2 { stop-color: #94a3b8 }
+.festo-no-escuro .festo-brilho { opacity: .5 }
+/* Sombra clara: a escura desaparece no preto e o robo fica chapado contra o fundo. */
+.festo-no-escuro { filter: drop-shadow(0 2px 6px rgb(0 0 0 / .55)) }
+
 /* ⚠️ A SOMBRA SUBSTITUI O FUNDO em outro ponto: ela é o que descola o robô da tela e diz que ele
  * flutua por cima do conteúdo, em vez de ser um desenho colado nele. */
 .festo-robo { filter: drop-shadow(0 2px 3px rgb(15 23 42 / .34)) }
