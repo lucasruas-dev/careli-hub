@@ -36,6 +36,64 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-11-acordo-por-unidade-e-corretagem-no-dossie",
+    deployedAt: "2026-09-11T09:40:00-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**O acordo passou a ser de uma unidade por vez.** Quando o cliente tem mais de uma, a tela pede qual antes de mostrar as parcelas, com o número de vencidas e o total de cada uma.",
+              "**Trocar de unidade limpa a seleção**, para não sobrar parcela da unidade anterior marcada sem ninguém perceber.",
+              "A tela dizia \"pode juntar parcelas de qualquer unidade\". Agora diz o contrário, que é a regra nova.",
+            ],
+            screen: "Propostas · Novo acordo",
+          },
+          {
+            items: [
+              "**O relatório separa o valor da unidade do valor da corretagem**, e abre a corretagem nas duas pontas: coordenadora de vendas e imobiliária.",
+              "Cada linha traz o percentual ao lado, para conferir a conta sem abrir o sistema.",
+              "**Sem a comissão cadastrada, a linha sai como \"não apurado\"** — nunca como R$ 0,00, que faria parecer que a corretagem foi apurada e vale nada.",
+            ],
+            screen: "Dossiê Jurídico",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O campo de comissão avisa quando o valor não foi salvo.** Os números que aparecem em cinza são exemplos do campo, não valores guardados — e agora um selo \"não salvo\" aparece ao lado do botão enquanto o que está na tela não estiver no banco.",
+            ],
+            screen: "Empreendimentos · Políticas comerciais",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "**Ao buscar um cliente, a tela avisa que a lista só tem atendimentos encerrados** e que os em aberto estão no Board. Sem isso, quem procurava pelo nome e não achava concluía que o atendimento tinha sumido.",
+            ],
+            screen: "Histórico",
+          },
+        ],
+      },
+    ],
+    rollback: "3fcd2970",
+    technical: {
+      done: "⚠️ O ACORDO POR UNIDADE: o caminho inteiro JÁ EXISTIA E ESTAVA MORTO. `acquisition_request_c2x_id` está em `guardian_compromissos` desde a migration 0036, `CreateCompromissoInput` já tinha o campo e `parseCreatePayload` (compartilhado por POST e PUT) já o repassava — só o front nunca mandou, e a coluna estava NULL em 7 de 7 compromissos. Zero migration. ⚠️ E A TELA AFIRMAVA O CONTRÁRIO POR ESCRITO (\"Pode juntar parcelas de qualquer unidade, cobrança é por cliente\"): não era esquecimento, era regra de produto, revertida pelo Lucas em 11/09. Os 2 únicos acordos de produção já nasceram misturados — AC-000012 junta LOU1822+LOU1823 e AC-000014 junta MDS0802+MDS0306 —, e num acordo assim não há como ratear a entrada entre as unidades; os dois seguem `pendente` e são decisão do Lucas. Alcance medido no C2X: 56 dos 295 clientes com parcela vencida (19%) têm mais de um contrato, 554 das 1.664 parcelas vencidas, R$ 412.072,34 de R$ 1.545.562,04. ⚠️ A CHAVE DO AGRUPAMENTO É `acquisitionRequestId`, NÃO `unitId`: o unitId da parcela vem de um lookup que, no cliente achatado do read-model (`lib/guardian/attendance.ts`), colapsa todas as unidades no id da PRIMEIRA — agrupar por ele juntaria de volta exatamente o que a escolha existe para separar. Teste cobre o caso. ⚠️ A CORRETAGEM NO DOSSIÊ: a separação já existia, errada era a FONTE. `dados.ts` lia `commercial_policies.total_value_commission` do MySQL legado; a regra do Lucas (textual, 11/09) é \"tudo relacionado ao comercial vem do Panteon; do C2X só financeiro, pagamento e parcelas\". As duas estruturas nem são equivalentes: no C2X a comissão é repartida em CINCO papéis (coordenador, imobiliária, gerente, captador, careli) e no Panteon são DUAS caixas — medido no Veredas, 1,66+4,00+0,45+0,32+0,07=6,50, e nenhuma dessas pontas corresponde às duas do cadastro. A comissão passou a entrar por FUNÇÃO e não por valor, porque a chave (`enterprise_id`) só é conhecida depois de ler a negociação e `dados.ts` não pode abrir o Supabase. ⚠️ A ARITMÉTICA É EM CENTAVOS INTEIROS, cópia deliberada de `lib/temis/dados-do-contrato.ts`: R$ 170.010,08 a 1,5% e 5% dá R$ 2.550,15 + R$ 8.500,50 = R$ 11.050,65; em reais a conta dá 11050.6552, que viraria R$ 11.050,66 — um centavo a mais que as duas quantias impressas logo acima, no mesmo papel. ⚠️ ZERO É DECISÃO, NULO É ESQUECIMENTO: ponta com 0 entra na conta; ponta nula torna a corretagem inteira desconhecida, porque imprimir só a ponta cadastrada daria ao jurídico corretagem menor e valor de venda maior. `valorTotalLote` e `valorCorretagem` viraram `number | null`. ⚠️ EFEITO IMEDIATO: das 18 linhas de `apolo_enterprise_settings`, 17 estão com as duas colunas vazias — até o cadastro ser preenchido, a corretagem sai \"não apurado\". ⚠️ O SELO \"NÃO SALVO\" nasceu de um chamado em que a própria tela induziu o diagnóstico errado: o print mostrava 1,5 e 4,5 (que são `placeholder`) e a linha de baixo dizia \"não cadastrado\", e a leitura natural foi que o Panteon divergia do C2X. 9 testes cobrem o que a comparação ingênua erraria: vírgula contra ponto, espaço, \"1,\" no meio da digitação e as duas pontas de vazio-x-zero. 3.537 testes verdes em 243 arquivos, typecheck limpo.",
+      motivation:
+        "O acordo não podia ser feito por unidade quando o cliente tinha mais de uma, o dossiê não separava corretagem de valor de venda, e o campo de comissão não dizia que estava vazio.",
+    },
+    title: "Acordo por unidade e a corretagem separada no dossiê",
+    type: "correcao",
+    version: "1.311.0",
+  },
+  {
     buildTag: "2026-09-10-temis-cinco-etapas",
     deployedAt: "2026-09-10T14:45:00-03:00",
     modules: [
