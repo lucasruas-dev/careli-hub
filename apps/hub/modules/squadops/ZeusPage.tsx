@@ -49,6 +49,8 @@ import {
 import { PanteonAddressCatalog } from "@/modules/squadops/blocks/address/address-catalog";
 import { HealthBoard } from "@/modules/squadops/blocks/health/health-board";
 import { DeployView } from "@/modules/squadops/blocks/deploy/deploy-view";
+import { PainelDoRoadmap } from "@/modules/squadops/blocks/roadmap/painel-do-roadmap";
+import { PANTEON_ROADMAP } from "@/lib/roadmap/roadmap";
 import {
   getHubSupabaseClient,
   hubSupabaseConfig,
@@ -151,6 +153,7 @@ type OperationsFilters = {
 };
 
 type ZeusView =
+  | "roadmap"
   | "overview"
   | "health"
   | "monitoring"
@@ -800,6 +803,8 @@ OPERACIONAL COM ATENCAO se houver pendencias abertas; AGUARDANDO RELEASEOPS quan
 ];
 
 const zeusViews = [
+  // ⚠️ PRIMEIRA NA BARRA, de propósito: "o que estamos fazendo" vem antes de "o que quebrou".
+  { id: "roadmap", label: "Roadmap" },
   { id: "itTickets", label: "HelpDesk" },
   { id: "health", label: "Monitoring" },
   { id: "deploys", label: "Deploys" },
@@ -2203,6 +2208,8 @@ export function ZeusPage({
             watcher={watcherDecision}
           />
         ) : null}
+
+        {activeView === "roadmap" ? <PainelDoRoadmap /> : null}
 
         {activeView === "deploys" ? <DeployView /> : null}
 
@@ -4408,6 +4415,8 @@ function ZeusViewTabs({
 }) {
   const counters = {
     address: addressCatalogCount,
+    // O que RESTA: item entregue nao conta como pendencia na barra.
+    roadmap: PANTEON_ROADMAP.filter((i) => i.situacao !== "entregue").length,
     audits: routineCount,
     deploys: deployCount,
     health: monitoringAlertCount,
