@@ -62,14 +62,14 @@ describe("histórico de etapas da Têmis", () => {
     expect(evento?.fato).toBe("Trabalho aberto na Têmis");
   });
 
-  // ⚠️ O BANCO GUARDA `prazo_legal` E A TELA CHAMA DE "Pré-venda" desde 11/09/2026. O valor cru não
+  // ⚠️ O BANCO GUARDA `prazo_legal` E A TELA CHAMA DE "Pré-faturamento" desde 11/09/2026. O valor cru não
   // aparece em nenhuma outra tela do módulo.
-  it("prazo_legal se escreve Pré-venda", () => {
+  it("prazo_legal se escreve Pré-faturamento", () => {
     const [evento] = historicoDeEtapas(
       [passagem({ de: "assinatura", origem: "webhook_assinatura", para: "prazo_legal" })],
       card,
     );
-    expect(evento?.fato).toBe("Em assinatura → Pré-venda");
+    expect(evento?.fato).toBe("Em assinatura → Pré-faturamento");
   });
 
   // ⚠️ "Faturado" SÓ FAZ SENTIDO NO CONTRATO. Cessão, distrato e cancelamento não faturam nada:
@@ -84,7 +84,7 @@ describe("histórico de etapas da Têmis", () => {
 
   it("no contrato, faturado continua Faturado", () => {
     const [evento] = historicoDeEtapas([passagem({ de: "prazo_legal", para: "faturado" })], card);
-    expect(evento?.fato).toBe("Pré-venda → Faturado");
+    expect(evento?.fato).toBe("Pré-faturamento → Faturado");
   });
 
   // ⚠️ O PASSADO FICA HONESTO: os cards vivos andaram antes de existir onde gravar, e a 0153 ainda

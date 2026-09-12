@@ -292,11 +292,11 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
   },
   {
     id: "PAN-024",
-    evidencia: "P02 (11/09): 'podemos trocar o nome para Pré-faturamento pois assim fazemos a gestão disso'. O código chama de 'Prazo legal' em apps/hub/lib/temis/trabalhos.ts (ESTAGIOS) e o estágio gravado é prazo_legal.",
+    evidencia: "v1.319.0: o rótulo é 'Pré-faturamento' em apps/hub/lib/temis/trabalhos.ts; o valor gravado continua `prazo_legal` (trocar o id exigiria migration e mexer no check da 0150). ⚠️ FALTA A OUTRA METADE: as duas condições continuam sem separação na tela — a etapa não diz se o que falta é o prazo ou a entrada.",
     modulo: "Temis",
-    porque: "O cliente pode pagar a entrada e não assinar, ou assinar e não pagar. Enquanto as duas não fecharem o card fica parado ali, e o nome da etapa tem que dizer que aquilo é gestão, não espera de prazo.",
-    situacao: "proximo",
-    titulo: "Renomear Prazo legal para Pré-faturamento e separar as duas condições",
+    porque: "SÃO TRÊS CONDIÇÕES, e elas fecham em ordem qualquer — Lucas (11/09/2026): *\"além das condições do 7 dias e a entrada paga, o contrato tem que estar com todas as assinatura\"*. (1) assinado por todos, (2) os 7 dias corridos cumpridos, (3) a entrada paga. O nome da etapa já diz que aquilo é gestão; a tela ainda não mostra qual das três está faltando. ⚠️ E a primeira não pode ser SUPOSTA: `marcarAtividade` avança card por marcação humana sem consultar envelope, que foi como o card do Henrique chegou ao fim sem contrato e sem envelope.",
+    situacao: "fazendo",
+    titulo: "Mostrar as TRÊS condições do Pré-faturamento: assinaturas, 7 dias e entrada",
   },
   {
     id: "PAN-025",

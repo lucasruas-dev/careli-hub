@@ -14,7 +14,7 @@ import {
 // contrato para assinatura, tem que trazer"*.
 //
 // ⚠️ AS FRASES SAEM DE `nomeDoEstagio`, E NUNCA DO VALOR CRU. O banco guarda `prazo_legal` e a tela
-// chama aquilo de "Pré-venda" desde 11/09; guarda `faturado` e a tela chama de "Concluído" em tudo
+// chama aquilo de "Pré-faturamento" desde 11/09; guarda `faturado` e a tela chama de "Concluído" em tudo
 // que não é contrato. Um histórico que imprimisse o valor cru falaria uma língua que não existe em
 // nenhuma outra tela do módulo — e quem lê teria de aprender duas palavras para a mesma etapa.
 //
@@ -88,7 +88,7 @@ function comoSeEscreveAEtapa(bruto: string, tipo: null | TipoDeTrabalho): string
  * O nome de tela de um estágio COMO ELE ESTÁ GRAVADO no banco, cru, com o tipo também cru.
  *
  * ⚠️ É O ÚNICO TRADUTOR DE ETAPA GRAVADA DA CASA, e é por isso que ele é exportado: a rota do card
- * precisa da mesma palavra para dizer "este trabalho está em Pré-venda" numa recusa, e uma segunda
+ * precisa da mesma palavra para dizer "este trabalho está em Pré-faturamento" numa recusa, e uma segunda
  * régua escrita lá divergiria desta no primeiro rótulo que mudasse — foi o que aconteceu com a
  * classificação da cor da linha do tempo, que vivia dentro do componente.
  */

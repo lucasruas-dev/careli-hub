@@ -373,7 +373,7 @@ export async function concluirAssinaturaDoCard(
 
   // ⚠️ A ÚNICA PASSAGEM QUE NINGUÉM DA CASA PROVOCA. As outras cinco nascem de um clique nosso;
   // esta nasce do webhook da Clicksign, e é justamente a que some da memória de todo mundo — o
-  // contrato "apareceu" em Pré-venda numa madrugada. Sem a linha, a única data que resta é
+  // contrato "apareceu" em Pré-faturamento numa madrugada. Sem a linha, a única data que resta é
   // `estagio_desde`, que o próximo movimento sobrescreve.
   //
   // O `de` é seguro: o card foi escolhido acima JUSTAMENTE por estar em `assinatura`, e os dois

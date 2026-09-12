@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-11-temis-pre-faturamento",
+    deployedAt: "2026-09-11T23:31:11-03:00",
+    modules: [
+      {
+        module: "Temis",
+        screens: [
+          {
+            items: [
+              "**A quarta etapa agora se chama Pr\u00e9-faturamento.** Ela ficou algumas horas como \"Pr\u00e9-venda\", que era o nome errado: **Pr\u00e9-venda \u00e9 o PIX de credenciamento** do Apolo e do Prometeu, outra coisa, em outro m\u00f3dulo.",
+              "O nome diz o que a etapa \u00e9: **gest\u00e3o**, e n\u00e3o espera de prazo. **S\u00e3o tr\u00eas condi\u00e7\u00f5es**, e elas fecham em ordem qualquer: o contrato **assinado por todos**, os **7 dias** de arrependimento cumpridos e a **entrada paga**. O subt\u00edtulo da coluna passou a dizer as tr\u00eas.",
+            ],
+            screen: "Quadro e tela de trabalho",
+          },
+        ],
+      },
+    ],
+    rollback: "c6be2e6a",
+    technical: {
+      done: "S\u00d3 O R\u00d3TULO MUDOU: `nome` em `ESTAGIOS` (lib/temis/trabalhos.ts). O valor gravado continua `prazo_legal` em `temis_trabalhos.estagio` \u2014 trocar o id exigiria migration, mexer no check da 0150 e reescrever as linhas existentes para render a mesma palavra na tela. || \u26a0\ufe0f QUEM TRADUZ \u00c9 `nomeDoEstagio`, E ISSO J\u00c1 ESTAVA CERTO: a linha do tempo da Temis (`lib/temis/historico-de-etapas.ts`) nunca estampa o valor cru, ent\u00e3o as passagens gravadas ANTES desta troca passam a ser lidas com a palavra nova sem ningu\u00e9m tocar numa linha do banco \u2014 que \u00e9 exatamente por que `de`/`para` da 0153 n\u00e3o t\u00eam check de vocabul\u00e1rio. || O teste de `historico-de-etapas` acompanhou o r\u00f3tulo: aqui ele \u00e9 a ESPECIFICA\u00c7\u00c3O (o nome que o Lucas escolheu), e n\u00e3o um defeito descoberto. || \u26a0\ufe0f S\u00c3O TR\u00caS CONDI\u00c7\u00d5ES, E N\u00c3O DUAS \u2014 Lucas, na mesma noite: *\"al\u00e9m das condi\u00e7\u00f5es do 7 dias e a entrada paga, o contrato tem que estar com todas as assinatura\"*. A primeira \u00e9 hoje o PORT\u00c3O DE ENTRADA da etapa (`concluirAssinaturaDoCard` s\u00f3 traz o card quando o envelope FECHA), mas n\u00e3o \u00e9 garantida: `marcarAtividade` avan\u00e7a card por marca\u00e7\u00e3o humana sem consultar envelope nenhum, e foi assim que o card do Henrique chegou ao fim sem contrato e sem envelope (09/09/2026). A tela vai ter de CONFERIR as tr\u00eas, nunca supor a primeira. PAN-024 passou a `fazendo` com as tr\u00eas escritas. || MEDIDO NA PRIMEIRA RODADA REAL DA v1.318.0, no mesmo dia: o envio chegou na Clicksign (envelope 3e9a331d, dois signat\u00e1rios, estado `parcial` com 1 de 2 assinados), os cinco webhooks voltaram com HMAC conferido, e a 0153 gravou as tr\u00eas passagens do card com autor \u2014 `retorno_para_correcao`, `contrato_gerado` e `envio_assinatura`, todas por Lucas Ruas.",
+      motivation:
+        "Lucas, vendo a coluna no quadro: *\"falei errado, \u00e9 pre-faturamento\"* \u2014 que \u00e9 o nome que ele j\u00e1 tinha pedido de manh\u00e3, registrado no PAN-024.",
+    },
+    title: "A etapa 4 vira Pr\u00e9-faturamento",
+    type: "melhoria",
+    version: "1.319.0",
+  },
+  {
     buildTag: "2026-09-11-temis-organiza-a-assinatura",
     deployedAt: "2026-09-11T23:10:01-03:00",
     modules: [

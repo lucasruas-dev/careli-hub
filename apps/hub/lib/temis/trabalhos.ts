@@ -65,16 +65,39 @@ export const ESTAGIOS: {
     nome: "Em assinatura",
   },
   {
-    descricao: "7 dias de arrependimento e a entrada.",
+    descricao: "Assinado por todos, 7 dias corridos e a entrada paga.",
     id: "prazo_legal",
-    // ⚠️ O VALOR NO BANCO CONTINUA `prazo_legal`, e só o rótulo muda — Lucas (11/09/2026): *"fluxo
-    // ainda está prazo legal, é para mudar para pré-venda"*. Trocar o id exigiria migration, mexer
-    // no check da 0150 e reescrever as linhas existentes, para render a mesma palavra na tela.
+    // ⚠️ O VALOR NO BANCO CONTINUA `prazo_legal`, e só o rótulo muda. Trocar o id exigiria migration,
+    // mexer no check da 0150 e reescrever as linhas existentes, para render a mesma palavra na tela.
     //
-    // ⚠️ E "PRÉ-VENDA" JÁ TEM DONO NO PANTEON: é o PIX de credenciamento do Apolo/Prometeu (quatro
-    // migrations usam o termo nesse sentido). Aqui ela nomeia outra coisa — os 7 dias de
-    // arrependimento antes do faturamento. Quem for cruzar os dois vocabulários precisa saber.
-    nome: "Pré-venda",
+    // ⚠️ O NOME DESTA ETAPA MUDOU DUAS VEZES EM UM DIA, e a segunda foi uma correção de rota: Lucas
+    // pediu *"é para mudar para pré-venda"* às 21h e, vendo a coluna no quadro às 23h, *"falei
+    // errado, é pre-faturamento"* — que é o nome que ele já tinha pedido de manhã (PAN-024).
+    //
+    // ⚠️ E O NOME ERRADO TINHA DONO: "Pré-venda" já nomeia o PIX de credenciamento do
+    // Apolo/Prometeu em quatro migrations. Duas etapas de módulos diferentes com a mesma palavra é
+    // ambiguidade em relatório, em conversa e em busca no código — a troca desfaz isso de graça.
+    //
+    // ⚠️ E "FATURAMENTO" É A PALAVRA CERTA porque a etapa é GESTÃO e não espera. SÃO TRÊS
+    // CONDIÇÕES, e não duas — Lucas (11/09/2026): *"além das condições do 7 dias e a entrada paga,
+    // o contrato tem que estar com todas as assinatura"*:
+    //
+    //   1. o contrato assinado por TODOS os signatários;
+    //   2. os 7 dias de arrependimento cumpridos (corridos, não úteis: é prazo do comprador);
+    //   3. a entrada paga.
+    //
+    // Elas fecham em ORDEM QUALQUER, e por isso a etapa é gestão: o cliente pode pagar a entrada e
+    // não assinar, assinar e não pagar, ou fazer as duas e ainda estar dentro dos 7 dias.
+    //
+    // ⚠️ A CONDIÇÃO 1 JÁ É O PORTÃO DE ENTRADA HOJE — `concluirAssinaturaDoCard` só traz o card
+    // para cá quando o envelope FECHA na Clicksign, que é quando todos assinaram. Mas ela não é
+    // garantida: `marcarAtividade` avança o card por marcação humana, sem consultar envelope nenhum,
+    // e foi assim que o card do Henrique chegou a "finalizado" sem contrato e sem envelope
+    // (medido em 09/09/2026). Enquanto essa porta existir, a tela precisa CONFERIR as três, e não
+    // supor que quem chegou aqui cumpriu a primeira.
+    //
+    // Mostrar as três, cada uma com o próprio estado, é o que falta do PAN-024.
+    nome: "Pré-faturamento",
   },
   { descricao: "Prazo cumprido e entrada paga.", id: "faturado", nome: "Faturado" },
 ];
