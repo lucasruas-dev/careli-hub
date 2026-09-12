@@ -6282,3 +6282,78 @@ Todas achadas por revisao adversarial ANTES do deploy, nenhuma existia no codigo
 - ⚠️ **Nada verificado em tela** — o hub exige login e os cliques sao do Lucas. E o teste do envio
   tem custo: conta Clicksign de PRODUCAO. No ZZ TESTE, **desligar o "Pedir CPF"**.
 - Status: `EM PRODUCAO`.
+
+
+## v1.319.0 — Pre-faturamento, e o card volta para corrigir (12/09/2026, 01:09 -03:00)
+
+- Commits publicados: `347a151d` (o rotulo e as tres condicoes) e `0fa5caec` (a volta), mais
+  `64a5e6e3` (o registro da v1.318.0). Deployment: `dpl_GiA6soF8CvykjHfsLc4X7oAr6VoD`, READY com
+  alias `c2x.app.br` e `aliasError: null`. Build de 3min26.
+- **Rollback**: `c6be2e6a` = `dpl_6nzvhkyxx9Kubh1VCxBgoWUy23Ua` (v1.318.0).
+- Autorizacao do go-live: Lucas, 11/09/2026 — *"esta autorizado para subir"*.
+
+### O que mudou
+
+- A quarta etapa virou **Pre-faturamento**. Ficou algumas horas como "Pre-venda", que era o nome
+  errado e tinha dono: Pre-venda ja nomeia o PIX de credenciamento do Apolo/Prometeu em quatro
+  migrations. So o rotulo mudou; o valor gravado continua `prazo_legal`.
+- **SAO TRES CONDICOES**, e elas fecham em ordem qualquer — Lucas: *"alem das condicoes do 7 dias e
+  a entrada paga, o contrato tem que estar com todas as assinatura"*. Assinado por todos, 7 dias
+  corridos cumpridos, entrada paga. A tela ainda nao diz QUAL das tres falta (PAN-024).
+- **O card volta para Analise para corrigir o contrato**, a partir de Contrato, Em assinatura e
+  Pre-faturamento. Nao volta de Faturado nem de Indeferido, e nesses dois a tela diz para onde ir.
+- ⚠️ **O PORTAO E O ENVELOPE, E NAO A ETAPA.** Nao ha lista de colunas que voltam "por natureza": a
+  pergunta e se o contrato esta assinado por todos. A etapa nao prova o fato — `marcarAtividade`
+  avanca card por marcacao humana sem consultar envelope nenhum, e foi assim que o card do Henrique
+  chegou ao fim sem contrato e sem envelope (09/09/2026).
+- Havendo envelope vivo, ele e **cancelado na Clicksign antes de o card andar**, e a falha do
+  cancelamento impede a volta.
+- A etapa "Em assinatura" deixou de ser so o texto de "em construcao": mostra o estado do envelope e
+  desde quando. A tela de monitoramento completa segue no PAN-022.
+
+### Os oito achados consertados antes de subir
+
+Revisao adversarial em tres lentes (envelope/dinheiro, estado do card, texto). Tres eram caros:
+
+1. **O envelope era lido por PROPOSTA**, e o pedido de cancelamento nasce com a MESMA proposta da
+   venda (`temis_envelopes` nao tem `trabalho_id`). Voltar o card de cancelamento cancelaria o
+   envelope da VENDA, vivo, na conta de producao; e um card de distrato sobre venda assinada
+   travaria para sempre lendo o envelope dela. Agora so card de tipo `contrato` consulta e cancela
+   envelope, e o `provedor` passou a ser filtrado.
+2. **A pergunta "ja esta assinado?" ia para o banco**, que e justamente quem atrasa. Se a ultima
+   assinatura entrasse entre a tela carregar e o clique, o PATCH cancelaria um contrato assinado por
+   todos — e como `cancelado` e terminal, o `auto_close` que chegasse depois seria descartado e o
+   Panteon ficaria sem registro de que aquele contrato foi assinado. Agora le-se o estado real na
+   Clicksign antes; leitura que falha RECUSA a volta.
+3. ⚠️ **A classificacao cancelamento x distrato era cega para a assinatura do Panteon**, e isso e
+   ANTERIOR a este lote: `apurarFatosDoContrato` lia `hercules_proposta_eventos` e `data_assinatura`,
+   que so o C2X escreve. Venda nativa com contrato assinado na Clicksign era classificada como
+   cancelamento simples, sem distrato e sem devolucao. Agora ela enxerga o envelope assinado da
+   Temis — **e o conserto estava INERTE ate o fim**: a rota do pedido de cancelamento chamava a
+   funcao sem o terceiro argumento.
+
+Os outros cinco: timeout deixou de virar certeza falsa; nenhuma frase de desfecho convida a reclicar
+as cegas; o envio de ate 120s nao arrasta mais de volta um card deliberadamente devolvido
+(`moverCardDaTemis` recusa card que andou depois do inicio da operacao, comparando por `Date.parse` e
+nunca por texto); a tela escolhe o texto da confirmacao pelo envelope vivo e nao pelo nome da etapa,
+avisando pelo PIOR caso quando nao consegue conferir; e a volta limpa `arrependimento_inicio`.
+
+### Fica na fila
+
+- ⚠️ **A forma do GET e do PATCH da Clicksign e INFERENCIA, nao doc lida.** Este arquivo ja teve tres
+  campos com comentario confiante desmentidos pela primeira chamada real (token com Bearer, PDF em
+  base64 cru, CPF sem mascara). Custo de estar errado: a volta e RECUSADA com instrucao de cancelar
+  por la, nunca card solto com envelope vivo. A primeira volta real a partir de "Em assinatura"
+  confirma.
+- ⚠️ **`temis_envelopes` nao tem elo com o TRABALHO.** O portao por tipo funciona hoje porque so
+  contrato gera envelope, e quebra no dia em que distrato ou cessao tiverem envelope proprio. Os dois
+  caminhos estao escritos no codigo (`documento_id` -> `hercules_documentos.tipo`, ou coluna
+  `trabalho_id`). Nenhuma migration feita.
+- A linha do banco nao e carimbada quando a Clicksign diz que o envelope ja morreu: ate o webhook
+  chegar, `impedimentoDeEnvelopeVivo` recusa o reenvio por alguns instantes.
+- **PAN-024 segue `fazendo`**: a tela nao mostra qual das tres condicoes do Pre-faturamento falta.
+- **PAN-018 segue aberto**: tirar signatario pela tela continua impossivel.
+- Validacoes: typecheck 11/11; **3.667 testes verdes em 249 arquivos**; lint com 0 erros e 0 warnings
+  nos arquivos da entrega.
+- ⚠️ **Nada verificado em tela** — o hub exige login e os cliques sao do Lucas.
+- Status: `EM PRODUCAO`.
