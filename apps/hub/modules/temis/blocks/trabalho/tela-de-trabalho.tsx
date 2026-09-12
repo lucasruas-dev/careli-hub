@@ -5,9 +5,9 @@ import {
   ArrowLeft,
   Ban,
   FilePlus2,
-  FileSignature,
   FileText,
   Loader2,
+  Undo2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -20,12 +20,14 @@ import { pedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
 import {
   caminhoDoCard,
   type EstagioDoTrabalho,
+  EXIGE_ASSINATURA,
   NOME_DO_TIPO,
   nomeDoEstagio,
   type TipoDeTrabalho,
 } from "@/lib/temis/trabalhos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { PreviaDoContrato } from "@/modules/incorporador/hercules/PreviaDoContrato";
+import { OrganizacaoDaAssinatura } from "@/modules/temis/blocks/assinatura/organizacao-da-assinatura";
 import { VisorDeDocumento } from "@/modules/temis/blocks/trabalho/visor-de-documento";
 import { ColunaFixa } from "@/modules/temis/blocks/trabalho/coluna-fixa";
 
@@ -47,6 +49,15 @@ import { ColunaFixa } from "@/modules/temis/blocks/trabalho/coluna-fixa";
 // assinatura" ficou inalcançável (`setAberto` deixou de ser chamado), e esta tela só oferecia
 // "Indeferir" — a Têmis ficaria sem conseguir emitir contrato pela interface. Elas estão de volta,
 // cada uma na etapa em que acontece.
+//
+// ⚠️ E O ENVIO PARA ASSINATURA NÃO SOBE MAIS PELO QUADRO. A tela tinha uma prop
+// `aoEnviarParaAssinatura(trabalhoId)` que abria o modal lá em cima — e o nome dela MENTIA: o
+// destino espera o id da PROPOSTA, e o callsite mandava `card.id`. Em produção (11/09/2026) o card
+// `88a53e18` tem `proposta_id` `332315b6`; havia dois contratos gravados para a proposta e NENHUM
+// para o id do card, então a rota respondia "Esta proposta ainda não tem contrato gerado" com o
+// PDF aberto na tela ao lado. Trocar o argumento não bastava: os dois são uuid v4, nenhum rename
+// trava a troca, e o próximo callsite erraria de novo calado. Por isso a prop morreu inteira e
+// quem organiza o envio é a `OrganizacaoDaAssinatura`, que recebe a proposta e mais nada.
 
 /**
  * ⚠️ O MESMO `ContratoNoCard` de `lib/temis/contrato-guardado-db.ts`, conferido campo a campo — e
@@ -84,30 +95,25 @@ type Card = {
 
 export function TelaDeTrabalho({
   aoConcluir,
-  aoEnviarParaAssinatura,
   aoFechar,
   aoMudar,
   trabalhoId,
 }: {
   /**
    * Uma etapa foi encerrada aqui dentro: o quadro que recebe isto mostra o recado e volta a ser a
-   * tela. Hoje o único caso é a geração do contrato.
+   * tela. Hoje são dois casos: a geração do contrato e o envio para assinatura.
    */
   aoConcluir?: (recado: string) => void;
-  /**
-   * Abre o modal de envio, que vive no quadro.
-   *
-   * ⚠️ O MODAL FICA LÁ, e não aqui, porque ele já existe e é o mesmo dos dois lugares. Duplicá-lo
-   * criaria duas telas de envio para o mesmo ato — e foi justamente perder o acesso a ele que
-   * quebrou a primeira versão desta tela.
-   */
-  aoEnviarParaAssinatura: (trabalhoId: string) => void;
   aoFechar: () => void;
   /** Chamado quando algo muda, para o quadro recarregar. */
   aoMudar: () => void;
   trabalhoId: string;
 }) {
-  const [dados, setDados] = useState<null | { analise: AnaliseDoTrabalho | null; card: Card }>(null);
+  const [dados, setDados] = useState<null | {
+    analise: AnaliseDoTrabalho | null;
+    card: Card;
+    podeEmitir: boolean;
+  }>(null);
   const [erro, setErro] = useState<null | string>(null);
   const [ocupado, setOcupado] = useState(false);
   /** A proposta cuja prévia de contrato está aberta. `null` = nenhuma. */
@@ -132,7 +138,7 @@ export function TelaDeTrabalho({
         headers: { Authorization: `Bearer ${token}` },
       });
       const corpo = (await r.json().catch(() => ({}))) as {
-        data?: { analise: AnaliseDoTrabalho | null; card: Card };
+        data?: { analise: AnaliseDoTrabalho | null; card: Card; podeEmitir: boolean };
         error?: string;
       };
       if (!r.ok || !corpo.data) {
@@ -230,6 +236,35 @@ export function TelaDeTrabalho({
     [aoMudar, carregar, trabalhoId],
   );
 
+  /**
+   * DEVOLVE O CARD PARA A ANÁLISE — o caminho de correção que substituiu o "Gerar versão N".
+   *
+   * Lucas (11/09/2026): *"caso queira fazer algum ajuste no contrato, podemos ter um botão para
+   * voltar o contrato a etapa anterior, corrigir e mandar para assinatura"*.
+   *
+   * ⚠️ A CHAMADA VIVE AQUI, e não no painel da etapa, pelo mesmo motivo do indeferimento: quem
+   * recarrega o card é esta tela, e o quadro precisa saber que ele mudou de coluna. O painel só
+   * devolve o texto da falha para escrever na própria coluna.
+   */
+  const voltarParaAnalise = useCallback(async (): Promise<null | string> => {
+    setOcupado(true);
+    try {
+      const token = await getApoloAccessToken();
+      const r = await fetch("/api/temis/trabalho", {
+        body: JSON.stringify({ acao: "voltar_para_analise", id: trabalhoId }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const corpo = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) return corpo.error ?? "Não consegui voltar o card para a análise.";
+      await carregar();
+      aoMudar();
+      return null;
+    } finally {
+      setOcupado(false);
+    }
+  }, [aoMudar, carregar, trabalhoId]);
+
   if (erro) {
     return (
       <Moldura aoFechar={aoFechar}>
@@ -249,7 +284,7 @@ export function TelaDeTrabalho({
     );
   }
 
-  const { analise, card } = dados;
+  const { analise, card, podeEmitir } = dados;
   const caminho = caminhoDoCard(card.tipo, card.estagio);
   const ehContrato = card.tipo === "contrato" && Boolean(card.proposta_id);
 
@@ -416,9 +451,12 @@ export function TelaDeTrabalho({
         ) : null}
       </div>
 
-      {/* ── DUAS COLUNAS: o trabalho da etapa · chat, documentos e histórico ── */}
-      <div className="mt-3 grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="min-h-0 overflow-auto pr-1">
+      {/* ── DUAS COLUNAS: o trabalho da etapa · chat, documentos e histórico ──
+          ⚠️ A ALTURA SÓ É TRAVADA A PARTIR DE `lg`, e não em toda largura. Em janela estreita as
+          duas colunas empilham: travar a altura ali faria a análise inteira — que é a etapa mais
+          alta da tela — caber numa faixa com rolagem própria, com a conversa escondida embaixo. */}
+      <div className="mt-3 grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex min-h-0 flex-col pr-1 lg:overflow-auto">
           {card.estagio === "indeferido" ? <BlocoIndeferido card={card} /> : null}
 
           {!card.proposta_id ? (
@@ -440,12 +478,27 @@ export function TelaDeTrabalho({
 
           {card.estagio === "contrato" ? (
             <EtapaDoContrato
+              // ⚠️ O ENVIO ENCERRA A ETAPA, E A TELA PRECISA FECHAR JUNTO. O POST move o card para
+              // "assinatura"; se a tela continuasse aberta desenhando esta etapa, o botão de
+              // enviar ficaria vivo em cima de um envelope já criado e o segundo clique criaria o
+              // SEGUNDO envelope — que também é cobrado. É o mesmo desenho da geração de contrato:
+              // recado primeiro, volta ao quadro depois.
+              aoEnviado={() =>
+                aoConcluir?.("Contrato enviado para assinatura. O card foi para Em assinatura.")
+              }
+              aoVoltarParaAnalise={voltarParaAnalise}
               contratos={card.contratos}
               emAndamento={ocupado}
               onAbrir={abrirContrato}
-              onEnviar={() => aoEnviarParaAssinatura(card.id)}
-              onGerarContrato={gerarContrato}
-              podeEnviar={ehContrato}
+              podeEmitir={podeEmitir}
+              // ⚠️ `propostaId`, E NÃO `card.proposta_id`: o const acima já foi estreitado pelo TS,
+              // e nem `!` nem `?? ""` entram aqui — a string vazia bate no 400 "Sem proposta." e a
+              // tela voltaria a mentir por outro caminho. Quando é `null`, o painel de envio nem
+              // aparece: o aviso "Este card não tem venda ligada" logo acima já explica.
+              propostaId={propostaId}
+              // ⚠️ O TIPO É TRAVA, e sem ele a etapa oferece assinatura para quem não assina. Ver a
+              // nota de `EtapaDoContrato` — o caso dos dois cards do Henrique.
+              tipo={card.tipo}
             />
           ) : null}
 
@@ -472,7 +525,7 @@ export function TelaDeTrabalho({
           ) : null}
         </div>
 
-        <ColunaFixa podeEscrever propostaId={card.proposta_id} />
+        <ColunaFixa podeEscrever propostaId={card.proposta_id} trabalhoId={card.id} />
       </div>
     </Moldura>
   );
@@ -906,35 +959,89 @@ function Bloco({
 // ── ETAPA 2 · CONTRATO ─────────────────────────────────────────────────────
 
 /**
+ * A ETAPA 2 — o contrato gerado e QUEM ASSINA.
+ *
  * ⚠️ O PDF FICA À DIREITA E QUEM ASSINA À ESQUERDA — Lucas (09/09/2026): *"acho valido ter o
  * contrato gerado ao lado direito (PDF), aqui eu já vejo o PDF mesmo, e no lado esquerdo quem
  * assina"*.
  *
+ * ⚠️ AQUI NÃO SE GERA CONTRATO. O botão "Gerar versão N" morava nesta coluna e saiu — Lucas
+ * (11/09/2026): *"não precisa, nessa etapa é para somente organizar as assinatura, caso queira
+ * fazer algum ajuste no contrato, podemos ter um botão para voltar o contrato a etapa anterior,
+ * corrigir e mandar para assinatura"*. A descrição oficial da etapa em `lib/temis/trabalhos.ts` já
+ * dizia isso: *"Gerado. Conferir quem assina antes de mandar."*. Regerar continua existindo na
+ * ANÁLISE, que é onde a prévia abre editável — e o caminho de correção virou explícito: voltar,
+ * corrigir, gerar, e o card volta para cá sozinho. Ter as duas portas na mesma coluna de 320px
+ * fazia a conferência dos signatários competir com a edição do texto do contrato.
+ *
  * O PDF vai num `<iframe>` com a URL assinada de 10 minutos: o bucket é privado, e é a mesma URL
  * que o botão de abrir usa.
+ *
+ * ⚠️ QUEM ABRE O PAINEL DE ASSINATURA É O TIPO DO CARD, E NÃO A PERMISSÃO DE QUEM OLHA. `podeEmitir`
+ * responde "esta PESSOA pode mandar?"; a pergunta que faltava é "este TRABALHO se assina?". E o
+ * caso é real e medido: em 10/09/2026 a proposta do Henrique (Q01 L05) tinha DOIS cards — a venda e
+ * o pedido de cancelamento dela. Gerar o contrato no card da venda chama `moverCardDaTemis`, e o
+ * caminho do cancelamento TAMBÉM passa pelo estágio "contrato" (`estagiosDoTipo`), então os dois
+ * caem nesta coluna. Abrindo o card de CANCELAMENTO, esta etapa desenhava o painel com os
+ * signatários da VENDA e o dourado vivo: um clique criaria envelope pago convidando o comprador a
+ * assinar o contrato de uma venda que está sendo desfeita. E o card nem andava depois — como
+ * `estagiosDoTipo("cancelamento")` não inclui "assinatura", ele ficaria parado aqui com o botão
+ * vivo, criando um envelope a cada reabertura.
+ *
+ * ⚠️ A TRAVA É `EXIGE_ASSINATURA`, NUNCA `tipo === "contrato"`. Cessão, distrato e cancelamento por
+ * correção também assinam (`lib/temis/trabalhos.ts` é a fonte única disso), e travar por "contrato"
+ * fecharia a porta para os três. Só o cancelamento por desistência não assina.
  */
 function EtapaDoContrato({
+  aoEnviado,
+  aoVoltarParaAnalise,
   contratos,
   emAndamento,
   onAbrir,
-  onEnviar,
-  onGerarContrato,
-  podeEnviar,
+  podeEmitir,
+  propostaId,
+  tipo,
 }: {
+  /** O envelope já existe na Clicksign: quem recebe fecha a tela e avisa o quadro. */
+  aoEnviado: () => void;
+  /** Devolve o texto da falha, ou `null` quando o card voltou para a análise. */
+  aoVoltarParaAnalise: () => Promise<null | string>;
   contratos: ContratoNoCard[];
   emAndamento: boolean;
   onAbrir: (documentoId: string) => void;
-  onEnviar: () => void;
-  onGerarContrato: () => Promise<null | string>;
-  podeEnviar: boolean;
+  /** Quem organiza a assinatura. Vem do servidor junto com o card — esconder botão é só o que se vê. */
+  podeEmitir: boolean;
+  /** ⚠️ A PROPOSTA, NUNCA O CARD. `null` = card sem venda ligada, e aí não há o que enviar. */
+  propostaId: null | string;
+  /** O que este card produz. É ele que decide se existe assinatura — ver a nota acima. */
+  tipo: TipoDeTrabalho;
 }) {
+  /** A falha de voltar para a análise. O painel de assinatura escreve as dele por conta própria. */
   const [erro, setErro] = useState<null | string>(null);
+  /**
+   * O envio para a Clicksign está no ar, e quem avisa é o próprio painel.
+   *
+   * ⚠️ ENQUANTO ELE CORRE, A VOLTA FICA TRANCADA. O POST leva de 40 a 90 segundos (16 chamadas
+   * HTTP, com o PDF inteiro em base64) e parece travado; quem clicava em "Voltar para análise"
+   * nesse intervalo PASSAVA pelo comparar-e-trocar do servidor, porque o card só sai de "contrato"
+   * na última linha do envio. O card voltava para Análise, este painel desmontava com o envelope a
+   * caminho, e gerar a v2 ali deixaria o comprador assinando a v1 com o Panteon apontando a v2.
+   */
+  const [enviando, setEnviando] = useState(false);
+  /**
+   * A confirmação de voltar está aberta.
+   *
+   * ⚠️ ELA ACONTECE NO LUGAR DO BOTÃO, como a do envio — sem diálogo novo e sem `window.confirm`.
+   * Um modal em cima de uma tela que já é um overlay empilharia duas camadas para uma pergunta de
+   * uma linha, e o `Esc` passaria a significar duas coisas diferentes na mesma tela.
+   */
+  const [confirmandoVolta, setConfirmandoVolta] = useState(false);
   const vigente = contratoVigente(contratos);
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+    <div className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
       {/* ESQUERDA: o contrato e quem assina */}
-      <div className="grid content-start gap-3">
+      <div className="grid content-start gap-3 xl:min-h-0 xl:overflow-auto xl:pr-1">
         {erro ? (
           <p className="m-0 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs text-rose-600 dark:text-rose-300">
             {erro}
@@ -970,53 +1077,118 @@ function EtapaDoContrato({
           )}
         </section>
 
-        <section className="rounded-xl border border-line bg-surface p-4">
-          <h3 className="m-0 text-sm font-semibold text-ink">Quem assina</h3>
-          {/* ⚠️ DITO, E NÃO FINGIDO. A lista com ordem, e-mail, CPF e exclusão vive hoje dentro do
-              modal de envio; trazê-la para esta coluna, com a edição e a exclusão que o Lucas
-              pediu, é a próxima fatia. Uma lista falsa aqui seria pior do que a ausência. */}
-          <p className="m-0 mt-2 text-xs text-ink-muted">
-            A lista com a ordem, os e-mails e a exclusão abre no botão de enviar. Trazê-la para esta
-            coluna é a próxima entrega.
-          </p>
-        </section>
+        {/* ── QUEM ASSINA ──────────────────────────────────────────────────
+            ⚠️ O PAINEL É AUTOSSUFICIENTE e vem SEM moldura nossa: ele busca o preparo, guarda a
+            ordem, os e-mails e o CPF editados, mostra impedimento e avisos e tem o próprio botão de
+            enviar. Embrulhá-lo numa `<section>` daqui desenharia duas bordas em volta da mesma
+            lista. O que esta coluna decide é só se ele aparece.
 
-        <div className="flex flex-wrap gap-2">
-          {podeEnviar && vigente ? (
-            <button
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#A07C3B] px-3.5 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
-              onClick={onEnviar}
-              type="button"
-            >
-              <FileSignature aria-hidden="true" className="size-3.5" />
-              Enviar para assinatura
-            </button>
-          ) : null}
+            ⚠️ SEM `propostaId` NÃO HÁ PAINEL. Quem não tem venda ligada já leu o aviso no topo da
+            coluna; oferecer o envio aqui só levaria ao 400 "Sem proposta.".
 
-          {podeEnviar ? (
+            ⚠️ E SEM ASSINATURA NO CAMINHO DO TIPO TAMBÉM NÃO HÁ PAINEL — é a trava que faltava, e o
+            caso do card de cancelamento do Henrique está contado na nota do componente. */}
+        {!EXIGE_ASSINATURA[tipo] ? (
+          <section className="rounded-xl border border-line bg-surface p-4">
+            <h3 className="m-0 text-sm font-semibold text-ink">Sem assinatura</h3>
+            <p className="m-0 mt-2 text-xs text-ink-muted">
+              {NOME_DO_TIPO[tipo]} não passa por assinatura: o documento se emite e se arquiva. O
+              card fica nesta etapa só enquanto o documento é preparado.
+            </p>
+          </section>
+        ) : !podeEmitir ? (
+          <section className="rounded-xl border border-line bg-surface p-4">
+            <h3 className="m-0 text-sm font-semibold text-ink">Quem assina</h3>
+            <p className="m-0 mt-2 text-xs text-ink-muted">
+              Quem monta a ordem de assinatura e manda o contrato para a Clicksign é a coordenação
+              da Têmis. Aqui dá para conferir o documento e acompanhar.
+            </p>
+          </section>
+        ) : propostaId ? (
+          <OrganizacaoDaAssinatura
+            aoEnviar={() => aoEnviado()}
+            aoMudarEnvio={setEnviando}
+            compacto
+            propostaId={propostaId}
+          />
+        ) : null}
+
+        {/* ── O CAMINHO DE VOLTA ───────────────────────────────────────────
+            ⚠️ BORDA, E NÃO DOURADO: voltar é conserto, não avanço. O dourado da marca diz "o card
+            anda"; pintar a volta com ele faria o olho ler as duas ações como a mesma coisa numa
+            coluna onde a de cima manda o contrato para o cliente assinar.
+
+            ⚠️ E ELA FICA TRANCADA DURANTE O ENVIO — os dois botões, o de abrir a confirmação e o
+            "Confirmo: voltar". Ver a nota de `enviando`: o servidor aceitaria a volta no meio do
+            POST, porque o card só muda de estágio na última linha dele. */}
+        <div className="border-t border-line pt-3">
+          {confirmandoVolta ? (
+            <div className="rounded-xl border border-line bg-surface p-3">
+              <p className="m-0 text-xs text-ink-soft">
+                O card volta para Análise e o prazo daquela etapa recomeça. O contrato já gerado
+                continua na lista: a próxima geração vira a versão seguinte e aposenta esta.
+              </p>
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3.5 py-2 text-xs font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-50"
+                  disabled={emAndamento || enviando}
+                  onClick={async () => {
+                    setErro(null);
+                    const falha = await aoVoltarParaAnalise();
+                    if (falha) {
+                      setErro(falha);
+                      setConfirmandoVolta(false);
+                    }
+                  }}
+                  title={
+                    enviando
+                      ? "O contrato está sendo enviado para a Clicksign. Voltar agora deixaria o envelope a caminho de um card que saiu da etapa."
+                      : "Voltar o card para a análise"
+                  }
+                  type="button"
+                >
+                  {emAndamento ? (
+                    <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                  ) : (
+                    <Undo2 aria-hidden="true" className="size-3.5" />
+                  )}
+                  Confirmo: voltar
+                </button>
+                <button
+                  className="inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold text-ink-muted transition-colors hover:text-ink"
+                  onClick={() => setConfirmandoVolta(false)}
+                  type="button"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
             <button
               className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3.5 py-2 text-xs font-semibold text-ink-soft transition-colors hover:text-ink disabled:opacity-50"
-              disabled={emAndamento}
-              onClick={async () => {
-                setErro(null);
-                const falha = await onGerarContrato();
-                if (falha) setErro(falha);
-              }}
+              disabled={enviando}
+              onClick={() => setConfirmandoVolta(true)}
+              title={
+                enviando
+                  ? "O contrato está sendo enviado para a Clicksign. Voltar agora deixaria o envelope a caminho de um card que saiu da etapa."
+                  : "Voltar o card para a análise"
+              }
               type="button"
             >
-              {emAndamento ? (
-                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-              ) : (
-                <FileText aria-hidden="true" className="size-3.5" />
-              )}
-              {contratos.length > 0 ? `Gerar versão ${contratos.length + 1}` : "Gerar contrato"}
+              <Undo2 aria-hidden="true" className="size-3.5" />
+              Voltar para análise
             </button>
-          ) : null}
+          )}
         </div>
       </div>
 
-      {/* DIREITA: o PDF, "aqui eu já vejo o PDF mesmo" */}
-      <section className="min-h-[60vh] rounded-xl border border-line bg-subtle">
+      {/* DIREITA: o PDF, "aqui eu já vejo o PDF mesmo"
+          ⚠️ O `xl:min-h-0` NÃO É ENFEITE. Em `xl` esta seção é quem preenche a altura do painel; um
+          `min-height` maior do que a altura disponível empurraria o painel para rolar por fora, e a
+          barra de rolagem dupla seria outro defeito no lugar do "a tela está cortando". Abaixo de
+          `xl`, onde a coluna empilha, o `min-h-[60dvh]` volta a valer e o PDF nasce com tamanho de
+          leitura. `dvh` e não `vh`: no mobile a barra do navegador come a diferença. */}
+      <section className="flex min-h-[60dvh] flex-col rounded-xl border border-line bg-subtle xl:min-h-0">
         {vigente ? (
           <VisorDoPdf documentoId={vigente.id} />
         ) : (
@@ -1066,7 +1238,11 @@ function VisorDoPdf({ documentoId }: { documentoId: string }) {
     return <p className="m-0 p-4 text-xs text-ink-muted">Carregando o contrato…</p>;
   }
 
-  return <iframe className="h-full min-h-[60vh] w-full rounded-xl" src={url} title="Contrato" />;
+  // ⚠️ QUEM SEGURA A ALTURA AGORA É O PAI, e o `h-full` daqui era o elo quebrado: altura em
+  // porcentagem sem altura definida no pai não dá erro nenhum — vira `auto`, e o navegador desenha
+  // o iframe no tamanho padrão dele, uns 150px. O `min-h-[60vh]` escondia isso enquanto o painel
+  // rolava por fora; com a coluna preenchendo a altura, ele passaria a estourar o painel.
+  return <iframe className="min-h-0 w-full flex-1 rounded-xl" src={url} title="Contrato" />;
 }
 
 // ── ETAPA 4 · PRAZO LEGAL ──────────────────────────────────────────────────
@@ -1194,14 +1370,31 @@ function Moldura({
   }, [aoFechar]);
 
   return (
-    <div className="absolute inset-0 z-30 flex flex-col bg-canvas p-3">
+    // ⚠️ O `overflow-hidden` SÓ VALE DE `lg` PARA CIMA, e é ele que faz a etapa contrato preencher
+    // em vez de cortar. Abaixo disso as colunas empilham e a moldura precisa rolar por dentro, ou
+    // a análise — a etapa mais alta da tela — ficaria inalcançável do meio para baixo.
+    // ⚠️ O `data-temis-trabalho` NÃO É ENFEITE DE TESTE: é por ele que a `TemisPage` sabe, só com
+    // CSS, que a tela de trabalho está aberta (`has-[[data-temis-trabalho]]:h-full`) e fixa a altura
+    // do quadro. Sem altura DEFINIDA no pai, o `max-h-full` do kanban resolve como `none` e este
+    // `inset-0` volta a copiar a altura da coluna de cards mais alta. Ver a nota do `temis-kanban`.
+    <div
+      className="absolute inset-0 z-30 flex flex-col overflow-auto bg-canvas p-3 lg:overflow-hidden"
+      data-temis-trabalho=""
+    >
+      {/* ⚠️ SÓ O ÍCONE — Lucas (11/09/2026): *"essa escrita voltar ao quadro, deixa somente o
+          ícone"*. É a mesma regra dos botões do topo (10/09/2026: *"coloca esses botões no topo
+          somente o ícone"*), com o nome vivo no `title` e no `aria-label`: ícone mudo é adivinhação
+          para quem usa teclado ou leitor de tela. Ele não reusa o `BotaoDeAcao` porque voltar é
+          NAVEGAÇÃO, e não uma ação do trabalho — fica menor (size-8) e mais apagado, para não
+          disputar o olho com gerar, indeferir e enviar. O `Esc` continua fazendo o mesmo. */}
       <button
-        className="mb-2 inline-flex w-fit shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[11px] font-semibold text-ink-soft transition-colors hover:text-ink"
+        aria-label="Voltar ao quadro"
+        className="mb-2 grid size-8 shrink-0 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:text-ink"
         onClick={aoFechar}
+        title="Voltar ao quadro"
         type="button"
       >
-        <ArrowLeft aria-hidden="true" className="size-3.5" />
-        Voltar ao quadro
+        <ArrowLeft aria-hidden="true" className="size-4" />
       </button>
       {children}
     </div>

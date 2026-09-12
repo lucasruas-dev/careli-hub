@@ -14,7 +14,6 @@ import {
   situacaoDoPrazo,
 } from "@/lib/temis/trabalhos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
-import { EnviarParaAssinatura } from "@/modules/temis/blocks/assinatura/enviar-para-assinatura";
 
 // O BOARD DA TÊMIS — kanban do trabalho, e não painel de configuração.
 //
@@ -62,7 +61,7 @@ type TrabalhoDaTela = {
   id: string;
   irisTicketId: null | string;
   observacao: null | string;
-  /** A proposta de onde o contrato saiu. É a chave do envio para assinatura. */
+  /** A proposta de onde o contrato saiu. Quem envia para assinatura é a tela de trabalho. */
   propostaId?: null | string;
   tipo: TipoDeTrabalho;
   trabalhoOrigemId: null | string;
@@ -135,8 +134,6 @@ export function TemisKanban({
    * inalcançáveis sem nenhum erro aparecer. Agora as duas ações moram na tela de trabalho.
    */
   const [emTrabalho, setEmTrabalho] = useState<null | string>(null);
-  /** A proposta cujo contrato está indo para assinatura (o modal aberto). */
-  const [enviando, setEnviando] = useState<null | string>(null);
   /**
    * O recado de uma etapa que acabou de ser encerrada.
    *
@@ -256,12 +253,37 @@ export function TemisKanban({
     // `relative` porque a tela de trabalho é um overlay absoluto por cima do quadro.
     //
     // ⚠️ E O PAI PRECISA TER ALTURA ENQUANTO ELA ESTÁ ABERTA. `inset-0` copia a altura de quem
-    // posiciona: sem a altura mínima, a tela de trabalho herdava a do QUADRO — que encolhe quando
-    // há poucos cards — e a análise inteira ficava espremida numa faixa de uns 600px, rolando por
-    // dentro com a metade de baixo da janela vazia. Lucas (10/09/2026): *"a tela está cortando"*.
+    // posiciona: sem isso, a tela de trabalho herdava a do QUADRO — que encolhe quando há poucos
+    // cards — e a análise inteira ficava espremida numa faixa de uns 600px, rolando por dentro com
+    // a metade de baixo da janela vazia. Lucas (10/09/2026 e de novo 11/09/2026): *"a tela está
+    // cortando"*.
+    //
+    // ⚠️ ERA UM CHUTE, E ERRAVA POR UNS 50px. O `min-h-[calc(100vh-10rem)]` supunha 160px de cromo
+    // acima do quadro; o cromo real é 3,25rem da topbar + 2rem do padding do main + 1,5rem do p-3
+    // da TemisPage ≈ 108px. Agora não se chuta: aqui só se diz "ocupe o que sobrou" (`flex-1`
+    // dentro do `flex flex-col` que a TemisPage passou a ser).
+    //
+    // ⚠️ MAS A ALTURA NÃO DESCE SOZINHA DE PAI PARA FILHO, e este comentário afirmava que sim.
+    // `flex-1` é `flex: 1 1 0%` num pai de altura INDEFINIDA (`min-h-full` é mínimo, não altura):
+    // a base 0% não tem de quê ser porcentagem, então a caixa resolve por `max-content` — ou seja,
+    // pela coluna de cards mais alta. Medido a 1920x900 com a tela de trabalho aberta: 2 cards dão
+    // 738px de overlay, 9 cards dão 925px e o botão dourado do envio nasce em y 1099, FORA da
+    // janela, e 16 cards dão 1606px. Hoje a Têmis tem 2 cards e ninguém viu — mas ela enche. O
+    // `max-h-full` é o teto que faltava: o overlay nunca passa do painel, e quem rola é a tela de
+    // trabalho por dentro, como ela já sabe fazer.
+    //
+    // ⚠️ E O TETO SÓ VALE PORQUE A `TemisPage` DÁ ALTURA AO PAI. `max-height: 100%` contra um pai de
+    // altura indefinida resolve como `none`, ou seja: sozinho, este `max-h-full` seria um conserto
+    // que não conserta nada. Quem fecha a conta é o `has-[[data-temis-trabalho]]:h-full` do div que
+    // embrulha este componente lá — mexer num dos dois sem o outro devolve o overlay de 1606px.
+    //
+    // ⚠️ O `overflow-hidden` SÓ É SEGURO PORQUE OS MODAIS DESTA SUBÁRVORE SÃO `position: fixed` —
+    // a prévia do contrato e o visor de documento se posicionam pela janela, não por este `div`, e
+    // por isso não são cortados por ele. Um painel novo aqui dentro que use `absolute` precisa
+    // caber, ou volta a sumir sem erro nenhum.
     <div
       className={`relative flex flex-col gap-3 ${
-        emTrabalho ? "min-h-[calc(100vh-10rem)]" : ""
+        emTrabalho ? "max-h-full min-h-0 flex-1 overflow-hidden" : ""
       }`}
     >
       {emTrabalho ? (
@@ -273,7 +295,6 @@ export function TemisKanban({
             void carregar();
             setEmTrabalho(null);
           }}
-          aoEnviarParaAssinatura={(id) => setEnviando(id)}
           aoFechar={() => setEmTrabalho(null)}
           aoMudar={() => void carregar()}
           trabalhoId={emTrabalho}
@@ -340,20 +361,13 @@ export function TemisKanban({
         </div>
       </div>
 
-      {/* ⚠️ O MODAL VIVE FORA DAS COLUNAS, e não dentro do card. Dentro, ele herdaria o `overflow`
-          da coluna do kanban e apareceria cortado (ou preso à rolagem lateral) — e o botão que
-          confirma o envio ficaria fora da tela. */}
-      {enviando ? (
-        <EnviarParaAssinatura
-          aoFechar={() => {
-            setEnviando(null);
-            // O card acabou de mudar de estado (o envio move o trabalho para "em assinatura"):
-            // recarrega para o board não continuar mostrando o passo anterior.
-            void carregar();
-          }}
-          propostaId={enviando}
-        />
-      ) : null}
+      {/* ⚠️ O MODAL DE ENVIO NÃO MORA MAIS AQUI. Ele era montado neste ponto e aberto por uma prop
+          da tela de trabalho, `aoEnviarParaAssinatura(trabalhoId)` — e o nome MENTIA: o destino
+          espera o id da PROPOSTA e o callsite mandava `card.id`. Em produção (11/09/2026) isso
+          respondia "Esta proposta ainda não tem contrato gerado" com o PDF aberto na tela ao lado.
+          Agora quem organiza e envia é a `OrganizacaoDaAssinatura`, dentro da etapa contrato, que
+          recebe a proposta e nada mais — não há mais um id atravessando o quadro para se trocar
+          pelo outro. */}
     </div>
   );
 }

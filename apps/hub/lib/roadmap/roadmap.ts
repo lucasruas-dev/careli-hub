@@ -68,17 +68,27 @@ export type ItemDoRoadmap = {
  */
 export const FRENTE_ATUAL = {
   desde: "2026-09-11",
-  itens: ["PAN-107", "PAN-105", "PAN-109", "PAN-112"] as readonly string[],
+  itens: ["PAN-113", "PAN-018", "PAN-022"] as readonly string[],
   porque:
-    "Lucas: 'bora construir isso hoje então, foco'. A plataforma de atendimento ao usuário interno " +
-    "com agente de nível 1 — mas começando pelo que para o silêncio, que é a causa medida das " +
-    "críticas: o chamado nascia sem avisar ninguém, e a cobrança de quem cobrava era descartada " +
-    "porque o destinatário era o dono, e os 30 parados não têm dono. O agente com ferramentas vem " +
-    "depois, com a fila destravada e com métrica que não mente.",
-  titulo: "Plataforma de atendimento ao usuário interno",
+    "Lucas: 'vamos voltar a trabalhar na temis?' e, depois de rodar o fluxo do zero, " +
+    "'faz essas melhorias para gente fechar essa etapa'. A etapa 2 é a única do quadro que " +
+    "termina num ato que custa e não se desfaz: o envelope na Clicksign. Ela já recebe o card " +
+    "sozinha, gera o contrato, organiza quem assina e manda — o que falta é o histórico das " +
+    "passagens (a 0153 parada), tirar signatário pela tela e enxergar o que acontece depois do " +
+    "envio, que hoje é uma tela 'Em construção'.",
+  titulo: "Fechar a etapa do contrato na Têmis, do card ao envelope",
 } as const;
 
 export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
+  {
+    id: "PAN-113",
+    bloqueio: "Migration em produção exige OK explícito do Lucas a cada vez.",
+    evidencia: "packages/database/migrations/0153_temis_passagens_de_etapa.sql, escrita e não aplicada. O código da v1.318.0 já grava e já lê: `lib/temis/passagem-de-etapa-db.ts` e a rota /api/temis/trabalho/historico tratam a tabela ausente como silêncio (`ehTabelaAusente`, 42P01 + PGRST205).",
+    modulo: "Temis",
+    porque: "Lucas (11/09/2026): *\"o historico nao esta trazendo essas aprovacoes de analise - contrato - contrato para assinatura, tem que trazer\"*. O banco nunca guardou as passagens de etapa do card — os seis pontos que movem um card fazem UPDATE e o estágio anterior é sobrescrito no mesmo instante. Enquanto a tabela não existir, a aba mostra a etapa de hoje e diz, com todas as letras, que o caminho até ela não foi gravado. ⚠️ E não haverá backfill: inventar \"análise → contrato\" com data chutada é fabricar fato datado em auditoria de contrato.",
+    situacao: "proximo",
+    titulo: "Aplicar a migration 0153 e acender o histórico das etapas da Têmis",
+  },
   {
     id: "PAN-001",
     entregueEm: "2026-09-11",
@@ -90,11 +100,11 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
   },
   {
     id: "PAN-002",
-    bloqueio: "Deploy e migration exigem OK explícito do Lucas a cada vez.",
-    evidencia: "git: a branch wip/gerar-proposta está à frente de origin/main (3fcd2970 = v1.310.0). ⚠️ A migration 0152 JÁ FOI APLICADA em produção em 11/09 — o que falta é subir o código e escrever o changelog do deploy.",
+    entregueEm: "2026-09-11",
+    evidencia: "origin/main em 9fd5bf7f (v1.317.0), deployment dpl_9uRAGeaSXh63E6H4otvU8yDUGaxr READY com alias c2x.app.br. A migration 0152 já estava aplicada desde 11/09.",
     modulo: "Temis",
-    porque: "Tudo o que foi feito em 11/09 (tela de análise, contrato editável, congelamento do desconto, o conserto do card que não andava) está commitado e fora do ar. Enquanto não sobe, o operador continua vendo a tela antiga.",
-    situacao: "bloqueado",
+    porque: "Tudo o que foi feito em 11/09 (tela de análise, contrato editável, congelamento do desconto, o conserto do card que não andava) ficou commitado e fora do ar até a noite. Enquanto não subiu, o operador continuou vendo a tela antiga.",
+    situacao: "entregue",
     titulo: "Subir os commits da Têmis e escrever o changelog do deploy",
   },
   {
@@ -216,11 +226,11 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
   },
   {
     id: "PAN-016",
-    bloqueio: "Push na main é deploy de produção em c2x.app.br e exige OK explícito do Lucas a cada vez (CLAUDE.md §Bloqueio operacional).",
-    evidencia: "git rev-list --left-right --count origin/main...HEAD = 0 11, medido em 11/09; origin/main está em 3fcd2970 (10/09 14:42)",
+    entregueEm: "2026-09-11",
+    evidencia: "git rev-list --left-right --count origin/main...HEAD = 0 0, medido em 11/09 23h; origin/main está em 9fd5bf7f. Subiram nas versões 1.311.0 a 1.317.0.",
     modulo: "Infra",
-    porque: "Todo o trabalho de hoje está só na branch wip/gerar-proposta: a tela de análise da Têmis, o contrato editável, o congelamento de preço da proposta, o runner dos hooks, as três skills e o documento do domínio. Produção segue no commit de ontem.",
-    situacao: "bloqueado",
+    porque: "O trabalho do dia ficou parado numa branch enquanto produção seguia no commit da véspera: a tela de análise da Têmis, o contrato editável, o congelamento de preço da proposta, o runner dos hooks, as três skills e o documento do domínio.",
+    situacao: "entregue",
     titulo: "Subir para a main os 11 commits de 11/09",
   },
   {
@@ -234,9 +244,9 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
   },
   {
     id: "PAN-018",
-    evidencia: "apps/hub/modules/temis/blocks/trabalho/tela-de-trabalho.tsx: bloco 'Quem assina' com o texto 'Trazê-la para esta coluna é a próxima entrega'. A decisão 5 do doc exige mostrar o removido com o aviso ao lado, e não sumir com ele.",
+    evidencia: "v1.318.0: a lista chegou na etapa 2 (apps/hub/modules/temis/blocks/assinatura/organizacao-da-assinatura.tsx) com ordem, e-mail editável, CPF e envio. ⚠️ FALTA SÓ A EXCLUSÃO, e ela é a única das quatro que exige servidor e banco: o POST monta as pessoas em `prepararEnvio` sem ponto de filtro, e `temis_envelopes.signatarios` grava quem FOI, nunca quem foi TIRADO — sem uma coluna para isso, o contrato passa a parecer ter nascido sem cônjuge.",
     modulo: "Temis",
-    porque: "O Lucas pediu o PDF à direita e, à esquerda, quem assina com ordem, CPF, e-mail e a exclusão. Hoje o PDF está lá e a lista é só uma frase dizendo que ela abre no botão de enviar.",
+    porque: "O Lucas pediu o PDF à direita e, à esquerda, quem assina com ordem, CPF, e-mail e a exclusão. O PDF e a lista estão no ar desde a v1.318.0; tirar alguém do envelope continua impossível pela tela. ⚠️ E falta uma regra que o código não tem: `conferirSignatarios` só recusa lista VAZIA, então tirar um de dois compradores qualificados no papel passaria por todas as conferências e produziria contrato que o jurídico devolve.",
     situacao: "fazendo",
     titulo: "Trazer quem assina para a etapa 2, com exclusão do signatário",
   },
@@ -785,7 +795,10 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
   },
   {
     id: "PAN-085",
-    evidencia: "v1.302.0 e v1.303.0; packages/database/migrations/0149_temis_envelopes_de_assinatura.sql; apps/hub/modules/temis/blocks/assinatura/enviar-para-assinatura.tsx.",
+    // ⚠️ A TELA CITADA AQUI MUDOU DE ARQUIVO NA v1.318.0. Era o modal `enviar-para-assinatura.tsx`,
+    // aberto por cima do quadro; ele foi apagado e o trabalho passou a viver dentro da etapa
+    // Contrato, ao lado do PDF. Evidência que aponta para arquivo inexistente não prova nada.
+    evidencia: "v1.302.0, v1.303.0 e v1.318.0; packages/database/migrations/0149_temis_envelopes_de_assinatura.sql; apps/hub/modules/temis/blocks/assinatura/organizacao-da-assinatura.tsx.",
     modulo: "Temis",
     porque: "É a ponte que faltava para o contrato sair do Panteon e chegar a quem assina, sem depender do legado nem do D4Sign, que ficou de reserva.",
     situacao: "entregue",

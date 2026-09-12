@@ -12,6 +12,7 @@
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 import { type ContratoNoCard, contratosDasPropostas } from "./contrato-guardado-db";
+import { registrarPassagemDeEtapa } from "./passagem-de-etapa-db";
 import {
   type EstagioDoTrabalho,
   type TipoDeTrabalho,
@@ -237,11 +238,30 @@ export async function abrirTrabalho(
       venda_id: novo.vendaId ?? null,
       workspace_id: "careli",
     })
-    .select("id")
-    .single();
+    .select("estagio, id")
+    .single<{ estagio: null | string; id: string }>();
 
   if (error || !data) return { erro: error?.message ?? "não consegui abrir", ok: false };
-  return { id: data.id as string, ok: true };
+
+  // ⚠️ O NASCIMENTO DO CARD É UMA PASSAGEM COM `de` NULO, e não uma linha ausente. Sem ela, a aba
+  // Histórico começaria a contar a vida do trabalho no primeiro avanço — e "quando este pedido
+  // chegou à Têmis" é a primeira pergunta de qualquer conferência de prazo.
+  //
+  // ⚠️ E O DESTINO VEM DO BANCO, NÃO DE UMA CONSTANTE DAQUI. O insert não escreve `estagio`: quem
+  // decide é o DEFAULT da coluna (`analise`, desde a 0150). Repetir a palavra aqui criaria uma
+  // segunda fonte da verdade, que só divergiria no dia em que o default mudasse. Destino em branco
+  // (leitura que voltou vazia) não vira linha — `registrarPassagemDeEtapa` sai calada.
+  await registrarPassagemDeEtapa(supabase, {
+    de: null,
+    origem: "abertura",
+    para: data.estagio ?? "",
+    propostaId: novo.propostaId ?? null,
+    quem: novo.abertoPor ?? null,
+    trabalhoId: data.id,
+    trabalhoTipo: novo.tipo,
+  });
+
+  return { id: data.id, ok: true };
 }
 
 /**
@@ -287,6 +307,24 @@ export async function marcarAtividade(input: {
 
   const { error } = await supabase.from("temis_trabalhos").update(mudanca).eq("id", input.id);
   if (error) return { erro: error.message, ok: false };
+
+  // ⚠️ SÓ DEPOIS DO `update`, E SÓ QUANDO O CARD ANDOU. Marcar atividade sem fechar o estágio não
+  // é passagem de etapa — o card continua onde estava, e uma linha aqui encheria a linha do tempo
+  // de eventos que não mudaram nada.
+  //
+  // ⚠️ SEM AUTOR, E ISSO É HONESTO: esta função recebe o id e a atividade, não a sessão de quem
+  // clicou. Vazio é melhor que errado num registro que vai ser lido como prova. Quando a rota que
+  // a chama passar a informar quem marcou, o campo já está aqui esperando.
+  if (seguinte) {
+    await registrarPassagemDeEtapa(supabase, {
+      de: trabalho.estagio,
+      origem: "atividade",
+      para: seguinte,
+      propostaId: trabalho.propostaId,
+      trabalhoId: input.id,
+      trabalhoTipo: depois.tipo,
+    });
+  }
 
   return { andou: Boolean(seguinte), estagio: seguinte ?? trabalho.estagio, ok: true };
 }

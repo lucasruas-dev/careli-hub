@@ -158,7 +158,22 @@ export function TemisPage() {
             // cada empreendimento tinha — informação de Setup, olhada uma vez por empreendimento.
             // Quem passa o dia em contrato precisa ver o que está na mão dele hoje. O que o board
             // antigo mostrava não se perdeu: virou a tela Setup, onde é o lugar dele.
-            <div className="p-3">
+            // ⚠️ `min-h-full` E NÃO `h-full`: é este div que passa a altura do `<section>` adiante
+            // para a tela de trabalho preencher em vez de cortar. Com `h-full`, um quadro cheio de
+            // cards ficaria preso na altura da janela e o `p-3` de baixo sumiria; com `min-h-full`
+            // ele ocupa o que sobrou quando há pouca coisa e cresce quando há muita.
+            //
+            // ⚠️ SÓ QUE `min-height` NÃO É ALTURA, e era isso que faltava para o teto do kanban
+            // existir: o `max-h-full` de lá é `max-height: 100%`, e porcentagem contra um pai de
+            // altura INDEFINIDA resolve como `none` — o teto não pegava, e a tela de trabalho
+            // (`absolute inset-0`) voltava a copiar a altura da coluna de cards mais alta (medido a
+            // 1920x900: 925px com 9 cards, com o botão dourado do envio em y 1099, fora da janela).
+            // O `has-[...]` liga `h-full` SÓ enquanto a tela de trabalho está montada — ela carrega
+            // o `data-temis-trabalho` —, então o quadro sem overlay continua crescendo com os cards
+            // e o `p-3` de baixo continua no lugar. O `<section>` acima tem altura definida (é
+            // `flex-1` de um `flex flex-col` que a janela dimensiona), então o `100%` daqui tem
+            // contra o que resolver.
+            <div className="flex min-h-full flex-col p-3 has-[[data-temis-trabalho]]:h-full">
               {/* ⚠️ SEM FILTRO, E O CÓDIGO NÃO FAZIA O QUE O COMENTÁRIO AO LADO DO SELETOR PROMETE.
                   O cabeçalho esconde o seletor no Board justamente porque "o Board mostra todos os
                   empreendimentos de uma vez" — e o kanban continuava recebendo `escolhido.id`, que

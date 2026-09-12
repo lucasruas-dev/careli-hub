@@ -121,11 +121,16 @@ export async function POST(request: Request) {
     );
   }
 
+  // ⚠️ UMA CONSULTA SÓ PARA OS DOIS USOS. O nome vai para a gaveta (`guardarContrato`) e para a
+  // passagem de etapa logo abaixo; buscá-lo duas vezes seria uma ida ao banco a mais para responder
+  // a mesma pergunta, e abriria a chance de as duas linhas discordarem sobre quem foi.
+  const nomeDeQuemGerou = await nomeDoUsuario(sb, autorizacao.userId);
+
   const guardado = await guardarContrato(sb, {
     // Quem lê a gaveta precisa saber que este PDF não é o texto puro da minuta.
     alteradoAMaoPor: edicao ? (edicao.editadoPorNome ?? "alguém da equipe") : null,
     geradoPor: autorizacao.userId,
-    geradoPorNome: await nomeDoUsuario(sb, autorizacao.userId),
+    geradoPorNome: nomeDeQuemGerou,
     identidade: montado.identidade,
     pdf,
     propostaId,
@@ -144,7 +149,14 @@ export async function POST(request: Request) {
   // tocar em qualquer linha: um card que já está em assinatura não volta, e o cancelamento da mesma
   // proposta não é arrastado junto. Falha aqui não derruba a geração — o PDF já está guardado, e um
   // card parado é bem menos grave que um contrato perdido.
-  await moverCardDaTemis(sb, propostaId, "contrato");
+  //
+  // ⚠️ A PASSAGEM LEVA O AUTOR, e é a mesma identidade que assinou o documento na gaveta. O card e
+  // o PDF contando histórias diferentes sobre quem emitiu seria o pior dos dois mundos numa
+  // auditoria: dois registros do mesmo ato, um deles anônimo.
+  await moverCardDaTemis(sb, propostaId, "contrato", {
+    id: autorizacao.userId,
+    nome: nomeDeQuemGerou,
+  });
 
   return NextResponse.json({
     data: {

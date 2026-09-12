@@ -1,21 +1,27 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { analiseDoTrabalho } from "@/lib/temis/analise-do-trabalho";
 import { contratosDaProposta } from "@/lib/temis/contrato-guardado-db";
-import { autorizarLeituraDeContrato } from "@/lib/temis/autorizacao";
+import {
+  autorizarEmissaoDeContrato,
+  autorizarLeituraDeContrato,
+} from "@/lib/temis/autorizacao";
+import { nomeDaEtapaGravada } from "@/lib/temis/historico-de-etapas";
 import { conferirIndeferimento } from "@/lib/temis/indeferimento";
-import { autorizarEmissaoDeContrato } from "@/lib/temis/autorizacao";
+import { registrarPassagemDeEtapa } from "@/lib/temis/passagem-de-etapa-db";
 
 // A TELA DE TRABALHO DE UM CARD — o que abre quando o operador clica no quadro.
 //
 // Lucas (09/09/2026): *"ao clicar no card abrisse uma tela de trabalho. primeiro, na primeira
 // etapa, acho que deveria trazer os dados dos proponentes, imobiliaria, a proposta"*.
 //
-// ⚠️ LER É LEITURA, INDEFERIR É COORDENAÇÃO. O GET usa `autorizarLeituraDeContrato` (a mesma régua
-// de quem abre um contrato já gerado); o POST de indeferir usa `autorizarEmissaoDeContrato`, que é
-// o recorte estreito da coordenação — indeferir devolve o trabalho para quem vendeu e dispara
-// aviso para fora da casa, então não é ato de quem só consulta.
+// ⚠️ LER É LEITURA, DECIDIR É COORDENAÇÃO. O GET usa `autorizarLeituraDeContrato` (a mesma régua
+// de quem abre um contrato já gerado); o POST usa `autorizarEmissaoDeContrato`, que é o recorte
+// estreito da coordenação — as duas ações que ele expõe (indeferir e devolver para correção)
+// mexem no caminho do trabalho e devolvem o processo a quem vendeu, então não são ato de quem só
+// consulta.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 // `dadosDaProposta` faz ~10 consultas ao Supabase. Folga para o pior caso.
@@ -84,14 +90,35 @@ export async function GET(request: Request) {
       ])
     : [null, []];
 
+  // ⚠️ SEM ISTO, O PAINEL DE ASSINATURA NASCE MOSTRANDO ERRO PARA QUEM SÓ LÊ. Este GET autoriza
+  // com a régua de LEITURA; o preparo da assinatura, com a da EMISSÃO. Enquanto o preparo só era
+  // buscado no clique do botão, a diferença não aparecia — com o painel inline na etapa Contrato,
+  // todo leitor que abrir um card dispara uma chamada de coordenação e recebe a recusa na cara,
+  // sem ter feito nada.
+  //
+  // ⚠️ E É UMA SEGUNDA CHECAGEM, NÃO UMA SEGUNDA TRAVA: quem fecha a porta continua sendo cada
+  // rota de escrita. Aqui só se decide o que a tela pode oferecer. O molde é
+  // `/api/temis/contrato/previa` (linha 73), que já faz exatamente isto.
+  const podeEmitir = (await autorizarEmissaoDeContrato(request)).ok;
+
   return NextResponse.json(
-    { data: { analise, card: { ...card, contratos } } },
+    { data: { analise, card: { ...card, contratos }, podeEmitir } },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
 
+/** O que as duas decisões precisam saber do card antes de mexer nele. */
+type CardDaDecisao = {
+  estagio: string;
+  id: string;
+  proposta_id: null | string;
+  tipo: string;
+};
+
 /**
- * INDEFERIR — a Têmis recusa o trabalho e devolve a quem vendeu.
+ * AS DUAS DECISÕES DA COORDENAÇÃO SOBRE UM CARD.
+ *
+ * `indeferir` — a Têmis recusa o trabalho e devolve a quem vendeu.
  *
  * ⚠️ NÃO É REPROVA DE CRÉDITO (Lucas, 10/09/2026: *"credito? não tem credito na temis"*). Crédito
  * mora no Apolo. Aqui se recusa o TRABALHO: falta documento, dado divergente, condição que não
@@ -101,12 +128,21 @@ export async function GET(request: Request) {
  * chegue neles pela central de Relacionamento, e no coordenador dentro do Panteon. Esta rota
  * GRAVA a decisão com motivo; o disparo entra em seguida, e é por isso que o motivo já é
  * obrigatório no banco: sem ele, a mensagem sairia dizendo "recusado" e nada mais.
+ *
+ * `voltar_para_analise` — o contrato volta uma etapa para ser corrigido. Lucas (11/09/2026), sobre
+ * a etapa de organizar as assinaturas: *"caso queira fazer algum ajuste no contrato, podemos ter um
+ * botão para voltar o contrato a etapa anterior, corrigir e mandar para assinatura"*.
+ *
+ * ⚠️ AÇÃO AUSENTE É `indeferir`, e isso é compatibilidade deliberada: a tela de hoje manda
+ * `{ id, motivo, observacao }` sem `acao` nenhuma, e ela continua funcionando igual até ser
+ * atualizada. O dia em que ninguém mais mandar sem `acao`, o padrão pode cair.
  */
 export async function POST(request: Request) {
   const auth = await autorizarEmissaoDeContrato(request);
   if (!auth.ok) return auth.response;
 
   const corpo = (await request.json().catch(() => ({}))) as {
+    acao?: string;
     id?: string;
     motivo?: string;
     observacao?: string;
@@ -115,12 +151,9 @@ export async function POST(request: Request) {
   const id = String(corpo.id ?? "").trim();
   if (!id) return NextResponse.json({ error: "Informe o trabalho." }, { status: 400 });
 
-  const conferido = conferirIndeferimento({
-    motivo: String(corpo.motivo ?? ""),
-    observacao: String(corpo.observacao ?? ""),
-  });
-  if (!conferido.ok) {
-    return NextResponse.json({ error: conferido.erro }, { status: 400 });
+  const acao = String(corpo.acao ?? "").trim() || "indeferir";
+  if (acao !== "indeferir" && acao !== "voltar_para_analise") {
+    return NextResponse.json({ error: "Ação desconhecida." }, { status: 400 });
   }
 
   const sb = createApoloAdminClient();
@@ -128,25 +161,87 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
   }
 
-  // ⚠️ O NOME É ACESSÓRIO E NÃO PODE DERRUBAR O INDEFERIMENTO. Mesmo desenho de `nomeDoUsuario`
-  // em `/api/temis/contrato/gerar`: falha na leitura vira `null`, e o registro sai sem o nome de
-  // quem indeferiu em vez de não sair.
-  // ⚠️ `try/catch`, E NÃO `.catch()`: o builder do Supabase é um `PromiseLike`, não uma Promise —
-  // ele tem `.then` mas não `.catch`, e o typecheck pega isso.
-  let quem: null | { display_name: null | string } = null;
+  // ⚠️ LER ANTES DE ESCREVER, E NÃO SÓ PARA A REGRA DE "VOLTAR". O estágio de ONDE o card sai é o
+  // que o histórico grava — e ele deixa de existir no banco no instante do `update`, porque
+  // `temis_trabalhos.estagio` guarda só o presente. Sem esta leitura a passagem nasceria sem
+  // origem, e `de` nulo significa "card recém-aberto" (migration 0153), que seria mentira.
+  const { data: card, error: erroDaLeitura } = await sb
+    .from("temis_trabalhos")
+    .select("estagio, id, proposta_id, tipo")
+    .eq("id", id)
+    .maybeSingle<CardDaDecisao>();
+
+  if (erroDaLeitura) {
+    console.error("[temis][trabalho] falha ao ler o card antes da decisão", erroDaLeitura);
+    return NextResponse.json({ error: "Nao foi possivel abrir o trabalho." }, { status: 503 });
+  }
+  if (!card) return NextResponse.json({ error: "Trabalho nao encontrado." }, { status: 404 });
+
+  const quemNome = await nomeDeQuemClicou(sb, auth.userId);
+
+  if (acao === "voltar_para_analise") {
+    return voltarParaAnalise(sb, {
+      card,
+      observacao: String(corpo.observacao ?? "").trim() || null,
+      quem: auth.userId,
+      quemNome,
+    });
+  }
+
+  return indeferir(sb, {
+    card,
+    motivo: String(corpo.motivo ?? ""),
+    observacao: String(corpo.observacao ?? ""),
+    quem: auth.userId,
+    quemNome,
+  });
+}
+
+/**
+ * O NOME DE QUEM CLICOU — acessório, e por isso nunca derruba a ação.
+ *
+ * ⚠️ Mesmo desenho de `nomeDoUsuario` em `/api/temis/contrato/gerar`: falha na leitura vira `null`,
+ * e o registro sai sem o nome em vez de não sair.
+ *
+ * ⚠️ `try/catch`, E NÃO `.catch()`: o builder do Supabase é um `PromiseLike`, não uma Promise — ele
+ * tem `.then` mas não `.catch`, e o typecheck pega isso.
+ */
+async function nomeDeQuemClicou(
+  sb: SupabaseClient,
+  userId: string,
+): Promise<null | string> {
   try {
     const r = await sb
       .from("hub_users")
       .select("display_name")
-      .eq("id", auth.userId)
+      .eq("id", userId)
       .maybeSingle<{ display_name: null | string }>();
-    quem = r.data;
+    return r.data?.display_name ?? null;
   } catch {
-    // O nome é acessório: sem ele o registro sai sem quem indeferiu, em vez de não sair.
+    return null;
+  }
+}
+
+async function indeferir(
+  sb: SupabaseClient,
+  decisao: {
+    card: CardDaDecisao;
+    motivo: string;
+    observacao: string;
+    quem: string;
+    quemNome: null | string;
+  },
+): Promise<NextResponse> {
+  const conferido = conferirIndeferimento({
+    motivo: decisao.motivo,
+    observacao: decisao.observacao,
+  });
+  if (!conferido.ok) {
+    return NextResponse.json({ error: conferido.erro }, { status: 400 });
   }
 
   const agora = new Date().toISOString();
-  const { error } = await sb
+  const { data: mexidos, error } = await sb
     .from("temis_trabalhos")
     .update({
       atualizado_em: agora,
@@ -158,17 +253,125 @@ export async function POST(request: Request) {
       indeferido_em: agora,
       indeferido_motivo: conferido.motivo,
       indeferido_observacao: conferido.observacao,
-      indeferido_por: auth.userId,
-      indeferido_por_nome: quem?.display_name ?? null,
+      indeferido_por: decisao.quem,
+      indeferido_por_nome: decisao.quemNome,
     })
-    .eq("id", id)
+    .eq("id", decisao.card.id)
     // Faturado é o fim: um contrato que já virou venda não volta para indeferido.
-    .neq("estagio", "faturado");
+    .neq("estagio", "faturado")
+    // ⚠️ O `.select()` EXISTE PARA SABER SE PEGOU ALGUMA LINHA. Sem ele, o `update` que o `.neq`
+    // barra volta sem erro e sem linha — a rota respondia `ok` e a tela dizia "indeferido" sobre um
+    // card faturado que não se moveu. Pior, o histórico gravaria a passagem que não aconteceu.
+    .select("id");
 
   if (error) {
     console.error("[temis][trabalho] falha ao indeferir", error);
     return NextResponse.json({ error: "Nao foi possivel indeferir." }, { status: 503 });
   }
+
+  if (!mexidos || mexidos.length === 0) {
+    return NextResponse.json(
+      { error: "Este trabalho já foi faturado e não pode ser indeferido." },
+      { status: 409 },
+    );
+  }
+
+  await registrarPassagemDeEtapa(sb, {
+    de: decisao.card.estagio,
+    motivo: conferido.motivo,
+    observacao: conferido.observacao,
+    origem: "indeferimento",
+    para: "indeferido",
+    propostaId: decisao.card.proposta_id,
+    quem: decisao.quem,
+    quemNome: decisao.quemNome,
+    trabalhoId: decisao.card.id,
+    trabalhoTipo: decisao.card.tipo,
+  });
+
+  return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+}
+
+/**
+ * DEVOLVER O CONTRATO PARA A ANÁLISE, para corrigir e mandar de novo.
+ *
+ * ⚠️ SÓ DE "CONTRATO" PARA TRÁS, e a leitura é feita antes justamente para recusar em português em
+ * vez de deixar o `update` não pegar linha nenhuma e responder "pronto". Um card em assinatura não
+ * volta por aqui: o envelope já existe na Clicksign e cobrando, e desfazer isso é outra conversa,
+ * com outro botão.
+ *
+ * ⚠️ `estagio_desde` ANDA AQUI, E É A ÚNICA VEZ EM QUE ELE ANDA PARA TRÁS NO MÓDULO. A regra da
+ * casa é que ele não volta quando só o RÓTULO da etapa muda (migration 0150) — ali um card que
+ * estava em Confecção há seis dias continua há seis dias em Contrato. Aqui é o contrário: o card
+ * REENTROU na análise, de verdade, e o prazo daquela etapa recomeça agora. Deixar o carimbo velho
+ * faria a análise nascer atrasada de dias que ela não teve, e o quadro cobraria do analista um
+ * atraso que é da correção.
+ *
+ * ⚠️ O CONTRATO JÁ GERADO NÃO É APAGADO. Ele continua na lista de versões de `hercules_documentos`
+ * (regra da 0136: versão não se apaga), e a próxima geração vira v+1 e aposenta a anterior sozinha
+ * — quem decide qual vale é `contratoVigente`, sempre a mais nova. Apagar o PDF aqui destruiria a
+ * prova do que foi enviado para conferência antes da correção.
+ */
+async function voltarParaAnalise(
+  sb: SupabaseClient,
+  decisao: {
+    card: CardDaDecisao;
+    observacao: null | string;
+    quem: string;
+    quemNome: null | string;
+  },
+): Promise<NextResponse> {
+  if (decisao.card.estagio !== "contrato") {
+    return NextResponse.json(
+      {
+        error: `Só dá para devolver para a análise um trabalho que está na etapa Contrato. Este está em "${nomeDaEtapaGravada(decisao.card.estagio, decisao.card.tipo)}".`,
+      },
+      { status: 409 },
+    );
+  }
+
+  const agora = new Date().toISOString();
+  const { data: mexidos, error } = await sb
+    .from("temis_trabalhos")
+    .update({
+      atualizado_em: agora,
+      estagio: "analise",
+      estagio_desde: agora,
+    })
+    .eq("id", decisao.card.id)
+    // ⚠️ O `.eq` NO ESTÁGIO É A COMPARAÇÃO-E-TROCA. Entre a leitura e esta linha alguém pode ter
+    // mandado o mesmo contrato para assinatura; sem ele, o card voltaria para a análise com o
+    // envelope já aberto na Clicksign. E o `.select()` é o que permite PERCEBER que isso
+    // aconteceu: `update` que não pega linha nenhuma volta sem erro.
+    .eq("estagio", "contrato")
+    .select("id");
+
+  if (error) {
+    console.error("[temis][trabalho] falha ao devolver para a análise", error);
+    return NextResponse.json(
+      { error: "Nao foi possivel devolver para a analise." },
+      { status: 503 },
+    );
+  }
+
+  if (!mexidos || mexidos.length === 0) {
+    return NextResponse.json(
+      { error: "Este trabalho saiu da etapa Contrato enquanto a tela estava aberta. Abra de novo." },
+      { status: 409 },
+    );
+  }
+
+  await registrarPassagemDeEtapa(sb, {
+    de: decisao.card.estagio,
+    observacao: decisao.observacao,
+    origem: "retorno_para_correcao",
+    para: "analise",
+    propostaId: decisao.card.proposta_id,
+    quem: decisao.quem,
+    quemNome: decisao.quemNome,
+    trabalhoId: decisao.card.id,
+    trabalhoTipo: decisao.card.tipo,
+  });
 
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }

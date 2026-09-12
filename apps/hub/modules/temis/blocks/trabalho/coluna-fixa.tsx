@@ -41,6 +41,8 @@ type Evento = {
   cliente: null | string;
   codigo: null | string;
   fato: string;
+  /** Ausente significa Hércules — ver a nota do campo na lib. */
+  fonte?: "hercules" | "temis";
   id: string;
   observacao: null | string;
   quando: string;
@@ -58,10 +60,19 @@ const ABAS: { id: Aba; rotulo: string }[] = [
 export function ColunaFixa({
   podeEscrever,
   propostaId,
+  trabalhoId,
 }: {
   /** Só quem trabalha o contrato escreve; quem consulta lê. */
   podeEscrever: boolean;
   propostaId: null | string;
+  /**
+   * O CARD. É por ele que a aba Histórico pega as passagens de etapa da Têmis.
+   *
+   * ⚠️ NÃO É SINÔNIMO DE `propostaId`. Uma proposta pode ter DOIS cards (a venda e o pedido de
+   * cancelamento dela, medido em 10/09/2026), e há cards sem proposta nenhuma — os quatro antigos
+   * do Garden e da Lavra, anteriores ao elo da 0134.
+   */
+  trabalhoId: null | string;
 }) {
   const [aba, setAba] = useState<Aba>("chat");
 
@@ -86,21 +97,34 @@ export function ColunaFixa({
         ))}
       </nav>
 
+      {/*
+        ⚠️ O GUARD OLHA OS DOIS, e antes olhava só a proposta. A aba Histórico passou a ter uma
+        fonte que NÃO depende da venda — as passagens de etapa do card —, e o guard antigo fechava a
+        aba justamente nos quatro cards que essa fonte veio cobrir: os do Garden e da Lavra, que
+        nasceram sem `proposta_id`. Chat e Documentos continuam presos à proposta, porque é nela que
+        a conversa e os arquivos moram.
+      */}
       <div className="min-h-0 flex-1 overflow-auto p-3">
-        {!propostaId ? (
-          <p className="m-0 text-xs text-ink-muted">
-            Sem venda ligada a este card.
-          </p>
+        {!propostaId && !trabalhoId ? (
+          <SemVenda />
         ) : aba === "chat" ? (
-          <Chat podeEscrever={podeEscrever} propostaId={propostaId} />
+          propostaId ? (
+            <Chat podeEscrever={podeEscrever} propostaId={propostaId} />
+          ) : (
+            <SemVenda />
+          )
         ) : aba === "documentos" ? (
-          <Documentos propostaId={propostaId} />
+          propostaId ? <Documentos propostaId={propostaId} /> : <SemVenda />
         ) : (
-          <Historico propostaId={propostaId} />
+          <Historico propostaId={propostaId} trabalhoId={trabalhoId} />
         )}
       </div>
     </aside>
   );
+}
+
+function SemVenda() {
+  return <p className="m-0 text-xs text-ink-muted">Sem venda ligada a este card.</p>;
 }
 
 // ── CHAT ───────────────────────────────────────────────────────────────────
@@ -369,7 +393,13 @@ function Bloco({
 
 // ── HISTÓRICO ──────────────────────────────────────────────────────────────
 
-function Historico({ propostaId }: { propostaId: string }) {
+function Historico({
+  propostaId,
+  trabalhoId,
+}: {
+  propostaId: null | string;
+  trabalhoId: null | string;
+}) {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">("carregando");
 
@@ -378,8 +408,14 @@ function Historico({ propostaId }: { propostaId: string }) {
     void (async () => {
       try {
         const token = await getApoloAccessToken();
+        // ⚠️ OS DOIS PARÂMETROS VÃO JUNTOS, e a rota monta UMA lista com as duas fontes. Buscar em
+        // duas chamadas e juntar aqui repetiria no navegador a ordenação que a lib já faz testada —
+        // e as duas listas chegariam em tempos diferentes, com a linha do tempo pulando na tela.
+        const busca = new URLSearchParams();
+        if (propostaId) busca.set("proposta", propostaId);
+        if (trabalhoId) busca.set("trabalho", trabalhoId);
         const r = await fetch(
-          `/api/temis/trabalho/historico?proposta=${encodeURIComponent(propostaId)}`,
+          `/api/temis/trabalho/historico?${busca.toString()}`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         const j = (await r.json().catch(() => ({}))) as { data?: { eventos: Evento[] } };
@@ -397,7 +433,7 @@ function Historico({ propostaId }: { propostaId: string }) {
     return () => {
       vivo = false;
     };
-  }, [propostaId]);
+  }, [propostaId, trabalhoId]);
 
   if (estado === "carregando") {
     return <p className="m-0 text-xs text-ink-muted">Carregando…</p>;
@@ -423,7 +459,21 @@ function Historico({ propostaId }: { propostaId: string }) {
           }`}
           key={e.id}
         >
-          <p className="m-0 text-xs font-semibold text-ink">{e.fato}</p>
+          {/*
+            ⚠️ SELO DE TEXTO, E NÃO UMA QUARTA COR. A borda esquerda já usa esmeralda para
+            pagamento e o dourado #A07C3B para assinatura, e o dourado da marca ficou reservado
+            para dizer em que ETAPA o card está. Uma cor a mais aqui competiria com as três que já
+            significam alguma coisa — e "quem registrou" não é da mesma natureza que "que fato é
+            este", que é o que a cor responde.
+          */}
+          <p className="m-0 text-xs font-semibold text-ink">
+            {e.fato}
+            {e.fonte === "temis" ? (
+              <span className="ml-1.5 rounded bg-subtle px-1 py-px align-middle text-[9px] font-semibold uppercase tracking-wide text-ink-soft">
+                Têmis
+              </span>
+            ) : null}
+          </p>
           {e.observacao ? (
             <p className="m-0 text-[11px] text-ink-soft">{e.observacao}</p>
           ) : null}

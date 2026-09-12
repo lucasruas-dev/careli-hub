@@ -156,6 +156,19 @@ export type EventoDaUnidade = {
   codigo: null | string;
   /** O que aconteceu, em uma frase. */
   fato: string;
+  /**
+   * Quem REGISTROU o fato — o funil da venda (Hércules) ou o card do jurídico (Têmis).
+   *
+   * ⚠️ AUSENTE SIGNIFICA HÉRCULES, e por isso o campo é opcional: tudo o que ESTA lib monta é o
+   * funil da venda, e obrigar cada um dos oito lugares que criam evento aqui a repetir
+   * `fonte: "hercules"` seria ruído sem informação.
+   *
+   * ⚠️ E NÃO É UM QUARTO VALOR EM `tipo`. `tipo` responde "que natureza de fato é este"
+   * (etapa | pagamento | assinatura) e é quem manda na cor da borda da linha; "quem registrou" é
+   * outra pergunta, e misturar as duas tiraria a cor de um pagamento só porque ele veio de outro
+   * módulo. Na tela isto vira um selo de TEXTO ao lado do fato.
+   */
+  fonte?: "hercules" | "temis";
   id: string;
   /** Nulo quando o C2X não gravou. */
   observacao: null | string;

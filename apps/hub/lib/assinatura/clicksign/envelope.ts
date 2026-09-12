@@ -91,6 +91,16 @@ export type EnvelopeCriado = {
 };
 
 export type FalhaNoEnvio = {
+  /**
+   * O id do envelope QUE FICOU NA CONTA. `null` quando nada sobrou — ou porque a falha foi no passo
+   * 1 e envelope nenhum chegou a existir, ou porque o rascunho foi apagado.
+   *
+   * ⚠️ ELE FALTAVA AQUI, E FALTAVA JUSTAMENTE NO CASO PIOR. Quando o passo 6 (notificar) falha, o
+   * envelope já está `running`: pago, permanente, com os convites NÃO enviados — e o id dele ficava
+   * só dentro desta função, que devolvia texto. O Panteon gravava "falhou" e não sabia dizer QUAL
+   * envelope conferir; alguém teria de caçar na lista da Clicksign, no meio de contratos de verdade.
+   */
+  envelopeId: null | string;
   erro: string;
   /** Em que passo parou — é o que diz se sobrou envelope na conta. */
   passo: "ativar" | "criar" | "documento" | "notificar" | "requisitos" | "signatarios";
@@ -134,6 +144,11 @@ export async function enviarParaAssinatura(
     // falha.
     const rascunhoApagado = passo === "notificar" ? false : await desfazer();
     return {
+      // ⚠️ O ID SÓ VIAJA QUANDO SOBROU ALGO NA CONTA. Devolver o id de um rascunho que acabou de ser
+      // apagado faria quem lê procurar — e não achar — um envelope que não existe mais, e gravá-lo na
+      // nossa tabela deixaria uma linha apontando para o nada. `null` aqui significa, com todas as
+      // letras, "nada ficou pendente lá".
+      envelopeId: rascunhoApagado ? null : envelopeId || null,
       erro: detalhe,
       ok: false,
       passo,

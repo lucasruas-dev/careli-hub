@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { lerEventoDoWebhook } from "@/lib/assinatura/clicksign/webhook";
+import {
+  type OrigemDaPassagem,
+  registrarPassagemDeEtapa,
+} from "@/lib/temis/passagem-de-etapa-db";
 import type { EstagioDoTrabalho, TipoDeTrabalho } from "@/lib/temis/trabalhos";
 
 import { estagiosDoTipo } from "@/lib/temis/trabalhos";
@@ -158,22 +162,81 @@ async function acharEnvelope(
  * ⚠️ E FALHA AQUI NÃO É FALHA DO EVENTO. O estado do envelope — que é o fato — já está gravado. O
  * card é a apresentação daquele fato no board, e um board desatualizado se conserta na próxima
  * leitura; desfazer o estado por causa dele seria trocar o certo pelo cosmético.
+ *
+ * ⚠️ `autor` É OPCIONAL E DEVE SER PASSADO SEMPRE QUE EXISTIR. Omitir quer dizer "o sistema moveu
+ * sozinho" — a promessa que a 0153 faz sobre `quem` nulo. Os dois chamadores de hoje sabem quem
+ * clicou (a rota de gerar tem `autorizacao.userId`; o envio tem `pedido.usuarioId`), e sem isto a
+ * passagem mais auditável da casa — "quem mandou este contrato para a Clicksign" — nascia anônima,
+ * enquanto o ato REVERSÍVEL de devolver para a análise saía assinado.
  */
 export async function moverCardDaTemis(
   sb: SupabaseClient,
   propostaId: string,
   estagio: EstagioDoTrabalho,
+  autor?: null | { id: null | string; nome: null | string },
 ): Promise<void> {
   const alvos = await cardsQueAceitam(sb, propostaId, estagio);
   if (alvos.length === 0) return;
 
+  const agora = new Date().toISOString();
   const { error } = await sb
     .from("temis_trabalhos")
-    .update({ atualizado_em: new Date().toISOString(), estagio, estagio_desde: new Date().toISOString() })
-    .in("id", alvos);
+    .update({ atualizado_em: agora, estagio, estagio_desde: agora })
+    .in(
+      "id",
+      alvos.map((c) => c.id),
+    );
 
-  if (error) console.error("[temis][card] falha ao mover o card da proposta", error);
+  if (error) {
+    console.error("[temis][card] falha ao mover o card da proposta", error);
+    return;
+  }
+
+  // ⚠️ O ESTÁGIO ANTERIOR VEM DE `cardsQueAceitam`, e não de uma segunda consulta. Ela já leu
+  // `id, tipo, estagio` de cada card para decidir quem pode andar — e depois do `update` acima o
+  // estágio de antes não existe mais em lugar nenhum do banco: uma releitura traria o destino, e o
+  // histórico gravaria "contrato → contrato".
+  //
+  // ⚠️ E FALHA AQUI NÃO DESFAZ NADA. O card já andou, que é o fato; o histórico é a narração dele.
+  // `registrarPassagemDeEtapa` é calada por construção — ver a nota daquele arquivo.
+  for (const card of alvos) {
+    await registrarPassagemDeEtapa(sb, {
+      de: card.estagio,
+      origem: ORIGEM_POR_DESTINO[estagio],
+      para: estagio,
+      propostaId,
+      quem: autor?.id ?? null,
+      quemNome: autor?.nome ?? null,
+      trabalhoId: card.id,
+      trabalhoTipo: card.tipo,
+    });
+  }
 }
+
+/**
+ * O QUE FEZ O CARD ANDAR, DEDUZIDO DO DESTINO.
+ *
+ * ⚠️ A ORIGEM NÃO VEM DE QUEM CHAMA PORQUE O DESTINO JÁ A RESPONDE SEM AMBIGUIDADE: só há um
+ * caminho que leva o card a cada uma destas etapas. O mapa fica aqui, completo e tipado — destino
+ * novo sem origem declarada não compila —, e assim não há duas respostas possíveis para a mesma
+ * pergunta espalhadas pelos chamadores.
+ *
+ * ⚠️ QUEM CLICOU É OUTRA HISTÓRIA, E ESSA VEM DE FORA (o `autor` de `moverCardDaTemis`). A versão
+ * anterior desta nota dizia que pedir mais um parâmetro "quebraria os dois chamadores" e usava isso
+ * para justificar a passagem anônima; o argumento vale para a ORIGEM, que o destino deduz, e não
+ * para o AUTOR, que ninguém deduz — e um parâmetro OPCIONAL não quebra chamador nenhum.
+ */
+const ORIGEM_POR_DESTINO: Record<EstagioDoTrabalho, OrigemDaPassagem> = {
+  // A única forma de um card VOLTAR para a análise é o botão de devolver para correção.
+  analise: "retorno_para_correcao",
+  assinatura: "envio_assinatura",
+  contrato: "contrato_gerado",
+  // Estes três não chegam por aqui hoje (`concluirAssinaturaDoCard` e o POST de indeferir declaram
+  // a própria origem), mas o mapa é total de propósito: o dia em que chegarem, chegam nomeados.
+  faturado: "webhook_assinatura",
+  indeferido: "indeferimento",
+  prazo_legal: "webhook_assinatura",
+};
 
 /**
  * Quais cards desta proposta podem ir para este estágio.
@@ -197,7 +260,7 @@ async function cardsQueAceitam(
   sb: SupabaseClient,
   propostaId: string,
   destino: EstagioDoTrabalho,
-): Promise<string[]> {
+): Promise<CardParaMover[]> {
   const { data, error } = await sb
     .from("temis_trabalhos")
     .select("id, tipo, estagio")
@@ -208,7 +271,7 @@ async function cardsQueAceitam(
     return [];
   }
 
-  const cards = (data ?? []) as { estagio: string; id: string; tipo: TipoDeTrabalho }[];
+  const cards = (data ?? []) as CardParaMover[];
   const podem = cards.filter(
     (c) =>
       c.estagio !== "faturado" &&
@@ -226,8 +289,13 @@ async function cardsQueAceitam(
     }
   }
 
-  return podem.map((c) => c.id);
+  // ⚠️ DEVOLVE O CARD INTEIRO, E NÃO SÓ O ID. Quem chama precisa do estágio de ANTES para gravar a
+  // passagem — e ele deixa de existir no banco no instante do `update`.
+  return podem;
 }
+
+/** O que `moverCardDaTemis` precisa saber de cada card: quem é, de onde sai e de que tipo é. */
+type CardParaMover = { estagio: string; id: string; tipo: TipoDeTrabalho };
 
 /**
  * O QUE ACONTECE COM O CARD QUANDO O ENVELOPE FECHA — e isto MUDOU com as cinco etapas.
@@ -298,7 +366,26 @@ export async function concluirAssinaturaDoCard(
     .neq("estagio", "faturado")
     .neq("estagio", "indeferido");
 
-  if (error) console.error("[temis][card] falha ao concluir a assinatura", error);
+  if (error) {
+    console.error("[temis][card] falha ao concluir a assinatura", error);
+    return;
+  }
+
+  // ⚠️ A ÚNICA PASSAGEM QUE NINGUÉM DA CASA PROVOCA. As outras cinco nascem de um clique nosso;
+  // esta nasce do webhook da Clicksign, e é justamente a que some da memória de todo mundo — o
+  // contrato "apareceu" em Pré-venda numa madrugada. Sem a linha, a única data que resta é
+  // `estagio_desde`, que o próximo movimento sobrescreve.
+  //
+  // O `de` é seguro: o card foi escolhido acima JUSTAMENTE por estar em `assinatura`, e os dois
+  // `.neq` não alcançam esse valor.
+  await registrarPassagemDeEtapa(sb, {
+    de: card.estagio,
+    origem: "webhook_assinatura",
+    para: destino,
+    propostaId,
+    trabalhoId: card.id,
+    trabalhoTipo: card.tipo,
+  });
 }
 
 /**
