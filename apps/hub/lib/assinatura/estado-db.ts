@@ -168,14 +168,31 @@ async function acharEnvelope(
  * clicou (a rota de gerar tem `autorizacao.userId`; o envio tem `pedido.usuarioId`), e sem isto a
  * passagem mais auditável da casa — "quem mandou este contrato para a Clicksign" — nascia anônima,
  * enquanto o ato REVERSÍVEL de devolver para a análise saía assinado.
+ *
+ * ⚠️ `operacaoComecouEm` É A OUTRA METADE DO COMPARAR-E-TROCAR, e sem ela a proteção da casa só
+ * existe num dos dois sentidos. O `.eq("estagio", card.estagio)` de `retorno-para-correcao.ts`
+ * protege o sentido card → Análise: quem devolve não atropela um card que andou enquanto a tela
+ * estava aberta. ESTA protege o sentido oposto, que é o único que aquele não tem como ver — uma
+ * operação LONGA que já estava no ar quando o card foi devolvido e que, ao terminar, empurra o card
+ * de volta para a frente.
+ *
+ * ⚠️ E O CASO É REAL, NÃO TEÓRICO: o POST do envio leva de 40 a 90 segundos (`maxDuration 120`) e a
+ * linha do envelope só nasce lá pelo meio, depois de ~10 consultas e do download do PDF. Nessa
+ * janela não existe envelope nenhum para a volta conferir: o coordenador dá F5 (ou abre o mesmo card
+ * noutra aba), o `enviando` da tela morre, o botão de voltar nasce habilitado, ele devolve o card
+ * para Análise — e um minuto depois o envio que já estava no ar move o card para "assinatura", com o
+ * contrato VELHO na rua e o Panteon dizendo que está tudo em ordem. Sem as duas metades, a decisão
+ * deliberada de devolver o card para correção é desfeita por uma operação que ninguém consegue mais
+ * cancelar.
  */
 export async function moverCardDaTemis(
   sb: SupabaseClient,
   propostaId: string,
   estagio: EstagioDoTrabalho,
   autor?: null | { id: null | string; nome: null | string },
+  operacaoComecouEm?: null | string,
 ): Promise<void> {
-  const alvos = await cardsQueAceitam(sb, propostaId, estagio);
+  const alvos = await cardsQueAceitam(sb, propostaId, estagio, operacaoComecouEm ?? null);
   if (alvos.length === 0) return;
 
   const agora = new Date().toISOString();
@@ -260,10 +277,14 @@ async function cardsQueAceitam(
   sb: SupabaseClient,
   propostaId: string,
   destino: EstagioDoTrabalho,
+  operacaoComecouEm: null | string,
 ): Promise<CardParaMover[]> {
   const { data, error } = await sb
     .from("temis_trabalhos")
-    .select("id, tipo, estagio")
+    // ⚠️ `estagio_desde` ENTROU NO SELECT POR CAUSA DA JANELA DO ENVIO. É a única coluna que diz
+    // QUANDO o card chegou onde está — e é ela que responde se ele andou por outra mão enquanto
+    // esta operação estava no ar.
+    .select("id, tipo, estagio, estagio_desde")
     .eq("proposta_id", propostaId);
 
   if (error) {
@@ -276,17 +297,24 @@ async function cardsQueAceitam(
     (c) =>
       c.estagio !== "faturado" &&
       c.estagio !== "indeferido" &&
-      estagiosDoTipo(c.tipo).includes(destino),
+      estagiosDoTipo(c.tipo).includes(destino) &&
+      !cardAndouDepoisDe(c.estagio_desde, operacaoComecouEm),
   );
 
   // ⚠️ O CARD RECUSADO VAI PARA O LOG, e não some calado: "o envelope andou e o card não" é
   // exatamente o tipo de divergência que ninguém descobre olhando o board.
+  //
+  // ⚠️ E OS DOIS MOTIVOS SAEM SEPARADOS. "Fora do caminho do tipo" é configuração; "andou durante a
+  // operação" é uma corrida entre duas pessoas, e quem lê o log precisa saber qual das duas
+  // aconteceu — a segunda quer dizer que alguém devolveu este card enquanto o contrato ia para a
+  // Clicksign, e é o aviso de que existe envelope na rua sem card em "assinatura".
   for (const c of cards) {
-    if (!podem.includes(c) && c.estagio !== "faturado" && c.estagio !== "indeferido") {
-      console.warn(
-        `[temis][card] card ${c.id} (${c.tipo}) não vai para "${destino}": fora do caminho do tipo.`,
-      );
-    }
+    if (podem.includes(c) || c.estagio === "faturado" || c.estagio === "indeferido") continue;
+    console.warn(
+      cardAndouDepoisDe(c.estagio_desde, operacaoComecouEm)
+        ? `[temis][card] card ${c.id} (${c.tipo}) não vai para "${destino}": ele andou durante a operação — está em "${c.estagio}" desde ${c.estagio_desde}, e a operação começou em ${operacaoComecouEm}.`
+        : `[temis][card] card ${c.id} (${c.tipo}) não vai para "${destino}": fora do caminho do tipo.`,
+    );
   }
 
   // ⚠️ DEVOLVE O CARD INTEIRO, E NÃO SÓ O ID. Quem chama precisa do estágio de ANTES para gravar a
@@ -294,8 +322,44 @@ async function cardsQueAceitam(
   return podem;
 }
 
-/** O que `moverCardDaTemis` precisa saber de cada card: quem é, de onde sai e de que tipo é. */
-type CardParaMover = { estagio: string; id: string; tipo: TipoDeTrabalho };
+/**
+ * O que `moverCardDaTemis` precisa saber de cada card: quem é, de onde sai, de que tipo é e desde
+ * quando está onde está.
+ */
+type CardParaMover = {
+  estagio: string;
+  estagio_desde: null | string;
+  id: string;
+  tipo: TipoDeTrabalho;
+};
+
+/**
+ * O CARD ANDOU DEPOIS QUE ESTA OPERAÇÃO COMEÇOU?
+ *
+ * ⚠️ SEPARADA E PURA PORQUE É A REGRA, e não o `select`. Ela decide se um envio que já estava no ar
+ * pode ou não desfazer uma devolução para a análise — dentro da função que lê o banco só daria para
+ * conferi-la com um duplo de Supabase inteiro.
+ *
+ * ⚠️ SÓ RECUSA COM PROVA. Sem carimbo (o chamador que não passa nada, que é o comportamento de
+ * ontem), com `estagio_desde` nulo, ou com qualquer um dos dois ilegível, a resposta é `false` — ou
+ * seja, MOVE. O contrário travaria movimentos legítimos por causa de um dado ausente, e o preço
+ * disso não é simétrico: card parado é board desatualizado, que a leitura seguinte conserta; card
+ * empurrado indevidamente é uma decisão humana desfeita em silêncio.
+ *
+ * ⚠️ E COMPARA COMO DATA, NUNCA COMO TEXTO. `estagio_desde` chega do PostgREST com o fuso escrito
+ * (`…+00:00`) e o nosso carimbo sai de `toISOString()` (`…Z`): em ordem alfabética `+` vem antes de
+ * `Z`, e o mesmo instante pareceria mais antigo ou mais novo conforme quem escreveu a string.
+ */
+export function cardAndouDepoisDe(
+  estagioDesde: null | string | undefined,
+  operacaoComecouEm: null | string | undefined,
+): boolean {
+  if (!operacaoComecouEm || !estagioDesde) return false;
+  const comeco = Date.parse(operacaoComecouEm);
+  const desde = Date.parse(estagioDesde);
+  if (Number.isNaN(comeco) || Number.isNaN(desde)) return false;
+  return desde > comeco;
+}
 
 /**
  * O QUE ACONTECE COM O CARD QUANDO O ENVELOPE FECHA — e isto MUDOU com as cinco etapas.

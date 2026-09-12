@@ -68,4 +68,70 @@ describe("apurarFatosDoContrato", () => {
     expect(f.assinaturaCompleta).toBe(false);
     expect(f.houvePagamento).toBe(false);
   });
+
+  // ── A ASSINATURA FEITA NO PANTEON ─────────────────────────────────────────
+  //
+  // ⚠️ ESTES QUATRO GUARDAM A REGRA DO LUCAS (12/09/2026): *"se ele estiver todo assinado tem que
+  // fazer distrato"*. Sem o envelope da Têmis aqui, uma venda nativa assinada por todos na
+  // Clicksign respondia "nenhuma assinatura registrada" e o pedido saía como CANCELAMENTO — um
+  // contrato assinado desfeito como se nunca tivesse existido, sem distrato e sem devolução.
+
+  it("só o C2X: a venda importada continua respondendo pelas fontes de sempre", () => {
+    const f = apurarFatosDoContrato([{ tipo: "assinatura" }], {}, null);
+    expect(f.assinaturaCompleta).toBe(true);
+    expect(f.comoSoube.assinatura).toBe("1 assinatura registrada");
+  });
+
+  it("só o envelope assinado: a venda nativa deixa de dizer que ninguém assinou", () => {
+    const f = apurarFatosDoContrato(
+      [],
+      {},
+      { estado: "assinado", fechado_em: "2026-09-11T13:40:00+00:00" },
+    );
+    expect(f.assinaturaCompleta).toBe(true);
+    expect(f.comoSoube.assinatura).toBe("contrato assinado por todos na Clicksign em 11/09/2026");
+  });
+
+  it("os dois: o C2X segue narrando, e o fato continua o mesmo", () => {
+    // ⚠️ A FRASE NÃO MUDA quando as duas fontes falam: as importadas já são descritas pelo C2X há
+    // meses, e o envelope entrou para quebrar o SILÊNCIO das nativas, não para reescrever o que já
+    // tinha resposta.
+    const f = apurarFatosDoContrato(
+      [{ tipo: "assinatura" }],
+      { data_assinatura: "2026-08-14" },
+      { estado: "assinado", fechado_em: "2026-09-11T13:40:00+00:00" },
+    );
+    expect(f.assinaturaCompleta).toBe(true);
+    expect(f.comoSoube.assinatura).toBe("1 assinatura registrada");
+  });
+
+  it("nenhuma das duas: o silêncio continua sendo resposta", () => {
+    const f = apurarFatosDoContrato([], {}, { estado: "aguardando", fechado_em: null });
+    expect(f.assinaturaCompleta).toBe(false);
+    expect(f.comoSoube.assinatura).toBe("nenhuma assinatura registrada");
+  });
+
+  it("⚠️ `parcial` NÃO é assinado: meio contrato assinado ainda volta para a análise", () => {
+    // Um comprador de dois. Tratá-lo como completo empurraria para o distrato uma venda que só
+    // precisava de correção — o contrário exato da regra do Lucas.
+    const f = apurarFatosDoContrato([], {}, { estado: "parcial" });
+    expect(f.assinaturaCompleta).toBe(false);
+  });
+
+  it("envelope assinado sem `fechado_em` ainda conta, e a frase não inventa data", () => {
+    const f = apurarFatosDoContrato([], {}, { estado: "ASSINADO " });
+    expect(f.assinaturaCompleta).toBe(true);
+    expect(f.comoSoube.assinatura).toBe("contrato assinado por todos na Clicksign");
+  });
+
+  it("⚠️ o instante do fechamento vira dia no fuso de Brasília, não em UTC", () => {
+    // 21h40 do dia 11 em Brasília é 00h40 do dia 12 em UTC: cortar os dez primeiros caracteres da
+    // string diria ao jurídico que o contrato fechou um dia depois do que fechou.
+    const f = apurarFatosDoContrato(
+      [],
+      {},
+      { estado: "assinado", fechado_em: "2026-09-12T00:40:00Z" },
+    );
+    expect(f.comoSoube.assinatura).toBe("contrato assinado por todos na Clicksign em 11/09/2026");
+  });
 });

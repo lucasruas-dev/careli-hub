@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { FalhaDaClicksign, type Opcoes } from "./cliente";
-import { enviarParaAssinatura, nomeDoEnvelope } from "./envelope";
+import { cancelarEnvelope, consultarEnvelope, enviarParaAssinatura, nomeDoEnvelope } from "./envelope";
 
 import type { Signatario } from "../tipos";
 
@@ -387,5 +387,183 @@ describe("o nome do envelope", () => {
     expect(
       nomeDoEnvelope({ comprador: "Maria Souza", empreendimento: "JDG", unidade: "Q07 L12" }),
     ).toBe("Contrato - JDG - Q07 L12 - Maria Souza");
+  });
+});
+
+// ⚠️ CANCELAR É O QUE TIRA O CONTRATO VELHO DA MÃO DE QUEM IA ASSINAR, e é o passo de que o retorno
+// para correção depende (`lib/temis/retorno-para-correcao.ts`): se ele não acontecer, o card NÃO
+// volta — em nenhuma das três etapas que voltam, Contrato, Em assinatura e Pré-faturamento. Por isso
+// o que se testa aqui é a forma exata do pedido e o desfecho da falha — não a "mensagem bonita".
+describe("o cancelamento do envelope", () => {
+  it("faz um PATCH no envelope com status canceled", async () => {
+    const { chamadas, porta } = duplo();
+    const r = await cancelarEnvelope("env-7", porta);
+
+    expect(r.ok).toBe(true);
+    expect(chamadas).toEqual([
+      {
+        caminho: "/envelopes/env-7",
+        // O mesmo formato do passo que ATIVA: JSON:API, com `id` e `type` no corpo. Ver a ressalva
+        // escrita em `cancelarEnvelope` — a forma é inferida do passo 5, não lida na doc.
+        corpo: { data: { attributes: { status: "canceled" }, id: "env-7", type: "envelopes" } },
+        metodo: "PATCH",
+      },
+    ]);
+  });
+
+  // ⚠️ `PATCH /envelopes/` (id vazio) bate em OUTRA rota da API, e um 200 dali seria lido como
+  // "cancelado" — a mentira mais cara possível neste lugar, porque solta o card com o envelope vivo.
+  it("não chama a Clicksign sem id", async () => {
+    const { chamadas, porta } = duplo();
+    const r = await cancelarEnvelope("   ", porta);
+
+    expect(r.ok).toBe(false);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("devolve a falha com os detalhes e o request id, e não lança", async () => {
+    const { porta } = duplo({
+      "/envelopes/env-8": new FalhaDaClicksign("Clicksign devolveu 422.", {
+        detalhes: ["/data/attributes/status não permite a transição"],
+        requestId: "req-9",
+        status: 422,
+      }),
+    });
+
+    const r = await cancelarEnvelope("env-8", porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.erro).toContain("não permite a transição");
+    expect(r.requestId).toBe("req-9");
+  });
+
+  // ⚠️ A API RECUSAR É UMA CERTEZA: ela respondeu, e o envelope continua vivo. Quem lê pode afirmar
+  // que as pessoas seguem com o contrato na mão.
+  it("recusa da API não é duvidosa: o envelope continua vivo", async () => {
+    const { porta } = duplo({
+      "/envelopes/env-8": new FalhaDaClicksign("Clicksign devolveu 422.", {
+        detalhes: [],
+        requestId: null,
+        status: 422,
+      }),
+    });
+
+    const r = await cancelarEnvelope("env-8", porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.duvidoso).toBe(false);
+  });
+
+  // ⚠️ TIMEOUT NÃO É RECUSA, e este é o caso que fazia a frase AFIRMAR o que o código não sabe.
+  // `chamar` aborta em 15s e lança com `status: 0` — o PATCH pode ter chegado e o envelope já estar
+  // morto do outro lado. É a mesma distinção que `carimbarFalha` faz no passo `ativar` do envio.
+  it("timeout e falha de rede são duvidosos: pode ter chegado", async () => {
+    for (const mensagem of ["Clicksign não respondeu em 15s.", "Falha de rede ao chamar a Clicksign."]) {
+      const { porta } = duplo({
+        "/envelopes/env-8": new FalhaDaClicksign(mensagem, {
+          detalhes: [],
+          requestId: null,
+          status: 0,
+        }),
+      });
+
+      const r = await cancelarEnvelope("env-8", porta);
+      expect(r.ok).toBe(false);
+      if (r.ok) continue;
+      expect(r.duvidoso).toBe(true);
+    }
+  });
+
+  // Sem id nada foi chamado: não há dúvida nenhuma sobre ter chegado.
+  it("sem id, a falha não é duvidosa", async () => {
+    const { porta } = duplo();
+    const r = await cancelarEnvelope("", porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.duvidoso).toBe(false);
+  });
+});
+
+// ⚠️ ESTA LEITURA EXISTE PORQUE O NOSSO BANCO ATRASA. `temis_envelopes.estado` só é escrito pelo
+// webhook, e quem decide se pode cancelar precisa do estado de AGORA — o caso medido no desenho é o
+// quarto signatário assinando às 14:00:00 e o clique em voltar às 14:00:01, com a tela carregada às
+// 13:58. Ver `lib/temis/retorno-para-correcao.ts`.
+describe("a leitura do estado real do envelope", () => {
+  it("faz um GET no envelope e devolve o status cru", async () => {
+    const { chamadas, porta } = duplo({
+      "/envelopes/env-10": { data: { attributes: { status: "running" } } },
+    });
+
+    const r = await consultarEnvelope("env-10", porta);
+    expect(chamadas).toEqual([{ caminho: "/envelopes/env-10", corpo: undefined, metodo: "GET" }]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.status).toBe("running");
+    expect(r.estado).toBe("aguardando");
+  });
+
+  // ⚠️ `closed` NÃO VIRA `assinado`, e é a armadilha mais séria da Clicksign para nós: o
+  // `deadline_partial_signature_action` pode fechar o envelope no vencimento COM AS ASSINATURAS QUE
+  // TIVER. Sem saber se todos assinaram, `estadoDaClicksign` devolve `desconhecido` — e quem chama
+  // recusa a volta em vez de cancelar ou de mandar abrir distrato.
+  it("closed volta como desconhecido, e não como assinado", async () => {
+    const { porta } = duplo({ "/envelopes/env-11": { data: { attributes: { status: "closed" } } } });
+    const r = await consultarEnvelope("env-11", porta);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.status).toBe("closed");
+    expect(r.estado).toBe("desconhecido");
+  });
+
+  it("canceled volta como cancelado", async () => {
+    const { porta } = duplo({ "/envelopes/env-12": { data: { attributes: { status: "canceled" } } } });
+    const r = await consultarEnvelope("env-12", porta);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.estado).toBe("cancelado");
+  });
+
+  // ⚠️ A FORMA DA RESPOSTA É INFERÊNCIA — ver a ressalva escrita em `consultarEnvelope`. O webhook
+  // real chegou com o status ao lado do id (`document: { key, path, status }`), e não dentro de
+  // `attributes`; por isso o mesmo campo é lido nos dois níveis.
+  it("lê o status também um nível acima, em data.status", async () => {
+    const { porta } = duplo({ "/envelopes/env-13": { data: { status: "running" } } });
+    const r = await consultarEnvelope("env-13", porta);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.status).toBe("running");
+  });
+
+  // ⚠️ RESPOSTA SEM STATUS É FALHA, E NÃO "DESCONHECIDO". Quem chama RECUSA a volta na falha; tratar
+  // a forma inesperada como leitura boa misturaria "não sei traduzir" com "não consegui perguntar".
+  it("resposta sem status vira falha, para a volta ser recusada", async () => {
+    const { porta } = duplo({ "/envelopes/env-14": { data: { attributes: {} } } });
+    const r = await consultarEnvelope("env-14", porta);
+    expect(r.ok).toBe(false);
+  });
+
+  // ⚠️ `GET /envelopes/` (id vazio) é a LISTAGEM da conta, que responde 200 com a página inteira —
+  // ler um status dali seria afirmar sobre um envelope que não é este.
+  it("não chama a Clicksign sem id", async () => {
+    const { chamadas, porta } = duplo();
+    const r = await consultarEnvelope("   ", porta);
+    expect(r.ok).toBe(false);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("devolve a falha com o request id, e não lança", async () => {
+    const { porta } = duplo({
+      "/envelopes/env-15": new FalhaDaClicksign("Clicksign devolveu 404.", {
+        detalhes: ["envelope não encontrado"],
+        requestId: "req-15",
+        status: 404,
+      }),
+    });
+
+    const r = await consultarEnvelope("env-15", porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.erro).toContain("não encontrado");
+    expect(r.requestId).toBe("req-15");
   });
 });

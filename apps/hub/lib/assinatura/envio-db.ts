@@ -181,6 +181,13 @@ export async function enviarContratoParaAssinatura(
   },
   porta?: PortaDaClicksign,
 ): Promise<EnvioFeito | FalhaAoEnviar> {
+  // ⚠️ O INSTANTE EM QUE ISTO COMEÇOU, GUARDADO ANTES DE QUALQUER LEITURA. Ele é o que autoriza (ou
+  // não) o `moverCardDaTemis` lá no fim: entre esta linha e aquela passam de 40 a 90 segundos, e
+  // nesse intervalo o card pode ter sido devolvido para a Análise por outra mão. Ver a nota de
+  // `operacaoComecouEm` em `estado-db.ts` — carimbar só na hora de mover não serviria de nada,
+  // porque o que se quer saber é se o card andou DEPOIS daqui.
+  const comecouEm = new Date().toISOString();
+
   const preparo = await prepararEnvio(
     sb,
     pedido.propostaId,
@@ -278,10 +285,17 @@ export async function enviarContratoParaAssinatura(
   //
   // ⚠️ E VAI ASSINADA. É a MESMA identidade que acabou de ser gravada em `abrirRegistro`: deixar a
   // passagem anônima faria o histórico dizer que o envelope de produção saiu sozinho.
-  await moverCardDaTemis(sb, pedido.propostaId, "assinatura", {
-    id: pedido.usuarioId ?? null,
-    nome: pedido.usuarioNome ?? null,
-  });
+  //
+  // ⚠️ E VAI COM O CARIMBO DO COMEÇO. Se o card tiver andado de lá para cá — a devolução para a
+  // Análise que aconteceu com este POST no ar —, ele NÃO é empurrado de volta: quem decidiu por
+  // último decidiu com o quadro na frente, e este envio é o passado. Ver `cardAndouDepoisDe`.
+  await moverCardDaTemis(
+    sb,
+    pedido.propostaId,
+    "assinatura",
+    { id: pedido.usuarioId ?? null, nome: pedido.usuarioNome ?? null },
+    comecouEm,
+  );
 
   return {
     envelopeId: resultado.envelopeId,
@@ -473,6 +487,36 @@ function quando(iso: string): string {
 const NOME_DO_PROVEDOR: Record<string, string> = { clicksign: "Clicksign", d4sign: "D4Sign" };
 
 /**
+ * ATÉ QUANDO UMA LINHA EM RASCUNHO AINDA PODE TER UM ENVIO VIVO ATRÁS DELA.
+ *
+ * ⚠️ A RÉGUA É O `maxDuration` DA ROTA DE ENVIO (`app/api/temis/assinatura/enviar/route.ts`, 120s),
+ * porque é ele que define o tempo máximo que um envio consegue existir: passado esse prazo a Vercel
+ * mata a função, e nenhuma linha mais velha do que isso tem alguém trabalhando nela. Usar um número
+ * escolhido a esmo erraria dos dois lados — curto demais chamaria de "morto" um envio que ainda está
+ * chamando a Clicksign, longo demais mandaria o operador esperar por algo que já morreu.
+ *
+ * ⚠️ E OS 60 SEGUNDOS DE FOLGA SÃO DE PROPÓSITO: `criado_em` é escrito pelo Postgres e a comparação
+ * é feita com o relógio da função, que são duas máquinas diferentes. A folga cai para o lado de
+ * pedir paciência, que é o lado barato: esperar um minuto a mais não custa nada, e declarar morto um
+ * envio vivo faz alguém cancelar na Clicksign o envelope que o `carimbarSucesso` ia registrar.
+ */
+const MAX_DURATION_DO_ENVIO_EM_MS = 120_000;
+const JANELA_DE_ENVIO_EM_CURSO_EM_MS = MAX_DURATION_DO_ENVIO_EM_MS + 60_000;
+
+/**
+ * Esta linha em rascunho é jovem o bastante para ainda haver um envio no ar?
+ *
+ * ⚠️ DATA ILEGÍVEL CONTA COMO VELHA. A frase do "ainda em curso" manda ESPERAR, e mandar esperar
+ * para sempre por um envio que morreu é o pior dos dois enganos: a venda fica parada sem ninguém
+ * conferir a conta da Clicksign.
+ */
+function envioAindaPodeEstarNoAr(criadoEm: string, agora = Date.now()): boolean {
+  const nasceu = Date.parse(criadoEm);
+  if (Number.isNaN(nasceu)) return false;
+  return agora - nasceu < JANELA_DE_ENVIO_EM_CURSO_EM_MS;
+}
+
+/**
  * Já existe envelope vivo desta proposta? A recusa pronta, ou `null` quando dá para enviar.
  *
  * ⚠️ A LINHA SEM `envelope_id` E SEM `falha` TAMBÉM SEGURA O ENVIO, e este é o caso desconfortável.
@@ -482,6 +526,11 @@ const NOME_DO_PROVEDOR: Record<string, string> = { clicksign: "Clicksign", d4sig
  * RECUSAR e dizer como destravar: um envelope pago e permanente que ninguém sabe que existe é pior
  * do que um envio que espera alguém conferir. É também esta linha que segura o duplo clique, porque
  * durante o envio normal a linha vive nesse estado.
+ *
+ * ⚠️ E A RECUSA É A MESMA, MAS O CONSELHO NÃO: a IDADE da linha distingue os dois casos que ela
+ * cobre. Recente = envio EM CURSO (o duplo clique, o F5, a segunda aba), e aí o conselho é esperar;
+ * velha = envio que morreu no meio, e aí vale o conselho de conferir na Clicksign. Ver
+ * `envioAindaPodeEstarNoAr`: a régua é o `maxDuration` da rota de envio, e não um palpite.
  *
  * ⚠️ E `falha` SEM `envelope_id` LIBERA. `enviarParaAssinatura` só devolve `envelopeId` quando SOBROU
  * algo na conta — no passo 1 nada chegou a existir, e nos passos 2 a 5 o rascunho é apagado e o id
@@ -524,6 +573,21 @@ async function impedimentoDeEnvelopeVivo(
   // novo" é exatamente o clique que cria o segundo envelope. Ela diz O QUE EXISTE (o id, o estado, a
   // hora) e as DUAS saídas reais — acompanhar o que está lá, ou cancelar por lá.
   if (!vivo.envelope_id) {
+    // ⚠️ A MESMA LINHA QUER DIZER DUAS COISAS OPOSTAS, E A IDADE É O QUE AS SEPARA. Durante os 40 a
+    // 90 segundos do envio normal a linha vive exatamente assim — rascunho, sem `envelope_id`, sem
+    // `falha` —, e a frase de baixo mandava CANCELAR NA CLICKSIGN um envelope que está nascendo bem.
+    // Quem seguisse o conselho mataria o envelope que o `carimbarSucesso` ia registrar meio minuto
+    // depois: um envelope pago, cancelado à toa, e o cancelado fica na lista para sempre.
+    if (envioAindaPodeEstarNoAr(vivo.criado_em)) {
+      return {
+        erro:
+          `Este contrato ESTÁ SENDO ENVIADO agora: o envio começou em ${quando(vivo.criado_em)} e ainda pode estar em curso (registro ${vivo.id}). ` +
+          `Espere terminar e recarregue a tela — o envio leva até dois minutos. NÃO cancele nada na ${provedor} antes disso: o envelope deste envio ainda está sendo criado, e cancelá-lo agora jogaria fora um envelope que não se apaga.`,
+        ok: false,
+        status: 409,
+      };
+    }
+
     return {
       erro:
         `Existe um envio deste contrato que começou em ${quando(vivo.criado_em)} e não terminou: o Panteon não chegou a saber se o envelope foi criado na ${provedor} (registro ${vivo.id}). ` +

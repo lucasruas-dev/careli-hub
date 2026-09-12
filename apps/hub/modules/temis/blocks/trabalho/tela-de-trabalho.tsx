@@ -73,6 +73,42 @@ type ContratoNoCard = {
   versao: null | number;
 };
 
+/**
+ * O ENVELOPE VIVO DESTA VENDA — o MESMO fato que o servidor confere antes de cancelar.
+ *
+ * ⚠️ ELE SUBSTITUI O PALPITE PELA ETAPA, e essa troca é o conserto inteiro. A confirmação da volta
+ * escolhia a frase por `estagio !== "contrato"`, supondo que em "Contrato" nunca há envelope; o
+ * servidor cancela sem olhar estágio nenhum. E um card DIZ "Contrato" com envelope vivo sempre que o
+ * envio falha no passo `notificar`: a linha fica com `envelope_id` e estado `aguardando` e o card
+ * NÃO é movido. Ali a frase neutra mandava confirmar, e o envelope de PRODUÇÃO morria depois do
+ * clique — com o aviso chegando no recado verde, tarde demais para quem ia decidir.
+ *
+ * ⚠️ O CAMPO VEM DA ROTA, e não é derivado aqui: quem responde "existe envelope vivo?" é
+ * `envelopeQueSegura`, no servidor, a mesma régua do reenvio e da volta. Ver
+ * `app/api/temis/trabalho/route.ts`.
+ *
+ * ⚠️ E ELE É SEMPRE `null` FORA DO CARD DE TIPO `contrato`, pelo mesmo portão que a volta usa: a
+ * tabela casa por `proposta_id` e não tem `trabalho_id`, então o card de cancelamento leria o
+ * envelope DA VENDA. Nesses cards a volta não toca em envelope nenhum, e a frase neutra é a certa.
+ */
+type EnvelopeVivo = {
+  /**
+   * O servidor CONSEGUIU conferir a tabela?
+   *
+   * ⚠️ `false` É "NÃO DEU PARA PERGUNTAR", E NÃO "NÃO TEM". A leitura de `temis_envelopes` pode
+   * falhar, e o campo chegar `null` por causa disso faria esta tela escrever a frase NEUTRA sobre
+   * uma venda com envelope vivo — o operador confirmaria sem nunca ler que um envelope da conta de
+   * produção morre no clique. Com `conferido: false` a tela avisa pelo pior caso.
+   */
+  conferido: boolean;
+  /** O estado cru de `temis_envelopes`. É por ele que a frase é escolhida. */
+  estado: string;
+  /** O id na Clicksign. `null` = envio que começou e o Panteon não soube como terminou. */
+  id: null | string;
+  /** O mesmo estado em palavra da casa, pronto para escrever — `rotuloDoEstado`, no servidor. */
+  rotulo: string;
+};
+
 type Card = {
   arrependimento_inicio: null | string;
   cliente_cpf: null | string;
@@ -112,6 +148,7 @@ export function TelaDeTrabalho({
   const [dados, setDados] = useState<null | {
     analise: AnaliseDoTrabalho | null;
     card: Card;
+    envelopeVivo: EnvelopeVivo | null;
     podeEmitir: boolean;
   }>(null);
   const [erro, setErro] = useState<null | string>(null);
@@ -138,14 +175,22 @@ export function TelaDeTrabalho({
         headers: { Authorization: `Bearer ${token}` },
       });
       const corpo = (await r.json().catch(() => ({}))) as {
-        data?: { analise: AnaliseDoTrabalho | null; card: Card; podeEmitir: boolean };
+        data?: {
+          analise: AnaliseDoTrabalho | null;
+          card: Card;
+          // ⚠️ OPCIONAL DE PROPÓSITO. Enquanto a versão de produção da rota não mandar o campo, a
+          // tela precisa continuar abrindo — e o `?? null` abaixo faz dela o que ela é nesse caso:
+          // "não sei", que a confirmação trata como o texto neutro e o servidor resolve de novo.
+          envelopeVivo?: EnvelopeVivo | null;
+          podeEmitir: boolean;
+        };
         error?: string;
       };
       if (!r.ok || !corpo.data) {
         setErro(corpo.error ?? "Não consegui abrir este trabalho.");
         return;
       }
-      setDados(corpo.data);
+      setDados({ ...corpo.data, envelopeVivo: corpo.data.envelopeVivo ?? null });
     } catch {
       setErro("Não consegui abrir este trabalho.");
     }
@@ -240,11 +285,34 @@ export function TelaDeTrabalho({
    * DEVOLVE O CARD PARA A ANÁLISE — o caminho de correção que substituiu o "Gerar versão N".
    *
    * Lucas (11/09/2026): *"caso queira fazer algum ajuste no contrato, podemos ter um botão para
-   * voltar o contrato a etapa anterior, corrigir e mandar para assinatura"*.
+   * voltar o contrato a etapa anterior, corrigir e mandar para assinatura"* e, sobre a etapa
+   * seguinte: *"aproveita e coloca uma forma de voltar para analise quando precisarmos alterar
+   * alguma coisa no contrato mesmo estando na sessao de assinatura, pois e nesse momento que todos
+   * vao receber o contrato para assinatura, ae com certeza pode ter algo para ser alterado"*.
    *
    * ⚠️ A CHAMADA VIVE AQUI, e não no painel da etapa, pelo mesmo motivo do indeferimento: quem
    * recarrega o card é esta tela, e o quadro precisa saber que ele mudou de coluna. O painel só
    * devolve o texto da falha para escrever na própria coluna.
+   *
+   * ⚠️ QUEM DECIDE É O ENVELOPE, E NÃO A ETAPA — Lucas (11/09/2026): *"prefaturamento pode
+   * desde que nao esteja todo assinado"*. Não existe lista de estágios que voltam "por natureza":
+   * o que decide é um FATO — o contrato está assinado por todos? E a etapa não prova o fato. O
+   * Pré-faturamento é alcançado normalmente com o envelope fechado, mas `marcarAtividade` avança o
+   * card por marcação humana sem consultar envelope nenhum, e foi assim que o card do Henrique
+   * chegou ao fim sem contrato e sem envelope (medido em 09/09/2026). Por isso a tela OFERECE a
+   * volta nas três etapas do caminho, e quem responde "pode?" é o servidor, que lê o envelope.
+   *
+   * ⚠️ A FALHA SOBE COMO VEIO DO SERVIDOR, LETRA POR LETRA, e isso é regra e não conveniência:
+   * quando o contrato já está assinado por todos, a resposta traz o FATO e o CAMINHO — abrir o
+   * pedido de cancelamento, no Hércules, na tela da venda — Lucas (11/09/2026): *"se o contrato
+   * estiver assinado por todos somente cancelamento do contrato"*. Trocá-la por um "não consegui
+   * voltar" jogaria fora a única instrução útil que a tela tem naquele instante.
+   *
+   * ⚠️ E A TELA NÃO REESCREVE A FRASE NEM COMPLETA O QUE ELA NÃO DIZ. Quem classifica entre
+   * cancelamento e distrato é `classificarCancelamento` (`lib/temis/cancelamento.ts`), por duas
+   * perguntas — assinou? pagou? — que leem OUTRA fonte (os fatos do contrato). Uma frase daqui que
+   * afirmasse o resultado dessa régua passaria a mentir no dia em que o pagamento entrasse na conta,
+   * e ninguém a corrigiria: ela não é dela. Repassar é o desenho inteiro.
    */
   const voltarParaAnalise = useCallback(async (): Promise<null | string> => {
     setOcupado(true);
@@ -255,15 +323,41 @@ export function TelaDeTrabalho({
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "POST",
       });
-      const corpo = (await r.json().catch(() => ({}))) as { error?: string };
+      // ⚠️ O AVISO DO ENVELOPE É OPCIONAL, E É LIDO NOS DOIS FORMATOS DA CASA: esta rota responde na
+      // raiz (`ok`) e o GET responde dentro de `data`. Quando o campo não vem — porque não havia
+      // envelope para cancelar, ou porque a resposta é de uma versão anterior da rota — o recado
+      // fala só da volta, que é verdade em qualquer um dos casos.
+      //
+      // ⚠️ E ELE É O ID DO ENVELOPE, NÃO UM `boolean`. `retornarParaAnalise` devolve
+      // `envelopeCancelado: null | string` (`lib/temis/retorno-para-correcao.ts`), e o id é o que
+      // permite conferir na Clicksign qual envelope morreu. Tipado como `boolean`, o valor real
+      // continuaria funcionando no `if` por ser uma string não vazia — e quebraria calado no dia em
+      // que alguém escrevesse `=== true`, ou quisesse mostrar o número na mensagem.
+      const corpo = (await r.json().catch(() => ({}))) as {
+        data?: { envelopeCancelado?: null | string };
+        envelopeCancelado?: null | string;
+        error?: string;
+      };
       if (!r.ok) return corpo.error ?? "Não consegui voltar o card para a análise.";
+      const envelopeCancelado = corpo.envelopeCancelado ?? corpo.data?.envelopeCancelado ?? null;
       await carregar();
-      aoMudar();
+      // ⚠️ `aoConcluir` JÁ RECARREGA O QUADRO E FECHA A TELA — chamar `aoMudar` junto faria a mesma
+      // busca duas vezes. O `aoMudar` fica para quem montou a tela sem passar o `aoConcluir`: ali
+      // ninguém fecha nada, e o quadro por baixo precisaria saber que o card mudou de coluna.
+      if (aoConcluir) {
+        aoConcluir(
+          envelopeCancelado
+            ? "Envelope cancelado na Clicksign e card de volta na Análise. Quem já tinha recebido o convite perdeu o acesso."
+            : "O card voltou para Análise.",
+        );
+      } else {
+        aoMudar();
+      }
       return null;
     } finally {
       setOcupado(false);
     }
-  }, [aoMudar, carregar, trabalhoId]);
+  }, [aoConcluir, aoMudar, carregar, trabalhoId]);
 
   if (erro) {
     return (
@@ -284,7 +378,7 @@ export function TelaDeTrabalho({
     );
   }
 
-  const { analise, card, podeEmitir } = dados;
+  const { analise, card, envelopeVivo, podeEmitir } = dados;
   const caminho = caminhoDoCard(card.tipo, card.estagio);
   const ehContrato = card.tipo === "contrato" && Boolean(card.proposta_id);
 
@@ -488,7 +582,9 @@ export function TelaDeTrabalho({
               }
               aoVoltarParaAnalise={voltarParaAnalise}
               contratos={card.contratos}
-              emAndamento={ocupado}
+              // ⚠️ ELE ATRAVESSA A ETAPA INTEIRA ATÉ A CONFIRMAÇÃO DA VOLTA. É o que faz a frase
+              // desta etapa parar de mentir quando sobrou envelope de um envio que falhou.
+              envelopeVivo={envelopeVivo}
               onAbrir={abrirContrato}
               podeEmitir={podeEmitir}
               // ⚠️ `propostaId`, E NÃO `card.proposta_id`: o const acima já foi estreitado pelo TS,
@@ -502,23 +598,71 @@ export function TelaDeTrabalho({
             />
           ) : null}
 
+          {/* ── ETAPA 3 · EM ASSINATURA ──────────────────────────────────────
+              ⚠️ O QUE JÁ ESTAVA AQUI CONTINUA. A etapa ainda é um bloco "em construção" — os
+              indicadores por signatário são a próxima entrega —, e a volta entra ABAIXO dele, sem
+              substituí-lo: quem abre o card precisa continuar sabendo o que esta tela ainda não
+              mostra, ou leria o silêncio como "não há nada acontecendo".
+
+              ⚠️ E É AQUI QUE A VOLTA MAIS IMPORTA — Lucas (11/09/2026): *"e nesse momento que todos
+              vao receber o contrato para assinatura, ae com certeza pode ter algo para ser
+              alterado"*. Voltar daqui costuma CANCELAR o envelope, e o preço está escrito na
+              confirmação, antes do clique — mas quem decide a frase é o ENVELOPE, e não esta etapa:
+              card em "Em assinatura" sem envelope vivo existe (`marcarAtividade` sobe card por
+              marcação humana), e prometer ali um cancelamento que não vai acontecer ensinaria a ler
+              o aviso âmbar como enfeite. */}
           {card.estagio === "assinatura" ? (
-            <EmConstrucao
-              oQueVem="Os indicadores por signatário (assinou, visualizou, e-mail não entregue), a tela de monitoramento e o botão de cobrar pela Íris."
-              titulo="Em assinatura"
-            />
+            <div className="grid gap-3">
+              {/* ⚠️ UMA LINHA, E SÓ O QUE SE SABE. O bloco "em construção" abaixo continua dizendo o
+                  que falta (os indicadores por signatário são o PAN-022); esta linha existe porque o
+                  envelope já vem na carga da tela para escolher a frase da volta — e deixar a etapa
+                  MUDA sobre ele, tendo o dado na mão, era a etapa dizer "em construção" sobre algo
+                  que o Panteon já sabe.
+
+                  ⚠️ E ELA SÓ APARECE NO CARD QUE TEM ENVELOPE PARA TER: nos outros tipos o servidor
+                  NÃO LÊ a tabela (o portão de `conferirEMatarOEnvelope`, porque `temis_envelopes`
+                  casa por proposta e o cancelamento divide a proposta com a venda), então
+                  `envelopeVivo` chega `null` por não ter sido perguntado. Escrever ali "não vejo
+                  envelope vivo" seria transformar "não perguntei" em "não existe". */}
+              {ehContrato ? (
+                <LinhaDoEnvelope desde={card.estagio_desde} envelopeVivo={envelopeVivo} />
+              ) : null}
+              <EmConstrucao
+                oQueVem="Os indicadores por signatário (assinou, visualizou, e-mail não entregue), a tela de monitoramento e o botão de cobrar pela Íris."
+                titulo="Em assinatura"
+              />
+              <VoltarParaAnalise aoVoltar={voltarParaAnalise} envelopeVivo={envelopeVivo} />
+            </div>
           ) : null}
 
+          {/* ── ETAPA 4 · PRÉ-FATURAMENTO ──────────────────────────────────
+              ⚠️ DAQUI TAMBÉM SE VOLTA, e é a correção que muda o desenho anterior — Lucas
+              (11/09/2026): *"prefaturamento pode desde que nao esteja todo assinado"*. A etapa
+              costuma ser alcançada com o envelope fechado, mas COSTUMA não é PROVA:
+              `marcarAtividade` avança o card por marcação humana sem consultar envelope nenhum, e
+              foi assim que o card do Henrique chegou ao fim sem contrato e sem envelope (medido em
+              09/09/2026). Quem confere o envelope é o servidor; a tela oferece e aceita o não.
+
+              ⚠️ E O BOTÃO ENTRA ABAIXO DO PRAZO, sem substituir nada: quem abre o card continua
+              vendo em que dia dos sete ele está, que é o motivo de a etapa existir. */}
           {card.estagio === "prazo_legal" ? (
-            <EtapaDoPrazoLegal inicio={card.arrependimento_inicio} />
+            <div className="grid gap-3">
+              <EtapaDoPrazoLegal inicio={card.arrependimento_inicio} />
+              <VoltarParaAnalise aoVoltar={voltarParaAnalise} envelopeVivo={envelopeVivo} />
+            </div>
           ) : null}
 
           {card.estagio === "faturado" ? (
-            <EmConstrucao
-              oQueVem="O resumo do que ficou: contrato no cofre, assinaturas, prazo cumprido e entrada paga."
-              titulo={nomeDoEstagio("faturado", card.tipo)}
-            />
+            <>
+              <EmConstrucao
+                oQueVem="O resumo do que ficou: contrato no cofre, assinaturas, prazo cumprido e entrada paga."
+                titulo={nomeDoEstagio("faturado", card.tipo)}
+              />
+              <DaquiNaoSeVolta estagio="faturado" />
+            </>
           ) : null}
+
+          {card.estagio === "indeferido" ? <DaquiNaoSeVolta estagio="indeferido" /> : null}
 
           {card.proposta_id && card.estagio === "analise" && !analise ? (
             <Aviso texto="Não consegui montar os dados desta proposta. Isso costuma ser cadastro incompleto no Apolo; o log do servidor tem o motivo." />
@@ -996,7 +1140,7 @@ function EtapaDoContrato({
   aoEnviado,
   aoVoltarParaAnalise,
   contratos,
-  emAndamento,
+  envelopeVivo,
   onAbrir,
   podeEmitir,
   propostaId,
@@ -1007,7 +1151,13 @@ function EtapaDoContrato({
   /** Devolve o texto da falha, ou `null` quando o card voltou para a análise. */
   aoVoltarParaAnalise: () => Promise<null | string>;
   contratos: ContratoNoCard[];
-  emAndamento: boolean;
+  /**
+   * O envelope vivo desta venda, que esta etapa só repassa para a confirmação da volta.
+   *
+   * ⚠️ E EM "CONTRATO" ELE NÃO É SEMPRE `null`, que era justamente a suposição errada: falha no
+   * passo `notificar` deixa `envelope_id` gravado, estado `aguardando` e o card PARADO aqui.
+   */
+  envelopeVivo: EnvelopeVivo | null;
   onAbrir: (documentoId: string) => void;
   /** Quem organiza a assinatura. Vem do servidor junto com o card — esconder botão é só o que se vê. */
   podeEmitir: boolean;
@@ -1016,8 +1166,6 @@ function EtapaDoContrato({
   /** O que este card produz. É ele que decide se existe assinatura — ver a nota acima. */
   tipo: TipoDeTrabalho;
 }) {
-  /** A falha de voltar para a análise. O painel de assinatura escreve as dele por conta própria. */
-  const [erro, setErro] = useState<null | string>(null);
   /**
    * O envio para a Clicksign está no ar, e quem avisa é o próprio painel.
    *
@@ -1028,26 +1176,12 @@ function EtapaDoContrato({
    * caminho, e gerar a v2 ali deixaria o comprador assinando a v1 com o Panteon apontando a v2.
    */
   const [enviando, setEnviando] = useState(false);
-  /**
-   * A confirmação de voltar está aberta.
-   *
-   * ⚠️ ELA ACONTECE NO LUGAR DO BOTÃO, como a do envio — sem diálogo novo e sem `window.confirm`.
-   * Um modal em cima de uma tela que já é um overlay empilharia duas camadas para uma pergunta de
-   * uma linha, e o `Esc` passaria a significar duas coisas diferentes na mesma tela.
-   */
-  const [confirmandoVolta, setConfirmandoVolta] = useState(false);
   const vigente = contratoVigente(contratos);
 
   return (
     <div className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
       {/* ESQUERDA: o contrato e quem assina */}
       <div className="grid content-start gap-3 xl:min-h-0 xl:overflow-auto xl:pr-1">
-        {erro ? (
-          <p className="m-0 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs text-rose-600 dark:text-rose-300">
-            {erro}
-          </p>
-        ) : null}
-
         <section className="rounded-xl border border-line bg-surface p-4">
           <h3 className="m-0 text-sm font-semibold text-ink">O contrato</h3>
           {contratos.length === 0 ? (
@@ -1114,72 +1248,19 @@ function EtapaDoContrato({
         ) : null}
 
         {/* ── O CAMINHO DE VOLTA ───────────────────────────────────────────
-            ⚠️ BORDA, E NÃO DOURADO: voltar é conserto, não avanço. O dourado da marca diz "o card
-            anda"; pintar a volta com ele faria o olho ler as duas ações como a mesma coisa numa
-            coluna onde a de cima manda o contrato para o cliente assinar.
+            ⚠️ A PEÇA É A MESMA DAS ETAPAS EM ASSINATURA E PRÉ-FATURAMENTO, e é uma só de
+            propósito: a regra do Lucas (11/09/2026) também é uma só — o card volta para Análise
+            enquanto o contrato não estiver assinado por todos. Três cópias do botão dariam três
+            chances de as frases se desencontrarem, e a frase é a parte que protege quem clica.
 
-            ⚠️ E ELA FICA TRANCADA DURANTE O ENVIO — os dois botões, o de abrir a confirmação e o
-            "Confirmo: voltar". Ver a nota de `enviando`: o servidor aceitaria a volta no meio do
-            POST, porque o card só muda de estágio na última linha dele. */}
-        <div className="border-t border-line pt-3">
-          {confirmandoVolta ? (
-            <div className="rounded-xl border border-line bg-surface p-3">
-              <p className="m-0 text-xs text-ink-soft">
-                O card volta para Análise e o prazo daquela etapa recomeça. O contrato já gerado
-                continua na lista: a próxima geração vira a versão seguinte e aposenta esta.
-              </p>
-              <div className="mt-2.5 flex flex-wrap gap-2">
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3.5 py-2 text-xs font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-50"
-                  disabled={emAndamento || enviando}
-                  onClick={async () => {
-                    setErro(null);
-                    const falha = await aoVoltarParaAnalise();
-                    if (falha) {
-                      setErro(falha);
-                      setConfirmandoVolta(false);
-                    }
-                  }}
-                  title={
-                    enviando
-                      ? "O contrato está sendo enviado para a Clicksign. Voltar agora deixaria o envelope a caminho de um card que saiu da etapa."
-                      : "Voltar o card para a análise"
-                  }
-                  type="button"
-                >
-                  {emAndamento ? (
-                    <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-                  ) : (
-                    <Undo2 aria-hidden="true" className="size-3.5" />
-                  )}
-                  Confirmo: voltar
-                </button>
-                <button
-                  className="inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold text-ink-muted transition-colors hover:text-ink"
-                  onClick={() => setConfirmandoVolta(false)}
-                  type="button"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3.5 py-2 text-xs font-semibold text-ink-soft transition-colors hover:text-ink disabled:opacity-50"
-              disabled={enviando}
-              onClick={() => setConfirmandoVolta(true)}
-              title={
-                enviando
-                  ? "O contrato está sendo enviado para a Clicksign. Voltar agora deixaria o envelope a caminho de um card que saiu da etapa."
-                  : "Voltar o card para a análise"
-              }
-              type="button"
-            >
-              <Undo2 aria-hidden="true" className="size-3.5" />
-              Voltar para análise
-            </button>
-          )}
-        </div>
+            ⚠️ E ELA FICA TRANCADA DURANTE O ENVIO. Ver a nota de `enviando`: o servidor aceitaria a
+            volta no meio do POST, porque o card só muda de estágio na última linha dele. */}
+        <VoltarParaAnalise
+          aoVoltar={aoVoltarParaAnalise}
+          envelopeVivo={envelopeVivo}
+          travado={enviando}
+          travadoPorque="O contrato está sendo enviado para a Clicksign. Voltar agora deixaria o envelope a caminho de um card que saiu da etapa."
+        />
       </div>
 
       {/* DIREITA: o PDF, "aqui eu já vejo o PDF mesmo"
@@ -1245,6 +1326,256 @@ function VisorDoPdf({ documentoId }: { documentoId: string }) {
   return <iframe className="min-h-0 w-full flex-1 rounded-xl" src={url} title="Contrato" />;
 }
 
+// ── O CAMINHO DE VOLTA ─────────────────────────────────────────────────────
+
+/**
+ * VOLTAR PARA A ANÁLISE — a mesma peça nas etapas Contrato, Em assinatura e Pré-faturamento.
+ *
+ * A regra do Lucas (11/09/2026) cabe numa linha: o card volta para Análise enquanto o contrato NÃO
+ * estiver assinado por todos. Assinado por todos, o caminho é o pedido de cancelamento, que o
+ * sistema classifica como DISTRATO — *"se o contrato estiver assinado por todos somente
+ * cancelamento do contrato"* e *"ae entra naquelas regras, se ele estiver todo assinado tem que
+ * fazer distrato"*.
+ *
+ * ⚠️ O PORTÃO É O ENVELOPE, E NÃO A ETAPA, e é por isso que esta peça aparece nas TRÊS etapas do
+ * caminho — inclusive no Pré-faturamento, liberado no mesmo dia: *"prefaturamento pode desde que
+ * nao esteja todo assinado"*. Nenhuma etapa prova que o contrato está assinado; quem prova é o
+ * envelope, e quem o lê é o servidor. A tela oferece a volta e escreve o não quando ele vem.
+ *
+ * ⚠️ A FRASE MUDA COM O ENVELOPE, E NÃO MAIS COM O NOME DA ETAPA — esta é a correção de 12/09/2026,
+ * e ela não é de estilo. Até aqui a régua era `estagio !== "contrato"`, pela suposição de que em
+ * "Contrato" o envelope ainda não existe; o servidor, porém, confere e MATA o envelope sem
+ * condicional de estágio nenhuma (`lib/temis/retorno-para-correcao.ts`). E o caso em que as duas
+ * coisas se separam está escrito no próprio módulo: quando o envio falha no passo `notificar`, a
+ * linha fica com `envelope_id` e estado `aguardando` e o card NUNCA é movido — ele fica em
+ * "Contrato" com envelope ATIVO na conta de PRODUÇÃO. Nesse card a pessoa lia "o card volta para
+ * Análise e o prazo daquela etapa recomeça", confirmava, e o envelope morria: a surpresa depois do
+ * clique que a frase âmbar existe para impedir. Agora a tela pergunta o MESMO que o servidor —
+ * existe envelope vivo deste contrato? —, e a resposta vem pronta do GET.
+ *
+ * ⚠️ CANCELAMENTO DE ENVELOPE NÃO SE DESFAZ, e é por isso que o aviso é anterior ao clique — Lucas
+ * (11/09/2026): *"pode cancelar o envelope"*. Quem já recebeu o convite perde o acesso, quem já
+ * assinou assina de novo, e o cancelado fica na lista da conta de PRODUÇÃO para sempre.
+ *
+ * ⚠️ SEM ENVELOPE VIVO A FRASE NÃO PROMETE CANCELAMENTO NENHUM. Prometer a morte de um envelope que
+ * não existe ensinaria a ler a frase âmbar como enfeite — e no dia em que ele existisse de verdade,
+ * o clique viria sem leitura.
+ *
+ * ⚠️ E O ENVELOPE JÁ ASSINADO TEM FRASE PRÓPRIA, porque ali a volta nem acontece: o servidor RECUSA
+ * (o card volta a lugar nenhum, o envelope continua vivo) e manda abrir o pedido de cancelamento.
+ * Mostrar "isto CANCELA o envelope" nesse card seria avisar do que não vai ocorrer e calar sobre o
+ * que vai.
+ *
+ * ⚠️ A TELA NÃO É A RÉGUA, mesmo agora. O envelope que ela mostra foi lido quando o card abriu: a
+ * última assinatura pode entrar entre a carga e o clique, e o webhook pode chegar no meio. Por isso
+ * o botão continua aparecendo em todos os casos e quem responde "pode?" continua sendo o servidor.
+ *
+ * ⚠️ A CONFIRMAÇÃO ACONTECE NO LUGAR DO BOTÃO, sem diálogo novo e sem `window.confirm`. Um modal em
+ * cima de uma tela que já é um overlay empilharia duas camadas para uma pergunta de uma linha, e o
+ * `Esc` passaria a significar duas coisas diferentes na mesma tela.
+ *
+ * ⚠️ E A RECUSA DO SERVIDOR É ESCRITA COMO VEIO. Ela chega em QUALQUER estágio — inclusive com o
+ * card ainda em Em assinatura, porque o webhook pode não ter chegado ou a última assinatura pode
+ * ter entrado entre a tela carregar e o clique, que é o caso que a trava existe para pegar. A
+ * resposta traz o FATO (este contrato está assinado por todos) e o CAMINHO (abrir o pedido de
+ * cancelamento, no Hércules, na tela da venda). Substituí-la por um "não consegui" jogaria fora a
+ * única coisa que, naquele instante, diz para onde ir.
+ */
+function VoltarParaAnalise({
+  aoVoltar,
+  envelopeVivo,
+  travado,
+  travadoPorque,
+}: {
+  /** Devolve o texto da falha, ou `null` quando o card voltou. Quem chama a rota é a tela. */
+  aoVoltar: () => Promise<null | string>;
+  /**
+   * O envelope vivo desta venda — é ELE que escolhe a frase da confirmação, em qualquer etapa.
+   *
+   * ⚠️ `null` NÃO QUER DIZER "ETAPA SEM ENVELOPE": quer dizer que a volta deste card não vai
+   * cancelar envelope nenhum. Ou porque o Panteon não vê envelope vivo desta venda, ou porque o card
+   * não é de tipo `contrato` — e aí o servidor nem lê a tabela (o portão de
+   * `conferirEMatarOEnvelope`). Nos dois casos a frase certa é a mesma: a volta é só a volta.
+   */
+  envelopeVivo: EnvelopeVivo | null;
+  /** Trancado por outra coisa em andamento. Hoje só o envio para a Clicksign, na etapa Contrato. */
+  travado?: boolean;
+  /** O porquê da tranca, para o `title` dizer em vez de deixar o botão apagado sem explicação. */
+  travadoPorque?: string;
+}) {
+  const [confirmando, setConfirmando] = useState(false);
+  const [erro, setErro] = useState<null | string>(null);
+  /**
+   * A volta está no ar.
+   *
+   * ⚠️ O ESTADO É DAQUI, e não emprestado do `ocupado` da tela: o rótulo "Voltando…" precisa falar
+   * desta ação e de mais nenhuma. E ele é o que impede o SEGUNDO CLIQUE — a volta a partir de Em
+   * assinatura chama a Clicksign e demora, e um clique repetido tentaria cancelar o mesmo envelope
+   * duas vezes.
+   */
+  const [voltando, setVoltando] = useState(false);
+  /**
+   * O QUE A VOLTA VAI FAZER COM O ENVELOPE — a pergunta que escolhe a frase.
+   *
+   * ⚠️ A RÉGUA É O FATO, NÃO O NOME DA ETAPA. `envelopeVivo` é a resposta de `envelopeQueSegura` no
+   * servidor, a MESMA que a volta usa para decidir entre cancelar e recusar. Ver a nota do
+   * componente para o card que ficava em "Contrato" com envelope ativo.
+   *
+   * ⚠️ O ENVELOPE VIVO SEM `id` ENTRA NO "CANCELA", E ISSO É O PIOR CASO DE PROPÓSITO: ele é o envio
+   * que começou e o Panteon nunca soube como terminou, e pode haver envelope pago do lado de lá. O
+   * servidor vai RECUSAR a volta com a instrução de conferir na Clicksign — avisar pelo mais caro
+   * antes disso é o que nunca deixa a surpresa para depois do clique.
+   */
+  const oQueAVoltaFaz: "cancela" | "recusa_assinado" | "so_volta" = !envelopeVivo
+    ? "so_volta"
+    : // ⚠️ LEITURA QUE FALHOU AVISA PELO PIOR CASO, e não pela frase neutra: `conferido: false` é
+      // "o servidor não conseguiu perguntar", e pode haver envelope vivo. Ver o tipo `EnvelopeVivo`.
+      !envelopeVivo.conferido
+      ? "cancela"
+      : envelopeVivo.estado === "assinado"
+        ? "recusa_assinado"
+        : "cancela";
+  const impedido = Boolean(travado) || voltando;
+  const titulo = travado && travadoPorque ? travadoPorque : "Voltar o card para a análise";
+
+  return (
+    <div className="border-t border-line pt-3">
+      {erro ? (
+        <p className="m-0 mb-2 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs text-rose-600 dark:text-rose-300">
+          {erro}
+        </p>
+      ) : null}
+
+      {confirmando ? (
+        // ⚠️ ÂMBAR SÓ QUANDO HÁ ENVELOPE VIVO — em QUALQUER etapa. A moldura neutra é da volta que
+        // não custa nada além de gerar o PDF de novo; a âmbar precisa parecer com o que é antes de
+        // ser lida. E quem separa as duas é o envelope, nunca o nome da etapa.
+        <div
+          className={`rounded-xl border p-3 ${
+            oQueAVoltaFaz === "so_volta"
+              ? "border-line bg-surface"
+              : "border-amber-500/40 bg-amber-500/5"
+          }`}
+        >
+          {/* ⚠️ AS FRASES SÃO AS DO LUCAS, PALAVRA POR PALAVRA, e um teste as compara byte a byte
+              com `AVISO_DA_VOLTA_COM_ENVELOPE` e `AVISO_DA_VOLTA_SIMPLES`
+              (`lib/temis/retorno-para-correcao.test.ts`) — elas vivem nos dois arquivos porque esta
+              tela é `"use client"` e importar do módulo arrastaria a Clicksign e o Supabase para o
+              pacote do navegador. A do envelope é o coração desta peça: ela diz que o envelope é
+              CANCELADO, que quem já assinou assina de novo e que o cancelado fica na lista da conta
+              de PRODUÇÃO para sempre. Resumir qualquer uma delas devolveria a surpresa para depois
+              do clique.
+
+              ⚠️ A TERCEIRA NÃO PROMETE CLASSIFICAÇÃO NENHUMA. Ela diz o FATO (o contrato consta
+              assinado por todos) e o CAMINHO (abrir o pedido de cancelamento no Hércules, na tela da
+              venda). Quem decide entre cancelamento e distrato é `classificarCancelamento`
+              (`lib/temis/cancelamento.ts`), pelas duas perguntas — assinou? pagou? —, e uma frase de
+              tela que afirmasse o resultado de outra régua passaria a mentir no dia em que o
+              pagamento entrasse na conta.
+
+              ⚠️ E ELA DIZ "CONSTA", NÃO "ESTÁ": o que a tela tem é o envelope lido quando o card
+              abriu. Quem afirma é o servidor, no clique. */}
+          <p className="m-0 text-xs text-ink-soft">
+            {oQueAVoltaFaz === "cancela"
+              ? "Isto CANCELA o envelope na Clicksign. Quem já recebeu o convite perde o acesso, e quem já assinou terá de assinar de novo na versão nova. O envelope cancelado continua na lista da conta, para sempre. O card volta para Análise."
+              : oQueAVoltaFaz === "recusa_assinado"
+                ? "Este contrato consta assinado por todos, e assinatura não se desfaz: a volta vai ser recusada. Para mudar alguma coisa agora, o caminho é abrir o pedido de cancelamento no Hércules, na tela da venda — o sistema classifica sozinho entre cancelamento e distrato."
+                : "O card volta para Análise e o prazo daquela etapa recomeça. O contrato já gerado continua na lista: a próxima geração vira a versão seguinte e aposenta esta."}
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <button
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3.5 py-2 text-xs font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-50"
+              disabled={impedido}
+              onClick={async () => {
+                setErro(null);
+                setVoltando(true);
+                try {
+                  const falha = await aoVoltar();
+                  if (falha) {
+                    setErro(falha);
+                    setConfirmando(false);
+                  }
+                } finally {
+                  // A volta que deu certo fecha a tela, e este `set` cai no vazio; a que falhou
+                  // devolve o botão para quem vai ler o motivo e decidir de novo.
+                  setVoltando(false);
+                }
+              }}
+              title={titulo}
+              type="button"
+            >
+              {voltando ? (
+                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+              ) : (
+                <Undo2 aria-hidden="true" className="size-3.5" />
+              )}
+              {voltando ? "Voltando…" : "Confirmo: voltar"}
+            </button>
+            <button
+              className="inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
+              disabled={voltando}
+              onClick={() => setConfirmando(false)}
+              type="button"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        // ⚠️ BORDA, E NÃO DOURADO: voltar é conserto, não avanço. O dourado da marca diz "o card
+        // anda"; pintar a volta com ele faria o olho ler as duas ações como a mesma coisa numa
+        // coluna onde a de cima manda o contrato para o cliente assinar.
+        <button
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3.5 py-2 text-xs font-semibold text-ink-soft transition-colors hover:text-ink disabled:opacity-50"
+          disabled={impedido}
+          onClick={() => {
+            setErro(null);
+            setConfirmando(true);
+          }}
+          title={titulo}
+          type="button"
+        >
+          <Undo2 aria-hidden="true" className="size-3.5" />
+          Voltar para análise
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A LINHA QUE DIZ PARA ONDE IR nas duas etapas sem volta — Faturado e Indeferido.
+ *
+ * ⚠️ ELA EXISTE PARA NÃO DEIXAR NINGUÉM PROCURANDO UM BOTÃO QUE NÃO EXISTE. Nas três etapas do
+ * caminho o "Voltar para análise" está logo ali; nestas duas ele some, e some por razões que não
+ * aparecem na tela. Sem esta linha, a ausência do botão pareceria defeito.
+ *
+ * ⚠️ E SÃO DUAS FRASES, NÃO UMA — esta é a correção de 12/09/2026, e ela não é de estilo. A frase
+ * única mandava abrir o pedido de cancelamento nas DUAS etapas, e no Indeferido isso é conselho
+ * ERRADO: ali não houve contrato assinado nem venda em pé para cancelar, e o card saiu pela
+ * lateral. Quem corrige um indeferido é quem vendeu, pelo Hércules, de onde o trabalho veio.
+ * No Faturado sim, o cancelamento é o caminho que sobra — Lucas (12/09/2026): *"somente no ultimo
+ * estagio que nao tem como voltar para corrigir"*.
+ *
+ * ⚠️ AS DUAS SÃO AS GÊMEAS DE `RECUSA_POR_ESTAGIO` (`lib/temis/retorno-para-correcao.ts`), que é o
+ * que o servidor responde a quem chegar na rota por outro caminho. A tela e o 409 dizendo coisas
+ * diferentes sobre o MESMO card é o tipo de divergência que só aparece no dia do problema.
+ *
+ * ⚠️ E NENHUMA DELAS AFIRMA O QUE NÃO SABE. Nem uma nem outra diz "já está assinado por todos", e
+ * nenhuma promete o nome do pedido: quem decide entre cancelamento e distrato é
+ * `classificarCancelamento` (`lib/temis/cancelamento.ts`), pelas duas perguntas — assinou? pagou?
+ * —, e não esta frase.
+ */
+function DaquiNaoSeVolta({ estagio }: { estagio: "faturado" | "indeferido" }) {
+  return (
+    <p className="m-0 mt-3 border-t border-line pt-3 text-[11px] text-ink-muted">
+      {estagio === "faturado"
+        ? "Daqui não há volta para a análise: é o único estágio sem retorno. Para mudar alguma coisa agora, o caminho é abrir o pedido de cancelamento do contrato — o sistema classifica o que ele é pelas assinaturas e pelos pagamentos."
+        : "Este card saiu do caminho do contrato, e não há etapa para onde devolvê-lo. A correção volta pelo Hércules, com quem vendeu."}
+    </p>
+  );
+}
+
 // ── ETAPA 4 · PRAZO LEGAL ──────────────────────────────────────────────────
 
 function EtapaDoPrazoLegal({ inicio }: { inicio: null | string }) {
@@ -1291,6 +1622,61 @@ function EtapaDoPrazoLegal({ inicio }: { inicio: null | string }) {
 }
 
 // ── Peças ──────────────────────────────────────────────────────────────────
+
+/**
+ * O ENVELOPE DESTA VENDA, EM UMA LINHA — o que a etapa "Em assinatura" já pode dizer hoje.
+ *
+ * ⚠️ NÃO É A TELA DE MONITORAMENTO, e não deve virar uma. Os indicadores por signatário (assinou,
+ * visualizou, e-mail não entregue) e a cobrança pela Íris são o PAN-022, e o bloco "em construção"
+ * ao lado continua dizendo isso. Esta linha existe porque o envelope JÁ VEM na carga da tela — ele é
+ * o que escolhe a frase da volta —, e uma etapa que fica muda sobre um dado que o Panteon tem na mão
+ * é uma etapa que ensina a não olhar para ela.
+ *
+ * ⚠️ A PALAVRA É A DA CASA, E VEM PRONTA DO SERVIDOR (`rotuloDoEstado`, em
+ * `lib/assinatura/traduzir.ts`): "Aguardando assinatura", "Parcialmente assinado". Traduzir aqui
+ * criaria um segundo vocabulário para os mesmos oito estados — e escrever o valor cru
+ * (`aguardando`, `parcial`) devolveria o jargão do provedor para dentro da tela, que é exatamente o
+ * que a camada de tradução existe para impedir.
+ *
+ * ⚠️ O "DESDE" É DA ETAPA, E NÃO DO ENVELOPE, e a frase diz isso com todas as letras. `estagio_desde`
+ * é quando o CARD entrou aqui; a hora do último evento do envelope mora em `temis_envelopes` e não é
+ * lida por esta tela. Escrever "aguardando desde" em cima do carimbo da etapa seria datar o envelope
+ * com a hora de outra coisa.
+ *
+ * ⚠️ E O SILÊNCIO TAMBÉM É NOTÍCIA. Card em "Em assinatura" sem envelope vivo é o caso do Henrique
+ * (09/09/2026): `marcarAtividade` avança o card por marcação humana, sem envelope nenhum. A linha
+ * fala do que o PANTEON vê — nunca "não existe envelope", que ela não tem como saber.
+ */
+function LinhaDoEnvelope({
+  desde,
+  envelopeVivo,
+}: {
+  /** `estagio_desde` do card: quando ele entrou nesta etapa. */
+  desde: string;
+  envelopeVivo: EnvelopeVivo | null;
+}) {
+  const entrada = new Date(desde);
+  const desdeEscrito = Number.isNaN(entrada.getTime()) ? desde : entrada.toLocaleString("pt-BR");
+
+  return (
+    <p className="m-0 rounded-xl border border-line bg-subtle px-4 py-3 text-xs text-ink-soft">
+      {envelopeVivo && !envelopeVivo.conferido ? (
+        // ⚠️ A LEITURA FALHOU, E A LINHA DIZ ISSO. Escrever aqui "o Panteon não vê envelope vivo"
+        // seria trocar "não consegui perguntar" por "não existe" — o mesmo engano que a frase da
+        // confirmação evita logo abaixo.
+        `Não deu para conferir o envelope desta venda agora. Nesta etapa desde ${desdeEscrito}.`
+      ) : envelopeVivo ? (
+        <>
+          <span className="font-semibold text-ink">{envelopeVivo.rotulo}</span>
+          {envelopeVivo.id ? ` · envelope ${envelopeVivo.id}` : " · sem id do envelope no Panteon"}
+          {` · nesta etapa desde ${desdeEscrito}`}
+        </>
+      ) : (
+        `O Panteon não vê envelope vivo desta venda. Nesta etapa desde ${desdeEscrito}.`
+      )}
+    </p>
+  );
+}
 
 function EmConstrucao({ oQueVem, titulo }: { oQueVem: string; titulo: string }) {
   return (

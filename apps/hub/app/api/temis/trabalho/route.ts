@@ -2,15 +2,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
+import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
+import { rotuloDoEstado } from "@/lib/assinatura/traduzir";
 import { analiseDoTrabalho } from "@/lib/temis/analise-do-trabalho";
 import { contratosDaProposta } from "@/lib/temis/contrato-guardado-db";
 import {
   autorizarEmissaoDeContrato,
   autorizarLeituraDeContrato,
 } from "@/lib/temis/autorizacao";
-import { nomeDaEtapaGravada } from "@/lib/temis/historico-de-etapas";
 import { conferirIndeferimento } from "@/lib/temis/indeferimento";
 import { registrarPassagemDeEtapa } from "@/lib/temis/passagem-de-etapa-db";
+import { retornarParaAnalise } from "@/lib/temis/retorno-para-correcao";
 
 // A TELA DE TRABALHO DE UM CARD — o que abre quando o operador clica no quadro.
 //
@@ -25,7 +28,14 @@ import { registrarPassagemDeEtapa } from "@/lib/temis/passagem-de-etapa-db";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 // `dadosDaProposta` faz ~10 consultas ao Supabase. Folga para o pior caso.
-export const maxDuration = 30;
+//
+// ⚠️ 60 PORQUE AGORA HÁ CHAMADA EXTERNA NO CAMINHO. O POST deixou de ser só banco: voltar um card
+// de "em assinatura" CANCELA o envelope na Clicksign, e o cliente dela espera até 15 s por chamada
+// (`lib/assinatura/clicksign/cliente.ts`). Com os 30 de antes, uma Clicksign lenta somada às
+// leituras do card e dos envelopes acabaria cortada pela Vercel — e o corte cai justamente no pior
+// lugar: ninguém saberia se o envelope morreu antes de a função ser morta. O envio para assinatura,
+// que faz 16 chamadas, já declara 120 pelo mesmo motivo.
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const auth = await autorizarLeituraDeContrato(request);
@@ -77,7 +87,10 @@ export async function GET(request: Request) {
   // ligada, em vez de mostrar blocos vazios como se fosse cadastro incompleto.
   // A análise e os contratos vão juntos: a etapa 1 usa a primeira, a etapa 2 a segunda, e a tela
   // troca de painel sem ir buscar de novo.
-  const [analise, contratos] = card.proposta_id
+  //
+  // ⚠️ O ENVELOPE ENTROU NA MESMA LEVA, E NÃO É INFORMAÇÃO DE ENFEITE: é ele que decide a frase da
+  // confirmação de "voltar para análise" — ver `envelopeVivoDaProposta`.
+  const [analise, contratos, envelopeVivo] = card.proposta_id
     ? await Promise.all([
         analiseDoTrabalho(sb, String(card.proposta_id)).catch((e: unknown) => {
           console.error("[temis][trabalho] falha ao montar a analise", e);
@@ -87,8 +100,18 @@ export async function GET(request: Request) {
           console.error("[temis][trabalho] falha ao ler os contratos", e);
           return [];
         }),
+        // ⚠️ O PORTÃO POR TIPO É O MESMO DA VOLTA, LADO A LADO — `conferirEMatarOEnvelope` abre com
+        // `if (card.tipo.trim() !== "contrato") return`. Ele existe porque `temis_envelopes` casa
+        // por `proposta_id` e NÃO tem `trabalho_id`: o pedido de cancelamento nasce com a MESMA
+        // proposta da venda, e uma proposta tem DOIS cards (medido em 10/09/2026 na proposta do
+        // Henrique, Q01 L05). Sem o portão, o card de cancelamento leria o envelope DA VENDA — e a
+        // tela avisaria de um cancelamento que a volta dele não faz. Perguntar aqui o que o servidor
+        // não pergunta é a mesma divergência de antes, virada do avesso.
+        String(card.tipo).trim() === "contrato"
+          ? envelopeVivoDaProposta(sb, String(card.proposta_id))
+          : Promise.resolve(null),
       ])
-    : [null, []];
+    : [null, [], null];
 
   // ⚠️ SEM ISTO, O PAINEL DE ASSINATURA NASCE MOSTRANDO ERRO PARA QUEM SÓ LÊ. Este GET autoriza
   // com a régua de LEITURA; o preparo da assinatura, com a da EMISSÃO. Enquanto o preparo só era
@@ -102,9 +125,120 @@ export async function GET(request: Request) {
   const podeEmitir = (await autorizarEmissaoDeContrato(request)).ok;
 
   return NextResponse.json(
-    { data: { analise, card: { ...card, contratos }, podeEmitir } },
+    { data: { analise, card: { ...card, contratos }, envelopeVivo, podeEmitir } },
     { headers: { "Cache-Control": "no-store" } },
   );
+}
+
+/**
+ * O ENVELOPE VIVO DESTA VENDA, como a tela precisa dele.
+ *
+ * ⚠️ ELE EXISTE PARA A TELA PARAR DE ADIVINHAR PELO NOME DA ETAPA. Até 12/09/2026 a confirmação de
+ * "voltar para análise" escolhia a frase por `estagio !== "contrato"`, e o servidor cancelava o
+ * envelope SEM olhar estágio nenhum (`lib/temis/retorno-para-correcao.ts`). O caso que a diferença
+ * produz está escrito no próprio módulo: quando o envio falha no passo `notificar`, a linha fica com
+ * `envelope_id` e estado `aguardando` e o card NÃO é movido — ele fica em "Contrato" com um envelope
+ * ATIVO na conta de PRODUÇÃO. Ali a pessoa lia "o card volta para Análise e o prazo recomeça",
+ * confirmava, e só descobria o cancelamento pelo recado verde DEPOIS. É exatamente a surpresa depois
+ * do clique que a frase âmbar existe para impedir.
+ *
+ * ⚠️ A RÉGUA É `envelopeQueSegura`, A MESMA DO SERVIDOR — e é o ponto inteiro. A pergunta ("existe
+ * envelope vivo deste contrato?") já tem uma resposta única e testada; uma segunda escrita aqui
+ * voltaria a divergir no dia em que um estado mudasse de lado.
+ *
+ * ⚠️ QUEM DECIDE SE ESTA FUNÇÃO É CHAMADA É O TIPO DO CARD, no GET, e o porquê está lá em cima, ao
+ * lado da chamada: é o mesmo portão que abre `conferirEMatarOEnvelope`. Aqui dentro não há portão
+ * nenhum — esta função responde só "qual é o envelope vivo desta proposta?".
+ *
+ * ⚠️ LEITURA QUE FALHA VIRA `null`, E ISSO NÃO SOLTA NADA. O aviso da tela fica no texto neutro, mas
+ * quem decide continua sendo a volta, que FALHA FECHADO: sem conseguir ler os envelopes ela devolve
+ * 503 e o card não se move. O preço do `null` aqui é um aviso pálido, nunca um envelope cancelado de
+ * surpresa.
+ */
+async function envelopeVivoDaProposta(
+  sb: SupabaseClient,
+  propostaId: string,
+): Promise<EnvelopeVivoDoCard | null> {
+  const { data, error } = await sb
+    .from("temis_envelopes")
+    // As mesmas colunas que a guarda do envio e a volta leem — é a mesma régua.
+    .select("criado_em, envelope_id, estado, falha, id, provedor")
+    .eq("proposta_id", propostaId)
+    .order("criado_em", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    // ⚠️ FALHA DE LEITURA NÃO PODE VIRAR `null`, E ESTE ERA O DEFEITO: `null` quer dizer "não há
+    // envelope vivo", e a tela escreve com isso a frase NEUTRA — a que não avisa de cancelamento
+    // nenhum. Com um envelope vivo do outro lado, o operador confirmaria uma volta que MATA um
+    // envelope da conta de produção sem nunca ter lido o aviso. O `conferido: false` diz a única
+    // coisa verdadeira aqui ("não consegui perguntar") e faz a tela avisar pelo pior caso.
+    console.error("[temis][trabalho] falha ao ler o envelope da proposta", error);
+    return { conferido: false, estado: "desconhecido", id: null, rotulo: "Não deu para conferir" };
+  }
+
+  const vivo = envelopeQueSegura((data ?? []) as EnvelopeDaProposta[]);
+  if (!vivo) return null;
+
+  return {
+    conferido: true,
+    estado: vivo.estado,
+    id: vivo.envelope_id,
+    rotulo: comoSeEscreveOEstado(vivo.estado),
+  };
+}
+
+/** O envelope vivo da venda, do jeito que a tela de trabalho o consome. */
+type EnvelopeVivoDoCard = {
+  /**
+   * A leitura de `temis_envelopes` deu certo?
+   *
+   * ⚠️ `false` NÃO É "NÃO TEM ENVELOPE", é "não deu para perguntar" — e a diferença é o aviso que
+   * antecede o cancelamento de um envelope pago. Ver o `catch` de `envelopeVivoDaProposta`.
+   */
+  conferido: boolean;
+  /** O estado CRU de `temis_envelopes` — é por ele que a tela decide qual frase mostrar. */
+  estado: string;
+  /**
+   * O id do envelope na Clicksign.
+   *
+   * ⚠️ `null` É UM CASO REAL, e não descuido: a linha viva sem `envelope_id` quer dizer que um envio
+   * começou e o Panteon nunca soube como terminou. Ela SEGURA a volta (409 com instrução), e é por
+   * isso que a tela avisa pelo pior caso mesmo aqui — pode haver envelope pago do lado de lá.
+   */
+  id: null | string;
+  /** O mesmo estado em palavra da casa, pronto para a tela ESCREVER. */
+  rotulo: string;
+};
+
+/**
+ * Os oito estados, escritos como `Record` total DE PROPÓSITO: estado novo em `EstadoDaAssinatura`
+ * sem linha aqui NÃO COMPILA.
+ *
+ * ⚠️ AS CHAVES SE REPETEM, OS RÓTULOS NÃO — e é essa a divisão que importa. O texto continua saindo
+ * de `rotuloDoEstado`, que é a fonte única da palavra; este `Record` só serve para estreitar a
+ * `string` gravada no banco sem `as`. O gêmeo dele, `ESTADOS_DO_ENVELOPE`, é privado de
+ * `lib/assinatura/envio-db.ts` — exportá-lo arrastaria o cliente da Clicksign para quem só quer
+ * traduzir uma palavra.
+ */
+const ESTADOS_DO_ENVELOPE: Record<EstadoDaAssinatura, true> = {
+  aguardando: true,
+  assinado: true,
+  cancelado: true,
+  desconhecido: true,
+  expirado: true,
+  parcial: true,
+  rascunho: true,
+  recusado: true,
+};
+
+function ehEstadoDoEnvelope(gravado: string): gravado is EstadoDaAssinatura {
+  return Object.prototype.hasOwnProperty.call(ESTADOS_DO_ENVELOPE, gravado);
+}
+
+/** O rótulo da casa para o estado gravado; valor que o código não conhece sai como ele mesmo. */
+function comoSeEscreveOEstado(gravado: string): string {
+  return ehEstadoDoEnvelope(gravado) ? rotuloDoEstado(gravado) : gravado;
 }
 
 /** O que as duas decisões precisam saber do card antes de mexer nele. */
@@ -129,9 +263,21 @@ type CardDaDecisao = {
  * GRAVA a decisão com motivo; o disparo entra em seguida, e é por isso que o motivo já é
  * obrigatório no banco: sem ele, a mensagem sairia dizendo "recusado" e nada mais.
  *
- * `voltar_para_analise` — o contrato volta uma etapa para ser corrigido. Lucas (11/09/2026), sobre
- * a etapa de organizar as assinaturas: *"caso queira fazer algum ajuste no contrato, podemos ter um
- * botão para voltar o contrato a etapa anterior, corrigir e mandar para assinatura"*.
+ * `voltar_para_analise` — o contrato volta para a Análise para ser corrigido. Lucas (11/09/2026),
+ * sobre a etapa de organizar as assinaturas: *"caso queira fazer algum ajuste no contrato, podemos
+ * ter um botão para voltar o contrato a etapa anterior, corrigir e mandar para assinatura"*; e, no
+ * mesmo dia, sobre a etapa seguinte: *"aproveita e coloca uma forma de voltar para analise ... mesmo
+ * estando na sessao de assinatura, pois e nesse momento que todos vao receber o contrato para
+ * assinatura, ae com certeza pode ter algo para ser alterado"*.
+ *
+ * ⚠️ ELA MEXE FORA DA CASA: confere o envelope na Clicksign e o cancela antes de mover o card. A
+ * regra inteira (de onde volta, o que barra, em que ordem) está em
+ * `lib/temis/retorno-para-correcao.ts` — esta rota só abre a porta e traduz o desfecho.
+ *
+ * ⚠️ E O QUE DECIDE É O ENVELOPE, NÃO A ETAPA. Lucas (12/09/2026), fechando a regra: *"prefaturamento
+ * pode desde que nao esteja todo assinado"* e *"se ele estiver todo assinado tem que fazer distrato"*.
+ * Por isso esta rota não olha o estágio para escolher caminho: ela entrega o card à regra, que lê o
+ * envelope.
  *
  * ⚠️ AÇÃO AUSENTE É `indeferir`, e isso é compatibilidade deliberada: a tela de hoje manda
  * `{ id, motivo, observacao }` sem `acao` nenhuma, e ela continua funcionando igual até ser
@@ -161,10 +307,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
   }
 
-  // ⚠️ LER ANTES DE ESCREVER, E NÃO SÓ PARA A REGRA DE "VOLTAR". O estágio de ONDE o card sai é o
-  // que o histórico grava — e ele deixa de existir no banco no instante do `update`, porque
-  // `temis_trabalhos.estagio` guarda só o presente. Sem esta leitura a passagem nasceria sem
-  // origem, e `de` nulo significa "card recém-aberto" (migration 0153), que seria mentira.
+  const quemNome = await nomeDeQuemClicou(sb, auth.userId);
+
+  // ⚠️ A VOLTA NÃO É MAIS UM `update` DESTA ROTA, e é por isso que ela não lê o card aqui. Ela
+  // confere o ENVELOPE — em QUALQUER um dos três estágios que voltam — e o cancela na Clicksign
+  // antes de mover, e essa sequência — ler, conferir, cancelar, mover, registrar — é uma regra
+  // inteira, com leituras próprias: ver `lib/temis/retorno-para-correcao.ts`. A porta continua sendo
+  // a mesma (coordenação).
+  if (acao === "voltar_para_analise") {
+    return voltarParaAnalise(sb, {
+      observacao: String(corpo.observacao ?? "").trim() || null,
+      trabalhoId: id,
+      usuarioId: auth.userId,
+      usuarioNome: quemNome,
+    });
+  }
+
+  // ⚠️ LER ANTES DE ESCREVER. O estágio de ONDE o card sai é o que o histórico grava — e ele deixa
+  // de existir no banco no instante do `update`, porque `temis_trabalhos.estagio` guarda só o
+  // presente. Sem esta leitura a passagem nasceria sem origem, e `de` nulo significa "card
+  // recém-aberto" (migration 0153), que seria mentira.
   const { data: card, error: erroDaLeitura } = await sb
     .from("temis_trabalhos")
     .select("estagio, id, proposta_id, tipo")
@@ -176,17 +338,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Nao foi possivel abrir o trabalho." }, { status: 503 });
   }
   if (!card) return NextResponse.json({ error: "Trabalho nao encontrado." }, { status: 404 });
-
-  const quemNome = await nomeDeQuemClicou(sb, auth.userId);
-
-  if (acao === "voltar_para_analise") {
-    return voltarParaAnalise(sb, {
-      card,
-      observacao: String(corpo.observacao ?? "").trim() || null,
-      quem: auth.userId,
-      quemNome,
-    });
-  }
 
   return indeferir(sb, {
     card,
@@ -295,83 +446,37 @@ async function indeferir(
 /**
  * DEVOLVER O CONTRATO PARA A ANÁLISE, para corrigir e mandar de novo.
  *
- * ⚠️ SÓ DE "CONTRATO" PARA TRÁS, e a leitura é feita antes justamente para recusar em português em
- * vez de deixar o `update` não pegar linha nenhuma e responder "pronto". Um card em assinatura não
- * volta por aqui: o envelope já existe na Clicksign e cobrando, e desfazer isso é outra conversa,
- * com outro botão.
+ * ⚠️ A REGRA MORA EM `lib/temis/retorno-para-correcao.ts`, E NÃO AQUI. Ela deixou de ser um
+ * `update` com um `if` na frente no dia em que passou a valer também para a etapa de assinatura:
+ * dali a volta CANCELA o envelope na Clicksign antes de mover o card, e falha fechado se o
+ * cancelamento não der certo — senão alguém assinaria a versão velha enquanto a nova é corrigida.
+ * Lucas (11/09/2026): *"pode cancelar o envelope"*.
  *
- * ⚠️ `estagio_desde` ANDA AQUI, E É A ÚNICA VEZ EM QUE ELE ANDA PARA TRÁS NO MÓDULO. A regra da
- * casa é que ele não volta quando só o RÓTULO da etapa muda (migration 0150) — ali um card que
- * estava em Confecção há seis dias continua há seis dias em Contrato. Aqui é o contrário: o card
- * REENTROU na análise, de verdade, e o prazo daquela etapa recomeça agora. Deixar o carimbo velho
- * faria a análise nascer atrasada de dias que ela não teve, e o quadro cobraria do analista um
- * atraso que é da correção.
+ * ⚠️ E A RECUSA DO CONTRATO ASSINADO APONTA PARA O DISTRATO, com nome próprio — quem classifica é
+ * `classificarCancelamento` (`lib/temis/cancelamento.ts`), e não esta rota. Repassar a frase inteira
+ * do servidor, como o bloco abaixo faz, é o que preserva essa instrução na tela.
  *
- * ⚠️ O CONTRATO JÁ GERADO NÃO É APAGADO. Ele continua na lista de versões de `hercules_documentos`
- * (regra da 0136: versão não se apaga), e a próxima geração vira v+1 e aposenta a anterior sozinha
- * — quem decide qual vale é `contratoVigente`, sempre a mais nova. Apagar o PDF aqui destruiria a
- * prova do que foi enviado para conferência antes da correção.
+ * ⚠️ E A RESPOSTA DIZ O QUE ACONTECEU, não só que deu certo. `envelopeCancelado` é o que permite à
+ * tela contar que o contrato saiu da mão de quem ia assinar — um "pronto" mudo faria o operador
+ * ficar sem saber se ainda há convite vivo na Clicksign.
  */
 async function voltarParaAnalise(
   sb: SupabaseClient,
   decisao: {
-    card: CardDaDecisao;
     observacao: null | string;
-    quem: string;
-    quemNome: null | string;
+    trabalhoId: string;
+    usuarioId: string;
+    usuarioNome: null | string;
   },
 ): Promise<NextResponse> {
-  if (decisao.card.estagio !== "contrato") {
-    return NextResponse.json(
-      {
-        error: `Só dá para devolver para a análise um trabalho que está na etapa Contrato. Este está em "${nomeDaEtapaGravada(decisao.card.estagio, decisao.card.tipo)}".`,
-      },
-      { status: 409 },
-    );
+  const feito = await retornarParaAnalise(sb, decisao);
+
+  if (!feito.ok) {
+    return NextResponse.json({ error: feito.erro }, { status: feito.status });
   }
 
-  const agora = new Date().toISOString();
-  const { data: mexidos, error } = await sb
-    .from("temis_trabalhos")
-    .update({
-      atualizado_em: agora,
-      estagio: "analise",
-      estagio_desde: agora,
-    })
-    .eq("id", decisao.card.id)
-    // ⚠️ O `.eq` NO ESTÁGIO É A COMPARAÇÃO-E-TROCA. Entre a leitura e esta linha alguém pode ter
-    // mandado o mesmo contrato para assinatura; sem ele, o card voltaria para a análise com o
-    // envelope já aberto na Clicksign. E o `.select()` é o que permite PERCEBER que isso
-    // aconteceu: `update` que não pega linha nenhuma volta sem erro.
-    .eq("estagio", "contrato")
-    .select("id");
-
-  if (error) {
-    console.error("[temis][trabalho] falha ao devolver para a análise", error);
-    return NextResponse.json(
-      { error: "Nao foi possivel devolver para a analise." },
-      { status: 503 },
-    );
-  }
-
-  if (!mexidos || mexidos.length === 0) {
-    return NextResponse.json(
-      { error: "Este trabalho saiu da etapa Contrato enquanto a tela estava aberta. Abra de novo." },
-      { status: 409 },
-    );
-  }
-
-  await registrarPassagemDeEtapa(sb, {
-    de: decisao.card.estagio,
-    observacao: decisao.observacao,
-    origem: "retorno_para_correcao",
-    para: "analise",
-    propostaId: decisao.card.proposta_id,
-    quem: decisao.quem,
-    quemNome: decisao.quemNome,
-    trabalhoId: decisao.card.id,
-    trabalhoTipo: decisao.card.tipo,
-  });
-
-  return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(
+    { de: feito.de, envelopeCancelado: feito.envelopeCancelado, ok: true },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

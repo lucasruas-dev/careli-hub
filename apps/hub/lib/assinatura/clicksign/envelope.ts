@@ -1,6 +1,8 @@
 import { chamar, FalhaDaClicksign, type PortaDaClicksign } from "./cliente";
 
-import type { PapelNoContrato, Signatario } from "../tipos";
+import { estadoDaClicksign } from "../traduzir";
+
+import type { EstadoDaAssinatura, PapelNoContrato, Signatario } from "../tipos";
 
 // O ENVIO — o contrato guardado vira um envelope na Clicksign.
 //
@@ -35,6 +37,16 @@ import type { PapelNoContrato, Signatario } from "../tipos";
 
 /** O que a Clicksign devolve nos POSTs: JSON:API, com o id no `data`. */
 type RespostaComId = { data?: { id?: string } };
+
+/**
+ * O que a Clicksign devolve no GET do envelope: JSON:API, com o status nos `attributes`.
+ *
+ * ⚠️ OS DOIS NÍVEIS SÃO O MESMO CAMPO, e não dois palpites diferentes. O JSON:API põe os dados do
+ * recurso em `data.attributes`, e é lá que o PATCH do passo 5 escreve o status; `data.status` entra
+ * como segunda leitura do MESMO campo, um nível acima, porque o webhook real (09/09/2026) chegou
+ * com o status ao lado do id (`document: { key, path, status }`) e não dentro de `attributes`.
+ */
+type RespostaComStatus = { data?: { attributes?: { status?: string }; status?: string } };
 
 export type PedidoDeEnvio = {
   /** O PDF já montado e guardado. */
@@ -139,7 +151,7 @@ export async function enviarParaAssinatura(
 
   const falhar = async (passo: FalhaNoEnvio["passo"], e: unknown): Promise<ResultadoDoEnvio> => {
     const falha = e instanceof FalhaDaClicksign ? e : null;
-    const detalhe = falha ? [falha.message, ...falha.erro.detalhes].filter(Boolean).join(" · ") : String(e);
+    const detalhe = detalheDaFalha(e);
     // Depois de ativado não se desfaz nada: o envelope existe, e mentir sobre isso é pior do que a
     // falha.
     const rascunhoApagado = passo === "notificar" ? false : await desfazer();
@@ -295,6 +307,217 @@ export async function enviarParaAssinatura(
   }
 
   return { documentoId, envelopeId, nome, ok: true, signatarios: idPorEmail };
+}
+
+// ── A LEITURA DO ESTADO REAL ────────────────────────────────────────────────
+
+export type EnvelopeLido = {
+  envelopeId: string;
+  /**
+   * O estado na língua da casa, traduzido por `estadoDaClicksign`.
+   *
+   * ⚠️ TRADUZIDO SEM SABER QUEM ASSINOU, e isso muda o que ele pode responder. Esta leitura pega o
+   * status do ENVELOPE, não a lista de signatários: `running` volta como `aguardando` mesmo com
+   * três dos quatro já assinados, e `closed` volta como `desconhecido` — porque `closed` é tanto
+   * "todos assinaram" quanto "venceu o prazo e fechou com o que tinha" (ver `estadoDaClicksign`).
+   * Ela responde "este envelope ainda está vivo?", nunca "quantos assinaram?".
+   */
+  estado: EstadoDaAssinatura;
+  ok: true;
+  /** O status CRU da Clicksign: `draft`, `running`, `closed` ou `canceled`. */
+  status: string;
+};
+
+export type FalhaNaLeitura = {
+  envelopeId: string;
+  erro: string;
+  ok: false;
+  /** `X-Request-Id` da Clicksign — é o que o suporte deles pede. */
+  requestId: null | string;
+};
+
+export type ResultadoDaLeitura = EnvelopeLido | FalhaNaLeitura;
+
+/**
+ * LÊ O ESTADO DO ENVELOPE NA CLICKSIGN — a fonte que não atrasa.
+ *
+ * ⚠️ ELA EXISTE PORQUE O NOSSO BANCO É QUEM ESTÁ ATRASADO. `temis_envelopes.estado` só é escrito
+ * pelo webhook, e a janela entre a última assinatura e o evento chegar é justamente o momento em
+ * que alguém clica em "voltar para a análise": a tela carregada às 13:58 mostra `parcial`, o quarto
+ * signatário assina às 14:00, e às 14:00:01 o Panteon cancelaria um contrato ASSINADO POR TODOS. E
+ * o estrago não pararia aí — `cancelado` é terminal, então o `auto_close` que chegasse depois seria
+ * DESCARTADO e não sobraria registro nenhum de que aquele contrato foi assinado.
+ *
+ * ⚠️ QUEM CHAMA ISTO CANCELA DEPOIS, NUNCA ANTES. A ordem é ler → recusar se estiver fechado →
+ * cancelar. Ver `lib/temis/retorno-para-correcao.ts`.
+ *
+ * ⚠️ E A FALHA AQUI É PARA FECHAR O CAMINHO, não para seguir no escuro: quem chama recusa a volta
+ * quando esta leitura não responde. Por isso ela NUNCA LANÇA — devolve a falha, como o cancelamento.
+ *
+ * ⚠️ A FORMA DO GET É INFERÊNCIA, exatamente como a do PATCH que cancela — e o aviso é deliberado.
+ * O que esta casa já viu de verdade é a LISTAGEM (`/envelopes?page[number]=1`, em `sondarCabecalho`);
+ * o GET de um envelope só é o caminho padrão do JSON:API, e o lugar do status na resposta
+ * (`data.attributes.status`) é deduzido de onde o PATCH do passo 5 ESCREVE o status. Este arquivo já
+ * teve três campos com comentário confiante afirmando o contrário da doc (o `Bearer` no token, o PDF
+ * em base64 cru, o CPF sem máscara), e os três só apareceram na primeira chamada real. Quem
+ * confirmar na doc (ou na primeira leitura de verdade), troque este parágrafo pela citação.
+ */
+export async function consultarEnvelope(
+  envelopeId: string,
+  porta: PortaDaClicksign = chamar,
+): Promise<ResultadoDaLeitura> {
+  const id = envelopeId.trim();
+  // ⚠️ SEM ID NÃO SE CHAMA NADA, pelo mesmo motivo do cancelamento: `GET /envelopes/` (com o id
+  // vazio) é a LISTAGEM, que responde 200 com a página inteira da conta — e ler dali um status
+  // qualquer seria afirmar sobre um envelope que não é este.
+  if (!id) {
+    return {
+      envelopeId: "",
+      erro: "Sem o id do envelope não dá para consultar na Clicksign.",
+      ok: false,
+      requestId: null,
+    };
+  }
+
+  try {
+    const lido = await porta<RespostaComStatus>(`/envelopes/${id}`, { metodo: "GET" });
+    const status = String(lido?.data?.attributes?.status ?? lido?.data?.status ?? "").trim();
+    // ⚠️ RESPOSTA SEM STATUS É FALHA, E NÃO "ESTADO DESCONHECIDO". Se a forma da resposta mudar (ou
+    // a inferência acima estiver errada), cair no caminho da falha é o que RECUSA a volta; devolver
+    // `desconhecido` como se fosse uma leitura boa misturaria "a Clicksign disse algo que não sei
+    // traduzir" com "não consegui perguntar", e as duas pedem a mesma coisa por motivos diferentes.
+    if (!status) throw new Error("A Clicksign respondeu sobre o envelope e não disse o status.");
+    return { envelopeId: id, estado: estadoDaClicksign(status).estado, ok: true, status };
+  } catch (e) {
+    return {
+      envelopeId: id,
+      erro: detalheDaFalha(e),
+      ok: false,
+      requestId: e instanceof FalhaDaClicksign ? e.erro.requestId : null,
+    };
+  }
+}
+
+// ── O CANCELAMENTO ──────────────────────────────────────────────────────────
+
+export type CancelamentoFeito = { envelopeId: string; ok: true };
+
+export type FalhaNoCancelamento = {
+  /**
+   * O PEDIDO PODE TER CHEGADO? `true` = não dá para saber.
+   *
+   * ⚠️ TIMEOUT NÃO É RECUSA, e tratar os dois como a mesma coisa faz a tela AFIRMAR o que o código
+   * não sabe. Quando a API responde 4xx/5xx, ela recusou: o envelope continua vivo, e dizer "as
+   * pessoas continuam com o contrato atual para assinar" é verdade. Quando a chamada ABORTA (os 15s
+   * de `chamar`, ou a rede caindo), o PATCH pode ter chegado e o envelope já estar morto do outro
+   * lado — e aí a mesma frase vira certeza falsa.
+   *
+   * ⚠️ É A MESMA DECISÃO QUE `carimbarFalha` JÁ TOMA no envio (`lib/assinatura/envio-db.ts`): ela
+   * não grava `aguardando` no passo `ativar` porque "a chamada pode ter estourado por timeout com o
+   * status já virado do outro lado, e afirmar ali seria trocar uma dúvida por uma certeza falsa".
+   *
+   * ⚠️ O CRITÉRIO É `status === 0`, que é o que `chamar` põe quando NÃO HOUVE RESPOSTA HTTP — vale
+   * para o timeout e para a falha de rede. Os dois entram como duvidosos de propósito: uma conexão
+   * derrubada depois de o servidor ter processado é indistinguível daqui de uma que nunca saiu.
+   *
+   * ⚠️ E ELE PECA PARA O LADO SEGURO em um caso conhecido: a falta de env (`Clicksign não
+   * configurada`) também chega com status 0 e vira "não dá para saber", quando na verdade nada foi
+   * mandado. Preferimos essa dúvida a mais do que uma certeza a menos — reconhecê-la pela mensagem
+   * seria amarrar esta régua ao texto do `cliente.ts`.
+   */
+  duvidoso: boolean;
+  envelopeId: string;
+  erro: string;
+  ok: false;
+  /** `X-Request-Id` da Clicksign — é o que o suporte deles pede. */
+  requestId: null | string;
+};
+
+export type ResultadoDoCancelamento = CancelamentoFeito | FalhaNoCancelamento;
+
+/**
+ * CANCELA O ENVELOPE NA CLICKSIGN.
+ *
+ * ⚠️ CANCELAR NÃO É APAGAR, e a diferença é o que decide quando se usa isto. O `DELETE` de
+ * `desfazer`, ali em cima, só existe ANTES do passo 5: rascunho apaga e some. Depois de `running` o
+ * envelope é permanente — cancelar apenas o fecha, e ele continua na lista da conta PARA SEMPRE,
+ * visível ao lado dos contratos de verdade. Não é operação de faxina; é o preço de ter mandado.
+ *
+ * ⚠️ E É ISTO QUE TIRA O CONTRATO VELHO DA MÃO DE QUEM IA ASSINAR. Lucas (11/09/2026), sobre voltar
+ * o card para a análise já com o contrato na rua: *"pode cancelar o envelope"*. Sem o cancelamento,
+ * alguém assinaria a versão VELHA enquanto a nova está sendo corrigida — e essa assinatura vale
+ * juridicamente.
+ *
+ * ⚠️ QUEM CHAMA ISTO É O RETORNO PARA CORREÇÃO, E EM QUALQUER ETAPA EM QUE O ENVELOPE AINDA ESTEJA
+ * VIVO — inclusive no Pré-faturamento (Lucas, 12/09/2026: *"prefaturamento pode desde que nao esteja
+ * todo assinado"*). Envelope ASSINADO nunca chega aqui: a volta é recusada antes, porque assinatura
+ * não se desfaz e o caminho passa a ser o distrato. Ver `lib/temis/retorno-para-correcao.ts`.
+ *
+ * ⚠️ E O "NUNCA CHEGA AQUI" DEPENDE DE `consultarEnvelope`, NÃO DO NOSSO BANCO. `temis_envelopes`
+ * só é escrito pelo webhook, e entre a última assinatura e o evento chegar existe uma janela real —
+ * quem chama LÊ o estado na Clicksign imediatamente antes de cancelar. Cancelar confiando no estado
+ * gravado mataria contrato assinado por todos, e `cancelado` é terminal: o `auto_close` que chegasse
+ * depois seria descartado.
+ *
+ * ⚠️ A FORMA DO PATCH NÃO ESTÁ CONFERIDA NA DOC — E ESTE AVISO É DELIBERADO. Ela é a mesma do passo
+ * 5 (o PATCH que ativa) com `status: "canceled"` no lugar de `"running"`, porque `canceled` é um dos
+ * quatro estados do envelope na v3 (`draft`, `running`, `closed`, `canceled`) e o passo 5 é o único
+ * lugar onde esta casa já viu a v3 trocar status de envelope. É INFERÊNCIA, não leitura da página de
+ * cancelamento. Este arquivo já teve TRÊS campos com comentário confiante afirmando o contrário da
+ * doc (o `Bearer` no token, o PDF em base64 cru, o CPF sem máscara) — e os três só apareceram na
+ * primeira chamada real. Quem confirmar na doc (ou no primeiro cancelamento de verdade), troque
+ * este parágrafo pela citação.
+ *
+ * ⚠️ NUNCA LANÇA. Quem chama decide o que fazer com a falha, e no retorno para correção a decisão é
+ * FECHAR: o card não volta se o envelope não morreu.
+ */
+export async function cancelarEnvelope(
+  envelopeId: string,
+  porta: PortaDaClicksign = chamar,
+): Promise<ResultadoDoCancelamento> {
+  const id = envelopeId.trim();
+  // ⚠️ SEM ID NÃO SE CHAMA NADA. `PATCH /envelopes/` (com o id vazio) bateria em outra rota da API,
+  // e uma resposta 200 dali seria lida aqui como "cancelado" — a pior mentira possível neste lugar.
+  if (!id) {
+    return {
+      // Nada foi chamado: não há dúvida nenhuma sobre ter chegado.
+      duvidoso: false,
+      envelopeId: "",
+      erro: "Sem o id do envelope não dá para cancelar na Clicksign.",
+      ok: false,
+      requestId: null,
+    };
+  }
+
+  try {
+    await porta(`/envelopes/${id}`, {
+      corpo: { data: { attributes: { status: "canceled" }, id, type: "envelopes" } },
+      metodo: "PATCH",
+    });
+    return { envelopeId: id, ok: true };
+  } catch (e) {
+    return {
+      // Ver a nota de `duvidoso`: sem resposta HTTP (status 0), ou erro que nem veio da Clicksign,
+      // não dá para afirmar que o PATCH não chegou.
+      duvidoso: !(e instanceof FalhaDaClicksign) || e.erro.status === 0,
+      envelopeId: id,
+      erro: detalheDaFalha(e),
+      ok: false,
+      requestId: e instanceof FalhaDaClicksign ? e.erro.requestId : null,
+    };
+  }
+}
+
+/**
+ * A mensagem da falha, legível.
+ *
+ * ⚠️ OS `detalhes` DO JSON:API SÃO A METADE ÚTIL. "Clicksign devolveu 422" não diz nada; o que
+ * resolve é o `/data/attributes/...` que vem junto. É a mesma frase que o envio monta desde o
+ * primeiro dia — está aqui para o cancelamento não inventar uma segunda.
+ */
+function detalheDaFalha(e: unknown): string {
+  if (!(e instanceof FalhaDaClicksign)) return String(e);
+  return [e.message, ...e.erro.detalhes].filter(Boolean).join(" · ");
 }
 
 // ── O QUE VAI EM CADA CAMPO ─────────────────────────────────────────────────
