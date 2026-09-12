@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { diarioDaProposta } from "@/lib/assinatura/diario-do-envelope-db";
 import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
 import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
 import { rotuloDoEstado } from "@/lib/assinatura/traduzir";
@@ -85,12 +86,15 @@ export async function GET(request: Request) {
   // ⚠️ CARD SEM PROPOSTA NÃO É ERRO. Os quatro cards antigos (Garden e Lavra) nasceram antes da
   // migration 0134 e têm `proposta_id` nulo: a tela abre com o cabeçalho e diz que não há venda
   // ligada, em vez de mostrar blocos vazios como se fosse cadastro incompleto.
-  // A análise e os contratos vão juntos: a etapa 1 usa a primeira, a etapa 2 a segunda, e a tela
-  // troca de painel sem ir buscar de novo.
+  // A análise, os contratos e o diário vão juntos: a etapa 1 usa a primeira, a etapa 2 a segunda,
+  // a etapa 3 o terceiro, e a tela troca de painel sem ir buscar de novo.
   //
   // ⚠️ O ENVELOPE ENTROU NA MESMA LEVA, E NÃO É INFORMAÇÃO DE ENFEITE: é ele que decide a frase da
   // confirmação de "voltar para análise" — ver `envelopeVivoDaProposta`.
-  const [analise, contratos, envelopeVivo] = card.proposta_id
+  // ⚠️ O CAMPO SE CHAMA `assinatura`, E NÃO `diario`: o que sai daqui é o objeto INTEIRO de
+  // `diarioDaProposta` — `assinaram`, `total`, `envelope` e, dentro dele, a lista `diario`.
+  // Chamá-lo de `diario` faria a tela ler `data.diario.diario` e nomearia o todo pela parte.
+  const [analise, contratos, assinatura, envelopeVivo] = card.proposta_id
     ? await Promise.all([
         analiseDoTrabalho(sb, String(card.proposta_id)).catch((e: unknown) => {
           console.error("[temis][trabalho] falha ao montar a analise", e);
@@ -100,6 +104,28 @@ export async function GET(request: Request) {
           console.error("[temis][trabalho] falha ao ler os contratos", e);
           return [];
         }),
+        // ⚠️ O DIÁRIO É O QUE A ETAPA JÁ PROMETIA E NÃO ENTREGAVA. O bloco "Em construção" dizia,
+        // desde que a etapa nasceu, *"os indicadores por signatário (assinou, visualizou, e-mail não
+        // entregue)"* — e o e-mail não entregue era justamente o que faltava para explicar o
+        // contrato da Beatriz (12/09/2026), parado em "Parcialmente assinado" porque o convite do
+        // segundo signatário voltou com `550 5.1.1 ... NoSuchUser` quatro segundos depois do envio.
+        // Lucas, no mesmo dia: *"na tela de assinatura ... seria legal ter um painel de log, tipo,
+        // contrato enviado, contrato não enviado - e-mail inválido"*.
+        //
+        // ⚠️ O MESMO PORTÃO POR TIPO DA LINHA DE BAIXO, e pela mesma razão: `temis_envelopes` casa
+        // por `proposta_id` e não tem `trabalho_id`, então o card de cancelamento leria o diário DA
+        // VENDA. Card sem proposta nem chega aqui (é o `else` do ternário).
+        //
+        // ⚠️ E O `catch` EXISTE MESMO SENDO A LIB QUEM FALHA FECHADO. `diarioDaProposta` já devolve
+        // `null` quando não há envelope ou a leitura falha; o `catch` é a rede do inesperado — um
+        // erro solto aqui derrubaria o GET inteiro e a tela diria "não foi possível abrir" um card
+        // que abre perfeitamente sem o painel de log.
+        String(card.tipo).trim() === "contrato"
+          ? diarioDaProposta(sb, String(card.proposta_id)).catch((e: unknown) => {
+              console.error("[temis][trabalho] falha ao montar o diário do envelope", e);
+              return null;
+            })
+          : Promise.resolve(null),
         // ⚠️ O PORTÃO POR TIPO É O MESMO DA VOLTA, LADO A LADO — `conferirEMatarOEnvelope` abre com
         // `if (card.tipo.trim() !== "contrato") return`. Ele existe porque `temis_envelopes` casa
         // por `proposta_id` e NÃO tem `trabalho_id`: o pedido de cancelamento nasce com a MESMA
@@ -111,7 +137,7 @@ export async function GET(request: Request) {
           ? envelopeVivoDaProposta(sb, String(card.proposta_id))
           : Promise.resolve(null),
       ])
-    : [null, [], null];
+    : [null, [], null, null];
 
   // ⚠️ SEM ISTO, O PAINEL DE ASSINATURA NASCE MOSTRANDO ERRO PARA QUEM SÓ LÊ. Este GET autoriza
   // com a régua de LEITURA; o preparo da assinatura, com a da EMISSÃO. Enquanto o preparo só era
@@ -125,7 +151,7 @@ export async function GET(request: Request) {
   const podeEmitir = (await autorizarEmissaoDeContrato(request)).ok;
 
   return NextResponse.json(
-    { data: { analise, card: { ...card, contratos }, envelopeVivo, podeEmitir } },
+    { data: { analise, assinatura, card: { ...card, contratos }, envelopeVivo, podeEmitir } },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

@@ -1,0 +1,269 @@
+{
+  "event": {
+    "data": {
+      "url": "https://app.clicksign.com",
+      "signer": {
+        "key": "22222222-aaaa-4bbb-8ccc-000000000002",
+        "url": "https://app.clicksign.com/notarial/widget/signatures/22222222-aaaa-4bbb-8ccc-000000000002/redirect",
+        "name": "Mariana Torres Bandeira",
+        "auths": ["email"],
+        "email": "mariana.bandeira@exemplo.test",
+        "address": "203.0.113.42",
+        "sign_as": "sign",
+        "birthday": null,
+        "latitude": -23.55052,
+        "list_key": "55555555-aaaa-4bbb-8ccc-000000000005",
+        "longitude": -46.633308,
+        "created_at": "2026-09-11T23:23:57.748-03:00",
+        "phone_number": null,
+        "documentation": null,
+        "communicate_by": "email",
+        "selfie_enabled": false,
+        "liveness_enabled": false,
+        "has_documentation": false,
+        "phone_number_hash": null,
+        "handwritten_enabled": false,
+        "federal_data_validation": null,
+        "facial_biometrics_enabled": false,
+        "official_document_enabled": false
+      },
+      "account": {
+        "key": "44444444-aaaa-4bbb-8ccc-000000000004",
+        "timestamp_signature_functionality": false
+      },
+      "log_version": "1.1513.0",
+      "secret_hmac": null
+    },
+    "name": "sign",
+    "occurred_at": "2026-09-11T23:24:44.972-03:00"
+  },
+  "document": {
+    "key": "11111111-aaaa-4bbb-8ccc-000000000001",
+    "path": "/[TESTE] Contrato - TST - TST0101 - Mariana Torres Bandeira/Contrato - TST - TST0101 - Mariana Torres Bandeira - 2026-09-11 v4.pdf",
+    "links": {
+      "self": "/accounts/100000/folders/200000/documents/11111111-aaaa-4bbb-8ccc-000000000001"
+    },
+    "events": [
+      {
+        "data": {
+          "url": "https://app.clicksign.com",
+          "signer": {
+            "key": "22222222-aaaa-4bbb-8ccc-000000000002",
+            "url": "https://app.clicksign.com/notarial/widget/signatures/22222222-aaaa-4bbb-8ccc-000000000002/redirect",
+            "name": "Mariana Torres Bandeira",
+            "auths": ["email"],
+            "email": "mariana.bandeira@exemplo.test",
+            "address": "203.0.113.42",
+            "sign_as": "sign",
+            "birthday": null,
+            "latitude": -23.55052,
+            "list_key": "55555555-aaaa-4bbb-8ccc-000000000005",
+            "longitude": -46.633308,
+            "created_at": "2026-09-11T23:23:57.748-03:00",
+            "phone_number": null,
+            "documentation": null,
+            "communicate_by": "email",
+            "selfie_enabled": false,
+            "liveness_enabled": false,
+            "has_documentation": false,
+            "phone_number_hash": null,
+            "handwritten_enabled": false,
+            "federal_data_validation": null,
+            "facial_biometrics_enabled": false,
+            "official_document_enabled": false
+          },
+          "account": {
+            "key": "44444444-aaaa-4bbb-8ccc-000000000004",
+            "timestamp_signature_functionality": false
+          },
+          "log_version": "1.1513.0",
+          "secret_hmac": null
+        },
+        "name": "sign",
+        "occurred_at": "2026-09-12T02:24:44.972Z"
+      },
+      {
+        "data": {
+          "signer": {
+            "key": "22222222-aaaa-4bbb-8ccc-000000000002",
+            "name": "Mariana Torres Bandeira",
+            "auths": ["email"],
+            "email": "mariana.bandeira@exemplo.test",
+            "address": "203.0.113.42",
+            "birthday": null,
+            "created_at": "2026-09-11T23:23:57.748-03:00",
+            "documentation": null,
+            "communicate_by": "email",
+            "selfie_enabled": false,
+            "liveness_enabled": false,
+            "has_documentation": false,
+            "handwritten_enabled": false,
+            "facial_biometrics_enabled": false,
+            "official_document_enabled": false
+          },
+          "account": { "key": "44444444-aaaa-4bbb-8ccc-000000000004" }
+        },
+        "name": "signature_started",
+        "occurred_at": "2026-09-12T02:24:26.803Z"
+      },
+      {
+        "data": {
+          "signer": {
+            "key": "33333333-aaaa-4bbb-8ccc-000000000003",
+            "name": "Otávio Peixoto Lima",
+            "auths": ["email"],
+            "email": "otavio.lima@exemplo.test",
+            "birthday": null,
+            "created_at": "2026-09-11T23:23:57.872-03:00",
+            "documentation": null,
+            "communicate_by": "email",
+            "selfie_enabled": false,
+            "liveness_enabled": false,
+            "has_documentation": false,
+            "handwritten_enabled": false,
+            "facial_biometrics_enabled": false,
+            "official_document_enabled": false
+          },
+          "account": { "key": "44444444-aaaa-4bbb-8ccc-000000000004" },
+          "notification": {
+            "kind": "signature_request",
+            "details": "smtp; 550 5.1.1 The email account that you tried to reach does not exist. Please try double-checking the recipient's email address for typos or unnecessary spaces. For more information, go to  https://support.google.com/mail/?p=NoSuchUser af79cd13be357-939ee6e7d74si280058385a.468 - gsmtp",
+            "provider": "postmark",
+            "last_status": "bounce",
+            "last_bounce_type": "HardBounce"
+          }
+        },
+        "name": "tracking_notification_error",
+        "occurred_at": "2026-09-12T02:24:00.891Z"
+      },
+      {
+        "data": {
+          "user": { "name": "Operador Panteon", "email": "operador@exemplo.test" },
+          "account": { "key": "44444444-aaaa-4bbb-8ccc-000000000004" },
+          "signers": [
+            {
+              "key": "22222222-aaaa-4bbb-8ccc-000000000002",
+              "url": "https://app.clicksign.com/notarial/widget/signatures/22222222-aaaa-4bbb-8ccc-000000000002/redirect",
+              "name": "Mariana Torres Bandeira",
+              "auths": ["email"],
+              "email": "mariana.bandeira@exemplo.test",
+              "sign_as": "sign",
+              "birthday": null,
+              "list_key": "66666666-aaaa-4bbb-8ccc-000000000006",
+              "created_at": "2026-09-11T23:23:57.748-03:00",
+              "phone_number": null,
+              "documentation": null,
+              "communicate_by": "email",
+              "selfie_enabled": false,
+              "liveness_enabled": false,
+              "has_documentation": false,
+              "phone_number_hash": null,
+              "handwritten_enabled": false,
+              "requested_seal_pages": null,
+              "federal_data_validation": null,
+              "facial_biometrics_enabled": false,
+              "official_document_enabled": false
+            }
+          ]
+        },
+        "name": "add_signer",
+        "occurred_at": "2026-09-12T02:23:58.634Z"
+      },
+      {
+        "data": {
+          "user": { "name": "Operador Panteon", "email": "operador@exemplo.test" },
+          "account": { "key": "44444444-aaaa-4bbb-8ccc-000000000004" },
+          "signers": [
+            {
+              "key": "33333333-aaaa-4bbb-8ccc-000000000003",
+              "url": "https://app.clicksign.com/notarial/widget/signatures/33333333-aaaa-4bbb-8ccc-000000000003/redirect",
+              "name": "Otávio Peixoto Lima",
+              "auths": ["email"],
+              "email": "otavio.lima@exemplo.test",
+              "sign_as": "sign",
+              "birthday": null,
+              "list_key": "77777777-aaaa-4bbb-8ccc-000000000007",
+              "created_at": "2026-09-11T23:23:57.872-03:00",
+              "phone_number": null,
+              "documentation": null,
+              "communicate_by": "email",
+              "selfie_enabled": false,
+              "liveness_enabled": false,
+              "has_documentation": false,
+              "phone_number_hash": null,
+              "handwritten_enabled": false,
+              "requested_seal_pages": null,
+              "federal_data_validation": null,
+              "facial_biometrics_enabled": false,
+              "official_document_enabled": false
+            }
+          ]
+        },
+        "name": "add_signer",
+        "occurred_at": "2026-09-12T02:23:58.628Z"
+      },
+      {
+        "data": {
+          "user": { "name": "Operador Panteon", "email": "operador@exemplo.test" },
+          "locale": "pt-BR",
+          "account": { "key": "44444444-aaaa-4bbb-8ccc-000000000004" },
+          "auto_close": true,
+          "deadline_at": "2026-10-11T23:23:56.603-03:00"
+        },
+        "name": "upload",
+        "occurred_at": "2026-09-12T02:23:57.135Z"
+      }
+    ],
+    "locale": "pt-BR",
+    "status": "running",
+    "preview": true,
+    "signers": [
+      {
+        "key": "33333333-aaaa-4bbb-8ccc-000000000003",
+        "name": "Otávio Peixoto Lima",
+        "email": "otavio.lima@exemplo.test",
+        "birthday": null,
+        "created_at": "2026-09-11T23:23:57.872-03:00",
+        "phone_number": null,
+        "documentation": null,
+        "has_documentation": false
+      },
+      {
+        "key": "22222222-aaaa-4bbb-8ccc-000000000002",
+        "name": "Mariana Torres Bandeira",
+        "email": "mariana.bandeira@exemplo.test",
+        "birthday": null,
+        "created_at": "2026-09-11T23:23:57.748-03:00",
+        "phone_number": null,
+        "documentation": null,
+        "has_documentation": false
+      }
+    ],
+    "filename": "Contrato - TST - TST0101 - Mariana Torres Bandeira - 2026-09-11 v4.pdf",
+    "metadata": {
+      "teste": "true",
+      "origem": "panteon",
+      "unidade": "TST0101",
+      "comprador": "Mariana Torres Bandeira",
+      "proposta_id": "aaaaaaaa-1111-4222-8333-444444444444",
+      "documento_id": "bbbbbbbb-1111-4222-8333-555555555555",
+      "empreendimento": "TST",
+      "position_sign_fields": []
+    },
+    "template": null,
+    "downloads": {
+      "original_file_url": "https://exemplo.test/clicksign/contrato-anonimizado.pdf?X-Amz-Expires=300&X-Amz-Date=20260912T022445Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-SignedHeaders=host&X-Amz-Signature=0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "auto_close": true,
+    "updated_at": "2026-09-12T02:24:44.957Z",
+    "account_key": "44444444-aaaa-4bbb-8ccc-000000000004",
+    "attachments": [],
+    "deadline_at": "2026-10-11T23:23:56.603-03:00",
+    "finished_at": null,
+    "uploaded_at": "2026-09-12T02:23:57.099Z",
+    "signable_group": null,
+    "remind_interval": 3,
+    "sequence_enabled": false,
+    "block_after_refusal": true
+  }
+}

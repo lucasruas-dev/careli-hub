@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Clock, FileCheck2, Loader2 } from "lucide-react";
+import { AlertTriangle, Clock, FileCheck2, Loader2, MailX, PenLine } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { TelaDeTrabalho } from "@/modules/temis/blocks/trabalho/tela-de-trabalho";
@@ -46,6 +46,26 @@ type ContratoDoCard = {
 };
 
 type TrabalhoDaTela = {
+  /**
+   * O ANDAMENTO DA ASSINATURA, EM TRÊS NÚMEROS — o que o card precisa dizer de relance.
+   *
+   * Lucas (12/09/2026): *"no card, gostaria de ter essa visao de quantas assinaturas ja foram
+   * feitas, tipo 1/5"*.
+   *
+   * ⚠️ OPCIONAL DE PROPÓSITO, como `contratos` e `propostaId`. Enquanto a versão de produção da
+   * rota não mandar o campo — e o board do portal comercial aponta para OUTRA rota —, o quadro
+   * precisa continuar desenhando o card sem o selo, e não quebrar.
+   *
+   * ⚠️ `conviteNaoEntregue` NÃO É "ESTÁ DEMORANDO": é convite que BATEU E VOLTOU (o `bounce` da
+   * Clicksign). Ver a nota do selo, no `Card`.
+   *
+   * ⚠️ OS TRÊS NOMES SÃO OS DE `ContagemDeAssinaturas` (`lib/temis/trabalhos-db.ts`), LETRA POR
+   * LETRA, e isso não é preferência: o campo atravessa a rota como JSON, onde o TypeScript não
+   * confere nada. Este bloco chegou a chamar o terceiro de `algumNaoEntregue` enquanto o servidor
+   * mandava `conviteNaoEntregue` — typecheck limpo dos dois lados, e o selo vermelho do convite
+   * devolvido simplesmente nunca acendia, que é a única coisa que o Lucas pediu para o card gritar.
+   */
+  assinaturas?: null | { assinaram: number; conviteNaoEntregue: boolean; total: number };
   atividadesFeitas: string[];
   canal: "coordenador" | "hercules" | "iris";
   clienteCpf: null | string;
@@ -480,6 +500,48 @@ function Card({
             Contrato gerado
             {vigente.versao && vigente.versao > 1 ? ` · v${vigente.versao}` : ""}
             <span className="font-normal text-ink-muted">{dataCurta(vigente.criadoEm)}</span>
+          </p>
+        ) : null}
+
+        {/* ⚠️ O CONTADOR DE ASSINATURAS, NA MESMA RÉGUA DO "Contrato gerado" — Lucas (12/09/2026):
+            *"no card, gostaria de ter essa visao de quantas assinaturas ja foram feitas, tipo
+            1/5"*. Até aqui a coluna "Em assinatura" era uma pilha de cards idênticos: quem olhava
+            não sabia se faltava um signatário ou os cinco.
+
+            ⚠️ E O CONVITE QUE VOLTOU PINTA DE VERMELHO, no mesmo vermelho do atraso logo acima —
+            porque não é espera, é PROBLEMA. Medido em produção (12/09/2026, envelope
+            `3e9a331d`): o contrato da Beatriz foi para dois signatários, o e-mail do segundo não
+            existe (`550 5.1.1 ... NoSuchUser`), a Clicksign devolveu `bounce` quatro segundos
+            depois do envio e a tela dizia só "Parcialmente assinado". Um convite que bateu e
+            voltou NUNCA vira assinatura sozinho: sem cor, o card ficaria parado para sempre com
+            cara de normal, e a fila envelheceria esperando alguém que não foi avisado. O conserto
+            é humano — voltar para análise, corrigir o e-mail e mandar de novo.
+
+            ⚠️ O VERMELHO É O QUE O QUADRO JÁ USA PARA ERRO (`text-red-600 dark:text-red-400`, o
+            mesmo do prazo estourado), e não um tom novo: o rosa deste card já significa OUTRA
+            coisa — o tipo que desfaz a venda (cancelamento, distrato). */}
+        {trabalho.assinaturas ? (
+          <p
+            className={`mt-1.5 flex items-center gap-1 text-[0.7rem] font-semibold ${
+              trabalho.assinaturas.conviteNaoEntregue
+                ? "text-red-600 dark:text-red-400"
+                : "text-ink-soft"
+            }`}
+            title={
+              trabalho.assinaturas.conviteNaoEntregue
+                ? `${trabalho.assinaturas.assinaram} de ${trabalho.assinaturas.total} assinaram — e um convite não foi entregue: o e-mail voltou. Essa assinatura não chega sozinha; abra o card para ver de quem é.`
+                : `${trabalho.assinaturas.assinaram} de ${trabalho.assinaturas.total} assinaram.`
+            }
+          >
+            {trabalho.assinaturas.conviteNaoEntregue ? (
+              <MailX aria-hidden="true" className="shrink-0" size={11} />
+            ) : (
+              <PenLine aria-hidden="true" className="shrink-0" size={11} />
+            )}
+            <span className="tabular-nums">
+              {trabalho.assinaturas.assinaram}/{trabalho.assinaturas.total}
+            </span>
+            {trabalho.assinaturas.conviteNaoEntregue ? "convite não entregue" : "assinaram"}
           </p>
         ) : null}
       </button>

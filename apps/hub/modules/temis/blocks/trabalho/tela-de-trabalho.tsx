@@ -4,9 +4,14 @@ import {
   AlertTriangle,
   ArrowLeft,
   Ban,
+  CircleCheck,
+  Eye,
   FilePlus2,
   FileText,
   Loader2,
+  Mail,
+  MailCheck,
+  MailX,
   Undo2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -14,6 +19,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { AnaliseDoTrabalho, CampoDaAnalise } from "@/lib/temis/analise-do-trabalho";
 import type { DescontoDaProposta } from "@/lib/temis/comercial-da-analise";
 import type { PedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
+import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import { MOTIVOS } from "@/lib/temis/indeferimento";
 import { pedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
@@ -109,6 +115,90 @@ type EnvelopeVivo = {
   rotulo: string;
 };
 
+/**
+ * O QUE A CLICKSIGN JÁ CONTOU SOBRE ESTE ENVELOPE — signatário a signatário, e em linha do tempo.
+ *
+ * ⚠️ ISTO EXISTE PORQUE UMA ASSINATURA MORREU CALADA. Medido em produção (12/09/2026, envelope
+ * `3e9a331d-ec2f-4eb5-9ae1-aafbeae8b395`): o contrato da Beatriz saiu para dois signatários, o
+ * segundo e-mail não existe, e quatro segundos depois do envio a Clicksign registrou
+ * `tracking_notification_error` com `last_status: "bounce"` e `550 5.1.1 ... NoSuchUser`. A tela
+ * dizia "Parcialmente assinado" e mais nada — Lucas: *"nesse caso tinha que voltar com o erro de
+ * e-mail"*. O dado sempre esteve no nosso banco: ele vem DENTRO do payload dos webhooks seguintes,
+ * no array `document.events[]`, que a Clicksign reenvia inteiro a cada evento.
+ *
+ * ⚠️ QUEM LÊ O PAYLOAD É O SERVIDOR, E SÓ ELE. Esta tela não sabe o que é `tracking_notification_
+ * error` nem `last_bounce_type`: ela recebe fatos em português e os desenha. Interpretar o evento
+ * cru aqui criaria uma segunda régua para a mesma pergunta — a mesma armadilha que a camada de
+ * tradução dos estados (`lib/assinatura/traduzir.ts`) existe para impedir.
+ *
+ * ⚠️ E É `null` QUANDO NÃO HÁ O QUE CONTAR, não um objeto zerado: card sem envelope (o caso do
+ * Henrique, que subiu de etapa por marcação humana) e card de tipo que não assina caem nesse
+ * caso, e um "0 de 0 assinaram" diria que ninguém assinou um contrato que nunca foi enviado.
+ */
+/**
+ * ⚠️ ESTA FORMA É A DE `DiarioDaProposta` (`lib/assinatura/diario-do-envelope-db.ts`), CAMPO POR
+ * CAMPO. O objeto atravessa a rota como JSON, e ali o TypeScript não confere nada: este bloco
+ * chegou a declarar uma lista `quemAssinou` na raiz enquanto o servidor mandava as pessoas dentro
+ * de `envelope.signatarios` — typecheck limpo dos dois lados, painel vazio na tela. Mexeu em um,
+ * confira o outro.
+ */
+type AssinaturaDoCard = {
+  assinaram: number;
+  diario: LinhaDoDiario[];
+  envelope: {
+    /** O id na Clicksign — é ele que se procura na conta de lá, e não o uuid da nossa linha. */
+    envelopeId: null | string;
+    estado: string;
+    signatarios: SignatarioNaTela[];
+  };
+  total: number;
+};
+
+/** Uma linha do painel de log: o fato já escrito em português pelo servidor. */
+type LinhaDoDiario = {
+  detalhe: null | string;
+  fato: string;
+  /**
+   * ⚠️ `erro` É O QUE PEDE MÃO HUMANA, e é por isso que ele tem cor própria. Convite devolvido não
+   * vira assinatura com o tempo: alguém precisa voltar o card para a análise e corrigir o e-mail.
+   */
+  gravidade: "erro" | "marco" | "normal";
+  quem: null | string;
+  quando: string;
+};
+
+/**
+ * Um signatário do envelope, com o que se sabe dele.
+ *
+ * ⚠️ `convite` TEM TRÊS VALORES, E O TERCEIRO NÃO É "ENTREGUE". A Clicksign avisa quando a
+ * notificação FALHA; silêncio não é confirmação de entrega. Escrever "convite entregue" sobre
+ * `sem_noticia` seria a tela afirmando o que ninguém disse — e, no dia em que o e-mail estivesse
+ * errado de novo, o operador leria "entregue" e iria cobrar o cliente pelo atraso dele.
+ */
+type SignatarioNaTela = {
+  assinouEm: null | string;
+  /**
+   * A identidade da pessoa no envelope: a `signer.key` da Clicksign, ou o e-mail quando ela ainda
+   * não existe lá. Serve de `key` da lista, e NADA MAIS — em especial, não carrega o papel.
+   */
+  chave: string;
+  comecouEm: null | string;
+  convite: "entregue" | "nao_entregue" | "sem_noticia";
+  conviteDetalhe: null | string;
+  conviteQuando: null | string;
+  email: null | string;
+  nome: string;
+  /**
+   * `comprador`, `conjuge`, `vendedora`… como o envio congelou em `temis_envelopes.signatarios`.
+   *
+   * ⚠️ ELE VEM EM CAMPO PRÓPRIO, E NÃO SE LÊ DA `chave`. Esta tela chegou a tirar o papel de um
+   * prefixo `papel|nome` que a `chave` não tem — o que a Clicksign devolve é um uuid —, então o
+   * papel saía `null` para todo mundo enquanto o servidor o mandava pronto ao lado. `null` de
+   * verdade quer dizer: apareceu nos eventos e não está na lista congelada do envio.
+   */
+  papel: null | string;
+};
+
 type Card = {
   arrependimento_inicio: null | string;
   cliente_cpf: null | string;
@@ -147,6 +237,7 @@ export function TelaDeTrabalho({
 }) {
   const [dados, setDados] = useState<null | {
     analise: AnaliseDoTrabalho | null;
+    assinatura: AssinaturaDoCard | null;
     card: Card;
     envelopeVivo: EnvelopeVivo | null;
     podeEmitir: boolean;
@@ -177,6 +268,10 @@ export function TelaDeTrabalho({
       const corpo = (await r.json().catch(() => ({}))) as {
         data?: {
           analise: AnaliseDoTrabalho | null;
+          // ⚠️ OPCIONAL PELO MESMO MOTIVO DO `envelopeVivo` ABAIXO: enquanto a versão de produção
+          // da rota não mandar o campo, a tela precisa continuar abrindo. O `?? null` faz dele o
+          // que ele é nesse caso — "não sei" —, e a etapa volta a dizer o que ainda não mostra.
+          assinatura?: AssinaturaDoCard | null;
           card: Card;
           // ⚠️ OPCIONAL DE PROPÓSITO. Enquanto a versão de produção da rota não mandar o campo, a
           // tela precisa continuar abrindo — e o `?? null` abaixo faz dela o que ela é nesse caso:
@@ -190,7 +285,11 @@ export function TelaDeTrabalho({
         setErro(corpo.error ?? "Não consegui abrir este trabalho.");
         return;
       }
-      setDados({ ...corpo.data, envelopeVivo: corpo.data.envelopeVivo ?? null });
+      setDados({
+        ...corpo.data,
+        assinatura: corpo.data.assinatura ?? null,
+        envelopeVivo: corpo.data.envelopeVivo ?? null,
+      });
     } catch {
       setErro("Não consegui abrir este trabalho.");
     }
@@ -378,7 +477,7 @@ export function TelaDeTrabalho({
     );
   }
 
-  const { analise, card, envelopeVivo, podeEmitir } = dados;
+  const { analise, assinatura, card, envelopeVivo, podeEmitir } = dados;
   const caminho = caminhoDoCard(card.tipo, card.estagio);
   const ehContrato = card.tipo === "contrato" && Boolean(card.proposta_id);
 
@@ -599,10 +698,16 @@ export function TelaDeTrabalho({
           ) : null}
 
           {/* ── ETAPA 3 · EM ASSINATURA ──────────────────────────────────────
-              ⚠️ O QUE JÁ ESTAVA AQUI CONTINUA. A etapa ainda é um bloco "em construção" — os
-              indicadores por signatário são a próxima entrega —, e a volta entra ABAIXO dele, sem
-              substituí-lo: quem abre o card precisa continuar sabendo o que esta tela ainda não
-              mostra, ou leria o silêncio como "não há nada acontecendo".
+              ⚠️ A ETAPA DEIXOU DE SER UM BLOCO "EM CONSTRUÇÃO" — Lucas (12/09/2026): *"na tela de
+              assinatura, alem de trazer as coisas que solicitei seria legal ter um painel de log,
+              tipo, contrato enviado, contrato nao enviado - e-mail invalido"*. O que o bloco
+              PROMETIA ("os indicadores por signatário: assinou, visualizou, e-mail não entregue")
+              é exatamente o que a `PainelDaAssinatura` entrega agora. A ordem é a do pedido: o
+              contador, depois quem assina, depois o log.
+
+              ⚠️ E O "EM CONSTRUÇÃO" SOBREVIVE SÓ ONDE NÃO HÁ O QUE MOSTRAR — card sem envelope, ou
+              rota antiga que não manda o campo. Sem ele, a etapa ficaria MUDA nesses casos, e tela
+              muda se lê como "não há nada acontecendo".
 
               ⚠️ E É AQUI QUE A VOLTA MAIS IMPORTA — Lucas (11/09/2026): *"e nesse momento que todos
               vao receber o contrato para assinatura, ae com certeza pode ter algo para ser
@@ -613,11 +718,14 @@ export function TelaDeTrabalho({
               o aviso âmbar como enfeite. */}
           {card.estagio === "assinatura" ? (
             <div className="grid gap-3">
-              {/* ⚠️ UMA LINHA, E SÓ O QUE SE SABE. O bloco "em construção" abaixo continua dizendo o
-                  que falta (os indicadores por signatário são o PAN-022); esta linha existe porque o
-                  envelope já vem na carga da tela para escolher a frase da volta — e deixar a etapa
-                  MUDA sobre ele, tendo o dado na mão, era a etapa dizer "em construção" sobre algo
-                  que o Panteon já sabe.
+              {/* ⚠️ UMA LINHA, E SÓ O QUE SE SABE. Ela é o CABEÇALHO da etapa: diz em que pé está o
+                  envelope como um todo (a palavra da casa, vinda pronta do servidor) e desde quando
+                  o card está aqui. O detalhe por pessoa vem logo abaixo, no painel.
+
+                  ⚠️ E ELA NÃO É REDUNDANTE COM O PAINEL. `envelopeVivo` responde "há envelope
+                  SEGURANDO esta venda?" — é a mesma régua da volta e do reenvio; o painel responde
+                  "o que aconteceu com quem assina?". Um envelope já cancelado some daqui e continua
+                  contando a história lá embaixo.
 
                   ⚠️ E ELA SÓ APARECE NO CARD QUE TEM ENVELOPE PARA TER: nos outros tipos o servidor
                   NÃO LÊ a tabela (o portão de `conferirEMatarOEnvelope`, porque `temis_envelopes`
@@ -627,10 +735,17 @@ export function TelaDeTrabalho({
               {ehContrato ? (
                 <LinhaDoEnvelope desde={card.estagio_desde} envelopeVivo={envelopeVivo} />
               ) : null}
-              <EmConstrucao
-                oQueVem="Os indicadores por signatário (assinou, visualizou, e-mail não entregue), a tela de monitoramento e o botão de cobrar pela Íris."
-                titulo="Em assinatura"
-              />
+              {assinatura ? (
+                <PainelDaAssinatura assinatura={assinatura} />
+              ) : (
+                <EmConstrucao
+                  oQueVem="Não há signatários para mostrar nesta venda: ou o card chegou aqui sem envelope, ou o envelope ainda não devolveu nenhum evento. Continuam por vir a tela de monitoramento e o botão de cobrar pela Íris."
+                  titulo="Em assinatura"
+                />
+              )}
+              {/* ⚠️ O CAMINHO DE CONSERTO DO E-MAIL ERRADO É ESTE BOTÃO, e ele continua onde estava.
+                  Quando o painel acima acusa convite devolvido, não há o que clicar na Clicksign: a
+                  volta para a análise é que permite corrigir o cadastro e mandar de novo. */}
               <VoltarParaAnalise aoVoltar={voltarParaAnalise} envelopeVivo={envelopeVivo} />
             </div>
           ) : null}
@@ -1626,11 +1741,11 @@ function EtapaDoPrazoLegal({ inicio }: { inicio: null | string }) {
 /**
  * O ENVELOPE DESTA VENDA, EM UMA LINHA — o que a etapa "Em assinatura" já pode dizer hoje.
  *
- * ⚠️ NÃO É A TELA DE MONITORAMENTO, e não deve virar uma. Os indicadores por signatário (assinou,
- * visualizou, e-mail não entregue) e a cobrança pela Íris são o PAN-022, e o bloco "em construção"
- * ao lado continua dizendo isso. Esta linha existe porque o envelope JÁ VEM na carga da tela — ele é
- * o que escolhe a frase da volta —, e uma etapa que fica muda sobre um dado que o Panteon tem na mão
- * é uma etapa que ensina a não olhar para ela.
+ * ⚠️ NÃO É A TELA DE MONITORAMENTO, e não deve virar uma. Quem conta a história pessoa a pessoa é a
+ * `PainelDaAssinatura`, logo abaixo dela na etapa; esta linha responde OUTRA pergunta, a da volta:
+ * "há envelope vivo segurando esta venda agora?". As duas fontes são diferentes de propósito —
+ * `envelopeQueSegura` lê `temis_envelopes` com a régua do cancelamento, o painel lê o que a
+ * Clicksign contou —, e juntá-las numa só faria a confirmação da volta depender de um histórico.
  *
  * ⚠️ A PALAVRA É A DA CASA, E VEM PRONTA DO SERVIDOR (`rotuloDoEstado`, em
  * `lib/assinatura/traduzir.ts`): "Aguardando assinatura", "Parcialmente assinado". Traduzir aqui
@@ -1676,6 +1791,277 @@ function LinhaDoEnvelope({
       )}
     </p>
   );
+}
+
+/**
+ * O PAINEL DA ASSINATURA — o contador, quem assina e o log do envelope.
+ *
+ * As três coisas que o Lucas pediu em 12/09/2026, nesta ordem: *"gostaria de ter essa visao de
+ * quantas assinaturas ja foram feitas, tipo 1/5"* · *"nesse caso tinha que voltar com o erro de
+ * e-mail"* · *"seria legal ter um painel de log, tipo, contrato enviado, contrato nao enviado -
+ * e-mail invalido"*.
+ *
+ * ⚠️ NADA AQUI CONSULTA A CLICKSIGN. O painel desenha o que já veio na carga da tela, e a tela
+ * recarrega ao abrir — a casa já pagou caro por polling (o Hermes), e um envelope que anda em
+ * dias não justifica um relógio. Quem quiser o estado de agora fecha e abre o card.
+ */
+function PainelDaAssinatura({ assinatura }: { assinatura: AssinaturaDoCard }) {
+  const signatarios = assinatura.envelope.signatarios;
+  const naoEntregues = signatarios.filter((s) => s.convite === "nao_entregue").length;
+
+  /**
+   * ⚠️ DO MAIS RECENTE PARA O MAIS ANTIGO, E A ORDEM É FEITA AQUI. O `document.events[]` da
+   * Clicksign vem em ordem de acontecimento (o upload primeiro), que é a ordem errada para quem
+   * abre o card perguntando "o que houve por último?". Ordenar uma CÓPIA porque `sort` é no lugar:
+   * bagunçar o array que veio do estado faria a lista dançar entre renders.
+   *
+   * ⚠️ E DATA ILEGÍVEL NÃO REORDENA NADA. Se um carimbo vier torto, o `0` mantém os dois vizinhos
+   * como estavam em vez de jogar a linha para uma ponta qualquer.
+   */
+  const diario = [...assinatura.diario].sort((a, b) => {
+    const quandoA = Date.parse(a.quando);
+    const quandoB = Date.parse(b.quando);
+    if (Number.isNaN(quandoA) || Number.isNaN(quandoB)) return 0;
+    return quandoB - quandoA;
+  });
+
+  return (
+    <div className="grid gap-3">
+      <Bloco
+        direita={
+          naoEntregues > 0
+            ? naoEntregues === 1
+              ? "1 convite não entregue"
+              : `${naoEntregues} convites não entregues`
+            : undefined
+        }
+        titulo="Assinaturas"
+      >
+        {/* ⚠️ O CONTADOR VEM EM CIMA E GRANDE. É a pergunta que o card do quadro já responde de
+            relance ("1/2"), e quem abriu a tela abriu para confirmar isso antes de qualquer
+            detalhe. */}
+        <p className="m-0 text-base font-semibold text-ink">
+          <span className="tabular-nums">
+            {assinatura.assinaram} de {assinatura.total}
+          </span>{" "}
+          assinaram
+        </p>
+
+        <ul className="m-0 mt-2 grid list-none gap-1 p-0">
+          {signatarios.map((s) => (
+            <LinhaDoSignatario key={s.chave} signatario={s} />
+          ))}
+        </ul>
+      </Bloco>
+
+      {/* ⚠️ O LOG É O PEDIDO LITERAL, e o teto de altura é o que o torna utilizável: a Clicksign
+          reenvia o histórico INTEIRO a cada webhook, então um envelope movimentado tem dezenas de
+          linhas — sem o teto, o log empurraria o botão de voltar para fora da tela. */}
+      <Bloco
+        direita={
+          assinatura.envelope.envelopeId
+            ? `envelope ${assinatura.envelope.envelopeId}`
+            : undefined
+        }
+        titulo="Log do envelope"
+      >
+        {diario.length === 0 ? (
+          <p className="m-0 text-xs text-ink-muted">
+            Nenhum evento registrado para este envelope ainda.
+          </p>
+        ) : (
+          <ol className="m-0 grid max-h-64 list-none gap-1 overflow-auto p-0">
+            {diario.map((linha, i) => (
+              <li
+                className={`grid grid-cols-[3px_1fr] items-stretch gap-x-2.5 overflow-hidden rounded-lg py-1.5 pr-3 ${
+                  linha.gravidade === "erro" ? "bg-rose-500/10" : ""
+                }`}
+                key={`${linha.quando}-${linha.fato}-${i}`}
+              >
+                <span
+                  className={`h-full self-stretch rounded-sm ${
+                    linha.gravidade === "erro"
+                      ? "bg-rose-500"
+                      : linha.gravidade === "marco"
+                        ? "bg-emerald-500"
+                        : "bg-line"
+                  }`}
+                />
+                <div className="min-w-0">
+                  <p
+                    className={`m-0 text-xs font-medium ${
+                      linha.gravidade === "erro"
+                        ? "text-rose-700 dark:text-rose-300"
+                        : "text-ink"
+                    }`}
+                  >
+                    {linha.fato}
+                    {linha.quem ? (
+                      <span className="font-normal text-ink-muted"> · {linha.quem}</span>
+                    ) : null}
+                  </p>
+                  {linha.detalhe ? (
+                    <p className="m-0 break-words text-[10.5px] text-ink-soft">{linha.detalhe}</p>
+                  ) : null}
+                  <p className="m-0 text-[10px] tabular-nums text-ink-muted">
+                    {momento(linha.quando)}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </Bloco>
+    </div>
+  );
+}
+
+/** Uma pessoa do envelope: nome, papel, e-mail e em que pé ela está. */
+function LinhaDoSignatario({ signatario }: { signatario: SignatarioNaTela }) {
+  const papel = papelNaLinha(signatario.papel);
+  const estado = estadoDoSignatario(signatario);
+  const Icone = estado.icone;
+
+  return (
+    <li
+      className={`rounded-lg px-2 py-1.5 ${
+        signatario.convite === "nao_entregue" && !signatario.assinouEm ? "bg-rose-500/10" : ""
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        {/* ⚠️ `min-w-0` E `break-words` DE NOVO, pelo mesmo motivo do bloco `Campos`: e-mail não
+            tem onde quebrar, e sem os dois ele escreve por cima do estado à direita — logo aqui,
+            onde o e-mail é justamente o que costuma estar errado. */}
+        <div className="min-w-0">
+          <p className="m-0 truncate text-xs font-semibold text-ink">
+            {signatario.nome}
+            {papel ? <span className="font-normal text-ink-muted"> · {papel}</span> : null}
+          </p>
+          {/* ⚠️ O E-MAIL APARECE SEMPRE, e é o ponto do painel inteiro: foi um e-mail inexistente
+              que derrubou o envelope da Beatriz. Escondê-lo obrigaria a abrir a Clicksign para
+              descobrir o que a tela já tem na mão. */}
+          <p className="m-0 break-words text-[11px] text-ink-muted">
+            {/* ⚠️ `||`, E NÃO `??`: a lib manda string VAZIA quando o envelope não tem e-mail da
+                pessoa, e o `??` só troca nulo — a linha ficaria em branco no lugar da frase. É a
+                armadilha que o repo já registrou em `nullish-nao-troca-string-vazia`. */}
+            {signatario.email || "sem e-mail no envelope"}
+          </p>
+        </div>
+
+        <span
+          className={`flex shrink-0 items-center gap-1 text-[11px] font-semibold ${estado.cor}`}
+        >
+          <Icone aria-hidden="true" className="size-3.5 shrink-0" />
+          {estado.texto}
+        </span>
+      </div>
+
+      {estado.detalhe ? (
+        <p className="m-0 mt-0.5 break-words text-[10.5px] text-ink-soft">{estado.detalhe}</p>
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * EM QUE PÉ ESTÁ ESTE SIGNATÁRIO — uma frase, uma cor e um ícone.
+ *
+ * ⚠️ A ORDEM DAS PERGUNTAS É A REGRA INTEIRA, e ela vai do FATO consumado para o silêncio:
+ * assinou vence tudo (nem que o convite tenha voltado antes e alguém tenha reenviado por fora);
+ * depois o convite devolvido, que é o único caso que pede alguém; depois abriu; depois entregue;
+ * e o silêncio por último.
+ *
+ * ⚠️ "SEM NOTÍCIA" NÃO SE ESCREVE COMO "ENTREGUE". A Clicksign só avisa quando a notificação
+ * FALHA — foi assim que soubemos do `bounce` da Beatriz —, então a ausência de aviso não prova
+ * entrega nenhuma. A frase diz o que a tela realmente sabe, e o detalhe explica por quê: sem isso,
+ * o operador leria o silêncio como "o cliente recebeu e está enrolando".
+ */
+function estadoDoSignatario(signatario: SignatarioNaTela): {
+  cor: string;
+  detalhe: null | string;
+  icone: typeof Mail;
+  texto: string;
+} {
+  if (signatario.assinouEm) {
+    return {
+      cor: "text-emerald-700 dark:text-emerald-300",
+      detalhe: `Assinou em ${momento(signatario.assinouEm)}.`,
+      icone: CircleCheck,
+      texto: "Assinou",
+    };
+  }
+
+  if (signatario.convite === "nao_entregue") {
+    return {
+      cor: "text-rose-700 dark:text-rose-300",
+      detalhe: [
+        signatario.conviteQuando
+          ? `O convite voltou em ${momento(signatario.conviteQuando)}.`
+          : "O convite voltou.",
+        signatario.conviteDetalhe,
+        "Esta assinatura não chega sozinha: volte o card para a análise, corrija o e-mail e mande de novo.",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      icone: MailX,
+      texto: "Convite NÃO entregue",
+    };
+  }
+
+  if (signatario.comecouEm) {
+    return {
+      cor: "text-ink",
+      detalhe: `Abriu o documento em ${momento(signatario.comecouEm)} e ainda não assinou.`,
+      icone: Eye,
+      texto: "Abriu para assinar",
+    };
+  }
+
+  if (signatario.convite === "entregue") {
+    return {
+      cor: "text-ink-soft",
+      detalhe: signatario.conviteQuando
+        ? `Convite entregue em ${momento(signatario.conviteQuando)}.`
+        : null,
+      icone: MailCheck,
+      texto: "Convite entregue",
+    };
+  }
+
+  return {
+    cor: "text-ink-muted",
+    detalhe:
+      "A Clicksign só avisa quando a notificação falha, e nada foi dito sobre esta: não dá para afirmar que o convite chegou.",
+    icone: Mail,
+    texto: "Sem notícia",
+  };
+}
+
+/**
+ * O PAPEL ESCRITO NA LINHA — "Comprador", "Cônjuge", "Vendedora".
+ *
+ * ⚠️ ELE VEM EM CAMPO PRÓPRIO, CONGELADO NO ENVIO (`temis_envelopes.signatarios`), e a leitura
+ * continua DEFENSIVA: só vira rótulo o que é um papel que a casa conhece. Um valor gravado por
+ * fora, ou de uma versão futura do envio, deixa a linha só com o nome — inventar rótulo a partir de
+ * palavra desconhecida escreveria "Comprador" ao lado de quem é testemunha, e ninguém desconfiaria.
+ */
+function papelNaLinha(cru: null | string): null | string {
+  const papel: PapelNoContrato | undefined = PAPEIS.find((p) => p === cru);
+  return papel ? rotuloDoPapel(papel) : null;
+}
+
+/**
+ * "2026-09-12T02:24:00.891Z" → "12/09/2026 02:24".
+ *
+ * ⚠️ SEM OS SEGUNDOS, E COM A DATA INTEIRA. O carimbo do `bounce` chega quatro segundos depois do
+ * envio; o segundo não muda nenhuma decisão, e a data por extenso é o que responde "isso é de hoje
+ * ou da semana passada?". Data ilegível volta como veio: escrever "Invalid Date" na tela seria
+ * pior do que mostrar o cru.
+ */
+function momento(iso: string): string {
+  const quando = new Date(iso);
+  if (Number.isNaN(quando.getTime())) return iso;
+  return quando.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
 function EmConstrucao({ oQueVem, titulo }: { oQueVem: string; titulo: string }) {

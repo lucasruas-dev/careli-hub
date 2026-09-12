@@ -9,7 +9,10 @@
 // que passou uma semana na entrada chegaria à confecção já atrasado, e o vermelho apareceria em quem
 // pegou o trabalho, não em quem o deixou parado.
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
 
 import { type ContratoNoCard, contratosDasPropostas } from "./contrato-guardado-db";
 import { registrarPassagemDeEtapa } from "./passagem-de-etapa-db";
@@ -44,7 +47,52 @@ type LinhaCrua = {
   unidade: string;
 };
 
+/**
+ * O "1/5" DO CARD — quantas assinaturas já saíram, e se algum convite não chegou.
+ *
+ * Lucas (12/09/2026): *"no card, gostaria de ter essa visão de quantas assinaturas já foram feitas,
+ * tipo 1/5"*, e, no mesmo dia, sobre o contrato da Beatriz: *"nesse caso tinha que voltar com o erro
+ * de e-mail"*. O envelope dela dizia "Parcialmente assinado" e ninguém sabia por quê — o convite do
+ * segundo signatário tinha voltado com `550 5.1.1 ... NoSuchUser` quatro segundos depois do envio, e
+ * essa notícia estava guardada no nosso banco desde então, sem um único leitor.
+ *
+ * ⚠️ `total` É QUEM FOI CONVIDADO, `assinaram` É QUEM ASSINOU, E AS DUAS FONTES SÃO DIFERENTES.
+ * `temis_envelopes.signatarios` congela a lista do envio (ATENÇÃO 2 da migration 0149) e não tem
+ * campo de "assinou"; quem assinou só se sabe pelos eventos. Ver `contarAssinaturasDasPropostas`.
+ *
+ * ⚠️ ESTE É O RESUMO DO CARD, NÃO O DIÁRIO. O log linha a linha (enviado, visualizado, e-mail não
+ * entregue, assinado) é da TELA de trabalho, que o busca de `diarioDaProposta` ao abrir um card só.
+ * Aqui cabe o que dá para ler de um quadro inteiro de uma vez.
+ */
+export type ContagemDeAssinaturas = {
+  /** Quantos dos convidados já assinaram. */
+  assinaram: number;
+  /**
+   * Algum convite voltou sem ser entregue?
+   *
+   * ⚠️ É O SINAL DE QUE NÃO ADIANTA ESPERAR. Um contrato "parcialmente assinado" cujo convite
+   * quicou não está devagar: ele não chegou, e a ação é corrigir o e-mail e reenviar.
+   */
+  conviteNaoEntregue: boolean;
+  /** O estado CRU do envelope (a língua da casa, `EstadoDaAssinatura`) — para a cor do selo. */
+  estado: string;
+  /** Quantos foram convidados a assinar naquele envio. */
+  total: number;
+};
+
 export type TrabalhoDoBoard = Trabalho & {
+  /**
+   * O contador de assinaturas, quando o card está em "Em assinatura".
+   *
+   * ⚠️ `null` É O NORMAL, E DIZ APENAS "SEM CONTADOR". Card em outra etapa, card que não é de
+   * contrato, proposta sem envelope, leitura que falhou — os quatro chegam aqui como `null`, e o
+   * card aparece como aparecia ontem. Diferente de `envelopeVivo` na tela de trabalho, onde o nulo
+   * carrega uma decisão (cancelar ou não um envelope pago), este nulo não decide nada: é um selo a
+   * menos num quadro que recarrega sozinho a cada minuto.
+   *
+   * ⚠️ VEM PREENCHIDO SÓ COM `comAssinaturas` — ver a nota do parâmetro em `trabalhosDoBoard`.
+   */
+  assinaturas: ContagemDeAssinaturas | null;
   canal: CanalDoTrabalho;
   /**
    * Os contratos JÁ GERADOS desta proposta, do mais novo para o mais antigo.
@@ -78,6 +126,8 @@ const CAMPOS =
 
 function mapear(l: LinhaCrua): TrabalhoDoBoard {
   return {
+    // Preenchido só em `trabalhosDoBoard`, numa consulta por lote — ver a nota do campo.
+    assinaturas: null,
     atividadesFeitas: Array.isArray(l.atividades_feitas) ? l.atividades_feitas : [],
     canal: l.canal as CanalDoTrabalho,
     clienteCpf: l.cliente_cpf,
@@ -113,8 +163,18 @@ function mapear(l: LinhaCrua): TrabalhoDoBoard {
  * ⚠️ O `.in()` do PostgREST vai na URL e estoura com listas grandes (em outros cantos do repo a
  * regra é lote de 100). Aqui são os empreendimentos de UMA pessoa — uns 15 no máximo —, então a
  * lista passa inteira. Se um dia a fonte mudar para algo maior, lotear.
+ *
+ * `comAssinaturas` liga o contador "1/5" dos cards em "Em assinatura".
+ *
+ * ⚠️ ELE É OPCIONAL PORQUE CUSTA DUAS CONSULTAS, e nem todo leitor deste board as quer. Quem chama
+ * são dois: o quadro da Têmis (que recarrega sozinho a cada minuto desde 11/09/2026 e pediu o
+ * contador) e a aba Contratos do portal comercial (`/api/incorporador/contratos`), que é do
+ * coordenador de fora e não pediu nada disso. Ligar para os dois faria a casa pagar, a cada minuto
+ * de cada portal aberto, por um selo que só uma das telas desenha — e esta casa já teve fatura alta
+ * da Vercel por leitura repetida que ninguém tinha pedido.
  */
 export async function trabalhosDoBoard(input?: {
+  comAssinaturas?: boolean;
   enterpriseId?: string;
   enterpriseIds?: string[];
 }): Promise<TrabalhoDoBoard[]> {
@@ -161,7 +221,383 @@ export async function trabalhosDoBoard(input?: {
     }
   }
 
+  if (input?.comAssinaturas) {
+    // ⚠️ MAIS DUAS CONSULTAS PARA O QUADRO INTEIRO, E NUNCA UMA POR CARD. O quadro recarrega
+    // sozinho a cada minuto; uma consulta por card multiplicaria essa conta pelo tamanho da fila,
+    // e é exatamente o tipo de gasto que só aparece na fatura. A leitura é em lote, o cruzamento é
+    // em memória.
+    const esperando = trabalhos.filter(cardEsperaAssinatura);
+    const contagens = await contarAssinaturasDasPropostas(
+      supabase,
+      esperando.map((t) => t.propostaId ?? ""),
+    );
+    for (const trabalho of esperando) {
+      trabalho.assinaturas = trabalho.propostaId
+        ? contagens.get(trabalho.propostaId) ?? null
+        : null;
+    }
+  }
+
   return trabalhos;
+}
+
+/**
+ * ESTE CARD MOSTRA CONTADOR DE ASSINATURA?
+ *
+ * ⚠️ O PORTÃO POR TIPO É O MESMO DO GET DE UM CARD, e existe pela mesma razão: `temis_envelopes`
+ * casa por `proposta_id` e NÃO tem `trabalho_id`. Uma proposta tem DOIS cards quando alguém pede o
+ * cancelamento da venda (medido em 10/09/2026 na proposta do Henrique, Q01 L05), e sem o portão o
+ * card de cancelamento mostraria "1/2" lendo o envelope DA VENDA — um contador certo pregado no
+ * card errado, que é pior que contador nenhum.
+ *
+ * ⚠️ E ISSO DEIXA CESSÃO E CANCELAMENTO POR CORREÇÃO SEM SELO, mesmo eles indo para assinatura
+ * (`EXIGE_ASSINATURA`). É a resposta honesta enquanto o envelope não souber de que card ele é: o
+ * dia em que `temis_envelopes` ganhar `trabalho_id`, o portão vira esse elo e os três passam a
+ * contar.
+ */
+function cardEsperaAssinatura(trabalho: TrabalhoDoBoard): boolean {
+  return (
+    trabalho.estagio === "assinatura" &&
+    trabalho.tipo === "contrato" &&
+    Boolean(trabalho.propostaId)
+  );
+}
+
+/** O envelope, do jeito que o contador precisa dele: a régua do reenvio mais quem foi convidado. */
+type EnvelopeParaContar = EnvelopeDaProposta & {
+  proposta_id: null | string;
+  /** O `document.key` da Clicksign — o elo que casa com os eventos. Ver `historicoDosEnvelopes`. */
+  provedor_documento_id: null | string;
+  signatarios: unknown;
+};
+
+/**
+ * QUANTOS ASSINARAM, DE QUANTOS, EM VÁRIAS PROPOSTAS DE UMA VEZ.
+ *
+ * ⚠️ O NÚMERO NÃO SAI DE `temis_envelopes` SOZINHO, e foi a primeira coisa conferida: `signatarios`
+ * guarda quem foi CONVIDADO (ATENÇÃO 2 da 0149) e não ganha carimbo quando alguém assina, e `estado`
+ * só sabe dizer `parcial` — que é "pelo menos um", não "quantos". Para um contrato de cinco pessoas,
+ * `parcial` vale para 1/5 e para 4/5 igualmente, e é justamente essa diferença que o Lucas pediu.
+ * Então o segundo lote abre o PAYLOAD dos eventos.
+ *
+ * ⚠️ O QUE CUSTA: uma consulta a `temis_envelopes` (barata, colunas) e uma a
+ * `temis_assinatura_eventos` trazendo `payload` jsonb. É a consulta cara das duas — um payload da
+ * Clicksign tem o envelope, o documento e o histórico inteiro dentro. Ela vale porque roda uma vez
+ * por carga do quadro, e SÓ pelos cards que estão em "Em assinatura" (hoje, uma mão-cheia). Se um
+ * dia a coluna "Em assinatura" tiver centenas de cards, o caminho não é lotear mais: é gravar o
+ * resumo em `temis_envelopes` quando o webhook chega, e ler daí.
+ *
+ * ⚠️ E O HISTÓRICO VEM DE DENTRO DO PAYLOAD PORQUE NÃO HÁ WEBHOOK PRÓPRIO DELE. O
+ * `tracking_notification_error` do contrato da Beatriz (12/09/2026) NÃO chegou como evento: a tabela
+ * tem cinco linhas — upload, dois add_signer, signature_started e sign — e nenhuma dele. Ele veio
+ * dentro do `document.events[]` dos eventos seguintes, que a Clicksign manda INTEIRO toda vez. Por
+ * isso o que se lê aqui é esse array, e não a coluna `evento` — que nunca vai conter a palavra
+ * `tracking_notification_error`, por mais que se procure.
+ *
+ * ⚠️ NADA AQUI DERRUBA O QUADRO. Toda falha vira log e mapa vazio: o card sem contador é o card de
+ * ontem, e um quadro em branco por causa de um selo seria uma troca ruim — a mesma lição de
+ * `contratosDasPropostas`.
+ */
+async function contarAssinaturasDasPropostas(
+  sb: SupabaseClient,
+  propostaIds: readonly string[],
+): Promise<Map<string, ContagemDeAssinaturas>> {
+  const porProposta = new Map<string, ContagemDeAssinaturas>();
+  const ids = [...new Set(propostaIds.filter(Boolean))];
+  if (ids.length === 0) return porProposta;
+
+  const envelopes = await envelopesDasPropostas(sb, ids);
+  if (envelopes.size === 0) return porProposta;
+
+  const historicos = await historicoDosEnvelopes(sb, [...envelopes.values()]);
+
+  for (const [propostaId, envelope] of envelopes) {
+    const total = Array.isArray(envelope.signatarios) ? envelope.signatarios.length : 0;
+    // ⚠️ "0/0" NÃO É CONTADOR, É RUÍDO. Envelope sem signatários congelados é envio que não chegou
+    // a montar a lista; o card fica sem selo, que é a frase certa para "não sei de quantos".
+    if (total === 0) continue;
+
+    const historico = historicos.get(envelope.id);
+    // ⚠️ `assinado` MANDA NA CONTAGEM. Ele é a palavra da casa para "todos assinaram" (a tradução
+    // cuida de `closed`, que NÃO é sinônimo — ATENÇÃO 3 da 0149), e um evento perdido no caminho
+    // faria o card dizer "4/5" embaixo de um contrato fechado. Para menos, o estado não sabe nada:
+    // `parcial` não diz quantos, e por isso não corrige nada aqui.
+    const assinaram =
+      envelope.estado === "assinado" ? total : Math.min(historico?.assinaram ?? 0, total);
+
+    porProposta.set(propostaId, {
+      assinaram,
+      conviteNaoEntregue: historico?.conviteNaoEntregue ?? false,
+      estado: envelope.estado,
+      total,
+    });
+  }
+
+  return porProposta;
+}
+
+/**
+ * O envelope que vale, por proposta.
+ *
+ * ⚠️ A RÉGUA É `envelopeQueSegura`, A MESMA DO ENVIO, DA VOLTA E DA TELA DE TRABALHO. A pergunta
+ * "qual é o envelope vivo desta proposta?" já tem uma resposta única e testada; uma segunda escrita
+ * aqui voltaria a divergir no dia em que um estado mudasse de lado — e o quadro mostraria um número
+ * de um envelope e a tela de trabalho, o de outro.
+ *
+ * ⚠️ A ORDEM `criado_em desc` NÃO É ENFEITE: `envelopeQueSegura` é um `find`, e devolve o PRIMEIRO
+ * que segura. Ela lê "o mais novo que ainda vale" só porque a lista chega nessa ordem.
+ */
+async function envelopesDasPropostas(
+  sb: SupabaseClient,
+  propostaIds: readonly string[],
+): Promise<Map<string, EnvelopeParaContar>> {
+  const escolhido = new Map<string, EnvelopeParaContar>();
+  const porProposta = new Map<string, EnvelopeParaContar[]>();
+
+  // ⚠️ LOTE DE 100, e a régua é medida: 700 ids deram 27.670 caracteres de URL e 400 Bad Request em
+  // produção. O `.in()` do PostgREST viaja na URL.
+  for (let i = 0; i < propostaIds.length; i += 100) {
+    const lote = propostaIds.slice(i, i + 100);
+    const { data, error } = await sb
+      .from("temis_envelopes")
+      // As mesmas colunas da guarda do envio, mais `signatarios` (o total), `proposta_id` (o elo
+      // com o card) e `provedor_documento_id` (o elo com os eventos — ver `historicoDosEnvelopes`).
+      .select(
+        "criado_em, envelope_id, estado, falha, id, proposta_id, provedor, provedor_documento_id, signatarios",
+      )
+      .eq("workspace_id", "careli")
+      .in("proposta_id", lote)
+      .order("criado_em", { ascending: false })
+      // ⚠️ O POSTGREST CORTA EM 1.000 LINHAS SEM AVISAR. Cem propostas com um punhado de envelopes
+      // cada não chegam perto disso; o teto está escrito para que o corte, se um dia acontecer,
+      // seja um card sem selo e nunca um número menor do que a verdade.
+      .limit(1000);
+
+    if (error) {
+      console.error("[temis][assinaturas] falha ao ler os envelopes do quadro", error);
+      continue;
+    }
+
+    for (const linha of (data ?? []) as EnvelopeParaContar[]) {
+      if (!linha.proposta_id) continue;
+      const lista = porProposta.get(linha.proposta_id) ?? [];
+      lista.push(linha);
+      porProposta.set(linha.proposta_id, lista);
+    }
+  }
+
+  for (const [propostaId, linhas] of porProposta) {
+    const vivo = envelopeQueSegura(linhas);
+    // `envelopeQueSegura` devolve uma das linhas da lista, então o achado abaixo sempre existe —
+    // e é ele que carrega `signatarios`, que a régua não conhece.
+    const completo = vivo ? linhas.find((l) => l.id === vivo.id) : undefined;
+    if (completo) escolhido.set(propostaId, completo);
+  }
+
+  return escolhido;
+}
+
+/** O que o array de eventos de um envelope diz, resumido para o selo do card. */
+type HistoricoDoEnvelope = {
+  assinaram: number;
+  conviteNaoEntregue: boolean;
+};
+
+/**
+ * O RESUMO DO HISTÓRICO DE CADA ENVELOPE, lido dos payloads guardados.
+ *
+ * O mapa sai chaveado pelo `id` da NOSSA linha de `temis_envelopes`, e não por um id do provedor:
+ * são duas colunas diferentes que podem ligar o evento ao envelope, e quem chama não precisa saber
+ * por qual delas o casamento aconteceu.
+ *
+ * ⚠️ O CASAMENTO É POR `provedor_documento_id`, E ISSO FOI MEDIDO — A PRIMEIRA VERSÃO DESTE LOTE
+ * PROCURAVA POR `envelope_id` E NÃO ACHAVA NADA. Em 12/09/2026, nas 7 linhas de
+ * `temis_assinatura_eventos`: `provedor_documento_id` preenchido em 7, `envelope_id` NULO em 7. Um
+ * `in("envelope_id", ...)` casava ZERO eventos, e o card do contrato da Beatriz — 1 de 2 assinados,
+ * com um convite devolvido — teria saído "0/2 assinaram", sem sinal nenhum de e-mail não entregue.
+ * Quem grava o evento é a rota do webhook, que só conhece os ids que a Clicksign mandou, e a
+ * Clicksign manda `document.key`. A MESMA ordem de `acharEnvelope` (`estado-db.ts`) e de
+ * `payloadMaisRecente` (`diario-do-envelope-db.ts`): primeiro o que casa, depois o que salva.
+ *
+ * ⚠️ E A SEGUNDA CONSULTA SÓ ACONTECE SE A PRIMEIRA DEIXAR ENVELOPE SEM RESPOSTA. Hoje ela nunca
+ * roda — todos casam pelo documento. Ela existe para o dia em que a Clicksign passar a mandar o id
+ * do ENVELOPE (a v3 tem os dois conceitos) e é de graça enquanto não mandar.
+ *
+ * ⚠️ SÓ EVENTO CONFERIDO CONTA, e é a mesma régua de `ultimaAssinaturaDeComprador`: o endpoint do
+ * webhook é público, e um POST forjado que não bate o HMAC é REGISTRADO e não aplicado (ATENÇÃO da
+ * 0149). Contá-lo aqui deixaria alguém de fora escrever "3/3" no card sem ninguém ter assinado.
+ *
+ * ⚠️ OS PAYLOADS SE SOMAM, EM VEZ DE VALER SÓ O MAIS NOVO. A Clicksign manda o `document.events[]`
+ * INTEIRO em todo evento, então o último payload já traz o histórico completo e a soma dá no mesmo —
+ * MENOS no caso que interessa: um payload com forma inesperada (a doc da v3 não mostra um único
+ * exemplo do corpo entregue ao endpoint) leria zero e apagaria, do card, assinaturas que os payloads
+ * anteriores conhecem. Somar custa uma passada num dado que já está na memória e não custa consulta
+ * nenhuma.
+ *
+ * ⚠️ E ISSO SÓ EXISTE PORQUE O PAYLOAD CRU FOI GUARDADO — decisão da 0149, no molde de
+ * `apolo_asaas_eventos`. É o que faz esta leitura acontecer sem migration, sem backfill e sem
+ * depender de configurar evento novo na conta da Clicksign.
+ */
+async function historicoDosEnvelopes(
+  sb: SupabaseClient,
+  envelopes: readonly EnvelopeParaContar[],
+): Promise<Map<string, HistoricoDoEnvelope>> {
+  const assinaram = new Map<string, Set<string>>();
+  const naoEntregues = new Map<string, Set<string>>();
+  const resumo = new Map<string, HistoricoDoEnvelope>();
+  if (envelopes.length === 0) return resumo;
+
+  const achou = new Set<string>();
+
+  const passada = async (coluna: "envelope_id" | "provedor_documento_id"): Promise<void> => {
+    // Do valor do provedor para as NOSSAS linhas. Lista, e não um id só: nada impede duas linhas
+    // de apontarem para o mesmo documento, e a última a ser escrita não tem por que vencer.
+    const nossos = new Map<string, string[]>();
+    for (const envelope of envelopes) {
+      if (achou.has(envelope.id)) continue;
+      const valor = envelope[coluna];
+      if (!valor) continue;
+      nossos.set(valor, [...(nossos.get(valor) ?? []), envelope.id]);
+    }
+
+    const valores = [...nossos.keys()];
+    // ⚠️ LOTE DE 100, pelo mesmo motivo da consulta dos envelopes: o `.in()` do PostgREST viaja na
+    // URL, e 700 ids já deram 27.670 caracteres e 400 Bad Request em produção.
+    for (let i = 0; i < valores.length; i += 100) {
+      const lote = valores.slice(i, i + 100);
+      const { data, error } = await sb
+        .from("temis_assinatura_eventos")
+        .select(`${coluna}, payload, recebido_em`)
+        .in(coluna, lote)
+        .eq("assinatura_conferida", true)
+        .order("recebido_em", { ascending: false })
+        // ⚠️ O POSTGREST CORTA EM 1.000 LINHAS SEM AVISAR — teto explícito para o corte, se um dia
+        // acontecer, ser um card sem selo e nunca um número menor do que a verdade.
+        .limit(1000);
+
+      if (error) {
+        console.error("[temis][assinaturas] falha ao ler os eventos do quadro", error);
+        continue;
+      }
+
+      for (const bruta of data ?? []) {
+        const linha = bruta as Record<string, unknown>;
+        const valor = comoTexto(linha[coluna]);
+        if (!valor) continue;
+        const lido = lerEventosDoPayload(linha.payload);
+        for (const nossoId of nossos.get(valor) ?? []) {
+          achou.add(nossoId);
+          juntar(assinaram, nossoId, lido.assinaram);
+          juntar(naoEntregues, nossoId, lido.naoEntregues);
+        }
+      }
+    }
+  };
+
+  await passada("provedor_documento_id");
+  // Só os que sobraram — hoje, nenhum. Sem envelope pendente a consulta nem é montada.
+  if (envelopes.some((e) => !achou.has(e.id) && e.envelope_id)) await passada("envelope_id");
+
+  // ⚠️ O CONVITE QUE QUICOU MAS QUE DEPOIS ASSINOU NÃO ACENDE NADA. Corrigir o e-mail e reenviar é o
+  // conserto esperado deste erro, e um selo âmbar eterno faria o quadro cobrar para sempre uma
+  // pendência que alguém já resolveu — o jeito mais rápido de ensinar a operação a ignorar o selo.
+  for (const nossoId of new Set([...assinaram.keys(), ...naoEntregues.keys()])) {
+    const assinou = assinaram.get(nossoId) ?? new Set<string>();
+    const quicou = [...(naoEntregues.get(nossoId) ?? [])].filter((quem) => !assinou.has(quem));
+    resumo.set(nossoId, { assinaram: assinou.size, conviteNaoEntregue: quicou.length > 0 });
+  }
+
+  return resumo;
+}
+
+/** Junta as chaves no conjunto daquele envelope, criando-o na primeira vez. */
+function juntar(mapa: Map<string, Set<string>>, chave: string, valores: Set<string>): void {
+  const conjunto = mapa.get(chave) ?? new Set<string>();
+  for (const valor of valores) conjunto.add(valor);
+  mapa.set(chave, conjunto);
+}
+
+/**
+ * O QUE O `document.events[]` DE UM PAYLOAD DIZ.
+ *
+ * ⚠️ TOLERANTE DE PROPÓSITO, pelo mesmo motivo de `lerEventoDoWebhook`: a doc da v3 lista os 30
+ * eventos e não mostra UM exemplo do corpo entregue ao endpoint. O documento aparece na raiz, dentro
+ * de `data` (JSON:API, que é o formato da v3) ou dentro de `event` (formato antigo) — procuramos nos
+ * três, e o que não for achado não vira palpite: vira zero, e o card fica sem selo.
+ *
+ * Devolve CHAVES DE PESSOAS, e não números: quem chama soma os payloads de um mesmo envelope, e
+ * somar conjuntos é o que impede o reenvio do mesmo webhook de contar a assinatura duas vezes.
+ *
+ * ⚠️ EXPORTADA SÓ PARA O TESTE, e com motivo: é a única parte pura desta contagem — o resto é
+ * consulta —, e é dela que sai o número que o operador lê no card. Ela está presa ao payload REAL
+ * do envelope da Beatriz em `trabalhos-db.test.ts`.
+ */
+export function lerEventosDoPayload(payload: unknown): {
+  assinaram: Set<string>;
+  naoEntregues: Set<string>;
+} {
+  const raiz = comoObjeto(payload);
+  const documento = primeiroObjeto([
+    raiz.document,
+    comoObjeto(raiz.data).document,
+    comoObjeto(raiz.event).document,
+  ]);
+  const eventos = Array.isArray(documento.events) ? documento.events : [];
+
+  const assinaram = new Set<string>();
+  const naoEntregues = new Set<string>();
+
+  for (const cru of eventos) {
+    const evento = comoObjeto(cru);
+    const nome = comoTexto(evento.name);
+    const dados = comoObjeto(evento.data);
+    const signatario = comoObjeto(dados.signer);
+    // ⚠️ A CHAVE ANTES DO E-MAIL: é ela que identifica o signatário na Clicksign, e o e-mail pode
+    // ter sido corrigido entre o convite que quicou e o que chegou.
+    const quem =
+      comoTexto(signatario.key) ||
+      comoTexto(signatario.email).toLowerCase() ||
+      comoTexto(signatario.name).toLowerCase();
+    if (!quem) continue;
+
+    // ⚠️ `sign` É UMA PESSOA, NÃO O FIM. Quem fecha o contrato é `close`/`auto_close`, e por isso o
+    // fechamento não entra nesta conta — ele é o `estado` do envelope, tratado por quem chamou.
+    if (nome === "sign") assinaram.add(quem);
+    // O caso medido (12/09/2026, envelope 3e9a331d): `last_status: "bounce"`,
+    // `last_bounce_type: "HardBounce"`, `550 5.1.1 ... NoSuchUser`. O nome do evento basta — toda
+    // notificação com erro é um convite que não chegou, e o motivo exato é assunto do diário, na
+    // tela de trabalho.
+    if (nome === "tracking_notification_error") naoEntregues.add(quem);
+  }
+
+  return { assinaram, naoEntregues };
+}
+
+/** O valor como objeto, ou um objeto vazio. Nunca lança, nunca devolve nulo. */
+function comoObjeto(valor: unknown): Record<string, unknown> {
+  return valor !== null && typeof valor === "object" && !Array.isArray(valor)
+    ? (valor as Record<string, unknown>)
+    : {};
+}
+
+/**
+ * O primeiro candidato que é mesmo um objeto com alguma coisa dentro.
+ *
+ * ⚠️ NÃO DÁ PARA USAR `??` AQUI, e o repo já pagou por isso: `comoObjeto()` nunca devolve nullish —
+ * devolve `{}` —, então `comoObjeto(a) ?? comoObjeto(b)` faz de `b` código morto e só a primeira
+ * hipótese é lida de verdade (ver a nota de `lerEventoDoWebhook`).
+ */
+function primeiroObjeto(candidatos: unknown[]): Record<string, unknown> {
+  for (const candidato of candidatos) {
+    const objeto = comoObjeto(candidato);
+    if (Object.keys(objeto).length > 0) return objeto;
+  }
+  return {};
+}
+
+/** O valor como texto aparado, ou string vazia. */
+function comoTexto(valor: unknown): string {
+  return typeof valor === "string" ? valor.trim() : "";
 }
 
 export type NovoTrabalho = {

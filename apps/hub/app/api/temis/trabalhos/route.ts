@@ -25,7 +25,13 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const enterpriseId = url.searchParams.get("empreendimento")?.trim() || undefined;
 
-  const trabalhos = await trabalhosDoBoard({ enterpriseId });
+  // ⚠️ `comAssinaturas` É O QUE PÕE O "1/5" NO CARD, e ele é pedido AQUI e não dentro da camada de
+  // dados. Lucas (12/09/2026): *"no card, gostaria de ter essa visão de quantas assinaturas já
+  // foram feitas, tipo 1/5"* — e o pedido é desta tela. A aba Contratos do portal comercial lê o
+  // MESMO board (`/api/incorporador/contratos`) e continua sem pedir: duas consultas a mais por
+  // carga, num quadro que recarrega sozinho a cada minuto, é gasto que só se paga onde alguém vai
+  // olhar o selo.
+  const trabalhos = await trabalhosDoBoard({ comAssinaturas: true, enterpriseId });
 
   return NextResponse.json(
     { data: { atividades: ATIVIDADES, estagios: ESTAGIOS, nomes: NOME_DO_TIPO, trabalhos } },
