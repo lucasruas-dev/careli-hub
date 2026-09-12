@@ -36,6 +36,42 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-12-temis-em-assinatura-conduz",
+    deployedAt: "2026-09-12T11:41:59-03:00",
+    modules: [
+      {
+        module: "Temis",
+        screens: [
+          {
+            items: [
+              "**Quem j\u00e1 assinou n\u00e3o tem mais bot\u00e3o.** A tela oferecia \"Reenviar convite\" para quem j\u00e1 tinha assinado \u2014 e oferecer o que n\u00e3o serve faz duvidar do que serve.",
+              "**Uma linha, um estado, uma a\u00e7\u00e3o.** Convite que voltou mostra **Corrigir o e-mail** em destaque; quem est\u00e1 s\u00f3 esperando tem o \u00edcone de reenviar; quem assinou fica quieto.",
+              "**Quem precisa de conserto aparece primeiro** na lista, em vez de na ordem em que foi cadastrado na Clicksign.",
+              "Eram **tr\u00eas caixas cinzas** com o mesmo peso. Viraram uma, e o **log do envelope** passou a nascer recolhido \u2014 ele \u00e9 para investigar, n\u00e3o para trabalhar.",
+              "O **id do envelope saiu da tela** (aparecia duas vezes), \"Parcialmente assinado\" parou de repetir \"1 de 2 assinaram\", e o vermelho virou uma **barra na borda** em vez de pintar a linha inteira.",
+            ],
+            screen: "Tela de trabalho \u00b7 Em assinatura",
+          },
+          {
+            items: [
+              "O card mostra **os dois fatos**: `1/2 assinaram` em verde, e o envelope riscado em vermelho quando algum convite voltou. Antes um substitu\u00eda o outro, e a assinatura que existia sumia da leitura.",
+            ],
+            screen: "Quadro",
+          },
+        ],
+      },
+    ],
+    rollback: "8dc449a8",
+    technical: {
+      done: "\u26a0\ufe0f A TELA OFERECIA \"REENVIAR CONVITE\" PARA QUEM J\u00c1 TINHA ASSINADO \u2014 gesto sem sentido, e o pior achado desta rodada: n\u00e3o era excesso de informa\u00e7\u00e3o, era a tela sem saber o que queria que a pessoa fizesse. || A A\u00c7\u00c3O PRINCIPAL PASSOU A SER A DO PROBLEMA DAQUELA LINHA, e s\u00f3 ela tem nome escrito: as duas a\u00e7\u00f5es tinham o mesmo peso em TODAS as linhas, e a coluna virava parede de bot\u00f5es iguais onde o que pede conserto some no meio do que est\u00e1 certo. O reenviar virou s\u00f3-\u00edcone com `title`+`aria-label`, a mesma r\u00e9gua dos bot\u00f5es do topo (pedida em 10/09). || ORDEM POR NECESSIDADE, com `sort` numa C\u00d3PIA e crit\u00e9rio \u00fanico (est\u00e1vel, a lista n\u00e3o dan\u00e7a entre recargas): a ordem da Clicksign \u00e9 a de cadastro, e num contrato de cinco pessoas a \u00fanica travada podia estar em quinto. || TR\u00caS CAIXAS VIRARAM UMA, e o log virou `details` recolhido \u2014 aberto, ele competia com a lista que pede a\u00e7\u00e3o. O teto de altura continua: a Clicksign reenvia o hist\u00f3rico INTEIRO a cada webhook. || O ID DO ENVELOPE SAIU DA TELA (aparecia duas vezes) e foi para o `title`. || O VERMELHO VIROU BARRA: com dois convites devolvidos, metade da caixa ficava rosa e o destaque deixava de destacar \u2014 mesma r\u00e9gua do log, que j\u00e1 marcava gravidade assim. || O DETALHE S\u00d3 APARECE ONDE MUDA O QUE FAZER, e a frase do bounce parou de ensinar o bot\u00e3o (\"corrija o e-mail aqui embaixo\" era escrever o r\u00f3tulo que est\u00e1 dois cent\u00edmetros abaixo). || `max-w-3xl` NA ETAPA: sem PDF ao lado, o conte\u00fado esticava nos ~1.150px do painel. || NO CARD, os dois fatos deixaram de se substituir \u2014 verde para a assinatura, e s\u00f3 o \u00edcone vermelho para o convite que voltou (*\"n\u00e3o precisa da frase ... s\u00f3 de ser vermelho a gente sabe\"*). Nenhum tom novo: o verde \u00e9 o do \"Contrato gerado\", o vermelho o do prazo estourado. || Sem mudan\u00e7a de comportamento nem de dado: typecheck limpo, 3.748 testes em 252 arquivos, lint sem erros. N\u00e3o verificado em tela \u2014 o hub exige login.",
+      motivation:
+        "Lucas, vendo a tela pronta: *\"ta feio essa tela, da uma organizada ... ta confuso, estou perdido, \u00e9 muito informa\u00e7\u00e3o, temos que conduzir o usu\u00e1rio na tela, ele tem que saber o que fazer\"* e, depois do primeiro ajuste, *\"est\u00e1 bem ruim essa tela, melhora ela por favor\"*.",
+    },
+    title: "A etapa Em assinatura conduz, em vez de despejar",
+    type: "melhoria",
+    version: "1.322.0",
+  },
+  {
     buildTag: "2026-09-12-temis-conserta-o-email-do-signatario",
     deployedAt: "2026-09-12T10:33:34-03:00",
     modules: [

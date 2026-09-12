@@ -719,7 +719,11 @@ export function TelaDeTrabalho({
               marcação humana), e prometer ali um cancelamento que não vai acontecer ensinaria a ler
               o aviso âmbar como enfeite. */}
           {card.estagio === "assinatura" ? (
-            <div className="grid gap-3">
+            /* ⚠️ LARGURA DE LEITURA, e não a largura do painel. Esta etapa não tem PDF ao lado,
+               então o conteúdo esticava nos ~1.150px inteiros — e-mail e frase atravessando a tela,
+               que é o jeito mais rápido de uma tela parecer desorganizada mesmo com tudo no lugar.
+               O teto deixa a lista com a proporção de uma lista, e não de uma planilha. */
+            <div className="grid max-w-3xl gap-3">
               {/* ⚠️ UMA LINHA, E SÓ O QUE SE SABE. Ela é o CABEÇALHO da etapa: diz em que pé está o
                   envelope como um todo (a palavra da casa, vinda pronta do servidor) e desde quando
                   o card está aqui. O detalhe por pessoa vem logo abaixo, no painel.
@@ -734,7 +738,16 @@ export function TelaDeTrabalho({
                   casa por proposta e o cancelamento divide a proposta com a venda), então
                   `envelopeVivo` chega `null` por não ter sido perguntado. Escrever ali "não vejo
                   envelope vivo" seria transformar "não perguntei" em "não existe". */}
-              {ehContrato ? (
+              {/* ⚠️ A BARRA DE ESTADO SUMIU DAQUI, e virou o cabeçalho do painel. Ela dizia
+                  "Parcialmente assinado" numa caixa, e o painel logo abaixo dizia "1 de 2
+                  assinaram" noutra: o mesmo fato, duas caixas, dois pesos visuais iguais. Lucas
+                  (12/09/2026): *"está bem ruim essa tela"*, *"é muito informação, temos que
+                  conduzir o usuário"*. Conduzir começa por não dizer a mesma coisa duas vezes.
+
+                  ⚠️ A LINHA SOBREVIVE PARA O CARD SEM PAINEL — quando o envelope existe mas nenhum
+                  evento voltou, ou quando a leitura falhou, ela é a única coisa que sabe dizer o
+                  que há. */}
+              {ehContrato && !assinatura ? (
                 <LinhaDoEnvelope desde={card.estagio_desde} envelopeVivo={envelopeVivo} />
               ) : null}
               {assinatura ? (
@@ -742,7 +755,12 @@ export function TelaDeTrabalho({
                 // envelope e NÃO mexem na etapa do card. Quem precisa reler é ESTA tela — é ela que
                 // desenha o e-mail novo e o convite recém-mandado. Subir pelo quadro recarregaria a
                 // lista de cards e deixaria o painel aberto mostrando o e-mail antigo.
-                <PainelDaAssinatura aoRecarregar={carregar} assinatura={assinatura} />
+                <PainelDaAssinatura
+                  aoRecarregar={carregar}
+                  assinatura={assinatura}
+                  desde={card.estagio_desde}
+                  envelopeVivo={envelopeVivo}
+                />
               ) : (
                 <EmConstrucao
                   oQueVem="Não há signatários para mostrar nesta venda: ou o card chegou aqui sem envelope, ou o envelope ainda não devolveu nenhum evento. Continuam por vir a tela de monitoramento e o botão de cobrar pela Íris."
@@ -1814,13 +1832,33 @@ function LinhaDoEnvelope({
 function PainelDaAssinatura({
   aoRecarregar,
   assinatura,
+  desde,
+  envelopeVivo,
 }: {
   /** Relê o card depois de um conserto, para a lista refletir o e-mail novo. */
   aoRecarregar: () => Promise<void>;
   assinatura: AssinaturaDoCard;
+  /** `estagio_desde` do card: quando ele entrou nesta etapa. */
+  desde: string;
+  envelopeVivo: EnvelopeVivo | null;
 }) {
-  const signatarios = assinatura.envelope.signatarios;
-  const naoEntregues = signatarios.filter((s) => s.convite === "nao_entregue").length;
+  const entrada = new Date(desde);
+  const desdeEscrito = Number.isNaN(entrada.getTime()) ? desde : entrada.toLocaleString("pt-BR");
+
+  /**
+   * ⚠️ QUEM PRECISA DE GESTO VEM PRIMEIRO, e a ordem do envelope não serve para isso. A
+   * Clicksign devolve os signatários na ordem em que foram cadastrados, que é inútil para quem
+   * abriu o card perguntando "o que travou?". Num contrato de cinco pessoas, a única que pede
+   * conserto pode estar em quinto lugar, embaixo de quatro linhas verdes.
+   *
+   * ⚠️ E A ORDENAÇÃO É ESTÁVEL: `sort` numa CÓPIA, e o critério é só "precisa de conserto",
+   * então quem empata fica como veio. Sem isso a lista dançaria a cada recarga.
+   */
+  const signatarios = [...assinatura.envelope.signatarios].sort((a, b) => {
+    const pesoA = a.convite === "nao_entregue" && !a.assinouEm ? 0 : 1;
+    const pesoB = b.convite === "nao_entregue" && !b.assinouEm ? 0 : 1;
+    return pesoA - pesoB;
+  });
 
   /**
    * ⚠️ DO MAIS RECENTE PARA O MAIS ANTIGO, E A ORDEM É FEITA AQUI. O `document.events[]` da
@@ -1840,27 +1878,44 @@ function PainelDaAssinatura({
 
   return (
     <div className="grid gap-3">
-      <Bloco
-        direita={
-          naoEntregues > 0
-            ? naoEntregues === 1
-              ? "1 convite não entregue"
-              : `${naoEntregues} convites não entregues`
-            : undefined
-        }
-        titulo="Assinaturas"
-      >
-        {/* ⚠️ O CONTADOR VEM EM CIMA E GRANDE. É a pergunta que o card do quadro já responde de
-            relance ("1/2"), e quem abriu a tela abriu para confirmar isso antes de qualquer
-            detalhe. */}
-        <p className="m-0 text-base font-semibold text-ink">
-          <span className="tabular-nums">
-            {assinatura.assinaram} de {assinatura.total}
-          </span>{" "}
-          assinaram
-        </p>
+      {/* ⚠️ UMA CAIXA SÓ, com cabeçalho e lista dentro. Eram três caixas cinzas empilhadas com o
+          mesmo peso — estado do envelope, assinaturas, log — e nenhuma delas dizia "olhe aqui
+          primeiro". O cabeçalho responde onde o contrato está; a lista, de quem depende.
 
-        <ul className="m-0 mt-2 grid list-none gap-1 p-0">
+          ⚠️ O ID DO ENVELOPE SAIU DA TELA e foi para o `title`. Ele aparecia DUAS vezes (na barra
+          e no log) e não significa nada para quem trabalha o contrato — só serve para procurar na
+          Clicksign, que é gesto raro e de quem já sabe o que quer. */}
+      <section className="rounded-xl border border-line bg-surface">
+        <header
+          className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-line px-4 py-3"
+          title={
+            assinatura.envelope.envelopeId
+              ? `Envelope ${assinatura.envelope.envelopeId} na Clicksign`
+              : undefined
+          }
+        >
+          <div className="min-w-0">
+            <p className="m-0 text-sm font-semibold text-ink">
+              <span className="tabular-nums">
+                {assinatura.assinaram} de {assinatura.total}
+              </span>{" "}
+              assinaram
+            </p>
+            <p className="m-0 text-[11px] text-ink-muted">
+              {envelopeVivo && !envelopeVivo.conferido
+                ? `Não deu para conferir o envelope agora · nesta etapa desde ${desdeEscrito}`
+                : `Nesta etapa desde ${desdeEscrito}`}
+            </p>
+          </div>
+
+          {envelopeVivo?.conferido ? (
+            <span className="shrink-0 text-[11px] font-semibold text-ink-soft">
+              {envelopeVivo.rotulo}
+            </span>
+          ) : null}
+        </header>
+
+        <ul className="m-0 grid list-none gap-0.5 p-2">
           {signatarios.map((s) => (
             <LinhaDoSignatario
               aoRecarregar={aoRecarregar}
@@ -1873,25 +1928,30 @@ function PainelDaAssinatura({
             />
           ))}
         </ul>
-      </Bloco>
+      </section>
 
-      {/* ⚠️ O LOG É O PEDIDO LITERAL, e o teto de altura é o que o torna utilizável: a Clicksign
-          reenvia o histórico INTEIRO a cada webhook, então um envelope movimentado tem dezenas de
-          linhas — sem o teto, o log empurraria o botão de voltar para fora da tela. */}
-      <Bloco
-        direita={
-          assinatura.envelope.envelopeId
-            ? `envelope ${assinatura.envelope.envelopeId}`
-            : undefined
-        }
-        titulo="Log do envelope"
-      >
+      {/* ⚠️ O LOG NASCE RECOLHIDO, e isso é o oposto de escondê-lo. Ele é AUDITORIA — responde
+          "o que houve com este envelope", que é pergunta de quem foi investigar, não de quem abriu
+          o card para trabalhar. Aberto por padrão, ele empurrava a lista de signatários para cima e
+          competia com ela: duas listas na mesma tela, e a que pede ação perdia.
+
+          ⚠️ E O TETO DE ALTURA CONTINUA: a Clicksign reenvia o histórico INTEIRO a cada webhook,
+          então um envelope movimentado tem dezenas de linhas — sem o teto, o log aberto empurraria
+          o botão de voltar para fora da tela. */}
+      <details className="rounded-xl border border-line bg-surface px-3.5 py-3">
+        <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-muted transition-colors hover:text-ink">
+          Log do envelope
+          <span className="ml-2 font-normal normal-case tracking-normal">
+            {diario.length === 0 ? "sem eventos" : `${diario.length} eventos`}
+          </span>
+        </summary>
+
         {diario.length === 0 ? (
-          <p className="m-0 text-xs text-ink-muted">
+          <p className="m-0 mt-2 text-xs text-ink-muted">
             Nenhum evento registrado para este envelope ainda.
           </p>
         ) : (
-          <ol className="m-0 grid max-h-64 list-none gap-1 overflow-auto p-0">
+          <ol className="m-0 mt-2 grid max-h-64 list-none gap-1 overflow-auto p-0">
             {diario.map((linha, i) => (
               <li
                 className={`grid grid-cols-[3px_1fr] items-stretch gap-x-2.5 overflow-hidden rounded-lg py-1.5 pr-3 ${
@@ -1932,7 +1992,7 @@ function PainelDaAssinatura({
             ))}
           </ol>
         )}
-      </Bloco>
+      </details>
     </div>
   );
 }
@@ -2004,6 +2064,15 @@ function LinhaDoSignatario({
   const signerId = signatario.chave;
   const emailAtual = (signatario.email ?? "").trim();
   const podeMexer = envelopeId !== null && !signerId.includes("@");
+  /**
+   * Esta linha PEDE alguma coisa de quem está olhando?
+   *
+   * ⚠️ É ELA QUE DECIDE O PESO DA LINHA INTEIRA — o fundo, a ação escrita e o detalhe. Sem essa
+   * pergunta, as três pessoas de um envelope aparecem iguais, e quem abre o card tem de LER as três
+   * para descobrir qual delas travou o contrato. Conduzir é isso: a linha que precisa de gesto se
+   * distingue sozinha, e as outras ficam quietas.
+   */
+  const precisaDeConserto = signatario.convite === "nao_entregue" && !signatario.assinouEm;
   const emailLimpo = emailNovo.trim();
 
   const executar = async (
@@ -2088,8 +2157,15 @@ function LinhaDoSignatario({
 
   return (
     <li
-      className={`rounded-lg px-2 py-1.5 ${
-        signatario.convite === "nao_entregue" && !signatario.assinouEm ? "bg-rose-500/10" : ""
+      /* ⚠️ O VERMELHO É UMA BARRA, E NÃO UM BLOCO MACIÇO. O fundo rosa cobrindo a linha inteira
+         gritava mais alto que o próprio texto — e num contrato de cinco pessoas com dois convites
+         devolvidos, metade da caixa fica rosa e o destaque deixa de destacar. A barra na borda diz
+         a mesma coisa e devolve o fundo ao texto. É a mesma régua do log logo abaixo, que já marca
+         gravidade com barra. */
+      className={`rounded-lg border-l-2 px-2.5 py-2 ${
+        precisaDeConserto
+          ? "border-rose-500 bg-rose-500/[0.06]"
+          : "border-transparent hover:bg-subtle"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -2097,7 +2173,7 @@ function LinhaDoSignatario({
             tem onde quebrar, e sem os dois ele escreve por cima do estado à direita — logo aqui,
             onde o e-mail é justamente o que costuma estar errado. */}
         <div className="min-w-0">
-          <p className="m-0 truncate text-xs font-semibold text-ink">
+          <p className="m-0 truncate text-[13px] font-semibold text-ink">
             {signatario.nome}
             {papel ? <span className="font-normal text-ink-muted"> · {papel}</span> : null}
           </p>
@@ -2109,6 +2185,12 @@ function LinhaDoSignatario({
                 pessoa, e o `??` só troca nulo — a linha ficaria em branco no lugar da frase. É a
                 armadilha que o repo já registrou em `nullish-nao-troca-string-vazia`. */}
             {signatario.email || "sem e-mail no envelope"}
+            {/* ⚠️ A HORA ENTRA AQUI, COLADA NO E-MAIL, em vez de virar um parágrafo próprio. Ela
+                é o único detalhe que interessa de quem já assinou, e uma terceira linha por pessoa
+                triplicava a altura da lista para dizer o que cabe depois de um ponto. */}
+            {signatario.assinouEm ? (
+              <span className="text-ink-soft"> · {momento(signatario.assinouEm)}</span>
+            ) : null}
           </p>
         </div>
 
@@ -2120,8 +2202,14 @@ function LinhaDoSignatario({
         </span>
       </div>
 
-      {estado.detalhe ? (
-        <p className="m-0 mt-0.5 break-words text-[10.5px] text-ink-soft">{estado.detalhe}</p>
+      {/* ⚠️ O DETALHE SÓ APARECE ONDE ELE MUDA O QUE A PESSOA VAI FAZER: no convite que voltou,
+          porque o motivo decide entre corrigir o endereço e reenviar. "Assinou em tal hora" e
+          "abriu em tal hora" já estão ditos pelo estado à direita e repetidos no log; escritos aqui,
+          eram três linhas de texto em cada pessoa numa coluna que se lê de relance. */}
+      {precisaDeConserto && estado.detalhe ? (
+        <p className="m-0 mt-0.5 break-words text-[10.5px] text-rose-700 dark:text-rose-300">
+          {estado.detalhe}
+        </p>
       ) : null}
 
       {podeMexer ? (
@@ -2183,27 +2271,20 @@ function LinhaDoSignatario({
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {/* ⚠️ UM CLIQUE, SEM CONFIRMAÇÃO. Reenviar não desfaz nada: é o mesmo convite indo de
-                  novo para o mesmo endereço. Pedir confirmação aqui ensinaria a confirmar sem ler —
-                  e a confirmação que PRECISA ser lida é a da troca, logo ao lado. */}
-              <button
-                className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-semibold text-ink-soft transition-colors hover:text-ink disabled:opacity-50"
-                disabled={acaoNoAr !== null}
-                onClick={() => void executar({ acao: "reenviar" })}
-                type="button"
-              >
-                {acaoNoAr === "reenviar" ? (
-                  <Loader2 aria-hidden="true" className="size-3 animate-spin" />
-                ) : (
-                  <RefreshCw aria-hidden="true" className="size-3" />
-                )}
-                {acaoNoAr === "reenviar" ? "Reenviando…" : "Reenviar convite"}
-              </button>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* ⚠️ A AÇÃO PRINCIPAL É A DO PROBLEMA DAQUELA LINHA, e só ela ganha nome. Lucas
+                  (12/09/2026), vendo a tela: *"achei muito grande esses botões (escrita), ta feio
+                  essa tela ... é muito informação, temos que conduzir o usuário na tela, ele tem
+                  que saber o que fazer"*. Antes as duas ações tinham o mesmo peso e o mesmo tamanho
+                  em TODAS as linhas — e a coluna virava uma parede de botões iguais, onde o que
+                  precisa de conserto some no meio do que está certo.
 
-              {signatario.assinouEm ? null : (
+                  Convite que voltou → "Corrigir o e-mail" escrito, porque é o que resolve.
+                  Esperando → só o ícone de reenviar, que é o único gesto possível.
+                  Já assinou → nada. */}
+              {precisaDeConserto ? (
                 <button
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-semibold text-ink-soft transition-colors hover:text-ink disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#A07C3B] px-2.5 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                   disabled={acaoNoAr !== null}
                   onClick={() => {
                     setErro(null);
@@ -2217,6 +2298,28 @@ function LinhaDoSignatario({
                 >
                   <Pencil aria-hidden="true" className="size-3" />
                   Corrigir o e-mail
+                </button>
+              ) : null}
+
+              {/* ⚠️ REENVIAR VIRA ÍCONE, e some para quem já assinou. O nome vive no `title` e no
+                  `aria-label` — a mesma régua dos botões do topo desta tela, pedida pelo Lucas em
+                  10/09/2026 (*"coloca esses botões no topo somente o ícone"*). E reenviar convite
+                  para quem JÁ ASSINOU é gesto sem sentido: a tela oferecia, e oferecer o que não
+                  serve é o que faz o operador duvidar do que serve. */}
+              {signatario.assinouEm ? null : (
+                <button
+                  aria-label="Reenviar o convite para este e-mail"
+                  className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:opacity-50"
+                  disabled={acaoNoAr !== null}
+                  onClick={() => void executar({ acao: "reenviar" })}
+                  title="Reenviar o convite para este e-mail"
+                  type="button"
+                >
+                  {acaoNoAr === "reenviar" ? (
+                    <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw aria-hidden="true" className="size-3.5" />
+                  )}
                 </button>
               )}
             </div>
@@ -2272,11 +2375,13 @@ function estadoDoSignatario(signatario: SignatarioNaTela): {
           ? `O convite voltou em ${momento(signatario.conviteQuando)}.`
           : "O convite voltou.",
         signatario.conviteDetalhe,
-        // ⚠️ A FRASE MUDOU EM 12/09/2026, E O CONSELHO ANTIGO FICOU CARO. Ela mandava voltar o card
-        // para a análise — o que CANCELA o envelope de produção e obriga quem já assinou a assinar
-        // de novo. Desde que a linha ganhou "Corrigir o e-mail", o conserto é aqui e não toca em
-        // quem já assinou; voltar para a análise continua existindo, mas para mudar o CONTRATO.
-        "Esta assinatura não chega sozinha: corrija o e-mail aqui embaixo e o convite sai de novo só para esta pessoa.",
+        // ⚠️ O CONSELHO SAIU DA FRASE PORQUE ELE VIROU BOTÃO. Ela mandava voltar o card para a
+        // análise — o que CANCELA o envelope de produção e obriga quem já assinou a assinar de novo.
+        // Depois virou "corrija o e-mail aqui embaixo", que é escrever o rótulo do botão que está
+        // logo ali. A linha diz o FATO; o que fazer é o botão dourado ao lado. Lucas (12/09/2026):
+        // *"é muito informação, temos que conduzir o usuário na tela"* — conduzir é ter um gesto
+        // óbvio, não um parágrafo explicando o gesto.
+        "Esta assinatura não chega sozinha.",
       ]
         .filter(Boolean)
         .join(" "),
