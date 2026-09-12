@@ -6217,3 +6217,68 @@ Achados que viraram correcao no mesmo lote:
   legado que este modelo substitui. Vale decidir se as vendas novas nascem todas no pai.
 - Validacoes: `npx tsc --noEmit` limpo; `npx eslint` sem erros; 2.893 testes verdes (210 arquivos).
 - Status: `EM PRODUCAO`.
+
+
+## v1.318.0 — a etapa Contrato organiza a assinatura (11/09/2026, 23:21 -03:00)
+
+- Commit publicado: `c6be2e6a`. Deployment: `dpl_6nzvhkyxx9Kubh1VCxBgoWUy23Ua`, READY com alias
+  `c2x.app.br` e `aliasError: null`. Build de 3min22.
+- **Rollback**: `9fd5bf7f` = `dpl_9uRAGeaSXh63E6H4otvU8yDUGaxr` (v1.317.0), marcado como
+  `isRollbackCandidate` no painel.
+- Autorizacao do go-live: Lucas, 11/09/2026 — *"ja pode subi"* e, depois do classificador barrar o
+  push pela minha mao, *"pode vc rodar"*.
+
+### O que mudou
+
+- ⚠️ **O ENVIO PARA ASSINATURA NUNCA TINHA FUNCIONADO PELA TELA DE TRABALHO**, e o sintoma enganava:
+  a tela dizia *"Esta proposta ainda nao tem contrato gerado"* com o contrato desenhado ao lado.
+  `tela-de-trabalho.tsx` passava `card.id` onde o envio esperava `proposta_id`, e os dois sao uuid
+  v4 — nada no formato denuncia a troca. Medido em producao: o card `88a53e18` tem 2 contratos sob
+  a proposta `332315b6` e ZERO sob o proprio id. A prop que mentia (`aoEnviarParaAssinatura:
+  (trabalhoId: string)`) foi apagada, e com ela a porta que aceitava o id errado.
+- A organizacao da assinatura saiu do modal e virou painel da propria etapa: ordem, e-mail
+  editavel, CPF, impedimentos, aviso de ambiente e a confirmacao em dois passos NO LUGAR do botao.
+  O modal foi apagado — um caminho so para um ato que custa e nao se desfaz.
+- Saiu o "Gerar versao N" da etapa (Lucas: *"nao precisa, nessa etapa e para somente organizar as
+  assinatura"*) e entrou **"Voltar para analise"**, que devolve o card para corrigir o contrato.
+  `estagio_desde` anda nessa volta, e e a unica vez: o card reentrou de verdade na etapa.
+- Seis elos de altura consertados (a tela cortava ~200px numa janela de 1080), o "voltar ao quadro"
+  ficou so com o icone e o botao de enviar virou rodape grudado — com 3 signatarios numa tela de
+  900px ele nascia 54px abaixo da dobra da coluna.
+- O historico passou a registrar as passagens de etapa do card (migration **0153**, aplicada no
+  mesmo dia com OK explicito).
+
+### As tres travas contra envelope pago a toa
+
+Todas achadas por revisao adversarial ANTES do deploy, nenhuma existia no codigo original:
+
+1. A etapa so oferece assinatura quando `EXIGE_ASSINATURA` diz que o tipo assina. Um card de
+   cancelamento parado na coluna Contrato — caso real, a proposta do Henrique tem dois cards —
+   desenhava o painel com os signatarios da VENDA e o botao vivo; e como cancelamento nao percorre
+   "assinatura", o card nao saia de la e cada reabertura criaria outro envelope.
+2. O servidor recusa quando ja existe envelope vivo daquela proposta. `temis_envelopes` era escrita
+   e nunca lida. Cancelado, expirado e recusado liberam o reenvio; **assinado nao libera**.
+3. A falha que deixa envelope ATIVO na conta nao devolve o botao. Antes a tela dizia "os convites
+   nao sairam" e reabilitava o dourado — a leitura natural disso e "entao manda de novo".
+
+### Fica na fila
+
+- ⚠️ **A exclusao de signatario NAO foi construida** (PAN-018 segue aberto). E a unica das quatro
+  coisas do painel que exige servidor e banco: `prepararEnvio` monta as pessoas sem ponto de filtro,
+  e `temis_envelopes.signatarios` grava quem FOI, nunca quem foi TIRADO — sem coluna para isso, o
+  contrato passa a parecer ter nascido sem conjuge. E falta uma regra que o codigo nao tem:
+  `conferirSignatarios` so recusa lista VAZIA, entao tirar um de dois compradores qualificados no
+  papel passaria por tudo e produziria contrato que o juridico devolve.
+- A etapa "Em assinatura" continua sendo uma tela `EmConstrucao`: o sucesso do envio fecha a tela e
+  pinta a faixa verde no quadro, mas nao ha o que ver depois (PAN-022).
+- Quatro guards de tabela ausente fora deste lote seguem cegos ao `PGRST205`:
+  `lib/apolo/enterprise-settings.ts`, `lib/apolo/imobiliaria-match.ts`,
+  `lib/publico/cad/rate-limit.ts`, `app/api/apolo/log-erros/route.ts`. `ehTabelaAusente` serve nas
+  quatro.
+- Destravar a linha "envio que comecou e nao terminou" em `temis_envelopes` e manual: nao existe
+  tela nem rota que encerre um registro com `envelope_id` nulo. O 409 diz isso com todas as letras.
+- Validacoes: typecheck limpo; **3.596 testes verdes em 247 arquivos**; lint com 0 erros e 0
+  warnings nos 21 arquivos da entrega. O hook de pre-push rodou tudo de novo antes de deixar passar.
+- ⚠️ **Nada verificado em tela** — o hub exige login e os cliques sao do Lucas. E o teste do envio
+  tem custo: conta Clicksign de PRODUCAO. No ZZ TESTE, **desligar o "Pedir CPF"**.
+- Status: `EM PRODUCAO`.
