@@ -517,31 +517,42 @@ function Card({
             cara de normal, e a fila envelheceria esperando alguém que não foi avisado. O conserto
             é humano — voltar para análise, corrigir o e-mail e mandar de novo.
 
-            ⚠️ O VERMELHO É O QUE O QUADRO JÁ USA PARA ERRO (`text-red-600 dark:text-red-400`, o
-            mesmo do prazo estourado), e não um tom novo: o rosa deste card já significa OUTRA
-            coisa — o tipo que desfaz a venda (cancelamento, distrato). */}
+            ⚠️ OS DOIS FATOS CONVIVEM NA MESMA LINHA, e a primeira versão TROCAVA um pelo outro —
+            Lucas (12/09/2026), vendo o card: *"além do não enviado, o assinado; nesse que está com
+            1/2 não entregue teve uma assinatura"*. O selo dizia "1/2 convite não entregue" e a
+            assinatura que EXISTE sumia da leitura: o número ficava órfão, encostado numa frase que
+            fala de outra coisa. São duas perguntas — quanto já andou, e o que travou.
+
+            ⚠️ E O VERMELHO DISPENSA A FRASE: *"não precisa da frase, convite não entregue, só de
+            ser vermelho a gente sabe"*. O card é leitura de relance, e cinco palavras a mais em
+            cada card custam a varredura da coluna inteira. O envelope riscado vermelho já diz; o
+            nome do fato vive no `title` e no `aria-label`, para quem passa o mouse e para quem
+            usa leitor de tela — a mesma régua dos botões só-ícone do topo da tela de trabalho.
+
+            ⚠️ O VERDE É O QUE O CARD JÁ USA para "Contrato gerado" (`text-emerald-700`), e o
+            vermelho o que o quadro já usa para erro (`text-red-600`, o mesmo do prazo estourado).
+            Nenhum tom novo: o rosa deste card já significa OUTRA coisa — o tipo que desfaz a
+            venda (cancelamento, distrato). */}
         {trabalho.assinaturas ? (
-          <p
-            className={`mt-1.5 flex items-center gap-1 text-[0.7rem] font-semibold ${
-              trabalho.assinaturas.conviteNaoEntregue
-                ? "text-red-600 dark:text-red-400"
-                : "text-ink-soft"
-            }`}
-            title={
-              trabalho.assinaturas.conviteNaoEntregue
-                ? `${trabalho.assinaturas.assinaram} de ${trabalho.assinaturas.total} assinaram — e um convite não foi entregue: o e-mail voltou. Essa assinatura não chega sozinha; abra o card para ver de quem é.`
-                : `${trabalho.assinaturas.assinaram} de ${trabalho.assinaturas.total} assinaram.`
-            }
-          >
-            {trabalho.assinaturas.conviteNaoEntregue ? (
-              <MailX aria-hidden="true" className="shrink-0" size={11} />
-            ) : (
+          <p className="mt-1.5 flex items-center gap-1.5 text-[0.7rem] font-semibold">
+            <span
+              className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300"
+              title={`${trabalho.assinaturas.assinaram} de ${trabalho.assinaturas.total} assinaram.`}
+            >
               <PenLine aria-hidden="true" className="shrink-0" size={11} />
-            )}
-            <span className="tabular-nums">
-              {trabalho.assinaturas.assinaram}/{trabalho.assinaturas.total}
+              <span className="tabular-nums">
+                {trabalho.assinaturas.assinaram}/{trabalho.assinaturas.total}
+              </span>
+              assinaram
             </span>
-            {trabalho.assinaturas.conviteNaoEntregue ? "convite não entregue" : "assinaram"}
+
+            {trabalho.assinaturas.conviteNaoEntregue ? (
+              <MailX
+                aria-label="Um convite não foi entregue: o e-mail voltou. Essa assinatura não chega sozinha — abra o card para ver de quem é e corrigir o endereço."
+                className="shrink-0 text-red-600 dark:text-red-400"
+                size={12}
+              />
+            ) : null}
           </p>
         ) : null}
       </button>

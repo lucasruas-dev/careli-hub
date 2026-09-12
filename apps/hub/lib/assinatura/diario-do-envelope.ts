@@ -82,13 +82,28 @@ export type FatoDoEnvelope = {
  * signatário removido do documento depois de ter recebido convite continua sendo parte da história.
  */
 export function quemAssinou(payload: unknown): SignatarioDoEnvelope[] {
-  const documento = objeto(objeto(payload).document);
+  const documento = documentoDoPayload(payload);
   const eventos = eventosDoDocumento(payload);
 
   const porChave = new Map<string, SignatarioDoEnvelope>();
   const chavePorEmail = new Map<string, string>();
 
-  const registrar = (bruto: unknown): null | SignatarioDoEnvelope => {
+  // ⚠️ A LISTA DE QUEM ESTÁ NO ENVELOPE É `document.signers`, E NÃO "quem apareceu em algum
+  // evento". A Clicksign permite REMOVER signatário de envelope em andamento, e o Panteon usa isso
+  // justamente para corrigir e-mail que quicou: remove a pessoa e a recria com o endereço certo.
+  // Depois disso os eventos citam TRÊS pessoas para um envelope de duas — e contar os eventos faria
+  // a tela dizer "1 de 3 assinaram", com um fantasma na lista cobrando um conserto já feito, e
+  // faria `fechouComTodasAsAssinaturas` virar falso num envelope que fechou completo.
+  //
+  // ⚠️ O FALLBACK EXISTE PARA O PAYLOAD POBRE: o `upload` chega com `signers` VAZIO (medido em
+  // produção no documento 8cf69cde). Sem ninguém na lista, quem apareceu nos eventos é tudo o que
+  // temos, e mostrar isso é melhor que mostrar vazio.
+  const temListaOficial = lista(documento.signers).length > 0;
+
+  const registrar = (
+    bruto: unknown,
+    { criar }: { criar: boolean } = { criar: true },
+  ): null | SignatarioDoEnvelope => {
     const pessoa = objeto(bruto);
     const chave = texto(pessoa.key);
     const email = texto(pessoa.email);
@@ -104,6 +119,9 @@ export function quemAssinou(payload: unknown): SignatarioDoEnvelope[] {
       if (!existente.nome && nome) existente.nome = nome;
       return existente;
     }
+
+    // Fora da lista oficial: o evento ENRIQUECE quem está no envelope, mas não cria ninguém novo.
+    if (!criar) return null;
 
     const novo: SignatarioDoEnvelope = {
       assinouEm: null,
@@ -129,13 +147,19 @@ export function quemAssinou(payload: unknown): SignatarioDoEnvelope[] {
     const dados = evento.dados;
     const nome = evento.nome;
 
-    for (const pessoa of pessoasDoEvento(dados)) registrar(pessoa);
+    for (const pessoa of pessoasDoEvento(dados)) registrar(pessoa, { criar: !temListaOficial });
 
-    const alvo = registrar(dados.signer);
+    const alvo = registrar(dados.signer, { criar: !temListaOficial });
     if (!alvo) continue;
 
-    if (nome === "sign") alvo.assinouEm = alvo.assinouEm ?? evento.quando;
-    if (nome === "signature_started") alvo.comecouEm = alvo.comecouEm ?? evento.quando;
+    // ⚠️ `evento.quando` VAZIO NÃO VIRA ASSINATURA. `emIso` devolve "" quando o evento chega sem
+    // `occurred_at`, e um `assinouEm` vazio é truthy-falso: o contador (`!== null`) somava e a linha
+    // da tela (que testa o valor) mostrava a pessoa como não-assinante. O cabeçalho dizia "1 de 2" e
+    // a lista inteira dizia "sem notícia", sem ninguém conseguir dizer quem era o 1.
+    if (nome === "sign" && evento.quando) alvo.assinouEm = alvo.assinouEm ?? evento.quando;
+    if (nome === "signature_started" && evento.quando) {
+      alvo.comecouEm = alvo.comecouEm ?? evento.quando;
+    }
 
     const noticia = noticiaDoConvite(nome, dados);
     if (noticia) {
@@ -377,8 +401,29 @@ function fato(
  * contrato porque um webhook veio num formato novo seria trocar uma informação a mais por uma tela
  * a menos.
  */
+/**
+ * O `document` do payload, ACEITANDO AS TRES FORMAS que a Clicksign usa.
+ *
+ * ⚠️ LER SÓ A RAIZ ZERA A TELA SEM ERRO NENHUM. O card do quadro já procurava nos três lugares
+ * (`lerEventosDoPayload`, em `lib/temis/trabalhos-db.ts`) e esta lib procurava em um só — então um
+ * payload no formato JSON:API (`data.document`) fazia o painel dizer "0 de 2 assinaram" ao lado de
+ * um card dizendo "1/2". Duas telas, duas verdades, sobre o mesmo envelope.
+ *
+ * ⚠️ E ISSO NÃO É HIPÓTESE: a Clicksign reenvia o webhook que não recebeu 200, e todo POST grava
+ * linha nova — basta uma retentativa do `upload` chegar depois do `sign` para a linha mais recente
+ * ser a mais pobre.
+ */
+function documentoDoPayload(payload: unknown): Record<string, unknown> {
+  const raiz = objeto(payload);
+  for (const candidato of [raiz.document, objeto(raiz.data).document, objeto(raiz.event).document]) {
+    const achado = objeto(candidato);
+    if (Object.keys(achado).length > 0) return achado;
+  }
+  return {};
+}
+
 function eventosDoDocumento(payload: unknown): EventoCru[] {
-  const documento = objeto(objeto(payload).document);
+  const documento = documentoDoPayload(payload);
   const saida: EventoCru[] = [];
   for (const bruto of lista(documento.events)) {
     const evento = objeto(bruto);

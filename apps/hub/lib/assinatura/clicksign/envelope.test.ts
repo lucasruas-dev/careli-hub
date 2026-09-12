@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { FalhaDaClicksign, type Opcoes } from "./cliente";
-import { cancelarEnvelope, consultarEnvelope, enviarParaAssinatura, nomeDoEnvelope } from "./envelope";
+import {
+  acrescentarSignatario,
+  cancelarEnvelope,
+  consultarEnvelope,
+  enviarParaAssinatura,
+  nomeDoEnvelope,
+  notificarSignatario,
+  removerSignatario,
+} from "./envelope";
 
 import type { Signatario } from "../tipos";
 
@@ -565,5 +573,233 @@ describe("a leitura do estado real do envelope", () => {
     if (r.ok) return;
     expect(r.erro).toContain("não encontrado");
     expect(r.requestId).toBe("req-15");
+  });
+});
+
+// ── A TROCA DE SIGNATÁRIO E O REENVIO DO CONVITE ────────────────────────────
+//
+// ⚠️ O CASO QUE ESTAS TRÊS FUNÇÕES CONSERTAM FOI MEDIDO EM PRODUÇÃO (12/09/2026): o convite do
+// segundo signatário voltou com HardBounce porque o e-mail tinha uma letra a menos. A compradora
+// assinou, o cônjuge nunca recebeu nada.
+
+/**
+ * O duplo que deixa o DELETE falhar.
+ *
+ * ⚠️ O `duplo` LÁ DE CIMA IGNORA AS RESPOSTAS CONFIGURADAS NO DELETE, DE PROPÓSITO: é o que permite
+ * ao `desfazer` do envio apagar o rascunho mesmo nos testes que fazem a chamada anterior falhar.
+ * Aqui o DELETE é justamente o que está sendo testado — e o 403 dele é a trava principal da troca.
+ */
+function duploComDelete(respostas: Record<string, unknown> = {}) {
+  const chamadas: Chamada[] = [];
+
+  const porta = async <T = unknown>(caminho: string, opcoes: Opcoes = {}): Promise<T> => {
+    chamadas.push({ caminho, corpo: opcoes.corpo, metodo: opcoes.metodo ?? "GET" });
+
+    for (const [padrao, resposta] of Object.entries(respostas)) {
+      if (caminho.includes(padrao)) {
+        if (resposta instanceof Error) throw resposta;
+        return resposta as T;
+      }
+    }
+
+    if (caminho.endsWith("/signers")) return { data: { id: "sig_novo" } } as T;
+    return {} as T;
+  };
+
+  return { chamadas, porta };
+}
+
+const falha = (mensagem: string, status: number, requestId: null | string = null) =>
+  new FalhaDaClicksign(mensagem, { detalhes: [], requestId, status });
+
+describe("remover um signatário do envelope", () => {
+  it("chama o DELETE do signatário, e não o do envelope", async () => {
+    const { chamadas, porta } = duploComDelete();
+    const r = await removerSignatario("env-20", "sig-1", porta);
+
+    expect(r.ok).toBe(true);
+    expect(chamadas).toEqual([
+      { caminho: "/envelopes/env-20/signers/sig-1", corpo: undefined, metodo: "DELETE" },
+    ]);
+  });
+
+  // ⚠️ A TRAVA PRINCIPAL É DELES, E CHEGA COMO 403: *"Já assinou um documento. Não pode ser
+  // excluído"*. Ela precisa chegar DISTINGUÍVEL a quem chama — virar "falhou" genérico faria a tela
+  // mandar tentar de novo uma operação que a API vai recusar para sempre.
+  it("403 volta como jaAssinou, e não como falha genérica", async () => {
+    const { porta } = duploComDelete({
+      "/signers/sig-1": falha("Clicksign devolveu 403.", 403, "req-403"),
+    });
+
+    const r = await removerSignatario("env-20", "sig-1", porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.jaAssinou).toBe(true);
+    expect(r.naoEncontrado).toBe(false);
+    expect(r.requestId).toBe("req-403");
+  });
+
+  it("404 volta como naoEncontrado", async () => {
+    const { porta } = duploComDelete({ "/signers/sig-1": falha("Clicksign devolveu 404.", 404) });
+
+    const r = await removerSignatario("env-20", "sig-1", porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.jaAssinou).toBe(false);
+    expect(r.naoEncontrado).toBe(true);
+  });
+
+  it("503 não é nem uma coisa nem outra, e não lança", async () => {
+    const { porta } = duploComDelete({ "/signers/sig-1": falha("Clicksign devolveu 503.", 503) });
+
+    const r = await removerSignatario("env-20", "sig-1", porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.jaAssinou).toBe(false);
+    expect(r.naoEncontrado).toBe(false);
+    expect(r.status).toBe(503);
+  });
+
+  // ⚠️ `DELETE /envelopes/{id}/signers/` (signer vazio) bate na COLEÇÃO, não na pessoa: uma resposta
+  // boa dali seria lida como "removido", e o passo seguinte recriaria quem nunca saiu.
+  it("não chama a Clicksign sem os dois ids", async () => {
+    const { chamadas, porta } = duploComDelete();
+    expect((await removerSignatario("", "sig-1", porta)).ok).toBe(false);
+    expect((await removerSignatario("env-20", "  ", porta)).ok).toBe(false);
+    expect(chamadas).toEqual([]);
+  });
+});
+
+describe("reenviar o convite de UM signatário", () => {
+  // ⚠️ NÃO É O `/envelopes/{id}/notifications` DO PASSO 6: aquele avisa TODO MUNDO, e num envelope
+  // em que a compradora já assinou isso põe na caixa dela o convite de um contrato que ela já
+  // assinou. Lucas, 12/09/2026: *"enviar o contrato dele somente"*.
+  it("posta no endpoint do signatário, e não no do envelope", async () => {
+    const { chamadas, porta } = duploComDelete();
+    const r = await notificarSignatario("env-21", "sig-2", undefined, porta);
+
+    expect(r.ok).toBe(true);
+    expect(chamadas).toEqual([
+      {
+        caminho: "/envelopes/env-21/signers/sig-2/notifications",
+        corpo: { data: { attributes: {}, type: "notifications" } },
+        metodo: "POST",
+      },
+    ]);
+  });
+
+  // Sem mensagem a Clicksign usa a dela — a mesma que o convite original levou. Mandar o campo
+  // vazio seria trocar o texto conhecido por um branco.
+  it("só manda `message` quando há mensagem de verdade", async () => {
+    const { chamadas, porta } = duploComDelete();
+    await notificarSignatario("env-21", "sig-2", "   ", porta);
+    await notificarSignatario("env-21", "sig-2", " Segue o contrato ", porta);
+
+    expect(chamadas[0]?.corpo).toEqual({ data: { attributes: {}, type: "notifications" } });
+    expect(chamadas[1]?.corpo).toEqual({
+      data: { attributes: { message: "Segue o contrato" }, type: "notifications" },
+    });
+  });
+
+  // ⚠️ "ESPERE UM MINUTO" NÃO É "DEU ERRO". A doc indica cerca de uma notificação por minuto por
+  // endpoint, e este é o botão que alguém clica duas vezes quando o cliente diz que não recebeu.
+  it("429 volta como limiteDeEnvio", async () => {
+    const { porta } = duploComDelete({
+      "/notifications": falha("Clicksign devolveu 429.", 429),
+    });
+
+    const r = await notificarSignatario("env-21", "sig-2", undefined, porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.limiteDeEnvio).toBe(true);
+  });
+
+  it("outra falha não vira limite de envio, e não lança", async () => {
+    const { porta } = duploComDelete({ "/notifications": falha("Clicksign devolveu 500.", 500) });
+
+    const r = await notificarSignatario("env-21", "sig-2", undefined, porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.limiteDeEnvio).toBe(false);
+    expect(r.status).toBe(500);
+  });
+
+  it("não chama a Clicksign sem os dois ids", async () => {
+    const { chamadas, porta } = duploComDelete();
+    expect((await notificarSignatario("", "sig-2", undefined, porta)).ok).toBe(false);
+    expect(chamadas).toEqual([]);
+  });
+});
+
+describe("acrescentar um signatário a um envelope que já roda", () => {
+  const novo = pessoa("Maria Souza Lima", "maria@x.com", "conjuge", 1);
+
+  // ⚠️ O PASSO DOS REQUISITOS É O QUE FALHA CALADO. Signatário sem os dois requisitos recebe o
+  // convite, abre o documento e NÃO TEM O QUE ASSINAR — e o envelope nunca fecha, sem erro nenhum.
+  it("faz o passo 3 e o passo 4 — os DOIS requisitos —, nesta ordem", async () => {
+    const { chamadas, porta } = duploComDelete();
+    const r = await acrescentarSignatario("env-22", { documentoId: "doc-9", pessoa: novo }, porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.signerId).toBe("sig_novo");
+    expect(chamadas.map((c) => `${c.metodo} ${c.caminho}`)).toEqual([
+      "POST /envelopes/env-22/signers",
+      "POST /envelopes/env-22/requirements",
+      "POST /envelopes/env-22/requirements",
+    ]);
+  });
+
+  it("os requisitos apontam para o documento e para o signatário novo", async () => {
+    const { chamadas, porta } = duploComDelete();
+    await acrescentarSignatario("env-22", { documentoId: "doc-9", pessoa: novo }, porta);
+
+    const requisitos = chamadas.filter((c) => c.caminho.endsWith("/requirements"));
+    for (const requisito of requisitos) {
+      expect(requisito.corpo).toMatchObject({
+        data: {
+          relationships: {
+            document: { data: { id: "doc-9", type: "documents" } },
+            signer: { data: { id: "sig_novo", type: "signers" } },
+          },
+        },
+      });
+    }
+    expect(requisitos.map((c) => (c.corpo as { data: { attributes: unknown } }).data.attributes)).toEqual([
+      { action: "agree", role: "sign" },
+      { action: "provide_evidence", auth: "email" },
+    ]);
+  });
+
+  // Os dois desfechos são muito diferentes: no `signatario` ninguém entrou, no `requisitos` a pessoa
+  // entrou sem ter o que assinar. Quem chama precisa distinguir para dizer isso em português.
+  it("falha no cadastro volta com passo `signatario` e sem id", async () => {
+    const { porta } = duploComDelete({ "/signers": falha("Clicksign devolveu 422.", 422) });
+    const r = await acrescentarSignatario("env-22", { documentoId: "doc-9", pessoa: novo }, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.passo).toBe("signatario");
+    expect(r.signerId).toBeNull();
+  });
+
+  it("falha nos requisitos volta com passo `requisitos` E o id de quem ficou pela metade", async () => {
+    const { porta } = duploComDelete({ "/requirements": falha("Clicksign devolveu 500.", 500) });
+    const r = await acrescentarSignatario("env-22", { documentoId: "doc-9", pessoa: novo }, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.passo).toBe("requisitos");
+    expect(r.signerId).toBe("sig_novo");
+  });
+
+  // Sem o id do documento o requisito não tem para onde apontar: criar o signatário primeiro
+  // deixaria exatamente a pessoa pendurada que esta função existe para evitar.
+  it("não chama nada sem o id do documento", async () => {
+    const { chamadas, porta } = duploComDelete();
+    const r = await acrescentarSignatario("env-22", { documentoId: "  ", pessoa: novo }, porta);
+
+    expect(r.ok).toBe(false);
+    expect(chamadas).toEqual([]);
   });
 });

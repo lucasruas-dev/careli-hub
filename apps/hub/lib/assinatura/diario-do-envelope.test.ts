@@ -203,6 +203,80 @@ describe("⚠️ payload torto devolve vazio, e nunca lança", () => {
   });
 });
 
+
+// ── OS TRES CONSERTOS DOS REVISORES DA v1.320.0 ───────────────────────────────────────────────
+
+describe("⚠️ o documento é lido nas TRÊS formas, e não só na raiz", () => {
+  // O card do quadro já procurava em `raiz.document`, `data.document` e `event.document`; esta lib
+  // olhava só a primeira. A Clicksign REENVIA o webhook que não recebeu 200, e todo POST grava linha
+  // nova: bastava uma retentativa chegar noutra forma para o painel dizer "0 de 2 assinaram" ao
+  // lado de um card dizendo "1/2". Duas telas, duas verdades, sobre o mesmo envelope.
+  it("acha o documento dentro de `data`", () => {
+    const embrulhado = { data: { document: payloadReal.document } };
+    expect(quemAssinou(embrulhado)).toHaveLength(2);
+    expect(diarioDoEnvelope(embrulhado).length).toBeGreaterThan(0);
+  });
+
+  it("acha o documento dentro de `event`", () => {
+    const embrulhado = { event: { document: payloadReal.document } };
+    expect(quemAssinou(embrulhado)).toHaveLength(2);
+  });
+});
+
+describe("⚠️ quem está no envelope é `document.signers`, e não quem apareceu em evento", () => {
+  // O Panteon corrige e-mail que quicou REMOVENDO o signatário e recriando com o endereço certo.
+  // Depois disso os eventos citam três pessoas num envelope de duas: contar os eventos faria a tela
+  // dizer "1 de 3 assinaram", com um fantasma cobrando um conserto já feito.
+  const fantasma = {
+    data: {
+      signer: {
+        email: "endereco.errado@exemplo.test",
+        key: "ffffffff-0000-0000-0000-000000000000",
+        name: "Otávio Peixoto Lima",
+      },
+    },
+    name: "remove_signer",
+    occurred_at: "2026-09-12T02:23:59.000Z",
+  };
+
+  it("o signatário removido não entra na lista nem no denominador", () => {
+    const pessoas = quemAssinou(comEventosExtras([fantasma]));
+    expect(pessoas).toHaveLength(2);
+    expect(pessoas.map((p) => p.chave)).not.toContain("ffffffff-0000-0000-0000-000000000000");
+  });
+
+  it("mas o fato continua no diário: sumir com ele seria mentir por omissão", () => {
+    const diario = diarioDoEnvelope(comEventosExtras([fantasma]));
+    expect(diario.length).toBeGreaterThan(0);
+  });
+
+  it("sem lista oficial, quem apareceu nos eventos é tudo o que temos", () => {
+    // O `upload` chega com `signers` VAZIO (medido em produção). Mostrar vazio seria pior.
+    const semLista = { document: { ...payloadReal.document, signers: [] } };
+    expect(quemAssinou(semLista).length).toBeGreaterThan(0);
+  });
+});
+
+describe("⚠️ assinatura sem data não conta", () => {
+  // `emIso` devolve "" quando o evento chega sem `occurred_at`. O contador olhava `!== null` e a
+  // linha da tela olhava o valor: o cabeçalho dizia "1 de 2" e a lista mostrava DOIS não-assinantes,
+  // sem ninguém conseguir dizer quem era o 1.
+  it("`sign` sem `occurred_at` não vira assinatura contada", () => {
+    const semData = {
+      document: {
+        ...payloadReal.document,
+        events: [
+          { data: { signer: payloadReal.document.signers[0] }, name: "sign" },
+          ...payloadReal.document.events.filter(
+            (e: { name?: string }) => e.name !== "sign",
+          ),
+        ],
+      },
+    };
+    expect(quemAssinou(semData).filter((p) => p.assinouEm !== null)).toHaveLength(0);
+  });
+});
+
 /** O payload real com eventos a mais, sem tocar na fixture. */
 function comEventosExtras(extras: unknown[]): unknown {
   const documento = payloadReal.document;

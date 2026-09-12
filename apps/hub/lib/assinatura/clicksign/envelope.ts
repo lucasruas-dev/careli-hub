@@ -225,17 +225,7 @@ export async function enviarParaAssinatura(
   const idPorEmail: Record<string, string> = {};
   try {
     for (const pessoa of pedido.signatarios) {
-      const criado = await porta<RespostaComId>(`/envelopes/${envelopeId}/signers`, {
-        corpo: {
-          data: {
-            attributes: atributosDoSignatario(pessoa, pedido.semCpf === true),
-            type: "signers",
-          },
-        },
-        metodo: "POST",
-      });
-      const id = String(criado?.data?.id ?? "");
-      if (!id) throw new Error(`A Clicksign cadastrou ${pessoa.nome} e não devolveu o id.`);
+      const id = await cadastrarSignatario(envelopeId, pessoa, pedido.semCpf === true, porta);
       idPorEmail[pessoa.email.trim().toLowerCase()] = id;
     }
   } catch (e) {
@@ -243,37 +233,11 @@ export async function enviarParaAssinatura(
   }
 
   // ── 4. OS REQUISITOS ──────────────────────────────────────────────────────
-  //
-  // ⚠️ SÃO DOIS POR PESSOA, E OS DOIS SÃO OBRIGATÓRIOS. `agree` diz o QUE a pessoa faz com o
-  // documento (assinar, como parte); `provide_evidence` diz COMO ela prova que é ela. Sem o
-  // segundo, o signatário não tem método de autenticação e o envelope não roda.
   try {
     for (const pessoa of pedido.signatarios) {
       const signerId = idPorEmail[pessoa.email.trim().toLowerCase()];
       if (!signerId) continue;
-
-      for (const attributes of [
-        { action: "agree", role: papelDaClicksign(pessoa.papel) },
-        // ⚠️ `email` É A AUTENTICAÇÃO, e é a escolha certa para contrato imobiliário nesta casa:
-        // é a que o D4Sign já usa hoje e a única que não exige nada do comprador além da caixa de
-        // entrada. As outras 16 (`icp_brasil`, `selfie`, `pix`, `documentscopy`…) custam mais e
-        // travam quem não tem o app na mão — e trava de assinatura vira ligação para o atendimento.
-        { action: "provide_evidence", auth: "email" },
-      ]) {
-        await porta(`/envelopes/${envelopeId}/requirements`, {
-          corpo: {
-            data: {
-              attributes,
-              relationships: {
-                document: { data: { id: documentoId, type: "documents" } },
-                signer: { data: { id: signerId, type: "signers" } },
-              },
-              type: "requirements",
-            },
-          },
-          metodo: "POST",
-        });
-      }
+      await cadastrarRequisitos(envelopeId, { documentoId, papel: pessoa.papel, signerId }, porta);
     }
   } catch (e) {
     return falhar("requisitos", e);
@@ -307,6 +271,78 @@ export async function enviarParaAssinatura(
   }
 
   return { documentoId, envelopeId, nome, ok: true, signatarios: idPorEmail };
+}
+
+// ── OS PASSOS 3 E 4, EM UM LUGAR SÓ ─────────────────────────────────────────
+//
+// ⚠️ ELES SAÍRAM DE DENTRO DO ENVIO PARA PODEREM SER REUSADOS PELA TROCA DE E-MAIL, e não por
+// gosto de função pequena. Acrescentar um signatário a um envelope vivo é EXATAMENTE o passo 3
+// seguido do passo 4 — e uma segunda cópia deste código é o defeito calado descrito abaixo: quem
+// copiasse só o `POST /signers` deixaria a pessoa pendurada no envelope sem nada para assinar.
+//
+// ⚠️ OS DOIS LANÇAM, de propósito. É o contrato interno do envio, cujo `falhar(passo, e)` depende
+// da exceção para saber em que passo parou e se precisa apagar o rascunho. Quem chama de fora usa
+// `acrescentarSignatario`, que embrulha os dois e devolve resultado tipado.
+
+/** Cadastra UMA pessoa no envelope e devolve o id dela. ⚠️ LANÇA — é o corpo do passo 3. */
+async function cadastrarSignatario(
+  envelopeId: string,
+  pessoa: Signatario,
+  semCpf: boolean,
+  porta: PortaDaClicksign,
+): Promise<string> {
+  const criado = await porta<RespostaComId>(`/envelopes/${envelopeId}/signers`, {
+    corpo: {
+      data: {
+        attributes: atributosDoSignatario(pessoa, semCpf),
+        type: "signers",
+      },
+    },
+    metodo: "POST",
+  });
+  const id = String(criado?.data?.id ?? "");
+  if (!id) throw new Error(`A Clicksign cadastrou ${pessoa.nome} e não devolveu o id.`);
+  return id;
+}
+
+/**
+ * Os DOIS requisitos de uma pessoa. ⚠️ LANÇA — é o corpo do passo 4.
+ *
+ * ⚠️ SÃO DOIS POR PESSOA, E OS DOIS SÃO OBRIGATÓRIOS. `agree` diz o QUE a pessoa faz com o
+ * documento (assinar, como parte); `provide_evidence` diz COMO ela prova que é ela. Sem o segundo,
+ * o signatário não tem método de autenticação e o envelope não roda.
+ *
+ * ⚠️ E ESTA É A FALHA QUE NÃO APARECE. Um signatário criado SEM os requisitos recebe o convite,
+ * abre o documento e não tem o que assinar — o envelope nunca fecha, e não há erro em lugar nenhum
+ * para explicar por quê.
+ */
+async function cadastrarRequisitos(
+  envelopeId: string,
+  alvo: { documentoId: string; papel: PapelNoContrato; signerId: string },
+  porta: PortaDaClicksign,
+): Promise<void> {
+  for (const attributes of [
+    { action: "agree", role: papelDaClicksign(alvo.papel) },
+    // ⚠️ `email` É A AUTENTICAÇÃO, e é a escolha certa para contrato imobiliário nesta casa:
+    // é a que o D4Sign já usa hoje e a única que não exige nada do comprador além da caixa de
+    // entrada. As outras 16 (`icp_brasil`, `selfie`, `pix`, `documentscopy`…) custam mais e
+    // travam quem não tem o app na mão — e trava de assinatura vira ligação para o atendimento.
+    { action: "provide_evidence", auth: "email" },
+  ]) {
+    await porta(`/envelopes/${envelopeId}/requirements`, {
+      corpo: {
+        data: {
+          attributes,
+          relationships: {
+            document: { data: { id: alvo.documentoId, type: "documents" } },
+            signer: { data: { id: alvo.signerId, type: "signers" } },
+          },
+          type: "requirements",
+        },
+      },
+      metodo: "POST",
+    });
+  }
 }
 
 // ── A LEITURA DO ESTADO REAL ────────────────────────────────────────────────
@@ -506,6 +542,273 @@ export async function cancelarEnvelope(
       requestId: e instanceof FalhaDaClicksign ? e.erro.requestId : null,
     };
   }
+}
+
+// ── A TROCA DE SIGNATÁRIO E O REENVIO DO CONVITE ────────────────────────────
+//
+// ⚠️ ELAS EXISTEM POR UM CASO MEDIDO EM PRODUÇÃO (12/09/2026). O contrato foi para dois
+// signatários; o convite do segundo voltou — HardBounce, `550 5.1.1 The email account that you
+// tried to reach does not exist` —, porque o endereço tinha uma letra a menos. A compradora assinou,
+// o cônjuge nunca recebeu nada, e o envelope não tinha como fechar. Lucas, no mesmo dia: *"teria que
+// ter um forma de editarmos o e-mail e enviar o contrato dele somente"* e *"ocorre muito do e-mail
+// esta correto mais o cliente nao recebeu, ae teria que ter um botao para reenviar o contrato"*.
+//
+// ⚠️ AS DUAS MEXEM EM ENVELOPE VIVO, DA CONTA DE PRODUÇÃO. Nada aqui é rascunho: o envelope está
+// `running`, com gente assinando do outro lado. Por isso as duas NUNCA LANÇAM e devolvem o status —
+// quem orquestra (`lib/temis/trocar-signatario.ts`) precisa distinguir os desfechos para saber se
+// pode continuar, e a diferença entre eles é o que decide se um contrato fecha ou fica pendurado.
+
+/** O que sai de uma remoção que deu certo. */
+export type SignatarioRemovido = { ok: true };
+
+export type FalhaAoRemoverSignatario = {
+  erro: string;
+  /**
+   * ⚠️ 403 = A CLICKSIGN RECUSOU PORQUE A PESSOA JÁ ASSINOU, e esta é a trava principal da troca —
+   * do lado DELES, não do nosso: *"Já assinou um documento. Não pode ser excluído"*. O endpoint só
+   * remove quem NÃO iniciou o processo de assinatura.
+   *
+   * ⚠️ POR ISSO ELE VIAJA SEPARADO DO RESTO. Virar "falhou ao remover" genérico faria a tela mandar
+   * tentar de novo uma operação que a API vai recusar para sempre — e o caminho de quem já assinou
+   * não é trocar o e-mail, é outro contrato.
+   */
+  jaAssinou: boolean;
+  /** 404 = este signatário não está neste envelope (ou já foi removido). */
+  naoEncontrado: boolean;
+  ok: false;
+  /** `X-Request-Id` da Clicksign — é o que o suporte deles pede. */
+  requestId: null | string;
+  /** O status HTTP. `0` quando não houve resposta nenhuma (timeout, rede, env faltando). */
+  status: number;
+};
+
+export type ResultadoDaRemocao = FalhaAoRemoverSignatario | SignatarioRemovido;
+
+/**
+ * TIRA UM SIGNATÁRIO DO ENVELOPE — `DELETE /envelopes/{id}/signers/{signer_id}`.
+ *
+ * A doc (conferida em 12/09/2026) dá quatro desfechos: 204 removido, 403 *"Já assinou um documento.
+ * Não pode ser excluído"*, 404 e 503. Funciona com o envelope em `running`, que é o único estado em
+ * que isto é usado.
+ *
+ * ⚠️ É O PONTO SEM VOLTA DA TROCA DE E-MAIL. Removido, o signatário não volta: quem chama tem de
+ * recriá-lo em seguida, e uma falha depois daqui deixa a pessoa FORA de um envelope que não fecha
+ * mais sozinho. Ver a sequência inteira em `lib/temis/trocar-signatario.ts`.
+ *
+ * ⚠️ NUNCA LANÇA — como o cancelamento. Quem chama decide, e aqui a decisão depende do 403.
+ */
+export async function removerSignatario(
+  envelopeId: string,
+  signerId: string,
+  porta: PortaDaClicksign = chamar,
+): Promise<ResultadoDaRemocao> {
+  const envelope = envelopeId.trim();
+  const signer = signerId.trim();
+
+  // ⚠️ SEM OS DOIS IDS NÃO SE CHAMA NADA, pelo mesmo motivo do cancelamento: `DELETE
+  // /envelopes/{id}/signers/` (com o signer vazio) bate na COLEÇÃO de signatários, e não na pessoa.
+  // Uma resposta boa dali seria lida aqui como "removido" — e o passo seguinte recriaria alguém que
+  // nunca saiu, deixando DOIS signatários com o mesmo nome no envelope.
+  if (!envelope || !signer) {
+    return {
+      erro: "Sem o id do envelope e o do signatário não dá para remover ninguém na Clicksign.",
+      jaAssinou: false,
+      naoEncontrado: false,
+      ok: false,
+      requestId: null,
+      status: 0,
+    };
+  }
+
+  try {
+    await porta(`/envelopes/${envelope}/signers/${signer}`, { metodo: "DELETE" });
+    return { ok: true };
+  } catch (e) {
+    const falha = e instanceof FalhaDaClicksign ? e : null;
+    const status = falha?.erro.status ?? 0;
+    return {
+      erro: detalheDaFalha(e),
+      jaAssinou: status === 403,
+      naoEncontrado: status === 404,
+      ok: false,
+      requestId: falha?.erro.requestId ?? null,
+      status,
+    };
+  }
+}
+
+/** O que sai de uma notificação que deu certo. */
+export type ConviteNotificado = { ok: true };
+
+export type FalhaAoNotificar = {
+  erro: string;
+  /**
+   * ⚠️ 429 = O TETO DE ENVIO, E "ESPERE UM MINUTO" NÃO É "DEU ERRO". A doc indica cerca de UMA
+   * notificação por minuto por endpoint, e o botão de reenviar convite é exatamente o que alguém
+   * clica duas vezes quando o cliente diz que não recebeu. Misturar o teto com falha de verdade
+   * faria a tela mandar conferir a Clicksign quando o que resolve é esperar.
+   */
+  limiteDeEnvio: boolean;
+  ok: false;
+  /** `X-Request-Id` da Clicksign — é o que o suporte deles pede. */
+  requestId: null | string;
+  /** O status HTTP. `0` quando não houve resposta nenhuma (timeout, rede, env faltando). */
+  status: number;
+};
+
+export type ResultadoDaNotificacao = ConviteNotificado | FalhaAoNotificar;
+
+/**
+ * MANDA O CONVITE DE NOVO, SÓ PARA ESTA PESSOA —
+ * `POST /envelopes/{id}/signers/{signer_id}/notifications`.
+ *
+ * ⚠️ É DIFERENTE DO `POST /envelopes/{id}/notifications` DO PASSO 6 DO ENVIO, e a diferença é o
+ * ponto: aquele avisa TODO MUNDO. Num envelope em que a compradora já assinou, reenviar para todos
+ * põe na caixa de entrada dela um convite de um contrato que ela já assinou — e é o tipo de e-mail
+ * que gera ligação para o atendimento. Lucas, 12/09/2026: *"enviar o contrato dele somente"*.
+ *
+ * ⚠️ `mensagem` É OPCIONAL NA DOC, e vazia a Clicksign usa a mensagem padrão dela — que é a mesma
+ * que o convite original levou. Mandar o campo vazio seria trocar o texto conhecido por um branco.
+ *
+ * ⚠️ NUNCA LANÇA. Ver a nota da remoção.
+ */
+export async function notificarSignatario(
+  envelopeId: string,
+  signerId: string,
+  mensagem?: string,
+  porta: PortaDaClicksign = chamar,
+): Promise<ResultadoDaNotificacao> {
+  const envelope = envelopeId.trim();
+  const signer = signerId.trim();
+
+  // Sem os dois ids a chamada bateria em outra rota — ver a nota da remoção.
+  if (!envelope || !signer) {
+    return {
+      erro: "Sem o id do envelope e o do signatário não dá para reenviar o convite na Clicksign.",
+      limiteDeEnvio: false,
+      ok: false,
+      requestId: null,
+      status: 0,
+    };
+  }
+
+  const texto = mensagem?.trim() ?? "";
+
+  try {
+    await porta(`/envelopes/${envelope}/signers/${signer}/notifications`, {
+      corpo: {
+        data: {
+          attributes: texto ? { message: texto } : {},
+          type: "notifications",
+        },
+      },
+      metodo: "POST",
+    });
+    return { ok: true };
+  } catch (e) {
+    const falha = e instanceof FalhaDaClicksign ? e : null;
+    const status = falha?.erro.status ?? 0;
+    return {
+      erro: detalheDaFalha(e),
+      // ⚠️ O 429 DELES VOLTA EM TEXTO PURO, não em JSON:API — medido no estudo e tratado em
+      // `chamar`, que preserva o status mesmo quando o corpo não é JSON. É por isso que a régua aqui
+      // é o STATUS, e não o texto da mensagem.
+      limiteDeEnvio: status === 429,
+      ok: false,
+      requestId: falha?.erro.requestId ?? null,
+      status,
+    };
+  }
+}
+
+export type SignatarioAcrescentado = { ok: true; signerId: string };
+
+export type FalhaAoAcrescentar = {
+  erro: string;
+  ok: false;
+  /**
+   * Em que passo parou — e os dois desfechos são MUITO diferentes.
+   *
+   * ⚠️ `signatario`: ninguém entrou, o envelope ficou como estava. `requisitos`: a pessoa ENTROU no
+   * envelope sem ter o que assinar — o convite chega, ela abre, não há nada para fazer, e o
+   * envelope nunca fecha. Quem chama precisa dizer isso em português, porque é o desfecho que
+   * exige alguém agir.
+   */
+  passo: "requisitos" | "signatario";
+  /** `X-Request-Id` da Clicksign — é o que o suporte deles pede. */
+  requestId: null | string;
+  /** O signatário criado, quando a falha foi nos requisitos. `null` = nada foi criado. */
+  signerId: null | string;
+  /** O status HTTP. `0` quando não houve resposta nenhuma (timeout, rede, env faltando). */
+  status: number;
+};
+
+export type ResultadoDoAcrescimo = FalhaAoAcrescentar | SignatarioAcrescentado;
+
+/**
+ * PÕE UMA PESSOA NUM ENVELOPE QUE JÁ ESTÁ RODANDO — o passo 3 e o passo 4 do envio, nesta ordem.
+ *
+ * ⚠️ É A MESMA PEÇA DO ENVIO, E ISSO É O PONTO. Ela chama `cadastrarSignatario` e
+ * `cadastrarRequisitos`, os mesmos que os passos 3 e 4 usam: o dia em que o requisito mudar, muda
+ * nos dois. Uma segunda implementação aqui produziria o defeito calado de sempre — signatário no
+ * envelope, sem nada para assinar.
+ *
+ * ⚠️ NUNCA LANÇA, e devolve em que passo parou. Ver a nota de `passo`.
+ */
+export async function acrescentarSignatario(
+  envelopeId: string,
+  alvo: { documentoId: string; pessoa: Signatario; semCpf?: boolean },
+  porta: PortaDaClicksign = chamar,
+): Promise<ResultadoDoAcrescimo> {
+  const envelope = envelopeId.trim();
+  const documentoId = alvo.documentoId.trim();
+
+  // ⚠️ SEM O ID DO DOCUMENTO NÃO SE CRIA NINGUÉM. O requisito aponta para o documento, e criar o
+  // signatário primeiro para descobrir depois que o documento não é conhecido deixaria exatamente a
+  // pessoa pendurada que esta função existe para evitar. Quem chama confere ANTES — ver
+  // `lib/temis/trocar-signatario.ts`, que barra a troca quando `provedor_documento_id` está nulo.
+  if (!envelope || !documentoId) {
+    return {
+      erro: "Sem o id do envelope e o do documento não dá para acrescentar signatário na Clicksign.",
+      ok: false,
+      passo: "signatario",
+      requestId: null,
+      signerId: null,
+      status: 0,
+    };
+  }
+
+  let signerId = "";
+  try {
+    signerId = await cadastrarSignatario(envelope, alvo.pessoa, alvo.semCpf === true, porta);
+  } catch (e) {
+    const falha = e instanceof FalhaDaClicksign ? e : null;
+    return {
+      erro: detalheDaFalha(e),
+      ok: false,
+      passo: "signatario",
+      requestId: falha?.erro.requestId ?? null,
+      signerId: null,
+      status: falha?.erro.status ?? 0,
+    };
+  }
+
+  try {
+    await cadastrarRequisitos(envelope, { documentoId, papel: alvo.pessoa.papel, signerId }, porta);
+  } catch (e) {
+    const falha = e instanceof FalhaDaClicksign ? e : null;
+    return {
+      erro: detalheDaFalha(e),
+      ok: false,
+      passo: "requisitos",
+      requestId: falha?.erro.requestId ?? null,
+      // O id vai junto: é por ele que se conserta à mão o que ficou pela metade.
+      signerId,
+      status: falha?.erro.status ?? 0,
+    };
+  }
+
+  return { ok: true, signerId };
 }
 
 /**

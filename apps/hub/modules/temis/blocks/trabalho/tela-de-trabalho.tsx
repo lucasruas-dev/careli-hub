@@ -12,9 +12,11 @@ import {
   Mail,
   MailCheck,
   MailX,
+  Pencil,
+  RefreshCw,
   Undo2,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AnaliseDoTrabalho, CampoDaAnalise } from "@/lib/temis/analise-do-trabalho";
 import type { DescontoDaProposta } from "@/lib/temis/comercial-da-analise";
@@ -736,7 +738,11 @@ export function TelaDeTrabalho({
                 <LinhaDoEnvelope desde={card.estagio_desde} envelopeVivo={envelopeVivo} />
               ) : null}
               {assinatura ? (
-                <PainelDaAssinatura assinatura={assinatura} />
+                // ⚠️ `carregar`, E NÃO `aoMudar`: os dois botões da linha do signatário mexem no
+                // envelope e NÃO mexem na etapa do card. Quem precisa reler é ESTA tela — é ela que
+                // desenha o e-mail novo e o convite recém-mandado. Subir pelo quadro recarregaria a
+                // lista de cards e deixaria o painel aberto mostrando o e-mail antigo.
+                <PainelDaAssinatura aoRecarregar={carregar} assinatura={assinatura} />
               ) : (
                 <EmConstrucao
                   oQueVem="Não há signatários para mostrar nesta venda: ou o card chegou aqui sem envelope, ou o envelope ainda não devolveu nenhum evento. Continuam por vir a tela de monitoramento e o botão de cobrar pela Íris."
@@ -1805,7 +1811,14 @@ function LinhaDoEnvelope({
  * recarrega ao abrir — a casa já pagou caro por polling (o Hermes), e um envelope que anda em
  * dias não justifica um relógio. Quem quiser o estado de agora fecha e abre o card.
  */
-function PainelDaAssinatura({ assinatura }: { assinatura: AssinaturaDoCard }) {
+function PainelDaAssinatura({
+  aoRecarregar,
+  assinatura,
+}: {
+  /** Relê o card depois de um conserto, para a lista refletir o e-mail novo. */
+  aoRecarregar: () => Promise<void>;
+  assinatura: AssinaturaDoCard;
+}) {
   const signatarios = assinatura.envelope.signatarios;
   const naoEntregues = signatarios.filter((s) => s.convite === "nao_entregue").length;
 
@@ -1849,7 +1862,15 @@ function PainelDaAssinatura({ assinatura }: { assinatura: AssinaturaDoCard }) {
 
         <ul className="m-0 mt-2 grid list-none gap-1 p-0">
           {signatarios.map((s) => (
-            <LinhaDoSignatario key={s.chave} signatario={s} />
+            <LinhaDoSignatario
+              aoRecarregar={aoRecarregar}
+              // ⚠️ O ENVELOPE VEM DE CIMA, E É O DA CLICKSIGN. É o id que as duas rotas de conserto
+              // pedem; o uuid da nossa linha de `temis_envelopes` não serve para nada do lado de lá.
+              // Quando ele é `null`, a linha não oferece botão nenhum.
+              envelopeId={assinatura.envelope.envelopeId}
+              key={s.chave}
+              signatario={s}
+            />
           ))}
         </ul>
       </Bloco>
@@ -1916,11 +1937,154 @@ function PainelDaAssinatura({ assinatura }: { assinatura: AssinaturaDoCard }) {
   );
 }
 
-/** Uma pessoa do envelope: nome, papel, e-mail e em que pé ela está. */
-function LinhaDoSignatario({ signatario }: { signatario: SignatarioNaTela }) {
+/**
+ * Uma pessoa do envelope: nome, papel, e-mail, em que pé ela está — e os dois consertos.
+ *
+ * ⚠️ OS BOTÕES MORAM AQUI, NA LINHA DA PESSOA, e não numa barra da etapa. O que se conserta é o
+ * convite DE ALGUÉM: o e-mail errado é o de um signatário, e o reenvio é para um endereço só. Uma
+ * ação da etapa precisaria perguntar "de quem?" depois do clique — e num envelope de produção a
+ * pergunta seria respondida por um seletor, em vez de pelo dedo em cima da linha que está pintada
+ * de vermelho.
+ *
+ * ⚠️ "CORRIGIR O E-MAIL" SÓ APARECE PARA QUEM NÃO ASSINOU, e isso não é enfeite: a Clicksign
+ * RECUSA remover um signatário que já assinou (403, "Já assinou um documento. Não pode ser
+ * excluído"). Um botão que sempre falha é pior do que botão nenhum — ele convida ao clique e
+ * devolve um erro que parece defeito nosso.
+ *
+ * ⚠️ "REENVIAR CONVITE" CONTINUA PARA TODOS, de propósito. Ele não é destrutivo (é o mesmo convite
+ * outra vez) e o caso do Lucas é justamente o do e-mail CERTO — *"ocorre muito do e-mail esta
+ * correto mais o cliente nao recebeu"* (12/09/2026). Esconder o reenvio de quem já assinou custaria
+ * mais do que deixá-lo: quem já assinou não pede reenvio, e a régua extra erraria no dia em que a
+ * lista viesse sem o carimbo.
+ *
+ * ⚠️ E SEM `envelopeId`, OU COM UMA `chave` QUE É E-MAIL, NÃO HÁ BOTÃO. As duas rotas de conserto
+ * falam com a Clicksign por id: sem o id do envelope não há para onde mandar, e a `chave` cai no
+ * e-mail quando o `signer.key` não veio nos eventos (ver o tipo `SignatarioNaTela`) — mandar um
+ * e-mail no lugar do `signer_id` é um 404 garantido, com o operador achando que o sistema quebrou.
+ */
+function LinhaDoSignatario({
+  aoRecarregar,
+  envelopeId,
+  signatario,
+}: {
+  aoRecarregar: () => Promise<void>;
+  envelopeId: null | string;
+  signatario: SignatarioNaTela;
+}) {
   const papel = papelNaLinha(signatario.papel);
   const estado = estadoDoSignatario(signatario);
   const Icone = estado.icone;
+
+  /**
+   * Qual chamada está no ar. `null` = nenhuma.
+   *
+   * ⚠️ ELE TRAVA OS DOIS BOTÕES, E NÃO SÓ O CLICADO. A troca são até quatro chamadas HTTP em
+   * sequência contra um envelope pago — remover, recriar, os dois requisitos — e um segundo clique
+   * faria a REMOÇÃO acontecer duas vezes: a segunda passada apagaria o signatário que a primeira
+   * acabou de criar.
+   */
+  const [acaoNoAr, setAcaoNoAr] = useState<null | "reenviar" | "trocar">(null);
+  /**
+   * A MESMA TRAVA, AGORA SEM DEPENDER DO RENDER.
+   *
+   * ⚠️ O `disabled` DO BOTÃO SÓ VALE DEPOIS QUE O REACT REDESENHA, e a trava que importa aqui é
+   * contra o clique que chega ANTES disso. Um segundo `trocar_email` que passe faz a REMOÇÃO
+   * acontecer duas vezes num envelope de produção: a segunda passada apaga o signatário que a
+   * primeira acabou de criar, e aí a pessoa fica fora do contrato sem ninguém ver erro nenhum. Um
+   * `ref` muda no ato do clique, e é isso que o estado não garante.
+   */
+  const noArRef = useRef(false);
+  const [corrigindo, setCorrigindo] = useState(false);
+  /** Começa VAZIO e é preenchido ao abrir o campo, com o e-mail que está no envelope AGORA. */
+  const [emailNovo, setEmailNovo] = useState("");
+  const [erro, setErro] = useState<null | string>(null);
+  /** O que deu certo, ou o pedido de esperar um minuto. Some no próximo clique. */
+  const [recado, setRecado] = useState<null | string>(null);
+
+  const signerId = signatario.chave;
+  const emailAtual = (signatario.email ?? "").trim();
+  const podeMexer = envelopeId !== null && !signerId.includes("@");
+  const emailLimpo = emailNovo.trim();
+
+  const executar = async (
+    corpo: { acao: "reenviar" } | { acao: "trocar_email"; email: string },
+  ): Promise<void> => {
+    if (envelopeId === null) return;
+    if (noArRef.current) return;
+    noArRef.current = true;
+    setErro(null);
+    setRecado(null);
+    setAcaoNoAr(corpo.acao === "reenviar" ? "reenviar" : "trocar");
+    try {
+      const token = await getApoloAccessToken();
+      const r = await fetch("/api/temis/assinatura/signatario", {
+        body: JSON.stringify({ ...corpo, envelopeId, signerId }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const j = (await r.json().catch(() => ({}))) as {
+        data?: { aviso?: null | string };
+        erro?: string;
+        removido?: boolean;
+      };
+      if (!r.ok) {
+        // ⚠️ O TETO DE UM POR MINUTO NÃO É ERRO, E NÃO SE PINTA DE VERMELHO. A Clicksign limita as
+        // notificações a cerca de uma por minuto por endpoint; quem clicou duas vezes não fez nada
+        // errado, e o conserto é esperar. Escrever "erro" ali mandaria o operador procurar defeito
+        // — ou, pior, voltar o card para a análise e cancelar um envelope que está inteiro.
+        if (r.status === 429) {
+          setRecado(
+            "A Clicksign aceita cerca de um convite por minuto para cada pessoa. Espere um minuto e clique de novo.",
+          );
+          return;
+        }
+        // ⚠️ A FRASE DO SERVIDOR SOBE INTEIRA. É ela que distingue "esta pessoa já assinou e a
+        // Clicksign recusa removê-la" de uma falha de rede — e a primeira não adianta tentar de
+        // novo.
+        setErro(j.erro ?? `Não consegui concluir (${r.status}).`);
+        // ⚠️ MESMO NA FALHA, SE A REMOÇÃO JÁ PASSOU A LISTA PRECISA SER RELIDA. O signatário antigo
+        // não está mais no envelope: deixar a linha velha na tela faria o operador tentar de novo
+        // sobre uma pessoa que não existe mais do lado de lá.
+        if (j.removido === true) await aoRecarregar();
+        return;
+      }
+      if (corpo.acao === "reenviar") {
+        setRecado("Convite reenviado.");
+      } else {
+        // ⚠️ O `aviso` VEM NO 200, E É ELE QUE CONTA A METADE QUE FALTOU. A troca deu certo (a pessoa
+        // está no envelope, com os dois requisitos), mas o convite pode não ter saído — e sem esta
+        // frase o operador leria "convite mandado" sobre um e-mail que não foi. Ele não é erro: o
+        // caminho é o botão de reenviar, não o de trocar de novo.
+        const aviso = j.data?.aviso ?? null;
+        setRecado(
+          aviso
+            ? `E-mail corrigido no envelope. ${aviso}`
+            : "E-mail corrigido e convite mandado para o endereço novo.",
+        );
+        setCorrigindo(false);
+      }
+      // ⚠️ RECARREGA O CARD DEPOIS DO SUCESSO. Na troca, o signatário antigo deixou de existir no
+      // envelope e o novo tem outra `signer.key`: sem reler, a linha continuaria mostrando o
+      // endereço errado que acabou de ser removido.
+      await aoRecarregar();
+    } catch {
+      // ⚠️ "NÃO FALEI COM O SERVIDOR" NÃO É "NADA ACONTECEU" — NÃO NA TROCA. A rota tem teto de 60s
+      // e a remoção é o PRIMEIRO passo dela: uma conexão que cai (ou um timeout da Vercel, que chega
+      // aqui como erro de JSON — [[reference_vercel_timeout_vira_erro_de_json]]) pode ter deixado o
+      // signatário antigo já fora do envelope. Mandar "tente de novo" seco faria o operador clicar
+      // mais uma vez sem saber o que já foi feito. O reenviar é o outro caso: ele não mexe em nada,
+      // e repetir é seguro.
+      setErro(
+        corpo.acao === "reenviar"
+          ? "Não consegui falar com o servidor. O envelope continua como estava — tente de novo."
+          : "Não consegui falar com o servidor, e a troca pode ter começado do lado da Clicksign. NÃO clique de novo: atualize a tela e confira a lista de signatários antes de tentar outra vez.",
+      );
+      if (corpo.acao === "trocar_email") await aoRecarregar();
+    } finally {
+      noArRef.current = false;
+      setAcaoNoAr(null);
+    }
+  };
 
   return (
     <li
@@ -1958,6 +2122,115 @@ function LinhaDoSignatario({ signatario }: { signatario: SignatarioNaTela }) {
 
       {estado.detalhe ? (
         <p className="m-0 mt-0.5 break-words text-[10.5px] text-ink-soft">{estado.detalhe}</p>
+      ) : null}
+
+      {podeMexer ? (
+        <div className="mt-1.5 grid gap-1.5">
+          {corrigindo ? (
+            <div className="grid gap-1.5 rounded-lg border border-line bg-subtle px-2 py-2">
+              {/* ⚠️ A FRASE VEM ANTES DO CAMPO, e é ela que faz o campo ser uma confirmação e não
+                  um formulário de cadastro. O que acontece no clique não se adivinha pelo rótulo:
+                  a pessoa é REMOVIDA do envelope de produção e recriada. Quem lê "editar e-mail"
+                  imagina um UPDATE; o que existe do lado de lá é um DELETE seguido de um POST. */}
+              <p className="m-0 text-[10.5px] text-ink-soft">
+                O signatário atual sai do envelope e entra de novo com o e-mail corrigido, e só ele
+                recebe o convite. Quem já assinou não é tocado.
+              </p>
+              <input
+                autoComplete="off"
+                className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] text-ink outline-none focus:border-line-strong"
+                disabled={acaoNoAr !== null}
+                inputMode="email"
+                onChange={(e) => setEmailNovo(e.target.value)}
+                placeholder="email@dominio.com.br"
+                type="email"
+                value={emailNovo}
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-[11px] font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-50"
+                  // ⚠️ O MESMO E-MAIL NÃO PASSA DAQUI, e a recusa manda para o botão certo: trocar
+                  // um endereço por ele mesmo removeria a pessoa do envelope para recriá-la igual.
+                  // Quando o endereço está certo e o cliente não recebeu, o caminho é "Reenviar
+                  // convite" — Lucas, 12/09/2026.
+                  disabled={acaoNoAr !== null || emailLimpo === "" || emailLimpo === emailAtual}
+                  onClick={() => void executar({ acao: "trocar_email", email: emailLimpo })}
+                  title={
+                    emailLimpo === emailAtual && emailLimpo !== ""
+                      ? "Este é o mesmo e-mail que já está no envelope. Para mandar de novo para ele, use Reenviar convite."
+                      : undefined
+                  }
+                  type="button"
+                >
+                  {acaoNoAr === "trocar" ? (
+                    <Loader2 aria-hidden="true" className="size-3 animate-spin" />
+                  ) : (
+                    <Pencil aria-hidden="true" className="size-3" />
+                  )}
+                  {acaoNoAr === "trocar" ? "Trocando…" : "Confirmo: trocar e enviar"}
+                </button>
+                <button
+                  className="inline-flex items-center rounded-lg px-2 py-1.5 text-[11px] font-semibold text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
+                  disabled={acaoNoAr !== null}
+                  onClick={() => {
+                    setCorrigindo(false);
+                    setErro(null);
+                  }}
+                  type="button"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {/* ⚠️ UM CLIQUE, SEM CONFIRMAÇÃO. Reenviar não desfaz nada: é o mesmo convite indo de
+                  novo para o mesmo endereço. Pedir confirmação aqui ensinaria a confirmar sem ler —
+                  e a confirmação que PRECISA ser lida é a da troca, logo ao lado. */}
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-semibold text-ink-soft transition-colors hover:text-ink disabled:opacity-50"
+                disabled={acaoNoAr !== null}
+                onClick={() => void executar({ acao: "reenviar" })}
+                type="button"
+              >
+                {acaoNoAr === "reenviar" ? (
+                  <Loader2 aria-hidden="true" className="size-3 animate-spin" />
+                ) : (
+                  <RefreshCw aria-hidden="true" className="size-3" />
+                )}
+                {acaoNoAr === "reenviar" ? "Reenviando…" : "Reenviar convite"}
+              </button>
+
+              {signatario.assinouEm ? null : (
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-semibold text-ink-soft transition-colors hover:text-ink disabled:opacity-50"
+                  disabled={acaoNoAr !== null}
+                  onClick={() => {
+                    setErro(null);
+                    setRecado(null);
+                    // O campo nasce com o que está no envelope AGORA: o normal é corrigir uma
+                    // letra, e digitar o endereço inteiro de novo é como se erra de novo.
+                    setEmailNovo(emailAtual);
+                    setCorrigindo(true);
+                  }}
+                  type="button"
+                >
+                  <Pencil aria-hidden="true" className="size-3" />
+                  Corrigir o e-mail
+                </button>
+              )}
+            </div>
+          )}
+
+          {recado ? (
+            <p className="m-0 break-words text-[10.5px] font-medium text-ink-soft">{recado}</p>
+          ) : null}
+          {erro ? (
+            <p className="m-0 break-words text-[10.5px] font-medium text-rose-700 dark:text-rose-300">
+              {erro}
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </li>
   );
@@ -1999,7 +2272,11 @@ function estadoDoSignatario(signatario: SignatarioNaTela): {
           ? `O convite voltou em ${momento(signatario.conviteQuando)}.`
           : "O convite voltou.",
         signatario.conviteDetalhe,
-        "Esta assinatura não chega sozinha: volte o card para a análise, corrija o e-mail e mande de novo.",
+        // ⚠️ A FRASE MUDOU EM 12/09/2026, E O CONSELHO ANTIGO FICOU CARO. Ela mandava voltar o card
+        // para a análise — o que CANCELA o envelope de produção e obriga quem já assinou a assinar
+        // de novo. Desde que a linha ganhou "Corrigir o e-mail", o conserto é aqui e não toca em
+        // quem já assinou; voltar para a análise continua existindo, mas para mudar o CONTRATO.
+        "Esta assinatura não chega sozinha: corrija o e-mail aqui embaixo e o convite sai de novo só para esta pessoa.",
       ]
         .filter(Boolean)
         .join(" "),
