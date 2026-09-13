@@ -36,6 +36,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-13-faixa-de-prazo-e-nota-do-ajuste",
+    deployedAt: "2026-09-13T14:08:38-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**Mexeu no valor do lote, a tela pergunta por qu\u00ea.** A caixa aparece quando o pre\u00e7o deixa de ser o da tabela e some quando volta, mostrando *de quanto para quanto* logo acima do campo. Obrigat\u00f3ria no desconto.",
+              "**D\u00e1 para escolher a data de cada parcela da entrada.** Em branco, vale a calculada \u2014 m\u00eas a m\u00eas, como sempre foi.",
+              "**D\u00e1 para alterar os juros e a corre\u00e7\u00e3o** na hora de montar a proposta. Alterou, a mesma caixa de nota abre.",
+              "**A taxa aparece com as casas do cadastro.** A tela dizia \"0,64% ao m\u00eas\" e, seis linhas abaixo, \"0,6434% a.m.\" \u2014 os dois n\u00fameros na mesma tela.",
+              "**A tabela de reajuste no documento virou opcional**, e nasce DESMARCADA. \u26a0\ufe0f Isso muda o que vinha acontecendo: ela saia em toda proposta. Marque a caixa se quiser que ela continue indo.",
+            ],
+            screen: "Venda \u00b7 Gerar proposta",
+          },
+          {
+            items: [
+              "**Faixas de prazo**, no topo da aba de planos: cadastre de uma vez que plano de 1 a 12 parcelas n\u00e3o tem juros, que de 13 a 36 corrige por IPCA, e assim por diante. Ao montar um plano, o sistema busca sozinho a faixa em que o prazo dele cabe.",
+              "**Doze \u00edndices de corre\u00e7\u00e3o cadastrados** (IPCA, INCC-M e INCC-DI, IGP-M e IGP-DI, INPC, poupan\u00e7a, TR, CUB). Os que o sistema ainda n\u00e3o sabe buscar sozinho aparecem marcados **valor manual** na hora de escolher.",
+            ],
+            screen: "Empreendimento \u00b7 Planos comerciais",
+          },
+        ],
+      },
+    ],
+    rollback: "af4e9925",
+    technical: {
+      done: "\u26a0\ufe0f DOIS DEFEITOS VIVOS CONSERTADOS, e nenhum dos dois foi pedido. (1) O JARDIM DAS GERAIS ESTAVA VENDENDO COM \"SEM CORRE\u00c7\u00c3O\" NA TELA: o C2X tem SEIS \u00edndices e o tradutor do Panteon mapeava CINCO \u2014 `POUPAN\u00c7A`, criada no legado em 29/08, caia no `?? SEM_CORRECAO` em sil\u00eancio, e o plano NORMAL do JDG (`vendendo = true`, 120x) \u00e9 corrigido por ela. Conferido byte a byte contra o nome do legado. (2) O ESPELHO P\u00daBLICO tinha uma quinta c\u00f3pia da lista de \u00edndices, ERRADA: aceitava `INCC_ANUAL` e `INCC_MENSAL`, que o banco nunca aceitou, e recusava `INCC_M_MENSAL`, o \u00fanico que o CHECK admitia e o que o C2X usa em 96 planos. || A LISTA DE \u00cdNDICES VIVIA COPIADA EM SEIS LUGARES (quatro no c\u00f3digo, uma no espelho e o CHECK da 0111) e elas J\u00c1 discordavam. Migration 0154: tabela `temis_indices` com 12 linhas, cada uma declarando a FONTE do n\u00famero (`bcb_sgs`, `ibge_sidra` ou `manual`) \u2014 \u00edndice que o sistema n\u00e3o sabe buscar vira cl\u00e1usula de contrato sem n\u00famero por tr\u00e1s. O CHECK virou FK; as c\u00f3pias viram leitura de uma lista s\u00f3. || A PROPOSTA CONGELAVA O CRONOGRAMA E NUNCA A PREMISSA: guardava as 120 parcelas com data e valor e n\u00e3o guardava com que taxa aquilo tinha sido gerado \u2014 quem quisesse saber depois reencontrava o plano PELO NOME, e a 0143 tirou a unicidade do nome. Agora vai `condicoes.plano` inteiro, e `plano_juros`/`plano_correcao` saem do nulo: TODA proposta do Panteon chegava na an\u00e1lise da T\u00eamis dizendo \"Juros: n\u00e3o informado\". \u26a0\ufe0f A taxa vai na conven\u00e7\u00e3o que a coluna J\u00c1 usa \u2014 medido: das 4.857 linhas do C2X, 1.662 guardam 8 ou 6 (% ao ANO) e ~848 guardam 0,6434 ou 0,7207 (% ao M\u00caS), na MESMA coluna, sem marcador. || A FAIXA DE PRAZO (migration 0155, `temis_faixas_de_prazo`, POR EMPREENDIMENTO por decis\u00e3o do Lucas): vale pelo PRAZO TOTAL do plano, n\u00e3o por trecho do contrato. Sobreposi\u00e7\u00e3o recusada pelo BANCO (`exclude` com `int4range`), que \u00e9 o \u00fanico lugar que pega a corrida entre duas abas. `define_entrada`/`define_juros`/`define_indice` separam \"sem juros\" de \"n\u00e3o opino\" \u2014 confundir os dois ZERARIA os juros do plano. `aplicarPremissa` troca o OBJETO que entra nas contas e n\u00e3o reescreve conta nenhuma. || ISSO FECHA UM BURACO QUE J\u00c1 ESTAVA ABERTO: o corretor escolhia o plano NORMAL (120x, 0,6434%), digitava 40 em Parcelas, e o cronograma saia com a taxa do NORMAL em 40 parcelas \u2014 s\u00f3 a entrada m\u00ednima consultava `cockpit.parcelas`. || AS DATAS DA ENTRADA quebrariam uma invariante: a primeira mensal nascia da CONTAGEM das parcelas da entrada, ent\u00e3o a quarta parcela adiada para daqui a um ano faria o financiamento come\u00e7ar OITO MESES antes do fim da entrada. A r\u00e9gua virou o MAIOR dos dois, e antecipar a entrada N\u00c3O puxa a mensal para tr\u00e1s. 5 testes novos. || \u26a0\ufe0f OS CAMPOS DE JUROS E \u00cdNDICE S\u00d3 EXISTEM NO MODO PROPOSTA: `SimuladorDeProposta` \u00e9 montado DENTRO do espelho p\u00fablico, sem login, e um campo sem essa trava nasceria numa p\u00e1gina de cliente. || AS 4 CASAS: `textoDaTaxa` j\u00e1 existia e j\u00e1 fazia exatamente o pedido \u2014 o PDF a usava desde sempre e s\u00f3 a tela truncava. || DEFEITO MEU, PEGO PELO LINT: o efeito que avisa a modal n\u00e3o listava `datasDaEntrada` nem `premissaAlterada` nas depend\u00eancias; sem elas a data n\u00e3o chegava \u00e0 proposta e a caixa de nota n\u00e3o abria, em sil\u00eancio. || SEGURO COM A TABELA VAZIA: sem faixa cadastrada \u2014 o estado de todos os empreendimentos hoje \u2014 `premissaDoPrazo` devolve nulo e `aplicarPremissa` devolve o MESMO objeto por identidade. A primeira faixa cadastrada \u00e9 que liga o comportamento novo, um empreendimento por vez. || Migrations 0154 e 0155 aplicadas em produ\u00e7\u00e3o com OK do Lucas e conferidas POR OBJETO (RLS ligada sem policy nas duas, `exclude` do tipo certo, FK no lugar do CHECK). typecheck 11/11; 3.767 testes em 253 arquivos (18 novos); lint sem aviso novo. N\u00e3o verificado em tela \u2014 o hub exige login.",
+      motivation:
+        "Lucas (13/09/2026), sobre a gera\u00e7\u00e3o de proposta: *\"quando o coordenador dar desconto, ou aumentar o valor do lote, tem que abrir uma caixa para ele colocar observa\u00e7\u00e3o\"*; *\"temos que dar a op\u00e7\u00e3o de personalizar o vencimento de cada uma das parcelas da entrada\"*; *\"tamb\u00e9m liberar a personaliza\u00e7\u00e3o dos juros e a corre\u00e7\u00e3o\"*; *\"a corre\u00e7\u00e3o tem que trazer com 4 casas decimais quando a mesma tiver isso no cadastro\"*; e a mudan\u00e7a estrutural: *\"em vez de cadastrar os juros e corre\u00e7\u00e3o dentro de um plano, ter um cadastro de juros e corre\u00e7\u00e3o separado por parcelas (...) quando eu montar o plano e falar que aquele plano \u00e9 de x parcelas, automaticamente buscar esses valores correspondente ao n\u00famero de parcelas daquele plano\"*, com *\"a % da entrada nesse comportamento\"* e *\"o corretor pode alterar isso, e novamente, ele altera abre um caixa de nota\"*. Mais o box do reajuste no documento e, respondendo \u00e0s minhas perguntas, *\"Faixa \u00e9 por empreendimento\"*, *\"pode cadastrar todos os \u00edndices usados para esse segmento\"* e *\"deve atualizar sozinho\"*.",
+    },
+    title: "O cadastro conduz a proposta: faixa de prazo, \u00edndices e a nota de quem alterou",
+    type: "novidade",
+    version: "1.327.0",
+  },
+  {
     buildTag: "2026-09-13-buscar-por-cpf-sem-mascara",
     deployedAt: "2026-09-13T11:43:14-03:00",
     modules: [
