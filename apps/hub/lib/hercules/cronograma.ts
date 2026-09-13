@@ -104,6 +104,17 @@ export type CondicoesDoCronograma = {
    * `conferirEntradaMontada`; aqui a lista chega já aprovada, e o cronograma só a agenda.
    */
   entradaParcelas?: null | number[];
+  /**
+   * A DATA de cada parcela da entrada, quando o coordenador escolheu à mão. `AAAA-MM-DD`.
+   *
+   * ⚠️ AUSENTE OU NULO NA POSIÇÃO = A DATA CALCULADA, que é mês a mês a partir da primeira. Lucas
+   * (13/09/2026): *"pode trazer as data no padrão calculado pelo sistema, mas dar opção de escolha
+   * data"*. O padrão continua sendo o de sempre; a data escolhida só sobrepõe onde foi escolhida.
+   *
+   * ⚠️ E ELA MEXE NO INÍCIO DAS MENSAIS. Ver `primeiraMensal` mais abaixo: a série mensal nasce
+   * DEPOIS da última parcela da entrada, e com data livre a última pode não ser mais a última.
+   */
+  entradaDatas?: null | (null | string)[];
   entradaValor: number;
   entradaVezes: number;
   parcelasMensais: number;
@@ -124,7 +135,8 @@ const SO_A_DATA = /^\d{4}-\d{2}-\d{2}$/;
  * `2026-10-10T00:00:00`, `2026-10-10 14:30:00.000` — data COM hora e SEM `Z` e SEM `±HH:MM`.
  * É exatamente o formato que uma coluna `timestamp` (sem `timezone`) do Postgres devolve.
  */
-const DATA_COM_HORA_SEM_FUSO = /^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+const DATA_COM_HORA_SEM_FUSO =
+  /^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
 
 const doisDigitos = (n: number): string => String(n).padStart(2, "0");
 
@@ -184,6 +196,30 @@ function diaDoCalendarioValido(soAData: string): Dia {
  * é este instante em Brasília" devolve de volta a própria data escrita, basta ficar com ela e
  * nunca construir instante nenhum.
  */
+/**
+ * O dia de uma data ESCOLHIDA À MÃO, ou nulo quando ela não é data.
+ *
+ * ⚠️ NÃO LEVANTA ERRO, DE PROPÓSITO — e é a diferença para `diaDaData`. Aquela lê a data da
+ * PRIMEIRA parcela, que é obrigatória: sem ela não há cronograma, e quebrar é o certo. Esta lê uma
+ * data OPCIONAL de uma parcela qualquer da entrada, e um campo pela metade ("2026-1", enquanto a
+ * pessoa ainda digita) tem que cair de volta na data calculada em vez de derrubar a tela inteira.
+ */
+function diaEscolhido(valor: null | string | undefined): null | Dia {
+  const bruto = String(valor ?? "").trim();
+  if (!SO_A_DATA.test(bruto)) return null;
+  try {
+    return diaDoCalendarioValido(bruto);
+  } catch {
+    // `2026-11-31` casa a regex e não existe no calendário.
+    return null;
+  }
+}
+
+/** `2026-10-10` → 20261010. Serve só para comparar duas datas na mesma escala. */
+function comparavel(d: Dia): number {
+  return d.ano * 10000 + d.mes * 100 + d.dia;
+}
+
 function diaDaData(valor: string): Dia {
   const bruto = String(valor ?? "").trim();
 
@@ -255,12 +291,18 @@ const emReais = (valor: number): number => Math.round(valor * 100) / 100;
  * ficam idênticas — que é como o corretor anuncia ("e mais 2× de R$ 3.333,33"). Na última, a
  * parcela diferente seria a que vence daqui a meses, sem ninguém por perto para explicar.
  */
-export function repartirEmPartesIguais(total: number, partes: number): number[] {
+export function repartirEmPartesIguais(
+  total: number,
+  partes: number,
+): number[] {
   if (partes <= 0 || total <= 0) return [];
   const centavos = Math.round(total * 100);
   const base = Math.floor(centavos / partes);
   const resto = centavos - base * partes;
-  return Array.from({ length: partes }, (_, i) => (i === 0 ? base + resto : base) / 100);
+  return Array.from(
+    { length: partes },
+    (_, i) => (i === 0 ? base + resto : base) / 100,
+  );
 }
 
 const somar = (parcelas: ParcelaDoCronograma[]): number =>
@@ -285,25 +327,41 @@ const somar = (parcelas: ParcelaDoCronograma[]): number =>
 export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   const { anuaisValor, entradaValor, plano, valorNegociado } = condicoes;
 
-  const diaDeVencimento = Math.min(31, Math.max(1, Math.trunc(condicoes.diaDeVencimento || 1)));
+  const diaDeVencimento = Math.min(
+    31,
+    Math.max(1, Math.trunc(condicoes.diaDeVencimento || 1)),
+  );
   const origem = diaDaData(condicoes.primeiraParcelaDaEntrada);
   const mensais = Math.max(0, Math.trunc(condicoes.parcelasMensais));
-  const quantasAnuais = anuaisValor > 0 ? Math.max(0, Math.trunc(condicoes.anuaisQuantidade)) : 0;
+  const quantasAnuais =
+    anuaisValor > 0 ? Math.max(0, Math.trunc(condicoes.anuaisQuantidade)) : 0;
 
   // ── Entrada ──
-  const vezes = entradaValor > 0 ? Math.max(0, Math.trunc(condicoes.entradaVezes)) : 0;
+  const vezes =
+    entradaValor > 0 ? Math.max(0, Math.trunc(condicoes.entradaVezes)) : 0;
   // ⚠️ A LISTA MONTADA À MÃO VENCE A DIVISÃO IGUAL — e só ela, quando vier com valores de verdade.
   // Uma lista vazia ou com zeros (a tela ainda preenchendo) cairia num cronograma de entrada zero,
   // com o financiado inteiro na série mensal: por isso ela precisa somar mais que zero para valer.
-  const montada = (condicoes.entradaParcelas ?? []).filter((v) => Number.isFinite(v) && v > 0);
+  const montada = (condicoes.entradaParcelas ?? []).filter(
+    (v) => Number.isFinite(v) && v > 0,
+  );
   const valoresDaEntrada =
     montada.length > 0 ? montada : repartirEmPartesIguais(entradaValor, vezes);
-  const listaDaEntrada: ParcelaDoCronograma[] = valoresDaEntrada.map((valor, i) => ({
-    numero: i + 1,
-    total: valoresDaEntrada.length,
-    valor,
-    vencimento: escreverDia(somarMeses(origem, i, origem.dia)),
-  }));
+  // ⚠️ A DATA ESCOLHIDA SOBREPÕE A CALCULADA, uma a uma. `lerDia` devolve nulo em qualquer coisa
+  // que não seja uma data de verdade, e aí a calculada volta a valer — um campo pela metade
+  // ("2026-1") não pode virar vencimento.
+  const datasEscolhidas = condicoes.entradaDatas ?? [];
+  const listaDaEntrada: ParcelaDoCronograma[] = valoresDaEntrada.map(
+    (valor, i) => {
+      const escolhida = diaEscolhido(datasEscolhidas[i]);
+      return {
+        numero: i + 1,
+        total: valoresDaEntrada.length,
+        valor,
+        vencimento: escreverDia(escolhida ?? somarMeses(origem, i, origem.dia)),
+      };
+    },
+  );
   const totalDaEntrada = somar(listaDaEntrada);
 
   // ⚠️ SEM ENTRADA, A PRIMEIRA MENSAL É A PRÓPRIA DATA INFORMADA. "Mês seguinte à última da
@@ -316,7 +374,31 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // parcelas do que `entradaVezes` diz. Contando pelo número declarado, as mensais começavam meses
   // depois do fim da entrada REAL — meses de carência que ninguém negociou, no papel que vai para o
   // cliente. O que manda é a série que foi agendada.
-  const primeiraMensal = somarMeses(origem, listaDaEntrada.length, diaDeVencimento);
+  //
+  // ⚠️ E DESDE 13/09/2026 A CONTAGEM NÃO BASTA SOZINHA. Com data livre na entrada, a última parcela
+  // dela pode cair DEPOIS do mês que a contagem aponta — quatro parcelas de entrada com a quarta
+  // adiada para daqui a um ano fariam a primeira mensal nascer no mês 4, ou seja, oito meses ANTES
+  // do fim da entrada. O comprador pagaria entrada e financiamento ao mesmo tempo, e o papel diria
+  // isso sem ninguém perceber. A régua passa a ser o MAIOR dos dois: a contagem (que preserva o
+  // comportamento de sempre quando as datas são as calculadas) e o mês seguinte à última parcela
+  // da entrada de fato agendada.
+  const porContagem = somarMeses(
+    origem,
+    listaDaEntrada.length,
+    diaDeVencimento,
+  );
+  const ultimaDaEntrada = listaDaEntrada.at(-1);
+  const depoisDaEntrada = ultimaDaEntrada
+    ? somarMeses(
+        diaEscolhido(ultimaDaEntrada.vencimento) ?? origem,
+        1,
+        diaDeVencimento,
+      )
+    : null;
+  const primeiraMensal =
+    depoisDaEntrada && comparavel(depoisDaEntrada) > comparavel(porContagem)
+      ? depoisDaEntrada
+      : porContagem;
 
   // ── Anuais ──
   //
@@ -328,7 +410,9 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
       numero: k + 1,
       total: quantasAnuais,
       valor: emReais(anuaisValor),
-      vencimento: escreverDia(somarMeses(primeiraMensal, MESES_DO_CICLO * (k + 1), diaDeVencimento)),
+      vencimento: escreverDia(
+        somarMeses(primeiraMensal, MESES_DO_CICLO * (k + 1), diaDeVencimento),
+      ),
     }),
   );
   const totalDasAnuais = somar(listaDasAnuais);
@@ -343,7 +427,11 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // parcela abaixo do que o contrato consegue cumprir — é o aviso de `montarProposta`, em
   // `simulacao.ts`, e é por isso que a conta é REUSADA daqui e não reescrita: o coordenador acabou
   // de ver a parcela no simulador, e o PDF que ele gera em seguida não pode discordar dela.
-  const valorPresenteDasAnuais = valorPresenteDosBaloes(quantasAnuais, anuaisValor, i);
+  const valorPresenteDasAnuais = valorPresenteDosBaloes(
+    quantasAnuais,
+    anuaisValor,
+    i,
+  );
 
   // ⚠️ COMPOSIÇÃO QUE NÃO FECHA QUEBRA AQUI, DE PROPÓSITO. Antes um `Math.max(0, …)` zerava o
   // saldo em silêncio e o documento saía com a série mensal inteira em R$ 0,00 mais balões
@@ -354,7 +442,9 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // por data ilegível: não existe cronograma para estas condições, e devolver um plausível é pior
   // do que não devolver nenhum. Zero exato NÃO quebra: entrada de 100% sem série mensal é venda à
   // vista, e é legítima.
-  const financiado = emReais(valorNegociado - totalDaEntrada - valorPresenteDasAnuais);
+  const financiado = emReais(
+    valorNegociado - totalDaEntrada - valorPresenteDasAnuais,
+  );
   if (financiado < 0) {
     throw new Error(
       "A composição não fecha: a entrada e as parcelas anuais valem mais do que o valor negociado.",
@@ -367,7 +457,9 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   const jurosAcumulados = (meses: number): number => {
     const ate = Math.min(meses, mensais);
     if (ate <= 0 || i <= 0) return 0;
-    return (parcelaNiveladaSacoc(financiado, i, mensais, ate) - amortizacao) * ate;
+    return (
+      (parcelaNiveladaSacoc(financiado, i, mensais, ate) - amortizacao) * ate
+    );
   };
 
   /**
@@ -390,12 +482,16 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
     const fim = Math.min(Math.max(0, (ciclo - 1) * MESES_DO_CICLO), mensais);
     const inicio = Math.min(Math.max(0, (ciclo - 2) * MESES_DO_CICLO), mensais);
     if (fim - inicio <= 0) return amortizacao;
-    return amortizacao + (jurosAcumulados(fim) - jurosAcumulados(inicio)) / (fim - inicio);
+    return (
+      amortizacao +
+      (jurosAcumulados(fim) - jurosAcumulados(inicio)) / (fim - inicio)
+    );
   };
 
   const valorDaMensal = (k: number): number => {
     if (mensais <= 0) return 0;
-    if (plano.sistemaAmortizacao === "price") return parcelaPrice(financiado, i, mensais);
+    if (plano.sistemaAmortizacao === "price")
+      return parcelaPrice(financiado, i, mensais);
     // O SAC decresce mês a mês: amortização fixa mais juros sobre o saldo. No mês 1 isto é
     // exatamente `primeiraParcelaSac(financiado, i, mensais)` — a maior de todas.
     if (plano.sistemaAmortizacao === "sac") {
@@ -417,12 +513,15 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // partir de R$ 0,00 (com reajuste anual)". Um boleto de zero real não existe, e prometer um no
   // papel do comprador é pior do que não ter seção nenhuma.
   const quantasMensais = financiado > 0 ? mensais : 0;
-  const listaDasMensais: ParcelaDoCronograma[] = Array.from({ length: quantasMensais }, (_, k) => ({
-    numero: k + 1,
-    total: quantasMensais,
-    valor: emReais(valorDaMensal(k + 1)),
-    vencimento: escreverDia(somarMeses(primeiraMensal, k, diaDeVencimento)),
-  }));
+  const listaDasMensais: ParcelaDoCronograma[] = Array.from(
+    { length: quantasMensais },
+    (_, k) => ({
+      numero: k + 1,
+      total: quantasMensais,
+      valor: emReais(valorDaMensal(k + 1)),
+      vencimento: escreverDia(somarMeses(primeiraMensal, k, diaDeVencimento)),
+    }),
+  );
 
   return {
     anuais: listaDasAnuais,

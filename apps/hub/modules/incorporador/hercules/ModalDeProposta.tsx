@@ -598,6 +598,9 @@ export function ModalDeProposta({
         ...(c.telefone ? { telefone: c.telefone } : {}),
       })),
       diaDeVencimento: condicoesAgora.diaDeVencimento,
+      // A data de cada parcela da entrada, quando o coordenador escolheu alguma. Nulo na posicao
+      // (ou o campo inteiro nulo) quer dizer "use a calculada", que e o padrao.
+      entradaDatas: condicoesAgora.entradaDatas,
       entradaValor: condicoesAgora.entradaValor,
       // A prévia herda de graça: `corpoDoPedido` é um objeto só para os dois botões.
       incluirReajuste,

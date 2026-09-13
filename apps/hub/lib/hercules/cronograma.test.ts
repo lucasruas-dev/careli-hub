@@ -21,7 +21,11 @@ const SACOC_SEM_JUROS: PlanoComercial = {
 /** O mesmo plano com os 8% ao ano da Lavra do Ouro — o que faz a parcela subir de degrau. */
 const SACOC_COM_JUROS: PlanoComercial = { ...SACOC_SEM_JUROS, jurosTaxa: 8 };
 
-const PRICE: PlanoComercial = { ...SACOC_SEM_JUROS, jurosTaxa: 8, sistemaAmortizacao: "price" };
+const PRICE: PlanoComercial = {
+  ...SACOC_SEM_JUROS,
+  jurosTaxa: 8,
+  sistemaAmortizacao: "price",
+};
 
 /** O caso que o Lucas ditou: lote de 100 mil, 10% de entrada em 2×, vencimento no dia 10. */
 const EXEMPLO_DO_LUCAS = {
@@ -45,7 +49,12 @@ describe("montarCronograma — o exemplo que o Lucas ditou", () => {
       { numero: 2, total: 2, valor: 5_000, vencimento: "2026-11-10" },
     ]);
     // A mensal nasce no mês seguinte à ÚLTIMA da entrada, e não à primeira.
-    expect(c.mensais[0]).toEqual({ numero: 1, total: 120, valor: 750, vencimento: "2026-12-10" });
+    expect(c.mensais[0]).toEqual({
+      numero: 1,
+      total: 120,
+      valor: 750,
+      vencimento: "2026-12-10",
+    });
   });
 
   it("a entrada NÃO é descontada a valor presente: 10% de 100 mil são 10 mil, e ponto", () => {
@@ -64,7 +73,9 @@ describe("montarCronograma — o exemplo que o Lucas ditou", () => {
 
 describe("⚠️ o resto da divisão da entrada não pode sumir", () => {
   it("10 mil em 3× fecha exatamente em 10 mil, com o centavo na primeira", () => {
-    expect(repartirEmPartesIguais(10_000, 3)).toEqual([3_333.34, 3_333.33, 3_333.33]);
+    expect(repartirEmPartesIguais(10_000, 3)).toEqual([
+      3_333.34, 3_333.33, 3_333.33,
+    ]);
   });
 
   it("no cronograma, a soma das parcelas da entrada bate com o valor negociado da entrada", () => {
@@ -75,7 +86,9 @@ describe("⚠️ o resto da divisão da entrada não pode sumir", () => {
     });
     // 3.333,33 × 3 daria 9.999,99 — um centavo a menos de entrada num documento assinado.
     expect(c.totais.entrada).toBe(10_000);
-    expect(c.entrada.map((p) => p.valor)).toEqual([3_333.34, 3_333.33, 3_333.33]);
+    expect(c.entrada.map((p) => p.valor)).toEqual([
+      3_333.34, 3_333.33, 3_333.33,
+    ]);
   });
 
   it("as demais ficam todas iguais, que é como o corretor anuncia o parcelamento", () => {
@@ -121,7 +134,10 @@ describe("⚠️ dia 31 em mês de 30", () => {
 describe("⚠️ vencimento é DIA, não instante", () => {
   it("10/10/2026 não vira 09/10 quando a data chega como `YYYY-MM-DD`", () => {
     // `Date.parse("2026-10-10")` é meia-noite em UTC; deslocada para −03:00 ela cai em 09/10 21h.
-    const c = montarCronograma({ ...EXEMPLO_DO_LUCAS, primeiraParcelaDaEntrada: "2026-10-10" });
+    const c = montarCronograma({
+      ...EXEMPLO_DO_LUCAS,
+      primeiraParcelaDaEntrada: "2026-10-10",
+    });
     expect(c.entrada[0]?.vencimento).toBe("2026-10-10");
   });
 
@@ -156,18 +172,33 @@ describe("⚠️ vencimento é DIA, não instante", () => {
     const emCadaFuso = (data: string): string[] =>
       ["America/Sao_Paulo", "UTC"].map((fuso) => {
         process.env.TZ = fuso;
-        const c = montarCronograma({ ...EXEMPLO_DO_LUCAS, primeiraParcelaDaEntrada: data });
+        const c = montarCronograma({
+          ...EXEMPLO_DO_LUCAS,
+          primeiraParcelaDaEntrada: data,
+        });
         return c.entrada[0]?.vencimento ?? "";
       });
 
     try {
       // Meia-noite e a última hora do dia: as duas pontas em que o deslocamento de fuso troca a
       // data. Se um dia isto voltar a passar pelo `Date`, uma das duas linhas cai.
-      expect(emCadaFuso("2026-10-10T00:00:00")).toEqual(["2026-10-10", "2026-10-10"]);
-      expect(emCadaFuso("2026-10-10T23:59:59")).toEqual(["2026-10-10", "2026-10-10"]);
+      expect(emCadaFuso("2026-10-10T00:00:00")).toEqual([
+        "2026-10-10",
+        "2026-10-10",
+      ]);
+      expect(emCadaFuso("2026-10-10T23:59:59")).toEqual([
+        "2026-10-10",
+        "2026-10-10",
+      ]);
       // O separador com espaço é o mesmo dado: alguns drivers devolvem assim.
-      expect(emCadaFuso("2026-10-10 00:00:00")).toEqual(["2026-10-10", "2026-10-10"]);
-      expect(emCadaFuso("2026-10-10T00:00:00.000")).toEqual(["2026-10-10", "2026-10-10"]);
+      expect(emCadaFuso("2026-10-10 00:00:00")).toEqual([
+        "2026-10-10",
+        "2026-10-10",
+      ]);
+      expect(emCadaFuso("2026-10-10T00:00:00.000")).toEqual([
+        "2026-10-10",
+        "2026-10-10",
+      ]);
     } finally {
       process.env.TZ = fusoOriginal;
     }
@@ -184,7 +215,10 @@ describe("⚠️ vencimento é DIA, não instante", () => {
 
   it("data ilegível não sai calada: quebra na hora de montar", () => {
     expect(() =>
-      montarCronograma({ ...EXEMPLO_DO_LUCAS, primeiraParcelaDaEntrada: "amanhã" }),
+      montarCronograma({
+        ...EXEMPLO_DO_LUCAS,
+        primeiraParcelaDaEntrada: "amanhã",
+      }),
     ).toThrow(/inválida/);
   });
 });
@@ -263,7 +297,11 @@ describe("as parcelas anuais", () => {
   });
 
   it("sem valor não existem, mesmo que a quantidade venha preenchida", () => {
-    const c = montarCronograma({ ...EXEMPLO_DO_LUCAS, anuaisQuantidade: 5, anuaisValor: 0 });
+    const c = montarCronograma({
+      ...EXEMPLO_DO_LUCAS,
+      anuaisQuantidade: 5,
+      anuaisValor: 0,
+    });
     expect(c.anuais).toEqual([]);
   });
 });
@@ -407,7 +445,11 @@ describe("as faixas de reajuste", () => {
 
 describe("as bordas que a tela consegue produzir", () => {
   it("sem entrada, a primeira mensal é a própria data informada — não há mês de carência de graça", () => {
-    const c = montarCronograma({ ...EXEMPLO_DO_LUCAS, entradaValor: 0, entradaVezes: 2 });
+    const c = montarCronograma({
+      ...EXEMPLO_DO_LUCAS,
+      entradaValor: 0,
+      entradaVezes: 2,
+    });
     expect(c.entrada).toEqual([]);
     expect(c.mensais[0]?.vencimento).toBe("2026-10-10");
     expect(c.totais.financiado).toBe(100_000);
@@ -456,27 +498,43 @@ describe("a data que não existe no calendário", () => {
   });
 
   it("mês 13 não vira janeiro do ano seguinte — quebra", () => {
-    expect(() => montarCronograma(condicoes("2026-13-10"))).toThrow(/inválida/i);
-    expect(() => montarCronograma(condicoes("2026-13-10 10:00"))).toThrow(/inválida/i);
+    expect(() => montarCronograma(condicoes("2026-13-10"))).toThrow(
+      /inválida/i,
+    );
+    expect(() => montarCronograma(condicoes("2026-13-10 10:00"))).toThrow(
+      /inválida/i,
+    );
   });
 
   it("dia que não existe no mês quebra, e não escorrega para o dia seguinte", () => {
-    expect(() => montarCronograma(condicoes("2026-11-31"))).toThrow(/inválida/i);
-    expect(() => montarCronograma(condicoes("2026-02-30T12:00:00"))).toThrow(/inválida/i);
+    expect(() => montarCronograma(condicoes("2026-11-31"))).toThrow(
+      /inválida/i,
+    );
+    expect(() => montarCronograma(condicoes("2026-02-30T12:00:00"))).toThrow(
+      /inválida/i,
+    );
   });
 
   it("hora impossível quebra, mesmo com o dia certo", () => {
-    expect(() => montarCronograma(condicoes("2026-10-10T99:99"))).toThrow(/inválida/i);
-    expect(() => montarCronograma(condicoes("2026-10-10T25:00:00"))).toThrow(/inválida/i);
+    expect(() => montarCronograma(condicoes("2026-10-10T99:99"))).toThrow(
+      /inválida/i,
+    );
+    expect(() => montarCronograma(condicoes("2026-10-10T25:00:00"))).toThrow(
+      /inválida/i,
+    );
   });
 
   it("e o que É data continua passando", () => {
-    expect(montarCronograma(condicoes("2026-10-10")).entrada[0]?.vencimento).toBe("2026-10-10");
-    expect(montarCronograma(condicoes("2026-10-10T14:30:00")).entrada[0]?.vencimento).toBe(
-      "2026-10-10",
-    );
+    expect(
+      montarCronograma(condicoes("2026-10-10")).entrada[0]?.vencimento,
+    ).toBe("2026-10-10");
+    expect(
+      montarCronograma(condicoes("2026-10-10T14:30:00")).entrada[0]?.vencimento,
+    ).toBe("2026-10-10");
     // 29/02 existe em 2028, que é bissexto.
-    expect(montarCronograma(condicoes("2028-02-29")).entrada[0]?.vencimento).toBe("2028-02-29");
+    expect(
+      montarCronograma(condicoes("2028-02-29")).entrada[0]?.vencimento,
+    ).toBe("2028-02-29");
   });
 });
 
@@ -500,8 +558,13 @@ describe("⚠️ a entrada montada à mão", () => {
 
   it("com lista, ela manda — e as datas continuam mês a mês no dia escolhido", () => {
     // O caso do Lucas: "10 mil na primeira, o resto dividido".
-    const c = montarCronograma({ ...BASE, entradaParcelas: [10_000, 6_000, 6_000, 6_000] });
-    expect(c.entrada.map((p) => p.valor)).toEqual([10_000, 6_000, 6_000, 6_000]);
+    const c = montarCronograma({
+      ...BASE,
+      entradaParcelas: [10_000, 6_000, 6_000, 6_000],
+    });
+    expect(c.entrada.map((p) => p.valor)).toEqual([
+      10_000, 6_000, 6_000, 6_000,
+    ]);
     expect(c.entrada.map((p) => p.vencimento)).toEqual([
       "2026-10-10",
       "2026-11-10",
@@ -514,7 +577,10 @@ describe("⚠️ a entrada montada à mão", () => {
   it("⚠️ somando MAIS que o combinado, o financiado CAI junto", () => {
     // *"maior pode; ao ser maior, atualizar o valor de entrada"* — e o resto da conta acompanha,
     // senão o papel sairia com uma entrada maior e a mesma parcela de antes.
-    const c = montarCronograma({ ...BASE, entradaParcelas: [10_000, 7_000, 7_000, 7_000] });
+    const c = montarCronograma({
+      ...BASE,
+      entradaParcelas: [10_000, 7_000, 7_000, 7_000],
+    });
     expect(c.totais.entrada).toBe(31_000);
     expect(c.totais.financiado).toBe(109_000); // 140.000 − 31.000
   });
@@ -548,10 +614,16 @@ describe("⚠️ a montagem com parcela zerada não dá carência de graça", ()
     // Com [15.000, 0, 0, 13.000] as duas linhas zeradas somem da série: a entrada tem 2 parcelas,
     // não 4. Contando pelo número declarado, a primeira mensal caía dois meses depois do fim da
     // entrada — dois meses de carência que ninguém negociou, no papel do cliente.
-    const c = montarCronograma({ ...BASE_Z, entradaParcelas: [15_000, 0, 0, 13_000] });
+    const c = montarCronograma({
+      ...BASE_Z,
+      entradaParcelas: [15_000, 0, 0, 13_000],
+    });
 
     expect(c.entrada).toHaveLength(2);
-    expect(c.entrada.map((p) => p.vencimento)).toEqual(["2026-10-10", "2026-11-10"]);
+    expect(c.entrada.map((p) => p.vencimento)).toEqual([
+      "2026-10-10",
+      "2026-11-10",
+    ]);
     expect(c.mensais[0]?.vencimento).toBe("2026-12-10");
   });
 
@@ -599,5 +671,84 @@ describe("⚠️ venda à vista não imprime boleto de R$ 0,00", () => {
     });
     expect(c.mensais).toHaveLength(120);
     expect(c.mensais[0]?.valor).toBe(1_050);
+  });
+});
+
+describe("⚠️ a data escolhida de cada parcela da entrada", () => {
+  const BASE = {
+    anuaisQuantidade: 0,
+    anuaisValor: 0,
+    diaDeVencimento: 10,
+    entradaValor: 12000,
+    entradaVezes: 4,
+    parcelasMensais: 12,
+    plano: {
+      entradaPercentual: 10,
+      indiceCorrecao: "SEM_CORRECAO" as const,
+      jurosConvencao: "equivalente" as const,
+      jurosPeriodicidade: "mensal" as const,
+      jurosTaxa: null,
+      nome: "Teste",
+      parcelas: 12,
+      sistemaAmortizacao: "sacoc" as const,
+      slot: null,
+    },
+    primeiraParcelaDaEntrada: "2026-10-10",
+    valorNegociado: 120000,
+  };
+
+  it("sem data escolhida, as parcelas seguem mês a mês — como sempre foi", () => {
+    const c = montarCronograma(BASE);
+    expect(c.entrada.map((p) => p.vencimento)).toEqual([
+      "2026-10-10",
+      "2026-11-10",
+      "2026-12-10",
+      "2027-01-10",
+    ]);
+  });
+
+  it("a data escolhida sobrepõe só a posição escolhida", () => {
+    const c = montarCronograma({
+      ...BASE,
+      entradaDatas: [null, "2026-11-25", null, null],
+    });
+    expect(c.entrada.map((p) => p.vencimento)).toEqual([
+      "2026-10-10",
+      "2026-11-25",
+      "2026-12-10",
+      "2027-01-10",
+    ]);
+  });
+
+  it("⚠️ data pela metade cai de volta na calculada, sem derrubar o cronograma", () => {
+    const c = montarCronograma({
+      ...BASE,
+      // "2026-1" é o que existe no campo enquanto a pessoa digita; "2026-11-31" não existe no
+      // calendário e casa a regex.
+      entradaDatas: ["2026-1", "2026-11-31", null, null],
+    });
+    expect(c.entrada[0]?.vencimento).toBe("2026-10-10");
+    expect(c.entrada[1]?.vencimento).toBe("2026-11-10");
+  });
+
+  it("⚠️ a entrada adiada EMPURRA a primeira mensal, em vez de ser invadida por ela", () => {
+    // A 4ª parcela da entrada vai para outubro de 2027. Pela contagem, a 1ª mensal nasceria em
+    // fevereiro de 2027 — oito meses ANTES do fim da entrada, com o comprador pagando os dois.
+    const c = montarCronograma({
+      ...BASE,
+      entradaDatas: [null, null, null, "2027-10-10"],
+    });
+    expect(c.entrada[3]?.vencimento).toBe("2027-10-10");
+    expect(c.mensais[0]?.vencimento).toBe("2027-11-10");
+  });
+
+  it("⚠️ e NÃO puxa a mensal para trás quando a entrada é antecipada", () => {
+    // Antecipar a última parcela não pode fazer o financiamento começar antes do que começaria:
+    // o prazo contratado é o mesmo, e a régua é o MAIOR dos dois.
+    const c = montarCronograma({
+      ...BASE,
+      entradaDatas: [null, null, null, "2026-10-15"],
+    });
+    expect(c.mensais[0]?.vencimento).toBe("2027-02-10");
   });
 });

@@ -493,6 +493,7 @@ export async function POST(request: Request) {
     compradores?: unknown;
     diaDeVencimento?: unknown;
     entradaValor?: unknown;
+    entradaDatas?: unknown;
     entradaParcelas?: unknown;
     entradaVezes?: unknown;
     /** A tabela de reajuste entra na PA? Ausente = não entra (é o padrão novo). */
@@ -709,6 +710,14 @@ export async function POST(request: Request) {
       compradores,
       entradaMinimaPercentual,
       entradaValor: numeroDoCorpo(corpo.entradaValor),
+      // ⚠️ SÓ O FORMATO `AAAA-MM-DD` PASSA, e o resto vira nulo — que quer dizer "use a data
+      // calculada". O cronograma refaz essa conferência (`diaEscolhido`), e é ele quem manda; aqui
+      // só se evita levar lixo do corpo até lá.
+      entradaDatas: Array.isArray(corpo.entradaDatas)
+        ? corpo.entradaDatas.map((d) =>
+            typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null,
+          )
+        : null,
       entradaParcelas: parcelasDoCorpo(corpo.entradaParcelas),
       entradaVezes: numeroDoCorpo(corpo.entradaVezes),
       parcelas: numeroDoCorpo(corpo.parcelasMensais),
@@ -769,6 +778,7 @@ export async function POST(request: Request) {
         anuaisValor: pedido.anuaisValor ?? 0,
         diaDeVencimento: pedido.vencimentoDia,
         entradaValor: pedido.entradaValor,
+        entradaDatas: pedido.entradaDatas,
         entradaParcelas: pedido.entradaParcelas,
         entradaVezes: pedido.entradaVezes,
         parcelasMensais: pedido.parcelas,

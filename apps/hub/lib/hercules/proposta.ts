@@ -76,6 +76,8 @@ export type PedidoDeProposta = {
    * ver a régua assimétrica em `conferirEntradaMontada`: menor que o combinado é recusado, maior é
    * aceito e vira o novo valor.
    */
+  /** A data de cada parcela da entrada, quando escolhida. Nulo na posição = a calculada. */
+  entradaDatas?: null | (null | string)[];
   entradaParcelas?: null | number[];
   /** O total da entrada, em reais. É ele que se divide em `entradaVezes` partes iguais. */
   entradaValor: number;
@@ -194,7 +196,9 @@ function diaExisteNoMes(texto: string): boolean {
  * `diaExisteNoMes`. Quem chama trata nulo como "informe a data", que é o caminho certo para
  * `2026-02-31`.
  */
-export function diaDoCalendario(valor: null | string | undefined): null | string {
+export function diaDoCalendario(
+  valor: null | string | undefined,
+): null | string {
   const texto = String(valor ?? "").trim();
   if (!texto) return null;
   if (SO_DATA.test(texto)) return diaExisteNoMes(texto) ? texto : null;
@@ -243,13 +247,21 @@ export function conferirProposta(
 
   // A proposta nasce DE uma reserva; sem ela não há cliente definido nem unidade travada.
   if (!pedido.reservaId) {
-    erros.push({ campo: "reserva", mensagem: "A proposta sai de uma reserva." });
+    erros.push({
+      campo: "reserva",
+      mensagem: "A proposta sai de uma reserva.",
+    });
   }
 
-  const compradores = Array.isArray(pedido.compradores) ? pedido.compradores : [];
+  const compradores = Array.isArray(pedido.compradores)
+    ? pedido.compradores
+    : [];
 
   if (compradores.length === 0) {
-    erros.push({ campo: "compradores", mensagem: "Informe pelo menos um comprador." });
+    erros.push({
+      campo: "compradores",
+      mensagem: "Informe pelo menos um comprador.",
+    });
   } else {
     const titulares = compradores.filter((c) => c.titular);
     if (titulares.length === 0) {
@@ -260,7 +272,10 @@ export function conferirProposta(
     } else if (titulares.length > 1) {
       // ⚠️ DOIS TITULARES É PIOR DO QUE NENHUM: a rota escolheria um deles em silêncio, e a
       // proposta sairia no nome de quem o sistema achou primeiro, não de quem reservou.
-      erros.push({ campo: "titular", mensagem: "Só o cliente da reserva é titular." });
+      erros.push({
+        campo: "titular",
+        mensagem: "Só o cliente da reserva é titular.",
+      });
     }
 
     for (const comprador of compradores) {
@@ -268,7 +283,9 @@ export function conferirProposta(
       if (!cpfValido(comprador.cpf)) {
         erros.push({
           campo: "cpf",
-          mensagem: nome ? `CPF inválido em ${nome}.` : "CPF inválido em um dos compradores.",
+          mensagem: nome
+            ? `CPF inválido em ${nome}.`
+            : "CPF inválido em um dos compradores.",
         });
       }
       if (!(comprador.participacao > 0)) {
@@ -295,7 +312,9 @@ export function conferirProposta(
     if (soma !== 100 * 100) {
       erros.push({
         campo: "participacao",
-        mensagem: `A soma das participações tem que fechar 100% (está em ${(soma / 100)
+        mensagem: `A soma das participações tem que fechar 100% (está em ${(
+          soma / 100
+        )
           .toFixed(2)
           .replace(".", ",")}%).`,
       });
@@ -315,13 +334,20 @@ export function conferirProposta(
   // O reforço anual é opcional, mas quando vem tem que ser número: ausente é zero, NaN é erro.
   const anuaisQuantidade = pedido.anuaisQuantidade ?? 0;
   const anuaisValor = pedido.anuaisValor ?? 0;
-  const anuaisQuantidadeOk = Number.isInteger(anuaisQuantidade) && anuaisQuantidade >= 0;
+  const anuaisQuantidadeOk =
+    Number.isInteger(anuaisQuantidade) && anuaisQuantidade >= 0;
   const anuaisValorOk = Number.isFinite(anuaisValor) && anuaisValor >= 0;
   if (!anuaisQuantidadeOk) {
-    erros.push({ campo: "anuais", mensagem: "Informe quantos reforços anuais (0 se não houver)." });
+    erros.push({
+      campo: "anuais",
+      mensagem: "Informe quantos reforços anuais (0 se não houver).",
+    });
   }
   if (!anuaisValorOk) {
-    erros.push({ campo: "anuais", mensagem: "Informe o valor de cada reforço anual." });
+    erros.push({
+      campo: "anuais",
+      mensagem: "Informe o valor de cada reforço anual.",
+    });
   }
 
   // ⚠️ A ENTRADA MONTADA NÃO PODE SOMAR MENOS QUE A COMBINADA. Ela chega da tela já conferida,
@@ -341,7 +367,10 @@ export function conferirProposta(
       });
     }
     if (pedido.entradaParcelas.some((v) => !Number.isFinite(v) || v <= 0)) {
-      erros.push({ campo: "entrada", mensagem: "Toda parcela da entrada precisa de um valor." });
+      erros.push({
+        campo: "entrada",
+        mensagem: "Toda parcela da entrada precisa de um valor.",
+      });
     }
   }
 
@@ -375,7 +404,10 @@ export function conferirProposta(
     // é o comportamento de sempre.
     const doPrazo = pisoDaEntradaNoPrazo({
       parcelas: pedido.parcelas,
-      pisoDaCasaEmReais: entradaMinima(pedido.valorNegociado, pedido.entradaMinimaPercentual),
+      pisoDaCasaEmReais: entradaMinima(
+        pedido.valorNegociado,
+        pedido.entradaMinimaPercentual,
+      ),
       planos: pedido.planosDaTabela ?? [],
       valorNegociado: pedido.valorNegociado,
     });
@@ -428,11 +460,17 @@ export function conferirProposta(
   // deixaria a quantidade indefinida passar, do mesmo jeito que a entrada passava.
   if (!Number.isInteger(pedido.entradaVezes) || pedido.entradaVezes < 1) {
     // Entrada à vista é 1x. Zero vezes seria uma entrada que ninguém paga nunca.
-    erros.push({ campo: "entradaVezes", mensagem: "A entrada é paga em pelo menos 1 vez." });
+    erros.push({
+      campo: "entradaVezes",
+      mensagem: "A entrada é paga em pelo menos 1 vez.",
+    });
   }
 
   if (!Number.isInteger(pedido.parcelas) || pedido.parcelas < 1) {
-    erros.push({ campo: "parcelas", mensagem: "Informe o número de parcelas mensais." });
+    erros.push({
+      campo: "parcelas",
+      mensagem: "Informe o número de parcelas mensais.",
+    });
   }
 
   if (
@@ -473,9 +511,15 @@ export function conferirProposta(
   const validade = Date.parse(pedido.validadeEm ?? "");
   const agora = Date.parse(agoraIso);
   if (!Number.isFinite(validade)) {
-    erros.push({ campo: "validade", mensagem: "Informe até quando a proposta vale." });
+    erros.push({
+      campo: "validade",
+      mensagem: "Informe até quando a proposta vale.",
+    });
   } else if (Number.isFinite(agora) && validade <= agora) {
-    erros.push({ campo: "validade", mensagem: "A validade da proposta tem que ser no futuro." });
+    erros.push({
+      campo: "validade",
+      mensagem: "A validade da proposta tem que ser no futuro.",
+    });
   } else if (
     Number.isFinite(agora) &&
     validade - agora > PRAZO_MAXIMO_DA_PROPOSTA * 86_400_000
@@ -546,7 +590,10 @@ export type DadosDoAvisoDaProposta = {
   vencimentoDia: number;
 };
 
-const MOEDA = new Intl.NumberFormat("pt-BR", { currency: "BRL", style: "currency" });
+const MOEDA = new Intl.NumberFormat("pt-BR", {
+  currency: "BRL",
+  style: "currency",
+});
 
 /**
  * "R$ 178.100,00".
@@ -556,7 +603,10 @@ const MOEDA = new Intl.NumberFormat("pt-BR", { currency: "BRL", style: "currency
  * falha sem dizer por quê. Trocado aqui, uma vez, em vez de virar mistério em cada leitor.
  */
 function reais(valor: number): string {
-  return MOEDA.format(Number.isFinite(valor) ? valor : 0).replace(/\u00a0/g, " ");
+  return MOEDA.format(Number.isFinite(valor) ? valor : 0).replace(
+    /\u00a0/g,
+    " ",
+  );
 }
 
 /**
@@ -586,7 +636,9 @@ function reais(valor: number): string {
  * função não conta dias nenhum. Recontar o prazo na hora de escrever a mensagem faria o texto e o
  * documento discordarem sobre a mesma promessa.
  */
-export function avisosDaProposta(dados: DadosDoAvisoDaProposta): AvisoDaProposta[] {
+export function avisosDaProposta(
+  dados: DadosDoAvisoDaProposta,
+): AvisoDaProposta[] {
   const lote = `*${dados.unidade}* (${dados.empreendimento})`;
   const cliente = `*${dados.cliente}* (CPF ${mascararCpf(dados.cpf)})`;
   const cod = dados.codigo ? `COD *${dados.codigo}*.` : "";
@@ -609,7 +661,9 @@ export function avisosDaProposta(dados: DadosDoAvisoDaProposta): AvisoDaProposta
     Math.round(dados.entradaPrimeira * 100) !==
       Math.round((dados.entradaTotal / dados.entradaVezes) * 100);
   const entrada = `*${reais(dados.entradaTotal)}* em *${dados.entradaVezes}x*${
-    primeiraDiferente ? `, a 1ª de *${reais(dados.entradaPrimeira as number)}*` : ""
+    primeiraDiferente
+      ? `, a 1ª de *${reais(dados.entradaPrimeira as number)}*`
+      : ""
   }${desde ? `, a primeira em *${desde}*` : ""}`;
   // ⚠️ "120x DE" É PROMESSA DE PARCELA ÚNICA, e no SACOC ela não se cumpre: a parcela muda no 13º
   // mês. Quem reajusta ganha "a partir de" e a lembrança do reajuste anual — uma frase, não um
@@ -625,7 +679,8 @@ export function avisosDaProposta(dados: DadosDoAvisoDaProposta): AvisoDaProposta
   const ate = dataEscrita(dados.validadeEm);
   const vale = ate ? `Proposta válida até *${ate}*.` : null;
   const anexo = "O PDF da proposta vai em anexo.";
-  const outros = dados.compradores > 1 ? `Compradores: *${dados.compradores}*` : null;
+  const outros =
+    dados.compradores > 1 ? `Compradores: *${dados.compradores}*` : null;
 
   // ⚠️ NULO É "NÃO HÁ O QUE DIZER"; "" É LINHA EM BRANCO DE PROPÓSITO. A distinção existe porque
   // sem ela o coordenador recebia um buraco no meio da lista quando o comprador era único: o
@@ -679,7 +734,9 @@ export function avisosDaProposta(dados: DadosDoAvisoDaProposta): AvisoDaProposta
         `Cliente: ${cliente}`,
         outros,
         `Imobiliária: *${dados.imobiliaria}*`,
-        dados.corretor ? `Corretor: *${dados.corretor}*` : "Corretor: não informado",
+        dados.corretor
+          ? `Corretor: *${dados.corretor}*`
+          : "Corretor: não informado",
         `Valor negociado: *${reais(dados.valorNegociado)}*`,
         `Entrada: ${entrada}`,
         `Parcelas: ${mensais}`,
@@ -757,8 +814,13 @@ export function conferirCancelamentoDaProposta(
 
   const motivo = String(pedido.motivo ?? "").trim();
   if (!motivo) {
-    erros.push({ campo: "motivo", mensagem: "Diga por que a proposta está sendo cancelada." });
-  } else if (!(MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA as readonly string[]).includes(motivo)) {
+    erros.push({
+      campo: "motivo",
+      mensagem: "Diga por que a proposta está sendo cancelada.",
+    });
+  } else if (
+    !(MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA as readonly string[]).includes(motivo)
+  ) {
     erros.push({ campo: "motivo", mensagem: "Escolha um motivo da lista." });
   }
 
@@ -794,7 +856,9 @@ export function avisosDeCancelamentoDaProposta(
   const lote = `*${dados.unidade}* (${dados.empreendimento})`;
   const cod = dados.codigo ? ` COD *${dados.codigo}*.` : "";
   const juntar = (linhas: string[]) =>
-    linhas.filter((l, i, todas) => l !== "" || (i > 0 && todas[i - 1] !== "")).join("\n");
+    linhas
+      .filter((l, i, todas) => l !== "" || (i > 0 && todas[i - 1] !== ""))
+      .join("\n");
 
   return [
     {
@@ -828,7 +892,9 @@ export function avisosDeCancelamentoDaProposta(
         `Unidade: ${lote}`,
         `Cliente: *${dados.cliente}*`,
         `Imobiliária: *${dados.imobiliaria}*`,
-        dados.corretor ? `Corretor: *${dados.corretor}*` : "Corretor: não informado",
+        dados.corretor
+          ? `Corretor: *${dados.corretor}*`
+          : "Corretor: não informado",
         `Motivo: *${dados.motivo}*`,
         dados.codigo ? `COD: *${dados.codigo}*` : "",
         "",

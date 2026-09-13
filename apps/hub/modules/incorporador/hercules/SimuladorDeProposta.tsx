@@ -169,6 +169,14 @@ export type CondicoesDaProposta = {
   diaDeVencimento: number;
   /** Os valores de cada parcela da entrada, quando montados à mão. Nulo = partes iguais. */
   entradaParcelas: null | number[];
+  /**
+   * A DATA de cada parcela da entrada, quando escolhida à mão. `AAAA-MM-DD` ou nulo na posição.
+   *
+   * ⚠️ NULO = A DATA CALCULADA, e é o estado normal. Lucas (13/09/2026): *"pode trazer as data no
+   * padrão calculado pelo sistema, mas dar opção de escolha data"* — o padrão continua sendo o de
+   * sempre, e a escolha só sobrepõe onde houve escolha.
+   */
+  entradaDatas: null | (null | string)[];
   entradaValor: number;
   entradaVezes: number;
   /** A mensal do PRIMEIRO ciclo, que é a que a tela anuncia. Ver `parcelaFixa` em `proposta.ts`. */
@@ -274,6 +282,18 @@ export function SimuladorDeProposta({
     parcelas: number[];
     vezes: number;
   }>(null);
+  /**
+   * As datas escolhidas para as parcelas da entrada, por posição. `null` = a calculada.
+   *
+   * ⚠️ ESTADO SEPARADO DO DOS VALORES, de propósito. "Dividir igual" e "fixar" mexem em VALOR, e
+   * apagar as datas junto obrigaria o coordenador a redigitar o que ele já tinha combinado com o
+   * cliente só porque redistribuiu centavos. A lista é indexada por posição e simplesmente
+   * acompanha: se o número de parcelas diminui, as posições que sobraram deixam de ser lidas
+   * (`montarCronograma` só olha até o tamanho da lista de valores).
+   */
+  const [datasDaEntradaCruas, setDatasDaEntradaCruas] = useState<
+    (null | string)[]
+  >([]);
   const [planoAtivo, setPlanoAtivo] = useState<null | string>(null);
   // ⚠️ SÓ VIRA TETO SE ELE DIGITOU. O campo Entrada nasce preenchido pelo plano — usar esse número
   // como limite cortaria as composições sem ninguém ter pedido, e a lista aparecia vazia sem
@@ -523,6 +543,12 @@ export function SimuladorDeProposta({
       ? montagemCrua.parcelas
       : null;
 
+  // ⚠️ SÓ SOBE SE ALGUÉM ESCOLHEU ALGUMA. Uma lista de nulos gravaria ruído no `condicoes` da
+  // proposta e faria toda proposta parecer ter data personalizada.
+  const datasDaEntrada = datasDaEntradaCruas.some((d) => d)
+    ? datasDaEntradaCruas
+    : null;
+
   const montagem = conferirEntradaMontada(
     cockpit.entrada,
     parcelasDaEntrada ?? [cockpit.entrada],
@@ -697,6 +723,7 @@ export function SimuladorDeProposta({
               ? montagem.entrada
               : principal.entrada,
             entradaVezes: cockpit.entradaVezes,
+            entradaDatas: datasDaEntrada,
             entradaParcelas: parcelasDaEntrada,
             parcela: principal.parcela,
             parcelasMensais: principal.parcelas,
@@ -904,6 +931,37 @@ export function SimuladorDeProposta({
                       valor={valor}
                     />
                   </div>
+                  {/* ⚠️ A DATA VEM CALCULADA E É EDITÁVEL, que é exatamente o pedido: *"pode
+                      trazer as data no padrão calculado pelo sistema, mas dar opção de escolha
+                      data"*. Em branco, vale a
+                      calculada (mês a mês a partir da primeira); escrever sobrepõe só aquela
+                      posição, e apagar devolve a calculada. */}
+                  <input
+                    aria-label={`Vencimento da ${i + 1}ª parcela da entrada`}
+                    onChange={(e) =>
+                      setDatasDaEntradaCruas((atual) => {
+                        const proxima = [...atual];
+                        while (proxima.length <= i) proxima.push(null);
+                        proxima[i] = e.target.value || null;
+                        return proxima;
+                      })
+                    }
+                    style={{
+                      background: T.card,
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 7,
+                      color: T.text,
+                      font: "inherit",
+                      fontSize: 11,
+                      padding: "4px 6px",
+                    }}
+                    type="date"
+                    // ⚠️ VAZIO = A DATA CALCULADA, e o campo fica vazio mesmo. Preenchê-lo com a
+                    // data que o cronograma agendaria exigiria refazer aqui a conta de datas que
+                    // `montarCronograma` já faz — uma segunda versão da mesma conta, que é o
+                    // defeito que esta casa já pagou caro. A prévia mostra as datas de verdade.
+                    value={datasDaEntradaCruas[i] ?? ""}
+                  />
                   {/* "A primeira é 10 mil, divide o resto" — o caso que o coordenador descreve na
                       mesa, num clique em vez de três contas na calculadora. */}
                   {parcelasDaEntrada.length > 1 ? (
