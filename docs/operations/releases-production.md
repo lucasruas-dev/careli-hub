@@ -6587,3 +6587,38 @@ anuncia a primeira parcela e cala as outras 108. E escolha comercial, e o Lucas 
   da Iris) · lint sem aviso novo.
 - ⚠️ **Nada verificado em tela** — o hub exige login e os cliques sao do Lucas.
 - Status: `EM PRODUCAO`.
+
+## v1.328.0 — 13/09/2026 14:21 -03:00 — a data da entrada desce uma linha
+
+- Commit publicado: `431afa72` · rollback `0259ac88` (v1.327.0, de 13 minutos antes).
+- **Autorizacao**: correcao imediata do que o Lucas viu na 1.327.0. Ele mandou o print e disse
+  *"ficou ruim, acho que pode fazer abaixo, em vez do lado, e outra traz os valores iguais em vez de
+  nada"*.
+- Healthcheck: `{"buildTag":"2026-09-13-a-data-da-entrada-desce-uma-linha","version":"1.328.0"}`.
+
+### O defeito era meu, e os dois pedidos eram o MESMO
+
+Os valores da entrada SEMPRE estiveram la: `partesIguais` divide a entrada desde 05/09/2026, e o
+rodape "Somando R$ 17.000,00" do proprio print do Lucas comprova que a soma estava certa. O que
+sumiu foi a LARGURA.
+
+O `<input type="date">` que a 1.327.0 tinha posto AO LADO do valor, num flex com 8px de gap,
+encolheu o `CampoEmReais` ate o numero nao caber. E o que continuava visivel era so o prefixo "R$",
+porque ele e posicionado em ABSOLUTO e nao encolhe junto com o input — a tela parecia dizer "campo
+vazio" quando estava dizendo "campo estreito demais".
+
+⚠️ **A LICAO**: um campo que perde largura nao avisa. Ele nao quebra, nao alerta e nao some — ele
+mostra menos, e quem olha conclui que o dado nao existe. Ao acrescentar um controle numa linha que
+ja tinha outro, medir o que sobra para o vizinho.
+
+### O conserto
+
+A linha virou um `grid` de duas: valor e "fixar" em cima, vencimento embaixo com recuo de 66px para
+alinhar sob o campo. O rotulo "calculada"/"escolhida" entrou junto, e nao e enfeite: campo de data
+vazio sem explicacao parece campo por preencher, e o coordenador digitaria tres datas que o sistema
+ja sabe calcular sozinho.
+
+So layout: nenhuma conta, nenhum dado e nenhuma regra mudaram. typecheck 11/11, 3.808 testes, lint
+sem aviso novo. ⚠️ Nao verificado em tela — o hub exige login.
+
+- Status: `EM PRODUCAO`.
