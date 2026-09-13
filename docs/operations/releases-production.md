@@ -6512,3 +6512,78 @@ so na hora de desenhar.
   versao servida, o typecheck (11/11), os 3.748 testes em 252 arquivos e o lint sem aviso novo no
   arquivo.
 - Status: `EM PRODUCAO`.
+
+## v1.327.0 — 13/09/2026 14:08 -03:00 — o cadastro conduz a proposta
+
+- Commit publicado: `0259ac88` · deployment `dpl_7ztDx3VW3HwPLHc3oj8sM4cfSr9c` (target production).
+- **Rollback**: commit `af4e9925` (v1.326.0, da sessao da Iris).
+- **Autorizacao**: Lucas, 13/09/2026, *"tem o meu ok"*, depois de *"faz tudo primeiro para depois
+  subir"*. As migrations 0154 e 0155 tiveram OK separado (*"pode fazer a migration"*) e foram
+  aplicadas ANTES, com o codigo que as le subindo so agora.
+- Healthcheck: `https://c2x.app.br/api/version` devolveu
+  `{"buildTag":"2026-09-13-faixa-de-prazo-e-nota-do-ajuste","version":"1.327.0"}`.
+- ⚠️ **NUMERADA 1.327.0, E NAO 1.325.0.** Outra sessao subiu a busca de contato da Iris enquanto
+  este trabalho corria e levou a 1.325.0 e a 1.326.0. O push foi RECUSADO (branch atras do remoto),
+  rebasei em cima do trabalho dela e renumerei o MEU. A colisao de numeracao entre sessoes ja era
+  conhecida no cadastro de migration; agora ela tambem vale para o changelog. A regra: renumerar o
+  seu, nunca o do outro.
+
+### Os sete itens que o Lucas pediu
+
+1. **Nota ao mexer no valor do lote.** A caixa nasce do fato: aparece quando o preco deixa de ser o
+   da tabela e some quando volta, com o de/para escrito pelo sistema acima do campo. Obrigatoria no
+   DESCONTO, opcional no acrescimo. ⚠️ A trava e de TELA: o servidor continua aceitando nulo, porque
+   as 4.857 linhas importadas do C2X tem a coluna vazia. Metade da peca ja existia orfa (a coluna, a
+   rota e TRES leitores); faltava a porta.
+2. **Data de cada parcela da entrada.** Em branco vale a calculada.
+3. **Juros e correcao editaveis** no gerador. ⚠️ So no modo proposta.
+4. **Taxa com as casas do cadastro** (`textoDaTaxa`, que o PDF ja usava).
+5. **Faixa de prazo** (`temis_faixas_de_prazo`), POR EMPREENDIMENTO.
+6. **A % de entrada** entra na faixa.
+7. **Alterar abre a nota** — segundo gatilho da mesma caixa.
+
+E o oitavo, pedido no meio: a **tabela de reajuste no documento virou opcional, desmarcada**.
+
+### Dois defeitos vivos consertados, nenhum deles pedido
+
+- ⚠️ **O JARDIM DAS GERAIS ESTAVA VENDENDO COM "SEM CORRECAO" NA TELA.** O C2X tem SEIS indices e o
+  tradutor do Panteon mapeava CINCO: `POUPANCA`, criada no legado em 29/08/2026, caia no
+  `?? SEM_CORRECAO` em silencio. O plano NORMAL do JDG (`vendendo = true`, 120x) e corrigido por
+  ela. Conferido byte a byte (`504f5550414ec38741`) contra o nome do legado.
+- ⚠️ **O ESPELHO PUBLICO tinha a quinta copia da lista de indices, ERRADA**: aceitava `INCC_ANUAL` e
+  `INCC_MENSAL`, que o banco nunca aceitou, e recusava `INCC_M_MENSAL`, o unico que o CHECK admitia
+  e o que o C2X usa em 96 planos.
+
+### As decisoes que sustentam o desenho
+
+- **A faixa vale pelo PRAZO TOTAL do plano**, nao por trecho do contrato. A outra leitura obrigaria
+  a reescrever a amortizacao parcela a parcela — a conta que ja divergiu 44% nesta casa.
+- **"Faixa de prazo", nunca "faixa de parcelas"**: a tela ja usa as segundas palavras para a tabela
+  de reajuste, onde significam as parcelas 1 a 12 DE UM CONTRATO.
+- **`define_entrada`/`define_juros`/`define_indice`** separam "sem juros" de "nao opino". Confundir
+  os dois ZERARIA os juros do plano.
+- **A sobreposicao e recusada pelo BANCO** (`exclude` com `int4range`), unico lugar que pega a
+  corrida entre duas abas.
+
+### O que mudou de comportamento para todo mundo
+
+⚠️ **A tabela de reajuste DEIXA DE SAIR nas propostas** a menos que o coordenador marque a caixa.
+Ela saia em toda PA desde a v1.282.0. Os valores dela sao juros CONTRATUAIS, sem projecao de indice:
+num plano de 120 a 0,6434% ela vai de R$ 1.275,00 no 1o ano a R$ 2.460,99 no 10o. Desligada, a PA
+anuncia a primeira parcela e cala as outras 108. E escolha comercial, e o Lucas a fez.
+
+### Fica na fila
+
+- ⚠️ **A migration 0155 instalou `btree_gist` no schema `public`** e o advisor marca WARN. Mover
+  exigiria derrubar e recriar a constraint que depende dele. Nao mexi.
+- **O `plano_juros` mistura duas unidades** e isso NAO foi consertado: das 4.857 linhas do C2X,
+  1.662 guardam 8 ou 6 (% ao ANO) e ~848 guardam 0,6434 (% ao MES), na mesma coluna sem marcador. A
+  proposta nova grava na convencao que a coluna ja usa, e quem desfaz a ambiguidade e
+  `condicoes.plano.jurosPeriodicidade`. Normalizar o passado e tarefa propria.
+- **A faixa nao tem tela de EDICAO**, so criar e desativar.
+- **O diario operacional segue em 3,6 MB** e o pre-commit barra: o registro de 11, 12 e 13/09 esta
+  escrito no disco e fora do repo.
+- Validacoes: typecheck 11/11 · **3.808 testes em 253 arquivos** (18 novos meus, 41 vindos do rebase
+  da Iris) · lint sem aviso novo.
+- ⚠️ **Nada verificado em tela** — o hub exige login e os cliques sao do Lucas.
+- Status: `EM PRODUCAO`.
