@@ -6456,3 +6456,59 @@ A faixa do fluxo no topo usa os mesmos matizes em tom escuro e foi ajustada junt
 - Validacoes: typecheck 11/11 · **3.748 testes verdes** · lint com 0 erros (6 warnings preexistentes).
 - ⚠️ **Nada verificado em tela** — o hub exige login e os cliques sao do Lucas.
 - Status: `EM PRODUCAO`.
+
+## v1.324.0 — 13/09/2026 09:33 -03:00 — com o empreendimento escolhido, a tela de venda mostra tudo
+
+- Commit publicado: `67722230` · deployment `dpl_9hTTbmVjzmu32ycabxixLDaA5NP4` (target production).
+- **Rollback**: commit `dfb3db83` (v1.323.0), deployment anterior no Instant Rollback do painel.
+- **Autorizacao**: Lucas, 13/09/2026, *"tem o meu ok"*, para os tres commits juntos (este mais os
+  dois de documentacao que estavam represados).
+- Healthcheck: `https://c2x.app.br/api/version` devolveu
+  `{"buildTag":"2026-09-13-a-tela-de-venda-mostra-tudo","version":"1.324.0"}`.
+- ⚠️ Deployment CONFERIDO na API da Vercel antes de esperar o dominio: a armadilha de 10/jul (push
+  na main sem deployment nenhum) so se pega olhando a lista de deployments, nao o 200.
+
+### O pedido
+
+Lucas, com o print do quadro de estoque: *"tem que trazer todas as unidades, nao pode ficar unidades
+sem mostrar"*; depois o argumento que fecha a questao, *"isso e venda, tem que aparecer tudo, se nao
+como vamos vender?"*; e por fim o recorte da regra, em duas mensagens: *"no selecionar todos os
+empreendimentos, pode deixar do jeito que esta, quando filtra nao precisa"* e *"mas quando se
+selecionar um empreendimento, tem que aparecer todos independente do tamanho"*.
+
+### A regra que ficou
+
+| recorte | quadro de estoque | lotes livres | lista do funil |
+| --- | --- | --- | --- |
+| empreendimento escolhido | tudo, sem teto | tudo | tudo |
+| todos os empreendimentos | teto de 1.500 LOTES | 150 | 150 |
+
+`Mesa` ganhou a prop `temEmpreendimentoEscolhido` (o pai passa `Boolean(emp)`) e e ela que desliga
+os tres cortes.
+
+### O defeito era de CONTAGEM, nao de tamanho
+
+O quadro cortava por QUADRA: `mapa.slice(0, 30)` num recorte de 35 quadras e 120 lotes ao todo
+escondia cinco quadras inteiras. Agora o teto de "todos" conta UNIDADE, soma quadra a quadra e nunca
+parte uma ao meio; a primeira entra sempre, mesmo que sozinha estoure o teto (senao uma quadra de 119
+lotes deixaria o quadro vazio). O aviso de rodape passou a falar em LOTE e so aparece quando alguma
+unidade ficou mesmo de fora.
+
+**O numero que sustenta a escolha** (medido no banco em 13/09/2026): 409 quadras e 5.540 unidades no
+total; o MAIOR empreendimento sozinho tem 532 unidades em 22 quadras. Na tela de trabalho o teto
+nunca e alcancado. O comentario antigo justificava o corte com "desenhar todas trava o navegador" e
+o numero mostra que o teto de 30 quadras nunca foi o que segurava esse caso.
+
+Sem mudanca de dado nem de consulta: os tres recortes ja vinham inteiros do servidor e eram cortados
+so na hora de desenhar.
+
+### Fica na fila
+
+- ⚠️ **Se a base dobrar, a saida e JANELA VIRTUAL, nao baixar o teto.** Teto some com unidade, e
+  sumir com unidade e exatamente o defeito que esta entrega veio corrigir.
+- ⚠️ **O unico recorte pesado continua sendo "todos os empreendimentos"**, com 5.540 lotes. Ele e
+  vista de panorama, nao de venda, e por decisao do Lucas continua limitado.
+- **NAO VERIFICADO EM TELA** — o hub exige login e os cliques sao do Lucas. O que esta provado e a
+  versao servida, o typecheck (11/11), os 3.748 testes em 252 arquivos e o lint sem aviso novo no
+  arquivo.
+- Status: `EM PRODUCAO`.
