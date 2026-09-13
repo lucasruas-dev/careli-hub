@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-13-buscar-por-cpf-sem-mascara",
+    deployedAt: "2026-09-13T11:43:14-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "**Digite o CPF só em números e a ficha aparece.** Antes era preciso digitar os pontos e o hífen: sem a máscara, o número era tratado como telefone e não achava ninguém. Valia para 98% das fichas.",
+              "**Onze dígitos são CPF e também celular com DDD, então a tela pergunta.** Ela mostra o número com as duas máscaras — \"(31) 99866-2052\" e \"046.107.136-32\" — e você clica no que for o seu. Sem escolher, continua valendo como telefone, igual a antes.",
+              "**CNPJ não pergunta nada:** tem 14 dígitos, e telefone daqui vai até 13. Não há dúvida a resolver.",
+            ],
+            screen: "Abrir atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "c1e46513",
+    technical: {
+      done:
+        "O DOCUMENTO JA ESTAVA INDEXADO — faltava a Iris procurar por ele. `apolo_entity_identifiers` tem 4.520 cpf e 502 cnpj, gravados com o hash dos DIGITOS CRUS (lib/apolo/server.ts:3909, `rawValue: onlyDigits`). Conferido em producao: o hash gravado bate com sha256(\"apolo-identifier:cpf:\"+digitos) em 500 de 500 amostras, entao a busca e direta e indexada, igual a do telefone. 5.020 das 5.124 entidades vivas passam a ser achaveis por documento cru. || ⚠️ ONZE DIGITOS SAO CPF **E** CELULAR COM DDD, e por isso a tela PERGUNTA em vez de adivinhar. Medido: 4.291 CPFs distintos contra 4.227 telefones de 11 digitos, ZERO em comum. Isso torna seguro PRE-SELECIONAR o telefone, mas NAO torna seguro escolher sozinho e calar — o primeiro CPF que coincidir com um telefone devolveria a pessoa errada e ninguem perceberia. Dai a pergunta ficar visivel mesmo quando o palpite acertaria. || SEM REGRESSAO: sem `tipo` escolhido, 11 digitos seguem indo para o caminho do TELEFONE, que e o que ja funcionava. A rota ganhou `?tipo=cpf|cnpj|telefone`; 14 digitos viram CNPJ sozinhos (telefone brasileiro vai ate 13, com DDI). || `ehSoNumero` evita o efeito colateral obvio: \"Maria 2\" continua sendo busca por NOME, senao quem tem digito no cadastro deixaria de ser encontrado. || Logica pura em `lib/iris/apolo/busca-por-numero.ts` (interpretarDigitos, ehSoNumero, mascaraDeCpf/Cnpj/Telefone) com 12 testes. ⚠️ A implementacao saiu ANTES do teste nesta rodada, entao o poder de deteccao foi provado por MUTACAO: trocar `ambiguo: true` por `false` derruba o teste \"com 11 digitos, pergunta\"; restaurado em seguida. || Suite 3.789 verdes em 254 arquivos, typecheck limpo. ⚠️ NAO VERIFICADO EM TELA — o hub exige login; a prova e no banco e no teste. || FICA PENDENTE: e-mail segue fora do indice de texto em 93% das fichas, e as 81 entidades que so tem e-mail continuam sumindo INTEIRAS do resultado (`if (!phone) return null`), num modulo que e multicanal.",
+      motivation:
+        "Lucas (13/09/2026), depois de ler a pendencia do deploy anterior: *\"eu posso digitar o cpf numero e o sistema coloca a mascara?\"*; e, ao saber da ambiguidade entre CPF e celular, o desenho que ele mesmo deu: *\"pode resolver igual o pix resolve, pergunta o que eu estou digitando\"*.",
+    },
+    title: "Buscar pelo CPF sem digitar a mascara",
+    type: "melhoria",
+    version: "1.326.0",
+  },
+  {
     buildTag: "2026-09-13-a-busca-de-contato-da-iris-acha-quem-sumia",
     deployedAt: "2026-09-13T10:26:02-03:00",
     modules: [
