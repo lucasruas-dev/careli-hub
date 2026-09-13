@@ -965,6 +965,13 @@ export function IrisStartAttendanceModal({
                           {client.profileLabel} ·{" "}
                           {formatPhoneForDisplay(client.phone)}
                         </span>
+                        {/* Quem digitou o nome de um sócio ou responsável precisa saber por
+                            que a empresa dele apareceu na lista. */}
+                        {client.matchedContactLabel ? (
+                          <span className="truncate text-[11px] font-medium text-ink-soft">
+                            via contato: {client.matchedContactLabel}
+                          </span>
+                        ) : null}
                       </button>
                     ))
                   ) : (

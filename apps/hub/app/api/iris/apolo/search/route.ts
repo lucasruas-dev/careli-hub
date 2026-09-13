@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { authorizeIrisMetaRequest } from "@/lib/iris/meta-server";
 import {
+  contatoQueCasou,
   contatosDoVinculo,
   escolherTelefone,
   filtrarVinculosPorTermo,
@@ -64,12 +65,13 @@ type EntityIdLookupResult = {
 };
 
 type IrisApoloSearchResult = {
-  contacts: Array<ReturnType<typeof mapApoloContact>>;
+  contacts: ContatoDaEntidade[];
   displayName: string;
   documentMasked: string | null;
   id: string;
   kind: string;
   locationLabel: string;
+  matchedContactLabel: string | null;
   phone: string;
   profiles: string[];
 };
@@ -187,8 +189,12 @@ export async function GET(request: NextRequest) {
         return null;
       }
 
+      const viaContato = contatoQueCasou(contacts, rawQuery, digits);
+
       return {
         contacts,
+        // Por que esta entidade apareceu, quando quem casou foi uma pessoa ligada a ela.
+        matchedContactLabel: viaContato?.label ?? null,
         displayName:
           entity.display_name ?? entity.trade_name ?? entity.legal_name ?? "Cliente",
         documentMasked: entity.document_masked,

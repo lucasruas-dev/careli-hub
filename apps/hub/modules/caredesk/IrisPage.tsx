@@ -7531,6 +7531,7 @@ function extractIrisApoloClientOptions(
         id: normalizeIrisIdentifier(entity.id, phone),
         label,
         locationLabel: normalizeIrisText(entity.locationLabel),
+        matchedContactLabel: normalizeIrisText(entity.matchedContactLabel),
         phone,
         profileLabel: formatApoloProfileLabel(
           profiles,

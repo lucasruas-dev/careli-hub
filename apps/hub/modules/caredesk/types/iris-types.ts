@@ -275,6 +275,8 @@ export type IrisApoloClientOption = {
   id: string;
   label: string;
   locationLabel?: string | null;
+  /** O contato que explicou o resultado, quando quem casou foi uma pessoa ligada à entidade. */
+  matchedContactLabel?: string | null;
   phone: string;
   profileLabel: string;
   profiles: string[];

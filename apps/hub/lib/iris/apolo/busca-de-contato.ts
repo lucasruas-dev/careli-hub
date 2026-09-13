@@ -223,6 +223,39 @@ export function filtrarVinculosPorTermo(
   });
 }
 
+// Qual contato explica este resultado. Quem digita "Cristiane" e vê aparecer "VARP IMOVEIS"
+// precisa saber que foi o sócio que casou — senão o resultado parece errado e o operador
+// desiste. Só vale para contato do CRM: o telefone da ficha não tem nome próprio a mostrar.
+export function contatoQueCasou(
+  contatos: ContatoDaEntidade[],
+  termo: string,
+  digitos: string,
+): ContatoDaEntidade | null {
+  const alvo = normalizarTermo(termo);
+  const fone = (digitos ?? "").replace(/\D/g, "");
+  const sufixo = fone.length >= 8 ? fone.slice(-8) : "";
+
+  if (alvo.length < 2 && !sufixo) {
+    return null;
+  }
+
+  for (const contato of contatos) {
+    if (contato.origem !== "relacionamento") {
+      continue;
+    }
+
+    if (alvo.length >= 2 && normalizarTermo(contato.label ?? "").includes(alvo)) {
+      return contato;
+    }
+
+    if (sufixo && contato.value.replace(/\D/g, "").endsWith(sufixo)) {
+      return contato;
+    }
+  }
+
+  return null;
+}
+
 export function mesclarContatos(
   doCadastro: ContatoDaEntidade[],
   doRelacionamento: ContatoDaEntidade[],

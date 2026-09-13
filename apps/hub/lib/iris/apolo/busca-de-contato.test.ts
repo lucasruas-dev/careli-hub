@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  contatoQueCasou,
   contatosDoVinculo,
   escolherTelefone,
   filtrarVinculosPorTermo,
@@ -233,6 +234,44 @@ describe("filtrarVinculosPorTermo", () => {
   it("nao inventa casamento para quem nao bate", () => {
     expect(filtrarVinculosPorTermo(vinculos, "fulano", "")).toEqual([]);
     expect(filtrarVinculosPorTermo(vinculos, "", "31900000000")).toEqual([]);
+  });
+});
+
+describe("contatoQueCasou", () => {
+  const contatos: ContatoDaEntidade[] = [
+    { label: null, origem: "cadastro", primary: true, type: "whatsapp", value: "5531988887777" },
+    {
+      label: "Cristiane Scher (socio)",
+      origem: "relacionamento",
+      primary: false,
+      type: "whatsapp",
+      value: "5531999455486",
+    },
+  ];
+
+  // ⚠️ SEM ISTO O RESULTADO PARECE ERRADO: quem digita "Cristiane" vê aparecer "VARP IMOVEIS"
+  // e não entende por quê. O nome do contato é a explicação do resultado.
+  it("diz qual contato explicou o resultado", () => {
+    expect(contatoQueCasou(contatos, "cristiane", "")?.label).toBe(
+      "Cristiane Scher (socio)",
+    );
+  });
+
+  it("casa tambem pelo telefone do contato", () => {
+    expect(contatoQueCasou(contatos, "", "31999455486")?.label).toBe(
+      "Cristiane Scher (socio)",
+    );
+  });
+
+  // O nome da própria entidade não é "via contato" — nesse caso não há nada a explicar.
+  it("ignora contato do cadastro, que nao tem nome proprio", () => {
+    expect(contatoQueCasou(contatos, "", "31988887777")).toBeNull();
+    expect(contatoQueCasou(contatos, "varp", "")).toBeNull();
+  });
+
+  it("devolve nulo sem termo util", () => {
+    expect(contatoQueCasou(contatos, "", "")).toBeNull();
+    expect(contatoQueCasou([], "cristiane", "")).toBeNull();
   });
 });
 
