@@ -6357,3 +6357,63 @@ avisando pelo PIOR caso quando nao consegue conferir; e a volta limpa `arrependi
   nos arquivos da entrega.
 - ⚠️ **Nada verificado em tela** — o hub exige login e os cliques sao do Lucas.
 - Status: `EM PRODUCAO`.
+
+## v1.323.0 — 12/09/2026 21:51 -03:00 — as cores do quadro de lotes
+
+- Commit publicado: `dfb3db83` · deployment `dpl_CPa6FA27kXYtB8aXG5rY4QyRyKjt` (target production).
+- **Rollback**: commit `cb22ecaf` (v1.322.0), deployment anterior no Instant Rollback do painel.
+- **Autorizacao**: Lucas, 12/09/2026, *"pode subir ok"*, depois de mandar a lista escrita a mao:
+  Assinatura laranja, Faturado vermelho, Bloqueado grafite, Disponivel verde, e Reserva, Proposta e
+  Contrato marcados como ok.
+- Healthcheck: `https://c2x.app.br/api/version` devolveu
+  `{"buildTag":"2026-09-12-cores-da-grade-de-unidades","version":"1.323.0"}`.
+  ⚠️ O 200 no dominio NAO serve de prova: ele ja respondia 200 servindo a 1.322.0 enquanto o build
+  corria. Quem prova e a versao servida.
+
+### O que mudou
+
+A paleta da grade de unidades (`apps/hub/modules/incorporador/hercules/TelaVenda.tsx`). Ela vive num
+arquivo so: o grep pelos sete hexadecimais confirmou zero copia no repo.
+
+| etapa | antes | agora |
+| --- | --- | --- |
+| Disponivel | `var(--inc-soft)` | `#3f9d5e` verde |
+| Reserva | `#f2c14e` | igual |
+| Proposta | `#5b8dd6` | igual |
+| Contrato | `#9b7ed0` | igual |
+| Assinatura | `#454c5c` grafite | `#ed7d31` laranja |
+| Faturamento | `#3f9d5e` verde | `#c0392b` vermelho |
+| Bloqueada | `#e08276` | `#454c5c` grafite |
+| Vendida sem proposta | listra verde | listra vermelha |
+
+### Os tres efeitos que a troca de hex sozinha teria quebrado
+
+1. **`FUNDO_ESCURO` continha so `assinatura`**, porque era ela que carregava o grafite. Com o grafite
+   indo para `bloqueada` e a assinatura virando laranja, o numero do lote sairia branco sobre laranja
+   e preto sobre grafite: ilegivel nas duas pontas, e num quadrado de 12px ninguem repara que o
+   problema e o texto. A lista virou `bloqueada` + `faturado` + `vendida`.
+2. **`vendida` era `listrado(VERDE, ...)` e o VERDE passou para o ESTOQUE.** Lote vendido sem proposta
+   viva (114 deles) passaria a parecer disponivel, que e o pior erro que este quadro pode cometer. Ele
+   segue o faturamento e agora e listrado sobre o vermelho.
+3. **`disponivel` era `var(--inc-soft)`**, um token que mudava com o tema, e por isso tinha texto
+   proprio (`T.muted`). Virando verde fixo como as outras etapas, saiu do caso especial.
+
+A faixa do fluxo no topo usa os mesmos matizes em tom escuro e foi ajustada junto (`#2f7d4a`,
+`#c2571a`, `#9b2c22`), senao cartao e quadradinho passariam a discordar.
+
+### Fica na fila
+
+- ⚠️ **AMARELO, LARANJA E VERMELHO SAO VIZINHOS NO CIRCULO.** Reserva, assinatura e faturamento
+  cairam todos na faixa quente. O que os separa nao e o matiz, e a LUMINOSIDADE (claro, medio,
+  escuro) — num quadrado de 12px a diferenca de claro/escuro sobrevive e a de matiz nao. Se o Lucas
+  achar que confunde na tela, o ajuste e afastar o laranja do amarelo, nao trocar a regra.
+- ⚠️ **PENDENTE DE DECISAO: `cancelado` e o faturamento ficaram quase da mesma cor** na linha do
+  tempo da unidade. `COR_DA_CLASSE` deriva de `COR_DA_ETAPA` e `cancelado` ja e `T.danger`
+  (`#c24135`). Fim bom e fim ruim na mesma cor naquela lista. Nao mexi: a troca do cancelado nao foi
+  pedida.
+- **Roadmap nao tocado**: nao ha item de roadmap para a paleta da grade (a `FRENTE_ATUAL` e Temis,
+  PAN-113/PAN-018/PAN-022). O passo 9 do rito nao se aplica aqui, e isso esta escrito para ninguem
+  achar que foi esquecimento.
+- Validacoes: typecheck 11/11 · **3.748 testes verdes** · lint com 0 erros (6 warnings preexistentes).
+- ⚠️ **Nada verificado em tela** — o hub exige login e os cliques sao do Lucas.
+- Status: `EM PRODUCAO`.
