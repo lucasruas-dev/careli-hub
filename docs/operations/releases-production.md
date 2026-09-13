@@ -95,6 +95,34 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Iris/Zeus-Plantao] Buscar pelo CPF sem digitar a mascara, com a tela perguntando o que e (v1.326.0)`.
+- Squad/agente responsavel: `Zeus de Plantao`.
+- Data e hora local: `2026-09-13 11:43:14 -03:00`.
+- Ambiente: `producao`.
+- Origem: OK explicito do Lucas ("pode subir"), depois de ele ler a pendencia deixada na v1.325.0 e perguntar "eu posso digitar o cpf numero e o sistema coloca a mascara?"; ao saber da ambiguidade, deu o desenho: "pode resolver igual o pix resolve, pergunta o que eu estou digitando".
+- Causa: digitar o documento em digitos crus nao achava ninguem. `normalizeSearchText` nao remove ponto nem hifen, e o indice de texto guarda o documento COM mascara (`document_masked`); alem disso, digito cru ia direto para o caminho do TELEFONE. Medido: 5.015 de 5.118 fichas (98%) so eram achadas com a mascara digitada.
+- ⚠️ O DOCUMENTO JA ESTAVA INDEXADO - faltava a Iris procurar por ele. `apolo_entity_identifiers` tem 4.520 `cpf` e 502 `cnpj`, com hash dos DIGITOS CRUS (lib/apolo/server.ts:3909, `rawValue: onlyDigits`). Conferido em producao: o hash gravado bate com `sha256("apolo-identifier:cpf:"+digitos)` em 500 de 500 amostras. 5.020 das 5.124 entidades vivas passam a ser achaveis por documento cru.
+- ⚠️ ONZE DIGITOS SAO CPF **E** CELULAR COM DDD. Medido: 4.291 CPFs distintos contra 4.227 telefones de 11 digitos, ZERO em comum. A colisao nao existe HOJE, o que torna seguro PRE-SELECIONAR o telefone - mas nao torna seguro escolher sozinho e calar: o primeiro CPF que coincidir com um telefone devolveria a pessoa errada e ninguem perceberia. Por isso a tela pergunta, mostrando o numero com as DUAS mascaras.
+- Sem regressao: sem `tipo` escolhido, 11 digitos seguem indo para o caminho do telefone. CNPJ (14) resolve sozinho, porque telefone brasileiro vai ate 13 com DDI.
+- Escopo publicado:
+  - `lib/iris/apolo/busca-por-numero.ts` (NOVO) + teste com 12 casos: `interpretarDigitos`, `ehSoNumero`, `mascaraDeCpf`, `mascaraDeCnpj`, `mascaraDeTelefone`;
+  - `app/api/iris/apolo/search/route.ts`: aceita `?tipo=cpf|cnpj|telefone` e ganhou `fetchEntityIdsByDocument` (busca por hash, indexada);
+  - `modules/caredesk/blocks/start-attendance/iris-start-attendance-modal.tsx`: o bloco "O que voce esta digitando?" com as duas mascaras, e a escolha entrando na query.
+- ⚠️ `ehSoNumero` evita o efeito colateral obvio: "Maria 2" continua sendo busca por NOME. Sem isso, quem tem digito no cadastro deixaria de ser encontrado pelo nome.
+- ⚠️ NOTA DE PROCESSO: nesta rodada a implementacao saiu ANTES do teste. Para nao entregar teste sem poder de deteccao, ele foi validado por MUTACAO: trocar `ambiguo: true` por `false` derruba o teste "com 11 digitos, pergunta"; restaurado em seguida e verde de novo.
+- Commits publicados: `8128fd31` (registro da v1.325.0, que o hook havia segurado), `6b031f2a`, `af4e9925`.
+- Deployment anterior: commit `c1e46513` (v1.325.0) / `dpl_khmSWwoCL4gdPVgD2xoBPQeDPUN9`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: deploy automatico do commit `af4e9925`.
+  - `https://ops.c2x.app.br`: NAO TOCADO.
+- Validacoes executadas: typecheck limpo; suite completa 3.789 testes verdes em 254 arquivos.
+- Rollback definido: `c1e46513` / `dpl_khmSWwoCL4gdPVgD2xoBPQeDPUN9`.
+- Riscos conhecidos: BAIXO. Nenhuma escrita em banco, nenhuma migration, nenhuma mudanca de permissao; o caminho antigo (telefone) segue sendo o padrao quando nao ha escolha. ⚠️ NAO VERIFICADO EM TELA - o hub exige login e os cliques sao do Lucas.
+- Pendencias registradas (medidas, NAO corrigidas): e-mail segue fora do indice de texto em 4.775 de 5.118 linhas (93%), e as 81 entidades que so tem e-mail continuam sumindo INTEIRAS do resultado (`if (!phone) return null`), num modulo que e multicanal.
+
+Registro de producao:
+
 - Assunto: `[Iris/Zeus-Plantao] A busca de contato acha quem sumia: a imobiliaria e os contatos do CRM (v1.325.0)`.
 - Squad/agente responsavel: `Zeus de Plantao` (workflow multi-agente com refutacao adversarial: 38 agentes, 33 achados, 21 sobreviventes).
 - Data e hora local: `2026-09-13 10:26:02 -03:00`.
