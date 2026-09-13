@@ -177,6 +177,13 @@ export type CondicoesDaProposta = {
    * sempre, e a escolha só sobrepõe onde houve escolha.
    */
   entradaDatas: null | (null | string)[];
+  /**
+   * O corretor escreveu juros ou índice por cima do que o cadastro mandava?
+   *
+   * ⚠️ É O QUE ABRE A CAIXA DE NOTA na modal. Lucas (13/09/2026): *"ele altera abre uma caixa de
+   * nota para ele registrar o que achar necessário"*.
+   */
+  premissaAlterada: boolean;
   entradaValor: number;
   entradaVezes: number;
   /** A mensal do PRIMEIRO ciclo, que é a que a tela anuncia. Ver `parcelaFixa` em `proposta.ts`. */
@@ -294,6 +301,18 @@ export function SimuladorDeProposta({
   const [datasDaEntradaCruas, setDatasDaEntradaCruas] = useState<
     (null | string)[]
   >([]);
+  /**
+   * O que o corretor escreveu por cima da premissa: taxa e índice.
+   *
+   * ⚠️ NULO = NÃO MEXEU, e é diferente de "zero". Lucas (13/09/2026): *"a nossa obrigação é
+   * entregar as premissas para aquele plano conforme cadastro e alinhamento, mas o corretor pode
+   * alterar isso, e novamente, ele altera abre uma caixa de nota"*. Taxa zerada à mão é uma
+   * ALTERAÇÃO (e das caras); campo intocado não é.
+   */
+  const [sobrescrito, setSobrescrito] = useState<{
+    indice: null | string;
+    juros: null | string;
+  }>({ indice: null, juros: null });
   const [planoAtivo, setPlanoAtivo] = useState<null | string>(null);
   // ⚠️ SÓ VIRA TETO SE ELE DIGITOU. O campo Entrada nasce preenchido pelo plano — usar esse número
   // como limite cortaria as composições sem ninguém ter pedido, e a lista aparecia vazia sem
@@ -393,10 +412,41 @@ export function SimuladorDeProposta({
     [faixasDePrazo, prazoDaFaixa],
   );
 
-  const cru = useMemo(
+  const daFaixa = useMemo(
     () => aplicarPremissa(cruBase as never, premissaDaFaixa) as typeof cruBase,
     [cruBase, premissaDaFaixa],
   );
+
+  /**
+   * O plano que vale, na ordem: CADASTRO → FAIXA DE PRAZO → o que o corretor escreveu por cima.
+   *
+   * ⚠️ O CORRETOR É O ÚLTIMO, e é assim que tem que ser: a faixa entrega a premissa "conforme
+   * cadastro e alinhamento", e a alteração dele é uma decisão comercial que vence o cadastro — com
+   * a nota obrigatória logo em seguida, que é o preço de poder fazer isso.
+   *
+   * ⚠️ TAXA VAZIA VOLTA À PREMISSA, NÃO A ZERO. Apagar o campo é desfazer a alteração; para dizer
+   * "sem juros" ele escreve 0, e aí é uma alteração de verdade e a nota abre.
+   */
+  const cru = useMemo(() => {
+    if (!daFaixa) return daFaixa;
+    const bruto = sobrescrito.juros;
+    const taxa =
+      bruto == null || bruto.trim() === ""
+        ? null
+        : Number(bruto.replace(",", "."));
+    const mexeuNaTaxa = taxa != null && Number.isFinite(taxa) && taxa >= 0;
+    const mexeuNoIndice =
+      sobrescrito.indice != null && sobrescrito.indice !== "";
+    if (!mexeuNaTaxa && !mexeuNoIndice) return daFaixa;
+    return {
+      ...daFaixa,
+      ...(mexeuNaTaxa ? { jurosTaxa: taxa } : {}),
+      ...(mexeuNoIndice ? { indiceCorrecao: sobrescrito.indice } : {}),
+    };
+  }, [daFaixa, sobrescrito]);
+
+  /** O corretor mexeu na premissa? É o que abre a caixa de nota na modal. */
+  const premissaAlterada = cru !== daFaixa;
 
   /**
    * O plano da conta, já com a premissa da faixa.
@@ -725,6 +775,7 @@ export function SimuladorDeProposta({
             entradaVezes: cockpit.entradaVezes,
             entradaDatas: datasDaEntrada,
             entradaParcelas: parcelasDaEntrada,
+            premissaAlterada,
             parcela: principal.parcela,
             parcelasMensais: principal.parcelas,
             planoNome: principal.plano,
@@ -738,6 +789,12 @@ export function SimuladorDeProposta({
     aoMudarCondicoes,
     cockpit.entradaVezes,
     cockpit.valor,
+    // ⚠️ AS DUAS ENTRARAM EM 13/09/2026 E SÃO OBRIGATÓRIAS. Sem `datasDaEntrada`, mudar a data de
+    // uma parcela da entrada não avisava a modal e a data não chegava à proposta; sem
+    // `premissaAlterada`, mexer nos juros não abria a caixa de nota. Nos dois casos a tela mostrava
+    // uma coisa e o que subia era outra — em silêncio, que é o pior jeito de errar aqui.
+    datasDaEntrada,
+    premissaAlterada,
     diaDeVencimento,
     // ⚠️ A MONTAGEM ENTRA NAS DEPENDÊNCIAS. Sem ela, digitar um valor de parcela da entrada não
     // subiria nada: o pai continuaria com a composição antiga, e o botão "Gerar proposta" mandaria
@@ -1208,6 +1265,86 @@ export function SimuladorDeProposta({
                   }
                 />
               </div>
+
+              {/* ⚠️ EDITAR JUROS E ÍNDICE SÓ EXISTE NA PROPOSTA, e a trava é a mesma do bloco de
+                  cobrança logo abaixo: este componente é montado DENTRO DO ESPELHO PÚBLICO, sem
+                  login (EspelhoPublico.tsx). Um campo novo aqui sem esta condição nasceria numa
+                  página de cliente, onde ele poderia reescrever a taxa do próprio contrato.
+
+                  ⚠️ E A ORDEM É CADASTRO → FAIXA → CORRETOR. O que estes campos fazem é a última
+                  etapa: Lucas (13/09/2026) *"a nossa obrigação é entregar as premissas para aquele
+                  plano conforme cadastro e alinhamento, mas o corretor pode alterar isso"*. Mexer
+                  aqui abre a caixa de nota na modal — é o preço de poder mexer. */}
+              {aoMudarCondicoes && !ehSimulacao ? (
+                <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <label style={{ display: "grid", flex: "1 1 0", gap: 3 }}>
+                      <span
+                        style={{
+                          color: T.muted,
+                          fontSize: 10.5,
+                          fontWeight: 650,
+                        }}
+                      >
+                        Juros %{" "}
+                        {cru.jurosPeriodicidade === "anual" ? "a.a." : "a.m."}
+                      </span>
+                      <input
+                        inputMode="decimal"
+                        onChange={(e) =>
+                          setSobrescrito((a) => ({
+                            ...a,
+                            juros: e.target.value,
+                          }))
+                        }
+                        placeholder="em branco = o do cadastro"
+                        style={campo}
+                        value={sobrescrito.juros ?? ""}
+                      />
+                    </label>
+                    <label style={{ display: "grid", flex: "1 1 0", gap: 3 }}>
+                      <span
+                        style={{
+                          color: T.muted,
+                          fontSize: 10.5,
+                          fontWeight: 650,
+                        }}
+                      >
+                        Correção
+                      </span>
+                      <select
+                        onChange={(e) =>
+                          setSobrescrito((a) => ({
+                            ...a,
+                            indice: e.target.value || null,
+                          }))
+                        }
+                        style={campo}
+                        value={sobrescrito.indice ?? ""}
+                      >
+                        <option value="">o do cadastro</option>
+                        {Object.entries(INDICES).map(([codigo, rotulo]) => (
+                          <option key={codigo} value={codigo}>
+                            {rotulo}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  {premissaAlterada ? (
+                    <p
+                      style={{
+                        color: T.sub,
+                        fontSize: 10.5,
+                        margin: 0,
+                      }}
+                    >
+                      Condição alterada. O motivo vai ser pedido antes de gerar
+                      a proposta.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <p style={{ color: T.muted, fontSize: 11, margin: "8px 0 0" }}>
                 {fraseDeCorrecao(cru as unknown as PlanoComercial)}. A parcela
                 acima é a valor de hoje: o índice corrige o contrato ao longo do

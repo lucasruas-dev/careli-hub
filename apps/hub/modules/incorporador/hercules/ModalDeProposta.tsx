@@ -357,7 +357,18 @@ export function ModalDeProposta({
    * trava fecha.
    */
   const ehDesconto = (condicoes?.ajuste?.valor ?? 0) < 0;
-  const precisaDaNota = ehDesconto && nota.trim().length === 0;
+  /**
+   * O corretor mexeu na premissa (juros ou índice) que o cadastro entregou?
+   *
+   * ⚠️ É O SEGUNDO GATILHO DA NOTA. Lucas (13/09/2026), sobre a faixa de prazo: *"a nossa
+   * obrigação é entregar as premissas para aquele plano conforme cadastro e alinhamento, mas o
+   * corretor pode alterar isso, e novamente, ele altera abre uma caixa de nota"*. Mexer na taxa é
+   * tão caro quanto mexer no preço — e mais difícil de perceber depois, porque o preço aparece na
+   * capa da proposta e a taxa não.
+   */
+  const premissaAlterada = condicoes?.premissaAlterada ?? false;
+  const precisaDeNota = ehDesconto || premissaAlterada;
+  const precisaDaNota = precisaDeNota && nota.trim().length === 0;
   const credenciado = portao?.credenciamento.credenciado === true;
   const podeMontar =
     Boolean(portao) && credenciado && errosDoPortao.length === 0;
@@ -613,7 +624,10 @@ export function ModalDeProposta({
       //
       // ⚠️ SÓ SOBE COM AJUSTE. Sem alteração de preço não há o que explicar, e mandar string vazia
       // encheria a coluna de nulos ruidosos.
-      observacao: condicoesAgora.ajuste ? nota.trim() : "",
+      observacao:
+        condicoesAgora.ajuste || condicoesAgora.premissaAlterada
+          ? nota.trim()
+          : "",
       entradaParcelas: condicoesAgora.entradaParcelas,
       entradaVezes: condicoesAgora.entradaVezes,
       parcelasMensais: condicoesAgora.parcelasMensais,
@@ -929,7 +943,7 @@ export function ModalDeProposta({
                       ⚠️ E O DE/PARA VEM ESCRITO PELO SISTEMA, acima do campo. A nota do humano vale
                       muito mais acompanhada do número que ela explica: sem isso, daqui a seis meses
                       alguém lê "cliente pediu" sem saber de quanto para quanto. */}
-                  {condicoes?.ajuste ? (
+                  {condicoes?.ajuste || premissaAlterada ? (
                     <div style={{ display: "grid", gap: 6 }}>
                       <label
                         htmlFor="nota-do-ajuste"
@@ -937,17 +951,26 @@ export function ModalDeProposta({
                       >
                         {ehDesconto
                           ? "Por que o desconto?"
-                          : "Por que o valor subiu?"}
-                        {ehDesconto ? (
+                          : premissaAlterada
+                            ? "Por que a condição mudou?"
+                            : "Por que o valor subiu?"}
+                        {precisaDeNota ? (
                           <span style={{ color: T.muted, fontWeight: 400 }}>
                             {" "}
                             · obrigatório
                           </span>
                         ) : null}
                       </label>
-                      <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
+                      {/* ⚠️ O DE/PARA DO PREÇO só aparece quando foi o PREÇO que mudou. Numa
+                          alteração de juros ele seria ruído: os dois números seriam iguais, e a
+                          linha diria "tabela R$ 170.000 · proposta R$ 170.000" logo acima de uma
+                          caixa que pergunta por que a condição mudou. */}
+                      <p
+                        hidden={!condicoes?.ajuste}
+                        style={{ color: T.muted, fontSize: 11.5, margin: 0 }}
+                      >
                         Tabela {dinheiro(portao?.unidade.preco ?? 0)} · proposta{" "}
-                        {dinheiro(condicoes.valorNegociado)}
+                        {dinheiro(condicoes?.valorNegociado ?? 0)}
                       </p>
                       <textarea
                         id="nota-do-ajuste"
@@ -967,7 +990,13 @@ export function ModalDeProposta({
                         value={nota}
                       />
                       {tentou && precisaDaNota ? (
-                        <Erro texto="Escreva o motivo do desconto antes de gerar a proposta." />
+                        <Erro
+                          texto={
+                            ehDesconto
+                              ? "Escreva o motivo do desconto antes de gerar a proposta."
+                              : "Escreva o motivo da alteração antes de gerar a proposta."
+                          }
+                        />
                       ) : null}
                     </div>
                   ) : null}
