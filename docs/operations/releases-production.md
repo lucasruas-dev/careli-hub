@@ -95,6 +95,45 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Iris/Zeus-Plantao] A busca de contato acha quem sumia: a imobiliaria e os contatos do CRM (v1.325.0)`.
+- Squad/agente responsavel: `Zeus de Plantao` (workflow multi-agente com refutacao adversarial: 38 agentes, 33 achados, 21 sobreviventes).
+- Data e hora local: `2026-09-13 10:26:02 -03:00`.
+- Ambiente: `producao`.
+- Origem: OK explicito do Lucas ("pode subir"), depois do pedido "analise e corrige para mim o fato que os contatos da entidade nao aparece na iris para ser contactados, quando buscamos na iris por um contato (relacionamento) ele nao aparece" e do recorte que descartou a hipotese de permissao: "a central de relacionamento e gerido por outras pessoas, o que precisamos e que todos possam buscar as entidade e os contatos para atendimento".
+- ⚠️ O QUE NAO ERA: nao era permissao. `authorizeIrisMetaRequest` (lib/iris/meta-server.ts:71) so confere papel ativo, SEM recorte por setor ou departamento - a busca sempre foi aberta aos sete usuarios. Nenhum vinculo de fila foi tocado; a Central de Relacionamento segue com os donos que o Lucas indicou.
+- Causas (tres, em serie, todas medidas em producao):
+  1. SEM ORDER BY, o corte era por ordem FISICA do heap. `lib/apolo/server.ts:4199` copia `user.linked_party_name` para o normalized_text de CADA cliente, entao o nome da imobiliaria casa centenas de linhas. A rota lia 48 ids sem ordenacao e cortava em 36 e depois em 12. Medido: "rr solucoes" = 170 linhas com a propria na 170a; "j&f negocios" 270 na 270a; "beltrao imoveis" 232 na 232a; "ricaj negocios" 182 na 182a; "vale do sereno" 24 na 24a. 89 de 569 entidades com papel imobiliaria/corretor eram invisiveis.
+  2. O CONTATO DA ENTIDADE NAO MORA EM `apolo_contacts`. O card "Contatos" da aba Relacionamentos grava em `apolo_relationships` com metadata.kind="contato" (nome no label, telefone no metadata.phone). Medido: 356 contatos em 253 entidades, 258 com telefone, e 196 desses numeros NAO existem em `apolo_contacts`. O modulo caredesk nunca leu essa tabela - o unico hit de `caredesk_ticket_events`/`apolo_relationships` no modulo era um COMENTARIO.
+  3. A TELA DESCARTAVA A LISTA. A rota sempre mandou todos os numeros e `IrisApoloClientOption` guardava um so (`phone: string`). Medido: 337 entidades tem mais de um numero DISTINTO, 347 numeros extras nunca chegavam ao operador.
+- Escopo publicado:
+  - `lib/iris/apolo/busca-de-contato.ts` (NOVO) + teste com 29 casos: `ordenarPorRelevancia`, `pontuarRelevancia`, `escolherTelefone`, `contatosDoVinculo`, `filtrarVinculosPorTermo`, `contatoQueCasou`, `mesclarContatos`;
+  - `app/api/iris/apolo/search/route.ts`: le ate 400 candidatos com `display_name`, ranqueia por nome proprio e so entao corta; terceira fonte (contatos de vinculo) NAO-FATAL; `pickPreferredPhone` removido;
+  - `modules/caredesk/types/iris-types.ts`: `contacts` e `matchedContactLabel` no `IrisApoloClientOption`;
+  - `modules/caredesk/IrisPage.tsx`: `extractIrisApoloClientOptions` preserva a lista (⚠️ arquivo com `@ts-nocheck` - conferido na mao);
+  - `modules/caredesk/blocks/start-attendance/iris-start-attendance-modal.tsx`: seletor "Enviar para" quando ha mais de um numero, e "via contato: <nome>" no item da lista.
+- ⚠️ DECISAO DE DESENHO: o casamento por telefone do vinculo e feito EM MEMORIA de proposito. O numero vem com mascara (194 dos 258 com pontuacao, 111 com hifen), e `ilike` com digitos crus erraria 43% deles. Sao 356 linhas hoje, folgado diante do teto de 1.000 do PostgREST. SE ESSE NUMERO SE APROXIMAR DE 1.000 o corte volta calado - ai e hora de gravar um telefone normalizado na propria linha.
+- Efeito medido por simulacao do pipeline novo sobre a base: das 89 entidades invisiveis, 87 voltam (restam 2). Os cinco casos conferidos saem da ULTIMA posicao do proprio conjunto para a PRIMEIRA.
+- Commits publicados: `4d64a77e`, `8e3fe8d4`, `c1e46513`. Rebase limpo sobre os 46 commits que a sessao de construcao havia subido.
+- Deployment anterior: `dpl_9hTTbmVjzmu32ycabxixLDaA5NP4` (commit `67722230`, v1.324.0).
+- Deployment novo: `dpl_khmSWwoCL4gdPVgD2xoBPQeDPUN9` - state READY, target production.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `dpl_khmSWwoCL4gdPVgD2xoBPQeDPUN9` / 200.
+  - `https://ops.c2x.app.br`: NAO TOCADO.
+- Validacoes executadas: typecheck limpo; suite completa 3.777 testes verdes em 253 arquivos (29 novos, escritos ANTES do codigo e vistos falhar).
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br` -> 200 em 0,78s;
+  - `/api/version` -> `{"buildTag":"2026-09-13-a-busca-de-contato-da-iris-acha-quem-sumia","version":"1.325.0"}`.
+- Rollback definido: `67722230` / `dpl_9hTTbmVjzmu32ycabxixLDaA5NP4`.
+- Riscos conhecidos: BAIXO. Nenhuma escrita em banco, nenhuma migration, nenhuma mudanca de permissao. A fonte nova de busca e nao-fatal por desenho. ⚠️ NAO VERIFICADO EM TELA - o hub exige login e os cliques sao do Lucas; a prova e no banco e no teste.
+- Pendencias registradas (medidas nesta rodada, NAO corrigidas):
+  - busca por CPF so funciona com a mascara digitada - 5.015 de 5.118 fichas (98%) nao sao achadas por digitos crus, e o numero cru ainda e tratado como TELEFONE;
+  - e-mail esta fora do indice de texto em 4.775 de 5.118 linhas (93%) - `buildSearchRow` do sync C2X nao inclui e-mail, embora o cadastro manual inclua;
+  - 81 entidades que so tem e-mail somem INTEIRAS do resultado (`if (!phone) return null`), num modulo que e multicanal;
+  - o changelog tem duas versoes repetidas, pre-existentes: `1.62.2` (22/07) e `1.268.0` (02/09), cada uma com duas entradas distintas.
+
+Registro de producao:
+
 - Assunto: `[Boletos/Zeus] Emissao em blocos: a carteira grande volta a emitir num clique (v1.273.1)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-03 08:44:00 -03:00`.
