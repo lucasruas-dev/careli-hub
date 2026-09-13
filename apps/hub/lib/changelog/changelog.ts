@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-13-a-data-da-entrada-desce-uma-linha",
+    deployedAt: "2026-09-13T14:21:57-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "Na montagem da entrada, **o vencimento desceu para a linha de baixo** e o valor voltou a caber na tela. Lado a lado, o campo de data espremia o de valor at\u00e9 sobrar s\u00f3 o \"R$\".",
+              "A linha de baixo diz se a data \u00e9 **calculada** ou **escolhida**, para campo em branco n\u00e3o parecer campo por preencher.",
+            ],
+            screen: "Venda \u00b7 Gerar proposta",
+          },
+        ],
+      },
+    ],
+    rollback: "0259ac88",
+    technical: {
+      done: "OS DOIS PEDIDOS ERAM O MESMO DEFEITO. Lucas: *\"ficou ruim, acho que pode fazer abaixo, em vez do lado\"* e *\"traz os valores iguais em vez de nada\"*. Os valores SEMPRE estiveram l\u00e1 \u2014 `partesIguais` divide a entrada desde 05/09/2026, e o rodap\u00e9 \"Somando R$ 17.000,00\" do pr\u00f3prio print comprova que a soma estava certa. O que sumiu foi a LARGURA: o campo de data que eu tinha posto AO LADO, num flex com 8px de gap, encolheu o `CampoEmReais` at\u00e9 o n\u00famero n\u00e3o caber \u2014 e o que continuava vis\u00edvel era s\u00f3 o prefixo \"R$\", que \u00e9 posicionado em absoluto e por isso n\u00e3o encolhe junto. Descer a data resolve os dois pedidos de uma vez. || A linha virou um `grid` de duas: valor e \"fixar\" em cima, vencimento embaixo com recuo de 66px para alinhar sob o campo. || O R\u00d3TULO \"calculada\"/\"escolhida\" EXISTE POR UM MOTIVO: campo de data vazio sem explica\u00e7\u00e3o parece campo por preencher, e o coordenador digitaria tr\u00eas datas que o sistema j\u00e1 sabe calcular sozinho. || S\u00f3 layout: nenhuma conta, nenhum dado e nenhuma regra mudaram. typecheck 11/11, 3.808 testes em 253 arquivos, lint sem aviso novo. N\u00e3o verificado em tela \u2014 o hub exige login.",
+      motivation:
+        "Lucas (13/09/2026), com o print da montagem da entrada logo depois de a 1.327.0 subir: *\"ficou ruim, acho que pode fazer abaixo, em vez do lado, e outra traz os valores iguais em vez de nada\"*.",
+    },
+    title: "A data da entrada desce uma linha, e o valor volta a aparecer",
+    type: "correcao",
+    version: "1.328.0",
+  },
+  {
     buildTag: "2026-09-13-faixa-de-prazo-e-nota-do-ajuste",
     deployedAt: "2026-09-13T14:08:38-03:00",
     modules: [

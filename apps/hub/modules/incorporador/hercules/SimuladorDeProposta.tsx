@@ -956,104 +956,129 @@ export function SimuladorDeProposta({
           {parcelasDaEntrada ? (
             <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
               {parcelasDaEntrada.map((valor, i) => (
-                <div
-                  key={i}
-                  style={{ alignItems: "center", display: "flex", gap: 8 }}
-                >
-                  <span
+                /* ⚠️ DUAS LINHAS, E NÃO UMA. Lucas (13/09/2026), vendo a primeira versão:
+                   *"ficou ruim, acho que pode fazer abaixo, em vez do lado"*, e logo depois
+                   *"traz os valores iguais em vez de nada"*.
+
+                   Os dois problemas eram O MESMO: lado a lado, o campo de data espremeu o campo de
+                   valor até sobrar só o prefixo "R$" visível. Os valores SEMPRE estiveram lá — o
+                   rodapé "Somando R$ 17.000,00" media a divisão igual que a montagem já faz desde
+                   05/09 —, mas o número não cabia mais na tela. Descer a data devolve a largura ao
+                   valor, e os dois pedidos se resolvem com a mesma mudança. */
+                <div key={i} style={{ display: "grid", gap: 4 }}>
+                  <div
+                    style={{ alignItems: "center", display: "flex", gap: 8 }}
+                  >
+                    <span
+                      style={{
+                        color: T.muted,
+                        fontSize: 11,
+                        fontWeight: 650,
+                        minWidth: 58,
+                      }}
+                    >
+                      {i + 1}ª parcela
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <CampoEmReais
+                        aoMudar={(v) =>
+                          setMontagemCrua((atual) =>
+                            atual
+                              ? {
+                                  ...atual,
+                                  parcelas: atual.parcelas.map((antigo, j) =>
+                                    j === i ? v : antigo,
+                                  ),
+                                }
+                              : atual,
+                          )
+                        }
+                        rotulo=""
+                        valor={valor}
+                      />
+                    </div>
+                    {/* "A primeira é 10 mil, divide o resto" — o caso que o coordenador descreve na
+                      mesa, num clique em vez de três contas na calculadora. */}
+                    {parcelasDaEntrada.length > 1 ? (
+                      <button
+                        onClick={() =>
+                          setMontagemCrua((atual) =>
+                            atual
+                              ? {
+                                  ...atual,
+                                  parcelas: redistribuirDemais(
+                                    cockpit.entrada,
+                                    atual.parcelas,
+                                    i,
+                                  ),
+                                }
+                              : atual,
+                          )
+                        }
+                        style={{
+                          background: "transparent",
+                          border: `1px solid ${T.border}`,
+                          borderRadius: 7,
+                          color: T.sub,
+                          cursor: "pointer",
+                          font: "inherit",
+                          fontSize: 10.5,
+                          padding: "4px 8px",
+                          whiteSpace: "nowrap",
+                        }}
+                        title="Mantém esta parcela e divide o restante entre as outras"
+                        type="button"
+                      >
+                        fixar
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {/* ⚠️ A DATA É OPCIONAL E SOBREPÕE SÓ A POSIÇÃO ESCOLHIDA. Lucas (13/09/2026):
+                      *"pode trazer as data no padrão calculado pelo sistema, mas dar opção de
+                      escolha data"*. Em branco vale a calculada — mês a mês a partir da primeira;
+                      apagar devolve a calculada.
+
+                      ⚠️ O RÓTULO EXPLICA O BRANCO, e é por isso que ele existe. Um campo de data
+                      vazio sem explicação parece campo por preencher, e o coordenador digitaria
+                      três datas que o sistema já sabia calcular. */}
+                  <div
                     style={{
-                      color: T.muted,
-                      fontSize: 11,
-                      fontWeight: 650,
-                      minWidth: 58,
+                      alignItems: "center",
+                      display: "flex",
+                      gap: 8,
+                      paddingLeft: 66,
                     }}
                   >
-                    {i + 1}ª parcela
-                  </span>
-                  <div style={{ flex: 1 }}>
-                    <CampoEmReais
-                      aoMudar={(v) =>
-                        setMontagemCrua((atual) =>
-                          atual
-                            ? {
-                                ...atual,
-                                parcelas: atual.parcelas.map((antigo, j) =>
-                                  j === i ? v : antigo,
-                                ),
-                              }
-                            : atual,
-                        )
-                      }
-                      rotulo=""
-                      valor={valor}
-                    />
-                  </div>
-                  {/* ⚠️ A DATA VEM CALCULADA E É EDITÁVEL, que é exatamente o pedido: *"pode
-                      trazer as data no padrão calculado pelo sistema, mas dar opção de escolha
-                      data"*. Em branco, vale a
-                      calculada (mês a mês a partir da primeira); escrever sobrepõe só aquela
-                      posição, e apagar devolve a calculada. */}
-                  <input
-                    aria-label={`Vencimento da ${i + 1}ª parcela da entrada`}
-                    onChange={(e) =>
-                      setDatasDaEntradaCruas((atual) => {
-                        const proxima = [...atual];
-                        while (proxima.length <= i) proxima.push(null);
-                        proxima[i] = e.target.value || null;
-                        return proxima;
-                      })
-                    }
-                    style={{
-                      background: T.card,
-                      border: `1px solid ${T.border}`,
-                      borderRadius: 7,
-                      color: T.text,
-                      font: "inherit",
-                      fontSize: 11,
-                      padding: "4px 6px",
-                    }}
-                    type="date"
-                    // ⚠️ VAZIO = A DATA CALCULADA, e o campo fica vazio mesmo. Preenchê-lo com a
-                    // data que o cronograma agendaria exigiria refazer aqui a conta de datas que
-                    // `montarCronograma` já faz — uma segunda versão da mesma conta, que é o
-                    // defeito que esta casa já pagou caro. A prévia mostra as datas de verdade.
-                    value={datasDaEntradaCruas[i] ?? ""}
-                  />
-                  {/* "A primeira é 10 mil, divide o resto" — o caso que o coordenador descreve na
-                      mesa, num clique em vez de três contas na calculadora. */}
-                  {parcelasDaEntrada.length > 1 ? (
-                    <button
-                      onClick={() =>
-                        setMontagemCrua((atual) =>
-                          atual
-                            ? {
-                                ...atual,
-                                parcelas: redistribuirDemais(
-                                  cockpit.entrada,
-                                  atual.parcelas,
-                                  i,
-                                ),
-                              }
-                            : atual,
-                        )
+                    <span style={{ color: T.muted, fontSize: 10.5 }}>
+                      vence em
+                    </span>
+                    <input
+                      aria-label={`Vencimento da ${i + 1}ª parcela da entrada`}
+                      onChange={(e) =>
+                        setDatasDaEntradaCruas((atual) => {
+                          const proxima = [...atual];
+                          while (proxima.length <= i) proxima.push(null);
+                          proxima[i] = e.target.value || null;
+                          return proxima;
+                        })
                       }
                       style={{
-                        background: "transparent",
+                        background: T.card,
                         border: `1px solid ${T.border}`,
                         borderRadius: 7,
-                        color: T.sub,
-                        cursor: "pointer",
+                        color: T.text,
                         font: "inherit",
-                        fontSize: 10.5,
-                        padding: "4px 8px",
-                        whiteSpace: "nowrap",
+                        fontSize: 11,
+                        padding: "4px 6px",
                       }}
-                      title="Mantém esta parcela e divide o restante entre as outras"
-                      type="button"
-                    >
-                      fixar
-                    </button>
-                  ) : null}
+                      type="date"
+                      value={datasDaEntradaCruas[i] ?? ""}
+                    />
+                    <span style={{ color: T.muted, fontSize: 10.5 }}>
+                      {datasDaEntradaCruas[i] ? "escolhida" : "calculada"}
+                    </span>
+                  </div>
                 </div>
               ))}
 
