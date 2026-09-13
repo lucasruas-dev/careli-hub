@@ -11,11 +11,17 @@
 
 // ⚠️ DA RÉGUA PURA, e não de `planos-comerciais-c2x`: aquele módulo importa o driver do MySQL, e
 // este roda também no navegador. A importação errada quebrava o build com "node:buffer".
+import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import { periodicidadeDaTaxa } from "@/lib/apolo/periodicidade-da-taxa";
 
 import { codigoDaVenda } from "./codigo-da-venda";
 
-export type EtapaDoFluxo = "assinatura" | "contrato" | "faturado" | "proposta" | "reservado";
+export type EtapaDoFluxo =
+  | "assinatura"
+  | "contrato"
+  | "faturado"
+  | "proposta"
+  | "reservado";
 export type EtapaDaProposta = EtapaDoFluxo | "cancelado" | "distrato";
 
 export const ETAPAS_DO_FLUXO: readonly EtapaDoFluxo[] = [
@@ -262,13 +268,29 @@ export type FluxoDeVenda = {
    * preenche; a agregação não sabe disso.
    */
   entradaMinima: Record<string, number>;
+  /**
+   * As faixas de prazo cadastradas, por `enterprise_id`.
+   *
+   * ⚠️ VAZIO É O ESTADO NORMAL DE HOJE (migration 0155 nasceu sem linha nenhuma), e é o que faz a
+   * entrega ser segura: sem faixa, `premissaDoPrazo` devolve nulo e a tela se comporta como antes.
+   */
+  faixasDePrazo: Record<string, FaixaDePrazo[]>;
   planos: PlanoDaVenda[];
   /** Os motivos de cancelamento que EXISTEM na base — ver o aviso sobre o legado. */
   motivos: { motivo: string; n: number }[];
-  ranking: { imobiliaria: string; propostas: number; vendidas: number; vgv: number }[];
+  ranking: {
+    imobiliaria: string;
+    propostas: number;
+    vendidas: number;
+    vgv: number;
+  }[];
   serie: { canceladas: number; faturadas: number; mes: string }[];
   /** O que o recorte de tempo pegou, para a tela poder dizer de que período está falando. */
-  periodo: { ate: null | string; de: null | string; propostasNoPeriodo: number };
+  periodo: {
+    ate: null | string;
+    de: null | string;
+    propostasNoPeriodo: number;
+  };
   totais: {
     /** Quantas unidades em cada `EtapaDoEspelho` — é a legenda da grade. */
     estoque: Record<string, number>;
@@ -340,7 +362,9 @@ function fluxoDoPlano(p: PropostaDaCarga): null | string {
   const correcao = p.plano_correcao?.trim();
   if (correcao) {
     const [sigla, ...resto] = correcao.split(/\s+/);
-    partes.push([sigla, ...resto.map((w) => w.toLocaleLowerCase("pt-BR"))].join(" "));
+    partes.push(
+      [sigla, ...resto.map((w) => w.toLocaleLowerCase("pt-BR"))].join(" "),
+    );
   }
 
   // ⚠️ A TAXA DO LEGADO NÃO DIZ A UNIDADE, e chutar "a.a." é errar em um terço dos contratos.
@@ -356,7 +380,7 @@ function fluxoDoPlano(p: PropostaDaCarga): null | string {
   }
 
   // Sem nenhum dos três, o nome do plano é melhor do que um travessão — mas só aí.
-  return partes.length > 0 ? partes.join(" · ") : (p.plano_nome?.trim() || null);
+  return partes.length > 0 ? partes.join(" · ") : p.plano_nome?.trim() || null;
 }
 
 /**
@@ -376,7 +400,9 @@ function dataDaEtapa(p: PropostaDaCarga): null | string {
 /** "Q07" de "Q07 L12" — o agrupamento do mapa quando a unidade não traz quadra própria. */
 function grupoDaUnidade(u: UnidadeDoMapa): string {
   if (u.quadra) return u.quadra;
-  const partes = String(u.codigo ?? "").trim().split(/\s+/);
+  const partes = String(u.codigo ?? "")
+    .trim()
+    .split(/\s+/);
   return partes.length > 1 ? (partes[0] ?? "Unidades") : "Unidades";
 }
 
@@ -389,7 +415,9 @@ function grupoDaUnidade(u: UnidadeDoMapa): string {
  */
 function mesDe(p: PropostaDaCarga): null | string {
   const bruta =
-    p.etapa === "faturado" ? (p.data_faturamento ?? p.etapa_desde) : (p.etapa_desde ?? p.criado_em_c2x);
+    p.etapa === "faturado"
+      ? (p.data_faturamento ?? p.etapa_desde)
+      : (p.etapa_desde ?? p.criado_em_c2x);
   if (!bruta) return null;
   const m = /^(\d{4})-(\d{2})/.exec(String(bruta));
   return m ? `${m[1]}-${m[2]}` : null;
@@ -428,7 +456,8 @@ export function agregarFluxo({
   let propostasNoPeriodo = 0;
   // ── A faixa do fluxo ──────────────────────────────────────────────────────
   const porEtapa = new Map<EtapaDoFluxo, { propostas: number; vgv: number }>();
-  for (const etapa of ETAPAS_DO_FLUXO) porEtapa.set(etapa, { propostas: 0, vgv: 0 });
+  for (const etapa of ETAPAS_DO_FLUXO)
+    porEtapa.set(etapa, { propostas: 0, vgv: 0 });
 
   let canceladas = 0;
   let distratos = 0;
@@ -469,7 +498,11 @@ export function agregarFluxo({
     // abre muita proposta e fecha pouca é justamente o que o coordenador precisa enxergar.
     const imob = String(p.imobiliaria_nome ?? "").trim();
     if (imob && dentro) {
-      const atual = porImobiliaria.get(imob) ?? { propostas: 0, vendidas: 0, vgv: 0 };
+      const atual = porImobiliaria.get(imob) ?? {
+        propostas: 0,
+        vendidas: 0,
+        vgv: 0,
+      };
       atual.propostas += 1;
       if (p.etapa === "faturado") {
         atual.vendidas += 1;
@@ -487,7 +520,11 @@ export function agregarFluxo({
     }
 
     const motivo = String(p.motivo ?? "").trim();
-    if (motivo && dentro && (p.etapa === "cancelado" || p.etapa === "distrato")) {
+    if (
+      motivo &&
+      dentro &&
+      (p.etapa === "cancelado" || p.etapa === "distrato")
+    ) {
       porMotivo.set(motivo, (porMotivo.get(motivo) ?? 0) + 1);
     }
   }
@@ -497,12 +534,16 @@ export function agregarFluxo({
   // ⚠️ A ETAPA DA UNIDADE VEM DA PROPOSTA VIVA MAIS RECENTE. Uma unidade acumula propostas ao
   // longo do tempo (revenda, cancelamento e nova venda): a que vale é a última que ainda está no
   // caminho. Pegar qualquer uma pintaria de "faturado" um lote que voltou para o estoque.
-  const vivaPorUnidade = new Map<string, { desde: string; etapa: EtapaDoFluxo }>();
+  const vivaPorUnidade = new Map<
+    string,
+    { desde: string; etapa: EtapaDoFluxo }
+  >();
   for (const p of propostas) {
     if (!p.unidade_id || !ehDoFluxo(p.etapa)) continue;
     const desde = String(p.etapa_desde ?? p.criado_em_c2x ?? "");
     const atual = vivaPorUnidade.get(p.unidade_id);
-    if (!atual || desde > atual.desde) vivaPorUnidade.set(p.unidade_id, { desde, etapa: p.etapa });
+    if (!atual || desde > atual.desde)
+      vivaPorUnidade.set(p.unidade_id, { desde, etapa: p.etapa });
   }
 
   const grupos = new Map<
@@ -526,7 +567,8 @@ export function agregarFluxo({
     // manda (é ela que sabe se está em contrato ou já faturou). Sem proposta, vale o cadastro — e
     // "vendida" ou "reservada" continuam ocupadas, nunca disponíveis: dizer que um lote vendido
     // está livre é convidar a segunda venda.
-    const etapa: EtapaDoEspelho = vivaPorUnidade.get(u.id)?.etapa ?? etapaDaSituacao(u.situacao);
+    const etapa: EtapaDoEspelho =
+      vivaPorUnidade.get(u.id)?.etapa ?? etapaDaSituacao(u.situacao);
 
     estoque[etapa] = (estoque[etapa] ?? 0) + 1;
     if (etapa === "disponivel") {
@@ -552,13 +594,18 @@ export function agregarFluxo({
 
   return {
     cads,
-    // A rota preenche depois: os planos e o piso de entrada vêm de outras fontes e não passam
-    // pela agregação.
+    // A rota preenche depois: os planos, as faixas e o piso de entrada vêm de outras fontes e
+    // não passam pela agregação.
     entradaMinima: {},
+    faixasDePrazo: {},
     planos: [],
     fluxo: ETAPAS_DA_FAIXA.map((etapa) =>
       etapa === "disponivel"
-        ? { etapa, quantidade: disponiveis, vgv: Math.round(vgvDisponivel * 100) / 100 }
+        ? {
+            etapa,
+            quantidade: disponiveis,
+            vgv: Math.round(vgvDisponivel * 100) / 100,
+          }
         : {
             etapa,
             quantidade: porEtapa.get(etapa)!.propostas,
@@ -587,17 +634,29 @@ export function agregarFluxo({
       .map(([grupo, lista]) => ({
         grupo,
         unidades: lista.sort((a, b) =>
-          String(a.lote ?? a.codigo).localeCompare(String(b.lote ?? b.codigo), "pt-BR", {
-            numeric: true,
-          }),
+          String(a.lote ?? a.codigo).localeCompare(
+            String(b.lote ?? b.codigo),
+            "pt-BR",
+            {
+              numeric: true,
+            },
+          ),
         ),
       })),
     motivos: [...porMotivo.entries()]
       .map(([motivo, n]) => ({ motivo, n }))
       .sort((a, b) => b.n - a.n),
-    perdas: { canceladas, distratos, vgvCancelado: Math.round(vgvCancelado * 100) / 100 },
+    perdas: {
+      canceladas,
+      distratos,
+      vgvCancelado: Math.round(vgvCancelado * 100) / 100,
+    },
     ranking: [...porImobiliaria.entries()]
-      .map(([imobiliaria, v]) => ({ imobiliaria, ...v, vgv: Math.round(v.vgv * 100) / 100 }))
+      .map(([imobiliaria, v]) => ({
+        imobiliaria,
+        ...v,
+        vgv: Math.round(v.vgv * 100) / 100,
+      }))
       .sort((a, b) => b.vgv - a.vgv || b.vendidas - a.vendidas),
     periodo: { ate, de, propostasNoPeriodo },
     serie: [...porMes.entries()]
@@ -607,7 +666,9 @@ export function agregarFluxo({
       estoque,
       // ⚠️ `faturadasNoPeriodo` existe porque `fluxo` conta o TOTAL faturado e `vgvFaturado` só o
       // do período: dividir um pelo outro daria um ticket médio inventado.
-      faturadasNoPeriodo: propostas.filter((p) => p.etapa === "faturado" && naJanela(p)).length,
+      faturadasNoPeriodo: propostas.filter(
+        (p) => p.etapa === "faturado" && naJanela(p),
+      ).length,
       propostas: propostas.length,
       unidades: unidades.length,
       vgvFaturado: Math.round(vgvFaturado * 100) / 100,
@@ -631,9 +692,17 @@ export function agregarFluxo({
 // régua que já pinta a grade da Venda. Uma fonte, e mais rica do que a que ela substitui.
 
 /** Os cinco baldes da tela Produtos, na régua do Panteon. */
-export type BaldeDoProduto = "bloqueado" | "disponivel" | "negociacao" | "reservado" | "vendido";
+export type BaldeDoProduto =
+  | "bloqueado"
+  | "disponivel"
+  | "negociacao"
+  | "reservado"
+  | "vendido";
 
-export type EstoqueDoEmpreendimento = Record<BaldeDoProduto, { units: number; value: number }> & {
+export type EstoqueDoEmpreendimento = Record<
+  BaldeDoProduto,
+  { units: number; value: number }
+> & {
   total: { units: number; value: number };
 };
 
@@ -689,12 +758,16 @@ export function estoquePorEmpreendimento(entrada: {
   propostas: PropostaDaCarga[];
   unidades: UnidadeDoMapa[];
 }): Map<string, EstoqueDoEmpreendimento> {
-  const vivaPorUnidade = new Map<string, { desde: string; etapa: EtapaDoFluxo }>();
+  const vivaPorUnidade = new Map<
+    string,
+    { desde: string; etapa: EtapaDoFluxo }
+  >();
   for (const p of entrada.propostas) {
     if (!p.unidade_id || !ehDoFluxo(p.etapa)) continue;
     const desde = String(p.etapa_desde ?? p.criado_em_c2x ?? "");
     const atual = vivaPorUnidade.get(p.unidade_id);
-    if (!atual || desde > atual.desde) vivaPorUnidade.set(p.unidade_id, { desde, etapa: p.etapa });
+    if (!atual || desde > atual.desde)
+      vivaPorUnidade.set(p.unidade_id, { desde, etapa: p.etapa });
   }
 
   const porEmpreendimento = new Map<string, EstoqueDoEmpreendimento>();
@@ -702,7 +775,8 @@ export function estoquePorEmpreendimento(entrada: {
   for (const u of entrada.unidades) {
     const id = String(u.enterprise_id);
     const estoque = porEmpreendimento.get(id) ?? estoqueVazio();
-    const etapa = vivaPorUnidade.get(u.id)?.etapa ?? etapaDaSituacao(u.situacao);
+    const etapa =
+      vivaPorUnidade.get(u.id)?.etapa ?? etapaDaSituacao(u.situacao);
     const balde = baldeDaEtapa(etapa);
     const valor = numero(u.preco_tabela);
 

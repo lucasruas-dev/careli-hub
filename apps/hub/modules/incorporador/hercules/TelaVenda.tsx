@@ -1196,6 +1196,9 @@ export function TelaVenda() {
             entradaMinimaPercentual={
               dados?.entradaMinima?.[simulando.enterpriseId] ?? null
             }
+            // ⚠️ E A FAIXA TAMBÉM É DO EMPREENDIMENTO DO LOTE, pela mesma razão: num pai com
+            // filhos, cada produto tem a sua escada de prazo.
+            faixasDePrazo={dados?.faixasDePrazo?.[simulando.enterpriseId] ?? []}
             nome={mapaDoProduto?.nome ?? "Simulação"}
             onFechar={() => setSimulando(null)}
             planos={dados?.planos ?? []}
@@ -2389,12 +2392,15 @@ function Mesa({
  */
 function ModalDoSimulador({
   entradaMinimaPercentual,
+  faixasDePrazo,
   nome,
   onFechar,
   planos,
   unidade,
 }: {
   entradaMinimaPercentual: null | number;
+  /** As faixas do empreendimento deste lote. Vazio = nenhuma cadastrada, e nada muda. */
+  faixasDePrazo: FluxoDeVenda["faixasDePrazo"][string];
   nome: string;
   onFechar: () => void;
   planos: FluxoDeVenda["planos"];
@@ -2481,6 +2487,7 @@ function ModalDoSimulador({
         >
           <SimuladorDeProposta
             entradaMinimaPercentual={entradaMinimaPercentual}
+            faixasDePrazo={faixasDePrazo}
             planos={planos}
             unidade={escrita.unidade}
             valorDaUnidade={unidade.preco}

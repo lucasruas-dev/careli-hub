@@ -27,6 +27,11 @@ import {
   redistribuirDemais,
 } from "@/lib/hercules/entrada-montada";
 import { pisoDaEntradaNoPrazo } from "@/lib/hercules/faixa-do-plano";
+import {
+  aplicarPremissa,
+  type FaixaDePrazo,
+  premissaDoPrazo,
+} from "@/lib/hercules/premissa-do-prazo";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
 import { DIAS_DE_VENCIMENTO } from "@/lib/hercules/proposta";
 import {
@@ -179,6 +184,7 @@ export function SimuladorDeProposta({
   aoMudarCondicoes,
   previa,
   entradaMinimaPercentual = null,
+  faixasDePrazo,
   planos,
   unidade,
   valorDaUnidade,
@@ -220,6 +226,13 @@ export function SimuladorDeProposta({
    * os outros exigem 10%, sem duas versoes da regra.
    */
   entradaMinimaPercentual?: null | number;
+  /**
+   * As faixas de prazo cadastradas para ESTE empreendimento.
+   *
+   * ⚠️ VAZIO É O NORMAL DE HOJE. A tabela nasceu vazia na migration 0155; enquanto nenhum
+   * empreendimento tiver faixa, esta tela se comporta exatamente como se comportava.
+   */
+  faixasDePrazo?: readonly FaixaDePrazo[];
   planos: PlanoDaVenda[];
   /** "12 06" — o lote, como a tela escreve. */
   unidade: string;
@@ -316,7 +329,7 @@ export function SimuladorDeProposta({
     [planos],
   );
 
-  const plano = useMemo(
+  const planoBase = useMemo(
     () =>
       planosDaConta.find((p) => p.nome === planoAtivo) ??
       planosDaConta[0] ??
@@ -328,7 +341,59 @@ export function SimuladorDeProposta({
   // correção, o sistema de amortização e a convenção de juros são do CADASTRO, e a tela precisa
   // deles para dizer o que o cliente vai assinar.
   const crus = useMemo(() => new Map(planos.map((p) => [p.nome, p])), [planos]);
-  const cru = plano ? crus.get(plano.nome) : undefined;
+  const cruBase = planoBase ? crus.get(planoBase.nome) : undefined;
+
+  /**
+   * ── A FAIXA DE PRAZO MANDA NA PREMISSA ──────────────────────────────────
+   *
+   * Lucas (13/09/2026): *"se eu apontar uma quantidade de parcelas naquele plano que eu estou
+   * montando, o sistema tem que entender que aquele parcelamento encaixa em qual premissa"*, e
+   * sobre os campos se mexerem sozinhos: *"deve atualizar sozinho"*.
+   *
+   * ⚠️ ISTO FECHA UM BURACO QUE JÁ ESTAVA ABERTO, e que ninguém via. Até hoje o corretor escolhia
+   * o plano NORMAL (120x, 0,6434% a.m.), digitava 40 no campo Parcelas, e o cronograma saía com a
+   * taxa do NORMAL aplicada a 40 parcelas — prazo e premissa DIVORCIADOS, porque só a entrada
+   * mínima consultava `cockpit.parcelas`. O plano era resolvido por NOME e o prazo era um campo
+   * livre ao lado.
+   *
+   * ⚠️ A TROCA É DO OBJETO, NUNCA DA CONTA. `cru` continua sendo o que alimenta `taxaMensal`,
+   * `montarCronograma` e o PDF; ele só passa a chegar com a premissa da faixa por cima. Recalcular
+   * a parcela aqui seria a segunda versão da mesma conta — o defeito que em 04/09/2026 fez a
+   * mesma modal anunciar R$ 2.157,44 no cartão e R$ 1.500,00 no papel.
+   *
+   * ⚠️ E O PRAZO QUE DECIDE A FAIXA É O EFETIVO: o que o corretor digitou, ou o do plano quando ele
+   * não digitou nada. É o mesmo fallback que `montada`, `aniversarios` e a régua da entrada já
+   * usam — usar `cockpit.parcelas` cru faria a faixa sumir enquanto o campo estivesse em branco.
+   */
+  const prazoDaFaixa =
+    cockpit.parcelas > 0 ? cockpit.parcelas : (planoBase?.parcelas ?? 0);
+
+  const premissaDaFaixa = useMemo(
+    () => premissaDoPrazo(faixasDePrazo ?? [], prazoDaFaixa),
+    [faixasDePrazo, prazoDaFaixa],
+  );
+
+  const cru = useMemo(
+    () => aplicarPremissa(cruBase as never, premissaDaFaixa) as typeof cruBase,
+    [cruBase, premissaDaFaixa],
+  );
+
+  /**
+   * O plano da conta, já com a premissa da faixa.
+   *
+   * ⚠️ A TAXA É RECALCULADA A PARTIR DO CRU EFETIVO, e não herdada do `planoBase`: trocar o índice
+   * e a taxa sem refazer `taxaMensal` deixaria o cartão mostrando a parcela da premissa ANTIGA
+   * enquanto o rodapé já anunciaria o índice novo.
+   */
+  const plano = useMemo(() => {
+    if (!planoBase || !cru || cru === cruBase) return planoBase;
+    return {
+      ...planoBase,
+      entradaPercentual: cru.entradaPercentual,
+      sistemaAmortizacao: sistemaDoCadastro(cru.sistemaAmortizacao),
+      taxaAoMes: taxaMensal(cru as unknown as PlanoComercial),
+    };
+  }, [cru, cruBase, planoBase]);
 
   // ── A TABELA: cada plano aplicado a ESTE lote ────────────────────────────
   //

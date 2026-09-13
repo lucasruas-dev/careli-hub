@@ -26,6 +26,7 @@ import {
   separarPorProntidao,
 } from "@/lib/temis/planos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { FaixasDePrazo } from "@/modules/apolo/blocks/empreendimentos/faixas-de-prazo";
 
 // ABA PLANOS — o cadastro que decide o contrato.
 //
@@ -103,7 +104,9 @@ const PLANO_NOVO: Rascunho = {
 };
 
 const dinheiro = (v: null | number): string =>
-  v === null ? "—" : v.toLocaleString("pt-BR", { currency: "BRL", style: "currency" });
+  v === null
+    ? "—"
+    : v.toLocaleString("pt-BR", { currency: "BRL", style: "currency" });
 
 /** Texto do campo → número. Aceita a vírgula que o operador digita. */
 function paraNumero(texto: string): null | number {
@@ -120,7 +123,11 @@ function paraTexto(valor: null | number | undefined): string {
 }
 
 /** Monta um `PlanoDoTemis` a partir do rascunho, só para a prévia do cálculo. */
-function planoDaPrevia(rascunho: Rascunho, entrada: null | number, juros: null | number): PlanoDoTemis {
+function planoDaPrevia(
+  rascunho: Rascunho,
+  entrada: null | number,
+  juros: null | number,
+): PlanoDoTemis {
   return {
     ativo: true,
     categoriaId: null,
@@ -262,23 +269,35 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
     try {
       const token = await getApoloAccessToken();
       const base = `/api/temis/planos?enterpriseId=${encodeURIComponent(enterpriseId)}`;
-      const resposta = await fetch(rascunho.id ? `${base}&id=${rascunho.id}` : base, {
-        body: JSON.stringify(entrada),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        method: rascunho.id ? "PATCH" : "POST",
-      });
-      const corpo = (await resposta.json().catch(() => ({}))) as { error?: string };
+      const resposta = await fetch(
+        rascunho.id ? `${base}&id=${rascunho.id}` : base,
+        {
+          body: JSON.stringify(entrada),
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          method: rascunho.id ? "PATCH" : "POST",
+        },
+      );
+      const corpo = (await resposta.json().catch(() => ({}))) as {
+        error?: string;
+      };
 
       if (!resposta.ok) {
         setProblemas([corpo.error ?? "Não foi possível salvar o plano."]);
         return;
       }
 
-      setAviso(rascunho.id ? "Plano salvo." : `Plano "${entrada.nome.trim()}" criado.`);
+      setAviso(
+        rascunho.id ? "Plano salvo." : `Plano "${entrada.nome.trim()}" criado.`,
+      );
       setRascunho(null);
       setRecarregar((n) => n + 1);
     } catch {
-      setProblemas(["Falha de rede. Recarregue a tela para conferir o que foi salvo."]);
+      setProblemas([
+        "Falha de rede. Recarregue a tela para conferir o que foi salvo.",
+      ]);
     } finally {
       setSalvando(false);
     }
@@ -317,11 +336,16 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
             sistemaAmortizacao: plano.sistemaAmortizacao,
             slot: plano.slot,
           }),
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
           method: "PATCH",
         },
       );
-      const corpo = (await resposta.json().catch(() => ({}))) as { error?: string };
+      const corpo = (await resposta.json().catch(() => ({}))) as {
+        error?: string;
+      };
 
       if (!resposta.ok) {
         setErro(corpo.error ?? "Não foi possível mudar a situação do plano.");
@@ -354,7 +378,10 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
         `/api/temis/categorias?enterpriseId=${encodeURIComponent(enterpriseId)}`,
         {
           body: JSON.stringify({ nome }),
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
           method: "POST",
         },
       );
@@ -373,7 +400,9 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
       // meio do formulário porque precisava dela AGORA; deixá-la só na lista obrigaria a abrir o
       // seletor de novo para escolher o que acabou de nascer.
       if (corpo.data?.id) {
-        setRascunho((atual) => (atual ? { ...atual, categoriaId: corpo.data!.id } : atual));
+        setRascunho((atual) =>
+          atual ? { ...atual, categoriaId: corpo.data!.id } : atual,
+        );
       }
       setAviso(`Categoria "${nome}" criada.`);
       setRecarregar((n) => n + 1);
@@ -384,7 +413,10 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
     }
   };
 
-  const prontidao = useMemo(() => separarPorProntidao(carga?.planos ?? []), [carga]);
+  const prontidao = useMemo(
+    () => separarPorProntidao(carga?.planos ?? []),
+    [carga],
+  );
 
   if (erro && !carga) {
     return (
@@ -411,6 +443,12 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
 
   return (
     <div className="grid gap-4 p-5">
+      {/* ⚠️ A FAIXA VEM ANTES DOS PLANOS, e a ordem é o argumento: ela é a PREMISSA, e o plano é o
+          produto montado em cima dela. Lucas (13/09/2026): *"a nossa obrigação é entregar as
+          premissas para aquele plano conforme cadastro e alinhamento"*. Quem abre esta aba para
+          cadastrar um plano precisa ver primeiro a escada que vai preenchê-lo. */}
+      <FaixasDePrazo enterpriseId={enterpriseId} />
+
       {/* ── O QUE ESTE EMPREENDIMENTO CONSEGUE VENDER HOJE ───────────────── */}
       <section className="overflow-hidden rounded-2xl border border-line bg-surface">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line bg-subtle/40 px-4 py-3">
@@ -419,10 +457,13 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
               <FileText aria-hidden="true" className="size-4" />
             </span>
             <div className="min-w-0">
-              <h4 className="m-0 text-sm font-semibold text-ink">Planos de pagamento</h4>
+              <h4 className="m-0 text-sm font-semibold text-ink">
+                Planos de pagamento
+              </h4>
               <p className="m-0 mt-0.5 text-xs text-ink-muted">
-                Cada plano diz como o cliente paga e QUAL minuta ele assina. É o plano da venda que
-                define o contrato gerado — por isso plano sem minuta trava a venda no último passo.
+                Cada plano diz como o cliente paga e QUAL minuta ele assina. É o
+                plano da venda que define o contrato gerado — por isso plano sem
+                minuta trava a venda no último passo.
               </p>
             </div>
           </div>
@@ -437,7 +478,11 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
         </div>
 
         <div className="grid gap-2 px-4 py-3 sm:grid-cols-3">
-          <Numero hint="prontos para gerar contrato" tom="ok" valor={prontidao.prontos.length} />
+          <Numero
+            hint="prontos para gerar contrato"
+            tom="ok"
+            valor={prontidao.prontos.length}
+          />
           <Numero
             hint="ativos sem minuta vinculada"
             tom={prontidao.semMinuta.length > 0 ? "alerta" : "neutro"}
@@ -453,8 +498,9 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
         {carga.minutas.length === 0 ? (
           <p className="m-0 mx-4 mb-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
             <Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
-            Nenhuma minuta cadastrada em {name} ainda. Os planos podem ser criados agora e a minuta
-            vinculada depois — mas até lá o contrato não é gerado.
+            Nenhuma minuta cadastrada em {name} ainda. Os planos podem ser
+            criados agora e a minuta vinculada depois — mas até lá o contrato
+            não é gerado.
           </p>
         ) : null}
       </section>
@@ -468,7 +514,10 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
 
       {erro ? (
         <p className="m-0 flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
-          <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          <AlertTriangle
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0"
+          />
           {erro}
         </p>
       ) : null}
@@ -536,8 +585,9 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
       {/* ── CATEGORIA NOVA ───────────────────────────────────────────────── */}
       <section className="rounded-2xl border border-dashed border-line bg-subtle/30 px-4 py-3">
         <p className="m-0 mb-2 text-xs text-ink-muted">
-          Categorias separam planos que atendem públicos diferentes dentro do mesmo empreendimento —
-          é o caso do JDG, com planos internos e externos e uma minuta para cada.
+          Categorias separam planos que atendem públicos diferentes dentro do
+          mesmo empreendimento — é o caso do JDG, com planos internos e externos
+          e uma minuta para cada.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -555,7 +605,9 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
             onClick={() => void criarCategoria()}
             type="button"
           >
-            {criandoCategoria ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
+            {criandoCategoria ? (
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            ) : null}
             Criar categoria
           </button>
         </div>
@@ -629,7 +681,9 @@ function GrupoDePlanos({
       </div>
 
       {planos.length === 0 ? (
-        <p className="m-0 px-4 py-5 text-sm text-ink-muted">Nada cadastrado aqui ainda.</p>
+        <p className="m-0 px-4 py-5 text-sm text-ink-muted">
+          Nada cadastrado aqui ainda.
+        </p>
       ) : (
         <ul className="m-0 grid list-none gap-0 p-0">
           {planos.map((plano) => (
@@ -664,7 +718,8 @@ function LinhaDoPlano({
   // ⚠️ O CÁLCULO PASSA POR `paraCalculo` DE PROPÓSITO. É o módulo com 27 testes medidos contra nove
   // empreendimentos reais que decide sinal e parcela; recalcular aqui na mão criaria um segundo
   // número, e a tela e o contrato passariam a discordar sem ninguém perceber.
-  const simulado = preco === null ? null : calcularParcela(paraCalculo(plano), preco);
+  const simulado =
+    preco === null ? null : calcularParcela(paraCalculo(plano), preco);
 
   return (
     <li
@@ -689,7 +744,10 @@ function LinhaDoPlano({
           </p>
           <p className="m-0 mt-1 text-xs text-ink-muted">
             {plano.parcelas}x · entrada de{" "}
-            {plano.entradaPercentual.toLocaleString("pt-BR", { maximumFractionDigits: 3 })}% ·{" "}
+            {plano.entradaPercentual.toLocaleString("pt-BR", {
+              maximumFractionDigits: 3,
+            })}
+            % ·{" "}
             {plano.jurosTaxa === null
               ? "sem juros"
               : `juros de ${plano.jurosTaxa.toLocaleString("pt-BR", {
@@ -710,7 +768,9 @@ function LinhaDoPlano({
             <Pencil aria-hidden="true" className="size-3.5" />
           </button>
           <button
-            aria-label={plano.ativo ? `Desativar ${plano.nome}` : `Reativar ${plano.nome}`}
+            aria-label={
+              plano.ativo ? `Desativar ${plano.nome}` : `Reativar ${plano.nome}`
+            }
             className="flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
             disabled={salvando}
             onClick={aoDesativar}
@@ -725,11 +785,15 @@ function LinhaDoPlano({
       {plano.minutaNome ? (
         <p className="m-0 flex items-center gap-1.5 text-xs text-ink-soft">
           <FileText aria-hidden="true" className="size-3.5 shrink-0" />
-          Assina a minuta <strong className="font-semibold text-ink">{plano.minutaNome}</strong>
+          Assina a minuta{" "}
+          <strong className="font-semibold text-ink">{plano.minutaNome}</strong>
         </p>
       ) : plano.ativo ? (
         <p className="m-0 flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-          <AlertTriangle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+          <AlertTriangle
+            aria-hidden="true"
+            className="mt-0.5 size-3.5 shrink-0"
+          />
           Sem minuta: a venda neste plano acontece, mas o contrato não é gerado.
         </p>
       ) : null}
@@ -737,7 +801,9 @@ function LinhaDoPlano({
       {simulado?.parcela != null ? (
         <p className="m-0 rounded-lg bg-subtle px-2.5 py-1.5 text-xs text-ink-soft">
           Nessa unidade: sinal de{" "}
-          <strong className="font-semibold tabular-nums text-ink">{dinheiro(simulado.sinal)}</strong>{" "}
+          <strong className="font-semibold tabular-nums text-ink">
+            {dinheiro(simulado.sinal)}
+          </strong>{" "}
           e {simulado.parcelas} parcelas de{" "}
           <strong className="font-semibold tabular-nums text-ink">
             {dinheiro(simulado.parcela)}
@@ -808,13 +874,20 @@ function Formulario({
     preco === null
       ? null
       : calcularParcela(
-          paraCalculo(planoDaPrevia(rascunho, paraNumero(entradaTexto), paraNumero(jurosTexto))),
+          paraCalculo(
+            planoDaPrevia(
+              rascunho,
+              paraNumero(entradaTexto),
+              paraNumero(jurosTexto),
+            ),
+          ),
           preco,
         );
 
   const campo =
     "h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-line-strong";
-  const rotulo = "text-[11px] font-semibold uppercase tracking-wide text-ink-muted";
+  const rotulo =
+    "text-[11px] font-semibold uppercase tracking-wide text-ink-muted";
 
   return (
     <section className="overflow-hidden rounded-2xl border border-[#A07C3B]/40 bg-surface shadow-sm">
@@ -875,7 +948,10 @@ function Formulario({
                   type="button"
                 >
                   {criandoCategoria ? (
-                    <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+                    <Loader2
+                      aria-hidden="true"
+                      className="size-4 animate-spin"
+                    />
                   ) : (
                     <Check aria-hidden="true" className="size-4" />
                   )}
@@ -921,7 +997,10 @@ function Formulario({
               className={campo}
               inputMode="numeric"
               onChange={(e) =>
-                aoMudar({ ...rascunho, parcelas: Number(e.target.value.replace(/\D/g, "")) || 0 })
+                aoMudar({
+                  ...rascunho,
+                  parcelas: Number(e.target.value.replace(/\D/g, "")) || 0,
+                })
               }
               value={rascunho.parcelas || ""}
             />
@@ -938,14 +1017,18 @@ function Formulario({
             />
             {/* ⚠️ O aviso fica aqui, e não num tooltip, porque este é o erro que sai caro: 0,20 em
                 vez de 20 faz a entrada virar vinte centavos por cento e o contrato sair torto. */}
-            <span className="text-[11px] text-ink-muted">20 significa 20%, não 0,20.</span>
+            <span className="text-[11px] text-ink-muted">
+              20 significa 20%, não 0,20.
+            </span>
           </label>
 
           <label className="grid gap-1.5">
             <span className={rotulo}>Posição na proposta</span>
             <select
               className={campo}
-              onChange={(e) => aoMudar({ ...rascunho, slot: e.target.value || null })}
+              onChange={(e) =>
+                aoMudar({ ...rascunho, slot: e.target.value || null })
+              }
               value={rascunho.slot ?? ""}
             >
               {SLOTS.map((s) => (
@@ -976,7 +1059,9 @@ function Formulario({
             <span className={rotulo}>Periodicidade dos juros</span>
             <select
               className={campo}
-              onChange={(e) => aoMudar({ ...rascunho, jurosPeriodicidade: e.target.value })}
+              onChange={(e) =>
+                aoMudar({ ...rascunho, jurosPeriodicidade: e.target.value })
+              }
               value={rascunho.jurosPeriodicidade ?? "anual"}
             >
               <option value="anual">ao ano</option>
@@ -988,7 +1073,9 @@ function Formulario({
             <span className={rotulo}>Tabela</span>
             <select
               className={campo}
-              onChange={(e) => aoMudar({ ...rascunho, sistemaAmortizacao: e.target.value })}
+              onChange={(e) =>
+                aoMudar({ ...rascunho, sistemaAmortizacao: e.target.value })
+              }
               value={rascunho.sistemaAmortizacao}
             >
               {SISTEMAS.map((s) => (
@@ -1005,7 +1092,9 @@ function Formulario({
             <span className={rotulo}>Correção do saldo</span>
             <select
               className={campo}
-              onChange={(e) => aoMudar({ ...rascunho, indiceCorrecao: e.target.value })}
+              onChange={(e) =>
+                aoMudar({ ...rascunho, indiceCorrecao: e.target.value })
+              }
               value={rascunho.indiceCorrecao}
             >
               {INDICES.map((i) => (
@@ -1020,7 +1109,9 @@ function Formulario({
             <span className={rotulo}>Minuta que este plano assina</span>
             <select
               className={campo}
-              onChange={(e) => aoMudar({ ...rascunho, minutaId: e.target.value || null })}
+              onChange={(e) =>
+                aoMudar({ ...rascunho, minutaId: e.target.value || null })
+              }
               value={rascunho.minutaId ?? ""}
             >
               <option value="">Sem minuta (o contrato não é gerado)</option>
@@ -1038,7 +1129,9 @@ function Formulario({
           <span className={rotulo}>Observação (opcional)</span>
           <input
             className={campo}
-            onChange={(e) => aoMudar({ ...rascunho, observacao: e.target.value || null })}
+            onChange={(e) =>
+              aoMudar({ ...rascunho, observacao: e.target.value || null })
+            }
             placeholder="Ex.: só para clientes vindos de imobiliária credenciada"
             value={rascunho.observacao ?? ""}
           />
@@ -1059,9 +1152,14 @@ function Formulario({
 
           {previa?.parcela != null ? (
             <p className="m-0 text-sm text-ink">
-              Sinal de <strong className="font-semibold tabular-nums">{dinheiro(previa.sinal)}</strong>{" "}
+              Sinal de{" "}
+              <strong className="font-semibold tabular-nums">
+                {dinheiro(previa.sinal)}
+              </strong>{" "}
               e {previa.parcelas} parcelas de{" "}
-              <strong className="font-semibold tabular-nums">{dinheiro(previa.parcela)}</strong>
+              <strong className="font-semibold tabular-nums">
+                {dinheiro(previa.parcela)}
+              </strong>
               {previa.naturezaDaParcela === "primeira"
                 ? " (a primeira; as seguintes caem)"
                 : previa.naturezaDaParcela === "inicial"
@@ -1071,8 +1169,9 @@ function Formulario({
             </p>
           ) : (
             <p className="m-0 text-xs text-ink-muted">
-              Digite o preço de uma unidade para ver o sinal e a parcela que este plano produz. É a
-              forma mais rápida de perceber uma entrada ou uma taxa digitada errado.
+              Digite o preço de uma unidade para ver o sinal e a parcela que
+              este plano produz. É a forma mais rápida de perceber uma entrada
+              ou uma taxa digitada errado.
             </p>
           )}
         </div>
@@ -1081,7 +1180,10 @@ function Formulario({
           <ul className="m-0 grid list-none gap-1 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2.5 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
             {problemas.map((p) => (
               <li className="flex items-start gap-2" key={p}>
-                <AlertTriangle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="mt-0.5 size-3.5 shrink-0"
+                />
                 {p}
               </li>
             ))}
@@ -1095,7 +1197,9 @@ function Formulario({
             onClick={aoSalvar}
             type="button"
           >
-            {salvando ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
+            {salvando ? (
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            ) : null}
             {rascunho.id ? "Salvar plano" : "Criar plano"}
           </button>
           <button

@@ -30,6 +30,8 @@ import {
 } from "@/lib/hercules/cliente-credenciado";
 import { montarCronograma } from "@/lib/hercules/cronograma";
 import { nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
+import { lerFaixasDoPanteon } from "@/lib/hercules/planos-do-panteon";
+import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import { rotuloDoIndice } from "@/lib/temis/planos";
 import {
   lerPlanosDoPanteon,
@@ -383,7 +385,7 @@ export async function GET(request: Request) {
     const familia = familiaDoEmpreendimento(cadastro, c2xId);
     const escopoDaEsteira = comIdsDoGrupo(familia, catalogo, permitidos);
 
-    const [credenciamento, planos, entradaMinimaPercentual, nomes] =
+    const [credenciamento, planos, entradaMinimaPercentual, faixas, nomes] =
       await Promise.all([
         credenciadoParaVender(admin, {
           cpf: titular.cpf,
@@ -395,6 +397,13 @@ export async function GET(request: Request) {
           codigoDoEmpreendimento(catalogo, empreendimento, c2xId),
         ),
         pisoDaEntrada(admin, c2xId),
+        // ⚠️ AS FAIXAS DESTE EMPREENDIMENTO, e falha não derruba a modal: sem elas o simulador cai
+        // no comportamento de sempre, que é o de todos os empreendimentos enquanto ninguém
+        // cadastrar a primeira faixa (a tabela nasceu vazia na 0155).
+        lerFaixasDoPanteon(admin, [String(c2xId)]).catch((erro) => {
+          console.error("[venda/proposta] faixas de prazo", erro);
+          return {} as Record<string, FaixaDePrazo[]>;
+        }),
         nomesDasEntidades(admin, [
           reserva.imobiliaria_entity_id ?? "",
           reserva.corretor_entity_id ?? "",
@@ -411,6 +420,7 @@ export async function GET(request: Request) {
             motivo: credenciamento.motivo,
           },
           entradaMinimaPercentual,
+          faixasDePrazo: faixas[String(c2xId)] ?? [],
           planos,
           reserva: {
             codigo: codigoDaVenda(reserva.protocolo_numero),

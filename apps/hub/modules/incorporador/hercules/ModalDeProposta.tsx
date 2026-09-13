@@ -24,6 +24,7 @@ import {
   type ProponenteEncontrado,
   termoDaBusca,
 } from "@/lib/hercules/busca-de-proponente";
+import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import { comoFoiOAviso, vencimentoEmDias } from "@/lib/hercules/reserva";
 
 import {
@@ -85,6 +86,8 @@ type ReservaNaTela = {
 type PortaoDaProposta = {
   credenciamento: CredenciamentoNaTela;
   entradaMinimaPercentual: null | number;
+  /** As faixas de prazo deste empreendimento. Vazio = nenhuma cadastrada, e nada muda. */
+  faixasDePrazo?: FaixaDePrazo[];
   planos: PlanoDaVenda[];
   reserva: ReservaNaTela;
   unidade: {
@@ -861,6 +864,7 @@ export function ModalDeProposta({
                   <SimuladorDeProposta
                     aoMudarCondicoes={receberCondicoes}
                     entradaMinimaPercentual={portao.entradaMinimaPercentual}
+                    faixasDePrazo={portao.faixasDePrazo ?? []}
                     planos={portao.planos}
                     previa={
                       fluxo.cronograma ? (
