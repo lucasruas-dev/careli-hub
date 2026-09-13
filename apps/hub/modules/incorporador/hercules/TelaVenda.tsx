@@ -190,6 +190,15 @@ const FLUXO: ReadonlyArray<{
 // verde faria o lote já vendido parecer disponível — o pior erro que esta tela pode cometer. Ela
 // segue o faturamento e agora é listrada sobre o vermelho. A cor é a do estado, a listra é o
 // "falta a proposta": diferença de textura, que sobrevive ao quadradinho pequeno.
+/**
+ * Quantas unidades o quadro desenha em "todos os empreendimentos" antes de parar.
+ *
+ * ⚠️ ELE SÓ VALE EM "TODOS". Com um empreendimento escolhido o quadro vem inteiro, e o maior da
+ * casa tem 532 unidades — ou seja, na tela de trabalho este número nunca é alcançado. Ele existe
+ * para o recorte de 5.540 unidades, que é uma vista de panorama e não de venda.
+ */
+const TETO_DE_UNIDADES_DO_QUADRO = 1500;
+
 const AMARELO = "#f2c14e";
 const VERDE = "#3f9d5e";
 const VERMELHO = "#c0392b";
@@ -240,7 +249,11 @@ const ROTULO_DA_ETAPA: Record<EtapaDoEspelho, string> = Object.fromEntries(
  * tema, e por isso precisava de um texto que também mudasse; agora é um verde fixo como as outras
  * etapas, e segue a mesma regra que todas.
  */
-const FUNDO_ESCURO = new Set<EtapaDoEspelho>(["bloqueada", "faturado", "vendida"]);
+const FUNDO_ESCURO = new Set<EtapaDoEspelho>([
+  "bloqueada",
+  "faturado",
+  "vendida",
+]);
 
 const textoNoQuadrado = (etapa: EtapaDoEspelho) =>
   FUNDO_ESCURO.has(etapa) ? "rgb(255 255 255 / .9)" : "rgb(0 0 0 / .6)";
@@ -385,7 +398,6 @@ const ROTULO_DA_DATA: Record<string, string> = {
 };
 
 const rotuloDaData = (etapa: string) => ROTULO_DA_DATA[etapa] ?? "Data";
-
 
 /**
  * A cor do ponto na linha do tempo.
@@ -860,7 +872,8 @@ export function TelaVenda() {
     fetch("/api/incorporador/espelho?parte=disponiveis")
       .then((r) => (r.ok ? r.json() : null))
       .then((corpo: null | { data?: { codigos?: string[] } }) => {
-        if (vivo && corpo?.data?.codigos) setComEspelho(new Set(corpo.data.codigos));
+        if (vivo && corpo?.data?.codigos)
+          setComEspelho(new Set(corpo.data.codigos));
       })
       .catch(() => undefined);
     return () => {
@@ -874,7 +887,9 @@ export function TelaVenda() {
     const nome = produtoEscolhido.nome.trim().toLowerCase();
     const card = cards.find((c) => c.nome.trim().toLowerCase() === nome);
     for (const code of [card?.code, ...(card?.enterpriseIds ?? [])]) {
-      const limpo = String(code ?? "").trim().toUpperCase();
+      const limpo = String(code ?? "")
+        .trim()
+        .toUpperCase();
       if (limpo && comEspelho.has(limpo)) return limpo;
     }
     return null;
@@ -1341,6 +1356,7 @@ export function TelaVenda() {
             lista={daEtapa}
             livres={livres}
             modo={modoDoEstoque}
+            temEmpreendimentoEscolhido={Boolean(emp)}
           />
         ) : (
           <Panorama dados={dados} />
@@ -1369,6 +1385,7 @@ function Mesa({
   lista,
   livres,
   modo,
+  temEmpreendimentoEscolhido,
   versaoDosDados,
 }: {
   aoCancelar: (u: null | UnidadeNoMapa) => void;
@@ -1389,6 +1406,15 @@ function Mesa({
   foco: null | Foco;
   lista: FluxoDeVenda["lista"];
   livres: (UnidadeNoMapa & { grupo: string })[];
+  /**
+   * Há um empreendimento escolhido no alto da tela?
+   *
+   * ⚠️ É O QUE DESLIGA TODO TETO DE TELA. Lucas (13/09/2026): *"quando se selecionar um
+   * empreendimento, tem que aparecer todos independente do tamanho"*. A Mesa não precisa saber
+   * QUAL — só se o recorte já é o de trabalho (um loteamento, no máximo 532 unidades) ou o de
+   * panorama (todos, 5.540).
+   */
+  temEmpreendimentoEscolhido: boolean;
   modo: "grade" | "mapa";
 }) {
   const rotulo = FLUXO.find((f) => f.etapa === etapa)?.rotulo ?? "Propostas";
@@ -1466,9 +1492,62 @@ function Mesa({
     [livres, procurado, quadra],
   );
   const estoque = dados?.totais.estoque ?? {};
-  // ⚠️ SÓ AS PRIMEIRAS QUADRAS. São 5.528 unidades no escopo inteiro: desenhar todas trava o
-  // navegador e ninguém lê. Com um empreendimento escolhido, o mapa dele cabe inteiro.
-  const grupos = (dados?.mapa ?? []).slice(0, 30);
+  /**
+   * As quadras que o quadro desenha — e quantas unidades ficaram de fora, se ficaram.
+   *
+   * ⚠️ COM EMPREENDIMENTO ESCOLHIDO NÃO EXISTE TETO, seja qual for o tamanho. Lucas (13/09/2026):
+   * *"mas quando se selecionar um empreendimento, tem que aparecer todos independente do
+   * tamanho"*, e antes disso o porquê: *"isso é venda, tem que aparecer tudo, se não como vamos
+   * vender?"*. Lote que não aparece é lote que não se vende, e o maior empreendimento da casa tem
+   * 532 unidades em 22 quadras (medido em 13/09/2026) — nenhum navegador sente isso.
+   *
+   * ⚠️ E O TETO DE "TODOS" PASSOU A CONTAR UNIDADE, NÃO QUADRA. Aqui havia um `.slice(0, 30)` que
+   * cortava por quadra, e foi ele que gerou a reclamação: no quadro de 35 quadras e 120 unidades
+   * ao todo, ele escondia cinco quadras inteiras sem nenhuma necessidade. Contar unidade faz o
+   * teto sumir sozinho em todo recorte pequeno — inclusive em "todos os empreendimentos", que é
+   * onde o Lucas estava — e só valer no caso que ele existe para proteger.
+   *
+   * ⚠️ O CASO PESADO É UM SÓ: "todos os empreendimentos" sem mais nada, que são 409 quadras e
+   * 5.540 unidades. É por ele que o teto continua de pé (Lucas: *"no selecionar todos os
+   * empreendimentos, pode deixar do jeito que está"*).
+   *
+   * ⚠️ A QUADRA NUNCA SAI PELA METADE: o corte é entre quadras, nunca dentro de uma. Meia quadra
+   * desenhada seria pior que quadra nenhuma, porque parece completa. E a primeira entra sempre,
+   * mesmo que sozinha já estoure o teto — senão uma quadra de 119 lotes com teto menor deixaria o
+   * quadro vazio.
+   *
+   * ⚠️ SE A BASE DOBRAR, a saída é janela virtual (desenhar só o que está visível), e NÃO baixar o
+   * teto: o teto some com unidade, e sumir com unidade é o defeito que esta mudança veio corrigir.
+   */
+  const { grupos, unidadesDesenhadas, unidadesNoRecorte } = useMemo(() => {
+    const todas = dados?.mapa ?? [];
+    const total = todas.reduce((n, g) => n + g.unidades.length, 0);
+
+    if (temEmpreendimentoEscolhido || total <= TETO_DE_UNIDADES_DO_QUADRO) {
+      return {
+        grupos: todas,
+        unidadesDesenhadas: total,
+        unidadesNoRecorte: total,
+      };
+    }
+
+    const cabem: typeof todas = [];
+    let desenhadas = 0;
+    for (const g of todas) {
+      if (
+        desenhadas > 0 &&
+        desenhadas + g.unidades.length > TETO_DE_UNIDADES_DO_QUADRO
+      )
+        break;
+      cabem.push(g);
+      desenhadas += g.unidades.length;
+    }
+    return {
+      grupos: cabem,
+      unidadesDesenhadas: desenhadas,
+      unidadesNoRecorte: total,
+    };
+  }, [dados?.mapa, temEmpreendimentoEscolhido]);
 
   // O que o painel mostra. Vindo do mapa, a proposta é achada pelo id da unidade — a mais recente,
   // porque a lista já chega ordenada por `etapa_desde` decrescente.
@@ -1517,7 +1596,7 @@ function Mesa({
 
   return (
     <>
-    {/* ⚠️ O MODAL FICA FORA DA GRADE. Ele é `position: fixed`, então dentro da coluna ele herdaria o
+      {/* ⚠️ O MODAL FICA FORA DA GRADE. Ele é `position: fixed`, então dentro da coluna ele herdaria o
         `overflow` dela e a folha do contrato ficaria recortada na metade.
 
         ⚠️ `podeGerar={false}`: AQUI SE CONFERE, NÃO SE EMITE. Lucas, 08/09/2026, no portal comercial
@@ -1528,720 +1607,756 @@ function Mesa({
 
         ⚠️ E ISTO NÃO É A TRAVA, É A METADE DELA. Quem fecha a rota é `autorizarEmissaoDeContrato`
         (`lib/temis/autorizacao.ts`); esconder botão só resolve o que se vê. */}
-    {previaDe ? (
-      <PreviaDoContrato
-        aoFechar={() => setPreviaDe(null)}
-        podeGerar={false}
-        propostaId={previaDe}
-      />
-    ) : null}
-    {/* ⚠️ `alignItems: start` SAIU. Ele encolhia as colunas para a altura do conteúdo, e era isso
+      {previaDe ? (
+        <PreviaDoContrato
+          aoFechar={() => setPreviaDe(null)}
+          podeGerar={false}
+          propostaId={previaDe}
+        />
+      ) : null}
+      {/* ⚠️ `alignItems: start` SAIU. Ele encolhia as colunas para a altura do conteúdo, e era isso
         que jogava a rolagem para a página inteira. Agora as duas esticam e rolam por dentro. */}
-    <div
-      style={{
-        display: "grid",
-        gap: 14,
-        gridTemplateColumns: "minmax(0, 1.35fr) minmax(300px, .65fr)",
-        minHeight: 0,
-        width: "100%",
-      }}
-    >
-      {/* A coluna do estoque: o quadro em cima com altura própria (até 55% da área, para a lista
-          nunca virar uma faixa de três linhas) e o analítico embaixo ocupando o resto. Os dois
-          rolam por dentro, cada um com a sua barra. */}
       <div
         style={{
-          display: "flex",
-          flexDirection: "column",
+          display: "grid",
           gap: 14,
+          gridTemplateColumns: "minmax(0, 1.35fr) minmax(300px, .65fr)",
           minHeight: 0,
-          minWidth: 0,
-          overflow: "auto",
+          width: "100%",
         }}
       >
-        <Cartao
-          direita={
-            <div
-              style={{
-                alignItems: "center",
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 12,
-              }}
-            >
-              {modo === "grade"
-                ? LEGENDA.filter((l) => (estoque[l.etapa] ?? 0) > 0).map(
-                    ({ etapa: chave, rotulo: nome }) => (
-                      <span
-                        key={chave}
-                        style={{
-                          color: T.muted,
-                          fontSize: 11.5,
-                          fontWeight: 600,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        <i
-                          style={{
-                            background: COR_DA_ETAPA[chave],
-                            borderRadius: 3,
-                            display: "inline-block",
-                            height: 10,
-                            marginRight: 5,
-                            width: 10,
-                          }}
-                        />
-                        {nome} {inteiro(estoque[chave] ?? 0)}
-                      </span>
-                    ),
-                  )
-                : null}
-
-              {/* A escolha da vista. Só aparece com um produto que TEM masterplan. */}
-              {/* O par Grade/Espelho só existe onde há masterplan publicado. */}
-              {codeDoEspelho ? (
-                <div style={{ display: "flex", gap: 6 }}>
-                  <Pilula
-                    ativo={modo === "grade"}
-                    onClick={() => aoTrocarModo("grade")}
-                    rotulo="Grade"
-                  />
-                  <Pilula
-                    ativo={modo === "mapa"}
-                    onClick={() => aoTrocarModo("mapa")}
-                    rotulo="Espelho"
-                  />
-                </div>
-              ) : null}
-            </div>
-          }
-          titulo="Estoque"
+        {/* A coluna do estoque: o quadro em cima com altura própria (até 55% da área, para a lista
+          nunca virar uma faixa de três linhas) e o analítico embaixo ocupando o resto. Os dois
+          rolam por dentro, cada um com a sua barra. */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            minHeight: 0,
+            minWidth: 0,
+            overflow: "auto",
+          }}
         >
-          {/* ⚠️ O ESPELHO DEIXOU DE SER UM <iframe> DE HTML GERADO À MÃO. Ele agora desenha a
+          <Cartao
+            direita={
+              <div
+                style={{
+                  alignItems: "center",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 12,
+                }}
+              >
+                {modo === "grade"
+                  ? LEGENDA.filter((l) => (estoque[l.etapa] ?? 0) > 0).map(
+                      ({ etapa: chave, rotulo: nome }) => (
+                        <span
+                          key={chave}
+                          style={{
+                            color: T.muted,
+                            fontSize: 11.5,
+                            fontWeight: 600,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <i
+                            style={{
+                              background: COR_DA_ETAPA[chave],
+                              borderRadius: 3,
+                              display: "inline-block",
+                              height: 10,
+                              marginRight: 5,
+                              width: 10,
+                            }}
+                          />
+                          {nome} {inteiro(estoque[chave] ?? 0)}
+                        </span>
+                      ),
+                    )
+                  : null}
+
+                {/* A escolha da vista. Só aparece com um produto que TEM masterplan. */}
+                {/* O par Grade/Espelho só existe onde há masterplan publicado. */}
+                {codeDoEspelho ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <Pilula
+                      ativo={modo === "grade"}
+                      onClick={() => aoTrocarModo("grade")}
+                      rotulo="Grade"
+                    />
+                    <Pilula
+                      ativo={modo === "mapa"}
+                      onClick={() => aoTrocarModo("mapa")}
+                      rotulo="Espelho"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            }
+            titulo="Estoque"
+          >
+            {/* ⚠️ O ESPELHO DEIXOU DE SER UM <iframe> DE HTML GERADO À MÃO. Ele agora desenha a
               mesma arte e a mesma geometria que o espelho público lê de `hercules_masterplans` —
               oito empreendimentos em vez de cinco, sem preparo manual —, mas com as CORES DO
               FUNIL, que são as desta tela. O motor do mapa (zoom, arraste, conter sem esticar) é
               compartilhado em `modules/espelho/MapaDeLotes`. */}
-          {modo === "mapa" && codeDoEspelho ? (
-            <EspelhoDoProduto
-              aoClicarNoLote={(l: LoteDaMesa) => {
-                const u = (dados?.mapa ?? [])
-                  .flatMap((g) => g.unidades)
-                  .find((x) => x.id === l.id);
-                if (u) aoFocar({ tipo: "unidade", unidade: u });
-              }}
-              code={codeDoEspelho}
-              loteEmFoco={unidadeEmFoco?.codigo ?? null}
-              lotes={(dados?.mapa ?? []).flatMap((g) =>
-                g.unidades.map((u) => ({ codigo: u.codigo, etapa: u.etapa, id: u.id })),
-              )}
-            />
-          ) : (
-            <>
-              <div
-                style={{
-                  display: "grid",
-                  gap: 14,
-                  gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+            {modo === "mapa" && codeDoEspelho ? (
+              <EspelhoDoProduto
+                aoClicarNoLote={(l: LoteDaMesa) => {
+                  const u = (dados?.mapa ?? [])
+                    .flatMap((g) => g.unidades)
+                    .find((x) => x.id === l.id);
+                  if (u) aoFocar({ tipo: "unidade", unidade: u });
                 }}
-              >
-                {grupos.map((g) => (
-                  <div key={g.grupo}>
-                    <div
-                      style={{
-                        color: T.muted,
-                        fontSize: 10.5,
-                        fontWeight: 700,
-                        letterSpacing: ".06em",
-                        marginBottom: 5,
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      {g.grupo}
-                    </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gap: 3,
-                        gridTemplateColumns: "repeat(6, 1fr)",
-                      }}
-                    >
-                      {g.unidades.slice(0, 60).map((u) => (
-                        <button
-                          key={u.codigo}
-                          onClick={() =>
-                            aoFocar({ tipo: "unidade", unidade: u })
-                          }
-                          style={{
-                            aspectRatio: "1 / 1.25",
-                            background: COR_DA_ETAPA[u.etapa] ?? T.soft,
-                            border: 0,
-                            borderRadius: 3,
-                            color: textoNoQuadrado(u.etapa),
-                            cursor: "pointer",
-                            display: "grid",
-                            font: "inherit",
-                            fontSize: 8.5,
-                            fontWeight: 600,
-                            outline:
-                              idEmFoco === u.id
-                                ? `2.5px solid ${T.text}`
-                                : undefined,
-                            outlineOffset: 1,
-                            padding: 0,
-                            placeItems: "center",
-                          }}
-                          // O código aparece aqui com a conotação de código, como o Lucas pediu: é a
-                          // única porta onde ele serve, para quem precisa cruzar com o backend.
-                          title={`${comoSeEscreve(u.codigo, u.quadra, u.lote).unidade} · ${
-                            ROTULO_DA_ETAPA[u.etapa] ?? u.etapa
-                          } · código ${u.codigo}`}
-                          type="button"
-                        >
-                          {u.lote ?? ""}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {!carregando && grupos.length === 0 ? (
-                <p
+                code={codeDoEspelho}
+                loteEmFoco={unidadeEmFoco?.codigo ?? null}
+                lotes={(dados?.mapa ?? []).flatMap((g) =>
+                  g.unidades.map((u) => ({
+                    codigo: u.codigo,
+                    etapa: u.etapa,
+                    id: u.id,
+                  })),
+                )}
+              />
+            ) : (
+              <>
+                <div
                   style={{
-                    color: T.muted,
-                    fontSize: 13,
-                    margin: 0,
-                    textAlign: "center",
+                    display: "grid",
+                    gap: 14,
+                    gridTemplateColumns:
+                      "repeat(auto-fill, minmax(140px, 1fr))",
                   }}
                 >
-                  Nenhuma unidade no recorte.
-                </p>
-              ) : null}
-              {(dados?.mapa.length ?? 0) > 30 ? (
-                <p
-                  style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}
-                >
-                  Mostrando 30 de {inteiro(dados?.mapa.length ?? 0)} quadras.
-                  Escolha um empreendimento no alto para ver o estoque inteiro
-                  dele.
-                </p>
-              ) : null}
-            </>
-          )}
-        </Cartao>
-
-        {etapa === "disponivel" ? (
-          <Cartao
-            barra={
-              <>
-                <Busca
-                  aoMudar={setBusca}
-                  placeholder="Buscar quadra, lote ou código"
-                  valor={busca}
-                />
-                <Filtro
-                  aoMudar={setQuadra}
-                  opcoes={quadras}
-                  rotuloDeTodos="Todas as quadras"
-                  valor={quadra}
-                />
-                <span
-                  style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}
-                >
-                  {inteiro(livresFiltrados.length)} de {inteiro(livres.length)}
-                </span>
-              </>
-            }
-            rolagem
-            titulo={`Disponíveis · ${inteiro(livres.length)}`}
-          >
-            <div style={{ margin: "-16px", overflowX: "auto" }}>
-              <table
-                style={{
-                  borderCollapse: "collapse",
-                  fontSize: 13,
-                  width: "100%",
-                }}
-              >
-                <thead>
-                  <tr>
-                    {["Unidade", "Valor de tabela"].map((c, i) => (
-                      <th
-                        key={c}
-                        style={{
-                          color: T.muted,
-                          fontSize: 10.5,
-                          fontWeight: 650,
-                          letterSpacing: ".05em",
-                          padding: "10px 12px",
-                          textAlign: i === 1 ? "right" : "left",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {c}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {livresFiltrados.slice(0, 150).map((u) => (
-                    <tr
-                      key={u.id}
-                      onClick={() => aoFocar({ tipo: "unidade", unidade: u })}
-                      style={{
-                        background: idEmFoco === u.id ? T.soft : undefined,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <td style={celula}>
-                        <b>
-                          {
-                            comoSeEscreve(u.codigo, u.quadra ?? u.grupo, u.lote)
-                              .unidade
-                          }
-                        </b>
-                        <div style={{ color: T.muted, fontSize: 11.5 }}>
-                          {comoSeEscreve(u.codigo, u.quadra ?? u.grupo, u.lote)
-                            .recorte ?? ""}
-                        </div>
-                      </td>
-                      <td
-                        style={{
-                          ...celula,
-                          fontVariantNumeric: "tabular-nums",
-                          textAlign: "right",
-                        }}
-                      >
-                        {u.preco ? dinheiro(u.preco) : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                  {livresFiltrados.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={2}
-                        style={{
-                          ...celula,
-                          color: T.muted,
-                          textAlign: "center",
-                        }}
-                      >
-                        {carregando
-                          ? "Carregando…"
-                          : livres.length > 0
-                            ? "Nenhuma unidade com esse filtro."
-                            : "Nenhuma unidade disponível no recorte."}
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-            {livresFiltrados.length > 150 ? (
-              <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-                Mostrando 150 de {inteiro(livresFiltrados.length)}.
-              </p>
-            ) : null}
-          </Cartao>
-        ) : (
-          <Cartao
-            barra={
-              <>
-                <Busca
-                  aoMudar={setBusca}
-                  placeholder="Buscar unidade, cliente ou imobiliária"
-                  valor={busca}
-                />
-                <Filtro
-                  aoMudar={setImobiliaria}
-                  opcoes={imobiliarias}
-                  rotuloDeTodos="Todas as imobiliárias"
-                  valor={imobiliaria}
-                />
-                <span
-                  style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}
-                >
-                  {inteiro(listaFiltrada.length)} de {inteiro(lista.length)}
-                </span>
-              </>
-            }
-            rolagem
-            titulo={`${rotulo} · ${inteiro(lista.length)}`}
-          >
-            <div style={{ margin: "-16px", overflowX: "auto" }}>
-              <table
-                style={{
-                  borderCollapse: "collapse",
-                  fontSize: 13,
-                  width: "100%",
-                }}
-              >
-                <thead>
-                  <tr>
-                    {[
-                      "Unidade",
-                      "Cliente",
-                      "Imobiliária",
-                      rotuloDaData(etapa),
-                      // ⚠️ SÓ EM CONTRATO (Lucas, 06/09/2026: *"aqui pode trazer a data de entrega
-                      // prevista"*). A promessa de 24 horas úteis é da EMISSÃO do contrato; nas
-                      // outras etapas não há o que prometer — reserva e proposta esperam o cliente,
-                      // e assinatura espera quem assina. Uma coluna vazia em quatro das seis
-                      // etapas diria sobretudo "não sei".
-                      ...(etapa === "contrato" ? ["Entrega prevista"] : []),
-                      "Valor",
-                    ].map((c, i, todas) => (
-                      <th
-                        key={c}
-                        style={{
-                          color: T.muted,
-                          fontSize: 10.5,
-                          fontWeight: 650,
-                          letterSpacing: ".05em",
-                          padding: "10px 12px",
-                          textAlign: i === todas.length - 1 ? "right" : "left",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {c}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {listaFiltrada.slice(0, 150).map((l) => (
-                    <tr
-                      key={l.id}
-                      onClick={() => aoFocar({ proposta: l, tipo: "proposta" })}
-                      style={{
-                        background:
-                          propostaEmFoco?.id === l.id ? T.soft : undefined,
-                        // ⚠️ UM FIO VERMELHO NA BORDA, E NÃO A LINHA PINTADA (Lucas, 06/09/2026:
-                        // *"os contratos que estão em cancelamento têm que vir falando, ou trazer
-                        // uma cor vermelha, algo mais discreto"*). Fundo vermelho numa lista de
-                        // contratos vivos lê-se como erro do sistema; o fio diz "esta é diferente"
-                        // sem gritar, e a coluna ao lado escreve o que ela tem de diferente.
-                        borderLeft: l.cancelamentoPedidoEm
-                          ? `2px solid ${T.danger}`
-                          : "2px solid transparent",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <td style={celula}>
-                        <b>{l.unidade ?? "—"}</b>
-                        {/* ⚠️ O COD SÓ APARECE ONDE EXISTE: as 4.857 propostas importadas não têm
-                          código (o legado não tem), e escrever "—" em quase toda linha da lista
-                          faria a coluna dizer sobretudo "não sei". Ele desce para o segundo nível
-                          da célula, ao lado do produto, e a busca — que já aceitava o COD — deixa
-                          de procurar por um número invisível. */}
-                        <div
-                          style={{
-                            color: T.muted,
-                            display: "flex",
-                            fontSize: 11.5,
-                            gap: 6,
-                          }}
-                        >
-                          <span>{l.produto ?? ""}</span>
-                          {l.codigo ? (
-                            <span
-                              style={{
-                                fontFamily:
-                                  "ui-monospace, SFMono-Regular, Menlo, monospace",
-                                fontWeight: 600,
-                                letterSpacing: ".04em",
-                              }}
-                            >
-                              {l.codigo}
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td style={celula}>
-                        {l.cliente ? toTitleCase(l.cliente) : "—"}
-                      </td>
-                      <td style={celula}>
-                        {l.imobiliaria ? toTitleCase(l.imobiliaria) : "—"}
-                      </td>
-                      <td style={{ ...celula, color: T.muted }}>
-                        {dia(l.desde)}
-                      </td>
-                      {etapa === "contrato" ? (
-                        <td style={{ ...celula, color: T.muted }}>
-                          {/* ⚠️ QUEM PEDIU CANCELAMENTO NÃO TEM ENTREGA PREVISTA: prometer data de
-                              contrato para uma venda que o jurídico está desfazendo seria a tela
-                              contando duas histórias sobre a mesma linha. */}
-                          {l.cancelamentoPedidoEm ? (
-                            <span style={{ color: T.danger, fontWeight: 600 }}>
-                              Cancelamento solicitado
-                            </span>
-                          ) : (
-                            entregaPrevista(l.desde)
-                          )}
-                        </td>
-                      ) : null}
-                      <td
-                        style={{
-                          ...celula,
-                          fontVariantNumeric: "tabular-nums",
-                          textAlign: "right",
-                        }}
-                      >
-                        {l.valor ? dinheiro(l.valor) : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                  {listaFiltrada.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={etapa === "contrato" ? 6 : 5}
-                        style={{
-                          ...celula,
-                          color: T.muted,
-                          textAlign: "center",
-                        }}
-                      >
-                        {carregando
-                          ? "Carregando…"
-                          : lista.length > 0
-                            ? "Nenhuma proposta com esse filtro."
-                            : "Nenhuma proposta nesta etapa."}
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-            {listaFiltrada.length > 150 ? (
-              <p style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}>
-                Mostrando as 150 mais recentes de{" "}
-                {inteiro(listaFiltrada.length)}.
-              </p>
-            ) : null}
-          </Cartao>
-        )}
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-          minHeight: 0,
-          // A rede: se a ficha e o simulador sozinhos passarem da altura (tela muito baixa), a
-          // coluna rola em vez de cortar. Em uso normal a barra aparece só no histórico.
-          overflow: "auto",
-        }}
-      >
-        <Cartao
-          direita={
-            unidadeEmFoco ? (
-              <span
-                style={{
-                  background: COR_DA_ETAPA[unidadeEmFoco.etapa] ?? T.soft,
-                  borderRadius: 999,
-                  color: FUNDO_ESCURO.has(unidadeEmFoco.etapa)
-                    ? "rgb(255 255 255 / .92)"
-                    : "rgb(0 0 0 / .7)",
-                  fontSize: 11,
-                  fontWeight: 650,
-                  padding: "2px 9px",
-                }}
-              >
-                {ROTULO_DA_ETAPA[unidadeEmFoco.etapa] ?? unidadeEmFoco.etapa}
-              </span>
-            ) : null
-          }
-          // ⚠️ O TÍTULO CARREGA O RECORTE quando existe (Lucas, 03/09/2026: *"quando tiver filho
-          // essa unidade tem que fazer referência"*). "04 04" sozinho é ambíguo num produto
-          // dividido: existe um 04 04 em VOC e outro em VOL, e são lotes diferentes.
-          // ⚠️ A SIGLA VEM PRIMEIRO (Lucas, 03/09/2026: *"trocar de lugar, começar com a sigla"*).
-          // "VOL · 04 04" se lê como endereço: primeiro onde, depois qual. Com o número na frente,
-          // dois lotes de recortes diferentes começam iguais e só se separam no fim.
-          titulo={
-            unidadeEmFoco
-              ? [
-                  comoSeEscreve(
-                    unidadeEmFoco.codigo,
-                    unidadeEmFoco.quadra,
-                    unidadeEmFoco.lote,
-                  ).recorte,
-                  comoSeEscreve(
-                    unidadeEmFoco.codigo,
-                    unidadeEmFoco.quadra,
-                    unidadeEmFoco.lote,
-                  ).unidade,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
-              : [propostaEmFoco?.produto, propostaEmFoco?.unidade]
-                  .filter(Boolean)
-                  .join(" · ") || "Nada escolhido"
-          }
-        >
-          {unidadeEmFoco || propostaEmFoco ? (
-            <>
-              <TrilhaDoFluxo
-                etapa={propostaEmFoco?.etapa ?? unidadeEmFoco?.etapa ?? null}
-                pedidoDeCancelamento={
-                  propostaEmFoco?.cancelamentoPedidoEm ?? null
-                }
-              />
-              {unidadeEmFoco?.preco ? (
-                <Linha
-                  rotulo="Valor de tabela"
-                  valor={dinheiro(unidadeEmFoco.preco)}
-                />
-              ) : null}
-              {propostaEmFoco ? (
-                <>
-                  {/* ⚠️ ETAPA E PRODUTO SAÍRAM DA LISTA (Lucas, 03/09/2026): a etapa já está no selo
-                      aqui em cima e o produto no filtro do topo. Repetir os dois gastava duas linhas
-                      da ficha para dizer o que a tela já dizia duas vezes. */}
-                  {/* ⚠️ O COD VEM PRIMEIRO (Lucas, 04/09/2026: *"eu gosto muito de protocolo"*,
-                      *"em vez de protocolo vamos tratar como COD"*). É o número que ele fala no
-                      telefone: aparece antes de data e valor porque é por ele que se ACHA a venda,
-                      não por eles. */}
-                  {propostaEmFoco.codigo ? (
-                    <Linha rotulo="COD" valor={propostaEmFoco.codigo} />
-                  ) : null}
-                  <Linha
-                    rotulo={rotuloDaData(propostaEmFoco.etapa)}
-                    valor={dia(propostaEmFoco.desde)}
-                  />
-                  <Linha
-                    rotulo="Valor negociado"
-                    valor={
-                      propostaEmFoco.valor
-                        ? dinheiro(propostaEmFoco.valor)
-                        : "—"
-                    }
-                  />
-                  <ClienteDaVenda
-                    nome={toTitleCase(propostaEmFoco.cliente) || "—"}
-                    unidadeId={idEmFoco}
-                  />
-                  <Linha
-                    rotulo="Imobiliária"
-                    valor={toTitleCase(propostaEmFoco.imobiliaria) || "—"}
-                  />
-                  <Linha
-                    rotulo="Corretor"
-                    valor={toTitleCase(propostaEmFoco.corretor) || "—"}
-                  />
-                  {/* O FLUXO do contrato, não o nome do plano — a mesma escrita do extrato. */}
-                  <Linha rotulo="Plano" valor={propostaEmFoco.plano ?? "—"} />
-                  {/* ⚠️ A PRÉVIA MORA NA FICHA DA PROPOSTA, e não numa tela à parte: é aqui que
-                      alguém já está olhando o negócio inteiro — cliente, unidade, valor e plano —
-                      quando decide emitir. Pedido do Lucas em 08/09/2026. */}
-                  <button
-                    onClick={() => setPreviaDe(propostaEmFoco.id)}
-                    style={{
-                      background: "transparent",
-                      border: `1px solid ${T.border}`,
-                      borderRadius: 8,
-                      color: T.text,
-                      cursor: "pointer",
-                      fontSize: 11.5,
-                      fontWeight: 600,
-                      marginTop: 8,
-                      padding: "7px 10px",
-                      width: "100%",
-                    }}
-                    type="button"
-                  >
-                    Prévia do contrato
-                  </button>
-                  {propostaEmFoco.observacao ? (
-                    <div
-                      style={{
-                        borderTop: `1px dashed ${T.border}`,
-                        marginTop: 8,
-                        paddingTop: 8,
-                      }}
-                    >
+                  {grupos.map((g) => (
+                    <div key={g.grupo}>
                       <div
                         style={{
                           color: T.muted,
                           fontSize: 10.5,
-                          fontWeight: 650,
+                          fontWeight: 700,
+                          letterSpacing: ".06em",
+                          marginBottom: 5,
+                          textTransform: "uppercase",
                         }}
                       >
-                        Observações
+                        {g.grupo}
                       </div>
-                      <p
+                      <div
                         style={{
-                          color: T.sub,
-                          fontSize: 12.5,
-                          margin: "3px 0 0",
-                          whiteSpace: "pre-wrap",
+                          display: "grid",
+                          gap: 3,
+                          gridTemplateColumns: "repeat(6, 1fr)",
                         }}
                       >
-                        {propostaEmFoco.observacao}
-                      </p>
+                        {g.unidades.slice(0, 60).map((u) => (
+                          <button
+                            key={u.codigo}
+                            onClick={() =>
+                              aoFocar({ tipo: "unidade", unidade: u })
+                            }
+                            style={{
+                              aspectRatio: "1 / 1.25",
+                              background: COR_DA_ETAPA[u.etapa] ?? T.soft,
+                              border: 0,
+                              borderRadius: 3,
+                              color: textoNoQuadrado(u.etapa),
+                              cursor: "pointer",
+                              display: "grid",
+                              font: "inherit",
+                              fontSize: 8.5,
+                              fontWeight: 600,
+                              outline:
+                                idEmFoco === u.id
+                                  ? `2.5px solid ${T.text}`
+                                  : undefined,
+                              outlineOffset: 1,
+                              padding: 0,
+                              placeItems: "center",
+                            }}
+                            // O código aparece aqui com a conotação de código, como o Lucas pediu: é a
+                            // única porta onde ele serve, para quem precisa cruzar com o backend.
+                            title={`${comoSeEscreve(u.codigo, u.quadra, u.lote).unidade} · ${
+                              ROTULO_DA_ETAPA[u.etapa] ?? u.etapa
+                            } · código ${u.codigo}`}
+                            type="button"
+                          >
+                            {u.lote ?? ""}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  ) : null}
-                </>
-              ) : (
-                // ⚠️ SEM PROPOSTA VIVA NÃO É ERRO: é lote livre, e é o começo normal de uma venda.
-                // Mas se ele JÁ TEVE proposta, isso é dito — em uma linha, sem os dados do cliente
-                // antigo, que não têm por que aparecer na ficha de um lote que está à venda.
-                <>
+                  ))}
+                </div>
+
+                {!carregando && grupos.length === 0 ? (
                   <p
                     style={{
                       color: T.muted,
-                      fontSize: 12.5,
-                      margin: "8px 0 0",
+                      fontSize: 13,
+                      margin: 0,
+                      textAlign: "center",
                     }}
                   >
-                    Nenhuma proposta em andamento nesta unidade.
+                    Nenhuma unidade no recorte.
                   </p>
-                  {ultimaQueCaiu ? (
+                ) : null}
+                {/* ⚠️ O AVISO FALA EM UNIDADE, que é o que a pessoa procura, e não em quadra. E ele
+                  só aparece quando alguma unidade ficou mesmo de fora — com um empreendimento
+                  escolhido ele nunca aparece, porque ali não há teto. */}
+                {unidadesDesenhadas < unidadesNoRecorte ? (
+                  <p
+                    style={{
+                      color: T.muted,
+                      fontSize: 11.5,
+                      margin: "12px 0 0",
+                    }}
+                  >
+                    Mostrando {inteiro(unidadesDesenhadas)} de{" "}
+                    {inteiro(unidadesNoRecorte)} unidades. Escolha um
+                    empreendimento no alto para ver o estoque inteiro dele.
+                  </p>
+                ) : null}
+              </>
+            )}
+          </Cartao>
+
+          {etapa === "disponivel" ? (
+            <Cartao
+              barra={
+                <>
+                  <Busca
+                    aoMudar={setBusca}
+                    placeholder="Buscar quadra, lote ou código"
+                    valor={busca}
+                  />
+                  <Filtro
+                    aoMudar={setQuadra}
+                    opcoes={quadras}
+                    rotuloDeTodos="Todas as quadras"
+                    valor={quadra}
+                  />
+                  <span
+                    style={{
+                      color: T.muted,
+                      fontSize: 11.5,
+                      marginLeft: "auto",
+                    }}
+                  >
+                    {inteiro(livresFiltrados.length)} de{" "}
+                    {inteiro(livres.length)}
+                  </span>
+                </>
+              }
+              rolagem
+              titulo={`Disponíveis · ${inteiro(livres.length)}`}
+            >
+              <div style={{ margin: "-16px", overflowX: "auto" }}>
+                <table
+                  style={{
+                    borderCollapse: "collapse",
+                    fontSize: 13,
+                    width: "100%",
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      {["Unidade", "Valor de tabela"].map((c, i) => (
+                        <th
+                          key={c}
+                          style={{
+                            color: T.muted,
+                            fontSize: 10.5,
+                            fontWeight: 650,
+                            letterSpacing: ".05em",
+                            padding: "10px 12px",
+                            textAlign: i === 1 ? "right" : "left",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {c}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(temEmpreendimentoEscolhido
+                      ? livresFiltrados
+                      : livresFiltrados.slice(0, 150)
+                    ).map((u) => (
+                      <tr
+                        key={u.id}
+                        onClick={() => aoFocar({ tipo: "unidade", unidade: u })}
+                        style={{
+                          background: idEmFoco === u.id ? T.soft : undefined,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <td style={celula}>
+                          <b>
+                            {
+                              comoSeEscreve(
+                                u.codigo,
+                                u.quadra ?? u.grupo,
+                                u.lote,
+                              ).unidade
+                            }
+                          </b>
+                          <div style={{ color: T.muted, fontSize: 11.5 }}>
+                            {comoSeEscreve(
+                              u.codigo,
+                              u.quadra ?? u.grupo,
+                              u.lote,
+                            ).recorte ?? ""}
+                          </div>
+                        </td>
+                        <td
+                          style={{
+                            ...celula,
+                            fontVariantNumeric: "tabular-nums",
+                            textAlign: "right",
+                          }}
+                        >
+                          {u.preco ? dinheiro(u.preco) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                    {livresFiltrados.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={2}
+                          style={{
+                            ...celula,
+                            color: T.muted,
+                            textAlign: "center",
+                          }}
+                        >
+                          {carregando
+                            ? "Carregando…"
+                            : livres.length > 0
+                              ? "Nenhuma unidade com esse filtro."
+                              : "Nenhuma unidade disponível no recorte."}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+              {/* ⚠️ Sem teto com empreendimento escolhido — a mesma regra do quadro acima. */}
+              {!temEmpreendimentoEscolhido && livresFiltrados.length > 150 ? (
+                <p
+                  style={{ color: T.muted, fontSize: 11.5, margin: "12px 0 0" }}
+                >
+                  Mostrando 150 de {inteiro(livresFiltrados.length)}. Escolha um
+                  empreendimento no alto para ver a lista inteira.
+                </p>
+              ) : null}
+            </Cartao>
+          ) : (
+            <Cartao
+              barra={
+                <>
+                  <Busca
+                    aoMudar={setBusca}
+                    placeholder="Buscar unidade, cliente ou imobiliária"
+                    valor={busca}
+                  />
+                  <Filtro
+                    aoMudar={setImobiliaria}
+                    opcoes={imobiliarias}
+                    rotuloDeTodos="Todas as imobiliárias"
+                    valor={imobiliaria}
+                  />
+                  <span
+                    style={{
+                      color: T.muted,
+                      fontSize: 11.5,
+                      marginLeft: "auto",
+                    }}
+                  >
+                    {inteiro(listaFiltrada.length)} de {inteiro(lista.length)}
+                  </span>
+                </>
+              }
+              rolagem
+              titulo={`${rotulo} · ${inteiro(lista.length)}`}
+            >
+              <div style={{ margin: "-16px", overflowX: "auto" }}>
+                <table
+                  style={{
+                    borderCollapse: "collapse",
+                    fontSize: 13,
+                    width: "100%",
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      {[
+                        "Unidade",
+                        "Cliente",
+                        "Imobiliária",
+                        rotuloDaData(etapa),
+                        // ⚠️ SÓ EM CONTRATO (Lucas, 06/09/2026: *"aqui pode trazer a data de entrega
+                        // prevista"*). A promessa de 24 horas úteis é da EMISSÃO do contrato; nas
+                        // outras etapas não há o que prometer — reserva e proposta esperam o cliente,
+                        // e assinatura espera quem assina. Uma coluna vazia em quatro das seis
+                        // etapas diria sobretudo "não sei".
+                        ...(etapa === "contrato" ? ["Entrega prevista"] : []),
+                        "Valor",
+                      ].map((c, i, todas) => (
+                        <th
+                          key={c}
+                          style={{
+                            color: T.muted,
+                            fontSize: 10.5,
+                            fontWeight: 650,
+                            letterSpacing: ".05em",
+                            padding: "10px 12px",
+                            textAlign:
+                              i === todas.length - 1 ? "right" : "left",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {c}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(temEmpreendimentoEscolhido
+                      ? listaFiltrada
+                      : listaFiltrada.slice(0, 150)
+                    ).map((l) => (
+                      <tr
+                        key={l.id}
+                        onClick={() =>
+                          aoFocar({ proposta: l, tipo: "proposta" })
+                        }
+                        style={{
+                          background:
+                            propostaEmFoco?.id === l.id ? T.soft : undefined,
+                          // ⚠️ UM FIO VERMELHO NA BORDA, E NÃO A LINHA PINTADA (Lucas, 06/09/2026:
+                          // *"os contratos que estão em cancelamento têm que vir falando, ou trazer
+                          // uma cor vermelha, algo mais discreto"*). Fundo vermelho numa lista de
+                          // contratos vivos lê-se como erro do sistema; o fio diz "esta é diferente"
+                          // sem gritar, e a coluna ao lado escreve o que ela tem de diferente.
+                          borderLeft: l.cancelamentoPedidoEm
+                            ? `2px solid ${T.danger}`
+                            : "2px solid transparent",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <td style={celula}>
+                          <b>{l.unidade ?? "—"}</b>
+                          {/* ⚠️ O COD SÓ APARECE ONDE EXISTE: as 4.857 propostas importadas não têm
+                          código (o legado não tem), e escrever "—" em quase toda linha da lista
+                          faria a coluna dizer sobretudo "não sei". Ele desce para o segundo nível
+                          da célula, ao lado do produto, e a busca — que já aceitava o COD — deixa
+                          de procurar por um número invisível. */}
+                          <div
+                            style={{
+                              color: T.muted,
+                              display: "flex",
+                              fontSize: 11.5,
+                              gap: 6,
+                            }}
+                          >
+                            <span>{l.produto ?? ""}</span>
+                            {l.codigo ? (
+                              <span
+                                style={{
+                                  fontFamily:
+                                    "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                  fontWeight: 600,
+                                  letterSpacing: ".04em",
+                                }}
+                              >
+                                {l.codigo}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td style={celula}>
+                          {l.cliente ? toTitleCase(l.cliente) : "—"}
+                        </td>
+                        <td style={celula}>
+                          {l.imobiliaria ? toTitleCase(l.imobiliaria) : "—"}
+                        </td>
+                        <td style={{ ...celula, color: T.muted }}>
+                          {dia(l.desde)}
+                        </td>
+                        {etapa === "contrato" ? (
+                          <td style={{ ...celula, color: T.muted }}>
+                            {/* ⚠️ QUEM PEDIU CANCELAMENTO NÃO TEM ENTREGA PREVISTA: prometer data de
+                              contrato para uma venda que o jurídico está desfazendo seria a tela
+                              contando duas histórias sobre a mesma linha. */}
+                            {l.cancelamentoPedidoEm ? (
+                              <span
+                                style={{ color: T.danger, fontWeight: 600 }}
+                              >
+                                Cancelamento solicitado
+                              </span>
+                            ) : (
+                              entregaPrevista(l.desde)
+                            )}
+                          </td>
+                        ) : null}
+                        <td
+                          style={{
+                            ...celula,
+                            fontVariantNumeric: "tabular-nums",
+                            textAlign: "right",
+                          }}
+                        >
+                          {l.valor ? dinheiro(l.valor) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                    {listaFiltrada.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={etapa === "contrato" ? 6 : 5}
+                          style={{
+                            ...celula,
+                            color: T.muted,
+                            textAlign: "center",
+                          }}
+                        >
+                          {carregando
+                            ? "Carregando…"
+                            : lista.length > 0
+                              ? "Nenhuma proposta com esse filtro."
+                              : "Nenhuma proposta nesta etapa."}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </Cartao>
+          )}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            minHeight: 0,
+            // A rede: se a ficha e o simulador sozinhos passarem da altura (tela muito baixa), a
+            // coluna rola em vez de cortar. Em uso normal a barra aparece só no histórico.
+            overflow: "auto",
+          }}
+        >
+          <Cartao
+            direita={
+              unidadeEmFoco ? (
+                <span
+                  style={{
+                    background: COR_DA_ETAPA[unidadeEmFoco.etapa] ?? T.soft,
+                    borderRadius: 999,
+                    color: FUNDO_ESCURO.has(unidadeEmFoco.etapa)
+                      ? "rgb(255 255 255 / .92)"
+                      : "rgb(0 0 0 / .7)",
+                    fontSize: 11,
+                    fontWeight: 650,
+                    padding: "2px 9px",
+                  }}
+                >
+                  {ROTULO_DA_ETAPA[unidadeEmFoco.etapa] ?? unidadeEmFoco.etapa}
+                </span>
+              ) : null
+            }
+            // ⚠️ O TÍTULO CARREGA O RECORTE quando existe (Lucas, 03/09/2026: *"quando tiver filho
+            // essa unidade tem que fazer referência"*). "04 04" sozinho é ambíguo num produto
+            // dividido: existe um 04 04 em VOC e outro em VOL, e são lotes diferentes.
+            // ⚠️ A SIGLA VEM PRIMEIRO (Lucas, 03/09/2026: *"trocar de lugar, começar com a sigla"*).
+            // "VOL · 04 04" se lê como endereço: primeiro onde, depois qual. Com o número na frente,
+            // dois lotes de recortes diferentes começam iguais e só se separam no fim.
+            titulo={
+              unidadeEmFoco
+                ? [
+                    comoSeEscreve(
+                      unidadeEmFoco.codigo,
+                      unidadeEmFoco.quadra,
+                      unidadeEmFoco.lote,
+                    ).recorte,
+                    comoSeEscreve(
+                      unidadeEmFoco.codigo,
+                      unidadeEmFoco.quadra,
+                      unidadeEmFoco.lote,
+                    ).unidade,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : [propostaEmFoco?.produto, propostaEmFoco?.unidade]
+                    .filter(Boolean)
+                    .join(" · ") || "Nada escolhido"
+            }
+          >
+            {unidadeEmFoco || propostaEmFoco ? (
+              <>
+                <TrilhaDoFluxo
+                  etapa={propostaEmFoco?.etapa ?? unidadeEmFoco?.etapa ?? null}
+                  pedidoDeCancelamento={
+                    propostaEmFoco?.cancelamentoPedidoEm ?? null
+                  }
+                />
+                {unidadeEmFoco?.preco ? (
+                  <Linha
+                    rotulo="Valor de tabela"
+                    valor={dinheiro(unidadeEmFoco.preco)}
+                  />
+                ) : null}
+                {propostaEmFoco ? (
+                  <>
+                    {/* ⚠️ ETAPA E PRODUTO SAÍRAM DA LISTA (Lucas, 03/09/2026): a etapa já está no selo
+                      aqui em cima e o produto no filtro do topo. Repetir os dois gastava duas linhas
+                      da ficha para dizer o que a tela já dizia duas vezes. */}
+                    {/* ⚠️ O COD VEM PRIMEIRO (Lucas, 04/09/2026: *"eu gosto muito de protocolo"*,
+                      *"em vez de protocolo vamos tratar como COD"*). É o número que ele fala no
+                      telefone: aparece antes de data e valor porque é por ele que se ACHA a venda,
+                      não por eles. */}
+                    {propostaEmFoco.codigo ? (
+                      <Linha rotulo="COD" valor={propostaEmFoco.codigo} />
+                    ) : null}
+                    <Linha
+                      rotulo={rotuloDaData(propostaEmFoco.etapa)}
+                      valor={dia(propostaEmFoco.desde)}
+                    />
+                    <Linha
+                      rotulo="Valor negociado"
+                      valor={
+                        propostaEmFoco.valor
+                          ? dinheiro(propostaEmFoco.valor)
+                          : "—"
+                      }
+                    />
+                    <ClienteDaVenda
+                      nome={toTitleCase(propostaEmFoco.cliente) || "—"}
+                      unidadeId={idEmFoco}
+                    />
+                    <Linha
+                      rotulo="Imobiliária"
+                      valor={toTitleCase(propostaEmFoco.imobiliaria) || "—"}
+                    />
+                    <Linha
+                      rotulo="Corretor"
+                      valor={toTitleCase(propostaEmFoco.corretor) || "—"}
+                    />
+                    {/* O FLUXO do contrato, não o nome do plano — a mesma escrita do extrato. */}
+                    <Linha rotulo="Plano" valor={propostaEmFoco.plano ?? "—"} />
+                    {/* ⚠️ A PRÉVIA MORA NA FICHA DA PROPOSTA, e não numa tela à parte: é aqui que
+                      alguém já está olhando o negócio inteiro — cliente, unidade, valor e plano —
+                      quando decide emitir. Pedido do Lucas em 08/09/2026. */}
+                    <button
+                      onClick={() => setPreviaDe(propostaEmFoco.id)}
+                      style={{
+                        background: "transparent",
+                        border: `1px solid ${T.border}`,
+                        borderRadius: 8,
+                        color: T.text,
+                        cursor: "pointer",
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        marginTop: 8,
+                        padding: "7px 10px",
+                        width: "100%",
+                      }}
+                      type="button"
+                    >
+                      Prévia do contrato
+                    </button>
+                    {propostaEmFoco.observacao ? (
+                      <div
+                        style={{
+                          borderTop: `1px dashed ${T.border}`,
+                          marginTop: 8,
+                          paddingTop: 8,
+                        }}
+                      >
+                        <div
+                          style={{
+                            color: T.muted,
+                            fontSize: 10.5,
+                            fontWeight: 650,
+                          }}
+                        >
+                          Observações
+                        </div>
+                        <p
+                          style={{
+                            color: T.sub,
+                            fontSize: 12.5,
+                            margin: "3px 0 0",
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          {propostaEmFoco.observacao}
+                        </p>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  // ⚠️ SEM PROPOSTA VIVA NÃO É ERRO: é lote livre, e é o começo normal de uma venda.
+                  // Mas se ele JÁ TEVE proposta, isso é dito — em uma linha, sem os dados do cliente
+                  // antigo, que não têm por que aparecer na ficha de um lote que está à venda.
+                  <>
                     <p
                       style={{
                         color: T.muted,
-                        fontSize: 11.5,
-                        margin: "6px 0 0",
+                        fontSize: 12.5,
+                        margin: "8px 0 0",
                       }}
                     >
-                      A última{" "}
-                      {ROTULO_TERMINAL[ultimaQueCaiu.etapa]?.toLowerCase() ??
-                        "encerrada"}{" "}
-                      em {dia(ultimaQueCaiu.desde)}. O histórico abaixo conta o
-                      resto.
+                      Nenhuma proposta em andamento nesta unidade.
                     </p>
-                  ) : null}
-                </>
-              )}
-            </>
-          ) : (
-            <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
-              Clique num lote do mapa ou numa linha da lista.
-            </p>
-          )}
-          <AcoesDaUnidade
-            aoCancelar={() => aoCancelar(unidadeEmFoco)}
-            aoEnviarParaContrato={() => aoEnviarParaContrato(unidadeEmFoco)}
-            aoGerarProposta={() => aoGerarProposta(unidadeEmFoco)}
-            aoPedirCancelamento={() => aoPedirCancelamento(unidadeEmFoco)}
-            aoReservar={() => aoReservar(unidadeEmFoco)}
-            propostaViva={propostaEmFoco}
-            unidade={unidadeEmFoco}
-          />
-        </Cartao>
+                    {ultimaQueCaiu ? (
+                      <p
+                        style={{
+                          color: T.muted,
+                          fontSize: 11.5,
+                          margin: "6px 0 0",
+                        }}
+                      >
+                        A última{" "}
+                        {ROTULO_TERMINAL[ultimaQueCaiu.etapa]?.toLowerCase() ??
+                          "encerrada"}{" "}
+                        em {dia(ultimaQueCaiu.desde)}. O histórico abaixo conta
+                        o resto.
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </>
+            ) : (
+              <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
+                Clique num lote do mapa ou numa linha da lista.
+              </p>
+            )}
+            <AcoesDaUnidade
+              aoCancelar={() => aoCancelar(unidadeEmFoco)}
+              aoEnviarParaContrato={() => aoEnviarParaContrato(unidadeEmFoco)}
+              aoGerarProposta={() => aoGerarProposta(unidadeEmFoco)}
+              aoPedirCancelamento={() => aoPedirCancelamento(unidadeEmFoco)}
+              aoReservar={() => aoReservar(unidadeEmFoco)}
+              propostaViva={propostaEmFoco}
+              unidade={unidadeEmFoco}
+            />
+          </Cartao>
 
-        {/* ⚠️ O HISTÓRICO VEM ANTES DO SIMULADOR (Lucas, 04/09/2026: *"você podia trocar histórico
+          {/* ⚠️ O HISTÓRICO VEM ANTES DO SIMULADOR (Lucas, 04/09/2026: *"você podia trocar histórico
             pelo simulador (...) falo a ordem"*). Quem abre um lote quer primeiro saber o que já
             aconteceu nele — quem reservou, quando, o que foi anotado. O simulador é a próxima
             ação, e ação vem depois de entender a situação. */}
-        <PainelDaVenda
-          aoSimular={unidadeEmFoco ? () => aoSimular(unidadeEmFoco) : null}
-          unidadeId={idEmFoco}
-          versao={versaoDosDados}
-        />
+          <PainelDaVenda
+            aoSimular={unidadeEmFoco ? () => aoSimular(unidadeEmFoco) : null}
+            unidadeId={idEmFoco}
+            versao={versaoDosDados}
+          />
+        </div>
       </div>
-    </div>
     </>
   );
 }

@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-13-a-tela-de-venda-mostra-tudo",
+    deployedAt: "2026-09-13T09:33:52-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**Com um empreendimento escolhido, a tela mostra TUDO** \u2014 todas as quadras, todos os lotes livres e todas as propostas, seja qual for o tamanho. N\u00e3o h\u00e1 mais teto nenhum nesse recorte, que \u00e9 o de trabalho.",
+              "**Em \"todos os empreendimentos\" o quadro passou a contar LOTE, e n\u00e3o quadra.** Era isso que escondia lote \u00e0 toa: num quadro de 35 quadras e 120 lotes ao todo, ele parava nas 30 primeiras quadras e sumia com cinco. Agora s\u00f3 para quando h\u00e1 muita coisa de verdade, e o aviso embaixo diz quantos LOTES ficaram de fora, que \u00e9 o que a pessoa procura.",
+            ],
+            screen: "Venda \u00b7 Estoque e funil",
+          },
+        ],
+      },
+    ],
+    rollback: "1d121bdd",
+    technical: {
+      done: "A REGRA VIROU: COM EMPREENDIMENTO ESCOLHIDO N\u00c3O EXISTE TETO DE TELA, em nenhum dos tr\u00eas lugares. `Mesa` ganhou a prop `temEmpreendimentoEscolhido` (o pai passa `Boolean(emp)`), e ela desliga o corte do quadro de estoque, o da tabela de dispon\u00edveis e o da lista do funil. || O QUADRO DE ESTOQUE CORTAVA POR QUADRA, e era esse o defeito: `mapa.slice(0, 30)` num recorte de 35 quadras e 120 lotes \u2014 que nenhum navegador sente \u2014 escondia cinco quadras inteiras. Agora o teto de \"todos\" conta UNIDADE (`TETO_DE_UNIDADES_DO_QUADRO = 1500`), somando quadra a quadra e nunca partindo uma ao meio; a primeira entra sempre, mesmo que sozinha estoure o teto, sen\u00e3o uma quadra de 119 lotes deixaria o quadro vazio. || O N\u00daMERO QUE SUSTENTA A ESCOLHA (medido no banco em 13/09/2026): 409 quadras e 5.540 unidades no total, e o MAIOR empreendimento sozinho tem 532 unidades em 22 quadras. Ou seja, na tela de trabalho o teto nunca \u00e9 alcan\u00e7ado \u2014 ele existe s\u00f3 para o panorama de 5.540, que \u00e9 vista de olhar e n\u00e3o de vender. || O AVISO DE RODAP\u00c9 FALA EM LOTE E N\u00c3O EM QUADRA, e s\u00f3 aparece quando alguma unidade ficou mesmo de fora. Nas outras duas listas o teto de 150 continua, tamb\u00e9m s\u00f3 em \"todos\", e o rodap\u00e9 ganhou a sa\u00edda (\"escolha um empreendimento\"). || Sem mudan\u00e7a de dado nem de consulta: os tr\u00eas recortes j\u00e1 vinham inteiros do servidor e eram cortados s\u00f3 na hora de desenhar. || SE A BASE DOBRAR, a sa\u00edda \u00e9 janela virtual, N\u00c3O baixar o teto: teto some com unidade, e sumir com unidade \u00e9 o defeito que isto veio corrigir. || Typecheck 11/11; lint sem erro e sem aviso novo no arquivo. N\u00e3o verificado em tela \u2014 o hub exige login.",
+      motivation:
+        "Lucas (13/09/2026), com o print do quadro de estoque: *\"tem que trazer todas as unidades, n\u00e3o pode ficar unidades sem mostrar\"*; depois o argumento que fecha a quest\u00e3o, *\"isso \u00e9 venda, tem que aparecer tudo, se n\u00e3o como vamos vender?\"*; e por fim o recorte da regra, *\"no selecionar todos os empreendimentos, pode deixar do jeito que est\u00e1, quando filtra n\u00e3o precisa\"* e *\"mas quando se selecionar um empreendimento, tem que aparecer todos independente do tamanho\"*.",
+    },
+    title: "Com o empreendimento escolhido, a tela de venda mostra tudo",
+    type: "melhoria",
+    version: "1.324.0",
+  },
+  {
     buildTag: "2026-09-12-cores-da-grade-de-unidades",
     deployedAt: "2026-09-12T21:51:32-03:00",
     modules: [
