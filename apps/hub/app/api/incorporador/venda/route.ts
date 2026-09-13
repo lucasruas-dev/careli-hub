@@ -16,7 +16,10 @@ import {
   espelhosADescartar,
   semEspelhoDuplicado,
 } from "@/lib/hercules/sem-espelho-duplicado";
-import { carregarCadastroDeEmpreendimentos, soDoPanteon } from "@/lib/hercules/cadastro";
+import {
+  carregarCadastroDeEmpreendimentos,
+  soDoPanteon,
+} from "@/lib/hercules/cadastro";
 import { expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
 import {
   agregarFluxo,
@@ -27,6 +30,7 @@ import {
 } from "@/lib/hercules/fluxo-de-venda";
 import {
   lerPlanosDoPanteon,
+  lerFaixasDoPanteon,
   planosPreferindoOPanteon,
 } from "@/lib/hercules/planos-do-panteon";
 import { reservaComoLinhaDoFluxo } from "@/lib/hercules/reserva";
@@ -112,7 +116,10 @@ export const COLUNAS_DA_PROPOSTA = [
 ] as const;
 
 const indisponivel = () =>
-  NextResponse.json({ error: "Não foi possível carregar o fluxo de venda agora." }, { status: 503 });
+  NextResponse.json(
+    { error: "Não foi possível carregar o fluxo de venda agora." },
+    { status: 503 },
+  );
 
 export async function GET(request: Request) {
   const auth = autorizarComercial(request);
@@ -128,14 +135,18 @@ export async function GET(request: Request) {
   // seletor, sem lote no mapa, e o botão Reservar nunca fica clicável. É tradução, não permissão:
   // `soDoPanteon` filtra pelos ids que a sessão JÁ traz.
   const catalogoDoC2x = await catalogoDeEmpreendimentos(Date.now());
-  const idsNoC2x = new Set(catalogoDoC2x.flatMap((e) => e.stageIds.map(String)));
+  const idsNoC2x = new Set(
+    catalogoDoC2x.flatMap((e) => e.stageIds.map(String)),
+  );
   const cadastroDoPanteon = await carregarCadastroDeEmpreendimentos();
   const proprios = soDoPanteon(
     cadastroDoPanteon,
     await idsDaSessao(auth.sessao),
     idsNoC2x,
   );
-  const codesComProprios = [...new Set([...codesAutorizados, ...proprios.map((p) => p.codigo)])];
+  const codesComProprios = [
+    ...new Set([...codesAutorizados, ...proprios.map((p) => p.codigo)]),
+  ];
 
   if (codesComProprios.length === 0) return indisponivel();
 
@@ -155,7 +166,10 @@ export async function GET(request: Request) {
 
   const { codes: codesDoPedido } = resolvido;
   if (codesDoPedido.length === 0) {
-    return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Produto não encontrado." },
+      { status: 404 },
+    );
   }
 
   // O recorte de tempo do painel. Vale para desempenho (faturamento, cancelamento, ranking,
@@ -196,7 +210,9 @@ export async function GET(request: Request) {
       idsDoC2x: idsDoPedido,
     });
     const codes = semEspelhoDuplicado(codesDoPedido, fora.codigos);
-    const idsDoEscopo = new Set(semEspelhoDuplicado([...idsDoPedido], fora.idsDoC2x));
+    const idsDoEscopo = new Set(
+      semEspelhoDuplicado([...idsDoPedido], fora.idsDoC2x),
+    );
 
     // ── As propostas do escopo, em páginas ────────────────────────────────
     const propostas: PropostaDaCarga[] = [];
@@ -266,7 +282,9 @@ export async function GET(request: Request) {
       // esteira: contar linhas infla o topo do funil.
       const porPessoa = new Map<string, string>();
       for (const l of esteira.linhas) {
-        const etapa = String(l.etapa ?? "").trim().toLowerCase();
+        const etapa = String(l.etapa ?? "")
+          .trim()
+          .toLowerCase();
         porPessoa.set(String(l.entity_id), etapa);
       }
       const etapas = [...porPessoa.values()];
@@ -289,14 +307,24 @@ export async function GET(request: Request) {
     //
     // ⚠️ FALHA NÃO DERRUBA A TELA, dos dois lados: sem plano o simulador cai na conta simples, que
     // é o que ele já fazia. Perder a Venda inteira porque o legado não respondeu seria pior.
-    const [doC2x, doPanteon] = await Promise.all([
+    const [doC2x, doPanteon, faixasDePrazo] = await Promise.all([
       lerPlanosDoC2x(codes).catch(() => ({ ok: false }) as const),
       lerPlanosDoPanteon(supabase, [...idsDoEscopo]).catch((erro) => {
         console.error("[incorporador/venda] planos do panteon", erro);
         return [];
       }),
+      // ⚠️ MESMA REGRA DOS PLANOS: falha não derruba a tela. Sem faixa, `premissaDoPrazo` devolve
+      // nulo e o simulador se comporta como se comportava antes de 13/09/2026 — que é, hoje, o
+      // caso de TODOS os empreendimentos, porque a tabela nasceu vazia na migration 0155.
+      lerFaixasDoPanteon(supabase, [...idsDoEscopo]).catch((erro) => {
+        console.error("[incorporador/venda] faixas de prazo", erro);
+        return {};
+      }),
     ]);
-    const planos = planosPreferindoOPanteon(doC2x.ok ? doC2x.empreendimentos : [], doPanteon);
+    const planos = planosPreferindoOPanteon(
+      doC2x.ok ? doC2x.empreendimentos : [],
+      doPanteon,
+    );
 
     // ── AS RESERVAS NASCIDAS NO PANTEON ───────────────────────────────────
     //
@@ -327,7 +355,11 @@ export async function GET(request: Request) {
         )
         .map((p) => String(p.unidade_id)),
     );
-    const reservas = await lerReservasVivas(supabase, unidades, comPropostaViva).catch((erro) => {
+    const reservas = await lerReservasVivas(
+      supabase,
+      unidades,
+      comPropostaViva,
+    ).catch((erro) => {
       console.error("[incorporador/venda] reservas", erro);
       return [] as PropostaDaCarga[];
     });
@@ -356,11 +388,15 @@ export async function GET(request: Request) {
         enterprise_id: string;
         entrada_minima_percentual: null | number | string;
       }>) {
-        if (linha.entrada_minima_percentual === null || linha.entrada_minima_percentual === undefined) {
+        if (
+          linha.entrada_minima_percentual === null ||
+          linha.entrada_minima_percentual === undefined
+        ) {
           continue;
         }
         const valor = Number(linha.entrada_minima_percentual);
-        if (Number.isFinite(valor)) entradaMinima[String(linha.enterprise_id)] = valor;
+        if (Number.isFinite(valor))
+          entradaMinima[String(linha.enterprise_id)] = valor;
       }
     }
 
@@ -374,6 +410,9 @@ export async function GET(request: Request) {
             unidades,
           }),
           entradaMinima,
+          // As faixas de prazo cadastradas, por enterprise_id. É delas que o simulador tira juros,
+          // índice e entrada quando o corretor muda o número de parcelas.
+          faixasDePrazo,
           planos: planos.flatMap((e) => e.planos),
         },
       },
@@ -464,7 +503,10 @@ async function lerReservasVivas(
       legal_name: null | string;
       trade_name: null | string;
     }>) {
-      nomePorId.set(e.id, (e.trade_name || e.display_name || e.legal_name || "").trim());
+      nomePorId.set(
+        e.id,
+        (e.trade_name || e.display_name || e.legal_name || "").trim(),
+      );
     }
   }
 
@@ -494,7 +536,10 @@ async function lerReservasVivas(
               lote: unidade.lote,
               // ⚠️ `numeric` do Postgres chega como STRING no PostgREST. Sem o Number, o VGV do
               // funil somaria "136521.00" com um número e viraria concatenação silenciosa.
-              preco_tabela: unidade.preco_tabela == null ? null : Number(unidade.preco_tabela),
+              preco_tabela:
+                unidade.preco_tabela == null
+                  ? null
+                  : Number(unidade.preco_tabela),
               quadra: unidade.quadra,
             }
           : null,

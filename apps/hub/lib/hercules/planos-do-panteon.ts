@@ -28,6 +28,7 @@ import type {
   SlotDaPa,
 } from "@/lib/apolo/planos-comerciais";
 import { INDICES as ROTULOS_DE_INDICE } from "@/lib/apolo/planos-comerciais";
+import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import type { PlanosDoEmpreendimento } from "@/lib/apolo/planos-comerciais-c2x";
 
 type Cliente = Pick<SupabaseClient, "from">;
@@ -184,4 +185,77 @@ export function planosPreferindoOPanteon(
     ...doPanteon.filter((e) => e.planos.length > 0),
     ...doC2x.filter((e) => !cadastrados.has(e.enterpriseId)),
   ];
+}
+
+/**
+ * As faixas de prazo cadastradas, por empreendimento.
+ *
+ * ⚠️ MESMO LOTE DE 100 DOS PLANOS, e pela mesma razão: `.in()` monta a lista na URL e um escopo
+ * grande estoura o limite do PostgREST sem erro claro — 700 ids já mediram 27.670 caracteres e
+ * 400 Bad Request nesta casa.
+ *
+ * ⚠️ SÓ AS ATIVAS. Faixa desativada continua no banco para explicar o plano que ela gerou (é a
+ * mesma regra do plano e do índice: nada se apaga, tudo se desativa), mas não deve preencher
+ * formulário novo.
+ *
+ * ⚠️ E O VAZIO É O ESTADO NORMAL DE HOJE. A tabela nasceu vazia na migration 0155: enquanto nenhum
+ * empreendimento tiver faixa, `premissaDoPrazo` devolve `null` e a tela se comporta exatamente como
+ * se comportava. É o que torna esta entrega segura de subir antes de a tela de cadastro existir.
+ */
+export async function lerFaixasDoPanteon(
+  cliente: Cliente,
+  enterpriseIds: string[],
+): Promise<Record<string, FaixaDePrazo[]>> {
+  const ids = [
+    ...new Set(enterpriseIds.map((id) => String(id).trim()).filter(Boolean)),
+  ];
+  if (ids.length === 0) return {};
+
+  type LinhaDaFaixa = {
+    define_entrada: boolean;
+    define_indice: boolean;
+    define_juros: boolean;
+    enterprise_id: string;
+    entrada_percentual: null | number | string;
+    indice_correcao: null | string;
+    juros_convencao: string;
+    juros_periodicidade: string;
+    juros_taxa: null | number | string;
+    parcela_maxima: number;
+    parcela_minima: number;
+  };
+
+  const linhas: LinhaDaFaixa[] = [];
+  for (let de = 0; de < ids.length; de += 100) {
+    const { data, error } = await cliente
+      .from("temis_faixas_de_prazo")
+      .select(
+        "enterprise_id,parcela_minima,parcela_maxima,define_entrada,entrada_percentual,define_juros,juros_taxa,juros_periodicidade,juros_convencao,define_indice,indice_correcao",
+      )
+      .eq("workspace_id", "careli")
+      .eq("ativo", true)
+      .in("enterprise_id", ids.slice(de, de + 100))
+      .order("parcela_minima", { ascending: true });
+
+    if (error) throw new Error(error.message);
+    linhas.push(...((data ?? []) as LinhaDaFaixa[]));
+  }
+
+  const porEmpreendimento: Record<string, FaixaDePrazo[]> = {};
+  for (const l of linhas) {
+    const id = String(l.enterprise_id);
+    (porEmpreendimento[id] ??= []).push({
+      defineEntrada: l.define_entrada,
+      defineIndice: l.define_indice,
+      defineJuros: l.define_juros,
+      entradaPercentual: numero(l.entrada_percentual),
+      indiceCorrecao: l.indice_correcao,
+      jurosConvencao: l.juros_convencao,
+      jurosPeriodicidade: l.juros_periodicidade,
+      jurosTaxa: numero(l.juros_taxa),
+      parcelaMaxima: Number(l.parcela_maxima),
+      parcelaMinima: Number(l.parcela_minima),
+    });
+  }
+  return porEmpreendimento;
 }
