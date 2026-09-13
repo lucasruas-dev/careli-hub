@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-13-a-busca-de-contato-da-iris-acha-quem-sumia",
+    deployedAt: "2026-09-13T10:26:02-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "**A imobiliaria volta a aparecer na busca.** Digitar o nome dela trazia so os clientes dela, nunca ela: o nome da imobiliaria fica gravado no texto de busca de cada cliente, e a lista parava antes de chegar nela. Em \"rr solucoes\" eram 170 resultados, 169 de clientes, e ela era a ultima. Agora quem tem o nome procurado vem primeiro — das 89 imobiliarias e corretores que estavam invisiveis, 87 voltaram.",
+              "**Os contatos cadastrados no CRM passam a ser encontrados.** Socio, responsavel, conjuge, representante: quem e cadastrado pelo card \"Contatos\" da aba Relacionamentos do Apolo agora aparece na busca, pelo nome ou pelo telefone. Sao 356 contatos em 253 entidades, e 196 daqueles numeros nao existiam em nenhum lugar que a Iris consultasse.",
+              "**Buscou pelo nome de um socio e apareceu a empresa dele?** Agora o resultado diz o porque: \"via contato: Fulano (socio)\".",
+              "**Da para escolher para qual numero abrir a janela.** Quando a entidade tem mais de um telefone (337 tem), eles aparecem para escolher. Antes ia sempre no primeiro e os outros 347 numeros nunca chegavam a tela.",
+            ],
+            screen: "Abrir atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "67722230",
+    technical: {
+      done:
+        "TRES DEFEITOS EM SERIE, e nenhum deles era permissao: `authorizeIrisMetaRequest` (lib/iris/meta-server.ts:71) so confere papel ativo, sem recorte por setor — a busca sempre foi aberta a todos; ela e que nao achava. || (1) SEM ORDER BY, O CORTE ERA POR ORDEM FISICA DO HEAP. `lib/apolo/server.ts:4199` copia `user.linked_party_name` para o normalized_text de CADA cliente, entao o nome da imobiliaria casa centenas de linhas. A rota lia 48 ids sem ordenacao e cortava em 36 e depois em 12. Medido: \"rr solucoes\" 170 linhas com a propria na 170a; \"j&f negocios\" 270 na 270a; \"beltrao imoveis\" 232 na 232a. Agora le ate 400 candidatos, ranqueia por nome proprio (exato > prefixo > contem > so a carteira cita) e corta depois; os cinco casos conferidos saem da ultima posicao para a primeira, e a simulacao sobre as 569 entidades de relacionamento devolve 87 das 89. O EXPLAIN ANALYZE mostra ~4ms para varrer as 5.118 linhas do indice — o teto de 48 nao comprava desempenho nenhum. || (2) O CONTATO DA ENTIDADE NAO MORA EM `apolo_contacts`. O card \"Contatos\" grava em `apolo_relationships` com metadata.kind=\"contato\" (nome no label, telefone no metadata.phone), tabela que o modulo caredesk nunca leu. Entra como terceira fonte, NAO-FATAL: se a consulta falhar, a busca por nome segue de pe. || ⚠️ O CASAMENTO POR TELEFONE E EM MEMORIA DE PROPOSITO: o numero vem com mascara (194 dos 258 com pontuacao, 111 com hifen), e `ilike` com digitos crus erraria 43% deles. Sao 356 linhas hoje, folgado diante do teto de 1.000 do PostgREST — se esse numero se aproximar de 1.000 o corte volta calado, e ai e hora de gravar um telefone normalizado na propria linha. || (3) A TELA DESCARTAVA A LISTA: a rota sempre mandou todos os numeros e `IrisApoloClientOption` guardava um so. 337 entidades tem mais de um numero distinto (347 extras) — o numero maior que aparecia antes, 786/890, contava o mesmo telefone repetido em whatsapp e phone. || DE QUEBRA, `pickPreferredPhone` saiu da rota: ele olhava so o primeiro contato e, se o whatsapp estivesse quebrado, descartava a entidade inteira sem tentar o telefone seguinte. Virou `escolherTelefone`, que percorre todos. || Logica pura em `lib/iris/apolo/busca-de-contato.ts` com 29 testes, escritos antes do codigo e vistos falhar. Suite 3.566 verdes, typecheck limpo. ⚠️ NAO VERIFICADO EM TELA — o hub exige login; a prova e no banco e no teste. || FICA PENDENTE, medido e nao corrigido: busca por CPF so funciona com a mascara digitada (98% da base), e-mail esta fora do indice em 93% das fichas, e 81 entidades que so tem e-mail somem inteiras da busca num modulo que e multicanal.",
+      motivation:
+        "Lucas (13/09/2026): *\"analise e corrige para mim o fato que os contatos da entidade nao aparece na iris para ser contactados, quando buscamos na iris por um contato (relacionamento) ele nao aparece\"*; e depois o recorte que descartou a hipotese de permissao, *\"a central de relacionamento e gerido por outras pessoas, o que precisamos e que todos possam buscar as entidade e os contatos para atendimento\"*.",
+    },
+    title: "A busca de contato da Iris acha quem sumia",
+    type: "correcao",
+    version: "1.325.0",
+  },
+  {
     buildTag: "2026-09-13-a-tela-de-venda-mostra-tudo",
     deployedAt: "2026-09-13T09:33:52-03:00",
     modules: [
