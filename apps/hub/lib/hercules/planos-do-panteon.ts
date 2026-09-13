@@ -27,6 +27,7 @@ import type {
   SistemaAmortizacao,
   SlotDaPa,
 } from "@/lib/apolo/planos-comerciais";
+import { INDICES as ROTULOS_DE_INDICE } from "@/lib/apolo/planos-comerciais";
 import type { PlanosDoEmpreendimento } from "@/lib/apolo/planos-comerciais-c2x";
 
 type Cliente = Pick<SupabaseClient, "from">;
@@ -54,13 +55,13 @@ function numero(valor: null | number | string | undefined): null | number {
 }
 
 const SISTEMAS: SistemaAmortizacao[] = ["price", "sac", "sacoc"];
-const INDICES: IndiceCorrecao[] = [
-  "IGPM_ANUAL",
-  "INCC_M_MENSAL",
-  "IPCA_ANUAL",
-  "IPCA_MENSAL",
-  "SEM_CORRECAO",
-];
+/**
+ * ⚠️ DERIVADA, E NAO COPIADA. Ate 13/09/2026 esta lista era escrita a mao aqui, e era uma de CINCO
+ * copias da mesma verdade no repo (mais o CHECK do banco). Elas ja discordavam entre si. A fonte e
+ * a tabela `temis_indices` (migration 0154); `INDICES` em `planos-comerciais.ts` e o espelho dela
+ * em tempo de compilacao, e e dele que esta lista sai agora.
+ */
+const INDICES = Object.keys(ROTULOS_DE_INDICE) as IndiceCorrecao[];
 const SLOTS: SlotDaPa[] = ["avista", "curto", "investidor", "normal"];
 
 /**
@@ -72,19 +73,33 @@ const SLOTS: SlotDaPa[] = ["avista", "curto", "investidor", "normal"];
  * Price num contrato SACOC — o erro mais caro que esta tela pode cometer.
  */
 function comoPlano(linha: LinhaDoPlano): PlanoComercial {
-  const sistema = String(linha.sistema_amortizacao ?? "").trim().toLowerCase();
-  const indice = String(linha.indice_correcao ?? "").trim().toUpperCase();
-  const slot = String(linha.slot ?? "").trim().toLowerCase();
-  const periodicidade = String(linha.juros_periodicidade ?? "").trim().toLowerCase();
-  const convencao = String(linha.juros_convencao ?? "").trim().toLowerCase();
+  const sistema = String(linha.sistema_amortizacao ?? "")
+    .trim()
+    .toLowerCase();
+  const indice = String(linha.indice_correcao ?? "")
+    .trim()
+    .toUpperCase();
+  const slot = String(linha.slot ?? "")
+    .trim()
+    .toLowerCase();
+  const periodicidade = String(linha.juros_periodicidade ?? "")
+    .trim()
+    .toLowerCase();
+  const convencao = String(linha.juros_convencao ?? "")
+    .trim()
+    .toLowerCase();
 
   return {
     entradaPercentual: numero(linha.entrada_percentual) ?? 0,
     indiceCorrecao: (INDICES as string[]).includes(indice)
       ? (indice as IndiceCorrecao)
       : "SEM_CORRECAO",
-    jurosConvencao: (convencao === "proporcional" ? "proporcional" : "equivalente") as ConvencaoJuros,
-    jurosPeriodicidade: (periodicidade === "mensal" ? "mensal" : "anual") as PeriodicidadeJuros,
+    jurosConvencao: (convencao === "proporcional"
+      ? "proporcional"
+      : "equivalente") as ConvencaoJuros,
+    jurosPeriodicidade: (periodicidade === "mensal"
+      ? "mensal"
+      : "anual") as PeriodicidadeJuros,
     jurosTaxa: numero(linha.juros_taxa),
     nome: String(linha.nome ?? "").trim(),
     parcelas: Math.max(0, Math.trunc(Number(linha.parcelas) || 0)),
@@ -108,7 +123,9 @@ export async function lerPlanosDoPanteon(
   cliente: Cliente,
   enterpriseIds: string[],
 ): Promise<PlanosDoEmpreendimento[]> {
-  const ids = [...new Set(enterpriseIds.map((id) => String(id).trim()).filter(Boolean))];
+  const ids = [
+    ...new Set(enterpriseIds.map((id) => String(id).trim()).filter(Boolean)),
+  ];
   if (ids.length === 0) return [];
 
   const linhas: LinhaDoPlano[] = [];
@@ -134,7 +151,12 @@ export async function lerPlanosDoPanteon(
     const id = String(linha.enterprise_id);
     let alvo = porEmpreendimento.get(id);
     if (!alvo) {
-      alvo = { code: "", enterpriseId: id, planos: [], tabelaDoEmpreendimento: null };
+      alvo = {
+        code: "",
+        enterpriseId: id,
+        planos: [],
+        tabelaDoEmpreendimento: null,
+      };
       porEmpreendimento.set(id, alvo);
     }
     alvo.planos.push(comoPlano(linha));
@@ -155,6 +177,11 @@ export function planosPreferindoOPanteon(
   doC2x: PlanosDoEmpreendimento[],
   doPanteon: PlanosDoEmpreendimento[],
 ): PlanosDoEmpreendimento[] {
-  const cadastrados = new Set(doPanteon.filter((e) => e.planos.length > 0).map((e) => e.enterpriseId));
-  return [...doPanteon.filter((e) => e.planos.length > 0), ...doC2x.filter((e) => !cadastrados.has(e.enterpriseId))];
+  const cadastrados = new Set(
+    doPanteon.filter((e) => e.planos.length > 0).map((e) => e.enterpriseId),
+  );
+  return [
+    ...doPanteon.filter((e) => e.planos.length > 0),
+    ...doC2x.filter((e) => !cadastrados.has(e.enterpriseId)),
+  ];
 }

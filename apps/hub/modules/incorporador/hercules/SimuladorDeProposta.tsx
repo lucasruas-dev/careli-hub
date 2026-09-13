@@ -2,9 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { valorDigitado, valorParaOCampo } from "@/lib/apolo/boletos/valor-digitado";
+import {
+  valorDigitado,
+  valorParaOCampo,
+} from "@/lib/apolo/boletos/valor-digitado";
 import {
   fraseDeCorrecao,
+  textoDaTaxa,
   INDICES,
   type IndiceCorrecao,
   type PlanoComercial,
@@ -25,7 +29,10 @@ import {
 import { pisoDaEntradaNoPrazo } from "@/lib/hercules/faixa-do-plano";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
 import { DIAS_DE_VENCIMENTO } from "@/lib/hercules/proposta";
-import { lerPercentualDigitado, proximoVencimento } from "@/lib/hercules/proposta-na-tela";
+import {
+  lerPercentualDigitado,
+  proximoVencimento,
+} from "@/lib/hercules/proposta-na-tela";
 import { montarProposta, sistemaDoCadastro } from "@/lib/hercules/simulacao";
 
 import {
@@ -106,13 +113,21 @@ type Leitura = {
  * para baixo dava R$ 13.652 e a própria sugestão do plano nascia dez centavos abaixo do mínimo,
  * com a tela acusando "abaixo do mínimo" no valor que ela mesma tinha preenchido.
  */
-function entradaDoPlano(valor: number, percentual: number, minimo: null | number): number {
-  return Math.max(entradaMinima(valor, minimo), Math.ceil((valor * percentual) / 100));
+function entradaDoPlano(
+  valor: number,
+  percentual: number,
+  minimo: null | number,
+): number {
+  return Math.max(
+    entradaMinima(valor, minimo),
+    Math.ceil((valor * percentual) / 100),
+  );
 }
 
 /** Dois valores em reais são o mesmo dinheiro? Compara em centavos, como o resto do módulo. */
 const centavosIguais = (a: number, b: number) =>
-  Math.round((Number.isFinite(a) ? a : 0) * 100) === Math.round((Number.isFinite(b) ? b : 0) * 100);
+  Math.round((Number.isFinite(a) ? a : 0) * 100) ===
+  Math.round((Number.isFinite(b) ? b : 0) * 100);
 
 const dinheiro = (v: number) =>
   `R$ ${Math.round(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
@@ -241,9 +256,11 @@ export function SimuladorDeProposta({
    * digitar outro valor, partir da parcela), em vez de depender de alguém lembrar de resetá-la em
    * cada um deles.
    */
-  const [montagemCrua, setMontagemCrua] = useState<
-    null | { base: number; parcelas: number[]; vezes: number }
-  >(null);
+  const [montagemCrua, setMontagemCrua] = useState<null | {
+    base: number;
+    parcelas: number[];
+    vezes: number;
+  }>(null);
   const [planoAtivo, setPlanoAtivo] = useState<null | string>(null);
   // ⚠️ SÓ VIRA TETO SE ELE DIGITOU. O campo Entrada nasce preenchido pelo plano — usar esse número
   // como limite cortaria as composições sem ninguém ter pedido, e a lista aparecia vazia sem
@@ -252,7 +269,9 @@ export function SimuladorDeProposta({
   // ⚠️ OS DOIS CAMPOS DA COBRANÇA VIVEM AQUI MESMO SEM A PROP. Estado condicional não existe em
   // React, e tentar criá-lo com um hook dentro de `if` quebra a ordem dos hooks. Sem a prop eles
   // simplesmente não são desenhados nem lidos por ninguém.
-  const [diaDeVencimento, setDiaDeVencimento] = useState<number>(DIAS_DE_VENCIMENTO[0]);
+  const [diaDeVencimento, setDiaDeVencimento] = useState<number>(
+    DIAS_DE_VENCIMENTO[0],
+  );
   const [primeiraParcelaEm, setPrimeiraParcelaEm] = useState<string>(() =>
     proximoVencimento(new Date().toISOString(), DIAS_DE_VENCIMENTO[0]),
   );
@@ -262,7 +281,10 @@ export function SimuladorDeProposta({
   // "editado". Lucas, 08/09/2026: *"desconto em valor ou % que influencia o valor da proposta, isso
   // não pode mudar o valor original de tabela"*.
   const [ajuste, setAjuste] = useState<AjusteDePreco>(SEM_AJUSTE);
-  const preco = useMemo(() => aplicarAjuste(valorDaUnidade, ajuste), [ajuste, valorDaUnidade]);
+  const preco = useMemo(
+    () => aplicarAjuste(valorDaUnidade, ajuste),
+    [ajuste, valorDaUnidade],
+  );
 
   const [cockpit, setCockpit] = useState<Cockpit>({
     anuaisQuantidade: 0,
@@ -295,7 +317,10 @@ export function SimuladorDeProposta({
   );
 
   const plano = useMemo(
-    () => planosDaConta.find((p) => p.nome === planoAtivo) ?? planosDaConta[0] ?? null,
+    () =>
+      planosDaConta.find((p) => p.nome === planoAtivo) ??
+      planosDaConta[0] ??
+      null,
     [planoAtivo, planosDaConta],
   );
 
@@ -312,7 +337,11 @@ export function SimuladorDeProposta({
   const tabela = useMemo(
     () =>
       planosDaConta.map((p) => {
-        const entrada = entradaDoPlano(cockpit.valor, p.entradaPercentual, entradaMinimaPercentual);
+        const entrada = entradaDoPlano(
+          cockpit.valor,
+          p.entradaPercentual,
+          entradaMinimaPercentual,
+        );
         const montada = montarProposta({
           baloesQuantidade: 0,
           baloesValor: 0,
@@ -347,9 +376,14 @@ export function SimuladorDeProposta({
   // primeira ação de todo mundo seria a mesma: clicar no plano mais longo. O simulador já faz isso
   // — abre no maior prazo, que é o que atende mais gente, e o resto se ajusta em cima.
   useEffect(() => {
-    const maisLongo = [...planosDaConta].sort((a, b) => b.parcelas - a.parcelas)[0] ?? null;
+    const maisLongo =
+      [...planosDaConta].sort((a, b) => b.parcelas - a.parcelas)[0] ?? null;
     const entrada = maisLongo
-      ? entradaDoPlano(valorDaUnidade, maisLongo.entradaPercentual, entradaMinimaPercentual)
+      ? entradaDoPlano(
+          valorDaUnidade,
+          maisLongo.entradaPercentual,
+          entradaMinimaPercentual,
+        )
       : 0;
 
     setPlanoAtivo(maisLongo?.nome ?? null);
@@ -389,7 +423,9 @@ export function SimuladorDeProposta({
   // do preço antigo, sem ninguém ver. Só age quando o valor REALMENTE mudou, senão o efeito brigaria
   // com quem está digitando a parcela.
   useEffect(() => {
-    setCockpit((a) => (a.valor === preco.valor ? a : { ...a, valor: preco.valor }));
+    setCockpit((a) =>
+      a.valor === preco.valor ? a : { ...a, valor: preco.valor },
+    );
   }, [preco.valor]);
 
   // ── A conta montada à mão, quando o comando veio das condições ───────────
@@ -422,10 +458,14 @@ export function SimuladorDeProposta({
       ? montagemCrua.parcelas
       : null;
 
-  const montagem = conferirEntradaMontada(cockpit.entrada, parcelasDaEntrada ?? [cockpit.entrada]);
+  const montagem = conferirEntradaMontada(
+    cockpit.entrada,
+    parcelasDaEntrada ?? [cockpit.entrada],
+  );
 
   const montada = useMemo(() => {
-    const parcelas = cockpit.parcelas > 0 ? cockpit.parcelas : (plano?.parcelas ?? 0);
+    const parcelas =
+      cockpit.parcelas > 0 ? cockpit.parcelas : (plano?.parcelas ?? 0);
     if (parcelas <= 0) return null;
     return {
       ...montarProposta({
@@ -481,12 +521,16 @@ export function SimuladorDeProposta({
   /** De quem é a régua: o plano da faixa quando ele aperta, senão o piso da casa. */
   const faixaDoPiso = pisoDoPrazo.faixa;
   const pisoEmPercentual =
-    faixaDoPiso && cockpit.valor > 0 && minimoDaEntrada > entradaMinima(cockpit.valor, entradaMinimaPercentual)
+    faixaDoPiso &&
+    cockpit.valor > 0 &&
+    minimoDaEntrada > entradaMinima(cockpit.valor, entradaMinimaPercentual)
       ? faixaDoPiso.entradaPercentual
       : (entradaMinimaPercentual ?? ENTRADA_MINIMA_PERCENTUAL);
 
   /** Quantos aniversários cabem no prazo — o teto de reforços anuais. */
-  const aniversarios = Math.floor((cockpit.parcelas > 0 ? cockpit.parcelas : (plano?.parcelas ?? 0)) / 12);
+  const aniversarios = Math.floor(
+    (cockpit.parcelas > 0 ? cockpit.parcelas : (plano?.parcelas ?? 0)) / 12,
+  );
 
   /** A parcela sobre a qual a direita conversa: a pedida, ou a que a conta devolveu. */
   const parcelaDeReferencia =
@@ -499,7 +543,8 @@ export function SimuladorDeProposta({
             parcelaAlvo: parcelaDeReferencia,
             planos: planosDaConta,
             entradaMinimaPercentual,
-            tetoDaEntrada: entradaEhTeto && cockpit.entrada > 0 ? cockpit.entrada : null,
+            tetoDaEntrada:
+              entradaEhTeto && cockpit.entrada > 0 ? cockpit.entrada : null,
             valor: cockpit.valor,
           })
         : [],
@@ -516,7 +561,10 @@ export function SimuladorDeProposta({
   const principal: Leitura | null = useMemo(() => {
     if (comando === "condicoes" && montada && plano) {
       return {
-        anuais: { quantidade: cockpit.anuaisQuantidade, valor: cockpit.anuaisValor },
+        anuais: {
+          quantidade: cockpit.anuaisQuantidade,
+          valor: cockpit.anuaisValor,
+        },
         composicao: null,
         // A mesma entrada da conta acima: o cartão mostra o que vai ser gravado.
         entrada: montagem.entrada,
@@ -580,7 +628,9 @@ export function SimuladorDeProposta({
             // ⚠️ QUANDO HÁ MONTAGEM, A ENTRADA É A SOMA DELA — inclusive quando passa do
             // combinado, que é o caso em que o cliente paga mais no ato. Sem isto o papel sairia
             // com a entrada antiga e um fluxo somando outro valor.
-            entradaValor: parcelasDaEntrada ? montagem.entrada : principal.entrada,
+            entradaValor: parcelasDaEntrada
+              ? montagem.entrada
+              : principal.entrada,
             entradaVezes: cockpit.entradaVezes,
             entradaParcelas: parcelasDaEntrada,
             parcela: principal.parcela,
@@ -661,9 +711,7 @@ export function SimuladorDeProposta({
           />
         </Bloco>
 
-        <Bloco
-          titulo="Quanto o cliente paga por mês"
-        >
+        <Bloco titulo="Quanto o cliente paga por mês">
           <CampoEmReais
             aoMudar={(v) => {
               setCockpit((a) => ({ ...a, parcela: v }));
@@ -694,7 +742,14 @@ export function SimuladorDeProposta({
             valor={cockpit.entrada}
             valorDoLote={cockpit.valor}
           />
-          <div style={{ alignItems: "center", display: "flex", gap: 8, marginTop: 8 }}>
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              gap: 8,
+              marginTop: 8,
+            }}
+          >
             <Contador
               aoMudar={(n) => {
                 // A montagem se invalida sozinha: ela guarda para quantas vezes foi feita.
@@ -719,7 +774,10 @@ export function SimuladorDeProposta({
                       ? null
                       : {
                           base: cockpit.entrada,
-                          parcelas: partesIguais(cockpit.entrada, cockpit.entradaVezes),
+                          parcelas: partesIguais(
+                            cockpit.entrada,
+                            cockpit.entradaVezes,
+                          ),
                           vezes: cockpit.entradaVezes,
                         },
                   )
@@ -770,7 +828,9 @@ export function SimuladorDeProposta({
                           atual
                             ? {
                                 ...atual,
-                                parcelas: atual.parcelas.map((antigo, j) => (j === i ? v : antigo)),
+                                parcelas: atual.parcelas.map((antigo, j) =>
+                                  j === i ? v : antigo,
+                                ),
                               }
                             : atual,
                         )
@@ -788,7 +848,11 @@ export function SimuladorDeProposta({
                           atual
                             ? {
                                 ...atual,
-                                parcelas: redistribuirDemais(cockpit.entrada, atual.parcelas, i),
+                                parcelas: redistribuirDemais(
+                                  cockpit.entrada,
+                                  atual.parcelas,
+                                  i,
+                                ),
                               }
                             : atual,
                         )
@@ -823,8 +887,15 @@ export function SimuladorDeProposta({
                   paddingTop: 6,
                 }}
               >
-                <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>Somando</span>
-                <b style={{ color: montagem.ok ? T.text : T.danger, fontSize: 12.5 }}>
+                <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>
+                  Somando
+                </span>
+                <b
+                  style={{
+                    color: montagem.ok ? T.text : T.danger,
+                    fontSize: 12.5,
+                  }}
+                >
                   {dinheiroExato(montagem.soma)}
                 </b>
               </div>
@@ -835,13 +906,12 @@ export function SimuladorDeProposta({
                 </span>
               ) : montagem.excedente > 0 ? (
                 <span style={{ color: T.ok, fontSize: 11 }}>
-                  {dinheiroExato(montagem.excedente)} acima do combinado — a entrada passa a ser{" "}
-                  {dinheiroExato(montagem.entrada)}.
+                  {dinheiroExato(montagem.excedente)} acima do combinado — a
+                  entrada passa a ser {dinheiroExato(montagem.entrada)}.
                 </span>
               ) : null}
             </div>
           ) : null}
-
         </Bloco>
 
         {/* ⚠️ SÓ NA PROPOSTA, e por isso preso à prop. Numa simulação livre não existe primeira
@@ -857,10 +927,15 @@ export function SimuladorDeProposta({
             *"tira essa coisa de vencimento (...) como é um simulador"*. Antes as duas coisas
             andavam juntas na mesma condição, e escutar a tela obrigava a mostrar o vencimento. */}
         {aoMudarCondicoes && !ehSimulacao ? (
-          <Bloco
-            titulo="Cobrança"
-          >
-            <div style={{ color: T.muted, fontSize: 11, fontWeight: 650, marginBottom: 5 }}>
+          <Bloco titulo="Cobrança">
+            <div
+              style={{
+                color: T.muted,
+                fontSize: 11,
+                fontWeight: 650,
+                marginBottom: 5,
+              }}
+            >
               Dia de vencimento
             </div>
             <div style={{ display: "flex", gap: 6 }}>
@@ -874,7 +949,9 @@ export function SimuladorDeProposta({
                     // entrada vencendo num dia e o boleto mensal em outro, sem ninguém ter pedido.
                     // Quem quiser outra data digita depois — a digitada só se perde se ele clicar
                     // no chip de novo.
-                    setPrimeiraParcelaEm(proximoVencimento(new Date().toISOString(), d));
+                    setPrimeiraParcelaEm(
+                      proximoVencimento(new Date().toISOString(), d),
+                    );
                   }}
                   style={{
                     background: diaDeVencimento === d ? T.soft : "transparent",
@@ -917,7 +994,8 @@ export function SimuladorDeProposta({
                 setCockpit((a) => ({
                   ...a,
                   anuaisQuantidade: n,
-                  anuaisValor: n > 0 && a.anuaisValor === 0 ? 20_000 : a.anuaisValor,
+                  anuaisValor:
+                    n > 0 && a.anuaisValor === 0 ? 20_000 : a.anuaisValor,
                 }));
                 setComando("condicoes");
               }}
@@ -957,10 +1035,15 @@ export function SimuladorDeProposta({
 
         <Bloco titulo="Prazo, juros e reajuste">
           <label style={{ display: "grid", gap: 3 }}>
-            <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>Parcelas</span>
+            <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>
+              Parcelas
+            </span>
             <input
               onChange={(e) => {
-                setCockpit((a) => ({ ...a, parcelas: Number(e.target.value) || 0 }));
+                setCockpit((a) => ({
+                  ...a,
+                  parcelas: Number(e.target.value) || 0,
+                }));
                 setComando("condicoes");
               }}
               style={campo}
@@ -976,25 +1059,43 @@ export function SimuladorDeProposta({
           {cru ? (
             <>
               <div style={{ display: "grid", gap: 4, marginTop: 10 }}>
-                <Linha rotulo="Reajuste" valor={INDICES[cru.indiceCorrecao as IndiceCorrecao] ?? "—"} />
+                <Linha
+                  rotulo="Reajuste"
+                  valor={INDICES[cru.indiceCorrecao as IndiceCorrecao] ?? "—"}
+                />
+                {/* ⚠️ A TAXA SAI COMO ESTÁ NO CADASTRO, sem truncar. Lucas (13/09/2026): *"a
+                    correção tem que trazer com 4 casas decimais quando a mesma tiver isso no
+                    cadastro"*. Esta linha imprimia com `maximumFractionDigits: 2` e transformava
+                    os 0,6434% do plano Normal - Price em "0,64% ao mês" — enquanto a linha logo
+                    abaixo, seis linhas daqui, já dizia "0,6434% a.m." pela `fraseDeCorrecao`. Os
+                    dois números na mesma tela, e o errado em cima.
+
+                    ⚠️ E A FUNÇÃO JÁ EXISTIA: `textoDaTaxa` (planos-comerciais.ts) é a mesma que o
+                    PDF e a PA impressa usam desde sempre, e ela já faz exatamente o que o Lucas
+                    pediu — imprime "0,6434% a.m." e "0,5% a.m." sem zeros à direita. Escrever uma
+                    segunda formatação aqui era o começo da terceira.
+
+                    ⚠️ ISTO TAMBÉM É TELA DE CLIENTE: este componente é montado dentro do espelho
+                    público (EspelhoPublico.tsx), então o "0,64% ao mês" estava no link que vai
+                    para o comprador. */}
                 <Linha
                   rotulo="Juros"
                   valor={
-                    plano && plano.taxaAoMes > 0
-                      ? `${(plano.taxaAoMes * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% ao mês`
-                      : "sem juros"
+                    textoDaTaxa(cru as unknown as PlanoComercial) || "sem juros"
                   }
                 />
               </div>
               <p style={{ color: T.muted, fontSize: 11, margin: "8px 0 0" }}>
-                {fraseDeCorrecao(cru as unknown as PlanoComercial)}. A parcela acima é a valor de
-                hoje: o índice corrige o contrato ao longo do prazo e não entra nesta conta.
+                {fraseDeCorrecao(cru as unknown as PlanoComercial)}. A parcela
+                acima é a valor de hoje: o índice corrige o contrato ao longo do
+                prazo e não entra nesta conta.
               </p>
             </>
           ) : (
             <p style={{ color: T.muted, fontSize: 11.5, margin: "8px 0 0" }}>
-              Nenhum plano cadastrado para este produto: a conta sai sem juros e sem correção,
-              e o prazo abaixo é só um ponto de partida — edite à vontade.
+              Nenhum plano cadastrado para este produto: a conta sai sem juros e
+              sem correção, e o prazo abaixo é só um ponto de partida — edite à
+              vontade.
             </p>
           )}
         </Bloco>
@@ -1040,7 +1141,9 @@ export function SimuladorDeProposta({
                   }}
                   type="button"
                 >
-                  <div style={{ color: T.sub, fontSize: 12, fontWeight: 650 }}>{t.plano.nome}</div>
+                  <div style={{ color: T.sub, fontSize: 12, fontWeight: 650 }}>
+                    {t.plano.nome}
+                  </div>
                   <div
                     style={{
                       color: T.text,
@@ -1058,11 +1161,13 @@ export function SimuladorDeProposta({
                         alta —, e só com o valor em reais a escada não se lê: R$ 14.000 e
                         R$ 56.000 são dois números soltos até virarem 10% e 40%. É o mesmo
                         percentual que agora decide o piso da entrada pelo prazo escolhido. */}
-                    {t.plano.parcelas}x · entrada {dinheiro(t.entrada)} ({t.plano.entradaPercentual}%)
+                    {t.plano.parcelas}x · entrada {dinheiro(t.entrada)} (
+                    {t.plano.entradaPercentual}%)
                   </div>
                   <div style={{ color: T.muted, fontSize: 10.5, marginTop: 2 }}>
                     {INDICES[
-                      (crus.get(t.plano.nome)?.indiceCorrecao ?? "SEM_CORRECAO") as IndiceCorrecao
+                      (crus.get(t.plano.nome)?.indiceCorrecao ??
+                        "SEM_CORRECAO") as IndiceCorrecao
                     ] ?? "sem correção"}
                   </div>
                 </button>
@@ -1104,7 +1209,8 @@ export function SimuladorDeProposta({
             >
               <span
                 style={{
-                  background: principal.origem === "composicao" ? T.okBg : T.soft,
+                  background:
+                    principal.origem === "composicao" ? T.okBg : T.soft,
                   borderRadius: 999,
                   color: principal.origem === "composicao" ? T.ok : T.muted,
                   fontSize: 10.5,
@@ -1120,12 +1226,27 @@ export function SimuladorDeProposta({
                     ? "Simulação montada"
                     : "Proposta montada"}
               </span>
-              <span style={{ color: T.muted, fontSize: 11.5 }}>Plano {principal.plano}</span>
+              <span style={{ color: T.muted, fontSize: 11.5 }}>
+                Plano {principal.plano}
+              </span>
             </div>
 
-            <div style={{ alignItems: "baseline", display: "flex", gap: 10, marginBottom: 4 }}>
+            <div
+              style={{
+                alignItems: "baseline",
+                display: "flex",
+                gap: 10,
+                marginBottom: 4,
+              }}
+            >
               {/* O NÚMERO QUE A CONVERSA COM O CLIENTE USA. É o primeiro que tem de ser lido. */}
-              <b style={{ fontSize: 34, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>
+              <b
+                style={{
+                  fontSize: 34,
+                  fontVariantNumeric: "tabular-nums",
+                  fontWeight: 700,
+                }}
+              >
                 {dinheiroExato(principal.parcela)}
               </b>
               <span style={{ color: T.muted, fontSize: 13 }}>
@@ -1136,10 +1257,12 @@ export function SimuladorDeProposta({
             {/* ⚠️ EXPLICA A PARCELA MENOR QUE A PEDIDA. Com a entrada ancorada no piso de 10%, a
                 parcela cai abaixo do valor que o cliente disse que podia pagar. É notícia boa, mas
                 sem esta linha parece conta errada — "pedi 2.000 e a tela devolveu 1.736". */}
-            {principal.origem === "composicao" && principal.parcela < parcelaDeReferencia * 0.99 ? (
+            {principal.origem === "composicao" &&
+            principal.parcela < parcelaDeReferencia * 0.99 ? (
               <p style={{ color: T.muted, fontSize: 11.5, margin: "0 0 12px" }}>
-                Abaixo dos {dinheiro(parcelaDeReferencia)} que ele pode pagar: chegar exatamente
-                nesse valor exigiria entrada menor que o mínimo de {pisoEmPercentual}%.
+                Abaixo dos {dinheiro(parcelaDeReferencia)} que ele pode pagar:
+                chegar exatamente nesse valor exigiria entrada menor que o
+                mínimo de {pisoEmPercentual}%.
               </p>
             ) : (
               <div style={{ height: 10 }} />
@@ -1196,9 +1319,17 @@ export function SimuladorDeProposta({
 
             {/* Lucas: *"aqui em vez desse textão, somente um editar"*. A ação é óbvia pelo lugar. */}
             {principal.composicao ? (
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  marginTop: 12,
+                }}
+              >
                 <button
-                  onClick={() => usarComposicao(principal.composicao as Composicao)}
+                  onClick={() =>
+                    usarComposicao(principal.composicao as Composicao)
+                  }
                   style={botaoDiscreto}
                   type="button"
                 >
@@ -1253,20 +1384,33 @@ export function SimuladorDeProposta({
                   }}
                   type="button"
                 >
-                  <span style={{ color: T.text, fontSize: 12.5, fontWeight: 650, minWidth: 84 }}>
+                  <span
+                    style={{
+                      color: T.text,
+                      fontSize: 12.5,
+                      fontWeight: 650,
+                      minWidth: 84,
+                    }}
+                  >
                     {c.plano}
                   </span>
                   <span style={{ color: T.sub, fontSize: 12 }}>
                     entrada{" "}
-                    <b style={{ fontVariantNumeric: "tabular-nums" }}>{dinheiro(c.entrada)}</b>
+                    <b style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {dinheiro(c.entrada)}
+                    </b>
                   </span>
                   <span style={{ color: T.sub, fontSize: 12 }}>
                     {c.anuais.quantidade > 0
                       ? `${c.anuais.quantidade} × ${dinheiro(c.anuais.valor)} ao ano`
                       : "sem reforço anual"}
                   </span>
-                  <span style={{ color: T.sub, fontSize: 12 }}>{c.parcelas} meses</span>
-                  <span style={{ color: T.muted, fontSize: 12 }}>total {dinheiro(c.total)}</span>
+                  <span style={{ color: T.sub, fontSize: 12 }}>
+                    {c.parcelas} meses
+                  </span>
+                  <span style={{ color: T.muted, fontSize: 12 }}>
+                    total {dinheiro(c.total)}
+                  </span>
                 </button>
               ))}
             </div>
@@ -1354,7 +1498,11 @@ function Bloco({
     >
       <div style={{ ...rotuloDeSecao, marginBottom: 8 }}>{titulo}</div>
       {children}
-      {nota ? <p style={{ color: T.muted, fontSize: 11, margin: "8px 0 0" }}>{nota}</p> : null}
+      {nota ? (
+        <p style={{ color: T.muted, fontSize: 11, margin: "8px 0 0" }}>
+          {nota}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -1428,7 +1576,9 @@ function CampoEmReais({
   // ⚠️ SÓ REESCREVE QUANDO O VALOR VEIO DE FORA. Enquanto a pessoa digita, o texto é dela: formatar
   // a cada tecla move o cursor e apaga a vírgula que ela acabou de escrever.
   useEffect(() => {
-    setTexto((atual) => ((valorDigitado(atual) ?? 0) === valor ? atual : valorParaOCampo(valor)));
+    setTexto((atual) =>
+      (valorDigitado(atual) ?? 0) === valor ? atual : valorParaOCampo(valor),
+    );
   }, [valor]);
 
   return (
@@ -1436,12 +1586,24 @@ function CampoEmReais({
       {/* Rótulo vazio = quem chama já desenhou o seu (é o caso do campo de entrada, que tem o
           alternador R$/% na mesma linha). Um <span> vazio abriria um vão de 11px. */}
       {rotulo || direita ? (
-        <span style={{ alignItems: "baseline", display: "flex", justifyContent: "space-between" }}>
-          <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>{rotulo}</span>
-          {direita ? <span style={{ color: T.muted, fontSize: 10.5 }}>{direita}</span> : null}
+        <span
+          style={{
+            alignItems: "baseline",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>
+            {rotulo}
+          </span>
+          {direita ? (
+            <span style={{ color: T.muted, fontSize: 10.5 }}>{direita}</span>
+          ) : null}
         </span>
       ) : null}
-      <span style={{ alignItems: "center", display: "flex", position: "relative" }}>
+      <span
+        style={{ alignItems: "center", display: "flex", position: "relative" }}
+      >
         <span
           style={{
             color: T.muted,
@@ -1506,8 +1668,16 @@ function CampoDeEntrada({
 
   return (
     <div style={{ display: "grid", gap: 3 }}>
-      <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between" }}>
-        <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>Valor</span>
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>
+          Valor
+        </span>
         <span style={{ display: "flex", gap: 3 }}>
           {(["reais", "pct"] as const).map((m) => (
             <button
@@ -1549,7 +1719,14 @@ function CampoDeEntrada({
         />
       )}
 
-      <div style={{ alignItems: "baseline", display: "flex", gap: 8, justifyContent: "space-between" }}>
+      <div
+        style={{
+          alignItems: "baseline",
+          display: "flex",
+          gap: 8,
+          justifyContent: "space-between",
+        }}
+      >
         <span style={{ color: abaixo ? T.danger : T.muted, fontSize: 10.5 }}>
           {abaixo
             ? `Abaixo do mínimo de ${minimoEmPercentual}% (${dinheiro(minimo)})`
@@ -1559,7 +1736,7 @@ function CampoDeEntrada({
         </span>
         {abaixo ? (
           <button
-              onClick={() => aoMudar(minimo)}
+            onClick={() => aoMudar(minimo)}
             style={{
               background: "transparent",
               border: "none",
@@ -1582,19 +1759,29 @@ function CampoDeEntrada({
 }
 
 /** O irmão do `CampoEmReais` para percentual: mesmo comportamento, sufixo em vez de prefixo. */
-function CampoEmPorcento({ aoMudar, valor }: { aoMudar: (n: number) => void; valor: number }) {
+function CampoEmPorcento({
+  aoMudar,
+  valor,
+}: {
+  aoMudar: (n: number) => void;
+  valor: number;
+}) {
   const escreve = (v: number) =>
     v > 0 ? v.toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "";
   const [texto, setTexto] = useState(escreve(valor));
 
   useEffect(() => {
     setTexto((atual) =>
-      lerPercentualDigitado(atual) === Math.round(valor * 100) / 100 ? atual : escreve(valor),
+      lerPercentualDigitado(atual) === Math.round(valor * 100) / 100
+        ? atual
+        : escreve(valor),
     );
   }, [valor]);
 
   return (
-    <span style={{ alignItems: "center", display: "flex", position: "relative" }}>
+    <span
+      style={{ alignItems: "center", display: "flex", position: "relative" }}
+    >
       <input
         inputMode="decimal"
         onBlur={() => setTexto(escreve(valor))}
@@ -1644,7 +1831,8 @@ function Contador({
   minimo?: number;
   valor: number;
 }) {
-  const passo = (d: number) => aoMudar(Math.max(minimo, Math.min(maximo, valor + d)));
+  const passo = (d: number) =>
+    aoMudar(Math.max(minimo, Math.min(maximo, valor + d)));
 
   return (
     <span
@@ -1656,7 +1844,12 @@ function Contador({
         display: "inline-flex",
       }}
     >
-      <button aria-label="Diminuir" onClick={() => passo(-1)} style={passoDoContador} type="button">
+      <button
+        aria-label="Diminuir"
+        onClick={() => passo(-1)}
+        style={passoDoContador}
+        type="button"
+      >
         −
       </button>
       <span
@@ -1670,7 +1863,12 @@ function Contador({
       >
         {valor}
       </span>
-      <button aria-label="Aumentar" onClick={() => passo(1)} style={passoDoContador} type="button">
+      <button
+        aria-label="Aumentar"
+        onClick={() => passo(1)}
+        style={passoDoContador}
+        type="button"
+      >
         +
       </button>
     </span>
@@ -1699,11 +1897,27 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: string }) {
   );
 }
 
-function Dado({ nota, rotulo, valor }: { nota: string; rotulo: string; valor: string }) {
+function Dado({
+  nota,
+  rotulo,
+  valor,
+}: {
+  nota: string;
+  rotulo: string;
+  valor: string;
+}) {
   return (
     <div>
-      <div style={{ color: T.muted, fontSize: 10.5, fontWeight: 650 }}>{rotulo}</div>
-      <div style={{ fontSize: 14, fontVariantNumeric: "tabular-nums", fontWeight: 650 }}>
+      <div style={{ color: T.muted, fontSize: 10.5, fontWeight: 650 }}>
+        {rotulo}
+      </div>
+      <div
+        style={{
+          fontSize: 14,
+          fontVariantNumeric: "tabular-nums",
+          fontWeight: 650,
+        }}
+      >
         {valor}
       </div>
       <div style={{ color: T.muted, fontSize: 10.5 }}>{nota}</div>
@@ -1768,7 +1982,10 @@ function CampoDoLote({
 
   /** O número que a pessoa digitou, sempre positivo — o sinal vem do botão. */
   function numeroDigitado(cru: string): number {
-    const limpo = cru.replace(/[\s+-]/g, "").replace(/\./g, "").replace(",", ".");
+    const limpo = cru
+      .replace(/[\s+-]/g, "")
+      .replace(/\./g, "")
+      .replace(",", ".");
     if (!limpo) return 0;
     const n = Number(limpo);
     return Number.isFinite(n) ? Math.abs(n) : 0;
@@ -1788,8 +2005,16 @@ function CampoDoLote({
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      <span style={{ alignItems: "baseline", display: "flex", justifyContent: "space-between" }}>
-        <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>{rotulo}</span>
+      <span
+        style={{
+          alignItems: "baseline",
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>
+          {rotulo}
+        </span>
         <span style={{ color: T.muted, fontSize: 10.5 }}>tabela</span>
       </span>
       {/* ⚠️ A TABELA NÃO É CAMPO. Ela é o número que o pedido do Lucas manda preservar, e deixá-la
@@ -1833,7 +2058,8 @@ function CampoDoLote({
               onClick={() => mudarSentido(s)}
               onMouseDown={(e) => e.preventDefault()}
               style={{
-                background: sentido === s ? (s === -1 ? T.danger : T.ok) : "transparent",
+                background:
+                  sentido === s ? (s === -1 ? T.danger : T.ok) : "transparent",
                 border: "none",
                 color: sentido === s ? "#fff" : T.muted,
                 cursor: "pointer",
@@ -1903,15 +2129,30 @@ function CampoDoLote({
           que o pedido não coube — senão a proposta sai por um centavo e o PDF sai junto. */}
       {preco.limitado ? (
         <span style={{ color: T.danger, fontSize: 10.5, lineHeight: 1.35 }}>
-          O ajuste pedido não cabe no preço e foi limitado. Confira se o botão está no % ou no R$
-          certo.
+          O ajuste pedido não cabe no preço e foi limitado. Confira se o botão
+          está no % ou no R$ certo.
         </span>
       ) : null}
 
-      <div style={{ borderTop: `1px solid ${T.border}`, display: "grid", gap: 4, paddingTop: 8 }}>
+      <div
+        style={{
+          borderTop: `1px solid ${T.border}`,
+          display: "grid",
+          gap: 4,
+          paddingTop: 8,
+        }}
+      >
         {temAjuste ? (
-          <span style={{ alignItems: "baseline", display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: T.muted, fontSize: 11 }}>{descreverAjuste(preco)}</span>
+          <span
+            style={{
+              alignItems: "baseline",
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <span style={{ color: T.muted, fontSize: 11 }}>
+              {descreverAjuste(preco)}
+            </span>
             <span
               style={{
                 color: desconto ? T.danger : T.ok,
@@ -1923,11 +2164,23 @@ function CampoDoLote({
             </span>
           </span>
         ) : null}
-        <span style={{ alignItems: "baseline", display: "flex", justifyContent: "space-between" }}>
+        <span
+          style={{
+            alignItems: "baseline",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
           <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>
             {rotuloDoValor}
           </span>
-          <span style={{ fontSize: 17, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>
+          <span
+            style={{
+              fontSize: 17,
+              fontVariantNumeric: "tabular-nums",
+              fontWeight: 700,
+            }}
+          >
             {dinheiroExato(preco.valor)}
           </span>
         </span>

@@ -15,8 +15,14 @@ import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 import type { ModoDoAjuste } from "@/lib/hercules/ajuste-de-preco";
 
-import { avisarSobreAVenda, destinatariosDaVenda } from "@/lib/hercules/avisos-da-venda";
-import { carregarCadastroDeEmpreendimentos, type LinhaDoCadastro } from "@/lib/hercules/cadastro";
+import {
+  avisarSobreAVenda,
+  destinatariosDaVenda,
+} from "@/lib/hercules/avisos-da-venda";
+import {
+  carregarCadastroDeEmpreendimentos,
+  type LinhaDoCadastro,
+} from "@/lib/hercules/cadastro";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import {
   credenciadoParaVender,
@@ -24,6 +30,7 @@ import {
 } from "@/lib/hercules/cliente-credenciado";
 import { montarCronograma } from "@/lib/hercules/cronograma";
 import { nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
+import { rotuloDoIndice } from "@/lib/temis/planos";
 import {
   lerPlanosDoPanteon,
   planosPreferindoOPanteon,
@@ -135,7 +142,9 @@ function telefoneEscrito(valor: unknown): null | string {
 }
 
 /** `numeric` do Postgres chega como STRING no PostgREST: somar sem converter concatena. */
-function numeroDoBanco(valor: null | number | string | undefined): null | number {
+function numeroDoBanco(
+  valor: null | number | string | undefined,
+): null | number {
   if (valor === null || valor === undefined || valor === "") return null;
   const n = Number(valor);
   return Number.isFinite(n) ? n : null;
@@ -178,7 +187,8 @@ function titularDaReserva(proponentes: unknown): null | Proponente {
 
   const cpf = typeof primeiro.cpf === "string" ? primeiro.cpf : "";
   const nome = typeof primeiro.nome === "string" ? primeiro.nome.trim() : "";
-  const telefone = typeof primeiro.telefone === "string" ? primeiro.telefone : "";
+  const telefone =
+    typeof primeiro.telefone === "string" ? primeiro.telefone : "";
   if (!cpf && !nome) return null;
   return { cpf, nome, telefone };
 }
@@ -212,7 +222,9 @@ function codigoDoEmpreendimento(
   c2xEnterpriseId: string,
 ): null | string {
   for (const emp of catalogo) {
-    const posicao = emp.stageIds.findIndex((id) => String(id) === c2xEnterpriseId);
+    const posicao = emp.stageIds.findIndex(
+      (id) => String(id) === c2xEnterpriseId,
+    );
     const code = posicao >= 0 ? emp.codes[posicao] : null;
     if (code) return code.toUpperCase();
   }
@@ -261,7 +273,10 @@ async function pisoDaEntrada(
     console.error("[hercules][proposta] entrada minima", error);
     return null;
   }
-  return numeroDoBanco((data as null | { entrada_minima_percentual: null | number | string })?.entrada_minima_percentual);
+  return numeroDoBanco(
+    (data as null | { entrada_minima_percentual: null | number | string })
+      ?.entrada_minima_percentual,
+  );
 }
 
 /** Nome de imobiliária e corretor, para a tela e para o papel. */
@@ -284,7 +299,10 @@ async function nomesDasEntidades(
     legal_name: null | string;
     trade_name: null | string;
   }>) {
-    nomes.set(e.id, (e.trade_name || e.display_name || e.legal_name || "").trim());
+    nomes.set(
+      e.id,
+      (e.trade_name || e.display_name || e.legal_name || "").trim(),
+    );
   }
   return nomes;
 }
@@ -295,10 +313,15 @@ export async function GET(request: Request) {
 
   const admin = createApoloAdminClient();
   if (!admin) {
-    return NextResponse.json({ error: "Configuração indisponível." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Configuração indisponível." },
+      { status: 503 },
+    );
   }
 
-  const unidadeId = (new URL(request.url).searchParams.get("unidade") ?? "").trim();
+  const unidadeId = (
+    new URL(request.url).searchParams.get("unidade") ?? ""
+  ).trim();
   if (!unidadeId) {
     return NextResponse.json({ error: "Informe a unidade." }, { status: 400 });
   }
@@ -314,12 +337,18 @@ export async function GET(request: Request) {
 
     const unidade = data as null | UnidadeDaProposta;
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
-      return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Unidade não encontrada." },
+        { status: 404 },
+      );
     }
 
     const reserva = await reservaDaUnidade(admin, unidade.id);
     if (!reserva) {
-      return NextResponse.json({ error: "Não há reserva ativa nesta unidade." }, { status: 409 });
+      return NextResponse.json(
+        { error: "Não há reserva ativa nesta unidade." },
+        { status: 409 },
+      );
     }
     if (reserva.situacao !== "ativa") {
       return NextResponse.json(
@@ -333,7 +362,10 @@ export async function GET(request: Request) {
       // Reserva sem proponente é dado quebrado, não "reserva inexistente": a unidade está travada
       // por uma linha que ninguém consegue transformar em proposta.
       return NextResponse.json(
-        { error: "Esta reserva está sem o cliente titular. Cancele e reserve de novo." },
+        {
+          error:
+            "Esta reserva está sem o cliente titular. Cancele e reserve de novo.",
+        },
         { status: 409 },
       );
     }
@@ -351,15 +383,23 @@ export async function GET(request: Request) {
     const familia = familiaDoEmpreendimento(cadastro, c2xId);
     const escopoDaEsteira = comIdsDoGrupo(familia, catalogo, permitidos);
 
-    const [credenciamento, planos, entradaMinimaPercentual, nomes] = await Promise.all([
-      credenciadoParaVender(admin, { cpf: titular.cpf, enterpriseIds: escopoDaEsteira }),
-      planosDaUnidade(admin, familia, codigoDoEmpreendimento(catalogo, empreendimento, c2xId)),
-      pisoDaEntrada(admin, c2xId),
-      nomesDasEntidades(admin, [
-        reserva.imobiliaria_entity_id ?? "",
-        reserva.corretor_entity_id ?? "",
-      ]),
-    ]);
+    const [credenciamento, planos, entradaMinimaPercentual, nomes] =
+      await Promise.all([
+        credenciadoParaVender(admin, {
+          cpf: titular.cpf,
+          enterpriseIds: escopoDaEsteira,
+        }),
+        planosDaUnidade(
+          admin,
+          familia,
+          codigoDoEmpreendimento(catalogo, empreendimento, c2xId),
+        ),
+        pisoDaEntrada(admin, c2xId),
+        nomesDasEntidades(admin, [
+          reserva.imobiliaria_entity_id ?? "",
+          reserva.corretor_entity_id ?? "",
+        ]),
+      ]);
 
     return NextResponse.json(
       {
@@ -385,7 +425,8 @@ export async function GET(request: Request) {
             imobiliaria: reserva.imobiliaria_entity_id
               ? {
                   id: reserva.imobiliaria_entity_id,
-                  nome: nomes.get(reserva.imobiliaria_entity_id) || "Imobiliária",
+                  nome:
+                    nomes.get(reserva.imobiliaria_entity_id) || "Imobiliária",
                 }
               : null,
             titular,
@@ -420,7 +461,10 @@ export async function POST(request: Request) {
 
   const admin = createApoloAdminClient();
   if (!admin) {
-    return NextResponse.json({ error: "Configuração indisponível." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Configuração indisponível." },
+      { status: 503 },
+    );
   }
 
   let corpo: {
@@ -441,6 +485,8 @@ export async function POST(request: Request) {
     entradaValor?: unknown;
     entradaParcelas?: unknown;
     entradaVezes?: unknown;
+    /** A tabela de reajuste entra na PA? Ausente = não entra (é o padrão novo). */
+    incluirReajuste?: unknown;
     observacao?: unknown;
     parcelasMensais?: unknown;
     planoNome?: unknown;
@@ -494,13 +540,19 @@ export async function POST(request: Request) {
 
     const unidade = data as null | UnidadeDaProposta;
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
-      return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Unidade não encontrada." },
+        { status: 404 },
+      );
     }
 
     // ── 2. A reserva viva ──────────────────────────────────────────────────
     const reserva = await reservaDaUnidade(admin, unidade.id);
     if (!reserva) {
-      return NextResponse.json({ error: "Não há reserva ativa nesta unidade." }, { status: 409 });
+      return NextResponse.json(
+        { error: "Não há reserva ativa nesta unidade." },
+        { status: 409 },
+      );
     }
     if (reserva.situacao !== "ativa") {
       return NextResponse.json(
@@ -513,7 +565,10 @@ export async function POST(request: Request) {
     const titular = titularDaReserva(reserva.proponentes);
     if (!titular) {
       return NextResponse.json(
-        { error: "Esta reserva está sem o cliente titular. Cancele e reserve de novo." },
+        {
+          error:
+            "Esta reserva está sem o cliente titular. Cancele e reserve de novo.",
+        },
         { status: 409 },
       );
     }
@@ -524,7 +579,9 @@ export async function POST(request: Request) {
     const empreendimento = empreendimentoDaUnidade(cadastro, c2xId);
     if (!empreendimento) {
       return NextResponse.json(
-        { error: "Este empreendimento ainda não está no cadastro do Hércules." },
+        {
+          error: "Este empreendimento ainda não está no cadastro do Hércules.",
+        },
         { status: 409 },
       );
     }
@@ -541,7 +598,11 @@ export async function POST(request: Request) {
       // A frase vem da lib: ela é quem sabe dizer "em análise de crédito desde 02/09", que é uma
       // conversa; "não credenciado" seria um muro.
       return NextResponse.json(
-        { error: credenciamento.motivo ?? "A CAD deste cliente não está credenciada." },
+        {
+          error:
+            credenciamento.motivo ??
+            "A CAD deste cliente não está credenciada.",
+        },
         { status: 403 },
       );
     }
@@ -559,7 +620,10 @@ export async function POST(request: Request) {
     ).map((bruto) => {
       const c = (bruto ?? {}) as Record<string, unknown>;
       const cpf = String(c.cpf ?? "");
-      const ehOTitular = !jaMarcouTitular && soDigitos(cpf) === cpfDoTitular && cpfDoTitular !== "";
+      const ehOTitular =
+        !jaMarcouTitular &&
+        soDigitos(cpf) === cpfDoTitular &&
+        cpfDoTitular !== "";
       if (ehOTitular) jaMarcouTitular = true;
       return {
         cpf: ehOTitular ? titular.cpf : cpf,
@@ -567,7 +631,9 @@ export async function POST(request: Request) {
         participacao: numeroDoCorpo(c.participacao),
         // ⚠️ O TELEFONE DO TITULAR É O DA RESERVA, pela mesma razão do nome e do CPF: ele não se
         // troca por HTTP. O do proponente adicional é o único contato que a casa vai ter dele.
-        telefone: ehOTitular ? telefoneEscrito(titular.telefone) : telefoneEscrito(c.telefone),
+        telefone: ehOTitular
+          ? telefoneEscrito(titular.telefone)
+          : telefoneEscrito(c.telefone),
         titular: ehOTitular,
       };
     });
@@ -600,8 +666,23 @@ export async function POST(request: Request) {
     // número de dias, a data nasce do relógio de quem valida, e o formato deixa de existir como
     // problema: nada de data curta ancorando em meia-noite UTC e gravando um dia a menos do que o
     // papel imprime.
+    /**
+     * A tabela de reajuste vai no papel?
+     *
+     * ⚠️ NÃO ENTRA EM `PedidoDeProposta` DE PROPÓSITO. Aquele tipo é a CONDIÇÃO da venda — o que
+     * `conferirProposta` valida e o que o contrato promete —, e isto é uma escolha de como IMPRIMIR
+     * o documento. Misturar as duas faria a régua da proposta ter opinião sobre layout.
+     *
+     * ⚠️ E `=== true` DE PROPÓSITO: ausente, nulo ou qualquer outra coisa é NÃO. O padrão pedido
+     * pelo Lucas é a caixa desmarcada, e um corpo antigo (ou um cliente que não conhece o campo)
+     * tem que cair no padrão, nunca no contrário.
+     */
+    const incluirReajuste = corpo.incluirReajuste === true;
+
     const prazoPedido = numeroDoCorpo(corpo.prazoEmDias);
-    const prazoEmDias = (PRAZOS_DA_PROPOSTA as readonly number[]).includes(prazoPedido)
+    const prazoEmDias = (PRAZOS_DA_PROPOSTA as readonly number[]).includes(
+      prazoPedido,
+    )
       ? prazoPedido
       : PRAZO_PADRAO_DA_PROPOSTA;
     const validadeEm = vencimentoEmDias(new Date().toISOString(), prazoEmDias);
@@ -692,7 +773,9 @@ export async function POST(request: Request) {
             {
               campo: "entrada",
               mensagem:
-                erro instanceof Error ? erro.message : "Não foi possível montar o fluxo de pagamento.",
+                erro instanceof Error
+                  ? erro.message
+                  : "Não foi possível montar o fluxo de pagamento.",
             },
           ],
         },
@@ -747,6 +830,7 @@ export async function POST(request: Request) {
       const bytes = await bytesDoPdfDaProposta(
         admin,
         {
+          incluirReajuste,
           atendimento: {
             coordenador: paraORodape?.coordenadores[0]?.nome ?? null,
             corretor: paraORodape?.corretor?.nome ?? nomeDoCorretor,
@@ -797,7 +881,37 @@ export async function POST(request: Request) {
         compradores,
         // O cronograma inteiro, como ele foi impresso: é o que responde "o que a proposta
         // prometeu" quando o plano do empreendimento mudar no ano que vem.
-        condicoes: cronograma,
+        //
+        // ⚠️ E AGORA A PREMISSA VAI JUNTO, e não só o resultado dela. Até 13/09/2026 a proposta
+        // congelava o CRONOGRAMA e nunca a PREMISSA: guardava as 120 parcelas com data e valor, e
+        // não guardava com que taxa, com que índice nem com que sistema aquilo tinha sido gerado.
+        // Quem quisesse saber depois reencontrava o plano PELO NOME — e a 0143 tirou a unicidade
+        // do nome, então "Normal - Price" pode ser dois planos diferentes daqui a um ano.
+        //
+        // ⚠️ POR QUE AQUI DENTRO, e não em colunas novas: as colunas planas `plano_juros` e
+        // `plano_correcao` existem, mas `plano_juros` JÁ MISTURA DUAS UNIDADES — medido em
+        // 13/09/2026 nas 4.857 linhas importadas do C2X: 1.662 delas guardam 8 ou 6 (que é % ao
+        // ANO) e ~848 guardam 0,7207 / 0,6434 / 0,5 / 0,8 (que é % ao MÊS), na mesma coluna, sem
+        // marcador. 8% a.a. e 0,6434% a.m. são a MESMA taxa e a coluna não sabe distinguir. Um
+        // número sozinho ali não congela nada; o objeto abaixo congela.
+        condicoes: {
+          ...cronograma,
+          // ⚠️ GRAVADA, e não só usada na hora. Sem isto, reimprimir a mesma proposta daqui a três
+          // meses devolveria um documento diferente do que o cliente recebeu — e o documento
+          // reimpresso é justamente o que alguém vai buscar quando houver discussão.
+          incluirReajuste,
+          plano: {
+            entradaPercentual: plano.entradaPercentual,
+            indiceCorrecao: plano.indiceCorrecao,
+            jurosConvencao: plano.jurosConvencao,
+            jurosPeriodicidade: plano.jurosPeriodicidade,
+            jurosTaxa: plano.jurosTaxa,
+            nome: plano.nome,
+            /** O prazo do MOLDE. O prazo contratado está em `contrato_parcelas`. */
+            parcelas: plano.parcelas,
+            sistemaAmortizacao: plano.sistemaAmortizacao,
+          },
+        },
         // ⚠️ O PRAZO CONTRATADO É ESTE, e é ele que a tela mostra. `fluxoDoPlano`
         // (lib/hercules/fluxo-de-venda.ts) prefere `contrato_parcelas` e só cai em
         // `plano_parcelas` quando o contrato não tem o dele — deixar esta coluna nula fazia a
@@ -812,7 +926,11 @@ export async function POST(request: Request) {
         criado_por_nome: auth.sessao.usuarioNome,
         dia_vencimento: pedido.vencimentoDia,
         // ⚠️ SEM ESTE CÓDIGO A PROPOSTA NASCE INVISÍVEL: a rota `/venda` filtra por ele.
-        empreendimento_codigo: codigoDoEmpreendimento(catalogo, empreendimento, c2xId),
+        empreendimento_codigo: codigoDoEmpreendimento(
+          catalogo,
+          empreendimento,
+          c2xId,
+        ),
         empreendimento_id: empreendimento.id,
         etapa: "proposta",
         // ⚠️ SEM ESTA DATA O MAPA CONTINUA PINTANDO "RESERVADO": é o `etapa_desde` mais recente
@@ -823,6 +941,22 @@ export async function POST(request: Request) {
         observacao: String(corpo.observacao ?? "").trim() || null,
         origem: "panteon",
         parcelas_sinal: pedido.entradaVezes,
+        // ⚠️ A TAXA VAI CRUA, na MESMA convenção que a coluna já usa. A carga do C2X gravou aqui o
+        // número do cadastro sem converter (8 para o plano anual, 0,6434 para o mensal), e
+        // converter só as linhas novas para % ao mês faria a tela da Têmis comparar 0,64 com 8
+        // achando que são taxas diferentes. A periodicidade que desfaz a ambiguidade está em
+        // `condicoes.plano.jurosPeriodicidade`.
+        //
+        // ⚠️ E ELA PRECISA EXISTIR: até hoje a proposta nativa não gravava nenhum dos dois, e por
+        // isso TODA proposta do Panteon chegava na análise da Têmis dizendo "Juros: não informado"
+        // (comercial-da-analise.ts lê `plano_juros` e cai no texto de ausência com nulo). Medido em
+        // 13/09/2026: as 5 propostas nativas têm plano_juros e plano_correcao NULOS, as duas.
+        plano_juros: plano.jurosTaxa,
+        // ⚠️ O RÓTULO, e não o código. Esta coluna é lida como TEXTO para mostrar na tela em dois
+        // lugares (fluxo-de-venda.ts:340 e comercial-da-analise.ts:252) e a carga do C2X encheu-a
+        // com o rótulo do legado ("IPCA ANUAL", "POUPANÇA"). Gravar `IPCA_ANUAL` aqui colocaria um
+        // segundo idioma na mesma coluna e o operador leria o nome da constante.
+        plano_correcao: rotuloDoIndice(plano.indiceCorrecao),
         plano_nome: plano.nome,
         // ⚠️ ESTE É O MOLDE, E FICA — não é o prazo desta venda (esse é `contrato_parcelas`, acima).
         // Ele existe para responder "de que produto esta proposta saiu": as 4.857 linhas importadas
@@ -887,21 +1021,30 @@ export async function POST(request: Request) {
     if (erroDaReserva) {
       // Não derruba: a proposta já existe e é ela que representa a venda. O funil não duplica
       // porque `/venda` descarta a reserva da unidade que já tem proposta viva.
-      console.error("[hercules][proposta] falha ao mover a reserva", erroDaReserva);
+      console.error(
+        "[hercules][proposta] falha ao mover a reserva",
+        erroDaReserva,
+      );
     } else if (!movida || movida.length === 0) {
       // ⚠️ DESFAZ A PROPOSTA QUE ACABOU DE NASCER. Ela é de segundos atrás, ninguém foi avisado
       // ainda (o passo 9 vem depois) e nenhum PDF saiu: apagá-la é mais honesto do que deixar uma
       // venda viva sobre um lote que a tela mostra livre. O `delete` é seguro justamente porque
       // esta linha não teve tempo de virar referência de nada.
-      console.error("[hercules][proposta] a reserva saiu de 'ativa' durante a geração", {
-        propostaId,
-        reservaId: reserva.id,
-      });
+      console.error(
+        "[hercules][proposta] a reserva saiu de 'ativa' durante a geração",
+        {
+          propostaId,
+          reservaId: reserva.id,
+        },
+      );
       if (propostaId) {
         await admin.from("hercules_propostas").delete().eq("id", propostaId);
       }
       return NextResponse.json(
-        { error: "A reserva desta unidade foi cancelada enquanto a proposta era montada." },
+        {
+          error:
+            "A reserva desta unidade foi cancelada enquanto a proposta era montada.",
+        },
         { status: 409 },
       );
     }
@@ -922,6 +1065,7 @@ export async function POST(request: Request) {
       corretorId: reserva.corretor_entity_id,
       cronograma,
       empreendimento,
+      incluirReajuste,
       imobiliariaId: reserva.imobiliaria_entity_id,
       pedido,
       plano,
@@ -937,12 +1081,18 @@ export async function POST(request: Request) {
     if (erro instanceof FalhaAoLerCredenciamento) {
       console.error("[hercules][proposta] credenciamento ilegível", erro);
       return NextResponse.json(
-        { error: "Não foi possível conferir o credenciamento agora. Tente de novo." },
+        {
+          error:
+            "Não foi possível conferir o credenciamento agora. Tente de novo.",
+        },
         { status: 503 },
       );
     }
     console.error("[hercules][proposta] falha ao gerar", erro);
-    return NextResponse.json({ error: "Não foi possível gerar a proposta agora." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Não foi possível gerar a proposta agora." },
+      { status: 503 },
+    );
   }
 }
 
@@ -1000,6 +1150,8 @@ async function avisar(
     corretorId: null | string;
     cronograma: ReturnType<typeof montarCronograma>;
     empreendimento: LinhaDoCadastro;
+    /** A tabela de reajuste entra no PDF que vai por WhatsApp? Ver `DadosDaFolha`. */
+    incluirReajuste: boolean;
     imobiliariaId: null | string;
     pedido: PedidoDeProposta;
     plano: PlanoComercial;
@@ -1014,7 +1166,9 @@ async function avisar(
   // Sem imobiliária não há para quem mandar pelo caminho do Relacionamento (o `entity_id` do
   // registro do disparo é o dela, inclusive o do coordenador). A proposta continua gravada.
   if (!dados.imobiliariaId) {
-    return [{ motivo: "reserva sem imobiliária", ok: false, para: "imobiliaria" }];
+    return [
+      { motivo: "reserva sem imobiliária", ok: false, para: "imobiliaria" },
+    ];
   }
 
   try {
@@ -1029,9 +1183,14 @@ async function avisar(
     // degrau do SACOC (mais de uma faixa de reajuste) nem índice no aniversário. Na dúvida, a
     // mensagem promete de menos.
     const parcelaFixa =
-      dados.cronograma.reajustes.length <= 1 && dados.plano.indiceCorrecao === "SEM_CORRECAO";
+      dados.cronograma.reajustes.length <= 1 &&
+      dados.plano.indiceCorrecao === "SEM_CORRECAO";
 
     const anexo = await guardarOPdf(admin, {
+      // ⚠️ A MESMA ESCOLHA DO PAPEL GERADO. O PDF que vai por WhatsApp e o que fica guardado sao o
+      // MESMO documento: se a bandeira nao viesse ate aqui, o coordenador veria a PA sem a tabela e
+      // o cliente receberia uma com ela.
+      incluirReajuste: dados.incluirReajuste,
       atendimento: {
         coordenador: destinatarios.coordenadores[0]?.nome ?? null,
         corretor: destinatarios.corretor?.nome ?? null,
@@ -1096,7 +1255,8 @@ async function avisar(
       : [
           ...resultados,
           {
-            motivo: "não foi possível gerar o PDF; os três receberam só o texto",
+            motivo:
+              "não foi possível gerar o PDF; os três receberam só o texto",
             ok: false,
             // ⚠️ "documento" E NÃO "pdf": esta lista vira frase na tela por `comoFoiOAviso`, e ela
             // escreve o `para` cru — "falhou para documento" se lê, "falhou para pdf" não.
@@ -1121,6 +1281,8 @@ type DadosDoPdfDaProposta = {
   compradores: CompradorDoPedido[];
   cronograma: ReturnType<typeof montarCronograma>;
   diaDeVencimento: number;
+  /** A tabela de reajuste entra no papel? Ver `DadosDaFolha.incluirReajuste`. */
+  incluirReajuste: boolean;
   empreendimento: LinhaDoCadastro;
   enterpriseId: string;
   plano: PlanoComercial;
@@ -1161,6 +1323,7 @@ async function bytesDoPdfDaProposta(
     diaDeVencimento: dados.diaDeVencimento,
     emitidaEmIso: new Date().toISOString(),
     empreendimento: dados.empreendimento.nome,
+    incluirReajuste: dados.incluirReajuste,
     logoC2x: logoDoC2x(),
     logoEmpreendimento: await logoDoEmpreendimento(admin, dados.enterpriseId),
     plano: dados.plano,
@@ -1235,7 +1398,10 @@ async function guardarOPdf(
           });
         }
       } catch (erro) {
-        console.error("[hercules][proposta] falha ao registrar o PDF como documento", erro);
+        console.error(
+          "[hercules][proposta] falha ao registrar o PDF como documento",
+          erro,
+        );
       }
     }
 
@@ -1262,7 +1428,9 @@ async function guardarOPdf(
  */
 function logoDoC2x(): null | Uint8Array {
   try {
-    return new Uint8Array(fs.readFileSync(path.join(process.cwd(), "public", "c2x-logo.png")));
+    return new Uint8Array(
+      fs.readFileSync(path.join(process.cwd(), "public", "c2x-logo.png")),
+    );
   } catch {
     return null;
   }
@@ -1312,7 +1480,10 @@ export async function PATCH(request: Request) {
 
   const admin = createApoloAdminClient();
   if (!admin) {
-    return NextResponse.json({ error: "Configuração indisponível." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Configuração indisponível." },
+      { status: 503 },
+    );
   }
 
   let corpo: Partial<PedidoDeCancelamentoDaProposta>;
@@ -1325,7 +1496,10 @@ export async function PATCH(request: Request) {
   const pedido: PedidoDeCancelamentoDaProposta = {
     detalhe: typeof corpo.detalhe === "string" ? corpo.detalhe : null,
     motivo: String(corpo.motivo ?? "").trim(),
-    propostaId: typeof corpo.propostaId === "string" ? corpo.propostaId.trim() || null : null,
+    propostaId:
+      typeof corpo.propostaId === "string"
+        ? corpo.propostaId.trim() || null
+        : null,
     unidadeId: String(corpo.unidadeId ?? "").trim(),
   };
 
@@ -1346,7 +1520,10 @@ export async function PATCH(request: Request) {
 
     const unidade = data as null | UnidadeDaProposta;
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
-      return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Unidade não encontrada." },
+        { status: 404 },
+      );
     }
 
     // ⚠️ SÓ A PROPOSTA NATIVA E ABERTA. `origem = 'panteon'` mantém de fora as 4.857 importadas do
@@ -1377,7 +1554,10 @@ export async function PATCH(request: Request) {
     };
 
     if (!proposta) {
-      return NextResponse.json({ error: "Não há proposta aberta nesta unidade." }, { status: 409 });
+      return NextResponse.json(
+        { error: "Não há proposta aberta nesta unidade." },
+        { status: 409 },
+      );
     }
 
     // ⚠️ A TELA DIZ QUAL PROPOSTA ELA ESTÁ VENDO, e aqui as duas têm que ser a mesma. Ver o aviso
@@ -1386,7 +1566,10 @@ export async function PATCH(request: Request) {
     // aviso com o nome errado. Opcional para não quebrar quem já tem a tela carregada sem o campo.
     if (pedido.propostaId && pedido.propostaId !== proposta.id) {
       return NextResponse.json(
-        { error: "Esta unidade já tem outra proposta. Recarregue a tela antes de cancelar." },
+        {
+          error:
+            "Esta unidade já tem outra proposta. Recarregue a tela antes de cancelar.",
+        },
         { status: 409 },
       );
     }
@@ -1454,13 +1637,19 @@ export async function PATCH(request: Request) {
         .in("situacao", ["ativa", "proposta"]);
 
       if (erroDaReserva) {
-        console.error("[hercules][proposta] falha ao cancelar a reserva de origem", erroDaReserva);
+        console.error(
+          "[hercules][proposta] falha ao cancelar a reserva de origem",
+          erroDaReserva,
+        );
         // ⚠️ PARA AQUI, COM A UNIDADE AINDA PRESA — e isso é de propósito. A proposta já está
         // `cancelado`, então este mesmo botão funciona de novo assim que a pessoa tentar outra
         // vez; parar antes de soltar a unidade mantém o estado CONSISTENTE (lote travado, os três
         // ainda sem aviso) em vez de deixá-lo travado e anunciado como livre.
         return NextResponse.json(
-          { error: "A proposta foi cancelada, mas a reserva não. Tente de novo em instantes." },
+          {
+            error:
+              "A proposta foi cancelada, mas a reserva não. Tente de novo em instantes.",
+          },
           { status: 503 },
         );
       }
@@ -1477,9 +1666,15 @@ export async function PATCH(request: Request) {
       .eq("id", unidade.id);
 
     if (erroDaUnidade) {
-      console.error("[hercules][proposta] falha ao liberar a unidade", erroDaUnidade);
+      console.error(
+        "[hercules][proposta] falha ao liberar a unidade",
+        erroDaUnidade,
+      );
       return NextResponse.json(
-        { error: "A proposta foi cancelada, mas a unidade não foi liberada. Chame o suporte." },
+        {
+          error:
+            "A proposta foi cancelada, mas a unidade não foi liberada. Chame o suporte.",
+        },
         { status: 503 },
       );
     }
@@ -1489,7 +1684,9 @@ export async function PATCH(request: Request) {
       cadastro.find((l) => l.id === proposta.empreendimento_id)?.nome ??
       // Proposta sem `empreendimento_id` gravado ainda tem o id do C2X na unidade: o nome vai na
       // mensagem que três pessoas leem, e "empreendimento" no lugar dele é um recado sem endereço.
-      cadastro.find((l) => String(l.c2xEnterpriseId) === String(unidade.enterprise_id))?.nome ??
+      cadastro.find(
+        (l) => String(l.c2xEnterpriseId) === String(unidade.enterprise_id),
+      )?.nome ??
       "empreendimento";
 
     const titular = Array.isArray(proposta.compradores)
@@ -1508,7 +1705,10 @@ export async function PATCH(request: Request) {
     if (imobiliariaId) {
       const destinatarios = await destinatariosDaVenda(admin, {
         corretorId: proposta.corretor_entity_id,
-        empreendimento: { c2xId: String(unidade.enterprise_id), nome: nomeDoEmpreendimento },
+        empreendimento: {
+          c2xId: String(unidade.enterprise_id),
+          nome: nomeDoEmpreendimento,
+        },
         imobiliariaId,
       });
       avisos = await avisarSobreAVenda(admin, {
@@ -1532,6 +1732,9 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ data: { avisos, codigo, id: proposta.id } });
   } catch (erro) {
     console.error("[hercules][proposta] falha ao cancelar", erro);
-    return NextResponse.json({ error: "Não foi possível cancelar agora." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Não foi possível cancelar agora." },
+      { status: 503 },
+    );
   }
 }

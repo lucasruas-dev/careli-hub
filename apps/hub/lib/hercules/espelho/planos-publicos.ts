@@ -18,6 +18,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   type ConvencaoJuros,
+  INDICES as ROTULOS_DE_INDICE,
   type IndiceCorrecao,
   type PeriodicidadeJuros,
   type PlanoComercial,
@@ -50,15 +51,14 @@ type LinhaDePlano = {
   sistema_amortizacao: null | string;
 };
 
-const INDICES_VALIDOS = new Set([
-  "IGPM_ANUAL",
-  "IGPM_MENSAL",
-  "INCC_ANUAL",
-  "INCC_MENSAL",
-  "IPCA_ANUAL",
-  "IPCA_MENSAL",
-  "SEM_CORRECAO",
-]);
+/**
+ * ⚠️ ESTA COPIA ESTAVA ERRADA, e era a pior das cinco porque e a que serve a TELA PUBLICA.
+ * Ela aceitava `INCC_ANUAL` e `INCC_MENSAL`, que o banco NUNCA aceitou, e nao aceitava
+ * `INCC_M_MENSAL`, que e o unico INCC que o CHECK da 0111 admitia e o que o C2X usa em 96 planos.
+ * Resultado medido em 13/09/2026: o unico INCC valido caia no fallback e o espelho publico
+ * anunciava ao comprador um contrato "sem correcao". Agora deriva da lista unica.
+ */
+const INDICES_VALIDOS = new Set(Object.keys(ROTULOS_DE_INDICE));
 
 function numero(v: null | number | string | undefined, padrao: number): number {
   if (v === null || v === undefined) return padrao;
@@ -97,27 +97,29 @@ export async function planosPublicos(
 
   if (error) throw new Error(error.message);
 
-  return ((data ?? []) as LinhaDePlano[])
-    .map((p) => ({
-      anuaisQuantidade: numero(p.anuais_quantidade, 0),
-      anuaisValor: numero(p.anuais_valor, 0),
-      entradaPercentual: numero(p.entrada_percentual, 0),
-      indiceCorrecao: (INDICES_VALIDOS.has(String(p.indice_correcao))
-        ? p.indice_correcao
-        : "SEM_CORRECAO") as IndiceCorrecao,
-      jurosConvencao: (p.juros_convencao === "proporcional"
-        ? "proporcional"
-        : "efetiva") as ConvencaoJuros,
-      jurosPeriodicidade: (p.juros_periodicidade === "mensal"
-        ? "mensal"
-        : "anual") as PeriodicidadeJuros,
-      // Nulo é plano SEM juros, e é o caso de metade dos cadastrados. `?? 0` transformaria a
-      // ausência em zero por acidente — aqui a ausência é intencional e tem de sobreviver.
-      jurosTaxa: p.juros_taxa === null ? null : numero(p.juros_taxa, 0),
-      nome: p.nome,
-      parcelas: numero(p.parcelas, 0),
-      sistemaAmortizacao: sistemaDoCadastro(p.sistema_amortizacao),
-    }))
-    // Plano sem parcela não simula nada — e apareceria na tela como um cartão morto.
-    .filter((p) => p.parcelas > 0);
+  return (
+    ((data ?? []) as LinhaDePlano[])
+      .map((p) => ({
+        anuaisQuantidade: numero(p.anuais_quantidade, 0),
+        anuaisValor: numero(p.anuais_valor, 0),
+        entradaPercentual: numero(p.entrada_percentual, 0),
+        indiceCorrecao: (INDICES_VALIDOS.has(String(p.indice_correcao))
+          ? p.indice_correcao
+          : "SEM_CORRECAO") as IndiceCorrecao,
+        jurosConvencao: (p.juros_convencao === "proporcional"
+          ? "proporcional"
+          : "efetiva") as ConvencaoJuros,
+        jurosPeriodicidade: (p.juros_periodicidade === "mensal"
+          ? "mensal"
+          : "anual") as PeriodicidadeJuros,
+        // Nulo é plano SEM juros, e é o caso de metade dos cadastrados. `?? 0` transformaria a
+        // ausência em zero por acidente — aqui a ausência é intencional e tem de sobreviver.
+        jurosTaxa: p.juros_taxa === null ? null : numero(p.juros_taxa, 0),
+        nome: p.nome,
+        parcelas: numero(p.parcelas, 0),
+        sistemaAmortizacao: sistemaDoCadastro(p.sistema_amortizacao),
+      }))
+      // Plano sem parcela não simula nada — e apareceria na tela como um cartão morto.
+      .filter((p) => p.parcelas > 0)
+  );
 }

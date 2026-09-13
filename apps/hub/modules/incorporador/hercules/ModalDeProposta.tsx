@@ -20,7 +20,10 @@ import {
   participacoesIguais,
   somaDasParticipacoes,
 } from "@/lib/hercules/proposta-na-tela";
-import { type ProponenteEncontrado, termoDaBusca } from "@/lib/hercules/busca-de-proponente";
+import {
+  type ProponenteEncontrado,
+  termoDaBusca,
+} from "@/lib/hercules/busca-de-proponente";
 import { comoFoiOAviso, vencimentoEmDias } from "@/lib/hercules/reserva";
 
 import {
@@ -191,6 +194,23 @@ export function ModalDeProposta({
   const [buscandoPrevia, setBuscandoPrevia] = useState(false);
   const [erroDoServidor, setErroDoServidor] = useState<null | string>(null);
   const [tentou, setTentou] = useState(false);
+  /**
+   * A nota do coordenador sobre o que ele mudou no valor do lote.
+   *
+   * ⚠️ ELA SÓ EXISTE QUANDO HÁ AJUSTE. Lucas (13/09/2026): *"quando o coordenador dar desconto,
+   * ou aumentar o valor do lote, tem que abrir uma caixa para ele colocar observação (notas para
+   * ele lembrar o motivo ou algo do tipo)"*. A caixa não fica na tela o tempo todo: ela aparece no
+   * instante em que o preço deixa de ser o da tabela, que é o instante em que existe o que
+   * explicar.
+   */
+  const [nota, setNota] = useState("");
+  /**
+   * A tabela de reajuste da parcela entra no documento?
+   *
+   * ⚠️ NASCE DESMARCADA, por pedido do Lucas (13/09/2026) — e isso INVERTE o que rodava: até hoje
+   * a seção saía em toda PA. Quem gerar sem tocar na caixa passa a mandar um papel sem ela.
+   */
+  const [incluirReajuste, setIncluirReajuste] = useState(false);
 
   // ⚠️ ENQUANTO ENVIA, O ESC NÃO FECHA. Fechar a modal não cancela o POST: a proposta grava, a
   // reserva vira proposta e os três WhatsApps saem com o PDF — mas `onGerada` morre junto com a
@@ -322,6 +342,19 @@ export function ModalDeProposta({
     ? conferirProposta(pedido, new Date().toISOString())
     : [];
   const errosDoPortao = erros.filter((e) => CAMPOS_DO_PORTAO.includes(e.campo));
+
+  /**
+   * O ajuste é DESCONTO? (`AjusteDePreco.valor` é negativo no desconto e positivo no acréscimo —
+   * o `modo` diz só se o número é % ou R$.)
+   *
+   * ⚠️ A NOTA É OBRIGATÓRIA NO DESCONTO E OPCIONAL NO ACRÉSCIMO. Desconto é dinheiro que sai da
+   * casa, e é a única direção em que alguém vai querer saber o porquê seis meses depois. Medido no
+   * legado em 13/09/2026: das 431 propostas com plano personalizado, só 31 (7,2%) têm alguma
+   * observação — nove em cada dez alterações do C2X não têm motivo escrito, e é esse buraco que a
+   * trava fecha.
+   */
+  const ehDesconto = (condicoes?.ajuste?.valor ?? 0) < 0;
+  const precisaDaNota = ehDesconto && nota.trim().length === 0;
   const credenciado = portao?.credenciamento.credenciado === true;
   const podeMontar =
     Boolean(portao) && credenciado && errosDoPortao.length === 0;
@@ -432,9 +465,12 @@ export function ModalDeProposta({
     // parte dele CALADO, deixando a soma em 120% num número que vai escrito na minuta e no cartório.
     const jaDadoAosOutros =
       Math.round(
-        compradores.filter((c) => !c.titular).reduce((total, c) => total + c.participacao, 0) * 100,
+        compradores
+          .filter((c) => !c.titular)
+          .reduce((total, c) => total + c.participacao, 0) * 100,
       ) / 100;
-    const sobraParaOTitular = Math.round((100 - jaDadoAosOutros - digitada) * 100) / 100;
+    const sobraParaOTitular =
+      Math.round((100 - jaDadoAosOutros - digitada) * 100) / 100;
     if (sobraParaOTitular <= 0) {
       setErroDoNovo(
         jaDadoAosOutros > 0
@@ -560,6 +596,18 @@ export function ModalDeProposta({
       })),
       diaDeVencimento: condicoesAgora.diaDeVencimento,
       entradaValor: condicoesAgora.entradaValor,
+      // A prévia herda de graça: `corpoDoPedido` é um objeto só para os dois botões.
+      incluirReajuste,
+      // ⚠️ A NOTA VIAJA COM O PEDIDO, e o servidor já sabia recebê-la: a rota aceita `observacao` e
+      // grava na coluna de mesmo nome (proposta/route.ts:444 e :823), e TRÊS telas já a imprimem —
+      // a ficha da venda, o histórico da unidade e a lista do fluxo. O que faltava era a PORTA:
+      // esta modal nunca enviou o campo, e por isso as propostas nativas nasciam com ele vazio
+      // enquanto 35 propostas importadas do legado o trazem preenchido à mão, com exatamente o que
+      // o Lucas pediu ("NORTHON APROVADO, MAS A TAXA DE JUROS É DE 0,8%").
+      //
+      // ⚠️ SÓ SOBE COM AJUSTE. Sem alteração de preço não há o que explicar, e mandar string vazia
+      // encheria a coluna de nulos ruidosos.
+      observacao: condicoesAgora.ajuste ? nota.trim() : "",
       entradaParcelas: condicoesAgora.entradaParcelas,
       entradaVezes: condicoesAgora.entradaVezes,
       parcelasMensais: condicoesAgora.parcelasMensais,
@@ -641,6 +689,12 @@ export function ModalDeProposta({
     setTentou(true);
     setErroDoServidor(null);
     if (!condicoes || !propostaInteira) return;
+    // A trava do desconto sem motivo. `setTentou(true)` acima ja acendeu o recado na caixa.
+    //
+    // ATENCAO: esta e uma trava de TELA. O servidor aceita a proposta sem observacao (a coluna e
+    // nula nas 4.857 linhas importadas do C2X e precisa continuar aceitando nulo). Fechar a porta
+    // no servidor exige distinguir proposta nativa de importada na rota, e isso e passo proprio.
+    if (precisaDaNota) return;
 
     setEnviando(true);
     try {
@@ -860,6 +914,90 @@ export function ModalDeProposta({
                     </div>
                   ) : null}
                   {erroDoServidor ? <Erro texto={erroDoServidor} /> : null}
+
+                  {/* ⚠️ A CAIXA NASCE DO FATO, e não de um botão. Ela aparece no instante em que o
+                      preço deixa de ser o da tabela e some quando ele volta — quem não mexeu no
+                      valor não vê campo nenhum a mais.
+
+                      ⚠️ E O DE/PARA VEM ESCRITO PELO SISTEMA, acima do campo. A nota do humano vale
+                      muito mais acompanhada do número que ela explica: sem isso, daqui a seis meses
+                      alguém lê "cliente pediu" sem saber de quanto para quanto. */}
+                  {condicoes?.ajuste ? (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <label
+                        htmlFor="nota-do-ajuste"
+                        style={{ color: T.sub, fontSize: 12, fontWeight: 650 }}
+                      >
+                        {ehDesconto
+                          ? "Por que o desconto?"
+                          : "Por que o valor subiu?"}
+                        {ehDesconto ? (
+                          <span style={{ color: T.muted, fontWeight: 400 }}>
+                            {" "}
+                            · obrigatório
+                          </span>
+                        ) : null}
+                      </label>
+                      <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
+                        Tabela {dinheiro(portao?.unidade.preco ?? 0)} · proposta{" "}
+                        {dinheiro(condicoes.valorNegociado)}
+                      </p>
+                      <textarea
+                        id="nota-do-ajuste"
+                        onChange={(e) => setNota(e.target.value)}
+                        placeholder="O que foi combinado, com quem, e o que sustenta esse valor."
+                        rows={2}
+                        style={{
+                          background: T.card,
+                          border: `1px solid ${tentou && precisaDaNota ? T.danger : T.border}`,
+                          borderRadius: 9,
+                          color: T.text,
+                          font: "inherit",
+                          fontSize: 12.5,
+                          padding: "8px 10px",
+                          resize: "vertical",
+                        }}
+                        value={nota}
+                      />
+                      {tentou && precisaDaNota ? (
+                        <Erro texto="Escreva o motivo do desconto antes de gerar a proposta." />
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {/* ⚠️ A TABELA DE REAJUSTE É ESCOLHA DE QUEM GERA, e a escolha fica gravada
+                      na proposta — reimprimir meses depois devolve o mesmo papel.
+
+                      ⚠️ O RÓTULO DIZ O QUE A TABELA MOSTRA, e não o nome dela. "Incluir o reajuste"
+                      não conta nada a quem nunca viu a seção; dizer que ela mostra a parcela ano a
+                      ano é o que deixa a escolha ser uma escolha. A tabela são os juros do próprio
+                      contrato, não projeção de índice — num plano de 120 parcelas ela sai de
+                      R$ 1.275 no 1º ano para R$ 2.461 no 10º, e é a única peça do papel que conta
+                      isso. */}
+                  <label
+                    style={{
+                      alignItems: "flex-start",
+                      color: T.sub,
+                      cursor: "pointer",
+                      display: "flex",
+                      fontSize: 12,
+                      gap: 8,
+                    }}
+                  >
+                    <input
+                      checked={incluirReajuste}
+                      onChange={(e) => setIncluirReajuste(e.target.checked)}
+                      style={{ cursor: "pointer", marginTop: 2 }}
+                      type="checkbox"
+                    />
+                    <span>
+                      Incluir no documento a tabela de reajuste da parcela
+                      <span style={{ color: T.muted }}>
+                        {" "}
+                        · mostra quanto a parcela vale em cada ano do contrato
+                      </span>
+                    </span>
+                  </label>
 
                   <div
                     style={{
@@ -1169,7 +1307,11 @@ export function ModalDeProposta({
                           // os dois campos que vêm logo abaixo. Fecha ao sair do bloco (campo +
                           // lista), e não a cada blur do input — senão o clique no candidato
                           // fecharia a lista antes de virar clique.
-                          if (!e.currentTarget.contains(e.relatedTarget as null | Node)) {
+                          if (
+                            !e.currentTarget.contains(
+                              e.relatedTarget as null | Node,
+                            )
+                          ) {
                             setListaFechada(true);
                           }
                         }}
@@ -1198,7 +1340,9 @@ export function ModalDeProposta({
                         />
 
                         {/* A lista de candidatos, ancorada no campo. */}
-                        {novo.nome.trim().length > 0 && !escolhido && !listaFechada ? (
+                        {novo.nome.trim().length > 0 &&
+                        !escolhido &&
+                        !listaFechada ? (
                           <div
                             style={{
                               background: T.page,

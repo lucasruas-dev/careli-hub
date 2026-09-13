@@ -42,7 +42,9 @@ describe("converte a taxa contratual para mensal", () => {
   });
 
   it("a proporcional dá 0,6667%, que NÃO aparece uma vez sequer no C2X", () => {
-    const i = taxaMensal(plano({ jurosConvencao: "proporcional", jurosTaxa: 8 }));
+    const i = taxaMensal(
+      plano({ jurosConvencao: "proporcional", jurosTaxa: 8 }),
+    );
     expect(Number((i * 100).toFixed(4))).toBe(0.6667);
   });
 
@@ -89,7 +91,10 @@ describe("SACOC emite a amortização pura — medido em 9 de 9 empreendimentos"
   });
 
   it("SACOC sem juros é parcela FIXA, não 'inicial' — não há aniversário para subir", () => {
-    const r = calcularParcela(plano({ jurosTaxa: null, parcelas: 36 }), 100_000);
+    const r = calcularParcela(
+      plano({ jurosTaxa: null, parcelas: 36 }),
+      100_000,
+    );
     expect(r.naturezaDaParcela).toBe("fixa");
   });
 });
@@ -211,7 +216,9 @@ describe("a frase miúda sai do mesmo objeto que faz a conta", () => {
 
   it("sem juros e sem correção", () => {
     expect(
-      fraseDeCorrecao(plano({ indiceCorrecao: "SEM_CORRECAO", jurosTaxa: null })),
+      fraseDeCorrecao(
+        plano({ indiceCorrecao: "SEM_CORRECAO", jurosTaxa: null }),
+      ),
     ).toBe("sem juros, sem correção");
   });
 

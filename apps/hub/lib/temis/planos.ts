@@ -14,7 +14,11 @@
 //
 // ⚠️ `entradaPercentual` é 0 a 100, NUNCA fração. O banco tem CHECK, mas a checagem aqui existe
 // para a mensagem ser útil: "20 significa 20%" resolve mais rápido que um erro de constraint.
-import type { PlanoComercial, SlotDaPa } from "@/lib/apolo/planos-comerciais";
+import {
+  INDICES as ROTULOS_DE_INDICE,
+  type PlanoComercial,
+  type SlotDaPa,
+} from "@/lib/apolo/planos-comerciais";
 
 export type PlanoDoTemis = {
   ativo: boolean;
@@ -65,13 +69,13 @@ export type EntradaDePlano = {
   slot?: null | string;
 };
 
-const INDICES = new Set([
-  "IGPM_ANUAL",
-  "INCC_M_MENSAL",
-  "IPCA_ANUAL",
-  "IPCA_MENSAL",
-  "SEM_CORRECAO",
-]);
+/**
+ * ⚠️ DERIVADA, E NAO COPIADA. Ate 13/09/2026 esta lista era escrita a mao aqui, e era uma de CINCO
+ * copias da mesma verdade no repo (mais o CHECK do banco). Elas ja discordavam entre si. A fonte e
+ * a tabela `temis_indices` (migration 0154); `INDICES` em `planos-comerciais.ts` e o espelho dela
+ * em tempo de compilacao, e e dele que esta lista sai agora.
+ */
+const INDICES = new Set(Object.keys(ROTULOS_DE_INDICE));
 const SISTEMAS = new Set(["price", "sac", "sacoc"]);
 const SLOTS = new Set(["avista", "curto", "investidor", "normal"]);
 const PERIODICIDADES = new Set(["anual", "mensal"]);
@@ -87,28 +91,41 @@ export function conferirPlano(entrada: EntradaDePlano): string[] {
 
   if (!entrada.nome?.trim()) problemas.push("O plano precisa de um nome.");
   if (!Number.isInteger(entrada.parcelas) || entrada.parcelas <= 0) {
-    problemas.push("O número de parcelas precisa ser um inteiro maior que zero.");
+    problemas.push(
+      "O número de parcelas precisa ser um inteiro maior que zero.",
+    );
   }
 
   const entradaPct = Number(entrada.entradaPercentual);
   if (!Number.isFinite(entradaPct) || entradaPct < 0 || entradaPct > 100) {
-    problemas.push("A entrada é um percentual de 0 a 100 — 20 significa 20%, não 0,20.");
+    problemas.push(
+      "A entrada é um percentual de 0 a 100 — 20 significa 20%, não 0,20.",
+    );
   }
 
   if (entrada.jurosTaxa !== null && entrada.jurosTaxa !== undefined) {
     const j = Number(entrada.jurosTaxa);
-    if (!Number.isFinite(j) || j < 0) problemas.push("A taxa de juros não pode ser negativa.");
+    if (!Number.isFinite(j) || j < 0)
+      problemas.push("A taxa de juros não pode ser negativa.");
     // ⚠️ 12 aqui significa 12% ao ano, não 1200%. O engano é o mesmo da entrada e custa caro:
     // uma taxa mil vezes maior passa despercebida na tela e explode no cálculo da parcela.
     if (Number.isFinite(j) && j > 100) {
-      problemas.push("A taxa parece alta demais — informe em percentual (12 = 12%).");
+      problemas.push(
+        "A taxa parece alta demais — informe em percentual (12 = 12%).",
+      );
     }
   }
 
-  if (!INDICES.has(entrada.indiceCorrecao)) problemas.push("Índice de correção desconhecido.");
-  if (!SISTEMAS.has(entrada.sistemaAmortizacao)) problemas.push("Sistema de amortização desconhecido.");
-  if (entrada.slot && !SLOTS.has(entrada.slot)) problemas.push("Posição na proposta desconhecida.");
-  if (entrada.jurosPeriodicidade && !PERIODICIDADES.has(entrada.jurosPeriodicidade)) {
+  if (!INDICES.has(entrada.indiceCorrecao))
+    problemas.push("Índice de correção desconhecido.");
+  if (!SISTEMAS.has(entrada.sistemaAmortizacao))
+    problemas.push("Sistema de amortização desconhecido.");
+  if (entrada.slot && !SLOTS.has(entrada.slot))
+    problemas.push("Posição na proposta desconhecida.");
+  if (
+    entrada.jurosPeriodicidade &&
+    !PERIODICIDADES.has(entrada.jurosPeriodicidade)
+  ) {
     problemas.push("Periodicidade dos juros deve ser anual ou mensal.");
   }
   if (entrada.jurosConvencao && !CONVENCOES.has(entrada.jurosConvencao)) {
@@ -129,11 +146,13 @@ export function paraCalculo(plano: PlanoDoTemis): PlanoComercial {
     entradaPercentual: plano.entradaPercentual,
     indiceCorrecao: plano.indiceCorrecao as PlanoComercial["indiceCorrecao"],
     jurosConvencao: plano.jurosConvencao as PlanoComercial["jurosConvencao"],
-    jurosPeriodicidade: plano.jurosPeriodicidade as PlanoComercial["jurosPeriodicidade"],
+    jurosPeriodicidade:
+      plano.jurosPeriodicidade as PlanoComercial["jurosPeriodicidade"],
     jurosTaxa: plano.jurosTaxa,
     nome: plano.nome,
     parcelas: plano.parcelas,
-    sistemaAmortizacao: plano.sistemaAmortizacao as PlanoComercial["sistemaAmortizacao"],
+    sistemaAmortizacao:
+      plano.sistemaAmortizacao as PlanoComercial["sistemaAmortizacao"],
     slot: (plano.slot as null | SlotDaPa) ?? null,
   };
 }
@@ -145,7 +164,10 @@ export function paraCalculo(plano: PlanoDoTemis): PlanoComercial {
  * acontece — melhor travar que gerar contrato com o plano errado. Foi a regra que o Lucas definiu
  * para a cadeia inteira: sem combinação, não gera.
  */
-export function acharPlano(planos: PlanoDoTemis[], planoId: string): null | PlanoDoTemis {
+export function acharPlano(
+  planos: PlanoDoTemis[],
+  planoId: string,
+): null | PlanoDoTemis {
   return planos.find((p) => p.id === planoId && p.ativo) ?? null;
 }
 
@@ -166,16 +188,16 @@ export function separarPorProntidao(planos: PlanoDoTemis[]): {
   };
 }
 
-/** Rótulo curto do índice, para a tabela. */
+/**
+ * Rótulo curto do índice, para a tabela.
+ *
+ * ⚠️ O MAPA SAIU DAQUI (13/09/2026): ele era a segunda cópia dos mesmos textos, e o código
+ * desconhecido caía no `?? indice`, imprimindo `POUPANCA` em maiúsculas para o operador. Agora sai
+ * da lista única, e o fallback continua existindo só para o dia em que a tabela tiver um código que
+ * o build ainda não conhece.
+ */
 export function rotuloDoIndice(indice: string): string {
-  const mapa: Record<string, string> = {
-    IGPM_ANUAL: "IGP-M anual",
-    INCC_M_MENSAL: "INCC-M mensal",
-    IPCA_ANUAL: "IPCA anual",
-    IPCA_MENSAL: "IPCA mensal",
-    SEM_CORRECAO: "sem correção",
-  };
-  return mapa[indice] ?? indice;
+  return ROTULOS_DE_INDICE[indice as keyof typeof ROTULOS_DE_INDICE] ?? indice;
 }
 
 /**

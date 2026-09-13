@@ -180,6 +180,10 @@ describe("⚠️ o que a folha promete tem que ser o que o contrato cumpre", () 
     const folha = montarFolhaDaProposta({
       ...BASE,
       cronograma: montarCronograma({ ...CONDICOES, plano: SACOC_COM_JUROS }),
+      // ⚠️ PRECISA PEDIR A TABELA para a observação existir (13/09/2026): a seção do reajuste virou
+      // opcional e nasce desmarcada, e a observação segue a tabela — ela diz "os valores da tabela
+      // acima" e ficaria órfã sem ela.
+      incluirReajuste: true,
       plano: SACOC_COM_JUROS,
     });
 
@@ -192,6 +196,22 @@ describe("⚠️ o que a folha promete tem que ser o que o contrato cumpre", () 
     expect(folha.reajustes[1]?.temIpca).toBe(true);
     expect(folha.observacoes[0]?.texto).toContain("8% a.a.");
     expect(folha.observacoes[0]?.texto).toContain("IPCA anual");
+  });
+
+  it("⚠️ sem pedir, a tabela de reajuste NÃO leva a observação junto", () => {
+    // O padrão novo (Lucas, 13/09/2026): a caixa nasce desmarcada, então a PA sai SEM a seção.
+    const folha = montarFolhaDaProposta({
+      ...BASE,
+      cronograma: montarCronograma({ ...CONDICOES, plano: SACOC_COM_JUROS }),
+      plano: SACOC_COM_JUROS,
+    });
+
+    // ⚠️ OS DADOS CONTINUAM NA FOLHA: quem decide imprimir é o desenhista, não o montador. A tela
+    // usa as mesmas faixas para o painel que já existe, e ele não depende desta escolha.
+    expect(folha.reajustes).toHaveLength(10);
+    expect(folha.incluirReajuste).toBe(false);
+    // A observação, essa some — ela aponta para uma tabela que não vai ser impressa.
+    expect(folha.observacoes.some((o) => o.titulo === "Sobre o reajuste.")).toBe(false);
   });
 
   it("⚠️ entrada com resto de divisão diz qual parcela é a diferente", () => {

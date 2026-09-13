@@ -18,7 +18,14 @@
 // (`lib/apolo/planos-comerciais.ts`) e o motor de reajuste. Um gerador que também calculasse seria
 // a segunda versão da mesma conta de dinheiro.
 
-import { PDFDocument, type PDFFont, type PDFImage, type PDFPage, StandardFonts, rgb } from "pdf-lib";
+import {
+  PDFDocument,
+  type PDFFont,
+  type PDFImage,
+  type PDFPage,
+  StandardFonts,
+  rgb,
+} from "pdf-lib";
 
 const A4 = { h: 841.89, w: 595.28 };
 /** 46px do mockup × 0,75 (794px = 595,28pt) — a mesma margem, na escala do papel. */
@@ -123,6 +130,13 @@ export type PropostaParaPdf = {
    * Lucas (10/09/2026), vendo o primeiro PDF: *"isso é uma simulação, ou seja, não precisa nome,
    * reajuste sem codigo, é uma simulação, também destacar isso"*.
    */
+  /**
+   * A tabela de reajuste da parcela entra no papel? Nasce desmarcada (ver `DadosDaFolha`).
+   *
+   * ⚠️ ELA NUNCA SAI NA SIMULACAO, independente desta bandeira: as duas travas sao diferentes e a
+   * da simulacao e mais antiga (Lucas, 10/09/2026: *"tirar o reajuste das parcelas"*).
+   */
+  incluirReajuste?: boolean;
   simulacao?: boolean;
   reajustes: FaixaDeReajuste[];
   /**
@@ -150,13 +164,15 @@ export type PropostaParaPdf = {
  * derrubar o envio: aqui ele é aproximado, e o pior caso é uma letra sem acento no papel.
  */
 function seguro(valor: string): string {
-  return String(valor ?? "")
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/[—–]/g, "-")
-    .replace(/…/g, "...")
-    // A Helvetica escreve o Latin-1 imprimível; o que estiver fora vira nada.
-    .replace(/[^ -ÿ]/g, "");
+  return (
+    String(valor ?? "")
+      .replace(/[‘’]/g, "'")
+      .replace(/[“”]/g, '"')
+      .replace(/[—–]/g, "-")
+      .replace(/…/g, "...")
+      // A Helvetica escreve o Latin-1 imprimível; o que estiver fora vira nada.
+      .replace(/[^ -ÿ]/g, "")
+  );
 }
 
 type Ctx = {
@@ -216,7 +232,13 @@ function textoDireita(
   opts: { bold?: boolean; cor?: ReturnType<typeof rgb>; y?: number } = {},
 ): void {
   const f = opts.bold ? ctx.bold : ctx.font;
-  texto(ctx, valor, direita - f.widthOfTextAtSize(seguro(valor), size), size, opts);
+  texto(
+    ctx,
+    valor,
+    direita - f.widthOfTextAtSize(seguro(valor), size),
+    size,
+    opts,
+  );
 }
 
 /** Maiúsculas espaçadas — o rótulo de seção do documento. pdf-lib não tem letter-spacing. */
@@ -224,8 +246,20 @@ function espacado(valor: string): string {
   return seguro(valor.toUpperCase()).split("").join(" ");
 }
 
-function regua(ctx: Ctx, y: number, cor = LINE, espessura = 0.5, de = M, ate = A4.w - M): void {
-  ctx.page.drawLine({ color: cor, end: { x: ate, y }, start: { x: de, y }, thickness: espessura });
+function regua(
+  ctx: Ctx,
+  y: number,
+  cor = LINE,
+  espessura = 0.5,
+  de = M,
+  ate = A4.w - M,
+): void {
+  ctx.page.drawLine({
+    color: cor,
+    end: { x: ate, y },
+    start: { x: de, y },
+    thickness: espessura,
+  });
 }
 
 /** O título de seção: rótulo espaçado à esquerda e uma régua fina ocupando o resto da linha. */
@@ -244,12 +278,23 @@ function tituloDaSecao(ctx: Ctx, titulo: string): void {
   const escrito = espacado(titulo);
   const size = 7.6;
   texto(ctx, escrito, M, size, { bold: true, cor: INK });
-  regua(ctx, ctx.y + 2, LINE, 0.5, M + ctx.bold.widthOfTextAtSize(escrito, size) + 7);
+  regua(
+    ctx,
+    ctx.y + 2,
+    LINE,
+    0.5,
+    M + ctx.bold.widthOfTextAtSize(escrito, size) + 7,
+  );
   ctx.y -= 13;
 }
 
 /** Quebra o parágrafo na largura disponível, palavra a palavra. */
-function quebrar(valor: string, font: PDFFont, size: number, largura: number): string[] {
+function quebrar(
+  valor: string,
+  font: PDFFont,
+  size: number,
+  largura: number,
+): string[] {
   const palavras = seguro(valor).split(/\s+/).filter(Boolean);
   const linhas: string[] = [];
   let atual = "";
@@ -279,7 +324,10 @@ function cabecalhoDaTabela(ctx: Ctx, colunas: Coluna[], xs: number[]): void {
     const escrito = espacado(c.titulo);
     if (!c.titulo) return;
     if (c.alinhamento === "direita") {
-      textoDireita(ctx, escrito, xs[i]! + c.largura, 6.2, { bold: true, cor: MUTE });
+      textoDireita(ctx, escrito, xs[i]! + c.largura, 6.2, {
+        bold: true,
+        cor: MUTE,
+      });
     } else {
       texto(ctx, escrito, xs[i]!, 6.2, { bold: true, cor: MUTE });
     }
@@ -303,7 +351,11 @@ function tabela(
   ctx: Ctx,
   colunas: Coluna[],
   linhas: string[][],
-  opts: { continuacao?: string; soma?: string[]; sufixos?: Array<null | string> } = {},
+  opts: {
+    continuacao?: string;
+    soma?: string[];
+    sufixos?: Array<null | string>;
+  } = {},
 ): void {
   const xs: number[] = [];
   let x = M;
@@ -327,14 +379,23 @@ function tabela(
         const sufixo = opts.sufixos?.[indice] ?? null;
         const direita = xs[i]! + c.largura;
         if (sufixo) {
-          const larguraSufixo = ctx.font.widthOfTextAtSize(seguro(` ${sufixo}`), 7);
+          const larguraSufixo = ctx.font.widthOfTextAtSize(
+            seguro(` ${sufixo}`),
+            7,
+          );
           texto(ctx, ` ${sufixo}`, direita - larguraSufixo, 7, { cor: SOFT });
           textoDireita(ctx, valor, direita - larguraSufixo, 8.6);
         } else {
           textoDireita(ctx, valor, direita, 8.6);
         }
       } else {
-        texto(ctx, valor, xs[i]!, 8.6, c.negrito ? { bold: true, cor: INK } : undefined);
+        texto(
+          ctx,
+          valor,
+          xs[i]!,
+          8.6,
+          c.negrito ? { bold: true, cor: INK } : undefined,
+        );
       }
     });
     ctx.y -= 6;
@@ -358,7 +419,10 @@ function tabela(
       const valor = opts.soma?.[i] ?? "";
       if (!valor) return;
       if (c.alinhamento === "direita") {
-        textoDireita(ctx, valor, xs[i]! + c.largura, 9, { bold: true, cor: INK });
+        textoDireita(ctx, valor, xs[i]! + c.largura, 9, {
+          bold: true,
+          cor: INK,
+        });
       } else {
         texto(ctx, valor, xs[i]!, 9, { bold: true, cor: INK });
       }
@@ -368,7 +432,10 @@ function tabela(
 }
 
 /** PNG ou JPG, descobrindo pela assinatura do arquivo — o operador sobe os dois. */
-async function embutir(doc: PDFDocument, bytes: Uint8Array): Promise<null | PDFImage> {
+async function embutir(
+  doc: PDFDocument,
+  bytes: Uint8Array,
+): Promise<null | PDFImage> {
   try {
     const png = bytes[0] === 0x89 && bytes[1] === 0x50;
     return png ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
@@ -379,7 +446,9 @@ async function embutir(doc: PDFDocument, bytes: Uint8Array): Promise<null | PDFI
 }
 
 /** A proposta em PDF. Uma página quando cabe; quantas precisar quando o plano é comprido. */
-export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Array> {
+export async function montarPropostaPdf(
+  dados: PropostaParaPdf,
+): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const page = doc.addPage([A4.w, A4.h]);
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -428,7 +497,9 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
 
   textoDireita(
     ctx,
-    espacado(dados.simulacao ? "Simulação de pagamento" : "Proposta de aquisição"),
+    espacado(
+      dados.simulacao ? "Simulação de pagamento" : "Proposta de aquisição",
+    ),
     A4.w - M,
     6.6,
     { cor: SOFT, y: topo + 2 },
@@ -446,7 +517,9 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
   textoDireita(
     ctx,
     espacado(
-      dados.simulacao ? `Gerada em ${dados.emitidaEm}` : `Emitida em ${dados.emitidaEm}`,
+      dados.simulacao
+        ? `Gerada em ${dados.emitidaEm}`
+        : `Emitida em ${dados.emitidaEm}`,
     ),
     A4.w - M,
     6.2,
@@ -479,9 +552,17 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
       });
     }
     const xTexto = i === 0 ? x : x + 10;
-    texto(ctx, espacado(d.rotulo), xTexto, 6, { bold: true, cor: MUTE, y: baseCards - 12 });
+    texto(ctx, espacado(d.rotulo), xTexto, 6, {
+      bold: true,
+      cor: MUTE,
+      y: baseCards - 12,
+    });
     const ultimo = i === dados.destaques.length - 1;
-    texto(ctx, d.valor, xTexto, ultimo ? 14 : 12, { bold: true, cor: INK, y: baseCards - 27 });
+    texto(ctx, d.valor, xTexto, ultimo ? 14 : 12, {
+      bold: true,
+      cor: INK,
+      y: baseCards - 27,
+    });
     texto(ctx, d.detalhe, xTexto, 7, { cor: SOFT, y: baseCards - 36 });
   });
 
@@ -494,25 +575,29 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
   // "Nome | CPF" sobre uma linha em branco — que além de gastar papel para dizer que não há
   // ninguém, parece um campo esperando ser preenchido à mão.
   if (!dados.simulacao) {
-  ctx.y -= 22;
-  tituloDaSecao(ctx, "Compradores");
-  // ⚠️ COM UM COMPRADOR SÓ A COLUNA NÃO EXISTE: "100%" ao lado de um nome sozinho é uma coluna
-  // gasta para dizer o óbvio.
-  const mostraParticipacao = dados.compradores.length > 1;
-  tabela(
-    ctx,
-    [
-      // O nome de quem compra é o dado mais consultado da folha: ele fica em negrito.
-      { largura: LARGURA * 0.5, negrito: true, titulo: "Nome" },
-      { largura: LARGURA * 0.28, titulo: "CPF" },
-      {
-        alinhamento: "direita",
-        largura: LARGURA * 0.22,
-        titulo: mostraParticipacao ? "Participação" : "",
-      },
-    ],
-    dados.compradores.map((c) => [c.nome, c.documento, mostraParticipacao ? c.participacao : ""]),
-  );
+    ctx.y -= 22;
+    tituloDaSecao(ctx, "Compradores");
+    // ⚠️ COM UM COMPRADOR SÓ A COLUNA NÃO EXISTE: "100%" ao lado de um nome sozinho é uma coluna
+    // gasta para dizer o óbvio.
+    const mostraParticipacao = dados.compradores.length > 1;
+    tabela(
+      ctx,
+      [
+        // O nome de quem compra é o dado mais consultado da folha: ele fica em negrito.
+        { largura: LARGURA * 0.5, negrito: true, titulo: "Nome" },
+        { largura: LARGURA * 0.28, titulo: "CPF" },
+        {
+          alinhamento: "direita",
+          largura: LARGURA * 0.22,
+          titulo: mostraParticipacao ? "Participação" : "",
+        },
+      ],
+      dados.compradores.map((c) => [
+        c.nome,
+        c.documento,
+        mostraParticipacao ? c.participacao : "",
+      ]),
+    );
   }
 
   // ── CONDIÇÕES ────────────────────────────────────────────────────────────
@@ -528,7 +613,11 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
     const x = M + coluna * (colunaLargura + 26);
     const y = baseCondicoes - linha * 14;
     texto(ctx, c.rotulo, x, 8.6, { cor: SOFT, y });
-    textoDireita(ctx, c.valor, x + colunaLargura, 8.6, { bold: true, cor: INK, y });
+    textoDireita(ctx, c.valor, x + colunaLargura, 8.6, {
+      bold: true,
+      cor: INK,
+      y,
+    });
     regua(ctx, y - 4, HAIR, 0.5, x, x + colunaLargura);
   });
   ctx.y = baseCondicoes - metade * 14 - 6;
@@ -588,12 +677,20 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
   // antes, sobre a tela: *"tem corretor que não gosta que o cliente ver o fluxo de reajuste de
   // parcelas"*. Na tela ela existe atrás de um botão, que o corretor abre se quiser; no papel que
   // ele ENCAMINHA, não — o documento sai da mão dele e ele não controla mais quem lê.
-  if (!dados.simulacao && dados.reajustes.length > 0) {
+  //
+  // ⚠️ E DESDE 13/09/2026 ELA TAMBÉM DEPENDE DA ESCOLHA DE QUEM GEROU. A caixa nasce desmarcada,
+  // então o padrão passou a ser NÃO imprimir — a seção que saía em toda PA agora só sai quando o
+  // coordenador pede. A escolha fica gravada na proposta, e por isso reimprimir o mesmo documento
+  // meses depois devolve o mesmo papel.
+  if (!dados.simulacao && dados.incluirReajuste && dados.reajustes.length > 0) {
     ctx.y -= 12;
     // ⚠️ O TÍTULO SEGUE O CONTRATO, NÃO A TABELA. Num plano sem degrau e sem índice a mesma tabela
     // continua útil (ela diz quanto é a parcela e de quando até quando), mas chamá-la de
     // "Reajuste da parcela" anuncia um reajuste que não existe.
-    tituloDaSecao(ctx, dados.temReajuste ? "Reajuste da parcela" : "Parcelas mensais");
+    tituloDaSecao(
+      ctx,
+      dados.temReajuste ? "Reajuste da parcela" : "Parcelas mensais",
+    );
     tabela(
       ctx,
       [
@@ -601,7 +698,11 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
         { largura: LARGURA * 0.16, titulo: "Parcelas" },
         { largura: LARGURA * 0.2, titulo: "De" },
         { largura: LARGURA * 0.2, titulo: "Até" },
-        { alinhamento: "direita", largura: LARGURA * 0.3, titulo: "Valor da parcela" },
+        {
+          alinhamento: "direita",
+          largura: LARGURA * 0.3,
+          titulo: "Valor da parcela",
+        },
       ],
       dados.reajustes.map((r) => [r.periodo, r.parcelas, r.de, r.ate, r.valor]),
       {
@@ -621,7 +722,8 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
     tituloDaSecao(ctx, "Observações");
     for (const obs of dados.observacoes) {
       const larguraTitulo = bold.widthOfTextAtSize(seguro(obs.titulo), 7.6);
-      const primeira = quebrar(obs.texto, font, 7.6, LARGURA - larguraTitulo - 4)[0] ?? "";
+      const primeira =
+        quebrar(obs.texto, font, 7.6, LARGURA - larguraTitulo - 4)[0] ?? "";
       const resto = quebrar(
         obs.texto.slice(primeira.length).trim(),
         font,
@@ -646,7 +748,9 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
   // ── RODAPÉ, EM TODA PÁGINA ───────────────────────────────────────────────
   const marca = dados.logoC2x ? await embutir(doc, dados.logoC2x) : null;
   const atendimento = [
-    dados.atendimento.corretor ? `Atendimento: ${dados.atendimento.corretor}` : null,
+    dados.atendimento.corretor
+      ? `Atendimento: ${dados.atendimento.corretor}`
+      : null,
     dados.atendimento.imobiliaria,
     dados.atendimento.telefone,
   ]
@@ -655,7 +759,9 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
   const coordenacao = dados.atendimento.coordenador
     ? `Coordenação de vendas: ${dados.atendimento.coordenador}`
     : "";
-  const linhaDoAtendimento = [atendimento, coordenacao].filter(Boolean).join("  |  ");
+  const linhaDoAtendimento = [atendimento, coordenacao]
+    .filter(Boolean)
+    .join("  |  ");
 
   ctx.paginas.forEach((pagina, i) => {
     const centro = (valor: string, size: number, y: number, cor = MUTE) => {
@@ -669,7 +775,10 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
       if (font.widthOfTextAtSize(texto, size) > util) {
         // Corta pelo fim até caber, com reticências de três pontos — o caractere "…" não existe no
         // WinAnsi e faria o encode lançar na hora de gravar.
-        while (texto.length > 4 && font.widthOfTextAtSize(`${texto}...`, size) > util) {
+        while (
+          texto.length > 4 &&
+          font.widthOfTextAtSize(`${texto}...`, size) > util
+        ) {
           texto = texto.slice(0, -1);
         }
         texto = `${texto.trimEnd()}...`;
@@ -727,7 +836,13 @@ export async function montarPropostaPdf(dados: PropostaParaPdf): Promise<Uint8Ar
       const rotulo = "Emitido pelo ";
       const larguraRotulo = font.widthOfTextAtSize(rotulo, 6.6);
       const inicio = (A4.w - (larguraRotulo + 4 + largura)) / 2;
-      pagina.drawText(rotulo, { color: MUTE, font, size: 6.6, x: inicio, y: 52 });
+      pagina.drawText(rotulo, {
+        color: MUTE,
+        font,
+        size: 6.6,
+        x: inicio,
+        y: 52,
+      });
       pagina.drawImage(marca, {
         height: altura,
         width: largura,

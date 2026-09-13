@@ -1,4 +1,7 @@
-import { CORTE_ANUAL, periodicidadeDaTaxa } from "@/lib/apolo/periodicidade-da-taxa";
+import {
+  CORTE_ANUAL,
+  periodicidadeDaTaxa,
+} from "@/lib/apolo/periodicidade-da-taxa";
 
 // A régua vive num módulo PURO: ela é usada pela tela do Hércules, e este arquivo carrega o mysql2.
 export { periodicidadeDaTaxa };
@@ -52,11 +55,29 @@ type LinhaC2x = RowDataPacket & {
   tabela: null | string;
 };
 
+/**
+ * O de-para entre o nome do índice no C2X e o código do Panteon.
+ *
+ * ⚠️ AQUI MORAVA UM DEFEITO VIVO, e ele não dava erro: o C2X tem SEIS índices em
+ * `index_monetary_corrections` e este mapa tinha CINCO. `POUPANÇA` foi cadastrada no legado em
+ * 29/08/2026 e ficou de fora — e como a leitura termina em `?? "SEM_CORRECAO"`, o desconhecido não
+ * estourava, ele virava "sem correção" em silêncio.
+ *
+ * ⚠️ O CUSTO MEDIDO (13/09/2026): o plano NORMAL do JARDIM DAS GERAIS (empreendimento 40, com
+ * `vendendo = true`, 120 parcelas) é corrigido pela poupança, e a proposta saía anunciando que o
+ * contrato não tinha correção nenhuma. São 3 planos do legado nessa situação e 5 propostas já
+ * gravadas com `plano_correcao = 'POUPANÇA'`. Índice que o sistema não conhece não dá erro: ele
+ * some, e some do lado que favorece o cliente no papel e a casa descobre na cobrança.
+ *
+ * ⚠️ AS CHAVES SÃO O TEXTO EXATO DO LEGADO, acentos e hífens incluídos — é o que
+ * `index_monetary_corrections.name` guarda. Mudar a grafia aqui é recriar o mesmo buraco.
+ */
 const INDICE_POR_NOME: Record<string, IndiceCorrecao> = {
   "IGPM-ANUAL": "IGPM_ANUAL",
   "INCC-M MENSAL": "INCC_M_MENSAL",
   "IPCA ANUAL": "IPCA_ANUAL",
   "IPCA-MENSAL": "IPCA_MENSAL",
+  POUPANÇA: "POUPANCA",
   "SEM CORREÇAO": "SEM_CORRECAO",
 };
 
@@ -91,7 +112,8 @@ function montarPlano(linha: LinhaC2x, slot: SlotDaPa): null | PlanoComercial {
 
   return {
     entradaPercentual: numero(linha.initial_input_value) ?? 0,
-    indiceCorrecao: INDICE_POR_NOME[(linha.indice ?? "").trim()] ?? "SEM_CORRECAO",
+    indiceCorrecao:
+      INDICE_POR_NOME[(linha.indice ?? "").trim()] ?? "SEM_CORRECAO",
     jurosConvencao: "equivalente",
     jurosPeriodicidade: temJuros && taxa >= CORTE_ANUAL ? "anual" : "mensal",
     jurosTaxa: temJuros ? taxa : null,
@@ -137,7 +159,9 @@ export async function lerPlanosDoC2x(
   | { error: string; ok: false }
   | { empreendimentos: PlanosDoEmpreendimento[]; ok: true }
 > {
-  const alvos = [...new Set(codes.map((c) => c.trim().toUpperCase()).filter(Boolean))];
+  const alvos = [
+    ...new Set(codes.map((c) => c.trim().toUpperCase()).filter(Boolean)),
+  ];
   if (alvos.length === 0) return { empreendimentos: [], ok: true };
 
   const poolResult = getHadesDbPool();

@@ -48,6 +48,22 @@ export type DadosDaFolha = {
   };
   /** `000123` — o COD da venda, o mesmo desde a reserva. Ignorado quando `simulacao`. */
   codigo: string;
+  /**
+   * A tabela de reajuste da parcela entra no documento?
+   *
+   * ⚠️ NASCE DESMARCADA, E ISSO MUDA O QUE JÁ ROLAVA. Lucas (13/09/2026): *"colocar um box de
+   * inclusão do reajuste da parcela no documento de proposta, por padrão ele vem desmarcado, mas o
+   * usuário pode marcar para aquele painel ir para o documento"*. Até aqui a seção saía em TODA PA
+   * (só a simulação a omitia, desde 10/09). Ou seja: o padrão novo REMOVE do papel uma seção que
+   * estava no ar — não é uma adição, é uma inversão, e ela é deliberada.
+   *
+   * ⚠️ O QUE ESSA TABELA DIZ, para a escolha ser informada: os valores dela são JUROS DE CONTRATO,
+   * não projeção de índice. Num plano de 120 parcelas a 0,6434% a.m. ela sai de R$ 1.275,00 no 1º
+   * ano para R$ 2.460,99 no 10º — 93% acima —, e esse degrau está na taxa assinada. Sem a tabela,
+   * o documento anuncia a primeira parcela e cala as outras 108. Com ela, o comprador vê o
+   * contrato inteiro. As duas escolhas são legítimas; a segunda é a que o papel sustenta sozinho.
+   */
+  incluirReajuste?: boolean;
   compradores: CompradorDaFolha[];
   /**
    * A folha é uma SIMULAÇÃO de pagamento, e não uma proposta.
@@ -94,7 +110,10 @@ export type DadosDaFolha = {
   valorNegociado: number;
 };
 
-const MOEDA = new Intl.NumberFormat("pt-BR", { currency: "BRL", style: "currency" });
+const MOEDA = new Intl.NumberFormat("pt-BR", {
+  currency: "BRL",
+  style: "currency",
+});
 
 /**
  * "R$ 178.100,00".
@@ -103,7 +122,10 @@ const MOEDA = new Intl.NumberFormat("pt-BR", { currency: "BRL", style: "currency
  * `includes("R$ 178.100,00")` falha sem dizer por quê. Trocado aqui, como em `proposta.ts`.
  */
 function reais(valor: number): string {
-  return MOEDA.format(Number.isFinite(valor) ? valor : 0).replace(/\u00a0/g, " ");
+  return MOEDA.format(Number.isFinite(valor) ? valor : 0).replace(
+    /\u00a0/g,
+    " ",
+  );
 }
 
 /** "250,00" — número com duas casas, na vírgula do país. */
@@ -196,8 +218,15 @@ function comoSeAnunciaAEntrada(entrada: ParcelaDoCronograma[]): string {
 
 /** O último vencimento do contrato, olhando as três séries. */
 function ultimoVencimento(cronograma: Cronograma): string {
-  const todas = [...cronograma.entrada, ...cronograma.mensais, ...cronograma.anuais];
-  return todas.reduce((maior, p) => (p.vencimento > maior ? p.vencimento : maior), "");
+  const todas = [
+    ...cronograma.entrada,
+    ...cronograma.mensais,
+    ...cronograma.anuais,
+  ];
+  return todas.reduce(
+    (maior, p) => (p.vencimento > maior ? p.vencimento : maior),
+    "",
+  );
 }
 
 /**
@@ -239,8 +268,14 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
     });
   }
   condicoes.push(
-    { rotulo: "Primeira parcela", valor: dataEscrita(primeiraDeTodas?.vencimento) },
-    { rotulo: "Última parcela", valor: dataEscrita(ultimoVencimento(cronograma)) },
+    {
+      rotulo: "Primeira parcela",
+      valor: dataEscrita(primeiraDeTodas?.vencimento),
+    },
+    {
+      rotulo: "Última parcela",
+      valor: dataEscrita(ultimoVencimento(cronograma)),
+    },
     { rotulo: "Vencimento", valor: `todo dia ${dados.diaDeVencimento}` },
     { rotulo: "Juros", valor: taxa || "sem juros" },
     {
@@ -255,7 +290,9 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
 
   const destaques: Array<{ detalhe: string; rotulo: string; valor: string }> = [
     {
-      detalhe: temArea ? `${reais(dados.valorNegociado / (area as number))} por m²` : "",
+      detalhe: temArea
+        ? `${reais(dados.valorNegociado / (area as number))} por m²`
+        : "",
       rotulo: "Valor da unidade",
       valor: reais(dados.valorNegociado),
     },
@@ -272,7 +309,9 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
     },
     {
       detalhe: `${cronograma.mensais.length} mensais${
-        cronograma.anuais.length > 0 ? ` + ${cronograma.anuais.length} anuais` : ""
+        cronograma.anuais.length > 0
+          ? ` + ${cronograma.anuais.length} anuais`
+          : ""
       }`,
       rotulo: "Financiado",
       valor: reais(cronograma.totais.financiado),
@@ -298,7 +337,15 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
   const temDegrau = cronograma.reajustes.length > 1;
   // A observação acompanha a TABELA: sem ela no papel, explicar o reajuste em prosa deixaria o
   // leitor procurando uma seção que não existe.
-  if (!dados.simulacao && (temDegrau || temCorrecao)) {
+  //
+  // ⚠️ E AGORA ELA SEGUE A BANDEIRA, não só a simulação. O texto diz literalmente "os valores da
+  // tabela acima": com a tabela desligada, esta observação ficaria órfã, apontando para uma seção
+  // que não foi impressa — o leitor procuraria acima e não acharia nada.
+  if (
+    !dados.simulacao &&
+    (dados.incluirReajuste ?? false) &&
+    (temDegrau || temCorrecao)
+  ) {
     const sobreOsJuros = taxa
       ? ` Os valores da tabela acima consideram apenas os juros de ${taxa} previstos em contrato;`
       : " Os valores da tabela acima não embutem correção;";
@@ -328,7 +375,9 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
     titulo: dados.simulacao ? "Sobre esta simulação." : "Sobre esta proposta.",
   });
 
-  const local = [dados.unidade.cidade, dados.unidade.uf].filter(Boolean).join(", ");
+  const local = [dados.unidade.cidade, dados.unidade.uf]
+    .filter(Boolean)
+    .join(", ");
   const subtitulo = [
     dados.empreendimento,
     temArea ? `${decimal(area as number)} m²` : null,
@@ -339,7 +388,8 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
 
   return {
     anuais: cronograma.anuais.map(comoLinha),
-    anuaisTotal: cronograma.anuais.length > 0 ? reais(cronograma.totais.anuais) : "",
+    anuaisTotal:
+      cronograma.anuais.length > 0 ? reais(cronograma.totais.anuais) : "",
     atendimento: dados.atendimento,
     codigo: dados.codigo,
     compradores,
@@ -360,11 +410,15 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
       // inteiro — rotulá-la "1º ano" fazia a folha dizer "1º ano | 1 a 120 | 10/11/2026 a
       // 10/10/2036", um primeiro ano de dez anos, e deixava o leitor procurando os anos seguintes
       // que a tabela não tem.
-      periodo: cronograma.reajustes.length === 1 ? "Todo o contrato" : periodoDoCiclo(faixa.ciclo),
+      periodo:
+        cronograma.reajustes.length === 1
+          ? "Todo o contrato"
+          : periodoDoCiclo(faixa.ciclo),
       temIpca: faixa.temIpca,
       valor: reais(faixa.valor),
     })),
     // A bandeira segue para o desenhista: é ele que decide título, topo, compradores e tarja.
+    incluirReajuste: dados.incluirReajuste ?? false,
     simulacao: dados.simulacao ?? false,
     temReajuste: temDegrau || temCorrecao,
     subtitulo,

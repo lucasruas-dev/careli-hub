@@ -33,12 +33,31 @@ export type PeriodicidadeJuros = "anual" | "mensal";
 /** Como uma taxa ANUAL vira mensal. Só se aplica quando a periodicidade é anual. */
 export type ConvencaoJuros = "equivalente" | "proporcional";
 
+/**
+ * Os índices que um plano pode usar.
+ *
+ * ⚠️ A FONTE É A TABELA `temis_indices` (migration 0154), e esta união é o espelho dela em tempo de
+ * compilação. Até 13/09/2026 a lista vivia copiada em CINCO lugares no código mais um CHECK no
+ * banco — seis cópias da mesma verdade, que já discordavam entre si. O CHECK virou FK; as cópias
+ * viram esta união, e quem monta formulário lê a TABELA, não este type.
+ *
+ * ⚠️ ACRESCENTAR CÓDIGO AQUI SEM SEMEAR NA TABELA QUEBRA O CADASTRO: a FK recusa o plano. E semear
+ * na tabela sem acrescentar aqui faz o índice existir no banco e não aparecer na conta. Os dois
+ * andam juntos.
+ */
 export type IndiceCorrecao =
+  | "CUB"
+  | "IGPDI_MENSAL"
   | "IGPM_ANUAL"
+  | "IGPM_MENSAL"
+  | "INCC_DI_MENSAL"
   | "INCC_M_MENSAL"
+  | "INPC_MENSAL"
   | "IPCA_ANUAL"
   | "IPCA_MENSAL"
-  | "SEM_CORRECAO";
+  | "POUPANCA"
+  | "SEM_CORRECAO"
+  | "TR_MENSAL";
 
 export type PlanoComercial = {
   /** % de entrada/sinal, de 0 a 100 — como o C2X grava e como o comercial fala. NUNCA fração. */
@@ -80,11 +99,24 @@ export type ParcelaCalculada = {
 
 /** O nome do índice como o comercial escreve. Exportado desde 03/09/2026 para o simulador. */
 export const INDICES: Record<IndiceCorrecao, string> = {
+  // ⚠️ O CUB NÃO É UM NÚMERO SOZINHO: ele é publicado por Sinduscon estadual, por projeto-padrão da
+  // NBR 12721 e por padrão de acabamento. A tabela `temis_indices` marca ele com
+  // `exige_parametro`, e a tela precisa pedir o recorte antes de deixar cadastrar.
+  CUB: "CUB/m²",
+  IGPDI_MENSAL: "IGP-DI mensal",
   IGPM_ANUAL: "IGP-M anual",
+  IGPM_MENSAL: "IGP-M mensal",
+  // ⚠️ DI E M NÃO SÃO O MESMO ÍNDICE: mesma cesta, janela de coleta diferente. Em agosto de 2026
+  // deram 0,66% e 0,85%. Num contrato de 120 parcelas a diferença é de milhares de reais, e é por
+  // isso que a casa cadastra a VARIANTE e nunca a família "INCC".
+  INCC_DI_MENSAL: "INCC-DI mensal",
   INCC_M_MENSAL: "INCC-M mensal",
+  INPC_MENSAL: "INPC mensal",
   IPCA_ANUAL: "IPCA anual",
   IPCA_MENSAL: "IPCA mensal",
+  POUPANCA: "poupança",
   SEM_CORRECAO: "sem correção",
+  TR_MENSAL: "TR mensal",
 };
 
 /**

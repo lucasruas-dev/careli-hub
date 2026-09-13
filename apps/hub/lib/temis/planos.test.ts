@@ -74,19 +74,28 @@ describe("a conferência que impede o erro caro", () => {
 
   it("recusa índice e sistema desconhecidos", () => {
     expect(conferirPlano({ ...base, indiceCorrecao: "SELIC" })).toHaveLength(1);
-    expect(conferirPlano({ ...base, sistemaAmortizacao: "juros_simples" })).toHaveLength(1);
+    expect(
+      conferirPlano({ ...base, sistemaAmortizacao: "juros_simples" }),
+    ).toHaveLength(1);
   });
 
   it("junta os problemas em vez de parar no primeiro", () => {
     // O operador corrige tudo de uma vez em vez de descobrir um erro por tentativa.
-    const problemas = conferirPlano({ ...base, entradaPercentual: 150, nome: "", parcelas: 0 });
+    const problemas = conferirPlano({
+      ...base,
+      entradaPercentual: 150,
+      nome: "",
+      parcelas: 0,
+    });
     expect(problemas.length).toBeGreaterThanOrEqual(3);
   });
 });
 
 describe("a ponte para o cálculo que já existe", () => {
   it("converte sem inventar campo", () => {
-    const c = paraCalculo(plano({ entradaPercentual: 30, jurosTaxa: 12, parcelas: 36 }));
+    const c = paraCalculo(
+      plano({ entradaPercentual: 30, jurosTaxa: 12, parcelas: 36 }),
+    );
     expect(c).toMatchObject({
       entradaPercentual: 30,
       jurosTaxa: 12,
@@ -132,7 +141,9 @@ describe("o que a tela precisa avisar antes de o empreendimento vender", () => {
   });
 
   it("plano inativo não aparece em nenhum dos dois", () => {
-    const { prontos, semMinuta } = separarPorProntidao([plano({ ativo: false, minutaId: null })]);
+    const { prontos, semMinuta } = separarPorProntidao([
+      plano({ ativo: false, minutaId: null }),
+    ]);
     expect(prontos).toHaveLength(0);
     expect(semMinuta).toHaveLength(0);
   });
