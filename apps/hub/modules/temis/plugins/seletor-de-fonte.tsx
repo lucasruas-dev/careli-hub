@@ -55,10 +55,24 @@ export function SeletorDeFonte({ aoAvisar }: Props) {
 
   // A fonte que valeria para o que se digitasse agora: a marca do trecho sob o cursor. É o mesmo
   // caminho do seletor de tamanho do Plate (`editor.api.marks()?.[KEYS.fontSize]`).
-  const pilhaAtual = useEditorSelector(
-    (ed) => (ed.api.marks()?.[KEYS.fontFamily] as string | undefined) ?? "",
-    [],
-  );
+  //
+  // ⚠️ O `try` NÃO É DEFENSIVA À TOA — ELE ESTÁ NO CAMINHO DE RENDER. `useEditorSelector` roda
+  // durante a renderização, e `editor.api.marks()` desce até `Editor.leaf` do Slate, que LANÇA
+  // "Cannot find a descendant at path" quando a seleção aponta para um caminho que deixou de
+  // existir. Uma exceção em fase de render sobe até a raiz e desmonta a aplicação — tela branca,
+  // texto não salvo perdido. E a minuta é cheia de chip de variável, que é `void` inline: trocar a
+  // fonte de uma seleção grande faz `split` atravessar todos eles, que é justamente onde o Slate
+  // deixa ponto pendurado.
+  //
+  // Sem a marca, o rótulo cai para a fonte padrão — que é o mesmo que ele mostra num documento
+  // novo. Errar o rótulo do botão por um instante é barato; derrubar a tela do jurídico não é.
+  const pilhaAtual = useEditorSelector((ed) => {
+    try {
+      return (ed.api.marks()?.[KEYS.fontFamily] as string | undefined) ?? "";
+    } catch {
+      return "";
+    }
+  }, []);
 
   // ⚠️ O RÓTULO PERDEU O "(padrão)" QUANDO O BOTÃO GANHOU LARGURA FIXA. Com `w-[136px]` sobram
   // ~108 px para o texto: "Times New Roman" (~100 px em text-sm) cabe inteiro, "Georgia (padrão)"

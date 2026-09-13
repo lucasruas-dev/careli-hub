@@ -9,6 +9,8 @@ import {
 } from '@platejs/selection/react';
 import { resizeLengthClampStatic } from '@platejs/resizable';
 import {
+  getCellTypes,
+  getSelectedCellEntries,
   getTableColumnCount,
   setCellBackground,
   setTableColSize,
@@ -50,6 +52,7 @@ import {
   type TTableCellElement,
   type TTableElement,
   type TTableRowElement,
+  ElementApi,
   KEYS,
   PathApi,
 } from 'platejs';
@@ -77,6 +80,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuPortal,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -1010,6 +1014,87 @@ function TableFloatingToolbarContent({
   );
 }
 
+/**
+ * CARELI — ESPESSURA E TIPO DE LINHA DA BORDA.
+ *
+ * Pedido do Lucas (13/09/2026): *"na parte de construção da minuta, gostaria de editar as bordas,
+ * tipo, aumentar a espessura tipo de linha, tem como?"*, e logo depois: *"falo da tabela"*.
+ *
+ * ⚠️ O DADO SEMPRE EXISTIU, E NINGUÉM ESCREVIA NELE. O Plate guarda `{ color, size, style }` por
+ * lado da célula; o menu de bordas só ligava e desligava, a tela desenhava com classe fixa de 1px e
+ * o serializador do contrato nem escrevia. As três pontas foram destravadas juntas — ver
+ * `variaveisDaBorda` aqui e `bordaDaCelula` em `lib/temis/documento-html.ts`.
+ *
+ * ⚠️ NÃO USAR O `setBorderSize` DO PLATE. Ele grava `{ size }` puro, jogando fora `style` e
+ * `color`: engrossar uma linha tracejada a devolveria sólida. E ele mexe em UMA célula, a do cursor,
+ * ignorando a seleção — num quadro-resumo de 17 linhas isso seriam 17 cliques.
+ */
+const ESPESSURAS_DA_BORDA = [1, 2, 3] as const;
+
+const ESTILOS_DA_BORDA = [
+  { rotulo: 'Sólida', valor: 'solid' },
+  { rotulo: 'Tracejada', valor: 'dashed' },
+  { rotulo: 'Pontilhada', valor: 'dotted' },
+  { rotulo: 'Dupla', valor: 'double' },
+] as const;
+
+const LADOS_DA_CELULA = ['bottom', 'left', 'right', 'top'] as const;
+
+type LadoDaBordaDaCelula = { color?: string; size?: number; style?: string };
+
+function useAjusteDaBorda() {
+  const editor = useEditorRef();
+
+  return React.useCallback(
+    (mudanca: { size?: number; style?: string }) => {
+      const ehCelula = (n: unknown) =>
+        ElementApi.isElement(n) && getCellTypes(editor).includes(n.type);
+
+      // Com duas ou mais células marcadas o Plate devolve as entradas; com o cursor dentro de uma só
+      // ele devolve vazio de propósito, e aí o alvo é a célula do cursor.
+      const selecionadas = getSelectedCellEntries(editor);
+      const alvos = selecionadas.length
+        ? selecionadas
+        : [editor.api.node({ match: ehCelula })].filter(Boolean);
+
+      if (alvos.length === 0) return;
+
+      editor.tf.withoutNormalizing(() => {
+        for (const alvo of alvos) {
+          const [no, caminho] = alvo as unknown as [TTableCellElement, number[]];
+          const atuais = (no.borders ?? {}) as Record<
+            string,
+            LadoDaBordaDaCelula | undefined
+          >;
+
+          // ⚠️ SÓ OS LADOS QUE JÁ TÊM LINHA. Engrossar não pode LIGAR uma borda que o operador
+          // desligou: seria desfazer a escolha dele com um clique que promete outra coisa. Quando a
+          // célula não tem borda nenhuma, os quatro entram — é o único jeito de a ação ser visível.
+          const temAlgum = LADOS_DA_CELULA.some((lado) => atuais[lado]?.size);
+          const novos: Record<string, LadoDaBordaDaCelula> = {
+            ...atuais,
+          } as Record<string, LadoDaBordaDaCelula>;
+
+          for (const lado of LADOS_DA_CELULA) {
+            const antigo = atuais[lado];
+            if (temAlgum && !antigo?.size) continue;
+            novos[lado] = {
+              ...antigo,
+              size: mudanca.size ?? antigo?.size ?? 1,
+              style: mudanca.style ?? antigo?.style ?? 'solid',
+            };
+          }
+
+          editor.tf.setNodes({ borders: novos }, { at: caminho, match: ehCelula });
+        }
+      });
+
+      editor.tf.focus();
+    },
+    [editor],
+  );
+}
+
 function TableBordersDropdownMenuContent(
   props: React.ComponentProps<typeof DropdownMenuContent>
 ) {
@@ -1023,6 +1108,7 @@ function TableBordersDropdownMenuContent(
     hasRightBorder,
     hasTopBorder,
   } = useTableBordersDropdownMenuContentState();
+  const ajustarBorda = useAjusteDaBorda();
 
   return (
     <DropdownMenuContent
@@ -1082,6 +1168,47 @@ function TableBordersDropdownMenuContent(
           <BorderAllIcon />
           <div>Bordas externas</div>
         </DropdownMenuCheckboxItem>
+      </DropdownMenuGroup>
+
+      {/* CARELI: espessura e tipo de linha. Valem para as células marcadas, ou para a do cursor. */}
+      <DropdownMenuGroup>
+        <DropdownMenuLabel>Espessura</DropdownMenuLabel>
+        {ESPESSURAS_DA_BORDA.map((espessura) => (
+          <DropdownMenuItem
+            key={espessura}
+            onSelect={(e) => {
+              e.preventDefault();
+              ajustarBorda({ size: espessura });
+            }}
+          >
+            {/* A amostra é a própria linha na espessura do item: número em pixel não diz nada a quem
+                está montando um contrato. */}
+            <span
+              className="mr-1 inline-block w-6 border-ink border-b-(length:--amostra)"
+              style={{ '--amostra': `${espessura}px` } as React.CSSProperties}
+            />
+            <div>{espessura} pt</div>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuGroup>
+
+      <DropdownMenuGroup>
+        <DropdownMenuLabel>Tipo de linha</DropdownMenuLabel>
+        {ESTILOS_DA_BORDA.map((estilo) => (
+          <DropdownMenuItem
+            key={estilo.valor}
+            onSelect={(e) => {
+              e.preventDefault();
+              ajustarBorda({ style: estilo.valor });
+            }}
+          >
+            <span
+              className="mr-1 inline-block w-6 border-ink border-b-2 border-b-(style:--amostra)"
+              style={{ '--amostra': estilo.valor } as React.CSSProperties}
+            />
+            <div>{estilo.rotulo}</div>
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuGroup>
     </DropdownMenuContent>
   );
@@ -1215,6 +1342,41 @@ export function TableRowElement({
   );
 }
 
+/**
+ * O dado de borda do Plate virando variáveis de CSS.
+ *
+ * ⚠️ VARIÁVEL, E NÃO ESTILO DIRETO, porque a linha é desenhada no `::before` da célula — e
+ * pseudo-elemento não aceita `style` inline. A variável posta na célula é herdada pelo `::before`,
+ * que é o único caminho para a espessura chegar lá.
+ *
+ * ⚠️ A COR PADRÃO É A DO TEMA (`--border`), e não preto: na tela a tabela conviveu com o tema
+ * claro e escuro desde sempre, e cravar preto aqui deixaria a linha invisível no escuro. No PAPEL a
+ * regra é outra e vive em `documento-html.ts`, onde o padrão é preto — os dois não se misturam.
+ */
+function variaveisDaBorda(borders: {
+  bottom?: { color?: string; size?: number; style?: string };
+  left?: { color?: string; size?: number; style?: string };
+  right?: { color?: string; size?: number; style?: string };
+  top?: { color?: string; size?: number; style?: string };
+}): Record<string, string> {
+  const vars: Record<string, string> = {};
+  const lados = [
+    ['b', borders.bottom],
+    ['l', borders.left],
+    ['r', borders.right],
+    ['t', borders.top],
+  ] as const;
+
+  for (const [sigla, lado] of lados) {
+    if (!lado?.size) continue;
+    vars[`--borda-${sigla}-espessura`] = `${lado.size}px`;
+    vars[`--borda-${sigla}-estilo`] = lado.style ?? 'solid';
+    vars[`--borda-${sigla}-cor`] = lado.color ?? 'var(--border)';
+  }
+
+  return vars;
+}
+
 function useTableCellPresentation(element: TTableCellElement) {
   const { api } = useEditorPlugin(TablePlugin);
   const borders = useTableCellBorders({ element });
@@ -1315,14 +1477,24 @@ export function TableCellElement({
         'data-[table-cell-selected=true]:before:z-10',
         'data-[table-cell-selected=true]:before:bg-brand/5',
         "before:absolute before:box-border before:select-none before:content-['']",
-        borders.bottom?.size && 'before:border-b before:border-b-border',
-        borders.right?.size && 'before:border-r before:border-r-border',
-        borders.left?.size && 'before:border-l before:border-l-border',
-        borders.top?.size && 'before:border-t before:border-t-border'
+        /* ⚠️ A ESPESSURA VINHA SENDO JOGADA FORA. Antes estas quatro linhas testavam
+           `borders.bottom?.size` só para decidir SE desenhava, e aplicavam a classe fixa
+           `border-b` — 1px, cor do tema. Uma borda de 3px desenhava idêntica a uma de 1px, e o
+           estilo (tracejada, dupla) não existia na tela. O dado sempre esteve lá: o Plate guarda
+           `{ color, size, style }` por lado. Agora as propriedades saem das variáveis do `style`. */
+        borders.bottom?.size &&
+          'before:[border-bottom-color:var(--borda-b-cor)] before:[border-bottom-style:var(--borda-b-estilo)] before:[border-bottom-width:var(--borda-b-espessura)]',
+        borders.right?.size &&
+          'before:[border-right-color:var(--borda-r-cor)] before:[border-right-style:var(--borda-r-estilo)] before:[border-right-width:var(--borda-r-espessura)]',
+        borders.left?.size &&
+          'before:[border-left-color:var(--borda-l-cor)] before:[border-left-style:var(--borda-l-estilo)] before:[border-left-width:var(--borda-l-espessura)]',
+        borders.top?.size &&
+          'before:[border-top-color:var(--borda-t-cor)] before:[border-top-style:var(--borda-t-estilo)] before:[border-top-width:var(--borda-t-espessura)]'
       )}
       style={
         {
           '--cellBackground': element.background,
+          ...variaveisDaBorda(borders),
           maxWidth: width,
           minWidth: width,
         } as React.CSSProperties

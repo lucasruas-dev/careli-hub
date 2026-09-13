@@ -283,6 +283,74 @@ describe("tabelas — o quadro-resumo do contrato", () => {
     expect(documentoParaHtml(doc)).toContain('<th style="border:1px solid #000000"><p>Item</p></th>');
   });
 
+  // ⚠️ MEXER NA BORDA PELA BARRA APAGAVA A BORDA NO PAPEL. A versão anterior devolvia string vazia
+  // assim que a célula trazia QUALQUER dado de borda do editor, e o CSS do documento só dá padding a
+  // `td` — a célula saía do PDF sem linha nenhuma, sem erro e sem aviso. Estes três testes são a
+  // trava: quem voltar a "respeitar o editor" devolvendo vazio derruba os três.
+  it("escreve a espessura que o editor guardou, lado a lado", () => {
+    // `borders` é dado do Plate e não está no tipo do documento da Têmis — o serializador o lê por
+    // cast, e o teste precisa do mesmo caminho para exercitar o que chega de verdade do editor.
+    const doc = [
+      {
+        children: [
+          {
+            children: [
+              {
+                borders: {
+                  bottom: { size: 3 },
+                  right: { size: 1, style: "dashed" },
+                },
+                children: [p("QUADRO")],
+                type: "td",
+              },
+            ],
+            type: "tr",
+          },
+        ],
+        type: "table",
+      },
+    ];
+
+    const html = documentoParaHtml(doc as unknown as NoDoDocumento[]);
+    expect(html).toContain("border-bottom:3px solid #000000");
+    expect(html).toContain("border-right:1px dashed #000000");
+    // ⚠️ Numa célula do meio o Plate guarda só `bottom` e `right`: a linha da esquerda é o `right`
+    // da vizinha. Escrever borda nos quatro lados dobraria a espessura de toda linha interna.
+    expect(html).toContain("border-left:none");
+    expect(html).toContain("border-top:none");
+  });
+
+  it("espessura zero é o editor dizendo 'sem linha', e não falta de dado", () => {
+    const doc = [
+      {
+        children: [
+          {
+            children: [
+              { borders: { bottom: { size: 0 } }, children: [p("x")], type: "td" },
+            ],
+            type: "tr",
+          },
+        ],
+        type: "table",
+      },
+    ];
+    expect(documentoParaHtml(doc as unknown as NoDoDocumento[])).toContain(
+      "border-bottom:none",
+    );
+  });
+
+  it("sem dado nenhum do editor, a borda padrão continua saindo", () => {
+    const doc: NoDoDocumento[] = [
+      {
+        children: [
+          { children: [{ children: [p("x")], type: "td" }], type: "tr" },
+        ],
+        type: "table",
+      },
+    ];
+    expect(documentoParaHtml(doc)).toContain('<td style="border:1px solid #000000">');
+  });
+
   it("preserva o fundo da célula — o box de CIÊNCIA PRÉVIA do contrato", () => {
     // Uma ocorrência só na minuta inteira, e é o destaque legal do aviso sobre desfazimento.
     const doc: NoDoDocumento[] = [

@@ -36,6 +36,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-13-o-editor-destrava-e-a-borda-obedece",
+    deployedAt: "2026-09-13T14:27:21-03:00",
+    modules: [
+      {
+        module: "T\u00eamis",
+        screens: [
+          {
+            items: [
+              "**O editor de minutas parou de travar.** A cada tecla, o documento inteiro era copiado duas vezes e o resultado jogado fora \u2014 s\u00e3o 136 mil caracteres na minuta do Villa Paris. Agora isso acontece uma vez, na abertura.",
+              "As tr\u00eas confer\u00eancias que rodavam a cada caractere (vari\u00e1veis usadas, blocos mal fechados, sugest\u00f5es pendentes) passaram a esperar o teclado dar tr\u00e9gua. Elas continuam avisando antes de voc\u00ea publicar, que \u00e9 quando importa.",
+              "**Trocar a fonte n\u00e3o derruba mais a p\u00e1gina.** E, se alguma outra coisa cair, agora aparece um aviso dizendo o que aconteceu com o texto n\u00e3o salvo, em vez de tela branca.",
+              "No menu de bordas da tabela h\u00e1 **espessura (1, 2 e 3 pt) e tipo de linha** (s\u00f3lida, tracejada, pontilhada, dupla), com amostra em cada item. Vale para todas as c\u00e9lulas marcadas de uma vez.",
+              "\u26a0\ufe0f **Mexer na borda apagava a borda no contrato impresso.** Quem abriu esse menu alguma vez pode ter perdido o quadro de uma minuta sem perceber \u2014 vale conferir a pr\u00e9via das suas.",
+              "O bot\u00e3o de aumentar o tamanho da fonte podia gravar um tamanho inv\u00e1lido no texto quando o campo estava vazio. N\u00e3o grava mais.",
+            ],
+            screen: "Empreendimento \u00b7 Minutas",
+          },
+        ],
+      },
+      {
+        module: "Assinatura",
+        screens: [
+          {
+            items: [
+              "**O contrato vai para assinatura sem e-mail de cobran\u00e7a.** A Clicksign cobrava de tr\u00eas em tr\u00eas dias, at\u00e9 tr\u00eas vezes por signat\u00e1rio, por ser o padr\u00e3o dela. O convite com o link continua saindo normalmente.",
+            ],
+            screen: "T\u00eamis \u00b7 Contrato",
+          },
+        ],
+      },
+    ],
+    rollback: "431afa72",
+    technical: {
+      done: "TR\u00caS FRENTES NUM DEPLOY S\u00d3, e as tr\u00eas nasceram de reclama\u00e7\u00e3o do Lucas no mesmo dia. || 1. O TRAVAMENTO. `usePlateEditor(opcoes)` e um `useMemo(..., [])`: o editor nasce uma vez. Mas o OBJETO de opcoes e avaliado em todo render, porque JS avalia o argumento antes de chamar a funcao \u2014 entao `migrarAlinhamentoAntigo` (spread de cada elemento) e `promoverVariaveisNoValor` (um `new RegExp` por no de texto) percorriam e COPIAVAM os 136.781 caracteres da minuta a cada tecla, e o memo descartava. Trocado por `useState` com funcao (preguicoso); `useRef(calculo())` NAO serviria, o argumento continuaria sendo avaliado. || Mais tres varreduras completas por tecla saíram do caminho quente: a `conferencia` de minutas-tab (serializa tudo para HTML + 3 `matchAll` + `Object.keys` por no) e o `jaUsadas` do painel foram para `useDeferredValue`; `aoAvisar`/`aoMudar` viraram `useCallback` (como arrow inline, disparavam um `setOption` no plugin da barra de ~40 botoes a cada tecla). || 2. O CRASH. NAO EXISTIA ERROR BOUNDARY NENHUM no `apps/hub` \u2014 medido em 13/09: nenhum `error.tsx`, nenhum `componentDidCatch`, a lib nem e dependencia. Qualquer throw em fase de render desmontava a aplicacao inteira, e isso ja tinha acontecido antes (o Radix sem TooltipProvider derrubou a arvore do editor, esta escrito no proprio codigo). Criado `app/error.tsx`. || E o provavel lancador: `seletor-de-fonte.tsx` e `font-size-toolbar-button.tsx` chamam `editor.api.marks()` DENTRO do `useEditorSelector`, que roda em fase de render; isso desce ate `Editor.leaf` do Slate, que lanca `Cannot find a descendant at path` quando a selecao aponta para caminho que sumiu. A minuta e cheia de chip de variavel (`isVoid` inline), e trocar fonte de selecao grande faz o `split` atravessar todos \u2014 onde o Slate deixa ponto pendurado. Os dois ganharam `try`. \u26a0\ufe0f NAO REPRODUZIDO EM TELA (o hub exige login): as duas hipoteses estao cobertas, a prova e o Lucas trocar a fonte depois do deploy. || 3. AS BORDAS. O Plate guarda `{ color, size, style }` por lado da celula e NINGUEM escrevia nisso: o menu so ligava/desligava, `table-node.tsx` desenhava com classe fixa `border-b` (1px, cor do tema) e o serializador do contrato devolvia STRING VAZIA assim que a celula trazia qualquer `borders` \u2014 e o CSS do documento so da padding a `td`. Resultado: abrir o menu de bordas uma vez APAGAVA a borda no PDF, calado. Pega o quadro-resumo do art. 26-A (17 linhas contendo o contrato), que sem borda vira texto corrido. As tres pontas destravadas juntas, com 3 testes novos em `documento-html.test.ts`. O ajuste NAO usa o `setBorderSize` do Plate: ele grava `{ size }` puro (perde `style` e `color`) e mexe em UMA celula, a do cursor. || \u26a0\ufe0f LADO A LADO, e nao um `border` unico: numa celula do meio o Plate guarda so `bottom` e `right` (a linha da esquerda e o `right` da vizinha), e um `border` unico dobraria a espessura de toda linha interna. || 4. CLICKSIGN: `remind_interval` vai NULO e EXPLICITO. A tabela de campos deles da o default como 3 \u2014 omitir nao desliga, LIGA. Todo envelope enviado ate hoje nasceu cobrando. O teste checa a PRESENCA da chave, nao so o valor: omitir passaria num `toBeNull()` frouxo e a cobranca voltaria sem ninguem ver. O convite (passo 6, `POST /envelopes/{id}/notifications`) continua saindo. \u26a0\ufe0f So vale para envelope NOVO; o que ja esta aberto continua cobrando. || FICOU DE FORA, de proposito: desligar o DndKit nesta tela (maior ganho restante, mas muda UX e depende do Lucas) e reescrever a troca de fonte em lote (mexe na transformacao, risco alto). || Sobe junto a migration 0156 (capa e anexos), ja aplicada, ainda SEM TELA. || typecheck limpo, 3.812 testes em 255 arquivos, lint sem aviso novo nos arquivos tocados.",
+      motivation:
+        "Lucas (13/09/2026), tres mensagens: *\"o time esta reclamando muito que na edicao das minutas esta travando muitooo, esta ruim a experiencia, para trocar a fonte da minuta derrubou a pagina, nao faz sentido, olha isso com urgencia\"*; *\"na parte de construcao da minuta, gostaria de editar as bordas, tipo, aumentar a espessura tipo de linha, tem como?\"* seguido de *\"falo da tabela\"*; e *\"eu nao quero enviar lembrete de assinatura, quero somente mandar o contrato para assinatura e pronto\"*.",
+    },
+    title: "O editor de minutas destrava, a borda da tabela obedece e a assinatura para de cobrar",
+    type: "melhoria",
+    version: "1.329.0",
+  },
+  {
     buildTag: "2026-09-13-a-data-da-entrada-desce-uma-linha",
     deployedAt: "2026-09-13T14:21:57-03:00",
     internal: true,

@@ -9,7 +9,7 @@ import {
   usePlateEditor,
   usePluginOption,
 } from "platejs/react";
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Toaster } from "sonner";
 
 import { discussionPlugin } from "@/components/editor/plugins/discussion-kit";
@@ -129,6 +129,23 @@ export default function EditorDeMinuta({
   somenteLeitura,
   valorInicial,
 }: Props) {
+  /**
+   * ⚠️ O VALOR DE ABERTURA SE CALCULA UMA VEZ, E ANTES ERA DUAS VEZES POR TECLA.
+   *
+   * `usePlateEditor(opcoes)` é um `useMemo(..., [])`: o editor nasce uma vez só. Mas o OBJETO de
+   * opções é avaliado em todo render, porque JavaScript avalia o argumento antes de chamar a
+   * função. Ou seja, `migrarAlinhamentoAntigo` (spread de cada elemento) e `promoverVariaveisNoValor`
+   * (um `new RegExp` por nó de texto) percorriam e COPIAVAM o documento inteiro a cada tecla — e o
+   * memo jogava o resultado fora. Na minuta do Villa Paris isso é 136.781 caracteres clonados duas
+   * vezes por caractere digitado.
+   *
+   * O `useState` com função é preguiçoso: React só a chama na primeira renderização. Um
+   * `useRef(calculo())` NÃO serviria — o argumento continuaria sendo avaliado sempre.
+   */
+  const [valorDeAbertura] = useState(() =>
+    promoverVariaveisNoValor(paraOEditor(migrarAlinhamentoAntigo(valorInicial))),
+  );
+
   const editor = usePlateEditor({
     plugins: EditorKitTemis,
     // Minutas salvas antes do chip trazem `[nome]` como texto: viram nós na abertura. `aoMudar` só
@@ -137,7 +154,7 @@ export default function EditorDeMinuta({
     // ⚠️ E as salvas pelo editor ANTIGO trazem o alinhamento em `textAlign` (a chave do plugin de
     // então); o AlignKit atual só lê `align`. Sem a migração o título centralizado abre à esquerda
     // e, pior, realinhar aqui não mudava o HTML do contrato. Ver `lib/temis/migrar-documento.ts`.
-    value: promoverVariaveisNoValor(paraOEditor(migrarAlinhamentoAntigo(valorInicial))),
+    value: valorDeAbertura,
   });
   const { hubUser } = useAuth();
   const [valorAtual, setValorAtual] = useState<ValorDoDocumento>(valorInicial);
@@ -166,7 +183,18 @@ export default function EditorDeMinuta({
 
   // Quais variáveis JÁ estão no texto. O painel marca cada uma, e é isso que responde de relance a
   // pergunta que se faz o tempo todo numa minuta longa: "já coloquei o CPF do cônjuge?".
-  const jaUsadas = useMemo(() => new Set(variaveisNoValor(valorAtual)), [valorAtual]);
+  //
+  // ⚠️ ADIADO DE PROPÓSITO. `variaveisNoValor` percorre o documento inteiro e aloca um `new
+  // RegExp` por nó de texto; o `Set` novo invalida o painel lateral, que refiltra 223 variáveis em
+  // 13 grupos. Rodar isso a cada tecla era a terceira varredura completa do documento por
+  // caractere. `useDeferredValue` deixa a tecla passar na frente e recalcula quando o teclado dá
+  // trégua — meio segundo de atraso num painel que responde "já coloquei o CPF do cônjuge?" não
+  // muda nada para quem edita.
+  const valorParaOPainel = useDeferredValue(valorAtual);
+  const jaUsadas = useMemo(
+    () => new Set(variaveisNoValor(valorParaOPainel)),
+    [valorParaOPainel],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-subtle/30">

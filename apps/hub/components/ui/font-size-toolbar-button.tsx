@@ -49,20 +49,28 @@ export function FontSizeToolbarButton() {
   const [isFocused, setIsFocused] = React.useState(false);
   const { editor, tf } = useEditorPlugin(FontSizePlugin);
 
+  // CARELI: `try` em volta do seletor inteiro. Ele roda em fase de RENDER, e tanto `api.marks()`
+  // quanto `api.block()` descem até `Editor.leaf`, que lança quando a seleção aponta para um
+  // caminho que sumiu. Sem isto, a exceção sobe até a raiz e desmonta o hub inteiro. Mesma razão do
+  // `try` em `modules/temis/plugins/seletor-de-fonte.tsx`.
   const cursorFontSize = useEditorSelector((editor) => {
-    const fontSize = editor.api.marks()?.[KEYS.fontSize];
+    try {
+      const fontSize = editor.api.marks()?.[KEYS.fontSize];
 
-    if (fontSize) {
-      return toUnitLess(fontSize as string);
+      if (fontSize) {
+        return toUnitLess(fontSize as string);
+      }
+
+      const [block] = editor.api.block<TElement>() || [];
+
+      if (!block?.type) return DEFAULT_FONT_SIZE;
+
+      return block.type in FONT_SIZE_MAP
+        ? FONT_SIZE_MAP[block.type as keyof typeof FONT_SIZE_MAP]
+        : DEFAULT_FONT_SIZE;
+    } catch {
+      return DEFAULT_FONT_SIZE;
     }
-
-    const [block] = editor.api.block<TElement>() || [];
-
-    if (!block?.type) return DEFAULT_FONT_SIZE;
-
-    return block.type in FONT_SIZE_MAP
-      ? FONT_SIZE_MAP[block.type as keyof typeof FONT_SIZE_MAP]
-      : DEFAULT_FONT_SIZE;
   }, []);
 
   const handleInputChange = () => {
@@ -84,7 +92,16 @@ export function FontSizeToolbarButton() {
   };
 
   const handleFontSizeChange = (delta: number) => {
-    const newSize = Number(displayValue) + delta;
+    // CARELI: guarda contra `NaNpx`. `displayValue` é o texto do campo enquanto ele está focado, e
+    // pode estar vazio ou com algo que não é número — `Number("abc") + 1` é NaN, e o código
+    // original gravava a string "NaNpx" como tamanho no nó. Não derruba nada: suja o documento em
+    // silêncio e sai impresso errado no contrato.
+    const atual = Number(displayValue);
+    if (!Number.isFinite(atual)) return;
+
+    const newSize = atual + delta;
+    if (newSize < 1 || newSize > 100) return;
+
     tf.fontSize.addMark(`${newSize}px`);
     editor.tf.focus();
   };

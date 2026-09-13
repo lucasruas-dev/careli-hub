@@ -434,12 +434,47 @@ function estiloDoBloco(no: NoDoDocumento, dentroDeLista: boolean): string {
 // Erra-se para o lado visível: uma borda a mais alguém enxerga e pede para tirar; uma borda a menos
 // descaracteriza o documento em silêncio. Quando a célula trouxer `borders` do editor, ela manda.
 const BORDA_PADRAO = "1px solid #000000";
+const COR_PADRAO_DA_BORDA = "#000000";
+const ESTILO_PADRAO_DA_BORDA = "solid";
+
+/** O que o Plate guarda em cada lado da célula. Os três campos são opcionais. */
+type LadoDaBorda = { color?: string; size?: number; style?: string };
+
+/**
+ * ⚠️ MEXER NA BORDA PELA BARRA APAGAVA A BORDA NO PAPEL. A versão anterior devolvia string
+ * VAZIA assim que a célula trazia qualquer dado de borda do editor (`if (borders) return ""`), com a
+ * intenção de "respeitar o que o editor disse" — mas nada depois escrevia o que ele disse. O CSS do
+ * documento só dá padding a `td`/`th`, não borda, então a célula saía do PDF SEM LINHA NENHUMA. Quem
+ * abrisse o menu de bordas uma vez perdia o quadro e não via erro nenhum.
+ *
+ * ⚠️ ISSO IMPORTA NO QUADRO-RESUMO do art. 26-A da Lei 6.766/1979: são 17 linhas que contêm o
+ * contrato depois do título. Sem borda ele deixa de ser um quadro e vira texto corrido — e quem
+ * percebe é o cartório.
+ *
+ * ⚠️ LADO A LADO, E NÃO UM `border` SÓ. Numa célula do meio o Plate guarda apenas `bottom` e
+ * `right`: a linha da esquerda é o `right` da vizinha, e com `border-collapse` as duas viram uma.
+ * Escrever um `border` único aqui dobraria a espessura de toda linha interna.
+ */
+function ladoDaBorda(lado: LadoDaBorda | undefined, nome: string): string {
+  // Ausente ou espessura zero: o editor está dizendo "sem linha deste lado".
+  if (!lado?.size) return `border-${nome}:none`;
+  const cor = lado.color ?? COR_PADRAO_DA_BORDA;
+  const estilo = lado.style ?? ESTILO_PADRAO_DA_BORDA;
+  return `border-${nome}:${lado.size}px ${estilo} ${cor}`;
+}
 
 function bordaDaCelula(no: NoDoDocumento): string {
-  const borders = (no as { borders?: { bottom?: unknown; left?: unknown } }).borders;
-  // O editor guardou bordas próprias: respeita o que ele disse, inclusive "sem borda".
-  if (borders) return "";
-  return `border:${BORDA_PADRAO}`;
+  const borders = (no as { borders?: Record<string, LadoDaBorda | undefined> }).borders;
+  // Sem dado nenhum do editor, a borda é EMITIDA por padrão — ver a nota acima de `BORDA_PADRAO`:
+  // erra-se para o lado visível, porque uma borda a mais alguém pede para tirar e uma a menos
+  // descaracteriza o documento em silêncio.
+  if (!borders) return `border:${BORDA_PADRAO}`;
+  return [
+    ladoDaBorda(borders.top, "top"),
+    ladoDaBorda(borders.right, "right"),
+    ladoDaBorda(borders.bottom, "bottom"),
+    ladoDaBorda(borders.left, "left"),
+  ].join(";");
 }
 
 const TAG_DO_BLOCO: Record<string, string> = {

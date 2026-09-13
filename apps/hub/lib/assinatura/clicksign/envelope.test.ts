@@ -285,6 +285,20 @@ describe("o envelope, por dentro", () => {
     expect(attrs.locale).toBe("pt-BR");
   });
 
+  // ⚠️ O CAMPO PRECISA EXISTIR NO CORPO, e não basta ser `undefined`. O default da Clicksign
+  // quando o campo NÃO vai é 3 — cobrança de três em três dias. É por isso que o teste checa a
+  // PRESENÇA da chave, e não só o valor: omitir o campo passaria num `toBeNull()` frouxo e voltaria
+  // a cobrar em produção sem ninguém perceber.
+  it("não cobra assinatura: manda `remind_interval` nulo, e manda de verdade", async () => {
+    const { chamadas, porta } = duplo();
+    await enviarParaAssinatura(pedido([pessoa("A Silva", "a@x.com", "comprador", 1)]), porta);
+
+    const attrs = (chamadas[0]?.corpo as { data: { attributes: Record<string, unknown> } }).data
+      .attributes;
+    expect(Object.hasOwn(attrs, "remind_interval")).toBe(true);
+    expect(attrs.remind_interval).toBeNull();
+  });
+
   // ⚠️ TETO RÍGIDO DE 90 DIAS, contados do upload. Um número maior vira 422 no meio do fluxo — com o
   // envelope já criado.
   it("apara o prazo em 90 dias", async () => {

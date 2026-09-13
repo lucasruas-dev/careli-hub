@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import {
   documentoParaHtml,
@@ -368,9 +368,31 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
     }
   };
 
+  //
+  // ⚠️ REFERÊNCIA ESTÁVEL, E NÃO ARROW INLINE. `aoAvisar` chegava como função nova a cada render
+  // do pai, e o editor tem um `useEffect` que escreve essa função na opção do plugin da barra —
+  // então o efeito disparava a cada tecla e cutucava os ~40 botões da barra sem nada ter mudado.
+  const avisar = useCallback((texto: string) => {
+    setAviso(texto);
+    setSujo(true);
+  }, []);
+
+  const mudar = useCallback((valor: NoDoDocumento[]) => {
+    setDocumento(valor);
+    setSujo(true);
+  }, []);
+
   // A conferência roda sobre o que está NA TELA, e não sobre o que foi salvo: é assim que o aviso
   // aparece enquanto ainda dá para corrigir.
+  //
+  // ⚠️ A CONFERÊNCIA NÃO ACOMPANHA O TECLADO, e adiar isso foi metade do travamento. Ela
+  // serializa o documento inteiro para HTML e passa TRÊS `matchAll` sobre a string, mais um
+  // `temSugestoesPendentes` que faz `Object.keys` em cada nó — quatro varreduras completas por
+  // caractere digitado, sobre um documento de 136 mil caracteres. O aviso de bloco mal fechado não
+  // precisa aparecer no mesmo quadro da tecla: precisa aparecer antes de alguém clicar em Publicar.
+  const documentoConferido = useDeferredValue(documento);
   const conferencia = useMemo(() => {
+    const documento = documentoConferido;
     const html = documentoParaHtml(documento);
     const { conhecidas, desconhecidas } = classificarVariaveis(html);
     return {
@@ -384,7 +406,7 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
       sugestoesPendentes: temSugestoesPendentes(documento),
       tamanho: html.length,
     };
-  }, [documento]);
+  }, [documentoConferido]);
 
   if (erro && !minutas && !aberta) {
     return (
@@ -481,14 +503,8 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
         <Conferencia conferencia={conferencia} />
 
         <EditorDeMinuta
-          aoAvisar={(texto) => {
-            setAviso(texto);
-            setSujo(true);
-          }}
-          aoMudar={(valor) => {
-            setDocumento(valor);
-            setSujo(true);
-          }}
+          aoAvisar={avisar}
+          aoMudar={mudar}
           // ⚠️ A CHAVE É O ID DA MINUTA. Sem ela, abrir outra minuta reaproveitaria o editor com o
           // documento da anterior — o Plate só lê `valorInicial` na montagem.
           key={aberta.id}

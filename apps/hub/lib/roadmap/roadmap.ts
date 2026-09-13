@@ -680,8 +680,8 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
   },
   {
     id: "PAN-071",
-    bloqueio: "Falta a tabela de anexo por unidade/categoria/empreendimento e o campo de capa na minuta.",
-    evidencia: "apps/hub/lib/temis/variaveis.ts: capa_contrato e o grupo de anexo estão com fonte PENDENTE ('tabela a construir'). Memória project_contrato_pecas_anexos: 'Nada disso está construído'.",
+    bloqueio: "A base já existe (migration 0156, 13/09/2026: temis_anexos + capa_path na minuta). Faltam a tela de upload e o MONTADOR do PDF final, que é a peça cara: [anexo_N] marca um LUGAR dentro da cláusula, então o montador quebra o PDF do corpo naquele ponto e costura as páginas do anexo.",
+    evidencia: "Migration 0156 aplicada e conferida em 13/09/2026 (17 colunas, RLS ligada, 4 CHECKs exercitados). O bucket e o upload por URL assinada já rodam no editor de minutas, e o pdf-lib já é dependência — não falta infra, falta tela e montador.",
     modulo: "Temis",
     porque: "O contrato é capa mais corpo mais anexos, e só o corpo existe. A variável de anexo marca um lugar na cláusula em vez de virar texto, e a quantidade nasce do que foi importado — nada disso tem tabela.",
     situacao: "depois",

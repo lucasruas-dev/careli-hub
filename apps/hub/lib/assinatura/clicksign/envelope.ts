@@ -844,6 +844,20 @@ function atributosDoEnvelope(nome: string, pedido: PedidoDeEnvio): Record<string
     deadline_partial_signature_action: "canceled",
     locale: "pt-BR",
     name: nome,
+    // ⚠️ `remind_interval` NULO, E ELE PRECISA IR EXPLÍCITO. Lucas (13/09/2026): *"eu não
+    // quero enviar lembrete de assinatura, quero somente mandar o contrato para assinatura e pronto,
+    // não precisa de e-mail de cobrança de assinatura"*.
+    //
+    // ⚠️ OMITIR NÃO DESLIGA — é o contrário. A tabela de campos da Clicksign dá o campo como
+    // `integer`, valores `null, 1, 2, 3, 7, 14`, e **default 3**: sem mandar nada, o envelope nasce
+    // cobrando de três em três dias, até três lembretes por signatário. Era o que estava
+    // acontecendo com todo contrato enviado até hoje.
+    //
+    // ⚠️ NÃO CONFUNDIR COM O CONVITE. O e-mail que leva o link de assinatura é o passo 6
+    // (`POST /envelopes/{id}/notifications`) e continua saindo — sem ele ninguém recebe nada. O que
+    // morre aqui é só a COBRANÇA automática de quem ainda não assinou. Reenviar convite na mão
+    // segue existindo em `notificarSignatario`.
+    remind_interval: null,
   };
 
   // ⚠️ O ASSUNTO TEM TETO DE 100 CARACTERES na doc deles, e estourar é 422 no passo 1.
