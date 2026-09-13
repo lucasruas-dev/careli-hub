@@ -90,6 +90,14 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     titulo: "Aplicar a migration 0153 e acender o histórico das etapas da Têmis",
   },
   {
+    id: "PAN-114",
+    evidencia: "`lib/apolo/extrato-cliente.ts:203` (`totais.saldoAValorDeHoje`) e `:547` (`mensalidadeVigente`). Medido no C2X em 12/09/2026, contrato AR 1083: a série são 136 parcelas de R$ 763,58 de 2024 a 2036, SEM reajuste nenhum, mais 8 reencarteiradas vencendo em 22/05/2026 com mora embutida (848,57 · 840,71 · 833,10 · 825,24 · 817,64 · 809,78 · 801,92 · 786,96). `mensalidadeVigente` devolve R$ 786,96, que é uma delas. Saldo impresso R$ 106.461,08 contra R$ 103.538,58 de nominal.",
+    modulo: "Apolo",
+    porque: "O extrato diz ao cliente que *\"a parcela vigente está 3,1% acima desse valor, porque a correção anual é aplicada na emissão de cada boleto\"* — e nesse contrato não há correção nenhuma. Os 3,1% são a MULTA e o JURO de uma parcela atrasada (786,96 ÷ 763,58 = 1,031) apresentados como reajuste, e o erro se multiplica pelas 122 parcelas em aberto: R$ 2.922,50 de dívida que não existe, num PDF que vai para o cliente. ⚠️ O nome é metade do problema: `saldoAValorDeHoje` NÃO é valor presente, é a soma NOMINAL com as defasadas levantadas para a mensalidade vigente — no lote do padrão-ouro os dois números seriam R$ 302.040 e R$ 210.001, 44% de diferença com nomes quase idênticos. O conserto tem duas partes: a mensalidade vigente precisa ignorar parcela reencarteirada com mora (hoje ela não sabe distinguir reajuste de mora, porque as duas chegam como `initial_value` maior), e a frase do PDF só pode falar em correção quando houver correção. Achado em 12/09/2026 enquanto eu levantava a matemática financeira do Festos; o Lucas mandou deixar em backlog.",
+    situacao: "proximo",
+    titulo: "A \"correção\" fantasma no extrato: mora entrando como reajuste",
+  },
+  {
     id: "PAN-001",
     entregueEm: "2026-09-11",
     evidencia: "UPDATE aplicado em produção em 11/09 com OK do Lucas: o card fc996d65 voltou para `analise` com `estagio_desde` = criado_em (08/09 08:22). Varredura depois: os 8 cards estão dentro do caminho do próprio tipo.",
