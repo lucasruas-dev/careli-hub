@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-13-a-capa-e-os-anexos-ganham-onde-subir",
+    deployedAt: "2026-09-13T19:50:03-03:00",
+    modules: [
+      {
+        module: "T\u00eamis",
+        screens: [
+          {
+            items: [
+              "**Os anexos do contrato t\u00eam onde subir.** Na aba de minutas do empreendimento, uma se\u00e7\u00e3o nova recebe os PDFs prontos \u2014 conven\u00e7\u00e3o, memorial, planta \u2014 com **posi\u00e7\u00e3o e nome**. A posi\u00e7\u00e3o \u00e9 a que o texto cita como `[anexo_1]`, e o nome sai escrito sozinho no contrato por `[anexo_1_nome]`.",
+              "\u26a0\ufe0f **A posi\u00e7\u00e3o \u00e9 voc\u00ea que escolhe, e nunca a ordem em que subiu o arquivo.** Se fosse pela ordem, anexar uma pe\u00e7a nova empurraria as outras e toda minuta j\u00e1 publicada passaria a imprimir a pe\u00e7a errada, sem avisar ningu\u00e9m.",
+              "**A capa entra na minuta**, uma por minuta, em PDF, JPG ou PNG \u2014 \u00e9 a que voc\u00eas desenham no Canva. D\u00e1 para trocar e para tirar.",
+              "Desativar um anexo n\u00e3o apaga o arquivo: os contratos que j\u00e1 o citam continuam encontrando a pe\u00e7a.",
+              "\u26a0\ufe0f **O montador ainda n\u00e3o existe.** O cadastro est\u00e1 de p\u00e9 e as vari\u00e1veis de anexo j\u00e1 funcionam no texto, mas juntar capa + corpo + anexos num PDF s\u00f3 \u00e9 a pr\u00f3xima pe\u00e7a. Por enquanto, a montagem final continua sendo feita fora.",
+            ],
+            screen: "Empreendimento \u00b7 Minutas",
+          },
+        ],
+      },
+    ],
+    rollback: "1fe75025",
+    technical: {
+      done: "O CADASTRO INTEIRO, SEM O MONTADOR. A migration 0156 (aplicada horas antes) criou `temis_anexos` e `capa_path`/`capa_nome` em `temis_minutas`; esta entrega é a rota e a tela. || ROTA `/api/temis/anexos`, tres verbos e o mesmo padrao do upload da midia do editor e do documento grande do CAD: `upload` assina a URL, o NAVEGADOR sobe direto para o Storage, `confirmar` grava a linha depois que o objeto ja existe. \u26a0\ufe0f O ARQUIVO NAO PASSA PELA FUNCAO: um PDF de 20MB atravessando a serverless estoura o limite de corpo da Vercel. O caminho e escolhido pelo SERVIDOR e amarrado ao alcance, entao corpo forjado nao grava em cima de outra pasta. || \u26a0\ufe0f SO PDF no anexo. As outras pecas do contrato sao texto; o anexo e pagina pronta que o montador costura. Aceitar .docx ou imagem empurraria a conversao para o montador, que e onde ela fica cara e falha calada. A CAPA aceita PDF/JPG/PNG, porque sai do Canva de um jeito ou de outro. || \u26a0\ufe0f 23505 VIRA MENSAGEM, e nao 500. Os indices unicos da 0156 sao POR NIVEL; quando a posicao ja esta ocupada naquele alcance, a rota devolve 409 dizendo qual posicao e que trocar a peca e desativar a antiga primeiro \u2014 e APAGA o objeto orfao que acabou de subir. Sem isso, cada tentativa repetida deixaria lixo no bucket. || \u26a0\ufe0f DESATIVA, NAO APAGA (`ativo = false`). Um contrato ja montado que cite aquele anexo precisa que a peca continue existindo; apagar o objeto deixaria o PDF do passado apontando para o vazio. || \u26a0\ufe0f A CAPA E DA MINUTA e os anexos sao do EMPREENDIMENTO, e por isso moram em lugares diferentes da tela: a capa carrega a identidade daquele contrato, e duas minutas do mesmo loteamento tem capas diferentes. || O GET devolve os tres niveis juntos quando a tela pede os tres: a precedencia unidade > categoria > empreendimento e resolvida por quem MONTA, e devolver so um nivel esconderia do operador que a unidade dele sobrescreve a categoria. || FALTA O MONTADOR, e ele e a peca cara: `[anexo_1]` marca um LUGAR dentro da clausula, entao nao e concatenar no fim \u2014 e quebrar o PDF do corpo naquele ponto e costurar. O `pdf-lib` ja e dependencia. PAN-071 segue aberto, com o bloqueio reescrito. || typecheck limpo, 3.812 testes em 255 arquivos, lint sem aviso novo. \u26a0\ufe0f NAO VERIFICADO EM TELA \u2014 o hub exige login.",
+      motivation:
+        "Lucas (13/09/2026): *\"eu nao vi onde vamos subir os anexos, a capa dos contratos, acho que isso nao foi construido\"*, e em seguida, com pressa: *\"tem que fazer o upload hoje\"* e *\"estamos montando os contratos hoje\"*.",
+    },
+    title: "A capa e os anexos do contrato ganham onde subir",
+    type: "novidade",
+    version: "1.330.0",
+  },
+  {
     buildTag: "2026-09-13-o-editor-destrava-e-a-borda-obedece",
     deployedAt: "2026-09-13T14:27:21-03:00",
     modules: [

@@ -114,7 +114,7 @@ export async function GET(request: Request) {
   let consulta = admin
     .from("temis_minutas")
     .select(
-      "id, nome, descricao, tipo, situacao, versao, origem_arquivo_nome, variaveis, publicada_em, criado_em, atualizado_em, criado_por_nome, atualizado_por_nome",
+      "id, nome, descricao, tipo, situacao, versao, origem_arquivo_nome, variaveis, publicada_em, criado_em, atualizado_em, criado_por_nome, atualizado_por_nome, capa_path, capa_nome",
     )
     .eq("workspace_id", "careli")
     .eq("enterprise_id", enterpriseId);

@@ -25,6 +25,10 @@ import {
 } from "@/lib/temis/documento-html";
 import { reassinarMidiasDoDocumento } from "@/lib/temis/reassinar-midias";
 import { acharVariavel, classificarVariaveis, conferirBlocos, extensosOrfaos } from "@/lib/temis/variaveis";
+import {
+  AnexosDoContrato,
+  CapaDaMinuta,
+} from "@/modules/apolo/blocks/empreendimentos/anexos-do-contrato";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
 // ABA MINUTAS — subir o contrato do loteador, editar e publicar.
@@ -69,6 +73,9 @@ type Props = {
 
 type LinhaDeMinuta = {
   atualizado_em: string;
+  /** A capa cadastrada nesta minuta — a fonte da variável `capa_contrato` (0156). */
+  capa_nome?: null | string;
+  capa_path?: null | string;
   /** Quem salvou por último. Diferente de quem criou: ver a 0137. */
   atualizado_por_nome?: null | string;
   criado_em: string;
@@ -500,6 +507,15 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
           </Faixa>
         ) : null}
 
+        {/* ⚠️ A CAPA É DA MINUTA, e não do empreendimento: é por isso que ela mora aqui dentro e os
+            anexos moram na lista. Lucas (07/09/2026): *"estamos fazendo nossas capas no canvas"* —
+            ela é desenhada fora e entra como arquivo. */}
+        <CapaDaMinuta
+          minutaId={aberta.id}
+          nomeInicial={aberta.capa_nome ?? null}
+          temCapaInicial={Boolean(aberta.capa_path)}
+        />
+
         <Conferencia conferencia={conferencia} />
 
         <EditorDeMinuta
@@ -554,6 +570,11 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
           </button>
         </div>
       </section>
+
+      {/* ⚠️ OS ANEXOS FICAM AQUI, JUNTO DA MINUTA, e não numa aba própria. O contrato é capa +
+          corpo + anexos, e quem está marcando `[anexo_1]` no texto precisa ver, na mesma tela, qual
+          peça está na posição 1. Separar em abas faria a posição virar decoreba. */}
+      <AnexosDoContrato enterpriseId={enterpriseId} />
 
       {/* ── A JANELA DA MINUTA NOVA ──────────────────────────────────────── */}
       {abrindoNova ? (
