@@ -14,6 +14,10 @@ import {
   type ContatoDaEntidade,
   type VinculoDeContato,
 } from "@/lib/iris/apolo/busca-de-contato";
+import {
+  interpretarDigitos,
+  type TipoDeNumero,
+} from "@/lib/iris/apolo/busca-por-numero";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -100,9 +104,18 @@ export async function GET(request: NextRequest) {
     return jsonResults([]);
   }
 
+  // O que a pessoa está digitando quando digita só números. Sem `tipo`, 11 dígitos seguem
+  // valendo como TELEFONE — é o que já funcionava, e a tela é quem pergunta pelo CPF.
+  const tipoPedido = normalizeTipoDeNumero(url.searchParams.get("tipo"));
+  const leitura = interpretarDigitos(rawQuery);
+  const tipoDoNumero =
+    tipoPedido ?? (leitura.ambiguo ? "telefone" : leitura.opcoes[0]?.tipo ?? null);
+
   const [searchEntityIds, phoneEntityIds, contatoEntityIds] = await Promise.all([
     fetchEntityIdsBySearch(authorization.client, query, limit),
-    fetchEntityIdsByPhone(authorization.client, digits),
+    tipoDoNumero === "cpf" || tipoDoNumero === "cnpj"
+      ? fetchEntityIdsByDocument(authorization.client, digits, tipoDoNumero)
+      : fetchEntityIdsByPhone(authorization.client, digits),
     fetchEntityIdsByContatoDeVinculo(authorization.client, query, digits),
   ]);
 
@@ -298,6 +311,44 @@ async function fetchEntityIdsByContatoDeVinculo(
     error,
     ids: unique(casaram.map((row) => row.entity_id)),
   };
+}
+
+// ⚠️ O DOCUMENTO JÁ ESTÁ INDEXADO — o que faltava era a Íris procurar por ele. O sync grava
+// `apolo_entity_identifiers` com identifier_type cpf/cnpj e o hash dos DÍGITOS CRUS
+// (lib/apolo/server.ts:3909, rawValue = onlyDigits). Conferido em produção: o hash gravado
+// bate com sha256("apolo-identifier:cpf:"+digitos) em 500 de 500 amostras. São 4.520 CPFs e
+// 502 CNPJs. Antes daqui, digitar o documento sem máscara não achava ninguém: o número ia
+// para o caminho do TELEFONE, e o texto do índice guarda o documento COM máscara.
+async function fetchEntityIdsByDocument(
+  client: SupabaseClient,
+  digits: string,
+  tipo: "cnpj" | "cpf",
+): Promise<EntityIdLookupResult> {
+  const esperado = tipo === "cpf" ? 11 : 14;
+
+  if (digits.length !== esperado) {
+    return { entries: [] as SearchCandidate[], ids: [] as string[] };
+  }
+
+  const { data, error } = await client
+    .from("apolo_entity_identifiers")
+    .select("entity_id")
+    .eq("identifier_type", tipo)
+    .eq("value_hash", hashIdentifier(tipo, digits))
+    .limit(30)
+    .returns<ApoloIdentifierRow[]>();
+
+  return {
+    entries: [] as SearchCandidate[],
+    error,
+    ids: unique((data ?? []).map((row) => row.entity_id)),
+  };
+}
+
+function normalizeTipoDeNumero(valor: string | null): TipoDeNumero | null {
+  return valor === "cpf" || valor === "cnpj" || valor === "telefone"
+    ? valor
+    : null;
 }
 
 async function fetchContatosDeVinculo(

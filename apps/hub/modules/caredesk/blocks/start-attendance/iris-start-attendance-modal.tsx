@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { IRIS_CENTRAIS, IRIS_CENTRAL_LABEL_CURTO } from "../../lib/centrais";
+import { interpretarDigitos } from "@/lib/iris/apolo/busca-por-numero";
 
 import type {
   IrisApoloClientOption,
@@ -194,6 +195,10 @@ export function IrisStartAttendanceModal({
     useState<IrisApoloClientOption | null>(null);
   // Qual número da entidade vai receber a mensagem. Vazio = o preferido que a rota escolheu.
   const [selectedPhone, setSelectedPhone] = useState("");
+  // ⚠️ ONZE DÍGITOS SÃO CPF **E** CELULAR COM DDD — por isso a tela pergunta em vez de adivinhar.
+  // Vazio = ainda não escolheu, e a busca segue valendo como telefone (o que já funcionava).
+  const [tipoDeNumero, setTipoDeNumero] = useState<"cnpj" | "cpf" | "telefone" | "">("");
+  const leituraDoNumero = useMemo(() => interpretarDigitos(query), [query]);
 
   const [entityDetail, setEntityDetail] =
     useState<IrisApoloContextEntity | null>(null);
@@ -375,7 +380,9 @@ export function IrisStartAttendanceModal({
       try {
         const accessToken = await getIrisAccessToken();
         const response = await fetch(
-          `/api/iris/apolo/search?q=${encodeURIComponent(normalized)}&limit=12`,
+          `/api/iris/apolo/search?q=${encodeURIComponent(normalized)}&limit=12${
+            tipoDeNumero ? `&tipo=${tipoDeNumero}` : ""
+          }`,
           {
             cache: "no-store",
             headers: { Authorization: `Bearer ${accessToken}` },
@@ -410,7 +417,12 @@ export function IrisStartAttendanceModal({
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [extractIrisApoloClientOptions, getIrisAccessToken, query]);
+  }, [extractIrisApoloClientOptions, getIrisAccessToken, query, tipoDeNumero]);
+
+  // Trocou o que está digitado, a escolha anterior não vale mais.
+  useEffect(() => {
+    setTipoDeNumero("");
+  }, [query]);
 
   // Limpa as selecoes ao trocar de cliente.
   useEffect(() => {
@@ -948,6 +960,52 @@ export function IrisStartAttendanceModal({
                   />
                 ) : null}
               </div>
+
+              {/* ⚠️ ONZE DIGITOS SAO CPF E TAMBEM CELULAR COM DDD. Em vez de adivinhar, a tela
+                  mostra o numero com as duas mascaras e deixa a pessoa reconhecer o que digitou. */}
+              {leituraDoNumero.ambiguo ? (
+                <div className="space-y-1.5 rounded-lg border border-line/70 bg-subtle/60 px-3 py-2.5">
+                  <p className="text-[11px] font-semibold text-ink-soft">
+                    O que voce esta digitando?
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {leituraDoNumero.opcoes.map((opcao) => {
+                      const ativo =
+                        (tipoDeNumero || "telefone") === opcao.tipo;
+
+                      return (
+                        <button
+                          key={opcao.tipo}
+                          type="button"
+                          onClick={() => setTipoDeNumero(opcao.tipo)}
+                          className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-semibold ${
+                            ativo
+                              ? "border-[#101820] bg-[#101820] text-white"
+                              : "border-line/70 bg-surface text-ink-soft hover:bg-subtle"
+                          }`}
+                        >
+                          {ativo ? (
+                            <Check className="size-3" aria-hidden="true" />
+                          ) : null}
+                          <span className="uppercase">
+                            {opcao.tipo === "cpf" ? "CPF" : "Telefone"}
+                          </span>
+                          <span
+                            className={
+                              ativo
+                                ? "font-normal text-white/70"
+                                : "font-normal text-ink-muted"
+                            }
+                          >
+                            {opcao.mascara}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
               {query.trim().length >= 2 ? (
                 <div className="max-h-60 overflow-y-auto rounded-lg border border-line/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
                   {results.length ? (
