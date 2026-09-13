@@ -142,7 +142,7 @@ const FLUXO: ReadonlyArray<{
   icone: LucideIcon;
   rotulo: string;
 }> = [
-  { cor: "#98a2b3", etapa: "disponivel", icone: Grid2x2, rotulo: "Disponível" },
+  { cor: "#2f7d4a", etapa: "disponivel", icone: Grid2x2, rotulo: "Disponível" },
   { cor: "#c9962b", etapa: "reservado", icone: Bookmark, rotulo: "Reserva" },
   { cor: "#3c73c0", etapa: "proposta", icone: FileText, rotulo: "Proposta" },
   {
@@ -152,12 +152,12 @@ const FLUXO: ReadonlyArray<{
     rotulo: "Contrato",
   },
   {
-    cor: "#454c5c",
+    cor: "#c2571a",
     etapa: "assinatura",
     icone: Signature,
     rotulo: "Assinatura",
   },
-  { cor: "#2f7d4a", etapa: "faturado", icone: Receipt, rotulo: "Faturamento" },
+  { cor: "#9b2c22", etapa: "faturado", icone: Receipt, rotulo: "Faturamento" },
 ];
 
 // ⚠️ A GRADE PINTA POR ETAPA, NÃO POR SITUAÇÃO (Lucas, 03/09/2026: *"em vez de vendida, ter
@@ -171,29 +171,42 @@ const FLUXO: ReadonlyArray<{
 // ⚠️ UM MATIZ POR ETAPA, e não tons do mesmo. Lucas (03/09/2026), olhando a legenda com
 // assinatura, faturamento e "vendida sem proposta" em três verdes: *"não gostei desses tons da
 // mesma cor, isso confunde na hora da visualização"*. Num quadro de 500 quadradinhos de 12px, dois
-// verdes vizinhos são a mesma cor — o olho não separa. Então cada etapa pegou um matiz distante no
-// círculo: amarelo, azul, violeta, ciano, verde.
+// verdes vizinhos são a mesma cor — o olho não separa. Cada etapa pega um matiz distante no
+// círculo: verde, amarelo, azul, violeta, laranja, vermelho — e o grafite fora do fluxo.
+//
+// ⚠️ A PALETA MUDOU EM 12/09/2026, por pedido do Lucas: disponível virou VERDE, assinatura virou
+// LARANJA, faturamento virou VERMELHO e bloqueado ficou com o GRAFITE que era da assinatura.
+// Reserva, proposta e contrato não se mexeram. O verde no estoque é a mesma convenção do espelho
+// público — verde é o que dá para comprar —, e agora as duas telas dizem a mesma coisa.
+//
+// ⚠️ AMARELO, LARANJA E VERMELHO SÃO VIZINHOS NO CÍRCULO, e é o preço desta paleta: reserva,
+// assinatura e faturamento caíram todos na faixa quente. O que os separa aqui não é o matiz, é a
+// LUMINOSIDADE — o amarelo é claro, o laranja é médio e o vermelho é escuro —, porque num
+// quadradinho de 12px a diferença de claro/escuro sobrevive e a de matiz não.
 //
 // ⚠️ E O QUE NÃO TEM PROPOSTA GANHA LISTRA, NÃO UM TOM. `vendida` e `reservada` (114 lotes que o
-// cadastro afirma sem proposta que sustente) precisam parecer OCUPADOS — se virassem cinza, se
-// misturariam ao disponível e alguém venderia de novo. A cor é a do estado, a listra é o "falta a
-// proposta": diferença de textura, que sobrevive ao quadradinho pequeno.
+// cadastro afirma sem proposta que sustente) precisam parecer OCUPADOS. Antes a `vendida` era
+// listrada sobre o verde do faturamento; com o verde passando para o ESTOQUE, manter a listra
+// verde faria o lote já vendido parecer disponível — o pior erro que esta tela pode cometer. Ela
+// segue o faturamento e agora é listrada sobre o vermelho. A cor é a do estado, a listra é o
+// "falta a proposta": diferença de textura, que sobrevive ao quadradinho pequeno.
 const AMARELO = "#f2c14e";
 const VERDE = "#3f9d5e";
+const VERMELHO = "#c0392b";
 
 const listrado = (cor: string, sombra: string) =>
   `repeating-linear-gradient(135deg, ${cor} 0 4px, ${sombra} 4px 8px)`;
 
 const COR_DA_ETAPA: Record<EtapaDoEspelho, string> = {
-  assinatura: "#454c5c",
-  bloqueada: "#e08276",
+  assinatura: "#ed7d31",
+  bloqueada: "#454c5c",
   contrato: "#9b7ed0",
-  disponivel: "var(--inc-soft)",
-  faturado: VERDE,
+  disponivel: VERDE,
+  faturado: VERMELHO,
   proposta: "#5b8dd6",
   reservada: listrado(AMARELO, "#d9a833"),
   reservado: AMARELO,
-  vendida: listrado(VERDE, "#2f7d4a"),
+  vendida: listrado(VERMELHO, "#9b2c22"),
 };
 
 /** A ordem da legenda é a do caminho: estoque, fluxo, e no fim o que está fora dele. */
@@ -213,15 +226,24 @@ const ROTULO_DA_ETAPA: Record<EtapaDoEspelho, string> = Object.fromEntries(
   LEGENDA.map((l) => [l.etapa, l.rotulo]),
 ) as Record<EtapaDoEspelho, string>;
 
-/** As etapas de fundo ESCURO, onde o número do lote precisa ser claro para continuar legível. */
-const FUNDO_ESCURO = new Set<EtapaDoEspelho>(["assinatura"]);
+/**
+ * As etapas de fundo ESCURO, onde o número do lote precisa ser claro para continuar legível.
+ *
+ * ⚠️ ESTA LISTA ANDA JUNTO COM A PALETA, e é o jeito mais fácil de a troca de cores sair errada.
+ * Até 12/09/2026 aqui havia só `assinatura`, porque era ela que carregava o grafite. O grafite
+ * passou para `bloqueada` e a assinatura virou laranja: sem mexer nesta linha, o número sairia
+ * branco sobre laranja e preto sobre grafite — ilegível nas duas pontas, e num quadradinho de 12px
+ * ninguém repara que o problema é o texto.
+ *
+ * ⚠️ `faturado` E `vendida` ENTRARAM porque o vermelho novo é escuro o bastante para engolir texto
+ * preto. `disponivel` saiu do caso especial: ele era `var(--inc-soft)`, um token que mudava com o
+ * tema, e por isso precisava de um texto que também mudasse; agora é um verde fixo como as outras
+ * etapas, e segue a mesma regra que todas.
+ */
+const FUNDO_ESCURO = new Set<EtapaDoEspelho>(["bloqueada", "faturado", "vendida"]);
 
 const textoNoQuadrado = (etapa: EtapaDoEspelho) =>
-  etapa === "disponivel"
-    ? T.muted
-    : FUNDO_ESCURO.has(etapa)
-      ? "rgb(255 255 255 / .9)"
-      : "rgb(0 0 0 / .6)";
+  FUNDO_ESCURO.has(etapa) ? "rgb(255 255 255 / .9)" : "rgb(0 0 0 / .6)";
 
 const dinheiro = (v: number) =>
   v >= 1_000_000

@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-12-cores-da-grade-de-unidades",
+    deployedAt: "2026-09-12T21:51:32-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**Disponivel agora e verde.** O estoque era cinza e se confundia com o fundo do quadro; agora ele e a cor mais visivel da grade, que e a mesma convencao do espelho publico (verde e o que da para comprar).",
+              "**Assinatura virou laranja e Faturamento virou vermelho.** Bloqueado ficou com o grafite que era da Assinatura.",
+              "**Lote vendido sem proposta continua listrado, mas agora sobre o vermelho.** Ele era listrado de verde: com o verde passando para o estoque, ele passaria a parecer lote livre, que e o pior erro que este quadro pode cometer.",
+              "A faixa do fluxo no topo mudou junto, para o cartao e o quadradinho continuarem sendo a mesma cor.",
+            ],
+            screen: "Mesa de Venda \u00b7 quadro de lotes",
+          },
+        ],
+      },
+    ],
+    rollback: "cb22ecaf",
+    technical: {
+      done: "A paleta vive num arquivo so (`modules/incorporador/hercules/TelaVenda.tsx`) e o grep pelos sete hexadecimais confirmou zero copia no repo, entao a troca e local. || ⚠️ TRES EFEITOS QUE O PEDIDO NAO MENCIONAVA E QUE QUEBRARIAM A TELA SE EU SO TROCASSE OS HEX: (1) `FUNDO_ESCURO` continha so `assinatura`, porque era ela que carregava o grafite \u2014 com o grafite indo para `bloqueada` e a assinatura virando laranja, o numero do lote sairia branco sobre laranja e preto sobre grafite, ilegivel nas duas pontas e num quadrado de 12px ninguem repara que o problema e o texto; a lista agora e `bloqueada`, `faturado` e `vendida`. (2) `vendida` era `listrado(VERDE, ...)` e o VERDE passou para o estoque: lote vendido sem proposta viva (114 deles) passaria a parecer disponivel; ele segue o faturamento e agora e listrado sobre o vermelho, mantendo a regra de que a cor e o estado e a listra e o falta-a-proposta. (3) `disponivel` era `var(--inc-soft)`, um token que mudava com o tema, e por isso tinha texto proprio (`T.muted`); virando verde fixo como as outras etapas, ele saiu do caso especial. || A FAIXA DO FLUXO usa os mesmos matizes em tom escuro e foi ajustada junto (`#2f7d4a` no disponivel, `#c2571a` na assinatura, `#9b2c22` no faturamento), senao cartao e quadradinho passariam a discordar. || ⚠️ AMARELO, LARANJA E VERMELHO SAO VIZINHOS NO CIRCULO, e e o preco desta paleta: reserva, assinatura e faturamento cairam todos na faixa quente. O que os separa nao e o matiz, e a LUMINOSIDADE (claro, medio, escuro) \u2014 num quadrado de 12px a diferenca de claro/escuro sobrevive e a de matiz nao. || ⚠️ PENDENTE DE DECISAO: na linha do tempo da unidade, `COR_DA_CLASSE` deriva de `COR_DA_ETAPA` e `cancelado` ja e `T.danger` (#c24135). Com o faturamento virando vermelho, fim bom e fim ruim ficam quase da mesma cor naquela lista. Nao mexi: a troca do cancelado nao foi pedida. || Typecheck limpo (11 de 11 tarefas).",
+      motivation:
+        "Lucas, 12/09/2026, com a lista escrita a mao: Assinatura laranja, Faturado vermelho, Bloqueado grafite, Disponivel verde \u2014 e Reserva, Proposta e Contrato marcados como ok, sem mexer.",
+    },
+    title: "As cores do quadro de lotes",
+    type: "melhoria",
+    version: "1.323.0",
+  },
+  {
     buildTag: "2026-09-12-temis-em-assinatura-conduz",
     deployedAt: "2026-09-12T11:41:59-03:00",
     modules: [
