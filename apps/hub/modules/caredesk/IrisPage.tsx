@@ -7502,7 +7502,30 @@ function extractIrisApoloClientOptions(
           )
         : [];
 
+      // ⚠️ PRESERVA A LISTA. Antes daqui só `phone` sobrevivia, e os demais números da
+      // entidade morriam no caminho entre a rota e a tela.
+      const contacts = Array.isArray(entity.contacts)
+        ? entity.contacts.filter(isIrisRecord).flatMap((contact) => {
+            const value = String(contact.value ?? "").trim();
+
+            return value
+              ? [
+                  {
+                    label: normalizeIrisText(contact.label),
+                    origem:
+                      contact.origem === "relacionamento"
+                        ? ("relacionamento" as const)
+                        : ("cadastro" as const),
+                    type: normalizeIrisText(contact.type),
+                    value,
+                  },
+                ]
+              : [];
+          })
+        : [];
+
       return {
+        contacts,
         documentMasked: normalizeIrisText(entity.documentMasked),
         firstName: extractFirstName(label),
         id: normalizeIrisIdentifier(entity.id, phone),

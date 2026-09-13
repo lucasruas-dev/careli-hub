@@ -192,6 +192,8 @@ export function IrisStartAttendanceModal({
   const [searching, setSearching] = useState(false);
   const [selectedClient, setSelectedClient] =
     useState<IrisApoloClientOption | null>(null);
+  // Qual número da entidade vai receber a mensagem. Vazio = o preferido que a rota escolheu.
+  const [selectedPhone, setSelectedPhone] = useState("");
 
   const [entityDetail, setEntityDetail] =
     useState<IrisApoloContextEntity | null>(null);
@@ -416,7 +418,39 @@ export function IrisStartAttendanceModal({
     setSelectedInstallments(new Set());
     setBlockedTicket(null);
     setError("");
+    setSelectedPhone("");
   }, [selectedClient]);
+
+  // Os números que a entidade tem, sem repetir — os da ficha e os do card "Contatos" do CRM.
+  const phoneOptions = useMemo(() => {
+    if (!selectedClient) {
+      return [];
+    }
+
+    const vistos = new Set<string>();
+    const opcoes: Array<{ label: string; value: string }> = [];
+
+    for (const contact of selectedClient.contacts ?? []) {
+      const value = digitsOnly(contact.value);
+
+      if (!value || vistos.has(value)) {
+        continue;
+      }
+
+      vistos.add(value);
+      opcoes.push({
+        label:
+          contact.label?.trim() ||
+          (contact.origem === "relacionamento" ? "Contato" : "Cadastro"),
+        value,
+      });
+    }
+
+    return opcoes;
+  }, [selectedClient]);
+
+  const activePhone =
+    selectedPhone || selectedClient?.phone || "";
 
   // Hidrata o portfolio (parcelas/contrato) do cliente — mesma fonte do cockpit.
   useEffect(() => {
@@ -429,7 +463,7 @@ export function IrisStartAttendanceModal({
       setLoadingDetail(true);
       try {
         const accessToken = await getIrisAccessToken();
-        const candidate = digitsOnly(selectedClient.phone) || selectedClient.label;
+        const candidate = digitsOnly(activePhone) || selectedClient.label;
         const response = await fetch(
           `/api/apolo/relationships?q=${encodeURIComponent(candidate)}&limit=20`,
           {
@@ -462,7 +496,7 @@ export function IrisStartAttendanceModal({
 
   const clientTickets = useMemo(() => {
     if (!selectedClient) return [] as IrisTicket[];
-    const phoneDigits = digitsOnly(selectedClient.phone);
+    const phoneDigits = digitsOnly(activePhone);
     return data.tickets
       .filter((ticket) => {
         const entityId = ticket.crm360Registration?.entityId;
@@ -714,7 +748,7 @@ export function IrisStartAttendanceModal({
           relatedUnit:
             contextMode === "parcelas" ? installmentsUnitLabel : "",
         },
-        phone: selectedClient.phone,
+        phone: activePhone,
         profileId: selectedProfile?.id,
         queueId: selectedQueue.id,
         subject: selectedProfile?.name,
@@ -839,7 +873,7 @@ export function IrisStartAttendanceModal({
                 </p>
                 <p className="truncate text-[11px] text-ink-muted">
                   {selectedClient.profileLabel} ·{" "}
-                  {formatPhoneForDisplay(selectedClient.phone)}
+                  {formatPhoneForDisplay(activePhone)}
                 </p>
               </div>
               <button
@@ -855,7 +889,49 @@ export function IrisStartAttendanceModal({
                 trocar
               </button>
             </div>
-          ) : (
+          ) : null}
+
+          {/* Os outros números da entidade — inclusive os do card "Contatos" do CRM, que até
+              aqui nunca chegavam à tela. Só aparece quando há mais de um para escolher. */}
+          {selectedClient && phoneOptions.length > 1 ? (
+            <div className="space-y-1.5 rounded-xl border border-line/70 px-3 py-2.5">
+              <p className="text-[11px] font-semibold text-ink-soft">
+                Enviar para
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {phoneOptions.map((option) => {
+                  const ativo = digitsOnly(activePhone) === option.value;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setSelectedPhone(option.value)}
+                      className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-semibold ${
+                        ativo
+                          ? "border-[#101820] bg-[#101820] text-white"
+                          : "border-line/70 bg-surface text-ink-soft hover:bg-subtle"
+                      }`}
+                    >
+                      {ativo ? (
+                        <Check className="size-3" aria-hidden="true" />
+                      ) : null}
+                      <span>{formatPhoneForDisplay(option.value)}</span>
+                      <span
+                        className={
+                          ativo ? "font-normal text-white/70" : "font-normal text-ink-muted"
+                        }
+                      >
+                        {option.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {selectedClient ? null : (
             <div className="space-y-2">
               <div className="flex h-10 items-center gap-2 rounded-lg border border-line/70 bg-surface px-3">
                 <Search className="size-4 text-ink" aria-hidden="true" />

@@ -4,12 +4,27 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { authorizeIrisMetaRequest } from "@/lib/iris/meta-server";
+import {
+  contatosDoVinculo,
+  escolherTelefone,
+  filtrarVinculosPorTermo,
+  mesclarContatos,
+  ordenarPorRelevancia,
+  type ContatoDaEntidade,
+  type VinculoDeContato,
+} from "@/lib/iris/apolo/busca-de-contato";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 type ApoloSearchEntryRow = {
+  display_name?: string | null;
   entity_id: string;
+};
+
+type SearchCandidate = {
+  displayName?: string | null;
+  id: string;
 };
 
 type ApoloIdentifierRow = {
@@ -43,6 +58,7 @@ type ApoloContactRow = {
 };
 
 type EntityIdLookupResult = {
+  entries: SearchCandidate[];
   error?: unknown;
   ids: string[];
 };
@@ -82,11 +98,15 @@ export async function GET(request: NextRequest) {
     return jsonResults([]);
   }
 
-  const [searchEntityIds, phoneEntityIds] = await Promise.all([
+  const [searchEntityIds, phoneEntityIds, contatoEntityIds] = await Promise.all([
     fetchEntityIdsBySearch(authorization.client, query, limit),
     fetchEntityIdsByPhone(authorization.client, digits),
+    fetchEntityIdsByContatoDeVinculo(authorization.client, query, digits),
   ]);
 
+  // ⚠️ A FONTE NOVA NÃO DERRUBA A BUSCA. Os contatos de vínculo são um acréscimo: se aquela
+  // consulta falhar, o operador ainda precisa achar a entidade pelo nome. Só as duas fontes
+  // originais são fatais.
   if (searchEntityIds.error || phoneEntityIds.error) {
     return NextResponse.json(
       { error: "Nao foi possivel consultar a base CRM 360 do Apolo." },
@@ -94,36 +114,45 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // ⚠️ O CORTE TEM QUE VIR DEPOIS DO RANQUEAMENTO, NUNCA ANTES. Antes daqui a rota lia 48 ids
+  // em ordem FÍSICA do heap e cortava em 36 e depois em 12 — e a imobiliária, cujo nome está
+  // copiado no índice de cada cliente dela, era sempre a última da fila. Medido: "rr solucoes"
+  // casa 170 linhas, a própria RR Soluções é a 170ª, e 82 de 472 imobiliárias sumiam assim.
   const entityIds = unique([
     ...phoneEntityIds.ids,
-    ...searchEntityIds.ids,
+    ...contatoEntityIds.ids,
+    ...ordenarPorRelevancia(searchEntityIds.entries, rawQuery).map(
+      (entry) => entry.id,
+    ),
   ]).slice(0, limit * 3);
 
   if (!entityIds.length) {
     return jsonResults([]);
   }
 
-  const [entitiesResult, profilesResult, contactsResult] = await Promise.all([
-    authorization.client
-      .from("apolo_entities")
-      .select(
-        "id,display_name,legal_name,trade_name,document_masked,entity_kind,primary_city,primary_state",
-      )
-      .in("id", entityIds)
-      .neq("status", "archived")
-      .returns<ApoloEntityRow[]>(),
-    authorization.client
-      .from("apolo_entity_profiles")
-      .select("entity_id,profile,status")
-      .in("entity_id", entityIds)
-      .returns<ApoloProfileRow[]>(),
-    authorization.client
-      .from("apolo_contacts")
-      .select("entity_id,contact_type,label,value,status,is_primary")
-      .in("entity_id", entityIds)
-      .in("contact_type", ["whatsapp", "phone"])
-      .returns<ApoloContactRow[]>(),
-  ]);
+  const [entitiesResult, profilesResult, contactsResult, contatosDeVinculo] =
+    await Promise.all([
+      authorization.client
+        .from("apolo_entities")
+        .select(
+          "id,display_name,legal_name,trade_name,document_masked,entity_kind,primary_city,primary_state",
+        )
+        .in("id", entityIds)
+        .neq("status", "archived")
+        .returns<ApoloEntityRow[]>(),
+      authorization.client
+        .from("apolo_entity_profiles")
+        .select("entity_id,profile,status")
+        .in("entity_id", entityIds)
+        .returns<ApoloProfileRow[]>(),
+      authorization.client
+        .from("apolo_contacts")
+        .select("entity_id,contact_type,label,value,status,is_primary")
+        .in("entity_id", entityIds)
+        .in("contact_type", ["whatsapp", "phone"])
+        .returns<ApoloContactRow[]>(),
+      fetchContatosDeVinculo(authorization.client, entityIds),
+    ]);
 
   if (
     entitiesResult.error ||
@@ -144,10 +173,15 @@ export async function GET(request: NextRequest) {
   const contactsByEntity = groupRowsBy(contactsResult.data ?? [], "entity_id");
   const results = (entitiesResult.data ?? [])
     .map((entity): IrisApoloSearchResult | null => {
-      const contacts = (contactsByEntity.get(entity.id) ?? [])
-        .map(mapApoloContact)
-        .sort(sortApoloContacts);
-      const phone = pickPreferredPhone(contacts);
+      // Os contatos da ficha primeiro, os do card "Contatos" do CRM depois — sem repetir
+      // número, porque 62 dos 258 já existem nos dois lugares.
+      const contacts = mesclarContatos(
+        (contactsByEntity.get(entity.id) ?? [])
+          .map(mapApoloContact)
+          .sort(sortApoloContacts),
+        contatosDeVinculo.get(entity.id) ?? [],
+      );
+      const phone = escolherTelefone(contacts);
 
       if (!phone) {
         return null;
@@ -183,26 +217,100 @@ export async function GET(request: NextRequest) {
   return jsonResults(results);
 }
 
+// ⚠️ LÊ LARGO PARA RANQUEAR, ENTREGA ESTREITO PARA NÃO ESTOURAR A URL. Medido com EXPLAIN
+// ANALYZE: varrer as 5.118 linhas do índice custa ~4ms, então o teto antigo de 48 não comprava
+// desempenho nenhum — só cortava a entidade certa antes de qualquer ordenação. O corte de
+// verdade acontece depois, sobre ids já ranqueados, porque `.in()` com muitos uuid estoura a URL.
+const TETO_DE_CANDIDATOS = 400;
+
 async function fetchEntityIdsBySearch(
   client: SupabaseClient,
   query: string,
   limit: number,
 ): Promise<EntityIdLookupResult> {
   if (query.length < 2) {
-    return { ids: [] as string[] };
+    return { entries: [] as SearchCandidate[], ids: [] as string[] };
   }
 
   const { data, error } = await client
     .from("apolo_search_entries")
-    .select("entity_id")
+    .select("entity_id,display_name")
     .ilike("normalized_text", `%${query}%`)
-    .limit(limit * 4)
+    .limit(Math.max(limit * 4, TETO_DE_CANDIDATOS))
     .returns<ApoloSearchEntryRow[]>();
 
+  const entries: SearchCandidate[] = [];
+  const vistos = new Set<string>();
+
+  for (const row of data ?? []) {
+    if (vistos.has(row.entity_id)) {
+      continue;
+    }
+
+    vistos.add(row.entity_id);
+    entries.push({ displayName: row.display_name, id: row.entity_id });
+  }
+
   return {
+    entries,
     error,
-    ids: unique((data ?? []).map((row) => row.entity_id)),
+    ids: entries.map((entry) => entry.id),
   };
+}
+
+// A TERCEIRA FONTE: o contato que o Apolo guarda como vínculo, não como telefone da ficha.
+// O card "Contatos" da aba Relacionamentos grava em `apolo_relationships` com metadata.kind
+// "contato" — nome no label, telefone no metadata.phone. Medido: 356 contatos em 253 entidades,
+// e 196 dos 258 telefones não existem em `apolo_contacts`. Sem isto, procurar pelo nome do
+// contato (ou pelo número dele) não achava nada.
+async function fetchEntityIdsByContatoDeVinculo(
+  client: SupabaseClient,
+  query: string,
+  digits: string,
+): Promise<EntityIdLookupResult> {
+  if (query.length < 2 && digits.length < 8) {
+    return { entries: [] as SearchCandidate[], ids: [] as string[] };
+  }
+
+  // ⚠️ CARREGA E FILTRA EM MEMÓRIA, de propósito. O telefone mora no metadata COM máscara
+  // (194 dos 258 têm pontuação, 111 têm hífen), então `ilike` com dígitos crus erraria 43%
+  // deles. São 356 vínculos hoje — folgado diante do teto de 1.000 linhas do PostgREST.
+  // ⚠️ SE ESTE NÚMERO CHEGAR PERTO DE 1.000, o corte volta calado: aí é hora de gravar um
+  // telefone normalizado na própria linha e filtrar no banco.
+  const { data, error } = await client
+    .from("apolo_relationships")
+    .select("entity_id,label,metadata")
+    .eq("metadata->>kind", "contato")
+    .neq("status", "archived")
+    .limit(1000)
+    .returns<VinculoDeContato[]>();
+
+  const casaram = filtrarVinculosPorTermo(data ?? [], query, digits);
+
+  return {
+    entries: [] as SearchCandidate[],
+    error,
+    ids: unique(casaram.map((row) => row.entity_id)),
+  };
+}
+
+async function fetchContatosDeVinculo(
+  client: SupabaseClient,
+  entityIds: string[],
+) {
+  if (!entityIds.length) {
+    return new Map<string, ContatoDaEntidade[]>();
+  }
+
+  const { data } = await client
+    .from("apolo_relationships")
+    .select("entity_id,label,metadata")
+    .in("entity_id", entityIds)
+    .eq("metadata->>kind", "contato")
+    .neq("status", "archived")
+    .returns<VinculoDeContato[]>();
+
+  return contatosDoVinculo(data ?? []);
 }
 
 async function fetchEntityIdsByPhone(
@@ -210,7 +318,7 @@ async function fetchEntityIdsByPhone(
   digits: string,
 ): Promise<EntityIdLookupResult> {
   if (digits.length < 8) {
-    return { ids: [] as string[] };
+    return { entries: [] as SearchCandidate[], ids: [] as string[] };
   }
 
   const hashes = buildBrazilPhoneVariants(digits).map((variant) =>
@@ -218,7 +326,7 @@ async function fetchEntityIdsByPhone(
   );
 
   if (!hashes.length) {
-    return { ids: [] as string[] };
+    return { entries: [] as SearchCandidate[], ids: [] as string[] };
   }
 
   const { data, error } = await client
@@ -230,16 +338,17 @@ async function fetchEntityIdsByPhone(
     .returns<ApoloIdentifierRow[]>();
 
   return {
+    entries: [] as SearchCandidate[],
     error,
     ids: unique((data ?? []).map((row) => row.entity_id)),
   };
 }
 
-function mapApoloContact(row: ApoloContactRow) {
+function mapApoloContact(row: ApoloContactRow): ContatoDaEntidade {
   return {
     label: row.label,
+    origem: "cadastro",
     primary: Boolean(row.is_primary),
-    status: row.status,
     type: row.contact_type,
     value: row.value,
   };
@@ -257,23 +366,9 @@ function sortApoloContacts(first: ReturnType<typeof mapApoloContact>, second: Re
   return 0;
 }
 
-function pickPreferredPhone(
-  contacts: Array<ReturnType<typeof mapApoloContact>>,
-) {
-  const contact =
-    contacts.find((item) => item.type === "whatsapp") ?? contacts[0];
-  const digits = onlyDigits(contact?.value ?? "");
-
-  if (digits.length >= 12 && digits.length <= 15) {
-    return digits;
-  }
-
-  if (digits.length === 10 || digits.length === 11) {
-    return `55${digits}`;
-  }
-
-  return null;
-}
+// `pickPreferredPhone` saiu daqui: ele olhava só o primeiro contato e, se o whatsapp estivesse
+// quebrado, descartava a entidade inteira sem tentar o telefone seguinte. Agora é
+// `escolherTelefone`, em lib/iris/apolo/busca-de-contato.ts, que percorre todos e tem teste.
 
 function jsonResults(results: unknown[]) {
   return NextResponse.json(

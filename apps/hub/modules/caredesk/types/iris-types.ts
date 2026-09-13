@@ -258,7 +258,18 @@ export type IrisSnapshot = {
   waitingOperator: number;
 };
 
+export type IrisApoloContactOption = {
+  label?: string | null;
+  origem?: "cadastro" | "relacionamento" | null;
+  type?: string | null;
+  value: string;
+};
+
 export type IrisApoloClientOption = {
+  // ⚠️ A LISTA INTEIRA, NÃO SÓ `phone`. A rota sempre mandou todos os números da entidade e a
+  // tela jogava fora: 337 entidades têm mais de um número e 347 nunca chegavam ao operador.
+  // Aqui entram também os contatos do card "Contatos" do CRM (sócio, responsável, cônjuge).
+  contacts: IrisApoloContactOption[];
   documentMasked?: string | null;
   firstName: string;
   id: string;
