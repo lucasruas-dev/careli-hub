@@ -11,6 +11,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // arraste de clique) é idêntico, e cada uma dessas três já custou um defeito visível em 10/09/2026.
 // Duas cópias divergiriam na primeira correção.
 //
+// ⚠️ E DIVERGIRAM: ATÉ 14/09/2026 ESTE COMENTÁRIO ERA FALSO. O espelho público tinha a própria
+// cópia do desenho, e por isso o conserto do clique no buraco do `evenodd` — feito aqui pela
+// manhã e anunciado no changelog 1.338.0 — NÃO chegou à tela onde o Lucas viu o defeito: a Mesa
+// consertou, o público continuou perdendo o clique. A cópia foi apagada e o público passou a usar
+// este motor. É o custo exato que o parágrafo acima previa, cobrado no mesmo dia.
+//
 // ⚠️ A ARTE VAI DENTRO DO SVG, e não ao lado. Como dois irmãos sobrepostos — uma <img> e um <svg>
 // —, eles só ficam em registro enquanto o container tiver EXATAMENTE a proporção do viewBox: no
 // primeiro pixel de diferença a imagem estica (width/height 100%) e o SVG não (preserveAspectRatio
@@ -48,6 +54,7 @@ export function areaDeToque(d: string): string {
 
 export function MapaDeLotes({
   aoClicar,
+  clicavel,
   corDoLote,
   destacado,
   fundo,
@@ -57,6 +64,15 @@ export function MapaDeLotes({
 }: {
   /** Chamado com o código do lote. Não dispara quando o gesto foi arraste. */
   aoClicar: (codigo: string) => void;
+  /**
+   * Este contorno abre alguma coisa? Ausente, todos abrem.
+   *
+   * ⚠️ É O ÚNICO AVISO PRÉVIO QUE O MAPA DÁ. Nem todo contorno do masterplan tem unidade no
+   * cadastro, e a mãozinha do cursor sobre um deles promete um painel que não vai abrir. Quem
+   * devolve `false` aqui ganha o cursor de seta — a pessoa descobre antes de clicar, e não
+   * depois de clicar e nada acontecer.
+   */
+  clicavel?: (codigo: string) => boolean;
   /** A tinta de cada lote. É a ÚNICA diferença de aparência entre as duas telas. */
   corDoLote: (codigo: string) => string;
   /** O lote com contorno branco — o que está aberto no painel. */
@@ -275,7 +291,9 @@ export function MapaDeLotes({
                   if (arrasto.current?.moveu) return;
                   aoClicar(c.codigo);
                 }}
-                style={{ cursor: "pointer" }}
+                style={{
+                  cursor: clicavel?.(c.codigo) === false ? "default" : "pointer",
+                }}
               />
             </g>
           ))}

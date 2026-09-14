@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LoteDoEspelho } from "@/lib/hercules/espelho/estado-do-espelho";
 import type { PlanoPublico } from "@/lib/hercules/espelho/planos-publicos";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
+import { MapaDeLotes } from "@/modules/espelho/MapaDeLotes";
 import {
   type CondicoesDaProposta,
   SimuladorDeProposta,
@@ -226,7 +227,10 @@ export function EspelhoPublico({
     fetch(`/api/publico/espelho/geometria?e=${encodeURIComponent(token)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((g: Geometria | null) => {
-        if (vivo && g?.contornos) setGeometria(g);
+        // ⚠️ VAZIO NÃO É MAPA. `g?.contornos` aceita array vazio, e aí `temMapa` continua
+        // verdadeiro e a tela mostra um palco com a foto aérea e nenhum lote clicável. Exigindo
+        // pelo menos um contorno, ela cai na GRADE — que é a mesma informação, sem a planta.
+        if (vivo && g?.contornos?.length) setGeometria(g);
       })
       .catch(() => {
         // Sem geometria o mapa não desenha, mas a GRADE continua — e ela tem a mesma informação.
@@ -410,7 +414,24 @@ function Cabecalho({
   );
 }
 
-// ── O MAPA: arte de fundo + contornos, com zoom e arraste ──────────────────────────
+// ── O MAPA: o motor compartilhado, com as cores do público ──────────────────────────
+//
+// ⚠️ AQUI HAVIA UMA SEGUNDA CÓPIA DO MAPA, E ELA CUSTOU UM DEFEITO PUBLICADO. Até 14/09/2026 esta
+// tela desenhava o próprio SVG, com o próprio zoom e o próprio arraste — 220 linhas que eram cópia
+// literal de `modules/espelho/MapaDeLotes`, diferindo só nos nomes das variáveis. Naquela manhã o
+// clique perdido no miolo do lote foi consertado NO MOTOR, e o changelog anunciou o conserto nesta
+// tela: a Mesa de Venda passou a funcionar e o espelho público, que é onde o Lucas tinha visto o
+// defeito e onde as medições foram feitas (89 de 97 lotes no Villa Paris, 190 de 250 no Jardim das
+// Gerais), continuou exatamente como estava.
+//
+// Lucas, no mesmo dia: *"vamos parar de bater cabeça, antes de fazer algo, olha no hub se não temos
+// isso já pronto"*. A cópia foi apagada.
+//
+// ⚠️ O QUE ESTA TELA TEM DE DIFERENTE ENTRA POR PROP, e é só isto — o resto era idêntico:
+//
+//   • a COR: duas, e não as nove etapas do funil da Mesa;
+//   • o CLIQUE: devolve o lote inteiro, e `null` quando o contorno não tem cadastro;
+//   • o CURSOR: seta, e não mãozinha, onde não há nada para abrir.
 
 function Mapa({
   escolhido,
@@ -420,220 +441,33 @@ function Mapa({
   token,
 }: {
   escolhido: LoteDoEspelho | null;
-  geometria: Geometria;
+  geometria: { contornos: { codigo: string; d: string }[]; viewBox: string };
   onEscolher: (l: LoteDoEspelho | null) => void;
   porCodigo: Map<string, LoteDoEspelho>;
   token: string;
 }) {
-  const cena = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(1);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-
-  // ⚠️ O ARRASTE PRECISA SABER SE HOUVE ARRASTE. Sem isto, soltar o botão depois de mover o mapa
-  // dispara o `onClick` do lote que estava sob o cursor e o painel abre sozinho — foi o "está
-  // dando erro" que o Lucas viu em 10/09/2026. Guardamos a distância percorrida, e o clique só
-  // vale abaixo dela.
-  const arrasto = useRef<null | {
-    /** Se a cena chegou a prender o ponteiro. Só acontece quando o gesto vira arraste. */
-    capturou: boolean;
-    moveu: boolean;
-    px: number;
-    py: number;
-    x: number;
-    y: number;
-  }>(null);
-
-  const ZMIN = 1;
-  const ZMAX = 8;
-  const TOLERANCIA_DE_CLIQUE = 4;
-
-  // ⚠️ A ARTE TEM DE CABER INTEIRA, e é o viewBox que dá a proporção. O primeiro desenho punha
-  // `width: 100%` na imagem: num mapa mais alto que a janela, o resto saía pela borda e o
-  // espelho aparecia CORTADO (Lucas, 10/09/2026: *"o espelho não pode ser cortada"*). Com
-  // `aspect-ratio` mais `max-width`/`max-height`, o próprio navegador faz o "contain" — e a
-  // imagem e o SVG ficam no MESMO retângulo, que é o que mantém os contornos no lugar.
-  const caixa = useMemo(() => {
-    const p = geometria.viewBox.trim().split(/\s+/).map(Number);
-    // `noUncheckedIndexedAccess`: um viewBox malformado devolve `undefined` nos indices, e o
-    // fallback tem de existir — sem ele o mapa nao desenharia e nada diria por que.
-    const num = (i: number, padrao: number): number => {
-      const v = p[i];
-      return typeof v === "number" && Number.isFinite(v) ? v : padrao;
-    };
-    const x = num(0, 0);
-    const y = num(1, 0);
-    const largura = num(2, 3840) > 0 ? num(2, 3840) : 3840;
-    const altura = num(3, 2160) > 0 ? num(3, 2160) : 2160;
-    return { altura, largura, x, y };
-  }, [geometria.viewBox]);
-
-
-  const aplicarZoom = useCallback(
-    (alvo: number, clienteX: number, clienteY: number) => {
-      const caixa = cena.current?.getBoundingClientRect();
-      if (!caixa) return;
-      setZoom((atual) => {
-        const novo = Math.min(ZMAX, Math.max(ZMIN, alvo));
-        if (novo === atual) return atual;
-        // Ancora no cursor: escalar a partir do canto faz o ponto de interesse fugir da tela.
-        const px = clienteX - caixa.left - caixa.width / 2;
-        const py = clienteY - caixa.top - caixa.height / 2;
-        setPos((atualPos) =>
-          novo === ZMIN
-            ? { x: 0, y: 0 }
-            : {
-                x: px - (px - atualPos.x) * (novo / atual),
-                y: py - (py - atualPos.y) * (novo / atual),
-              },
-        );
-        return novo;
-      });
-    },
-    [],
-  );
-
-  // ⚠️ A RODA SOZINHA DÁ ZOOM, sem Ctrl. Lucas (10/09/2026): *"o zoom eu pensei em usar o scroll
-  // do mouse"*. `passive: false` é obrigatório para o preventDefault valer — senão a página rola
-  // junto e o mapa foge.
-  useEffect(() => {
-    const el = cena.current;
-    if (!el) return;
-    const naRoda = (ev: WheelEvent) => {
-      ev.preventDefault();
-      aplicarZoom(zoom * (ev.deltaY < 0 ? 1.18 : 1 / 1.18), ev.clientX, ev.clientY);
-    };
-    el.addEventListener("wheel", naRoda, { passive: false });
-    return () => el.removeEventListener("wheel", naRoda);
-  }, [aplicarZoom, zoom]);
-
-  // ⚠️ O ARRASTE VIVE NA CENA, e não no palco que sofre o transform. No palco, o ponteiro que
-  // desce sobre um `<path>` do SVG faz o alvo do evento ser o path, e a captura no elemento
-  // errado solta o arraste no meio do movimento.
-  // ⚠️ A CAPTURA NÃO ACONTECE NO `pointerdown` — E ESSA É A CORREÇÃO. Lucas (10/09/2026): *"quando
-  // eu dou zoom e clico no lote não abre o simulador"*. `setPointerCapture` redireciona os eventos
-  // seguintes para o elemento que capturou, e o `click` passa a nascer NA CENA em vez de no
-  // `<path>` do lote: com o mapa afastado o clique funcionava (não havia captura, porque o arraste
-  // só liga acima do zoom mínimo), e ao aproximar parava de funcionar. Agora a cena só captura
-  // quando o ponteiro ANDA de verdade — clique parado nunca captura, e o lote recebe o evento.
-  const aoDescer = useCallback(
-    (ev: React.PointerEvent<HTMLDivElement>) => {
-      if (zoom <= ZMIN) return;
-      arrasto.current = {
-        capturou: false,
-        moveu: false,
-        px: pos.x,
-        py: pos.y,
-        x: ev.clientX,
-        y: ev.clientY,
-      };
-    },
-    [pos.x, pos.y, zoom],
-  );
-
-  const aoMover = useCallback((ev: React.PointerEvent<HTMLDivElement>) => {
-    const a = arrasto.current;
-    if (!a) return;
-    const dx = ev.clientX - a.x;
-    const dy = ev.clientY - a.y;
-
-    if (!a.moveu && (Math.abs(dx) > TOLERANCIA_DE_CLIQUE || Math.abs(dy) > TOLERANCIA_DE_CLIQUE)) {
-      a.moveu = true;
-      // Só a partir daqui vale prender o ponteiro: o gesto virou arraste, e sem a captura ele se
-      // perderia ao sair de cima do mapa.
-      try {
-        cena.current?.setPointerCapture(ev.pointerId);
-        a.capturou = true;
-      } catch {
-        // Ponteiro que já sumiu (toque cancelado): o arraste segue sem captura.
-      }
-    }
-
-    if (a.moveu) setPos({ x: a.px + dx, y: a.py + dy });
-  }, []);
-
-  const aoSoltar = useCallback((ev: React.PointerEvent<HTMLDivElement>) => {
-    if (arrasto.current?.capturou && cena.current?.hasPointerCapture(ev.pointerId)) {
-      cena.current.releasePointerCapture(ev.pointerId);
-    }
-    // ⚠️ A BANDEIRA SOBREVIVE AO CLIQUE. O `onClick` do path roda DEPOIS do pointerup, e é ele
-    // que consulta `moveu` — limpar aqui, direto, faria o painel abrir no fim de todo arraste.
-    const marca = arrasto.current;
-    if (marca?.moveu) {
-      setTimeout(() => {
-        if (arrasto.current === marca) arrasto.current = null;
-      }, 0);
-      return;
-    }
-    arrasto.current = null;
-  }, []);
-
   return (
-    <div
-      onPointerCancel={aoSoltar}
-      onPointerDown={aoDescer}
-      onPointerMove={aoMover}
-      onPointerUp={aoSoltar}
-      ref={cena}
-      style={{ ...ESTILO.cena, cursor: zoom > ZMIN ? "grab" : "default" }}
-    >
-      <div
-        style={{
-          ...ESTILO.palcoDoMapa,
-          transform: `translate(${pos.x}px, ${pos.y}px) scale(${zoom})`,
-        }}
-      >
-        {/* ⚠️ A ARTE VAI DENTRO DO SVG, e não ao lado dele. Como dois irmãos — uma <img> e um
-            <svg> sobrepostos — eles só ficam em registro enquanto o container tiver EXATAMENTE a
-            proporção do viewBox: no primeiro pixel de diferença a imagem estica (width/height
-            100%) e o SVG não (preserveAspectRatio mantém a proporção), e os contornos saem de
-            cima dos lotes. Foi o que o Lucas viu em 10/09/2026: *"ficou todo desconfigurado"*.
-            Dentro do SVG os dois compartilham o mesmo sistema de coordenadas — o alinhamento
-            deixa de depender do CSS e passa a ser garantido pelo próprio viewBox, que é como o
-            SVG original do projetista já vinha montado. */}
-        <svg
-          preserveAspectRatio="xMidYMid meet"
-          style={ESTILO.svg}
-          viewBox={geometria.viewBox}
-        >
-          <image
-            height={caixa.altura}
-            href={`/api/publico/espelho/arte?e=${encodeURIComponent(token)}`}
-            width={caixa.largura}
-            x={caixa.x}
-            y={caixa.y}
-          />
-
-          {geometria.contornos.map((c) => {
-            const lote = porCodigo.get(c.codigo);
-            // ⚠️ CONTORNO SEM LOTE NO CADASTRO SAI AZUL, NUNCA VERDE. Um lote sem cor seria lido
-            // como disponível por quem olha — e sem cadastro não há como afirmar que está.
-            const disponivel = lote?.situacao === "disponivel";
-            return (
-              <path
-                d={c.d}
-                fill={disponivel ? VERDE : AZUL}
-                // A planta aparece por baixo: é ela que traz número, metragem e rua.
-                fillOpacity={OPACIDADE}
-                fillRule="evenodd"
-                key={c.codigo}
-                onClick={() => {
-                  // Arrastou o mapa? Então não foi clique em lote.
-                  if (arrasto.current?.moveu) return;
-                  onEscolher(lote ?? null);
-                }}
-                // Sem traço, como no C2X — só o lote escolhido ganha contorno, e é ele que
-                // diz "é este aqui" quando o painel abre.
-                stroke={escolhido?.codigo === c.codigo ? "#ffffff" : "none"}
-                strokeWidth={escolhido?.codigo === c.codigo ? 3 : 0}
-                style={{ cursor: lote ? "pointer" : "default" }}
-                vectorEffect="non-scaling-stroke"
-              />
-            );
-          })}
-        </svg>
-      </div>
-
-    </div>
+    <MapaDeLotes
+      // ⚠️ O `?? null` É O COMPORTAMENTO DE HOJE, E NÃO UM DESCUIDO. Clicar num contorno sem
+      // cadastro FECHA o painel. A Mesa faz o contrário (ignora o clique), e copiar aquilo aqui
+      // deixaria o corretor lendo preço e simulação do lote ANTERIOR achando que são do contorno
+      // que ele acabou de tocar — na frente do cliente.
+      aoClicar={(codigo) => onEscolher(porCodigo.get(codigo) ?? null)}
+      clicavel={(codigo) => porCodigo.has(codigo)}
+      // ⚠️ CONTORNO SEM LOTE NO CADASTRO SAI AZUL, NUNCA VERDE — e nunca transparente. Um lote sem
+      // cor seria lido como disponível por quem olha, e sem cadastro não há como afirmar que está.
+      // A função da Mesa devolve "transparent" para o que está fora do filtro de etapa; reusá-la
+      // aqui pintaria de nada, sobre a foto aérea, o que ninguém conferiu.
+      corDoLote={(codigo) =>
+        porCodigo.get(codigo)?.situacao === "disponivel" ? VERDE : AZUL
+      }
+      destacado={escolhido?.codigo ?? null}
+      geometria={geometria}
+      // O padrão do motor já é 0.6, o mesmo OPACIDADE medido no espelho do C2X. Explícito porque é
+      // número medido, não escolhido: ver o aviso das cores no topo deste arquivo.
+      opacidade={OPACIDADE}
+      urlDaArte={`/api/publico/espelho/arte?e=${encodeURIComponent(token)}`}
+    />
   );
 }
 
@@ -1215,17 +1049,6 @@ const ESTILO: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     padding: "12px 16px",
   },
-  cena: {
-    alignItems: "center",
-    display: "flex",
-    flex: 1,
-    justifyContent: "center",
-    minHeight: 0,
-    overflow: "hidden",
-    position: "relative",
-    // Sem `touch-action: none` o navegador do celular rola a pagina em vez de arrastar o mapa.
-    touchAction: "none",
-  },
   fechar: {
     background: "transparent",
     border: "none",
@@ -1275,22 +1098,8 @@ const ESTILO: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
   },
   palco: { display: "flex", flex: 1, flexDirection: "column", minHeight: 0, position: "relative" },
-  // ⚠️ NADA DE `aspect-ratio` NEM DE `max-*` AQUI. Quem contém a arte é o
-  // `preserveAspectRatio="xMidYMid meet"` do SVG, que mostra o desenho INTEIRO, centralizado e
-  // na proporção certa, seja qual for o formato da janela. A versão anterior tentava fazer isso
-  // no CSS, com `width: 100%` mais `max-height: 100%` mais `aspect-ratio`: quando os três
-  // discordavam, o navegador esticava o mapa — Lucas (10/09/2026): *"foi esticado, ficou ruim,
-  // tem que ser uma forma que fica ele todo sem esticar"*. O palco agora é só a caixa que sofre
-  // o zoom e o arraste.
-  palcoDoMapa: {
-    height: "100%",
-    position: "relative",
-    transformOrigin: "center center",
-    width: "100%",
-  },
   simulador: { borderTop: "1px solid var(--esp-borda)", marginTop: 16, paddingTop: 14 },
   simuladorTitulo: { fontSize: 12, letterSpacing: ".04em", margin: "0 0 10px", opacity: 0.6, textTransform: "uppercase" },
-  svg: { display: "block", height: "100%", width: "100%" },
   titulo: { fontSize: 16, fontWeight: 700, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   alternador: {
     background: "var(--esp-realce)",

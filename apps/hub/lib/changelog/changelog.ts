@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-14-o-clique-chega-ao-espelho-publico",
+    deployedAt: "2026-09-14T13:15:00-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**Agora sim o clique no n\u00famero do lote abre o lote \u2014 no espelho que o corretor manda.** O conserto anunciado mais cedo hoje valia s\u00f3 para a Mesa de Venda: esta tela tinha um desenho pr\u00f3prio, e continuou com o defeito. Ela deixou de ter.",
+              "**Onde n\u00e3o h\u00e1 lote cadastrado, o cursor n\u00e3o promete mais clique.**",
+            ],
+            screen: "Espelho p\u00fablico",
+          },
+        ],
+      },
+    ],
+    rollback: "cdeefa55",
+    technical: {
+      done:
+        "\u26a0\ufe0f A ENTRADA 1.338.0 ANUNCIOU ESTE CONSERTO NA TELA ERRADA, E ESTE DEPLOY E O ACERTO. O conserto do buraco do `evenodd` foi feito em `modules/espelho/MapaDeLotes.tsx`, que e usado SO pela Mesa de Venda; o espelho publico tinha uma SEGUNDA COPIA do desenho dentro de `EspelhoPublico.tsx` e continuou perdendo o clique. As medicoes daquela entrada (89 de 97 no Villa Paris, 190 de 250 no Jardim das Gerais) foram feitas na tela PUBLICA -- ou seja, na que nao havia sido corrigida. O comentario no topo do motor afirmava, desde 10/09, servir \"as DUAS telas\": era falso, e o custo previsto por ele proprio foi cobrado no mesmo dia. || A COPIA FOI APAGADA: 220 linhas que eram copia literal do motor, diferindo so nos nomes das variaveis (mesmo zoom ancorado no cursor, mesma tolerancia de arraste, mesma arte dentro do SVG). Saldo de 169 linhas a menos no arquivo. || TRES DIFERENCAS REAIS ENTRAM POR PROP, e o levantamento que as achou comparou os dois arquivos por quatro lentes mais um critico: (1) o clique devolve o LOTE, e `null` quando o contorno nao tem cadastro -- clicar num contorno sem lote FECHA o painel, e copiar o comportamento da Mesa (ignorar o clique) deixaria o corretor lendo preco e simulacao do lote ANTERIOR achando que sao do que ele acabou de tocar; (2) contorno sem cadastro sai AZUL, nunca verde e nunca transparente -- a funcao da Mesa devolve \"transparent\" para o que esta fora do filtro, e reusa-la aqui pintaria de nada, sobre a foto aerea, o que ninguem conferiu; (3) o cursor vira seta onde nao ha nada para abrir -- prop `clicavel` nova no motor, que a Mesa herda de graca para lote fora do filtro. || O MOTOR GANHOU TESTE, e nao tinha nenhum: 8 casos sobre `areaDeToque` com `d` REAIS lidos da geometria publicada -- dois sub-caminhos, tres sub-caminhos, `z` minusculo (o Inkscape escreve minusculo, e um regex so com `Z` devolveria o caminho inteiro e o buraco voltaria calado), sem `Z` nenhum, figura unica, vazio e nulo. || JUNTO: a guarda da geometria ficou firme (`g?.contornos?.length`) -- array vazio passava como mapa valido e a tela mostrava um palco com a foto aerea e nenhum lote clicavel, em vez de cair na grade. E as tres chaves de ESTILO que so a copia usava sairam a mao: `ESTILO` e `Record<string, CSSProperties>`, entao chave orfa nao e acusada por nada. || typecheck limpo, 3.881 testes em 260 arquivos, lint sem aviso novo (os tres avisos do arquivo sao anteriores e identicos).",
+      motivation:
+        "Lucas (14/09/2026): *\"o lote 09 e 11 da quadra d quando clico nao acontece nada\"* e, depois de eu relatar que havia consertado o componente errado, *\"mede o espelho e sobe\"*. E a regra que ele fixou no mesmo dia: *\"vamos parar de bater cabeca, antes de fazer algo, olha no hub se nao temos isso ja pronto\"* \u2014 aqui o pronto existia, e era este motor.",
+    },
+    title: "O clique chega ao espelho p\u00fablico",
+    type: "correcao",
+    version: "1.340.0",
+  },
+  {
     buildTag: "2026-09-14-a-porta-da-gurgel-abre-na-gurgel",
     deployedAt: "2026-09-14T12:40:00-03:00",
     modules: [
