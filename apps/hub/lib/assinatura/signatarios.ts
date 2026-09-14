@@ -51,7 +51,18 @@ export type MontagemDosSignatarios = {
  * fora da ordem do documento é o que faz alguém aprovar o cônjuge errado num contrato de dois
  * casais.
  */
-export function signatariosDoContrato(dados: DadosDoContrato): MontagemDosSignatarios {
+export function signatariosDoContrato(
+  dados: DadosDoContrato,
+  /**
+   * As pessoas do QUADRO do empreendimento — vendedora, coordenador e testemunha.
+   *
+   * ⚠️ ELAS NÃO SAEM DO CONTRATO, e por isso chegam por fora. Comprador e cônjuge são lidos da
+   * proposta (a mesma leitura que imprimiu a qualificação no papel); estas são CADASTRADAS no
+   * empreendimento, em `temis_assinantes`, e lidas por `lib/assinatura/quadro-db.ts`. Passar por
+   * parâmetro mantém esta função pura — ela roda no navegador junto com a tela de envio.
+   */
+  doQuadro: Pessoa[] = [],
+): MontagemDosSignatarios {
   const pessoas: Pessoa[] = [];
   const avisos: string[] = [];
 
@@ -86,19 +97,43 @@ export function signatariosDoContrato(dados: DadosDoContrato): MontagemDosSignat
     }
   }
 
-  const vendedora = texto(dados.gerais.vendedora_representante_nome);
-  if (vendedora) {
-    pessoas.push({
-      cpf: texto(dados.gerais.vendedora_representante_cpf) || null,
-      email: texto(dados.gerais.vendedora_representante_email),
-      nome: vendedora,
-      papel: "vendedora",
-      telefone: texto(dados.gerais.vendedora_representante_telefone) || null,
-    });
-  } else {
+  // ⚠️ O QUADRO VENCE A VARIÁVEL DO CONTRATO. `vendedora_representante_nome` é a via antiga, e ela
+  // nunca chegou a ser escrita por ninguém (medido em 13/09/2026: zero ocorrências de `vendedora_`
+  // em `dados-do-contrato.ts`). O quadro do empreendimento é a via nova e a que o operador enxerga;
+  // quando as duas existirem, mandar na que ele vê é o único comportamento explicável.
+  const vendedoraDoQuadro = doQuadro.some((p) => p.papel === "vendedora");
+
+  if (!vendedoraDoQuadro) {
+    const vendedora = texto(dados.gerais.vendedora_representante_nome);
+    if (vendedora) {
+      pessoas.push({
+        cpf: texto(dados.gerais.vendedora_representante_cpf) || null,
+        email: texto(dados.gerais.vendedora_representante_email),
+        nome: vendedora,
+        papel: "vendedora",
+        telefone: texto(dados.gerais.vendedora_representante_telefone) || null,
+      });
+    }
+  }
+
+  // As pessoas cadastradas no quadro: vendedora, coordenador de vendas e testemunha.
+  for (const p of doQuadro) pessoas.push(p);
+
+  // ⚠️ O AVISO SÓ SAI QUANDO NÃO HÁ NENHUMA DAS DUAS VIAS. Ele é sobre o ENVELOPE sair sem a parte
+  // vendedora — e isso já aconteceu: dos três envelopes de produção medidos em 13/09/2026, nenhum
+  // tinha vendedora, e um deles fechou como assinado com um único signatário.
+  if (!pessoas.some((p) => p.papel === "vendedora")) {
     avisos.push(
-      "A vendedora não tem representante cadastrado, então ela NÃO vai no envelope: só os compradores assinam. " +
-        "O cadastro é o campo 'vendedora' do empreendimento (ou da categoria).",
+      "Ninguém assina pela VENDEDORA, então o envelope sai só com o comprador. " +
+        "Cadastre no Quadro de assinatura do empreendimento, ou aponte o representante legal no cadastro da empresa.",
+    );
+  }
+
+  // ⚠️ A TESTEMUNHA TEM LINHA NO PAPEL MESMO SEM GENTE NO QUADRO, e um contrato com linha de
+  // testemunha em branco volta do cartório. O aviso é barato; descobrir depois de assinado não é.
+  if (!pessoas.some((p) => p.papel === "testemunha")) {
+    avisos.push(
+      "Nenhuma TESTEMUNHA cadastrada neste empreendimento: o contrato vai para assinatura sem elas.",
     );
   }
 
@@ -222,7 +257,6 @@ function rotulo(papel: PapelNoContrato): string {
     conjuge: "cônjuge",
     coordenadora: "coordenadora",
     corretor: "corretor",
-    interveniente: "interveniente",
     testemunha: "testemunha",
     vendedora: "vendedora",
   };

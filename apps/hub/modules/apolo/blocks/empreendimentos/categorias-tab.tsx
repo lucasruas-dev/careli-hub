@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { descreverRegra } from "@/lib/assinatura/ordem";
+import { descreverRegra, regraDeLista } from "@/lib/assinatura/ordem";
 import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
@@ -69,7 +69,7 @@ type RascunhoDaOrdem = {
 };
 
 const frase = (ordem: Ordem): string =>
-  descreverRegra({ ordenada: ordem.ordenada, papeis: ordem.papeis }, rotuloDoPapel);
+  descreverRegra(regraDeLista(ordem.ordenada, ordem.papeis), rotuloDoPapel);
 
 /**
  * De onde vem a ordem herdada, em uma frase.

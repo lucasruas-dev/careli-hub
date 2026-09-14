@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { descreverRegra, lerRegraDeOrdem, ordenarSignatarios, ORDEM_PADRAO } from "./ordem";
+/**
+ * A fila de papéis que a regra descreve, do primeiro ao último.
+ *
+ * ⚠️ A REGRA DEIXOU DE SER UMA LISTA. Desde 13/09/2026 ela guarda um NÚMERO por papel, porque
+ * "comprador 1 e todo o resto 2" é o caso comum da casa e uma permutação não sabe dizer isso.
+ * `gruposDaRegra` devolve os papéis agrupados por número; achatar dá a mesma fila que os testes
+ * antigos conferiam, e por isso eles continuam valendo palavra por palavra.
+ */
+const fila = (r: { ordens: Record<string, number> }) =>
+  gruposDaRegra(r as never).flat();
+
+
+import { descreverRegra, lerRegraDeOrdem, ordenarSignatarios, ORDEM_PADRAO, gruposDaRegra } from "./ordem";
 import { rotuloDoPapel, type Signatario } from "./tipos";
 
 // ⚠️ O QUE ESTES TESTES PROTEGEM. A ordem de assinatura é feita HOJE na mão, contrato a contrato
@@ -80,8 +92,22 @@ describe("a ordem por papel", () => {
   });
 
   it("escreve a regra em uma linha", () => {
-    expect(descreverRegra({ ordenada: true, papeis: ["comprador", "vendedora"] }, rotuloDoPapel)).toBe(
-      "Comprador → Vendedora",
+    const r = lerRegraDeOrdem({ ordenada: true, papeis: ["comprador", "vendedora"] });
+    expect(descreverRegra(r, rotuloDoPapel)).toBe(
+      "Comprador → Vendedora → Cônjuge → Coordenador de Vendas → Corretor / imobiliária → Testemunha",
+    );
+  });
+
+  // ⚠️ VÍRGULA DENTRO DO GRUPO, SETA ENTRE GRUPOS. A frase precisa distinguir "assinam juntos" de
+  // "um espera o outro" — uma seta entre todos diria que a coordenadora espera a vendedora, que é
+  // outra operação.
+  it("escreve quem assina junto com vírgula, e quem espera com seta", () => {
+    const r = lerRegraDeOrdem({
+      ordenada: true,
+      ordens: { comprador: 1, conjuge: 1, coordenadora: 2, corretor: 2, testemunha: 2, vendedora: 2 },
+    });
+    expect(descreverRegra(r, rotuloDoPapel)).toBe(
+      "Comprador, Cônjuge → Vendedora, Coordenador de Vendas, Corretor / imobiliária, Testemunha",
     );
   });
 
@@ -107,7 +133,7 @@ describe("ler a regra gravada", () => {
   it("respeita a ordem que foi gravada", () => {
     const r = lerRegraDeOrdem({ ordenada: true, papeis: ["vendedora", "comprador"] });
     expect(r.ordenada).toBe(true);
-    expect(r.papeis.slice(0, 2)).toEqual(["vendedora", "comprador"]);
+    expect(fila(r).slice(0, 2)).toEqual(["vendedora", "comprador"]);
   });
 
   // ⚠️ JSONB SUJO NÃO DERRUBA A REGRA. Um papel renomeado no código continuaria gravado no banco;
@@ -115,15 +141,77 @@ describe("ler a regra gravada", () => {
   // trabalho manual que isto veio eliminar.
   it("descarta papel que não existe mais e completa o que falta", () => {
     const r = lerRegraDeOrdem({ ordenada: true, papeis: ["comprador", "avalista", "vendedora"] });
-    expect(r.papeis).not.toContain("avalista");
-    expect(r.papeis.slice(0, 2)).toEqual(["comprador", "vendedora"]);
+    expect(fila(r)).not.toContain("avalista");
+    expect(fila(r).slice(0, 2)).toEqual(["comprador", "vendedora"]);
     // Os que não foram listados continuam existindo, no fim, na ordem canônica.
-    expect(r.papeis).toContain("testemunha");
+    expect(fila(r)).toContain("testemunha");
   });
 
   it("não repete papel listado duas vezes", () => {
     const r = lerRegraDeOrdem({ ordenada: true, papeis: ["comprador", "comprador"] });
-    expect(r.papeis.filter((p) => p === "comprador")).toHaveLength(1);
+    expect(fila(r).filter((p) => p === "comprador")).toHaveLength(1);
+  });
+
+  // ⚠️ O CASO COMUM DA CASA, e a razão de o modelo ter mudado. Lucas (13/09/2026): *"eu posso
+  // colocar o comprador como 1 e o resto como 2"* e *"essa personalização é bem comum para
+  // gente"*. Com a permutação anterior isto era impossível de expressar: seis papéis viravam seis
+  // degraus, sempre.
+  it("comprador 1 e todo o resto 2: sai 1 e 2, e nunca uma fila de seis", () => {
+    const regra = lerRegraDeOrdem({
+      ordenada: true,
+      ordens: { comprador: 1, conjuge: 2, coordenadora: 2, corretor: 2, testemunha: 2, vendedora: 2 },
+    });
+
+    const ordens = ordenarSignatarios(
+      [
+        pessoa("comprador", "Ana Comprador"),
+        pessoa("conjuge", "Bruno Conjuge"),
+        pessoa("vendedora", "Vendedora SPE"),
+        pessoa("coordenadora", "Coordenadora Vendas"),
+        pessoa("corretor", "Carlos Corretor"),
+        pessoa("testemunha", "Dina Testemunha"),
+      ],
+      regra,
+    ).map((s) => s.ordem);
+
+    expect(ordens[0]).toBe(1);
+    expect(ordens.slice(1)).toEqual([2, 2, 2, 2, 2]);
+  });
+
+  // ⚠️ A COMPACTAÇÃO NÃO PODE DESEMPATAR. Se ela renumerasse pessoa a pessoa, o caso de cima
+  // viraria 1,2,3,4,5,6 — a fila que o cadastro existe para evitar. Aqui os números cadastrados
+  // têm buraco (1 e 7) e o resultado tem de fechar em 1 e 2, mantendo o empate.
+  it("compacta os números sem desfazer o empate", () => {
+    const regra = lerRegraDeOrdem({
+      ordenada: true,
+      ordens: { comprador: 1, vendedora: 7, coordenadora: 7 },
+    });
+
+    const ordens = ordenarSignatarios(
+      [pessoa("comprador", "Ana Comprador"), pessoa("vendedora", "Vendedora SPE"), pessoa("coordenadora", "Coordenadora Vendas")],
+      regra,
+    ).map((s) => s.ordem);
+
+    expect(ordens).toEqual([1, 2, 2]);
+  });
+
+  // ⚠️ A TESTEMUNHA TEM NÚMERO PRÓPRIO. Lucas: *"dentro das testemunha eu posso colocar uma
+  // testemunha assina na ordem 1 e outra na ordem 4"*. É o único papel cujas pessoas são
+  // cadastradas uma a uma, então é o único onde a ordem por PESSOA não envelhece.
+  it("a ordem da pessoa vence a do papel", () => {
+    const regra = lerRegraDeOrdem({ ordenada: true, ordens: { comprador: 1, testemunha: 3 } });
+
+    const ordens = ordenarSignatarios(
+      [
+        pessoa("comprador", "Ana Comprador"),
+        { ...pessoa("testemunha", "Dina Testemunha"), ordemPropria: 1 },
+        { ...pessoa("testemunha", "Elias Testemunha"), ordemPropria: 4 },
+      ],
+      regra,
+    ).map((s) => s.ordem);
+
+    // A primeira testemunha empata com o comprador; a segunda fica depois das duas.
+    expect(ordens).toEqual([1, 1, 2]);
   });
 
   it("ordenada só é true quando é true de verdade", () => {

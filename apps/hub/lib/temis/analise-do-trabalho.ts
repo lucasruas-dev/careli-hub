@@ -166,7 +166,13 @@ export async function analiseDoTrabalho(
       // ⚠️ A COORDENADORA É DO EMPREENDIMENTO, NÃO DA PROPOSTA. Ela vem de
       // `apolo_enterprise_settings.coordenadora_entity_id` (migration 0145) e é a terceira ponta
       // do processo de venda: coordena a imobiliária, recebe a sua parte da comissão e entra no
-      // contrato como interveniente, com CNPJ e endereço próprios (bloco "a." da minuta).
+      // contrato com CNPJ e endereço próprios (bloco "a." da minuta).
+      //
+      // ⚠️ ELA É "COORDENADORA DE VENDAS", E NUNCA "INTERVENIENTE". Este comentário já disse
+      // interveniente, e essa palavra sozinha fez nascer um SÉTIMO papel na fila de assinatura que
+      // nenhuma minuta citava — removido em 13/09/2026 a pedido do Lucas. No texto do contrato ela
+      // é COORDENADORA DE VENDAS e, junto com o corretor, INTERMEDIADORA. Ver o bloco de
+      // corretagem em `lib/temis/blocos-prontos.ts`.
       //
       // ⚠️ E É A MESMA CHAVE QUE O CONTRATO IMPRIME. Ler daqui garante que a tela e o papel
       // dizem o mesmo nome; um segundo caminho até a coordenadora seria uma segunda verdade.

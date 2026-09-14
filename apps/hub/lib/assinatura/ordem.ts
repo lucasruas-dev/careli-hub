@@ -37,9 +37,29 @@ import { PAPEIS, type PapelNoContrato, type Signatario } from "./tipos";
  */
 export type RegraDeOrdem = {
   ordenada: boolean;
-  /** Os papéis, do primeiro ao último. Papel que não está aqui assina por último. */
-  papeis: PapelNoContrato[];
+  /**
+   * O número de cada papel. ⚠️ MESMO NÚMERO = ASSINAM JUNTOS.
+   *
+   * ⚠️ ISTO ERA UMA FILA, E VIROU UM NÚMERO POR PAPEL. Lucas, 13/09/2026: *"tem uma situação que
+   * eu preciso colocar o comprador como primeiro e todos os outros depois"*, *"eu posso colocar o
+   * comprador como 1 e o resto como 2"* e, fechando: *"essa personalização é bem comum para
+   * gente"*.
+   *
+   * A lista de papéis anterior era uma PERMUTAÇÃO: cada papel ganhava um número próprio, 1, 2, 3,
+   * 4, 5 — e não havia como dizer "estes três ao mesmo tempo, depois do comprador". Com seis
+   * papéis, a única coisa que a tela sabia montar era uma fila de seis degraus, que é o contrário
+   * do que a casa faz na mão.
+   */
+  ordens: Record<PapelNoContrato, number>;
 };
+
+/** O número canônico de cada papel: a posição dele em `PAPEIS`, começando em 1. */
+function ordensCanonicas(): Record<PapelNoContrato, number> {
+  return Object.fromEntries(PAPEIS.map((p, i) => [p, i + 1])) as Record<
+    PapelNoContrato,
+    number
+  >;
+}
 
 /**
  * O padrão da casa, quando ninguém configurou nada.
@@ -55,8 +75,11 @@ export type RegraDeOrdem = {
  */
 export const ORDEM_PADRAO: RegraDeOrdem = {
   ordenada: false,
-  papeis: [...PAPEIS],
+  ordens: ordensCanonicas(),
 };
+
+/** O teto de um número de ordem. Sanidade de formato: fila de assinatura não tem 100 degraus. */
+export const ORDEM_MAXIMA = 20;
 
 /**
  * Distribui a ordem entre quem assina.
@@ -65,12 +88,21 @@ export const ORDEM_PADRAO: RegraDeOrdem = {
  * vendedora — pôr um comprador para esperar o outro é o que transforma uma venda de casal numa fila
  * de dois dias. Os dois provedores entendem número repetido como "ao mesmo tempo".
  *
- * ⚠️ E OS NÚMEROS SÃO COMPACTADOS. Se o contrato não tem cônjuge nem corretor, os papéis presentes
- * viram 1, 2, 3 — e não 1, 3, 6. A Clicksign aceita buracos, o D4Sign se confunde com eles, e a
- * ordem que a tela mostra passaria a ter degraus que não significam nada.
+ * ⚠️ E OS NÚMEROS SÃO COMPACTADOS, MAS OS EMPATES SOBREVIVEM. Se o contrato não tem cônjuge nem
+ * corretor, o que sobra vira 1, 2, 3 — e não 1, 3, 6: a Clicksign aceita buracos, o D4Sign se
+ * confunde com eles, e a tela mostraria degraus que não significam nada. O que a compactação NÃO
+ * pode fazer é desempatar: cadastrar comprador 1 e os outros cinco 2 tem de sair 1 e 2, e nunca
+ * 1, 2, 3, 4, 5, 6 — senão a configuração mais usada da casa viraria exatamente a fila que ela
+ * existe para evitar.
  *
- * ⚠️ PAPEL FORA DA REGRA ASSINA POR ÚLTIMO, e não primeiro. Um papel novo (um interveniente que a
- * regra antiga não previa) esperando o resto é seguro; ele na frente da vendedora não é.
+ * ⚠️ A TESTEMUNHA PODE TER NÚMERO PRÓPRIO, e por isso `ordemPropria` vence o número do papel.
+ * Lucas, 13/09/2026: *"dentro das testemunha eu posso colocar uma testemunha assina na ordem 1 e
+ * outra na ordem 4"*. É o único papel onde as pessoas são CADASTRADAS uma a uma
+ * (`temis_testemunhas`), então é o único onde a ordem pode ser por pessoa sem envelhecer no
+ * primeiro contrato.
+ *
+ * ⚠️ PAPEL FORA DA REGRA ASSINA POR ÚLTIMO, e não primeiro. Um papel que a regra salva não previa
+ * — porque nasceu depois dela — esperando o resto é seguro; ele na frente da vendedora não é.
  */
 export function ordenarSignatarios(
   pessoas: Omit<Signatario, "ordem">[],
@@ -78,16 +110,24 @@ export function ordenarSignatarios(
 ): Signatario[] {
   if (!regra.ordenada) return pessoas.map((p) => ({ ...p, ordem: 0 }));
 
-  const posicao = (papel: PapelNoContrato): number => {
-    const i = regra.papeis.indexOf(papel);
-    return i < 0 ? regra.papeis.length : i;
+  const foraDaRegra = ORDEM_MAXIMA + 1;
+  const numeroCru = (p: Omit<Signatario, "ordem">): number => {
+    // A ordem da PESSOA vence a do papel — hoje só a testemunha tem uma.
+    if (typeof p.ordemPropria === "number" && Number.isFinite(p.ordemPropria)) {
+      return p.ordemPropria;
+    }
+    const doPapel = regra.ordens[p.papel];
+    return typeof doPapel === "number" && Number.isFinite(doPapel) ? doPapel : foraDaRegra;
   };
 
-  // Os papéis que ESTÃO neste contrato, na ordem da regra. É o que compacta os números.
-  const presentes = [...new Set(pessoas.map((p) => p.papel))].sort((a, b) => posicao(a) - posicao(b));
-  const numero = new Map(presentes.map((papel, i) => [papel, i + 1]));
+  const crus = pessoas.map(numeroCru);
 
-  return pessoas.map((p) => ({ ...p, ordem: numero.get(p.papel) ?? presentes.length }));
+  // Os números DISTINTOS que este contrato usa, do menor para o maior. Compactar o conjunto — e
+  // não as pessoas — é o que preserva o empate.
+  const distintos = [...new Set(crus)].sort((a, b) => a - b);
+  const compacto = new Map(distintos.map((n, i) => [n, i + 1]));
+
+  return pessoas.map((p, i) => ({ ...p, ordem: compacto.get(crus[i]!) ?? distintos.length }));
 }
 
 /**
@@ -101,20 +141,78 @@ export function ordenarSignatarios(
 export function lerRegraDeOrdem(cru: unknown): RegraDeOrdem {
   if (!cru || typeof cru !== "object") return ORDEM_PADRAO;
 
-  const bruto = cru as { ordenada?: unknown; papeis?: unknown };
-  const listados = Array.isArray(bruto.papeis)
-    ? bruto.papeis.filter((x): x is PapelNoContrato => PAPEIS.includes(x as PapelNoContrato))
-    : [];
+  const bruto = cru as { ordenada?: unknown; ordens?: unknown; papeis?: unknown };
+  const ordenada = bruto.ordenada === true;
+  const ordens = ordensCanonicas();
 
-  // Sem repetir, e completando com os que faltaram — na ordem canônica.
-  const vistos = new Set(listados);
-  const papeis = [...new Set(listados), ...PAPEIS.filter((p) => !vistos.has(p))];
+  // ⚠️ O FORMATO NOVO PRIMEIRO: um número por papel.
+  if (bruto.ordens && typeof bruto.ordens === "object") {
+    for (const [papel, valor] of Object.entries(bruto.ordens as Record<string, unknown>)) {
+      if (!PAPEIS.includes(papel as PapelNoContrato)) continue;
+      const n = Math.trunc(Number(valor));
+      if (!Number.isFinite(n) || n < 1 || n > ORDEM_MAXIMA) continue;
+      ordens[papel as PapelNoContrato] = n;
+    }
+    return { ordenada, ordens };
+  }
 
-  return { ordenada: bruto.ordenada === true, papeis };
+  // ⚠️ E O FORMATO ANTIGO CONTINUA SENDO LIDO, porque ele está GRAVADO. Até 13/09/2026 a coluna
+  // guardava uma PERMUTAÇÃO de papéis (`papeis: [...]`), e a posição na lista era o número. Uma
+  // linha assim continua valendo exatamente o que valia: o primeiro vira 1, o segundo vira 2, e
+  // assim por diante. Recusar o formato velho faria a única regra cadastrada da casa voltar ao
+  // padrão em silêncio — contrato saindo em paralelo sem ninguém ter pedido.
+  if (Array.isArray(bruto.papeis)) {
+    const listados = bruto.papeis.filter((x): x is PapelNoContrato =>
+      PAPEIS.includes(x as PapelNoContrato),
+    );
+    const vistos = new Set(listados);
+    const fila = [...new Set(listados), ...PAPEIS.filter((p) => !vistos.has(p))];
+    for (const [i, papel] of fila.entries()) ordens[papel] = i + 1;
+  }
+
+  return { ordenada, ordens };
+}
+
+/**
+ * Uma FILA de papéis virando números: o primeiro é 1, o segundo é 2, e assim por diante.
+ *
+ * ⚠️ EXISTE PARA AS TELAS QUE AINDA ARRASTAM UMA LISTA. O cadastro do empreendimento passou a
+ * editar números (é o que permite "comprador 1, o resto 2"), mas a tela de categoria e a de envio
+ * ainda montam uma permutação com setas — e uma permutação É um caso particular do modelo novo: a
+ * fila estrita, sem empate. Converter aqui é melhor do que deixar cada tela inventar a sua
+ * conversão, que é como duas verdades nascem.
+ */
+export function regraDeLista(ordenada: boolean, papeis: PapelNoContrato[]): RegraDeOrdem {
+  const ordens = ordensCanonicas();
+  const vistos = new Set(papeis);
+  const fila = [...new Set(papeis), ...PAPEIS.filter((p) => !vistos.has(p))];
+  for (const [i, papel] of fila.entries()) ordens[papel] = i + 1;
+  return { ordenada, ordens };
+}
+
+/**
+ * Os papéis agrupados por número, do menor para o maior. Quem empata assina junto.
+ *
+ * É o que a tela usa para escrever a fila e o que `descreverRegra` resume numa linha.
+ */
+export function gruposDaRegra(regra: RegraDeOrdem): PapelNoContrato[][] {
+  const porNumero = new Map<number, PapelNoContrato[]>();
+  for (const papel of PAPEIS) {
+    const n = regra.ordens[papel] ?? PAPEIS.length;
+    const grupo = porNumero.get(n);
+    if (grupo) grupo.push(papel);
+    else porNumero.set(n, [papel]);
+  }
+  return [...porNumero.entries()].sort((a, b) => a[0] - b[0]).map(([, papeis]) => papeis);
 }
 
 /** A regra em uma linha, para a tela. */
 export function descreverRegra(regra: RegraDeOrdem, rotulo: (p: PapelNoContrato) => string): string {
   if (!regra.ordenada) return "Todos assinam ao mesmo tempo.";
-  return regra.papeis.map(rotulo).join(" → ");
+  // ⚠️ VÍRGULA DENTRO DO GRUPO, SETA ENTRE GRUPOS. "Vendedora, Coordenadora → Testemunha" diz
+  // duas coisas de uma vez: as duas primeiras assinam ao mesmo tempo, e a terceira espera as duas.
+  // Uma seta entre todas diria que a coordenadora espera a vendedora, que é outra operação.
+  return gruposDaRegra(regra)
+    .map((grupo) => grupo.map(rotulo).join(", "))
+    .join(" → ");
 }

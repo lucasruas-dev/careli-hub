@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { conferirConfiguracao, pareceSandbox } from "@/lib/assinatura/clicksign/cliente";
 import { enviarContratoParaAssinatura, prepararEnvio } from "@/lib/assinatura/envio-db";
-import { descreverRegra, lerRegraDeOrdem, type RegraDeOrdem } from "@/lib/assinatura/ordem";
+import { descreverRegra, gruposDaRegra, lerRegraDeOrdem, type RegraDeOrdem } from "@/lib/assinatura/ordem";
 import type { AmbienteDoEnvio, RespostaDoEnvio, RespostaDoPreparo } from "@/lib/assinatura/preparo";
 import { rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { autorizarEmissaoDeContrato } from "@/lib/temis/autorizacao";
@@ -189,7 +189,10 @@ function corpoDaResposta(
       ordenada: preparo.regra.ordenada,
       origem: preparo.origemDaRegra,
       origemDescrita: preparo.origemDescrita,
-      papeis: preparo.regra.papeis,
+      // A fila que a regra descreve, achatada: o corpo da resposta continua sendo uma LISTA de
+      // papeis, porque e o que a tela desenha. O empate entre dois papeis some aqui e sobrevive
+      // em `ordenarSignatarios`, que e quem numera de verdade.
+      papeis: gruposDaRegra(preparo.regra).flat(),
     },
     signatarios: preparo.signatarios.map((s) => ({
       email: s.email,

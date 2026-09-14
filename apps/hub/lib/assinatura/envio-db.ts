@@ -14,6 +14,7 @@ import { enviarParaAssinatura, type FalhaNoEnvio, type PedidoDeEnvio } from "./c
 import { type PortaDaClicksign } from "./clicksign/cliente";
 import { moverCardDaTemis } from "./estado-db";
 import { ordenarSignatarios, type RegraDeOrdem } from "./ordem";
+import { assinantesDoQuadro, vendedoraDoEmpreendimento } from "./quadro-db";
 import { descreverOrigem, type OrigemDaRegra, regraDeOrdemDaVenda } from "./ordem-db";
 import { conferirSignatarios, type Pessoa, signatariosDoContrato } from "./signatarios";
 import { chaveDoSignatario, type EstadoDaAssinatura, type Signatario } from "./tipos";
@@ -89,15 +90,28 @@ export async function prepararEnvio(
 
   const titular = resolvido.dados.compradores[0]?.valores.nome_cliente ?? "";
   const identidade = identidadeDoContrato(resolvido.dados.gerais, titular);
-  const montagem = signatariosDoContrato(resolvido.dados);
+
+  // ⚠️ O QUADRO DO EMPREENDIMENTO ENTRA AQUI, e é ele que faz o envelope deixar de ser só do
+  // comprador. Vendedora, coordenador de vendas e testemunha são CADASTRADOS (`temis_assinantes`,
+  // migration 0158) e não saem da proposta — por isso a leitura mora aqui, onde existe Supabase, e
+  // não dentro de `signatariosDoContrato`, que roda também no navegador.
+  const enterpriseId =
+    resolvido.dados.gerais.__empreendimento_id ??
+    resolvido.dados.gerais.__unidade_enterprise_id ??
+    null;
+  const doQuadro = await assinantesDoQuadro(sb, {
+    enterpriseId,
+    vendedoraEntityId: await vendedoraDoEmpreendimento(sb, enterpriseId),
+  });
+
+  const montagem = signatariosDoContrato(resolvido.dados, doQuadro);
 
   // ⚠️ A ORDEM ESCOLHIDA GANHA DO CADASTRO, E NÃO VOLTA PARA ELE. Lucas, 08/09/2026: *"claro que
   // temos que ter a opção de alterar antes de enviar o contrato, mas vem preenchido por padrão"*. O
   // que o operador mudar vale só para este envio; gravar de volta faria uma exceção de um contrato
   // virar a política do empreendimento inteiro, silenciosamente.
   const doCadastro = await regraDeOrdemDaVenda(sb, {
-    enterpriseId:
-      resolvido.dados.gerais.__empreendimento_id ?? resolvido.dados.gerais.__unidade_enterprise_id ?? null,
+    enterpriseId,
     unidadeId: contrato.contrato.unidadeId,
   });
 

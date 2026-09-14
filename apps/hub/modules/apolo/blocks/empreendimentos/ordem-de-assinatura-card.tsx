@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowDown, ArrowUp, PenLine, RotateCcw } from "lucide-react";
+import { PenLine, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { lerRegraDeOrdem, ORDEM_PADRAO } from "@/lib/assinatura/ordem";
+import { lerRegraDeOrdem, ORDEM_MAXIMA, ORDEM_PADRAO } from "@/lib/assinatura/ordem";
 import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
@@ -32,7 +32,13 @@ type Props = {
 
 export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
   const [ordenada, setOrdenada] = useState(false);
-  const [papeis, setPapeis] = useState<PapelNoContrato[]>([...ORDEM_PADRAO.papeis]);
+  // ⚠️ UM NÚMERO POR PAPEL, E NÃO UMA FILA. Lucas, 13/09/2026: *"eu posso colocar o comprador como
+  // 1 e o resto como 2"*, e *"essa personalização é bem comum para gente"*. Com setas de subir e
+  // descer, a única coisa que esta tela sabia montar era uma fila de seis degraus — não havia como
+  // dizer "estes três ao mesmo tempo, depois do comprador", que é o caso comum da casa.
+  const [ordens, setOrdens] = useState<Record<PapelNoContrato, number>>({
+    ...ORDEM_PADRAO.ordens,
+  });
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<null | string>(null);
@@ -43,7 +49,7 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
     void lerSettings(enterpriseId).then((valor) => {
       if (!vivo) return;
       setOrdenada(valor.ordenada);
-      setPapeis(valor.papeis);
+      setOrdens(valor.ordens);
       setCarregando(false);
     });
     return () => {
@@ -51,16 +57,12 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
     };
   }, [enterpriseId]);
 
-  function mover(indice: number, direcao: -1 | 1) {
+  function definir(papel: PapelNoContrato, bruto: string) {
     setSalvo(false);
-    setPapeis((atual) => {
-      const destino = indice + direcao;
-      if (destino < 0 || destino >= atual.length) return atual;
-      const copia = [...atual];
-      const [movido] = copia.splice(indice, 1);
-      if (movido) copia.splice(destino, 0, movido);
-      return copia;
-    });
+    const n = Math.trunc(Number(bruto));
+    // Campo vazio ou fora do teto não mexe em nada: o operador está no meio de digitar.
+    if (!Number.isFinite(n) || n < 1 || n > ORDEM_MAXIMA) return;
+    setOrdens((atual) => ({ ...atual, [papel]: n }));
   }
 
   async function salvar() {
@@ -70,7 +72,7 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
     // e religar perderia a ordem que alguém montou — e o operador religaria achando que voltou ao
     // que era.
     const resultado = await gravarSettings(enterpriseId, code, {
-      assinaturaOrdem: papeis,
+      assinaturaOrdem: ordens,
       assinaturaOrdenada: ordenada,
     });
     setSalvando(false);
@@ -83,7 +85,7 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
 
   function voltarAoPadrao() {
     setSalvo(false);
-    setPapeis([...ORDEM_PADRAO.papeis]);
+    setOrdens({ ...ORDEM_PADRAO.ordens });
   }
 
   return (
@@ -124,42 +126,55 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
       </div>
 
       {/* A lista fica VISÍVEL mesmo desligada, só esmaecida: é ela que o operador monta antes de
-          ligar, e escondê-la faria a chave parecer não ter efeito nenhum. */}
+          ligar, e escondê-la faria a chave parecer não ter efeito nenhum.
+
+          ⚠️ ORDENADA PELO NÚMERO, e não na ordem fixa do catálogo: a lista tem de LER como a fila
+          real, de cima para baixo. Empate desempata pela ordem canônica, para a lista não dançar a
+          cada tecla enquanto alguém digita. */}
       <div className={`mt-3 grid gap-1.5 ${ordenada ? "" : "opacity-50"}`}>
-        {papeis.map((papel, i) => (
-          <div
-            className="flex items-center gap-2 rounded-lg border border-line bg-subtle/40 px-3 py-2"
-            key={papel}
-          >
-            <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-inverse text-[11px] font-semibold text-white">
-              {i + 1}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-sm text-ink">{rotuloDoPapel(papel)}</span>
-            <button
-              aria-label={`Subir ${rotuloDoPapel(papel)}`}
-              className="rounded-md border border-line p-1 text-ink-muted disabled:opacity-30"
-              disabled={i === 0 || carregando || salvando}
-              onClick={() => mover(i, -1)}
-              type="button"
+        {[...PAPEIS]
+          .sort(
+            (a, b) =>
+              (ordens[a] ?? 99) - (ordens[b] ?? 99) || PAPEIS.indexOf(a) - PAPEIS.indexOf(b),
+          )
+          .map((papel) => (
+            <div
+              className="flex items-center gap-2 rounded-lg border border-line bg-subtle/40 px-3 py-2"
+              key={papel}
             >
-              <ArrowUp className="size-3.5" />
-            </button>
-            <button
-              aria-label={`Descer ${rotuloDoPapel(papel)}`}
-              className="rounded-md border border-line p-1 text-ink-muted disabled:opacity-30"
-              disabled={i === papeis.length - 1 || carregando || salvando}
-              onClick={() => mover(i, 1)}
-              type="button"
-            >
-              <ArrowDown className="size-3.5" />
-            </button>
-          </div>
-        ))}
+              <input
+                aria-label={`Ordem de ${rotuloDoPapel(papel)}`}
+                className="h-7 w-12 shrink-0 rounded-md border border-line bg-surface text-center text-sm font-semibold text-ink disabled:opacity-60"
+                disabled={carregando || salvando}
+                inputMode="numeric"
+                max={ORDEM_MAXIMA}
+                min={1}
+                onChange={(e) => definir(papel, e.target.value)}
+                type="number"
+                value={ordens[papel] ?? ""}
+              />
+              <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                {rotuloDoPapel(papel)}
+              </span>
+              {/* Quem divide o número com este papel assina junto com ele — dizer isso na linha
+                  evita o operador ter de cruzar a lista inteira de olho para descobrir. */}
+              {PAPEIS.filter((p) => p !== papel && ordens[p] === ordens[papel]).length > 0 ? (
+                <span className="shrink-0 rounded-md bg-subtle px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
+                  junto com{" "}
+                  {PAPEIS.filter((p) => p !== papel && ordens[p] === ordens[papel])
+                    .map(rotuloDoPapel)
+                    .join(", ")}
+                </span>
+              ) : null}
+            </div>
+          ))}
       </div>
 
       <p className="m-0 mt-2 text-xs text-ink-muted">
-        Papéis que não existirem no contrato são pulados, e a numeração se fecha sozinha: sem cônjuge
-        e sem corretor, os que sobram viram 1, 2, 3. Quem tem o mesmo papel assina junto.
+        <strong>O mesmo número assina junto.</strong> Para o comprador assinar primeiro e todo o
+        resto depois, ponha 1 nele e 2 em todos os outros. Papéis que não existirem no contrato são
+        pulados e a numeração se fecha sozinha — sem cônjuge e sem corretor, o que sobra vira 1 e 2,
+        sem buraco no meio.
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -206,7 +221,7 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
  */
 async function lerSettings(
   enterpriseId: string,
-): Promise<{ ordenada: boolean; papeis: PapelNoContrato[] }> {
+): Promise<{ ordenada: boolean; ordens: Record<PapelNoContrato, number> }> {
   try {
     const accessToken = await getApoloAccessToken();
     const resposta = await fetch("/api/apolo/empreendimentos/settings", {
@@ -217,26 +232,37 @@ async function lerSettings(
       data?: {
         settings?: Record<
           string,
-          { assinaturaOrdem?: null | string[]; assinaturaOrdenada?: boolean }
+          {
+            assinaturaOrdem?: null | Record<string, number> | string[];
+            assinaturaOrdenada?: boolean;
+          }
         >;
       };
     };
     const setting = payload.data?.settings?.[enterpriseId];
-    const regra = lerRegraDeOrdem({
-      ordenada: setting?.assinaturaOrdenada === true,
-      papeis: setting?.assinaturaOrdem ?? null,
-    });
-    return { ordenada: regra.ordenada, papeis: regra.papeis };
+    const guardado = setting?.assinaturaOrdem ?? null;
+    // ⚠️ AS DUAS FORMAS PASSAM PELO MESMO SANEADOR. A coluna pode ter a LISTA antiga (uma fila) ou
+    // o MAPA novo, e `lerRegraDeOrdem` converte as duas em números — a tela não precisa saber qual
+    // está gravada, e uma segunda conversão aqui divergiria da do servidor no primeiro ajuste.
+    const regra = lerRegraDeOrdem(
+      Array.isArray(guardado)
+        ? { ordenada: setting?.assinaturaOrdenada === true, papeis: guardado }
+        : { ordenada: setting?.assinaturaOrdenada === true, ordens: guardado },
+    );
+    return { ordenada: regra.ordenada, ordens: regra.ordens };
   } catch {
     // Falha de leitura mostra o padrão da casa — e o operador só grava se clicar em Salvar.
-    return { ordenada: false, papeis: [...PAPEIS] };
+    return { ordenada: false, ordens: { ...ORDEM_PADRAO.ordens } };
   }
 }
 
 async function gravarSettings(
   enterpriseId: string,
   code: string,
-  patch: { assinaturaOrdem: null | string[]; assinaturaOrdenada: boolean },
+  patch: {
+    assinaturaOrdem: null | Record<string, number> | string[];
+    assinaturaOrdenada: boolean;
+  },
 ): Promise<{ error?: string; ok: boolean }> {
   try {
     const accessToken = await getApoloAccessToken();

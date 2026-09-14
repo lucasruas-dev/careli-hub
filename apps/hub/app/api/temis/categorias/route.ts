@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
 import { createApoloAdminClient } from "@/lib/apolo/server";
-import { descreverRegra } from "@/lib/assinatura/ordem";
+import { descreverRegra, gruposDaRegra } from "@/lib/assinatura/ordem";
 import { rotuloDoPapel } from "@/lib/assinatura/tipos";
 import {
   lerOrdemDoCorpo,
@@ -188,7 +188,9 @@ async function ordemDoEmpreendimento(
   const escolhido = niveis.find((n) => n.id === dono) ?? niveis[0];
 
   const distintas = new Set(
-    niveis.map((n) => JSON.stringify([n.nivel.ordenada, regraDoNivel(n.nivel).papeis])),
+    niveis.map((n) =>
+      JSON.stringify([n.nivel.ordenada, gruposDaRegra(regraDoNivel(n.nivel)).flat()]),
+    ),
   );
 
   return {
@@ -314,11 +316,11 @@ export async function GET(request: Request) {
               : {
                   ordenada: herdada.regra.ordenada,
                   origem: herdada.origem,
-                  papeis: herdada.regra.papeis,
+                  papeis: gruposDaRegra(herdada.regra).flat(),
                   rotulo: herdada.rotulo,
                 },
           ordemPropria: propria
-            ? { ordenada: propria.ordenada, papeis: propria.papeis }
+            ? { ordenada: propria.ordenada, papeis: gruposDaRegra(propria).flat() }
             : null,
           unidades: porCategoria.get(c.id) ?? 0,
         };

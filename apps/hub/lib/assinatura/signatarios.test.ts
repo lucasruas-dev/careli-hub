@@ -84,7 +84,57 @@ describe("de onde saem os signatários", () => {
       contrato([comprador({ email_cliente: "a@b.com", nome_cliente: "João Silva" })]),
     );
     expect(pessoas.map((p) => p.papel)).toEqual(["comprador"]);
-    expect(avisos.join(" ")).toContain("vendedora");
+    expect(avisos.join(" ")).toContain("VENDEDORA");
+  });
+
+  // ⚠️ O QUADRO É O FIO QUE FALTAVA. Medido em 13/09/2026: os três envelopes de produção tinham
+  // 2, 1 e 1 signatário — todos comprador ou cônjuge, zero vendedora; um deles fechou como
+  // ASSINADO com um único signatário, uma compra e venda sem a parte vendedora.
+  it("as pessoas do quadro do empreendimento entram no envelope", () => {
+    const { avisos, pessoas } = signatariosDoContrato(
+      contrato([comprador({ email_cliente: "a@b.com", nome_cliente: "João Silva" })]),
+      [
+        { email: "rep@spe.com.br", nome: "Marcos Andrade", papel: "vendedora" },
+        { email: "mat@imob.com.br", nome: "Matheus Guedes", papel: "coordenadora" },
+        { email: "t1@casa.com.br", nome: "Ana Testemunha", ordemPropria: 4, papel: "testemunha" },
+      ],
+    );
+
+    expect(pessoas.map((p) => p.papel)).toEqual([
+      "comprador",
+      "vendedora",
+      "coordenadora",
+      "testemunha",
+    ]);
+    // Com vendedora e testemunha no quadro, não sobra aviso nenhum.
+    expect(avisos).toEqual([]);
+    expect(pessoas.find((p) => p.papel === "testemunha")?.ordemPropria).toBe(4);
+  });
+
+  // ⚠️ O QUADRO VENCE A VARIÁVEL DO CONTRATO, e isso precisa de teste: as duas vias podem existir
+  // ao mesmo tempo, e mandar na que o operador ENXERGA é o único comportamento explicável.
+  it("a vendedora do quadro vence a do contrato, sem duplicar", () => {
+    const { pessoas } = signatariosDoContrato(
+      contrato([comprador({ email_cliente: "a@b.com", nome_cliente: "João Silva" })], {
+        vendedora_representante_email: "antigo@spe.com.br",
+        vendedora_representante_nome: "Representante Antigo",
+      }),
+      [{ email: "novo@spe.com.br", nome: "Representante Novo", papel: "vendedora" }],
+    );
+
+    const vendedoras = pessoas.filter((p) => p.papel === "vendedora");
+    expect(vendedoras).toHaveLength(1);
+    expect(vendedoras[0]?.nome).toBe("Representante Novo");
+  });
+
+  // ⚠️ CONTRATO COM LINHA DE TESTEMUNHA EM BRANCO VOLTA DO CARTÓRIO. O aviso é barato; descobrir
+  // depois de assinado não é.
+  it("avisa quando não há testemunha cadastrada", () => {
+    const { avisos } = signatariosDoContrato(
+      contrato([comprador({ email_cliente: "a@b.com", nome_cliente: "João Silva" })]),
+      [{ email: "rep@spe.com.br", nome: "Marcos Andrade", papel: "vendedora" }],
+    );
+    expect(avisos.join(" ")).toContain("TESTEMUNHA");
   });
 
   it("inclui a vendedora quando o representante dela está cadastrado", () => {
@@ -95,7 +145,9 @@ describe("de onde saem os signatários", () => {
       }),
     );
     expect(pessoas.map((p) => p.papel)).toEqual(["comprador", "vendedora"]);
-    expect(avisos).toEqual([]);
+    // ⚠️ NÃO É MAIS "ZERO AVISOS": desde 13/09/2026 a falta de TESTEMUNHA também avisa, e este
+    // contrato não tem nenhuma. O que este teste guarda é que o aviso da VENDEDORA sumiu.
+    expect(avisos.join(" ")).not.toContain("VENDEDORA");
   });
 });
 

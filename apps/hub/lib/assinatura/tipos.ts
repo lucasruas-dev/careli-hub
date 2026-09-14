@@ -80,14 +80,34 @@ export function ehTerminal(estado: EstadoDaAssinatura): boolean {
  * que sabe representar — senão a informação de QUEM é aquela pessoa no contrato se perde na saída, e
  * é ela que a Têmis mostra na tela e o jurídico confere.
  */
+/**
+ * ⚠️ O INTERVENIENTE SAIU, E A AUSÊNCIA DELE É UMA DECISÃO. Lucas, 13/09/2026: *"pode tirar esse
+ * interveniente"*, depois de eu medir que NENHUMA minuta do Panteon cita "interveniente" nem
+ * "anuente" — zero de todas. O papel existia na fila de assinatura e não aparecia em documento
+ * nenhum.
+ *
+ * A confusão tinha nome: um comentário de `lib/temis/analise-do-trabalho.ts` dizia que a
+ * coordenadora "entra no contrato como interveniente", mas o texto da minuta a chama de
+ * COORDENADORA DE VENDAS e, junto com o corretor, de INTERMEDIADORES. Eram duas palavras para a
+ * mesma pessoa, e uma delas tinha virado um papel separado na fila.
+ *
+ * ⚠️ SE ELE VOLTAR, VOLTA COM DONO. Interveniente anuente é o terceiro que concorda sem ser
+ * comprador nem vendedor — o proprietário da área quando a matrícula não é da vendedora, o banco
+ * que precisa liberar a hipoteca, um fiador. O dia em que um empreendimento tiver um desses, o papel
+ * volta apontando para o cadastro dele. Antes disso, ele só fazia quem lê a fila procurar uma pessoa
+ * que não existe.
+ *
+ * ⚠️ A ORDEM SALVA NO BANCO SE LIMPA SOZINHA: `lerRegraDeOrdem` filtra por `PAPEIS.includes`, então
+ * a única linha de `apolo_enterprise_settings` que citava "interveniente" (medida em 13/09/2026)
+ * passa a ignorá-lo sem migration nenhuma.
+ */
 export type PapelNoContrato =
   | "comprador"
   | "conjuge"
   | "vendedora"
   | "coordenadora"
   | "corretor"
-  | "testemunha"
-  | "interveniente";
+  | "testemunha";
 
 /**
  * Os papéis, NA ORDEM EM QUE UM CONTRATO COSTUMA SER ASSINADO.
@@ -103,18 +123,20 @@ export const PAPEIS: PapelNoContrato[] = [
   "coordenadora",
   "corretor",
   "testemunha",
-  "interveniente",
 ];
 
 export function rotuloDoPapel(papel: PapelNoContrato): string {
   const mapa: Record<PapelNoContrato, string> = {
     comprador: "Comprador",
     conjuge: "Cônjuge",
-    // Os dois do contrato de CORRETAGEM, que assinam junto com o de venda e compra: a coordenadora
-    // de vendas e o corretor/imobiliária que intermediou.
-    coordenadora: "Coordenadora de vendas",
+    // ⚠️ "COORDENADOR DE VENDAS" É A PESSOA, e a EMPRESA é a "Coordenação de Vendas". Lucas
+    // (13/09/2026): *"a coordenadora é a empresa que faz a gestão comercial, quando eu falo
+    // coordenador de vendas é a pessoa que trabalha na coordenadora"*. Quem ASSINA é a pessoa — por
+    // isso o rótulo do papel é no masculino. A empresa aparece no texto do contrato, com CNPJ e
+    // endereço, e as VARIÁVEIS dela mantêm o nome antigo (`nome_fantasia_coordenadora_vendas`)
+    // porque é a chave que as 41 minutas do legado trazem — a mesma regra de `valor_imovel_venda`.
+    coordenadora: "Coordenador de Vendas",
     corretor: "Corretor / imobiliária",
-    interveniente: "Interveniente",
     testemunha: "Testemunha",
     vendedora: "Vendedora",
   };
@@ -134,6 +156,17 @@ export function rotuloDoPapel(papel: PapelNoContrato): string {
 export type Signatario = {
   /** Ordem de assinatura. Mesmo número = assinam em paralelo; número maior espera o menor. */
   ordem: number;
+  /**
+   * A ordem desta PESSOA, quando ela tem uma própria — hoje só a testemunha.
+   *
+   * ⚠️ VENCE O NÚMERO DO PAPEL. Lucas, 13/09/2026: *"dentro das testemunha eu posso colocar uma
+   * testemunha assina na ordem 1 e outra na ordem 4"*. A testemunha é o único papel cujas pessoas
+   * são cadastradas uma a uma (`temis_testemunhas`), então é o único onde uma ordem por pessoa não
+   * envelhece no primeiro contrato — comprador e cônjuge mudam a cada venda.
+   *
+   * É o número CRU do cadastro; quem compacta é `ordenarSignatarios`.
+   */
+  ordemPropria?: null | number;
   cpf?: null | string;
   email: string;
   nome: string;

@@ -3,7 +3,7 @@
 import { AlertTriangle, ArrowDown, ArrowUp, FileSignature, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ordenarSignatarios } from "@/lib/assinatura/ordem";
+import { ordenarSignatarios, regraDeLista } from "@/lib/assinatura/ordem";
 import type { CorpoDoEnvio, RespostaDoEnvio, RespostaDoPreparo } from "@/lib/assinatura/preparo";
 import { chaveDoSignatario, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
@@ -158,7 +158,7 @@ export function OrganizacaoDaAssinatura({
       nome: s.nome,
       papel: s.papel,
     }));
-    return ordenarSignatarios(pessoas, { ordenada, papeis })
+    return ordenarSignatarios(pessoas, regraDeLista(ordenada, papeis))
       .map((s) => ({ ...s, papelRotulo: rotuloDoPapel(s.papel) }))
       .sort((a, b) => a.ordem - b.ordem);
   }, [ordenada, papeis, preparo]);
@@ -174,9 +174,8 @@ export function OrganizacaoDaAssinatura({
     });
   }, []);
 
-  // Só os papéis que EXISTEM neste contrato aparecem para reordenar: mostrar "testemunha" e
-  // "interveniente" num contrato que não tem nenhum dos dois é pedir para a pessoa arrumar uma fila
-  // que não vai acontecer.
+  // Só os papéis que EXISTEM neste contrato aparecem para reordenar: mostrar "testemunha" num
+  // contrato que não tem nenhuma é pedir para a pessoa arrumar uma fila que não vai acontecer.
   const papeisPresentes = useMemo(() => {
     const presentes = new Set((preparo?.signatarios ?? []).map((s) => s.papel));
     return papeis.filter((p) => presentes.has(p));

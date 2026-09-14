@@ -9,6 +9,7 @@ import { AdicionarUnidades } from "@/modules/apolo/blocks/empreendimentos/adicio
 import { LinksTab } from "@/modules/apolo/blocks/empreendimentos/links-tab";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
 import { OrdemDeAssinaturaCard } from "@/modules/apolo/blocks/empreendimentos/ordem-de-assinatura-card";
+import { QuadroDeAssinaturaCard } from "@/modules/apolo/blocks/empreendimentos/quadro-de-assinatura-card";
 import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 import { PoliticaComercialTab } from "@/modules/apolo/blocks/empreendimentos/politica-comercial-tab";
 import { useCallback, useEffect, useRef, useMemo, useState } from "react";
@@ -680,6 +681,12 @@ function EnterpriseDetail({
               name={row.name}
             />
             <OrdemDeAssinaturaCard code={row.code} enterpriseId={row.id} />
+
+            {/* ⚠️ FORA DO CARD DE ORDEM, e de propósito. Lucas (13/09/2026): *"mesmo desligado,
+                eu tenho que cadastrar as testemunha"*. Quando "Assinam em ordem" está
+                desligado — que é como os contratos saem hoje — aquele card apaga a lista inteira;
+                o cadastro lá dentro sumiria justamente na configuração em uso. */}
+            <QuadroDeAssinaturaCard enterpriseId={row.id} />
           </div>
         ) : null}
       </section>

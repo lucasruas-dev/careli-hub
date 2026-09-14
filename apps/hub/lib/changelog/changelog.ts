@@ -36,6 +36,45 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-13-o-quadro-de-assinatura-do-contrato",
+    deployedAt: "2026-09-13T21:23:28-03:00",
+    modules: [
+      {
+        module: "T\u00eamis",
+        screens: [
+          {
+            items: [
+              "**O contrato deixa de ir para assinatura s\u00f3 com o comprador.** Uma se\u00e7\u00e3o nova no empreendimento \u2014 o **Quadro de assinatura** \u2014 cadastra quem mais assina: **Vendedora**, **Coordenador de Vendas** e **Testemunhas**. Nome completo, CPF e e-mail.",
+              "A **vendedora j\u00e1 vem preenchida** com o representante legal da empresa, marcado \"do cadastro\". Voc\u00ea acrescenta quem mais assina por ela; **todos os tr\u00eas pap\u00e9is aceitam mais de uma pessoa**.",
+              "Cada pessoa tem **Linha** (qual linha do contrato \u00e9 dela) e **Assina em** (quando recebe o convite). S\u00e3o independentes: quem assina primeiro pode ser quem aparece embaixo no papel.",
+              "\u26a0\ufe0f **O quadro fica FORA do card de ordem**, de prop\u00f3sito: com \"Assinam em ordem\" desligado \u2014 que \u00e9 como os contratos saem hoje \u2014 aquele card apaga a lista inteira, e o cadastro sumiria justamente na configura\u00e7\u00e3o em uso.",
+              "Sem vendedora ou sem testemunha, a tela de envio **avisa antes** de voc\u00ea confirmar.",
+            ],
+            screen: "Empreendimento \u00b7 Quadro de assinatura",
+          },
+          {
+            items: [
+              "**A ordem de assinatura virou n\u00famero, e n\u00e3o mais fila.** Cada papel tem um campo: **o mesmo n\u00famero assina junto**. Para o comprador assinar primeiro e todo o resto depois, ponha 1 nele e 2 em todos os outros \u2014 antes isso era imposs\u00edvel, seis pap\u00e9is viravam seis degraus.",
+              "Cada linha mostra com quem aquele papel assina junto, e a numera\u00e7\u00e3o se fecha sozinha sem desfazer os empates.",
+              "**\"Interveniente\" saiu da lista.** Nenhuma minuta do Panteon citava o papel; ele s\u00f3 fazia quem lia a fila procurar uma pessoa que n\u00e3o existe.",
+              "**\"Coordenadora de vendas\" virou \"Coordenador de Vendas\"** \u2014 quem assina \u00e9 a pessoa que coordena o empreendimento. A empresa continua sendo a Coordena\u00e7\u00e3o de Vendas, e aparece no texto do contrato.",
+            ],
+            screen: "Empreendimento \u00b7 Ordem de assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "fcd05126",
+    technical: {
+      done: "TRES MUDANCAS, E A TERCEIRA E a que corrige um defeito com consequencia juridica. || 1. O MODELO DE ORDEM DEIXOU DE SER PERMUTACAO. `RegraDeOrdem.papeis: PapelNoContrato[]` virou `ordens: Record<PapelNoContrato, number>`. A permutacao nao sabia expressar \"estes cinco ao mesmo tempo, depois do comprador\" \u2014 seis papeis, seis degraus, sempre. \u26a0\ufe0f A COMPACTACAO NAO PODE DESEMPATAR: se ela renumerasse pessoa a pessoa, \"comprador 1 e o resto 2\" sairia 1..6, a fila que o cadastro existe para evitar; agora ela compacta o CONJUNTO de numeros distintos (1 e 7 saem 1 e 2, empate mantido, sem buraco \u2014 a Clicksign aceita buraco, o D4Sign se confunde). `Signatario.ordemPropria` permite numero POR PESSOA, hoje so na testemunha, que e o unico papel cujas pessoas sao cadastradas uma a uma. COMPATIVEL COM O GRAVADO: `lerRegraDeOrdem` le as duas formas e a rota de settings aceita as duas \u2014 recusar a antiga faria um navegador com cache derrubar a regra do empreendimento. || 2. O QUADRO (migrations 0157 e 0158). A 0157 nasceu como `temis_testemunhas` e foi RENOMEADA para `temis_assinantes` com uma coluna `papel` horas depois, quando o Lucas descreveu o resto: vendedora, coordenador e testemunha sao a MESMA COISA, uma lista de pessoas presa ao empreendimento. Renomear em vez de apagar preserva o registro de migrations; a tabela tinha ZERO linhas. \u26a0\ufe0f A POSICAO E UNICA DENTRO DO PAPEL: vendedora 1 e testemunha 1 sao linhas diferentes do contrato. \u26a0\ufe0f O REPRESENTANTE LEGAL NAO E COPIADO para a tabela \u2014 ele e LIDO de `apolo_relationships` na hora, e so entra se ninguem ocupou a posicao 1; copiar criaria uma segunda verdade sobre quem representa a empresa. || 3. O FIO. `lib/assinatura/quadro-db.ts` le o quadro e `envio-db.ts` o passa a `signatariosDoContrato`. \u26a0\ufe0f O DEFEITO QUE ISSO FECHA ESTAVA MEDIDO: os TRES envelopes de producao tinham 2, 1 e 1 signatario \u2014 todos comprador ou conjuge, ZERO vendedora \u2014 e um deles fechou como ASSINADO com um unico signatario: uma compra e venda concluida sem a parte vendedora. Eram do ZZ TESTE, mas o fluxo permitia. O quadro VENCE a variavel `vendedora_representante_*`, que nunca chegou a ser escrita (zero ocorrencias de `vendedora_` em `dados-do-contrato.ts`). || 4. O VOCABULARIO, e ele custou caro: o Panteon tinha como representante da coordenacao o FABRICIO, que no C2X ocupa `captivator_id` (captador), e nao `manager_id` (o coordenador, que no Villa Paris e o Matheus Guedes Imoveis). O contrato sairia mandando assinar a pessoa errada com a tela dizendo que estava certo. Os ROTULOS mudaram; as CHAVES das variaveis (`nome_fantasia_coordenadora_vendas`) ficaram, porque sao o que as 41 minutas do legado trazem \u2014 mesma regra de `valor_imovel_venda`. || FICA PARA DEPOIS, por decisao do Lucas: o comprador PJ, resolvido na etapa de VALIDACAO apontando entre os socios ja cadastrados quem assina. O captador NAO entra no quadro. || typecheck limpo, 3.819 testes em 255 arquivos, lint sem aviso novo. \u26a0\ufe0f NAO VERIFICADO EM TELA \u2014 o hub exige login.",
+      motivation:
+        "Lucas (13/09/2026), desenhando o modelo em conversa: *\"o coordenador de vendas tem que entrar na assinatura como parte\"*, *\"a vendedora eu posso ter mais de um assinante\"*, *\"mesmo desligado, eu tenho que cadastrar as testemunha\"*, *\"eu posso colocar o comprador como 1 e o resto como 2\"* com *\"essa personalizacao e bem comum para gente\"*, e *\"pode tirar esse interveniente\"*.",
+    },
+    title: "O quadro de assinatura do contrato, e a ordem que aceita grupos",
+    type: "novidade",
+    version: "1.331.0",
+  },
+  {
     buildTag: "2026-09-13-a-capa-e-os-anexos-ganham-onde-subir",
     deployedAt: "2026-09-13T19:50:03-03:00",
     modules: [

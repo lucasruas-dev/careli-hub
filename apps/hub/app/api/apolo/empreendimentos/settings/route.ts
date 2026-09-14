@@ -108,7 +108,7 @@ export async function PATCH(request: Request) {
     analiseCreditoHabilitada?: boolean;
     // ORDEM DE ASSINATURA (migration 0142). ⚠️ OS DOIS VÊM JUNTOS, sempre: são uma decisão só
     // ("assinam em ordem, e nesta ordem"). `assinaturaOrdem` nula = ordem padrão da casa.
-    assinaturaOrdem?: null | string[];
+    assinaturaOrdem?: null | Record<string, number> | string[];
     assinaturaOrdenada?: boolean;
     code?: string;
     comprovanteRendaHabilitado?: boolean;
@@ -176,14 +176,31 @@ export async function PATCH(request: Request) {
 
   // ORDEM DE ASSINATURA: as duas colunas numa escrita só — ver `setEnterpriseOrdemDeAssinatura`.
   //
-  // ⚠️ A LISTA PRECISA SER DE STRINGS OU NULA. `assinatura_ordem` é `jsonb` livre: um objeto vindo
-  // do navegador entraria na coluna e a leitura seguinte devolveria papel `[object Object]`. Quem
-  // valida QUAIS papéis existem é `lerRegraDeOrdem` na leitura; aqui a pergunta é só de forma.
+  // ⚠️ DUAS FORMAS SÃO ACEITAS, E A SEGUNDA É A NOVA. Até 13/09/2026 a coluna guardava uma LISTA
+  // de papéis, e a posição na lista era o número — uma fila estrita, um degrau por papel. Desde a
+  // troca do modelo ela guarda um MAPA `{papel: número}`, em que o mesmo número significa "assinam
+  // juntos" (Lucas: *"eu posso colocar o comprador como 1 e o resto como 2"*, e *"essa
+  // personalização é bem comum para gente"*).
+  //
+  // A forma antiga continua passando porque ela ESTÁ GRAVADA: recusá-la aqui faria a tela velha de
+  // um navegador com cache derrubar a regra do empreendimento. `lerRegraDeOrdem` converte a lista
+  // em números na leitura.
+  //
+  // ⚠️ E A PERGUNTA AQUI CONTINUA SENDO SÓ DE FORMA. Quem valida QUAIS papéis existem, e que o
+  // número cabe no teto, é `lerRegraDeOrdem` — um lugar só, do lado que lê.
   if (mexeuOrdem) {
     const bruta = body.assinaturaOrdem;
+    const ehMapaDeNumeros =
+      typeof bruta === "object" &&
+      bruta !== null &&
+      !Array.isArray(bruta) &&
+      Object.values(bruta as Record<string, unknown>).every(
+        (v) => typeof v === "number" && Number.isFinite(v),
+      );
     const listaValida =
       bruta === null ||
       bruta === undefined ||
+      ehMapaDeNumeros ||
       (Array.isArray(bruta) && bruta.every((p) => typeof p === "string"));
 
     if (!listaValida || ("assinaturaOrdenada" in body && typeof body.assinaturaOrdenada !== "boolean")) {

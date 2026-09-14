@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { gruposDaRegra } from "@/lib/assinatura/ordem";
+
+/** A fila de papéis da regra — ver a nota em `lib/assinatura/ordem.test.ts`. */
+const fila = (r: { ordens: Record<string, number> }) => gruposDaRegra(r as never).flat();
+
 
 import {
   lerOrdemDoCorpo,
@@ -57,7 +62,7 @@ describe("resolverOrdemDeAssinatura", () => {
     expect(r.origem).toBe("empreendimento");
     expect(r.rotulo).toBe("Lagoa Bonita");
     expect(r.regra.ordenada).toBe(true);
-    expect(r.regra.papeis.slice(0, 2)).toEqual(["vendedora", "comprador"]);
+    expect(fila(r.regra).slice(0, 2)).toEqual(["vendedora", "comprador"]);
   });
 
   it("categoria com ordem SOBREPÕE o empreendimento", () => {
@@ -68,7 +73,7 @@ describe("resolverOrdemDeAssinatura", () => {
 
     expect(r.origem).toBe("categoria");
     expect(r.rotulo).toBe("Condomínio");
-    expect(r.regra.papeis.slice(0, 2)).toEqual(["testemunha", "comprador"]);
+    expect(fila(r.regra).slice(0, 2)).toEqual(["testemunha", "comprador"]);
   });
 
   it("categoria pode voltar ao paralelo dentro de empreendimento ordenado", () => {
@@ -92,7 +97,7 @@ describe("resolverOrdemDeAssinatura", () => {
     // O padrão nasce desligado de propósito: ligar a ordem na carteira inteira pararia contratos
     // que hoje saem em paralelo.
     expect(r.regra.ordenada).toBe(false);
-    expect(r.regra.papeis[0]).toBe("comprador");
+    expect(fila(r.regra)[0]).toBe("comprador");
   });
 
   it("o booleano em FALSO com lista nula não cria regra", () => {
@@ -110,23 +115,23 @@ describe("resolverOrdemDeAssinatura", () => {
     ]);
 
     expect(r.rotulo).toBe("Loteamento");
-    expect(r.regra.papeis[0]).toBe("corretor");
+    expect(fila(r.regra)[0]).toBe("corretor");
   });
 
   it("papel que saiu do código é descartado, e a regra continua de pé", () => {
     const r = resolverOrdemDeAssinatura([categoria(["avalista", "comprador"], true)]);
 
     expect(r.origem).toBe("categoria");
-    expect(r.regra.papeis).not.toContain("avalista");
-    expect(r.regra.papeis[0]).toBe("comprador");
+    expect(fila(r.regra)).not.toContain("avalista");
+    expect(fila(r.regra)[0]).toBe("comprador");
   });
 
   it("papel ausente da lista assina por último", () => {
     const r = resolverOrdemDeAssinatura([categoria(["testemunha"], true)]);
 
-    expect(r.regra.papeis[0]).toBe("testemunha");
-    expect(r.regra.papeis).toContain("comprador");
-    expect(r.regra.papeis.indexOf("comprador")).toBeGreaterThan(0);
+    expect(fila(r.regra)[0]).toBe("testemunha");
+    expect(fila(r.regra)).toContain("comprador");
+    expect(fila(r.regra).indexOf("comprador")).toBeGreaterThan(0);
   });
 });
 
