@@ -1,5 +1,6 @@
 import { ehPortalPersonalizado } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { scriptDeTemaAntesDaPintura } from "@/lib/apolo/incorporador/tema-portal";
+import { PortaoDeSenhaDoPortal } from "@/modules/incorporador/PortaoDeSenhaDoPortal";
 
 // A CASCA DO PORTAL — existe por UMA razão: pintar o tema escolhido ANTES da tela aparecer.
 //
@@ -42,6 +43,11 @@ export default async function LayoutIncorporador({
     <>
       <script dangerouslySetInnerHTML={{ __html: scriptDeTemaAntesDaPintura(padrao) }} />
       {children}
+      {/* ⚠️ DEPOIS DOS FILHOS, e aqui e não na página: o layout vale para TODA tela do portal, e o
+          portão precisa aparecer em qualquer uma em que a pessoa caia — inclusive num link direto
+          para uma venda. Ele só monta quando o servidor diz que aquela conta precisa trocar; em
+          página sem cookie a resposta é "não" e ele some. Ver PortaoDeSenhaDoPortal. */}
+      <PortaoDeSenhaDoPortal />
     </>
   );
 }

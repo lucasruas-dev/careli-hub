@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-14-a-senha-passa-a-ser-sua",
+    deployedAt: "2026-09-14T00:28:32-03:00",
+    modules: [
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              "**No pr\u00f3ximo acesso, o sistema vai pedir que voc\u00ea cadastre uma senha nova.** A senha que voc\u00ea usa hoje foi definida por quem criou o seu acesso; a partir de agora ela \u00e9 s\u00f3 sua.",
+              "S\u00e3o pelo menos 8 caracteres, e precisa ser diferente da atual. A tela n\u00e3o deixa seguir antes da troca \u2014 leva menos de um minuto.",
+              "Vale para o **hub interno** e para o **portal comercial da Gurgel**. Quem entra pelos dois troca nos dois, porque s\u00e3o logins separados.",
+              "**Daqui em diante isso vale para todo acesso novo**: quem cadastrar entrega uma senha inicial, e ela morre no primeiro acesso da pessoa.",
+            ],
+            screen: "Entrar",
+          },
+        ],
+      },
+    ],
+    rollback: "c30f6c28",
+    technical: {
+      done: "SAO DOIS SISTEMAS DE SENHA, e por isso sao duas colunas, duas rotas e duas telas. O hub autentica no Supabase Auth (a senha vive em `auth.users` e o Panteon NAO a enxerga) e o portal tem login proprio com scrypt em `apolo_incorporador_usuarios.senha_hash`. O que as duas telas compartilham e a REGUA (`lib/auth/senha-nova.ts`, 8 testes) \u2014 Lucas e Nivea tem conta nos dois lados, e duas exigencias diferentes para a mesma senha seria confusao pura. || \u26a0\ufe0f O RECORTE MEDIDO ANTES DE MARCAR NINGUEM: 11 contas no hub (7 ativas) e 38 no portal \u2014 das quais apenas TRES sao da Gurgel. As outras 35 sao de INCORPORADORES, donos de loteamento, gente de fora da casa, e o pedido foi \"o time interno e o time comercial (gurgel)\". O mutirao alcancou 9 contas; os 35 ficaram como estavam. || \u26a0\ufe0f O DEFAULT NASCE `false` E VIRA `true` DEPOIS DO BACKFILL, e a ordem e o ponto inteiro da migration 0160: criar a coluna ja com `default true` marcaria TODA linha existente no mesmo instante, incluindo os 35 de fora. Depois do backfill o default vira `true`, e e isso que transforma o pedido em PADRAO \u2014 conta nova ja nasce precisando trocar. || \u26a0\ufe0f QUEM TROCA A SENHA E O DONO DELA, com o token DELE: a chamada vai para `PUT /auth/v1/user` do Supabase Auth com o access token de quem esta logado, nunca com a chave de servico. No portal, a conta sai do COOKIE ASSINADO e nunca do corpo do pedido \u2014 aceitar um `usuarioId` do cliente ali daria a qualquer pessoa logada a senha de qualquer outra. || A ORDEM E: TROCA PRIMEIRO, DESMARCA DEPOIS. Se a troca falhar, a marca fica de pe e a pessoa volta a cair na tela. || \u26a0\ufe0f TODA FALHA DO PORTAO LIBERA. Rede fora, token velho, resposta estranha: o portao some e a pessoa trabalha. O custo desse erro e um dia a mais com a senha antiga; o custo do erro contrario e a operacao parada de manha. Pela mesma razao o portao e um COMPONENTE PROPRIO e nao cirurgia no `auth-provider`, que tem 600+ linhas e decide quem entra em todo o hub. || `senha_trocada_em` existe para distinguir quem TROCOU de quem nunca precisou \u2014 sem ela, \"quem ainda esta com a senha que eu entreguei?\" nao tem resposta. || Lucas tem conta no hub E quatro no portal; o backfill pegou a do portal e foi desfeita na hora (\"o unico que nao precisa mudar e minha senha\"). || typecheck limpo, 3.827 testes em 256 arquivos, lint sem aviso novo. \u26a0\ufe0f NAO VERIFICADO EM TELA \u2014 o hub exige login, e eu nao troco a senha de ninguem para testar.",
+      motivation:
+        "Lucas (13/09/2026): *\"quero que todos amanha ao logar no panteon possa configurar uma senha nova. isso vai virar padrao, primeiro acesso eu coloco a senha como e hoje, no acesso, o sistema pede para ele cadastrar uma nova senha. isso vale o time interno e o time comercial (gurgel) o unico que nao precisa mudar e minha senha\"*.",
+    },
+    title: "A senha passa a ser sua: troca obrigatoria no proximo acesso",
+    type: "novidade",
+    version: "1.333.0",
+  },
+  {
     buildTag: "2026-09-13-o-setup-por-abas-e-a-vendedora-de-todos",
     deployedAt: "2026-09-13T21:43:42-03:00",
     modules: [
