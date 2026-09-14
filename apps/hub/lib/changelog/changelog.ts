@@ -36,6 +36,45 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-14-o-clique-volta-no-miolo-do-lote",
+    deployedAt: "2026-09-14T13:05:00-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**Clicar no numero do lote volta a abrir o lote.** Quem mirava o numero \u2014 que e onde qualquer pessoa mira \u2014 clicava no vazio e nada acontecia. Medido ao vivo: no Villa Paris, 89 dos 97 lotes; no Jardim das Gerais, 190 dos 250.",
+              "**O aviso agora fala com a coordenacao.** As duas mensagens do espelho diziam \"fale com o corretor\" \u2014 e quem abre este link E o corretor.",
+            ],
+            screen: "Espelho publico",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Uma linha so de Vale do Ouro na lista de empreendimentos.** O pai aparecia duas vezes: uma como grupo, outra como cadastro. Agora e uma linha so, com os filhos por baixo.",
+            ],
+            screen: "Empreendimentos",
+          },
+        ],
+      },
+    ],
+    rollback: "b8f14b2e",
+    technical: {
+      done:
+        "O BURACO DO `evenodd` ENGOLIA O CLIQUE. O `d` de cada lote tem DOIS ou TRES sub-caminhos: o contorno do terreno e o balao do numero, que o importador trouxe do SVG. Com `fillRule=\"evenodd\"` o segundo vira BURACO \u2014 que e exatamente o que se quer no desenho, porque e assim que numero e metragem da planta aparecem nitidos por baixo da cor. So que buraco em SVG NAO RECEBE CLIQUE. || CENSO DOS 8 MAPAS (geometria no storage): 352 de 2.237 lotes com sub-caminho alem do contorno \u2014 RVP 97 de 97, JDG 248 de 250, REP 4, VDO 2, VLO 1, e LAB/GDN/VAL zero. || MEDIDO AO VIVO EM PRODUCAO, com `elementFromPoint` no centro de cada lote, antes e depois de injetar o conserto na propria pagina: RVP 89 perdidos -> 0; JDG 190 -> 3; REP 6 -> 6; LAB 6 -> 6; VDO 1 -> 1; VAL 1 -> 1; VLO 0 -> 0; GDN 0 -> 0. Os perdidos que sobram NAO sao buraco: sao lotes em L, onde o centro da caixa envolvente cai fora do proprio poligono \u2014 clicar dentro do desenho funciona. Nenhum mapa REGRIDE. || O CONSERTO E SEPARAR PINTURA DE TOQUE, e nao trocar para `nonzero`: com `nonzero` o balao deixa de ser buraco, a cor passa por cima do numero e o mapa perde a legenda da planta. Sao dois caminhos por lote: o que pinta mantem `evenodd` e ganha `pointerEvents=\"none\"` (quem pinta nao ouve, senao os dois disputam o evento e o de cima volta a decidir pelo buraco); o invisivel usa `areaDeToque(d)` \u2014 o caminho cortado no primeiro `Z`, so o contorno \u2014 com `nonzero`, e carrega o onClick. Sem `Z` nenhum, `areaDeToque` devolve o caminho inteiro: area de toque um pouco maior e melhor do que clique perdido. || \u26a0\ufe0f DUAS MEDICOES MINHAS DERAM RUIDO ANTES DE EU CHEGAR AQUI: sobreposicao por caixa envolvente (acusava 198 de 199 no Recanto) e por poligono com curvas. So a contagem de sub-caminhos e a medicao em tela se sustentaram. || O AVISO: as duas frases de `EspelhoPublico` passaram a dizer coordenador, com nota no codigo de que o leitor desta tela e do oficio \u2014 escrever para o comprador aqui manda o corretor falar com ele mesmo. || VALE DO OURO: o registro do pai agora VESTE a linha do grupo (mesmo id, code e cidade) em vez de entrar como linha propria; `codes` segue so com os filhos. Terceira e ultima correcao do mesmo sintoma. || typecheck limpo, suite verde.",
+      motivation:
+        "Lucas (14/09/2026): *\"o lote 09 e 11 da quadra d quando clico nao acontece nada. vamos revisar tudo isso por favor\"*, *\"essa mensagem tem que ser fale com o coordenador, pois quem acessa esse espelho sao os corretores\"* e *\"ainda estou vendo dois vale do ouro\"*.",
+    },
+    title: "O clique volta no miolo do lote",
+    type: "correcao",
+    version: "1.338.0",
+  },
+  {
     buildTag: "2026-09-14-o-espelho-volta-no-consolidado",
     deployedAt: "2026-09-14T09:23:38-03:00",
     modules: [
