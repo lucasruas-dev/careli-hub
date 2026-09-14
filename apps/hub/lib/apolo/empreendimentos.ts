@@ -27,6 +27,7 @@ import {
 } from "@/lib/prometeu/reservas-vivas";
 import {
   ENTERPRISE_GROUPS,
+  ENTERPRISE_MIRRORS,
   EXCLUDED_ENTERPRISE_CODES,
   findEnterpriseMirror,
 } from "@/lib/guardian/c2x-analytics";
@@ -776,21 +777,56 @@ function groupEnterpriseRows(rows: ApoloEnterpriseRow[]): ApoloEnterpriseRow[] {
 
     const first = stages[0];
 
+    // ⚠️ O PAI É A LINHA, E NÃO UMA LINHA AO LADO. Lucas, 14/09/2026, pela terceira vez:
+    // *"VLO é o pai, porque tem dois vale do ouro, já expliquei isso para vc"* e, depois do primeiro
+    // conserto, *"ainda estou vendo dois vale do ouro"*. O cadastro do Panteon concorda: em
+    // `hercules_empreendimentos`, VLO tem `pai_id` nulo e VOC, VOL e VOR apontam para ele.
+    //
+    // O que esta tela fazia era montar um grupo SINTÉTICO (`id: group:Vale do Ouro`) a partir das
+    // três carteiras e deixar o registro do pai cair como linha solta lá embaixo — duas linhas
+    // "Vale do Ouro", 302 e 298 unidades, e quem lia somava 600.
+    //
+    // Agora o registro do pai VESTE o grupo: mesmo `id`, mesmo `code`, mesma cidade. Clicar continua
+    // abrindo a ficha do VLO, e isso NÃO é detalhe: o pai é a casa do masterplan, de TODAS as CADs
+    // da esteira e do eixo do painel do coordenador. Um grupo sintético com id próprio deixaria os
+    // três sem porta de entrada.
+    //
+    // ⚠️ OS NÚMEROS CONTINUAM SENDO A SOMA DOS FILHOS, nunca os do pai. Os lotes do pai são os
+    // MESMOS dos filhos — medido em 14/09/2026: 714 terrenos com duas linhas, e `espelho_de`
+    // (migration 0161) hoje marca qual responde. Somar o pai junto contaria o loteamento duas vezes,
+    // que é a conta de 4.560 unidades onde o certo são 4.262.
+    //
+    // ⚠️ E `codes` SEGUE SÓ COM OS FILHOS: é por ele que a tela busca UNIDADES, e incluir o pai
+    // traria as mesmas 298 de volta — a duplicidade voltaria por baixo, agora invisível.
+    const espelhoDoGrupo = ENTERPRISE_MIRRORS.find(
+      (m) =>
+        m.divisions.length === group.codes.length &&
+        m.divisions.every((d) =>
+          group.codes.some((c) => c.toUpperCase() === d.toUpperCase()),
+        ),
+    );
+    const linhaDoPai = espelhoDoGrupo
+      ? byCode.get(espelhoDoGrupo.code.toUpperCase())
+      : undefined;
+    if (linhaDoPai) consumed.add(linhaDoPai.code.toUpperCase());
+
     grouped.push({
-      city: first?.city ?? null,
-      code: stages.map((stage) => stage.code).join(" + "),
+      city: linhaDoPai?.city ?? first?.city ?? null,
+      code: linhaDoPai?.code ?? stages.map((stage) => stage.code).join(" + "),
       codes: stages.map((stage) => stage.code),
-      id: `group:${group.display}`,
+      id: linhaDoPai?.id ?? `group:${group.display}`,
       incorporador:
-        stages.find((stage) => stage.incorporador)?.incorporador ?? null,
-      // Grupo consolidado nunca é espelho: espelho não entra em ENTERPRISE_GROUPS (se um dia
-      // entrar, a soma das etapas abaixo já ignora os espelhos e a linha segue somável).
+        linhaDoPai?.incorporador ??
+        stages.find((stage) => stage.incorporador)?.incorporador ??
+        null,
+      // A linha do grupo não se anuncia como espelho: ela JÁ é o consolidado, e a tarja existia para
+      // explicar uma segunda linha que agora não existe mais.
       mirror: false,
       mirrorLabel: null,
       mirrorNote: null,
       name: group.display,
       scenario: sumScenarios(stages.filter((stage) => !stage.mirror)),
-      state: first?.state ?? null,
+      state: linhaDoPai?.state ?? first?.state ?? null,
       stages,
     });
   }

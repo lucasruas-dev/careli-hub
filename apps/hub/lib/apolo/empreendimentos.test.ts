@@ -99,17 +99,37 @@ describe("espelho do Vale do Ouro na tela de empreendimentos", () => {
     expect(dados.totals.disponivel.value).toBeCloseTo(1_040_273_342.43, 2);
   });
 
-  it("🔴 a LINHA do espelho continua na listagem, marcada como histórica", () => {
-    // Ela é o caminho para o masterplan do Vale do Ouro e para as CADs da esteira (todas no
-    // enterprise_id 35). Tirar a linha resolveria o total e quebraria as duas coisas.
-    const vlo = dados.rows.find((row) => row.code === "VLO");
+  // ⚠️ AQUI HAVIA O TESTE OPOSTO, e ele guardava uma decisão que o Lucas derrubou. Ele exigia que a
+  // linha do VLO continuasse SOLTA na listagem, marcada como "histórica" — e era isso que produzia
+  // DUAS linhas "Vale do Ouro" na tela, 302 e 298 unidades. Lucas, 14/09/2026: *"VLO é o pai, porque
+  // tem dois vale do ouro, já expliquei isso para vc"* e, depois da primeira tentativa, *"ainda estou
+  // vendo dois vale do ouro"*.
+  //
+  // O cadastro sempre concordou com ele: em `hercules_empreendimentos`, VLO tem `pai_id` nulo e VOC,
+  // VOL e VOR apontam para ele. O pai não é histórico — ele é o conjunto.
+  it("há UMA linha de Vale do Ouro, e ela é o pai", () => {
+    const doVale = dados.rows.filter((row) => row.name === "Vale do Ouro");
 
-    expect(vlo).toBeDefined();
-    expect(vlo?.id).toBe("35");
-    expect(vlo?.mirror).toBe(true);
-    expect(vlo?.mirrorLabel).toContain("VOC + VOL");
-    // O cenário dela continua completo: quem abre a ficha vê as 298 unidades.
-    expect(vlo?.scenario.total.units).toBe(298);
+    expect(doVale).toHaveLength(1);
+
+    // ⚠️ E O ID É O DO PAI, não um id sintético. Clicar na linha abre a ficha do VLO, que é a casa
+    // do masterplan, de TODAS as CADs da esteira (enterprise_id 35) e do eixo do painel do
+    // coordenador. Um `group:Vale do Ouro` deixaria os três sem porta de entrada.
+    const [vale] = doVale;
+
+    expect(vale?.id).toBe("35");
+    expect(vale?.code).toBe("VLO");
+    expect(vale?.mirror).toBe(false);
+    expect(vale?.mirrorLabel).toBeNull();
+
+    // ⚠️ OS NÚMEROS SÃO A SOMA DOS FILHOS, e não os 298 do pai: os lotes são os MESMOS, e contar
+    // os dois seria contar o loteamento duas vezes.
+    expect(vale?.scenario.total.units).toBe(301);
+    expect([...(vale?.stages ?? [])].map((stage) => stage.code).sort()).toEqual([
+      "VOC",
+      "VOL",
+      "VOR",
+    ]);
   });
 
   it("as divisões vivas seguem normais e somáveis, agora DENTRO da linha agrupada", () => {
@@ -118,7 +138,8 @@ describe("espelho do Vale do Ouro na tela de empreendimentos", () => {
     // apolo não"*). Elas viraram `stages` do produto consolidado — o mesmo lugar onde LBF/LBR/LBP
     // já viviam —, e é isto que faz a tela desenhar "(3 etapas)" com o chevron em vez de três
     // linhas de mesmo nome e mesma cidade.
-    const grupo = dados.rows.find((row) => row.id === "group:Vale do Ouro");
+    // ⚠️ PELO ID DO PAI, e não por `group:Vale do Ouro`: o registro do pai agora VESTE o grupo.
+    const grupo = dados.rows.find((row) => row.id === "35");
 
     expect(grupo).toBeDefined();
     expect(grupo?.mirror).toBe(false);
@@ -138,14 +159,23 @@ describe("espelho do Vale do Ouro na tela de empreendimentos", () => {
     }
   });
 
-  it("🔴 o ESPELHO ficou de fora do grupo, e continua linha própria", () => {
-    // Se o VLO entrasse como etapa, `sumScenarios` até o descartaria pela marca de espelho — mas
-    // a linha dele sumiria da listagem, e é por ela que se chega ao masterplan (MASTERPLAN = 35)
-    // e às CADs da esteira.
-    const grupo = dados.rows.find((row) => row.id === "group:Vale do Ouro");
+  // ⚠️ O MEDO QUE ESTE TESTE GUARDAVA ERA LEGÍTIMO, e a solução dele é que estava errada. Ele exigia
+  // que o VLO ficasse como linha PRÓPRIA para não sumir da listagem — porque é por ele que se chega
+  // ao masterplan (35) e às CADs da esteira. O preço disso eram duas linhas "Vale do Ouro" na tela.
+  //
+  // Agora o pai NÃO some E não duplica: ele VESTE a linha do grupo, com o próprio id. A porta
+  // continua aberta, e ela é uma só.
+  it("o pai continua alcançável — sem virar etapa e sem virar segunda linha", () => {
+    const vale = dados.rows.find((row) => row.id === "35");
 
-    expect(grupo?.codes).not.toContain("VLO");
-    expect(dados.rows.some((row) => row.code === "VLO" && row.mirror)).toBe(true);
+    // ⚠️ O PAI NÃO ENTRA EM `codes`: é por ele que a tela busca UNIDADES, e incluir o VLO traria as
+    // mesmas 298 dos filhos de volta — a duplicidade voltaria por baixo, agora invisível.
+    expect(vale?.codes).not.toContain("VLO");
+    expect([...(vale?.stages ?? [])].map((s) => s.code)).not.toContain("VLO");
+
+    // E não sobrou nenhuma linha solta do pai.
+    expect(dados.rows.filter((row) => row.code === "VLO")).toHaveLength(1);
+    expect(dados.rows.some((row) => row.id === "group:Vale do Ouro")).toBe(false);
   });
 
   it("a soma das linhas somáveis bate com o total", () => {
