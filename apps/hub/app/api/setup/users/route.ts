@@ -1,3 +1,8 @@
+import {
+  carregarChamadorDoSetup,
+  podeAbrirSetupDePessoas,
+  podeEscreverPessoa,
+} from "@/lib/hub/gestao-de-pessoas";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
@@ -97,14 +102,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Sessao administrativa invalida." }, { status: 401 });
   }
 
-  const { data: currentUser, error: currentUserError } = await adminClient
-    .from("hub_users")
-    .select("id,role,status")
-    .eq("id", authData.user.id)
-    .maybeSingle<{ id: string; role: HubUserRole; status: string }>();
+  // Admin OU quem tem a permissao de gerir pessoas (o RH da casa). A decisao mora em
+  // lib/hub/gestao-de-pessoas.ts — ponto unico, com teste.
+  const chamador = await carregarChamadorDoSetup(adminClient, authData.user.id);
 
-  if (currentUserError || currentUser?.role !== "admin" || currentUser.status !== "active") {
-    return NextResponse.json({ error: "Apenas administradores podem listar usuarios." }, { status: 403 });
+  if (!chamador || !podeAbrirSetupDePessoas(chamador)) {
+    return NextResponse.json({ error: "Sem permissao para listar usuarios." }, { status: 403 });
   }
 
   const result = await adminClient
@@ -206,14 +209,40 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Sessao administrativa invalida." }, { status: 401 });
   }
 
-  const { data: currentUser, error: currentUserError } = await adminClient
-    .from("hub_users")
-    .select("id,role,status")
-    .eq("id", authData.user.id)
-    .maybeSingle<{ id: string; role: HubUserRole; status: string }>();
+  const chamador = await carregarChamadorDoSetup(adminClient, authData.user.id);
 
-  if (currentUserError || currentUser?.role !== "admin" || currentUser.status !== "active") {
-    return NextResponse.json({ error: "Apenas administradores podem editar usuarios." }, { status: 403 });
+  if (!chamador || !podeAbrirSetupDePessoas(chamador)) {
+    return NextResponse.json({ error: "Sem permissao para editar usuarios." }, { status: 403 });
+  }
+
+  // ⚠️ TUDO ISTO ANTES DA PRIMEIRA ESCRITA NO AUTH. O papel e propagado por TRIGGER
+  // (migration 0147): depois do updateUserById a promocao JA aconteceu, e validar ali seria
+  // tarde. Por isso o estado do ALVO e lido aqui, nao mais adiante.
+  const { data: alvoAtual } = await adminClient
+    .from("hub_users")
+    .select("id,role,email")
+    .eq("id", payload.data.userId)
+    .maybeSingle<{ email: string | null; id: string; role: HubUserRole }>();
+
+  const { count: adminsAtivos } = await adminClient
+    .from("hub_users")
+    .select("id", { count: "exact", head: true })
+    .eq("role", "admin")
+    .eq("status", "active");
+
+  const veredito = podeEscreverPessoa(chamador, {
+    adminsAtivos: adminsAtivos ?? 0,
+    alvoRoleAtual: alvoAtual?.role ?? null,
+    alvoUserId: payload.data.userId,
+    mudaEmail: Boolean(
+      payload.data.email && payload.data.email !== (alvoAtual?.email ?? ""),
+    ),
+    novoStatus: payload.data.status ?? null,
+    perfilDesejado: payload.data.profile,
+  });
+
+  if (!veredito.ok) {
+    return NextResponse.json({ error: veredito.motivo }, { status: 403 });
   }
 
   const { data: sector, error: sectorError } = await adminClient
@@ -402,21 +431,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Sessao administrativa invalida." }, { status: 401 });
   }
 
-  const { data: currentUser, error: currentUserError } = await adminClient
-    .from("hub_users")
-    .select("id,role,status")
-    .eq("id", authData.user.id)
-    .maybeSingle<{ id: string; role: HubUserRole; status: string }>();
+  const chamador = await carregarChamadorDoSetup(adminClient, authData.user.id);
+  // Criando alguem novo: nao ha alvo, entao o que decide e o PERFIL pedido. So admin concede
+  // o perfil que vira admin.
+  const veredito = chamador
+    ? podeEscreverPessoa(chamador, { perfilDesejado: payload.data.profile })
+    : { motivo: "usuario nao encontrado", ok: false };
 
-  if (currentUserError || currentUser?.role !== "admin" || currentUser.status !== "active") {
+  if (!chamador || !veredito.ok) {
     logSetupUsersApi("error", {
-      currentUser,
-      error: serializeServerError(currentUserError),
-      reason: "admin profile denied",
+      chamador,
+      reason: veredito.motivo,
       table: "hub_users",
       userId: authData.user.id,
     });
-    return NextResponse.json({ error: "Apenas administradores podem criar usuarios." }, { status: 403 });
+    return NextResponse.json({ error: veredito.motivo }, { status: 403 });
   }
 
   const { data: sector, error: sectorError } = await adminClient
@@ -610,6 +639,11 @@ async function createOperationalUserWithSignupFallback({
     .eq("id", authData.user.id)
     .maybeSingle<{ id: string; role: HubUserRole; status: string }>();
 
+  // ⚠️ ESTE CAMINHO CONTINUA SO PARA ADMIN, de proposito. E o fallback de quando NAO ha
+  // service-role key, e aqui o cliente e o do proprio usuario: `hub_user_permissions` tem RLS
+  // ligada com ZERO policies, entao a permissao de gerir pessoas voltaria VAZIA e o RH seria
+  // barrado de qualquer jeito — so que por acidente. Melhor recusar de propria vontade e
+  // dizer o motivo do que depender de uma consulta que volta vazia sem erro.
   if (currentUserError || currentUser?.role !== "admin" || currentUser.status !== "active") {
     logSetupUsersApi("error", {
       currentUser,
@@ -618,7 +652,13 @@ async function createOperationalUserWithSignupFallback({
       table: "hub_users",
       userId: authData.user.id,
     });
-    return NextResponse.json({ error: "Apenas administradores podem criar usuarios." }, { status: 403 });
+    return NextResponse.json(
+      {
+        error:
+          "Sem a chave server-side, apenas administradores criam usuarios. Configure a chave para habilitar a gestao de pessoas.",
+      },
+      { status: 403 },
+    );
   }
 
   const { data: sector, error: sectorError } = await authenticatedClient

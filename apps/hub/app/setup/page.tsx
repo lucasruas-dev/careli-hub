@@ -1,5 +1,6 @@
 "use client";
 
+import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { HubShell } from "@/layouts/hub-shell";
 import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import { GestaoIncorporadores } from "@/modules/apolo/blocks/incorporadores/gestao-incorporadores";
@@ -143,9 +144,53 @@ const atlasConfigTabs = [
 
 export default function SetupPage() {
   const { hubUser, profileStatus } = useAuth();
-  const access = getSetupAccess(hubUser);
+  const acessoLocal = getSetupAccess(hubUser);
+  // ⚠️ QUEM DECIDE E O SERVIDOR. O papel do contexto nao conhece a permissao de gerir
+  // pessoas (ela vive em hub_user_permissions, que so o service role le), entao o RH seria
+  // barrado na porta por uma conta que o cliente nao sabe fazer. A rota /api/setup/acesso
+  // responde com a MESMA funcao que protege as rotas de escrita.
+  const [podeGerirPessoas, setPodeGerirPessoas] = useState(false);
+  const [acessoConsultado, setAcessoConsultado] = useState(false);
 
-  if (profileStatus === "loading" && !access.canManageSetup) {
+  useEffect(() => {
+    let vivo = true;
+
+    void (async () => {
+      try {
+        const supabase = getHubSupabaseClient();
+        const sessao = await supabase?.auth.getSession();
+        const token = sessao?.data.session?.access_token ?? "";
+        const resposta = await fetch("/api/setup/acesso", {
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const corpo = (await resposta.json().catch(() => null)) as {
+          data?: { podeGerirPessoas?: boolean };
+        } | null;
+
+        if (vivo) {
+          setPodeGerirPessoas(Boolean(corpo?.data?.podeGerirPessoas));
+        }
+      } catch {
+        // Falhou a pergunta: fica com o que o papel local diz. Falha fechada.
+      } finally {
+        if (vivo) {
+          setAcessoConsultado(true);
+        }
+      }
+    })();
+
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  const access = {
+    ...acessoLocal,
+    canManageSetup: acessoLocal.canManageSetup || podeGerirPessoas,
+  };
+
+  if ((profileStatus === "loading" || !acessoConsultado) && !access.canManageSetup) {
     return (
       <HubShell layoutMode="module">
         <WorkspaceLayout>
