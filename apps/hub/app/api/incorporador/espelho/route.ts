@@ -150,6 +150,18 @@ async function codigosComMapa(
   }
 
   const comMapa: string[] = [];
+  // ⚠️ OS IDS DO C2X VAO JUNTO, E SEM ELES A MESA NAO ACHAVA O PRODUTO. A tela guarda o produto
+  // aberto como um CARD, e o card consolidado não tem código nenhum: o `code` dele é o rótulo
+  // `"LBF + LBR + LBP"` e o resto são `enterpriseIds`, que são IDS DO C2X ("33", "32", "27"). Uma
+  // lista só de códigos nunca casa com nenhum dos dois — e por isso TODO produto consolidado caía
+  // na grade, com o masterplan publicado e as três peças prontas no storage. Era o caso do Lagoa
+  // Bonita e do Vale do Ouro.
+  //
+  // ⚠️ E O PAR VIAJA JUNTO PORQUE A ROTA PEDE CÓDIGO. Devolver só os ids resolveria o casamento e
+  // quebraria a chamada seguinte (`?code=`), que é por código. Cada entrada leva o código E os ids
+  // que levam até ele, e a tela usa o id para ACHAR e o código para PEDIR.
+  const produtos: { codigo: string; enterpriseIds: string[] }[] = [];
+
   for (const code of autorizados) {
     const limpo = code.trim().toUpperCase();
     const topo = await topoDaArvore(client, limpo);
@@ -158,10 +170,25 @@ async function codigosComMapa(
     // oferece.
     if (SEM_ESPELHO_NA_MESA.has(limpo) || SEM_ESPELHO_NA_MESA.has(topo.codigo)) continue;
     comMapa.push(limpo);
+
+    // O id do próprio empreendimento e os dos filhos: num consolidado, o card carrega os dos
+    // FILHOS, e é por eles que o casamento acontece.
+    const ids = new Set<string>();
+    const { data: linha } = await client
+      .from("hercules_empreendimentos")
+      .select("c2x_enterprise_id")
+      .eq("codigo", limpo)
+      .maybeSingle<{ c2x_enterprise_id: null | string }>();
+    if (linha?.c2x_enterprise_id) ids.add(String(linha.c2x_enterprise_id));
+    if (topo.c2xEnterpriseId) ids.add(String(topo.c2xEnterpriseId));
+    for (const filho of topo.filhosC2xIds) ids.add(String(filho));
+
+    produtos.push({ codigo: limpo, enterpriseIds: [...ids] });
   }
 
   return NextResponse.json(
-    { data: { codigos: comMapa } },
+    // `codigos` continua saindo para não quebrar quem já lia a resposta antiga.
+    { data: { codigos: comMapa, produtos } },
     // Curto e privado: a lista muda quando um masterplan é publicado, o que é raro, mas ela é
     // por SESSÃO — não pode ficar em cache compartilhado.
     { headers: { "Cache-Control": "private, max-age=60" } },

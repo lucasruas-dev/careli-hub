@@ -84,6 +84,12 @@ import { SimuladorDeProposta } from "./SimuladorDeProposta";
 // desenho só. Nesse caso a opção nem aparece, em vez de aparecer e não fazer nada.
 
 /** O card da rota antiga — usado só para achar o masterplan de um produto. */
+/** Um produto que tem masterplan publicado, com os ids do C2X que levam até ele. */
+type ProdutoComMapa = {
+  codigo: string;
+  enterpriseIds: string[];
+};
+
 type CardDeProduto = {
   code: string;
   enterpriseIds: string[];
@@ -865,15 +871,14 @@ export function TelaVenda() {
   // das Gerais e Villa Paris. Lucas: *"pq não tem o espelho no veredas aqui"*. Agora a rota
   // responde quais têm mapa publicado em `hercules_masterplans`, e a lista cresce sozinha a cada
   // importação.
-  const [comEspelho, setComEspelho] = useState<Set<string>>(new Set());
+  const [comEspelho, setComEspelho] = useState<ProdutoComMapa[]>([]);
 
   useEffect(() => {
     let vivo = true;
     fetch("/api/incorporador/espelho?parte=disponiveis")
       .then((r) => (r.ok ? r.json() : null))
-      .then((corpo: null | { data?: { codigos?: string[] } }) => {
-        if (vivo && corpo?.data?.codigos)
-          setComEspelho(new Set(corpo.data.codigos));
+      .then((corpo: null | { data?: { produtos?: ProdutoComMapa[] } }) => {
+        if (vivo && corpo?.data?.produtos) setComEspelho(corpo.data.produtos);
       })
       .catch(() => undefined);
     return () => {
@@ -881,16 +886,35 @@ export function TelaVenda() {
     };
   }, []);
 
-  /** O código do produto aberto que TEM mapa — é ele que o espelho carrega. */
+  /**
+   * O código do produto aberto que TEM mapa — é ele que o espelho carrega.
+   *
+   * ⚠️ CASA POR CÓDIGO **OU** POR ID DO C2X, e a segunda metade é o conserto. O card consolidado
+   * não tem código: o `code` dele é o rótulo `"LBF + LBR + LBP"` e o resto são `enterpriseIds`, que
+   * são IDS ("33", "32", "27"). Comparar isso com uma lista de códigos nunca casava, e TODO produto
+   * consolidado caía na grade — Lagoa Bonita e Vale do Ouro — com o masterplan publicado e as três
+   * peças prontas no storage.
+   *
+   * ⚠️ E DEVOLVE O CÓDIGO, NUNCA O ID: a rota do espelho pede `?code=`. O id serve para ACHAR o
+   * produto na lista; quem vai na URL é o código que veio junto com ele.
+   */
   const codeDoEspelho = useMemo(() => {
     if (!produtoEscolhido) return null;
     const nome = produtoEscolhido.nome.trim().toLowerCase();
     const card = cards.find((c) => c.nome.trim().toLowerCase() === nome);
-    for (const code of [card?.code, ...(card?.enterpriseIds ?? [])]) {
-      const limpo = String(code ?? "")
-        .trim()
-        .toUpperCase();
-      if (limpo && comEspelho.has(limpo)) return limpo;
+    if (!card) return null;
+
+    const doCard = new Set(
+      [card.code, ...card.enterpriseIds]
+        .map((x) => String(x ?? "").trim().toUpperCase())
+        .filter(Boolean),
+    );
+
+    for (const produto of comEspelho) {
+      if (doCard.has(produto.codigo.toUpperCase())) return produto.codigo;
+      if (produto.enterpriseIds.some((id) => doCard.has(String(id).trim().toUpperCase()))) {
+        return produto.codigo;
+      }
     }
     return null;
   }, [cards, comEspelho, produtoEscolhido]);

@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-14-o-espelho-volta-no-consolidado",
+    deployedAt: "2026-09-14T09:23:38-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**O espelho voltou a aparecer nos produtos consolidados.** Lagoa Bonita e Vale do Ouro mostravam a grade mesmo tendo masterplan publicado \u2014 o mapa estava l\u00e1 o tempo todo, a tela e que n\u00e3o o encontrava.",
+              "O \u00fanico que continua **s\u00f3 com grade \u00e9 o Jardim das Gerais**, por decis\u00e3o de 10/09.",
+            ],
+            screen: "Venda \u00b7 Estoque",
+          },
+        ],
+      },
+    ],
+    rollback: "24c1aede",
+    technical: {
+      done: "A LISTA FALAVA C\u00d3DIGO E O CARD FALAVA ID. `?parte=disponiveis` devolvia s\u00f3 c\u00f3digos (LBF, LBP, LBR) e a Mesa comparava isso com o card do produto aberto \u2014 que no CONSOLIDADO nao tem codigo nenhum: o `code` dele e o rotulo \"LBF + LBR + LBP\" e o resto sao `enterpriseIds`, que sao IDS DO C2X (\"33\", \"32\", \"27\"). O `Set.has` nunca casava, `codeDoEspelho` devolvia null, e um `useEffect` empurrava o modo para \"grade\". Resultado: TODO produto consolidado caia na grade com o masterplan publicado e as tres pecas (v1.svg, v1-arte.webp, v1-geometria.json) prontas no storage. || MEDIDO ANTES DE MEXER: os 8 empreendimentos com masterplan (GDN, JDG, LAB, REP, RVP, VAL, VDO, VLO) tem as TRES pecas no bucket apolo-documents, prefixo hercules-masterplans. Nenhuma faltava. E o backend ja resolvia pai/filho certo: `topoDaArvore` sobe de LBF para LAB pelo `pai_id`. O defeito era so o casamento na tela. || AGORA A ROTA DEVOLVE O PAR: cada produto com mapa sai como `{ codigo, enterpriseIds }`, com o id do proprio empreendimento, o do topo e os dos filhos. A tela usa o ID para ACHAR e o CODIGO para PEDIR -- a rota do espelho continua sendo `?code=`, entao devolver so id resolveria o casamento e quebraria a chamada seguinte. `codigos` continua saindo na resposta para nao quebrar leitor antigo. || \u26a0\ufe0f O CASO DO CONSOLIDADO ESTA PROVADO POR LEITURA; o do Recanto e do Villa Paris NAO. Eles nao sao consolidados e deveriam ter casado por codigo mesmo antes. O conserto os cobre porque agora o casamento tambem acontece por id, mas se continuarem na grade a causa e outra. || \u26a0\ufe0f NUMERADA 1.337.0, E NAO 1.336.0: outra sessao subiu \"abrir proposta e promessa sem aprovacao\" enquanto este trabalho corria. Rebasei em cima dela e renumerei o MEU -- a regra da casa desde 13/09. || typecheck limpo, 3.838 testes em 257 arquivos, lint sem aviso novo. \u26a0\ufe0f Nao verificado em tela: o portal exige login.",
+      motivation:
+        "Lucas (14/09/2026): *\"a maioria dos empreendimentos estao sem espelho mesmo tendo o espelho, recanto, vila paris, lagoa bonita, vale do ouro\"*, e em seguida *\"desses ae, o unico que nao tem espelho de vendas e o jardim das gerais, o resto tem\"*.",
+    },
+    title: "O espelho volta a aparecer nos produtos consolidados",
+    type: "correcao",
+    version: "1.337.0",
+  },
+  {
     buildTag: "2026-09-14-abrir-proposta-e-promessa-sem-aprovacao",
     deployedAt: "2026-09-14T09:20:00-03:00",
     modules: [
