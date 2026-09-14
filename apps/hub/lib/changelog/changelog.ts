@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-14-abrir-proposta-e-promessa-sem-aprovacao",
+    deployedAt: "2026-09-14T09:20:00-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**O botão de abrir a proposta finalmente sai do lugar.** Clicar nele devolvia a mesma Central, com a mesma lista. Agora abre a proposta que você clicou, dentro do cliente.",
+              "**Promessa de pagamento não cai mais na fila de aprovação.** Só acordo precisa passar pela mesa. Editar uma promessa também não a joga mais de volta para aprovação.",
+              "**O lembrete automático continua exigindo que alguém tenha decidido.** A promessa passa a nascer aprovada, mas isso sozinho não libera WhatsApp para o cliente: a régua só dispara o que uma pessoa aprovou de fato.",
+            ],
+            screen: "Cobrança · Central de Propostas",
+          },
+        ],
+      },
+    ],
+    rollback: "b0fb75f2",
+    technical: {
+      done:
+        "DEFEITO 1 - A CENTRAL DE PROPOSTAS NAO E PAGINA PROPRIA: e a secao \"agreements\" da AttendancePage, e `activeSection` vive em sessionStorage (usePersistedState). O botao navega por window.location.assign (recarga COMPLETA), entao a secao gravada sobrevive a viagem: o deep-link selecionava o cliente, marcava initialDetailTab e ligava backToCentral — e NUNCA chamava setActiveSection. A pagina redesenhava a propria Central, com o cliente selecionado por tras, invisivel; e o botao \"Voltar a Central\" nem aparecia, porque esta gated em `activeSection !== \"agreements\"`. Conserto: `setActiveSection(\"queue\")` nos DOIS pontos do deep-link (AttendancePage.tsx:208, dentro do loadQueue, e :482, no efeito). || DEFEITO 1, SEGUNDA METADE: o botao da LINHA chamava openClientDetail (abre a LISTA de propostas do cliente). Passou a chamar `editProposalInClient`, que monta ?editProposal=<id> e ja existia INTEIRO e correto — a cadeia AttendancePage:95 -> ClientDetailPanel -> PropostasPanel estava pronta e so era inalcancavel. No card (modal) os dois botoes continuam separados, porque la a distincao entre \"ver a lista\" e \"editar\" faz sentido. || DEFEITO 2 - `compromissos.ts:486` carimbava approval_status \"pendente\" SEM olhar o kind (o comentario dizia \"Toda proposta nasce ENVIADA pra aprovacao do Admin\"), embora a MESMA funcao ja ramificasse por kind duas vezes 34 linhas acima (stage e promisedDate). O update de edicao (:624) repetia o carimbo, entao editar uma promessa a re-submetia. || ⚠️ O EFEITO COLATERAL QUE OBRIGOU UMA TERCEIRA MUDANCA: a aprovacao e a UNICA trava antes do WhatsApp automatico (regua-cron.ts pulava todo compromisso que nao estivesse \"aprovado\"). Promessa nascendo aprovada passaria a liberar a regua SOZINHA — com 48 lembretes armados e o proximo em 15/09. Solucao: a promessa nasce approval_status \"aprovado\" com `approved_at` e `approved_by_user_id` NULOS (ninguem decidiu nada; `submitted_at` tambem nulo, porque nao houve submissao), e a regua passou a exigir o CARIMBO DE DECISAO e nao so o status. O comportamento de hoje fica preservado: 0 disparos continuam 0 ate o Lucas mandar o contrario. || ⚠️ ERRO MEU, PEGO ANTES DE SUBIR: liguei a trava e esqueci `approved_at` no select da regua (regua-cron.ts so trazia id,client_c2x_id,kind,status,protocol,promised_date,metadata,approval_status). Typecheck limpo, suite limpa — e a regua teria parado de disparar TUDO, em silencio, inclusive acordo legitimamente aprovado. So apareceu porque fui conferir o select na mao. Ficou amarrado por `COLUNAS_DA_TRAVA` mais um teste que LE o select da regua e falha se faltar coluna; o poder de deteccao foi provado por mutacao. || ⚠️ AttendancePage.tsx TEM @ts-nocheck — o typecheck nao cobre a mudanca dali; `setActiveSection` (declarado :138) e o valor \"queue\" foram conferidos na mao. || A regra vive em lib/guardian/aprovacao-da-proposta.ts com 13 testes, e a lista de quem DISPENSA aprovacao e um Set: um kind novo cai no lado seguro (exige aprovacao). || Suite 3.840 verdes em 257 arquivos; typecheck limpo. NAO VERIFICADO EM TELA — o hub exige login. || FICA PENDENTE, medido e nao corrigido: abrir AC-000012 ou AC-000014 para EDITAR zera as 44 parcelas selecionadas (acquisition_request_c2x_id e NULL nas 7 linhas e o painel recalcula a selecao do zero); proposta reprovada deixa o cliente sem etapa no workflow; as colunas Vencimento/Pagamento/Execucao so aparecem depois da aprovacao, mesmo em promessa JA PAGA; e `todayDateOnly` calcula o dia em UTC, entao das 21h a meia-noite (BRT) a parcela que vence hoje some da Previsibilidade.",
+      motivation:
+        "Lucas (14/09/2026), com o print da Central de Propostas: *\"ao clicar em abrir proposta esta retornando para a mesma pagina, tinha que cair na pagina da proposta que e feita na tela de acordo\"* e *\"esta caindo para aprovacao promessas de pagamento, nao precisa, somente os acordos devem ser direcionados para aprovacao\"*. Diante da escolha sobre a regua, respondeu *\"quero que seja resolvido\"* — e a leitura conservadora (resolver a fila de aprovacao sem ligar disparo automatico que hoje esta desligado) foi minha, declarada a ele.",
+    },
+    title: "Abrir a proposta funciona, e promessa nao vai mais para aprovacao",
+    type: "correcao",
+    version: "1.336.0",
+  },
+  {
     buildTag: "2026-09-14-o-terreno-para-de-ter-dois-valores",
     deployedAt: "2026-09-14T09:05:25-03:00",
     internal: true,
