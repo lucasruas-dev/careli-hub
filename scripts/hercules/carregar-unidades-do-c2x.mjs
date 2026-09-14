@@ -228,3 +228,41 @@ for (let i = 0; i < paraGravar.length; i += 400) {
   process.stdout.write(`\r  gravadas ${gravadas}/${registros.length}`);
 }
 console.log(`\n\n  Pronto. ${gravadas} unidades no Panteon.`);
+
+// ── A MARCA DO ESPELHO, REAPLICADA ────────────────────────────────────
+//
+// ⚠️ A CARGA CRIA A DUPLICIDADE QUE A 0161 MARCOU. Ela lê `enterprise_unities` do C2X sem noção
+// de que o pai (LAB=31, VLO=35) e o filho (as glebas) descrevem o MESMO terreno, e grava uma linha
+// para cada. A coluna `espelho_de` é quem diz qual das duas responde por situação e preço.
+//
+// ⚠️ O UPSERT ACIMA NÃO DEVERIA APAGAR A MARCA — `resolution=merge-duplicates` só atualiza as
+// colunas que vão no corpo, e `espelho_de` não vai. Mas "não deveria" é frágil demais para uma
+// marca cujo sumiço não dá erro nenhum: quem trocar este upsert por um que substitua a linha
+// inteira devolve 714 terrenos ao estado de mostrar dois valores, e ninguém fica sabendo.
+// Reaplicar é barato e idempotente.
+//
+// ⚠️ E TERRENO NOVO NASCE MARCADO: lote cadastrado no pai depois desta carga também ganha a marca
+// aqui, sem ninguém ter de lembrar de rodar nada.
+if (GRAVAR && !FILTRO) {
+  const marcar = await fetch(`${SUPABASE_URL}/rest/v1/rpc/marcar_espelhos_de_unidade`, {
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (marcar.ok) {
+    const quantas = await marcar.json().catch(() => null);
+    console.log(`  espelho: ${quantas ?? "?"} linhas do pai apontando para a linha viva.`);
+  } else {
+    // ⚠️ AVISA ALTO E NÃO DERRUBA. A carga em si deu certo, e sair com erro aqui faria parecer
+    // que as unidades não entraram. Mas sem a marca o mesmo terreno volta a mostrar dois valores,
+    // e isso precisa aparecer para quem rodou.
+    console.error(
+      `\n  ⚠️ A MARCA DO ESPELHO NÃO FOI REAPLICADA (${marcar.status}). As unidades entraram, mas o` +
+        ` mesmo terreno pode voltar a mostrar dois valores. Rode marcar_espelhos_de_unidade() à mão.`,
+    );
+  }
+}
