@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-14-o-coordenador-bloqueia-o-lote",
+    deployedAt: "2026-09-14T15:00:00-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**O coordenador pode tirar um lote da venda.** Bot\u00e3o **Bloquear** na ficha da unidade, com o motivo escrito \u2014 permuta, lote da diretoria, matr\u00edcula com problema, e mais quatro.",
+              "**S\u00f3 em lote livre.** Com reserva, proposta, contrato, assinatura ou faturamento, o bot\u00e3o fica apagado. Primeiro cancela, depois bloqueia.",
+              "**E d\u00e1 para desbloquear.** O mesmo bot\u00e3o devolve o lote ao estoque, sem perguntar nada.",
+              "**O lote sai do espelho p\u00fablico na hora** \u2014 e volta na hora, quando desbloqueado.",
+            ],
+            screen: "Venda \u00b7 Ficha da unidade",
+          },
+        ],
+      },
+    ],
+    rollback: "ee54ecf7",
+    technical: {
+      done:
+        "A COLUNA DA JUSTIFICATIVA JA EXISTIA E NUNCA FOI USADA. `hercules_unidades.bloqueio_motivo` nasceu com a tabela (0112) e estava vazia em 100% das 5.541 linhas, sem um unico leitor no repo \u2014 o proprio comentario da migration ja nomeava os casos (\"permuta, lote da diretoria, matricula com problema\"). A 0163 acrescentou so o que faltava: `bloqueado_em`, `bloqueado_por`, `bloqueado_por_nome`, o quarteto que `hercules_reservas` e `hercules_propostas` ja usavam. || \u26a0\ufe0f AS 1.554 UNIDADES BLOQUEADAS HOJE SAO RETRATO DO C2X de 01/09, e nenhuma decisao tomada aqui. Elas ficam SEM autor de proposito: a ausencia do carimbo e o sinal que distingue \"bloqueio do legado\" de \"bloqueio nosso\", e inventar autor para o passado seria mentir no registro. || \u26a0\ufe0f A CARGA DO C2X APAGAVA TUDO, EM SILENCIO. `carregar-unidades-do-c2x.mjs` reescreve `situacao` a partir do legado e manda `bloqueio_motivo: null`: o primeiro bloqueio do coordenador seria desfeito na proxima carga sem erro, sem log e sem linha de relatorio. Agora a carga le quem tem carimbo, tira `situacao` e `bloqueio_motivo` do corpo dessas linhas (merge-duplicates so atualiza o que vai no corpo), PAGINA de mil em mil \u2014 o PostgREST corta em 1.000 sem erro \u2014 e falha FECHADA se nao conseguir ler. O relatorio passa a dizer quantos preservou. || A REGUA E A ETAPA, NAO A COLUNA `situacao`: as duas ja discordam em 38 unidades (bloqueada no cadastro, proposta viva no fluxo). E nao e `hercules_propostas.aberta`, que nunca volta para false \u2014 20 propostas mortas seguem marcadas como abertas. || \u26a0\ufe0f CINCO DEFEITOS PEGOS POR REVISAO ADVERSARIAL (6 lentes, 60 agentes), TODOS EM CODIGO MEU, NENHUM VISIVEL NO TYPECHECK. (1) `WORKSPACE` era um uuid inventado; a coluna e TEXT com `careli` nas 5.541 linhas, entao o filtro casava ZERO linhas sem erro de tipo e TODO bloqueio responderia 404 \u2014 com os 28 testes da lib verdes, porque nenhum tocava a constante. (2) A regua perguntava pela LINHA, e o terreno tem duas: medido, `VOC0305` esta disponivel com zero propostas e o gemeo `VLO0305` tem reserva VIVA desde 08/09 \u2014 a rota bloquearia o lote com a reserva por baixo. Agora pergunta pelas duas linhas (`espelho_de`) com `.in`. (3) A modal prometia \"corretor, imobiliaria e coordenador recebem o aviso\" e \"o motivo vai na mensagem do WhatsApp\": nenhuma das duas acontece no bloqueio. Os textos viraram campos do alvo. (4) A leitura dos bloqueados na carga nao paginava. (5) O ensaio da carga abortava com a mensagem errada em banco sem a 0163 \u2014 agora distingue o 42703. || A MODAL DO MOTIVO FOI REUSADA, com um terceiro alvo: o `method` e a frase de sucesso, antes cravados no corpo da funcao, viraram campos de `ALVOS`. Era o que impedia o reuso \u2014 um alvo novo anunciaria \"a unidade voltou para a disponibilidade\" no momento em que ela saiu dela. || \u26a0\ufe0f O QUE ESTE BOTAO NAO FAZ: nao pinta no telao do Prometeu, no masterplan interno do Apolo nem na aba Unidades \u2014 as tres leem o C2X, e o bloqueio nativo so existe no Panteon. E nao ha papel de coordenador: os 3 usuarios do portal comercial ganham o botao juntos. || 3.922 testes em 262 arquivos, typecheck limpo, lint sem aviso novo. \u26a0\ufe0f NAO VERIFICADO EM TELA: exige conta do portal comercial.",
+      motivation:
+        "Lucas (14/09/2026): *\"o coordenador pode bloquear as unidades. entao vamos ter que ter um botao que bloqueia essa unidade ae ter um campo de justificativa do bloqueio\"* \u00b7 *\"nao pode ter nenhuma proposta, reserva, contrato, o bloqueio aparece somente quando nao ha nada na unidade. se tiver uma reserva, primeiro ele cancela a reserva para depois bloquear o lote\"* \u00b7 *\"o botao fica apagado mas sem mensagem nenhuma quando tem reserva, proposta assinatura, fatura\"*. O DESBLOQUEIO nao foi pedido: foi decisao minha, declarada a ele \u2014 bloquear sem par cria estado que so sai com SQL na mao.",
+    },
+    title: "O coordenador bloqueia o lote",
+    type: "novidade",
+    version: "1.341.0",
+  },
+  {
     buildTag: "2026-09-14-o-clique-chega-ao-espelho-publico",
     deployedAt: "2026-09-14T13:15:00-03:00",
     modules: [

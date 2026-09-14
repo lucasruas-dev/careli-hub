@@ -39,6 +39,8 @@ import { T } from "../tema";
 import { Pilula } from "./AssinaturasDoProduto";
 import { ConversaDaVenda } from "./ConversaDaVenda";
 import { DocumentosDaVenda } from "./DocumentosDaVenda";
+import { podeBloquear } from "@/lib/hercules/bloqueio-de-unidade";
+
 import { ModalDeCancelamento } from "./ModalDeCancelamento";
 import { ModalDeContrato } from "./ModalDeContrato";
 import { ModalDePedidoDeCancelamento } from "./ModalDePedidoDeCancelamento";
@@ -525,6 +527,11 @@ export function TelaVenda() {
   const [simulando, setSimulando] = useState<null | UnidadeNoMapa>(null);
   const [reservando, setReservando] = useState<null | UnidadeNoMapa>(null);
   const [cancelando, setCancelando] = useState<null | UnidadeNoMapa>(null);
+  // ⚠️ ESTADO PRÓPRIO, E NÃO PENDURADO NO `cancelando`. A modal escolhe o alvo pela etapa da
+  // unidade (`cancelando.etapa === "proposta" ? … : "reserva"`), e bloqueio só acontece em unidade
+  // DISPONÍVEL — que cairia no ramo "reserva" e abriria a modal errada, com a lista de motivos
+  // errada e o PATCH de cancelamento.
+  const [bloqueando, setBloqueando] = useState<null | UnidadeNoMapa>(null);
   /**
    * A unidade cujo envio para contrato está esperando confirmação.
    *
@@ -674,6 +681,39 @@ export function TelaVenda() {
       } finally {
         setEnviandoContrato(false);
         setMandandoParaContrato(null);
+      }
+    },
+    [carregar, emp, janela, recorte],
+  );
+
+  /**
+   * DESBLOQUEAR — o lote volta ao estoque.
+   *
+   * ⚠️ SEM MODAL, E DE PROPÓSITO. Bloquear pergunta o motivo porque a resposta precisa sobreviver
+   * meses; desbloquear não guarda nada — devolve o lote e apaga o carimbo. Uma modal só para
+   * confirmar transformaria dois cliques em três sem acrescentar informação nenhuma.
+   *
+   * ⚠️ E É REVERSÍVEL, que é o que autoriza o clique único: desbloqueou por engano, bloqueia de
+   * novo. O contrário não vale — bloquear tira o lote do espelho público na hora, e por isso ele
+   * passa pela modal.
+   */
+  const desbloquear = useCallback(
+    async (u: UnidadeNoMapa) => {
+      try {
+        const r = await fetch("/api/incorporador/venda/bloqueio", {
+          body: JSON.stringify({ unidadeId: u.id }),
+          headers: { "content-type": "application/json" },
+          method: "DELETE",
+        });
+        const j = (await r.json().catch(() => null)) as null | { error?: string };
+        if (!r.ok) {
+          setRecado(j?.error ?? "Não foi possível desbloquear.");
+          return;
+        }
+        setRecado(`${comoSeLe(u)} voltou para o estoque e já aparece no espelho público.`);
+        void carregar(recorte || emp, janela);
+      } catch {
+        setRecado("Não foi possível desbloquear agora.");
       }
     },
     [carregar, emp, janela, recorte],
@@ -1396,6 +1436,27 @@ export function TelaVenda() {
           />
         ) : null}
 
+        {/* ⚠️ O BLOQUEIO USA A MESMA MODAL, com o terceiro alvo. A pergunta é a mesma (qual o
+            motivo, e escreva quando for "Outro"); o que muda são o verbo, a rota, o método e o que
+            acontece com a unidade no fim — e isso tudo vive no registro `ALVOS` da modal. */}
+        {bloqueando ? (
+          <ModalDeCancelamento
+            alvo="bloqueio"
+            onCancelada={(mensagem) => {
+              setBloqueando(null);
+              setRecado(mensagem);
+              // Sem recarregar, o lote continuaria verde no mapa até o F5.
+              void carregar(recorte || emp, janela);
+            }}
+            onFechar={() => setBloqueando(null)}
+            unidade={{
+              id: bloqueando.id,
+              nome: comoSeLe(bloqueando),
+              produto: mapaDoProduto?.nome ?? "",
+            }}
+          />
+        ) : null}
+
         {/* ⚠️ O OUTRO CAMINHO DA RESERVA, e mora ao lado do cancelamento pelo mesmo motivo — cobre a
           tela inteira e presa a uma coluna herdaria o `overflow: hidden` dela. O desfecho também é
           o mesmo: fecha, deixa o recado na faixa com o COD na frente e recarrega, porque o lote sai
@@ -1420,6 +1481,8 @@ export function TelaVenda() {
         {visao === "mesa" ? (
           <Mesa
             aoFocar={setFoco}
+            aoBloquear={setBloqueando}
+            aoDesbloquear={desbloquear}
             aoCancelar={setCancelando}
             aoEnviarParaContrato={setMandandoParaContrato}
             versaoDosDados={versaoDosDados}
@@ -1449,7 +1512,9 @@ export function TelaVenda() {
 // ── A MESA ──────────────────────────────────────────────────────────────────
 
 function Mesa({
+  aoBloquear,
   aoCancelar,
+  aoDesbloquear,
   aoEnviarParaContrato,
   aoFocar,
   aoGerarProposta,
@@ -1468,6 +1533,8 @@ function Mesa({
   temEmpreendimentoEscolhido,
   versaoDosDados,
 }: {
+  aoBloquear: (u: null | UnidadeNoMapa) => void;
+  aoDesbloquear: (u: UnidadeNoMapa) => void;
   aoCancelar: (u: null | UnidadeNoMapa) => void;
   aoEnviarParaContrato: (u: null | UnidadeNoMapa) => void;
   /** Sobe a cada carga do fluxo: é o sinal que faz o histórico da ficha se refazer. */
@@ -2416,6 +2483,10 @@ function Mesa({
               </p>
             )}
             <AcoesDaUnidade
+              aoBloquear={() => aoBloquear(unidadeEmFoco)}
+              aoDesbloquear={() => {
+                if (unidadeEmFoco) void aoDesbloquear(unidadeEmFoco);
+              }}
               aoCancelar={() => aoCancelar(unidadeEmFoco)}
               aoEnviarParaContrato={() => aoEnviarParaContrato(unidadeEmFoco)}
               aoGerarProposta={() => aoGerarProposta(unidadeEmFoco)}
@@ -2914,7 +2985,9 @@ function guardarLugar(lugar: LugarGuardado): void {
 }
 
 function AcoesDaUnidade({
+  aoBloquear,
   aoCancelar,
+  aoDesbloquear,
   aoEnviarParaContrato,
   aoGerarProposta,
   aoPedirCancelamento,
@@ -2922,7 +2995,9 @@ function AcoesDaUnidade({
   propostaViva,
   unidade,
 }: {
+  aoBloquear: () => void;
   aoCancelar: () => void;
+  aoDesbloquear: () => void;
   aoEnviarParaContrato: () => void;
   aoGerarProposta: () => void;
   /** Depois do contrato o cancelamento é PEDIDO à Têmis, e é outra tela e outra rota. */
@@ -2944,6 +3019,7 @@ function AcoesDaUnidade({
   unidade: null | UnidadeNoMapa;
 }) {
   const disponivel = unidade?.etapa === "disponivel";
+  const bloqueada = unidade?.etapa === "bloqueada";
   const reservada = unidade?.etapa === "reservado";
   // ⚠️ A PROPOSTA TAMBÉM TEM VOLTA. Sem esta etapa aqui, gerar a proposta tirava o lote do estoque
   // para sempre: os quatro botões apagavam, a rota da reserva mandava procurar "o cancelamento da
@@ -3042,6 +3118,30 @@ function AcoesDaUnidade({
       rotulo: cancelamento.rotulo,
       tom: "desfaz",
     },
+    // ⚠️ BLOQUEAR NÃO É DESFAZER NADA: é a empresa tirando o lote de oferta quando NÃO há processo
+    // nenhum em cima dele — permuta, lote da diretoria, matrícula com problema. Lucas (14/09/2026):
+    // *"não pode ter nenhuma proposta, reserva, contrato (...) se tiver uma reserva, primeiro ele
+    // cancela a reserva para depois bloquear o lote"*.
+    //
+    // ⚠️ E ESTE É O ÚNICO BOTÃO DA TELA SEM `title`, por decisão dele: *"o botão fica apagado mas
+    // sem mensagem nenhuma quando tem reserva, proposta assinatura, fatura"*. Os outros quatro
+    // explicam por que estão apagados; este fica calado. O padrão do arquivo era o contrário, e o
+    // pedido é explícito — a diferença aqui é que os outros quatro apagam num lote que ESTÁ em
+    // processo, onde a pergunta "por que não posso?" é natural; o bloqueio apaga justamente porque
+    // há um processo à vista na mesma ficha, que já responde sozinho.
+    //
+    // ⚠️ O TOM É NEUTRO, e não `desfaz`. Vermelho aqui colaria a ideia de erro numa ação legítima,
+    // e o botão ficaria ao lado do "Cancelar" com a mesma cara — dois vermelhos vizinhos com
+    // sentidos diferentes é o que faz alguém clicar no errado.
+    {
+      ativo: Boolean(unidade) && (podeBloquear(unidade?.etapa) || bloqueada),
+      aoClicar: bloqueada ? aoDesbloquear : aoBloquear,
+      motivo: "",
+      // ⚠️ UM BOTÃO, DOIS RÓTULOS — e o `key` do map é o rótulo, então eles nunca coexistem: ou a
+      // unidade está bloqueada, ou não está. Dois botões separados deixariam um deles apagado o
+      // tempo todo, e "Desbloquear" apagado num lote disponível não diz nada a ninguém.
+      rotulo: bloqueada ? "Desbloquear" : "Bloquear",
+    },
   ];
 
   return (
@@ -3097,7 +3197,9 @@ function AcoesDaUnidade({
             opacity: acao.ativo ? 1 : 0.55,
             padding: "7px 13px",
           }}
-          title={acao.motivo}
+          // ⚠️ VAZIO VIRA AUSENTE, e não uma tarja preta vazia pairando no hover. É o que permite
+          // ao Bloquear ficar calado sem que os outros quatro percam a explicação deles.
+          title={acao.motivo || undefined}
           type="button"
         >
           {acao.rotulo}

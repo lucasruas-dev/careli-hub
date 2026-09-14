@@ -7,6 +7,10 @@ import {
   MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA,
 } from "@/lib/hercules/proposta";
 import {
+  conferirBloqueio,
+  MOTIVOS_DE_BLOQUEIO,
+} from "@/lib/hercules/bloqueio-de-unidade";
+import {
   comoFoiOAviso,
   conferirCancelamento,
   MOTIVOS_DE_CANCELAMENTO,
@@ -38,22 +42,64 @@ import { T } from "../tema";
  * a lista dela tem "Condições não aceitas" e "Cliente pediu outro plano" — recusas que na reserva
  * ainda não existiam.
  */
+/**
+ * ⚠️ O MÉTODO E A FRASE FINAL SAÍRAM DO CÓDIGO E VIERAM PARA CÁ, em 14/09/2026, e sem isso o
+ * terceiro alvo seria impossível. O `method: "PATCH"` estava cravado no `fetch` e a frase de
+ * sucesso estava cravada no corpo da função — *"…cancelada. A unidade voltou para a
+ * disponibilidade."*. Bloquear é POST, e anuncia o CONTRÁRIO: o lote acabou de SAIR da
+ * disponibilidade. Um alvo novo colado sem mexer nos dois diria ao coordenador que o lote voltou ao
+ * estoque no exato momento em que ele o tirou de lá.
+ */
 const ALVOS = {
+  // ⚠️ BLOQUEIO NÃO É CANCELAMENTO, e só divide esta modal porque a PERGUNTA é a mesma: qual o
+  // motivo, e escreva quando for "Outro". Tudo o mais difere — o verbo, a rota, o método, a lista e,
+  // principalmente, o que acontece com a unidade no fim.
+  bloqueio: {
+    aviso:
+      "O lote sai da venda e some do espelho público na hora. Não vence sozinho: só alguém desbloquear o devolve ao estoque.",
+    // ⚠️ AS DUAS FRASES ABAIXO ERAM FIXAS NO DESENHO, E MENTIAM NO BLOQUEIO. A modal dizia
+    // "Corretor, imobiliária e coordenador recebem o aviso com o motivo" e "O motivo vai na
+    // mensagem do WhatsApp e fica no histórico da unidade" — nenhuma das duas acontece aqui: o
+    // bloqueio não dispara mensagem nenhuma (não há cliente a avisar) e não há histórico de
+    // unidade no produto. Prometer aviso que não sai é pior do que não prometer nada: o
+    // coordenador sai da tela achando que o time foi comunicado.
+    quemRecebe: "Ninguém é avisado: é a empresa retirando o próprio lote.",
+    rodape: "O motivo fica gravado na unidade, com o seu nome e a data.",
+    conferir: conferirBloqueio,
+    feito: "Bloqueio",
+    metodo: "POST",
+    motivos: MOTIVOS_DE_BLOQUEIO as readonly string[],
+    rota: "/api/incorporador/venda/bloqueio",
+    sucesso: (unidade: string) =>
+      `${unidade} bloqueada. O lote saiu da venda e não aparece mais no espelho público.`,
+    titulo: "Bloquear",
+    verbo: "Bloquear unidade",
+  },
   proposta: {
     aviso: "A unidade volta para a disponibilidade na hora, e o PDF que já foi enviado deixa de valer.",
     conferir: conferirCancelamentoDaProposta,
+    quemRecebe: "Corretor, imobiliária e coordenador recebem o aviso com o motivo.",
+    rodape: "O motivo vai na mensagem do WhatsApp e fica no histórico da unidade.",
     feito: "Proposta",
+    metodo: "PATCH",
     motivos: MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA as readonly string[],
     rota: "/api/incorporador/venda/proposta",
+    sucesso: (unidade: string, extra: string) =>
+      `Proposta de ${unidade} cancelada. A unidade voltou para a disponibilidade. ${extra}`,
     titulo: "Cancelar a proposta de",
     verbo: "Cancelar proposta",
   },
   reserva: {
     aviso: "A unidade volta para a disponibilidade na hora e pode ser reservada por outra pessoa.",
     conferir: conferirCancelamento,
+    quemRecebe: "Corretor, imobiliária e coordenador recebem o aviso com o motivo.",
+    rodape: "O motivo vai na mensagem do WhatsApp e fica no histórico da unidade.",
     feito: "Reserva",
+    metodo: "PATCH",
     motivos: MOTIVOS_DE_CANCELAMENTO as readonly string[],
     rota: "/api/incorporador/venda/reserva",
+    sucesso: (unidade: string, extra: string) =>
+      `Reserva de ${unidade} cancelada. A unidade voltou para a disponibilidade. ${extra}`,
     titulo: "Cancelar a reserva de",
     verbo: "Cancelar reserva",
   },
@@ -66,8 +112,8 @@ export function ModalDeCancelamento({
   propostaId,
   unidade,
 }: {
-  /** `reserva` (o padrão, que já estava no ar) ou `proposta`. */
-  alvo?: "proposta" | "reserva";
+  /** `reserva` (o padrão, que já estava no ar), `proposta` ou `bloqueio`. */
+  alvo?: "bloqueio" | "proposta" | "reserva";
   onCancelada: (mensagem: string) => void;
   onFechar: () => void;
   /**
@@ -120,7 +166,7 @@ export function ModalDeCancelamento({
       const r = await fetch(oQue.rota, {
         body: JSON.stringify(pedido),
         headers: { "content-type": "application/json" },
-        method: "PATCH",
+        method: oQue.metodo,
       });
       const texto = await r.text();
       const corpo = texto
@@ -138,19 +184,21 @@ export function ModalDeCancelamento({
         setErroDoServidor(
           corpo.error ??
             corpo.erros?.map((e) => e.mensagem).join(" ") ??
-            "Não foi possível cancelar.",
+            `Não foi possível ${alvo === "bloqueio" ? "bloquear" : "cancelar"}.`,
         );
         return;
       }
 
       const cod = corpo.data?.codigo ? `${corpo.data.codigo} · ` : "";
+      // ⚠️ O BLOQUEIO NÃO MANDA AVISO A NINGUÉM, e por isso `comoFoiOAviso` recebe lista vazia nele:
+      // não há corretor nem cliente para comunicar — é a empresa retirando o próprio lote.
       onCancelada(
-        `${cod}${oQue.feito} de ${unidade.nome} cancelada. A unidade voltou para a disponibilidade. ${comoFoiOAviso(
-          corpo.data?.avisos ?? [],
-        )}`,
+        `${cod}${oQue.sucesso(unidade.nome, comoFoiOAviso(corpo.data?.avisos ?? []))}`,
       );
     } catch {
-      setErroDoServidor("Não foi possível cancelar agora.");
+      setErroDoServidor(
+        `Não foi possível ${alvo === "bloqueio" ? "bloquear" : "cancelar"} agora.`,
+      );
     } finally {
       setEnviando(false);
     }
@@ -233,7 +281,7 @@ export function ModalDeCancelamento({
                 ele remove a quebra inteira e não repõe nada — e o parágrafo saía "…por outra
                 pessoa.Corretor, imobiliária e…", colado, na modal de reserva que já está no ar. */}
             {oQue.aviso}{" "}
-            Corretor, imobiliária e coordenador recebem o aviso com o motivo.
+            {oQue.quemRecebe}
           </p>
 
           <section
@@ -313,7 +361,7 @@ export function ModalDeCancelamento({
               />
               {erroDe("detalhe") ? <Erro texto={erroDe("detalhe")!} /> : null}
               <p style={{ color: T.muted, fontSize: 11, margin: "6px 0 0" }}>
-                O motivo vai na mensagem do WhatsApp e fica no histórico da unidade.
+                {oQue.rodape}
               </p>
             </div>
           </section>

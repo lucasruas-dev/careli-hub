@@ -152,6 +152,76 @@ const registros = alvo.map((u) => ({
   workspace_id: "careli",
 }));
 
+// ── O BLOQUEIO FEITO AQUI SOBREVIVE À CARGA ───────────────────────────
+//
+// ⚠️ SEM ISTO, A CARGA APAGA O TRABALHO DO COORDENADOR EM SILÊNCIO. Desde 14/09/2026 o coordenador
+// bloqueia lote pela tela Venda (Lucas: *"o coordenador pode bloquear as unidades"*), e esse
+// bloqueio existe SÓ no Panteon — o C2X não sabe dele. Como este script reescreve `situacao` a
+// partir do legado e manda `bloqueio_motivo: null` no corpo, a próxima carga devolveria o lote para
+// `disponivel` e zeraria a justificativa. Sem erro, sem log, sem linha no relatório: o lote voltaria
+// a ser oferecido no site público e ninguém saberia por quê.
+//
+// ⚠️ O SINAL É O CARIMBO, e é por isso que a 0163 o criou. Bloqueio vindo do C2X não tem
+// `bloqueado_em` (são 1.554 linhas assim, todas do retrato de 01/09); bloqueio nosso tem. Só o
+// segundo é preservado — o primeiro continua sendo o que o legado disser, que é o certo, porque a
+// origem dele é o legado.
+const bloqueadosAqui = new Set();
+{
+  // ⚠️ PAGINA, PORQUE O PostgREST CORTA EM 1.000 LINHAS **SEM ERRO**. É a armadilha mais cara desta
+  // casa: a resposta vem 200, com mil linhas, e parece completa. Do bloqueio 1.001 em diante a
+  // chave não entraria no conjunto, a linha manteria a `situacao` vinda do C2X e o upsert devolveria
+  // o lote para 'disponivel' apagando a justificativa — calado. Hoje são zero bloqueios nativos,
+  // então o laço dá uma volta só; o dia em que passar de mil é justamente o dia em que ninguém
+  // estaria olhando.
+  const PAGINA = 1000;
+  for (let de = 0; ; de += PAGINA) {
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/hercules_unidades?select=enterprise_id,codigo&bloqueado_em=not.is.null&workspace_id=eq.careli&order=codigo`,
+      {
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          Range: `${de}-${de + PAGINA - 1}`,
+          "Range-Unit": "items",
+        },
+      },
+    );
+
+    if (!resp.ok) {
+      const corpo = await resp.text();
+      // ⚠️ "COLUNA NÃO EXISTE" (42703) NÃO É FALHA DE LEITURA — é ambiente sem a migration 0163.
+      // Sem esta distinção, o ENSAIO (que não grava nada) abortava com a mensagem errada, dizendo
+      // que a carga pararia para não apagar bloqueio — num banco onde bloqueio nativo nem existe.
+      if (corpo.includes("42703")) {
+        console.log("\n  A migration 0163 não está aplicada aqui: não há bloqueio do Panteon a preservar.");
+        break;
+      }
+      // Falha FECHADA: sem saber quem está bloqueado aqui, gravar apagaria bloqueios sem aviso.
+      console.error(`\n  FALHOU ao ler os bloqueios do Panteon: ${resp.status} ${corpo.slice(0, 200)}`);
+      console.error("  A carga para aqui de propósito — gravar agora apagaria bloqueio do coordenador.");
+      process.exit(1);
+    }
+
+    const pagina = await resp.json();
+    for (const linha of pagina) {
+      bloqueadosAqui.add(`${linha.enterprise_id}|${linha.codigo}`);
+    }
+    if (pagina.length < PAGINA) break;
+  }
+}
+
+// ⚠️ TIRAR A COLUNA DO CORPO, E NÃO ESCREVER 'bloqueada' POR CIMA. `merge-duplicates` só atualiza o
+// que vai no corpo: sem `situacao` e sem `bloqueio_motivo`, a linha bloqueada mantém as duas como
+// estão e recebe normalmente preço, área e matrícula atualizados do legado. Mandar 'bloqueada' de
+// volta daria no mesmo para a situação, mas apagaria a justificativa junto.
+let preservados = 0;
+for (const r of registros) {
+  if (!bloqueadosAqui.has(`${r.enterprise_id}|${r.codigo}`)) continue;
+  delete r.situacao;
+  delete r.bloqueio_motivo;
+  preservados += 1;
+}
+
 // Relatório antes de gravar: é a chance de perceber que algo veio errado.
 const porEmp = new Map();
 for (const [i, r] of registros.entries()) {
@@ -177,6 +247,9 @@ for (const [code, g] of [...porEmp.entries()].sort((a, b) => b[1].total - a[1].t
 const semPreco = registros.filter((r) => !r.preco_tabela).length;
 const semArea = registros.filter((r) => !r.area).length;
 console.log(`\n  sem preço: ${semPreco}   ·   sem área: ${semArea}`);
+// ⚠️ SILÊNCIO AQUI SERIA PIOR DO QUE O DEFEITO. Quem roda a carga precisa ver que houve bloqueio
+// preservado — se o número vier maior do que o esperado, é sinal de que alguém bloqueou lote demais.
+console.log(`  bloqueios do Panteon preservados: ${preservados}`);
 console.log("  ⚠️ O preço do JDG é conhecidamente errado no legado e será corrigido pela tela.");
 
 if (!GRAVAR) {
@@ -193,14 +266,19 @@ if (!GRAVAR) {
 // ⚠️ No modo --so-situacao o upsert manda SÓ a chave e a situação: `merge-duplicates` atualiza as
 // colunas presentes e deixa as outras como estão. Unidade que ainda não existe no Panteon nasce
 // só com a chave e a situação — o resto entra numa carga completa depois.
+// ⚠️ NO MODO --so-situacao, O BLOQUEADO SAI DA LISTA INTEIRA. Ali o corpo é só chave + situação, e
+// um registro cuja `situacao` foi removida acima viraria um upsert que não atualiza nada — ou, pior,
+// gravaria `undefined`. Fora da lista, a linha bloqueada fica intocada, que é o que se quer.
 const paraGravar = SO_SITUACAO
-  ? registros.map((r) => ({
-      codigo: r.codigo,
-      enterprise_id: r.enterprise_id,
-      origem_c2x_id: r.origem_c2x_id,
-      situacao: r.situacao,
-      workspace_id: r.workspace_id,
-    }))
+  ? registros
+      .filter((r) => r.situacao !== undefined)
+      .map((r) => ({
+        codigo: r.codigo,
+        enterprise_id: r.enterprise_id,
+        origem_c2x_id: r.origem_c2x_id,
+        situacao: r.situacao,
+        workspace_id: r.workspace_id,
+      }))
   : registros;
 if (SO_SITUACAO) console.log("  Modo --so-situacao: só a coluna `situacao` será atualizada.\n");
 
