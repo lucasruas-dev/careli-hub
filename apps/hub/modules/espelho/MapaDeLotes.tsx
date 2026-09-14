@@ -29,6 +29,23 @@ const ZMAX = 8;
 /** Acima disto o gesto é arraste, e o clique no lote não vale. */
 const TOLERANCIA_DE_CLIQUE = 4;
 
+/**
+ * Só o contorno do lote, sem os sub-caminhos do balão do número.
+ *
+ * ⚠️ O PRIMEIRO SUB-CAMINHO É O TERRENO, e os seguintes são decoração que o importador trouxe
+ * junto do SVG (o círculo do número, poligonizado). Cortar no primeiro `Z` devolve o polígono
+ * maciço do lote — que é o que a área de toque precisa ser.
+ *
+ * ⚠️ SEM `Z` NENHUM, DEVOLVE O CAMINHO INTEIRO. Um `d` de uma figura só, ou um formato que o
+ * importador mude amanhã, continua clicável: perder o clique de novo é pior do que uma área de
+ * toque um pouco maior do que o desenho.
+ */
+export function areaDeToque(d: string): string {
+  const corte = String(d ?? "").search(/[Zz]/);
+  if (corte < 0) return d;
+  return `${d.slice(0, corte)}Z`;
+}
+
 export function MapaDeLotes({
   aoClicar,
   corDoLote,
@@ -217,24 +234,50 @@ export function MapaDeLotes({
             y={caixa.y}
           />
 
+          {/* ⚠️ O BURACO DO `evenodd` ENGOLIA O CLIQUE, e por isso são DOIS caminhos por lote.
+              Lucas (14/09/2026): *"o lote 09 e 11 da quadra d quando clico não acontece nada"*.
+
+              O `d` de cada lote tem DOIS ou TRÊS sub-caminhos: o contorno do terreno e o balão do
+              número, poligonizado pelo importador. Com `fillRule="evenodd"` o segundo vira BURACO —
+              que é exatamente o que se quer no desenho, porque é assim que o número e a metragem da
+              planta aparecem nítidos por baixo da cor. Só que buraco em SVG NÃO RECEBE CLIQUE: quem
+              mirava o número (que é onde qualquer pessoa mira) clicava no vazio. Medido no Villa
+              Paris: todo lote da quadra D tem 2 sub-caminhos, e D04, D05, D12 e D13 têm 3 — dois
+              buracos cada.
+
+              ⚠️ E NÃO SE RESOLVE TROCANDO PARA `nonzero`: aí o balão deixa de ser buraco, a cor
+              passa por cima do número e o mapa perde a legenda que a planta traz. A separação é o
+              conserto: um caminho PINTA (com os buracos) e outro, invisível e só com o contorno,
+              RECEBE O CLIQUE. */}
           {geometria.contornos.map((c) => (
-            <path
-              d={c.d}
-              fill={corDoLote(c.codigo)}
-              // A planta aparece por baixo: é ela que traz número, metragem e rua.
-              fillOpacity={opacidade}
-              fillRule="evenodd"
-              key={c.codigo}
-              onClick={() => {
-                // Arrastou o mapa? Então não foi clique em lote.
-                if (arrasto.current?.moveu) return;
-                aoClicar(c.codigo);
-              }}
-              stroke={destacado === c.codigo ? "#ffffff" : "none"}
-              strokeWidth={destacado === c.codigo ? 3 : 0}
-              style={{ cursor: "pointer" }}
-              vectorEffect="non-scaling-stroke"
-            />
+            <g key={c.codigo}>
+              <path
+                d={c.d}
+                fill={corDoLote(c.codigo)}
+                // A planta aparece por baixo: é ela que traz número, metragem e rua.
+                fillOpacity={opacidade}
+                fillRule="evenodd"
+                // ⚠️ QUEM PINTA NÃO OUVE. Sem isto os dois caminhos disputam o evento, e o de cima
+                // volta a decidir pelo buraco.
+                pointerEvents="none"
+                stroke={destacado === c.codigo ? "#ffffff" : "none"}
+                strokeWidth={destacado === c.codigo ? 3 : 0}
+                vectorEffect="non-scaling-stroke"
+              />
+              <path
+                d={areaDeToque(c.d)}
+                fill="transparent"
+                // ⚠️ `nonzero` AQUI DE PROPÓSITO: esta área é só o contorno do lote, sem balão
+                // nenhum, e ela precisa ser maciça do começo ao fim.
+                fillRule="nonzero"
+                onClick={() => {
+                  // Arrastou o mapa? Então não foi clique em lote.
+                  if (arrasto.current?.moveu) return;
+                  aoClicar(c.codigo);
+                }}
+                style={{ cursor: "pointer" }}
+              />
+            </g>
           ))}
         </svg>
       </div>

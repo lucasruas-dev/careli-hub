@@ -879,15 +879,23 @@ function PainelDoLote({
           </div>
         ) : null}
 
+        {/* ⚠️ QUEM ABRE ESTE ESPELHO É O CORRETOR, E NÃO O CLIENTE FINAL. Lucas, 14/09/2026:
+            *"essa mensagem tem que ser fale com o coordenador, pois quem acessa esse espelho são os
+            corretores"*. O link parece público porque não pede senha, mas ele circula no time de
+            venda — e por isso a saída de quem está lendo é subir para a COORDENAÇÃO, não procurar um
+            corretor.
+
+            ⚠️ E ISSO VALE PARA TODO TEXTO DESTA TELA daqui em diante: o leitor é do ofício. Escrever
+            para o comprador aqui inverte a instrução e manda o corretor falar com ele mesmo. */}
         {disponivel && preco > 0 && planosDaVenda.length === 0 ? (
           <p style={ESTILO.aviso}>
-            Fale com o corretor para conhecer as condições de pagamento deste lote.
+            Fale com o coordenador para conhecer as condições de pagamento deste lote.
           </p>
         ) : null}
 
         {!disponivel ? (
           <p style={ESTILO.aviso}>
-            Este lote não está disponível. Fale com o corretor para conhecer as opções.
+            Este lote não está disponível. Fale com o coordenador para conhecer as opções.
           </p>
         ) : null}
       </aside>
