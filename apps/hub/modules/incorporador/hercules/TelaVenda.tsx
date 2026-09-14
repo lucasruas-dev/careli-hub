@@ -119,6 +119,17 @@ type CardDeProduto = {
  * isso é `expandirIdDoPainel`: pai com filho devolve só os filhos.
  */
 type Produto = {
+  /**
+   * Os códigos do C2X que esta linha representa.
+   *
+   * ⚠️ A ROTA SEMPRE MANDOU ISTO, E A TELA JOGAVA FORA. `LinhaDoPainel` devolve `codigo` e `codes`
+   * desde sempre (`lib/apolo/incorporador/painel-de-produtos.ts`); este tipo declarava só
+   * `{ filhos, id, nome }`, e o campo morria no `map` da carga. Foi o que obrigou o casamento por
+   * NOME — e o nome é justamente a única coisa que os dois lados escrevem diferente.
+   *
+   * No consolidado vêm os filhos (`["LBF", "LBP", "LBR"]`); no simples, um só (`["REP"]`).
+   */
+  codes: string[];
   filhos: { codigo: string; id: string; nome: string }[];
   id: string;
   nome: string;
@@ -163,7 +174,11 @@ const FLUXO: ReadonlyArray<{
     icone: Signature,
     rotulo: "Assinatura",
   },
-  { cor: "#9b2c22", etapa: "faturado", icone: Receipt, rotulo: "Faturamento" },
+  // ⚠️ "FATURADO", E NAO "FATURAMENTO". Lucas (14/09/2026), com o print do Recanto do Pará:
+  // *"acho que em vez de faturamento, faturado"*. Este rótulo nomeia o ESTADO de uma unidade
+  // ("este lote está faturado"), e não o departamento nem o ato de faturar — a própria chave
+  // interna da etapa sempre foi `faturado`; era só o texto na tela que discordava dela.
+  { cor: "#9b2c22", etapa: "faturado", icone: Receipt, rotulo: "Faturado" },
 ];
 
 // ⚠️ A GRADE PINTA POR ETAPA, NÃO POR SITUAÇÃO (Lucas, 03/09/2026: *"em vez de vendida, ter
@@ -231,7 +246,7 @@ const LEGENDA: ReadonlyArray<{ etapa: EtapaDoEspelho; rotulo: string }> = [
   { etapa: "proposta", rotulo: "Proposta" },
   { etapa: "contrato", rotulo: "Contrato" },
   { etapa: "assinatura", rotulo: "Assinatura" },
-  { etapa: "faturado", rotulo: "Faturamento" },
+  { etapa: "faturado", rotulo: "Faturado" },
   { etapa: "vendida", rotulo: "Vendida sem proposta" },
   { etapa: "reservada", rotulo: "Reservada sem proposta" },
   { etapa: "bloqueada", rotulo: "Bloqueada" },
@@ -787,6 +802,7 @@ export function TelaVenda() {
           const j = (await rPainel.json()) as {
             data?: {
               linhas?: {
+                codes?: string[];
                 filhos?: Produto["filhos"];
                 id: string;
                 nome: string;
@@ -795,6 +811,7 @@ export function TelaVenda() {
           };
           if (vivo) {
             const lista = (j.data?.linhas ?? []).map((l) => ({
+              codes: l.codes ?? [],
               filhos: l.filhos ?? [],
               id: l.id,
               nome: l.nome,
@@ -889,17 +906,53 @@ export function TelaVenda() {
   /**
    * O código do produto aberto que TEM mapa — é ele que o espelho carrega.
    *
-   * ⚠️ CASA POR CÓDIGO **OU** POR ID DO C2X, e a segunda metade é o conserto. O card consolidado
-   * não tem código: o `code` dele é o rótulo `"LBF + LBR + LBP"` e o resto são `enterpriseIds`, que
-   * são IDS ("33", "32", "27"). Comparar isso com uma lista de códigos nunca casava, e TODO produto
-   * consolidado caía na grade — Lagoa Bonita e Vale do Ouro — com o masterplan publicado e as três
-   * peças prontas no storage.
+   * ⚠️ CASA POR CÓDIGO, E NÃO MAIS POR NOME. Lucas (14/09/2026): *"kd o espelho aqui no painel de
+   * vendas do coordenador?"*, com o Recanto do Pará aberto e só a grade na tela.
    *
-   * ⚠️ E DEVOLVE O CÓDIGO, NUNCA O ID: a rota do espelho pede `?code=`. O id serve para ACHAR o
-   * produto na lista; quem vai na URL é o código que veio junto com ele.
+   * O casamento era pelo NOME do produto — e os dois lados escrevem o nome diferente, porque saem
+   * de bases diferentes. Medido, caractere a caractere:
+   *
+   *     seletor (cadastro do Panteon)   "Recanto do Pará"              15 caracteres
+   *     card    (enterprises do C2X)    "Condominio Recanto do Para"   26 caracteres
+   *
+   *     seletor   "Villa Paris"                  11
+   *     card      "Residencial Villa Paris"      23
+   *
+   * O C2X guarda o nome COMERCIAL completo ("CONDOMINIO …", "RESIDENCIAL …") e o cadastro guarda o
+   * nome curto que o cliente conhece. Nenhuma tolerância salvava: nem tirar acento, nem normalizar,
+   * nem comparar por conteúdo.
+   *
+   * ⚠️ E O QUE PARECIA FUNCIONAR FUNCIONAVA POR COINCIDÊNCIA. Lagoa Bonita e Vale do Ouro casavam
+   * porque, no produto CONSOLIDADO, o nome do card não vem do C2X: vem de `ENTERPRISE_GROUPS`, uma
+   * lista cravada no código que por acaso escreve igual ao cadastro. Duas listas mantidas em
+   * lugares diferentes, concordando por sorte — e foi essa sorte que fez o defeito parecer
+   * aleatório, atingindo só os produtos SIMPLES.
+   *
+   * ⚠️ A CHAVE CERTA SEMPRE VIAJOU NO PAYLOAD. `LinhaDoPainel.codes` traz os códigos do C2X
+   * daquela linha, e a rota do espelho responde com o código de cada produto que tem mapa. Dois
+   * códigos, um `Set`, sem nome no meio.
+   *
+   * ⚠️ E DEVOLVE O CÓDIGO, NUNCA O ID: a rota do espelho pede `?code=`.
    */
   const codeDoEspelho = useMemo(() => {
     if (!produtoEscolhido) return null;
+
+    const doProduto = new Set(
+      produtoEscolhido.codes
+        .map((c) => String(c ?? "").trim().toUpperCase())
+        .filter(Boolean),
+    );
+
+    for (const produto of comEspelho) {
+      if (doProduto.has(produto.codigo.trim().toUpperCase())) return produto.codigo;
+    }
+
+    // ⚠️ A REDE, PARA A LINHA QUE NÃO TEM CÓDIGO. `codes` sai vazio quando a linha veio do C2X sem
+    // `code` cadastrado — aí o único caminho de volta é o antigo, pelo card. Ele casa por nome, com
+    // todas as ressalvas acima, mas um casamento improvável é melhor do que nenhum: sem isto, uma
+    // linha sem código perderia o espelho que ela talvez tenha.
+    if (doProduto.size > 0) return null;
+
     const nome = produtoEscolhido.nome.trim().toLowerCase();
     const card = cards.find((c) => c.nome.trim().toLowerCase() === nome);
     if (!card) return null;
@@ -2726,10 +2779,20 @@ function TrilhaDoFluxo({
 
       <div style={{ display: "flex", margin: "0 0 12px" }}>
         {ETAPAS_DO_FLUXO.map((passo, i) => {
-          const cumprida = i < atual;
-          const ehAtual = i === atual;
           const primeiro = i === 0;
           const ultimo = i === ETAPAS_DO_FLUXO.length - 1;
+
+          // ⚠️ FATURADO É O FIM, E NÃO UMA ETAPA EM ANDAMENTO. Lucas (14/09/2026), com o print
+          // da D160 do Recanto: *"quando faturado, todos tem que estar verdes com o v"*.
+          //
+          // As outras quatro etapas querem dizer "está aqui, falta terminar" — e por isso o degrau
+          // atual vem dourado e SEM check. A última não quer dizer isso: chegar nela é ter
+          // terminado. Pintá-la como as demais deixava a venda concluída com a mesma cara de venda
+          // parada no meio, e o último degrau — justo o que diz que acabou — era o único sem o
+          // sinal de cumprido.
+          const noFim = atual === ETAPAS_DO_FLUXO.length - 1;
+          const cumprida = i < atual || (noFim && i === atual);
+          const ehAtual = i === atual && !noFim;
 
           // ⚠️ O DEGRAU AVANÇA SOBRE O PRÓXIMO, e é isso que faz a seta ler como caminho: o recorte
           // da direita é uma ponta, o da esquerda é o encaixe dela, e a margem negativa junta os

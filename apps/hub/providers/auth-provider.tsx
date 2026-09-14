@@ -23,6 +23,7 @@ import {
 } from "@/lib/supabase/client";
 import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { markHubPresence } from "@/lib/hub-presence";
+import { ehSuperficieDoHub } from "@/lib/rotas/superficie";
 import {
   getPermissionsForRole,
   type HubUserContext,
@@ -108,36 +109,23 @@ export function AuthProvider({
     useState<AuthContextValue["profileStatus"]>("idle");
   const isMobileLoginRoute = pathname === "/m/login";
   const isLoginRoute = pathname === "/login" || isMobileLoginRoute;
-  const isPublicChronosRoute = isChronosPublicRoute(pathname);
-  // Rotas públicas por design (sem login): /publico/* (ex.: dashboard de CADs por
-  // empreendimento). Não expõem dado do HUB — leem fonte própria server-side.
-  const isPublicPageRoute = pathname?.startsWith("/publico/") ?? false;
-  // Área própria do evento (/evento): o operador do Prometeu tem conta própria (não é usuário do
-  // hub), então esta rota NÃO pode cair no redirect para /login. A tela valida a sessão do
-  // operador por dentro (cookie assinado, fetchOperadorEu) e mostra o login do operador quando não
-  // há sessão. Sem dado do hub exposto: o /evento só fala com as rotas /api/prometeu/*.
-  const isEventoRoute =
-    pathname === "/evento" || (pathname?.startsWith("/evento/") ?? false);
-  // Portal do INCORPORADOR (/incorporador/<slug>): o dono do loteamento tem conta própria, não é
-  // usuário do hub (decisão do Lucas, 10/08 — ver lib/apolo/incorporador/sessao.ts). Mesmo caso do
-  // /evento: se cair no redirect para /login, o cliente vê a tela do Panteon em vez da porta com a
-  // marca dele. Quem valida a sessão é o servidor, pelo cookie assinado, dentro de cada rota.
-  const isIncorporadorRoute = pathname?.startsWith("/incorporador") ?? false;
-  // ESPELHO PUBLICO no endereco curto: `/e/vale-do-ouro-3f9c2a7b`. Fica FORA de /publico/ porque
-  // o link e' feito para caber num WhatsApp e ser lido em voz alta (Lucas, 10/09/2026: *"o url
-  // tem que ser mais personalizada, esta longa"*). Quem autoriza e' o selo de 8 caracteres no fim
-  // do endereco — assinatura HS256 conferida DENTRO da pagina, que responde 404 quando nao bate.
-  // Nenhum dado do hub sai por aqui: a pagina le' cadastro de unidade e devolve situacao, preco
-  // de tabela e area.
-  const isEspelhoCurtoRoute =
-    pathname === "/e" || (pathname?.startsWith("/e/") ?? false);
-  const isAuthBypassRoute =
-    isLoginRoute ||
-    isPublicChronosRoute ||
-    isPublicPageRoute ||
-    isEventoRoute ||
-    isEspelhoCurtoRoute ||
-    isIncorporadorRoute;
+
+  // ⚠️ A LISTA SAIU DAQUI, E ESSE É O CONSERTO. Até 14/09/2026 esta função mantinha à mão as
+  // exceções de quem não faz login no Panteon — e o portal COMERCIAL, que ganhou endereço próprio
+  // em 02/09 (`/comercial/<slug>`), nunca foi acrescentado. Lucas (14/09/2026, com urgência):
+  // *"o time comercial está tentando logar, contudo quando eles coloca a url da gurgel em vez de
+  // aparecer a tela de login da gurgel está aparecendo a do panteon, ae depois que vc loga no
+  // panteon vc vai ver a tela de login da gurgel"*.
+  //
+  // O coordenador da Gurgel NÃO TEM CONTA no Panteon: ele batia numa porta que nunca abriria, e
+  // só quem tinha as duas contas — o Lucas — conseguia atravessar. Doze dias assim.
+  //
+  // ⚠️ E A PERGUNTA VIROU O CONTRÁRIO DO QUE ERA. Antes: "esta rota está na minha lista de
+  // exceções?" — e a rota nova nascia EXIGINDO login do hub, calada. Agora: "esta rota é do
+  // HUB?" — e a rota nova nasce como porta de fora, que é o lado seguro. Quem responde é
+  // `lib/rotas/superficie.ts`, o mesmo arquivo que diz onde o hub pode desenhar por cima, com um
+  // teste que lê o disco e quebra a build se alguém criar rota sem classificar.
+  const isAuthBypassRoute = isLoginRoute || !ehSuperficieDoHub(pathname);
   const hubUser = useMemo(
     () =>
       authState.user ? mapAuthUserToHubUserContext(authState.user) : null,
@@ -612,20 +600,6 @@ export function AuthProvider({
       {children}
     </AuthContext.Provider>
   );
-}
-
-function isChronosPublicRoute(pathname: string | null): boolean {
-  if (!pathname) {
-    return false;
-  }
-
-  if (pathname.startsWith("/chronos/recording-view")) {
-    return true;
-  }
-
-  const segments = pathname.split("/").filter(Boolean);
-
-  return segments.length === 2 && segments[0] === "chronos";
 }
 
 export function useAuth() {

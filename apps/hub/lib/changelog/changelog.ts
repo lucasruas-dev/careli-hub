@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-14-a-porta-da-gurgel-abre-na-gurgel",
+    deployedAt: "2026-09-14T12:40:00-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**O endere\u00e7o do portal abre no login do portal.** Quem digitava `c2x.app.br/comercial/gurgel` caía na tela de login do Panteon \u2014 onde o time comercial não tem conta. Agora a porta da Gurgel abre na Gurgel.",
+              "**A liga\u00e7\u00e3o do hub n\u00e3o aparece mais no portal.** O aviso de chamada do Hermes, com o nome e a foto de quem ligou, desenhava por cima da tela do coordenador. O que \u00e9 da casa ficou restrito \u00e0 casa.",
+              "**O bot\u00e3o Espelho voltou no Recanto do Par\u00e1 e no Villa Paris.** Eles t\u00eam masterplan publicado e mostravam s\u00f3 a grade.",
+              "**\"Faturado\", e n\u00e3o \"Faturamento\".** O r\u00f3tulo nomeia o estado da unidade, e n\u00e3o o departamento.",
+              "**A trilha fecha em verde quando a venda termina.** Chegando em Faturado, todos os passos ficam verdes com o \u2713 \u2014 inclusive o \u00faltimo.",
+            ],
+            screen: "Venda \u00b7 Portal do coordenador",
+          },
+        ],
+      },
+    ],
+    rollback: "0c01ead8",
+    technical: {
+      done:
+        "DEFEITO 1, O URGENTE \u2014 A LISTA DE EXCECOES DO AuthProvider NAO CONHECIA `/comercial`. O portal comercial ganhou endereco proprio em 02/09 (`/comercial/<slug>`, mesma tela e mesmo cookie do `/incorporador`), e `auth-provider.tsx` mantinha A MAO a lista de quem dispensa login do hub: login, chronos publico, /publico, /evento, /e, /incorporador. `/comercial` nunca entrou. Resultado: o coordenador batia no login do Panteon, onde NAO TEM CONTA \u2014 so quem tinha as duas contas atravessava. Doze dias assim. || A PERGUNTA FOI INVERTIDA, e e isso que impede a terceira vez. Antes: \"esta rota esta na minha lista de excecoes?\" \u2014 e rota nova nascia EXIGINDO login do hub, calada. Agora: \"esta rota e do HUB?\", respondida por `lib/rotas/superficie.ts`, com as raizes internas e externas num arquivo so. Rota nao classificada responde NAO: nasce como porta de fora, que e o lado seguro. E um teste LE O DISCO (`readdirSync` em `app/`) e fica vermelho quando aparece diretorio de topo sem lado, com o nome dele na mensagem \u2014 23 testes. || DEFEITO 2 \u2014 OS PROVEDORES DO HERMES MONTAVAM EM TODA ROTA. O layout raiz envolve o app inteiro em `AppProviders`, e o unico gate do provider de chamada era uma denylist de HOSTS (`ops.c2x.*`). Bastava haver sessao do hub no navegador para a pagina do PARCEIRO desenhar o banner com NOME e FOTO de quem ligou, oferecer a ele o botao de ACEITAR uma chamada de video interna, tocar a campainha em laco, mostrar o toast da central (nome de cliente, assunto de ticket) \u2014 e abrir um canal de realtime do hub a partir de uma tela de terceiro. Agora os dois provedores so montam quando `ehSuperficieDoHub` e verdadeiro; o provider nao monta, entao o efeito que assina o canal nem existe. Esconder com CSS deixaria a conexao aberta (custo) e o payload chegando ao cliente errado \u2014 o filtro por destinatario roda DEPOIS de o dado chegar ao navegador. || DEFEITO 3 \u2014 O ESPELHO CASAVA POR NOME, E OS DOIS LADOS ESCREVEM O NOME DIFERENTE. Medido caractere a caractere: o seletor manda o nome do CADASTRO (\"Recanto do Para\", 15) e o card manda o nome do C2X (\"Condominio Recanto do Para\", 26); no Villa Paris, \"Villa Paris\" contra \"Residencial Villa Paris\". O C2X guarda o nome comercial completo e o cadastro guarda o nome curto. Nenhuma tolerancia salvava. || \u26a0\ufe0f E O QUE PARECIA FUNCIONAR FUNCIONAVA POR COINCIDENCIA: no produto CONSOLIDADO o nome do card nao vem do C2X, vem de `ENTERPRISE_GROUPS`, lista cravada no codigo que por acaso escreve igual ao cadastro. Por isso o defeito parecia aleatorio \u2014 atingia so os produtos SIMPLES, e o conserto de manha (1.337.0) resolveu os consolidados sem tocar nestes. || A CHAVE CERTA SEMPRE VIAJOU NO PAYLOAD: `LinhaDoPainel.codes` traz os codigos do C2X da linha, e o `type Produto` local declarava so `{ filhos, id, nome }` \u2014 o campo morria no `map` da carga. Agora casa por codigo, com o caminho antigo mantido so para linha SEM codigo. || typecheck limpo, 3.874 testes em 259 arquivos, lint sem aviso novo. \u26a0\ufe0f NAO VERIFICADO EM TELA: o login do portal exige conta do comercial.",
+      motivation:
+        "Lucas (14/09/2026): *\"o time comercial esta tentando logar, contudo quando eles coloca a url da gurgel em vez de aparecer a tela de login da gurgel esta aparecendo a do panteon (...) corrige isso com urgencia\"* \u00b7 *\"ligacao do hub nao pode aparecer no perfil gurgel, tem que ficar restrito ao hub\"* \u00b7 *\"kd o espelho aqui no painel de vendas do coordenador?\"* \u00b7 *\"acho que em vez de faturamento, faturado\"* \u00b7 *\"quando faturado, todos tem que estar vedes com o v\"*.",
+    },
+    title: "A porta da Gurgel abre na Gurgel",
+    type: "correcao",
+    version: "1.339.0",
+  },
+  {
     buildTag: "2026-09-14-o-clique-volta-no-miolo-do-lote",
     deployedAt: "2026-09-14T13:05:00-03:00",
     modules: [
