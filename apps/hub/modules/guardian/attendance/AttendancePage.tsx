@@ -203,6 +203,9 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
           clientOpenHandledRef.current = true;
           setSelectedId(routed.id);
           setQueueMode("general");
+          // Mesma razao do efeito de deep-link abaixo: sem trocar a secao, a tela
+          // redesenha a Central de Propostas e o cliente selecionado nunca aparece.
+          setActiveSection("queue");
           if (routeTab === "propostas") {
             setInitialDetailTab("agreements");
             setBackToCentral(true);
@@ -471,6 +474,12 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     // Fila geral pra o cliente do deep-link aparecer na lista (a diaria pode
     // nao conter ele).
     setQueueMode("general");
+    // ⚠️ SEM ISTO O DEEP-LINK NAO SAI DO LUGAR. A Central de Propostas nao e pagina propria:
+    // e a secao "agreements" desta mesma tela, e `activeSection` fica gravado no
+    // sessionStorage. Como o botao da Central navega por recarga completa, a secao gravada
+    // sobrevive, e a pagina redesenhava a propria Central com o cliente selecionado por tras,
+    // invisivel. Trocar a secao e o que faz a tela do cliente aparecer.
+    setActiveSection("queue");
     if (routeTab === "propostas") {
       setInitialDetailTab("agreements");
       setBackToCentral(true);

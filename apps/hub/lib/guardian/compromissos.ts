@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+import { carimboAoCriar } from "@/lib/guardian/aprovacao-da-proposta";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
 // Motor da Cobranca (Hades) — Acordos & Promessas + Regua de lembretes.
@@ -481,9 +482,11 @@ export async function createGuardianCompromisso(
     .from("guardian_compromissos")
     .insert({
       acquisition_request_c2x_id: input.acquisitionRequestC2xId ?? null,
-      // Toda proposta nasce ENVIADA pra aprovacao do Admin (Fase 2). Nao ha
-      // fluxo de "salvar rascunho" na UI: criar = submeter.
-      approval_status: "pendente",
+      // ACORDO nasce ENVIADO pra aprovacao do Admin; PROMESSA nasce aprovada, porque nao
+      // precisa passar pela mesa (regra do Lucas, 14/09/2026). Ver
+      // lib/guardian/aprovacao-da-proposta.ts — la esta o porque de `approved_at` ficar
+      // NULO na promessa, e o que isso segura na regua de lembretes.
+      ...carimboAoCriar(input.kind, new Date().toISOString()),
       attendance_protocol: input.attendanceProtocol ?? null,
       channel: input.channel?.trim() || "manual",
       client_c2x_id: input.clientC2xId,
@@ -499,7 +502,8 @@ export async function createGuardianCompromisso(
       protocol,
       risk_score: input.riskScore ?? null,
       stage,
-      submitted_at: new Date().toISOString(),
+      // `submitted_at` vem do carimbo acima: preenchido no acordo (foi submetido a mesa),
+      // nulo na promessa (nao foi submetida a lugar nenhum).
       total_amount: totalAmount,
       updated_by_user_id: userId,
     })
@@ -618,12 +622,11 @@ export async function replaceGuardianCompromissoDraft(
     .from("guardian_compromissos")
     .update({
       acquisition_request_c2x_id: input.acquisitionRequestC2xId ?? null,
-      // Editar uma proposta pendente RE-SUBMETE (volta pra fila de aprovacao
-      // com novo carimbo de envio; limpa decisao anterior, se houver).
+      // Editar um ACORDO pendente RE-SUBMETE (volta pra fila de aprovacao com novo carimbo
+      // de envio; limpa decisao anterior, se houver). Editar uma PROMESSA nao a manda para
+      // fila nenhuma — ela nunca precisou passar por la.
       approval_reason: null,
-      approval_status: "pendente",
-      approved_at: null,
-      approved_by_user_id: null,
+      ...carimboAoCriar(input.kind, new Date().toISOString()),
       attendance_protocol: input.attendanceProtocol ?? null,
       channel: input.channel?.trim() || "manual",
       cobranca_protocol: input.cobrancaProtocol ?? null,
@@ -635,7 +638,7 @@ export async function replaceGuardianCompromissoDraft(
       promised_date: promisedDate,
       risk_score: input.riskScore ?? null,
       stage,
-      submitted_at: new Date().toISOString(),
+      // `submitted_at` vem do carimbo acima, pelo mesmo motivo do insert.
       total_amount: totalAmount,
       updated_by_user_id: userId,
     })

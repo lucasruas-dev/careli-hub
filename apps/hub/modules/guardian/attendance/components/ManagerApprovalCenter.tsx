@@ -745,14 +745,16 @@ function ProposalTableRow({
         )}
       </span>
       <span className="hidden justify-end xl:flex">
-        <Tooltip content="Abrir propostas do cliente" placement="left">
+        {/* Abre ESTA proposta, nao a lista do cliente: quem clica na linha do AC-000012
+            quer o AC-000012 aberto, nao a aba Propostas para procurar de novo. */}
+        <Tooltip content="Abrir esta proposta" placement="left">
           <button
             type="button"
             onClick={(event) => {
               event.stopPropagation();
-              openClientDetail(item);
+              editProposalInClient(item);
             }}
-            aria-label="Abrir propostas do cliente"
+            aria-label="Abrir esta proposta"
             className="flex size-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] dark:text-[#d9b877]"
           >
             <ExternalLink className="size-3.5" aria-hidden="true" />

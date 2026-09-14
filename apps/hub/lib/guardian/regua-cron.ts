@@ -9,6 +9,7 @@ import {
   type GuardianMotorClient,
   type GuardianParcelaStatus,
 } from "@/lib/guardian/compromissos";
+import { podeDispararLembrete } from "@/lib/guardian/aprovacao-da-proposta";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import {
   getMetaWhatsAppOutboundConfig,
@@ -44,6 +45,13 @@ type LembreteRowFull = {
 type CompromissoLite = {
   /** pendente | aprovado | reprovado. É a trava: proposta não aprovada NÃO manda mensagem. */
   approval_status: null | string;
+  /**
+   * ⚠️ SEM ESTE CAMPO A TRAVA INVERTE E BARRA TUDO. Desde 14/09/2026 a promessa nasce
+   * "aprovado" sem ninguém ter decidido, e é `approved_at` que separa uma coisa da outra.
+   * Se ele não vier no select, `podeDispararLembrete` lê undefined e nenhum lembrete sai —
+   * nem os acordos legitimamente aprovados.
+   */
+  approved_at: null | string;
   client_c2x_id: number | string;
   id: string;
   kind: GuardianCompromissoKind;
@@ -176,13 +184,20 @@ export async function runGuardianReguaCron(
     //
     // Aqui a decisao pendente PULA o lembrete (nao cancela): quando alguem aprovar, ele dispara na
     // proxima rodada. Reprovada, ai sim cancela: nao ha o que esperar.
-    const aprovacao = String(compromisso.approval_status ?? "").trim().toLowerCase();
-    if (aprovacao === "reprovado") {
-      await cancelLembrete(client, lembrete.id, "proposta reprovada");
-      result.cancelled += 1;
-      continue;
-    }
-    if (aprovacao && aprovacao !== "aprovado") {
+    // ⚠️ APROVADA NO NASCIMENTO NÃO LIBERA DISPARO. Desde 14/09/2026 a PROMESSA nasce com
+    // approval_status "aprovado" (ela não passa pela mesa do gestor), mas com `approved_at`
+    // NULO — ninguém decidiu nada. Olhar só o status faria a régua começar a mandar WhatsApp
+    // ao cliente sozinha, efeito que ninguém pediu e que não se desfaz depois de enviado.
+    // A regra vive em lib/guardian/aprovacao-da-proposta.ts, com teste.
+    const veredito = podeDispararLembrete(compromisso);
+
+    if (!veredito.pode) {
+      if (veredito.motivo === "proposta reprovada") {
+        await cancelLembrete(client, lembrete.id, "proposta reprovada");
+        result.cancelled += 1;
+        continue;
+      }
+
       result.skipped += 1;
       continue;
     }
@@ -475,7 +490,9 @@ async function loadCompromissos(
 
   const { data } = await client
     .from("guardian_compromissos")
-    .select("id,client_c2x_id,kind,status,protocol,promised_date,metadata,approval_status")
+    .select(
+      "id,client_c2x_id,kind,status,protocol,promised_date,metadata,approval_status,approved_at",
+    )
     .in("id", ids)
     .returns<CompromissoLite[]>();
 
