@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-14-o-terreno-para-de-ter-dois-valores",
+    deployedAt: "2026-09-14T09:05:25-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "O mesmo terreno da Lagoa Bonita e do Vale do Ouro tinha **duas linhas de cadastro** \u2014 uma no empreendimento pai e outra na gleba que vende \u2014 e as duas j\u00e1 mostravam valores diferentes. Agora a linha antiga aponta para a viva.",
+              "**Nada muda na tela ainda**: a marca est\u00e1 no banco, e as telas passam a consult\u00e1-la na pr\u00f3xima entrega.",
+            ],
+            screen: "Empreendimento \u00b7 Unidades",
+          },
+        ],
+      },
+    ],
+    rollback: "9c3af85d",
+    technical: {
+      done: "MEDIDO EM PRODUCAO: 714 terrenos tinham DUAS linhas em `hercules_unidades` \u2014 uma no empreendimento PAI (LAB=31, VLO=35, o registro de antes da divisao em glebas) e outra no FILHO (LBR/LBP/LBF, VOC/VOL/VOR, a gleba que vende). 330 pares da Lagoa e 62 do Vale JA tinham situacao diferente; 346 e 4 tinham preco diferente. O mesmo lote aparecia \"bloqueada a R$ 545.864,00\" de um lado e \"vendida a R$ 519.573,00\" do outro \u2014 R$ 26.291,00 e dois estados incompativeis. A chave do terreno e quadra+lote: o codigo nao serve, porque o pai grava LABC0101 e o filho LBRC0101 para o MESMO lote. || \u26a0\ufe0f NAO HA TRIGGER NEM CRON. As rotas de reserva e proposta escrevem com `.eq(\"id\", unidade.id)`: mexer pelo filho NUNCA toca a linha do pai. || QUAL E A VERDADE: A DO FILHO, e quem responde e o DINHEIRO. No C2X os pais tem ZERO parcelas e R$ 0,00; os filhos tem 2.726 e 26.972 parcelas, R$ 12.143.347,67 e R$ 25.590.272,07. E o padrao das propostas fecha: o MESMO cliente, com o MESMO CPF, aparece \"reservado\" na linha do pai e \"faturado\" na do filho \u2014 nao sao duas vendas, e uma venda que comecou como reserva no registro antigo e foi concluida no novo. A linha do pai e historia parada. || MARCA, NAO APAGA, e tres numeros proibiram apagar: 331 propostas apontam para linhas do pai (ficariam orfas); 116 das 118 propostas VIVAS do pai colidiriam com a do filho se fossem repontadas (o indice `uma_viva_por_unidade` recusaria); e 83 lotes da Lagoa existem SO no pai \u2014 sem gemeo, lote real sem gleba, que sumiria. A 0161 poe `espelho_de` apontando para a linha viva: 710 marcadas, os 83 preservados, ZERO cadeias. || \u26a0\ufe0f O DESEMPATE EXISTE PORQUE JA ERROU. Quatro terrenos do Vale sao reivindicados por DOIS filhos: a linha do VOC ficou `bloqueada` quando o lote passou para a carteira de extras (VOR). O join sem ordem escolheu a linha BLOQUEADA em 3 dos 4 \u2014 o que faria o espelho anunciar bloqueado um lote vendido. Agora ganha o nao-bloqueado, e a regra esta na funcao. || A 0162 transforma a marcacao em funcao idempotente (`marcar_espelhos_de_unidade`, security definer, revogada de anon/authenticated) e a CARGA do C2X a chama no fim \u2014 porque e ela quem cria a duplicidade. Terreno novo nasce marcado, e se alguem trocar o upsert por um que substitua a linha inteira a marca volta no ciclo seguinte em vez de sumir calada. || `lib/hercules/unidade-viva.ts` e o leitor canonico (11 testes): `ehEspelho`, `apenasVivas`, `unidadeQueResponde`, `resolverUnidades`. \u26a0\ufe0f ELE AINDA NAO ESTA LIGADO NOS 23 LEITORES \u2014 por isso NADA muda na tela nesta entrega. Hoje so dois lugares tinham a regra, e por conta propria: `espelho/situacao-publica.ts` e `incorporador/painel-de-produtos.ts`. || FICA NA FILA: os 83 lotes sem gleba (pergunta de cadastro para o Lucas: eles deveriam estar em alguma carteira?) e as 116 propostas vivas duplicadas entre pai e filho, que nao quebram nada hoje mas contam duas vezes em qualquer contagem de proposta. || typecheck limpo, 3.838 testes em 257 arquivos, lint sem aviso novo.",
+      motivation:
+        "Lucas (14/09/2026): *\"estamos com tabelas fazendo a mesma coisa alimentando a mesma informacao, ae as alteracoes pode ocorrer em uma e nas outras nao, ae eu vou ter a quebra da informacao, em um local eu vejo um valor e outro eu vejo outro valor. isso nao pode acontecer\"*. A varredura de 38 agentes achou 12 pares de tabelas ja divergindo; este era o pior, e o unico em que o erro sai para o cliente como preco e como \"esta disponivel\".",
+    },
+    title: "O mesmo terreno para de ter dois valores",
+    type: "correcao",
+    version: "1.335.0",
+  },
+  {
     buildTag: "2026-09-14-o-espelho-se-anuncia",
     deployedAt: "2026-09-14T01:02:21-03:00",
     modules: [
