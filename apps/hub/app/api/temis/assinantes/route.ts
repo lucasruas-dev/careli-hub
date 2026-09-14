@@ -143,25 +143,32 @@ function conferir(corpo: Record<string, unknown>) {
  * vale: as pessoas digitadas continuam aparecendo. Devolver erro faria um cadastro incompleto da
  * empresa esconder as testemunhas, que não têm nada a ver com isso.
  */
-async function representanteDaVendedora(
+async function representanteDoCadastro(
   admin: ReturnType<typeof createApoloAdminClient>,
   enterpriseId: string,
+  papel: PapelDoQuadro,
 ): Promise<AssinanteDoQuadro | null> {
   if (!admin) return null;
   try {
+    // ⚠️ DUAS COLUNAS, DOIS PAPÉIS. `vendedor_entity_id` é a incorporadora; `coordenador_entity_id`
+    // (0159) é o COORDENADOR daquele empreendimento — e nenhum dos dois é `coordenadora_entity_id`,
+    // que é a Coordenação de Vendas da casa. Trocar essas três já pôs o captador no lugar do
+    // coordenador uma vez.
+    const coluna = papel === "vendedora" ? "vendedor_entity_id" : "coordenador_entity_id";
+
     const { data: settings } = await admin
       .from("apolo_enterprise_settings")
-      .select("vendedor_entity_id")
+      .select(coluna)
       .eq("enterprise_id", enterpriseId)
-      .maybeSingle<{ vendedor_entity_id: null | string }>();
+      .maybeSingle<Record<string, null | string>>();
 
-    const vendedora = settings?.vendedor_entity_id;
-    if (!vendedora) return null;
+    const empresa = settings?.[coluna];
+    if (!empresa) return null;
 
     const { data: vinculo } = await admin
       .from("apolo_relationships")
       .select("related_entity_id")
-      .eq("entity_id", vendedora)
+      .eq("entity_id", empresa)
       .eq("relationship_type", "representante_legal")
       .limit(1)
       .maybeSingle<{ related_entity_id: null | string }>();
@@ -192,7 +199,7 @@ async function representanteDaVendedora(
       nome: pessoa.display_name,
       ordemAssinatura: null,
       origem: "representante",
-      papel: "vendedora",
+      papel,
       posicao: 1,
     };
   } catch {
@@ -214,7 +221,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Informe o empreendimento." }, { status: 400 });
   }
 
-  const [{ data, error }, representante] = await Promise.all([
+  const [{ data, error }, ...herdados] = await Promise.all([
     admin
       .from("temis_assinantes")
       .select(COLUNAS)
@@ -223,7 +230,8 @@ export async function GET(request: Request) {
       .eq("ativo", true)
       .order("papel", { ascending: true })
       .order("posicao", { ascending: true }),
-    representanteDaVendedora(admin, enterpriseId),
+    representanteDoCadastro(admin, enterpriseId, "vendedora"),
+    representanteDoCadastro(admin, enterpriseId, "coordenador"),
   ]);
 
   if (error) {
@@ -233,12 +241,16 @@ export async function GET(request: Request) {
 
   const gravados = ((data ?? []) as Linha[]).map(paraATela);
 
-  // ⚠️ O REPRESENTANTE SÓ ENTRA SE NINGUÉM OCUPOU A POSIÇÃO 1 DA VENDEDORA. Quem digitou uma linha
-  // ali decidiu que é aquela pessoa que assina primeiro; empurrar a herdada por cima faria o quadro
+  // ⚠️ O HERDADO SÓ ENTRA SE NINGUÉM OCUPOU A POSIÇÃO 1 DAQUELE PAPEL. Quem digitou uma linha ali
+  // decidiu que é aquela pessoa que assina primeiro; empurrar a herdada por cima faria o quadro
   // mostrar duas pessoas na mesma linha do contrato.
-  const posicao1Ocupada = gravados.some((a) => a.papel === "vendedora" && a.posicao === 1);
-  const assinantes =
-    representante && !posicao1Ocupada ? [representante, ...gravados] : gravados;
+  const cabe = (h: AssinanteDoQuadro) =>
+    !gravados.some((a) => a.papel === h.papel && a.posicao === 1);
+
+  const assinantes = [
+    ...herdados.filter((h): h is AssinanteDoQuadro => Boolean(h)).filter(cabe),
+    ...gravados,
+  ];
 
   return NextResponse.json({ assinantes }, { headers: SEM_CACHE });
 }

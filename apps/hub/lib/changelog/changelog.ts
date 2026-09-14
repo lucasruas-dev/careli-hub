@@ -36,6 +36,47 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-13-o-setup-por-abas-e-a-vendedora-de-todos",
+    deployedAt: "2026-09-13T21:43:42-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O Setup virou duas abas: Credenciamento e Assinatura.** Os tr\u00eas cards estavam empilhados e misturavam assuntos de momentos opostos da venda \u2014 credenciamento \u00e9 o come\u00e7o (quem manda CAD), assinatura \u00e9 o fim (como o contrato sai).",
+              "A ordem e o quadro ficaram na **mesma aba**: a ordem fala dos pap\u00e9is, o quadro fala das pessoas daqueles pap\u00e9is.",
+            ],
+            screen: "Empreendimento \u00b7 Setup",
+          },
+        ],
+      },
+      {
+        module: "T\u00eamis",
+        screens: [
+          {
+            items: [
+              "**A vendedora e o coordenador de vendas foram importados do C2X para os 37 empreendimentos.** Antes s\u00f3 um tinha vendedora cadastrada, e por isso o quadro aparecia vazio em quase todos.",
+              "**35 empreendimentos ganharam vendedora** e **24 ganharam coordenador de vendas**, casados por CNPJ.",
+              "O quadro agora **pr\u00e9-preenche tamb\u00e9m o coordenador**, do mesmo jeito que a vendedora \u2014 pelo representante legal cadastrado na empresa.",
+              "\u26a0\ufe0f **Quase nenhuma dessas empresas tem representante legal cadastrado** (1 de 33 medido hoje). Ent\u00e3o o nome da empresa j\u00e1 sai certo no TEXTO do contrato, mas **quem assina por ela ainda precisa ser cadastrado** \u2014 no cadastro da empresa, ou direto no quadro.",
+            ],
+            screen: "Empreendimento \u00b7 Quadro de assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "efaaba36",
+    technical: {
+      done: "O SETUP: tres cards empilhados viraram duas sub-abas, com o corte ENTRADA x SAIDA \u2014 nao \"um card por aba\". `SetupTab` mora dentro de `empreendimentos-view.tsx` de proposito: `CredenciamentoCard` e declarado nesse mesmo arquivo, e extrair a sub-aba para um modulo proprio criaria import circular. || A IMPORTACAO: `enterprises` do C2X tem `incorporador_id` (a vendedora), `manager_id` (o COORDENADOR daquele empreendimento) e `captivator_id` (o captador, que NAO assina). \u26a0\ufe0f O LEGADO JA SEPARAVA COORDENACAO DE COORDENADOR e ninguem tinha percebido: `coordenador_id` e a Gurgel (a coordenacao da casa, 16 empreendimentos) e `manager_id` e LUNA/HUBER/ZALUZ/MATHEUS GUEDES, que muda por produto. Confundir os tres foi o que pos o FABRICIO \u2014 que ocupa `captivator_id` \u2014 como representante da coordenacao no Panteon. || MEDIDO ANTES DE ESCREVER: 33 CNPJs distintos entre incorporador e coordenador nos 37 empreendimentos; 30 ja existiam em `apolo_entities`; e apenas UM tem representante legal. \u26a0\ufe0f E SO 16 DAS 37 LINHAS DE `apolo_enterprise_settings` EXISTIAM \u2014 um update simples teria alcancado menos da metade, por isso a carga e upsert com `coalesce`, que nunca apaga o que ja estava la. Resultado: 35 com vendedora, 24 com coordenador, 40 linhas no total. || \u26a0\ufe0f A VENDEDORA DO VILLA PARIS TROCOU: era a SPE fake criada horas antes para teste, agora e a WLM INCORPORACOES, que e a real. O coordenador virou MATHEUS GUEDES IMOVEIS. || A migration 0159 poe `coordenador_entity_id` em `apolo_enterprise_settings`. Sem FK, como a 0141 e a 0145: `apolo_entities` recebe merge e arquivamento, e FK rigida transformaria limpeza de cadastro em erro de gravacao. || O PAPEL NO CODIGO CONTINUA `coordenadora` mesmo com o rotulo no masculino: e a chave GRAVADA no jsonb de `assinatura_ordem`, e `lerRegraDeOrdem` descarta chave desconhecida \u2014 renomear faria a ordem cadastrada voltar ao padrao em silencio. || typecheck limpo, 3.819 testes em 255 arquivos, lint sem aviso novo. \u26a0\ufe0f NAO VERIFICADO EM TELA \u2014 o hub exige login.",
+      motivation:
+        "Lucas (13/09/2026), com o print do quadro vazio: *\"o coordenador pode vir preenchido, so vamos incluir se precisar, vendedora tambem que vir\"*. E, em seguida: *\"esse setup, vamos organizar por abas? dentro do setup organizar por abas esta muito confuso misturando varios assuntos, nao ta legal\"*.",
+    },
+    title: "O Setup por abas, e a vendedora e o coordenador vindos do legado",
+    type: "melhoria",
+    version: "1.332.0",
+  },
+  {
     buildTag: "2026-09-13-o-quadro-de-assinatura-do-contrato",
     deployedAt: "2026-09-13T21:23:28-03:00",
     modules: [

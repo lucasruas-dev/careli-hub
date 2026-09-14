@@ -669,25 +669,8 @@ function EnterpriseDetail({
           <MinutasTab enterpriseId={row.id} name={row.name} />
         ) : null}
         {tab === "links" ? <LinksTab buscar={buscarLinks} /> : null}
-        {/* ⚠️ O SETUP TEM DOIS BLOCOS AGORA, e a ordem entre eles não é acaso: o credenciamento é a
-            configuração da ENTRADA (quem manda CAD, o que a esteira exige) e a ordem de assinatura
-            é a da SAÍDA (como o contrato sai para assinar). Quem configura um empreendimento novo
-            percorre a venda inteira de cima para baixo. */}
         {tab === "setup" ? (
-          <div className="grid gap-3">
-            <CredenciamentoCard
-              code={row.code}
-              enterpriseId={row.id}
-              name={row.name}
-            />
-            <OrdemDeAssinaturaCard code={row.code} enterpriseId={row.id} />
-
-            {/* ⚠️ FORA DO CARD DE ORDEM, e de propósito. Lucas (13/09/2026): *"mesmo desligado,
-                eu tenho que cadastrar as testemunha"*. Quando "Assinam em ordem" está
-                desligado — que é como os contratos saem hoje — aquele card apaga a lista inteira;
-                o cadastro lá dentro sumiria justamente na configuração em uso. */}
-            <QuadroDeAssinaturaCard enterpriseId={row.id} />
-          </div>
+          <SetupTab code={row.code} enterpriseId={row.id} name={row.name} />
         ) : null}
       </section>
     </div>
@@ -1215,6 +1198,80 @@ async function uploadEnterpriseLogo(
 //  1) o flag "na ativa" (recebendo CAD/credenciamento) — o portal só oferece os ATIVOS;
 //  2) a logo — o C2X guarda em ActiveStorage (difícil de extrair read-only), então o operador
 //     sobe aqui. Uma logo por empreendimento (upsert).
+/**
+ * O SETUP DO EMPREENDIMENTO, separado por assunto.
+ *
+ * Lucas (13/09/2026): *"esse setup, vamos organizar por abas? dentro do setup organizar por abas
+ * está muito confuso misturando vários assuntos, não ta legal"*.
+ *
+ * ⚠️ O CORTE É ENTRADA × SAÍDA, e não "um card por aba". O Setup tinha acumulado três cards
+ * empilhados que respondem a perguntas de momentos opostos da venda: o CREDENCIAMENTO configura
+ * quem consegue mandar CAD e o que a esteira exige — é o começo; a ASSINATURA configura como o
+ * contrato sai para ser assinado — é o fim. Quem abre esta tela está fazendo uma coisa ou a outra,
+ * nunca as duas ao mesmo tempo, e empilhá-las obrigava a rolar por cima de um assunto para chegar
+ * no outro.
+ *
+ * ⚠️ A ORDEM DAS ABAS SEGUE A VENDA, da esquerda para a direita — a mesma razão pela qual os cards
+ * estavam nessa ordem quando eram uma pilha só.
+ */
+function SetupTab({
+  code,
+  enterpriseId,
+  name,
+}: {
+  code: string;
+  enterpriseId: string;
+  name: string;
+}) {
+  const [subAba, setSubAba] = useState<"assinatura" | "credenciamento">(
+    "credenciamento",
+  );
+
+  const abas: { id: "assinatura" | "credenciamento"; rotulo: string }[] = [
+    { id: "credenciamento", rotulo: "Credenciamento" },
+    { id: "assinatura", rotulo: "Assinatura" },
+  ];
+
+  return (
+    <div className="grid gap-3">
+      <div className="flex flex-wrap gap-1 border-b border-line">
+        {abas.map((x) => (
+          <button
+            className={`rounded-t-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+              subAba === x.id
+                ? "bg-surface text-ink shadow-[inset_0_-2px_0_0_currentColor]"
+                : "text-ink-muted hover:text-ink"
+            }`}
+            key={x.id}
+            onClick={() => setSubAba(x.id)}
+            type="button"
+          >
+            {x.rotulo}
+          </button>
+        ))}
+      </div>
+
+      {subAba === "credenciamento" ? (
+        <CredenciamentoCard code={code} enterpriseId={enterpriseId} name={name} />
+      ) : null}
+
+      {/* ⚠️ OS DOIS CARDS DA ASSINATURA FICAM JUNTOS, e separá-los em duas abas seria pior: a ordem
+          fala dos PAPÉIS e o quadro fala das PESSOAS daqueles papéis. Quem cadastra uma testemunha
+          quer ver, na mesma tela, em que momento ela assina.
+
+          ⚠️ E O QUADRO SEGUE FORA DO CARD DE ORDEM. Lucas: *"mesmo desligado, eu tenho que cadastrar
+          as testemunha"* — com "Assinam em ordem" desligado, aquele card apaga a lista inteira, e o
+          cadastro lá dentro sumiria justamente na configuração em uso. */}
+      {subAba === "assinatura" ? (
+        <>
+          <OrdemDeAssinaturaCard code={code} enterpriseId={enterpriseId} />
+          <QuadroDeAssinaturaCard enterpriseId={enterpriseId} />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function CredenciamentoCard({
   code,
   enterpriseId,

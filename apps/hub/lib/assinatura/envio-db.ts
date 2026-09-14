@@ -14,7 +14,7 @@ import { enviarParaAssinatura, type FalhaNoEnvio, type PedidoDeEnvio } from "./c
 import { type PortaDaClicksign } from "./clicksign/cliente";
 import { moverCardDaTemis } from "./estado-db";
 import { ordenarSignatarios, type RegraDeOrdem } from "./ordem";
-import { assinantesDoQuadro, vendedoraDoEmpreendimento } from "./quadro-db";
+import { assinantesDoQuadro, empresasDoEmpreendimento } from "./quadro-db";
 import { descreverOrigem, type OrigemDaRegra, regraDeOrdemDaVenda } from "./ordem-db";
 import { conferirSignatarios, type Pessoa, signatariosDoContrato } from "./signatarios";
 import { chaveDoSignatario, type EstadoDaAssinatura, type Signatario } from "./tipos";
@@ -99,9 +99,11 @@ export async function prepararEnvio(
     resolvido.dados.gerais.__empreendimento_id ??
     resolvido.dados.gerais.__unidade_enterprise_id ??
     null;
+  const empresas = await empresasDoEmpreendimento(sb, enterpriseId);
   const doQuadro = await assinantesDoQuadro(sb, {
+    coordenadorEntityId: empresas.coordenador,
     enterpriseId,
-    vendedoraEntityId: await vendedoraDoEmpreendimento(sb, enterpriseId),
+    vendedoraEntityId: empresas.vendedora,
   });
 
   const montagem = signatariosDoContrato(resolvido.dados, doQuadro);

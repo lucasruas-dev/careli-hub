@@ -47,6 +47,7 @@ type LinhaDoQuadro = {
 async function representanteLegal(
   sb: SupabaseClient,
   entityId: string,
+  papel: PapelNoContrato,
 ): Promise<null | Pessoa> {
   const { data: vinculo } = await sb
     .from("apolo_relationships")
@@ -80,7 +81,7 @@ async function representanteLegal(
     cpf: pessoa?.document_masked ?? null,
     email: String((contatos ?? [])[0]?.value ?? "").trim(),
     nome,
-    papel: "vendedora",
+    papel,
     telefone: null,
   };
 }
@@ -99,7 +100,12 @@ async function representanteLegal(
  */
 export async function assinantesDoQuadro(
   sb: SupabaseClient,
-  alvo: { enterpriseId: null | string; vendedoraEntityId?: null | string },
+  alvo: {
+    /** O COORDENADOR daquele empreendimento (0159) — não a Coordenação de Vendas da casa. */
+    coordenadorEntityId?: null | string;
+    enterpriseId: null | string;
+    vendedoraEntityId?: null | string;
+  },
 ): Promise<Pessoa[]> {
   const enterpriseId = String(alvo.enterpriseId ?? "").trim();
   if (!enterpriseId) return [];
@@ -143,11 +149,21 @@ export async function assinantesDoQuadro(
     // no quadro decidiu quem assina pela empresa; somar o herdado por cima poria duas pessoas na
     // mesma linha do contrato. É a mesma regra que a tela aplica, e de propósito: duas versões dela
     // divergiriam no primeiro ajuste.
-    const temVendedora = pessoas.some((p) => p.papel === "vendedora");
-    if (!temVendedora && alvo.vendedoraEntityId) {
-      const rep = await representanteLegal(sb, alvo.vendedoraEntityId);
+    const herdar = async (
+      entityId: null | string | undefined,
+      papel: PapelNoContrato,
+    ) => {
+      if (!entityId) return;
+      if (pessoas.some((p) => p.papel === papel)) return;
+      const rep = await representanteLegal(sb, entityId, papel);
       if (rep) pessoas.unshift(rep);
-    }
+    };
+
+    await herdar(alvo.vendedoraEntityId, "vendedora");
+    // ⚠️ O COORDENADOR TAMBÉM HERDA. Lucas (13/09/2026): *"o coordenador pode vir preenchido, só
+    // vamos incluir se precisar, vendedora também que vir"*. O papel no código continua `coordenadora`
+    // porque é a chave gravada no jsonb da ordem — só o RÓTULO da tela mudou para o masculino.
+    await herdar(alvo.coordenadorEntityId, "coordenadora");
 
     return pessoas;
   } catch (e) {
@@ -156,21 +172,35 @@ export async function assinantesDoQuadro(
   }
 }
 
-/** A vendedora cadastrada no empreendimento, para o quadro saber de quem herdar o representante. */
-export async function vendedoraDoEmpreendimento(
+/**
+ * As duas empresas do empreendimento de quem o quadro herda representante.
+ *
+ * ⚠️ TRÊS COLUNAS PARECIDAS, E UMA DELAS NÃO ENTRA AQUI. `vendedor_entity_id` é a incorporadora,
+ * `coordenador_entity_id` (0159) é o coordenador DAQUELE empreendimento, e `coordenadora_entity_id`
+ * é a Coordenação de Vendas da casa — esta última aparece no TEXTO do contrato e não assina. Trocar
+ * as três já pôs o captador no lugar do coordenador uma vez.
+ */
+export async function empresasDoEmpreendimento(
   sb: SupabaseClient,
   enterpriseId: null | string,
-): Promise<null | string> {
+): Promise<{ coordenador: null | string; vendedora: null | string }> {
+  const vazio = { coordenador: null, vendedora: null };
   const id = String(enterpriseId ?? "").trim();
-  if (!id) return null;
+  if (!id) return vazio;
   try {
     const { data } = await sb
       .from("apolo_enterprise_settings")
-      .select("vendedor_entity_id")
+      .select("vendedor_entity_id, coordenador_entity_id")
       .eq("enterprise_id", id)
-      .maybeSingle<{ vendedor_entity_id: null | string }>();
-    return data?.vendedor_entity_id ?? null;
+      .maybeSingle<{
+        coordenador_entity_id: null | string;
+        vendedor_entity_id: null | string;
+      }>();
+    return {
+      coordenador: data?.coordenador_entity_id ?? null,
+      vendedora: data?.vendedor_entity_id ?? null,
+    };
   } catch {
-    return null;
+    return vazio;
   }
 }
