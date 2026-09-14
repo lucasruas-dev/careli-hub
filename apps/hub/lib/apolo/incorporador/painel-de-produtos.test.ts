@@ -42,6 +42,7 @@ const c2x = (
   incorporador: null,
   mirror: false,
   mirrorLabel: null,
+  mirrorNote: null,
   name: p.code,
   stages: [],
   state: "MG",

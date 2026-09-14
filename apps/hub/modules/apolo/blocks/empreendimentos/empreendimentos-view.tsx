@@ -30,6 +30,9 @@ import {
   FileSignature,
   FileText,
   Handshake,
+  // Alias pelo mesmo motivo do `Map as MapIcon`: `History` sombrearia o `History` global
+  // do DOM, e o erro que sai fala de JSX, nao de colisao.
+  History as HistoryIcon,
   ImagePlus,
   LandPlot,
   Layers,
@@ -463,10 +466,34 @@ function EnterpriseRows({
               <p className="m-0 truncate text-xs text-ink-muted">
                 {[row.code, locationLabel(row)].filter(Boolean).join(" · ")}
               </p>
+
+              {/* ⚠️ O ESPELHO PRECISA SE ANUNCIAR, e até hoje ele não se anunciava. `mirror` e
+                  `mirrorLabel` são calculados desde sempre — o próprio tipo diz "Rótulo pronto pra
+                  tela" — e um `grep` por "mirror" nesta view não devolvia NADA. O resultado era o
+                  Vale do Ouro aparecendo duas vezes na lista, uma como produto de 3 etapas (302
+                  unidades) e outra como VLO (298), sem nada dizendo que são OS MESMOS LOTES. Quem
+                  lê soma: 600 unidades e R$ 70 milhões num loteamento que tem 302 e R$ 35 milhões.
+
+                  ⚠️ O TOTAL DA TELA SEMPRE ESTEVE CERTO (`sumScenarios` filtra `!row.mirror`): o
+                  erro nunca foi de conta, foi de LEITURA. E erro de leitura não aparece em teste
+                  nenhum — só aparece quando alguém olha a lista e desconfia. */}
+              {row.mirror ? (
+                <p
+                  className="m-0 mt-0.5 inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 font-semibold text-[10px] text-amber-900 dark:bg-amber-500/15 dark:text-amber-200"
+                  title={row.mirrorNote ?? undefined}
+                >
+                  <HistoryIcon aria-hidden="true" className="size-3" />
+                  {row.mirrorLabel ?? "Histórico · não entra na soma"}
+                </p>
+              ) : null}
             </div>
           </div>
         </td>
-        <ScenarioCells scenario={row.scenario} strong />
+        {/* ⚠️ O ESPELHO NÃO VAI EM NEGRITO. Ele tem números de verdade — são os mesmos lotes das
+            carteiras vivas —, e mostrá-los com o mesmo peso das linhas que somam convida a soma
+            errada. Esmaecido, ele continua clicável (é por ele que se chega ao masterplan e às CADs)
+            e deixa de competir com o produto consolidado. */}
+        <ScenarioCells scenario={row.scenario} strong={!row.mirror} />
         <td className="px-4 py-2.5 text-right">
           <VerMaisButton onClick={() => onOpen(row)} />
         </td>

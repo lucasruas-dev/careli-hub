@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-14-o-espelho-se-anuncia",
+    deployedAt: "2026-09-14T01:02:21-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O Vale do Ouro aparecia duas vezes sem dizer por qu\u00ea.** Uma linha como produto de 3 etapas (VOC + VOL + VOR, 302 unidades) e outra como VLO (298) \u2014 e s\u00e3o **os mesmos lotes**. Quem lia somava 600 unidades e R$ 70 milh\u00f5es num loteamento que tem 302 e R$ 35 milh\u00f5es.",
+              "Agora a linha do espelho traz a tarja **Hist\u00f3rico \u00b7 mesmos lotes de VOC + VOL + VOR**, com a explica\u00e7\u00e3o inteira ao passar o mouse, e os n\u00fameros dela saem do negrito para n\u00e3o competirem com os das carteiras vivas.",
+              "\u26a0\ufe0f **O total da tela sempre esteve certo** \u2014 o espelho nunca entrou na soma. O que faltava era a tela DIZER isso.",
+              "A linha continua clic\u00e1vel: \u00e9 por ela que se chega ao masterplan, \u00e0s CADs da esteira e ao painel do coordenador.",
+            ],
+            screen: "Empreendimentos",
+          },
+        ],
+      },
+    ],
+    rollback: "54e051a2",
+    technical: {
+      done: "O DADO FOI CONSTRUIDO PARA A TELA E A TELA NUNCA O LEU. `mirror` e `mirrorLabel` sao calculados em `lib/apolo/empreendimentos.ts` desde sempre \u2014 o proprio tipo diz, na linha 101, *\"Rotulo pronto pra tela\"* \u2014 e `grep -n mirror empreendimentos-view.tsx` devolvia ZERO. O calculo estava certo (`totals: sumScenarios(rows.filter((row) => !row.mirror))`), o cadastro estava certo (`ENTERPRISE_MIRRORS`, com label ja atualizado para incluir o VOR em 08/09/2026), e o que faltava era o `<p>`. || \u26a0\ufe0f ERRO DE LEITURA NAO APARECE EM TESTE. Nenhuma suite reprova uma tela que deixa de mostrar um aviso; ele so aparece quando alguem olha a lista e desconfia \u2014 que foi o que o Lucas fez, e nao pela primeira vez (*\"eu ainda estou com o vale do ouro errado\"*). || O ESPELHO PERDEU O NEGRITO (`strong={!row.mirror}`): ele tem numeros de verdade, e mostra-los com o mesmo peso das linhas que somam convida a soma errada. Esmaecido, continua clicavel \u2014 e precisa continuar, porque o VLO e a casa do masterplan, das CADs e do painel do coordenador (ver a `note` do cadastro de espelhos). || `mirrorNote` e campo NOVO: o rotulo cabe na linha, a explicacao cabe no `title`. E ele obrigou a varrer os OUTROS produtores de `ApoloEnterpriseRow` \u2014 o typecheck apontou `painel-para-apolo.ts` (duas montagens) e dois testes, um deles justamente o que confere TODOS os campos do tipo. Foi ele quem provou que a varredura ficou completa. || \u26a0\ufe0f NO PORTAL o `mirrorNote` vai NULO de proposito: a linha de la nasce de `LinhaDoPainel`, que carrega so o aviso curto: inventar um texto longo ali seria escrever, no portal do incorporador, uma explicacao que ninguem revisou. || Conferido que o rotulo NAO esta duplicado: a unica string viva e a de `c2x-analytics.ts:82`, ja com o VOR; as outras ocorrencias sao comentario e fixture. || typecheck limpo, 3.827 testes em 256 arquivos, lint sem aviso novo.",
+      motivation:
+        "Lucas (14/09/2026), com o print da lista de empreendimentos: *\"eu ainda estou com o vale do ouro errado\"*. Duas linhas de Vale do Ouro, 302 e 298 unidades, sem nada dizendo que sao os mesmos lotes.",
+    },
+    title: "O espelho do Vale do Ouro passa a se anunciar na lista",
+    type: "correcao",
+    version: "1.334.0",
+  },
+  {
     buildTag: "2026-09-14-a-senha-passa-a-ser-sua",
     deployedAt: "2026-09-14T00:28:32-03:00",
     modules: [

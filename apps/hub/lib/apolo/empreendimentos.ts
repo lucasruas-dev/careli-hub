@@ -103,6 +103,11 @@ export type ApoloEnterpriseRow = {
    * ainda não desenha esta etiqueta — o campo já vem preenchido esperando o selo.
    */
   mirrorLabel: string | null;
+  /**
+   * O porquê inteiro, para o `title` da tela: de onde veio o espelho, por que ele fica de fora da
+   * soma e por que ele continua no ar. O rótulo cabe na linha; a explicação cabe no hover.
+   */
+  mirrorNote: string | null;
   name: string;
   scenario: ApoloEnterpriseScenario;
   state: string | null;
@@ -782,6 +787,7 @@ function groupEnterpriseRows(rows: ApoloEnterpriseRow[]): ApoloEnterpriseRow[] {
       // entrar, a soma das etapas abaixo já ignora os espelhos e a linha segue somável).
       mirror: false,
       mirrorLabel: null,
+      mirrorNote: null,
       name: group.display,
       scenario: sumScenarios(stages.filter((stage) => !stage.mirror)),
       state: first?.state ?? null,
@@ -846,6 +852,7 @@ export function mapEnterpriseRow(row: EnterpriseQueryRow): ApoloEnterpriseRow {
     incorporador: cleanText(row.incorporador),
     mirror: mirror !== null,
     mirrorLabel: mirror?.label ?? null,
+    mirrorNote: mirror?.note ?? null,
     name: cleanText(row.name) ?? "Empreendimento",
     scenario: {
       bloqueado: tally(row.bloqueado_units, row.bloqueado_value),

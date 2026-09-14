@@ -37,6 +37,7 @@ function filhoParaRow(filho: FilhoDoPainel, pai: LinhaDoPainel): ApoloEnterprise
     incorporador: null,
     mirror: false,
     mirrorLabel: null,
+    mirrorNote: null,
     name: filho.nome,
     scenario: filho.scenario,
     stages: [],
@@ -56,6 +57,11 @@ export function linhaParaRow(linha: LinhaDoPainel): ApoloEnterpriseRow {
     incorporador: null,
     mirror: aviso !== null,
     mirrorLabel: aviso,
+    // ⚠️ O PAINEL DO PORTAL SÓ TEM O AVISO CURTO. Ele nasce de `LinhaDoPainel`, que carrega um
+    // `aviso` de uma linha — não o texto longo do cadastro de espelhos. Inventar um aqui seria
+    // escrever, no portal do incorporador, uma explicação que ninguém revisou; o rótulo basta, e o
+    // `title` simplesmente não aparece.
+    mirrorNote: null,
     name: linha.nome,
     scenario: linha.scenario,
     stages: linha.filhos.map((filho) => filhoParaRow(filho, linha)),
