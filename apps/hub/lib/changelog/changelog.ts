@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-15-rh-cadastra-pessoas-sem-virar-admin",
+    deployedAt: "2026-09-15T14:20:14-03:00",
+    modules: [
+      {
+        module: "Setup",
+        screens: [
+          {
+            items: [
+              "**Quem cuida do RH passa a cadastrar pessoas sem ser administrador.** Até agora o Setup só tinha dois estados: administrador (que pode tudo no Panteon) ou sem acesso nenhum. Agora existe um meio-termo: cadastrar e editar gente, em qualquer departamento, e mais nada.",
+              "**A Raiane já está com esse acesso.** Ela cadastra em qualquer setor, como combinado, e o restante do Panteon dela não mudou.",
+              "**Quem tem esse acesso não cria administrador, não mexe na ficha de um administrador e não edita o próprio cadastro.** São travas do servidor, não só da tela.",
+              "**E ninguém consegue mais desligar o último administrador ativo** — isso trancaria todo mundo para fora do Setup, sem volta.",
+            ],
+            screen: "Setup · Usuários",
+          },
+        ],
+      },
+    ],
+    rollback: "333216fe",
+    technical: {
+      done:
+        "O SETUP SO CONHECIA DOIS ESTADOS: `role === \"admin\"` (pode tudo) ou nada. Dar acesso a Raiane significava torna-la admin — e admin destrava outras 44 verificacoes espalhadas por app/, lib/ e modules/, incluindo as 14 filas da Iris e os syncs de C2X/Serasa/Chronos. Era muito mais do que foi pedido. || AGORA EXISTE A PERMISSAO `setup-usuarios` em `hub_user_permissions` — tabela que nasceu na migration 0001, estava VAZIA, e que o Ares JA le em producao (lib/ares/server.ts:1220-1236, usado de molde literal). || ⚠️ QUATRO INVARIANTES, TODOS NO SERVIDOR, e tres deles nao sao obvios: (1) O PERFIL VEM NO CORPO DA REQUISICAO — `mapProfileToHubRole` (route.ts:938) converte 'adm' em role admin sem perguntar quem pediu; tirar a opcao do <select> nao protege nada. Sao TRES call sites e nao dois: o terceiro e `createOperationalUserWithSignupFallback` (:643), acionado quando NAO ha service-role key, e que ficou explicitamente so-admin porque ali o cliente e o do proprio usuario e `hub_user_permissions` (RLS ligada, ZERO policies) voltaria VAZIA sem erro. (2) O CAMINHO QUE NAO PASSA POR PAPEL NENHUM: o PATCH reescreve o e-mail do alvo com `email_confirm: true` (route.ts:244-245) — apontar o login de um admin para uma caixa propria e pedir 'esqueci a senha' e tomada de conta SEM nunca escrever 'adm'; por isso a linha de um admin e intocavel para nao-admin em papel, e-mail E status. (3) Editar o proprio cadastro e o atalho mais curto para auto-promocao. (4) Desativar ou rebaixar o ULTIMO admin ativo tranca todos para fora do Setup — essa vale ate para admin. || ⚠️ A VALIDACAO RODA ANTES DA PRIMEIRA ESCRITA NO AUTH, de proposito: o papel e propagado por TRIGGER (migration 0147 — `app_metadata.role` escreve `hub_users.role` sozinho), entao validar depois do `updateUserById` seria validar depois de a promocao ja ter acontecido. || DESCARTEI criar um operational_profile 'rh': rebaixaria a Raiane de 'cdr' e quebraria o acesso dela as filas da Iris, porque `seesByDepartment` (lib/hub/access-scope.ts:40) so e true para cdr. || A DECISAO VIROU UMA FUNCAO SO (`lib/hub/gestao-de-pessoas.ts`, 18 testes escritos antes do codigo) porque a trava de admin estava espalhada em SEIS pontos (users/route.ts:106, :215, :411, :613; avatar/route.ts:175; setup/page.tsx:204) — seis copias de uma regra de seguranca divergem, e a que diverge e a que abre a porta. || A TELA NAO PROTEGE, SO PERGUNTA: o contexto do cliente nao conhece a permissao (ela vive em tabela que so o service role le), entao a tela consulta a rota nova `/api/setup/acesso`, que responde pela MESMA funcao. Quem protege continua sendo o GET/POST/PATCH. || MIGRATION 0164 APLICADA em 15/09/2026 com OK do Lucas (renumerada de 0163 para 0164: a sessao de construcao ja havia publicado `0163_bloqueio_de_unidade`). Conferido depois de aplicar: `setup-usuarios` no catalogo, 1 concessao viva (Raiane, granted_by Lucas Ruas), e o role dela seguindo 'leader'/'cdr'. NAO cria policy em `hub_user_permissions`: RLS com zero policies e a trava, e uma policy de leitura abriria a lista de quem pode o que. || Suite 3.869 verdes em 259 arquivos; typecheck limpo. NAO VERIFICADO EM TELA — o hub exige login. || FICA REGISTRADO, medido e nao corrigido: a policy `setup beta read users` deixa QUALQUER usuario autenticado ler `hub_users` inteira; nao atrapalha este caso (o escopo do RH e a empresa toda), mas e um 'beta' aberto que vale revisitar antes de existir um RH parcial.",
+      motivation:
+        "Lucas (14-15/09/2026): *\"dar permissao para raiane.oliveira acessar o setup\"*, depois *\"do hub\"*. Ao saber que isso hoje so existia como virar admin, recortou: *\"exatamente isso, cadastrar os usuarios que ela vai ter acesso\"* e fechou o escopo com *\"ela cuida do RH da empresa, ou seja, ela pode cadastrar em qualquer setor ou departamento\"*.",
+    },
+    title: "O RH cadastra pessoas sem virar administrador",
+    type: "novidade",
+    version: "1.342.0",
+  },
+  {
     buildTag: "2026-09-14-o-coordenador-bloqueia-o-lote",
     deployedAt: "2026-09-14T15:00:00-03:00",
     modules: [
