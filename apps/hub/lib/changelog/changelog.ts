@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-16-planos-do-espelho-sem-repeticao",
+    deployedAt: "2026-09-16T12:57:08-03:00",
+    modules: [
+      {
+        module: "Espelho",
+        screens: [
+          {
+            items: [
+              "**O Vale do Ouro para de mostrar cada plano duas vezes.** Investidor, Curto e Normal apareciam repetidos no simulador e na lista de outras composições.",
+              "**O plano igual cadastrado em dois níveis agora aparece uma vez só**, em qualquer empreendimento. Plano diferente continua aparecendo normalmente.",
+            ],
+            screen: "Espelho público · Simulação",
+          },
+        ],
+      },
+    ],
+    rollback: "3dfddb31",
+    technical: {
+      done:
+        "CAUSA: os quatro chamadores de `planosPublicos` (api/publico/espelho/simulacao, api/publico/espelho/situacao, app/e/[link] e app/publico/espelho) passam a ARVORE INTEIRA `[pai, ...filhos]`, e a consulta devolvia os planos de todos SOMADOS, sem tirar repeticao. Em 15/09/2026 os tres planos do Vale do Ouro foram cadastrados no VLO (pai, enterprise 35) E no VOC (filho, 37), identicos: 3 + 3 = 6 cartoes. || NAO E REGRESSAO: o codigo sempre somou; ficou escondido enquanto so um nivel tinha plano. Medido: o Vale do Ouro era a UNICA arvore com pai e filho tendo plano ativo ao mesmo tempo, e os 3 eram identicos. || DUAS FRENTES: (1) DADO — decisao do Lucas, \"os planos ficam no pai\": desativados (ativo=false, NAO apagados) os 3 planos do VOC, depois de conferir que NENHUM estava em uso (0 em hercules_vendas.plano_id, 0 em temis_plano_categorias.plano_id, 0 em hercules_propostas, nenhum com minuta). Estado final: VLO 3 ativos; VOC, VOL e VOR 0. Reversivel com ativo=true. (2) CODIGO — `semPlanosRepetidos` (lib/hercules/espelho/planos-publicos.ts) aplicada no retorno: dois planos sao o MESMO quando tudo que muda a conta e igual (nome sem caixa/espaco, parcelas, entrada, indice, juros, periodicidade, convencao, sistema, anuais). Fica a primeira ocorrencia. || ⚠️ SO TIRA REPETICAO, NAO DECIDE PRECEDENCIA: plano DIFERENTE entre pai e filho continua aparecendo, porque esconder condicao comercial real e pior do que repetir. E juros NULO e juros ZERO nao se fundem (nulo e ausencia, zero e escolha). || 6 testes novos, vistos falhar antes. Suite 4.009 verdes em 268 arquivos; typecheck limpo, arquivo coberto.",
+      motivation:
+        "Lucas (16/09/2026), com print do espelho do Vale do Ouro: *\"porque no vale do ouro os planos estao ficando duplicados?\"*. Diante das duas saidas, decidiu o cadastro: *\"os planos ficam no pai\"*.",
+    },
+    title: "O espelho para de repetir os planos",
+    type: "correcao",
+    version: "1.346.0",
+  },
+  {
     buildTag: "2026-09-16-a-lista-para-de-esconder-o-cpf",
     deployedAt: "2026-09-16T11:34:22-03:00",
     modules: [
