@@ -67,6 +67,47 @@ function numero(v: null | number | string | undefined, padrao: number): number {
 }
 
 /**
+ * O mesmo plano, cadastrado em dois níveis da árvore, aparece UMA vez.
+ *
+ * ⚠️ EXISTE PORQUE A ÁRVORE INTEIRA ENTRA NA CONSULTA. Os quatro chamadores passam
+ * `[pai, ...filhos]`, e a consulta devolve os planos de todos somados. Enquanto só um nível tinha
+ * plano, ninguém via. Em 15/09/2026 os três planos do Vale do Ouro foram cadastrados no VLO (pai)
+ * E no VOC (filho), idênticos, e o espelho passou a mostrar seis cartões — print do Lucas,
+ * 16/09/2026.
+ *
+ * Dois planos são o MESMO quando tudo o que muda a conta é igual: nome, parcelas, entrada,
+ * índice, juros e anuais. Fica a primeira ocorrência. Plano DIFERENTE continua aparecendo — esta
+ * função tira repetição, não decide precedência entre pai e filho.
+ */
+export function semPlanosRepetidos(planos: readonly PlanoPublico[]): PlanoPublico[] {
+  const vistos = new Set<string>();
+  const unicos: PlanoPublico[] = [];
+
+  for (const p of planos) {
+    // ⚠️ `jurosTaxa` entra com String(): nulo vira "null" e zero vira "0". Nulo é plano SEM juros
+    // (ausência) e zero é juros escolhido como zero — não podem virar o mesmo plano.
+    const chave = [
+      p.nome.trim().toLowerCase(),
+      p.parcelas,
+      p.entradaPercentual,
+      p.indiceCorrecao,
+      String(p.jurosTaxa),
+      p.jurosPeriodicidade,
+      p.jurosConvencao,
+      p.sistemaAmortizacao,
+      p.anuaisQuantidade,
+      p.anuaisValor,
+    ].join("|");
+
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    unicos.push(p);
+  }
+
+  return unicos;
+}
+
+/**
  * Os planos ativos de um empreendimento, prontos para a conta.
  *
  * `enterpriseId` é o `c2x_enterprise_id` do TOPO da árvore — o mesmo recorte do resto do espelho:
@@ -97,7 +138,9 @@ export async function planosPublicos(
 
   if (error) throw new Error(error.message);
 
-  return (
+  // A árvore inteira entra na consulta: o mesmo plano cadastrado no pai e num filho viria duas
+  // vezes. Ver `semPlanosRepetidos`.
+  return semPlanosRepetidos(
     ((data ?? []) as LinhaDePlano[])
       .map((p) => ({
         anuaisQuantidade: numero(p.anuais_quantidade, 0),
