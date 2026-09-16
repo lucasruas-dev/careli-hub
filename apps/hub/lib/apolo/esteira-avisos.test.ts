@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { ETAPAS_ESTEIRA } from "./esteira";
 import { etapaTemAviso } from "./esteira-avisos";
 
+// ⚠️ PRAZO FOLGADO SÓ POR CAUSA DA SUÍTE CHEIA (16/09/2026). Sozinho este arquivo roda em menos de
+// 2 s; com os 389 arquivos em paralelo no pre-push, o último teste (que só reusa o módulo já
+// carregado) estourou os 5 s padrão e barrou um deploy. Não é lentidão da regra: é fila de CPU.
+vi.setConfig({ testTimeout: 30_000 });
+
 // Os avisos saem pelo gateway do Relacionamento. Aqui ele é falso: o que se mede é QUEM seria
 // avisado e QUANTAS vezes, não o que a Evolution faz com o payload.
 const enviados: { telefone: string; text: string }[] = [];
