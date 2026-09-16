@@ -8,8 +8,8 @@ import {
   temisScreens,
   type TemisScreen,
 } from "@/lib/temis/catalog";
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
+import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 import { TemisSidebar } from "@/modules/temis/blocks/shell/temis-sidebar";
 import { TemisBoard } from "@/modules/temis/blocks/board/temis-board";
 import { TemisKanban } from "@/modules/temis/blocks/board/temis-kanban";
@@ -41,13 +41,17 @@ export function TemisPage() {
   >(null);
   const [erro, setErro] = useState<null | string>(null);
   const [escolhidoId, setEscolhidoId] = useState<null | string>(null);
+  // ⚠️ A SUPERVISÃO NASCE DESLIGADA (decisão do Lucas, 16/09/2026): a fila da Careli é o que a
+  // Careli confecciona. Ligar traz junto os cards que o time de um incorporador opera no portal dele.
+  const [verIncorporadores, setVerIncorporadores] = useState(false);
+  // Sem provedor acima (a Têmis do hub), é a porta de sempre: `/api/temis` com o Bearer do hub.
+  const { temisFetch } = useApiDaTemis();
 
   useEffect(() => {
     let cancelado = false;
 
     void (async () => {
       try {
-        const token = await getApoloAccessToken();
         // ⚠️ ROTA PRÓPRIA DA TÊMIS, e não a listagem geral do Apolo. Lucas (07/09/2026): *"na temis,
         // pode deixar somente os empreendimentos que estamos recebendo cads"*. A listagem do Apolo
         // traz o catálogo inteiro do C2X (38 produtos, muitos já vendidos e encerrados) e NÃO traz o
@@ -56,10 +60,7 @@ export function TemisPage() {
         //
         // A rota nova lê o PORTÃO (`apolo_enterprise_settings.recepcao_cad`), que já é a decisão de
         // "este produto está recebendo cadastro" tomada na tela do empreendimento. Doze hoje.
-        const r = await fetch("/api/temis/empreendimentos", {
-          cache: "no-store",
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const r = await temisFetch("/empreendimentos", { cache: "no-store" });
         const corpo = (await r.json().catch(() => ({}))) as {
           data?: { rows: EmpreendimentoDaTemis[] };
           error?: string;
@@ -92,7 +93,7 @@ export function TemisPage() {
     return () => {
       cancelado = true;
     };
-  }, []);
+  }, [temisFetch]);
 
   const escolhido = useMemo(
     () => empreendimentos?.find((row) => row.id === escolhidoId) ?? null,
@@ -173,7 +174,18 @@ export function TemisPage() {
             // e o `p-3` de baixo continua no lugar. O `<section>` acima tem altura definida (é
             // `flex-1` de um `flex flex-col` que a janela dimensiona), então o `100%` daqui tem
             // contra o que resolver.
-            <div className="flex min-h-full flex-col p-3 has-[[data-temis-trabalho]]:h-full">
+            <div className="group flex min-h-full flex-col p-3 has-[[data-temis-trabalho]]:h-full">
+              {/* ⚠️ O ALTERNADOR DA SUPERVISÃO SOME COM A TELA DE TRABALHO ABERTA: ela herda a
+                  altura do quadro, e uma linha a mais por cima dela é altura roubada do contrato. */}
+              <label className="mb-2 flex w-fit cursor-pointer items-center gap-2 text-xs font-semibold text-ink-muted group-has-[[data-temis-trabalho]]:hidden">
+                <input
+                  checked={verIncorporadores}
+                  className="size-3.5 accent-current"
+                  onChange={(e) => setVerIncorporadores(e.target.checked)}
+                  type="checkbox"
+                />
+                Ver também os do incorporador
+              </label>
               {/* ⚠️ SEM FILTRO, E O CÓDIGO NÃO FAZIA O QUE O COMENTÁRIO AO LADO DO SELETOR PROMETE.
                   O cabeçalho esconde o seletor no Board justamente porque "o Board mostra todos os
                   empreendimentos de uma vez" — e o kanban continuava recebendo `escolhido.id`, que
@@ -182,7 +194,7 @@ export function TemisPage() {
                   trabalhos para a Têmis, viu os dois no board do Hércules e encontrou aqui
                   "Entrada 0 · Confecção 0 · Em assinatura 0 · Finalizado 0". Os cards estavam lá o
                   tempo todo — foram criados às 15:13 e 15:19 e a consulta não os pedia. */}
-              <TemisKanban enterpriseId={null} />
+              <TemisKanban enterpriseId={null} incluirIncorporadores={verIncorporadores} />
             </div>
           ) : (
             <Setup
@@ -307,6 +319,38 @@ function Setup({
   }
 
   return (
+    <DocumentosDoEmpreendimento
+      aba={aba}
+      aoTrocarAba={setAba}
+      enterpriseId={escolhido.id}
+      name={escolhido.name}
+    />
+  );
+}
+
+/**
+ * Os quatro documentos de UM empreendimento, cada um na sua aba, com a minuta aberta embaixo.
+ *
+ * ⚠️ SAIU DO `Setup` PARA TER DUAS PORTAS E UMA IMPLEMENTAÇÃO (16/09/2026). As minutas do portal
+ * que confecciona (`MinutasDoProduto`, Cecílio) são esta mesma peça por baixo do
+ * `ApiDaTemisProvider` do portal: quem confecciona o distrato precisa do termo de distrato, e uma
+ * segunda lista dos quatro tipos seria a que esquece o quinto no dia em que ele nascer.
+ *
+ * ⚠️ A ABA É CONTROLADA POR QUEM MONTA, e não estado daqui: no Setup ela continua morando no
+ * `Setup`, onde sempre morou, e sobrevive à troca de empreendimento como antes.
+ */
+export function DocumentosDoEmpreendimento({
+  aba,
+  aoTrocarAba,
+  enterpriseId,
+  name,
+}: {
+  aba: string;
+  aoTrocarAba: (tipo: string) => void;
+  enterpriseId: string;
+  name: string;
+}) {
+  return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap gap-1 border-b border-line px-3 pt-3">
         {ABAS_DO_SETUP.map((x) => (
@@ -317,7 +361,7 @@ function Setup({
                 : "text-ink-muted hover:text-ink"
             }`}
             key={x.tipo}
-            onClick={() => setAba(x.tipo)}
+            onClick={() => aoTrocarAba(x.tipo)}
             type="button"
           >
             {x.rotulo}
@@ -329,9 +373,9 @@ function Setup({
           minuta anterior ainda aberta no editor — e o texto do distrato apareceria sob o título
           de contrato. */}
       <MinutasTab
-        enterpriseId={escolhido.id}
-        key={`${escolhido.id}:${aba}`}
-        name={escolhido.name}
+        enterpriseId={enterpriseId}
+        key={`${enterpriseId}:${aba}`}
+        name={name}
         tipo={aba}
       />
     </div>

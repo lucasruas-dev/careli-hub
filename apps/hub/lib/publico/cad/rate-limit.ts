@@ -73,70 +73,104 @@ export type Veredito = { esperaMs: number; permitido: boolean; teto: number };
 // Contador por janela fixa. Janela fixa (e não deslizante) de propósito: uma linha por
 // chave/balde/janela, sem histórico de acessos guardado — o que conta é o volume, e guardar
 // timestamp por tentativa seria acumular rastro de navegação de gente que não é cliente.
+//
+// ⚠️ O INCREMENTO É ATÔMICO POR COMPARAÇÃO (revisão do conjunto do portal, 16/09/2026). A versão
+// anterior lia o contador e gravava `contador + 1` por upsert: 200 chamadas em paralelo liam o mesmo
+// N e gravavam N+1, e as 200 leituras pagas da MOST passavam contra um teto de 400 por dia que
+// registrou 1. Sem migration nova (uma RPC com `on conflict do update set contador = contador + 1`
+// seria o ideal), a escrita virou "compare e grave": o update só vale se o contador ainda é o que foi
+// lido (`.eq("contador", usado)`), e a linha nova nasce por insert, que o índice primário recusa em
+// duplicata. Quem perde a corrida lê de novo e tenta outra vez; cada rodada tem ao menos um vencedor.
+//
+// `opcoes.teto`: o teto desta chave, quando não é o do balde (o teto do PORTAL inteiro,
+// lib/apolo/incorporador/teto-do-portal.ts). A janela continua a do balde.
+const TENTATIVAS_DO_CONTADOR = 8;
+
 export async function consumir(
   adminClient: AdminClient,
   balde: Balde,
   chave: string,
+  opcoes: { teto?: number } = {},
 ): Promise<Veredito> {
   const regra = REGRAS[balde];
+  const teto = opcoes.teto ?? regra.teto;
   const agora = Date.now();
   const inicio = new Date(Math.floor(agora / (regra.janelaSegundos * 1000)) * regra.janelaSegundos * 1000);
+  const liberado: Veredito = { esperaMs: 0, permitido: true, teto };
 
-  const { data, error } = await adminClient
-    .from("publico_rate_limit")
-    .select("contador")
-    .eq("balde", balde)
-    .eq("chave_hash", chave)
-    .eq("janela_inicio", inicio.toISOString())
-    .maybeSingle<{ contador: number }>();
+  for (let tentativa = 0; tentativa < TENTATIVAS_DO_CONTADOR; tentativa += 1) {
+    const { data, error } = await adminClient
+      .from("publico_rate_limit")
+      .select("contador")
+      .eq("balde", balde)
+      .eq("chave_hash", chave)
+      .eq("janela_inicio", inicio.toISOString())
+      .maybeSingle<{ contador: number }>();
 
-  // Tabela ausente (migration 0063 pendente) NÃO derruba o formulário: sem ela o fluxo segue,
-  // e as travas que restam são a validação de forma e a exigência de CNPJ credenciado antes
-  // de qualquer chamada paga.
-  // ⚠️ APLICAR A 0063 ANTES DE DIVULGAR O LINK: até lá as torneiras pagas ficam sem teto.
-  if (error && tabelaAusente(error)) {
-    return { esperaMs: 0, permitido: true, teto: regra.teto };
-  }
-  if (error) {
-    // Falha de leitura real: deixa passar (o corretor legítimo não pode ficar refém do
+    // Tabela ausente (migration 0063 pendente) NÃO derruba o formulário: sem ela o fluxo segue,
+    // e as travas que restam são a validação de forma e a exigência de CNPJ credenciado antes
+    // de qualquer chamada paga.
+    // ⚠️ APLICAR A 0063 ANTES DE DIVULGAR O LINK: até lá as torneiras pagas ficam sem teto.
+    // Falha de leitura real também deixa passar (o corretor legítimo não pode ficar refém do
     // contador), mas sem incrementar.
-    return { esperaMs: 0, permitido: true, teto: regra.teto };
+    if (error) return liberado;
+
+    const visto = new Date(agora).toISOString();
+
+    if (!data) {
+      const { error: erroDoInsert } = await adminClient.from("publico_rate_limit").insert({
+        balde,
+        chave_hash: chave,
+        contador: 1,
+        janela_inicio: inicio.toISOString(),
+        visto_em: visto,
+      });
+      if (!erroDoInsert) return vereditoDoContador(balde, 1, teto);
+      // Outra chamada criou a linha no meio: lê de novo e disputa o update.
+      if (chaveDuplicada(erroDoInsert)) continue;
+      return liberado;
+    }
+
+    const usado = data.contador ?? 0;
+    const { data: gravadas, error: erroDoUpdate } = await adminClient
+      .from("publico_rate_limit")
+      .update({ contador: usado + 1, visto_em: visto })
+      .eq("balde", balde)
+      .eq("chave_hash", chave)
+      .eq("janela_inicio", inicio.toISOString())
+      .eq("contador", usado)
+      .select("contador");
+    if (erroDoUpdate) return liberado;
+    if (Array.isArray(gravadas) && gravadas.length > 0) {
+      return vereditoDoContador(balde, usado + 1, teto);
+    }
+    // Ninguém gravado: outra chamada somou antes. Lê de novo.
   }
 
-  const usado = data?.contador ?? 0;
-  const novo = usado + 1;
+  // ⚠️ DISPUTA QUE NÃO ACABA É RAJADA, NÃO GENTE. Nenhuma pessoa dispara oito chamadas na mesma chave
+  // no mesmo instante; um laço paralelo, sim. Aqui a chamada é recusada (sem espera), em vez de passar
+  // sem contar, que era exatamente o buraco.
+  return { esperaMs: 0, permitido: false, teto };
+}
 
-  const { error: upsertError } = await adminClient.from("publico_rate_limit").upsert(
-    {
-      balde,
-      chave_hash: chave,
-      contador: novo,
-      janela_inicio: inicio.toISOString(),
-      visto_em: new Date(agora).toISOString(),
-    },
-    { onConflict: "balde,chave_hash,janela_inicio" },
-  );
-  if (upsertError && !tabelaAusente(upsertError)) {
-    return { esperaMs: 0, permitido: true, teto: regra.teto };
-  }
+function vereditoDoContador(balde: Balde, novo: number, teto: number): Veredito {
+  if (novo <= teto) return { esperaMs: 0, permitido: true, teto };
 
-  if (novo <= regra.teto) return { esperaMs: 0, permitido: true, teto: regra.teto };
-
-  const excedente = novo - regra.teto;
+  const excedente = novo - teto;
   if (PROGRESSIVO.includes(balde) && excedente <= 3) {
-    return { esperaMs: atrasoProgressivo(excedente), permitido: true, teto: regra.teto };
+    return { esperaMs: atrasoProgressivo(excedente), permitido: true, teto };
   }
-  return { esperaMs: 0, permitido: false, teto: regra.teto };
+  return { esperaMs: 0, permitido: false, teto };
+}
+
+function chaveDuplicada(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "23505" || /duplicate key/i.test(error.message ?? "");
 }
 
 // 2s, 4s, 8s.
 export function atrasoProgressivo(excedente: number): number {
   return Math.min(8000, 2000 * 2 ** (excedente - 1));
-}
-
-function tabelaAusente(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  return error.code === "42P01" || /does not exist/i.test(error.message ?? "");
 }
 
 // Piso de latência: quem responde "não credenciada" em 8ms e "credenciada" em 180ms está

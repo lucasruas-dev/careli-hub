@@ -34,8 +34,14 @@ import {
   filhosDoCadastro,
   idDoPainelDoPai,
 } from "@/lib/hercules/expandir-id-do-painel";
+import { tipoProdutoDe, type TipoProduto } from "@/lib/hercules/produto-novo";
 
 import { nomeApresentavel } from "./empreendimentos-do-portal";
+import {
+  operadorDoEnterprise,
+  podeEscreverNosEnterprises,
+  type PortalDaEscrita,
+} from "./operacao-do-produto";
 
 /** Os seis baldes da tela (total + cinco situações), cada um com unidades e R$. */
 export type Cenario = ApoloEnterpriseScenario;
@@ -45,7 +51,13 @@ export type FilhoDoPainel = {
   /** Id REAL do C2X do filho — o que a Vendas recebe se a tela quiser abrir só a etapa. */
   id: string;
   nome: string;
+  /** `apolo_incorporadores.id` de quem opera o filho (0170). Nulo = a Careli. Ver `LinhaDoPainel.podeEscrever`. */
+  operadoPor?: null | string;
+  /** O portal pode escrever neste filho? Mesma régua da linha (`podeEscreverNosEnterprises`). */
+  podeEscrever?: boolean;
   scenario: Cenario;
+  /** Loteamento ou prédio, do cadastro (0170). Opcional só no tipo: `montarPainelDeProdutos` sempre preenche. */
+  tipoProduto?: TipoProduto;
 };
 
 export type LinhaDoPainel = {
@@ -59,21 +71,91 @@ export type LinhaDoPainel = {
   /** "VOC + VOL + VOR" (filhos autorizados), ou o código do pai/da linha simples. */
   codigo: string;
   codes: string[];
+  /**
+   * O enterprise que as ações de ESCRITA da ficha recebem (minutas, adicionar unidades, editar
+   * unidade): o id REAL de um produto só, nunca "pai:<uuid>".
+   *   • linha simples (C2X ou avulsa do Panteon) → o próprio id;
+   *   • pai sem filho cadastrado → o c2x do pai (o Garden, 39);
+   *   • pai com UM filho autorizado → o id desse filho;
+   *   • pai com vários filhos, ou espelho com filhos cadastrados → nulo (a escrita pede UM produto,
+   *     e o espelho parado não recebe unidade).
+   * Opcional só no tipo: `montarPainelDeProdutos` sempre preenche.
+   */
+  enterpriseId?: null | string;
   /** Filhos autorizados (vazio no pai sem filho e na linha simples). */
   etapas: number;
   filhos: FilhoDoPainel[];
   /** "pai:<uuid>" para pai do cadastro; o c2x id para linha simples fora do cadastro. */
   id: string;
   nome: string;
+  /**
+   * Quem opera o produto (0170), quando todos os ids da linha concordam; nulo = a Careli, ou donos
+   * diferentes entre os filhos. Só informativo: quem decide é `podeEscrever`.
+   */
+  operadoPor?: null | string;
+  /**
+   * O portal da sessão pode ESCREVER neste produto? Decisão do Lucas (16/09/2026): no portal que
+   * confecciona, só no produto que ele opera (VOC e VOR só consulta para a Cecílio). É a régua de
+   * `operacao-do-produto.ts` sobre os ids que a linha cobre, calculada aqui para a tela esconder os
+   * botões; as rotas conferem de novo. Ausente = falso.
+   */
+  podeEscrever?: boolean;
   scenario: Cenario;
+  /**
+   * Loteamento ou prédio: decide o formulário de unidade (quadra e lote, ou torre e apartamento) e o
+   * modelo da planilha na ficha do produto. Do cadastro do Panteon (0170); a linha que só o C2X
+   * conhece é loteamento, que é tudo o que o legado tem.
+   *
+   * ⚠️ OPCIONAL SÓ NO TIPO, para não quebrar quem monta `LinhaDoPainel` à mão (painel-para-apolo e
+   * testes). `montarPainelDeProdutos` SEMPRE preenche; quem lê trata ausente como loteamento.
+   */
+  tipoProduto?: TipoProduto;
   uf: null | string;
 };
 
 export type PainelDeProdutos = {
+  /**
+   * Preenchido quando a moldura do C2X não veio e o painel saiu só com o que o cadastro do Panteon
+   * sabe (a rota decide). Nulo/ausente = painel completo. Texto para o coordenador externo: diz o
+   * efeito, sem nomear sistema.
+   */
+  avisoDaFonte?: null | string;
   /** A soma dos pais, sem repetir (cada c2x id entra numa linha só). */
   cards: Cenario;
   linhas: LinhaDoPainel[];
 };
+
+/** O aviso de `avisoDaFonte` quando o C2X não respondeu e o painel saiu pelo cadastro. */
+export const AVISO_DE_PAINEL_PARCIAL =
+  "Alguns empreendimentos não carregaram agora e podem estar faltando nesta lista.";
+
+/**
+ * O painel sai, ou a rota responde 503? A decisão da rota, pura.
+ *
+ * ⚠️ O C2X FORA DO AR DEIXOU DE DERRUBAR O PAINEL (16/09/2026). Desde 04/09 os NÚMEROS vêm do
+ * Panteon e o C2X ficou só com a moldura (nome e cidade de quem não está no cadastro). Responder
+ * 503 porque a moldura não veio escondia inclusive o produto que nasceu no Panteon e nunca existiu
+ * no legado — no portal da Cecílio, que vai ter prédio cadastrado só aqui, a aba Produtos inteira.
+ * Agora:
+ *   • C2X respondeu → o painel, como sempre (cadastro fora do ar continua degradando calado para
+ *     a lista do C2X, que é a decisão antiga);
+ *   • C2X fora E cadastro fora → 503: não sobra fonte de nome nenhuma;
+ *   • C2X fora, cadastro de pé, nenhuma linha → 503: "nenhum produto" seria afirmação errada;
+ *   • C2X fora, cadastro de pé, com linhas → o painel do cadastro, com `avisoDaFonte`, porque a
+ *     linha avulsa do C2X (id que o cadastro não conhece) pode estar faltando.
+ */
+export function decidirPainelDeProdutos(entrada: {
+  cadastroRespondeu: boolean;
+  c2xRespondeu: boolean;
+  painel: PainelDeProdutos;
+}): { ok: false } | { ok: true; painel: PainelDeProdutos } {
+  const { cadastroRespondeu, c2xRespondeu, painel } = entrada;
+
+  if (c2xRespondeu) return { ok: true, painel: { ...painel, avisoDaFonte: null } };
+  if (!cadastroRespondeu || painel.linhas.length === 0) return { ok: false };
+
+  return { ok: true, painel: { ...painel, avisoDaFonte: AVISO_DE_PAINEL_PARCIAL } };
+}
 
 const BALDES: Array<ApoloEnterpriseBucket | "total"> = [
   "total",
@@ -149,8 +231,31 @@ export function linhasReaisDoC2x(linhas: ApoloEnterpriseRow[]): Map<string, Apol
   return reais;
 }
 
+/**
+ * O operador comum aos ids de uma linha: o mesmo em todos, ou nulo (Careli, id fora do cadastro ou
+ * donos diferentes). Só informativo; a permissão é `podeEscreverNosEnterprises`.
+ */
+function operadorComum(cadastro: readonly LinhaDoCadastro[], ids: readonly string[]): null | string {
+  let comum: null | string = null;
+  for (const [indice, id] of ids.entries()) {
+    const operador = operadorDoEnterprise(cadastro, id);
+    if (!operador.achado || operador.operadoPor === null) return null;
+    if (indice === 0) {
+      comum = operador.operadoPor;
+    } else if (operador.operadoPor.trim().toLowerCase() !== (comum ?? "").trim().toLowerCase()) {
+      return null;
+    }
+  }
+  return comum;
+}
+
 export function montarPainelDeProdutos(entrada: {
   cadastro: LinhaDoCadastro[];
+  /**
+   * As colunas da 0170 (`operado_por`) vieram na leitura do cadastro (`lerCadastroDeEmpreendimentos`)?
+   * Ausente = não: o portal que confecciona não escreve em nada (fail-closed).
+   */
+  com0170?: boolean;
   /**
    * O estoque de cada empreendimento, contado no PANTEON (`estoquePorEmpreendimento`).
    *
@@ -165,8 +270,22 @@ export function montarPainelDeProdutos(entrada: {
   linhasDoC2x: ApoloEnterpriseRow[];
   /** Ids do C2X que a sessão autoriza (já expandidos por `idsDaSessao`). */
   permitidos: Set<string>;
+  /**
+   * Quem é o portal da sessão, para `podeEscrever` de cada linha. Ausente = ninguém escreve: um
+   * painel montado sem dizer de quem é a sessão não pode acender botão de escrita.
+   */
+  portal?: PortalDaEscrita;
 }): PainelDeProdutos {
-  const { cadastro, estoque, linhasDoC2x, permitidos } = entrada;
+  const { cadastro, estoque, linhasDoC2x, permitidos, portal } = entrada;
+  const com0170 = entrada.com0170 === true;
+
+  // A RÉGUA DE ESCRITA (decisão do Lucas, 16/09/2026) sobre os ids REAIS que a linha cobre: os filhos
+  // autorizados, o espelho sozinho ou o próprio id. É a mesma função que as rotas usam; aqui ela só
+  // decide o que a tela oferece.
+  const escritaDe = (ids: readonly string[]): { operadoPor: null | string; podeEscrever: boolean } => ({
+    operadoPor: operadorComum(cadastro, ids),
+    podeEscrever: portal ? podeEscreverNosEnterprises(portal, cadastro, ids, com0170) : false,
+  });
 
   const reais = linhasReaisDoC2x(linhasDoC2x);
   const filhosDe = filhosDoCadastro(cadastro);
@@ -192,7 +311,9 @@ export function montarPainelDeProdutos(entrada: {
           codigo: filho.codigo,
           id: filho.c2xEnterpriseId,
           nome: filho.nome,
+          ...escritaDe([filho.c2xEnterpriseId]),
           scenario: cenarioDe(filho.c2xEnterpriseId),
+          tipoProduto: tipoProdutoDe(filho.tipoProduto),
         }));
 
       for (const filho of filhos) consumidos.add(filho.id);
@@ -201,6 +322,7 @@ export function montarPainelDeProdutos(entrada: {
       if (pai.c2xEnterpriseId) consumidos.add(pai.c2xEnterpriseId);
 
       const codes = filhos.map((filho) => filho.codigo);
+      const unicoFilho = filhos.length === 1 ? filhos[0] : undefined;
 
       montadas.push({
         linha: {
@@ -208,11 +330,17 @@ export function montarPainelDeProdutos(entrada: {
           cidade: pai.cidade,
           codigo: codes.join(" + "),
           codes,
+          // Um filho só: a escrita vai para ele. Vários: a ficha não escolhe por baixo dos panos.
+          enterpriseId: unicoFilho?.id ?? null,
           etapas: filhos.length,
           filhos,
           id: idDoPainelDoPai(pai.id),
           nome: pai.nome,
+          // A linha escreve só quando TODOS os filhos que ela soma são do portal: um botão na linha
+          // de "Vale do Ouro" alcançaria o VOC junto com o que é dele.
+          ...escritaDe(filhos.map((filho) => filho.id)),
           scenario: somarCenarios(filhos.map((filho) => filho.scenario)),
+          tipoProduto: tipoProdutoDe(pai.tipoProduto),
           uf: pai.uf,
         },
         vendendo: pai.vendendo,
@@ -245,11 +373,16 @@ export function montarPainelDeProdutos(entrada: {
           cidade: pai.cidade,
           codigo: pai.codigo,
           codes: [pai.codigo],
+          // Pai sem filho (o Garden): a escrita vai para o c2x dele. Espelho com filho cadastrado (o
+          // VLO parado): nulo, porque unidade e minuta nascem na divisão, não no histórico.
+          enterpriseId: temFilhoCadastrado ? null : alcance.espelho,
           etapas: 0,
           filhos: [],
           id: idDoPainelDoPai(pai.id),
           nome: pai.nome,
+          ...escritaDe([alcance.espelho]),
           scenario: cenarioDe(alcance.espelho),
+          tipoProduto: tipoProdutoDe(pai.tipoProduto),
           uf: pai.uf,
         },
         vendendo: pai.vendendo,
@@ -260,12 +393,50 @@ export function montarPainelDeProdutos(entrada: {
   // O que a sessão alcança e o cadastro do Panteon ainda não conhece: linha simples com o nome do
   // C2X. "group:…" da sessão não tem linha real e cai fora sozinho; as divisões dele já vieram
   // expandidas em `permitidos`.
+  // Índice do cadastro por id, para a linha avulsa do produto do Panteon (logo abaixo).
+  const doCadastroPorId = new Map<string, LinhaDoCadastro>();
+  for (const linhaDoCadastro of cadastro) {
+    if (linhaDoCadastro.c2xEnterpriseId) {
+      doCadastroPorId.set(linhaDoCadastro.c2xEnterpriseId, linhaDoCadastro);
+    }
+  }
+
   for (const id of permitidos) {
     const limpo = String(id).trim();
     if (!limpo || consumidos.has(limpo)) continue;
 
     const linha = reais.get(limpo);
-    if (!linha) continue;
+    if (!linha) {
+      // ⚠️ A LINHA AVULSA TAMBÉM VALE PARA O PRODUTO DO PANTEON. Até 16/09/2026 ela só existia
+      // para id do C2X (`reais`), então um id da sessão que o cadastro conhece mas que nenhum pai
+      // reclamou (filho cujo pai não veio na leitura, por exemplo) sumia do painel sem aviso. Aqui
+      // a moldura é a do cadastro (nome, cidade, UF) e o número é o do estoque do Panteon, a mesma
+      // régua das outras linhas. Id que nem o C2X nem o cadastro conhecem continua fora: não há
+      // nome para mostrar.
+      const doPanteon = doCadastroPorId.get(limpo);
+      if (!doPanteon) continue;
+
+      consumidos.add(limpo);
+      montadas.push({
+        linha: {
+          aviso: null,
+          cidade: doPanteon.cidade,
+          codigo: doPanteon.codigo,
+          codes: doPanteon.codigo ? [doPanteon.codigo] : [],
+          enterpriseId: limpo,
+          etapas: 0,
+          filhos: [],
+          id: limpo,
+          nome: doPanteon.nome,
+          ...escritaDe([limpo]),
+          scenario: cenarioDe(limpo),
+          tipoProduto: tipoProdutoDe(doPanteon.tipoProduto),
+          uf: doPanteon.uf,
+        },
+        vendendo: doPanteon.vendendo,
+      });
+      continue;
+    }
 
     // ⚠️ O ESPELHO DO C2X (`mirror`) NÃO VIRA LINHA AO LADO DAS DIVISÕES DELE. Sem cadastro (fora
     // do ar, ou o Vale do Ouro ainda não cadastrado), a sessão natural do coordenador traz
@@ -289,11 +460,16 @@ export function montarPainelDeProdutos(entrada: {
         cidade: linha.city,
         codigo: code,
         codes: code ? [code] : [],
+        enterpriseId: limpo,
         etapas: 0,
         filhos: [],
         id: limpo,
         nome: nomeApresentavel(linha.name ?? code ?? "Empreendimento"),
+        // Fora do cadastro não há dono: só o comercial escreve (a régua recusa id não achado).
+        ...escritaDe([limpo]),
         scenario: linha.scenario,
+        // Só o C2X conhece esta linha, e o legado só tem loteamento.
+        tipoProduto: "loteamento",
         uf: linha.state,
       },
       // Fora do cadastro não há como saber se vende: vai para o fim, com os inativos.

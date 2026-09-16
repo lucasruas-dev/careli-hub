@@ -7,6 +7,7 @@ import {
   conferirCancelamento,
   conferirReserva,
   mascararCpf,
+  MOTIVO_DO_AVISO_DESLIGADO,
   motivoEscrito,
   type PedidoDeReserva,
   PRAZO_MAXIMO_EM_DIAS,
@@ -225,6 +226,16 @@ describe("reservaComoLinhaDoFluxo", () => {
     expect(reservaComoLinhaDoFluxo(RESERVA, UNIDADE, "VOC").id).toBe("reserva:res-1");
   });
 
+  it("⚠️ o apartamento sai como apartamento, e não com o código cru nem como quadra e lote", () => {
+    // Lucas (16/09/2026): prédio nunca é encaixado em quadra/lote. A reserva usa a MESMA escrita
+    // do WhatsApp e do PDF da proposta que vem depois dela.
+    const apto = { apartamento: "304", codigo: "JAD-A-304", lote: null, preco_tabela: 650_000, quadra: null, torre: "A" };
+    expect(reservaComoLinhaDoFluxo(RESERVA, apto, "JAD").unidade_nome).toBe("Torre A · Apto 304");
+    // Pelo tipo do produto, mesmo sem as colunas da 0171 na leitura (o código decide).
+    const semColunas = { codigo: "JAD-A-304", lote: null, preco_tabela: 650_000, quadra: null, tipoProduto: "vertical" };
+    expect(reservaComoLinhaDoFluxo(RESERVA, semColunas, "JAD").unidade_nome).toBe("Torre A · Apto 304");
+  });
+
   it("traz o titular, a unidade e o preço de tabela", () => {
     const linha = reservaComoLinhaDoFluxo(RESERVA, UNIDADE, "VOC");
     expect(linha.cliente_nome).toBe("Maria da Silva");
@@ -370,5 +381,27 @@ describe("comoFoiOAviso", () => {
 
   it("ninguém avisado não vira silêncio", () => {
     expect(comoFoiOAviso([])).toBe("O aviso não chegou a ser enviado.");
+  });
+
+  // Decisão do Lucas (16/09/2026): as vendas do portal do Cecílio não avisam ninguém por enquanto.
+  it("⚠️ aviso desligado por decisão não se lê como falha de telefone", () => {
+    const frase = comoFoiOAviso([
+      { motivo: MOTIVO_DO_AVISO_DESLIGADO, ok: false, para: "corretor" },
+      { motivo: MOTIVO_DO_AVISO_DESLIGADO, ok: false, para: "imobiliaria" },
+      { motivo: MOTIVO_DO_AVISO_DESLIGADO, ok: false, para: "coordenador" },
+    ]);
+    expect(frase).toContain("avisos estão desligados");
+    expect(frase).not.toContain("falhou");
+    expect(frase).not.toContain("telefone");
+    expect(frase).not.toContain("—");
+  });
+
+  it("o que falhou por outro motivo continua dito junto (o PDF da proposta)", () => {
+    const frase = comoFoiOAviso([
+      { motivo: MOTIVO_DO_AVISO_DESLIGADO, ok: false, para: "imobiliaria" },
+      { motivo: "não foi possível gerar o PDF", ok: false, para: "documento" },
+    ]);
+    expect(frase).toContain("avisos estão desligados");
+    expect(frase).toContain("falhou para documento");
   });
 });

@@ -18,6 +18,8 @@
 // ⚠️ SÓ GRAVA COM `--gravar`. Sem a flag mostra o que faria.
 // ⚠️ EXIGE A MIGRATION 0123 APLICADA.
 // ⚠️ Rodar de novo NÃO duplica: casa pelo `codigo` (único por workspace) e atualiza.
+// ⚠️ NÃO SOBRESCREVE PRODUTO QUE NÃO É DA CARGA: com dono marcado (`operado_por`, D2 de 16/09/2026),
+// nascido no Panteon (id >= 100000) ou criado pelo hub ou pelo portal. Esse é pulado com aviso.
 //
 // Uso (da RAIZ do monorepo):
 //   node scripts/hercules/semear-empreendimentos.mjs            # ensaio
@@ -169,7 +171,62 @@ if (!url || !chave) {
 }
 const supabase = createClient(url, chave, { auth: { persistSession: false } });
 
+// ── O QUE O SEMEADOR NÃO PODE REESCREVER ────────────────────────────────────────
+//
+// ⚠️ O UPSERT É POR CÓDIGO E REESCREVE `c2x_enterprise_id`, `pai_id`, `nome` e `vendendo`. Desde
+// 16/09/2026 o mesmo espaço de códigos tem produto que NÃO veio do C2X (achado 10 da onda 2): um
+// código novo no legado, ou um pai sintético (`slice(0,2)+"X"`), que coincidisse com um prédio da
+// Cecílio trocaria o id >= 100000 dele pelo do C2X (ou por nulo), e o produto sumiria do escopo com
+// as unidades e as vendas órfãs. E a D2 do Lucas acrescentou o produto com DONO marcado
+// (`operado_por`, hoje o Garden 39): o cadastro dele passou a ser mantido pelo portal que o opera.
+//
+// ⚠️ PULA COM AVISO, E PULA OS FILHOS JUNTO. Abortar deixaria a semeadura pela metade; pendurar os
+// filhos do C2X num pai que não é da carga poria a visão de outro dono dentro do produto dele.
+//
+// ⚠️ FALHA FECHADA NA LEITURA. Sem ler a linha atual não há como provar que ela é da carga: para. Só
+// as colunas da 0170 ausentes (`operado_por`, `criado_origem`) são toleradas, e aí sobra a régua
+// do id do Panteon.
+const PRIMEIRO_ID_DO_PANTEON = 100000;
+let colunasDaLinhaAtual = "c2x_enterprise_id,operado_por,criado_origem";
+const pulados = [];
+
+async function motivoParaNaoSobrescrever(codigo) {
+  for (;;) {
+    const { data, error } = await supabase
+      .from("hercules_empreendimentos")
+      .select(colunasDaLinhaAtual)
+      .eq("workspace_id", WORKSPACE)
+      .eq("codigo", codigo)
+      .maybeSingle();
+    if (error) {
+      const semA0170 = ["42703", "PGRST204"].includes(error.code) || /operado_por|criado_origem/.test(error.message ?? "");
+      if (semA0170 && colunasDaLinhaAtual !== "c2x_enterprise_id") {
+        console.log("  (a migration 0170 não está aplicada aqui: confiro só o id do Panteon)");
+        colunasDaLinhaAtual = "c2x_enterprise_id";
+        continue;
+      }
+      throw new Error(`${codigo}: não deu para ler o cadastro atual (${error.message}); nada foi sobrescrito.`);
+    }
+    if (!data) return null;
+    if (String(data.operado_por ?? "").trim()) return `operado por ${String(data.operado_por).trim()}`;
+    if (Number(String(data.c2x_enterprise_id ?? "").trim()) >= PRIMEIRO_ID_DO_PANTEON) {
+      return `nascido no Panteon (id ${String(data.c2x_enterprise_id).trim()})`;
+    }
+    if (["hub", "portal"].includes(String(data.criado_origem ?? "").trim())) {
+      return `criado pelo ${String(data.criado_origem).trim()}`;
+    }
+    return null;
+  }
+}
+
 async function upsert(linha) {
+  const motivo = await motivoParaNaoSobrescrever(linha.codigo);
+  if (motivo) {
+    pulados.push(`${linha.codigo} (${motivo})`);
+    console.warn(`  PULADO: ${linha.codigo} não é da carga do C2X (${motivo}); o semeador não o sobrescreve.`);
+    return null;
+  }
+
   // Casa pelo código: rodar de novo atualiza em vez de duplicar.
   const { data, error } = await supabase
     .from("hercules_empreendimentos")
@@ -195,6 +252,12 @@ for (const p of pais) {
     vendendo: p.vendendo,
     workspace_id: WORKSPACE,
   });
+  if (!paiId) {
+    if (p.filhos.length > 0) {
+      console.warn(`  PULADOS também os ${p.filhos.length} filho(s) de ${p.codigo}: o pai não é da carga.`);
+    }
+    continue;
+  }
   let ordemFilho = 0;
   for (const f of p.filhos) {
     await upsert({
@@ -211,5 +274,8 @@ for (const p of pais) {
     });
   }
   console.log(`gravado ${p.codigo} ${p.nome} + ${p.filhos.length} filho(s)`);
+}
+if (pulados.length > 0) {
+  console.warn(`\n${pulados.length} produto(s) pulado(s), sem sobrescrever: ${pulados.join(", ")}.`);
 }
 console.log("\nCadastro semeado.");

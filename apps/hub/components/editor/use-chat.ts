@@ -13,7 +13,11 @@ import { type TNode, KEYS, nanoid, NodeApi, TextApi } from "platejs";
 import { type PlateEditor, useEditorRef, usePluginOption } from "platejs/react";
 
 import { aiChatPlugin } from "@/components/editor/plugins/ai-kit";
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import {
+  type AutenticacaoDaApiDaTemis,
+  cabecalhosDaIaDoEditor,
+  useApiDaTemis,
+} from "@/modules/temis/api-da-temis";
 
 import { discussionPlugin } from "./plugins/discussion-kit";
 
@@ -26,6 +30,10 @@ import { discussionPlugin } from "./plugins/discussion-kit";
 // `chatOptions.body` e o `onData` que aplica `data-toolName` / `data-table` / `data-comment`.
 // O que entrou: `Authorization: Bearer` da sessão do hub em todo pedido (a rota exige
 // `authorizeApoloWrite`).
+//
+// ⚠️ A CREDENCIAL É DECIDIDA PELA PORTA DA TÊMIS (`useApiDaTemis`, revisão da onda 3). No hub, nada
+// muda. No editor aberto pelo portal do incorporador a rota da IA não existe: o transporte recusa
+// antes da rede, sem pedir o token do hub e sem mandar `Authorization` (`cabecalhosDaIaDoEditor`).
 //
 // ⚠️ `_abortFakeStream` continua no objeto `chat` como no-op: `components/ui/ai-menu.tsx` (gerado
 // pelo registro, não editamos) chama `(chat as any)._abortFakeStream()` ao fechar o menu.
@@ -75,20 +83,26 @@ async function mensagemDoErro(resposta: Response): Promise<string> {
   return `A IA do editor não respondeu (HTTP ${resposta.status}).`;
 }
 
-function createChatTransport({ api, editor }: { api: string; editor: PlateEditor }) {
+function createChatTransport({
+  api,
+  autenticacao,
+  editor,
+}: {
+  api: string;
+  autenticacao: AutenticacaoDaApiDaTemis;
+  editor: PlateEditor;
+}) {
   return new DefaultChatTransport({
     api,
     fetch: (async (input, init) => {
+      // ⚠️ A PORTA PRIMEIRO: no portal isto rejeita antes de montar o corpo e antes de pedir token.
+      const headers = await cabecalhosDaIaDoEditor(autenticacao, init?.headers);
+
       // `chatOptions.body` (o kit manda `{}`; a Têmis pode pôr metadados) entra por cima do corpo
       // que o `@ai-sdk/react` monta (messages + ctx).
       const bodyOptions = editor.getOptions(aiChatPlugin).chatOptions?.body;
       const initBody = typeof init?.body === "string" ? (JSON.parse(init.body) as object) : {};
       const body = { ...initBody, ...(bodyOptions ?? {}) };
-
-      const token = await getApoloAccessToken();
-      const headers = new Headers(init?.headers);
-      headers.set("Authorization", `Bearer ${token}`);
-      headers.set("Content-Type", "application/json");
 
       const res = await fetch(input, {
         ...init,
@@ -108,14 +122,17 @@ function createChatTransport({ api, editor }: { api: string; editor: PlateEditor
 export const useChat = () => {
   const editor = useEditorRef();
   const options = usePluginOption(aiChatPlugin, "chatOptions");
+  // Sem provedor é o hub (a Têmis da Careli); o portal que confecciona monta o provedor do cookie.
+  const { autenticacao } = useApiDaTemis();
 
   const transport = React.useMemo(
     () =>
       createChatTransport({
         api: options.api || "/api/ai/command",
+        autenticacao,
         editor,
       }),
-    [editor, options.api],
+    [autenticacao, editor, options.api],
   );
 
   const baseChat = useBaseChat<ChatMessage>({

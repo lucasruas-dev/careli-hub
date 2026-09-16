@@ -33,6 +33,10 @@ export function TelaProdutos() {
   // Qual produto está com o masterplan aberto. Estado, e não rota: o portal é uma tela só, então
   // o cliente volta para a lista sem recarregar nada e sem sair de dentro do perfil dele.
   const [aberto, setAberto] = useState<Produto | null>(null);
+  // ⚠️ A LISTA PODE SAIR PARCIAL (16/09/2026): com a fonte dos nomes fora do ar, a rota responde 200
+  // só com o que o cadastro do Panteon sabe, e diz isso em `avisoDaFonte`. Sem mostrar o aviso, um
+  // produto que sumiu da lista parecia produto que deixou de ser da pessoa.
+  const [avisoDaFonte, setAvisoDaFonte] = useState<null | string>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -41,7 +45,7 @@ export function TelaProdutos() {
       try {
         const resposta = await fetch("/api/incorporador/produtos", { cache: "no-store" });
         const payload = (await resposta.json().catch(() => null)) as
-          | { data?: { produtos: Produto[] }; error?: string }
+          | { data?: { avisoDaFonte?: null | string; produtos: Produto[] }; error?: string }
           | null;
 
         if (!vivo) return;
@@ -51,6 +55,7 @@ export function TelaProdutos() {
           return;
         }
 
+        setAvisoDaFonte(payload.data.avisoDaFonte?.trim() || null);
         setProdutos(payload.data.produtos);
       } catch {
         if (vivo) setErro("Não foi possível carregar os produtos.");
@@ -81,16 +86,33 @@ export function TelaProdutos() {
   }
 
   if (produtos.length === 0) {
-    return <Aviso texto="Nenhum produto liberado para este acesso ainda." />;
+    // Lista vazia COM aviso não é "nada liberado": é a fonte que não respondeu.
+    return <Aviso texto={avisoDaFonte ?? "Nenhum produto liberado para este acesso ainda."} />;
   }
 
   return (
     <>
       <h1 style={{ color: T.text, fontSize: 20, fontWeight: 600, margin: "0 0 4px" }}>Produtos</h1>
-      <p style={{ color: T.muted, fontSize: 13.5, margin: "0 0 22px" }}>
+      <p style={{ color: T.muted, fontSize: 13.5, margin: avisoDaFonte ? "0 0 12px" : "0 0 22px" }}>
         {produtos.length === 1 ? "1 empreendimento" : `${produtos.length} empreendimentos`}. Abra
         um para ver o masterplan.
       </p>
+      {avisoDaFonte ? (
+        <p
+          role="status"
+          style={{
+            background: T.soft,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            color: T.sub,
+            fontSize: 13,
+            margin: "0 0 18px",
+            padding: "8px 12px",
+          }}
+        >
+          {avisoDaFonte}
+        </p>
+      ) : null}
 
       <div
         style={{
@@ -130,6 +152,9 @@ function CardProduto({ onAbrir, produto }: { onAbrir: () => void; produto: Produ
         }}
       >
         {produto.logoUrl ? (
+          // A logo vem de uma URL cadastrada no Setup, de qualquer domínio: o `next/image` exigiria
+          // cada domínio no next.config, e uma logo nova ficaria quebrada até o próximo deploy.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             alt={produto.nome}
             src={produto.logoUrl}

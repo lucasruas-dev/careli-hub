@@ -4,12 +4,15 @@ import type { ApoloEnterpriseRow } from "@/lib/apolo/empreendimentos";
 import type { LinhaDoCadastro } from "@/lib/hercules/cadastro";
 
 import {
+  AVISO_DE_PAINEL_PARCIAL,
   type Cenario,
   cenarioVazio,
+  decidirPainelDeProdutos,
   linhasReaisDoC2x,
   montarPainelDeProdutos,
   somarCenarios,
 } from "./painel-de-produtos";
+import { comEscritaDoFilho } from "./painel-para-apolo";
 
 // ── Fábricas ────────────────────────────────────────────────────────────────
 const linha = (
@@ -414,5 +417,285 @@ describe("ordem e cards do topo", () => {
     const garden = unica(comFantasma.linhas);
     expect(garden.etapas).toBe(1);
     expect(garden.scenario).toEqual(cenarioVazio());
+  });
+});
+
+// ── O PRODUTO QUE SÓ EXISTE NO PANTEON (16/09/2026) ─────────────────────────
+//
+// Os prédios da Cecílio nascem no cadastro do Panteon (id a partir de 100000) e nunca vão ao C2X.
+// O painel já os montava pelo cadastro quando eram pai; o que se trava aqui é o resto: a linha
+// avulsa que só aceitava id do C2X, e o 503 do painel inteiro quando o legado caía.
+describe("produto do Panteon no painel", () => {
+  const JADE = linha({
+    c2xEnterpriseId: "100000",
+    cidade: "Ipatinga",
+    codigo: "JAD",
+    id: "jad",
+    nome: "Ed. Jade",
+    uf: "MG",
+  });
+  const estoqueComJade = new Map([
+    ...estoqueDeTeste,
+    ["100000", cenario({ disponivel: 30, reservado: 2, total: 40, vendido: 8 })],
+  ]);
+
+  it("pai do cadastro sem linha no C2X: aparece com a moldura do cadastro e o estoque do Panteon", () => {
+    const painel = montarPainelDeProdutos({
+      cadastro: [...CADASTRO, JADE],
+      estoque: estoqueComJade,
+      linhasDoC2x: C2X,
+      permitidos: permitir("37", "100000"),
+    });
+    const jade = painel.linhas.find((l) => l.codigo === "JAD");
+    expect(jade).toMatchObject({ cidade: "Ipatinga", id: "pai:jad", nome: "Ed. Jade", uf: "MG" });
+    expect(jade?.scenario.total.units).toBe(40);
+  });
+
+  it("⚠️ a linha avulsa aceita id do Panteon: filho cujo pai não veio na leitura não some", () => {
+    const orfao = linha({
+      c2xEnterpriseId: "100002",
+      cidade: "Ipatinga",
+      codigo: "CRI",
+      id: "cri",
+      nome: "Ed. Cristal",
+      paiId: "pai-que-nao-veio",
+      uf: "MG",
+    });
+    const painel = montarPainelDeProdutos({
+      cadastro: [orfao],
+      estoque: new Map([["100002", cenario({ disponivel: 12, total: 12 })]]),
+      linhasDoC2x: C2X,
+      permitidos: permitir("100002"),
+    });
+    const cristal = unica(painel.linhas);
+    expect(cristal).toMatchObject({
+      cidade: "Ipatinga",
+      codes: ["CRI"],
+      codigo: "CRI",
+      id: "100002",
+      nome: "Ed. Cristal",
+      uf: "MG",
+    });
+    expect(cristal.scenario.total.units).toBe(12);
+  });
+
+  it("⚠️ a linha avulsa do Panteon continua presa à sessão: id que ela não traz não aparece", () => {
+    const painel = montarPainelDeProdutos({
+      cadastro: [linha({ c2xEnterpriseId: "100002", codigo: "CRI", id: "cri", paiId: "sumiu" })],
+      estoque: new Map(),
+      linhasDoC2x: C2X,
+      permitidos: permitir("37"),
+    });
+    expect(painel.linhas.some((l) => l.codigo === "CRI")).toBe(false);
+  });
+
+  it("⚠️ cada linha diz se é loteamento ou prédio (a ficha monta o formulário de unidade por ele)", () => {
+    const predio = { ...JADE, tipoProduto: "vertical" as const };
+    const torre = linha({ c2xEnterpriseId: "100003", codigo: "RUB", id: "rub", paiId: "pai-que-nao-veio", tipoProduto: "vertical" });
+    const painel = montarPainelDeProdutos({
+      cadastro: [...CADASTRO, predio, torre],
+      estoque: estoqueComJade,
+      linhasDoC2x: [...C2X, c2x({ code: "VTA", id: "40", scenario: cenario({ total: 5 }) })],
+      permitidos: permitir("37", "39", "100000", "100003", "40"),
+    });
+    const tipo = (codigo: string) => painel.linhas.find((l) => l.codigo === codigo)?.tipoProduto;
+    expect(tipo("JAD")).toBe("vertical");
+    expect(tipo("RUB")).toBe("vertical");
+    // Pai do cadastro sem a coluna (fixture antiga) e linha só do C2X: loteamento.
+    expect(tipo("GDN")).toBe("loteamento");
+    expect(tipo("VTA")).toBe("loteamento");
+    const vale = painel.linhas.find((l) => l.id === "pai:vlo");
+    expect(vale?.tipoProduto).toBe("loteamento");
+    expect(vale?.filhos.every((f) => f.tipoProduto === "loteamento")).toBe(true);
+  });
+
+  it("C2X fora do ar (sem linhas): o painel sai pelo cadastro, com o Panteon e o legado cadastrado", () => {
+    const painel = montarPainelDeProdutos({
+      cadastro: [...CADASTRO, JADE],
+      estoque: estoqueComJade,
+      linhasDoC2x: [],
+      permitidos: permitir("37", "39", "100000"),
+    });
+    expect(painel.linhas.map((l) => l.id).sort()).toEqual(["pai:gdn", "pai:jad", "pai:vlo"]);
+  });
+});
+
+// ── QUEM PODE ESCREVER EM CADA LINHA (decisão do Lucas, 16/09/2026) ─────────
+//
+// No portal que confecciona (o Cecílio), escrita só no produto que ele opera: o Garden e o que nasce
+// no portal são dele; VOC e VOR ficam só consulta. O painel calcula `podeEscrever` com a MESMA régua
+// das rotas, para a ficha esconder os botões; e `enterpriseId`, o produto real que a escrita recebe.
+describe("podeEscrever e enterpriseId", () => {
+  const CECILIO_ID = "inc-cecilio";
+  const CECILIO = { incorporadorId: CECILIO_ID, slug: "cecilio-rocha", tipo: "incorporador" };
+  const GURGEL = { incorporadorId: "inc-gurgel", slug: "gurgel", tipo: "comercial" };
+
+  // O cadastro de sempre, com o Garden e um prédio operados pela Cecílio.
+  const OPERADO: LinhaDoCadastro[] = [
+    ...CADASTRO.map((l) => (l.id === "gdn" ? { ...l, operadoPor: CECILIO_ID } : l)),
+    linha({ c2xEnterpriseId: "100000", codigo: "JAD", id: "jad", nome: "Ed. Jade", operadoPor: CECILIO_ID }),
+    // Pai do Panteon com dois filhos de donos diferentes.
+    linha({ c2xEnterpriseId: "100010", codigo: "MIX", id: "mix", nome: "Misto", operadoPor: CECILIO_ID }),
+    linha({ c2xEnterpriseId: "100011", codigo: "MXA", id: "mxa", operadoPor: CECILIO_ID, paiId: "mix" }),
+    linha({ c2xEnterpriseId: "100012", codigo: "MXB", id: "mxb", operadoPor: null, paiId: "mix" }),
+    // Pai do Panteon com um filho só, da Cecílio.
+    linha({ c2xEnterpriseId: null, codigo: "TOR", id: "tor", nome: "Torres", operadoPor: CECILIO_ID }),
+    linha({ c2xEnterpriseId: "100020", codigo: "TRA", id: "tra", operadoPor: CECILIO_ID, paiId: "tor" }),
+  ];
+
+  const montar = (portal: typeof CECILIO | undefined, permitidos: string[], com0170 = true) =>
+    montarPainelDeProdutos({
+      cadastro: OPERADO,
+      com0170,
+      estoque: estoqueDeTeste,
+      linhasDoC2x: [...C2X, c2x({ code: "VTA", id: "40", scenario: cenario({ total: 5 }) })],
+      permitidos: permitir(...permitidos),
+      portal,
+    });
+  const porCodigo = (painel: ReturnType<typeof montar>, codigo: string) =>
+    painel.linhas.find((l) => l.codigo === codigo || l.codes.includes(codigo));
+
+  it("Garden operado pela Cecílio: pode escrever, e a escrita vai para o 39", () => {
+    const garden = porCodigo(montar(CECILIO, ["39"]), "GDN");
+    expect(garden).toMatchObject({ enterpriseId: "39", operadoPor: CECILIO_ID, podeEscrever: true });
+  });
+
+  it("⚠️ VOC no portal da Cecílio: só consulta", () => {
+    const vale = porCodigo(montar(CECILIO, ["37"]), "VOC");
+    expect(vale?.id).toBe("pai:vlo");
+    expect(vale).toMatchObject({ enterpriseId: "37", operadoPor: null, podeEscrever: false });
+    expect(vale?.filhos[0]).toMatchObject({ id: "37", operadoPor: null, podeEscrever: false });
+  });
+
+  it("comercial: pode escrever em tudo, inclusive no VOC e sem a 0170", () => {
+    const painel = montar(GURGEL, ["35", "37", "36", "41", "39", "40"], false);
+    expect(painel.linhas.length).toBeGreaterThan(1);
+    expect(painel.linhas.every((l) => l.podeEscrever === true)).toBe(true);
+    expect(painel.linhas.flatMap((l) => l.filhos).every((f) => f.podeEscrever === true)).toBe(true);
+  });
+
+  it("⚠️ pai com dois filhos de donos diferentes: a linha não escreve; cada filho segue o dono", () => {
+    const misto = porCodigo(montar(CECILIO, ["100011", "100012"]), "MXA");
+    expect(misto).toMatchObject({ enterpriseId: null, operadoPor: null, podeEscrever: false });
+    expect(misto?.filhos.map((f) => [f.id, f.podeEscrever])).toEqual([
+      ["100011", true],
+      ["100012", false],
+    ]);
+  });
+
+  it("enterpriseId nos quatro formatos", () => {
+    const painel = montar(CECILIO, ["39", "40", "100020", "37", "36", "41", "100000"]);
+    // linha simples do C2X: o próprio id
+    expect(porCodigo(painel, "VTA")?.enterpriseId).toBe("40");
+    // pai sem filho: o c2x do pai
+    expect(porCodigo(painel, "GDN")?.enterpriseId).toBe("39");
+    expect(porCodigo(painel, "JAD")?.enterpriseId).toBe("100000");
+    // pai com UM filho autorizado: o id do filho
+    expect(porCodigo(painel, "TRA")).toMatchObject({ enterpriseId: "100020", id: "pai:tor", podeEscrever: true });
+    // pai com vários filhos: nulo
+    expect(porCodigo(painel, "VOC")?.enterpriseId).toBeNull();
+  });
+
+  it("linha avulsa do Panteon: o próprio id, com a régua", () => {
+    const orfao = linha({ c2xEnterpriseId: "100030", codigo: "CRI", id: "cri", operadoPor: CECILIO_ID, paiId: "sumiu" });
+    const painel = montarPainelDeProdutos({
+      cadastro: [orfao],
+      com0170: true,
+      estoque: new Map(),
+      linhasDoC2x: [],
+      permitidos: permitir("100030"),
+      portal: CECILIO,
+    });
+    expect(unica(painel.linhas)).toMatchObject({ enterpriseId: "100030", podeEscrever: true });
+  });
+
+  it("⚠️ espelho sozinho com filho cadastrado (VLO parado): sem enterpriseId", () => {
+    const vale = porCodigo(montar(GURGEL, ["35"]), "VLO");
+    expect(vale).toMatchObject({ enterpriseId: null, id: "pai:vlo" });
+  });
+
+  it("⚠️ sem a 0170 ou sem portal: ninguém do portal que confecciona escreve", () => {
+    expect(porCodigo(montar(CECILIO, ["39"], false), "GDN")?.podeEscrever).toBe(false);
+    expect(porCodigo(montar(undefined, ["39"]), "GDN")?.podeEscrever).toBe(false);
+    expect(porCodigo(montar({ ...CECILIO, slug: "cer" }, ["39"]), "GDN")?.podeEscrever).toBe(false);
+  });
+
+  it("⚠️ linha só do C2X (fora do cadastro): a Cecílio não escreve", () => {
+    expect(porCodigo(montar(CECILIO, ["40"]), "VTA")).toMatchObject({ operadoPor: null, podeEscrever: false });
+  });
+});
+
+describe("comEscritaDoFilho", () => {
+  it("a ficha aberta numa etapa leva a escrita, o enterprise e o tipo do filho", () => {
+    const base = {
+      aviso: null,
+      cidade: null,
+      codigo: "TRA",
+      codes: ["TRA"],
+      etapas: 0,
+      filhos: [],
+      id: "100020",
+      nome: "Torre A",
+      scenario: cenarioVazio(),
+      uf: null,
+    };
+    expect(
+      comEscritaDoFilho(base, {
+        codigo: "TRA",
+        id: "100020",
+        nome: "Torre A",
+        operadoPor: "inc-cecilio",
+        podeEscrever: true,
+        scenario: cenarioVazio(),
+        tipoProduto: "vertical",
+      }),
+    ).toMatchObject({ enterpriseId: "100020", operadoPor: "inc-cecilio", podeEscrever: true, tipoProduto: "vertical" });
+
+    expect(
+      comEscritaDoFilho(base, { codigo: "TRA", id: "100020", nome: "Torre A", scenario: cenarioVazio() }),
+    ).toMatchObject({ enterpriseId: "100020", operadoPor: null, podeEscrever: false });
+  });
+});
+
+describe("decidirPainelDeProdutos", () => {
+  const painelCom = (n: number) => ({
+    cards: cenarioVazio(),
+    linhas: Array.from({ length: n }, (_, i) => ({
+      aviso: null,
+      cidade: null,
+      codigo: `P${i}`,
+      codes: [`P${i}`],
+      etapas: 0,
+      filhos: [],
+      id: `pai:${i}`,
+      nome: `Produto ${i}`,
+      scenario: cenarioVazio(),
+      uf: null,
+    })),
+  });
+
+  it("C2X respondeu: o painel, sem aviso (inclusive com o cadastro fora)", () => {
+    for (const cadastroRespondeu of [true, false]) {
+      const r = decidirPainelDeProdutos({ cadastroRespondeu, c2xRespondeu: true, painel: painelCom(0) });
+      expect(r).toEqual({ ok: true, painel: { ...painelCom(0), avisoDaFonte: null } });
+    }
+  });
+
+  it("⚠️ C2X fora com produto no cadastro: o painel sai, com o aviso (antes era 503)", () => {
+    const r = decidirPainelDeProdutos({ cadastroRespondeu: true, c2xRespondeu: false, painel: painelCom(2) });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.painel.linhas).toHaveLength(2);
+      expect(r.painel.avisoDaFonte).toBe(AVISO_DE_PAINEL_PARCIAL);
+    }
+  });
+
+  it("C2X fora e nada para mostrar, ou C2X e cadastro fora: 503", () => {
+    expect(decidirPainelDeProdutos({ cadastroRespondeu: true, c2xRespondeu: false, painel: painelCom(0) }).ok).toBe(false);
+    expect(decidirPainelDeProdutos({ cadastroRespondeu: false, c2xRespondeu: false, painel: painelCom(3) }).ok).toBe(false);
+  });
+
+  it("o aviso não nomeia sistema e não tem travessão", () => {
+    expect(AVISO_DE_PAINEL_PARCIAL).not.toMatch(/C2X|Panteon|Supabase|—|–/);
   });
 });

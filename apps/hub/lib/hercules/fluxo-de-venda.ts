@@ -15,6 +15,9 @@ import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import { periodicidadeDaTaxa } from "@/lib/apolo/periodicidade-da-taxa";
 
 import { codigoDaVenda } from "./codigo-da-venda";
+import { tipoDaUnidade } from "./nome-da-unidade";
+import type { TipoProduto } from "./produto-novo";
+import { apartamentoCanonico, torreCanonica } from "./unidade-nova";
 
 export type EtapaDoFluxo =
   | "assinatura"
@@ -113,13 +116,27 @@ export type PropostaDaCarga = {
 };
 
 export type UnidadeDoMapa = {
+  /** A categoria da unidade. Nulo = não pertence a nenhuma. */
+  categoria_id?: null | string;
   codigo: string;
   enterprise_id: string;
+  /** Preenchido na linha ANTIGA do terreno, apontando para a viva — ver `unidade-viva.ts`. */
+  espelho_de?: null | string;
   id: string;
   lote: null | string;
   preco_tabela: null | number | string;
   quadra: null | string;
   situacao: string;
+  // ⚠️ AS COLUNAS DO PRÉDIO (migration 0171) SÃO OPCIONAIS NA LINHA. A leitura que não as pede
+  // continua compilando e montando loteamento como sempre; sem a 0171 aplicada elas nem existem.
+  // Loteamento as tem nulas.
+  /** 0 = térreo; negativo = subsolo. */
+  andar?: null | number;
+  apartamento?: null | string;
+  tipologia?: null | string;
+  /** Nulo = prédio de torre única. */
+  torre?: null | string;
+  vagas?: null | number;
 };
 
 export type PassoDoFluxo = {
@@ -219,6 +236,15 @@ export type PeriodoDoPainel = { ate?: string; de?: string };
  * usa os campos para MOSTRAR e passa o plano de volta para a matemática de lá.
  */
 export type PlanoDaVenda = {
+  /**
+   * A categoria do plano. Nulo = plano do produto inteiro.
+   *
+   * ⚠️ É O MENOR DEGRAU DA HIERARQUIA, e sem ele a tela não distingue "plano da categoria X" de
+   * "plano do produto" — e o primeiro vaza para todos os lotes.
+   */
+  categoriaId?: null | string;
+  /** O `enterprise_id` de quem cadastrou o plano — o degrau em que ele vive. */
+  enterpriseId?: null | string;
   entradaPercentual: number;
   indiceCorrecao: string;
   jurosConvencao: string;
@@ -237,8 +263,28 @@ export type FluxoDeVenda = {
   /** As propostas, já enxutas para a tela. A ordem é a mais recente primeiro. */
   lista: LinhaDaLista[];
   mapa: {
+    /** "01" (a quadra) no loteamento; "Torre A" ou "Unidades" (torre única) no prédio. */
     grupo: string;
+    /**
+     * ⚠️ O GRUPO SABE DE QUE TIPO É. A mesma grade desenha quadra e torre, e só o tipo diz se os
+     * quadradinhos vão em linhas de andar. Num escopo com loteamento e prédio juntos, a quadra
+     * "Unidades" e a torre única "Unidades" são dois grupos, e não um.
+     */
+    tipoProduto: TipoProduto;
     unidades: {
+      /** Só no prédio. 0 = térreo. */
+      andar: null | number;
+      /** Só no prédio, na forma canônica ("304"). */
+      apartamento: null | string;
+      /**
+       * A categoria da unidade, quando ela tem.
+       *
+       * ⚠️ É O MENOR RECORTE DA HIERARQUIA DE PLANOS (Lucas, 15/09/2026: *"se precisar cadastrar um
+       * plano e vincular a categoria, quando eu seleciono a unidade daquela categoria o plano e as
+       * faixas tem que respeitar"*). Sem este campo a tela recebe um rótulo ("12 06") e não tem
+       * chave nenhuma para escolher o plano certo — ver `lib/hercules/recorte-da-unidade.ts`.
+       */
+      categoriaId: null | string;
       codigo: string;
       /**
        * O empreendimento da unidade (id do C2X).
@@ -257,9 +303,27 @@ export type FluxoDeVenda = {
       quadra: null | string;
       /** A situação crua da unidade, para quem precisar do dado original. */
       situacao: string;
+      /** Só no prédio ("2 quartos, 1 suíte"). */
+      tipologia: null | string;
+      /** O tipo do produto da unidade: é ele que escolhe "Quadra · Lote" ou "Torre · Apto". */
+      tipoProduto: TipoProduto;
+      /** Só no prédio, na forma canônica ("A"). Nulo = torre única. */
+      torre: null | string;
+      /** Só no prédio. Nulo = não informado; 0 = sem vaga. */
+      vagas: null | number;
     }[];
   }[];
   perdas: { canceladas: number; distratos: number; vgvCancelado: number };
+  /**
+   * Quem é o PAI de cada empreendimento do escopo, por `enterprise_id`.
+   *
+   * ⚠️ É O TERCEIRO DEGRAU DA HIERARQUIA DE PLANOS, e a tela não tinha como saber. O card do
+   * produto traz os `enterpriseIds` da família, mas não diz qual deles é o pai — e sem isso o plano
+   * cadastrado SÓ no pai continua invisível, que é exatamente o que o Lucas pediu para corrigir.
+   *
+   * Empreendimento sem pai simplesmente não aparece aqui.
+   */
+  paiPorEmpreendimento: Record<string, string>;
   /** Os planos do escopo, para o simulador. Vazio quando o produto não tem plano cadastrado. */
   /**
    * A % mínima de entrada por empreendimento (id do C2X), cadastrada na Política Comercial.
@@ -407,6 +471,100 @@ function grupoDaUnidade(u: UnidadeDoMapa): string {
 }
 
 /**
+ * O grupo do apartamento: a TORRE, que é como o corretor fala do estoque de um prédio ("a torre B
+ * está quase vendida"). Prédio de torre única cai em "Unidades".
+ */
+function grupoDoApartamento(torre: null | string): string {
+  return torre ? `Torre ${torre}` : "Unidades";
+}
+
+/** Ordem natural de texto: "2" antes de "10", vazio por último. */
+function naturalComVazioNoFim(a: null | string, b: null | string): number {
+  const x = (a ?? "").trim();
+  const y = (b ?? "").trim();
+  if (x === y) return 0;
+  if (!x) return 1;
+  if (!y) return -1;
+  return x.localeCompare(y, "pt-BR", { numeric: true });
+}
+
+/**
+ * A ordem dos apartamentos dentro da torre: do andar MAIS ALTO para o mais baixo, e o apartamento
+ * em ordem natural dentro do andar.
+ *
+ * ⚠️ DE CIMA PARA BAIXO PORQUE É ASSIM QUE O PRÉDIO SE DESENHA. O espelho de vendas de uma
+ * incorporadora é a fachada: cobertura no alto, térreo embaixo. Andar crescente poria o térreo na
+ * primeira linha e obrigaria o corretor a ler o prédio de cabeça para baixo. Andar nulo (não
+ * informado) vai para o fim, e não para o topo: não é a cobertura.
+ */
+export function compararApartamentos(
+  a: { andar: null | number; apartamento: null | string; codigo: string },
+  b: { andar: null | number; apartamento: null | string; codigo: string },
+): number {
+  if (a.andar !== b.andar) {
+    if (a.andar === null) return 1;
+    if (b.andar === null) return -1;
+    return b.andar - a.andar;
+  }
+  return (
+    naturalComVazioNoFim(a.apartamento, b.apartamento) ||
+    a.codigo.localeCompare(b.codigo, "pt-BR", { numeric: true })
+  );
+}
+
+/**
+ * As torres em ordem natural ("Torre 2" antes de "Torre 10"), e "Unidades" (torre única) no fim.
+ */
+function compararGruposDoPredio(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a === "Unidades") return 1;
+  if (b === "Unidades") return -1;
+  return a.localeCompare(b, "pt-BR", { numeric: true });
+}
+
+/**
+ * Os andares de um grupo do prédio, de cima para baixo, cada um com os seus apartamentos. A grade
+ * desenha uma linha por andar.
+ *
+ * ⚠️ UMA LINHA POR ANDAR, E NÃO SEIS QUADRADINHOS POR LINHA. Na grade de seis colunas da quadra,
+ * um prédio de quatro apartamentos por andar sairia com o 1201 ao lado do 1101: a linha deixaria de
+ * ser o andar, que é justamente o que quem vende apartamento procura ("tem alguma coisa no alto?").
+ */
+export function andaresDoGrupo<U extends { andar: null | number; apartamento: null | string; codigo: string }>(
+  unidades: readonly U[],
+): { andar: null | number; unidades: U[] }[] {
+  const porAndar = new Map<null | number, U[]>();
+  for (const u of [...unidades].sort(compararApartamentos)) {
+    const lista = porAndar.get(u.andar);
+    if (lista) lista.push(u);
+    else porAndar.set(u.andar, [u]);
+  }
+  // O Map guarda a ordem de inserção, e a inserção já veio ordenada pelo andar.
+  return [...porAndar.entries()].map(([andar, doAndar]) => ({ andar, unidades: doAndar }));
+}
+
+/**
+ * As palavras do filtro e da busca do estoque, pelo que está na tela.
+ *
+ * ⚠️ "TODAS AS QUADRAS" NUM PRÉDIO É O ERRO QUE O LUCAS PROIBIU (16/09/2026): o corretor leria que
+ * o prédio tem quadra. Só loteamento fala em quadra; só prédio fala em torre; o escopo com os dois
+ * (o consolidado de um incorporador que tem loteamento e prédio) diz os dois.
+ */
+export function vocabularioDoEstoque(tipos: Iterable<TipoProduto>): {
+  busca: string;
+  todos: string;
+} {
+  const presentes = new Set(tipos);
+  const temPredio = presentes.has("vertical");
+  const temLote = presentes.has("loteamento") || presentes.size === 0;
+  if (temPredio && temLote) {
+    return { busca: "Buscar quadra, lote, torre, apartamento ou código", todos: "Todas as quadras e torres" };
+  }
+  if (temPredio) return { busca: "Buscar torre, apartamento ou código", todos: "Todas as torres" };
+  return { busca: "Buscar quadra, lote ou código", todos: "Todas as quadras" };
+}
+
+/**
  * O mês de referência de uma proposta faturada ou cancelada.
  *
  * ⚠️ FATURADA USA A DATA DE FATURAMENTO, e só cai para `etapa_desde` quando ela falta: `etapa_desde`
@@ -435,11 +593,20 @@ export function agregarFluxo({
   cads = null,
   periodo,
   propostas,
+  tiposDeProduto,
   unidades,
 }: {
   cads?: CadsDoEscopo | null;
   periodo?: PeriodoDoPainel;
   propostas: PropostaDaCarga[];
+  /**
+   * O tipo de cada produto do escopo, por `enterprise_id` (`hercules_empreendimentos.tipo_produto`).
+   *
+   * ⚠️ OPCIONAL, E A UNIDADE SE DEFENDE SEM ELE: apartamento preenchido com quadra e lote vazios já
+   * é prédio (`tipoDaUnidade`). O mapa serve para o produto vertical cuja leitura não trouxe as
+   * colunas da 0171. Ausente do mapa = loteamento, que é o que todo produto era até a 0170.
+   */
+  tiposDeProduto?: Readonly<Record<string, TipoProduto>>;
   unidades: UnidadeDoMapa[];
 }): FluxoDeVenda {
   const de = periodo?.de ?? null;
@@ -546,19 +713,10 @@ export function agregarFluxo({
       vivaPorUnidade.set(p.unidade_id, { desde, etapa: p.etapa });
   }
 
-  const grupos = new Map<
-    string,
-    {
-      codigo: string;
-      enterpriseId: string;
-      etapa: EtapaDoEspelho;
-      id: string;
-      lote: null | string;
-      preco: number;
-      quadra: null | string;
-      situacao: string;
-    }[]
-  >();
+  // ⚠️ A CHAVE DO GRUPO LEVA O TIPO. Sem ele, a quadra "Unidades" de um loteamento e a torre única
+  // "Unidades" de um prédio virariam o mesmo grupo no consolidado, e a grade poria lote e
+  // apartamento na mesma coluna.
+  const grupos = new Map<string, FluxoDeVenda["mapa"][number]>();
   /** Unidades livres, para o passo `disponivel` da faixa. */
   let disponiveis = 0;
   let vgvDisponivel = 0;
@@ -576,9 +734,22 @@ export function agregarFluxo({
       vgvDisponivel += numero(u.preco_tabela);
     }
 
-    const g = grupoDaUnidade(u);
-    const lista = grupos.get(g);
+    const tipoProduto = tipoDaUnidade({
+      apartamento: u.apartamento,
+      lote: u.lote,
+      quadra: u.quadra,
+      tipoProduto: tiposDeProduto?.[String(u.enterprise_id)],
+    });
+    const vertical = tipoProduto === "vertical";
+    const torre = vertical ? torreCanonica(u.torre) : null;
+    const andar =
+      vertical && typeof u.andar === "number" && Number.isInteger(u.andar) ? u.andar : null;
+    const g = vertical ? grupoDoApartamento(torre) : grupoDaUnidade(u);
+    const chave = `${tipoProduto}|${g}`;
     const item = {
+      andar,
+      apartamento: vertical ? apartamentoCanonico(u.apartamento) : null,
+      categoriaId: String(u.categoria_id ?? "").trim() || null,
       codigo: u.codigo,
       enterpriseId: String(u.enterprise_id),
       etapa,
@@ -587,17 +758,23 @@ export function agregarFluxo({
       preco: numero(u.preco_tabela),
       quadra: u.quadra,
       situacao: u.situacao,
+      tipologia: vertical ? String(u.tipologia ?? "").trim() || null : null,
+      tipoProduto,
+      torre,
+      vagas: vertical && typeof u.vagas === "number" ? u.vagas : null,
     };
-    if (lista) lista.push(item);
-    else grupos.set(g, [item]);
+    const grupo = grupos.get(chave);
+    if (grupo) grupo.unidades.push(item);
+    else grupos.set(chave, { grupo: g, tipoProduto, unidades: [item] });
   }
 
   return {
     cads,
-    // A rota preenche depois: os planos, as faixas e o piso de entrada vêm de outras fontes e
-    // não passam pela agregação.
+    // A rota preenche depois: os planos, as faixas, o piso de entrada e o parentesco vêm de
+    // outras fontes e não passam pela agregação.
     entradaMinima: {},
     faixasDePrazo: {},
+    paiPorEmpreendimento: {},
     planos: [],
     fluxo: ETAPAS_DA_FAIXA.map((etapa) =>
       etapa === "disponivel"
@@ -629,19 +806,33 @@ export function agregarFluxo({
       unidadeId: p.unidade_id,
       valor: numero(p.valor),
     })),
-    mapa: [...grupos.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0], "pt-BR", { numeric: true }))
-      .map(([grupo, lista]) => ({
-        grupo,
-        unidades: lista.sort((a, b) =>
-          String(a.lote ?? a.codigo).localeCompare(
-            String(b.lote ?? b.codigo),
-            "pt-BR",
-            {
-              numeric: true,
-            },
-          ),
-        ),
+    // ⚠️ O LOTEAMENTO SEGUE A ORDEM DE SEMPRE: grupo e lote em ordem natural. O prédio vem depois,
+    // torre por torre, e dentro da torre de cima para baixo (`compararApartamentos`).
+    mapa: [...grupos.values()]
+      .sort((a, b) =>
+        a.tipoProduto !== b.tipoProduto
+          ? a.tipoProduto === "loteamento"
+            ? -1
+            : 1
+          : a.tipoProduto === "vertical"
+            ? compararGruposDoPredio(a.grupo, b.grupo)
+            : a.grupo.localeCompare(b.grupo, "pt-BR", { numeric: true }),
+      )
+      .map((g) => ({
+        grupo: g.grupo,
+        tipoProduto: g.tipoProduto,
+        unidades:
+          g.tipoProduto === "vertical"
+            ? g.unidades.sort(compararApartamentos)
+            : g.unidades.sort((a, b) =>
+                String(a.lote ?? a.codigo).localeCompare(
+                  String(b.lote ?? b.codigo),
+                  "pt-BR",
+                  {
+                    numeric: true,
+                  },
+                ),
+              ),
       })),
     motivos: [...porMotivo.entries()]
       .map(([motivo, n]) => ({ motivo, n }))

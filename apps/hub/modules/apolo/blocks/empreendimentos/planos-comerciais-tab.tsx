@@ -33,8 +33,10 @@ import {
   type CategoriaDoTemis,
   conferirPlano,
   type EntradaDePlano,
+  limparRessalva,
   paraCalculo,
   type PlanoDoTemis,
+  RESSALVA_MAXIMA,
   rotuloDoIndice,
   rotuloDoSistema,
   rotuloDoSlot,
@@ -117,6 +119,7 @@ const PLANO_NOVO: Rascunho = {
   nome: "",
   observacao: null,
   parcelas: 120,
+  ressalva: null,
   sistemaAmortizacao: "sacoc",
   slot: null,
 };
@@ -293,6 +296,7 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
       observacao: plano.observacao,
       ordem: plano.ordem,
       parcelas: plano.parcelas,
+      ressalva: plano.ressalva ?? null,
       sistemaAmortizacao: plano.sistemaAmortizacao,
       slot: plano.slot,
     };
@@ -389,6 +393,10 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
       ...rascunho,
       entradaPercentual: paraNumero(entradaTexto) ?? 0,
       jurosTaxa: paraNumero(jurosTexto),
+      // ⚠️ SEMPRE COM A CHAVE: é a presença dela que diz à rota "apague" quando o campo foi limpo.
+      // O texto fica cru enquanto se digita (aparar a cada tecla comeria o espaço entre palavras) e
+      // é limpo aqui, uma vez, com a mesma régua do servidor.
+      ressalva: limparRessalva(rascunho.ressalva),
     };
 
     // Confere no navegador ANTES de mandar, com a MESMA função que o servidor usa. O operador vê
@@ -471,6 +479,10 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
             observacao: plano.observacao,
             ordem: plano.ordem,
             parcelas: plano.parcelas,
+            // A rota só mexe na coluna quando a chave vem, então omiti-la não apagaria nada. Ela vai
+            // assim mesmo, com o valor lido, para o PATCH continuar sendo o plano INTEIRO: é o
+            // desenho deste corpo, e um campo de fora é o primeiro a ser esquecido no próximo.
+            ressalva: plano.ressalva ?? null,
             sistemaAmortizacao: plano.sistemaAmortizacao,
             slot: plano.slot,
           }),
@@ -905,6 +917,14 @@ function LinhaDoPlano({
             {plano.slot ? (
               <span className="rounded-md bg-[#A07C3B]/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#7A5E2C] dark:text-[#D2AE72]">
                 {rotuloDoSlot(plano.slot)}
+              </span>
+            ) : null}
+            {/* ⚠️ A RESSALVA DE DISPONIBILIDADE, ÂMBAR E AO LADO DO NOME, como no masterplan do
+                Garden (`.of-res`): é condição de validade, não erro, e por isso não é vermelha.
+                É a mesma etiqueta que o portal do incorporador mostra em Produtos. */}
+            {plano.ressalva ? (
+              <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold normal-case text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200">
+                {plano.ressalva}
               </span>
             ) : null}
             {plano.ativo ? null : (
@@ -1346,6 +1366,24 @@ function Formulario({
             placeholder="Ex.: só para clientes vindos de imobiliária credenciada"
             value={rascunho.observacao ?? ""}
           />
+        </label>
+
+        {/* ⚠️ RESSALVA NÃO É OBSERVAÇÃO. A observação é interna; a ressalva vai para o portal do
+            incorporador, ao lado do nome do plano (Lucas, 16/09/2026: manter *"essa escrita no plano
+            investidor da disponibilidade do plano"*). Por isso o campo diz para onde a frase vai. */}
+        <label className="grid gap-1.5">
+          <span className={rotulo}>Ressalva de disponibilidade (opcional)</span>
+          <input
+            className={campo}
+            maxLength={RESSALVA_MAXIMA}
+            onChange={(e) => aoMudar({ ...rascunho, ressalva: e.target.value })}
+            placeholder="Ex.: válido para as próximas 16 unidades"
+            value={rascunho.ressalva ?? ""}
+          />
+          <span className="text-[11px] text-ink-muted">
+            Aparece em âmbar ao lado do nome do plano, aqui e no portal do
+            incorporador. Até {RESSALVA_MAXIMA} caracteres.
+          </span>
         </label>
 
         {/* ── A CONFERÊNCIA ────────────────────────────────────────────── */}

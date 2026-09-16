@@ -14,6 +14,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
+
 import { type IdentidadeDoContrato, identidadeDoContrato } from "./contrato-guardado";
 import { dadosDaProposta } from "./dados-do-contrato";
 import { documentoParaHtml, type NoDoDocumento } from "./documento-html";
@@ -139,13 +141,39 @@ async function acharMinuta(
   { empreendimentoId, pedida }: { empreendimentoId: string; pedida: string },
 ): Promise<MinutaEncontrada | null> {
   if (pedida) {
+    // ⚠️ PRIMEIRO O DONO DA MINUTA, DEPOIS O TEXTO. O id vem do corpo do pedido, e até 16/09/2026
+    // qualquer minuta publicada servia para qualquer proposta: bastava trocar o `minutaId` para
+    // imprimir o contrato de um loteamento com o modelo (e as cláusulas) de outro. A conferência
+    // vem ANTES de o conteúdo sair do banco, na mesma disciplina de `unidadeNoEscopo`.
+    const { data: cabecalho } = await sb
+      .from("temis_minutas")
+      .select("id, enterprise_id, situacao")
+      .eq("id", pedida)
+      .maybeSingle();
+    const dona = cabecalho as null | { enterprise_id: null | string; id: string; situacao: string };
+
+    // ⚠️ A MINUTA PEDIDA TAMBÉM PRECISA ESTAR PUBLICADA. Aceitar um id de rascunho pela porta dos
+    // fundos derrubaria a regra inteira.
+    if (!dona || dona.situacao !== "publicada") return null;
+
+    // ⚠️ E ELA PRECISA SERVIR A ESTA PROPOSTA: ser do empreendimento dela, do PAI dela no cadastro
+    // do Panteon (VOC 37 → VLO 35) ou do CONSOLIDADO do catálogo (LBF 33 → `group:Lagoa Bonita`). É
+    // correção de vazamento, e vale para o hub também: nenhuma tela manda `minutaId` na prévia nem
+    // na geração (medido em 16/09/2026), então o único caminho que isto fecha é o de quem chama a
+    // rota direto. Proposta sem empreendimento não tem a quem pertencer, e fica sem minuta pedida.
+    const servem = await empreendimentosQueServem(sb, empreendimentoId);
+    if (!servem.has(String(dona.enterprise_id ?? "").trim())) {
+      console.warn(
+        `[temis][contrato] minuta ${dona.id} recusada: é do empreendimento ${dona.enterprise_id ?? "(nenhum)"} e a proposta é do ${empreendimentoId || "(nenhum)"}.`,
+      );
+      return null;
+    }
+
     const { data } = await sb
       .from("temis_minutas")
       .select("id, nome, versao, conteudo, situacao")
-      .eq("id", pedida)
+      .eq("id", dona.id)
       .maybeSingle();
-    // ⚠️ A MINUTA PEDIDA TAMBÉM PRECISA ESTAR PUBLICADA. Aceitar um id de rascunho pela porta dos
-    // fundos derrubaria a regra inteira.
     const linha = data as MinutaEncontrada | null;
     if (linha && linha.situacao === "publicada") return linha;
     return null;
@@ -163,4 +191,79 @@ async function acharMinuta(
     .limit(1);
 
   return (data?.[0] as MinutaEncontrada | undefined) ?? null;
+}
+
+/**
+ * Os `enterprise_id` cujas minutas servem a um empreendimento: ele mesmo, o pai dele no cadastro
+ * do Panteon e o consolidado do catálogo que o contém.
+ *
+ * ⚠️ É A CHAVE DE VÍNCULO DA TÊMIS, E ELA TEM TRÊS FORMATOS VIVOS: o id do C2X da divisão ("37"), o
+ * do pai que responde pelo conjunto ("35") e o rótulo do consolidado (`group:Lagoa Bonita`, que não
+ * é id de tabela nenhuma — ver `/api/temis/empreendimentos`). Comparar só o primeiro recusaria a
+ * minuta que o jurídico gravou no conjunto, e em silêncio.
+ *
+ * ⚠️ SÓ SOBE, NUNCA DESCE. A divisão enxerga a minuta do pai; o pai NÃO enxerga a de uma divisão
+ * (VOL e VOC são de donos diferentes). É a mesma assimetria de `idsDaSessao`.
+ *
+ * ⚠️ FALHA DE LEITURA ENCOLHE A LISTA, NUNCA A ALARGA. Sem o cadastro ou sem o catálogo do C2X,
+ * vale só o próprio empreendimento: a minuta do pai fica recusada até a leitura voltar, que é o
+ * lado barato de errar (um 409 com a frase do que procurou, e não o modelo de outro loteamento).
+ */
+async function empreendimentosQueServem(
+  sb: SupabaseClient,
+  empreendimentoId: string,
+): Promise<Set<string>> {
+  const base = String(empreendimentoId ?? "").trim();
+  const servem = new Set<string>();
+  if (!base) return servem;
+  servem.add(base);
+
+  const pais: string[] = [];
+  try {
+    const { data: filhos, error } = await sb
+      .from("hercules_empreendimentos")
+      .select("pai_id")
+      .eq("workspace_id", "careli")
+      .eq("c2x_enterprise_id", base)
+      .limit(50);
+    if (error) throw error;
+
+    const paiIds = [
+      ...new Set(
+        ((filhos ?? []) as Array<{ pai_id: null | string }>)
+          .map((l) => String(l.pai_id ?? "").trim())
+          .filter(Boolean),
+      ),
+    ];
+
+    if (paiIds.length > 0) {
+      const { data: doPai, error: erroDoPai } = await sb
+        .from("hercules_empreendimentos")
+        .select("c2x_enterprise_id")
+        .eq("workspace_id", "careli")
+        .in("id", paiIds);
+      if (erroDoPai) throw erroDoPai;
+      for (const l of (doPai ?? []) as Array<{ c2x_enterprise_id: null | string }>) {
+        const id = String(l.c2x_enterprise_id ?? "").trim();
+        if (id) pais.push(id);
+      }
+    }
+  } catch (erro) {
+    console.error("[temis][contrato] falha ao ler o pai do empreendimento da proposta", erro);
+  }
+  for (const id of pais) servem.add(id);
+
+  try {
+    const catalogo = await catalogoDeEmpreendimentos(Date.now());
+    const doConjunto = new Set([base, ...pais]);
+    for (const emp of catalogo) {
+      if (emp.stageIds.some((stageId) => doConjunto.has(String(stageId).trim()))) {
+        servem.add(emp.id);
+      }
+    }
+  } catch (erro) {
+    console.error("[temis][contrato] falha ao ler o catálogo para achar o consolidado", erro);
+  }
+
+  return servem;
 }

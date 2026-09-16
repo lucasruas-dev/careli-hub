@@ -1,10 +1,11 @@
 "use client";
 
-import type { ApoloEnterpriseRow } from "@/lib/apolo/empreendimentos";
+import type { ApoloEnterpriseRow, ApoloEnterpriseUnit } from "@/lib/apolo/empreendimentos";
 import { UnidadesTab } from "@/modules/apolo/blocks/empreendimentos/empreendimentos-view";
 
 import { MOLDURA_TAILWIND } from "../TelaContratos";
 import { useTemaDoPortal } from "../tema";
+import { BotaoDeEditarUnidade } from "./EdicaoDaUnidade";
 
 // UNIDADES DO PRODUTO — a aba Unidades do Apolo, dentro da aba Vendas da ficha do Hércules.
 //
@@ -40,6 +41,15 @@ import { useTemaDoPortal } from "../tema";
 // ⚠️ TAILWIND DENTRO DO PORTAL. A moldura (`MOLDURA_TAILWIND`, a ÚNICA, da TelaContratos) e o
 // `data-uix-theme` com o tema EFETIVO: sem eles a tabela apareceria clara no portal escuro. A ficha
 // já os aplica por fora; ficam AQUI também para a tela funcionar montada em qualquer lugar.
+/**
+ * A linha da tabela pode ser corrigida por aqui? Só a unidade do PANTEON (id uuid de
+ * `hercules_unidades`): a linha que ainda vem do C2X tem id numérico do legado, e a rota de correção
+ * não conhece esse id (nem deve: o C2X é somente leitura).
+ */
+export function unidadeCorrigivelNoPortal(unidade: Pick<ApoloEnterpriseUnit, "id">): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(unidade.id ?? "").trim());
+}
+
 const CSS_UNIDADES = `
   .inc-hercules-unidades {
     color: var(--inc-text);
@@ -55,10 +65,23 @@ const CSS_UNIDADES = `
 
 export function UnidadesDoProduto({
   emp,
+  enterpriseId = null,
+  podeEditar = false,
   row,
 }: {
   /** O produto da ficha ("pai:<uuid>" do cadastro ou id do C2X) — o mesmo `empFixo` da Vendas. */
   emp: string;
+  /**
+   * O id do produto que a correção de unidade grava (o `enterpriseId` da linha do painel). Nulo =
+   * a linha não aponta UM produto (pai com várias etapas), e a correção não aparece.
+   */
+  enterpriseId?: null | string;
+  /**
+   * O portal pode corrigir as unidades deste produto (`linha.podeEscrever`, a régua de quem opera,
+   * D1/D2 de 16/09/2026). Falso = só consulta: a tabela não ganha a coluna de ação. A rota confere de
+   * novo antes de gravar; isto só decide o botão.
+   */
+  podeEditar?: boolean;
   /** A linha da ficha no formato da tela do Apolo. */
   row: ApoloEnterpriseRow;
 }) {
@@ -79,6 +102,15 @@ export function UnidadesDoProduto({
           rota: `/api/incorporador/produto/unidades?emp=${encodeURIComponent(emp)}`,
           semToken: true,
         }}
+        // A coluna de ação só existe quando o portal opera o produto E a linha aponta um produto só.
+        acaoDaUnidade={
+          podeEditar && enterpriseId
+            ? (unidade, recarregar) =>
+                unidadeCorrigivelNoPortal(unidade) ? (
+                  <BotaoDeEditarUnidade aoSalvar={recarregar} emp={enterpriseId} unidade={unidade} />
+                ) : null
+            : undefined
+        }
         onOpenEntity={() => {}}
         row={row}
       />

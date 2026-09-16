@@ -80,6 +80,13 @@ const maiusculo = (code: unknown): string => String(code ?? "").trim().toUpperCa
  * `enterprises`. Sem esta regra ele viraria um chip que abre vazio, que é exatamente a queixa do
  * Lucas sobre o segundo "Vale do Ouro".
  *
+ * ⚠️ DESDE 16/09/2026 O PRODUTO DO PANTEON RESOLVE EM CÓDIGO, e por isso vira chip. A regra acima
+ * continua (sem código autorizado, sem chip); o que mudou é a tradução: `codigosDaSessao` passou a
+ * devolver o código do produto nascido no Panteon, e aqui o id que o catálogo do C2X não conhece
+ * busca o código no próprio cadastro (a régua de `soDoPanteon`). Continua fail-closed: o código
+ * ainda precisa estar em `codesAutorizados` — o LAB (31), que o catálogo exclui de propósito e
+ * `codigosDaSessao` não devolve, não vira chip por aqui.
+ *
  * @param cadastro          `hercules_empreendimentos` inteiro (pais e filhos). Vazio = degrada
  *                          para a lista do catálogo, que é a tela de antes.
  * @param catalogo          O catálogo do C2X, para traduzir id → código.
@@ -99,8 +106,22 @@ export function produtosDoPortal(entrada: {
   const { cadastro, catalogo, codesAutorizados, doCatalogo, permitidos } = entrada;
 
   const autorizados = new Set(codesAutorizados.map(maiusculo).filter(Boolean));
+
+  // O código de cada id que só o cadastro do Panteon conhece (o catálogo do C2X não traduz).
+  const idsNoC2x = new Set(catalogo.flatMap((emp) => emp.stageIds.map((id) => String(id).trim())));
+  const codigoSoDoPanteon = new Map<string, string>();
+  for (const linha of cadastro) {
+    const id = linha.c2xEnterpriseId;
+    if (id && !idsNoC2x.has(id) && linha.codigo) codigoSoDoPanteon.set(id, maiusculo(linha.codigo));
+  }
+
   const codesDoId = (c2xIds: string[]): string[] =>
-    codigosDosIdsDoC2x(catalogo, c2xIds).filter((code) => autorizados.has(maiusculo(code)));
+    [
+      ...new Set([
+        ...codigosDosIdsDoC2x(catalogo, c2xIds).map(maiusculo),
+        ...c2xIds.map((id) => codigoSoDoPanteon.get(id) ?? ""),
+      ]),
+    ].filter((code) => code && autorizados.has(code));
 
   const filhosDe = filhosDoCadastro(cadastro);
   /** Ids do C2X que já responderam por algum produto: não podem voltar como linha residual. */

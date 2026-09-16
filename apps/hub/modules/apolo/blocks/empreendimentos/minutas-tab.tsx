@@ -29,7 +29,7 @@ import {
   AnexosDoContrato,
   CapaDaMinuta,
 } from "@/modules/apolo/blocks/empreendimentos/anexos-do-contrato";
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 
 // ABA MINUTAS — subir o contrato do loteador, editar e publicar.
 //
@@ -72,6 +72,11 @@ type Props = {
 };
 
 type LinhaDeMinuta = {
+  /**
+   * Quem arquivou (0173). Ausente sem a migration (a lista é lida sem a coluna) e nulo no ato
+   * anterior a ela: nos dois casos a tela não inventa autor.
+   */
+  arquivada_por_nome?: null | string;
   atualizado_em: string;
   /** A capa cadastrada nesta minuta — a fonte da variável `capa_contrato` (0156). */
   capa_nome?: null | string;
@@ -94,6 +99,12 @@ type LinhaDeMinuta = {
   nome: string;
   origem_arquivo_nome: null | string;
   publicada_em: null | string;
+  /**
+   * Quem publicou (0173). ⚠️ PUBLICAR MUDA O TEXTO DE TODO CONTRATO NOVO, e a minuta agora também é
+   * editada pelo portal do incorporador ("Maria (portal do incorporador)"): a Careli precisa ver de
+   * quem veio a versão vigente. Ausente sem a migration; nulo no ato anterior a ela.
+   */
+  publicada_por_nome?: null | string;
   situacao: string;
   tipo: string;
   variaveis: { nome: string; ocorrencias: number }[];
@@ -138,6 +149,10 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [nomeNovo, setNomeNovo] = useState("");
   const [criando, setCriando] = useState(false);
+  // ⚠️ A PORTA VEM DO PROVEDOR. No Apolo e na Têmis do hub não há provedor: `/api/temis` com o
+  // Bearer, como sempre. Nas minutas do portal que confecciona (`MinutasDoProduto`), a MESMA aba fala
+  // com `/api/incorporador/temis` pelo cookie, e a rota de lá recorta pelo escopo do incorporador.
+  const { temisFetch } = useApiDaTemis();
 
   useEffect(() => {
     let vivo = true;
@@ -146,13 +161,9 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
 
     void (async () => {
       try {
-        const token = await getApoloAccessToken();
-        const r = await fetch(
-          `/api/temis/minutas?enterpriseId=${encodeURIComponent(enterpriseId)}&tipo=${encodeURIComponent(tipo)}`,
-          {
-            cache: "no-store",
-            headers: { Authorization: `Bearer ${token}` },
-          },
+        const r = await temisFetch(
+          `/minutas?enterpriseId=${encodeURIComponent(enterpriseId)}&tipo=${encodeURIComponent(tipo)}`,
+          { cache: "no-store" },
         );
         const corpo = (await r.json().catch(() => ({}))) as {
           data?: { minutas: LinhaDeMinuta[] };
@@ -174,17 +185,13 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
     return () => {
       vivo = false;
     };
-  }, [enterpriseId, recarregar, tipo]);
+  }, [enterpriseId, recarregar, temisFetch, tipo]);
 
   const abrir = useCallback(async (id: string) => {
     setErro(null);
     setAviso(null);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(`/api/temis/minutas?id=${id}`, {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const r = await temisFetch(`/minutas?id=${id}`, { cache: "no-store" });
       const corpo = (await r.json().catch(() => ({}))) as {
         data?: { minuta: MinutaAberta };
         error?: string;
@@ -198,7 +205,7 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
       // trocada por uma re-assinada pela rota autenticada; a que falhar fica como está — a imagem
       // some, o texto não. Ver `lib/temis/reassinar-midias.ts`.
       const conteudo = minuta.conteudo?.length
-        ? await reassinarMidiasDoDocumento(minuta.conteudo, token)
+        ? await reassinarMidiasDoDocumento(minuta.conteudo, temisFetch)
         : documentoVazio();
       setAberta(minuta);
       setDocumento(conteudo);
@@ -206,7 +213,7 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
     } catch {
       setErro("Falha ao abrir a minuta.");
     }
-  }, []);
+  }, [temisFetch]);
 
   const criar = async () => {
     const nome = nomeNovo.trim();
@@ -216,10 +223,9 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
     setErro(null);
     setAviso(null);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(`/api/temis/minutas?enterpriseId=${encodeURIComponent(enterpriseId)}`, {
+      const r = await temisFetch(`/minutas?enterpriseId=${encodeURIComponent(enterpriseId)}`, {
         body: JSON.stringify({ nome, tipo }),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         method: "POST",
       });
       const corpo = (await r.json().catch(() => ({}))) as { data?: { id: string }; error?: string };
@@ -266,9 +272,7 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
     setErro(null);
     setAviso(null);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(`/api/temis/minutas?id=${encodeURIComponent(minuta.id)}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const r = await temisFetch(`/minutas?id=${encodeURIComponent(minuta.id)}`, {
         method: "DELETE",
       });
       const corpo = (await r.json().catch(() => ({}))) as { error?: string };
@@ -293,13 +297,12 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
     setAviso(null);
 
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(`/api/temis/minutas?id=${aberta.id}`, {
+      const r = await temisFetch(`/minutas?id=${aberta.id}`, {
         body: JSON.stringify({
           conteudo: documento,
           conteudoHtml: documentoParaHtml(documento),
         }),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         method: "PATCH",
       });
       const corpo = (await r.json().catch(() => ({}))) as {
@@ -345,9 +348,7 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
     setAviso(null);
 
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(`/api/temis/minutas?id=${aberta.id}&acao=publicar`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const r = await temisFetch(`/minutas?id=${aberta.id}&acao=publicar`, {
         method: "PATCH",
       });
       const corpo = (await r.json().catch(() => ({}))) as {
@@ -732,6 +733,18 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
                       : `alterada em ${data(m.atualizado_em)}`}
                     {m.criado_por_nome ? ` · criada por ${m.criado_por_nome}` : ""}
                   </p>
+
+                  {/* ⚠️ QUEM PUBLICOU E QUEM ARQUIVOU SÓ APARECEM QUANDO O NOME EXISTE (0173). Sem a
+                      migration, ou num ato anterior a ela, a linha não aparece: escrever "publicada
+                      por —" afirmaria que alguém sem nome publicou. */}
+                  {(m.situacao === "publicada" && m.publicada_por_nome) ||
+                  (m.situacao === "arquivada" && m.arquivada_por_nome) ? (
+                    <p className="m-0 mt-0.5 text-xs text-ink-muted">
+                      {m.situacao === "publicada"
+                        ? `publicada por ${m.publicada_por_nome}${m.publicada_em ? ` em ${data(m.publicada_em)}` : ""}`
+                        : `arquivada por ${m.arquivada_por_nome}`}
+                    </p>
+                  ) : null}
 
                   {/* Enquanto o motor não existir, este número não tem de onde sair — e dizer isso
                       é mais honesto do que estampar um zero que parece medida. */}

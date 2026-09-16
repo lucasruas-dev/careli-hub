@@ -3,17 +3,12 @@ import { NextResponse } from "next/server";
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import { resolverCodigosDoPedido } from "@/lib/apolo/incorporador/codigos-do-pedido";
 import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
+import { autorizar, codigosDaSessao, foraDoEscopo } from "@/lib/apolo/incorporador/escopo";
 import {
-  autorizar,
-  codigosDaSessao,
-  foraDoEscopo,
-  idsDaSessao,
-} from "@/lib/apolo/incorporador/escopo";
+  empreendimentosIndisponiveis,
+  propriosDoPortal,
+} from "@/lib/apolo/incorporador/proprios-do-portal";
 import { createApoloAdminClient } from "@/lib/apolo/server";
-import {
-  carregarCadastroDeEmpreendimentos,
-  type LinhaDoCadastro,
-} from "@/lib/hercules/cadastro";
 import { ehIdDoPai } from "@/lib/hercules/expandir-id-do-painel";
 import { linksDoEmpreendimento } from "@/lib/hercules/links-do-empreendimento";
 import { topoDaArvoreDeAlgum } from "@/lib/hercules/masterplan-do-empreendimento";
@@ -40,46 +35,44 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response;
 
   const codesAutorizados = await codigosDaSessao(auth.sessao);
-
-  // Zero código não é "ele não tem nada": a sessão só existe com empreendimento, então é o
-  // catálogo do C2X fora do ar.
-  if (codesAutorizados.length === 0) {
-    return NextResponse.json(
-      { error: "Não foi possível carregar os empreendimentos agora." },
-      { status: 503 },
-    );
-  }
-
   const catalogo = await catalogoDeEmpreendimentos(Date.now());
-  const empreendimentos = empreendimentosDoPortal(catalogo, codesAutorizados);
-  const pedido = new URL(request.url).searchParams.get("emp");
-  const permitidos = new Set(await idsDaSessao(auth.sessao));
 
-  // O cadastro só é carregado no caminho "pai:<uuid>", que é o que a ficha manda. Fail-closed:
-  // cadastro fora do ar responde 503, e não 404 — sem ele não dá para provar que o pai é dele.
-  let cadastro: LinhaDoCadastro[] = [];
-  if (ehIdDoPai(pedido)) {
-    try {
-      cadastro = await carregarCadastroDeEmpreendimentos();
-    } catch {
-      return NextResponse.json(
-        { error: "Não foi possível carregar os empreendimentos agora." },
-        { status: 503 },
-      );
-    }
-  }
-
-  const codes = resolverCodigosDoPedido({
-    cadastro,
+  // ⚠️ O EMPREENDIMENTO QUE SÓ EXISTE NO PANTEON — a mesma expansão da rota /venda, pela peça
+  // comum (`propriosDoPortal`; o porquê e a guarda do cadastro estão lá). É tradução, não
+  // permissão: o link continua saindo só para o que a sessão já traz.
+  const doPanteon = await propriosDoPortal({
     catalogo,
     codesAutorizados,
+    sessao: auth.sessao,
+  });
+
+  // Zero código não é "ele não tem nada": a sessão só existe com empreendimento, então é fonte
+  // fora do ar.
+  if (doPanteon.codesComProprios.length === 0) return empreendimentosIndisponiveis();
+
+  const empreendimentos = empreendimentosDoPortal(catalogo, codesAutorizados);
+  const pedido = new URL(request.url).searchParams.get("emp");
+  const permitidos = new Set(doPanteon.idsDaSessao);
+
+  // O caminho "pai:<uuid>", que é o que a ficha manda, depende do cadastro. Fail-closed: cadastro
+  // fora do ar responde 503, e não 404 — sem ele não dá para provar que o pai é dele.
+  if (ehIdDoPai(pedido) && doPanteon.cadastro === null) return empreendimentosIndisponiveis();
+
+  const codes = resolverCodigosDoPedido({
+    cadastro: doPanteon.cadastro ?? [],
+    catalogo,
+    codesAutorizados: doPanteon.codesComProprios,
     empreendimentos,
     pedido,
     permitidos,
+    proprios: doPanteon.proprios,
   });
 
-  // Pedido que não sobra nada = produto que não é dele. Nunca cai na visão consolidada.
-  if (codes.length === 0) return foraDoEscopo();
+  // Pedido que não sobra nada = produto que não é dele. Nunca cai na visão consolidada. Com o
+  // cadastro fora do ar pode ser um produto do Panteon que só não deu para traduzir: 503.
+  if (codes.length === 0) {
+    return doPanteon.cadastro === null ? empreendimentosIndisponiveis() : foraDoEscopo();
+  }
 
   const client = createApoloAdminClient();
   if (!client) {

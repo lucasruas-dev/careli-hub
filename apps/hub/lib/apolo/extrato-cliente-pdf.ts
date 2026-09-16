@@ -17,7 +17,20 @@
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
 
 import { periodicidadeDaTaxa } from "@/lib/apolo/periodicidade-da-taxa";
-import { CARELI_LOGO_PNG_BASE64 } from "@/lib/apolo/careli-logo";
+// ⚠️ O CABEÇALHO, OS ÍCONES E OS CARTÕES MORAM NO PAPEL TIMBRADO desde 16/09/2026, quando os dois
+// termos (acordo e rescisão) passaram a seguir este extrato como referência visual. O código é o
+// mesmo que estava aqui, movido: os bytes do PDF gerado antes e depois da mudança são idênticos.
+// A ficha (titular e linha de campos) e a tabela subiram no mesmo dia, pela mesma razão, com a
+// mesma prova: o sha256 de oito extratos (um lote, consolidado e encerrado) igual antes e depois.
+import {
+  cabecalhoComBlocoADireita,
+  campoEmDestaque,
+  type Cartao,
+  desenharCartoes,
+  desenharIcone,
+  desenharTabelaLimpa,
+  linhaDeCampos,
+} from "@/lib/apolo/pdf-timbrado";
 import {
   contarParcelas,
   dataBr,
@@ -53,14 +66,6 @@ type Ctx = {
   font: PDFFont;
   page: PDFPage;
   y: number;
-};
-
-type Coluna = {
-  /** Alinhamento do conteúdo (números sempre à direita). */
-  align?: "left" | "right";
-  label: string;
-  /** Fração de `USABLE`. A soma das frações deve dar 1. */
-  peso: number;
 };
 
 /** Sanitiza para o WinAnsi das fontes padrão (acento latino passa; emoji e travessão, não). */
@@ -166,53 +171,6 @@ function encurtar(texto: string, font: PDFFont, size: number, maxW: number): str
   return `${corte}...`;
 }
 
-/**
- * Cabe numa linha? Devolve uma. Não cabe? Quebra em DUAS, no espaço, preferindo o corte que
- * deixa as duas metades mais parecidas. Se nem assim couber, encolhe a fonte (até 7,5) e, no
- * limite, corta com reticências — mas isso só acontece com uma palavra única gigante.
- *
- * Existe porque cortar o nome do empreendimento no papel do cliente ("CONDOMINIO RECA…") é pior
- * do que usar duas linhas.
- */
-function quebrarEmDuasLinhas(
-  texto: string,
-  font: PDFFont,
-  size: number,
-  maxW: number,
-): { linhas: string[]; size: number } {
-  const limpo = limpar(texto);
-
-  for (const tamanho of [size, size - 1, size - 2]) {
-    if (font.widthOfTextAtSize(limpo, tamanho) <= maxW) {
-      return { linhas: [limpo], size: tamanho };
-    }
-
-    const palavras = limpo.split(/\s+/).filter(Boolean);
-    if (palavras.length < 2) continue;
-
-    let melhor: null | string[] = null;
-    let melhorDiferenca = Infinity;
-
-    for (let corte = 1; corte < palavras.length; corte++) {
-      const a = palavras.slice(0, corte).join(" ");
-      const b = palavras.slice(corte).join(" ");
-      const larguraA = font.widthOfTextAtSize(a, tamanho);
-      const larguraB = font.widthOfTextAtSize(b, tamanho);
-      if (larguraA > maxW || larguraB > maxW) continue;
-
-      const diferenca = Math.abs(larguraA - larguraB);
-      if (diferenca < melhorDiferenca) {
-        melhorDiferenca = diferenca;
-        melhor = [a, b];
-      }
-    }
-
-    if (melhor) return { linhas: melhor, size: tamanho };
-  }
-
-  return { linhas: [encurtar(limpo, font, size - 2, maxW)], size: size - 2 };
-}
-
 function novaPagina(ctx: Ctx): void {
   ctx.page = ctx.doc.addPage([A4.w, A4.h]);
   ctx.y = A4.h - MARGIN;
@@ -244,76 +202,6 @@ function paragrafo(ctx: Ctx, texto: string, size = 7.8): void {
 }
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
-// ÍCONES — vetores mínimos, sem fonte de ícone. A regra da casa é "ícone acima do rótulo"; o
-// que se ganha aqui é a leitura em varredura dos três números, não decoração.
-// ────────────────────────────────────────────────────────────────────────────────────────────
-
-type IconeTipo = "alerta" | "moeda" | "relogio" | "saldo";
-
-function desenharIcone(ctx: Ctx, tipo: IconeTipo, x: number, y: number): void {
-  const cor = INK;
-
-  if (tipo === "moeda") {
-    // Círculo cheio: o dinheiro que ENTROU.
-    ctx.page.drawCircle({ borderWidth: 0, color: cor, size: 4, x: x + 4, y: y + 4 });
-    return;
-  }
-
-  if (tipo === "saldo") {
-    // Anel: o que ainda falta.
-    ctx.page.drawCircle({
-      borderColor: cor,
-      borderWidth: 1.3,
-      size: 4,
-      x: x + 4,
-      y: y + 4,
-    });
-    return;
-  }
-
-  if (tipo === "alerta") {
-    // Triângulo (três linhas) + o pingo do "!".
-    const pontos: Array<[number, number]> = [
-      [x + 4, y + 8.4],
-      [x + 8.4, y + 0.6],
-      [x - 0.4, y + 0.6],
-    ];
-    for (let i = 0; i < pontos.length; i += 1) {
-      const inicio = pontos[i]!;
-      const fim = pontos[(i + 1) % pontos.length]!;
-      ctx.page.drawLine({
-        color: cor,
-        end: { x: fim[0], y: fim[1] },
-        start: { x: inicio[0], y: inicio[1] },
-        thickness: 1.1,
-      });
-    }
-    ctx.page.drawLine({
-      color: cor,
-      end: { x: x + 4, y: y + 5.6 },
-      start: { x: x + 4, y: y + 2.6 },
-      thickness: 1.1,
-    });
-    return;
-  }
-
-  // Relógio: anel + dois ponteiros.
-  ctx.page.drawCircle({ borderColor: cor, borderWidth: 1.1, size: 4.2, x: x + 4, y: y + 4 });
-  ctx.page.drawLine({
-    color: cor,
-    end: { x: x + 4, y: y + 6.6 },
-    start: { x: x + 4, y: y + 4 },
-    thickness: 1,
-  });
-  ctx.page.drawLine({
-    color: cor,
-    end: { x: x + 6.4, y: y + 4 },
-    start: { x: x + 4, y: y + 4 },
-    thickness: 1,
-  });
-}
-
-// ────────────────────────────────────────────────────────────────────────────────────────────
 // BLOCOS
 // ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -321,108 +209,24 @@ async function desenharCabecalho(
   ctx: Ctx,
   relatorio: ExtratoClienteRelatorio,
 ): Promise<void> {
-  const topo = ctx.y;
-  let colunaTexto = MARGIN;
-
-  // Best-effort de propósito: sem a marca o extrato ainda é entregável; sem o extrato, não.
-  try {
-    const logo = await ctx.doc.embedPng(Buffer.from(CARELI_LOGO_PNG_BASE64, "base64"));
-    const largura = 40;
-    const altura = (logo.height / logo.width) * largura;
-    ctx.page.drawImage(logo, {
-      height: altura,
-      width: largura,
-      x: MARGIN,
-      y: topo - altura,
-    });
-    colunaTexto = MARGIN + largura + 16;
-  } catch {
-    // sem logo: o título assume a margem.
-  }
-
   const contrato = relatorio.contrato;
 
   // Título CENTRADO NA PÁGINA (pedido do Lucas, 27/08) — não no espaço que sobra entre a logo e
   // o bloco da direita. O centro é o da folha, então o título fica alinhado com os cartões de
   // total logo abaixo; a logo à esquerda e o empreendimento à direita ficam nas laterais.
-  const larguraDoTitulo = ctx.bold.widthOfTextAtSize(limpar(TITULO_DA_PECA), 14);
-  const inicioDoTitulo = Math.max(colunaTexto, (A4.w - larguraDoTitulo) / 2);
-
-  escrever(ctx, TITULO_DA_PECA, {
-    color: INK,
-    font: ctx.bold,
-    size: 14,
-    x: inicioDoTitulo,
-    y: topo - 14,
+  //
+  // ⚠️ NOME LONGO DO EMPREENDIMENTO QUEBRA EM DUAS LINHAS, NÃO É CORTADO. Com o título no centro
+  // sobram ~90pt à direita, e "CONDOMINIO RECANTO DO PARA" (73 contratos vivos) virava
+  // "CONDOMINIO RECA…" no papel do cliente. A régua está em `cabecalhoComBlocoADireita`.
+  await cabecalhoComBlocoADireita(ctx, {
+    destaque: contrato.empreendimentoNome ?? contrato.empreendimentoCodigo,
+    linhas: [
+      descreverUnidade(relatorio),
+      ...(contrato.area ? [`Área ${formatarArea(contrato.area)} m²`] : []),
+    ],
+    subtitulo: `Posição em ${dataBr(relatorio.posicaoEm)}`,
+    titulo: TITULO_DA_PECA,
   });
-
-  // A data acompanha o título: centrada no MESMO eixo dele, não na margem da logo.
-  const subtitulo = `Posição em ${dataBr(relatorio.posicaoEm)}`;
-  escrever(ctx, subtitulo, {
-    color: MUTE,
-    size: 8.5,
-    x:
-      inicioDoTitulo +
-      (larguraDoTitulo - ctx.font.widthOfTextAtSize(limpar(subtitulo), 8.5)) / 2,
-    y: topo - 27,
-  });
-
-  // ⚠️ O NOME DO EMPREENDIMENTO PRECISA CABER NO QUE SOBRA. Com o título centrado ele termina
-  // por volta de x=432, e um nome longo ("ALDEIA DAS CACHOEIRAS DAS PEDRAS") encostaria nele —
-  // por isso o espaço livre é medido a partir do fim REAL do título, com folga, e o nome é
-  // encurtado para caber.
-  const direita = A4.w - MARGIN;
-  const fimDoTitulo = inicioDoTitulo + larguraDoTitulo + 18;
-  const espacoDoEmpreendimento = Math.max(60, direita - fimDoTitulo);
-
-  // ⚠️ NOME LONGO QUEBRA EM DUAS LINHAS, NÃO É CORTADO. Com o título no centro sobram ~90pt à
-  // direita, e "CONDOMINIO RECANTO DO PARA" (73 contratos vivos) virava "CONDOMINIO RECA…" no
-  // papel do cliente. Aqui ele desce para a segunda linha, e só encolhe a fonte se as duas
-  // linhas ainda não couberem.
-  const nomeEmpreendimento =
-    contrato.empreendimentoNome ?? contrato.empreendimentoCodigo;
-  const { linhas: linhasDoNome, size: sizeDoNome } = quebrarEmDuasLinhas(
-    nomeEmpreendimento,
-    ctx.bold,
-    9.5,
-    espacoDoEmpreendimento,
-  );
-
-  let yDireita = topo - 13;
-  for (const linha of linhasDoNome) {
-    escreverDireita(ctx, linha, {
-      color: INK,
-      direita,
-      font: ctx.bold,
-      size: sizeDoNome,
-      y: yDireita,
-    });
-    yDireita -= sizeDoNome + 2.5;
-  }
-
-  escreverDireita(ctx, descreverUnidade(relatorio), {
-    color: TEXT,
-    direita,
-    size: 8.5,
-    y: yDireita - 1,
-  });
-  yDireita -= 11;
-
-  if (contrato.area) {
-    escreverDireita(ctx, `Área ${formatarArea(contrato.area)} m²`, {
-      color: MUTE,
-      direita,
-      size: 8,
-      y: yDireita - 1,
-    });
-    yDireita -= 11;
-  }
-
-  // O cabeçalho termina embaixo do que for mais alto: a coluna da direita (que cresce com o
-  // nome quebrado) ou o bloco do título.
-  ctx.y = Math.min(topo - 58, yDireita - 8);
-  regua(ctx, INK, 1.4);
-  ctx.y -= 16;
 }
 
 function desenharFicha(ctx: Ctx, relatorio: ExtratoClienteRelatorio): void {
@@ -437,38 +241,19 @@ function desenharFicha(ctx: Ctx, relatorio: ExtratoClienteRelatorio): void {
         .join("  |  ")
     : "-";
 
-  campoLargo(ctx, contrato.titulares.length > 1 ? "Titulares" : "Titular", titulares);
+  campoEmDestaque(ctx, contrato.titulares.length > 1 ? "Titulares" : "Titular", titulares);
 
   // ⚠️ AS COLUNAS TÊM LARGURAS DIFERENTES, e não a mesma. Com o quarto para cada uma, o plano saía
   // cortado — "60x - IPCA ANUAL - juros 8..." — justamente depois de ganhar a informação que
   // faltava. Uma data ocupa dez caracteres e o plano ocupa trinta e cinco: dividir igual é o que
   // fez o campo mais informativo ser o único a não caber.
-  const campos: Array<[string, string, number]> = [
-    ["Contrato / unidade", contrato.codigo, 0.2],
-    ["Data do ato", dataBr(contrato.dataAto), 0.15],
-    ["Plano", descricaoDoPlano(contrato), 0.42],
+  linhaDeCampos(ctx, [
+    { peso: 0.2, rotulo: "Contrato / unidade", valor: contrato.codigo },
+    { peso: 0.15, rotulo: "Data do ato", valor: dataBr(contrato.dataAto) },
+    { peso: 0.42, rotulo: "Plano", valor: descricaoDoPlano(contrato) },
     // Vocabulário do comprador, não o estágio interno da venda ("Faturado", "Em assinatura").
-    ["Situação", situacaoParaOComprador(contrato), 0.23],
-  ];
-
-  garantirEspaco(ctx, 24);
-  const topo = ctx.y;
-
-  let x = MARGIN;
-  for (const [rotulo, valor, peso] of campos) {
-    const colW = USABLE * peso;
-    escrever(ctx, rotulo.toUpperCase(), { color: MUTE, font: ctx.bold, size: 5.8, x, y: topo });
-    escrever(ctx, encurtar(valor || "-", ctx.bold, 8.5, colW - 8), {
-      color: TEXT,
-      font: ctx.bold,
-      size: 8.5,
-      x,
-      y: topo - 11,
-    });
-    x += colW;
-  }
-
-  ctx.y = topo - 22;
+    { peso: 0.23, rotulo: "Situação", valor: situacaoParaOComprador(contrato) },
+  ]);
 
   if (contrato.encerrado) {
     // Tarja escura: quem lê a peça precisa saber, antes dos números, que não há mais contrato.
@@ -534,32 +319,10 @@ function porcentagem(valor: number): string {
   return `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 }
 
-function campoLargo(ctx: Ctx, rotulo: string, valor: string): void {
-  const linhas = quebrar(valor, ctx.bold, 9, USABLE);
-  garantirEspaco(ctx, 12 + linhas.length * 11);
-
-  escrever(ctx, rotulo.toUpperCase(), {
-    color: MUTE,
-    font: ctx.bold,
-    size: 5.8,
-    x: MARGIN,
-    y: ctx.y,
-  });
-  ctx.y -= 11;
-
-  for (const linha of linhas) {
-    escrever(ctx, linha, { color: INK, font: ctx.bold, size: 9, x: MARGIN, y: ctx.y });
-    ctx.y -= 11;
-  }
-  ctx.y -= 5;
-}
-
 function desenharNumeros(ctx: Ctx, relatorio: ExtratoClienteRelatorio): void {
   const { contrato, totais } = relatorio;
 
-  type Caixa = { apoio: string; icone: IconeTipo; rotulo: string; valor: string };
-
-  const caixas: Caixa[] = [
+  const caixas: Cartao[] = [
     {
       apoio: totais.parcelasTotal
         ? `${totais.parcelasPagas} de ${contarParcelas(totais.parcelasTotal)} quitadas`
@@ -602,50 +365,7 @@ function desenharNumeros(ctx: Ctx, relatorio: ExtratoClienteRelatorio): void {
     );
   }
 
-  const gap = 10;
-  const colW = (USABLE - gap * (caixas.length - 1)) / caixas.length;
-  const altura = 62;
-
-  garantirEspaco(ctx, altura + 8);
-  const topo = ctx.y;
-
-  caixas.forEach((caixa, indice) => {
-    const x = MARGIN + indice * (colW + gap);
-
-    ctx.page.drawRectangle({
-      borderColor: LINE,
-      borderWidth: 0.8,
-      color: BAND,
-      height: altura,
-      width: colW,
-      x,
-      y: topo - altura,
-    });
-
-    desenharIcone(ctx, caixa.icone, x + 12, topo - 22);
-    escrever(ctx, caixa.rotulo.toUpperCase(), {
-      color: SOFT_TEXT,
-      font: ctx.bold,
-      size: 5.8,
-      x: x + 12,
-      y: topo - 32,
-    });
-    escrever(ctx, caixa.valor, {
-      color: INK,
-      font: ctx.bold,
-      size: 15,
-      x: x + 12,
-      y: topo - 49,
-    });
-    escrever(ctx, encurtar(caixa.apoio, ctx.font, 6.6, colW - 24), {
-      color: MUTE,
-      size: 6.6,
-      x: x + 12,
-      y: topo - 58,
-    });
-  });
-
-  ctx.y = topo - altura - 10;
+  desenharCartoes(ctx, caixas);
 
   // O saldo NOMINAL vem impresso SEMPRE QUE DIFERE do saldo a valor de hoje: é o número que
   // consta no contrato e o cliente vai conferir. Fica como linha secundária, com o nome certo,
@@ -665,123 +385,6 @@ function desenharNumeros(ctx: Ctx, relatorio: ExtratoClienteRelatorio): void {
       size: 7.8,
       y: ctx.y,
     });
-    ctx.y -= 12;
-  }
-}
-
-function desenharTabela(
-  ctx: Ctx,
-  {
-    colunas,
-    linhas,
-    total,
-    vazio,
-  }: {
-    colunas: Coluna[];
-    linhas: string[][];
-    total?: string[];
-    vazio: string;
-  },
-): void {
-  const larguras = colunas.map((coluna) => coluna.peso * USABLE);
-  const xs = larguras.reduce<number[]>((acc, largura, indice) => {
-    acc.push(indice === 0 ? MARGIN : (acc[indice - 1] ?? MARGIN) + (larguras[indice - 1] ?? 0));
-    return acc;
-  }, []);
-
-  const desenharCabecalhoTabela = () => {
-    garantirEspaco(ctx, 20);
-    colunas.forEach((coluna, indice) => {
-      const x = xs[indice] ?? MARGIN;
-      const largura = larguras[indice] ?? 0;
-      if (coluna.align === "right") {
-        escreverDireita(ctx, coluna.label.toUpperCase(), {
-          color: MUTE,
-          direita: x + largura,
-          font: ctx.bold,
-          size: 5.8,
-          y: ctx.y,
-        });
-      } else {
-        escrever(ctx, coluna.label.toUpperCase(), {
-          color: MUTE,
-          font: ctx.bold,
-          size: 5.8,
-          x,
-          y: ctx.y,
-        });
-      }
-    });
-    ctx.y -= 5;
-    regua(ctx, LINE, 0.7);
-    ctx.y -= 10;
-  };
-
-  desenharCabecalhoTabela();
-
-  if (!linhas.length) {
-    escrever(ctx, vazio, { color: MUTE, size: 7.8, x: MARGIN, y: ctx.y });
-    ctx.y -= 12;
-    return;
-  }
-
-  for (const linha of linhas) {
-    if (ctx.y - 12 < FOOT + 16) {
-      novaPagina(ctx);
-      desenharCabecalhoTabela();
-    }
-
-    colunas.forEach((coluna, indice) => {
-      const x = xs[indice] ?? MARGIN;
-      const largura = larguras[indice] ?? 0;
-      const conteudo = linha[indice] ?? "";
-      const size = 7.6;
-
-      if (coluna.align === "right") {
-        escreverDireita(ctx, conteudo, {
-          color: TEXT,
-          direita: x + largura,
-          size,
-          y: ctx.y,
-        });
-      } else {
-        escrever(ctx, encurtar(conteudo, ctx.font, size, largura - 6), {
-          color: TEXT,
-          size,
-          x,
-          y: ctx.y,
-        });
-      }
-    });
-
-    ctx.y -= 11.5;
-  }
-
-  if (total) {
-    garantirEspaco(ctx, 22);
-    ctx.y += 2;
-    regua(ctx, LINE, 0.7);
-    ctx.y -= 11;
-
-    colunas.forEach((coluna, indice) => {
-      const x = xs[indice] ?? MARGIN;
-      const largura = larguras[indice] ?? 0;
-      const conteudo = total[indice] ?? "";
-      if (!conteudo) return;
-
-      if (coluna.align === "right") {
-        escreverDireita(ctx, conteudo, {
-          color: INK,
-          direita: x + largura,
-          font: ctx.bold,
-          size: 8,
-          y: ctx.y,
-        });
-      } else {
-        escrever(ctx, conteudo, { color: INK, font: ctx.bold, size: 8, x, y: ctx.y });
-      }
-    });
-
     ctx.y -= 12;
   }
 }
@@ -884,75 +487,15 @@ async function desenharResumoConsolidado(
   const parcelasVencidas = soma((r) => r.totais.vencidasQuantidade, vivos);
 
   // Cabeçalho próprio: a logo, o título e — no lugar do empreendimento — a contagem de lotes.
-  const topo = ctx.y;
-  let colunaTexto = MARGIN;
-
-  try {
-    const logo = await ctx.doc.embedPng(Buffer.from(CARELI_LOGO_PNG_BASE64, "base64"));
-    const largura = 40;
-    const altura = (logo.height / logo.width) * largura;
-    ctx.page.drawImage(logo, { height: altura, width: largura, x: MARGIN, y: topo - altura });
-    colunaTexto = MARGIN + largura + 16;
-  } catch {
-    // sem logo, o título assume a margem
-  }
-
-  const larguraDoTitulo = ctx.bold.widthOfTextAtSize(limpar(TITULO_DA_PECA), 14);
-  const inicioDoTitulo = Math.max(colunaTexto, (A4.w - larguraDoTitulo) / 2);
-  escrever(ctx, TITULO_DA_PECA, {
-    color: INK,
-    font: ctx.bold,
-    size: 14,
-    x: inicioDoTitulo,
-    y: topo - 14,
-  });
-
-  const subtitulo = `Posição em ${dataBr(data.posicaoEm)}`;
-  escrever(ctx, subtitulo, {
-    color: MUTE,
-    size: 8.5,
-    x:
-      inicioDoTitulo +
-      (larguraDoTitulo - ctx.font.widthOfTextAtSize(limpar(subtitulo), 8.5)) / 2,
-    y: topo - 27,
-  });
-
   // Mesmo cuidado do cabeçalho de contrato: o título está no centro, então o rótulo da direita
   // só pode ocupar o que sobra — senão encosta nele (aconteceu com "RESUMO CONSOLIDADO" inteiro).
-  const direita = A4.w - MARGIN;
-  const espacoDaDireita = Math.max(
-    60,
-    direita - (inicioDoTitulo + larguraDoTitulo + 18),
-  );
-  const { linhas: linhasDoRotulo, size: sizeDoRotulo } = quebrarEmDuasLinhas(
-    "RESUMO CONSOLIDADO",
-    ctx.bold,
-    9.5,
-    espacoDaDireita,
-  );
-
-  let yDireita = topo - 13;
-  for (const linha of linhasDoRotulo) {
-    escreverDireita(ctx, linha, {
-      color: INK,
-      direita,
-      font: ctx.bold,
-      size: sizeDoRotulo,
-      y: yDireita,
-    });
-    yDireita -= sizeDoRotulo + 2.5;
-  }
-
-  escreverDireita(ctx, `${contratos.length} lotes`, {
-    color: TEXT,
-    direita,
-    size: 8.5,
-    y: yDireita - 1,
+  await cabecalhoComBlocoADireita(ctx, {
+    destaque: "RESUMO CONSOLIDADO",
+    linhas: [`${contratos.length} lotes`],
+    subtitulo: `Posição em ${dataBr(data.posicaoEm)}`,
+    titulo: TITULO_DA_PECA,
   });
-
-  ctx.y = Math.min(topo - 58, yDireita - 19);
-  regua(ctx, INK, 1.4);
-  ctx.y -= 16;
+  const direita = A4.w - MARGIN;
 
   // Titular: aqui é o do cliente, não o do contrato (pode variar de lote para lote).
   escrever(ctx, "TITULAR", { color: MUTE, font: ctx.bold, size: 6, x: MARGIN, y: ctx.y });
@@ -970,8 +513,7 @@ async function desenharResumoConsolidado(
   ctx.y -= 22;
 
   // Os mesmos três cartões do extrato de um lote, agora somando todos.
-  type Caixa = { apoio: string; icone: IconeTipo; rotulo: string; valor: string };
-  const caixas: Caixa[] = [
+  const caixas: Cartao[] = [
     {
       apoio: `${contarParcelas(parcelasPagas)} quitadas em ${contratos.length} lotes`,
       icone: "moeda",
@@ -1065,7 +607,7 @@ async function desenharResumoConsolidado(
   ctx.y -= 6;
 
   tituloDeSecao(ctx, `Lotes deste cliente (${contratos.length})`);
-  desenharTabela(ctx, {
+  desenharTabelaLimpa(ctx, {
     colunas: [
       { align: "left", label: "Lote", peso: 0.14 },
       { align: "left", label: "Empreendimento", peso: 0.3 },
@@ -1130,7 +672,7 @@ async function desenharContrato(
   const vencidas = relatorio.abertas.filter((parcela) => parcela.situacao === "vencida");
   if (vencidas.length) {
     tituloDeSecao(ctx, `Parcelas em atraso (${vencidas.length})`);
-    desenharTabela(ctx, {
+    desenharTabelaLimpa(ctx, {
       colunas: [
         { label: "Vencimento", peso: 0.15 },
         { label: "Tipo", peso: 0.14 },
@@ -1153,7 +695,7 @@ async function desenharContrato(
   tituloDeSecao(ctx, `Pagamentos realizados (${relatorio.realizados.length})`);
   // "Pago em" em vez de "Pagamento": o rótulo antigo se lia como FORMA de pagamento, e a coluna
   // sempre trouxe a DATA. Os pesos somam 1 e foram reequilibrados para caber a coluna nova.
-  desenharTabela(ctx, {
+  desenharTabelaLimpa(ctx, {
     colunas: [
       { label: "Pago em", peso: 0.14 },
       { label: "Tipo", peso: 0.12 },
@@ -1207,7 +749,7 @@ async function desenharContrato(
   if (!relatorio.contrato.encerrado && relatorio.abertas.length) {
     const anos = resumoPorAno(relatorio.abertas);
     tituloDeSecao(ctx, `Parcelas em aberto por ano (${relatorio.abertas.length})`);
-    desenharTabela(ctx, {
+    desenharTabelaLimpa(ctx, {
       colunas: [
         { label: "Ano", peso: 0.22 },
         { label: "Parcelas", peso: 0.2 },

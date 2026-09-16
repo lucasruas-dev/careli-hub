@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
+import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 
-import { montarPropostaPdf, type PropostaParaPdf } from "./proposta-pdf";
+import { avisoDaFolha, montarPropostaPdf, type PropostaParaPdf } from "./proposta-pdf";
 
 // ⚠️ CAMINHOS POR `import.meta.url`, NUNCA `process.cwd()`: a suíte roda tanto de `apps/hub`
 // quanto da raiz do monorepo, e um teste que depende do diretório de trabalho passa num lugar e
@@ -113,5 +114,53 @@ describe("montarPropostaPdf", () => {
     const semAnuais = await montarPropostaPdf({ ...EXEMPLO, anuais: [], anuaisTotal: "" });
     const comAnuais = await montarPropostaPdf(EXEMPLO);
     expect(semAnuais.length).toBeLessThan(comAnuais.length);
+  });
+});
+
+// ── O PRÉDIO NO PAPEL ───────────────────────────────────────────────────────
+// Lucas (16/09/2026): apartamento nunca é quadra/lote. O nome da unidade chega pronto
+// (`nomeDaUnidade`); o que este arquivo decide é a tarja, e o título do arquivo repete o nome.
+
+describe("a folha do prédio", () => {
+  it("o título do arquivo leva Torre e Apto, com e sem torre", async () => {
+    for (const unidade of ["Torre A · Apto 304", "Apto 1203"]) {
+      const pdf = await montarPropostaPdf({
+        ...EXEMPLO,
+        logoC2x: null,
+        logoEmpreendimento: null,
+        tipoProduto: "vertical",
+        unidade,
+      });
+      const lido = await PDFDocument.load(pdf);
+      expect(lido.getTitle()).toBe(`Proposta ${EXEMPLO.codigo} - ${unidade}`);
+    }
+  });
+
+  it("a tarja da simulação diz 'a unidade' no prédio e 'o lote' no loteamento", () => {
+    expect(avisoDaFolha({ simulacao: true, tipoProduto: "vertical" })).toBe(
+      "SIMULAÇÃO DE PAGAMENTO - não é proposta e não reserva a unidade",
+    );
+    // O loteamento não muda, com ou sem o tipo informado.
+    expect(avisoDaFolha({ simulacao: true })).toBe(
+      "SIMULAÇÃO DE PAGAMENTO - não é proposta e não reserva o lote",
+    );
+    expect(avisoDaFolha({ simulacao: true, tipoProduto: "loteamento" })).toBe(
+      "SIMULAÇÃO DE PAGAMENTO - não é proposta e não reserva o lote",
+    );
+    expect(avisoDaFolha({ previa: true, tipoProduto: "vertical" })).toBe(
+      "PRÉVIA - documento sem validade: a proposta ainda não foi gerada",
+    );
+    expect(avisoDaFolha({})).toBeNull();
+  });
+
+  it("a simulação de um apartamento monta o PDF", async () => {
+    const pdf = await montarPropostaPdf({
+      ...EXEMPLO,
+      compradores: [],
+      simulacao: true,
+      tipoProduto: "vertical",
+      unidade: "Torre A · Apto 304",
+    });
+    expect(Buffer.from(pdf.slice(0, 5)).toString()).toBe("%PDF-");
   });
 });

@@ -78,8 +78,11 @@ export const ehUuid = (v: string): boolean =>
 // do coordenador, que NÃO está em hub_users — por isso o nome viaja junto e vai para o metadata).
 export type AutorDoBoard = {
   nome?: null | string;
-  /** "board" (tela interna) ou "portal-comercial" (Hércules). Vai em `metadata.origem`. */
-  origem: "board" | "portal-comercial";
+  /**
+   * "board" (tela interna), "portal-comercial" (Hércules da Careli) ou "portal-incorporador" (o
+   * incorporador que opera a própria venda, 16/09/2026). Vai em `metadata.origem`.
+   */
+  origem: "board" | "portal-comercial" | "portal-incorporador";
   /** Nome que a CAD regenerada carrega como quem subiu o arquivo. */
   uploadedByName: null | string;
   userId: string;
@@ -98,8 +101,16 @@ export type AutorDoBoard = {
  *   • `nomes`: os nomes do catálogo cobertos pelo recorte — vira a lista `empreendimentos` da
  *     resposta (no lugar dos "abertos a credenciamento", que é a lista da tela interna).
  *   • `usuario`: a conta do portal, para `usuarioAtual` (ela não está em hub_users).
+ *   • `comAnalistasDoHub`: a fila sai com os nomes da equipe da Careli em `analistas`, como antes
+ *     de 16/09. Só o portal COMERCIAL (a própria Careli vendendo) pede. Ausente = lista vazia
+ *     (fechado): quem esquecer de passar não entrega o quadro de pessoal da Careli.
  */
 export type RecorteDaFila = {
+  /**
+   * (16/09/2026, D4) Decisão do Lucas: a Gurgel (comercial) volta a ver os nomes dos analistas da
+   * Careli; o portal que opera sozinho (Cecílio) vê "Equipe Careli".
+   */
+  comAnalistasDoHub?: boolean;
   ids: Set<string>;
   nomes: string[];
   usuario: { id: string; nome: string };
@@ -726,7 +737,7 @@ export async function montarFilaDoBoard(
   // `enterpriseId` e sem vínculo em nenhum id do recorte NÃO entra — a CAD "sem CAD" (`semCad`)
   // de outro loteamento não pode aparecer para ele.
   if (opts.recorte) {
-    const { ids, nomes, usuario } = opts.recorte;
+    const { comAnalistasDoHub, ids, nomes, usuario } = opts.recorte;
     const noRecorte = (item: (typeof itens)[number]): boolean => {
       if (item.enterpriseId && ids.has(String(item.enterpriseId).trim())) return true;
       if (item.papel !== "imobiliaria") return false;
@@ -736,11 +747,32 @@ export async function montarFilaDoBoard(
       return false;
     };
 
+    // (16/09) O RÓTULO DO CARD SÓ COM OS PRODUTOS DO RECORTE. `empreendimentos` sai de TODO vínculo
+    // `verified` da pessoa, e o cliente da CAD ganha um ao salvar: na fila do Cecílio o card do
+    // comprador do Garden dizia também "Lagoa Bonita", ou seja, onde mais ele comprou (e, para a
+    // imobiliária, para quais outros clientes ela vende). Fica só o nome que o recorte cobre; sem
+    // nenhum, o do empreendimento da própria CAD, se for do recorte.
+    const nomesDoRecorte = new Set(nomes);
+    const soDoRecorte = (item: (typeof itens)[number]): (typeof itens)[number] => {
+      const dentro = item.empreendimentos.filter((nome) => nomesDoRecorte.has(nome));
+      if (dentro.length > 0) return { ...item, empreendimentos: dentro };
+      const daCad = item.enterpriseId
+        ? nomeDoGrupo.get(String(item.enterpriseId).trim())
+        : undefined;
+      return { ...item, empreendimentos: daCad && nomesDoRecorte.has(daCad) ? [daCad] : [] };
+    };
+
     return {
       data: {
-        analistas,
+        // (16/09) SEM A EQUIPE DA CARELI, A NÃO SER NO COMERCIAL. `analistas` é nome ou E-MAIL de
+        // todo `hub_users`, e o recorte só existe para o PORTAL. Fora do comercial (o Cecílio), a
+        // rota monta a lista que a tela precisa, sem identificar ninguém
+        // (lib/apolo/incorporador/analistas-do-portal.ts), e aqui ela sai vazia para nenhum outro
+        // chamador do recorte herdar os nomes. O comercial (a Careli vendendo) pede os nomes com
+        // `comAnalistasDoHub` e vê a lista como antes (D4, decisão do Lucas de 16/09/2026).
+        analistas: comAnalistasDoHub === true ? analistas : [],
         empreendimentos: [...new Set(nomes)].sort((a, b) => a.localeCompare(b, "pt-BR")),
-        itens: itens.filter(noRecorte),
+        itens: itens.filter(noRecorte).map(soDoRecorte),
         usuarioAtual: usuarioAtual ?? { id: usuario.id, nome: usuario.nome },
       },
       ok: true,
@@ -1385,6 +1417,12 @@ export async function salvarFichaDoBoard(
       metadata: {
         autorNome,
         de: fichaAtual[chave] ?? null,
+        // (16/09) DE QUAL CAD É A EDIÇÃO. A ficha editada aqui é a da esteira daquele
+        // empreendimento, e o histórico do PORTAL só mostra evento do produto que a sessão alcança
+        // (lib/apolo/incorporador/historico-do-portal.ts). Sem a marca, a edição da CAD de um
+        // loteamento aparecia no portal de outro, com os valores de antes e depois. O hub não lê
+        // este campo: o histórico interno continua igual.
+        enterpriseId: alvoEnterpriseId,
         origem: "board-validacao",
         para: valor === "" || valor === null ? null : valor,
       },
@@ -2201,12 +2239,32 @@ const ROTULOS: Record<string, string> = {
   uf: "UF",
 };
 
-type LinhaAuditoria = {
+export type LinhaAuditoria = {
   action: string;
   actor_user_id: string | null;
   created_at: string;
   field_name: string | null;
   metadata: Record<string, unknown> | null;
+};
+
+/**
+ * (16/09) O RECORTE DO HISTÓRICO PARA O PORTAL, injetado por quem chama. Sem ele (rota do hub), o
+ * histórico sai exatamente como antes. A regra mora no portal
+ * (lib/apolo/incorporador/historico-do-portal.ts) e chega aqui como função, para este arquivo não
+ * importar nada do portal.
+ */
+export type FiltroDoHistorico = {
+  /**
+   * O nome que a tela mostra. `contasDoHub` = os `actor_user_id` que são conta do HUB (a equipe
+   * da Careli); `null` quando não deu para ler, e aí todo autor com conta conta como da Careli.
+   *
+   * (16/09/2026, D4 do Lucas) AUSENTE = O NOME DE SEMPRE (o do hub). É o caso do portal comercial,
+   * que voltou a ver os nomes dos analistas da Careli: ele recorta os eventos (`manter`), mas o autor
+   * sai como no hub.
+   */
+  autor?: (linha: LinhaAuditoria, contasDoHub: null | ReadonlySet<string>) => string;
+  /** Fica só a linha que devolve true. */
+  manter: (linha: LinhaAuditoria) => boolean;
 };
 
 function comoTexto(valor: unknown): string {
@@ -2227,7 +2285,12 @@ function autorNoMetadata(metadata: Record<string, unknown> | null): null | strin
   return typeof nome === "string" && nome.trim() ? nome.trim() : null;
 }
 
-export async function historicoDaFicha(client: AdminClient, id: string): Promise<NextResponse> {
+export async function historicoDaFicha(
+  client: AdminClient,
+  id: string,
+  // (16/09) Só o portal passa. Ver `FiltroDoHistorico`.
+  filtro?: FiltroDoHistorico,
+): Promise<NextResponse> {
   const { data } = await client
     .from("apolo_audit_events")
     .select("action, actor_user_id, created_at, field_name, metadata")
@@ -2236,12 +2299,25 @@ export async function historicoDaFicha(client: AdminClient, id: string): Promise
     .order("created_at", { ascending: false })
     .limit(300);
 
-  const linhas = (data ?? []) as LinhaAuditoria[];
+  const todas = (data ?? []) as LinhaAuditoria[];
+  // (16/09) No portal, o evento de outro empreendimento sai ANTES de agrupar e de resolver autor.
+  const linhas = filtro ? todas.filter(filtro.manter) : todas;
 
   // Nome de quem editou, em uma consulta só.
   const autores = [...new Set(linhas.map((l) => l.actor_user_id).filter(Boolean))] as string[];
   const nomePorId = new Map<string, string>();
-  if (autores.length > 0) {
+  // (16/09) No PORTAL a consulta traz SÓ o id: basta saber QUEM é da equipe da Careli, e o nome e
+  // o e-mail dela não saem deste servidor. Falha de leitura vira `null` (todos contam como Careli).
+  let contasDoHub: null | ReadonlySet<string> = new Set<string>();
+  if (filtro?.autor && autores.length > 0) {
+    const { data: contas, error: erroContas } = await client
+      .from("hub_users")
+      .select("id")
+      .in("id", autores);
+    contasDoHub = erroContas
+      ? null
+      : new Set(((contas ?? []) as { id: string }[]).map((conta) => conta.id));
+  } else if (autores.length > 0) {
     const { data: usuarios } = await client
       .from("hub_users")
       .select("id, display_name, email")
@@ -2271,9 +2347,11 @@ export async function historicoDaFicha(client: AdminClient, id: string): Promise
         // Quem editou. O `actor_user_id` é a conta do HUB; edição feita pelo portal comercial
         // (coordenador) grava o nome em `metadata.autorNome`, porque a conta dele não está em
         // hub_users e o histórico mostraria um traço no lugar de quem mexeu.
-        autor: linha.actor_user_id
-          ? (nomePorId.get(linha.actor_user_id) ?? autorNoMetadata(linha.metadata) ?? "—")
-          : (autorNoMetadata(linha.metadata) ?? "Sistema"),
+        autor: filtro?.autor
+          ? filtro.autor(linha, contasDoHub)
+          : linha.actor_user_id
+            ? (nomePorId.get(linha.actor_user_id) ?? autorNoMetadata(linha.metadata) ?? "—")
+            : (autorNoMetadata(linha.metadata) ?? "Sistema"),
         quando: linha.created_at,
       });
     }
@@ -2390,4 +2468,186 @@ export async function moverEtapaDoBoard(
   }
 
   return NextResponse.json({ data: { etapa, ok: true } });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// 5b) AS ETAPAS DE DECISÃO PELO PORTAL QUE OPERA SOZINHO (16/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// Decisão do Lucas: *"A Cecílio, no portal"* faz a análise de crédito e o credenciamento dos clientes
+// dela. A rota de etapa do portal passa a aceitar dela pré-venda, credenciado e indeferido, que antes
+// eram só da Careli. Só que `moverEtapaDoBoard` NÃO confere o que a tela do Apolo garante pela ordem
+// dos botões: no Apolo não existe botão que credencia sem crédito, porque essas etapas só chegam pelo
+// servidor do crédito (consulta aprovada, análise desligada, aprovação com restrição) e do PIX. Com a
+// porta aberta a um PATCH direto, essa régua tem que existir NO SERVIDOR, e é esta.
+//
+// ⚠️ SÓ A PORTA DO PORTAL CHAMA ISTO. O hub segue exatamente como era (o operador da Careli já
+// passava por `moverEtapaDoBoard` sem esta régua, e mudar isso não é desta entrega).
+
+/** As etapas que, no portal, só o portal que opera sozinho grava, e só com a régua abaixo. */
+export const ETAPAS_DE_DECISAO: ReadonlySet<string> = new Set(["credenciado", "indeferido", "prevenda"]);
+
+/** O que o servidor sabe da CAD na hora de decidir. */
+export type FatosDaDecisao = {
+  /** Crédito aprovado por consulta, análise desligada, override ou etapa já passada (`creditoDaCad`). */
+  creditoAprovado: boolean;
+  etapaAtual: null | string;
+  /** PIX da pré-venda emitido (ou pago). A reserva otimista do lote ("reservado:...") não conta. */
+  pixGerado: boolean;
+  prevendaHabilitada: boolean;
+};
+
+export type RecusaDaEtapa = { error: string; status: number };
+
+/**
+ * A régua, sem I/O. `null` = pode gravar (e `moverEtapaDoBoard` ainda aplica as dele: etapa válida,
+ * saída de revisão barrada, `nuncaRebaixar`).
+ *
+ *   • indeferido: com motivo (é o que o corretor recebe e o que fica no histórico), só a partir da
+ *     REVISÃO de crédito e nunca com PIX gerado;
+ *   • pré-venda e credenciado: só com o crédito aprovado;
+ *   • credenciado com a pré-venda LIGADA no empreendimento: só com o PIX gerado (é o significado de
+ *     credenciado desde julho: documentos válidos, crédito ok e PIX gerado).
+ */
+export function recusaDaEtapaDeDecisao(input: {
+  etapa: string;
+  fatos: FatosDaDecisao | null;
+  motivo: string;
+}): null | RecusaDaEtapa {
+  const { etapa, fatos } = input;
+  if (!ETAPAS_DE_DECISAO.has(etapa)) return null;
+
+  // O motivo primeiro: é erro de preenchimento, e não precisa de leitura nenhuma para ser dito.
+  if (etapa === "indeferido" && !input.motivo.trim()) {
+    return {
+      error:
+        "Para indeferir a CAD, escreva o motivo: ele fica no histórico e é o que o corretor recebe.",
+      status: 400,
+    };
+  }
+
+  // Sem os fatos não há como provar nada: não grava.
+  if (!fatos) {
+    return { error: "Não foi possível conferir o crédito desta CAD agora. Tente de novo.", status: 503 };
+  }
+
+  // Já está lá: regravar a mesma etapa não decide nada de novo.
+  if (fatos.etapaAtual === etapa) return null;
+
+  // (16/09/2026, revisão) ⚠️ INDEFERIR NÃO DESFAZ O QUE JÁ ANDOU. Só com o motivo, um PATCH direto
+  // indeferia a CAD credenciada, com o PIX da pré-venda pago no Asaas da Careli e a ficha já no
+  // C2X: o aviso de "CAD indeferida" saía e o pagamento ficava órfão, sem ninguém da Careli no
+  // caminho. A tela do portal só oferece Indeferir na revisão, e o servidor segue a mesma régua; com
+  // PIX gerado (mesmo em revisão), o desfazer é da Careli.
+  if (etapa === "indeferido") {
+    if (fatos.pixGerado) {
+      return {
+        error:
+          "O PIX da pré-venda desta CAD já foi gerado. Para indeferir, fale com a Careli, que cuida da devolução.",
+        status: 409,
+      };
+    }
+    if (fatos.etapaAtual !== "revisao") {
+      return {
+        error:
+          "Só a CAD com o crédito em revisão pode ser indeferida por aqui. Para indeferir em outra etapa, fale com a Careli.",
+        status: 409,
+      };
+    }
+    return null;
+  }
+
+  if (!fatos.creditoAprovado) {
+    return {
+      error:
+        "O crédito desta CAD não está aprovado. Faça a consulta ao Serasa na análise de crédito (ou aprove com restrição, com a evidência anexada) antes de seguir.",
+      status: 409,
+    };
+  }
+
+  if (etapa === "credenciado" && fatos.prevendaHabilitada && !fatos.pixGerado) {
+    return {
+      error:
+        "Neste empreendimento a pré-venda está ligada: a CAD só é credenciada depois de o PIX ser gerado.",
+      status: 409,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Junta os fatos da CAD (entity_id + enterprise_id do escopo) e aplica a régua.
+ *
+ * ⚠️ FAIL-CLOSED: qualquer leitura que falhe vira 503, nunca "pode gravar". A pré-venda é lida aqui
+ * com o erro à vista, e não por `resolverPrevendaHabilitada`, porque aquela responde "desligada" na
+ * falha, e "desligada" aqui DISPENSARIA o PIX.
+ */
+export async function conferirEtapaDeDecisao(
+  adminClient: AdminClient,
+  id: string,
+  // `incorporadorId` (16/09/2026, revisão do conjunto): o portal que decide. Só a consulta ao Serasa
+  // feita por ele prova o crédito (a ficha é compartilhada com a Careli desde a D5).
+  pedido: { enterpriseId: string; etapa: unknown; incorporadorId?: null | string; motivo: unknown },
+): Promise<null | RecusaDaEtapa> {
+  const etapa = typeof pedido.etapa === "string" ? pedido.etapa.trim() : "";
+  if (!ETAPAS_DE_DECISAO.has(etapa)) return null;
+  const motivo = typeof pedido.motivo === "string" ? pedido.motivo : "";
+
+  // Indeferido sem motivo: recusado antes de qualquer leitura.
+  if (etapa === "indeferido" && !motivo.trim()) {
+    return recusaDaEtapaDeDecisao({ etapa, fatos: null, motivo });
+  }
+
+  let fatos: FatosDaDecisao | null = null;
+  try {
+    const cad = await lerCadDaEsteira<{
+      etapa: null | string;
+      pagamento_ref: null | string;
+      pago_em: null | string;
+    }>(adminClient, id, "etapa, pagamento_ref, pago_em", { enterpriseId: pedido.enterpriseId });
+
+    const referencia = (cad?.pagamento_ref ?? "").trim();
+    const pixGerado =
+      Boolean(cad?.pago_em) || (referencia !== "" && !referencia.startsWith("reservado:"));
+
+    if (etapa === "indeferido") {
+      // Para indeferir só importam a etapa e o PIX: crédito e pré-venda não entram na conta.
+      fatos = {
+        creditoAprovado: false,
+        etapaAtual: cad?.etapa ?? null,
+        pixGerado,
+        prevendaHabilitada: false,
+      };
+    } else {
+      const { data: setting, error: erroSetting } = await adminClient
+        .from("apolo_enterprise_settings")
+        .select("prevenda_habilitada, valor_pix")
+        .eq("enterprise_id", pedido.enterpriseId)
+        .maybeSingle<SettingPrevenda>();
+      if (erroSetting) throw new Error(erroSetting.message);
+
+      // Import dinâmico: o serviço do crédito puxa o cliente do Serasa e o PDF do comprovante, e este
+      // arquivo é lido por toda rota de board (a fila inclusive). Só a decisão paga o carregamento.
+      const { creditoDaCad } = await import("@/lib/serasa/consulta-servico");
+      const credito = await creditoDaCad({
+        client: adminClient,
+        enterpriseId: pedido.enterpriseId,
+        entityId: id,
+        etapaAtual: cad?.etapa ?? null,
+        incorporadorId: pedido.incorporadorId ?? null,
+      });
+
+      fatos = {
+        creditoAprovado: credito.aprovado,
+        etapaAtual: cad?.etapa ?? null,
+        pixGerado,
+        prevendaHabilitada: prevendaLigadaNaSetting(setting),
+      };
+    }
+  } catch {
+    fatos = null;
+  }
+
+  return recusaDaEtapaDeDecisao({ etapa, fatos, motivo });
 }

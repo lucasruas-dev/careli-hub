@@ -31,14 +31,16 @@ describe("o workspace", () => {
 describe("a autorização", () => {
   // ⚠️ `autorizar` NÃO OLHA O TIPO DO PORTAL, e o furo já foi pago em produção: um usuário de
   // portal de INCORPORADOR chegou a cancelar proposta do comercial. São 35 portais de incorporador
-  // contra 3 do comercial.
-  it("é a comercial, e não a genérica", () => {
-    expect(ROTA).toContain("autorizarComercial(request)");
+  // contra 3 do comercial. Desde 16/09/2026 a porta é a de quem OPERA A VENDA (o comercial e o
+  // Cecílio); o 404 dos demais portais está provado em lib/apolo/incorporador/board-do-portal.test.ts.
+  it("é a de quem opera a venda, e não a genérica", () => {
+    expect(ROTA).toContain("autorizarOperacaoDeVenda(request)");
     expect(ROTA).not.toMatch(/\bautorizar\(request\)/);
+    expect(ROTA).not.toContain("autorizarComercial");
   });
 
   it("vale nos dois verbos", () => {
-    const chamadas = ROTA.match(/autorizarComercial\(request\)/g) ?? [];
+    const chamadas = ROTA.match(/autorizarOperacaoDeVenda\(request\)/g) ?? [];
     expect(chamadas.length).toBe(2);
   });
 });
@@ -72,6 +74,26 @@ describe("as travas do bloqueio", () => {
   it("carimba autor, nome e data", () => {
     for (const coluna of ["bloqueado_em", "bloqueado_por", "bloqueado_por_nome"]) {
       expect(ROTA).toContain(coluna);
+    }
+  });
+});
+
+describe("quem opera o produto decide a escrita (Lucas, 16/09/2026)", () => {
+  // No portal que confecciona (o Cecílio) bloquear e desbloquear só valem no produto operado por ele;
+  // no VOC e no VOR a resposta é 403 só consulta. A régua é a única, de `operacao-do-produto-servidor`.
+  it("os dois verbos passam pela régua, com o enterprise da unidade lida", () => {
+    const chamadas =
+      ROTA.match(/autorizarEscritaNoProduto\(request, auth\.sessao, \[unidade\.enterprise_id\]\)/g) ?? [];
+    expect(chamadas.length).toBe(2);
+  });
+
+  it("a régua vem ANTES da escrita, nos dois verbos", () => {
+    const [post, del] = ROTA.split("export async function DELETE");
+    for (const verbo of [post ?? "", del ?? ""]) {
+      const regua = verbo.indexOf("autorizarEscritaNoProduto(");
+      const escrita = verbo.indexOf(".update(");
+      expect(regua).toBeGreaterThan(-1);
+      expect(escrita).toBeGreaterThan(regua);
     }
   });
 });

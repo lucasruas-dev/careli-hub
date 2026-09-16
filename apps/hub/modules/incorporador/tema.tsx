@@ -224,26 +224,33 @@ export const TEMA_CSS = `
     padding: 16px 20px; text-align: center;
   }
 
-  /* ── O PORTAL COMERCIAL GANHA ÁREA DE TRABALHO ──────────────────────────────
+  /* ── A CASCA DO HÉRCULES GANHA ÁREA DE TRABALHO ─────────────────────────────
      Lucas (02/09/2026, olhando a ficha do Jardim das Gerais na aba Vendas): *"colocar o botão
      de recolher o sidebar para aumentar a tela de trabalho. Nessa linha estamos comendo o
-     rodapé, podemos aumentar a área de trabalho"*. Três medidas, SÓ no comercial (.inc--comercial;
-     os portais de incorporador ficam como estão):
+     rodapé, podemos aumentar a área de trabalho"*. Três medidas, SÓ na casca do Hércules
+     (.inc--hercules; os portais de incorporador que só acompanham ficam como estão):
        1. o rodapé "Tecnologia C2X" vira uma linha fina (6px + 16px de linha + 6px + 1px de
           borda = 29px) e o miolo perde padding (26/24/40 → 14/16/16);
        2. no desktop o BODY NÃO ROLA: a casca fecha em 100dvh e quem rola é o <main> — e, dentro
           dele, a lista/ficha de Produtos, que já rola por dentro;
        3. a lateral RECOLHE (abaixo).
      ⚠️ Estes números entram na conta de altura da tela de Produtos (CSS_PRODUTOS, em
-     hercules/ProdutosDoHercules.tsx): mudou padding ou rodapé aqui, refaça a soma lá. */
-  .inc--comercial .inc-conteudo { padding: 14px 16px 16px; }
-  .inc--comercial .inc-rodape { font-size: 11px; line-height: 16px; padding: 6px; }
+     hercules/ProdutosDoHercules.tsx): mudou padding ou rodapé aqui, refaça a soma lá.
+
+     ⚠️ A CLASSE ERA .inc--comercial ATÉ 16/09/2026, e o nome mentia a partir desse dia. O Lucas
+     pediu a MESMA casca para o portal do Cecílio: *"quero replicar esse portal do coordenador
+     (falo de estrutura layout) para o portal da Cecilio. a unica coisa que não teremos é o
+     lançamento"*. A casca não é do tipo "comercial", é de quem OPERA A VENDA (portalOperaVenda,
+     em lib/apolo/incorporador/perfis-de-portal): a Gurgel e o Cecílio vestem esta classe, e as
+     regras são as mesmas de antes, seletor por seletor: a Gurgel não muda um pixel. */
+  .inc--hercules .inc-conteudo { padding: 14px 16px 16px; }
+  .inc--hercules .inc-rodape { font-size: 11px; line-height: 16px; padding: 6px; }
 
   @media (min-width: 861px) {
-    .inc--comercial .inc-shell { height: 100dvh; overflow: hidden; }
-    .inc--comercial .inc-main { display: flex; flex-direction: column; height: 100dvh; }
-    .inc--comercial .inc-conteudo { flex: 1 1 auto; min-height: 0; overflow: auto; }
-    .inc--comercial .inc-rodape { flex: 0 0 auto; }
+    .inc--hercules .inc-shell { height: 100dvh; overflow: hidden; }
+    .inc--hercules .inc-main { display: flex; flex-direction: column; height: 100dvh; }
+    .inc--hercules .inc-conteudo { flex: 1 1 auto; min-height: 0; overflow: auto; }
+    .inc--hercules .inc-rodape { flex: 0 0 auto; }
 
     /* ── A LATERAL RECOLHIDA: 64px, só ícones ────────────────────────────────
        Quem recolhe é o botão no topo da lateral (PanelLeftClose/PanelLeftOpen); a escolha
@@ -486,7 +493,7 @@ export function AlternadorDeTema() {
   return (
     <div
       aria-label="Tema da tela"
-      // A classe é para a lateral RECOLHIDA do comercial virar este grupo em coluna (TEMA_CSS):
+      // A classe é para a lateral RECOLHIDA da casca do Hércules virar este grupo em coluna (TEMA_CSS):
       // `flex-direction` não está no estilo inline, então a regra de classe alcança.
       className="inc-alternador"
       role="group"

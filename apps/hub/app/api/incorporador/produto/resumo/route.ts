@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
+import { codigosParaOC2x } from "@/lib/apolo/incorporador/cadastro-do-produto";
 import {
   pedidoPrecisaDeExpansao,
   resolverCodigosDoPedido,
@@ -17,16 +18,22 @@ import {
   lerImobiliariasVinculadas,
 } from "@/lib/apolo/incorporador/crm";
 import {
+  empreendimentosIndisponiveis,
+  idsDosProprios,
+  lidosDoPanteon,
+  propriosDoPortal,
+} from "@/lib/apolo/incorporador/proprios-do-portal";
+import {
   comIdsDoGrupo,
   montarResumoDoProduto,
   type ResumoDoProduto,
 } from "@/lib/apolo/incorporador/resumo-do-produto";
+import {
+  estagioDaUnidadeDoPanteon,
+  lerUnidadesDoPanteon,
+} from "@/lib/apolo/incorporador/unidades-do-panteon";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { loadApoloEnterpriseVendas } from "@/lib/apolo/vendas";
-import {
-  carregarCadastroDeEmpreendimentos,
-  type LinhaDoCadastro,
-} from "@/lib/hercules/cadastro";
 import { ehIdDoPai, expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
 
 // O RESUMO DE UM PRODUTO DO HÉRCULES: a faixa do processo do coordenador.
@@ -69,80 +76,110 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response;
 
   const codesAutorizados = await codigosDaSessao(auth.sessao);
-
-  // Sessão só existe com empreendimento: zero código é catálogo do C2X fora do ar, não falta de
-  // permissão (mesma leitura da rota de Vendas).
-  if (codesAutorizados.length === 0) {
-    return NextResponse.json(
-      { error: "Não foi possível carregar os empreendimentos agora." },
-      { status: 503 },
-    );
-  }
-
   const catalogo = await catalogoDeEmpreendimentos(Date.now());
+
+  // ⚠️ O EMPREENDIMENTO QUE SÓ EXISTE NO PANTEON — a mesma expansão da rota /venda, pela peça
+  // comum (`propriosDoPortal`; o porquê e a guarda do cadastro estão lá). Sem ela o produto
+  // nascido no Panteon respondia 404 nesta aba, com as outras abertas.
+  const doPanteon = await propriosDoPortal({
+    catalogo,
+    codesAutorizados,
+    sessao: auth.sessao,
+  });
+
+  // Sessão só existe com empreendimento: zero código (nem do C2X, nem do Panteon) é fonte fora do
+  // ar, não falta de permissão (mesma leitura da rota de Vendas).
+  if (doPanteon.codesComProprios.length === 0) return empreendimentosIndisponiveis();
+
   const empreendimentos = empreendimentosDoPortal(catalogo, codesAutorizados);
 
   const pedido = new URL(request.url).searchParams.get("emp");
 
   // O escopo expandido (grupo + divisões) — o teto de tudo o que sai daqui.
-  const permitidos = new Set(await idsDaSessao(auth.sessao));
+  const permitidos = new Set(doPanteon.idsDaSessao);
 
-  // O cadastro do Panteon só entra quando o pedido é o PAI ("pai:<uuid>"). Sem cadastro não dá
-  // para provar que o pai é dele: 503, e não 404. O id numérico não precisa dele.
-  let cadastro: LinhaDoCadastro[] = [];
-  if (ehIdDoPai(pedido)) {
-    try {
-      cadastro = await carregarCadastroDeEmpreendimentos();
-    } catch {
-      return NextResponse.json(
-        { error: "Não foi possível carregar os empreendimentos agora." },
-        { status: 503 },
-      );
-    }
-  }
+  // O pedido pelo PAI ("pai:<uuid>") depende do cadastro do Panteon. Sem cadastro não dá para
+  // provar que o pai é dele: 503, e não 404. O id numérico não precisa dele.
+  if (ehIdDoPai(pedido) && doPanteon.cadastro === null) return empreendimentosIndisponiveis();
+  const cadastro = doPanteon.cadastro ?? [];
 
   // Os CÓDIGOS, pela régua única (pai → filhos autorizados; id numérico → ele mesmo, se
-  // autorizado; id do catálogo → `codesDoRecorte`), sempre cruzados com `codesAutorizados`.
+  // autorizado; id do catálogo → `codesDoRecorte`), sempre cruzados com os autorizados — que
+  // agora incluem os do Panteon, e só os que a sessão JÁ traz.
   const codes = resolverCodigosDoPedido({
     cadastro,
     catalogo,
-    codesAutorizados,
+    codesAutorizados: doPanteon.codesComProprios,
     empreendimentos,
     pedido,
     permitidos,
+    proprios: doPanteon.proprios,
   });
 
   // Os IDS do Apolo: no caminho expandido, os ids reais mais o grupo que eles cobrem por inteiro;
   // no id do catálogo, `idsDaSessao(sessao, pedido)` já devolve grupo E divisões dentro do que é
-  // dele.
+  // dele — e o produto do Panteon pedido pelo CÓDIGO entra pelo id que o cadastro guarda.
   const enterpriseIds = pedidoPrecisaDeExpansao(pedido)
     ? comIdsDoGrupo(expandirIdDoPainel(pedido, cadastro, permitidos), catalogo, permitidos)
-    : await idsDaSessao(auth.sessao, pedido);
+    : [
+        ...new Set([
+          ...(await idsDaSessao(auth.sessao, pedido)),
+          ...idsDosProprios(doPanteon.proprios, codes),
+        ]),
+      ];
 
-  // Pedido que não sobra nada = produto que não é dele. Nunca cai na visão consolidada.
+  // Pedido que não sobra nada = produto que não é dele. Nunca cai na visão consolidada. Com o
+  // cadastro fora do ar pode ser um produto do Panteon que só não deu para traduzir: 503.
   if (codes.length === 0) {
-    return foraDoEscopo();
+    return doPanteon.cadastro === null ? empreendimentosIndisponiveis() : foraDoEscopo();
   }
 
   const admin = createApoloAdminClient();
   if (!admin) return indisponivel();
 
-  // As três leituras correm juntas: mesmo escopo, um fetch só na tela.
-  const [esteira, imobiliarias, vendas] = await Promise.all([
+  // (16/09/2026, revisão) O PRODUTO QUE SÓ EXISTE NO PANTEON CONTA AS UNIDADES DO PANTEON. O funil
+  // lia só o C2X, que não conhece o produto, e o Resumo saía zerado para o produto cadastrado pelo
+  // portal. Os códigos do C2X vão para lá; os próprios, para `hercules_unidades`
+  // (lib/apolo/incorporador/unidades-do-panteon.ts).
+  //
+  // ⚠️ O PRODUTO COM DONO MARCADO CONTA DO PANTEON TAMBÉM (D2, 16/09/2026), pela MESMA lista da aba
+  // Unidades (`lidosDoPanteon`): o funil e a tabela da mesma ficha não podem ler fontes diferentes.
+  const lidos = lidosDoPanteon({
+    cadastro: doPanteon.cadastro,
+    codes,
+    idsDaSessao: doPanteon.idsDaSessao,
+    proprios: doPanteon.proprios,
+  });
+  const codesDoC2x = codigosParaOC2x(codes, lidos);
+  const idsDosPropriosDoPedido = lidos.map((lido) => lido.enterpriseId);
+
+  // As leituras correm juntas: mesmo escopo, um fetch só na tela.
+  const [esteira, imobiliarias, vendas, doPanteonNoPedido] = await Promise.all([
     lerEsteiraDoEscopo(admin, enterpriseIds),
     lerImobiliariasVinculadas(admin, enterpriseIds),
-    loadApoloEnterpriseVendas(codes),
+    codesDoC2x.length > 0 ? loadApoloEnterpriseVendas(codesDoC2x) : Promise.resolve(null),
+    idsDosPropriosDoPedido.length > 0
+      ? lerUnidadesDoPanteon(admin, idsDosPropriosDoPedido).catch((erro: unknown) => {
+          console.error("[incorporador][produto/resumo] unidades do Panteon", erro);
+          return null;
+        })
+      : Promise.resolve([]),
   ]);
 
   // Qualquer fonte fora do ar derruba o resumo inteiro, de propósito: uma faixa com "0 vendidas"
   // porque o C2X não respondeu é afirmação errada, e afirmação errada na tela do coordenador
   // vira ligação.
-  if (!esteira.ok || !imobiliarias.ok || !vendas.ok) return indisponivel();
+  if (!esteira.ok || !imobiliarias.ok || (vendas && !vendas.ok) || doPanteonNoPedido === null) {
+    return indisponivel();
+  }
 
   const data: ResumoDoProduto = montarResumoDoProduto({
     esteira: esteira.linhas,
     imobiliarias: imobiliarias.credenciadas,
-    unidades: vendas.data.units,
+    unidades: [
+      ...(vendas?.ok ? vendas.data.units : []),
+      ...doPanteonNoPedido.map((linha) => ({ stage: estagioDaUnidadeDoPanteon(linha.situacao) })),
+    ],
   });
 
   return NextResponse.json({ data }, { headers: { "Cache-Control": "no-store" } });

@@ -4,6 +4,8 @@ import {
   CalendarClock,
   CircleDollarSign,
   Download,
+  FileX2,
+  Info,
   Loader2,
   PiggyBank,
   ReceiptText,
@@ -25,9 +27,11 @@ import {
   type ExtratoClienteParcela,
   type ExtratoClienteRelatorio,
 } from "@/lib/apolo/extrato-cliente";
+import { motivoParaNaoEmitirTermo } from "@/lib/apolo/termo-de-rescisao";
+import { TERMO_DE_RESCISAO_LIBERADO } from "@/lib/apolo/termos-liberados";
 import type { ApoloEntity } from "@/lib/apolo/types";
 
-import { entityC2xId } from "../../data/apolo-derive";
+import { buyerStatusLabel, entityC2xId } from "../../data/apolo-derive";
 import { getApoloAccessToken } from "../../data/apolo-operations";
 import { EmptyPanel } from "../shared/apolo-ui";
 
@@ -38,15 +42,43 @@ import { EmptyPanel } from "../shared/apolo-ui";
 // lib: o operador confere na tela e entrega o papel sabendo que os números batem. Toda a régua
 // (o que é pago, o que entra no saldo, o que é reajuste) mora em `lib/apolo/extrato-cliente.ts`
 // — aqui não se calcula nada além de somar o que já veio pronto.
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// O TERMO DE RESCISÃO (16/09/2026)
+// ────────────────────────────────────────────────────────────────────────────────────────────
+//
+// Lucas (15/09/2026): *"é quando o cliente solicita para gente o termo de rescisão para avaliar se
+// dar continuidade ou não"*. O papel é uma SIMULAÇÃO que nasce do extrato, e por isso o botão mora
+// aqui, ao lado do PDF do extrato, com a mesma mecânica (Bearer, blob, revogação adiada).
+//
+// ⚠️ O BOTÃO SÓ EXISTE NA FICHA DE COMPRADOR. Este painel também abre dentro do Financeiro de
+// imobiliária, corretor e incorporador (a subaba "Extrato do cliente" de `CommercialFinancialPanel`),
+// e para eles a pergunta do dia é o SPLIT, não um contrato a desfazer. A régua é a da casa:
+// `buyerStatusLabel(entity) === "Comprador"`, a mesma que abre o Financeiro e marca o selo
+// "Comprador" no resumo. O corretor que também COMPROU passa por ela, e vê o termo do lote dele.
+//
+// ⚠️ O TERMO É DE UM CONTRATO: o do seletor "Contrato" acima, que já recorta o extrato. Trocar o
+// contrato troca o termo, e a dica do botão diz de qual unidade ele sai.
+//
+// ⚠️ BOTÃO APAGADO SEM FRASE É DEFEITO — cobrado duas vezes pelo dono do produto em 15/09/2026.
+// Quando o termo não sai (contrato encerrado, unidade sem valor de tabela), a frase aparece ESCRITA
+// abaixo do cabeçalho, e não só na dica do mouse, que no celular não existe. Ela vem de
+// `motivoParaNaoEmitirTermo`, a mesma função que a rota usa para recusar: a tela nunca promete um
+// termo que a rota não entrega, nem esconde um que ela entregaria.
 
 export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
   const c2xId = entityC2xId(entity);
+  // ⚠️ A CHAVE VEM ANTES DA RÉGUA: enquanto o termo não for liberado (lib/apolo/termos-liberados.ts),
+  // nem o botão nem a frase de "por que não sai" aparecem para ninguém.
+  const ehComprador = TERMO_DE_RESCISAO_LIBERADO && buyerStatusLabel(entity) === "Comprador";
   const [data, setData] = useState<ExtratoClienteData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<null | string>(null);
   const [contratoId, setContratoId] = useState<null | number>(null);
   const [baixando, setBaixando] = useState(false);
   const [erroPdf, setErroPdf] = useState<null | string>(null);
+  const [baixandoTermo, setBaixandoTermo] = useState(false);
+  const [erroTermo, setErroTermo] = useState<null | string>(null);
 
   useEffect(() => {
     if (c2xId == null) {
@@ -137,22 +169,7 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
           return;
         }
 
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = nomeSugerido(response, data, relatorio, escopo);
-        document.body.append(link);
-        link.click();
-        link.remove();
-        // ⚠️ A REVOGAÇÃO ESPERA. Revogar na mesma linha do clique é uma corrida com o navegador: em
-        // alguns casos ele ainda não começou a ler o blob quando a URL deixa de existir, e o
-        // download morre CALADO — nada lança, nenhum erro aparece na tela, e a pessoa clica de novo
-        // achando que não clicou direito. Foi o que o Isac relatou em 08/09/2026, e a mesma sessão
-        // dele funcionou noutra máquina, que é a assinatura de um problema de navegador e não de
-        // permissão. Os outros cinco downloads do sistema já adiavam (60s em `painel-contratos` e
-        // em `empreendimentos-view`, 4s no cadastro); esta era a única linha que revogava na hora.
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        await salvarPdf(response, nomeSugerido(response, data, relatorio, escopo));
       } catch {
         setErroPdf("Não foi possível gerar o PDF.");
       } finally {
@@ -161,6 +178,55 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
     },
     [c2xId, data, relatorio],
   );
+
+  // O motivo de o termo NÃO sair para o contrato escolhido, ou null. É a mesma função da rota.
+  const motivoSemTermo = useMemo(
+    () => (relatorio ? motivoParaNaoEmitirTermo(relatorio) : null),
+    [relatorio],
+  );
+
+  const baixarTermo = useCallback(async () => {
+    if (c2xId == null || !relatorio) {
+      return;
+    }
+
+    setBaixandoTermo(true);
+    setErroTermo(null);
+
+    try {
+      const token = await getApoloAccessToken();
+      // ⚠️ O CONTRATO VAI SEMPRE. A rota recusa sem ele: o termo desfaz uma venda, não o cliente.
+      const query = new URLSearchParams({
+        c2xId: String(c2xId),
+        contrato: String(relatorio.contrato.id),
+      });
+
+      const response = await fetch(`/api/apolo/rescisao/pdf?${query.toString()}`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        // A rota sempre devolve `error` com a frase (contrato encerrado, posse ilegível, C2X fora).
+        // Só o que não é JSON — a página de erro da Vercel num estouro de tempo — cai na genérica.
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        setErroTermo(payload?.error ?? "Não foi possível gerar o termo de rescisão.");
+        return;
+      }
+
+      await salvarPdf(
+        response,
+        nomeDoCabecalho(response) ??
+          `Simulacao de Rescisao - ${relatorio.contrato.codigo} - ${dataBr(relatorio.posicaoEm).replace(/\//g, "-")}.pdf`,
+      );
+    } catch {
+      setErroTermo("Não foi possível gerar o termo de rescisão.");
+    } finally {
+      setBaixandoTermo(false);
+    }
+  }, [c2xId, relatorio]);
 
   if (c2xId == null) {
     return <EmptyPanel text="Cadastro sem vinculo com o C2X para montar o extrato do cliente." />;
@@ -221,7 +287,12 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
                 </span>
                 <select
                   className="h-9 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                  onChange={(event) => setContratoId(Number(event.target.value))}
+                  onChange={(event) => {
+                    setContratoId(Number(event.target.value));
+                    // A frase de erro do termo era do contrato anterior; ficar na tela seria
+                    // atribuí-la ao que acabou de ser escolhido.
+                    setErroTermo(null);
+                  }}
                   value={String(relatorio.contrato.id)}
                 >
                   {data.contratos.map((item) => (
@@ -247,6 +318,30 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
                 PDF
               </button>
             </Tooltip>
+            {ehComprador ? (
+              <Tooltip
+                content={
+                  motivoSemTermo ??
+                  `Termo de rescisão do contrato ${contrato.codigo} em PDF: a simulação que o cliente pede para decidir se segue`
+                }
+                placement="bottom"
+              >
+                <button
+                  aria-describedby={motivoSemTermo ? "termo-de-rescisao-motivo" : undefined}
+                  className="inline-flex h-9 items-center gap-2 self-end rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink-soft outline-none transition-colors hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={baixandoTermo || motivoSemTermo !== null}
+                  onClick={() => void baixarTermo()}
+                  type="button"
+                >
+                  {baixandoTermo ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <FileX2 className="size-4" aria-hidden="true" />
+                  )}
+                  Rescisão
+                </button>
+              </Tooltip>
+            ) : null}
             {data.contratos.length > 1 ? (
               <Tooltip content="Um PDF com todos os contratos do cliente" placement="bottom">
                 <button
@@ -266,6 +361,23 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
         {erroPdf ? (
           <p className="m-0 mt-3 text-xs font-semibold text-rose-600 dark:text-rose-300">
             {erroPdf}
+          </p>
+        ) : null}
+
+        {ehComprador && motivoSemTermo ? (
+          // ⚠️ ESCRITA, E NÃO SÓ NA DICA DO MOUSE: é a frase que explica o botão apagado.
+          <p
+            className="m-0 mt-3 flex items-start gap-1.5 text-xs font-medium text-ink-muted"
+            id="termo-de-rescisao-motivo"
+          >
+            <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            {motivoSemTermo}
+          </p>
+        ) : null}
+
+        {ehComprador && erroTermo ? (
+          <p className="m-0 mt-3 text-xs font-semibold text-rose-600 dark:text-rose-300">
+            {erroTermo}
           </p>
         ) : null}
 
@@ -788,6 +900,48 @@ function descreverUnidade(relatorio: ExtratoClienteRelatorio): string {
   return partes.length ? `${partes.join(", ")} (${codigo})` : codigo;
 }
 
+/**
+ * Dispara o download do PDF que a rota devolveu.
+ *
+ * A rota é autenticada por Bearer, então não dá para apontar um <a href> para ela: o navegador não
+ * manda o header. Busca-se o blob e dispara-se o download local. Os dois botões (extrato e termo)
+ * passam por aqui, para a correção da revogação abaixo valer para os dois.
+ */
+async function salvarPdf(response: Response, nome: string): Promise<void> {
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nome;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // ⚠️ A REVOGAÇÃO ESPERA. Revogar na mesma linha do clique é uma corrida com o navegador: em
+  // alguns casos ele ainda não começou a ler o blob quando a URL deixa de existir, e o
+  // download morre CALADO — nada lança, nenhum erro aparece na tela, e a pessoa clica de novo
+  // achando que não clicou direito. Foi o que o Isac relatou em 08/09/2026, e a mesma sessão
+  // dele funcionou noutra máquina, que é a assinatura de um problema de navegador e não de
+  // permissão. Os outros cinco downloads do sistema já adiavam (60s em `painel-contratos` e
+  // em `empreendimentos-view`, 4s no cadastro); esta era a única linha que revogava na hora.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** O nome que o servidor mandou no Content-Disposition, ou null. */
+function nomeDoCabecalho(response: Response): null | string {
+  const header = response.headers.get("content-disposition") ?? "";
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8?.[1]) {
+    try {
+      return decodeURIComponent(utf8[1]);
+    } catch {
+      // cai na forma simples
+    }
+  }
+
+  const simples = /filename="([^"]+)"/i.exec(header);
+  return simples?.[1] ?? null;
+}
+
 /** Usa o nome que o servidor mandou no Content-Disposition; se não vier, monta um equivalente. */
 function nomeSugerido(
   response: Response,
@@ -795,19 +949,9 @@ function nomeSugerido(
   relatorio: ExtratoClienteRelatorio | null,
   escopo: "contrato" | "todos",
 ): string {
-  const header = response.headers.get("content-disposition") ?? "";
-  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
-  if (utf8?.[1]) {
-    try {
-      return decodeURIComponent(utf8[1]);
-    } catch {
-      // cai no fallback
-    }
-  }
-
-  const simples = /filename="([^"]+)"/i.exec(header);
-  if (simples?.[1]) {
-    return simples[1];
+  const doServidor = nomeDoCabecalho(response);
+  if (doServidor) {
+    return doServidor;
   }
 
   const cliente = data?.cliente.nome ?? "Cliente";

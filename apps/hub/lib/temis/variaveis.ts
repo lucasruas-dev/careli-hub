@@ -249,6 +249,37 @@ const UNIDADE: VariavelDoContrato[] = [
   { exemplo: "lote", fonte: UNIDADE_("tipo_unidade"), grupo: "unidade", nome: "tipo_unidade", origem: "Unidade vendida (Hércules)", rotulo: "Tipo da unidade (lote, apartamento…)", tipo: "texto" },
   { exemplo: "R$ 185.400,00", fonte: UNIDADE_("preco_tabela"), grupo: "unidade", nome: "preco_tabela_unidade", origem: "Tabela de preço da unidade (Hércules)", rotulo: "Preço de tabela", tipo: "dinheiro" },
   { exemplo: "cento e oitenta e cinco mil e quatrocentos reais", extensoDe: "preco_tabela_unidade", fonte: UNIDADE_("preco_extenso (ou por-extenso.ts sobre preco_tabela)"), grupo: "unidade", nome: "preco_tabela_unidade_extenso", origem: "Escrito pelo sistema", rotulo: "Preço de tabela por extenso", tipo: "extenso" },
+
+  // ── O APARTAMENTO ──
+  //
+  // Novos em 16/09/2026. Lucas: prédio é coluna própria na unidade (torre, andar, apartamento,
+  // tipologia, vagas, migration 0171) e NUNCA é encaixado em quadra/lote, porque o contrato diria
+  // "Quadra · Lote" para um apartamento. As variáveis de quadra e lote continuam aqui, intactas: a
+  // minuta de loteamento segue com elas, e a minuta de prédio usa estas. Nenhuma das 60 minutas
+  // medidas é de prédio, então os nomes não vieram do levantamento: seguem o padrão da casa
+  // (`numero_quadra` → `numero_torre`).
+  //
+  // ⚠️ `area_privativa` LÊ A MESMA COLUNA `area` DE `area_lote`. A 0171 não criou `area_privativa`:
+  // no prédio a coluna `area` guarda a área PRIVATIVA, que é a área com que o apartamento se vende.
+  // As duas variáveis existem para a minuta dizer o que quer dizer, e não para ler dados diferentes.
+  // Área comum, área total e fração ideal ficam para quando houver minuta de prédio e coluna para
+  // elas.
+  //
+  // ⚠️ SEM EXTENSO DE ANDAR, DE VAGAS E DE TORRE, de propósito. Andar se escreve em ordinal ("3º
+  // (terceiro) andar") e vaga no feminino ("2 (duas) vagas"): o extenso de inteiro que a casa tem
+  // escreveria "três" e "dois", errado no papel. Torre quase sempre é letra ("A", "NORTE"), que
+  // não tem extenso, como a quadra "A". O apartamento tem, porque é número de identificação lido
+  // como cardinal ("apartamento 304 (trezentos e quatro)"); "1203A" fica sem, como a quadra "A".
+  { exemplo: "A", fonte: UNIDADE_("torre"), grupo: "unidade", nome: "numero_torre", origem: "Unidade vendida (Hércules)", rotulo: "Torre (prédio)", tipo: "texto" },
+  { exemplo: "3", fonte: UNIDADE_("andar (0 = térreo, negativo = subsolo)"), grupo: "unidade", nome: "numero_andar", origem: "Unidade vendida (Hércules)", rotulo: "Andar (prédio)", tipo: "texto" },
+  { exemplo: "304", fonte: UNIDADE_("apartamento"), grupo: "unidade", nome: "numero_apartamento", origem: "Unidade vendida (Hércules)", rotulo: "Apartamento (prédio)", tipo: "texto" },
+  { exemplo: "trezentos e quatro", extensoDe: "numero_apartamento", fonte: EXTENSO_DE("numero_apartamento"), grupo: "unidade", nome: "numero_apartamento_extenso", origem: "Escrito pelo sistema", rotulo: "Apartamento por extenso", tipo: "extenso" },
+  { exemplo: "2 quartos, 1 suíte", fonte: UNIDADE_("tipologia"), grupo: "unidade", nome: "tipologia", origem: "Unidade vendida (Hércules)", rotulo: "Tipologia (prédio)", tipo: "texto" },
+  { exemplo: "1", fonte: UNIDADE_("vagas (0 = sem vaga)"), grupo: "unidade", nome: "vagas", origem: "Unidade vendida (Hércules)", rotulo: "Vagas de garagem (prédio)", tipo: "numero" },
+  // ⚠️ COM "m²", COMO `area_lote`: a minuta escreve "Área privativa: [area_privativa]" e não soma a
+  // unidade de novo (o defeito do "trezentos metros quadrados metros quadrados").
+  { exemplo: "68,45 m²", fonte: UNIDADE_("area (no prédio a coluna guarda a área privativa)"), grupo: "unidade", nome: "area_privativa", origem: "Unidade vendida (Hércules)", rotulo: "Área privativa (prédio)", tipo: "numero" },
+  { exemplo: "sessenta e oito metros quadrados e quarenta e cinco decímetros quadrados", extensoDe: "area_privativa", fonte: UNIDADE_("area_extenso (ou por-extenso.ts sobre area)"), grupo: "unidade", nome: "area_privativa_extenso", origem: "Escrito pelo sistema", rotulo: "Área privativa por extenso", tipo: "extenso" },
 ];
 
 // ── EMPREENDIMENTO ───────────────────────────────────────────────────────────

@@ -59,6 +59,11 @@ export async function POST(request: Request) {
 
   // O recorte é da CONTA, não só do portal (0122): no comercial cada coordenador vê os
   // empreendimentos dele. Falha fechada: erro ao ler o vínculo não vira "vê tudo".
+  //
+  // O incorporador que opera a própria venda (o Cecílio, `portalOperaVenda`) NÃO cai na regra do
+  // comercial: herda o recorte do portal sem vínculo por conta (então não leva o 403 abaixo) e só
+  // ganha o Financeiro de todo o escopo. A decisão mora em `escopoDaConta` → `escopoDoUsuario`,
+  // a MESMA chamada da revalidação no GET, para o login e o F5 não discordarem.
   let escopo: Awaited<ReturnType<typeof escopoDaConta>>;
   try {
     escopo = await escopoDaConta(incorporador, usuario.id);

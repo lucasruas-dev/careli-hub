@@ -55,9 +55,16 @@ const TOM: Record<string, { fundo: string; traco: string }> = {
 };
 
 export function ConversaDaVenda({
+  somenteLeitura = false,
   unidadeId,
   versao,
 }: {
+  /**
+   * (16/09/2026, revisão do conjunto) Produto só de consulta para o portal (D1: o VOC e o VOR para a
+   * Cecílio): a conversa aparece, o campo de escrever não. O servidor já recusa com 403; aqui a tela
+   * deixa de oferecer o que vai ser recusado.
+   */
+  somenteLeitura?: boolean;
   unidadeId: null | string;
   versao: number;
 }) {
@@ -275,85 +282,98 @@ export function ConversaDaVenda({
         )}
       </div>
 
-      <div
-        style={{
-          borderTop: `1px solid ${T.border}`,
-          display: "grid",
-          gap: 6,
-          paddingTop: 10,
-        }}
-      >
-        <textarea
-          disabled={enviando}
-          // ⚠️ O CORTE É AVISADO ANTES, e não depois. O servidor apara em 4.000; sem o `maxLength`,
-          // uma formalização longa seria gravada pela metade e a pessoa só descobriria relendo.
-          maxLength={4000}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => {
-            // ⚠️ ENTER MANDA, SHIFT+ENTER QUEBRA LINHA — o gesto de todo chat. Sem isso, quem
-            // escreve rápido manda a mensagem pela metade procurando o botão.
-            //
-            // ⚠️ E NÃO NO MEIO DE UM ACENTO. Teclado que compõe caractere (o "ã" de "não", o
-            // corretor do celular) usa Enter para CONFIRMAR a composição: sem esta guarda, escrever
-            // "não" manda a mensagem em "n~". `isComposing` é o sinal padrão do navegador.
-            if (
-              e.key === "Enter" &&
-              !e.shiftKey &&
-              !e.nativeEvent.isComposing
-            ) {
-              e.preventDefault();
-              void enviar();
-            }
-          }}
-          placeholder="Registrar algo sobre esta venda…"
-          rows={2}
-          style={{
-            background: T.page,
-            border: `1px solid ${T.border}`,
-            borderRadius: 9,
-            color: T.text,
-            font: "inherit",
-            fontSize: 12.5,
-            padding: "8px 10px",
-            resize: "vertical",
-          }}
-          value={texto}
-        />
-
-        {erro ? (
-          <span style={{ color: T.danger, fontSize: 11.5 }}>{erro}</span>
-        ) : null}
-
+      {somenteLeitura ? (
         <div
           style={{
-            alignItems: "center",
-            display: "flex",
-            gap: 8,
-            justifyContent: "flex-end",
+            borderTop: `1px solid ${T.border}`,
+            color: T.muted,
+            fontSize: 11.5,
+            paddingTop: 10,
           }}
         >
-          <button
-            disabled={enviando || texto.trim().length === 0}
-            onClick={() => void enviar()}
+          Só consulta neste produto.
+        </div>
+      ) : (
+        <div
+          style={{
+            borderTop: `1px solid ${T.border}`,
+            display: "grid",
+            gap: 6,
+            paddingTop: 10,
+          }}
+        >
+          <textarea
+            disabled={enviando}
+            // ⚠️ O CORTE É AVISADO ANTES, e não depois. O servidor apara em 4.000; sem o `maxLength`,
+            // uma formalização longa seria gravada pela metade e a pessoa só descobriria relendo.
+            maxLength={4000}
+            onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => {
+              // ⚠️ ENTER MANDA, SHIFT+ENTER QUEBRA LINHA — o gesto de todo chat. Sem isso, quem
+              // escreve rápido manda a mensagem pela metade procurando o botão.
+              //
+              // ⚠️ E NÃO NO MEIO DE UM ACENTO. Teclado que compõe caractere (o "ã" de "não", o
+              // corretor do celular) usa Enter para CONFIRMAR a composição: sem esta guarda, escrever
+              // "não" manda a mensagem em "n~". `isComposing` é o sinal padrão do navegador.
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing
+              ) {
+                e.preventDefault();
+                void enviar();
+              }
+            }}
+            placeholder="Registrar algo sobre esta venda…"
+            rows={2}
             style={{
-              background: texto.trim().length === 0 ? T.soft : T.btnBg,
-              border: `1px solid ${texto.trim().length === 0 ? T.border : "transparent"}`,
+              background: T.page,
+              border: `1px solid ${T.border}`,
               borderRadius: 9,
-              color: texto.trim().length === 0 ? T.muted : T.btnFg,
-              cursor: texto.trim().length === 0 ? "default" : "pointer",
+              color: T.text,
               font: "inherit",
               fontSize: 12.5,
-              fontWeight: 650,
-              padding: "7px 16px",
+              padding: "8px 10px",
+              resize: "vertical",
             }}
-            type="button"
+            value={texto}
+          />
+
+          {erro ? (
+            <span style={{ color: T.danger, fontSize: 11.5 }}>{erro}</span>
+          ) : null}
+
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              gap: 8,
+              justifyContent: "flex-end",
+            }}
           >
-            {/* "Enviar", e não "Registrar" (Lucas, 07/09/2026). O gesto é o de qualquer chat, e o
+            <button
+              disabled={enviando || texto.trim().length === 0}
+              onClick={() => void enviar()}
+              style={{
+                background: texto.trim().length === 0 ? T.soft : T.btnBg,
+                border: `1px solid ${texto.trim().length === 0 ? T.border : "transparent"}`,
+                borderRadius: 9,
+                color: texto.trim().length === 0 ? T.muted : T.btnFg,
+                cursor: texto.trim().length === 0 ? "default" : "pointer",
+                font: "inherit",
+                fontSize: 12.5,
+                fontWeight: 650,
+                padding: "7px 16px",
+              }}
+              type="button"
+            >
+              {/* "Enviar", e não "Registrar" (Lucas, 07/09/2026). O gesto é o de qualquer chat, e o
                 nome do gesto tem de ser o que a pessoa já conhece. */}
-            {enviando ? "Enviando…" : "Enviar"}
-          </button>
+              {enviando ? "Enviando…" : "Enviar"}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

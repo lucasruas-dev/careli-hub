@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server";
 
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
-import { loadApoloEnterpriseUnits } from "@/lib/apolo/empreendimentos";
+import { type ApoloEnterpriseUnit, loadApoloEnterpriseUnits } from "@/lib/apolo/empreendimentos";
+import { codigosParaOC2x } from "@/lib/apolo/incorporador/cadastro-do-produto";
 import { codigosDoPedido } from "@/lib/apolo/incorporador/codigos-do-pedido";
 import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
 import { autorizar, codigosDaSessao } from "@/lib/apolo/incorporador/escopo";
+import {
+  empreendimentosIndisponiveis,
+  lidosDoPanteon,
+  propriosDoPortal,
+} from "@/lib/apolo/incorporador/proprios-do-portal";
+import {
+  lerUnidadesDoPanteon,
+  unidadeDoPanteonNaTela,
+} from "@/lib/apolo/incorporador/unidades-do-panteon";
+import { createApoloAdminClient } from "@/lib/apolo/server";
 import { createPrometeuClient, eventoOperavelId } from "@/lib/prometeu/data";
 import { topicoDaFila } from "@/lib/prometeu/fila-topic";
 
@@ -56,22 +67,42 @@ async function topicoDoEvento(): Promise<null | string> {
   }
 }
 
+/**
+ * As unidades vivas dos produtos próprios do pedido, já no formato da `UnidadesTab`. Erro lança: o
+ * `catch` da rota responde indisponível, nunca "zero unidades".
+ */
+async function lerUnidadesDoPanteonDoPedido(
+  proprios: Array<{ codigo: string; enterpriseId: string }>,
+): Promise<ApoloEnterpriseUnit[]> {
+  const admin = createApoloAdminClient();
+  if (!admin) throw new Error("Supabase indisponível para as unidades do Panteon.");
+  const codigoPorId = new Map(proprios.map((p) => [p.enterpriseId, p.codigo]));
+  const linhas = await lerUnidadesDoPanteon(admin, [...codigoPorId.keys()]);
+  return linhas.map((linha) =>
+    unidadeDoPanteonNaTela(linha, codigoPorId.get(String(linha.enterprise_id)) ?? ""),
+  );
+}
+
 export async function GET(request: Request) {
   const auth = autorizar(request);
   if (!auth.ok) return auth.response;
 
   const codesAutorizados = await codigosDaSessao(auth.sessao);
-
-  // Zero código = catálogo do C2X fora do ar, não falta de permissão (mesma leitura da rota de
-  // vendas).
-  if (codesAutorizados.length === 0) {
-    return NextResponse.json(
-      { error: "Não foi possível carregar os empreendimentos agora." },
-      { status: 503 },
-    );
-  }
-
   const catalogo = await catalogoDeEmpreendimentos(Date.now());
+
+  // ⚠️ O EMPREENDIMENTO QUE SÓ EXISTE NO PANTEON — a mesma expansão da rota /venda, pela peça
+  // comum (`propriosDoPortal`; o porquê e a guarda do cadastro estão lá), inclusive os `proprios`
+  // que seguem para `codigosDoPedido`.
+  const doPanteon = await propriosDoPortal({
+    catalogo,
+    codesAutorizados,
+    sessao: auth.sessao,
+  });
+
+  // Zero código (nem do C2X, nem do Panteon) = fonte fora do ar, não falta de permissão (mesma
+  // leitura da rota de vendas).
+  if (doPanteon.codesComProprios.length === 0) return empreendimentosIndisponiveis();
+
   const empreendimentos = empreendimentosDoPortal(catalogo, codesAutorizados);
 
   const pedido = new URL(request.url).searchParams.get("emp");
@@ -81,9 +112,10 @@ export async function GET(request: Request) {
   // 503 (resposta pronta), como nas outras.
   const resolvido = await codigosDoPedido({
     catalogo,
-    codesAutorizados,
+    codesAutorizados: doPanteon.codesComProprios,
     empreendimentos,
     pedido,
+    proprios: doPanteon.proprios,
     sessao: auth.sessao,
   });
   if (!resolvido.ok) return resolvido.response;
@@ -96,18 +128,43 @@ export async function GET(request: Request) {
   // caso legítimo: o painel recarregado com outro recorte enquanto a ficha estava aberta, ou o
   // pai cujo único filho perdeu a autorização entre a lista e o clique. Mesmo status (404), com
   // o mesmo texto que o ProdutosDoHercules usa quando a linha some do painel.
+  //
+  // Com o cadastro do Panteon fora do ar, "não sobrou nada" pode ser um produto do Panteon que só
+  // não deu para traduzir: 503, e não a afirmação de que saiu do recorte.
   if (codes.length === 0) {
+    if (doPanteon.cadastro === null) return empreendimentosIndisponiveis();
     return NextResponse.json(
       { error: "Este produto não está mais no seu recorte." },
       { status: 404 },
     );
   }
 
+  // (16/09/2026, revisão) O PRODUTO QUE SÓ EXISTE NO PANTEON LÊ AS UNIDADES DO PANTEON. Antes o
+  // pedido era aceito e a leitura ia só ao C2X, que não conhece o produto: 200 com a tabela vazia.
+  // Os códigos que o C2X conhece continuam indo para lá; os próprios vêm de `hercules_unidades`
+  // (lib/apolo/incorporador/unidades-do-panteon.ts). Só produto próprio no pedido = nem vai ao C2X.
+  //
+  // ⚠️ E O PRODUTO COM DONO MARCADO TAMBÉM (D2 do Lucas, 16/09/2026): o Garden da Cecílio tem preço,
+  // área e matrícula corrigidos no Panteon, e a carga do C2X não o atualiza mais. `lidosDoPanteon`
+  // decide a lista (os próprios mais os com `operado_por`), e o que sobra vai ao C2X como antes.
+  const propriosDoPedido = lidosDoPanteon({
+    cadastro: doPanteon.cadastro,
+    codes,
+    idsDaSessao: doPanteon.idsDaSessao,
+    proprios: doPanteon.proprios,
+  });
+  const codesDoC2x = codigosParaOC2x(codes, propriosDoPedido);
+
   try {
-    // As duas leituras correm juntas: o tópico não depende das unidades.
-    const [result, topico] = await Promise.all([
-      loadApoloEnterpriseUnits(codes),
+    // As leituras correm juntas: o tópico não depende das unidades.
+    const [result, topico, doPanteonNoPedido] = await Promise.all([
+      codesDoC2x.length > 0
+        ? loadApoloEnterpriseUnits(codesDoC2x)
+        : Promise.resolve({ ok: true as const, units: [] }),
       topicoDoEvento(),
+      propriosDoPedido.length > 0
+        ? lerUnidadesDoPanteonDoPedido(propriosDoPedido)
+        : Promise.resolve([]),
     ]);
 
     if (!result.ok) {
@@ -123,7 +180,7 @@ export async function GET(request: Request) {
     // rota irmã de assinaturas (Lucas, 18/08/2026): a limpeza é no SERVIDOR, não na tela. O
     // shape continua EXATAMENTE o da UnidadesTab (os campos existem, só vazios), e a tela
     // interna (/api/apolo/empreendimentos/unidades) segue recebendo tudo.
-    const units = result.units.map((unit) => ({
+    const units = [...result.units, ...doPanteonNoPedido].map((unit) => ({
       ...unit,
       movement: unit.movement
         ? {

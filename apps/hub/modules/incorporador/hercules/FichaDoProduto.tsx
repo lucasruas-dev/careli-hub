@@ -1,20 +1,12 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import {
-  ArrowLeft,
-  ContactRound,
-  Grid2x2,
-  Layers,
-  // Alias pelo mesmo motivo da view do Apolo: `Link` sombrearia o do next/link.
-  Link2 as LinkIcon,
-  Network,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 
 import type { ApoloEnterpriseRow } from "@/lib/apolo/empreendimentos";
 import type { LinhaDoPainel } from "@/lib/apolo/incorporador/painel-de-produtos";
 import type { LinkPublico } from "@/lib/hercules/links-do-empreendimento";
+import { ehIdDoPanteon } from "@/lib/hercules/produto-novo";
 import { toTitleCase } from "@/lib/format/name-case";
 import { LinksTab } from "@/modules/apolo/blocks/empreendimentos/links-tab";
 import {
@@ -26,8 +18,20 @@ import {
 
 import { MOLDURA_TAILWIND } from "../TelaContratos";
 import { useTemaDoPortal } from "../tema";
+import {
+  type AbaDaFicha,
+  abasDaFicha,
+  destinoDoResumo,
+  type ModoDaFicha,
+} from "./abas-da-ficha";
+import { ArquivosDoProduto } from "./ArquivosDoProduto";
 import { BoardDoProduto } from "./BoardDoProduto";
+import { JanelaDeCadastroDeUnidades } from "./CadastroDeUnidades";
+import { CadastroDoProduto } from "./CadastroDoProduto";
 import { ImobiliariasDoProduto } from "./ImobiliariasDoProduto";
+import { MinutasDoProduto } from "./MinutasDoProduto";
+import { PoliticasDoProduto } from "./PoliticasDoProduto";
+import { RelacionamentosDoProduto } from "./RelacionamentosDoProduto";
 import { ResumoDoProduto } from "./ResumoDoProduto";
 import { UnidadesDoProduto } from "./UnidadesDoProduto";
 
@@ -79,41 +83,52 @@ import { UnidadesDoProduto } from "./UnidadesDoProduto";
 //   • *"contrato tem que sair daqui, ele já tem a tela dele"*. A aba Contratos do menu mostra o
 //     mesmo Board da Têmis com o mesmo recorte — e agora com filtro por empreendimento, que é o
 //     que a aba da ficha entregava a mais.
-/** As abas da ficha. O Resumo salta para as outras três pelo `onIr`. */
-export type AbaDaFicha =
-  | "cadastro"
-  | "imobiliarias"
-  // Os tres links publicos do produto. Lucas (10/09/2026): *"no perfil da gurgel vai ficar
-  // dentro de produtos, dentro do empreendimento"* — a ficha, e nao o menu do portal.
-  | "links"
-  | "resumo"
-  | "unidades";
-
-// Ícones na régua do Apolo: Resumo e Cadastro são os MESMOS da ficha interna (Layers e
-// ContactRound); Imobiliárias usa o de Relacionamentos (Network), que é o que elas são para o
-// produto; Vendas é o TrendingUp de lá; Contratos é o FileSignature da Têmis.
-const ABAS: ReadonlyArray<{ icone: LucideIcon; id: AbaDaFicha; rotulo: string }> = [
-  { icone: Layers, id: "resumo", rotulo: "Resumo" },
-  { icone: ContactRound, id: "cadastro", rotulo: "Cadastro" },
-  { icone: Network, id: "imobiliarias", rotulo: "Imobiliárias" },
-  { icone: Grid2x2, id: "unidades", rotulo: "Unidades" },
-  // Links fecha a fila, como no Apolo: e o produto visto POR FORA.
-  { icone: LinkIcon, id: "links", rotulo: "Links" },
-];
+//
+// As abas de cada modo, o tipo e o atalho do Resumo moram em `abas-da-ficha.ts`, puros e com
+// teste (este arquivo arrasta o BoardView inteiro, e o teste não precisa dele). Os tipos seguem
+// exportados daqui para quem já os importava.
+//
+// ⚠️ ESCRITA SÓ NO PRODUTO QUE O PORTAL OPERA (decisão do Lucas, 16/09/2026). A Cecílio enxerga o VOC
+// e o VOR, mas eles seguem da Careli: na ficha deles o board é só leitura, as unidades não editam,
+// os arquivos não sobem e as abas/botões de escrita (Minutas, Adicionar unidades) nem aparecem. Quem
+// diz é `linha.podeEscrever`, que o painel calcula com a MESMA régua das rotas
+// (`operacao-do-produto.ts`); esconder aqui é conveniência, a trava é a rota. No comercial o painel
+// devolve `podeEscrever` verdadeiro em tudo, e a Gurgel segue como sempre.
+export type { AbaDaFicha, ModoDaFicha } from "./abas-da-ficha";
 
 export function FichaDoProduto({
   linha,
+  modo = "comercial",
   onVoltar,
   row,
 }: {
   /** A linha do painel (/api/incorporador/produtos/painel): o id e o nome que as abas recebem. */
   linha: LinhaDoPainel;
+  /**
+   * Quem opera (ver `ModoDaFicha`). Sem a prop, o comercial de sempre: NADA muda para a Gurgel.
+   * Quem decide é quem monta a ficha, por `portalOperaVenda` e `ehPortalComercial`.
+   */
+  modo?: ModoDaFicha;
   onVoltar: () => void;
   /** A mesma linha no formato da tela do Apolo (`linhaParaRow`): cenário, código, cidade. */
   row: ApoloEnterpriseRow;
 }) {
   // Abre no Resumo, como a ficha do Apolo.
   const [aba, setAba] = useState<AbaDaFicha>("resumo");
+  const incorporador = modo === "incorporador";
+  // O portal que opera a própria venda E opera este produto. No comercial é sempre falso de propósito:
+  // a Gurgel não cadastra nem edita unidade, não edita minuta e não tem a aba Arquivos.
+  const operavel = incorporador && linha.podeEscrever === true;
+  // A escrita que pede UM produto real (minuta, unidade nova) vai para `linha.enterpriseId`; o tipo
+  // é o do filho quando a linha é um pai com uma etapa só (a unidade nasce no filho).
+  const tipoDoAlvo =
+    linha.filhos.find((filho) => filho.id === linha.enterpriseId)?.tipoProduto ??
+    linha.tipoProduto ??
+    "loteamento";
+  const adicionaUnidades = operavel && ehIdDoPanteon(linha.enterpriseId);
+  // A janela de "Adicionar unidades" e a chave que remonta a tabela para reler depois do cadastro.
+  const [cadastroDeUnidadesAberto, setCadastroDeUnidadesAberto] = useState(false);
+  const [recargaDasUnidades, setRecargaDasUnidades] = useState(0);
 
   // A porta do PORTAL. Sem Authorization: o proxy libera /api/incorporador/* pelo cookie
   // `apolo_inc`, e a rota recorta pelo escopo do token — `emp` so REDUZ o que a sessao ja tem.
@@ -177,7 +192,7 @@ export function FichaDoProduto({
 
       {/* A barra de abas: classes idênticas às do EnterpriseDetail, para a ficha ser a mesma. */}
       <nav className="flex shrink-0 flex-wrap gap-1.5 rounded-xl border border-line bg-subtle/70 p-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        {ABAS.map((item) => {
+        {abasDaFicha(modo, { minutas: operavel && Boolean(linha.enterpriseId) }).map((item) => {
           const ativa = aba === item.id;
 
           return (
@@ -205,20 +220,92 @@ export function FichaDoProduto({
           conteúdo rola por fora. */}
       <section
         className={
-          aba === "unidades"
+          // Minutas também: o editor da minuta é `flex-1` e rola por dentro.
+          aba === "unidades" || aba === "minutas"
             ? "flex min-h-0 flex-1 flex-col overflow-auto"
             : "min-h-0 flex-1 overflow-auto"
         }
       >
         {aba === "resumo" ? (
-          <ResumoDoProduto emp={linha.id} onIr={setAba} row={row} />
+          <ResumoDoProduto
+            emp={linha.id}
+            onIr={(destino) => setAba(destinoDoResumo(modo, destino))}
+            row={row}
+          />
         ) : null}
-        {aba === "cadastro" ? <BoardDoProduto emp={linha.id} /> : null}
+        {/* "cadastro" é o board no comercial e os dados do empreendimento no incorporador (ver
+            `ABAS_DO_INCORPORADOR` em abas-da-ficha.ts). */}
+        {aba === "cadastro" ? (
+          incorporador ? (
+            <CadastroDoProduto emp={linha.id} row={row} />
+          ) : (
+            <BoardDoProduto emp={linha.id} somenteLeitura={linha.podeEscrever !== true} />
+          )
+        ) : null}
+        {/* O board só existe no modo "incorporador" (o portal que opera a própria venda, hoje o
+            Cecílio): é ele quem faz o crédito dos clientes dele, então o Serasa aparece. No produto
+            que ele só consulta (VOC, VOR), o board abre só leitura. */}
+        {aba === "board" ? (
+          <BoardDoProduto
+            emp={linha.id}
+            operaSozinho={incorporador}
+            somenteLeitura={linha.podeEscrever !== true}
+          />
+        ) : null}
         {aba === "imobiliarias" ? <ImobiliariasDoProduto emp={linha.id} /> : null}
         {/* A tabela de unidades do Apolo, montada pela porta do portal. É a MESMA peça que morava
-            dentro da Vendas — só perdeu as sub-abas em volta. */}
-        {aba === "unidades" ? <UnidadesDoProduto emp={linha.id} row={row} /> : null}
+            dentro da Vendas — só perdeu as sub-abas em volta. "Adicionar unidades" só no produto
+            nascido no Panteon que o portal opera (a unidade do C2X não nasce por aqui). */}
+        {aba === "unidades" ? (
+          <>
+            {adicionaUnidades ? (
+              <div className="flex shrink-0 justify-end pb-2">
+                <button
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-ink px-3 text-sm font-semibold text-canvas"
+                  onClick={() => setCadastroDeUnidadesAberto(true)}
+                  type="button"
+                >
+                  <Plus aria-hidden="true" className="size-4" />
+                  Adicionar unidades
+                </button>
+              </div>
+            ) : null}
+            <UnidadesDoProduto
+              emp={linha.id}
+              enterpriseId={linha.enterpriseId ?? null}
+              // A `key` remonta a tabela depois do cadastro, para ela reler as unidades novas.
+              key={recargaDasUnidades}
+              podeEditar={operavel}
+              row={row}
+            />
+            {adicionaUnidades && linha.enterpriseId ? (
+              <JanelaDeCadastroDeUnidades
+                aberto={cadastroDeUnidadesAberto}
+                aoConcluir={() => setRecargaDasUnidades((n) => n + 1)}
+                aoFechar={() => setCadastroDeUnidadesAberto(false)}
+                emp={linha.enterpriseId}
+                nomeDoProduto={toTitleCase(row.name)}
+                prefixo={linha.codes[0] ?? row.code}
+                tipoProduto={tipoDoAlvo}
+              />
+            ) : null}
+          </>
+        ) : null}
+        {aba === "relacionamentos" ? (
+          <RelacionamentosDoProduto emp={linha.id} row={row} />
+        ) : null}
+        {aba === "politica" ? <PoliticasDoProduto emp={linha.id} /> : null}
+        {/* Os modelos de contrato do produto, pela Têmis do portal. Só no produto que o portal opera
+            e com UM enterprise real (a minuta é amarrada ao id, nunca a "pai:<uuid>"). */}
+        {aba === "minutas" && operavel && linha.enterpriseId ? (
+          <MinutasDoProduto enterpriseId={linha.enterpriseId} nome={toTitleCase(row.name)} />
+        ) : null}
         {aba === "links" ? <LinksTab buscar={buscarLinks} /> : null}
+        {/* O time do cliente é quem alimenta as fotos e os vídeos do próprio produto, e só do que ele
+            opera: no produto só consulta a aba lista e não sobe nada. */}
+        {aba === "arquivos" ? (
+          <ArquivosDoProduto emp={linha.id} podeEditar={linha.podeEscrever === true} />
+        ) : null}
       </section>
     </div>
   );

@@ -51,6 +51,7 @@ export type IndiceCorrecao =
   | "IGPM_ANUAL"
   | "IGPM_MENSAL"
   | "INCC_DI_MENSAL"
+  | "INCC_M_ANUAL"
   | "INCC_M_MENSAL"
   | "INPC_MENSAL"
   | "IPCA_ANUAL"
@@ -60,6 +61,22 @@ export type IndiceCorrecao =
   | "TR_MENSAL";
 
 export type PlanoComercial = {
+  /**
+   * A categoria a que este plano pertence, quando ele é de uma.
+   *
+   * ⚠️ NULO NÃO É "SEM DONO", É "DO PRODUTO INTEIRO". Plano com categoria vale SÓ para o lote
+   * daquela categoria — ver `lib/hercules/recorte-da-unidade.ts`. Enquanto este campo não existia,
+   * a Mesa de Venda não tinha como distinguir os dois, e o primeiro plano de categoria cadastrado
+   * entraria na lista de todos os lotes do produto.
+   */
+  categoriaId?: null | string;
+  /**
+   * O `enterprise_id` de quem cadastrou — o degrau da hierarquia em que este plano vive.
+   *
+   * Opcional porque os planos que vêm do C2X são agrupados por empreendimento na própria estrutura
+   * (`PlanosDoEmpreendimento`), e ali o dono é a chave do grupo.
+   */
+  enterpriseId?: null | string;
   /** % de entrada/sinal, de 0 a 100 — como o C2X grava e como o comercial fala. NUNCA fração. */
   entradaPercentual: number;
   indiceCorrecao: IndiceCorrecao;
@@ -110,6 +127,11 @@ export const INDICES: Record<IndiceCorrecao, string> = {
   // deram 0,66% e 0,85%. Num contrato de 120 parcelas a diferença é de milhares de reais, e é por
   // isso que a casa cadastra a VARIANTE e nunca a família "INCC".
   INCC_DI_MENSAL: "INCC-DI mensal",
+  // Lucas (16/09/2026), na aba Planos do Lagoa Bonita: *"coloca o INCC anual por favor nesses
+  // indices de correções"*. É o INCC-M (a variante padrão de loteamento, a mesma série 7456 do
+  // mensal) aplicado uma vez por ano, no aniversário, como o IPCA e o IGP-M anuais. A linha da
+  // tabela `temis_indices` nasce na migration 0174, e as duas coisas sobem juntas.
+  INCC_M_ANUAL: "INCC-M anual",
   INCC_M_MENSAL: "INCC-M mensal",
   INPC_MENSAL: "INPC mensal",
   IPCA_ANUAL: "IPCA anual",

@@ -50,6 +50,7 @@ import {
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
 import { unirConjuge, unirEndereco } from "@/lib/apolo/cadastro-cascata";
 import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
+import { lerComColunasDoApartamento } from "@/lib/hercules/nome-da-unidade";
 
 import {
   areaPorExtenso,
@@ -89,6 +90,10 @@ type LinhaDaProposta = {
 };
 
 type LinhaDaUnidade = {
+  /** Só no prédio (0171). 0 = térreo, negativo = subsolo. Ausente sem a migration. */
+  andar?: null | number | string;
+  /** Só no prédio (0171). É ELA que diz que a unidade é apartamento. Ausente sem a migration. */
+  apartamento?: null | string;
   area: null | number | string;
   area_extenso: null | string;
   codigo: null | string;
@@ -101,6 +106,12 @@ type LinhaDaUnidade = {
   preco_tabela: null | number | string;
   quadra: null | string;
   tipo_unidade: null | string;
+  /** Só no prédio (0171). */
+  tipologia?: null | string;
+  /** Só no prédio (0171). Nula = prédio de torre única. */
+  torre?: null | string;
+  /** Só no prédio (0171). 0 = sem vaga. */
+  vagas?: null | number | string;
 };
 
 type LinhaDoEmpreendimento = {
@@ -288,13 +299,19 @@ export async function dadosDaProposta(
   const [unidade, empreendimento, doVinculado] = await Promise.all([
     proposta.unidade_id
       ? umaLinha<LinhaDaUnidade>(
-          sb
-            .from("hercules_unidades")
-            .select(
-              "area, area_extenso, codigo, enterprise_id, lote, matricula, matricula_livro, preco_extenso, preco_tabela, quadra, tipo_unidade",
-            )
-            .eq("id", proposta.unidade_id)
-            .maybeSingle(),
+          // ⚠️ AS COLUNAS DO PRÉDIO VÊM JUNTO, E SEM ELAS SE A 0171 NÃO ENTROU (onda 2, vertical).
+          // Sem a leitura, as variáveis do apartamento (torre, andar, apartamento, tipologia, vagas,
+          // área privativa) saíam vazias no contrato de todo prédio. Sem a migration não existe
+          // apartamento nenhum, então ler sem as colunas é exato.
+          lerComColunasDoApartamento((extras) =>
+            sb
+              .from("hercules_unidades")
+              .select(
+                `area, area_extenso, codigo, enterprise_id, lote, matricula, matricula_livro, preco_extenso, preco_tabela, quadra, tipo_unidade${extras}`,
+              )
+              .eq("id", proposta.unidade_id)
+              .maybeSingle(),
+          ),
           "hercules_unidades",
         )
       : Promise.resolve(null),
@@ -990,6 +1007,31 @@ function gerais(
     por("numero_lote_extenso", extensoDeInteiro(lote));
 
     const area = numero(unidade.area);
+
+    // ── O APARTAMENTO (onda 2, vertical) ──
+    //
+    // ⚠️ É O APARTAMENTO PREENCHIDO QUE DIZ "PRÉDIO", a mesma porta de `ehUnidadeVertical`: o
+    // loteamento nunca tem a coluna, e o prédio nunca tem quadra e lote. As variáveis do prédio só
+    // nascem nele; num lote elas não existem e a minuta de loteamento nem as pede.
+    //
+    // ⚠️ A ÁREA PRIVATIVA LÊ A MESMA COLUNA `area` (a 0171 não criou outra; ver o catálogo). O extenso
+    // gravado ganha; sem ele, o número vira extenso aqui, porque a unidade cadastrada pelo Panteon
+    // nasce com `area_extenso` nulo.
+    const apartamento = texto(unidade.apartamento);
+    if (apartamento) {
+      por("numero_torre", texto(unidade.torre));
+      por("numero_andar", inteiroComoTexto(unidade.andar));
+      por("numero_apartamento", apartamento);
+      // "304" tem extenso; "304-A" não, e não ganha um "zero" inventado (a régua da quadra com letra).
+      por("numero_apartamento_extenso", extensoDeInteiro(apartamento));
+      por("tipologia", texto(unidade.tipologia));
+      por("vagas", inteiroComoTexto(unidade.vagas));
+      if (area !== null) {
+        por("area_privativa", `${comDuasCasas(area)} m²`);
+        por("area_privativa_extenso", texto(unidade.area_extenso) || areaPorExtenso(area));
+      }
+    }
+
     if (area !== null) {
       por("area_lote", `${comDuasCasas(area)} m²`);
       por("unidade_area", comDuasCasas(area));
@@ -1016,8 +1058,10 @@ function gerais(
       avisos.push("A unidade não tem matrícula: a qualificação do imóvel sai incompleta.");
     }
   } else {
+    // ⚠️ SEM A UNIDADE NÃO SE SABE SE É LOTE OU APARTAMENTO, e o aviso fala dos dois: dizer só
+    // "quadra e lote" num prédio mandaria alguém procurar o que o prédio não tem.
     avisos.push(
-      "A proposta não aponta para nenhuma unidade: quadra, lote, área e matrícula ficaram em branco.",
+      "A proposta não aponta para nenhuma unidade: a identificação do imóvel (quadra e lote, ou torre e apartamento no prédio), a área e a matrícula ficaram em branco.",
     );
   }
 
@@ -1467,6 +1511,17 @@ function percentual(valor: number): string {
 function documentoImprimivel(bruto: unknown): string {
   const d = soDigitos(texto(bruto));
   return d.length === 11 || d.length === 14 ? formatarDocumento(d) : "";
+}
+
+/**
+ * Um inteiro gravado (andar, vagas) como texto; vazio quando não há número.
+ *
+ * ⚠️ ZERO É VALOR, NÃO AUSÊNCIA: andar 0 é o térreo e 0 vaga é "sem vaga". Tratar 0 como vazio faria
+ * o contrato imprimir `[vagas]` exatamente para quem comprou sem garagem.
+ */
+function inteiroComoTexto(bruto: unknown): string {
+  const n = numero(bruto);
+  return n !== null && Number.isInteger(n) ? String(n) : "";
 }
 
 /** O extenso de um rótulo que é número inteiro; vazio quando não é ("A", "Q7"). */

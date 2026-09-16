@@ -41,6 +41,8 @@ type LinhaCrua = {
   id: string;
   iris_ticket_id: null | string;
   observacao: null | string;
+  /** 0172. Só vem na leitura do board, e só com a coluna: ausente = a Careli (nulo). */
+  operado_por?: null | string;
   proposta_id: null | string;
   tipo: string;
   trabalho_origem_id: null | string;
@@ -110,6 +112,15 @@ export type TrabalhoDoBoard = Trabalho & {
   evidenciaPath: null | string;
   irisTicketId: null | string;
   /**
+   * Quem confecciona (`temis_trabalhos.operado_por`, 0172): nulo = a Careli; o uuid de um
+   * incorporador = o portal dele.
+   *
+   * ⚠️ É O QUE PÕE O SELO "INCORPORADOR" NO CARD da supervisão da Careli (`?incluir=incorporadores`).
+   * Sem a 0172 a coluna não existe e todo card sai nulo, que é a verdade: sem a coluna, ninguém de
+   * fora confecciona nada.
+   */
+  operadoPor: null | string;
+  /**
    * A proposta do Hercules que originou o trabalho.
    *
    * ⚠️ SOBE ATE O BOARD, e nao para no insert: e por este id que a Temis vai buscar cliente,
@@ -121,8 +132,103 @@ export type TrabalhoDoBoard = Trabalho & {
   propostaId: null | string;
 };
 
+/**
+ * O recorte de DONO que o board aceita: `careli` (padrão), `todos` ou o uuid de um incorporador.
+ *
+ * ⚠️ `(string & {})` MANTÉM O AUTOCOMPLETAR DAS DUAS PALAVRAS sem fechar o tipo para o uuid.
+ */
+export type OperadoPorDoBoard = "careli" | "todos" | (string & {});
+
+export type RecorteDoDono =
+  | { id: string; tipo: "incorporador" }
+  | { tipo: "careli" }
+  | { tipo: "nenhum" }
+  | { tipo: "todos" };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Traduz o `operadoPor` pedido no recorte que a consulta aplica.
+ *
+ * ⚠️ SÓ `undefined` E `null` VIRAM A CARELI. Nulo é o valor da coluna para "a Careli confecciona"
+ * (e o que `operadoPorDoAtor` devolve para o hub). Já a string vazia, ou qualquer coisa que não seja
+ * uuid, é um id de incorporador que se perdeu no caminho — e a resposta fail-closed é "nenhum".
+ *
+ * ⚠️ EXPORTADA PARA O TESTE: é a única parte pura do recorte, e é dela que depende o board da Careli
+ * não mostrar o que é da Cecílio.
+ */
+export function recorteDoDono(operadoPor: null | OperadoPorDoBoard | undefined): RecorteDoDono {
+  if (operadoPor === undefined || operadoPor === null) return { tipo: "careli" };
+  if (typeof operadoPor !== "string") return { tipo: "nenhum" };
+
+  const valor = operadoPor.trim();
+  if (valor === "careli") return { tipo: "careli" };
+  if (valor === "todos") return { tipo: "todos" };
+  if (UUID.test(valor)) return { id: valor.toLowerCase(), tipo: "incorporador" };
+  return { tipo: "nenhum" };
+}
+
+/**
+ * O erro do Supabase é "a coluna `operado_por` ainda não existe" (migration 0172 pendente)?
+ *
+ * ⚠️ SÓ PARA ESTA COLUNA, e pelo nome dela na mensagem — a mesma cautela de
+ * `ehColunaDaRessalvaAusente` (planos.ts). `42703` (Postgres, no filtro) e `PGRST204` (schema cache,
+ * no insert) dizem "coluna não existe" para QUALQUER coluna: engolir os dois sem olhar o nome faria
+ * um erro de digitação em outra coluna virar, calado, um board sem recorte de dono.
+ */
+export function ehColunaDoDonoAusente(erro: unknown): boolean {
+  if (!erro || typeof erro !== "object") return false;
+  const { code, message } = erro as { code?: unknown; message?: unknown };
+  const mensagem = typeof message === "string" ? message.toLowerCase() : "";
+  const codigoDeColuna = code === "42703" || code === "PGRST204";
+  return codigoDeColuna && mensagem.includes("operado_por");
+}
+
+/**
+ * Até quando (epoch ms) este processo já sabe que a coluna `operado_por` NÃO existe.
+ *
+ * ⚠️ POR QUE LEMBRAR (revisão da onda 3, 16/09/2026). O código vai antes da migration 0172, de
+ * propósito, e sem memória cada leitura do board pagava DUAS consultas (a primeira falhando com
+ * 42703) e uma linha de log. O quadro da Têmis recarrega a cada minuto por aba aberta, e a aba
+ * Contratos da Gurgel passa pelo mesmo caminho: o dobro de consultas e de log por pessoa olhando,
+ * numa casa que já teve fatura alta por leitura repetida. Lembrando por alguns minutos, a primeira
+ * leitura descobre e as seguintes vão direto à consulta sem o filtro.
+ *
+ * ⚠️ É MEMÓRIA DE PROCESSO, COM PRAZO CURTO: cada instância da Vercel descobre sozinha.
+ *
+ * (16/09/2026, revisão do conjunto) ⚠️ ELA NÃO DECIDE MAIS O FILTRO DA CARELI NEM O DO INCORPORADOR.
+ * A frase antiga ("nesse intervalo nenhum trabalho de incorporador pode ter nascido sem a coluna") era
+ * falsa quando o código sobe antes da migration, que é o caminho natural com o deploy automático:
+ * `abrirTrabalho` não consulta a memória, então assim que a 0172 entra o card da Cecília já nasce com
+ * dono, e a instância que ainda lembrava da ausência entregava esse card (nome e CPF do comprador) no
+ * board da Careli e na aba Contratos da Gurgel, por até 5 minutos. Agora a Careli e o incorporador
+ * tentam SEMPRE com a coluna (o 42703 é barato) e a memória só serve para: (a) a supervisão
+ * (`todos`), que não filtra dono e só perde o selo; (b) não repetir o log a cada leitura.
+ */
+let colunaDoDonoAusenteAte = 0;
+const LEMBRAR_AUSENCIA_MS = 5 * 60 * 1000;
+
+/** Só para teste: esquece o que o processo aprendeu sobre a coluna `operado_por`. */
+export function esquecerAusenciaDaColunaDoDono(): void {
+  colunaDoDonoAusenteAte = 0;
+}
+
 const CAMPOS =
   "id, tipo, estagio, estagio_desde, enterprise_id, enterprise_codigo, enterprise_nome, unidade, cliente_nome, cliente_cpf, atividades_feitas, observacao, canal, iris_ticket_id, evidencia_path, trabalho_origem_id, proposta_id, criado_em";
+
+/**
+ * Os campos do BOARD: os de sempre mais o dono (0172).
+ *
+ * ⚠️ UMA CONSTANTE À PARTE, E NÃO `operado_por` DENTRO DE `CAMPOS`. `marcarAtividade` lê o card com
+ * `CAMPOS`; com a coluna ali, marcar atividade quebraria enquanto a 0172 não estiver no banco. O
+ * board já sabe cair sem a coluna (ver `trabalhosDoBoard`), então só ele pede.
+ */
+const CAMPOS_DO_BOARD = `${CAMPOS}, operado_por`;
+
+/** 1.000 é o teto de linhas por resposta do PostgREST (`max-rows`), que corta calado. */
+const PAGINA_DO_BOARD = 1000;
+/** 50 páginas = 50 mil cards. Passar disso é defeito, e o board devolve o que leu até ali. */
+const MAXIMO_DE_PAGINAS_DO_BOARD = 50;
 
 function mapear(l: LinhaCrua): TrabalhoDoBoard {
   return {
@@ -143,6 +249,8 @@ function mapear(l: LinhaCrua): TrabalhoDoBoard {
     id: l.id,
     irisTicketId: l.iris_ticket_id,
     observacao: l.observacao,
+    // Só a leitura do board pede a coluna (ver `CAMPOS_DO_BOARD`); nas outras, fica nulo.
+    operadoPor: typeof l.operado_por === "string" && l.operado_por.trim() ? l.operado_por : null,
     propostaId: l.proposta_id,
     tipo: l.tipo as TipoDeTrabalho,
     trabalhoOrigemId: l.trabalho_origem_id,
@@ -172,27 +280,99 @@ function mapear(l: LinhaCrua): TrabalhoDoBoard {
  * coordenador de fora e não pediu nada disso. Ligar para os dois faria a casa pagar, a cada minuto
  * de cada portal aberto, por um selo que só uma das telas desenha — e esta casa já teve fatura alta
  * da Vercel por leitura repetida que ninguém tinha pedido.
+ *
+ * `operadoPor` é QUEM CONFECCIONA (`temis_trabalhos.operado_por`, migration 0172). Padrão `careli`:
+ * só os trabalhos da Careli (coluna nula). Um uuid: só os daquele incorporador. `todos`: sem recorte.
+ *
+ * ⚠️ O PADRÃO É A CARELI, E ISSO MUDA O BOARD DA CARELI DE PROPÓSITO. Decisão do Lucas (16/09/2026):
+ * a venda do time da Cecílio é confeccionada pela Cecílio, no portal. O jurídico da Careli deixa de
+ * ver esses cards na fila dele (continua abrindo pelo id, para supervisão). Quem quer tudo pede
+ * `todos` explicitamente; nenhum leitor ganha o trabalho de outro dono por esquecer o parâmetro.
+ *
+ * ⚠️ VALOR TORTO DEVOLVE VAZIO SEM CONSULTAR, pelo mesmo motivo da lista vazia de empreendimentos:
+ * um `operadoPor: ""` vindo de uma sessão sem incorporador tem de virar "nada", nunca "todos".
+ *
+ * ⚠️ TOLERANTE À 0172 NÃO APLICADA. Sem a coluna, nenhum trabalho tem outro dono: o recorte da
+ * Careli repete a consulta sem o filtro (o board sai igual ao de hoje) e o de um incorporador
+ * devolve vazio.
  */
 export async function trabalhosDoBoard(input?: {
   comAssinaturas?: boolean;
   enterpriseId?: string;
   enterpriseIds?: string[];
+  operadoPor?: OperadoPorDoBoard;
 }): Promise<TrabalhoDoBoard[]> {
   if (input?.enterpriseIds && input.enterpriseIds.length === 0) return [];
+
+  const dono = recorteDoDono(input?.operadoPor);
+  if (dono.tipo === "nenhum") return [];
 
   const supabase = createApoloAdminClient();
   if (!supabase) return [];
 
-  let consulta = supabase
-    .from("temis_trabalhos")
-    .select(CAMPOS)
-    .eq("workspace_id", "careli")
-    .order("estagio_desde", { ascending: true });
+  // `comColunaDoDono`: a leitura pede `operado_por` (para o selo do card) e aplica o recorte de dono.
+  // Sem a 0172, as duas coisas saem juntas: nem a coluna nem o filtro existem.
+  const montar = (comColunaDoDono: boolean, de: number) => {
+    let consulta = supabase
+      .from("temis_trabalhos")
+      .select(comColunaDoDono ? CAMPOS_DO_BOARD : CAMPOS)
+      .eq("workspace_id", "careli")
+      .order("estagio_desde", { ascending: true })
+      // Desempate estável: sem ele, duas páginas podiam repetir ou pular o card do mesmo instante.
+      .order("id", { ascending: true });
 
-  if (input?.enterpriseId) consulta = consulta.eq("enterprise_id", input.enterpriseId);
-  if (input?.enterpriseIds) consulta = consulta.in("enterprise_id", input.enterpriseIds);
+    if (input?.enterpriseId) consulta = consulta.eq("enterprise_id", input.enterpriseId);
+    if (input?.enterpriseIds) consulta = consulta.in("enterprise_id", input.enterpriseIds);
 
-  const { data, error } = await consulta;
+    if (comColunaDoDono && dono.tipo === "careli") consulta = consulta.is("operado_por", null);
+    if (comColunaDoDono && dono.tipo === "incorporador") {
+      consulta = consulta.eq("operado_por", dono.id);
+    }
+
+    return consulta.range(de, de + PAGINA_DO_BOARD - 1);
+  };
+
+  /**
+   * O board inteiro, de mil em mil (arrumação da onda 3, 16/09/2026).
+   *
+   * ⚠️ O PostgREST CORTA EM 1.000 LINHAS SEM ERRO. Sem paginar, o card 1.001 da fila sumiria calado,
+   * e a supervisão da Careli (`todos`) é a primeira a passar disso. Erro em qualquer página devolve
+   * o erro, e quem chama decide (coluna ausente repete sem ela; o resto é board vazio com log).
+   */
+  const lerTudo = async (
+    comColunaDoDono: boolean,
+  ): Promise<{ data: LinhaCrua[] | null; error: unknown }> => {
+    const linhas: LinhaCrua[] = [];
+    for (let pagina = 0; pagina < MAXIMO_DE_PAGINAS_DO_BOARD; pagina += 1) {
+      const { data, error } = await montar(comColunaDoDono, pagina * PAGINA_DO_BOARD);
+      if (error) return { data: null, error };
+      const lidas = (data ?? []) as unknown as LinhaCrua[];
+      linhas.push(...lidas);
+      if (lidas.length < PAGINA_DO_BOARD) return { data: linhas, error: null };
+    }
+    console.error("[temis] o board passou do teto de páginas; saiu o que foi lido");
+    return { data: linhas, error: null };
+  };
+
+  // A memória da ausência (ver `colunaDoDonoAusenteAte`) só pula a consulta que falha na supervisão,
+  // que não filtra dono. A Careli e o incorporador tentam sempre com a coluna: um card com dono gravado
+  // logo depois da 0172 nunca cai no recorte errado.
+  const lembrava = Date.now() < colunaDoDonoAusenteAte;
+  const jaSabeQueFalta = dono.tipo === "todos" && lembrava;
+
+  let resposta = await lerTudo(!jaSabeQueFalta);
+  if (resposta.error && !jaSabeQueFalta && ehColunaDoDonoAusente(resposta.error)) {
+    colunaDoDonoAusenteAte = Date.now() + LEMBRAR_AUSENCIA_MS;
+    // Sem a coluna, nada foi confeccionado por incorporador: o dele é vazio, o da Careli é tudo.
+    if (dono.tipo === "incorporador") {
+      if (!lembrava) console.info("[temis] migration 0172 pendente: board do incorporador sai vazio");
+      return [];
+    }
+    if (!lembrava) console.info("[temis] migration 0172 pendente: board sem o dono do trabalho");
+    resposta = await lerTudo(false);
+  }
+
+  const { data, error } = resposta;
   // ⚠️ LISTA VAZIA POR ERRO É INDISTINGUÍVEL DE FILA VAZIA, e o board diz "Nada aqui" nas duas. Foi
   // assim que o Lucas passou a tarde de 06/09 achando que os pedidos não chegavam à Têmis — ali a
   // causa era outra (um filtro invisível), mas o silêncio desta linha é a mesma armadilha: uma
@@ -204,7 +384,7 @@ export async function trabalhosDoBoard(input?: {
   }
   if (!data) return [];
 
-  const trabalhos = (data as LinhaCrua[]).map(mapear);
+  const trabalhos = data.map(mapear);
 
   // ⚠️ UMA CONSULTA A MAIS PARA O BOARD INTEIRO, e não uma por card. O board tem sete linhas hoje e
   // não deve passar de algumas dezenas, mas "uma consulta por card" é o tipo de conta que só dói
@@ -620,6 +800,15 @@ export type NovoTrabalho = {
   evidenciaPath?: null | string;
   irisTicketId?: null | string;
   observacao?: null | string;
+  /**
+   * QUEM CONFECCIONA: o `apolo_incorporadores.id` quando é o time do incorporador; nulo (ou
+   * ausente) quando é a Careli. Vai para `temis_trabalhos.operado_por` (migration 0172).
+   *
+   * ⚠️ QUEM DECIDE É A ORIGEM DA VENDA (Lucas, 16/09/2026): a rota do portal só preenche quando
+   * `portalConfeccionaContrato(slug, tipo)`. A venda da Gurgel no produto da Cecílio fica nula e
+   * vai para a Têmis da Careli.
+   */
+  operadoPor?: null | string;
   tipo: TipoDeTrabalho;
   trabalhoOrigemId?: null | string;
   unidade: string;
@@ -634,6 +823,20 @@ export type NovoTrabalho = {
   vendaId?: null | string;
 };
 
+export type OpcoesDaAbertura = {
+  /**
+   * Com a 0172 pendente, grava o card SEM dono (na fila da Careli) em vez de recusar.
+   *
+   * ⚠️ SÓ QUEM PEDE EXPLICITAMENTE (revisão da onda 3, 16/09/2026). Foi pensado para a VENDA: as
+   * rotas de venda não derrubam a transição quando a Têmis falha, e recusar ali perderia o pedido
+   * inteiro. Como padrão, valia também para a abertura LIVRE do portal (`POST
+   * /api/incorporador/temis/trabalhos`, texto do corpo): gente de fora escrevia um card na Têmis da
+   * Careli, que o portal nem conseguia mais abrir nem desfazer. Sem esta opção, a coluna ausente
+   * volta como `colunaDoDonoAusente` e quem chama responde 503.
+   */
+  semDonoSeFaltarColuna?: boolean;
+};
+
 /**
  * Abre uma solicitação.
  *
@@ -643,7 +846,8 @@ export type NovoTrabalho = {
  */
 export async function abrirTrabalho(
   novo: NovoTrabalho,
-): Promise<{ erro: string; ok: false } | { id: string; ok: true }> {
+  opcoes: OpcoesDaAbertura = {},
+): Promise<{ colunaDoDonoAusente?: true; erro: string; ok: false } | { id: string; ok: true }> {
   if (novo.canal === "iris" && (!novo.irisTicketId || !novo.evidenciaPath)) {
     return {
       erro: "solicitação pelo atendimento exige o ticket da Iris e a evidência do pedido do cliente",
@@ -654,29 +858,74 @@ export async function abrirTrabalho(
   const supabase = createApoloAdminClient();
   if (!supabase) return { erro: "sem acesso ao banco", ok: false };
 
-  const { data, error } = await supabase
-    .from("temis_trabalhos")
-    .insert({
-      aberto_por: novo.abertoPor ?? null,
-      canal: novo.canal,
-      cliente_cpf: novo.clienteCpf,
-      cliente_nome: novo.clienteNome,
-      enterprise_codigo: novo.empreendimentoCodigo,
-      enterprise_id: novo.empreendimentoId,
-      enterprise_nome: novo.empreendimentoNome,
-      evidencia_path: novo.evidenciaPath ?? null,
-      iris_ticket_id: novo.irisTicketId ?? null,
-      observacao: novo.observacao ?? null,
-      proposta_id: novo.propostaId ?? null,
-      tipo: novo.tipo,
-      trabalho_origem_id: novo.trabalhoOrigemId ?? null,
-      unidade: novo.unidade,
-      venda_id: novo.vendaId ?? null,
-      workspace_id: "careli",
-    })
-    .select("estagio, id")
-    .single<{ estagio: null | string; id: string }>();
+  const linha: Record<string, unknown> = {
+    aberto_por: novo.abertoPor ?? null,
+    canal: novo.canal,
+    cliente_cpf: novo.clienteCpf,
+    cliente_nome: novo.clienteNome,
+    enterprise_codigo: novo.empreendimentoCodigo,
+    enterprise_id: novo.empreendimentoId,
+    enterprise_nome: novo.empreendimentoNome,
+    evidencia_path: novo.evidenciaPath ?? null,
+    iris_ticket_id: novo.irisTicketId ?? null,
+    observacao: novo.observacao ?? null,
+    proposta_id: novo.propostaId ?? null,
+    tipo: novo.tipo,
+    trabalho_origem_id: novo.trabalhoOrigemId ?? null,
+    unidade: novo.unidade,
+    venda_id: novo.vendaId ?? null,
+    workspace_id: "careli",
+  };
 
+  // ⚠️ A COLUNA SÓ ENTRA NO INSERT QUANDO HÁ DONO. O trabalho da Careli (nulo) nem cita
+  // `operado_por`, e por isso o hub abre card igual ao de hoje com ou sem a migration 0172.
+  const operadoPor = typeof novo.operadoPor === "string" ? novo.operadoPor.trim() : "";
+  if (operadoPor) linha.operado_por = operadoPor;
+
+  const inserir = (valores: Record<string, unknown>) =>
+    supabase
+      .from("temis_trabalhos")
+      .insert(valores)
+      .select("estagio, id")
+      .single<{ estagio: null | string; id: string }>();
+
+  let resposta = await inserir(linha);
+
+  // ⚠️ 0172 PENDENTE, SEM A OPÇÃO: RECUSA. O card com dono não pode cair calado na fila da Careli
+  // (ver `OpcoesDaAbertura`); quem chama traduz para 503.
+  if (
+    resposta.error &&
+    operadoPor &&
+    ehColunaDoDonoAusente(resposta.error) &&
+    !opcoes.semDonoSeFaltarColuna
+  ) {
+    console.error("[temis] migration 0172 pendente: trabalho com dono NÃO aberto", {
+      operadoPor,
+      propostaId: novo.propostaId ?? null,
+      tipo: novo.tipo,
+    });
+    return {
+      colunaDoDonoAusente: true,
+      erro: "a Têmis ainda não registra quem confecciona o trabalho (migration 0172 pendente)",
+      ok: false,
+    };
+  }
+
+  // ⚠️ 0172 PENDENTE, COM A OPÇÃO: O CARD NASCE NA FILA DA CARELI, E ISSO GRITA NO LOG. Recusar aqui
+  // perderia o pedido inteiro (as rotas de venda não derrubam a transição quando a Têmis falha, e o
+  // card simplesmente não existiria); gravar sem dono deixa o contrato visível para alguém
+  // redistribuir.
+  if (resposta.error && operadoPor && ehColunaDoDonoAusente(resposta.error)) {
+    console.error(
+      "[temis] migration 0172 pendente: trabalho aberto SEM operado_por, vai para a fila da Careli",
+      { operadoPor, propostaId: novo.propostaId ?? null, tipo: novo.tipo },
+    );
+    const semDono = { ...linha };
+    delete semDono.operado_por;
+    resposta = await inserir(semDono);
+  }
+
+  const { data, error } = resposta;
   if (error || !data) return { erro: error?.message ?? "não consegui abrir", ok: false };
 
   // ⚠️ O NASCIMENTO DO CARD É UMA PASSAGEM COM `de` NULO, e não uma linha ausente. Sem ela, a aba
@@ -711,6 +960,10 @@ export async function marcarAtividade(input: {
   atividade: string;
   feita: boolean;
   id: string;
+  /** Quem marcou: o usuário do hub ou do portal (`idDoAutor`). Vai para a passagem de etapa. */
+  quem?: null | string;
+  /** O nome de quem marcou (`nomeDoAutor`). Nulo quando não há nome: não se inventa autor. */
+  quemNome?: null | string;
 }): Promise<{ erro: string; ok: false } | { andou: boolean; estagio: EstagioDoTrabalho; ok: true }> {
   const supabase = createApoloAdminClient();
   if (!supabase) return { erro: "sem acesso ao banco", ok: false };
@@ -748,19 +1001,73 @@ export async function marcarAtividade(input: {
   // é passagem de etapa — o card continua onde estava, e uma linha aqui encheria a linha do tempo
   // de eventos que não mudaram nada.
   //
-  // ⚠️ SEM AUTOR, E ISSO É HONESTO: esta função recebe o id e a atividade, não a sessão de quem
-  // clicou. Vazio é melhor que errado num registro que vai ser lido como prova. Quando a rota que
-  // a chama passar a informar quem marcou, o campo já está aqui esperando.
+  // ⚠️ O AUTOR É QUEM A ROTA INFORMA (arrumação da onda 3, 16/09/2026). Até aqui a passagem saía sem
+  // "quem" nos dois lados, e o histórico do card não dizia quem fez o card andar. Quem chama sem
+  // autor continua gravando vazio: vazio é melhor que errado num registro lido como prova.
   if (seguinte) {
     await registrarPassagemDeEtapa(supabase, {
       de: trabalho.estagio,
       origem: "atividade",
       para: seguinte,
       propostaId: trabalho.propostaId,
+      quem: input.quem ?? null,
+      quemNome: input.quemNome ?? null,
       trabalhoId: input.id,
       trabalhoTipo: depois.tipo,
     });
   }
 
   return { andou: Boolean(seguinte), estagio: seguinte ?? trabalho.estagio, ok: true };
+}
+
+/**
+ * O DONO E O EMPREENDIMENTO DE UM TRABALHO — o que `trabalhoNoAlcance` (ator.ts) precisa para
+ * decidir se a rota do portal pode tocar nele.
+ *
+ * ⚠️ RODA ANTES DA LEITURA DO CARD, nunca depois. É a mesma regra de `unidadeNoEscopo`: conferir o
+ * escopo com o card já em mãos é o mesmo que não conferir. Duas colunas, uma linha, nenhum dado do
+ * cliente.
+ *
+ * ⚠️ NULO É "NÃO ACHEI OU NÃO CONSEGUI LER", e quem chama responde 404 nos dois casos. Id que não é
+ * uuid (o Postgres recusa com `22P02`) cai aqui calado: é alguém mexendo na URL, não defeito.
+ *
+ * ⚠️ TOLERANTE À 0172 NÃO APLICADA: sem a coluna, nenhum trabalho tem dono de fora, e o
+ * `operado_por` volta nulo (a Careli) — o que faz o portal receber 404 em tudo, como deve.
+ */
+export async function donoDoTrabalho(
+  id: string,
+): Promise<null | { enterprise_id: string; operado_por: null | string }> {
+  const alvo = typeof id === "string" ? id.trim() : "";
+  if (!alvo) return null;
+
+  const supabase = createApoloAdminClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("temis_trabalhos")
+    .select("enterprise_id, operado_por")
+    .eq("workspace_id", "careli")
+    .eq("id", alvo)
+    .maybeSingle<{ enterprise_id: null | string; operado_por: null | string }>();
+
+  if (error && ehColunaDoDonoAusente(error)) {
+    const semDono = await supabase
+      .from("temis_trabalhos")
+      .select("enterprise_id")
+      .eq("workspace_id", "careli")
+      .eq("id", alvo)
+      .maybeSingle<{ enterprise_id: null | string }>();
+    if (semDono.error || !semDono.data) return null;
+    return { enterprise_id: String(semDono.data.enterprise_id ?? ""), operado_por: null };
+  }
+
+  if (error) {
+    if ((error as { code?: unknown }).code !== "22P02") {
+      console.error("[temis] falha ao ler o dono do trabalho", error);
+    }
+    return null;
+  }
+  if (!data) return null;
+
+  return { enterprise_id: String(data.enterprise_id ?? ""), operado_por: data.operado_por ?? null };
 }

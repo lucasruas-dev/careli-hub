@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
-import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
-import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
-import { createApoloAdminClient } from "@/lib/apolo/server";
+import { escopoDaEsteiraDoPortal } from "@/lib/apolo/incorporador/familia-no-portal";
+import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
+import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 import {
   type CandidatoDaBase,
   casa,
@@ -15,7 +16,6 @@ import {
 } from "@/lib/hercules/busca-de-proponente";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { decidirPelasLinhas, type LinhaDaEsteira } from "@/lib/hercules/cliente-credenciado";
-import { familiaDoEmpreendimento } from "@/lib/hercules/quem-pode-vender";
 
 // A BUSCA DE PROPONENTE — quem pode entrar na proposta junto com o titular.
 //
@@ -46,7 +46,7 @@ const WORKSPACE = "careli";
 const TETO_DA_ESTEIRA = 2000;
 
 export async function GET(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -85,27 +85,41 @@ export async function GET(request: Request) {
 
     // O MESMO escopo expandido do portão do titular: família (pai e filhos) mais o `group:` que as
     // divisões cobrem. Sem a expansão, uma CAD gravada no grupo some da busca.
+    //
+    // (16/09/2026, revisão da onda do Cecílio) ⚠️ FORA DO COMERCIAL A FAMÍLIA É RECORTADA PELA
+    // SESSÃO (`escopoDaEsteiraDoPortal`). A família do VOC (37) é 35 + 36 + 37 + 41, e o 36 é a
+    // carteira do Lino: sem o recorte, varrer prefixos de CPF levava nome, CPF e etapa de qualquer
+    // comprador do Vale do Ouro para o time do Cecílio. O espelho do pai (35), onde mora a CAD do
+    // próprio cliente do VOC, só abre gente nova quando o termo é o CPF INTEIRO. O comercial segue
+    // exatamente como antes.
     const [cadastro, catalogo] = await Promise.all([
       carregarCadastroDeEmpreendimentos(),
       catalogoDeEmpreendimentos(Date.now()),
     ]);
-    const familia = familiaDoEmpreendimento(cadastro, String(unidade.enterprise_id));
-    const escopo = comIdsDoGrupo(familia, catalogo, permitidos);
+    const escopo = escopoDaEsteiraDoPortal({
+      c2xId: String(unidade.enterprise_id),
+      cadastro,
+      catalogo,
+      comercial: ehPortalComercial(auth.sessao.tipo),
+      permitidos,
+    });
+    const cpfInteiro = termo.tipo === "cpf" && termo.digitos.length === 11;
 
-    if (escopo.length === 0) {
+    if (escopo.abertos.length === 0 && !(cpfInteiro && escopo.soComCpfInteiro.length > 0)) {
       return NextResponse.json({ data: { encontrados: [] } });
     }
 
-    const { data: esteira, error: erroDaEsteira } = await admin
-      .from("apolo_esteira")
-      .select("atualizado_em, chegou_em, created_at, enterprise_id, entity_id, etapa")
-      .in("enterprise_id", escopo)
-      .limit(TETO_DA_ESTEIRA);
+    const linhasAbertas =
+      escopo.abertos.length > 0 ? await lerEsteira(admin, { enterpriseIds: escopo.abertos }) : [];
 
-    if (erroDaEsteira) throw new Error(erroDaEsteira.message);
+    // Quem o CPF inteiro alcança no espelho do pai. Só existe fora do comercial (para ele
+    // `soComCpfInteiro` é sempre vazio) e só com os onze dígitos: é confirmação, não lista.
+    const doCpf =
+      termo.tipo === "cpf" && cpfInteiro && escopo.soComCpfInteiro.length > 0
+        ? new Set(await entidadesDoCpf(admin, termo.digitos))
+        : new Set<string>();
 
-    const linhas = (esteira ?? []) as LinhaDaEsteira[];
-    const entityIds = [...new Set(linhas.map((l) => l.entity_id))];
+    const entityIds = [...new Set([...linhasAbertas.map((l) => l.entity_id), ...doCpf])];
     if (entityIds.length === 0) {
       return NextResponse.json({ data: { encontrados: [] } });
     }
@@ -113,32 +127,54 @@ export async function GET(request: Request) {
     // ⚠️ O FILTRO POR NOME/CPF ACONTECE AQUI, e não no `.in()`: são centenas de pessoas, e a régua
     // de casamento (sem acento, palavras em qualquer ordem, CPF por prefixo) é a mesma que o teste
     // guarda. Empurrá-la para o PostgREST significaria escrevê-la duas vezes, em duas linguagens.
-    const { data: entidades, error: erroDasEntidades } = await admin
-      .from("apolo_entities")
-      .select("id, display_name, legal_name, trade_name, document_masked")
-      .in("id", entityIds);
-
-    if (erroDasEntidades) throw new Error(erroDasEntidades.message);
-
-    const candidatos: CandidatoDaBase[] = ((entidades ?? []) as Array<{
+    // Em lotes de 100: `.in()` com centenas de uuids estoura a URL do PostgREST.
+    const entidades: Array<{
       display_name: null | string;
       document_masked: null | string;
       id: string;
       legal_name: null | string;
       trade_name: null | string;
-    }>).map((e) => ({
+    }> = [];
+    for (const lote of emLotes(entityIds, LOTE)) {
+      const { data, error: erroDasEntidades } = await admin
+        .from("apolo_entities")
+        .select("id, display_name, legal_name, trade_name, document_masked")
+        .in("id", lote);
+      if (erroDasEntidades) throw new Error(erroDasEntidades.message);
+      entidades.push(...((data ?? []) as typeof entidades));
+    }
+
+    const candidatos: CandidatoDaBase[] = entidades.map((e) => ({
       documento: e.document_masked,
       id: e.id,
       nome: (e.display_name || e.legal_name || e.trade_name || "").trim() || null,
     }));
 
+    // Para quem veio do espelho, o hash do CPF já é a prova do casamento: o `document_masked` de
+    // quem nasceu no Apolo pode estar mascarado, e o prefixo não casaria.
+    const casados = candidatos.filter((c) => casa(c, termo) || doCpf.has(c.id));
+
+    // A DECISÃO olha as mesmas CADs que o titular olha (abertos + espelho), mas só de quem já casou.
+    // Sem isto, quem tem CAD nova no 37 e a credenciada no 35 sairia "não credenciado" pelo nome e
+    // "credenciado" pelo CPF, e a proposta do titular diria uma terceira coisa.
+    const linhasDoEspelho =
+      escopo.soComCpfInteiro.length > 0 && casados.length > 0
+        ? await lerEsteira(admin, {
+            enterpriseIds: escopo.soComCpfInteiro,
+            entityIds: casados.map((c) => c.id),
+          })
+        : [];
+
+    const idsCasados = new Set(casados.map((c) => c.id));
     const porEntidade = new Map<string, LinhaDaEsteira[]>();
-    for (const l of linhas) {
+    for (const l of [...linhasAbertas, ...linhasDoEspelho]) {
+      if (!idsCasados.has(l.entity_id)) continue;
       porEntidade.set(l.entity_id, [...(porEntidade.get(l.entity_id) ?? []), l]);
     }
 
-    const encontrados: ProponenteEncontrado[] = candidatos
-      .filter((c) => casa(c, termo))
+    const encontrados: ProponenteEncontrado[] = casados
+      // Sem CAD em nenhum id do escopo a pessoa não aparece: "existe na base" não é resposta.
+      .filter((c) => porEntidade.has(c.id))
       .map((c) => {
         const decisao = decidirPelasLinhas(porEntidade.get(c.id) ?? [], [c.id]);
         return {
@@ -158,4 +194,73 @@ export async function GET(request: Request) {
     console.error("[hercules][proponentes] falha ao buscar", erro);
     return NextResponse.json({ error: "Não foi possível buscar agora." }, { status: 503 });
   }
+}
+
+type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
+
+/** Lote do `.in()` por URL: a memória do projeto registra 100 como o teto seguro do PostgREST. */
+const LOTE = 100;
+
+function emLotes<T>(lista: readonly T[], tamanho: number): T[][] {
+  const lotes: T[][] = [];
+  for (let i = 0; i < lista.length; i += tamanho) lotes.push(lista.slice(i, i + tamanho));
+  return lotes;
+}
+
+/**
+ * As linhas da esteira nestes empreendimentos, opcionalmente só destas pessoas.
+ *
+ * Sem pessoas: o teto de sempre (a família de um empreendimento tem centenas, não milhares). Com
+ * pessoas: em lotes de 100, pelo mesmo limite de URL do `.in()`.
+ */
+async function lerEsteira(
+  admin: AdminClient,
+  filtro: { enterpriseIds: string[]; entityIds?: string[] },
+): Promise<LinhaDaEsteira[]> {
+  const COLUNAS = "atualizado_em, chegou_em, created_at, enterprise_id, entity_id, etapa";
+  if (!filtro.entityIds) {
+    const { data, error } = await admin
+      .from("apolo_esteira")
+      .select(COLUNAS)
+      .in("enterprise_id", filtro.enterpriseIds)
+      .limit(TETO_DA_ESTEIRA);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as LinhaDaEsteira[];
+  }
+
+  const saida: LinhaDaEsteira[] = [];
+  for (const lote of emLotes(filtro.entityIds, LOTE)) {
+    const { data, error } = await admin
+      .from("apolo_esteira")
+      .select(COLUNAS)
+      .in("enterprise_id", filtro.enterpriseIds)
+      .in("entity_id", lote);
+    if (error) throw new Error(error.message);
+    saida.push(...((data ?? []) as LinhaDaEsteira[]));
+  }
+  return saida;
+}
+
+/**
+ * As entidades que carregam este CPF, pelas DUAS fontes do documento (a coluna de quem nasceu no
+ * Apolo e os identificadores de quem veio do sync do C2X), a mesma leitura de
+ * `credenciadoParaVender`. O tipo do documento já está dentro do hash.
+ */
+async function entidadesDoCpf(admin: AdminClient, digitos: string): Promise<string[]> {
+  const hash = hashIdentifier("cpf", digitos);
+  const [porColuna, porIdentificador] = await Promise.all([
+    admin.from("apolo_entities").select("id").eq("document_hash", hash).limit(20),
+    admin.from("apolo_entity_identifiers").select("entity_id").eq("value_hash", hash).limit(20),
+  ]);
+  if (porColuna.error) throw new Error(porColuna.error.message);
+  if (porIdentificador.error) throw new Error(porIdentificador.error.message);
+
+  const ids = new Set<string>();
+  for (const linha of (porColuna.data ?? []) as Array<{ id: null | string }>) {
+    if (linha.id) ids.add(linha.id);
+  }
+  for (const linha of (porIdentificador.data ?? []) as Array<{ entity_id: null | string }>) {
+    if (linha.entity_id) ids.add(linha.entity_id);
+  }
+  return [...ids];
 }

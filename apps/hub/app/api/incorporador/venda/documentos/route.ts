@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { APOLO_DOCS_BUCKET } from "@/lib/apolo/documentos";
-import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarEscritaNoProduto } from "@/lib/apolo/incorporador/operacao-do-produto-servidor";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import {
@@ -153,7 +154,7 @@ async function vendaDoLote(
 }
 
 export async function GET(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -228,7 +229,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -261,6 +262,14 @@ export async function POST(request: Request) {
     if (!unidade) {
       return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
     }
+
+    // ⚠️ QUEM OPERA O PRODUTO DECIDE A ESCRITA (Lucas, 16/09/2026). Guardar documento na venda é
+    // escrita, nas DUAS etapas: assinar o envio já cria objeto no bucket. No portal que confecciona
+    // (o Cecílio) só vale no produto operado por ele; no VOC e no VOR a aba continua lendo, e o envio
+    // é 403 só consulta. A Gurgel passa sem ida ao banco.
+    const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
+    if (!escrita.ok) return escrita.response;
+    const sessao = escrita.sessao;
 
     // ── 1. ASSINAR ────────────────────────────────────────────────────────
     if (corpo.acao === "preparar") {
@@ -338,8 +347,8 @@ export async function POST(request: Request) {
         cliente_documento_hash: venda.clienteDocumentoHash,
         cliente_entity_id: venda.clienteEntityId,
         empreendimento_codigo: venda.empreendimentoCodigo,
-        enviado_por: auth.sessao.usuarioId ?? null,
-        enviado_por_nome: auth.sessao.usuarioNome ?? null,
+        enviado_por: sessao.usuarioId ?? null,
+        enviado_por_nome: sessao.usuarioNome ?? null,
         mime: typeof corpo.tipoDoArquivo === "string" ? corpo.tipoDoArquivo.slice(0, 120) : null,
         nome: nome.slice(0, 200) || "arquivo",
         observacao: observacao || null,

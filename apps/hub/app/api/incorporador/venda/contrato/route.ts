@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarEscritaNoProduto } from "@/lib/apolo/incorporador/operacao-do-produto-servidor";
+import { portalConfeccionaContrato } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
-import { nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
+import { lerComColunasDoApartamento, nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
 import {
   NOME_DO_DOCUMENTO,
   servicoDisponivel,
@@ -44,7 +46,7 @@ type PedidoDeContrato = {
 };
 
 export async function POST(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -70,28 +72,41 @@ export async function POST(request: Request) {
   try {
     const permitidos = new Set(await idsDaSessao(auth.sessao));
 
-    const { data: linhaDaUnidade } = await admin
-      .from("hercules_unidades")
-      .select("id,codigo,quadra,lote,enterprise_id")
-      .eq("workspace_id", WORKSPACE)
-      .eq("id", unidadeId)
-      .maybeSingle();
+    // As colunas do prédio (0171) entram porque é desta linha que sai o nome da unidade no card da
+    // Têmis ("Torre A · Apto 304"); sem a 0171 a leitura repete sem elas.
+    const { data: linhaDaUnidade } = await lerComColunasDoApartamento((extras) =>
+      admin
+        .from("hercules_unidades")
+        .select(`id,codigo,quadra,lote,enterprise_id${extras}`)
+        .eq("workspace_id", WORKSPACE)
+        .eq("id", unidadeId)
+        .maybeSingle(),
+    );
 
-    const unidade = linhaDaUnidade as null | {
+    const unidade = linhaDaUnidade as unknown as null | {
+      apartamento?: null | string;
       codigo: string;
       enterprise_id: string;
       id: string;
       lote: null | string;
       quadra: null | string;
+      torre?: null | string;
     };
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
       return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
     }
 
+    // ⚠️ QUEM OPERA O PRODUTO DECIDE A ESCRITA (Lucas, 16/09/2026). No portal que confecciona (o
+    // Cecílio) mandar para contrato só vale no produto operado por ele; no VOC e no VOR é 403 só
+    // consulta, e sem a 0170 é 503. A Gurgel passa sem ida ao banco. Antes de mover a etapa.
+    const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
+    if (!escrita.ok) return escrita.response;
+    const sessao = escrita.sessao;
+
     const { data: linha } = await admin
       .from("hercules_propostas")
       .select(
-        "id, codigo, protocolo_numero, cliente_nome, cliente_documento, empreendimento_id, empreendimento_codigo",
+        "id, codigo, protocolo_numero, cliente_nome, cliente_documento, empreendimento_id, empreendimento_codigo, etapa_desde, etapa_por",
       )
       .eq("workspace_id", WORKSPACE)
       .eq("unidade_id", unidade.id)
@@ -105,6 +120,9 @@ export async function POST(request: Request) {
       codigo: null | string;
       empreendimento_codigo: null | string;
       empreendimento_id: null | string;
+      /** O carimbo de antes: é o que volta se o card do incorporador não abrir (ver o desfazer). */
+      etapa_desde?: null | string;
+      etapa_por?: null | string;
       id: string;
       protocolo_numero: null | number;
     };
@@ -180,7 +198,7 @@ export async function POST(request: Request) {
         // ela é um `insert` à parte que não derruba a transição quando falha — e foi assim que as
         // duas vendas de 05/09 ficaram no histórico sem "por quem". O carimbo aqui anda junto com a
         // etapa, na mesma escrita: ou os dois vão, ou nenhum vai.
-        etapa_por: auth.sessao.usuarioNome ?? null,
+        etapa_por: sessao.usuarioNome ?? null,
       })
       .eq("id", proposta.id)
       // Trava de clique duplo, como nas irmãs: sem ela, dois coordenadores movem a mesma proposta
@@ -196,33 +214,6 @@ export async function POST(request: Request) {
         { status: 409 },
       );
     }
-
-    // ⚠️ A TRANSIÇÃO VIRA LINHA NO HISTÓRICO, e isto não é opcional (Lucas, 05/09/2026: *"tudo tem
-    // que ter histórico; exemplo: encaminhei para contrato e não apareceu no histórico"*). A etapa
-    // mudava, o mapa repintava e a faixa andava — e a ficha do lote não contava o passo, como se
-    // ninguém tivesse feito nada. `hercules_proposta_etapas` é a tabela dos movimentos desde a
-    // carga do C2X: o legado grava `de_c2x`/`para_c2x`, o Panteon grava `de`/`para` em texto, e a
-    // linha do tempo lê os dois.
-    //
-    // ⚠️ NÃO DERRUBA A TRANSIÇÃO SE FALHAR. A proposta já está em `contrato`; recusar aqui deixaria
-    // a venda parada num passo que já aconteceu. O que se perde é a linha do histórico, e isso vira
-    // log — não um erro na cara de quem clicou.
-    const { error: erroDoMovimento } = await admin.from("hercules_proposta_etapas").insert({
-      autor_nome: auth.sessao.usuarioNome,
-      de: "proposta",
-      para: "contrato",
-      proposta_id: proposta.id,
-      quando: agora,
-      workspace_id: WORKSPACE,
-    });
-
-    if (erroDoMovimento) {
-      console.error("[hercules][contrato] falha ao registrar o movimento", erroDoMovimento);
-    }
-
-    // ⚠️ A UNIDADE NÃO MUDA. Ela já está ocupada desde a reserva, e continua: `hercules_unidades`
-    // não distingue proposta de contrato — quem sabe em que passo a venda está é a proposta viva,
-    // e é ela que a grade lê para pintar o lote.
 
     // ── A PROPOSTA É ENTREGUE À TÊMIS ──────────────────────────────────────
     //
@@ -247,21 +238,29 @@ export async function POST(request: Request) {
     // pedido solto e a minuta nasce de um formulário em branco, que é exatamente o retrabalho que
     // ligar os dois módulos veio acabar. É o que faz o "depois vamos trabalhar nela" ser possível.
     //
-    // ⚠️ NÃO DERRUBA A TRANSIÇÃO SE FALHAR. A venda já está em `contrato` no Hércules; recusar aqui
-    // deixaria a venda parada num passo que já aconteceu, e o operador clicaria de novo por cima de
-    // uma etapa que não aceita ser movida duas vezes. A resposta diz se o trabalho abriu — a tela
-    // avisa quando não abriu, e o registro fica no log para alguém reabrir à mão.
+    // ⚠️ NA VENDA DA GURGEL, NÃO DERRUBA A TRANSIÇÃO SE FALHAR. A venda já está em `contrato` no
+    // Hércules; recusar aqui deixaria a venda parada num passo que já aconteceu, e o operador clicaria
+    // de novo por cima de uma etapa que não aceita ser movida duas vezes. A resposta diz se o trabalho
+    // abriu — a tela avisa quando não abriu, e o registro fica no log para alguém reabrir à mão. Na
+    // venda do portal que confecciona a etapa é desfeita (ver o bloco depois do card).
     const cadastro = await carregarCadastroDeEmpreendimentos().catch(() => []);
     const doCadastro =
       cadastro.find((l) => l.id === proposta.empreendimento_id) ??
       cadastro.find((l) => String(l.c2xEnterpriseId) === String(unidade.enterprise_id)) ??
       null;
 
+    // ⚠️ O DONO DO CARD É QUEM CONFECCIONA (Lucas, 16/09/2026). A venda feita no portal que opera
+    // sozinho (o Cecílio) abre o trabalho na fila DELE, e não na da Careli; a da Gurgel continua nula
+    // (a Careli confecciona). Sem a migration 0172 a Têmis RECUSA o card com dono (não passamos
+    // `semDonoSeFaltarColuna`): cair calado na fila da Careli seria entregar o contrato do Cecílio para
+    // outro time. Nesse caso a etapa é desfeita logo abaixo.
+    const operadoPorDoCard = portalConfeccionaContrato(sessao.slug, sessao.tipo) ? sessao.incorporadorId : null;
+
     let trabalhoId: null | string = null;
     let avisoDaTemis: null | string = null;
     try {
       const aberto = await abrirTrabalho({
-        abertoPor: auth.sessao.usuarioId,
+        abertoPor: sessao.usuarioId,
         canal: "hercules",
         clienteCpf: proposta.cliente_documento,
         clienteNome: proposta.cliente_nome || "Cliente",
@@ -271,6 +270,7 @@ export async function POST(request: Request) {
         observacao: `Proposta entregue pela tela Venda do Hércules · COD ${
           proposta.codigo || codigoDaVenda(proposta.protocolo_numero) || "—"
         }`,
+        operadoPor: operadoPorDoCard,
         // A PROPOSTA E O VINCULO QUE FUNCIONA.
         //
         // Media em 06/09/2026: `temis_trabalhos` tinha 4 linhas (as de seed) e NENHUMA criada
@@ -294,6 +294,75 @@ export async function POST(request: Request) {
       avisoDaTemis = "não foi possível abrir o trabalho na Têmis";
       console.error("[hercules][contrato] falha ao abrir o trabalho na Têmis", erro);
     }
+
+    // ⚠️ O CARD DO INCORPORADOR QUE NÃO ABRE DESFAZ A ETAPA (revisão do conjunto, 16/09/2026). Na venda
+    // da Gurgel a Careli confecciona e reabre o card à mão pelo log. Na do portal que confecciona não há
+    // ninguém do outro lado para isso: sem a 0172 a Têmis recusa SEMPRE o card com dono, e a proposta
+    // ficaria em "contrato" sem card, com o "Enviar para contrato" sumido da Mesa e nenhuma tela que
+    // reabra o trabalho. Como no cancelamento-de-contrato, a etapa volta para "proposta" (com o carimbo
+    // de antes) e a tela recebe o erro. O desfazer é condicional ao carimbo DESTE envio: se outra tela
+    // mexeu depois, nada é sobrescrito.
+    if (!trabalhoId && operadoPorDoCard) {
+      const { data: voltadas, error: erroDoDesfazer } = await admin
+        .from("hercules_propostas")
+        .update({
+          atualizado_em: new Date().toISOString(),
+          etapa: "proposta",
+          etapa_desde: proposta.etapa_desde ?? null,
+          etapa_por: proposta.etapa_por ?? null,
+        })
+        .eq("id", proposta.id)
+        .eq("etapa", "contrato")
+        .eq("etapa_desde", agora)
+        .select("id");
+
+      const desfeito = !erroDoDesfazer && (voltadas?.length ?? 0) > 0;
+      if (!desfeito) {
+        console.error("[hercules][contrato] a proposta ficou em contrato sem o card da Têmis", {
+          erro: erroDoDesfazer?.message ?? null,
+          proposta: proposta.id,
+        });
+      }
+
+      return NextResponse.json(
+        {
+          error: desfeito
+            ? `O contrato não chegou à Têmis${avisoDaTemis ? ` (${avisoDaTemis})` : ""}. A proposta continua em proposta; tente de novo em instantes.`
+            : `O contrato não chegou à Têmis${avisoDaTemis ? ` (${avisoDaTemis})` : ""}, e a proposta ficou marcada como contrato. Avise a Careli para abrir o card.`,
+        },
+        { status: desfeito ? 503 : 502 },
+      );
+    }
+
+    // ⚠️ A TRANSIÇÃO VIRA LINHA NO HISTÓRICO, e isto não é opcional (Lucas, 05/09/2026: *"tudo tem
+    // que ter histórico; exemplo: encaminhei para contrato e não apareceu no histórico"*). A etapa
+    // mudava, o mapa repintava e a faixa andava — e a ficha do lote não contava o passo, como se
+    // ninguém tivesse feito nada. `hercules_proposta_etapas` é a tabela dos movimentos desde a
+    // carga do C2X: o legado grava `de_c2x`/`para_c2x`, o Panteon grava `de`/`para` em texto, e a
+    // linha do tempo lê os dois.
+    //
+    // (16/09/2026) Gravada DEPOIS do card, para o envio desfeito acima não deixar no histórico um passo
+    // que não aconteceu.
+    //
+    // ⚠️ NÃO DERRUBA A TRANSIÇÃO SE FALHAR. A proposta já está em `contrato`; recusar aqui deixaria
+    // a venda parada num passo que já aconteceu. O que se perde é a linha do histórico, e isso vira
+    // log — não um erro na cara de quem clicou.
+    const { error: erroDoMovimento } = await admin.from("hercules_proposta_etapas").insert({
+      autor_nome: sessao.usuarioNome,
+      de: "proposta",
+      para: "contrato",
+      proposta_id: proposta.id,
+      quando: agora,
+      workspace_id: WORKSPACE,
+    });
+
+    if (erroDoMovimento) {
+      console.error("[hercules][contrato] falha ao registrar o movimento", erroDoMovimento);
+    }
+
+    // ⚠️ A UNIDADE NÃO MUDA. Ela já está ocupada desde a reserva, e continua: `hercules_unidades`
+    // não distingue proposta de contrato — quem sabe em que passo a venda está é a proposta viva,
+    // e é ela que a grade lê para pintar o lote.
 
     return NextResponse.json({
       data: {

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarEscritaNoProduto } from "@/lib/apolo/incorporador/operacao-do-produto-servidor";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import { type TipoDaMensagem, textoDaMensagem } from "@/lib/hercules/documentos-da-venda";
@@ -91,7 +92,7 @@ async function vendaDoLote(
 }
 
 export async function GET(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -144,7 +145,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -176,13 +177,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
     }
 
+    // ⚠️ QUEM OPERA O PRODUTO DECIDE A ESCRITA (Lucas, 16/09/2026). A mensagem da venda é registro
+    // formal e não se apaga: no portal que confecciona (o Cecílio) só se escreve no produto operado
+    // por ele. No VOC e no VOR a conversa continua legível, e o envio é 403 só consulta.
+    const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
+    if (!escrita.ok) return escrita.response;
+    const sessao = escrita.sessao;
+
     const venda = await vendaDoLote(admin, unidade.id);
 
     const { data: criada, error } = await admin
       .from("hercules_conversas")
       .insert({
-        autor: auth.sessao.usuarioId ?? null,
-        autor_nome: auth.sessao.usuarioNome ?? null,
+        autor: sessao.usuarioId ?? null,
+        autor_nome: sessao.usuarioNome ?? null,
         empreendimento_codigo: venda.empreendimentoCodigo,
         proposta_id: venda.propostaId,
         protocolo_numero: venda.protocolo,

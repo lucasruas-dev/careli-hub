@@ -1,14 +1,39 @@
 import { NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
-import { loadApoloEnterpriseUnits } from "@/lib/apolo/empreendimentos";
+import { type ApoloEnterpriseUnit, loadApoloEnterpriseUnits } from "@/lib/apolo/empreendimentos";
+import { lerUnidadesDoPanteon, unidadeDoPanteonNaTela } from "@/lib/apolo/incorporador/unidades-do-panteon";
+import { createApoloAdminClient } from "@/lib/apolo/server";
+import { ehIdDoPanteon } from "@/lib/hercules/produto-novo";
 import { createPrometeuClient, eventoOperavelId } from "@/lib/prometeu/data";
 import { topicoDaFila } from "@/lib/prometeu/fila-topic";
 
 // Unidades de um empreendimento. Aceita N códigos (?codes=LBR,LBP,LBF) porque a linha da
 // tela pode ser um produto consolidado (regra ENTERPRISE_GROUPS).
+//
+// ⚠️ PRODUTO NASCIDO NO PANTEON (`?id=100000`, 16/09/2026). Ele não existe no C2X, e ler as unidades
+// dele por código no legado devolvia a tabela vazia com 200: parecia produto sem estoque. Com o id do
+// Panteon (`ehIdDoPanteon`), as unidades saem de `hercules_unidades`, pela MESMA leitura e o MESMO
+// formato de tela que a ficha do portal usa (lib/apolo/incorporador/unidades-do-panteon.ts). Id do
+// C2X (ou sem id) segue o caminho de sempre, pelos códigos.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+type Leitura = { error: string; ok: false } | { ok: true; units: ApoloEnterpriseUnit[] };
+
+async function unidadesDoPanteon(enterpriseId: string, codigo: string): Promise<Leitura> {
+  const admin = createApoloAdminClient();
+  if (!admin) return { error: "Cadastro de unidades indisponível.", ok: false };
+
+  try {
+    const linhas = await lerUnidadesDoPanteon(admin, [enterpriseId]);
+    return { ok: true, units: linhas.map((linha) => unidadeDoPanteonNaTela(linha, codigo)) };
+  } catch (erro) {
+    // ⚠️ Erro NUNCA vira "zero unidades": a tela mostraria o produto vazio como se fosse verdade.
+    console.error("[apolo][empreendimentos] unidades do Panteon indisponíveis", erro);
+    return { error: "Não foi possível carregar as unidades agora. Tente de novo em instantes.", ok: false };
+  }
+}
 
 export async function GET(request: Request) {
   const authorization = await authorizeApoloRead(request);
@@ -17,20 +42,26 @@ export async function GET(request: Request) {
     return authorization.response;
   }
 
-  const codes = (new URL(request.url).searchParams.get("codes") ?? "")
+  const params = new URL(request.url).searchParams;
+  const codes = (params.get("codes") ?? "")
     .split(",")
     .map((code) => code.trim())
     .filter(Boolean);
+  const enterpriseId = (params.get("id") ?? "").trim();
+  const doPanteon = ehIdDoPanteon(enterpriseId);
 
-  if (!codes.length) {
+  if (!codes.length && !doPanteon) {
     return NextResponse.json(
-      { error: "Informe ao menos um codigo de empreendimento." },
+      { error: "Informe ao menos um código de empreendimento." },
       { status: 400 },
     );
   }
 
   try {
-    const result = await loadApoloEnterpriseUnits(codes);
+    const result = doPanteon
+      ? // O código só rotula a unidade na tela; sem ele, o id segura o lugar.
+        await unidadesDoPanteon(enterpriseId, (codes[0] ?? enterpriseId).toUpperCase())
+      : await loadApoloEnterpriseUnits(codes);
 
     // EM QUAL CANAL A TELA ESCUTA para saber que uma reserva aconteceu no salão.
     //
@@ -64,7 +95,7 @@ export async function GET(request: Request) {
     console.error("[apolo][empreendimentos] falha ao carregar unidades", error);
 
     return NextResponse.json(
-      { error: "Nao foi possivel carregar as unidades." },
+      { error: "Não foi possível carregar as unidades." },
       { status: 500 },
     );
   }

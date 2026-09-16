@@ -21,6 +21,15 @@ const ehUuid = (v: string | null): v is string =>
   typeof v === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
+/**
+ * De onde veio a decisão, gravado em `metadata.origem` da auditoria.
+ *
+ * (16/09/2026) O portal que opera sozinho (Cecílio) também aprova com restrição, e o carimbo fixo
+ * "override-coordenacao" fazia a decisão do time do incorporador aparecer como se fosse da
+ * coordenação da Careli. Sem o parâmetro, o de sempre: o hub e o seguir-pelo-cônjuge não mudam.
+ */
+export type OrigemDoOverride = "override-coordenacao" | "override-portal";
+
 export async function registrarOverrideCredito(input: {
   adminClient: AdminClient;
   aprovadoPor: string | null;
@@ -30,6 +39,8 @@ export async function registrarOverrideCredito(input: {
   entityId: string;
   evidenciaDocId: string | null;
   motivo: string | null;
+  /** Ausente = "override-coordenacao", o vocabulário de sempre do hub. */
+  origem?: OrigemDoOverride;
 }): Promise<{ auditoria: boolean; erro: null | string; estruturado: boolean }> {
   const actor = ehUuid(input.aprovadoPor) ? input.aprovadoPor : null;
   const falhas: string[] = [];
@@ -50,7 +61,7 @@ export async function registrarOverrideCredito(input: {
         enterpriseId: input.enterpriseId,
         evidenciaDocId: input.evidenciaDocId,
         motivo: input.motivo,
-        origem: "override-coordenacao",
+        origem: input.origem ?? "override-coordenacao",
       },
       status: "mapped",
     });

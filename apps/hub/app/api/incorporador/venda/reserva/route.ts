@@ -1,15 +1,24 @@
 import { NextResponse } from "next/server";
 
-import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import {
+  autorizarOperacaoDeVenda,
+  ORIGEM_ACEITA_SEM_A_0167,
+  origemDaReserva,
+  type OrigemDaReserva,
+  origemRecusadaSemA0167,
+} from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarEscritaNoProduto } from "@/lib/apolo/incorporador/operacao-do-produto-servidor";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
   avisarSobreAVenda,
   destinatariosDaVenda,
+  registrarAvisoNaoEnviado,
   type ResultadoDoAviso as ResultadoDoAvisoDaVenda,
+  vendaAvisaPeloWhatsapp,
 } from "@/lib/hercules/avisos-da-venda";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
-import { nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
+import { lerComColunasDoApartamento, nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
 import {
   familiaDoEmpreendimento,
   podemVender,
@@ -24,6 +33,8 @@ import {
   motivoEscrito,
   type PedidoDeCancelamento,
   type PedidoDeReserva,
+  SEM_PRECO_PARA_RESERVA,
+  semPrecoDeTabela,
 } from "@/lib/hercules/reserva";
 
 // A RESERVA DA UNIDADE — o primeiro passo da venda, gravado no Panteon.
@@ -55,17 +66,43 @@ export const maxDuration = 60;
 const WORKSPACE = "careli";
 
 type UnidadeDaReserva = {
+  /** Só no prédio (0171). Ausente quando a coluna ainda não existe. */
+  apartamento?: null | string;
   codigo: string;
   enterprise_id: string;
   id: string;
   lote: null | string;
-  preco_tabela: null | number;
+  preco_tabela: null | number | string;
   quadra: null | string;
   situacao: string;
+  /** Só no prédio. Nulo = torre única. */
+  torre?: null | string;
 };
 
+/**
+ * A unidade pelo id, com as colunas do prédio quando a 0171 já existe.
+ *
+ * ⚠️ AS COLUNAS DO APARTAMENTO ENTRAM AQUI (16/09/2026) porque é desta linha que `nomeDaUnidade`
+ * escreve o WhatsApp: sem elas, a reserva de um apto sairia com o código cru. Sem a 0171, a leitura
+ * repete sem elas (`lerComColunasDoApartamento`), e o loteamento sai como sempre.
+ */
+async function unidadePorId(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  unidadeId: string,
+): Promise<null | UnidadeDaReserva> {
+  const { data } = await lerComColunasDoApartamento((extras) =>
+    admin
+      .from("hercules_unidades")
+      .select(`id,codigo,quadra,lote,situacao,preco_tabela,enterprise_id${extras}`)
+      .eq("workspace_id", WORKSPACE)
+      .eq("id", unidadeId)
+      .maybeSingle(),
+  );
+  return (data ?? null) as unknown as null | UnidadeDaReserva;
+}
+
 export async function GET(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -81,14 +118,7 @@ export async function GET(request: Request) {
 
   try {
     const permitidos = new Set(await idsDaSessao(auth.sessao));
-    const { data } = await admin
-      .from("hercules_unidades")
-      .select("id,codigo,quadra,lote,situacao,preco_tabela,enterprise_id")
-      .eq("workspace_id", WORKSPACE)
-      .eq("id", unidadeId)
-      .maybeSingle();
-
-    const unidade = data as null | UnidadeDaReserva;
+    const unidade = await unidadePorId(admin, unidadeId);
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
       return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
     }
@@ -108,7 +138,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -143,23 +173,30 @@ export async function POST(request: Request) {
   try {
     const permitidos = new Set(await idsDaSessao(auth.sessao));
 
-    const { data } = await admin
-      .from("hercules_unidades")
-      .select("id,codigo,quadra,lote,situacao,preco_tabela,enterprise_id")
-      .eq("workspace_id", WORKSPACE)
-      .eq("id", pedido.unidadeId)
-      .maybeSingle();
-
-    const unidade = data as null | UnidadeDaReserva;
+    const unidade = await unidadePorId(admin, pedido.unidadeId);
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
       return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
     }
+
+    // ⚠️ QUEM OPERA O PRODUTO DECIDE A ESCRITA (Lucas, 16/09/2026). No portal que confecciona (o
+    // Cecílio) a reserva só vale no produto operado por ele: o Garden sim, o VOC e o VOR não (lá é
+    // só consulta, e a resposta é 403 com `soConsulta`). A Gurgel passa sem ida ao banco. Vem ANTES
+    // de qualquer regra de negócio e de qualquer escrita, e a sessão que segue é a revalidada.
+    const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
+    if (!escrita.ok) return escrita.response;
+    const sessao = escrita.sessao;
 
     if (unidade.situacao !== "disponivel") {
       return NextResponse.json(
         { error: `Esta unidade está ${unidade.situacao}. Só unidade disponível pode ser reservada.` },
         { status: 409 },
       );
+    }
+
+    // ⚠️ SEM PREÇO DE TABELA NÃO SE RESERVA (achado 15 da onda 2). A reserva é o primeiro passo de
+    // uma proposta que congelaria "R$ 0" no documento; recusar aqui é mais barato do que desfazer lá.
+    if (semPrecoDeTabela(unidade.preco_tabela)) {
+      return NextResponse.json({ error: SEM_PRECO_PARA_RESERVA }, { status: 409 });
     }
 
     // O mesmo escopo do GET: quem a lista ofereceu é quem a gravação aceita.
@@ -186,24 +223,41 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: criada, error } = await admin
-      .from("hercules_reservas")
-      .insert({
-        corretor_entity_id: pedido.corretorEntityId || null,
-        criado_por: auth.sessao.usuarioId,
-        criado_por_nome: auth.sessao.usuarioNome,
-        empreendimento_id: empreendimento.id,
-        imobiliaria_entity_id: pedido.imobiliariaEntityId,
-        observacao: corpo.observacao?.trim() || null,
-        origem: "coordenador",
-        proponentes: [pedido.proponente],
-        situacao: "ativa",
-        unidade_id: unidade.id,
-        validade_em: pedido.validadeEm,
-        workspace_id: WORKSPACE,
-      })
-      .select("id, protocolo_numero")
-      .maybeSingle();
+    // "coordenador" no comercial, "incorporador" no portal que opera a própria venda (o Cecílio).
+    // Sai da SESSÃO, nunca do corpo. Exige a migration 0167 no banco antes.
+    const origem = origemDaReserva(sessao);
+    const inserirReserva = (origemGravada: OrigemDaReserva) =>
+      admin
+        .from("hercules_reservas")
+        .insert({
+          corretor_entity_id: pedido.corretorEntityId || null,
+          criado_por: sessao.usuarioId,
+          criado_por_nome: sessao.usuarioNome,
+          empreendimento_id: empreendimento.id,
+          imobiliaria_entity_id: pedido.imobiliariaEntityId,
+          observacao: corpo.observacao?.trim() || null,
+          origem: origemGravada,
+          proponentes: [pedido.proponente],
+          situacao: "ativa",
+          unidade_id: unidade.id,
+          validade_em: pedido.validadeEm,
+          workspace_id: WORKSPACE,
+        })
+        .select("id, protocolo_numero")
+        .maybeSingle();
+
+    let { data: criada, error } = await inserirReserva(origem);
+
+    // (16/09/2026) A REDE DA ORDEM DE DEPLOY: sem a 0167 no banco, a CHECK recusa 'incorporador' e a
+    // reserva do Cecílio inteira caía no 503. Grava com a origem antiga e grita no log; `criado_por`
+    // (a conta do portal) permite corrigir a origem depois. Ver `origemRecusadaSemA0167`.
+    if (error && origemRecusadaSemA0167(error, origem)) {
+      console.error(
+        "[hercules][reserva] migration 0167 pendente: reserva do portal gravada com a origem antiga",
+        { criadoPor: sessao.usuarioId, unidade: unidade.id },
+      );
+      ({ data: criada, error } = await inserirReserva(ORIGEM_ACEITA_SEM_A_0167));
+    }
 
     if (error) {
       // 23505 = a trava do índice parcial: alguém reservou primeiro.
@@ -234,23 +288,34 @@ export async function POST(request: Request) {
       imobiliariaId: pedido.imobiliariaEntityId,
     });
 
-    const avisos = await avisarSobreAVenda(admin, {
-      corretorId: pedido.corretorEntityId ?? null,
-      destinatarios,
-      imobiliariaId: pedido.imobiliariaEntityId,
-      origem: "reserva:whatsapp",
-      textos: avisosDaReserva({
-        cliente: pedido.proponente.nome,
-        codigo,
-        corretor: destinatarios.corretor?.nome ?? null,
-        cpf: pedido.proponente.cpf,
-        empreendimento: empreendimento.nome,
-        imobiliaria: destinatarios.imobiliaria.nome,
-        unidade: nomeDaUnidade(unidade),
-        validadeEm: pedido.validadeEm,
-      }),
-      tipo: "hercules_reserva",
-    });
+    // ⚠️ A RESERVA DO PORTAL QUE OPERA SOZINHO NÃO AVISA NINGUÉM (Lucas, 16/09/2026): nenhum
+    // WhatsApp sai, e o histórico de disparos registra que o aviso não foi enviado por decisão. A
+    // reserva da Gurgel avisa corretor, imobiliária e coordenador como sempre.
+    const avisos = vendaAvisaPeloWhatsapp(sessao)
+      ? await avisarSobreAVenda(admin, {
+          corretorId: pedido.corretorEntityId ?? null,
+          destinatarios,
+          imobiliariaId: pedido.imobiliariaEntityId,
+          origem: "reserva:whatsapp",
+          textos: avisosDaReserva({
+            cliente: pedido.proponente.nome,
+            codigo,
+            corretor: destinatarios.corretor?.nome ?? null,
+            cpf: pedido.proponente.cpf,
+            empreendimento: empreendimento.nome,
+            imobiliaria: destinatarios.imobiliaria.nome,
+            unidade: nomeDaUnidade(unidade),
+            validadeEm: pedido.validadeEm,
+          }),
+          tipo: "hercules_reserva",
+        })
+      : await registrarAvisoNaoEnviado(admin, {
+          corretorId: pedido.corretorEntityId ?? null,
+          destinatarios,
+          imobiliariaId: pedido.imobiliariaEntityId,
+          origem: "reserva:whatsapp",
+          tipo: "hercules_reserva",
+        });
 
     return NextResponse.json({ data: { avisos, codigo, id: criada?.id ?? null } });
   } catch (erro) {
@@ -270,7 +335,7 @@ export async function POST(request: Request) {
 // ⚠️ A UNIDADE VOLTA A `disponivel` ANTES DO AVISO. Se o WhatsApp falhar, o lote já está livre para
 // vender; o contrário — lote preso porque uma mensagem não saiu — custaria uma venda.
 export async function PATCH(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -299,17 +364,15 @@ export async function PATCH(request: Request) {
   try {
     const permitidos = new Set(await idsDaSessao(auth.sessao));
 
-    const { data } = await admin
-      .from("hercules_unidades")
-      .select("id,codigo,quadra,lote,situacao,preco_tabela,enterprise_id")
-      .eq("workspace_id", WORKSPACE)
-      .eq("id", pedido.unidadeId)
-      .maybeSingle();
-
-    const unidade = data as null | UnidadeDaReserva;
+    const unidade = await unidadePorId(admin, pedido.unidadeId);
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
       return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
     }
+
+    // A mesma régua do POST: cancelar reserva é escrita, e no produto só de consulta não se escreve.
+    const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
+    if (!escrita.ok) return escrita.response;
+    const sessao = escrita.sessao;
 
     const { data: viva } = await admin
       .from("hercules_reservas")
@@ -357,8 +420,8 @@ export async function PATCH(request: Request) {
         atualizado_em: agora,
         cancelada_em: agora,
         cancelada_motivo: motivo,
-        cancelada_por: auth.sessao.usuarioId,
-        cancelada_por_nome: auth.sessao.usuarioNome,
+        cancelada_por: sessao.usuarioId,
+        cancelada_por_nome: sessao.usuarioNome,
         situacao: "cancelada",
       })
       .eq("id", reserva.id)
@@ -392,22 +455,31 @@ export async function PATCH(request: Request) {
         empreendimento: { c2xId: String(unidade.enterprise_id), nome: nomeDoEmpreendimento },
         imobiliariaId,
       });
-      avisos = await avisarSobreAVenda(admin, {
-        corretorId: reserva.corretor_entity_id,
-        destinatarios,
-        imobiliariaId,
-        origem: "reserva:whatsapp",
-        textos: avisosDeCancelamento({
-          cliente: typeof titular?.nome === "string" ? titular.nome : "cliente",
-          codigo,
-          corretor: destinatarios.corretor?.nome ?? null,
-          empreendimento: nomeDoEmpreendimento,
-          imobiliaria: destinatarios.imobiliaria.nome,
-          motivo,
-          unidade: nomeDaUnidade(unidade),
-        }),
-        tipo: "hercules_reserva",
-      });
+      // Portal que opera sozinho: nenhum WhatsApp, só o registro de que o aviso não saiu.
+      avisos = vendaAvisaPeloWhatsapp(sessao)
+        ? await avisarSobreAVenda(admin, {
+            corretorId: reserva.corretor_entity_id,
+            destinatarios,
+            imobiliariaId,
+            origem: "reserva:whatsapp",
+            textos: avisosDeCancelamento({
+              cliente: typeof titular?.nome === "string" ? titular.nome : "cliente",
+              codigo,
+              corretor: destinatarios.corretor?.nome ?? null,
+              empreendimento: nomeDoEmpreendimento,
+              imobiliaria: destinatarios.imobiliaria.nome,
+              motivo,
+              unidade: nomeDaUnidade(unidade),
+            }),
+            tipo: "hercules_reserva",
+          })
+        : await registrarAvisoNaoEnviado(admin, {
+            corretorId: reserva.corretor_entity_id,
+            destinatarios,
+            imobiliariaId,
+            origem: "reserva:whatsapp",
+            tipo: "hercules_reserva",
+          });
     }
 
     return NextResponse.json({ data: { avisos, codigo, id: reserva.id } });

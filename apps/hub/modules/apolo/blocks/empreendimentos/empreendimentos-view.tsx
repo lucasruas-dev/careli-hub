@@ -10,13 +10,24 @@ import { LinksTab } from "@/modules/apolo/blocks/empreendimentos/links-tab";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
 import { OrdemDeAssinaturaCard } from "@/modules/apolo/blocks/empreendimentos/ordem-de-assinatura-card";
 import { QuadroDeAssinaturaCard } from "@/modules/apolo/blocks/empreendimentos/quadro-de-assinatura-card";
-import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 import { PoliticaComercialTab } from "@/modules/apolo/blocks/empreendimentos/politica-comercial-tab";
+import { ArquivosDoProduto } from "@/modules/incorporador/hercules/ArquivosDoProduto";
+import { JanelaDeCadastroDeUnidades } from "@/modules/incorporador/hercules/CadastroDeUnidades";
+import {
+  NovoProduto,
+  type OperadorPossivel,
+  type ProdutoCriado,
+} from "@/modules/incorporador/hercules/NovoProduto";
 import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { CLASSES_DO_SELO, situacaoConhecida } from "@/lib/hercules/cores-de-situacao";
 import type { LinkPublico } from "@/lib/hercules/links-do-empreendimento";
+import {
+  ehIdDoPanteon,
+  type TipoProduto,
+  tipoProdutoDe,
+} from "@/lib/hercules/produto-novo";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -25,7 +36,6 @@ import {
   ChevronRight,
   ChevronUp,
   ContactRound,
-  CreditCard,
   ExternalLink,
   FileSignature,
   FileText,
@@ -34,6 +44,7 @@ import {
   // do DOM, e o erro que sai fala de JSX, nao de colisao.
   History as HistoryIcon,
   ImagePlus,
+  Images,
   LandPlot,
   Layers,
   // Mesmo motivo do `Map as MapIcon` logo abaixo: `Link` sombrearia o `Link` do next/link se ele
@@ -181,6 +192,12 @@ const detailTabs = [
   // e o que se divulga. O espelho é o mapa, mas o link não é o mapa: a aba Mapa é para trabalhar,
   // a aba Links é para mandar no WhatsApp.
   { icon: LinkIcon, id: "links", label: "Links" },
+  // (16/09/2026, revisão da onda do Cecílio) AS FOTOS E VÍDEOS DO PRODUTO, A MESMA ABA DO PORTAL.
+  // O time do cliente publica pelo portal, e o que ele sobe aparece para quem abre o link; sem a aba
+  // aqui a Careli não tinha como ver nem remover uma foto errada, a não ser pelo portal do cliente ou
+  // direto no banco. A porta é a do hub (/api/apolo/empreendimentos/arquivos, com Bearer): ler é
+  // `authorizeApoloRead`, enviar e remover é `authorizeApoloWrite`.
+  { icon: Images, id: "arquivos", label: "Arquivos" },
   { icon: Settings, id: "setup", label: "Setup" },
 ] as const;
 
@@ -233,17 +250,112 @@ export function EmpreendimentosScreen({
   const [selected, setSelected] = useState<ApoloEnterpriseRow | null>(null);
   const [ordem, setOrdem] = useState(ORDEM_INICIAL);
 
+  // NOVO PRODUTO PELO HUB (16/09/2026, onda 2 do portal da Cecílio). O produto nasce no Panteon
+  // (id a partir de 100000) pela MESMA janela do portal, com a porta do hub (Bearer do Apolo) e o
+  // seletor de quem opera. Só no Apolo: com `renderDetail` a tela é a lista do Hércules no portal,
+  // onde o cadastro tem a porta e as regras dele.
+  const podeCriarProduto = !renderDetail;
+  const [novoProdutoAberto, setNovoProdutoAberto] = useState(false);
+  const [operadores, setOperadores] = useState<OperadorPossivel[]>([]);
+  const [preparandoNovoProduto, setPreparandoNovoProduto] = useState(false);
+  const [recadoDoNovoProduto, setRecadoDoNovoProduto] = useState<null | {
+    texto: string;
+    tom: "erro" | "ok";
+  }>(null);
+  // ⚠️ A LISTA MORA NO PAI (ApoloPage), e esta tela não tem como mandá-lo reler. Depois de criar, a
+  // lista relida fica aqui, AMARRADA ao `data` que estava na tela: quando o pai trouxer outra
+  // lista (recarga dele), ela volta a valer e esta cópia é esquecida, sem efeito e sem tela velha.
+  const [recarregado, setRecarregado] = useState<null | {
+    base: ApoloEnterprisesData | null;
+    dados: ApoloEnterprisesData;
+  }>(null);
+  const dados =
+    recarregado && recarregado.base === data ? recarregado.dados : data;
+
+  // Os portais que podem operar o produto vêm na hora de abrir: a lista muda pouco, e ler a cada
+  // abertura evita oferecer um portal desativado desde a última vez.
+  // ⚠️ SEM A LISTA, A JANELA NÃO ABRE. Abrir com a lista vazia deixaria só "a Careli opera", e o
+  // produto da Cecílio nasceria como da Careli sem ninguém perceber.
+  async function abrirNovoProduto() {
+    setRecadoDoNovoProduto(null);
+    setPreparandoNovoProduto(true);
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/apolo/incorporadores", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const corpo = (await resposta.json().catch(() => null)) as null | {
+        data?: {
+          incorporadores?: { ativo?: boolean; nome?: string; slug?: string }[];
+        };
+      };
+      if (resposta.status === 401 || resposta.status === 403) {
+        setRecadoDoNovoProduto({
+          texto: "Seu acesso não permite cadastrar produto.",
+          tom: "erro",
+        });
+        return;
+      }
+      const incorporadores = corpo?.data?.incorporadores;
+      if (!resposta.ok || !Array.isArray(incorporadores)) {
+        setRecadoDoNovoProduto({
+          texto:
+            "Não foi possível carregar os portais que operam produto. Tente de novo.",
+          tom: "erro",
+        });
+        return;
+      }
+      setOperadores(
+        incorporadores
+          .filter((i) => i.ativo !== false && i.nome?.trim() && i.slug?.trim())
+          .map((i) => ({ nome: String(i.nome).trim(), slug: String(i.slug).trim() })),
+      );
+      setNovoProdutoAberto(true);
+    } catch {
+      setRecadoDoNovoProduto({
+        texto: "Não foi possível abrir o cadastro de produto agora. Tente de novo.",
+        tom: "erro",
+      });
+    } finally {
+      setPreparandoNovoProduto(false);
+    }
+  }
+
+  async function aoCriarProduto(criado: ProdutoCriado) {
+    setNovoProdutoAberto(false);
+    const base = data;
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/apolo/empreendimentos", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const corpo = (await resposta.json().catch(() => null)) as null | {
+        data?: ApoloEnterprisesData;
+      };
+      if (!resposta.ok || !corpo?.data) throw new Error("lista não relida");
+      setRecarregado({ base, dados: corpo.data });
+      setRecadoDoNovoProduto({ texto: `Produto ${criado.codigo} criado.`, tom: "ok" });
+    } catch {
+      setRecadoDoNovoProduto({
+        texto: `Produto ${criado.codigo} criado. A lista não recarregou: atualize a página para vê-lo.`,
+        tom: "ok",
+      });
+    }
+  }
+
   const ordenarPor = (coluna: ColunaDaOrdem) =>
     setOrdem((atual) => aoClicarNaColuna(atual, coluna));
 
   // ⚠️ A ORDEM É DO CLIENTE. São 38 linhas na tela toda: reordenar aqui é imediato e não gasta uma
   // ida ao servidor a cada clique de cabeçalho.
   const linhasOrdenadas = useMemo(
-    () => ordenarEmpreendimentos(data?.rows ?? [], ordem),
-    [data?.rows, ordem],
+    () => ordenarEmpreendimentos(dados?.rows ?? [], ordem),
+    [dados?.rows, ordem],
   );
 
-  if (loading && !data) {
+  if (loading && !dados) {
     return <SkeletonScreen />;
   }
 
@@ -255,7 +367,7 @@ export function EmpreendimentosScreen({
     );
   }
 
-  if (!data?.rows.length) {
+  if (!dados?.rows.length) {
     return (
       <div className="rounded-xl border border-line bg-surface p-8 text-center text-sm font-medium text-ink-muted">
         Nenhum empreendimento encontrado.
@@ -279,7 +391,7 @@ export function EmpreendimentosScreen({
     );
   }
 
-  const scenario = selected?.scenario ?? data.totals;
+  const scenario = selected?.scenario ?? dados.totals;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
@@ -311,6 +423,35 @@ export function EmpreendimentosScreen({
             Todos os empreendimentos · clique numa linha para filtrar os cards
           </span>
         )}
+        {podeCriarProduto ? (
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            {recadoDoNovoProduto ? (
+              <span
+                className={`truncate text-xs font-semibold ${
+                  recadoDoNovoProduto.tom === "erro"
+                    ? "text-rose-600 dark:text-rose-400"
+                    : "text-emerald-600 dark:text-emerald-400"
+                }`}
+                role="status"
+              >
+                {recadoDoNovoProduto.texto}
+              </span>
+            ) : null}
+            <button
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-ink px-3 text-sm font-semibold text-canvas disabled:opacity-60"
+              disabled={preparandoNovoProduto}
+              onClick={() => void abrirNovoProduto()}
+              type="button"
+            >
+              {preparandoNovoProduto ? (
+                <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+              ) : (
+                <Plus aria-hidden="true" className="size-4" />
+              )}
+              Novo produto
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface">
@@ -353,8 +494,32 @@ export function EmpreendimentosScreen({
           </table>
         </div>
       </section>
+
+      {podeCriarProduto ? (
+        <NovoProduto
+          aberto={novoProdutoAberto}
+          aoCriar={(criado) => void aoCriarProduto(criado)}
+          aoFechar={() => setNovoProdutoAberto(false)}
+          codigosExistentes={codigosDasLinhas(dados.rows)}
+          endpoint="/api/apolo/empreendimentos/novo"
+          operadores={operadores}
+          semToken={false}
+        />
+      ) : null}
     </div>
   );
+}
+
+/**
+ * Os códigos que a lista já tem (linha, etapas e os códigos reais de um grupo), para a janela do
+ * produto novo acusar o repetido antes do envio. A rota confere de novo contra o C2X e o Panteon.
+ */
+function codigosDasLinhas(linhas: readonly ApoloEnterpriseRow[]): string[] {
+  return linhas.flatMap((linha) => [
+    linha.code,
+    ...linha.codes,
+    ...codigosDasLinhas(linha.stages),
+  ]);
 }
 
 /**
@@ -650,7 +815,8 @@ function EnterpriseDetail({
           // ⚠️ Unidades e Minutas NÃO rolam por fora: quem rola é o conteúdo. Em Unidades é para o
           // cabeçalho da tabela grudar; em Minutas é para o editor ocupar a altura da tela — dentro
           // de um container que rola, ele encolhe para a altura mínima e a folha fica um talho.
-          tab === "unidades" || tab === "minutas"
+          // Arquivos entra junto: a grade rola por dentro (`.arq` tem flex: 1 e overflow: auto).
+          tab === "unidades" || tab === "minutas" || tab === "arquivos"
             ? "flex min-h-0 flex-1 flex-col overflow-hidden"
             : "min-h-0 flex-1 overflow-auto"
         }
@@ -696,6 +862,15 @@ function EnterpriseDetail({
           <MinutasTab enterpriseId={row.id} name={row.name} />
         ) : null}
         {tab === "links" ? <LinksTab buscar={buscarLinks} /> : null}
+        {tab === "arquivos" ? (
+          // `podeEditar` liga o botão; quem decide de verdade é o servidor: o GET devolve
+          // `podeEnviar` pelo papel de escrita do hub, e o POST/DELETE reconferem.
+          <ArquivosDoProduto
+            api={{ rota: "/api/apolo/empreendimentos/arquivos", semToken: false }}
+            emp={row.id}
+            podeEditar
+          />
+        ) : null}
         {tab === "setup" ? (
           <SetupTab code={row.code} enterpriseId={row.id} name={row.name} />
         ) : null}
@@ -704,7 +879,23 @@ function EnterpriseDetail({
   );
 }
 
-function CadastroTab({ row }: { row: ApoloEnterpriseRow }) {
+// ⚠️ EXPORTADA, JUNTO DA `RelacionamentosTab`, PARA A FICHA DO PRODUTO NO PORTAL QUE OPERA A
+// PRÓPRIA VENDA (modules/incorporador/hercules/FichaDoProduto, modo "incorporador"). Lucas
+// (16/09/2026), sobre o portal da Cecílio: *"literalmente ter dois sistemas, mas ele seria uma
+// replica que temos hoje"*. Mexer aqui muda o portal junto com o Apolo.
+//
+// A BUSCA PODE VIR DE FORA (`buscar`), o mesmo desenho da LinksTab: o Apolo lê
+// /api/apolo/empreendimentos/cadastro com o Bearer do hub; o portal lê
+// /api/incorporador/produto/cadastro pelo cookie, recortado pelo escopo da sessão e sem os
+// contatos de terceiros. Sem a prop, nada muda aqui dentro.
+export function CadastroTab({
+  buscar,
+  row,
+}: {
+  /** A porta de outra tela. Devolve as fichas já recortadas; lança em erro. `useCallback` nela. */
+  buscar?: BuscarCadastros;
+  row: ApoloEnterpriseRow;
+}) {
   const [cadastros, setCadastros] = useState<ApoloEnterpriseCadastro[] | null>(
     null,
   );
@@ -713,7 +904,7 @@ function CadastroTab({ row }: { row: ApoloEnterpriseRow }) {
   useEffect(() => {
     let active = true;
 
-    void loadCadastros(row.codes).then((result) => {
+    void lerCadastros(buscar, row.codes).then((result) => {
       if (!active) {
         return;
       }
@@ -728,7 +919,7 @@ function CadastroTab({ row }: { row: ApoloEnterpriseRow }) {
     return () => {
       active = false;
     };
-  }, [row.codes]);
+  }, [buscar, row.codes]);
 
   // O credenciamento/logo/toggles saíram para a aba "Setup" (CredenciamentoCard). O Cadastro
   // mostra só os CAMPOS do empreendimento (dados gerais do C2X).
@@ -818,11 +1009,23 @@ function Field({ label, value }: { label: string; value: string }) {
 // Relacionamentos: os dois grupos da regra do Lucas — TRABALHO (entre entidades) e CONTATO
 // (leve: nome/telefone/e-mail). Aqui moram os PAPÉIS ACUMULÁVEIS (perfil do C2X + a função no
 // empreendimento). Ex.: Luna = [Imobiliária] + [Gerente].
-function RelacionamentosTab({
+//
+// ⚠️ EXPORTADA para a ficha do produto no portal (ver o comentário da `CadastroTab`). Lá o card
+// NÃO abre o CRM do hub, porque não há CRM do hub para abrir: sem `onOpenEntity` o card vira
+// leitura (e o id interno nem viaja no payload do portal). `mostrarContatos={false}` tira as linhas
+// de telefone e e-mail, que a porta do portal não entrega — sem isso o card mostraria "-" onde o
+// dado existe e só não é de quem está olhando.
+export function RelacionamentosTab({
+  buscar,
+  mostrarContatos = true,
   onOpenEntity,
   row,
 }: {
-  onOpenEntity: (name: string, entityId: string) => void;
+  /** A porta de outra tela (ver `CadastroTab`). `useCallback` nela. */
+  buscar?: BuscarCadastros;
+  mostrarContatos?: boolean;
+  /** Sem ela o card é só leitura: não há ficha de CRM para abrir. */
+  onOpenEntity?: (name: string, entityId: string) => void;
   row: ApoloEnterpriseRow;
 }) {
   const [cadastros, setCadastros] = useState<ApoloEnterpriseCadastro[] | null>(
@@ -833,7 +1036,7 @@ function RelacionamentosTab({
   useEffect(() => {
     let active = true;
 
-    void loadCadastros(row.codes).then((result) => {
+    void lerCadastros(buscar, row.codes).then((result) => {
       if (!active) {
         return;
       }
@@ -848,7 +1051,7 @@ function RelacionamentosTab({
     return () => {
       active = false;
     };
-  }, [row.codes]);
+  }, [buscar, row.codes]);
 
   if (error) {
     return (
@@ -885,6 +1088,7 @@ function RelacionamentosTab({
                   visiblePlayers(cadastro).map((player) => (
                     <PlayerCard
                       key={player.relation}
+                      mostrarContatos={mostrarContatos}
                       onOpenEntity={onOpenEntity}
                       player={player}
                     />
@@ -909,12 +1113,16 @@ function RelacionamentosTab({
                     <p className="m-0 truncate text-sm font-semibold text-ink">
                       {toTitleCase(cadastro.focalName) || "-"}
                     </p>
-                    <p className="m-0 mt-0.5 text-xs text-ink-muted">
-                      {cadastro.focalPhone ?? "-"}
-                    </p>
-                    <p className="m-0 truncate text-xs text-ink-muted">
-                      {cadastro.focalEmail ?? "-"}
-                    </p>
+                    {mostrarContatos ? (
+                      <>
+                        <p className="m-0 mt-0.5 text-xs text-ink-muted">
+                          {cadastro.focalPhone ?? "-"}
+                        </p>
+                        <p className="m-0 truncate text-xs text-ink-muted">
+                          {cadastro.focalEmail ?? "-"}
+                        </p>
+                      </>
+                    ) : null}
                   </div>
                 ) : (
                   <p className="m-0 text-sm font-medium text-ink-muted">
@@ -933,20 +1141,21 @@ function RelacionamentosTab({
 // Card de player: mesmo formato do Contato (nome / telefone / e-mail) + SÓ o papel dele neste
 // empreendimento. Os demais papéis da entidade vivem na ficha dela — por isso o card leva pro
 // cadastro dela no CRM.
+//
+// Sem `onOpenEntity` (a ficha do produto no portal) o card é um bloco de leitura com o MESMO
+// desenho, sem o hover e sem o título de "abrir no CRM": prometer um clique que não leva a lugar
+// nenhum é pior do que não oferecer.
 function PlayerCard({
+  mostrarContatos = true,
   onOpenEntity,
   player,
 }: {
-  onOpenEntity: (name: string, entityId: string) => void;
+  mostrarContatos?: boolean;
+  onOpenEntity?: (name: string, entityId: string) => void;
   player: ApoloEnterprisePlayer;
 }) {
-  return (
-    <button
-      className="w-full rounded-lg border border-line bg-subtle px-3 py-2 text-left transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/8"
-      onClick={() => onOpenEntity(player.name, player.entityId)}
-      title="Abrir cadastro da entidade no CRM"
-      type="button"
-    >
+  const conteudo = (
+    <>
       <div className="flex items-start justify-between gap-2">
         <p className="m-0 min-w-0 truncate text-sm font-semibold text-ink">
           {toTitleCase(player.name)}
@@ -960,16 +1169,66 @@ function PlayerCard({
           {player.document}
         </p>
       ) : null}
-      <p className="m-0 text-xs text-ink-muted">{player.phone ?? "-"}</p>
-      <p className="m-0 truncate text-xs text-ink-muted">
-        {player.email ?? "-"}
-      </p>
+      {mostrarContatos ? (
+        <>
+          <p className="m-0 text-xs text-ink-muted">{player.phone ?? "-"}</p>
+          <p className="m-0 truncate text-xs text-ink-muted">
+            {player.email ?? "-"}
+          </p>
+        </>
+      ) : null}
       {player.address ? (
         <p className="m-0 truncate text-xs text-ink-muted">
           {toTitleCase(player.address)}
         </p>
       ) : null}
+    </>
+  );
+
+  if (!onOpenEntity) {
+    return (
+      <div className="w-full rounded-lg border border-line bg-subtle px-3 py-2 text-left">
+        {conteudo}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      className="w-full rounded-lg border border-line bg-subtle px-3 py-2 text-left transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/8"
+      onClick={() => onOpenEntity(player.name, player.entityId)}
+      title="Abrir cadastro da entidade no CRM"
+      type="button"
+    >
+      {conteudo}
     </button>
+  );
+}
+
+/**
+ * A porta de outra tela para as fichas do empreendimento (hoje, a ficha do produto no portal).
+ * Devolve as fichas já recortadas por quem serve; LANÇA em erro, com a mensagem que a aba mostra.
+ */
+export type BuscarCadastros = () => Promise<ApoloEnterpriseCadastro[]>;
+
+// Quem lê: a porta de fora, quando veio; senão a do Apolo. O formato do resultado é o do
+// `loadCadastros`, para as duas abas tratarem erro e sucesso do mesmo jeito nos dois lugares.
+function lerCadastros(
+  buscar: BuscarCadastros | undefined,
+  codes: string[],
+): Promise<
+  | { cadastros: ApoloEnterpriseCadastro[]; ok: true }
+  | { error: string; ok: false }
+> {
+  if (!buscar) return loadCadastros(codes);
+
+  return buscar().then(
+    (cadastros) => ({ cadastros, ok: true as const }),
+    (error: unknown) => ({
+      error:
+        error instanceof Error ? error.message : "Falha ao carregar o cadastro.",
+      ok: false as const,
+    }),
   );
 }
 
@@ -1739,6 +1998,10 @@ export function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {
   );
 }
 
+/** A porta do hub para cadastrar unidade de produto nascido no Panteon (Bearer do Apolo). */
+const ROTA_DAS_UNIDADES_DO_PANTEON_NO_HUB =
+  "/api/apolo/empreendimentos/unidades/panteon";
+
 // EXPORTADA porque o Hércules (portal comercial da Gurgel) usa ESTA tabela dentro da aba Vendas
 // da ficha do produto (modules/incorporador/hercules/UnidadesDoProduto.tsx). Lucas (02/09/2026):
 // *"precisamos trazer a tela de unidades para dentro de Venda"*. Uma tabela só, duas portas —
@@ -1752,10 +2015,16 @@ export function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {
 // e o link para o CRM 360 (o portal não tem essa porta; botão que não abre nada é pior que o
 // nome sem link).
 export function UnidadesTab({
+  acaoDaUnidade,
   api,
   onOpenEntity,
   row,
 }: {
+  /**
+   * Uma ação por unidade (a edição do portal, por exemplo). Com a prop, a tabela ganha a coluna
+   * final "Ações"; sem ela, nada muda. `recarregar` relê as unidades depois de a ação gravar.
+   */
+  acaoDaUnidade?: (unidade: ApoloEnterpriseUnit, recarregar: () => void) => ReactNode;
   /** A porta do portal: rota pronta (com o `?emp=`) e sem o Bearer do Apolo. */
   api?: { rota: string; semToken: boolean };
   onOpenEntity: (name: string, entityId: string) => void;
@@ -1769,6 +2038,17 @@ export function UnidadesTab({
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [adicionando, setAdicionando] = useState(false);
+  // PRODUTO NASCIDO NO PANTEON (id a partir de 100000): a unidade nova grava em `hercules_unidades`
+  // pela janela do portal, na porta do hub. O AdicionarUnidades escreve no C2X, que não conhece o
+  // produto (e é somente leitura desde 16/09/2026).
+  const doPanteon = ehIdDoPanteon(row.id);
+  const [cadastroNoPanteon, setCadastroNoPanteon] = useState<null | {
+    codigo: string;
+    nome: string;
+    tipoProduto: TipoProduto;
+  }>(null);
+  const [preparandoCadastro, setPreparandoCadastro] = useState(false);
+  const [erroDoCadastro, setErroDoCadastro] = useState<null | string>(null);
   // Muda depois de cada criação e faz o efeito reler o C2X: sem isto, a unidade nova só apareceria
   // trocando de aba e voltando, e o operador não teria como saber se deu certo.
   const [recarga, setRecarga] = useState(0);
@@ -1825,7 +2105,10 @@ export function UnidadesTab({
         }
         const response = await fetch(
           rotaDaApi ??
-            `/api/apolo/empreendimentos/unidades?codes=${encodeURIComponent(row.codes.join(","))}`,
+            // Produto do Panteon leva o id: a rota lê `hercules_unidades` em vez do C2X.
+            `/api/apolo/empreendimentos/unidades?codes=${encodeURIComponent(row.codes.join(","))}${
+              ehIdDoPanteon(row.id) ? `&id=${encodeURIComponent(row.id)}` : ""
+            }`,
           { cache: "no-store", headers },
         );
         const payload = (await response.json()) as {
@@ -1862,7 +2145,50 @@ export function UnidadesTab({
     return () => {
       active = false;
     };
-  }, [row.codes, recarga, rotaDaApi, semToken]);
+  }, [row.codes, row.id, recarga, rotaDaApi, semToken]);
+
+  const recarregar = () => setRecarga((n) => n + 1);
+
+  // ⚠️ O TIPO (loteamento ou prédio) E A SIGLA VÊM DO SERVIDOR (`acao: "modelo"`), nunca da linha da
+  // lista, que não carrega o tipo. É ele que decide se a unidade se escreve "Quadra · Lote" ou
+  // "Torre · Apto", e a mesma chamada já recusa o produto que não recebe unidade por esta porta.
+  async function abrirCadastroNoPanteon() {
+    setErroDoCadastro(null);
+    setPreparandoCadastro(true);
+    const falha =
+      "Não foi possível abrir o cadastro de unidades agora. Tente de novo.";
+    try {
+      const accessToken = await getApoloAccessToken();
+      const resposta = await fetch(ROTA_DAS_UNIDADES_DO_PANTEON_NO_HUB, {
+        body: JSON.stringify({ acao: "modelo", enterpriseId: row.id }),
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const corpo = (await resposta.json().catch(() => null)) as null | {
+        data?: {
+          produto?: { codigo?: string; nome?: string; tipoProduto?: string };
+        };
+        error?: string;
+      };
+      const produto = corpo?.data?.produto;
+      if (!resposta.ok || !produto?.codigo) {
+        setErroDoCadastro(corpo?.error ?? falha);
+        return;
+      }
+      setCadastroNoPanteon({
+        codigo: produto.codigo,
+        nome: produto.nome ?? row.name,
+        tipoProduto: tipoProdutoDe(produto.tipoProduto),
+      });
+    } catch {
+      setErroDoCadastro(falha);
+    } finally {
+      setPreparandoCadastro(false);
+    }
+  }
 
   if (error) {
     return (
@@ -1918,17 +2244,48 @@ export function UnidadesTab({
             AdicionarUnidades fala com a API do Apolo com o token do hub. */}
         {api ? null : (
           <button
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-ink px-3 text-sm font-semibold text-canvas"
-            onClick={() => setAdicionando(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-ink px-3 text-sm font-semibold text-canvas disabled:opacity-60"
+            disabled={preparandoCadastro}
+            onClick={() => {
+              if (doPanteon) void abrirCadastroNoPanteon();
+              else setAdicionando(true);
+            }}
             type="button"
           >
-            <Plus aria-hidden="true" className="size-4" />
+            {preparandoCadastro ? (
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            ) : (
+              <Plus aria-hidden="true" className="size-4" />
+            )}
             Adicionar
           </button>
         )}
       </div>
 
-      {adicionando ? (
+      {erroDoCadastro ? (
+        <p
+          className="m-0 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+          role="alert"
+        >
+          {erroDoCadastro}
+        </p>
+      ) : null}
+
+      {cadastroNoPanteon ? (
+        <JanelaDeCadastroDeUnidades
+          aberto
+          aoConcluir={recarregar}
+          aoFechar={() => setCadastroNoPanteon(null)}
+          emp={row.id}
+          endpoint={ROTA_DAS_UNIDADES_DO_PANTEON_NO_HUB}
+          nomeDoProduto={cadastroNoPanteon.nome}
+          prefixo={cadastroNoPanteon.codigo}
+          semToken={false}
+          tipoProduto={cadastroNoPanteon.tipoProduto}
+        />
+      ) : null}
+
+      {adicionando && !doPanteon ? (
         <AdicionarUnidades
           aoFechar={() => setAdicionando(false)}
           aoTerminar={() => setRecarga((n) => n + 1)}
@@ -1984,6 +2341,9 @@ export function UnidadesTab({
                   sort={sort}
                 />
                 <th className="px-4 py-2.5">Última movimentação</th>
+                {acaoDaUnidade ? (
+                  <th className="px-4 py-2.5 text-right">Ações</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -2028,6 +2388,11 @@ export function UnidadesTab({
                       onOpenEntity={api ? null : onOpenEntity}
                     />
                   </td>
+                  {acaoDaUnidade ? (
+                    <td className="px-4 py-2 text-right">
+                      {acaoDaUnidade(unit, recarregar)}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -4440,7 +4805,7 @@ function CobrancaModal({
 
         <footer className="border-t border-line px-5 py-3">
           <p className="m-0 text-[11px] text-ink-muted">
-            Somente leitura. Use "Abrir no Hades" na proposta para aprovar,
+            Somente leitura. Use &ldquo;Abrir no Hades&rdquo; na proposta para aprovar,
             comentar ou editar.
           </p>
         </footer>
@@ -4653,18 +5018,6 @@ function CarteiraCard({
         {value}
       </p>
       <p className="m-0 text-[11px] text-ink-muted">{hint}</p>
-    </div>
-  );
-}
-
-function PendingTab({ label }: { label: string }) {
-  return (
-    <div className="rounded-xl border border-dashed border-line bg-surface p-8 text-center">
-      <p className="m-0 text-sm font-semibold text-ink">{label}</p>
-      <p className="m-0 mt-1 text-sm font-medium text-ink-muted">
-        Próximo passo. Vendas e Financeiro saem de acquisition_requests e
-        payments; Relacionamentos é onde o corretor vai nascer.
-      </p>
     </div>
   );
 }

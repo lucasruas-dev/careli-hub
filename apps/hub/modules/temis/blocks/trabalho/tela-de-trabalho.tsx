@@ -33,8 +33,8 @@ import {
   nomeDoEstagio,
   type TipoDeTrabalho,
 } from "@/lib/temis/trabalhos";
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { PreviaDoContrato } from "@/modules/incorporador/hercules/PreviaDoContrato";
+import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 import { OrganizacaoDaAssinatura } from "@/modules/temis/blocks/assinatura/organizacao-da-assinatura";
 import { VisorDeDocumento } from "@/modules/temis/blocks/trabalho/visor-de-documento";
 import { ColunaFixa } from "@/modules/temis/blocks/trabalho/coluna-fixa";
@@ -259,14 +259,14 @@ export function TelaDeTrabalho({
   const [indeferindo, setIndeferindo] = useState(false);
   /** A falha da última ação disparada pelo topo. */
   const [erroDaAcao, setErroDaAcao] = useState<null | string>(null);
+  // ⚠️ A PORTA VEM DO PROVEDOR: no hub, `/api/temis` com Bearer; no portal que confecciona,
+  // `/api/incorporador/temis` com o cookie. Ver `modules/temis/api-da-temis.tsx`.
+  const { temisFetch } = useApiDaTemis();
 
   const carregar = useCallback(async () => {
     setErro(null);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(`/api/temis/trabalho?id=${encodeURIComponent(trabalhoId)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const r = await temisFetch(`/trabalho?id=${encodeURIComponent(trabalhoId)}`);
       const corpo = (await r.json().catch(() => ({}))) as {
         data?: {
           analise: AnaliseDoTrabalho | null;
@@ -295,7 +295,7 @@ export function TelaDeTrabalho({
     } catch {
       setErro("Não consegui abrir este trabalho.");
     }
-  }, [trabalhoId]);
+  }, [temisFetch, trabalhoId]);
 
   useEffect(() => {
     void carregar();
@@ -308,10 +308,9 @@ export function TelaDeTrabalho({
     if (!propostaId) return "Este card não tem venda ligada.";
     setOcupado(true);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch("/api/temis/contrato/gerar", {
+      const r = await temisFetch("/contrato/gerar", {
         body: JSON.stringify({ propostaId }),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         method: "POST",
       });
       const j = (await r.json().catch(() => ({}))) as { erro?: string; faltando?: string[] };
@@ -328,7 +327,7 @@ export function TelaDeTrabalho({
     } finally {
       setOcupado(false);
     }
-  }, [aoMudar, carregar, propostaId]);
+  }, [aoMudar, carregar, propostaId, temisFetch]);
 
   /**
    * Abre uma versão do contrato SEM SAIR DA TELA.
@@ -342,10 +341,8 @@ export function TelaDeTrabalho({
   const abrirContrato = useCallback(async (documentoId: string) => {
     setContratoNaTela({ nome: "Contrato", url: "" });
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(
-        `/api/temis/contrato/gerar?documento=${encodeURIComponent(documentoId)}&modo=ver`,
-        { headers: { Authorization: `Bearer ${token}` } },
+      const r = await temisFetch(
+        `/contrato/gerar?documento=${encodeURIComponent(documentoId)}&modo=ver`,
       );
       const j = (await r.json().catch(() => ({}))) as {
         data?: { nome?: string; url: string };
@@ -358,16 +355,15 @@ export function TelaDeTrabalho({
     } catch {
       setContratoNaTela(null);
     }
-  }, []);
+  }, [temisFetch]);
 
   const indeferir = useCallback(
     async (motivo: string, observacao: string): Promise<null | string> => {
       setOcupado(true);
       try {
-        const token = await getApoloAccessToken();
-        const r = await fetch("/api/temis/trabalho", {
+        const r = await temisFetch("/trabalho", {
           body: JSON.stringify({ id: trabalhoId, motivo, observacao }),
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
           method: "POST",
         });
         const corpo = (await r.json().catch(() => ({}))) as { error?: string };
@@ -379,7 +375,7 @@ export function TelaDeTrabalho({
         setOcupado(false);
       }
     },
-    [aoMudar, carregar, trabalhoId],
+    [aoMudar, carregar, temisFetch, trabalhoId],
   );
 
   /**
@@ -418,10 +414,9 @@ export function TelaDeTrabalho({
   const voltarParaAnalise = useCallback(async (): Promise<null | string> => {
     setOcupado(true);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch("/api/temis/trabalho", {
+      const r = await temisFetch("/trabalho", {
         body: JSON.stringify({ acao: "voltar_para_analise", id: trabalhoId }),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         method: "POST",
       });
       // ⚠️ O AVISO DO ENVELOPE É OPCIONAL, E É LIDO NOS DOIS FORMATOS DA CASA: esta rota responde na
@@ -458,7 +453,7 @@ export function TelaDeTrabalho({
     } finally {
       setOcupado(false);
     }
-  }, [aoConcluir, aoMudar, carregar, trabalhoId]);
+  }, [aoConcluir, aoMudar, carregar, temisFetch, trabalhoId]);
 
   if (erro) {
     return (
@@ -1425,18 +1420,17 @@ function EtapaDoContrato({
 function VisorDoPdf({ documentoId }: { documentoId: string }) {
   const [url, setUrl] = useState<null | string>(null);
   const [erro, setErro] = useState(false);
+  const { temisFetch } = useApiDaTemis();
 
   useEffect(() => {
     let vivo = true;
     void (async () => {
       try {
-        const token = await getApoloAccessToken();
         // ⚠️ `modo=ver` OU O IFRAME BAIXA O ARQUIVO. Sem ele a URL vem assinada com `download`, o
         // Storage responde `Content-Disposition: attachment`, e attachment dentro de um iframe não
         // desenha nada — dispara um download. O painel ficava vazio e o navegador salvava o PDF.
-        const r = await fetch(
-          `/api/temis/contrato/gerar?documento=${encodeURIComponent(documentoId)}&modo=ver`,
-          { headers: { Authorization: `Bearer ${token}` } },
+        const r = await temisFetch(
+          `/contrato/gerar?documento=${encodeURIComponent(documentoId)}&modo=ver`,
         );
         const j = (await r.json().catch(() => ({}))) as { data?: { url: string } };
         if (!vivo) return;
@@ -1449,7 +1443,7 @@ function VisorDoPdf({ documentoId }: { documentoId: string }) {
     return () => {
       vivo = false;
     };
-  }, [documentoId]);
+  }, [documentoId, temisFetch]);
 
   if (erro) {
     return <p className="m-0 p-4 text-xs text-ink-muted">Não consegui abrir o contrato.</p>;
@@ -2060,6 +2054,7 @@ function LinhaDoSignatario({
   const [erro, setErro] = useState<null | string>(null);
   /** O que deu certo, ou o pedido de esperar um minuto. Some no próximo clique. */
   const [recado, setRecado] = useState<null | string>(null);
+  const { temisFetch } = useApiDaTemis();
 
   const signerId = signatario.chave;
   const emailAtual = (signatario.email ?? "").trim();
@@ -2085,10 +2080,9 @@ function LinhaDoSignatario({
     setRecado(null);
     setAcaoNoAr(corpo.acao === "reenviar" ? "reenviar" : "trocar");
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch("/api/temis/assinatura/signatario", {
+      const r = await temisFetch("/assinatura/signatario", {
         body: JSON.stringify({ ...corpo, envelopeId, signerId }),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         method: "POST",
       });
       const j = (await r.json().catch(() => ({}))) as {

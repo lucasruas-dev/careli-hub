@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { agregarFluxo, ETAPAS_DO_FLUXO, type PropostaDaCarga, type UnidadeDoMapa,
+  andaresDoGrupo,
+  compararApartamentos,
   estoquePorEmpreendimento,
+  vocabularioDoEstoque,
 } from "./fluxo-de-venda";
 
 const proposta = (p: Partial<PropostaDaCarga> & { etapa: string }): PropostaDaCarga => ({
@@ -445,5 +448,175 @@ describe("estoquePorEmpreendimento", () => {
 
   it("empreendimento sem unidade não vira linha", () => {
     expect(estoquePorEmpreendimento({ propostas: [], unidades: [] }).size).toBe(0);
+  });
+});
+
+// ── O PRÉDIO NA GRADE ───────────────────────────────────────────────────────
+// Lucas (16/09/2026): apartamento nunca vira quadra/lote. A grade do prédio agrupa por TORRE e lê de
+// cima para baixo; o loteamento continua exatamente como era (os testes acima não mudaram).
+
+const apto = (
+  apartamento: string,
+  andar: null | number,
+  torre: null | string,
+  extra: Partial<UnidadeDoMapa> = {},
+): UnidadeDoMapa =>
+  unidade({
+    andar,
+    apartamento,
+    codigo: torre ? `JAD-${torre}-${apartamento}` : `JAD-${apartamento}`,
+    enterprise_id: "100001",
+    torre,
+    ...extra,
+  });
+
+describe("agregarFluxo no prédio", () => {
+  it("agrupa por torre, e dentro da torre do andar mais alto para o mais baixo", () => {
+    const r = agregarFluxo({
+      propostas: [],
+      unidades: [
+        apto("101", 1, "B"),
+        apto("1202", 12, "A"),
+        apto("102", 1, "A"),
+        apto("1201", 12, "A"),
+        apto("21", 0, "A"),
+        apto("1001", 10, "Torre 10"),
+        apto("201", 2, "2"),
+      ],
+    });
+
+    // Ordem natural das torres: "2" antes de "10".
+    expect(r.mapa.map((g) => [g.grupo, g.tipoProduto])).toEqual([
+      ["Torre 2", "vertical"],
+      ["Torre 10", "vertical"],
+      ["Torre A", "vertical"],
+      ["Torre B", "vertical"],
+    ]);
+    const torreA = r.mapa.find((g) => g.grupo === "Torre A");
+    expect(torreA?.unidades.map((u) => [u.andar, u.apartamento])).toEqual([
+      [12, "1201"],
+      [12, "1202"],
+      [1, "102"],
+      [0, "21"],
+    ]);
+    // A torre sai na forma canônica ("Torre 10" gravado à mão vira "10"), e não "Torre Torre 10".
+    expect(r.mapa[1]?.unidades[0]?.torre).toBe("10");
+    // ⚠️ E NADA DE QUADRA E LOTE NO APARTAMENTO.
+    expect(torreA?.unidades.every((u) => u.quadra === null && u.lote === null)).toBe(true);
+    expect(torreA?.unidades.every((u) => u.tipoProduto === "vertical")).toBe(true);
+  });
+
+  it("sem torre (torre única), o grupo é Unidades e fica depois das torres", () => {
+    const r = agregarFluxo({
+      propostas: [],
+      unidades: [apto("304", 3, null), apto("0101", 1, null), apto("A1", null, "A")],
+    });
+    expect(r.mapa.map((g) => g.grupo)).toEqual(["Torre A", "Unidades"]);
+    // "0101" chega na forma canônica: o índice único da 0171 compara "101".
+    expect(r.mapa[1]?.unidades.map((u) => u.apartamento)).toEqual(["304", "101"]);
+  });
+
+  it("⚠️ o tipo do produto basta quando a leitura não trouxe as colunas", () => {
+    const r = agregarFluxo({
+      propostas: [],
+      tiposDeProduto: { "100001": "vertical" },
+      unidades: [unidade({ codigo: "JAD-A-304", enterprise_id: "100001" })],
+    });
+    expect(r.mapa[0]?.tipoProduto).toBe("vertical");
+    expect(r.mapa[0]?.grupo).toBe("Unidades");
+  });
+
+  it("carrega tipologia e vagas só no prédio, e o estoque conta igual", () => {
+    const r = agregarFluxo({
+      propostas: [proposta({ etapa: "contrato", unidade_id: "apto-1" })],
+      unidades: [
+        apto("304", 3, "A", { id: "apto-1", preco_tabela: "480000", tipologia: " 2 quartos ", vagas: 1 }),
+        apto("305", 3, "A", { preco_tabela: 500_000, situacao: "disponivel", vagas: 0 }),
+      ],
+    });
+    const [contrato, livre] = r.mapa[0]?.unidades ?? [];
+    expect(contrato?.etapa).toBe("contrato");
+    expect(contrato?.tipologia).toBe("2 quartos");
+    expect(contrato?.vagas).toBe(1);
+    expect(livre?.vagas).toBe(0);
+    expect(r.fluxo.find((f) => f.etapa === "disponivel")).toEqual({
+      etapa: "disponivel",
+      quantidade: 1,
+      vgv: 500_000,
+    });
+  });
+
+  it("⚠️ escopo com loteamento e prédio: quadras primeiro, e 'Unidades' dos dois não se mistura", () => {
+    const r = agregarFluxo({
+      propostas: [],
+      unidades: [
+        apto("304", 3, null),
+        unidade({ codigo: "302" }),
+        unidade({ codigo: "Q07 L12", lote: "12", quadra: "07" }),
+      ],
+    });
+    expect(r.mapa.map((g) => [g.grupo, g.tipoProduto])).toEqual([
+      ["07", "loteamento"],
+      ["Unidades", "loteamento"],
+      ["Unidades", "vertical"],
+    ]);
+    // O lote segue com as colunas do prédio nulas.
+    expect(r.mapa[0]?.unidades[0]).toMatchObject({
+      andar: null,
+      apartamento: null,
+      lote: "12",
+      quadra: "07",
+      tipologia: null,
+      tipoProduto: "loteamento",
+      torre: null,
+      vagas: null,
+    });
+  });
+
+  it("⚠️ tipo 'vertical' de outro produto não contamina o loteamento", () => {
+    const r = agregarFluxo({
+      propostas: [],
+      tiposDeProduto: { "100001": "vertical" },
+      unidades: [unidade({ codigo: "JDG0617", enterprise_id: "39", lote: "17", quadra: "06" })],
+    });
+    expect(r.mapa[0]).toMatchObject({ grupo: "06", tipoProduto: "loteamento" });
+  });
+});
+
+describe("andaresDoGrupo e compararApartamentos", () => {
+  it("uma linha por andar, de cima para baixo, com andar não informado no fim", () => {
+    const linhas = andaresDoGrupo([
+      { andar: 1, apartamento: "102", codigo: "JAD-102" },
+      { andar: null, apartamento: "X", codigo: "JAD-X" },
+      { andar: 2, apartamento: "201", codigo: "JAD-201" },
+      { andar: 1, apartamento: "101", codigo: "JAD-101" },
+      { andar: -1, apartamento: "S1", codigo: "JAD-S1" },
+    ]);
+    expect(linhas.map((l) => [l.andar, l.unidades.map((u) => u.apartamento)])).toEqual([
+      [2, ["201"]],
+      [1, ["101", "102"]],
+      [-1, ["S1"]],
+      [null, ["X"]],
+    ]);
+  });
+
+  it("apartamento em ordem natural dentro do andar", () => {
+    const base = { andar: 9, codigo: "" };
+    expect(compararApartamentos({ ...base, apartamento: "902" }, { ...base, apartamento: "910" })).toBeLessThan(0);
+    expect(compararApartamentos({ ...base, apartamento: null }, { ...base, apartamento: "901" })).toBeGreaterThan(0);
+  });
+});
+
+describe("vocabularioDoEstoque", () => {
+  it("quadra no loteamento, torre no prédio, os dois no consolidado", () => {
+    expect(vocabularioDoEstoque(["loteamento"]).todos).toBe("Todas as quadras");
+    expect(vocabularioDoEstoque([]).todos).toBe("Todas as quadras");
+    expect(vocabularioDoEstoque(["vertical", "vertical"])).toEqual({
+      busca: "Buscar torre, apartamento ou código",
+      todos: "Todas as torres",
+    });
+    expect(vocabularioDoEstoque(["vertical", "loteamento"]).todos).toBe("Todas as quadras e torres");
+    // O texto de sempre, para o loteamento não mudar de cara.
+    expect(vocabularioDoEstoque(["loteamento"]).busca).toBe("Buscar quadra, lote ou código");
   });
 });

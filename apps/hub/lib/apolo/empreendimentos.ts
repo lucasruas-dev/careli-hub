@@ -33,19 +33,15 @@ import {
 } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
-const SALE_STATUS = {
-  DISPONIVEL: 1,
-  RESERVADO: 2,
-  EM_NEGOCIACAO: 3,
-  VENDIDO: 4,
-  // "Bloqueado para venda". Não entra na agregação por status (o resumo conta bloqueado pelo
-  // flag `sale_blocked`), mas é usado no balde da unidade: ver `mapUnitRow`.
-  BLOQUEADO: 5,
-} as const;
+// (16/09/2026) O mapa `SALE_STATUS` que morava aqui saiu: ele não tinha mais leitor neste arquivo
+// (a régua do status virou `baldeDaUnidade`, e o vocabulário vive em lib/apolo/balde-da-unidade.ts,
+// que exporta o seu próprio `SALE_STATUS`).
 
 // Abas da ficha do empreendimento. O estado vive no ApoloPage (e não na tela) pra o "voltar"
 // do CRM devolver o usuário NA ABA em que ele estava.
 export type ApoloEnterpriseTab =
+  // Fotos e vídeos do produto (16/09/2026): a mesma aba que o portal do incorporador publica.
+  | "arquivos"
   | "cadastro"
   | "carteira"
   // As etapas do produto consolidado, com as unidades de cada uma. Só existe no agrupado.

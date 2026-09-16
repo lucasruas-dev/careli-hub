@@ -1,21 +1,9 @@
-import { NextResponse } from "next/server";
-
-import { moverCardDaTemis } from "@/lib/assinatura/estado-db";
-import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
   autorizarEmissaoDeContrato,
   autorizarLeituraDeContrato,
 } from "@/lib/temis/autorizacao";
-import { montarContratoDaProposta } from "@/lib/temis/contrato-da-proposta";
-import { variaveisAindaEmBranco } from "@/lib/temis/contrato-editado";
-import { lerEdicao } from "@/lib/temis/contrato-editado-db";
-import { podeGerarContrato } from "@/lib/temis/contrato-guardado";
-import {
-  abrirContratoGuardado,
-  contratosDaProposta,
-  guardarContrato,
-} from "@/lib/temis/contrato-guardado-db";
-import { gerarPdfDoHtml } from "@/lib/temis/html-para-pdf";
+import { contratosGuardados, gerarContratoDaProposta } from "@/lib/temis/contrato-servico";
+import { atorDoHub } from "@/lib/temis/ator";
 
 // O CONTRATO VIRA ARQUIVO — o passo que faltava depois da prévia.
 //
@@ -41,6 +29,11 @@ import { gerarPdfDoHtml } from "@/lib/temis/html-para-pdf";
 // irmã. Sem elas a função sobe com o código do `@sparticuz/chromium` e SEM o binário, e a única
 // evidência é um erro em produção numa rota que funciona perfeitamente na máquina de quem
 // desenvolveu — onde o Chrome é o do sistema.
+//
+// ⚠️ ESTA ROTA É SÓ A PORTA DO HUB (16/09/2026). Montar, imprimir, guardar e mover o card moram em
+// `gerarContratoDaProposta` e `contratosGuardados` (`lib/temis/contrato-servico.ts`) — as mesmas
+// funções que o portal do incorporador chama por `/api/incorporador/temis/contrato/gerar`. O que
+// continua aqui é a régua do hub: quem emite e quem só confere.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -56,119 +49,17 @@ export const maxDuration = 300;
  *
  * ⚠️ QUEM DECIDE É `autorizarEmissaoDeContrato`, E É O ÚNICO LUGAR (`lib/temis/autorizacao.ts`) —
  * a etapa 2 troca o recorte por permissão (`temis:manage`) lá dentro, sem voltar aqui.
+ *
+ * ⚠️ O NOME DE QUEM GEROU VEM DO PORTÃO. Até 16/09/2026 esta rota relia `hub_users.display_name`
+ * depois do PDF; o portão do Apolo já lê a mesma coluna para autorizar e devolve o nome junto
+ * (`ApoloAuthResult.nome`). Mesma fonte, uma ida ao banco a menos — e o portal, que não tem linha em
+ * `hub_users`, passa o nome da sessão pelo mesmo caminho.
  */
 export async function POST(request: Request) {
   const autorizacao = await autorizarEmissaoDeContrato(request);
   if (!autorizacao.ok) return autorizacao.response;
 
-  const corpo = (await request.json().catch(() => ({}))) as {
-    minutaId?: unknown;
-    propostaId?: unknown;
-  };
-  const propostaId = typeof corpo.propostaId === "string" ? corpo.propostaId : "";
-  if (!propostaId) {
-    return NextResponse.json({ erro: "Sem proposta." }, { status: 400 });
-  }
-
-  const sb = createApoloAdminClient();
-  if (!sb) return NextResponse.json({ erro: "Supabase indisponível." }, { status: 503 });
-
-  const montado = await montarContratoDaProposta(sb, {
-    minutaId: typeof corpo.minutaId === "string" ? corpo.minutaId : "",
-    propostaId,
-  });
-  if (!montado.ok) {
-    return NextResponse.json({ erro: montado.erro }, { status: montado.status });
-  }
-
-  // ⚠️ O QUE VIRA PAPEL É O TEXTO ALTERADO À MÃO, QUANDO ELE EXISTE (migration 0152). A regra
-  // escrita acima — "o HTML nasce no servidor, da minuta publicada" — continua valendo: o texto
-  // editado NÃO viaja neste pedido. Ele foi gravado antes, por `/api/temis/contrato/edicao`, numa
-  // linha com dono, hora e a impressão da base, e já passou pela faxina do servidor. O que esta
-  // rota aceita continua sendo só um id de proposta.
-  //
-  // ⚠️ E A EDIÇÃO SOBREVIVE À GERAÇÃO. A v2 deste contrato parte do mesmo texto ajustado: apagar
-  // a edição ao emitir faria a cláusula negociada desaparecer na primeira vez que alguém
-  // corrigisse uma vírgula no cadastro e gerasse de novo.
-  const edicao = await lerEdicao(sb, propostaId);
-  const html = edicao?.html ?? montado.html;
-
-  // ⚠️ A TRAVA MEDE O PAPEL, NÃO A MONTAGEM. Ver a decisão 1 em `contrato-guardado.ts`: um
-  // contrato com `[cpf_cliente]` impresso não vira arquivo — mas quem digitou o CPF por cima do
-  // colchete preencheu o contrato, e recusar mesmo assim mandaria a pessoa consertar o cadastro
-  // para poder imprimir um papel que já está certo.
-  const semValor = edicao
-    ? variaveisAindaEmBranco(html, montado.semValor)
-    : montado.semValor;
-  const veredito = podeGerarContrato(semValor);
-  if (!veredito.ok) {
-    return NextResponse.json(
-      { avisos: montado.avisos, erro: veredito.erro, semValor },
-      { status: 409 },
-    );
-  }
-
-  let pdf: Uint8Array;
-  try {
-    pdf = await gerarPdfDoHtml(html);
-  } catch (e) {
-    // A mensagem real vai para o log: o erro do Chromium cita caminho de binário e flag de linha de
-    // comando — infraestrutura, que não ajuda quem está emitindo um contrato e não deve vazar.
-    console.error("[temis][contrato] falha ao gerar o PDF", e instanceof Error ? e.message : e);
-    return NextResponse.json(
-      { erro: "Não foi possível gerar o PDF do contrato. Tente de novo." },
-      { status: 502 },
-    );
-  }
-
-  // ⚠️ UMA CONSULTA SÓ PARA OS DOIS USOS. O nome vai para a gaveta (`guardarContrato`) e para a
-  // passagem de etapa logo abaixo; buscá-lo duas vezes seria uma ida ao banco a mais para responder
-  // a mesma pergunta, e abriria a chance de as duas linhas discordarem sobre quem foi.
-  const nomeDeQuemGerou = await nomeDoUsuario(sb, autorizacao.userId);
-
-  const guardado = await guardarContrato(sb, {
-    // Quem lê a gaveta precisa saber que este PDF não é o texto puro da minuta.
-    alteradoAMaoPor: edicao ? (edicao.editadoPorNome ?? "alguém da equipe") : null,
-    geradoPor: autorizacao.userId,
-    geradoPorNome: nomeDeQuemGerou,
-    identidade: montado.identidade,
-    pdf,
-    propostaId,
-  });
-
-  if (!guardado.ok) {
-    return NextResponse.json({ erro: guardado.erro }, { status: guardado.status });
-  }
-
-  // ⚠️ O CARD ANDA QUANDO O CONTRATO EXISTE, e não quando alguém marca uma caixinha. Lucas
-  // (11/09/2026): *"Gerei o contrato e não moveu para contratos, ao gerar tem que mover"*. A coluna
-  // "Contrato" quer dizer exatamente "gerado, conferir quem assina antes de mandar" — era o único
-  // estágio do quadro que dependia de a pessoa lembrar de mover à mão.
-  //
-  // ⚠️ QUEM DECIDE SE PODE MOVER É `moverCardDaTemis`, que pergunta ao caminho do TIPO antes de
-  // tocar em qualquer linha: um card que já está em assinatura não volta, e o cancelamento da mesma
-  // proposta não é arrastado junto. Falha aqui não derruba a geração — o PDF já está guardado, e um
-  // card parado é bem menos grave que um contrato perdido.
-  //
-  // ⚠️ A PASSAGEM LEVA O AUTOR, e é a mesma identidade que assinou o documento na gaveta. O card e
-  // o PDF contando histórias diferentes sobre quem emitiu seria o pior dos dois mundos numa
-  // auditoria: dois registros do mesmo ato, um deles anônimo.
-  await moverCardDaTemis(sb, propostaId, "contrato", {
-    id: autorizacao.userId,
-    nome: nomeDeQuemGerou,
-  });
-
-  return NextResponse.json({
-    data: {
-      avisos: montado.avisos,
-      documentoId: guardado.documentoId,
-      minuta: montado.minuta,
-      nome: guardado.nome,
-      protocolo: guardado.protocolo,
-      tamanhoBytes: guardado.tamanhoBytes,
-      versao: guardado.versao,
-    },
-  });
+  return gerarContratoDaProposta(atorDoHub(autorizacao, "coordenacao"), request);
 }
 
 /**
@@ -190,58 +81,5 @@ export async function GET(request: Request) {
   const autorizacao = await autorizarLeituraDeContrato(request);
   if (!autorizacao.ok) return autorizacao.response;
 
-  const sb = createApoloAdminClient();
-  if (!sb) return NextResponse.json({ erro: "Supabase indisponível." }, { status: 503 });
-
-  const url = new URL(request.url);
-  const documentoId = (url.searchParams.get("documento") ?? "").trim();
-  if (documentoId) {
-    // `?modo=ver` devolve a URL que desenha no iframe; sem ele, a que baixa o arquivo.
-    const aberto = await abrirContratoGuardado(
-      sb,
-      documentoId,
-      url.searchParams.get("modo") === "ver" ? "ver" : "baixar",
-    );
-    if (!aberto.ok) return NextResponse.json({ erro: aberto.erro }, { status: aberto.status });
-    return NextResponse.json(
-      { data: { nome: aberto.nome, url: aberto.url } },
-      // ⚠️ `no-store`: a URL assinada abre o contrato de um comprador sem pedir nada. Guardá-la em
-      // proxy ou CDN a poria no caminho de outro.
-      { headers: { "Cache-Control": "no-store" } },
-    );
-  }
-
-  const propostaId = (url.searchParams.get("proposta") ?? "").trim();
-  if (!propostaId) {
-    return NextResponse.json({ erro: "Informe a proposta ou o documento." }, { status: 400 });
-  }
-
-  return NextResponse.json(
-    { data: { contratos: await contratosDaProposta(sb, propostaId) } },
-    { headers: { "Cache-Control": "no-store" } },
-  );
-}
-
-/**
- * O nome de quem gerou, para a linha `enviado_por_nome`.
- *
- * ⚠️ VALE A PENA A CONSULTA A MAIS. As três telas que listam documento mostram esse nome, e um
- * contrato sem autor na gaveta é um documento que ninguém pediu — a mesma falta que a auditoria da
- * casa já registrou em `temis_trabalhos.aberto_por`. Falha vira `null`, nunca derruba a geração: o
- * papel já existe a esta altura.
- */
-async function nomeDoUsuario(
-  sb: NonNullable<ReturnType<typeof createApoloAdminClient>>,
-  userId: string,
-): Promise<null | string> {
-  try {
-    const { data } = await sb
-      .from("hub_users")
-      .select("display_name")
-      .eq("id", userId)
-      .maybeSingle();
-    return (data as null | { display_name: null | string })?.display_name ?? null;
-  } catch {
-    return null;
-  }
+  return contratosGuardados(atorDoHub(autorizacao, "leitura"), request);
 }

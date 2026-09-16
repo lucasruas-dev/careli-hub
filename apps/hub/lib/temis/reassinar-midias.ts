@@ -16,19 +16,26 @@ import { caminhoDaUrlAssinada } from "./upload-midia";
 //
 // Falhou re-assinar uma? Fica a antiga: se ainda valer, a imagem aparece; se não, some da tela — o
 // texto da minuta nunca depende disso. Nunca se bloqueia a abertura por causa de mídia.
+//
+// ⚠️ A CHAMADA SAI PELA PORTA DA TELA, E NÃO POR UM TOKEN (16/09/2026). Antes esta função recebia o
+// Bearer do hub e montava `/api/temis/...` sozinha; as minutas do portal que confecciona (Cecílio)
+// abrem a MESMA minuta pelo cookie, em `/api/incorporador/temis/...`. Quem chama passa o
+// `temisFetch` de `useApiDaTemis()`, que já sabe base e credencial — e esta lib continua sem
+// importar nada de tela (o tipo é estrutural).
 
-export const ROTA_DE_MIDIA = "/api/temis/minutas/upload";
+/** O subcaminho da rota de mídia DENTRO da porta da Têmis. */
+export const SUBCAMINHO_DE_MIDIA = "/minutas/upload";
+
+/** A rota de mídia no hub. Mantida pelo nome: é a que a nota acima e o servidor citam. */
+export const ROTA_DE_MIDIA = `/api/temis${SUBCAMINHO_DE_MIDIA}`;
+
+/** A mesma forma do `TemisFetch` de `modules/temis/api-da-temis.tsx`. */
+export type BuscaNaTemis = (subcaminho: string, init?: RequestInit) => Promise<Response>;
 
 export async function reassinarMidiasDoDocumento(
   nos: NoDoDocumento[],
-  // ⚠️ ACEITA `null` PORQUE `getApoloAccessToken()` DEVOLVE `null` (sessão do hub ainda não
-  // resolvida, ou expirada). Sem token a rota responderia 401 em toda mídia; devolver o documento
-  // como está abre a minuta com o texto intacto e as imagens antigas — que é o comportamento de
-  // qualquer falha de re-assinatura aqui.
-  token: null | string,
+  temisFetch: BuscaNaTemis,
 ): Promise<NoDoDocumento[]> {
-  if (!token) return nos;
-
   // URL antiga → path. A mesma mídia repetida no documento é pedida uma vez só.
   const caminhos = new Map<string, string>();
   for (const midia of midiasDoDocumento(nos)) {
@@ -41,15 +48,17 @@ export async function reassinarMidiasDoDocumento(
   await Promise.all(
     [...caminhos].map(async ([urlAntiga, path]) => {
       try {
-        const r = await fetch(`${ROTA_DE_MIDIA}?path=${encodeURIComponent(path)}&json=1`, {
-          cache: "no-store",
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        // ⚠️ SEM SESSÃO, `temisFetch` DO HUB LANÇA antes de chamar, e o `catch` abaixo deixa a URL
+        // antiga — o mesmo desfecho do `token` nulo de antes: a minuta abre com o texto intacto.
+        const r = await temisFetch(
+          `${SUBCAMINHO_DE_MIDIA}?path=${encodeURIComponent(path)}&json=1`,
+          { cache: "no-store" },
+        );
         if (!r.ok) return;
         const corpo = (await r.json().catch(() => null)) as { url?: unknown } | null;
         if (typeof corpo?.url === "string" && corpo.url) novas.set(urlAntiga, corpo.url);
       } catch {
-        // Rede falhou: fica a URL antiga (ver o cabeçalho).
+        // Rede (ou sessão) falhou: fica a URL antiga (ver o cabeçalho).
       }
     }),
   );

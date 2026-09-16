@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 
-import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarEscritaNoProduto } from "@/lib/apolo/incorporador/operacao-do-produto-servidor";
+import { portalConfeccionaContrato } from "@/lib/apolo/incorporador/perfis-de-portal";
+import type { SessaoIncorporador } from "@/lib/apolo/incorporador/sessao";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
-import { nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
+import { lerComColunasDoApartamento, nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
 import { apurarFatosDoContrato, type EnvelopeDoContrato } from "@/lib/hercules/fatos-do-contrato";
 import { classificarCancelamento } from "@/lib/temis/cancelamento";
-import { abrirTrabalho } from "@/lib/temis/trabalhos-db";
+import { abrirTrabalho, ehColunaDoDonoAusente } from "@/lib/temis/trabalhos-db";
 
 // O PEDIDO DE CANCELAMENTO DEPOIS QUE A VENDA FOI PARA CONTRATO.
 //
@@ -55,7 +58,7 @@ const DEPOIS_DO_CONTRATO = ["assinatura", "contrato", "faturado"];
  * do instante em que o pedido nasce.
  */
 export async function GET(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -131,7 +134,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -164,25 +167,38 @@ export async function POST(request: Request) {
 
   try {
     const permitidos = new Set(await idsDaSessao(auth.sessao));
-    const { data: linhaDaUnidade } = await admin
-      .from("hercules_unidades")
-      .select("id,codigo,quadra,lote,enterprise_id")
-      .eq("workspace_id", WORKSPACE)
-      .eq("id", unidadeId)
-      .maybeSingle();
+    // As colunas do prédio (0171) entram porque é desta linha que sai o nome da unidade no card do
+    // pedido ("Torre A · Apto 304"); sem a 0171 a leitura repete sem elas.
+    const { data: linhaDaUnidade } = await lerComColunasDoApartamento((extras) =>
+      admin
+        .from("hercules_unidades")
+        .select(`id,codigo,quadra,lote,enterprise_id${extras}`)
+        .eq("workspace_id", WORKSPACE)
+        .eq("id", unidadeId)
+        .maybeSingle(),
+    );
 
-    const unidade = linhaDaUnidade as null | {
+    const unidade = linhaDaUnidade as unknown as null | {
+      apartamento?: null | string;
       codigo: string;
       enterprise_id: string;
       id: string;
       lote: null | string;
       quadra: null | string;
+      torre?: null | string;
     };
     // Fora do escopo responde como inexistente: o 403 não pode virar oráculo de "existe, mas não é
     // sua" — a mesma regra das irmãs.
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
       return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
     }
+
+    // ⚠️ QUEM OPERA O PRODUTO DECIDE A ESCRITA (Lucas, 16/09/2026). Pedir cancelamento abre card e
+    // carimba a proposta: no portal que confecciona (o Cecílio) só vale no produto operado por ele;
+    // no VOC e no VOR é 403 só consulta. A Gurgel passa sem ida ao banco. Antes do carimbo.
+    const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
+    if (!escrita.ok) return escrita.response;
+    const sessao = escrita.sessao;
 
     // ⚠️ O ERRO DO SELECT NÃO PODE VIRAR 409. Descartá-lo faz uma falha de banco (coluna que não
     // existe, tabela indisponível) chegar ao coordenador como "esta unidade não tem contrato do
@@ -252,7 +268,7 @@ export async function POST(request: Request) {
         atualizado_em: agora,
         cancelamento_pedido_em: agora,
         cancelamento_pedido_motivo: motivo,
-        cancelamento_pedido_por: auth.sessao.usuarioNome ?? null,
+        cancelamento_pedido_por: sessao.usuarioNome ?? null,
         cancelamento_pedido_tipo: classificacao.tipo,
       })
       .eq("id", proposta.id)
@@ -308,8 +324,13 @@ export async function POST(request: Request) {
         });
       }
 
+      // ⚠️ O DONO DO PEDIDO É O DO CONTRATO (Lucas, 16/09/2026). Quem desfaz é quem fez: ver
+      // `donoDoPedido`. Lido aqui dentro, e não antes do carimbo, para uma falha de leitura cair no
+      // mesmo desfazer do carimbo que uma recusa da Têmis.
+      const operadoPor = await donoDoPedido(admin, proposta.id, sessao);
+
       const aberto = await abrirTrabalho({
-        abertoPor: auth.sessao.usuarioId,
+        abertoPor: sessao.usuarioId,
         canal: "hercules",
         clienteCpf: proposta.cliente_documento,
         clienteNome: proposta.cliente_nome || "Cliente",
@@ -321,13 +342,14 @@ export async function POST(request: Request) {
         // exatamente o que ele vai querer olhar primeiro.
         observacao: `Pedido de cancelamento pela tela Venda do Hércules · COD ${cod} · motivo: ${motivo} · ${
           comAjuste
-            ? `AJUSTE MANUAL de ${auth.sessao.usuarioNome ?? "quem pediu"}: assinatura completa: ${
+            ? `AJUSTE MANUAL de ${sessao.usuarioNome ?? "quem pediu"}: assinatura completa: ${
                 comAjuste.assinaturaCompleta ? "sim" : "não"
               }, houve pagamento: ${comAjuste.houvePagamento ? "sim" : "não"} (o sistema apurou: ${
                 fatos.comoSoube.assinatura
               }, ${fatos.comoSoube.pagamento})`
             : `apurado pelo sistema: ${fatos.comoSoube.assinatura}, ${fatos.comoSoube.pagamento}`
         } · ${classificacao.porque}`,
+        operadoPor,
         propostaId: proposta.id,
         tipo: classificacao.tipo,
         unidade: nomeDaUnidade(unidade),
@@ -399,6 +421,48 @@ export async function POST(request: Request) {
       { status: 503 },
     );
   }
+}
+
+/**
+ * De quem é o card do pedido de cancelamento: o MESMO dono do card de contrato desta proposta.
+ *
+ * ⚠️ HERDA, E NÃO SAI DE QUEM CLICA. Lucas (16/09/2026): quem confecciona o contrato é quem
+ * confecciona o distrato. Se a Gurgel vendeu (card de contrato na fila da Careli, dono nulo) e o
+ * time do Cecílio pede o cancelamento, o distrato continua com a Careli; se o contrato é do Cecílio,
+ * o distrato também é. Tirar o dono da sessão de quem clicou mandaria um distrato para quem nunca viu
+ * o contrato.
+ *
+ *   • achou o card de contrato → o `operado_por` dele (nulo = Careli);
+ *   • a coluna `operado_por` ainda não existe (migration 0172) → nulo: sem a coluna não há dono
+ *     nenhum para herdar, e o card nasce na fila da Careli como todo card nascia;
+ *   • não há card de contrato (a Têmis recusou lá atrás) → a regra da origem: o portal que
+ *     confecciona é dono do que pede, o comercial é Careli.
+ *
+ * Qualquer outro erro de leitura LANÇA: adivinhar o dono aqui seria escolher a fila de um distrato no
+ * escuro.
+ */
+async function donoDoPedido(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  propostaId: string,
+  sessao: Pick<SessaoIncorporador, "incorporadorId" | "slug" | "tipo">,
+): Promise<null | string> {
+  const { data, error } = await admin
+    .from("temis_trabalhos")
+    .select("operado_por")
+    .eq("workspace_id", WORKSPACE)
+    .eq("proposta_id", propostaId)
+    .eq("tipo", "contrato")
+    .order("criado_em", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    if (ehColunaDoDonoAusente(error)) return null;
+    throw new Error(error.message);
+  }
+
+  const card = ((data ?? []) as Array<{ operado_por: null | string }>)[0];
+  if (card) return card.operado_por ?? null;
+  return portalConfeccionaContrato(sessao.slug, sessao.tipo) ? sessao.incorporadorId : null;
 }
 
 /**

@@ -56,7 +56,6 @@ import {
 import { CampoCidade } from "../cadastro/campo-cidade";
 import {
   empreendimentosNovos,
-  ehReativacao,
   podeHabilitar,
   posicaoDaImobiliaria,
   tudoLiberado,
@@ -69,6 +68,12 @@ import { formatarTelefoneBR } from "@/lib/format/phone-br";
 import { buscarEnderecoPorCep } from "../../lib/cep";
 
 import { CreditoSerasa } from "./credito-serasa";
+import {
+  BASE_DO_BOARD_NO_HUB,
+  rotasDoCredito,
+  rotuloDaColuna,
+  vocabularioDoCredito,
+} from "./porta-do-credito";
 import { StatusDisparos } from "./status-disparos";
 import { StatusPixPrevenda } from "./status-pix";
 
@@ -87,6 +92,13 @@ import { getApoloAccessToken } from "../../data/apolo-operations";
 //
 // O contexto existe porque quem faz fetch está espalhado em subcomponentes (a ficha lado a lado,
 // as caixinhas de habilitação, o card): passar a porta por prop atravessaria dez assinaturas.
+//
+// (16/09/2026) A ANÁLISE DE CRÉDITO TAMBÉM TEM AS DUAS PORTAS. Decisão do Lucas: *"A Cecílio, no
+// portal"* faz o crédito e o credenciamento dos clientes dela. A consulta ao Serasa e a aprovação com
+// restrição batem na base da porta (porta-do-credito.ts), e `operaSozinho` diz que quem decide o
+// crédito é o próprio time do portal: ganha indeferir a CAD em revisão, credenciar na pré-venda (a
+// porta não tem o painel do PIX) e o vocabulário sem a coordenação da Careli. O servidor confere tudo
+// de novo (app/api/incorporador/board/[id]/etapa e /serasa/*); aqui é só o que aparece.
 
 /** O que pode ficar de fora numa porta que não tem a rota (ou o direito) correspondente. */
 export type OcultavelDoBoard =
@@ -111,15 +123,43 @@ type PortaDoBoard = {
   /** Empreendimento travado (seletor escondido; o servidor já recortou). `null` = seletor livre. */
   fixo: null | string[];
   ocultar: Set<OcultavelDoBoard>;
+  /** O time da porta decide o crédito sem a Careli (ver o topo). `false` no hub e no comercial. */
+  operaSozinho: boolean;
+  /**
+   * (16/09/2026, D1) O produto aberto é SÓ CONSULTA para esta porta: nenhuma ação que grava aparece
+   * (editar ficha e identidade, mover etapa, habilitar/corrigir/recusar imobiliária, consultar
+   * Serasa, aprovar com restrição, enviar ao coordenador, subir para o C2X, avisar em lote). `false`
+   * no hub e em todo produto que a porta opera.
+   */
+  somenteLeitura: boolean;
 };
 
-const API_PADRAO: BoardApi = { base: "/api/apolo/board", semToken: false };
+// A base do hub mora em porta-do-credito.ts: é a mesma régua que diz se a porta é a do portal.
+const API_PADRAO: BoardApi = { base: BASE_DO_BOARD_NO_HUB, semToken: false };
 
 const BoardPortaContext = createContext<PortaDoBoard>({
   api: API_PADRAO,
   fixo: null,
   ocultar: new Set(),
+  operaSozinho: false,
+  somenteLeitura: false,
 });
+
+// (16/09/2026, D1) A FAIXA DO PRODUTO SÓ CONSULTA. Decisão do Lucas: no portal que confecciona, a
+// escrita só vale no produto que ele opera; VOC e VOR ficam só consulta para a Cecílio. Sem a faixa,
+// a tela sem nenhum botão de ação parecia defeito. O servidor recusa de novo (403 `soConsulta`) em
+// cada rota; aqui é só o que aparece.
+function FaixaSoConsulta() {
+  return (
+    <p
+      className="m-0 flex shrink-0 items-center gap-2 rounded-xl border border-line bg-subtle px-4 py-2.5 text-sm font-medium text-ink"
+      role="status"
+    >
+      <Info aria-hidden="true" className="size-4 shrink-0 text-ink-muted" />
+      Só consulta neste produto.
+    </p>
+  );
+}
 
 const usePortaDoBoard = () => useContext(BoardPortaContext);
 
@@ -412,6 +452,8 @@ export function BoardView({
   empreendimentosFixos,
   ocultar: ocultarProp,
   onOpenEntity,
+  operaSozinho: operaSozinhoProp,
+  somenteLeitura: somenteLeituraProp,
 }: {
   // A PORTA (ver "A PORTA DO BOARD" acima). Sem ela: /api/apolo/board com Bearer do hub.
   api?: BoardApi;
@@ -423,15 +465,28 @@ export function BoardView({
   // Abre a ficha do cliente no CRM do Apolo (mesma navegação dos relacionamentos). Vem do
   // ApoloPage (openEntityInCrm): busca por nome e seleciona pela id certa.
   onOpenEntity?: (name: string, entityId: string) => void;
+  // O portal que opera sozinho (ver "A PORTA DO BOARD"). Sem a prop: hub e comercial de sempre.
+  operaSozinho?: boolean;
+  // (16/09/2026, D1) Produto só consulta nesta porta: nenhuma ação que grava aparece, e a faixa
+  // "Só consulta neste produto." explica. Sem a prop (o hub): tudo como sempre.
+  somenteLeitura?: boolean;
 } = {}) {
   // Por VALOR, não por identidade: a ficha do produto passa `api` e `ocultar` inline, e recriar
   // as rotas a cada render faria `carregarFila` mudar a cada render → refetch em loop.
-  const chaveDaPorta = JSON.stringify([apiProp ?? null, empreendimentosFixos ?? null, ocultarProp ?? []]);
+  const chaveDaPorta = JSON.stringify([
+    apiProp ?? null,
+    empreendimentosFixos ?? null,
+    ocultarProp ?? [],
+    operaSozinhoProp === true,
+    somenteLeituraProp === true,
+  ]);
   const porta = useMemo<PortaDoBoard>(
     () => ({
       api: apiProp ?? API_PADRAO,
       fixo: empreendimentosFixos ?? null,
       ocultar: new Set(ocultarProp ?? []),
+      operaSozinho: operaSozinhoProp === true,
+      somenteLeitura: somenteLeituraProp === true,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [chaveDaPorta],
@@ -871,9 +926,10 @@ export function BoardView({
     payload: { fileBase64: string; fileName: string; mimeType: string; motivo: string },
   ): Promise<{ error?: string; ok?: boolean }> => {
     try {
-      const token = await getApoloAccessToken();
       const enterpriseId = itens.find((item) => item.id === itemId)?.enterpriseId ?? null;
-      const resposta = await fetch("/api/apolo/serasa/aprovar-restricao", {
+      // (16/09/2026) Pela base da porta: no hub, a rota da coordenação com o Bearer, como sempre; no
+      // portal que opera sozinho, a do `[id]` do board com o cookie (o servidor confere o escopo).
+      const resposta = await fetch(rotasDoCredito(porta.api).aprovarRestricao(itemId), {
         body: JSON.stringify({
           enterpriseId,
           entityId: itemId,
@@ -882,7 +938,7 @@ export function BoardView({
           mimeType: payload.mimeType,
           motivo: payload.motivo,
         }),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: await cabecalhosDoBoard(porta.api, { "Content-Type": "application/json" }),
         method: "POST",
       });
       const corpo = (await resposta.json()) as { data?: { etapa?: string }; error?: string };
@@ -895,7 +951,11 @@ export function BoardView({
       const item = itens.find((linha) => linha.id === itemId);
       const indice = item ? indiceDaEtapa(item, etapaNova) : undefined;
       if (indice !== undefined) setProgresso((prev) => ({ ...prev, [itemId]: indice }));
-      registrarEvento(itemId, "aprovacao", "Crédito aprovado com restrição pela coordenação");
+      registrarEvento(
+        itemId,
+        "aprovacao",
+        vocabularioDoCredito(porta.operaSozinho).eventoAprovadoComRestricao,
+      );
       void carregarFila();
       return { ok: true };
     } catch (e) {
@@ -1251,6 +1311,8 @@ export function BoardView({
             </div>
           </header>
 
+          {porta.somenteLeitura ? <FaixaSoConsulta /> : null}
+
           {/* O SERVIDOR RECUSOU. Antes essa recusa era engolida e a tela seguia mostrando o avanço;
               é dela que nasce a sensação de "o cliente voltou sozinho". Fica em vermelho, com o
               motivo que veio do servidor, até a próxima tentativa. */}
@@ -1393,6 +1455,7 @@ export function BoardView({
   return (
     <BoardPortaContext.Provider value={porta}>
       <section className="flex h-full min-h-0 flex-col gap-3">
+        {porta.somenteLeitura ? <FaixaSoConsulta /> : null}
         <header className="shrink-0 rounded-xl border border-line bg-surface px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             {/* Sem título: o nome da tela já vem do sidebar do Apolo. */}
@@ -1518,7 +1581,8 @@ export function BoardView({
                     coordenador É quem seria avisado). */}
                 {empreendimento !== "todos" &&
                 enterpriseIdDoFiltro() &&
-                !porta.ocultar.has("avisarLote") ? (
+                !porta.ocultar.has("avisarLote") &&
+                !porta.somenteLeitura ? (
                   <button
                     className="h-9 rounded-lg border border-line/70 bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors hover:bg-subtle disabled:opacity-50"
                     disabled={loteAviso?.enviando}
@@ -1557,7 +1621,11 @@ export function BoardView({
                 ).length;
                 return (
                   <option key={coluna.id} value={coluna.id}>
-                    {coluna.label} ({quantos})
+                    {rotuloDaColuna(coluna, {
+                      imob: filtro === "imobiliaria",
+                      operaSozinho: porta.operaSozinho,
+                    })}{" "}
+                    ({quantos})
                   </option>
                 );
               })}
@@ -1919,6 +1987,8 @@ function EtapaChip({ coluna, imob }: { coluna: string; imob: boolean }) {
   // Rótulo e cor: usa o vocabulário COMPLETO de propósito. Se a coluna Pré-venda está escondida no
   // kanban, uma ficha residual nela ainda precisa ser nomeada corretamente na lista — não cair no
   // primeiro chip da lista, que seria "Validação".
+  // O rótulo da CAD indeferida depende de quem decide o crédito nesta porta (porta-do-credito.ts).
+  const { operaSozinho } = usePortaDoBoard();
   const colunas = imob ? COLUNAS_IMOBILIARIA : COLUNAS_CAD;
   const etapa = colunas.find((item) => item.id === coluna) ?? colunas[0];
   if (!etapa) return null;
@@ -1929,7 +1999,7 @@ function EtapaChip({ coluna, imob }: { coluna: string; imob: boolean }) {
         className="size-2 shrink-0 rounded-full"
         style={{ backgroundColor: etapa.accent }}
       />
-      {etapa.label}
+      {rotuloDaColuna(etapa, { imob, operaSozinho })}
     </span>
   );
 }
@@ -1957,6 +2027,8 @@ function KanbanBoard({
   onSubirC2x: (entityId: string) => Promise<ResultadoSubidaC2x>;
   progresso: Record<string, number>;
 }) {
+  // O rótulo da CAD indeferida depende de quem decide o crédito nesta porta (porta-do-credito.ts).
+  const { operaSozinho } = usePortaDoBoard();
   if (carregando) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-line bg-surface">
@@ -1986,7 +2058,7 @@ function KanbanBoard({
                   style={{ backgroundColor: coluna.accent }}
                 />
                 <span className="truncate text-xs font-semibold uppercase tracking-normal text-ink-muted">
-                  {coluna.label}
+                  {rotuloDaColuna(coluna, { imob: filtro === "imobiliaria", operaSozinho })}
                 </span>
               </span>
               <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[11px] font-bold text-ink-muted ring-1 ring-slate-200 dark:ring-white/10">
@@ -2232,6 +2304,8 @@ function ModalMotivo({
   // motivo virava edição de texto no meio da frase.
   const [marcados, setMarcados] = useState<Record<string, boolean>>({});
   const [observacao, setObservacao] = useState("");
+  // Indeferir a CAD tem o título de quem decide o crédito nesta porta (porta-do-credito.ts).
+  const { operaSozinho } = usePortaDoBoard();
   const correcao = tipo === "correcao";
   const sugestoes = correcao
     ? imob
@@ -2274,7 +2348,7 @@ function ModalMotivo({
                 ? "Enviar para correção"
                 : imob
                   ? "Recusar credenciamento"
-                  : "Indeferir crédito"}
+                  : vocabularioDoCredito(operaSozinho).indeferirTitulo}
             </h2>
             <p className="m-0 mt-0.5 text-xs text-ink-muted">
               {correcao
@@ -2389,6 +2463,8 @@ function ModalAprovarRestricao({
   const [motivo, setMotivo] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // No portal que opera sozinho não há coordenação da Careli acima de quem aprova.
+  const { operaSozinho } = usePortaDoBoard();
 
   // O arquivo viaja em base64 (infla ~33%) e a plataforma corta o corpo em ~4,5 MB. Barrar aqui é o
   // que separa "arquivo grande demais, mande a página do de-acordo" de um 413 mudo no meio do
@@ -2440,8 +2516,7 @@ function ModalAprovarRestricao({
         <div className="border-b border-line px-5 py-4">
           <h2 className="m-0 text-base font-semibold text-ink">Aprovar com restrição</h2>
           <p className="m-0 mt-0.5 text-xs text-ink-muted">
-            {nome} teve o crédito reprovado. A coordenação pode aprovar mesmo assim, anexando a
-            evidência do de-acordo. Fica registrado quem aprovou e quando.
+            {nome} {vocabularioDoCredito(operaSozinho).aprovarComRestricaoExplicacao}
           </p>
         </div>
 
@@ -2737,10 +2812,10 @@ function BotaoSubirC2x({
 }) {
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<ResultadoSubidaC2x | null>(null);
-  // A porta sem a rota de sync (o portal comercial) não oferece o botão.
-  const { ocultar } = usePortaDoBoard();
+  // A porta sem a rota de sync (o portal comercial) não oferece o botão, nem o produto só consulta.
+  const { ocultar, somenteLeitura } = usePortaDoBoard();
 
-  if (ocultar.has("c2xSync") || !foraDoC2x(item.c2xFalha)) return null;
+  if (ocultar.has("c2xSync") || somenteLeitura || !foraDoC2x(item.c2xFalha)) return null;
 
   const clicar = async () => {
     // Trava de clique duplo: criar cadastro no C2X não tem desfazer, e o endpoint é genérico
@@ -2995,8 +3070,10 @@ function DetalheBoard({
   // Mesma ideia do `onAvancar`: o Board nomeia a etapa, não conta posições.
   onVoltar: (etapaAtualId: string) => void;
 }) {
-  // O que esta porta não mostra (ver "A PORTA DO BOARD").
-  const { ocultar } = usePortaDoBoard();
+  // O que esta porta não mostra, e quem decide o crédito nela (ver "A PORTA DO BOARD").
+  // `somenteLeitura` (D1): o produto é só consulta, e o rodapé fica sem nenhuma ação que grava.
+  const { ocultar, operaSozinho, somenteLeitura } = usePortaDoBoard();
+  const vocabulario = vocabularioDoCredito(operaSozinho);
   const imob = item.papel === "imobiliaria";
   const etapas = etapasDoItem(item);
   const indice = Math.min(etapaAtual, etapas.length - 1);
@@ -3028,7 +3105,7 @@ function DetalheBoard({
           {emRevisao ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#7C3AED]/10 px-3 py-1 text-xs font-semibold text-[#6D28D9] dark:text-[#c4b5fd]">
               <ShieldCheck aria-hidden="true" className="size-3.5" />
-              Aguardando o coordenador
+              {vocabulario.aguardandoDecisao}
             </span>
           ) : null}
           {emCorrecao ? (
@@ -3040,7 +3117,7 @@ function DetalheBoard({
           {indeferido ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
               <X aria-hidden="true" className="size-3.5" />
-              {imob ? "Recusada" : "Crédito indeferido"}
+              {imob ? "Recusada" : vocabulario.indeferido}
             </span>
           ) : null}
           {concluida ? (
@@ -3091,8 +3168,8 @@ function DetalheBoard({
                 title={
                   reprovado
                     ? indeferido
-                      ? "Crédito indeferido"
-                      : "Crédito reprovado: aguardando a coordenação"
+                      ? vocabulario.indeferido
+                      : vocabulario.reprovadoAguardando
                     : aguardandoCorrecao
                       ? "Aguardando a correção do corretor"
                       : undefined
@@ -3191,22 +3268,25 @@ function DetalheBoard({
 
       <div className="flex items-center justify-between gap-2 border-t border-line pt-4">
         <div className="flex items-center gap-2">
-          <button
-            className="inline-flex h-9 items-center rounded-lg border border-line px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle disabled:opacity-40"
-            disabled={etapaAtual === 0}
-            onClick={() => onVoltar(etapa?.id ?? "cadastro")}
-            title={
-              imob
-                ? "Devolve o credenciamento para validação: enquanto isso ela NÃO envia CAD."
-                : undefined
-            }
-            type="button"
-          >
-            {/* Na imobiliária este botão não "volta uma etapa": ele DESFAZ a habilitação (o papel
-                cai para `review` e o portal do corretor para de aceitar o CNPJ). Chamar isso de
-                "Voltar" numa ficha habilitada é convite a descredenciar sem querer. */}
-            {imob ? "Reabrir validação" : "Voltar"}
-          </button>
+          {/* (D1) Voltar grava a etapa (ou reabre a imobiliária): some no produto só consulta. */}
+          {somenteLeitura ? null : (
+            <button
+              className="inline-flex h-9 items-center rounded-lg border border-line px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle disabled:opacity-40"
+              disabled={etapaAtual === 0}
+              onClick={() => onVoltar(etapa?.id ?? "cadastro")}
+              title={
+                imob
+                  ? "Devolve o credenciamento para validação: enquanto isso ela NÃO envia CAD."
+                  : undefined
+              }
+              type="button"
+            >
+              {/* Na imobiliária este botão não "volta uma etapa": ele DESFAZ a habilitação (o papel
+                  cai para `review` e o portal do corretor para de aceitar o CNPJ). Chamar isso de
+                  "Voltar" numa ficha habilitada é convite a descredenciar sem querer. */}
+              {imob ? "Reabrir validação" : "Voltar"}
+            </button>
+          )}
 
           {/* Chat e histórico: compacto e destacado no dourado da marca, junto das ações. */}
           <button
@@ -3225,7 +3305,10 @@ function DetalheBoard({
           </button>
         </div>
         <div className="flex items-center gap-2">
-          {indeferido || emCorrecao ? (
+          {/* (16/09/2026, D1) PRODUTO SÓ CONSULTA: nenhuma decisão no rodapé (reabrir, correção,
+              indeferir, recusar, aprovar com restrição, enviar ao coordenador, avançar, credenciar).
+              A faixa "Só consulta neste produto." no topo diz o porquê. */}
+          {somenteLeitura ? null : indeferido || emCorrecao ? (
             // Não é beco sem saída: corrigida a pendência, a análise volta ao fluxo.
             <button
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle"
@@ -3249,6 +3332,22 @@ function DetalheBoard({
                 <AlertTriangle aria-hidden="true" className="size-4" />
                 Enviar para correção
               </button>
+              {/* (16/09/2026) O PORTAL QUE OPERA SOZINHO INDEFERE. No hub a revisão espera a
+                  coordenação da Careli, que aprova ou devolve; no portal quem decide é o próprio
+                  time do cliente, e sem esta saída a CAD reprovada que ele não quer aprovar ficaria
+                  em revisão para sempre. O motivo é obrigatório (o modal cobra e o servidor recusa
+                  sem ele), e sair de revisão para indeferido é movimento lateral, que a esteira
+                  permite. */}
+              {operaSozinho && !imob ? (
+                <button
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-4 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                  onClick={onIndeferir}
+                  type="button"
+                >
+                  <X aria-hidden="true" className="size-4" />
+                  Indeferir
+                </button>
+              ) : null}
               {/* O override passa pela rota do Serasa: na porta sem ela, a decisão é da Careli. */}
               {ocultar.has("serasa") ? null : (
                 <button
@@ -3257,7 +3356,7 @@ function DetalheBoard({
                   type="button"
                 >
                   <ShieldCheck aria-hidden="true" className="size-4" />
-                  Aprovar com restrição (coordenação)
+                  {vocabulario.aprovarComRestricao}
                 </button>
               )}
             </>
@@ -3316,14 +3415,26 @@ function DetalheBoard({
                   do painel de empreendimentos, e ele só acende quando há empreendimento novo
                   marcado, porque clique repetido REDISPARA o WhatsApp de boas-vindas para a
                   imobiliária e para o coordenador. */}
-              {imob || (etapa && (etapa.id === "prevenda" || etapa.id === "credito")) ? null : (
+              {/* (16/09/2026) ⚠️ NA PRÉ-VENDA DO PORTAL QUE OPERA SOZINHO O AVANÇO VOLTA, COMO
+                  "Credenciar". A porta não tem o painel do PIX (a cobrança não sai por lá), então o
+                  motivo acima não vale para ela: sem este botão, a CAD cujo PIX já foi gerado e não
+                  andou sozinha ficava parada na Pré-venda sem ação nenhuma. O servidor só grava com
+                  o crédito aprovado e, com a pré-venda ligada, com o PIX gerado (409 com o porquê,
+                  que aparece em cima da ficha). */}
+              {imob ||
+              (etapa &&
+                (etapa.id === "credito" || (etapa.id === "prevenda" && !operaSozinho))) ? null : (
                 <button
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90"
                   onClick={() => onAvancar(etapa?.id ?? "cadastro")}
                   type="button"
                 >
                   <Check aria-hidden="true" className="size-4" />
-                  {etapa ? acaoDaEtapa(etapa.id) : "Aprovar"}
+                  {etapa?.id === "prevenda" && operaSozinho
+                    ? "Credenciar"
+                    : etapa
+                      ? acaoDaEtapa(etapa.id)
+                      : "Aprovar"}
                 </button>
               )}
             </>
@@ -3369,8 +3480,9 @@ function PainelEtapa({
   papelStatus?: null | string;
 }) {
   const Icon = etapa.icon;
-  // O que esta porta não mostra (ver "A PORTA DO BOARD").
-  const { ocultar } = usePortaDoBoard();
+  // O que esta porta não mostra, a base das rotas e quem decide o crédito (ver "A PORTA DO BOARD").
+  // `somenteLeitura` (D1): no produto só consulta, o painel do Serasa (que consulta e cobra) não monta.
+  const { api, ocultar, operaSozinho, somenteLeitura } = usePortaDoBoard();
   return (
     <div className="rounded-xl border border-line bg-subtle/40 p-5">
       <div className="flex items-start gap-3">
@@ -3410,7 +3522,12 @@ function PainelEtapa({
         </>
       ) : null}
       {etapa.id === "credito" ? (
-        ocultar.has("serasa") ? (
+        somenteLeitura ? (
+          <p className="m-0 mt-4 rounded-xl border border-line bg-surface px-4 py-3 text-xs text-ink-muted">
+            A análise de crédito deste produto não é feita por este portal. Quando o resultado sair, a
+            CAD anda sozinha para a próxima etapa.
+          </p>
+        ) : ocultar.has("serasa") ? (
           // A consulta ao Serasa é da Careli (rota interna, com custo por consulta). O
           // coordenador acompanha o resultado pela etapa; quem consulta é o time.
           <p className="m-0 mt-4 rounded-xl border border-line bg-surface px-4 py-3 text-xs text-ink-muted">
@@ -3418,12 +3535,24 @@ function PainelEtapa({
             para a próxima etapa.
           </p>
         ) : (
-          <CreditoSerasa entityId={entityId} onResultado={onCreditoResultado} />
+          // A base da porta decide a rota: no hub, /api/apolo/serasa/* com o Bearer; no portal que
+          // opera sozinho, /api/incorporador/board/<id>/serasa/* com o cookie.
+          // `key` pela ficha: o detalhe não remonta no Anterior/Próximo, e sem ela o recado, o erro e
+          // o resultado do cônjuge da ficha anterior ficavam na tela da seguinte.
+          <CreditoSerasa api={api} entityId={entityId} key={entityId} onResultado={onCreditoResultado} />
         )
       ) : null}
       {/* Pré-venda: o ciclo do PIX (gerou -> enviou -> recebeu), com os erros à vista. */}
       {etapa.id === "prevenda" && !ocultar.has("pix") ? (
         <StatusPixPrevenda entityId={entityId} />
+      ) : null}
+      {/* (16/09/2026) O portal que opera sozinho não tem o painel do PIX: a cobrança da pré-venda
+          não sai por ele. A frase diz isso e aponta a saída, o "Credenciar" do rodapé. */}
+      {etapa.id === "prevenda" && ocultar.has("pix") && operaSozinho && !somenteLeitura ? (
+        <p className="m-0 mt-4 rounded-xl border border-line bg-surface px-4 py-3 text-xs text-ink-muted">
+          A cobrança do PIX da pré-venda não sai por este portal. Com o PIX gerado, a CAD segue para
+          Credenciado; se ela não andar sozinha, use Credenciar.
+        </p>
       ) : null}
     </div>
   );
@@ -4282,14 +4411,18 @@ function ValidacaoLadoALado({
                 </>
               ) : (
                 <>
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-bold text-ink hover:bg-subtle"
-                    onClick={() => setEditando(true)}
-                    type="button"
-                  >
-                    <UserRound aria-hidden="true" className="size-3.5" />
-                    Editar ficha
-                  </button>
+                  {/* (D1) No produto só consulta não há edição: sem o botão, o modo de edição (campos
+                      da ficha e correção de identidade) nunca abre. O Histórico continua. */}
+                  {porta.somenteLeitura ? null : (
+                    <button
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-bold text-ink hover:bg-subtle"
+                      onClick={() => setEditando(true)}
+                      type="button"
+                    >
+                      <UserRound aria-hidden="true" className="size-3.5" />
+                      Editar ficha
+                    </button>
+                  )}
                   <button
                     className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink-soft hover:bg-subtle"
                     onClick={() => void verHistorico()}
@@ -4647,7 +4780,8 @@ function HabilitarEmpreendimentos({
   // servidor — errar para mais redispara o WhatsApp de boas-vindas sem liberar nada.
   const novos = empreendimentosNovos(lista, marcados).length;
   const pode = podeHabilitar(lista, marcados, papelStatus);
-  const reativando = ehReativacao(lista, marcados, papelStatus);
+  // (16/09/2026) `ehReativacao` saiu daqui: o valor era calculado e nunca lido (aviso do eslint que
+  // impedia o --max-warnings 0). `podeHabilitar` já considera a reativação ao liberar o botão.
   // Nada a liberar porque JÁ ESTÁ TUDO liberado é diferente de "você não marcou nada". A tela
   // dizia "Nenhum empreendimento novo marcado" nos dois casos e travava o botão, e o operador
   // ficava procurando o que tinha feito de errado numa imobiliária que já estava pronta.
@@ -4684,6 +4818,8 @@ function HabilitarEmpreendimentos({
               <input
                 checked={ativo}
                 className="size-4 shrink-0 accent-neutral-900 dark:accent-neutral-200"
+                // (D1) No produto só consulta a lista é só leitura: marcar não leva a nada.
+                disabled={porta.somenteLeitura}
                 onChange={(event) =>
                   setMarcados((atual) => ({
                     ...atual,
@@ -4721,6 +4857,7 @@ function HabilitarEmpreendimentos({
             <input
               checked={conferido}
               className="size-3.5 accent-current"
+              disabled={porta.somenteLeitura}
               onChange={(e) => setConferido(e.target.checked)}
               type="checkbox"
             />
@@ -4747,34 +4884,37 @@ function HabilitarEmpreendimentos({
                 : `${novos} empreendimentos serão liberados`}
         </span>
 
-        <button
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-40"
-          // `podeHabilitar` trava o botão: sem isto, marcar um empreendimento JÁ habilitado
-          // deixava o botão ativo e cada clique disparava de novo o WhatsApp de boas-vindas para a
-          // imobiliária e para o coordenador, sem liberar nada.
-          disabled={salvando || !pode || !onHabilitar || (pendencias.length > 0 && !conferido)}
-          onClick={async () => {
-            if (!onHabilitar) return;
-            setSalvando(true);
-            setErro(null);
-            const ok = await onHabilitar(entityId, escolhidos);
-            setSalvando(false);
-            if (!ok) setErro("Não foi possível habilitar. Veja o aviso acima do card.");
-          }}
-          type="button"
-        >
-          {salvando ? (
-            <>
-              <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-              Habilitando…
-            </>
-          ) : (
-            <>
-              <ShieldCheck aria-hidden="true" className="size-3.5" />
-              Habilitar imobiliária
-            </>
-          )}
-        </button>
+        {/* (D1) No produto só consulta a habilitação não é deste portal: sem o botão. */}
+        {porta.somenteLeitura ? null : (
+          <button
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-40"
+            // `podeHabilitar` trava o botão: sem isto, marcar um empreendimento JÁ habilitado
+            // deixava o botão ativo e cada clique disparava de novo o WhatsApp de boas-vindas para a
+            // imobiliária e para o coordenador, sem liberar nada.
+            disabled={salvando || !pode || !onHabilitar || (pendencias.length > 0 && !conferido)}
+            onClick={async () => {
+              if (!onHabilitar) return;
+              setSalvando(true);
+              setErro(null);
+              const ok = await onHabilitar(entityId, escolhidos);
+              setSalvando(false);
+              if (!ok) setErro("Não foi possível habilitar. Veja o aviso acima do card.");
+            }}
+            type="button"
+          >
+            {salvando ? (
+              <>
+                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                Habilitando…
+              </>
+            ) : (
+              <>
+                <ShieldCheck aria-hidden="true" className="size-3.5" />
+                Habilitar imobiliária
+              </>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

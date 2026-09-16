@@ -89,8 +89,16 @@ export async function GET(request: Request) {
   // A leitura do funil, a do histórico (KPIs do BI) e a do perfil do comprador correm juntas:
   // mesmo escopo, um fetch só na tela. Histórico e perfil são enriquecimento — se falharem, a
   // tela segue sem essas seções, em vez de derrubar as vendas inteiras.
+  //
+  // ⚠️ A LEITURA DO C2X PODE LANÇAR, E NÃO SÓ RESPONDER `ok: false` (achado 14 da onda 2,
+  // 16/09/2026). `loadApoloEnterpriseVendas` faz `pool.query` sem `try/catch`: com o MySQL recusando
+  // conexão numa função fria, a exceção subia e a rota respondia 500 sem corpo JSON, o que quebra a
+  // tela no `res.json()`. Aqui ela vira o mesmo 503 controlado de quando o C2X diz que está fora.
   const [vendas, eventos, compradores] = await Promise.all([
-    loadApoloEnterpriseVendas(codes),
+    loadApoloEnterpriseVendas(codes).catch((erro: unknown) => {
+      console.error("[incorporador][vendas] falha ao ler as vendas do C2X", erro);
+      return { error: "Não foi possível carregar as vendas agora.", ok: false as const };
+    }),
     lerEventosDeVendas(codes),
     lerCompradoresDasVendas(codes),
   ]);

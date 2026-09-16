@@ -1,8 +1,8 @@
 "use client";
 
-import { BoardView } from "@/modules/apolo/blocks/board/board-view";
+import { BoardView, type OcultavelDoBoard } from "@/modules/apolo/blocks/board/board-view";
 
-import { MOLDURA_TAILWIND } from "../TelaContratos";
+import { MOLDURA_TAILWIND } from "../moldura";
 import { useTemaDoPortal } from "../tema";
 
 // CADASTRO DO PRODUTO — o Board do Apolo, dentro da ficha do produto no Hércules.
@@ -21,12 +21,49 @@ import { useTemaDoPortal } from "../tema";
 //     coordenador em lote (ele É o coordenador), status de disparos e o ciclo do PIX. Ver as
 //     pendências no relatório da frente.
 //
-// ⚠️ O BOARD FALA TAILWIND, O PORTAL FALA VARIÁVEL CSS — a moldura ÚNICA da TelaContratos
-// (`MOLDURA_TAILWIND`): redeclara as `--color-*` do @theme para os `--inc-*` do portal (só
-// `--uix-*` não basta — ver o porquê lá), e o `data-uix-theme` carrega o tema EFETIVO do portal
-// para os utilitários `dark:` responderem.
+// (16/09/2026) ⚠️ O PORTAL QUE OPERA SOZINHO GANHA A ANÁLISE DE CRÉDITO. Decisão do Lucas: *"A
+// Cecílio, no portal"* faz a análise de crédito (Serasa) e o credenciamento dos clientes dela, com a
+// consulta paga na conta da Careli e o registro de quem consultou. Com `operaSozinho`, o Serasa e a
+// aprovação com restrição aparecem (pelas rotas /api/incorporador/board/<id>/serasa/*), e o Board
+// libera as decisões que a Careli tomaria: indeferir a CAD em revisão e credenciar na pré-venda.
+// Continuam de fora o PIX (a cobrança é da Careli), subir para o C2X, avisar em lote e os disparos.
+// A GURGEL (COMERCIAL) NÃO GANHA NADA DISSO: o crédito das vendas dela continua com a Careli no
+// Apolo, e sem a prop a porta é exatamente a de antes. O servidor confere de novo em cada rota; aqui
+// é só o que aparece.
+//
+// ⚠️ O BOARD FALA TAILWIND, O PORTAL FALA VARIÁVEL CSS. A moldura ÚNICA do portal
+// (`MOLDURA_TAILWIND`, em ../moldura, a mesma que a TelaContratos reexporta) redeclara as
+// `--color-*` do @theme para os `--inc-*` do portal (só `--uix-*` não basta, o porquê está na
+// TelaContratos), e o `data-uix-theme` carrega o tema EFETIVO do portal para os utilitários `dark:`
+// responderem. Importada de ../moldura para esta tela não arrastar o quadro da Têmis junto.
 
-export function BoardDoProduto({ emp }: { emp: string }) {
+/** O que o comercial não tem pela porta do portal (a Careli faz): tudo isto, como sempre foi. */
+const OCULTOS_NO_COMERCIAL: OcultavelDoBoard[] = ["serasa", "c2xSync", "avisarLote", "disparos", "pix"];
+
+/** O portal que opera sozinho faz o crédito: só o Serasa sai da lista. O resto segue da Careli. */
+const OCULTOS_NO_PORTAL_SOZINHO: OcultavelDoBoard[] = ["c2xSync", "avisarLote", "disparos", "pix"];
+
+export function BoardDoProduto({
+  emp,
+  operaSozinho = false,
+  somenteLeitura = false,
+}: {
+  emp: string;
+  /**
+   * O portal opera a venda sem a Careli (`portalConfeccionaContrato`, hoje só o `cecilio-rocha`)?
+   * Quem monta é a FichaDoProduto, a partir do modo "incorporador". Sem a prop: o comercial.
+   */
+  operaSozinho?: boolean;
+  /**
+   * (16/09/2026, D1) O produto é SÓ CONSULTA para este portal? Decisão do Lucas: no portal que
+   * confecciona, a escrita só vale no produto que ele opera (`operado_por`); VOC e VOR ficam só
+   * consulta para a Cecílio. A FichaDoProduto passa `linha.podeEscrever !== true` (o painel calcula
+   * pela régua única, lib/apolo/incorporador/operacao-do-produto.ts). O BoardView esconde toda ação
+   * que grava e mostra a faixa "Só consulta neste produto."; o servidor recusa de novo (403).
+   * Sem a prop: tudo como antes.
+   */
+  somenteLeitura?: boolean;
+}) {
   // O tema efetivo (já resolvido o "seguir o aparelho") vira o atributo que os `dark:` leem.
   const { efetivo } = useTemaDoPortal();
 
@@ -48,7 +85,9 @@ export function BoardDoProduto({ emp }: { emp: string }) {
           semToken: true,
         }}
         empreendimentosFixos={[]}
-        ocultar={["serasa", "c2xSync", "avisarLote", "disparos", "pix"]}
+        ocultar={operaSozinho ? OCULTOS_NO_PORTAL_SOZINHO : OCULTOS_NO_COMERCIAL}
+        operaSozinho={operaSozinho}
+        somenteLeitura={somenteLeitura}
       />
     </section>
   );

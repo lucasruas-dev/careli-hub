@@ -7,7 +7,7 @@ import type {
   AssinanteDoQuadro,
   PapelDoQuadro,
 } from "@/app/api/temis/assinantes/route";
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 
 // O QUADRO DE ASSINATURA DO EMPREENDIMENTO — quem assina, além do comprador.
 //
@@ -22,6 +22,12 @@ import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 // aqui — vem do cadastro do empreendimento e sai no texto do contrato com CNPJ e endereço. Trocar
 // essas duas palavras já custou caro uma vez: o Panteon tinha pendurado como representante da
 // coordenação o CAPTADOR, que é outro campo e outra pessoa.
+//
+// ⚠️ A PORTA É A DA TÊMIS (`useApiDaTemis`, revisão da onda 3, achado 21). No hub, sem provedor, as
+// chamadas saem como sempre: `/api/temis/assinantes` com o Bearer do hub. Dentro do
+// `ApiDaTemisProvider` do portal que confecciona (a aba Minutas do produto), saem por
+// `/api/incorporador/temis/assinantes` com o cookie do portal, e a rota de lá recorta pelo escopo e
+// pelo produto que o portal opera.
 
 const BLOCOS: { ajuda: string; papel: PapelDoQuadro; titulo: string }[] = [
   {
@@ -52,15 +58,14 @@ export function QuadroDeAssinaturaCard({ enterpriseId }: { enterpriseId: string 
   const [erro, setErro] = useState<null | string>(null);
   const [rascunhos, setRascunhos] = useState<Record<string, typeof RASCUNHO>>({});
   const [recarregar, setRecarregar] = useState(0);
+  const { temisFetch } = useApiDaTemis();
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(
-        `/api/temis/assinantes?enterpriseId=${encodeURIComponent(enterpriseId)}`,
-        { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
-      );
+      const r = await temisFetch(`/assinantes?enterpriseId=${encodeURIComponent(enterpriseId)}`, {
+        cache: "no-store",
+      });
       const corpo = (await r.json()) as { assinantes?: AssinanteDoQuadro[]; error?: string };
       if (!r.ok) throw new Error(corpo.error ?? "Falha ao ler o quadro.");
       setLista(corpo.assinantes ?? []);
@@ -70,7 +75,7 @@ export function QuadroDeAssinaturaCard({ enterpriseId }: { enterpriseId: string 
     } finally {
       setCarregando(false);
     }
-  }, [enterpriseId]);
+  }, [enterpriseId, temisFetch]);
 
   useEffect(() => {
     void carregar();
@@ -89,8 +94,7 @@ export function QuadroDeAssinaturaCard({ enterpriseId }: { enterpriseId: string 
     setSalvando(papel);
     setErro(null);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch("/api/temis/assinantes", {
+      const r = await temisFetch("/assinantes", {
         body: JSON.stringify({
           cpf: atual.cpf,
           email: atual.email,
@@ -100,7 +104,7 @@ export function QuadroDeAssinaturaCard({ enterpriseId }: { enterpriseId: string 
           papel,
           posicao: atual.posicao || String(proximaPosicao(doPapel(papel))),
         }),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         method: "POST",
       });
       const corpo = (await r.json()) as { error?: string };
@@ -116,11 +120,7 @@ export function QuadroDeAssinaturaCard({ enterpriseId }: { enterpriseId: string 
 
   async function remover(id: string) {
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(`/api/temis/assinantes?id=${encodeURIComponent(id)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        method: "DELETE",
-      });
+      const r = await temisFetch(`/assinantes?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       if (!r.ok) {
         const corpo = (await r.json()) as { error?: string };
         throw new Error(corpo.error ?? "Falha ao remover.");

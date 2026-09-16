@@ -12,6 +12,7 @@ import {
   CalendarPlus,
   Check,
   Edit3,
+  FileText,
   Handshake,
   Loader2,
   MessageSquare,
@@ -29,12 +30,17 @@ import {
   unidadesEmAtraso,
 } from "@/lib/guardian/acordo-por-unidade";
 import { hasProposalUpdate } from "@/lib/guardian/proposal-seen";
+import {
+  motivoParaNaoEmitirOTermo,
+  situacaoDaAprovacao,
+} from "@/lib/hades/dossie/termo-de-acordo-gate";
+import { TERMO_DE_ACORDO_LIBERADO } from "@/lib/apolo/termos-liberados";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
-  GuardianApprovalStatus,
   GuardianCompromissoDetail,
   GuardianCompromissoKind,
 } from "@/lib/guardian/compromissos";
+import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
 
 type OverdueInstallment = NonNullable<QueueClient["c2xInstallments"]>[number];
@@ -226,7 +232,9 @@ function CompromissoCard({
   onDeleted: () => void;
 }) {
   const isAcordo = item.kind === "acordo";
-  const approval = approvalFromStatus(item.approvalStatus, item.metadata);
+  // ⚠️ O SELO E O BOTÃO DO TERMO LEEM A MESMA RÉGUA (`situacaoDaAprovacao`). Com duas, o card
+  // poderia mostrar "Aprovada" e, logo abaixo, o botão apagado dizendo que aguarda aprovação.
+  const approval = situacaoDaAprovacao(item.approvalStatus, item.metadata);
   const editable = approval === "pendente" || approval === "elaboracao";
   const [chatOpen, setChatOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -350,6 +358,10 @@ function CompromissoCard({
         ))}
       </div>
 
+      {/* Promessa não tem termo: o botão só existe no acordo. */}
+      {/* A chave vem antes: sem liberação (lib/apolo/termos-liberados.ts), o botão não existe. */}
+      {isAcordo && TERMO_DE_ACORDO_LIBERADO ? <TermoDeAcordoAcao item={item} /> : null}
+
       {chatOpen ? (
         <div className="mt-3">
           <ProposalChat
@@ -361,6 +373,122 @@ function CompromissoCard({
       ) : null}
     </article>
   );
+}
+
+/**
+ * O TERMO DE ACORDO no card: presente em todo acordo, aceso só quando o acordo pode ter termo.
+ *
+ * ⚠️ BOTÃO APAGADO SEM MENSAGEM É DEFEITO — o dono do produto cobrou duas vezes (15/09/2026). Quando
+ * o gate diz não, a frase fica ESCRITA ao lado do botão, e não num tooltip: tooltip só existe para
+ * quem passa o mouse, e some no toque. Medido em 16/09/2026 no Supabase de produção: 0 dos 18
+ * acordos está aprovado (14 pendentes, 4 reprovados), então é essa frase que todo operador lê hoje.
+ *
+ * ⚠️ A RECUSA DO SERVIDOR TAMBÉM VIRA FRASE NA TELA. O card pode estar velho (o gestor reprovou
+ * depois que a lista carregou) e o C2X pode não confirmar mais o débito (parcela paga depois do
+ * acordo); nos dois casos a rota responde `{ error }` com a frase, e é ela que aparece aqui.
+ *
+ * O download segue o molde da casa (`extrato-cliente-panel.tsx`): a rota exige Bearer, então não dá
+ * para apontar um `<a href>` para ela; busca-se o blob e a revogação da URL ESPERA 60s — revogar na
+ * mesma linha do clique mata o download calado em alguns navegadores.
+ */
+function TermoDeAcordoAcao({ item }: { item: GuardianCompromissoDetail }) {
+  const motivo = motivoParaNaoEmitirOTermo(item);
+  const [gerando, setGerando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const idDaFrase = `termo-de-acordo-motivo-${item.id}`;
+
+  async function baixarTermo() {
+    setGerando(true);
+    setErro(null);
+
+    try {
+      let token: string | null;
+      try {
+        token = await getApoloAccessToken();
+      } catch {
+        setErro("Sua sessão expirou. Entre de novo para emitir o termo.");
+        return;
+      }
+
+      const response = await fetch("/api/guardian/termo-de-acordo", {
+        body: JSON.stringify({ compromissoId: item.id }),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setErro(payload?.error ?? "Não foi possível gerar o termo de acordo agora.");
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = nomeDoArquivoBaixado(response, item.protocol);
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      setErro("Não foi possível gerar o termo de acordo agora.");
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line/60 pt-3">
+      <button
+        type="button"
+        onClick={() => void baixarTermo()}
+        disabled={Boolean(motivo) || gerando}
+        aria-describedby={motivo ? idDaFrase : undefined}
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/5 px-2.5 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#A07C3B]/5 dark:text-[#d9b877]"
+      >
+        {gerando ? (
+          <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+        ) : (
+          <FileText className="size-3.5" aria-hidden="true" />
+        )}
+        Termo de acordo
+      </button>
+      {motivo ? (
+        <p id={idDaFrase} className="min-w-0 flex-1 text-[11px] font-medium text-ink-muted">
+          {motivo}
+        </p>
+      ) : null}
+      {erro ? (
+        <p
+          role="alert"
+          className="basis-full rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/12 dark:text-rose-300"
+        >
+          {erro}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** O nome que a rota sugeriu no `Content-Disposition`; sem ele, o protocolo do acordo. */
+function nomeDoArquivoBaixado(response: Response, protocolo: string): string {
+  const header = response.headers.get("content-disposition") ?? "";
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8?.[1]) {
+    try {
+      return decodeURIComponent(utf8[1]);
+    } catch {
+      // cai no nome simples
+    }
+  }
+  const simples = /filename="([^"]+)"/i.exec(header);
+  return simples?.[1] ?? `Termo de Acordo - ${protocolo}.pdf`;
 }
 
 function ApprovalBadge({
@@ -1162,22 +1290,10 @@ function applyAdjustment(base: number, adjustment: Adjustment) {
   return round2(value);
 }
 
-// Le o estado de aprovacao da COLUNA real (Fase 2). Cai pro metadata (Fase 1)
-// so se o registro for antigo e a coluna vier indefinida. Normaliza
-// 'em_elaboracao' -> 'elaboracao' (rotulo da UI).
-function approvalFromStatus(
-  status: GuardianApprovalStatus | undefined,
-  metadata: Record<string, unknown>,
-): "pendente" | "aprovado" | "reprovado" | "elaboracao" {
-  const value = status ?? (metadata.approval_status as string | undefined);
-  if (value === "aprovado" || value === "reprovado") {
-    return value;
-  }
-  if (value === "em_elaboracao" || value === "elaboracao") {
-    return "elaboracao";
-  }
-  return "pendente";
-}
+// ⚠️ A LEITURA DO ESTADO DE APROVAÇÃO (coluna real da fase 2, metadata da fase 1 só quando a
+// coluna vem indefinida, 'em_elaboracao' -> 'elaboracao') MUDOU-SE para `situacaoDaAprovacao` em
+// `lib/hades/dossie/termo-de-acordo-gate.ts`, sem mudar uma linha da regra: o selo do card e o
+// botão do termo precisam ler a MESMA régua.
 
 function metaStringArray(meta: Record<string, unknown>, key: string): string[] {
   const value = meta[key];

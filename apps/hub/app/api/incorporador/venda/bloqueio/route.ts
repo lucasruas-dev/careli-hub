@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 
-import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarEscritaNoProduto } from "@/lib/apolo/incorporador/operacao-do-produto-servidor";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
   conferirBloqueio,
   motivoDoBloqueio,
   type PedidoDeBloqueio,
 } from "@/lib/hercules/bloqueio-de-unidade";
-import { nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
+import { lerComColunasDoApartamento, nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
 
 // O BLOQUEIO DA UNIDADE — o coordenador tira um lote da venda, com o motivo escrito.
 //
@@ -17,10 +18,12 @@ import { nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
 // quando não há nada na unidade. se tiver uma reserva, primeiro ele cancela a reserva para depois
 // bloquear o lote"*.
 //
-// ⚠️ `autorizarComercial`, E NUNCA `autorizar`. A diferença já foi paga em produção: `autorizar`
-// não olha o TIPO do portal, e por isso um usuário de portal de INCORPORADOR chegou a cancelar
-// proposta do comercial. São 35 portais de incorporador contra 3 do comercial — usar o gate errado
-// aqui daria a 35 donos de loteamento o poder de tirar lote da venda.
+// ⚠️ `autorizarOperacaoDeVenda`, E NUNCA `autorizar`. A diferença já foi paga em produção:
+// `autorizar` não olha o TIPO do portal, e por isso um usuário de portal de INCORPORADOR chegou a
+// cancelar proposta do comercial. São 35 portais de incorporador contra 3 do comercial — usar o
+// gate errado aqui daria a 35 donos de loteamento o poder de tirar lote da venda. A porta aceita o
+// comercial e SÓ os incorporadores da lista explícita que operam a própria venda (o Cecílio,
+// Lucas em 16/09/2026); os demais seguem recebendo 404.
 //
 // ⚠️ E O ESCOPO VEM DO COOKIE, NUNCA DO CORPO. O `unidadeId` do POST é conferido contra
 // `idsDaSessao`; unidade de fora responde 404, e não 403 — a resposta não pode diferenciar "não é
@@ -37,6 +40,8 @@ export const runtime = "nodejs";
 const WORKSPACE = "careli";
 
 type UnidadeDoBloqueio = {
+  /** Só no prédio (0171). Ausente quando a coluna ainda não existe. */
+  apartamento?: null | string;
   bloqueado_em: null | string;
   codigo: null | string;
   enterprise_id: null | string;
@@ -45,10 +50,44 @@ type UnidadeDoBloqueio = {
   lote: null | string;
   quadra: null | string;
   situacao: null | string;
+  /** Só no prédio. Nulo = torre única. */
+  torre?: null | string;
 };
 
+/**
+ * A unidade pelo id, com as colunas do prédio quando a 0171 já existe.
+ *
+ * ⚠️ UMA LEITURA PARA OS DOIS VERBOS (16/09/2026). É desta linha que sai o nome devolvido à tela
+ * ("Torre A · Apto 304"); sem a 0171, a leitura repete sem as colunas.
+ */
+async function unidadeDoBloqueio(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  unidadeId: string,
+): Promise<null | UnidadeDoBloqueio> {
+  const { data } = await lerComColunasDoApartamento((extras) =>
+    admin
+      .from("hercules_unidades")
+      .select(`id,codigo,quadra,lote,situacao,enterprise_id,espelho_de,bloqueado_em${extras}`)
+      .eq("workspace_id", WORKSPACE)
+      .eq("id", unidadeId)
+      .maybeSingle(),
+  );
+  return (data ?? null) as unknown as null | UnidadeDoBloqueio;
+}
+
+/** O nome da unidade para a resposta, com as colunas do prédio quando vieram. */
+function nomeParaATela(unidade: UnidadeDoBloqueio): string {
+  return nomeDaUnidade({
+    apartamento: unidade.apartamento,
+    codigo: unidade.codigo ?? "",
+    lote: unidade.lote,
+    quadra: unidade.quadra,
+    torre: unidade.torre,
+  });
+}
+
 export async function POST(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -78,17 +117,17 @@ export async function POST(request: Request) {
   try {
     const permitidos = new Set(await idsDaSessao(auth.sessao));
 
-    const { data } = await admin
-      .from("hercules_unidades")
-      .select("id,codigo,quadra,lote,situacao,enterprise_id,espelho_de,bloqueado_em")
-      .eq("workspace_id", WORKSPACE)
-      .eq("id", pedido.unidadeId)
-      .maybeSingle();
-
-    const unidade = data as null | UnidadeDoBloqueio;
+    const unidade = await unidadeDoBloqueio(admin, pedido.unidadeId);
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
       return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
     }
+
+    // ⚠️ QUEM OPERA O PRODUTO DECIDE A ESCRITA (Lucas, 16/09/2026). No portal que confecciona (o
+    // Cecílio) bloquear só vale no produto operado por ele; no VOC e no VOR é 403 só consulta. A
+    // Gurgel passa sem ida ao banco. Antes de qualquer conferência que só serve a quem pode gravar.
+    const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
+    if (!escrita.ok) return escrita.response;
+    const sessao = escrita.sessao;
 
     // ⚠️ A LINHA ESPELHO NÃO RESPONDE POR NADA, E BLOQUEÁ-LA NÃO TIRA O LOTE DA VENDA. O mesmo
     // terreno tem DUAS linhas nos produtos divididos (Lagoa Bonita, Vale do Ouro): a do pai, que é
@@ -172,8 +211,8 @@ export async function POST(request: Request) {
       .update({
         atualizado_em: agora,
         bloqueado_em: agora,
-        bloqueado_por: auth.sessao.usuarioId,
-        bloqueado_por_nome: auth.sessao.usuarioNome,
+        bloqueado_por: sessao.usuarioId,
+        bloqueado_por_nome: sessao.usuarioNome,
         bloqueio_motivo: motivoDoBloqueio(pedido),
         situacao: "bloqueada",
       })
@@ -197,13 +236,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       data: {
-        bloqueadoPor: auth.sessao.usuarioNome,
+        bloqueadoPor: sessao.usuarioNome,
         motivo: motivoDoBloqueio(pedido),
-        unidade: nomeDaUnidade({
-          codigo: unidade.codigo ?? "",
-          lote: unidade.lote,
-          quadra: unidade.quadra,
-        }),
+        unidade: nomeParaATela(unidade),
       },
     });
   } catch (erro) {
@@ -231,7 +266,7 @@ export async function POST(request: Request) {
  * ficaria pendurado numa unidade disponível, mentindo para quem lesse depois.
  */
 export async function DELETE(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -254,17 +289,14 @@ export async function DELETE(request: Request) {
   try {
     const permitidos = new Set(await idsDaSessao(auth.sessao));
 
-    const { data } = await admin
-      .from("hercules_unidades")
-      .select("id,codigo,quadra,lote,situacao,enterprise_id,espelho_de,bloqueado_em")
-      .eq("workspace_id", WORKSPACE)
-      .eq("id", unidadeId)
-      .maybeSingle();
-
-    const unidade = data as null | UnidadeDoBloqueio;
+    const unidade = await unidadeDoBloqueio(admin, unidadeId);
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
       return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
     }
+
+    // A mesma régua do bloqueio: devolver o lote ao estoque também é escrita.
+    const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
+    if (!escrita.ok) return escrita.response;
 
     if (unidade.situacao !== "bloqueada") {
       return NextResponse.json(
@@ -348,11 +380,7 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({
       data: {
-        unidade: nomeDaUnidade({
-          codigo: unidade.codigo ?? "",
-          lote: unidade.lote,
-          quadra: unidade.quadra,
-        }),
+        unidade: nomeParaATela(unidade),
       },
     });
   } catch (erro) {

@@ -4,7 +4,7 @@ import { AlertTriangle, Check, FileSignature, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { EmpreendimentoDaTemis } from "@/lib/temis/catalog";
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 
 // O BOARD DA TÊMIS.
 //
@@ -67,17 +67,14 @@ export function TemisBoard({
   const [contagens, setContagens] = useState<null | Record<string, Contagem>>(null);
   const [recebemCad, setRecebemCad] = useState<null | Set<string>>(null);
   const [erro, setErro] = useState<null | string>(null);
+  const { temisFetch } = useApiDaTemis();
 
   useEffect(() => {
     let cancelado = false;
 
     void (async () => {
       try {
-        const token = await getApoloAccessToken();
-        const r = await fetch("/api/temis/board", {
-          cache: "no-store",
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const r = await temisFetch("/board", { cache: "no-store" });
         const corpo = (await r.json().catch(() => ({}))) as {
           data?: { contagens: Record<string, Contagem>; recebemCad?: string[] };
           error?: string;
@@ -99,7 +96,7 @@ export function TemisBoard({
     return () => {
       cancelado = true;
     };
-  }, []);
+  }, [temisFetch]);
 
   if (erro) {
     return (

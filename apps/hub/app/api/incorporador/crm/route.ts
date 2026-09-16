@@ -35,6 +35,20 @@ export const maxDuration = 30;
 
 const ABAS = new Set(["compradores", "imobiliarias", "prospects"]);
 
+// ⚠️ OS LOADERS DO C2X LANÇAM (achado 14 da revisão da onda 2). `loadApoloEnterpriseCarteira` e
+// `loadApoloEnterpriseVendas` fazem `pool.query` sem try/catch: com o MySQL recusando conexão numa
+// função fria, a rota caía em 500 sem corpo, e a tela mostrava "Não foi possível carregar o CRM."
+// genérico. A guarda antiga ("zero código = C2X fora") já não pega esse caso desde que os códigos
+// passaram a sair também do cadastro do Panteon. Falha de leitura é 503 com a frase da aba.
+async function lerDoC2x<T>(ler: () => Promise<T>): Promise<null | T> {
+  try {
+    return await ler();
+  } catch (erro) {
+    console.error("[incorporador][crm] leitura do C2X falhou", erro);
+    return null;
+  }
+}
+
 const semDado = (aba: string) =>
   NextResponse.json(
     { data: { aba, compradores: [], imobiliarias: [], prospects: [] } },
@@ -75,10 +89,16 @@ export async function GET(request: Request) {
       );
     }
 
-    const [carteira, vendas] = await Promise.all([
-      loadApoloEnterpriseCarteira(codes),
-      loadApoloEnterpriseVendas(codes),
-    ]);
+    const lidos = await lerDoC2x(() =>
+      Promise.all([loadApoloEnterpriseCarteira(codes), loadApoloEnterpriseVendas(codes)]),
+    );
+    if (!lidos) {
+      return NextResponse.json(
+        { error: "Não foi possível carregar os compradores agora." },
+        { status: 503 },
+      );
+    }
+    const [carteira, vendas] = lidos;
 
     if (!carteira.ok || !vendas.ok) {
       return NextResponse.json(
@@ -150,12 +170,21 @@ export async function GET(request: Request) {
     );
   }
 
-  const [carteira, vendas, esteira, vinculadas] = await Promise.all([
-    loadApoloEnterpriseCarteira(codes),
-    loadApoloEnterpriseVendas(codes),
-    lerEsteiraDoEscopo(admin, enterpriseIds),
-    lerImobiliariasVinculadas(admin, enterpriseIds),
-  ]);
+  const lidos = await lerDoC2x(() =>
+    Promise.all([
+      loadApoloEnterpriseCarteira(codes),
+      loadApoloEnterpriseVendas(codes),
+      lerEsteiraDoEscopo(admin, enterpriseIds),
+      lerImobiliariasVinculadas(admin, enterpriseIds),
+    ]),
+  );
+  if (!lidos) {
+    return NextResponse.json(
+      { error: "Não foi possível carregar as imobiliárias agora." },
+      { status: 503 },
+    );
+  }
+  const [carteira, vendas, esteira, vinculadas] = lidos;
 
   if (!carteira.ok || !vendas.ok || !esteira.ok || !vinculadas.ok) {
     return NextResponse.json(

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 import { VisorDeDocumento } from "@/modules/temis/blocks/trabalho/visor-de-documento";
 
 // CHAT · DOCUMENTOS · HISTÓRICO — a coluna que fica em TODAS as etapas.
@@ -140,13 +140,12 @@ function Chat({
   const [texto, setTexto] = useState("");
   const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">("carregando");
   const [enviando, setEnviando] = useState(false);
+  const { temisFetch } = useApiDaTemis();
 
   const carregar = useCallback(async () => {
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(
-        `/api/temis/trabalho/conversa?proposta=${encodeURIComponent(propostaId)}`,
-        { headers: { Authorization: `Bearer ${token}` } },
+      const r = await temisFetch(
+        `/trabalho/conversa?proposta=${encodeURIComponent(propostaId)}`,
       );
       const j = (await r.json().catch(() => ({}))) as { data?: { mensagens: Mensagem[] } };
       if (!r.ok || !j.data) {
@@ -158,7 +157,7 @@ function Chat({
     } catch {
       setEstado("erro");
     }
-  }, [propostaId]);
+  }, [propostaId, temisFetch]);
 
   useEffect(() => {
     void carregar();
@@ -205,13 +204,9 @@ function Chat({
             onClick={async () => {
               setEnviando(true);
               try {
-                const token = await getApoloAccessToken();
-                const r = await fetch("/api/temis/trabalho/conversa", {
+                const r = await temisFetch("/trabalho/conversa", {
                   body: JSON.stringify({ proposta: propostaId, texto }),
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                  },
+                  headers: { "Content-Type": "application/json" },
                   method: "POST",
                 });
                 if (r.ok) {
@@ -240,15 +235,14 @@ function Documentos({ propostaId }: { propostaId: string }) {
   /** O documento aberto no pop-up. `url` vazia = ainda buscando a URL assinada. */
   const [vendo, setVendo] = useState<null | { nome: string; url: string }>(null);
   const [erroDoDocumento, setErroDoDocumento] = useState<null | string>(null);
+  const { temisFetch } = useApiDaTemis();
 
   useEffect(() => {
     let vivo = true;
     void (async () => {
       try {
-        const token = await getApoloAccessToken();
-        const r = await fetch(
-          `/api/temis/trabalho/documentos?proposta=${encodeURIComponent(propostaId)}`,
-          { headers: { Authorization: `Bearer ${token}` } },
+        const r = await temisFetch(
+          `/trabalho/documentos?proposta=${encodeURIComponent(propostaId)}`,
         );
         const j = (await r.json().catch(() => ({}))) as {
           data?: { documentos: Documento[] };
@@ -267,7 +261,7 @@ function Documentos({ propostaId }: { propostaId: string }) {
     return () => {
       vivo = false;
     };
-  }, [propostaId]);
+  }, [propostaId, temisFetch]);
 
   /**
    * Abre o documento SEM SAIR DA TELA.
@@ -288,10 +282,8 @@ function Documentos({ propostaId }: { propostaId: string }) {
     async (doc: Documento) => {
       setVendo({ nome: doc.nome, url: "" });
       try {
-        const token = await getApoloAccessToken();
-        const r = await fetch(
-          `/api/temis/trabalho/documentos?proposta=${encodeURIComponent(propostaId)}&abrir=${encodeURIComponent(doc.id)}&fonte=${doc.fonte}`,
-          { headers: { Authorization: `Bearer ${token}` } },
+        const r = await temisFetch(
+          `/trabalho/documentos?proposta=${encodeURIComponent(propostaId)}&abrir=${encodeURIComponent(doc.id)}&fonte=${doc.fonte}`,
         );
         const j = (await r.json().catch(() => ({}))) as { data?: { url: string } };
 
@@ -306,7 +298,7 @@ function Documentos({ propostaId }: { propostaId: string }) {
         setErroDoDocumento("Não consegui abrir este documento.");
       }
     },
-    [propostaId],
+    [propostaId, temisFetch],
   );
 
   if (estado === "carregando") {
@@ -402,22 +394,19 @@ function Historico({
 }) {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [estado, setEstado] = useState<"carregando" | "erro" | "pronto">("carregando");
+  const { temisFetch } = useApiDaTemis();
 
   useEffect(() => {
     let vivo = true;
     void (async () => {
       try {
-        const token = await getApoloAccessToken();
         // ⚠️ OS DOIS PARÂMETROS VÃO JUNTOS, e a rota monta UMA lista com as duas fontes. Buscar em
         // duas chamadas e juntar aqui repetiria no navegador a ordenação que a lib já faz testada —
         // e as duas listas chegariam em tempos diferentes, com a linha do tempo pulando na tela.
         const busca = new URLSearchParams();
         if (propostaId) busca.set("proposta", propostaId);
         if (trabalhoId) busca.set("trabalho", trabalhoId);
-        const r = await fetch(
-          `/api/temis/trabalho/historico?${busca.toString()}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
+        const r = await temisFetch(`/trabalho/historico?${busca.toString()}`);
         const j = (await r.json().catch(() => ({}))) as { data?: { eventos: Evento[] } };
         if (!vivo) return;
         if (!r.ok || !j.data) {
@@ -433,7 +422,7 @@ function Historico({
     return () => {
       vivo = false;
     };
-  }, [propostaId, trabalhoId]);
+  }, [propostaId, temisFetch, trabalhoId]);
 
   if (estado === "carregando") {
     return <p className="m-0 text-xs text-ink-muted">Carregando…</p>;

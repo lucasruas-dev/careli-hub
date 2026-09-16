@@ -1,8 +1,7 @@
 "use client";
 
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { fonte } from "@/modules/publico/ui/tokens";
 import { TemisKanban } from "@/modules/temis/blocks/board/temis-kanban";
 
 import {
@@ -11,6 +10,8 @@ import {
   Pilula,
   ResumoDeContratos,
 } from "./hercules/AssinaturasDoProduto";
+import { ContratosDaCecilio } from "./hercules/ContratosDaCecilio";
+import { MOLDURA_TAILWIND } from "./moldura";
 import { T, useTemaDoPortal } from "./tema";
 
 // CONTRATOS — a tela de contratos do coordenador: Board · Resumo · Assinatura.
@@ -59,6 +60,13 @@ import { T, useTemaDoPortal } from "./tema";
 // `@theme` do hub NÃO é `inline`: as classes emitem `var(--color-surface)`, não o valor final. As
 // `--uix-*` ficam por garantia, para quem lê o token direto (não o `--color-*`).
 //
+// ⚠️ NO PORTAL QUE CONFECCIONA O BOARD DEIXA DE SER SÓ LEITURA (Lucas, 16/09/2026). A venda que a
+// equipe da Cecílio faz no portal é confeccionada por ela mesma; a da Gurgel continua na Têmis da
+// Careli. Com `confecciona`, a sub-aba Board vira `ContratosDaCecilio`: o MESMO quadro, operável,
+// abrindo a tela de trabalho, falando com `/api/incorporador/temis/*` pelo cookie. Resumo e
+// Assinatura não mudam (leem as mesmas rotas do portal), e sem a prop a tela é a de sempre — é o
+// caso do comercial, que nunca confecciona.
+//
 // E os utilitários `dark:` do hub (chips de tipo bg-emerald-100, faixa de erro bg-red-50, tag de
 // atraso) respondem a `[data-uix-theme="dark"]` — a @custom-variant do globals.css casa
 // `[data-uix-theme="dark"] *`. Por isso a moldura carrega `data-uix-theme` com o tema EFETIVO do
@@ -69,33 +77,11 @@ import { T, useTemaDoPortal } from "./tema";
 // é a tela do Apolo inteira em Tailwind, e precisa da MESMA moldura — uma só, para os quatro
 // lugares virarem no escuro juntos. (Resumo e Assinatura NÃO precisam dela: são estilo inline com
 // os tokens T, e por isso hercules/AssinaturasDoProduto não importa daqui — sem ciclo.)
-export const MOLDURA_TAILWIND = {
-  "--color-canvas": "var(--inc-page)",
-  "--color-surface": "var(--inc-card)",
-  "--color-raised": "var(--inc-card)",
-  "--color-subtle": "var(--inc-soft)",
-  "--color-inverse": "var(--inc-btn-bg)",
-  "--color-ink": "var(--inc-text)",
-  "--color-ink-soft": "var(--inc-sub)",
-  "--color-ink-muted": "var(--inc-muted)",
-  "--color-line": "var(--inc-border)",
-  "--color-line-strong": "var(--inc-border)",
-  "--color-brand": "var(--inc-gold)",
-  "--color-brand-ink": "var(--inc-btn-fg)",
-  "--uix-border-strong": "var(--inc-border)",
-  "--uix-border-subtle": "var(--inc-border)",
-  "--uix-surface-base": "var(--inc-card)",
-  "--uix-surface-canvas": "var(--inc-page)",
-  "--uix-surface-inverse": "var(--inc-btn-bg)",
-  "--uix-surface-raised": "var(--inc-card)",
-  "--uix-surface-subtle": "var(--inc-soft)",
-  "--uix-text-muted": "var(--inc-muted)",
-  "--uix-text-primary": "var(--inc-text)",
-  "--uix-text-secondary": "var(--inc-sub)",
-  "--uix-color-brand-primary": "var(--inc-gold)",
-  "--uix-color-brand-foreground": "var(--inc-btn-fg)",
-  fontFamily: fonte,
-} as CSSProperties;
+//
+// ⚠️ O OBJETO MORA EM `./moldura` (revisão da onda 3, 16/09/2026): quem só precisa da moldura (a
+// TelaCrm) importa de lá e não arrasta o quadro da Têmis que esta tela importa. O reexport abaixo
+// mantém o caminho antigo para as telas da ficha do produto.
+export { MOLDURA_TAILWIND };
 
 // ⚠️ RESUMO PRIMEIRO, E É ELE QUE ABRE (Lucas, 03/09/2026: *"trocar a ordem, resumo vir primeiro
 // que board"*). Quem abre Contratos quer primeiro saber COMO ESTÁ — os totais numa olhada — e só
@@ -113,8 +99,17 @@ const SUB_ABAS: ReadonlyArray<{ id: SubAba; rotulo: string }> = [
 type ProdutoDoFiltro = { id: string; nome: string };
 
 export function TelaContratos({
+  confecciona = false,
   emp,
 }: {
+  /**
+   * Este portal CONFECCIONA o contrato das vendas que faz (`portalConfeccionaContrato(slug, tipo)`,
+   * decidido por quem monta a tela). Liga o Board operável (`ContratosDaCecilio`).
+   *
+   * ⚠️ PADRÃO `false`: sem a prop, o board só-leitura de sempre. Esconder não é a trava — as rotas
+   * `/api/incorporador/temis/*` recusam (404) quem não confecciona.
+   */
+  confecciona?: boolean;
   /**
    * O produto da ficha ("pai:<uuid>" do cadastro ou id do C2X), quando a tela vive DENTRO da
    * FichaDoProduto. Sem ele é a aba do menu: tudo o que a sessão autoriza.
@@ -130,6 +125,10 @@ export function TelaContratos({
   // seletor ali deixaria a ficha do Jardim das Gerais mostrar contrato do Vale do Ouro.
   const [produtos, setProdutos] = useState<ProdutoDoFiltro[]>([]);
   const [escolhido, setEscolhido] = useState<string>("");
+  // ⚠️ O PAINEL PODE SAIR SÓ PELO CADASTRO DO PANTEON (C2X fora do ar), e diz isso em
+  // `avisoDaFonte`. Sem mostrar, um produto que sumiu do filtro parecia produto que deixou de ser da
+  // pessoa: a mesma frase que a tela Produtos já mostra.
+  const [avisoDaFonte, setAvisoDaFonte] = useState<null | string>(null);
   const alvo = emp ?? (escolhido || undefined);
 
   useEffect(() => {
@@ -139,9 +138,13 @@ export function TelaContratos({
       try {
         const r = await fetch("/api/incorporador/produtos/painel", { cache: "no-store" });
         if (!r.ok) return;
-        const j = (await r.json()) as { data?: { linhas?: ProdutoDoFiltro[] } };
+        const j = (await r.json()) as {
+          data?: { avisoDaFonte?: null | string; linhas?: ProdutoDoFiltro[] };
+        };
+        if (!vivo) return;
+        setAvisoDaFonte(j.data?.avisoDaFonte?.trim() || null);
         // Sem produtos o seletor não aparece: um filtro com uma opção só é ruído.
-        if (vivo) setProdutos((j.data?.linhas ?? []).map((l) => ({ id: l.id, nome: l.nome })));
+        setProdutos((j.data?.linhas ?? []).map((l) => ({ id: l.id, nome: l.nome })));
       } catch {
         // O filtro é conforto: se a lista não vier, a tela continua mostrando tudo.
       }
@@ -171,6 +174,23 @@ export function TelaContratos({
           </p>
         </header>
       )}
+
+      {!emp && avisoDaFonte ? (
+        <p
+          role="status"
+          style={{
+            background: T.soft,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            color: T.sub,
+            fontSize: 13,
+            margin: 0,
+            padding: "8px 12px",
+          }}
+        >
+          {avisoDaFonte}
+        </p>
+      ) : null}
 
       {/* ── AS TRÊS SUB-ABAS + O FILTRO POR EMPREENDIMENTO ───────────────────── */}
       {/* O filtro fica na MESMA linha das sub-abas, empurrado para a direita: ele vale para as
@@ -229,12 +249,16 @@ export function TelaContratos({
               sozinho `?empreendimento=<emp>` na rota (é assim que ele já faz na tela interna), e a
               rota só aceita o id DENTRO do que já é da sessão — inclusive "pai:<uuid>", que ela
               expande pelo cadastro. O recorte é do servidor, não daqui. */}
-          <TemisKanban
-            enterpriseId={alvo ?? null}
-            rota="/api/incorporador/contratos"
-            semToken
-            somenteLeitura
-          />
+          {confecciona ? (
+            <ContratosDaCecilio enterpriseId={alvo ?? null} />
+          ) : (
+            <TemisKanban
+              enterpriseId={alvo ?? null}
+              rota="/api/incorporador/contratos"
+              semToken
+              somenteLeitura
+            />
+          )}
         </section>
       ) : subAba === "resumo" ? (
         <ResumoDeContratos cache={cache.current} emp={alvo} />

@@ -8,9 +8,9 @@ import { codigosDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { MASTERPLANS_INTERNOS } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
 import { aplicarEstadoAtual, type EstadoDoLote, lerEstadoDosLotes } from "@/lib/apolo/incorporador/masterplan-estado";
 import { recortarMasterplan } from "@/lib/apolo/incorporador/masterplan-recorte";
+import { portalConfeccionaContrato } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
 import { deveClarearMasterplan } from "@/lib/apolo/incorporador/tema-portal";
-import { getHadesDbPool } from "@/lib/guardian/db";
 import { comTemaClaro } from "@/lib/apolo/masterplan-tema-claro";
 import { comSimuladorAberto, loteDoPedido } from "@/lib/apolo/incorporador/masterplan-simulador";
 import {
@@ -95,6 +95,16 @@ export async function GET(request: Request) {
 
   if (!sessao) {
     return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
+  }
+
+  // ⚠️ OS MAPAS ANTIGOS ESTÃO APOSENTADOS NO PORTAL QUE CONFECCIONA (decisão do Lucas, 16/09/2026).
+  // No Cecílio, o Espelho da aba Venda substitui o garden.html e o vale-do-ouro.html, e a tela já não
+  // tem caminho para eles (PortalIncorporador não monta TelaVendas nem TelaProdutos na casca do
+  // Hércules). Aqui a porta fecha também, ANTES de ir ao C2X: um link salvo ou uma chamada direta
+  // não reabre o HTML com preço e nome de comprador. Os arquivos continuam em masterplans-internos
+  // para os outros portais (a MMendes abre o Garden por aqui).
+  if (portalConfeccionaContrato(sessao.slug, sessao.tipo)) {
+    return NextResponse.json({ error: "Masterplan não encontrado." }, { status: 404 });
   }
 
   const parametros = new URL(request.url).searchParams;

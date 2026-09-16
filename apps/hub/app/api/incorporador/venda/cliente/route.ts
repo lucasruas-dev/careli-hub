@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
@@ -20,8 +20,9 @@ import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
 // "***.982.247-** basta para conferir que é a pessoa certa" —, mas quem abre esta ficha é o
 // coordenador do comercial, e ele precisa do número para preencher contrato, consultar crédito e
 // achar a pessoa no C2X. Mascarado, o dado obrigava a abrir outra tela para o mesmo fim. A porta
-// continua estreita: a rota é do portal COMERCIAL (`autorizarComercial`), sai uma unidade por vez
-// e só para quem tem o empreendimento no escopo da sessão.
+// continua estreita: a rota é só de quem OPERA A VENDA (`autorizarOperacaoDeVenda`: o comercial e o
+// incorporador da lista explícita, hoje o Cecílio), sai uma unidade por vez e só para quem tem o
+// empreendimento no escopo da sessão.
 //
 // ⚠️ DUAS FONTES, porque a venda pode ter nascido dos dois lados: a reserva do Panteon guarda o
 // proponente em `proponentes` (nome, cpf, telefone digitados na hora); a proposta importada do C2X
@@ -39,7 +40,7 @@ type Contato = {
 };
 
 export async function GET(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();

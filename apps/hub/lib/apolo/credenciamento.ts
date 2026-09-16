@@ -12,13 +12,15 @@
 // Ver [[project_apolo_cadastro_imobiliaria]].
 import type { RowDataPacket } from "mysql2";
 
-import { loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
+import { type ApoloEnterpriseRow, loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
 import { chaveDaLogo, listEnterpriseLogos } from "@/lib/apolo/enterprise-logos";
 import { listEnterprisesAtivos, listEnterprisesRecebendo } from "@/lib/apolo/enterprise-settings";
 import { hashIdentifier } from "@/lib/apolo/server";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
 import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
+import { carregarCadastroDeEmpreendimentos, type LinhaDoCadastro } from "@/lib/hercules/cadastro";
+import { ehIdDoPanteon } from "@/lib/hercules/produto-novo";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 
@@ -101,9 +103,45 @@ async function montarEmpreendimentos(
   );
 
   const c2x = await loadApoloEnterprises();
-  const rowById = new Map(
-    (c2x.ok ? c2x.data.rows : []).map((row) => [row.id, row]),
-  );
+
+  // O cadastro do Panteon só é lido quando há produto dele na lista: a vitrine pública abre muito, e
+  // hoje quase sempre só com o C2X. Falha na leitura não derruba a vitrine (o card sai com a sigla
+  // do settings, como no C2X fora do ar).
+  const catalogo = c2x.ok ? c2x.data.rows : null;
+  const conhecidos = new Set((catalogo ?? []).map((row) => row.id));
+  const cadastro = ativos.some((id) => ehIdDoPanteon(id) && !conhecidos.has(id))
+    ? await carregarCadastroDeEmpreendimentos().catch((erro: unknown): LinhaDoCadastro[] | null => {
+        console.warn(
+          "[apolo][credenciamento] cadastro do Panteon indisponível; o produto novo sai com a sigla do settings",
+          erro instanceof Error ? erro.message : erro,
+        );
+        return null;
+      })
+    : null;
+
+  return vitrineDoCredenciamento({ ativos, cadastro, catalogo, codeById, logos });
+}
+
+/**
+ * O núcleo PURO da vitrine: dos ids ligados no settings, os cards que a tela desenha.
+ *
+ * @param catalogo As linhas do C2X; `null` = o legado está fora do ar.
+ * @param cadastro O cadastro do Panteon; `null` = não lido (ou fora do ar).
+ */
+export function vitrineDoCredenciamento(entrada: {
+  ativos: readonly string[];
+  cadastro: readonly LinhaDoCadastro[] | null;
+  catalogo: readonly ApoloEnterpriseRow[] | null;
+  codeById: ReadonlyMap<string, string>;
+  logos: Readonly<Record<string, string>>;
+}): CredenciamentoEmpreendimento[] {
+  const { ativos, codeById, logos } = entrada;
+  const rowById = new Map((entrada.catalogo ?? []).map((row) => [row.id, row]));
+  const doPanteonPorId = new Map<string, LinhaDoCadastro>();
+  for (const linha of entrada.cadastro ?? []) {
+    const id = String(linha.c2xEnterpriseId ?? "").trim();
+    if (ehIdDoPanteon(id) && !doPanteonPorId.has(id)) doPanteonPorId.set(id, linha);
+  }
 
   // ⚠️ ID QUE O CATÁLOGO NÃO CONHECE É RESÍDUO, E NÃO PODE VIRAR CARD NA VITRINE PÚBLICA.
   //
@@ -125,13 +163,18 @@ async function montarEmpreendimentos(
   // antiga (aparecer com a sigla do settings) é justamente a rede de segurança para esse caso, e
   // ela continua valendo. Descartamos o órfão quando SABEMOS que ele não existe, nunca quando não
   // conseguimos saber.
-  const catalogoNaMao = c2x.ok;
+  const catalogoNaMao = entrada.catalogo !== null;
 
+  // ⚠️ O PRODUTO NASCIDO NO PANTEON NÃO É RESÍDUO (16/09/2026). Ele tem id a partir de 100000 e o C2X
+  // não o conhece por definição: o descarte acima o apagava da vitrine mesmo com o credenciamento
+  // ligado, e a imobiliária nunca via o prédio novo. `ehIdDoPanteon` passa; o nome e a sigla vêm do
+  // cadastro. Id desconhecido abaixo de 100000 continua sendo o órfão de antes e segue descartado.
   return ativos
-    .filter((id) => !catalogoNaMao || rowById.has(id))
+    .filter((id) => !catalogoNaMao || rowById.has(id) || ehIdDoPanteon(id))
     .map((id) => {
       const row = rowById.get(id);
-      const code = row?.code ?? codeById.get(id) ?? "";
+      const doPanteon = row ? undefined : doPanteonPorId.get(id);
+      const code = row?.code ?? doPanteon?.codigo ?? codeById.get(id) ?? "";
       return {
         code,
         // Os códigos reais por trás de um grupo consolidado (Lagoa Bonita = LBF, LBR, LBP).
@@ -146,7 +189,7 @@ async function montarEmpreendimentos(
         // Caixa alta para o card do portal, que é o pedido do Lucas: o nome dos empreendimentos
         // simples vem do C2X já em caixa alta, e só o do grupo vinha "Lagoa Bonita", destoando
         // da fileira. Normalizar aqui não mexe no `display` do ENTERPRISE_GROUPS, que o BI usa.
-        name: (row?.name ?? code ?? "Empreendimento").toLocaleUpperCase("pt-BR"),
+        name: (row?.name ?? doPanteon?.nome ?? (code || "Empreendimento")).toLocaleUpperCase("pt-BR"),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));

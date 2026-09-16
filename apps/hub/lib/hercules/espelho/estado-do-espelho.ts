@@ -15,9 +15,26 @@
 // unidade do PAI (VLO0101); os lotes vivos estão nos filhos com outro código (VOL0101). A ponte
 // é `quadra` + `lote`, que é única dos dois lados — medido em 10/09/2026: 298 de 298 no Vale do
 // Ouro, 495 de 495 no Lagoa Bonita, nenhum sobrando de nenhum lado.
+//
+// ⚠️ PRÉDIO NÃO É QUADRA E LOTE (Lucas, 16/09/2026). O apartamento chega com torre, andar e
+// apartamento próprios (migration 0171), com quadra e lote nulos, e é assim que ele sai daqui: a
+// grade agrupa por torre e lê do andar mais alto para o mais baixo. No prédio saem também a
+// posição (torre, andar, apartamento) e o que se compra junto (tipologia, vagas). São o equivalente
+// de quadra, lote e área: dado do PRODUTO, que está no folheto de venda. Nada de pessoa, nada de
+// negociação.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { chaveDoLote } from "@/lib/apolo/incorporador/masterplan-recorte";
+
+import { compararApartamentos } from "../fluxo-de-venda";
+import { COLUNAS_DO_APARTAMENTO, nomeDaUnidade, tipoDaUnidade } from "../nome-da-unidade";
+import type { TipoProduto } from "../produto-novo";
+import {
+  apartamentoCanonico,
+  chaveDaUnidade,
+  ehColunaDaUnidadeVerticalAusente,
+  torreCanonica,
+} from "../unidade-nova";
 
 import {
   contarPublicas,
@@ -26,19 +43,39 @@ import {
   type SituacaoPublica,
 } from "./situacao-publica";
 
-/** Um lote como o público o vê. */
+/** Um lote (ou apartamento) como o público o vê. */
 export type LoteDoEspelho = {
-  /** m², do cadastro. `null` quando não cadastrada. */
+  /** Só no prédio. 0 = térreo; negativo = subsolo. */
+  andar: null | number;
+  /** Só no prédio, na forma canônica ("304"). */
+  apartamento: null | string;
+  /** m², do cadastro. No prédio é a área PRIVATIVA (ver 0171). `null` quando não cadastrada. */
   area: null | number;
   /** O código do PAI — o mesmo `inkscape:label` do masterplan. É a chave do desenho. */
   codigo: string;
+  /**
+   * O título da coluna da grade: a quadra ("Sem quadra" quando falta), ou "Torre A" / "Unidades"
+   * no prédio. Vem pronto para a grade não precisar saber o tipo do produto.
+   */
+  grupo: string;
   /** O número do lote dentro da quadra. A grade rotula por ele. */
   lote: null | string;
+  /** O que vai dentro do quadradinho: o lote, ou o apartamento no prédio. */
+  numero: string;
   /** R$ de tabela. `null` quando não cadastrado ou sentinela (≤ 1). */
   preco: null | number;
   /** A quadra. A GRADE agrupa por ela — é a visão de quem não tem masterplan. */
   quadra: null | string;
+  /** "Quadra 01 · Lote 05" ou "Torre A · Apto 304": a mesma frase do WhatsApp e do PDF. */
+  rotulo: string;
   situacao: SituacaoPublica;
+  /** Só no prédio ("2 quartos, 1 suíte"). */
+  tipologia: null | string;
+  tipoProduto: TipoProduto;
+  /** Só no prédio, na forma canônica ("A"). Nulo = torre única. */
+  torre: null | string;
+  /** Só no prédio. Nulo = não informado; 0 = sem vaga. */
+  vagas: null | number;
 };
 
 export type EstadoDoEspelho = {
@@ -57,6 +94,12 @@ type LinhaDeUnidade = {
   preco_tabela: null | number | string;
   quadra: null | string;
   situacao: string;
+  // As colunas do prédio (0171). Ausentes quando a migration ainda não foi aplicada.
+  andar?: null | number;
+  apartamento?: null | string;
+  tipologia?: null | string;
+  torre?: null | string;
+  vagas?: null | number;
 };
 
 /**
@@ -87,10 +130,18 @@ export async function estadoDoEspelho(
   {
     enterpriseIdDoPai,
     enterpriseIdsDosFilhos,
+    tipoProduto,
   }: {
     /** `c2x_enterprise_id` do topo. `null` em pai sem id do C2X (o conjunto é só dos filhos). */
     enterpriseIdDoPai: null | string;
     enterpriseIdsDosFilhos: readonly string[];
+    /**
+     * O tipo do produto (`hercules_empreendimentos.tipo_produto`), quando quem chama sabe.
+     *
+     * ⚠️ OPCIONAL PORQUE A UNIDADE JÁ DIZ: apartamento preenchido com quadra e lote vazios é prédio
+     * (`tipoDaUnidade`). O tipo só decide a unidade vertical que veio sem as colunas.
+     */
+    tipoProduto?: TipoProduto;
   },
 ): Promise<EstadoDoEspelho> {
   const todosOsIds = [enterpriseIdDoPai, ...enterpriseIdsDosFilhos].filter(
@@ -116,6 +167,8 @@ export async function estadoDoEspelho(
   const terrenos = new Map<
     string,
     {
+      andar: null | number;
+      apartamento: null | string;
       area: null | number;
       codigoDoPai: null | string;
       codigoQualquer: string;
@@ -123,12 +176,30 @@ export async function estadoDoEspelho(
       preco: null | number;
       quadra: null | string;
       registros: SinaisDaUnidade[];
+      tipologia: null | string;
+      tipoProduto: TipoProduto;
+      torre: null | string;
+      vagas: null | number;
     }
   >();
 
   for (const u of unidades) {
-    const chave =
-      u.quadra !== null && u.lote !== null
+    const tipoDaLinha = tipoDaUnidade({
+      apartamento: u.apartamento,
+      lote: u.lote,
+      quadra: u.quadra,
+      tipoProduto,
+    });
+    const vertical = tipoDaLinha === "vertical";
+    const apartamento = vertical ? apartamentoCanonico(u.apartamento) : null;
+    // ⚠️ NO PRÉDIO A PONTE É TORRE + APARTAMENTO, na forma canônica da fundação: é a mesma pergunta
+    // do índice único da 0171. O prefixo `apto:` impede que o apartamento "01-05" case com o lote
+    // da quadra 01, se um dia pai e filho misturarem os tipos.
+    const chave = vertical
+      ? apartamento
+        ? `apto:${chaveDaUnidade("vertical", { apartamento, torre: u.torre })}`
+        : `codigo:${u.codigo.trim().toUpperCase()}`
+      : u.quadra !== null && u.lote !== null
         ? chaveDoLote(u.quadra, u.lote)
         : `codigo:${u.codigo.trim().toUpperCase()}`;
 
@@ -136,9 +207,15 @@ export async function estadoDoEspelho(
     const atual = terrenos.get(chave);
     const preco = numero(u.preco_tabela);
     const precoReal = preco !== null && preco > PRECO_MINIMO_REAL ? preco : null;
+    const andar = vertical && typeof u.andar === "number" && Number.isInteger(u.andar) ? u.andar : null;
+    const tipologia = vertical ? String(u.tipologia ?? "").trim() || null : null;
+    const torre = vertical ? torreCanonica(u.torre) : null;
+    const vagas = vertical && typeof u.vagas === "number" ? u.vagas : null;
 
     if (!atual) {
       terrenos.set(chave, {
+        andar,
+        apartamento,
         area: numero(u.area),
         codigoDoPai: doPai ? u.codigo.trim().toUpperCase() : null,
         codigoQualquer: u.codigo.trim().toUpperCase(),
@@ -146,6 +223,10 @@ export async function estadoDoEspelho(
         preco: precoReal,
         quadra: u.quadra,
         registros: [sinaisDe(u, doPai, comProcesso)],
+        tipologia,
+        tipoProduto: tipoDaLinha,
+        torre,
+        vagas,
       });
       continue;
     }
@@ -160,24 +241,54 @@ export async function estadoDoEspelho(
     atual.preco ??= precoReal;
     atual.quadra ??= u.quadra;
     atual.lote ??= u.lote;
+    atual.andar ??= andar;
+    atual.apartamento ??= apartamento;
+    atual.tipologia ??= tipologia;
+    atual.torre ??= torre;
+    atual.vagas ??= vagas;
   }
 
-  const lotes: LoteDoEspelho[] = [...terrenos.values()].map((t) => ({
-    area: t.area,
-    codigo: t.codigoDoPai ?? t.codigoQualquer,
-    lote: t.lote,
-    preco: t.preco,
-    quadra: t.quadra,
-    situacao: situacaoDoLoteReal(t.registros),
-  }));
+  const lotes: LoteDoEspelho[] = [...terrenos.values()].map((t) => {
+    const codigo = t.codigoDoPai ?? t.codigoQualquer;
+    const vertical = t.tipoProduto === "vertical";
+    return {
+      andar: t.andar,
+      apartamento: t.apartamento,
+      area: t.area,
+      codigo,
+      // O grupo do loteamento é o MESMO que a grade pública já calcula ("Sem quadra" quando falta):
+      // entregar pronto não muda o que ela desenha hoje.
+      grupo: vertical ? (t.torre ? `Torre ${t.torre}` : "Unidades") : t.quadra?.trim() || "Sem quadra",
+      lote: t.lote,
+      numero: (vertical ? t.apartamento : t.lote) ?? "",
+      preco: t.preco,
+      quadra: t.quadra,
+      rotulo: nomeDaUnidade({
+        apartamento: t.apartamento,
+        codigo,
+        lote: t.lote,
+        quadra: t.quadra,
+        tipoProduto: t.tipoProduto,
+        torre: t.torre,
+      }),
+      situacao: situacaoDoLoteReal(t.registros),
+      tipologia: t.tipologia,
+      tipoProduto: t.tipoProduto,
+      torre: t.torre,
+      vagas: t.vagas,
+    };
+  });
 
-  // Ordem estável e legível: quadra, depois lote, em ordem natural (Q2 antes de Q10).
-  lotes.sort(
-    (a, b) =>
-      comparar(a.quadra, b.quadra) ||
-      comparar(a.lote, b.lote) ||
-      a.codigo.localeCompare(b.codigo),
-  );
+  // Ordem estável e legível: quadra, depois lote, em ordem natural (Q2 antes de Q10). O prédio vem
+  // depois do loteamento, torre por torre (torre única no fim), e dentro da torre do andar mais
+  // alto para o mais baixo, a mesma régua da grade da tela Venda (`compararApartamentos`).
+  lotes.sort((a, b) => {
+    if (a.tipoProduto !== b.tipoProduto) return a.tipoProduto === "loteamento" ? -1 : 1;
+    if (a.tipoProduto === "vertical") {
+      return comparar(a.torre, b.torre) || compararApartamentos(a, b);
+    }
+    return comparar(a.quadra, b.quadra) || comparar(a.lote, b.lote) || a.codigo.localeCompare(b.codigo);
+  });
 
   return {
     atualizadoEm: new Date().toISOString(),
@@ -222,16 +333,25 @@ async function lerUnidades(
 ): Promise<LinhaDeUnidade[]> {
   const PAGINA = 1000;
   const todas: LinhaDeUnidade[] = [];
+  // ⚠️ AS COLUNAS DO PRÉDIO SÃO PEDIDAS, E A FALTA DELAS NÃO DERRUBA O ESPELHO. Sem a 0171 aplicada
+  // não existe apartamento nenhum, e o link público de um loteamento não pode sair do ar por causa
+  // de uma migration na fila. Descoberta a falta, as páginas seguintes já pedem sem elas.
+  let colunasDoApartamento = COLUNAS_DO_APARTAMENTO;
 
   for (let pagina = 0; ; pagina += 1) {
     const { data, error } = await client
       .from("hercules_unidades")
-      .select("area, codigo, enterprise_id, id, lote, preco_tabela, quadra, situacao")
+      .select(`area,codigo,enterprise_id,id,lote,preco_tabela,quadra,situacao${colunasDoApartamento}`)
       .in("enterprise_id", enterpriseIds)
       .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
 
+    if (error && colunasDoApartamento && ehColunaDaUnidadeVerticalAusente(error)) {
+      colunasDoApartamento = "";
+      pagina -= 1;
+      continue;
+    }
     if (error) throw new Error(error.message);
-    const lote = (data ?? []) as LinhaDeUnidade[];
+    const lote = (data ?? []) as unknown as LinhaDeUnidade[];
     todas.push(...lote);
     if (lote.length < PAGINA) return todas;
   }

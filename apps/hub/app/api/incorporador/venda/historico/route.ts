@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
-import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
-import { codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
+import {
+  codigosDaSessao,
+  idsDaSessao,
+  linhasSoDoPanteon,
+} from "@/lib/apolo/incorporador/escopo";
+import { linhaDoTempoParaOPortal } from "@/lib/apolo/incorporador/historico-do-portal";
+import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { createApoloAdminClient } from "@/lib/apolo/server";
-import { carregarCadastroDeEmpreendimentos, soDoPanteon } from "@/lib/hercules/cadastro";
+import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import {
   type EventoDaUnidade,
   type EventoImportado,
@@ -45,7 +51,7 @@ export const runtime = "nodejs";
 export const maxDuration = 20;
 
 export async function GET(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const unidade = (new URL(request.url).searchParams.get("unidade") ?? "").trim();
@@ -68,12 +74,14 @@ export async function GET(request: Request) {
     // A mesma expansão que a rota `/venda` faz para o produto não sumir do seletor e do mapa.
     const codesAutorizados = await codigosDaSessao(auth.sessao);
     const catalogoDoC2x = await catalogoDeEmpreendimentos(Date.now());
-    const idsNoC2x = new Set(catalogoDoC2x.flatMap((e) => e.stageIds.map(String)));
-    const proprios = soDoPanteon(
-      await carregarCadastroDeEmpreendimentos(),
-      await idsDaSessao(auth.sessao),
-      idsNoC2x,
-    );
+    // ⚠️ A TRAVA DO LAB (onda 2, 16/09/2026): `linhasSoDoPanteon` é a tradução do escopo COM a
+    // trava de `EXCLUDED_ENTERPRISE_CODES`. Com `soDoPanteon` puro, uma sessão com o 31 lia o
+    // histórico do LAB como produto "próprio".
+    const proprios = linhasSoDoPanteon({
+      cadastro: await carregarCadastroDeEmpreendimentos(),
+      catalogo: catalogoDoC2x,
+      permitidos: await idsDaSessao(auth.sessao),
+    }).map((l) => ({ codigo: l.codigo, enterpriseId: String(l.c2xEnterpriseId) }));
     const codes = [...new Set([...codesAutorizados, ...proprios.map((p) => p.codigo)])];
     if (codes.length === 0) {
       return NextResponse.json({ error: "Não foi possível carregar o histórico." }, { status: 503 });
@@ -105,11 +113,20 @@ export async function GET(request: Request) {
     // As reservas nascidas aqui, com o escopo conferido pela unidade.
     const daReserva = await lerReservas(supabase, unidade, auth.sessao);
 
+    // (16/09/2026, revisão) FORA DO COMERCIAL, O TIME DA CARELI SEM NOME: nos eventos de etapa, o
+    // nome só fica quando é de uma conta deste portal (lib/apolo/incorporador/historico-do-portal.ts).
+    const comercial = ehPortalComercial(auth.sessao.tipo);
+    const nomesDoPortal = comercial
+      ? null
+      : await nomesDasContasDoPortal(supabase, auth.sessao.incorporadorId);
+    const paraATela = (eventos: EventoDaUnidade[]): EventoDaUnidade[] =>
+      comercial ? eventos : linhaDoTempoParaOPortal(eventos, nomesDoPortal);
+
     // ⚠️ SÓ DESISTE QUANDO NÃO HÁ NADA DOS DOIS LADOS. Antes bastava não haver proposta para a
     // resposta sair vazia, e reserva nova nunca tem proposta.
     if (daUnidade.length === 0) {
       return NextResponse.json({
-        data: { eventos: eventosDaReserva(daReserva), propostas: 0 },
+        data: { eventos: paraATela(eventosDaReserva(daReserva)), propostas: 0 },
       });
     }
 
@@ -142,15 +159,17 @@ export async function GET(request: Request) {
       {
         data: {
           // A linha do tempo é uma só: o que veio do C2X e o que nasceu aqui, na mesma ordem.
-          eventos: [
-            ...historicoDaUnidade(
-              daUnidade,
-              (movimentos ?? []) as MovimentoDoHistorico[],
-              (importados ?? []) as EventoImportado[],
+          eventos: paraATela(
+            [
+              ...historicoDaUnidade(
+                daUnidade,
+                (movimentos ?? []) as MovimentoDoHistorico[],
+                (importados ?? []) as EventoImportado[],
+              ),
+              ...eventosDaReserva(daReserva),
+            ].sort((a: EventoDaUnidade, b: EventoDaUnidade) =>
+              a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0,
             ),
-            ...eventosDaReserva(daReserva),
-          ].sort((a: EventoDaUnidade, b: EventoDaUnidade) =>
-            a.quando < b.quando ? 1 : a.quando > b.quando ? -1 : 0,
           ),
           propostas: daUnidade.length,
         },
@@ -161,6 +180,31 @@ export async function GET(request: Request) {
     console.error("[incorporador/venda/historico]", e);
     return NextResponse.json({ error: "Não foi possível carregar o histórico." }, { status: 503 });
   }
+}
+
+/**
+ * Os nomes das contas DESTE portal (`apolo_incorporador_usuarios`), para a linha do tempo saber
+ * quem é do próprio time. Falha de leitura vira `null`: aí todo nome de etapa sai como "Equipe
+ * Careli", nunca o nome cru.
+ */
+async function nomesDasContasDoPortal(
+  supabase: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  incorporadorId: string,
+): Promise<null | Set<string>> {
+  const { data, error } = await supabase
+    .from("apolo_incorporador_usuarios")
+    .select("nome")
+    .eq("incorporador_id", incorporadorId)
+    .limit(1000);
+  if (error) {
+    console.error("[incorporador/venda/historico] contas do portal", error.message);
+    return null;
+  }
+  return new Set(
+    ((data ?? []) as Array<{ nome: null | string }>)
+      .map((linha) => (linha.nome ?? "").trim())
+      .filter(Boolean),
+  );
 }
 
 /**

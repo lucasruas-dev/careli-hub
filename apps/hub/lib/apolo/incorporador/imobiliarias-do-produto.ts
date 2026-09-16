@@ -142,6 +142,58 @@ export function contarVendasPorImobiliaria(units: ApoloVendaUnit[]): Map<string,
   return contagem;
 }
 
+/** Uma proposta de `hercules_propostas`, com só o que a contagem por imobiliária usa. */
+export type PropostaDoPanteonDaImobiliaria = {
+  etapa: null | string;
+  id: string;
+  imobiliaria_entity_id: null | string;
+  unidade_id: null | string;
+};
+
+/** As etapas que encerram a venda: proposta nelas não é "venda ativa". */
+const ETAPAS_MORTAS = new Set(["cancelado", "distrato"]);
+
+/**
+ * Quantas unidades com venda ativa cada imobiliária tem NO PANTEON — a coluna Vendas do produto que
+ * só existe aqui.
+ *
+ * ⚠️ POR QUE EXISTE (achado 20 da onda 1, 16/09/2026). O produto nascido no Panteon não tem venda no
+ * C2X: `loadApoloEnterpriseVendas` ia ao MySQL com o código dele e voltava vazio (ou derrubava a aba
+ * inteira quando o C2X estava fora), e a coluna dizia "ninguém vendeu" para a imobiliária que vendeu.
+ * A venda dele é a proposta de `hercules_propostas`.
+ *
+ * A MESMA régua de `contarVendasPorImobiliaria`: conta UNIDADE com venda ativa, não proposta. Duas
+ * propostas vivas da mesma unidade (uma revenda que ainda não fechou a anterior) contam uma vez; a
+ * proposta sem unidade conta por ela mesma. Cancelada e distratada não contam.
+ */
+export function contarVendasDoPanteonPorImobiliaria(
+  propostas: PropostaDoPanteonDaImobiliaria[],
+): Map<string, number> {
+  const unidadesPorImobiliaria = new Map<string, Set<string>>();
+
+  for (const proposta of propostas) {
+    const imobiliaria = String(proposta.imobiliaria_entity_id ?? "").trim();
+    if (!imobiliaria) continue;
+    if (ETAPAS_MORTAS.has(String(proposta.etapa ?? "").trim().toLowerCase())) continue;
+
+    const unidade = String(proposta.unidade_id ?? "").trim() || `proposta:${proposta.id}`;
+    const unidades = unidadesPorImobiliaria.get(imobiliaria) ?? new Set<string>();
+    unidades.add(unidade);
+    unidadesPorImobiliaria.set(imobiliaria, unidades);
+  }
+
+  return new Map([...unidadesPorImobiliaria].map(([id, unidades]) => [id, unidades.size]));
+}
+
+/** Soma contagens por imobiliária de fontes diferentes (C2X e Panteon), sem perder nenhuma chave. */
+export function somarVendasPorImobiliaria(...contagens: ReadonlyArray<Map<string, number>>): Map<string, number> {
+  const soma = new Map<string, number>();
+  for (const contagem of contagens) {
+    for (const [id, total] of contagem) soma.set(id, (soma.get(id) ?? 0) + total);
+  }
+  return soma;
+}
+
 export function montarImobiliariasDoProduto({
   credenciadas,
   esteira,
@@ -379,4 +431,55 @@ export async function lerNomesDasEntidades(
   }
 
   return nomes;
+}
+
+/** PostgREST corta em 1.000 linhas sem erro: a leitura de propostas pagina. */
+const PAGINA_DE_PROPOSTAS = 1000;
+
+/**
+ * As propostas VIVAS dos códigos pedidos, em `hercules_propostas`, paginadas e com os códigos em
+ * lotes (o `.in()` vai na URL). É a fonte da coluna Vendas do produto que só existe no Panteon.
+ *
+ * ⚠️ POR `empreendimento_codigo`, O MESMO FILTRO DA TELA VENDA (/venda): a proposta nativa grava o
+ * código do produto nessa coluna justamente para ser achada assim. Os `codes` já passaram pelo escopo
+ * da sessão: esta função não autoriza nada.
+ *
+ * ⚠️ FALHA NÃO É "NINGUÉM VENDEU": devolve `ok: false`, e a rota responde indisponível, como faz
+ * quando o C2X não responde.
+ */
+export async function lerPropostasVivasDoPanteon(
+  admin: AdminClient,
+  codes: string[],
+): Promise<{ ok: false } | { ok: true; propostas: PropostaDoPanteonDaImobiliaria[] }> {
+  const codigos = [...new Set(codes.map((code) => String(code ?? "").trim().toUpperCase()).filter(Boolean))];
+  const propostas: PropostaDoPanteonDaImobiliaria[] = [];
+
+  for (let i = 0; i < codigos.length; i += LOTE) {
+    const lote = codigos.slice(i, i + LOTE);
+    for (let de = 0; ; de += PAGINA_DE_PROPOSTAS) {
+      const { data, error } = await admin
+        .from("hercules_propostas")
+        .select("id, etapa, unidade_id, imobiliaria_entity_id")
+        .eq("workspace_id", "careli")
+        // Só a venda NATIVA: a do C2X (`origem = 'c2x'`, a carga) já é contada pelo legado, e o produto
+        // com dono soma as duas fontes (revisão do conjunto, 16/09/2026).
+        .eq("origem", "panteon")
+        .in("empreendimento_codigo", lote)
+        .not("etapa", "in", '("cancelado","distrato")')
+        .order("id", { ascending: true })
+        .range(de, de + PAGINA_DE_PROPOSTAS - 1)
+        .returns<PropostaDoPanteonDaImobiliaria[]>();
+
+      if (error) {
+        console.error("[incorporador][imobiliarias] propostas do Panteon", error);
+        return { ok: false };
+      }
+
+      const pagina = data ?? [];
+      propostas.push(...pagina);
+      if (pagina.length < PAGINA_DE_PROPOSTAS) break;
+    }
+  }
+
+  return { ok: true, propostas };
 }

@@ -100,6 +100,30 @@ export function linhaDoFilho(filho: FilhoDoPainel, pai: LinhaDoPainel): LinhaDoP
 }
 
 /**
+ * A linha da ficha aberta numa ETAPA (o "Ver mais" de um filho), com a escrita DO FILHO.
+ *
+ * ⚠️ `linhaDoFilho` monta a moldura do filho e não carrega `podeEscrever`, `enterpriseId` nem
+ * `tipoProduto`. Sem isto, toda etapa aberta pelo "Ver mais" sairia só consulta, inclusive a etapa
+ * que o portal opera, e um prédio abriria o formulário de lote. O filho já vem com a régua aplicada
+ * (`podeEscrever` dele, não o do pai): quem monta o índice da tela passa a linha por aqui.
+ *
+ * (16/09/2026, revisão do conjunto) ⚠️ MORA AQUI, E NÃO EM painel-de-produtos.ts. Este arquivo é
+ * importado POR VALOR pela tela (ProdutosDoHercules, "use client") e só importa TIPOS. O
+ * painel-de-produtos puxa `findEnterpriseMirror` (lib/guardian/c2x-analytics → db.ts → mysql2), e um
+ * import de valor dele na tela levava o mysql2 ao bundle do navegador ("Can't resolve 'net'"),
+ * derrubando o portal da Cecílio e o da Gurgel no build.
+ */
+export function comEscritaDoFilho(linha: LinhaDoPainel, filho: FilhoDoPainel): LinhaDoPainel {
+  return {
+    ...linha,
+    enterpriseId: filho.id,
+    operadoPor: filho.operadoPor ?? null,
+    podeEscrever: filho.podeEscrever === true,
+    tipoProduto: linha.tipoProduto ?? filho.tipoProduto,
+  };
+}
+
+/**
  * Id → linha do painel, PAIS E FILHOS. É o índice que resolve o "Ver mais": a row aberta pode ser
  * uma etapa (stage), e a etapa não está em `linhas`, está dentro do pai. Um filho com o mesmo id
  * de uma linha simples não acontece (a rota consome cada c2x id numa linha só); se acontecesse, a

@@ -18,6 +18,8 @@ import { getHadesDbPool } from "@/lib/guardian/db";
 import { resolverLogoDoPortal } from "@/lib/apolo/incorporador/logo";
 import { type TipoDePortal, tipoDePortal } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { carregarCadastroDeEmpreendimentos, type LinhaDoCadastro } from "@/lib/hercules/cadastro";
+import { ehIdDoPanteon } from "@/lib/hercules/produto-novo";
 
 import { hashSenhaIncorporador } from "./senha";
 
@@ -27,6 +29,18 @@ export type EmpreendimentoDisponivel = {
   code: string;
   enterpriseId: string;
   nome: string;
+  /**
+   * `apolo_incorporadores.id` de quem opera o produto (migration 0170). Nulo = a Careli opera, ou
+   * o cadastro do Panteon não respondeu.
+   */
+  operadoPor: null | string;
+  /** O nome de quem opera, pronto para a tela. Nulo quando `operadoPor` é nulo ou não achou. */
+  operadoPorNome: null | string;
+  /**
+   * `c2x` = existe no legado; `panteon` = produto que só existe no cadastro do Panteon (nasce com
+   * id a partir de 100000). A tela marca o segundo.
+   */
+  origem: "c2x" | "panteon";
 };
 
 export type UsuarioDoIncorporador = {
@@ -80,10 +94,47 @@ export function senhaAceitavel(senha: string): boolean {
   return senha.trim().length >= 8;
 }
 
-/** Os empreendimentos do C2X, só o suficiente para escolher na tela. Leitura pura. */
-export async function listarEmpreendimentosDisponiveis(): Promise<EmpreendimentoDisponivel[]> {
+/**
+ * Os empreendimentos que dá para vincular: os do C2X E os que só existem no Panteon. Leitura pura.
+ *
+ * ⚠️ ATÉ 16/09/2026 ERA SÓ O C2X, e o produto nascido no Panteon (o ZZ TESTE 9001; os prédios da
+ * Cecílio a partir de 100000) não tinha como ser marcado para portal nenhum. Pior: o vínculo feito
+ * por fora (INSERT) ficava INVISÍVEL no formulário, porque a tela desenha a lista a partir daqui.
+ *
+ * ⚠️ AS DUAS FONTES CAEM SEPARADAS. C2X fora: sai o cadastro do Panteon (o que é do legado sem a
+ * marca). Cadastro fora: sai o C2X, como antes. As duas fora: lista vazia, e a tela já diz que
+ * dá para salvar e marcar depois.
+ *
+ * @param client Opcional para a rota antiga continuar chamando sem argumento.
+ */
+export async function listarEmpreendimentosDisponiveis(
+  client?: AdminClient | null,
+): Promise<EmpreendimentoDisponivel[]> {
+  const [doC2x, cadastro] = await Promise.all([
+    lerEmpreendimentosDoC2x().catch((erro: unknown) => {
+      console.error("[apolo][incorporadores] empreendimentos do C2X indisponíveis", erro);
+      return null;
+    }),
+    carregarCadastroDeEmpreendimentos().catch((erro: unknown): LinhaDoCadastro[] | null => {
+      console.error("[apolo][incorporadores] cadastro do Panteon indisponível", erro);
+      return null;
+    }),
+  ]);
+
+  const nomesDosOperadores = await lerNomesDosOperadores(
+    client ?? createApoloAdminClient(),
+    (cadastro ?? []).map((linha) => linha.operadoPor ?? null),
+  );
+
+  return mesclarEmpreendimentosDisponiveis({ cadastro, doC2x, nomesDosOperadores });
+}
+
+type EmpreendimentoDoC2x = { code: string; enterpriseId: string; nome: string };
+
+/** `null` = o C2X não está configurado; erro de consulta sobe para quem chama. */
+async function lerEmpreendimentosDoC2x(): Promise<EmpreendimentoDoC2x[] | null> {
   const pool = getHadesDbPool();
-  if (!pool.ok) return [];
+  if (!pool.ok) return null;
 
   // Consulta magra de propósito: `loadApoloEnterprises` traz o cenário comercial inteiro
   // (agrega unidades, preço, status) e aqui só precisamos de id, sigla e nome para um seletor.
@@ -100,6 +151,84 @@ export async function listarEmpreendimentosDisponiveis(): Promise<Empreendimento
       enterpriseId: String(r.id),
       nome: r.name?.trim() || String(r.code),
     }));
+}
+
+/** O nome de cada incorporador que opera algum produto. Falha = mapa vazio (a tela mostra sem nome). */
+async function lerNomesDosOperadores(
+  client: AdminClient | null,
+  ids: Array<null | string>,
+): Promise<Map<string, string>> {
+  const unicos = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  if (!client || unicos.length === 0) return new Map();
+
+  const { data, error } = await client
+    .from("apolo_incorporadores")
+    .select("id,nome")
+    .in("id", unicos)
+    .returns<{ id: string; nome: null | string }[]>();
+
+  if (error) {
+    console.error("[apolo][incorporadores] nomes dos operadores", error.message);
+    return new Map();
+  }
+
+  return new Map((data ?? []).map((linha) => [String(linha.id), String(linha.nome ?? "").trim()]));
+}
+
+/**
+ * O núcleo PURO da lista: junta C2X e cadastro sem repetir id.
+ *
+ *   • id que o C2X conhece → linha do C2X (sigla e nome do legado), com quem opera vindo do
+ *     cadastro quando ele tem a linha;
+ *   • id que só o cadastro conhece → `origem: "panteon"`, sigla e nome do cadastro;
+ *   • linha do cadastro sem id (pai de grupo, como LOX/RDX/PDX) → fora: não há o que gravar no
+ *     vínculo, que é por id.
+ *
+ * ⚠️ C2X FORA DO AR (`doC2x` nulo): não dá para saber quem é do legado pela lista, então a marca
+ * sai pelo id — a partir de 100000 é produto do Panteon (a sequence da 0170), abaixo é legado. O
+ * ZZ TESTE (9001, escrito à mão) aparece sem a marca só enquanto o C2X estiver fora.
+ */
+export function mesclarEmpreendimentosDisponiveis(entrada: {
+  cadastro: LinhaDoCadastro[] | null;
+  doC2x: EmpreendimentoDoC2x[] | null;
+  nomesDosOperadores: Map<string, string>;
+}): EmpreendimentoDisponivel[] {
+  const { doC2x, nomesDosOperadores } = entrada;
+
+  const cadastroPorId = new Map<string, LinhaDoCadastro>();
+  for (const linha of entrada.cadastro ?? []) {
+    const id = String(linha.c2xEnterpriseId ?? "").trim();
+    if (id && !cadastroPorId.has(id)) cadastroPorId.set(id, linha);
+  }
+
+  const operador = (id: string) => {
+    const operadoPor = cadastroPorId.get(id)?.operadoPor ?? null;
+    return {
+      operadoPor,
+      operadoPorNome: operadoPor ? nomesDosOperadores.get(operadoPor) || null : null,
+    };
+  };
+
+  const porId = new Map<string, EmpreendimentoDisponivel>();
+
+  for (const emp of doC2x ?? []) {
+    const id = String(emp.enterpriseId).trim();
+    if (!id || porId.has(id)) continue;
+    porId.set(id, { ...emp, enterpriseId: id, ...operador(id), origem: "c2x" });
+  }
+
+  for (const [id, linha] of cadastroPorId) {
+    if (porId.has(id) || !linha.codigo) continue;
+    porId.set(id, {
+      code: linha.codigo,
+      enterpriseId: id,
+      nome: linha.nome,
+      ...operador(id),
+      origem: doC2x !== null || ehIdDoPanteon(id) ? "panteon" : "c2x",
+    });
+  }
+
+  return [...porId.values()].sort((a, b) => a.code.localeCompare(b.code, "pt-BR"));
 }
 
 /** Todos os incorporadores, com usuários e empreendimentos. Sem hash de senha. */
@@ -320,9 +449,10 @@ export type ResultadoGravacao = { erro: string; ok: false } | { id: string; ok: 
 /**
  * Cria ou atualiza um incorporador e a lista do que ele enxerga.
  *
- * A lista de empreendimentos é substituída INTEIRA (apaga e regrava), e isso é de propósito: é a
- * regra de permissão, e um merge deixaria empreendimento antigo pendurado quando o operador
- * desmarca. Como a tela sempre manda a lista completa, a substituição é a operação honesta.
+ * A lista de empreendimentos é substituída INTEIRA, e isso é de propósito: é a regra de
+ * permissão, e um merge deixaria empreendimento antigo pendurado quando o operador desmarca. Como
+ * a tela sempre manda a lista completa, a substituição é a operação honesta. Desde 16/09/2026 ela
+ * grava a lista nova ANTES de apagar o que saiu (ver o passo a passo lá embaixo).
  */
 export async function salvarIncorporador(
   client: AdminClient,
@@ -339,6 +469,12 @@ export async function salvarIncorporador(
      * foram desenhados para um dos dois, e trocar viraria um incorporador em operador da fila.
      */
     tipo?: TipoDePortal;
+    /**
+     * Os ids que o formulário MOSTROU ao abrir. Com eles, só sai o que a pessoa desmarcou; o vínculo
+     * gravado depois (o produto que o portal cadastrou nesse meio tempo) fica. Ausente = a regra
+     * antiga (sai todo gravado que não veio na lista).
+     */
+    vinculosIniciais?: string[];
   },
 ): Promise<ResultadoGravacao> {
   const nome = entrada.nome.trim();
@@ -375,28 +511,97 @@ export async function salvarIncorporador(
     id = data.id;
   }
 
-  const { error: erroApagar } = await client
+  // ⚠️ GRAVA ANTES DE APAGAR (16/09/2026). Até aqui era "apaga tudo e reinsere": se o insert
+  // falhasse, o portal ficava SEM empreendimento nenhum — e bastava um id repetido no corpo para
+  // falhar, porque a chave primária é (incorporador_id, enterprise_id). Com produto do Panteon
+  // entrando na lista, o vínculo que a tela não desenhava era justamente o que sumia. Agora:
+  //   1. lê o que está gravado;
+  //   2. grava a lista pedida (upsert, sem repetição);
+  //   3. só então apaga o que saiu da lista.
+  // Falha no passo 2 não apaga nada. Falha no passo 3 deixa um vínculo que o operador desmarcou, e
+  // a tela recebe o erro para salvar de novo: sobra de permissão avisada, nunca perda calada.
+  const { data: gravados, error: erroLer } = await client
     .from("apolo_incorporador_empreendimentos")
-    .delete()
-    .eq("incorporador_id", id);
-  if (erroApagar) return { erro: `Não foi possível atualizar os empreendimentos: ${erroApagar.message}`, ok: false };
+    .select("enterprise_id")
+    .eq("incorporador_id", id)
+    .returns<{ enterprise_id: string }[]>();
+  if (erroLer) return { erro: `Não foi possível atualizar os empreendimentos: ${erroLer.message}`, ok: false };
 
-  const linhas = entrada.empreendimentos
-    .filter((e) => String(e.enterpriseId).trim())
-    .map((e) => ({
-      carteira_administrada: Boolean(e.carteiraAdministrada),
-      enterprise_id: String(e.enterpriseId).trim(),
-      incorporador_id: id,
-    }));
+  const pedidos = vinculosSemRepeticao(entrada.empreendimentos);
+  const linhas = pedidos.map((e) => ({
+    carteira_administrada: e.carteiraAdministrada,
+    enterprise_id: e.enterpriseId,
+    incorporador_id: id,
+  }));
 
   if (linhas.length) {
-    const { error } = await client.from("apolo_incorporador_empreendimentos").insert(linhas);
+    const { error } = await client
+      .from("apolo_incorporador_empreendimentos")
+      .upsert(linhas, { onConflict: "incorporador_id,enterprise_id" });
     if (error) {
       return { erro: `Não foi possível gravar os empreendimentos: ${error.message}`, ok: false };
     }
   }
 
+  const apagar = vinculosParaApagar(
+    (gravados ?? []).map((g) => g.enterprise_id),
+    pedidos.map((e) => e.enterpriseId),
+    entrada.vinculosIniciais,
+  );
+
+  if (apagar.length) {
+    const { error } = await client
+      .from("apolo_incorporador_empreendimentos")
+      .delete()
+      .eq("incorporador_id", id)
+      .in("enterprise_id", apagar);
+    if (error) {
+      return { erro: `Não foi possível atualizar os empreendimentos: ${error.message}`, ok: false };
+    }
+  }
+
   return { id, ok: true };
+}
+
+/**
+ * A lista de vínculos como ela vai para o banco: id sem espaço, sem vazio, sem repetição.
+ *
+ * Repetido (o mesmo produto marcado duas vezes, ou "37" e " 37") vira UM vínculo, com a carteira
+ * ligada se qualquer uma das cópias pedia: desligar a aba Carteira de alguém por causa de uma
+ * linha duplicada seria tirar acesso sem ninguém ter pedido. Ordem da primeira aparição.
+ */
+export function vinculosSemRepeticao(
+  pedidos: { carteiraAdministrada?: boolean; enterpriseId: string }[],
+): { carteiraAdministrada: boolean; enterpriseId: string }[] {
+  const porId = new Map<string, { carteiraAdministrada: boolean; enterpriseId: string }>();
+
+  for (const pedido of pedidos) {
+    const enterpriseId = String(pedido.enterpriseId ?? "").trim();
+    if (!enterpriseId) continue;
+    const atual = porId.get(enterpriseId);
+    porId.set(enterpriseId, {
+      carteiraAdministrada: Boolean(atual?.carteiraAdministrada) || Boolean(pedido.carteiraAdministrada),
+      enterpriseId,
+    });
+  }
+
+  return [...porId.values()];
+}
+
+/**
+ * O que está gravado e saiu da lista. Compara o valor CRU do banco com o id limpo pedido: um
+ * " 37" gravado com espaço, com "37" na lista, é apagado (o "37" limpo acabou de ser gravado).
+ *
+ * ⚠️ COM `iniciais`, SÓ SAI O QUE A PESSOA VIU E DESMARCOU. O portal passou a gravar vínculo sozinho
+ * (o produto que ele cadastra, ver `cadastrarProduto`); sem esta trava, salvar um formulário aberto
+ * antes disso apagava o vínculo novo, e o produto sumia do portal de quem o cadastrou.
+ */
+export function vinculosParaApagar(gravados: string[], mantidos: string[], iniciais?: string[]): string[] {
+  const ficam = new Set(mantidos.map((id) => String(id ?? "").trim()).filter(Boolean));
+  const vistos = iniciais ? new Set(iniciais.map((id) => String(id ?? "").trim())) : null;
+  return [...new Set(gravados.map((id) => String(id ?? "")))].filter(
+    (id) => !ficam.has(id) && (!vistos || vistos.has(id.trim())),
+  );
 }
 
 function mensagemDeErro(mensagem: null | string | undefined, slug: string): string {
@@ -432,6 +637,8 @@ export async function salvarUsuarioIncorporador(
      * e o portal pode nascer sem empreendimento — intersectar deixaria toda conta vazia.
      */
     empreendimentos?: string[];
+    /** Os ids do recorte que o formulário mostrou ao abrir (ver `vinculosParaApagar`). */
+    empreendimentosIniciais?: string[];
     id?: null | string;
     incorporadorId: string;
     nome: string;
@@ -471,7 +678,7 @@ export async function salvarUsuarioIncorporador(
   if (id) {
     const { error } = await client.from("apolo_incorporador_usuarios").update(campos).eq("id", id);
     if (error) return { erro: mensagemDeUsuario(error.message, email), ok: false };
-    return gravarVinculosDaConta(client, id, empreendimentos);
+    return gravarVinculosDaConta(client, id, empreendimentos, entrada.empreendimentosIniciais);
   }
 
   campos.incorporador_id = entrada.incorporadorId;
@@ -517,37 +724,61 @@ async function tipoDoPortalDaConta(
 }
 
 /**
- * Substitui o recorte próprio da conta. Apaga e reinsere, como `salvarIncorporador` faz com o do
- * portal: a lista da tela é a verdade inteira, não um delta.
+ * Substitui o recorte próprio da conta, como `salvarIncorporador` faz com o do portal: a lista da
+ * tela é a verdade inteira, não um delta. Grava a lista nova e só depois apaga o que saiu.
  *
  * ⚠️ A CONTA JÁ FOI GRAVADA quando isto roda. Erro aqui volta como erro para a tela, mas o nome e
  * a senha ficaram — igual ao que acontece com os empreendimentos do portal. Quem receber o erro
- * salva de novo; a segunda gravação apaga e reinsere, sem duplicar.
+ * salva de novo; a segunda gravação repete o upsert e a limpeza, sem duplicar.
  */
 async function gravarVinculosDaConta(
   client: AdminClient,
   usuarioId: string,
   empreendimentos: string[] | undefined,
+  iniciais?: string[],
 ): Promise<ResultadoGravacao> {
   if (empreendimentos === undefined) return { id: usuarioId, ok: true };
 
-  const { error: erroApagar } = await client
+  // ⚠️ GRAVA ANTES DE APAGAR, pelo mesmo motivo de `salvarIncorporador`: apagar primeiro e falhar
+  // no insert deixava o coordenador SEM empreendimento nenhum, e no comercial isso é "não entra".
+  const { data: gravados, error: erroLer } = await client
     .from("apolo_incorporador_usuario_empreendimentos")
-    .delete()
-    .eq("usuario_id", usuarioId);
-  if (erroApagar) {
-    return { erro: `Não foi possível atualizar os empreendimentos da conta: ${erroApagar.message}`, ok: false };
+    .select("enterprise_id")
+    .eq("usuario_id", usuarioId)
+    .returns<{ enterprise_id: string }[]>();
+  if (erroLer) {
+    return { erro: `Não foi possível atualizar os empreendimentos da conta: ${erroLer.message}`, ok: false };
   }
 
-  const linhas = [...new Set(empreendimentos.map((e) => String(e ?? "").trim()).filter(Boolean))].map(
-    (enterprise_id) => ({ enterprise_id, usuario_id: usuarioId }),
+  const pedidos = vinculosSemRepeticao(empreendimentos.map((enterpriseId) => ({ enterpriseId })));
+  const linhas = pedidos.map((e) => ({ enterprise_id: e.enterpriseId, usuario_id: usuarioId }));
+
+  if (linhas.length) {
+    const { error } = await client
+      .from("apolo_incorporador_usuario_empreendimentos")
+      .upsert(linhas, { ignoreDuplicates: true, onConflict: "usuario_id,enterprise_id" });
+    if (error) {
+      return { erro: `Não foi possível gravar os empreendimentos da conta: ${error.message}`, ok: false };
+    }
+  }
+
+  const apagar = vinculosParaApagar(
+    (gravados ?? []).map((g) => g.enterprise_id),
+    pedidos.map((e) => e.enterpriseId),
+    iniciais,
   );
-  if (linhas.length === 0) return { id: usuarioId, ok: true };
 
-  const { error } = await client.from("apolo_incorporador_usuario_empreendimentos").insert(linhas);
-  if (error) {
-    return { erro: `Não foi possível gravar os empreendimentos da conta: ${error.message}`, ok: false };
+  if (apagar.length) {
+    const { error } = await client
+      .from("apolo_incorporador_usuario_empreendimentos")
+      .delete()
+      .eq("usuario_id", usuarioId)
+      .in("enterprise_id", apagar);
+    if (error) {
+      return { erro: `Não foi possível atualizar os empreendimentos da conta: ${error.message}`, ok: false };
+    }
   }
+
   return { id: usuarioId, ok: true };
 }
 

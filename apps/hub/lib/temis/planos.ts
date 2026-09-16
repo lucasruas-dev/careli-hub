@@ -38,6 +38,14 @@ export type PlanoDoTemis = {
   observacao: null | string;
   ordem: number;
   parcelas: number;
+  /**
+   * A condição de disponibilidade ("válido para as próximas 16 unidades"), a etiqueta âmbar ao lado
+   * do nome. Nulo = sem ressalva. Ver `limparRessalva` e a migration 0168.
+   *
+   * ⚠️ OPCIONAL NO TIPO, E NÃO SÓ NO BANCO: enquanto a 0168 não roda, a leitura volta sem a coluna,
+   * e quem monta um `PlanoDoTemis` à mão (a prévia da tela, os testes) não precisa inventar o campo.
+   */
+  ressalva?: null | string;
   sistemaAmortizacao: string;
   slot: null | string;
 };
@@ -65,9 +73,51 @@ export type EntradaDePlano = {
   observacao?: null | string;
   ordem?: number;
   parcelas: number;
+  /**
+   * ⚠️ AUSENTE ≠ NULO. Ausente = quem chamou não fala de ressalva (a rota não toca na coluna);
+   * nulo ou vazio = apagar a ressalva. É o que deixa um cliente antigo, que não conhece o campo,
+   * salvar o plano sem apagar a etiqueta que outra pessoa escreveu.
+   */
+  ressalva?: null | string;
   sistemaAmortizacao: string;
   slot?: null | string;
 };
+
+/**
+ * O tamanho máximo da ressalva. É uma ETIQUETA ao lado do nome, não uma observação: a frase do
+ * Garden tem 36 caracteres. O CHECK da migration 0168 usa o mesmo número.
+ */
+export const RESSALVA_MAXIMA = 80;
+
+/**
+ * A ressalva como ela deve ser gravada: aparada, com os espaços repetidos colapsados, e vazio
+ * virando nulo.
+ *
+ * ⚠️ VAZIO VIRA NULO PORQUE A ETIQUETA É DESENHADA QUANDO HÁ TEXTO. Um "  " gravado desenharia um
+ * chip âmbar sem nada dentro, na lista do Apolo e no portal do incorporador. `\s` do JavaScript já
+ * cobre o espaço não separável (U+00A0) que chega colado de planilha.
+ */
+export function limparRessalva(valor: unknown): null | string {
+  if (typeof valor !== "string") return null;
+  const limpa = valor.replace(/\s+/g, " ").trim();
+  return limpa ? limpa : null;
+}
+
+/**
+ * O erro do Supabase é "a coluna `ressalva` ainda não existe" (migration 0168 pendente)?
+ *
+ * ⚠️ SÓ PARA ESTA COLUNA, e pelo nome dela na mensagem. `42703` (Postgres) e `PGRST204` (schema
+ * cache do PostgREST) dizem "coluna não existe" para QUALQUER coluna: engolir os dois sem olhar o
+ * nome faria um erro de digitação em outra coluna do select virar, calado, uma tela sem ressalva.
+ * É a mesma cautela de `tabela-ausente.ts` com o `42703`.
+ */
+export function ehColunaDaRessalvaAusente(erro: unknown): boolean {
+  if (!erro || typeof erro !== "object") return false;
+  const { code, message } = erro as { code?: unknown; message?: unknown };
+  const mensagem = typeof message === "string" ? message.toLowerCase() : "";
+  const codigoDeColuna = code === "42703" || code === "PGRST204";
+  return codigoDeColuna && mensagem.includes("ressalva");
+}
 
 /**
  * ⚠️ DERIVADA, E NAO COPIADA. Ate 13/09/2026 esta lista era escrita a mao aqui, e era uma de CINCO
@@ -130,6 +180,20 @@ export function conferirPlano(entrada: EntradaDePlano): string[] {
   }
   if (entrada.jurosConvencao && !CONVENCOES.has(entrada.jurosConvencao)) {
     problemas.push("Convenção de juros deve ser equivalente ou proporcional.");
+  }
+
+  if (
+    entrada.ressalva !== undefined &&
+    entrada.ressalva !== null &&
+    typeof entrada.ressalva !== "string"
+  ) {
+    problemas.push("A ressalva de disponibilidade precisa ser um texto.");
+  }
+  const ressalva = limparRessalva(entrada.ressalva);
+  if (ressalva && ressalva.length > RESSALVA_MAXIMA) {
+    problemas.push(
+      `A ressalva de disponibilidade tem no máximo ${RESSALVA_MAXIMA} caracteres: ela aparece como etiqueta ao lado do nome do plano.`,
+    );
   }
 
   return problemas;

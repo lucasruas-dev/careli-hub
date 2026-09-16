@@ -14,6 +14,7 @@ import {
   situacaoDoPrazo,
 } from "@/lib/temis/trabalhos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 
 // O BOARD DA TÊMIS — kanban do trabalho, e não painel de configuração.
 //
@@ -36,6 +37,14 @@ import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 // `getApoloAccessToken` LANÇA sem sessão do hub, que o coordenador não tem) e `somenteLeitura`
 // (checkbox travado, nenhum POST: quem faz o card andar continua sendo a Têmis). Sem as três, o
 // comportamento interno é exatamente o de antes.
+//
+// ⚠️ E O PORTAL QUE CONFECCIONA (Cecílio, 16/09/2026) NÃO USA NENHUMA DAS TRÊS. Lá o quadro é
+// OPERÁVEL e abre a tela de trabalho, então a troca não pode ser só da rota da lista: todas as
+// chamadas da tela de trabalho precisam da mesma porta. Quem troca é o `ApiDaTemisProvider`
+// (`modules/temis/api-da-temis.tsx`) montado por cima: sem `rota`, a lista vem de `temisFetch`, que
+// no hub é `/api/temis/trabalhos` com Bearer (o de sempre) e no portal é
+// `/api/incorporador/temis/trabalhos` com o cookie. `rota` e `semToken` ficam para o board
+// só-leitura do comercial, que lê outra rota e nunca abre a tela de trabalho.
 
 type ContratoDoCard = {
   criadoEm: string;
@@ -81,6 +90,11 @@ type TrabalhoDaTela = {
   id: string;
   irisTicketId: null | string;
   observacao: null | string;
+  /**
+   * Quem confecciona: o uuid do incorporador que opera o card no portal dele, ou nulo (a Careli).
+   * Opcional pelo mesmo motivo de `assinaturas`: o board só-leitura do comercial lê outra rota.
+   */
+  operadoPor?: null | string;
   /** A proposta de onde o contrato saiu. Quem envia para assinatura é a tela de trabalho. */
   propostaId?: null | string;
   tipo: TipoDeTrabalho;
@@ -129,14 +143,31 @@ function cpfLegivel(bruto: null | string): null | string {
 
 export function TemisKanban({
   enterpriseId,
-  rota = "/api/temis/trabalhos",
+  incluirIncorporadores = false,
+  rota,
   semToken = false,
   somenteLeitura = false,
 }: {
   enterpriseId: null | string;
-  /** De onde os cards vêm. O portal comercial aponta para a rota escopada pela sessão dele. */
+  /**
+   * A SUPERVISÃO DA CARELI (decisão do Lucas, 16/09/2026, na fundação da Têmis do portal). O board
+   * da Careli esconde, por padrão, o que o time de um incorporador confecciona no portal dele; com
+   * isto ligado ele pede `?incluir=incorporadores` e os cards de fora voltam, com o selo
+   * "Incorporador". Só na Têmis do hub: a rota do portal ignora o parâmetro, e o board só-leitura
+   * do comercial (`rota`) nunca o manda.
+   */
+  incluirIncorporadores?: boolean;
+  /**
+   * De onde os cards vêm. O portal comercial aponta para a rota escopada pela sessão dele. Sem ela,
+   * `/trabalhos` pela porta do `ApiDaTemisProvider` (sem provedor: `/api/temis/trabalhos`).
+   */
   rota?: string;
-  /** Sem `Authorization`: quem autentica é o cookie same-origin (portal do incorporador). */
+  /**
+   * Sem `Authorization`: quem autentica é o cookie same-origin (portal do incorporador).
+   *
+   * ⚠️ SÓ VALE JUNTO COM `rota`. Sem `rota`, a credencial é a do provedor — e só o provedor sabe
+   * se a tela de trabalho que este quadro abre fala com o hub ou com o portal.
+   */
   semToken?: boolean;
   /** Só olhar: checkbox travado e nenhum POST. */
   somenteLeitura?: boolean;
@@ -169,14 +200,24 @@ export function TemisKanban({
     return () => clearTimeout(relogio);
   }, [recado]);
 
+  const { temisFetch } = useApiDaTemis();
+
   const carregar = useCallback(async () => {
     setErro(null);
     try {
-      const token = semToken ? null : await getApoloAccessToken();
-      const q = enterpriseId ? `?empreendimento=${encodeURIComponent(enterpriseId)}` : "";
-      const r = await fetch(`${rota}${q}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const partes: string[] = [];
+      if (enterpriseId) partes.push(`empreendimento=${encodeURIComponent(enterpriseId)}`);
+      if (incluirIncorporadores && !rota) partes.push("incluir=incorporadores");
+      const q = partes.length > 0 ? `?${partes.join("&")}` : "";
+      let r: Response;
+      if (rota) {
+        const token = semToken ? null : await getApoloAccessToken();
+        r = await fetch(`${rota}${q}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+      } else {
+        r = await temisFetch(`/trabalhos${q}`);
+      }
       const j = (await r.json()) as {
         data?: { estagios: Colunas; trabalhos: TrabalhoDaTela[] };
         error?: string;
@@ -188,7 +229,7 @@ export function TemisKanban({
       setErro(e instanceof Error ? e.message : "Não consegui carregar o board.");
       setTrabalhos([]);
     }
-  }, [enterpriseId, rota, semToken]);
+  }, [enterpriseId, incluirIncorporadores, rota, semToken, temisFetch]);
 
   useEffect(() => {
     void carregar();
@@ -370,6 +411,7 @@ export function TemisKanban({
                       // de trabalho"*. No board só-leitura do comercial, o clique não abre nada.
                       aoAbrir={somenteLeitura ? null : () => setEmTrabalho(t.id)}
                       key={t.id}
+                      mostrarDono={incluirIncorporadores && !rota}
                       somenteLeitura={somenteLeitura}
                       trabalho={t}
                     />
@@ -394,11 +436,17 @@ export function TemisKanban({
 
 function Card({
   aoAbrir,
+  mostrarDono,
   somenteLeitura,
   trabalho,
 }: {
   /** `null` no board só-leitura do portal comercial: lá o card não abre tela de trabalho. */
   aoAbrir: null | (() => void);
+  /**
+   * Pinta o selo "Incorporador" no card confeccionado fora da Careli. Só na supervisão: no quadro
+   * do próprio portal todo card é dele, e o selo em todos não diria nada.
+   */
+  mostrarDono: boolean;
   somenteLeitura: boolean;
   trabalho: TrabalhoDaTela;
 }) {
@@ -442,10 +490,23 @@ function Card({
         type="button"
       >
         <div className="flex items-center justify-between gap-2">
-          <span
-            className={`rounded-full px-1.5 py-0.5 text-[0.65rem] font-bold ${CLASSE_DO_TIPO[trabalho.tipo]}`}
-          >
-            {NOME_DO_TIPO[trabalho.tipo]}
+          <span className="flex min-w-0 items-center gap-1">
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-[0.65rem] font-bold ${CLASSE_DO_TIPO[trabalho.tipo]}`}
+            >
+              {NOME_DO_TIPO[trabalho.tipo]}
+            </span>
+            {/* ⚠️ O SELO DIZ QUEM CONFECCIONA, E NÃO QUEM VENDEU. A venda da Gurgel no produto da
+                Cecílio é da Careli e não ganha selo; o card aberto pelo time da Cecílio, no portal
+                dela, ganha. A Careli supervisiona sem confundir com a fila dela. */}
+            {mostrarDono && trabalho.operadoPor ? (
+              <span
+                className="rounded-full border border-line bg-subtle px-1.5 py-0.5 text-[0.65rem] font-bold text-ink-muted"
+                title="Confeccionado pelo time do incorporador, no portal dele."
+              >
+                Incorporador
+              </span>
+            ) : null}
           </span>
           {/* ⚠️ SÓ O ATRASO NOSSO PINTA DE VERMELHO. Esperar o cliente assinar aparece como
               informação — se fosse cobrança, o vermelho perderia sentido em duas semanas. */}

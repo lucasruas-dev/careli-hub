@@ -124,12 +124,79 @@ const [linhas] = await c.query(`
    order by e.code, u.name`);
 await c.end();
 
-const alvo = (FILTRO ? linhas.filter((l) => FILTRO.includes(String(l.code))) : linhas).filter(
+const alvoDoC2x = (FILTRO ? linhas.filter((l) => FILTRO.includes(String(l.code))) : linhas).filter(
   (l) => !EXCETO.has(String(l.code)),
 );
 if (EXCETO.size > 0) {
   console.log(`  fora do Panteon: ${[...EXCETO].join(", ")}
 `);
+}
+
+// ── PRODUTO COM DONO NÃO RECEBE A CARGA ───────────────────────────────
+//
+// ⚠️ DECISÃO D2 DO LUCAS (16/09/2026): o estoque do produto que tem DONO marcado
+// (`hercules_empreendimentos.operado_por`, migration 0170; hoje o Garden 39 da Cecílio) passou a ser
+// mantido no Panteon. O time do incorporador corrige preço, área e matrícula pelo portal, e a aba
+// Unidades lê `hercules_unidades`. Esta carga reescreve exatamente preço, área, matrícula e situação
+// por código: rodar com o Garden dentro apagaria, calada, cada correção que a Cecílio gravou. E o
+// produto nascido no Panteon (id >= 100000) nunca é do C2X; se um dia um id desses aparecer lá, é
+// colisão, não carga.
+//
+// ⚠️ FALHA FECHADA. Sem conseguir ler o cadastro, não há como provar que nenhum produto tem dono, e a
+// carga para aqui. Só a coluna ausente (a 0170 não aplicada neste banco) é lida como "ninguém tem
+// dono ainda", e mesmo assim o id do Panteon continua fora.
+const PRIMEIRO_ID_DO_PANTEON = 100000;
+const comDono = new Map();
+{
+  const PAGINA = 1000;
+  let colunas = "codigo,c2x_enterprise_id,operado_por";
+  for (let de = 0; ; de += PAGINA) {
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/hercules_empreendimentos?select=${colunas}&workspace_id=eq.careli&order=codigo`,
+      {
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          Range: `${de}-${de + PAGINA - 1}`,
+          "Range-Unit": "items",
+        },
+      },
+    );
+    if (!resp.ok) {
+      const corpo = await resp.text();
+      if (colunas.includes("operado_por") && (corpo.includes("42703") || corpo.includes("PGRST204"))) {
+        console.log("\n  A migration 0170 não está aplicada aqui: nenhum produto tem dono marcado ainda.");
+        colunas = "codigo,c2x_enterprise_id";
+        de -= PAGINA;
+        continue;
+      }
+      console.error(`\n  FALHOU ao ler o cadastro de empreendimentos: ${resp.status} ${corpo.slice(0, 200)}`);
+      console.error("  A carga para aqui de propósito: gravar agora poderia apagar o estoque de um produto com dono.");
+      process.exit(1);
+    }
+    const pagina = await resp.json();
+    for (const linha of pagina) {
+      const id = String(linha.c2x_enterprise_id ?? "").trim();
+      if (!id) continue;
+      const dono = String(linha.operado_por ?? "").trim();
+      if (dono || Number(id) >= PRIMEIRO_ID_DO_PANTEON) {
+        comDono.set(id, dono ? `operado por ${dono}` : "nascido no Panteon");
+      }
+    }
+    if (pagina.length < PAGINA) break;
+  }
+}
+
+const pulados = new Map();
+const alvo = alvoDoC2x.filter((l) => {
+  const id = String(l.enterprise_id);
+  if (Number(id) < PRIMEIRO_ID_DO_PANTEON && !comDono.has(id)) return true;
+  const chave = `${l.code} (${id}, ${comDono.get(id) ?? "nascido no Panteon"})`;
+  pulados.set(chave, (pulados.get(chave) ?? 0) + 1);
+  return false;
+});
+for (const [produto, quantas] of pulados) {
+  console.log(`  PULADO: ${produto}, ${quantas} unidades do C2X não tocam no estoque mantido no Panteon.`);
 }
 
 const registros = alvo.map((u) => ({

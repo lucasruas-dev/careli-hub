@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import { pedidoPrecisaDeExpansao } from "@/lib/apolo/incorporador/codigos-do-pedido";
 import { foraDoEscopo, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
-import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
+import { portalOperaVenda } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 import { empreendimentosPermitidos, sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
 import {
@@ -27,10 +27,14 @@ import { trabalhosDoBoard } from "@/lib/temis/trabalhos-db";
 // nunca o board inteiro. `trabalhosDoBoard` recebe a lista pronta — nenhum enterprise_id livre do
 // cliente chega ao banco.
 //
-// ⚠️ SÓ O PORTAL COMERCIAL. O cookie do incorporador comum (o dono do loteamento) também passa em
+// ⚠️ SÓ QUEM OPERA A VENDA (`portalOperaVenda`): o portal comercial e o incorporador da lista
+// explícita que opera a própria venda (o Cecílio; Lucas, 16/09/2026: *"a Cecilio quem vai fazer é o
+// proprio time deles"*). O cookie do incorporador comum (o dono do loteamento) também passa em
 // `sessaoDoRequest`, mas os cards trazem o CPF do comprador, e a regra das rotas do incorporador é
 // "documento pessoal nunca sai daqui" (ver carteira/route.ts). Para ele esta rota não existe: 404,
-// como as demais que não estão na aba dele.
+// como as demais que não estão na aba dele. É a MESMA régua de `autorizarOperacaoDeVenda`
+// (board-do-portal.ts): se Contratos abrisse para um portal e a Venda não, ou o contrário, o card
+// da Têmis e a venda que ele descreve viveriam em portas diferentes.
 //
 // ⚠️ DOIS FORMATOS DE ID NA MESMA COLUNA. `temis_trabalhos.enterprise_id` é texto e a tela interna
 // grava o `id` do seletor de empreendimentos — que é a divisão ("35") OU o consolidado
@@ -72,7 +76,7 @@ export async function GET(request: Request) {
   }
 
   // 404 e não 403: para quem não tem a aba, a rota não existe (mesma régua de boletos/route.ts).
-  if (!ehPortalComercial(sessao.tipo)) {
+  if (!portalOperaVenda(sessao.slug, sessao.tipo)) {
     return NextResponse.json({ error: "Nao encontrado." }, { status: 404 });
   }
 

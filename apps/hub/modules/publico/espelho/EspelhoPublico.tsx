@@ -211,7 +211,8 @@ export function EspelhoPublico({
   token: string;
 }) {
   const [estado, setEstado] = useState<Estado | undefined>(inicial);
-  const [erro, setErro] = useState<null | string>(erroInicial ?? null);
+  // O erro só nasce do servidor (link inválido): a tela não o troca depois.
+  const [erro] = useState<null | string>(erroInicial ?? null);
   const [geometria, setGeometria] = useState<Geometria | null>(null);
   const [visao, setVisao] = useState<"espelho" | "grade">(
     inicial?.temMapa ? "espelho" : "grade",
@@ -484,10 +485,15 @@ function Grade({
 }) {
   // Agrupada por quadra, que é como o corretor fala do estoque. Lote sem quadra cai num grupo
   // próprio no fim, em vez de sumir.
+  //
+  // ⚠️ NO PRÉDIO O GRUPO É A TORRE (revisão de 16/09/2026). Apartamento não tem quadra: agrupar por
+  // ela punha o prédio inteiro num grupo "Sem quadra" com quadradinhos vazios. O `grupo` já vem
+  // pronto do estado do espelho ("Quadra 01", "Torre A", "Unidades"); a quadra crua só serve de
+  // reserva para um payload antigo em cache.
   const quadras = useMemo(() => {
     const mapa = new Map<string, LoteDoEspelho[]>();
     for (const l of lotes) {
-      const q = l.quadra?.trim() || "Sem quadra";
+      const q = l.grupo || l.quadra?.trim() || "Sem quadra";
       mapa.set(q, [...(mapa.get(q) ?? []), l]);
     }
     return [...mapa.entries()];
@@ -517,12 +523,13 @@ function Grade({
                     outline:
                       escolhido?.codigo === l.codigo ? "2.5px solid var(--esp-selecao)" : undefined,
                   }}
-                  title={`${quadra} · Lote ${l.lote ?? l.codigo} · ${
+                  title={`${l.rotulo || `${quadra} · Lote ${l.lote ?? l.codigo}`} · ${
                     l.situacao === "disponivel" ? "Disponível" : "Indisponível"
                   }`}
                   type="button"
                 >
-                  {l.lote ?? ""}
+                  {/* O número do quadradinho: o lote, ou o apartamento no prédio. */}
+                  {l.numero || l.lote || ""}
                 </button>
               ))}
             </div>
@@ -534,12 +541,6 @@ function Grade({
 }
 
 // ── O PAINEL DO LOTE: preço, metragem e simulação ──────────────────────────────────
-
-const brl = new Intl.NumberFormat("pt-BR", {
-  currency: "BRL",
-  maximumFractionDigits: 0,
-  style: "currency",
-});
 
 function PainelDoLote({
   lote,
@@ -588,9 +589,14 @@ function PainelDoLote({
     [planos],
   );
 
-  const nomeDoLote = lote.quadra
-    ? `${lote.quadra} ${lote.lote ?? ""}`.trim()
-    : lote.codigo;
+  // ⚠️ O PRÉDIO SE NOMEIA PELA TORRE E PELO APARTAMENTO ("Torre A · Apto 304"), a mesma frase do
+  // WhatsApp e do PDF. Quadra e lote vazios deixariam o simulador com o código cru.
+  const vertical = lote.tipoProduto === "vertical";
+  const nomeDoLote = vertical
+    ? lote.rotulo
+    : lote.quadra
+      ? `${lote.quadra} ${lote.lote ?? ""}`.trim()
+      : lote.codigo;
 
   // O que está na tela AGORA — é o que vai para o papel.
   const condicoes = useRef<CondicoesDaProposta | null>(null);
@@ -669,11 +675,18 @@ function PainelDoLote({
               {disponivel ? "Disponível" : "Indisponível"}
             </p>
             <h2 style={ESTILO.painelTitulo}>
-              {lote.quadra ? `Quadra ${lote.quadra} · Lote ${lote.lote ?? ""}` : lote.codigo}
+              {vertical
+                ? lote.rotulo
+                : lote.quadra
+                  ? `Quadra ${lote.quadra} · Lote ${lote.lote ?? ""}`
+                  : lote.codigo}
             </h2>
             <p style={ESTILO.painelSub}>
               {nomeDoEmpreendimento}
-              {lote.area ? ` · ${lote.area.toLocaleString("pt-BR")} m²` : ""}
+              {lote.area
+                ? ` · ${lote.area.toLocaleString("pt-BR")} m²${vertical ? " privativos" : ""}`
+                : ""}
+              {vertical && lote.tipologia ? ` · ${lote.tipologia}` : ""}
             </p>
           </div>
           <div style={ESTILO.acoesDoTopo}>
@@ -723,13 +736,14 @@ function PainelDoLote({
             para o comprador aqui inverte a instrução e manda o corretor falar com ele mesmo. */}
         {disponivel && preco > 0 && planosDaVenda.length === 0 ? (
           <p style={ESTILO.aviso}>
-            Fale com o coordenador para conhecer as condições de pagamento deste lote.
+            Fale com o coordenador para conhecer as condições de pagamento {vertical ? "desta unidade" : "deste lote"}.
           </p>
         ) : null}
 
         {!disponivel ? (
           <p style={ESTILO.aviso}>
-            Este lote não está disponível. Fale com o coordenador para conhecer as opções.
+            {vertical ? "Esta unidade" : "Este lote"} não está disponível. Fale com o coordenador para
+            conhecer as opções.
           </p>
         ) : null}
       </aside>
@@ -737,15 +751,21 @@ function PainelDoLote({
   );
 }
 
-/** `Veredas do Ouro - Quadra 07 - Lote 34.pdf`, sem o que quebra nome de arquivo. */
+/**
+ * `Veredas do Ouro - Quadra 07 - Lote 34.pdf`, sem o que quebra nome de arquivo. No prédio,
+ * `Ed. Jade - Torre A - Apto 304.pdf`: sem este ramo sairia o código cru.
+ */
 function nomeDoArquivo(empreendimento: string, lote: LoteDoEspelho): string {
-  const partes = [
-    empreendimento,
-    lote.quadra ? `Quadra ${lote.quadra}` : null,
-    lote.lote ? `Lote ${lote.lote}` : lote.codigo,
-  ].filter(Boolean);
+  const partes =
+    lote.tipoProduto === "vertical" && lote.rotulo
+      ? [empreendimento, lote.rotulo.replace(/ · /g, " - ")]
+      : [
+          empreendimento,
+          lote.quadra ? `Quadra ${lote.quadra}` : null,
+          lote.lote ? `Lote ${lote.lote}` : lote.codigo,
+        ].filter(Boolean);
 
-  return `${partes.join(" - ").replace(/["*/:<>?\|]/g, "-")}.pdf`;
+  return `${partes.join(" - ").replace(/["*/:<>?|]/g, "-")}.pdf`;
 }
 
 // ── Estilo inline: a página é pública e autocontida, sem o tema do hub ─────────────

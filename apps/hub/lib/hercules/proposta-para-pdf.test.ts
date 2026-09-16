@@ -147,6 +147,22 @@ describe("montarFolhaDaProposta — o exemplo que o Lucas ditou", () => {
 
   it("o subtítulo junta produto, área e cidade", () => {
     expect(folhaDoExemplo().subtitulo).toBe("Garden · 250,00 m² · Goiânia, GO");
+    // O loteamento não ganha o tipo na folha: a folha antiga sai idêntica.
+    expect(folhaDoExemplo()).not.toHaveProperty("tipoProduto");
+  });
+
+  it("⚠️ no prédio a área é privativa, e o tipo segue para a tarja dizer 'a unidade'", () => {
+    const folha = montarFolhaDaProposta({
+      ...BASE,
+      cronograma: montarCronograma(CONDICOES),
+      empreendimento: "Ed. Jade",
+      plano: SACOC_SEM_JUROS,
+      tipoProduto: "vertical",
+      unidade: { area: 68.45, cidade: "Ipatinga", nome: "Torre A · Apto 304", uf: "MG" },
+    });
+    expect(folha.subtitulo).toBe("Ed. Jade · 68,45 m² privativos · Ipatinga, MG");
+    expect(folha.tipoProduto).toBe("vertical");
+    expect(folha.unidade).toBe("Torre A · Apto 304");
   });
 
   it("a última parcela é a do fim do contrato, e não a da entrada", () => {

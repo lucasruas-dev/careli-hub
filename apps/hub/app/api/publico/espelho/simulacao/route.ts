@@ -9,6 +9,11 @@ import { montarCronograma } from "@/lib/hercules/cronograma";
 import { abrirEspelho, ERRO_GENERICO } from "@/lib/hercules/espelho/abrir-espelho";
 import { planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
 import { SEM_CACHE } from "@/lib/hercules/espelho/pecas-do-espelho";
+import {
+  lerComColunasDoApartamento,
+  nomeDaUnidade,
+  tipoDaUnidade,
+} from "@/lib/hercules/nome-da-unidade";
 import { montarPropostaPdf } from "@/lib/hercules/proposta-pdf";
 import { montarFolhaDaProposta } from "@/lib/hercules/proposta-para-pdf";
 
@@ -75,19 +80,27 @@ export async function POST(request: Request) {
 
   // ⚠️ A UNIDADE VEM DO BANCO, e o que o cliente mandou serve só para ACHAR a linha. Área e
   // cidade impressas no papel saem daqui, nunca do corpo da requisição.
-  const { data: unidade } = await client
-    .from("hercules_unidades")
-    .select("area, codigo, lote, preco_tabela, quadra, situacao")
-    .in("enterprise_id", ids)
-    .eq("codigo", codigoDoLote)
-    .maybeSingle<{
-      area: null | number | string;
-      codigo: string;
-      lote: null | string;
-      preco_tabela: null | number | string;
-      quadra: null | string;
-      situacao: string;
-    }>();
+  //
+  // ⚠️ E COM AS COLUNAS DO APARTAMENTO (revisão de 16/09/2026). Sem torre e apartamento a folha do
+  // prédio saía com o código cru e falando em lote. `lerComColunasDoApartamento` repete a leitura
+  // sem elas quando a 0171 ainda não foi aplicada, e aí não existe apartamento nenhum.
+  const { data: unidade } = await lerComColunasDoApartamento((extras) =>
+    client
+      .from("hercules_unidades")
+      .select(`area,codigo,lote,preco_tabela,quadra,situacao${extras}`)
+      .in("enterprise_id", ids)
+      .eq("codigo", codigoDoLote)
+      .maybeSingle<{
+        apartamento?: null | string;
+        area: null | number | string;
+        codigo: string;
+        lote: null | string;
+        preco_tabela: null | number | string;
+        quadra: null | string;
+        situacao: string;
+        torre?: null | string;
+      }>(),
+  );
 
   if (!unidade) {
     return NextResponse.json({ error: "Lote não encontrado." }, { status: 404 });
@@ -140,12 +153,13 @@ export async function POST(request: Request) {
       // OBSERVAÇÕES do rodapé, e sem a bandeira elas continuavam falando em reajuste e proposta
       // numa folha que não tem nem um nem outro.
       simulacao: true,
+      // O tipo decide só palavra na folha (tarja "a unidade", área privativa); a conta é a mesma.
+      tipoProduto: tipoDaUnidade(unidade),
       unidade: {
         area: unidade.area === null ? null : Number(unidade.area),
         cidade: null,
-        nome: unidade.quadra
-          ? `Quadra ${unidade.quadra} · Lote ${unidade.lote ?? ""}`.trim()
-          : unidade.codigo,
+        // A MESMA frase do WhatsApp e da proposta: "Quadra 03 · Lote 07" ou "Torre A · Apto 304".
+        nome: nomeDaUnidade(unidade),
         uf: null,
       },
       // ⚠️ NULO DE PROPÓSITO: simulação não promete prazo. Com data, o papel diria "vale até",
@@ -161,8 +175,9 @@ export async function POST(request: Request) {
     return new NextResponse(pdf as unknown as BodyInit, {
       headers: {
         "Cache-Control": SEM_CACHE,
-        // O nome do arquivo: empreendimento - quadra - lote, como o Lucas pediu.
-        "Content-Disposition": `attachment; filename="${nomeDoArquivo(nome, unidade.quadra, unidade.lote, unidade.codigo)}"`,
+        // O nome do arquivo: empreendimento - quadra - lote, como o Lucas pediu (no prédio, torre e
+        // apartamento).
+        "Content-Disposition": `attachment; filename="${nomeDoArquivo(nome, unidade)}"`,
         "Content-Type": "application/pdf",
       },
     });
@@ -176,18 +191,22 @@ export async function POST(request: Request) {
   }
 }
 
-/** `Veredas do Ouro - Quadra 07 - Lote 34.pdf`, sem o que quebra nome de arquivo. */
+/**
+ * `Veredas do Ouro - Quadra 07 - Lote 34.pdf`, sem o que quebra nome de arquivo. No prédio,
+ * `Ed. Jade - Torre A - Apto 304.pdf`, pela mesma frase da folha.
+ */
 function nomeDoArquivo(
   empreendimento: string,
-  quadra: null | string,
-  lote: null | string,
-  codigo: string,
+  unidade: Parameters<typeof nomeDaUnidade>[0],
 ): string {
-  const partes = [
-    empreendimento,
-    quadra ? `Quadra ${quadra}` : null,
-    lote ? `Lote ${lote}` : codigo,
-  ].filter(Boolean);
+  const partes =
+    tipoDaUnidade(unidade) === "vertical"
+      ? [empreendimento, nomeDaUnidade(unidade).replace(/ · /g, " - ")]
+      : [
+          empreendimento,
+          unidade.quadra ? `Quadra ${unidade.quadra}` : null,
+          unidade.lote ? `Lote ${unidade.lote}` : unidade.codigo,
+        ].filter(Boolean);
 
   return `${partes.join(" - ").replace(/["*/:<>?\\|]/g, "-")}.pdf`;
 }

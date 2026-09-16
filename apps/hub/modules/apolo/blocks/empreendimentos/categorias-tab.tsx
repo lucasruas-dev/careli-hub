@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Boxes,
   ArrowDown,
   ArrowUp,
   ChevronRight,
@@ -11,6 +12,8 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
+
+import { VincularLotes } from "./vincular-lotes";
 import { useCallback, useEffect, useState } from "react";
 
 import { descreverRegra, regraDeLista } from "@/lib/assinatura/ordem";
@@ -99,6 +102,11 @@ type Props = {
 };
 
 export function CategoriasTab({ codigo, enterpriseId, name }: Props) {
+  // ⚠️ A CATEGORIA SEM LOTE NÃO DECIDE NADA. Lucas (15/09/2026): *"eu criei umas categorias mas não
+  // tem como eu vincular a unidade aquela categoria"*. Até aqui a aba criava o recorte e não havia
+  // caminho nenhum para dizer QUAIS lotes são dele — as 907 do Lagoa Bonita tinham sido carimbadas
+  // por UPDATE cru no banco.
+  const [vinculando, setVinculando] = useState<null | { id: string; nome: string }>(null);
   const [categorias, setCategorias] = useState<Categoria[] | null>(null);
   const [erro, setErro] = useState<null | string>(null);
   const [aviso, setAviso] = useState<null | string>(null);
@@ -534,6 +542,14 @@ export function CategoriasTab({ codigo, enterpriseId, name }: Props) {
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <button
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink transition-colors hover:bg-subtle"
+            onClick={() => setVinculando({ id: categoria.id, nome: categoria.nome })}
+            type="button"
+          >
+            <Boxes aria-hidden="true" className="size-3.5" />
+            Vincular lotes
+          </button>
+          <button
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink transition-colors hover:bg-subtle"
             onClick={() => abrirOrdem(categoria)}
             type="button"
           >
@@ -663,6 +679,19 @@ export function CategoriasTab({ codigo, enterpriseId, name }: Props) {
         <p className="m-0 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
           {erro}
         </p>
+      ) : null}
+
+      {/* ⚠️ A MODAL VIVE AQUI, no fim da árvore da aba: ela cobre a tela inteira, e presa a uma
+          seção herdaria o recorte dela. */}
+      {vinculando ? (
+        <VincularLotes
+          categoriaId={vinculando.id}
+          categoriaNome={vinculando.nome}
+          codigo={codigo}
+          enterpriseId={enterpriseId}
+          onFechar={() => setVinculando(null)}
+          onGravou={() => setRecarregar((n) => n + 1)}
+        />
       ) : null}
     </div>
   );

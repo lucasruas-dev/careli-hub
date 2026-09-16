@@ -51,7 +51,10 @@ const ENTIDADES: Record<string, string> = {
   uacute: "ú", ucirc: "û", uuml: "ü",
 };
 
-function limpar(html: string): string {
+// ⚠️ EXPORTADA EM 16/09/2026, E NÃO COPIADA. O termo de rescisão (`lib/apolo/termo-de-rescisao.ts`)
+// lê o CONTRATO DE CORRETAGEM do mesmo C2X, no mesmo HTML com entidades, para achar a comissão em
+// reais. Uma segunda tabela de entidades lá seria a régua que diverge no primeiro acento novo.
+export function limpar(html: string): string {
   return html
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")

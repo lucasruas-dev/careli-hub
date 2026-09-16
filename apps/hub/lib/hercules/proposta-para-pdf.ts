@@ -24,6 +24,7 @@ import {
 } from "@/lib/apolo/planos-comerciais";
 
 import type { Cronograma, ParcelaDoCronograma } from "./cronograma";
+import type { TipoProduto } from "./produto-novo";
 import { dataEscrita } from "./proposta";
 import type {
   CompradorDaProposta,
@@ -85,11 +86,21 @@ export type DadosDaFolha = {
   logoC2x: null | Uint8Array;
   logoEmpreendimento: null | Uint8Array;
   plano: PlanoComercial;
+  /**
+   * O tipo do PRODUTO onde a unidade mora. Ausente = loteamento, que é o que toda folha foi até a
+   * migration 0170.
+   *
+   * ⚠️ SÓ MUDA PALAVRA, NUNCA CONTA (revisão de 16/09/2026). No prédio a área é a PRIVATIVA (0171), e
+   * o subtítulo "68,45 m²" sozinho sugeriria ao comprador área de terreno; a tarja da simulação diz
+   * "a unidade", e não "o lote". Quem desenha a tarja é `avisoDaFolha` (proposta-pdf.ts), por isso o
+   * tipo segue na folha.
+   */
+  tipoProduto?: TipoProduto;
   unidade: {
-    /** Metros quadrados. Ausente = a folha não anuncia preço por m². */
+    /** Metros quadrados. No prédio, a área privativa. Ausente = a folha não anuncia preço por m². */
     area: null | number;
     cidade: null | string;
-    /** "Quadra 03 · Lote 07" */
+    /** "Quadra 03 · Lote 07" ou "Torre A · Apto 304" (`nomeDaUnidade`). */
     nome: string;
     uf: null | string;
   };
@@ -380,7 +391,9 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
     .join(", ");
   const subtitulo = [
     dados.empreendimento,
-    temArea ? `${decimal(area as number)} m²` : null,
+    temArea
+      ? `${decimal(area as number)} m²${dados.tipoProduto === "vertical" ? " privativos" : ""}`
+      : null,
     local || null,
   ]
     .filter(Boolean)
@@ -422,6 +435,8 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
     simulacao: dados.simulacao ?? false,
     temReajuste: temDegrau || temCorrecao,
     subtitulo,
+    // Ausente continua ausente: a folha antiga (loteamento) sai idêntica.
+    ...(dados.tipoProduto ? { tipoProduto: dados.tipoProduto } : {}),
     unidade: dados.unidade.nome,
   };
 }

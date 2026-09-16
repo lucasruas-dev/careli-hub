@@ -1,15 +1,39 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApoloCarteiraUnit } from "@/lib/apolo/carteira";
 import type { ApoloDocumentItem } from "@/lib/apolo/documentos";
 
+// (16/09/2026) As leituras de banco que `montarDocumentos` e `abrirDocumento` fazem são trocadas por
+// falsas só para o bloco "o portal que opera sozinho" lá embaixo. As funções puras dos outros blocos
+// não passam por nenhuma delas.
+const m = vi.hoisted(() => ({
+  filtrados: vi.fn(async () => [] as unknown[]),
+  pessoa: vi.fn(),
+}));
+
+vi.mock("./documentos-do-portal", () => ({ documentosDoApoloParaPortal: m.filtrados }));
+vi.mock("./pessoa-no-escopo", () => ({ pessoaNoEscopo: m.pessoa }));
+vi.mock("./ficha-cadastro", () => ({ lerC2xUserId: async () => null }));
+vi.mock("@/lib/apolo/server", () => ({
+  createApoloAdminClient: () => ({
+    from: () => {
+      throw new Error("sem banco no teste");
+    },
+  }),
+}));
+vi.mock("@/lib/apolo/incorporador/escopo", () => ({ codigosDaSessao: async () => [] }));
+
+import type { SessaoIncorporador } from "./sessao";
+
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import {
+  abrirDocumento,
   docsDaVenda,
   anexosDoC2x,
   contratosAssinados,
   docsDoApolo,
   type LinhaAnexoC2x,
+  montarDocumentos,
 } from "./documentos";
 
 // A ABA DOCUMENTOS ENTREGA ARQUIVO DE PESSOA PARA UM CLIENTE EXTERNO. Os testes cobrem o
@@ -197,5 +221,62 @@ describe("docsDaVenda", () => {
 
   it("lista vazia não vira nada", () => {
     expect(docsDaVenda([], codigoDaVenda)).toEqual([]);
+  });
+});
+
+// (16/09/2026, crédito no portal) O CRM DO PORTAL QUE OPERA SOZINHO. O board do Cecílio já passava
+// `operaSozinho` e mostrava o comprovante do Serasa das CADs do escopo; o CRM do mesmo portal não
+// passava e escondia. A lista e a abertura dizem a mesma coisa, pela mesma régua do board
+// (`portalConfeccionaContrato`), senão o comprovante apareceria na lista e responderia 404 ao abrir.
+describe("o CRM passa operaSozinho nas duas portas (lista e abertura)", () => {
+  const sessao = (perfil: Pick<SessaoIncorporador, "slug" | "tipo">) =>
+    ({
+      enterpriseIds: ["39"],
+      incorporadorId: `inc-${perfil.slug}`,
+      usuarioId: "u1",
+      usuarioNome: "Maria",
+      ...perfil,
+    }) as unknown as SessaoIncorporador;
+
+  const contextoDaChamada = () =>
+    (m.filtrados.mock.calls[0] as unknown as [unknown, string, Record<string, unknown>])[2];
+
+  beforeEach(() => {
+    // Os documentos da venda leem o banco falso e caem no log de falha: esperado aqui.
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    m.filtrados.mockClear();
+    m.pessoa.mockReset();
+    m.pessoa.mockResolvedValue({
+      enterpriseIds: ["39"],
+      entityId: "e1",
+      ok: true,
+      unidadesDaPessoa: [],
+    });
+  });
+
+  it.each([
+    [{ slug: "cecilio-rocha", tipo: "incorporador" }, { comercial: false, operaSozinho: true }],
+    [{ slug: "gurgel", tipo: "comercial" }, { comercial: true, operaSozinho: false }],
+    [{ slug: "cer", tipo: "incorporador" }, { comercial: false, operaSozinho: false }],
+  ] as const)("lista de %o: %o", async (perfil, esperado) => {
+    const r = await montarDocumentos({ id: "e1", sessao: sessao(perfil), tipo: "prospect" });
+    expect(r.ok).toBe(true);
+    expect(contextoDaChamada()).toEqual({ ...esperado, imobiliaria: false, recorte: new Set(["39"]) });
+  });
+
+  it.each([
+    [{ slug: "cecilio-rocha", tipo: "incorporador" }, true],
+    [{ slug: "gurgel", tipo: "comercial" }, false],
+    [{ slug: "cer", tipo: "incorporador" }, false],
+  ] as const)("abertura de %o: operaSozinho %s, e o id fora da lista filtrada é 404", async (perfil, operaSozinho) => {
+    const r = await abrirDocumento({
+      doc: "doc-1",
+      fonte: "apolo",
+      id: "e1",
+      sessao: sessao(perfil),
+      tipo: "prospect",
+    });
+    expect(r).toEqual({ ok: false, status: 404 });
+    expect(contextoDaChamada()).toMatchObject({ imobiliaria: false, operaSozinho });
   });
 });

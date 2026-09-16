@@ -1,6 +1,8 @@
 // A ABA DOCUMENTOS DA FICHA DO PORTAL DO INCORPORADOR — as três fontes, nesta ordem:
 //
-//   a) documentos da CAD no Apolo (bucket privado `apolo-documents`, via `listApoloDocuments`);
+//   a) documentos da CAD no Apolo (bucket privado `apolo-documents`, via `listApoloDocuments`),
+//      FILTRADOS para o portal por `documentosDoApoloParaPortal` (documentos-do-portal.ts): sem o
+//      comprovante do Serasa, sem o dossiê jurídico e sem CAD/PA de outro empreendimento;
 //   b) contrato assinado via D4Sign (contract_signatures.uuidDoc do C2X — a carteira escopada já
 //      traz o uuid por unidade em `contractDocumentId`); o PDF é PROXIADO pela rota, o token
 //      D4Sign NUNCA chega ao navegador;
@@ -16,11 +18,13 @@
 import type { RowDataPacket } from "mysql2";
 
 import type { ApoloCarteiraUnit } from "@/lib/apolo/carteira";
-import { listApoloDocuments, type ApoloDocumentItem } from "@/lib/apolo/documentos";
+import type { ApoloDocumentItem } from "@/lib/apolo/documentos";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { fetchD4SignContract } from "@/lib/guardian/d4sign";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
+import { documentosDoApoloParaPortal } from "./documentos-do-portal";
+import { ehPortalComercial, portalConfeccionaContrato } from "./perfis-de-portal";
 import { lerC2xUserId } from "./ficha-cadastro";
 import { pessoaNoEscopo } from "./pessoa-no-escopo";
 import type { TipoDaFicha } from "./crm";
@@ -213,8 +217,21 @@ export async function montarDocumentos({
   const c2xUserId = admin ? await lerC2xUserId(admin, pessoa.entityId) : null;
 
   const [docsApolo, anexos, daVenda] = await Promise.all([
+    // (16/09/2026) FILTRADA PARA O PORTAL: a pessoa no escopo não põe todos os documentos dela no
+    // escopo. Sem o comprovante do Serasa, sem o dossiê jurídico e sem a CAD/PA que não dá para
+    // provar que é de um empreendimento desta sessão (documentos-do-portal.ts). Falha na leitura
+    // das marcas vira lista vazia, nunca a lista crua.
+    //
+    // (16/09/2026, crédito no portal) O portal que opera sozinho faz o crédito dos clientes dele: o
+    // comprovante do Serasa das CADs do escopo sai aqui também, pela MESMA régua do board
+    // (`operaSozinho`). Sem isto a ficha do board mostrava o comprovante e o CRM do mesmo portal não.
     admin
-      ? listApoloDocuments(admin, "entidade", pessoa.entityId).catch(() => [])
+      ? documentosDoApoloParaPortal(admin, pessoa.entityId, {
+          comercial: ehPortalComercial(sessao.tipo),
+          imobiliaria: false,
+          operaSozinho: portalConfeccionaContrato(sessao.slug, sessao.tipo),
+          recorte: new Set(pessoa.enterpriseIds),
+        }).catch(() => [])
       : Promise.resolve([]),
     lerAnexosDoC2x(c2xUserId),
     admin ? lerDocumentosDaVenda(admin, pessoa.entityId, await codigosDaSessao(sessao)) : Promise.resolve([]),
@@ -402,6 +419,25 @@ export async function abrirDocumento({
   if (fonte === "apolo") {
     const admin = createApoloAdminClient();
     if (!admin) return { ok: false, status: 503 };
+
+    // (16/09/2026) ⚠️ O ID TEM QUE ESTAR NA LISTA QUE O PORTAL VÊ. A consulta abaixo prova a POSSE
+    // (o documento é desta pessoa), e o comprovante do Serasa ou a CAD de outro loteamento SÃO
+    // desta pessoa: passariam. Conferir contra a mesma função da lista faz o id escondido
+    // responder o 404 de um id inexistente.
+    let visiveis: ApoloDocumentItem[];
+    try {
+      visiveis = await documentosDoApoloParaPortal(admin, pessoa.entityId, {
+        comercial: ehPortalComercial(sessao.tipo),
+        imobiliaria: false,
+        // A mesma régua da lista acima: listar o comprovante e responder 404 ao abrir seria pior
+        // do que não listar.
+        operaSozinho: portalConfeccionaContrato(sessao.slug, sessao.tipo),
+        recorte: new Set(pessoa.enterpriseIds),
+      });
+    } catch {
+      return { ok: false, status: 503 };
+    }
+    if (!visiveis.some((item) => item.id === alvo)) return { ok: false, status: 404 };
 
     // A linha é lida COM o entity_id: documento de outra pessoa (id chutado) não casa e vira
     // 404 — nunca gerar a URL para depois conferir.

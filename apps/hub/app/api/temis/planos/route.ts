@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
 import { createApoloAdminClient } from "@/lib/apolo/server";
-import { conferirPlano, type EntradaDePlano } from "@/lib/temis/planos";
+import {
+  conferirPlano,
+  ehColunaDaRessalvaAusente,
+  type EntradaDePlano,
+  limparRessalva,
+} from "@/lib/temis/planos";
 
 // PLANOS COMERCIAIS DO EMPREENDIMENTO — Temis.
 //
@@ -39,16 +44,30 @@ export async function GET(request: Request) {
   const admin = createApoloAdminClient();
   if (!admin) return NextResponse.json({ error: "Supabase indisponível." }, { status: 503 });
 
-  const [planosRes, categoriasRes, minutasRes] = await Promise.all([
-    admin
-      .from("temis_planos")
-      .select(
-        "id, nome, parcelas, entrada_percentual, juros_taxa, juros_periodicidade, juros_convencao, indice_correcao, sistema_amortizacao, slot, ativo, ordem, observacao, categoria_id, minuta_id, criado_em",
-      )
+  // ⚠️ A RESSALVA (migration 0168) PODE AINDA NÃO EXISTIR NO BANCO. O código sobe antes dela, e uma
+  // coluna a mais no select derrubaria a aba de planos inteira com 502. Por isso a leitura tenta com
+  // a coluna e, SÓ se o erro for dela (`ehColunaDaRessalvaAusente`), repete sem.
+  //
+  // ⚠️ DOIS LITERAIS, E NÃO UMA STRING MONTADA: o supabase-js só infere a forma da linha quando o
+  // `select` é um literal (ver o comentário de COLUNAS_DA_PROPOSTA em incorporador/venda/route.ts).
+  const lerPlanos = (comRessalva: boolean) => {
+    const tabela = admin.from("temis_planos");
+    const consulta = comRessalva
+      ? tabela.select(
+          "id, nome, parcelas, entrada_percentual, juros_taxa, juros_periodicidade, juros_convencao, indice_correcao, sistema_amortizacao, slot, ativo, ordem, observacao, categoria_id, minuta_id, criado_em, ressalva",
+        )
+      : tabela.select(
+          "id, nome, parcelas, entrada_percentual, juros_taxa, juros_periodicidade, juros_convencao, indice_correcao, sistema_amortizacao, slot, ativo, ordem, observacao, categoria_id, minuta_id, criado_em",
+        );
+    return consulta
       .eq("workspace_id", "careli")
       .eq("enterprise_id", enterpriseId)
       .order("ordem", { ascending: true })
-      .order("parcelas", { ascending: true }),
+      .order("parcelas", { ascending: true });
+  };
+
+  const [planosComRessalva, categoriasRes, minutasRes] = await Promise.all([
+    lerPlanos(true),
     admin
       .from("temis_categorias")
       .select("id, nome, ordem, ativa")
@@ -63,6 +82,9 @@ export async function GET(request: Request) {
       .neq("situacao", "arquivada")
       .order("nome", { ascending: true }),
   ]);
+  const planosRes = ehColunaDaRessalvaAusente(planosComRessalva.error)
+    ? await lerPlanos(false)
+    : planosComRessalva;
 
   // ⚠️ FALHA FECHADA. Devolver lista vazia num erro de leitura faria a tela dizer "este
   // empreendimento não tem plano" — uma afirmação de negócio a partir de uma falha técnica, e o
@@ -113,6 +135,8 @@ export async function GET(request: Request) {
         observacao: p.observacao,
         ordem: p.ordem,
         parcelas: p.parcelas,
+        // Sem a 0168 a linha chega sem o campo: nulo, e não `undefined`, para a tela não distinguir.
+        ressalva: limparRessalva((p as { ressalva?: unknown }).ressalva),
         sistemaAmortizacao: p.sistema_amortizacao,
         slot: p.slot,
       })),
@@ -120,9 +144,16 @@ export async function GET(request: Request) {
   });
 }
 
-/** Traduz a entrada da tela para as colunas do banco. Um lugar só, para não divergir. */
+/**
+ * Traduz a entrada da tela para as colunas do banco. Um lugar só, para não divergir.
+ *
+ * ⚠️ `ressalva` SÓ ENTRA QUANDO A TELA FALOU DELA (chave presente no corpo). Um cliente antigo, que
+ * não conhece o campo, salvaria o plano apagando a etiqueta que outra pessoa escreveu; e, com a
+ * migration 0168 pendente, a chave a mais derrubaria todo salvamento com PGRST204.
+ */
 function paraColunas(entrada: EntradaDePlano, enterpriseId: string) {
   return {
+    ...("ressalva" in entrada ? { ressalva: limparRessalva(entrada.ressalva) } : {}),
     ativo: entrada.ativo ?? true,
     categoria_id: entrada.categoriaId ?? null,
     entrada_percentual: entrada.entradaPercentual,
@@ -160,8 +191,43 @@ function explicarErro(codigo: string, mensagem: string): string {
   if (codigo === "23514" && mensagem.includes("entrada")) {
     return "A entrada é um percentual de 0 a 100 — 20 significa 20%.";
   }
+  if (codigo === "23514" && mensagem.includes("ressalva")) {
+    return "A ressalva de disponibilidade tem no máximo 80 caracteres e não pode ser só espaços.";
+  }
   if (codigo === "23514") return "Algum valor está fora do permitido. Confira parcelas, juros e entrada.";
   return "Não consegui gravar o plano.";
+}
+
+/** A frase de quando alguém tenta GRAVAR uma ressalva com a migration 0168 ainda por aplicar. */
+const RESSALVA_SEM_COLUNA =
+  "A ressalva de disponibilidade ainda não foi liberada no banco. Salve o plano sem ela por enquanto.";
+
+/**
+ * Grava, e se o banco ainda não tem a coluna `ressalva` (0168 pendente), decide o que fazer.
+ *
+ * ⚠️ SEM RESSALVA PARA GRAVAR, REPETE SEM A CHAVE: não há nada a perder, e o operador que só trocou
+ * os juros não pode ser barrado por uma migration que não é dele. COM RESSALVA, RECUSA: gravar o
+ * plano e descartar a frase calado diria "salvo" para uma condição de disponibilidade que nunca vai
+ * aparecer no portal.
+ */
+async function gravarTolerandoARessalva<
+  R extends { error: { code?: string; message?: string } | null },
+>(
+  colunas: ReturnType<typeof paraColunas>,
+  gravar: (linha: ReturnType<typeof paraColunas>) => PromiseLike<R>,
+): Promise<{ resposta: R; semColuna: boolean }> {
+  const primeira = await gravar(colunas);
+  if (!ehColunaDaRessalvaAusente(primeira.error)) {
+    return { resposta: primeira, semColuna: false };
+  }
+
+  if ("ressalva" in colunas && colunas.ressalva) {
+    return { resposta: primeira, semColuna: true };
+  }
+
+  const semRessalva = { ...colunas };
+  delete (semRessalva as { ressalva?: unknown }).ressalva;
+  return { resposta: await gravar(semRessalva), semColuna: false };
 }
 
 export async function POST(request: Request) {
@@ -180,12 +246,13 @@ export async function POST(request: Request) {
   const admin = createApoloAdminClient();
   if (!admin) return NextResponse.json({ error: "Supabase indisponível." }, { status: 503 });
 
-  const { data, error } = await admin
-    .from("temis_planos")
-    .insert(paraColunas(entrada, enterpriseId))
-    .select("id")
-    .single();
+  const { resposta, semColuna } = await gravarTolerandoARessalva(
+    paraColunas(entrada, enterpriseId),
+    (linha) => admin.from("temis_planos").insert(linha).select("id").single(),
+  );
 
+  if (semColuna) return NextResponse.json({ error: RESSALVA_SEM_COLUNA }, { status: 400 });
+  const { data, error } = resposta;
   if (error) {
     return NextResponse.json({ error: explicarErro(error.code ?? "", error.message ?? "") }, { status: 400 });
   }
@@ -211,13 +278,19 @@ export async function PATCH(request: Request) {
   const admin = createApoloAdminClient();
   if (!admin) return NextResponse.json({ error: "Supabase indisponível." }, { status: 503 });
 
-  const { error } = await admin
-    .from("temis_planos")
-    .update({ ...paraColunas(entrada, enterpriseId), atualizado_em: new Date().toISOString() })
-    .eq("workspace_id", "careli")
-    .eq("enterprise_id", enterpriseId)
-    .eq("id", id);
+  const { resposta, semColuna } = await gravarTolerandoARessalva(
+    paraColunas(entrada, enterpriseId),
+    (linha) =>
+      admin
+        .from("temis_planos")
+        .update({ ...linha, atualizado_em: new Date().toISOString() })
+        .eq("workspace_id", "careli")
+        .eq("enterprise_id", enterpriseId)
+        .eq("id", id),
+  );
 
+  if (semColuna) return NextResponse.json({ error: RESSALVA_SEM_COLUNA }, { status: 400 });
+  const { error } = resposta;
   if (error) {
     return NextResponse.json({ error: explicarErro(error.code ?? "", error.message ?? "") }, { status: 400 });
   }

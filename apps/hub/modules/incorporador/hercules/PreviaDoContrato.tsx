@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 import { regrasParaATela } from "@/lib/temis/css-do-documento";
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 
@@ -174,29 +174,33 @@ export function PreviaDoContrato({
   const folha = useRef<HTMLDivElement>(null);
   /** Conta os pedidos em voo: resposta velha não sobrescreve tela nova. */
   const pedido = useRef(0);
+  /**
+   * A porta da Têmis.
+   *
+   * ⚠️ SEM PROVEDOR É O HUB, E É ASSIM QUE O PORTAL COMERCIAL CONTINUA. A Gurgel abre esta prévia
+   * na Venda sem `ApiDaTemisProvider` por cima: sai `/api/temis` com o Bearer do hub, exatamente como
+   * antes, e sem sessão do hub a prévia não abre (a confecção das vendas dela é da Careli). Só o
+   * portal que confecciona (`portalConfeccionaContrato`) monta o provedor e passa a falar com
+   * `/api/incorporador/temis` pelo cookie.
+   */
+  const { temisFetch } = useApiDaTemis();
 
   const carregar = useCallback(async () => {
     const meu = ++pedido.current;
     setCarregando(true);
     try {
-      const token = await getApoloAccessToken();
-      const cabecalho = {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      };
+      const cabecalho = { "Content-Type": "application/json" };
 
       // ⚠️ AS DUAS LEITURAS JUNTAS. Saber o que JÁ foi gerado é o que muda o texto do botão de
       // "Gerar contrato" para "Gerar a versão 2" — e essa frase é a única chance de alguém parar
       // antes de criar uma segunda folha por engano. Pedir depois faria o botão nascer mentindo.
       const [previa, jaGuardados] = await Promise.all([
-        fetch("/api/temis/contrato/previa", {
+        temisFetch("/contrato/previa", {
           body: JSON.stringify({ propostaId }),
           headers: cabecalho,
           method: "POST",
         }),
-        fetch(`/api/temis/contrato/gerar?proposta=${encodeURIComponent(propostaId)}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        }),
+        temisFetch(`/contrato/gerar?proposta=${encodeURIComponent(propostaId)}`),
       ]);
 
       const dados = (await previa.json().catch(() => ({}))) as Resposta;
@@ -215,7 +219,7 @@ export function PreviaDoContrato({
     } finally {
       if (meu === pedido.current) setCarregando(false);
     }
-  }, [propostaId]);
+  }, [propostaId, temisFetch]);
 
   useEffect(() => {
     void carregar();
@@ -225,13 +229,9 @@ export function PreviaDoContrato({
     setGerando(true);
     setErroDaGeracao(null);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch("/api/temis/contrato/gerar", {
+      const r = await temisFetch("/contrato/gerar", {
         body: JSON.stringify({ propostaId }),
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         method: "POST",
       });
       const j = (await r.json().catch(() => ({}))) as {
@@ -256,7 +256,7 @@ export function PreviaDoContrato({
     } finally {
       setGerando(false);
     }
-  }, [aoGerar, propostaId]);
+  }, [aoGerar, propostaId, temisFetch]);
 
   /**
    * Grava a alteração manual.
@@ -272,18 +272,14 @@ export function PreviaDoContrato({
     setErroDaGeracao(null);
     setFaxina([]);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch("/api/temis/contrato/edicao", {
+      const r = await temisFetch("/contrato/edicao", {
         body: JSON.stringify({
           baseImpressao: resposta?.baseImpressao,
           html,
           minutaId: resposta?.minuta?.id,
           propostaId,
         }),
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
         method: "PUT",
       });
       const j = (await r.json().catch(() => ({}))) as {
@@ -300,7 +296,7 @@ export function PreviaDoContrato({
     } finally {
       setSalvando(false);
     }
-  }, [carregar, propostaId, resposta?.baseImpressao, resposta?.minuta?.id]);
+  }, [carregar, propostaId, resposta?.baseImpressao, resposta?.minuta?.id, temisFetch]);
 
   /** Joga fora a alteração manual: o contrato volta a ser o texto da minuta. */
   const descartar = useCallback(async () => {
@@ -308,13 +304,9 @@ export function PreviaDoContrato({
     setErroDaGeracao(null);
     setFaxina([]);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(
-        `/api/temis/contrato/edicao?proposta=${encodeURIComponent(propostaId)}`,
-        {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          method: "DELETE",
-        },
+      const r = await temisFetch(
+        `/contrato/edicao?proposta=${encodeURIComponent(propostaId)}`,
+        { method: "DELETE" },
       );
       if (!r.ok) {
         const j = (await r.json().catch(() => ({}))) as { erro?: string };
@@ -327,7 +319,7 @@ export function PreviaDoContrato({
     } finally {
       setSalvando(false);
     }
-  }, [carregar, propostaId]);
+  }, [carregar, propostaId, temisFetch]);
 
   /**
    * ⚠️ A ABA É ABERTA ANTES DO `await` — a URL é assinada no servidor, e um `window.open` depois da
@@ -337,10 +329,8 @@ export function PreviaDoContrato({
   const abrir = useCallback(async (documentoId: string) => {
     const aba = window.open("", "_blank", "noopener,noreferrer");
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(
-        `/api/temis/contrato/gerar?documento=${encodeURIComponent(documentoId)}`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      const r = await temisFetch(
+        `/contrato/gerar?documento=${encodeURIComponent(documentoId)}`,
       );
       const j = (await r.json().catch(() => ({}))) as { data?: { url: string }; erro?: string };
       if (!r.ok || !j.data?.url) throw new Error(j.erro ?? "Não foi possível abrir o contrato.");
@@ -350,7 +340,7 @@ export function PreviaDoContrato({
       aba?.close();
       setErroDaGeracao(e instanceof Error ? e.message : "Não foi possível abrir o contrato.");
     }
-  }, []);
+  }, [temisFetch]);
 
   const edicao = resposta?.edicao ?? null;
   /**

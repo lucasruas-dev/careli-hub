@@ -30,22 +30,64 @@ import type {
 import { INDICES as ROTULOS_DE_INDICE } from "@/lib/apolo/planos-comerciais";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import type { PlanosDoEmpreendimento } from "@/lib/apolo/planos-comerciais-c2x";
+import { ehColunaDaRessalvaAusente, limparRessalva } from "@/lib/temis/planos";
 
 type Cliente = Pick<SupabaseClient, "from">;
 
-type LinhaDoPlano = {
-  ativo: boolean;
+/**
+ * Uma linha de `temis_planos`, como as leituras do Panteon a pedem.
+ *
+ * ⚠️ OS OPCIONAIS SÃO O QUE UMA LEITURA PODE NÃO TER PEDIDO: a aba de políticas do portal não pede
+ * `juros_convencao`, e `ressalva` não existe enquanto a migration 0168 não roda. A normalização
+ * trata ausente como o padrão da casa, nunca como erro.
+ */
+export type LinhaDoPlano = {
+  anuais_quantidade?: null | number | string;
+  anuais_valor?: null | number | string;
+  ativo?: boolean;
+  categoria_id?: null | string;
   enterprise_id: string;
   entrada_percentual: null | number | string;
+  id?: null | string;
   indice_correcao: null | string;
-  juros_convencao: null | string;
+  juros_convencao?: null | string;
   juros_periodicidade: null | string;
   juros_taxa: null | number | string;
-  nome: string;
+  nome: null | string;
   ordem: null | number;
-  parcelas: number;
+  parcelas: null | number | string;
+  /** Ausente enquanto a migration 0168 não roda. */
+  ressalva?: null | string;
   sistema_amortizacao: null | string;
   slot: null | string;
+};
+
+/**
+ * O plano do Panteon normalizado: o `PlanoComercial` que a conta usa, mais o que só o cadastro daqui
+ * tem.
+ *
+ * ⚠️ UM TIPO SÓ PARA A MESA E PARA A ABA DE POLÍTICAS DO PORTAL. Até 16/09/2026 a aba tinha a sua
+ * própria conversão da linha (`planoDaLinha`), "leve" e com os mesmos tratamentos: é exatamente o
+ * tipo de cópia que discorda da original no primeiro ajuste. Agora as duas leem daqui.
+ */
+export type PlanoDoPanteon = PlanoComercial & {
+  /** As anuais do plano (0138). Andam em par: meia configuração não é anual nenhuma. */
+  anuaisQuantidade: null | number;
+  anuaisValor: null | number;
+  /** `temis_planos.id`. Nulo só quando a leitura não pediu a coluna. */
+  id: null | string;
+  /**
+   * O código do índice COMO ESTÁ NO CADASTRO, mesmo quando este build ainda não o conhece.
+   *
+   * ⚠️ NÃO É O QUE A CONTA USA. `indiceCorrecao` cai em SEM_CORRECAO para código desconhecido (a
+   * conta não sabe corrigir pelo que não conhece); a TELA mostra este aqui, porque um "TR_ANUAL"
+   * estranho é melhor do que um "sem correção" falso. `temis_indices` (0154) pode estar à frente do
+   * build.
+   */
+  indiceDoCadastro: string;
+  ordem: number;
+  /** A ressalva de disponibilidade (0168), já limpa. Nula = sem etiqueta. */
+  ressalva: null | string;
 };
 
 /** `numeric` do Postgres chega como STRING no PostgREST — somar sem converter concatena. */
@@ -72,8 +114,11 @@ const SLOTS: SlotDaPa[] = ["avista", "curto", "investidor", "normal"];
  * default, não enum: um `sistema_amortizacao` digitado como "SACOC" em maiúscula ou "sacooc" com
  * dois "o" (como o C2X escreve) faria a matemática cair no `else` de `calcularParcela` e imprimir
  * Price num contrato SACOC — o erro mais caro que esta tela pode cometer.
+ *
+ * ⚠️ EXPORTADA (16/09/2026): é a normalização ÚNICA da linha de `temis_planos`, usada pela Mesa
+ * (`lerPlanosDoPanteon`) e pela aba de políticas do portal (`politicas-do-produto.ts`).
  */
-function comoPlano(linha: LinhaDoPlano): PlanoComercial {
+export function comoPlano(linha: LinhaDoPlano): PlanoDoPanteon {
   const sistema = String(linha.sistema_amortizacao ?? "")
     .trim()
     .toLowerCase();
@@ -89,12 +134,22 @@ function comoPlano(linha: LinhaDoPlano): PlanoComercial {
   const convencao = String(linha.juros_convencao ?? "")
     .trim()
     .toLowerCase();
+  const anuaisQuantidade = numero(linha.anuais_quantidade);
+  const anuaisValor = numero(linha.anuais_valor);
+  const ordem = Number(linha.ordem);
 
   return {
+    // ⚠️ AS ANUAIS ANDAM EM PAR (CHECK da 0138): meia configuração não é anual nenhuma.
+    anuaisQuantidade: anuaisQuantidade && anuaisValor ? anuaisQuantidade : null,
+    anuaisValor: anuaisQuantidade && anuaisValor ? anuaisValor : null,
+    categoriaId: String(linha.categoria_id ?? "").trim() || null,
+    enterpriseId: String(linha.enterprise_id ?? "").trim() || null,
     entradaPercentual: numero(linha.entrada_percentual) ?? 0,
+    id: String(linha.id ?? "").trim() || null,
     indiceCorrecao: (INDICES as string[]).includes(indice)
       ? (indice as IndiceCorrecao)
       : "SEM_CORRECAO",
+    indiceDoCadastro: indice || "SEM_CORRECAO",
     jurosConvencao: (convencao === "proporcional"
       ? "proporcional"
       : "equivalente") as ConvencaoJuros,
@@ -103,7 +158,9 @@ function comoPlano(linha: LinhaDoPlano): PlanoComercial {
       : "anual") as PeriodicidadeJuros,
     jurosTaxa: numero(linha.juros_taxa),
     nome: String(linha.nome ?? "").trim(),
+    ordem: Number.isFinite(ordem) ? ordem : 0,
     parcelas: Math.max(0, Math.trunc(Number(linha.parcelas) || 0)),
+    ressalva: limparRessalva(linha.ressalva),
     // ⚠️ SACOC É O PADRÃO DA CASA, e não Price: são 21 dos 24 empreendimentos. Cair no mais raro
     // por engano de digitação anunciaria uma parcela que o boleto não vai cobrar.
     sistemaAmortizacao: ((SISTEMAS as string[]).includes(sistema)
@@ -112,6 +169,15 @@ function comoPlano(linha: LinhaDoPlano): PlanoComercial {
     slot: (SLOTS as string[]).includes(slot) ? (slot as SlotDaPa) : null,
   };
 }
+
+/**
+ * As colunas que a Mesa lê de `temis_planos` (a ressalva entra à parte, tolerante à 0168).
+ *
+ * ⚠️ `id` E AS ANUAIS ENTRARAM COM A NORMALIZAÇÃO ÚNICA: o plano que a Mesa recebe é o mesmo objeto
+ * que a aba de políticas mostra. As anuais existem desde a 0138 (o espelho público já as lê).
+ */
+const COLUNAS_DO_PLANO =
+  "id,enterprise_id,categoria_id,nome,parcelas,entrada_percentual,juros_taxa,juros_periodicidade,juros_convencao,indice_correcao,sistema_amortizacao,slot,ativo,ordem,anuais_quantidade,anuais_valor";
 
 /**
  * Os planos cadastrados no Panteon para estes empreendimentos (ids do C2X).
@@ -130,21 +196,32 @@ export async function lerPlanosDoPanteon(
   if (ids.length === 0) return [];
 
   const linhas: LinhaDoPlano[] = [];
+  // ⚠️ A RESSALVA É PEDIDA, E SUA AUSÊNCIA NÃO DERRUBA A MESA (16/09/2026). Sem ela a Mesa e o
+  // simulador ofereciam o plano Investidor do Garden sem a condição "válido para as próximas 16
+  // unidades", que só aparecia no Apolo. Enquanto a 0168 não roda, o primeiro erro que for DA
+  // COLUNA faz a leitura seguir sem ela (plano sem etiqueta); qualquer outro erro lança, como antes.
+  let comRessalva = true;
   // ⚠️ EM LOTES DE 100: `.in()` monta a lista na URL, e um escopo grande estoura o limite do
   // PostgREST sem erro claro.
-  for (let de = 0; de < ids.length; de += 100) {
+  for (let de = 0; de < ids.length; ) {
     const { data, error } = await cliente
       .from("temis_planos")
-      .select(
-        "enterprise_id,nome,parcelas,entrada_percentual,juros_taxa,juros_periodicidade,juros_convencao,indice_correcao,sistema_amortizacao,slot,ativo,ordem",
-      )
+      // ⚠️ `categoria_id` ENTRA AQUI, e a ausência dela era um vazamento esperando o cadastro.
+      // Sem a coluna, um plano preso a uma categoria chegava à Mesa indistinguível de um plano do
+      // produto — e valeria para todos os lotes.
+      .select(comRessalva ? `${COLUNAS_DO_PLANO},ressalva` : COLUNAS_DO_PLANO)
       .eq("workspace_id", "careli")
       .eq("ativo", true)
       .in("enterprise_id", ids.slice(de, de + 100))
       .order("ordem", { ascending: true });
 
+    if (error && comRessalva && ehColunaDaRessalvaAusente(error)) {
+      comRessalva = false;
+      continue;
+    }
     if (error) throw new Error(error.message);
-    linhas.push(...((data ?? []) as LinhaDoPlano[]));
+    linhas.push(...((data ?? []) as unknown as LinhaDoPlano[]));
+    de += 100;
   }
 
   const porEmpreendimento = new Map<string, PlanosDoEmpreendimento>();

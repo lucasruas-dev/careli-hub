@@ -14,6 +14,7 @@
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 import type { LinhaDeEmpreendimento } from "./empreendimentos";
+import { ehColunaDoProdutoAusente, tipoProdutoDe, type TipoProduto } from "./produto-novo";
 
 /**
  * Uma linha do cadastro. É o MESMO tipo que a árvore de unidades (`./empreendimentos`) recebe —
@@ -23,12 +24,25 @@ import type { LinhaDeEmpreendimento } from "./empreendimentos";
  *     Lavra do Ouro, que fica sem `c2xEnterpriseId`);
  *   • `paiId` preenchido → FILHO/visão segmentada, sempre com o id do C2X que responde pela
  *     burocracia dele (VOC 37, VOL 36, LBF 33).
+ *
+ * `operadoPor` e `tipoProduto` vêm da migration 0170 e SEMPRE saem preenchidos de
+ * `carregarCadastroDeEmpreendimentos` / `mapearLinhaDoCadastro` (nulo = a Careli opera; loteamento
+ * quando a coluna ainda não existe). ⚠️ São opcionais NO TIPO só para não quebrar as fábricas de
+ * linha dos testes que montam `LinhaDoCadastro` à mão: quem lê trata ausente como `null` e
+ * `"loteamento"` (use `tipoProdutoDe`).
  */
-export type LinhaDoCadastro = LinhaDeEmpreendimento;
+export type LinhaDoCadastro = LinhaDeEmpreendimento & {
+  /** `apolo_incorporadores.id` de quem opera o produto. Nulo = a Careli. */
+  operadoPor?: null | string;
+  tipoProduto?: TipoProduto;
+};
 
 // Mesmo workspace fixo das outras leituras do portal (ver /api/incorporador/boletos).
 const WORKSPACE = "careli";
 const PAGINA = 1000;
+
+const COLUNAS_SEM_0170 = "id,codigo,nome,cidade,uf,c2x_enterprise_id,pai_id,vendendo,ordem";
+const COLUNAS_COM_0170 = `${COLUNAS_SEM_0170},operado_por,tipo_produto`;
 
 type LinhaCrua = {
   c2x_enterprise_id: null | string;
@@ -36,8 +50,11 @@ type LinhaCrua = {
   codigo: null | string;
   id: string;
   nome: null | string;
+  // Ausentes quando a migration 0170 ainda não foi aplicada (select sem elas).
+  operado_por?: null | string;
   ordem: null | number;
   pai_id: null | string;
+  tipo_produto?: null | string;
   uf: null | string;
   vendendo: boolean | null;
 };
@@ -57,11 +74,26 @@ export function mapearLinhaDoCadastro(crua: LinhaCrua): LinhaDoCadastro {
     codigo: (texto(crua.codigo) ?? "").toUpperCase(),
     id: String(crua.id),
     nome: texto(crua.nome) ?? texto(crua.codigo) ?? "Empreendimento",
+    operadoPor: texto(crua.operado_por),
     ordem: Number.isFinite(Number(crua.ordem)) ? Number(crua.ordem) : 0,
     paiId: texto(crua.pai_id),
+    tipoProduto: tipoProdutoDe(crua.tipo_produto),
     uf: texto(crua.uf)?.toUpperCase() ?? null,
     vendendo: crua.vendendo === true,
   };
+}
+
+// ⚠️ MEMÓRIA CURTA DA MIGRATION 0170 PENDENTE. Sem ela, cada leitura fazia DUAS requisições (a que
+// pede as colunas novas falha com 42703/PGRST204, a segunda repete sem elas), e `codigosDaSessao` lê o
+// cadastro a cada rota do portal: o log do Supabase enchia de "column operado_por does not exist" e a
+// latência dobrava. Depois de uma falha, as leituras dos próximos 60 segundos já vão sem as colunas;
+// passado isso, a primeira tenta de novo, e é assim que a aplicação da 0170 volta a valer sozinha.
+const MEMORIA_DA_0170_MS = 60 * 1000;
+let sem0170Ate = 0;
+
+/** Esquece a memória da 0170 pendente (para o teste; e para quem acabou de aplicar a migration). */
+export function limparMemoriaDaMigration0170(): void {
+  sem0170Ate = 0;
 }
 
 /**
@@ -73,6 +105,17 @@ export function mapearLinhaDoCadastro(crua: LinhaCrua): LinhaDoCadastro {
  * como provar o escopo — e responder 404 diria "não é seu" para um empreendimento que é.
  */
 export async function carregarCadastroDeEmpreendimentos(): Promise<LinhaDoCadastro[]> {
+  return (await lerCadastroDeEmpreendimentos()).linhas;
+}
+
+/**
+ * A mesma leitura, dizendo se as colunas da 0170 (`operado_por`, `tipo_produto`) vieram.
+ *
+ * ⚠️ QUEM ESCREVE PRECISA SABER. Sem as colunas, toda linha sai "a Careli opera, loteamento", que é o
+ * certo para quem só LÊ o painel, e o errado para quem grava: o cadastro de unidades gravaria lote
+ * num prédio, e a guarda do portal não teria como saber quem opera o produto.
+ */
+export async function lerCadastroDeEmpreendimentos(): Promise<{ com0170: boolean; linhas: LinhaDoCadastro[] }> {
   const admin = createApoloAdminClient();
 
   if (!admin) {
@@ -80,16 +123,29 @@ export async function carregarCadastroDeEmpreendimentos(): Promise<LinhaDoCadast
   }
 
   const saida: LinhaDoCadastro[] = [];
+  let colunas = Date.now() < sem0170Ate ? COLUNAS_SEM_0170 : COLUNAS_COM_0170;
 
   for (let de = 0; ; de += PAGINA) {
-    const { data, error } = await admin
-      .from("hercules_empreendimentos")
-      .select("id,codigo,nome,cidade,uf,c2x_enterprise_id,pai_id,vendendo,ordem")
-      .eq("workspace_id", WORKSPACE)
-      .order("ordem", { ascending: true })
-      .order("codigo", { ascending: true })
-      .range(de, de + PAGINA - 1)
-      .returns<LinhaCrua[]>();
+    const ler = (selecao: string) =>
+      admin
+        .from("hercules_empreendimentos")
+        .select(selecao)
+        .eq("workspace_id", WORKSPACE)
+        .order("ordem", { ascending: true })
+        .order("codigo", { ascending: true })
+        .range(de, de + PAGINA - 1)
+        .returns<LinhaCrua[]>();
+
+    let { data, error } = await ler(colunas);
+
+    // ⚠️ MIGRATION 0170 PENDENTE NÃO DERRUBA O CADASTRO. Painel, Venda e portal inteiro leem esta
+    // função; sem as colunas novas, a linha sai "Careli opera, loteamento", que é o que o sistema
+    // inteiro assume hoje. Só o erro de coluna DA 0170 cai aqui: qualquer outro continua lançando.
+    if (error && colunas === COLUNAS_COM_0170 && ehColunaDoProdutoAusente(error)) {
+      colunas = COLUNAS_SEM_0170;
+      sem0170Ate = Date.now() + MEMORIA_DA_0170_MS;
+      ({ data, error } = await ler(colunas));
+    }
 
     if (error) {
       throw new Error(`Não foi possível ler o cadastro de empreendimentos: ${error.message}`);
@@ -101,7 +157,7 @@ export async function carregarCadastroDeEmpreendimentos(): Promise<LinhaDoCadast
     if (pagina.length < PAGINA) break;
   }
 
-  return saida;
+  return { com0170: colunas === COLUNAS_COM_0170, linhas: saida };
 }
 
 /**

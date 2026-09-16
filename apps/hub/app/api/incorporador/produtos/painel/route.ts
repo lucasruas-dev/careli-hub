@@ -4,14 +4,12 @@ import { loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import {
+  decidirPainelDeProdutos,
   montarPainelDeProdutos,
   type PainelDeProdutos,
 } from "@/lib/apolo/incorporador/painel-de-produtos";
 import { sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
-import {
-  carregarCadastroDeEmpreendimentos,
-  type LinhaDoCadastro,
-} from "@/lib/hercules/cadastro";
+import { lerCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import {
   estoquePorEmpreendimento,
   type PropostaDaCarga,
@@ -59,30 +57,50 @@ export async function GET(request: Request) {
   //
   // ⚠️ O CADASTRO É ENRIQUECIMENTO, O ESCOPO NÃO. Cadastro fora do ar degrada: todo
   // empreendimento vira linha simples com o nome do C2X (é a tela antiga, sem pai/filho) — melhor
-  // que um 503 no painel inteiro. Já o C2X é a fonte dos números: sem ele não há painel.
+  // que um 503 no painel inteiro.
+  //
+  // ⚠️ E O C2X VIROU MOLDURA (16/09/2026): sem ele o painel sai pelo cadastro do Panteon, com
+  // aviso, em vez de 503 — senão o produto que só existe no Panteon sumia junto com o legado. A
+  // regra inteira está em `decidirPainelDeProdutos`. `loadApoloEnterprises` lança quando o MySQL
+  // recusa a consulta (ele só devolve `ok: false` sem configuração): o `.catch` põe as duas
+  // quedas no mesmo caminho.
   const [c2x, permitidos, cadastro, estoque] = await Promise.all([
-    loadApoloEnterprises(),
+    loadApoloEnterprises().catch((erro: unknown) => {
+      console.error("[incorporador/produtos/painel] C2X indisponível", erro);
+      return { error: "C2X indisponível.", ok: false as const };
+    }),
     idsDaSessao(sessao),
-    carregarCadastroDeEmpreendimentos().catch((): LinhaDoCadastro[] => []),
+    // `lerCadastro...` (e não `carregar...`) porque o painel precisa saber se a 0170 veio: sem a
+    // coluna `operado_por`, nenhuma linha acende escrita no portal que confecciona (fail-closed).
+    lerCadastroDeEmpreendimentos().catch(() => null),
     lerEstoqueDoPanteon(),
   ]);
 
-  if (!c2x.ok) {
+  // ⚠️ `podeEscrever` DE CADA LINHA (decisão do Lucas, 16/09/2026): no portal que confecciona, só no
+  // produto que ele opera. É dica para a tela esconder botão; cada rota de escrita confere de novo,
+  // com a sessão revalidada (`autorizarEscritaNoProduto`). O cookie aqui só diz QUEM pergunta.
+  const decidido = decidirPainelDeProdutos({
+    cadastroRespondeu: cadastro !== null,
+    c2xRespondeu: c2x.ok,
+    painel: montarPainelDeProdutos({
+      cadastro: cadastro?.linhas ?? [],
+      com0170: cadastro?.com0170 === true,
+      estoque,
+      linhasDoC2x: c2x.ok ? c2x.data.rows : [],
+      permitidos: new Set(permitidos),
+      portal: { incorporadorId: sessao.incorporadorId, slug: sessao.slug, tipo: sessao.tipo },
+    }),
+  });
+
+  if (!decidido.ok) {
     return NextResponse.json(
       { error: "Não foi possível carregar os empreendimentos agora." },
       { status: 503 },
     );
   }
 
-  const painel = montarPainelDeProdutos({
-    cadastro,
-    estoque,
-    linhasDoC2x: c2x.data.rows,
-    permitidos: new Set(permitidos),
-  });
-
   return NextResponse.json(
-    { data: painel },
+    { data: decidido.painel },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

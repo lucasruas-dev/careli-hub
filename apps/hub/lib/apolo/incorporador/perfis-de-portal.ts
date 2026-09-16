@@ -10,11 +10,22 @@
 // PADRÃO perdeu a aba Produtos e o mapa do Vale do Ouro: o Cecílio, que está no ar e aprovado,
 // perderia as duas coisas junto, sem ninguém ter pedido.
 //
-// Quem está aqui fica CONGELADO no comportamento aprovado. Toda mudança do padrão passa ao largo.
-// Sair desta lista é decisão do Lucas, não consequência de um refactor.
+// Quem está aqui NÃO RECEBE as mudanças do padrão por tabela. Toda mudança do padrão passa ao
+// largo. Sair desta lista é decisão do Lucas, não consequência de um refactor.
+//
+// ⚠️ DESDE 16/09/2026 O CECÍLIO NÃO É MAIS "CONGELADO": É ONDE SE DESENVOLVE PARA O CLIENTE. O
+// Lucas decidiu, olhando o /comercial/gurgel: *"como é um projeto personalizado quero fazer tudo no
+// portal Cecilio que tem a logo deles"*. O `cecilio-rocha` virou a RÉPLICA do Hércules operada pelo
+// próprio time da Cecílio (ver `portalOperaVenda`, abaixo), e o portal `cer` (o que rodava no
+// padrão) será pausado. O que continua valendo desta lista é a direção da proteção: o PADRÃO não
+// passa por cima dele; quem muda o Cecílio é pedido explícito do Lucas para o Cecílio.
+//
+// ⚠️ O COMPORTAMENTO DE `ehPortalPersonalizado` NÃO MUDOU com essa decisão: ela ainda decide o tema
+// de partida (seguir o aparelho, em vez do escuro do padrão) e a porta sem a assinatura do Panteon.
+// O que mudou foi o PAPEL do portal, e esse mora em `portalOperaVenda`.
 const PERSONALIZADOS = new Set(["cecilio-rocha"]);
 
-/** Este portal é um projeto personalizado (congelado) ou o padrão? */
+/** Este portal é um projeto personalizado (fora do alcance do padrão) ou o padrão? */
 export function ehPortalPersonalizado(slug: string): boolean {
   return PERSONALIZADOS.has(String(slug ?? "").trim().toLowerCase());
 }
@@ -47,10 +58,10 @@ export function ehPortalSoProdutos(slug: string): boolean {
  * ⚠️ Pedido do Lucas (31/08/2026), vendo o login da MMendes: *"nesses perfis que vamos fazer
  * personalizado, pode tirar a logo do panteon por favor"*.
  *
- * ⚠️ POR QUE NÃO É `ehPortalPersonalizado` DIRETO. Aquela lista significa "congelado no
- * comportamento aprovado", e é ela que protege o Cecílio de mudanças no padrão. Esta pergunta é
+ * ⚠️ POR QUE NÃO É `ehPortalPersonalizado` DIRETO. Aquela lista significa "fora do alcance do
+ * padrão", e é ela que protege o Cecílio de mudanças no padrão. Esta pergunta é
  * outra: "de quem é a porta". Hoje as duas respostas coincidem, mas amarrar as duas faria um
- * portal novo herdar o congelamento do Cecílio só porque quis a própria marca no login — e aí
+ * portal novo herdar a blindagem do Cecílio só porque quis a própria marca no login — e aí
  * ele pararia de receber as melhorias do padrão sem ninguém ter pedido.
  */
 export function portalAssinaPanteon(slug: string, tipo?: null | string): boolean {
@@ -84,4 +95,48 @@ export function tipoDePortal(valor: unknown): TipoDePortal {
 /** O HÉRCULES: o time comercial da Careli operando (reserva, proposta, contrato, lançamento). */
 export function ehPortalComercial(tipo: null | string | undefined): boolean {
   return tipo === "comercial";
+}
+
+// O INCORPORADOR QUE OPERA A PRÓPRIA VENDA — o Hércules sem a Careli no meio.
+//
+// Pedido do Lucas (16/09/2026), olhando o /comercial/gurgel: *"quero replicar esse portal do
+// coordenador (falo de estrutura layout) para o portal da Cecilio. a unica coisa que não teremos é
+// o lançamento"* · *"Diferente da gurgel, que quem faz isso tudo é o time administrativo da Careli,
+// a Cecilio quem vai fazer é o proprio time deles (...) eles meio que vão andar sozinhos"*.
+//
+// ⚠️ LISTA EXPLÍCITA, E NÃO `tipo = "comercial"`. Trocar o tipo levaria o Cecílio para /comercial
+// (sem o layout.tsx do portal: sem tema antes da pintura e sem o portão de senha), daria a ele o
+// Prometeu e derrubaria no login toda conta sem vínculo próprio. O que ele ganha é a OPERAÇÃO da
+// venda (reserva, proposta, board de cadastro, contratos) sobre o recorte do PRÓPRIO portal.
+//
+// ⚠️ CADA SLUG AQUI ABRE ESCRITA PARA GENTE DE FORA DA CARELI. As rotas de venda e de board eram
+// fechadas ao incorporador por decisão registrada ("documento pessoal nunca sai daqui"); esta lista
+// é a exceção autorizada, não um atalho para resolver tela do padrão.
+const OPERAM_A_PROPRIA_VENDA = new Set(["cecilio-rocha"]);
+
+/**
+ * O portal opera a venda (reserva, proposta, board de cadastro, contratos)?
+ * Comercial sempre; incorporador só os da lista acima. É também o que decide o layout do Hércules
+ * (lateral recolhível com a marca do cliente) — quem opera a venda trabalha na mesma casca.
+ */
+export function portalOperaVenda(slug: null | string | undefined, tipo: null | string | undefined): boolean {
+  if (ehPortalComercial(tipo)) return true;
+  return OPERAM_A_PROPRIA_VENDA.has(String(slug ?? "").trim().toLowerCase());
+}
+
+// QUEM CONFECCIONA O CONTRATO DENTRO DO PORTAL — e por que o comercial NÃO entra.
+//
+// Decisões do Lucas (16/09/2026): a Gurgel continua vendendo os produtos da Cecílio, *"contrato com
+// a Careli"*; a equipe da Cecílio gera, manda assinar e *"também edita os modelos"*. Então quem
+// confecciona depende de QUEM VENDEU, não só do produto: a venda do coordenador vai para a Têmis
+// da Careli; a venda do próprio time do incorporador fica com ele, no portal.
+//
+// ⚠️ O COMERCIAL OPERA A VENDA MAS NÃO CONFECCIONA. Por isso esta função não é `portalOperaVenda`:
+// a Gurgel reserva, faz proposta e envia para contrato, e quem pega o contrato é o jurídico da Careli.
+export function portalConfeccionaContrato(
+  slug: null | string | undefined,
+  tipo: null | string | undefined,
+): boolean {
+  if (ehPortalComercial(tipo)) return false;
+  return OPERAM_A_PROPRIA_VENDA.has(String(slug ?? "").trim().toLowerCase());
 }

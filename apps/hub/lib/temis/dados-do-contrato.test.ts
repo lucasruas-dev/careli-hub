@@ -305,6 +305,174 @@ describe("os extensos saem em par com o número", () => {
   });
 });
 
+// ── O PRÉDIO (onda 2, vertical) ──────────────────────────────────────────────
+//
+// O contrato de apartamento lê torre, andar, apartamento, tipologia, vagas e área privativa da
+// unidade. O que está travado: as variáveis nascem SÓ quando o apartamento está preenchido; o
+// loteamento continua exatamente como era (sem nenhuma delas); o zero de andar e de vagas é valor;
+// os extensos nascem do número quando a unidade veio do Panteon com `*_extenso` nulo; e a leitura
+// repete sem as colunas do prédio quando a 0171 ainda não foi aplicada.
+
+const APARTAMENTO = {
+  andar: 3,
+  apartamento: "304",
+  area: 68.45,
+  area_extenso: null,
+  codigo: "JAD-A-304",
+  enterprise_id: "100001",
+  lote: null,
+  matricula: "12.345",
+  matricula_livro: "2",
+  preco_extenso: null,
+  preco_tabela: 420000,
+  quadra: null,
+  tipo_unidade: "apartamento",
+  tipologia: "2 quartos, 1 suíte",
+  torre: "A",
+  vagas: 0,
+};
+
+describe("o prédio", () => {
+  it("apartamento preenchido: torre, andar, apartamento, tipologia, vagas e área privativa", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({ valor: 420000 }),
+        hercules_unidades: APARTAMENTO,
+      }),
+    ))!;
+
+    const g = dados.gerais;
+    expect(g.numero_torre).toBe("A");
+    expect(g.numero_andar).toBe("3");
+    expect(g.numero_apartamento).toBe("304");
+    expect(g.numero_apartamento_extenso).toBe("trezentos e quatro");
+    expect(g.tipologia).toBe("2 quartos, 1 suíte");
+    // ⚠️ ZERO VAGA É "SEM VAGA", E NÃO AUSÊNCIA: `[vagas]` impresso seria o defeito.
+    expect(g.vagas).toBe("0");
+    expect(g.area_privativa).toBe("68,45 m²");
+    expect(g.area_privativa_extenso).toBe(
+      "sessenta e oito metros quadrados e quarenta e cinco decímetros quadrados",
+    );
+    // Prédio não tem quadra nem lote: as variáveis do loteamento não existem, nem vazias.
+    expect(g.numero_quadra).toBeUndefined();
+    expect(g.numero_lote).toBeUndefined();
+  });
+
+  it("unidade do Panteon com os extensos nulos: área e preço saem escritos pelo número", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({ valor: 420000 }),
+        hercules_unidades: APARTAMENTO,
+      }),
+    ))!;
+    expect(dados.gerais.preco_tabela_unidade).toBe("R$ 420.000,00");
+    expect(dados.gerais.preco_tabela_unidade_extenso).toBe("quatrocentos e vinte mil reais");
+    expect(dados.gerais.area_lote_extenso).toBeTruthy();
+  });
+
+  it("andar térreo é 0, e apartamento com letra não ganha extenso inventado", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta(),
+        hercules_unidades: { ...APARTAMENTO, andar: 0, apartamento: "101-B", torre: null },
+      }),
+    ))!;
+    expect(dados.gerais.numero_andar).toBe("0");
+    expect(dados.gerais.numero_apartamento).toBe("101-B");
+    expect(dados.gerais.numero_apartamento_extenso).toBeUndefined();
+    // Torre única: sem torre, sem variável (a minuta de torre única não a pede).
+    expect(dados.gerais.numero_torre).toBeUndefined();
+  });
+
+  it("loteamento: nenhuma variável do prédio aparece, e o lote continua igual", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_empreendimentos: EMPREENDIMENTO,
+        hercules_propostas: proposta(),
+        hercules_unidades: UNIDADE,
+      }),
+    ))!;
+    const g = dados.gerais;
+    for (const nome of [
+      "numero_torre",
+      "numero_andar",
+      "numero_apartamento",
+      "numero_apartamento_extenso",
+      "tipologia",
+      "vagas",
+      "area_privativa",
+      "area_privativa_extenso",
+    ]) {
+      expect(g[nome]).toBeUndefined();
+    }
+    expect(g.numero_quadra).toBe("12");
+    expect(g.numero_lote).toBe("07");
+    expect(g.area_lote).toBe("300,00 m²");
+  });
+
+  it("0171 pendente: a unidade é lida de novo sem as colunas do prédio e o contrato sai", async () => {
+    const selects: string[] = [];
+    let primeira = true;
+    const sb = {
+      from: (tabela: string) => {
+        const encadeia: Record<string, unknown> = new Proxy(
+          {},
+          {
+            get(_alvo, prop: string) {
+              if (prop === "select") {
+                return (colunas: string) => {
+                  if (tabela === "hercules_unidades") selects.push(colunas);
+                  return encadeia;
+                };
+              }
+              if (prop === "maybeSingle") {
+                return () => {
+                  if (tabela === "hercules_propostas") {
+                    return Promise.resolve({ data: proposta(), error: null });
+                  }
+                  if (tabela === "hercules_unidades" && primeira) {
+                    primeira = false;
+                    return Promise.resolve({
+                      data: null,
+                      error: { code: "42703", message: "column hercules_unidades.torre does not exist" },
+                    });
+                  }
+                  if (tabela === "hercules_unidades") return Promise.resolve({ data: UNIDADE, error: null });
+                  return Promise.resolve({ data: null, error: null });
+                };
+              }
+              if (prop === "then") {
+                return (resolver: (r: unknown) => unknown) =>
+                  Promise.resolve(resolver({ data: [], error: null }));
+              }
+              return () => encadeia;
+            },
+          },
+        );
+        return encadeia;
+      },
+    } as never;
+
+    const { dados } = (await dadosDaProposta("p1", sb))!;
+    expect(selects).toHaveLength(2);
+    expect(selects[0]).toContain("apartamento");
+    expect(selects[1]).not.toContain("apartamento");
+    expect(dados.gerais.numero_quadra).toBe("12");
+  });
+
+  it("sem unidade, o aviso fala do lote e do apartamento", async () => {
+    const { avisos } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({ hercules_propostas: proposta({ unidade_id: null }) }),
+    ))!;
+    expect(avisos.some((a) => a.includes("torre e apartamento no prédio"))).toBe(true);
+  });
+});
+
 describe("o cônjuge", () => {
   const entidade = [
     {

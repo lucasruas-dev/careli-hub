@@ -1,8 +1,6 @@
-import { NextResponse } from "next/server";
-
-import { createApoloAdminClient } from "@/lib/apolo/server";
 import { autorizarEmissaoDeContrato } from "@/lib/temis/autorizacao";
-import { reenviarConvite, trocarEmailDoSignatario } from "@/lib/temis/trocar-signatario";
+import { consertarSignatario } from "@/lib/temis/assinatura-servico";
+import { atorDoHub } from "@/lib/temis/ator";
 
 // CONSERTAR UM SIGNATÁRIO DE ENVELOPE JÁ ENVIADO — reenviar o convite, ou trocar o e-mail dele.
 //
@@ -28,6 +26,10 @@ import { reenviarConvite, trocarEmailDoSignatario } from "@/lib/temis/trocar-sig
 // deles) e "espere um minuto" (o teto de ~1 notificação por minuto por endpoint). Trocar as duas
 // por um "não consegui" faria a tela pedir para tentar de novo justamente no caso em que tentar de
 // novo nunca vai funcionar.
+//
+// ⚠️ ESTA ROTA É SÓ A PORTA DO HUB (16/09/2026). A validação e as duas ações moram em
+// `consertarSignatario` (`lib/temis/assinatura-servico.ts`), a mesma função de
+// `/api/incorporador/temis/assinatura/signatario`, que acrescenta só o recorte do envelope.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 // A troca de e-mail são até quatro chamadas HTTP em sequência (remover o signatário, criar o novo,
@@ -41,76 +43,5 @@ export async function POST(request: Request) {
   const autorizacao = await autorizarEmissaoDeContrato(request);
   if (!autorizacao.ok) return autorizacao.response;
 
-  const corpo = (await request.json().catch(() => ({}))) as {
-    acao?: unknown;
-    email?: unknown;
-    envelopeId?: unknown;
-    signerId?: unknown;
-  };
-
-  const envelopeId = texto(corpo.envelopeId);
-  const signerId = texto(corpo.signerId);
-  if (!envelopeId) return NextResponse.json({ erro: "Sem envelope." }, { status: 400 });
-  if (!signerId) return NextResponse.json({ erro: "Sem signatário." }, { status: 400 });
-
-  // ⚠️ O SUPABASE NÃO É ENFEITE NESTA ROTA, E NÃO DÁ PARA PULÁ-LO. As duas ações leem
-  // `temis_envelopes` pelo `envelope_id` ANTES de falar com a Clicksign, e é essa leitura que prova
-  // que o id vindo do navegador é de um envelope NOSSO. A conta da Clicksign é de PRODUÇÃO, com
-  // contratos de outras vendas dentro: sem esse filtro, um id trocado no corpo do POST removeria um
-  // signatário do contrato de outra pessoa.
-  const sb = createApoloAdminClient();
-  if (!sb) return NextResponse.json({ erro: "Supabase indisponível." }, { status: 503 });
-
-  if (corpo.acao === "reenviar") {
-    const reenvio = await reenviarConvite(sb, { envelopeId, signerId });
-    if (!reenvio.ok) {
-      return NextResponse.json({ erro: reenvio.erro }, { status: reenvio.status });
-    }
-    return NextResponse.json({ data: { aviso: null, signerId } });
-  }
-
-  if (corpo.acao === "trocar_email") {
-    const email = texto(corpo.email);
-    // ⚠️ CONFERIDO AQUI ANTES DE SAIR DAQUI, e o motivo é o que a ação faz: o primeiro passo da
-    // troca é REMOVER a pessoa do envelope. Um endereço vazio ou torto vindo do navegador tiraria
-    // o signatário e falharia no passo seguinte, deixando o envelope de produção com uma pessoa a
-    // menos e ninguém para assinar no lugar dela.
-    //
-    // ⚠️ A REGRA É SIMPLES DE PROPÓSITO, a mesma do envio (`lerEmailsEscolhidos`, na rota
-    // `enviar`): quem valida e-mail de verdade é a Clicksign, e uma regex ambiciosa aqui recusaria
-    // endereço legítimo (`+`, subdomínio, TLD longo).
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ erro: "Informe um e-mail válido." }, { status: 400 });
-    }
-
-    const troca = await trocarEmailDoSignatario(sb, { email, envelopeId, signerId });
-
-    if (!troca.ok) {
-      // ⚠️ `removido` SOBE JUNTO COM O ERRO, e é a diferença entre duas falhas que não se parecem em
-      // nada: antes da remoção o envelope está inteiro e ninguém perdeu nada; depois dela há uma
-      // pessoa FORA de um contrato que não fecha mais sozinho. A frase de `erro` já conta a
-      // história, mas a bandeira é o que permite à tela pintar o desfecho grave de outro jeito.
-      return NextResponse.json({ erro: troca.erro, removido: troca.removido }, { status: troca.status });
-    }
-
-    // ⚠️ `aviso` NÃO É ERRO, E RESPONDER 200 AQUI É O PONTO. Ele é "a troca foi feita, mas o convite
-    // não saiu" (o teto de envio da Clicksign) ou "o nosso registro não atualizou": nos dois casos o
-    // signatário novo JÁ ESTÁ no envelope, com os dois requisitos, e pode assinar. Devolver erro
-    // faria o operador clicar em trocar de novo — e o segundo clique REMOVERIA quem acabou de
-    // entrar, que é exatamente o estrago que esta rota existe para evitar.
-    //
-    // ⚠️ E O `signerId` QUE VOLTA É O NOVO: o antigo deixou de existir no envelope. A tela não
-    // depende dele (ela recarrega o card e relê a lista), mas é o número que o suporte da Clicksign
-    // pede quando alguma coisa não bate — e não dá para pescá-lo depois.
-    return NextResponse.json({
-      data: { aviso: troca.aviso, email: troca.email, nome: troca.nome, signerId: troca.signerId },
-    });
-  }
-
-  return NextResponse.json({ erro: "Ação desconhecida." }, { status: 400 });
-}
-
-/** Campo de texto do corpo, já aparado. Qualquer outra coisa vira string vazia. */
-function texto(bruto: unknown): string {
-  return typeof bruto === "string" ? bruto.trim() : "";
+  return consertarSignatario(atorDoHub(autorizacao, "coordenacao"), request);
 }

@@ -268,6 +268,10 @@ export async function POST(request: Request) {
           fileBase64: cadBase64,
           fileName: `${cadStruct.arquivo || `CAD - ${nomeCliente}`}.pdf`,
           label: `CAD - ${nomeCliente}`,
+          // A CAD é de UM produto, e `apolo_documents` não tem coluna de empreendimento: sem a
+          // marca, o portal do incorporador esconde a CAD de quem tem dois produtos (ou a mostra no
+          // portal do vizinho). Mesma marca de `cadastro-salvar.ts`; o empreendimento sai do TOKEN.
+          metadataExtra: { enterpriseId: sessao.enterpriseId },
           mimeType: "application/pdf",
           ownerId: criado.entityId,
           scope: "entidade",

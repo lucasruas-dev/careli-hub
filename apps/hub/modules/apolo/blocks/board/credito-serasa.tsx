@@ -22,6 +22,32 @@ import {
   type VeredicoCredito,
 } from "../serasa/resultado-credito";
 
+import {
+  API_DO_CREDITO_NO_HUB,
+  type ApiDoCredito,
+  ehPortaDoPortal,
+  rotasDoCredito,
+} from "./porta-do-credito";
+
+// (16/09/2026) DUAS PORTAS, UMA TELA. Decisão do Lucas: *"A Cecílio, no portal"* faz a análise de
+// crédito dos clientes dela. A prop `api` é a porta do Board (porta-do-credito.ts): sem ela, as rotas
+// /api/apolo/serasa/* com o Bearer do hub, exatamente como sempre; com a do portal, as rotas por
+// baixo do `[id]` do board, com o cookie. No portal some o que só a Careli tem e não tem rota lá: a
+// bancada da autenticação, o aviso de reprovação (a lista traz nome e telefone de quem recebeu, e o
+// reenvio é da Careli), seguir pelo cônjuge e os botões de baixar comprovante e CAD. O comprovante
+// continua na lista de documentos da ficha, pela régua do portal (documentos-do-portal.ts).
+
+// Os cabeçalhos da porta: Bearer do hub, ou nada (o cookie do portal vai sozinho).
+// ⚠️ `getApoloAccessToken` LANÇA sem sessão do hub, e quem entra pelo portal não tem uma.
+async function cabecalhosDoCredito(
+  api: ApiDoCredito,
+  extra: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  if (api.semToken) return { ...extra };
+  const token = await getApoloAccessToken();
+  return { Authorization: `Bearer ${token}`, ...extra };
+}
+
 // ANÁLISE DE CRÉDITO — consulta ao Serasa Experian.
 //
 // A consulta é PAGA, então a tela segue a mesma disciplina da leitura de documentos da MOST:
@@ -78,18 +104,32 @@ type Situacao = {
 };
 
 export function CreditoSerasa({
+  api = API_DO_CREDITO_NO_HUB,
   entityId,
   onResultado,
 }: {
+  // A porta do Board (ver o topo do arquivo). Sem ela, o hub de sempre.
+  api?: ApiDoCredito;
   entityId: string;
   // Avisa o Board quando a consulta resolve: o servidor já moveu a etapa (aprovado -> pré-venda,
   // reprovado -> revisão) e a tela precisa refletir sem esperar reload.
   onResultado?: (r: { aprovado: boolean; etapa?: string }) => void;
 }) {
+  const noPortal = ehPortaDoPortal(api);
   const [situacao, setSituacao] = useState<Situacao | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [consultando, setConsultando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // O RECADO DO SERVIDOR QUE NÃO É ERRO (`data.mensagem`): o "Consultar de novo" que não cobrou (o
+  // resultado guardado reaplicado no portal), a análise desligada e a consulta que saiu sem o registro
+  // da cobrança gravado. Sem ele, a resposta 200 deixava a tela igual e parecia que o clique não
+  // tinha funcionado. Ele zera na troca de ficha porque o Board monta este painel com `key` da ficha.
+  //
+  // (16/09/2026, D9) No hub, o analista que pede "Consultar de novo" (ou o cônjuge) dentro de 30 dias
+  // recebe a consulta guardada e o recado "Só a coordenação pode pedir uma nova consulta dentro de 30
+  // dias.": só a coordenação cobra de novo. O botão continua com o mesmo rótulo porque a tela não sabe
+  // o papel de quem clica; quem decide é o servidor, e o recado explica.
+  const [recado, setRecado] = useState<string | null>(null);
   const [reenviando, setReenviando] = useState<"coordenador" | "corretor" | null>(null);
   const [avisoReenvio, setAvisoReenvio] = useState<string | null>(null);
   const [baixando, setBaixando] = useState<"cad" | "comprovante" | null>(null);
@@ -104,11 +144,10 @@ export function CreditoSerasa({
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
-      const token = await getApoloAccessToken();
-      const resposta = await fetch(
-        `/api/apolo/serasa/consultar?entityId=${encodeURIComponent(entityId)}`,
-        { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
-      );
+      const resposta = await fetch(rotasDoCredito(api).situacao(entityId), {
+        cache: "no-store",
+        headers: await cabecalhosDoCredito(api),
+      });
       const corpo = (await resposta.json()) as { data?: Situacao };
       setSituacao(corpo.data ?? { configurado: false });
     } catch {
@@ -116,7 +155,7 @@ export function CreditoSerasa({
     } finally {
       setCarregando(false);
     }
-  }, [entityId]);
+  }, [api, entityId]);
 
   useEffect(() => {
     void carregar();
@@ -199,9 +238,11 @@ export function CreditoSerasa({
   const consultar = async (forcar: boolean, alvo: "titular" | "conjuge" = "titular") => {
     setConsultando(true);
     setErro(null);
+    setRecado(null);
     try {
-      const token = await getApoloAccessToken();
-      const resposta = await fetch("/api/apolo/serasa/consultar", {
+      // O corpo é o mesmo nas duas portas. No portal o servidor ignora o `reportName` (quem é de fora
+      // não escolhe o relatório que sai na conta da Careli) e confere o `entityId` com o do endereço.
+      const resposta = await fetch(rotasDoCredito(api).consultar(entityId), {
         body: JSON.stringify({
           alvo,
           confirmado: true,
@@ -214,7 +255,7 @@ export function CreditoSerasa({
           reportName:
             process.env.NEXT_PUBLIC_SERASA_REPORT_PF ?? "RELATORIO_BASICO_PF_PME",
         }),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: await cabecalhosDoCredito(api, { "Content-Type": "application/json" }),
         method: "POST",
       });
       const corpo = (await resposta.json()) as {
@@ -222,12 +263,15 @@ export function CreditoSerasa({
           alvo?: string;
           etapa?: string | null;
           etapaNaoGravada?: null | string;
+          mensagem?: string;
           veredito?: { aprovado?: boolean; motivo?: string };
         };
         error?: string;
       };
       if (!resposta.ok) setErro(corpo.error ?? `Falha (${resposta.status}).`);
       else {
+        if (corpo.data?.mensagem?.trim()) setRecado(corpo.data.mensagem.trim());
+
         // A CONSULTA SAIU MAS A ETAPA NÃO GRAVOU. Aparece como erro na tela de propósito: o
         // operador precisa saber que a ficha NÃO andou, senão ele fecha o card achando que andou e
         // reencontra a pessoa em Validação amanhã (com outra consulta cobrada no caminho).
@@ -242,9 +286,12 @@ export function CreditoSerasa({
           // sozinho quando o cônjuge era aprovado; agora quem decide é um admin, então dizer
           // "o credenciamento pode seguir" sem dizer que falta um clique seria mentir sobre o
           // estado da ficha.
+          // (portal) Seguir pelo cônjuge não existe lá: a frase não manda procurar a coordenação.
           setResultadoConjuge(
             aprovado
-              ? "Crédito do cônjuge APROVADO. A ficha do titular NÃO foi alterada: seguir por ele é decisão da coordenação."
+              ? noPortal
+                ? "Crédito do cônjuge APROVADO. A ficha do titular NÃO foi alterada."
+                : "Crédito do cônjuge APROVADO. A ficha do titular NÃO foi alterada: seguir por ele é decisão da coordenação."
               : `Crédito do cônjuge reprovado. ${corpo.data.veredito.motivo ?? ""}`.trim() +
                   " A ficha do titular não foi alterada.",
           );
@@ -333,6 +380,23 @@ export function CreditoSerasa({
     return (
       <div className="mt-4 flex items-center justify-center rounded-xl border border-line bg-surface py-12">
         <Loader2 aria-hidden="true" className="size-5 animate-spin text-ink-muted" />
+      </div>
+    );
+  }
+
+  // (portal) Sem a integração, ou sem resposta da porta: um aviso curto. As variáveis de ambiente, a
+  // bancada da autenticação e o que falta configurar são assunto da Careli, não de quem é de fora.
+  if (!situacao?.configurado && noPortal) {
+    return (
+      <div className="mt-4 rounded-xl border border-line bg-surface p-5">
+        <p className="m-0 flex items-center gap-2 text-sm font-bold text-ink">
+          <ShieldCheck aria-hidden="true" className="size-4" />
+          Análise de crédito indisponível no momento
+        </p>
+        <p className="m-0 mt-2 text-xs text-ink-soft">
+          Não foi possível abrir a consulta ao Serasa agora. Tente de novo em alguns minutos; se
+          continuar, fale com a Careli.
+        </p>
       </div>
     );
   }
@@ -428,7 +492,9 @@ export function CreditoSerasa({
               ) : (
                 <RefreshCw aria-hidden="true" className="size-3.5" />
               )}
-              Consultar de novo (gera nova cobrança)
+              {/* (portal) O servidor nunca cobra de novo uma consulta recente pela porta do portal:
+                  reaplica o resultado guardado. Passada a janela, a consulta é nova e cobrada. */}
+              {noPortal ? "Consultar de novo (pode gerar cobrança)" : "Consultar de novo (gera nova cobrança)"}
             </button>
           </div>
 
@@ -439,9 +505,12 @@ export function CreditoSerasa({
               Sem CPF do cônjuge na ficha, o servidor devolve o aviso dizendo onde preencher. */}
           {temConjuge ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+              {/* (portal) Lá não existe "seguir pelo cônjuge": o resultado dele não move a ficha do
+                  titular, e a frase não pode prometer que move. */}
               <p className="m-0 text-xs text-ink-muted">
-                Cliente casado. Dá para consultar o crédito do cônjuge: aprovado, o
-                credenciamento segue mesmo com o titular em revisão.
+                {noPortal
+                  ? "Cliente casado. Dá para consultar o crédito do cônjuge; o resultado não altera a ficha do titular."
+                  : "Cliente casado. Dá para consultar o crédito do cônjuge: aprovado, o credenciamento segue mesmo com o titular em revisão."}
               </p>
 
               <button
@@ -455,7 +524,9 @@ export function CreditoSerasa({
                 ) : (
                   <Users aria-hidden="true" className="size-3.5" />
                 )}
-                Consultar crédito do cônjuge (gera cobrança)
+                {noPortal
+                  ? "Consultar crédito do cônjuge (pode gerar cobrança)"
+                  : "Consultar crédito do cônjuge (gera cobrança)"}
               </button>
 
               {resultadoConjuge ? (
@@ -470,7 +541,7 @@ export function CreditoSerasa({
                   cônjuge. Seguir pela renda dele muda quem sustenta a compra — é escolha
                   comercial, não consequência do score. O botão só aparece com cônjuge aprovado
                   nesta sessão E para quem é admin. */}
-              {conjugeAprovado && situacao.ehAdmin ? (
+              {conjugeAprovado && situacao.ehAdmin && !noPortal ? (
                 <div className="w-full">
                   <button
                     className="inline-flex items-center gap-2 rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
@@ -530,36 +601,42 @@ export function CreditoSerasa({
           ) : null}
 
           {/* Documentos desta ficha: comprovante (com QR) e CAD são salvos AUTOMATICAMENTE na
-              consulta, na pasta do cliente. Os botões apenas abrem/baixam o que já foi salvo. */}
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3">
-            <button
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-60"
-              disabled={baixando !== null}
-              onClick={() => void baixarDocumento("comprovante")}
-              type="button"
-            >
-              {baixando === "comprovante" ? (
-                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-              ) : (
-                <FileText aria-hidden="true" className="size-3.5" />
-              )}
-              Baixar comprovante
-            </button>
-            <button
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-60"
-              disabled={baixando !== null}
-              onClick={() => void baixarDocumento("cad")}
-              type="button"
-            >
-              {baixando === "cad" ? (
-                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-              ) : (
-                <FileText aria-hidden="true" className="size-3.5" />
-              )}
-              Baixar CAD
-            </button>
-            {avisoDoc ? <span className="text-xs text-ink-muted">{avisoDoc}</span> : null}
-          </div>
+              consulta, na pasta do cliente. Os botões apenas abrem/baixam o que já foi salvo.
+              (portal) Sem rota de comprovante nem de salvar a CAD: os dois ficam na lista de
+              documentos da ficha, pela régua do portal. */}
+          {noPortal ? null : (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3">
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-60"
+                disabled={baixando !== null}
+                onClick={() => void baixarDocumento("comprovante")}
+                type="button"
+              >
+                {baixando === "comprovante" ? (
+                  <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                ) : (
+                  <FileText aria-hidden="true" className="size-3.5" />
+                )}
+                Baixar comprovante
+              </button>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-60"
+                disabled={baixando !== null}
+                onClick={() => void baixarDocumento("cad")}
+                type="button"
+              >
+                {baixando === "cad" ? (
+                  <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                ) : (
+                  <FileText aria-hidden="true" className="size-3.5" />
+                )}
+                Baixar CAD
+              </button>
+              {avisoDoc ? <span className="text-xs text-ink-muted">{avisoDoc}</span> : null}
+            </div>
+          )}
+
+          {recado ? <RecadoDoServidor texto={recado} /> : null}
 
           {erro ? (
             <p className="m-0 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -571,8 +648,11 @@ export function CreditoSerasa({
           {/* Reprovado: aviso automático ao coordenador (+ corretor se houver telefone), com a
               devolutiva de entrega e o reenvio manual (só admin). O gatilho é a ETAPA persistida
               ("revisao"), não o veredito recomputado — que oscila com limite/C2X e poderia exibir o
-              painel (e o reenvio) para um cliente aprovado. */}
-          {situacao.etapa === "revisao" ? (
+              painel (e o reenvio) para um cliente aprovado.
+              (portal) Não aparece: a lista de disparos traz nome e telefone de quem recebeu e o
+              servidor nem a manda (`disparos: []`); com ela vazia, o painel diria "Nenhum aviso
+              enviado ainda" sobre um aviso que pode ter saído. */}
+          {situacao.etapa === "revisao" && !noPortal ? (
             <div className="rounded-xl border border-line bg-surface p-4">
               <p className="m-0 flex items-center gap-2 text-sm font-bold text-ink">
                 <Send aria-hidden="true" className="size-4" />
@@ -650,9 +730,12 @@ export function CreditoSerasa({
       ) : (
         <div className="rounded-xl border border-line bg-surface p-5">
           <p className="m-0 text-sm font-bold text-ink">Nenhuma consulta para esta ficha</p>
+          {/* (portal) Diz que é cobrada: quem é de fora não sabe que cada clique sai na conta da
+              Careli, e o registro de quem consultou é justamente para isso. */}
           <p className="m-0 mt-1 text-xs text-ink-soft">
-            A consulta usa o documento que está no cadastro e fica registrada com o seu usuário,
-            para conferência posterior.
+            {noPortal
+              ? "A consulta é cobrada, usa o documento que está no cadastro e fica registrada com o seu usuário, para conferência posterior."
+              : "A consulta usa o documento que está no cadastro e fica registrada com o seu usuário, para conferência posterior."}
           </p>
           <button
             className="mt-4 inline-flex items-center gap-2 rounded-lg bg-inverse px-3.5 py-2 text-sm font-bold text-brand-ink disabled:opacity-60"
@@ -668,6 +751,12 @@ export function CreditoSerasa({
             {consultando ? "Consultando…" : "Consultar Serasa"}
           </button>
 
+          {recado ? (
+            <div className="mt-3">
+              <RecadoDoServidor texto={recado} />
+            </div>
+          ) : null}
+
           {erro ? (
             <p className="m-0 mt-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
@@ -677,6 +766,19 @@ export function CreditoSerasa({
         </div>
       )}
     </div>
+  );
+}
+
+// O recado do servidor numa resposta que deu certo: tom neutro, não a faixa âmbar do erro. É
+// orientação ("o resultado guardado foi usado, sem nova cobrança"), não defeito.
+function RecadoDoServidor({ texto }: { texto: string }) {
+  return (
+    <p
+      className="m-0 rounded-lg border border-line bg-subtle/40 px-3 py-2 text-xs text-ink-soft"
+      role="status"
+    >
+      {texto}
+    </p>
   );
 }
 

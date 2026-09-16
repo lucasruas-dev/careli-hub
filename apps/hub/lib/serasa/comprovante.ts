@@ -184,13 +184,51 @@ async function buscarConsulta(client: AdminClient, consultaId: string): Promise<
   return data ?? null;
 }
 
+/**
+ * O metadata do comprovante novo: o que quem chama pediu, a marca de empreendimento do comprovante
+ * anterior da MESMA consulta quando quem chama não trouxe uma, e as chaves da idempotência por
+ * cima de tudo.
+ *
+ * (16/09/2026) ⚠️ A MARCA NÃO PODE SUMIR AO REGERAR. O comprovante pago pelo portal que opera
+ * sozinho nasce com `metadata.enterpriseId` (a CAD da análise), e é essa marca que decide para qual
+ * portal ele sai (lib/apolo/incorporador/documentos-do-portal.ts). O "Baixar comprovante" do hub
+ * regera o PDF apagando o anterior: sem herdar a marca, o comprovante do Cecílio virava documento
+ * sem dono e passava a sair, para o comercial, como análise de qualquer produto da pessoa.
+ * `consultaId` e `protocolo` vêm por último de propósito: são a chave da idempotência, e um extra
+ * com o mesmo nome não pode desligá-la.
+ */
+export function metadataDoComprovante(input: {
+  anteriores: ReadonlyArray<{ metadata?: Record<string, unknown> | null }>;
+  consultaId: string;
+  extra?: Record<string, unknown>;
+  protocolo: string;
+}): Record<string, unknown> {
+  const pedido = input.extra ?? {};
+  const temMarca = typeof pedido.enterpriseId === "string" && pedido.enterpriseId.trim() !== "";
+  const herdada = temMarca
+    ? undefined
+    : input.anteriores
+        .map((linha) => linha.metadata?.enterpriseId)
+        .find((valor): valor is string => typeof valor === "string" && valor.trim() !== "");
+  return {
+    ...pedido,
+    ...(herdada ? { enterpriseId: herdada } : {}),
+    consultaId: input.consultaId,
+    protocolo: input.protocolo,
+  };
+}
+
 // GERA o comprovante PDF (com QR) e SALVA na pasta do cliente (apolo_documents). Best-effort:
 // devolve {ok:false} sem lançar. Idempotente por consulta: remove um comprovante anterior da
 // MESMA consulta antes de gravar o novo (não acumula ao regerar).
+//
+// (16/09/2026) `metadataExtra` vai junto do upload, na MESMA gravação: o portal marca o
+// empreendimento da CAD por aqui, em vez de um update depois (que deixava uma janela em que o
+// comprovante existia sem a marca, e se perdia se o update falhasse).
 export async function gerarESalvarComprovante(
   client: AdminClient,
   consultaId: string,
-  opts: { uploadedByName?: string | null } = {},
+  opts: { metadataExtra?: Record<string, unknown>; uploadedByName?: string | null } = {},
 ): Promise<{ documentId?: string; error?: string; ok: boolean }> {
   try {
     const consulta = await buscarConsulta(client, consultaId);
@@ -225,14 +263,27 @@ export async function gerarESalvarComprovante(
       veredito: n.veredito,
     });
 
-    // Idempotência: apaga comprovante anterior desta MESMA consulta.
+    // Idempotência: apaga comprovante anterior desta MESMA consulta. O metadata vem junto só para a
+    // marca de empreendimento passar para o novo (`metadataDoComprovante`).
     const { data: antigos } = await client
       .from("apolo_documents")
-      .select("id, storage_bucket, storage_path")
+      .select("id, storage_bucket, storage_path, metadata")
       .eq("entity_id", consulta.entity_id)
       .eq("document_type", COMPROVANTE_DOC_TYPE)
       .contains("metadata", { consultaId: consulta.id });
-    for (const a of (antigos ?? []) as { id: string; storage_bucket: string | null; storage_path: string | null }[]) {
+    const anteriores = (antigos ?? []) as {
+      id: string;
+      metadata: Record<string, unknown> | null;
+      storage_bucket: string | null;
+      storage_path: string | null;
+    }[];
+    const metadataExtra = metadataDoComprovante({
+      anteriores,
+      consultaId: consulta.id,
+      extra: opts.metadataExtra,
+      protocolo: n.protocolo,
+    });
+    for (const a of anteriores) {
       if (a.storage_path) {
         await client.storage.from(a.storage_bucket ?? "apolo-documents").remove([a.storage_path]);
       }
@@ -245,7 +296,7 @@ export async function gerarESalvarComprovante(
       fileBase64: Buffer.from(pdf).toString("base64"),
       fileName: `Comprovante ${n.protocolo}.pdf`,
       label: `Comprovante de credito ${n.protocolo}`,
-      metadataExtra: { consultaId: consulta.id, protocolo: n.protocolo },
+      metadataExtra,
       mimeType: "application/pdf",
       ownerId: consulta.entity_id,
       scope: "entidade",

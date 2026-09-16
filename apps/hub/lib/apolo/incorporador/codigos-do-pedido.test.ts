@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import { agrupar } from "@/lib/apolo/catalogo-empreendimentos";
 import type { LinhaDoCadastro } from "@/lib/hercules/cadastro";
 
-import { pedidoPrecisaDeExpansao, resolverCodigosDoPedido } from "./codigos-do-pedido";
+import {
+  pedidoPrecisaDeExpansao,
+  pedidoPrecisaDoCadastro,
+  resolverCodigosDoPedido,
+} from "./codigos-do-pedido";
 import { empreendimentosDoPortal } from "./empreendimentos-do-portal";
 
 // O catálogo REAL do C2X: a Lagoa Bonita chega AGRUPADA ("group:Lagoa Bonita", sem linha "33").
@@ -198,5 +202,114 @@ describe("resolverCodigosDoPedido · empreendimento só do Panteon", () => {
       proprios: PROPRIOS,
     });
     expect(codes).not.toContain("TST");
+  });
+});
+
+// ── O PRODUTO DO PANTEON SEM `proprios` (16/09/2026) ────────────────────────
+//
+// ⚠️ `codigosDaSessao` passou a devolver o código do produto nascido no Panteon, e as rotas que
+// nunca somaram `soDoPanteon` (vendas, vendas/contratos, carteira) chamam a tradução SEM `proprios`.
+// Sem isto, o código chegava autorizado e a tradução do `emp` o jogava fora nos dois caminhos.
+describe("resolverCodigosDoPedido · produto do Panteon sem `proprios`", () => {
+  const JADE = linha({ c2xEnterpriseId: "100000", codigo: "JAD", id: "uuid-jad" });
+  const RUBI = linha({ c2xEnterpriseId: "100001", codigo: "RUB", id: "uuid-rub" });
+  const COM_PREDIOS = [...CADASTRO, JADE, RUBI];
+  // O que `codigosDaSessao` devolve para a sessão da Cecílio com o VOC e o Ed. Jade.
+  const AUTORIZADOS = ["VOC", "JAD"];
+  const PERMITIDOS_CECILIO = new Set(["37", "100000"]);
+
+  const resolverSemProprios = (
+    pedido: null | string,
+    extra: { cadastro?: LinhaDoCadastro[]; codes?: string[]; permitidos?: Set<string> } = {},
+  ) =>
+    resolverCodigosDoPedido({
+      cadastro: extra.cadastro ?? COM_PREDIOS,
+      catalogo: CATALOGO,
+      codesAutorizados: extra.codes ?? AUTORIZADOS,
+      empreendimentos: empreendimentosDoPortal(CATALOGO, extra.codes ?? AUTORIZADOS),
+      pedido,
+      permitidos: extra.permitidos ?? PERMITIDOS_CECILIO,
+    });
+
+  it("⚠️ sem pedido: o produto do Panteon entra em 'todos'", () => {
+    expect(resolverSemProprios(null).sort()).toEqual(["JAD", "VOC"]);
+  });
+
+  it("pedido pelo CÓDIGO do produto do Panteon", () => {
+    expect(resolverSemProprios("JAD")).toEqual(["JAD"]);
+    expect(resolverSemProprios("jad")).toEqual(["JAD"]);
+  });
+
+  it("⚠️ pedido pelo id numérico: o código sai do cadastro", () => {
+    expect(resolverSemProprios("100000")).toEqual(["JAD"]);
+  });
+
+  it("⚠️ pedido pelo pai do cadastro", () => {
+    expect(resolverSemProprios("pai:uuid-jad")).toEqual(["JAD"]);
+  });
+
+  it("⚠️ fail-closed nas duas camadas: prédio de fora da sessão, ou fora dos autorizados, some", () => {
+    // O Ed. Rubi não está na sessão: a expansão não o libera.
+    expect(resolverSemProprios("100001")).toEqual([]);
+    expect(resolverSemProprios("pai:uuid-rub")).toEqual([]);
+    // Na sessão, mas o código não veio de `codigosDaSessao`: a segunda camada segura.
+    expect(resolverSemProprios("100000", { codes: ["VOC"] })).toEqual([]);
+    // Pedir outro produto (código) não traz o do Panteon junto.
+    expect(resolverSemProprios("RUB")).toEqual([]);
+    expect(resolverSemProprios("group:Lagoa Bonita")).toEqual([]);
+  });
+
+  it("⚠️ o LAB (31) que o C2X exclui não vira código pelo cadastro: não está nos autorizados", () => {
+    expect(resolverSemProprios("31", { permitidos: new Set(["31"]) })).toEqual([]);
+  });
+
+  it("⚠️ idempotente: a rota que ainda manda `proprios` recebe o MESMO resultado, sem repetir", () => {
+    const comProprios = (pedido: null | string) =>
+      resolverCodigosDoPedido({
+        cadastro: COM_PREDIOS,
+        catalogo: CATALOGO,
+        codesAutorizados: [...AUTORIZADOS, "JAD"],
+        empreendimentos: empreendimentosDoPortal(CATALOGO, AUTORIZADOS),
+        pedido,
+        permitidos: PERMITIDOS_CECILIO,
+        proprios: [{ codigo: "jad", enterpriseId: "100000" }],
+      });
+
+    for (const pedido of [null, "JAD", "100000", "pai:uuid-jad", "37"]) {
+      const saida = comProprios(pedido);
+      expect(saida.sort()).toEqual(resolverSemProprios(pedido).sort());
+      expect(new Set(saida).size).toBe(saida.length);
+    }
+  });
+
+  it("C2X fora do ar (catálogo vazio): o código autorizado pelo cadastro responde sem pedido", () => {
+    const codes = resolverCodigosDoPedido({
+      cadastro: [],
+      catalogo: [],
+      codesAutorizados: AUTORIZADOS,
+      empreendimentos: [],
+      pedido: null,
+      permitidos: new Set(),
+    });
+    expect(codes.sort()).toEqual(["JAD", "VOC"]);
+  });
+});
+
+describe("pedidoPrecisaDoCadastro", () => {
+  const permitidos = new Set(["37", "100000"]);
+
+  it("pai sempre; id numérico só quando é da sessão E o catálogo não traduz", () => {
+    expect(pedidoPrecisaDoCadastro({ catalogo: CATALOGO, pedido: "pai:x", permitidos })).toBe(true);
+    expect(pedidoPrecisaDoCadastro({ catalogo: CATALOGO, pedido: "100000", permitidos })).toBe(true);
+    // O filho do C2X não depende do Supabase.
+    expect(pedidoPrecisaDoCadastro({ catalogo: CATALOGO, pedido: "37", permitidos })).toBe(false);
+    // Id de fora da sessão não lê nada: vira 404.
+    expect(pedidoPrecisaDoCadastro({ catalogo: CATALOGO, pedido: "100001", permitidos })).toBe(false);
+    expect(pedidoPrecisaDoCadastro({ catalogo: CATALOGO, pedido: "group:Lagoa Bonita", permitidos })).toBe(false);
+    expect(pedidoPrecisaDoCadastro({ catalogo: CATALOGO, pedido: null, permitidos })).toBe(false);
+  });
+
+  it("C2X fora do ar: até o id do legado precisa do cadastro para virar código", () => {
+    expect(pedidoPrecisaDoCadastro({ catalogo: [], pedido: "37", permitidos })).toBe(true);
   });
 });

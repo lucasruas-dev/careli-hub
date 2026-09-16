@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ordenarSignatarios, regraDeLista } from "@/lib/assinatura/ordem";
 import type { CorpoDoEnvio, RespostaDoEnvio, RespostaDoPreparo } from "@/lib/assinatura/preparo";
 import { chaveDoSignatario, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 
 // A ORGANIZAÇÃO DA ASSINATURA — o trabalho da etapa "contrato", dentro da própria etapa.
 //
@@ -102,6 +102,9 @@ export function OrganizacaoDaAssinatura({
   const [emails, setEmails] = useState<Record<string, string>>({});
   /** Pedir CPF na assinatura. Ligado por padrão; desligar vale só para este envio. */
   const [pedirCpf, setPedirCpf] = useState(true);
+  // ⚠️ O ENVIO SAI PELA PORTA DO PROVEDOR. No portal que confecciona, a rota do outro lado grava
+  // quem enviou (o usuário do portal) e manda pela MESMA conta da Clicksign da Careli.
+  const { temisFetch } = useApiDaTemis();
 
   useEffect(() => {
     if (!propostaId) {
@@ -117,10 +120,9 @@ export function OrganizacaoDaAssinatura({
     setErro(null);
     void (async () => {
       try {
-        const accessToken = await getApoloAccessToken();
-        const resposta = await fetch(
-          `/api/temis/assinatura/enviar?proposta=${encodeURIComponent(propostaId)}`,
-          { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } },
+        const resposta = await temisFetch(
+          `/assinatura/enviar?proposta=${encodeURIComponent(propostaId)}`,
+          { cache: "no-store" },
         );
         const payload = (await resposta.json()) as { data?: RespostaDoPreparo; erro?: string };
         if (!vivo) return;
@@ -140,7 +142,7 @@ export function OrganizacaoDaAssinatura({
     return () => {
       vivo = false;
     };
-  }, [propostaId]);
+  }, [propostaId, temisFetch]);
 
   /**
    * A lista com a ordem que o operador está vendo AGORA.
@@ -211,7 +213,6 @@ export function OrganizacaoDaAssinatura({
     setErro(null);
     marcarEnvio(true);
     try {
-      const accessToken = await getApoloAccessToken();
       // ⚠️ `semCpf` VAI COMO `true` OU NÃO VAI. O servidor só liga a bandeira com `=== true`; mandar
       // `false` funciona hoje e depende de uma comparação que ninguém garante amanhã.
       const corpo: CorpoDoEnvio = {
@@ -220,9 +221,9 @@ export function OrganizacaoDaAssinatura({
         propostaId,
         ...(pedirCpf ? {} : { semCpf: true }),
       };
-      const resposta = await fetch("/api/temis/assinatura/enviar", {
+      const resposta = await temisFetch("/assinatura/enviar", {
         body: JSON.stringify(corpo),
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         method: "POST",
       });
       const payload = (await resposta.json()) as {

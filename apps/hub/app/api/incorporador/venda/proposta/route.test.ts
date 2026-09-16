@@ -16,6 +16,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const estado = vi.hoisted(() => ({
   apagado: [] as Array<{ tabela: string }>,
+  /** Quantas vezes o WhatsApp da venda foi chamado, e quantas o registro de "não enviado". */
+  avisados: 0,
+  com0170: true,
+  /** Leituras de quem opera o produto (a régua de escrita, D1). O comercial não faz nenhuma. */
+  leuCadastroDeOperacao: 0,
+  naoEnviados: 0,
+  sessao: { tipo: "comercial", usuarioId: "user-1", usuarioNome: "Lucas Ruas" } as Record<string, unknown>,
+  unidade: {} as Record<string, unknown>,
   /** Simula a reserva ter saído de 'ativa' entre a leitura e o flip: update casa ZERO linhas. */
   reservaJaSaiu: false,
   atualizado: [] as Array<{ linha: Record<string, unknown>; tabela: string }>,
@@ -48,19 +56,24 @@ const PLANO = {
   slot: "normal",
 };
 
-vi.mock("@/lib/apolo/incorporador/escopo", () => ({
-  idsDaSessao: async () => ["39"],
-}));
+vi.mock("@/lib/apolo/incorporador/escopo", async () => {
+  const { NextResponse } = await import("next/server");
+  return {
+    foraDoEscopo: () => NextResponse.json({ error: "Não encontrado." }, { status: 404 }),
+    idsDaSessao: async () => ["37", "39"],
+  };
+});
 
-// ⚠️ O PORTÃO É `autorizarComercial`, E NÃO `autorizar`. A diferença é o `tipo` da sessão: as rotas
-// de venda ficavam abertas a QUALQUER cookie `apolo_inc` válido, e o do incorporador é o mesmo dos
-// portais de loteador — o dono do empreendimento podia cancelar por HTTP a proposta do time
+// ⚠️ O PORTÃO É `autorizarOperacaoDeVenda`, E NÃO `autorizar`. A diferença é o portal da sessão: as
+// rotas de venda ficavam abertas a QUALQUER cookie `apolo_inc` válido, e o do incorporador é o mesmo
+// dos portais de loteador — o dono do empreendimento podia cancelar por HTTP a proposta do time
 // comercial e disparar WhatsApp em nome da Careli, sem que a aba Venda sequer apareça para ele.
+// Desde 16/09/2026 passam o comercial e o incorporador que opera a própria venda (o Cecílio); o 404
+// dos demais está provado com cookie assinado de verdade em board-do-portal.test.ts.
 vi.mock("@/lib/apolo/incorporador/board-do-portal", () => ({
-  autorizarComercial: () => ({
-    ok: true,
-    sessao: { tipo: "comercial", usuarioId: "user-1", usuarioNome: "Lucas Ruas" },
-  }),
+  autorizarOperacaoDeVenda: () => ({ ok: true, sessao: estado.sessao }),
+  // A revalidação da conta do portal (cookie de 12 horas) é de outro teste; aqui ela aprova.
+  autorizarPortalQueOperaSozinho: async (_request: Request, sessao: unknown) => ({ ok: true, sessao }),
 }));
 
 vi.mock("@/lib/apolo/catalogo-empreendimentos", () => ({
@@ -71,20 +84,40 @@ vi.mock("@/lib/apolo/incorporador/resumo-do-produto", () => ({
   comIdsDoGrupo: () => ["39"],
 }));
 
+// O 39 é operado pelo portal do Cecílio (o Garden da decisão de 16/09/2026); o 37 é da Careli.
+const CADASTRO = vi.hoisted(() => [
+  {
+    c2xEnterpriseId: "39",
+    cidade: "Aparecida de Goiânia",
+    codigo: "JDG",
+    id: "emp-1",
+    nome: "Jardim das Gaivotas",
+    operadoPor: "inc-cecilio",
+    ordem: 1,
+    paiId: null,
+    uf: "GO",
+    vendendo: true,
+  },
+  {
+    c2xEnterpriseId: "37",
+    cidade: "Goiânia",
+    codigo: "VOC",
+    id: "emp-voc",
+    nome: "VOC",
+    operadoPor: null,
+    ordem: 2,
+    paiId: null,
+    uf: "GO",
+    vendendo: true,
+  },
+]);
+
 vi.mock("@/lib/hercules/cadastro", () => ({
-  carregarCadastroDeEmpreendimentos: async () => [
-    {
-      c2xEnterpriseId: "39",
-      cidade: "Aparecida de Goiânia",
-      codigo: "JDG",
-      id: "emp-1",
-      nome: "Jardim das Gaivotas",
-      ordem: 1,
-      paiId: null,
-      uf: "GO",
-      vendendo: true,
-    },
-  ],
+  carregarCadastroDeEmpreendimentos: async () => CADASTRO,
+  lerCadastroDeEmpreendimentos: async () => {
+    estado.leuCadastroDeOperacao += 1;
+    return { com0170: estado.com0170, linhas: CADASTRO };
+  },
 }));
 
 vi.mock("@/lib/hercules/quem-pode-vender", () => ({ familiaDoEmpreendimento: () => ["39"] }));
@@ -109,14 +142,27 @@ vi.mock("@/lib/hercules/cliente-credenciado", () => ({
   FalhaAoLerCredenciamento: class extends Error {},
 }));
 
-vi.mock("@/lib/hercules/avisos-da-venda", () => ({
-  avisarSobreAVenda: async () => [{ ok: true, para: "imobiliaria" }],
-  destinatariosDaVenda: async () => ({
-    coordenadores: [{ nome: "Nivea", telefone: "62999990000" }],
-    corretor: { nome: "João Souza", telefone: "62988887777" },
-    imobiliaria: { nome: "GURGEL", telefone: "6232220000" },
-  }),
-}));
+vi.mock("@/lib/hercules/avisos-da-venda", async () => {
+  const { portalConfeccionaContrato } = await import("@/lib/apolo/incorporador/perfis-de-portal");
+  return {
+    avisarSobreAVenda: async () => {
+      estado.avisados += 1;
+      return [{ ok: true, para: "imobiliaria" }];
+    },
+    destinatariosDaVenda: async () => ({
+      coordenadores: [{ nome: "Nivea", telefone: "62999990000" }],
+      corretor: { nome: "João Souza", telefone: "62988887777" },
+      imobiliaria: { nome: "GURGEL", telefone: "6232220000" },
+    }),
+    registrarAvisoNaoEnviado: async () => {
+      estado.naoEnviados += 1;
+      return [];
+    },
+    // A régua de verdade é testada em avisos-da-venda.test.ts; aqui ela é refeita sem o gateway.
+    vendaAvisaPeloWhatsapp: (sessao: { slug?: null | string; tipo?: null | string }) =>
+      !portalConfeccionaContrato(sessao.slug, sessao.tipo),
+  };
+});
 
 // O PDF de verdade é caro e não é o assunto deste teste — o insert acontece antes dele.
 vi.mock("@/lib/hercules/proposta-pdf", () => ({
@@ -138,7 +184,7 @@ vi.mock("@/lib/apolo/server", () => {
       then: (aceitar: (r: unknown) => unknown, recusar?: (e: unknown) => unknown) =>
         Promise.resolve(responder(tabela, feito)).then(aceitar, recusar),
     };
-    for (const metodo of ["eq", "in", "limit", "maybeSingle", "order", "range", "single"]) {
+    for (const metodo of ["eq", "in", "is", "limit", "maybeSingle", "order", "range", "single"]) {
       alvo[metodo] = () => alvo;
     }
     // ⚠️ `update().select()` DEVOLVE AS LINHAS QUE CASARAM, e é assim que a rota descobre a corrida
@@ -176,7 +222,7 @@ vi.mock("@/lib/apolo/server", () => {
       const casou = tabela === "hercules_reservas" && estado.reservaJaSaiu ? [] : [{ id: "linha-1" }];
       return { data: casou, error: null };
     }
-    if (tabela === "hercules_unidades") return { data: UNIDADE, error: null };
+    if (tabela === "hercules_unidades") return { data: estado.unidade, error: null };
     if (tabela === "hercules_reservas") return { data: estado.reserva, error: null };
     if (tabela === "apolo_enterprise_settings") {
       return { data: { entrada_minima_percentual: 10 }, error: null };
@@ -265,6 +311,12 @@ const gravada = () => estado.inserido.find((i) => i.tabela === "hercules_propost
 beforeEach(() => {
   estado.apagado = [];
   estado.atualizado = [];
+  estado.avisados = 0;
+  estado.com0170 = true;
+  estado.leuCadastroDeOperacao = 0;
+  estado.naoEnviados = 0;
+  estado.sessao = { tipo: "comercial", usuarioId: "user-1", usuarioNome: "Lucas Ruas" };
+  estado.unidade = UNIDADE;
   estado.credenciado = true;
   estado.inserido = [];
   estado.reservaJaSaiu = false;
@@ -391,5 +443,74 @@ describe("⚠️ a reserva cancelada durante a geração não deixa proposta ór
     const r = await pedir({});
     expect(r.status).toBe(200);
     expect(estado.apagado).toEqual([]);
+  });
+});
+
+// ── QUEM OPERA O PRODUTO DECIDE A ESCRITA (D1) E O AVISO (D3) ──────────────────
+//
+// Decisão do Lucas (16/09/2026): no portal do Cecílio a proposta só nasce no produto operado por ele
+// (o 39 aqui); no VOC (37, da Careli) é só consulta. A Gurgel (comercial) gera como sempre, sem ir ao
+// banco perguntar quem opera. E a proposta do Cecílio não manda WhatsApp para ninguém.
+
+const CECILIO = {
+  incorporadorId: "inc-cecilio",
+  slug: "cecilio-rocha",
+  tipo: "incorporador",
+  usuarioId: "u-cecilio",
+  usuarioNome: "Maria do Cecílio",
+};
+
+describe("POST — a régua de quem opera o produto", () => {
+  it("⚠️ Cecílio no VOC (37, operado pela Careli): 403 só consulta, e nada é gravado", async () => {
+    estado.sessao = CECILIO;
+    estado.unidade = { ...UNIDADE, enterprise_id: "37" };
+    const r = await pedir({});
+    expect(r.status).toBe(403);
+    expect(await r.json()).toMatchObject({ soConsulta: true });
+    expect(estado.inserido).toHaveLength(0);
+    expect(estado.atualizado).toHaveLength(0);
+  });
+
+  it("Cecílio no produto que ele opera (39): grava a proposta", async () => {
+    estado.sessao = CECILIO;
+    const r = await pedir({});
+    expect(r.status).toBe(200);
+    expect(gravada()).toMatchObject({ criado_por: "u-cecilio", etapa: "proposta" });
+  });
+
+  it("⚠️ a proposta do Cecílio não chama o WhatsApp: registra que o aviso não saiu", async () => {
+    estado.sessao = CECILIO;
+    await pedir({});
+    expect(estado.avisados).toBe(0);
+    expect(estado.naoEnviados).toBe(1);
+  });
+
+  it("a Gurgel (comercial) no VOC grava sem ler quem opera, e avisa como sempre", async () => {
+    estado.unidade = { ...UNIDADE, enterprise_id: "37" };
+    const r = await pedir({});
+    expect(r.status).toBe(200);
+    expect(estado.leuCadastroDeOperacao).toBe(0);
+    expect(estado.avisados).toBe(1);
+    expect(estado.naoEnviados).toBe(0);
+  });
+
+  it("sem a 0170 não dá para provar quem opera: 503, e nada é gravado", async () => {
+    estado.sessao = CECILIO;
+    estado.com0170 = false;
+    const r = await pedir({});
+    expect(r.status).toBe(503);
+    expect(estado.inserido).toHaveLength(0);
+  });
+});
+
+describe("POST — a guarda do preço de tabela", () => {
+  it.each([null, "0.00", "1"])("preço %s: 409, e nem a prévia nem a proposta saem", async (preco) => {
+    estado.unidade = { ...UNIDADE, preco_tabela: preco };
+    const r = await pedir({});
+    expect(r.status).toBe(409);
+    expect(((await r.json()) as { error: string }).error).toBe(
+      "Esta unidade está sem preço de tabela e não pode receber proposta.",
+    );
+    expect(estado.inserido).toHaveLength(0);
   });
 });

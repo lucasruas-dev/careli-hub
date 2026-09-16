@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { lerCadsDaEsteira, normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
-import {
-  conflitoDeNucleoFamiliar,
-  cpfValidoParaNucleo,
-  mensagemDeConflito,
-} from "@/lib/apolo/nucleo-familiar";
+import { conferirCpfNoEmpreendimento } from "@/lib/apolo/cadastro-checar-cpf";
+import { normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
+import { cpfValidoParaNucleo } from "@/lib/apolo/nucleo-familiar";
 import { authorizeApoloRead } from "@/lib/apolo/auth";
-import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
+import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // CHECAGEM DO CPF NA IDENTIFICAÇÃO — versão INTERNA (operador logado).
 //
@@ -15,15 +12,22 @@ import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 // Hub e o empreendimento vem do corpo, porque é ele quem escolhe no wizard; no público vem do
 // token assinado, já que lá não há usuário autenticado.
 //
-// Ver o porquê da regra em lib/apolo/nucleo-familiar.ts.
+// A conferência mora em lib/apolo/cadastro-checar-cpf.ts desde 16/09/2026 (o CRM do portal do
+// incorporador faz a mesma pergunta). Ver o porquê da regra em lib/apolo/nucleo-familiar.ts.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const digitos = (v: unknown) => String(v ?? "").replace(/\D/g, "");
-const semConflito = NextResponse.json(
-  { data: { conferido: false, conflito: null } },
-  { headers: { "Cache-Control": "no-store" } },
-);
+// ⚠️ FUNÇÃO, NÃO CONSTANTE DE MÓDULO. Uma `Response` tem corpo de leitura única: a constante criada
+// no carregamento do módulo era a MESMA instância em toda chamada da função quente da Vercel, e a
+// segunda resposta "não conferido" podia sair com o corpo já consumido (o wizard lia como falha).
+// Cada chamada precisa da sua resposta (o mesmo cuidado de /api/incorporador/produto/imobiliarias).
+function semConflito(): NextResponse {
+  return NextResponse.json(
+    { data: { conferido: false, conflito: null } },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
 
 export async function POST(request: Request) {
   const authorization = await authorizeApoloRead(request);
@@ -33,79 +37,37 @@ export async function POST(request: Request) {
   try {
     corpo = (await request.json()) as typeof corpo;
   } catch {
-    return semConflito;
+    return semConflito();
   }
 
   const cpf = digitos(corpo.cpf);
   const cpfConjuge = digitos(corpo.cpfConjuge);
   // CPF pela metade não é erro: o operador ainda está digitando, ou o MOST ainda não fechou.
-  if (!cpfValidoParaNucleo(cpf)) return semConflito;
+  if (!cpfValidoParaNucleo(cpf)) return semConflito();
 
   const enterpriseId = normalizarEnterpriseId(corpo.enterpriseId ?? null);
   // Sem empreendimento não há o que comparar: a duplicidade é POR empreendimento.
-  if (!enterpriseId) return semConflito;
+  if (!enterpriseId) return semConflito();
 
   const adminClient = createApoloAdminClient();
-  if (!adminClient) return semConflito;
+  if (!adminClient) return semConflito();
 
-  // Todas as fichas deste CPF, não uma: a mesma pessoa tem mais de uma ficha em 516 casos, e
-  // olhar só a primeira foi o que deixou passar as CADs duplicadas de agosto.
-  const docHash = hashIdentifier("cpf", cpf);
-  const [{ data: porIdentificador }, { data: porDocumento }] = await Promise.all([
-    adminClient
-      .from("apolo_entity_identifiers")
-      .select("entity_id")
-      .eq("identifier_type", "cpf")
-      .eq("value_hash", docHash),
-    adminClient.from("apolo_entities").select("id").eq("document_hash", docHash),
-  ]);
-
-  const idsDoDocumento = [
-    ...new Set([
-      ...(porIdentificador ?? []).map((l: { entity_id: string }) => l.entity_id),
-      ...(porDocumento ?? []).map((l: { id: string }) => l.id),
-    ]),
-  ].filter(Boolean);
-
-  const responder = (conflito: null | { mensagem: string; tipo: string }) =>
-    NextResponse.json(
-      { data: { conferido: true, conflito } },
-      { headers: { "Cache-Control": "no-store" } },
-    );
-
-  for (const id of idsDoDocumento) {
-    let cads: { empreendimento: null | string; enterprise_id: null | string }[];
-    try {
-      cads = await lerCadsDaEsteira<{
-        empreendimento: null | string;
-        enterprise_id: null | string;
-      }>(adminClient, id, "empreendimento, enterprise_id");
-    } catch {
-      // Esta rota é conveniência, não autoridade: em dúvida deixa seguir, e a trava do salvar
-      // decide, que aquela é fail-closed.
-      return semConflito;
-    }
-
-    const aqui = cads.find((c) => normalizarEnterpriseId(c.enterprise_id) === enterpriseId);
-    if (aqui) {
-      const onde = aqui.empreendimento?.trim();
-      return responder({
-        mensagem:
-          `Este CPF já possui CAD ${onde ? `para o empreendimento ${onde}` : "para esse empreendimento"}.`,
-        tipo: "cpf-ja-tem-cad",
-      });
-    }
-  }
-
-  const conflito = await conflitoDeNucleoFamiliar({
-    adminClient,
+  const resultado = await conferirCpfNoEmpreendimento(adminClient, {
+    cpf,
     cpfConjuge,
-    cpfTitular: cpf,
     enterpriseId,
-    ignorarEntityIds: idsDoDocumento,
   });
+  if (!resultado) return semConflito();
 
-  return responder(
-    conflito ? { mensagem: mensagemDeConflito(conflito), tipo: conflito.motivo } : null,
+  return NextResponse.json(
+    {
+      data: {
+        conferido: true,
+        conflito: resultado.conflito
+          ? { mensagem: resultado.conflito.mensagem, tipo: resultado.conflito.tipo }
+          : null,
+      },
+    },
+    { headers: { "Cache-Control": "no-store" } },
   );
 }

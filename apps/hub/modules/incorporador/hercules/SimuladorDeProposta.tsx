@@ -48,6 +48,7 @@ import {
 } from "@/lib/hercules/ajuste-de-preco";
 
 import { T } from "../tema";
+import { EtiquetaDaRessalva } from "./PoliticasDoProduto";
 
 // O SIMULADOR DE PROPOSTA DO COMERCIAL.
 //
@@ -248,7 +249,11 @@ export function SimuladorDeProposta({
    * empreendimento tiver faixa, esta tela se comporta exatamente como se comportava.
    */
   faixasDePrazo?: readonly FaixaDePrazo[];
-  planos: PlanoDaVenda[];
+  /**
+   * Os planos do lote. A `ressalva` (0168) é opcional no tipo: a Mesa e a proposta a mandam, e quem
+   * não manda simplesmente não desenha etiqueta.
+   */
+  planos: Array<PlanoDaVenda & { ressalva?: null | string }>;
   /** "12 06" — o lote, como a tela escreve. */
   unidade: string;
   valorDaUnidade: number;
@@ -368,19 +373,42 @@ export function SimuladorDeProposta({
     [planos],
   );
 
+  /**
+   * QUAL plano está escolhido — pela POSIÇÃO, e não pelo nome.
+   *
+   * ⚠️ RESOLVER POR NOME FAZIA A TELA ESCOLHER DOIS PLANOS DIFERENTES PARA A MESMA SIMULAÇÃO, e o
+   * defeito era mudo. Os números (parcelas, entrada, taxa) saíam de `find`, que devolve o PRIMEIRO
+   * com aquele nome; o índice de correção, o sistema de amortização e a convenção — que são o que
+   * o cliente assina — saíam de um `Map` por nome, onde o ÚLTIMO com a mesma chave VENCE. Com
+   * nomes repetidos na lista, um era o plano do filho e o outro o do pai.
+   *
+   * ⚠️ E OS NOMES SE REPETEM DE VERDADE: medido em 15/09/2026, VLO (pai) e VOC (filho) têm cada um
+   * CURTO, INVESTIDOR e NORMAL — três nomes, seis planos. Os valores coincidem HOJE, então nada
+   * aparece errado na tela; no dia em que o filho mudar o NORMAL dele, o cartão mostra uma parcela
+   * e o contrato sai com o índice do outro, sem erro e sem log.
+   *
+   * A posição resolve porque `planosDaConta` é um `map` 1:1 de `planos` — o mesmo índice é o mesmo
+   * plano nas duas listas, por construção.
+   */
+  const indiceDoPlano = useMemo(() => {
+    const achado = planosDaConta.findIndex((p) => p.nome === planoAtivo);
+    if (achado >= 0) return achado;
+    return planosDaConta.length > 0 ? 0 : -1;
+  }, [planoAtivo, planosDaConta]);
+
   const planoBase = useMemo(
-    () =>
-      planosDaConta.find((p) => p.nome === planoAtivo) ??
-      planosDaConta[0] ??
-      null,
-    [planoAtivo, planosDaConta],
+    () => (indiceDoPlano >= 0 ? (planosDaConta[indiceDoPlano] ?? null) : null),
+    [indiceDoPlano, planosDaConta],
   );
 
   // ⚠️ O PLANO CRU FICA À MÃO. `PlanoDaComposicao` carrega só o que a conta usa; o índice de
   // correção, o sistema de amortização e a convenção de juros são do CADASTRO, e a tela precisa
-  // deles para dizer o que o cliente vai assinar.
+  // deles para dizer o que o cliente vai assinar. Vem do MESMO índice do `planoBase`.
+  const cruBase = indiceDoPlano >= 0 ? planos[indiceDoPlano] : undefined;
+
+  // ⚠️ SÓ PARA OS CARTÕES DA ESCADA, onde a chave é mesmo o nome e o empate não decide conta
+  // nenhuma — é rótulo de correção num cartão. Não use isto para resolver o plano escolhido.
   const crus = useMemo(() => new Map(planos.map((p) => [p.nome, p])), [planos]);
-  const cruBase = planoBase ? crus.get(planoBase.nome) : undefined;
 
   /**
    * ── A FAIXA DE PRAZO MANDA NA PREMISSA ──────────────────────────────────
@@ -735,7 +763,10 @@ export function SimuladorDeProposta({
       plano: melhor.plano,
       total: melhor.total,
     };
-  }, [comando, composicoes, cockpit, montada, plano]);
+    // ⚠️ `montagem.entrada` NAS DEPENDÊNCIAS (16/09/2026, aviso do lint que já vinha do HEAD): o
+    // cartão do ramo `montada` mostra essa entrada, e um memo que lê um valor sem declará-lo pode
+    // devolver o cartão com o número anterior. É memo de leitura: recalcular a mais não dispara nada.
+  }, [comando, composicoes, cockpit, montada, montagem.entrada, plano]);
 
   /**
    * As demais: mesma parcela, outro arranjo.
@@ -1409,8 +1440,12 @@ export function SimuladorDeProposta({
               gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))",
             }}
           >
-            {tabela.map((t) => {
+            {tabela.map((t, posicao) => {
               const ativo = plano?.nome === t.plano.nome;
+              // ⚠️ A RESSALVA PELA POSIÇÃO, e não pelo nome: `tabela` é um `map` 1:1 de
+              // `planosDaConta`, que é 1:1 de `planos` (ver `indiceDoPlano`). Pelo nome, o plano do
+              // pai e o do filho com o mesmo nome trocariam de etiqueta.
+              const ressalva = planos[posicao]?.ressalva ?? null;
               return (
                 <button
                   key={t.plano.nome}
@@ -1429,6 +1464,15 @@ export function SimuladorDeProposta({
                   <div style={{ color: T.sub, fontSize: 12, fontWeight: 650 }}>
                     {t.plano.nome}
                   </div>
+                  {/* ⚠️ A CONDIÇÃO DE DISPONIBILIDADE DO PLANO (0168), onde o plano é ESCOLHIDO.
+                      Lucas (16/09/2026) pediu a escrita no plano investidor ("válido para as
+                      próximas 16 unidades"); ela só aparecia no Apolo e na aba de políticas, e a Mesa
+                      oferecia o plano sem a condição. É a mesma etiqueta âmbar de lá. */}
+                  {ressalva ? (
+                    <div style={{ marginTop: 3 }}>
+                      <EtiquetaDaRessalva texto={ressalva} />
+                    </div>
+                  ) : null}
                   <div
                     style={{
                       color: T.text,

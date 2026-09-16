@@ -7,8 +7,13 @@ import {
 } from "@/lib/apolo/incorporador/codigos-do-pedido";
 import { lerEsteiraDoEscopo } from "@/lib/apolo/incorporador/crm";
 import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
-import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
-import { codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
+import {
+  codigosDaSessao,
+  idsDaSessao,
+  linhasSoDoPanteon,
+} from "@/lib/apolo/incorporador/escopo";
+import { podeEscreverNosEnterprises } from "@/lib/apolo/incorporador/operacao-do-produto";
 import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient } from "@/lib/apolo/server";
@@ -16,10 +21,7 @@ import {
   espelhosADescartar,
   semEspelhoDuplicado,
 } from "@/lib/hercules/sem-espelho-duplicado";
-import {
-  carregarCadastroDeEmpreendimentos,
-  soDoPanteon,
-} from "@/lib/hercules/cadastro";
+import { lerCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
 import {
   agregarFluxo,
@@ -28,12 +30,15 @@ import {
   type PropostaDaCarga,
   type UnidadeDoMapa,
 } from "@/lib/hercules/fluxo-de-venda";
+import { COLUNAS_DO_APARTAMENTO } from "@/lib/hercules/nome-da-unidade";
 import {
   lerPlanosDoPanteon,
   lerFaixasDoPanteon,
   planosPreferindoOPanteon,
 } from "@/lib/hercules/planos-do-panteon";
+import { tipoProdutoDe, type TipoProduto } from "@/lib/hercules/produto-novo";
 import { reservaComoLinhaDoFluxo } from "@/lib/hercules/reserva";
+import { ehColunaDaUnidadeVerticalAusente } from "@/lib/hercules/unidade-nova";
 
 /** As etapas da esteira que já PARARAM: virou credenciado, ou não seguiu. */
 const ETAPAS_FINAIS = new Set(["credenciado", "indeferido"]);
@@ -122,7 +127,7 @@ const indisponivel = () =>
   );
 
 export async function GET(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const supabase = createApoloAdminClient();
@@ -133,17 +138,20 @@ export async function GET(request: Request) {
   // ⚠️ O ESCOPO DO PORTAL É TRADUZIDO EM CÓDIGOS PELO CATÁLOGO DO C2X, e empreendimento que só
   // existe no Panteon não tem código lá. Sem esta linha ele some da tela inteira — sem produto no
   // seletor, sem lote no mapa, e o botão Reservar nunca fica clicável. É tradução, não permissão:
-  // `soDoPanteon` filtra pelos ids que a sessão JÁ traz.
+  // `linhasSoDoPanteon` filtra pelos ids que a sessão JÁ traz.
   const catalogoDoC2x = await catalogoDeEmpreendimentos(Date.now());
-  const idsNoC2x = new Set(
-    catalogoDoC2x.flatMap((e) => e.stageIds.map(String)),
-  );
-  const cadastroDoPanteon = await carregarCadastroDeEmpreendimentos();
-  const proprios = soDoPanteon(
-    cadastroDoPanteon,
-    await idsDaSessao(auth.sessao),
-    idsNoC2x,
-  );
+  // `com0170` vem junto porque a mesma leitura decide o que a tela pode escrever (ver
+  // `escritaPorEmpreendimento`, mais abaixo): sem a coluna, ninguém fora do comercial escreve.
+  const { com0170, linhas: cadastroDoPanteon } = await lerCadastroDeEmpreendimentos();
+  // ⚠️ A TRAVA DO LAB (onda 2, 16/09/2026). `soDoPanteon` sozinho não conhece
+  // `EXCLUDED_ENTERPRISE_CODES`: numa sessão com o 31, o LAB (fora do catálogo do C2X de propósito)
+  // entrava como produto "próprio" e voltava ao seletor e à contagem. `linhasSoDoPanteon` é a
+  // mesma tradução COM a trava, e é a que o painel de produtos já usa.
+  const proprios = linhasSoDoPanteon({
+    cadastro: cadastroDoPanteon,
+    catalogo: catalogoDoC2x,
+    permitidos: await idsDaSessao(auth.sessao),
+  }).map((l) => ({ codigo: l.codigo, enterpriseId: String(l.c2xEnterpriseId) }));
   const codesComProprios = [
     ...new Set([...codesAutorizados, ...proprios.map((p) => p.codigo)]),
   ];
@@ -214,6 +222,22 @@ export async function GET(request: Request) {
       semEspelhoDuplicado([...idsDoPedido], fora.idsDoC2x),
     );
 
+    // ⚠️ DOIS ESCOPOS, PORQUE SÃO DUAS PERGUNTAS DIFERENTES — e usar um só respondia mal a segunda.
+    //
+    // `idsDoEscopo` responde "de quem eu CONTO as vendas". Ali o pai é duplicata: no C2X o Vale do
+    // Ouro existe quatro vezes, e somar pai e filhos conta cada venda duas vezes (foi um VGV
+    // R$ 1,5 mi maior do que o real). Por isso `espelhosADescartar` o remove, e isso continua.
+    //
+    // `idsDaConfiguracao` responde "de quem eu LEIO as regras". Ali o pai é a HERANÇA, não a
+    // duplicata. Lucas (15/09/2026): *"se eu cadastrar os planos somente no pai, prevalece em todas
+    // categorias (se tiver) em todos os filhos"*. Lendo do escopo podado, o plano do pai nunca
+    // chegava à tela — medido: o VLO tem 3 planos cadastrados e a Mesa não lia nenhum, porque VOC,
+    // VOL e VOR estão sempre no escopo e derrubam o pai.
+    //
+    // ⚠️ E O PAI SÓ ENTRA AQUI, nunca na contagem. Quem devolver o pai ao `idsDoEscopo` para
+    // "simplificar" traz de volta o VGV dobrado e os lotes fantasmas no mapa.
+    const idsDaConfiguracao = new Set([...idsDoEscopo, ...fora.idsDoC2x]);
+
     // ── As propostas do escopo, em páginas ────────────────────────────────
     const propostas: PropostaDaCarga[] = [];
     for (let de = 0; ; de += PAGINA) {
@@ -243,16 +267,34 @@ export async function GET(request: Request) {
     // dá erro nenhum: devolve zero unidade, e a tela mostra um mapa em branco com o funil cheio.
     // O catálogo traz `codes` e `stageIds` na mesma ordem; é dele que sai a tradução, feita acima.
     const unidades: UnidadeDoMapa[] = [];
+    // ⚠️ AS COLUNAS DO PRÉDIO (0171) ENTRAM NA GRADE (onda 2, 16/09/2026): sem torre, andar e
+    // apartamento, a Mesa desenha o apto como um quadradinho sem quadra. Sem a 0171 aplicada, a
+    // primeira página que acusar a coluna faz a leitura recomeçar sem elas: sem a migration não
+    // existe apartamento nenhum, então ler sem as colunas é exato, não aproximado.
+    let colunasDoApartamento = COLUNAS_DO_APARTAMENTO;
     for (let de = 0; ; de += PAGINA) {
       const { data, error } = await supabase
         .from("hercules_unidades")
-        .select("id,codigo,quadra,lote,situacao,preco_tabela,enterprise_id")
+        // ⚠️ `categoria_id` E `espelho_de` ENTRAM AQUI. A categoria é o menor recorte da
+        // hierarquia de planos (Lucas, 15/09/2026) e sem ela a tela não tem como escolher; o
+        // `espelho_de` diz se esta linha é o registro ANTIGO do terreno, e o plano tem de ser
+        // resolvido pela linha VIVA — senão o lote do pai e o do filho podem responder diferente.
+        .select(
+          `id,codigo,quadra,lote,situacao,preco_tabela,enterprise_id,categoria_id,espelho_de${colunasDoApartamento}`,
+        )
         .eq("workspace_id", "careli")
         .in("enterprise_id", [...idsDoEscopo])
         .range(de, de + PAGINA - 1);
 
+      if (error && colunasDoApartamento && ehColunaDaUnidadeVerticalAusente(error)) {
+        // Recomeça do zero sem as colunas: o `de += PAGINA` do laço leva o -PAGINA de volta a 0.
+        colunasDoApartamento = "";
+        unidades.length = 0;
+        de = -PAGINA;
+        continue;
+      }
       if (error) throw new Error(error.message);
-      unidades.push(...((data ?? []) as UnidadeDoMapa[]));
+      unidades.push(...((data ?? []) as unknown as UnidadeDoMapa[]));
       if ((data?.length ?? 0) < PAGINA) break;
     }
 
@@ -309,14 +351,14 @@ export async function GET(request: Request) {
     // é o que ele já fazia. Perder a Venda inteira porque o legado não respondeu seria pior.
     const [doC2x, doPanteon, faixasDePrazo] = await Promise.all([
       lerPlanosDoC2x(codes).catch(() => ({ ok: false }) as const),
-      lerPlanosDoPanteon(supabase, [...idsDoEscopo]).catch((erro) => {
+      lerPlanosDoPanteon(supabase, [...idsDaConfiguracao]).catch((erro) => {
         console.error("[incorporador/venda] planos do panteon", erro);
         return [];
       }),
       // ⚠️ MESMA REGRA DOS PLANOS: falha não derruba a tela. Sem faixa, `premissaDoPrazo` devolve
       // nulo e o simulador se comporta como se comportava antes de 13/09/2026 — que é, hoje, o
       // caso de TODOS os empreendimentos, porque a tabela nasceu vazia na migration 0155.
-      lerFaixasDoPanteon(supabase, [...idsDoEscopo]).catch((erro) => {
+      lerFaixasDoPanteon(supabase, [...idsDaConfiguracao]).catch((erro) => {
         console.error("[incorporador/venda] faixas de prazo", erro);
         return {};
       }),
@@ -355,10 +397,19 @@ export async function GET(request: Request) {
         )
         .map((p) => String(p.unidade_id)),
     );
+    // O tipo de cada produto do escopo, pelo cadastro: é o que escreve "Torre A · Apto 304" na grade
+    // e na reserva do prédio mesmo quando a leitura da unidade não trouxe as colunas.
+    const tiposDeProduto: Record<string, TipoProduto> = Object.fromEntries(
+      cadastro
+        .filter((e) => e.c2xEnterpriseId)
+        .map((e) => [String(e.c2xEnterpriseId), tipoProdutoDe(e.tipoProduto)]),
+    );
+
     const reservas = await lerReservasVivas(
       supabase,
       unidades,
       comPropostaViva,
+      tiposDeProduto,
     ).catch((erro) => {
       console.error("[incorporador/venda] reservas", erro);
       return [] as PropostaDaCarga[];
@@ -407,13 +458,66 @@ export async function GET(request: Request) {
             cads,
             periodo,
             propostas: [...reservas, ...propostas],
+            tiposDeProduto,
             unidades,
           }),
           entradaMinima,
+          // ⚠️ O QUE ESTA SESSÃO PODE ESCREVER, POR EMPREENDIMENTO (Lucas, 16/09/2026). No portal que
+          // confecciona (o Cecílio) só o produto operado por ele aceita reserva, proposta, contrato,
+          // bloqueio e cancelamento; o VOC e o VOR ficam só consulta. A tela esconde os botões com
+          // isto, e as rotas de escrita recusam de qualquer jeito (403): a tela é conforto, a rota é
+          // a trava. É a mesma régua das rotas (`podeEscreverNosEnterprises`), sobre a leitura do
+          // cadastro que esta rota já fez. O comercial sai `true` em tudo, como sempre operou.
+          escritaPorEmpreendimento: Object.fromEntries(
+            [...new Set(unidades.map((u) => String(u.enterprise_id)))].map((id) => [
+              id,
+              podeEscreverNosEnterprises(
+                {
+                  incorporadorId: auth.sessao.incorporadorId,
+                  slug: auth.sessao.slug,
+                  tipo: auth.sessao.tipo,
+                },
+                cadastro,
+                [id],
+                com0170,
+              ),
+            ]),
+          ),
+          // ⚠️ O PARENTESCO VEM DO CADASTRO DO PANTEON, que é onde ele mora — `hercules_empreendimentos.pai_id`.
+          // A tela precisa dele para o terceiro degrau da hierarquia de planos.
+          paiPorEmpreendimento: Object.fromEntries(
+            cadastro
+              .filter((e) => e.paiId && e.c2xEnterpriseId)
+              .map((e) => [
+                String(e.c2xEnterpriseId),
+                String(
+                  cadastro.find((p) => p.id === e.paiId)?.c2xEnterpriseId ?? "",
+                ),
+              ])
+              .filter(([, pai]) => pai !== ""),
+          ),
           // As faixas de prazo cadastradas, por enterprise_id. É delas que o simulador tira juros,
           // índice e entrada quando o corretor muda o número de parcelas.
           faixasDePrazo,
-          planos: planos.flatMap((e) => e.planos),
+          // ⚠️ O DONO VIAJA JUNTO COM O PLANO, e antes não viajava. O `flatMap` cru entregava uma
+          // lista única para QUALQUER lote clicado: sem saber de quem é cada plano, a tela não tem
+          // como aplicar categoria → filho → pai. Medido: para um lote do VOC a lista trazia SEIS
+          // planos com TRÊS nomes repetidos (os do VOC e os do VLO), e a escolha por nome pegava o
+          // primeiro do array — a ordem do banco decidindo o contrato.
+          //
+          // `entradaMinima` e `faixasDePrazo`, três linhas acima, já viajam por empreendimento. O
+          // plano era o único dos três que não dizia de onde vinha.
+          //
+          // ⚠️ E A RESSALVA VIAJA COM ELE (16/09/2026): "válido para as próximas 16 unidades" é
+          // condição de venda, e o simulador a mostra ao lado do nome. Plano do C2X não tem ressalva
+          // (nulo); o do Panteon a traz de `lerPlanosDoPanteon`, nula enquanto a 0168 não roda.
+          planos: planos.flatMap((e) =>
+            e.planos.map((p) => ({
+              ...p,
+              enterpriseId: p.enterpriseId ?? e.enterpriseId,
+              ressalva: (p as { ressalva?: null | string }).ressalva ?? null,
+            })),
+          ),
         },
       },
       { headers: { "Cache-Control": "no-store" } },
@@ -439,6 +543,7 @@ async function lerReservasVivas(
   supabase: ReturnType<typeof createApoloAdminClient>,
   unidades: UnidadeDoMapa[],
   comPropostaViva: Set<string>,
+  tiposDeProduto: Readonly<Record<string, TipoProduto>>,
 ): Promise<PropostaDaCarga[]> {
   if (!supabase || unidades.length === 0) return [];
 
@@ -532,6 +637,8 @@ async function lerReservasVivas(
         },
         unidade
           ? {
+              // As colunas e o tipo do prédio: a reserva de um apto sai "Torre A · Apto 304".
+              apartamento: unidade.apartamento ?? null,
               codigo: unidade.codigo,
               lote: unidade.lote,
               // ⚠️ `numeric` do Postgres chega como STRING no PostgREST. Sem o Number, o VGV do
@@ -541,6 +648,8 @@ async function lerReservasVivas(
                   ? null
                   : Number(unidade.preco_tabela),
               quadra: unidade.quadra,
+              tipoProduto: tiposDeProduto[String(unidade.enterprise_id)] ?? null,
+              torre: unidade.torre ?? null,
             }
           : null,
         null,

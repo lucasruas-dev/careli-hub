@@ -4,11 +4,15 @@ import type { ApoloVendaUnit } from "@/lib/apolo/vendas";
 
 import type { LinhaEsteira } from "./crm";
 import {
+  contarVendasDoPanteonPorImobiliaria,
   contarVendasPorImobiliaria,
   idsDoApoloDoRecorte,
+  lerPropostasVivasDoPanteon,
   montarImobiliariasDoProduto,
+  type PropostaDoPanteonDaImobiliaria,
   SEM_CORRETOR,
   situacaoDaCad,
+  somarVendasPorImobiliaria,
 } from "./imobiliarias-do-produto";
 
 // A ABA IMOBILIÁRIAS DO HÉRCULES É NÚMERO NA TELA DO COORDENADOR. O que está travado aqui: a
@@ -319,5 +323,114 @@ describe("idsDoApoloDoRecorte", () => {
 
   it("id que sumiu do catálogo mas a sessão autoriza continua valendo", () => {
     expect(idsDoApoloDoRecorte(catalogo, ["40"], new Set(["40"]))).toEqual(["40"]);
+  });
+});
+
+// ── O produto que só existe no Panteon (achado 20 da onda 1, 16/09/2026) ─────
+describe("contarVendasDoPanteonPorImobiliaria", () => {
+  const proposta = (p: Partial<PropostaDoPanteonDaImobiliaria> & { id: string }): PropostaDoPanteonDaImobiliaria => ({
+    etapa: "proposta",
+    imobiliaria_entity_id: "imob-a",
+    unidade_id: null,
+    ...p,
+  });
+
+  it("⚠️ conta UNIDADE com venda ativa por imobiliária, como a régua do C2X", () => {
+    const contagem = contarVendasDoPanteonPorImobiliaria([
+      proposta({ id: "p1", unidade_id: "u1" }),
+      // A mesma unidade com uma segunda proposta viva conta uma vez só.
+      proposta({ etapa: "contrato", id: "p2", unidade_id: "u1" }),
+      proposta({ etapa: "faturado", id: "p3", unidade_id: "u2" }),
+      proposta({ id: "p4", imobiliaria_entity_id: "imob-b", unidade_id: "u3" }),
+    ]);
+    expect(Object.fromEntries(contagem)).toEqual({ "imob-a": 2, "imob-b": 1 });
+  });
+
+  it("cancelada, distratada e proposta sem imobiliária não contam; sem unidade conta pela proposta", () => {
+    const contagem = contarVendasDoPanteonPorImobiliaria([
+      proposta({ etapa: "cancelado", id: "p1", unidade_id: "u1" }),
+      proposta({ etapa: " Distrato ", id: "p2", unidade_id: "u2" }),
+      proposta({ id: "p3", imobiliaria_entity_id: null, unidade_id: "u3" }),
+      proposta({ id: "p4" }),
+      proposta({ id: "p5" }),
+    ]);
+    expect(Object.fromEntries(contagem)).toEqual({ "imob-a": 2 });
+  });
+});
+
+describe("somarVendasPorImobiliaria", () => {
+  it("soma as duas fontes sem perder chave", () => {
+    const soma = somarVendasPorImobiliaria(
+      new Map([["imob-a", 3], ["imob-b", 1]]),
+      new Map([["imob-a", 2], ["imob-c", 4]]),
+    );
+    expect(Object.fromEntries(soma)).toEqual({ "imob-a": 5, "imob-b": 1, "imob-c": 4 });
+  });
+});
+
+describe("lerPropostasVivasDoPanteon", () => {
+  function clienteFalso(paginas: PropostaDoPanteonDaImobiliaria[][], erro = false) {
+    const chamadas: Array<{ codigos: string[]; de: number; filtros: string[] }> = [];
+    const from = (tabela: string) => {
+      const reg = { codigos: [] as string[], de: 0, filtros: [tabela] };
+      const cadeia = {
+        eq: (coluna: string, valor: string) => {
+          reg.filtros.push(`eq:${coluna}=${valor}`);
+          return cadeia;
+        },
+        in: (_coluna: string, valores: string[]) => {
+          reg.codigos = valores;
+          return cadeia;
+        },
+        not: (coluna: string, operador: string, valor: string) => {
+          reg.filtros.push(`not:${coluna} ${operador} ${valor}`);
+          return cadeia;
+        },
+        order: () => cadeia,
+        range: (de: number) => {
+          reg.de = de;
+          return cadeia;
+        },
+        returns: () => {
+          chamadas.push(reg);
+          return Promise.resolve(
+            erro ? { data: null, error: { message: "fora" } } : { data: paginas[reg.de / 1000] ?? [], error: null },
+          );
+        },
+        select: () => cadeia,
+      };
+      return cadeia;
+    };
+    return { chamadas, cliente: { from } as unknown as Parameters<typeof lerPropostasVivasDoPanteon>[0] };
+  }
+
+  it("⚠️ pagina de 1.000 em 1.000, filtra o workspace, o código e as etapas vivas", async () => {
+    const cheia = Array.from({ length: 1000 }, (_, i) => ({
+      etapa: "proposta",
+      id: `p${i}`,
+      imobiliaria_entity_id: "imob-a",
+      unidade_id: `u${i}`,
+    }));
+    const { chamadas, cliente } = clienteFalso([cheia, [cheia[0] as PropostaDoPanteonDaImobiliaria]]);
+    const lido = await lerPropostasVivasDoPanteon(cliente, ["jad", " JAD ", "rub"]);
+    expect(lido.ok && lido.propostas).toHaveLength(1001);
+    expect(chamadas.map((c) => c.de)).toEqual([0, 1000]);
+    expect(chamadas[0]?.codigos).toEqual(["JAD", "RUB"]);
+    expect(chamadas[0]?.filtros).toEqual([
+      "hercules_propostas",
+      "eq:workspace_id=careli",
+      // Só a venda nativa: a da carga do C2X já é contada pelo legado (revisão do conjunto, 16/09/2026).
+      "eq:origem=panteon",
+      'not:etapa in ("cancelado","distrato")',
+    ]);
+  });
+
+  it("sem código não consulta; erro é ok: false (nunca 'ninguém vendeu')", async () => {
+    const vazio = clienteFalso([]);
+    expect(await lerPropostasVivasDoPanteon(vazio.cliente, [])).toEqual({ ok: true, propostas: [] });
+    expect(vazio.chamadas).toHaveLength(0);
+
+    const fora = clienteFalso([], true);
+    expect(await lerPropostasVivasDoPanteon(fora.cliente, ["JAD"])).toEqual({ ok: false });
   });
 });

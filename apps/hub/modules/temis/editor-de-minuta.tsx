@@ -25,7 +25,12 @@ import type { NoDoDocumento } from "@/lib/temis/documento-html";
 import { migrarAlinhamentoAntigo } from "@/lib/temis/migrar-documento";
 import { acharVariavel, variaveisDoTexto } from "@/lib/temis/variaveis";
 import { setMinutaAtualParaUpload } from "@/lib/temis/upload-midia";
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import {
+  type ApiDaTemis,
+  sessaoDisponivel,
+  type TemisFetch,
+  useApiDaTemis,
+} from "@/modules/temis/api-da-temis";
 import { useAuth } from "@/providers/auth-provider";
 
 import { faixaDoTrecho, textoDoDocumento, trechoJaEmNegrito } from "./plugins/achar-trecho";
@@ -284,6 +289,10 @@ function PainelLateral({
   const [conversa, setConversa] = useState<MensagemDaConversa[]>([]);
   const [conversando, setConversando] = useState(false);
   const pedidos = usePluginOption(TemisToolbarPlugin, "pedidoDeMarcacao");
+  // A porta do agente: no hub, `/api/temis` com Bearer; nas minutas do portal que confecciona,
+  // `/api/incorporador/temis` com o cookie. Estável entre renders (ver `api-da-temis.tsx`), e é
+  // isso que deixa a marcação abaixo disparar só quando `pedidos` muda.
+  const api = useApiDaTemis();
 
   /**
    * Manda a pergunta e trata a resposta.
@@ -301,7 +310,7 @@ function PainelLateral({
     setConversa(historico);
     setConversando(true);
     try {
-      const r = await conversarComOAgente(textoDoDocumento(editor.children), historico);
+      const r = await conversarComOAgente(textoDoDocumento(editor.children), historico, api);
       setConversa((atual) => [
         ...atual,
         { conteudo: r.erro ?? r.resposta, papel: "agente" },
@@ -328,7 +337,7 @@ function PainelLateral({
       setAba("agente");
       setPropostas(null);
       try {
-        const resposta = await pedirMarcacao(textoDoDocumento(editor.children));
+        const resposta = await pedirMarcacao(textoDoDocumento(editor.children), api);
         if (!cancelado) setPropostas(resposta);
       } finally {
         if (!cancelado) editor.setOption(TemisToolbarPlugin, "marcando", false);
@@ -339,7 +348,7 @@ function PainelLateral({
     return () => {
       cancelado = true;
     };
-  }, [editor, pedidos]);
+  }, [api, editor, pedidos]);
 
   const abas: { chave: Aba; conta?: number; rotulo: string }[] = [
     { chave: "blocos", rotulo: "Blocos" },
@@ -505,17 +514,17 @@ function partirEmPedacos(texto: string): string[] {
 
 async function umaParte(
   texto: string,
-  token: string,
+  temisFetch: TemisFetch,
   jaPropostas?: PropostaDoAgente[],
 ): Promise<RespostaDoAgente> {
   try {
-    const r = await fetch("/api/temis/minutas/marcar", {
+    const r = await temisFetch("/minutas/marcar", {
       // Com `jaPropostas`, a rota faz a RELEITURA: procura só o que a primeira leitura deixou passar.
       body: JSON.stringify({ jaPropostas: jaPropostas ?? [], texto }),
-      // ⚠️ O TOKEN É OBRIGATÓRIO, e esquecê-lo foi o defeito que fez o agente responder 401 no
-      // primeiro teste real. A rota exige `authorizeApoloRead` como todas as do módulo; o resto da
-      // Têmis já manda o `Bearer` e eu não mandei aqui.
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      // ⚠️ A CREDENCIAL É OBRIGATÓRIA, e esquecê-la foi o defeito que fez o agente responder 401 no
+      // primeiro teste real. A rota exige `authorizeApoloRead` como todas as do módulo. Quem põe o
+      // `Bearer` (hub) ou leva o cookie (portal) agora é o `temisFetch`, para as duas portas.
+      headers: { "Content-Type": "application/json" },
       method: "POST",
     });
     // ⚠️ LÊ COMO TEXTO ANTES DE TENTAR JSON: um timeout da Vercel devolve HTML, e `r.json()`
@@ -556,21 +565,16 @@ async function umaParte(
 async function conversarComOAgente(
   texto: string,
   mensagens: MensagemDaConversa[],
+  api: ApiDaTemis,
 ): Promise<RespostaDaConversa> {
-  let token: null | string = null;
-  try {
-    token = await getApoloAccessToken();
-  } catch {
-    token = null;
-  }
-  if (!token) {
+  if (!(await sessaoDisponivel(api))) {
     return { erro: "Sessão expirada. Recarregue a página.", propostas: [], recusadas: [], resposta: "" };
   }
 
   try {
-    const r = await fetch("/api/temis/minutas/conversar", {
+    const r = await api.temisFetch("/minutas/conversar", {
       body: JSON.stringify({ mensagens, texto }),
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       method: "POST",
     });
     // Lê como texto antes de tentar JSON: um timeout da Vercel devolve HTML, e `r.json()` rejeitaria
@@ -605,17 +609,12 @@ async function conversarComOAgente(
   }
 }
 
-async function pedirMarcacao(texto: string): Promise<RespostaDoAgente> {
+async function pedirMarcacao(texto: string, api: ApiDaTemis): Promise<RespostaDoAgente> {
   // ⚠️ SEM TOKEN NÃO SE CHAMA. `getApoloAccessToken` devolve null quando a sessão caiu, e mandar a
   // requisição assim mesmo devolveria 401 — que foi exatamente o "O agente respondeu 401" do
-  // primeiro teste real, quando eu nem estava mandando o cabeçalho.
-  let token: null | string = null;
-  try {
-    token = await getApoloAccessToken();
-  } catch {
-    token = null;
-  }
-  if (!token) {
+  // primeiro teste real, quando eu nem estava mandando o cabeçalho. A pergunta mora em
+  // `sessaoDisponivel`: no hub é esta mesma; no portal o cookie é conferido pela rota.
+  if (!(await sessaoDisponivel(api))) {
     return { erro: "Sessão expirada. Recarregue a página.", propostas: [], recusadas: [] };
   }
 
@@ -627,7 +626,7 @@ async function pedirMarcacao(texto: string): Promise<RespostaDoAgente> {
   // Em série, de propósito: são chamadas caras a um modelo de fronteira, e disparar seis de uma vez
   // bate no limite de concorrência e devolve erro em todas.
   for (const parte of partes) {
-    const r = await umaParte(parte, token);
+    const r = await umaParte(parte, api.temisFetch);
     if (r.erro) falhas.push(r.erro);
     propostas.push(...r.propostas);
     recusadas.push(...r.recusadas);
@@ -643,7 +642,7 @@ async function pedirMarcacao(texto: string): Promise<RespostaDoAgente> {
   // propostas na tela é infinitamente melhor do que um erro no lugar delas.
   for (const [indice, parte] of partes.entries()) {
     const daParte = propostas.filter((p) => parte.includes(p.trecho));
-    const r = await umaParte(parte, token, daParte);
+    const r = await umaParte(parte, api.temisFetch, daParte);
     if (r.erro) {
       // A releitura que falha vira nota de rodapé, não erro da operação.
       falhas.push(`Na segunda leitura da parte ${indice + 1}: ${r.erro}`);

@@ -8,7 +8,7 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 
 import { type EscopoDaSessao, escopoDoUsuario } from "./escopo-do-usuario";
 import { chaveDoPortal } from "./logo";
-import { type TipoDePortal, tipoDePortal } from "./perfis-de-portal";
+import { portalOperaVenda, type TipoDePortal, tipoDePortal } from "./perfis-de-portal";
 import { verificarSenhaIncorporador } from "./senha";
 
 /**
@@ -148,7 +148,7 @@ async function empreendimentosDoUsuario(
  * portal + conta; o login e a revalidação chamam os dois aqui.
  */
 export async function escopoDaConta(
-  incorporador: Pick<Incorporador, "empreendimentos" | "tipo">,
+  incorporador: Pick<Incorporador, "empreendimentos" | "slug" | "tipo">,
   usuarioId: string,
 ): Promise<EscopoDaSessao> {
   const client = createApoloAdminClient();
@@ -157,6 +157,9 @@ export async function escopoDaConta(
   return escopoDoUsuario({
     doPortal: incorporador.empreendimentos,
     doUsuario,
+    // O slug vem do BANCO (carregarIncorporadorPorSlug), nunca do corpo do login: é ele que diz se
+    // este portal opera a venda e, portanto, se o Financeiro vale para todo o escopo.
+    operaVenda: portalOperaVenda(incorporador.slug, incorporador.tipo),
     tipo: incorporador.tipo,
   });
 }

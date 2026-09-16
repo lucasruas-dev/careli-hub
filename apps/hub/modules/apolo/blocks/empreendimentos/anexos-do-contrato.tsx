@@ -12,7 +12,7 @@ import {
   TIPO_DO_ANEXO,
   TIPOS_DA_CAPA,
 } from "@/lib/temis/anexos";
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 
 // OS ANEXOS DO CONTRATO — os PDFs prontos que entram no documento montado.
 //
@@ -49,14 +49,16 @@ export function AnexosDoContrato({ enterpriseId }: Props) {
   const [rascunho, setRascunho] = useState(RASCUNHO_VAZIO);
   const [recarregar, setRecarregar] = useState(0);
   const campoDeArquivo = useRef<HTMLInputElement>(null);
+  // Sem provedor, `/api/temis` com o Bearer do hub (o Apolo e a Têmis de sempre); nas minutas do
+  // portal que confecciona, `/api/incorporador/temis` com o cookie. Ver `api-da-temis.tsx`.
+  const { temisFetch } = useApiDaTemis();
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(
-        `/api/temis/anexos?enterpriseId=${encodeURIComponent(enterpriseId)}`,
-        { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
+      const r = await temisFetch(
+        `/anexos?enterpriseId=${encodeURIComponent(enterpriseId)}`,
+        { cache: "no-store" },
       );
       const corpo = (await r.json()) as { anexos?: AnexoDoContrato[]; error?: string };
       if (!r.ok) throw new Error(corpo.error ?? "Falha ao ler os anexos.");
@@ -67,7 +69,7 @@ export function AnexosDoContrato({ enterpriseId }: Props) {
     } finally {
       setCarregando(false);
     }
-  }, [enterpriseId]);
+  }, [enterpriseId, temisFetch]);
 
   useEffect(() => {
     void carregar();
@@ -98,14 +100,10 @@ export function AnexosDoContrato({ enterpriseId }: Props) {
     setEnviando(true);
     setErro(null);
     try {
-      const token = await getApoloAccessToken();
-      const cabecalho = {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      };
+      const cabecalho = { "Content-Type": "application/json" };
 
       // 1. a URL assinada
-      const assinar = await fetch("/api/temis/anexos", {
+      const assinar = await temisFetch("/anexos", {
         body: JSON.stringify({
           acao: "upload",
           contentType: arquivo.type,
@@ -138,7 +136,7 @@ export function AnexosDoContrato({ enterpriseId }: Props) {
       if (subida.error) throw new Error("Falha ao enviar o arquivo.");
 
       // 3. o registro
-      const confirmar = await fetch("/api/temis/anexos", {
+      const confirmar = await temisFetch("/anexos", {
         body: JSON.stringify({
           acao: "confirmar",
           enterpriseId,
@@ -164,9 +162,7 @@ export function AnexosDoContrato({ enterpriseId }: Props) {
 
   const desativar = async (id: string) => {
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch(`/api/temis/anexos?id=${encodeURIComponent(id)}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const r = await temisFetch(`/anexos?id=${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
       if (!r.ok) {
@@ -313,6 +309,7 @@ export function CapaDaMinuta({
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<null | string>(null);
   const campo = useRef<HTMLInputElement>(null);
+  const { temisFetch } = useApiDaTemis();
 
   const enviar = async (arquivo: File) => {
     if (arquivo.size > LIMITE_ANEXO_BYTES) {
@@ -322,15 +319,11 @@ export function CapaDaMinuta({
     setEnviando(true);
     setErro(null);
     try {
-      const token = await getApoloAccessToken();
-      const cabecalho = {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      };
+      const cabecalho = { "Content-Type": "application/json" };
 
       // ⚠️ O ALCANCE VAI COMO `enterpriseId` MESMO SENDO CAPA: a rota usa o alcance só para montar a
       // pasta do objeto, e o `capa: true` é o que troca o prefixo e a lista de tipos aceitos.
-      const assinar = await fetch("/api/temis/anexos", {
+      const assinar = await temisFetch("/anexos", {
         body: JSON.stringify({
           acao: "upload",
           capa: true,
@@ -362,7 +355,7 @@ export function CapaDaMinuta({
         .uploadToSignedUrl(dados.path, dados.token, arquivo);
       if (subida.error) throw new Error("Falha ao enviar a capa.");
 
-      const gravar = await fetch("/api/temis/anexos", {
+      const gravar = await temisFetch("/anexos", {
         body: JSON.stringify({
           acao: "capa",
           minutaId,
@@ -388,10 +381,9 @@ export function CapaDaMinuta({
   const tirar = async () => {
     setEnviando(true);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch("/api/temis/anexos", {
+      const r = await temisFetch("/anexos", {
         body: JSON.stringify({ acao: "capa", minutaId, path: "" }),
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         method: "POST",
       });
       if (!r.ok) throw new Error("Não foi possível tirar a capa.");

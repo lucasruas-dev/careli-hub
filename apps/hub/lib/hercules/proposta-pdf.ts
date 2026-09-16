@@ -27,6 +27,8 @@ import {
   rgb,
 } from "pdf-lib";
 
+import type { TipoProduto } from "./produto-novo";
+
 const A4 = { h: 841.89, w: 595.28 };
 /** 46px do mockup × 0,75 (794px = 595,28pt) — a mesma margem, na escala do papel. */
 const M = 34.5;
@@ -152,9 +154,39 @@ export type PropostaParaPdf = {
   temReajuste: boolean;
   /** "Garden · 250,00 m² · Goiânia, GO" */
   subtitulo: string;
-  /** "Quadra 03 · Lote 07" */
+  /**
+   * O tipo do produto. Ausente = loteamento, que é o que toda folha foi até a migration 0170.
+   *
+   * ⚠️ SÓ MUDA PALAVRA, NUNCA CONTA. No prédio a tarja da simulação diz "a unidade", e não "o lote":
+   * a folha vai no WhatsApp de quem está comprando apartamento.
+   */
+  tipoProduto?: TipoProduto;
+  /**
+   * "Quadra 03 · Lote 07" no loteamento; "Torre A · Apto 304" ou "Apto 304" no prédio.
+   *
+   * ⚠️ CHEGA PRONTO, e quem escreve é `nomeDaUnidade` (`nome-da-unidade.ts`): a mesma frase do
+   * WhatsApp da reserva e da proposta. Este arquivo não decompõe código nem monta quadra e lote.
+   */
   unidade: string;
 };
+
+/**
+ * A tarja do rodapé: o que a folha é, quando ela NÃO é a proposta definitiva. `null` = sem tarja.
+ *
+ * ⚠️ "NÃO RESERVA O LOTE" SÓ NO LOTEAMENTO. Num apartamento a mesma frase diria ao comprador que
+ * existe um lote na conversa; no prédio ela diz "a unidade".
+ */
+export function avisoDaFolha(
+  dados: Pick<PropostaParaPdf, "previa" | "simulacao" | "tipoProduto">,
+): null | string {
+  if (dados.simulacao) {
+    return dados.tipoProduto === "vertical"
+      ? "SIMULAÇÃO DE PAGAMENTO - não é proposta e não reserva a unidade"
+      : "SIMULAÇÃO DE PAGAMENTO - não é proposta e não reserva o lote";
+  }
+  if (dados.previa) return "PRÉVIA - documento sem validade: a proposta ainda não foi gerada";
+  return null;
+}
 
 /**
  * O texto que a Helvetica consegue escrever.
@@ -808,10 +840,8 @@ export async function montarPropostaPdf(
     // deixaria as outras indistinguíveis da proposta de verdade, que é justamente o que a tarja
     // existe para evitar. Fica no pé, sobre o rodapé: no topo ela brigaria com a logo do
     // empreendimento e com o COD, que é o que o coordenador procura primeiro.
-    if (dados.previa || dados.simulacao) {
-      const aviso = dados.simulacao
-        ? "SIMULAÇÃO DE PAGAMENTO - não é proposta e não reserva o lote"
-        : "PRÉVIA - documento sem validade: a proposta ainda não foi gerada";
+    const aviso = avisoDaFolha(dados);
+    if (aviso) {
       const tamanho = 7.4;
       const largura = bold.widthOfTextAtSize(seguro(aviso), tamanho);
       pagina.drawRectangle({

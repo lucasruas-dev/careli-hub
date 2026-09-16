@@ -10,13 +10,19 @@ import { canonizador } from "@/lib/apolo/empreendimento-equivalencia";
 import { normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
 import {
   adminOu503,
-  autorizarComercial,
+  autorizarOperacaoDeVenda,
   cadNoEscopo,
   recorteDoProduto,
   type RecorteDoProduto,
 } from "@/lib/apolo/incorporador/board-do-portal";
+import { vinculoDentroDoRecorte } from "@/lib/apolo/incorporador/escrita-do-portal";
+import {
+  autorizarEscritaNoProduto,
+  recorteQueOPortalOpera,
+} from "@/lib/apolo/incorporador/operacao-do-produto-servidor";
+import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 
-// HABILITAR / CORREÇÃO / INDEFERIR a imobiliária, pelo portal comercial —
+// HABILITAR / CORREÇÃO / INDEFERIR a imobiliária, pelo portal que opera a venda —
 // GET e POST /api/incorporador/board/[id]/habilitar?emp=
 //
 // Mesmo miolo da rota do hub (`pedidosDaImobiliaria` / `decidirCredenciamento`: canonização dos
@@ -40,9 +46,26 @@ import {
 // (board-do-portal.ts), então quem cobre o grupo inteiro continua habilitando o grupo, e quem
 // cobre uma gleba recebe 409 — a habilitação dessa imobiliária é da Careli.
 //
-// A canonização continua valendo onde é A FAVOR da segurança: em `trabalhaFora`, o vínculo gravado
-// como divisão de outro grupo tem que contar como "fora" mesmo que o recorte esteja no formato do
-// grupo, e vice-versa.
+// Em `trabalhaFora` (16/09/2026, revisão) o recorte também fica CRU: canonizá-lo fazia a sessão de
+// uma divisão (37) virar o grupo inteiro, e o vínculo de outra divisão do mesmo grupo (36) contava
+// como "dentro". Só o VÍNCULO é canonizado, para o vínculo gravado como grupo casar com quem cobre
+// o grupo inteiro.
+//
+// (16/09/2026, D1) O POST SÓ DECIDE NO PRODUTO QUE O PORTAL OPERA. A decisão sobre a imobiliária vale
+// para o produto aberto, então a régua olha TODOS os ids do recorte (e não a CAD, que a imobiliária
+// não tem): no portal que confecciona (o Cecílio), o VOC (37) e o VOR (41) são só consulta, 403 com
+// `soConsulta`. O comercial segue como hoje. O GET (a lista dos pedidos) é leitura e não passa.
+//
+// (16/09/2026, revisão do conjunto) DUAS RÉGUAS, UMA POR TIPO DE PORTAL, em `trabalhaFora`:
+//   • COMERCIAL (a Gurgel): a comparação CANONIZADA dos dois lados, como antes da onda 1. Ela decidia
+//     sobre a imobiliária credenciada no grupo ("group:Lagoa Bonita") a partir de uma gleba só (33); o
+//     recorte cru tirou essa ação dela sem decisão do Lucas, e a D1 diz que o board da Gurgel não muda;
+//   • QUEM CONFECCIONA (a Cecílio): o recorte CRU, e só com os ids que ela OPERA
+//     (`recorteQueOPortalOpera`). O vínculo no VOC (37) ou no VOR (41), só consulta para ela, é "fora".
+// E, para quem confecciona, HABILITAR também passa pela régua quando o papel da imobiliária ainda não
+// está ativo: `decidirCredenciamento` promove o papel e a entidade para "active" (decisão GLOBAL) e
+// manda o WhatsApp listando todos os produtos dela. Uma imobiliária que a Careli indeferiu, ou que
+// está em análise com pedido em outro produto, não é aprovada pelo time da Cecílio: 409.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -65,7 +88,7 @@ function habilitacaoNoRecorte(
 }
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const rec = await recorteDoProduto(request, auth.sessao);
@@ -103,7 +126,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const rec = await recorteDoProduto(request, auth.sessao);
@@ -117,6 +140,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const escopo = await cadNoEscopo(admin.client, id, rec.recorte);
   if (!escopo.ok) return escopo.response;
 
+  // (16/09/2026, D1) Sempre os ids do recorte: a habilitação é do produto, não de uma CAD.
+  const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [...rec.recorte.ids]);
+  if (!escrita.ok) return escrita.response;
+
   const corpo = (await request.json().catch(() => ({}))) as CorpoDaDecisao;
   const canon = await canonDoCatalogo();
 
@@ -124,6 +151,48 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     corpo.acao === "indeferir" || corpo.acao === "reabrir" || corpo.acao === "correcao"
       ? corpo.acao
       : "habilitar";
+
+  const comercial = ehPortalComercial(auth.sessao.tipo);
+  // Fora do comercial, "dentro" é só o que o portal opera (ver o cabeçalho). Sem conferir, 503.
+  let operados: ReadonlySet<string> = rec.recorte.ids;
+  if (!comercial) {
+    const lidos = await recorteQueOPortalOpera(escrita.sessao, rec.recorte.ids);
+    if (!lidos) {
+      return NextResponse.json(
+        { error: "Não foi possível conferir o produto agora. Tente de novo em instantes." },
+        { status: 503 },
+      );
+    }
+    operados = lidos;
+  }
+  const idsCanonicos = new Set([...rec.recorte.ids].map((eid) => canon(eid)));
+
+  /**
+   * A imobiliária tem vínculo que conta fora do produto? `qualquerStatus` conta também o recusado e o
+   * indeferido (reabrir e a promoção do papel desfazem decisão da Careli). `null` = não deu para ler:
+   * fora do comercial vira 503; no comercial a leitura segue como antes (sem vínculo lido, nada fora).
+   */
+  const trabalhaFora = async (qualquerStatus: boolean): Promise<boolean | null> => {
+    const { data: vinculos, error } = await admin.client
+      .from("apolo_relationships")
+      .select("status, metadata")
+      .eq("entity_id", id)
+      .eq("relationship_type", "empreendimento")
+      .limit(500);
+    if (error && !comercial) return null;
+
+    return ((vinculos ?? []) as Array<{
+      metadata: { enterpriseId?: unknown } | null;
+      status: null | string;
+    }>).some((linha) => {
+      const status = linha.status ?? "pending";
+      const conta = qualquerStatus || status === "verified" || status === "pending";
+      if (!conta) return false;
+      const eid = normalizarEnterpriseId(linha.metadata?.enterpriseId);
+      if (eid === null) return false;
+      return comercial ? !idsCanonicos.has(canon(eid)) : !vinculoDentroDoRecorte(eid, operados, canon);
+    });
+  };
 
   if (acao === "habilitar") {
     // Tudo o que o coordenador marcou tem que caber no produto dele DEPOIS de canonizado — é o
@@ -142,6 +211,39 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         { status: 409 },
       );
     }
+
+    if (!comercial) {
+      const { data: papel, error: erroDoPapel } = await admin.client
+        .from("apolo_entity_profiles")
+        .select("status")
+        .eq("entity_id", id)
+        .eq("profile", "imobiliaria")
+        .maybeSingle<{ status: null | string }>();
+      if (erroDoPapel) {
+        return NextResponse.json(
+          { error: "Não foi possível conferir o cadastro desta imobiliária agora." },
+          { status: 503 },
+        );
+      }
+      if (papel && papel.status !== "active") {
+        const fora = await trabalhaFora(true);
+        if (fora === null) {
+          return NextResponse.json(
+            { error: "Não foi possível conferir o cadastro desta imobiliária agora." },
+            { status: 503 },
+          );
+        }
+        if (fora) {
+          return NextResponse.json(
+            {
+              error:
+                "Esta imobiliária também pediu cadastro em outro empreendimento. A aprovação do cadastro dela é feita pela Careli; depois disso, o seu produto pode ser liberado aqui.",
+            },
+            { status: 409 },
+          );
+        }
+      }
+    }
   } else {
     // Indeferir / correção / reabrir mexem na imobiliária inteira (papel + entidade). Se ela tem
     // vínculo em outro produto que este coordenador não cobre, a decisão não é dele:
@@ -150,29 +252,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     //   • para REABRIR, qualquer status conta: reabrir devolve o papel para `review` e desfaz um
     //     indeferimento que pode ter sido da Careli sobre uma imobiliária que pediu outros
     //     produtos (o vínculo dela ali pode estar em qualquer status).
-    // Aqui a comparação é CANONIZADA dos dois lados, a favor da segurança: o vínculo gravado como
-    // divisão de outro grupo é "fora" mesmo que o recorte esteja no formato do grupo.
-    const idsCanonicos = new Set([...rec.recorte.ids].map((id) => canon(id)));
+    // (16/09/2026, revisão) ⚠️ O RECORTE NÃO É CANONIZADO PARA QUEM CONFECCIONA. A primeira versão
+    // canonizava os dois lados, e a sessão com só a divisão 37 virava {group:Vale do Ouro}: o vínculo
+    // da imobiliária no 36 (VOL, do Lino) passava a contar como "dentro", e o time do Cecílio indeferia
+    // a imobiliária que vende o produto do Lino. Para ele o vínculo é "dentro" só quando o id cru está
+    // no que ele opera, ou quando o id canônico (o grupo) está lá. O comercial volta à comparação
+    // canonizada de antes (ver o cabeçalho).
+    const fora = await trabalhaFora(acao === "reabrir");
+    if (fora === null) {
+      return NextResponse.json(
+        { error: "Não foi possível conferir o cadastro desta imobiliária agora." },
+        { status: 503 },
+      );
+    }
 
-    const { data: vinculos } = await admin.client
-      .from("apolo_relationships")
-      .select("status, metadata")
-      .eq("entity_id", id)
-      .eq("relationship_type", "empreendimento")
-      .limit(500);
-
-    const trabalhaFora = ((vinculos ?? []) as Array<{
-      metadata: { enterpriseId?: unknown } | null;
-      status: null | string;
-    }>).some((linha) => {
-      const status = linha.status ?? "pending";
-      const conta = acao === "reabrir" || status === "verified" || status === "pending";
-      if (!conta) return false;
-      const eid = normalizarEnterpriseId(linha.metadata?.enterpriseId);
-      return eid !== null && !idsCanonicos.has(canon(eid));
-    });
-
-    if (trabalhaFora) {
+    if (fora) {
       return NextResponse.json(
         {
           error:

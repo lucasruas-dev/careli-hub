@@ -58,6 +58,10 @@ const clean = (v: unknown): string =>
     .replace(/[“”]/g, '"')
     .replace(/[–—]/g, "-")
     .replace(/…/g, "...")
+    // ⚠️ OS CONTROLES \x09/\x0A/\x0D ESTÃO NA CLASSE NEGADA DE PROPÓSITO: tab, LF e CR são os únicos
+    // invisíveis que o pdf-lib aceita, e a regra `no-control-regex` não sabe distinguir isso de um
+    // acidente. Mesmo desligamento pontual que `lib/apolo/pdf-timbrado.ts` usa no `limpar`.
+    // eslint-disable-next-line no-control-regex
     .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, "");
 
 export async function gerarDossiePdf(

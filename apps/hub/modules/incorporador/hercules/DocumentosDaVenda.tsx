@@ -31,9 +31,15 @@ import { T } from "../tema";
 type Estado = "carregando" | "erro" | "pronto";
 
 export function DocumentosDaVenda({
+  somenteLeitura = false,
   unidadeId,
   versao,
 }: {
+  /**
+   * (16/09/2026, revisão do conjunto) Produto só de consulta para o portal (D1): os documentos abrem,
+   * o envio some. O servidor já recusa com 403.
+   */
+  somenteLeitura?: boolean;
   unidadeId: null | string;
   versao: number;
 }) {
@@ -283,6 +289,12 @@ export function DocumentosDaVenda({
         )}
       </div>
 
+      {somenteLeitura ? (
+        <div style={{ borderTop: `1px solid ${T.border}`, color: T.muted, fontSize: 11.5, paddingTop: 10 }}>
+          {erro ? <span style={{ color: T.danger, display: "block" }}>{erro}</span> : null}
+          Só consulta neste produto.
+        </div>
+      ) : (
       <div style={{ borderTop: `1px solid ${T.border}`, display: "grid", gap: 6, paddingTop: 10 }}>
         {erro ? <span style={{ color: T.danger, fontSize: 11.5 }}>{erro}</span> : null}
         <input
@@ -319,6 +331,7 @@ export function DocumentosDaVenda({
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -143,11 +143,256 @@ export type CreateApoloEntityInput = {
   } | null;
 };
 
+// POR QUE A RECUSA FOI, em categoria. A mensagem (`error`) é escrita para o time da Careli e nomeia
+// terceiros: o empreendimento onde a CAD já existe, o dono do e-mail, o titular do núcleo familiar.
+// Quem responde para gente de FORA da Careli (o CRM do portal do incorporador) não pode repassar a
+// frase, e adivinhar o motivo lendo o texto quebraria na primeira revisão de redação. O hub ignora
+// este campo: a resposta dele continua sendo a de sempre.
+export type MotivoDaRecusaDoCadastro =
+  | "cad-no-empreendimento"
+  | "dados-invalidos"
+  | "email-repetido"
+  | "falha-ao-gravar"
+  | "nucleo-familiar"
+  | "verificacao-indisponivel";
+
+// QUEM CADASTROU, QUANDO NÃO É USUÁRIO DO HUB. Decisão do Lucas (16/09/2026): a equipe da Cecílio
+// cadastra cliente novo pelo CRM do portal. `owner_user_id` é do `hub_users` e não cabe o usuário
+// do portal (`apolo_incorporador_usuarios.id`), então a autoria vai para `metadata.cadastradoPor`.
+export type AutorDeForaDoHub = {
+  nome: null | string;
+  origem: "portal";
+  slug: string;
+  usuarioId: string;
+};
+
+/**
+ * O que a PORTA decide sobre o cadastro, e que por isso NÃO mora no `input`.
+ *
+ * ⚠️ FORA DO INPUT DE PROPÓSITO (revisão da onda 3, 16/09/2026). As rotas públicas chamam
+ * `createApoloEntity(adminClient, { ...payload, ... })` espalhando o CORPO da requisição: um campo
+ * de autoria dentro do input seria preenchido por quem manda o JSON, e a ficha nasceria dizendo que
+ * foi cadastrada por um usuário do portal da Cecílio. Aqui só entra o que o servidor escreveu.
+ *
+ *   • `autor`: ausente ou nulo (o hub e o link público) = nada muda na ficha.
+ *   • `fichaExistente`: o que fazer quando o documento JÁ TEM ficha e nenhuma CAD neste produto.
+ *       - `anexar` (padrão, o de sempre no hub e no link público): a CAD nova entra na ficha
+ *         existente e a gravação escreve nela como numa ficha nova (metadata mesclado com o
+ *         `cadastro` novo por cima, contato, endereço, relacionamentos, índice de busca).
+ *       - `acrescentar` (o portal do incorporador): a CAD nova entra na MESMA ficha, mas nada do que
+ *         a ficha já tem é trocado. Decisão do Lucas (16/09/2026): *"aproveita o cadastro"*, uma
+ *         ficha por pessoa, sem devolver nada do que a Careli já tem e sem sobrescrever telefone,
+ *         e-mail, endereço e os demais dados globais. Ver `metadataAcrescentado` e
+ *         `linhasQueFaltamNaFicha` logo abaixo.
+ *
+ * (Até 16/09/2026 existia `recusar`, que respondia 409 "fale com a central" para quem já tinha
+ * ficha. Saiu com a decisão acima: o portal passou a aproveitar a ficha.)
+ */
+export type OpcoesDoCadastro = {
+  autor?: AutorDeForaDoHub | null;
+  fichaExistente?: "acrescentar" | "anexar";
+};
+
+/**
+ * O que a porta que ACRESCENTA registra de si na ficha que já existia, numa lista à parte
+ * (`metadata.cadsAcrescentadas`). Fica à parte porque `cadastradoPor` diz quem CRIOU a ficha, e a
+ * ficha não foi criada por quem só acrescentou a CAD de um produto: gravar ali apagaria a autoria
+ * original (ou inventaria uma, quando a ficha veio do sync do C2X).
+ */
+export type CadAcrescentada = {
+  /**
+   * O telefone e o e-mail que o portal digitou, guardados SÓ AQUI, como pendência para a Careli
+   * conferir (ver `TIPOS_DE_CONTATO_QUE_IDENTIFICAM`). Ausente quando não veio nenhum.
+   */
+  contatoInformado?: { email: null | string; telefone: null | string };
+  em: string;
+  enterpriseId: null | string;
+  nome: null | string;
+  origem: string;
+  slug: null | string;
+  usuarioId: null | string;
+};
+
+function vazioNaFicha(valor: unknown): boolean {
+  if (valor === undefined || valor === null) return true;
+  if (typeof valor === "string") return valor.trim() === "";
+  if (Array.isArray(valor)) return valor.length === 0;
+  if (typeof valor === "object") return Object.keys(valor as Record<string, unknown>).length === 0;
+  return false;
+}
+
+/**
+ * O metadata da ficha que já existe, com a CAD acrescentada pela porta de fora.
+ *
+ * ⚠️ O QUE A FICHA JÁ TEM VENCE. O metadata inteiro é preservado (`source`, `c2xSynced`,
+ * `c2xUserId`, `autenticacao`, `cadastradoPor`, `origem`...). Em `metadata.cadastro` só entram as
+ * chaves que a ficha não tem ou tem vazias: o nascimento, a mãe ou o estado civil que o time da
+ * Careli conferiu não são trocados pelo que o portal digitou. Exportada para o teste.
+ */
+export function metadataAcrescentado(
+  atual: Record<string, unknown>,
+  cadastroNovo: Record<string, unknown>,
+  acrescimo: CadAcrescentada,
+): Record<string, unknown> {
+  const cadastroAtual =
+    typeof atual.cadastro === "object" && atual.cadastro !== null && !Array.isArray(atual.cadastro)
+      ? (atual.cadastro as Record<string, unknown>)
+      : {};
+  const cadastro: Record<string, unknown> = { ...cadastroAtual };
+  for (const [chave, valor] of Object.entries(cadastroNovo)) {
+    if (vazioNaFicha(cadastro[chave]) && !vazioNaFicha(valor)) cadastro[chave] = valor;
+  }
+  const anteriores = Array.isArray(atual.cadsAcrescentadas) ? atual.cadsAcrescentadas : [];
+
+  return { ...atual, cadastro, cadsAcrescentadas: [...anteriores, acrescimo] };
+}
+
+/**
+ * As linhas que a porta que ACRESCENTA pode inserir numa ficha que já existe: só o que a ficha não
+ * tem do MESMO tipo. Exportada para o teste.
+ *
+ * ⚠️ NUNCA UPDATE, NUNCA NOVO PRIMÁRIO POR CIMA. O contato e o endereço nascem `is_primary`: inserir
+ * um telefone novo numa ficha que já tem telefone deixaria DOIS primários, e a Iris, a cobrança e o
+ * disparo escolheriam entre eles sem critério. Por isso, se a ficha já tem telefone, o telefone
+ * digitado no portal não entra (o mesmo para e-mail, endereço, identificador e cônjuge).
+ *
+ * Relacionamento de trabalho (imobiliária, corretor, empreendimento) é outra natureza: a pessoa
+ * pode ter mais de um, e o da CAD nova é um fato novo. Esse só não entra repetido (mesma ficha
+ * ligada, ou o mesmo rótulo quando não há ficha ligada).
+ *
+ * `existentes` nulo = a leitura daquela tabela falhou: não se sabe o que a ficha tem, então nada
+ * daquela tabela é inserido (o salvar registra o aviso).
+ *
+ * (16/09/2026, revisão do conjunto) ⚠️ TELEFONE E E-MAIL NUNCA ENTRAM NA FICHA QUE JÁ EXISTIA, NEM
+ * QUANDO FALTAM. Eles não são "mais um dado": são CHAVE DE IDENTIDADE. A Iris acha a pessoa primeiro
+ * pelo hash do identificador `phone`/`email` e depois pelo texto de `apolo_contacts`
+ * (lib/iris/apolo/identidade-contato.ts). Um cliente da Careli que veio do sync sem identificador de
+ * telefone, cadastrado no Garden com o WhatsApp de quem opera o portal, passava a ter esse número
+ * como chave: a central e a CACÁ tratariam o atendente da Cecílio como o cliente (boletos, parcelas,
+ * contratos). O que o portal digitou fica só como pendência em `metadata.cadsAcrescentadas`
+ * (`contatoInformado`), para a Careli confirmar. Na ficha NOVA (sem ficha anterior) nada muda.
+ */
+export const TIPOS_DE_CONTATO_QUE_IDENTIFICAM: ReadonlySet<string> = new Set(["email", "phone", "whatsapp"]);
+
+export function linhasQueFaltamNaFicha(
+  novas: {
+    contatos: Array<Record<string, unknown>>;
+    enderecos: Array<Record<string, unknown>>;
+    identificadores: Array<Record<string, unknown>>;
+    relacionamentos: Array<Record<string, unknown>>;
+  },
+  existentes: {
+    contatos: null | Array<{ contact_type: null | string }>;
+    enderecos: null | Array<unknown>;
+    identificadores: null | Array<{ identifier_type: null | string }>;
+    relacionamentos:
+      | null
+      | Array<{ label: null | string; related_entity_id: null | string; relationship_type: null | string }>;
+  },
+): {
+  contatos: Array<Record<string, unknown>>;
+  enderecos: Array<Record<string, unknown>>;
+  identificadores: Array<Record<string, unknown>>;
+  relacionamentos: Array<Record<string, unknown>>;
+} {
+  const tiposDeContato = new Set((existentes.contatos ?? []).map((l) => l.contact_type));
+  const tiposDeIdentificador = new Set(
+    (existentes.identificadores ?? []).map((l) => l.identifier_type),
+  );
+  const tiposDeRelacionamento = new Set(
+    (existentes.relacionamentos ?? []).map((l) => l.relationship_type),
+  );
+  const chaveDoVinculo = (linha: {
+    label?: unknown;
+    related_entity_id?: unknown;
+    relationship_type?: unknown;
+  }) =>
+    `${String(linha.relationship_type ?? "")}|${
+      linha.related_entity_id ? `id:${String(linha.related_entity_id).toLowerCase()}` : `rotulo:${text(linha.label).toLowerCase()}`
+    }`;
+  const vinculosExistentes = new Set((existentes.relacionamentos ?? []).map(chaveDoVinculo));
+
+  return {
+    contatos: existentes.contatos
+      ? novas.contatos.filter(
+          (l) =>
+            !TIPOS_DE_CONTATO_QUE_IDENTIFICAM.has(String(l.contact_type)) &&
+            !tiposDeContato.has(String(l.contact_type)),
+        )
+      : [],
+    enderecos: existentes.enderecos && existentes.enderecos.length === 0 ? novas.enderecos : [],
+    identificadores: existentes.identificadores
+      ? novas.identificadores.filter(
+          (l) =>
+            !TIPOS_DE_CONTATO_QUE_IDENTIFICAM.has(String(l.identifier_type)) &&
+            !tiposDeIdentificador.has(String(l.identifier_type)),
+        )
+      : [],
+    relacionamentos: existentes.relacionamentos
+      ? novas.relacionamentos.filter((l) =>
+          RELACIONAMENTOS_DE_TRABALHO.has(String(l.relationship_type))
+            ? !vinculosExistentes.has(chaveDoVinculo(l))
+            : !tiposDeRelacionamento.has(String(l.relationship_type)),
+        )
+      : [],
+  };
+}
+
+// Vínculos que a pessoa pode ter vários (um por CAD, por produto). Os demais (cônjuge, sócio,
+// representante legal) são dado GLOBAL da ficha: só entram quando a ficha não tem nenhum do tipo.
+const RELACIONAMENTOS_DE_TRABALHO = new Set(["corretor", "empreendimento", "imobiliaria"]);
+
+/** Tira o id da ficha existente da recusa: quem acrescenta é de fora e não recebe id da Careli. */
+function recusaDaPorta(
+  recusa: Extract<CreateApoloEntityResult, { ok: false }>,
+  acrescentar: boolean,
+): Extract<CreateApoloEntityResult, { ok: false }> {
+  if (!acrescentar) return recusa;
+  const semId = { ...recusa };
+  delete semId.entityIdExistente;
+  return semId;
+}
+
+/**
+ * As fichas que um documento já tem, nas DUAS fontes: `document_hash` (quem nasce no Apolo) e
+ * `apolo_entity_identifiers` (quem veio do sync/import). `falhou` = alguma das duas leituras deu
+ * erro, e a lista pode estar incompleta: quem precisa de certeza (o portal) trata como "não sei".
+ */
+export async function fichasDoDocumento(
+  adminClient: AdminClient,
+  docKind: "cnpj" | "cpf",
+  digits: string,
+): Promise<{ falhou: boolean; ids: string[] }> {
+  const docHash = hashIdentifier(docKind, digits);
+  const [porIdentificador, porDocumento] = await Promise.all([
+    adminClient
+      .from("apolo_entity_identifiers")
+      .select("entity_id")
+      .eq("identifier_type", docKind)
+      .eq("value_hash", docHash),
+    adminClient.from("apolo_entities").select("id").eq("document_hash", docHash),
+  ]);
+
+  const ids = [
+    ...new Set([
+      ...((porIdentificador.data ?? []) as Array<{ entity_id: string }>).map((l) => l.entity_id),
+      ...((porDocumento.data ?? []) as Array<{ id: string }>).map((l) => l.id),
+    ]),
+  ].filter(Boolean);
+
+  return { falhou: Boolean(porIdentificador.error || porDocumento.error), ids };
+}
+
 export type CreateApoloEntityResult =
   | { autenticacao: string; entityId: string; ok: true; warnings: string[] }
   // entityIdExistente presente = o documento JÁ tem ficha; o caller pode redirecionar para ela em
   // vez de criar uma segunda (dedup — ver o incidente dos "dois Pedro Alexandro").
-  | { entityIdExistente?: string; error: string; ok: false };
+  | {
+      entityIdExistente?: string;
+      error: string;
+      motivo?: MotivoDaRecusaDoCadastro;
+      ok: false;
+    };
 
 // Codigo de autenticacao da CAD. A forca dele NAO esta no segredo: esta em ser gerado no
 // SERVIDOR e ficar registrado na entidade -- conferir uma CAD e perguntar ao banco se o codigo
@@ -163,7 +408,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export async function createApoloEntity(
   adminClient: AdminClient,
   input: CreateApoloEntityInput,
+  opcoes: OpcoesDoCadastro = {},
 ): Promise<CreateApoloEntityResult> {
+  // A porta de fora (portal do incorporador): aproveita a ficha existente sem trocar nada dela, e
+  // nenhuma recusa devolve o id de ficha da Careli (ver `OpcoesDoCadastro.fichaExistente`).
+  const acrescentar = opcoes.fichaExistente === "acrescentar";
   const isPj = input.persona === "pj";
   const identidade = input.identidade ?? {};
   const empresa = input.empresa ?? {};
@@ -183,15 +432,21 @@ export async function createApoloEntity(
     isPj ? empresa.razaoSocial || empresa.nomeFantasia : identidade.nome,
   );
   if (!displayName) {
-    return { error: "Sem nome/razao social para criar a entidade.", ok: false };
+    return {
+      error: "Sem nome/razao social para criar a entidade.",
+      motivo: "dados-invalidos",
+      ok: false,
+    };
   }
   if (!docKind) {
-    return { error: "Documento (CPF/CNPJ) invalido ou ausente.", ok: false };
+    return { error: "Documento (CPF/CNPJ) invalido ou ausente.", motivo: "dados-invalidos", ok: false };
   }
 
   // Modo anexo: id da ficha EXISTENTE (sem esteira) que vai receber esta CAD em vez de nascer
   // uma entidade nova. Preenchido pelo dedup abaixo.
   let anexarEm: string | null = null;
+  // Todas as fichas do mesmo documento (as cópias do Asana inclusive). Ver a trava de e-mail único.
+  let fichasDoMesmoDocumento: string[] = [];
 
   // DEDUP por documento (opt-in via input.dedupPorDocumento): a migration 0026 dropou o índice
   // único de document_hash e o INSERT abaixo é cego. Sem esta checagem o mesmo CPF/CNPJ vira DUAS
@@ -199,7 +454,6 @@ export async function createApoloEntity(
   // estava credenciado). Casa nas DUAS fontes: document_hash (quem nasce no Apolo) e
   // apolo_entity_identifiers (quem veio do sync/import).
   if (input.dedupPorDocumento) {
-    const docHash = hashIdentifier(docKind, digits);
     // ⚠️ TODAS as fichas deste documento, nunca UMA.
     //
     // Até 12/08 aqui havia `.limit(1).maybeSingle()` nas duas pernas, e a trava conferia as CADs
@@ -212,21 +466,21 @@ export async function createApoloEntity(
     // tinha CAD naquele empreendimento, ouvia que não, e LIBERAVA a duplicata. Foi assim que
     // Lucélia, Ronaldo e Rafael entraram duas vezes no Vale do Ouro, cada um por uma imobiliária.
     // Ler todas as fichas conserta o furo mesmo com as cópias ainda na base.
-    const [{ data: porIdentificador }, { data: porDocumento }] = await Promise.all([
-      adminClient
-        .from("apolo_entity_identifiers")
-        .select("entity_id")
-        .eq("identifier_type", docKind)
-        .eq("value_hash", docHash),
-      adminClient.from("apolo_entities").select("id").eq("document_hash", docHash),
-    ]);
+    const fichas = await fichasDoDocumento(adminClient, docKind, digits);
+    const idsDoDocumento = fichas.ids;
+    fichasDoMesmoDocumento = idsDoDocumento;
 
-    const idsDoDocumento = [
-      ...new Set([
-        ...(porIdentificador ?? []).map((l) => l.entity_id),
-        ...(porDocumento ?? []).map((l) => l.id),
-      ]),
-    ].filter(Boolean);
+    // ⚠️ QUEM ACRESCENTA (o portal) NÃO SEGUE ÀS CEGAS. Leitura que falhou pode estar escondendo a
+    // ficha, e seguir criaria uma segunda ficha do mesmo CPF. O hub continua como sempre esteve
+    // (lista vazia por erro segue), para esta regra não mudar o comportamento dele.
+    if (acrescentar && fichas.falhou) {
+      return {
+        error:
+          "Não foi possível verificar cadastros existentes agora. Tente novamente em instantes.",
+        motivo: "verificacao-indisponivel",
+        ok: false,
+      };
+    }
 
     const entityIdExistente = idsDoDocumento[0] ?? null;
     if (entityIdExistente) {
@@ -257,12 +511,16 @@ export async function createApoloEntity(
         );
         cadsExistentes = porFicha.flat();
       } catch {
-        return {
-          entityIdExistente,
-          error:
-            "Não foi possível verificar cadastros existentes agora. Tente novamente em instantes.",
-          ok: false,
-        };
+        return recusaDaPorta(
+          {
+            entityIdExistente,
+            error:
+              "Não foi possível verificar cadastros existentes agora. Tente novamente em instantes.",
+            motivo: "verificacao-indisponivel",
+            ok: false,
+          },
+          acrescentar,
+        );
       }
 
       // ✅ A CAD É POR EMPREENDIMENTO (regra do Lucas), e desde a migration 0080 a esteira
@@ -290,20 +548,25 @@ export async function createApoloEntity(
 
       if (jaTemNesteEmpreendimento) {
         const onde = jaTemNesteEmpreendimento.empreendimento?.trim();
-        return {
-          // A ficha que REALMENTE tem a CAD, não a primeira da lista: é ela que a tela precisa
-          // abrir quando o operador for conferir a duplicata.
-          entityIdExistente: jaTemNesteEmpreendimento.entity_id,
-          error:
-            `Este ${docKind === "cnpj" ? "CNPJ" : "CPF"} já tem CAD cadastrada` +
-            `${onde ? ` no empreendimento ${onde}` : ""}. ` +
-            "Não precisa reenviar. Qualquer dúvida, fale com a central.",
-          ok: false,
-        };
+        return recusaDaPorta(
+          {
+            // A ficha que REALMENTE tem a CAD, não a primeira da lista: é ela que a tela precisa
+            // abrir quando o operador for conferir a duplicata.
+            entityIdExistente: jaTemNesteEmpreendimento.entity_id,
+            error:
+              `Este ${docKind === "cnpj" ? "CNPJ" : "CPF"} já tem CAD cadastrada` +
+              `${onde ? ` no empreendimento ${onde}` : ""}. ` +
+              "Não precisa reenviar. Qualquer dúvida, fale com a central.",
+            motivo: "cad-no-empreendimento",
+            ok: false,
+          },
+          acrescentar,
+        );
       }
 
       // Tem ficha e pode ter CAD em OUTRO empreendimento (ou nenhuma CAD): a CAD nova ANEXA na
-      // ficha existente, em vez de nascer uma segunda entidade para o mesmo CPF.
+      // ficha existente, em vez de nascer uma segunda entidade para o mesmo CPF. Quem ACRESCENTA
+      // (o portal) entra pelo mesmo caminho: a diferença é o que a gravação escreve na ficha.
       //
       // Entre as cópias, anexa na que JÁ TEM esteira. Anexar na cópia vazia deixaria a pessoa com
       // CAD em duas fichas diferentes, que é exatamente a bagunça que esta trava veio desfazer.
@@ -324,7 +587,15 @@ export async function createApoloEntity(
       });
 
       if (conflito) {
-        return { entityIdExistente, error: mensagemDeConflito(conflito), ok: false };
+        return recusaDaPorta(
+          {
+            entityIdExistente: entityIdExistente ?? undefined,
+            error: mensagemDeConflito(conflito),
+            motivo: "nucleo-familiar",
+            ok: false,
+          },
+          acrescentar,
+        );
       }
     }
   }
@@ -351,11 +622,28 @@ export async function createApoloEntity(
     adminClient,
     email,
     // A própria ficha que esta CAD vai atualizar não conta contra ela mesma.
-    ignorarEntityIds: anexarEm ? [anexarEm] : [],
+    //
+    // (16/09/2026, revisão do conjunto) Quem ACRESCENTA ignora TODAS as fichas do mesmo documento: a
+    // mesma pessoa tem ficha duplicada em 516 casos (a cópia do Asana), e o e-mail dela na cópia
+    // barrava o cadastro da própria pessoa com "este e-mail já está em outro cadastro", confirmando
+    // ainda que o e-mail existe na base da Careli. O hub e o link público seguem como eram.
+    ignorarEntityIds: anexarEm
+      ? acrescentar
+        ? [...new Set([anexarEm, ...fichasDoMesmoDocumento])]
+        : [anexarEm]
+      : [],
   });
 
   if (conflitoEmail) {
-    return { entityIdExistente: conflitoEmail.donos[0]?.entityId, error: conflitoEmail.mensagem, ok: false };
+    return recusaDaPorta(
+      {
+        entityIdExistente: conflitoEmail.donos[0]?.entityId,
+        error: conflitoEmail.mensagem,
+        motivo: "email-repetido",
+        ok: false,
+      },
+      acrescentar,
+    );
   }
   const telefone = text(isPj ? empresa.telefone : perfil.telefone);
   const location = { city: text(endereco.cidade), state: text(endereco.uf) };
@@ -425,6 +713,23 @@ export async function createApoloEntity(
       })),
   });
 
+  // Só existe quando quem cadastra é de fora do hub (ver `OpcoesDoCadastro.autor`: vem da porta,
+  // nunca do input). Vai nos DOIS caminhos, ficha nova e anexo, e também no registro do código de
+  // autenticação lá embaixo, que regrava o metadata que ficou gravado.
+  const autor = opcoes.autor ?? null;
+  const cadastradoPor =
+    autor && autor.origem === "portal"
+      ? {
+          cadastradoPor: {
+            em: new Date().toISOString(),
+            nome: text(autor.nome) || null,
+            origem: autor.origem,
+            slug: text(autor.slug),
+            usuarioId: text(autor.usuarioId),
+          },
+        }
+      : {};
+
   const entityRow = {
     display_name: displayName,
     document_hash: hashIdentifier(docKind, digits),
@@ -439,6 +744,7 @@ export async function createApoloEntity(
       imobiliariaId: text(perfil.imobiliariaId) || null,
       origem: input.origem || "cadastro",
       source: "apolo",
+      ...cadastradoPor,
     },
     owner_user_id: ownerUserId,
     primary_city: location.city || null,
@@ -450,7 +756,70 @@ export async function createApoloEntity(
   };
 
   let entityId: string;
-  if (anexarEm) {
+  // O metadata QUE FICOU GRAVADO na ficha, para o registro do código de autenticação lá embaixo
+  // regravar por cima dele (e não por cima do `entityRow` da ficha nova, que no modo anexo nunca
+  // foi gravado).
+  let metadataGravado: Record<string, unknown> = entityRow.metadata;
+  // A CAD entrou numa ficha que já existia pela porta que ACRESCENTA (o portal do incorporador).
+  const acrescentouNaFicha = Boolean(anexarEm && acrescentar);
+  // O código de autenticação que a ficha acrescentada ficou tendo (o dela, quando já tinha).
+  let autenticacaoDaFicha: null | string = null;
+  if (anexarEm && acrescentar) {
+    // MODO ACRESCENTAR (decisão do Lucas, 16/09/2026): a ficha é da Careli e continua como está. Só
+    // o metadata é regravado, e sem trocar nada (`metadataAcrescentado`); `display_name`, cidade,
+    // dono e status ficam. A leitura é obrigatória e FAIL-CLOSED: update troca o jsonb inteiro, e
+    // gravar sem ter lido apagaria a ficha.
+    const { data: atual, error: leituraDaFicha } = await adminClient
+      .from("apolo_entities")
+      .select("metadata")
+      .eq("id", anexarEm)
+      .maybeSingle<{ metadata: Record<string, unknown> | null }>();
+    if (leituraDaFicha || !atual) {
+      return {
+        error:
+          "Não foi possível verificar cadastros existentes agora. Tente novamente em instantes.",
+        motivo: "verificacao-indisponivel",
+        ok: false,
+      };
+    }
+
+    const metaAtual = atual.metadata ?? {};
+    // ⚠️ O CÓDIGO QUE A FICHA JÁ TEM VENCE: a CAD antiga dela foi impressa com ele, e a CAD gerada
+    // de novo (`cad-de-entidade.ts`) também usa o salvo. A CAD nova sai com o mesmo código.
+    const registrado = text(
+      (metaAtual.autenticacao as { codigo?: unknown } | null | undefined)?.codigo,
+    );
+    const agora = new Date();
+    const informado = { email: email || null, telefone: telefone || null };
+    const metadata = metadataAcrescentado(metaAtual, cadastro, {
+      ...(informado.email || informado.telefone ? { contatoInformado: informado } : {}),
+      em: agora.toISOString(),
+      enterpriseId: normalizarEnterpriseId(input.enterpriseId),
+      nome: text(autor?.nome) || null,
+      origem: autor?.origem ?? (input.origem || "cadastro"),
+      slug: text(autor?.slug) || null,
+      usuarioId: text(autor?.usuarioId) || null,
+    });
+    const codigo = registrado || gerarCodigoAutenticacao(anexarEm, agora);
+    if (!registrado) {
+      metadata.autenticacao = { codigo, geradoEm: agora.toISOString() };
+    }
+
+    const { error: acrescimoError } = await adminClient
+      .from("apolo_entities")
+      .update({ metadata })
+      .eq("id", anexarEm);
+    if (acrescimoError) {
+      return {
+        error: `Nao foi possivel registrar a CAD na ficha existente: ${acrescimoError.message}`,
+        motivo: "falha-ao-gravar",
+        ok: false,
+      };
+    }
+    entityId = anexarEm;
+    metadataGravado = metadata;
+    autenticacaoDaFicha = codigo;
+  } else if (anexarEm) {
     // MODO ANEXO: a ficha já existe (veio do sync C2X / backfill, SEM CAD). A CAD entra nela.
     // O merge do metadata é OBRIGATÓRIO ler-antes-de-gravar (armadilha conhecida: update
     // substitui o jsonb INTEIRO): preserva `source`, `c2xSynced`, `c2xUserId` e tudo que a
@@ -466,24 +835,28 @@ export async function createApoloEntity(
       typeof metaAtual.cadastro === "object" && metaAtual.cadastro !== null
         ? (metaAtual.cadastro as Record<string, unknown>)
         : {};
+    const metadataMesclado: Record<string, unknown> = {
+      ...metaAtual,
+      cadastro: { ...cadastroAtual, ...cadastro },
+      origemCadPublica: input.origem || "cadastro",
+      ...cadastradoPor,
+    };
     const { error: anexoError } = await adminClient
       .from("apolo_entities")
       .update({
         display_name: atual?.display_name?.trim() ? atual.display_name : displayName,
-        metadata: {
-          ...metaAtual,
-          cadastro: { ...cadastroAtual, ...cadastro },
-          origemCadPublica: input.origem || "cadastro",
-        },
+        metadata: metadataMesclado,
       })
       .eq("id", anexarEm);
     if (anexoError) {
       return {
         error: `Nao foi possivel anexar a CAD na ficha existente: ${anexoError.message}`,
+        motivo: "falha-ao-gravar",
         ok: false,
       };
     }
     entityId = anexarEm;
+    metadataGravado = metadataMesclado;
   } else {
     const { data: created, error: entityError } = await adminClient
       .from("apolo_entities")
@@ -494,13 +867,14 @@ export async function createApoloEntity(
     if (entityError || !created?.id) {
       return {
         error: `Nao foi possivel criar a entidade: ${entityError?.message ?? "sem id"}`,
+        motivo: "falha-ao-gravar",
         ok: false,
       };
     }
 
     entityId = created.id;
   }
-  const autenticacao = gerarCodigoAutenticacao(entityId, new Date());
+  const autenticacao = autenticacaoDaFicha ?? gerarCodigoAutenticacao(entityId, new Date());
   const warnings: string[] = [];
   const warn = (label: string, error: { message?: string } | null) => {
     if (error) {
@@ -696,8 +1070,10 @@ export async function createApoloEntity(
         location.city,
         location.state,
         ROLE_SEARCH_LABEL[input.role],
-        email,
-        telefone,
+        // Na ficha que já existia, o índice de busca não aprende telefone nem e-mail que o portal
+        // digitou (a busca por contato também acha a pessoa; ver `linhasQueFaltamNaFicha`).
+        acrescentouNaFicha ? null : email,
+        acrescentouNaFicha ? null : telefone,
         imobiliariaLabel,
       ]
         .filter(Boolean)
@@ -708,20 +1084,85 @@ export async function createApoloEntity(
     status: "review",
   };
 
+  // MODO ACRESCENTAR: só o que a ficha não tem do mesmo tipo (ver `linhasQueFaltamNaFicha`). As
+  // leituras são por ficha (poucas linhas cada), e a de relacionamentos só dos tipos que esta CAD
+  // traria. Leitura que falha não insere nada daquela tabela e vira aviso.
+  let linhas = {
+    contatos: contactRows,
+    enderecos: addressRows,
+    identificadores: identifierRows,
+    relacionamentos: relationshipRows,
+  };
+  if (acrescentouNaFicha) {
+    const tiposDeRelacionamento = [
+      ...new Set(relationshipRows.map((linha) => String(linha.relationship_type))),
+    ];
+    const [contatosDaFicha, enderecosDaFicha, identificadoresDaFicha, relacionamentosDaFicha] =
+      await Promise.all([
+        adminClient.from("apolo_contacts").select("contact_type").eq("entity_id", entityId),
+        adminClient.from("apolo_addresses").select("id").eq("entity_id", entityId).limit(1),
+        adminClient
+          .from("apolo_entity_identifiers")
+          .select("identifier_type")
+          .eq("entity_id", entityId),
+        tiposDeRelacionamento.length
+          ? adminClient
+              .from("apolo_relationships")
+              .select("label, related_entity_id, relationship_type")
+              .eq("entity_id", entityId)
+              .in("relationship_type", tiposDeRelacionamento)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+    warn("contatos", contatosDaFicha.error);
+    warn("endereco", enderecosDaFicha.error);
+    warn("identificadores", identificadoresDaFicha.error);
+    warn("relacionamentos", relacionamentosDaFicha.error);
+
+    linhas = linhasQueFaltamNaFicha(linhas, {
+      contatos: contatosDaFicha.error
+        ? null
+        : ((contatosDaFicha.data ?? []) as Array<{ contact_type: null | string }>),
+      enderecos: enderecosDaFicha.error ? null : ((enderecosDaFicha.data ?? []) as unknown[]),
+      identificadores: identificadoresDaFicha.error
+        ? null
+        : ((identificadoresDaFicha.data ?? []) as Array<{ identifier_type: null | string }>),
+      relacionamentos: relacionamentosDaFicha.error
+        ? null
+        : ((relacionamentosDaFicha.data ?? []) as Array<{
+            label: null | string;
+            related_entity_id: null | string;
+            relationship_type: null | string;
+          }>),
+    });
+  }
+
   // Secundarios: best-effort (a entidade ja existe em status 'review'; falhas viram warning pra
   // o operador revisar, sem perder o cadastro). Espelha o estilo best-effort do sync.
+  //
+  // No modo ACRESCENTAR os upserts viram "insere se faltar" (`ignoreDuplicates`): o papel prospect
+  // que já existe não volta para `active` (podia estar `blocked`), e o índice de busca da ficha não
+  // perde o nome, os rótulos de papel e o status que já tinha.
   const [profileRes, identifierRes, contactRes, addressRes, relationshipRes, searchRes] =
     await Promise.all([
-      adminClient.from("apolo_entity_profiles").upsert(profileRows, { onConflict: "entity_id,profile" }),
-      adminClient.from("apolo_entity_identifiers").upsert(identifierRows, {
-        onConflict: "entity_id,identifier_type,value_hash",
+      adminClient.from("apolo_entity_profiles").upsert(profileRows, {
+        ignoreDuplicates: acrescentouNaFicha,
+        onConflict: "entity_id,profile",
       }),
-      contactRows.length ? adminClient.from("apolo_contacts").insert(contactRows) : noop(),
-      addressRows.length ? adminClient.from("apolo_addresses").insert(addressRows) : noop(),
-      relationshipRows.length
-        ? adminClient.from("apolo_relationships").insert(relationshipRows)
+      linhas.identificadores.length
+        ? adminClient.from("apolo_entity_identifiers").upsert(linhas.identificadores, {
+            ignoreDuplicates: acrescentouNaFicha,
+            onConflict: "entity_id,identifier_type,value_hash",
+          })
         : noop(),
-      adminClient.from("apolo_search_entries").upsert([searchRow], { onConflict: "entity_id" }),
+      linhas.contatos.length ? adminClient.from("apolo_contacts").insert(linhas.contatos) : noop(),
+      linhas.enderecos.length ? adminClient.from("apolo_addresses").insert(linhas.enderecos) : noop(),
+      linhas.relacionamentos.length
+        ? adminClient.from("apolo_relationships").insert(linhas.relacionamentos)
+        : noop(),
+      adminClient.from("apolo_search_entries").upsert([searchRow], {
+        ignoreDuplicates: acrescentouNaFicha,
+        onConflict: "entity_id",
+      }),
     ]);
 
   warn("papel", profileRes.error);
@@ -732,16 +1173,26 @@ export async function createApoloEntity(
   warn("indice de busca", searchRes.error);
 
   // Registra o codigo na entidade: e o que permite conferir a CAD depois.
-  const { error: autenticacaoError } = await adminClient
-    .from("apolo_entities")
-    .update({
-      metadata: {
-        ...entityRow.metadata,
-        autenticacao: { codigo: autenticacao, geradoEm: new Date().toISOString() },
-      },
-    })
-    .eq("id", entityId);
-  warn("codigo de autenticacao", autenticacaoError);
+  //
+  // ⚠️ POR CIMA DO QUE FICOU GRAVADO (revisão da onda 3, 16/09/2026). Até aqui este update espalhava
+  // `entityRow.metadata`, o metadata de uma ficha NOVA. No modo anexo isso apagava o merge feito
+  // logo acima: a ficha que veio do sync do C2X perdia `source`, `c2xSynced` e `c2xUserId` no
+  // último passo do cadastro (update troca o jsonb inteiro). Valia para o hub, o público e o portal.
+  //
+  // No modo ACRESCENTAR o código já foi para a ficha na mesma gravação do metadata (e só quando ela
+  // não tinha um): nada a regravar aqui.
+  if (!acrescentouNaFicha) {
+    const { error: autenticacaoError } = await adminClient
+      .from("apolo_entities")
+      .update({
+        metadata: {
+          ...metadataGravado,
+          autenticacao: { codigo: autenticacao, geradoEm: new Date().toISOString() },
+        },
+      })
+      .eq("id", entityId);
+    warn("codigo de autenticacao", autenticacaoError);
+  }
 
   return { autenticacao, entityId, ok: true, warnings };
 }

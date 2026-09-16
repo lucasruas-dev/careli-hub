@@ -7,9 +7,15 @@ import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos"
 import { soDigitos } from "@/lib/apolo/documento";
 import { APOLO_DOCS_BUCKET } from "@/lib/apolo/documentos";
 import { chaveDaLogo } from "@/lib/apolo/enterprise-logos";
-import { autorizarComercial } from "@/lib/apolo/incorporador/board-do-portal";
+import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
-import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
+import { autorizarEscritaNoProduto } from "@/lib/apolo/incorporador/operacao-do-produto-servidor";
+import {
+  credenciamentoParaOPortal,
+  escopoDaEsteiraDoPortal,
+  escopoDoTitular,
+} from "@/lib/apolo/incorporador/familia-no-portal";
+import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
@@ -18,6 +24,8 @@ import type { ModoDoAjuste } from "@/lib/hercules/ajuste-de-preco";
 import {
   avisarSobreAVenda,
   destinatariosDaVenda,
+  registrarAvisoNaoEnviado,
+  vendaAvisaPeloWhatsapp,
 } from "@/lib/hercules/avisos-da-venda";
 import {
   carregarCadastroDeEmpreendimentos,
@@ -29,7 +37,12 @@ import {
   FalhaAoLerCredenciamento,
 } from "@/lib/hercules/cliente-credenciado";
 import { montarCronograma } from "@/lib/hercules/cronograma";
-import { nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
+import {
+  lerComColunasDoApartamento,
+  nomeDaUnidade,
+  tipoDaUnidade,
+} from "@/lib/hercules/nome-da-unidade";
+import type { TipoProduto } from "@/lib/hercules/produto-novo";
 import { lerFaixasDoPanteon } from "@/lib/hercules/planos-do-panteon";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import { rotuloDoIndice } from "@/lib/temis/planos";
@@ -55,7 +68,12 @@ import { familiaDoEmpreendimento } from "@/lib/hercules/quem-pode-vender";
 // ⚠️ O PRAZO DA PROPOSTA USA O CÁLCULO DA RESERVA de propósito: `vencimentoEmDias` já põe o fim no
 // último segundo do dia no fuso da operação (−03:00), que é o que a pessoa entende por "vale até
 // quinta". Uma segunda conta aqui daria dois vencimentos diferentes na mesma venda.
-import { motivoEscrito, vencimentoEmDias } from "@/lib/hercules/reserva";
+import {
+  motivoEscrito,
+  SEM_PRECO_PARA_PROPOSTA,
+  semPrecoDeTabela,
+  vencimentoEmDias,
+} from "@/lib/hercules/reserva";
 
 // A PROPOSTA DA UNIDADE — o segundo passo da venda, saindo da reserva que já existe.
 //
@@ -65,8 +83,8 @@ import { motivoEscrito, vencimentoEmDias } from "@/lib/hercules/reserva";
 // empreendimento"*, *"depois vem a montagem no simulador"* e *"ao gerar, a proposta fica cadastrada
 // e o PDF vai por WhatsApp para coordenador, imobiliária e corretor"*.
 //
-// ⚠️ O ESQUELETO É O DA ROTA DE RESERVA, e de propósito: `autorizarComercial`, escopo do COOKIE por
-// `idsDaSessao` (nunca do corpo), unidade fora do escopo respondendo 404 igual a inexistente — o
+// ⚠️ O ESQUELETO É O DA ROTA DE RESERVA, e de propósito: `autorizarOperacaoDeVenda`, escopo do
+// COOKIE por `idsDaSessao` (nunca do corpo), unidade fora do escopo respondendo 404 igual a inexistente — o
 // 403 não pode virar oráculo de "existe, mas não é sua" —, e o aviso que NÃO derruba a gravação.
 //
 // ⚠️ O TITULAR É O DA RESERVA, SEMPRE, e qualquer titular que venha no corpo é IGNORADO. A tela
@@ -98,6 +116,8 @@ const PASTA_DAS_PROPOSTAS = "hercules-propostas";
 const VALIDADE_DO_LINK_EM_SEGUNDOS = 60 * 60;
 
 type UnidadeDaProposta = {
+  /** Só no prédio (0171). Ausente quando a coluna ainda não existe. */
+  apartamento?: null | string;
   area: null | number | string;
   codigo: string;
   enterprise_id: string;
@@ -106,7 +126,31 @@ type UnidadeDaProposta = {
   preco_tabela: null | number | string;
   quadra: null | string;
   situacao: string;
+  /** Só no prédio. Nulo = torre única. */
+  torre?: null | string;
 };
+
+/**
+ * A unidade pelo id, com as colunas do prédio quando a 0171 já existe.
+ *
+ * ⚠️ UMA LEITURA PARA OS TRÊS VERBOS (16/09/2026). É desta linha que `nomeDaUnidade` escreve o
+ * WhatsApp e o PDF: sem apartamento e torre, a proposta de um apto sairia com o código cru. Sem a
+ * 0171, repete sem as colunas (`lerComColunasDoApartamento`), e o loteamento sai como sempre.
+ */
+async function unidadePorId(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  unidadeId: string,
+): Promise<null | UnidadeDaProposta> {
+  const { data } = await lerComColunasDoApartamento((extras) =>
+    admin
+      .from("hercules_unidades")
+      .select(`id,codigo,quadra,lote,situacao,preco_tabela,area,enterprise_id${extras}`)
+      .eq("workspace_id", WORKSPACE)
+      .eq("id", unidadeId)
+      .maybeSingle(),
+  );
+  return (data ?? null) as unknown as null | UnidadeDaProposta;
+}
 
 type ReservaViva = {
   corretor_entity_id: null | string;
@@ -310,7 +354,7 @@ async function nomesDasEntidades(
 }
 
 export async function GET(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -330,14 +374,7 @@ export async function GET(request: Request) {
 
   try {
     const permitidos = new Set(await idsDaSessao(auth.sessao));
-    const { data } = await admin
-      .from("hercules_unidades")
-      .select("id,codigo,quadra,lote,situacao,preco_tabela,area,enterprise_id")
-      .eq("workspace_id", WORKSPACE)
-      .eq("id", unidadeId)
-      .maybeSingle();
-
-    const unidade = data as null | UnidadeDaProposta;
+    const unidade = await unidadePorId(admin, unidadeId);
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
       return NextResponse.json(
         { error: "Unidade não encontrada." },
@@ -382,10 +419,18 @@ export async function GET(request: Request) {
     // (pai e filhos) e `comIdsDoGrupo` (o grupo que as divisões cobrem), a CAD credenciada some e
     // a resposta vira "não credenciado" na cara do corretor. É a mesma expansão que a rota
     // `/venda` faz antes de `lerEsteiraDoEscopo`.
+    //
+    // (16/09/2026) ⚠️ FORA DO COMERCIAL, SÓ A FAMÍLIA DA SESSÃO MAIS O ESPELHO DO PAI
+    // (`escopoDaEsteiraDoPortal`): o irmão de outro dono (o 36 do Lino) não entra, e a frase de
+    // "CPF sem cadastro no Apolo" vira a de "sem CAD neste empreendimento" para não dizer ao
+    // Cecílio se um CPF existe na base da Careli. O comercial segue igual.
     const familia = familiaDoEmpreendimento(cadastro, c2xId);
-    const escopoDaEsteira = comIdsDoGrupo(familia, catalogo, permitidos);
+    const comercial = ehPortalComercial(auth.sessao.tipo);
+    const escopoDaEsteira = escopoDoTitular(
+      escopoDaEsteiraDoPortal({ c2xId, cadastro, catalogo, comercial, permitidos }),
+    );
 
-    const [credenciamento, planos, entradaMinimaPercentual, faixas, nomes] =
+    const [credenciamentoCru, planos, entradaMinimaPercentual, faixas, nomes] =
       await Promise.all([
         credenciadoParaVender(admin, {
           cpf: titular.cpf,
@@ -409,6 +454,10 @@ export async function GET(request: Request) {
           reserva.corretor_entity_id ?? "",
         ]),
       ]);
+    const credenciamento = credenciamentoParaOPortal(credenciamentoCru, {
+      comercial,
+      cpf: titular.cpf,
+    });
 
     return NextResponse.json(
       {
@@ -445,7 +494,7 @@ export async function GET(request: Request) {
           unidade: {
             enterpriseId: c2xId,
             id: unidade.id,
-            nome: nomeDaUnidade(unidade),
+            nome: nomeDaUnidade({ ...unidade, tipoProduto: empreendimento?.tipoProduto }),
             preco: numeroDoBanco(unidade.preco_tabela) ?? 0,
             produto: empreendimento?.nome ?? "Empreendimento",
           },
@@ -466,7 +515,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -542,19 +591,28 @@ export async function POST(request: Request) {
   try {
     // ── 1. Escopo e unidade ────────────────────────────────────────────────
     const permitidos = new Set(await idsDaSessao(auth.sessao));
-    const { data } = await admin
-      .from("hercules_unidades")
-      .select("id,codigo,quadra,lote,situacao,preco_tabela,area,enterprise_id")
-      .eq("workspace_id", WORKSPACE)
-      .eq("id", unidadeId)
-      .maybeSingle();
-
-    const unidade = data as null | UnidadeDaProposta;
+    const unidade = await unidadePorId(admin, unidadeId);
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
       return NextResponse.json(
         { error: "Unidade não encontrada." },
         { status: 404 },
       );
+    }
+
+    // ── 1½. Quem opera o produto decide a escrita ──────────────────────────
+    //
+    // ⚠️ DECISÃO DO LUCAS (16/09/2026): no portal que confecciona (o Cecílio) a proposta só nasce no
+    // produto operado por ele. No VOC e no VOR a resposta é 403 com `soConsulta`; sem a 0170, 503. A
+    // Gurgel passa sem ida ao banco. Vem antes da prévia também: quem não pode gerar a proposta não
+    // precisa do papel dela.
+    const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
+    if (!escrita.ok) return escrita.response;
+    const sessao = escrita.sessao;
+
+    // ⚠️ SEM PREÇO DE TABELA NÃO HÁ PROPOSTA (achado 15 da onda 2). O `?? 0` lá embaixo congelaria
+    // "preço de tabela R$ 0" na proposta e no PDF, e com a venda andando ninguém corrige o preço.
+    if (semPrecoDeTabela(unidade.preco_tabela)) {
+      return NextResponse.json({ error: SEM_PRECO_PARA_PROPOSTA }, { status: 409 });
     }
 
     // ── 2. A reserva viva ──────────────────────────────────────────────────
@@ -597,14 +655,21 @@ export async function POST(request: Request) {
       );
     }
 
+    // Mesma régua do GET: fora do comercial, a família da sessão mais o espelho do pai.
     const familia = familiaDoEmpreendimento(cadastro, c2xId);
-    const escopoDaEsteira = comIdsDoGrupo(familia, catalogo, permitidos);
+    const comercial = ehPortalComercial(sessao.tipo);
+    const escopoDaEsteira = escopoDoTitular(
+      escopoDaEsteiraDoPortal({ c2xId, cadastro, catalogo, comercial, permitidos }),
+    );
 
     // ── 4. A CAD do titular, credenciada NESTE empreendimento ──────────────
-    const credenciamento = await credenciadoParaVender(admin, {
-      cpf: titular.cpf,
-      enterpriseIds: escopoDaEsteira,
-    });
+    const credenciamento = credenciamentoParaOPortal(
+      await credenciadoParaVender(admin, {
+        cpf: titular.cpf,
+        enterpriseIds: escopoDaEsteira,
+      }),
+      { comercial, cpf: titular.cpf },
+    );
     if (!credenciamento.credenciado) {
       // A frase vem da lib: ela é quem sabe dizer "em análise de crédito desde 02/09", que é uma
       // conversa; "não credenciado" seria um muro.
@@ -816,7 +881,12 @@ export async function POST(request: Request) {
     const nomeDoCorretor = reserva.corretor_entity_id
       ? nomes.get(reserva.corretor_entity_id) || null
       : null;
-    const unidadeEscrita = nomeDaUnidade(unidade);
+    // ⚠️ O TIPO DO PRODUTO VEM DO CADASTRO, e a unidade confirma. É ele que escreve "Torre A · Apto
+    // 304" no WhatsApp e no PDF, e que troca "o lote" por "a unidade" na folha (C6, onda 2). Sem o
+    // tipo, a unidade decide pelas próprias colunas (`tipoDaUnidade`).
+    const unidadeComTipo = { ...unidade, tipoProduto: empreendimento.tipoProduto };
+    const unidadeEscrita = nomeDaUnidade(unidadeComTipo);
+    const tipoProduto = tipoDaUnidade(unidadeComTipo);
 
     // ── 6½. A PRÉVIA PARA AQUI ─────────────────────────────────────────────
     //
@@ -865,6 +935,7 @@ export async function POST(request: Request) {
           enterpriseId: c2xId,
           plano,
           propostaId: null,
+          tipoProduto,
           unidade,
           unidadeEscrita,
           validadeEmIso: validadeEm,
@@ -942,8 +1013,8 @@ export async function POST(request: Request) {
         contrato_parcelas: pedido.parcelas,
         corretor_entity_id: reserva.corretor_entity_id,
         corretor_nome: nomeDoCorretor,
-        criado_por: auth.sessao.usuarioId,
-        criado_por_nome: auth.sessao.usuarioNome,
+        criado_por: sessao.usuarioId,
+        criado_por_nome: sessao.usuarioNome,
         dia_vencimento: pedido.vencimentoDia,
         // ⚠️ SEM ESTE CÓDIGO A PROPOSTA NASCE INVISÍVEL: a rota `/venda` filtra por ele.
         empreendimento_codigo: codigoDoEmpreendimento(
@@ -1075,6 +1146,10 @@ export async function POST(request: Request) {
     // volta como aviso na resposta; uma exceção aqui viraria 503 numa operação que deu certo, e o
     // coordenador tentaria de novo por cima do índice único.
     const avisos = await avisar(admin, {
+      // ⚠️ A PROPOSTA DO PORTAL QUE OPERA SOZINHO NÃO AVISA NINGUÉM (Lucas, 16/09/2026). O PDF é
+      // montado e guardado igual (é o papel da venda, e vai para a aba Documentos); só o WhatsApp
+      // não sai, e o histórico de disparos diz que não saiu por decisão.
+      avisaPeloWhatsapp: vendaAvisaPeloWhatsapp(sessao),
       c2xId,
       // O elo do PDF com a ficha do cliente no Apolo — a mesma entidade que decidiu o
       // credenciamento, e o hash do CPF do titular. Ver a 0136.
@@ -1091,6 +1166,7 @@ export async function POST(request: Request) {
       plano,
       propostaId,
       protocolo: reserva.protocolo_numero,
+      tipoProduto,
       titular,
       unidade,
       unidadeEscrita,
@@ -1161,6 +1237,11 @@ type ResultadoDoAviso = { motivo?: string; ok: boolean; para: string };
 async function avisar(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
   dados: {
+    /**
+     * Falso na venda do portal que opera sozinho (`vendaAvisaPeloWhatsapp`): o PDF é guardado igual,
+     * mas nenhum WhatsApp sai, e o registro diz que não saiu por decisão.
+     */
+    avisaPeloWhatsapp: boolean;
     c2xId: string;
     /** O elo do PDF com a ficha do cliente no Apolo. Ver a 0136. */
     clienteDocumentoHash: null | string;
@@ -1178,6 +1259,7 @@ async function avisar(
     propostaId: null | string;
     /** O COD em número — é ele que agrupa o documento na aba. */
     protocolo: null | number;
+    tipoProduto: TipoProduto;
     titular: Proponente;
     unidade: UnidadeDaProposta;
     unidadeEscrita: string;
@@ -1227,6 +1309,7 @@ async function avisar(
       enterpriseId: dados.c2xId,
       protocolo: dados.protocolo,
       propostaId: dados.propostaId,
+      tipoProduto: dados.tipoProduto,
       unidade: dados.unidade,
       unidadeEscrita: dados.unidadeEscrita,
       // A MESMA data que acabou de ir para `validade_em`: o papel repete o que ficou gravado.
@@ -1234,6 +1317,24 @@ async function avisar(
       valorNegociado: dados.pedido.valorNegociado,
       plano: dados.plano,
     });
+
+    // ⚠️ PORTAL QUE OPERA SOZINHO: o papel ficou guardado acima, e aqui para. Nenhum texto é montado
+    // e nenhum WhatsApp sai; cada destinatário ganha a linha "não enviado por decisão".
+    if (!dados.avisaPeloWhatsapp) {
+      const naoEnviados = await registrarAvisoNaoEnviado(admin, {
+        corretorId: dados.corretorId,
+        destinatarios,
+        imobiliariaId: dados.imobiliariaId,
+        origem: "proposta:whatsapp",
+        tipo: "hercules_proposta",
+      });
+      return anexo
+        ? naoEnviados
+        : [
+            ...naoEnviados,
+            { motivo: "não foi possível gerar o PDF", ok: false, para: "documento" },
+          ];
+    }
 
     const textos = avisosDaProposta({
       cliente: dados.titular.nome,
@@ -1312,6 +1413,8 @@ type DadosDoPdfDaProposta = {
   propostaId: null | string;
   /** O COD em número — é ele que agrupa o documento na aba. */
   protocolo?: null | number;
+  /** Loteamento ou prédio: muda a palavra da folha ("o lote" ou "a unidade"), nunca a conta. */
+  tipoProduto: TipoProduto;
   unidade: UnidadeDaProposta;
   unidadeEscrita: string;
   /** O ISO gravado em `hercules_propostas.validade_em`, não um prazo recontado na impressão. */
@@ -1347,6 +1450,9 @@ async function bytesDoPdfDaProposta(
     logoC2x: logoDoC2x(),
     logoEmpreendimento: await logoDoEmpreendimento(admin, dados.enterpriseId),
     plano: dados.plano,
+    // O tipo do produto vai para a folha (C6): no prédio o subtítulo diz "m² privativos" e a tarja
+    // diz "a unidade". Quem desenha a diferença é `proposta-para-pdf.ts`, e a folha o repassa ao PDF.
+    tipoProduto: dados.tipoProduto,
     unidade: {
       area: numeroDoBanco(dados.unidade.area),
       cidade: dados.empreendimento.cidade,
@@ -1495,7 +1601,7 @@ async function logoDoEmpreendimento(
 // ⚠️ PATCH, E NÃO DELETE — a mesma razão da reserva. A proposta cancelada continua respondendo
 // "quem tinha este lote e por quê", e o histórico da unidade lê `cancelada_em` para montar o evento.
 export async function PATCH(request: Request) {
-  const auth = autorizarComercial(request);
+  const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
 
   const admin = createApoloAdminClient();
@@ -1531,20 +1637,18 @@ export async function PATCH(request: Request) {
   try {
     const permitidos = new Set(await idsDaSessao(auth.sessao));
 
-    const { data } = await admin
-      .from("hercules_unidades")
-      .select("id,codigo,quadra,lote,situacao,preco_tabela,enterprise_id,area")
-      .eq("workspace_id", WORKSPACE)
-      .eq("id", pedido.unidadeId)
-      .maybeSingle();
-
-    const unidade = data as null | UnidadeDaProposta;
+    const unidade = await unidadePorId(admin, pedido.unidadeId);
     if (!unidade || !permitidos.has(String(unidade.enterprise_id))) {
       return NextResponse.json(
         { error: "Unidade não encontrada." },
         { status: 404 },
       );
     }
+
+    // A mesma régua do POST: cancelar a proposta é escrita, e no produto só de consulta não se escreve.
+    const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
+    if (!escrita.ok) return escrita.response;
+    const sessao = escrita.sessao;
 
     // ⚠️ SÓ A PROPOSTA NATIVA E ABERTA. `origem = 'panteon'` mantém de fora as 4.857 importadas do
     // C2X — cancelar por aqui uma venda que mora no legado escreveria no Panteon um cancelamento
@@ -1603,8 +1707,8 @@ export async function PATCH(request: Request) {
         atualizado_em: agora,
         cancelada_em: agora,
         cancelada_motivo: motivo,
-        cancelada_por: auth.sessao.usuarioId,
-        cancelada_por_nome: auth.sessao.usuarioNome,
+        cancelada_por: sessao.usuarioId,
+        cancelada_por_nome: sessao.usuarioNome,
         etapa: "cancelado",
         // ⚠️ O MAPA PINTA PELA PROPOSTA DE `etapa_desde` MAIS RECENTE. Sem mexer nesta data, o
         // cancelamento entraria no histórico com o carimbo da geração e o lote poderia continuar
@@ -1731,22 +1835,31 @@ export async function PATCH(request: Request) {
         },
         imobiliariaId,
       });
-      avisos = await avisarSobreAVenda(admin, {
-        corretorId: proposta.corretor_entity_id,
-        destinatarios,
-        imobiliariaId,
-        origem: "proposta:cancelamento",
-        textos: avisosDeCancelamentoDaProposta({
-          cliente,
-          codigo,
-          corretor: destinatarios.corretor?.nome ?? null,
-          empreendimento: nomeDoEmpreendimento,
-          imobiliaria: destinatarios.imobiliaria.nome,
-          motivo,
-          unidade: nomeDaUnidade(unidade),
-        }),
-        tipo: "hercules_proposta",
-      });
+      // Portal que opera sozinho (Lucas, 16/09/2026): nenhum WhatsApp, só o registro de que não saiu.
+      avisos = vendaAvisaPeloWhatsapp(sessao)
+        ? await avisarSobreAVenda(admin, {
+            corretorId: proposta.corretor_entity_id,
+            destinatarios,
+            imobiliariaId,
+            origem: "proposta:cancelamento",
+            textos: avisosDeCancelamentoDaProposta({
+              cliente,
+              codigo,
+              corretor: destinatarios.corretor?.nome ?? null,
+              empreendimento: nomeDoEmpreendimento,
+              imobiliaria: destinatarios.imobiliaria.nome,
+              motivo,
+              unidade: nomeDaUnidade(unidade),
+            }),
+            tipo: "hercules_proposta",
+          })
+        : await registrarAvisoNaoEnviado(admin, {
+            corretorId: proposta.corretor_entity_id,
+            destinatarios,
+            imobiliariaId,
+            origem: "proposta:cancelamento",
+            tipo: "hercules_proposta",
+          });
     }
 
     return NextResponse.json({ data: { avisos, codigo, id: proposta.id } });

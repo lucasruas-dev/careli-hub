@@ -19,6 +19,8 @@
 
 import { cpfValido, soDigitos } from "@/lib/apolo/documento";
 
+import { ehUnidadeVertical, nomeDaUnidade as nomeDaUnidadeEscrita } from "./nome-da-unidade";
+
 /** Quem vai comprar. Só três campos: foi o que ele pediu, e é o que a reserva precisa. */
 export type ProponenteDaReserva = {
   cpf: string;
@@ -427,10 +429,16 @@ export type ReservaDoFluxo = {
 };
 
 export type UnidadeDaLinha = {
+  /** Só no prédio (0171). Ausente quando a leitura não pediu a coluna. */
+  apartamento?: null | string;
   codigo: string;
   lote: null | string;
   preco_tabela: null | number;
   quadra: null | string;
+  /** O tipo do PRODUTO da unidade (0170). Ausente = a unidade decide pelas próprias colunas. */
+  tipoProduto?: null | string;
+  /** Só no prédio. Nulo = torre única. */
+  torre?: null | string;
 };
 
 /** O primeiro proponente é o titular — o nome que a lista mostra. */
@@ -483,10 +491,17 @@ export function reservaComoLinhaDoFluxo(
   valor: null | number;
 } {
   const dono = titular(reserva.proponentes);
+  // ⚠️ O PRÉDIO SE ESCREVE COMO PRÉDIO (Lucas, 16/09/2026): apartamento nunca vira "quadra lote".
+  // Sem este ramo, a reserva de um apto saía na lista com o código cru ("JAD-A-304"), enquanto a
+  // proposta do mesmo apto, logo depois, dizia "Torre A · Apto 304". A escrita é a de
+  // `nome-da-unidade.ts`, a mesma do WhatsApp e do PDF, e não uma terceira. O loteamento continua
+  // na forma curta de sempre ("12 06").
   const nomeDaUnidade =
-    unidade?.quadra && unidade.lote
-      ? `${unidade.quadra} ${unidade.lote}`
-      : (unidade?.codigo ?? null);
+    unidade && ehUnidadeVertical(unidade)
+      ? nomeDaUnidadeEscrita(unidade)
+      : unidade?.quadra && unidade.lote
+        ? `${unidade.quadra} ${unidade.lote}`
+        : (unidade?.codigo ?? null);
 
   return {
     cliente_documento: dono.cpf || null,
@@ -521,6 +536,41 @@ export function reservaComoLinhaDoFluxo(
 }
 
 /**
+ * A unidade está SEM PREÇO DE TABELA para vender?
+ *
+ * ⚠️ NULO OU ATÉ R$ 1 É "SEM PREÇO" (achado 15 da onda 2, 16/09/2026). O cadastro de unidades aceita
+ * preço em branco como aviso, e a unidade nascia vendável com `preco_tabela` nulo: a proposta usava
+ * `?? 0` e congelava "preço de tabela R$ 0" no documento, e depois ninguém corrigia o preço porque a
+ * venda já estava andando. Até R$ 1 é preço simbólico, não preço de tabela: vender em cima dele
+ * imprimiria o mesmo documento sem valor. `numeric` chega como texto do PostgREST: a conversão é
+ * daqui, e texto que não é número também é "sem preço".
+ */
+export function semPrecoDeTabela(preco: unknown): boolean {
+  if (preco === null || preco === undefined || preco === "") return true;
+  const valor = Number(preco);
+  return !Number.isFinite(valor) || valor <= 1;
+}
+
+/** A recusa da reserva em unidade sem preço (409). */
+export const SEM_PRECO_PARA_RESERVA =
+  "Esta unidade está sem preço de tabela e não pode ser reservada.";
+
+/** A recusa da proposta em unidade sem preço (409). */
+export const SEM_PRECO_PARA_PROPOSTA =
+  "Esta unidade está sem preço de tabela e não pode receber proposta.";
+
+/**
+ * O `motivo` do aviso que NÃO SAIU POR DECISÃO, e não por falha.
+ *
+ * Decisão do Lucas (16/09/2026): as vendas feitas pelo portal que opera sozinho (o Cecílio) não
+ * avisam ninguém por WhatsApp por enquanto; as da Gurgel continuam avisando como sempre. Quem grava
+ * o registro é `registrarAvisoNaoEnviado` (`avisos-da-venda.ts`); a constante mora AQUI, e não lá,
+ * porque este arquivo é puro e as modais da tela leem `comoFoiOAviso` no navegador. Importar de
+ * `avisos-da-venda.ts` levaria o gateway de WhatsApp para o bundle do cliente.
+ */
+export const MOTIVO_DO_AVISO_DESLIGADO = "aviso desligado nas vendas do portal";
+
+/**
  * O que dizer sobre os avisos, em uma frase.
  *
  * ⚠️ "SEM AVISO PARA: IMOBILIARIA" NÃO INFORMA O SUFICIENTE — foi o que o Lucas leu na primeira
@@ -530,6 +580,17 @@ export function reservaComoLinhaDoFluxo(
 export function comoFoiOAviso(
   avisos: Array<{ motivo?: string; ok: boolean; para: string }>,
 ): string {
+  // ⚠️ O AVISO DESLIGADO POR DECISÃO NÃO É FALHA (ver `MOTIVO_DO_AVISO_DESLIGADO`). Sem este ramo,
+  // a reserva feita pelo time do Cecílio diria "falhou para corretor, imobiliária e coordenador",
+  // e quem lê iria atrás de um telefone errado que não existe.
+  const desligados = avisos.filter((a) => a.motivo === MOTIVO_DO_AVISO_DESLIGADO);
+  if (desligados.length > 0) {
+    const frase =
+      "Nenhum aviso foi enviado por WhatsApp: nas vendas feitas pelo portal os avisos estão desligados por enquanto.";
+    const demais = avisos.filter((a) => a.motivo !== MOTIVO_DO_AVISO_DESLIGADO);
+    return demais.length === 0 ? frase : `${frase} ${comoFoiOAviso(demais)}`;
+  }
+
   const nome: Record<string, string> = {
     coordenador: "coordenador",
     corretor: "corretor",

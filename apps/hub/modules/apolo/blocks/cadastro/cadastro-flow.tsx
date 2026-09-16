@@ -414,10 +414,6 @@ async function accessToken() {
 // Sem mock: o localhost lê documento e enriquece de verdade, igual produção (Lucas 19/jul).
 // ⚠️ Cada leitura/enriquecimento aqui é uma consulta COBRADA na MOST.
 
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 // Acha a data de emissão/referência/vencimento do comprovante nos campos lidos
 // pelo MOST (pra saber se está atual). Prefere um campo com rótulo de data;
 // senão pega a primeira data encontrada.
@@ -687,6 +683,8 @@ async function apiPost<T>(body: Record<string, unknown>): Promise<T> {
 // A CAD volta pronta do servidor (com o código de autenticação impresso).
 type SalvarResposta = {
   autenticacao: string;
+  // Só o modo PORTAL recebe: o que aconteceu com a fila do board (sem imobiliária a CAD não entra).
+  aviso?: null | string;
   cadBase64: string | null;
   entityId: string;
   savedDocs: string[];
@@ -965,13 +963,24 @@ async function apiAssinarUploadCadastro(fileName: string): Promise<AssinaturaUpl
   return { bucket: json.bucket, path: json.path, token: json.token };
 }
 
-// Espelho público: mesma forma, token de sessão no header em vez de Bearer.
+// A frase do 401 no modo PORTAL. A do público manda "reabrir o link", que não existe no portal: lá
+// quem perdeu a sessão entra de novo pelo login do portal.
+const SESSAO_EXPIRADA_NO_PORTAL = "Sua sessão expirou. Entre de novo no portal.";
+
+// O que muda nas chamadas do modo PORTAL, sem mexer no público: o corpo extra (o produto, que o
+// servidor confere contra a sessão e contra quem opera o produto) e a frase do 401.
+type OpcoesDaChamadaPublica = { corpo?: Record<string, unknown>; mensagem401?: string };
+
+// Espelho público: mesma forma, token de sessão no header em vez de Bearer. O modo PORTAL usa a
+// mesma função com a rota dele (a credencial ali é o cookie same-origin, sem header).
 async function assinarUploadPublico(
   headers: Record<string, string>,
   fileName: string,
+  url = "/api/publico/cad/upload-url",
+  opcoes: OpcoesDaChamadaPublica = {},
 ): Promise<AssinaturaUpload> {
-  const response = await fetch("/api/publico/cad/upload-url", {
-    body: JSON.stringify({ fileName }),
+  const response = await fetch(url, {
+    body: JSON.stringify({ ...(opcoes.corpo ?? {}), fileName }),
     cache: "no-store",
     headers,
     method: "POST",
@@ -979,6 +988,7 @@ async function assinarUploadPublico(
   const json = (await response.json().catch(() => null)) as
     | (Partial<AssinaturaUpload> & { error?: string })
     | null;
+  if (response.status === 401 && opcoes.mensagem401) throw new Error(opcoes.mensagem401);
   if (!response.ok || !json?.bucket || !json?.path || !json?.token) {
     throw new Error(json?.error ?? `Falha HTTP ${response.status}`);
   }
@@ -991,6 +1001,7 @@ async function postPublico<T>(
   url: string,
   body: Record<string, unknown>,
   headers: Record<string, string>,
+  mensagem401?: string,
 ): Promise<T> {
   const response = await fetch(url, {
     body: JSON.stringify(body),
@@ -1001,6 +1012,7 @@ async function postPublico<T>(
   const json = (await response.json().catch(() => null)) as
     | { data?: T; error?: string }
     | null;
+  if (response.status === 401 && mensagem401) throw new Error(mensagem401);
   if (!response.ok || !json?.data) {
     throw new Error(json?.error ?? `Falha HTTP ${response.status}`);
   }
@@ -1013,6 +1025,7 @@ async function salvarPublico(
   url: string,
   body: Record<string, unknown>,
   headers: Record<string, string>,
+  mensagem401?: string,
 ): Promise<SalvarResposta> {
   const response = await fetch(url, {
     body: JSON.stringify(body),
@@ -1023,15 +1036,122 @@ async function salvarPublico(
   const json = (await response.json().catch(() => null)) as
     | (Partial<SalvarResposta> & { error?: string })
     | null;
+  if (response.status === 401 && mensagem401) throw new Error(mensagem401);
   if (!response.ok || !json?.entityId) {
     throw new Error(json?.error ?? `Falha HTTP ${response.status}`);
   }
   return {
     autenticacao: json.autenticacao ?? "",
+    aviso: json.aviso ?? null,
     cadBase64: json.cadBase64 ?? null,
     entityId: json.entityId,
     savedDocs: json.savedDocs ?? [],
     warnings: json.warnings ?? [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Modo PORTAL: o CRM do portal do incorporador (decisão do Lucas, 16/09/2026: "a equipe da Cecilio
+// cadastra cliente novo pelo CRM do portal").
+//
+// O wizard é o MESMO, com o comportamento do público (o vínculo vem PRONTO de fora, então não há
+// seletor de imobiliária/empreendimento aqui): quem escolhe o produto e a imobiliária é a TelaCrm,
+// antes de abrir o wizard. O que troca é o MAPA DE ROTAS, /api/incorporador/crm/cadastro/*, e a
+// credencial: o cookie do portal viaja sozinho (same-origin), sem Bearer e sem header de token. O
+// servidor confere tudo de novo: o produto tem de ser da sessão e a imobiliária habilitada nele.
+export type PortalConfig = {
+  // Produto escolhido na TelaCrm (id do C2X da divisão) e o nome dele, só para o cabeçalho.
+  empreendimentoNome: string;
+  enterpriseId: string;
+  // Imobiliária habilitada no produto. Opcional só no tipo: o servidor do portal recusa o cadastro
+  // sem ela (400), porque sem imobiliária a CAD não entra no board (decisão do Lucas, 16/09/2026; a
+  // própria Cecílio Rocha é cadastrada como imobiliária de venda direta).
+  imobiliariaId?: string;
+  imobiliariaNome?: string;
+  // "Fechar" e "Cadastrar outro cliente" depois do envio: a TelaCrm fecha a janela e recarrega a
+  // lista. Sem isto o público recarregaria a PÁGINA do portal inteira.
+  onConcluir?: () => void;
+};
+
+const ROTAS_DO_PORTAL = {
+  checarCpf: "/api/incorporador/crm/cadastro/checar-cpf",
+  mostqi: "/api/incorporador/crm/cadastro/mostqi",
+  salvar: "/api/incorporador/crm/cadastro/salvar",
+  settings: "/api/incorporador/crm/cadastro/settings",
+  uploadUrl: "/api/incorporador/crm/cadastro/upload-url",
+} as const;
+
+// Espelho de `apiExigenciasInterno` no portal: o servidor devolve só o produto pedido, e só se ele
+// for da sessão.
+async function apiExigenciasPortal(enterpriseId: string): Promise<ExigenciasCad> {
+  try {
+    const response = await fetch(
+      `${ROTAS_DO_PORTAL.settings}?enterpriseId=${encodeURIComponent(enterpriseId)}`,
+      { cache: "no-store" },
+    );
+    const json = (await response.json().catch(() => null)) as null | {
+      data?: { comprovanteRenda?: boolean };
+    };
+    return { comprovanteRenda: json?.data?.comprovanteRenda === true };
+  } catch {
+    return SEM_EXIGENCIAS;
+  }
+}
+
+function criarApiDoPortal(portal: PortalConfig): ApiCadastro {
+  const headers = (): Record<string, string> => ({ "Content-Type": "application/json" });
+  return {
+    // O produto vai no corpo também aqui: gravar no Storage já é escrita, e o servidor só assina o
+    // upload para o produto que o portal opera (decisão do Lucas, 16/09/2026).
+    assinarUpload: (fileName: string) =>
+      assinarUploadPublico(headers(), fileName, ROTAS_DO_PORTAL.uploadUrl, {
+        corpo: { enterpriseId: portal.enterpriseId },
+        mensagem401: SESSAO_EXPIRADA_NO_PORTAL,
+      }),
+    // O produto vai no corpo (é o time do portal quem escolhe) e o servidor confere contra a sessão.
+    checarCpf: async (dados: ChecagemCpfPedido) => {
+      try {
+        return await postPublico<ChecagemCpf>(
+          ROTAS_DO_PORTAL.checarCpf,
+          { cpf: dados.cpf, cpfConjuge: dados.cpfConjuge ?? "", enterpriseId: portal.enterpriseId },
+          headers(),
+        );
+      } catch {
+        return SEM_CHECAGEM;
+      }
+    },
+    empreendimentos: async () => [],
+    exigencias: () => apiExigenciasPortal(portal.enterpriseId),
+    imobiliarias: async () => [],
+    // O produto vai no corpo também na MOST: a leitura é paga pela Careli e o servidor só a libera
+    // para o produto que o portal opera (revisão do conjunto, 16/09/2026).
+    ocr: <T,>(body: Record<string, unknown>) =>
+      postPublico<T>(
+        ROTAS_DO_PORTAL.mostqi,
+        { ...body, enterpriseId: portal.enterpriseId },
+        headers(),
+        SESSAO_EXPIRADA_NO_PORTAL,
+      ),
+    // O vínculo escolhido FORA do wizard entra aqui, por cima do que o wizard montou: produto em
+    // `vinculo` e imobiliária em `perfil` (os mesmos campos do hub).
+    salvar: (body: Record<string, unknown>) =>
+      salvarPublico(
+        ROTAS_DO_PORTAL.salvar,
+        {
+          ...body,
+          perfil: {
+            ...((body.perfil as Record<string, unknown> | undefined) ?? {}),
+            imobiliariaId: portal.imobiliariaId ?? "",
+            imobiliariaLabel: portal.imobiliariaNome ?? "",
+          },
+          vinculo: {
+            empreendimentoNome: portal.empreendimentoNome,
+            enterpriseId: portal.enterpriseId,
+          },
+        },
+        headers(),
+        SESSAO_EXPIRADA_NO_PORTAL,
+      ),
   };
 }
 
@@ -1091,7 +1211,9 @@ function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
 // Contexto que entrega o adapter (e o flag `modoPublico`) aos steps-filhos, que é onde os
 // fetches acontecem (DocUploader, StepIdentificacao, BlocoSocio, BlocoCorretor, StepRevisao).
 // O DEFAULT é o modo interno: um filho fora do provider (não acontece) ainda funciona igual hoje.
-type CadastroCtx = { api: ApiCadastro; modoPublico: boolean };
+// `portal` presente = modo PORTAL (que também liga `modoPublico`: vínculo pronto, sem seletor). Os
+// steps só leem `portal` para o texto e para o "fechar" depois do envio.
+type CadastroCtx = { api: ApiCadastro; modoPublico: boolean; portal: PortalConfig | null };
 
 const ApiCadastroContext = createContext<CadastroCtx>({
   api: {
@@ -1104,6 +1226,7 @@ const ApiCadastroContext = createContext<CadastroCtx>({
     salvar: apiSalvarCadastro,
   },
   modoPublico: false,
+  portal: null,
 });
 
 function useCadastroCtx(): CadastroCtx {
@@ -1133,6 +1256,7 @@ function cadSection(title: string, fields: CadCampo[]): CadSecao {
 export function CadastroFlow({
   aviso,
   empreendimentosIniciais,
+  portal,
   publico,
   tipo = "prospect",
 }: {
@@ -1142,6 +1266,9 @@ export function CadastroFlow({
   // Vem do portal de credenciamento: a imobiliária JÁ escolheu os empreendimentos no passo 1,
   // então o seletor não se repete aqui (só aparece no credenciamento feito pelo nosso time).
   empreendimentosIniciais?: string[];
+  // Presente = modo PORTAL (CRM do portal do incorporador, cookie da sessão): troca os fetches por
+  // /api/incorporador/crm/cadastro/*. Nunca junto com `publico`.
+  portal?: PortalConfig;
   // Presente = modo PÚBLICO (link sem login): troca os 4 fetches por /api/publico/cad/*. Ausente
   // = modo INTERNO (default), comportamento de produção intacto.
   publico?: PublicoConfig;
@@ -1153,10 +1280,16 @@ export function CadastroFlow({
   const isImobiliaria = tipo === "imobiliaria";
   // Adapter de I/O do wizard. No interno é `undefined` → os 4 helpers de hoje; no público troca a
   // origem sem tocar em mais nada. Vai por contexto porque os fetches moram nos steps-filhos.
-  const modoPublico = Boolean(publico);
+  // O PORTAL anda como o público (vínculo pronto de fora: sem seletor, imobiliária não exigida no
+  // wizard), com o mapa de rotas dele.
+  const modoPublico = Boolean(publico || portal);
   const ctx = useMemo<CadastroCtx>(
-    () => ({ api: criarApiCadastro(publico), modoPublico: Boolean(publico) }),
-    [publico],
+    () => ({
+      api: portal ? criarApiDoPortal(portal) : criarApiCadastro(publico),
+      modoPublico: Boolean(publico || portal),
+      portal: portal ?? null,
+    }),
+    [portal, publico],
   );
   const { api } = ctx;
   // Remontar tudo do zero: incrementar esta key recria o wizard (inclusive o estado interno dos
@@ -1444,7 +1577,9 @@ export function CadastroFlow({
               {/* O mesmo wizard serve o CAD do cliente E o auto-cadastro da imobiliária. Falar em
                   "cliente" na tela da imobiliária confundiria quem está cadastrando a si mesma. */}
               Parte 2 de 2: {isImobiliaria ? "dados da imobiliária" : "dados do cliente"}
-              {publico?.empreendimentoNome ? ` · ${publico.empreendimentoNome}` : ""}
+              {publico?.empreendimentoNome || portal?.empreendimentoNome
+                ? ` · ${publico?.empreendimentoNome || portal?.empreendimentoNome}`
+                : ""}
             </span>
           ) : null}
           <span
@@ -1664,7 +1799,8 @@ export function CadastroFlow({
           <StepRevisao
             exigeComprovanteRenda={exigeRenda}
             conjuge={temConjuge ? conjuge : null}
-            publico={publico}
+            // No portal a imobiliária também vem de fora do wizard (escolhida na TelaCrm).
+            publico={publico ?? (portal ? { imobiliariaNome: portal.imobiliariaNome } : undefined)}
             corretores={corretores}
             documentos={documentos}
             empreendimentos={empreendimentos}
@@ -1804,7 +1940,7 @@ function DocUploader({
   semLeitura?: boolean;
 }) {
   // Adapter de leitura: interno fala com /api/apolo/mostqi; público com /api/publico/cad/ocr.
-  const { api, modoPublico } = useCadastroCtx();
+  const { api, modoPublico, portal } = useCadastroCtx();
   const [lidos, setLidos] = useState<ArquivoLido[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1870,9 +2006,11 @@ function DocUploader({
             if (/sess[aã]o/i.test(msg)) {
               // "CPF de corretor" só vale no CAD do cliente. No auto-cadastro da imobiliária quem
               // abriu a sessão é a própria empresa, e mandá-la informar "CPF de corretor" confunde.
-              avisoDeLeitura =
-                "Sua sessão expirou. Você ainda consegue preencher os campos na mão, mas o envio " +
-                "vai pedir os seus dados de novo. Reabra o link para continuar.";
+              // No PORTAL não existe link para reabrir: quem perdeu a sessão entra de novo no portal.
+              avisoDeLeitura = portal
+                ? SESSAO_EXPIRADA_NO_PORTAL
+                : "Sua sessão expirou. Você ainda consegue preencher os campos na mão, mas o envio " +
+                  "vai pedir os seus dados de novo. Reabra o link para continuar.";
             } else if (/limite|429|aguarde/i.test(msg)) {
               avisoDeLeitura = msg;
             }
@@ -3892,7 +4030,8 @@ function StepRevisao({
 }) {
   // Adapter de salvamento (interno: /api/apolo/cadastro/salvar; público: rota gated do modo) +
   // flag público, que redireciona os "sair/novo cadastro" para recarregar em vez de ir ao /apolo.
-  const { api, modoPublico } = useCadastroCtx();
+  // No PORTAL os dois devolvem o controle à TelaCrm (`onConcluir`), que fecha a janela e recarrega.
+  const { api, modoPublico, portal } = useCadastroCtx();
   const label = (options: SelectOption[], id: string) =>
     options.find((o) => o.id.toString() === id)?.label ?? "";
 
@@ -4361,7 +4500,9 @@ function StepRevisao({
         <p className="mt-4 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
           {isImobiliaria
             ? "Confira os dados antes de enviar. Ao tocar em Enviar, o cadastro vai para a análise da Careli e não dá mais para editar por aqui."
-            : "Confira os dados do cliente com ele ao lado. Ao tocar em Enviar, a ficha vai para a análise da Careli e não dá mais para editar por aqui."}
+            : portal
+              ? "Confira os dados do cliente. Ao tocar em Enviar, a ficha é registrada e não dá mais para editar por aqui."
+              : "Confira os dados do cliente com ele ao lado. Ao tocar em Enviar, a ficha vai para a análise da Careli e não dá mais para editar por aqui."}
         </p>
       )}
 
@@ -4570,8 +4711,10 @@ function StepRevisao({
                 type="button"
                 aria-label="Fechar"
                 onClick={() => {
+                  // Portal: a TelaCrm fecha a janela e recarrega a lista.
+                  if (portal) portal.onConcluir?.();
                   // No público não há /apolo (sem login): recarrega para reiniciar o mesmo link.
-                  if (modoPublico) window.location.reload();
+                  else if (modoPublico) window.location.reload();
                   else window.location.href = "/apolo";
                 }}
                 className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
@@ -4582,7 +4725,15 @@ function StepRevisao({
 
             {/* O QUE ACONTECE AGORA: sem esta linha o corretor fica em dúvida se precisa mandar
                 a ficha para alguém, e liga para a central para perguntar. */}
-            {modoPublico ? (
+            {/* Portal: a frase é do SERVIDOR, que sabe se a CAD entrou no board (sem imobiliária
+                não entra, e o time precisa saber disso agora, não quando procurar o card). */}
+            {portal ? (
+              resultado?.aviso ? (
+                <p className="m-0 mt-4 rounded-lg bg-subtle px-3 py-2 text-xs text-ink-soft">
+                  {resultado.aviso}
+                </p>
+              ) : null
+            ) : modoPublico ? (
               <p className="m-0 mt-4 rounded-lg bg-subtle px-3 py-2 text-xs text-ink-soft">
                 Pronto, você não precisa fazer mais nada. A ficha já chegou para a análise da
                 Careli.
@@ -4618,35 +4769,51 @@ function StepRevisao({
               </p>
             ) : null}
 
-            <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                disabled={!resultado?.cadBase64}
-                onClick={() => {
-                  // Baixa exatamente o PDF que o servidor gerou e guardou (com o código).
-                  if (resultado?.cadBase64) {
-                    baixarCadBase64(resultado.cadBase64, `${cadTitulo}.pdf`);
-                  }
-                }}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:opacity-50"
-              >
-                <Download className="size-4" aria-hidden="true" />
-                {isImobiliaria ? "Baixar cadastro" : modoPublico ? "Baixar em PDF" : "Baixar CAD"}
-              </button>
+            <div className={`mt-5 grid gap-2 ${portal ? "" : "sm:grid-cols-2"}`}>
+              {/* Portal: o servidor não devolve o PDF nem o código (decisão de 16/09/2026: a CAD
+                  pode ter entrado numa ficha que a Careli já tinha, e o código dela diria isso). A
+                  CAD fica no drive da ficha e abre pelo board; um botão sempre desligado só confundia. */}
+              {portal ? null : (
+                <button
+                  type="button"
+                  disabled={!resultado?.cadBase64}
+                  onClick={() => {
+                    // Baixa exatamente o PDF que o servidor gerou e guardou (com o código).
+                    if (resultado?.cadBase64) {
+                      baixarCadBase64(resultado.cadBase64, `${cadTitulo}.pdf`);
+                    }
+                  }}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:opacity-50"
+                >
+                  <Download className="size-4" aria-hidden="true" />
+                  {isImobiliaria ? "Baixar cadastro" : modoPublico ? "Baixar em PDF" : "Baixar CAD"}
+                </button>
+              )}
               <a
                 href={modoPublico ? undefined : "/apolo/cadastro"}
                 onClick={
-                  // Público: "Novo cadastro" recarrega o mesmo link (não existe /apolo sem login).
-                  modoPublico
+                  // Portal: volta à TelaCrm, que recarrega a lista (o próximo cliente pode ser de
+                  // outro produto, e o produto se escolhe lá).
+                  portal
                     ? (event) => {
                         event.preventDefault();
-                        window.location.reload();
+                        portal.onConcluir?.();
                       }
-                    : undefined
+                    : // Público: "Novo cadastro" recarrega o mesmo link (não existe /apolo sem login).
+                      modoPublico
+                      ? (event) => {
+                          event.preventDefault();
+                          window.location.reload();
+                        }
+                      : undefined
                 }
                 className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-semibold text-ink-soft transition-colors hover:bg-subtle"
               >
-                {modoPublico && !isImobiliaria ? "Cadastrar outro cliente" : "Novo cadastro"}
+                {portal
+                  ? "Voltar ao CRM"
+                  : modoPublico && !isImobiliaria
+                    ? "Cadastrar outro cliente"
+                    : "Novo cadastro"}
               </a>
             </div>
           </div>
@@ -4683,7 +4850,7 @@ function StepRevisao({
               ) : (
                 <Send className="size-4" aria-hidden="true" />
               )}
-              {enviando ? "Enviando" : modoPublico ? "Enviar para a Careli" : "Enviar"}
+              {enviando ? "Enviando" : modoPublico && !portal ? "Enviar para a Careli" : "Enviar"}
             </button>
           </div>
         )}

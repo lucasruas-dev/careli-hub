@@ -58,7 +58,10 @@ vi.mock("@/lib/apolo/auth", () => {
         response: Response.json({ error: "Usuario sem acesso ao Apolo." }, { status: 403 }),
       };
     }
-    return { ok: true, userId: "user-1" };
+    // ⚠️ O NOME VEM DO PORTÃO desde 16/09/2026 (`ApoloAuthResult.nome`, lido de `hub_users` pelo
+    // próprio portão): a rota deixou de reler `hub_users` depois do PDF. O "Zeus" que o teste da
+    // gaveta espera chega por aqui.
+    return { nome: "Zeus", ok: true, userId: "user-1" };
   };
 
   return {

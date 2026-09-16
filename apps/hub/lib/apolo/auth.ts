@@ -8,7 +8,16 @@ import {
 type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 
 export type ApoloAuthResult =
-  | { ok: true; userId: string }
+  // ⚠️ O NOME VEM JUNTO, e isso não é conveniencia: `hercules_posse.registrado_por_nome` e
+  // `hercules_premissas_de_rescisao.atualizado_por_nome` existem justamente para NAO resolver o
+  // autor por join depois (a pessoa sai da empresa, o cadastro muda, e o historico tem de
+  // continuar dizendo quem foi naquele dia). Ate 15/09/2026 este gate devolvia so o `userId`, e
+  // uma rota do Apolo nao tinha como preencher essas colunas — a intencao das migrations morria
+  // calada. `authorizeHadesWrite` ja devolvia o `displayName` pelo mesmo motivo.
+  //
+  // ⚠️ PODE SER NULO: `hub_users.display_name` nao e obrigatorio, e no atalho de ambiente local nao
+  // ha usuario nenhum. Quem grava tem de aceitar a ausencia, nao inventar "Sistema".
+  | { nome: null | string; ok: true; userId: string }
   | { ok: false; response: NextResponse };
 
 // Papeis do Hub que podem LER o Apolo (CRM 360 = PII consolidada de cliente).
@@ -90,7 +99,7 @@ async function authorizeApolo(
   const client = createApoloAdminClient() ?? createApoloUserClient(token);
 
   if (!client) {
-    return { ok: true, userId: "local-hub-user" };
+    return { nome: null, ok: true, userId: "local-hub-user" };
   }
 
   const { data: authData, error: authError } = await client.auth.getUser(token);
@@ -107,9 +116,14 @@ async function authorizeApolo(
 
   const { data: user, error: userError } = await client
     .from("hub_users")
-    .select("id,role,status")
+    .select("id,role,status,display_name")
     .eq("id", authData.user.id)
-    .maybeSingle<{ id: string; role: HubUserRole; status: string }>();
+    .maybeSingle<{
+      display_name: null | string;
+      id: string;
+      role: HubUserRole;
+      status: string;
+    }>();
 
   if (
     userError ||
@@ -126,5 +140,6 @@ async function authorizeApolo(
     };
   }
 
-  return { ok: true, userId: user.id };
+  const nome = String(user.display_name ?? "").trim();
+  return { nome: nome || null, ok: true, userId: user.id };
 }

@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { toast } from "sonner";
 
-import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
+import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import {
   ehTipoAceitoMidia,
@@ -31,6 +31,11 @@ import {
 //   3. PATCH /api/temis/minutas/upload (Bearer) { path } → { url, ... }     confere tamanho, assina leitura
 // A `url` devolvida é a que fica gravada no nó do documento (signed URL de leitura com TTL longo).
 //
+// ⚠️ OS PASSOS 1 E 3 SAEM PELA PORTA DO `ApiDaTemisProvider` (`modules/temis/api-da-temis.tsx`).
+// Sem provedor é o de cima, igual; nas minutas do portal que confecciona viram
+// `/api/incorporador/temis/minutas/upload` com o cookie. O passo 2 não muda: a URL assinada já é a
+// credencial, e o cliente do Supabase sobe os bytes com ela sem sessão nenhuma.
+//
 // ⚠️ O SDK do Supabase não reporta progresso do `uploadToSignedUrl`: a barra vai 0 → 90 (ao pedir
 // a URL) → 100 (ao confirmar). É honesto o suficiente para o usuário saber que está andando.
 
@@ -49,7 +54,8 @@ type UseUploadFileProps = {
   onUploadProgress?: (progress: { file: File; progress: number }) => void;
 };
 
-const ROTA = "/api/temis/minutas/upload";
+/** O subcaminho dentro da porta da Têmis: `/api/temis` + isto, no hub. */
+const ROTA = "/minutas/upload";
 
 export function useUploadFile({
   onUploadBegin,
@@ -57,6 +63,7 @@ export function useUploadFile({
   onUploadError,
   onUploadProgress,
 }: UseUploadFileProps = {}) {
+  const { temisFetch } = useApiDaTemis();
   const [uploadedFile, setUploadedFile] = React.useState<UploadedFile>();
   const [uploadingFile, setUploadingFile] = React.useState<File>();
   const [progress, setProgress] = React.useState<number>(0);
@@ -87,11 +94,7 @@ export function useUploadFile({
 
       onUploadBegin?.(file.name);
 
-      const token = await getApoloAccessToken();
-      const cabecalhos = {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      };
+      const cabecalhos = { "Content-Type": "application/json" };
 
       // 1. URL assinada de upload (o servidor escolhe o caminho).
       const pedido: PedidoDeUploadMidia = {
@@ -100,7 +103,7 @@ export function useUploadFile({
         minutaId,
         size: file.size,
       };
-      const assinar = await fetch(ROTA, {
+      const assinar = await temisFetch(ROTA, {
         body: JSON.stringify(pedido),
         cache: "no-store",
         headers: cabecalhos,
@@ -126,7 +129,7 @@ export function useUploadFile({
       avancar(90);
 
       // 3. Confirmação: o servidor confere o tamanho real e assina a leitura.
-      const confirmar = await fetch(ROTA, {
+      const confirmar = await temisFetch(ROTA, {
         body: JSON.stringify({ path: assinada.path }),
         cache: "no-store",
         headers: cabecalhos,

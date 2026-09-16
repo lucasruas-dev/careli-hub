@@ -76,8 +76,11 @@ import {
   prazoDoComprador,
   type LinhaAssinatura,
 } from "@/lib/apolo/painel-assinatura";
+import type { createApoloAdminClient } from "@/lib/apolo/server";
+import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
+import { apurarFatosDoContrato } from "@/lib/hercules/fatos-do-contrato";
 
 import {
   escolherEnvio,
@@ -601,17 +604,7 @@ export function montarQuadroDeAssinaturas(
     });
   }
 
-  // A ORDEM É A DO GARGALO: pendente primeiro, e dentro dela a que espera há mais tempo (envio
-  // mais antigo). As concluídas vão para o fim, da mais recente para a mais antiga — elas não
-  // somem (o dono pediu que continuassem visíveis), só param de disputar o topo.
-  lista.sort(
-    (a, b) =>
-      Number(a.concluida) - Number(b.concluida) ||
-      (a.concluida
-        ? esperaDe(b).localeCompare(esperaDe(a))
-        : esperaDe(a).localeCompare(esperaDe(b))) ||
-      a.unidade.localeCompare(b.unidade, "pt-BR"),
-  );
+  ordenarPeloGargalo(lista);
 
   const cortada = lista.length > TETO_DE_ENVIOS;
 
@@ -672,6 +665,23 @@ export function montarQuadroDeAssinaturas(
     taxas,
     unidades: cortada ? lista.slice(0, TETO_DE_ENVIOS) : lista,
   };
+}
+
+/**
+ * A ORDEM É A DO GARGALO: pendente primeiro, e dentro dela a que espera há mais tempo (envio mais
+ * antigo). As concluídas vão para o fim, da mais recente para a mais antiga — elas não somem (o dono
+ * pediu que continuassem visíveis), só param de disputar o topo. Uma função só, para a lista do
+ * legado e a soma com os contratos do Panteon saírem na MESMA ordem.
+ */
+function ordenarPeloGargalo(lista: UnidadeDeAssinatura[]): void {
+  lista.sort(
+    (a, b) =>
+      Number(a.concluida) - Number(b.concluida) ||
+      (a.concluida
+        ? esperaDe(b).localeCompare(esperaDe(a))
+        : esperaDe(a).localeCompare(esperaDe(b))) ||
+      a.unidade.localeCompare(b.unidade, "pt-BR"),
+  );
 }
 
 /** O recorte de `ContratoVivo` que desce para a linha. Sem ficha, a linha vem sem dados. */
@@ -1089,4 +1099,325 @@ function isoOuNulo(valor: null | Date | string): null | string {
 
 function arredondar1(valor: number): number {
   return Math.round((valor + Number.EPSILON) * 10) / 10;
+}
+
+
+// ── OS CONTRATOS DO PRODUTO QUE SÓ EXISTE NO PANTEON ────────────────────────────────────────────
+//
+// Pendência da ficha na onda 1 (16/09/2026): a aba Contratos de um produto nascido no Panteon ia ao
+// C2X e à D4Sign com o código dele, e lá não existe venda nenhuma: a lista saía vazia (ou a aba
+// inteira caía com o C2X fora) para um produto cujo contrato a Têmis do portal gerou e mandou para a
+// Clicksign. A venda dele é a proposta de `hercules_propostas` em contrato, assinatura ou faturado, e
+// a assinatura é o envelope de `temis_envelopes`.
+//
+// ⚠️ O "ASSINOU?" É O MESMO DO CANCELAMENTO: `apurarFatosDoContrato` (lib/hercules/fatos-do-contrato.ts),
+// que lê a data de assinatura da proposta e o envelope `assinado`. Uma régua escrita aqui diria
+// "pendente" num contrato que a tela de cancelamento trata como assinado.
+//
+// ⚠️ O ENVELOPE NÃO DIZ QUEM ASSINOU, SÓ SE TODOS ASSINARAM. O webhook grava o estado do documento
+// (`aguardando`, `parcial`, `assinado`), não um tique por pessoa. Por isso o esquema da linha lista
+// quem foi chamado (papel e nome congelados no envio) com todos assinados quando o contrato fechou, e
+// todos aguardando enquanto não fechou: marcar "na vez" ou um tique parcial seria inventar. Pela
+// mesma razão essas linhas não entram nas taxas, na fila por degrau nem no quadro por assinante, que
+// são contas por pessoa.
+
+/** Uma proposta do Panteon com contrato, com as colunas que a linha da lista usa. */
+export type PropostaDoPanteonEmContrato = {
+  cliente_nome: null | string;
+  data_assinatura: null | string;
+  data_ato: null | string;
+  data_faturamento: null | string;
+  empreendimento_codigo: null | string;
+  etapa: null | string;
+  etapa_desde: null | string;
+  id: string;
+  imobiliaria_nome: null | string;
+  preco_tabela: null | number | string;
+  unidade_nome: null | string;
+  valor: null | number | string;
+};
+
+/** Um envelope da Têmis (`temis_envelopes`), com o que a linha usa. */
+export type EnvelopeDoPanteon = {
+  criado_em: null | string;
+  enviado_em: null | string;
+  estado: null | string;
+  fechado_em: null | string;
+  proposta_id: null | string;
+  signatarios: unknown;
+};
+
+/** As etapas da proposta em que já existe contrato. */
+export const ETAPAS_COM_CONTRATO = ["contrato", "assinatura", "faturado"] as const;
+
+/** Envelope que terminou sem assinatura (ou nem saiu): o contrato volta a "aguardando emissão". */
+const ENVELOPES_MORTOS = new Set(["cancelado", "expirado", "rascunho", "recusado"]);
+
+function numeroOuZero(valor: null | number | string | undefined): number {
+  const n = typeof valor === "number" ? valor : Number(String(valor ?? "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+const DIA_EM_BRASILIA = new Intl.DateTimeFormat("en-CA", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: "America/Sao_Paulo",
+  year: "numeric",
+});
+
+/**
+ * O dia (ISO curto) de uma data ou de um instante. ⚠️ O INSTANTE VIRA DIA NO FUSO DE BRASÍLIA: o
+ * envelope fechado às 22h do dia 15 é do dia 15 para quem lê, e o `toISOString` diria 16.
+ */
+function diaCurto(valor: null | string | undefined): null | string {
+  const texto = limpo(valor);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
+  const iso = isoOuNulo(texto || null);
+  return iso ? DIA_EM_BRASILIA.format(new Date(iso)) : null;
+}
+
+/** O envelope que vale para a proposta: o mais recente que não morreu. */
+function envelopeVigente(envelopes: EnvelopeDoPanteon[]): EnvelopeDoPanteon | null {
+  const vivos = envelopes.filter((e) => !ENVELOPES_MORTOS.has(limpo(e.estado).toLowerCase()));
+  vivos.sort((a, b) => String(b.criado_em ?? "").localeCompare(String(a.criado_em ?? "")));
+  return vivos[0] ?? null;
+}
+
+/** Quem foi chamado a assinar, congelado no envio. Papel desconhecido sai "Sem perfil", sem sumir. */
+function signatariosDoEnvelope(bruto: unknown): Array<{ degrau: number; nome: string; perfil: string }> {
+  if (!Array.isArray(bruto)) return [];
+  return bruto
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => {
+      const papel = limpo(item.papel).toLowerCase();
+      const ordem = Number(item.ordem);
+      return {
+        degrau: Number.isFinite(ordem) ? ordem : 0,
+        nome: limpo(item.nome),
+        perfil: (PAPEIS as string[]).includes(papel) ? rotuloDoPapel(papel as PapelNoContrato) : "Sem perfil",
+      };
+    });
+}
+
+/**
+ * As linhas da lista de Contratos dos produtos do Panteon, no formato do quadro. Função pura.
+ *
+ *   • assinado (pela régua do cancelamento) → "assinado", todos os chamados assinados;
+ *   • envelope vivo enviado → "em-assinatura", todos aguardando;
+ *   • sem envelope vivo → "aguardando-emissao", sem esquema.
+ *
+ * ⚠️ SEM BOTÃO DE PDF (`temContrato: false`, `unitId: 0`): o botão aponta para a rota do contrato do
+ * C2X, que resolve o documento pelo id da unidade do legado. O contrato do Panteon tem a tela dele na
+ * Têmis do portal.
+ */
+export function linhasDeAssinaturaDoPanteon(
+  propostas: PropostaDoPanteonEmContrato[],
+  envelopes: EnvelopeDoPanteon[],
+): UnidadeDeAssinatura[] {
+  const envelopesPorProposta = new Map<string, EnvelopeDoPanteon[]>();
+  for (const envelope of envelopes) {
+    const id = limpo(envelope.proposta_id);
+    if (!id) continue;
+    envelopesPorProposta.set(id, [...(envelopesPorProposta.get(id) ?? []), envelope]);
+  }
+
+  return propostas.map((proposta) => {
+    const envelope = envelopeVigente(envelopesPorProposta.get(proposta.id) ?? []);
+    const fatos = apurarFatosDoContrato(
+      [],
+      {
+        data_assinatura: proposta.data_assinatura,
+        data_ato: proposta.data_ato,
+        data_faturamento: proposta.data_faturamento,
+      },
+      envelope ? { estado: envelope.estado, fechado_em: envelope.fechado_em } : null,
+    );
+    const concluida = fatos.assinaturaCompleta;
+    const enviadoEm = diaCurto(envelope?.enviado_em);
+    const situacao: SituacaoDaAssinatura = concluida
+      ? "assinado"
+      : envelope && enviadoEm
+        ? "em-assinatura"
+        : "aguardando-emissao";
+
+    const assinadoEm = concluida
+      ? (diaCurto(envelope?.fechado_em) ?? diaCurto(proposta.data_assinatura))
+      : null;
+    const esquema: AssinaturaDoEsquema[] =
+      situacao === "aguardando-emissao"
+        ? []
+        : signatariosDoEnvelope(envelope?.signatarios)
+            .sort((a, b) => a.degrau - b.degrau || a.nome.localeCompare(b.nome, "pt-BR"))
+            .map((signatario) => ({
+              assinadoEm,
+              degrau: signatario.degrau,
+              nome: signatario.nome,
+              perfil: signatario.perfil,
+              situacao: concluida ? ("assinado" as const) : ("aguardando" as const),
+            }));
+
+    const compradores = [
+      ...new Set(
+        esquema.filter((item) => item.perfil === "Comprador").map((item) => item.nome).filter(Boolean),
+      ),
+    ];
+
+    return {
+      assinadas: concluida ? esquema.length : 0,
+      aviso: null,
+      comprador: compradores.length > 0 ? compradores.join(", ") : limpo(proposta.cliente_nome) || null,
+      concluida,
+      contrato: {
+        faturadoEm: diaCurto(proposta.data_faturamento),
+        geradoEm: limpo(proposta.etapa).toLowerCase() === "contrato" ? isoOuNulo(proposta.etapa_desde) : null,
+        imobiliaria: limpo(proposta.imobiliaria_nome) || null,
+        temContrato: false,
+        unitId: 0,
+        valorTabela: numeroOuZero(proposta.preco_tabela ?? proposta.valor),
+      },
+      empreendimento: limpo(proposta.empreendimento_codigo).toUpperCase(),
+      enviadoEm: enviadoEm ?? "",
+      envioId: 0,
+      esquema,
+      // ⚠️ A SITUAÇÃO DO DOCUMENTO VEIO DO PROVEDOR (o webhook da Clicksign grava o estado), e o
+      // detalhe por pessoa não: é exatamente o que `d4sign-status` descreve, com outro provedor. A
+      // rota do portal tira `fonte` do payload; o valor só existe para o tipo do quadro.
+      fonte: "d4sign-status",
+      grupos: agruparPorPerfil(esquema),
+      naVez: [],
+      perfisNaVez: [],
+      situacao,
+      total: esquema.length,
+      unidade: limpo(proposta.unidade_nome) || limpo(proposta.empreendimento_codigo),
+    };
+  });
+}
+
+/**
+ * O quadro do legado somado aos contratos do Panteon. Função pura: a lista vem inteira, reordenada
+ * pelo gargalo e cortada no mesmo teto; os KPIs de unidade, de emissão e de comprador somam as linhas
+ * novas. Taxas, fila e quadro por assinante ficam como o legado os contou (ver o bloco acima).
+ */
+export function somarAssinaturasDoPanteon<Q extends QuadroDeAssinaturas>(
+  quadro: Q,
+  linhas: UnidadeDeAssinatura[],
+): Q {
+  if (linhas.length === 0) return quadro;
+
+  const chave = (linha: UnidadeDeAssinatura) => `${linha.empreendimento}:${linha.unidade}`;
+  const comEnvio = new Map<string, boolean>();
+  const compradorPorUnidade = new Map<string, boolean>();
+  let aguardandoEmissao = 0;
+
+  for (const linha of linhas) {
+    if (linha.situacao === "aguardando-emissao") {
+      aguardandoEmissao += 1;
+      continue;
+    }
+    comEnvio.set(chave(linha), (comEnvio.get(chave(linha)) ?? true) && linha.concluida);
+    if (linha.esquema.some((item) => item.perfil === "Comprador")) {
+      compradorPorUnidade.set(
+        chave(linha),
+        (compradorPorUnidade.get(chave(linha)) ?? true) && linha.concluida,
+      );
+    }
+  }
+
+  const lista = [...quadro.unidades, ...linhas];
+  ordenarPeloGargalo(lista);
+  ordenarGruposPelaOrdemDeAssinatura(lista);
+  const cortada = lista.length > TETO_DE_ENVIOS;
+  const compradorOk = [...compradorPorUnidade.values()].filter(Boolean).length;
+
+  return {
+    ...quadro,
+    aviso:
+      quadro.aviso ??
+      (cortada
+        ? `Mostrando os ${TETO_DE_ENVIOS} contratos mais antigos sem assinar, de ${lista.length.toLocaleString("pt-BR")}. Os indicadores acima contam o recorte inteiro.`
+        : null),
+    kpis: {
+      ...quadro.kpis,
+      aguardandoEmissao: quadro.kpis.aguardandoEmissao + aguardandoEmissao,
+      compradorOk: quadro.kpis.compradorOk + compradorOk,
+      compradorPendente: quadro.kpis.compradorPendente + (compradorPorUnidade.size - compradorOk),
+      unidadesComEnvio: quadro.kpis.unidadesComEnvio + comEnvio.size,
+      unidadesTotalmenteAssinadas:
+        quadro.kpis.unidadesTotalmenteAssinadas + [...comEnvio.values()].filter(Boolean).length,
+    },
+    unidades: cortada ? lista.slice(0, TETO_DE_ENVIOS) : lista,
+  };
+}
+
+type AdminDoApolo = NonNullable<ReturnType<typeof createApoloAdminClient>>;
+
+/** `.in()` vai na URL: lotes de 100. */
+const LOTE_DO_PANTEON = 100;
+/** O PostgREST corta em 1.000 linhas sem erro: toda lista pagina. */
+const PAGINA_DO_PANTEON = 1000;
+
+/**
+ * Lê os contratos do Panteon dos CÓDIGOS pedidos (já autorizados pela sessão; esta função não
+ * autoriza nada) e devolve as linhas da lista. Não fala com o C2X nem com a D4Sign.
+ *
+ * ⚠️ FALHA NÃO É "SEM CONTRATO": devolve `ok: false`, e a rota responde indisponível.
+ */
+export async function lerAssinaturasDoPanteon(
+  admin: AdminDoApolo,
+  codes: string[],
+): Promise<{ error: string; ok: false } | { linhas: UnidadeDeAssinatura[]; ok: true }> {
+  const codigos = [...new Set(codes.map((code) => limpo(code).toUpperCase()).filter(Boolean))];
+
+  try {
+    const propostas: PropostaDoPanteonEmContrato[] = [];
+    for (let i = 0; i < codigos.length; i += LOTE_DO_PANTEON) {
+      const lote = codigos.slice(i, i + LOTE_DO_PANTEON);
+      for (let de = 0; ; de += PAGINA_DO_PANTEON) {
+        const { data, error } = await admin
+          .from("hercules_propostas")
+          .select(
+            "id,etapa,etapa_desde,unidade_nome,empreendimento_codigo,cliente_nome,imobiliaria_nome,valor,preco_tabela,data_assinatura,data_ato,data_faturamento",
+          )
+          .eq("workspace_id", "careli")
+          // Só a proposta NATIVA. A carga do C2X também vive nesta tabela (`origem = 'c2x'`), e o
+          // produto com dono (o Garden) soma esta leitura ao quadro do legado: sem o recorte, o mesmo
+          // contrato antigo entraria duas vezes (revisão do conjunto, 16/09/2026).
+          .eq("origem", "panteon")
+          .in("empreendimento_codigo", lote)
+          .in("etapa", [...ETAPAS_COM_CONTRATO])
+          .order("id", { ascending: true })
+          .range(de, de + PAGINA_DO_PANTEON - 1)
+          .returns<PropostaDoPanteonEmContrato[]>();
+        if (error) throw new Error(error.message);
+        const pagina = data ?? [];
+        propostas.push(...pagina);
+        if (pagina.length < PAGINA_DO_PANTEON) break;
+      }
+    }
+
+    const envelopes: EnvelopeDoPanteon[] = [];
+    const ids = propostas.map((proposta) => proposta.id);
+    for (let i = 0; i < ids.length; i += LOTE_DO_PANTEON) {
+      const lote = ids.slice(i, i + LOTE_DO_PANTEON);
+      for (let de = 0; ; de += PAGINA_DO_PANTEON) {
+        const { data, error } = await admin
+          .from("temis_envelopes")
+          .select("proposta_id,estado,fechado_em,enviado_em,criado_em,signatarios")
+          .eq("workspace_id", "careli")
+          .in("proposta_id", lote)
+          .order("id", { ascending: true })
+          .range(de, de + PAGINA_DO_PANTEON - 1)
+          .returns<EnvelopeDoPanteon[]>();
+        if (error) throw new Error(error.message);
+        const pagina = data ?? [];
+        envelopes.push(...pagina);
+        if (pagina.length < PAGINA_DO_PANTEON) break;
+      }
+    }
+
+    return { linhas: linhasDeAssinaturaDoPanteon(propostas, envelopes), ok: true };
+  } catch (erro) {
+    console.error("[incorporador][assinaturas] falha ao ler os contratos do Panteon", erro);
+    return { error: "Não foi possível ler as assinaturas agora.", ok: false };
+  }
 }

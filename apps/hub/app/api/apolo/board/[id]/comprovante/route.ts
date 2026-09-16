@@ -56,6 +56,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   let documentId = existente?.id ?? null;
   if (!documentId) {
+    // (16/09/2026) ⚠️ REGERAR NÃO APAGA A MARCA DO PORTAL. O comprovante que o portal que opera
+    // sozinho pagou nasce com `metadata.enterpriseId` (a CAD da análise), e é ela que decide para qual
+    // portal ele sai. Esta rota não sabe o empreendimento e não manda nenhum: quem regera apaga o
+    // anterior da MESMA consulta e herda a marca dele, num lugar só (`metadataDoComprovante`, em
+    // lib/serasa/comprovante.ts), para esta rota e qualquer outra que regere não divergirem.
     const gerado = await gerarESalvarComprovante(client, consulta.id, {
       uploadedByName: "Analise de credito",
     });

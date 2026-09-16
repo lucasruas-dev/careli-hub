@@ -39,8 +39,21 @@ function ehUuid(valor: string): boolean {
 }
 
 export async function atualizarIdentidade(input: {
+  /**
+   * (16/09/2026) Nome de quem corrigiu, quando a conta NÃO está em `hub_users` (a do portal). Vai
+   * para `metadata.autorNome` do evento, como o `edit_ficha` do portal já faz; sem ele o histórico
+   * mostrava um traço no autor. A rota do hub não passa.
+   */
+  autorNome?: null | string;
   autorUserId: string | null;
   client: AdminClient;
+  /**
+   * (16/09/2026) A CAD pela qual a correção foi pedida (a do recorte do portal). Vai para
+   * `metadata.enterpriseId` do evento, que é a marca que o histórico do portal lê para saber de qual
+   * produto a edição é. Não muda o alcance da correção: a identidade continua sendo da PESSOA.
+   * A rota do hub não passa.
+   */
+  enterpriseId?: null | string;
   documento: string;
   entityId: string;
   motivo: string;
@@ -260,6 +273,9 @@ export async function atualizarIdentidade(input: {
     entity_id: input.entityId,
     field_name: "identidade",
     metadata: {
+      // Só entram quando vieram (portal): o evento do hub fica com o mesmo formato de antes.
+      ...(input.autorNome?.trim() ? { autorNome: input.autorNome.trim() } : {}),
+      ...(input.enterpriseId?.trim() ? { enterpriseId: input.enterpriseId.trim() } : {}),
       de: {
         documento: entidade.document_masked,
         nome: entidade.display_name,

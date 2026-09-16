@@ -57,6 +57,17 @@ const nextConfig: NextConfig = {
       "../../node_modules/@sparticuz/chromium/bin/swiftshader.tar.br",
       "../../node_modules/@sparticuz/chromium/bin/al2023.tar.br",
     ],
+    // ⚠️ O PORTAL DO INCORPORADOR QUE CONFECCIONA (16/09/2026) TEM A SUA PORTA PARA O MESMO
+    // CHROMIUM: `/api/incorporador/temis/contrato/gerar` chama a mesma função de
+    // `lib/temis/contrato-servico.ts`, mas sobe como função própria. Sem estas linhas, a Cecílio
+    // gera contrato na máquina de quem desenvolveu e recebe 502 em produção.
+    // (A porta do portal para imprimir HTML em PDF foi apagada em 16/09/2026 e não leva o Chromium.)
+    "/api/incorporador/temis/contrato/gerar": [
+      "../../node_modules/@sparticuz/chromium/bin/chromium.br",
+      "../../node_modules/@sparticuz/chromium/bin/fonts.tar.br",
+      "../../node_modules/@sparticuz/chromium/bin/swiftshader.tar.br",
+      "../../node_modules/@sparticuz/chromium/bin/al2023.tar.br",
+    ],
   },
   async headers() {
     return [

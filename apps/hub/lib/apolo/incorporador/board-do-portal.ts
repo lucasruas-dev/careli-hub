@@ -6,9 +6,10 @@ import { normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { ehIdDoPai, expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
+import type { AutorDoCredito } from "@/lib/serasa/consulta-servico";
 
 import { autorizar, foraDoEscopo, idsDaSessao } from "./escopo";
-import { ehPortalComercial } from "./perfis-de-portal";
+import { ehPortalComercial, portalConfeccionaContrato, portalOperaVenda } from "./perfis-de-portal";
 import type { SessaoIncorporador } from "./sessao";
 
 // O BOARD DO APOLO DENTRO DO PORTAL COMERCIAL — o recorte que TODA rota `/api/incorporador/board/**`
@@ -23,9 +24,11 @@ import type { SessaoIncorporador } from "./sessao";
 // produtos que a sessão já alcança e só consegue REDUZIR. Produto que não é dele não dá erro
 // revelador: 404, o mesmo de um produto inexistente (`foraDoEscopo`).
 //
-// ⚠️ SÓ O PORTAL COMERCIAL. O cookie do incorporador comum (o dono do loteamento) também passa em
-// `sessaoDoRequest`, mas o Board carrega CPF, endereço e documento do comprador, e a regra das
-// rotas do incorporador é "documento pessoal nunca sai daqui". Para ele estas rotas não existem.
+// ⚠️ SÓ QUEM OPERA A VENDA (`portalOperaVenda`): o portal comercial e o incorporador que opera a
+// própria venda (hoje só o Cecílio). O cookie do incorporador comum (o dono do loteamento que só lê
+// a carteira) também passa em `sessaoDoRequest`, mas o Board carrega CPF, endereço e documento do
+// comprador, e a regra das rotas do incorporador é "documento pessoal nunca sai daqui". Para ele
+// estas rotas não existem.
 
 export type RecorteDoProduto = {
   /**
@@ -44,15 +47,136 @@ type Autorizacao =
   | { ok: false; response: NextResponse }
   | { ok: true; sessao: SessaoIncorporador };
 
-/** Porta de entrada: sessão válida E portal comercial. Incorporador comum: 404, como se não existisse. */
-export function autorizarComercial(request: Request): Autorizacao {
+/**
+ * Porta de entrada de TODA rota `/api/incorporador/board/**` e `/api/incorporador/venda/**`:
+ * sessão válida E portal que opera a venda. Incorporador comum: 404, como se não existisse.
+ *
+ * Pedido do Lucas (16/09/2026) para o Cecílio: *"quero replicar esse portal do coordenador (...)
+ * a unica coisa que não teremos é o lançamento"* · *"a Cecilio quem vai fazer é o proprio time
+ * deles"*. O Cecílio passa a reservar, propor, mexer no board de cadastro e ler contratos sobre o
+ * recorte do PRÓPRIO portal, com a mesma casca do Hércules.
+ *
+ * ⚠️ ERA `autorizarComercial` (tipo === "comercial") E VIROU ESTA, EM TODAS AS ROTAS DE BOARD E
+ * VENDA DE UMA VEZ. Trocar rota a rota deixaria o Cecílio com a reserva aberta e a proposta
+ * fechada: a tela acende o botão e o servidor responde 404. A lista de quem opera mora em
+ * `perfis-de-portal.ts`, e é a ÚNICA: se cada rota decidisse por conta própria, a primeira a
+ * divergir abriria escrita para um portal que não devia tê-la.
+ *
+ * ⚠️ O 404 CONTINUA IGUAL AO DE ANTES para todos os demais portais de incorporador (cer,
+ * vistaalegre, lagoabonita...): o furo que esta porta fechou já foi pago em produção (um usuário
+ * de portal de incorporador cancelou proposta do comercial por HTTP). Só a lista explícita passa;
+ * o escopo de cada rota (`idsDaSessao`, `recorteDoProduto`, `cadNoEscopo`) continua valendo por
+ * inteiro.
+ */
+export function autorizarOperacaoDeVenda(request: Request): Autorizacao {
   const auth = autorizar(request);
   if (!auth.ok) return auth;
-  if (!ehPortalComercial(auth.sessao.tipo)) {
+  if (!portalOperaVenda(auth.sessao.slug, auth.sessao.tipo)) {
     return { ok: false, response: foraDoEscopo() };
   }
   return { ok: true, sessao: auth.sessao };
 }
+
+/**
+ * A porta do que o portal só faz quando OPERA SOZINHO: a análise de crédito (consulta paga ao
+ * Serasa e aprovação com restrição) e as etapas de decisão da esteira (pré-venda, credenciado e
+ * indeferido). Roda DEPOIS de `autorizarOperacaoDeVenda`, que continua sendo a porta de toda rota de
+ * board (a varredura do teste confere).
+ *
+ * Decisão do Lucas (16/09/2026): *"A Cecílio, no portal"* faz o crédito e o credenciamento dos
+ * clientes dela, com a consulta paga na conta da Careli e o registro de quem consultou. A Gurgel
+ * (comercial) NÃO ganha isso: o crédito das vendas dela continua com a Careli no Apolo.
+ *
+ * ⚠️ DUAS CAMADAS, DA MAIS BARATA PARA A MAIS CARA:
+ *   1. `portalConfeccionaContrato(slug, tipo)`, a lista no código: comercial e incorporador padrão
+ *      morrem aqui com o 404 de sempre, sem ida ao banco;
+ *   2. a REVALIDAÇÃO da conta e do incorporador a cada chamada (`autorizarTemisDoPortal`, a mesma
+ *      régua do CRM e da Têmis do portal). O cookie vale 12 horas: sem isto, a conta desligada às 9h
+ *      seguiria gastando consulta do Serasa na conta da Careli até o cookie vencer. A sessão que sai
+ *      daqui é a VIGENTE (empreendimentos do cookie cruzados com os da conta agora), e é ela que
+ *      deve alimentar `recorteDoProduto`.
+ *
+ * O import é dinâmico de propósito: este arquivo é lido por toda rota de board e venda, e a porta da
+ * Têmis puxa o cadastro do incorporador. Só quem chega nesta função paga esse carregamento.
+ */
+export async function autorizarPortalQueOperaSozinho(
+  request: Request,
+  sessao: Pick<SessaoIncorporador, "slug" | "tipo">,
+): Promise<Autorizacao> {
+  if (!portalConfeccionaContrato(sessao.slug, sessao.tipo)) {
+    return { ok: false, response: foraDoEscopo() };
+  }
+  const { autorizarTemisDoPortal } = await import("@/lib/temis/portao-do-portal");
+  const vigente = await autorizarTemisDoPortal(request);
+  if (!vigente.ok) return { ok: false, response: vigente.response };
+  return { ok: true, sessao: vigente.sessao };
+}
+
+/** O autor da consulta e da aprovação de crédito quando quem age é o portal que opera sozinho. */
+export function autorDoCreditoNoPortal(
+  sessao: Pick<SessaoIncorporador, "incorporadorId" | "slug" | "usuarioId" | "usuarioNome">,
+): Extract<AutorDoCredito, { tipo: "portal" }> {
+  return {
+    incorporadorId: sessao.incorporadorId,
+    nome: sessao.usuarioNome,
+    slug: sessao.slug,
+    tipo: "portal",
+    usuarioId: sessao.usuarioId,
+  };
+}
+
+/**
+ * O `metadata.origem` da auditoria do board quando quem age é o portal (`AutorDoBoard.origem`).
+ *
+ * (16/09/2026, revisão) O comercial grava "portal-comercial", como sempre; o incorporador que opera a
+ * própria venda grava "portal-incorporador". Texto livre no jsonb, sem CHECK no banco.
+ */
+export function origemDoAutorNoPortal(
+  sessao: Pick<SessaoIncorporador, "tipo">,
+): "portal-comercial" | "portal-incorporador" {
+  return ehPortalComercial(sessao.tipo) ? "portal-comercial" : "portal-incorporador";
+}
+
+/** O vocabulário de `hercules_reservas.origem` (CHECK da migration 0125, ampliada pela 0167). */
+export type OrigemDaReserva = "coordenador" | "incorporador";
+
+/**
+ * De onde a reserva feita PELO PORTAL veio, para gravar em `hercules_reservas.origem`.
+ *
+ * ⚠️ NÃO É MAIS "coordenador" FIXO. No comercial quem reserva é o coordenador da Careli; no
+ * Cecílio é o time do PRÓPRIO incorporador (*"eles meio que vão andar sozinhos sem o time
+ * administrativo da Careli"*). Gravar "coordenador" para os dois apagaria justamente a pergunta
+ * que a coluna responde, e a reserva do Cecílio contaria como trabalho do comercial em qualquer
+ * relatório por origem. Quem chega aqui já passou por `autorizarOperacaoDeVenda`.
+ *
+ * ⚠️ DEPENDE DA MIGRATION 0167: antes dela a CHECK recusa 'incorporador' e o insert do Cecílio
+ * morre com 23514. A migration vai para o banco ANTES deste código.
+ */
+export function origemDaReserva(sessao: Pick<SessaoIncorporador, "tipo">): OrigemDaReserva {
+  return ehPortalComercial(sessao.tipo) ? "coordenador" : "incorporador";
+}
+
+/**
+ * O insert da reserva morreu porque a CHECK ainda não conhece 'incorporador' (a 0167 não foi
+ * aplicada)?
+ *
+ * (16/09/2026, revisão) ⚠️ A REDE PARA A ORDEM DE DEPLOY ESQUECIDA. O deploy é automático no push da
+ * `main`: se o código subir antes da migration, TODA reserva do Cecílio respondia 503 "Não foi
+ * possível reservar agora", sem nenhuma pista na tela. Reconhecida a recusa (código 23514 citando a
+ * constraint `hercules_reservas_origem`, e só quando a origem pedida era 'incorporador'), a rota
+ * grava de novo com a origem antiga e deixa um erro no log. A reserva não se perde, e a origem é
+ * recuperável depois: `criado_por` é a conta do portal. A migration CONTINUA obrigatória.
+ */
+export function origemRecusadaSemA0167(
+  erro: null | undefined | { code?: unknown; message?: unknown },
+  origemPedida: OrigemDaReserva,
+): boolean {
+  if (origemPedida !== "incorporador" || !erro) return false;
+  return erro.code === "23514" && String(erro.message ?? "").includes("hercules_reservas_origem");
+}
+
+/** A origem que a CHECK antiga (0125) aceita, usada só pela rede de `origemRecusadaSemA0167`. */
+export const ORIGEM_ACEITA_SEM_A_0167: OrigemDaReserva = "coordenador";
 
 /**
  * Traduz o `?emp=` da query no recorte do produto, DENTRO do que a sessão autoriza.
@@ -188,8 +312,9 @@ export type CadNoEscopo = {
  * imobiliária"). Sem esta régua, um cliente cuja CAD neste produto foi removida/mesclada (dedup
  * por document_hash de 22/08) mas que tem CAD viva em OUTRO produto entrava por aqui com
  * `enterpriseId: null`, e a ficha/histórico/PATCH caíam no default "CAD mais recente" — a de
- * outro loteamento. Imobiliária tem zero esteira (medido em 15/08), então para ela o default
- * não alcança CAD nenhuma. Mesma régua do `noRecorte` da fila (`papel === 'imobiliaria'`).
+ * outro loteamento. Imobiliária tem zero esteira (medido em 15/08 e de novo em 16/09: 0 de 473), e
+ * desde 16/09 isso é CONFERIDO, não suposto: com qualquer CAD na esteira, a porta do vínculo fecha.
+ * Mesma régua do `noRecorte` da fila (`papel === 'imobiliaria'`).
  */
 export async function cadNoEscopo(
   adminClient: AdminClient,
@@ -245,7 +370,24 @@ export async function cadNoEscopo(
       .map((linha) => normalizarEnterpriseId(linha.metadata?.enterpriseId))
       .some((id) => id !== null && recorte.ids.has(id));
 
-    if (temVinculo) return { escopo: { enterpriseId: null, imobiliaria: true }, ok: true };
+    if (temVinculo) {
+      // (16/09/2026, revisão) ⚠️ E ELA NÃO PODE TER CAD EM LUGAR NENHUM. Com `enterpriseId: null`,
+      // a ficha, o histórico e o PATCH caem no default "CAD mais recente" (`lerCadDaEsteira` sem
+      // empreendimento), e a CAD mais recente de quem tem perfil de imobiliária E comprou lote em
+      // outro produto é a daquele produto: renda, cônjuge e endereço de outro loteamento, lidos e
+      // gravados por aqui. A CAD no recorte já foi descartada acima, então QUALQUER linha na
+      // esteira é de fora. Medido em 16/09/2026: 0 das 473 imobiliárias têm esteira, então hoje
+      // ninguém perde a porta; no dia em que uma tiver, ela é decidida pela Careli (404 aqui).
+      const { data: alguma, error: erroEsteira } = await adminClient
+        .from("apolo_esteira")
+        .select("enterprise_id")
+        .eq("entity_id", entityId)
+        .limit(1);
+      if (erroEsteira) throw new Error(erroEsteira.message);
+      if ((alguma ?? []).length === 0) {
+        return { escopo: { enterpriseId: null, imobiliaria: true }, ok: true };
+      }
+    }
   } catch {
     // Sem conseguir provar que a CAD é dele, ela não é dele.
   }

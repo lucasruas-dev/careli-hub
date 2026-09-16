@@ -15,14 +15,20 @@ import {
 
 import {
   ehPortalComercial,
-  ehPortalPersonalizado,
   ehPortalSoProdutos,
   portalAssinaPanteon,
+  portalConfeccionaContrato,
+  portalOperaVenda,
   type TipoDePortal,
 } from "@/lib/apolo/incorporador/perfis-de-portal";
+// A porta da Têmis pelo cookie do portal: a Venda de quem confecciona abre a prévia do contrato por
+// ela (sem o provedor, a prévia pede o token do hub, que o portal não tem).
+import { API_DA_TEMIS_DO_PORTAL, ApiDaTemisProvider } from "@/modules/temis/api-da-temis";
 import { TelaCarteira } from "./TelaCarteira";
 import { TelaCrm } from "./TelaCrm";
-// Só o portal PERSONALIZADO monta esta tela (ver `abasDoPortal`); no padrão o mapa vive em Vendas.
+// Só o portal SÓ PRODUTOS monta esta tela hoje (ver `abasDoPortal`): o Cecílio, que abria os cards
+// com a logo por aqui, passou a vestir a casca do Hércules em 16/09/2026 e usa a
+// `ProdutosDoHercules`. No padrão o mapa vive em Vendas.
 import { TelaProdutos } from "./TelaProdutos";
 import { CarteiraLsoft } from "@/modules/lsoft/CarteiraLsoft";
 import { apiDoPortal } from "@/modules/lsoft/api";
@@ -30,10 +36,11 @@ import { portalVeBaseLsoft } from "@/lib/lsoft/portais";
 import { portalEmiteBoletos } from "@/lib/apolo/boletos/portais";
 import { TelaBoletos } from "./TelaBoletos";
 // As duas do portal COMERCIAL (o Hércules da Gurgel): o board da Têmis recortado pelo escopo e a
-// fila + central do Prometeu. Ver `ABAS_COMERCIAL`.
+// fila + central do Prometeu. Ver `ABAS_COMERCIAL`. Desde 16/09/2026 a primeira também é do
+// Cecílio (`ABAS_OPERA_VENDA`); o Lançamento continua só do comercial.
 import { TelaContratos } from "./TelaContratos";
 import { TelaLancamento } from "./TelaLancamento";
-// A aba Produtos do COMERCIAL é outra tela: a RÉPLICA da tela de Empreendimentos do Apolo (os seis
+// A aba Produtos do COMERCIAL (e, desde 16/09/2026, do Cecílio) é outra tela: a RÉPLICA da tela de Empreendimentos do Apolo (os seis
 // cards, a tabela pai/filhos e a ficha com abas), com Vendas dentro da ficha (Lucas, 02/09/2026:
 // *"produtos é replicar a tela que temos hoje em empreendimento do apolo"*). A versão anterior em
 // estilo próprio do portal (TelaProdutosComercial.tsx) fica no repo, fora do fluxo.
@@ -49,8 +56,13 @@ import { TelaVendas } from "./TelaVendas";
 //
 // E os da LATERAL RECOLHÍVEL do comercial (Lucas, 02/09/2026): PanelLeftClose/PanelLeftOpen no
 // botão de recolher/expandir e LogOut no "Sair" (recolhida, o ícone é o que sobra do botão).
+//
+// DatabaseZap (LSoft Integração) e ReceiptText (Boletos) só existem na casca do Hércules de quem
+// não é comercial (o Cecílio, 16/09/2026): lá a lateral recolhe, e recolhida uma aba sem ícone
+// vira um botão vazio. Nos portais que só acompanham as duas abas seguem só com o rótulo.
 import {
   ContactRound,
+  DatabaseZap,
   FileSignature,
   Handshake,
   LandPlot,
@@ -58,6 +70,7 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  ReceiptText,
   WalletCards,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -80,10 +93,11 @@ type Sessao = {
   usuario: { nome: string };
 };
 
-// "produtos" existe no portal personalizado (os cards com a logo, `TelaProdutos`) e no COMERCIAL
-// (a tabela de empreendimentos com Vendas dentro, `TelaProdutosComercial`) — mesma chave, telas
-// diferentes, decididas pelo tipo no corpo do Portal. No padrão, o mapa vive dentro de Vendas.
-// "contratos" e "lancamento" existem SÓ no portal comercial.
+// "produtos" existe no portal só-produtos (os cards com a logo, `TelaProdutos`) e na CASCA DO
+// HÉRCULES (a réplica da tela de Empreendimentos do Apolo, `ProdutosDoHercules`) — mesma chave,
+// telas diferentes, decididas por `portalOperaVenda` no corpo do Portal. No padrão, o mapa vive
+// dentro de Vendas. "venda" e "contratos" existem só para quem opera a venda (comercial e, desde
+// 16/09/2026, o Cecílio); "lancamento", SÓ no portal comercial.
 type Aba =
   | "boletos"
   | "carteira"
@@ -95,9 +109,9 @@ type Aba =
   | "venda"
   | "vendas";
 
-// Um item do menu lateral. `icone` é opcional de propósito: o portal COMERCIAL carrega ícone em
-// todas as abas (pedido do Lucas, 02/09/2026); os portais de incorporador seguem só com o rótulo,
-// e o <nav> renderiza o ícone quando houver.
+// Um item do menu lateral. `icone` é opcional de propósito: a casca do Hércules (o comercial, pedido
+// do Lucas em 02/09/2026, e o Cecílio desde 16/09/2026) carrega ícone em todas as abas; os portais
+// de incorporador que só acompanham seguem só com o rótulo, e o <nav> renderiza o ícone quando houver.
 type ItemDeAba = { chave: Aba; icone?: LucideIcon; rotulo: string };
 
 type DadosDoPortal = {
@@ -128,10 +142,11 @@ function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug, tipo }: DadosDoPort
   // todo mundo (Carteira só aparece para quem tem carteira administrada, CRM ainda está por vir).
   // ⚠️ MENOS no portal SÓ PRODUTOS, onde Vendas não existe: abrir nela deixaria a tela em branco,
   // porque o corpo renderiza por `aba` e nenhum ramo casaria. Ver [[perfis-de-portal]].
-  // ⚠️ E MENOS no COMERCIAL, pelo mesmo motivo: lá Vendas virou Produtos (02/09/2026), e a chave
-  // "vendas" não está mais em `ABAS_COMERCIAL`.
+  // ⚠️ E MENOS na CASCA DO HÉRCULES, pelo mesmo motivo: lá Vendas virou Produtos (02/09/2026), e a
+  // chave "vendas" não está em `ABAS_COMERCIAL` nem em `ABAS_OPERA_VENDA`. Vale para a Gurgel e,
+  // desde 16/09/2026, para o Cecílio, por isso a pergunta é `portalOperaVenda`, e não o tipo.
   const [aba, setAba] = useState<Aba>(
-    ehPortalComercial(tipo) || ehPortalSoProdutos(slug) ? "produtos" : "vendas",
+    portalOperaVenda(slug, tipo) || ehPortalSoProdutos(slug) ? "produtos" : "vendas",
   );
 
   // ⚠️ O F5 NÃO PODE VOLTAR PARA O COMEÇO (Lucas, 04/09/2026: *"toda vez que eu atualizo a página
@@ -145,12 +160,17 @@ function PortalComTema({ logoEscuraUrl, logoUrl, nome, slug, tipo }: DadosDoPort
   // ⚠️ E CONFERE SE A ABA AINDA EXISTE NESTE PORTAL: as abas variam por tipo e por slug, e uma
   // chave guardada num portal que não a tem deixaria o corpo sem nenhum ramo para renderizar —
   // tela branca, sem erro.
+  //
+  // ⚠️ E CONFERE PELA LISTA QUE O MENU MOSTRA (`abasDaSessao`), não pela lista crua: a Carteira some
+  // do menu de quem não tem carteira, e uma "carteira" guardada antes disso abriria a tela que o
+  // menu não oferece. E a troca de lista é concreta desde 16/09/2026: as abas do Cecílio mudaram
+  // ("vendas" deixou de existir para ele), e o que cada navegador guardou antes aponta para o nada.
   useEffect(() => {
     if (!sessao) return;
     try {
       const guardada = window.localStorage.getItem(chaveDaAba(slug));
       if (!guardada) return;
-      const disponiveis = abasDoPortal(sessao.incorporador.slug, tipo).map((a) => a.chave);
+      const disponiveis = abasDaSessao(sessao, tipo).map((a) => a.chave);
       if (disponiveis.includes(guardada as Aba)) setAba(guardada as Aba);
     } catch {
       /* navegador sem storage: fica na aba padrão */
@@ -529,19 +549,16 @@ const ABAS: ItemDeAba[] = [
   { chave: "carteira", rotulo: "Carteira" },
 ];
 
-// ⚠️ O CECILIO NAO PERDE A ABA PRODUTOS. O portal dele e um projeto PERSONALIZADO, ja aprovado e
-// em uso pelo cliente (regra do Lucas, 17/08/2026), e o padrao nao pode passar por cima: tirar
-// Produtos aqui apagaria a porta por onde ele abre o masterplan do Garden todo dia.
+// ⚠️ AQUI MORAVA `ABAS_PERSONALIZADO` (as três do padrão + Produtos), que era o menu do Cecílio
+// desde 17/08/2026. Saiu em 16/09/2026, quando o Lucas pediu para o portal dele a casca do
+// Hércules (ver `ABAS_OPERA_VENDA`, abaixo): o Cecílio era o único personalizado, e uma lista que
+// ninguém mais usa é a que apodrece. Produtos continua com ele, agora na versão do Hércules.
 // Ver [[perfis-de-portal]].
-const ABAS_PERSONALIZADO: ItemDeAba[] = [
-  ...ABAS,
-  { chave: "produtos", rotulo: "Produtos" },
-];
 
 // ⚠️ A ABA DO LSOFT NÃO SEGUE "PERSONALIZADO x PADRÃO", e a razão é concreta: existem DOIS portais
-// do Cecílio — `cecilio-rocha` (o personalizado, congelado) e `cer` (o que a equipe dele usa hoje,
-// que roda no padrão). Amarrar ao personalizado deixaria o CER de fora, que é justamente quem vai
-// validar a base; amarrar ao padrão daria a aba a Vista Alegre e Lagoa Bonita, que não têm nada
+// do Cecílio — `cecilio-rocha` (o personalizado, que desde 16/09/2026 veste a casca do Hércules) e
+// `cer` (o que a equipe dele usava até então, que roda no padrão e será pausado). Amarrar ao
+// personalizado deixaria o CER de fora, que é justamente quem vai validar a base; amarrar ao padrão daria a aba a Vista Alegre e Lagoa Bonita, que não têm nada
 // com a carteira do Garden. Por isso a lista própria em lib/lsoft/portais.
 const ABA_LSOFT: ItemDeAba = { chave: "lsoft", rotulo: "LSoft Integração" };
 
@@ -586,23 +603,74 @@ const ABAS_COMERCIAL: ItemDeAba[] = [
   { chave: "lancamento", icone: ListOrdered, rotulo: "Lançamento" },
 ];
 
+// O INCORPORADOR QUE OPERA A PRÓPRIA VENDA — o menu do Hércules sem o Lançamento.
+//
+// Pedido do Lucas (16/09/2026), olhando o /comercial/gurgel: *"quero replicar esse portal do
+// coordenador (falo de estrutura layout) para o portal da Cecilio. a unica coisa que não teremos é
+// o lançamento"*. Mesmos rótulos, mesmos ícones e mesma ordem do comercial.
+//
+// ⚠️ LISTA DE CHAVES PERMITIDAS, e não "o comercial menos o Lançamento". Um filtro que tira só o
+// Lançamento entregaria à equipe de FORA da Careli toda aba nova que nascer no comercial (a
+// próxima do Prometeu, por exemplo) sem ninguém ter decidido. Aqui aba nova do comercial NÃO
+// aparece até alguém escrever a chave abaixo. Os ITENS saem de `ABAS_COMERCIAL` para o ícone e o
+// rótulo não divergirem entre as duas cascas.
+const CHAVES_OPERA_VENDA: ReadonlySet<Aba> = new Set<Aba>([
+  "crm",
+  "produtos",
+  "venda",
+  "contratos",
+  "carteira",
+]);
+
+const ABAS_OPERA_VENDA: ItemDeAba[] = ABAS_COMERCIAL.filter((item) =>
+  CHAVES_OPERA_VENDA.has(item.chave),
+);
+
+// LSoft e Boletos na casca do Hércules: as MESMAS abas, com ícone. A equipe do Cecílio usa as duas
+// todo dia, e elas não saem com a casca nova. Com a lateral recolhida sobra só o ícone, e uma aba
+// sem ícone viraria um botão vazio.
+const ABA_LSOFT_HERCULES: ItemDeAba = { ...ABA_LSOFT, icone: DatabaseZap };
+const ABA_BOLETOS_HERCULES: ItemDeAba = { ...ABA_BOLETOS, icone: ReceiptText };
+
 export function abasDoPortal(slug: string, tipo?: TipoDePortal): ItemDeAba[] {
   // ⚠️ O TIPO VEM ANTES DAS LISTAS DE SLUG. As listas protegem perfis já aprovados do padrão; o
   // comercial não é um deles, é outro produto — e decidido pelo banco, não por slug em código.
   if (ehPortalComercial(tipo)) return ABAS_COMERCIAL;
+  // ⚠️ SÓ PRODUTOS ANTES DE "OPERA A VENDA": se um slug cair nas duas listas por engano, vence a
+  // mais fechada. Uma aba a menos vira pedido; escrita aberta para o sócio errado vira incidente.
   if (ehPortalSoProdutos(slug)) return ABAS_SO_PRODUTOS;
 
-  let abas = ehPortalPersonalizado(slug) ? ABAS_PERSONALIZADO : ABAS;
+  if (portalOperaVenda(slug, tipo)) {
+    let abas = ABAS_OPERA_VENDA;
+    if (portalVeBaseLsoft(slug)) abas = [...abas, ABA_LSOFT_HERCULES];
+    if (portalEmiteBoletos(slug)) abas = [...abas, ABA_BOLETOS_HERCULES];
+    return abas;
+  }
+
+  let abas = ABAS;
   if (portalVeBaseLsoft(slug)) abas = [...abas, ABA_LSOFT];
   if (portalEmiteBoletos(slug)) abas = [...abas, ABA_BOLETOS];
   return abas;
 }
 
+/**
+ * As abas que o MENU mostra para esta sessão: as do portal, menos a Carteira quando nenhum
+ * empreendimento da sessão tem carteira ("Carteira (quando tiver)", Lucas, 10/08). É a mesma lista
+ * que decide o menu e a restauração da aba guardada, para as duas nunca discordarem.
+ */
+function abasDaSessao(sessao: Sessao, tipo: TipoDePortal): ItemDeAba[] {
+  const temCarteira = sessao.empreendimentosComCarteira.length > 0;
+  return abasDoPortal(sessao.incorporador.slug, tipo).filter(
+    (item) => item.chave !== "carteira" || temCarteira,
+  );
+}
+
 // A LATERAL RECOLHÍVEL DO COMERCIAL. Lucas (02/09/2026, olhando a ficha do Jardim das Gerais na
 // aba Vendas): *"colocar o botão de recolher o sidebar para aumentar a tela de trabalho"*. A
 // escolha é da PESSOA e do navegador, como o tema: fica no localStorage e volta na próxima
-// abertura. Só o comercial recolhe — os portais de incorporador não ganham o botão, e a pintura
-// da lateral recolhida (64px, só ícones) mora no TEMA_CSS (.inc-side--recolhida).
+// abertura. Só a casca do Hércules recolhe (o comercial e, desde 16/09/2026, o Cecílio) — os
+// portais de incorporador que só acompanham não ganham o botão, e a pintura da lateral recolhida
+// (64px, só ícones) mora no TEMA_CSS (.inc-side--recolhida).
 const CHAVE_SIDEBAR_RECOLHIDA = "inc:sidebar-recolhida";
 
 function lerSidebarRecolhida(): boolean {
@@ -622,9 +690,11 @@ function lerSidebarRecolhida(): boolean {
 }
 
 // A logo do incorporador NÃO veste o portal de dentro: ela recebe na porta (o login) e o portal
-// é Panteon para todo mundo. A EXCEÇÃO é o portal COMERCIAL — é o time da Careli operando sob a
-// marca dele (Lucas, 02/09/2026: *"para esse perfil da Gurgel, quero que use a logo deles no
-// lugar da logo do Panteon"*). Por isso as URLs chegam até aqui, e só o comercial as usa.
+// é Panteon para todo mundo. A EXCEÇÃO é a CASCA DO HÉRCULES: no comercial é o time da Careli
+// operando sob a marca dele (Lucas, 02/09/2026: *"para esse perfil da Gurgel, quero que use a logo
+// deles no lugar da logo do Panteon"*), e desde 16/09/2026 também o Cecílio, que opera a própria
+// venda no portal com a logo deles (*"como é um projeto personalizado quero fazer tudo no portal
+// Cecilio que tem a logo deles"*). Por isso as URLs chegam até aqui, e só quem veste a casca as usa.
 function Portal({
   aba,
   aoSair,
@@ -642,17 +712,23 @@ function Portal({
   sessao: Sessao;
   tipo: TipoDePortal;
 }) {
+  // DUAS PERGUNTAS DIFERENTES desde 16/09/2026, e elas não se confundem:
+  //   • `casca` — este portal veste o layout do Hércules (lateral recolhível com a marca do cliente,
+  //     ícones no menu, área de trabalho maior)? É de quem OPERA A VENDA: a Gurgel e o Cecílio.
+  //   • `comercial` — é o time da Careli operando? Só aí entram as peças EXCLUSIVAS do comercial,
+  //     como o Financeiro em Parcelas (Ato e Sinal). O Lançamento já nem chega ao menu fora dele.
+  const casca = portalOperaVenda(sessao.incorporador.slug, tipo);
   const comercial = ehPortalComercial(tipo);
+  //   • `confecciona` — o próprio time gera o contrato das vendas que faz (hoje só o Cecílio). A
+  //     Gurgel opera a venda mas entrega o contrato à Têmis da Careli, então fica de fora.
+  const confecciona = portalConfeccionaContrato(sessao.incorporador.slug, tipo);
   // "Carteira (quando tiver)": some inteira quando nenhum empreendimento deste incorporador tem
-  // carteira administrada pela Careli. Aba que abre vazia vira chamado.
-  const temCarteira = sessao.empreendimentosComCarteira.length > 0;
-  const abas = abasDoPortal(sessao.incorporador.slug, tipo).filter(
-    (item) => item.chave !== "carteira" || temCarteira,
-  );
+  // carteira administrada pela Careli. Aba que abre vazia vira chamado. Ver `abasDaSessao`.
+  const abas = abasDaSessao(sessao, tipo);
 
-  // Recolhida só faz sentido no comercial; fora dele o estado nasce falso e ninguém o troca (o
-  // botão nem renderiza). Ver `lerSidebarRecolhida` sobre ler o storage no primeiro render.
-  const [recolhida, setRecolhida] = useState(() => comercial && lerSidebarRecolhida());
+  // Recolhida só faz sentido na casca do Hércules; fora dela o estado nasce falso e ninguém o troca
+  // (o botão nem renderiza). Ver `lerSidebarRecolhida` sobre ler o storage no primeiro render.
+  const [recolhida, setRecolhida] = useState(() => casca && lerSidebarRecolhida());
   const alternarLateral = () => {
     const proxima = !recolhida;
     setRecolhida(proxima);
@@ -665,10 +741,11 @@ function Portal({
   };
 
   return (
-    // `inc--comercial` é o gancho do TEMA_CSS para a área de trabalho maior (miolo com menos
-    // padding, rodapé fino, body sem rolagem no desktop) e para a lateral recolhível.
+    // `inc--hercules` é o gancho do TEMA_CSS para a área de trabalho maior (miolo com menos
+    // padding, rodapé fino, body sem rolagem no desktop) e para a lateral recolhível. Chamava-se
+    // `inc--comercial` até 16/09/2026, quando a casca passou a ser de quem opera a venda.
     <div
-      className={[comercial ? "inc inc--comercial" : "inc", classeDaMarca(sessao.incorporador.slug)]
+      className={[casca ? "inc inc--hercules" : "inc", classeDaMarca(sessao.incorporador.slug)]
         .filter(Boolean)
         .join(" ")}
       style={{ background: T.page, fontFamily: fonte }}
@@ -688,11 +765,12 @@ function Portal({
               sumiria no tema claro daqui. Por isso: símbolo + o nome escrito em texto, que
               acompanha o tema sozinho pela variável de cor. */}
           <div className="inc-side-topo">
-            {comercial ? (
-              // A MARCA DO TIME no lugar do Panteon, com o botão de recolher ao lado. A arte é
-              // horizontal, então ocupa a largura que sobra e limita pela altura; o nome não se
-              // repete embaixo — a logo já o diz. Recolhida, a marca some (não há símbolo
-              // quadrado da Gurgel no cadastro; ver TEMA_CSS) e fica só o botão, centrado.
+            {casca ? (
+              // A MARCA DO CLIENTE no lugar do Panteon, com o botão de recolher ao lado (a Gurgel
+              // no comercial; o Cecílio desde 16/09/2026). A arte é horizontal, então ocupa a
+              // largura que sobra e limita pela altura; o nome não se repete embaixo — a logo já
+              // o diz. Recolhida, a marca some (não há símbolo quadrado no cadastro; ver
+              // TEMA_CSS) e fica só o botão, centrado.
               <div className="inc-side-marca-linha">
                 <div className="inc-side-marca">
                   <Marca
@@ -762,7 +840,8 @@ function Portal({
                 title={recolhida ? item.rotulo : undefined}
                 type="button"
               >
-                {/* ÍCONE (16px) + RÓTULO em toda aba que trouxer `icone` — hoje só o comercial.
+                {/* ÍCONE (16px) + RÓTULO em toda aba que trouxer `icone` — hoje só a casca do
+                    Hércules (comercial e Cecílio).
                     Sem ícone a linha é a de sempre: o flex com gap não muda a altura, porque o
                     ícone é menor que a linha de texto. */}
                 {item.icone ? <item.icone aria-hidden="true" size={16} /> : null}
@@ -790,10 +869,11 @@ function Portal({
               title={recolhida ? `Sair · ${sessao.usuario.nome}` : undefined}
               type="button"
             >
-              {/* O ícone só no COMERCIAL: recolhida, é o que sobra do botão; expandida, acompanha
-                  o menu, que lá tem ícone em toda aba. Os portais de incorporador seguem só com
-                  a palavra "Sair", como aprovados. */}
-              {comercial ? <LogOut aria-hidden="true" size={14} /> : null}
+              {/* O ícone só na CASCA DO HÉRCULES: recolhida, é o que sobra do botão; expandida,
+                  acompanha o menu, que lá tem ícone em toda aba. É peça da lateral recolhível, e
+                  não do comercial: sem ele o Cecílio recolhido teria um "Sair" vazio. Os portais
+                  que só acompanham seguem só com a palavra "Sair", como aprovados. */}
+              {casca ? <LogOut aria-hidden="true" size={14} /> : null}
               <span className="inc-side-rotulo">Sair</span>
             </button>
           </div>
@@ -803,36 +883,66 @@ function Portal({
           {/* LARGURA TOTAL, como as telas internas do Apolo (Lucas, 18/08/2026: "a tela aqui no
               apolo parece maior"). O miolo era travado em maxWidth 1180 e centrado; agora ocupa a
               viewport inteira com padding lateral, em TODAS as abas — o mesmo comportamento do
-              CRM 360 interno. O padding mora no TEMA_CSS (.inc-conteudo): no comercial ele é
-              menor e, no desktop, é o <main> que rola — o body não. */}
+              CRM 360 interno. O padding mora no TEMA_CSS (.inc-conteudo): na casca do Hércules
+              ele é menor e, no desktop, é o <main> que rola — o body não. */}
           <main className="inc-conteudo">
             {aba === "crm" ? <TelaCrm /> : null}
-            {aba === "vendas" ? <TelaVendas /> : null}
+            {/* ⚠️ `!casca`: a TelaVendas abre os mapas antigos (garden.html, vale-do-ouro.html pela
+                TelaMasterplan). Decisão do Lucas (16/09/2026): na casca do Hércules eles estão
+                aposentados, e o Espelho da aba Venda substitui. O menu da casca não oferece "vendas",
+                mas uma aba restaurada de antes (localStorage) ou um estado velho não pode remontar o
+                caminho. A rota do masterplan também recusa o portal que confecciona. */}
+            {aba === "vendas" && !casca ? <TelaVendas /> : null}
             {/* No comercial, Financeiro é PARCELAS: Ato e Sinal, valor cheio, boleto por parcela (Lucas,
-                02/09/2026: "aqui o financeiro não tem carteira, é Parcelas"). */}
+                02/09/2026: "aqui o financeiro não tem carteira, é Parcelas"). ⚠️ E SÓ NO COMERCIAL:
+                o Cecílio veste a casca do Hércules, mas o Financeiro dele é a carteira de
+                incorporador, sem Ato e Sinal (a rota da carteira também só entrega esses dois ao
+                comercial). Por isso a pergunta aqui é `comercial`, e não `casca`. */}
             {aba === "carteira" ? (
               <TelaCarteira modo={comercial ? "coordenador" : "incorporador"} />
             ) : null}
-            {/* A MESMA chave, DUAS telas: no COMERCIAL é a réplica da tela de Empreendimentos do
-                Apolo (lista + ficha com Resumo · Cadastro · Imobiliárias · Vendas · Contratos);
-                no PERSONALIZADO são os cards com a logo (o Cecílio abre o masterplan do Garden
-                por aqui todo dia, e o padrão não passa por cima dele). O padrão não chega aqui:
-                `abasDoPortal` não oferece a aba fora desses dois. */}
+            {/* A MESMA chave, DUAS telas: na CASCA DO HÉRCULES é a réplica da tela de
+                Empreendimentos do Apolo (lista + ficha); no SÓ PRODUTOS (a MMendes) são os cards
+                com a logo. A ficha recebe o `modo`: o comercial vê a ficha do coordenador, e o
+                Cecílio a do incorporador que opera a própria venda (as abas de cada um moram na
+                FichaDoProduto). O padrão não chega aqui: `abasDoPortal` não oferece a aba fora
+                desses casos. */}
             {aba === "produtos" ? (
-              comercial ? <ProdutosDoHercules /> : <TelaProdutos />
+              casca ? (
+                <ProdutosDoHercules modo={comercial ? "comercial" : "incorporador"} />
+              ) : (
+                <TelaProdutos />
+              )
             ) : null}
             {/* A MESMA tela do time interno, falando com a API do portal (cookie de sessão, sem
                 token, e sem o botão da MOST: quem paga o enriquecimento é a Careli). */}
             {aba === "lsoft" ? <CarteiraLsoft api={apiDoPortal} /> : null}
             {aba === "boletos" ? <TelaBoletos /> : null}
-            {/* Só o portal COMERCIAL chega aqui: `abasDoPortal` não oferece as duas fora dele. */}
-            {aba === "venda" ? <TelaVenda /> : null}
-            {aba === "contratos" ? <TelaContratos /> : null}
-            {aba === "lancamento" ? <TelaLancamento /> : null}
+            {/* Venda e Contratos: só quem OPERA A VENDA chega aqui (o comercial e, desde
+                16/09/2026, o Cecílio); `abasDoPortal` não oferece as duas fora disso. As telas são
+                as mesmas do comercial, e o recorte é o da sessão: cada rota cruza com o escopo
+                do portal do outro lado (fail-closed). */}
+            {/* Quem CONFECCIONA (o Cecílio) abre a Venda com a Têmis do portal: a prévia do contrato
+                fala com /api/incorporador/temis pelo cookie. A Gurgel segue sem provedor, como
+                sempre (a prévia dela é a da Careli). */}
+            {aba === "venda" ? (
+              confecciona ? (
+                <ApiDaTemisProvider {...API_DA_TEMIS_DO_PORTAL}>
+                  <TelaVenda />
+                </ApiDaTemisProvider>
+              ) : (
+                <TelaVenda />
+              )
+            ) : null}
+            {/* `confecciona` liga o board operável da Têmis do portal; sem ele, o só-leitura de sempre. */}
+            {aba === "contratos" ? <TelaContratos confecciona={confecciona} /> : null}
+            {/* O Lançamento (Prometeu) é EXCLUSIVO do comercial: a única aba que o Cecílio não
+                ganhou (Lucas, 16/09/2026: *"a unica coisa que não teremos é o lançamento"*). */}
+            {aba === "lancamento" && comercial ? <TelaLancamento /> : null}
           </main>
 
-          {/* "sempre marcar c2x" (Lucas). No comercial vira uma linha fina (TEMA_CSS,
-              .inc--comercial .inc-rodape): estava comendo a área de trabalho. */}
+          {/* "sempre marcar c2x" (Lucas). Na casca do Hércules vira uma linha fina (TEMA_CSS,
+              .inc--hercules .inc-rodape): estava comendo a área de trabalho. */}
           <footer className="inc-rodape">
             <span style={{ color: T.gold }}>●</span> Tecnologia <b style={{ color: T.sub }}>C2X</b>
           </footer>

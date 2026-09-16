@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ehPortalComercial,
   ehPortalPersonalizado,
   ehPortalSoProdutos,
   portalAssinaPanteon,
+  portalOperaVenda,
+  type TipoDePortal,
 } from "./perfis-de-portal";
 import { abasDoPortal } from "@/modules/incorporador/PortalIncorporador";
 
-// As três formas de portal que existem hoje, e a garantia de que uma não vira a outra num
-// refactor. O Cecílio está no ar e aprovado (regra do Lucas, 17/08) e a MMendes é o sócio que
-// só enxerga o produto (28/08) — as duas listas são recortes de negócio, não detalhe técnico.
+// As formas de portal que existem hoje, e a garantia de que uma não vira a outra num refactor. O
+// Cecílio é o personalizado (regra do Lucas, 17/08) que desde 16/09/2026 opera a própria venda na
+// casca do Hércules, e a MMendes é o sócio que só enxerga o produto (28/08) — as listas são
+// recortes de negócio, não detalhe técnico.
 
 const rotulos = (slug: string) => abasDoPortal(slug).map((aba) => aba.rotulo);
 
@@ -24,20 +28,23 @@ describe("portal padrão", () => {
   });
 });
 
-describe("portal personalizado (Cecílio) — congelado", () => {
-  it("mantém Produtos além das três do padrão, mais LSoft e Boletos", () => {
-    // As duas últimas vêm de listas próprias, cada uma por pedido DIRETO do Lucas nomeando os dois
-    // portais do Cecílio — não por herança do padrão:
+describe("portal personalizado (Cecílio) — a réplica do Hércules", () => {
+  it("tem o menu do Hércules sem o Lançamento, mais LSoft e Boletos", () => {
+    // Lucas (16/09/2026), olhando o /comercial/gurgel: *"quero replicar esse portal do coordenador
+    // (falo de estrutura layout) para o portal da Cecilio. a unica coisa que não teremos é o
+    // lançamento"*. As duas últimas vêm de listas próprias, cada uma por pedido DIRETO do Lucas
+    // nomeando os dois portais do Cecílio — não por herança do padrão:
     //   • LSoft   (19/08/2026) — `lib/lsoft/portais`;
     //   • Boletos (01/09/2026) — `lib/apolo/boletos/portais`, *"essa tela vai somente no perfil da
     //     CER e Cecilio"*.
-    // ⚠️ O CONGELAMENTO NÃO É "NUNCA MUDA": é "o padrão não passa por cima". Pedido explícito do
+    // ⚠️ PERSONALIZADO NÃO É "NUNCA MUDA": é "o padrão não passa por cima". Pedido explícito do
     // Lucas para este portal entra — é ele quem decide o que o cliente dele vê.
     expect(rotulos("cecilio-rocha")).toEqual([
       "CRM",
-      "Vendas",
-      "Carteira",
       "Produtos",
+      "Venda",
+      "Contratos",
+      "Financeiro",
       "LSoft Integração",
       "Boletos",
     ]);
@@ -114,6 +121,139 @@ describe("de quem é a marca na porta do portal", () => {
   it("aceita espaço e caixa, como as outras regras", () => {
     expect(portalAssinaPanteon("  MMendes ")).toBe(false);
     expect(portalAssinaPanteon("")).toBe(true);
+  });
+});
+
+describe("quem opera a venda (e veste a casca do Hércules)", () => {
+  // Lucas (16/09/2026): *"a Cecilio quem vai fazer é o proprio time deles (...) eles meio que vão
+  // andar sozinhos"*. Cada `true` aqui abre escrita (reserva, proposta, board, contratos) para
+  // gente de fora da Careli, então o `false` dos outros portais é tão importante quanto.
+  it("o comercial sempre opera, qualquer que seja o slug", () => {
+    expect(portalOperaVenda("gurgel", "comercial")).toBe(true);
+    expect(portalOperaVenda("qualquer-coordenador", "comercial")).toBe(true);
+  });
+
+  it("o Cecílio opera, mesmo sendo incorporador", () => {
+    expect(portalOperaVenda("cecilio-rocha", "incorporador")).toBe(true);
+    // Cookie antigo, sem o campo `tipo`.
+    expect(portalOperaVenda("cecilio-rocha", null)).toBe(true);
+  });
+
+  it("aceita o slug com espaço ou caixa diferente", () => {
+    expect(portalOperaVenda("  CECILIO-ROCHA ", "incorporador")).toBe(true);
+  });
+
+  it("o CER (o outro portal do Cecílio, no padrão) NÃO opera", () => {
+    expect(portalOperaVenda("cer", "incorporador")).toBe(false);
+  });
+
+  it("os incorporadores do padrão e o sócio NÃO operam", () => {
+    for (const slug of ["vistaalegre", "lagoabonita", "valedoouro", "mmendes"]) {
+      expect(portalOperaVenda(slug, "incorporador"), slug).toBe(false);
+    }
+  });
+
+  it("slug e tipo ausentes caem no fechado", () => {
+    expect(portalOperaVenda(null, null)).toBe(false);
+    expect(portalOperaVenda(undefined, undefined)).toBe(false);
+    expect(portalOperaVenda("", "incorporador")).toBe(false);
+  });
+
+  it("operar a venda NÃO faz do Cecílio um comercial", () => {
+    // O que é exclusivo do comercial (Lançamento, Ato e Sinal, porta do coordenador) continua
+    // perguntando `ehPortalComercial`, que olha só o tipo.
+    expect(ehPortalComercial("incorporador")).toBe(false);
+    expect(ehPortalComercial(null)).toBe(false);
+  });
+});
+
+describe("o menu de cada portal (abasDoPortal)", () => {
+  const chaves = (slug: string, tipo?: TipoDePortal) =>
+    abasDoPortal(slug, tipo).map((aba) => aba.chave);
+
+  it("comercial (Gurgel): o Hércules inteiro, com o Lançamento, sem LSoft nem Boletos", () => {
+    expect(abasDoPortal("gurgel", "comercial").map((aba) => aba.rotulo)).toEqual([
+      "CRM",
+      "Produtos",
+      "Venda",
+      "Contratos",
+      "Financeiro",
+      "Lançamento",
+    ]);
+  });
+
+  it("o tipo comercial vence as listas de slug", () => {
+    // Um coordenador com o slug do Cecílio seria comercial, com Lançamento e sem LSoft.
+    expect(chaves("cecilio-rocha", "comercial")).toContain("lancamento");
+    expect(chaves("cecilio-rocha", "comercial")).not.toContain("lsoft");
+  });
+
+  it("Cecílio: as mesmas chaves do comercial, menos o Lançamento, mais LSoft e Boletos", () => {
+    expect(chaves("cecilio-rocha", "incorporador")).toEqual([
+      "crm",
+      "produtos",
+      "venda",
+      "contratos",
+      "carteira",
+      "lsoft",
+      "boletos",
+    ]);
+    expect(chaves("cecilio-rocha", "incorporador")).not.toContain("lancamento");
+    expect(chaves("cecilio-rocha", "incorporador")).not.toContain("vendas");
+  });
+
+  it("Cecílio: os ícones são os mesmos do comercial, aba por aba", () => {
+    const doComercial = new Map(abasDoPortal("gurgel", "comercial").map((aba) => [aba.chave, aba]));
+    for (const aba of abasDoPortal("cecilio-rocha", "incorporador")) {
+      const par = doComercial.get(aba.chave);
+      if (!par) continue; // LSoft e Boletos não existem no comercial.
+      expect(aba.icone, aba.chave).toBe(par.icone);
+      expect(aba.rotulo, aba.chave).toBe(par.rotulo);
+    }
+  });
+
+  it("Cecílio: TODA aba tem ícone (recolhida, a lateral só mostra o ícone)", () => {
+    for (const aba of abasDoPortal("cecilio-rocha", "incorporador")) {
+      expect(aba.icone, aba.chave).toBeDefined();
+    }
+  });
+
+  it("CER: continua no padrão, com LSoft e Boletos, sem ícone", () => {
+    expect(abasDoPortal("cer", "incorporador").map((aba) => aba.rotulo)).toEqual([
+      "CRM",
+      "Vendas",
+      "Carteira",
+      "LSoft Integração",
+      "Boletos",
+    ]);
+    for (const aba of abasDoPortal("cer", "incorporador")) {
+      expect(aba.icone, aba.chave).toBeUndefined();
+    }
+  });
+
+  it("Vista Alegre: o padrão de sempre, sem nada do Hércules", () => {
+    expect(chaves("vistaalegre", "incorporador")).toEqual(["crm", "vendas", "carteira"]);
+    for (const aba of abasDoPortal("vistaalegre", "incorporador")) {
+      expect(aba.icone, aba.chave).toBeUndefined();
+    }
+  });
+
+  it("MMendes: só Produtos, sem a casca", () => {
+    expect(chaves("mmendes", "incorporador")).toEqual(["produtos"]);
+    expect(abasDoPortal("mmendes", "incorporador")[0]?.icone).toBeUndefined();
+  });
+
+  it("nenhum portal de incorporador ganha o Lançamento", () => {
+    for (const slug of ["cecilio-rocha", "cer", "vistaalegre", "lagoabonita", "mmendes", ""]) {
+      expect(chaves(slug, "incorporador"), slug).not.toContain("lancamento");
+    }
+  });
+
+  it("Venda e Contratos só existem para quem opera a venda", () => {
+    for (const slug of ["cer", "vistaalegre", "lagoabonita", "mmendes"]) {
+      expect(chaves(slug, "incorporador"), slug).not.toContain("venda");
+      expect(chaves(slug, "incorporador"), slug).not.toContain("contratos");
+    }
   });
 });
 

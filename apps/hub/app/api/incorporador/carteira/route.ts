@@ -503,7 +503,14 @@ export async function GET(request: Request) {
   const comercial = ehPortalComercial(auth.sessao.tipo);
 
   const [bruta, liquida, atoESinal] = await Promise.all([
-    loadApoloEnterpriseCarteira(codes),
+    // ⚠️ O LOADER LANÇA QUANDO O MYSQL RECUSA (o `pool.query` não tem try/catch lá dentro). Com o
+    // catálogo do C2X vazio, os códigos passaram a sair do cadastro do Panteon, e a guarda antiga
+    // ("zero código = C2X fora = 503") não segura mais: sem isto a rota respondia 500 sem corpo e a
+    // tela quebrava no `res.json()`. A queda vira `ok: false` e cai no 503 de sempre, logo abaixo.
+    loadApoloEnterpriseCarteira(codes).catch((erro: unknown) => ({
+      error: erro instanceof Error ? erro.message : String(erro),
+      ok: false as const,
+    })),
     carteiraLiquidaDoIncorporador({
       codes,
       // Os KPIs do BI só quando a tela pede: a leitura ampliada (parcelas em aberto) custa mais.

@@ -3,15 +3,28 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { ApoloEnterpriseRow, ApoloEnterpriseTab, ApoloEnterprisesData } from "@/lib/apolo/empreendimentos";
+// ⚠️ SÓ TIPO de painel-de-produtos: ele puxa o C2X (mysql2) e não pode entrar no bundle do navegador.
+// A peça de valor (`comEscritaDoFilho`) mora em painel-para-apolo, que só importa tipos.
 import type { LinhaDoPainel, PainelDeProdutos } from "@/lib/apolo/incorporador/painel-de-produtos";
-import { indiceDoPainel, painelParaApolo } from "@/lib/apolo/incorporador/painel-para-apolo";
+import {
+  comEscritaDoFilho,
+  indiceDoPainel,
+  painelParaApolo,
+} from "@/lib/apolo/incorporador/painel-para-apolo";
 import { EmpreendimentosScreen } from "@/modules/apolo/blocks/empreendimentos/empreendimentos-view";
 import { fonte } from "@/modules/publico/ui/tokens";
 
 import { T, useTemaDoPortal } from "../tema";
 import { FichaDoProduto } from "./FichaDoProduto";
+import { NovoProduto } from "./NovoProduto";
 
 // PRODUTOS DO HÉRCULES — a tela de Empreendimentos do Apolo, a MESMA, dentro do portal comercial.
+//
+// ⚠️ E DESDE 16/09/2026 TAMBÉM NO PORTAL DO CECÍLIO, que veste a casca do Hércules e opera a própria
+// venda (`portalOperaVenda`, em lib/apolo/incorporador/perfis-de-portal). A lista é a mesma nos
+// dois; o que muda é a FICHA, e por isso o `modo` desce até ela: "comercial" é a ficha do
+// coordenador da Careli, "incorporador" é a do time do próprio incorporador (as abas de cada um
+// moram na FichaDoProduto, não aqui).
 //
 // Lucas (02/09/2026): *"produtos é replicar a tela que temos hoje em empreendimento do apolo"*.
 // Replicar aqui é reaproveitar, não copiar: a lista (seis KpiCard, a frase "Todos os
@@ -40,7 +53,7 @@ import { FichaDoProduto } from "./FichaDoProduto";
 // ⚠️ ALTURA: a tela do Apolo é `flex min-h-0 flex-1` e conta com um pai de altura definida para a
 // TABELA rolar por dentro (thead sticky). Este contêiner fixa a altura EXATA da área de trabalho
 // (viewport menos casca) — sem isso a lista empurraria o <main> inteiro e o cabeçalho da tabela
-// nunca grudaria. Desde 02/09/2026 a casca do comercial não deixa o body rolar no desktop (é o
+// nunca grudaria. Desde 02/09/2026 a casca do Hércules não deixa o body rolar no desktop (é o
 // <main> que rola, ver TEMA_CSS), e a conta abaixo é o que faz a lista/ficha ir até o rodapé
 // sem folga e sem barra de rolagem no <main>. Abaixo de 860px a casca vira bloco (menu em
 // cima) e a conta muda: altura do conteúdo, como na TelaLancamento.
@@ -73,7 +86,8 @@ const CSS_PRODUTOS = `
     color: var(--inc-text);
     display: flex;
     flex-direction: column;
-    /* A CONTA (desktop, casca do comercial em TEMA_CSS — .inc--comercial):
+    /* A CONTA (desktop, casca do Hércules em TEMA_CSS: .inc--hercules, que até 16/09/2026 se
+       chamava .inc--comercial):
          14px  padding de cima do <main> (.inc-conteudo: 14px 16px 16px)
          48px  o cabeçalho "Produtos" (h1 20px em 26px de linha + 4px de margem + p 13.5px em
                18px de linha — as duas alturas de linha estão CRAVADAS abaixo, em
@@ -85,7 +99,11 @@ const CSS_PRODUTOS = `
         123px
        ⚠️ Mudou padding do <main>, rodapé ou cabeçalho: refaça a soma AQUI e na variante da
        ficha abaixo. Como o <main> rola (overflow:auto), 1px a mais aqui vira uma barra de
-       rolagem no <main>; 1px a menos vira uma fresta acima do rodapé. */
+       rolagem no <main>; 1px a menos vira uma fresta acima do rodapé.
+       ⚠️ A SOMA VALE IGUAL PARA A GURGEL E PARA O CECÍLIO porque a casca é UMA só, e é por isso
+       que o PortalIncorporador aplica .inc--hercules a quem opera a venda (e não só ao tipo
+       comercial). Sem a classe, o <main> volta ao padding largo dos portais que só acompanham,
+       o rodapé volta ao alto, o body volta a rolar, e estes 123px deixam de bater. */
     height: calc(100dvh - 123px);
     min-height: 480px;
   }
@@ -104,7 +122,16 @@ const CSS_PRODUTOS = `
   }
 `;
 
-export function ProdutosDoHercules() {
+export function ProdutosDoHercules({
+  modo = "comercial",
+}: {
+  /**
+   * De quem é a ficha que o "Ver mais" abre. `comercial` (padrão, o que a tela sempre foi) = o
+   * coordenador da Careli; `incorporador` = o time do próprio incorporador que opera a venda (o
+   * Cecílio). Quem decide é o PortalIncorporador, por `ehPortalComercial`; aqui só desce.
+   */
+  modo?: "comercial" | "incorporador";
+} = {}) {
   // O tema EFETIVO do portal (já resolvido o "seguir o aparelho") vira o atributo que os `dark:`
   // leem. Ver a nota em CSS_PRODUTOS.
   const { efetivo } = useTemaDoPortal();
@@ -118,7 +145,13 @@ export function ProdutosDoHercules() {
   // consulta `tab` na ficha interna dela, que aqui não renderiza.
   const [detail, setDetail] = useState<ApoloEnterpriseRow | null>(null);
   const [tab, setTab] = useState<ApoloEnterpriseTab>("resumo");
+  // "Novo produto" (só no modo incorporador) e o contador que relê o painel depois de criar.
+  const [novoAberto, setNovoAberto] = useState(false);
+  const [recarga, setRecarga] = useState(0);
 
+  // ⚠️ `recarga` NAS DEPENDÊNCIAS: o produto criado pelo portal só aparece relendo o painel. A
+  // releitura é silenciosa (sem voltar ao "carregando"): a lista de antes fica na tela até a nova
+  // chegar, em vez de piscar vazia.
   useEffect(() => {
     let vivo = true;
 
@@ -136,6 +169,7 @@ export function ProdutosDoHercules() {
           return;
         }
 
+        setErro(null);
         setPainel(corpo.data);
       } catch {
         if (vivo) setErro("Não foi possível carregar os produtos.");
@@ -147,7 +181,7 @@ export function ProdutosDoHercules() {
     return () => {
       vivo = false;
     };
-  }, []);
+  }, [recarga]);
 
   // O painel no formato da tela do Apolo, e o índice id → linha (pais E filhos) que resolve o
   // "Ver mais": a row aberta pode ser uma etapa, e a etapa não está em `linhas`, está dentro do
@@ -156,8 +190,26 @@ export function ProdutosDoHercules() {
     () => (painel ? painelParaApolo(painel) : null),
     [painel],
   );
-  const porId = useMemo<Map<string, LinhaDoPainel>>(
-    () => (painel ? indiceDoPainel(painel) : new Map()),
+  const porId = useMemo<Map<string, LinhaDoPainel>>(() => {
+    if (!painel) return new Map();
+    const indice = indiceDoPainel(painel);
+    // ⚠️ A ETAPA ABERTA PELO "VER MAIS" LEVA A ESCRITA DO FILHO (decisão do Lucas, 16/09/2026: escrita
+    // só no produto que o portal opera). `indiceDoPainel` monta a linha do filho sem `podeEscrever`;
+    // sem isto a ficha da etapa sairia sempre só consulta. Linha de cima com o mesmo id vence, como lá.
+    const doTopo = new Set(painel.linhas.map((linha) => linha.id));
+    for (const linha of painel.linhas) {
+      for (const filho of linha.filhos) {
+        const daEtapa = indice.get(filho.id);
+        if (daEtapa && !doTopo.has(filho.id)) indice.set(filho.id, comEscritaDoFilho(daEtapa, filho));
+      }
+    }
+    return indice;
+  }, [painel]);
+  // Os códigos que o produto novo não pode repetir: os das linhas e os das etapas. A rota confere de
+  // novo contra o C2X e o Panteon inteiros; aqui é só para avisar antes do envio.
+  const codigosExistentes = useMemo(
+    () =>
+      painel?.linhas.flatMap((linha) => [...linha.codes, ...linha.filhos.map((filho) => filho.codigo)]) ?? [],
     [painel],
   );
 
@@ -169,14 +221,89 @@ export function ProdutosDoHercules() {
           com a ficha aberta: a ficha tem o próprio cabeçalho (voltar + nome + código · cidade). */}
       {!detail ? (
         // A classe crava as alturas de linha (CSS_PRODUTOS): o cabeçalho entra na conta da altura.
-        <header className="inc-hercules-cabecalho">
-          <h1 style={{ color: T.text, fontFamily: fonte, fontSize: 20, fontWeight: 600, margin: "0 0 4px" }}>
-            Produtos
-          </h1>
-          <p style={{ color: T.muted, fontFamily: fonte, fontSize: 13.5, margin: 0 }}>
-            Seus empreendimentos: estoque, vendas e o processo de cada um
-          </p>
+        // ⚠️ O BOTÃO E O AVISO MORAM NA MESMA LINHA DO TÍTULO, com no máximo 34px de altura dentro dos
+        // 48px do cabeçalho: uma faixa a mais embaixo mudaria a conta dos 123px e o <main> ganharia
+        // barra de rolagem.
+        <header
+          className="inc-hercules-cabecalho"
+          style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "space-between" }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ color: T.text, fontFamily: fonte, fontSize: 20, fontWeight: 600, margin: "0 0 4px" }}>
+              Produtos
+            </h1>
+            <p style={{ color: T.muted, fontFamily: fonte, fontSize: 13.5, margin: 0 }}>
+              Seus empreendimentos: estoque, vendas e o processo de cada um
+            </p>
+          </div>
+          <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 10, minWidth: 0 }}>
+            {/* A lista saiu parcial (a fonte dos nomes não respondeu): um produto pode estar faltando.
+                Sem isto a pessoa lia a lista incompleta como a lista inteira. */}
+            {painel?.avisoDaFonte ? (
+              <span
+                role="status"
+                style={{
+                  background: T.soft,
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 8,
+                  color: T.sub,
+                  fontFamily: fonte,
+                  fontSize: 12.5,
+                  lineHeight: "18px",
+                  maxWidth: "min(420px, 36vw)",
+                  overflow: "hidden",
+                  padding: "6px 10px",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={painel.avisoDaFonte}
+              >
+                {painel.avisoDaFonte}
+              </span>
+            ) : null}
+            {/* Só quem opera a própria venda cadastra produto (a rota confere de novo). O comercial
+                vende o que a Careli cadastrou e não ganha o botão. */}
+            {modo === "incorporador" ? (
+              <button
+                onClick={() => setNovoAberto(true)}
+                style={{
+                  background: T.btnBg,
+                  border: "none",
+                  borderRadius: 9,
+                  color: T.btnFg,
+                  cursor: "pointer",
+                  fontFamily: fonte,
+                  fontSize: 13,
+                  fontWeight: 650,
+                  height: 34,
+                  padding: "0 14px",
+                }}
+                type="button"
+              >
+                Novo produto
+              </button>
+            ) : null}
+          </div>
         </header>
+      ) : null}
+
+      {modo === "incorporador" ? (
+        <NovoProduto
+          aberto={novoAberto}
+          aoCriar={(criado) => {
+            // ⚠️ O ESCOPO MORA NO COOKIE. `sessaoRecarregada === false` = a releitura da sessão falhou
+            // e o cookie ainda não traz o produto novo: reler só o painel não o mostraria, e a ficha
+            // dele responderia 404. Recarregar a página reemite a sessão.
+            if (criado.sessaoRecarregada === false) {
+              window.location.reload();
+              return;
+            }
+            setNovoAberto(false);
+            setRecarga((n) => n + 1);
+          }}
+          aoFechar={() => setNovoAberto(false)}
+          codigosExistentes={codigosExistentes}
+        />
       ) : null}
 
       <div
@@ -223,7 +350,9 @@ export function ProdutosDoHercules() {
             // ⚠️ A `key` é o id DE PROPÓSITO: a ficha (e a TelaVendas dentro dela) nasce presa ao
             // produto e não acompanha a prop depois. Trocar de produto sem passar pela lista precisa
             // remontar a ficha; a key garante isso (mesmo desenho da TelaProdutosComercial).
-            return <FichaDoProduto key={row.id} linha={linha} onVoltar={onBack} row={row} />;
+            return (
+              <FichaDoProduto key={row.id} linha={linha} modo={modo} onVoltar={onBack} row={row} />
+            );
           }}
           tab={tab}
         />

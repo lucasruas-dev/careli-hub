@@ -524,3 +524,71 @@ describe("o código partido por tag — o defeito que imprimiu [nome_cliente] no
     expect(codigosPartidos("<p>contrato sem variáveis</p>")).toEqual([]);
   });
 });
+
+// ⚠️ O PRÉDIO NO CONTRATO (Lucas, 16/09/2026): apartamento nunca é quadra/lote. A minuta de prédio
+// precisa das suas variáveis, e a de loteamento não pode perder as dela.
+describe("as variáveis do apartamento", () => {
+  it("existem, na unidade, lidas das colunas da 0171 em hercules_unidades", () => {
+    for (const [nome, campo] of [
+      ["numero_torre", "torre"],
+      ["numero_andar", "andar"],
+      ["numero_apartamento", "apartamento"],
+      ["tipologia", "tipologia"],
+      ["vagas", "vagas"],
+      ["area_privativa", "area"],
+    ] as const) {
+      const v = acharVariavel(nome);
+      expect(v, nome).toBeDefined();
+      expect(v?.grupo, nome).toBe("unidade");
+      expect(v?.fonte.tabela, nome).toBe("hercules_unidades");
+      // O campo começa pelo nome da coluna; o resto é a explicação para o jurídico.
+      expect(v?.fonte.campo?.split(" ")[0], nome).toBe(campo);
+    }
+  });
+
+  it("⚠️ as de quadra e lote continuam lá, com a mesma fonte", () => {
+    for (const nome of [
+      "numero_quadra",
+      "numero_quadra_extenso",
+      "numero_lote",
+      "numero_lote_extenso",
+      "area_lote",
+      "area_lote_extenso",
+      "unidade_quadra",
+      "unidade_lote",
+    ]) {
+      expect(acharVariavel(nome), nome).toBeDefined();
+    }
+    expect(acharVariavel("area_lote")?.fonte).toEqual({ campo: "area", tabela: "hercules_unidades" });
+  });
+
+  it("os extensos do apartamento têm par, e andar, vagas e torre não têm extenso", () => {
+    expect(acharVariavel("numero_apartamento_extenso")?.extensoDe).toBe("numero_apartamento");
+    expect(acharVariavel("area_privativa_extenso")?.extensoDe).toBe("area_privativa");
+    expect(extensosOrfaos("Área privativa de [area_privativa_extenso]")).toEqual(["area_privativa_extenso"]);
+    expect(extensosOrfaos("apartamento [numero_apartamento] ([numero_apartamento_extenso])")).toEqual([]);
+    // Ordinal ("terceiro") e feminino ("duas vagas") o extenso de inteiro escreveria errado.
+    for (const semExtenso of ["numero_andar_extenso", "vagas_extenso", "numero_torre_extenso"]) {
+      expect(acharVariavel(semExtenso), semExtenso).toBeUndefined();
+    }
+  });
+
+  it("uma cláusula de prédio é toda reconhecida, sem desconhecidas", () => {
+    const clausula =
+      "<p>Apartamento [numero_apartamento] ([numero_apartamento_extenso]), no [numero_andar]º andar da Torre [numero_torre], tipologia [tipologia], com [vagas] vaga(s) e área privativa de [area_privativa] ([area_privativa_extenso]).</p>";
+    const { conhecidas, desconhecidas } = classificarVariaveis(clausula);
+    expect(desconhecidas).toEqual([]);
+    expect(conhecidas.map((c) => c.nome).sort()).toEqual(
+      [
+        "area_privativa",
+        "area_privativa_extenso",
+        "numero_andar",
+        "numero_apartamento",
+        "numero_apartamento_extenso",
+        "numero_torre",
+        "tipologia",
+        "vagas",
+      ].sort(),
+    );
+  });
+});

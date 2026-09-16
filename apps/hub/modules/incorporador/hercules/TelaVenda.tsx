@@ -16,7 +16,17 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { acaoDeCancelamento } from "@/lib/hercules/acao-de-cancelamento";
-import { ETAPAS_DO_FLUXO } from "@/lib/hercules/fluxo-de-venda";
+import {
+  andaresDoGrupo,
+  ETAPAS_DO_FLUXO,
+  vocabularioDoEstoque,
+} from "@/lib/hercules/fluxo-de-venda";
+import {
+  escritaCurtaDaUnidade as comoSeEscreve,
+  nomeDaUnidadeNaTela as comoSeLe,
+  rotuloCurtoDoAndar,
+  rotuloDoAndar,
+} from "@/lib/hercules/nome-da-unidade";
 import {
   propostaEmFoco as acharPropostaEmFoco,
   unidadeEmFoco as acharUnidadeEmFoco,
@@ -40,6 +50,11 @@ import { Pilula } from "./AssinaturasDoProduto";
 import { ConversaDaVenda } from "./ConversaDaVenda";
 import { DocumentosDaVenda } from "./DocumentosDaVenda";
 import { podeBloquear } from "@/lib/hercules/bloqueio-de-unidade";
+import {
+  comoSeHerdou,
+  itensDoMenorRecorte,
+  type OrigemDoRecorte,
+} from "@/lib/hercules/recorte-da-unidade";
 
 import { ModalDeCancelamento } from "./ModalDeCancelamento";
 import { ModalDeContrato } from "./ModalDeContrato";
@@ -136,6 +151,17 @@ type Produto = {
   id: string;
   nome: string;
 };
+
+/**
+ * O que `/api/incorporador/venda` devolve: o fluxo agregado e o que esta sessão pode ESCREVER.
+ *
+ * ⚠️ `escritaPorEmpreendimento` (Lucas, 16/09/2026): no portal que confecciona (o Cecílio) só o
+ * produto operado por ele aceita reserva, proposta, contrato, bloqueio e cancelamento; o VOC e o VOR
+ * ficam só consulta. Ausente ou diferente de `true` = só consulta: a tela esconde as ações, e a rota
+ * recusa de qualquer jeito. Mora aqui, e não em `FluxoDeVenda`, porque não é agregação do fluxo: é
+ * permissão da sessão, que a rota calcula.
+ */
+type DadosDaVenda = FluxoDeVenda & { escritaPorEmpreendimento?: Record<string, boolean> };
 
 type UnidadeNoMapa = FluxoDeVenda["mapa"][number]["unidades"][number];
 type Proposta = FluxoDeVenda["lista"][number];
@@ -352,54 +378,11 @@ function competenciaDe(mesesAtras: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-/**
- * Como a unidade aparece para quem vende: **quadra e lote**, e o recorte por baixo.
- *
- * ⚠️ O CÓDIGO DA UNIDADE NÃO VAI PARA A TELA. Lucas (03/09/2026), comparando as duas listas:
- * *"vamos deixar esse padrão do segundo print, 12 06 VOR; não vamos trabalhar com o código da
- * unidade, esse será de uso do backend (...) caso trazer, ter a conotação de código"*. "VOL0307" é
- * chave de sistema; quem está vendendo fala "lote 07 da quadra 03". A lista de propostas já
- * escrevia assim (o nome vem de bloco + lote), e a de disponíveis destoava.
- *
- * `VOL0307` → `{ recorte: "VOL", unidade: "03 07" }`. Código fora do padrão (apartamento, unidade
- * avulsa) volta inteiro no lugar da unidade: melhor um código à mostra do que um lote inventado.
- */
-function comoSeEscreve(
-  codigo: string,
-  quadra: null | string,
-  lote: null | string,
-): { recorte: null | string; unidade: string } {
-  if (quadra && lote) {
-    const m = /^([A-Za-z]{2,4})/.exec(codigo.trim());
-    return {
-      recorte: m ? m[1]!.toUpperCase() : null,
-      unidade: `${quadra} ${lote}`,
-    };
-  }
-
-  const padrao = /^([A-Za-z]{2,4})(\d{2})(\d{2})$/.exec(codigo.trim());
-  if (padrao) {
-    return {
-      recorte: padrao[1]!.toUpperCase(),
-      unidade: `${padrao[2]} ${padrao[3]}`,
-    };
-  }
-  return { recorte: null, unidade: codigo };
-}
-
-/**
- * "Quadra 03 · Lote 07" — o nome da unidade por extenso, como as modais o escrevem no título.
- *
- * ⚠️ É A MESMA FRASE QUE VAI NO WHATSAPP, de propósito: o corretor lê "Quadra 03 · Lote 07" no
- * celular e precisa reconhecer exatamente isso quando abrir a tela. "0307" na tela e "Quadra 03"
- * na mensagem seriam duas maneiras de dizer o mesmo lote, e alguém teria que traduzir uma na outra.
- */
-function comoSeLe(u: UnidadeNoMapa): string {
-  const escrita = comoSeEscreve(u.codigo, u.quadra, u.lote);
-  const partes = escrita.unidade.split(" ");
-  if (partes.length < 2) return escrita.unidade;
-  return `Quadra ${partes[0]} · Lote ${partes[1]}`;
-}
+// ⚠️ `comoSeEscreve` E `comoSeLe` MUDARAM PARA `lib/hercules/nome-da-unidade.ts` (16/09/2026),
+// com teste, quando a unidade ganhou o segundo tipo. Lá está a decisão do Lucas de 03/09/2026 (o
+// código da unidade não vai para a tela: "12 06 VOR"), e agora também a de 16/09/2026: apartamento
+// nunca é quadra/lote, e sai "Torre A · Apto 304". Os nomes locais ficaram nos imports, para as
+// modais e a grade continuarem lendo igual.
 
 /**
  * Como a data se chama em cada etapa.
@@ -502,9 +485,15 @@ const mesCurto = (mes: string) => {
 };
 
 export function TelaVenda() {
-  const [dados, setDados] = useState<FluxoDeVenda | null>(null);
+  const [dados, setDados] = useState<DadosDaVenda | null>(null);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [cards, setCards] = useState<CardDeProduto[]>([]);
+  /**
+   * A lista de produtos veio incompleta (`avisoDaFonte` de `/api/incorporador/produtos`): o C2X não
+   * respondeu e só o que existe no Panteon chegou. Sem a faixa, um produto que sumiu do seletor
+   * pareceria produto que não existe mais.
+   */
+  const [avisoDaFonte, setAvisoDaFonte] = useState<null | string>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<null | string>(null);
 
@@ -585,7 +574,7 @@ export function TelaVenda() {
         cache: "no-store",
       });
       const j = (await r.json().catch(() => null)) as null | {
-        data?: FluxoDeVenda;
+        data?: DadosDaVenda;
         error?: string;
       };
 
@@ -659,9 +648,12 @@ export function TelaVenda() {
             trabalhoId?: null | string;
           };
           error?: string;
+          soConsulta?: boolean;
         };
         if (!r.ok) {
           setRecado(j?.error ?? "Não foi possível enviar para contrato.");
+          // Só consulta: a tela estava com a permissão velha. Recarregar apaga os botões.
+          if (j?.soConsulta) void carregar(recorte || emp, janela);
           return;
         }
         const cod = j?.data?.codigo ? `${j.data.codigo} · ` : "";
@@ -683,7 +675,13 @@ export function TelaVenda() {
         setMandandoParaContrato(null);
       }
     },
-    [carregar, emp, janela, recorte],
+    // ⚠️ `dados?.lista` ENTRA NAS DEPENDÊNCIAS, e o custo é nenhum. O callback lê a lista para mandar
+    // o id da proposta que a modal mostrou; sem a dependência ele guardava a lista da carga em que o
+    // produto, a janela ou o recorte mudaram por último, e depois de uma reserva ou proposta nova
+    // (que recarrega sem mexer nos três) mandaria nulo ou o id de uma proposta que já não é a viva.
+    // Recriar o callback a cada carga não dispara nada: ele só é chamado no clique de confirmar, e
+    // nenhum efeito depende dele.
+    [carregar, dados?.lista, emp, janela, recorte],
   );
 
   /**
@@ -705,9 +703,13 @@ export function TelaVenda() {
           headers: { "content-type": "application/json" },
           method: "DELETE",
         });
-        const j = (await r.json().catch(() => null)) as null | { error?: string };
+        const j = (await r.json().catch(() => null)) as null | {
+          error?: string;
+          soConsulta?: boolean;
+        };
         if (!r.ok) {
           setRecado(j?.error ?? "Não foi possível desbloquear.");
+          if (j?.soConsulta) void carregar(recorte || emp, janela);
           return;
         }
         setRecado(`${comoSeLe(u)} voltou para o estoque e já aparece no espelho público.`);
@@ -748,7 +750,16 @@ export function TelaVenda() {
         const j = (await r.json().catch(() => null)) as null | {
           data?: { codigo?: string; devolveValores?: boolean; tipo?: string };
           error?: string;
+          soConsulta?: boolean;
         };
+        // ⚠️ SÓ CONSULTA FECHA A MODAL, ao contrário das outras falhas: tentar de novo não adianta
+        // (o produto é operado por outro), e o recado diz isso. Recarregar apaga o botão.
+        if (r.status === 403 && j?.soConsulta) {
+          setPedindoCancelamento(null);
+          setRecado(j.error ?? "Este produto está disponível só para consulta no seu portal.");
+          void carregar(recorte || emp, janela);
+          return;
+        }
         if (!r.ok) {
           // ⚠️ A MODAL FICA ABERTA NO ERRO. Ela guarda duas respostas e um motivo escrito à mão;
           // fechar em qualquer falha (rede, 502 da Têmis) obriga a pessoa a responder tudo de novo
@@ -877,9 +888,12 @@ export function TelaVenda() {
           // ⚠️ O PAYLOAD É `{ data: { produtos } }`, e não a lista solta: eu li errado uma vez e a
           // tela quebrou com "produtos.filter is not a function" antes de desenhar qualquer coisa.
           const j = (await rCards.json()) as {
-            data?: { produtos?: CardDeProduto[] };
+            data?: { avisoDaFonte?: null | string; produtos?: CardDeProduto[] };
           };
-          if (vivo) setCards(j.data?.produtos ?? []);
+          if (vivo) {
+            setCards(j.data?.produtos ?? []);
+            setAvisoDaFonte(j.data?.avisoDaFonte?.trim() || null);
+          }
         }
       } catch {
         // Sem as listas, a tela mostra tudo e não oferece filtro. Ela não depende disso para viver.
@@ -1012,6 +1026,30 @@ export function TelaVenda() {
     return null;
   }, [cards, comEspelho, produtoEscolhido]);
 
+  /**
+   * Os planos que valem para o lote aberto no simulador, e de onde vieram.
+   *
+   * ⚠️ VAZIO NÃO É ERRO: é cadastro por fazer. O simulador já sabe seguir sem plano (cai na conta
+   * simples), e inventar um plano padrão anunciaria condição que ninguém aprovou.
+   */
+  const escolhaDoPlano = useMemo((): {
+    itens: FluxoDeVenda["planos"];
+    origem: null | OrigemDoRecorte;
+  } => {
+    if (!simulando) return { itens: [], origem: null };
+
+    return itensDoMenorRecorte(
+      {
+        categoriaId: simulando.categoriaId ?? null,
+        enterpriseId: simulando.enterpriseId,
+        // O pai vem do cadastro do Panteon, que a rota manda por empreendimento.
+        paiEnterpriseId:
+          dados?.paiPorEmpreendimento?.[simulando.enterpriseId] ?? null,
+      },
+      dados?.planos ?? [],
+    );
+  }, [dados?.paiPorEmpreendimento, dados?.planos, simulando]);
+
   const mapaDoProduto = useMemo(() => {
     if (!produtoEscolhido) return null;
     const nome = produtoEscolhido.nome.trim().toLowerCase();
@@ -1026,7 +1064,7 @@ export function TelaVenda() {
 
   return (
     // ⚠️ A TELA TEM A ALTURA DO <main> E NÃO ROLA. O portal comercial já deixa o main com
-    // `height:100dvh` e rolagem própria (TEMA_CSS, `.inc--comercial .inc-conteudo`); aqui o
+    // `height:100dvh` e rolagem própria (TEMA_CSS, `.inc--hercules .inc-conteudo`); aqui o
     // conteúdo passa a caber nele, e quem rola são os painéis. Cabeçalho e faixa do fluxo ficam
     // sempre à vista, que é o ponto: eles são a bússola da tela.
     <div
@@ -1168,6 +1206,23 @@ export function TelaVenda() {
           ) : null}
         </div>
       </header>
+
+      {avisoDaFonte ? (
+        <p
+          role="status"
+          style={{
+            background: T.soft,
+            border: `1px solid ${T.gold}`,
+            borderRadius: 10,
+            color: T.sub,
+            fontSize: 12.5,
+            margin: 0,
+            padding: "8px 12px",
+          }}
+        >
+          {avisoDaFonte}
+        </p>
+      ) : null}
 
       {erro ? (
         <p
@@ -1318,7 +1373,17 @@ export function TelaVenda() {
             faixasDePrazo={dados?.faixasDePrazo?.[simulando.enterpriseId] ?? []}
             nome={mapaDoProduto?.nome ?? "Simulação"}
             onFechar={() => setSimulando(null)}
-            planos={dados?.planos ?? []}
+            // ⚠️ O PLANO É RESOLVIDO PELA UNIDADE, e não mais entregue cru. Lucas (15/09/2026):
+            // *"eu posso ter planos por categoria, por filho, e somente por pai. tem que seguir
+            // essa hierarquia"*. O menor recorte CONFIGURADO ganha, e quem decide é
+            // `lib/hercules/recorte-da-unidade.ts` — a mesma régua que a proposta usa, para as duas
+            // telas não escolherem planos diferentes para o mesmo lote.
+            //
+            // ⚠️ E O PAI VEM DO CADASTRO, não do escopo da tela: `produtoEscolhido` pode ser o
+            // próprio filho. Sem o id do pai, o terceiro degrau não existe e o plano cadastrado só
+            // no pai continuaria invisível.
+            origemDoPlano={escolhaDoPlano.origem}
+            planos={escolhaDoPlano.itens}
             unidade={simulando}
           />
         ) : null}
@@ -1548,7 +1613,7 @@ function Mesa({
   carregando: boolean;
   /** O código do produto que TEM masterplan publicado. `null` esconde o botão "Espelho". */
   codeDoEspelho: null | string;
-  dados: FluxoDeVenda | null;
+  dados: DadosDaVenda | null;
   etapa: "disponivel" | EtapaDoFluxo;
   foco: null | Foco;
   lista: FluxoDeVenda["lista"];
@@ -1625,10 +1690,19 @@ function Mesa({
     [livres],
   );
 
+  // ⚠️ PRÉDIO NÃO TEM QUADRA (Lucas, 16/09/2026). O filtro e a busca falam a língua do que está no
+  // recorte: "Todas as torres" num prédio, "Todas as quadras" no loteamento. A régua é pura e tem
+  // teste (`vocabularioDoEstoque`). No prédio a opção do filtro já é a torre ("Torre A"), porque o
+  // grupo do apartamento é a torre e a quadra dele é nula.
+  const vocabulario = useMemo(
+    () => vocabularioDoEstoque((dados?.mapa ?? []).map((g) => g.tipoProduto)),
+    [dados?.mapa],
+  );
+
   const livresFiltrados = useMemo(
     () =>
       livres.filter((u) => {
-        const nome = comoSeEscreve(u.codigo, u.quadra ?? u.grupo, u.lote);
+        const nome = comoSeEscreve({ ...u, quadra: u.quadra ?? u.grupo });
         return (
           (!quadra || (u.quadra ?? u.grupo) === quadra) &&
           (contem(nome.unidade, procurado) ||
@@ -1876,65 +1950,114 @@ function Mesa({
                       "repeat(auto-fill, minmax(140px, 1fr))",
                   }}
                 >
-                  {grupos.map((g) => (
-                    <div key={g.grupo}>
-                      <div
+                  {grupos.map((g) => {
+                    // O MESMO quadradinho para lote e apartamento: cor, foco e título não mudam com o
+                    // tipo. Muda só o número de dentro e o jeito de empilhar.
+                    const quadradinho = (u: UnidadeNoMapa) => (
+                      <button
+                        key={u.codigo}
+                        onClick={() =>
+                          aoFocar({ tipo: "unidade", unidade: u })
+                        }
                         style={{
-                          color: T.muted,
-                          fontSize: 10.5,
-                          fontWeight: 700,
-                          letterSpacing: ".06em",
-                          marginBottom: 5,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        {g.grupo}
-                      </div>
-                      <div
-                        style={{
+                          aspectRatio: "1 / 1.25",
+                          background: COR_DA_ETAPA[u.etapa] ?? T.soft,
+                          border: 0,
+                          borderRadius: 3,
+                          color: textoNoQuadrado(u.etapa),
+                          cursor: "pointer",
                           display: "grid",
-                          gap: 3,
-                          gridTemplateColumns: "repeat(6, 1fr)",
+                          font: "inherit",
+                          fontSize: 8.5,
+                          fontWeight: 600,
+                          outline:
+                            idEmFoco === u.id
+                              ? `2.5px solid ${T.text}`
+                              : undefined,
+                          outlineOffset: 1,
+                          padding: 0,
+                          placeItems: "center",
                         }}
+                        // O código aparece aqui com a conotação de código, como o Lucas pediu: é a
+                        // única porta onde ele serve, para quem precisa cruzar com o backend.
+                        title={`${comoSeEscreve(u).unidade} · ${
+                          ROTULO_DA_ETAPA[u.etapa] ?? u.etapa
+                        } · código ${u.codigo}`}
+                        type="button"
                       >
-                        {g.unidades.slice(0, 60).map((u) => (
-                          <button
-                            key={u.codigo}
-                            onClick={() =>
-                              aoFocar({ tipo: "unidade", unidade: u })
-                            }
+                        {/* No prédio o número é o do apartamento; lote nenhum é inventado. */}
+                        {u.apartamento ?? u.lote ?? ""}
+                      </button>
+                    );
+                    return (
+                      <div key={`${g.tipoProduto}:${g.grupo}`}>
+                        <div
+                          style={{
+                            color: T.muted,
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            letterSpacing: ".06em",
+                            marginBottom: 5,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {g.grupo}
+                        </div>
+                        {g.tipoProduto === "vertical" ? (
+                          // ⚠️ O PRÉDIO SE DESENHA POR ANDAR, de cima para baixo: uma linha por andar,
+                          // com o andar na frente. Na grade de seis colunas da quadra o 1201 cairia ao
+                          // lado do 1101 e a linha deixaria de ser o andar. E sem o corte de 60 da
+                          // quadra: uma torre passa disso fácil, e apartamento que não aparece não se
+                          // vende.
+                          <div style={{ display: "grid", gap: 3 }}>
+                            {andaresDoGrupo(g.unidades).map((linha) => (
+                              <div
+                                key={String(linha.andar)}
+                                style={{
+                                  alignItems: "start",
+                                  display: "grid",
+                                  gap: 3,
+                                  gridTemplateColumns: "20px 1fr",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    color: T.muted,
+                                    fontSize: 8.5,
+                                    fontWeight: 600,
+                                    lineHeight: "22px",
+                                    textAlign: "right",
+                                  }}
+                                  title={rotuloDoAndar(linha.andar) || "Andar não informado"}
+                                >
+                                  {rotuloCurtoDoAndar(linha.andar) || "?"}
+                                </span>
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gap: 3,
+                                    gridTemplateColumns: "repeat(5, 1fr)",
+                                  }}
+                                >
+                                  {linha.unidades.map((u) => quadradinho(u))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div
                             style={{
-                              aspectRatio: "1 / 1.25",
-                              background: COR_DA_ETAPA[u.etapa] ?? T.soft,
-                              border: 0,
-                              borderRadius: 3,
-                              color: textoNoQuadrado(u.etapa),
-                              cursor: "pointer",
                               display: "grid",
-                              font: "inherit",
-                              fontSize: 8.5,
-                              fontWeight: 600,
-                              outline:
-                                idEmFoco === u.id
-                                  ? `2.5px solid ${T.text}`
-                                  : undefined,
-                              outlineOffset: 1,
-                              padding: 0,
-                              placeItems: "center",
+                              gap: 3,
+                              gridTemplateColumns: "repeat(6, 1fr)",
                             }}
-                            // O código aparece aqui com a conotação de código, como o Lucas pediu: é a
-                            // única porta onde ele serve, para quem precisa cruzar com o backend.
-                            title={`${comoSeEscreve(u.codigo, u.quadra, u.lote).unidade} · ${
-                              ROTULO_DA_ETAPA[u.etapa] ?? u.etapa
-                            } · código ${u.codigo}`}
-                            type="button"
                           >
-                            {u.lote ?? ""}
-                          </button>
-                        ))}
+                            {g.unidades.slice(0, 60).map((u) => quadradinho(u))}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {!carregando && grupos.length === 0 ? (
@@ -1975,13 +2098,13 @@ function Mesa({
                 <>
                   <Busca
                     aoMudar={setBusca}
-                    placeholder="Buscar quadra, lote ou código"
+                    placeholder={vocabulario.busca}
                     valor={busca}
                   />
                   <Filtro
                     aoMudar={setQuadra}
                     opcoes={quadras}
-                    rotuloDeTodos="Todas as quadras"
+                    rotuloDeTodos={vocabulario.todos}
                     valor={quadra}
                   />
                   <span
@@ -2043,19 +2166,17 @@ function Mesa({
                         <td style={celula}>
                           <b>
                             {
-                              comoSeEscreve(
-                                u.codigo,
-                                u.quadra ?? u.grupo,
-                                u.lote,
-                              ).unidade
+                              comoSeEscreve({
+                                ...u,
+                                quadra: u.quadra ?? u.grupo,
+                              }).unidade
                             }
                           </b>
                           <div style={{ color: T.muted, fontSize: 11.5 }}>
-                            {comoSeEscreve(
-                              u.codigo,
-                              u.quadra ?? u.grupo,
-                              u.lote,
-                            ).recorte ?? ""}
+                            {comoSeEscreve({
+                              ...u,
+                              quadra: u.quadra ?? u.grupo,
+                            }).recorte ?? ""}
                           </div>
                         </td>
                         <td
@@ -2324,16 +2445,8 @@ function Mesa({
             titulo={
               unidadeEmFoco
                 ? [
-                    comoSeEscreve(
-                      unidadeEmFoco.codigo,
-                      unidadeEmFoco.quadra,
-                      unidadeEmFoco.lote,
-                    ).recorte,
-                    comoSeEscreve(
-                      unidadeEmFoco.codigo,
-                      unidadeEmFoco.quadra,
-                      unidadeEmFoco.lote,
-                    ).unidade,
+                    comoSeEscreve(unidadeEmFoco).recorte,
+                    comoSeEscreve(unidadeEmFoco).unidade,
                   ]
                     .filter(Boolean)
                     .join(" · ")
@@ -2493,6 +2606,12 @@ function Mesa({
               aoPedirCancelamento={() => aoPedirCancelamento(unidadeEmFoco)}
               aoReservar={() => aoReservar(unidadeEmFoco)}
               propostaViva={propostaEmFoco}
+              // ⚠️ SÓ CONSULTA É DO PRODUTO DA UNIDADE, e não da tela: num escopo com o Garden e o VOC
+              // juntos, o lote do Garden oferece Reservar e o do VOC não. Ver `DadosDaVenda`.
+              soConsulta={
+                Boolean(unidadeEmFoco) &&
+                dados?.escritaPorEmpreendimento?.[unidadeEmFoco?.enterpriseId ?? ""] !== true
+              }
               unidade={unidadeEmFoco}
             />
           </Cartao>
@@ -2503,6 +2622,11 @@ function Mesa({
             ação, e ação vem depois de entender a situação. */}
           <PainelDaVenda
             aoSimular={unidadeEmFoco ? () => aoSimular(unidadeEmFoco) : null}
+            // A mesma régua dos botões da venda: o produto da unidade em foco é só consulta?
+            somenteLeitura={
+              Boolean(unidadeEmFoco) &&
+              dados?.escritaPorEmpreendimento?.[unidadeEmFoco?.enterpriseId ?? ""] !== true
+            }
             unidadeId={idEmFoco}
             versao={versaoDosDados}
           />
@@ -2543,6 +2667,7 @@ function ModalDoSimulador({
   faixasDePrazo,
   nome,
   onFechar,
+  origemDoPlano,
   planos,
   unidade,
 }: {
@@ -2551,10 +2676,18 @@ function ModalDoSimulador({
   faixasDePrazo: FluxoDeVenda["faixasDePrazo"][string];
   nome: string;
   onFechar: () => void;
+  /**
+   * De qual degrau vieram os planos desta tela — categoria, filho ou pai.
+   *
+   * ⚠️ MOSTRAR A HERANÇA É PARTE DA REGRA, e não enfeite. Sem dizer de onde veio, o coordenador que
+   * não encontra o plano no empreendimento dele acha que não há nada cadastrado e pede um plano
+   * novo "por segurança" — e aí a herança morre calada: mudar o pai deixa de alcançar quem copiou.
+   */
+  origemDoPlano: null | OrigemDoRecorte;
   planos: FluxoDeVenda["planos"];
   unidade: UnidadeNoMapa;
 }) {
-  const escrita = comoSeEscreve(unidade.codigo, unidade.quadra, unidade.lote);
+  const escrita = comoSeEscreve(unidade);
   // Escape fecha: tela cheia sem saída de teclado prende quem usa teclado.
   useEffect(() => {
     const aoTeclar = (e: KeyboardEvent) => {
@@ -2603,9 +2736,21 @@ function ModalDoSimulador({
             padding: "12px 16px",
           }}
         >
-          <b style={{ fontSize: 14 }}>
-            Simulador de proposta · {nome} · {escrita.unidade}
-          </b>
+          <div style={{ minWidth: 0 }}>
+            <b style={{ fontSize: 14 }}>
+              Simulador de proposta · {nome} · {escrita.unidade}
+            </b>
+            {planos.length > 0 ? (
+              <div style={{ color: T.muted, fontSize: 11, marginTop: 2 }}>
+                {planos.length === 1 ? "1 plano" : `${planos.length} planos`}{" "}
+                {comoSeHerdou(origemDoPlano)}
+              </div>
+            ) : (
+              <div style={{ color: T.muted, fontSize: 11, marginTop: 2 }}>
+                Nenhum plano cadastrado para esta unidade: a conta sai sem juros e sem correção.
+              </div>
+            )}
+          </div>
           <button
             onClick={onFechar}
             style={{
@@ -2993,6 +3138,7 @@ function AcoesDaUnidade({
   aoPedirCancelamento,
   aoReservar,
   propostaViva,
+  soConsulta = false,
   unidade,
 }: {
   aoBloquear: () => void;
@@ -3016,6 +3162,16 @@ function AcoesDaUnidade({
     origem: null | string;
   };
   aoReservar: () => void;
+  /**
+   * O produto desta unidade é só consulta para a sessão (Lucas, 16/09/2026): Reservar, Gerar
+   * proposta, Enviar para contrato, Cancelar e Bloquear/Desbloquear somem, e fica o rótulo discreto.
+   *
+   * ⚠️ SOMEM, E NÃO FICAM APAGADOS COM MOTIVO, ao contrário do que o topo desta seção diz para os
+   * botões. Apagado com `title` responde "por que não agora?", e aqui a resposta é "nunca, por este
+   * portal": cinco botões mortos ao lado de cada lote do VOC seriam ruído. O simulador e a ficha
+   * continuam, porque consultar é o que o portal faz nesse produto.
+   */
+  soConsulta?: boolean;
   unidade: null | UnidadeNoMapa;
 }) {
   const disponivel = unidade?.etapa === "disponivel";
@@ -3143,6 +3299,24 @@ function AcoesDaUnidade({
       rotulo: bloqueada ? "Desbloquear" : "Bloquear",
     },
   ];
+
+  if (soConsulta) {
+    return (
+      <div
+        style={{
+          borderTop: `1px dashed ${T.border}`,
+          color: T.muted,
+          fontSize: 11.5,
+          fontWeight: 600,
+          marginTop: 12,
+          paddingTop: 10,
+        }}
+        title="Este produto é operado por outro time: aqui você acompanha, mas não reserva nem altera."
+      >
+        Só consulta
+      </div>
+    );
+  }
 
   return (
     <div
@@ -3583,11 +3757,17 @@ function Panorama({ dados }: { dados: FluxoDeVenda | null }) {
  */
 function PainelDaVenda({
   aoSimular,
+  somenteLeitura,
   unidadeId,
   versao,
 }: {
   /** `null` quando não há lote em foco: o simulador precisa de um preço para trabalhar. */
   aoSimular: (() => void) | null;
+  /**
+   * (16/09/2026, revisão do conjunto) O produto da unidade é só consulta para este portal (D1): chat e
+   * documentos ficam só de leitura, como os botões da venda.
+   */
+  somenteLeitura: boolean;
   unidadeId: null | string;
   versao: number;
 }) {
@@ -3669,7 +3849,7 @@ function PainelDaVenda({
           minHeight: 0,
         }}
       >
-        <ConversaDaVenda unidadeId={unidadeId} versao={versao} />
+        <ConversaDaVenda somenteLeitura={somenteLeitura} unidadeId={unidadeId} versao={versao} />
       </div>
       <div
         style={{
@@ -3679,7 +3859,7 @@ function PainelDaVenda({
         }}
       >
         {visitadas.has("documentos") ? (
-          <DocumentosDaVenda unidadeId={unidadeId} versao={versao} />
+          <DocumentosDaVenda somenteLeitura={somenteLeitura} unidadeId={unidadeId} versao={versao} />
         ) : null}
       </div>
       <div

@@ -26,8 +26,10 @@ import {
   enviarPeloRelacionamento,
 } from "@/lib/apolo/disparo-credenciamento";
 import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
+import { portalConfeccionaContrato } from "@/lib/apolo/incorporador/perfis-de-portal";
 
 import { coordenadoresDoPanteon } from "./quem-pode-vender";
+import { MOTIVO_DO_AVISO_DESLIGADO } from "./reserva";
 import {
   type ContatoDoAviso,
   telefonesPorEntidade,
@@ -147,6 +149,119 @@ export async function destinatariosDaVenda(
   }
 }
 
+type DestinoDoAviso = { entityId: string; papel: PapelDoAviso; telefone: null | string };
+
+/**
+ * Quem recebe, um por linha: corretor (se houver), imobiliária e cada coordenador.
+ *
+ * ⚠️ UMA LISTA SÓ PARA OS DOIS CAMINHOS, o que envia e o que registra que não enviou. Duplicada, a
+ * lista do registro envelheceria calada: o dia em que um quarto destinatário entrasse no envio, o
+ * histórico do portal continuaria dizendo que só três ficaram sem aviso.
+ */
+function destinosDoAviso(dados: {
+  corretorId: null | string;
+  destinatarios: DestinatariosDaVenda;
+  imobiliariaId: string;
+}): DestinoDoAviso[] {
+  const destinos: DestinoDoAviso[] = [];
+
+  if (dados.corretorId && dados.destinatarios.corretor) {
+    destinos.push({
+      entityId: dados.corretorId,
+      papel: "corretor",
+      telefone: dados.destinatarios.corretor.telefone,
+    });
+  }
+  destinos.push({
+    entityId: dados.imobiliariaId,
+    papel: "imobiliaria",
+    telefone: dados.destinatarios.imobiliaria.telefone,
+  });
+  for (const coordenador of dados.destinatarios.coordenadores) {
+    destinos.push({
+      entityId: dados.imobiliariaId,
+      papel: "coordenador",
+      telefone: coordenador.telefone,
+    });
+  }
+  return destinos;
+}
+
+/**
+ * A venda feita por esta sessão avisa por WhatsApp?
+ *
+ * Decisão do Lucas (16/09/2026): reserva, proposta e cancelamento feitos pelo portal que confecciona
+ * (hoje só o `cecilio-rocha`) NÃO avisam ninguém por enquanto. As vendas da Gurgel (comercial)
+ * continuam avisando corretor, imobiliária e coordenador exatamente como antes.
+ *
+ * ⚠️ A RÉGUA É A MESMA QUE ABRE A CONFECÇÃO (`portalConfeccionaContrato`), e não uma lista nova: o
+ * portal que passa a operar sozinho é o mesmo que para de disparar em nome da Careli. Duas listas
+ * discordariam no dia em que um segundo incorporador entrasse em uma e não na outra.
+ */
+export function vendaAvisaPeloWhatsapp(sessao: {
+  slug: null | string | undefined;
+  tipo: null | string | undefined;
+}): boolean {
+  return !portalConfeccionaContrato(sessao.slug, sessao.tipo);
+}
+
+/** A frase gravada em `apolo_disparos.erro` quando o aviso não sai por decisão. */
+export const AVISO_NAO_ENVIADO_POR_DECISAO =
+  "Aviso não enviado: venda feita pelo time do incorporador (decisão de 16/09/2026).";
+
+/**
+ * Registra, destinatário por destinatário, que o aviso NÃO foi enviado, e por quê.
+ *
+ * ⚠️ NENHUM WHATSAPP SAI DAQUI. Não chama o gateway, não chama `enviarPeloRelacionamento`: é só a
+ * linha em `apolo_disparos`, com `status = 'nao_enviado'` (a coluna é texto livre, sem CHECK desde a
+ * 0064), para o histórico responder "por que a imobiliária não soube desta reserva?" sem ninguém
+ * precisar lembrar da decisão.
+ *
+ * ⚠️ O TELEFONE NÃO É GRAVADO: não houve envio para número nenhum, e guardar o contato de quem não
+ * recebeu nada seria dado a mais numa tabela de entrega.
+ *
+ * ⚠️ NUNCA LANÇA, pelo mesmo motivo de `avisarSobreAVenda`: a venda já está gravada quando isto
+ * roda. Falha ao registrar vira log; a resposta continua dizendo que o aviso não saiu.
+ */
+export async function registrarAvisoNaoEnviado(
+  admin: Cliente,
+  dados: {
+    corretorId: null | string;
+    destinatarios: DestinatariosDaVenda;
+    imobiliariaId: string;
+    /** O mesmo `origem` que o envio usaria (`reserva:whatsapp`, `proposta:cancelamento`...). */
+    origem: string;
+    /** O mesmo `tipo` que o envio usaria (`hercules_reserva`, `hercules_proposta`). */
+    tipo: string;
+  },
+): Promise<ResultadoDoAviso[]> {
+  const destinos = destinosDoAviso(dados);
+  const resultados: ResultadoDoAviso[] = destinos.map((destino) => ({
+    motivo: MOTIVO_DO_AVISO_DESLIGADO,
+    ok: false,
+    para: destino.papel,
+  }));
+
+  try {
+    const { error } = await admin.from("apolo_disparos").insert(
+      destinos.map((destino) => ({
+        destinatario: destino.papel,
+        entity_id: destino.entityId,
+        erro: AVISO_NAO_ENVIADO_POR_DECISAO,
+        origem: dados.origem,
+        status: "nao_enviado",
+        telefone: null,
+        tipo: dados.tipo,
+      })),
+    );
+    if (error) console.error("[hercules][avisos] falha ao registrar aviso não enviado", error);
+  } catch (erro) {
+    console.error("[hercules][avisos] falha ao registrar aviso não enviado", erro);
+  }
+
+  return resultados;
+}
+
 /**
  * Manda cada texto para o seu destinatário, pelo número do Relacionamento.
  *
@@ -174,27 +289,7 @@ export async function avisarSobreAVenda(
   },
 ): Promise<ResultadoDoAviso[]> {
   try {
-    const destinos: Array<{ entityId: string; papel: PapelDoAviso; telefone: null | string }> = [];
-
-    if (dados.corretorId && dados.destinatarios.corretor) {
-      destinos.push({
-        entityId: dados.corretorId,
-        papel: "corretor",
-        telefone: dados.destinatarios.corretor.telefone,
-      });
-    }
-    destinos.push({
-      entityId: dados.imobiliariaId,
-      papel: "imobiliaria",
-      telefone: dados.destinatarios.imobiliaria.telefone,
-    });
-    for (const coordenador of dados.destinatarios.coordenadores) {
-      destinos.push({
-        entityId: dados.imobiliariaId,
-        papel: "coordenador",
-        telefone: coordenador.telefone,
-      });
-    }
+    const destinos = destinosDoAviso(dados);
 
     return await Promise.all(
       destinos.map(async (destino) => {

@@ -1,20 +1,22 @@
-import { NextResponse } from "next/server";
-
 import { authorizeApoloRead } from "@/lib/apolo/auth";
 import {
-  type CanalDoTrabalho,
-  abrirTrabalho,
-  marcarAtividade,
-  trabalhosDoBoard,
-} from "@/lib/temis/trabalhos-db";
-import { ATIVIDADES, ESTAGIOS, NOME_DO_TIPO, type TipoDeTrabalho } from "@/lib/temis/trabalhos";
+  agirNosTrabalhos,
+  atorDoHub,
+  listarTrabalhosDoBoard,
+} from "@/lib/temis/trabalho-servico";
 
 // OS TRABALHOS DO BOARD DA TÊMIS — listar, abrir e marcar atividade.
 //
-// ⚠️ O CATÁLOGO VIAJA JUNTO COM OS CARDS. A tela precisa das atividades e dos prazos de cada tipo
-// para desenhar o checklist, e duplicar essa lista no cliente faria as duas divergirem no dia em que
-// alguém acrescentasse uma atividade — a tela mostraria quatro itens e o servidor exigiria cinco
-// para o card andar.
+// ⚠️ ESTA ROTA É SÓ A PORTA DO HUB. A lógica (o catálogo que viaja com os cards, o "1/5" das
+// assinaturas, a abertura, a atividade que faz o card andar) mora em `lib/temis/trabalho-servico.ts`,
+// e é a MESMA função que `/api/incorporador/temis/trabalhos` chama com o ator do portal. Aqui só se
+// confere o Bearer do Apolo (a régua de leitura, como sempre foi) e se monta o ator do hub.
+//
+// ⚠️ O BOARD DA CARELI MOSTRA SÓ O QUE A CARELI CONFECCIONA. Decisão do Lucas (16/09/2026): a venda
+// do time da Cecílio é confeccionada pela Cecílio, no portal, e sai desta fila (o padrão de
+// `trabalhosDoBoard` é `operadoPor: "careli"`). `?incluir=incorporadores` é a SUPERVISÃO: devolve
+// também os trabalhos operados por incorporador. O card continua abrindo pelo id nos dois casos.
+// A tradução dos parâmetros está em `filtroDoBoard`.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -22,121 +24,12 @@ export async function GET(request: Request) {
   const auth = await authorizeApoloRead(request);
   if (!auth.ok) return auth.response;
 
-  const url = new URL(request.url);
-  const enterpriseId = url.searchParams.get("empreendimento")?.trim() || undefined;
-
-  // ⚠️ `comAssinaturas` É O QUE PÕE O "1/5" NO CARD, e ele é pedido AQUI e não dentro da camada de
-  // dados. Lucas (12/09/2026): *"no card, gostaria de ter essa visão de quantas assinaturas já
-  // foram feitas, tipo 1/5"* — e o pedido é desta tela. A aba Contratos do portal comercial lê o
-  // MESMO board (`/api/incorporador/contratos`) e continua sem pedir: duas consultas a mais por
-  // carga, num quadro que recarrega sozinho a cada minuto, é gasto que só se paga onde alguém vai
-  // olhar o selo.
-  const trabalhos = await trabalhosDoBoard({ comAssinaturas: true, enterpriseId });
-
-  return NextResponse.json(
-    { data: { atividades: ATIVIDADES, estagios: ESTAGIOS, nomes: NOME_DO_TIPO, trabalhos } },
-    { headers: { "Cache-Control": "no-store" } },
-  );
+  return listarTrabalhosDoBoard(atorDoHub(auth, "leitura"), request);
 }
-
-type Corpo = {
-  acao?: unknown;
-  atividade?: unknown;
-  canal?: unknown;
-  clienteCpf?: unknown;
-  clienteNome?: unknown;
-  empreendimentoCodigo?: unknown;
-  empreendimentoId?: unknown;
-  empreendimentoNome?: unknown;
-  evidenciaPath?: unknown;
-  feita?: unknown;
-  id?: unknown;
-  irisTicketId?: unknown;
-  observacao?: unknown;
-  tipo?: unknown;
-  trabalhoOrigemId?: unknown;
-  unidade?: unknown;
-};
-
-const TIPOS: TipoDeTrabalho[] = [
-  "cancelamento",
-  "cancelamento_correcao",
-  "cessao",
-  "contrato",
-  "distrato",
-];
-const CANAIS: CanalDoTrabalho[] = ["coordenador", "hercules", "iris"];
 
 export async function POST(request: Request) {
   const auth = await authorizeApoloRead(request);
   if (!auth.ok) return auth.response;
 
-  let corpo: Corpo;
-  try {
-    corpo = (await request.json()) as Corpo;
-  } catch {
-    return NextResponse.json({ error: "corpo inválido" }, { status: 400 });
-  }
-
-  // ── MARCAR UMA ATIVIDADE ───────────────────────────────────────────────────
-  //
-  // ⚠️ É AQUI QUE O CARD ANDA SOZINHO: a camada de dados avança o estágio quando a última atividade
-  // do estágio é marcada, na mesma chamada.
-  if (String(corpo.acao ?? "") === "atividade") {
-    const id = String(corpo.id ?? "").trim();
-    const atividade = String(corpo.atividade ?? "").trim();
-    if (!id || !atividade) {
-      return NextResponse.json({ error: "informe o trabalho e a atividade" }, { status: 400 });
-    }
-    const r = await marcarAtividade({ atividade, feita: corpo.feita === true, id });
-    if (!r.ok) return NextResponse.json({ error: r.erro }, { status: 400 });
-    return NextResponse.json({ andou: r.andou, estagio: r.estagio, ok: true });
-  }
-
-  // ── ABRIR UMA SOLICITAÇÃO ──────────────────────────────────────────────────
-  const tipo = String(corpo.tipo ?? "") as TipoDeTrabalho;
-  if (!TIPOS.includes(tipo)) {
-    return NextResponse.json({ error: `tipo desconhecido: ${String(corpo.tipo)}` }, { status: 400 });
-  }
-
-  const canal = String(corpo.canal ?? "") as CanalDoTrabalho;
-  if (!CANAIS.includes(canal)) {
-    return NextResponse.json({ error: "informe de onde veio a solicitação" }, { status: 400 });
-  }
-
-  const clienteNome = String(corpo.clienteNome ?? "").trim();
-  const unidade = String(corpo.unidade ?? "").trim();
-  const empreendimentoId = String(corpo.empreendimentoId ?? "").trim();
-  if (!clienteNome || !unidade || !empreendimentoId) {
-    return NextResponse.json(
-      { error: "empreendimento, unidade e cliente são obrigatórios" },
-      { status: 400 },
-    );
-  }
-
-  // ⚠️ A CORREÇÃO NASCE LIGADA A UM CONTRATO, e sem ele ninguém sabe o que está sendo corrigido.
-  if (tipo === "cancelamento_correcao" && !String(corpo.trabalhoOrigemId ?? "").trim()) {
-    return NextResponse.json(
-      { error: "o cancelamento por correção precisa apontar o contrato que está sendo corrigido" },
-      { status: 400 },
-    );
-  }
-
-  const r = await abrirTrabalho({
-    canal,
-    clienteCpf: String(corpo.clienteCpf ?? "").replace(/\D/g, "") || null,
-    clienteNome,
-    empreendimentoCodigo: String(corpo.empreendimentoCodigo ?? "").trim(),
-    empreendimentoId,
-    empreendimentoNome: String(corpo.empreendimentoNome ?? "").trim(),
-    evidenciaPath: String(corpo.evidenciaPath ?? "").trim() || null,
-    irisTicketId: String(corpo.irisTicketId ?? "").trim() || null,
-    observacao: String(corpo.observacao ?? "").trim() || null,
-    tipo,
-    trabalhoOrigemId: String(corpo.trabalhoOrigemId ?? "").trim() || null,
-    unidade,
-  });
-
-  if (!r.ok) return NextResponse.json({ error: r.erro }, { status: 400 });
-  return NextResponse.json({ id: r.id, ok: true });
+  return agirNosTrabalhos(atorDoHub(auth, "leitura"), request);
 }

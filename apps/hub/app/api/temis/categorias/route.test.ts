@@ -101,6 +101,9 @@ vi.mock("@/lib/apolo/server", () => {
         return { data: Array.isArray(data) ? (data[0] ?? null) : data, error };
       },
       order: () => api,
+      // A contagem de lotes pagina de 1.000 em 1.000 (teto do PostgREST); o falso devolve tudo de uma
+      // vez, que é uma página só.
+      range: () => api,
       select: () => api,
       single: async () => {
         const { data, error } = resolver(ctx);

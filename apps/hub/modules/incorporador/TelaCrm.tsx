@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -18,11 +19,13 @@ import {
   Network,
   Search,
   Store,
+  UserPlus,
   Video,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import type { PortalConfig } from "@/modules/apolo/blocks/cadastro/cadastro-flow";
 import { fonte } from "@/modules/publico/ui/tokens";
 import type {
   CompradorDoCrm,
@@ -46,7 +49,17 @@ import type {
   EventoDoHistorico,
 } from "@/lib/apolo/incorporador/historico";
 
-import { T } from "./tema";
+import { MOLDURA_TAILWIND } from "./moldura";
+import { T, useTemaDoPortal } from "./tema";
+
+// O WIZARD DO CADASTRO ENTRA POR IMPORTAÇÃO DINÂMICA. Ele é o CadastroFlow inteiro do Apolo (leitura
+// de documento, PDF, cinco etapas), e o CRM é aberto o dia todo por quem nunca vai cadastrar ninguém:
+// pagar esse download em toda visita seria cobrar de todo mundo o custo de poucos. Mesmo motivo do
+// editor de minuta (minutas-tab.tsx).
+const CadastroFlow = dynamic(
+  () => import("@/modules/apolo/blocks/cadastro/cadastro-flow").then((m) => m.CadastroFlow),
+  { ssr: false },
+);
 
 // CRM DO INCORPORADOR — o CRM 360 do Apolo, portado para o portal e recortado no empreendimento
 // do cliente.
@@ -88,6 +101,13 @@ import { T } from "./tema";
 // ("Abrir atendimento"/"Agenda" são operação interna), as subabas por unidade
 // (apoloUnitSubtabs), o "Registrar" do histórico (escrita interna), os papéis de filtro que o
 // portal não tem, e o CrmCommandCenter (KPIs do CRM inteiro da Careli + "novo cadastro").
+//
+// ⚠️ O "NOVO CLIENTE" VOLTOU, SÓ PARA QUEM OPERA SOZINHO (16/09/2026). Decisão do Lucas: *"a equipe
+// da Cecilio cadastra cliente novo pelo CRM do portal"*. O botão abre o MESMO wizard do Apolo
+// (CadastroFlow, modo portal) numa janela de tela cheia, depois de escolher o produto e, se houver,
+// a imobiliária. A tela não decide quem vê o botão: ela pergunta ao servidor
+// (/api/incorporador/crm/cadastro/settings), e o portão de lá responde 404 para o comercial e para
+// o padrão. Sem resposta boa, sem botão.
 
 // ── TIPOS DA TELA ───────────────────────────────────────────────────────────
 
@@ -100,6 +120,10 @@ type Dados = {
 };
 
 type Selecao = { id: string; tipo: TipoDaFicha };
+
+/** Formato de /api/incorporador/crm/cadastro/settings (`produtosDoCadastro`, `imobiliariasDoCadastro`). */
+type ProdutoDoCadastro = { id: string; nome: string };
+type ImobiliariaDoCadastro = { id: string; nome: string };
 
 type AbaDaFicha =
   | "cadastro"
@@ -211,6 +235,45 @@ export function TelaCrm() {
   const [fichas, setFichas] = useState<Record<string, FichaDoCrm>>({});
   const [fichaCarregando, setFichaCarregando] = useState(false);
   const [fichaErro, setFichaErro] = useState<null | string>(null);
+
+  // NOVO CLIENTE: os produtos que esta sessão pode cadastrar. `null` = sem botão (o servidor disse
+  // 404 porque o portal não opera sozinho, ou não respondeu). A janela abre com `novoCliente`.
+  //
+  // ⚠️ A LISTA JÁ VEM SÓ COM O QUE O PORTAL OPERA (decisão do Lucas, 16/09/2026): VOC e VOR são só
+  // consulta para a Cecílio e nem aparecem. Lista vazia (nenhum produto operado) ou 503 (sem como
+  // conferir quem opera) = sem botão, porque não há produto em que cadastrar.
+  const [produtosDoCadastro, setProdutosDoCadastro] = useState<null | ProdutoDoCadastro[]>(null);
+  const [novoCliente, setNovoCliente] = useState(false);
+
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      try {
+        const resposta = await fetch("/api/incorporador/crm/cadastro/settings", {
+          cache: "no-store",
+        });
+        const corpo = (await resposta.json().catch(() => null)) as
+          | { data?: { produtos?: ProdutoDoCadastro[] } }
+          | null;
+        if (!ativo) return;
+        const produtos = resposta.ok ? corpo?.data?.produtos : undefined;
+        setProdutosDoCadastro(produtos && produtos.length > 0 ? produtos : null);
+      } catch {
+        if (ativo) setProdutosDoCadastro(null);
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  // Cliente cadastrado: fecha a janela e recarrega as listas. Vai para "Cadastros em andamento",
+  // que é onde a CAD nova aparece quando entrou no board.
+  const concluirNovoCliente = useCallback(() => {
+    setNovoCliente(false);
+    setCache({});
+    setAba("prospects");
+  }, []);
 
   const carregar = useCallback(async (alvo: Aba) => {
     setCarregando(true);
@@ -343,10 +406,39 @@ export function TelaCrm() {
     <>
       <style>{CSS_CRM}</style>
 
-      <h1 style={{ color: T.text, fontSize: 20, fontWeight: 600, margin: "0 0 4px" }}>CRM</h1>
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          justifyContent: "space-between",
+          margin: "0 0 4px",
+        }}
+      >
+        <h1 style={{ color: T.text, fontSize: 20, fontWeight: 600, margin: 0 }}>CRM</h1>
+        {produtosDoCadastro ? (
+          <button
+            onClick={() => setNovoCliente(true)}
+            style={botaoPrimario}
+            type="button"
+          >
+            <UserPlus aria-hidden="true" size={16} />
+            Novo cliente
+          </button>
+        ) : null}
+      </div>
       <p style={{ color: T.muted, fontSize: 13.5, margin: "0 0 18px" }}>
         Quem está comprando, quem está em cadastro e quais imobiliárias atuam no seu empreendimento.
       </p>
+
+      {novoCliente && produtosDoCadastro ? (
+        <NovoClienteDoPortal
+          onConcluir={concluirNovoCliente}
+          onFechar={() => setNovoCliente(false)}
+          produtos={produtosDoCadastro}
+        />
+      ) : null}
 
       <div className={`inc-crm${selecao ? " com-ficha" : ""}`}>
         <ColunaDeEntidades
@@ -384,6 +476,385 @@ export function TelaCrm() {
     </>
   );
 }
+
+// ── NOVO CLIENTE (o wizard do Apolo, em modo portal) ────────────────────────
+//
+// Dois tempos, como o formulário público de CAD (portão e depois wizard): primeiro o PRODUTO e a
+// IMOBILIÁRIA, numa janela pequena; depois o CadastroFlow numa tela cheia. O vínculo vem de fora do
+// wizard porque no portal ele é outro: o produto sai da sessão (não da imobiliária, como no hub) e
+// a imobiliária é obrigatória (ver AVISO_SEM_IMOBILIARIA). O servidor confere os dois de novo no
+// salvar.
+//
+// ⚠️ A JANELA NÃO FECHA CLICANDO FORA, e a tela cheia pede confirmação no X: é formulário com
+// documento anexado, e um clique distraído apagaria tudo (mesma regra da janela de cadastro de
+// produto do portal).
+
+const CSS_NOVO_CLIENTE = `
+  .inc-novo-fundo {
+    align-items: center; background: rgb(0 0 0 / .55); display: flex; inset: 0;
+    justify-content: center; padding: 24px; position: fixed; z-index: 70;
+  }
+  .inc-novo-janela {
+    background: ${T.page}; border: 1px solid ${T.border}; border-radius: 14px;
+    box-shadow: ${T.sombra}; box-sizing: border-box; color: ${T.text}; display: flex;
+    flex-direction: column; font-family: ${fonte}; max-height: min(92dvh, 720px);
+    overflow: hidden; width: min(94vw, 520px);
+  }
+  .inc-novo-tela {
+    background: ${T.page}; color: ${T.text}; display: flex; flex-direction: column;
+    font-family: ${fonte}; inset: 0; position: fixed; z-index: 70;
+  }
+  @media (max-width: 640px) {
+    .inc-novo-fundo { align-items: stretch; padding: 0; }
+    .inc-novo-janela { border: none; border-radius: 0; height: 100dvh; max-height: none; width: 100%; }
+  }
+`;
+
+// ⚠️ A IMOBILIÁRIA É OBRIGATÓRIA (revisão da onda 3, 16/09/2026). Sem ela a CAD não entra na esteira:
+// o cliente não aparece em "Cadastros em andamento" nem abre ficha no CRM de quem acabou de
+// cadastrar, e a trava de duplicidade (que lê a esteira) deixa o mesmo CPF entrar de novo, com a
+// MOST cobrada outra vez. O servidor responde 400 sem ela (`conferirVinculoDoPortal`).
+const AVISO_SEM_IMOBILIARIA =
+  "Escolha a imobiliária do cadastro. É com ela que a CAD entra na fila de validação e o cliente aparece no CRM.";
+
+const AVISO_SEM_IMOBILIARIA_HABILITADA =
+  "Nenhuma imobiliária habilitada neste produto. Fale com a Careli para habilitar uma antes de cadastrar clientes.";
+
+function NovoClienteDoPortal({
+  onConcluir,
+  onFechar,
+  produtos,
+}: {
+  onConcluir: () => void;
+  onFechar: () => void;
+  produtos: ProdutoDoCadastro[];
+}) {
+  // A moldura Tailwind leva o tema EFETIVO do portal para dentro do wizard (ver MOLDURA_TAILWIND).
+  const { efetivo } = useTemaDoPortal();
+  const [produtoId, setProdutoId] = useState(() =>
+    produtos.length === 1 ? (produtos[0]?.id ?? "") : "",
+  );
+  const [imobiliarias, setImobiliarias] = useState<null | ImobiliariaDoCadastro[]>(null);
+  const [imobiliariaId, setImobiliariaId] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState<null | string>(null);
+  const [escolha, setEscolha] = useState<null | Omit<PortalConfig, "onConcluir">>(null);
+
+  // As imobiliárias HABILITADAS no produto escolhido. Trocar de produto zera a escolha: a
+  // imobiliária de um produto não vale para o outro.
+  useEffect(() => {
+    setImobiliarias(null);
+    setImobiliariaId("");
+    setErro(null);
+    if (!produtoId) return;
+
+    let ativo = true;
+    setCarregando(true);
+
+    (async () => {
+      try {
+        const resposta = await fetch(
+          `/api/incorporador/crm/cadastro/settings?enterpriseId=${encodeURIComponent(produtoId)}`,
+          { cache: "no-store" },
+        );
+        const corpo = (await resposta.json().catch(() => null)) as
+          | { data?: { imobiliarias?: ImobiliariaDoCadastro[] }; error?: string }
+          | null;
+        if (!ativo) return;
+        // A frase é SEMPRE a do servidor quando ele manda uma. É assim que o 403 `soConsulta` (o
+        // produto passou a ser operado por outro depois que a lista carregou) aparece como "Este
+        // produto está disponível só para consulta no seu portal.", e sem imobiliária não se segue.
+        if (!resposta.ok || !corpo?.data) {
+          setErro(corpo?.error ?? "Não foi possível carregar as imobiliárias.");
+          return;
+        }
+        setImobiliarias(corpo.data.imobiliarias ?? []);
+      } catch {
+        if (ativo) setErro("Não foi possível carregar as imobiliárias.");
+      } finally {
+        if (ativo) setCarregando(false);
+      }
+    })();
+
+    return () => {
+      ativo = false;
+    };
+  }, [produtoId]);
+
+  // Esc fecha só a janela da ESCOLHA (nada preenchido ainda). No wizard, não.
+  useEffect(() => {
+    if (escolha) return;
+    const aoTeclar = (evento: KeyboardEvent) => {
+      if (evento.key === "Escape") onFechar();
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [escolha, onFechar]);
+
+  // ⚠️ MEMORIZADO: o wizard recria o adaptador de rotas quando esta referência muda, e os efeitos
+  // dele (exigências do produto, checagem do CPF) rodariam de novo a cada render da TelaCrm.
+  const portal = useMemo<null | PortalConfig>(
+    () => (escolha ? { ...escolha, onConcluir } : null),
+    [escolha, onConcluir],
+  );
+
+  if (portal) {
+    return (
+      <div aria-label="Novo cliente" aria-modal="true" className="inc-novo-tela" role="dialog">
+        <style>{CSS_NOVO_CLIENTE}</style>
+        <div
+          style={{
+            alignItems: "center",
+            borderBottom: `1px solid ${T.border}`,
+            display: "flex",
+            flexShrink: 0,
+            gap: 12,
+            justifyContent: "space-between",
+            padding: "10px 16px",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 14, fontWeight: 650, margin: 0 }}>Novo cliente</p>
+            <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>
+              {portal.empreendimentoNome}
+              {portal.imobiliariaNome ? ` · ${portal.imobiliariaNome}` : ""}
+            </p>
+          </div>
+          <button
+            aria-label="Fechar o cadastro"
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Fechar o cadastro? O que foi preenchido e não foi enviado será descartado.",
+                )
+              ) {
+                onFechar();
+              }
+            }}
+            style={botaoDeIcone}
+            title="Fechar"
+            type="button"
+          >
+            <X aria-hidden="true" size={16} />
+          </button>
+        </div>
+        {/* Altura DEFINIDA para o wizard: ele rola por dentro (`h-full overflow-y-auto`). */}
+        <div style={{ flex: "1 1 auto", minHeight: 0, position: "relative" }}>
+          <div
+            data-uix-theme={efetivo === "escuro" ? "dark" : "light"}
+            style={{ ...MOLDURA_TAILWIND, background: T.page, inset: 0, position: "absolute" }}
+          >
+            <CadastroFlow portal={portal} tipo="prospect" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const produtoEscolhido = produtos.find((produto) => produto.id === produtoId) ?? null;
+  const imobiliariaEscolhida =
+    (imobiliarias ?? []).find((item) => item.id === imobiliariaId) ?? null;
+  const podeContinuar =
+    Boolean(produtoEscolhido) && !carregando && imobiliarias !== null && imobiliariaEscolhida !== null;
+
+  return (
+    <div className="inc-novo-fundo">
+      <style>{CSS_NOVO_CLIENTE}</style>
+      <div aria-label="Novo cliente" aria-modal="true" className="inc-novo-janela" role="dialog">
+        <div
+          style={{
+            alignItems: "flex-start",
+            borderBottom: `1px solid ${T.border}`,
+            display: "flex",
+            gap: 12,
+            justifyContent: "space-between",
+            padding: "12px 16px",
+          }}
+        >
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 650, margin: 0 }}>Novo cliente</p>
+            <p style={{ color: T.muted, fontSize: 12, lineHeight: "17px", margin: "2px 0 0" }}>
+              Escolha o produto e a imobiliária. Depois vem o cadastro do cliente, com os documentos.
+            </p>
+          </div>
+          <button aria-label="Fechar" onClick={onFechar} style={botaoDeIcone} type="button">
+            <X aria-hidden="true" size={16} />
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gap: 14, overflow: "auto", padding: 16 }}>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={rotuloDeCampo}>Produto</span>
+            <select
+              onChange={(evento) => setProdutoId(evento.target.value)}
+              style={campoDeEscolha}
+              value={produtoId}
+            >
+              <option value="">Escolha o produto</option>
+              {produtos.map((produto) => (
+                <option key={produto.id} value={produto.id}>
+                  {produto.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={rotuloDeCampo}>Imobiliária</span>
+            <select
+              disabled={!produtoId || imobiliarias === null}
+              onChange={(evento) => setImobiliariaId(evento.target.value)}
+              style={{
+                ...campoDeEscolha,
+                opacity: !produtoId || imobiliarias === null ? 0.6 : 1,
+              }}
+              value={imobiliariaId}
+            >
+              <option value="">Escolha a imobiliária</option>
+              {(imobiliarias ?? []).map((imobiliaria) => (
+                <option key={imobiliaria.id} value={imobiliaria.id}>
+                  {imobiliaria.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {carregando ? (
+            <p style={{ color: T.muted, fontSize: 12.5, margin: 0 }}>Carregando as imobiliárias…</p>
+          ) : null}
+          {erro ? (
+            <p
+              style={{
+                background: T.dangerBg,
+                borderRadius: 10,
+                color: T.danger,
+                fontSize: 12.5,
+                margin: 0,
+                padding: "8px 10px",
+              }}
+            >
+              {erro}
+            </p>
+          ) : null}
+          {imobiliarias && imobiliarias.length === 0 ? (
+            <p style={{ color: T.muted, fontSize: 12.5, margin: 0 }}>
+              {AVISO_SEM_IMOBILIARIA_HABILITADA}
+            </p>
+          ) : null}
+          {imobiliarias && imobiliarias.length > 0 && !imobiliariaEscolhida ? (
+            <p
+              style={{
+                background: T.soft,
+                borderRadius: 10,
+                color: T.sub,
+                fontSize: 12.5,
+                lineHeight: "18px",
+                margin: 0,
+                padding: "8px 10px",
+              }}
+            >
+              {AVISO_SEM_IMOBILIARIA}
+            </p>
+          ) : null}
+        </div>
+
+        <div
+          style={{
+            alignItems: "center",
+            borderTop: `1px solid ${T.border}`,
+            display: "flex",
+            gap: 8,
+            justifyContent: "flex-end",
+            padding: "12px 16px",
+          }}
+        >
+          <button onClick={onFechar} style={botaoSecundario} type="button">
+            Cancelar
+          </button>
+          <button
+            disabled={!podeContinuar}
+            onClick={() => {
+              if (!produtoEscolhido || !imobiliariaEscolhida) return;
+              setEscolha({
+                empreendimentoNome: produtoEscolhido.nome,
+                enterpriseId: produtoEscolhido.id,
+                imobiliariaId: imobiliariaEscolhida.id,
+                imobiliariaNome: imobiliariaEscolhida.nome,
+              });
+            }}
+            style={{
+              ...botaoPrimario,
+              cursor: podeContinuar ? "pointer" : "default",
+              opacity: podeContinuar ? 1 : 0.55,
+            }}
+            type="button"
+          >
+            Continuar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const botaoPrimario = {
+  alignItems: "center",
+  background: T.btnBg,
+  border: "none",
+  borderRadius: 10,
+  color: T.btnFg,
+  cursor: "pointer",
+  display: "inline-flex",
+  fontFamily: fonte,
+  fontSize: 13,
+  fontWeight: 600,
+  gap: 6,
+  minHeight: 36,
+  padding: "8px 14px",
+} as const;
+
+const botaoSecundario = {
+  ...botaoPrimario,
+  background: "transparent",
+  border: `1px solid ${T.border}`,
+  color: T.sub,
+} as const;
+
+const botaoDeIcone = {
+  alignItems: "center",
+  background: "transparent",
+  border: `1px solid ${T.border}`,
+  borderRadius: 8,
+  color: T.sub,
+  cursor: "pointer",
+  display: "inline-flex",
+  flexShrink: 0,
+  height: 32,
+  justifyContent: "center",
+  padding: 0,
+  width: 32,
+} as const;
+
+const rotuloDeCampo = {
+  color: T.muted,
+  fontSize: 10.5,
+  fontWeight: 700,
+  letterSpacing: ".06em",
+  textTransform: "uppercase",
+} as const;
+
+const campoDeEscolha = {
+  background: T.card,
+  border: `1px solid ${T.border}`,
+  borderRadius: 10,
+  color: T.text,
+  fontFamily: fonte,
+  // 16px: abaixo disso o Safari do iOS dá zoom ao focar e a tela pula.
+  fontSize: 16,
+  minHeight: 42,
+  padding: "8px 10px",
+  width: "100%",
+} as const;
 
 // ── COLUNA ESQUERDA (porta o EntityColumn do CRM interno) ───────────────────
 

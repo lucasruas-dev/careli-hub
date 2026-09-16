@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { TipoDePortal } from "@/lib/apolo/incorporador/perfis-de-portal";
+import { idsParaSalvar, vinculosParaSalvar } from "@/lib/apolo/incorporador/vinculos-do-formulario";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
 import { fileToBase64 } from "../../lib/document-capture";
@@ -49,7 +50,18 @@ import { fileToBase64 } from "../../lib/document-capture";
 // (mesmo vazia) como "substituir" e ausência como "não mexer"; mandar `[]` de um portal de
 // incorporador apagaria um vínculo que ninguém pediu para apagar.
 
-type EmpreendimentoDisponivel = { code: string; enterpriseId: string; nome: string };
+// ⚠️ A LISTA TEM DUAS ORIGENS DESDE 16/09/2026 (lib/apolo/incorporador/gestao.ts): o C2X e o
+// cadastro do Panteon. Produto que só existe no Panteon (os prédios da Cecílio, id a partir de
+// 100000) ganha a marca "Panteon", e quem opera o produto aparece ao lado quando não é a Careli.
+// Campos opcionais porque a rota antiga não os mandava; ausente = C2X, operado pela Careli.
+type EmpreendimentoDisponivel = {
+  code: string;
+  enterpriseId: string;
+  nome: string;
+  operadoPor?: null | string;
+  operadoPorNome?: null | string;
+  origem?: "c2x" | "panteon";
+};
 type Usuario = {
   ativo: boolean;
   criadoEm: null | string;
@@ -200,6 +212,8 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
   // (a rota pública lê a coluna do banco), então logo após o upload a prévia é o dataURL local.
   const [form, setForm] = useState({
     empreendimentos: [] as { carteiraAdministrada: boolean; enterpriseId: string }[],
+    // Os ids que o formulário mostrou ao abrir: a base do merge ao salvar (ver `salvarIncorporador`).
+    empreendimentosIniciais: [] as string[],
     logoEscuraPath: null as null | string,
     logoEscuraPrevia: null as null | string,
     logoPath: null as null | string,
@@ -217,6 +231,8 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
       email: string;
       /** O recorte próprio (só o comercial edita e envia). */
       empreendimentos: string[];
+      /** O recorte que o formulário mostrou ao abrir (base do merge ao salvar). */
+      empreendimentosIniciais: string[];
       incorporadorId: string;
       nome: string;
       senha: string;
@@ -268,11 +284,21 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
     return (id: string) => mapa.get(id) ?? `Empreendimento ${id}`;
   }, [empreendimentos]);
 
+  // ⚠️ O VÍNCULO QUE A LISTA NÃO TROUXE CONTINUA NA TELA. O formulário sempre guardou todos os
+  // vínculos gravados (e os devolve ao salvar), mas desenhava só os que estavam na lista: com o C2X
+  // fora do ar, ou com um produto que a lista ainda não conhecia (o do Panteon, até 16/09/2026), o
+  // vínculo existia e ninguém via — e não havia como desmarcar. Agora ele aparece à parte, marcado.
+  const foraDaLista = useMemo(() => {
+    const disponiveis = new Set(empreendimentos.map((e) => e.enterpriseId));
+    return (ids: string[]) => [...new Set(ids)].filter((id) => !disponiveis.has(id));
+  }, [empreendimentos]);
+
   function abrirNovo() {
     setConta(null);
     setEditando("novo");
     setForm({
       empreendimentos: [],
+      empreendimentosIniciais: [],
       logoEscuraPath: null,
       logoEscuraPrevia: null,
       logoPath: null,
@@ -290,6 +316,7 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
         carteiraAdministrada: e.carteiraAdministrada,
         enterpriseId: e.enterpriseId,
       })),
+      empreendimentosIniciais: inc.empreendimentos.map((e) => e.enterpriseId),
       logoEscuraPath: inc.logoEscuraPath,
       logoEscuraPrevia: inc.logoEscuraUrl,
       logoPath: inc.logoPath,
@@ -299,16 +326,47 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
     });
   }
 
+  /**
+   * Os portais como estão no banco AGORA, para o merge antes de salvar.
+   *
+   * ⚠️ O PORTAL TAMBÉM GRAVA VÍNCULO (o produto que a Cecílio cadastra entra sozinho no recorte dela).
+   * O servidor apaga o gravado que não vem na lista; sem reler, salvar um formulário aberto antes do
+   * cadastro apagava o produto novo do portal de quem o criou. Falhou a releitura, nada é salvo: a
+   * perda calada é pior que um "tente de novo".
+   */
+  async function incorporadoresNoBanco(token: null | string): Promise<Incorporador[]> {
+    const r = await fetch(`/api/apolo/incorporadores?tipo=${tipo}`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const c = (await r.json().catch(() => null)) as null | { data?: { incorporadores?: Incorporador[] } };
+    if (!r.ok || !Array.isArray(c?.data?.incorporadores)) {
+      throw new Error("Não foi possível conferir os vínculos atuais antes de salvar. Nada foi gravado; tente de novo.");
+    }
+    return c.data.incorporadores;
+  }
+
   async function salvarIncorporador() {
     setSalvando(true);
     setErro(null);
     try {
       const token = await getApoloAccessToken();
+      // Merge de três pontas: sai o que a pessoa desmarcou, fica o que nasceu no banco depois de o
+      // formulário abrir (lib/apolo/incorporador/vinculos-do-formulario.ts).
+      const empreendimentos =
+        editando === "novo"
+          ? form.empreendimentos
+          : vinculosParaSalvar({
+              gravadosAgora:
+                (await incorporadoresNoBanco(token)).find((inc) => inc.id === editando)?.empreendimentos ?? [],
+              iniciais: form.empreendimentosIniciais,
+              pedidos: form.empreendimentos,
+            });
       const r = await fetch("/api/apolo/incorporadores", {
         body: JSON.stringify({
           // "Carteira (quando tiver)": agora a chave é marcada aqui na tela, empreendimento a
           // empreendimento; a aba de recebimento do portal depende disso e não deriva do C2X.
-          empreendimentos: form.empreendimentos,
+          empreendimentos,
           id: editando === "novo" ? null : editando,
           // ⚠️ AS DUAS LOGOS VIAJAM SEMPRE. O servidor grava o que chega, e `undefined` vira
           // `null` lá: antes desta tela ter os campos, salvar o cadastro do Cecílio APAGAVA a
@@ -320,6 +378,8 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
           // Só na CRIAÇÃO: um portal não muda de tipo depois de nascer (o servidor ignora na
           // edição, mas a tela nem manda, para o corpo dizer a verdade).
           ...(editando === "novo" ? { tipo } : {}),
+          // A mesma base do merge, para o servidor apagar só o que a pessoa viu e desmarcou.
+          vinculosIniciais: form.empreendimentosIniciais,
         }),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "POST",
@@ -343,6 +403,19 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
     setErro(null);
     try {
       const token = await getApoloAccessToken();
+      // O mesmo merge do portal, no recorte da conta: a conta que cadastra produto no portal ganha o
+      // vínculo sozinha (só no comercial a lista viaja).
+      const recorte =
+        comercial && conta.usuarioId
+          ? idsParaSalvar({
+              gravadosAgora:
+                (await incorporadoresNoBanco(token))
+                  .flatMap((inc) => inc.usuarios)
+                  .find((u) => u.id === conta.usuarioId)?.empreendimentos ?? [],
+              iniciais: conta.empreendimentosIniciais,
+              pedidos: conta.empreendimentos,
+            })
+          : conta.empreendimentos;
       const r = await fetch("/api/apolo/incorporadores/usuarios", {
         body: JSON.stringify({
           ativo: conta.ativo,
@@ -354,7 +427,9 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
           senha: conta.senha || null,
           // ⚠️ SÓ NO COMERCIAL. Lista (mesmo vazia) = substitui o recorte da conta; ausente =
           // não mexe. Do portal de incorporador o campo nunca sai, para não apagar nada.
-          ...(comercial ? { empreendimentos: conta.empreendimentos } : {}),
+          ...(comercial
+            ? { empreendimentos: recorte, empreendimentosIniciais: conta.empreendimentosIniciais }
+            : {}),
         }),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "POST",
@@ -619,7 +694,7 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
           <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
             {empreendimentos.length === 0 ? (
               <p className="m-0 text-xs text-ink-muted">
-                A lista do C2X não carregou. Dá para salvar o cadastro e marcar os
+                A lista de empreendimentos não carregou. Dá para salvar o cadastro e marcar os
                 empreendimentos depois.
               </p>
             ) : (
@@ -654,6 +729,7 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
                       />
                       <span className="font-semibold">{e.code}</span>
                       <span className="truncate text-ink-muted">{e.nome}</span>
+                      <MarcaDoEmpreendimento emp={e} />
                     </label>
                     {/* ⚠️ A chave de carteira NÃO vale no comercial: lá o Financeiro é de todo
                         empreendimento do escopo (escopo-do-usuario.ts), porque o coordenador
@@ -686,6 +762,17 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
               })
             )}
           </div>
+
+          <VinculosForaDaLista
+            ids={foraDaLista(form.empreendimentos.map((m) => m.enterpriseId))}
+            nomeDe={nomeDoEmpreendimento}
+            onRemover={(id) =>
+              setForm((f) => ({
+                ...f,
+                empreendimentos: f.empreendimentos.filter((m) => m.enterpriseId !== id),
+              }))
+            }
+          />
 
           <div className="mt-4 flex gap-2">
             <button
@@ -793,6 +880,7 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
                         ativo: true,
                         email: "",
                         empreendimentos: [],
+                        empreendimentosIniciais: [],
                         incorporadorId: inc.id,
                         nome: "",
                         senha: "",
@@ -866,6 +954,7 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
                               email: u.email,
                               // Pré-marca o recorte que a conta já tem (só o comercial mostra).
                               empreendimentos: u.empreendimentos,
+                              empreendimentosIniciais: u.empreendimentos,
                               incorporadorId: inc.id,
                               nome: u.nome,
                               senha: "",
@@ -951,9 +1040,10 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
                 <p className="m-0 mt-2 text-xs text-ink-muted">{rotulos.ajudaEmail}</p>
 
                 {/* O VÍNCULO DO COORDENADOR ("irei vincular os coordenadores aos empreendimentos").
-                    A lista é a do C2X inteira, e não só a do portal: o recorte próprio SUBSTITUI o
-                    do portal quando existe (escopo-do-usuario.ts), então restringir aqui esconderia
-                    empreendimento que o portal não marcou mas o coordenador atende. */}
+                    A lista é a inteira (C2X e Panteon), e não só a do portal: o recorte próprio
+                    SUBSTITUI o do portal quando existe (escopo-do-usuario.ts), então restringir
+                    aqui esconderia empreendimento que o portal não marcou mas o coordenador
+                    atende. */}
                 {comercial ? (
                   <div className="mt-3">
                     <p className="m-0 text-xs font-semibold text-ink-muted">
@@ -966,8 +1056,8 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
                     <div className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
                       {empreendimentos.length === 0 ? (
                         <p className="m-0 text-xs text-ink-muted">
-                          A lista do C2X não carregou. Dá para salvar a conta e vincular os
-                          empreendimentos depois.
+                          A lista de empreendimentos não carregou. Dá para salvar a conta e
+                          vincular os empreendimentos depois.
                         </p>
                       ) : (
                         empreendimentos.map((e) => {
@@ -995,11 +1085,22 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
                               />
                               <span className="font-semibold">{e.code}</span>
                               <span className="truncate text-ink-muted">{e.nome}</span>
+                              <MarcaDoEmpreendimento emp={e} />
                             </label>
                           );
                         })
                       )}
                     </div>
+                    <VinculosForaDaLista
+                      ids={foraDaLista(conta.empreendimentos)}
+                      nomeDe={nomeDoEmpreendimento}
+                      onRemover={(id) =>
+                        setConta({
+                          ...conta,
+                          empreendimentos: conta.empreendimentos.filter((atual) => atual !== id),
+                        })
+                      }
+                    />
                   </div>
                 ) : null}
 
@@ -1022,6 +1123,77 @@ export function GestaoIncorporadores({ tipo = "incorporador" }: { tipo?: TipoDeP
               </div>
             ) : null}
           </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A marca do produto na lista de vínculo: "Panteon" quando ele só existe no cadastro do Panteon, e
+ * quem opera quando não é a Careli. Nada nos do C2X operados pela Careli, que são a regra.
+ */
+function MarcaDoEmpreendimento({ emp }: { emp: EmpreendimentoDisponivel }) {
+  const panteon = emp.origem === "panteon";
+  // Operador sem nome (o cadastro de portal não respondeu) ainda é informação: o produto não é
+  // da Careli, e vincular a outro portal é decisão que precisa ser vista.
+  const operador = emp.operadoPor ? emp.operadoPorNome || "outro portal" : null;
+  if (!panteon && !operador) return null;
+
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      {panteon ? (
+        <Tooltip content="Produto cadastrado no Panteon (não existe no C2X)">
+          <Badge variant="info">Panteon</Badge>
+        </Tooltip>
+      ) : null}
+      {operador ? (
+        <Tooltip content={`Operado por ${operador}`}>
+          <span className="inline-flex max-w-[10rem] items-center gap-1 text-[11px] text-ink-muted">
+            <Building2 aria-hidden="true" className="shrink-0" size={12} />
+            <span className="truncate">{operador}</span>
+          </span>
+        </Tooltip>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Os vínculos gravados que a lista de empreendimentos não trouxe (ver `foraDaLista`). Continuam
+ * marcados e seguem no corpo ao salvar; desmarcar tira o vínculo, como na lista principal.
+ */
+function VinculosForaDaLista({
+  ids,
+  nomeDe,
+  onRemover,
+}: {
+  ids: string[];
+  nomeDe: (id: string) => string;
+  onRemover: (id: string) => void;
+}) {
+  if (ids.length === 0) return null;
+
+  return (
+    <div className="mt-2 rounded-md border border-dashed border-line px-2 py-1.5">
+      <p className="m-0 text-[11px] text-ink-muted">
+        Vínculos gravados que a lista não trouxe agora. Eles continuam valendo ao salvar; desmarque
+        para remover.
+      </p>
+      <div className="mt-1 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+        {ids.map((id) => (
+          <label
+            className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm text-ink hover:bg-surface"
+            key={id}
+          >
+            <input
+              checked
+              className="h-4 w-4 rounded border-line accent-[#A07C3B]"
+              onChange={() => onRemover(id)}
+              type="checkbox"
+            />
+            <span className="truncate text-ink-muted">{nomeDe(id)}</span>
+          </label>
         ))}
       </div>
     </div>

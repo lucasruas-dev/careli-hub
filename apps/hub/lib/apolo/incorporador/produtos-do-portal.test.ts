@@ -311,3 +311,56 @@ describe("produtosDoPortal · cadastro fora do ar", () => {
     expect(produtos.map((p) => p.id).sort()).toEqual(doCatalogo.map((e) => e.id).sort());
   });
 });
+
+// ── O PRODUTO DO PANTEON VIRA CHIP QUANDO O CÓDIGO DELE É AUTORIZADO (16/09/2026) ──────────────
+//
+// `codigosDaSessao` passou a devolver o código do produto nascido no Panteon. A regra "sem código
+// autorizado, sem chip" continua (o teste do ZZ TESTE acima, com a lista antiga de códigos); o que
+// muda é que o id que o C2X não conhece acha o código no próprio cadastro.
+describe("produtosDoPortal · produto só do Panteon", () => {
+  const JADE = linha({ c2xEnterpriseId: "100000", codigo: "JAD", id: "uuid-jad", nome: "Ed. Jade" });
+  const CADASTRO_COM_JADE = [...CADASTRO, JADE];
+
+  it("⚠️ com o código autorizado, o ZZ TESTE e o Ed. Jade viram chip", () => {
+    const produtos = montar(
+      new Set([...PERMITIDOS, "100000"]),
+      [...CODES, "TST", "JAD"],
+      CADASTRO_COM_JADE,
+    );
+    expect(produtos.find((p) => p.nome === "Ed. Jade")).toMatchObject({
+      codes: ["JAD"],
+      filhos: [],
+      id: "pai:uuid-jad",
+    });
+    expect(produtos.find((p) => p.nome.startsWith("ZZ TESTE"))?.codes).toEqual(["TST"]);
+  });
+
+  it("⚠️ sessão SÓ com o produto do Panteon: um chip, e nada do legado", () => {
+    const produtos = montar(new Set(["100000"]), ["JAD"], CADASTRO_COM_JADE);
+    expect(produtos.map((p) => [p.nome, p.codes])).toEqual([["Ed. Jade", ["JAD"]]]);
+  });
+
+  it("⚠️ fail-closed: id na sessão, mas código fora dos autorizados, não vira chip", () => {
+    const produtos = montar(new Set(["100000"]), ["VOC"], CADASTRO_COM_JADE);
+    expect(produtos.some((p) => p.nome === "Ed. Jade")).toBe(false);
+  });
+
+  it("o LAB (31), que o catálogo exclui, não vira chip nem com o 31 na sessão", () => {
+    const produtos = montar(new Set(["31"]), CODES, CADASTRO);
+    expect(produtos.some((p) => p.codes.includes("LAB"))).toBe(false);
+  });
+
+  it("C2X fora do ar (catálogo vazio): os chips saem pelo cadastro, com os códigos autorizados", () => {
+    const produtos = produtosDoPortal({
+      cadastro: CADASTRO_COM_JADE,
+      catalogo: [],
+      codesAutorizados: ["VOC", "JAD"],
+      doCatalogo: [],
+      permitidos: new Set(["37", "100000"]),
+    });
+    expect(produtos.map((p) => [p.nome, p.codes])).toEqual([
+      ["Ed. Jade", ["JAD"]],
+      ["Vale do Ouro", ["VOC"]],
+    ]);
+  });
+});

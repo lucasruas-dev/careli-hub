@@ -18,6 +18,7 @@ import {
   removerObjetoDaLogo,
 } from "@/lib/apolo/incorporador/logo";
 import { tipoDePortal } from "@/lib/apolo/incorporador/perfis-de-portal";
+import { vinculosDoPortalNoCorpo } from "@/lib/apolo/incorporador/vinculos-do-formulario";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // Gestão dos acessos de incorporador (ferramenta INTERNA do Setup do Apolo).
@@ -43,7 +44,8 @@ export async function GET(request: Request) {
     const tipo = tipoDePortal(new URL(request.url).searchParams.get("tipo"));
     const [incorporadores, empreendimentos] = await Promise.all([
       listarIncorporadores(client, { tipo }),
-      listarEmpreendimentosDisponiveis().catch(() => []),
+      // O client já criado vai junto: sem ele, a leitura dos nomes dos operadores abria outro.
+      listarEmpreendimentosDisponiveis(client).catch(() => []),
     ]);
 
     return NextResponse.json(
@@ -72,6 +74,8 @@ export async function POST(request: Request) {
     nome?: string;
     slug?: string;
     tipo?: string;
+    /** Os ids que o formulário mostrou ao abrir (ver `vinculosParaApagar`). */
+    vinculosIniciais?: unknown[];
   };
 
   if (!corpo?.nome?.trim()) {
@@ -140,20 +144,19 @@ export async function POST(request: Request) {
     logos[chave] = aceita.valor;
   }
 
+  // ⚠️ OS INICIAIS VÃO JUNTO (pendência da onda 2): sem eles, o vínculo que o portal gravou depois
+  // de o formulário abrir (o produto que a Cecílio acabou de cadastrar) seria apagado neste salvar.
+  const vinculos = vinculosDoPortalNoCorpo(corpo);
   const resultado = await salvarIncorporador(client, {
     ativo: corpo.ativo,
-    empreendimentos: (corpo.empreendimentos ?? [])
-      .filter((e) => e?.enterpriseId)
-      .map((e) => ({
-        carteiraAdministrada: Boolean(e.carteiraAdministrada),
-        enterpriseId: String(e.enterpriseId),
-      })),
+    empreendimentos: vinculos.empreendimentos,
     id: corpo.id ?? null,
     logoEscuraPath: logos.escura,
     logoPath: logos.clara,
     nome: corpo.nome,
     slug: corpo.slug ?? corpo.nome,
     tipo: tipoDePortal(corpo.tipo),
+    vinculosIniciais: vinculos.vinculosIniciais,
   });
 
   if (!resultado.ok) {

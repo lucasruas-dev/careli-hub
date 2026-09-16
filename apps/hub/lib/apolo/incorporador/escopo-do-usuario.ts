@@ -16,6 +16,10 @@
 // os acessos". Escopo vazio é recusado no login (403 "Seu acesso ainda não tem empreendimento
 // liberado") e derruba a sessão na revalidação: fail-closed, sem ninguém precisar lembrar.
 //
+// ⚠️ O TERCEIRO CASO: O INCORPORADOR QUE OPERA A PRÓPRIA VENDA (`portalOperaVenda`, hoje só o
+// Cecílio). Recorte de incorporador (o do portal, ou o vínculo próprio quando existe) e Financeiro
+// de comercial (todo empreendimento do escopo). Ver o comentário no corpo.
+//
 // ⚠️ É FUNÇÃO PURA DE PROPÓSITO: a mesma regra roda no login (POST) e na revalidação de cada carga
 // de tela (GET). Duas cópias divergiriam na primeira mudança, e o coordenador veria uma lista no
 // login e outra no F5.
@@ -41,6 +45,12 @@ function limpar(ids: string[]): string[] {
 export function escopoDoUsuario(input: {
   doPortal: VinculoDoPortal[];
   doUsuario: string[];
+  /**
+   * O portal opera a venda? Quem chama passa `portalOperaVenda(slug, tipo)` (perfis-de-portal.ts),
+   * a régua única. Obrigatório de propósito: um chamador novo que esquecesse o campo daria ao
+   * Cecílio um Financeiro menor no F5 do que no login, e ninguém veria o porquê.
+   */
+  operaVenda: boolean;
   tipo: TipoDePortal;
 }): EscopoDaSessao {
   const proprios = limpar(input.doUsuario);
@@ -57,6 +67,20 @@ export function escopoDoUsuario(input: {
 
   const enterpriseIds =
     proprios.length > 0 ? proprios : limpar(input.doPortal.map((v) => v.enterpriseId));
+
+  // ⚠️ O INCORPORADOR QUE OPERA A PRÓPRIA VENDA (o Cecílio) tem o recorte do INCORPORADOR e o
+  // Financeiro do COMERCIAL. Lucas (16/09/2026): *"a Cecilio quem vai fazer é o proprio time deles
+  // (...) eles meio que vão andar sozinhos sem o time administrativo da Careli"*. Quem vende precisa
+  // do financeiro de tudo o que vende, com ou sem a flag `carteira_administrada` (no levantamento de
+  // 16/09 só o VOC, 37, está como carteira administrada; o Garden, 39, ficaria sem Financeiro).
+  //
+  // E O RECORTE CONTINUA SENDO O DO PORTAL, não o do comercial: toda conta do Cecílio vê o que o
+  // Cecílio vê, sem exigir vínculo por conta e sem o 403 de "acesso sem empreendimento liberado".
+  // Aplicar a regra do comercial aqui derrubaria no login toda conta do Cecílio que nunca precisou
+  // de vínculo próprio, no mesmo deploy que abriu a venda para eles.
+  if (input.operaVenda) {
+    return { enterpriseIds, enterpriseIdsComCarteira: [...enterpriseIds] };
+  }
 
   const comCarteira = new Set(
     input.doPortal.filter((v) => v.carteiraAdministrada).map((v) => String(v.enterpriseId).trim()),

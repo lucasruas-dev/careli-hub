@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloWrite } from "@/lib/apolo/auth";
 import { salvarUsuarioIncorporador } from "@/lib/apolo/incorporador/gestao";
+import { recorteDaContaNoCorpo } from "@/lib/apolo/incorporador/vinculos-do-formulario";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // Cria a conta de login de um incorporador, ou atualiza a que existe (nome, e-mail, senha,
@@ -25,6 +26,8 @@ export async function POST(request: Request) {
     email?: string;
     /** Recorte próprio da conta (0122). Ausente = não mexer; lista = substituir. */
     empreendimentos?: unknown;
+    /** Os ids do recorte que o formulário mostrou ao abrir (ver `vinculosParaApagar`). */
+    empreendimentosIniciais?: unknown;
     id?: null | string;
     incorporadorId?: string;
     nome?: string;
@@ -35,12 +38,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Escolha o incorporador." }, { status: 400 });
   }
 
+  // ⚠️ OS INICIAIS VÃO JUNTO (pendência da onda 2): sem eles, o produto que a conta cadastrou no
+  // portal depois de o formulário abrir sairia do recorte dela neste salvar.
+  const recorte = recorteDaContaNoCorpo(corpo);
   const resultado = await salvarUsuarioIncorporador(client, {
     ativo: corpo.ativo,
     email: corpo.email ?? "",
-    empreendimentos: Array.isArray(corpo.empreendimentos)
-      ? corpo.empreendimentos.map((e) => String(e ?? "").trim()).filter(Boolean)
-      : undefined,
+    empreendimentos: recorte.empreendimentos,
+    empreendimentosIniciais: recorte.empreendimentosIniciais,
     id: corpo.id ?? null,
     incorporadorId: String(corpo.incorporadorId ?? ""),
     nome: corpo.nome ?? "",
