@@ -23,6 +23,7 @@ import {
 } from "./c2x-fields";
 import { C2X_PROFISSOES } from "./c2x-professions";
 import { normalizarProfissaoLivre } from "./profissao";
+import { documentoParaBusca } from "@/lib/iris/apolo/busca-por-numero";
 import type {
   ApoloAddress,
   ApoloAuditSignal,
@@ -2400,6 +2401,25 @@ async function fetchSearchEntityIds(
 
   if (shouldSearchBuyers(normalizedQuery)) {
     return fetchBuyerEntityIds(adminClient, broadApoloQueryLimit(normalizedQuery));
+  }
+
+  // ⚠️ CPF E CNPJ ACHAM COM OU SEM PONTUAÇÃO. O texto do índice guarda o documento COM
+  // máscara, então "69109320644" não casava com "691.093.206-44" e a ficha sumia. Medido em
+  // 16/09/2026 com o CPF do print do Lucas: 0 fichas sem pontuação, 1 com. O documento já está
+  // indexado por hash dos DÍGITOS CRUS em apolo_entity_identifiers (conferido: bate em 500 de
+  // 500 amostras) — a busca só não olhava lá. A busca por texto continua valendo junto.
+  const documento = documentoParaBusca(normalizedQuery);
+
+  if (documento) {
+    const { data: porDocumento } = await adminClient
+      .from("apolo_entity_identifiers")
+      .select("entity_id")
+      .eq("identifier_type", documento.tipo)
+      .eq("value_hash", hashIdentifier(documento.tipo, documento.digitos))
+      .limit(30)
+      .returns<ApoloSearchEntryRow[]>();
+
+    ids.push(...(porDocumento ?? []).map((row) => row.entity_id));
   }
 
   for (let from = 0; ; from += pageSize) {
