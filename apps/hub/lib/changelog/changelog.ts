@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-16-cancelamento-de-contrato-do-c2x",
+    deployedAt: "2026-09-16T19:48:48-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**O coordenador pode pedir o cancelamento de contratos que vieram do C2X.** O botão Solicitar cancelamento ficava apagado nesses contratos. Agora ele abre o pedido na Têmis, como nas vendas feitas pelo Panteon.",
+              "**O pedido avisa o jurídico que a venda veio do C2X**, para o time ajustar o legado à mão, se for preciso.",
+            ],
+            screen: "Venda · Solicitar cancelamento",
+          },
+        ],
+      },
+    ],
+    rollback: "a9ce7547",
+    technical: {
+      done:
+        "`lib/hercules/acao-de-cancelamento.ts` deixou de exigir venda nativa (`vendaNativa` removido da regra e da TelaVenda) nas etapas contrato/assinatura/faturado; `app/api/incorporador/venda/cancelamento-de-contrato` tirou o `.eq('origem','panteon')` das duas leituras da proposta e a frase 'contrato do Panteon'. O card da Têmis ganha a marca 'VENDA IMPORTADA DO C2X' na observação. Dono do card: sem card de contrato (venda do legado), vale a regra da origem da sessão (Gurgel -> fila da Careli). O Panteon continua sem escrever no C2X. 17 testes da regra e da rota; tsc e eslint limpos.",
+      motivation:
+        "Lucas (16/09/2026), com print do ACP1 (Aldeia, Parque Icoara-04 02, importado do C2X, em assinatura) e o botão apagado: *\"o coordenador está tentando cancelar esse contrato, mas o botão não está habilitado, pq?\"* · *\"será feito aqui\"* · *\"não precisa fazer nada no c2x, se precisar o time faz manualmente. precisamos garantir que esse cancelamento chegue ao time\"*.",
+    },
+    title: "Contrato vindo do C2X pode ter o cancelamento pedido pelo Panteon",
+    type: "melhoria",
+    version: "1.348.1",
+  },
+  {
     buildTag: "2026-09-16-portal-da-cecilio-replica-do-hercules",
     deployedAt: "2026-09-16T17:46:00-03:00",
     modules: [

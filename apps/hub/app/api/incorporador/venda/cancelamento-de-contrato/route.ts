@@ -90,7 +90,6 @@ export async function GET(request: Request) {
       .select("id,data_assinatura,data_ato,data_faturamento")
       .eq("workspace_id", WORKSPACE)
       .eq("unidade_id", unidade.id)
-      .eq("origem", "panteon")
       .is("cancelada_em", null)
       .in("etapa", DEPOIS_DO_CONTRATO)
       .order("etapa_desde", { ascending: false })
@@ -106,7 +105,7 @@ export async function GET(request: Request) {
     };
     if (!proposta) {
       return NextResponse.json(
-        { error: "Esta unidade não tem contrato do Panteon para cancelar." },
+        { error: "Esta unidade não tem contrato para cancelar." },
         { status: 409 },
       );
     }
@@ -207,11 +206,10 @@ export async function POST(request: Request) {
     const { data: linhaDaProposta, error: erroDaProposta } = await admin
       .from("hercules_propostas")
       .select(
-        "id,codigo,protocolo_numero,cliente_nome,cliente_documento,etapa,empreendimento_codigo,empreendimento_id,cancelamento_pedido_em,data_assinatura,data_ato,data_faturamento",
+        "id,codigo,protocolo_numero,cliente_nome,cliente_documento,etapa,empreendimento_codigo,empreendimento_id,cancelamento_pedido_em,data_assinatura,data_ato,data_faturamento,origem",
       )
       .eq("workspace_id", WORKSPACE)
       .eq("unidade_id", unidade.id)
-      .eq("origem", "panteon")
       .is("cancelada_em", null)
       .in("etapa", DEPOIS_DO_CONTRATO)
       // ⚠️ A MAIS RECENTE, E UMA SÓ. `maybeSingle()` sobre duas linhas vivas lança, e a unidade que
@@ -233,12 +231,13 @@ export async function POST(request: Request) {
       empreendimento_id: null | string;
       etapa: string;
       id: string;
+      origem: null | string;
       protocolo_numero: null | number;
     };
     if (erroDaProposta) throw new Error(erroDaProposta.message);
     if (!proposta) {
       return NextResponse.json(
-        { error: "Esta unidade não tem contrato do Panteon para cancelar." },
+        { error: "Esta unidade não tem contrato para cancelar." },
         { status: 409 },
       );
     }
@@ -348,7 +347,14 @@ export async function POST(request: Request) {
                 fatos.comoSoube.assinatura
               }, ${fatos.comoSoube.pagamento})`
             : `apurado pelo sistema: ${fatos.comoSoube.assinatura}, ${fatos.comoSoube.pagamento}`
-        } · ${classificacao.porque}`,
+        } · ${classificacao.porque}${
+          // ⚠️ A VENDA DO C2X TAMBÉM SE CANCELA AQUI (Lucas, 16/09/2026: *"será feito aqui"* e *"não
+          // precisa fazer nada no c2x, se precisar o time faz manualmente"*). O Panteon não escreve no
+          // legado; o card avisa, para o jurídico decidir se o C2X precisa de ajuste à mão.
+          proposta.origem === "c2x"
+            ? " · VENDA IMPORTADA DO C2X: o Panteon não altera o legado; se precisar, o ajuste lá é manual"
+            : ""
+        }`,
         operadoPor,
         propostaId: proposta.id,
         tipo: classificacao.tipo,

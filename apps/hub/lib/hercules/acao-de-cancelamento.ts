@@ -40,8 +40,6 @@ export type SituacaoDaUnidade = {
   propostaNativa: boolean;
   /** Proposta viva que veio da carga do C2X: o cancelamento dela é no legado. */
   propostaDoLegado: boolean;
-  /** A venda nativa que chegou ao contrato — só ela pode virar pedido daqui. */
-  vendaNativa?: boolean;
 };
 
 export function acaoDeCancelamento(u: SituacaoDaUnidade): AcaoDeCancelamento {
@@ -74,15 +72,11 @@ export function acaoDeCancelamento(u: SituacaoDaUnidade): AcaoDeCancelamento {
   }
 
   if (DEPOIS_DO_CONTRATO.has(etapa)) {
-    // ⚠️ SÓ A VENDA NATIVA. Onze dos treze contratos vivos são do C2X, e o Panteon não escreve no
-    // legado: oferecer o pedido ali abriria um card que o jurídico não consegue executar deste lado.
-    if (!u.vendaNativa) {
-      return {
-        motivo: "Este contrato corre no C2X: o cancelamento dele é feito lá.",
-        rotulo: "Solicitar cancelamento",
-        tipo: null,
-      };
-    }
+    // ⚠️ O CONTRATO QUE VEIO DO C2X TAMBÉM SE CANCELA AQUI. Até 16/09/2026 só a venda nativa abria
+    // pedido, porque o Panteon não escreve no legado. O Lucas decidiu, olhando um contrato da
+    // Aldeia (ACP1, importado do C2X) com o botão apagado: *"será feito aqui"*. O pedido abre o
+    // mesmo card na Têmis, e quem conclui é o jurídico, pelo Panteon, como na venda nativa.
+    //
     // ⚠️ UM PEDIDO POR VENDA. O segundo clique abriria um segundo card na fila do jurídico para o
     // mesmo contrato, e quem lê o board não tem como saber qual dos dois vale.
     if (u.pedidoAberto) {

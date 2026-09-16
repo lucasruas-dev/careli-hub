@@ -26,7 +26,7 @@ describe("acaoDeCancelamento", () => {
   it("⚠️ depois do contrato, o que existe é PEDIDO — e o rótulo não promete desfazer", () => {
     // A venda em contrato não tinha saída nenhuma: os quatro botões apagados numa ficha que mostra
     // cliente, valor e plano. Quem despachou por engano ficava sem um botão sequer.
-    const a = acaoDeCancelamento({ ...base, etapa: "contrato", vendaNativa: true });
+    const a = acaoDeCancelamento({ ...base, etapa: "contrato" });
     expect(a.tipo).toBe("pedido");
     expect(a.rotulo).toBe("Solicitar cancelamento");
     expect(a.motivo).toContain("Têmis");
@@ -36,16 +36,16 @@ describe("acaoDeCancelamento", () => {
 
   it("assinatura e faturamento também têm a saída — é a mesma mão do jurídico", () => {
     for (const etapa of ["assinatura", "faturado"]) {
-      expect(acaoDeCancelamento({ ...base, etapa, vendaNativa: true }).tipo).toBe("pedido");
+      expect(acaoDeCancelamento({ ...base, etapa }).tipo).toBe("pedido");
     }
   });
 
-  it("⚠️ contrato que corre no C2X não abre pedido daqui", () => {
-    // Onze dos treze contratos vivos são do legado, e o Panteon não escreve lá: o card abriria para
-    // um contrato que o jurídico não consegue executar deste lado.
-    const a = acaoDeCancelamento({ ...base, etapa: "contrato", vendaNativa: false });
-    expect(a.tipo).toBeNull();
-    expect(a.motivo).toContain("C2X");
+  it("⚠️ contrato que veio do C2X também abre pedido daqui (Lucas, 16/09/2026: \"será feito aqui\")", () => {
+    // Antes ficava apagado com \"o cancelamento dele é feito lá\". A origem da venda não entra mais
+    // na régua: o pedido abre o mesmo card na Têmis e o jurídico conclui pelo Panteon.
+    const a = acaoDeCancelamento({ ...base, etapa: "assinatura" });
+    expect(a.tipo).toBe("pedido");
+    expect(a.motivo).not.toContain("C2X");
   });
 
   it("⚠️ um pedido por venda: o segundo clique não abre outro card", () => {
@@ -53,7 +53,6 @@ describe("acaoDeCancelamento", () => {
       ...base,
       etapa: "contrato",
       pedidoAberto: true,
-      vendaNativa: true,
     });
     expect(a.tipo).toBeNull();
     expect(a.rotulo).toBe("Cancelamento pedido");

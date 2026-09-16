@@ -3195,7 +3195,6 @@ function AcoesDaUnidade({
     pedidoAberto: Boolean(propostaViva?.cancelamentoPedidoEm),
     propostaDoLegado,
     propostaNativa: proposta,
-    vendaNativa: propostaViva?.origem === "panteon",
   });
 
   /**
