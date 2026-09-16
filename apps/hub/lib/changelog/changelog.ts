@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-16-boleto-da-caca-chega-e-cpf-sem-pontuacao",
+    deployedAt: "2026-09-16T11:13:07-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "**O boleto que a Cacá gera agora chega ao cliente, mesmo quando ela responde por áudio.** Quando o cliente mandava áudio, a Cacá gerava o boleto, respondia por voz dizendo que ia mandar o link por escrito em seguida, e esse link nunca saía. Agora o link vai numa mensagem escrita logo depois do áudio.",
+              "**Aconteceu com 25 clientes desde junho**, somando 33 boletos gerados e nunca entregues.",
+              "**CNPJ digitado com pontuação volta a ser reconhecido** no “Abrir atendimento”. A barra do CNPJ (68.172.042/0001-43) fazia a busca não entender que era um número.",
+            ],
+            screen: "Atendimento · Cacá e Abrir atendimento",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Buscar pelo CPF ou CNPJ funciona com ou sem pontuação.** Digitar só os números não achava ninguém; era preciso colocar os pontos e o hífen. Agora os dois jeitos acham a mesma ficha.",
+            ],
+            screen: "CRM 360 · Busca",
+          },
+        ],
+      },
+    ],
+    rollback: "c106b1d4",
+    technical: {
+      done:
+        "CACA — CONTRATO QUEBRADO ENTRE PROMPT E CODIGO. Caso real AT-013760 (16/09/2026): cliente mandou audio pedindo boleto; a Caca consultou o financeiro, achou 5 parcelas vencidas, GEROU 3 links reais no Asaas e respondeu em audio \"ja gerei os tres boletos, e vou te mandar aqui por escrito, logo em seguida\". A mensagem escrita nunca saiu. Cada lado certo sozinho, juntos sumiam com o boleto: persona.ts:236 manda a resposta falada NAO conter link e \"dizer que vai enviar por escrito em seguida\"; meta-inbound-processor.ts:2682 so manda por texto quando a resposta TEM URL. A Caca tirava o link, o codigo nao via URL, virava audio, e o \"por escrito em seguida\" nao existia. Medido: 25 tickets e 33 boletos gerados com sucesso e nunca entregues desde junho. || Agora o CODIGO garante a entrega: depois de a resposta sair, os boletos gerados no turno que nao estao no texto vao numa mensagem escrita (so o que falta, sem repetir, sem mensagem vazia, link sozinho na linha para o WhatsApp nao engolir pontuacao). || ⚠️ O LINK VEM ESTRUTURADO DA FERRAMENTA, NAO DO RESUMO: o resumo de cada ferramenta e cortado em 160 caracteres (lib/ai/claude-agent.ts:264), e a mensagem de boleto da imobiliaria poe o NOME DO CLIENTE antes da URL — com nome longo a URL sairia cortada. `gerarLinkBoleto` registra o boleto num acumulador do contexto (mesmo padrao do `handoff`) e o agente devolve a lista com a URL inteira. || ⚠️ BEST-EFFORT com LOG: a resposta principal ja foi entregue quando isto roda, entao uma falha nao derruba o turno — mas loga \"gerou boleto e NAO conseguiu mandar o link por escrito\", a falha que antes sumia calada. || DESCARTADO COM MEDICAO: o ticket parecia fechado 26s depois de aberto, mas o cron grava closed_at = hora da ULTIMA mensagem de proposito (fechar-sem-interacao.ts:230). E uma primeira contagem de 387 boletos perdidos estava ERRADA: pegava quem so TENTOU gerar e recebeu \"link indisponivel\", casos em que a Caca ja encaminhava certo para humano. || APOLO — CPF/CNPJ SEM PONTUACAO: o texto do indice guarda o documento COM mascara e a busca do CRM 360 so olhava o texto. Medido com o CPF do print do Lucas: 0 fichas sem pontuacao, 1 com. O documento ja estava indexado por hash dos digitos crus em apolo_entity_identifiers (o mesmo indice da Iris 1.326.0); a busca agora SOMA os ids achados por la aos do texto. Reusa `documentoParaBusca` da lib compartilhada para as duas buscas nao divergirem. || ⚠️ BUG QUE ESTAVA EM PRODUCAO, PEGO PELO TESTE: `ehSoNumero` nao aceitava a BARRA do CNPJ, entao o CNPJ com pontuacao nao era reconhecido no modal da Iris (1.326.0). Consertado para as duas buscas. || 17 testes novos (lib/iris/caca/boletos-por-escrito.ts e lib/iris/apolo/busca-por-numero.ts), escritos antes do codigo. Suite 3.993 verdes em 266 arquivos; typecheck limpo; todos os arquivos tocados sao cobertos pelo typecheck. ⚠️ NAO VERIFICADO COM AUDIO REAL — so da para ver numa conversa de verdade depois do deploy.",
+      motivation:
+        "Lucas (16/09/2026), com o print do ticket AT-013760: *\"a cliente solicitou o boleto a caca respondeu mas nao entregou, preciso entender o porque que ela nao fez e corrigir\"*. E no mesmo dia, com o print do CRM 360: *\"os usuarios ao buscar pelo cpf no apolo nao aparece na busca, so aparece quando colocamos a pontuacao. ele tem que aparecer nesse tipo de busca, o cpf tem que buscar sem ou com pontuacao\"*.",
+    },
+    title: "O boleto da Caca chega por escrito, e o CPF e achado sem pontuacao",
+    type: "correcao",
+    version: "1.344.0",
+  },
+  {
     buildTag: "2026-09-16-planos-leem-os-indices-e-a-faixa",
     deployedAt: "2026-09-16T08:50:00-03:00",
     modules: [
