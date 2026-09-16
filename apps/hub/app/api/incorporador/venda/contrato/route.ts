@@ -6,11 +6,6 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import { nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
-import {
-  NOME_DO_DOCUMENTO,
-  servicoDisponivel,
-  type TipoDeDocumento,
-} from "@/lib/temis/documentos-do-empreendimento";
 import { abrirTrabalho } from "@/lib/temis/trabalhos-db";
 
 // A PROPOSTA VIRA CONTRATO — o terceiro passo da venda.
@@ -121,50 +116,23 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── O EMPREENDIMENTO CONSEGUE CONTRATAR? ──────────────────────────────
+    // ── A MINUTA NÃO PARA O COORDENADOR ───────────────────────────────────
     //
-    // ⚠️ A RÉGUA JÁ EXISTIA E NINGUÉM A CHAMAVA. `servicoDisponivel` foi escrita com a regra do
-    // Lucas (02/09/2026: *"vamos ter que incluir no setup, a minuta, termo de cessão, termo de
-    // distrato por empreendimento"*) e nunca teve um chamador — então a venda seguia para o
-    // jurídico em empreendimento sem minuta nenhuma publicada. Foi o que aconteceu com as duas
-    // primeiras vendas de verdade: caíram no ZZ TESTE, que tem ZERO minutas publicadas. O card
-    // chegava, o jurídico abria, e não havia documento possível para produzir.
+    // ⚠️ DECISÃO DO LUCAS (16/09/2026): *"pode deixar eles enviarem mesmo não tendo um contrato
+    // pois a responsabilidade do contrato é da equipe adminsitrativa e não do coordenador"*.
     //
-    // ⚠️ RECUSAR AQUI É MAIS BARATO QUE RECUSAR LÁ. Depois de aberto, o card já apareceu no board,
-    // já contou como trabalho e já precisa ser explicado a alguém. Antes, é uma frase na tela de
-    // quem clicou — e ela diz exatamente o que cadastrar.
-    const { data: publicadas, error: erroDasMinutas } = await admin
-      .from("temis_minutas")
-      .select("tipo")
-      .eq("workspace_id", WORKSPACE)
-      .eq("enterprise_id", String(unidade.enterprise_id))
-      .eq("situacao", "publicada");
-
-    if (erroDasMinutas) throw new Error(erroDasMinutas.message);
-
-    const preparo = {
-      documentosPublicados: [
-        ...new Set(
-          ((publicadas ?? []) as Array<{ tipo: string }>)
-            .map((m) => m.tipo)
-            .filter((t): t is TipoDeDocumento => t in NOME_DO_DOCUMENTO),
-        ),
-      ],
-      // A taxa de cessão não entra nesta conta: ela só é exigida pelo serviço de cessão.
-      taxaDeCessao: null,
-    };
-
-    const podeContratar = servicoDisponivel("contrato", preparo);
-    if (!podeContratar.ok) {
-      return NextResponse.json(
-        {
-          error: `Este empreendimento ainda não pode gerar contrato: ${podeContratar.faltando.join(
-            ", ",
-          )}. Cadastre em Têmis › Setup › Planos e minutas.`,
-        },
-        { status: 409 },
-      );
-    }
+    // Aqui havia uma trava que recusava o envio quando o empreendimento não tinha minuta de
+    // contrato PUBLICADA. Ela tinha motivo: as duas primeiras vendas de verdade caíram no ZZ TESTE,
+    // sem minuta nenhuma, e o card chegava ao jurídico sem documento possível. Mas travava quase
+    // tudo — medido em 16/09/2026, 14 dos 16 empreendimentos vendendo não tinham minuta de
+    // contrato publicada (LBR, VOC, VOL, VLO, REP, LAB entre eles). E cobrava de quem vende um
+    // cadastro que é de outra equipe.
+    //
+    // A falta de minuta não some por sair daqui: o card nasce na Têmis mesmo sem ela
+    // (`abrirTrabalho` não exige uma), e o board da Têmis já destaca "planos ativos sem minuta"
+    // para a equipe administrativa, que é quem cadastra.
+    //
+    // ⚠️ NÃO REPOR SEM FALAR COM O LUCAS. `route.test.ts` falha se esta recusa voltar.
 
     const agora = new Date().toISOString();
 
