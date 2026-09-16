@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { documentoCasaComBusca } from "@/lib/iris/apolo/busca-por-numero";
 
 import {
   destinoEhProducao,
@@ -1105,7 +1106,10 @@ export function BoardView({
     )
     .filter((item) =>
       alvoBusca
-        ? `${item.nome} ${item.documento}`.toLowerCase().includes(alvoBusca)
+        ? `${item.nome} ${item.documento}`.toLowerCase().includes(alvoBusca) ||
+          // ⚠️ O documento chega MASCARADO (document_masked): "69109320644" nunca estaria
+          // dentro de "691.093.206-44". Mesma regra do CRM 360, numa função só.
+          documentoCasaComBusca(item.documento, busca)
         : true,
     )
     .filter((item) =>

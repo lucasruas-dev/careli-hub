@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  documentoCasaComBusca,
   documentoParaBusca,
   ehSoNumero,
   interpretarDigitos,
@@ -51,6 +52,32 @@ describe("mascaras", () => {
     expect(mascaraDeCpf("123")).toBe("123");
     expect(mascaraDeCnpj("123")).toBe("123");
     expect(mascaraDeTelefone("123")).toBe("123");
+  });
+});
+
+describe("documentoCasaComBusca", () => {
+  it("casa o documento com e sem pontuacao, dos dois lados", () => {
+    expect(documentoCasaComBusca("691.093.206-44", "69109320644")).toBe(true);
+    expect(documentoCasaComBusca("691.093.206-44", "691.093.206-44")).toBe(true);
+    expect(documentoCasaComBusca("69109320644", "691.093.206-44")).toBe(true);
+    expect(documentoCasaComBusca("68.172.042/0001-43", "68172042000143")).toBe(true);
+  });
+
+  it("documento de outra pessoa nao casa", () => {
+    expect(documentoCasaComBusca("691.093.206-44", "04610713632")).toBe(false);
+  });
+
+  // So documento COMPLETO: o filtro de texto continua cuidando de pedaco e de nome.
+  it("pedaco, nome ou vazio nao casam por aqui", () => {
+    expect(documentoCasaComBusca("691.093.206-44", "691093")).toBe(false);
+    expect(documentoCasaComBusca("691.093.206-44", "elizabete")).toBe(false);
+    expect(documentoCasaComBusca("691.093.206-44", "")).toBe(false);
+  });
+
+  it("ficha sem documento nunca casa", () => {
+    expect(documentoCasaComBusca("", "69109320644")).toBe(false);
+    expect(documentoCasaComBusca(null, "69109320644")).toBe(false);
+    expect(documentoCasaComBusca(undefined, "69109320644")).toBe(false);
   });
 });
 

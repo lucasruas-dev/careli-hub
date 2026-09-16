@@ -10,6 +10,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { apoloProfileLabels } from "@/lib/apolo/catalog";
+import { documentoCasaComBusca } from "@/lib/iris/apolo/busca-por-numero";
 import type {
   ApoloEntity,
   ApoloProfile,
@@ -151,6 +152,15 @@ export function matchesApoloFilters(
   const normalizedQuery = normalizeText(query);
 
   if (!normalizedQuery) {
+    return true;
+  }
+
+  // ⚠️ DOCUMENTO COMPARA POR DÍGITOS, COMO NO SERVIDOR. Sem isto a tela desfazia o conserto
+  // da 1.344.0: o servidor achava a ficha pelo CPF sem pontuação e o painel abria, mas este
+  // filtro procurava "69109320644" dentro de "691.093.206-44" e escondia a linha — ficha aberta
+  // à direita, "Nenhum relacionamento encontrado" à esquerda (print do Lucas, 16/09/2026).
+  // Mesma regra do servidor e do Board (`documentoCasaComBusca`), para nenhuma divergir.
+  if (documentoCasaComBusca(entity.documentMasked, query)) {
     return true;
   }
 

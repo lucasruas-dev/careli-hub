@@ -91,6 +91,22 @@ export function documentoParaBusca(
   return null;
 }
 
+// O que os FILTROS DE TELA usam para decidir se o termo digitado é o documento desta ficha.
+//
+// ⚠️ EXISTE PORQUE O SERVIDOR NÃO BASTA. As telas do Apolo recebem o resultado do servidor e
+// REFILTRAM por conta própria, procurando o termo dentro do documento mascarado: o servidor
+// achava "69109320644" e a tela escondia a linha, porque o texto dela era "691.093.206-44".
+// Aconteceu em duas telas (CRM 360 e Board). Uma regra só, para nenhuma divergir de novo.
+export function documentoCasaComBusca(
+  documentoDaFicha: string | null | undefined,
+  termo: string,
+): boolean {
+  const documento = documentoParaBusca(termo);
+  const daFicha = apenasDigitos(documentoDaFicha);
+
+  return Boolean(documento && daFicha && daFicha === documento.digitos);
+}
+
 export function interpretarDigitos(termo: string): LeituraDoNumero {
   if (!ehSoNumero(termo)) {
     return { ambiguo: false, opcoes: [] };
