@@ -262,6 +262,7 @@ export async function runCacaClaudeTurn({
     customerName,
     customerProfileLabel,
     entityId: apoloEntityId,
+    boletosGerados: [],
     handoff: { reason: null, requested: false },
     identityVerified,
     imobiliariaC2xClientId,
@@ -397,6 +398,9 @@ export async function runCacaClaudeTurn({
 
   return {
     agentVersion: CACA_AGENT_VERSION,
+    // Os boletos gerados neste turno, com a URL INTEIRA. O processor usa isto para mandar por
+    // escrito o que a resposta falada prometeu e não trouxe.
+    boletosGerados: toolContext.boletosGerados,
     handoff: {
       reason:
         toolContext.handoff.reason ??
