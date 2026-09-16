@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { cnpjValido } from "@/lib/publico/cad/regras";
+import { avisoDoDocumento, cnpjValido } from "@/lib/publico/cad/regras";
 import { BotaoPrimario, Cabecalho, CampoCnpj, Erro } from "@/modules/publico/ui/campos";
 import { CascaPublica } from "@/modules/publico/ui/casca";
 
@@ -92,7 +92,10 @@ export function PortaoImobiliaria({
         titulo="Cadastro da imobiliária"
       />
       <CampoCnpj aoMudar={setCnpj} rotulo="CNPJ da imobiliária" valor={cnpj} />
-      <Erro>{erro}</Erro>
+      {/* ⚠️ O ERRO DO SERVIDOR VEM PRIMEIRO. Ele fala de um CNPJ que já passou pela conferência
+          local, então contradizê-lo com "revise os números" mandaria o visitante procurar um erro
+          de digitação que não existe. */}
+      <Erro>{erro || avisoDoDocumento(cnpj, "cnpj")}</Erro>
     </CascaPublica>
   );
 }

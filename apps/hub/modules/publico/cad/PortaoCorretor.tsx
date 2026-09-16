@@ -16,6 +16,7 @@ import {
   telefoneCompleto,
   type EmpreendimentoPublico,
   type EstadoCad,
+  avisoDoDocumento,
 } from "@/lib/publico/cad/regras";
 import {
   BotaoPrimario,
@@ -352,7 +353,10 @@ export function PortaoCorretor({
               rotulo="Seu CPF (não o do cliente)"
               valor={cpf}
             />
-            <Erro>{erro}</Erro>
+            {/* ⚠️ O ERRO DO SERVIDOR VEM PRIMEIRO: ele fala de um CPF que já passou pela
+                conferência local, e mandar "revise os números" por cima faria o corretor procurar
+                um erro de digitação que não existe. */}
+            <Erro>{erro || avisoDoDocumento(cpf, "cpf")}</Erro>
             <ChecklistInicio />
             <AjudaCaca />
           </>
@@ -371,7 +375,7 @@ export function PortaoCorretor({
               rotulo="CNPJ da imobiliária"
               valor={cnpj}
             />
-            <Erro>{erro}</Erro>
+            <Erro>{erro || avisoDoDocumento(cnpj, "cnpj")}</Erro>
           </>
         );
 

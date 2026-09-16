@@ -105,7 +105,30 @@ async function montarEmpreendimentos(
     (c2x.ok ? c2x.data.rows : []).map((row) => [row.id, row]),
   );
 
+  // ⚠️ ID QUE O CATÁLOGO NÃO CONHECE É RESÍDUO, E NÃO PODE VIRAR CARD NA VITRINE PÚBLICA.
+  //
+  // Lucas, 15/09/2026, com o print do cadastro de imobiliária: *"Vale do Ouro, os filhos estão
+  // aparecendo"*. Medido na própria rota: a vitrine devolvia DUAS linhas do mesmo loteamento —
+  // `id=35 code=VLO name=VALE DO OURO` e `id=group:Vale do Ouro code=VOC + VOL + VOR
+  // name=VOC + VOL + VOR`, esta última com o CÓDIGO no lugar do nome, `codes=[]` e `stageIds=[]`.
+  //
+  // A causa é resíduo do conserto do dia anterior. Até 14/09 o consolidado tinha id sintético
+  // (`group:Vale do Ouro`), e foi com ESSE id que a linha entrou em `apolo_enterprise_settings`.
+  // Naquele dia, a pedido do próprio Lucas (*"VLO é o pai... ainda estou vendo dois vale do
+  // ouro"*), o grupo passou a VESTIR o id do pai (`groupEnterpriseRows`, empreendimentos.ts), e o
+  // registro antigo ficou órfão: `rowById.get("group:Vale do Ouro")` não acha nada, o nome cai no
+  // `code` e a vitrine ganha um card fantasma. A Lagoa Bonita não sofre disso porque não tem
+  // espelho em `ENTERPRISE_MIRRORS` — o grupo dela continua com id sintético, que casa.
+  //
+  // ⚠️ O DESCARTE SÓ VALE COM O CATÁLOGO NA MÃO, e é isso que o `c2x.ok` guarda. Com o legado fora
+  // do ar, `rowById` nasce vazio e descartar por ausência apagaria a vitrine inteira — a regra
+  // antiga (aparecer com a sigla do settings) é justamente a rede de segurança para esse caso, e
+  // ela continua valendo. Descartamos o órfão quando SABEMOS que ele não existe, nunca quando não
+  // conseguimos saber.
+  const catalogoNaMao = c2x.ok;
+
   return ativos
+    .filter((id) => !catalogoNaMao || rowById.has(id))
     .map((id) => {
       const row = rowById.get(id);
       const code = row?.code ?? codeById.get(id) ?? "";

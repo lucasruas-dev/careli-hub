@@ -36,6 +36,42 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-16-cadastro-diz-que-o-cnpj-nao-existe",
+    deployedAt: "2026-09-16T07:40:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Portal público",
+        screens: [
+          {
+            items: [
+              "**O cadastro da imobiliária agora diz quando o CNPJ não existe.** Antes o botão Continuar ficava apagado e a tela não explicava nada; quem digitava um número errado ficava parado sem saber por quê.",
+              "**O mesmo vale para o CPF e o CNPJ no começo da CAD do corretor.**",
+              "**A frase só aparece com o número completo**, nunca enquanto a pessoa ainda está digitando.",
+            ],
+            screen: "Cadastro da imobiliária · CAD do corretor",
+          },
+          {
+            items: [
+              "**O Vale do Ouro aparece uma vez só na lista de empreendimentos.** A vitrine mostrava também uma linha \"VOC + VOL + VOR\", que eram os mesmos lotes com outro nome.",
+            ],
+            screen: "Cadastro da imobiliária · escolha do empreendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "33617c6c",
+    technical: {
+      done:
+        "DOIS DEFEITOS NA MESMA TELA PUBLICA (`/publico/imobiliaria`), vistos nos dois prints que o Lucas mandou em 15/09. || (1) O BOTAO APAGADO E MUDO. `PortaoImobiliaria.tsx` desabilitava o Continuar com `!cnpjValido(cnpj)` e nao mostrava motivo. MEDIDO ANTES DE MEXER: o validador esta certo — os 549 CNPJs de imobiliaria do C2X passam TODOS em `cnpjValido` (zero recusados, zero com menos de 14 digitos, zero com letra). O CNPJ do print (61.061.769/0001-90) e invalido de verdade: o DV calcula 04, o informado e 90. Afrouxar a regra abriria a porta para documento inexistente. O conserto e `avisoDoDocumento(valor, tipo)` em `lib/publico/cad/regras.ts`, puro e com 13 testes: CALADO enquanto ha menos digitos que o documento comporta (acusar no terceiro digito ensina a ignorar a mensagem), e a frase \"Esse CNPJ nao existe. Revise os numeros e tente de novo.\" (palavra pedida pelo Lucas) quando o numero esta completo e nao fecha. O erro do SERVIDOR tem prioridade no mesmo <Erro>, porque ele fala de um numero que ja passou pela conferencia local. Mesmo defeito em TRES lugares, os tres consertados: CNPJ em PortaoImobiliaria e CPF + CNPJ em PortaoCorretor. || (2) O VALE DO OURO DUPLICADO. Medido na propria rota `/api/publico/imobiliaria/empreendimentos`: `id=35 name=VALE DO OURO codes=[VOC,VOL,VOR]` E `id=group:Vale do Ouro name=VOC + VOL + VOR codes=[]`. E RESIDUO do conserto de 14/09: ate ali o consolidado tinha id sintetico `group:Vale do Ouro`, e foi com ele que entrou em `apolo_enterprise_settings`; naquele dia o grupo passou a VESTIR o id do pai (`groupEnterpriseRows`), e o registro antigo ficou orfao — `rowById.get` nao acha, o nome cai no `code`. A Lagoa Bonita escapa porque nao tem espelho em `ENTERPRISE_MIRRORS`. `montarEmpreendimentos` (lib/apolo/credenciamento.ts) agora DESCARTA id que o catalogo nao conhece, SO com o catalogo na mao (`c2x.ok`): com o C2X fora do ar, a regra antiga de aparecer pela sigla do settings continua sendo a rede de seguranca. De 10 para 9 itens, conferido na rota e na tela local. || A LINHA ORFA CONTINUA NO BANCO (1 registro em apolo_enterprise_settings, nenhuma outra tabela aponta para ela) — o codigo a ignora; apagar exige OK separado. E ela carregava `recepcao_cad = false` enquanto o id 35 esta `true`: com o orfao ignorado, o Vale do Ouro passa a receber CAD. || Suite inteira 4.297 verdes em 274 arquivos; typecheck limpo.",
+      motivation:
+        "Lucas (15/09/2026), com print de c2x.app.br/publico/imobiliaria: *\"as imobiliarias nao estao conseguindo seguir com o cadastro\"* e *\"tem que ter a mensagem falando que o cnpj nao existe, algo do tipo\"*; e, com print da lista de empreendimentos: *\"Vale do Ouro, os filhos estao aparecendo\"*.",
+    },
+    title: "O cadastro diz quando o CNPJ não existe, e o Vale do Ouro aparece uma vez",
+    type: "correcao",
+    version: "1.342.1",
+  },
+  {
     buildTag: "2026-09-15-rh-cadastra-pessoas-sem-virar-admin",
     deployedAt: "2026-09-15T14:20:14-03:00",
     modules: [

@@ -60,6 +60,54 @@ export function nomeCompletoValido(valor: string | null | undefined): boolean {
 export { cnpjValido, cpfValido, telefoneCompleto };
 
 // ---------------------------------------------------------------------------
+// Por que o botão não acende
+// ---------------------------------------------------------------------------
+
+/**
+ * A frase que explica ao visitante por que o "Continuar" está apagado. String vazia = nada a dizer.
+ *
+ * ⚠️ ISTO EXISTE PORQUE O BOTÃO CINZA NÃO EXPLICA NADA, e nas telas públicas não há a quem
+ * perguntar. Lucas, 15/09/2026: *"as imobiliarias não estão conseguindo seguir com o cadastro"* —
+ * e o print mostrava o CNPJ 61.061.769/0001-90 digitado, o botão apagado e a tela muda. Esse CNPJ
+ * é inválido de verdade (o dígito verificador dá 04, não 90), e o validador está certo: medi os
+ * 549 CNPJs de imobiliária do C2X e TODOS OS 549 passam nele. O defeito nunca foi a régua, foi o
+ * silêncio.
+ *
+ * ⚠️ E É O MESMO DEFEITO QUE JÁ FOI RECLAMADO ANTES, em outra tela: *"o botão fica apagado mas sem
+ * mensagem nenhuma"* (14/09/2026, sobre o bloqueio de unidade). Duas telas, a mesma falha de
+ * desenho, e a pública é a que dói mais: quem está do outro lado é um parceiro tentando se
+ * credenciar, não um operador que pode chamar no WhatsApp.
+ *
+ * ⚠️ "NÃO EXISTE" É AFIRMAÇÃO VERDADEIRA AQUI, e não força de expressão — foi a palavra que o
+ * Lucas pediu ("tem que ter a mensagem falando que o cnpj não existe"), e ela se sustenta: o dígito
+ * verificador faz parte da DEFINIÇÃO do número, então um documento que não fecha no DV não é um
+ * documento que talvez exista e nós não achamos, é um número que a Receita nunca poderia ter
+ * emitido. O que esta função NÃO afirma é situação cadastral: um CNPJ válido e baixado passa aqui,
+ * e quem confere isso é a consulta do próximo passo.
+ *
+ * ⚠️ O SILÊNCIO ENQUANTO SE DIGITA É DELIBERADO. Acusar "CPF inválido" no terceiro dígito é
+ * acusar quem está fazendo tudo certo. A frase só aparece quando o documento está COMPLETO e ainda
+ * assim não fecha — aí, sim, houve um erro de digitação e ele não vai se corrigir sozinho.
+ */
+export function avisoDoDocumento(
+  valor: null | string | undefined,
+  tipo: "cnpj" | "cpf",
+): string {
+  const digitos = soDigitos(String(valor ?? ""));
+  const completo = tipo === "cnpj" ? 14 : 11;
+
+  // Ainda digitando, ou campo vazio: nada a dizer.
+  if (digitos.length < completo) return "";
+
+  if (tipo === "cnpj") {
+    return cnpjValido(digitos)
+      ? ""
+      : "Esse CNPJ não existe. Revise os números e tente de novo.";
+  }
+  return cpfValido(digitos) ? "" : "Esse CPF não existe. Revise os números e tente de novo.";
+}
+
+// ---------------------------------------------------------------------------
 // Validação dos dados do corretor (etapa S2)
 // ---------------------------------------------------------------------------
 
