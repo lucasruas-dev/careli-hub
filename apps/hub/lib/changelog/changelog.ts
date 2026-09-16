@@ -36,6 +36,203 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-16-portal-da-cecilio-replica-do-hercules",
+    deployedAt: "2026-09-16T17:46:00-03:00",
+    modules: [
+      {
+        module: "Portal da Cecílio Rocha",
+        screens: [
+          {
+            items: [
+              "**O portal da Cecílio Rocha ganha a cara e as ferramentas do portal do coordenador:** menu lateral recolhível com a logo deles, e as áreas CRM, Produtos, Venda, Contratos e Financeiro, além de LSoft e Boletos.",
+              "**A equipe da Cecílio passa a operar sozinha os produtos dela** (hoje, o Garden): reserva, proposta, envio para contrato, análise de crédito no Serasa, credenciamento e cadastro de cliente novo.",
+              "**O Vale do Ouro (VOC e VOR) aparece para consulta.** Ele continua sendo vendido e operado pela Gurgel e pela Careli.",
+            ],
+            screen: "Menu e operação",
+          },
+          {
+            items: [
+              "**Ficha do produto igual à do Apolo**, com Resumo, Cadastro, Board, Imobiliárias, Unidades, Relacionamentos, Políticas comerciais, Minutas, Links e a aba nova Arquivos.",
+              "**Aba Arquivos:** fotos e vídeos do produto em miniatura, que abrem numa janela sobre a tela, com tela cheia, para mostrar ao cliente durante a negociação.",
+              "**Cadastro de produto novo**, de loteamento ou de prédio, e **cadastro de unidades** uma a uma ou por planilha. Nos prédios, a unidade é escrita como torre e apartamento.",
+            ],
+            screen: "Produtos",
+          },
+          {
+            items: [
+              "**A Cecílio confecciona os contratos das vendas feitas pela equipe dela:** gera, edita, confere e manda para assinatura, e também cuida dos modelos de contrato dos produtos dela.",
+              "**As vendas feitas pela Gurgel continuam indo para a Têmis da Careli**, mesmo nos produtos da Cecílio.",
+            ],
+            screen: "Contratos",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Planos comerciais ganham a ressalva de disponibilidade**, que aparece como etiqueta ao lado do nome do plano (ex.: válido para as próximas 16 unidades).",
+              "**Novo índice de correção: INCC-M anual.**",
+              "**Aba Arquivos na tela Empreendimento**, para a Careli ver e subir as fotos e os vídeos dos produtos.",
+            ],
+            screen: "Empreendimento · Políticas comerciais e Arquivos",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O quadro da Têmis mostra só os contratos confeccionados pela Careli.** Os contratos que a própria Cecílio confecciona ficam no portal dela.",
+            ],
+            screen: "Quadro de contratos",
+          },
+        ],
+      },
+    ],
+    rollback: "77e05028",
+    technical: {
+      done:
+        "PORTAL CECILIO ROCHA COMO REPLICA DO HERCULES (cinco workflows no mesmo dia: onda 1 casca/portoes/vazamentos/ficha/politicas/Arquivos; onda 2 cadastro de produto, predios e unidades no Panteon; onda 3 Temis e cliente novo no portal; credito no portal; integracao), cada um com revisao adversarial e correcao. || ARQUITETURA (decisao do Lucas): mesmo banco, mesmas tabelas, mesmo codigo; cada produto marca quem opera (`hercules_empreendimentos.operado_por`, nulo = Careli). Regra unica de escrita em `lib/apolo/incorporador/operacao-do-produto(.ts|-servidor.ts)`: o portal que confecciona (`portalConfeccionaContrato`, hoje so cecilio-rocha) so escreve em produto que ele opera; VOC e VOR de consulta; fail-closed sem a 0170. `portalOperaVenda` decide a casca; o comercial (Gurgel) nao muda e nao cadastra produto nem unidade. || PORTOES: `autorizarOperacaoDeVenda` substitui `autorizarComercial` em board/** e venda/**; escrita revalida conta e portal ativos. VAZAMENTOS FECHADOS: busca de proponentes enxergando o VOL do Lino; identidade revelando o dono do CPF; motivo do Serasa na fila; CAD automatica apagando CADs de outros empreendimentos; documentos e historico por recorte; analistas da Careli anonimos para o incorporador (Gurgel volta a ver nomes). || PRODUTO/UNIDADE: id do Panteon >= 100000 por sequence (0170); predio com torre/andar/apartamento/tipologia/vagas (0171); unidade grava em `hercules_unidades`; `codigosDaSessao` soma os produtos do Panteon para todas as rotas; carga do C2X e semeador nao sobrescrevem produto com dono. || TEMIS NO PORTAL: rotas /api/incorporador/temis/** chamando os MESMOS servicos das rotas do hub (ator hub|portal); `temis_trabalhos.operado_por` (0172) decide a fila pela ORIGEM da venda; `acharMinuta` confere o empreendimento; camada `ApiDaTemis` nas telas (hub identico). CREDITO: servicos `lib/serasa/*-servico.ts`; DV antes de gastar; reaproveita consulta de 30 dias; tetos por portal/conta/documento; so a coordenacao do hub forca nova consulta. CLIENTE NOVO: aproveita a ficha existente sem revelar nem sobrescrever dados globais; imobiliaria obrigatoria; tetos da MOST. ARQUIVOS: `apolo_empreendimento_arquivos` + bucket privado `produto-arquivos` (0169), upload direto por URL assinada, miniatura gerada no navegador. RESSALVA DO PLANO (0168). INCC-M anual (0174, depois do codigo). Autoria dos modelos (0173). Origem 'incorporador' na reserva (0167). || AVISOS de WhatsApp das vendas da equipe da Cecilio desligados por decisao. Mapas HTML antigos aposentados no portal dela. Termos de rescisao e de acordo sobem SEM botao (`lib/apolo/termos-liberados.ts`). Hierarquia de planos (categoria/empreendimento) no mesmo pacote. || Verificacao: typecheck 0 erro; 6.302 testes em 385 arquivos; eslint --max-warnings 0 nos 388 arquivos alterados. NAO verificado em tela: portal e hub exigem login.",
+      motivation:
+        "Lucas (16/09/2026): *\"quero replicar esse portal do coordenador (falo de estrutura layout) para o portal da Cecilio. a unica coisa que nao teremos e o lancamento\"* · *\"a Cecilio quem vai fazer e o proprio time deles, entao eu preciso separar isso e entregar isso no portal da Cecilio, eles meio que vao andar sozinhos sem o time administrativo da careli\"* · *\"literalmente ter dois sistemas, mas ele seria uma replica que temos hoje\"* · arquitetura: *\"vamos seguir a sua sugestao\"* · INCC: *\"coloca o INCC anual por favor nesses indices de correcoes\"*.",
+    },
+    title: "O portal da Cecílio vira um sistema próprio",
+    type: "novidade",
+    version: "1.348.0",
+  },
+  {
+    buildTag: "2026-09-16-coordenador-envia-para-contrato-sem-minuta",
+    deployedAt: "2026-09-16T14:07:34-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**O coordenador envia para contrato mesmo sem minuta cadastrada.** Antes, o envio era recusado quando o empreendimento não tinha o modelo de contrato publicado, o que impedia o envio em quase todos os empreendimentos.",
+              "**O cadastro da minuta fica com a equipe administrativa**, que continua vendo no quadro da Têmis quais planos estão sem minuta.",
+            ],
+            screen: "Venda · Enviar para contrato",
+          },
+        ],
+      },
+    ],
+    rollback: "4faac8d8",
+    technical: {
+      done:
+        "A rota `app/api/incorporador/venda/contrato` recusava (409) o envio quando o empreendimento nao tinha minuta de contrato PUBLICADA em `temis_minutas`, via `servicoDisponivel(\"contrato\")`, com \"Cadastre em Temis > Setup > Planos e minutas\". A trava tinha motivo historico (as duas primeiras vendas foram para o juridico sem documento possivel), mas na pratica travava quase tudo: medido em 16/09/2026, 14 dos 16 empreendimentos vendendo nao tinham minuta de contrato publicada — so RVP e VDO tinham; LBR (490 propostas), VOC (192), VOL (191), VLO (174), REP (159) e LAB (156) estavam bloqueados. || A FALTA DE MINUTA MUDA DE MAO, NAO SOME: o card nasce na Temis mesmo sem minuta (`abrirTrabalho` em lib/temis/trabalhos-db.ts nao exige uma), e o board da Temis ja destaca \"planos ativos sem minuta\" para a equipe administrativa (app/api/temis/board/route.ts). || CONFERIDO NAS DUAS CAMADAS: a tela de Venda nao trava por minuta — o botao so exige proposta gerada. A unica trava era a do servidor, e so a tela de Venda chama a rota. || `servicoDisponivel` NAO foi alterada: segue em uso no painel de documentos do empreendimento e em emitir-contrato. Saiu so a chamada nesta rota e os tres imports que ficaram sem uso. || ⚠️ `route.test.ts` (novo) FALHA se a recusa voltar, para ninguem repor a trava sem saber da decisao, e confere que as travas que o coordenador resolve na hora (unidade escolhida, proposta aberta) continuam. Visto falhar antes da remocao. Suite 4.011 verdes em 269 arquivos; typecheck limpo, arquivo coberto. NAO verificado em tela.",
+      motivation:
+        "Lucas (16/09/2026): *\"Hoje eles nao consegue encaminhar para contrato se nao tem um contrato cadastrado naquela unidade, pode deixar eles enviarem mesmo nao tendo um contrato pois a responsabilidade do contrato e da equipe adminsitrativa e nao do coordenador. pode habilitar eles enviarem normalmente o contrato para serem feitos\"*.",
+    },
+    title: "O coordenador envia para contrato mesmo sem minuta",
+    type: "melhoria",
+    version: "1.347.0",
+  },
+  {
+    buildTag: "2026-09-16-planos-do-espelho-sem-repeticao",
+    deployedAt: "2026-09-16T12:57:08-03:00",
+    modules: [
+      {
+        module: "Espelho",
+        screens: [
+          {
+            items: [
+              "**O Vale do Ouro para de mostrar cada plano duas vezes.** Investidor, Curto e Normal apareciam repetidos no simulador e na lista de outras composições.",
+              "**O plano igual cadastrado em dois níveis agora aparece uma vez só**, em qualquer empreendimento. Plano diferente continua aparecendo normalmente.",
+            ],
+            screen: "Espelho público · Simulação",
+          },
+        ],
+      },
+    ],
+    rollback: "3dfddb31",
+    technical: {
+      done:
+        "CAUSA: os quatro chamadores de `planosPublicos` (api/publico/espelho/simulacao, api/publico/espelho/situacao, app/e/[link] e app/publico/espelho) passam a ARVORE INTEIRA `[pai, ...filhos]`, e a consulta devolvia os planos de todos SOMADOS, sem tirar repeticao. Em 15/09/2026 os tres planos do Vale do Ouro foram cadastrados no VLO (pai, enterprise 35) E no VOC (filho, 37), identicos: 3 + 3 = 6 cartoes. || NAO E REGRESSAO: o codigo sempre somou; ficou escondido enquanto so um nivel tinha plano. Medido: o Vale do Ouro era a UNICA arvore com pai e filho tendo plano ativo ao mesmo tempo, e os 3 eram identicos. || DUAS FRENTES: (1) DADO — decisao do Lucas, \"os planos ficam no pai\": desativados (ativo=false, NAO apagados) os 3 planos do VOC, depois de conferir que NENHUM estava em uso (0 em hercules_vendas.plano_id, 0 em temis_plano_categorias.plano_id, 0 em hercules_propostas, nenhum com minuta). Estado final: VLO 3 ativos; VOC, VOL e VOR 0. Reversivel com ativo=true. (2) CODIGO — `semPlanosRepetidos` (lib/hercules/espelho/planos-publicos.ts) aplicada no retorno: dois planos sao o MESMO quando tudo que muda a conta e igual (nome sem caixa/espaco, parcelas, entrada, indice, juros, periodicidade, convencao, sistema, anuais). Fica a primeira ocorrencia. || ⚠️ SO TIRA REPETICAO, NAO DECIDE PRECEDENCIA: plano DIFERENTE entre pai e filho continua aparecendo, porque esconder condicao comercial real e pior do que repetir. E juros NULO e juros ZERO nao se fundem (nulo e ausencia, zero e escolha). || 6 testes novos, vistos falhar antes. Suite 4.009 verdes em 268 arquivos; typecheck limpo, arquivo coberto.",
+      motivation:
+        "Lucas (16/09/2026), com print do espelho do Vale do Ouro: *\"porque no vale do ouro os planos estao ficando duplicados?\"*. Diante das duas saidas, decidiu o cadastro: *\"os planos ficam no pai\"*.",
+    },
+    title: "O espelho para de repetir os planos",
+    type: "correcao",
+    version: "1.346.0",
+  },
+  {
+    buildTag: "2026-09-16-a-lista-para-de-esconder-o-cpf",
+    deployedAt: "2026-09-16T11:34:22-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O CPF sem pontuação agora aparece na lista do CRM 360.** A busca já encontrava a ficha e abria o cadastro à direita, mas a lista à esquerda dizia “Nenhum relacionamento encontrado”. Agora a pessoa aparece nos dois lugares.",
+            ],
+            screen: "CRM 360 · Busca",
+          },
+          {
+            items: [
+              "**A busca do Board também acha CPF e CNPJ com ou sem pontuação.** Tinha o mesmo defeito.",
+            ],
+            screen: "Board · Busca",
+          },
+        ],
+      },
+    ],
+    rollback: "ab43f318",
+    technical: {
+      done:
+        "A 1.344.0 CONSERTOU O SERVIDOR E FICOU PELA METADE — erro de verificacao meu: validei a rota e nao a tela. Print do Lucas (16/09/2026): busca \"69109320644\", ficha da Elizabete ABERTA a direita e \"Nenhum relacionamento encontrado\" a esquerda. Conferido no banco que a Elizabete e a dona do CPF 691.093.206-44, entao o servidor acertou e quem escondia era a TELA. || O CRM 360 REFILTRA NO CLIENTE o que o servidor devolve (`matchesApoloFilters`, modules/apolo/data/apolo-derive.ts), procurando o termo num texto que tem `entity.documentMasked` COM mascara; \"69109320644\" nunca esta dentro de \"691.093.206-44\". O painel abria porque `selectedEntity` (ApoloPage.tsx:295-300) cai em `entities[0]` — o resultado ANTES do filtro local — quando a lista filtrada vem vazia. Isso mascarou o defeito: parecia que a busca funcionava. || ⚠️ O MESMO DEFEITO ESTAVA NO BOARD (board-view.tsx:1108): `${item.nome} ${item.documento}`.includes(busca), com `item.documento` vindo de `document_masked` (board-do-servidor.ts:654 e :1085). Achado varrendo os filtros de tela que usam documento. || A regra virou UMA funcao, `documentoCasaComBusca` (lib/iris/apolo/busca-por-numero.ts), usada pelas duas telas e construida sobre `documentoParaBusca`, a mesma do servidor. Tres camadas, uma regra. || 10 testes novos, entre eles o caso exato do print. Os dois casos sem pontuacao foram vistos FALHAR antes do conserto e os quatro de controle passaram (com pontuacao, nome, CPF de outra pessoa, filtro de perfil). Suite 4.003 verdes em 267 arquivos; typecheck limpo, arquivos tocados cobertos. NAO verificado em tela — o hub exige login. || LICAO REGISTRADA: busca que tem filtro no servidor E na tela precisa ser conferida nas duas; a rota certa com a tela errada parece funcionar, porque o painel abre.",
+      motivation:
+        "Lucas (16/09/2026), com print do CRM 360 depois da 1.344.0: busca por \"69109320644\" com a ficha aberta a direita e a lista vazia a esquerda. O pedido original era *\"o cpf tem que buscar sem ou com pontuacao\"*.",
+    },
+    title: "A lista do CRM 360 para de esconder o CPF sem pontuacao",
+    type: "correcao",
+    version: "1.345.0",
+  },
+  {
+    buildTag: "2026-09-16-boleto-da-caca-chega-e-cpf-sem-pontuacao",
+    deployedAt: "2026-09-16T11:13:07-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "**O boleto que a Cacá gera agora chega ao cliente, mesmo quando ela responde por áudio.** Quando o cliente mandava áudio, a Cacá gerava o boleto, respondia por voz dizendo que ia mandar o link por escrito em seguida, e esse link nunca saía. Agora o link vai numa mensagem escrita logo depois do áudio.",
+              "**Aconteceu com 25 clientes desde junho**, somando 33 boletos gerados e nunca entregues.",
+              "**CNPJ digitado com pontuação volta a ser reconhecido** no “Abrir atendimento”. A barra do CNPJ (68.172.042/0001-43) fazia a busca não entender que era um número.",
+            ],
+            screen: "Atendimento · Cacá e Abrir atendimento",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Buscar pelo CPF ou CNPJ funciona com ou sem pontuação.** Digitar só os números não achava ninguém; era preciso colocar os pontos e o hífen. Agora os dois jeitos acham a mesma ficha.",
+            ],
+            screen: "CRM 360 · Busca",
+          },
+        ],
+      },
+    ],
+    rollback: "c106b1d4",
+    technical: {
+      done:
+        "CACA — CONTRATO QUEBRADO ENTRE PROMPT E CODIGO. Caso real AT-013760 (16/09/2026): cliente mandou audio pedindo boleto; a Caca consultou o financeiro, achou 5 parcelas vencidas, GEROU 3 links reais no Asaas e respondeu em audio \"ja gerei os tres boletos, e vou te mandar aqui por escrito, logo em seguida\". A mensagem escrita nunca saiu. Cada lado certo sozinho, juntos sumiam com o boleto: persona.ts:236 manda a resposta falada NAO conter link e \"dizer que vai enviar por escrito em seguida\"; meta-inbound-processor.ts:2682 so manda por texto quando a resposta TEM URL. A Caca tirava o link, o codigo nao via URL, virava audio, e o \"por escrito em seguida\" nao existia. Medido: 25 tickets e 33 boletos gerados com sucesso e nunca entregues desde junho. || Agora o CODIGO garante a entrega: depois de a resposta sair, os boletos gerados no turno que nao estao no texto vao numa mensagem escrita (so o que falta, sem repetir, sem mensagem vazia, link sozinho na linha para o WhatsApp nao engolir pontuacao). || ⚠️ O LINK VEM ESTRUTURADO DA FERRAMENTA, NAO DO RESUMO: o resumo de cada ferramenta e cortado em 160 caracteres (lib/ai/claude-agent.ts:264), e a mensagem de boleto da imobiliaria poe o NOME DO CLIENTE antes da URL — com nome longo a URL sairia cortada. `gerarLinkBoleto` registra o boleto num acumulador do contexto (mesmo padrao do `handoff`) e o agente devolve a lista com a URL inteira. || ⚠️ BEST-EFFORT com LOG: a resposta principal ja foi entregue quando isto roda, entao uma falha nao derruba o turno — mas loga \"gerou boleto e NAO conseguiu mandar o link por escrito\", a falha que antes sumia calada. || DESCARTADO COM MEDICAO: o ticket parecia fechado 26s depois de aberto, mas o cron grava closed_at = hora da ULTIMA mensagem de proposito (fechar-sem-interacao.ts:230). E uma primeira contagem de 387 boletos perdidos estava ERRADA: pegava quem so TENTOU gerar e recebeu \"link indisponivel\", casos em que a Caca ja encaminhava certo para humano. || APOLO — CPF/CNPJ SEM PONTUACAO: o texto do indice guarda o documento COM mascara e a busca do CRM 360 so olhava o texto. Medido com o CPF do print do Lucas: 0 fichas sem pontuacao, 1 com. O documento ja estava indexado por hash dos digitos crus em apolo_entity_identifiers (o mesmo indice da Iris 1.326.0); a busca agora SOMA os ids achados por la aos do texto. Reusa `documentoParaBusca` da lib compartilhada para as duas buscas nao divergirem. || ⚠️ BUG QUE ESTAVA EM PRODUCAO, PEGO PELO TESTE: `ehSoNumero` nao aceitava a BARRA do CNPJ, entao o CNPJ com pontuacao nao era reconhecido no modal da Iris (1.326.0). Consertado para as duas buscas. || 17 testes novos (lib/iris/caca/boletos-por-escrito.ts e lib/iris/apolo/busca-por-numero.ts), escritos antes do codigo. Suite 3.993 verdes em 266 arquivos; typecheck limpo; todos os arquivos tocados sao cobertos pelo typecheck. ⚠️ NAO VERIFICADO COM AUDIO REAL — so da para ver numa conversa de verdade depois do deploy.",
+      motivation:
+        "Lucas (16/09/2026), com o print do ticket AT-013760: *\"a cliente solicitou o boleto a caca respondeu mas nao entregou, preciso entender o porque que ela nao fez e corrigir\"*. E no mesmo dia, com o print do CRM 360: *\"os usuarios ao buscar pelo cpf no apolo nao aparece na busca, so aparece quando colocamos a pontuacao. ele tem que aparecer nesse tipo de busca, o cpf tem que buscar sem ou com pontuacao\"*.",
+    },
+    title: "O boleto da Caca chega por escrito, e o CPF e achado sem pontuacao",
+    type: "correcao",
+    version: "1.344.0",
+  },
+  {
     buildTag: "2026-09-16-planos-leem-os-indices-e-a-faixa",
     deployedAt: "2026-09-16T08:50:00-03:00",
     modules: [

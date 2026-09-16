@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  documentoCasaComBusca,
+  documentoParaBusca,
   ehSoNumero,
   interpretarDigitos,
   mascaraDeCnpj,
@@ -12,6 +14,8 @@ describe("ehSoNumero", () => {
   it("aceita numero com a pontuacao de telefone e de documento", () => {
     expect(ehSoNumero("04610713632")).toBe(true);
     expect(ehSoNumero("046.107.136-32")).toBe(true);
+    // A barra do CNPJ — faltava, e o CNPJ com pontuacao nao era reconhecido.
+    expect(ehSoNumero("68.172.042/0001-43")).toBe(true);
     expect(ehSoNumero("+55 (31) 99866-2052")).toBe(true);
     expect(ehSoNumero(" 31 3521 4400 ")).toBe(true);
   });
@@ -48,6 +52,70 @@ describe("mascaras", () => {
     expect(mascaraDeCpf("123")).toBe("123");
     expect(mascaraDeCnpj("123")).toBe("123");
     expect(mascaraDeTelefone("123")).toBe("123");
+  });
+});
+
+describe("documentoCasaComBusca", () => {
+  it("casa o documento com e sem pontuacao, dos dois lados", () => {
+    expect(documentoCasaComBusca("691.093.206-44", "69109320644")).toBe(true);
+    expect(documentoCasaComBusca("691.093.206-44", "691.093.206-44")).toBe(true);
+    expect(documentoCasaComBusca("69109320644", "691.093.206-44")).toBe(true);
+    expect(documentoCasaComBusca("68.172.042/0001-43", "68172042000143")).toBe(true);
+  });
+
+  it("documento de outra pessoa nao casa", () => {
+    expect(documentoCasaComBusca("691.093.206-44", "04610713632")).toBe(false);
+  });
+
+  // So documento COMPLETO: o filtro de texto continua cuidando de pedaco e de nome.
+  it("pedaco, nome ou vazio nao casam por aqui", () => {
+    expect(documentoCasaComBusca("691.093.206-44", "691093")).toBe(false);
+    expect(documentoCasaComBusca("691.093.206-44", "elizabete")).toBe(false);
+    expect(documentoCasaComBusca("691.093.206-44", "")).toBe(false);
+  });
+
+  it("ficha sem documento nunca casa", () => {
+    expect(documentoCasaComBusca("", "69109320644")).toBe(false);
+    expect(documentoCasaComBusca(null, "69109320644")).toBe(false);
+    expect(documentoCasaComBusca(undefined, "69109320644")).toBe(false);
+  });
+});
+
+describe("documentoParaBusca", () => {
+  // ⚠️ O CASO DO PRINT DO LUCAS (16/09/2026): no CRM 360, "69109320644" achava 0 fichas e
+  // "691.093.206-44" achava 1. Os dois tem que dar no mesmo documento.
+  it("CPF sem pontuacao e com pontuacao viram o mesmo documento", () => {
+    expect(documentoParaBusca("69109320644")).toEqual({ digitos: "69109320644", tipo: "cpf" });
+    expect(documentoParaBusca("691.093.206-44")).toEqual({ digitos: "69109320644", tipo: "cpf" });
+  });
+
+  it("CNPJ sem e com pontuacao", () => {
+    expect(documentoParaBusca("68172042000143")).toEqual({ digitos: "68172042000143", tipo: "cnpj" });
+    expect(documentoParaBusca("68.172.042/0001-43")).toEqual({
+      digitos: "68172042000143",
+      tipo: "cnpj",
+    });
+  });
+
+  it("aceita espaco em volta", () => {
+    expect(documentoParaBusca("  691.093.206-44  ")?.tipo).toBe("cpf");
+  });
+
+  // Documento INCOMPLETO nao tem hash para bater: devolve nulo e a busca por texto segue.
+  it("pedaco de documento nao vira busca por documento", () => {
+    expect(documentoParaBusca("691093")).toBeNull();
+    expect(documentoParaBusca("6910932064")).toBeNull();
+  });
+
+  it("nome nao vira documento", () => {
+    expect(documentoParaBusca("Maria")).toBeNull();
+    expect(documentoParaBusca("Maria 69109320644")).toBeNull();
+    expect(documentoParaBusca("")).toBeNull();
+  });
+
+  // Telefone com DDI (13) nao e documento nenhum.
+  it("telefone de 13 digitos nao e documento", () => {
+    expect(documentoParaBusca("5531998662052")).toBeNull();
   });
 });
 

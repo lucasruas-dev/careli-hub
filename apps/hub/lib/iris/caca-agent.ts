@@ -200,6 +200,11 @@ export type CacaAutomationState = {
 
 export type CacaAgentTurn = {
   agentVersion: typeof CACA_AGENT_VERSION;
+  /**
+   * Boletos gerados no turno, com a URL inteira. Opcional: o engine determinístico não gera
+   * link pela ferramenta, e aí não há nada a garantir por escrito.
+   */
+  boletosGerados?: Array<{ parcela: string; url: string }>;
   handoff: {
     reason: string | null;
     required: boolean;

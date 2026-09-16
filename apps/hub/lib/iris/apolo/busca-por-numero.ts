@@ -24,10 +24,14 @@ export function apenasDigitos(valor: string | null | undefined): string {
 
 // Verdadeiro só quando o termo é número puro. "31 99866-2052" conta (pontuação de telefone),
 // "Maria 2" não — aí a pessoa está buscando por nome e o número é parte dele.
+//
+// ⚠️ A BARRA ENTRA: é a pontuação do CNPJ ("68.172.042/0001-43"). Sem ela, o CNPJ digitado
+// com pontuação não era reconhecido como número — nem aqui, nem no modal da Íris (1.326.0).
+// Pego pelo teste do CRM 360 em 16/09/2026.
 export function ehSoNumero(termo: string): boolean {
   const limpo = (termo ?? "").trim();
 
-  return limpo.length > 0 && /^[\d\s().+-]+$/.test(limpo);
+  return limpo.length > 0 && /^[\d\s()./+-]+$/.test(limpo);
 }
 
 export function mascaraDeCpf(digitos: string): string {
@@ -59,6 +63,48 @@ export function mascaraDeTelefone(digitos: string): string {
   }
 
   return cru;
+}
+
+// Para as buscas AMPLAS (o CRM 360 do Apolo), que não perguntam nada: se o termo tem a cara
+// de um documento completo, devolve o tipo e os dígitos crus para buscar pelo índice de
+// documento, COM ou SEM a pontuação digitada. Onze dígitos devolvem CPF aqui sem hesitar,
+// porque a busca ampla SOMA resultados — casar também como telefone pelo texto continua
+// valendo, e o operador vê as duas coisas. A pergunta só faz sentido onde a busca escolhe
+// um caminho só (o modal da Íris, `interpretarDigitos`).
+export function documentoParaBusca(
+  termo: string,
+): { digitos: string; tipo: "cnpj" | "cpf" } | null {
+  if (!ehSoNumero(termo)) {
+    return null;
+  }
+
+  const digitos = apenasDigitos(termo);
+
+  if (digitos.length === 11) {
+    return { digitos, tipo: "cpf" };
+  }
+
+  if (digitos.length === 14) {
+    return { digitos, tipo: "cnpj" };
+  }
+
+  return null;
+}
+
+// O que os FILTROS DE TELA usam para decidir se o termo digitado é o documento desta ficha.
+//
+// ⚠️ EXISTE PORQUE O SERVIDOR NÃO BASTA. As telas do Apolo recebem o resultado do servidor e
+// REFILTRAM por conta própria, procurando o termo dentro do documento mascarado: o servidor
+// achava "69109320644" e a tela escondia a linha, porque o texto dela era "691.093.206-44".
+// Aconteceu em duas telas (CRM 360 e Board). Uma regra só, para nenhuma divergir de novo.
+export function documentoCasaComBusca(
+  documentoDaFicha: string | null | undefined,
+  termo: string,
+): boolean {
+  const documento = documentoParaBusca(termo);
+  const daFicha = apenasDigitos(documentoDaFicha);
+
+  return Boolean(documento && daFicha && daFicha === documento.digitos);
 }
 
 export function interpretarDigitos(termo: string): LeituraDoNumero {

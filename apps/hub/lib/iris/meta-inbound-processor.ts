@@ -39,6 +39,10 @@ import {
 } from "@/lib/iris/meta-whatsapp";
 import { synthesizeCacaVoiceNote } from "@/lib/iris/tts";
 import {
+  boletosQueFaltamNaResposta,
+  mensagemDosBoletos,
+} from "@/lib/iris/caca/boletos-por-escrito";
+import {
   uploadInboundMediaBuffer,
   uploadIrisMediaBuffer,
 } from "@/lib/iris/meta-media-storage";
@@ -2784,6 +2788,55 @@ async function maybeSendCacaAutoReply({
     // Daqui pra frente a mensagem JÁ está com o cliente. Se algo falhar depois desta
     // linha, o catch não pode tratar como "não respondemos".
     entregouAoCliente = true;
+
+    // ⚠️ O BOLETO GERADO TEM QUE CHEGAR POR ESCRITO. Quando a resposta sai por VOZ, o prompt
+    // (persona.ts:236) manda a Cacá não falar o link e "dizer que vai enviar por escrito em
+    // seguida" — e até aqui esse "em seguida" não existia: o link sumia. Caso real AT-013760,
+    // 16/09/2026, três boletos gerados e prometidos, nenhum entregue. Vale também para resposta
+    // em texto que tenha esquecido algum link: só sai o que o cliente ainda não recebeu.
+    //
+    // Best-effort DE PROPÓSITO: a resposta principal já foi entregue; uma falha aqui não pode
+    // derrubar o turno nem fazer o sistema achar que ninguém respondeu.
+    const boletosAEnviar = boletosQueFaltamNaResposta(
+      reply.boletosGerados ?? [],
+      reply.replyText,
+    );
+
+    if (boletosAEnviar.length) {
+      try {
+        const textoDosBoletos = mensagemDosBoletos(boletosAEnviar);
+        const mensagemDosLinks = await insertCacaOutboundMessage({
+          body: textoDosBoletos,
+          channelId,
+          client,
+          contactId: contact.id,
+          event,
+          ticketId: ticket.id,
+        });
+        const envioDosLinks = await sendMetaWhatsAppTextMessage({
+          body: signWhatsAppBody(CACA_OPERATOR_LABEL, textoDosBoletos),
+          config: outboundConfig,
+          to: destination,
+        });
+
+        await persistCacaOutboundReference({
+          channelId,
+          client,
+          event,
+          localMessageId: mensagemDosLinks.id,
+          result: envioDosLinks,
+          to: destination,
+        });
+      } catch (erroDosLinks) {
+        // Registrado para aparecer no log: é exatamente o tipo de falha que antes sumia calada.
+        console.error(
+          "[iris] Cacá gerou boleto e NAO conseguiu mandar o link por escrito",
+          ticket.protocol ?? ticket.id,
+          boletosAEnviar.length,
+          errorMessage(erroDosLinks),
+        );
+      }
+    }
 
     const ticketUpdate = await updateTicketAfterCacaReply({
       client,

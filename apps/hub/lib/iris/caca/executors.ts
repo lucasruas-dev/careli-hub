@@ -12,6 +12,7 @@ import { montarFichaCad } from "@/lib/apolo/cobranca-prevenda";
 import { lerCadDaEsteira, lerCadsDaEsteira } from "@/lib/apolo/esteira-cad";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { prepareBoletoResendAction } from "@/lib/guardian/asaas";
+import type { BoletoGerado } from "@/lib/iris/caca/boletos-por-escrito";
 import {
   type C2xImobiliariaClientMatch,
   findC2xImobiliariaClients,
@@ -51,6 +52,11 @@ import { CACA_TOOL_DEFINITIONS } from "./tools";
 // `handoff` (pra executar a transferência de verdade) e `identityVerified`/`c2xClientId`
 // (pra persistir no metadata do ticket entre turnos).
 export type CacaToolContext = {
+  // ⚠️ OS BOLETOS GERADOS NESTE TURNO, estruturados. Preenchido por `gerarLinkBoleto` e lido
+  // pelo processor depois do envio, para garantir que o link CHEGA mesmo quando a resposta sai
+  // por voz. Não dá para tirar do resumo da ferramenta: ele é cortado em 160 caracteres, e a
+  // URL pode sair quebrada. Ver lib/iris/caca/boletos-por-escrito.ts.
+  boletosGerados: BoletoGerado[];
   businessHoursOpen: boolean;
   c2xClientId: string | null;
   client: SupabaseClient;
@@ -1876,6 +1882,11 @@ async function gerarBoletoClienteImobiliaria(
       return "Não consegui preparar o link com segurança agora. Informe a imobiliária e transfira para o time.";
     }
 
+    context.boletosGerados.push({
+      parcela: `${readString(target.number) || "Parcela"} - ${match.name}`,
+      url: boleto.boletoUrl,
+    });
+
     return `Link do boleto da parcela ${readString(target.number) || ""} do cliente ${match.name}: ${boleto.boletoUrl}\nPeça para conferir os dados antes de pagar.`;
   } catch {
     return "Falha ao preparar o link do boleto. Informe a imobiliária e transfira para o time.";
@@ -2030,6 +2041,11 @@ async function gerarLinkBoleto(
     if (!boleto.boletoUrl) {
       return "Não consegui preparar o link com segurança agora. Informe o cliente e transfira para o time interno.";
     }
+
+    context.boletosGerados.push({
+      parcela: readString(target.number) || "Parcela",
+      url: boleto.boletoUrl,
+    });
 
     return `Link do boleto da parcela ${readString(target.number) || ""}: ${boleto.boletoUrl}\nPeça ao cliente para conferir os dados antes de pagar.`;
   } catch {
