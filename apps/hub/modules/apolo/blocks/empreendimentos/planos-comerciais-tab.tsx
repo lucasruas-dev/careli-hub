@@ -9,11 +9,26 @@ import {
   Pencil,
   Plus,
   Power,
+  Ruler,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { calcularParcela } from "@/lib/apolo/planos-comerciais";
+import {
+  abrirFormulario,
+  type CampoDaFaixa,
+  editarCampo,
+  type MemoriaDaFaixa,
+  mudarParcelas,
+  type OpcaoDeIndice,
+  opcoesDeIndice,
+  paraTexto,
+  type PremissaDoFormulario,
+  type Preenchimento,
+  type TabelaDasFaixas,
+  textoDoPreenchimento,
+} from "@/lib/hercules/faixa-no-formulario-do-plano";
 import {
   type CategoriaDoTemis,
   conferirPlano,
@@ -44,6 +59,17 @@ import { FaixasDePrazo } from "@/modules/apolo/blocks/empreendimentos/faixas-de-
 //
 // ⚠️ PLANO SEM MINUTA APARECE EM DESTAQUE. É um plano que vende e trava no último passo: a venda
 // acontece, o contrato não sai. Melhor o operador descobrir no cadastro que na hora de gerar.
+//
+// ⚠️ OS ÍNDICES VÊM DA TABELA `temis_indices`, e não de uma lista escrita aqui. Até 16/09/2026 esta
+// tela tinha cinco índices cravados, e a faixa de 37 a 120 parcelas do Jardim das Gerais manda usar
+// Poupança, que não estava entre eles. Pior que faltar: um `<select>` com `value="POUPANCA"` e sem
+// essa opção mostra a primeira e, ao salvar, grava a primeira — o plano trocava de índice calado.
+//
+// ⚠️ A FAIXA DE PRAZO PREENCHE O PLANO QUANDO O OPERADOR MUDA AS PARCELAS, E SÓ ENTÃO. Lucas
+// (16/09/2026): *"nao alterou aqui porque? com base na quantidade de parcelas deveria trazer
+// preenchido"*. A decisão do que preencher e quando mora em `faixa-no-formulario-do-plano.ts`, com
+// teste; esta tela só a chama. Abrir um plano salvo não troca nada, e a tela diz quando um campo
+// veio da faixa.
 
 type Props = {
   enterpriseId: string;
@@ -64,14 +90,6 @@ type Carga = {
 };
 
 type Rascunho = EntradaDePlano & { id?: string };
-
-const INDICES: { rotulo: string; valor: string }[] = [
-  { rotulo: "Sem correção", valor: "SEM_CORRECAO" },
-  { rotulo: "IPCA anual", valor: "IPCA_ANUAL" },
-  { rotulo: "IPCA mensal", valor: "IPCA_MENSAL" },
-  { rotulo: "IGP-M anual", valor: "IGPM_ANUAL" },
-  { rotulo: "INCC-M mensal", valor: "INCC_M_MENSAL" },
-];
 
 // ⚠️ "TABELA" É A PALAVRA DA CASA — ver `rotuloDoSistema`. Os valores continuam os do banco.
 const SISTEMAS: { rotulo: string; valor: string }[] = [
@@ -116,10 +134,25 @@ function paraNumero(texto: string): null | number {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Número → texto do campo, na vírgula do português. */
-function paraTexto(valor: null | number | undefined): string {
-  if (valor === null || valor === undefined) return "";
-  return String(valor).replace(".", ",");
+/**
+ * Os campos que a faixa governa, como estão na tela agora.
+ *
+ * ⚠️ OS DEFAULTS SÃO OS QUE OS SELETORES JÁ MOSTRAM ("equivalente", "anual"). Um default diferente
+ * aqui viraria a memória do que o operador escreveu, e um prazo sem faixa devolveria à tela um valor
+ * que ele nunca viu nela.
+ */
+function premissaNaTela(
+  rascunho: Rascunho,
+  entradaTexto: string,
+  jurosTexto: string,
+): PremissaDoFormulario {
+  return {
+    entradaTexto,
+    indiceCorrecao: rascunho.indiceCorrecao,
+    jurosConvencao: rascunho.jurosConvencao ?? "equivalente",
+    jurosPeriodicidade: rascunho.jurosPeriodicidade ?? "anual",
+    jurosTexto,
+  };
 }
 
 /** Monta um `PlanoDoTemis` a partir do rascunho, só para a prévia do cálculo. */
@@ -173,6 +206,20 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
   /** O campo de categoria do FORMULÁRIO virou entrada de texto (ver a nota no seletor). */
   const [criandoAqui, setCriandoAqui] = useState(false);
 
+  // ⚠️ AS FAIXAS E OS ÍNDICES CHEGAM PELA SEÇÃO DE FAIXAS, que já lê `/api/temis/faixas` logo acima
+  // do formulário. Uma segunda leitura aqui faria a faixa recém-criada ali não valer para o plano até
+  // recarregar a página. A resposta carrega o empreendimento de quem é: uma leitura atrasada do
+  // empreendimento anterior não pode preencher o plano deste.
+  const [tabelaDasFaixas, setTabelaDasFaixas] =
+    useState<null | TabelaDasFaixas>(null);
+  const tabela =
+    tabelaDasFaixas?.enterpriseId === enterpriseId ? tabelaDasFaixas : null;
+
+  /** O que o operador escreveu e o que veio de faixa. Ver `faixa-no-formulario-do-plano.ts`. */
+  const [memoriaDaFaixa, setMemoriaDaFaixa] = useState<null | MemoriaDaFaixa>(
+    null,
+  );
+
   useEffect(() => {
     let vivo = true;
     setCarga(null);
@@ -211,16 +258,28 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
   }, [enterpriseId, recarregar]);
 
   const abrirNovo = useCallback((categoriaId: null | string) => {
-    setRascunho({ ...PLANO_NOVO, categoriaId });
-    setEntradaTexto("20");
-    setJurosTexto("");
+    const plano: Rascunho = { ...PLANO_NOVO, categoriaId };
+    const premissa = premissaNaTela(
+      plano,
+      paraTexto(plano.entradaPercentual),
+      paraTexto(plano.jurosTaxa),
+    );
+    setRascunho(plano);
+    setEntradaTexto(premissa.entradaTexto);
+    setJurosTexto(premissa.jurosTexto);
+    // ⚠️ O PLANO NOVO TAMBÉM NÃO É PREENCHIDO AO ABRIR: a faixa entra quando o operador escreve as
+    // parcelas. Preencher na abertura dependeria de a leitura das faixas já ter chegado, e o mesmo
+    // clique em "Novo plano" abriria ora com a premissa da faixa, ora sem ela.
+    setMemoriaDaFaixa(
+      abrirFormulario({ ...premissa, parcelas: plano.parcelas }),
+    );
     setProblemas([]);
     setAviso(null);
     setErro(null);
   }, []);
 
   const abrirEdicao = useCallback((plano: PlanoDoTemis) => {
-    setRascunho({
+    const editado: Rascunho = {
       ativo: plano.ativo,
       categoriaId: plano.categoriaId,
       entradaPercentual: plano.entradaPercentual,
@@ -236,13 +295,92 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
       parcelas: plano.parcelas,
       sistemaAmortizacao: plano.sistemaAmortizacao,
       slot: plano.slot,
-    });
-    setEntradaTexto(paraTexto(plano.entradaPercentual));
-    setJurosTexto(paraTexto(plano.jurosTaxa));
+    };
+    const premissa = premissaNaTela(
+      editado,
+      paraTexto(plano.entradaPercentual),
+      paraTexto(plano.jurosTaxa),
+    );
+    setRascunho(editado);
+    setEntradaTexto(premissa.entradaTexto);
+    setJurosTexto(premissa.jurosTexto);
+    // ⚠️⚠️ ABRIR UM PLANO SALVO NÃO CONSULTA FAIXA. Um plano com IPCA que o operador só abriu para
+    // conferir não pode virar Poupança porque a faixa mudou depois: ele pode já ter vendido, e o
+    // contrato de quem comprou diz IPCA. `abrirFormulario` nem recebe as faixas.
+    setMemoriaDaFaixa(
+      abrirFormulario({ ...premissa, parcelas: plano.parcelas }),
+    );
     setProblemas([]);
     setAviso(null);
     setErro(null);
   }, []);
+
+  /**
+   * O operador mudou o campo Parcelas: a faixa ATIVA que contém o número preenche o que ela define.
+   *
+   * ⚠️ É O ÚNICO CAMINHO PELO QUAL A FAIXA ENTRA NO FORMULÁRIO. Ela preenche índice, juros e entrada
+   * juntos, como o simulador faz — plano com a correção da faixa e os juros de outra coisa é
+   * incoerente —, mas só o que a faixa DEFINE: a que não opina sobre juros deixa os juros digitados.
+   */
+  const mudarParcelasDoPlano = (parcelas: number) => {
+    if (!rascunho) return;
+
+    const memoria =
+      memoriaDaFaixa ??
+      abrirFormulario({
+        ...premissaNaTela(rascunho, entradaTexto, jurosTexto),
+        parcelas: rascunho.parcelas,
+      });
+    const resultado = mudarParcelas(memoria, parcelas, tabela?.faixas ?? []);
+    const naTela = resultado.naTela;
+
+    setMemoriaDaFaixa(resultado.memoria);
+    setRascunho(
+      naTela
+        ? {
+            ...rascunho,
+            indiceCorrecao: naTela.indiceCorrecao,
+            jurosConvencao: naTela.jurosConvencao,
+            jurosPeriodicidade: naTela.jurosPeriodicidade,
+            parcelas,
+          }
+        : { ...rascunho, parcelas },
+    );
+    if (naTela) {
+      setEntradaTexto(naTela.entradaTexto);
+      setJurosTexto(naTela.jurosTexto);
+    }
+  };
+
+  /**
+   * O operador mexeu à mão num campo que a faixa governa (entrada, juros e periodicidade, índice).
+   *
+   * ⚠️ A TROCA À MÃO VENCE ATÉ AS PARCELAS MUDAREM DE NOVO: o campo deixa de dizer "preenchido pela
+   * faixa" e o valor passa a ser do operador.
+   */
+  const editarPremissa = (
+    campo: CampoDaFaixa,
+    mudanca: Partial<PremissaDoFormulario>,
+  ) => {
+    if (!rascunho) return;
+
+    const naTela: PremissaDoFormulario = {
+      ...premissaNaTela(rascunho, entradaTexto, jurosTexto),
+      ...mudanca,
+    };
+
+    setRascunho({
+      ...rascunho,
+      indiceCorrecao: naTela.indiceCorrecao,
+      jurosConvencao: naTela.jurosConvencao,
+      jurosPeriodicidade: naTela.jurosPeriodicidade,
+    });
+    setEntradaTexto(naTela.entradaTexto);
+    setJurosTexto(naTela.jurosTexto);
+    setMemoriaDaFaixa((atual) =>
+      atual ? editarCampo(atual, campo, naTela) : atual,
+    );
+  };
 
   const salvar = async () => {
     if (!rascunho) return;
@@ -447,7 +585,10 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
           produto montado em cima dela. Lucas (13/09/2026): *"a nossa obrigação é entregar as
           premissas para aquele plano conforme cadastro e alinhamento"*. Quem abre esta aba para
           cadastrar um plano precisa ver primeiro a escada que vai preenchê-lo. */}
-      <FaixasDePrazo enterpriseId={enterpriseId} />
+      <FaixasDePrazo
+        aoCarregar={setTabelaDasFaixas}
+        enterpriseId={enterpriseId}
+      />
 
       {/* ── O QUE ESTE EMPREENDIMENTO CONSEGUE VENDER HOJE ───────────────── */}
       <section className="overflow-hidden rounded-2xl border border-line bg-surface">
@@ -541,15 +682,21 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
           criandoAqui={criandoAqui}
           criandoCategoria={criandoCategoria}
           criarCategoria={criarCategoria}
+          editarPremissa={editarPremissa}
           entradaTexto={entradaTexto}
-          mudarCategoriaNova={setCategoriaNova}
+          indicesCarregados={tabela !== null}
           jurosTexto={jurosTexto}
           minutas={carga.minutas}
-          mudarEntrada={setEntradaTexto}
-          mudarJuros={setJurosTexto}
+          mudarCategoriaNova={setCategoriaNova}
+          mudarParcelas={mudarParcelasDoPlano}
           mudarPreco={setPrecoSimulado}
+          opcoesDoIndice={opcoesDeIndice(
+            tabela?.indices ?? null,
+            rascunho.indiceCorrecao,
+          )}
           preco={preco}
           precoTexto={precoSimulado}
+          preenchido={memoriaDaFaixa?.preenchido ?? null}
           problemas={problemas}
           rascunho={rascunho}
           salvando={salvando}
@@ -637,6 +784,30 @@ function Numero({
       <p className={`m-0 text-xl font-semibold tabular-nums ${cor}`}>{valor}</p>
       <p className="m-0 mt-0.5 text-[11px] text-ink-muted">{hint}</p>
     </div>
+  );
+}
+
+/**
+ * "Preenchido pela faixa de 37 a 120 parcelas", embaixo do campo que a faixa preencheu.
+ *
+ * ⚠️ PREENCHER SEM DIZER É O QUE FAZ O OPERADOR DESCONFIAR DA TELA: ele digita 100, o índice vira
+ * Poupança, e ele não sabe se foi ele. O aviso fica perto do CAMPO, e não num topo de página, porque
+ * é lá que ele está olhando quando vê o valor mudar. Some quando ele troca o campo à mão.
+ */
+function AvisoDaFaixa({
+  campo,
+  preenchido,
+}: {
+  campo: CampoDaFaixa;
+  preenchido: null | Preenchimento;
+}) {
+  if (!preenchido?.campos.includes(campo)) return null;
+
+  return (
+    <span className="flex items-center gap-1 text-[11px] font-medium text-[#7A5E2C] dark:text-[#D2AE72]">
+      <Ruler aria-hidden="true" className="size-3 shrink-0" />
+      {textoDoPreenchimento(preenchido)}
+    </span>
   );
 }
 
@@ -831,15 +1002,18 @@ function Formulario({
   criandoAqui,
   criandoCategoria,
   criarCategoria,
+  editarPremissa,
   entradaTexto,
-  mudarCategoriaNova,
+  indicesCarregados,
   jurosTexto,
   minutas,
-  mudarEntrada,
-  mudarJuros,
+  mudarCategoriaNova,
+  mudarParcelas,
   mudarPreco,
+  opcoesDoIndice,
   preco,
   precoTexto,
+  preenchido,
   problemas,
   rascunho,
   salvando,
@@ -855,15 +1029,25 @@ function Formulario({
   criandoAqui: boolean;
   criandoCategoria: boolean;
   criarCategoria: () => Promise<void>;
-  mudarCategoriaNova: (valor: string) => void;
+  /** Troca à mão de entrada, juros, periodicidade ou índice — os campos que a faixa governa. */
+  editarPremissa: (
+    campo: CampoDaFaixa,
+    mudanca: Partial<PremissaDoFormulario>,
+  ) => void;
   entradaTexto: string;
+  /** A lista de índices da tabela já chegou. Sem ela, o seletor mostra só o índice atual. */
+  indicesCarregados: boolean;
   jurosTexto: string;
   minutas: MinutaResumida[];
-  mudarEntrada: (v: string) => void;
-  mudarJuros: (v: string) => void;
+  mudarCategoriaNova: (valor: string) => void;
+  /** O único caminho pelo qual a faixa de prazo preenche o formulário. */
+  mudarParcelas: (parcelas: number) => void;
   mudarPreco: (v: string) => void;
+  opcoesDoIndice: OpcaoDeIndice[];
   preco: null | number;
   precoTexto: string;
+  /** Qual faixa preencheu quais campos. Nulo = nada veio de faixa, e a tela não diz nada. */
+  preenchido: null | Preenchimento;
   problemas: string[];
   rascunho: Rascunho;
   salvando: boolean;
@@ -993,17 +1177,26 @@ function Formulario({
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="grid gap-1.5">
             <span className={rotulo}>Parcelas</span>
+            {/* ⚠️ MUDAR AS PARCELAS PASSA PELA FAIXA, e é o único campo que passa. Ver
+                `mudarParcelasDoPlano`: abrir o plano não preenche nada. */}
             <input
               className={campo}
               inputMode="numeric"
               onChange={(e) =>
-                aoMudar({
-                  ...rascunho,
-                  parcelas: Number(e.target.value.replace(/\D/g, "")) || 0,
-                })
+                mudarParcelas(Number(e.target.value.replace(/\D/g, "")) || 0)
               }
               value={rascunho.parcelas || ""}
             />
+            {/* ⚠️ FAIXA QUE AINDA NÃO CHEGOU NÃO PODE SE PERDER CALADA. A leitura das faixas começa
+                junto com os botões de abrir plano; quem digita as parcelas antes de ela voltar (ou
+                com ela falhando) não recebe preenchimento nenhum, e a faixa NÃO é aplicada depois —
+                aplicar na chegada reescreveria o que o operador já trocou à mão. Então a tela diz. */}
+            {indicesCarregados ? null : (
+              <span className="text-[11px] text-ink-muted">
+                As faixas de prazo ainda não chegaram; mudar as parcelas agora
+                não preenche nada.
+              </span>
+            )}
           </label>
 
           <label className="grid gap-1.5">
@@ -1011,7 +1204,9 @@ function Formulario({
             <input
               className={campo}
               inputMode="decimal"
-              onChange={(e) => mudarEntrada(e.target.value)}
+              onChange={(e) =>
+                editarPremissa("entrada", { entradaTexto: e.target.value })
+              }
               placeholder="20"
               value={entradaTexto}
             />
@@ -1020,6 +1215,7 @@ function Formulario({
             <span className="text-[11px] text-ink-muted">
               20 significa 20%, não 0,20.
             </span>
+            <AvisoDaFaixa campo="entrada" preenchido={preenchido} />
           </label>
 
           <label className="grid gap-1.5">
@@ -1046,21 +1242,26 @@ function Formulario({
             <input
               className={campo}
               inputMode="decimal"
-              onChange={(e) => mudarJuros(e.target.value)}
+              onChange={(e) =>
+                editarPremissa("juros", { jurosTexto: e.target.value })
+              }
               placeholder="vazio = sem juros"
               value={jurosTexto}
             />
             <span className="text-[11px] text-ink-muted">
               Vazio é plano SEM juros, não campo por preencher.
             </span>
+            <AvisoDaFaixa campo="juros" preenchido={preenchido} />
           </label>
 
           <label className="grid gap-1.5">
             <span className={rotulo}>Periodicidade dos juros</span>
+            {/* ⚠️ A PERIODICIDADE É PARTE DOS JUROS: trocá-la à mão tira os juros do aviso da faixa,
+                porque "0,5" ao ano não é mais o que a faixa mandou. */}
             <select
               className={campo}
               onChange={(e) =>
-                aoMudar({ ...rascunho, jurosPeriodicidade: e.target.value })
+                editarPremissa("juros", { jurosPeriodicidade: e.target.value })
               }
               value={rascunho.jurosPeriodicidade ?? "anual"}
             >
@@ -1090,19 +1291,29 @@ function Formulario({
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1.5">
             <span className={rotulo}>Correção do saldo</span>
+            {/* ⚠️ AS OPÇÕES VÊM DA TABELA `temis_indices`, e o índice ATUAL do plano está sempre
+                entre elas (`opcoesDeIndice`), mesmo desativado: `value` sem `<option>` mostra a
+                primeira opção e grava a primeira ao salvar, calado. */}
             <select
               className={campo}
               onChange={(e) =>
-                aoMudar({ ...rascunho, indiceCorrecao: e.target.value })
+                editarPremissa("indice", { indiceCorrecao: e.target.value })
               }
               value={rascunho.indiceCorrecao}
             >
-              {INDICES.map((i) => (
+              {opcoesDoIndice.map((i) => (
                 <option key={i.valor} value={i.valor}>
                   {i.rotulo}
                 </option>
               ))}
             </select>
+            <AvisoDaFaixa campo="indice" preenchido={preenchido} />
+            {indicesCarregados ? null : (
+              <span className="text-[11px] text-ink-muted">
+                A lista de índices ainda não chegou; o índice do plano foi
+                mantido.
+              </span>
+            )}
           </label>
 
           <label className="grid gap-1.5">

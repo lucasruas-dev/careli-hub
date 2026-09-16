@@ -36,6 +36,42 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-16-planos-leem-os-indices-e-a-faixa",
+    deployedAt: "2026-09-16T08:50:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A correção do saldo mostra todos os índices cadastrados.** A tela tinha uma lista fixa com só cinco; agora aparecem os doze, inclusive a Poupança.",
+              "**Ao mudar o número de parcelas, a faixa de prazo preenche o plano.** A correção, a entrada e os juros vêm da faixa que contém aquele número, e embaixo de cada campo aparece de onde veio: \"Preenchido pela faixa de 37 a 120 parcelas\".",
+              "**Abrir um plano já salvo não muda nada nele.** A faixa só preenche quando você mexe nas parcelas, e o que você trocar à mão continua valendo.",
+            ],
+            screen: "Empreendimento · Planos comerciais",
+          },
+          {
+            items: [
+              "**A Poupança passa a ser anual**, e não mensal, na lista de correção.",
+              "**Os nomes dos índices ganharam acento:** \"Sem correção\", \"Poupança anual\" e \"CUB/m² mensal\".",
+            ],
+            screen: "Empreendimento · Faixas de prazo",
+          },
+        ],
+      },
+    ],
+    rollback: "f4566f6e",
+    technical: {
+      done:
+        "DOIS DEFEITOS NA ABA PLANOS COMERCIAIS, vistos nos prints do Lucas em 16/09. || (1) LISTA DE INDICES CRAVADA: `planos-comerciais-tab.tsx` tinha `const INDICES` com 5 itens, enquanto a fonte e `temis_indices` (12 ativos) — o cabecalho de lib/apolo/planos-comerciais.ts ja dizia *quem monta formulario le a TABELA*. Consequencia medida: a faixa 37-120 do Jardim das Gerais manda POUPANCA e a opcao nao existia; um <select> com value fora das <option> mostra a primeira e grava a primeira, trocando o indice calado. Agora as opcoes vem da MESMA leitura que a secao de faixas ja faz (/api/temis/faixas), repassada por `aoCarregar` — sem fetch novo e sem quarta copia. O indice atual do plano SEMPRE aparece (\"fora da lista ativa\" quando inativo). || (2) A FAIXA NAO PREENCHIA: `premissaDoPrazo`/`aplicarPremissa` so eram usadas pelo simulador de proposta. Modulo puro novo `lib/hercules/faixa-no-formulario-do-plano.ts` (23 testes): `abrirFormulario` NEM RECEBE as faixas, entao abrir plano salvo nao troca nada (travado em teste pela aridade); `mudarParcelas` so age quando o numero muda, recomeca do que o OPERADOR escreveu (sem isso, digitar 120 passando por 1 e 12 deixaria restos das faixas dessas teclas) e preenche entrada/indice/juros SO quando a faixa os define (define_* separa \"sem juros\" de \"nao opino\"). Faixas do proprio empreendimento, sem heranca do pai — igual ao simulador. Revisao adversarial achou 1 falha menor (digitar parcelas antes de as faixas chegarem nao preenchia calado) e acrescentou aviso na tela. || (3) DADO: `temis_indices` POUPANCA com aplicacao mensal -> anual, e as siglas SEM_CORRECAO/POUPANCA/CUB ganharam acento, com OK do Lucas; nenhum plano nem faixa usava a Poupanca e `aplicacao` e so rotulo. || ⚠️ COMMIT PARCIAL de lib/apolo/planos-comerciais.ts: o arquivo tinha tambem os campos `categoriaId`/`enterpriseId` da hierarquia de planos (outra frente, nao validada); subiu SO a troca do rotulo da Poupanca. Dependencias do lote conferidas sobre o INDEX. || 2.487 testes verdes; typecheck e lint limpos. NAO verificado em tela: o hub exige login.",
+      motivation:
+        "Lucas (16/09/2026), com prints do campo Correcao do saldo: *\"troca por favor em vez de poupanca mensal, trocar para anual\"*, depois *\"nao alterou aqui porque? com base na quantidade de parcelas deveria trazer preenchido\"*.",
+    },
+    title: "Os planos mostram todos os índices e são preenchidos pela faixa de prazo",
+    type: "melhoria",
+    version: "1.343.0",
+  },
+  {
     buildTag: "2026-09-16-cadastro-diz-que-o-cnpj-nao-existe",
     deployedAt: "2026-09-16T07:40:00-03:00",
     internal: true,

@@ -114,7 +114,12 @@ export const INDICES: Record<IndiceCorrecao, string> = {
   INPC_MENSAL: "INPC mensal",
   IPCA_ANUAL: "IPCA anual",
   IPCA_MENSAL: "IPCA mensal",
-  POUPANCA: "poupança",
+  // ⚠️ ANUAL, E NÃO MENSAL, POR DECISÃO DO LUCAS (16/09/2026): *"em vez de poupança mensal,
+  // trocar para anual"*. A tabela `temis_indices` foi atualizada no mesmo dia (`aplicacao =
+  // 'anual'`), e este rótulo anda junto com ela — senão o simulador diria uma coisa e a tela de
+  // faixas outra. O CÓDIGO `POUPANCA` ficou sem sufixo de propósito: ele é FK dos planos e é o nome
+  // que o tradutor do C2X usa, e renomeá-lo exigiria migration para trocar uma palavra de tela.
+  POUPANCA: "poupança anual",
   SEM_CORRECAO: "sem correção",
   TR_MENSAL: "TR mensal",
 };

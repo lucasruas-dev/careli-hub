@@ -3,6 +3,12 @@
 import { Loader2, Plus, Power, Ruler } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import {
+  type IndiceDaTabela,
+  type LinhaDeFaixa,
+  rotuloDoIndiceDaTabela,
+  type TabelaDasFaixas,
+} from "@/lib/hercules/faixa-no-formulario-do-plano";
 import { conferirFaixa, type EntradaDeFaixa } from "@/lib/temis/faixas";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
@@ -18,30 +24,11 @@ import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 // significa as parcelas 13 a 36 DE UM CONTRATO. As mesmas palavras para coisas opostas é o jeito
 // mais barato de alguém construir o sistema errado.
 
-type Indice = {
-  aplicacao: string;
-  codigo: string;
-  exige_parametro: boolean;
-  fonte: string;
-  nome: string;
-  sigla: string;
-};
-
-type Faixa = {
-  ativo: boolean;
-  define_entrada: boolean;
-  define_indice: boolean;
-  define_juros: boolean;
-  entrada_percentual: null | number | string;
-  id: string;
-  indice_correcao: null | string;
-  juros_convencao: string;
-  juros_periodicidade: string;
-  juros_taxa: null | number | string;
-  observacao: null | string;
-  parcela_maxima: number;
-  parcela_minima: number;
-};
+// ⚠️ OS TIPOS DA LINHA MORAM EM `faixa-no-formulario-do-plano.ts`, junto com o rótulo do índice. O
+// formulário do plano lê esta mesma rota, e dois tipos para a mesma resposta divergem na primeira
+// coluna nova.
+type Indice = IndiceDaTabela;
+type Faixa = LinhaDeFaixa;
 
 const RASCUNHO_VAZIO = {
   entrada: "",
@@ -66,7 +53,21 @@ function escreverTaxa(taxa: null | number, periodicidade: string): string {
   return `${numero}% ${periodicidade === "anual" ? "a.a." : "a.m."}`;
 }
 
-export function FaixasDePrazo({ enterpriseId }: { enterpriseId: string }) {
+export function FaixasDePrazo({
+  aoCarregar,
+  enterpriseId,
+}: {
+  /**
+   * Recebe as faixas e os índices a cada leitura bem-sucedida.
+   *
+   * ⚠️ É ASSIM QUE O FORMULÁRIO DO PLANO LÊ A TABELA SEM UMA SEGUNDA CHAMADA. A aba de planos monta
+   * esta seção logo acima do formulário; buscar de novo lá faria a faixa recém-criada aqui não
+   * valer para o plano até recarregar a página. Precisa ser uma referência estável (um `setState`),
+   * senão a leitura se repete a cada render.
+   */
+  aoCarregar?: (tabela: TabelaDasFaixas) => void;
+  enterpriseId: string;
+}) {
   const [faixas, setFaixas] = useState<Faixa[]>([]);
   const [indices, setIndices] = useState<Indice[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -91,12 +92,17 @@ export function FaixasDePrazo({ enterpriseId }: { enterpriseId: string }) {
       setFaixas(corpo.data?.faixas ?? []);
       setIndices(corpo.data?.indices ?? []);
       setErro(null);
+      aoCarregar?.({
+        enterpriseId,
+        faixas: corpo.data?.faixas ?? [],
+        indices: corpo.data?.indices ?? [],
+      });
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao ler as faixas.");
     } finally {
       setCarregando(false);
     }
-  }, [enterpriseId]);
+  }, [aoCarregar, enterpriseId]);
 
   useEffect(() => {
     void carregar();
@@ -343,14 +349,10 @@ export function FaixasDePrazo({ enterpriseId }: { enterpriseId: string }) {
             >
               {indices.map((i) => (
                 <option key={i.codigo} value={i.codigo}>
-                  {i.sigla}
-                  {i.aplicacao === "nenhuma" ? "" : ` ${i.aplicacao}`}
-                  {/* ⚠️ O AVISO VAI NO NOME DA OPÇÃO porque é onde a pessoa está olhando na hora
-                      de escolher. Índice sem fonte automática vira cláusula de contrato sem número
-                      por trás: alguém terá que informar o valor à mão a cada competência. */}
-                  {i.fonte === "manual" && i.codigo !== "SEM_CORRECAO"
-                    ? " · valor manual"
-                    : ""}
+                  {/* ⚠️ O AVISO DE VALOR MANUAL VAI NO NOME DA OPÇÃO, e o texto sai de
+                      `rotuloDoIndiceDaTabela` — o mesmo que o formulário do plano usa, para o índice
+                      não aparecer escrito de dois jeitos na mesma página. */}
+                  {rotuloDoIndiceDaTabela(i)}
                 </option>
               ))}
             </select>
