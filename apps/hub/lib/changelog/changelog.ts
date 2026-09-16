@@ -36,6 +36,39 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-16-a-lista-para-de-esconder-o-cpf",
+    deployedAt: "2026-09-16T11:34:22-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O CPF sem pontuação agora aparece na lista do CRM 360.** A busca já encontrava a ficha e abria o cadastro à direita, mas a lista à esquerda dizia “Nenhum relacionamento encontrado”. Agora a pessoa aparece nos dois lugares.",
+            ],
+            screen: "CRM 360 · Busca",
+          },
+          {
+            items: [
+              "**A busca do Board também acha CPF e CNPJ com ou sem pontuação.** Tinha o mesmo defeito.",
+            ],
+            screen: "Board · Busca",
+          },
+        ],
+      },
+    ],
+    rollback: "ab43f318",
+    technical: {
+      done:
+        "A 1.344.0 CONSERTOU O SERVIDOR E FICOU PELA METADE — erro de verificacao meu: validei a rota e nao a tela. Print do Lucas (16/09/2026): busca \"69109320644\", ficha da Elizabete ABERTA a direita e \"Nenhum relacionamento encontrado\" a esquerda. Conferido no banco que a Elizabete e a dona do CPF 691.093.206-44, entao o servidor acertou e quem escondia era a TELA. || O CRM 360 REFILTRA NO CLIENTE o que o servidor devolve (`matchesApoloFilters`, modules/apolo/data/apolo-derive.ts), procurando o termo num texto que tem `entity.documentMasked` COM mascara; \"69109320644\" nunca esta dentro de \"691.093.206-44\". O painel abria porque `selectedEntity` (ApoloPage.tsx:295-300) cai em `entities[0]` — o resultado ANTES do filtro local — quando a lista filtrada vem vazia. Isso mascarou o defeito: parecia que a busca funcionava. || ⚠️ O MESMO DEFEITO ESTAVA NO BOARD (board-view.tsx:1108): `${item.nome} ${item.documento}`.includes(busca), com `item.documento` vindo de `document_masked` (board-do-servidor.ts:654 e :1085). Achado varrendo os filtros de tela que usam documento. || A regra virou UMA funcao, `documentoCasaComBusca` (lib/iris/apolo/busca-por-numero.ts), usada pelas duas telas e construida sobre `documentoParaBusca`, a mesma do servidor. Tres camadas, uma regra. || 10 testes novos, entre eles o caso exato do print. Os dois casos sem pontuacao foram vistos FALHAR antes do conserto e os quatro de controle passaram (com pontuacao, nome, CPF de outra pessoa, filtro de perfil). Suite 4.003 verdes em 267 arquivos; typecheck limpo, arquivos tocados cobertos. NAO verificado em tela — o hub exige login. || LICAO REGISTRADA: busca que tem filtro no servidor E na tela precisa ser conferida nas duas; a rota certa com a tela errada parece funcionar, porque o painel abre.",
+      motivation:
+        "Lucas (16/09/2026), com print do CRM 360 depois da 1.344.0: busca por \"69109320644\" com a ficha aberta a direita e a lista vazia a esquerda. O pedido original era *\"o cpf tem que buscar sem ou com pontuacao\"*.",
+    },
+    title: "A lista do CRM 360 para de esconder o CPF sem pontuacao",
+    type: "correcao",
+    version: "1.345.0",
+  },
+  {
     buildTag: "2026-09-16-boleto-da-caca-chega-e-cpf-sem-pontuacao",
     deployedAt: "2026-09-16T11:13:07-03:00",
     modules: [
