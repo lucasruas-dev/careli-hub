@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-16-coordenador-envia-para-contrato-sem-minuta",
+    deployedAt: "2026-09-16T14:07:34-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**O coordenador envia para contrato mesmo sem minuta cadastrada.** Antes, o envio era recusado quando o empreendimento não tinha o modelo de contrato publicado, o que impedia o envio em quase todos os empreendimentos.",
+              "**O cadastro da minuta fica com a equipe administrativa**, que continua vendo no quadro da Têmis quais planos estão sem minuta.",
+            ],
+            screen: "Venda · Enviar para contrato",
+          },
+        ],
+      },
+    ],
+    rollback: "4faac8d8",
+    technical: {
+      done:
+        "A rota `app/api/incorporador/venda/contrato` recusava (409) o envio quando o empreendimento nao tinha minuta de contrato PUBLICADA em `temis_minutas`, via `servicoDisponivel(\"contrato\")`, com \"Cadastre em Temis > Setup > Planos e minutas\". A trava tinha motivo historico (as duas primeiras vendas foram para o juridico sem documento possivel), mas na pratica travava quase tudo: medido em 16/09/2026, 14 dos 16 empreendimentos vendendo nao tinham minuta de contrato publicada — so RVP e VDO tinham; LBR (490 propostas), VOC (192), VOL (191), VLO (174), REP (159) e LAB (156) estavam bloqueados. || A FALTA DE MINUTA MUDA DE MAO, NAO SOME: o card nasce na Temis mesmo sem minuta (`abrirTrabalho` em lib/temis/trabalhos-db.ts nao exige uma), e o board da Temis ja destaca \"planos ativos sem minuta\" para a equipe administrativa (app/api/temis/board/route.ts). || CONFERIDO NAS DUAS CAMADAS: a tela de Venda nao trava por minuta — o botao so exige proposta gerada. A unica trava era a do servidor, e so a tela de Venda chama a rota. || `servicoDisponivel` NAO foi alterada: segue em uso no painel de documentos do empreendimento e em emitir-contrato. Saiu so a chamada nesta rota e os tres imports que ficaram sem uso. || ⚠️ `route.test.ts` (novo) FALHA se a recusa voltar, para ninguem repor a trava sem saber da decisao, e confere que as travas que o coordenador resolve na hora (unidade escolhida, proposta aberta) continuam. Visto falhar antes da remocao. Suite 4.011 verdes em 269 arquivos; typecheck limpo, arquivo coberto. NAO verificado em tela.",
+      motivation:
+        "Lucas (16/09/2026): *\"Hoje eles nao consegue encaminhar para contrato se nao tem um contrato cadastrado naquela unidade, pode deixar eles enviarem mesmo nao tendo um contrato pois a responsabilidade do contrato e da equipe adminsitrativa e nao do coordenador. pode habilitar eles enviarem normalmente o contrato para serem feitos\"*.",
+    },
+    title: "O coordenador envia para contrato mesmo sem minuta",
+    type: "melhoria",
+    version: "1.347.0",
+  },
+  {
     buildTag: "2026-09-16-planos-do-espelho-sem-repeticao",
     deployedAt: "2026-09-16T12:57:08-03:00",
     modules: [
