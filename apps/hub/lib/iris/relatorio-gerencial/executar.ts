@@ -5,6 +5,7 @@ import { publishHubNotification } from "@/lib/notifications/publish";
 import { lerDadosDoRelatorio } from "./dados";
 import { assuntoDoEmail, montarHtml, montarTexto } from "./html";
 import { dataNaCasa, diaNaCasa, ehDiaUtil, janelaDoDia } from "./janela";
+import { lerODia, selecionarConversas } from "./leitura";
 import {
   desempenhoPorFila,
   falhasDeEntrega,
@@ -73,13 +74,39 @@ export async function executarRelatorioDeAtendimento(opcoes?: {
     semResposta: semRespostaAoFim(dados.mensagens, janela),
   };
 
-  const html = montarHtml(conteudo);
+  // ⚠️ A LEITURA É A ÚLTIMA COISA, E ELA NÃO DERRUBA O RELATÓRIO. Sem chave, com a API fora ou
+  // com resposta fora do formato, o e-mail sai com os blocos medidos — que é o que a Nívea precisa
+  // ter todo dia, chova ou não chova na Anthropic.
+  let leitura = null;
+  try {
+    const conversas = selecionarConversas(dados.tickets, dados.mensagens, janela);
+    leitura = await lerODia(conversas, {
+      abertos: resumo.abertos,
+      fechados: resumo.fechados,
+      mediana: resumo.medianaMinutos,
+    });
+  } catch (erro) {
+    console.error("[iris][relatorio] a leitura do dia falhou; segue sem ela", erro);
+  }
+
+  const html = montarHtml({ ...conteudo, leitura });
   const numeros: Record<string, unknown> = {
     abertos: resumo.abertos,
     backlogDeCliente: conteudo.backlog.cliente,
     fechados: resumo.fechados,
     medianaMinutos: resumo.medianaMinutos,
     mensagens: resumo.mensagensEntrada + resumo.mensagensSaida,
+    // Quantos itens a leitura publicou e quantos ela descartou por não bater com conversa nenhuma.
+    leitura: leitura
+      ? {
+          acoes: leitura.acoes.length,
+          descartados: leitura.descartados,
+          insatisfeitos: leitura.insatisfeitos.length,
+          modelo: leitura.modelo,
+          negativos: leitura.negativos.length,
+          positivos: leitura.positivos.length,
+        }
+      : null,
     pessoas: conteudo.pessoas.length,
     recadosRecebidos: resumo.recadosRecebidos,
     recadosRespondidos: resumo.recadosRespondidos,
@@ -106,7 +133,7 @@ export async function executarRelatorioDeAtendimento(opcoes?: {
   try {
     const enviado = await sendGmailMessage({
       bodyHtml: html,
-      bodyText: montarTexto(conteudo),
+      bodyText: montarTexto({ ...conteudo, leitura }),
       from: getCacaSender(),
       subjectLine: assuntoDoEmail(janela),
       to: DESTINATARIOS.join(", "),

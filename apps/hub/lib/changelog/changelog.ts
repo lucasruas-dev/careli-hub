@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-17-relatorio-le-as-conversas",
+    deployedAt: "2026-09-17T21:20:00-03:00",
+    modules: [
+      {
+        module: "Íris",
+        screens: [
+          {
+            items: [
+              "**O relatório das 18h30 passa a ler as conversas do dia**, e não só contar os números. Ele traz os atendimentos que foram bem, os que correram mal, os clientes que demonstraram insatisfação e as ações recomendadas para o dia seguinte.",
+              "**Cada observação vem com o protocolo da conversa**, para conferir no painel em um clique.",
+              "**Se a leitura falhar, o relatório sai assim mesmo**, com os números. O e-mail nunca deixa de chegar por causa dela.",
+            ],
+            screen: "Relatório gerencial por e-mail",
+          },
+        ],
+      },
+    ],
+    rollback: "d8a9e28b",
+    technical: {
+      done:
+        "`lib/iris/relatorio-gerencial/leitura.ts`: `selecionarConversas` (puro, escolhe por SINAL — insatisfação, recado sem resposta, ticket fechado com pergunta aberta, entrega falha, espera longa — teto de 40 conversas e 24 mensagens cada) e `lerODia` via `completeWithClaudeStructured`. Três travas contra invenção: o modelo lê a conversa real com hora e protocolo, `validarLeitura` descarta item cujo protocolo não estava no material (o número de descartes vai no rodapé do bloco e no registro da execução) e citação que não aparece na transcrição é removida sem derrubar o item. `dados.ts` passou a trazer `body` (cortado em 600 caracteres), `protocol` e o nome do contato. A leitura roda dentro de try/catch depois dos números: sem `ANTHROPIC_API_KEY` ou com erro na API, o e-mail sai só com os blocos medidos. 7 testes novos (30 no total da pasta).",
+      motivation:
+        "Lucas (17/09/2026), depois de ver a primeira versão só com indicadores: *\"coloca os atendimentos que vc entender que foi positivo, os negativos, se teve algum cliente insatisfeito, bem completo dando dica de ação\"*.",
+    },
+    title: "O relatório de atendimento passa a ler as conversas do dia",
+    type: "melhoria",
+    version: "1.349.1",
+  },
+  {
     buildTag: "2026-09-17-relatorio-diario-de-atendimento",
     deployedAt: "2026-09-17T20:45:00-03:00",
     modules: [

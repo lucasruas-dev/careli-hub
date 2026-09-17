@@ -26,6 +26,9 @@ import {
 
 const PAGINA = 1000;
 
+/** O corte do texto de cada mensagem. Cabe um recado inteiro; não cabe um contrato colado. */
+const LIMITE_DO_TEXTO = 600;
+
 /** Duas horas de folga depois do fim: a resposta das 18h40 a um recado das 18h25 conta. */
 const FOLGA_DEPOIS_EM_MS = 2 * 60 * 60 * 1000;
 
@@ -37,6 +40,7 @@ export type DadosDoRelatorio = {
 };
 
 type LinhaDeMensagem = {
+  body: null | string;
   created_at: string;
   delivery_status: null | string;
   direction: null | string;
@@ -47,9 +51,11 @@ type LinhaDeMensagem = {
 
 type LinhaDeTicket = {
   closed_at: null | string;
+  contact_id: null | string;
   id: string;
   metadata: null | Record<string, unknown>;
   opened_at: null | string;
+  protocol: null | string;
   queue_id: null | string;
 };
 
@@ -98,7 +104,7 @@ export async function lerDadosDoRelatorio(
   const linhasDeMensagem = await emPaginas<LinhaDeMensagem>((de, ate) =>
     client
       .from("caredesk_messages")
-      .select("ticket_id,direction,message_type,delivery_status,sender_user_id,created_at")
+      .select("ticket_id,direction,message_type,delivery_status,sender_user_id,created_at,body")
       .gte("created_at", inicio)
       .lte("created_at", fimComFolga)
       .order("created_at", { ascending: true })
@@ -109,7 +115,7 @@ export async function lerDadosDoRelatorio(
   const abertos = await emPaginas<LinhaDeTicket>((de, ate) =>
     client
       .from("caredesk_tickets")
-      .select("id,queue_id,opened_at,closed_at,metadata")
+      .select("id,queue_id,opened_at,closed_at,metadata,protocol,contact_id")
       .in("queue_id", idsDasFilas)
       .gte("opened_at", inicio)
       .lte("opened_at", fim)
@@ -120,7 +126,7 @@ export async function lerDadosDoRelatorio(
   const fechados = await emPaginas<LinhaDeTicket>((de, ate) =>
     client
       .from("caredesk_tickets")
-      .select("id,queue_id,opened_at,closed_at,metadata")
+      .select("id,queue_id,opened_at,closed_at,metadata,protocol,contact_id")
       .in("queue_id", idsDasFilas)
       .gte("closed_at", inicio)
       .lte("closed_at", fim)
@@ -141,7 +147,7 @@ export async function lerDadosDoRelatorio(
     const bloco = faltando.slice(i, i + 200);
     const { data, error } = await client
       .from("caredesk_tickets")
-      .select("id,queue_id,opened_at,closed_at,metadata")
+      .select("id,queue_id,opened_at,closed_at,metadata,protocol,contact_id")
       .in("id", bloco);
     if (error) throw new Error(error.message);
     for (const t of (data ?? []) as LinhaDeTicket[]) porId.set(t.id, t);
@@ -158,11 +164,32 @@ export async function lerDadosDoRelatorio(
     if (!fila) continue;
     tickets.push({
       abertoEm: t.opened_at,
+      cliente: null,
       daCaca: daCaca(t),
       fechadoEm: t.closed_at,
       fila,
       id: t.id,
+      protocolo: t.protocol,
     });
+  }
+
+  // ── O nome de quem estava do outro lado, para a leitura do dia citar a conversa ──
+  const idsDeContato = [
+    ...new Set(
+      [...porId.values()].map((t) => t.contact_id).filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const nomePorContato = new Map<string, string>();
+  for (let i = 0; i < idsDeContato.length; i += 200) {
+    const bloco = idsDeContato.slice(i, i + 200);
+    const { data } = await client.from("caredesk_contacts").select("id,display_name").in("id", bloco);
+    for (const c of (data ?? []) as Array<{ display_name: null | string; id: string }>) {
+      if (c.display_name) nomePorContato.set(c.id, c.display_name.trim());
+    }
+  }
+  for (const t of tickets) {
+    const contato = porId.get(t.id)?.contact_id;
+    t.cliente = contato ? (nomePorContato.get(contato) ?? null) : null;
   }
 
   // ── Os códigos de erro, só das mensagens que falharam ──
@@ -201,6 +228,9 @@ export async function lerDadosDoRelatorio(
       entrega: m.delivery_status,
       erroCodigo: erroPorMensagem.get(`${m.ticket_id}|${m.created_at}`) ?? null,
       fila: ticket.fila,
+      // ⚠️ CORTADO AQUI, E NÃO NO PROMPT: mensagem de cliente com um contrato colado dentro
+      // existe, e carregar isso inteiro para 1.000 linhas é megabyte de memória por nada.
+      texto: m.body ? m.body.slice(0, LIMITE_DO_TEXTO) : null,
       ticketId: m.ticket_id,
       tipo: m.message_type,
       usuarioId: m.sender_user_id,

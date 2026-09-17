@@ -1,4 +1,5 @@
 import { dataNaCasa, horaNaCasa, type JanelaDoRelatorio } from "./janela";
+import type { LeituraDoDia } from "./leitura";
 import type {
   HoraDoDia,
   LinhaDaFila,
@@ -23,6 +24,8 @@ const BORDA = "#D8DCE1";
 const AZUL = "#1B4F72";
 
 export type ConteudoDoRelatorio = {
+  /** A parte que o modelo escreve lendo as conversas. `null` = o dia saiu só com os números. */
+  leitura?: LeituraDoDia | null;
   backlog: {
     automatico: number;
     cliente: number;
@@ -151,6 +154,100 @@ function itemDeAtencao(titulo: string, corpo: string, tom: "atencao" | "critico"
 </div>`;
 }
 
+/**
+ * Os blocos que saem da leitura das conversas.
+ *
+ * ⚠️ O RODAPÉ DIZ QUEM ESCREVEU. Esta é a única parte do relatório que um modelo redigiu, e quem
+ * lê tem direito de saber disso antes de repassar a frase numa reunião.
+ */
+function blocosDaLeitura(leitura: LeituraDoDia): string {
+  const item = (i: { citacao?: null | string; detalhe: string; protocolo: string; titulo: string }, tom: "atencao" | "critico" | "neutro") =>
+    itemDeAtencao(
+      i.titulo,
+      `${escapar(i.detalhe)}${
+        i.citacao
+          ? `<br><span style="font-size:12.5px;color:${FRACA}">${escapar(i.protocolo)}: <em>“${escapar(i.citacao)}”</em></span>`
+          : `<br><span style="font-size:12.5px;color:${FRACA}">${escapar(i.protocolo)}</span>`
+      }`,
+      tom,
+    );
+
+  const partes: string[] = [];
+
+  if (leitura.positivos.length > 0) {
+    partes.push(
+      bloco(
+        "O que foi bem",
+        "Atendimentos que merecem ser mostrados para o time.",
+        leitura.positivos
+          .map((i) =>
+            itemDeAtencao(
+              i.titulo,
+              `${escapar(i.detalhe)}${
+                i.citacao
+                  ? `<br><span style="font-size:12.5px;color:${FRACA}">${escapar(i.protocolo)}: <em>“${escapar(i.citacao)}”</em></span>`
+                  : `<br><span style="font-size:12.5px;color:${FRACA}">${escapar(i.protocolo)}</span>`
+              }`,
+              "neutro",
+            ).replace("border-left:3px solid #6C7680", "border-left:3px solid #1F6B4E").replace("background:#F7F8F9", "background:#DCEDE4"),
+          )
+          .join("\n"),
+      ),
+    );
+  }
+
+  if (leitura.negativos.length > 0) {
+    partes.push(
+      bloco(
+        "O que precisa melhorar",
+        "O que não funcionou hoje, separado entre atendimento e processo.",
+        leitura.negativos.map((i) => item(i, "critico")).join("\n"),
+      ),
+    );
+  }
+
+  if (leitura.insatisfeitos.length > 0) {
+    partes.push(
+      bloco(
+        "Clientes insatisfeitos",
+        "Quem demonstrou insatisfação na conversa de hoje.",
+        leitura.insatisfeitos.map((i) => item(i, "critico")).join("\n"),
+      ),
+    );
+  }
+
+  if (leitura.acoes.length > 0) {
+    partes.push(
+      bloco(
+        "Ações para amanhã",
+        "Em ordem de impacto.",
+        `<ol style="margin:6px 0;padding-left:20px">${leitura.acoes
+          .map(
+            (a) =>
+              `<li style="margin-bottom:8px;font-size:13.5px"><strong>${escapar(a.acao)}</strong><br><span style="color:#3A434B">${escapar(a.motivo)}</span>${
+                a.protocolos && a.protocolos.length > 0
+                  ? `<br><span style="font-size:12.5px;color:${FRACA}">${escapar(a.protocolos.join(", "))}</span>`
+                  : ""
+              }</li>`,
+          )
+          .join("")}</ol>`,
+      ),
+    );
+  }
+
+  if (partes.length === 0) return "";
+
+  partes.push(
+    `<p style="font-size:12px;color:${FRACA};margin:-6px 0 16px">Esta leitura foi escrita por IA a partir das conversas do dia, e cada item traz o protocolo para conferência.${
+      leitura.descartados > 0
+        ? ` ${leitura.descartados} observação(ões) foram descartadas por não bater com nenhuma conversa.`
+        : ""
+    }</p>`,
+  );
+
+  return partes.join("\n");
+}
+
 export function montarHtml(c: ConteudoDoRelatorio): string {
   const { janela, resumo } = c;
   const saldo = resumo.fechados - resumo.abertos;
@@ -270,6 +367,8 @@ export function montarHtml(c: ConteudoDoRelatorio): string {
             .join("")}</table>`,
         );
 
+  const leitura = c.leitura ? blocosDaLeitura(c.leitura) : "";
+
   const rodape = `<p style="font-size:12px;color:${FRACA};text-align:center;line-height:1.7;margin-top:18px">
   Relatório gerado pelo Panteon a partir da base de atendimento da Íris.<br>
   Apuração de ${escapar(dataNaCasa(janela.dia))}, das 08h00 às 18h30, horário de Brasília.
@@ -284,6 +383,7 @@ ${capa}
 ${numeros}
 ${filas}
 ${pessoas}
+${leitura}
 ${atencao}
 ${movimento}
 ${rodape}

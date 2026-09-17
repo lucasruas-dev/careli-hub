@@ -29,6 +29,13 @@ export type MensagemDaJanela = {
   /** O código de erro da Meta, quando a entrega falhou (`131026`, `131047`). */
   erroCodigo: null | string;
   fila: string;
+  /**
+   * O texto da mensagem, cortado na leitura.
+   *
+   * ⚠️ SÓ A LEITURA DO DIA USA ISTO. Nenhum número do relatório sai do texto — contar por palavra
+   * é como se inventa estatística. Ver `leitura.ts`.
+   */
+  texto?: null | string;
   ticketId: string;
   tipo: null | string;
   usuarioId: null | string;
@@ -36,10 +43,14 @@ export type MensagemDaJanela = {
 
 export type TicketDaJanela = {
   abertoEm: null | string;
+  /** O nome do cliente, para a leitura do dia citar quem estava do outro lado. */
+  cliente?: null | string;
   daCaca: boolean;
   fechadoEm: null | string;
   fila: string;
   id: string;
+  /** `AT-014375` — é por ele que a Nívea acha a conversa no painel. */
+  protocolo?: null | string;
 };
 
 export type LinhaDaFila = {
