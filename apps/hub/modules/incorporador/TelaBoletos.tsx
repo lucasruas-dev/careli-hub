@@ -6,11 +6,13 @@ import {
   Ban,
   Check,
   ChevronDown,
+  Download,
   ExternalLink,
   Loader2,
   MessageCircle,
   Pencil,
   RefreshCw,
+  Search,
   Send,
   X,
   Zap,
@@ -831,9 +833,11 @@ export function TelaBoletos() {
             }
             boletos={visiveisEmitidos}
             carregandoHistorico={carregandoHistorico}
+            competencia={competencia}
             enviando={enviando}
             historico={historico}
             mostrarPredio={aba === "consolidado" || aba === ABA_TESTE}
+            nomeDaAba={aba === "consolidado" ? "consolidado" : nomeDoPredio(aba)}
             ocupado={ocupado}
           />
 
@@ -929,7 +933,17 @@ function Cabecalho({
 // antes de `Q02 L05`, e a lista fica ilegível justamente onde ela é mais longa (143 linhas no
 // Garden). `localeCompare` com `numeric` resolve os dois de uma vez.
 
-type Coluna = "cliente" | "parcela" | "predio" | "situacao" | "telefone" | "unidade" | "valor" | "vencimento";
+type Coluna =
+  | "cliente"
+  | "enviado"
+  | "pagamento"
+  | "parcela"
+  | "predio"
+  | "situacao"
+  | "telefone"
+  | "unidade"
+  | "valor"
+  | "vencimento";
 type Ordem = { coluna: Coluna; desc: boolean } | null;
 
 function ordenarParcelas(linhas: ParcelaAEmitir[], ordem: Ordem): ParcelaAEmitir[] {
@@ -956,6 +970,101 @@ function ordenarParcelas(linhas: ParcelaAEmitir[], ordem: Ordem): ParcelaAEmitir
         return sinal * ((a.valor ?? 0) - (b.valor ?? 0));
       case "vencimento":
         return sinal * ((a.vencimentoDia ?? 99) - (b.vencimentoDia ?? 99));
+      default:
+        return 0;
+    }
+  });
+}
+
+// ── FILTRAR E ORDENAR OS EMITIDOS ───────────────────────────────────────────
+//
+// ⚠️ A LISTA DE EMITIDOS É A MAIOR DA TELA e era a única sem filtro nem ordem: 334 linhas no
+// consolidado de setembro, e quem procurava um cliente rolava a página inteira (Lucas, 17/09/2026:
+// *"coloca aqui na tela da cecilio, filtros, ordenação e exportação para excel"*).
+//
+// ⚠️ A SITUAÇÃO É CALCULADA AQUI, e não lida do Asaas: a tela já pinta o selo com esta mesma regra
+// (`Selo`) — pagamento manda, depois o vencido. Filtrar pelo `status` cru ofereceria ao operador um
+// vocabulário que ele não vê em lugar nenhum ("RECEIVED", "OVERDUE").
+
+type SituacaoDoBoleto = "aberto" | "pago" | "vencido";
+
+function situacaoDoBoleto(b: BoletoEmitido): SituacaoDoBoleto {
+  if (b.pagamento) return "pago";
+  return b.vencido ? "vencido" : "aberto";
+}
+
+const ROTULO_DA_SITUACAO: Record<SituacaoDoBoleto, string> = {
+  aberto: "Em aberto",
+  pago: "Pago",
+  vencido: "Vencido",
+};
+
+/** Ordem do selo quando se ordena pela coluna Situação: o que precisa de ação primeiro. */
+const PESO_DA_SITUACAO: Record<SituacaoDoBoleto, number> = { aberto: 1, pago: 2, vencido: 0 };
+
+function semAcento(v: string): string {
+  return v.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+/**
+ * A busca casa cliente, unidade, CPF/CNPJ e telefone — os quatro jeitos de procurar UM boleto.
+ *
+ * ⚠️ O DOCUMENTO E O TELEFONE CASAM SÓ PELOS DÍGITOS: na tela eles aparecem formatados
+ * (`•••.691.716-07`, `(37) 99936-6088`), e quem digita "99936" ou "69171607" não acharia nada se a
+ * comparação fosse com a pontuação no meio.
+ */
+function filtrarEmitidos(
+  linhas: BoletoEmitido[],
+  filtro: { busca: string; situacao: "" | SituacaoDoBoleto },
+  nomeDoPredio: (slug: string) => string,
+): BoletoEmitido[] {
+  const termo = semAcento(filtro.busca.trim());
+  const digitos = termo.replace(/\D/g, "");
+
+  return linhas.filter((b) => {
+    if (filtro.situacao && situacaoDoBoleto(b) !== filtro.situacao) return false;
+    if (!termo) return true;
+
+    const alvo = semAcento(`${b.nome} ${b.unidade} ${nomeDoPredio(b.empreendimento)}`);
+    if (alvo.includes(termo)) return true;
+
+    if (!digitos) return false;
+    const numeros = `${b.documento ?? ""} ${b.contato ?? ""}`.replace(/\D/g, "");
+    return numeros.includes(digitos);
+  });
+}
+
+function ordenarEmitidos(
+  linhas: BoletoEmitido[],
+  ordem: Ordem,
+  nomeDoPredio: (slug: string) => string,
+): BoletoEmitido[] {
+  if (!ordem) return linhas;
+  const sinal = ordem.desc ? -1 : 1;
+  const texto = (a: string, b: string) => a.localeCompare(b, "pt-BR", { numeric: true });
+  // Vazio no fim nas datas: "sem pagamento" não é uma data antiga.
+  const data = (v: null | string) => v ?? "9999-99-99";
+
+  return [...linhas].sort((a, b) => {
+    switch (ordem.coluna) {
+      case "cliente":
+        return sinal * texto(a.nome, b.nome);
+      case "enviado":
+        return sinal * texto(data(a.whatsappEnviadoEm), data(b.whatsappEnviadoEm));
+      case "pagamento":
+        return sinal * texto(data(a.pagamento), data(b.pagamento));
+      case "predio":
+        return sinal * texto(nomeDoPredio(a.empreendimento), nomeDoPredio(b.empreendimento));
+      case "situacao":
+        return sinal * (PESO_DA_SITUACAO[situacaoDoBoleto(a)] - PESO_DA_SITUACAO[situacaoDoBoleto(b)]);
+      case "telefone":
+        return sinal * texto(a.contato ?? "", b.contato ?? "");
+      case "unidade":
+        return sinal * texto(a.unidade, b.unidade);
+      case "valor":
+        return sinal * (a.valor - b.valor);
+      case "vencimento":
+        return sinal * texto(data(a.vencimento), data(b.vencimento));
       default:
         return 0;
     }
@@ -1519,6 +1628,141 @@ function AEmitir({
   );
 }
 
+// ── A BARRA DE FILTRO, ORDEM E EXPORTAÇÃO ───────────────────────────────────
+//
+// ⚠️ TRÊS CONTROLES, E NADA MAIS. Empreendimento já é a fita de abas logo acima, e competência é o
+// seletor do topo: repetir os dois aqui daria dois lugares para dizer a mesma coisa, e a tela
+// mostrando um enquanto o filtro diz outro. O que faltava era achar UMA pessoa (busca), ver só o
+// que precisa de ação (situação) e levar a lista para fora (Excel).
+function BarraDeFiltros({
+  aoBuscar,
+  aoExportar,
+  aoTrocarSituacao,
+  busca,
+  erro,
+  exportando,
+  situacao,
+  total,
+  visiveis,
+}: {
+  aoBuscar: (v: string) => void;
+  aoExportar: () => void;
+  aoTrocarSituacao: (v: "" | SituacaoDoBoleto) => void;
+  busca: string;
+  erro: null | string;
+  exportando: boolean;
+  situacao: "" | SituacaoDoBoleto;
+  total: number;
+  visiveis: number;
+}) {
+  const filtros: { rotulo: string; valor: "" | SituacaoDoBoleto }[] = [
+    { rotulo: "Todos", valor: "" },
+    { rotulo: "Em aberto", valor: "aberto" },
+    { rotulo: "Vencido", valor: "vencido" },
+    { rotulo: "Pago", valor: "pago" },
+  ];
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ alignItems: "center", display: "flex", flex: "1 1 240px", position: "relative" }}>
+          <Search
+            size={14}
+            style={{ color: T.sub, left: 10, pointerEvents: "none", position: "absolute" }}
+          />
+          <input
+            onChange={(e) => aoBuscar(e.target.value)}
+            placeholder="Buscar cliente, unidade, CPF ou telefone"
+            style={{
+              background: T.card,
+              border: `1px solid ${T.border}`,
+              borderRadius: 8,
+              color: T.text,
+              fontSize: 13.5,
+              padding: "8px 10px 8px 30px",
+              width: "100%",
+            }}
+            value={busca}
+          />
+          {busca ? (
+            <button
+              aria-label="Limpar a busca"
+              onClick={() => aoBuscar("")}
+              style={{
+                background: "none",
+                border: "none",
+                color: T.sub,
+                cursor: "pointer",
+                padding: 4,
+                position: "absolute",
+                right: 4,
+              }}
+              type="button"
+            >
+              <X size={13} />
+            </button>
+          ) : null}
+        </div>
+
+        {filtros.map((f) => {
+          const ativo = situacao === f.valor;
+          return (
+            <button
+              key={f.rotulo}
+              onClick={() => aoTrocarSituacao(f.valor)}
+              style={{
+                background: ativo ? T.soft : "transparent",
+                border: `1px solid ${ativo ? T.gold : T.border}`,
+                borderRadius: 999,
+                color: ativo ? T.text : T.sub,
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: ativo ? 700 : 500,
+                padding: "6px 12px",
+                whiteSpace: "nowrap",
+              }}
+              type="button"
+            >
+              {f.rotulo}
+            </button>
+          );
+        })}
+
+        <button
+          disabled={exportando || visiveis === 0}
+          onClick={aoExportar}
+          style={{
+            alignItems: "center",
+            background: "transparent",
+            border: `1px solid ${T.border}`,
+            borderRadius: 8,
+            color: visiveis === 0 ? T.sub : T.text,
+            cursor: exportando || visiveis === 0 ? "default" : "pointer",
+            display: "inline-flex",
+            fontSize: 13.5,
+            fontWeight: 600,
+            gap: 6,
+            marginLeft: "auto",
+            padding: "7px 14px",
+          }}
+          title="Baixa a lista como está aqui: com o filtro e a ordem da tela"
+          type="button"
+        >
+          {exportando ? <Loader2 className="inc-girando" size={14} /> : <Download size={14} />}
+          Excel
+        </button>
+      </div>
+
+      <div style={{ color: T.sub, fontSize: 12.5 }}>
+        {visiveis === total
+          ? `${total} boleto(s) emitido(s)`
+          : `${visiveis} de ${total} boleto(s) emitido(s)`}
+        {erro ? <span style={{ color: T.danger }}> · {erro}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 // ── EMITIDOS ────────────────────────────────────────────────────────────────
 
 function Emitidos({
@@ -1528,9 +1772,11 @@ function Emitidos({
   aoConferirEnvio,
   boletos,
   carregandoHistorico,
+  competencia,
   enviando,
   historico,
   mostrarPredio,
+  nomeDaAba,
   nomeDoPredio,
   ocupado,
 }: {
@@ -1545,13 +1791,76 @@ function Emitidos({
   aoConferirEnvio: (() => void) | null;
   boletos: BoletoEmitido[];
   carregandoHistorico: boolean;
+  /** `2026-09`: vai no nome do arquivo exportado. */
+  competencia: string;
   enviando: boolean;
   historico: null | Historico;
   mostrarPredio: boolean;
+  /** O nome da aba aberta, para o arquivo dizer de qual carteira ele é. */
+  nomeDaAba: string;
   /** slug -> nome do empreendimento, para a coluna Prédio não mostrar código interno. */
   nomeDoPredio: (slug: string) => string;
   ocupado: null | string;
 }) {
+  // ⚠️ FILTRO E ORDEM MORAM AQUI, e não no pai: eles são desta tabela, e no pai vazariam para a
+  // lista do que falta emitir — que tem filtro próprio (a seleção de linhas) e outra régua.
+  const [busca, setBusca] = useState("");
+  const [situacao, setSituacao] = useState<"" | SituacaoDoBoleto>("");
+  const [ordem, setOrdem] = useState<Ordem>(null);
+  const [exportando, setExportando] = useState(false);
+  const [erroDaExportacao, setErroDaExportacao] = useState<null | string>(null);
+
+  const visiveis = useMemo(
+    () => ordenarEmitidos(filtrarEmitidos(boletos, { busca, situacao }, nomeDoPredio), ordem, nomeDoPredio),
+    [boletos, busca, nomeDoPredio, ordem, situacao],
+  );
+
+  // ⚠️ O ARQUIVO É O QUE ESTÁ NA TELA: a lista JÁ filtrada e JÁ ordenada. Ver
+  // `lib/apolo/boletos/planilha-de-boletos.ts`.
+  const exportar = useCallback(async () => {
+    setExportando(true);
+    setErroDaExportacao(null);
+    try {
+      const r = await fetch("/api/incorporador/boletos/exportar", {
+        body: JSON.stringify({
+          carteira: nomeDaAba,
+          competencia,
+          linhas: visiveis.map((b) => ({
+            cliente: b.nome,
+            documento: b.documento ?? "",
+            enviado: b.whatsappEnviadoEm ? dia(b.whatsappEnviadoEm) : b.whatsappErro ? "falhou" : "não enviado",
+            pagamento: b.pagamento ? dia(b.pagamento) : "",
+            predio: nomeDoPredio(b.empreendimento),
+            situacao: ROTULO_DA_SITUACAO[situacaoDoBoleto(b)],
+            telefone: b.contato ?? "",
+            unidade: b.rotulo ? `${b.unidade} (${b.rotulo})` : b.unidade,
+            valor: b.valor,
+            vencimento: dia(b.vencimento),
+          })),
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+
+      if (!r.ok) throw new Error(`Não consegui gerar a planilha (${r.status}).`);
+
+      // O download acontece no navegador: o arquivo vem no corpo e o link some logo depois.
+      const arquivo = await r.blob();
+      const endereco = URL.createObjectURL(arquivo);
+      const link = document.createElement("a");
+      link.download =
+        /filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") ?? "")?.[1] ??
+        `boletos-${competencia}.xlsx`;
+      link.href = endereco;
+      link.click();
+      URL.revokeObjectURL(endereco);
+    } catch (e) {
+      setErroDaExportacao(e instanceof Error ? e.message : "Não consegui gerar a planilha.");
+    } finally {
+      setExportando(false);
+    }
+  }, [competencia, nomeDaAba, nomeDoPredio, visiveis]);
+
   if (boletos.length === 0) {
     return (
       <p
@@ -1572,11 +1881,20 @@ function Emitidos({
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
+      <BarraDeFiltros
+        aoBuscar={setBusca}
+        aoExportar={() => void exportar()}
+        aoTrocarSituacao={setSituacao}
+        busca={busca}
+        erro={erroDaExportacao}
+        exportando={exportando}
+        situacao={situacao}
+        total={boletos.length}
+        visiveis={visiveis.length}
+      />
+
       {aoConferirEnvio ? (
         <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <strong style={{ color: T.text, fontSize: 14 }}>
-            {boletos.length} boleto(s) emitido(s)
-          </strong>
           <button
             disabled={enviando}
             onClick={aoConferirEnvio}
@@ -1613,21 +1931,51 @@ function Emitidos({
         <thead>
           <tr style={{ color: T.sub, textAlign: "left" }}>
             <th style={{ ...cabecalho, width: 26 }} />
-            <th style={cabecalho}>Cliente</th>
-            {mostrarPredio ? <th style={cabecalho}>Prédio</th> : null}
-            <th style={cabecalho}>Unidade</th>
+            <ThOrdenavel coluna="cliente" onOrdem={setOrdem} ordem={ordem}>
+              Cliente
+            </ThOrdenavel>
+            {mostrarPredio ? (
+              <ThOrdenavel coluna="predio" onOrdem={setOrdem} ordem={ordem}>
+                Prédio
+              </ThOrdenavel>
+            ) : null}
+            <ThOrdenavel coluna="unidade" onOrdem={setOrdem} ordem={ordem}>
+              Unidade
+            </ThOrdenavel>
             <th style={cabecalho}>CPF/CNPJ</th>
-            <th style={cabecalho}>Telefone</th>
-            <th style={{ ...cabecalho, textAlign: "right" }}>Valor</th>
-            <th style={cabecalho}>Vencimento</th>
-            <th style={cabecalho}>Pagamento</th>
-            <th style={cabecalho}>Situação</th>
-            <th style={cabecalho}>Enviado</th>
+            <ThOrdenavel coluna="telefone" onOrdem={setOrdem} ordem={ordem}>
+              Telefone
+            </ThOrdenavel>
+            <ThOrdenavel alinharADireita coluna="valor" onOrdem={setOrdem} ordem={ordem}>
+              Valor
+            </ThOrdenavel>
+            <ThOrdenavel coluna="vencimento" onOrdem={setOrdem} ordem={ordem}>
+              Vencimento
+            </ThOrdenavel>
+            <ThOrdenavel coluna="pagamento" onOrdem={setOrdem} ordem={ordem}>
+              Pagamento
+            </ThOrdenavel>
+            <ThOrdenavel coluna="situacao" onOrdem={setOrdem} ordem={ordem}>
+              Situação
+            </ThOrdenavel>
+            <ThOrdenavel coluna="enviado" onOrdem={setOrdem} ordem={ordem}>
+              Enviado
+            </ThOrdenavel>
             <th style={cabecalho}>Boleto</th>
           </tr>
         </thead>
         <tbody>
-          {boletos.map((b) => {
+          {visiveis.length === 0 ? (
+            <tr>
+              <td
+                colSpan={mostrarPredio ? 12 : 11}
+                style={{ color: T.sub, padding: "18px 10px", textAlign: "center" }}
+              >
+                Nenhum boleto com esse filtro.
+              </td>
+            </tr>
+          ) : null}
+          {visiveis.map((b) => {
             const chave = `${b.empreendimento}|${b.chave}`;
             const estaAberta = aberta === chave;
             const colunas = mostrarPredio ? 12 : 11;

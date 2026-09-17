@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-17-boletos-filtro-ordem-e-excel",
+    deployedAt: "2026-09-17T16:10:00-03:00",
+    modules: [
+      {
+        module: "Boletos",
+        screens: [
+          {
+            items: [
+              "**Busca na lista de emitidos:** escreva o nome do cliente, a unidade, o CPF ou o telefone e a lista fica só com ele. A contagem ao lado mostra quantos boletos aparecem de quantos.",
+              "**Filtro por situação:** Todos, Em aberto, Vencido e Pago, em um clique.",
+              "**Ordenação por coluna:** clique no título para ordenar por cliente, prédio, unidade, telefone, valor, vencimento, pagamento, situação ou envio. O terceiro clique volta à ordem original.",
+              "**Exportar para Excel:** o botão baixa a lista como ela está na tela, com o filtro e a ordem escolhidos, com uma linha de total no fim.",
+            ],
+            screen: "Emissão de boletos",
+          },
+        ],
+      },
+    ],
+    rollback: "897e1c21",
+    technical: {
+      done:
+        "`modules/incorporador/TelaBoletos.tsx`: `filtrarEmitidos` (busca por nome/unidade/prédio sem acento e por dígitos do documento e do telefone) + `ordenarEmitidos` (nove colunas, três estados, reusando `ThOrdenavel`) + `BarraDeFiltros`. A situação sai da mesma régua do selo (pagamento manda, depois vencido), não do status cru do Asaas. Exportação: `POST /api/incorporador/boletos/exportar` monta o xlsx com ExcelJS a partir das LINHAS que a tela mostra (mesma porta da tela: `autorizar` + `portalEmiteBoletos`; sem releitura do Asaas, que é a consulta cara desta tela). `lib/apolo/boletos/planilha-de-boletos.ts` recorta o corpo (tipos, 200 caracteres por célula, teto de 5.000 linhas) com 10 testes; data vai como texto dd/mm/aaaa (a armadilha de fuso do ExcelJS) e valor como número com formato de moeda. Arquivo gerado e reaberto na conferência: cabeçalho congelado, autofiltro e total conferem.",
+      motivation:
+        "Lucas (17/09/2026), com a tela da Cecílio aberta no consolidado de setembro (334 boletos emitidos): *\"coloca aqui na tela da cecilio, filtros, ordenação e exportação para excel\"*. A lista de emitidos era a maior da tela e a única sem filtro nem ordem.",
+    },
+    title: "Boletos com busca, filtro, ordenação e exportação para Excel",
+    type: "melhoria",
+    version: "1.348.3",
+  },
+  {
     buildTag: "2026-09-17-espelho-da-mesa-pinta-os-divididos",
     deployedAt: "2026-09-17T11:30:00-03:00",
     modules: [
