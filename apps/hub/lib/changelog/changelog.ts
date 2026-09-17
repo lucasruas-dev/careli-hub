@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-17-relatorio-diario-de-atendimento",
+    deployedAt: "2026-09-17T20:45:00-03:00",
+    modules: [
+      {
+        module: "Íris",
+        screens: [
+          {
+            items: [
+              "**Todo dia útil, às 18h30, a Nívea recebe por e-mail o relatório do atendimento do dia**, enviado pela caixa da CACÁ.",
+              "**O que vai no relatório:** o dia em números (abertos, encerrados, mensagens e tempo de resposta), o desempenho de cada fila com a CACÁ à parte, quem atendeu e por quanto tempo, os pontos de atenção e o movimento hora a hora.",
+              "**A apuração é do expediente, das 08h00 às 18h30**, e o rodapé diz isso.",
+              "**Se o envio falhar, o hub avisa.** Antes, um e-mail que parava de sair só aparecia quando alguém reclamava.",
+            ],
+            screen: "Relatório gerencial por e-mail",
+          },
+        ],
+      },
+    ],
+    rollback: "cc8ad04c",
+    technical: {
+      done:
+        "Cron `30 21 * * 1-5` (21h30 UTC = 18h30 de Brasília) em `vercel.json` → `app/api/iris/relatorio-gerencial/cron/route.ts`, protegida por x-vercel-cron/CRON_SECRET e na allowlist do proxy. `lib/iris/relatorio-gerencial/`: `janela.ts` (08h00–18h30 no fuso da casa, deslocamento pelo Intl), `dados.ts` (leitura paginada do caredesk; `provider_payload` só das falhas), `metricas.ts` (camada pura, 23 testes) e `html.ts`. Envio por `sendGmailMessage` com `getCacaSender()`. Cada execução vira linha em `iris_relatorio_execucoes` (migration 0175) e falha publica alerta no hub. `?ensaio=1` devolve o HTML sem enviar; `?dia=AAAA-MM-DD` reprocessa. Três armadilhas de medição respeitadas: tempo de resposta pelas MENSAGENS (não por `first_responded_at`, que só a Central preenche), CACÁ por `metadata->>handlingOwner` dentro do Atendimento, e backlog classificado por remetente (83 pendências = 15 de cliente). Conferido contra o relatório validado de 17/09: mediana 6,3 min e 15 clientes no backlog, mesmos números.",
+      motivation:
+        "Lucas (17/09/2026): *\"preciso construir o envio automático do relatório gerencial de atendimento por e-mail\"*, com a janela *\"dia de trabalho, 08:00 - 18:30\"* e a Nívea como destinatária.",
+    },
+    title: "Relatório diário de atendimento por e-mail, às 18h30",
+    type: "novidade",
+    version: "1.349.0",
+  },
+  {
     buildTag: "2026-09-17-boletos-filtro-ordem-e-excel",
     deployedAt: "2026-09-17T16:10:00-03:00",
     modules: [

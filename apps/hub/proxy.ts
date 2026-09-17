@@ -66,6 +66,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/iris/gmail/status", // diagnostico da caixa Gmail (guardado por GMAIL_OAUTH_SETUP_KEY)
   "/api/iris/gmail/poll", // cron de ingestao de e-mail da Iris (x-vercel-cron / CRON_SECRET)
   "/api/iris/tickets/fechar-sem-interacao", // cron que fecha atendimento morto na mao da CACA (x-vercel-cron / CRON_SECRET)
+  "/api/iris/relatorio-gerencial/cron", // cron das 18h30 que manda o relatorio do dia (x-vercel-cron / CRON_SECRET)
   // ⚠️ ZONA HOSTIL: libera por PREFIXO — tudo abaixo destes caminhos fica acessivel sem
   // sessao, ao mundo. NUNCA criar rota de operador aqui dentro.
   // A autorizacao e por POSSE DE DADO (CPF cadastrado + CNPJ credenciado), nao por papel, e
