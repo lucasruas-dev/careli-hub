@@ -160,8 +160,15 @@ type Produto = {
  * ficam só consulta. Ausente ou diferente de `true` = só consulta: a tela esconde as ações, e a rota
  * recusa de qualquer jeito. Mora aqui, e não em `FluxoDeVenda`, porque não é agregação do fluxo: é
  * permissão da sessão, que a rota calcula.
+ *
+ * ⚠️ `codigoNoMapa` (17/09/2026): por id da unidade, o código dela no masterplan do PAI. No produto
+ * dividido o contorno fala `LABC0101` e a grade `LBPC0101`; sem a tradução, o espelho da Mesa sai
+ * sem cor. Ausente = o código da grade já é o do mapa.
  */
-type DadosDaVenda = FluxoDeVenda & { escritaPorEmpreendimento?: Record<string, boolean> };
+type DadosDaVenda = FluxoDeVenda & {
+  codigoNoMapa?: Record<string, string>;
+  escritaPorEmpreendimento?: Record<string, boolean>;
+};
 
 type UnidadeNoMapa = FluxoDeVenda["mapa"][number]["unidades"][number];
 type Proposta = FluxoDeVenda["lista"][number];
@@ -1931,10 +1938,15 @@ function Mesa({
                   if (u) aoFocar({ tipo: "unidade", unidade: u });
                 }}
                 code={codeDoEspelho}
-                loteEmFoco={unidadeEmFoco?.codigo ?? null}
+                loteEmFoco={
+                  unidadeEmFoco
+                    ? (dados?.codigoNoMapa?.[unidadeEmFoco.id] ?? unidadeEmFoco.codigo)
+                    : null
+                }
                 lotes={(dados?.mapa ?? []).flatMap((g) =>
                   g.unidades.map((u) => ({
-                    codigo: u.codigo,
+                    // O contorno fala o código do PAI no produto dividido (ver `DadosDaVenda`).
+                    codigo: dados?.codigoNoMapa?.[u.id] ?? u.codigo,
                     etapa: u.etapa,
                     id: u.id,
                   })),

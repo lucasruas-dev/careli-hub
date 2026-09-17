@@ -298,6 +298,44 @@ export async function GET(request: Request) {
       if ((data?.length ?? 0) < PAGINA) break;
     }
 
+    // ── O código de cada lote no MAPA do pai ──────────────────────────────
+    //
+    // ⚠️ O MASTERPLAN DO PRODUTO DIVIDIDO É DO PAI, E OS CONTORNOS FALAM O CÓDIGO DO PAI
+    // (`LABC0101`, `VLO0101`). A grade carrega a linha VIVA da gleba (`LBPC0101`, `VOC0101`), e o
+    // espelho da Mesa casava contorno com lote por esse código: nenhum casava, e o Lagoa Bonita e o
+    // Vale do Ouro abriam o mapa sem uma cor sequer (Lucas, 17/09/2026: *"faltou as marcações"*). O
+    // espelho público nunca teve o defeito porque publica `codigoDoPai` (`estado-do-espelho.ts`).
+    //
+    // A ponte é `espelho_de`: a linha antiga do pai aponta para a linha viva. Só sai tradução de
+    // unidade que JÁ está na grade, e o pai continua fora da contagem (ver `idsDaConfiguracao`).
+    // Falhar aqui não derruba a tela: o mapa volta a sair sem cor, a grade e o funil ficam de pé.
+    const codigoNoMapa: Record<string, string> = {};
+    const paisNaMesa = [...fora.idsDoC2x];
+    if (paisNaMesa.length > 0 && unidades.length > 0) {
+      const naGrade = new Set(unidades.map((u) => String(u.id)));
+      for (let de = 0; ; de += PAGINA) {
+        const { data, error } = await supabase
+          .from("hercules_unidades")
+          .select("id,codigo,espelho_de")
+          .eq("workspace_id", "careli")
+          .in("enterprise_id", paisNaMesa)
+          .not("espelho_de", "is", null)
+          .order("id")
+          .range(de, de + PAGINA - 1);
+
+        if (error) {
+          console.error("[incorporador/venda] codigo no mapa do pai", error.message);
+          break;
+        }
+        for (const linha of (data ?? []) as { codigo: string; espelho_de: string }[]) {
+          if (naGrade.has(String(linha.espelho_de))) {
+            codigoNoMapa[String(linha.espelho_de)] = linha.codigo.trim().toUpperCase();
+          }
+        }
+        if ((data?.length ?? 0) < PAGINA) break;
+      }
+    }
+
     // ── As CADs: o começo do processo, que mora no Apolo e não no fluxo importado ──
     //
     // Pedido do Lucas: *"quantas cads foram geradas, quantas reservas, propostas"* — na mesma
@@ -461,6 +499,9 @@ export async function GET(request: Request) {
             tiposDeProduto,
             unidades,
           }),
+          // Por id da unidade: o código dela no masterplan do pai. Vazio em produto sem divisão,
+          // onde o código da grade já é o do mapa.
+          codigoNoMapa,
           entradaMinima,
           // ⚠️ O QUE ESTA SESSÃO PODE ESCREVER, POR EMPREENDIMENTO (Lucas, 16/09/2026). No portal que
           // confecciona (o Cecílio) só o produto operado por ele aceita reserva, proposta, contrato,

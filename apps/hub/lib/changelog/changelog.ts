@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-17-espelho-da-mesa-pinta-os-divididos",
+    deployedAt: "2026-09-17T11:30:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**O espelho do Lagoa Bonita e do Vale do Ouro volta a mostrar a situação de cada lote** na tela Venda. O mapa abria sem cor nenhuma: agora os lotes disponíveis saem em verde e os demais em azul, como nos outros empreendimentos.",
+            ],
+            screen: "Venda · Espelho",
+          },
+        ],
+      },
+    ],
+    rollback: "897e1c21",
+    technical: {
+      done:
+        "`app/api/incorporador/venda/route.ts` devolve `codigoNoMapa` (id da unidade viva → código da linha do pai que aponta para ela por `espelho_de`), lido dos pais descartados por `espelhosADescartar`, paginado e sem derrubar a tela se falhar. `TelaVenda.tsx` usa esse código nos lotes e no destaque do `EspelhoDoProduto`. Medido contra a geometria publicada: LAB 0 → 412 de 412 lotes da grade com contorno; VLO 0 → 298 de 302 (4 do VOC sem linha no pai). O pai continua fora da contagem. Testes da rota, tsc e eslint limpos.",
+      motivation:
+        "Lucas (17/09/2026), com prints do espelho do Lagoa Bonita e do Vale do Ouro na Mesa: *\"faltou as marcações, já tinha resolvido isso, porque saiu?\"*. Os contornos falam o código do PAI (LABC0101, VLO0101) e a grade carrega a gleba (LBPC0101, VOC0101). O espelho antigo (os HTMLs de `masterplans-internos`) casava por quadra e lote; a troca para a geometria do cadastro em 10/09 (000b5eb5) não levou essa tradução.",
+    },
+    title: "Espelho da Mesa volta a pintar o Lagoa Bonita e o Vale do Ouro",
+    type: "correcao",
+    version: "1.348.2",
+  },
+  {
     buildTag: "2026-09-16-cancelamento-de-contrato-do-c2x",
     deployedAt: "2026-09-16T19:48:48-03:00",
     modules: [
