@@ -34,6 +34,10 @@ vi.mock("@/lib/hercules/situacao-da-unidade", async (importOriginal) => ({
   lerSituacaoDasUnidades: vi.fn(),
 }));
 
+vi.mock("@/lib/hercules/bloquear-unidade-server", () => ({
+  lerBloqueiosNativos: vi.fn(async () => new Map()),
+}));
+
 vi.mock("@/lib/prometeu/data", () => ({
   createPrometeuClient: vi.fn(() => null),
   eventoOperavelId: vi.fn(async () => null),
@@ -41,6 +45,7 @@ vi.mock("@/lib/prometeu/data", () => ({
 
 import { loadApoloEnterpriseUnits } from "@/lib/apolo/empreendimentos";
 import { lerUnidadesDoPanteon } from "@/lib/apolo/incorporador/unidades-do-panteon";
+import { lerBloqueiosNativos } from "@/lib/hercules/bloquear-unidade-server";
 import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 
 import { GET } from "./route";
@@ -68,6 +73,7 @@ function mapaPorLinha(pares: Array<[string, SituacaoDaUnidade]>): SituacaoDasUni
     porCodigo: new Map(),
     porLinha: new Map(),
     porOrigemC2x: new Map(),
+    terreno: () => undefined,
     unidades: [],
   };
   for (const [id, situacao] of pares) {
@@ -94,6 +100,7 @@ function pedido(query: string): Request {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(lerBloqueiosNativos).mockResolvedValue(new Map());
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -120,7 +127,7 @@ describe("GET /api/apolo/empreendimentos/unidades, produto nascido no Panteon", 
 
     expect(lerSituacao).toHaveBeenCalledWith({ cliente: "admin" }, ["100001"]);
     expect(corpo.data.units.map((u) => [u.code, u.bucket, u.status])).toEqual([
-      ["NOV0101", "vendido", "Contrato"],
+      ["NOV0101", "negociacao", "Contrato"],
       ["NOV0102", "reservado", "Reservado"],
       ["NOV0103", "disponivel", "Disponível"],
     ]);
@@ -138,6 +145,21 @@ describe("GET /api/apolo/empreendimentos/unidades, produto nascido no Panteon", 
     };
 
     expect(corpo.data.units[0]).toMatchObject({ bucket: "bloqueado", status: "Bloqueado" });
+    // Sem resposta da régua, sem id para bloquear: o servidor não mexe no que a régua não leu.
+    expect(corpo.data.units[0]).toMatchObject({ panteonId: null });
+  });
+
+  it("a linha lida pela régua leva o id do Panteon (é por ele que a aba bloqueia)", async () => {
+    lerLinhas.mockResolvedValue([linha("u1", "NOV0101", "disponivel")]);
+    lerSituacao.mockResolvedValue(mapaPorLinha([["u1", "disponivel"]]));
+
+    const corpo = (await (await GET(pedido("codes=NOV&id=100001"))).json()) as {
+      data: { units: Array<{ panteonId?: null | string; semCadastroNoPanteon?: boolean }> };
+    };
+
+    expect(corpo.data.units[0]).toMatchObject({ panteonId: "u1", semCadastroNoPanteon: false });
+    // Nenhuma bloqueada na lista: nem vai ao banco atrás de bloqueio.
+    expect(lerBloqueiosNativos).not.toHaveBeenCalled();
   });
 
   it("⚠️ falha ao ler a situação é 503 com texto, sem lista", async () => {
@@ -150,6 +172,49 @@ describe("GET /api/apolo/empreendimentos/unidades, produto nascido no Panteon", 
     const corpo = (await resposta.json()) as { data?: unknown; error?: string };
     expect(corpo.data).toBeUndefined();
     expect(corpo.error).toMatch(/Não foi possível carregar as unidades/);
+  });
+});
+
+describe("GET /api/apolo/empreendimentos/unidades, o bloqueio feito no Panteon", () => {
+  it("a bloqueada com carimbo leva quem, quando e por quê; a herdada do C2X leva null", async () => {
+    lerLinhas.mockResolvedValue([
+      linha("u1", "NOV0101", "bloqueada"),
+      linha("u2", "NOV0102", "bloqueada"),
+      linha("u3", "NOV0103", "disponivel"),
+    ]);
+    lerSituacao.mockResolvedValue(
+      mapaPorLinha([
+        ["u1", "bloqueada"],
+        ["u2", "bloqueada"],
+        ["u3", "disponivel"],
+      ]),
+    );
+    vi.mocked(lerBloqueiosNativos).mockResolvedValue(
+      new Map([["u1", { em: "2026-09-18T10:00:00Z", motivo: "Permuta", porNome: "Nívea" }]]),
+    );
+
+    const corpo = (await (await GET(pedido("codes=NOV&id=100001"))).json()) as {
+      data: { units: Array<{ bloqueio?: unknown; code: string }> };
+    };
+
+    // Só as bloqueadas vão à leitura do carimbo.
+    expect(vi.mocked(lerBloqueiosNativos).mock.calls[0]?.[1]).toEqual(["u1", "u2"]);
+    expect(corpo.data.units[0]?.bloqueio).toEqual({ em: "2026-09-18T10:00:00Z", motivo: "Permuta", porNome: "Nívea" });
+    expect(corpo.data.units[1]?.bloqueio).toBeNull();
+    expect(corpo.data.units[2]).not.toHaveProperty("bloqueio");
+  });
+
+  it("⚠️ falha ao ler o carimbo NÃO derruba a lista: a situação já veio da régua", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    lerLinhas.mockResolvedValue([linha("u1", "NOV0101", "bloqueada")]);
+    lerSituacao.mockResolvedValue(mapaPorLinha([["u1", "bloqueada"]]));
+    vi.mocked(lerBloqueiosNativos).mockRejectedValue(new Error("fora do ar"));
+
+    const resposta = await GET(pedido("codes=NOV&id=100001"));
+    expect(resposta.status).toBe(200);
+    const corpo = (await resposta.json()) as { data: { units: Array<{ bloqueio?: unknown; bucket: string }> } };
+    expect(corpo.data.units[0]).toMatchObject({ bucket: "bloqueado" });
+    expect(corpo.data.units[0]).not.toHaveProperty("bloqueio");
   });
 });
 

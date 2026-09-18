@@ -19,6 +19,8 @@ import { acaoDeCancelamento } from "@/lib/hercules/acao-de-cancelamento";
 import {
   andaresDoGrupo,
   ETAPAS_DO_FLUXO,
+  linhaDaFicha,
+  processoDaFicha,
   vocabularioDoEstoque,
 } from "@/lib/hercules/fluxo-de-venda";
 import {
@@ -637,9 +639,9 @@ export function TelaVenda() {
         // maior: enquanto a modal está aberta com o COD do João, outra pessoa pode cancelar essa
         // proposta e gerar uma da Maria no mesmo lote — e o clique moveria a da Maria, com o card
         // saindo no nome dela. A modal existe para ele dizer "não era essa"; ela não pode mentir.
-        const viva = (dados?.lista ?? []).find(
-          (l) => l.unidadeId === u.id && ehEtapaViva(l.etapa),
-        );
+        // ⚠️ A MESMA LINHA QUE O BOTÃO OPERA (`linhaDaFicha`): a da etapa que a régua pintou, e não
+        // a primeira viva da unidade, que numa unidade com duas linhas vivas podia ser a outra.
+        const viva = linhaDaFicha(u, dados?.lista ?? []);
         const r = await fetch("/api/incorporador/venda/contrato", {
           body: JSON.stringify({
             propostaId: viva?.id ?? null,
@@ -1425,11 +1427,7 @@ export function TelaVenda() {
           que a ficha mostra —, sem uma segunda ida ao servidor para confirmar o que está na tela. */}
         {mandandoParaContrato
           ? (() => {
-              const viva = (dados?.lista ?? []).find(
-                (l) =>
-                  l.unidadeId === mandandoParaContrato.id &&
-                  ehEtapaViva(l.etapa),
-              );
+              const viva = linhaDaFicha(mandandoParaContrato, dados?.lista ?? []);
               return (
                 <ModalDeContrato
                   aoConfirmar={() =>
@@ -1456,11 +1454,7 @@ export function TelaVenda() {
           nem no da proposta, e a promessa aqui é outra — a venda NÃO volta ao estoque. */}
         {pedindoCancelamento
           ? (() => {
-              const viva = (dados?.lista ?? []).find(
-                (l) =>
-                  l.unidadeId === pedindoCancelamento.id &&
-                  ehEtapaViva(l.etapa),
-              );
+              const viva = linhaDaFicha(pedindoCancelamento, dados?.lista ?? []);
               return (
                 <ModalDePedidoDeCancelamento
                   aoConfirmar={(resposta) =>
@@ -1492,14 +1486,10 @@ export function TelaVenda() {
               void carregar(recorte || emp, janela);
             }}
             onFechar={() => setCancelando(null)}
-            // ⚠️ A PROPOSTA QUE ESTA TELA ESTÁ VENDO, não a que o servidor achar. Mesma regra do
-            // painel (a viva da unidade); com ela o servidor recusa o cancelamento quando a unidade
+            // ⚠️ A PROPOSTA QUE ESTA TELA ESTÁ VENDO, não a que o servidor achar. Mesma regra dos
+            // botões da ficha (`linhaDaFicha`); com ela o servidor recusa o cancelamento quando a unidade
             // ganhou outra proposta desde que esta aba carregou — ver a trava no corpo do PATCH.
-            propostaId={
-              (dados?.lista ?? []).find(
-                (l) => l.unidadeId === cancelando.id && ehEtapaViva(l.etapa),
-              )?.id ?? null
-            }
+            propostaId={linhaDaFicha(cancelando, dados?.lista ?? [])?.id ?? null}
             unidade={{
               id: cancelando.id,
               nome: comoSeLe(cancelando),
@@ -1821,6 +1811,16 @@ function Mesa({
   const ultimaQueCaiu =
     propostaEmFoco || !unidadeEmFoco ? null : (propostasDaUnidade[0] ?? null);
   const idEmFoco = unidadeEmFoco?.id ?? propostaEmFoco?.unidadeId ?? null;
+
+  // ⚠️ OS BOTÕES OBEDECEM À MESMA RÉGUA QUE PINTA O LOTE. A cor vem da régua única, que vê o terreno
+  // inteiro e a reserva do salão; os botões e as rotas agem na linha da própria unidade. Quando a
+  // régua vê um processo que esta lista não tem (reserva feita no salão, reserva ou proposta numa
+  // linha antiga do pai), "Gerar proposta" e "Cancelar reserva" acendiam e a rota recusava. Quem
+  // decide é `processoDaFicha` (`lib/hercules/fluxo-de-venda.ts`, com teste); aqui só se obedece.
+  // A lista INTEIRA, e não a da etapa aberta: a linha que sustenta a cor pode estar em outra aba.
+  const processo = unidadeEmFoco
+    ? processoDaFicha(unidadeEmFoco, dados?.lista ?? [])
+    : null;
 
   return (
     <>
@@ -2574,16 +2574,21 @@ function Mesa({
                   // ⚠️ SEM PROPOSTA VIVA NÃO É ERRO: é lote livre, e é o começo normal de uma venda.
                   // Mas se ele JÁ TEVE proposta, isso é dito — em uma linha, sem os dados do cliente
                   // antigo, que não têm por que aparecer na ficha de um lote que está à venda.
+                  // ⚠️ SÓ QUANDO A RÉGUA TAMBÉM NÃO VÊ PROCESSO. Lote pintado de reserva ou proposta
+                  // sem linha nesta lista não está livre: "nenhuma proposta em andamento" ao lado do
+                  // selo "Reserva" é a ficha contradizendo a cor. A frase certa fica nos botões.
                   <>
-                    <p
-                      style={{
-                        color: T.muted,
-                        fontSize: 12.5,
-                        margin: "8px 0 0",
-                      }}
-                    >
-                      Nenhuma proposta em andamento nesta unidade.
-                    </p>
+                    {processo?.tipo === "sem-processo" ? (
+                      <p
+                        style={{
+                          color: T.muted,
+                          fontSize: 12.5,
+                          margin: "8px 0 0",
+                        }}
+                      >
+                        Nenhuma proposta em andamento nesta unidade.
+                      </p>
+                    ) : null}
                     {ultimaQueCaiu ? (
                       <p
                         style={{
@@ -2617,7 +2622,10 @@ function Mesa({
               aoGerarProposta={() => aoGerarProposta(unidadeEmFoco)}
               aoPedirCancelamento={() => aoPedirCancelamento(unidadeEmFoco)}
               aoReservar={() => aoReservar(unidadeEmFoco)}
-              propostaViva={propostaEmFoco}
+              // ⚠️ A LINHA QUE SUSTENTA A COR, e não a que está em foco: clicar na lista pode focar
+              // outra linha viva da mesma unidade, e os botões agiriam num processo pintado de outro.
+              propostaViva={processo?.tipo === "na-lista" ? processo.linha : null}
+              travaDaFicha={processo?.tipo === "apagado" ? processo.frase : null}
               // ⚠️ SÓ CONSULTA É DO PRODUTO DA UNIDADE, e não da tela: num escopo com o Garden e o VOC
               // juntos, o lote do Garden oferece Reservar e o do VOC não. Ver `DadosDaVenda`.
               soConsulta={
@@ -3151,6 +3159,7 @@ function AcoesDaUnidade({
   aoReservar,
   propostaViva,
   soConsulta = false,
+  travaDaFicha = null,
   unidade,
 }: {
   aoBloquear: () => void;
@@ -3161,7 +3170,8 @@ function AcoesDaUnidade({
   /** Depois do contrato o cancelamento é PEDIDO à Têmis, e é outra tela e outra rota. */
   aoPedirCancelamento: () => void;
   /**
-   * A proposta viva do lote, quando há — usada para saber se ela é NATIVA.
+   * A linha viva que sustenta a cor do lote (`processoDaFicha`, tipo `na-lista`), quando há: é por
+   * ela que se sabe se a proposta é NATIVA e se já tem pedido de cancelamento.
    *
    * ⚠️ SÓ A NATIVA SE CANCELA POR AQUI. Há 14 propostas do C2X em etapa `proposta` (vendas correndo
    * no legado), e elas pintam o lote igual às daqui: sem esta conferência o botão "Cancelar
@@ -3184,10 +3194,25 @@ function AcoesDaUnidade({
    * continuam, porque consultar é o que o portal faz nesse produto.
    */
   soConsulta?: boolean;
+  /**
+   * A frase que apaga TODOS os botões: a régua pintou um processo que esta tela não consegue operar
+   * (ver `processoDaFicha`). Nulo = os botões seguem as regras de cada um.
+   *
+   * ⚠️ APAGADOS COM A FRASE À VISTA, e não só no `title`. O lote está ocupado por alguém que esta
+   * tela não mostra, e a pergunta "por que não posso?" vem antes do passar o mouse: sem a frase,
+   * cinco botões apagados num lote amarelo parecem defeito.
+   */
+  travaDaFicha?: null | string;
   unidade: null | UnidadeNoMapa;
 }) {
   const disponivel = unidade?.etapa === "disponivel";
   const bloqueada = unidade?.etapa === "bloqueada";
+  // ⚠️ DESBLOQUEAR PERGUNTA AO CADASTRO TAMBÉM. A régua pinta de bloqueado o que o cadastro diz
+  // `bloqueada` E o valor que ela não conhece (na dúvida, fora da oferta); a rota do desbloqueio só
+  // aceita o primeiro. Sem esta conferência, "Desbloquear" acendia num lote de situação estranha para
+  // a rota responder "Esta unidade não está bloqueada".
+  const bloqueadaNoCadastro =
+    String(unidade?.situacao ?? "").trim().toLowerCase() === "bloqueada";
   const reservada = unidade?.etapa === "reservado";
   // ⚠️ A PROPOSTA TAMBÉM TEM VOLTA. Sem esta etapa aqui, gerar a proposta tirava o lote do estoque
   // para sempre: os quatro botões apagavam, a rota da reserva mandava procurar "o cancelamento da
@@ -3197,16 +3222,26 @@ function AcoesDaUnidade({
   // carga do legado, e a rota só cancela a nativa. Ver `propostaViva`.
   const proposta =
     unidade?.etapa === "proposta" && propostaViva?.origem === "panteon";
-  /** Proposta do legado pintando o lote: a tela diz Proposta, mas o cancelamento é lá. */
+  /**
+   * Proposta do legado pintando o lote: a tela diz Proposta, mas o cancelamento é lá.
+   *
+   * ⚠️ SÓ COM A ORIGEM ESCRITA NA LINHA. Era `origem !== "panteon"`, e sem linha nenhuma (a proposta
+   * que mora na linha antiga do pai) `undefined !== "panteon"` dava verdadeiro: a ficha afirmava
+   * "veio do C2X" sobre uma proposta que ela nem estava vendo. Esse caso agora cai em `travaDaFicha`.
+   */
   const propostaDoLegado =
-    unidade?.etapa === "proposta" && propostaViva?.origem !== "panteon";
+    unidade?.etapa === "proposta" && propostaViva?.origem === "c2x";
 
   // Qual dos três cancelamentos cabe aqui — ver `lib/hercules/acao-de-cancelamento.ts`.
   const cancelamento = acaoDeCancelamento({
     etapa: unidade?.etapa ?? null,
     pedidoAberto: Boolean(propostaViva?.cancelamentoPedidoEm),
     propostaDoLegado,
-    propostaNativa: proposta,
+    // ⚠️ SOB A TRAVA, DESTE CÁLCULO SÓ O RÓTULO É USADO (o `ativo` e o `motivo` são da trava), e ele
+    // precisa ter o nome do cancelamento do processo que a régua pintou. Sem isto, o lote em Proposta
+    // sem linha na lista mostrava "Cancelar reserva", que é o rótulo de "nada a cancelar".
+    propostaNativa:
+      proposta || (Boolean(travaDaFicha) && unidade?.etapa === "proposta"),
   });
 
   /**
@@ -3301,15 +3336,33 @@ function AcoesDaUnidade({
     // e o botão ficaria ao lado do "Cancelar" com a mesma cara — dois vermelhos vizinhos com
     // sentidos diferentes é o que faz alguém clicar no errado.
     {
-      ativo: Boolean(unidade) && (podeBloquear(unidade?.etapa) || bloqueada),
+      ativo:
+        Boolean(unidade) &&
+        (podeBloquear(unidade?.etapa) || (bloqueada && bloqueadaNoCadastro)),
       aoClicar: bloqueada ? aoDesbloquear : aoBloquear,
-      motivo: "",
+      // O calado continua valendo para o Bloquear num lote em processo. O Desbloquear apagado num lote
+      // pintado de bloqueado não tem processo nenhum à vista que explique, e por isso fala.
+      motivo:
+        bloqueada && !bloqueadaNoCadastro
+          ? "A situação desta unidade no cadastro não é Bloqueada: confira o cadastro antes de desbloquear."
+          : "",
       // ⚠️ UM BOTÃO, DOIS RÓTULOS — e o `key` do map é o rótulo, então eles nunca coexistem: ou a
       // unidade está bloqueada, ou não está. Dois botões separados deixariam um deles apagado o
       // tempo todo, e "Desbloquear" apagado num lote disponível não diz nada a ninguém.
       rotulo: bloqueada ? "Desbloquear" : "Bloquear",
     },
   ];
+
+  // ⚠️ A TRAVA DA FICHA VENCE A REGRA DE CADA BOTÃO. Todos apagam e explicam com a mesma frase, menos
+  // o Bloquear, que continua calado: a decisão do Lucas (apagado sem mensagem quando há processo) vale
+  // aqui também, porque aqui há processo.
+  const acoesNaTela = travaDaFicha
+    ? acoes.map((acao) => ({
+        ...acao,
+        ativo: false,
+        motivo: acao.motivo ? travaDaFicha : "",
+      }))
+    : acoes;
 
   if (soConsulta) {
     return (
@@ -3340,7 +3393,21 @@ function AcoesDaUnidade({
         paddingTop: 12,
       }}
     >
-      {acoes.map((acao) => (
+      {/* A frase na mesma tinta do "Só consulta", numa linha só dela acima dos botões. */}
+      {travaDaFicha ? (
+        <p
+          style={{
+            color: T.muted,
+            flexBasis: "100%",
+            fontSize: 11.5,
+            fontWeight: 600,
+            margin: 0,
+          }}
+        >
+          {travaDaFicha}
+        </p>
+      ) : null}
+      {acoesNaTela.map((acao) => (
         <button
           key={acao.rotulo}
           disabled={!acao.ativo}

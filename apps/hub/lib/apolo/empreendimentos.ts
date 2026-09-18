@@ -9,14 +9,16 @@
 //     na tela quando o certo é 4.262 un / R$ 1.040.273.342,43, medido em 18/08/2026). A linha
 //     não pode sumir: é por ela que se chega ao masterplan e às CADs da esteira.
 //
-// Baldes de unidade (mutuamente exclusivos, somam o total). O status 5 ("Bloqueado para venda")
-// está ZERADO no C2X: o bloqueio real é o flag `enterprise_unities.sale_blocked`, e hoje todas
-// as bloqueadas estão como "Disponível" — por isso Disponível DESCONTA as bloqueadas.
+// Baldes de unidade (mutuamente exclusivos, somam o total): os CINCO de `baldeDaSituacao`, pela
+// régua única do Panteon (lib/hercules/situacao-da-unidade.ts). Do C2X vem só a LINHA (quais
+// unidades existem e quanto valem); a situação de cada uma é a do Panteon, a mesma da Venda do
+// Hércules (Lucas, 18/09/2026: *"esses status tem que morar em um so lugar"* · *"no c2x não
+// precisa olhar"*).
 import type { RowDataPacket } from "mysql2";
 
-import { sqlDoBalde } from "@/lib/apolo/balde-da-unidade";
 import { createApoloAdminClient, deterministicUuid } from "@/lib/apolo/server";
 import {
+  acharUnidade,
   baldeDaSituacao,
   lerSituacaoDasUnidades,
   rotuloDaSituacao,
@@ -145,7 +147,117 @@ type EnterpriseQueryRow = RowDataPacket & {
   vendido_value: string | number | null;
 };
 
-export async function loadApoloEnterprises(): Promise<
+/** O que `loadApoloEnterprises` precisa de cada empreendimento, sem contar unidade nenhuma. */
+type EnterpriseMetaRow = RowDataPacket & {
+  city: string | null;
+  code: string | null;
+  id: number;
+  incorporador: string | null;
+  name: string | null;
+  state: string | null;
+};
+
+/** Uma unidade do C2X para os cards: onde ela conta, quanto vale e as chaves para achá-la no Panteon. */
+type EnterpriseUnitRow = RowDataPacket & {
+  block: string | null;
+  enterprise_code: string | null;
+  enterprise_id: number | string;
+  id: number;
+  lot: string | null;
+  price: string | number | null;
+  unit_name: string | null;
+};
+
+/** Uma linha do C2X para os cards, só com o que a contagem usa (exportada para o teste). */
+export type UnidadeDoCard = Pick<
+  EnterpriseUnitRow,
+  "block" | "enterprise_code" | "enterprise_id" | "id" | "lot" | "price" | "unit_name"
+>;
+
+/**
+ * O cenário (os cinco baldes e o total) de cada empreendimento, contado unidade por unidade.
+ *
+ * ⚠️ A QUANTIDADE E O PREÇO SÃO DA LINHA DO C2X; A SITUAÇÃO É DO PANTEON. É a mesma divisão da aba
+ * Unidades (`loadApoloEnterpriseUnits`), e é de propósito: o card "Disponível 12" e o filtro
+ * "Disponível" da aba contam as MESMAS doze unidades, casadas pela MESMA ordem (`acharUnidade`).
+ *
+ * ⚠️ UNIDADE QUE O PANTEON NÃO CONHECE CONTA COMO OCUPADA (no balde bloqueado), e entra no total:
+ * sumir com ela diminuiria o estoque, e contá-la livre ofereceria o que ninguém leu. A aba escreve
+ * "Sem cadastro no Panteon" nela; o card não tem balde para isso, e ela fica no vermelho.
+ *
+ * `situacoes` nulo = a leitura não foi pedida (`comSituacao: false`): sai só o total, com os cinco
+ * baldes zerados, e nunca um "disponível" chutado.
+ *
+ * Exportada (e pura) para o teste.
+ */
+export function cenariosPelaRegua(
+  unidades: readonly UnidadeDoCard[],
+  situacoes: null | SituacaoDasUnidades,
+): { cenarios: Map<string, ApoloEnterpriseScenario>; semCadastro: string[] } {
+  const cenarios = new Map<string, ApoloEnterpriseScenario>();
+  const semCadastro: string[] = [];
+
+  for (const unidade of unidades) {
+    const id = String(unidade.enterprise_id);
+    const cenario = cenarios.get(id) ?? cenarioZerado();
+    const valor = toNumber(unidade.price);
+
+    cenario.total.units += 1;
+    cenario.total.value += valor;
+
+    if (situacoes) {
+      const achada = unidadeDaLinhaDoC2x(
+        {
+          codigo: buildUnitCode(cleanText(unidade.enterprise_code) ?? "", unidade.block, unidade.lot),
+          id: unidade.id,
+          nomeNoC2x: unidade.unit_name,
+        },
+        situacoes,
+      );
+      if (!achada) semCadastro.push(cleanText(unidade.unit_name) ?? String(unidade.id));
+      const balde = baldeDaSituacao(achada?.situacao ?? SITUACAO_FORA_DO_PANTEON);
+      cenario[balde].units += 1;
+      cenario[balde].value += valor;
+    }
+
+    cenarios.set(id, cenario);
+  }
+
+  return { cenarios, semCadastro };
+}
+
+function cenarioZerado(): ApoloEnterpriseScenario {
+  const zero = (): ApoloEnterpriseTally => ({ units: 0, value: 0 });
+  return {
+    bloqueado: zero(),
+    disponivel: zero(),
+    negociacao: zero(),
+    reservado: zero(),
+    total: zero(),
+    vendido: zero(),
+  };
+}
+
+/**
+ * A lista de empreendimentos do Apolo, com o cenário de cada um.
+ *
+ * ⚠️ OS CARDS SAEM DA RÉGUA ÚNICA (18/09/2026). Até aqui o SELECT do C2X somava os baldes pelo
+ * `sale_status_id` / `sale_blocked` do legado (`sqlDoBalde`), e o card dizia uma coisa enquanto a
+ * aba Unidades, já no Panteon, dizia outra: o lote bloqueado, reservado ou em contrato no Hércules
+ * contava "Disponível" no card. Agora o C2X dá só as unidades e o preço, e a situação vem de UMA
+ * chamada a `lerSituacaoDasUnidades` com todos os empreendimentos juntos. Nunca uma por produto: a
+ * régua lê as propostas e as reservas do banco inteiro, e N chamadas seriam N vezes essa conta.
+ *
+ * ⚠️ SEM A SITUAÇÃO, SEM LISTA. Falha na leitura do Panteon devolve erro (`ok: false`), como o C2X
+ * fora do ar: um card com "Disponível" chutado é convite a vender lote que já tem dono.
+ *
+ * `comSituacao: false` pula a régua (só o total sai contado). É para quem só quer a LISTA (nome,
+ * id, código) e não mostra baldes: a vitrine do credenciamento, a tradução de nome para id. Sem
+ * a opção, a régua roda, e quem mostra número recebe o número certo.
+ */
+export async function loadApoloEnterprises(
+  opcoes: { comSituacao?: boolean } = {},
+): Promise<
   { data: ApoloEnterprisesData; ok: true } | { error: string; ok: false }
 > {
   const poolResult = getHadesDbPool();
@@ -158,45 +270,74 @@ export async function loadApoloEnterprises(): Promise<
   }
 
   const placeholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
-  const balde = sqlDoBalde("u");
-  const [rows] = await poolResult.pool.query<EnterpriseQueryRow[]>(
-    `select
-       e.id,
-       e.code,
-       e.name,
-       ci.name as city,
-       s.acronym as state,
-       inc.name as incorporador,
-       count(u.id) as total_units,
-       coalesce(sum(u.price), 0) as total_value,
-       -- ⚠️ OS BALDES SAEM DE UMA REGRA SÓ (sqlDoBalde, em balde-da-unidade.ts), a mesma que a
-       -- lista usa em TypeScript. Antes eram duas regras diferentes e elas discordavam: o
-       -- bloqueado aqui procurava status DISPONÍVEL com o flag ligado, então as 27 unidades do
-       -- Villa Paris em status 5 não caíam em balde nenhum e a soma dos cards dava 70 de 97.
-       sum(case when ${balde} = 'disponivel' then 1 else 0 end) as disponivel_units,
-       coalesce(sum(case when ${balde} = 'disponivel' then u.price else 0 end), 0) as disponivel_value,
-       sum(case when ${balde} = 'bloqueado' then 1 else 0 end) as bloqueado_units,
-       coalesce(sum(case when ${balde} = 'bloqueado' then u.price else 0 end), 0) as bloqueado_value,
-       sum(case when ${balde} = 'reservado' then 1 else 0 end) as reservado_units,
-       coalesce(sum(case when ${balde} = 'reservado' then u.price else 0 end), 0) as reservado_value,
-       sum(case when ${balde} = 'negociacao' then 1 else 0 end) as negociacao_units,
-       coalesce(sum(case when ${balde} = 'negociacao' then u.price else 0 end), 0) as negociacao_value,
-       sum(case when ${balde} = 'vendido' then 1 else 0 end) as vendido_units,
-       coalesce(sum(case when ${balde} = 'vendido' then u.price else 0 end), 0) as vendido_value
-     from enterprises e
-     left join enterprise_unities u on u.enterprise_id = e.id
-     left join cities ci on ci.id = e.city_id
-     left join states s on s.id = ci.state_id
-     left join users inc on inc.id = e.incorporador_id
-     where e.code not in (${placeholders})
-     group by e.id, e.code, e.name, ci.name, s.acronym, inc.name
-     order by e.code`,
-    // Os status saíram dos parâmetros: agora eles vivem dentro do CASE de sqlDoBalde, que é
-    // texto fixo do nosso código (nunca entrada de usuário) e por isso pode ser interpolado.
-    [...EXCLUDED_ENTERPRISE_CODES],
-  );
 
-  const mapped = rows.map(mapEnterpriseRow);
+  // As duas leituras do C2X correm juntas. ⚠️ `sale_status_id` e `sale_blocked` NÃO ESTÃO NO
+  // SELECT de propósito: a situação é do Panteon, e coluna de status do legado à mão aqui é convite
+  // a alguém voltar a decidir por ela.
+  const [[empreendimentos], [unidades]] = await Promise.all([
+    poolResult.pool.query<EnterpriseMetaRow[]>(
+      `select
+         e.id,
+         e.code,
+         e.name,
+         ci.name as city,
+         s.acronym as state,
+         inc.name as incorporador
+       from enterprises e
+       left join cities ci on ci.id = e.city_id
+       left join states s on s.id = ci.state_id
+       left join users inc on inc.id = e.incorporador_id
+       where e.code not in (${placeholders})
+       order by e.code`,
+      [...EXCLUDED_ENTERPRISE_CODES],
+    ),
+    poolResult.pool.query<EnterpriseUnitRow[]>(
+      `select u.id, u.name as unit_name, u.block, u.lot, u.price,
+              e.id as enterprise_id, e.code as enterprise_code
+         from enterprise_unities u
+         join enterprises e on e.id = u.enterprise_id
+        where e.code not in (${placeholders})`,
+      [...EXCLUDED_ENTERPRISE_CODES],
+    ),
+  ]);
+
+  let situacoes: null | SituacaoDasUnidades = null;
+  if (opcoes.comSituacao !== false) {
+    const lida = await lerSituacaoNoPanteon([
+      ...new Set(unidades.map((unidade) => String(unidade.enterprise_id))),
+    ]);
+    if (!lida.ok) return { error: lida.error, ok: false };
+    situacoes = lida.situacoes;
+  }
+
+  const { cenarios, semCadastro } = cenariosPelaRegua(unidades, situacoes);
+
+  // O buraco do sync fica no log, com a contagem; na tela ele é parte do vermelho.
+  if (semCadastro.length > 0) {
+    console.warn(
+      `[apolo][empreendimentos] ${semCadastro.length} unidade(s) do C2X sem linha em hercules_unidades; contam como ocupadas nos cards até o sync.`,
+      semCadastro.slice(0, 10),
+    );
+  }
+
+  const mapped = empreendimentos.map((empreendimento) => {
+    const cenario = cenarios.get(String(empreendimento.id)) ?? cenarioZerado();
+    return mapEnterpriseRow({
+      ...empreendimento,
+      bloqueado_units: cenario.bloqueado.units,
+      bloqueado_value: cenario.bloqueado.value,
+      disponivel_units: cenario.disponivel.units,
+      disponivel_value: cenario.disponivel.value,
+      negociacao_units: cenario.negociacao.units,
+      negociacao_value: cenario.negociacao.value,
+      reservado_units: cenario.reservado.units,
+      reservado_value: cenario.reservado.value,
+      total_units: cenario.total.units,
+      total_value: cenario.total.value,
+      vendido_units: cenario.vendido.units,
+      vendido_value: cenario.vendido.value,
+    } as EnterpriseQueryRow);
+  });
 
   return { data: buildApoloEnterprisesData(mapped), ok: true };
 }
@@ -526,6 +667,12 @@ export type ApoloUnitMovement = {
 export type ApoloEnterpriseUnit = {
   area: number | null;
   block: string | null;
+  /**
+   * O bloqueio feito NO PANTEON (com autor e motivo). `null` = não há bloqueio nativo (a unidade
+   * não está bloqueada, ou o bloqueio veio do C2X); AUSENTE = não foi lido. Só a rota interna do
+   * Apolo preenche: o nome de quem bloqueou não viaja para o portal do cliente.
+   */
+  bloqueio?: null | { em: string; motivo: null | string; porNome: null | string };
   bucket: ApoloEnterpriseBucket;
   // Código da unidade (ex.: LOU0101 = sigla + quadra + lote), mesmo padrão do Hades.
   code: string;
@@ -535,9 +682,21 @@ export type ApoloEnterpriseUnit = {
   kind: string | null;
   lot: string | null;
   movement: ApoloUnitMovement | null;
+  /**
+   * A linha VIVA do Panteon (`hercules_unidades.id`) que responde por esta unidade, casada pela
+   * régua (`acharUnidade`). É por ela que o Apolo bloqueia e desbloqueia. Nula quando o Panteon não
+   * a conhece. Opcional no tipo porque há quem monte a unidade à mão (a ficha do portal, os testes).
+   */
+  panteonId?: null | string;
   price: number;
   // Matrícula do registro.
   registration: string | null;
+  /**
+   * O Panteon não tem esta unidade (o sync ainda não a trouxe). Ela sai OCUPADA (no balde
+   * bloqueado, nunca livre), com o texto "Sem cadastro no Panteon" em vez de "Bloqueado": ninguém a
+   * bloqueou, e dizer que sim mandaria alguém procurar um bloqueio que não existe.
+   */
+  semCadastroNoPanteon?: boolean;
   status: string;
 };
 
@@ -643,7 +802,7 @@ export async function loadApoloEnterpriseUnits(
   // leituras do Panteon correm juntas; nenhuma depende da outra.
   const enterpriseIds = [...new Set(rows.map((row) => String(row.enterprise_id)))];
   const [situacoes, reservas] = await Promise.all([
-    situacaoDasUnidadesNoPanteon(enterpriseIds),
+    lerSituacaoNoPanteon(enterpriseIds),
     reservasVivasDoPanteon(),
   ]);
 
@@ -655,15 +814,15 @@ export async function loadApoloEnterpriseUnits(
   const units = rows.map((row) => {
     const unidade = unidadeDaLinhaDoC2x(chavesDaLinha(row), situacoes.situacoes);
     if (!unidade) foraDoPanteon.push(cleanText(row.unit_name) ?? String(row.id));
-    return mapUnitRow(row, unidade?.situacao ?? SITUACAO_FORA_DO_PANTEON, reservas);
+    return mapUnitRow(row, unidade, reservas);
   });
 
-  // Unidade do C2X que o Panteon não conhece aparece bloqueada (ver SITUACAO_FORA_DO_PANTEON). O
-  // aviso vai para o log, com a contagem, para o buraco do sync não ficar invisível: na tela ela é
-  // só mais um "Bloqueado".
+  // Unidade do C2X que o Panteon não conhece sai "Sem cadastro no Panteon", ocupada (ver
+  // `situacaoDaUnidadeNaAba`). O aviso vai também para o log, com a contagem, para o buraco do sync
+  // não depender de alguém abrir a aba certa.
   if (foraDoPanteon.length > 0) {
     console.warn(
-      `[apolo][empreendimentos] ${foraDoPanteon.length} unidade(s) do C2X sem linha em hercules_unidades; aparecem bloqueadas até o sync.`,
+      `[apolo][empreendimentos] ${foraDoPanteon.length} unidade(s) do C2X sem linha em hercules_unidades; aparecem "Sem cadastro no Panteon", ocupadas, até o sync.`,
       foraDoPanteon.slice(0, 10),
     );
   }
@@ -674,10 +833,15 @@ export async function loadApoloEnterpriseUnits(
 const ERRO_DA_SITUACAO =
   "Não foi possível ler a situação das unidades no Panteon agora. Tente de novo em instantes.";
 
-// A situação pela régua única. Falha vira ERRO, nunca mapa vazio: mapa vazio faria toda unidade
-// cair no "desconhecido" e a lista inteira sairia bloqueada, uma mentira no sentido oposto (menos
-// cara que pintar de livre, mas ainda mentira).
-async function situacaoDasUnidadesNoPanteon(
+/**
+ * A situação pela régua única, para as leituras do Apolo que partem do C2X (os cards, a aba
+ * Unidades, a lista de Vendas).
+ *
+ * ⚠️ FALHA VIRA ERRO, nunca mapa vazio: mapa vazio faria toda unidade cair no "desconhecido" e a
+ * lista inteira sairia ocupada, uma mentira no sentido oposto (menos cara que pintar de livre, mas
+ * ainda mentira). A frase é para a tela; o detalhe técnico vai para o log.
+ */
+export async function lerSituacaoNoPanteon(
   enterpriseIds: string[],
 ): Promise<
   { error: string; ok: false } | { ok: true; situacoes: SituacaoDasUnidades }
@@ -721,7 +885,14 @@ const SITUACAO_FORA_DO_PANTEON: SituacaoDaUnidade = situacaoDoTerreno({
   reservada: false,
 });
 
-type ChavesDaLinhaDoC2x = {
+/**
+ * O texto da unidade que o Panteon não conhece. NÃO é "Bloqueado": ninguém a bloqueou, e o texto
+ * errado mandaria alguém procurar (ou tentar desfazer) um bloqueio que não existe. A cor e o balde
+ * continuam os de ocupado.
+ */
+export const ROTULO_SEM_CADASTRO_NO_PANTEON = "Sem cadastro no Panteon";
+
+export type ChavesDaLinhaDoC2x = {
   /** O código que esta tela monta (sigla + quadra + lote). */
   codigo: string;
   /** `enterprise_unities.id`. */
@@ -741,26 +912,27 @@ function chavesDaLinha(row: UnitQueryRow): ChavesDaLinhaDoC2x {
 /**
  * Qual unidade do Panteon responde por esta linha do C2X.
  *
- * A ordem das chaves:
+ * ⚠️ PELA ORDEM ÚNICA DE `acharUnidade` (linha do Panteon, id do legado, código), a mesma do
+ * masterplan, do espelho e da Venda. Na primeira passada esta função tinha a ordem dela, e duas
+ * telas com ordens diferentes acham linhas diferentes para o mesmo lote quando o nome no C2X
+ * destoa do código da carga. A linha do C2X não tem id do Panteon, então as chaves são:
  *   1. o id do legado (`enterprise_unities.id` = `hercules_unidades.origem_c2x_id`), que é exato;
  *   2. o `name` do legado, que é o `codigo` que a carga gravou;
- *   3. o código que esta tela monta (sigla + quadra + lote), para a unidade cujo `name` no C2X
- *      destoa do padrão.
+ *   3. só se nenhuma das duas casar, o código que a tela monta (sigla + quadra + lote), para a
+ *      unidade cujo `name` no C2X destoa do padrão. É a mesma função com a chave seguinte, e não
+ *      uma ordem nova.
  * `porOrigemC2x` e `porCodigo` respondem por QUALQUER linha do terreno, então pedir o VOC0305 ou o
- * VLO0305 (a linha antiga do pai) dá a mesma resposta.
+ * VLO0305 (a linha antiga do pai) dá a mesma unidade viva.
+ *
+ * Exportada para a lista de Vendas (lib/apolo/vendas.ts), que casa as mesmas linhas do C2X.
  */
-function unidadeDaLinhaDoC2x(
+export function unidadeDaLinhaDoC2x(
   linha: ChavesDaLinhaDoC2x,
   situacoes: SituacaoDasUnidades,
 ): UnidadeComSituacao | undefined {
-  const chave = (codigo: null | string) => (codigo ?? "").trim().toUpperCase();
-  const pelo = (codigo: null | string) =>
-    chave(codigo) ? situacoes.porCodigo.get(chave(codigo)) : undefined;
-
   return (
-    situacoes.porOrigemC2x.get(String(linha.id)) ??
-    pelo(linha.nomeNoC2x) ??
-    pelo(linha.codigo)
+    acharUnidade(situacoes, { codigo: linha.nomeNoC2x, origemC2x: linha.id }) ??
+    acharUnidade(situacoes, { codigo: linha.codigo })
   );
 }
 
@@ -783,7 +955,7 @@ export function situacaoDaLinhaDoPanteon(
   id: string,
   situacoes: SituacaoDasUnidades,
 ): SituacaoDaUnidade {
-  return situacoes.porLinha.get(id)?.situacao ?? SITUACAO_FORA_DO_PANTEON;
+  return acharUnidade(situacoes, { linhaId: id })?.situacao ?? SITUACAO_FORA_DO_PANTEON;
 }
 
 /**
@@ -792,8 +964,12 @@ export function situacaoDaLinhaDoPanteon(
  *
  * ⚠️ OS DOIS SAEM DA MESMA SITUAÇÃO, e é isso que importa. Quando a cor vinha de uma fonte e o texto
  * de outra, o selo saiu âmbar escrito "Disponível" (o RVPA09, 28/08/2026). O texto usa
- * `rotuloDaSituacao` porque ele distingue Proposta, Contrato, Assinatura e Faturado, que o balde
- * junta em "vendido": a cor diz "ocupado", a palavra diz em que pé está.
+ * `rotuloDaSituacao` porque ele distingue Proposta, Contrato, Assinatura e Faturado dentro do balde:
+ * a cor diz "em negociação", a palavra diz em que pé está.
+ *
+ * ⚠️ CINCO BALDES, os de `baldeDaSituacao`: proposta, contrato e assinatura são NEGOCIAÇÃO (e o
+ * filtro "Em negociação" da aba passa a achá-las); faturado e vendida, VENDIDO. Na primeira passada
+ * a aba juntava a negociação em "Vendido" e o card do Hércules não: o mesmo lote com dois nomes.
  *
  * Exportada para a rota da aba (o ramo do produto nascido no Panteon usa a mesma escrita).
  */
@@ -801,6 +977,26 @@ export function situacaoNaAbaUnidades(
   situacao: SituacaoDaUnidade,
 ): Pick<ApoloEnterpriseUnit, "bucket" | "status"> {
   return { bucket: baldeDaSituacao(situacao), status: rotuloDaSituacao(situacao) };
+}
+
+/**
+ * A unidade achada pela régua, escrita na aba: balde, texto e a linha do Panteon (para o bloqueio).
+ *
+ * ⚠️ NÃO ACHADA = SEM CADASTRO NO PANTEON: ocupada (o balde de SITUACAO_FORA_DO_PANTEON, nunca o
+ * disponível), com o texto próprio e sem linha para bloquear.
+ */
+export function situacaoDaUnidadeNaAba(
+  unidade: undefined | UnidadeComSituacao,
+): Pick<ApoloEnterpriseUnit, "bucket" | "panteonId" | "semCadastroNoPanteon" | "status"> {
+  if (!unidade) {
+    return {
+      bucket: baldeDaSituacao(SITUACAO_FORA_DO_PANTEON),
+      panteonId: null,
+      semCadastroNoPanteon: true,
+      status: ROTULO_SEM_CADASTRO_NO_PANTEON,
+    };
+  }
+  return { ...situacaoNaAbaUnidades(unidade.situacao), panteonId: unidade.id, semCadastroNoPanteon: false };
 }
 
 // As reservas vivas do salão, SÓ para a linha de "Última movimentação" (quem reservou). A
@@ -845,9 +1041,10 @@ function buildUnitCode(
 
 function mapUnitRow(
   row: UnitQueryRow,
-  // ⚠️ A SITUAÇÃO CHEGA PRONTA, da régua única (lib/hercules/situacao-da-unidade.ts). Esta função
-  // não decide mais nada sobre livre, reservado ou vendido: só escreve o que a régua disse.
-  situacao: SituacaoDaUnidade,
+  // ⚠️ A SITUAÇÃO CHEGA PRONTA, da régua única (lib/hercules/situacao-da-unidade.ts), na unidade do
+  // Panteon que responde por esta linha. Esta função não decide nada sobre livre, reservado ou
+  // vendido: só escreve o que a régua disse. `undefined` = sem cadastro no Panteon (ocupada).
+  unidade: undefined | UnidadeComSituacao,
   reservasDoSalao?: ReadonlyMap<string, ReservaViva>,
 ): ApoloEnterpriseUnit {
   const codigoDaUnidade = buildUnitCode(
@@ -858,7 +1055,7 @@ function mapUnitRow(
   // A reserva do salão aqui só serve para o NOME de quem reservou (a linha de movimentação). Se
   // ela está viva, a régua já contou: a situação sai "reservado" (ou adiante, se houver proposta).
   const reservaDoSalao = reservasDoSalao?.get(codigoDaUnidade) ?? null;
-  const { bucket, status } = situacaoNaAbaUnidades(situacao);
+  const { bucket, panteonId, semCadastroNoPanteon, status } = situacaoDaUnidadeNaAba(unidade);
 
   const party = (
     id: number | null,
@@ -923,9 +1120,11 @@ function mapUnitRow(
       : client || imobiliaria
         ? { client, imobiliaria, stage: cleanText(row.stage) }
         : null,
+    panteonId,
     price: toNumber(row.price),
     registration: cleanText(row.registration),
-    // ⚠️ O TEXTO E A COR SAEM DA MESMA SITUAÇÃO (situacaoNaAbaUnidades), nunca de
+    semCadastroNoPanteon,
+    // ⚠️ O TEXTO E A COR SAEM DA MESMA SITUAÇÃO (situacaoDaUnidadeNaAba), nunca de
     // `sale_statuses.name`. Enquanto o texto vinha do C2X, a tela dizia duas coisas: o lote
     // reservado no tótem ganhava a cor âmbar e o texto "Disponível".
     status,

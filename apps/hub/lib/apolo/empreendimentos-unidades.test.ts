@@ -58,7 +58,9 @@ import {
   loadApoloEnterpriseUnits,
   situacaoDaLinhaDoC2x,
   situacaoDaLinhaDoPanteon,
+  situacaoDaUnidadeNaAba,
   situacaoNaAbaUnidades,
+  unidadeDaLinhaDoC2x,
 } from "./empreendimentos";
 
 const lerSituacao = vi.mocked(lerSituacaoDasUnidades);
@@ -82,6 +84,7 @@ function situacoes(terrenos: Terreno[]): SituacaoDasUnidades {
     porCodigo: new Map(),
     porLinha: new Map(),
     porOrigemC2x: new Map(),
+    terreno: () => undefined,
     unidades: [],
   };
   for (const t of terrenos) {
@@ -153,7 +156,7 @@ describe("loadApoloEnterpriseUnits: a situação é a do Panteon", () => {
     expect(resultado.units[0]).toMatchObject({ bucket: "bloqueado", code: "LBP0105", status: "Bloqueado" });
   });
 
-  it("contrato, assinatura e proposta saem ocupados, com a etapa escrita no selo", async () => {
+  it("contrato, assinatura e proposta saem EM NEGOCIAÇÃO, com a etapa escrita no selo", async () => {
     estado.linhasDoC2x = [
       linhaDoC2x({ block: "02", id: 1002, lot: "01", unit_name: "LBP0201" }),
       linhaDoC2x({ block: "02", id: 1003, lot: "02", unit_name: "LBP0202" }),
@@ -174,13 +177,18 @@ describe("loadApoloEnterpriseUnits: a situação é a do Panteon", () => {
     const resultado = await loadApoloEnterpriseUnits(["LBP"]);
     if (!resultado.ok) throw new Error(resultado.error);
 
+    // Os cinco baldes da régua: o filtro "Em negociação" da aba passa a achar proposta, contrato e
+    // assinatura (na primeira passada eles caíam em "Vendido", e o filtro não achava nada).
     expect(resultado.units.map((u) => [u.code, u.bucket, u.status])).toEqual([
-      ["LBP0201", "vendido", "Contrato"],
-      ["LBP0202", "vendido", "Assinatura"],
-      ["LBP0203", "vendido", "Proposta"],
+      ["LBP0201", "negociacao", "Contrato"],
+      ["LBP0202", "negociacao", "Assinatura"],
+      ["LBP0203", "negociacao", "Proposta"],
       ["LBP0204", "reservado", "Reservado"],
       ["LBP0205", "disponivel", "Disponível"],
     ]);
+    // A linha VIVA do Panteon vai junto: é por ela que a aba bloqueia.
+    expect(resultado.units.map((u) => u.panteonId)).toEqual(["a", "b", "c", "d", "e"]);
+    expect(resultado.units.every((u) => u.semCadastroNoPanteon === false)).toBe(true);
   });
 
   it("pede ao Panteon os empreendimentos do C2X das linhas, sem repetir", async () => {
@@ -212,14 +220,22 @@ describe("loadApoloEnterpriseUnits: a situação é a do Panteon", () => {
     expect(sqlLido).toMatch(/u\.name as unit_name/);
   });
 
-  it("⚠️ unidade que o Panteon não conhece sai BLOQUEADA, nunca livre, e o buraco vai para o log", async () => {
+  it("⚠️ unidade que o Panteon não conhece sai \"Sem cadastro no Panteon\", OCUPADA, nunca livre", async () => {
     estado.linhasDoC2x = [linhaDoC2x({ block: "09", id: 9009, lot: "09", sale_status_id: 1, unit_name: "LBP0909" })];
     lerSituacao.mockResolvedValue(situacoes([]));
 
     const resultado = await loadApoloEnterpriseUnits(["LBP"]);
     if (!resultado.ok) throw new Error(resultado.error);
 
-    expect(resultado.units[0]).toMatchObject({ bucket: "bloqueado", status: "Bloqueado" });
+    // O balde é o de ocupado (vermelho, fora do "Disponível" e do verde do masterplan); o texto NÃO
+    // é "Bloqueado", porque ninguém a bloqueou; e não há linha para bloquear.
+    expect(resultado.units[0]).toMatchObject({
+      bucket: "bloqueado",
+      panteonId: null,
+      semCadastroNoPanteon: true,
+      status: "Sem cadastro no Panteon",
+    });
+    expect(resultado.units[0]?.status).not.toBe("Bloqueado");
     expect(console.warn).toHaveBeenCalledTimes(1);
     expect(String(vi.mocked(console.warn).mock.calls[0]?.[0])).toContain("1 unidade(s)");
   });
@@ -354,6 +370,17 @@ describe("situacaoDaLinhaDoC2x: qual unidade do Panteon responde", () => {
     expect(situacaoDaLinhaDoC2x({ codigo: "", id: 999, nomeNoC2x: null }, mapa)).toBe("bloqueada");
   });
 
+  it("⚠️ a ordem é a de acharUnidade: o código montado só entra quando id e nome não casam", () => {
+    // O nome no C2X aponta para LBP0299 (assinatura) e o código montado para LBP0301 (reservado):
+    // quem manda é o nome, a segunda chave da ordem única, e não o código que a tela inventa.
+    expect(situacaoDaLinhaDoC2x({ codigo: "LBP0301", id: 1, nomeNoC2x: "LBP0299" }, mapa)).toBe("assinatura");
+  });
+
+  it("devolve a unidade VIVA do terreno, também pela linha antiga do pai", () => {
+    expect(unidadeDaLinhaDoC2x({ codigo: "VLO0305", id: 3500, nomeNoC2x: "VLO0305" }, mapa)?.id).toBe("viva-voc");
+    expect(unidadeDaLinhaDoC2x({ codigo: "", id: 999, nomeNoC2x: null }, mapa)).toBeUndefined();
+  });
+
   it("a linha do produto nascido no Panteon casa pelo id da linha, viva ou antiga", () => {
     expect(situacaoDaLinhaDoPanteon("antiga-vlo", mapa)).toBe("proposta");
     expect(situacaoDaLinhaDoPanteon("nao-existe", mapa)).toBe("bloqueada");
@@ -361,14 +388,14 @@ describe("situacaoDaLinhaDoC2x: qual unidade do Panteon responde", () => {
 });
 
 describe("situacaoNaAbaUnidades: cor e texto da mesma fonte", () => {
-  it("quatro baldes na cor; a etapa por extenso no texto", () => {
+  it("os CINCO baldes da régua na cor; a etapa por extenso no texto", () => {
     const casos: Array<[SituacaoDaUnidade, string, string]> = [
       ["disponivel", "disponivel", "Disponível"],
       ["reservado", "reservado", "Reservado"],
       ["reservada", "reservado", "Reservado"],
-      ["proposta", "vendido", "Proposta"],
-      ["contrato", "vendido", "Contrato"],
-      ["assinatura", "vendido", "Assinatura"],
+      ["proposta", "negociacao", "Proposta"],
+      ["contrato", "negociacao", "Contrato"],
+      ["assinatura", "negociacao", "Assinatura"],
       ["faturado", "vendido", "Faturado"],
       ["vendida", "vendido", "Vendido"],
       ["bloqueada", "bloqueado", "Bloqueado"],
@@ -376,5 +403,36 @@ describe("situacaoNaAbaUnidades: cor e texto da mesma fonte", () => {
     for (const [situacao, bucket, status] of casos) {
       expect(situacaoNaAbaUnidades(situacao)).toEqual({ bucket, status });
     }
+  });
+});
+
+describe("situacaoDaUnidadeNaAba: achada ou sem cadastro", () => {
+  it("achada: a escrita da régua e a linha viva", () => {
+    const unidade: UnidadeComSituacao = {
+      codigo: "LBP0101",
+      enterpriseId: "44",
+      id: "viva-1",
+      lote: "01",
+      origemC2xId: "1",
+      quadra: "01",
+      situacao: "assinatura",
+    };
+    expect(situacaoDaUnidadeNaAba(unidade)).toEqual({
+      bucket: "negociacao",
+      panteonId: "viva-1",
+      semCadastroNoPanteon: false,
+      status: "Assinatura",
+    });
+  });
+
+  it("⚠️ sem cadastro: ocupada, com o texto próprio e sem linha para bloquear", () => {
+    const escrita = situacaoDaUnidadeNaAba(undefined);
+    expect(escrita).toEqual({
+      bucket: "bloqueado",
+      panteonId: null,
+      semCadastroNoPanteon: true,
+      status: "Sem cadastro no Panteon",
+    });
+    expect(escrita.bucket).not.toBe("disponivel");
   });
 });

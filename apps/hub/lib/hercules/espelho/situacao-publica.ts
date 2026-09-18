@@ -22,7 +22,13 @@
 // quadrado representa: tudo sai azul. O erro caro desta tela é anunciar disponível um lote que já
 // tem dono: o cliente escolhe, o corretor promete, e alguém tem de desdizer.
 
-import { estaLivre, type SituacaoDaUnidade } from "../situacao-da-unidade";
+import {
+  acharUnidade,
+  estaLivre,
+  type SituacaoDaUnidade,
+  type SituacaoDasUnidades,
+  type UnidadeComSituacao,
+} from "../situacao-da-unidade";
 
 /** As duas cores do público. Nada de status intermediário aqui: isso é o espelho INTERNO. */
 export type SituacaoPublica = "disponivel" | "indisponivel";
@@ -40,12 +46,27 @@ export function corPublica(situacao: SituacaoDaUnidade | undefined): SituacaoPub
 export type LinhaDoLote = {
   /** A linha é do empreendimento PAI, o dono do desenho (`inkscape:label` é o código dele). */
   doPai: boolean;
-  /** `hercules_unidades.id`. É por ele que a régua única responde (`porLinha`). */
+  /** `hercules_unidades.id`. É por ele que a régua única responde (`acharUnidade`, `linhaId`). */
   id: string;
 };
 
-/** O pedaço da leitura da régua única que esta função consulta. */
-export type TerrenoComSituacao = { id: string; situacao: SituacaoDaUnidade };
+/**
+ * A resposta da régua única para UMA linha do quadrado, pela ordem única de busca.
+ *
+ * ⚠️ SÓ O ID DA LINHA, DE PROPÓSITO, e é a mesma escolha de `criar-reserva.ts`. `acharUnidade`
+ * procura pela linha do Panteon, depois pelo id do legado, depois pelo código; o espelho sempre tem
+ * a primeira chave, porque lê a MESMA tabela que a régua lê. Quando a régua não conhece esse id, é
+ * porque não leu a linha (outro workspace, unidade criada entre as duas leituras), e então também
+ * não leu as propostas e reservas penduradas nela. Cair para o id do legado ou para o código
+ * responderia com o processo de OUTRA linha, e aí o verde de uma linha limpa cobriria a linha que
+ * tem dono. Sem resposta pelo id: sem resposta, e o quadrado sai azul.
+ */
+function respostaDaRegua(
+  situacoes: SituacaoDasUnidades,
+  linha: LinhaDoLote,
+): undefined | UnidadeComSituacao {
+  return acharUnidade(situacoes, { linhaId: linha.id });
+}
 
 /**
  * A cor de UM quadrado do espelho: as linhas de `hercules_unidades` que o espelho juntou pela
@@ -53,39 +74,54 @@ export type TerrenoComSituacao = { id: string; situacao: SituacaoDaUnidade };
  *
  * ⚠️ QUEM RESPONDE É O TERRENO DO DESENHO. O público vê o loteamento pelo masterplan do PAI, e o
  * lote do desenho é o código do pai (VLO0305). A régua única já resolve esse código para o terreno
- * inteiro: a linha antiga do pai aponta (`espelho_de`) para a viva da gleba, e `porLinha` devolve a
- * mesma resposta para as duas, com proposta e reserva de qualquer uma delas na conta. Então:
+ * inteiro: a linha antiga do pai aponta (`espelho_de`) para a viva da gleba, e a busca pela linha do
+ * pai devolve a unidade viva, com proposta e reserva de qualquer linha do terreno na conta. E o
+ * terreno inclui a IRMÃ de outra gleba com a mesma quadra e lote (VOC e VOR no Vale do Ouro): a
+ * proposta viva na VOC pinta de azul a VOR para onde o pai aponta. Então:
  *
  * 1. **Linha que a régua não conhece: azul.** É uma linha que a leitura não trouxe (outro workspace,
  *    unidade criada entre as duas leituras). Sem resposta, não há afirmação de verde.
- * 2. **Linha do pai que aponta para uma gleba: é esse terreno que responde.** É o caso do Vale do
- *    Ouro com os lotes que VOC e VOR disputam: a migration 0162 apontou o pai para a gleba que vende
- *    (a não bloqueada), e a outra linha do quadrado é outro cadastro, que a régua única trata como
- *    outra unidade. Somar as duas deixaria azul um lote que a carteira viva vende.
- * 3. **Sem esse ponteiro, o quadrado junta linhas que o Panteon não diz serem o mesmo terreno**
+ * 2. **Linha do pai que aponta para uma gleba: é esse terreno que responde**, e ele precisa estar
+ *    livre. É o caso dos lotes que VOC e VOR disputam: a migration 0162 apontou o pai para a gleba
+ *    que vende (a não bloqueada).
+ * 3. **As OUTRAS linhas do quadrado só perdem a voz num caso: gleba (não o pai) com o cadastro
+ *    `bloqueada` e processo nenhum.** É exatamente a forma da 0162, a carteira de onde o lote saiu, e
+ *    somá-la deixaria azul um lote que a carteira viva vende. Qualquer outra coisa nela (proposta,
+ *    contrato, reserva, "vendida" ou "reservada" no cadastro) é sinal de dono, e o lote sai azul.
+ *    ⚠️ Isto NÃO é uma segunda régua: a régua já soma a irmã quando reconhece a família do pai
+ *    (e aí a VOR responde "proposta" sozinha). O item 3 é o cinto para quando ela não reconhece
+ *    (gleba para onde nenhuma linha do pai aponta): o quadrado do espelho junta as duas linhas pela
+ *    quadra e pelo lote, e dono numa delas não pode sumir porque o pai olha para a outra.
+ * 4. **Sem esse ponteiro, o quadrado junta linhas que o Panteon não diz serem o mesmo terreno**
  *    (pai sem gleba cadastrada, ou produto dividido que a marca ainda não alcança). Verde só se
  *    TODAS estiverem livres. Na dúvida, azul.
  */
 export function situacaoPublicaDoLote(
   linhas: readonly LinhaDoLote[],
-  porLinha: ReadonlyMap<string, TerrenoComSituacao>,
+  situacoes: SituacaoDasUnidades,
 ): SituacaoPublica {
   if (linhas.length === 0) return "indisponivel";
 
-  const todos = new Map<string, SituacaoDaUnidade>();
-  const doDesenho = new Map<string, SituacaoDaUnidade>();
-
+  const respostas: Array<{ linha: LinhaDoLote; unidade: UnidadeComSituacao }> = [];
   for (const linha of linhas) {
-    const terreno = porLinha.get(linha.id);
-    if (!terreno) return "indisponivel";
-    todos.set(terreno.id, terreno.situacao);
-    // O pai que responde por OUTRA linha é o pai apontando para a gleba viva.
-    if (linha.doPai && terreno.id !== linha.id) doDesenho.set(terreno.id, terreno.situacao);
+    const unidade = respostaDaRegua(situacoes, linha);
+    if (!unidade) return "indisponivel";
+    respostas.push({ linha, unidade });
   }
 
-  const quemResponde = doDesenho.size > 0 ? doDesenho : todos;
-  for (const situacao of quemResponde.values()) {
-    if (corPublica(situacao) !== "disponivel") return "indisponivel";
+  // O pai que responde por OUTRA linha é o pai apontando para a gleba viva.
+  const doDesenho = new Set(
+    respostas.filter(({ linha, unidade }) => linha.doPai && unidade.id !== linha.id).map(({ unidade }) => unidade.id),
+  );
+
+  for (const { linha, unidade } of respostas) {
+    if (corPublica(unidade.situacao) === "disponivel") continue;
+    // A carteira de onde o lote saiu (0162): gleba, bloqueada, sem processo. Só ela cala, e só
+    // quando o pai aponta para outra unidade que responde pelo desenho. "bloqueada" vinda da régua
+    // já quer dizer processo nenhum: ela põe proposta viva e reserva viva ACIMA do cadastro.
+    const carteiraQueNaoVende =
+      doDesenho.size > 0 && !doDesenho.has(unidade.id) && !linha.doPai && unidade.situacao === "bloqueada";
+    if (!carteiraQueNaoVende) return "indisponivel";
   }
   return "disponivel";
 }

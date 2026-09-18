@@ -3,14 +3,15 @@
 // ⚠️ A COR SAI DO PANTEON, E SÓ DELE (Lucas, 18/09/2026: *"esses status tem que morar em um so
 // lugar"* · *"no c2x não precisa olhar"* · *"se eu precisar atualizar eu faço um sync"*). A
 // situação de cada lote vem de `lerSituacaoDasUnidades` (lib/hercules/situacao-da-unidade.ts), a
-// mesma leitura da tela Venda e do Apolo, e ela já conta a reserva do salão (`prometeu_reservas`)
-// junto com a do Hércules e a proposta viva. Até 18/09 este arquivo juntava o C2X ao vivo com as
+// mesma leitura da tela Venda e do Apolo. A reserva do salão nasce no Hércules desde 18/09/2026
+// (origem `salao`) e entra na conta como qualquer reserva; os cupons antigos, sem reserva do
+// Hércules, continuam contando pela `prometeu_reservas`. Até 18/09 este arquivo juntava o C2X ao vivo com as
 // reservas do evento numa régua própria, e o telão podia pintar de verde um lote que o
 // coordenador tinha bloqueado no Panteon.
 //
 // ⚠️ LEITURA A CADA PEDIDO, SEM CACHE. É o que deixa a reserva feita no tótem pintar o lote em
-// segundos: o POST da reserva avisa o canal do evento, o telão pede o mapa de novo e a régua lê
-// `prometeu_reservas` na hora. Guardar a resposta, aqui ou na CDN, é projetar mapa velho na
+// segundos: o POST da reserva avisa o canal do evento, o telão pede o mapa de novo e a régua lê a
+// reserva na hora. Guardar a resposta, aqui ou na CDN, é projetar mapa velho na
 // frente do cliente que acabou de reservar (ver o no-store da rota pública).
 //
 // ⚠️ O QUE SAI DAQUI É PÚBLICO. Esta resposta viaja por um link sem login, para um computador
@@ -26,6 +27,7 @@ import { normalizarCodigoDeUnidade } from "./cupom";
 import type { createPrometeuClient } from "./data";
 import {
   contarSituacoes,
+  lotesTravadosDoEvento,
   situacaoNoTelao,
   type SituacaoDoLote,
 } from "./situacao-do-lote";
@@ -72,7 +74,12 @@ export async function masterplanDoEvento(
   // ⚠️ NENHUMA UNIDADE NO PANTEON É DEFEITO DE CARGA, NÃO MAPA VAZIO. Sem isto o telão abriria
   // com todos os lotes sem cor, e lote sem cor é lido pelo salão como "disponível, o sistema é que
   // falhou". O remédio é o sync do empreendimento, e o aviso diz isso.
-  if (situacoes.unidades.length === 0) {
+  //
+  // ⚠️ A PERGUNTA É SE O PANTEON CONHECE ALGUM CÓDIGO DO EMPREENDIMENTO (`porCodigo`), e não se ele
+  // tem linha VIVA nele (`unidades`). No produto dividido o evento aponta para o PAI (VLO 35), cujas
+  // linhas são todas antigas, apontando para as glebas (VOC, VOL): `unidades` sai vazio com o
+  // Panteon inteiro sincronizado, e o telão do Vale do Ouro abriria no aviso de sync.
+  if (situacoes.porCodigo.size === 0) {
     return {
       error:
         "O Panteon ainda não tem as unidades deste empreendimento. Sincronize o cadastro antes de projetar o mapa.",
@@ -85,34 +92,43 @@ export async function masterplanDoEvento(
   // ele tem, e a contagem soma cada terreno uma vez.
   const lotes: Record<string, SituacaoDoLote> = {};
   const porTerreno = new Map<string, SituacaoDoLote>();
+  const terrenoDoCodigo = new Map<string, string>();
   for (const [codigoBruto, unidade] of situacoes.porCodigo) {
     const codigo = normalizarCodigoDeUnidade(codigoBruto);
     if (!codigo) continue;
     const situacao = situacaoNoTelao(unidade.situacao);
     lotes[codigo] = situacao;
     porTerreno.set(unidade.id, situacao);
+    terrenoDoCodigo.set(codigo, unidade.id);
   }
 
-  // ⚠️ A TRAVA DO EVENTO SÓ TAPA BURACO. `lotesBloqueados` (PrometeuEventoConfig) nasceu para o
-  // lote que NÃO TEM CADASTRO (vendido antes da carga, permuta, área remanescente): sem chave no
-  // mapa ele ficaria sem cor, lido como livre. Continua assim: o código que o Panteon não conhece
-  // entra como indisponível. Mas o código que o Panteon CONHECE segue a régua única, e não a
-  // lista: se a lista mandasse também nele, o telão voltaria a ter uma situação diferente da tela
-  // Venda, que é exatamente o defeito que este arquivo deixou de ter. Para travar um lote que tem
-  // cadastro, o caminho é bloqueá-lo no Panteon, e aí ele sai bloqueado em todas as telas.
-  const travados = new Set(
-    (Array.isArray(evento.config?.lotesBloqueados)
-      ? (evento.config.lotesBloqueados as unknown[])
-      : []
-    )
-      .map((c) => normalizarCodigoDeUnidade(String(c ?? "")))
-      .filter(Boolean),
-  );
+  // ⚠️ A TRAVA DO EVENTO BLOQUEIA POR CIMA, e pelo TERRENO (ver `lotesTravadosDoEvento`). Era assim
+  // até 18/09/2026, e a primeira passada da situação única a tinha rebaixado a "só tapa buraco": com
+  // cadastro no Panteon, o lote travado no Setup voltava a pintar verde no telão.
+  //   • código que o Panteon conhece: o terreno inteiro (pai e gleba) sai indisponível, se a régua o
+  //     dava livre. O que a régua já dá ocupado (reservado, vendido) fica com a palavra dela: a cor
+  //     é a mesma, e a contagem continua batendo com os cards do Apolo;
+  //   • código que o Panteon NÃO conhece (vendido antes da carga, permuta, área remanescente): entra
+  //     indisponível. Sem a chave, o telão não pintaria o contorno, e lote sem cor o salão lê como
+  //     livre.
+  const travados = lotesTravadosDoEvento(evento.config);
+  const terrenosTravados = new Set<string>();
   const soNaTrava: SituacaoDoLote[] = [];
   for (const codigo of travados) {
+    const terreno = terrenoDoCodigo.get(codigo);
+    if (terreno) {
+      terrenosTravados.add(terreno);
+      continue;
+    }
     if (lotes[codigo]) continue;
     lotes[codigo] = "indisponivel";
     soNaTrava.push("indisponivel");
+  }
+  for (const [codigo, terreno] of terrenoDoCodigo) {
+    if (terrenosTravados.has(terreno) && lotes[codigo] === "disponivel") lotes[codigo] = "indisponivel";
+  }
+  for (const terreno of terrenosTravados) {
+    if (porTerreno.get(terreno) === "disponivel") porTerreno.set(terreno, "indisponivel");
   }
 
   return {

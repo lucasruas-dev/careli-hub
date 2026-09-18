@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { agregarFluxo, ETAPAS_DO_FLUXO, type PropostaDaCarga, type UnidadeDoMapa,
   andaresDoGrupo,
+  baldeDaEtapa,
   compararApartamentos,
-  estoquePorEmpreendimento,
+  type EtapaDoEspelho,
+  type LinhaDaFicha,
+  linhaDaFicha,
+  processoDaFicha,
   vocabularioDoEstoque,
 } from "./fluxo-de-venda";
 
@@ -339,118 +343,6 @@ describe("agregarFluxo", () => {
   });
 });
 
-// ── UMA FONTE SÓ PARA AS UNIDADES ───────────────────────────────────────────
-describe("estoquePorEmpreendimento", () => {
-  const unidade = (
-    id: string,
-    enterpriseId: string,
-    situacao: string,
-    preco = 100_000,
-  ): UnidadeDoMapa => ({
-    codigo: `U${id}`,
-    enterprise_id: enterpriseId,
-    id,
-    lote: null,
-    preco_tabela: preco,
-    quadra: null,
-    situacao,
-  });
-
-  const proposta = (unidadeId: string, etapa: string, desde: string) =>
-    ({
-      cliente_documento: null,
-      cliente_nome: null,
-      codigo: null,
-      contrato_parcelas: null,
-      criado_em_c2x: desde,
-      data_assinatura: null,
-      data_ato: null,
-      data_faturamento: null,
-      empreendimento_codigo: null,
-      etapa,
-      etapa_c2x: null,
-      etapa_desde: desde,
-      id: `p-${unidadeId}-${etapa}`,
-      imobiliaria_nome: null,
-      motivo: null,
-      plano_correcao: null,
-      plano_juros: null,
-      plano_nome: null,
-      plano_parcelas: null,
-      plano_personalizado: null,
-      unidade_id: unidadeId,
-      unidade_nome: null,
-      valor: 100_000,
-    }) as PropostaDaCarga;
-
-  it("separa por empreendimento e soma o valor", () => {
-    const estoque = estoquePorEmpreendimento({
-      propostas: [],
-      unidades: [
-        unidade("1", "39", "disponivel", 150_000),
-        unidade("2", "39", "bloqueada", 200_000),
-        unidade("3", "40", "vendida", 90_000),
-      ],
-    });
-
-    expect(estoque.get("39")?.disponivel.units).toBe(1);
-    expect(estoque.get("39")?.disponivel.value).toBe(150_000);
-    expect(estoque.get("39")?.bloqueado.units).toBe(1);
-    expect(estoque.get("39")?.total).toEqual({ units: 2, value: 350_000 });
-    expect(estoque.get("40")?.vendido.units).toBe(1);
-  });
-
-  it("⚠️ a NEGOCIAÇÃO volta pela proposta, e não pela situação", () => {
-    // O C2X tinha cinco estados (`sale_status_id`), `hercules_unidades.situacao` tem quatro: "em
-    // negociação" se perdeu na importação. A proposta viva devolve isso — e com mais detalhe.
-    const estoque = estoquePorEmpreendimento({
-      propostas: [
-        proposta("1", "proposta", "2026-08-01"),
-        proposta("2", "contrato", "2026-08-02"),
-        proposta("3", "assinatura", "2026-08-03"),
-        proposta("4", "faturado", "2026-08-04"),
-        proposta("5", "reservado", "2026-08-05"),
-      ],
-      unidades: [
-        unidade("1", "39", "disponivel"),
-        unidade("2", "39", "disponivel"),
-        unidade("3", "39", "disponivel"),
-        unidade("4", "39", "disponivel"),
-        unidade("5", "39", "disponivel"),
-      ],
-    });
-
-    expect(estoque.get("39")?.negociacao.units).toBe(3);
-    expect(estoque.get("39")?.vendido.units).toBe(1);
-    expect(estoque.get("39")?.reservado.units).toBe(1);
-    expect(estoque.get("39")?.disponivel.units).toBe(0);
-  });
-
-  it("⚠️ a proposta REFINA, mas nunca rebaixa para livre", () => {
-    // Sem proposta vale o cadastro, e vendida continua ocupada: dizer que um lote vendido está
-    // livre é convidar a segunda venda.
-    const estoque = estoquePorEmpreendimento({
-      propostas: [proposta("1", "cancelado", "2026-08-01")],
-      unidades: [unidade("1", "39", "vendida")],
-    });
-    expect(estoque.get("39")?.vendido.units).toBe(1);
-    expect(estoque.get("39")?.disponivel.units).toBe(0);
-  });
-
-  it("entre duas propostas vivas vale a MAIS RECENTE", () => {
-    const estoque = estoquePorEmpreendimento({
-      propostas: [proposta("1", "faturado", "2026-01-01"), proposta("1", "reservado", "2026-08-01")],
-      unidades: [unidade("1", "39", "vendida")],
-    });
-    expect(estoque.get("39")?.reservado.units).toBe(1);
-    expect(estoque.get("39")?.vendido.units).toBe(0);
-  });
-
-  it("empreendimento sem unidade não vira linha", () => {
-    expect(estoquePorEmpreendimento({ propostas: [], unidades: [] }).size).toBe(0);
-  });
-});
-
 // ── O PRÉDIO NA GRADE ───────────────────────────────────────────────────────
 // Lucas (16/09/2026): apartamento nunca vira quadra/lote. A grade do prédio agrupa por TORRE e lê de
 // cima para baixo; o loteamento continua exatamente como era (os testes acima não mudaram).
@@ -687,31 +579,162 @@ describe("agregarFluxo com a situação da régua única", () => {
   });
 });
 
-describe("estoquePorEmpreendimento com a situação da régua única", () => {
-  const u = (id: string, situacao: string): UnidadeDoMapa => ({
-    codigo: `U${id}`,
-    enterprise_id: "39",
-    id,
-    lote: null,
-    preco_tabela: 100,
-    quadra: null,
-    situacao,
+// ── OS BOTÕES DA FICHA, COERENTES COM A RÉGUA ───────────────────────────────
+// Lucas (18/09/2026): *"eu não posso vender dois lotes para pessoas diferentes"*. A grade pinta pela
+// régua única, que vê o terreno inteiro e a reserva do salão; os botões e as rotas agem na linha da
+// própria unidade. Quando a régua vê um processo que a lista não tem, os botões apagam com uma frase
+// que não inventa origem.
+
+describe("processoDaFicha", () => {
+  const linha = (l: Partial<LinhaDaFicha> & { etapa: string; id: string }): LinhaDaFicha => ({
+    origem: null,
+    unidadeId: "u-1",
+    ...l,
+  });
+  const lote = (etapa: EtapaDoEspelho) => ({ etapa, id: "u-1" });
+
+  const reservaDoHercules = linha({ etapa: "reservado", id: "reserva:r-1" });
+  const propostaNativa = linha({ etapa: "proposta", id: "p-nativa", origem: "panteon" });
+  const propostaDoC2x = linha({ etapa: "proposta", id: "p-c2x", origem: "c2x" });
+
+  it("fora do fluxo e sem processo na lista: os botões de sempre", () => {
+    for (const etapa of ["disponivel", "bloqueada", "vendida", "reservada"] as const) {
+      expect(processoDaFicha(lote(etapa), [])).toEqual({ tipo: "sem-processo" });
+    }
   });
 
-  it("a régua decide o balde, e a unidade ausente dela não conta como livre", () => {
-    const estoque = estoquePorEmpreendimento({
-      propostas: [],
-      situacaoPorUnidade: new Map([
-        ["1", "reservado"],
-        ["2", "assinatura"],
-        ["3", "disponivel"],
-      ]),
-      unidades: [u("1", "disponivel"), u("2", "disponivel"), u("3", "disponivel"), u("4", "disponivel")],
+  it("a reserva do Hércules da própria unidade é a que os botões operam", () => {
+    expect(processoDaFicha(lote("reservado"), [reservaDoHercules])).toEqual({
+      linha: reservaDoHercules,
+      tipo: "na-lista",
     });
+    expect(processoDaFicha(lote("proposta"), [propostaNativa])).toEqual({
+      linha: propostaNativa,
+      tipo: "na-lista",
+    });
+  });
 
-    expect(estoque.get("39")?.reservado.units).toBe(1);
-    expect(estoque.get("39")?.negociacao.units).toBe(1);
-    expect(estoque.get("39")?.disponivel.units).toBe(1);
-    expect(estoque.get("39")?.bloqueado.units).toBe(1);
+  it("⚠️ reservado pela régua SEM linha na lista (salão, linha do pai): apagado, sem inventar origem", () => {
+    // O caso que acendia "Gerar proposta" e "Cancelar reserva" para a rota recusar.
+    const r = processoDaFicha(lote("reservado"), []);
+    expect(r).toMatchObject({ causa: "fora-da-lista", tipo: "apagado" });
+    const frase = r.tipo === "apagado" ? r.frase : "";
+    expect(frase).toContain("não mostra");
+    expect(frase).toContain("pode ser do salão do lançamento ou de outra linha do lote");
+    expect(frase).toContain("Fale com a coordenação");
+    expect(frase).not.toContain("C2X");
+  });
+
+  it("⚠️ proposta pela régua SEM linha na lista NÃO vira \"veio do C2X\"", () => {
+    // A ficha dizia que a proposta veio do C2X quando não achava linha nenhuma: origem inventada.
+    for (const etapa of ["proposta", "contrato", "assinatura", "faturado"] as const) {
+      const r = processoDaFicha(lote(etapa), []);
+      expect(r).toMatchObject({ causa: "fora-da-lista", tipo: "apagado" });
+      expect(r.tipo === "apagado" ? r.frase : "").not.toContain("C2X");
+    }
+  });
+
+  it("só conta linha VIVA da PRÓPRIA unidade", () => {
+    const lista = [
+      linha({ etapa: "cancelado", id: "p-velha", origem: "panteon" }),
+      linha({ etapa: "reservado", id: "reserva:de-outro", unidadeId: "u-2" }),
+    ];
+    expect(processoDaFicha(lote("reservado"), lista)).toMatchObject({ causa: "fora-da-lista" });
+    expect(processoDaFicha(lote("disponivel"), lista)).toEqual({ tipo: "sem-processo" });
+  });
+
+  it("⚠️ reserva do Hércules ao lado de outra linha viva: dois donos, tudo apagado", () => {
+    const r = processoDaFicha(lote("proposta"), [reservaDoHercules, propostaDoC2x]);
+    expect(r).toMatchObject({ causa: "dois-processos", tipo: "apagado" });
+    expect(processoDaFicha(lote("reservado"), [reservaDoHercules, linha({ etapa: "reservado", id: "p-1", origem: "c2x" })]))
+      .toMatchObject({ causa: "dois-processos" });
+  });
+
+  it("a lista tem processo, mas não na etapa que a régua pintou: apagado", () => {
+    // A reserva está aqui e a proposta que pinta o lote mora em outra linha do terreno.
+    expect(processoDaFicha(lote("proposta"), [reservaDoHercules])).toMatchObject({
+      causa: "divergente",
+      tipo: "apagado",
+    });
+  });
+
+  it("⚠️ livre pela régua com processo vivo na lista: Reservar NÃO acende", () => {
+    // As duas leituras da rota se desencontraram (alguém reservou no meio da carga).
+    const r = processoDaFicha(lote("disponivel"), [reservaDoHercules]);
+    expect(r).toMatchObject({ causa: "divergente", tipo: "apagado" });
+    expect(r.tipo === "apagado" ? r.frase : "").toContain("Recarregue");
+  });
+
+  it("reserva importada do C2X: a origem está na linha, e só aí a frase diz C2X", () => {
+    const r = processoDaFicha(lote("reservado"), [linha({ etapa: "reservado", id: "p-1", origem: "c2x" })]);
+    expect(r).toMatchObject({ causa: "reserva-do-legado", tipo: "apagado" });
+    expect(r.tipo === "apagado" ? r.frase : "").toContain("C2X");
+  });
+
+  it("proposta do C2X na etapa certa segue para os botões (que explicam o legado)", () => {
+    expect(processoDaFicha(lote("proposta"), [propostaDoC2x])).toEqual({ linha: propostaDoC2x, tipo: "na-lista" });
+  });
+
+  it("entre linhas vivas, vale a da etapa que a régua pintou", () => {
+    const contrato = linha({ etapa: "contrato", id: "p-contrato", origem: "panteon" });
+    expect(processoDaFicha(lote("contrato"), [propostaDoC2x, contrato])).toEqual({ linha: contrato, tipo: "na-lista" });
+  });
+
+  it("nenhuma frase tem travessão", () => {
+    const casos: Array<[EtapaDoEspelho, LinhaDaFicha[]]> = [
+      ["reservado", []],
+      ["proposta", []],
+      ["contrato", []],
+      ["assinatura", []],
+      ["faturado", []],
+      ["proposta", [reservaDoHercules]],
+      ["proposta", [reservaDoHercules, propostaDoC2x]],
+      ["reservado", [linha({ etapa: "reservado", id: "p-1", origem: "c2x" })]],
+    ];
+    for (const [etapa, lista] of casos) {
+      const r = processoDaFicha(lote(etapa), lista);
+      expect(r.tipo).toBe("apagado");
+      expect(r.tipo === "apagado" ? r.frase : "—").not.toContain("—");
+    }
+  });
+});
+
+describe("linhaDaFicha", () => {
+  const linha = (l: Partial<LinhaDaFicha> & { etapa: string; id: string }): LinhaDaFicha => ({
+    origem: null,
+    unidadeId: "u-1",
+    ...l,
+  });
+
+  it("é a mesma linha que os botões operam", () => {
+    const c2x = linha({ etapa: "proposta", id: "p-c2x", origem: "c2x" });
+    const contrato = linha({ etapa: "contrato", id: "p-contrato", origem: "panteon" });
+    expect(linhaDaFicha({ etapa: "contrato", id: "u-1" }, [c2x, contrato])).toBe(contrato);
+  });
+
+  it("sem linha que sustente a cor, a primeira viva da unidade (a regra de antes); sem nenhuma, nulo", () => {
+    const reserva = linha({ etapa: "reservado", id: "reserva:r-1" });
+    expect(linhaDaFicha({ etapa: "proposta", id: "u-1" }, [reserva])).toBe(reserva);
+    expect(linhaDaFicha({ etapa: "reservado", id: "u-1" }, [])).toBeNull();
+  });
+});
+
+describe("baldeDaEtapa", () => {
+  it("proposta, contrato e assinatura são negociação; faturado e vendida, vendido", () => {
+    expect(
+      (["disponivel", "reservado", "reservada", "proposta", "contrato", "assinatura", "faturado", "vendida", "bloqueada"] as const).map(
+        baldeDaEtapa,
+      ),
+    ).toEqual([
+      "disponivel",
+      "reservado",
+      "reservado",
+      "negociacao",
+      "negociacao",
+      "negociacao",
+      "vendido",
+      "vendido",
+      "bloqueado",
+    ]);
   });
 });

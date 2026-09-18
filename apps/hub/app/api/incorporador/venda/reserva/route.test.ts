@@ -7,6 +7,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // trocado, origem cravada, migration esquecida) é visível no texto e invisível para o typecheck.
 const ROTA = readFileSync(join(__dirname, "route.ts"), "utf8");
 
+/** O trecho da chamada à porta única da reserva, do `await` até a leitura do resultado. */
+const CHAMADA_DA_PORTA_UNICA = ROTA.slice(
+  ROTA.indexOf("await criarReservaNoHercules("),
+  ROTA.indexOf("if (!resultado.ok)"),
+);
+
 // A migration que autoriza o valor novo na CHECK. Sai do repositório, não do banco: o teste prova
 // que quem sobe o código tem o arquivo, não que ele foi aplicado (isso é a ORDEM DE DEPLOY escrita
 // no cabeçalho dela).
@@ -31,22 +37,34 @@ describe("a origem gravada", () => {
   // Lucas (16/09/2026): o Cecílio opera a própria venda, *"sem o time administrativo da Careli"*.
   // A reserva dele não é do coordenador, e a coluna existe justamente para dizer de onde veio.
   // (16/09/2026, D1) A sessão é a REVALIDADA pela régua de escrita, e não a do cookie cru.
+  // (18/09/2026) A gravação passou para a porta única (`criarReservaNoHercules`): a rota entrega a
+  // origem da SESSÃO a ela, e é lá que a primeira tentativa acontece.
   it("sai da sessão, e não cravada em 'coordenador'", () => {
     expect(ROTA).toContain("const origem = origemDaReserva(sessao);");
-    expect(ROTA).toContain("await inserirReserva(origem);");
+    expect(CHAMADA_DA_PORTA_UNICA).toMatch(/^\s+origem,\r?$/m);
     expect(ROTA).not.toMatch(/origem:\s*"coordenador"/);
   });
 
   // (16/09/2026, revisão) A rede para o código subir antes da 0167: só a recusa DA CHECK da origem
-  // regrava com a origem antiga, e só depois da primeira tentativa com a origem da sessão.
-  it("a origem antiga só entra pela rede da 0167, depois da tentativa com a da sessão", () => {
-    const primeira = ROTA.indexOf("await inserirReserva(origem);");
-    const rede = ROTA.indexOf("if (error && origemRecusadaSemA0167(error, origem))");
-    const segunda = ROTA.indexOf("await inserirReserva(ORIGEM_ACEITA_SEM_A_0167)");
-    expect(primeira).toBeGreaterThan(-1);
-    expect(rede).toBeGreaterThan(primeira);
-    expect(segunda).toBeGreaterThan(rede);
-    expect(ROTA.match(/inserirReserva\(/g)?.length).toBe(2);
+  // regrava com a origem antiga. A ORDEM (primeiro a da sessão, a antiga só depois da recusa) mora
+  // em `criar-reserva.ts` desde 18/09/2026 e está provada contra um banco em memória em
+  // `lib/hercules/criar-reserva.test.ts`.
+  it("a origem antiga só entra pela rede da 0167, e só quando a recusa é a da CHECK de origem", () => {
+    const rede = CHAMADA_DA_PORTA_UNICA.indexOf(
+      "if (!origemRecusadaSemA0167(erro as never, origem)) return null;",
+    );
+    const antiga = CHAMADA_DA_PORTA_UNICA.indexOf("return ORIGEM_ACEITA_SEM_A_0167;");
+    expect(rede).toBeGreaterThan(-1);
+    expect(antiga).toBeGreaterThan(rede);
+    expect(CHAMADA_DA_PORTA_UNICA).toContain("origemSeRecusada: (erro) => {");
+  });
+
+  // Lucas (18/09/2026): *"toda reserva, proposta deve ser criada no hercules"* · *"eu não posso
+  // vender dois lotes para pessoas diferentes"*. Rota que grava a reserva por conta própria pula a
+  // conferência do terreno inteiro e a segunda conferência depois do INSERT.
+  it("⚠️ a rota não grava reserva por conta própria: toda reserva passa pela porta única", () => {
+    expect(ROTA.match(/criarReservaNoHercules\(/g)?.length).toBe(1);
+    expect(ROTA).not.toContain(".insert(");
   });
 
   it("nunca sai do corpo do pedido", () => {
@@ -93,6 +111,8 @@ const estado = vi.hoisted(() => ({
   leuCadastroDeOperacao: 0,
   naoEnviados: 0,
   permitidos: ["37", "39"] as string[],
+  /** Propostas vivas do terreno, como a porta única as lê (`hercules_propostas` em lista). */
+  propostasVivas: [] as Array<Record<string, unknown>>,
   revalidou: 0,
   sessao: {} as Record<string, unknown>,
   unidade: {} as Record<string, unknown>,
@@ -180,8 +200,26 @@ vi.mock("@/lib/hercules/avisos-da-venda", async () => {
 vi.mock("@/lib/apolo/server", () => {
   const consulta = (tabela: string) => {
     let inserido = false;
+    let unica = false;
+    let soLinhasDoPai = false;
     const resposta = (): { data: unknown; error: null } => {
       if (inserido) return { data: { id: "res-1", protocolo_numero: 7 }, error: null };
+      // ⚠️ LISTA OU LINHA ÚNICA. Desde 18/09/2026 o POST grava pela porta única
+      // (`criarReservaNoHercules`), que lê a situação do terreno e a trava do lote em LISTAS. Aqui a
+      // unidade é a única linha viva do terreno (`not(espelho_de)`, as linhas do pai, volta vazia) e
+      // não há reserva viva nem cupom; propostas vivas só quando o teste pede.
+      if (!unica) {
+        if (tabela === "hercules_unidades" && !soLinhasDoPai) {
+          return {
+            data: [
+              { ...estado.unidade, atualizado_em: null, espelho_de: null, origem_c2x_id: null, workspace_id: "careli" },
+            ],
+            error: null,
+          };
+        }
+        if (tabela === "hercules_propostas") return { data: estado.propostasVivas, error: null };
+        return { data: [], error: null };
+      }
       if (tabela === "hercules_unidades") return { data: estado.unidade, error: null };
       if (tabela === "hercules_reservas") {
         return {
@@ -203,7 +241,15 @@ vi.mock("@/lib/apolo/server", () => {
       then: (ok: (r: unknown) => unknown, falha?: (e: unknown) => unknown) =>
         Promise.resolve(resposta()).then(ok, falha),
     };
-    for (const metodo of ["eq", "in", "maybeSingle", "select"]) cadeia[metodo] = () => cadeia;
+    for (const metodo of ["eq", "in", "is", "or", "order", "range", "select"]) cadeia[metodo] = () => cadeia;
+    cadeia.maybeSingle = () => {
+      unica = true;
+      return cadeia;
+    };
+    cadeia.not = () => {
+      soLinhasDoPai = true;
+      return cadeia;
+    };
     cadeia.insert = (linha: unknown) => {
       inserido = true;
       estado.inseridos.push({ linha, tabela });
@@ -263,6 +309,7 @@ beforeEach(() => {
   estado.leuCadastroDeOperacao = 0;
   estado.naoEnviados = 0;
   estado.permitidos = ["37", "39"];
+  estado.propostasVivas = [];
   estado.revalidou = 0;
   estado.sessao = CECILIO;
   estado.unidade = unidadeEm("37");
@@ -310,6 +357,31 @@ describe("POST: a régua de quem opera o produto (D1)", () => {
     const resposta = await reservar();
     expect(resposta.status).toBe(503);
     expect(reservasGravadas()).toHaveLength(0);
+  });
+});
+
+describe("POST: a porta única confere o TERRENO, e não o cadastro cru", () => {
+  // O cadastro da linha diz "disponivel", mas o lote tem proposta importada viva: é o caso que a
+  // rota antiga deixava passar (Lucas, 18/09/2026). O detalhe da regra está provado contra um banco
+  // em memória em `lib/hercules/criar-reserva.test.ts`; aqui fica que a rota obedece a resposta.
+  it("⚠️ lote com proposta viva e cadastro 'disponivel': 409 com a frase da porta única, e nada gravado", async () => {
+    estado.sessao = GURGEL;
+    estado.propostasVivas = [
+      {
+        criado_em_c2x: null,
+        etapa: "contrato",
+        etapa_desde: "2026-09-10T12:00:00.000Z",
+        id: "p-c2x",
+        reserva_id: null,
+        unidade_id: "u-1",
+      },
+    ];
+    const resposta = await reservar();
+    expect(resposta.status).toBe(409);
+    expect(((await resposta.json()) as { error: string }).error).toContain("Esta unidade está Contrato");
+    expect(reservasGravadas()).toHaveLength(0);
+    expect(estado.atualizados).toHaveLength(0);
+    expect(estado.avisados).toBe(0);
   });
 });
 

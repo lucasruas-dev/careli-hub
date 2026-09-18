@@ -408,8 +408,12 @@ function etapaDaSituacao(situacao: string): EtapaDoEspelho {
  * escopo da grade, então a ausência só acontece numa corrida (a unidade nasceu entre as duas
  * leituras). Na dúvida, fora da oferta: a mesma regra de `etapaDaSituacao`.
  *
- * Sem o mapa, a conta local continua como sempre foi, para não quebrar quem ainda não passa a
- * situação. Não é uma segunda régua a manter: é a que sai quando nenhum chamador depender dela.
+ * ⚠️ SEM O MAPA, SÓ NOS TESTES ANTIGOS. O único chamador de produção (a rota da Venda,
+ * `app/api/incorporador/venda/route.ts`) passa o mapa sempre, e a rota responde 503 quando não
+ * consegue lê-lo. A conta local ficou para os testes de `agregarFluxo` escritos antes da régua
+ * única, que montam propostas e unidades sem mapa. Não é uma segunda régua a manter: quem passar a
+ * chamar `agregarFluxo` em produção passa o mapa, ou está pintando lote por uma conta que não vê o
+ * terreno.
  * O import de `situacao-da-unidade.ts` não entra aqui, e é de propósito: aquele módulo importa
  * este, e o mapa chega pronto de quem chama.
  */
@@ -651,7 +655,12 @@ export function agregarFluxo({
    * ⚠️ ELA PINTA A GRADE E CONTA O ESTOQUE (inclusive o passo `disponivel` da faixa); o resto da
    * faixa, a lista, o VGV, o ranking e a série continuam saindo das propostas. São perguntas
    * diferentes: "em que situação está este lote" é da régua; "quantas propostas andam no funil"
-   * é das propostas. Ausente = a conta local de sempre (ver `reguaDaEtapa`).
+   * é das propostas.
+   *
+   * ⚠️ OPCIONAL SÓ PARA OS TESTES ANTIGOS. O único chamador de produção (a rota da Venda) passa o
+   * mapa sempre; ausente, roda a conta local de `reguaDaEtapa`, que olha só a linha da grade e não
+   * vê o terreno, a reserva do Hércules nem a do salão. Ela existe para os testes escritos antes da
+   * régua única, e não para produção.
    */
   situacaoPorUnidade?: ReadonlyMap<string, EtapaDoEspelho>;
   /**
@@ -904,20 +913,162 @@ export function agregarFluxo({
   };
 }
 
-// ── O ESTOQUE POR EMPREENDIMENTO, PARA A TELA PRODUTOS ──────────────────────
+// ── O PROCESSO QUE OS BOTÕES DA FICHA OPERAM ────────────────────────────────
 //
-// Lucas (04/09/2026), vendo o empreendimento de teste com 12 unidades na Venda e ZERO em Produtos:
-// *"a informação de unidades tem que ser alimentada de um local somente"* e *"eu havia solicitado
-// para importar todas as unidades do c2x e o panteon tem que ler do panteon"*.
+// Lucas (18/09/2026): *"esses status tem que morar em um so lugar"* · *"eu não posso vender dois
+// lotes para pessoas diferentes, eu tomo processo por conta disso"*.
 //
-// ⚠️ ERAM DUAS FONTES PARA A MESMA PERGUNTA. A Venda conta `hercules_unidades` (Panteon); Produtos
-// contava o C2X, por `sale_status_id`. Medido em 04/09: as 5.528 unidades batem uma a uma nos 35
-// empreendimentos — o que divergia era a CLASSIFICAÇÃO, porque o legado tem cinco estados e
-// `hercules_unidades.situacao` tem quatro: "em negociação" se perdeu na importação.
+// ⚠️ A COR E OS BOTÕES TÊM FONTES DIFERENTES, E ESTA FUNÇÃO É A PONTE ENTRE ELAS. A grade pinta pela
+// régua única (`situacao-da-unidade.ts`), que olha o TERRENO inteiro: a linha antiga do pai, a irmã
+// de outra gleba e a reserva antiga do salão do lançamento. Os botões agem numa LINHA DA LISTA da
+// Venda, e as rotas também: reserva, proposta, contrato e cancelamento procuram o processo pelo
+// `unidade_id` da própria unidade. Quando a régua via um processo que mora fora dessa linha, o lote
+// saía amarelo, "Gerar proposta" e "Cancelar reserva" acendiam e a rota respondia "Não há reserva
+// ativa nesta unidade"; sem linha nenhuma, a ficha ainda dizia que a proposta "veio do C2X", uma
+// origem inventada.
 //
-// ⚠️ E A NEGOCIAÇÃO VOLTA PELA PROPOSTA, que é melhor do que a coluna perdida. O C2X sabia
-// "negociando"; a proposta do Panteon sabe se está em proposta, contrato ou assinatura — a mesma
-// régua que já pinta a grade da Venda. Uma fonte, e mais rica do que a que ela substitui.
+// ⚠️ A REGRA: os botões só agem quando a lista tem uma linha VIVA desta unidade NA MESMA ETAPA que a
+// régua pintou (e, na reserva, uma reserva do Hércules, que é o que as rotas da reserva operam). Fora
+// disso eles apagam, e a ficha diz uma frase que é verdade em qualquer causa. A frase não afirma de
+// onde o processo veio quando a lista não sabe: a reserva do salão, a linha antiga do pai e a irmã
+// de outra gleba chegam aqui iguais, como ausência. Só a origem que está escrita na própria linha
+// (`origem = 'c2x'`) é dita.
+//
+// ⚠️ NA DÚVIDA, APAGADO. Botão apagado num lote que tinha dono custa um telefonema para a coordenação;
+// botão aceso num lote de outro dono é o começo da segunda venda. A rota recusa de qualquer jeito
+// (`trava-do-lote.ts`); a tela só para de oferecer o que a rota vai recusar.
+
+/** O mínimo que a decisão precisa de uma linha da lista (`LinhaDaLista` serve). */
+export type LinhaDaFicha = {
+  etapa: string;
+  id: string;
+  origem: null | string;
+  unidadeId: null | string;
+};
+
+export type ProcessoDaFicha<L extends LinhaDaFicha> =
+  /**
+   * A régua pintou fora do fluxo (disponível, bloqueada, vendida ou reservada sem proposta) e a lista
+   * concorda: os botões seguem as regras de sempre.
+   */
+  | { tipo: "sem-processo" }
+  /** A linha que sustenta a cor do lote: é nela que os botões agem e é ela que as modais mostram. */
+  | { linha: L; tipo: "na-lista" }
+  /** Os botões apagam todos, e a ficha diz a frase. */
+  | {
+      causa: "divergente" | "dois-processos" | "fora-da-lista" | "reserva-do-legado";
+      frase: string;
+      tipo: "apagado";
+    };
+
+/**
+ * ⚠️ A RESERVA DO HÉRCULES SE RECONHECE PELO PREFIXO DO ID. É o contrato de `reservaComoLinhaDoFluxo`
+ * (`reserva.ts`, com teste): a reserva entra na lista com `reserva:` na frente do uuid. A proposta
+ * importada do C2X também pode estar na etapa `reservado` (a etapa 1 do legado), e sobre ela
+ * "Gerar proposta" e "Cancelar reserva" não têm o que operar: as duas rotas procuram
+ * `hercules_reservas`.
+ */
+const ehReservaDoHercules = (linha: LinhaDaFicha) => linha.id.startsWith("reserva:");
+
+const FRASE_DIVERGENTE =
+  "A situação deste lote não bate com a lista desta tela. Recarregue; se continuar, fale com a coordenação.";
+
+const FRASE_DOIS_PROCESSOS =
+  "Este lote tem uma reserva e outro processo abertos ao mesmo tempo. Fale com a coordenação.";
+
+const FRASE_RESERVA_DO_LEGADO =
+  "Reserva importada do C2X: esta tela não gera proposta nem cancela sobre ela. Fale com a coordenação.";
+
+/**
+ * ⚠️ "PODE SER", E NÃO "É". A lista não diz de onde veio o processo que ela não mostra, e a frase
+ * não inventa: o salão do lançamento e a outra linha do lote são as causas conhecidas, ditas como
+ * possibilidade. O que ela afirma (o lote tem processo e esta tela não o mostra) é verdade em todas.
+ */
+const FRASE_FORA_DA_LISTA: Record<EtapaDoFluxo, string> = {
+  assinatura: "Assinatura que esta tela não mostra: pode estar em outra linha do lote. Fale com a coordenação.",
+  contrato: "Contrato que esta tela não mostra: pode estar em outra linha do lote. Fale com a coordenação.",
+  faturado: "Venda faturada que esta tela não mostra: pode estar em outra linha do lote. Fale com a coordenação.",
+  proposta: "Proposta que esta tela não mostra: pode estar em outra linha do lote. Fale com a coordenação.",
+  reservado:
+    "Reserva que esta tela não mostra: pode ser do salão do lançamento ou de outra linha do lote. Fale com a coordenação.",
+};
+
+/**
+ * Sobre qual processo os botões da ficha podem agir, dada a cor que a régua deu ao lote.
+ *
+ * `unidade.etapa` é a da grade (a régua única); `lista` é a lista da Venda INTEIRA (`FluxoDeVenda.lista`),
+ * e não a da etapa aberta: a linha que sustenta a cor pode estar em outra aba do funil.
+ */
+export function processoDaFicha<L extends LinhaDaFicha>(
+  unidade: { etapa: EtapaDoEspelho; id: string },
+  lista: readonly L[],
+): ProcessoDaFicha<L> {
+  const vivas = lista.filter((l) => l.unidadeId === unidade.id && ehDoFluxo(l.etapa));
+
+  if (!ehDoFluxo(unidade.etapa)) {
+    // ⚠️ LIVRE (OU FORA DO FLUXO) PELA RÉGUA E COM PROCESSO VIVO NA LISTA. A rota lê a lista e a
+    // situação em momentos diferentes; alguém que reservou no meio da carga faz as duas discordarem.
+    // Oferecer "Reservar" aqui é oferecer lote que acabou de ganhar dono.
+    return vivas.length > 0
+      ? { causa: "divergente", frase: FRASE_DIVERGENTE, tipo: "apagado" }
+      : { tipo: "sem-processo" };
+  }
+
+  if (vivas.length === 0) {
+    return { causa: "fora-da-lista", frase: FRASE_FORA_DA_LISTA[unidade.etapa], tipo: "apagado" };
+  }
+
+  // ⚠️ RESERVA DO HÉRCULES MAIS QUALQUER OUTRA LINHA VIVA DA MESMA UNIDADE SÃO DOIS DONOS. A reserva
+  // que virou proposta não chega aqui (a lista só traz a reserva `ativa`, e a rota tira a que tem
+  // proposta nativa na mesma linha); o que sobra ao lado dela é outra venda. Qualquer botão aqui
+  // mexeria num dos dois sem enxergar o outro.
+  if (vivas.length > 1 && vivas.some(ehReservaDoHercules)) {
+    return { causa: "dois-processos", frase: FRASE_DOIS_PROCESSOS, tipo: "apagado" };
+  }
+
+  const naEtapa = vivas.find((l) => l.etapa === unidade.etapa);
+  if (!naEtapa) {
+    return { causa: "divergente", frase: FRASE_DIVERGENTE, tipo: "apagado" };
+  }
+
+  if (unidade.etapa === "reservado" && !ehReservaDoHercules(naEtapa)) {
+    // A origem está na própria linha: dizer "C2X" aqui não é inventar. Linha de reserva sem ser do
+    // Hércules e sem ser do legado não existe hoje; se aparecer, cai no lado seguro com a frase geral.
+    return naEtapa.origem === "c2x"
+      ? { causa: "reserva-do-legado", frase: FRASE_RESERVA_DO_LEGADO, tipo: "apagado" }
+      : { causa: "divergente", frase: FRASE_DIVERGENTE, tipo: "apagado" };
+  }
+
+  return { linha: naEtapa, tipo: "na-lista" };
+}
+
+/**
+ * A linha que as modais da ficha mostram e mandam para a rota (o `propostaId` que a rota confere).
+ *
+ * ⚠️ A MESMA DOS BOTÕES. A modal existe para quem clicou dizer "não era essa"; se ela mostrasse outra
+ * linha da unidade, o botão agiria num processo e a confirmação falaria de outro.
+ *
+ * Sem linha que sustente a cor os botões estão apagados e nenhuma modal abre por eles. A primeira
+ * viva da unidade (a regra de antes) fica só para a modal que já estava aberta quando a tela
+ * recarregou: mandar o id dela deixa a rota recusar com "recarregue", em vez de mandar nulo e a rota
+ * não ter o que conferir.
+ */
+export function linhaDaFicha<L extends LinhaDaFicha>(
+  unidade: { etapa: EtapaDoEspelho; id: string },
+  lista: readonly L[],
+): L | null {
+  const processo = processoDaFicha(unidade, lista);
+  if (processo.tipo === "na-lista") return processo.linha;
+  return lista.find((l) => l.unidadeId === unidade.id && ehDoFluxo(l.etapa)) ?? null;
+}
+
+// ── O BALDE DA TELA PRODUTOS ────────────────────────────────────────────────
+//
+// ⚠️ A CONTA DO ESTOQUE POR EMPREENDIMENTO SAIU DAQUI (18/09/2026). `estoquePorEmpreendimento`
+// olhava a proposta da própria linha e, sem ela, o cadastro cru: não via a reserva do Hércules, a do
+// salão nem a proposta da linha antiga do terreno. As rotas de Produtos passaram a contar pela régua
+// única (`situacao-da-unidade.ts`) e ela ficou sem chamador. Ficou só o balde, que as duas rotas de
+// Produtos ainda chamam.
 
 /** Os cinco baldes da tela Produtos, na régua do Panteon. */
 export type BaldeDoProduto =
@@ -927,34 +1078,17 @@ export type BaldeDoProduto =
   | "reservado"
   | "vendido";
 
-export type EstoqueDoEmpreendimento = Record<
-  BaldeDoProduto,
-  { units: number; value: number }
-> & {
-  total: { units: number; value: number };
-};
-
-const BALDES_DO_PRODUTO: BaldeDoProduto[] = [
-  "disponivel",
-  "reservado",
-  "negociacao",
-  "vendido",
-  "bloqueado",
-];
-
-function estoqueVazio(): EstoqueDoEmpreendimento {
-  const vazio = {} as EstoqueDoEmpreendimento;
-  for (const balde of BALDES_DO_PRODUTO) vazio[balde] = { units: 0, value: 0 };
-  vazio.total = { units: 0, value: 0 };
-  return vazio;
-}
-
 /**
  * Em qual balde da tela Produtos esta etapa cai.
  *
  * ⚠️ FATURADO É VENDIDO, e as etapas do meio são NEGOCIAÇÃO. A tela Produtos responde "quanto do
  * estoque está livre, andando ou fora"; o detalhe de proposta/contrato/assinatura é a pergunta da
  * tela Venda, e repeti-lo aqui daria cinco colunas novas numa tela que serve para outra coisa.
+ *
+ * ⚠️ É O MESMO AGRUPAMENTO DE `baldeDaSituacao` (`situacao-da-unidade.ts`), que é quem as telas
+ * devem chamar. As rotas de Produtos (`app/api/incorporador/produtos/route.ts` e `./painel`) ainda
+ * chamam esta para separar a negociação dentro do vendido, o que `baldeDaSituacao` já faz: quando
+ * elas deixarem de chamá-la, esta sai também.
  */
 export function baldeDaEtapa(etapa: EtapaDoEspelho): BaldeDoProduto {
   switch (etapa) {
@@ -973,42 +1107,4 @@ export function baldeDaEtapa(etapa: EtapaDoEspelho): BaldeDoProduto {
     default:
       return "disponivel";
   }
-}
-
-/**
- * O estoque de cada empreendimento, pela MESMA régua da tela Venda.
- *
- * ⚠️ A PROPOSTA VIVA REFINA, MAS NUNCA REBAIXA PARA LIVRE — o mesmo cuidado de `agregarFluxo`:
- * sem proposta vale o cadastro, e "vendida" ou "reservada" continuam ocupadas. Dizer que um lote
- * vendido está livre é convidar a segunda venda.
- *
- * ⚠️ `situacaoPorUnidade` É A MESMA PORTA DE `agregarFluxo`: com ela, quem decide o balde de cada
- * unidade é a régua única (`situacao-da-unidade.ts`), e a conta local não roda. Opcional só para
- * não quebrar quem ainda não passa o mapa.
- */
-export function estoquePorEmpreendimento(entrada: {
-  propostas: PropostaDaCarga[];
-  situacaoPorUnidade?: ReadonlyMap<string, EtapaDoEspelho>;
-  unidades: UnidadeDoMapa[];
-}): Map<string, EstoqueDoEmpreendimento> {
-  const etapaDa = reguaDaEtapa(entrada.propostas, entrada.situacaoPorUnidade);
-
-  const porEmpreendimento = new Map<string, EstoqueDoEmpreendimento>();
-
-  for (const u of entrada.unidades) {
-    const id = String(u.enterprise_id);
-    const estoque = porEmpreendimento.get(id) ?? estoqueVazio();
-    const etapa = etapaDa(u);
-    const balde = baldeDaEtapa(etapa);
-    const valor = numero(u.preco_tabela);
-
-    estoque[balde].units += 1;
-    estoque[balde].value += valor;
-    estoque.total.units += 1;
-    estoque.total.value += valor;
-
-    porEmpreendimento.set(id, estoque);
-  }
-
-  return porEmpreendimento;
 }

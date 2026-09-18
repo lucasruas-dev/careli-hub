@@ -14,13 +14,23 @@
 // decide a lista é `lidosDoPanteon` (proprios-do-portal.ts).
 //
 // ⚠️ O QUE NÃO ENTRA: comprador e imobiliária. A unidade do Panteon não guarda a movimentação do C2X;
-// a situação, o preço e a matrícula saem de `hercules_unidades`, que é o que o espelho, a Venda e a
-// correção de unidade (D2) já usam.
+// o preço e a matrícula saem de `hercules_unidades`, que é o que o espelho, a Venda e a correção de
+// unidade (D2) já usam.
+//
+// ⚠️ E A SITUAÇÃO NÃO SAI DE `hercules_unidades.situacao` CRU (18/09/2026). Lucas: *"tem unidades que
+// estão com reserva, proposta no hercules, que dentro de unidade do apolo não estão com o mesmo
+// status"* · *"esses status tem que morar em um so lugar"*. O cadastro não sabe da reserva nem da
+// proposta: o lote reservado na Venda aparecia "Disponível" na aba Unidades do portal. A situação vem
+// da régua única (lib/hercules/situacao-da-unidade.ts), pelo id da linha. O cadastro continua valendo
+// como a última palavra da régua (bloqueado no Apolo é bloqueado no Hércules), mas quem lê é ela.
 import type { ApoloEnterpriseUnit } from "@/lib/apolo/empreendimentos";
-import { rotuloDoBalde } from "@/lib/apolo/balde-da-unidade";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
-import type { ApoloVendaStage } from "@/lib/apolo/vendas";
-import { situacaoConhecida } from "@/lib/hercules/cores-de-situacao";
+import { situacaoPelaRegua } from "@/lib/hercules/estoque-da-situacao";
+import {
+  baldeDaSituacao,
+  rotuloDaSituacao,
+  type SituacaoDasUnidades,
+} from "@/lib/hercules/situacao-da-unidade";
 import { apenasVivas } from "@/lib/hercules/unidade-viva";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
@@ -36,7 +46,20 @@ export type LinhaDaUnidadeDoPanteon = {
   matricula?: null | string;
   preco_tabela: null | number | string;
   quadra: null | string;
+  /**
+   * O cadastro cru. ⚠️ NÃO É A SITUAÇÃO DA TELA: fica no tipo porque a leitura o traz, mas quem pinta
+   * a unidade é a régua (`unidadeDoPanteonNaTela` com `situacoes`).
+   */
   situacao: null | string;
+};
+
+/** Um mapa da régua sem unidade nenhuma: toda linha cai em `SITUACAO_FORA_DO_MAPA`, ocupada. */
+const SEM_REGUA: SituacaoDasUnidades = {
+  porCodigo: new Map(),
+  porLinha: new Map(),
+  porOrigemC2x: new Map(),
+  terreno: () => undefined,
+  unidades: [],
 };
 
 function numero(valor: null | number | string | undefined): null | number {
@@ -45,16 +68,31 @@ function numero(valor: null | number | string | undefined): null | number {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Uma linha de `hercules_unidades` no formato que a `UnidadesTab` do Apolo desenha. */
+/**
+ * Uma linha de `hercules_unidades` no formato que a `UnidadesTab` do Apolo desenha, com a situação da
+ * RÉGUA ÚNICA.
+ *
+ * O balde (cor do selo, filtro) é `baldeDaSituacao` e o texto é `rotuloDaSituacao`: a MESMA escrita do
+ * ramo do C2X (`situacaoNaAbaUnidades`, lib/apolo/empreendimentos.ts), para o mesmo lote ter o mesmo
+ * selo venha a linha de onde vier. Cor e palavra saem da mesma situação (o RVPA09 saiu âmbar escrito
+ * "Disponível" em 28/08/2026 porque cada uma vinha de um lugar).
+ *
+ * ⚠️ SEM `situacoes`, A UNIDADE SAI OCUPADA (`SITUACAO_FORA_DO_MAPA`, hoje "Bloqueado"), e nunca pelo
+ * cadastro cru. O parâmetro é opcional só porque a tela interna
+ * (app/api/apolo/empreendimentos/unidades/route.ts) ainda chama com dois argumentos e escreve a
+ * situação por cima. Quem esquecer de passar a régua vê tudo bloqueado, o erro barato, em vez de ver
+ * o lote reservado como livre, o erro que vira processo.
+ */
 export function unidadeDoPanteonNaTela(
   linha: LinhaDaUnidadeDoPanteon,
   codigoDoProduto: string,
+  situacoes?: SituacaoDasUnidades,
 ): ApoloEnterpriseUnit {
-  const bucket = situacaoConhecida(linha.situacao);
+  const situacao = situacaoPelaRegua(situacoes ?? SEM_REGUA, { linhaId: linha.id });
   return {
     area: numero(linha.area),
     block: linha.quadra ?? null,
-    bucket,
+    bucket: baldeDaSituacao(situacao),
     code: String(linha.codigo ?? "").trim() || linha.id,
     enterpriseCode: codigoDoProduto,
     id: linha.id,
@@ -65,23 +103,8 @@ export function unidadeDoPanteonNaTela(
     // A matrícula é o que a coluna "Matrícula" da UnidadesTab mostra, e é um dos três campos que a
     // correção de unidade (D2) edita: sem ela aqui, a pessoa corrigia e a tabela continuava vazia.
     registration: String(linha.matricula ?? "").trim() || null,
-    status: rotuloDoBalde(bucket),
+    status: rotuloDaSituacao(situacao),
   };
-}
-
-/**
- * O estágio do funil (o `stage` que o Resumo conta) de uma unidade do Panteon.
- *
- * A unidade do Panteon só sabe a SITUAÇÃO, não a etapa do contrato: `vendido` conta como faturada
- * (a venda acabou), `negociacao` como proposta, `reservado` como reserva. Bloqueada e disponível não
- * são venda e ficam em `disponivel`, como no C2X (lá a bloqueada também sai com estágio disponível).
- */
-export function estagioDaUnidadeDoPanteon(situacao: null | string): ApoloVendaStage {
-  const balde = situacaoConhecida(situacao);
-  if (balde === "vendido") return "faturado";
-  if (balde === "negociacao") return "proposta";
-  if (balde === "reservado") return "reservado";
-  return "disponivel";
 }
 
 /**

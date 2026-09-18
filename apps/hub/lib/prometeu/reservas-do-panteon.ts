@@ -1,3 +1,4 @@
+import { cuponsSoltosPeloHercules } from "./cupom-segue-o-hercules";
 import type { createPrometeuClient } from "./data";
 import type { ReservaDoC2x, UnidadeDoCliente } from "./reservas-c2x";
 
@@ -34,6 +35,7 @@ type LinhaDaReserva = {
   created_at: string;
   credenciado_id: string;
   grupo_id: string;
+  id: string;
   lote: string;
   quadra: string;
 };
@@ -60,13 +62,21 @@ export async function reservasVivasDoPanteon(
 ): Promise<{ error?: string; reservas: ReservaDoPanteon[] }> {
   const { data, error } = await client
     .from("prometeu_reservas")
-    .select("codigo, quadra, lote, grupo_id, credenciado_id, created_at")
+    .select("id, codigo, quadra, lote, grupo_id, credenciado_id, created_at")
     .eq("evento_id", eventoId)
     .eq("situacao", "reservada")
     .order("created_at");
 
   if (error) return { error: error.message, reservas: [] };
-  const linhas = (data ?? []) as LinhaDaReserva[];
+  const cruas = (data ?? []) as LinhaDaReserva[];
+  if (cruas.length === 0) return { reservas: [] };
+
+  // ⚠️ A LINHA SEGUE A RESERVA DO HÉRCULES (Lucas, 18/09/2026: *"toda reserva, proposta deve ser
+  // criada no hercules"*). Reserva do salão cancelada na tela Venda solta o lote, e a Central não
+  // pode continuar mostrando o cliente com ele. Sem ler o Hércules, a Central mostra a linha crua:
+  // monitoramento com uma reserva a mais é o erro barato.
+  const soltos = (await cuponsSoltosPeloHercules(client, cruas.map((l) => l.id))) ?? new Set<string>();
+  const linhas = cruas.filter((l) => !soltos.has(l.id));
   if (linhas.length === 0) return { reservas: [] };
 
   // Uma consulta para todos os credenciados envolvidos, em vez de uma por reserva.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SituacaoDaUnidade } from "@/lib/hercules/situacao-da-unidade";
 
-import { contarSituacoes, situacaoNoTelao } from "./situacao-do-lote";
+import { contarSituacoes, lotesTravadosDoEvento, situacaoNoTelao } from "./situacao-do-lote";
 
 // O telão não decide situação desde 18/09/2026 (Lucas: *"esses status tem que morar em um so
 // lugar"*): ela vem de lib/hercules/situacao-da-unidade.ts. Estes testes só provam que a TRADUÇÃO
@@ -33,8 +33,14 @@ describe("a palavra do telão para a situação da régua única", () => {
     expect(situacaoNoTelao("reservada")).toBe("reservado");
   });
 
-  it("proposta, contrato, assinatura e faturado contam como vendido, como nos cards do Apolo", () => {
-    for (const s of ["proposta", "contrato", "assinatura", "faturado", "vendida"] as const) {
+  // ⚠️ O MESMO AGRUPAMENTO DO MÓDULO ÚNICO (`baldeDaSituacao`): proposta, contrato e assinatura são
+  // "em negociação"; faturado e vendida sem proposta, "vendido". Dois nomes para o mesmo lote em
+  // telas diferentes é a queixa do Lucas em outra roupa.
+  it("proposta, contrato e assinatura são negociação; faturado e vendida são vendido", () => {
+    for (const s of ["proposta", "contrato", "assinatura"] as const) {
+      expect(situacaoNoTelao(s)).toBe("negociacao");
+    }
+    for (const s of ["faturado", "vendida"] as const) {
       expect(situacaoNoTelao(s)).toBe("vendido");
     }
   });
@@ -46,6 +52,17 @@ describe("a palavra do telão para a situação da régua única", () => {
   });
 });
 
+describe("a trava do Setup do evento", () => {
+  it("normaliza os códigos e ignora o que não é lista", () => {
+    expect([...lotesTravadosDoEvento({ lotesBloqueados: [" jdg0201 ", "JDG0101", "", null] })]).toEqual([
+      "JDG0201",
+      "JDG0101",
+    ]);
+    expect(lotesTravadosDoEvento({ lotesBloqueados: "JDG0201" }).size).toBe(0);
+    expect(lotesTravadosDoEvento(null).size).toBe(0);
+  });
+});
+
 describe("contagem do painel", () => {
   it("soma cada situação", () => {
     expect(
@@ -53,16 +70,18 @@ describe("contagem do painel", () => {
         "disponivel",
         "disponivel",
         "reservado",
+        "negociacao",
         "vendido",
         "indisponivel",
       ]),
-    ).toEqual({ disponivel: 2, indisponivel: 1, reservado: 1, vendido: 1 });
+    ).toEqual({ disponivel: 2, indisponivel: 1, negociacao: 1, reservado: 1, vendido: 1 });
   });
 
   it("lista vazia zera tudo, sem inventar chave", () => {
     expect(contarSituacoes([])).toEqual({
       disponivel: 0,
       indisponivel: 0,
+      negociacao: 0,
       reservado: 0,
       vendido: 0,
     });

@@ -73,6 +73,16 @@ vi.mock("@/lib/apolo/server", () => {
         }
         return cadeia;
       },
+      // A trava do lote (desbloqueio) procura a reserva antiga do evento por
+      // `unidade_c2x_id.in.(...),codigo.in.("...")`: basta entender o `in` de cada cláusula.
+      or: (expressao: string) => {
+        const clausulas = [...expressao.matchAll(/(\w+)\.in\.\(([^)]*)\)/g)].map(([, coluna, lista]) => ({
+          coluna: String(coluna),
+          valores: new Set(String(lista).split(",").map((v) => v.replace(/"/g, "").trim())),
+        }));
+        filtros.push((l) => clausulas.some((c) => c.valores.has(String(l[c.coluna]))));
+        return cadeia;
+      },
       order: () => cadeia,
       range: () => cadeia,
       select: () => cadeia,
@@ -242,6 +252,36 @@ describe("desbloquear: só volta ao estoque o que não tem nada em cima", () => 
   it("com proposta viva na linha antiga do terreno, não volta", async () => {
     estado.tabelas.hercules_unidades = terreno(bloqueadaAqui);
     estado.tabelas.hercules_propostas = [proposta("u-vlo", "contrato")];
+    expect((await desbloquear()).status).toBe(409);
+    expect(estado.gravacoes).toHaveLength(0);
+  });
+
+  it("⚠️ bloqueio herdado do C2X (sem carimbo) não se desfaz aqui", async () => {
+    estado.tabelas.hercules_unidades = terreno({ bloqueado_em: null, situacao: "bloqueada" });
+    const { corpo, status } = await desbloquear();
+    expect(status).toBe(409);
+    expect(corpo.error).toContain("veio do C2X");
+    expect(estado.gravacoes).toHaveLength(0);
+  });
+
+  it("⚠️ a trava do lote vê o dono que a régua não conta: reserva do Hércules em `proposta`", async () => {
+    // A régua só conta a reserva `ativa`; a reserva que já virou proposta (situação `proposta`) é
+    // dona do lote para a trava, e o lote não pode voltar ao estoque por baixo dela.
+    estado.tabelas.hercules_unidades = terreno(bloqueadaAqui);
+    estado.tabelas.hercules_reservas = [
+      { id: "r-9", origem: "coordenador", situacao: "proposta", unidade_id: "u-vlo", workspace_id: "careli" },
+    ];
+    const { corpo, status } = await desbloquear();
+    expect(status).toBe(409);
+    expect(corpo.error).toContain("processo de venda em andamento");
+    expect(estado.gravacoes).toHaveLength(0);
+  });
+
+  it("⚠️ cupom antigo do evento, pelo CÓDIGO da linha antiga do pai, também segura o lote", async () => {
+    // Sem id do legado no cupom: só o código da linha antiga do pai. O terreno é um só, e o cupom
+    // preso a qualquer uma das linhas dele prende o lote inteiro.
+    estado.tabelas.hercules_unidades = terreno(bloqueadaAqui);
+    estado.tabelas.prometeu_reservas = [{ codigo: "VLO0305", id: 7, situacao: "reservada", unidade_c2x_id: null }];
     expect((await desbloquear()).status).toBe(409);
     expect(estado.gravacoes).toHaveLength(0);
   });

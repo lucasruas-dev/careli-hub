@@ -3,6 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { normalizarCodigoDeUnidade } from "@/lib/prometeu/cupom";
 import type { DesenhoDoMasterplan } from "@/lib/prometeu/desenho-do-masterplan";
 import { EVENTO_CHAMADO } from "@/lib/prometeu/fila-topic";
 import type { SituacaoDoLote } from "@/lib/prometeu/situacao-do-lote";
@@ -158,8 +159,13 @@ export function TelaoMasterplan({
               viewBox={desenho.viewBox}
             >
               {Object.entries(contornos).map(([nome, d]) => {
-                const situacao = estado.lotes[nome];
-                if (!situacao) return null;
+                // ⚠️ CONTORNO SEM SITUAÇÃO É OCUPADO, NUNCA SEM COR (Lucas, 29/08: *"tem alguns
+                // lotes que estao sem cor (...) sao lotes ja vendidos"*). O desenho pode ter lote
+                // que o Panteon não conhece (vendido antes da carga, permuta, nome trocado na
+                // arte), e sem cor o salão lê "livre". Na dúvida, azul: o lote livre de verdade
+                // chega verde pela régua única, e o ocupado a mais se corrige no cadastro.
+                const situacao: SituacaoDoLote =
+                  estado.lotes[normalizarCodigoDeUnidade(nome)] ?? "indisponivel";
                 return (
                   <path
                     d={d}

@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const estado = vi.hoisted(() => ({
   cadastroFora: false,
+  reguaFora: false,
 }));
 
 vi.mock("next/server", async (importOriginal) => ({
@@ -118,7 +119,10 @@ vi.mock("@/lib/apolo/incorporador/unidades-do-panteon", async (importOriginal) =
             lote: "01",
             preco_tabela: "150000",
             quadra: "01",
-            situacao: "reservada",
+            // ⚠️ O cadastro diz disponível e a régua (abaixo) diz reservada: a aba Unidades tem de
+            // mostrar a reserva. É o caso do Lucas em 18/09/2026, o lote reservado no Hércules que
+            // aparecia "Disponível" na aba Unidades do portal.
+            situacao: "disponivel",
           },
         ]
       : []),
@@ -147,7 +151,8 @@ vi.mock("@/lib/apolo/incorporador/unidades-do-panteon", async (importOriginal) =
 vi.mock("@/lib/hercules/situacao-da-unidade", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/hercules/situacao-da-unidade")>()),
   lerSituacaoDasUnidades: vi.fn(async (_client: unknown, ids: readonly string[]) => {
-    const unidade = (id: string, codigo: string, enterpriseId: string, situacao: "disponivel" | "reservada") => ({
+    if (estado.reguaFora) throw new Error("supabase fora");
+    const unidade =(id: string, codigo: string, enterpriseId: string, situacao: "disponivel" | "reservada") => ({
       codigo,
       enterpriseId,
       id,
@@ -281,6 +286,7 @@ const ROTAS = [
 
 beforeEach(() => {
   estado.cadastroFora = false;
+  estado.reguaFora = false;
   vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -350,6 +356,23 @@ describe("as unidades do produto do Panteon (revisão de 16/09/2026)", () => {
     expect(corpo.data.units).toEqual([
       expect.objectContaining({ bucket: "reservado", code: "TST0101", enterpriseCode: "TST", price: 150000 }),
     ]);
+  });
+
+  it("⚠️ (18/09/2026) a situação é a da RÉGUA, lida uma vez com o produto do pedido, e não o cadastro cru", async () => {
+    const resposta = await getUnidades(requisicao("produto/unidades", "9001"));
+    expect(resposta.status).toBe(200);
+    expect(vi.mocked(lerSituacaoDasUnidades)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(lerSituacaoDasUnidades).mock.calls[0]?.[1]).toEqual(["9001"]);
+    const corpo = (await resposta.json()) as { data: { units: Array<{ bucket: string; status: string }> } };
+    // O cadastro diz "disponivel"; a régua diz "reservada". Cor e texto da régua.
+    expect(corpo.data.units).toEqual([expect.objectContaining({ bucket: "reservado", status: "Reservado" })]);
+  });
+
+  it("⚠️ régua fora do ar: 503, nunca a tabela pintada pelo cadastro", async () => {
+    estado.reguaFora = true;
+    const resposta = await getUnidades(requisicao("produto/unidades", "9001"));
+    expect(resposta.status).toBe(503);
+    expect(await resposta.json()).toEqual({ error: "Não foi possível carregar as unidades agora." });
   });
 
   it("o Resumo conta a reserva do Panteon no funil, sem ir ao C2X", async () => {

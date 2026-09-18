@@ -10,8 +10,9 @@
 // 28/08/2026 — 97 lotes casando 1 para 1 com o C2X, conferido antes de entrar aqui.
 //
 // ⚠️ Antes de acrescentar um lançamento nesta lista, CONFIRA a correspondência lendo os nomes no
-// banco: um path chamado errado não quebra nada, ele só nunca pinta — e ninguém percebe até o
-// dia do evento, com o mapa projetado e um lote teimando em ficar cinza.
+// banco: um path chamado errado não quebra nada, ele só pinta sempre de AZUL (desde 18/09/2026 o
+// telão trata contorno sem situação como ocupado, porque lote sem cor o salão lê como livre). E
+// ninguém percebe até o dia do evento, com o mapa projetado e um lote livre teimando em ficar azul.
 
 export type DesenhoDoMasterplan = {
   /** Imagem de fundo (a arte do loteamento), servida de /public. */

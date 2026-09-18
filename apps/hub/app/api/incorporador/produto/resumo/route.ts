@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 
-import {
-  catalogoDeEmpreendimentos,
-  type EmpreendimentoDoCatalogo,
-} from "@/lib/apolo/catalogo-empreendimentos";
+import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import { codigosParaOC2x } from "@/lib/apolo/incorporador/cadastro-do-produto";
 import {
   pedidoPrecisaDeExpansao,
@@ -32,13 +29,9 @@ import {
   type ResumoDoProduto,
 } from "@/lib/apolo/incorporador/resumo-do-produto";
 import { createApoloAdminClient } from "@/lib/apolo/server";
-import type { ApoloVendaStage } from "@/lib/apolo/vendas";
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { ehIdDoPai, expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
-import {
-  lerSituacaoDasUnidades,
-  type SituacaoDaUnidade,
-} from "@/lib/hercules/situacao-da-unidade";
+import { estagioDaSituacao, idsDosCodigos } from "@/lib/hercules/estoque-da-situacao";
+import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 
 // O RESUMO DE UM PRODUTO DO HÉRCULES: a faixa do processo do coordenador.
 //
@@ -193,65 +186,16 @@ export async function GET(request: Request) {
 
   // ⚠️ UMA UNIDADE POR TERRENO. `unidades` traz só a linha viva de cada lote: pedir o pai (VLO) e as
   // glebas (VOC, VOL) juntos não conta o mesmo lote duas vezes.
+  //
+  // ⚠️ O ESTÁGIO SAI DE `estagioDaSituacao` (lib/hercules/estoque-da-situacao.ts), e não de uma
+  // tradução desta rota: é a mesma que a TelaVendas usa, construída sobre `baldeDaSituacao`. Até
+  // 18/09/2026 a rota tinha o seu `estagioNoFunil`, e a faixa podia dizer "3 em negociação" com os
+  // cards de Produtos dizendo 2.
   const data: ResumoDoProduto = montarResumoDoProduto({
     esteira: esteira.linhas,
     imobiliarias: imobiliarias.credenciadas,
-    unidades: situacoes.unidades.map((unidade) => ({ stage: estagioNoFunil(unidade.situacao) })),
+    unidades: situacoes.unidades.map((unidade) => ({ stage: estagioDaSituacao(unidade.situacao) })),
   });
 
   return NextResponse.json({ data }, { headers: { "Cache-Control": "no-store" } });
-}
-
-/**
- * Os ids do C2X (os que `hercules_unidades.enterprise_id` guarda) destes códigos, pelo catálogo:
- * `codes[i]` é a sigla de `stageIds[i]`. Devolve também o código que o catálogo não achou.
- *
- * ⚠️ OS CÓDIGOS QUE O FUNIL NUNCA CONTOU CONTINUAM FORA (`EXCLUDED_ENTERPRISE_CODES`: teste,
- * laboratório e o espelho do Lagoa Bonita). A leitura antiga do C2X os pulava; trocar a fonte da
- * situação não é motivo para o recorte do funil mudar.
- */
-function idsDosCodigos(
-  catalogo: readonly EmpreendimentoDoCatalogo[],
-  codes: readonly string[],
-): { faltando: string[]; ids: string[] } {
-  const chave = (code: string) => String(code ?? "").trim().toUpperCase();
-  const excluidos = new Set(EXCLUDED_ENTERPRISE_CODES.map(chave));
-  const alvo = new Set(codes.map(chave).filter((code) => code && !excluidos.has(code)));
-
-  const achados = new Set<string>();
-  const ids: string[] = [];
-  for (const emp of catalogo) {
-    emp.codes.forEach((code, indice) => {
-      const id = String(emp.stageIds[indice] ?? "").trim();
-      if (!id || !alvo.has(chave(code))) return;
-      achados.add(chave(code));
-      ids.push(id);
-    });
-  }
-
-  return { faltando: [...alvo].filter((code) => !achados.has(code)), ids };
-}
-
-/**
- * O estágio do funil de uma situação da régua única.
- *
- * O vocabulário é quase o mesmo; as três traduções são estas:
- *   • `reservada` (do cadastro, sem processo) é reserva, como `reservado`;
- *   • `vendida` sem proposta viva é venda que acabou: conta em Vendidas, como `faturado`;
- *   • `bloqueada` não é venda, e fica com `disponivel`, que a faixa não mostra. Nada aqui diz
- *     "livre": o Resumo não tem esse número.
- */
-function estagioNoFunil(situacao: SituacaoDaUnidade): ApoloVendaStage {
-  switch (situacao) {
-    case "bloqueada":
-    case "disponivel":
-      return "disponivel";
-    case "reservada":
-    case "reservado":
-      return "reservado";
-    case "vendida":
-      return "faturado";
-    default:
-      return situacao;
-  }
 }

@@ -12,8 +12,9 @@
 // coordenador, por exemplo, vive só no Panteon, e o telão não o via). Quem sentir falta dela: a
 // resposta é sincronizar o Panteon, e não voltar a perguntar ao legado.
 //
-// A reserva do salão continua pintando o lote em segundos: a régua única já conta
-// `prometeu_reservas`, e masterplan-do-evento.ts a lê a cada pedido, sem cache nenhum.
+// A reserva do salão continua pintando o lote em segundos: desde 18/09/2026 ela nasce no Hércules
+// (`criarReservaNoHercules`, origem `salao`), a régua única a conta como qualquer reserva, e
+// masterplan-do-evento.ts a lê a cada pedido, sem cache nenhum.
 //
 // ⚠️ O TELÃO MOSTRA SÓ A SITUAÇÃO. Nunca nome de comprador, nunca valor: é a tela mais pública
 // que existe no evento, projetada para o salão inteiro, e roda em máquina de terceiro por um
@@ -21,9 +22,12 @@
 // Por isso este módulo devolve UMA palavra por lote, e nada mais.
 import { baldeDaSituacao, type SituacaoDaUnidade } from "@/lib/hercules/situacao-da-unidade";
 
+import { normalizarCodigoDeUnidade } from "./cupom";
+
 export type SituacaoDoLote =
   | "disponivel"
   | "indisponivel"
+  | "negociacao"
   | "reservado"
   | "vendido";
 
@@ -34,13 +38,38 @@ export type SituacaoDoLote =
  * "indisponivel", que é como o telão, a rota pública e o componente sempre chamaram. Não é regra
  * nova, é vocabulário: quem decide o balde continua sendo o módulo único.
  *
- * ⚠️ PROPOSTA, CONTRATO E ASSINATURA CAEM EM "vendido", e não em "reservado" como o telão antigo
- * fazia com o "em negociação" do C2X. No mapa não muda nada (todo lote não livre tem a mesma cor
- * azul); muda só a contagem que a rota devolve, que passa a bater com os cards do Apolo.
+ * ⚠️ PROPOSTA, CONTRATO E ASSINATURA SÃO "negociacao", o quinto balde do módulo único (*"UM
+ * AGRUPAMENTO SÓ PARA TODAS AS TELAS"*, ver `baldeDaSituacao`). A primeira passada punha os três em
+ * "vendido" aqui enquanto o módulo único já dizia "Em negociação": o mesmo lote com dois nomes, e o
+ * tipo nem fechava. No mapa não muda nada (todo lote não livre tem a mesma cor azul); muda só a
+ * contagem que a rota devolve, que passa a bater com os cards do Apolo e do Hércules.
  */
 export function situacaoNoTelao(situacao: SituacaoDaUnidade): SituacaoDoLote {
   const balde = baldeDaSituacao(situacao);
   return balde === "bloqueado" ? "indisponivel" : balde;
+}
+
+/**
+ * Os códigos travados no Setup do evento (`config.lotesBloqueados`), normalizados.
+ *
+ * ⚠️ A TRAVA DO EVENTO BLOQUEIA POR CIMA (Lucas, 29/08/2026: *"bloqueia para ficar azul também"*).
+ * Nasceu para o lote que não tem cadastro (vendido antes da carga, permuta, área remanescente) e
+ * continua valendo também para o lote que TEM cadastro: foi assim até 18/09, e a primeira passada da
+ * situação única a tinha rebaixado a "só tapa buraco". Tirar um lote do telão e do tótem por decisão
+ * do lançamento não pode depender de ele estar no Panteon. Quem lê: o telão
+ * (masterplan-do-evento.ts) e a oferta do tótem e a reserva do salão (reservas-evento.ts), os três
+ * pela MESMA lista.
+ *
+ * Mora aqui, e não em masterplan-do-evento.ts, porque este arquivo não faz I/O: a reserva do salão
+ * importa daqui sem puxar a leitura do mapa.
+ */
+export function lotesTravadosDoEvento(
+  config: null | Record<string, unknown> | undefined,
+): Set<string> {
+  const lista = Array.isArray(config?.lotesBloqueados) ? (config.lotesBloqueados as unknown[]) : [];
+  return new Set(
+    lista.map((c) => normalizarCodigoDeUnidade(String(c ?? ""))).filter(Boolean),
+  );
 }
 
 /** Quantos lotes em cada situação: o painel de números que a rota devolve. */
@@ -50,6 +79,7 @@ export function contarSituacoes(
   const total: Record<SituacaoDoLote, number> = {
     disponivel: 0,
     indisponivel: 0,
+    negociacao: 0,
     reservado: 0,
     vendido: 0,
   };
