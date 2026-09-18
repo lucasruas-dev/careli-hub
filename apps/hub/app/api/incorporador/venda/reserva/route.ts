@@ -18,6 +18,7 @@ import {
   vendaAvisaPeloWhatsapp,
 } from "@/lib/hercules/avisos-da-venda";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
+import { criarReservaNoHercules } from "@/lib/hercules/criar-reserva";
 import { lerComColunasDoApartamento, nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
 import {
   familiaDoEmpreendimento,
@@ -186,12 +187,10 @@ export async function POST(request: Request) {
     if (!escrita.ok) return escrita.response;
     const sessao = escrita.sessao;
 
-    if (unidade.situacao !== "disponivel") {
-      return NextResponse.json(
-        { error: `Esta unidade está ${unidade.situacao}. Só unidade disponível pode ser reservada.` },
-        { status: 409 },
-      );
-    }
+    // ⚠️ A CONFERÊNCIA DE "LIVRE" NÃO É MAIS AQUI, E NÃO PELO CADASTRO CRU. Ela mora em
+    // `criarReservaNoHercules`, pela situação única do TERRENO: o cadastro desta linha dizia
+    // "disponível" em lotes com proposta importada viva e em lotes reservados na linha do pai, e a
+    // reserva passava. Ver `lib/hercules/trava-do-lote.ts`.
 
     // ⚠️ SEM PREÇO DE TABELA NÃO SE RESERVA (achado 15 da onda 2). A reserva é o primeiro passo de
     // uma proposta que congelaria "R$ 0" no documento; recusar aqui é mais barato do que desfazer lá.
@@ -226,55 +225,43 @@ export async function POST(request: Request) {
     // "coordenador" no comercial, "incorporador" no portal que opera a própria venda (o Cecílio).
     // Sai da SESSÃO, nunca do corpo. Exige a migration 0167 no banco antes.
     const origem = origemDaReserva(sessao);
-    const inserirReserva = (origemGravada: OrigemDaReserva) =>
-      admin
-        .from("hercules_reservas")
-        .insert({
-          corretor_entity_id: pedido.corretorEntityId || null,
-          criado_por: sessao.usuarioId,
-          criado_por_nome: sessao.usuarioNome,
-          empreendimento_id: empreendimento.id,
-          imobiliaria_entity_id: pedido.imobiliariaEntityId,
-          observacao: corpo.observacao?.trim() || null,
-          origem: origemGravada,
-          proponentes: [pedido.proponente],
-          situacao: "ativa",
-          unidade_id: unidade.id,
-          validade_em: pedido.validadeEm,
-          workspace_id: WORKSPACE,
-        })
-        .select("id, protocolo_numero")
-        .maybeSingle();
 
-    let { data: criada, error } = await inserirReserva(origem);
+    // ⚠️ A PORTA ÚNICA DA RESERVA (Lucas, 18/09/2026: *"toda reserva, proposta deve ser criada no
+    // hercules"* · *"eu não posso vender dois lotes para pessoas diferentes"*). Confere o terreno
+    // antes, grava, confere de novo depois e desfaz se o lote ganhou outro dono no mesmo instante.
+    const resultado = await criarReservaNoHercules(
+      admin,
+      {
+        corretorEntityId: pedido.corretorEntityId,
+        criadoPor: sessao.usuarioId,
+        criadoPorNome: sessao.usuarioNome,
+        empreendimentoId: empreendimento.id,
+        enterpriseId: String(unidade.enterprise_id),
+        imobiliariaEntityId: pedido.imobiliariaEntityId,
+        observacao: corpo.observacao ?? null,
+        origem,
+        proponentes: [pedido.proponente],
+        unidadeId: unidade.id,
+        validadeEm: pedido.validadeEm,
+      },
+      {
+        // (16/09/2026) A REDE DA ORDEM DE DEPLOY: sem a 0167 no banco, a CHECK recusa
+        // 'incorporador'. Grava com a origem antiga e grita no log. Ver `origemRecusadaSemA0167`.
+        origemSeRecusada: (erro) => {
+          if (!origemRecusadaSemA0167(erro as never, origem)) return null;
+          console.error(
+            "[hercules][reserva] migration 0167 pendente: reserva do portal gravada com a origem antiga",
+            { criadoPor: sessao.usuarioId, unidade: unidade.id },
+          );
+          return ORIGEM_ACEITA_SEM_A_0167;
+        },
+      },
+    );
 
-    // (16/09/2026) A REDE DA ORDEM DE DEPLOY: sem a 0167 no banco, a CHECK recusa 'incorporador' e a
-    // reserva do Cecílio inteira caía no 503. Grava com a origem antiga e grita no log; `criado_por`
-    // (a conta do portal) permite corrigir a origem depois. Ver `origemRecusadaSemA0167`.
-    if (error && origemRecusadaSemA0167(error, origem)) {
-      console.error(
-        "[hercules][reserva] migration 0167 pendente: reserva do portal gravada com a origem antiga",
-        { criadoPor: sessao.usuarioId, unidade: unidade.id },
-      );
-      ({ data: criada, error } = await inserirReserva(ORIGEM_ACEITA_SEM_A_0167));
+    if (!resultado.ok) {
+      return NextResponse.json({ error: resultado.motivo }, { status: resultado.status });
     }
-
-    if (error) {
-      // 23505 = a trava do índice parcial: alguém reservou primeiro.
-      if (error.code === "23505") {
-        return NextResponse.json(
-          { error: "Esta unidade acabou de ser reservada por outra pessoa." },
-          { status: 409 },
-        );
-      }
-      throw new Error(error.message);
-    }
-
-    // A unidade passa a `reservada`: é o campo que o mapa e a grade leem.
-    await admin
-      .from("hercules_unidades")
-      .update({ atualizado_em: new Date().toISOString(), situacao: "reservada" })
-      .eq("id", unidade.id);
+    const criada = resultado.reserva;
 
     const codigo = codigoDaVenda(
       (criada as null | { protocolo_numero?: null | number })?.protocolo_numero,

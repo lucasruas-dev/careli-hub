@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { baldeDaSituacao, estaLivre, rotuloDaSituacao, situacaoDoTerreno } from "./situacao-da-unidade";
+import {
+  acharUnidade,
+  baldeDaSituacao,
+  estaLivre,
+  lerSituacaoDasUnidades,
+  rotuloDaSituacao,
+  rotuloDoBalde,
+  situacaoDoTerreno,
+} from "./situacao-da-unidade";
 
 // A régua única da situação da unidade (Lucas, 18/09/2026: *"esses status tem que morar em um so
 // lugar"*). Estes testes são a definição: toda tela do Panteon pinta a unidade pelo que sai daqui.
@@ -78,14 +86,17 @@ describe("como as telas escrevem", () => {
     }
   });
 
-  it("os quatro baldes do Apolo: proposta, contrato e assinatura contam como vendido", () => {
+  it("⚠️ cinco baldes, os mesmos em toda tela: proposta, contrato e assinatura são negociação", () => {
     expect(baldeDaSituacao("disponivel")).toBe("disponivel");
     expect(baldeDaSituacao("reservado")).toBe("reservado");
     expect(baldeDaSituacao("reservada")).toBe("reservado");
     expect(baldeDaSituacao("bloqueada")).toBe("bloqueado");
-    for (const s of ["proposta", "contrato", "assinatura", "faturado", "vendida"] as const) {
-      expect(baldeDaSituacao(s)).toBe("vendido");
+    for (const s of ["proposta", "contrato", "assinatura"] as const) {
+      expect(baldeDaSituacao(s)).toBe("negociacao");
     }
+    expect(baldeDaSituacao("faturado")).toBe("vendido");
+    expect(baldeDaSituacao("vendida")).toBe("vendido");
+    expect(rotuloDoBalde("negociacao")).toBe("Em negociação");
   });
 
   it("um rótulo por situação", () => {

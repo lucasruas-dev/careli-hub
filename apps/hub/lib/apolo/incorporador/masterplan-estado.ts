@@ -1,44 +1,47 @@
 import type { RowDataPacket } from "mysql2/promise";
 
 import { getHadesDbPool } from "@/lib/guardian/db";
+import {
+  baldeDaSituacao,
+  type SituacaoDasUnidades,
+  type SituacaoDaUnidade,
+  situacaoDoTerreno,
+} from "@/lib/hercules/situacao-da-unidade";
 
+import { situacoesDoArquivo } from "./masterplan-dois-estados";
 import { chaveDoLote, lerLinhasDoMapa } from "./masterplan-recorte";
 
-// O MASTERPLAN PASSA A LER A SITUAÇÃO DO C2X, EM VEZ DE ACREDITAR NO ARQUIVO.
+// O MASTERPLAN NÃO ACREDITA NO ARQUIVO, E A COR DO LOTE VEM DO PANTEON.
 //
 // Regra do Lucas (19/08/2026): *"o masterplan é dinâmico, não pode ser estático"*, depois de achar
 // a divergência no VOL: *"na tela de vendas está correto, 91 vendidos, 2 disponível e 48 bloqueado,
-// contudo, quando eu abro o masterplan me retorna 6 disponível, e alguns lotes que realmente está
-// disponível consta como vendido... teve cancelamento ontem que o masterplan não atualizou"*.
+// contudo, quando eu abro o masterplan me retorna 6 disponível"*. O `vale-do-ouro.html` é um
+// arquivo GERADO, com a situação de cada lote gravada dentro dele
+// (`[quadra,"lote",situação,área,valor,"comprador","polígono"]`), e ele congela o dia em que foi
+// gerado. Por isso o que MUDA é reescrito ao servir: situação, comprador e preço.
 //
-// ⚠️ A CAUSA. O `vale-do-ouro.html` é um arquivo GERADO, com a situação de cada lote gravada dentro
-// dele (`[quadra,"lote",situação,área,valor,"comprador","polígono"]`). O arquivo em produção é de
-// 11/08: tudo o que aconteceu depois — venda nova, cancelamento, bloqueio — não chega nele. Medido
-// contra o C2X no dia do pedido: 8 lotes errados no VOL (os 6 disponíveis que o Lucas viu contra os
-// 2 reais) e 4 no VOC, além de 21 compradores defasados.
+// ⚠️ A SITUAÇÃO SAI DE `lib/hercules/situacao-da-unidade.ts`, E SÓ DE LÁ (Lucas, 18/09/2026:
+// *"esses status tem que morar em um so lugar"* · *"no c2x não precisa olhar"*). Até aqui este
+// arquivo tinha a própria régua, `situacaoDoMapa`, que convertia `sale_status_id`/`sale_blocked`
+// do C2X nas quatro cores — e não via nada feito no Panteon: lote reservado ou em proposta no
+// Hércules abria VERDE neste mapa, e os bloqueados do Panteon também. A régua do legado saiu
+// inteira; a leitura do C2X não traz mais nem a coluna de status, para ninguém ser tentado a
+// usá-la de novo.
 //
-// O DESENHO CONTINUA VINDO DO ARQUIVO. Polígono, quadra, lote e área são geometria: não mudam com
-// venda, e regerar isso a cada request seria trocar um mapa aprovado por um desenhado na hora. O
-// que passa a vir do C2X é só o que MUDA: situação, comprador e preço.
+// O QUE CONTINUA VINDO DO C2X, E POR QUÊ:
+//   • o ESCOPO (quais lotes este portal pode ver). É permissão, não situação: a divisão do
+//     loteamento entre os donos foi feita no legado, e o recorte fail-closed de
+//     `masterplan-recorte.ts` segue sendo a última palavra sobre o que sai;
+//   • o COMPRADOR e o PREÇO, que a régua única não responde.
 //
-// ⚠️ ISTO NÃO É UMA SEGUNDA RÉGUA DE SITUAÇÃO. A conversão de `sale_status_id`/`sale_blocked` para
-// as quatro cores do mapa é a mesma de `mapUnitRow` (lib/apolo/empreendimentos.ts), que é o que a
-// tela de Vendas usa — era com ela que o Lucas estava comparando. Uma régua própria aqui faria o
-// mapa e a tela discordarem de novo, só que por outro motivo.
-//
-// ⚠️ NADA DISTO ALARGA ESCOPO. Este módulo só descreve os lotes que já vão ser servidos; quem
-// decide o que sai continua sendo o recorte fail-closed de `masterplan-recorte.ts`, que roda
-// depois. Aliás, a consulta é a MESMA que já definia o escopo: era um `select block, lot`, e agora
-// traz as colunas de estado junto — um SELECT, não dois.
+// O DESENHO CONTINUA VINDO DO ARQUIVO: polígono, quadra, lote e área são geometria.
 
 /** As quatro cores do mapa, na ordem que o HTML gravou: `['Disponível','Reservado','Vendido','Bloqueado']`. */
 export const MAPA = { BLOQUEADO: 3, DISPONIVEL: 0, RESERVADO: 1, VENDIDO: 2 } as const;
 
-/** `sale_statuses` do C2X. Igual ao `SALE_STATUS` de `empreendimentos.ts`. */
-const C2X = { BLOQUEADO: 5, DISPONIVEL: 1, EM_NEGOCIACAO: 3, RESERVADO: 2, VENDIDO: 4 } as const;
-
 // Propostas que NÃO dão dono ao lote. O resto (inclusive `Finalizado` e `Em distrato`) dá: enquanto
-// o distrato não fecha, o comprador ainda é aquele.
+// o distrato não fecha, o comprador ainda é aquele. Serve SÓ para achar o nome; quem diz se o lote
+// tem dono é a situação do Panteon.
 const PROPOSTA_MORTA = [7, 8, 11]; // Cancelado · Reprovado análise de crédito · Distratado
 
 export type EstadoDoLote = {
@@ -49,25 +52,45 @@ export type EstadoDoLote = {
   valor: number;
 };
 
+/**
+ * Um lote do escopo, como o C2X o conhece: QUEM ele é, o comprador e o preço.
+ *
+ * ⚠️ SEM SITUAÇÃO, DE PROPÓSITO. O tipo não tem campo para o status do legado: a situação só entra
+ * em `estadoDosLotes`, e só pela régua única.
+ */
+export type LoteDoC2x = {
+  /** Para desempatar duas linhas do mesmo terreno: a mais recente ganha. */
+  atualizadoEm: number;
+  chave: string;
+  /** `enterprise_unities.name` ("VOC0305", "LBPC0101"): é o `codigo` que a carga gravou em `hercules_unidades`. */
+  codigo: null | string;
+  /** Nome já limpo, ou "" quando o C2X não tem proposta viva no lote. */
+  comprador: string;
+  /** `enterprises.id` do C2X: é o `enterprise_id` que `hercules_unidades` guarda ("35", "37"...). */
+  enterpriseId: string;
+  /** `enterprise_unities.id`: é o `origem_c2x_id` de `hercules_unidades`. */
+  origemC2xId: string;
+  preco: number;
+};
+
 type LinhaDoC2x = RowDataPacket & {
   block: null | number | string;
   comprador: null | string;
+  enterprise_id: number | string;
+  id: number | string;
   lot: null | number | string;
+  name: null | string;
   price: null | number | string;
-  sale_blocked: null | number;
-  sale_status_id: null | number;
   updated_at: Date | null;
 };
 
 /**
- * A situação de cada lote destes empreendimentos, AGORA, na régua do mapa.
+ * Os lotes destes empreendimentos no C2X: o ESCOPO do mapa, com comprador e preço.
  *
  * Devolve `null` quando o C2X não responde ou não há lote nenhum — e quem chama trata isso como
  * "não sei de quem é este mapa", que é o fail-closed do escopo.
  */
-export async function lerEstadoDosLotes(
-  codes: string[],
-): Promise<Map<string, EstadoDoLote> | null> {
+export async function lerLotesDoEscopo(codes: string[]): Promise<LoteDoC2x[] | null> {
   if (codes.length === 0) return null;
 
   const pool = getHadesDbPool();
@@ -75,7 +98,7 @@ export async function lerEstadoDosLotes(
 
   try {
     const [linhas] = await pool.pool.query<LinhaDoC2x[]>(
-      `select u.block, u.lot, u.price, u.sale_status_id, u.sale_blocked, u.updated_at,
+      `select u.id, u.name, u.enterprise_id, u.block, u.lot, u.price, u.updated_at,
               cli.name as comprador
          from enterprise_unities u
          join enterprises e on e.id = u.enterprise_id
@@ -91,58 +114,123 @@ export async function lerEstadoDosLotes(
       codes,
     );
 
-    const estados = new Map<string, EstadoDoLote>();
-    const quando = new Map<string, number>();
-
+    const lotes: LoteDoC2x[] = [];
     for (const linha of linhas) {
       if (linha.block == null || linha.lot == null) continue;
-
-      const chave = chaveDoLote(linha.block, linha.lot);
-      const situacao = situacaoDoMapa(linha.sale_status_id, linha.sale_blocked);
-      const temDono = situacao === MAPA.RESERVADO || situacao === MAPA.VENDIDO;
-
-      // ⚠️ A CHAVE QUADRA-LOTE COLIDE QUANDO A SESSÃO TEM DIVISÃO E HISTÓRICO JUNTOS. O Vale do
-      // Ouro foi dividido (VLO -> VOC + VOL): o VLO ficou com os mesmos 298 lotes, agora só como
-      // histórico, e casar sem desempate deixa o fantasma sobrescrever o lote vivo — 165 lotes
-      // "errados" que na verdade eram o VLO parado. Ganha quem tem dono; empate, o mais recente.
-      const anterior = estados.get(chave);
-      if (anterior) {
-        const antesTemDono = anterior.comprador !== "";
-        const antesQuando = quando.get(chave) ?? 0;
-        const agora = linha.updated_at ? linha.updated_at.getTime() : 0;
-        if (antesTemDono !== temDono ? antesTemDono : antesQuando >= agora) continue;
-      }
-
-      estados.set(chave, {
-        comprador: temDono ? limpar(linha.comprador) : "",
-        situacao,
-        // ⚠️ BLOQUEADO GRAVA ZERO, que é a convenção do próprio arquivo (os 108 bloqueados vieram
-        // com valor 0). O C2X guarda `price = 1` nesses lotes, e copiar isso cru poria "R$ 1,00"
-        // na tabela e no total do mapa.
-        valor: situacao === MAPA.BLOQUEADO ? 0 : Math.round(Number(linha.price ?? 0)),
+      lotes.push({
+        atualizadoEm: linha.updated_at ? linha.updated_at.getTime() : 0,
+        chave: chaveDoLote(linha.block, linha.lot),
+        codigo: String(linha.name ?? "").trim() || null,
+        comprador: limpar(linha.comprador),
+        enterpriseId: String(linha.enterprise_id),
+        origemC2xId: String(linha.id),
+        preco: Number(linha.price ?? 0),
       });
-      quando.set(chave, linha.updated_at ? linha.updated_at.getTime() : 0);
     }
 
-    return estados.size > 0 ? estados : null;
+    return lotes.length > 0 ? lotes : null;
   } catch (error) {
-    console.error("[incorporador][masterplan] falha ao ler o estado dos lotes", error);
+    console.error("[incorporador][masterplan] falha ao ler os lotes do escopo", error);
     return null;
   }
 }
 
-/** `sale_status_id` + `sale_blocked` -> a cor do mapa. Mesma régua de `mapUnitRow`. */
-export function situacaoDoMapa(statusId: null | number, bloqueado: null | number): number {
-  const status = Number(statusId ?? 0);
+/** Os quatro baldes da régua única -> o índice de cor que o arquivo grava. */
+const COR_DO_BALDE: Record<ReturnType<typeof baldeDaSituacao>, number> = {
+  bloqueado: MAPA.BLOQUEADO,
+  disponivel: MAPA.DISPONIVEL,
+  reservado: MAPA.RESERVADO,
+  vendido: MAPA.VENDIDO,
+};
 
-  // O status 5 vale por si só, sem depender do flag: o legado é editado à mão, e limpar o flag
-  // deixando o status pintaria de disponível um lote cujo texto ainda diz "Bloqueado para venda".
-  if (status === C2X.BLOQUEADO || Number(bloqueado ?? 0) === 1) return MAPA.BLOQUEADO;
-  // "Em negociação" é vendido no mapa: são as 4 cores contra os 5 status do C2X, e é assim que a
-  // tela de Vendas conta (os 91 "em negociação" do VOL são os 91 vendidos que o Lucas viu lá).
-  if (status === C2X.VENDIDO || status === C2X.EM_NEGOCIACAO) return MAPA.VENDIDO;
-  if (status === C2X.RESERVADO) return MAPA.RESERVADO;
-  return MAPA.DISPONIVEL;
+/**
+ * A situação da régua única -> a cor do mapa.
+ *
+ * Não decide nada: quem decide é `situacaoDoTerreno`, e os quatro baldes são de `baldeDaSituacao`
+ * (proposta, contrato, assinatura e faturado pintam de VENDIDO, que é o mesmo agrupamento que o
+ * mapa sempre fez com o "em negociação" do legado). Aqui é só a tradução de vocabulário para o
+ * índice que o arquivo entende.
+ */
+export function corDoMapa(situacao: SituacaoDaUnidade): number {
+  return COR_DO_BALDE[baldeDaSituacao(situacao)] ?? MAPA.BLOQUEADO;
+}
+
+/**
+ * A situação de um lote que o Panteon não conhece. Quem responde é a própria régua (cadastro
+ * ausente, sem processo nenhum), e não este arquivo: hoje é "bloqueada", e se a régua mudar a
+ * resposta, o mapa muda junto.
+ */
+const FORA_DO_PANTEON: SituacaoDaUnidade = situacaoDoTerreno({
+  cadastro: null,
+  propostasVivas: [],
+  reservada: false,
+});
+
+/**
+ * Junta o escopo do C2X com a situação do Panteon, lote a lote. PURA.
+ *
+ * O lote é achado no Panteon pelo CÓDIGO (`porCodigo`) e, se o código não casar, pelo id do legado
+ * (`porOrigemC2x`). Os dois índices respondem por QUALQUER linha do terreno: no produto dividido o
+ * mesmo lote é `VOC0305` na gleba e `VLO0305` no pai, e os dois dão a mesma resposta.
+ *
+ * ⚠️ LOTE QUE O PANTEON NÃO CONHECE NÃO SAI LIVRE. `hercules_unidades` é carregada do C2X por sync;
+ * unidade criada no legado depois da carga não tem linha aqui. Sem situação, o lote pinta como a
+ * régua pinta um cadastro ausente (BLOQUEADO, ver `FORA_DO_PANTEON`) e entra em `semSituacao`,
+ * para aparecer no log. Pintar de verde o que não se sabe é convidar a segunda venda.
+ */
+export function estadoDosLotes(
+  lotes: readonly LoteDoC2x[],
+  situacoes: Pick<SituacaoDasUnidades, "porCodigo" | "porOrigemC2x">,
+): { estados: Map<string, EstadoDoLote>; semSituacao: number } {
+  const estados = new Map<string, EstadoDoLote>();
+  const escolhido = new Map<string, { atualizadoEm: number; comComprador: boolean; temDono: boolean }>();
+  let semSituacao = 0;
+
+  for (const lote of lotes) {
+    const unidade =
+      (lote.codigo ? situacoes.porCodigo.get(lote.codigo.trim().toUpperCase()) : undefined) ??
+      situacoes.porOrigemC2x.get(lote.origemC2xId);
+
+    if (!unidade) semSituacao += 1;
+    const situacao = corDoMapa(unidade?.situacao ?? FORA_DO_PANTEON);
+    const temDono = situacao === MAPA.RESERVADO || situacao === MAPA.VENDIDO;
+    // O nome só aparece em lote que o PANTEON diz ter dono: lote livre exibindo comprador é o erro
+    // que a reescrita existe para corrigir.
+    const comprador = temDono ? lote.comprador : "";
+
+    // ⚠️ A CHAVE QUADRA-LOTE COLIDE QUANDO A SESSÃO TEM O PAI E A GLEBA JUNTOS (VLO com VOC ou VOL):
+    // o mesmo terreno vem duas vezes do C2X. Ganha quem tem dono; empatado, quem tem o nome do
+    // comprador (o pai não tem proposta: elas foram movidas para a gleba na divisão); empatado de
+    // novo, o mais recente. É a escolha de QUAL LINHA dá o nome e o preço; a situação, lida pelo
+    // terreno, já é a mesma nas duas.
+    const antes = escolhido.get(lote.chave);
+    if (antes) {
+      const ficaOAnterior =
+        antes.temDono !== temDono
+          ? antes.temDono
+          : antes.comComprador !== (comprador !== "")
+            ? antes.comComprador
+            : antes.atualizadoEm >= lote.atualizadoEm;
+      if (ficaOAnterior) continue;
+    }
+
+    estados.set(lote.chave, {
+      comprador,
+      situacao,
+      // ⚠️ BLOQUEADO GRAVA ZERO, que é a convenção do próprio arquivo (os 108 bloqueados vieram com
+      // valor 0). E o preço de R$ 1 também vira zero: é o marcador de "sem preço" que o C2X grava nos
+      // lotes que ele bloqueia, e um lote livre no Panteon e bloqueado no legado apareceria na tabela
+      // e no total do mapa custando "R$ 1,00".
+      valor: situacao === MAPA.BLOQUEADO || !(lote.preco > 1) ? 0 : Math.round(lote.preco),
+    });
+    escolhido.set(lote.chave, {
+      atualizadoEm: lote.atualizadoEm,
+      comComprador: comprador !== "",
+      temDono,
+    });
+  }
+
+  return { estados, semSituacao };
 }
 
 /**
@@ -173,25 +261,40 @@ const LINHA = /^(\[(?:\d+|"[^"]*"),"[^"]*",)(\d+)(,[\d.]+,)([\d.]+),"([^"]*)"(,"
 export type Atualizacao = {
   /** Lotes cuja situação MUDOU — o que o arquivo estava contando errado. */
   corrigidos: number;
+  /**
+   * `false` quando nada foi escrito: bloco `DADOS` ilegível, ou arquivo que não declara quantas
+   * situações conhece. Quem chama RECUSA o mapa: servir a situação gravada no arquivo seria mostrar
+   * como livre o lote que o arquivo congelou livre.
+   */
+  escrito: boolean;
   html: string;
-  /** Linhas que o C2X não conhece: ficam como estavam. */
+  /** Linhas que o escopo não conhece: ficam como estavam, e o recorte as tira do `DADOS`. */
   semEstado: number;
 };
 
 /**
- * Devolve o HTML com situação, comprador e valor trocados pelo estado atual do C2X.
+ * Devolve o HTML com situação, comprador e valor trocados pelo estado de agora.
  *
- * ⚠️ DEGRADA PARA O ARQUIVO, NÃO PARA O ERRO. Linha que não casa com o formato, ou lote que o C2X
- * não conhece, fica exatamente como estava: o pior caso volta a ser o comportamento de hoje. Isto
- * é o oposto do recorte, que recusa — porque aqui o risco é mostrar um dado velho, e lá era
- * mostrar a carteira do vizinho.
+ * Linha de lote que o escopo não conhece fica exatamente como estava: ela não é deste portal, e o
+ * recorte, que roda depois, a tira do `DADOS` e devolve só o polígono.
+ *
+ * ⚠️ O ÍNDICE DE "OCUPADO" MUDA DE ARQUIVO PARA ARQUIVO. Quatro arquivos têm quatro situações
+ * (`TOT=[0,0,0,0]`); o `garden.html` tem TRÊS (`['Disponível','Reservado','Vendido']`) e não tem
+ * slot de bloqueado. Gravar `3` nele fazia o lote sumir do mapa: o `pintar()` de lá só percorre
+ * `s<3` e o filtro `F.sit[3]` é `undefined`. Então a situação que não cabe no arquivo, e qualquer
+ * valor fora da régua, vai para o ÚLTIMO slot que ele tem — nunca para o `0`. O erro possível passa
+ * a ser chamar de "Vendido" um lote bloqueado do Garden, e nunca oferecer um lote que tem dono.
  */
 export function aplicarEstadoAtual(
   html: string,
   estados: Map<string, EstadoDoLote>,
 ): Atualizacao {
   const bloco = lerLinhasDoMapa(html);
-  if (!bloco || bloco.desconhecidas > 0) return { corrigidos: 0, html, semEstado: 0 };
+  const slots = situacoesDoArquivo(html);
+  if (!bloco || bloco.desconhecidas > 0 || slots === null) {
+    return { corrigidos: 0, escrito: false, html, semEstado: 0 };
+  }
+  const ultimo = slots - 1;
 
   let corrigidos = 0;
   let semEstado = 0;
@@ -209,9 +312,10 @@ export function aplicarEstadoAtual(
       return item.miolo;
     }
 
-    // A tela só conhece quatro cores; um índice fora disso deixaria o lote sem legenda e fora de
-    // todo filtro. Qualquer coisa que não seja 0..3 cai em "disponível", que é o estado neutro.
-    const situacao = [0, 1, 2, 3].includes(estado.situacao) ? estado.situacao : MAPA.DISPONIVEL;
+    const situacao =
+      Number.isInteger(estado.situacao) && estado.situacao >= 0 && estado.situacao <= ultimo
+        ? estado.situacao
+        : ultimo;
 
     if (Number(partes[2]) !== situacao) corrigidos += 1;
 
@@ -222,6 +326,7 @@ export function aplicarEstadoAtual(
 
   return {
     corrigidos,
+    escrito: true,
     html: html.slice(0, bloco.inicio) + "\n" + linhas.join(",\n") + "];" + html.slice(bloco.fim),
     semEstado,
   };

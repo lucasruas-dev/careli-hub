@@ -19,8 +19,15 @@ type AdminClient = NonNullable<ReturnType<typeof createPrometeuClient>>;
 // proposta antiga do C2X — uma pessoa que não tem nada a ver com a reserva de agora. Nome
 // errado numa tela de atendimento faz alguém atender o cliente errado.
 //
-// ⚠️ QUEM CRIAR TELA NOVA QUE LEIA `sale_status_id` PRECISA PASSAR POR AQUI. A lista está em
-// lib/apolo/balde-da-unidade.ts (Apolo) e lib/prometeu/situacao-do-lote.ts (telão).
+// ⚠️ DESDE 18/09/2026 ESTA PEÇA NÃO DECIDE SITUAÇÃO NENHUMA. Lucas: *"esses status tem que morar
+// em um so lugar"* · *"no c2x não precisa olhar"*. Se o lote está livre, reservado ou vendido é
+// pergunta para lib/hercules/situacao-da-unidade.ts, que já conta a reserva do salão
+// (`prometeu_reservas`) junto com a do Hércules e a proposta viva. O telão já lê de lá.
+//
+// O que continua sendo daqui é o NOME de quem reservou no salão (o titular do cupom), que a
+// régua única não carrega. Por isso o tropeço devolve Map vazio (ver abaixo): faltar o nome é
+// tolerável. ⚠️ Usar a AUSÊNCIA de uma chave deste Map para dizer "livre" não é: numa falha de
+// leitura, todo lote reservado no salão viraria disponível.
 
 // O PostgREST corta em 1.000 linhas SEM ERRO — a página some e ninguém percebe. Paginar é a
 // única forma de ter certeza de que a resposta está inteira.
@@ -55,8 +62,9 @@ type LinhaDeReserva = {
 /**
  * As unidades com reserva VIVA no Panteon, por código normalizado (`RVPB03`).
  *
- * Devolve um Map vazio em qualquer tropeço: uma tela do Apolo não pode quebrar porque a consulta
- * de reservas falhou — ela volta a mostrar o que o C2X diz, que é o comportamento de antes.
+ * Devolve um Map vazio em qualquer tropeço: uma tela do Apolo não pode quebrar porque faltou o
+ * NOME de quem reservou. ⚠️ É por isso que este Map serve para o nome e nunca para a situação
+ * (ver o cabeçalho): vazio por falha e vazio por não ter reserva são indistinguíveis aqui.
  */
 export async function reservasVivasPorCodigo(
   client: AdminClient,

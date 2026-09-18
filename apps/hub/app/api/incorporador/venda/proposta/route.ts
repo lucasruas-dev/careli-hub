@@ -31,6 +31,8 @@ import {
   carregarCadastroDeEmpreendimentos,
   type LinhaDoCadastro,
 } from "@/lib/hercules/cadastro";
+import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
+import { fraseDoConflito, outrosDonosDoLote } from "@/lib/hercules/trava-do-lote";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import {
   credenciadoParaVender,
@@ -951,6 +953,29 @@ export async function POST(request: Request) {
           "Content-Type": "application/pdf",
         },
       });
+    }
+
+    // ⚠️ A TRAVA DO LOTE TAMBÉM NA PROPOSTA (Lucas, 18/09/2026: *"eu não posso vender dois lotes
+    // para pessoas diferentes"*). A proposta nasce da reserva desta unidade, e é ela que o comprador
+    // assina: antes de gravar, o terreno inteiro não pode ter OUTRO dono vivo além desta reserva e
+    // das propostas filhas dela. Pega o caso que a reserva sozinha não pegava: proposta importada do
+    // legado viva no mesmo lote, ou reserva em outra linha do terreno (a do pai, a da outra gleba).
+    // Sem conseguir conferir, não grava.
+    {
+      let outros: Awaited<ReturnType<typeof outrosDonosDoLote>> = null;
+      try {
+        const situacoes = await lerSituacaoDasUnidades(admin, [c2xId]);
+        outros = await outrosDonosDoLote(admin, situacoes, unidade.id, { reservaId: reserva.id });
+      } catch (erro) {
+        console.error("[incorporador][proposta] trava do lote falhou", erro);
+        outros = null;
+      }
+      if (outros === null || outros.length > 0) {
+        return NextResponse.json(
+          { erros: [{ campo: "unidade", mensagem: fraseDoConflito(outros) }] },
+          { status: 409 },
+        );
+      }
     }
 
     const { data: criada, error } = await admin

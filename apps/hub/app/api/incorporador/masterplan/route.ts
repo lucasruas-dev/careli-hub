@@ -6,17 +6,24 @@ import { NextResponse } from "next/server";
 import { loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
 import { codigosDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { MASTERPLANS_INTERNOS } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
-import { aplicarEstadoAtual, type EstadoDoLote, lerEstadoDosLotes } from "@/lib/apolo/incorporador/masterplan-estado";
+import {
+  aplicarEstadoAtual,
+  estadoDosLotes,
+  type LoteDoC2x,
+  lerLotesDoEscopo,
+} from "@/lib/apolo/incorporador/masterplan-estado";
 import { recortarMasterplan } from "@/lib/apolo/incorporador/masterplan-recorte";
 import { portalConfeccionaContrato } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
 import { deveClarearMasterplan } from "@/lib/apolo/incorporador/tema-portal";
 import { comTemaClaro } from "@/lib/apolo/masterplan-tema-claro";
+import { createApoloAdminClient } from "@/lib/apolo/server";
 import { comSimuladorAberto, loteDoPedido } from "@/lib/apolo/incorporador/masterplan-simulador";
 import {
   pediuSoOEspelho,
   soOEspelho,
 } from "@/lib/apolo/incorporador/masterplan-so-espelho";
+import { lerSituacaoDasUnidades, type SituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 
 // O MASTERPLAN INTERNO, servido para quem tem sessão.
 //
@@ -66,7 +73,7 @@ function comCaminhoAbsoluto(html: string): string {
 }
 
 /**
- * O estado ATUAL dos lotes que este portal pode ver dentro DESTE arquivo de mapa.
+ * Os lotes que este portal pode ver dentro DESTE arquivo de mapa, com comprador e preço.
  *
  * ⚠️ O ARQUIVO É COMPARTILHADO. O `vale-do-ouro.html` atende VLO, VOC e VOL: quem chega com VOC
  * pede o mesmo arquivo que o dono do VOL. A permissão, então, não pode ser "abriu o arquivo, viu
@@ -75,19 +82,42 @@ function comCaminhoAbsoluto(html: string): string {
  * Entram os códigos da SESSÃO que apontam para o mesmo arquivo: quem tiver VOC e VOL vê os dois
  * lados, quem tiver um vê o seu.
  *
- * ⚠️ ESTA CONSULTA FAZ AS DUAS COISAS DE PROPÓSITO. As chaves do mapa são o escopo (quem entra no
- * recorte) e o valor é o estado (situação, comprador e preço de agora). Eram a mesma pergunta ao
- * C2X sendo feita uma vez só: separar em duas rodadas custaria um segundo SELECT para responder o
- * que a primeira já sabe — e abriria a chance de as duas discordarem entre si.
+ * ⚠️ ISTO É ESCOPO, NÃO SITUAÇÃO. O C2X diz QUAIS lotes são deste portal (e o nome e o preço de
+ * cada um); se o lote está livre, reservado ou vendido quem diz é o Panteon, logo abaixo.
  */
-async function estadoDoEscopo(
+async function lotesDoEscopo(
   codesDaSessao: string[],
   arquivo: string,
-): Promise<Map<string, EstadoDoLote> | null> {
+): Promise<LoteDoC2x[] | null> {
   const doMesmoArquivo = codesDaSessao.filter((code) => MASTERPLANS_INTERNOS[code] === arquivo);
   if (doMesmoArquivo.length === 0) return null;
 
-  return lerEstadoDosLotes(doMesmoArquivo);
+  return lerLotesDoEscopo(doMesmoArquivo);
+}
+
+/**
+ * A situação destes lotes pela régua única, ou `null` quando não deu para ler.
+ *
+ * ⚠️ `null` VIRA 503, NUNCA "DISPONÍVEL". A situação é o que pinta o lote de verde: servir o mapa
+ * sem ela seria mostrar como livre o que não se conseguiu ler (ou a situação congelada no arquivo,
+ * que é o mesmo erro com data antiga).
+ */
+async function situacaoDosLotes(lotes: LoteDoC2x[]): Promise<null | SituacaoDasUnidades> {
+  const admin = createApoloAdminClient();
+  if (!admin) {
+    console.error("[incorporador][masterplan] sem cliente do Supabase para ler a situação");
+    return null;
+  }
+
+  // Os ids do C2X dos próprios lotes: são o `enterprise_id` que `hercules_unidades` guarda. A régua
+  // lê o terreno inteiro a partir deles (a linha do pai e a da gleba respondem o mesmo).
+  const enterpriseIds = [...new Set(lotes.map((lote) => lote.enterpriseId))];
+  try {
+    return await lerSituacaoDasUnidades(admin, enterpriseIds);
+  } catch (erro) {
+    console.error("[incorporador][masterplan] falha ao ler a situação das unidades", erro);
+    return null;
+  }
 }
 
 export async function GET(request: Request) {
@@ -166,30 +196,53 @@ export async function GET(request: Request) {
   // FAIL-CLOSED: sem conseguir provar quais lotes são dele, o mapa não vai. Servir o arquivo cru
   // "porque o C2X não respondeu" é exatamente o vazamento que este código existe para fechar.
   const codesDaSessao = await codigosDaSessao(sessao);
-  const estado = await estadoDoEscopo(codesDaSessao, arquivo);
+  const lotes = await lotesDoEscopo(codesDaSessao, arquivo);
 
-  if (!estado) {
+  if (!lotes) {
     console.error(`[incorporador][masterplan] sem escopo de lotes para ${code} (${arquivo})`);
     return NextResponse.json({ error: "Masterplan indisponível." }, { status: 503 });
   }
 
-  // ⚠️ A SITUAÇÃO VEM DO C2X, NÃO DO ARQUIVO. O HTML é gerado com a situação gravada dentro, e o
-  // que está em produção é de 11/08: venda, cancelamento e bloqueio posteriores não chegam nele.
-  // O Lucas viu isso no VOL (*"o masterplan é dinâmico, não pode ser estático"*, 19/08/2026), com
-  // 6 lotes disponíveis no mapa contra 2 na tela de Vendas. Aqui o desenho continua sendo o do
-  // arquivo e só situação, comprador e preço são trocados pelo estado de agora.
-  //
-  // ANTES DO RECORTE, e não depois: assim o recorte segue sendo a última palavra sobre o que sai
-  // daqui, com o mesmo código e o mesmo fail-closed de sempre.
-  const atualizado = aplicarEstadoAtual(html, estado);
+  // ⚠️ A SITUAÇÃO VEM DO PANTEON, NÃO DO ARQUIVO E NÃO DO C2X. O HTML é gerado com a situação
+  // gravada dentro e congela o dia em que foi gerado (Lucas, 19/08/2026: *"o masterplan é dinâmico,
+  // não pode ser estático"*). Até 18/09/2026 ela era trocada pelo `sale_status_id` do C2X, que não
+  // enxerga reserva nem proposta feitas no Hércules: o mesmo lote saía reservado na tela Venda e
+  // verde aqui (Lucas: *"esses status tem que morar em um so lugar"*). Agora é a régua única de
+  // `lib/hercules/situacao-da-unidade.ts`, a mesma da Venda.
+  const situacoes = await situacaoDosLotes(lotes);
 
-  if (atualizado.corrigidos > 0) {
-    console.info(
-      `[incorporador][masterplan] ${code}: ${atualizado.corrigidos} lote(s) com situação corrigida pelo C2X`,
+  if (!situacoes) {
+    return NextResponse.json({ error: "Masterplan indisponível." }, { status: 503 });
+  }
+
+  const { estados, semSituacao } = estadoDosLotes(lotes, situacoes);
+
+  if (semSituacao > 0) {
+    // Lote do escopo que o Panteon não conhece sai BLOQUEADO (nunca livre). Aparecer aqui é sinal
+    // de unidade criada no C2X depois da última carga: resolve com o sync, não com código.
+    console.warn(
+      `[incorporador][masterplan] ${code}: ${semSituacao} lote(s) do C2X sem unidade no Panteon, pintados como bloqueados`,
     );
   }
 
-  const recorte = recortarMasterplan(atualizado.html, new Set(estado.keys()));
+  // O desenho continua sendo o do arquivo; só situação, comprador e preço são trocados pelo estado
+  // de agora. ANTES DO RECORTE, e não depois: assim o recorte segue sendo a última palavra sobre o
+  // que sai daqui, com o mesmo código e o mesmo fail-closed de sempre.
+  const atualizado = aplicarEstadoAtual(html, estados);
+
+  if (!atualizado.escrito) {
+    // Sem conseguir escrever a situação de agora, o que sobraria é a gravada no arquivo: recusa.
+    console.error(`[incorporador][masterplan] situação não aplicada em ${code} (${arquivo})`);
+    return NextResponse.json({ error: "Masterplan indisponível." }, { status: 503 });
+  }
+
+  if (atualizado.corrigidos > 0) {
+    console.info(
+      `[incorporador][masterplan] ${code}: ${atualizado.corrigidos} lote(s) com situação diferente da gravada no arquivo`,
+    );
+  }
+
+  const recorte = recortarMasterplan(atualizado.html, new Set(estados.keys()));
 
   if (!recorte.ok) {
     console.error(`[incorporador][masterplan] recorte recusado para ${code}: ${recorte.erro}`);

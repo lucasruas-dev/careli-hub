@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 
+import { baldeDaSituacao, type SituacaoDaUnidade } from "@/lib/hercules/situacao-da-unidade";
+
 import {
+  type BaldeDaUnidade,
   baldeDaUnidade,
   rotuloDoBalde,
   SALE_STATUS,
   type SinaisDaUnidade,
   sqlDoBalde,
 } from "./balde-da-unidade";
+
+// ⚠️ A régua do C2X (`baldeDaUnidade`, `sqlDoBalde`) está `@deprecated` desde 18/09/2026: a situação
+// da unidade sai de lib/hercules/situacao-da-unidade.ts. Os testes dela ficam enquanto ela tiver
+// leitor; o que passa a importar de verdade é o último bloco, o vocabulário servindo a régua nova.
 
 function sinais(parcial: Partial<SinaisDaUnidade>): SinaisDaUnidade {
   return {
@@ -160,5 +167,35 @@ describe("o texto do badge sai do balde", () => {
       saleStatusId: SALE_STATUS.DISPONIVEL,
     });
     expect(rotuloDoBalde(balde)).toBe("Reservado");
+  });
+});
+
+describe("o vocabulário serve a régua única", () => {
+  // A aba Unidades e o masterplan pintam pela régua do Panteon; os baldes dela têm que caber no tipo
+  // e ter palavra aqui, senão o selo sai sem texto.
+  const TODAS: SituacaoDaUnidade[] = [
+    "disponivel",
+    "reservado",
+    "reservada",
+    "proposta",
+    "contrato",
+    "assinatura",
+    "faturado",
+    "vendida",
+    "bloqueada",
+  ];
+
+  it("todo balde de baldeDaSituacao é um BaldeDaUnidade com palavra", () => {
+    for (const situacao of TODAS) {
+      const balde: BaldeDaUnidade = baldeDaSituacao(situacao);
+      expect(rotuloDoBalde(balde)).toBeTruthy();
+    }
+  });
+
+  it("proposta, contrato e assinatura dizem Vendido, e nunca Disponível", () => {
+    for (const situacao of ["proposta", "contrato", "assinatura"] as const) {
+      expect(rotuloDoBalde(baldeDaSituacao(situacao))).toBe("Vendido");
+    }
+    expect(rotuloDoBalde(baldeDaSituacao("bloqueada"))).toBe("Bloqueado");
   });
 });

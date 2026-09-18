@@ -1,102 +1,48 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  contarSituacoes,
-  situacaoDoLote,
-  type SinaisDoLote,
-} from "./situacao-do-lote";
+import type { SituacaoDaUnidade } from "@/lib/hercules/situacao-da-unidade";
 
-// Os cinco status reais do C2X, lidos da tabela `sale_statuses` em 28/08/2026.
-const DISPONIVEL = 1;
-const RESERVADO = 2;
-const EM_NEGOCIACAO = 3;
-const VENDIDO = 4;
-const BLOQUEADO = 5;
+import { contarSituacoes, situacaoNoTelao } from "./situacao-do-lote";
 
-function sinais(parcial: Partial<SinaisDoLote>): SinaisDoLote {
-  return {
-    arAberta: false,
-    reservadoNoPanteon: false,
-    saleBlocked: false,
-    saleStatusId: DISPONIVEL,
-    ...parcial,
-  };
-}
+// O telão não decide situação desde 18/09/2026 (Lucas: *"esses status tem que morar em um so
+// lugar"*): ela vem de lib/hercules/situacao-da-unidade.ts. Estes testes só provam que a TRADUÇÃO
+// para as palavras do telão não inventa nada no caminho, e principalmente que não pinta verde o
+// que a régua única diz estar ocupado.
 
-describe("a reserva do salão ganha do C2X", () => {
-  // O ponto da inversão de 28/08: no evento, quem manda é o Panteon. O lote acabou de ser
-  // reservado no tótem e o C2X ainda não sabe — se o telão esperasse por ele, projetaria um
-  // mapa desatualizado na frente do cliente que acabou de reservar.
-  it("reserva viva no Panteon pinta reservado mesmo com o C2X dizendo disponível", () => {
-    expect(
-      situacaoDoLote(
-        sinais({ reservadoNoPanteon: true, saleStatusId: DISPONIVEL }),
-      ),
-    ).toBe("reservado");
+const TODAS: readonly SituacaoDaUnidade[] = [
+  "assinatura",
+  "bloqueada",
+  "contrato",
+  "disponivel",
+  "faturado",
+  "proposta",
+  "reservada",
+  "reservado",
+  "vendida",
+];
+
+describe("a palavra do telão para a situação da régua única", () => {
+  it("só disponível é livre: nenhuma outra situação vira verde", () => {
+    for (const s of TODAS) {
+      expect(situacaoNoTelao(s) === "disponivel").toBe(s === "disponivel");
+    }
   });
 
-  it("mas não ressuscita lote vendido", () => {
-    expect(situacaoDoLote(sinais({ saleStatusId: VENDIDO }))).toBe("vendido");
-  });
-});
-
-describe("traduz os status do C2X", () => {
-  it("disponível", () => {
-    expect(situacaoDoLote(sinais({ saleStatusId: DISPONIVEL }))).toBe(
-      "disponivel",
-    );
+  it("reserva viva (do Hércules ou do salão) e reservada no cadastro são reservado", () => {
+    expect(situacaoNoTelao("reservado")).toBe("reservado");
+    expect(situacaoNoTelao("reservada")).toBe("reservado");
   });
 
-  it("vendido", () => {
-    expect(situacaoDoLote(sinais({ saleStatusId: VENDIDO }))).toBe("vendido");
+  it("proposta, contrato, assinatura e faturado contam como vendido, como nos cards do Apolo", () => {
+    for (const s of ["proposta", "contrato", "assinatura", "faturado", "vendida"] as const) {
+      expect(situacaoNoTelao(s)).toBe("vendido");
+    }
   });
 
-  // Reservado e em negociação dizem a mesma coisa para quem olha o telão: tem dono provisório.
-  it("reservado e em negociação viram a mesma cor", () => {
-    expect(situacaoDoLote(sinais({ saleStatusId: RESERVADO }))).toBe(
-      "reservado",
-    );
-    expect(situacaoDoLote(sinais({ saleStatusId: EM_NEGOCIACAO }))).toBe(
-      "reservado",
-    );
-  });
-
-  it("pedido de aquisição aberto também é dono provisório", () => {
-    expect(
-      situacaoDoLote(sinais({ arAberta: true, saleStatusId: DISPONIVEL })),
-    ).toBe("reservado");
-  });
-});
-
-describe("bloqueado não é reserva de cliente", () => {
-  // ⚠️ Cinza, não amarelo: o salão lê amarelo como "alguém pegou" e cria disputa por um lote
-  // que nunca esteve à venda (permuta, área institucional, lote com pendência).
-  it("sale_blocked fica indisponível", () => {
-    expect(situacaoDoLote(sinais({ saleBlocked: true }))).toBe("indisponivel");
-  });
-
-  it("status 5 fica indisponível", () => {
-    expect(situacaoDoLote(sinais({ saleStatusId: BLOQUEADO }))).toBe(
-      "indisponivel",
-    );
-  });
-
-  it("mas a reserva do evento ainda ganha dele", () => {
-    expect(
-      situacaoDoLote(sinais({ reservadoNoPanteon: true, saleBlocked: true })),
-    ).toBe("reservado");
-  });
-});
-
-describe("na dúvida, nunca anuncia disponível", () => {
-  // Anunciar disponível um lote que não está é o erro caro desta tela: dois clientes disputando
-  // o mesmo lote no salão. Um status que ninguém conhece some do mapa em vez de virar verde.
-  it("status desconhecido não vira verde", () => {
-    expect(situacaoDoLote(sinais({ saleStatusId: 99 }))).toBe("indisponivel");
-  });
-
-  it("lote sem status também não", () => {
-    expect(situacaoDoLote(sinais({ saleStatusId: null }))).toBe("indisponivel");
+  // ⚠️ O bloqueio do coordenador vive só no Panteon; a régua antiga do telão, que lia o C2X, não
+  // o via e pintava o lote de verde.
+  it("bloqueada no Panteon fica indisponível", () => {
+    expect(situacaoNoTelao("bloqueada")).toBe("indisponivel");
   });
 });
 

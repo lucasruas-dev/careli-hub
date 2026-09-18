@@ -620,3 +620,98 @@ describe("vocabularioDoEstoque", () => {
     expect(vocabularioDoEstoque(["loteamento"]).busca).toBe("Buscar quadra, lote ou código");
   });
 });
+
+// ── A SITUAÇÃO VINDA DA RÉGUA ÚNICA ─────────────────────────────────────────
+// Lucas (18/09/2026): *"esses status tem que morar em um so lugar"*. Com `situacaoPorUnidade`, a
+// grade e o estoque pintam pela régua de `situacao-da-unidade.ts` (o terreno inteiro, a reserva do
+// Hércules e a do evento), e a conta local não roda. O funil e a lista continuam das propostas.
+
+describe("agregarFluxo com a situação da régua única", () => {
+  it("⚠️ a régua manda na grade, mesmo contra o cadastro e as propostas da linha", () => {
+    // O caso que motivou a mudança: lote livre no cadastro, sem proposta nesta linha, mas reservado
+    // no evento de lançamento (ou com proposta na linha antiga do terreno). A conta local dizia
+    // "disponível"; a régua diz o que o Apolo também vai dizer.
+    const r = agregarFluxo({
+      propostas: [proposta({ etapa: "faturado", unidade_id: "u-2" })],
+      situacaoPorUnidade: new Map([
+        ["u-1", "reservado"],
+        ["u-2", "contrato"],
+        ["u-3", "disponivel"],
+      ]),
+      unidades: [
+        unidade({ codigo: "Q01 L01", id: "u-1", lote: "01", preco_tabela: 100, situacao: "disponivel" }),
+        unidade({ codigo: "Q01 L02", id: "u-2", lote: "02", preco_tabela: 200, situacao: "vendida" }),
+        unidade({ codigo: "Q01 L03", id: "u-3", lote: "03", preco_tabela: 300, situacao: "disponivel" }),
+      ],
+    });
+
+    expect(r.mapa[0]?.unidades.map((u) => u.etapa)).toEqual(["reservado", "contrato", "disponivel"]);
+    // O dado cru continua indo junto, para quem precisar dele.
+    expect(r.mapa[0]?.unidades.map((u) => u.situacao)).toEqual(["disponivel", "vendida", "disponivel"]);
+    expect(r.totais.estoque).toEqual({ contrato: 1, disponivel: 1, reservado: 1 });
+    // O passo `disponivel` da faixa é contado pelas unidades: só a livre pela régua entra.
+    expect(r.fluxo.find((f) => f.etapa === "disponivel")).toEqual({ etapa: "disponivel", quantidade: 1, vgv: 300 });
+  });
+
+  it("o funil, a lista e o VGV continuam saindo das propostas", () => {
+    const r = agregarFluxo({
+      propostas: [proposta({ etapa: "faturado", unidade_id: "u-2", valor: 500 })],
+      situacaoPorUnidade: new Map([["u-2", "contrato"]]),
+      unidades: [unidade({ codigo: "Q01 L02", id: "u-2", situacao: "vendida" })],
+    });
+
+    expect(r.fluxo.find((f) => f.etapa === "faturado")).toEqual({ etapa: "faturado", quantidade: 1, vgv: 500 });
+    expect(r.fluxo.find((f) => f.etapa === "contrato")?.quantidade).toBe(0);
+    expect(r.lista.map((l) => l.etapa)).toEqual(["faturado"]);
+    expect(r.totais.vgvFaturado).toBe(500);
+  });
+
+  it("⚠️ unidade que a régua não trouxe NUNCA vira livre", () => {
+    // Só acontece numa corrida (a unidade nasceu entre as duas leituras). Na dúvida, fora da oferta.
+    const r = agregarFluxo({
+      propostas: [],
+      situacaoPorUnidade: new Map(),
+      unidades: [unidade({ codigo: "Q01 L01", id: "u-nova", situacao: "disponivel" })],
+    });
+
+    expect(r.mapa[0]?.unidades[0]?.etapa).toBe("bloqueada");
+    expect(r.fluxo.find((f) => f.etapa === "disponivel")?.quantidade).toBe(0);
+  });
+
+  it("sem o mapa, a conta de sempre (quem ainda não passa a situação não muda)", () => {
+    const r = agregarFluxo({
+      propostas: [proposta({ etapa: "contrato", unidade_id: "u-9" })],
+      unidades: [unidade({ codigo: "Q01 L01", id: "u-9", situacao: "vendida" })],
+    });
+    expect(r.mapa[0]?.unidades[0]?.etapa).toBe("contrato");
+  });
+});
+
+describe("estoquePorEmpreendimento com a situação da régua única", () => {
+  const u = (id: string, situacao: string): UnidadeDoMapa => ({
+    codigo: `U${id}`,
+    enterprise_id: "39",
+    id,
+    lote: null,
+    preco_tabela: 100,
+    quadra: null,
+    situacao,
+  });
+
+  it("a régua decide o balde, e a unidade ausente dela não conta como livre", () => {
+    const estoque = estoquePorEmpreendimento({
+      propostas: [],
+      situacaoPorUnidade: new Map([
+        ["1", "reservado"],
+        ["2", "assinatura"],
+        ["3", "disponivel"],
+      ]),
+      unidades: [u("1", "disponivel"), u("2", "disponivel"), u("3", "disponivel"), u("4", "disponivel")],
+    });
+
+    expect(estoque.get("39")?.reservado.units).toBe(1);
+    expect(estoque.get("39")?.negociacao.units).toBe(1);
+    expect(estoque.get("39")?.disponivel.units).toBe(1);
+    expect(estoque.get("39")?.bloqueado.units).toBe(1);
+  });
+});

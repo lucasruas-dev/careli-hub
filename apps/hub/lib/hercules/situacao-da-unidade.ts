@@ -29,10 +29,10 @@ import { type EtapaDoEspelho, type EtapaDoFluxo, ETAPAS_DO_FLUXO } from "./fluxo
 //      vendido está livre é convidar a segunda venda.
 //
 // ⚠️ A PERGUNTA É PELO TERRENO, E NÃO PELA LINHA. Nos produtos divididos (Lagoa Bonita, Vale do
-// Ouro) o mesmo lote tem DUAS linhas: a viva, da gleba, e a antiga, do pai, que aponta para ela por
-// `espelho_de`. A reserva pode ter nascido na linha do pai e a proposta na da gleba (medido em
-// 14/09/2026: VOC0305 livre na viva, VLO0305 reservado na antiga). Olhando uma linha só, a mesma
-// unidade tem duas respostas.
+// Ouro) o mesmo lote tem mais de uma linha: a antiga, do pai, que aponta para a viva por
+// `espelho_de`, e às vezes DUAS vivas, quando o lote migrou de gleba (VOC e VOR). A reserva pode ter
+// nascido numa linha e a proposta em outra; olhando uma linha só, a mesma unidade tem duas respostas.
+// Ver "A FAMÍLIA DO PAI" na leitura.
 //
 // ⚠️ NENHUMA LEITURA DO C2X AQUI, e é de propósito. O dado do legado entra no Panteon por sync
 // (decisão do Lucas); a situação que as telas mostram é a do Panteon.
@@ -101,26 +101,45 @@ export function rotuloDaSituacao(situacao: SituacaoDaUnidade): string {
 }
 
 /**
- * A situação em quatro baldes, para telas que só distinguem livre, reservado, vendido e bloqueado
- * (a aba Unidades do Apolo, os cards de estoque).
+ * A situação em cinco baldes, para telas que agrupam (os cards de estoque, a aba Unidades do Apolo,
+ * o filtro por situação).
  *
- * ⚠️ PROPOSTA, CONTRATO E ASSINATURA CONTAM COMO VENDIDO, E NÃO COMO LIVRE. É o mesmo agrupamento
- * que o Apolo sempre fez com o "em negociação" do legado — só que agora a partir do Panteon.
+ * ⚠️ UM AGRUPAMENTO SÓ PARA TODAS AS TELAS. Na primeira passada da migração o Apolo punha proposta,
+ * contrato e assinatura em "Vendido" e os cards do Hércules punham os mesmos casos em "Em
+ * negociação": o mesmo lote com dois nomes, que é a queixa do Lucas em outra roupa. Daqui em
+ * diante: proposta, contrato e assinatura são NEGOCIAÇÃO; faturado e vendida sem proposta, VENDIDO.
  */
-export function baldeDaSituacao(
-  situacao: SituacaoDaUnidade,
-): "bloqueado" | "disponivel" | "reservado" | "vendido" {
+export type BaldeDaSituacao = "bloqueado" | "disponivel" | "negociacao" | "reservado" | "vendido";
+
+export function baldeDaSituacao(situacao: SituacaoDaUnidade): BaldeDaSituacao {
   switch (situacao) {
     case "disponivel":
       return "disponivel";
     case "reservado":
     case "reservada":
       return "reservado";
+    case "proposta":
+    case "contrato":
+    case "assinatura":
+      return "negociacao";
     case "bloqueada":
       return "bloqueado";
     default:
       return "vendido";
   }
+}
+
+const ROTULO_DO_BALDE: Record<BaldeDaSituacao, string> = {
+  bloqueado: "Bloqueado",
+  disponivel: "Disponível",
+  negociacao: "Em negociação",
+  reservado: "Reservado",
+  vendido: "Vendido",
+};
+
+/** O nome do balde, o mesmo em toda tela. */
+export function rotuloDoBalde(balde: BaldeDaSituacao): string {
+  return ROTULO_DO_BALDE[balde];
 }
 
 // ── A LEITURA ───────────────────────────────────────────────────────────────
@@ -144,13 +163,44 @@ export type SituacaoDasUnidades = {
   porCodigo: Map<string, UnidadeComSituacao>;
   /** Pelo id do legado de qualquer linha do terreno. */
   porOrigemC2x: Map<string, UnidadeComSituacao>;
+  /**
+   * Todas as linhas, ids do legado e códigos do TERRENO de uma linha qualquer. É o que a trava de
+   * venda (`trava-do-lote.ts`) usa para procurar outro dono em qualquer uma delas.
+   * `undefined` quando a linha não foi lida.
+   */
+  terreno: (linhaId: string) => undefined | { codigos: string[]; linhas: string[]; origens: string[] };
+  /** As linhas vivas dos empreendimentos PEDIDOS (as irmãs lidas para compor o terreno ficam de fora). */
   unidades: UnidadeComSituacao[];
 };
+
+/**
+ * Acha a unidade pela chave que a tela tiver, NESTA ORDEM: id da linha no Panteon, id do legado,
+ * código. Uma ordem só para todas as telas: na primeira passada o masterplan procurava primeiro pelo
+ * código e o Apolo primeiro pelo id do legado, e um nome no C2X diferente do código da carga fazia as
+ * duas acharem linhas diferentes para o mesmo lote.
+ *
+ * `undefined` quando nenhuma chave casa: a tela decide o que mostrar, e o conservador é ocupado.
+ */
+export function acharUnidade(
+  situacoes: SituacaoDasUnidades,
+  chaves: { codigo?: null | string; linhaId?: null | string; origemC2x?: null | number | string },
+): undefined | UnidadeComSituacao {
+  const linha = chaves.linhaId ? situacoes.porLinha.get(String(chaves.linhaId)) : undefined;
+  if (linha) return linha;
+  const origem =
+    chaves.origemC2x !== null && chaves.origemC2x !== undefined && String(chaves.origemC2x).trim()
+      ? situacoes.porOrigemC2x.get(String(chaves.origemC2x).trim())
+      : undefined;
+  if (origem) return origem;
+  const codigo = String(chaves.codigo ?? "").trim().toUpperCase();
+  return codigo ? situacoes.porCodigo.get(codigo) : undefined;
+}
 
 const PAGINA = 1000;
 const LOTE_DO_IN = 100;
 
 type LinhaDaUnidade = {
+  atualizado_em?: null | string;
   codigo: string;
   enterprise_id: number | string;
   espelho_de: null | string;
@@ -191,8 +241,7 @@ async function emBlocos<T>(
  * A situação de todas as unidades dos empreendimentos pedidos, pela régua única.
  *
  * `enterpriseIds` são os ids do C2X que `hercules_unidades.enterprise_id` guarda ("35", "37"...).
- * Pedir o PAI traz as linhas dele; pedir a GLEBA traz as dela — e, nos dois casos, o terreno inteiro
- * entra na conta, porque as linhas que apontam umas para as outras são lidas juntas.
+ * Pedir o PAI ou só uma GLEBA dá a mesma resposta para o mesmo lote: o terreno inteiro entra na conta.
  *
  * ⚠️ FALHA LANÇA. Situação é o que decide se um lote aparece verde para o cliente: devolver um mapa
  * pela metade pintaria de livre o que não se conseguiu ler.
@@ -205,63 +254,127 @@ export async function lerSituacaoDasUnidades(
     porCodigo: new Map(),
     porLinha: new Map(),
     porOrigemC2x: new Map(),
+    terreno: () => undefined,
     unidades: [],
   };
   const pedidos = [...new Set(enterpriseIds.map((id) => String(id).trim()).filter(Boolean))];
   if (pedidos.length === 0) return vazio;
+  const pedido = new Set(pedidos);
 
-  const colunas = "id,codigo,quadra,lote,situacao,enterprise_id,espelho_de,origem_c2x_id";
+  const colunas = "id,codigo,quadra,lote,situacao,enterprise_id,espelho_de,origem_c2x_id,atualizado_em";
 
-  const doPedido = await emPaginas<LinhaDaUnidade>((de, ate) =>
-    client
-      .from("hercules_unidades")
-      .select(colunas)
-      .eq("workspace_id", "careli")
-      .in("enterprise_id", pedidos)
-      .order("id")
-      .range(de, ate),
-  );
+  // ⚠️ AS LINHAS ANTIGAS (DO PAI) VÊM NUMA LEITURA SÓ, E NÃO EM BLOCOS. São ~700 no banco inteiro
+  // (as que têm `espelho_de`): uma página. Em blocos de 100 ids eram quarenta idas ao banco quando a
+  // tela pede todos os produtos, e a primeira versão deste arquivo levou 35 s por isso.
+  const [doPedido, antigas] = await Promise.all([
+    emPaginas<LinhaDaUnidade>((de, ate) =>
+      client
+        .from("hercules_unidades")
+        .select(colunas)
+        .eq("workspace_id", "careli")
+        .in("enterprise_id", pedidos)
+        .order("id")
+        .range(de, ate),
+    ),
+    emPaginas<LinhaDaUnidade>((de, ate) =>
+      client
+        .from("hercules_unidades")
+        .select(colunas)
+        .eq("workspace_id", "careli")
+        .not("espelho_de", "is", null)
+        .order("id")
+        .range(de, ate),
+    ),
+  ]);
 
-  // O terreno completo: as linhas pedidas, as vivas para onde elas apontam e as antigas que apontam
-  // para as vivas. Sem isto, pedir o pai (VLO) ou só a gleba (VOC) daria respostas diferentes.
-  //
-  // ⚠️ AS LINHAS ANTIGAS VÊM NUMA LEITURA SÓ, E NÃO EM BLOCOS. São ~700 no banco inteiro (as que têm
-  // `espelho_de`): lê-las todas é uma página; procurá-las em blocos de 100 ids da gleba eram
-  // quarenta idas ao banco quando a tela pede todos os produtos — e a primeira versão deste arquivo
-  // levou 35 segundos para responder os cards de Produtos por causa disso.
   const porId = new Map(doPedido.map((l) => [l.id, l]));
-  const antigas = await emPaginas<LinhaDaUnidade>((de, ate) =>
-    client
-      .from("hercules_unidades")
-      .select(colunas)
-      .eq("workspace_id", "careli")
-      .not("espelho_de", "is", null)
-      .order("id")
-      .range(de, ate),
-  );
-  for (const l of antigas) {
-    if (l.espelho_de && porId.has(l.espelho_de)) porId.set(l.id, l);
+
+  // ── A FAMÍLIA DO PAI ──
+  //
+  // ⚠️ O TERRENO NÃO É SÓ "A LINHA DO PAI E A VIVA PARA ONDE ELA APONTA". Quando um lote migra de
+  // gleba (medido em 18/09/2026: 12-06, 13-01, 13-02 e 14-01 do Vale do Ouro existem na VOC E na
+  // VOR), o pai aponta para UMA das duas, e a outra linha viva fica solta com o processo dela.
+  // Olhando só o `espelho_de`, a gleba sem processo sairia livre com a irmã em contrato. Por isso o
+  // terreno é (empreendimento pai, quadra, lote), e toda linha viva de uma gleba FILHA daquele pai
+  // com a mesma quadra e lote entra nele.
+  //
+  // ⚠️ SÓ QUANDO O PAI TEM A LINHA. No Rio de Pedras as glebas RDP e RPC repetem a numeração em
+  // áreas diferentes e o pai não tem unidade nenhuma: lá não há terreno comum, e agrupar pela quadra
+  // juntaria lotes distintos.
+  const paisDaFamilia = new Set<string>();
+  for (const a of antigas) {
+    if (pedido.has(String(a.enterprise_id)) || (a.espelho_de && porId.has(a.espelho_de))) {
+      paisDaFamilia.add(String(a.enterprise_id));
+    }
   }
-  const faltaViva = [
-    ...new Set(doPedido.map((l) => l.espelho_de).filter((id): id is string => Boolean(id) && !porId.has(id!))),
+  const antigasDaFamilia = antigas.filter((a) => paisDaFamilia.has(String(a.enterprise_id)));
+
+  const faltando = [
+    ...new Set(
+      antigasDaFamilia
+        .map((a) => a.espelho_de)
+        .filter((id): id is string => Boolean(id) && !porId.has(id as string)),
+    ),
   ];
-  for (const l of await emBlocos<LinhaDaUnidade>(faltaViva, (bloco) =>
+  for (const l of await emBlocos<LinhaDaUnidade>(faltando, (bloco) =>
     client.from("hercules_unidades").select(colunas).in("id", bloco),
   )) {
     porId.set(l.id, l);
   }
-  // A viva que entrou agora traz as antigas dela junto.
-  for (const l of antigas) {
-    if (l.espelho_de && porId.has(l.espelho_de)) porId.set(l.id, l);
+  for (const a of antigasDaFamilia) porId.set(a.id, a);
+
+  // As glebas filhas de cada pai, deduzidas de para onde as linhas do pai apontam.
+  const filhasDoPai = new Map<string, Set<string>>();
+  for (const a of antigasDaFamilia) {
+    const alvo = a.espelho_de ? porId.get(a.espelho_de) : undefined;
+    if (!alvo) continue;
+    const filhas = filhasDoPai.get(String(a.enterprise_id)) ?? new Set<string>();
+    filhas.add(String(alvo.enterprise_id));
+    filhasDoPai.set(String(a.enterprise_id), filhas);
   }
 
-  const linhasDoTerreno = new Set(porId.keys());
+  // As irmãs soltas também precisam estar lidas: pedir só a VOC não pode ignorar a VOR.
+  const glebasFaltando = [...new Set([...filhasDoPai.values()].flatMap((f) => [...f]))].filter(
+    (ent) => !pedido.has(ent),
+  );
+  if (glebasFaltando.length > 0) {
+    const irmas = await emPaginas<LinhaDaUnidade>((de, ate) =>
+      client
+        .from("hercules_unidades")
+        .select(colunas)
+        .eq("workspace_id", "careli")
+        .in("enterprise_id", glebasFaltando)
+        .is("espelho_de", null)
+        .order("id")
+        .range(de, ate),
+    );
+    for (const l of irmas) if (!porId.has(l.id)) porId.set(l.id, l);
+  }
 
-  // ⚠️ PROCESSO LIDO INTEIRO E FILTRADO EM MEMÓRIA. As propostas vivas do banco inteiro são poucas
-  // páginas; as reservas do Hércules e do evento, poucas dezenas de linhas. `.in()` com milhares de
-  // ids seria a URL estourando ou dezenas de idas ao banco.
-  const propostas = (
-    await emPaginas<{
+  // ── Os terrenos: cada linha cai num grupo ──
+  const chaveDoLote = (ent: string, quadra: null | string, lote: null | string) =>
+    `${ent}|${String(quadra ?? "").trim().toUpperCase()}|${String(lote ?? "").trim().toUpperCase()}`;
+  const grupoDe = new Map<string, string>();
+  const terrenoPorLote = new Map<string, string>();
+  for (const a of antigasDaFamilia) {
+    const chave = `pai:${a.id}`;
+    grupoDe.set(a.id, chave);
+    if (a.espelho_de) grupoDe.set(a.espelho_de, chave);
+    for (const filha of filhasDoPai.get(String(a.enterprise_id)) ?? []) {
+      terrenoPorLote.set(chaveDoLote(filha, a.quadra, a.lote), chave);
+    }
+  }
+  for (const l of porId.values()) {
+    if (l.espelho_de || grupoDe.has(l.id)) continue;
+    const doLote = terrenoPorLote.get(chaveDoLote(String(l.enterprise_id), l.quadra, l.lote));
+    grupoDe.set(l.id, doLote ?? `linha:${l.id}`);
+  }
+
+  // ⚠️ PROCESSO LIDO INTEIRO E FILTRADO EM MEMÓRIA, E EM PARALELO. As propostas vivas do banco são
+  // poucas páginas; as reservas, poucas dezenas de linhas. `.in()` com milhares de ids seria a URL
+  // estourando ou dezenas de idas ao banco.
+  const [propostasTodas, reservasTodas, reservasDoEvento] = await Promise.all([
+    emPaginas<{
       criado_em_c2x: null | string;
       etapa: string;
       etapa_desde: null | string;
@@ -274,69 +387,102 @@ export async function lerSituacaoDasUnidades(
         .in("etapa", [...ETAPAS_DO_FLUXO])
         .order("id")
         .range(de, ate),
-    )
-  ).filter((p): p is typeof p & { unidade_id: string } => Boolean(p.unidade_id) && linhasDoTerreno.has(p.unidade_id!));
-
-  const reservasDoHercules = (
-    await emPaginas<{ unidade_id: null | string }>((de, ate) =>
+    ),
+    // ⚠️ TODAS AS RESERVAS, NÃO SÓ AS VIVAS: é daqui que sai quais cupons do salão já pertencem a
+    // uma reserva do Hércules. Esses cupons não contam sozinhos — quem manda é a reserva do Hércules,
+    // viva ou cancelada. Sem isto, cancelar a reserva na Venda deixaria o lote preso pelo cupom.
+    emPaginas<{ prometeu_reserva_id: null | string; situacao: string; unidade_id: null | string }>((de, ate) =>
       client
         .from("hercules_reservas")
-        .select("unidade_id")
+        .select("unidade_id,situacao,prometeu_reserva_id")
         .eq("workspace_id", "careli")
-        .eq("situacao", "ativa")
         .order("id")
         .range(de, ate),
-    )
-  ).filter((r): r is { unidade_id: string } => Boolean(r.unidade_id) && linhasDoTerreno.has(r.unidade_id!));
+    ),
+    emPaginas<{ codigo: null | string; id: string; unidade_c2x_id: null | number | string }>((de, ate) =>
+      client
+        .from("prometeu_reservas")
+        .select("id,unidade_c2x_id,codigo")
+        .eq("situacao", "reservada")
+        .order("id")
+        .range(de, ate),
+    ),
+  ]);
 
-  const reservasDoEvento = await emPaginas<{ unidade_c2x_id: null | number | string }>((de, ate) =>
-    client
-      .from("prometeu_reservas")
-      .select("unidade_c2x_id")
-      .eq("situacao", "reservada")
-      .order("id")
-      .range(de, ate),
-  );
-
-  // ── Cada linha aponta para a viva do seu terreno ──
-  const vivaDe = (l: LinhaDaUnidade): LinhaDaUnidade => (l.espelho_de ? porId.get(l.espelho_de) ?? l : l);
-
-  const propostasPorViva = new Map<string, Array<{ desde: string; etapa: string }>>();
-  for (const p of propostas) {
-    const linha = porId.get(p.unidade_id);
-    if (!linha) continue;
-    const viva = vivaDe(linha).id;
-    const lista = propostasPorViva.get(viva) ?? [];
+  const propostasPorGrupo = new Map<string, Array<{ desde: string; etapa: string }>>();
+  for (const p of propostasTodas) {
+    const grupo = p.unidade_id ? grupoDe.get(p.unidade_id) : undefined;
+    if (!grupo) continue;
+    const lista = propostasPorGrupo.get(grupo) ?? [];
     lista.push({ desde: String(p.etapa_desde ?? p.criado_em_c2x ?? ""), etapa: p.etapa });
-    propostasPorViva.set(viva, lista);
+    propostasPorGrupo.set(grupo, lista);
   }
 
-  const reservadas = new Set<string>();
-  for (const r of reservasDoHercules) {
-    const linha = porId.get(r.unidade_id);
-    if (linha) reservadas.add(vivaDe(linha).id);
+  const gruposReservados = new Set<string>();
+  const cuponsNoHercules = new Set<string>();
+  for (const r of reservasTodas) {
+    if (r.prometeu_reserva_id) cuponsNoHercules.add(r.prometeu_reserva_id);
+    if (r.situacao !== "ativa") continue;
+    const grupo = r.unidade_id ? grupoDe.get(r.unidade_id) : undefined;
+    if (grupo) gruposReservados.add(grupo);
   }
+
+  // A reserva do salão casa pelo id do legado e, sem ele, pelo código gravado nela.
   const linhaPorOrigem = new Map<string, LinhaDaUnidade>();
+  const linhaPorCodigo = new Map<string, LinhaDaUnidade>();
   for (const l of porId.values()) {
     if (l.origem_c2x_id !== null && l.origem_c2x_id !== undefined) linhaPorOrigem.set(String(l.origem_c2x_id), l);
+    linhaPorCodigo.set(l.codigo.trim().toUpperCase(), l);
   }
   for (const r of reservasDoEvento) {
-    if (r.unidade_c2x_id === null || r.unidade_c2x_id === undefined) continue;
-    const linha = linhaPorOrigem.get(String(r.unidade_c2x_id));
-    if (linha) reservadas.add(vivaDe(linha).id);
+    if (cuponsNoHercules.has(r.id)) continue;
+    const pelaOrigem =
+      r.unidade_c2x_id !== null && r.unidade_c2x_id !== undefined
+        ? linhaPorOrigem.get(String(r.unidade_c2x_id))
+        : undefined;
+    const linha = pelaOrigem ?? (r.codigo ? linhaPorCodigo.get(r.codigo.trim().toUpperCase()) : undefined);
+    const grupo = linha ? grupoDe.get(linha.id) : undefined;
+    if (grupo) gruposReservados.add(grupo);
   }
 
-  // ── A régua, uma vez por terreno ──
+  // ── A régua, uma vez por linha viva, com o processo do terreno inteiro ──
+  const linhasPorGrupo = new Map<string, LinhaDaUnidade[]>();
+  for (const l of porId.values()) {
+    const grupo = grupoDe.get(l.id) ?? (l.espelho_de ? grupoDe.get(l.espelho_de) : undefined) ?? `linha:${l.id}`;
+    const lista = linhasPorGrupo.get(grupo) ?? [];
+    lista.push(l);
+    linhasPorGrupo.set(grupo, lista);
+  }
+
   const resultado: SituacaoDasUnidades = {
     porCodigo: new Map(),
     porLinha: new Map(),
     porOrigemC2x: new Map(),
+    terreno: (linhaId: string) => {
+      const linha = porId.get(linhaId);
+      if (!linha) return undefined;
+      const grupo =
+        grupoDe.get(linha.id) ?? (linha.espelho_de ? grupoDe.get(linha.espelho_de) : undefined) ?? `linha:${linha.id}`;
+      const linhas = linhasPorGrupo.get(grupo) ?? [linha];
+      return {
+        codigos: [...new Set(linhas.map((l) => l.codigo.trim().toUpperCase()))],
+        linhas: linhas.map((l) => l.id),
+        origens: [
+          ...new Set(
+            linhas
+              .map((l) => (l.origem_c2x_id === null || l.origem_c2x_id === undefined ? "" : String(l.origem_c2x_id)))
+              .filter(Boolean),
+          ),
+        ],
+      };
+    },
     unidades: [],
   };
   const porViva = new Map<string, UnidadeComSituacao>();
 
   for (const l of porId.values()) {
-    if (l.espelho_de && porId.has(l.espelho_de)) continue;
+    if (l.espelho_de) continue;
+    const grupo = grupoDe.get(l.id) ?? `linha:${l.id}`;
     const unidade: UnidadeComSituacao = {
       codigo: l.codigo,
       enterpriseId: String(l.enterprise_id),
@@ -346,21 +492,28 @@ export async function lerSituacaoDasUnidades(
       quadra: l.quadra,
       situacao: situacaoDoTerreno({
         cadastro: l.situacao,
-        propostasVivas: propostasPorViva.get(l.id) ?? [],
-        reservada: reservadas.has(l.id),
+        propostasVivas: propostasPorGrupo.get(grupo) ?? [],
+        reservada: gruposReservados.has(grupo),
       }),
     };
     porViva.set(l.id, unidade);
-    resultado.unidades.push(unidade);
+    if (pedido.has(String(l.enterprise_id))) resultado.unidades.push(unidade);
   }
 
-  for (const l of porId.values()) {
-    const unidade = porViva.get(vivaDe(l).id);
-    if (!unidade) continue;
-    resultado.porLinha.set(l.id, unidade);
-    resultado.porCodigo.set(l.codigo.trim().toUpperCase(), unidade);
+  // ⚠️ A LINHA VIVA GANHA DA ANTIGA NOS MAPAS, e a mais recente ganha da mais velha. Duas linhas
+  // vivas com o mesmo id do legado aparecem depois de uma carga com unidade renomeada; a atualizada
+  // por último é a que a carga reconheceu.
+  const ordenadas = [...porId.values()].sort((a, b) => {
+    if (Boolean(a.espelho_de) !== Boolean(b.espelho_de)) return a.espelho_de ? -1 : 1;
+    return String(a.atualizado_em ?? "").localeCompare(String(b.atualizado_em ?? ""));
+  });
+  for (const l of ordenadas) {
+    const viva = l.espelho_de ? porViva.get(l.espelho_de) : porViva.get(l.id);
+    if (!viva) continue;
+    resultado.porLinha.set(l.id, viva);
+    resultado.porCodigo.set(l.codigo.trim().toUpperCase(), viva);
     if (l.origem_c2x_id !== null && l.origem_c2x_id !== undefined) {
-      resultado.porOrigemC2x.set(String(l.origem_c2x_id), unidade);
+      resultado.porOrigemC2x.set(String(l.origem_c2x_id), viva);
     }
   }
 

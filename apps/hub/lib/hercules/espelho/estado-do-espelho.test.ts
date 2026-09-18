@@ -4,45 +4,81 @@ import { describe, expect, it } from "vitest";
 import { estadoDoEspelho } from "./estado-do-espelho";
 
 // O QUE ESTE TESTE PROTEGE: o espelho público de um PRÉDIO (Lucas, 16/09/2026: apartamento nunca é
-// quadra/lote) e o de um loteamento, que não pode mudar em nada por causa do prédio. O cliente é
-// falso e só responde às três leituras que o espelho faz: unidades, propostas abertas e reservas.
+// quadra/lote), o de um loteamento, e a COR, que desde 18/09/2026 vem da régua única
+// (`situacao-da-unidade.ts`): verde se e só se a unidade está livre para a tela Venda.
+//
+// O cliente é falso, mas responde de verdade às leituras dos dois lados: o cadastro do desenho
+// (`hercules_unidades` com preço e área) e a régua única (unidades, linhas antigas por `espelho_de`,
+// propostas vivas, reservas do Hércules e do evento). Filtra por `eq`, `in` e `not is null`, e
+// pagina por `range`, como o PostgREST.
 
 type Linha = Record<string, unknown>;
 
-type Respostas = {
-  /** Erro para a PRIMEIRA leitura de unidades que pedir as colunas do prédio. */
-  erroComColunasDoPredio?: { code: string; message: string };
-  propostas?: { unidade_id: string }[];
-  reservas?: { unidade_id: string }[];
-  unidades: Linha[];
+type Tabelas = {
+  hercules_propostas?: Linha[];
+  hercules_reservas?: Linha[];
+  hercules_unidades: Linha[];
+  prometeu_reservas?: Linha[];
 };
 
-function clienteFalso(respostas: Respostas) {
-  const selects: string[] = [];
+type Opcoes = {
+  /** Erro para a PRIMEIRA leitura de unidades que pedir as colunas do prédio. */
+  erroComColunasDoPredio?: { code: string; message: string };
+  /** Tabela cuja leitura falha, para provar que falha não vira verde. */
+  tabelaQueFalha?: keyof Tabelas;
+};
+
+function clienteFalso(tabelas: Tabelas, opcoes: Opcoes = {}) {
+  const selects: { colunas: string; tabela: string }[] = [];
   const client = {
-    from(tabela: string) {
+    from(tabela: keyof Tabelas) {
       return {
         select(colunas: string) {
-          if (tabela === "hercules_unidades") selects.push(colunas);
-          const responder = async (de: number) => {
-            if (tabela === "hercules_unidades") {
-              if (respostas.erroComColunasDoPredio && colunas.includes("apartamento")) {
-                return { data: null, error: respostas.erroComColunasDoPredio };
-              }
-              // Sem as colunas pedidas, a linha volta sem elas, como o PostgREST devolveria.
-              const pedidas = colunas.split(",").map((c) => c.trim());
-              const linhas = respostas.unidades.map((u) =>
-                Object.fromEntries(Object.entries(u).filter(([k]) => pedidas.includes(k))),
-              );
-              return { data: de === 0 ? linhas : [], error: null };
+          selects.push({ colunas, tabela });
+          const filtros: Array<(l: Linha) => boolean> = [];
+          let faixa: null | [number, number] = null;
+          const executar = () => {
+            if (opcoes.tabelaQueFalha === tabela) {
+              return { data: null, error: { message: `falha lendo ${tabela}` } };
             }
-            const linhas = tabela === "hercules_propostas" ? respostas.propostas : respostas.reservas;
-            return { data: de === 0 ? (linhas ?? []) : [], error: null };
+            if (
+              tabela === "hercules_unidades" &&
+              opcoes.erroComColunasDoPredio &&
+              colunas.includes("apartamento")
+            ) {
+              return { data: null, error: opcoes.erroComColunasDoPredio };
+            }
+            // Sem as colunas pedidas, a linha volta sem elas, como o PostgREST devolveria.
+            const pedidas = colunas.split(",").map((c) => c.trim());
+            let linhas = (tabelas[tabela] ?? []).filter((l) => filtros.every((f) => f(l)));
+            if (faixa) linhas = linhas.slice(faixa[0], faixa[1] + 1);
+            return {
+              data: linhas.map((l) => Object.fromEntries(Object.entries(l).filter(([k]) => pedidas.includes(k)))),
+              error: null,
+            };
           };
           const cadeia = {
-            eq: () => cadeia,
-            in: () => cadeia,
-            range: (de: number) => responder(de),
+            eq: (coluna: string, valor: unknown) => {
+              filtros.push((l) => l[coluna] === valor);
+              return cadeia;
+            },
+            in: (coluna: string, valores: readonly unknown[]) => {
+              filtros.push((l) => valores.includes(l[coluna]));
+              return cadeia;
+            },
+            not: (coluna: string, operador: string, valor: unknown) => {
+              if (operador !== "is" || valor !== null) throw new Error("filtro não previsto no falso");
+              filtros.push((l) => l[coluna] !== null && l[coluna] !== undefined);
+              return cadeia;
+            },
+            order: () => cadeia,
+            range: (de: number, ate: number) => {
+              faixa = [de, ate];
+              return Promise.resolve(executar());
+            },
+            // A leitura em blocos da régua única espera a consulta sem `range`.
+            then: <T>(resolver: (valor: ReturnType<typeof executar>) => T, rejeitar?: (motivo: unknown) => T) =>
+              Promise.resolve(executar()).then(resolver, rejeitar),
           };
           return cadeia;
         },
@@ -52,38 +88,67 @@ function clienteFalso(respostas: Respostas) {
   return { client: client as unknown as SupabaseClient, selects };
 }
 
+/** Só as leituras do cadastro do desenho (as que trazem preço), e não as da régua única. */
+const doDesenho = (selects: { colunas: string; tabela: string }[]) =>
+  selects.filter((s) => s.tabela === "hercules_unidades" && s.colunas.includes("preco_tabela"));
+
 const lote = (u: Linha): Linha => ({
   area: "300.00",
   codigo: "VOC0105",
   enterprise_id: "37",
-  id: String(u.codigo ?? "VOC0105"),
+  espelho_de: null,
   lote: "05",
+  origem_c2x_id: null,
   preco_tabela: "150000.00",
   quadra: "01",
   situacao: "disponivel",
+  workspace_id: "careli",
   ...u,
+  id: String(u.id ?? u.codigo ?? "VOC0105"),
 });
 
 const apto = (u: Linha): Linha => ({
   andar: null,
   area: "68.45",
   enterprise_id: "100001",
+  espelho_de: null,
   lote: null,
+  origem_c2x_id: null,
   preco_tabela: "480000.00",
   quadra: null,
   situacao: "disponivel",
   tipologia: null,
   torre: null,
   vagas: null,
+  workspace_id: "careli",
   ...u,
   id: String(u.codigo),
+});
+
+const proposta = (unidadeId: string, etapa: string, extra: Linha = {}): Linha => ({
+  aberta: true,
+  criado_em_c2x: "2026-09-01T12:00:00Z",
+  etapa,
+  etapa_desde: "2026-09-10T12:00:00Z",
+  id: `P-${unidadeId}-${etapa}`,
+  unidade_id: unidadeId,
+  workspace_id: "careli",
+  ...extra,
+});
+
+const reserva = (unidadeId: string, situacao: string): Linha => ({
+  id: `R-${unidadeId}-${situacao}`,
+  situacao,
+  unidade_id: unidadeId,
+  workspace_id: "careli",
 });
 
 describe("estadoDoEspelho: loteamento continua igual", () => {
   it("pai e filho viram um lote só, com o código do pai, e o rótulo de quadra e lote", async () => {
     const { client } = clienteFalso({
-      unidades: [
-        lote({ codigo: "VLO0105", enterprise_id: "1", situacao: "vendida" }),
+      hercules_unidades: [
+        // A linha antiga do pai aponta para a viva da gleba (migration 0161).
+        lote({ codigo: "VLO0105", enterprise_id: "1", espelho_de: "VOC0105", situacao: "vendida" }),
         lote({ codigo: "VOC0105", enterprise_id: "37" }),
         lote({ codigo: "VOC0210", enterprise_id: "37", lote: "10", quadra: "02" }),
         lote({ codigo: "VOC0102", enterprise_id: "37", lote: "02", quadra: "01" }),
@@ -96,7 +161,7 @@ describe("estadoDoEspelho: loteamento continua igual", () => {
     });
 
     expect(estado.lotes.map((l) => l.codigo)).toEqual(["VOC0102", "VLO0105", "VOC0210"]);
-    // Quem vende é o filho: o pai parado dizendo "vendida" não esconde o lote.
+    // Quem vende é a gleba: o pai parado dizendo "vendida" não esconde o lote.
     expect(estado.contagem).toEqual({ disponivel: 3, indisponivel: 0 });
     expect(estado.lotes[1]).toMatchObject({
       andar: null,
@@ -115,18 +180,162 @@ describe("estadoDoEspelho: loteamento continua igual", () => {
 
   it("lote sem quadra cai no grupo 'Sem quadra', o mesmo que a grade pública já usava", async () => {
     const { client } = clienteFalso({
-      unidades: [lote({ codigo: "AVULSA", lote: null, quadra: null })],
+      hercules_unidades: [lote({ codigo: "AVULSA", lote: null, quadra: null })],
     });
     const estado = await estadoDoEspelho(client, { enterpriseIdDoPai: null, enterpriseIdsDosFilhos: ["37"] });
     expect(estado.lotes[0]).toMatchObject({ grupo: "Sem quadra", numero: "", rotulo: "AVULSA" });
   });
 });
 
+// ⚠️ O PEDIDO DO LUCAS, 18/09/2026: *"tem unidades que estão com reserva, proposta no hercules, que
+// dentro de unidade do apolo não estão com o mesmo status"*. O espelho público era uma das réguas
+// que discordavam. Estes casos provam que ele pinta pelo que a tela Venda enxerga.
+describe("estadoDoEspelho: a cor vem da régua única", () => {
+  const vale = (extra: Partial<Tabelas> = {}): Tabelas => ({
+    hercules_unidades: [
+      lote({
+        codigo: "VLO0305",
+        enterprise_id: "35",
+        espelho_de: "VOC0305",
+        lote: "05",
+        quadra: "03",
+        situacao: "vendida",
+      }),
+      lote({ codigo: "VOC0305", enterprise_id: "37", lote: "05", quadra: "03" }),
+    ],
+    ...extra,
+  });
+  const abrir = (tabelas: Tabelas, filhos: string[] = ["37"]) =>
+    estadoDoEspelho(clienteFalso(tabelas).client, { enterpriseIdDoPai: "35", enterpriseIdsDosFilhos: filhos });
+
+  it("sem processo, o lote do desenho sai verde com o código do pai", async () => {
+    const estado = await abrir(vale());
+    expect(estado.lotes).toHaveLength(1);
+    expect(estado.lotes[0]).toMatchObject({ codigo: "VLO0305", situacao: "disponivel" });
+  });
+
+  // ⚠️ O DEFEITO QUE MOTIVOU A TROCA: a régua antiga procurava `situacao = 'reservada'`, e a reserva
+  // viva do Hércules é `ativa`. Reserva nenhuma do Hércules pintava o lote de azul.
+  it("reserva ATIVA do Hércules na gleba: azul", async () => {
+    const estado = await abrir(vale({ hercules_reservas: [reserva("VOC0305", "ativa")] }));
+    expect(estado.lotes[0]?.situacao).toBe("indisponivel");
+  });
+
+  it("reserva nascida na linha antiga do pai trava o terreno inteiro", async () => {
+    const estado = await abrir(vale({ hercules_reservas: [reserva("VLO0305", "ativa")] }));
+    expect(estado.lotes[0]?.situacao).toBe("indisponivel");
+  });
+
+  it("reserva que já não está viva não trava", async () => {
+    const estado = await abrir(
+      vale({ hercules_reservas: [reserva("VOC0305", "cancelada"), reserva("VOC0305", "expirada")] }),
+    );
+    expect(estado.lotes[0]?.situacao).toBe("disponivel");
+  });
+
+  it("reserva do evento de lançamento (Prometeu) também trava", async () => {
+    const estado = await abrir({
+      hercules_unidades: [
+        lote({ codigo: "VOC0305", enterprise_id: "37", lote: "05", origem_c2x_id: 9305, quadra: "03" }),
+      ],
+      prometeu_reservas: [{ id: "E1", situacao: "reservada", unidade_c2x_id: 9305 }],
+    });
+    expect(estado.lotes[0]?.situacao).toBe("indisponivel");
+  });
+
+  // ⚠️ O OUTRO DEFEITO: `hercules_propostas.aberta` nunca volta a falso. Proposta cancelada seguia
+  // escondendo o lote do público.
+  it("proposta morta (cancelada), mesmo com aberta = true, não trava", async () => {
+    const estado = await abrir(vale({ hercules_propostas: [proposta("VOC0305", "cancelado", { aberta: true })] }));
+    expect(estado.lotes[0]?.situacao).toBe("disponivel");
+  });
+
+  it("proposta viva em qualquer etapa do fluxo: azul, e a etapa não sai no link público", async () => {
+    for (const etapa of ["proposta", "contrato", "assinatura", "faturado"]) {
+      const estado = await abrir(vale({ hercules_propostas: [proposta("VOC0305", etapa, { aberta: false })] }));
+      expect(estado.lotes[0]?.situacao).toBe("indisponivel");
+      // ⚠️ Etapa do processo não viaja num link sem login.
+      expect(JSON.stringify(estado)).not.toContain(etapa);
+    }
+  });
+
+  it("cadastro bloqueado na gleba, sem processo: azul", async () => {
+    const estado = await abrir({
+      hercules_unidades: [
+        lote({ codigo: "VLO0305", enterprise_id: "35", espelho_de: "VOC0305", lote: "05", quadra: "03" }),
+        lote({ codigo: "VOC0305", enterprise_id: "37", lote: "05", quadra: "03", situacao: "bloqueada" }),
+      ],
+    });
+    expect(estado.lotes[0]?.situacao).toBe("indisponivel");
+  });
+
+  // ⚠️ OS LOTES QUE VOC E VOR DISPUTAM (migration 0162): o pai aponta para a carteira que vende, e a
+  // linha bloqueada da outra carteira não apaga o verde.
+  it("dois filhos no mesmo quadrado: responde a gleba para onde o pai aponta", async () => {
+    const disputa = (vor: Linha = {}): Tabelas => ({
+      hercules_unidades: [
+        lote({
+          codigo: "VLO0410",
+          enterprise_id: "35",
+          espelho_de: "VOR0410",
+          lote: "10",
+          quadra: "04",
+          situacao: "vendida",
+        }),
+        lote({ codigo: "VOC0410", enterprise_id: "37", lote: "10", quadra: "04", situacao: "bloqueada" }),
+        lote({ codigo: "VOR0410", enterprise_id: "41", lote: "10", quadra: "04", ...vor }),
+      ],
+    });
+
+    const livre = await abrir(disputa(), ["37", "41"]);
+    expect(livre.lotes).toHaveLength(1);
+    expect(livre.lotes[0]).toMatchObject({ codigo: "VLO0410", situacao: "disponivel" });
+
+    const reservado = await abrir(
+      { ...disputa(), hercules_reservas: [reserva("VOR0410", "ativa")] },
+      ["37", "41"],
+    );
+    expect(reservado.lotes[0]?.situacao).toBe("indisponivel");
+  });
+
+  // ⚠️ SEM O PONTEIRO, pai e filho no mesmo quadrado são terrenos que o Panteon não liga. Processo em
+  // qualquer um deles não pode ser apagado pelo "disponível" do outro.
+  it("pai sem ponteiro e filho com proposta viva no mesmo quadrado: azul", async () => {
+    const estado = await abrir({
+      hercules_propostas: [proposta("VOC0305", "proposta")],
+      hercules_unidades: [
+        lote({ codigo: "VLO0305", enterprise_id: "35", lote: "05", quadra: "03" }),
+        lote({ codigo: "VOC0305", enterprise_id: "37", lote: "05", quadra: "03" }),
+      ],
+    });
+    expect(estado.lotes[0]?.situacao).toBe("indisponivel");
+  });
+
+  // Linha que a régua única não conhece (aqui, de outro workspace) não recebe verde por omissão.
+  it("linha que a régua única não trouxe: azul", async () => {
+    const estado = await abrir({
+      hercules_unidades: [lote({ codigo: "VOC0305", enterprise_id: "37", workspace_id: "outro" })],
+    });
+    expect(estado.lotes[0]?.situacao).toBe("indisponivel");
+  });
+
+  // ⚠️ FAIL-CLOSED: sem conseguir ler a situação, não há mapa. A rota responde 503 e a página mostra
+  // o erro; nunca o desenho certo com as cores adivinhadas.
+  it("falha lendo o processo derruba o estado inteiro, em vez de pintar verde", async () => {
+    for (const tabela of ["hercules_propostas", "hercules_reservas", "prometeu_reservas"] as const) {
+      const { client } = clienteFalso(vale(), { tabelaQueFalha: tabela });
+      await expect(
+        estadoDoEspelho(client, { enterpriseIdDoPai: "35", enterpriseIdsDosFilhos: ["37"] }),
+      ).rejects.toThrow(`falha lendo ${tabela}`);
+    }
+  });
+});
+
 describe("estadoDoEspelho: o prédio", () => {
   it("com torre: agrupa por torre, do andar mais alto para o mais baixo, e escreve Torre e Apto", async () => {
     const { client } = clienteFalso({
-      reservas: [{ unidade_id: "JAD-A-1201" }],
-      unidades: [
+      hercules_reservas: [reserva("JAD-A-1201", "ativa")],
+      hercules_unidades: [
         apto({ andar: 1, apartamento: "101", codigo: "JAD-B-101", torre: "B" }),
         apto({ andar: 1, apartamento: "102", codigo: "JAD-A-102", torre: "A" }),
         apto({ andar: 12, apartamento: "1202", codigo: "JAD-A-1202", torre: "A", vagas: 2 }),
@@ -166,10 +375,10 @@ describe("estadoDoEspelho: o prédio", () => {
 
   it("sem torre (torre única): grupo Unidades e só o apartamento", async () => {
     const { client } = clienteFalso({
-      unidades: [
-        apto({ andar: 3, apartamento: "304", codigo: "RUB-304" }),
-        apto({ andar: 0, apartamento: "1", codigo: "RUB-1" }),
-        apto({ andar: 3, apartamento: "303", codigo: "RUB-303", situacao: "bloqueada" }),
+      hercules_unidades: [
+        apto({ andar: 3, apartamento: "304", codigo: "RUB-304", enterprise_id: "100002" }),
+        apto({ andar: 0, apartamento: "1", codigo: "RUB-1", enterprise_id: "100002" }),
+        apto({ andar: 3, apartamento: "303", codigo: "RUB-303", enterprise_id: "100002", situacao: "bloqueada" }),
       ],
     });
 
@@ -184,8 +393,16 @@ describe("estadoDoEspelho: o prédio", () => {
 
   it("⚠️ o mesmo apartamento no pai e no filho vira um só, pela torre e pelo apartamento", async () => {
     const { client } = clienteFalso({
-      unidades: [
-        apto({ andar: 3, apartamento: "304", codigo: "GTX-A-304", enterprise_id: "100010", situacao: "vendida", torre: "A" }),
+      hercules_unidades: [
+        apto({
+          andar: 3,
+          apartamento: "304",
+          codigo: "GTX-A-304",
+          enterprise_id: "100010",
+          espelho_de: "GT1-A-304",
+          situacao: "vendida",
+          torre: "A",
+        }),
         apto({ andar: 3, apartamento: "0304", codigo: "GT1-A-304", enterprise_id: "100011", torre: "a" }),
       ],
     });
@@ -199,7 +416,7 @@ describe("estadoDoEspelho: o prédio", () => {
 
   it("produto vertical informado por quem chama, unidade sem as colunas: decompõe o código", async () => {
     const { client } = clienteFalso({
-      unidades: [apto({ codigo: "JAD-C-501" })],
+      hercules_unidades: [apto({ codigo: "JAD-C-501" })],
     });
     const estado = await estadoDoEspelho(client, {
       enterpriseIdDoPai: "100001",
@@ -212,30 +429,33 @@ describe("estadoDoEspelho: o prédio", () => {
 
 describe("estadoDoEspelho sem a migration 0171", () => {
   it("⚠️ repete a leitura sem as colunas do prédio, e o loteamento sai igual", async () => {
-    const { client, selects } = clienteFalso({
-      erroComColunasDoPredio: {
-        code: "42703",
-        message: "column hercules_unidades.andar does not exist",
+    const { client, selects } = clienteFalso(
+      { hercules_unidades: [lote({ codigo: "VOC0105" })] },
+      {
+        erroComColunasDoPredio: {
+          code: "42703",
+          message: "column hercules_unidades.andar does not exist",
+        },
       },
-      unidades: [lote({ codigo: "VOC0105" })],
-    });
+    );
 
     const estado = await estadoDoEspelho(client, { enterpriseIdDoPai: null, enterpriseIdsDosFilhos: ["37"] });
 
-    expect(selects).toHaveLength(2);
-    expect(selects[0]).toContain("apartamento");
-    expect(selects[1]).not.toContain("apartamento");
+    const leituras = doDesenho(selects);
+    expect(leituras).toHaveLength(2);
+    expect(leituras[0]?.colunas).toContain("apartamento");
+    expect(leituras[1]?.colunas).not.toContain("apartamento");
     expect(estado.lotes[0]).toMatchObject({ rotulo: "Quadra 01 · Lote 05", tipoProduto: "loteamento" });
   });
 
   it("erro que não é das colunas do prédio continua derrubando, sem repetir", async () => {
-    const { client, selects } = clienteFalso({
-      erroComColunasDoPredio: { code: "42501", message: "permission denied for table hercules_unidades" },
-      unidades: [],
-    });
+    const { client, selects } = clienteFalso(
+      { hercules_unidades: [] },
+      { erroComColunasDoPredio: { code: "42501", message: "permission denied for table hercules_unidades" } },
+    );
     await expect(
       estadoDoEspelho(client, { enterpriseIdDoPai: "37", enterpriseIdsDosFilhos: [] }),
     ).rejects.toThrow("permission denied");
-    expect(selects).toHaveLength(1);
+    expect(doDesenho(selects)).toHaveLength(1);
   });
 });
