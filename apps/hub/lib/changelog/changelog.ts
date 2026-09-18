@@ -36,6 +36,71 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-18-situacao-unica-e-um-dono-por-lote",
+    deployedAt: "2026-09-18T20:00:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Um lote, um dono.** Toda reserva, da Venda, do portal ou do tótem do salão, passa pela mesma conferência: o terreno inteiro (a linha antiga do empreendimento principal, as duas glebas, a reserva do salão, a proposta trazida do C2X) é conferido antes e depois de gravar. Se aparecer outro dono no mesmo instante, a reserva se desfaz sozinha e a tela avisa.",
+              "**Cancelar uma reserva ou proposta não devolve à venda um lote bloqueado.** Se o lote foi bloqueado enquanto a reserva estava viva, ele continua bloqueado depois do cancelamento.",
+              "**O cupom do salão cai junto** quando a reserva é cancelada na Venda.",
+              "**Se a reserva virar proposta enquanto alguém cancela, nada é cancelado**: a tela pede para recarregar e nenhum aviso de cancelamento sai.",
+            ],
+            screen: "Venda · Reserva",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Os cards de Empreendimentos, a lista de Vendas e a aba Unidades mostram a mesma situação da Venda do Hércules.** Reserva, proposta, contrato e bloqueio feitos no Panteon aparecem na hora.",
+              "**Bloquear e desbloquear a unidade direto na aba Unidades**, com o motivo. Vale na Venda do Hércules na mesma hora.",
+              "**Cinco situações em toda tela**: Disponível, Reservado, Em negociação, Vendido e Bloqueado.",
+            ],
+            screen: "Empreendimentos · Unidades",
+          },
+        ],
+      },
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "**A reserva do salão agora é uma reserva do Hércules.** O tótem só oferece lote livre na Venda, e cancelar no Prometeu cancela na Venda também. As telas do salão continuam iguais.",
+              "**O telão pinta os lotes pela mesma situação da Venda.**",
+            ],
+            screen: "Tótem e telão",
+          },
+        ],
+      },
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**Produtos, aba Unidades, Vendas, Resumo, masterplan e espelho público contam e pintam pela mesma situação.** O lote em contrato deixa de aparecer como bloqueado no masterplan.",
+            ],
+            screen: "Produtos e masterplan",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Régua única em lib/hercules/situacao-da-unidade.ts (proposta viva do terreno > reserva viva > cadastro; terreno por união pai/gleba/irmã com quadra e lote normalizados). Porta única lib/hercules/criar-reserva.ts (conferência antes e depois, terreno_chave para o índice da 0176, fallback sem a coluna). Trava lib/hercules/trava-do-lote.ts. Cancelamentos da Venda condicionais (devolverCadastroSeNaoHaOutroDono) e com o cupom junto. Bloqueio com segunda conferência (bloquear-unidade-server.ts), rota nova no Apolo. Tótem reserva via porta única; telão, masterplan, aba Unidades, cards, espelho público e portal leem a régua. Seis leitores deixam de ler a situação que não usam. Medido em produção (só leitura): 4.831 unidades, régua em 3,7 s, nenhuma reserva do Panteon com dono duplicado.",
+      motivation:
+        "Lucas, 18/09/2026: \"esses status tem que morar em um so lugar\" e \"eu não posso vender dois lotes para pessoas diferentes\". Havia três réguas (Venda pelo processo, Apolo e telão pelo C2X, espelho por `aberta`) e 108 unidades divergentes; o índice da 0125 não via o mesmo lote em linhas diferentes (VLO/VOC/VOR).",
+    },
+    title: "A situação da unidade é uma só em todo o Panteon, e o lote não se vende duas vezes",
+    type: "melhoria",
+    version: "1.350.0",
+  },
+  {
     buildTag: "2026-09-18-grupo-completo-enxerga-cad-do-grupo",
     deployedAt: "2026-09-18T17:00:00-03:00",
     modules: [
