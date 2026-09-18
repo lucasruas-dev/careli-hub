@@ -6,6 +6,7 @@ import {
   isAdminProfile,
   type HubUserScope,
 } from "@/lib/hub/access-scope";
+import { idsDosCanaisDeEmail, semOsCanaisDeEmail } from "@/lib/iris/canais-de-email";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { calcularEspera } from "../lib/espera";
 import { IRIS_CENTRAIS } from "../lib/centrais";
@@ -197,8 +198,9 @@ export async function loadIrisData({
     throw queuesResult.error;
   }
 
-  // Estrutura da empresa + vínculos das filas: alimentam o Setup e a régua.
-  const [departmentsResult, sectorsResult, scopesResult] = await Promise.all([
+  // Estrutura da empresa + vínculos das filas: alimentam o Setup e a régua. E os canais de
+  // e-mail, que a carga de tickets tira da Iris (ver lib/iris/canais-de-email.ts).
+  const [departmentsResult, sectorsResult, scopesResult, canaisDeEmailResult] = await Promise.all([
     supabase
       .from("hub_departments")
       .select("id,name")
@@ -212,7 +214,15 @@ export async function loadIrisData({
     supabase
       .from("caredesk_queue_scopes")
       .select("queue_id,department_id,sector_id"),
+    supabase.from("caredesk_channels").select("id,kind").eq("kind", "email"),
   ]);
+
+  // ⚠️ FALHA AQUI DERRUBA A CARGA, e não vira "sem canal de e-mail": lista vazia faria o filtro
+  // sumir e o e-mail voltar à Iris em silêncio.
+  if (canaisDeEmailResult.error) {
+    throw canaisDeEmailResult.error;
+  }
+  const idsDeEmail = idsDosCanaisDeEmail(canaisDeEmailResult.data as any[]);
 
   const scopesByQueue = new Map<string, IrisQueueScope[]>();
   for (const row of (scopesResult.data ?? []) as any[]) {
@@ -268,16 +278,20 @@ export async function loadIrisData({
   // comentário dizia que "o histórico busca no banco quando precisa de um antigo" — e não buscava:
   // a tela só filtrava em memória o que esta função tinha trazido. Medido naquele dia: 5.869
   // encerrados no banco, 400 aqui, e a janela real era de 32 horas.
+  // ⚠️ O E-MAIL SAIU DA IRIS (18/09/2026): os tickets dos canais de e-mail não entram na carga.
   const montarQueryTickets = () =>
-    aplicarReguaDeAcessoAosTickets(
-      supabase.from("caredesk_tickets").select(SELECT_TICKETS),
-      {
-        normalizedQueueSlugFilter,
-        operatorUserId,
-        queues,
-        scopedQueueIds,
-        viewerScope,
-      },
+    semOsCanaisDeEmail(
+      aplicarReguaDeAcessoAosTickets(
+        supabase.from("caredesk_tickets").select(SELECT_TICKETS),
+        {
+          normalizedQueueSlugFilter,
+          operatorUserId,
+          queues,
+          scopedQueueIds,
+          viewerScope,
+        },
+      ),
+      idsDeEmail,
     );
 
   const ticketsAbertosQuery = montarQueryTickets()
@@ -653,16 +667,21 @@ async function carregarTicketsSobDemanda({
   // ⚠️ O RECORTE VEM DEPOIS DA RÉGUA, NUNCA ANTES. A régua decide o que o usuário PODE ver; o
   // recorte decide o que esta busca QUER. Inverter a ordem deixaria o filtro de fila para o fim
   // e abriria a porta que `aplicarReguaDeAcessoAosTickets` existe para fechar.
+  // O e-mail fica fora também aqui (histórico anterior e tickets do contato), com os canais que
+  // esta mesma carga acabou de ler.
   const ticketsResult = await recorte(
-    aplicarReguaDeAcessoAosTickets(
-      supabase.from("caredesk_tickets").select(SELECT_TICKETS),
-      {
-        normalizedQueueSlugFilter,
-        operatorUserId,
-        queues,
-        scopedQueueIds,
-        viewerScope,
-      },
+    semOsCanaisDeEmail(
+      aplicarReguaDeAcessoAosTickets(
+        supabase.from("caredesk_tickets").select(SELECT_TICKETS),
+        {
+          normalizedQueueSlugFilter,
+          operatorUserId,
+          queues,
+          scopedQueueIds,
+          viewerScope,
+        },
+      ),
+      idsDosCanaisDeEmail(channelsResult.data as any[]),
     ),
   );
 

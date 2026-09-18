@@ -150,14 +150,8 @@ const IRIS_INBOX_CHANNEL_FILTERS: {
       "bg-cyan-50 text-cyan-700 ring-cyan-300 dark:bg-cyan-400/15 dark:text-cyan-300 dark:ring-cyan-400/40",
     idle: "text-cyan-600 dark:text-cyan-400",
   },
-  {
-    key: "email",
-    label: "E-mail",
-    icon: Mail,
-    active:
-      "bg-indigo-50 text-indigo-700 ring-indigo-300 dark:bg-indigo-400/15 dark:text-indigo-300 dark:ring-indigo-400/40",
-    idle: "text-indigo-600 dark:text-indigo-400",
-  },
+  // ⚠️ O FILTRO E-MAIL SAIU em 18/09/2026, junto com o e-mail da Iris inteira
+  // (lib/iris/canais-de-email.ts).
 ];
 
 export function IrisConversationInboxSidebar({
