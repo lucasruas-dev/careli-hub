@@ -52,6 +52,7 @@ import { Pilula } from "./AssinaturasDoProduto";
 import { ConversaDaVenda } from "./ConversaDaVenda";
 import { DocumentosDaVenda } from "./DocumentosDaVenda";
 import { podeBloquear } from "@/lib/hercules/bloqueio-de-unidade";
+import { rotuloDaSituacao } from "@/lib/hercules/situacao-da-unidade";
 import {
   comoSeHerdou,
   itensDoMenorRecorte,
@@ -196,26 +197,28 @@ const FLUXO: ReadonlyArray<{
   icone: LucideIcon;
   rotulo: string;
 }> = [
-  { cor: "#2f7d4a", etapa: "disponivel", icone: Grid2x2, rotulo: "Disponível" },
-  { cor: "#c9962b", etapa: "reservado", icone: Bookmark, rotulo: "Reserva" },
-  { cor: "#3c73c0", etapa: "proposta", icone: FileText, rotulo: "Proposta" },
+  // ⚠️ O TEXTO DE CADA PASSO É O DA RÉGUA (`rotuloDaSituacao`), o mesmo da grade, da aba Unidades
+  // do Apolo e da TelaVendas (Lucas, 18/09/2026: *"esses status tem que morar em um so lugar"*).
+  { cor: "#2f7d4a", etapa: "disponivel", icone: Grid2x2, rotulo: rotuloDaSituacao("disponivel") },
+  { cor: "#c9962b", etapa: "reservado", icone: Bookmark, rotulo: rotuloDaSituacao("reservado") },
+  { cor: "#3c73c0", etapa: "proposta", icone: FileText, rotulo: rotuloDaSituacao("proposta") },
   {
     cor: "#7d5cba",
     etapa: "contrato",
     icone: FileSignature,
-    rotulo: "Contrato",
+    rotulo: rotuloDaSituacao("contrato"),
   },
   {
     cor: "#c2571a",
     etapa: "assinatura",
     icone: Signature,
-    rotulo: "Assinatura",
+    rotulo: rotuloDaSituacao("assinatura"),
   },
   // ⚠️ "FATURADO", E NAO "FATURAMENTO". Lucas (14/09/2026), com o print do Recanto do Pará:
   // *"acho que em vez de faturamento, faturado"*. Este rótulo nomeia o ESTADO de uma unidade
   // ("este lote está faturado"), e não o departamento nem o ato de faturar — a própria chave
   // interna da etapa sempre foi `faturado`; era só o texto na tela que discordava dela.
-  { cor: "#9b2c22", etapa: "faturado", icone: Receipt, rotulo: "Faturado" },
+  { cor: "#9b2c22", etapa: "faturado", icone: Receipt, rotulo: rotuloDaSituacao("faturado") },
 ];
 
 // ⚠️ A GRADE PINTA POR ETAPA, NÃO POR SITUAÇÃO (Lucas, 03/09/2026: *"em vez de vendida, ter
@@ -276,18 +279,44 @@ const COR_DA_ETAPA: Record<EtapaDoEspelho, string> = {
   vendida: listrado(VERMELHO, "#9b2c22"),
 };
 
-/** A ordem da legenda é a do caminho: estoque, fluxo, e no fim o que está fora dele. */
-const LEGENDA: ReadonlyArray<{ etapa: EtapaDoEspelho; rotulo: string }> = [
-  { etapa: "disponivel", rotulo: "Disponível" },
-  { etapa: "reservado", rotulo: "Reserva" },
-  { etapa: "proposta", rotulo: "Proposta" },
-  { etapa: "contrato", rotulo: "Contrato" },
-  { etapa: "assinatura", rotulo: "Assinatura" },
-  { etapa: "faturado", rotulo: "Faturado" },
-  { etapa: "vendida", rotulo: "Vendida sem proposta" },
-  { etapa: "reservada", rotulo: "Reservada sem proposta" },
-  { etapa: "bloqueada", rotulo: "Bloqueada" },
-];
+/**
+ * A ordem da legenda é a do caminho: estoque, fluxo, e no fim o que está fora dele.
+ *
+ * ⚠️ O RÓTULO É O DA RÉGUA (`rotuloDaSituacao`), e não um desta tela. Até 18/09/2026 a grade dizia
+ * "Reserva", "Bloqueada" e "Vendida sem proposta" do lote que a aba Unidades do Apolo chamava de
+ * "Reservado", "Bloqueado" e "Vendido" (Lucas: *"quero é dentro do panteon tem que ter o mesmo
+ * status"*). O "sem proposta" não sumiu: foi para a dica (`SEM_PROPOSTA`), e a listra continua
+ * separando o que o cadastro afirma sozinho.
+ */
+const LEGENDA: ReadonlyArray<{ etapa: EtapaDoEspelho; rotulo: string }> = (
+  [
+    "disponivel",
+    "reservado",
+    "proposta",
+    "contrato",
+    "assinatura",
+    "faturado",
+    "vendida",
+    "reservada",
+    "bloqueada",
+  ] as const
+).map((etapa) => ({ etapa, rotulo: rotuloDaSituacao(etapa) }));
+
+/**
+ * O que o rótulo da régua não diz: `vendida` e `reservada` são o CADASTRO afirmando dono sem
+ * proposta viva que sustente (ver `EtapaDoEspelho`). Vai no `title` da legenda, do quadrado e do
+ * selo, para quem passa o mouse; a tela continua desenhada igual.
+ */
+const SEM_PROPOSTA: Partial<Record<EtapaDoEspelho, string>> = {
+  reservada: "sem proposta: só o cadastro diz reservado",
+  vendida: "sem proposta: só o cadastro diz vendido",
+};
+
+/** O rótulo da régua com o "sem proposta" quando ele existe. É o texto da dica. */
+const dicaDaEtapa = (etapa: EtapaDoEspelho): string =>
+  SEM_PROPOSTA[etapa]
+    ? `${rotuloDaSituacao(etapa)} ${SEM_PROPOSTA[etapa]}`
+    : rotuloDaSituacao(etapa);
 
 const ROTULO_DA_ETAPA: Record<EtapaDoEspelho, string> = Object.fromEntries(
   LEGENDA.map((l) => [l.etapa, l.rotulo]),
@@ -1887,6 +1916,7 @@ function Mesa({
                             fontWeight: 600,
                             whiteSpace: "nowrap",
                           }}
+                          title={SEM_PROPOSTA[chave] ? dicaDaEtapa(chave) : undefined}
                         >
                           <i
                             style={{
@@ -1992,9 +2022,9 @@ function Mesa({
                         }}
                         // O código aparece aqui com a conotação de código, como o Lucas pediu: é a
                         // única porta onde ele serve, para quem precisa cruzar com o backend.
-                        title={`${comoSeEscreve(u).unidade} · ${
-                          ROTULO_DA_ETAPA[u.etapa] ?? u.etapa
-                        } · código ${u.codigo}`}
+                        title={`${comoSeEscreve(u).unidade} · ${dicaDaEtapa(
+                          u.etapa,
+                        )} · código ${u.codigo}`}
                         type="button"
                       >
                         {/* No prédio o número é o do apartamento; lote nenhum é inventado. */}
@@ -2443,6 +2473,8 @@ function Mesa({
                     fontWeight: 650,
                     padding: "2px 9px",
                   }}
+                  // O "sem proposta" da vendida e da reservada mora na dica: o selo diz o que a régua diz.
+                  title={SEM_PROPOSTA[unidadeEmFoco.etapa] ? dicaDaEtapa(unidadeEmFoco.etapa) : undefined}
                 >
                   {ROTULO_DA_ETAPA[unidadeEmFoco.etapa] ?? unidadeEmFoco.etapa}
                 </span>

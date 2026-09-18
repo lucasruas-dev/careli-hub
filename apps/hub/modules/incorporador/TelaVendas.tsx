@@ -21,6 +21,7 @@ import {
 
 import type { ApoloEnterpriseRow } from "@/lib/apolo/empreendimentos";
 import { diaNaTela } from "@/lib/apolo/incorporador/dia-na-tela";
+import { rotuloDaSituacao } from "@/lib/hercules/situacao-da-unidade";
 import { fonte } from "@/modules/publico/ui/tokens";
 
 import { UnidadesDoProduto } from "./hercules/UnidadesDoProduto";
@@ -344,13 +345,16 @@ const ETAPA_ORDEM: Etapa[] = [
   "faturado",
 ];
 
+// ⚠️ O TEXTO NÃO É COPIADO: é o da régua (`rotuloDaSituacao`, lib/hercules/situacao-da-unidade.ts,
+// que não puxa driver nenhum). Até 18/09/2026 aqui se escrevia "Proposta emitida", "Contrato gerado"
+// e "Em assinatura", e a Venda do Hércules dizia "Proposta", "Contrato" e "Assinatura" do mesmo lote.
 const ETAPA_LABELS: Record<Etapa, string> = {
-  assinatura: "Em assinatura",
-  contrato: "Contrato gerado",
-  disponivel: "Disponível",
-  faturado: "Faturado",
-  proposta: "Proposta emitida",
-  reservado: "Reservado",
+  assinatura: rotuloDaSituacao("assinatura"),
+  contrato: rotuloDaSituacao("contrato"),
+  disponivel: rotuloDaSituacao("disponivel"),
+  faturado: rotuloDaSituacao("faturado"),
+  proposta: rotuloDaSituacao("proposta"),
+  reservado: rotuloDaSituacao("reservado"),
 };
 
 // Escala monocromática do estoque: quanto mais perto da venda, mais forte. Nada de cor por

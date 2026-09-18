@@ -16,6 +16,8 @@
 // preto e branco de uma impressão — por isso o rótulo (`Vendido`, `Bloqueado`) anda sempre junto,
 // nas duas telas. A cor acelera a leitura de quem já sabe; o texto é o que informa.
 
+import { rotuloDoBalde } from "./situacao-da-unidade";
+
 export type SituacaoDaUnidade =
   | "bloqueado"
   | "disponivel"
@@ -42,13 +44,16 @@ export const CORES_DA_SITUACAO: Record<SituacaoDaUnidade, ParDeCores> = {
   vendido: { claro: "#1d4ed8", escuro: "#60a5fa" },
 };
 
-/** O rótulo em português, para a cor nunca ser o único sinal. */
+/**
+ * O rótulo em português, para a cor nunca ser o único sinal. É o da régua (`rotuloDoBalde`,
+ * situacao-da-unidade.ts), e não uma cópia: texto copiado diverge como cor copiada.
+ */
 export const ROTULO_DA_SITUACAO: Record<SituacaoDaUnidade, string> = {
-  bloqueado: "Bloqueado",
-  disponivel: "Disponível",
-  negociacao: "Em negociação",
-  reservado: "Reservado",
-  vendido: "Vendido",
+  bloqueado: rotuloDoBalde("bloqueado"),
+  disponivel: rotuloDoBalde("disponivel"),
+  negociacao: rotuloDoBalde("negociacao"),
+  reservado: rotuloDoBalde("reservado"),
+  vendido: rotuloDoBalde("vendido"),
 };
 
 /**

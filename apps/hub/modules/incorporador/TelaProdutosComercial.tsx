@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 
+import { rotuloDoBalde } from "@/lib/hercules/situacao-da-unidade";
 import { fonte } from "@/modules/publico/ui/tokens";
 
 import { T } from "./tema";
@@ -79,13 +80,14 @@ type Painel = {
 type ProdutoAberto = { id: string; nome: string };
 
 // Os seis baldes, na ordem e com os ícones da tela interna (empreendimentos-view.tsx `buckets`).
+// O nome de cada um é o da régua (`rotuloDoBalde`), e não uma cópia.
 const BALDES: Array<{ chave: ChaveDoCenario; icone: LucideIcon; rotulo: string }> = [
   { chave: "total", icone: Layers, rotulo: "Total" },
-  { chave: "disponivel", icone: LandPlot, rotulo: "Disponível" },
-  { chave: "reservado", icone: Tag, rotulo: "Reservado" },
-  { chave: "negociacao", icone: Handshake, rotulo: "Em negociação" },
-  { chave: "vendido", icone: BadgeDollarSign, rotulo: "Vendido" },
-  { chave: "bloqueado", icone: Ban, rotulo: "Bloqueado" },
+  { chave: "disponivel", icone: LandPlot, rotulo: rotuloDoBalde("disponivel") },
+  { chave: "reservado", icone: Tag, rotulo: rotuloDoBalde("reservado") },
+  { chave: "negociacao", icone: Handshake, rotulo: rotuloDoBalde("negociacao") },
+  { chave: "vendido", icone: BadgeDollarSign, rotulo: rotuloDoBalde("vendido") },
+  { chave: "bloqueado", icone: Ban, rotulo: rotuloDoBalde("bloqueado") },
 ];
 
 // A COR DE CADA BALDE, em variável CSS e não em hex solto no estilo inline. O motivo é o mesmo do

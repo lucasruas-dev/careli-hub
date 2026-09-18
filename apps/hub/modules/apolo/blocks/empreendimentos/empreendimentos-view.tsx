@@ -24,6 +24,7 @@ import type { ReactNode } from "react";
 
 import { CLASSES_DO_SELO, situacaoConhecida } from "@/lib/hercules/cores-de-situacao";
 import type { LinkPublico } from "@/lib/hercules/links-do-empreendimento";
+import { rotuloDaSituacao, rotuloDoBalde } from "@/lib/hercules/situacao-da-unidade";
 import {
   ehIdDoPanteon,
   type TipoProduto,
@@ -151,13 +152,13 @@ export const buckets: Array<{
   label: string;
 }> = [
   { icon: Layers, key: "total", label: "Total" },
-  // Disponível = lotes/unidades à venda.
-  { icon: LandPlot, key: "disponivel", label: "Disponível" },
-  { icon: Tag, key: "reservado", label: "Reservado" },
-  { icon: Handshake, key: "negociacao", label: "Em negociação" },
+  // Disponível = lotes/unidades à venda. O nome de cada balde é o da régua (`rotuloDoBalde`).
+  { icon: LandPlot, key: "disponivel", label: rotuloDoBalde("disponivel") },
+  { icon: Tag, key: "reservado", label: rotuloDoBalde("reservado") },
+  { icon: Handshake, key: "negociacao", label: rotuloDoBalde("negociacao") },
   // Vendido = a venda fechada.
-  { icon: BadgeDollarSign, key: "vendido", label: "Vendido" },
-  { icon: Ban, key: "bloqueado", label: "Bloqueado" },
+  { icon: BadgeDollarSign, key: "vendido", label: rotuloDoBalde("vendido") },
+  { icon: Ban, key: "bloqueado", label: rotuloDoBalde("bloqueado") },
 ];
 
 // Ordem definida pelo Lucas.
@@ -473,11 +474,11 @@ export function EmpreendimentosScreen({
                   rotulo="Empreendimento"
                 />
                 <Coluna aoOrdenar={ordenarPor} coluna="unidades" numerica ordem={ordem} rotulo="Unidades" />
-                <Coluna aoOrdenar={ordenarPor} coluna="disponivel" numerica ordem={ordem} rotulo="Disponível" />
-                <Coluna aoOrdenar={ordenarPor} coluna="reservado" numerica ordem={ordem} rotulo="Reservado" />
-                <Coluna aoOrdenar={ordenarPor} coluna="negociacao" numerica ordem={ordem} rotulo="Negociação" />
-                <Coluna aoOrdenar={ordenarPor} coluna="vendido" numerica ordem={ordem} rotulo="Vendido" />
-                <Coluna aoOrdenar={ordenarPor} coluna="bloqueado" numerica ordem={ordem} rotulo="Bloqueado" />
+                <Coluna aoOrdenar={ordenarPor} coluna="disponivel" numerica ordem={ordem} rotulo={rotuloDoBalde("disponivel")} />
+                <Coluna aoOrdenar={ordenarPor} coluna="reservado" numerica ordem={ordem} rotulo={rotuloDoBalde("reservado")} />
+                <Coluna aoOrdenar={ordenarPor} coluna="negociacao" numerica ordem={ordem} rotulo={rotuloDoBalde("negociacao")} />
+                <Coluna aoOrdenar={ordenarPor} coluna="vendido" numerica ordem={ordem} rotulo={rotuloDoBalde("vendido")} />
+                <Coluna aoOrdenar={ordenarPor} coluna="bloqueado" numerica ordem={ordem} rotulo={rotuloDoBalde("bloqueado")} />
                 <Coluna aoOrdenar={ordenarPor} coluna="vgv" numerica ordem={ordem} rotulo="VGV" />
                 <th className="px-4 py-2.5 font-semibold" />
               </tr>
@@ -1977,13 +1978,13 @@ export function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {
         </div>
         <dl className="mt-4 grid grid-cols-2 gap-2 text-sm">
           <Fact label="VGV total" value={formatCurrency(total.value)} />
-          <Fact label="Vendido" value={formatCurrency(sold.value)} />
+          <Fact label={rotuloDoBalde("vendido")} value={formatCurrency(sold.value)} />
           <Fact
-            label="Disponível"
+            label={rotuloDoBalde("disponivel")}
             value={formatCurrency(row.scenario.disponivel.value)}
           />
           <Fact
-            label="Em negociação"
+            label={rotuloDoBalde("negociacao")}
             value={formatCurrency(row.scenario.negociacao.value)}
           />
         </dl>
@@ -2240,11 +2241,11 @@ export function UnidadesTab({
           value={statusFilter}
         >
           <option value="todos">Todos os status</option>
-          <option value="disponivel">Disponível</option>
-          <option value="reservado">Reservado</option>
-          <option value="negociacao">Em negociação</option>
-          <option value="vendido">Vendido</option>
-          <option value="bloqueado">Bloqueado</option>
+          <option value="disponivel">{rotuloDoBalde("disponivel")}</option>
+          <option value="reservado">{rotuloDoBalde("reservado")}</option>
+          <option value="negociacao">{rotuloDoBalde("negociacao")}</option>
+          <option value="vendido">{rotuloDoBalde("vendido")}</option>
+          <option value="bloqueado">{rotuloDoBalde("bloqueado")}</option>
         </select>
         <span className="text-xs font-medium text-ink-muted">
           {visible.length} de {units.length}
@@ -2673,13 +2674,15 @@ const VENDA_STAGE_ORDER: ApoloVendaStage[] = [
   "faturado",
 ];
 
+// O texto de cada coluna é o da régua (`rotuloDaSituacao`), o mesmo da aba Unidades e da Venda do
+// Hércules. Até 18/09/2026 aqui se escrevia "Proposta emitida", "Contrato gerado" e "Em assinatura".
 const VENDA_STAGE_LABELS: Record<ApoloVendaStage, string> = {
-  assinatura: "Em assinatura",
-  contrato: "Contrato gerado",
-  disponivel: "Disponível",
-  faturado: "Faturado",
-  proposta: "Proposta emitida",
-  reservado: "Reservado",
+  assinatura: rotuloDaSituacao("assinatura"),
+  contrato: rotuloDaSituacao("contrato"),
+  disponivel: rotuloDaSituacao("disponivel"),
+  faturado: rotuloDaSituacao("faturado"),
+  proposta: rotuloDaSituacao("proposta"),
+  reservado: rotuloDaSituacao("reservado"),
 };
 
 const VENDA_TERMINAL_LABELS: Record<ApoloVendaTerminal, string> = {
