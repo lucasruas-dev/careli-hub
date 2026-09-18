@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-18-email-sai-da-iris",
+    deployedAt: "2026-09-18T22:38:00-03:00",
+    modules: [
+      {
+        module: "Íris",
+        screens: [
+          {
+            items: [
+              "**O e-mail saiu da Íris.** O Board não tem mais a aba E-mail, a lista de conversas não tem mais o filtro E-mail, e os atendimentos de e-mail deixam de aparecer no Board, na lista, no histórico e nos atendimentos do cliente.",
+              "**Os e-mails recebidos deixaram de virar atendimento.** A leitura automática da caixa de e-mail, que rodava a cada 5 minutos, foi desligada.",
+              "**Nada foi apagado.** Os atendimentos e as mensagens de e-mail antigos continuam guardados, e o histórico do cliente no Apolo segue mostrando tudo.",
+            ],
+            screen: "Board e Conversas",
+          },
+        ],
+      },
+    ],
+    rollback: "f384e036",
+    technical: {
+      done:
+        "Novo `lib/iris/canais-de-email.ts` (`idsDosCanaisDeEmail`, `semOsCanaisDeEmail`): a carga da Íris tira os tickets dos canais `kind = email` NA CONSULTA (`channel_id not in (...)`), nas duas cargas de `iris-data-client.ts` (`loadIrisData` e `carregarTicketsSobDemanda`, que serve o histórico anterior e os tickets do contato), para não ocuparem a janela de 400 encerrados. Falha ao ler os canais de e-mail derruba a carga em vez de virar lista vazia (que faria o e-mail voltar em silêncio). `iris-board-kanban.tsx` perde a aba E-mail; `iris-conversation-readonly.tsx` perde o filtro E-mail. `/api/iris/gmail/poll` responde 410 sem chamar `ingestGmailInbox`, e o cron dela sai do `vercel.json`: tirar só o cron não bastava, porque `x-vercel-cron` é um header que qualquer um manda. A importação continua em `lib/iris/gmail-inbound.ts` para religar. Medido em 18/09/2026: 2.019 tickets de e-mail, todos em canal de e-mail (nenhum ticket sem canal); dos 543 não encerrados, 537 eram de e-mail. Rodado em leitura contra produção: com o filtro sobram 6, nenhum de e-mail. 9 testes novos (a trava da aba validada por mutação). 7.106 testes passando e typecheck limpo.",
+      motivation:
+        "Lucas (18/09/2026): *\"tira o canal e-mail da iris por favor, não precisa mais ter eles na iris, pode tirar a aba e não mostrar\"* e *\"pode cortar a conexão que registrávamos os e-mails no banco\"*.",
+    },
+    title: "O e-mail sai da Íris",
+    type: "melhoria",
+    version: "1.351.1",
+  },
+  {
     buildTag: "2026-09-18-planos-do-garden-como-a-mmendes",
     deployedAt: "2026-09-18T18:00:13-03:00",
     modules: [
