@@ -54,6 +54,21 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         ],
       },
       {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Concluir cancelamento e Concluir distrato.** O card do pedido ganhou o botão que desfaz a venda: a venda cai, a reserva cai, o card de contrato que ainda andava é fechado e a unidade volta para a disponibilidade se o lote não tiver outro dono. Antes o card só tinha Indeferir, e a unidade ficava presa.",
+              "**O sistema confere de novo no clique** se o cliente assinou ou pagou depois do pedido: cancelamento que virou distrato é recusado, com o motivo. No distrato, quem conclui confirma o termo assinado e a devolução acertada.",
+              "**Envelope do contrato ainda sem todas as assinaturas é cancelado na Clicksign** ao concluir; contrato assinado por todos fica como está.",
+              "**Indeferir agora é só recusar o pedido:** a venda continua como está e o Hércules volta a oferecer o pedido de cancelamento. Contrato indeferido volta para Proposta, a não ser que haja pedido de cancelamento aberto.",
+              "**Se a unidade não voltar na hora, o aviso fica em âmbar até alguém fechar**, e o card concluído ganha o botão Tentar liberar a unidade.",
+            ],
+            screen: "Quadro e tela do trabalho",
+          },
+        ],
+      },
+      {
         module: "Apolo",
         screens: [
           {
@@ -92,11 +107,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     technical: {
       done:
-        "Régua única em lib/hercules/situacao-da-unidade.ts (proposta viva do terreno > reserva viva > cadastro; terreno por união pai/gleba/irmã com quadra e lote normalizados). Porta única lib/hercules/criar-reserva.ts (conferência antes e depois, terreno_chave para o índice da 0176, fallback sem a coluna). Trava lib/hercules/trava-do-lote.ts. Cancelamentos da Venda condicionais (devolverCadastroSeNaoHaOutroDono) e com o cupom junto. Bloqueio com segunda conferência (bloquear-unidade-server.ts), rota nova no Apolo. Tótem reserva via porta única; telão, masterplan, aba Unidades, cards, espelho público e portal leem a régua. Seis leitores deixam de ler a situação que não usam. Medido em produção (só leitura): 4.831 unidades, régua em 3,7 s, nenhuma reserva do Panteon com dono duplicado.",
+        "Régua única em lib/hercules/situacao-da-unidade.ts (proposta viva do terreno > reserva viva > cadastro; terreno por união pai/gleba/irmã com quadra e lote normalizados). Porta única lib/hercules/criar-reserva.ts (conferência antes e depois, terreno_chave para o índice da 0176, fallback sem a coluna). Trava lib/hercules/trava-do-lote.ts. Cancelamentos da Venda condicionais (devolverCadastroSeNaoHaOutroDono) e com o cupom junto. Bloqueio com segunda conferência (bloquear-unidade-server.ts), rota nova no Apolo. Tótem reserva via porta única; telão, masterplan, aba Unidades, cards, espelho público e portal leem a régua. Seis leitores deixam de ler a situação que não usam. Medido em produção (só leitura): 4.831 unidades, régua em 3,7 s, nenhuma reserva do Panteon com dono duplicado. Têmis: lib/hercules/concluir-cancelamento-server.ts (conclusão com fatos reapurados, envelope, venda, reserva, card de contrato, card e unidade pela trava; retomada; cópia do C2X do mesmo cliente até a data do pedido), lib/hercules/indeferimento-na-venda-server.ts (pedido recusado limpa a marca com história; contrato indeferido volta a Proposta), marca de pedido órfã tratada na rota do pedido, carga do C2X não regrava venda encerrada no Panteon.",
       motivation:
         "Lucas, 18/09/2026: \"esses status tem que morar em um so lugar\" e \"eu não posso vender dois lotes para pessoas diferentes\". Havia três réguas (Venda pelo processo, Apolo e telão pelo C2X, espelho por `aberta`) e 108 unidades divergentes; o índice da 0125 não via o mesmo lote em linhas diferentes (VLO/VOC/VOR).",
     },
-    title: "A situação da unidade é uma só em todo o Panteon, e o lote não se vende duas vezes",
+    title: "A situação da unidade é uma só, o lote não se vende duas vezes, e o cancelamento concluído devolve a unidade",
     type: "melhoria",
     version: "1.350.0",
   },
