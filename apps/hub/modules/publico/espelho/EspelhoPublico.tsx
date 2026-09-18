@@ -149,6 +149,44 @@ const CSS_DE_IMPRESSAO = `
 }
 `;
 
+/**
+ * O CELULAR (Lucas, 18/09/2026: *"o simulador também, otimiza para celular"*).
+ *
+ * ⚠️ O SIMULADOR É O DA MESA DE VENDA, e lá ele é desenhado para tela larga: duas colunas lado a
+ * lado (comandos com no mínimo 270 px e a leitura), cada uma rolando por dentro. Num celular de
+ * 375 px as duas não cabem. Em vez de uma segunda versão do simulador (que divergiria na primeira
+ * correção de conta), a tela estreita EMPILHA as colunas daqui de fora, e quem rola é a janela do
+ * lote inteira. A janela, por sua vez, vira a tela toda: pop-up flutuante com 16 px de margem num
+ * celular é só espaço perdido.
+ *
+ * ⚠️ E O CELULAR DEITADO TAMBÉM É CELULAR: 812 px de largura com 375 de altura passaria pela regra
+ * de largura e abriria o simulador de duas colunas numa faixa de tela. A altura baixa entra junto.
+ */
+const CSS_DO_CELULAR = `
+@media (max-width: 760px), (max-height: 500px) {
+  [data-esp-popup="fundo"] { align-items: stretch !important; padding: 0 !important; }
+  [data-esp-popup="painel"] {
+    border: 0 !important;
+    border-radius: 0 !important;
+    height: 100dvh !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    padding: calc(12px + env(safe-area-inset-top)) 14px calc(16px + env(safe-area-inset-bottom)) !important;
+  }
+  [data-esp-popup="topo"] { flex-wrap: wrap; }
+  [data-esp-simulador] { flex: none !important; overflow: visible !important; }
+  [data-esp-simulador] > div {
+    grid-template-columns: minmax(0, 1fr) !important;
+    height: auto !important;
+  }
+  [data-esp-simulador] > div > div {
+    overflow: visible !important;
+    padding-right: 0 !important;
+  }
+}
+`;
+
 const CHAVE_DO_TEMA = "espelho:tema";
 
 function useTema(): [TemaDoEspelho, (t: TemaDoEspelho) => void] {
@@ -272,7 +310,7 @@ export function EspelhoPublico({
   if (erro || !estado) {
     return (
       <main className="publico-shell" data-esp-tema={tema} style={ESTILO.vazio}>
-        <style>{CSS_DO_TEMA + CSS_DE_IMPRESSAO}</style>
+        <style>{CSS_DO_TEMA + CSS_DE_IMPRESSAO + CSS_DO_CELULAR}</style>
         <p style={{ margin: 0, opacity: 0.85 }}>{erro ?? "Carregando…"}</p>
       </main>
     );
@@ -287,7 +325,7 @@ export function EspelhoPublico({
     // [[reference_html_minwidth_quebra_mobile]] na memória: é a armadilha que mais volta.
     <main className="publico-shell" data-esp-tema={tema} style={ESTILO.pagina}>
       {/* O tema vale para a árvore inteira, inclusive o painel do lote, que é irmão do palco. */}
-      <style>{CSS_DO_TEMA + CSS_DE_IMPRESSAO}</style>
+      <style>{CSS_DO_TEMA + CSS_DE_IMPRESSAO + CSS_DO_CELULAR}</style>
 
       <Cabecalho
         contagem={estado.contagem}
@@ -474,8 +512,6 @@ function Mapa({
       corDoLote={(codigo) =>
         porCodigo.get(codigo)?.situacao === "disponivel" ? VERDE : AZUL
       }
-      // No celular, os botões de + e − somam-se à pinça: quem segura com uma mão não faz pinça.
-      comControles
       destacado={escolhido?.codigo ?? null}
       geometria={geometria}
       // O padrão do motor já é 0.6, o mesmo OPACIDADE medido no espelho do C2X. Explícito porque é
@@ -672,18 +708,20 @@ function PainelDoLote({
 
   return (
     <div
+      data-esp-popup="fundo"
       data-esp-print="folha"
       onClick={onFechar}
       role="presentation"
       style={ESTILO.fundoDoPopUp}
     >
       <aside
+        data-esp-popup="painel"
         data-esp-print="folha"
         onClick={(ev) => ev.stopPropagation()}
         role="presentation"
         style={ESTILO.painel}
       >
-        <header style={ESTILO.painelTopo}>
+        <header data-esp-popup="topo" style={ESTILO.painelTopo}>
           <div>
             <p style={{ ...ESTILO.painelRotulo, color: disponivel ? VERDE : "var(--esp-suave)" }}>
               {disponivel ? "Disponível" : "Indisponível"}
@@ -726,7 +764,7 @@ function PainelDoLote({
         </header>
 
         {disponivel && preco > 0 && planosDaVenda.length > 0 ? (
-          <div className="inc" style={ESTILO.molduraDoSimulador}>
+          <div className="inc" data-esp-simulador style={ESTILO.molduraDoSimulador}>
             <style>{TEMA_CSS}</style>
             <SimuladorDeProposta
               aoMudarCondicoes={(c) => {

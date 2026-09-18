@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-18-espelho-no-celular",
+    deployedAt: "2026-09-18T15:50:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**O link do espelho abre no celular do tamanho da tela.** Antes abria com largura de computador, pequeno e travado.",
+              "**No mapa, dois dedos dão zoom e um dedo arrasta.** Funciona com o celular em pé ou deitado, e o mapa nunca sai da tela.",
+              "**O simulador do lote ocupa a tela inteira no celular**, numa coluna só, e rola até o fim, inclusive com o celular deitado.",
+              "**Vale para o espelho de todos os empreendimentos.**",
+            ],
+            screen: "Espelho dos corretores",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Causa raiz: `html { min-width: 1024px }` (styles/globals.css) sem a classe `publico-shell` na raiz do EspelhoPublico, então a página renderizava a 1024 px no celular. Motor modules/espelho/MapaDeLotes.tsx (compartilhado com a Mesa de Venda): pinça com dois ponteiros ancorada entre os dedos, arraste com um dedo, `limitarDeslocamento` (a arte nunca sai da tela), recorte de novo no giro (ResizeObserver), pinça nunca abre lote. Sem botões de zoom (Lucas: \"deixa o zoom na pinça\"). EspelhoPublico: `publico-shell` nas duas raízes, botão Tela cheia só onde a API existe, cabeçalho e ações quebram linha, CSS_DO_CELULAR (`max-width: 760px` ou `max-height: 500px`) põe o painel do lote em 100dvh e o simulador numa coluna. Teste novo MapaDeLotes.toque.test.tsx (jsdom, eventos de ponteiro). Conferido em 375×812 e 812×375.",
+      motivation:
+        "Lucas, 18/09/2026: \"o link do espelho para os corretores, ficou ruim no celular\", \"eu não consigo mover com o dedo, dar zoom, deitar a tela\", \"o simulador também, otimiza para celular\".",
+    },
+    rollback: "aff317ab",
+    title: "O espelho dos corretores funciona no celular",
+    type: "melhoria",
+    version: "1.350.1",
+  },
+  {
     buildTag: "2026-09-18-situacao-unica-e-um-dono-por-lote",
     deployedAt: "2026-09-18T15:21:07-03:00",
     modules: [

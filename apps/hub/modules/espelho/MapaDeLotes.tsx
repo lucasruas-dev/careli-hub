@@ -34,8 +34,6 @@ const ZMIN = 1;
 const ZMAX = 8;
 /** Acima disto o gesto é arraste, e o clique no lote não vale. */
 const TOLERANCIA_DE_CLIQUE = 4;
-/** O passo dos botões de zoom (+ e −). */
-const PASSO_DOS_BOTOES = 1.6;
 
 /**
  * O deslocamento que ainda mostra o mapa: nunca se arrasta a arte para fora da tela.
@@ -50,9 +48,10 @@ export function limitarDeslocamento(
 ): { x: number; y: number } {
   const folgaX = (area.width * (zoom - 1)) / 2;
   const folgaY = (area.height * (zoom - 1)) / 2;
+  // `|| 0` troca o −0 (limite zero com sinal) por 0: é o mesmo lugar, mas o −0 vaza para o CSS.
   return {
-    x: Math.max(-folgaX, Math.min(folgaX, pos.x)),
-    y: Math.max(-folgaY, Math.min(folgaY, pos.y)),
+    x: Math.max(-folgaX, Math.min(folgaX, pos.x)) || 0,
+    y: Math.max(-folgaY, Math.min(folgaY, pos.y)) || 0,
   };
 }
 
@@ -77,7 +76,6 @@ export function MapaDeLotes({
   aoClicar,
   clicavel,
   corDoLote,
-  comControles = false,
   destacado,
   fundo,
   geometria,
@@ -95,14 +93,6 @@ export function MapaDeLotes({
    * depois de clicar e nada acontecer.
    */
   clicavel?: (codigo: string) => boolean;
-  /**
-   * Botões de aproximar, afastar e voltar ao mapa inteiro, no canto.
-   *
-   * ⚠️ NO CELULAR ELES SÃO A SEGUNDA PORTA DO ZOOM (Lucas, 18/09/2026: *"eu não consigo mover com o
-   * dedo, dar zoom, deitar a tela, isso tudo tem que está disponivel"*). A pinça é a primeira, mas
-   * quem segura o celular com uma mão só não faz pinça. A Mesa de Venda não liga: lá é mouse.
-   */
-  comControles?: boolean;
   /** A tinta de cada lote. É a ÚNICA diferença de aparência entre as duas telas. */
   corDoLote: (codigo: string) => string;
   /** O lote com contorno branco — o que está aberto no painel. */
@@ -170,16 +160,6 @@ export function MapaDeLotes({
       });
     },
     [],
-  );
-
-  /** Os botões aproximam e afastam a partir do centro da tela. */
-  const zoomPeloBotao = useCallback(
-    (fator: number) => {
-      const area = cena.current?.getBoundingClientRect();
-      if (!area) return;
-      aplicarZoom(zoom * fator, area.left + area.width / 2, area.top + area.height / 2);
-    },
-    [aplicarZoom, zoom],
   );
 
   // ── O TOQUE: A PINÇA E O ARRASTE COM O DEDO ─────────────────────────────────
@@ -393,60 +373,6 @@ export function MapaDeLotes({
         touchAction: "none",
       }}
     >
-      {comControles ? (
-        <div
-          // ⚠️ O TOQUE NOS BOTÕES NÃO É ARRASTE DO MAPA: sem parar o ponteiro aqui, o dedo no "+"
-          // seria contado como o primeiro dedo de uma pinça.
-          onPointerDown={(ev) => ev.stopPropagation()}
-          style={{
-            bottom: "calc(12px + env(safe-area-inset-bottom))",
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-            position: "absolute",
-            right: 12,
-            zIndex: 2,
-          }}
-        >
-          {[
-            { acao: () => zoomPeloBotao(PASSO_DOS_BOTOES), rotulo: "Aproximar", simbolo: "+" },
-            { acao: () => zoomPeloBotao(1 / PASSO_DOS_BOTOES), rotulo: "Afastar", simbolo: "−" },
-            {
-              acao: () => {
-                setZoom(ZMIN);
-                setPos({ x: 0, y: 0 });
-              },
-              rotulo: "Ver o mapa inteiro",
-              simbolo: "⤢",
-            },
-          ].map((b) => (
-            <button
-              aria-label={b.rotulo}
-              key={b.rotulo}
-              onClick={b.acao}
-              style={{
-                alignItems: "center",
-                background: "rgba(17,19,24,.78)",
-                border: "1px solid rgba(255,255,255,.18)",
-                borderRadius: 10,
-                color: "#fff",
-                cursor: "pointer",
-                display: "flex",
-                fontSize: 20,
-                fontWeight: 600,
-                height: 44,
-                justifyContent: "center",
-                lineHeight: 1,
-                width: 44,
-              }}
-              title={b.rotulo}
-              type="button"
-            >
-              {b.simbolo}
-            </button>
-          ))}
-        </div>
-      ) : null}
       <div
         style={{
           height: "100%",
