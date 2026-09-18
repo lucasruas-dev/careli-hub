@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   valorDigitado,
@@ -33,12 +33,13 @@ import {
   premissaDoPrazo,
 } from "@/lib/hercules/premissa-do-prazo";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
-import { DIAS_DE_VENCIMENTO } from "@/lib/hercules/proposta";
+import { DIAS_DE_VENCIMENTO, ENTRADA_VEZES_MAXIMA } from "@/lib/hercules/proposta";
 import {
   lerPercentualDigitado,
   proximoVencimento,
 } from "@/lib/hercules/proposta-na-tela";
-import { montarProposta, sistemaDoCadastro } from "@/lib/hercules/simulacao";
+import { linhaDoAVista, linhasDoCartao } from "@/lib/hercules/cartao-do-plano";
+import { montarProposta, sistemaDoCadastro, temAnuaisCadastradas } from "@/lib/hercules/simulacao";
 import {
   ajusteAoTrocarDePlano,
   condicaoDoPlano,
@@ -216,7 +217,7 @@ export function SimuladorDeProposta({
   previa,
   entradaMinimaPercentual = null,
   faixasDePrazo,
-  planos,
+  planos: planosRecebidos,
   unidade,
   valorDaUnidade,
   vocabulario = "proposta",
@@ -285,6 +286,17 @@ export function SimuladorDeProposta({
   vocabulario?: "proposta" | "simulacao";
 }) {
   const ehSimulacao = vocabulario === "simulacao";
+
+  // ⚠️ A MESMA LISTA ENQUANTO O CONTEÚDO FOR O MESMO (revisão 3, 18/09/2026). O espelho público
+  // relê a situação a cada 60 s, e a resposta traz os planos num ARRAY NOVO com o mesmo conteúdo.
+  // Por referência a lista "mudava", o efeito que abre o lote rodava de novo, e o simulador voltava
+  // para o plano mais longo: medido, o cliente que tinha escolhido o NORMAL era levado de volta ao
+  // INVESTIDOR PARCELADO a cada minuto. A chave é o conteúdo serializado (meia dúzia de planos); só
+  // um plano que mudou DE VERDADE produz uma lista nova daqui para baixo.
+  const chaveDosPlanos = JSON.stringify(planosRecebidos);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a chave É o conteúdo de `planosRecebidos`
+  const planos = useMemo(() => planosRecebidos, [chaveDosPlanos]);
+
   const [comando, setComando] = useState<Comando>("condicoes");
   /**
    * Os valores de cada parcela da entrada, quando o coordenador montou à mão.
@@ -334,6 +346,12 @@ export function SimuladorDeProposta({
     juros: null | string;
   }>({ indice: null, juros: null });
   const [planoAtivo, setPlanoAtivo] = useState<null | string>(null);
+  /**
+   * O plano escolhido, para o efeito de abertura ler sem depender dele: com `planoAtivo` nas
+   * dependências, cada clique num cartão reabriria o lote no plano mais longo.
+   */
+  const planoAtivoAgora = useRef<null | string>(null);
+  planoAtivoAgora.current = planoAtivo;
   // ⚠️ SÓ VIRA TETO SE ELE DIGITOU. O campo Entrada nasce preenchido pelo plano — usar esse número
   // como limite cortaria as composições sem ninguém ter pedido, e a lista aparecia vazia sem
   // explicação. Teto é o que o cliente TEM; o valor do plano é só um ponto de partida.
@@ -433,9 +451,9 @@ export function SimuladorDeProposta({
   // deles para dizer o que o cliente vai assinar. Vem do MESMO índice do `planoBase`.
   const cruBase = indiceDoPlano >= 0 ? planos[indiceDoPlano] : undefined;
 
-  // ⚠️ SÓ PARA OS CARTÕES DA ESCADA, onde a chave é mesmo o nome e o empate não decide conta
-  // nenhuma — é rótulo de correção num cartão. Não use isto para resolver o plano escolhido.
-  const crus = useMemo(() => new Map(planos.map((p) => [p.nome, p])), [planos]);
+  // (O mapa `crus`, por nome, servia só ao rótulo de correção dos cartões. Desde 18/09/2026 o cartão
+  // lê o plano cru pela POSIÇÃO, como a ressalva, e o mapa saiu: pelo nome, o plano do pai e o do
+  // filho com o mesmo nome trocariam de correção.)
 
   /**
    * ── A FAIXA DE PRAZO MANDA NA PREMISSA ──────────────────────────────────
@@ -604,6 +622,16 @@ export function SimuladorDeProposta({
     [cockpit.valor, descontoDoAtivo, entradaMinimaPercentual, planosDaConta, valorDaUnidade],
   );
 
+  /** A linha do À VISTA embaixo dos cartões (a da MMendes). Nula sem plano com desconto. */
+  const aVista = useMemo(
+    () =>
+      linhaDoAVista({
+        planos: tabela.map((t) => ({ desconto: t.desconto, nome: t.plano.nome })),
+        precoDeTabela: valorDaUnidade,
+      }),
+    [tabela, valorDaUnidade],
+  );
+
   function carregarPlano(nome: string) {
     const alvo = tabela.find((t) => t.plano.nome === nome);
     if (!alvo) return;
@@ -634,10 +662,32 @@ export function SimuladorDeProposta({
     setEntradaEhTeto(false);
   }
 
+  /**
+   * Em que lote, preço e piso a tela abriu por último. É o que separa "abriu outro lote" (reinicia
+   * tudo) de "os planos mudaram com a tela aberta" (mantém a escolha).
+   */
+  const aberturaAnterior = useRef<null | string>(null);
+
   // ⚠️ A TELA NUNCA ABRE VAZIA. Sem um ponto de partida, a direita seria um espaço em branco e a
   // primeira ação de todo mundo seria a mesma: clicar no plano mais longo. O simulador já faz isso
   // — abre no maior prazo, que é o que atende mais gente, e o resto se ajusta em cima.
   useEffect(() => {
+    // ⚠️ PLANO QUE MUDOU COM A TELA ABERTA NÃO TROCA A ESCOLHA (revisão 3, 18/09/2026). Mesmo lote,
+    // mesmo preço, mesmo piso, e o plano escolhido ainda existe na lista nova: a escolha e o que foi
+    // digitado ficam, e os números que dependem do plano (os cartões, o preço do plano no modo
+    // simulação, o piso da faixa) se refazem sozinhos a partir da lista nova. Só abre de novo quando
+    // o lote é outro, ou quando o plano escolhido deixou de existir.
+    const abertura = `${unidade}|${valorDaUnidade}|${entradaMinimaPercentual ?? ""}`;
+    const mesmaAbertura = aberturaAnterior.current === abertura;
+    aberturaAnterior.current = abertura;
+    if (
+      mesmaAbertura &&
+      planoAtivoAgora.current !== null &&
+      planosDaConta.some((p) => p.nome === planoAtivoAgora.current)
+    ) {
+      return;
+    }
+
     const maisLongo =
       [...planosDaConta].sort((a, b) => b.parcelas - a.parcelas)[0] ?? null;
     // ⚠️ A MESMA CONTA DO CARTÃO E DO CLIQUE, sobre a tabela do lote: o lote abre no plano mais
@@ -731,6 +781,11 @@ export function SimuladorDeProposta({
     if (parcelas <= 0) return null;
     return {
       ...montarProposta({
+        // ⚠️ O CRITÉRIO DO VALOR CHEIO É O DO PLANO (`temAnuaisCadastradas`, Lucas 18/09/2026: *"So
+        // no Garden"*): o reforço digitado aqui abate pelo valor de face só no plano que tem anuais
+        // cadastradas; no resto, a valor presente, como sempre. É o mesmo critério do cartão, da
+        // busca por parcela e do cronograma do PDF.
+        anuaisCadastradasNoPlano: temAnuaisCadastradas(plano),
         baloesQuantidade: cockpit.anuaisQuantidade,
         baloesValor: cockpit.anuaisValor,
         // ⚠️ A ENTRADA É A DA MONTAGEM, e não a do cockpit. Quando as parcelas somam MAIS que o
@@ -1165,7 +1220,8 @@ export function SimuladorDeProposta({
                 // A montagem se invalida sozinha: ela guarda para quantas vezes foi feita.
                 setCockpit((a) => ({ ...a, entradaVezes: n }));
               }}
-              maximo={12}
+              // O mesmo teto que a rota pública do PDF aplica (`valoresDaSimulacaoPublica`).
+              maximo={ENTRADA_VEZES_MAXIMA}
               valor={cockpit.entradaVezes}
             />
             <span style={{ color: T.muted, fontSize: 11.5 }}>
@@ -1676,6 +1732,25 @@ export function SimuladorDeProposta({
               // `planosDaConta`, que é 1:1 de `planos` (ver `indiceDoPlano`). Pelo nome, o plano do
               // pai e o do filho com o mesmo nome trocariam de etiqueta.
               const ressalva = planos[posicao]?.ressalva ?? null;
+              // ⚠️ O TEXTO DO CARTÃO É O DA MMENDES, linha a linha e na ordem dela (Lucas,
+              // 18/09/2026: *"tem esse escrito. tem que ser igual o mmendes"*): nome e ressalva,
+              // entrada · anuais · prazo, o valor do lote com a tabela e o desconto, a parcela com os
+              // centavos e a correção. Quem escreve é `linhasDoCartao` (lib/hercules/cartao-do-plano),
+              // conferida contra a conta extraída do `garden.html`.
+              const cru = planos[posicao];
+              const linhas = linhasDoCartao({
+                anuais: t.anuais,
+                entrada: t.entrada,
+                entradaPercentual: t.plano.entradaPercentual,
+                indiceCorrecao: cru?.indiceCorrecao,
+                nome: t.plano.nome,
+                parcela: t.parcela,
+                parcelas: t.plano.parcelas,
+                preco: t.preco,
+                precoDeTabela: valorDaUnidade,
+                ressalva,
+                taxa: cru ? textoDaTaxa(cru as unknown as PlanoComercial) : "",
+              });
               return (
                 <button
                   key={t.plano.nome}
@@ -1691,66 +1766,125 @@ export function SimuladorDeProposta({
                   }}
                   type="button"
                 >
-                  <div style={{ color: T.sub, fontSize: 12, fontWeight: 650 }}>
-                    {t.plano.nome}
-                  </div>
+                  {/* ⚠️ O NOME É O PRIMEIRO FILHO, SOZINHO: é por ele que os testes e a leitura de
+                      tela acham o cartão. A ressalva vem ao lado, na mesma linha, como na MMendes. */}
+                  <span
+                    data-cartao="nome"
+                    style={{ color: T.text, fontSize: 12.5, fontWeight: 650, marginRight: 6 }}
+                  >
+                    {linhas.nome}
+                  </span>
                   {/* ⚠️ A CONDIÇÃO DE DISPONIBILIDADE DO PLANO (0168), onde o plano é ESCOLHIDO.
                       Lucas (16/09/2026) pediu a escrita no plano investidor ("válido para as
                       próximas 16 unidades"); ela só aparecia no Apolo e na aba de políticas, e a Mesa
-                      oferecia o plano sem a condição. É a mesma etiqueta âmbar de lá. */}
-                  {ressalva ? (
-                    <div style={{ marginTop: 3 }}>
-                      <EtiquetaDaRessalva texto={ressalva} />
-                    </div>
+                      oferecia o plano sem a condição. É a mesma etiqueta âmbar de lá, ao lado do nome
+                      como na MMendes (*"precisa estar onde o corretor lê o nome do plano"*). */}
+                  {linhas.ressalva ? (
+                    <span data-cartao="ressalva" style={{ display: "inline-flex", verticalAlign: 1 }}>
+                      <EtiquetaDaRessalva texto={linhas.ressalva} />
+                    </span>
                   ) : null}
+                  {/* ⚠️ O % DA ENTRADA VEM JUNTO (Lucas, 05/09/2026: *"pode colocar o % de cada plano
+                      aqui"*). Os cartões são a ESCADA do produto (prazo curto, entrada alta), e só
+                      com o valor em reais a escada não se lê. É o único acréscimo ao texto da MMendes. */}
                   <div
-                    style={{
-                      color: T.text,
-                      fontSize: 17,
-                      fontVariantNumeric: "tabular-nums",
-                      fontWeight: 650,
-                      marginTop: 3,
-                    }}
+                    data-cartao="resumo"
+                    style={{ color: T.muted, fontSize: 10.5, lineHeight: 1.45, marginTop: 2 }}
                   >
-                    {dinheiro(t.parcela)}
+                    {linhas.resumo}
                   </div>
-                  <div style={{ color: T.muted, fontSize: 11 }}>
-                    {/* ⚠️ O % VEM JUNTO (Lucas, 05/09/2026: *"pode colocar o % de cada plano
-                        aqui"*). Os quatro cards são a ESCADA do produto — prazo curto, entrada
-                        alta —, e só com o valor em reais a escada não se lê: R$ 14.000 e
-                        R$ 56.000 são dois números soltos até virarem 10% e 40%. É o mesmo
-                        percentual que agora decide o piso da entrada pelo prazo escolhido. */}
-                    {t.plano.parcelas}x · entrada {dinheiro(t.entrada)} (
-                    {t.plano.entradaPercentual}%)
-                  </div>
-                  {/* ⚠️ O DESCONTO E AS ANUAIS DO PLANO, quando ele tem (Lucas, 18/09/2026: *"esta
-                      faltando as anuais"* · *"tem que ser igual o mmendes"*). A parcela acima já os
-                      considera; sem esta linha o cartão não diria de onde ela vem. Plano sem os
-                      dois (todos os outros empreendimentos) não ganha linha nenhuma. */}
-                  {t.desconto > 0 || t.anuais.quantidade > 0 ? (
-                    <div style={{ color: T.muted, fontSize: 11 }}>
-                      {[
-                        t.desconto > 0
-                          ? `desconto ${t.desconto.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`
-                          : null,
-                        t.anuais.quantidade > 0
-                          ? `${t.anuais.quantidade} ${t.anuais.quantidade === 1 ? "anual" : "anuais"} de ${dinheiro(t.anuais.valor)}`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
+                  <div style={{ marginTop: 7 }}>
+                    <div style={{ color: T.muted, fontSize: 9.5 }}>Valor do lote</div>
+                    <div
+                      data-cartao="valor-do-lote"
+                      style={{
+                        color: T.text,
+                        fontSize: 14,
+                        fontVariantNumeric: "tabular-nums",
+                        fontWeight: 650,
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {linhas.valorDoLote}
                     </div>
-                  ) : null}
-                  <div style={{ color: T.muted, fontSize: 10.5, marginTop: 2 }}>
-                    {INDICES[
-                      (crus.get(t.plano.nome)?.indiceCorrecao ??
-                        "SEM_CORRECAO") as IndiceCorrecao
-                    ] ?? "sem correção"}
+                    <div
+                      data-cartao="origem-do-valor"
+                      style={{ color: T.muted, fontSize: 10, fontVariantNumeric: "tabular-nums" }}
+                    >
+                      {linhas.origemDoValor}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ color: T.muted, fontSize: 9.5 }}>Parcela mensal</div>
+                    <div
+                      style={{
+                        color: T.text,
+                        fontSize: 17,
+                        fontVariantNumeric: "tabular-nums",
+                        fontWeight: 650,
+                        lineHeight: 1.15,
+                      }}
+                    >
+                      <span data-cartao="parcela">{linhas.parcela}</span>
+                      <small
+                        data-cartao="prazo"
+                        style={{ color: T.muted, fontSize: 11, fontWeight: 400, marginLeft: 3 }}
+                      >
+                        {linhas.prazo}
+                      </small>
+                    </div>
+                    <div data-cartao="correcao" style={{ color: T.muted, fontSize: 10 }}>
+                      {linhas.correcao}
+                    </div>
                   </div>
                 </button>
               );
             })}
           </div>
+          {/* ⚠️ A LINHA DO À VISTA, DEPOIS DOS PLANOS, como na MMendes: o lote com o maior desconto de
+              tabela, em uma parcela. Não é botão (não há o que carregar no cockpit: à vista não tem
+              série). Só aparece quando algum plano tem desconto; ver `linhaDoAVista`. */}
+          {aVista ? (
+            <div
+              data-cartao="a-vista"
+              style={{
+                alignItems: "center",
+                background: T.card,
+                border: `1px solid ${T.border}`,
+                borderRadius: 11,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "6px 16px",
+                marginTop: 8,
+                padding: "9px 12px",
+              }}
+            >
+              <div style={{ flex: "1 1 160px", minWidth: 0 }}>
+                <div style={{ color: T.text, fontSize: 12.5, fontWeight: 650 }}>À vista</div>
+                <div style={{ color: T.muted, fontSize: 10.5 }}>{aVista.detalhe}</div>
+              </div>
+              <div>
+                <div style={{ color: T.muted, fontSize: 9.5 }}>Valor do lote</div>
+                <div
+                  style={{
+                    color: T.text,
+                    fontSize: 14,
+                    fontVariantNumeric: "tabular-nums",
+                    fontWeight: 650,
+                  }}
+                >
+                  {aVista.valorDoLote}
+                </div>
+                <div style={{ color: T.muted, fontSize: 10 }}>{aVista.origemDoValor}</div>
+              </div>
+              <div>
+                <div style={{ color: T.muted, fontSize: 9.5 }}>Pagamento</div>
+                <div style={{ color: T.text, fontSize: 13, fontWeight: 650 }}>
+                  {aVista.pagamento}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {/* ⚠️ UMA LEITURA SÓ PARA OS DOIS CAMINHOS — ver o cabeçalho do arquivo. */}
@@ -1898,7 +2032,9 @@ export function SimuladorDeProposta({
                 valor={dinheiro(principal.financiado)}
               />
               <Dado
-                nota={`+${Math.round((principal.total / (principal.valor || 1) - 1) * 100)}% sobre a tabela`}
+                // ⚠️ SOBRE A TABELA DO LOTE, e não sobre o valor já com o desconto do plano (revisão de
+                // 18/09/2026): o INVESTIDOR do Garden dizia "+0% sobre a tabela" pagando menos que ela.
+                nota={`${sinalDoPercentual(Math.round((principal.total / (valorDaUnidade || principal.valor || 1) - 1) * 100))}% sobre a tabela`}
                 rotulo="Total pago"
                 valor={dinheiro(principal.total)}
               />
@@ -2827,4 +2963,11 @@ function CampoDoLote({
       </div>
     </div>
   );
+}
+
+/** "+11", "−3" ou "0": o sinal do percentual escrito como no resto do cartão. */
+function sinalDoPercentual(p: number): string {
+  if (p > 0) return `+${p}`;
+  if (p < 0) return `−${Math.abs(p)}`;
+  return "0";
 }

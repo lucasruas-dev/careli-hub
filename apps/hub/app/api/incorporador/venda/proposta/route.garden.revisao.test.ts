@@ -13,6 +13,12 @@ import type { PropostaParaPdf } from "@/lib/hercules/proposta-pdf";
 //
 // Mocks copiados de `route.test.ts`, com os planos do Garden, o piso de 8% e o desenhista do PDF
 // guardando a folha. A régua (`conferirProposta`), o cronograma e a folha são os de verdade.
+//
+// ⚠️ O DUBLÊ DO BANCO ACOMPANHA O DE `route.test.ts`, INCLUSIVE A TRAVA DO LOTE (1.350.0). Antes de
+// gravar, a rota lê a situação do terreno e pergunta se há OUTRO dono vivo (`lerSituacaoDasUnidades`
+// + `outrosDonosDoLote`), em lista e com `.or()`/`.not()`. A cópia de antes do rebase não sabia
+// responder em lista: a trava lançava, a rota não conseguia conferir e devolvia 409 (fail-closed,
+// como deve). Não se afrouxa a trava para o teste passar: o dublê é que aprende a responder.
 
 const estado = vi.hoisted(() => ({
   apagado: [] as Array<{ tabela: string }>,
@@ -26,6 +32,8 @@ const estado = vi.hoisted(() => ({
   unidade: {} as Record<string, unknown>,
   /** Simula a reserva ter saído de 'ativa' entre a leitura e o flip: update casa ZERO linhas. */
   reservaJaSaiu: false,
+  /** Propostas vivas de OUTRA venda no terreno, como a trava do lote as lê (em lista). */
+  propostasDeOutros: [] as Array<Record<string, unknown>>,
   atualizado: [] as Array<{ linha: Record<string, unknown>; tabela: string }>,
   credenciado: true,
   /** A 0178 aplicada (8% e 12%) ou não. */
@@ -186,19 +194,33 @@ vi.mock("@/lib/apolo/server", () => {
     const feito: {
       insert: null | Record<string, unknown>;
       select: boolean;
+      soLinhasDoPai: boolean;
+      unica: boolean;
       update: boolean;
     } = {
       insert: null,
       select: false,
+      soLinhasDoPai: false,
+      unica: false,
       update: false,
     };
     const alvo: Record<string, unknown> = {
       then: (aceitar: (r: unknown) => unknown, recusar?: (e: unknown) => unknown) =>
         Promise.resolve(responder(tabela, feito)).then(aceitar, recusar),
     };
-    for (const metodo of ["eq", "in", "is", "limit", "maybeSingle", "order", "range", "single"]) {
+    for (const metodo of ["eq", "in", "is", "limit", "or", "order", "range"]) {
       alvo[metodo] = () => alvo;
     }
+    for (const metodo of ["maybeSingle", "single"]) {
+      alvo[metodo] = () => {
+        feito.unica = true;
+        return alvo;
+      };
+    }
+    alvo.not = () => {
+      feito.soLinhasDoPai = true;
+      return alvo;
+    };
     // ⚠️ `update().select()` DEVOLVE AS LINHAS QUE CASARAM, e é assim que a rota descobre a corrida
     // (zero linhas = alguém chegou antes). O mock precisa saber que o select foi pedido, senão
     // devolve `null` para tudo e todo update parece uma corrida perdida.
@@ -225,7 +247,13 @@ vi.mock("@/lib/apolo/server", () => {
 
   const responder = (
     tabela: string,
-    feito: { insert: null | Record<string, unknown>; select: boolean; update: boolean },
+    feito: {
+      insert: null | Record<string, unknown>;
+      select: boolean;
+      soLinhasDoPai: boolean;
+      unica: boolean;
+      update: boolean;
+    },
   ) => {
     if (feito.insert) return { data: { id: "prop-1" }, error: null };
     // Update com `.select()`: uma linha casada, como no caminho feliz do PostgREST.
@@ -233,6 +261,26 @@ vi.mock("@/lib/apolo/server", () => {
       if (!feito.select) return { data: null, error: null };
       const casou = tabela === "hercules_reservas" && estado.reservaJaSaiu ? [] : [{ id: "linha-1" }];
       return { data: casou, error: null };
+    }
+    // As leituras em lista da trava do lote, como em `route.test.ts`: a unidade é a única linha viva
+    // do terreno, a reserva viva é a desta venda, e propostas de outros só quando o teste pede.
+    if (!feito.unica) {
+      if (tabela === "hercules_unidades") {
+        return {
+          data: feito.soLinhasDoPai
+            ? []
+            : [{ ...estado.unidade, atualizado_em: null, espelho_de: null, origem_c2x_id: null, workspace_id: "careli" }],
+          error: null,
+        };
+      }
+      if (tabela === "hercules_reservas") {
+        return {
+          data: [{ ...estado.reserva, prometeu_reserva_id: null, unidade_id: estado.unidade.id }],
+          error: null,
+        };
+      }
+      if (tabela === "hercules_propostas") return { data: estado.propostasDeOutros, error: null };
+      if (tabela === "prometeu_reservas") return { data: [], error: null };
     }
     if (tabela === "hercules_unidades") return { data: estado.unidade, error: null };
     if (tabela === "hercules_reservas") return { data: estado.reserva, error: null };
@@ -350,6 +398,7 @@ beforeEach(() => {
   estado.credenciado = true;
   estado.inserido = [];
   estado.reservaJaSaiu = false;
+  estado.propostasDeOutros = [];
   estado.reserva = {
     corretor_entity_id: "corr-1",
     criado_em: "2026-09-01T12:00:00.000Z",
@@ -436,5 +485,27 @@ describe("revisão 3: a proposta do INVESTIDOR PARCELADO do Garden, gravada pela
     expect(gravada().condicoes.plano.descontoPercentual).toBe(0);
     expect(gravada().condicoes.mensais[0]!.valor).toBe(4_441.67);
     expect(naFolha("Valor de tabela")).toBeUndefined();
+  });
+
+  // A trava de venda dupla (1.350.0) vale para o plano com desconto como para qualquer outro: o
+  // desconto do Garden não abre porta nenhuma para vender o mesmo lote duas vezes.
+  it("⚠️ proposta viva de OUTRA venda no terreno: o INVESTIDOR PARCELADO também recebe 409 e nada é gravado", async () => {
+    estado.propostasDeOutros = [
+      {
+        criado_em_c2x: null,
+        etapa: "contrato",
+        etapa_desde: "2026-09-10T12:00:00.000Z",
+        id: "p-c2x",
+        reserva_id: null,
+        unidade_id: "uni-1",
+      },
+    ];
+    const r = await pedir({});
+    expect(r.status).toBe(409);
+    expect(await r.json()).toMatchObject({
+      erros: [{ campo: "unidade", mensagem: "Este lote já tem dono: proposta em contrato. Nada foi gravado." }],
+    });
+    expect(estado.inserido).toHaveLength(0);
+    expect(estado.folhas).toHaveLength(0);
   });
 });

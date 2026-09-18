@@ -16,6 +16,7 @@ import {
   parcelaDoFinanciado,
   sistemaDoCadastro,
   somaDasMensais,
+  temAnuaisCadastradas,
   valorPresenteDosBaloes,
 } from "./simulacao";
 import {
@@ -24,7 +25,6 @@ import {
   condicaoDoPlano,
   conferenciaDoPlano,
   descontoDoPlanoNoPrazo,
-  menorPrecoDePlano,
   mesmoAjuste,
   precoDeTabelaDoCartao,
 } from "./tabela-do-lote";
@@ -755,11 +755,14 @@ describe("composicoesQueFecham com desconto e anuais de plano", () => {
     }
     for (const c of r.filter((x) => x.plano === "NORMAL")) expect(c.valor).toBe(435_000);
 
-    // A parcela de cada composição é a conta do plano com a entrada dela, e nada além disso.
+    // A parcela de cada composição é a conta do plano com a entrada dela, e nada além disso. Os três
+    // planos do Garden têm anuais cadastradas: o reforço abate pelo valor de face (`temAnuaisCadastradas`).
     for (const c of r) {
       const plano = GARDEN.find((p) => p.nome === c.plano)!;
+      expect(temAnuaisCadastradas(plano)).toBe(true);
       expect(
         montarProposta({
+          anuaisCadastradasNoPlano: true,
           baloesQuantidade: c.anuais.quantidade,
           baloesValor: c.anuais.valor,
           entrada: c.entrada,
@@ -834,14 +837,10 @@ describe("descontoDoPlanoNoPrazo: o desconto só é do plano no prazo do plano",
   });
 });
 
-describe("menorPrecoDePlano e mesmoAjuste", () => {
-  it("o menor preço de plano é a tabela com o maior desconto; sem desconto, a tabela", () => {
-    expect(menorPrecoDePlano(435_000, GARDEN)).toBe(382_800);
-    expect(menorPrecoDePlano(421_500, GARDEN)).toBe(370_920);
-    expect(menorPrecoDePlano(185_400.5, [{ descontoPercentual: 0 }, {}])).toBe(185_400.5);
-    expect(menorPrecoDePlano(435_000, [])).toBe(435_000);
-  });
-
+// `menorPrecoDePlano` (a tabela com o MAIOR desconto de qualquer plano) saiu na rodada 3 de
+// 18/09/2026: era o piso do espelho público, e deixava o NORMAL sair com os 12% do INVESTIDOR. O piso
+// agora é o do plano escolhido, no prazo (`valoresDaSimulacaoPublica`, lib/hercules/espelho).
+describe("mesmoAjuste", () => {
   it("compara por valor, e zero é zero em qualquer moeda", () => {
     expect(mesmoAjuste({ modo: "percentual", valor: -8 }, { modo: "percentual", valor: -8 })).toBe(
       true,

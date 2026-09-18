@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { type PlanoComercial, taxaMensal } from "@/lib/apolo/planos-comerciais";
-import { montarProposta } from "@/lib/hercules/simulacao";
+import { montarProposta, valorPresenteDosBaloes } from "@/lib/hercules/simulacao";
 
 import { montarCronograma, repartirEmPartesIguais } from "./cronograma";
 
@@ -224,15 +224,36 @@ describe("⚠️ vencimento é DIA, não instante", () => {
 });
 
 describe("as parcelas anuais", () => {
-  // ⚠️ MUDOU EM 18/09/2026: a anual k vence JUNTO COM A MENSAL 12k (a 1ª com a 12ª mensal), e não
-  // doze meses depois da primeira mensal (que é a mensal 13). Com a regra antiga a última anual de
-  // um plano de 36 meses com 3 anuais vencia um mês depois da última mensal. É o `fatorBaloes` da
-  // MMendes e o mês que o valor presente da Price sempre usou.
-  it("caem uma por ano, a primeira junto com a 12ª mensal", () => {
+  // ⚠️ DUAS REGRAS DE DATA, PELO CRITÉRIO DO VALOR CHEIO (`temAnuaisCadastradas`). Lucas, 18/09/2026:
+  // *"So no Garden"*. No plano SEM anual cadastrada (todo empreendimento fora o Garden, e o reforço
+  // lançado à mão) a anual k vence doze meses depois da primeira mensal, como sempre venceu e como o
+  // bloco pronto da Têmis escreve no contrato. No plano COM anuais cadastradas (o Garden) ela vence
+  // junto com a mensal 12k, e a última nunca passa da última mensal.
+  it("plano sem anual cadastrada: uma por ano, a primeira doze meses depois da primeira mensal (a regra de sempre)", () => {
     const c = montarCronograma({
       ...EXEMPLO_DO_LUCAS,
       anuaisQuantidade: 3,
       anuaisValor: 2_000,
+    });
+    expect(c.anuais.map((p) => p.vencimento)).toEqual([
+      "2027-12-10",
+      "2028-12-10",
+      "2029-12-10",
+    ]);
+    expect(c.anuais.map((p) => p.vencimento)).toEqual([
+      c.mensais[12]?.vencimento,
+      c.mensais[24]?.vencimento,
+      c.mensais[36]?.vencimento,
+    ]);
+    expect(c.totais.anuais).toBe(6_000);
+  });
+
+  it("plano COM anuais cadastradas (o Garden): a primeira junto com a 12ª mensal", () => {
+    const c = montarCronograma({
+      ...EXEMPLO_DO_LUCAS,
+      anuaisQuantidade: 3,
+      anuaisValor: 2_000,
+      plano: { ...SACOC_SEM_JUROS, anuaisQuantidade: 3, anuaisValor: 2_000 },
     });
     expect(c.anuais.map((p) => p.vencimento)).toEqual([
       "2027-11-10",
@@ -244,10 +265,9 @@ describe("as parcelas anuais", () => {
       c.mensais[23]?.vencimento,
       c.mensais[35]?.vencimento,
     ]);
-    expect(c.totais.anuais).toBe(6_000);
   });
 
-  it("⚠️ a última anual nunca vence depois da última mensal (os três planos do Garden)", () => {
+  it("⚠️ no plano com anuais cadastradas a última anual nunca vence depois da última mensal (os três planos do Garden)", () => {
     // INVESTIDOR 36x com 3 anuais, NORMAL 60x com 5, INVESTIDOR PARCELADO 84x com 4: o teto de anuais
     // é `floor(prazo ÷ 12)`, e com a anual k na mensal 12k a última cai no máximo na última mensal.
     for (const [parcelasMensais, anuaisQuantidade, anuaisValor] of [
@@ -263,6 +283,7 @@ describe("as parcelas anuais", () => {
         anuaisValor,
         entradaValor: 100_000 * 0.1,
         parcelasMensais,
+        plano: { ...SACOC_SEM_JUROS, anuaisQuantidade, anuaisValor },
         valorNegociado: 400_000,
       });
       const ultimaMensal = c.mensais.at(-1)!.vencimento;
@@ -272,6 +293,21 @@ describe("as parcelas anuais", () => {
         expect(a.vencimento).toBe(c.mensais[12 * (k + 1) - 1]?.vencimento);
       });
     }
+  });
+
+  it("reforço lançado à mão num plano sem anual cadastrada: a data não muda com o valor nem com a quantidade", () => {
+    // O mesmo reforço, lançado à mão (plano sem anual) e como anual do plano: só o do plano adianta.
+    const aMao = montarCronograma({ ...EXEMPLO_DO_LUCAS, anuaisQuantidade: 2, anuaisValor: 5_000, parcelasMensais: 36 });
+    const doPlano = montarCronograma({
+      ...EXEMPLO_DO_LUCAS,
+      anuaisQuantidade: 2,
+      anuaisValor: 5_000,
+      parcelasMensais: 36,
+      plano: { ...SACOC_SEM_JUROS, anuaisQuantidade: 2, anuaisValor: 5_000 },
+    });
+    expect(aMao.mensais.map((m) => m.vencimento)).toEqual(doPlano.mensais.map((m) => m.vencimento));
+    expect(aMao.anuais.map((a) => a.vencimento)).toEqual(["2027-12-10", "2028-12-10"]);
+    expect(doPlano.anuais.map((a) => a.vencimento)).toEqual(["2027-11-10", "2028-11-10"]);
   });
 
   it("num plano SEM juros, valor presente e face são a mesma coisa: o saldo cai 6 mil", () => {
@@ -285,10 +321,23 @@ describe("as parcelas anuais", () => {
     expect(c.mensais[0]?.valor).toBe(700);
   });
 
-  it("⚠️ SACOC COM juros: o saldo cai pelo VALOR DE FACE, e a folha fecha ao centavo", () => {
-    // Decisão de 18/09/2026 ("tem que ser igual o mmendes"): no SACOC a parcela do 1º ciclo é
-    // amortização pura, e os juros entram no degrau do aniversário; as anuais abatem o saldo pelo
-    // que o boleto do aniversário cobra. Entrada + anuais + financiado = valor negociado.
+  it("⚠️ SACOC COM juros e ANUAIS CADASTRADAS NO PLANO (o Garden): o saldo cai pelo VALOR DE FACE, e a folha fecha", () => {
+    // Pedido do Lucas (18/09/2026, "tem que ser igual o mmendes") e o alcance que ele decidiu ("So no
+    // Garden"): no plano SACOC que tem anuais cadastradas, as anuais abatem o saldo pelo que o boleto
+    // do aniversário cobra. Entrada + anuais + financiado = valor negociado.
+    const c = montarCronograma({
+      ...EXEMPLO_DO_LUCAS,
+      anuaisQuantidade: 3,
+      anuaisValor: 20_000,
+      entradaVezes: 1,
+      plano: { ...SACOC_COM_JUROS, anuaisQuantidade: 3, anuaisValor: 20_000 },
+    });
+    expect(c.totais.financiado).toBe(30_000);
+    expect(c.mensais[0]?.valor).toBe(250);
+    expect(c.totais.entrada + c.totais.anuais + c.totais.financiado).toBe(100_000);
+  });
+
+  it("⚠️ SACOC COM juros e reforço lançado à mão (plano SEM anual cadastrada): o saldo cai pelo VALOR PRESENTE, como sempre", () => {
     const c = montarCronograma({
       ...EXEMPLO_DO_LUCAS,
       anuaisQuantidade: 3,
@@ -296,9 +345,12 @@ describe("as parcelas anuais", () => {
       entradaVezes: 1,
       plano: SACOC_COM_JUROS,
     });
-    expect(c.totais.financiado).toBe(30_000);
-    expect(c.mensais[0]?.valor).toBe(250);
-    expect(c.totais.entrada + c.totais.anuais + c.totais.financiado).toBe(100_000);
+    const vp = valorPresenteDosBaloes(3, 20_000, taxaMensal(SACOC_COM_JUROS));
+    expect(vp).toBeLessThan(60_000);
+    expect(c.totais.financiado).toBe(Math.round((100_000 - 10_000 - vp) * 100) / 100);
+    expect(c.totais.financiado).toBeGreaterThan(30_000);
+    // O boleto do aniversário continua sendo o face.
+    expect(c.totais.anuais).toBe(60_000);
   });
 
   it("⚠️ PRICE COM juros o saldo cai pelo VALOR PRESENTE, e não pelo total de face", () => {

@@ -132,6 +132,17 @@ export const PRAZO_PADRAO_DA_PROPOSTA = 7;
 export const PRAZO_MAXIMO_DA_PROPOSTA = 30;
 
 /**
+ * Em quantas vezes a entrada pode ser dividida: o teto do contador da tela.
+ *
+ * ⚠️ É O MESMO NÚMERO NA TELA E NA ROTA PÚBLICA DO PDF (revisão de 18/09/2026). O contador do
+ * simulador sempre parou em 12, mas a rota do espelho público recebia `entradaVezes` sem teto: um
+ * corpo escrito à mão com 240 vezes imprimia a entrada em 240 parcelas e a primeira mensal 20 anos
+ * depois, e 20.000 vezes davam 573 páginas de PDF, sem login. Um número só, para as duas não
+ * divergirem.
+ */
+export const ENTRADA_VEZES_MAXIMA = 12;
+
+/**
  * O último dia do mês que existe em TODO mês.
  *
  * ⚠️ 29, 30 E 31 NÃO SÃO DIAS DE VENCIMENTO. Um contrato com vencimento em 31 tem sete meses por
@@ -442,7 +453,7 @@ export function conferirProposta(
     // somava entrada + reforços nominais e comparava com o preço à vista; medido contra o próprio
     // simulador, isso reprovava SETE composições que a tela recomenda, porque reforço que cai no
     // mês 72 não é dinheiro de hoje. Quem sabe se a composição fecha é o cronograma, que abate os
-    // reforços pelo sistema do plano (`anuaisQueAbatemOSaldo`) e quebra quando o saldo fica
+    // reforços pela regra do plano (`anuaisQueAbatemOSaldo`) e quebra quando o saldo fica
     // negativo. Aqui a régua é a do dinheiro do ATO.
     //
     // ⚠️ IGUAL AO VALOR PASSA: é a venda à vista, e recusá-la seria proibir o cliente de quitar

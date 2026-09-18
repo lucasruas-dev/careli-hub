@@ -15,10 +15,14 @@
 // ⚠️ `entradaPercentual` é 0 a 100, NUNCA fração. O banco tem CHECK, mas a checagem aqui existe
 // para a mensagem ser útil: "20 significa 20%" resolve mais rápido que um erro de constraint.
 import {
+  calcularParcela,
   INDICES as ROTULOS_DE_INDICE,
+  type NaturezaDaParcela,
   type PlanoComercial,
   type SlotDaPa,
 } from "@/lib/apolo/planos-comerciais";
+import { descontoDoPlano } from "@/lib/hercules/ajuste-de-preco";
+import { temAnuaisCadastradas } from "@/lib/hercules/simulacao";
 import { conferenciaDoPlano } from "@/lib/hercules/tabela-do-lote";
 
 export type PlanoDoTemis = {
@@ -292,14 +296,37 @@ export function paraCalculo(plano: PlanoDoTemis): PlanoComercial {
   };
 }
 
+/** O que a linha do plano (e a prévia do formulário) anuncia para uma unidade. */
+export type ConferenciaNaUnidade = {
+  /** As anuais que cabem no prazo. Zero e zero fora do plano com anuais cadastradas. */
+  anuais: { quantidade: number; valor: number };
+  /** O desconto do plano, já normalizado (0 quando não tem). */
+  descontoPercentual: number;
+  /** O sinal, em reais. */
+  entrada: number;
+  naturezaDaParcela: NaturezaDaParcela;
+  parcela: number;
+  parcelas: number;
+  /** A tabela com o desconto do plano (a própria tabela quando não há desconto). */
+  precoDoPlano: number;
+};
+
 /**
- * O plano do cadastro conferido contra o preço de uma unidade: a MESMA conta da Mesa de Venda.
+ * O plano do cadastro conferido contra o preço de uma unidade.
  *
  * Lucas (18/09/2026): *"tem que ser igual o mmendes"*. A aba de planos do Apolo conferia o plano com
- * `calcularParcela`, que não conhece anual: no Investidor Parcelado do Garden, lote de R$ 435.000,
- * ela anunciava R$ 4.383,14 enquanto a Mesa dizia outro número. Aqui é `conferenciaDoPlano`
- * (`lib/hercules/tabela-do-lote.ts`): desconto do plano, entrada com o piso do empreendimento, anuais
- * que cabem no prazo e a parcela de `montarProposta`.
+ * `calcularParcela`, que não conhece anual nem desconto: no Investidor Parcelado do Garden, lote de
+ * R$ 435.000, ela anunciava R$ 4.383,14 enquanto a Mesa dizia R$ 3.192,67. No plano com anuais
+ * CADASTRADAS ou com desconto (hoje, os três do Garden), a conta é a da Mesa, `conferenciaDoPlano`
+ * (`lib/hercules/tabela-do-lote.ts`): desconto do plano, entrada com o piso do empreendimento,
+ * anuais que cabem no prazo e a parcela de `montarProposta`.
+ *
+ * ⚠️ NO RESTO, `calcularParcela`, A CONTA DE SEMPRE (Lucas, 18/09/2026, sobre a mudança de conta
+ * desta rodada: *"So no Garden"*). A primeira versão usava a conta da Mesa em todo plano, e mudou o
+ * número da aba em 19 dos 40 planos de fora do Garden (revisão de 18/09/2026): o sinal passou a ter
+ * o piso do empreendimento e a ser arredondado para cima no real (no Investidor do 20, de R$ 0,00
+ * para R$ 9.290,00; no INVESTIDOR do 19, de R$ 21.306,40 para R$ 21.307,00). A conta da Mesa
+ * concorda com o que a Mesa vende; levá-la para os outros empreendimentos é decisão do Lucas.
  *
  * ⚠️ UMA FUNÇÃO SÓ PARA A LINHA DO PLANO E PARA A PRÉVIA DO FORMULÁRIO, e fora do componente para o
  * teste alcançar a conta que a tela faz. Preço nulo (campo vazio) = nada a conferir.
@@ -308,18 +335,34 @@ export function conferirNaUnidade(
   plano: PlanoDoTemis,
   preco: null | number,
   entradaMinimaPercentual: null | number,
-) {
+): ConferenciaNaUnidade | null {
   if (preco === null) return null;
-  return conferenciaDoPlano({
-    entradaMinimaPercentual,
-    plano: {
-      ...paraCalculo(plano),
-      anuaisQuantidade: plano.anuaisQuantidade ?? null,
-      anuaisValor: plano.anuaisValor ?? null,
-      descontoPercentual: plano.descontoPercentual ?? null,
-    },
-    precoDeTabela: preco,
-  });
+  const doCadastro = {
+    ...paraCalculo(plano),
+    anuaisQuantidade: plano.anuaisQuantidade ?? null,
+    anuaisValor: plano.anuaisValor ?? null,
+    descontoPercentual: plano.descontoPercentual ?? null,
+  };
+
+  // O MESMO critério da conta do Garden em toda a casa: as anuais cadastradas no plano
+  // (`temAnuaisCadastradas`) e, aqui, também o desconto do plano, que só o Garden tem.
+  if (temAnuaisCadastradas(doCadastro) || descontoDoPlano(doCadastro.descontoPercentual) > 0) {
+    return conferenciaDoPlano({ entradaMinimaPercentual, plano: doCadastro, precoDeTabela: preco });
+  }
+
+  const deSempre = calcularParcela(doCadastro, preco);
+  // Com preço, `calcularParcela` sempre devolve sinal e parcela; nulo aqui é a linha que a aba não
+  // mostrava, e continua sem mostrar.
+  if (deSempre.sinal === null || deSempre.parcela === null) return null;
+  return {
+    anuais: { quantidade: 0, valor: 0 },
+    descontoPercentual: 0,
+    entrada: deSempre.sinal,
+    naturezaDaParcela: deSempre.naturezaDaParcela,
+    parcela: deSempre.parcela,
+    parcelas: deSempre.parcelas,
+    precoDoPlano: preco,
+  };
 }
 
 /**

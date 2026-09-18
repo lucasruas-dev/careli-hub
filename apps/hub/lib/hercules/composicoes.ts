@@ -16,7 +16,7 @@ import type { SistemaAmortizacao } from "@/lib/apolo/planos-comerciais";
 
 import { descontoDoPlano, precoNoPlano } from "./ajuste-de-preco";
 import { pisoDaEntradaNoPrazo } from "./faixa-do-plano";
-import { entradaParaAParcela, montarProposta } from "./simulacao";
+import { entradaParaAParcela, montarProposta, temAnuaisCadastradas } from "./simulacao";
 
 export type PlanoDaComposicao = {
   /**
@@ -74,7 +74,7 @@ export type Composicao = {
   entradaPercentual: number;
   /**
    * O saldo que vira série mensal, JÁ ABATIDOS os reforços (`anuaisQueAbatemOSaldo`: valor de face
-   * no SACOC, valor presente na Price e no SAC).
+   * no SACOC do plano com anuais cadastradas, o Garden; valor presente no resto).
    *
    * ⚠️ NÃO É `valor − entrada`. Os reforços anuais também abatem o saldo — é assim que
    * `montarProposta` calcula e é o número que o PDF imprime como "Financiado". A tela recalculava
@@ -286,12 +286,19 @@ export function composicoesQueFecham(entrada: {
     if (!(valorDoPlano > 0)) continue;
     const descontoPercentual = descontoDoPlano(plano.descontoPercentual);
 
-    // ⚠️ O REFORÇO TEM QUE CABER NO PRAZO. O k-ésimo balão vence com a mensal 12k (ver
-    // `montarCronograma`): num plano de 36 meses só existem três aniversários, e varrer até seis
-    // oferecia "6 × R$ 15.000 ao ano" num contrato de três anos — dinheiro cobrado depois da
+    // ⚠️ O REFORÇO TEM QUE CABER NO PRAZO. O k-ésimo balão cai no mês 12k (ver
+    // `valorPresenteDosBaloes`): num plano de 36 meses só existem três aniversários, e varrer até
+    // seis oferecia "6 × R$ 15.000 ao ano" num contrato de três anos — dinheiro cobrado depois da
     // última parcela. A conta abatia tudo do saldo e a parcela saía menor do que o contrato
     // consegue cumprir.
     const aniversarios = Math.floor(plano.parcelas / 12);
+
+    // ⚠️ O CRITÉRIO DO VALOR CHEIO É DO PLANO, NÃO DO ARRANJO (Lucas, 18/09/2026: *"So no Garden"*).
+    // No plano com anuais cadastradas (o Garden), todo reforço desta varredura abate o saldo pelo
+    // valor de face, como no `propor` da MMendes; no plano sem anual cadastrada, a valor presente,
+    // exatamente como a busca sempre fez. Ida (`entradaParaAParcela`) e volta (`montarProposta`) com
+    // o mesmo critério, senão a entrada achada não produz a parcela pedida.
+    const anuaisCadastradasNoPlano = temAnuaisCadastradas(plano);
 
     // ⚠️ A VARREDURA LIVRE DE SEMPRE, MAIS O ARRANJO DO PLANO (18/09/2026). A varredura (zero anual
     // e os valores de anual da casa) é o que acha a composição de quem quer MENOS entrada; o arranjo
@@ -326,6 +333,7 @@ export function composicoesQueFecham(entrada: {
       // entrada mais alta do que a necessária — e a composição voltava ao cartão com uma parcela
       // que o contrato não emite.
       const { entrada: exata, sobra } = entradaParaAParcela({
+        anuaisCadastradasNoPlano,
         baloesQuantidade: quantidade,
         baloesValor: valorAnual,
         parcela: parcelaAlvo,
@@ -353,6 +361,7 @@ export function composicoesQueFecham(entrada: {
       if (teto !== null && arredondada > teto) continue;
 
       const montada = montarProposta({
+        anuaisCadastradasNoPlano,
         baloesQuantidade: quantidade,
         baloesValor: valorAnual,
         entrada: arredondada,

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type PlanoComercial, taxaMensal } from "@/lib/apolo/planos-comerciais";
 import { entradaMinima } from "@/lib/hercules/composicoes";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
-import { montarProposta, sistemaDoCadastro } from "@/lib/hercules/simulacao";
+import { montarProposta, sistemaDoCadastro, temAnuaisCadastradas } from "@/lib/hercules/simulacao";
 import { condicaoDoPlano } from "@/lib/hercules/tabela-do-lote";
 
 import { type CondicoesDaProposta, SimuladorDeProposta } from "./SimuladorDeProposta";
@@ -159,11 +159,16 @@ describe("revisão: a Mesa do Garden com a 0178 (lote de R$ 435.000, piso 8%)", 
     // R$ 3.351,86, e agora é o número da MMendes, (400.200 − 32.016 − 100.000) ÷ 84.
     expect(centavos(ultima!.parcela) / 100).toBe(3_192.67);
 
-    const texto = cartao("INVESTIDOR PARCELADO").textContent ?? "";
-    expect(texto).toContain("84x · entrada R$ 32.016 (8%)");
-    expect(texto).toContain("desconto 8% · 4 anuais de R$ 25.000");
-    // O cartão arredonda para o real: R$ 3.193, onde a MMendes escreve R$ 3.192,67.
-    expect(texto).toContain("R$ 3.193");
+    // ⚠️ A EXPECTATIVA MUDOU NA RODADA 3 (item 5, o cartão da MMendes): o cartão dizia "84x ·
+    // entrada R$ 32.016 (8%)", "desconto 8% · 4 anuais de R$ 25.000" e arredondava a parcela para
+    // R$ 3.193. O texto linha a linha contra a MMendes está em
+    // `SimuladorDeProposta.cartao.comportamento.test.tsx`.
+    const texto = (cartao("INVESTIDOR PARCELADO").textContent ?? "").replace(/\s+/g, " ");
+    expect(texto).toContain("entrada R$ 32.016 (8%) · 4 × R$ 25.000 · 84 meses");
+    expect(texto).toContain("R$ 400.200");
+    expect(texto).toContain("de R$ 435.000 · −8%");
+    expect(texto).toContain("R$ 3.192,67");
+    expect(texto).not.toContain("R$ 3.193");
   });
 
   it("o clique em cada cartão sobe exatamente o que o cartão anuncia", () => {
@@ -198,9 +203,11 @@ describe("revisão: a Mesa do Garden com a 0178 (lote de R$ 435.000, piso 8%)", 
     clicar(atalho!);
     expect(ultima).not.toBeNull();
     const c = ultima!;
-    // A conta da composição fecha sobre o valor que sobe.
+    // A conta da composição fecha sobre o valor que sobe (os planos do Garden têm anuais cadastradas:
+    // o reforço abate pelo valor de face, `temAnuaisCadastradas`).
     const plano = planos.find((p) => p.nome === c.planoNome)!;
     const conta = montarProposta({
+      anuaisCadastradasNoPlano: temAnuaisCadastradas(plano),
       baloesQuantidade: c.anuaisQuantidade,
       baloesValor: c.anuaisValor,
       entrada: c.entradaValor,

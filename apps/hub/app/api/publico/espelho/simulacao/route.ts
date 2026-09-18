@@ -54,11 +54,6 @@ type Corpo = {
   valor?: number;
 };
 
-function inteiro(v: unknown, padrao: number): number {
-  const n = Number(v);
-  return Number.isFinite(n) && n >= 0 ? Math.round(n) : padrao;
-}
-
 export async function POST(request: Request) {
   const token = new URL(request.url).searchParams.get("e");
   const aberto = await abrirEspelho(token);
@@ -71,7 +66,13 @@ export async function POST(request: Request) {
   }
 
   const { client, filhosC2xIds, nome, paiC2xId } = aberto.espelho;
-  const corpo = (await request.json().catch(() => ({}))) as Corpo;
+  // ⚠️ SÓ OBJETO É CORPO (revisão de 18/09/2026). `null`, número ou lista são JSON válido, e com eles
+  // `corpo.codigo` derrubava a rota com uma exceção não tratada (500). Fora de objeto, o corpo é
+  // vazio, e a resposta é a mesma de quem não mandou o lote.
+  const bruto: unknown = await request.json().catch(() => null);
+  const corpo = (
+    bruto !== null && typeof bruto === "object" && !Array.isArray(bruto) ? bruto : {}
+  ) as Corpo;
 
   const codigoDoLote = String(corpo.codigo ?? "").trim().toUpperCase();
   if (!codigoDoLote) {
@@ -143,32 +144,67 @@ export async function POST(request: Request) {
     );
   }
 
-  // ⚠️ O PREÇO É O DO ESPELHO, E O CORPO SÓ ESCOLHE DENTRO DA RÉGUA (`valoresDaSimulacaoPublica`):
-  // nunca abaixo do menor preço de plano do lote (tabela com o maior desconto de plano do
-  // empreendimento), nunca acima da tabela, e a entrada nunca abaixo do piso do empreendimento.
+  // ⚠️ O PREÇO É O DO ESPELHO, E O CORPO SÓ ESCOLHE DENTRO DA RÉGUA DO PLANO ESCOLHIDO
+  // (`valoresDaSimulacaoPublica`, revisão 3 de 18/09/2026): o valor nunca abaixo da tabela com o
+  // desconto DESTE plano no prazo pedido (fora do prazo do plano, desconto zero) nem acima da tabela;
+  // a entrada nunca abaixo da régua da tela (o piso do empreendimento e a faixa do prazo); as anuais
+  // até uma por aniversário; a entrada em no máximo `ENTRADA_VEZES_MAXIMA` vezes. Prazo além do plano
+  // é recusado com a frase.
   const precoDeTabela = loteNoEspelho.preco;
-  const { entrada, valor } = valoresDaSimulacaoPublica({
+  const aceita = valoresDaSimulacaoPublica({
+    anuaisPedidas: { quantidade: corpo.anuaisQuantidade, valor: corpo.anuaisValor },
     entradaMinimaPercentual,
     entradaPedida: corpo.entrada,
+    entradaVezesPedidas: corpo.entradaVezes,
+    parcelasPedidas: corpo.parcelas,
+    plano,
     planos,
     precoDeTabela,
     valorPedido: corpo.valor,
   });
+  if (!aceita.ok) {
+    return NextResponse.json(
+      { error: aceita.mensagem },
+      { headers: { "Cache-Control": SEM_CACHE }, status: 422 },
+    );
+  }
+  const { anuais, entrada, entradaVezes, parcelas, valor } = aceita;
 
+  // ⚠️ A COMPOSIÇÃO QUE NÃO FECHA É 422 COM A FRASE, E NÃO 503. `montarCronograma` quebra de
+  // propósito quando entrada e anuais valem mais que o valor (um corpo com anual de R$ 400 mil, por
+  // exemplo); é a mesma escolha da rota da proposta. O 503 diria "tente de novo" a um pedido que
+  // nunca vai fechar.
+  let cronograma: ReturnType<typeof montarCronograma>;
   try {
-    const cronograma = montarCronograma({
-      anuaisQuantidade: inteiro(corpo.anuaisQuantidade, plano.anuaisQuantidade),
-      anuaisValor: inteiro(corpo.anuaisValor, plano.anuaisValor),
+    cronograma = montarCronograma({
+      anuaisQuantidade: anuais.quantidade,
+      anuaisValor: anuais.valor,
       // O dia é só o que o cronograma precisa para agendar; a folha da simulação não anuncia
       // vencimento (ver `validadeEmIso` nulo abaixo).
       diaDeVencimento: 10,
       entradaValor: entrada,
-      entradaVezes: Math.max(1, inteiro(corpo.entradaVezes, 1)),
-      parcelasMensais: Math.max(1, inteiro(corpo.parcelas, plano.parcelas)),
+      entradaVezes,
+      parcelasMensais: parcelas,
       plano: { ...plano, slot: null },
       primeiraParcelaDaEntrada: new Date().toISOString().slice(0, 10),
       valorNegociado: valor,
     });
+  } catch (erro) {
+    // ⚠️ SÓ A FRASE DO MOTOR VAI AO VISITANTE. A recusa de `montarCronograma` é um `Error` com a
+    // explicação para quem monta a condição; um `RangeError` ou `TypeError` é defeito interno (era o
+    // "Invalid array length" que 1e10 vezes de entrada devolviam), e a mensagem dele não é do cliente.
+    return NextResponse.json(
+      {
+        error:
+          erro instanceof Error && erro.constructor === Error
+            ? erro.message
+            : "Estas condições não fecham uma simulação.",
+      },
+      { headers: { "Cache-Control": SEM_CACHE }, status: 422 },
+    );
+  }
+
+  try {
 
     const folha = montarFolhaDaProposta({
       // ⚠️ TUDO NULO NO ATENDIMENTO. A folha pública não sabe quem é o corretor — a página não tem

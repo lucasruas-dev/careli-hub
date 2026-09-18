@@ -62,42 +62,70 @@ export function valorPresenteDosBaloes(quantidade: number, valor: number, i: num
   if (i <= 0) return quantidade * valor;
 
   let soma = 0;
-  // O k-ésimo balão cai junto com a mensal 12k, ou seja, 12k meses à frente (a mensal 1 é o mês 1).
+  // O k-ésimo balão cai no aniversário k, ou seja, 12k meses à frente.
   for (let k = 1; k <= quantidade; k += 1) soma += valor * (1 + i) ** (-12 * k);
   return soma;
 }
 
 /**
- * Quanto as anuais abatem do saldo que a série mensal vai amortizar, no sistema do plano.
+ * O plano tem anuais CADASTRADAS (a quantidade e o valor da 0138, os dois positivos)?
  *
- * ⚠️ NO SACOC É O VALOR DE FACE (18/09/2026). Lucas, com a Mesa do Garden aberta: *"tem que ser
- * igual o mmendes"*. No SACOC da casa a parcela do primeiro ciclo é o saldo dividido pelo prazo, e
- * os juros do contrato entram pelo degrau do aniversário (`parcelaSacoc`, `parcelaNiveladaSacoc`).
- * Descontar as anuais a valor presente pela taxa do plano é raciocínio de Price enxertado num
- * contrato que não amortiza assim, e dava outro número que o mapa da MMendes (`garden.html`,
- * `condicoes`, que abate as anuais pelo valor de face): R$ 328,18 a mais por mês no NORMAL de 60x
- * e R$ 159,19 no INVESTIDOR PARCELADO de 84x, em todos os lotes. Com o valor de face a folha também
- * fecha: entrada + anuais + saldo das mensais = valor negociado, ao centavo.
+ * ⚠️ É O CRITÉRIO ÚNICO DO VALOR CHEIO (Lucas, 18/09/2026, perguntado se as anuais pelo valor cheio
+ * valiam só no Garden ou em todos: *"So no Garden"*). Hoje só os três planos do Garden têm anual
+ * cadastrada (SELECT em `temis_planos`, 18/09/2026), e é o cadastro, e não o nome do empreendimento,
+ * que decide: o dia em que outro empreendimento cadastrar a tabela dele com anuais, a conta dele passa
+ * a ser a mesma, sem código novo. As três contas (`montarProposta`, `entradaParaAParcela` e
+ * `montarCronograma`) perguntam aqui, e não cada uma do seu jeito.
  *
- * ⚠️ PRICE E SAC CONTINUAM A VALOR PRESENTE. Nos dois o juro corre sobre o saldo desde o primeiro
- * mês, e aí o balão do ano três vale hoje menos que a face: abatê-lo inteiro derrubaria a parcela
- * abaixo do que o contrato cumpre.
+ * ⚠️ MEIA CONFIGURAÇÃO NÃO É ANUAL: quantidade ou valor nulo, zero, negativo ou que não é número é
+ * "sem anual cadastrada", a mesma régua de `anuaisDoPlano` e de `comoPlano`.
+ */
+export function temAnuaisCadastradas(
+  // O índice é o que deixa passar QUALQUER plano (o do C2X não tem os dois campos, e é "sem anual"):
+  // sem ele o TypeScript recusa o objeto que não tem nenhuma das duas chaves.
+  plano: null | undefined | { [campo: string]: unknown; anuaisQuantidade?: unknown; anuaisValor?: unknown },
+): boolean {
+  if (!plano) return false;
+  const quantidade = Math.trunc(Number(plano.anuaisQuantidade ?? 0));
+  const valor = Number(plano.anuaisValor ?? 0);
+  return Number.isFinite(quantidade) && Number.isFinite(valor) && quantidade > 0 && valor > 0;
+}
+
+/**
+ * Quanto as anuais abatem do saldo que a série mensal vai amortizar.
+ *
+ * ⚠️ VALOR CHEIO (DE FACE) SÓ NO PLANO SACOC QUE TEM ANUAIS CADASTRADAS, que hoje são os três do
+ * Garden. Lucas, com a Mesa do Garden aberta: *"tem que ser igual o mmendes"*; e, perguntado se isso
+ * valia só no Garden ou em todos (18/09/2026): *"So no Garden"*. No mapa da MMendes (`garden.html`,
+ * `condicoes`) as anuais do plano abatem o saldo pelo valor de face, e é assim que a parcela do
+ * Garden bate com a dela (eram R$ 328,18/mês a mais no NORMAL de 60x e R$ 159,19 no INVESTIDOR
+ * PARCELADO de 84x, quando abatiam a valor presente). Com o valor de face a folha do Garden fecha:
+ * entrada + anuais + saldo das mensais = valor negociado, ao centavo.
+ *
+ * ⚠️ NO RESTO, VALOR PRESENTE, COMO SEMPRE FOI (a conta da origin/main). O reforço lançado à mão num
+ * plano sem anual cadastrada, em qualquer sistema, e toda anual na Price e no SAC abatem o saldo
+ * pelo que valem hoje. A primeira versão desta função abatia pelo valor de face em TODO SACOC com
+ * juros, e mudou a parcela de outros empreendimentos sem ninguém pedir (medido na revisão de
+ * 18/09/2026: 28 de 30 contas com reforço em SACOC com juros mudaram; o NORMAL-SACOC do 19 com 5 ×
+ * R$ 30.000 foi de R$ 392,62 para R$ 248,55; a busca por parcela mudou a recomendação em 20 de 50
+ * casos).
  *
  * ⚠️ É A FUNÇÃO ÚNICA DESTA PERGUNTA: `montarProposta`, `entradaParaAParcela` e `montarCronograma`
- * passam todos por aqui. Mudar um lado só faz a tela e o PDF voltarem a discordar.
+ * passam todos por aqui, com `anuaisCadastradasNoPlano` vindo de `temAnuaisCadastradas`. Mudar um
+ * lado só faz a tela e o PDF voltarem a discordar.
  */
 export function anuaisQueAbatemOSaldo(entrada: {
+  /** `temAnuaisCadastradas(plano)`. Falso (ou ausente) é a conta de sempre, a valor presente. */
+  anuaisCadastradasNoPlano?: boolean;
   quantidade: number;
   sistemaAmortizacao: SistemaAmortizacao;
   taxaAoMes: number;
   valor: number;
 }): number {
-  const { quantidade, sistemaAmortizacao, taxaAoMes, valor } = entrada;
-  return valorPresenteDosBaloes(
-    quantidade,
-    valor,
-    sistemaAmortizacao === "sacoc" ? 0 : taxaAoMes,
-  );
+  const { anuaisCadastradasNoPlano = false, quantidade, sistemaAmortizacao, taxaAoMes, valor } =
+    entrada;
+  const peloValorCheio = anuaisCadastradasNoPlano && sistemaAmortizacao === "sacoc";
+  return valorPresenteDosBaloes(quantidade, valor, peloValorCheio ? 0 : taxaAoMes);
 }
 
 /** Fator de anuidade: quanto vale hoje uma série de `parcelas` pagamentos de 1, à taxa `i`. */
@@ -240,7 +268,7 @@ export function somaDasMensais(entrada: {
 export type PropostaMontada = {
   /**
    * O que sobra para a série mensal, depois da entrada e dos balões (`anuaisQueAbatemOSaldo`: valor
-   * de face no SACOC, valor presente na Price e no SAC).
+   * de face no SACOC com anuais cadastradas no plano, valor presente no resto).
    */
   financiado: number;
   /** A do PRIMEIRO ciclo, no SACOC: é a que o C2X emite no primeiro ano e a que a tela anuncia. */
@@ -252,16 +280,17 @@ export type PropostaMontada = {
 /**
  * A parcela de uma proposta montada à mão.
  *
- * ⚠️ O BALÃO SAI DO SALDO PELO SISTEMA DO PLANO (`anuaisQueAbatemOSaldo`). Na Price e no SAC,
- * pelo valor presente: somar R$ 20.000 de um balão que cai daqui a três anos como se fosse dinheiro
- * de hoje reduziria a parcela além do que a conta permite. No SACOC, pelo valor de face (desde
- * 18/09/2026, "tem que ser igual o mmendes"): a parcela do primeiro ciclo é amortização pura e os
- * juros entram no degrau do aniversário, então não há desconto de juros a fazer no balão.
+ * ⚠️ O BALÃO SAI DO SALDO POR `anuaisQueAbatemOSaldo`. Pelo valor presente, como sempre: somar
+ * R$ 20.000 de um balão que cai daqui a três anos como se fosse dinheiro de hoje reduziria a parcela
+ * além do que a conta permite. Pelo valor de face só no plano SACOC com anuais cadastradas, que é o
+ * Garden (Lucas, 18/09/2026: *"So no Garden"*).
  *
  * ⚠️ E O TOTAL SOMA A SÉRIE INTEIRA (`somaDasMensais`), não `parcela × parcelas`: no SACOC a
  * parcela do primeiro ano não é a do contrato inteiro.
  */
 export function montarProposta(entrada: {
+  /** `temAnuaisCadastradas(plano)`. Ausente = falso, a conta de sempre. */
+  anuaisCadastradasNoPlano?: boolean;
   baloesQuantidade: number;
   baloesValor: number;
   entrada: number;
@@ -274,6 +303,7 @@ export function montarProposta(entrada: {
   const desembolsoInicial = Math.max(0, entrada.entrada);
 
   const baloesNoSaldo = anuaisQueAbatemOSaldo({
+    anuaisCadastradasNoPlano: entrada.anuaisCadastradasNoPlano,
     quantidade: baloesQuantidade,
     sistemaAmortizacao,
     taxaAoMes,
@@ -304,11 +334,14 @@ export function montarProposta(entrada: {
  * anuidade da Price devolvia um saldo menor e, com ele, uma entrada MAIOR do que a necessária —
  * dinheiro de agora que o cliente não precisava pôr, no plano de 21 dos 24 empreendimentos.
  *
- * ⚠️ OS BALÕES SAEM ANTES, igual na ida e pela MESMA função (`anuaisQueAbatemOSaldo`): valor de
- * face no SACOC, valor presente na Price e no SAC. Inverter com uma regra e ir com outra faria a
- * entrada sugerida não produzir a parcela pedida.
+ * ⚠️ OS BALÕES SAEM ANTES, igual na ida e pela MESMA função (`anuaisQueAbatemOSaldo`), com o
+ * MESMO critério (`anuaisCadastradasNoPlano`): valor de face no SACOC com anuais cadastradas (o
+ * Garden), valor presente no resto. Inverter com uma regra e ir com outra faria a entrada sugerida
+ * não produzir a parcela pedida.
  */
 export function entradaParaAParcela(entrada: {
+  /** `temAnuaisCadastradas(plano)`. Ausente = falso, a conta de sempre. */
+  anuaisCadastradasNoPlano?: boolean;
   baloesQuantidade: number;
   baloesValor: number;
   parcela: number;
@@ -321,6 +354,7 @@ export function entradaParaAParcela(entrada: {
     entrada;
 
   const baloesNoSaldo = anuaisQueAbatemOSaldo({
+    anuaisCadastradasNoPlano: entrada.anuaisCadastradasNoPlano,
     quantidade: baloesQuantidade,
     sistemaAmortizacao,
     taxaAoMes,

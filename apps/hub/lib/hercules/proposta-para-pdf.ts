@@ -356,8 +356,10 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
       // ⚠️ A LEGENDA DIZ O QUE O NÚMERO É (18/09/2026). O "Financiado" é o saldo que a série MENSAL
       // amortiza: as anuais já saíram dele. A legenda antiga ("84 mensais + 4 anuais") dizia o
       // contrário, e quem somava o papel (entrada + financiado + anuais) achava R$ 13.372,36 a mais
-      // que o valor da unidade no Investidor Parcelado do Garden. Com as anuais pelo valor de face
-      // no SACOC (`anuaisQueAbatemOSaldo`) a soma fecha ao centavo, e a legenda diz por quê.
+      // que o valor da unidade no Investidor Parcelado do Garden. No Garden as anuais abatem pelo
+      // valor de face (`anuaisQueAbatemOSaldo`, plano SACOC com anuais cadastradas) e a soma fecha ao
+      // centavo; no resto abatem a valor presente, como sempre, e a legenda continua verdadeira: as
+      // anuais estão fora do financiado.
       // Curta de propósito: o cartão tem ~120 pt de largura em Helvetica 7, e "saldo das 180
       // mensais, fora as 10 anuais" invadiria o cartão da parcela ao lado.
       detalhe:

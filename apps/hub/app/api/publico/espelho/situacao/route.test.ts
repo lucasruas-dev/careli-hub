@@ -8,9 +8,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Que `estadoDoEspelho` LANÇA quando qualquer leitura da régua única falha está provado em
 // `lib/hercules/espelho/estado-do-espelho.test.ts`; aqui se prova o que a rota faz com isso.
 
-const { abrirEspelho, estadoDoEspelho, planosPublicos } = vi.hoisted(() => ({
+const { abrirEspelho, estadoDoEspelho, pisoDeEntradaPublico, planosPublicos } = vi.hoisted(() => ({
   abrirEspelho: vi.fn(),
   estadoDoEspelho: vi.fn(),
+  pisoDeEntradaPublico: vi.fn(),
   planosPublicos: vi.fn(),
 }));
 
@@ -19,7 +20,10 @@ vi.mock("@/lib/hercules/espelho/abrir-espelho", () => ({
   ERRO_GENERICO: "Link inválido ou indisponível.",
 }));
 vi.mock("@/lib/hercules/espelho/estado-do-espelho", () => ({ estadoDoEspelho }));
-vi.mock("@/lib/hercules/espelho/planos-publicos", () => ({ planosPublicos }));
+// ⚠️ O DUBLÊ EXPORTA TUDO O QUE A ROTA IMPORTA DO MÓDULO. O piso de entrada entrou na resposta em
+// 18/09/2026 (o Garden anunciava 10% com o rótulo do plano de 8%); sem ele aqui, a chamada quebra
+// dentro do `try` e a rota responde 503, um erro que parece da régua e é do mock.
+vi.mock("@/lib/hercules/espelho/planos-publicos", () => ({ pisoDeEntradaPublico, planosPublicos }));
 
 import { GET } from "./route";
 
@@ -47,6 +51,7 @@ const verde = {
 beforeEach(() => {
   abrirEspelho.mockReset().mockResolvedValue(aberto);
   estadoDoEspelho.mockReset().mockResolvedValue(verde);
+  pisoDeEntradaPublico.mockReset().mockResolvedValue(8);
   planosPublicos.mockReset().mockResolvedValue([]);
 });
 
@@ -59,9 +64,14 @@ describe("/api/publico/espelho/situacao", () => {
       enterpriseIdDoPai: "35",
       enterpriseIdsDosFilhos: ["37", "41"],
     });
-    const corpo = (await r.json()) as { data: { lotes: unknown[]; temMapa: boolean } };
+    const corpo = (await r.json()) as {
+      data: { entradaMinimaPercentual: null | number; lotes: unknown[]; temMapa: boolean };
+    };
     expect(corpo.data.lotes).toEqual(verde.lotes);
     expect(corpo.data.temMapa).toBe(true);
+    // O piso do empreendimento vai junto, lido na mesma árvore que os planos.
+    expect(pisoDeEntradaPublico).toHaveBeenCalledWith(aberto.espelho.client, ["35", "37", "41"]);
+    expect(corpo.data.entradaMinimaPercentual).toBe(8);
   });
 
   // ⚠️ FAIL-CLOSED: nenhuma cor sai de uma leitura que falhou.

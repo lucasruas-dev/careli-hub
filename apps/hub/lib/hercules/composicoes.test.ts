@@ -208,10 +208,10 @@ describe("⚠️ composicoesQueFecham em SACOC — o plano de 21 dos 24 empreend
 
     expect(r.length).toBeGreaterThan(0);
     for (const c of r) {
-      // ⚠️ AS ANUAIS PELO VALOR DE FACE NO SACOC (18/09/2026), como o mapa da MMendes: a parcela do
-      // 1º ciclo é o saldo dividido pelo prazo, e o saldo é o lote menos a entrada menos as anuais.
-      const face = c.anuais.quantidade * c.anuais.valor;
-      expect(c.parcela).toBeCloseTo((136_521 - c.entrada - face) / c.parcelas, 2);
+      // Plano SEM anual cadastrada: o reforço da varredura abate a valor presente, como sempre (o
+      // valor de face é só do plano com anuais cadastradas, Lucas 18/09/2026: "So no Garden").
+      const vp = valorPresenteDosBaloes(c.anuais.quantidade, c.anuais.valor, 0.0072);
+      expect(c.parcela).toBeCloseTo((136_521 - c.entrada - vp) / c.parcelas, 2);
       expect(c.parcela).toBeLessThanOrEqual(3_450 + 0.01);
     }
   });
@@ -265,12 +265,35 @@ describe("⚠️ o financiado da composição é o mesmo que o PDF imprime", () 
   // contrato de 120 meses, eram dezenas de milhares de reais de diferença entre o número que o
   // coordenador leu na mesa e o que o comprador recebeu no papel.
   //
-  // ⚠️ E O ABATIMENTO É O DO SISTEMA DO PLANO (18/09/2026): valor de face no SACOC, como a MMendes;
-  // valor presente na Price. É a mesma função (`anuaisQueAbatemOSaldo`) que o cronograma usa.
-  it("SACOC: abate os reforços pelo valor de face, e a conta fecha ao centavo", () => {
+  // ⚠️ E O ABATIMENTO É O DE `anuaisQueAbatemOSaldo`, a mesma função que o cronograma usa: valor de
+  // face só no SACOC do plano com anuais cadastradas (o Garden, Lucas 18/09/2026: "So no Garden");
+  // valor presente no resto, como sempre.
+  it("SACOC sem anual cadastrada: desconta o valor presente dos reforços, como sempre", () => {
     const r = composicoesQueFecham({
       parcelaAlvo: 1_200,
       planos: PLANOS_SACOC,
+      valor: 200_000,
+    });
+
+    const comReforco = r.filter((c) => c.anuais.quantidade > 0);
+    expect(comReforco.length).toBeGreaterThan(0);
+
+    for (const c of comReforco) {
+      const plano = PLANOS_SACOC.find((p) => p.nome === c.plano);
+      expect(plano).toBeDefined();
+      const presente = valorPresenteDosBaloes(
+        c.anuais.quantidade,
+        c.anuais.valor,
+        plano?.taxaAoMes ?? 0,
+      );
+      expect(c.financiado).toBeCloseTo(200_000 - c.entrada - presente, 2);
+    }
+  });
+
+  it("SACOC COM anual cadastrada: abate os reforços pelo valor de face, e a conta fecha ao centavo", () => {
+    const r = composicoesQueFecham({
+      parcelaAlvo: 1_200,
+      planos: PLANOS_SACOC.map((p) => ({ ...p, anuaisQuantidade: 3, anuaisValor: 15_000 })),
       valor: 200_000,
     });
 

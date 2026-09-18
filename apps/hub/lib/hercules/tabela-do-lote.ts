@@ -16,7 +16,8 @@
 //
 // ⚠️ E A PARCELA É A DE `montarProposta`, NÃO UMA FÓRMULA NOVA. É ela que alimenta o cartão grande,
 // e é a mesma conta que `montarCronograma` faz para o PDF (as anuais abatem o saldo por
-// `anuaisQueAbatemOSaldo`: valor de face no SACOC, como a MMendes; valor presente na Price e no SAC).
+// `anuaisQueAbatemOSaldo`: valor de face no SACOC do plano com anuais cadastradas, como a MMendes no
+// Garden; valor presente no resto, como sempre).
 
 import {
   calcularParcela,
@@ -35,7 +36,7 @@ import {
   SEM_AJUSTE,
 } from "./ajuste-de-preco";
 import { anuaisDoPlano, entradaMinima } from "./composicoes";
-import { montarProposta, sistemaDoCadastro } from "./simulacao";
+import { montarProposta, sistemaDoCadastro, temAnuaisCadastradas } from "./simulacao";
 
 /** O que a conta precisa saber de um plano. É um subconjunto de `PlanoDaComposicao`. */
 export type PlanoDaTabela = {
@@ -106,6 +107,7 @@ export function condicaoDoPlano(entrada: {
   );
   const anuais = anuaisDoPlano(plano);
   const montada = montarProposta({
+    anuaisCadastradasNoPlano: temAnuaisCadastradas(plano),
     baloesQuantidade: anuais.quantidade,
     baloesValor: anuais.valor,
     entrada: valorDaEntrada,
@@ -200,23 +202,6 @@ export function descontoDoPlanoNoPrazo(entrada: {
   const desconto = descontoDoPlano(entrada.descontoDoPlano);
   if (desconto === 0) return 0;
   return entrada.parcelasEfetivas === entrada.parcelasDoPlano ? desconto : 0;
-}
-
-/**
- * O menor preço que algum plano do empreendimento dá a este lote: a tabela com o MAIOR desconto de
- * plano cadastrado.
- *
- * ⚠️ É O PISO DO PREÇO NO ESPELHO PÚBLICO (18/09/2026). A página não tem login, e a rota do PDF da
- * simulação aceitava o valor que viesse no corpo: dava para baixar uma folha com a marca da casa
- * dizendo "Desconto 50%". Nenhum plano vende abaixo disto, então nenhuma simulação pode. Sem plano
- * com desconto, é a própria tabela.
- */
-export function menorPrecoDePlano(
-  precoDeTabela: number,
-  planos: ReadonlyArray<{ descontoPercentual?: unknown }>,
-): number {
-  const maior = planos.reduce((m, p) => Math.max(m, descontoDoPlano(p.descontoPercentual)), 0);
-  return precoNoPlano(precoDeTabela, maior);
 }
 
 /**

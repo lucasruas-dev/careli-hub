@@ -24,8 +24,9 @@ import {
   type PlanoComercial,
 } from "@/lib/apolo/planos-comerciais";
 import { descontoDoPlano } from "@/lib/hercules/ajuste-de-preco";
+import { colunasComAsNovas, semAColunaQueFaltou } from "@/lib/hercules/planos-do-panteon";
 import { sistemaDoCadastro } from "@/lib/hercules/simulacao";
-import { ehColunaDoDescontoAusente } from "@/lib/temis/planos";
+import { limparRessalva } from "@/lib/temis/planos";
 
 /**
  * O plano como o espelho público o entrega.
@@ -46,6 +47,16 @@ export type PlanoPublico = Omit<PlanoComercial, "slot"> & {
    * bateria com a que o corretor apresenta.
    */
   descontoPercentual: number;
+  /**
+   * A ressalva de disponibilidade do plano (0168), já limpa. Nula = sem etiqueta.
+   *
+   * ⚠️ SAI PARA O ESPELHO PORQUE É CONDIÇÃO DO PLANO, E A MMENDES A MOSTRA NO MAPA PÚBLICO (revisão de
+   * 18/09/2026). O `garden.html` escreve "válido para as próximas 16 unidades" ao lado do nome do
+   * INVESTIDOR PARCELADO, e a Mesa já mostrava a etiqueta; o espelho não lia a coluna, e os 87
+   * cartões do INVESTIDOR PARCELADO no espelho do Garden saíam sem ela. Anunciar o plano sem dizer
+   * que ele acaba é prometer uma condição que o corretor pode não ter mais para vender.
+   */
+  ressalva: null | string;
 };
 
 type LinhaDePlano = {
@@ -60,6 +71,8 @@ type LinhaDePlano = {
   juros_taxa: null | number | string;
   nome: string;
   parcelas: null | number;
+  /** Ausente enquanto a migration 0168 não roda. */
+  ressalva?: null | string;
   sistema_amortizacao: null | string;
 };
 
@@ -190,11 +203,14 @@ export async function planosPublicos(
   const ids = enterpriseIds.filter(Boolean);
   if (ids.length === 0) return [];
 
-  const ler = (comDesconto: boolean) =>
+  const ler = (novas: { desconto: boolean; ressalva: boolean }) =>
     client
       .from("temis_planos")
       .select(
-        `anuais_quantidade, anuais_valor, entrada_percentual, indice_correcao, juros_convencao, juros_periodicidade, juros_taxa, nome, parcelas, sistema_amortizacao${comDesconto ? ", desconto_percentual" : ""}`,
+        colunasComAsNovas(
+          "anuais_quantidade,anuais_valor,entrada_percentual,indice_correcao,juros_convencao,juros_periodicidade,juros_taxa,nome,parcelas,sistema_amortizacao",
+          novas,
+        ),
       )
       .in("enterprise_id", ids)
       .eq("ativo", true)
@@ -205,10 +221,17 @@ export async function planosPublicos(
       .is("categoria_id", null)
       .order("ordem", { ascending: true });
 
-  // ⚠️ O DESCONTO (0178) PODE AINDA NÃO EXISTIR NO BANCO: sem a coluna, a leitura repete sem ela e
-  // o plano sai sem desconto, que é o que o espelho mostrava até aqui. Outro erro sobe como sempre.
-  let { data, error } = await ler(true);
-  if (error && ehColunaDoDescontoAusente(error)) ({ data, error } = await ler(false));
+  // ⚠️ AS COLUNAS NOVAS PODEM AINDA NÃO EXISTIR NO BANCO, com a mesma tolerância da Mesa
+  // (`lerPlanosDoPanteon`): sem o desconto (0178) o plano sai sem desconto; sem a ressalva (0168),
+  // sem etiqueta, que é o que o espelho mostrava até aqui. A leitura repete desligando só a coluna
+  // que o banco disse não conhecer; outro erro sobe como sempre.
+  let novas = { desconto: true, ressalva: true };
+  let { data, error } = await ler(novas);
+  for (let semElas = error ? semAColunaQueFaltou(error, novas) : null; semElas; ) {
+    novas = semElas;
+    ({ data, error } = await ler(novas));
+    semElas = error ? semAColunaQueFaltou(error, novas) : null;
+  }
 
   if (error) throw new Error(error.message);
 
@@ -235,6 +258,7 @@ export async function planosPublicos(
         jurosTaxa: p.juros_taxa === null ? null : numero(p.juros_taxa, 0),
         nome: p.nome,
         parcelas: numero(p.parcelas, 0),
+        ressalva: limparRessalva(p.ressalva),
         sistemaAmortizacao: sistemaDoCadastro(p.sistema_amortizacao),
       }))
       // Plano sem parcela não simula nada — e apareceria na tela como um cartão morto.

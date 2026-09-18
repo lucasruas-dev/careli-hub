@@ -16,8 +16,8 @@
 // que é exatamente o problema que `planos-comerciais.ts` foi criado para acabar.
 //
 // ⚠️ A ENTRADA NÃO TEM VALOR PRESENTE, e é a diferença mais fácil de errar. O balão anual abate o
-// saldo pela conta do simulador (`anuaisQueAbatemOSaldo`: valor presente na Price e no SAC, valor de
-// face no SACOC); a entrada parcelada, não: 10 mil em 2x é 5 mil e 5 mil, porque é assim que o
+// saldo pela conta do simulador (`anuaisQueAbatemOSaldo`: valor presente, e valor de face só no SACOC
+// do plano com anuais cadastradas, que é o Garden); a entrada parcelada, não: 10 mil em 2x é 5 mil e 5 mil, porque é assim que o
 // comercial vende e é assim que o boleto sai. Descontar a segunda metade encolheria a entrada sem
 // que ninguém tivesse negociado isso.
 //
@@ -32,7 +32,7 @@ import {
   primeiraParcelaSac,
   taxaMensal,
 } from "@/lib/apolo/planos-comerciais";
-import { anuaisQueAbatemOSaldo } from "@/lib/hercules/simulacao";
+import { anuaisQueAbatemOSaldo, temAnuaisCadastradas } from "@/lib/hercules/simulacao";
 
 /** Quantos meses tem um ciclo de reajuste. O aniversário do contrato é anual em toda a casa. */
 const MESES_DO_CICLO = 12;
@@ -72,9 +72,10 @@ export type TotaisDoCronograma = {
   /**
    * O saldo que a série mensal amortiza: negociado − entrada − o que as anuais abatem.
    *
-   * ⚠️ NO SACOC É `negociado − entrada − anuais` PELO VALOR DE FACE, e a folha fecha ao centavo
-   * (18/09/2026, "tem que ser igual o mmendes"). Na Price e no SAC as anuais abatem pelo valor
-   * presente, e aí o saldo é maior que essa diferença. Ver `anuaisQueAbatemOSaldo`.
+   * ⚠️ NO SACOC COM ANUAIS CADASTRADAS NO PLANO (o Garden) É `negociado − entrada − anuais` PELO
+   * VALOR DE FACE, e a folha fecha ao centavo (18/09/2026, "tem que ser igual o mmendes"; "So no
+   * Garden"). No resto as anuais abatem pelo valor presente, e aí o saldo é maior que essa
+   * diferença. Ver `anuaisQueAbatemOSaldo`.
    */
   financiado: number;
   /** Tudo o que o comprador desembolsa, somando as três séries. */
@@ -119,7 +120,12 @@ export type CondicoesDoCronograma = {
   entradaValor: number;
   entradaVezes: number;
   parcelasMensais: number;
-  plano: PlanoComercial;
+  /**
+   * O plano da proposta. As anuais CADASTRADAS nele (as do Panteon, 0138) decidem se o reforço abate
+   * o saldo pelo valor cheio (`temAnuaisCadastradas`); o plano que não as traz (o do C2X, o de todo
+   * empreendimento fora o Garden) abate a valor presente, como sempre.
+   */
+  plano: PlanoComercial & { anuaisQuantidade?: null | number; anuaisValor?: null | number };
   /** `YYYY-MM-DD` (o que o `<input type="date">` entrega) ou um ISO com hora. */
   primeiraParcelaDaEntrada: string;
   valorNegociado: number;
@@ -316,7 +322,8 @@ const somar = (parcelas: ParcelaDoCronograma[]): number =>
  *
  * A ordem das datas, como o Lucas ditou: a primeira da entrada é a data informada; as demais da
  * entrada caem no mesmo dia dos meses seguintes; a primeira mensal cai no mês seguinte à ÚLTIMA da
- * entrada; a anual k vence junto com a mensal 12k (a 1ª com a 12ª mensal) e seguem uma por ano.
+ * entrada; as anuais começam doze meses depois da primeira mensal e seguem uma por ano. No plano com
+ * anuais CADASTRADAS (o Garden), a anual k vence junto com a mensal 12k (ver o bloco das anuais).
  *
  * ⚠️ A ENTRADA MANTÉM O DIA DA DATA INFORMADA; A SÉRIE MENSAL SEGUE O `diaDeVencimento`. Na tela os
  * dois coincidem (a data já vem preenchida no dia escolhido), e é por isso que o exemplo dele não
@@ -409,23 +416,31 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // ⚠️ A SÉRIE AGENDA O VALOR DE FACE — é o que o boleto do aniversário cobra. Quanto a anual abate
   // do saldo é outra pergunta, respondida mais abaixo pelo sistema do plano.
   //
-  // ⚠️ A ANUAL k VENCE JUNTO COM A MENSAL 12k (18/09/2026), e não um mês depois dela. Até aqui a
-  // anual k caía 12k meses DEPOIS da primeira mensal, que é a mensal 12k + 1: no INVESTIDOR do
-  // Garden (36x, 3 anuais) a última mensal vencia em 10/10/2029 e a 3ª anual em 10/11/2029, um
-  // balão de R$ 30.000 um mês depois do fim do contrato. Com a mensal 12k a última anual nunca passa
-  // da última mensal, porque o teto de anuais é `floor(prazo ÷ 12)`. É também o mês que o valor
-  // presente da Price sempre usou (`valorPresenteDosBaloes`, 12k meses à frente) e o `fatorBaloes`
-  // do mapa da MMendes.
+  // ⚠️ NO PLANO COM ANUAIS CADASTRADAS (o Garden), A ANUAL k VENCE JUNTO COM A MENSAL 12k
+  // (18/09/2026). Pela regra de sempre a anual k cai 12k meses DEPOIS da primeira mensal, que é a
+  // mensal 12k + 1: no INVESTIDOR do Garden (36x, 3 anuais) a última mensal vencia em 10/10/2029 e a
+  // 3ª anual em 10/11/2029, um balão de R$ 30.000 um mês depois do fim do contrato. Com a mensal 12k
+  // a última anual nunca passa da última mensal, porque o teto de anuais é `floor(prazo ÷ 12)`.
+  //
+  // ⚠️ E SÓ NELE, PELO MESMO CRITÉRIO DO VALOR CHEIO (`temAnuaisCadastradas`). Lucas, perguntado se a
+  // regra nova das anuais valia só no Garden ou em todos (18/09/2026): *"So no Garden"*. A primeira
+  // versão desta mudança valia para todo plano e antecipou em um mês a anual de 630 de 630
+  // cronogramas com reforço fora do Garden (revisão de 18/09/2026, contra a origin/main). Fora do
+  // plano com anuais cadastradas a data é a de sempre, a que o bloco pronto da Têmis escreve no
+  // contrato ("vencíveis a cada doze meses contados da primeira parcela mensal"). Os casos de fora do
+  // Garden em que a última anual passa da última mensal (102 de 630 na mesma medição) continuam como
+  // eram: mudar isso é decisão do Lucas, não efeito colateral do Garden.
+  const mesesAteAAnual = temAnuaisCadastradas(plano)
+    ? // `k` começa em zero: a anual 1 é a mensal 12, que está 11 meses depois da primeira.
+      (k: number) => MESES_DO_CICLO * (k + 1) - 1
+    : (k: number) => MESES_DO_CICLO * (k + 1);
   const listaDasAnuais: ParcelaDoCronograma[] = Array.from(
     { length: quantasAnuais },
     (_, k) => ({
       numero: k + 1,
       total: quantasAnuais,
       valor: emReais(anuaisValor),
-      vencimento: escreverDia(
-        // `k` começa em zero: a anual 1 é a mensal 12, que está 11 meses depois da primeira.
-        somarMeses(primeiraMensal, MESES_DO_CICLO * (k + 1) - 1, diaDeVencimento),
-      ),
+      vencimento: escreverDia(somarMeses(primeiraMensal, mesesAteAAnual(k), diaDeVencimento)),
     }),
   );
   const totalDasAnuais = somar(listaDasAnuais);
@@ -433,11 +448,12 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // ── O saldo financiado e a parcela ──
   const i = taxaMensal(plano);
 
-  // ⚠️ QUANTO A ANUAL ABATE DO SALDO É A CONTA DO SIMULADOR, REUSADA (`anuaisQueAbatemOSaldo`): o
-  // coordenador acabou de ver a parcela no simulador, e o PDF que ele gera em seguida não pode
-  // discordar dela. Na Price e no SAC, pelo valor presente (o balão de 2029 vale hoje menos que a
-  // face); no SACOC, pelo valor de face (18/09/2026, "tem que ser igual o mmendes"), e a folha
-  // fecha: entrada + anuais + saldo das mensais = valor negociado.
+  // ⚠️ QUANTO A ANUAL ABATE DO SALDO É A CONTA DO SIMULADOR, REUSADA (`anuaisQueAbatemOSaldo`), COM
+  // O MESMO CRITÉRIO (`temAnuaisCadastradas` do plano): o coordenador acabou de ver a parcela no
+  // simulador, e o PDF que ele gera em seguida não pode discordar dela. Pelo valor presente, como
+  // sempre (o balão de 2029 vale hoje menos que a face); pelo valor de face só no SACOC do plano com
+  // anuais cadastradas, que é o Garden (Lucas, 18/09/2026: *"So no Garden"*), e aí a folha fecha:
+  // entrada + anuais + saldo das mensais = valor negociado.
   //
   // ⚠️ O SISTEMA É CLASSIFICADO COMO A SÉRIE MENSAL LOGO ABAIXO O CLASSIFICA: `price` e `sac` pelo
   // nome, todo o resto é SACOC. Classificar diferente aqui daria uma parcela SACOC com o abatimento
@@ -447,6 +463,7 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
       ? plano.sistemaAmortizacao
       : "sacoc";
   const anuaisNoSaldo = anuaisQueAbatemOSaldo({
+    anuaisCadastradasNoPlano: temAnuaisCadastradas(plano),
     quantidade: quantasAnuais,
     sistemaAmortizacao: sistemaDaSerie,
     taxaAoMes: i,

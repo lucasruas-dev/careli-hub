@@ -634,7 +634,7 @@ function PainelDoLote({
   // ⚠️ E O TEMA VEM JUNTO. O simulador pinta com os tokens `--inc-*` do portal, que só existem
   // sob a classe `.inc`; sem o `TEMA_CSS` e a classe, ele apareceria sem cor nenhuma. É o mesmo
   // arranjo que a ficha do produto no Hércules já faz.
-  const planosDaVenda: PlanoDaVenda[] = useMemo(
+  const planosDaVenda: Array<PlanoDaVenda & { ressalva: null | string }> = useMemo(
     () =>
       planos.map((p) => ({
         // ⚠️ AS ANUAIS E O DESCONTO DO PLANO VÃO JUNTO (18/09/2026). O simulador passou a usá-los
@@ -650,6 +650,10 @@ function PainelDoLote({
         jurosTaxa: p.jurosTaxa,
         nome: p.nome,
         parcelas: p.parcelas,
+        // ⚠️ A RESSALVA VAI JUNTO (revisão de 18/09/2026). O cartão do simulador a desenha ao lado do
+        // nome, como a MMendes no mapa público ("válido para as próximas 16 unidades"); sem ela aqui,
+        // a Mesa mostrava a etiqueta e o espelho do Garden não, nos 87 cartões do INVESTIDOR PARCELADO.
+        ressalva: p.ressalva ?? null,
         sistemaAmortizacao: p.sistemaAmortizacao,
         slot: null,
       })),
@@ -668,6 +672,14 @@ function PainelDoLote({
   // O que está na tela AGORA — é o que vai para o papel.
   const condicoes = useRef<CondicoesDaProposta | null>(null);
   const [baixando, setBaixando] = useState(false);
+  /**
+   * A frase da rota quando ela recusa o PDF (422: prazo além do plano, composição que não fecha).
+   *
+   * ⚠️ ANTES O BOTÃO FICAVA MUDO: `if (!resposta.ok) return` e nada acontecia. Com a régua do plano
+   * no servidor (revisão 3, 18/09/2026), o corretor que digita 180 parcelas no INVESTIDOR precisa
+   * ler "o plano vai até 36 parcelas", e não clicar de novo achando que a internet caiu.
+   */
+  const [erroDoPdf, setErroDoPdf] = useState<null | string>(null);
 
   /**
    * ⚠️ O PDF É MONTADO NO SERVIDOR, pelo MESMO gerador da proposta. Lucas (10/09/2026): *"monta
@@ -684,6 +696,7 @@ function PainelDoLote({
     const atual = condicoes.current;
     if (!atual || baixando) return;
     setBaixando(true);
+    setErroDoPdf(null);
 
     try {
       const resposta = await fetch(
@@ -703,7 +716,15 @@ function PainelDoLote({
           method: "POST",
         },
       );
-      if (!resposta.ok) return;
+      if (!resposta.ok) {
+        const corpo = (await resposta.json().catch(() => null)) as null | { error?: unknown };
+        setErroDoPdf(
+          resposta.status === 422 && typeof corpo?.error === "string"
+            ? corpo.error
+            : "Não foi possível gerar o PDF agora.",
+        );
+        return;
+      }
 
       // O nome do arquivo vem no Content-Disposition da resposta; o <a download> o respeita.
       const blob = await resposta.blob();
@@ -779,6 +800,12 @@ function PainelDoLote({
             </button>
           </div>
         </header>
+
+        {erroDoPdf ? (
+          <p data-esp-print="fora" role="alert" style={{ ...ESTILO.aviso, opacity: 0.9 }}>
+            {erroDoPdf}
+          </p>
+        ) : null}
 
         {disponivel && preco > 0 && planosDaVenda.length > 0 ? (
           <div className="inc" data-esp-simulador style={ESTILO.molduraDoSimulador}>

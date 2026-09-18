@@ -12,6 +12,7 @@ import {
   parcelaDoFinanciado,
   sistemaDoCadastro,
   somaDasMensais,
+  temAnuaisCadastradas,
   valorPresenteDosBaloes,
 } from "./simulacao";
 
@@ -160,10 +161,42 @@ describe("⚠️ a MESMA MODAL não pode anunciar duas parcelas", () => {
       valorNegociado: 200_000,
     });
 
-    // O reforço abate o saldo pela MESMA regra nos dois lados (`anuaisQueAbatemOSaldo`): no SACOC,
-    // pelo valor de face desde 18/09/2026, e a folha fecha: 200.000 − 20.000 − 3 × 20.000.
+    // O reforço lançado à mão num plano SEM anual cadastrada abate o saldo pelo VALOR PRESENTE nos
+    // dois lados, como sempre (Lucas, 18/09/2026: o valor cheio é *"So no Garden"*).
     expect(c.totais.financiado).toBeCloseTo(doSimulador.financiado, 2);
+    expect(doSimulador.financiado).toBeCloseTo(
+      200_000 - 20_000 - valorPresenteDosBaloes(3, 20_000, I_SACOC),
+      6,
+    );
+    expect(doSimulador.financiado).toBeLessThan(180_000);
+    expect(c.mensais[0]?.valor).toBeCloseTo(doSimulador.parcela, 2);
+    expect(Math.abs(c.totais.geral - doSimulador.total)).toBeLessThan(1);
+  });
+
+  it("e no plano COM anuais cadastradas (o Garden), os dois abatem pelo valor de face", () => {
+    const comAnuais = { ...NORMAL_SACOC, anuaisQuantidade: 3, anuaisValor: 20_000 };
+    const doSimulador = montarProposta({
+      ...CENARIO,
+      anuaisCadastradasNoPlano: temAnuaisCadastradas(comAnuais),
+      baloesQuantidade: 3,
+      baloesValor: 20_000,
+      sistemaAmortizacao: "sacoc",
+    });
+    const c = montarCronograma({
+      anuaisQuantidade: 3,
+      anuaisValor: 20_000,
+      diaDeVencimento: 10,
+      entradaValor: 20_000,
+      entradaVezes: 2,
+      parcelasMensais: 120,
+      plano: comAnuais,
+      primeiraParcelaDaEntrada: "2026-10-10",
+      valorNegociado: 200_000,
+    });
+
+    // 200.000 − 20.000 − 3 × 20.000, e a folha fecha ao centavo.
     expect(doSimulador.financiado).toBeCloseTo(120_000, 2);
+    expect(c.totais.financiado).toBeCloseTo(doSimulador.financiado, 2);
     expect(c.mensais[0]?.valor).toBeCloseTo(doSimulador.parcela, 2);
     expect(Math.abs(c.totais.geral - doSimulador.total)).toBeLessThan(1);
   });
@@ -384,17 +417,34 @@ describe("entradaParaAParcela", () => {
     expect(price.entrada).toBeGreaterThan(70_000);
   });
 
-  // ⚠️ MUDOU EM 18/09/2026 (decisão do Zeus, pedido do Lucas: *"tem que ser igual o mmendes"*).
-  // Até aqui este teste dizia "o balão abate pelo VALOR PRESENTE, seja qual for o sistema". No SACOC
-  // da casa a parcela do 1º ciclo é o saldo dividido pelo prazo e os juros entram pelo degrau do
-  // aniversário; descontar o balão pela taxa do plano é raciocínio de Price, e dava outro número que
-  // o mapa da MMendes (`garden.html`, `condicoes`, anuais pelo valor de face). Na Price e no SAC o
-  // valor presente continua.
-  it("⚠️ no SACOC o balão abate pelo VALOR DE FACE; na Price e no SAC, pelo valor presente", () => {
+  // ⚠️ O BALÃO CONTINUA ABATENDO PELO VALOR PRESENTE, seja qual for o sistema, no plano SEM anual
+  // cadastrada: é a conta da origin/main, e o Lucas decidiu (18/09/2026) que o valor cheio é *"So no
+  // Garden"*.
+  it("⚠️ plano sem anual cadastrada: o balão abate pelo VALOR PRESENTE, seja qual for o sistema", () => {
+    const vp = valorPresenteDosBaloes(3, 20_000, I_SACOC);
+    const r = entradaParaAParcela({
+      baloesQuantidade: 3,
+      baloesValor: 20_000,
+      parcela: 1_200,
+      parcelas: 120,
+      sistemaAmortizacao: "sacoc",
+      taxaAoMes: I_SACOC,
+      valor: 200_000,
+    });
+
+    expect(vp).toBeLessThan(60_000);
+    // 200.000 − VP dos balões − (1.200 × 120).
+    expect(r.entrada).toBeCloseTo(200_000 - vp - 144_000, 2);
+  });
+
+  // No plano COM anuais cadastradas (hoje, os três do Garden), o SACOC abate pelo valor de face, como
+  // o mapa da MMendes (`garden.html`, `condicoes`). Na Price e no SAC o valor presente continua.
+  it("⚠️ plano com anual cadastrada: no SACOC o balão abate pelo VALOR DE FACE; na Price e no SAC, pelo valor presente", () => {
     const vp = valorPresenteDosBaloes(3, 20_000, I_SACOC);
     expect(vp).toBeLessThan(60_000);
 
     const sacoc = entradaParaAParcela({
+      anuaisCadastradasNoPlano: true,
       baloesQuantidade: 3,
       baloesValor: 20_000,
       parcela: 1_100,
@@ -408,6 +458,7 @@ describe("entradaParaAParcela", () => {
 
     for (const sistema of ["price", "sac"] as const) {
       const r = entradaParaAParcela({
+        anuaisCadastradasNoPlano: true,
         baloesQuantidade: 3,
         baloesValor: 20_000,
         parcela: 1_100,
@@ -457,12 +508,14 @@ describe("fatorDoFinanciado", () => {
   });
 });
 
-// ── AS ANUAIS NO SALDO: VALOR DE FACE NO SACOC (18/09/2026) ──────────────────
+// ── AS ANUAIS NO SALDO: VALOR DE FACE SÓ NO SACOC COM ANUAIS CADASTRADAS (18/09/2026) ─────────
 //
-// Decisão do Zeus sobre o pedido do Lucas (*"tem que ser igual o mmendes"*): no SACOC as anuais abatem
-// o saldo pelo valor de face, em `montarProposta`, `entradaParaAParcela` e `montarCronograma` juntos.
-// Price e SAC continuam a valor presente. A régua de regressão é a conta ANTIGA, copiada abaixo: tudo
-// o que não é SACOC com anual sai idêntico, ao bit.
+// Pedido do Lucas (*"tem que ser igual o mmendes"*) e a decisão dele sobre o alcance (*"So no
+// Garden"*): as anuais abatem o saldo pelo valor de face só no plano SACOC que tem anuais cadastradas
+// (hoje, os três do Garden), em `montarProposta`, `entradaParaAParcela` e `montarCronograma` juntos,
+// pelo critério único `temAnuaisCadastradas`. Todo o resto continua a valor presente. A régua de
+// regressão é a conta ANTIGA, copiada abaixo: tudo o que não é SACOC com anual cadastrada sai
+// idêntico, ao bit.
 
 /** `montarProposta` como estava na main v1.349.6 (anuais sempre a valor presente). */
 function montarPropostaAntiga(e: Parameters<typeof montarProposta>[0]) {
@@ -490,20 +543,64 @@ function montarPropostaAntiga(e: Parameters<typeof montarProposta>[0]) {
   };
 }
 
+describe("temAnuaisCadastradas", () => {
+  it("só quantidade E valor positivos são anual cadastrada", () => {
+    expect(temAnuaisCadastradas({ anuaisQuantidade: 4, anuaisValor: 25_000 })).toBe(true);
+    expect(temAnuaisCadastradas({ anuaisQuantidade: 4, anuaisValor: "25000.00" })).toBe(true);
+    // Meia configuração não é anual nenhuma.
+    expect(temAnuaisCadastradas({ anuaisQuantidade: 4, anuaisValor: null })).toBe(false);
+    expect(temAnuaisCadastradas({ anuaisQuantidade: 0, anuaisValor: 25_000 })).toBe(false);
+    expect(temAnuaisCadastradas({ anuaisQuantidade: null, anuaisValor: null })).toBe(false);
+    expect(temAnuaisCadastradas({ anuaisQuantidade: -1, anuaisValor: 25_000 })).toBe(false);
+    expect(temAnuaisCadastradas({ anuaisQuantidade: "abc", anuaisValor: 25_000 })).toBe(false);
+    // O plano do C2X não traz o campo: não tem anual cadastrada.
+    expect(temAnuaisCadastradas(NORMAL_SACOC)).toBe(false);
+    expect(temAnuaisCadastradas(null)).toBe(false);
+  });
+});
+
 describe("anuaisQueAbatemOSaldo", () => {
-  it("SACOC: o valor de face, com ou sem juros", () => {
+  it("SACOC com anuais cadastradas no plano: o valor de face, com ou sem juros", () => {
     for (const taxaAoMes of [0, 0.004868, I_SACOC, 0.01]) {
       expect(
-        anuaisQueAbatemOSaldo({ quantidade: 4, sistemaAmortizacao: "sacoc", taxaAoMes, valor: 25_000 }),
+        anuaisQueAbatemOSaldo({
+          anuaisCadastradasNoPlano: true,
+          quantidade: 4,
+          sistemaAmortizacao: "sacoc",
+          taxaAoMes,
+          valor: 25_000,
+        }),
       ).toBe(100_000);
     }
   });
 
-  it("Price e SAC: o valor presente de sempre", () => {
-    for (const sistemaAmortizacao of ["price", "sac"] as const) {
+  it("⚠️ SACOC SEM anual cadastrada (o reforço lançado à mão): o valor presente de sempre", () => {
+    for (const anuaisCadastradasNoPlano of [false, undefined]) {
       expect(
-        anuaisQueAbatemOSaldo({ quantidade: 4, sistemaAmortizacao, taxaAoMes: I_SACOC, valor: 25_000 }),
+        anuaisQueAbatemOSaldo({
+          anuaisCadastradasNoPlano,
+          quantidade: 4,
+          sistemaAmortizacao: "sacoc",
+          taxaAoMes: I_SACOC,
+          valor: 25_000,
+        }),
       ).toBe(valorPresenteDosBaloes(4, 25_000, I_SACOC));
+    }
+  });
+
+  it("Price e SAC: o valor presente de sempre, com ou sem anual cadastrada", () => {
+    for (const sistemaAmortizacao of ["price", "sac"] as const) {
+      for (const anuaisCadastradasNoPlano of [true, false]) {
+        expect(
+          anuaisQueAbatemOSaldo({
+            anuaisCadastradasNoPlano,
+            quantidade: 4,
+            sistemaAmortizacao,
+            taxaAoMes: I_SACOC,
+            valor: 25_000,
+          }),
+        ).toBe(valorPresenteDosBaloes(4, 25_000, I_SACOC));
+      }
     }
   });
 
@@ -548,11 +645,60 @@ describe("⚠️ regressão: Price, SAC e plano sem anual saem IDÊNTICOS à con
     }
   });
 
-  it("SACOC COM anual e juros: é o que muda, e muda exatamente o que as anuais deixam de ser descontadas", () => {
+  it("⚠️ os planos REAIS sem anual cadastrada (temis_planos, 18/09/2026), com reforço à mão: idênticos à conta antiga", () => {
+    // As premissas distintas dos 40 planos sem anual cadastrada (sistema, taxa, periodicidade e
+    // prazo), lidas por SELECT em produção. O reforço é o que a Mesa deixa lançar à mão: 1 a 6
+    // (até o teto de aniversários) de R$ 15.000 a R$ 30.000. A medição completa (10.260 contas,
+    // 13.680 inversas, 770 buscas e 6.840 cronogramas contra o código da origin/main) está no
+    // relatório da rodada 3; este é o recorte que fica no repo.
+    const PREMISSAS = [
+      ["sacoc", null, "anual", 24], ["sacoc", 0, "mensal", 36], ["sacoc", 0, "mensal", 48],
+      ["sacoc", 0.5, "mensal", 168], ["price", 0.5, "mensal", 168], ["sacoc", 0.6434, "mensal", 120],
+      ["sacoc", 0.8, "mensal", 72], ["sacoc", 0.8, "mensal", 120], ["sacoc", 0.8, "mensal", 60],
+      ["sacoc", 0.5, "mensal", 120], ["sacoc", 0.7207, "mensal", 156], ["sacoc", 0.6434, "mensal", 180],
+      ["price", 8, "anual", 120], ["price", 0.6434, "mensal", 120],
+    ] as const;
+    let conferidos = 0;
+    for (const [sistema, jurosTaxa, jurosPeriodicidade, parcelas] of PREMISSAS) {
+      const plano = { ...NORMAL_SACOC, jurosPeriodicidade, jurosTaxa, parcelas, sistemaAmortizacao: sistema };
+      const taxaAoMes = taxaMensal(plano);
+      const anuaisCadastradasNoPlano = temAnuaisCadastradas(plano);
+      expect(anuaisCadastradasNoPlano).toBe(false);
+      for (const valor of PRECOS) {
+        for (let q = 0; q <= Math.min(6, Math.floor(parcelas / 12)); q += 1) {
+          for (const v of q === 0 ? [0] : [15_000, 30_000]) {
+            const e = { baloesQuantidade: q, baloesValor: v, entrada: valor * 0.1, parcelas, sistemaAmortizacao: sistema, taxaAoMes, valor };
+            expect(montarProposta({ ...e, anuaisCadastradasNoPlano })).toEqual(montarPropostaAntiga(e));
+            conferidos += 1;
+          }
+        }
+      }
+    }
+    expect(conferidos).toBeGreaterThan(500);
+  });
+
+  it("⚠️ SACOC com reforço e juros NUM PLANO SEM ANUAL CADASTRADA: idêntico ao bit (o caso que a revisão pegou)", () => {
+    // O NORMAL-SACOC do empreendimento 19 (0,5% a.m., 168x): 5 × R$ 30.000 à mão. A primeira versão
+    // do valor de face levava esta parcela de R$ 392,62 para R$ 248,55 (revisão de 18/09/2026).
+    let conferidos = 0;
+    for (const taxaAoMes of TAXAS) {
+      for (const valor of PRECOS) {
+        for (const [baloesQuantidade, baloesValor] of [[1, 15_000], [3, 20_000], [5, 30_000]] as const) {
+          const e = { baloesQuantidade, baloesValor, entrada: valor * 0.1, parcelas: 168, sistemaAmortizacao: "sacoc" as const, taxaAoMes, valor };
+          expect(montarProposta(e)).toEqual(montarPropostaAntiga(e));
+          expect(montarProposta({ ...e, anuaisCadastradasNoPlano: false })).toEqual(montarPropostaAntiga(e));
+          conferidos += 1;
+        }
+      }
+    }
+    expect(conferidos).toBe(TAXAS.length * PRECOS.length * 3);
+  });
+
+  it("SACOC COM anual cadastrada e juros (o Garden): é o que muda, e muda exatamente o que as anuais deixam de ser descontadas", () => {
     // O NORMAL do Garden, lote de R$ 435.000: 5 anuais de R$ 25.000, 6% a.a. equivalente.
     const taxaAoMes = taxaMensal({ ...NORMAL_SACOC, jurosTaxa: 6, parcelas: 60 });
     const e = { baloesQuantidade: 5, baloesValor: 25_000, entrada: 43_500, parcelas: 60, sistemaAmortizacao: "sacoc" as const, taxaAoMes, valor: 435_000 };
-    const agora = montarProposta(e);
+    const agora = montarProposta({ ...e, anuaisCadastradasNoPlano: true });
     const antes = montarPropostaAntiga(e);
     expect(agora.financiado).toBe(435_000 - 43_500 - 125_000);
     // (266.500 ÷ 60) = R$ 4.441,67, o número do mapa da MMendes; antes eram R$ 4.769,85.
