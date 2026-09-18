@@ -7,6 +7,7 @@ import {
   type OrigemDaReserva,
   origemRecusadaSemA0167,
 } from "@/lib/apolo/incorporador/board-do-portal";
+import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { autorizarEscritaNoProduto } from "@/lib/apolo/incorporador/operacao-do-produto-servidor";
 import { createApoloAdminClient } from "@/lib/apolo/server";
@@ -20,7 +21,7 @@ import {
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { lerComColunasDoApartamento, nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
 import {
-  familiaDoEmpreendimento,
+  escopoDeQuemVende,
   podemVender,
   quemPodeVender,
 } from "@/lib/hercules/quem-pode-vender";
@@ -126,8 +127,13 @@ export async function GET(request: Request) {
     // ⚠️ A FAMÍLIA INTEIRA, e não só o empreendimento da unidade — ver `familiaDoEmpreendimento`.
     // As unidades do Vale do Ouro vivem em VLO/VOL/VOC e as imobiliárias estão vinculadas só ao
     // VLO: perguntar pelo id da unidade devolvia zero num produto com 37 credenciadas.
-    const cadastro = await carregarCadastroDeEmpreendimentos();
-    const escopo = familiaDoEmpreendimento(cadastro, String(unidade.enterprise_id));
+    // ⚠️ E O GRUPO DO CATÁLOGO que a família cobre — ver `escopoDeQuemVende`. A imobiliária
+    // habilitada como "group:Lagoa Bonita" sumia desta lista em todo lote do Lagoa Bonita.
+    const [cadastro, catalogo] = await Promise.all([
+      carregarCadastroDeEmpreendimentos(),
+      catalogoDeEmpreendimentos(Date.now()),
+    ]);
+    const escopo = escopoDeQuemVende(cadastro, catalogo, String(unidade.enterprise_id));
 
     const lista = await quemPodeVender(admin, escopo);
     return NextResponse.json({ data: lista });
@@ -200,8 +206,11 @@ export async function POST(request: Request) {
     }
 
     // O mesmo escopo do GET: quem a lista ofereceu é quem a gravação aceita.
-    const cadastro = await carregarCadastroDeEmpreendimentos();
-    const escopo = familiaDoEmpreendimento(cadastro, String(unidade.enterprise_id));
+    const [cadastro, catalogo] = await Promise.all([
+      carregarCadastroDeEmpreendimentos(),
+      catalogoDeEmpreendimentos(Date.now()),
+    ]);
+    const escopo = escopoDeQuemVende(cadastro, catalogo, String(unidade.enterprise_id));
 
     const habilitados = await podemVender(admin, escopo, {
       corretorId: pedido.corretorEntityId,

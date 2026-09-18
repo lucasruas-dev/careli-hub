@@ -23,6 +23,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { corretoresDaImobiliaria } from "@/lib/apolo/disparo-credenciamento";
 import { lerImobiliariasVinculadas } from "@/lib/apolo/incorporador/crm";
+import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 
 /**
  * O empreendimento da unidade e TODA a família dele (pai e filhos), em ids do C2X.
@@ -56,6 +57,33 @@ export function familiaDoEmpreendimento(
     if (membro.c2xEnterpriseId) ids.add(membro.c2xEnterpriseId);
   }
   return [...ids];
+}
+
+/**
+ * Os ids em que se procura quem pode vender o lote: a família do empreendimento E o grupo do
+ * catálogo que ela cobre.
+ *
+ * ⚠️ SEM O GRUPO, A IMOBILIÁRIA HABILITADA NO LOTEAMENTO INTEIRO NÃO APARECE. O credenciamento
+ * público grava a habilitação do Lagoa Bonita como "group:Lagoa Bonita" (lá fora não existe
+ * divisão), e a família só tem os ids do C2X (31, 33, 32, 27). Foi o caso da MORVIAN, em 18/09/2026:
+ * habilitada e fora da lista da reserva no lote C09 07. Medido no mesmo dia: 7 imobiliárias têm
+ * vínculo com o grupo, e 2 delas SÓ com ele.
+ *
+ * ⚠️ AQUI O GRUPO NÃO DEPENDE DA SESSÃO, ao contrário das leituras de CAD. Lá a permissão do grupo
+ * decide se a sessão pode ver pessoas de glebas alheias. Aqui a pergunta é outra, "quem pode vender
+ * este lote", e a sessão já foi conferida contra a unidade antes de chegar. Pela regra do Lucas
+ * (*"quando clicar em Lagoa Bonita, tem que habilitar todos os Lagoa Bonita"*), a habilitação no
+ * grupo vale para toda divisão dele. O critério continua o de `comIdsDoGrupo`: o grupo só entra
+ * quando a família cobre TODAS as divisões dele.
+ */
+export function escopoDeQuemVende(
+  cadastro: Array<{ c2xEnterpriseId: null | string; id: string; paiId: null | string }>,
+  catalogo: Array<{ id: string; stageIds: string[] }>,
+  c2xEnterpriseId: string,
+): string[] {
+  const familia = familiaDoEmpreendimento(cadastro, c2xEnterpriseId);
+  const grupos = new Set(catalogo.map((emp) => String(emp.id).trim()));
+  return comIdsDoGrupo(familia, catalogo, grupos);
 }
 
 export type ImobiliariaQueVende = {

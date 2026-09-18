@@ -150,9 +150,15 @@ vi.mock("@/lib/hercules/cadastro", () => ({
 }));
 
 vi.mock("@/lib/hercules/quem-pode-vender", () => ({
+  escopoDeQuemVende: (_cadastro: unknown, _catalogo: unknown, id: string) => [id],
   familiaDoEmpreendimento: (_cadastro: unknown, id: string) => [id],
   podemVender: async () => ({ ok: true }),
   quemPodeVender: async () => [],
+}));
+
+// O escopo da reserva lê o catálogo do C2X para achar o grupo; no teste ele não existe.
+vi.mock("@/lib/apolo/catalogo-empreendimentos", () => ({
+  catalogoDeEmpreendimentos: async () => [],
 }));
 
 vi.mock("@/lib/hercules/avisos-da-venda", async () => {
