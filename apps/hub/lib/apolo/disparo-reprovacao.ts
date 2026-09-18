@@ -81,7 +81,9 @@ function normalizarNome(value: string): string {
 async function resolverCodeEmpreendimento(
   esteira: { empreendimento: string | null; enterprise_id: string | null } | null,
 ): Promise<string | null> {
-  const c2x = await loadApoloEnterprises();
+  // Só a lista (nome, código, id): a situação das unidades não é usada aqui, e lê-la custaria
+  // as propostas e reservas do banco inteiro a cada chamada.
+  const c2x = await loadApoloEnterprises({ comSituacao: false });
   if (!c2x.ok) return null;
 
   const idAlvo = (esteira?.enterprise_id ?? "").trim();

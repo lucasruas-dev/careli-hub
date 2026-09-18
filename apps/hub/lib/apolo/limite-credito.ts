@@ -33,7 +33,9 @@ export async function resolverEnterpriseIdPorNome(nome: null | string): Promise<
   try {
     const alvoNome = normalizarNome(bruto);
     const alvoCode = bruto.toUpperCase();
-    const c2x = await loadApoloEnterprises();
+    // Só a lista (nome, código, id): a situação das unidades não é usada aqui, e lê-la custaria
+    // as propostas e reservas do banco inteiro a cada chamada.
+    const c2x = await loadApoloEnterprises({ comSituacao: false });
     if (!c2x.ok) return null;
     for (const row of c2x.data.rows) {
       // Produto consolidado tem id sintético ("group:..."): procura nas etapas, que carregam

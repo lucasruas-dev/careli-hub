@@ -21,7 +21,7 @@ import { type DonoDoLote, fraseDoConflito, outrosDonosDoLote } from "./trava-do-
 // A ordem é a regra (ver `trava-do-lote.ts`):
 //   1. o terreno está LIVRE pela situação única?        não: recusa, nada é gravado;
 //   2. existe outro dono vivo no terreno?                 sim: recusa, nada é gravado;
-//   3. INSERT (o índice da 0125 segura a mesma linha);
+//   3. INSERT com a chave do terreno (o índice da 0125 segura a mesma linha; o da 0176, o mesmo chão);
 //   4. existe outro dono vivo no terreno AGORA?           sim: cancela a própria reserva e recusa;
 //   5. o cadastro da linha passa a `reservada`.
 //
@@ -104,7 +104,14 @@ export async function criarReservaNoHercules(
   }
 
   // ── 3. O INSERT ──
-  const linha = (origem: string) => ({
+  //
+  // ⚠️ A CHAVE DO TERRENO VAI JUNTO (0176). O menor id entre as linhas do terreno é o mesmo para
+  // quem reservar por qualquer uma delas, e o índice `hercules_reservas_um_dono_por_terreno` não
+  // deixa existir duas reservas vivas com a mesma chave. É a trava que não depende de o servidor
+  // sobreviver entre o INSERT e a segunda conferência: a segunda reserva morre no próprio INSERT.
+  // Banco sem a 0176 (a coluna não existe): grava sem a chave, e as duas conferências seguram.
+  const terrenoChave = [...(situacoes.terreno(nova.unidadeId)?.linhas ?? [])].sort()[0] ?? null;
+  const linha = (origem: string, comChave: boolean) => ({
     corretor_entity_id: nova.corretorEntityId || null,
     criado_por: nova.criadoPor ?? null,
     criado_por_nome: nova.criadoPorNome ?? null,
@@ -116,21 +123,28 @@ export async function criarReservaNoHercules(
     prometeu_reserva_id: nova.prometeuReservaId ?? null,
     proponentes: nova.proponentes,
     situacao: "ativa",
+    ...(comChave ? { terreno_chave: terrenoChave } : {}),
     unidade_id: nova.unidadeId,
     validade_em: nova.validadeEm ?? null,
     workspace_id: "careli",
   });
-  const inserir = (origem: string) =>
-    client.from("hercules_reservas").insert(linha(origem)).select("id, protocolo_numero").maybeSingle();
+  const inserir = (origem: string, comChave: boolean) =>
+    client.from("hercules_reservas").insert(linha(origem, comChave)).select("id, protocolo_numero").maybeSingle();
 
-  let { data: criada, error } = await inserir(nova.origem);
+  let comChave = terrenoChave !== null;
+  let { data: criada, error } = await inserir(nova.origem, comChave);
+  if (error && comChave && semAColunaDoTerreno(error)) {
+    comChave = false;
+    ({ data: criada, error } = await inserir(nova.origem, comChave));
+  }
   const outraOrigem = error ? opcoes?.origemSeRecusada?.(error) : null;
   if (error && outraOrigem) {
-    ({ data: criada, error } = await inserir(outraOrigem));
+    ({ data: criada, error } = await inserir(outraOrigem, comChave));
   }
 
   if (error) {
-    // 23505 = o índice da 0125: alguém reservou esta mesma linha primeiro.
+    // 23505 = o índice da 0125 (alguém reservou esta mesma linha primeiro) ou o da 0176 (alguém
+    // reservou outra linha do mesmo terreno primeiro). Para quem clicou, é a mesma notícia.
     if (error.code === "23505") {
       return { motivo: "Esta unidade acabou de ser reservada por outra pessoa.", ok: false, status: 409 };
     }
@@ -180,4 +194,9 @@ export async function criarReservaNoHercules(
     .eq("situacao", "disponivel");
 
   return { ok: true, reserva };
+}
+
+/** O banco ainda sem a 0176: o PostgREST não conhece a coluna `terreno_chave`. */
+function semAColunaDoTerreno(erro: { code?: string; message?: string }): boolean {
+  return (erro.code === "PGRST204" || erro.code === "42703") && /terreno_chave/.test(String(erro.message ?? ""));
 }
