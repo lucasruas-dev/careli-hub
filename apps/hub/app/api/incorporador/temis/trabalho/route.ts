@@ -3,7 +3,8 @@ import { abrirCardDoTrabalho, decidirSobreOTrabalho } from "@/lib/temis/trabalho
 
 // A TELA DE TRABALHO DE UM CARD, PELO PORTAL — o espelho de `/api/temis/trabalho`.
 //
-// ⚠️ UM CÓDIGO SÓ: abrir o card e decidir sobre ele (indeferir, voltar para análise cancelando o
+// ⚠️ UM CÓDIGO SÓ: abrir o card e decidir sobre ele (indeferir, concluir cancelamento ou distrato,
+// voltar para análise cancelando o
 // envelope da Clicksign) são as mesmas funções da rota do hub. O card precisa ser do incorporador
 // (`operado_por`) E estar no escopo da sessão, conferido ANTES de ler; fora disso, 404.
 //

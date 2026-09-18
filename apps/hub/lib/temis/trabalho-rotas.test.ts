@@ -47,6 +47,39 @@ const estado = vi.hoisted(() => ({
 
 const mocks = vi.hoisted(() => ({
   abrirTrabalho: vi.fn(async () => ({ id: "t-novo", ok: true as const })),
+  concluirCancelamentoDoCard: vi.fn(
+    async (): Promise<
+      | { erro: string; ok: false; status: 409 }
+      | {
+          avisos: string[];
+          cardConcluido: boolean;
+          codigo: null | string;
+          contratosIndeferidos: string[];
+          envelopeCancelado: null | string;
+          jaEstavaDesfeita: boolean;
+          ok: true;
+          recado: string;
+          tipo: "cancelamento" | "distrato";
+          unidade: { frase: string; voltou: boolean };
+        }
+    > => ({
+      avisos: [],
+      cardConcluido: true,
+      codigo: "000021",
+      contratosIndeferidos: [],
+      envelopeCancelado: null,
+      jaEstavaDesfeita: false,
+      ok: true,
+      recado: "Cancelamento concluído: a venda COD 000021 foi cancelada e a unidade voltou para a disponibilidade.",
+      tipo: "cancelamento",
+      unidade: { frase: "a unidade voltou para a disponibilidade", voltou: true },
+    }),
+  ),
+  devolverVendaNoIndeferimento: vi.fn(async () => ({
+    aviso: null,
+    feito: "nada" as const,
+    recado: null as null | string,
+  })),
   marcarAtividade: vi.fn(async () => ({ andou: false, estagio: "analise", ok: true as const })),
   registrarPassagemDeEtapa: vi.fn(async () => undefined),
   retornarParaAnalise: vi.fn(async () => ({
@@ -176,6 +209,17 @@ vi.mock("@/lib/temis/retorno-para-correcao", () => ({
 
 vi.mock("@/lib/temis/passagem-de-etapa-db", () => ({
   registrarPassagemDeEtapa: mocks.registrarPassagemDeEtapa,
+}));
+
+// A conclusão e o efeito do indeferimento na venda têm teste próprio, contra banco em memória
+// (`lib/hercules/concluir-cancelamento-server.test.ts`, `indeferimento-na-venda-server.test.ts`).
+// Aqui o teste é da PORTA: quem pode chamar, com que autor, e o que a resposta leva.
+vi.mock("@/lib/hercules/concluir-cancelamento-server", () => ({
+  concluirCancelamentoDoCard: mocks.concluirCancelamentoDoCard,
+}));
+
+vi.mock("@/lib/hercules/indeferimento-na-venda-server", () => ({
+  devolverVendaNoIndeferimento: mocks.devolverVendaNoIndeferimento,
 }));
 
 vi.mock("@/lib/temis/analise-do-trabalho", () => ({
@@ -808,6 +852,113 @@ describe("POST /trabalho", () => {
     );
     expect(recusa.status).toBe(403);
     expect(mocks.retornarParaAnalise).not.toHaveBeenCalled();
+  });
+});
+
+// ── POST /trabalho: concluir, e o indeferimento chegando na venda (18/09/2026) ──
+
+describe("POST /trabalho: concluir cancelamento ou distrato", () => {
+  const DECLAROU = { devolucaoAcertada: true, termoAssinado: true };
+
+  it("portal: fora do alcance é 404, sem concluir nada", async () => {
+    for (const id of ["t-careli", "t-outro", "t-fora"]) {
+      const r = await portalTrabalho.POST(
+        post("/api/incorporador/temis/trabalho", { acao: "concluir", declaracoes: DECLAROU, id }),
+      );
+      expect(r.status).toBe(404);
+    }
+    expect(mocks.concluirCancelamentoDoCard).not.toHaveBeenCalled();
+  });
+
+  it("portal: o próprio card conclui com o autor do portal, e a resposta leva o recado e a unidade", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const r = await portalTrabalho.POST(
+      post("/api/incorporador/temis/trabalho", { acao: "concluir", declaracoes: DECLAROU, id: "t-cecilio" }),
+    );
+    expect(r.status).toBe(200);
+    expect(mocks.concluirCancelamentoDoCard).toHaveBeenCalledWith(expect.anything(), {
+      declaracoes: DECLAROU,
+      trabalhoId: "t-cecilio",
+      usuarioId: "usuario-portal-1",
+      usuarioNome: "Maria do Jurídico",
+    });
+    const corpo = (await r.json()) as { recado: string; unidade: { voltou: boolean } };
+    expect(corpo.recado).toContain("a unidade voltou para a disponibilidade");
+    expect(corpo.unidade.voltou).toBe(true);
+    info.mockRestore();
+  });
+
+  it("portal: produto só de consulta (VOC operado pela Careli) é 403, sem concluir", async () => {
+    estado.produtos = [...PRODUTOS_DE_16_DE_SETEMBRO];
+    const r = await portalTrabalho.POST(
+      post("/api/incorporador/temis/trabalho", { acao: "concluir", declaracoes: DECLAROU, id: "t-cecilio" }),
+    );
+    expect(r.status).toBe(403);
+    expect(mocks.concluirCancelamentoDoCard).not.toHaveBeenCalled();
+  });
+
+  it("hub: a coordenação conclui; a recusa do servidor chega com o status e a frase dele", async () => {
+    mocks.concluirCancelamentoDoCard.mockResolvedValueOnce({
+      erro: "A situação mudou: agora exige distrato.",
+      ok: false,
+      status: 409,
+    });
+    const r = await hubTrabalho.POST(post("/api/temis/trabalho", { acao: "concluir", id: "t-careli" }));
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ error: "A situação mudou: agora exige distrato." });
+    expect(mocks.concluirCancelamentoDoCard).toHaveBeenCalledWith(expect.anything(), {
+      declaracoes: undefined,
+      trabalhoId: "t-careli",
+      usuarioId: "user-hub",
+      usuarioNome: "Jurídico",
+    });
+
+    estado.hubCoordenacao = false;
+    mocks.concluirCancelamentoDoCard.mockClear();
+    const recusa = await hubTrabalho.POST(post("/api/temis/trabalho", { acao: "concluir", id: "t-careli" }));
+    expect(recusa.status).toBe(403);
+    expect(mocks.concluirCancelamentoDoCard).not.toHaveBeenCalled();
+  });
+
+  it("indeferir leva a decisão para a venda, e a resposta traz o recado dela", async () => {
+    responderPorTabela({
+      temis_trabalhos: (c) =>
+        c.update
+          ? { data: [{ id: "t-careli" }], error: null }
+          : {
+              data: { estagio: "analise", id: "t-careli", proposta_id: "venda-21", tipo: "cancelamento" },
+              error: null,
+            },
+    });
+    mocks.devolverVendaNoIndeferimento.mockResolvedValueOnce({
+      aviso: null,
+      feito: "nada",
+      recado: "Pedido de cancelamento indeferido. A venda continua como estava, e o Hércules volta a oferecer o pedido de cancelamento.",
+    });
+
+    const r = await hubTrabalho.POST(
+      post("/api/temis/trabalho", { id: "t-careli", motivo: "outro", observacao: "Cliente desistiu de desistir" }),
+    );
+
+    expect(r.status).toBe(200);
+    expect(mocks.devolverVendaNoIndeferimento).toHaveBeenCalledWith(
+      expect.anything(),
+      { estagio: "analise", id: "t-careli", proposta_id: "venda-21", tipo: "cancelamento" },
+      { motivo: "outro", observacao: "Cliente desistiu de desistir", usuarioNome: "Jurídico" },
+    );
+    expect(((await r.json()) as { recado: string }).recado).toContain("volta a oferecer o pedido");
+  });
+
+  it("indeferimento que o banco barrou (card faturado) não mexe na venda", async () => {
+    responderPorTabela({
+      temis_trabalhos: (c) =>
+        c.update
+          ? { data: [], error: null }
+          : { data: { estagio: "faturado", id: "t-careli", proposta_id: "venda-21", tipo: "contrato" }, error: null },
+    });
+    const r = await hubTrabalho.POST(post("/api/temis/trabalho", { id: "t-careli", motivo: "documento_faltando" }));
+    expect(r.status).toBe(409);
+    expect(mocks.devolverVendaNoIndeferimento).not.toHaveBeenCalled();
   });
 });
 

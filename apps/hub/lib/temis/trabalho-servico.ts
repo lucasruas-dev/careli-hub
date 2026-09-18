@@ -45,6 +45,7 @@ import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
 import { rotuloDoEstado } from "@/lib/assinatura/traduzir";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
+import { concluirCancelamentoDoCard } from "@/lib/hercules/concluir-cancelamento-server";
 import { ehIdDoPai, expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
 import {
   type EventoDaUnidade,
@@ -53,6 +54,7 @@ import {
   type MovimentoDoHistorico,
   type PropostaDoHistorico,
 } from "@/lib/hercules/historico-da-unidade";
+import { devolverVendaNoIndeferimento } from "@/lib/hercules/indeferimento-na-venda-server";
 
 import {
   alcanceParaEscrever,
@@ -999,11 +1001,16 @@ type CardDaDecisao = {
 };
 
 /**
- * AS DUAS DECISÕES SOBRE UM CARD: `indeferir` e `voltar_para_analise`.
+ * AS TRÊS DECISÕES SOBRE UM CARD: `indeferir`, `voltar_para_analise` e `concluir`.
  *
  * `indeferir` — a Têmis recusa o TRABALHO e devolve a quem vendeu. ⚠️ NÃO É REPROVA DE CRÉDITO
  * (Lucas, 10/09/2026: *"credito? não tem credito na temis"*). O aviso para corretor e imobiliária
- * ainda não sai daqui: esta função GRAVA a decisão com motivo.
+ * ainda não sai daqui: esta função GRAVA a decisão com motivo e, desde 18/09/2026, leva a decisão
+ * para a venda (`devolverVendaNoIndeferimento`): pedido de cancelamento recusado limpa a marca do
+ * pedido, contrato indeferido devolve a venda de `contrato` para `proposta`.
+ *
+ * `concluir` — só no card de cancelamento e no de distrato: desfaz a venda e devolve o lote pela
+ * trava (`lib/hercules/concluir-cancelamento-server.ts`).
  *
  * `voltar_para_analise` — o contrato volta para a Análise para ser corrigido (Lucas, 11/09/2026).
  * ⚠️ ELA MEXE FORA DA CASA: confere o envelope na Clicksign e o cancela antes de mover o card. A
@@ -1027,6 +1034,8 @@ export async function decidirSobreOTrabalho(
 ): Promise<NextResponse> {
   const corpo = (await request.json().catch(() => ({}))) as {
     acao?: string;
+    /** As duas declarações do distrato (`DECLARACOES_DO_DISTRATO`), só na ação `concluir`. */
+    declaracoes?: unknown;
     id?: string;
     motivo?: string;
     observacao?: string;
@@ -1036,11 +1045,11 @@ export async function decidirSobreOTrabalho(
   if (!id) return NextResponse.json({ error: "Informe o trabalho." }, { status: 400 });
 
   const acao = String(corpo.acao ?? "").trim() || "indeferir";
-  if (acao !== "indeferir" && acao !== "voltar_para_analise") {
+  if (acao !== "indeferir" && acao !== "voltar_para_analise" && acao !== "concluir") {
     return NextResponse.json({ error: "Ação desconhecida." }, { status: 400 });
   }
 
-  // Indeferir e voltar para análise são escrita: no portal, só no produto que ele opera.
+  // Indeferir, voltar para análise e concluir são escrita: no portal, só no produto que ele opera.
   const recusaDoCard = await recusaDoTrabalhoParaEscrever(ator, id);
   if (recusaDoCard) return recusaDoCard;
 
@@ -1074,6 +1083,47 @@ export async function decidirSobreOTrabalho(
     // tela contar que o contrato saiu da mão de quem ia assinar.
     return NextResponse.json(
       { de: feito.de, envelopeCancelado: feito.envelopeCancelado, ok: true },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  // ⚠️ CONCLUIR O CANCELAMENTO OU O DISTRATO (18/09/2026) — a ação que faz a coisa. Lucas: *"o time
+  // administrativo quando finaliza um cancelamento de contrato, a unidade nao esta voltando para
+  // disponibilidade"*. Não havia botão de concluir, e o único que havia (Indeferir) RECUSAVA o
+  // pedido. A regra inteira (ler, reapurar os fatos, cancelar o envelope, derrubar a venda, a
+  // reserva e o card de contrato, fechar o card e devolver o lote pela trava) mora em
+  // `lib/hercules/concluir-cancelamento-server.ts`; aqui só se abre a porta e se traduz o desfecho.
+  if (acao === "concluir") {
+    const feito = await concluirCancelamentoDoCard(sb, {
+      declaracoes: corpo.declaracoes,
+      trabalhoId: id,
+      usuarioId: quem,
+      usuarioNome: quemNome,
+    });
+
+    if (!feito.ok) {
+      return NextResponse.json({ error: feito.erro }, { status: feito.status });
+    }
+
+    registrarAtoDoPortal(ator, `${feito.tipo} concluído`, {
+      trabalhoId: id,
+      unidadeVoltou: feito.unidade.voltou,
+    });
+    // ⚠️ A RESPOSTA DIZ SE O LOTE VOLTOU, E POR QUE NÃO: a tela mostra o recado inteiro, e "concluído"
+    // sem dizer que a trava segurou o lote faria alguém procurar a unidade livre no espelho.
+    return NextResponse.json(
+      {
+        avisos: feito.avisos,
+        cardConcluido: feito.cardConcluido,
+        codigo: feito.codigo,
+        contratosIndeferidos: feito.contratosIndeferidos,
+        envelopeCancelado: feito.envelopeCancelado,
+        jaEstavaDesfeita: feito.jaEstavaDesfeita,
+        ok: true,
+        recado: feito.recado,
+        tipo: feito.tipo,
+        unidade: feito.unidade,
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   }
@@ -1149,11 +1199,30 @@ export async function decidirSobreOTrabalho(
     trabalhoTipo: card.tipo,
   });
 
+  // ⚠️ O INDEFERIMENTO CHEGA NA VENDA (18/09/2026). O pedido de cancelamento indeferido é o pedido
+  // RECUSADO: a marca sai da venda e o Hércules volta a oferecer o pedido. O contrato indeferido
+  // volta a quem vendeu: a venda sai de `contrato` para `proposta`. Antes disso, nos dois casos, a
+  // venda ficava parada para sempre (VOL1106 e VOC0306, medidos em produção). Nunca derruba o
+  // indeferimento, que já aconteceu: o que não deu certo vira `aviso` na resposta.
+  const naVenda = await devolverVendaNoIndeferimento(sb, card, {
+    motivo: conferido.motivo,
+    observacao: conferido.observacao,
+    usuarioNome: quemNome,
+  });
+
   registrarAtoDoPortal(ator, "trabalho indeferido", {
     motivo: conferido.motivo,
     trabalhoId: card.id,
+    venda: naVenda.feito,
   });
-  return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(
+    {
+      ok: true,
+      recado: [naVenda.recado, naVenda.aviso].filter(Boolean).join(" ") || null,
+      venda: naVenda.feito,
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }
 
 // ── /trabalho/conversa ──────────────────────────────────────────────────────

@@ -25,18 +25,46 @@ import type { EstagioDoTrabalho, TipoDeTrabalho } from "@/lib/temis/trabalhos";
 /**
  * O que fez o card andar.
  *
- * ⚠️ OS SETE VALORES SÃO OS DO CHECK DA 0153, e o check é a garantia. Valor novo aqui sem valor
- * novo lá vira linha recusada pelo banco — e, como esta função é calada por construção, a recusa
- * sairia só no `console.error`.
+ * ⚠️ OS SETE PRIMEIROS VALORES SÃO OS DO CHECK DA 0153, e o check é a garantia. Valor novo aqui sem
+ * valor novo lá vira linha recusada pelo banco — e, como esta função é calada por construção, a
+ * recusa sairia só no `console.error`.
+ *
+ * ⚠️ `conclusao` É O OITAVO, E ELE PRECISA DA 0177 (18/09/2026): é o card de cancelamento ou de
+ * distrato concluído pelo botão da Têmis, que cancela a venda e devolve o lote
+ * (`lib/hercules/concluir-cancelamento-server.ts`). Enquanto a 0177 não for aplicada, o banco recusa
+ * a palavra; `ORIGEM_ENQUANTO_FALTA_MIGRATION` grava a passagem com a origem antiga mais próxima, em
+ * vez de perder a linha do histórico.
  */
 export type OrigemDaPassagem =
   | "abertura"
   | "atividade"
+  | "conclusao"
   | "contrato_gerado"
   | "envio_assinatura"
   | "indeferimento"
   | "retorno_para_correcao"
   | "webhook_assinatura";
+
+/**
+ * A origem que o check da 0153 aceita, para as origens que só existem depois de uma migration nova.
+ *
+ * ⚠️ `conclusao` → `atividade`, E NÃO É CHUTE: concluir marca todas as atividades do card e o leva
+ * ao fim, que é o mesmo movimento que `marcarAtividade` faz quando a última atividade é marcada. A
+ * palavra perde precisão (o histórico não distingue o botão da marcação), e a passagem, que é o que
+ * a auditoria procura, continua gravada com quem, quando, de onde e para onde. Aplicada a 0177, a
+ * primeira tentativa passa e isto deixa de ser usado.
+ */
+const ORIGEM_ENQUANTO_FALTA_MIGRATION: Partial<Record<OrigemDaPassagem, OrigemDaPassagem>> = {
+  conclusao: "atividade",
+};
+
+/** O banco recusou a ORIGEM pelo check da 0153 (e não outra coisa). */
+function ehOrigemRecusada(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === "23514" &&
+    String(error.message ?? "").includes("temis_trabalho_etapas_origem_valida")
+  );
+}
 
 export type PassagemDeEtapa = {
   /**
@@ -105,11 +133,11 @@ export async function registrarPassagemDeEtapa(
   if (!para || de === para) return;
 
   try {
-    const { error } = await sb.from(TABELA).insert({
+    const linha = (origem: OrigemDaPassagem) => ({
       de,
       motivo: passagem.motivo ?? null,
       observacao: passagem.observacao ?? null,
-      origem: passagem.origem,
+      origem,
       para,
       proposta_id: passagem.propostaId,
       quem: passagem.quem ?? null,
@@ -118,6 +146,14 @@ export async function registrarPassagemDeEtapa(
       trabalho_tipo: passagem.trabalhoTipo,
       workspace_id: "careli",
     });
+
+    let { error } = await sb.from(TABELA).insert(linha(passagem.origem));
+
+    // A origem nova sem a migration dela: grava com a antiga mais próxima, uma tentativa só.
+    const substituta = ORIGEM_ENQUANTO_FALTA_MIGRATION[passagem.origem];
+    if (error && substituta && ehOrigemRecusada(error)) {
+      ({ error } = await sb.from(TABELA).insert(linha(substituta)));
+    }
 
     if (!error) return;
 

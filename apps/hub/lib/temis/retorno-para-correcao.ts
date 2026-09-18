@@ -296,6 +296,23 @@ const O_QUE_O_ESTADO_REAL_DECIDE: Record<
   recusado: "ja_morreu",
 };
 
+/** O que o estado lido na Clicksign manda fazer com o envelope. */
+export type DecisaoDoEstadoReal = (typeof O_QUE_O_ESTADO_REAL_DECIDE)[EstadoDaAssinatura];
+
+/**
+ * A MESMA RÉGUA, SEM A FRASE DA VOLTA — para quem cancela envelope por outro motivo.
+ *
+ * ⚠️ EXISTE PARA A CONCLUSÃO DO CANCELAMENTO NÃO ESCREVER UMA SEGUNDA TABELA (18/09/2026). Concluir
+ * um card de cancelamento cancela o envelope ainda vivo do contrato da venda, com a mesma pergunta
+ * da volta: `assinado` não se cancela (é distrato), `desconhecido` não se afirma, o que já morreu
+ * não se cancela duas vezes. As frases é que são outras, porque lá não há card voltando para a
+ * análise; por isso quem chama recebe a DECISÃO, e escreve a própria frase
+ * (`lib/hercules/concluir-cancelamento-server.ts`).
+ */
+export function decisaoDoEstadoReal(estado: EstadoDaAssinatura): DecisaoDoEstadoReal {
+  return O_QUE_O_ESTADO_REAL_DECIDE[estado];
+}
+
 /** O desfecho da leitura real: cancelar, voltar sem cancelar, ou não voltar. */
 export type LeituraDoEstadoReal = { cancelar: boolean; ok: true } | { erro: string; ok: false };
 
@@ -317,7 +334,7 @@ export type LeituraDoEstadoReal = { cancelar: boolean; ok: true } | { erro: stri
 export function conferirEstadoRealParaVoltar(
   leitura: { envelopeId: string; estado: EstadoDaAssinatura; status: string },
 ): LeituraDoEstadoReal {
-  switch (O_QUE_O_ESTADO_REAL_DECIDE[leitura.estado]) {
+  switch (decisaoDoEstadoReal(leitura.estado)) {
     case "cancelar":
       return { cancelar: true, ok: true };
     case "distrato":
@@ -633,11 +650,16 @@ async function conferirEMatarOEnvelope(
  * registro — e ele ainda tem quem o conserte, porque a Clicksign manda o evento de cancelamento pelo
  * webhook e `aplicarEventoDaClicksign` grava o mesmo estado. Derrubar a volta por causa disso deixaria
  * o card parado em "em assinatura" com o envelope já morto: o pior dos dois mundos, invertido.
+ *
+ * `estadoCru` diz QUEM, no Panteon, cancelou: a volta para a análise é o padrão; a conclusão do
+ * cancelamento na Têmis grava a dela (`panteon:conclusao_do_cancelamento`), para a auditoria saber
+ * por que aquele envelope morreu.
  */
-async function carimbarCancelamento(
+export async function carimbarCancelamento(
   sb: SupabaseClient,
   registroId: null | string,
   envelopeId: string,
+  estadoCru = "panteon:retorno_para_correcao",
 ): Promise<void> {
   if (!registroId) return;
 
@@ -651,7 +673,7 @@ async function carimbarCancelamento(
       // gravações guarda o evento que veio de lá (`clicksign:running`, `clicksign:cancel`), e
       // escrever um evento que a Clicksign não mandou faria a auditoria procurar no webhook um
       // registro que nunca existiu.
-      estado_cru: "panteon:retorno_para_correcao",
+      estado_cru: estadoCru,
       // ⚠️ `fechado_em` É O QUE TIRA A LINHA DA FILA DE ACOMPANHAMENTO: sem ele o envelope morto
       // continuaria sendo consultado como se ainda estivesse correndo.
       fechado_em: agora,

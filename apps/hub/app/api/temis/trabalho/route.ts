@@ -14,7 +14,8 @@ import {
 // etapa, acho que deveria trazer os dados dos proponentes, imobiliaria, a proposta"*.
 //
 // ⚠️ ESTA ROTA É SÓ A PORTA DO HUB. Abrir o card (`abrirCardDoTrabalho`) e decidir sobre ele
-// (`decidirSobreOTrabalho`: indeferir e voltar para análise, com o envelope da Clicksign) moram em
+// (`decidirSobreOTrabalho`: indeferir, voltar para análise e concluir cancelamento ou distrato,
+// com o envelope da Clicksign) moram em
 // `lib/temis/trabalho-servico.ts`, e são as mesmas funções que `/api/incorporador/temis/trabalho`
 // chama com o ator do portal.
 //

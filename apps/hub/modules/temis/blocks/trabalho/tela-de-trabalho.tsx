@@ -22,6 +22,15 @@ import type { AnaliseDoTrabalho, CampoDaAnalise } from "@/lib/temis/analise-do-t
 import type { DescontoDaProposta } from "@/lib/temis/comercial-da-analise";
 import type { PedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
 import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
+import {
+  avisoDaConclusao,
+  type ChaveDaDeclaracao,
+  DECLARACOES_DO_DISTRATO,
+  ehTipoQueConclui,
+  podeConcluir,
+  rotuloDaConclusao,
+  type TipoQueConclui,
+} from "@/lib/temis/conclusao-do-cancelamento";
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import { MOTIVOS } from "@/lib/temis/indeferimento";
 import { pedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
@@ -257,6 +266,13 @@ export function TelaDeTrabalho({
    * embaixo faria o botão do cabeçalho não conseguir abrir o formulário que vive na coluna.
    */
   const [indeferindo, setIndeferindo] = useState(false);
+  /**
+   * A confirmação de "Concluir cancelamento" / "Concluir distrato" está aberta.
+   *
+   * ⚠️ MORA AQUI PELA MESMA RAZÃO DO INDEFERIMENTO: o botão é do topo, e a confirmação aparece em
+   * qualquer etapa do card (o distrato pode ser concluído de Contrato ou de Em assinatura).
+   */
+  const [concluindo, setConcluindo] = useState(false);
   /** A falha da última ação disparada pelo topo. */
   const [erroDaAcao, setErroDaAcao] = useState<null | string>(null);
   // ⚠️ A PORTA VEM DO PROVEDOR: no hub, `/api/temis` com Bearer; no portal que confecciona,
@@ -366,8 +382,16 @@ export function TelaDeTrabalho({
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });
-        const corpo = (await r.json().catch(() => ({}))) as { error?: string };
+        const corpo = (await r.json().catch(() => ({}))) as { error?: string; recado?: null | string };
         if (!r.ok) return corpo.error ?? "Não consegui indeferir.";
+        // ⚠️ O INDEFERIMENTO MEXE NA VENDA (18/09/2026), e o recado diz como: o pedido de
+        // cancelamento recusado devolve o botão do pedido no Hércules; o contrato indeferido devolve a
+        // venda para Proposta. Quando há o que contar, a tela volta ao quadro com o recado, como as
+        // outras ações; o card sem venda ligada continua aberto mostrando o Indeferido.
+        if (corpo.recado && aoConcluir) {
+          aoConcluir(corpo.recado);
+          return null;
+        }
         await carregar();
         aoMudar();
         return null;
@@ -375,7 +399,44 @@ export function TelaDeTrabalho({
         setOcupado(false);
       }
     },
-    [aoMudar, carregar, temisFetch, trabalhoId],
+    [aoConcluir, aoMudar, carregar, temisFetch, trabalhoId],
+  );
+
+  /**
+   * CONCLUI O CANCELAMENTO OU O DISTRATO — a ação que desfaz a venda e devolve o lote.
+   *
+   * Lucas (18/09/2026): *"o time administrativo quando finaliza um cancelamento de contrato, a
+   * unidade nao esta voltando para disponibilidade"*. Não havia botão de concluir, e o único que
+   * havia (Indeferir) RECUSAVA o pedido.
+   *
+   * ⚠️ QUEM DECIDE É O SERVIDOR (`lib/hercules/concluir-cancelamento-server.ts`): ele reapura os
+   * fatos no clique, cancela o envelope do contrato quando é cancelamento e só devolve o lote se a
+   * trava deixar. A tela manda as duas declarações do distrato e escreve o recado como veio, porque
+   * é nele que está se o lote voltou e, se não voltou, por quê.
+   */
+  const concluir = useCallback(
+    async (declaracoes: Partial<Record<ChaveDaDeclaracao, boolean>>): Promise<null | string> => {
+      setOcupado(true);
+      try {
+        const r = await temisFetch("/trabalho", {
+          body: JSON.stringify({ acao: "concluir", declaracoes, id: trabalhoId }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const corpo = (await r.json().catch(() => ({}))) as { error?: string; recado?: string };
+        if (!r.ok) return corpo.error ?? "Não consegui concluir.";
+        if (aoConcluir) {
+          aoConcluir(corpo.recado ?? "Concluído.");
+        } else {
+          await carregar();
+          aoMudar();
+        }
+        return null;
+      } finally {
+        setOcupado(false);
+      }
+    },
+    [aoConcluir, aoMudar, carregar, temisFetch, trabalhoId],
   );
 
   /**
@@ -477,6 +538,19 @@ export function TelaDeTrabalho({
   const { analise, assinatura, card, envelopeVivo, podeEmitir } = dados;
   const caminho = caminhoDoCard(card.tipo, card.estagio);
   const ehContrato = card.tipo === "contrato" && Boolean(card.proposta_id);
+  /**
+   * O card se conclui por aqui? Cancelamento ou distrato, com venda ligada, fora de Concluído e de
+   * Indeferido. A régua é `podeConcluir`, a mesma que o servidor aplica.
+   */
+  const tipoQueConclui: null | TipoQueConclui =
+    card.proposta_id && ehTipoQueConclui(card.tipo) && podeConcluir(card.tipo, card.estagio)
+      ? card.tipo
+      : null;
+  /** "COD 000019", como o pedido do Hércules gravou: é o que a confirmação diz que cai. */
+  const codigoDoPedido =
+    pedidoDoTrabalho({ observacao: card.observacao, tipo: card.tipo })?.itens.find(
+      (i) => i.rotulo === "Contrato",
+    )?.valor ?? null;
 
   return (
     <Moldura aoFechar={aoFechar}>
@@ -606,9 +680,9 @@ export function TelaDeTrabalho({
             com título e parágrafo, para três cliques; e ficavam abaixo de tudo que se lê, então
             era preciso rolar a análise inteira para agir sobre ela. Cada botão diz o que faz
             pelo `title` e pelo `aria-label` — ícone sem nome nenhum é adivinhação. */}
-        {card.estagio === "analise" ? (
+        {card.estagio === "analise" || tipoQueConclui ? (
           <div className="flex items-center gap-1.5">
-            {card.proposta_id ? (
+            {card.estagio === "analise" && card.proposta_id ? (
               <BotaoDeAcao
                 icone={FileText}
                 onClick={() => setPrevia(card.proposta_id)}
@@ -616,7 +690,24 @@ export function TelaDeTrabalho({
               />
             ) : null}
 
-            {ehContrato ? (
+            {/* ⚠️ CONCLUIR MORA AO LADO DE INDEFERIR, E OS DOIS FAZEM O CONTRÁRIO UM DO OUTRO.
+                Concluir DESFAZ a venda; Indeferir RECUSA o pedido e deixa a venda como está. A
+                Nívea "finalizou" dois cancelamentos pelo Indeferir porque não havia outro botão. */}
+            {tipoQueConclui ? (
+              <BotaoDeAcao
+                ativo={concluindo}
+                carregando={ocupado && concluindo}
+                icone={CircleCheck}
+                onClick={() => {
+                  setIndeferindo(false);
+                  setConcluindo((v) => !v);
+                }}
+                principal
+                rotulo={rotuloDaConclusao(tipoQueConclui)}
+              />
+            ) : null}
+
+            {card.estagio === "analise" && ehContrato ? (
               <BotaoDeAcao
                 carregando={ocupado}
                 icone={FilePlus2}
@@ -630,13 +721,18 @@ export function TelaDeTrabalho({
               />
             ) : null}
 
-            <BotaoDeAcao
-              ativo={indeferindo}
-              icone={Ban}
-              onClick={() => setIndeferindo((v) => !v)}
-              perigo
-              rotulo="Indeferir"
-            />
+            {card.estagio === "analise" ? (
+              <BotaoDeAcao
+                ativo={indeferindo}
+                icone={Ban}
+                onClick={() => {
+                  setConcluindo(false);
+                  setIndeferindo((v) => !v);
+                }}
+                perigo
+                rotulo="Indeferir"
+              />
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -647,6 +743,15 @@ export function TelaDeTrabalho({
           alta da tela — caber numa faixa com rolagem própria, com a conversa escondida embaixo. */}
       <div className="mt-3 grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-h-0 flex-col pr-1 lg:overflow-auto">
+          {concluindo && tipoQueConclui ? (
+            <ConfirmarConclusao
+              aoCancelar={() => setConcluindo(false)}
+              aoConfirmar={concluir}
+              codigo={codigoDoPedido}
+              tipo={tipoQueConclui}
+            />
+          ) : null}
+
           {card.estagio === "indeferido" ? <BlocoIndeferido card={card} /> : null}
 
           {!card.proposta_id ? (
@@ -786,7 +891,15 @@ export function TelaDeTrabalho({
             </div>
           ) : null}
 
-          {card.estagio === "faturado" ? (
+          {/* ⚠️ O CANCELAMENTO E O DISTRATO CONCLUÍDOS NÃO SÃO CONTRATO FATURADO. As duas frases de
+              baixo falam de contrato no cofre e mandam abrir o pedido de cancelamento, que é
+              exatamente o que este card já fez. O que aconteceu com a venda e com o lote está no
+              histórico do card, gravado pela conclusão. */}
+          {card.estagio === "faturado" && ehTipoQueConclui(card.tipo) ? (
+            <Aviso texto="Concluído: a venda foi desfeita. Se a unidade voltou para a disponibilidade, e por que não, está no histórico deste card." />
+          ) : null}
+
+          {card.estagio === "faturado" && !ehTipoQueConclui(card.tipo) ? (
             <>
               <EmConstrucao
                 oQueVem="O resumo do que ficou: contrato no cofre, assinaturas, prazo cumprido e entrada paga."
@@ -992,8 +1105,15 @@ function EtapaDeAnalise({
       {indeferindo ? (
         <section className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
           <h3 className="m-0 text-sm font-semibold text-ink">Indeferir este trabalho</h3>
+          {/* ⚠️ INDEFERIR UM PEDIDO DE CANCELAMENTO É RECUSÁ-LO, e a frase diz isso antes do clique.
+              A Nívea "finalizou" dois cancelamentos por aqui (18/09/2026) e os lotes ficaram presos:
+              quem quer desfazer a venda usa o botão de concluir, ao lado. */}
           <p className="m-0 mt-1 text-xs text-ink-muted">
-            O motivo vai para o corretor e para a imobiliária. Diga o que precisa ser corrigido.
+            {ehTipoQueConclui(tipo)
+              ? `Indeferir recusa o pedido: a venda continua como está, e o Hércules volta a oferecer o pedido de cancelamento. Para desfazer a venda, use ${rotuloDaConclusao(tipo)}.`
+              : tipo === "contrato"
+                ? "A venda volta para Proposta no Hércules. O motivo vai para o corretor e para a imobiliária: diga o que precisa ser corrigido."
+                : "O motivo vai para o corretor e para a imobiliária. Diga o que precisa ser corrigido."}
           </p>
 
           <label className="mt-3 block text-xs font-semibold text-ink-soft">
@@ -1182,7 +1302,7 @@ function BotaoDeAcao({
             }`
           : `text-ink hover:bg-subtle ${
               principal ? "border-2 border-line-strong" : "border border-line"
-            }`
+            } ${ativo ? "bg-subtle" : ""}`
       }`}
       disabled={carregando}
       onClick={onClick}
@@ -1195,6 +1315,116 @@ function BotaoDeAcao({
         <Icone aria-hidden="true" className="size-4" />
       )}
     </button>
+  );
+}
+
+/**
+ * A CONFIRMAÇÃO DE CONCLUIR O CANCELAMENTO OU O DISTRATO — o que vai acontecer, antes do clique.
+ *
+ * ⚠️ A FRASE É `avisoDaConclusao`, a mesma lista de declarações que o servidor exige
+ * (`lib/temis/conclusao-do-cancelamento.ts`, sem nada de servidor dentro): uma cópia aqui
+ * divergiria no dia em que o servidor passasse a pedir outra coisa.
+ *
+ * ⚠️ NO DISTRATO, AS DUAS DECLARAÇÕES DESTRAVAM O BOTÃO. O sistema não sabe se o termo foi assinado
+ * nem se o dinheiro do cliente foi acertado: quem conclui declara, e a declaração vai para o motivo
+ * gravado na venda e para o histórico do card, com o nome de quem clicou.
+ */
+function ConfirmarConclusao({
+  aoCancelar,
+  aoConfirmar,
+  codigo,
+  tipo,
+}: {
+  aoCancelar: () => void;
+  /** Devolve o texto da falha, ou `null` quando concluiu (e a tela já voltou ao quadro). */
+  aoConfirmar: (declaracoes: Partial<Record<ChaveDaDeclaracao, boolean>>) => Promise<null | string>;
+  /** "COD 000019", do pedido; `null` quando o pedido não trouxe o código. */
+  codigo: null | string;
+  tipo: TipoQueConclui;
+}) {
+  const [marcadas, setMarcadas] = useState<Partial<Record<ChaveDaDeclaracao, boolean>>>({});
+  const [erro, setErro] = useState<null | string>(null);
+  /** O clique está no ar: o cancelamento pode passar pela Clicksign, e o segundo clique espera. */
+  const [enviando, setEnviando] = useState(false);
+  const faltaDeclarar =
+    tipo === "distrato" && DECLARACOES_DO_DISTRATO.some((d) => marcadas[d.chave] !== true);
+
+  return (
+    <section className="mb-3 rounded-xl border border-line-strong bg-surface p-4">
+      <h3 className="m-0 flex items-center gap-1.5 text-sm font-semibold text-ink">
+        <CircleCheck aria-hidden="true" className="size-4" />
+        {rotuloDaConclusao(tipo)}
+      </h3>
+      <p className="m-0 mt-1 text-xs text-ink-soft">{avisoDaConclusao({ codigo, tipo })}</p>
+
+      {tipo === "distrato" ? (
+        <fieldset className="m-0 mt-3 grid gap-2 border-0 p-0">
+          <legend className="sr-only">Confirmações obrigatórias do distrato</legend>
+          {DECLARACOES_DO_DISTRATO.map((d) => (
+            <label className="flex items-center gap-2 text-xs font-semibold text-ink" key={d.chave}>
+              <input
+                checked={marcadas[d.chave] === true}
+                className="size-4 accent-current"
+                disabled={enviando}
+                onChange={(ev) => setMarcadas((m) => ({ ...m, [d.chave]: ev.target.checked }))}
+                type="checkbox"
+              />
+              {d.rotulo}
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
+
+      {erro ? (
+        <p className="m-0 mt-3 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs text-rose-600 dark:text-rose-300">
+          {erro}
+        </p>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          className="inline-flex items-center gap-1.5 rounded-lg border-2 border-line-strong bg-surface px-3.5 py-2 text-xs font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-50"
+          disabled={enviando || faltaDeclarar}
+          onClick={async () => {
+            setErro(null);
+            setEnviando(true);
+            try {
+              // ⚠️ SÓ `true` VAI PARA O SERVIDOR, e ele só aceita `true`: a caixa que ninguém marcou
+              // não pode chegar lá como declaração feita.
+              const declaracoes = Object.fromEntries(
+                DECLARACOES_DO_DISTRATO.filter((d) => marcadas[d.chave] === true).map((d) => [
+                  d.chave,
+                  true,
+                ]),
+              ) as Partial<Record<ChaveDaDeclaracao, boolean>>;
+              const falha = await aoConfirmar(declaracoes);
+              if (falha) setErro(falha);
+            } finally {
+              // A conclusão que deu certo fecha a tela, e este `set` cai no vazio; a que falhou
+              // devolve o botão para quem vai ler o motivo.
+              setEnviando(false);
+            }
+          }}
+          title={faltaDeclarar ? "Marque as duas confirmações" : rotuloDaConclusao(tipo)}
+          type="button"
+        >
+          {enviando ? (
+            <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+          ) : (
+            <CircleCheck aria-hidden="true" className="size-3.5" />
+          )}
+          {enviando ? "Concluindo…" : "Confirmo: concluir"}
+        </button>
+        <button
+          className="inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
+          disabled={enviando}
+          onClick={aoCancelar}
+          type="button"
+        >
+          Cancelar
+        </button>
+      </div>
+    </section>
   );
 }
 

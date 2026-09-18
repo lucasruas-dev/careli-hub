@@ -17,6 +17,10 @@ const estado = vi.hoisted(() => ({
   /** O que a leitura do card de contrato devolve. */
   cardDeContrato: { data: [], error: null } as { data: unknown; error: null | { code: string; message: string } },
   carimbos: 0,
+  /** Os filtros da procura do "pedido já na fila" (`cardsAbertosDaProposta`). */
+  filtrosDaFila: [] as unknown[][],
+  /** O que a procura do "pedido já na fila" devolve. */
+  naFila: { data: [], error: null } as { data: unknown; error: null | { code: string; message: string } },
   sessao: {} as Record<string, unknown>,
   unidade: {} as Record<string, unknown>,
 }));
@@ -76,6 +80,7 @@ vi.mock("@/lib/apolo/server", () => {
   const consulta = (tabela: string) => {
     let colunas = "";
     let atualizando = false;
+    const filtros: unknown[][] = [];
     const resposta = (): Resposta => {
       if (atualizando) {
         estado.carimbos += 1;
@@ -104,6 +109,10 @@ vi.mock("@/lib/apolo/server", () => {
       if (tabela === "temis_trabalhos" && colunas === "operado_por") {
         return estado.cardDeContrato as Resposta;
       }
+      if (tabela === "temis_trabalhos" && colunas === "id, tipo, estagio") {
+        estado.filtrosDaFila = filtros;
+        return estado.naFila as Resposta;
+      }
       // Nenhum pedido anterior na fila, nenhum evento, nenhum envelope.
       return { data: [], error: null };
     };
@@ -111,8 +120,11 @@ vi.mock("@/lib/apolo/server", () => {
       then: (ok: (r: unknown) => unknown, falha?: (e: unknown) => unknown) =>
         Promise.resolve(resposta()).then(ok, falha),
     };
-    for (const metodo of ["eq", "in", "is", "limit", "maybeSingle", "neq", "order"]) {
-      cadeia[metodo] = () => cadeia;
+    for (const metodo of ["eq", "in", "is", "limit", "maybeSingle", "neq", "not", "order"]) {
+      cadeia[metodo] = (...args: unknown[]) => {
+        filtros.push([metodo, ...args]);
+        return cadeia;
+      };
     }
     cadeia.select = (lista: string) => {
       if (!atualizando) colunas = lista;
@@ -149,6 +161,8 @@ beforeEach(() => {
   estado.abertos = [];
   estado.cardDeContrato = { data: [], error: null };
   estado.carimbos = 0;
+  estado.filtrosDaFila = [];
+  estado.naFila = { data: [], error: null };
   estado.sessao = CECILIO;
   estado.unidade = unidadeEm("39");
 });
@@ -215,5 +229,39 @@ describe("POST: quem opera o produto decide a escrita (D1)", () => {
     expect(await resposta.json()).toMatchObject({ soConsulta: true });
     expect(estado.carimbos).toBe(0);
     expect(estado.abertos).toHaveLength(0);
+  });
+});
+
+// ⚠️ "ABERTO" É FORA DE `faturado` E DE `indeferido` (18/09/2026). A procura antiga excluía
+// `finalizado`, um estágio que não existe desde a 0150: todo card antigo contava como aberto,
+// inclusive o INDEFERIDO. Com o indeferimento limpando a marca do pedido, o pedido novo acharia o
+// card indeferido, responderia "já existia" e não abriria card nenhum.
+describe("POST: o pedido já na fila (D)", () => {
+  it("a procura exclui Concluído e Indeferido, e não pergunta mais por `finalizado`", async () => {
+    const resposta = await pedir();
+    expect(resposta.status).toBe(200);
+    expect(estado.filtrosDaFila).toContainEqual(["not", "estagio", "in", "(faturado,indeferido)"]);
+    expect(estado.filtrosDaFila).toContainEqual(["in", "tipo", ["cancelamento", "distrato"]]);
+    expect(JSON.stringify(estado.filtrosDaFila)).not.toContain("finalizado");
+    // Nenhum aberto: o pedido novo nasce.
+    expect(estado.abertos).toHaveLength(1);
+  });
+
+  it("um card ainda aberto responde que o pedido já existia, sem abrir o segundo", async () => {
+    estado.naFila = { data: [{ estagio: "analise", id: "trab-antigo", tipo: "cancelamento" }], error: null };
+    const resposta = await pedir();
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toMatchObject({ data: { jaExistia: true, trabalhoId: "trab-antigo" } });
+    expect(estado.abertos).toHaveLength(0);
+  });
+
+  it("leitura da fila que falha não vira 'não há card': o carimbo é desfeito e nada abre", async () => {
+    estado.naFila = { data: null, error: { code: "57014", message: "statement timeout" } };
+    const erro = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const resposta = await pedir();
+    expect(resposta.status).toBe(502);
+    expect(estado.abertos).toHaveLength(0);
+    expect(estado.carimbos).toBe(2);
+    erro.mockRestore();
   });
 });

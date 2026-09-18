@@ -122,6 +122,16 @@ export function nomeDoEstagio(
 export const COLUNA_INDEFERIDO = "indeferido" as const;
 
 /**
+ * Os estágios em que o card ACABOU: `faturado` (o fim do caminho, "Concluído" fora do contrato) e
+ * `indeferido` (a saída lateral). Card fora destes dois está aberto.
+ *
+ * ⚠️ `finalizado` NÃO EXISTE MAIS, e é por isso que esta lista existe. A 0150 renomeou o estágio,
+ * e a procura de "pedido já na fila" continuou excluindo `finalizado`: todo card, inclusive o
+ * indeferido, contava como aberto. Quem pergunta "este card ainda está andando?" usa esta lista.
+ */
+export const ESTAGIOS_ENCERRADOS: readonly EstagioDoTrabalho[] = ["faturado", "indeferido"];
+
+/**
  * Cada tipo passa pelo estágio de assinatura?
  *
  * ⚠️ É AQUI QUE OS SERVIÇOS DEIXAM DE SER IGUAIS, e eu tinha suposto o contrário. Correção do Lucas

@@ -9,8 +9,9 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import { lerComColunasDoApartamento, nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
-import { apurarFatosDoContrato, type EnvelopeDoContrato } from "@/lib/hercules/fatos-do-contrato";
+import { lerFatosDoContrato } from "@/lib/hercules/fatos-do-contrato-server";
 import { classificarCancelamento } from "@/lib/temis/cancelamento";
+import { cardsAbertosDaProposta } from "@/lib/temis/cards-abertos-db";
 import { abrirTrabalho, ehColunaDoDonoAusente } from "@/lib/temis/trabalhos-db";
 
 // O PEDIDO DE CANCELAMENTO DEPOIS QUE A VENDA FOI PARA CONTRATO.
@@ -301,15 +302,22 @@ export async function POST(request: Request) {
       // resposta se perdeu (timeout, cold start), o carimbo foi desfeito e o trabalho FICOU na
       // fila: abrir outro daria dois pedidos para o mesmo contrato, com o jurídico sem saber qual
       // vale. Procurar antes custa uma leitura e fecha a única janela que o rollback não fecha.
-      const { data: jaNaFila } = await admin
-        .from("temis_trabalhos")
-        .select("id")
-        .eq("proposta_id", proposta.id)
-        .in("tipo", ["cancelamento", "distrato"])
-        .neq("estagio", "finalizado")
-        .limit(1);
+      //
+      // ⚠️ "ABERTO" É FORA DE `faturado` E DE `indeferido` (18/09/2026). A procura antiga excluía
+      // `finalizado`, um estágio que não existe mais desde a 0150: todo card antigo contava como
+      // aberto, inclusive o INDEFERIDO. Com o indeferimento passando a limpar o carimbo (o pedido
+      // recusado devolve a venda a quem pediu), o pedido novo acharia o card indeferido, responderia
+      // "já existia" e não abriria card nenhum: carimbo de pé, fila vazia, venda presa de novo.
+      // A régua mora em `cardsAbertosDaProposta`, a mesma que a conclusão e o indeferimento usam.
+      const jaNaFila = await cardsAbertosDaProposta(admin, {
+        propostaId: proposta.id,
+        tipos: ["cancelamento", "distrato"],
+      });
+      // Leitura que falhou não vira "não há card": o carimbo é desfeito logo abaixo, e a tela diz
+      // que o pedido não chegou, para ninguém abrir o segundo card de um pedido que pode existir.
+      if (!jaNaFila.ok) throw new Error("não foi possível conferir se o pedido já estava na fila");
 
-      const antigo = (jaNaFila ?? [])[0] as undefined | { id: string };
+      const antigo = jaNaFila.cards[0];
       if (antigo) {
         return NextResponse.json({
           data: {
@@ -488,60 +496,6 @@ function ajusteDoCorpo(
   return { assinaturaCompleta: a.assinaturaCompleta, houvePagamento: a.houvePagamento };
 }
 
-/**
- * O que está gravado sobre este contrato — a fonte da classificação.
- *
- * ⚠️ FALHA DE LEITURA NÃO VIRA "NÃO PAGOU". Um erro no select devolveria silêncio, e silêncio aqui
- * significa cancelamento simples: exatamente a classificação errada para um contrato pago. Por isso
- * a exceção sobe e vira 503 na tela, em vez de virar um pedido classificado no escuro.
- */
-async function lerFatosDoContrato(
-  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
-  proposta: {
-    data_assinatura: null | string;
-    data_ato: null | string;
-    data_faturamento: null | string;
-    id: string;
-  },
-) {
-  const { data, error } = await admin
-    .from("hercules_proposta_eventos")
-    .select("tipo")
-    .eq("proposta_id", proposta.id)
-    .limit(500);
-
-  if (error) throw new Error(error.message);
-
-  // ⚠️ O ENVELOPE DA TÊMIS PRECISA ENTRAR AQUI, SENÃO A APURAÇÃO É CEGA PARA A ASSINATURA DO
-  // PANTEON — e este era o defeito, não a função. As duas fontes acima são do C2X
-  // (`hercules_proposta_eventos` e `data_assinatura` só são escritas pela carga do legado): uma
-  // venda que nasceu aqui, cujo contrato a Têmis mandou para a Clicksign e cujos compradores
-  // assinaram, respondia "nenhuma assinatura registrada" e o pedido saía classificado como
-  // CANCELAMENTO SIMPLES — sem distrato, sem apuração do que devolver e sem devolução ao cliente.
-  // `apurarFatosDoContrato` já sabe ler o envelope; faltava alguém buscá-lo, porque ela é pura.
-  //
-  // ⚠️ SÓ `assinado`, e o filtro é da própria consulta: `parcial` é meio contrato assinado, e pela
-  // regra do Lucas (12/09/2026) esse ainda VOLTA para a análise — tratá-lo como completo empurraria
-  // para o distrato uma venda que só precisava de correção.
-  const { data: envelopes, error: erroDoEnvelope } = await admin
-    .from("temis_envelopes")
-    .select("estado, fechado_em")
-    .eq("proposta_id", proposta.id)
-    .eq("estado", "assinado")
-    .order("criado_em", { ascending: false })
-    .limit(1);
-
-  // ⚠️ E FALHA DE LEITURA NÃO VIRA "NÃO ASSINOU", pelo mesmo desenho do select acima: silêncio aqui
-  // significa cancelamento simples, que é a classificação errada para um contrato assinado.
-  if (erroDoEnvelope) throw new Error(erroDoEnvelope.message);
-
-  return apurarFatosDoContrato(
-    (data ?? []) as Array<{ tipo: string }>,
-    {
-      data_assinatura: proposta.data_assinatura,
-      data_ato: proposta.data_ato,
-      data_faturamento: proposta.data_faturamento,
-    },
-    ((envelopes ?? []) as EnvelopeDoContrato[])[0] ?? null,
-  );
-}
+// A LEITURA DOS FATOS (`lerFatosDoContrato`) MORA EM `lib/hercules/fatos-do-contrato-server.ts`
+// desde 18/09/2026: a conclusão do cancelamento na Têmis refaz a MESMA apuração no instante de
+// concluir, e duas cópias dela divergiriam no primeiro conserto.
