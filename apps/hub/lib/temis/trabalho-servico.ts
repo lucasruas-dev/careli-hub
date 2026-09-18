@@ -933,13 +933,31 @@ async function lerSituacaoDoPedido(
   const etapa = String(venda.etapa ?? "").trim();
   const vendaDesfeita = etapa === "cancelado" || etapa === "distrato";
   if (!venda.unidade_id) return { unidadeLivre: true, vendaDesfeita };
-  const { data: unidade, error: erroDaUnidade } = await sb
-    .from("hercules_unidades")
-    .select("situacao")
-    .eq("id", venda.unidade_id)
-    .maybeSingle<{ situacao: null | string }>();
-  if (erroDaUnidade || !unidade) return null;
-  return { unidadeLivre: String(unidade.situacao ?? "") === "disponivel", vendaDesfeita };
+  const [unidade, reservasVivas, propostasVivas] = await Promise.all([
+    sb.from("hercules_unidades").select("situacao").eq("id", venda.unidade_id).maybeSingle<{ situacao: null | string }>(),
+    sb
+      .from("hercules_reservas")
+      .select("id")
+      .eq("unidade_id", venda.unidade_id)
+      .in("situacao", ["ativa", "proposta"])
+      .limit(1),
+    sb
+      .from("hercules_propostas")
+      .select("id")
+      .eq("unidade_id", venda.unidade_id)
+      .neq("id", propostaId)
+      .in("etapa", ["reservado", "proposta", "contrato", "assinatura", "faturado"])
+      .limit(1),
+  ]);
+  if (unidade.error || !unidade.data || reservasVivas.error || propostasVivas.error) return null;
+  // ⚠️ LOTE QUE JÁ TEM DONO NOVO NÃO É "PRESO" (revisão de 18/09/2026): o lote foi revendido, e
+  // oferecer "Tentar liberar a unidade" ali convidaria alguém a mexer na venda nova. Conta como livre
+  // para a tela, que então não oferece a retomada.
+  const temDonoNovo = (reservasVivas.data ?? []).length > 0 || (propostasVivas.data ?? []).length > 0;
+  return {
+    unidadeLivre: temDonoNovo || String(unidade.data.situacao ?? "") === "disponivel",
+    vendaDesfeita,
+  };
 }
 
 /**

@@ -164,9 +164,14 @@ export function historicoDeEtapas(
         codigo: null,
         fato: de
           ? `${prefixo}${de} → ${para}`
-          : // ⚠️ `de` NULO É O NASCIMENTO DO CARD, e não dado faltando (0153). "→ Análise" sem
-            // origem pareceria uma transição com metade apagada.
-            `${prefixo}Trabalho aberto na Têmis`,
+          : p.origem && p.origem !== "abertura"
+            ? // ⚠️ SEM ORIGEM E QUE NÃO É ABERTURA: a nova tentativa de liberar a unidade num card
+              // já concluído (18/09/2026). Lida como nascimento, cada clique aparecia como "Trabalho
+              // aberto na Têmis", um fato que não aconteceu. O que houve está na observação.
+              `${prefixo}Nova tentativa de liberar a unidade`
+            : // ⚠️ `de` NULO É O NASCIMENTO DO CARD, e não dado faltando (0153). "→ Análise" sem
+              // origem pareceria uma transição com metade apagada.
+              `${prefixo}Trabalho aberto na Têmis`,
         fonte: "temis",
         // ⚠️ O PREFIXO `temis-etapa:` EXISTE PARA NÃO COLIDIR com os `mov:` e `etapa:` do Hércules:
         // as duas listas entram no mesmo `map` do React, e id repetido ali some com uma das linhas.

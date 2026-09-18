@@ -388,6 +388,12 @@ export async function concluirCancelamentoDoCard(
   if (terreno.ok && terreno.situacoes && venda.unidade_id) {
     const copias = await encerrarCopiasDoC2x(sb, {
       agora,
+      // ⚠️ SÓ O QUE JÁ EXISTIA QUANDO O CANCELAMENTO FOI PEDIDO (revisão de 18/09/2026). Medido: as
+      // cópias reais nasceram entre agosto e setembro, perto da venda (VOL2: três dias depois), então
+      // a data da venda não separa nada. O que separa é o pedido: a reserva do mesmo cliente criada
+      // DEPOIS dele é a renegociação (2 dos 5 distratos são "mudança de fluxo de pagamento") e é
+      // dona do lote. Sem marca de pedido, vale a queda da venda (retomada) ou agora.
+      corte: venda.cancelamento_pedido_em ?? (jaEstavaDesfeita ? venda.cancelada_em : agora),
       documento: venda.cliente_documento,
       linhas: terreno.situacoes.terreno(venda.unidade_id)?.linhas ?? [],
       motivo: `Cópia do C2X encerrada junto com o ${nomeDoTipo.toLowerCase()} da venda${codigo ? ` COD ${codigo}` : ""}${quem ? `, concluído por ${quem}` : ""}`,
@@ -506,15 +512,12 @@ export async function concluirCancelamentoDoCard(
   // cadastro pode ter virado `vendida` por outra venda (a carga do C2X traz lote vendido sem proposta:
   // 114 hoje), e a trava não enxerga venda sem proposta. O carimbo de tempo é a prova barata: cadastro
   // atualizado depois da queda da venda não é mais dela.
-  const aceitos: string[] = ["reservada"];
-  if (!jaEstavaDesfeita) aceitos.push("vendida");
-  else if (
-    terreno.ok &&
-    terreno.unidade &&
-    cadastroAnteriorAQueda(terreno.unidade.atualizado_em, venda.cancelada_em)
-  ) {
-    aceitos.push("vendida");
-  }
+  //
+  // ⚠️ E NÃO HÁ DATA QUE PROVE QUE O `vendida` AINDA É DELA (revisão de 18/09/2026): a carga do C2X
+  // grava a situação sem mexer em `atualizado_em`, então o carimbo de tempo não separa o `vendida`
+  // desta venda do de uma revenda feita no legado. Na retomada, só `reservada` volta; o `vendida`
+  // que sobrar é conferido e liberado por gente (o recado diz o porquê).
+  const aceitos: string[] = jaEstavaDesfeita ? ["reservada"] : ["reservada", "vendida"];
   const unidade: DesfechoDaUnidade = !venda.unidade_id
     ? { frase: "a venda não tem unidade ligada no Panteon", voltou: false }
     : !terreno.ok
@@ -775,13 +778,6 @@ async function terrenoDaUnidade(
   }
 }
 
-/** O cadastro foi mexido pela última vez ANTES (ou no mesmo instante) da queda da venda? */
-function cadastroAnteriorAQueda(atualizadoEm: null | string, canceladaEm: null | string): boolean {
-  const a = Date.parse(String(atualizadoEm ?? ""));
-  const c = Date.parse(String(canceladaEm ?? ""));
-  return Number.isFinite(a) && Number.isFinite(c) && a <= c;
-}
-
 /**
  * Encerra as cópias antigas do C2X desta venda no mesmo terreno.
  *
@@ -793,6 +789,8 @@ async function encerrarCopiasDoC2x(
   sb: SupabaseClient,
   args: {
     agora: string;
+    /** Só cópia criada até aqui (ver o passo 2½). Sem data, nenhuma cópia é encerrada. */
+    corte: null | string;
     documento: null | string;
     linhas: string[];
     motivo: string;
@@ -802,11 +800,14 @@ async function encerrarCopiasDoC2x(
   },
 ): Promise<{ aviso: null | string; encerradas: number }> {
   const documento = String(args.documento ?? "").replace(/\D/g, "");
-  if (!documento || args.linhas.length === 0) return { aviso: null, encerradas: 0 };
+  const corte = Date.parse(String(args.corte ?? ""));
+  if (!documento || args.linhas.length === 0 || !Number.isFinite(corte)) {
+    return { aviso: null, encerradas: 0 };
+  }
 
   const { data, error } = await sb
     .from("hercules_propostas")
-    .select("id, cliente_documento")
+    .select("id, cliente_documento, criado_em_c2x")
     .eq("workspace_id", WORKSPACE)
     .in("unidade_id", args.linhas)
     .eq("origem", "c2x")
@@ -819,9 +820,17 @@ async function encerrarCopiasDoC2x(
     };
   }
 
-  const copias = ((data ?? []) as Array<{ cliente_documento: null | string; id: string }>).filter(
-    (c) => c.id !== args.propostaId && String(c.cliente_documento ?? "").replace(/\D/g, "") === documento,
-  );
+  const copias = (
+    (data ?? []) as Array<{ cliente_documento: null | string; criado_em_c2x: null | string; id: string }>
+  ).filter((c) => {
+    const criada = Date.parse(String(c.criado_em_c2x ?? ""));
+    return (
+      c.id !== args.propostaId &&
+      String(c.cliente_documento ?? "").replace(/\D/g, "") === documento &&
+      Number.isFinite(criada) &&
+      criada <= corte
+    );
+  });
   let encerradas = 0;
   for (const copia of copias) {
     const { data: mexidas, error: erroDaCopia } = await sb

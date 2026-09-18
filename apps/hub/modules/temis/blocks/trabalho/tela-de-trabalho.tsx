@@ -739,7 +739,12 @@ export function TelaDeTrabalho({
                   setConcluindo((v) => !v);
                 }}
                 principal
-                rotulo={rotuloDaConclusao(tipoQueConclui, retomada)}
+                // "Tentar liberar a unidade" só quando a venda JÁ caiu; com ela viva, o botão
+                // desfaz a venda, e o rótulo diz isso (revisão de 18/09/2026).
+                rotulo={rotuloDaConclusao(
+                  tipoQueConclui,
+                  retomada && Boolean(dados.situacaoDoPedido?.vendaDesfeita),
+                )}
               />
             ) : null}
 
@@ -784,7 +789,7 @@ export function TelaDeTrabalho({
               aoCancelar={() => setConcluindo(false)}
               aoConfirmar={concluir}
               codigo={codigoDoPedido}
-              retomada={retomada}
+              retomada={retomada && Boolean(dados.situacaoDoPedido?.vendaDesfeita)}
               // Na retomada da venda JÁ desfeita as declarações foram dadas na conclusão.
               semDeclaracoes={retomada && Boolean(dados.situacaoDoPedido?.vendaDesfeita)}
               tipo={tipoQueConclui}

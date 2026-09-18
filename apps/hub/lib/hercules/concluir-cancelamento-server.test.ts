@@ -1165,7 +1165,7 @@ describe("a retomada: card concluído com o lote ainda preso", () => {
     expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("vendida");
   });
 
-  it("retomada: cadastro `vendida` que ninguém mexeu depois da queda é da venda desfeita, e volta", async () => {
+  it("retomada: `vendida` nunca volta sozinho (a carga não carimba a data; quem confere é gente)", async () => {
     const banco = cenario({
       pedido: { estagio: "faturado", tipo: "distrato" },
       venda: { cancelada_em: "2026-09-18T12:00:00.000Z", etapa: "distrato" },
@@ -1176,8 +1176,8 @@ describe("a retomada: card concluído com o lote ainda preso", () => {
 
     const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
 
-    expect(r.ok && r.unidade.voltou).toBe(true);
-    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("disponivel");
+    expect(r.ok && r.unidade.voltou).toBe(false);
+    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("vendida");
   });
 });
 
@@ -1203,6 +1203,8 @@ describe("a cópia antiga do C2X do mesmo cliente, na linha do pai", () => {
     });
     banco.semear("hercules_propostas", {
       cliente_documento: documentoDaCopia,
+      // Antes do pedido de cancelamento (17/09 no cenário): é resíduo, e cai junto.
+      criado_em_c2x: "2026-09-10T18:20:15.000Z",
       etapa: "reservado",
       etapa_desde: "2025-10-01T00:00:00.000Z",
       id: "copia-vlo",
@@ -1226,6 +1228,22 @@ describe("a cópia antiga do C2X do mesmo cliente, na linha do pai", () => {
     expect(String(banco.linha("hercules_propostas", "copia-vlo")?.cancelada_motivo)).toContain("Cópia do C2X encerrada");
     expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("disponivel");
     expect(r.recado).toContain("a cópia antiga do C2X do mesmo cliente foi encerrada");
+  });
+
+  it("mesmo cliente, criada DEPOIS do pedido (a renegociação): não é cópia, não é tocada, e segura o lote", async () => {
+    const banco = comCopia("52998224725", { criado_em_c2x: "2026-09-18T09:00:00.000Z" });
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), portaDeTeste().porta);
+
+    expect(r.ok && r.copiasEncerradas).toBe(0);
+    expect(banco.linha("hercules_propostas", "copia-vlo")?.etapa).toBe("reservado");
+    expect(r.ok && r.unidade.voltou).toBe(false);
+  });
+
+  it("cópia sem data de criação: não se prova que é anterior ao pedido, e não é tocada", async () => {
+    const banco = comCopia("52998224725", { criado_em_c2x: null });
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), portaDeTeste().porta);
+    expect(r.ok && r.copiasEncerradas).toBe(0);
   });
 
   it("OUTRO cliente: a cópia não é tocada, e ela segura o lote", async () => {

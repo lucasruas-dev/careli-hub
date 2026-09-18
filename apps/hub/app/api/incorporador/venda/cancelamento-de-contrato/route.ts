@@ -11,6 +11,13 @@ import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import { lerComColunasDoApartamento, nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
 import { lerFatosDoContrato } from "@/lib/hercules/fatos-do-contrato-server";
 import { classificarCancelamento } from "@/lib/temis/cancelamento";
+import { rotuloDoMotivo } from "@/lib/temis/indeferimento";
+import {
+  MOVIMENTO_CANCELAMENTO_INDEFERIDO,
+  MOVIMENTO_DISTRATO_INDEFERIDO,
+  MOVIMENTO_PEDIDO_DE_CANCELAMENTO,
+  MOVIMENTO_PEDIDO_DE_DISTRATO,
+} from "@/lib/hercules/indeferimento-na-venda-server";
 import { cardsAbertosDaProposta } from "@/lib/temis/cards-abertos-db";
 import { abrirTrabalho, ehColunaDoDonoAusente } from "@/lib/temis/trabalhos-db";
 
@@ -243,10 +250,24 @@ export async function POST(request: Request) {
       );
     }
     if (proposta.cancelamento_pedido_em) {
-      return NextResponse.json(
-        { error: "Já existe um pedido de cancelamento na Têmis para esta venda." },
-        { status: 409 },
-      );
+      // ⚠️ A MARCA SEM CARD ABERTO É RESTO, E NÃO PEDIDO (revisão de 18/09/2026). Ela fica quando o
+      // pedido foi indeferido antes de o indeferimento limpar a marca (VOL1106 e VOC0306, 17/09/2026)
+      // ou quando a limpeza falhou: a venda ficava presa para sempre, com a tela dizendo "Já existe
+      // um pedido" sobre um pedido que ninguém mais anda. Sem card de pedido aberto, a história do
+      // pedido antigo vai para a venda (como o indeferimento faz), a marca sai e o pedido novo segue.
+      const resto = await limparMarcaOrfa(admin, proposta.id, proposta.cancelamento_pedido_em);
+      if (resto === "tem_pedido_aberto") {
+        return NextResponse.json(
+          { error: "Já existe um pedido de cancelamento na Têmis para esta venda." },
+          { status: 409 },
+        );
+      }
+      if (resto === "falhou") {
+        return NextResponse.json(
+          { error: "Não foi possível conferir o pedido antigo desta venda. Nada foi registrado; tente de novo." },
+          { status: 503 },
+        );
+      }
     }
 
     // ⚠️ A APURAÇÃO É REFEITA AQUI, mesmo com o GET já tendo respondido à tela: entre abrir a modal
@@ -435,6 +456,104 @@ export async function POST(request: Request) {
       { status: 503 },
     );
   }
+}
+
+/**
+ * A marca de pedido que ficou sem card aberto: grava a história do pedido antigo e limpa a marca.
+ *
+ * ⚠️ A HISTÓRIA ANTES DA LIMPEZA, como no indeferimento: a ficha do lote tira "Cancelamento
+ * solicitado" da marca, e limpá-la sem gravar o fato apagaria da ficha quem pediu e por quê. A
+ * recusa vem do card indeferido mais recente, quando há um.
+ *
+ * ⚠️ A LIMPEZA É CONDICIONAL À MARCA LIDA (`eq`): se outro clique já limpou e remarcou, nada se
+ * mexe, e o carimbo do pedido novo (`is null`, mais abaixo) decide quem ficou.
+ */
+async function limparMarcaOrfa(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  propostaId: string,
+  marca: string,
+): Promise<"falhou" | "limpa" | "tem_pedido_aberto"> {
+  const abertos = await cardsAbertosDaProposta(admin, {
+    propostaId,
+    tipos: ["cancelamento", "distrato"],
+  });
+  if (!abertos.ok) return "falhou";
+  if (abertos.cards.length > 0) return "tem_pedido_aberto";
+
+  const { data: venda, error: erroDaVenda } = await admin
+    .from("hercules_propostas")
+    .select("cancelamento_pedido_motivo, cancelamento_pedido_por, cancelamento_pedido_tipo")
+    .eq("id", propostaId)
+    .maybeSingle<{
+      cancelamento_pedido_motivo: null | string;
+      cancelamento_pedido_por: null | string;
+      cancelamento_pedido_tipo: null | string;
+    }>();
+  if (erroDaVenda || !venda) return "falhou";
+
+  const { data: indeferidos, error: erroDoCard } = await admin
+    .from("temis_trabalhos")
+    .select("indeferido_em, indeferido_motivo, indeferido_observacao, indeferido_por_nome")
+    .eq("workspace_id", WORKSPACE)
+    .eq("proposta_id", propostaId)
+    .in("tipo", ["cancelamento", "distrato"])
+    .eq("estagio", "indeferido")
+    .order("indeferido_em", { ascending: false })
+    .limit(1);
+  if (erroDoCard) return "falhou";
+  const recusa = ((indeferidos ?? []) as Array<{
+    indeferido_em: null | string;
+    indeferido_motivo: null | string;
+    indeferido_observacao: null | string;
+    indeferido_por_nome: null | string;
+  }>)[0];
+
+  const distrato = String(venda.cancelamento_pedido_tipo ?? "").trim() === "distrato";
+  const movimentos: Record<string, unknown>[] = [
+    {
+      autor_nome: venda.cancelamento_pedido_por,
+      de: null,
+      motivo: venda.cancelamento_pedido_motivo,
+      observacao: null,
+      para: distrato ? MOVIMENTO_PEDIDO_DE_DISTRATO : MOVIMENTO_PEDIDO_DE_CANCELAMENTO,
+      proposta_id: propostaId,
+      quando: marca,
+      workspace_id: WORKSPACE,
+    },
+  ];
+  if (recusa?.indeferido_em) {
+    movimentos.push({
+      autor_nome: recusa.indeferido_por_nome,
+      de: null,
+      motivo: recusa.indeferido_motivo ? rotuloDoMotivo(recusa.indeferido_motivo) : null,
+      observacao: recusa.indeferido_observacao,
+      para: distrato ? MOVIMENTO_DISTRATO_INDEFERIDO : MOVIMENTO_CANCELAMENTO_INDEFERIDO,
+      proposta_id: propostaId,
+      quando: recusa.indeferido_em,
+      workspace_id: WORKSPACE,
+    });
+  }
+  const { error: erroDaHistoria } = await admin.from("hercules_proposta_etapas").insert(movimentos);
+  if (erroDaHistoria) {
+    console.error("[hercules][cancelamento] a história do pedido antigo não foi gravada", erroDaHistoria);
+    return "falhou";
+  }
+
+  const { error: erroDaLimpeza } = await admin
+    .from("hercules_propostas")
+    .update({
+      cancelamento_pedido_em: null,
+      cancelamento_pedido_motivo: null,
+      cancelamento_pedido_por: null,
+      cancelamento_pedido_tipo: null,
+    })
+    .eq("id", propostaId)
+    .eq("cancelamento_pedido_em", marca);
+  if (erroDaLimpeza) {
+    console.error("[hercules][cancelamento] a marca órfã não saiu", erroDaLimpeza);
+    return "falhou";
+  }
+  return "limpa";
 }
 
 /**
