@@ -22,7 +22,7 @@ import { type EtapaDoEspelho, type EtapaDoFluxo, ETAPAS_DO_FLUXO } from "./fluxo
 // ⚠️ A RÉGUA QUE FICA É A DA TELA VENDA, e na ordem dela:
 //   1. PROPOSTA VIVA MAIS RECENTE do terreno (`hercules_propostas`, etapa do fluxo). É ela que
 //      sabe se a venda está em proposta, contrato, assinatura ou faturada.
-//   2. RESERVA VIVA: a do Hércules (`hercules_reservas.situacao = 'ativa'`) ou a do evento de
+//   2. RESERVA VIVA: a do Hércules (`hercules_reservas.situacao` `ativa` ou `proposta`) ou a do evento de
 //      lançamento (`prometeu_reservas.situacao = 'reservada'`). Reserva é reserva, venha de onde vier.
 //   3. O CADASTRO (`hercules_unidades.situacao`): disponível, bloqueada, e as "vendida"/"reservada"
 //      sem proposta que as sustente — que continuam OCUPADAS, nunca livres. Dizer que um lote
@@ -199,6 +199,19 @@ export function acharUnidade(
 const PAGINA = 1000;
 const LOTE_DO_IN = 100;
 
+/**
+ * Quadra ou lote comparável: sem espaço, sem caixa e sem zero à esquerda ("06" e "6" são o mesmo
+ * lote). A carga grava "06" hoje; basta uma linha escrita "6" para o terreno se partir em dois, e
+ * terreno partido é lote vendido duas vezes.
+ */
+function parteDoLote(valor: null | string): string {
+  return String(valor ?? "").trim().toUpperCase().replace(/^0+(?=\d)/, "");
+}
+
+function chaveDoLote(ent: string, quadra: null | string, lote: null | string): string {
+  return `${ent}|${parteDoLote(quadra)}|${parteDoLote(lote)}`;
+}
+
 type LinhaDaUnidade = {
   atualizado_em?: null | string;
   codigo: string;
@@ -352,23 +365,38 @@ export async function lerSituacaoDasUnidades(
   }
 
   // ── Os terrenos: cada linha cai num grupo ──
-  const chaveDoLote = (ent: string, quadra: null | string, lote: null | string) =>
-    `${ent}|${String(quadra ?? "").trim().toUpperCase()}|${String(lote ?? "").trim().toUpperCase()}`;
-  const grupoDe = new Map<string, string>();
-  const terrenoPorLote = new Map<string, string>();
+  //
+  // ⚠️ OS GRUPOS SE JUNTAM, NUNCA SE SOBRESCREVEM (18/09/2026, achado da revisão). A primeira versão
+  // dava a cada linha do pai o próprio grupo e gravava o da linha viva por cima: com duas linhas do
+  // pai apontando para a mesma viva, a primeira ficava sozinha com o processo dela e a viva saía
+  // livre. Aqui é uma união: tudo que se liga (pai → viva, pai → gleba com a mesma quadra e lote)
+  // termina no mesmo terreno, em qualquer ordem de leitura.
+  const raiz = new Map<string, string>();
+  const acharRaiz = (id: string): string => {
+    let r = id;
+    while (raiz.has(r) && raiz.get(r) !== r) r = raiz.get(r) as string;
+    raiz.set(id, r);
+    return r;
+  };
+  const juntar = (a: string, b: string) => {
+    const ra = acharRaiz(a);
+    const rb = acharRaiz(b);
+    if (ra !== rb) raiz.set(rb, ra);
+  };
+  const linhasDoLote = new Map<string, string[]>();
+  for (const l of porId.values()) {
+    if (l.espelho_de) continue;
+    const chave = chaveDoLote(String(l.enterprise_id), l.quadra, l.lote);
+    linhasDoLote.set(chave, [...(linhasDoLote.get(chave) ?? []), l.id]);
+  }
   for (const a of antigasDaFamilia) {
-    const chave = `pai:${a.id}`;
-    grupoDe.set(a.id, chave);
-    if (a.espelho_de) grupoDe.set(a.espelho_de, chave);
+    if (a.espelho_de) juntar(a.id, a.espelho_de);
     for (const filha of filhasDoPai.get(String(a.enterprise_id)) ?? []) {
-      terrenoPorLote.set(chaveDoLote(filha, a.quadra, a.lote), chave);
+      for (const viva of linhasDoLote.get(chaveDoLote(filha, a.quadra, a.lote)) ?? []) juntar(a.id, viva);
     }
   }
-  for (const l of porId.values()) {
-    if (l.espelho_de || grupoDe.has(l.id)) continue;
-    const doLote = terrenoPorLote.get(chaveDoLote(String(l.enterprise_id), l.quadra, l.lote));
-    grupoDe.set(l.id, doLote ?? `linha:${l.id}`);
-  }
+  const grupoDe = new Map<string, string>();
+  for (const l of porId.values()) grupoDe.set(l.id, `terreno:${acharRaiz(l.id)}`);
 
   // ⚠️ PROCESSO LIDO INTEIRO E FILTRADO EM MEMÓRIA, E EM PARALELO. As propostas vivas do banco são
   // poucas páginas; as reservas, poucas dezenas de linhas. `.in()` com milhares de ids seria a URL
@@ -422,7 +450,10 @@ export async function lerSituacaoDasUnidades(
   const cuponsNoHercules = new Set<string>();
   for (const r of reservasTodas) {
     if (r.prometeu_reserva_id) cuponsNoHercules.add(r.prometeu_reserva_id);
-    if (r.situacao !== "ativa") continue;
+    // ⚠️ `ativa` E `proposta`, as mesmas da trava (`trava-do-lote.ts`). A reserva que virou proposta
+    // e perdeu a proposta (cancelada pelo sync, por exemplo) continua prendendo o lote no índice e
+    // na trava; contada só `ativa`, a tela pintava verde um lote que a porta recusa.
+    if (r.situacao !== "ativa" && r.situacao !== "proposta") continue;
     const grupo = r.unidade_id ? grupoDe.get(r.unidade_id) : undefined;
     if (grupo) gruposReservados.add(grupo);
   }
@@ -483,6 +514,27 @@ export async function lerSituacaoDasUnidades(
   for (const l of porId.values()) {
     if (l.espelho_de) continue;
     const grupo = grupoDe.get(l.id) ?? `linha:${l.id}`;
+    let situacao = situacaoDoTerreno({
+      cadastro: l.situacao,
+      propostasVivas: propostasPorGrupo.get(grupo) ?? [],
+      reservada: gruposReservados.has(grupo),
+    });
+    // ⚠️ A IRMÃ DA OUTRA GLEBA COM DONO NO CADASTRO PRENDE ESTA (18/09/2026, achado da revisão).
+    // Quando o lote existe em duas glebas (VOC e VOR), "vendida" ou "reservada" no cadastro de uma
+    // delas é dono sem processo, e o chão é um só: esta linha não pode sair livre. É a regra que o
+    // espelho público já aplicava; sem ela aqui, a Venda mostrava verde o que o espelho mostrava
+    // azul. "bloqueada" na irmã NÃO prende: é a carteira de onde o lote saiu (medido em 18/09/2026,
+    // os 4 terrenos do Vale do Ouro nas duas glebas têm a VOC bloqueada e a VOR com o dono).
+    if (situacao === "disponivel") {
+      for (const irma of linhasPorGrupo.get(grupo) ?? []) {
+        if (irma.id === l.id || irma.espelho_de) continue;
+        const cadastroDaIrma = String(irma.situacao ?? "").trim().toLowerCase();
+        if (cadastroDaIrma === "vendida" || cadastroDaIrma === "reservada") {
+          situacao = cadastroDaIrma;
+          break;
+        }
+      }
+    }
     const unidade: UnidadeComSituacao = {
       codigo: l.codigo,
       enterpriseId: String(l.enterprise_id),
@@ -490,11 +542,7 @@ export async function lerSituacaoDasUnidades(
       lote: l.lote,
       origemC2xId: l.origem_c2x_id === null || l.origem_c2x_id === undefined ? null : String(l.origem_c2x_id),
       quadra: l.quadra,
-      situacao: situacaoDoTerreno({
-        cadastro: l.situacao,
-        propostasVivas: propostasPorGrupo.get(grupo) ?? [],
-        reservada: gruposReservados.has(grupo),
-      }),
+      situacao,
     };
     porViva.set(l.id, unidade);
     if (pedido.has(String(l.enterprise_id))) resultado.unidades.push(unidade);

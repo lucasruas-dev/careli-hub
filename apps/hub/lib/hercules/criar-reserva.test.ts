@@ -693,16 +693,18 @@ describe("⚠️ o lote que já tem dono é RECUSADO, e nada é gravado", () => 
     expect(escritas(banco)).toEqual([]);
   });
 
-  it("⚠️ reserva do Hércules parada em 'proposta' (sem proposta viva): a situação passa, a TRAVA recusa", async () => {
+  it("⚠️ reserva do Hércules parada em 'proposta' (sem proposta viva): a SITUAÇÃO já recusa, como a trava", async () => {
     // É o estado que o changelog registra ("a reserva parada em `proposta`"): o índice ainda a vê
-    // viva. Aqui é a SEGUNDA barreira (a trava, antes do INSERT) que segura.
+    // viva. Até 18/09/2026 a situação contava só `ativa`, pintava o lote de verde, e só a trava
+    // segurava. Agora as duas contam `ativa` e `proposta`: a tela mostra Reservado e a primeira
+    // barreira recusa.
     const banco = novoBanco();
     banco.semear("hercules_reservas", reservaDoHercules("r-parada", "voc-0305", { situacao: "proposta" }));
 
     const r = await reservar(banco, pedido("voc-0305", VOC));
 
     expect(r).toMatchObject({ ok: false, status: 409 });
-    if (!r.ok) expect(r.donos?.map((d) => d.id)).toEqual(["r-parada"]);
+    if (!r.ok) expect(r.motivo).toContain("Reservado");
     expect(escritas(banco)).toEqual([]);
   });
 });

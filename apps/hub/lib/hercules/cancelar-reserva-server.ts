@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { lerSituacaoDasUnidades } from "./situacao-da-unidade";
+import { lerSituacaoDasUnidades, type SituacaoDasUnidades } from "./situacao-da-unidade";
 import { outrosDonosDoLote } from "./trava-do-lote";
 
 // CANCELAR UMA RESERVA DO HÉRCULES QUE VEIO DE FORA DA TELA VENDA.
@@ -35,6 +35,8 @@ export type PedidoDeCancelamentoNoHercules = {
    */
   reservaDoEventoId?: null | string;
   reservaId: string;
+  /** A situação já lida nesta requisição (o desfazer do tótem). A conferência de dono é fresca. */
+  situacoes?: SituacaoDasUnidades;
 };
 
 export type ResultadoDoCancelamentoNoHercules =
@@ -80,10 +82,12 @@ export async function cancelarReservaNoHercules(
 
   const unidadeId = linha.unidade_id ? String(linha.unidade_id) : null;
   const liberada = unidadeId
-    ? await devolverCadastroSeNaoHaOutroDono(client, unidadeId, {
-        reservaDoEventoId: pedido.reservaDoEventoId ?? null,
-        reservaId,
-      })
+    ? await devolverCadastroSeNaoHaOutroDono(
+        client,
+        unidadeId,
+        { reservaDoEventoId: pedido.reservaDoEventoId ?? null, reservaId },
+        pedido.situacoes,
+      )
     : false;
 
   return { cancelada: true, liberada, ok: true, unidadeId };
@@ -100,6 +104,7 @@ export async function devolverCadastroSeNaoHaOutroDono(
   client: SupabaseClient,
   unidadeId: string,
   quem: { reservaDoEventoId?: null | string; reservaId?: null | string },
+  jaLida?: SituacaoDasUnidades,
 ): Promise<boolean> {
   try {
     const { data: unidade, error: erroDaUnidade } = await client
@@ -112,7 +117,8 @@ export async function devolverCadastroSeNaoHaOutroDono(
     const enterpriseId = String((unidade as { enterprise_id: number | string }).enterprise_id ?? "").trim();
     if (!enterpriseId) return false;
 
-    const situacoes = await lerSituacaoDasUnidades(client, [enterpriseId]);
+    const situacoes =
+      jaLida && jaLida.terreno(unidadeId) ? jaLida : await lerSituacaoDasUnidades(client, [enterpriseId]);
     const donos = await outrosDonosDoLote(client, situacoes, unidadeId, {
       reservaDoEventoId: quem.reservaDoEventoId ?? null,
       reservaId: quem.reservaId ?? null,

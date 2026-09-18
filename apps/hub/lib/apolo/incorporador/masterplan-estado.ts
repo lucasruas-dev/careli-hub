@@ -135,10 +135,17 @@ export async function lerLotesDoEscopo(codes: string[]): Promise<LoteDoC2x[] | n
   }
 }
 
-/** Os quatro baldes da régua única -> o índice de cor que o arquivo grava. */
+/**
+ * Os cinco baldes da régua única -> o índice de cor que o arquivo grava.
+ *
+ * ⚠️ O ARQUIVO DO MAPA SÓ TEM QUATRO CORES (o Garden, três). "Em negociação" (proposta, contrato,
+ * assinatura) pinta de VENDIDO, como o mapa sempre fez com o "em negociação" do legado. Sem esta
+ * linha o balde caía no BLOQUEADO: o lote em contrato aparecia bloqueado e sem o comprador.
+ */
 const COR_DO_BALDE: Record<ReturnType<typeof baldeDaSituacao>, number> = {
   bloqueado: MAPA.BLOQUEADO,
   disponivel: MAPA.DISPONIVEL,
+  negociacao: MAPA.VENDIDO,
   reservado: MAPA.RESERVADO,
   vendido: MAPA.VENDIDO,
 };
@@ -146,7 +153,7 @@ const COR_DO_BALDE: Record<ReturnType<typeof baldeDaSituacao>, number> = {
 /**
  * A situação da régua única -> a cor do mapa.
  *
- * Não decide nada: quem decide é `situacaoDoTerreno`, e os quatro baldes são de `baldeDaSituacao`
+ * Não decide nada: quem decide é `situacaoDoTerreno`, e os cinco baldes são de `baldeDaSituacao`
  * (proposta, contrato, assinatura e faturado pintam de VENDIDO, que é o mesmo agrupamento que o
  * mapa sempre fez com o "em negociação" do legado). Aqui é só a tradução de vocabulário para o
  * índice que o arquivo entende.
@@ -169,9 +176,11 @@ const FORA_DO_PANTEON: SituacaoDaUnidade = situacaoDoTerreno({
 /**
  * Junta o escopo do C2X com a situação do Panteon, lote a lote. PURA.
  *
- * O lote é achado no Panteon pelo CÓDIGO (`porCodigo`) e, se o código não casar, pelo id do legado
- * (`porOrigemC2x`). Os dois índices respondem por QUALQUER linha do terreno: no produto dividido o
- * mesmo lote é `VOC0305` na gleba e `VLO0305` no pai, e os dois dão a mesma resposta.
+ * O lote é achado no Panteon pelo ID DO LEGADO (`porOrigemC2x`) e, se ele não casar, pelo CÓDIGO
+ * (`porCodigo`): a mesma ordem de `acharUnidade`, usada pela aba Unidades e pelos cards. Com a ordem
+ * invertida, duas linhas com o mesmo código (unidade renomeada numa carga) davam verde aqui e
+ * Reservado no Apolo. Os dois índices respondem por QUALQUER linha do terreno: no produto dividido
+ * o mesmo lote é `VOC0305` na gleba e `VLO0305` no pai, e os dois dão a mesma resposta.
  *
  * ⚠️ LOTE QUE O PANTEON NÃO CONHECE NÃO SAI LIVRE. `hercules_unidades` é carregada do C2X por sync;
  * unidade criada no legado depois da carga não tem linha aqui. Sem situação, o lote pinta como a
@@ -188,8 +197,8 @@ export function estadoDosLotes(
 
   for (const lote of lotes) {
     const unidade =
-      (lote.codigo ? situacoes.porCodigo.get(lote.codigo.trim().toUpperCase()) : undefined) ??
-      situacoes.porOrigemC2x.get(lote.origemC2xId);
+      situacoes.porOrigemC2x.get(lote.origemC2xId) ??
+      (lote.codigo ? situacoes.porCodigo.get(lote.codigo.trim().toUpperCase()) : undefined);
 
     if (!unidade) semSituacao += 1;
     const situacao = corDoMapa(unidade?.situacao ?? FORA_DO_PANTEON);

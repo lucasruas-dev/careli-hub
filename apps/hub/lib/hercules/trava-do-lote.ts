@@ -121,17 +121,11 @@ export async function outrosDonosDoLote(
 
   // As reservas antigas do evento: só contam as que NENHUMA reserva do Hércules absorveu (viva ou não).
   // Cupom ligado a reserva do Hércules segue a reserva do Hércules: cancelada lá, o lote fica livre.
-  const ligados = await client
-    .from("hercules_reservas")
-    .select("prometeu_reserva_id")
-    .eq("workspace_id", "careli")
-    .not("prometeu_reserva_id", "is", null);
-  if (ligados.error) return null;
-  const jaNoHercules = new Set(
-    ((ligados.data ?? []) as Array<{ prometeu_reserva_id: null | string }>)
-      .map((r) => String(r.prometeu_reserva_id ?? ""))
-      .filter(Boolean),
-  );
+  //
+  // ⚠️ PRIMEIRO OS CUPONS DO TERRENO, DEPOIS QUAIS DELES O HÉRCULES JÁ ABSORVEU, e só entre eles.
+  // A primeira versão lia todos os cupons ligados do banco numa consulta sem página: passando de mil
+  // (o teto do PostgREST), o cupom mil e um contaria como "sem reserva do Hércules" e a trava
+  // recusaria um lote que a tela mostra livre. Um terreno tem poucos cupons; a consulta cabe.
   const filtros: string[] = [];
   if (terreno.origens.length > 0) filtros.push(`unidade_c2x_id.in.(${terreno.origens.join(",")})`);
   if (terreno.codigos.length > 0) {
@@ -145,9 +139,25 @@ export async function outrosDonosDoLote(
       .or(filtros.join(","));
     if (doEvento.error) return null;
     const meuCupom = String(quem.reservaDoEventoId ?? "").trim();
-    for (const r of (doEvento.data ?? []) as Array<{ id: string }>) {
-      if (jaNoHercules.has(r.id) || r.id === meuCupom) continue;
-      donos.push({ descricao: "reserva antiga do salão do lançamento", id: r.id, tipo: "reserva_antiga_do_evento" });
+    const cupons = ((doEvento.data ?? []) as Array<{ id: string }>)
+      .map((r) => String(r.id ?? ""))
+      .filter((id) => id && id !== meuCupom);
+    if (cupons.length > 0) {
+      const ligados = await client
+        .from("hercules_reservas")
+        .select("prometeu_reserva_id")
+        .eq("workspace_id", "careli")
+        .in("prometeu_reserva_id", cupons);
+      if (ligados.error) return null;
+      const jaNoHercules = new Set(
+        ((ligados.data ?? []) as Array<{ prometeu_reserva_id: null | string }>)
+          .map((r) => String(r.prometeu_reserva_id ?? ""))
+          .filter(Boolean),
+      );
+      for (const id of cupons) {
+        if (jaNoHercules.has(id)) continue;
+        donos.push({ descricao: "reserva antiga do salão do lançamento", id, tipo: "reserva_antiga_do_evento" });
+      }
     }
   }
 
