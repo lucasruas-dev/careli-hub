@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-18-grupo-completo-enxerga-cad-do-grupo",
+    deployedAt: "2026-09-18T17:00:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A proposta passa a reconhecer a CAD credenciada no Lagoa Bonita inteiro.** O cadastro público grava o empreendimento como \"Lagoa Bonita\", sem divisão, e a conta da Gurgel conhece as divisões. A proposta dizia \"Este cliente não tem CAD neste empreendimento\" para cliente credenciado no Apolo. Foi o caso do Fábio Costa Chaves.",
+              "**Quem tem acesso às três divisões do Lagoa Bonita passa a enxergar também o que foi gravado no loteamento inteiro**, na proposta, no CRM e no board. Quem tem só uma gleba continua vendo só a sua.",
+            ],
+            screen: "Venda · Gerar proposta",
+          },
+        ],
+      },
+    ],
+    rollback: "5c66c9fb",
+    technical: {
+      done:
+        "`lib/apolo/incorporador/escopo.ts` (`idsDaSessao`): a sessão que tem TODAS as divisões (`stageIds`) de um grupo do catálogo ganha também o id do grupo (\"group:Lagoa Bonita\"). Antes só ganhava quem tinha o grupo explicitamente, e as contas do portal comercial (Gurgel) recebem ids de divisão (27, 32, 33). A assimetria entre glebas continua: uma divisão, ou duas de três, não ganham o grupo. Medido em 18/09/2026: 2 CADs em `apolo_esteira` estão gravadas como \"group:Lagoa Bonita\", as duas credenciadas. Rodado em leitura contra produção com uma conta da Gurgel: o escopo da esteira da proposta passa a incluir o grupo e `credenciadoParaVender` devolve credenciado para o Fábio. Novo `escopo-grupo-completo.test.ts` (6 testes, contra a função real com o catálogo real) e a cópia da regra em `escopo.test.ts` atualizada. 6.416 testes passando e typecheck limpo.",
+      motivation:
+        "Lucas (18/09/2026), com print da CAD credenciada no Board do Apolo e da proposta do lote C11 28 dizendo \"CAD não credenciada\": *\"mesmo estando credenciado o hercules não aparece como credenciado\"*.",
+    },
+    title: "Proposta reconhece a CAD credenciada no Lagoa Bonita inteiro",
+    type: "correcao",
+    version: "1.349.6",
+  },
+  {
     buildTag: "2026-09-18-reserva-reconhece-habilitacao-no-grupo",
     deployedAt: "2026-09-18T16:24:00-03:00",
     modules: [
