@@ -7,8 +7,8 @@
 // `sale_status_id`/`sale_blocked` ficam SÓ enquanto ainda há leitor antigo, marcadas `@deprecated`:
 //   • `baldeDaUnidade`: sem leitor de tela desde a migração (a aba Unidades passou a usar
 //     `baldeDaSituacao`). Sobra o teste; pode sair quando ninguém mais a importar.
-//   • `sqlDoBalde`: ainda soma os CARDS do topo da aba Empreendimentos, dentro do SELECT do C2X.
-//     Com a lista já no Panteon, card e lista voltam a poder discordar: é a pendência que falta.
+//   • `sqlDoBalde`: sem leitor desde a rodada 2 (18/09/2026): os cards da aba Empreendimentos
+//     passaram a contar pela régua única (`cenariosPelaRegua`). Sobra o teste.
 // O que continua valendo sem ressalva é o VOCABULÁRIO: `BaldeDaUnidade` e `rotuloDoBalde`.
 //
 // O histórico, que explica por que este arquivo nasceu:

@@ -19,6 +19,7 @@ import {
   vendaAvisaPeloWhatsapp,
 } from "@/lib/hercules/avisos-da-venda";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
+import { devolverCadastroSeNaoHaOutroDono } from "@/lib/hercules/cancelar-reserva-server";
 import { criarReservaNoHercules } from "@/lib/hercules/criar-reserva";
 import { lerComColunasDoApartamento, nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
 import {
@@ -410,7 +411,7 @@ export async function PATCH(request: Request) {
     const motivo = motivoEscrito(pedido.motivo, pedido.detalhe);
     const agora = new Date().toISOString();
 
-    const { error } = await admin
+    const { data: canceladas, error } = await admin
       .from("hercules_reservas")
       .update({
         atualizado_em: agora,
@@ -423,14 +424,44 @@ export async function PATCH(request: Request) {
       .eq("id", reserva.id)
       // ⚠️ A CONDIÇÃO REPETIDA NÃO É PARANOIA: dois coordenadores no mesmo lote, e o segundo
       // clique cancelaria de novo uma reserva já cancelada, disparando um segundo WhatsApp.
-      .eq("situacao", "ativa");
+      .eq("situacao", "ativa")
+      .select("id, prometeu_reserva_id");
 
     if (error) throw new Error(error.message);
 
-    await admin
-      .from("hercules_unidades")
-      .update({ atualizado_em: agora, situacao: "disponivel" })
-      .eq("id", unidade.id);
+    // ⚠️ NENHUMA LINHA MUDOU = a reserva virou proposta (ou foi cancelada) entre a leitura e o
+    // UPDATE. Responder sucesso aqui mandaria o WhatsApp de "reserva cancelada" com a venda viva.
+    const cancelada = ((canceladas ?? []) as Array<{ id: string; prometeu_reserva_id: null | string }>)[0];
+    if (!cancelada) {
+      return NextResponse.json(
+        { error: "Esta reserva mudou enquanto você cancelava. Recarregue a tela." },
+        { status: 409 },
+      );
+    }
+
+    // O cupom do salão ligado a esta reserva cai junto: a Central e a PA não mostram lote que a
+    // Venda já soltou. Falha aqui não desfaz nada: quem lê o cupom já segue a reserva do Hércules.
+    if (cancelada.prometeu_reserva_id) {
+      const { error: erroDoCupom } = await admin
+        .from("prometeu_reservas")
+        .update({ cancelada_em: agora, cancelada_motivo: `${motivo} (cancelada na Venda)`, situacao: "cancelada" })
+        .eq("id", cancelada.prometeu_reserva_id)
+        .eq("situacao", "reservada");
+      if (erroDoCupom) {
+        console.error("[venda][reserva] cupom do salão não foi cancelado", {
+          cupom: cancelada.prometeu_reserva_id,
+          erro: erroDoCupom.message,
+        });
+      }
+    }
+
+    // ⚠️ O CADASTRO SÓ VOLTA A LIVRE SE O TERRENO FICOU SEM DONO E SE ELE ESTAVA `reservada`.
+    // Lote bloqueado no Apolo (ou pela carga) enquanto a reserva estava viva continua bloqueado:
+    // gravar `disponivel` sem condição foi como um lote de permuta voltaria à venda.
+    await devolverCadastroSeNaoHaOutroDono(admin, unidade.id, {
+      reservaDoEventoId: cancelada.prometeu_reserva_id,
+      reservaId: cancelada.id,
+    });
 
     const cadastro = await carregarCadastroDeEmpreendimentos();
     const nomeDoEmpreendimento =

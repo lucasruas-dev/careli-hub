@@ -289,6 +289,7 @@ async function desfazerNoHercules(
   client: AdminClient,
   criadas: ReservaCriada[],
   motivo: string,
+  situacoes?: SituacaoDasUnidades,
 ): Promise<string[]> {
   const presas: string[] = [];
   for (const c of criadas) {
@@ -298,6 +299,7 @@ async function desfazerNoHercules(
       motivo,
       reservaDoEventoId: c.linhaId,
       reservaId: c.reservaId,
+      situacoes,
     });
     if (!r.ok) {
       // ⚠️ Grita no log com os ids: é uma reserva viva que ninguém no salão vai enxergar.
@@ -486,12 +488,13 @@ export async function criarReservaDoEvento(
       prometeuReservaId: alvo.linhaId,
       proponentes: proponentesDoHercules,
       unidadeId: alvo.unidade.id,
-    });
+    }, { situacoes });
     if (!resultado.ok) {
       const presas = await desfazerNoHercules(
         client,
         criadas,
         `Cupom do salão não fechou: ${alvo.codigo} foi recusado. Desfeita pelo sistema.`,
+        situacoes,
       );
       if (resultado.status === 409) {
         return {
@@ -531,6 +534,7 @@ export async function criarReservaDoEvento(
     client,
     criadas,
     "Cupom do salão não gravou. Desfeita pelo sistema.",
+    situacoes,
   );
 
   // 23505 = a trava do cupom (0101). Descobre QUAIS lotes para a mensagem ser útil.

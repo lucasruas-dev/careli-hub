@@ -192,9 +192,9 @@ describe("o vocabulário serve a régua única", () => {
     }
   });
 
-  it("proposta, contrato e assinatura dizem Vendido, e nunca Disponível", () => {
+  it("proposta, contrato e assinatura dizem Em negociação, e nunca Disponível", () => {
     for (const situacao of ["proposta", "contrato", "assinatura"] as const) {
-      expect(rotuloDoBalde(baldeDaSituacao(situacao))).toBe("Vendido");
+      expect(rotuloDoBalde(baldeDaSituacao(situacao))).toBe("Em negociação");
     }
     expect(rotuloDoBalde(baldeDaSituacao("bloqueada"))).toBe("Bloqueado");
   });

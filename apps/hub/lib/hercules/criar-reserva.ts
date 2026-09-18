@@ -5,6 +5,7 @@ import {
   estaLivre,
   lerSituacaoDasUnidades,
   rotuloDaSituacao,
+  type SituacaoDasUnidades,
 } from "./situacao-da-unidade";
 import { type DonoDoLote, fraseDoConflito, outrosDonosDoLote } from "./trava-do-lote";
 
@@ -60,12 +61,18 @@ export async function criarReservaNoHercules(
      * nova), a origem para tentar de novo. É a rede da rota da Venda para a 0167.
      */
     origemSeRecusada?: (erro: { code?: string; message?: string }) => null | string;
+    /**
+     * A situação já lida por quem chama, NESTA requisição (o tótem lê uma vez para o cupom inteiro).
+     * Serve ao passo 1 e ao mapa do terreno; as duas conferências de dono (passos 2 e 4) continuam
+     * indo ao banco na hora, e são elas que seguram a venda dupla.
+     */
+    situacoes?: SituacaoDasUnidades;
   },
 ): Promise<ResultadoDaReserva> {
   // ── 1. A situação única do terreno ──
-  let situacoes;
+  let situacoes: SituacaoDasUnidades;
   try {
-    situacoes = await lerSituacaoDasUnidades(client, [nova.enterpriseId]);
+    situacoes = opcoes?.situacoes ?? (await lerSituacaoDasUnidades(client, [nova.enterpriseId]));
   } catch (erro) {
     console.error("[hercules][reserva] leitura da situação falhou", erro);
     return { motivo: fraseDoConflito(null), ok: false, status: 500 };

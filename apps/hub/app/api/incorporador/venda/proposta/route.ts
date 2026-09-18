@@ -31,6 +31,7 @@ import {
   carregarCadastroDeEmpreendimentos,
   type LinhaDoCadastro,
 } from "@/lib/hercules/cadastro";
+import { devolverCadastroSeNaoHaOutroDono } from "@/lib/hercules/cancelar-reserva-server";
 import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 import { fraseDoConflito, outrosDonosDoLote } from "@/lib/hercules/trava-do-lote";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
@@ -1806,27 +1807,15 @@ export async function PATCH(request: Request) {
 
     // ⚠️ A UNIDADE VOLTA ANTES DO AVISO, como no cancelamento da reserva: se o WhatsApp falhar, o
     // lote já está livre para vender. O contrário — lote preso porque uma mensagem não saiu —
-    // custaria uma venda. Mas o erro é LIDO: unidade parada em `reservada` sem reserva nem
-    // proposta viva vira etapa `reservada` no funil e apaga os quatro botões da tela — outro lote
-    // preso, pela outra ponta.
-    const { error: erroDaUnidade } = await admin
-      .from("hercules_unidades")
-      .update({ atualizado_em: agora, situacao: "disponivel" })
-      .eq("id", unidade.id);
-
-    if (erroDaUnidade) {
-      console.error(
-        "[hercules][proposta] falha ao liberar a unidade",
-        erroDaUnidade,
-      );
-      return NextResponse.json(
-        {
-          error:
-            "A proposta foi cancelada, mas a unidade não foi liberada. Chame o suporte.",
-        },
-        { status: 503 },
-      );
-    }
+    // custaria uma venda.
+    //
+    // ⚠️ MAS SÓ VOLTA SE O TERRENO FICOU SEM DONO E SE O CADASTRO ESTAVA `reservada` (18/09/2026).
+    // Gravar `disponivel` sem condição devolvia à venda o lote bloqueado no Apolo durante a
+    // proposta, e o lote cuja linha irmã (outra gleba, a linha do pai) ainda tem dono. Quando não
+    // volta, a régua mostra quem é o dono de verdade; o erro barato é o lote ocupado a mais.
+    await devolverCadastroSeNaoHaOutroDono(admin, unidade.id, {
+      reservaId: proposta.reserva_id ?? null,
+    });
 
     const cadastro = await carregarCadastroDeEmpreendimentos();
     const nomeDoEmpreendimento =

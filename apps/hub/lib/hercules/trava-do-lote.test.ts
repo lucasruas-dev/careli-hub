@@ -751,8 +751,12 @@ describe("⚠️ sem saber, não vende: null = conflito", () => {
   });
 
   it("cada uma das leituras da trava que falha devolve null, com ou sem dono no lote", async () => {
+    // Com um cupom do salão no terreno a trava faz as quatro leituras (reservas, propostas, cupons
+    // do terreno e quais deles o Hércules absorveu). Sem cupom, a quarta nem acontece.
+    const comCupom = (b: Banco) => b.semear("prometeu_reservas", cupomDoSalao("c-1", "VOR1206", null));
     for (const comDono of [false, true]) {
       const ensaio = novoBanco();
+      comCupom(ensaio);
       const situacoes = await lerSituacaoDasUnidades(ensaio.cliente, [VOR]);
       const inicio = ensaio.consultas.length;
       await outrosDonosDoLote(ensaio.cliente, situacoes, "vor-1206", {});
@@ -761,6 +765,7 @@ describe("⚠️ sem saber, não vende: null = conflito", () => {
 
       for (const n of daTrava) {
         const banco = novoBanco();
+        comCupom(banco);
         if (comDono) banco.semear("hercules_reservas", reservaDoHercules("r-1", "voc-1206"));
         banco.falhar((c) => c.n === n);
         const lida = await lerSituacaoDasUnidades(banco.cliente, [VOR]);
@@ -894,5 +899,74 @@ describe("⚠️ a situação e a trava concordam: o que uma prende a outra não
     const situacoes = await lerSituacaoDasUnidades(banco.cliente, [VOC]);
     expect(situacoes.porLinha.get("voc-0305")?.situacao).toBe("disponivel");
     expect(await outrosDonosDoLote(banco.cliente, situacoes, "voc-0305", {})).toEqual([]);
+  });
+});
+
+// ── O TERRENO JUNTA, NUNCA PARTE (18/09/2026, achados da revisão) ─────────────────────────
+//
+// Terreno partido é o mesmo chão em dois grupos: o dono de um grupo não prende o outro, e o lote
+// é vendido duas vezes. Duas formas de partir que a primeira versão tinha.
+
+describe("⚠️ o terreno junta, nunca parte", () => {
+  it("duas linhas do pai apontando para a mesma viva: o dono da PRIMEIRA prende a viva", async () => {
+    // A primeira versão dava um grupo a cada linha do pai e gravava o da viva por cima: ficava o
+    // da última lida, e a reserva na primeira não prendia nada.
+    const banco = novoBanco();
+    banco.semear(
+      "hercules_unidades",
+      unidade("vlo-0305b", "VLO0305B", VLO, "03", "05", { espelho_de: "voc-0305", origem_c2x_id: 9003 }),
+    );
+    banco.semear("hercules_reservas", reservaDoHercules("r-no-pai", "vlo-0305"));
+
+    const situacoes = await lerSituacaoDasUnidades(banco.cliente, [VOC]);
+    expect(situacoes.porLinha.get("voc-0305")?.situacao).toBe("reservado");
+    expect(situacoes.terreno("voc-0305")?.linhas.sort()).toEqual(["vlo-0305", "vlo-0305b", "voc-0305"]);
+    const donos = await outrosDonosDoLote(banco.cliente, situacoes, "voc-0305", {});
+    expect(donos?.map((d) => d.id)).toEqual(["r-no-pai"]);
+  });
+
+  it("quadra e lote com e sem zero à esquerda são o mesmo chão", async () => {
+    // A carga grava "06" hoje (medido em 18/09/2026: nenhum caso misto no banco). Basta uma linha
+    // escrita "6" para a irmã da outra gleba sair livre com a venda em contrato do lado.
+    const banco = novoBanco();
+    banco.semear(
+      "hercules_unidades",
+      unidade("vlo-1301", "VLO1301", VLO, "13", "01", { espelho_de: "voc-1301", origem_c2x_id: 9004 }),
+    );
+    banco.semear("hercules_unidades", unidade("voc-1301", "VOC1301", VOC, "13", "01", { origem_c2x_id: 9104 }));
+    banco.semear("hercules_unidades", unidade("vor-131", "VOR131", VOR, "13", "1", { origem_c2x_id: 9204 }));
+    banco.semear("hercules_propostas", propostaImportada("p-vor", "vor-131", "contrato"));
+
+    const situacoes = await lerSituacaoDasUnidades(banco.cliente, [VOC]);
+    expect(situacoes.porLinha.get("voc-1301")?.situacao).toBe("contrato");
+    const donos = await outrosDonosDoLote(banco.cliente, situacoes, "voc-1301", {});
+    expect(donos?.map((d) => d.id)).toEqual(["p-vor"]);
+  });
+
+  it("zero à esquerda não junta lotes diferentes", async () => {
+    const banco = novoBanco();
+    banco.semear("hercules_unidades", unidade("vor-1210", "VOR1210", VOR, "12", "10", { origem_c2x_id: 9205 }));
+    banco.semear("hercules_propostas", propostaImportada("p-1210", "vor-1210", "contrato"));
+
+    const situacoes = await lerSituacaoDasUnidades(banco.cliente, [VOR]);
+    expect(situacoes.porLinha.get("vor-1206")?.situacao).toBe("disponivel");
+    expect(situacoes.porLinha.get("vor-1210")?.situacao).toBe("contrato");
+  });
+});
+
+describe("⚠️ a irmã da outra gleba com dono no cadastro prende o chão (a mesma regra do espelho público)", () => {
+  it("VOR vendida no cadastro: a VOC do mesmo terreno não sai livre, e a porta recusa", async () => {
+    const banco = novoBanco();
+    banco.semear("hercules_unidades", unidade("vor-1206b", "VOR1206B", VOR, "12", "6", { situacao: "vendida" }));
+    const situacoes = await lerSituacaoDasUnidades(banco.cliente, [VOC]);
+    expect(situacoes.porLinha.get("voc-1206")?.situacao).toBe("vendida");
+    expect(estaLivre(situacoes.porLinha.get("voc-1206")?.situacao ?? "disponivel")).toBe(false);
+  });
+
+  it("irmã BLOQUEADA não prende: é a carteira de onde o lote saiu", async () => {
+    const banco = novoBanco();
+    banco.semear("hercules_unidades", unidade("vor-1206b", "VOR1206B", VOR, "12", "06", { situacao: "bloqueada" }));
+    const situacoes = await lerSituacaoDasUnidades(banco.cliente, [VOC]);
+    expect(situacoes.porLinha.get("voc-1206")?.situacao).toBe("disponivel");
   });
 });

@@ -181,7 +181,7 @@ export async function bloquearUnidade(
     //
     // ⚠️ ESTA CONFERÊNCIA DÁ A FRASE; A TRAVA DE VERDADE É O UPDATE CONDICIONAL abaixo. Entre esta
     // leitura e a gravação cabe uma reserva de outra pessoa, e só o banco decide isso.
-    const { situacao } = await situacaoDoTerreno(client, unidade);
+    const { situacao, situacoes } = await situacaoDoTerreno(client, unidade);
     if (!situacao) {
       return {
         corpo: { error: "Não foi possível confirmar a situação desta unidade. Recarregue a tela." },
@@ -234,6 +234,46 @@ export async function bloquearUnidade(
         corpo: { error: "A unidade deixou de estar disponível. Recarregue a tela." },
         ok: false,
         status: 409,
+      };
+    }
+
+    // ⚠️ A SEGUNDA CONFERÊNCIA, a mesma da porta única da reserva (18/09/2026, achado da revisão).
+    // A reserva grava em `hercules_reservas` e só DEPOIS passa o cadastro a `reservada`: entre a
+    // leitura da régua e o UPDATE acima cabe uma reserva inteira, e o UPDATE ainda casa porque o
+    // cadastro dizia `disponivel`. Sem isto ficava lote bloqueado com reserva viva, e a proposta
+    // nascia num lote de permuta. Com dono no terreno (ou sem saber), o bloqueio se desfaz.
+    const donos = await outrosDonosDoLote(client, situacoes, unidade.id, {});
+    if (donos === null || donos.length > 0) {
+      const { error: erroAoDesfazer } = await client
+        .from("hercules_unidades")
+        .update({
+          atualizado_em: new Date().toISOString(),
+          bloqueado_em: null,
+          bloqueado_por: null,
+          bloqueado_por_nome: null,
+          bloqueio_motivo: null,
+          situacao: "disponivel",
+        })
+        .eq("workspace_id", WORKSPACE)
+        .eq("id", unidade.id)
+        .eq("situacao", "bloqueada")
+        .eq("bloqueado_em", agora);
+      if (erroAoDesfazer) {
+        // O lote fica bloqueado a mais: o erro barato. Grita no log para alguém olhar.
+        console.error("[hercules][bloqueio] bloqueio em lote com dono NÃO DESFEITO", {
+          erro: erroAoDesfazer.message,
+          unidade: unidade.id,
+        });
+      }
+      return {
+        corpo: {
+          error:
+            donos === null
+              ? "Não foi possível confirmar que a unidade está livre. Nada foi bloqueado; tente de novo."
+              : `A unidade ganhou um dono enquanto você bloqueava (${donos[0]?.descricao ?? "reserva"}). Nada foi bloqueado.`,
+        },
+        ok: false,
+        status: donos === null ? 500 : 409,
       };
     }
 

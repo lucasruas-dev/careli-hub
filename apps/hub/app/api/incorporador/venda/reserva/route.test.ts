@@ -117,6 +117,8 @@ const estado = vi.hoisted(() => ({
   sessao: {} as Record<string, unknown>,
   unidade: {} as Record<string, unknown>,
   atualizados: [] as Array<{ linha: unknown; tabela: string }>,
+  /** A reserva virou proposta entre a leitura e o UPDATE do cancelamento: o UPDATE não casa nada. */
+  reservaMudou: false,
 }));
 
 const CECILIO = {
@@ -206,10 +208,16 @@ vi.mock("@/lib/hercules/avisos-da-venda", async () => {
 vi.mock("@/lib/apolo/server", () => {
   const consulta = (tabela: string) => {
     let inserido = false;
+    let atualizado = false;
     let unica = false;
     let soLinhasDoPai = false;
     const resposta = (): { data: unknown; error: null } => {
       if (inserido) return { data: { id: "res-1", protocolo_numero: 7 }, error: null };
+      // O cancelamento lê de volta a linha que mudou (`.select`): sem ela, a rota entende que a
+      // reserva mudou no meio do caminho e responde 409.
+      if (atualizado && tabela === "hercules_reservas") {
+        return { data: estado.reservaMudou ? [] : [{ id: "res-viva", prometeu_reserva_id: null }], error: null };
+      }
       // ⚠️ LISTA OU LINHA ÚNICA. Desde 18/09/2026 o POST grava pela porta única
       // (`criarReservaNoHercules`), que lê a situação do terreno e a trava do lote em LISTAS. Aqui a
       // unidade é a única linha viva do terreno (`not(espelho_de)`, as linhas do pai, volta vazia) e
@@ -262,6 +270,7 @@ vi.mock("@/lib/apolo/server", () => {
       return cadeia;
     };
     cadeia.update = (linha: unknown) => {
+      atualizado = true;
       estado.atualizados.push({ linha, tabela });
       return cadeia;
     };
@@ -316,6 +325,7 @@ beforeEach(() => {
   estado.naoEnviados = 0;
   estado.permitidos = ["37", "39"];
   estado.propostasVivas = [];
+  estado.reservaMudou = false;
   estado.revalidou = 0;
   estado.sessao = CECILIO;
   estado.unidade = unidadeEm("37");
@@ -410,6 +420,17 @@ describe("PATCH: cancelar a reserva também é escrita", () => {
     const resposta = await cancelar();
     expect(resposta.status).toBe(403);
     expect(estado.atualizados).toHaveLength(0);
+  });
+
+  it("⚠️ a reserva virou proposta no meio do cancelamento: 409, e nenhum aviso de \"cancelada\" sai", async () => {
+    estado.unidade = { ...unidadeEm("39"), situacao: "reservada" };
+    estado.reservaMudou = true;
+    const resposta = await cancelar();
+    expect(resposta.status).toBe(409);
+    expect(estado.avisados).toBe(0);
+    expect(estado.naoEnviados).toBe(0);
+    // O cadastro não foi tocado: a venda continua viva.
+    expect(estado.atualizados.some((a) => a.tabela === "hercules_unidades")).toBe(false);
   });
 
   it("Cecílio no Garden cancela, e o aviso do cancelamento também não sai", async () => {

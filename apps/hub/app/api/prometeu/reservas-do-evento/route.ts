@@ -23,6 +23,10 @@ import {
 //        (desde 18/09/2026 a reserva do salão nasce no Hércules; ver cancelarReservaDoGrupo).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// ⚠️ TEMPO DECLARADO, E FOLGADO: cada lote do cupom confere o terreno antes e depois de gravar.
+// Função cortada entre a gravação e a segunda conferência é o único caminho em que dois donos
+// ficariam de pé; o limite não pode ser o que corta.
+export const maxDuration = 120;
 
 async function eventoDaRequisicao(
   client: NonNullable<ReturnType<typeof createPrometeuClient>>,

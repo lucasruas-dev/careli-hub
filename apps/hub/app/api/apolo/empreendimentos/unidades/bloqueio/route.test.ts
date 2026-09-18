@@ -14,6 +14,8 @@ import { MOTIVOS_DE_BLOQUEIO } from "@/lib/hercules/bloqueio-de-unidade";
 type Linha = Record<string, unknown>;
 
 const estado = vi.hoisted(() => ({
+  /** Roda no instante de cada UPDATE, antes de ele casar as linhas: é por aqui que a corrida entra. */
+  antesDaGravacao: null as null | ((tabela: string, valores: Record<string, unknown>) => void),
   auth: { nome: "Nívea" as null | string, ok: true, userId: "8f14e45f-ceea-467a-9575-0a1b2c3d4e5f" },
   falha: null as null | string,
   /** Falha só a partir da N-ésima leitura desta tabela (a régua lê antes; a trava, depois). */
@@ -44,6 +46,7 @@ vi.mock("@/lib/apolo/server", () => {
       if (tardia && tardia.tabela === tabela && (estado.leituras[tabela] ?? 0) >= tardia.vez) {
         return { data: null, error: { message: `${tabela} caiu no meio` } };
       }
+      if (atualizacao) estado.antesDaGravacao?.(tabela, atualizacao);
       const achadas = (estado.tabelas[tabela] ?? []).filter((l) => filtros.every((f) => f(l)));
       if (atualizacao) {
         estado.gravacoes.push({ ids: achadas.map((l) => l.id), tabela, valores: atualizacao });
@@ -156,6 +159,7 @@ async function desbloquear(unidadeId = "u-voc") {
 }
 
 beforeEach(() => {
+  estado.antesDaGravacao = null;
   estado.auth = { nome: "Nívea", ok: true, userId: "8f14e45f-ceea-467a-9575-0a1b2c3d4e5f" };
   estado.falha = null;
   estado.falhaNaLeitura = null;
@@ -234,6 +238,28 @@ describe("bloquear pelo Apolo: a mesma regra do Hércules", () => {
     expect(status).toBe(409);
     expect(corpo.error).toContain("(Contrato)");
     expect(estado.gravacoes).toHaveLength(0);
+  });
+
+  it("⚠️ reserva que nasce entre a leitura e o bloqueio: o bloqueio se desfaz, e a reserva fica", async () => {
+    // A porta única grava a reserva e só depois passa o cadastro a `reservada`. Nesse intervalo o
+    // UPDATE do bloqueio ainda casa (o cadastro diz `disponivel`); a segunda conferência vê a
+    // reserva e devolve o lote. Sem ela ficava lote bloqueado com reserva viva, e a proposta nascia
+    // num lote de permuta.
+    let reservou = false;
+    estado.antesDaGravacao = (tabela, valores) => {
+      if (reservou || tabela !== "hercules_unidades" || valores.situacao !== "bloqueada") return;
+      reservou = true;
+      estado.tabelas.hercules_reservas = [
+        { id: "r-corrida", origem: "coordenador", situacao: "ativa", unidade_id: "u-voc", workspace_id: "careli" },
+      ];
+    };
+    const { corpo, status } = await bloquear();
+    expect(status).toBe(409);
+    expect(corpo.error).toContain("ganhou um dono");
+    expect(estado.gravacoes.map((g) => g.valores.situacao)).toEqual(["bloqueada", "disponivel"]);
+    const viva = estado.tabelas.hercules_unidades?.find((l) => l.id === "u-voc");
+    expect(viva).toMatchObject({ bloqueado_em: null, bloqueio_motivo: null, situacao: "disponivel" });
+    expect(estado.tabelas.hercules_reservas).toHaveLength(1);
   });
 
   it("a linha antiga do terreno é recusada", async () => {
