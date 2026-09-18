@@ -34,6 +34,27 @@ const ZMIN = 1;
 const ZMAX = 8;
 /** Acima disto o gesto é arraste, e o clique no lote não vale. */
 const TOLERANCIA_DE_CLIQUE = 4;
+/** O passo dos botões de zoom (+ e −). */
+const PASSO_DOS_BOTOES = 1.6;
+
+/**
+ * O deslocamento que ainda mostra o mapa: nunca se arrasta a arte para fora da tela.
+ *
+ * ⚠️ COM O ZOOM NA ORIGEM (1) NÃO HÁ PARA ONDE IR: a arte inteira já cabe, e o limite é zero. A cada
+ * aproximação a folga cresce na mesma proporção (a cena escala a partir do centro).
+ */
+export function limitarDeslocamento(
+  pos: { x: number; y: number },
+  zoom: number,
+  area: { height: number; width: number },
+): { x: number; y: number } {
+  const folgaX = (area.width * (zoom - 1)) / 2;
+  const folgaY = (area.height * (zoom - 1)) / 2;
+  return {
+    x: Math.max(-folgaX, Math.min(folgaX, pos.x)),
+    y: Math.max(-folgaY, Math.min(folgaY, pos.y)),
+  };
+}
 
 /**
  * Só o contorno do lote, sem os sub-caminhos do balão do número.
@@ -56,6 +77,7 @@ export function MapaDeLotes({
   aoClicar,
   clicavel,
   corDoLote,
+  comControles = false,
   destacado,
   fundo,
   geometria,
@@ -73,6 +95,14 @@ export function MapaDeLotes({
    * depois de clicar e nada acontecer.
    */
   clicavel?: (codigo: string) => boolean;
+  /**
+   * Botões de aproximar, afastar e voltar ao mapa inteiro, no canto.
+   *
+   * ⚠️ NO CELULAR ELES SÃO A SEGUNDA PORTA DO ZOOM (Lucas, 18/09/2026: *"eu não consigo mover com o
+   * dedo, dar zoom, deitar a tela, isso tudo tem que está disponivel"*). A pinça é a primeira, mas
+   * quem segura o celular com uma mão só não faz pinça. A Mesa de Venda não liga: lá é mouse.
+   */
+  comControles?: boolean;
   /** A tinta de cada lote. É a ÚNICA diferença de aparência entre as duas telas. */
   corDoLote: (codigo: string) => string;
   /** O lote com contorno branco — o que está aberto no painel. */
@@ -127,16 +157,66 @@ export function MapaDeLotes({
         setPos((p) =>
           novo === ZMIN
             ? { x: 0, y: 0 }
-            : {
-                x: px - (px - p.x) * (novo / atual),
-                y: py - (py - p.y) * (novo / atual),
-              },
+            : limitarDeslocamento(
+                {
+                  x: px - (px - p.x) * (novo / atual),
+                  y: py - (py - p.y) * (novo / atual),
+                },
+                novo,
+                area,
+              ),
         );
         return novo;
       });
     },
     [],
   );
+
+  /** Os botões aproximam e afastam a partir do centro da tela. */
+  const zoomPeloBotao = useCallback(
+    (fator: number) => {
+      const area = cena.current?.getBoundingClientRect();
+      if (!area) return;
+      aplicarZoom(zoom * fator, area.left + area.width / 2, area.top + area.height / 2);
+    },
+    [aplicarZoom, zoom],
+  );
+
+  // ── O TOQUE: A PINÇA E O ARRASTE COM O DEDO ─────────────────────────────────
+  //
+  // ⚠️ `touchAction: none` DESLIGA OS GESTOS DO NAVEGADOR, e até 18/09/2026 nada os substituía: o zoom
+  // era só pela roda do mouse, e o arraste só existia com o zoom já ligado. No celular o mapa ficava
+  // "todo travado" (Lucas). Os dedos vivem aqui: cada ponteiro na tela é lembrado pelo id, e dois ao
+  // mesmo tempo viram pinça, ancorada no ponto entre os dedos (como a roda ancora no cursor).
+  const dedos = useRef(new Map<number, { x: number; y: number }>());
+  const pinca = useRef<null | {
+    distancia: number;
+    meio: { x: number; y: number };
+    pos: { x: number; y: number };
+    zoom: number;
+  }>(null);
+
+  const medirPinca = useCallback(() => {
+    const [a, b] = [...dedos.current.values()];
+    if (!a || !b) return null;
+    return {
+      distancia: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+      meio: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    };
+  }, []);
+
+  // Girar o celular muda o tamanho da cena: o deslocamento é recortado de novo para o mapa não
+  // ficar fora da tela depois de deitar ou levantar o aparelho.
+  useEffect(() => {
+    const el = cena.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observador = new ResizeObserver(() => {
+      const area = el.getBoundingClientRect();
+      setPos((p) => limitarDeslocamento(p, zoom, area));
+    });
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, [zoom]);
 
   // ⚠️ A RODA SOZINHA DÁ ZOOM, sem Ctrl. `passive: false` é obrigatório para o preventDefault
   // valer — senão a página rola junto e o mapa foge.
@@ -157,6 +237,33 @@ export function MapaDeLotes({
   // aproximar parava. A cena só captura quando o ponteiro ANDA de verdade.
   const aoDescer = useCallback(
     (ev: React.PointerEvent<HTMLDivElement>) => {
+      dedos.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+
+      // O SEGUNDO DEDO VIRA PINÇA. O gesto passa a ser de zoom, e nenhum clique de lote vale até
+      // o fim dele (a bandeira `moveu` é a mesma que o arraste usa).
+      if (dedos.current.size === 2) {
+        const medida = medirPinca();
+        if (medida) {
+          pinca.current = { ...medida, pos: { ...pos }, zoom };
+          arrasto.current = {
+            capturou: false,
+            moveu: true,
+            px: pos.x,
+            py: pos.y,
+            x: ev.clientX,
+            y: ev.clientY,
+          };
+          for (const id of dedos.current.keys()) {
+            try {
+              cena.current?.setPointerCapture(id);
+            } catch {
+              // Dedo que já saiu: a pinça segue com o que sobrou.
+            }
+          }
+        }
+        return;
+      }
+
       if (zoom <= ZMIN) return;
       arrasto.current = {
         capturou: false,
@@ -167,10 +274,41 @@ export function MapaDeLotes({
         y: ev.clientY,
       };
     },
-    [pos.x, pos.y, zoom],
+    [medirPinca, pos, zoom],
   );
 
   const aoMover = useCallback((ev: React.PointerEvent<HTMLDivElement>) => {
+    if (dedos.current.has(ev.pointerId)) {
+      dedos.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    }
+
+    const p = pinca.current;
+    if (p && dedos.current.size >= 2) {
+      const medida = medirPinca();
+      const area = cena.current?.getBoundingClientRect();
+      if (!medida || !area) return;
+      const novo = Math.min(ZMAX, Math.max(ZMIN, p.zoom * (medida.distancia / p.distancia)));
+      // O ponto da arte que estava entre os dedos no começo fica entre os dedos agora, mesmo que
+      // eles tenham andado: é a pinça e o arraste de dois dedos na mesma conta.
+      const centro = { x: area.left + area.width / 2, y: area.top + area.height / 2 };
+      const m0 = { x: p.meio.x - centro.x, y: p.meio.y - centro.y };
+      const m1 = { x: medida.meio.x - centro.x, y: medida.meio.y - centro.y };
+      setZoom(novo);
+      setPos(
+        novo === ZMIN
+          ? { x: 0, y: 0 }
+          : limitarDeslocamento(
+              {
+                x: m1.x - (m0.x - p.pos.x) * (novo / p.zoom),
+                y: m1.y - (m0.y - p.pos.y) * (novo / p.zoom),
+              },
+              novo,
+              area,
+            ),
+      );
+      return;
+    }
+
     const a = arrasto.current;
     if (!a) return;
     const dx = ev.clientX - a.x;
@@ -186,13 +324,42 @@ export function MapaDeLotes({
       }
     }
 
-    if (a.moveu) setPos({ x: a.px + dx, y: a.py + dy });
-  }, []);
+    if (a.moveu) {
+      const area = cena.current?.getBoundingClientRect();
+      const alvo = { x: a.px + dx, y: a.py + dy };
+      setPos(area ? limitarDeslocamento(alvo, zoom, area) : alvo);
+    }
+  }, [medirPinca, zoom]);
 
   const aoSoltar = useCallback((ev: React.PointerEvent<HTMLDivElement>) => {
-    if (arrasto.current?.capturou && cena.current?.hasPointerCapture(ev.pointerId)) {
+    dedos.current.delete(ev.pointerId);
+    if (cena.current?.hasPointerCapture(ev.pointerId)) {
       cena.current.releasePointerCapture(ev.pointerId);
     }
+
+    // ⚠️ A PINÇA ACABOU E UM DEDO FICOU: o arraste recomeça DAQUI, com o zoom novo. Sem isto o dedo
+    // que sobrou puxaria o mapa pela distância acumulada desde o começo da pinça, num salto.
+    if (pinca.current) {
+      pinca.current = null;
+      const [restante] = [...dedos.current.values()];
+      const marca = arrasto.current;
+      if (restante && zoom > ZMIN) {
+        arrasto.current = {
+          capturou: true,
+          moveu: true,
+          px: pos.x,
+          py: pos.y,
+          x: restante.x,
+          y: restante.y,
+        };
+      } else if (marca) {
+        setTimeout(() => {
+          if (arrasto.current === marca) arrasto.current = null;
+        }, 0);
+      }
+      return;
+    }
+
     // ⚠️ A BANDEIRA SOBREVIVE AO CLIQUE. O `onClick` do path roda DEPOIS do pointerup, e é ele
     // que a consulta — limpar aqui, direto, faria o painel abrir no fim de todo arraste.
     const marca = arrasto.current;
@@ -203,7 +370,7 @@ export function MapaDeLotes({
       return;
     }
     arrasto.current = null;
-  }, []);
+  }, [pos, zoom]);
 
   return (
     <div
@@ -226,6 +393,60 @@ export function MapaDeLotes({
         touchAction: "none",
       }}
     >
+      {comControles ? (
+        <div
+          // ⚠️ O TOQUE NOS BOTÕES NÃO É ARRASTE DO MAPA: sem parar o ponteiro aqui, o dedo no "+"
+          // seria contado como o primeiro dedo de uma pinça.
+          onPointerDown={(ev) => ev.stopPropagation()}
+          style={{
+            bottom: "calc(12px + env(safe-area-inset-bottom))",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            position: "absolute",
+            right: 12,
+            zIndex: 2,
+          }}
+        >
+          {[
+            { acao: () => zoomPeloBotao(PASSO_DOS_BOTOES), rotulo: "Aproximar", simbolo: "+" },
+            { acao: () => zoomPeloBotao(1 / PASSO_DOS_BOTOES), rotulo: "Afastar", simbolo: "−" },
+            {
+              acao: () => {
+                setZoom(ZMIN);
+                setPos({ x: 0, y: 0 });
+              },
+              rotulo: "Ver o mapa inteiro",
+              simbolo: "⤢",
+            },
+          ].map((b) => (
+            <button
+              aria-label={b.rotulo}
+              key={b.rotulo}
+              onClick={b.acao}
+              style={{
+                alignItems: "center",
+                background: "rgba(17,19,24,.78)",
+                border: "1px solid rgba(255,255,255,.18)",
+                borderRadius: 10,
+                color: "#fff",
+                cursor: "pointer",
+                display: "flex",
+                fontSize: 20,
+                fontWeight: 600,
+                height: 44,
+                justifyContent: "center",
+                lineHeight: 1,
+                width: 44,
+              }}
+              title={b.rotulo}
+              type="button"
+            >
+              {b.simbolo}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div
         style={{
           height: "100%",

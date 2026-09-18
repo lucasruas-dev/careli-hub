@@ -271,7 +271,7 @@ export function EspelhoPublico({
 
   if (erro || !estado) {
     return (
-      <main data-esp-tema={tema} style={ESTILO.vazio}>
+      <main className="publico-shell" data-esp-tema={tema} style={ESTILO.vazio}>
         <style>{CSS_DO_TEMA + CSS_DE_IMPRESSAO}</style>
         <p style={{ margin: 0, opacity: 0.85 }}>{erro ?? "Carregando…"}</p>
       </main>
@@ -281,7 +281,11 @@ export function EspelhoPublico({
   const podeEspelho = estado.temMapa && geometria !== null;
 
   return (
-    <main data-esp-tema={tema} style={ESTILO.pagina}>
+    // ⚠️ `publico-shell` NÃO É ENFEITE (18/09/2026): o globals.css do hub tem `html { min-width:
+    // 1024px }` (o hub é desktop), e sem a classe o celular desenhava esta página a 1024 px e a
+    // encolhia; com o toque do mapa desligado, ficava "todo travado". Ver
+    // [[reference_html_minwidth_quebra_mobile]] na memória: é a armadilha que mais volta.
+    <main className="publico-shell" data-esp-tema={tema} style={ESTILO.pagina}>
       {/* O tema vale para a árvore inteira, inclusive o painel do lote, que é irmão do palco. */}
       <style>{CSS_DO_TEMA + CSS_DE_IMPRESSAO}</style>
 
@@ -346,6 +350,12 @@ function Cabecalho({
   visao: "espelho" | "grade";
 }) {
   const [cheia, setCheia] = useState(false);
+  // ⚠️ O BOTÃO SÓ EXISTE ONDE A API EXISTE. No iPhone a tela cheia de elemento comum não está
+  // implementada: o botão ocupava a linha do cabeçalho sem fazer nada (18/09/2026).
+  const [temTelaCheia, setTemTelaCheia] = useState(false);
+  useEffect(() => {
+    setTemTelaCheia(Boolean(document.fullscreenEnabled));
+  }, []);
 
   // ⚠️ A FULLSCREEN API SÓ ATENDE DENTRO DE UM GESTO DO USUÁRIO, e o navegador pode sair sozinho
   // (Esc, F11, troca de aba). O `fullscreenchange` é a única fonte confiável do estado — guardar
@@ -407,9 +417,11 @@ function Cabecalho({
           {tema === "escuro" ? "☀" : "☾"}
         </button>
 
-        <button onClick={alternarTelaCheia} style={ESTILO.botao} type="button">
-          {cheia ? "Sair da tela cheia" : "Tela cheia"}
-        </button>
+        {temTelaCheia ? (
+          <button onClick={alternarTelaCheia} style={ESTILO.botao} type="button">
+            {cheia ? "Sair da tela cheia" : "Tela cheia"}
+          </button>
+        ) : null}
       </div>
     </header>
   );
@@ -462,6 +474,8 @@ function Mapa({
       corDoLote={(codigo) =>
         porCodigo.get(codigo)?.situacao === "disponivel" ? VERDE : AZUL
       }
+      // No celular, os botões de + e − somam-se à pinça: quem segura com uma mão não faz pinça.
+      comControles
       destacado={escolhido?.codigo ?? null}
       geometria={geometria}
       // O padrão do motor já é 0.6, o mesmo OPACIDADE medido no espelho do C2X. Explícito porque é
@@ -1030,7 +1044,9 @@ const ESTILO: Record<string, React.CSSProperties> = {
     color: "#cfe0ff",
   },
   sPzSmall: { fontSize: 9.5, lineHeight: 1.35, opacity: 0.6 },
-  acoes: { alignItems: "center", display: "flex", flexShrink: 0, gap: 8 },
+  // ⚠️ AS AÇÕES QUEBRAM LINHA NO CELULAR (18/09/2026): com `flexShrink: 0` elas não cabiam nos
+  // 375 px e o alternador Mapa/Grade ficava fora da tela.
+  acoes: { alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 },
   aviso: { fontSize: 11, lineHeight: 1.5, margin: "10px 0 0", opacity: 0.6 },
   bolinha: {
     borderRadius: 999,
@@ -1065,9 +1081,10 @@ const ESTILO: Record<string, React.CSSProperties> = {
     borderBottom: "1px solid var(--esp-borda)",
     display: "flex",
     flexShrink: 0,
+    flexWrap: "wrap",
     gap: 12,
     justifyContent: "space-between",
-    padding: "12px 16px",
+    padding: "calc(10px + env(safe-area-inset-top)) 16px 10px",
   },
   fechar: {
     background: "transparent",
