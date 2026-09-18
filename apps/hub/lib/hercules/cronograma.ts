@@ -375,30 +375,33 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // depois do fim da entrada REAL — meses de carência que ninguém negociou, no papel que vai para o
   // cliente. O que manda é a série que foi agendada.
   //
-  // ⚠️ E DESDE 13/09/2026 A CONTAGEM NÃO BASTA SOZINHA. Com data livre na entrada, a última parcela
-  // dela pode cair DEPOIS do mês que a contagem aponta — quatro parcelas de entrada com a quarta
-  // adiada para daqui a um ano fariam a primeira mensal nascer no mês 4, ou seja, oito meses ANTES
-  // do fim da entrada. O comprador pagaria entrada e financiamento ao mesmo tempo, e o papel diria
-  // isso sem ninguém perceber. A régua passa a ser o MAIOR dos dois: a contagem (que preserva o
-  // comportamento de sempre quando as datas são as calculadas) e o mês seguinte à última parcela
-  // da entrada de fato agendada.
-  const porContagem = somarMeses(
-    origem,
-    listaDaEntrada.length,
-    diaDeVencimento,
-  );
-  const ultimaDaEntrada = listaDaEntrada.at(-1);
-  const depoisDaEntrada = ultimaDaEntrada
-    ? somarMeses(
-        diaEscolhido(ultimaDaEntrada.vencimento) ?? origem,
-        1,
-        diaDeVencimento,
-      )
-    : null;
-  const primeiraMensal =
-    depoisDaEntrada && comparavel(depoisDaEntrada) > comparavel(porContagem)
-      ? depoisDaEntrada
-      : porContagem;
+  // ⚠️ A RÉGUA É A ÚLTIMA PARCELA DA ENTRADA DE FATO AGENDADA — e só ela. É a regra que o Lucas
+  // ditou (*"a primeira mensal cai no mês seguinte à ÚLTIMA da entrada"*), e ela vale nos dois
+  // sentidos:
+  //
+  //   • ENTRADA ADIADA EMPURRA a mensal. Quatro parcelas com a quarta daqui a um ano não podem ter
+  //     a primeira mensal no mês 4, com o comprador pagando entrada e financiamento juntos.
+  //   • ENTRADA ANTECIPADA PUXA a mensal. Até 18/09/2026 a régua era o MAIOR entre isto e uma
+  //     contagem a partir da "data da primeira parcela" (`origem` + número de parcelas), e a
+  //     contagem vencia sempre que a entrada era comprimida. Foi o caso do Lucas na proposta
+  //     000016: entrada de 3× com as três datas escolhidas dentro de setembro (18, 24 e 30), e a
+  //     primeira mensal saiu em 10/01/2027 porque o campo de origem estava em outubro — três meses
+  //     de carência que ninguém negociou. *"coloquei todo o financiamento para dentro do mês de
+  //     setembro, ou seja a primeira mensal deveria vir em outubro em vez de janeiro"*.
+  //
+  // ⚠️ A ÚLTIMA É A MAIS TARDE, E NÃO A DA ÚLTIMA POSIÇÃO. Com data livre, a 4ª parcela pode ter
+  // sido marcada antes da 3ª; o que encerra a entrada é o vencimento mais distante.
+  //
+  // Com as datas calculadas (mês a mês a partir da origem), a mais tarde é `origem + (n − 1)`
+  // meses, e o mês seguinte a ela é `origem + n` — exatamente a contagem de sempre. Nada muda para
+  // quem não escolhe data.
+  const maisTardeDaEntrada = listaDaEntrada.reduce<Dia | null>((maisTarde, parcela) => {
+    const dia = diaEscolhido(parcela.vencimento);
+    return dia && (!maisTarde || comparavel(dia) > comparavel(maisTarde)) ? dia : maisTarde;
+  }, null);
+  const primeiraMensal = maisTardeDaEntrada
+    ? somarMeses(maisTardeDaEntrada, 1, diaDeVencimento)
+    : somarMeses(origem, 0, diaDeVencimento);
 
   // ── Anuais ──
   //

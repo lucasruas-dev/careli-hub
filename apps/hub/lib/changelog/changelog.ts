@@ -36,6 +36,41 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-18-primeira-mensal-e-documento-em-janela",
+    deployedAt: "2026-09-18T11:00:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A primeira parcela mensal cai no mês seguinte à última parcela da entrada, sempre.** Quem dividia a entrada em várias vezes dentro do mesmo mês via o financiamento começar meses depois, com uma carência que ninguém negociou. Agora, entrada toda em setembro, primeira mensal em outubro.",
+              "**A proposta mostra a primeira MENSAL no quadro do financiamento.** Antes aparecia ali a data da primeira parcela da entrada, e parecia que o financiamento começava junto com ela.",
+              "**O rodapé da proposta passa a respeitar as datas escolhidas para a entrada**, como o PDF já fazia.",
+            ],
+            screen: "Venda · Proposta",
+          },
+          {
+            items: [
+              "**Documentos abrem numa janela sobre a tela, com botão Baixar**: a prévia da proposta, os documentos da venda e o contrato guardado. Sem aba nova em branco.",
+            ],
+            screen: "Venda · Documentos",
+          },
+        ],
+      },
+    ],
+    rollback: "bb9bf8c7",
+    technical: {
+      done:
+        "`lib/hercules/cronograma.ts`: a primeira mensal passa a ser o mês seguinte à parcela da entrada MAIS TARDE (não a da última posição), e cai a régua antiga do MAIOR entre isso e a contagem `origem + n` — que vencia sempre que a entrada era comprimida e jogava a mensal meses à frente. Com datas calculadas, o resultado é o mesmo de sempre (teste novo prova). `ModalDeProposta` passa `entradaDatas` ao cronograma do rodapé. `proposta-para-pdf.ts`: rótulo 'Primeira mensal' com a data da mensal. Novo `components/documento/VisualizadorDeDocumento.tsx` (portal, blob local, Baixar com o nome do servidor, Esc na captura e clique no fundo com stopPropagation para não fechar a modal de baixo) usado em ModalDeProposta, DocumentosDaVenda e PreviaDoContrato. 7 testes de comportamento + 3 do cronograma; 1.011 testes de venda passando. Propostas gravadas não mudam: a Têmis lê o cronograma gravado.",
+      motivation:
+        "Lucas (18/09/2026), com a prévia da proposta 000016 (ZZ TESTE): *\"coloquei todo o financiamento para dentro do mês de setembro, ou seja a primeira mensal deveria vir em outubro em vez de janeiro\"* e *\"os documentos não precisam abrir em uma nova tela para ser visto, pode abrir em pop up e ter um botão de baixar\"*.",
+    },
+    title: "Primeira mensal no mês seguinte à entrada, e documentos em janela",
+    type: "correcao",
+    version: "1.349.2",
+  },
+  {
     buildTag: "2026-09-17-relatorio-le-as-conversas",
     deployedAt: "2026-09-17T21:20:00-03:00",
     modules: [

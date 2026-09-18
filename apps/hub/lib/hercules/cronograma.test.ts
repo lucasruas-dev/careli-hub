@@ -742,13 +742,37 @@ describe("⚠️ a data escolhida de cada parcela da entrada", () => {
     expect(c.mensais[0]?.vencimento).toBe("2027-11-10");
   });
 
-  it("⚠️ e NÃO puxa a mensal para trás quando a entrada é antecipada", () => {
-    // Antecipar a última parcela não pode fazer o financiamento começar antes do que começaria:
-    // o prazo contratado é o mesmo, e a régua é o MAIOR dos dois.
+  it("⚠️ a entrada antecipada PUXA a mensal: a régua é a parcela mais tarde, não a posição", () => {
+    // A 4ª foi marcada para 15/10, antes da 2ª e da 3ª. Quem encerra a entrada é a de 10/12, então
+    // a primeira mensal cai em janeiro. Até 18/09/2026 a régua era o maior entre isto e a contagem
+    // pela origem, e o financiamento começava em fevereiro.
     const c = montarCronograma({
       ...BASE,
       entradaDatas: [null, null, null, "2026-10-15"],
     });
+    expect(c.mensais[0]?.vencimento).toBe("2027-01-10");
+  });
+
+  it("⚠️ o caso da proposta 000016: entrada inteira em setembro, primeira mensal em outubro", () => {
+    // Lucas (18/09/2026): *"coloquei todo o financiamento para dentro do mês de setembro, ou seja a
+    // primeira mensal deveria vir em outubro em vez de janeiro"*. O campo de origem estava em
+    // outubro; pela contagem antiga (origem + 3 meses) a mensal saía em 10/01/2027.
+    const c = montarCronograma({
+      ...BASE,
+      diaDeVencimento: 10,
+      entradaDatas: ["2026-09-18", "2026-09-24", "2026-09-30"],
+      entradaValor: 17000,
+      entradaVezes: 3,
+      primeiraParcelaDaEntrada: "2026-10-18",
+    });
+    expect(c.entrada.map((p) => p.vencimento)).toEqual(["2026-09-18", "2026-09-24", "2026-09-30"]);
+    expect(c.mensais[0]?.vencimento).toBe("2026-10-10");
+  });
+
+  it("sem data escolhida, a primeira mensal continua no mês seguinte à última da entrada", () => {
+    // A regra nova tem de coincidir com a de sempre quando ninguém mexe nas datas.
+    const c = montarCronograma(BASE);
+    expect(c.entrada.at(-1)?.vencimento).toBe("2027-01-10");
     expect(c.mensais[0]?.vencimento).toBe("2027-02-10");
   });
 });

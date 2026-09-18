@@ -11,6 +11,10 @@ import {
   tamanhoEscrito,
   type TipoDeDocumento,
 } from "@/lib/hercules/documentos-da-venda";
+import {
+  type DocumentoParaVer,
+  VisualizadorDeDocumento,
+} from "@/components/documento/VisualizadorDeDocumento";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
 import { T } from "../tema";
@@ -78,6 +82,9 @@ export function DocumentosDaVenda({
     setErro(null);
     void carregar();
   }, [carregar, versao]);
+
+  /** O documento aberto na janela sobre a tela. `null` = fechada. */
+  const [documentoAberto, setDocumentoAberto] = useState<DocumentoParaVer | null>(null);
 
   async function enviar(arquivo: File) {
     if (!unidadeId) return;
@@ -157,37 +164,36 @@ export function DocumentosDaVenda({
     }
   }
 
-  async function abrir(id: string) {
+  /**
+   * Abre o documento na janela sobre a tela (Lucas, 18/09/2026: *"os documentos não precisam abrir
+   * em uma nova tela para ser visto, pode abrir em pop up e ter um botão de baixar"*).
+   *
+   * ⚠️ A URL ASSINADA É BAIXADA AQUI, e não entregue ao `<iframe>`: ver `VisualizadorDeDocumento`.
+   * Quem falhar vira recado DENTRO da janela, que é onde a pessoa está olhando.
+   */
+  function abrir(id: string, nome: string) {
     if (!unidadeId) return;
-    // ⚠️ A ABA ABRE ANTES DO PEDIDO: chamar `window.open` depois do `await` é chamá-lo fora do
-    // clique, e todo navegador com bloqueio de pop-up engole essa janela.
-    const aba = window.open("", "_blank");
-    try {
-      const r = await fetch(
-        `/api/incorporador/venda/documentos?unidade=${encodeURIComponent(
-          unidadeId,
-        )}&baixar=${encodeURIComponent(id)}`,
-        { cache: "no-store" },
-      );
-      const j = (await r.json().catch(() => null)) as null | {
-        data?: { url: string };
-        error?: string;
-      };
-      if (!r.ok || !j?.data) {
-        aba?.close();
-        setErro(j?.error ?? "Não foi possível abrir o documento.");
-        return;
-      }
-      if (aba) {
-        aba.opener = null;
-        aba.location.href = j.data.url;
-      } else {
-        setErro("Libere as janelas deste site no navegador para abrir o documento.");
-      }
-    } catch {
-      aba?.close();
-      setErro("Não foi possível abrir o documento.");
-    }
+    setDocumentoAberto({
+      carregar: async () => {
+        const r = await fetch(
+          `/api/incorporador/venda/documentos?unidade=${encodeURIComponent(
+            unidadeId,
+          )}&baixar=${encodeURIComponent(id)}`,
+          { cache: "no-store" },
+        );
+        const j = (await r.json().catch(() => null)) as null | {
+          data?: { url: string };
+          error?: string;
+        };
+        if (!r.ok || !j?.data) throw new Error(j?.error ?? "Não foi possível abrir o documento.");
+
+        const arquivo = await fetch(j.data.url);
+        if (!arquivo.ok) throw new Error("Não foi possível baixar o documento.");
+        return { blob: await arquivo.blob(), nome };
+      },
+      nomeDoArquivo: nome,
+      titulo: nome,
+    });
   }
 
   if (!unidadeId) {
@@ -202,6 +208,7 @@ export function DocumentosDaVenda({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}>
+      <VisualizadorDeDocumento documento={documentoAberto} aoFechar={() => setDocumentoAberto(null)} />
       <div style={{ display: "grid", gap: 14, minHeight: 0, overflow: "auto" }}>
         {estado === "carregando" && vazio ? (
           <p style={{ color: T.muted, fontSize: 12, margin: 0 }}>Carregando…</p>
@@ -240,7 +247,7 @@ export function DocumentosDaVenda({
                 return (
                   <button
                     key={d.id}
-                    onClick={() => void abrir(d.id)}
+                    onClick={() => abrir(d.id, d.nome)}
                     style={{
                       background: T.card,
                       border: `1px solid ${T.border}`,

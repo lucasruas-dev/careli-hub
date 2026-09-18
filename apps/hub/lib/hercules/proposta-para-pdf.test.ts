@@ -169,7 +169,11 @@ describe("montarFolhaDaProposta — o exemplo que o Lucas ditou", () => {
     const condicoes = folhaDoExemplo().condicoes;
     const rotulo = (nome: string) => condicoes.find((c) => c.rotulo === nome)?.valor;
 
-    expect(rotulo("Primeira parcela")).toBe("10/10/2026");
+    // ⚠️ No quadro do financiamento a primeira é a MENSAL (a entrada de 2× vence em 10/10 e
+    // 10/11). Antes daqui saía 10/10, a data da entrada, e o papel parecia dizer que o
+    // financiamento começava junto com ela.
+    expect(rotulo("Primeira parcela")).toBeUndefined();
+    expect(rotulo("Primeira mensal")).toBe("10/12/2026");
     expect(rotulo("Última parcela")).toBe("10/11/2036");
     expect(rotulo("Vencimento")).toBe("todo dia 10");
     expect(rotulo("Parcelas mensais")).toBe("120");

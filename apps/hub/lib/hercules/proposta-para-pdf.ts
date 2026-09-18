@@ -279,9 +279,13 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
     });
   }
   condicoes.push(
+    // ⚠️ NO QUADRO DO FINANCIAMENTO, A PRIMEIRA É A PRIMEIRA MENSAL. Até 18/09/2026 este campo
+    // mostrava a primeira parcela da ENTRADA, ao lado de "Parcelas mensais: 168" — e lido ali
+    // parecia que o financiamento começava junto com a entrada. A entrada tem o quadro dela, logo
+    // abaixo, com cada data. Sem série mensal (venda à vista), cai na primeira de todas.
     {
-      rotulo: "Primeira parcela",
-      valor: dataEscrita(primeiraDeTodas?.vencimento),
+      rotulo: primeiraMensal ? "Primeira mensal" : "Primeira parcela",
+      valor: dataEscrita((primeiraMensal ?? primeiraDeTodas)?.vencimento),
     },
     {
       rotulo: "Última parcela",

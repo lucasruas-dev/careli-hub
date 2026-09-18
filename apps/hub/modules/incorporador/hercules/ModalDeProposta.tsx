@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import {
+  type DocumentoParaVer,
+  VisualizadorDeDocumento,
+} from "@/components/documento/VisualizadorDeDocumento";
 import { cpfValido, formatarDocumento, soDigitos } from "@/lib/apolo/documento";
 import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { montarCronograma } from "@/lib/hercules/cronograma";
@@ -193,6 +197,8 @@ export function ModalDeProposta({
     PRAZO_PADRAO_DA_PROPOSTA,
   );
   const [enviando, setEnviando] = useState(false);
+  /** O documento da prévia, aberto na janela sobre a tela. `null` = fechada. */
+  const [previaAberta, setPreviaAberta] = useState<DocumentoParaVer | null>(null);
   /** A prévia no ar. Estado próprio: ela não prende a modal como o envio prende. */
   const [buscandoPrevia, setBuscandoPrevia] = useState(false);
   const [erroDoServidor, setErroDoServidor] = useState<null | string>(null);
@@ -397,6 +403,9 @@ export function ModalDeProposta({
           anuaisQuantidade: condicoes.anuaisQuantidade,
           anuaisValor: condicoes.anuaisValor,
           diaDeVencimento: condicoes.diaDeVencimento,
+          // ⚠️ AS DATAS ESCOLHIDAS ENTRAM AQUI TAMBÉM. Faltavam até 18/09/2026: a rota e o PDF
+          // recebiam as datas, a tela não, e o rodapé mostrava um cronograma que o papel desmentia.
+          entradaDatas: condicoes.entradaDatas,
           entradaValor: condicoes.entradaValor,
           entradaParcelas: condicoes.entradaParcelas,
           entradaVezes: condicoes.entradaVezes,
@@ -656,11 +665,10 @@ export function ModalDeProposta({
     setErroDoServidor(null);
     if (!condicoes || !propostaInteira) return;
 
-    // ⚠️ SEM `noopener` NAS FEATURES: com ele, `window.open` devolve NULL por especificação — o
-    // recado de pop-up bloqueado apareceria em TODO clique, com uma aba em branco órfã aberta ao
-    // lado, e a prévia nunca abriria. O opener é cortado na mão logo abaixo, que dá a mesma
-    // proteção sem o efeito colateral.
-    const aba = window.open("", "_blank");
+    // ⚠️ A PRÉVIA ABRE NA JANELA SOBRE A TELA, e não mais numa aba (Lucas, 18/09/2026: *"os
+    // documentos não precisam abrir em uma nova tela para ser visto, pode abrir em pop up e ter um
+    // botão de baixar"*). O PDF é buscado ANTES de abrir: se a composição não fechar, o recado cai
+    // no rodapé desta modal, como sempre, em vez de uma janela vazia com um erro dentro.
     setBuscandoPrevia(true);
     try {
       const r = await fetch("/api/incorporador/venda/proposta", {
@@ -670,7 +678,6 @@ export function ModalDeProposta({
       });
 
       if (!r.ok) {
-        aba?.close();
         const corpo = (await r.json().catch(() => null)) as null | {
           erros?: ErroDaProposta[];
           error?: string;
@@ -683,22 +690,17 @@ export function ModalDeProposta({
         return;
       }
 
-      const endereco = URL.createObjectURL(await r.blob());
-      if (aba) {
-        // A aba é nossa e o destino é um `blob:` deste documento; ainda assim ela vai sem opener.
-        aba.opener = null;
-        aba.location.href = endereco;
-      }
-      // ⚠️ SEM ABA NÃO HÁ SILÊNCIO: o bloqueio de pop-up é do navegador, e sem este recado o botão
-      // simplesmente não responde.
-      else
-        setErroDoServidor(
-          "Libere as janelas deste site no navegador para ver a prévia.",
-        );
-      // O endereço vive enquanto a aba carrega; segurá-lo para sempre vazaria o PDF na memória.
-      setTimeout(() => URL.revokeObjectURL(endereco), 60_000);
+      const blob = await r.blob();
+      // O nome que o servidor já escolheu ("Proposta 000016.pdf") vai para o botão Baixar.
+      const nome =
+        /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(r.headers.get("content-disposition") ?? "")?.[1] ??
+        null;
+      setPreviaAberta({
+        carregar: async () => ({ blob, nome: nome ? decodeURIComponent(nome) : null }),
+        nomeDoArquivo: "Proposta.pdf",
+        titulo: "Prévia da proposta",
+      });
     } catch {
-      aba?.close();
       setErroDoServidor("Não foi possível montar a prévia agora.");
     } finally {
       setBuscandoPrevia(false);
@@ -770,6 +772,9 @@ export function ModalDeProposta({
         zIndex: 70,
       }}
     >
+      {/* A prévia da proposta, na janela sobre a tela. Vai por portal para o <body>. */}
+      <VisualizadorDeDocumento documento={previaAberta} aoFechar={() => setPreviaAberta(null)} />
+
       {/* ⚠️ A MOLDURA CRESCE NO SEGUNDO MOMENTO. O portão tem a largura do irmão da reserva (é um
           formulário curto); a montagem tem a do simulador, que precisa das duas colunas — cockpit à
           esquerda, leitura à direita. Uma largura só deixaria o portão perdido num salão vazio ou o

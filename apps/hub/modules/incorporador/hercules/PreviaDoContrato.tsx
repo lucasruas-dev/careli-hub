@@ -14,6 +14,10 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  type DocumentoParaVer,
+  VisualizadorDeDocumento,
+} from "@/components/documento/VisualizadorDeDocumento";
 import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 import { regrasParaATela } from "@/lib/temis/css-do-documento";
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
@@ -160,6 +164,8 @@ export function PreviaDoContrato({
   const [gerado, setGerado] = useState<null | { id: string; nome: string; versao: number }>(null);
   const [editando, setEditando] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  /** O contrato guardado, aberto na janela sobre a tela. `null` = fechada. */
+  const [contratoAberto, setContratoAberto] = useState<DocumentoParaVer | null>(null);
   /** O que a faxina do servidor tirou do texto colado. Vazio = nada mexeu. */
   const [faxina, setFaxina] = useState<string[]>([]);
 
@@ -322,25 +328,30 @@ export function PreviaDoContrato({
   }, [carregar, propostaId, temisFetch]);
 
   /**
-   * ⚠️ A ABA É ABERTA ANTES DO `await` — a URL é assinada no servidor, e um `window.open` depois da
-   * ida e volta acontece fora do gesto do usuário: o navegador o bloqueia como pop-up e o clique
-   * "não faz nada".
+   * Abre o contrato guardado na janela sobre a tela, com botão de baixar (Lucas, 18/09/2026:
+   * *"os documentos não precisam abrir em uma nova tela para ser visto, pode abrir em pop up e ter
+   * um botão de baixar"*). A URL assinada é baixada aqui: ver `VisualizadorDeDocumento`.
    */
-  const abrir = useCallback(async (documentoId: string) => {
-    const aba = window.open("", "_blank", "noopener,noreferrer");
-    try {
-      const r = await temisFetch(
-        `/contrato/gerar?documento=${encodeURIComponent(documentoId)}`,
-      );
-      const j = (await r.json().catch(() => ({}))) as { data?: { url: string }; erro?: string };
-      if (!r.ok || !j.data?.url) throw new Error(j.erro ?? "Não foi possível abrir o contrato.");
-      if (aba) aba.location.href = j.data.url;
-      else window.location.href = j.data.url;
-    } catch (e) {
-      aba?.close();
-      setErroDaGeracao(e instanceof Error ? e.message : "Não foi possível abrir o contrato.");
-    }
-  }, [temisFetch]);
+  const abrir = useCallback(
+    (documentoId: string, versao: null | number) => {
+      const nome = versao ? `Contrato v${versao}.pdf` : "Contrato.pdf";
+      setContratoAberto({
+        carregar: async () => {
+          const r = await temisFetch(
+            `/contrato/gerar?documento=${encodeURIComponent(documentoId)}`,
+          );
+          const j = (await r.json().catch(() => ({}))) as { data?: { url: string }; erro?: string };
+          if (!r.ok || !j.data?.url) throw new Error(j.erro ?? "Não foi possível abrir o contrato.");
+          const arquivo = await fetch(j.data.url);
+          if (!arquivo.ok) throw new Error("Não foi possível baixar o contrato.");
+          return { blob: await arquivo.blob(), nome };
+        },
+        nomeDoArquivo: nome,
+        titulo: versao ? `Contrato · versão ${versao}` : "Contrato",
+      });
+    },
+    [temisFetch],
+  );
 
   const edicao = resposta?.edicao ?? null;
   /**
@@ -383,6 +394,8 @@ export function PreviaDoContrato({
         zIndex: 60,
       }}
     >
+      {/* O contrato guardado, na janela sobre esta. Vai por portal; o clique nela não fecha esta. */}
+      <VisualizadorDeDocumento documento={contratoAberto} aoFechar={() => setContratoAberto(null)} />
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -645,7 +658,7 @@ export function PreviaDoContrato({
                 guardado" e não tinha como VER o papel que acabara de criar. */}
             {vigente ? (
               <button
-                onClick={() => void abrir(vigente.id)}
+                onClick={() => abrir(vigente.id, vigente.versao ?? null)}
                 style={{
                   alignItems: "center",
                   background: "transparent",
