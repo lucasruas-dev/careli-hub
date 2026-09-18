@@ -95,6 +95,21 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Hercules/Apolo] Os planos do Garden iguais aos da MMendes (v1.351.0)`.
+- Squad/agente responsavel: `Zeus` (tres rodadas com workflow de implementacao e revisao adversarial em tres lentes: paridade, regressao fora do Garden, seguranca da rota publica).
+- Data e hora local: `2026-09-18T18:00:13-03:00` (push na main).
+- Ambiente: `producao`.
+- Origem: pedidos do Lucas em 18/09/2026 ("olha por favor os planos, esta diferente", "esta faltando as anuais", "tem que ser igual o mmendes") e decisao da rodada 3 ("So no Garden"). OK explicito do Lucas para codigo, migration 0178 e dados do Garden na mesma janela: "tem o meu ok".
+- Migration: `0178_desconto_do_plano.sql` APLICADA antes do codigo (coluna `temis_planos.desconto_percentual` numeric(6,3) not null default 0, CHECK 0 a menos de 100). Conferido: tipo, precisao, nulidade, default, 43 planos com zero, CHECK de pe. Dados `0178_desconto_do_plano.dados-garden.sql` aplicados: NORMAL 0, INVESTIDOR PARCELADO 8, INVESTIDOR 12.
+- Escopo publicado: desconto do plano sobre a tabela; anuais pelo valor cheio e anual k na mensal 12k so em plano com anuais cadastradas (hoje so o Garden); busca por parcela com a varredura livre mais o arranjo do plano; preco da tela igual ao que sobe; desconto do plano so no prazo do plano; cartao na ordem e no formato da MMendes, com ressalva tambem no espelho; PDF do espelho preso ao plano (desconto no prazo, entrada da regua da tela, anuais ate floor(prazo/12), ate 12 vezes de entrada, prazo alem do plano recusado com 422); polling do espelho nao reinicia o simulador; Total pago sobre a tabela; aba de planos do Apolo com o campo de desconto.
+- Validacoes executadas: typecheck limpo; suite completa 7.097 testes em 440 arquivos; Garden contra o simulador da MMendes 248 de 261 combinacoes ao centavo (as 13 restantes: R$ 1 de entrada nos lotes de R$ 421.500, onde o Panteon respeita o piso de 8%); fora do Garden, contas e datas identicas a main (10.260 montagens, 6.840 cronogramas, 770 buscas, 40 planos do Apolo). Conferido na tela local contra producao: lote Q11 L10 (R$ 435.000) com NORMAL R$ 4.441,67 x 60, INVESTIDOR PARCELADO R$ 3.192,67 x 84 (-8%), INVESTIDOR R$ 3.880 x 36 (-12%), sem erro no console.
+- Deployment anterior: commit `411898ce` (v1.350.1) / `dpl_BkysvVadeUanbRiQaMqV1paHwP2L`.
+- Dominio alvo autorizado: `https://c2x.app.br`. `https://ops.c2x.app.br`: NAO TOCADO.
+- Rollback definido: `411898ce` / `dpl_BkysvVadeUanbRiQaMqV1paHwP2L`. A 0178 e os dados nao precisam ser desfeitos para voltar o codigo (o codigo anterior nao le a coluna).
+- Riscos conhecidos e pendencias: o espelho do 42 passa a mostrar entrada R$ 0 no Investidor 12x (piso 0% do cadastro), igual a Mesa; antes mostrava R$ 25.300 com o rotulo "(0%)". A clausula pronta da Temis ("vencíveis a cada doze meses contados da primeira parcela mensal") nao bate com as datas do Garden; nenhuma minuta usa a frase hoje e o Garden nao tem minuta. Busca por parcela ainda ordena diferente do `propor` da MMendes (ancora a entrada no piso). Legenda do Financiado difere entre o PDF e a analise comercial da Temis.
+
+Registro de producao:
+
 - Assunto: `[Hercules/Espelho] O espelho dos corretores funciona no celular (v1.350.1)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-18 16:00 -03:00` (push na main; o horario exato do deployment fica no changelog).

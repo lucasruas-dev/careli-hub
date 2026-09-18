@@ -1,7 +1,8 @@
 -- 0178 · DADOS · O DESCONTO DOS PLANOS DO GARDEN
 --
--- ⚠️ ESCRITO E NÃO APLICADO. Roda DEPOIS de `0178_desconto_do_plano.sql`, e só com OK explícito do
--- Lucas (é escrita em produção, `bxgukywoxgivlrhjkwjx`).
+-- ✅ APLICADO EM PRODUÇÃO em 18/09/2026, com OK do Lucas ("tem o meu ok"), logo depois da 0178 e
+-- antes do código da v1.351.0 (o código antigo não lê a coluna, e a observação só aparece na aba
+-- de edição de planos do Apolo). Conferido: NORMAL 0, INVESTIDOR PARCELADO 8, INVESTIDOR 12.
 --
 -- Os planos do Garden (enterprise_id 39) foram gravados em 17/09/2026 com "os mesmos planos do
 -- mapa do Garden no portal da MMendes", e o desconto ficou só no texto da observação. Aqui ele vira

@@ -36,6 +36,54 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-18-planos-do-garden-como-a-mmendes",
+    deployedAt: "2026-09-18T18:00:13-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Os planos do Garden saem iguais aos da MMendes.** O INVESTIDOR PARCELADO já vem com os 8% de desconto e o INVESTIDOR com os 12%, com as anuais do plano. No lote de R$ 435.000: NORMAL R$ 4.441,67 × 60, INVESTIDOR PARCELADO R$ 3.192,67 × 84, INVESTIDOR R$ 3.880 × 36.",
+              "**O cartão do plano mostra o valor do lote com a tabela e o desconto, a parcela com centavos, a linha à vista e a ressalva** (\"válido para as próximas 16 unidades\"), também no espelho dos corretores.",
+              "**A busca por parcela volta a sugerir as composições livres** e soma o arranjo do plano como mais uma opção. Clicar numa composição leva o preço e o desconto dela para o campo, e o PDF sai com o mesmo valor da tela.",
+              "**O desconto do plano vale no prazo do plano.** Levado a outro prazo, o desconto cai e a nota passa a ser pedida.",
+            ],
+            screen: "Mesa de Venda e espelho",
+          },
+          {
+            items: [
+              "**O PDF do espelho só imprime o que o plano permite:** o desconto do plano no prazo dele, a entrada mínima, as anuais que cabem no prazo e até 12 vezes de entrada.",
+              "**O espelho não volta sozinho ao plano inicial a cada minuto** enquanto o cliente está simulando.",
+            ],
+            screen: "Espelho dos corretores",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Os planos ganharam o campo de desconto (%).** A conferência da aba passa a contar o desconto e as anuais do plano.",
+            ],
+            screen: "Empreendimentos · Planos",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Migration 0178_desconto_do_plano (temis_planos.desconto_percentual numeric(6,3) not null default 0, CHECK 0 a menos de 100) aplicada em produção antes do código, e os dados do Garden (INVESTIDOR PARCELADO 8, INVESTIDOR 12) gravados por id com nome e empreendimento no WHERE. lib/hercules/tabela-do-lote.ts, cartao-do-plano.ts, simulacao.ts (`temAnuaisCadastradas`: anuais pelo valor cheio e anual k na mensal 12k SÓ nos planos com anuais cadastradas), composicoes.ts, espelho/simulacao-publica.ts, espelho/planos-publicos.ts (ressalva e piso), proposta.ts (ENTRADA_VEZES_MAXIMA), SimuladorDeProposta.tsx (cartão, planos estáveis por conteúdo, Total pago sobre a tabela), rota pública do PDF, aba de planos do Apolo. Medido: Garden contra o simulador da MMendes 248 de 261 combinações ao centavo (as 13 restantes são R$ 1 de entrada nos lotes de R$ 421.500, onde o Panteon respeita o piso); fora do Garden, contas e datas idênticas à main (10.260 montagens, 6.840 cronogramas, 770 buscas por parcela, 40 planos do Apolo). Três revisões adversariais (paridade, regressão, segurança da rota pública). 7.097 testes em 440 arquivos, typecheck limpo.",
+      motivation:
+        "Lucas, 18/09/2026: \"olha por favor os planos, esta diferente\", \"esta faltando as anuais\", \"tem que ser igual o mmendes\", e na rodada 3: \"So no Garden\" (as anuais pelo valor cheio).",
+    },
+    rollback: "411898ce",
+    title: "Os planos do Garden iguais aos da MMendes",
+    type: "melhoria",
+    version: "1.351.0",
+  },
+  {
     buildTag: "2026-09-18-espelho-no-celular",
     deployedAt: "2026-09-18T15:59:30-03:00",
     modules: [

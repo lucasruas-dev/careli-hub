@@ -1,8 +1,9 @@
 -- 0178 · O DESCONTO DO PLANO
 --
--- ⚠️ ESCRITA E NÃO APLICADA. Espera OK explícito do Lucas. O código sobe ANTES dela e tolera a
--- coluna ausente (ver ATENCAO 4): a Mesa, o espelho, o portal e a aba de planos continuam de pé sem
--- esta migration, vendendo os planos sem desconto, como vendiam.
+-- ✅ APLICADA EM PRODUÇÃO em 18/09/2026, com OK do Lucas ("tem o meu ok"), ANTES do código da
+-- v1.351.0: a coluna nasce com zero e o código antigo não a lê. Conferido depois: numeric(6,3), not
+-- null, default 0, os 43 planos com zero e o CHECK de pé. O código também tolera a coluna ausente
+-- (ver ATENCAO 4).
 --
 -- ⚠️ O NÚMERO: 0176 e 0177 estão reservados por outra branch. Esta é a 0178.
 --

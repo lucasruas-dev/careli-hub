@@ -1083,6 +1083,17 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     situacao: "entregue",
     titulo: "O espelho dos corretores funciona no celular",
   },
+  {
+    id: "PAN-117",
+    entregueEm: "2026-09-18",
+    evidencia:
+      "v1.351.0. Migration 0178_desconto_do_plano e dados do Garden aplicados com OK do Lucas. Medido: 248 de 261 combinações do Garden iguais ao simulador da MMendes ao centavo; fora do Garden, contas e datas idênticas à main. lib/hercules/tabela-do-lote.ts, cartao-do-plano.ts, espelho/simulacao-publica.ts.",
+    modulo: "Hercules",
+    porque:
+      "Lucas (18/09/2026): *\"tem que ser igual o mmendes\"*. O cartão do INVESTIDOR PARCELADO dizia R$ 4.764 × 84 num lote de R$ 435.000: a tabela cheia, sem as anuais e sem o desconto do plano. A MMendes dá R$ 3.192,67.",
+    situacao: "entregue",
+    titulo: "Os planos do Garden iguais aos da MMendes",
+  },
 ];
 
 /** Quantos itens em cada situação — o cabeçalho da tela lê daqui. */
