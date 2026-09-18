@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-18-reserva-reconhece-habilitacao-no-grupo",
+    deployedAt: "2026-09-18T16:24:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A reserva passa a oferecer a imobiliária habilitada no Lagoa Bonita inteiro.** Quem se credenciou pelo formulário público escolhe \"Lagoa Bonita\", sem divisão, e a reserva procurava só pelas divisões: a imobiliária habilitada não aparecia em \"Quem está vendendo\". Foi o caso da Morvian.",
+              "**No lote do LBF a lista passa de 15 para 22 imobiliárias.** As 7 que entram são as habilitadas pelo Lagoa Bonita inteiro, e a reserva com elas é aceita na gravação.",
+            ],
+            screen: "Venda · Reservar",
+          },
+        ],
+      },
+    ],
+    rollback: "9dea5920",
+    technical: {
+      done:
+        "`lib/hercules/quem-pode-vender.ts`: novo `escopoDeQuemVende(cadastro, catalogo, c2xId)` = `familiaDoEmpreendimento` + o grupo do catálogo que a família cobre por inteiro (via `comIdsDoGrupo`, com todos os grupos do catálogo como permitidos: aqui a pergunta é quem pode vender o lote, e a sessão já foi conferida contra a unidade). `app/api/incorporador/venda/reserva/route.ts` usa o escopo novo no GET (lista) e no POST (`podemVender`), com `catalogoDeEmpreendimentos` em paralelo ao cadastro. Medido em 18/09/2026: só o Lagoa Bonita tem vínculo por grupo (9 vínculos, 7 imobiliárias), e as 7 ficavam fora da reserva. Rodado em leitura contra produção no lote do LBF: 15 → 22 imobiliárias, 7 → 8 corretores, e `podemVender` aceita a Morvian. 6 testes novos (Lagoa Bonita real, família parcial, outro loteamento, catálogo vazio, e a rota usando o escopo nas duas pontas); o teste da rota ganhou o mock do catálogo. 6.410 testes passando e typecheck limpo.",
+      motivation:
+        "Lucas (18/09/2026), com print da reserva do lote C09 07 e da ficha da Morvian no CRM 360: *\"na hora da reserva, deveria trazer a imobiliaria em questão e não está trazendo mesmo ela estando habilitada para o lagoa bonita\"*.",
+    },
+    title: "Reserva oferece a imobiliária habilitada no Lagoa Bonita inteiro",
+    type: "correcao",
+    version: "1.349.5",
+  },
+  {
     buildTag: "2026-09-18-cad-reconhece-corretor-declarado",
     deployedAt: "2026-09-18T12:58:00-03:00",
     modules: [
