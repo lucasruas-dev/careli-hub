@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 
-import {
-  type ApoloEnterpriseBucket,
-  type ApoloEnterpriseRow,
-  loadApoloEnterprises,
-} from "@/lib/apolo/empreendimentos";
+import { type ApoloEnterpriseRow, loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import {
@@ -17,14 +13,7 @@ import {
 } from "@/lib/apolo/incorporador/painel-de-produtos";
 import { sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
 import { lerCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
-import { baldeDaEtapa } from "@/lib/hercules/fluxo-de-venda";
-import {
-  baldeDaSituacao,
-  lerSituacaoDasUnidades,
-  type SituacaoDaUnidade,
-  type SituacaoDasUnidades,
-  situacaoDoTerreno,
-} from "@/lib/hercules/situacao-da-unidade";
+import { lerEstoquePelaRegua } from "@/lib/hercules/estoque-da-situacao";
 
 // O PAINEL DE PRODUTOS DO HÉRCULES: os seis cards e a tabela pai/filhos da aba Produtos.
 //
@@ -161,35 +150,19 @@ function comOEstoqueDoPanteon(
   });
 }
 
-type LinhaDoEstoque = {
-  enterprise_id: number | string;
-  id: string;
-  preco_tabela: null | number | string;
-};
-
-type ClienteAdmin = NonNullable<ReturnType<typeof createApoloAdminClient>>;
-
 /**
- * O estoque de cada empreendimento da sessão, contado no Panteon.
+ * O estoque de cada empreendimento da sessão, contado no Panteon pela régua única.
  *
- * ⚠️ QUANTIDADE E PREÇO SÃO DA LINHA; A SITUAÇÃO É DO TERRENO. Cada linha de `hercules_unidades`
- * conta no empreendimento dela, como sempre contou (o espelho que responde sozinho continua com as
- * linhas dele), e o balde sai de `porLinha`, que responde pela linha viva e pela antiga do mesmo
- * lote com a mesma situação.
- *
- * ⚠️ PAGINA. O PostgREST corta em 1.000 linhas SEM ERRO: sem paginar, a tela mostraria um estoque
- * silenciosamente truncado — que é pior do que uma tela vazia, porque parece certo.
+ * ⚠️ A CONTA NÃO MORA AQUI (18/09/2026). Até esta data esta rota tinha a sua cópia de
+ * `contarEstoque`, `baldeDoEstoque` e `SITUACAO_FORA_DO_MAPA`, e a lista de produtos (../route.ts)
+ * tinha outra. Agora as duas, e o funil do Resumo, contam por lib/hercules/estoque-da-situacao.ts:
+ * quantidade e preço da linha, situação do terreno, os cinco baldes de `baldeDaSituacao`, e a
+ * unidade fora do mapa ocupada. Uma chamada à régua para a sessão inteira.
  *
  * ⚠️ FALHA DEVOLVE `null`, e não um mapa vazio: quem chama precisa saber que não leu, para avisar.
- * Mesmo assim a tela não cai — nomes, agrupamento e quem é pai de quem continuam de pé.
+ * Mesmo assim a tela não cai: nomes, agrupamento e quem é pai de quem continuam de pé.
  */
 async function lerEstoqueDoPanteon(ids: readonly string[]): Promise<Map<string, Cenario> | null> {
-  // "group:…" é id sintético do agrupamento do Apolo: nenhuma unidade o guarda.
-  const pedidos = [
-    ...new Set(ids.map((id) => String(id).trim()).filter((id) => id && !id.toLowerCase().startsWith("group:"))),
-  ];
-  if (pedidos.length === 0) return new Map();
-
   const supabase = createApoloAdminClient();
   if (!supabase) {
     console.error("[incorporador/produtos/painel] Supabase ausente: sem o estoque do Panteon.");
@@ -197,79 +170,9 @@ async function lerEstoqueDoPanteon(ids: readonly string[]): Promise<Map<string, 
   }
 
   try {
-    const [linhas, situacoes] = await Promise.all([
-      lerLinhasDoEstoque(supabase, pedidos),
-      lerSituacaoDasUnidades(supabase, pedidos),
-    ]);
-    return contarEstoque(linhas, situacoes);
+    return await lerEstoquePelaRegua(supabase, ids);
   } catch (erro) {
     console.error("[incorporador/produtos/painel] estoque do Panteon", erro);
     return null;
   }
-}
-
-async function lerLinhasDoEstoque(supabase: ClienteAdmin, ids: string[]): Promise<LinhaDoEstoque[]> {
-  const PAGINA = 1000;
-  const linhas: LinhaDoEstoque[] = [];
-  for (let de = 0; ; de += PAGINA) {
-    const { data, error } = await supabase
-      .from("hercules_unidades")
-      .select("id,enterprise_id,preco_tabela")
-      .eq("workspace_id", "careli")
-      .in("enterprise_id", ids)
-      .order("id", { ascending: true })
-      .range(de, de + PAGINA - 1);
-    if (error) throw new Error(error.message);
-    linhas.push(...((data ?? []) as LinhaDoEstoque[]));
-    if ((data?.length ?? 0) < PAGINA) break;
-  }
-  return linhas;
-}
-
-/**
- * A situação de uma linha que a régua não devolveu (nasceu entre as duas leituras): a que a própria
- * régua dá a quem não se conhece — hoje, bloqueada. Calculada, e não escrita à mão, para mudar junto
- * se a régua mudar de ideia. Nunca livre.
- */
-const SITUACAO_FORA_DO_MAPA: SituacaoDaUnidade = situacaoDoTerreno({
-  cadastro: null,
-  propostasVivas: [],
-  reservada: false,
-});
-
-/**
- * O balde da tela Produtos para uma situação.
- *
- * ⚠️ QUEM DIZ SE ESTÁ LIVRE É `baldeDaSituacao`. Esta tela só tem uma coluna a mais, "Em negociação",
- * que é um PEDAÇO do vendido (proposta, contrato, assinatura): `baldeDaEtapa` só separa esse pedaço,
- * nunca tira nada do ocupado.
- */
-function baldeDoEstoque(situacao: SituacaoDaUnidade): ApoloEnterpriseBucket {
-  const balde = baldeDaSituacao(situacao);
-  return balde === "vendido" && baldeDaEtapa(situacao) === "negociacao" ? "negociacao" : balde;
-}
-
-function valorDe(preco: null | number | string): number {
-  const n = typeof preco === "number" ? preco : Number(preco ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function contarEstoque(linhas: LinhaDoEstoque[], situacoes: SituacaoDasUnidades): Map<string, Cenario> {
-  const porEmpreendimento = new Map<string, Cenario>();
-
-  for (const linha of linhas) {
-    const id = String(linha.enterprise_id).trim();
-    const cenario = porEmpreendimento.get(id) ?? cenarioVazio();
-    const balde = baldeDoEstoque(situacoes.porLinha.get(linha.id)?.situacao ?? SITUACAO_FORA_DO_MAPA);
-    const valor = valorDe(linha.preco_tabela);
-
-    cenario[balde].units += 1;
-    cenario[balde].value += valor;
-    cenario.total.units += 1;
-    cenario.total.value += valor;
-
-    porEmpreendimento.set(id, cenario);
-  }
-
-  return porEmpreendimento;
 }

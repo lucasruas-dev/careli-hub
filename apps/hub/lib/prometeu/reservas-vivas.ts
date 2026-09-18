@@ -1,4 +1,5 @@
 import { normalizarCodigoDeUnidade } from "./cupom";
+import { cuponsSoltosPeloHercules } from "./cupom-segue-o-hercules";
 import type { createPrometeuClient } from "./data";
 
 type AdminClient = NonNullable<ReturnType<typeof createPrometeuClient>>;
@@ -50,6 +51,7 @@ export type ReservaViva = {
 
 type LinhaDeReserva = {
   codigo: string;
+  id: string;
   proponentes:
     | null
     | {
@@ -74,13 +76,22 @@ export async function reservasVivasPorCodigo(
   for (let inicio = 0; ; inicio += PAGINA) {
     const { data, error } = await client
       .from("prometeu_reservas")
-      .select("codigo, proponentes")
+      .select("id, codigo, proponentes")
       .eq("situacao", "reservada")
+      .order("id")
       .range(inicio, inicio + PAGINA - 1);
 
     if (error || !data) return porCodigo;
 
-    for (const linha of data as LinhaDeReserva[]) {
+    // ⚠️ O CUPOM CUJA RESERVA DO HÉRCULES CAIU NÃO TEM MAIS DONO (ver cupom-segue-o-hercules.ts): o
+    // nome dele ao lado de um lote que a Venda já soltou é o "cliente errado na tela" do cabeçalho.
+    // Sem ler o Hércules, os nomes seguem como estão (faltar o nome é tolerável; sobrar, raro).
+    const linhasDaPagina = data as LinhaDeReserva[];
+    const soltos =
+      (await cuponsSoltosPeloHercules(client, linhasDaPagina.map((l) => l.id))) ?? new Set<string>();
+
+    for (const linha of linhasDaPagina) {
+      if (soltos.has(linha.id)) continue;
       const codigo = normalizarCodigoDeUnidade(linha.codigo);
       if (!codigo) continue;
       const lista = Array.isArray(linha.proponentes) ? linha.proponentes : [];

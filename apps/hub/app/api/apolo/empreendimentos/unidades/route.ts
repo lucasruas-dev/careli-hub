@@ -9,8 +9,9 @@ import {
 } from "@/lib/apolo/empreendimentos";
 import { lerUnidadesDoPanteon, unidadeDoPanteonNaTela } from "@/lib/apolo/incorporador/unidades-do-panteon";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { lerBloqueiosNativos } from "@/lib/hercules/bloquear-unidade-server";
 import { ehIdDoPanteon } from "@/lib/hercules/produto-novo";
-import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
+import { acharUnidade, lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 import { createPrometeuClient, eventoOperavelId } from "@/lib/prometeu/data";
 import { topicoDaFila } from "@/lib/prometeu/fila-topic";
 
@@ -48,15 +49,62 @@ async function unidadesDoPanteon(enterpriseId: string, codigo: string): Promise<
     ]);
     return {
       ok: true,
-      units: linhas.map((linha) => ({
-        ...unidadeDoPanteonNaTela(linha, codigo),
-        ...situacaoNaAbaUnidades(situacaoDaLinhaDoPanteon(linha.id, situacoes)),
-      })),
+      units: linhas.map((linha) => {
+        // A linha que a régua devolveu para ESTE id. Sem ela (a linha nasceu entre as duas
+        // leituras), a unidade sai ocupada e sem id para bloquear: o servidor não bloqueia o que a
+        // régua não leu.
+        const achada = acharUnidade(situacoes, { linhaId: linha.id });
+        return {
+          ...unidadeDoPanteonNaTela(linha, codigo),
+          ...situacaoNaAbaUnidades(situacaoDaLinhaDoPanteon(linha.id, situacoes)),
+          panteonId: achada?.id === linha.id ? linha.id : null,
+          semCadastroNoPanteon: false,
+        };
+      }),
     };
   } catch (erro) {
     // ⚠️ Erro NUNCA vira "zero unidades": a tela mostraria o produto vazio como se fosse verdade.
     console.error("[apolo][empreendimentos] unidades do Panteon indisponíveis", erro);
     return { error: "Não foi possível carregar as unidades agora. Tente de novo em instantes.", ok: false };
+  }
+}
+
+/**
+ * O BLOQUEIO FEITO NO PANTEON (quem, quando, por quê) nas unidades bloqueadas da lista.
+ *
+ * Lucas (18/09/2026): *"eu posso por exemplo, bloquear uma unidade dentro do apolo e isso tem que
+ * refletir no hercules"*. É daqui que a aba sabe se oferece "Desbloquear" (só o bloqueio carimbado
+ * se desfaz aqui; o herdado do C2X, não) e mostra o motivo.
+ *
+ * ⚠️ SÓ NESTA ROTA, E NÃO EM `loadApoloEnterpriseUnits`: o portal do cliente usa a mesma leitura, e o
+ * nome de quem bloqueou é do time da Careli, não do cliente.
+ *
+ * ⚠️ FALHA NÃO DERRUBA A LISTA. A situação já veio da régua; o bloqueio é o DETALHE. Sem ele a
+ * unidade segue sem o campo (ausente = não lido), a tela oferece o botão, e o servidor reconfere
+ * tudo antes de desbloquear.
+ */
+async function comOBloqueio(units: ApoloEnterpriseUnit[]): Promise<ApoloEnterpriseUnit[]> {
+  const bloqueadas = units
+    .filter((unit) => unit.bucket === "bloqueado" && unit.panteonId)
+    .map((unit) => String(unit.panteonId));
+  if (bloqueadas.length === 0) return units;
+
+  const admin = createApoloAdminClient();
+  if (!admin) return units;
+
+  try {
+    const bloqueios = await lerBloqueiosNativos(admin, bloqueadas);
+    return units.map((unit) =>
+      unit.bucket === "bloqueado" && unit.panteonId
+        ? { ...unit, bloqueio: bloqueios.get(unit.panteonId) ?? null }
+        : unit,
+    );
+  } catch (erro) {
+    console.warn(
+      "[apolo][empreendimentos] bloqueios nativos indisponíveis; a lista sai sem o detalhe",
+      erro,
+    );
+    return units;
   }
 }
 
@@ -113,7 +161,7 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(
-      { data: { realtime: { topico }, units: result.units } },
+      { data: { realtime: { topico }, units: await comOBloqueio(result.units) } },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

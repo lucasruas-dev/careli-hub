@@ -101,6 +101,7 @@ vi.mock("@/lib/hercules/situacao-da-unidade", async (importOriginal) => ({
       porCodigo: new Map(unidades.map((u) => [u.codigo, u])),
       porLinha: new Map(unidades.map((u) => [u.id, u])),
       porOrigemC2x: new Map(),
+      terreno: () => undefined,
       unidades,
     };
   }),

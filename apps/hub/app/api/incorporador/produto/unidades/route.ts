@@ -16,6 +16,7 @@ import {
   unidadeDoPanteonNaTela,
 } from "@/lib/apolo/incorporador/unidades-do-panteon";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 import { createPrometeuClient, eventoOperavelId } from "@/lib/prometeu/data";
 import { topicoDaFila } from "@/lib/prometeu/fila-topic";
 
@@ -42,8 +43,15 @@ import { topicoDaFila } from "@/lib/prometeu/fila-topic";
 // ("Configuracao C2X ausente: …"); a tela interna mostra isso ao time, o portal do coordenador
 // não — mesma decisão da rota de assinaturas: aqui sai um texto neutro e o detalhe vai pro log.
 //
+// ⚠️ NOS DOIS RAMOS, A SITUAÇÃO É A DA RÉGUA ÚNICA (lib/hercules/situacao-da-unidade.ts, 18/09/2026):
+// o do C2X já a recebe dentro de `loadApoloEnterpriseUnits`, e o do Panteon a lê ao lado das linhas
+// (`lerUnidadesDoPanteonDoPedido`). Do C2X vem o resto da linha, nunca o livre/reservado/vendido; do
+// cadastro do Panteon também não (o cadastro é a última palavra da régua, não a tela).
+//
 // ⚠️ CUSTO. Uma consulta ao C2X (a mesma da tela interna) + as reservas vivas do Prometeu, quando
-// o coordenador ABRE a aba. A atualização depois disso é por broadcast; nada aqui vira polling.
+// o coordenador ABRE a aba. A atualização depois disso é por broadcast; nada aqui vira polling. A
+// régua é lida uma vez por ramo: pedido que mistura produto do C2X e do Panteon paga duas (a do C2X
+// mora dentro de `loadApoloEnterpriseUnits`, que ainda não aceita uma leitura pronta).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -70,6 +78,15 @@ async function topicoDoEvento(): Promise<null | string> {
 /**
  * As unidades vivas dos produtos próprios do pedido, já no formato da `UnidadesTab`. Erro lança: o
  * `catch` da rota responde indisponível, nunca "zero unidades".
+ *
+ * ⚠️ A SITUAÇÃO É A DA RÉGUA ÚNICA (18/09/2026), e não `hercules_unidades.situacao` cru. Lucas: *"tem
+ * unidades que estão com reserva, proposta no hercules, que dentro de unidade do apolo não estão com
+ * o mesmo status"*. O cadastro não sabe da reserva nem da proposta: o lote reservado na Venda saía
+ * "Disponível" nesta aba. Agora as linhas (quadra, lote, área, preço, matrícula) e a régua são lidas
+ * juntas, e cada linha é pintada pelo terreno dela (`unidadeDoPanteonNaTela` com `situacoes`), a
+ * mesma escrita da tela interna e do ramo do C2X desta rota.
+ *
+ * ⚠️ FALHA DA RÉGUA LANÇA COMO A DAS LINHAS: tabela com erro, nunca lote pintado de livre.
  */
 async function lerUnidadesDoPanteonDoPedido(
   proprios: Array<{ codigo: string; enterpriseId: string }>,
@@ -77,9 +94,13 @@ async function lerUnidadesDoPanteonDoPedido(
   const admin = createApoloAdminClient();
   if (!admin) throw new Error("Supabase indisponível para as unidades do Panteon.");
   const codigoPorId = new Map(proprios.map((p) => [p.enterpriseId, p.codigo]));
-  const linhas = await lerUnidadesDoPanteon(admin, [...codigoPorId.keys()]);
+  const ids = [...codigoPorId.keys()];
+  const [linhas, situacoes] = await Promise.all([
+    lerUnidadesDoPanteon(admin, ids),
+    lerSituacaoDasUnidades(admin, ids),
+  ]);
   return linhas.map((linha) =>
-    unidadeDoPanteonNaTela(linha, codigoPorId.get(String(linha.enterprise_id)) ?? ""),
+    unidadeDoPanteonNaTela(linha, codigoPorId.get(String(linha.enterprise_id)) ?? "", situacoes),
   );
 }
 

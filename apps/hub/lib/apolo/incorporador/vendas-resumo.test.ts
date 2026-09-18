@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import type { ApoloEnterpriseVendas, ApoloVendaStage, ApoloVendaUnit } from "@/lib/apolo/vendas";
+import {
+  type ApoloEnterpriseVendas,
+  type ApoloVendaStage,
+  type ApoloVendaUnit,
+  estagioPelaSituacao,
+} from "@/lib/apolo/vendas";
+import { estagioDaSituacao } from "@/lib/hercules/estoque-da-situacao";
+import { baldeDaSituacao, type SituacaoDaUnidade } from "@/lib/hercules/situacao-da-unidade";
 
 import {
+  BALDE_LABELS,
   baldeDaUnidade,
   mesDe,
   resumoDeVendas,
@@ -280,10 +288,97 @@ describe("a unidade no portal", () => {
     expect(linha?.imobiliaria).toBeNull();
   });
 
-  it("a situação da bloqueada não diz 'Disponível'", () => {
+  it("a situação da bloqueada não diz 'Disponível', e usa o nome do balde da régua", () => {
     const [linha] = unidadesParaOPortal([unidade("disponivel", null, 1000, true)]);
 
-    expect(linha?.situacao).toBe("Bloqueada");
+    expect(linha?.situacao).toBe("Bloqueado");
+    // Um nome por balde, o mesmo dos cards de Produtos e da aba Unidades (`rotuloDoBalde`).
+    expect(BALDE_LABELS).toEqual({
+      bloqueada: "Bloqueado",
+      disponivel: "Disponível",
+      negociacao: "Em negociação",
+      reservado: "Reservado",
+      vendido: "Vendido",
+    });
+  });
+});
+
+// ── A RÉGUA ÚNICA NA TELAVENDAS (18/09/2026) ──
+//
+// Lucas: *"esses status tem que morar em um so lugar"* · *"no c2x não precisa olhar"*. A TelaVendas
+// escrevia a unidade pelo estágio do C2X mais o `sale_blocked`; o lote reservado no Hércules saía
+// "Disponível" aqui e "Reservado" na Venda. Desde 18/09/2026 a LEITURA (`loadApoloEnterpriseVendas`)
+// escreve `stage` e `blocked` pela régua, e este arquivo só dobra. O que se trava aqui é que a dobra
+// devolve o balde da régua, situação a situação, e que a leitura e a conta dos cards falam a mesma
+// tradução de situação para estágio.
+
+const TODAS: SituacaoDaUnidade[] = [
+  "disponivel",
+  "reservado",
+  "reservada",
+  "proposta",
+  "contrato",
+  "assinatura",
+  "faturado",
+  "vendida",
+  "bloqueada",
+];
+
+/** A unidade como a leitura a entrega para uma situação da régua. */
+function pelaRegua(situacao: SituacaoDaUnidade, extra: Partial<ApoloVendaUnit> = {}): ApoloVendaUnit {
+  return {
+    ...unidade("disponivel", null),
+    blocked: baldeDaSituacao(situacao) === "bloqueado",
+    stage: estagioDaSituacao(situacao),
+    ...extra,
+  };
+}
+
+describe("a situação da unidade pela régua única", () => {
+  it.each(TODAS)("⚠️ %s: o balde da TelaVendas é o balde da régua", (situacao) => {
+    const esperado = baldeDaSituacao(situacao);
+    const chave = esperado === "bloqueado" ? "bloqueada" : esperado;
+    const unidadeDaRegua = pelaRegua(situacao);
+
+    expect(baldeDaUnidade(unidadeDaRegua)).toBe(chave);
+    expect(unidadesParaOPortal([unidadeDaRegua])[0]?.balde).toBe(chave);
+  });
+
+  it.each(TODAS)(
+    "⚠️ %s: a leitura das vendas e a conta dos cards traduzem a situação do mesmo jeito",
+    (situacao) => {
+      // Se um dia as duas traduções divergirem, a TelaVendas e o card de Produtos voltam a dizer
+      // coisas diferentes do mesmo lote. Este teste é o alarme.
+      expect(estagioPelaSituacao(situacao)).toEqual({
+        blocked: baldeDaSituacao(situacao) === "bloqueado",
+        stage: estagioDaSituacao(situacao),
+      });
+    },
+  );
+
+  it("⚠️ unidade que a régua não conhece sai ocupada na leitura, e bloqueada aqui", () => {
+    const foraDoMapa = estagioPelaSituacao(null);
+    const [linha] = unidadesParaOPortal([{ ...unidade("disponivel", null), ...foraDoMapa }]);
+
+    expect(linha?.balde).toBe("bloqueada");
+    expect(linha?.situacao).toBe("Bloqueado");
+  });
+
+  it("reservado no Hércules: balde, etapa e texto de reserva", () => {
+    const [linha] = unidadesParaOPortal([pelaRegua("reservado")]);
+
+    expect(linha).toMatchObject({ balde: "reservado", etapa: "reservado", situacao: "Reservado" });
+  });
+
+  it("⚠️ sem venda viva no C2X, o popup da proposta não liga (a proposta do legado é história)", () => {
+    const [doHercules] = unidadesParaOPortal([pelaRegua("reservado", { id: "77", vendaNoC2x: false })]);
+    const [doC2x] = unidadesParaOPortal([pelaRegua("contrato", { id: "78", vendaNoC2x: true })]);
+    const [semOCampo] = unidadesParaOPortal([pelaRegua("contrato", { id: "79" })]);
+
+    expect(doHercules?.unitId).toBeNull();
+    expect(doC2x?.unitId).toBe(78);
+    // Unidade montada à mão, sem o campo: o comportamento de antes.
+    expect(semOCampo?.unitId).toBe(79);
   });
 });
 

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { imobiliariaEntityIdDoCliente } from "@/lib/apolo/imobiliaria-do-cliente";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 import {
@@ -12,6 +13,7 @@ import { identidadeCanonicaDoCredenciado } from "@/lib/prometeu/identidade-do-cr
 import {
   autorizarOperacao,
   autorizarOperacaoDeEscrita,
+  lerOperadorDaSessao,
 } from "@/lib/prometeu/operador-server";
 import {
   contadoresDoEvento,
@@ -26,13 +28,16 @@ import { avisarFilaEmRealtime } from "@/lib/prometeu/realtime-fila";
 
 // A POSIÇÃO DE RESERVA DO LANÇAMENTO (tela touch — Lucas, 24/08/2026).
 //
-// GET  = quadras com os lotes DISPONÍVEIS + mini dash (reservas · propostas · finalizadas).
-// POST = confirma a reserva do credenciado bipado (uma linha por unidade, mesmo grupo_id =
-//        o cupom) e avisa o realtime para o telão pintar o lote em segundos.
+// GET  = quadras com os lotes LIVRES pela situação única + mini dash (reservas · propostas ·
+//        finalizadas).
+// POST = confirma a reserva do credenciado bipado: uma reserva do Hércules por lote (a porta
+//        única, origem `salao`) e o cupom por cima (uma linha por unidade, mesmo grupo_id), e
+//        avisa o realtime para o telão pintar o lote em segundos.
 //
-// A regra antiga "reserva vem tudo do C2X" (01/08) vale para REFLETIR o que o corretor lança
-// lá; a POSIÇÃO DE RESERVA é o caminho novo do evento e grava no Panteon — o C2X recebe por
-// sincronização, fora do caminho crítico.
+// ⚠️ A RESERVA DO SALÃO É DO HÉRCULES desde 18/09/2026 (Lucas: *"toda reserva, proposta deve ser
+// criada no hercules"* · *"quando houver a reserva fosse reservada no hercules"*). A tela do tótem
+// é a mesma; quem confere e quem grava é lib/prometeu/reservas-evento.ts, pela porta única de
+// lib/hercules/criar-reserva.ts. O C2X não recebe nada daqui.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -288,6 +293,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // O evento inteiro, e não só o id: a reserva do Hércules precisa do empreendimento (é por ele que
+  // a situação única é lida) e da trava do Setup (`lotesBloqueados`), a mesma que a oferta aplicou.
+  const evento = await getEvento(client, eventoId);
+  if (!evento) {
+    return NextResponse.json(
+      { error: "Evento nao encontrado." },
+      { status: 404 },
+    );
+  }
+
   // Proponentes (até 5, soma 100%): o corpo traz o que a tela montou; o servidor revalida
   // TUDO — números e identidades. Sem proponentes no corpo, o titular assume 100%.
   const proponentesCrus = Array.isArray(corpo?.proponentes)
@@ -338,25 +353,42 @@ export async function POST(request: NextRequest) {
   // é barato, uma vez por reserva; numa tela que lista cem unidades, não seria.
   //
   // Nunca derruba a reserva: se a identidade falhar, a origem fica nula e o resto segue.
-  const origemDoTitular = await (async (): Promise<null | string> => {
+  //
+  // ⚠️ A IMOBILIÁRIA DO TITULAR (entidade do Apolo) sai daqui também, pelo VÍNCULO do cliente, e vai
+  // para a reserva do Hércules: é por ela que a Venda sabe a quem avisar e o que imprimir no rodapé
+  // da proposta quando a reserva do salão virar proposta. Sem vínculo, fica nula (a Venda aceita).
+  const { imobiliariaDoTitular, origemDoTitular } = await (async (): Promise<{
+    imobiliariaDoTitular: null | string;
+    origemDoTitular: null | string;
+  }> => {
+    const nada = { imobiliariaDoTitular: null, origemDoTitular: null };
     try {
       const apolo = createApoloAdminClient();
-      if (!apolo) return null;
+      if (!apolo) return nada;
       const { data: cru } = await client
         .from("prometeu_credenciados")
         .select("nome, imobiliaria, corretor, entity_id")
         .eq("id", credenciadoId)
         .maybeSingle();
-      if (!cru) return null;
-      const identidade = await identidadeCanonicaDoCredenciado(apolo, {
-        corretor: (cru as Record<string, null | string>).corretor ?? null,
-        entity_id: (cru as Record<string, null | string>).entity_id ?? null,
-        imobiliaria: (cru as Record<string, null | string>).imobiliaria ?? null,
-        nome: (cru as Record<string, string>).nome ?? "",
-      });
-      return origemDoClienteParaExibir(identidade)?.texto ?? null;
+      if (!cru) return nada;
+      const entityId = (cru as Record<string, null | string>).entity_id ?? null;
+      const [identidade, vinculo] = await Promise.all([
+        identidadeCanonicaDoCredenciado(apolo, {
+          corretor: (cru as Record<string, null | string>).corretor ?? null,
+          entity_id: entityId,
+          imobiliaria: (cru as Record<string, null | string>).imobiliaria ?? null,
+          nome: (cru as Record<string, string>).nome ?? "",
+        }),
+        entityId
+          ? imobiliariaEntityIdDoCliente(apolo, entityId).catch(() => ({ imobEntityId: null }))
+          : Promise.resolve({ imobEntityId: null }),
+      ]);
+      return {
+        imobiliariaDoTitular: vinculo.imobEntityId ?? null,
+        origemDoTitular: origemDoClienteParaExibir(identidade)?.texto ?? null,
+      };
     } catch {
-      return null;
+      return nada;
     }
   })();
 
@@ -408,8 +440,10 @@ export async function POST(request: NextRequest) {
       ("userId" in auth ? auth.userId : null) ??
       ("operadorId" in auth ? auth.operadorId : null) ??
       null,
-    criadoPorNome: null,
-    eventoId,
+    // O nome vai para a reserva do Hércules: é o que o histórico da unidade mostra na Venda.
+    criadoPorNome: lerOperadorDaSessao(request)?.username ?? null,
+    evento,
+    imobiliariaEntityId: imobiliariaDoTitular,
     proponentes,
     unidades,
   });

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import type {
+  SituacaoDasUnidades,
+  SituacaoDaUnidade,
+  UnidadeComSituacao,
+} from "@/lib/hercules/situacao-da-unidade";
+
 import {
-  estagioDaUnidadeDoPanteon,
   type LinhaDaUnidadeDoPanteon,
   lerUnidadesDoPanteon,
   unidadeDoPanteonNaTela,
@@ -9,6 +14,9 @@ import {
 
 // AS UNIDADES DO PRODUTO QUE SÓ EXISTE NO PANTEON (revisão de 16/09/2026): a aba Unidades e o funil
 // do Resumo deixam de sair vazios para o produto cadastrado pelo portal.
+//
+// (18/09/2026) E A SITUAÇÃO SAI DA RÉGUA ÚNICA, não do cadastro cru. Lucas: *"tem unidades que estão
+// com reserva, proposta no hercules, que dentro de unidade do apolo não estão com o mesmo status"*.
 
 const linha = (over: Partial<LinhaDaUnidadeDoPanteon> = {}): LinhaDaUnidadeDoPanteon => ({
   area: "312,5",
@@ -24,9 +32,29 @@ const linha = (over: Partial<LinhaDaUnidadeDoPanteon> = {}): LinhaDaUnidadeDoPan
   ...over,
 });
 
+/** Um mapa da régua com estas situações, por id de linha. */
+function regua(porId: Record<string, SituacaoDaUnidade>): SituacaoDasUnidades {
+  const unidades: UnidadeComSituacao[] = Object.entries(porId).map(([id, situacao]) => ({
+    codigo: id.toUpperCase(),
+    enterpriseId: "100001",
+    id,
+    lote: null,
+    origemC2xId: null,
+    quadra: null,
+    situacao,
+  }));
+  return {
+    porCodigo: new Map(unidades.map((u) => [u.codigo, u])),
+    porLinha: new Map(unidades.map((u) => [u.id, u])),
+    porOrigemC2x: new Map(),
+    terreno: () => undefined,
+    unidades,
+  };
+}
+
 describe("unidadeDoPanteonNaTela", () => {
   it("monta a linha da UnidadesTab com situação, preço, área e quadra/lote", () => {
-    expect(unidadeDoPanteonNaTela(linha(), "TST")).toEqual({
+    expect(unidadeDoPanteonNaTela(linha(), "TST", regua({ "u-1": "disponivel" }))).toEqual({
       area: 312.5,
       block: "01",
       bucket: "disponivel",
@@ -38,7 +66,7 @@ describe("unidadeDoPanteonNaTela", () => {
       movement: null,
       price: 182000,
       registration: null,
-      status: expect.any(String),
+      status: "Disponível",
     });
   });
 
@@ -50,30 +78,37 @@ describe("unidadeDoPanteonNaTela", () => {
     expect(unidadeDoPanteonNaTela(semMatricula, "GDN").registration).toBeNull();
   });
 
-  it("a situação crua do Panteon cai no balde certo", () => {
-    expect(unidadeDoPanteonNaTela(linha({ situacao: "reservada" }), "TST").bucket).toBe("reservado");
-    expect(unidadeDoPanteonNaTela(linha({ situacao: "vendida" }), "TST").bucket).toBe("vendido");
-    expect(unidadeDoPanteonNaTela(linha({ situacao: "bloqueada" }), "TST").bucket).toBe("bloqueado");
+  it("⚠️ a RÉGUA manda, não o cadastro: reservado no Hércules com o cadastro dizendo disponível", () => {
+    const saida = unidadeDoPanteonNaTela(linha({ situacao: "disponivel" }), "TST", regua({ "u-1": "reservado" }));
+    expect(saida.bucket).toBe("reservado");
+    expect(saida.status).toBe("Reservado");
+  });
+
+  it("cor e palavra da mesma situação: contrato é negociação no selo e 'Contrato' no texto", () => {
+    const saida = unidadeDoPanteonNaTela(linha({ situacao: "vendida" }), "TST", regua({ "u-1": "contrato" }));
+    expect(saida.bucket).toBe("negociacao");
+    expect(saida.status).toBe("Contrato");
+  });
+
+  it("bloqueada no Apolo sai bloqueada, e vendida sem proposta sai vendida", () => {
+    expect(unidadeDoPanteonNaTela(linha(), "TST", regua({ "u-1": "bloqueada" })).bucket).toBe("bloqueado");
+    expect(unidadeDoPanteonNaTela(linha(), "TST", regua({ "u-1": "vendida" })).bucket).toBe("vendido");
+  });
+
+  it("⚠️ sem a régua, ou fora dela, a unidade sai OCUPADA, nunca pelo cadastro cru", () => {
+    // O cadastro diz disponível; ninguém leu a régua. Livre seria o erro que vira processo.
+    const semRegua = unidadeDoPanteonNaTela(linha({ situacao: "disponivel" }), "TST");
+    expect(semRegua.bucket).toBe("bloqueado");
+    expect(semRegua.status).toBe("Bloqueado");
+
+    const foraDela = unidadeDoPanteonNaTela(linha({ situacao: "disponivel" }), "TST", regua({ outra: "disponivel" }));
+    expect(foraDela.bucket).toBe("bloqueado");
   });
 
   it("preço ausente vira zero e código ausente cai no id (a linha não some)", () => {
     const saida = unidadeDoPanteonNaTela(linha({ codigo: null, preco_tabela: null }), "TST");
     expect(saida.price).toBe(0);
     expect(saida.code).toBe("u-1");
-  });
-});
-
-describe("estagioDaUnidadeDoPanteon", () => {
-  it("vendida conta como faturada, negociação como proposta, reserva como reserva", () => {
-    expect(estagioDaUnidadeDoPanteon("vendida")).toBe("faturado");
-    expect(estagioDaUnidadeDoPanteon("em negociação")).toBe("proposta");
-    expect(estagioDaUnidadeDoPanteon("reservada")).toBe("reservado");
-  });
-
-  it("bloqueada e disponível não são venda", () => {
-    expect(estagioDaUnidadeDoPanteon("bloqueada")).toBe("disponivel");
-    expect(estagioDaUnidadeDoPanteon("disponivel")).toBe("disponivel");
-    expect(estagioDaUnidadeDoPanteon(null)).toBe("disponivel");
   });
 });
 

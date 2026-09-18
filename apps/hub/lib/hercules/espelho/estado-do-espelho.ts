@@ -282,14 +282,28 @@ export async function estadoDoEspelho(
         torre: t.torre,
       }),
       // ⚠️ SÓ AS DUAS CORES SAEM DAQUI. A situação da régua única diz "contrato", "assinatura":
-      // é etapa do processo, e etapa do processo não viaja num link sem login.
-      situacao: situacaoPublicaDoLote(t.registros, situacoes.porLinha),
+      // é etapa do processo, e etapa do processo não viaja num link sem login. Cada linha do
+      // quadrado é procurada na régua pela ordem única (`acharUnidade`), dentro de
+      // `situacaoPublicaDoLote`: a leitura inteira vai junto, e não só um dos mapas dela.
+      situacao: situacaoPublicaDoLote(t.registros, situacoes),
       tipologia: t.tipologia,
       tipoProduto: t.tipoProduto,
       torre: t.torre,
       vagas: t.vagas,
     };
   });
+
+  // ⚠️ CÓDIGO REPETIDO SAI AZUL, EM TODOS OS QUADRADOS QUE O REPETEM. A tela casa o contorno do
+  // masterplan com o lote pelo `codigo` (`new Map(lotes.map((l) => [l.codigo, l]))`), e num Map o
+  // último ganha: dois quadrados com o mesmo código (cadastro com o mesmo código em quadra ou lote
+  // diferentes) pintariam o contorno com a cor de um deles, escolhido pela ordem da lista. Se um
+  // estiver verde e o outro azul, o contorno pode sair verde por acaso. Sem saber qual dos dois o
+  // desenho quer dizer, nenhum deles afirma "à venda".
+  const vezesDoCodigo = new Map<string, number>();
+  for (const l of lotes) vezesDoCodigo.set(l.codigo, (vezesDoCodigo.get(l.codigo) ?? 0) + 1);
+  for (const l of lotes) {
+    if ((vezesDoCodigo.get(l.codigo) ?? 0) > 1) l.situacao = "indisponivel";
+  }
 
   // Ordem estável e legível: quadra, depois lote, em ordem natural (Q2 antes de Q10). O prédio vem
   // depois do loteamento, torre por torre (torre única no fim), e dentro da torre do andar mais

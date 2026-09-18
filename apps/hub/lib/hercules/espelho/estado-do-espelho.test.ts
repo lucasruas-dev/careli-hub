@@ -9,8 +9,8 @@ import { estadoDoEspelho } from "./estado-do-espelho";
 //
 // O cliente é falso, mas responde de verdade às leituras dos dois lados: o cadastro do desenho
 // (`hercules_unidades` com preço e área) e a régua única (unidades, linhas antigas por `espelho_de`,
-// propostas vivas, reservas do Hércules e do evento). Filtra por `eq`, `in` e `not is null`, e
-// pagina por `range`, como o PostgREST.
+// propostas vivas, reservas do Hércules e do evento). Filtra por `eq`, `in`, `is null` e
+// `not is null`, e pagina por `range`, como o PostgREST.
 
 type Linha = Record<string, unknown>;
 
@@ -64,6 +64,12 @@ function clienteFalso(tabelas: Tabelas, opcoes: Opcoes = {}) {
             },
             in: (coluna: string, valores: readonly unknown[]) => {
               filtros.push((l) => valores.includes(l[coluna]));
+              return cadeia;
+            },
+            // A régua única lê as glebas irmãs que o espelho não pediu com `.is("espelho_de", null)`.
+            is: (coluna: string, valor: unknown) => {
+              if (valor !== null) throw new Error("filtro não previsto no falso");
+              filtros.push((l) => l[coluna] === null || l[coluna] === undefined);
               return cadeia;
             },
             not: (coluna: string, operador: string, valor: unknown) => {
@@ -328,6 +334,158 @@ describe("estadoDoEspelho: a cor vem da régua única", () => {
         estadoDoEspelho(client, { enterpriseIdDoPai: "35", enterpriseIdsDosFilhos: ["37"] }),
       ).rejects.toThrow(`falha lendo ${tabela}`);
     }
+  });
+});
+
+// ⚠️ O LOTE QUE EXISTE EM DUAS GLEBAS. Medido em 18/09/2026: 12-06, 13-01, 13-02 e 14-01 do Vale do
+// Ouro têm linha na VOC E na VOR. O pai aponta (0162) para a VOR, que vende; a VOC segue com a linha
+// dela, e é nela que pode nascer uma proposta. Lucas, 18/09/2026: *"eu não posso vender dois lotes
+// para pessoas diferentes"*. O quadrado do desenho é UM terreno: dono em qualquer das duas, azul.
+describe("estadoDoEspelho: o lote de duas glebas", () => {
+  const duasGlebas = (extra: Partial<Tabelas> = {}, voc: Linha = {}): Tabelas => ({
+    hercules_unidades: [
+      // Um lote comum, cujo pai aponta para a VOC: é por linhas assim que a régua única sabe que a
+      // VOC é gleba do VLO (a "família do pai").
+      lote({
+        codigo: "VLO0305",
+        enterprise_id: "35",
+        espelho_de: "VOC0305",
+        lote: "05",
+        quadra: "03",
+        situacao: "vendida",
+      }),
+      lote({ codigo: "VOC0305", enterprise_id: "37", lote: "05", quadra: "03" }),
+      // O lote que migrou de gleba: o pai aponta para a VOR livre; a VOC ficou bloqueada (0162).
+      lote({
+        codigo: "VLO0410",
+        enterprise_id: "35",
+        espelho_de: "VOR0410",
+        lote: "10",
+        quadra: "04",
+        situacao: "vendida",
+      }),
+      lote({
+        codigo: "VOC0410",
+        enterprise_id: "37",
+        lote: "10",
+        origem_c2x_id: 9410,
+        quadra: "04",
+        situacao: "bloqueada",
+        ...voc,
+      }),
+      lote({ codigo: "VOR0410", enterprise_id: "41", lote: "10", quadra: "04" }),
+    ],
+    ...extra,
+  });
+  const abrir = (tabelas: Tabelas, filhos: string[] = ["37", "41"]) =>
+    estadoDoEspelho(clienteFalso(tabelas).client, { enterpriseIdDoPai: "35", enterpriseIdsDosFilhos: filhos });
+  const corDe = (estado: Awaited<ReturnType<typeof abrir>>, codigo: string) =>
+    estado.lotes.find((l) => l.codigo === codigo)?.situacao;
+
+  it("sem processo em nenhuma das duas: verde, e a VOC bloqueada não apaga o verde da VOR", async () => {
+    const estado = await abrir(duasGlebas());
+    expect(estado.lotes.map((l) => l.codigo)).toEqual(["VLO0305", "VLO0410"]);
+    expect(corDe(estado, "VLO0410")).toBe("disponivel");
+  });
+
+  it("⚠️ proposta viva na VOC, o pai apontando para a VOR livre: AZUL", async () => {
+    for (const etapa of ["proposta", "contrato", "assinatura", "faturado"]) {
+      const estado = await abrir(duasGlebas({ hercules_propostas: [proposta("VOC0410", etapa)] }));
+      expect(corDe(estado, "VLO0410")).toBe("indisponivel");
+      // O vizinho sem processo continua verde: a trava é do terreno, não do empreendimento.
+      expect(corDe(estado, "VLO0305")).toBe("disponivel");
+      expect(estado.contagem).toEqual({ disponivel: 1, indisponivel: 1 });
+    }
+  });
+
+  it("reserva viva na VOC (do Hércules ou do evento): azul", async () => {
+    const doHercules = await abrir(duasGlebas({ hercules_reservas: [reserva("VOC0410", "ativa")] }));
+    expect(corDe(doHercules, "VLO0410")).toBe("indisponivel");
+
+    const doEvento = await abrir(
+      duasGlebas({ prometeu_reservas: [{ id: "E9", situacao: "reservada", unidade_c2x_id: 9410 }] }),
+    );
+    expect(corDe(doEvento, "VLO0410")).toBe("indisponivel");
+  });
+
+  // ⚠️ A PROVA DE QUE O ESPELHO USA O TERRENO DA RÉGUA ÚNICA. Aqui a árvore do espelho não traz a VOC:
+  // o quadrado do desenho só tem a linha do pai e a da VOR, e nenhuma delas tem processo. O único
+  // jeito de o lote sair azul é a régua ter somado a proposta da VOC no terreno para onde o pai
+  // aponta, e o espelho ter perguntado a ela.
+  it("a proposta da VOC chega pelo terreno da régua, mesmo sem a VOC no quadrado", async () => {
+    const estado = await abrir(duasGlebas({ hercules_propostas: [proposta("VOC0410", "proposta")] }), ["41"]);
+    expect(estado.lotes.map((l) => l.codigo)).toEqual(["VLO0305", "VLO0410"]);
+    expect(JSON.stringify(estado)).not.toContain("VOC0410");
+    expect(corDe(estado, "VLO0410")).toBe("indisponivel");
+  });
+
+  it("proposta morta na VOC não trava: verde", async () => {
+    const estado = await abrir(duasGlebas({ hercules_propostas: [proposta("VOC0410", "cancelado")] }));
+    expect(corDe(estado, "VLO0410")).toBe("disponivel");
+  });
+
+  // O cinto do espelho: se a régua não reconhecer a VOC como gleba do pai (nenhuma linha do pai
+  // aponta para ela), o quadrado ainda junta as duas linhas pela quadra e lote.
+  it("gleba fora da família do pai, com proposta viva, no mesmo quadrado: azul", async () => {
+    const semPonteiroParaVoc = duasGlebas({ hercules_propostas: [proposta("VOC0410", "proposta")] });
+    semPonteiroParaVoc.hercules_unidades = semPonteiroParaVoc.hercules_unidades.filter(
+      (l) => l.codigo !== "VLO0305",
+    );
+    const estado = await abrir(semPonteiroParaVoc);
+    expect(corDe(estado, "VLO0410")).toBe("indisponivel");
+  });
+
+  it("VOC vendida ou reservada no cadastro, sem processo, e VOR livre: azul (na dúvida, ocupado)", async () => {
+    for (const situacao of ["vendida", "reservada"]) {
+      const estado = await abrir(duasGlebas({}, { situacao }));
+      expect(corDe(estado, "VLO0410")).toBe("indisponivel");
+    }
+  });
+
+  // Lucas, 18/09/2026: *"eu posso por exemplo, bloquear uma unidade dentro do apolo e isso tem que
+  // refletir no hercules"*. Bloquear a unidade que vende (a VOR, para onde o pai aponta) tira o lote
+  // do ar no espelho.
+  it("VOR bloqueada no cadastro (Apolo): azul", async () => {
+    const tabelas = duasGlebas();
+    tabelas.hercules_unidades = tabelas.hercules_unidades.map((l) =>
+      l.codigo === "VOR0410" ? { ...l, situacao: "bloqueada" } : l,
+    );
+    const estado = await abrir(tabelas);
+    expect(corDe(estado, "VLO0410")).toBe("indisponivel");
+  });
+});
+
+// O CONTORNO DO MASTERPLAN CASA COM O LOTE PELO CÓDIGO, na tela (`EspelhoPublico.tsx`:
+// `porCodigo.get(codigo)?.situacao === "disponivel" ? VERDE : AZUL`). Contorno sem lote no payload
+// sai azul lá; aqui se garante que o payload não deixa um código ambíguo nem inventa um código.
+describe("estadoDoEspelho: o código que o contorno procura", () => {
+  it("contorno sem unidade do pai no Panteon: o código do desenho não sai no payload (e a tela pinta azul)", async () => {
+    const { client } = clienteFalso({
+      hercules_unidades: [lote({ codigo: "VOC0305", enterprise_id: "37", lote: "05", quadra: "03" })],
+    });
+    const estado = await estadoDoEspelho(client, { enterpriseIdDoPai: "35", enterpriseIdsDosFilhos: ["37"] });
+    expect(estado.lotes.map((l) => l.codigo)).toEqual(["VOC0305"]);
+    expect(estado.lotes.some((l) => l.codigo === "VLO0305")).toBe(false);
+  });
+
+  // ⚠️ A tela indexa os lotes num Map pelo código, e o último ganha. Dois quadrados com o mesmo
+  // código e cores diferentes pintariam o contorno pela ordem da lista.
+  it("código repetido em dois quadrados: os dois saem azuis", async () => {
+    const { client } = clienteFalso({
+      hercules_propostas: [proposta("VOC0305-A", "proposta")],
+      hercules_unidades: [
+        lote({ codigo: "VOC0305", enterprise_id: "37", id: "VOC0305-A", lote: "05", quadra: "03" }),
+        lote({ codigo: "VOC0305", enterprise_id: "37", id: "VOC0305-B", lote: "06", quadra: "03" }),
+        lote({ codigo: "VOC0307", enterprise_id: "37", lote: "07", quadra: "03" }),
+      ],
+    });
+    const estado = await estadoDoEspelho(client, { enterpriseIdDoPai: null, enterpriseIdsDosFilhos: ["37"] });
+    expect(estado.lotes.map((l) => [l.codigo, l.situacao])).toEqual([
+      ["VOC0305", "indisponivel"],
+      ["VOC0305", "indisponivel"],
+      ["VOC0307", "disponivel"],
+    ]);
+    expect(estado.contagem).toEqual({ disponivel: 1, indisponivel: 2 });
   });
 });
 

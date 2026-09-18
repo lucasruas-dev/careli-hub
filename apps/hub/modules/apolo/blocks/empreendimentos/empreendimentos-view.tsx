@@ -6,6 +6,7 @@ import {
   hasHubSupabaseConfig,
 } from "@/lib/supabase/client";
 import { AdicionarUnidades } from "@/modules/apolo/blocks/empreendimentos/adicionar-unidades";
+import { AcaoDeBloqueio } from "@/modules/apolo/blocks/empreendimentos/bloqueio-da-unidade";
 import { LinksTab } from "@/modules/apolo/blocks/empreendimentos/links-tab";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
 import { OrdemDeAssinaturaCard } from "@/modules/apolo/blocks/empreendimentos/ordem-de-assinatura-card";
@@ -35,6 +36,7 @@ import {
   Ban,
   ChevronRight,
   ChevronUp,
+  CircleAlert,
   ContactRound,
   ExternalLink,
   FileSignature,
@@ -828,7 +830,17 @@ function EnterpriseDetail({
         {tab === "resumo" ? <ResumoTab row={row} /> : null}
         {tab === "mapa" ? <MapaTab row={row} /> : null}
         {tab === "unidades" ? (
-          <UnidadesTab onOpenEntity={onOpenEntity} row={row} />
+          // ⚠️ BLOQUEAR E DESBLOQUEAR MORAM AQUI, NO APOLO (Lucas, 18/09/2026: *"eu posso por
+          // exemplo, bloquear uma unidade dentro do apolo e isso tem que refletir no hercules"*).
+          // A ação entra pela prop `acaoDaUnidade`, e não dentro da UnidadesTab, porque a mesma aba
+          // é montada pelo portal do cliente, que tem a ação dele e não bloqueia por esta porta.
+          <UnidadesTab
+            acaoDaUnidade={(unidade, recarregar) => (
+              <AcaoDeBloqueio recarregar={recarregar} unidade={unidade} />
+            )}
+            onOpenEntity={onOpenEntity}
+            row={row}
+          />
         ) : null}
         {tab === "carteira" ? (
           <CarteiraTab onOpenEntity={onOpenEntity} row={row} />
@@ -2205,6 +2217,7 @@ export function UnidadesTab({
   }
 
   const visible = sortUnits(filterUnits(units, search, statusFilter), sort);
+  const semCadastro = units.filter((unit) => unit.semCadastroNoPanteon).length;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -2236,6 +2249,18 @@ export function UnidadesTab({
         <span className="text-xs font-medium text-ink-muted">
           {visible.length} de {units.length}
         </span>
+        {/* ⚠️ O BURACO DO SYNC À VISTA, E NÃO SÓ NO LOG. A unidade sem cadastro no Panteon conta no
+            vermelho (no filtro "Bloqueado" e no card), e sem este aviso o número do card não bateria
+            com o que a pessoa acha que bloqueou. Ícone com o porquê no hover, sem texto solto. */}
+        {semCadastro > 0 ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-line px-2 py-0.5 text-[11px] font-semibold text-ink-soft"
+            title={`${semCadastro} ${semCadastro === 1 ? "unidade ainda não entrou" : "unidades ainda não entraram"} no cadastro. ${semCadastro === 1 ? "Conta" : "Contam"} como ocupada${semCadastro === 1 ? "" : "s"} (no filtro Bloqueado) até a próxima sincronização.`}
+          >
+            <CircleAlert aria-hidden="true" className="size-3.5" />
+            {semCadastro} sem cadastro
+          </span>
+        ) : null}
 
         {/* ⚠️ O EMPREENDIMENTO VEM DAQUI, e é por isso que o botão mora nesta aba e não no Setup:
             quem está nesta ficha já está dentro dele, então a escolha mais perigosa do processo
@@ -2603,11 +2628,32 @@ function UnitStatusPill({ unit }: { unit: ApoloEnterpriseUnit }) {
   // cores que temos hoje no Hércules para os status"*). As famílias já eram as mesmas nas duas
   // telas; o que divergia era o tom, e duas telas do mesmo sistema mostrando o mesmo lote em dois
   // azuis diferentes faz a pessoa duvidar se está olhando a mesma coisa.
-  const tone = CLASSES_DO_SELO[situacaoConhecida(unit.bucket)];
+  //
+  // ⚠️ SEM CADASTRO NO PANTEON NÃO É BLOQUEIO. A unidade conta como ocupada (o balde é o do
+  // vermelho, para nunca sair verde), mas o selo é neutro e tracejado: ninguém a bloqueou, falta o
+  // sync trazê-la. Vermelho com outro texto faria a pessoa procurar um bloqueio que não existe.
+  const tone = unit.semCadastroNoPanteon
+    ? "border-dashed border-line bg-subtle text-ink-soft"
+    : CLASSES_DO_SELO[situacaoConhecida(unit.bucket)];
+
+  // O bloqueio feito no Panteon mostra quem, quando e por quê no hover (o texto na tela é curto).
+  const detalhe = unit.bloqueio
+    ? [
+        unit.bloqueio.motivo,
+        unit.bloqueio.porNome,
+        new Date(unit.bloqueio.em).toLocaleDateString("pt-BR"),
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : unit.semCadastroNoPanteon
+      ? // Sem nome de sistema legado no texto: a mesma aba aparece no portal do cliente.
+        "Esta unidade ainda não entrou no cadastro. Conta como ocupada até a próxima sincronização."
+      : undefined;
 
   return (
     <span
       className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${tone}`}
+      title={detalhe}
     >
       {unit.status}
     </span>
@@ -2824,7 +2870,17 @@ function VendasTab({
               </button>
             ))}
             {data.bloqueadas.units > 0 ? (
-              <div className="inline-flex items-center gap-2 rounded-lg border border-line bg-subtle px-3 py-1.5">
+              // ⚠️ A SITUAÇÃO AQUI É A DO PANTEON (18/09/2026): o bloqueio feito no Hércules ou na
+              // aba Unidades conta, e a unidade sem cadastro no Panteon entra como ocupada. O hover
+              // separa as duas, para a pessoa não procurar bloqueio onde falta cadastro.
+              <div
+                className="inline-flex items-center gap-2 rounded-lg border border-line bg-subtle px-3 py-1.5"
+                title={
+                  (data.semCadastroNoPanteon?.units ?? 0) > 0
+                    ? `${data.bloqueadas.units - (data.semCadastroNoPanteon?.units ?? 0)} bloqueadas e ${data.semCadastroNoPanteon?.units ?? 0} sem cadastro no Panteon (ocupadas até o sync).`
+                    : undefined
+                }
+              >
                 <Ban aria-hidden="true" className="size-3.5 text-ink-muted" />
                 <span className="text-xs font-semibold text-ink-soft">
                   Bloqueadas
@@ -2832,6 +2888,9 @@ function VendasTab({
                 <span className="text-sm font-semibold tabular-nums text-ink">
                   {data.bloqueadas.units}
                 </span>
+                {(data.semCadastroNoPanteon?.units ?? 0) > 0 ? (
+                  <CircleAlert aria-hidden="true" className="size-3.5 text-ink-muted" />
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -3194,6 +3253,15 @@ function VendaPropostaModal({
             </p>
           ) : (
             <div className="grid gap-4">
+              {/* ⚠️ A COLUNA É DO PANTEON, O DETALHE É DO C2X (18/09/2026). Quando o processo desta
+                  unidade está no Hércules (reserva ou proposta nova) e a última proposta do C2X já
+                  morreu, o que aparece abaixo é história: sem este aviso, alguém leria o plano do
+                  comprador antigo como se fosse o de agora. */}
+              {unit.vendaNoC2x === false ? (
+                <p className="m-0 rounded-lg border border-dashed border-line bg-subtle/60 px-3 py-2 text-xs font-medium text-ink-soft">
+                  A situação desta unidade vem do Panteon. Abaixo, a última proposta registrada no C2X, que já não está ativa.
+                </p>
+              ) : null}
               {/* Plano comercial. */}
               <section>
                 <p className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">

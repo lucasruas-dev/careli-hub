@@ -14,12 +14,27 @@
 // cancelamento (é onde mora a reprovação de crédito de uma pessoa física). O incorporador é
 // CLIENTE, não operador: ele é parte do contrato e enxerga o nome de quem comprou a unidade dele,
 // e nada além disso.
+//
+// ⚠️ A SITUAÇÃO DE CADA UNIDADE É A DA RÉGUA ÚNICA DESDE 18/09/2026, e não o estágio do C2X. Lucas:
+// *"esses status tem que morar em um so lugar"* · *"no c2x não precisa olhar"* · *"quero é dentro do
+// panteon tem que ter o mesmo status"*. Até aqui a TelaVendas escrevia a unidade pelo estágio da
+// última proposta do legado mais o `sale_blocked`: o lote reservado no Hércules saía "Disponível"
+// aqui e "Reservado" na tela Venda e na aba Unidades da mesma ficha.
+//
+// ⚠️ QUEM APLICA A RÉGUA É A LEITURA, E NÃO ESTE ARQUIVO. `loadApoloEnterpriseVendas`
+// (lib/apolo/vendas.ts) já entrega cada unidade com `stage` e `blocked` da régua
+// (lib/hercules/situacao-da-unidade.ts) e o funil e as bloqueadas recontados por elas, numa leitura
+// só da régua por requisição. Aqui não se decide situação nenhuma: só se DOBRA o estágio nos baldes
+// que o cliente lê, e a dobra é a mesma de `baldeDaSituacao` (`estagioDaSituacao` e o balde
+// `bloqueado` voltam ao balde da régua; o teste trava as nove situações). Uma segunda aplicação da
+// régua aqui seria uma segunda leitura, e uma segunda cópia da regra.
 import {
   APOLO_VENDA_STAGE_LABELS,
   type ApoloEnterpriseVendas,
   type ApoloVendaStage,
   type ApoloVendaUnit,
 } from "@/lib/apolo/vendas";
+import { rotuloDoBalde } from "@/lib/hercules/situacao-da-unidade";
 
 export type BaldeDeVenda =
   | "bloqueada"
@@ -37,12 +52,18 @@ export const BALDE_ORDEM: BaldeDeVenda[] = [
   "bloqueada",
 ];
 
+/**
+ * O nome de cada balde é o da régua (`rotuloDoBalde`), o mesmo dos cards de Produtos e da aba
+ * Unidades. A CHAVE `bloqueada` fica (é o contrato do payload com a TelaVendas); a PALAVRA não é
+ * mais escrita aqui: "Bloqueada" nesta tela e "Bloqueado" no card ao lado eram dois nomes para o
+ * mesmo lote.
+ */
 export const BALDE_LABELS: Record<BaldeDeVenda, string> = {
-  bloqueada: "Bloqueada",
-  disponivel: "Disponível",
-  negociacao: "Em negociação",
-  reservado: "Reservado",
-  vendido: "Vendido",
+  bloqueada: rotuloDoBalde("bloqueado"),
+  disponivel: rotuloDoBalde("disponivel"),
+  negociacao: rotuloDoBalde("negociacao"),
+  reservado: rotuloDoBalde("reservado"),
+  vendido: rotuloDoBalde("vendido"),
 };
 
 /** A dobra dos seis estágios do funil interno nos quatro baldes que o cliente lê. */
@@ -144,7 +165,11 @@ export type RitmoDeVendas = {
   /** Unidades por mês, contadas do primeiro mês com venda até hoje. */
   mediaMensal: number;
   meses: MesDeVenda[];
-  /** Vendida sem data de mudança de estágio no C2X: fica fora do gráfico, e a tela avisa. */
+  /**
+   * Vendida sem data: sem mudança de estágio no C2X, ou vendida pela régua do Panteon sem o C2X
+   * concordar (a leitura só guarda a data do C2X quando os dois estágios batem). Fica fora do
+   * gráfico, e a tela avisa.
+   */
   semData: number;
 };
 
@@ -245,6 +270,16 @@ export type UnidadeDoPortal = {
 /**
  * A lista de unidades recortada para o portal: só o que o dono do empreendimento precisa ver.
  *
+ * O `balde` e a `situacao` de cada linha saem do `stage` e do `blocked` que a leitura já escreveu
+ * pela régua única (ver o topo do arquivo): esta função não olha nada do legado para decidir.
+ *
+ * ⚠️ O POPUP DA PROPOSTA SÓ LIGA COM VENDA VIVA NO C2X (`vendaNoC2x`). O popup abre a proposta do
+ * LEGADO daquela unidade. Numa unidade reservada ou em proposta no Hércules, sem venda viva no C2X,
+ * a proposta que o C2X guarda é história (às vezes de outro cliente): abrir o popup mostraria ao
+ * dono do loteamento o comprador errado ao lado da reserva de agora. Sem `unitId` o clique
+ * simplesmente não liga, o mesmo caminho da linha sem id. `vendaNoC2x` ausente (unidade montada à
+ * mão, leitura antiga) mantém o comportamento de antes.
+ *
  * Ficam de fora `arId` e o `entityId` do CRM: nenhum aparece na tela, e id que trafega é id que
  * um dia alguém tenta usar como parâmetro. O `unitId` é a exceção DELIBERADA (é o que liga o
  * popup da proposta na TelaVendas), e só passa porque a rota que o consome reconfere o escopo
@@ -268,8 +303,9 @@ export function unidadesParaOPortal(unidades: ApoloVendaUnit[]): UnidadeDoPortal
           : APOLO_VENDA_STAGE_LABELS[unidade.stage],
       unidade: unidade.code,
       // `ApoloVendaUnit.id` chega como string do loader; id que não vira número positivo sai
-      // nulo, e o clique daquela linha simplesmente não liga (a tela degrada, não quebra).
-      unitId: Number(unidade.id) > 0 ? Number(unidade.id) : null,
+      // nulo, e o clique daquela linha simplesmente não liga (a tela degrada, não quebra). Sem
+      // venda viva no C2X, também nulo: ver o comentário da função.
+      unitId: unidade.vendaNoC2x !== false && Number(unidade.id) > 0 ? Number(unidade.id) : null,
       valor: unidade.vgv,
     };
   });
@@ -278,6 +314,9 @@ export function unidadesParaOPortal(unidades: ApoloVendaUnit[]): UnidadeDoPortal
 /**
  * O balde de UMA unidade, pela mesma regra do agregado: bloqueada só conta à parte quando não há
  * venda em andamento. Unidade com proposta viva é assunto de venda, mesmo com a trava ligada.
+ *
+ * Com o `stage` e o `blocked` que a leitura escreve pela régua, isto é exatamente `baldeDaSituacao`
+ * (com a chave `bloqueada` no lugar de `bloqueado`). O teste trava as nove situações.
  */
 export function baldeDaUnidade(unidade: ApoloVendaUnit): BaldeDeVenda {
   const balde = BALDE_POR_ESTAGIO[unidade.stage];

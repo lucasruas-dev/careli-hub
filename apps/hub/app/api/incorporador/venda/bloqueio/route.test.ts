@@ -15,15 +15,27 @@ import { describe, expect, it } from "vitest";
 // o que não roda não protege. O que estas asserções cobrem é a classe de defeito que já aconteceu:
 // constante trocada, guarda apagada, `select` sem `where`. Todas elas são visíveis no texto, e
 // todas passariam despercebidas por um typecheck.
+//
+// ⚠️ DESDE 18/09/2026 A REGRA MORA EM lib/hercules/bloquear-unidade-server.ts, e as duas portas (o
+// portal e o Apolo) a chamam. Por isso o texto lido aqui são DOIS arquivos: a ROTA, que só pode ter a
+// porta do portal (sessão, escopo, quem opera o produto), e a REGRA, que tem as travas.
 const ROTA = readFileSync(join(__dirname, "route.ts"), "utf8");
+const REGRA = readFileSync(
+  join(__dirname, "../../../../../lib/hercules/bloquear-unidade-server.ts"),
+  "utf8",
+);
+const [REGRA_DO_BLOQUEIO = "", REGRA_DO_DESBLOQUEIO = ""] = REGRA.split(
+  "export async function desbloquearUnidade",
+);
 
 describe("o workspace", () => {
   it("é `careli`, como nas nove rotas irmãs", () => {
-    expect(ROTA).toContain('const WORKSPACE = "careli"');
+    expect(REGRA).toContain('const WORKSPACE = "careli"');
   });
 
   it("não é um uuid", () => {
     // O defeito exato de 14/09/2026.
+    expect(REGRA).not.toMatch(/const WORKSPACE = "[0-9a-f]{8}-/);
     expect(ROTA).not.toMatch(/const WORKSPACE = "[0-9a-f]{8}-/);
   });
 });
@@ -43,35 +55,54 @@ describe("a autorização", () => {
     const chamadas = ROTA.match(/autorizarOperacaoDeVenda\(request\)/g) ?? [];
     expect(chamadas.length).toBe(2);
   });
+
+  it("o escopo vem da sessão, nos dois verbos", () => {
+    const chamadas = ROTA.match(/idsDaSessao\(auth\.sessao\)/g) ?? [];
+    expect(chamadas.length).toBe(2);
+  });
 });
 
-describe("as travas do bloqueio", () => {
+describe("a rota não refaz a regra: chama a de um lugar só", () => {
+  it("os dois verbos chamam a regra compartilhada", () => {
+    expect(ROTA).toContain('from "@/lib/hercules/bloquear-unidade-server"');
+    expect(ROTA).toContain("await bloquearUnidade(admin, ");
+    expect(ROTA).toContain("await desbloquearUnidade(admin, ");
+  });
+
+  it("⚠️ e não grava nada por conta própria", () => {
+    // Um `.update(` aqui seria uma segunda régua de bloqueio, a que o Apolo não veria.
+    expect(ROTA).not.toContain(".update(");
+    expect(ROTA).not.toContain('.from("hercules_unidades")');
+    expect(ROTA).not.toContain('.from("hercules_propostas")');
+  });
+});
+
+describe("as travas do bloqueio (na regra)", () => {
   it("recusa a linha espelho", () => {
     // Bloquear o registro antigo não tira o lote da venda: quem vende é a gleba.
-    expect(ROTA).toContain("unidade.espelho_de");
+    expect(REGRA_DO_BLOQUEIO).toContain("unidade.espelho_de");
   });
 
   it("⚠️ \"está livre?\" é a régua ÚNICA, a mesma que pinta a grade (Lucas, 18/09/2026)", () => {
     // A régua pergunta pelo TERRENO (VOC0305 livre com o gêmeo VLO0305 em proposta), pela ETAPA (e
     // não por `aberta`, que nunca volta para false) e pela RESERVA do Hércules e do evento. O
-    // comportamento está provado em route.comportamento.test.ts; aqui, que a rota não voltou a
-    // fazer a conta dela.
-    expect(ROTA).toContain('from "@/lib/hercules/situacao-da-unidade"');
-    expect(ROTA).toContain("lerSituacaoDasUnidades(admin, ");
-    expect(ROTA).toContain("estaLivre(situacao)");
-    expect(ROTA).not.toContain('.from("hercules_propostas")');
-    expect(ROTA).not.toContain('.eq("aberta"');
-    expect(ROTA).not.toContain('unidade.situacao !== "disponivel"');
+    // comportamento está provado em route.comportamento.test.ts; aqui, que ninguém voltou a fazer a
+    // conta na mão.
+    expect(REGRA).toContain('from "./situacao-da-unidade"');
+    expect(REGRA).toContain("lerSituacaoDasUnidades(client, ");
+    expect(REGRA_DO_BLOQUEIO).toContain("estaLivre(situacao)");
+    expect(REGRA).not.toContain('.from("hercules_propostas")');
+    expect(REGRA).not.toContain('.eq("aberta"');
+    expect(REGRA).not.toContain('unidade.situacao !== "disponivel"');
   });
 
   it("⚠️ situação que não se leu não é livre", () => {
-    expect(ROTA).toContain("if (!situacao)");
+    expect(REGRA_DO_BLOQUEIO).toContain("if (!situacao)");
   });
 
   it("a conferência vem ANTES da escrita, nos dois verbos", () => {
-    const [post, del] = ROTA.split("export async function DELETE");
-    for (const verbo of [post ?? "", del ?? ""]) {
-      const conferencia = verbo.indexOf("await situacaoCanonica(admin, unidade)");
+    for (const verbo of [REGRA_DO_BLOQUEIO, REGRA_DO_DESBLOQUEIO]) {
+      const conferencia = verbo.indexOf("await situacaoDoTerreno(client, unidade)");
       const escrita = verbo.indexOf(".update(");
       expect(conferencia).toBeGreaterThan(-1);
       expect(escrita).toBeGreaterThan(conferencia);
@@ -81,13 +112,13 @@ describe("as travas do bloqueio", () => {
   it("grava com UPDATE condicional e confere o que casou", () => {
     // Sem isto, `.update()` devolve sucesso casando zero linhas, e a corrida com uma reserva
     // simultânea passaria calada.
-    expect(ROTA).toContain('.eq("situacao", "disponivel")');
-    expect(ROTA).toContain('.select("id")');
+    expect(REGRA_DO_BLOQUEIO).toContain('.eq("situacao", "disponivel")');
+    expect(REGRA_DO_BLOQUEIO).toContain('.select("id")');
   });
 
   it("carimba autor, nome e data", () => {
-    for (const coluna of ["bloqueado_em", "bloqueado_por", "bloqueado_por_nome"]) {
-      expect(ROTA).toContain(coluna);
+    for (const coluna of ["bloqueado_em", "bloqueado_por", "bloqueado_por_nome", "bloqueio_motivo"]) {
+      expect(REGRA_DO_BLOQUEIO).toContain(coluna);
     }
   });
 });
@@ -103,32 +134,44 @@ describe("quem opera o produto decide a escrita (Lucas, 16/09/2026)", () => {
 
   it("a régua vem ANTES da escrita, nos dois verbos", () => {
     const [post, del] = ROTA.split("export async function DELETE");
-    for (const verbo of [post ?? "", del ?? ""]) {
+    for (const [verbo, chamada] of [
+      [post ?? "", "bloquearUnidade(admin"],
+      [del ?? "", "desbloquearUnidade(admin"],
+    ] as const) {
       const regua = verbo.indexOf("autorizarEscritaNoProduto(");
-      const escrita = verbo.indexOf(".update(");
+      const escrita = verbo.indexOf(chamada);
       expect(regua).toBeGreaterThan(-1);
       expect(escrita).toBeGreaterThan(regua);
     }
   });
 });
 
-describe("o desbloqueio", () => {
-  it("existe", () => {
+describe("o desbloqueio (na regra)", () => {
+  it("existe nas duas pontas", () => {
     expect(ROTA).toContain("export async function DELETE");
+    expect(REGRA).toContain("export async function desbloquearUnidade");
   });
 
   it("só desfaz bloqueio feito no Panteon", () => {
     // Desfazer os 1.554 herdados do C2X criaria divergência que a próxima carga reverte sozinha.
-    expect(ROTA).toContain("!unidade.bloqueado_em");
+    expect(REGRA_DO_DESBLOQUEIO).toContain("!ehBloqueioNativo(unidade)");
+  });
+
+  it("⚠️ e só com a régua dizendo `bloqueada` e sem outro dono no terreno", () => {
+    expect(REGRA_DO_DESBLOQUEIO).toContain('situacao !== "bloqueada"');
+    expect(REGRA_DO_DESBLOQUEIO).toContain("outrosDonosDoLote(client, situacoes, unidade.id");
+    const donos = REGRA_DO_DESBLOQUEIO.indexOf("outrosDonosDoLote(");
+    const escrita = REGRA_DO_DESBLOQUEIO.indexOf(".update(");
+    expect(escrita).toBeGreaterThan(donos);
   });
 
   it("limpa o carimbo junto", () => {
     // Sem limpar, a unidade seguiria protegida da carga como se ainda estivesse bloqueada.
-    expect(ROTA).toMatch(/bloqueado_em: null/);
-    expect(ROTA).toMatch(/bloqueio_motivo: null/);
+    expect(REGRA_DO_DESBLOQUEIO).toMatch(/bloqueado_em: null/);
+    expect(REGRA_DO_DESBLOQUEIO).toMatch(/bloqueio_motivo: null/);
   });
 
   it("também é condicional", () => {
-    expect(ROTA).toContain('.eq("situacao", "bloqueada")');
+    expect(REGRA_DO_DESBLOQUEIO).toContain('.eq("situacao", "bloqueada")');
   });
 });

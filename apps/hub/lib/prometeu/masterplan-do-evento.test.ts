@@ -31,6 +31,11 @@ function clienteFalso(tabelas: Record<string, Linha[]>, opts: { falhaEm?: string
           filtros.push((l) => aceitos.has(String(l[coluna])));
           return consulta;
         },
+        // As irmãs de gleba são lidas com `.is("espelho_de", null)` (ver "A FAMÍLIA DO PAI").
+        is(coluna: string, valor: unknown) {
+          filtros.push((l) => (valor === null ? l[coluna] === null || l[coluna] === undefined : l[coluna] === valor));
+          return consulta;
+        },
         not(coluna: string, operador: string, valor: unknown) {
           // Só o `not(coluna, "is", null)` que a leitura usa; qualquer outro é teste desatualizado.
           if (operador !== "is" || valor !== null) throw new Error(`not(${operador}) sem suporte no falso`);
@@ -140,12 +145,12 @@ describe("a mesma régua da tela Venda", () => {
     const { dados } = await masterplanDoEvento(client, EVENTO);
 
     expect(dados?.lotes).toEqual({
-      JDG0101: "vendido",
+      JDG0101: "negociacao",
       JDG0102: "reservado",
       JDG0103: "disponivel",
       JDG0104: "indisponivel",
     });
-    expect(dados?.contagem).toEqual({ disponivel: 1, indisponivel: 1, reservado: 1, vendido: 1 });
+    expect(dados?.contagem).toEqual({ disponivel: 1, indisponivel: 1, negociacao: 1, reservado: 1, vendido: 0 });
   });
 
   it("produto dividido: o código do pai e o da gleba respondem o mesmo, e o terreno conta uma vez", async () => {
@@ -165,7 +170,7 @@ describe("a mesma régua da tela Venda", () => {
     expect(dados?.lotes.VLO0305).toBe("reservado");
     expect(dados?.lotes.VOC0305).toBe("reservado");
     expect(dados?.lotes.VLO0306).toBe("disponivel");
-    expect(dados?.contagem).toEqual({ disponivel: 1, indisponivel: 0, reservado: 1, vendido: 0 });
+    expect(dados?.contagem).toEqual({ disponivel: 1, indisponivel: 0, negociacao: 0, reservado: 1, vendido: 0 });
   });
 });
 
@@ -202,10 +207,15 @@ describe("na dúvida, nunca anuncia disponível", () => {
   });
 });
 
-describe("a trava do evento só tapa buraco", () => {
-  it("lote sem cadastro no Panteon entra indisponível; lote com cadastro segue a régua única", async () => {
+// ⚠️ A TRAVA DO SETUP BLOQUEIA POR CIMA (era assim até 18/09/2026; a primeira passada a tinha
+// rebaixado a "só tapa buraco", e o lote travado com cadastro voltava a pintar verde).
+describe("a trava do evento bloqueia por cima", () => {
+  it("lote sem cadastro no Panteon entra indisponível; lote com cadastro livre também sai indisponível", async () => {
     const client = clienteFalso({
-      hercules_unidades: [unidade({ codigo: "JDG0101", id: "u1" })],
+      hercules_unidades: [
+        unidade({ codigo: "JDG0101", id: "u1" }),
+        unidade({ codigo: "JDG0102", id: "u2" }),
+      ],
     });
 
     const { dados } = await masterplanDoEvento(client, {
@@ -215,9 +225,41 @@ describe("a trava do evento só tapa buraco", () => {
 
     // Sem a trava, JDG0201 ficaria sem chave e o telão não o pintaria: lido como livre.
     expect(dados?.lotes.JDG0201).toBe("indisponivel");
-    // ⚠️ Com cadastro, a lista do evento não passa por cima: senão o telão voltaria a divergir da
-    // tela Venda. Travar lote com cadastro é bloqueá-lo no Panteon.
-    expect(dados?.lotes.JDG0101).toBe("disponivel");
-    expect(dados?.contagem).toEqual({ disponivel: 1, indisponivel: 1, reservado: 0, vendido: 0 });
+    expect(dados?.lotes.JDG0101).toBe("indisponivel");
+    expect(dados?.lotes.JDG0102).toBe("disponivel");
+    expect(dados?.contagem).toEqual({ disponivel: 1, indisponivel: 2, negociacao: 0, reservado: 0, vendido: 0 });
+  });
+
+  it("travar o código do pai trava a gleba: é o mesmo chão", async () => {
+    const client = clienteFalso({
+      hercules_unidades: [
+        unidade({ codigo: "VLO0305", enterprise: "35", espelhoDe: "gleba-1", id: "pai-1" }),
+        unidade({ codigo: "VOC0305", enterprise: "37", id: "gleba-1" }),
+      ],
+    });
+
+    const { dados } = await masterplanDoEvento(client, {
+      ...EVENTO,
+      config: { lotesBloqueados: ["VLO0305"] },
+      enterpriseId: "35",
+    });
+
+    expect(dados?.lotes.VLO0305).toBe("indisponivel");
+    expect(dados?.lotes.VOC0305).toBe("indisponivel");
+    expect(dados?.contagem.indisponivel).toBe(1);
+  });
+
+  it("lote já ocupado pela régua fica com a palavra dela (a cor é a mesma, a contagem bate com o Apolo)", async () => {
+    const client = clienteFalso({
+      hercules_reservas: [{ id: "h1", situacao: "ativa", unidade_id: "u1", workspace_id: "careli" }],
+      hercules_unidades: [unidade({ codigo: "JDG0101", id: "u1" })],
+    });
+
+    const { dados } = await masterplanDoEvento(client, {
+      ...EVENTO,
+      config: { lotesBloqueados: ["JDG0101"] },
+    });
+
+    expect(dados?.lotes.JDG0101).toBe("reservado");
   });
 });
