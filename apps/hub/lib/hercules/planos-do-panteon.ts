@@ -28,9 +28,14 @@ import type {
   SlotDaPa,
 } from "@/lib/apolo/planos-comerciais";
 import { INDICES as ROTULOS_DE_INDICE } from "@/lib/apolo/planos-comerciais";
+import { descontoDoPlano } from "@/lib/hercules/ajuste-de-preco";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import type { PlanosDoEmpreendimento } from "@/lib/apolo/planos-comerciais-c2x";
-import { ehColunaDaRessalvaAusente, limparRessalva } from "@/lib/temis/planos";
+import {
+  ehColunaDaRessalvaAusente,
+  ehColunaDoDescontoAusente,
+  limparRessalva,
+} from "@/lib/temis/planos";
 
 type Cliente = Pick<SupabaseClient, "from">;
 
@@ -46,6 +51,8 @@ export type LinhaDoPlano = {
   anuais_valor?: null | number | string;
   ativo?: boolean;
   categoria_id?: null | string;
+  /** Ausente enquanto a migration 0178 não roda. */
+  desconto_percentual?: null | number | string;
   enterprise_id: string;
   entrada_percentual: null | number | string;
   id?: null | string;
@@ -74,6 +81,15 @@ export type PlanoDoPanteon = PlanoComercial & {
   /** As anuais do plano (0138). Andam em par: meia configuração não é anual nenhuma. */
   anuaisQuantidade: null | number;
   anuaisValor: null | number;
+  /**
+   * O desconto do plano sobre a tabela (0178), 0 a menos de 100. Zero = sem desconto, que é o que
+   * todo plano tem sem a migration e o que os planos de todos os empreendimentos fora o Garden têm.
+   *
+   * ⚠️ É O PREÇO DO PLANO, NÃO EXCEÇÃO (Lucas, 18/09/2026: *"tem que ser igual o mmendes"*): o
+   * simulador o carrega no campo de desconto quando o plano é escolhido, e a proposta com ele não
+   * pede motivo. Ver `tabela-do-lote.ts`.
+   */
+  descontoPercentual: number;
   /** `temis_planos.id`. Nulo só quando a leitura não pediu a coluna. */
   id: null | string;
   /**
@@ -143,6 +159,8 @@ export function comoPlano(linha: LinhaDoPlano): PlanoDoPanteon {
     anuaisQuantidade: anuaisQuantidade && anuaisValor ? anuaisQuantidade : null,
     anuaisValor: anuaisQuantidade && anuaisValor ? anuaisValor : null,
     categoriaId: String(linha.categoria_id ?? "").trim() || null,
+    // Coluna ausente (0178 pendente), nula ou fora da faixa: sem desconto.
+    descontoPercentual: descontoDoPlano(linha.desconto_percentual),
     enterpriseId: String(linha.enterprise_id ?? "").trim() || null,
     entradaPercentual: numero(linha.entrada_percentual) ?? 0,
     id: String(linha.id ?? "").trim() || null,
@@ -180,6 +198,35 @@ const COLUNAS_DO_PLANO =
   "id,enterprise_id,categoria_id,nome,parcelas,entrada_percentual,juros_taxa,juros_periodicidade,juros_convencao,indice_correcao,sistema_amortizacao,slot,ativo,ordem,anuais_quantidade,anuais_valor";
 
 /**
+ * As colunas pedidas, com as que podem ainda não existir no banco.
+ *
+ * ⚠️ UMA FUNÇÃO SÓ PARA AS TRÊS LEITURAS de `temis_planos` que vendem (a Mesa, o portal e o
+ * espelho): cada coluna nova (a ressalva da 0168, o desconto da 0178) entra aqui com o seu
+ * interruptor, e a leitura desliga só a que o banco disse não conhecer.
+ */
+export function colunasComAsNovas(
+  base: string,
+  novas: { desconto: boolean; ressalva: boolean },
+): string {
+  return [base, novas.ressalva ? "ressalva" : null, novas.desconto ? "desconto_percentual" : null]
+    .filter(Boolean)
+    .join(",");
+}
+
+/**
+ * O erro é de uma coluna nova que o banco ainda não tem? Devolve os interruptores sem ela, ou nulo
+ * quando o erro é outro (e aí ele sobe, como sempre subiu).
+ */
+export function semAColunaQueFaltou(
+  erro: unknown,
+  novas: { desconto: boolean; ressalva: boolean },
+): null | { desconto: boolean; ressalva: boolean } {
+  if (novas.ressalva && ehColunaDaRessalvaAusente(erro)) return { ...novas, ressalva: false };
+  if (novas.desconto && ehColunaDoDescontoAusente(erro)) return { ...novas, desconto: false };
+  return null;
+}
+
+/**
  * Os planos cadastrados no Panteon para estes empreendimentos (ids do C2X).
  *
  * Devolve no mesmo formato de `lerPlanosDoC2x` para os dois poderem ser mesclados sem tradutor no
@@ -200,7 +247,10 @@ export async function lerPlanosDoPanteon(
   // simulador ofereciam o plano Investidor do Garden sem a condição "válido para as próximas 16
   // unidades", que só aparecia no Apolo. Enquanto a 0168 não roda, o primeiro erro que for DA
   // COLUNA faz a leitura seguir sem ela (plano sem etiqueta); qualquer outro erro lança, como antes.
-  let comRessalva = true;
+  //
+  // ⚠️ O DESCONTO DO PLANO (0178) TEM A MESMA TOLERÂNCIA (18/09/2026): sem a coluna, o plano vem
+  // sem desconto, que é exatamente o que a Mesa vendia antes dela.
+  let novas = { desconto: true, ressalva: true };
   // ⚠️ EM LOTES DE 100: `.in()` monta a lista na URL, e um escopo grande estoura o limite do
   // PostgREST sem erro claro.
   for (let de = 0; de < ids.length; ) {
@@ -209,14 +259,15 @@ export async function lerPlanosDoPanteon(
       // ⚠️ `categoria_id` ENTRA AQUI, e a ausência dela era um vazamento esperando o cadastro.
       // Sem a coluna, um plano preso a uma categoria chegava à Mesa indistinguível de um plano do
       // produto — e valeria para todos os lotes.
-      .select(comRessalva ? `${COLUNAS_DO_PLANO},ressalva` : COLUNAS_DO_PLANO)
+      .select(colunasComAsNovas(COLUNAS_DO_PLANO, novas))
       .eq("workspace_id", "careli")
       .eq("ativo", true)
       .in("enterprise_id", ids.slice(de, de + 100))
       .order("ordem", { ascending: true });
 
-    if (error && comRessalva && ehColunaDaRessalvaAusente(error)) {
-      comRessalva = false;
+    const semElas = error ? semAColunaQueFaltou(error, novas) : null;
+    if (semElas) {
+      novas = semElas;
       continue;
     }
     if (error) throw new Error(error.message);

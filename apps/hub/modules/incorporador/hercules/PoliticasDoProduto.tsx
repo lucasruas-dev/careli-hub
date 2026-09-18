@@ -353,6 +353,12 @@ function CartaoDoPlano({ plano }: { plano: PlanoDoPortal }) {
         <Fato rotulo="Juros" valor={plano.juros} />
         <Fato rotulo="Correção" valor={plano.indice} />
         <Fato detalhe={plano.tabelaDetalhe} rotulo="Tabela" valor={plano.tabela} />
+        {/* O desconto do plano é o preço dele (Lucas, 18/09/2026: "tem que ser igual o mmendes"). */}
+        {plano.desconto ? (
+          <div className="col-span-2">
+            <Fato rotulo="Desconto" valor={plano.desconto} />
+          </div>
+        ) : null}
         {plano.anuais ? (
           <div className="col-span-2">
             <Fato rotulo="Anuais" valor={plano.anuais} />

@@ -16,10 +16,10 @@
 // que é exatamente o problema que `planos-comerciais.ts` foi criado para acabar.
 //
 // ⚠️ A ENTRADA NÃO TEM VALOR PRESENTE, e é a diferença mais fácil de errar. O balão anual abate o
-// saldo descontado (é dinheiro do futuro abatendo saldo de hoje, e a conta é a do simulador —
-// `valorPresenteDosBaloes`); a entrada parcelada, não: 10 mil em 2x é 5 mil e 5 mil, porque é
-// assim que o comercial vende e é assim que o boleto sai. Descontar a segunda metade encolheria a
-// entrada sem que ninguém tivesse negociado isso.
+// saldo pela conta do simulador (`anuaisQueAbatemOSaldo`: valor presente na Price e no SAC, valor de
+// face no SACOC); a entrada parcelada, não: 10 mil em 2x é 5 mil e 5 mil, porque é assim que o
+// comercial vende e é assim que o boleto sai. Descontar a segunda metade encolheria a entrada sem
+// que ninguém tivesse negociado isso.
 //
 // ⚠️ NADA DE `Date.now()`. Cronograma é função de contrato, não de relógio: a mesma proposta,
 // reaberta em dezembro, tem que devolver exatamente as mesmas datas que devolveu em outubro.
@@ -32,7 +32,7 @@ import {
   primeiraParcelaSac,
   taxaMensal,
 } from "@/lib/apolo/planos-comerciais";
-import { valorPresenteDosBaloes } from "@/lib/hercules/simulacao";
+import { anuaisQueAbatemOSaldo } from "@/lib/hercules/simulacao";
 
 /** Quantos meses tem um ciclo de reajuste. O aniversário do contrato é anual em toda a casa. */
 const MESES_DO_CICLO = 12;
@@ -70,10 +70,11 @@ export type TotaisDoCronograma = {
   anuais: number;
   entrada: number;
   /**
-   * Negociado − entrada − VALOR PRESENTE das anuais. É o que a série mensal amortiza.
+   * O saldo que a série mensal amortiza: negociado − entrada − o que as anuais abatem.
    *
-   * ⚠️ NÃO É `negociado − entrada − anuais`: o balão que cai daqui a três anos não abate saldo de
-   * hoje pelo valor de face. Ver o aviso no cálculo, em `montarCronograma`.
+   * ⚠️ NO SACOC É `negociado − entrada − anuais` PELO VALOR DE FACE, e a folha fecha ao centavo
+   * (18/09/2026, "tem que ser igual o mmendes"). Na Price e no SAC as anuais abatem pelo valor
+   * presente, e aí o saldo é maior que essa diferença. Ver `anuaisQueAbatemOSaldo`.
    */
   financiado: number;
   /** Tudo o que o comprador desembolsa, somando as três séries. */
@@ -315,7 +316,7 @@ const somar = (parcelas: ParcelaDoCronograma[]): number =>
  *
  * A ordem das datas, como o Lucas ditou: a primeira da entrada é a data informada; as demais da
  * entrada caem no mesmo dia dos meses seguintes; a primeira mensal cai no mês seguinte à ÚLTIMA da
- * entrada; as anuais começam doze meses depois da primeira mensal e seguem uma por ano.
+ * entrada; a anual k vence junto com a mensal 12k (a 1ª com a 12ª mensal) e seguem uma por ano.
  *
  * ⚠️ A ENTRADA MANTÉM O DIA DA DATA INFORMADA; A SÉRIE MENSAL SEGUE O `diaDeVencimento`. Na tela os
  * dois coincidem (a data já vem preenchida no dia escolhido), e é por isso que o exemplo dele não
@@ -405,8 +406,16 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
 
   // ── Anuais ──
   //
-  // ⚠️ A SÉRIE AGENDA O VALOR DE FACE — é o que o boleto do aniversário cobra. O desconto a valor
-  // presente entra só no abatimento do saldo, mais abaixo, e as duas coisas não se misturam.
+  // ⚠️ A SÉRIE AGENDA O VALOR DE FACE — é o que o boleto do aniversário cobra. Quanto a anual abate
+  // do saldo é outra pergunta, respondida mais abaixo pelo sistema do plano.
+  //
+  // ⚠️ A ANUAL k VENCE JUNTO COM A MENSAL 12k (18/09/2026), e não um mês depois dela. Até aqui a
+  // anual k caía 12k meses DEPOIS da primeira mensal, que é a mensal 12k + 1: no INVESTIDOR do
+  // Garden (36x, 3 anuais) a última mensal vencia em 10/10/2029 e a 3ª anual em 10/11/2029, um
+  // balão de R$ 30.000 um mês depois do fim do contrato. Com a mensal 12k a última anual nunca passa
+  // da última mensal, porque o teto de anuais é `floor(prazo ÷ 12)`. É também o mês que o valor
+  // presente da Price sempre usou (`valorPresenteDosBaloes`, 12k meses à frente) e o `fatorBaloes`
+  // do mapa da MMendes.
   const listaDasAnuais: ParcelaDoCronograma[] = Array.from(
     { length: quantasAnuais },
     (_, k) => ({
@@ -414,7 +423,8 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
       total: quantasAnuais,
       valor: emReais(anuaisValor),
       vencimento: escreverDia(
-        somarMeses(primeiraMensal, MESES_DO_CICLO * (k + 1), diaDeVencimento),
+        // `k` começa em zero: a anual 1 é a mensal 12, que está 11 meses depois da primeira.
+        somarMeses(primeiraMensal, MESES_DO_CICLO * (k + 1) - 1, diaDeVencimento),
       ),
     }),
   );
@@ -423,18 +433,25 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // ── O saldo financiado e a parcela ──
   const i = taxaMensal(plano);
 
-  // ⚠️ A ANUAL ABATE O SALDO PELO VALOR PRESENTE, E NÃO PELO TOTAL DE FACE. São duas perguntas
-  // diferentes sobre o mesmo balão: quanto o comprador desembolsa no aniversário (face, e é isso
-  // que a série acima agenda) e quanto ele vale HOJE para derrubar o saldo que a série mensal
-  // amortiza. Abater três balões de 2027, 2028 e 2029 como se fossem dinheiro de hoje derruba a
-  // parcela abaixo do que o contrato consegue cumprir — é o aviso de `montarProposta`, em
-  // `simulacao.ts`, e é por isso que a conta é REUSADA daqui e não reescrita: o coordenador acabou
-  // de ver a parcela no simulador, e o PDF que ele gera em seguida não pode discordar dela.
-  const valorPresenteDasAnuais = valorPresenteDosBaloes(
-    quantasAnuais,
-    anuaisValor,
-    i,
-  );
+  // ⚠️ QUANTO A ANUAL ABATE DO SALDO É A CONTA DO SIMULADOR, REUSADA (`anuaisQueAbatemOSaldo`): o
+  // coordenador acabou de ver a parcela no simulador, e o PDF que ele gera em seguida não pode
+  // discordar dela. Na Price e no SAC, pelo valor presente (o balão de 2029 vale hoje menos que a
+  // face); no SACOC, pelo valor de face (18/09/2026, "tem que ser igual o mmendes"), e a folha
+  // fecha: entrada + anuais + saldo das mensais = valor negociado.
+  //
+  // ⚠️ O SISTEMA É CLASSIFICADO COMO A SÉRIE MENSAL LOGO ABAIXO O CLASSIFICA: `price` e `sac` pelo
+  // nome, todo o resto é SACOC. Classificar diferente aqui daria uma parcela SACOC com o abatimento
+  // de Price, que é exatamente o descompasso que esta função existe para impedir.
+  const sistemaDaSerie =
+    plano.sistemaAmortizacao === "price" || plano.sistemaAmortizacao === "sac"
+      ? plano.sistemaAmortizacao
+      : "sacoc";
+  const anuaisNoSaldo = anuaisQueAbatemOSaldo({
+    quantidade: quantasAnuais,
+    sistemaAmortizacao: sistemaDaSerie,
+    taxaAoMes: i,
+    valor: anuaisValor,
+  });
 
   // ⚠️ COMPOSIÇÃO QUE NÃO FECHA QUEBRA AQUI, DE PROPÓSITO. Antes um `Math.max(0, …)` zerava o
   // saldo em silêncio e o documento saía com a série mensal inteira em R$ 0,00 mais balões
@@ -446,7 +463,7 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // do que não devolver nenhum. Zero exato NÃO quebra: entrada de 100% sem série mensal é venda à
   // vista, e é legítima.
   const financiado = emReais(
-    valorNegociado - totalDaEntrada - valorPresenteDasAnuais,
+    valorNegociado - totalDaEntrada - anuaisNoSaldo,
   );
   if (financiado < 0) {
     throw new Error(

@@ -237,12 +237,27 @@ export type PeriodoDoPainel = { ate?: string; de?: string };
  */
 export type PlanoDaVenda = {
   /**
+   * As anuais do plano (0138), quando ele tem. Ausente = sem anual de plano (o C2X não tem).
+   *
+   * ⚠️ JÁ VIAJAVAM NO JSON DA ROTA E NINGUÉM AS LIA (Lucas, 18/09/2026: *"esta faltando as
+   * anuais"*). Declaradas aqui, o simulador as usa no cartão e no clique (`tabela-do-lote.ts`).
+   */
+  anuaisQuantidade?: null | number;
+  anuaisValor?: null | number;
+  /**
    * A categoria do plano. Nulo = plano do produto inteiro.
    *
    * ⚠️ É O MENOR DEGRAU DA HIERARQUIA, e sem ele a tela não distingue "plano da categoria X" de
    * "plano do produto" — e o primeiro vaza para todos os lotes.
    */
   categoriaId?: null | string;
+  /**
+   * O desconto do plano sobre a tabela (0178), 0 a menos de 100. Ausente = sem desconto.
+   *
+   * ⚠️ É O PREÇO DO PLANO: escolher o plano põe este desconto no campo de desconto do simulador, e
+   * a proposta com ele não pede motivo (`ajusteFrenteAoPlano`).
+   */
+  descontoPercentual?: null | number;
   /** O `enterprise_id` de quem cadastrou o plano — o degrau em que ele vive. */
   enterpriseId?: null | string;
   entradaPercentual: number;

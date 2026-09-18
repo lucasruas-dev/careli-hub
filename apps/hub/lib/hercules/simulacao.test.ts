@@ -4,6 +4,7 @@ import { type PlanoComercial, taxaMensal } from "@/lib/apolo/planos-comerciais";
 import { montarCronograma } from "@/lib/hercules/cronograma";
 
 import {
+  anuaisQueAbatemOSaldo,
   entradaParaAParcela,
   fatorDeAnuidade,
   fatorDoFinanciado,
@@ -159,10 +160,10 @@ describe("⚠️ a MESMA MODAL não pode anunciar duas parcelas", () => {
       valorNegociado: 200_000,
     });
 
-    // O reforço abate o saldo pelo VALOR PRESENTE nos dois lados — é a conta que já existia, e ela
-    // não mudou com o sistema de amortização.
+    // O reforço abate o saldo pela MESMA regra nos dois lados (`anuaisQueAbatemOSaldo`): no SACOC,
+    // pelo valor de face desde 18/09/2026, e a folha fecha: 200.000 − 20.000 − 3 × 20.000.
     expect(c.totais.financiado).toBeCloseTo(doSimulador.financiado, 2);
-    expect(doSimulador.financiado).toBeLessThan(180_000);
+    expect(doSimulador.financiado).toBeCloseTo(120_000, 2);
     expect(c.mensais[0]?.valor).toBeCloseTo(doSimulador.parcela, 2);
     expect(Math.abs(c.totais.geral - doSimulador.total)).toBeLessThan(1);
   });
@@ -383,23 +384,41 @@ describe("entradaParaAParcela", () => {
     expect(price.entrada).toBeGreaterThan(70_000);
   });
 
-  it("⚠️ o balão continua abatendo pelo VALOR PRESENTE, seja qual for o sistema", () => {
-    // O reforço é dinheiro do futuro derrubando saldo de hoje; a pergunta não muda quando muda o
-    // jeito de dividir o saldo. Descontar o face abateria mais do que o balão vale.
+  // ⚠️ MUDOU EM 18/09/2026 (decisão do Zeus, pedido do Lucas: *"tem que ser igual o mmendes"*).
+  // Até aqui este teste dizia "o balão abate pelo VALOR PRESENTE, seja qual for o sistema". No SACOC
+  // da casa a parcela do 1º ciclo é o saldo dividido pelo prazo e os juros entram pelo degrau do
+  // aniversário; descontar o balão pela taxa do plano é raciocínio de Price, e dava outro número que
+  // o mapa da MMendes (`garden.html`, `condicoes`, anuais pelo valor de face). Na Price e no SAC o
+  // valor presente continua.
+  it("⚠️ no SACOC o balão abate pelo VALOR DE FACE; na Price e no SAC, pelo valor presente", () => {
     const vp = valorPresenteDosBaloes(3, 20_000, I_SACOC);
-    const r = entradaParaAParcela({
+    expect(vp).toBeLessThan(60_000);
+
+    const sacoc = entradaParaAParcela({
       baloesQuantidade: 3,
       baloesValor: 20_000,
-      parcela: 1_200,
+      parcela: 1_100,
       parcelas: 120,
       sistemaAmortizacao: "sacoc",
       taxaAoMes: I_SACOC,
       valor: 200_000,
     });
+    // 200.000 − 3 × 20.000 − (1.100 × 120) = 8.000, ao centavo.
+    expect(sacoc.entrada).toBe(8_000);
 
-    expect(vp).toBeLessThan(60_000);
-    // 200.000 − VP dos balões − (1.200 × 120).
-    expect(r.entrada).toBeCloseTo(200_000 - vp - 144_000, 2);
+    for (const sistema of ["price", "sac"] as const) {
+      const r = entradaParaAParcela({
+        baloesQuantidade: 3,
+        baloesValor: 20_000,
+        parcela: 1_100,
+        parcelas: 120,
+        sistemaAmortizacao: sistema,
+        taxaAoMes: I_SACOC,
+        valor: 200_000,
+      });
+      const saldo = 1_100 * fatorDoFinanciado({ parcelas: 120, sistemaAmortizacao: sistema, taxaAoMes: I_SACOC });
+      expect(r.entrada).toBeCloseTo(200_000 - vp - saldo, 6);
+    }
   });
 
   it("parcela alta demais devolve entrada zero e diz quanto sobra", () => {
@@ -435,5 +454,113 @@ describe("fatorDoFinanciado", () => {
     for (const sistema of ["price", "sac", "sacoc"] as const) {
       expect(fatorDoFinanciado({ parcelas: 120, sistemaAmortizacao: sistema, taxaAoMes: 0 })).toBe(120);
     }
+  });
+});
+
+// ── AS ANUAIS NO SALDO: VALOR DE FACE NO SACOC (18/09/2026) ──────────────────
+//
+// Decisão do Zeus sobre o pedido do Lucas (*"tem que ser igual o mmendes"*): no SACOC as anuais abatem
+// o saldo pelo valor de face, em `montarProposta`, `entradaParaAParcela` e `montarCronograma` juntos.
+// Price e SAC continuam a valor presente. A régua de regressão é a conta ANTIGA, copiada abaixo: tudo
+// o que não é SACOC com anual sai idêntico, ao bit.
+
+/** `montarProposta` como estava na main v1.349.6 (anuais sempre a valor presente). */
+function montarPropostaAntiga(e: Parameters<typeof montarProposta>[0]) {
+  const financiado = Math.max(
+    0,
+    e.valor - Math.max(0, e.entrada) - valorPresenteDosBaloes(e.baloesQuantidade, e.baloesValor, e.taxaAoMes),
+  );
+  return {
+    financiado,
+    parcela: parcelaDoFinanciado({
+      financiado,
+      parcelas: e.parcelas,
+      sistemaAmortizacao: e.sistemaAmortizacao,
+      taxaAoMes: e.taxaAoMes,
+    }),
+    total:
+      Math.max(0, e.entrada) +
+      somaDasMensais({
+        financiado,
+        parcelas: e.parcelas,
+        sistemaAmortizacao: e.sistemaAmortizacao,
+        taxaAoMes: e.taxaAoMes,
+      }) +
+      Math.max(0, e.baloesQuantidade) * Math.max(0, e.baloesValor),
+  };
+}
+
+describe("anuaisQueAbatemOSaldo", () => {
+  it("SACOC: o valor de face, com ou sem juros", () => {
+    for (const taxaAoMes of [0, 0.004868, I_SACOC, 0.01]) {
+      expect(
+        anuaisQueAbatemOSaldo({ quantidade: 4, sistemaAmortizacao: "sacoc", taxaAoMes, valor: 25_000 }),
+      ).toBe(100_000);
+    }
+  });
+
+  it("Price e SAC: o valor presente de sempre", () => {
+    for (const sistemaAmortizacao of ["price", "sac"] as const) {
+      expect(
+        anuaisQueAbatemOSaldo({ quantidade: 4, sistemaAmortizacao, taxaAoMes: I_SACOC, valor: 25_000 }),
+      ).toBe(valorPresenteDosBaloes(4, 25_000, I_SACOC));
+    }
+  });
+
+  it("sem anual é zero em qualquer sistema", () => {
+    for (const sistemaAmortizacao of ["price", "sac", "sacoc"] as const) {
+      expect(anuaisQueAbatemOSaldo({ quantidade: 0, sistemaAmortizacao, taxaAoMes: 0.01, valor: 25_000 })).toBe(0);
+      expect(anuaisQueAbatemOSaldo({ quantidade: 3, sistemaAmortizacao, taxaAoMes: 0.01, valor: 0 })).toBe(0);
+    }
+  });
+});
+
+describe("⚠️ regressão: Price, SAC e plano sem anual saem IDÊNTICOS à conta antiga", () => {
+  const TAXAS = [0, 0.004868, 0.005, I_SACOC, 0.007207, 0.008];
+  const PRECOS = [98_750, 136_521, 185_400.5, 435_000];
+
+  it("Price e SAC, com e sem anuais: financiado, parcela e total ao bit", () => {
+    let conferidos = 0;
+    for (const sistemaAmortizacao of ["price", "sac"] as const) {
+      for (const taxaAoMes of TAXAS) {
+        for (const valor of PRECOS) {
+          for (const [baloesQuantidade, baloesValor] of [[0, 0], [3, 15_000], [5, 25_000]] as const) {
+            const e = { baloesQuantidade, baloesValor, entrada: valor * 0.1, parcelas: 120, sistemaAmortizacao, taxaAoMes, valor };
+            const agora = montarProposta(e);
+            const antes = montarPropostaAntiga(e);
+            expect(agora.financiado).toBe(antes.financiado);
+            expect(agora.parcela).toBe(antes.parcela);
+            expect(agora.total).toBe(antes.total);
+            conferidos += 1;
+          }
+        }
+      }
+    }
+    expect(conferidos).toBe(2 * TAXAS.length * PRECOS.length * 3);
+  });
+
+  it("SACOC sem anual: financiado, parcela e total ao bit", () => {
+    for (const taxaAoMes of TAXAS) {
+      for (const valor of PRECOS) {
+        const e = { baloesQuantidade: 0, baloesValor: 0, entrada: valor * 0.1, parcelas: 120, sistemaAmortizacao: "sacoc" as const, taxaAoMes, valor };
+        expect(montarProposta(e)).toEqual(montarPropostaAntiga(e));
+      }
+    }
+  });
+
+  it("SACOC COM anual e juros: é o que muda, e muda exatamente o que as anuais deixam de ser descontadas", () => {
+    // O NORMAL do Garden, lote de R$ 435.000: 5 anuais de R$ 25.000, 6% a.a. equivalente.
+    const taxaAoMes = taxaMensal({ ...NORMAL_SACOC, jurosTaxa: 6, parcelas: 60 });
+    const e = { baloesQuantidade: 5, baloesValor: 25_000, entrada: 43_500, parcelas: 60, sistemaAmortizacao: "sacoc" as const, taxaAoMes, valor: 435_000 };
+    const agora = montarProposta(e);
+    const antes = montarPropostaAntiga(e);
+    expect(agora.financiado).toBe(435_000 - 43_500 - 125_000);
+    // (266.500 ÷ 60) = R$ 4.441,67, o número do mapa da MMendes; antes eram R$ 4.769,85.
+    expect(Math.round(agora.parcela * 100)).toBe(444_167);
+    expect(Math.round(antes.parcela * 100)).toBe(476_985);
+    expect(agora.parcela - antes.parcela).toBeCloseTo(
+      -(125_000 - valorPresenteDosBaloes(5, 25_000, taxaAoMes)) / 60,
+      9,
+    );
   });
 });

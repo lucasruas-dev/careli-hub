@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { abrirEspelho, ERRO_GENERICO } from "@/lib/hercules/espelho/abrir-espelho";
 import { estadoDoEspelho } from "@/lib/hercules/espelho/estado-do-espelho";
 import { SEM_CACHE } from "@/lib/hercules/espelho/pecas-do-espelho";
-import { planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
+import { pisoDeEntradaPublico, planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
 
 // A SITUAÇÃO DOS LOTES — a única peça do espelho que muda.
 //
@@ -45,12 +45,15 @@ export async function GET(request: Request) {
   try {
     // Os planos vêm JUNTO, e não em rota própria: são no máximo meia dúzia de linhas e mudam
     // com a mesma frequência do resto (raramente). Uma requisição a menos no celular do cliente.
-    const [estado, planos] = await Promise.all([
+    const ids = [paiC2xId, ...filhosC2xIds].filter(Boolean) as string[];
+    const [estado, planos, entradaMinimaPercentual] = await Promise.all([
       estadoDoEspelho(client, {
         enterpriseIdDoPai: paiC2xId,
         enterpriseIdsDosFilhos: filhosC2xIds,
       }),
-      planosPublicos(client, [paiC2xId, ...filhosC2xIds].filter(Boolean) as string[]),
+      planosPublicos(client, ids),
+      // O piso do empreendimento (8% no Garden), o mesmo que a Mesa de Venda entrega ao simulador.
+      pisoDeEntradaPublico(client, ids),
     ]);
 
     return NextResponse.json(
@@ -58,6 +61,7 @@ export async function GET(request: Request) {
         data: {
           ...estado,
           empreendimento: { codigo, nome },
+          entradaMinimaPercentual,
           // Vazio = empreendimento sem plano cadastrado. A tela esconde o simulador.
           planos,
           // A tela decide entre oferecer as duas visões ou só a grade.

@@ -27,6 +27,7 @@ const plano = (p: Partial<PlanoLido> & { enterpriseId: string; id: string }): Pl
   anuaisQuantidade: null,
   anuaisValor: null,
   categoriaId: null,
+  descontoPercentual: 0,
   entradaPercentual: 10,
   fonte: "panteon",
   indiceCorrecao: "IPCA_ANUAL",
@@ -224,6 +225,14 @@ describe("planoParaATela", () => {
   it("índice que o build não conhece aparece cru, nunca como 'sem correção'", () => {
     const tela = planoParaATela(plano({ enterpriseId: "39", id: "p4", indiceCorrecao: "TR_ANUAL" }));
     expect(tela.indice).toBe("TR_ANUAL");
+  });
+
+  // (18/09/2026) "tem que ser igual o mmendes": o desconto do plano é o preço dele, e o portal o mostra.
+  it("mostra o desconto do plano, e plano sem desconto não ganha linha", () => {
+    const com = planoParaATela(plano({ descontoPercentual: 8, enterpriseId: "39", id: "p5" }));
+    expect(com.desconto).toBe("8% sobre a tabela");
+    expect(JSON.stringify(com)).not.toContain("—");
+    expect(planoParaATela(plano({ enterpriseId: "39", id: "p6" })).desconto).toBeNull();
   });
 });
 
@@ -492,6 +501,43 @@ describe("lerPlanosDoPortal", () => {
     await expect(lerPlanosDoPortal(cliente, ["39"])).rejects.toThrow(/anuais_valor/);
   });
 
+  it("sem a coluna do desconto (0178), repete sem ela e o plano vem sem desconto", async () => {
+    const { cliente, selects } = clienteFalso([
+      {
+        error: {
+          code: "42703",
+          message: "column temis_planos.desconto_percentual does not exist",
+        },
+      },
+      { data: [linhaCrua] },
+    ]);
+    const planos = await lerPlanosDoPortal(cliente, ["39"]);
+    expect(selects[0]).toContain("desconto_percentual");
+    expect(selects[1]).not.toContain("desconto_percentual");
+    // A ressalva continua sendo pedida: só sai a coluna que o banco disse não ter.
+    expect(selects[1]).toContain("ressalva");
+    expect(planos[0]?.descontoPercentual).toBe(0);
+  });
+
+  it("sem as duas colunas, desliga uma de cada vez e lê", async () => {
+    const { cliente, selects } = clienteFalso([
+      { error: { code: "PGRST204", message: "Could not find the 'ressalva' column" } },
+      { error: { code: "PGRST204", message: "Could not find the 'desconto_percentual' column" } },
+      { data: [{ ...linhaCrua, desconto_percentual: "8.000" }] },
+    ]);
+    const planos = await lerPlanosDoPortal(cliente, ["39"]);
+    expect(selects).toHaveLength(3);
+    expect(selects[2]).not.toMatch(/ressalva|desconto_percentual/);
+    expect(planos).toHaveLength(1);
+  });
+
+  it("com a 0178, o desconto do plano chega normalizado", async () => {
+    const { cliente } = clienteFalso([{ data: [{ ...linhaCrua, desconto_percentual: "8.000" }] }]);
+    const [lido] = await lerPlanosDoPortal(cliente, ["39"]);
+    expect(lido?.descontoPercentual).toBe(8);
+    expect(planoParaATela(lido!).desconto).toBe("8% sobre a tabela");
+  });
+
   it("sem empreendimento, nem consulta", async () => {
     const { cliente, selects } = clienteFalso([]);
     expect(await lerPlanosDoPortal(cliente, [" ", ""])).toEqual([]);
@@ -561,6 +607,26 @@ describe("lerPlanosDoPanteon (a Mesa de Venda)", () => {
     expect(selects[1]).not.toContain("ressalva");
     expect(investidor?.nome).toBe("Investidor Parcelado");
     expect(investidor?.ressalva).toBeNull();
+  });
+
+  it("⚠️ com a 0178, o desconto do plano chega à Mesa; sem ela, o plano vem sem desconto", async () => {
+    const com = clienteDaMesa([{ data: [{ ...linhaDaMesa, desconto_percentual: "8.000" }] }]);
+    const [grupo] = await lerPlanosDoPanteon(com.cliente, ["39"]);
+    expect(com.selects[0]).toContain("desconto_percentual");
+    expect((grupo?.planos[0] as { descontoPercentual?: number }).descontoPercentual).toBe(8);
+
+    const sem = clienteDaMesa([
+      {
+        error: {
+          code: "42703",
+          message: "column temis_planos.desconto_percentual does not exist",
+        },
+      },
+      { data: [linhaDaMesa] },
+    ]);
+    const [semGrupo] = await lerPlanosDoPanteon(sem.cliente, ["39"]);
+    expect(sem.selects[1]).not.toContain("desconto_percentual");
+    expect((semGrupo?.planos[0] as { descontoPercentual?: number }).descontoPercentual).toBe(0);
   });
 
   it("qualquer outro erro continua lançando: a Mesa cai na conta simples, não num plano pela metade", async () => {

@@ -19,7 +19,7 @@ import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
-import type { ModoDoAjuste } from "@/lib/hercules/ajuste-de-preco";
+import { descontoDoPlano, type ModoDoAjuste } from "@/lib/hercules/ajuste-de-preco";
 
 import {
   avisarSobreAVenda,
@@ -48,6 +48,7 @@ import {
 import type { TipoProduto } from "@/lib/hercules/produto-novo";
 import { lerFaixasDoPanteon } from "@/lib/hercules/planos-do-panteon";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
+import { descontoDoPlanoNoPrazo } from "@/lib/hercules/tabela-do-lote";
 import { rotuloDoIndice } from "@/lib/temis/planos";
 import {
   lerPlanosDoPanteon,
@@ -1018,6 +1019,18 @@ export async function POST(request: Request) {
           // reimpresso é justamente o que alguém vai buscar quando houver discussão.
           incluirReajuste,
           plano: {
+            // ⚠️ O DESCONTO DO PLANO FICA CONGELADO JUNTO (18/09/2026). `ajuste_modo`/`ajuste_valor`
+            // guardam o desconto que foi DADO; este guarda o que o plano PREVIA. Com os dois lado a
+            // lado, a Têmis distingue "8% do Investidor Parcelado" de "8% à mão". Zero = sem desconto.
+            //
+            // ⚠️ E SÓ NO PRAZO DO PLANO (`descontoDoPlanoNoPrazo`): o Investidor escolhido e levado a
+            // 84 parcelas não previa os 12% dele nesse prazo, e o que ficou no campo é exceção do
+            // coordenador (a modal pediu a nota). É a mesma régua do simulador.
+            descontoPercentual: descontoDoPlanoNoPrazo({
+              descontoDoPlano: (plano as { descontoPercentual?: unknown }).descontoPercentual,
+              parcelasDoPlano: plano.parcelas,
+              parcelasEfetivas: pedido.parcelas,
+            }),
             entradaPercentual: plano.entradaPercentual,
             indiceCorrecao: plano.indiceCorrecao,
             jurosConvencao: plano.jurosConvencao,
@@ -1476,6 +1489,13 @@ async function bytesDoPdfDaProposta(
     logoC2x: logoDoC2x(),
     logoEmpreendimento: await logoDoEmpreendimento(admin, dados.enterpriseId),
     plano: dados.plano,
+    // ⚠️ A TABELA SÓ VAI QUANDO O PLANO TEM DESCONTO (0178): é o que faz a folha mostrar "valor de
+    // tabela" e "desconto" no Investidor Parcelado do Garden. Plano sem desconto não manda nada, e o
+    // papel dos outros empreendimentos sai exatamente como saía.
+    precoDeTabela:
+      descontoDoPlano((dados.plano as { descontoPercentual?: unknown }).descontoPercentual) > 0
+        ? numeroDoBanco(dados.unidade.preco_tabela)
+        : null,
     // O tipo do produto vai para a folha (C6): no prédio o subtítulo diz "m² privativos" e a tarja
     // diz "a unidade". Quem desenha a diferença é `proposta-para-pdf.ts`, e a folha o repassa ao PDF.
     tipoProduto: dados.tipoProduto,

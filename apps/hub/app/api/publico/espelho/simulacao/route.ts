@@ -7,8 +7,10 @@ import { APOLO_DOCS_BUCKET } from "@/lib/apolo/documentos";
 import { chaveDaLogo } from "@/lib/apolo/enterprise-logos";
 import { montarCronograma } from "@/lib/hercules/cronograma";
 import { abrirEspelho, ERRO_GENERICO } from "@/lib/hercules/espelho/abrir-espelho";
-import { planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
+import { estadoDoEspelho } from "@/lib/hercules/espelho/estado-do-espelho";
+import { pisoDeEntradaPublico, planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
 import { SEM_CACHE } from "@/lib/hercules/espelho/pecas-do-espelho";
+import { valoresDaSimulacaoPublica } from "@/lib/hercules/espelho/simulacao-publica";
 import {
   lerComColunasDoApartamento,
   nomeDaUnidade,
@@ -106,7 +108,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Lote não encontrado." }, { status: 404 });
   }
 
-  const planos = await planosPublicos(client, ids);
+  // ⚠️ SÓ SE SIMULA O QUE ESTÁ À VENDA (18/09/2026). A tela só abre o simulador no lote verde, mas o
+  // corpo da requisição se escreve à mão: sem esta conferência qualquer pessoa com o link baixava uma
+  // folha com a marca da casa para um lote vendido ou reservado. A régua é a MESMA que pinta o
+  // espelho (`estadoDoEspelho` → `situacaoDoLoteReal`: processo do Panteon primeiro, depois o
+  // cadastro, e só o valor exato `disponivel` passa), e o preço é o que a tela mostra para o lote.
+  // Falha de leitura é recusa: nunca "na dúvida, deixa".
+  const loteNoEspelho = await estadoDoEspelho(client, {
+    enterpriseIdDoPai: paiC2xId,
+    enterpriseIdsDosFilhos: filhosC2xIds,
+  })
+    .then((estado) => estado.lotes.find((l) => l.codigo === codigoDoLote) ?? null)
+    .catch((erro: unknown) => {
+      console.error("[publico][espelho] situacao do lote para a simulacao", erro);
+      return null;
+    });
+  if (!loteNoEspelho || loteNoEspelho.situacao !== "disponivel" || !loteNoEspelho.preco) {
+    return NextResponse.json(
+      { error: "Este lote não está disponível para simulação." },
+      { status: 409 },
+    );
+  }
+
+  const [planos, entradaMinimaPercentual] = await Promise.all([
+    planosPublicos(client, ids),
+    // O piso do empreendimento, o mesmo que a tela recebeu na rota da situação.
+    pisoDeEntradaPublico(client, ids),
+  ]);
   const plano = planos.find((p) => p.nome === corpo.plano) ?? planos[0];
   if (!plano) {
     return NextResponse.json(
@@ -115,9 +143,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const precoDeTabela = Number(unidade.preco_tabela ?? 0);
-  const valor = inteiro(corpo.valor, precoDeTabela) || precoDeTabela;
-  const entrada = Math.min(valor, inteiro(corpo.entrada, 0));
+  // ⚠️ O PREÇO É O DO ESPELHO, E O CORPO SÓ ESCOLHE DENTRO DA RÉGUA (`valoresDaSimulacaoPublica`):
+  // nunca abaixo do menor preço de plano do lote (tabela com o maior desconto de plano do
+  // empreendimento), nunca acima da tabela, e a entrada nunca abaixo do piso do empreendimento.
+  const precoDeTabela = loteNoEspelho.preco;
+  const { entrada, valor } = valoresDaSimulacaoPublica({
+    entradaMinimaPercentual,
+    entradaPedida: corpo.entrada,
+    planos,
+    precoDeTabela,
+    valorPedido: corpo.valor,
+  });
 
   try {
     const cronograma = montarCronograma({
@@ -149,6 +185,11 @@ export async function POST(request: Request) {
       logoC2x: logoDoC2x(),
       logoEmpreendimento: await logoDoEmpreendimento(client, paiC2xId),
       plano: { ...plano, slot: null },
+      // ⚠️ A TABELA VAI SEMPRE QUE O VALOR FICOU ABAIXO DELA (18/09/2026): a folha diz "valor de
+      // tabela" e "desconto" com o número de verdade. No espelho não há desconto à mão, então isso só
+      // acontece no plano com desconto (o Investidor Parcelado do Garden) ou num corpo escrito à mão
+      // que escolheu outro preço dentro da régua; nos outros empreendimentos a folha sai igual.
+      precoDeTabela: valor < precoDeTabela ? precoDeTabela : null,
       // ⚠️ AQUI TAMBÉM, e não só no `montarPropostaPdf`: é `montarFolhaDaProposta` que escreve as
       // OBSERVAÇÕES do rodapé, e sem a bandeira elas continuavam falando em reajuste e proposta
       // numa folha que não tem nem um nem outro.

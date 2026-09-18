@@ -30,6 +30,8 @@ const estado = vi.hoisted(() => ({
   propostasDeOutros: [] as Array<Record<string, unknown>>,
   atualizado: [] as Array<{ linha: Record<string, unknown>; tabela: string }>,
   credenciado: true,
+  /** O desconto do plano (0178). Zero é o plano de sempre; o do Garden entra só no teste dele. */
+  descontoDoPlano: 0,
   inserido: [] as Array<{ linha: Record<string, unknown>; tabela: string }>,
   reserva: {} as Record<string, unknown>,
 }));
@@ -130,7 +132,9 @@ vi.mock("@/lib/apolo/planos-comerciais-c2x", () => ({
 
 vi.mock("@/lib/hercules/planos-do-panteon", () => ({
   lerPlanosDoPanteon: async () => [],
-  planosPreferindoOPanteon: () => [{ planos: [PLANO] }],
+  planosPreferindoOPanteon: () => [
+    { planos: [{ ...PLANO, descontoPercentual: estado.descontoDoPlano }] },
+  ],
 }));
 
 vi.mock("@/lib/hercules/cliente-credenciado", () => ({
@@ -363,6 +367,7 @@ beforeEach(() => {
   estado.sessao = { tipo: "comercial", usuarioId: "user-1", usuarioNome: "Lucas Ruas" };
   estado.unidade = UNIDADE;
   estado.credenciado = true;
+  estado.descontoDoPlano = 0;
   estado.inserido = [];
   estado.reservaJaSaiu = false;
   estado.propostasDeOutros = [];
@@ -600,5 +605,33 @@ describe("POST — a guarda do preço de tabela", () => {
       "Esta unidade está sem preço de tabela e não pode receber proposta.",
     );
     expect(estado.inserido).toHaveLength(0);
+  });
+});
+
+describe("POST: o desconto do plano congelado na proposta (18/09/2026)", () => {
+  // `condicoes.plano.descontoPercentual` guarda o que o plano PREVIA, ao lado do `ajuste_*` que foi
+  // DADO. A régua é a do simulador: o desconto só é do plano no prazo do plano. Fora dele, o que
+  // ficou no campo é exceção do coordenador (a modal pediu a nota), e o congelado é zero.
+  const congelado = () =>
+    ((gravada().condicoes as { plano?: { descontoPercentual?: unknown } } | undefined)?.plano
+      ?.descontoPercentual);
+
+  it("no prazo do plano, congela o desconto dele", async () => {
+    estado.descontoDoPlano = 8;
+    const r = await pedir({ parcelasMensais: 180 });
+    expect(r.status).toBe(200);
+    expect(congelado()).toBe(8);
+  });
+
+  it("⚠️ fora do prazo do plano, congela zero: o desconto que ficou no campo é exceção", async () => {
+    estado.descontoDoPlano = 8;
+    const r = await pedir({ parcelasMensais: 120 });
+    expect(r.status).toBe(200);
+    expect(congelado()).toBe(0);
+  });
+
+  it("plano sem desconto congela zero, como sempre", async () => {
+    await pedir({ parcelasMensais: 180 });
+    expect(congelado()).toBe(0);
   });
 });

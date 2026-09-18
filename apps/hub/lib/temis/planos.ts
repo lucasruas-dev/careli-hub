@@ -19,12 +19,31 @@ import {
   type PlanoComercial,
   type SlotDaPa,
 } from "@/lib/apolo/planos-comerciais";
+import { conferenciaDoPlano } from "@/lib/hercules/tabela-do-lote";
 
 export type PlanoDoTemis = {
+  /**
+   * As anuais do plano (0138), quando ele tem. Nulo = sem anual. Andam em par.
+   *
+   * ⚠️ A ABA DE PLANOS DO APOLO PASSOU A LER (18/09/2026). Ela confere o plano contra o preço de uma
+   * unidade, e sem as anuais a conferência do Investidor Parcelado do Garden anunciava R$ 4.383,14
+   * enquanto a Mesa dizia outro número. Opcional no tipo porque quem monta um `PlanoDoTemis` à mão
+   * (a prévia da tela, os testes) não precisa inventar o campo.
+   */
+  anuaisQuantidade?: null | number;
+  anuaisValor?: null | number;
   ativo: boolean;
   categoriaId: null | string;
   categoriaNome: null | string;
   criadoEm: string;
+  /**
+   * O desconto do plano sobre o preço de tabela, 0 a menos de 100 (migration 0178). Zero = sem
+   * desconto.
+   *
+   * ⚠️ OPCIONAL NO TIPO pelo mesmo motivo da ressalva: sem a 0178 a leitura volta sem a coluna, e
+   * quem monta um `PlanoDoTemis` à mão (a prévia da tela, os testes) não precisa inventar o campo.
+   */
+  descontoPercentual?: null | number;
   entradaPercentual: number;
   id: string;
   indiceCorrecao: string;
@@ -63,6 +82,15 @@ export type CategoriaDoTemis = {
 export type EntradaDePlano = {
   ativo?: boolean;
   categoriaId?: null | string;
+  /**
+   * O desconto do plano sobre a tabela, em percentual (8 = 8%). Ver a migration 0178.
+   *
+   * ⚠️ AUSENTE ≠ NULO, como na ressalva. Ausente = quem chamou não fala de desconto (a rota não
+   * toca na coluna); nulo ou zero = plano sem desconto. É o que deixa um cliente antigo salvar o
+   * plano sem apagar o desconto que outra pessoa cadastrou, e o que deixa salvar plano enquanto a
+   * 0178 não roda.
+   */
+  descontoPercentual?: null | number;
   entradaPercentual: number;
   indiceCorrecao: string;
   jurosConvencao?: string;
@@ -112,12 +140,43 @@ export function limparRessalva(valor: unknown): null | string {
  * É a mesma cautela de `tabela-ausente.ts` com o `42703`.
  */
 export function ehColunaDaRessalvaAusente(erro: unknown): boolean {
+  return ehColunaAusente(erro, "ressalva");
+}
+
+/**
+ * O erro do Supabase é "a coluna `desconto_percentual` ainda não existe" (migration 0178 pendente)?
+ *
+ * ⚠️ A MESMA CAUTELA DA RESSALVA: só esta coluna, pelo nome dela na mensagem. O código sobe antes
+ * da 0178, e a Mesa, o espelho, o portal e a aba de planos repetem a leitura sem o desconto (plano
+ * sem desconto, que é o que todo plano era até ela) em vez de cair.
+ */
+export function ehColunaDoDescontoAusente(erro: unknown): boolean {
+  return ehColunaAusente(erro, "desconto_percentual");
+}
+
+/** `42703` (Postgres) ou `PGRST204` (schema cache do PostgREST) citando ESTA coluna. */
+function ehColunaAusente(erro: unknown, coluna: string): boolean {
   if (!erro || typeof erro !== "object") return false;
   const { code, message } = erro as { code?: unknown; message?: unknown };
   const mensagem = typeof message === "string" ? message.toLowerCase() : "";
   const codigoDeColuna = code === "42703" || code === "PGRST204";
-  return codigoDeColuna && mensagem.includes("ressalva");
+  return codigoDeColuna && mensagem.includes(coluna);
 }
+
+/**
+ * O desconto como ele deve ser gravado: número de 0 a menos de 100, com nulo e vazio virando zero.
+ *
+ * ⚠️ ZERO, E NÃO NULO: a coluna da 0178 é `not null default 0`, e "sem desconto" tem um número só.
+ * Quem confere a faixa é `conferirPlano`; aqui o valor já chega aprovado.
+ */
+export function descontoParaGravar(valor: unknown): number {
+  if (valor === null || valor === undefined || valor === "") return 0;
+  const n = Number(valor);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** O maior desconto que um plano aceita, exclusive: 100% não é desconto, é lote de graça. */
+export const DESCONTO_MAXIMO = 100;
 
 /**
  * ⚠️ DERIVADA, E NAO COPIADA. Ate 13/09/2026 esta lista era escrita a mao aqui, e era uma de CINCO
@@ -182,6 +241,18 @@ export function conferirPlano(entrada: EntradaDePlano): string[] {
     problemas.push("Convenção de juros deve ser equivalente ou proporcional.");
   }
 
+  // ⚠️ O DESCONTO É PERCENTUAL, e o engano mais caro é o mesmo da entrada: 0,08 digitado como "8%"
+  // vira oito centésimos de por cento e o plano sai sem desconto nenhum; 8 é 8%. 100 ou mais não é
+  // desconto de plano, é lote de graça — o CHECK da 0178 recusa também.
+  if (entrada.descontoPercentual !== undefined && entrada.descontoPercentual !== null) {
+    const d = Number(entrada.descontoPercentual);
+    if (!Number.isFinite(d) || d < 0 || d >= DESCONTO_MAXIMO) {
+      problemas.push(
+        "O desconto do plano é um percentual de 0 a menos de 100: 8 significa 8%.",
+      );
+    }
+  }
+
   if (
     entrada.ressalva !== undefined &&
     entrada.ressalva !== null &&
@@ -219,6 +290,36 @@ export function paraCalculo(plano: PlanoDoTemis): PlanoComercial {
       plano.sistemaAmortizacao as PlanoComercial["sistemaAmortizacao"],
     slot: (plano.slot as null | SlotDaPa) ?? null,
   };
+}
+
+/**
+ * O plano do cadastro conferido contra o preço de uma unidade: a MESMA conta da Mesa de Venda.
+ *
+ * Lucas (18/09/2026): *"tem que ser igual o mmendes"*. A aba de planos do Apolo conferia o plano com
+ * `calcularParcela`, que não conhece anual: no Investidor Parcelado do Garden, lote de R$ 435.000,
+ * ela anunciava R$ 4.383,14 enquanto a Mesa dizia outro número. Aqui é `conferenciaDoPlano`
+ * (`lib/hercules/tabela-do-lote.ts`): desconto do plano, entrada com o piso do empreendimento, anuais
+ * que cabem no prazo e a parcela de `montarProposta`.
+ *
+ * ⚠️ UMA FUNÇÃO SÓ PARA A LINHA DO PLANO E PARA A PRÉVIA DO FORMULÁRIO, e fora do componente para o
+ * teste alcançar a conta que a tela faz. Preço nulo (campo vazio) = nada a conferir.
+ */
+export function conferirNaUnidade(
+  plano: PlanoDoTemis,
+  preco: null | number,
+  entradaMinimaPercentual: null | number,
+) {
+  if (preco === null) return null;
+  return conferenciaDoPlano({
+    entradaMinimaPercentual,
+    plano: {
+      ...paraCalculo(plano),
+      anuaisQuantidade: plano.anuaisQuantidade ?? null,
+      anuaisValor: plano.anuaisValor ?? null,
+      descontoPercentual: plano.descontoPercentual ?? null,
+    },
+    precoDeTabela: preco,
+  });
 }
 
 /**

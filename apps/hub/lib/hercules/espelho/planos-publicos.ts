@@ -23,7 +23,9 @@ import {
   type PeriodicidadeJuros,
   type PlanoComercial,
 } from "@/lib/apolo/planos-comerciais";
+import { descontoDoPlano } from "@/lib/hercules/ajuste-de-preco";
 import { sistemaDoCadastro } from "@/lib/hercules/simulacao";
+import { ehColunaDoDescontoAusente } from "@/lib/temis/planos";
 
 /**
  * O plano como o espelho público o entrega.
@@ -36,11 +38,21 @@ export type PlanoPublico = Omit<PlanoComercial, "slot"> & {
   anuaisQuantidade: number;
   /** Valor de cada anual. */
   anuaisValor: number;
+  /**
+   * O desconto do plano sobre a tabela (0178), 0 a menos de 100. Zero = sem desconto.
+   *
+   * ⚠️ SAI PARA O ESPELHO PORQUE É O PREÇO DO PLANO, e o espelho usa o MESMO simulador da Mesa: sem
+   * ele o site anunciaria o Investidor Parcelado do Garden pelo preço cheio, e a parcela do link não
+   * bateria com a que o corretor apresenta.
+   */
+  descontoPercentual: number;
 };
 
 type LinhaDePlano = {
   anuais_quantidade: null | number;
   anuais_valor: null | number | string;
+  /** Ausente enquanto a migration 0178 não roda. */
+  desconto_percentual?: null | number | string;
   entrada_percentual: null | number | string;
   indice_correcao: null | string;
   juros_convencao: null | string;
@@ -97,6 +109,7 @@ export function semPlanosRepetidos(planos: readonly PlanoPublico[]): PlanoPublic
       p.sistemaAmortizacao,
       p.anuaisQuantidade,
       p.anuaisValor,
+      p.descontoPercentual,
     ].join("|");
 
     if (vistos.has(chave)) continue;
@@ -105,6 +118,61 @@ export function semPlanosRepetidos(planos: readonly PlanoPublico[]): PlanoPublic
   }
 
   return unicos;
+}
+
+/**
+ * O piso de entrada que vale no espelho, dados os pisos cadastrados na árvore (pai e filhos).
+ *
+ * Lucas (18/09/2026), no espelho do Garden: o cartão dizia "entrada R$ 41.000 (8%)" num lote de
+ * R$ 410.000 — 10%, o padrão da casa, com o rótulo do plano de 8% ao lado. A Mesa de Venda já
+ * recebia o piso do empreendimento (`apolo_enterprise_settings.entrada_minima_percentual`); o
+ * espelho, que monta o MESMO simulador, não recebia, e o Garden aparecia vendendo a 10%.
+ *
+ * ⚠️ AS REGRAS SÃO AS DE `entradaMinima`: nulo (ninguém cadastrou) é o padrão da casa; ZERO É ZERO,
+ * uma decisão de vender sem entrada, e não "não cadastrado".
+ *
+ * ⚠️ NA ÁRVORE COM MAIS DE UM PISO, VALE O MAIOR. O espelho não mostra divisão interna (o lote
+ * público não diz se é do VOC ou do VOL), então não há como dar a cada lote o piso do filho dele. O
+ * maior é o que nenhum filho recusa: anunciar o piso menor prometeria, no lote do filho mais
+ * exigente, uma entrada que a Mesa não aceita.
+ */
+export function pisoDoEspelho(
+  pisos: ReadonlyArray<null | number | string | undefined>,
+): null | number {
+  const cadastrados = pisos
+    .filter((p) => p !== null && p !== undefined && p !== "")
+    .map((p) => Number(p))
+    .filter((n) => Number.isFinite(n) && n >= 0);
+  return cadastrados.length > 0 ? Math.max(...cadastrados) : null;
+}
+
+/**
+ * O piso de entrada dos empreendimentos do espelho, lido da aba Política Comercial.
+ *
+ * ⚠️ FALHA DE LEITURA É "PADRÃO DA CASA", NUNCA ZERO: devolver 0 porque o banco piscou liberaria
+ * venda sem entrada na tela do corretor. É a mesma escolha da rota `incorporador/venda`.
+ */
+export async function pisoDeEntradaPublico(
+  client: SupabaseClient,
+  enterpriseIds: readonly string[],
+): Promise<null | number> {
+  const ids = enterpriseIds.filter(Boolean);
+  if (ids.length === 0) return null;
+
+  const { data, error } = await client
+    .from("apolo_enterprise_settings")
+    .select("enterprise_id, entrada_minima_percentual")
+    .in("enterprise_id", ids);
+
+  if (error) {
+    console.error("[publico][espelho] piso de entrada", error);
+    return null;
+  }
+  return pisoDoEspelho(
+    ((data ?? []) as Array<{ entrada_minima_percentual: null | number | string }>).map(
+      (l) => l.entrada_minima_percentual,
+    ),
+  );
 }
 
 /**
@@ -122,29 +190,36 @@ export async function planosPublicos(
   const ids = enterpriseIds.filter(Boolean);
   if (ids.length === 0) return [];
 
-  const { data, error } = await client
-    .from("temis_planos")
-    .select(
-      "anuais_quantidade, anuais_valor, entrada_percentual, indice_correcao, juros_convencao, juros_periodicidade, juros_taxa, nome, parcelas, sistema_amortizacao",
-    )
-    .in("enterprise_id", ids)
-    .eq("ativo", true)
-    // ⚠️ SÓ OS PLANOS DO PRODUTO, sem categoria. Um plano preso a categoria é recorte comercial
-    // (lote caucionado, fase específica) e depende de saber QUAL unidade — pergunta que esta tela
-    // não faz. Mostrar um plano de categoria para um lote que não é dela anunciaria condição
-    // errada.
-    .is("categoria_id", null)
-    .order("ordem", { ascending: true });
+  const ler = (comDesconto: boolean) =>
+    client
+      .from("temis_planos")
+      .select(
+        `anuais_quantidade, anuais_valor, entrada_percentual, indice_correcao, juros_convencao, juros_periodicidade, juros_taxa, nome, parcelas, sistema_amortizacao${comDesconto ? ", desconto_percentual" : ""}`,
+      )
+      .in("enterprise_id", ids)
+      .eq("ativo", true)
+      // ⚠️ SÓ OS PLANOS DO PRODUTO, sem categoria. Um plano preso a categoria é recorte comercial
+      // (lote caucionado, fase específica) e depende de saber QUAL unidade — pergunta que esta tela
+      // não faz. Mostrar um plano de categoria para um lote que não é dela anunciaria condição
+      // errada.
+      .is("categoria_id", null)
+      .order("ordem", { ascending: true });
+
+  // ⚠️ O DESCONTO (0178) PODE AINDA NÃO EXISTIR NO BANCO: sem a coluna, a leitura repete sem ela e
+  // o plano sai sem desconto, que é o que o espelho mostrava até aqui. Outro erro sobe como sempre.
+  let { data, error } = await ler(true);
+  if (error && ehColunaDoDescontoAusente(error)) ({ data, error } = await ler(false));
 
   if (error) throw new Error(error.message);
 
   // A árvore inteira entra na consulta: o mesmo plano cadastrado no pai e num filho viria duas
   // vezes. Ver `semPlanosRepetidos`.
   return semPlanosRepetidos(
-    ((data ?? []) as LinhaDePlano[])
+    ((data ?? []) as unknown as LinhaDePlano[])
       .map((p) => ({
         anuaisQuantidade: numero(p.anuais_quantidade, 0),
         anuaisValor: numero(p.anuais_valor, 0),
+        descontoPercentual: descontoDoPlano(p.desconto_percentual),
         entradaPercentual: numero(p.entrada_percentual, 0),
         indiceCorrecao: (INDICES_VALIDOS.has(String(p.indice_correcao))
           ? p.indice_correcao

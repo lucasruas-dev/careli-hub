@@ -177,6 +177,52 @@ export function ajusteEntreValores(tabela: number, negociado: number): PrecoAjus
   };
 }
 
+// ── O DESCONTO DO PLANO ─────────────────────────────────────────────────────
+//
+// Lucas (18/09/2026), olhando a Mesa de Venda do Garden: *"tem que ser igual o mmendes"*. No mapa da
+// MMendes cada plano tem o SEU desconto sobre a tabela (Investidor Parcelado 8%, Investidor 12%), e
+// a conta do plano parte de `preço × (1 − desconto)`. Aqui o desconto do plano entra no MESMO campo
+// de desconto que o coordenador já usa: é o que faz a tela, a proposta gravada (`ajuste_modo` e
+// `ajuste_valor`, 0151) e o PDF contarem a mesma história, em vez de um segundo preço escondido.
+
+/**
+ * O desconto do plano, como ele pode ser usado na conta: um percentual de 0 a menos de 100.
+ *
+ * ⚠️ O QUE NÃO É DESCONTO VIRA ZERO, e não erro. Coluna ausente (0178 pendente), nulo, texto e
+ * negativo são "plano sem desconto" — o comportamento de todo plano cadastrado antes de 18/09/2026.
+ * 100% ou mais não é desconto de plano, é lote de graça, e também cai em zero: a régua de cadastro
+ * (`conferirPlano`) e o CHECK da 0178 recusam o número antes de ele chegar aqui.
+ */
+export function descontoDoPlano(valor: unknown): number {
+  const n = typeof valor === "number" ? valor : Number(valor ?? Number.NaN);
+  if (!Number.isFinite(n) || n <= 0 || n >= AJUSTE_MAXIMO) return 0;
+  return n;
+}
+
+/**
+ * O desconto do plano escrito como o ajuste que o campo de desconto entende.
+ *
+ * ⚠️ PERCENTUAL E NEGATIVO, porque é assim que a pessoa o pensou ("8% do Investidor Parcelado") e
+ * porque `AjusteDePreco.valor` negativo é desconto. Plano sem desconto é `SEM_AJUSTE`.
+ */
+export function ajusteDoPlano(descontoPercentual: unknown): AjusteDePreco {
+  const d = descontoDoPlano(descontoPercentual);
+  return d > 0 ? { modo: "percentual", valor: -d } : SEM_AJUSTE;
+}
+
+/**
+ * O preço do lote dentro do plano: a tabela com o desconto do plano, em centavos inteiros.
+ *
+ * ⚠️ SEM DESCONTO DEVOLVE A TABELA COMO VEIO, sem passar por `aplicarAjuste`. Os planos de todos os
+ * outros empreendimentos não têm desconto, e o número deles precisa sair IDÊNTICO ao de antes desta
+ * função existir, sem nem o arredondamento no centavo que `aplicarAjuste` faz.
+ */
+export function precoNoPlano(precoDeTabela: number, descontoPercentual: unknown): number {
+  const d = descontoDoPlano(descontoPercentual);
+  if (d === 0) return precoDeTabela;
+  return aplicarAjuste(precoDeTabela, ajusteDoPlano(d)).valor;
+}
+
 /** Como a tela escreve o ajuste, já com o sinal. Vazio quando não há ajuste nenhum. */
 export function descreverAjuste(p: PrecoAjustado): string {
   if (p.emReais === 0) return "";

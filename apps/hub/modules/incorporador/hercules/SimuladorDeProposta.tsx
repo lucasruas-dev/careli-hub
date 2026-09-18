@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   valorDigitado,
@@ -39,10 +39,19 @@ import {
   proximoVencimento,
 } from "@/lib/hercules/proposta-na-tela";
 import { montarProposta, sistemaDoCadastro } from "@/lib/hercules/simulacao";
+import {
+  ajusteAoTrocarDePlano,
+  condicaoDoPlano,
+  descontoDoPlanoNoPrazo,
+  mesmoAjuste,
+  precoDeTabelaDoCartao,
+} from "@/lib/hercules/tabela-do-lote";
 
 import {
   type AjusteDePreco,
   aplicarAjuste,
+  ajusteDoPlano,
+  descontoDoPlano,
   descreverAjuste,
   SEM_AJUSTE,
 } from "@/lib/hercules/ajuste-de-preco";
@@ -101,8 +110,18 @@ const PARCELAS_SEM_PLANO = 120;
 
 /** O que o cartão grande da direita mostra, venha de onde vier. */
 type Leitura = {
+  /**
+   * O desconto que esta leitura carrega no preço.
+   *
+   * ⚠️ NA COMPOSIÇÃO ELE NÃO É O DO CAMPO, e é por isso que viaja aqui. Uma composição do
+   * Investidor Parcelado do Garden fecha sobre 92% da tabela; subir a proposta com o desconto que
+   * está no campo (o do plano ativo) daria entrada e parcela de um preço e valor de outro.
+   */
+  ajuste: AjusteDePreco;
   anuais: { quantidade: number; valor: number };
   composicao: Composicao | null;
+  /** O desconto do plano desta leitura (0 quando não tem). Vai para a modal decidir a nota. */
+  descontoDoPlano: number;
   entrada: number;
   financiado: number;
   origem: "composicao" | "montada";
@@ -110,25 +129,13 @@ type Leitura = {
   parcelas: number;
   plano: string;
   total: number;
+  /** O valor negociado desta leitura: o preço sobre o qual entrada e parcela foram calculadas. */
+  valor: number;
 };
 
-/**
- * A entrada que o plano sugere para este lote.
- *
- * ⚠️ ARREDONDA PARA CIMA E NUNCA FICA ABAIXO DO PISO. 10% de R$ 136.521 é R$ 13.652,10; arredondar
- * para baixo dava R$ 13.652 e a própria sugestão do plano nascia dez centavos abaixo do mínimo,
- * com a tela acusando "abaixo do mínimo" no valor que ela mesma tinha preenchido.
- */
-function entradaDoPlano(
-  valor: number,
-  percentual: number,
-  minimo: null | number,
-): number {
-  return Math.max(
-    entradaMinima(valor, minimo),
-    Math.ceil((valor * percentual) / 100),
-  );
-}
+// ⚠️ A ENTRADA DO PLANO MUDOU DE CASA (18/09/2026): `entradaDoPlano` agora mora em
+// `lib/hercules/tabela-do-lote.ts`, junto da conta inteira do cartão (desconto, entrada, anuais e
+// parcela), e é chamada por `condicaoDoPlano`. A regra é a mesma, linha a linha.
 
 /** Dois valores em reais são o mesmo dinheiro? Compara em centavos, como o resto do módulo. */
 const centavosIguais = (a: number, b: number) =>
@@ -166,6 +173,14 @@ export type CondicoesDaProposta = {
   ajuste: AjusteDePreco | null;
   anuaisQuantidade: number;
   anuaisValor: number;
+  /**
+   * O desconto do plano escolhido, em percentual (0 quando não tem).
+   *
+   * ⚠️ É O QUE SEPARA A TABELA DA EXCEÇÃO. O desconto do plano chega em `ajuste` como qualquer
+   * outro (é o mesmo campo), e a `ModalDeProposta` só pede motivo do que passa DELE — ver
+   * `ajusteFrenteAoPlano`, em `tabela-do-lote.ts`.
+   */
+  descontoDoPlanoPercentual: number;
   /** 10 ou 20, os dois que a cobrança da casa usa. */
   diaDeVencimento: number;
   /** Os valores de cada parcela da entrada, quando montados à mão. Nulo = partes iguais. */
@@ -338,10 +353,9 @@ export function SimuladorDeProposta({
   // "editado". Lucas, 08/09/2026: *"desconto em valor ou % que influencia o valor da proposta, isso
   // não pode mudar o valor original de tabela"*.
   const [ajuste, setAjuste] = useState<AjusteDePreco>(SEM_AJUSTE);
-  const preco = useMemo(
-    () => aplicarAjuste(valorDaUnidade, ajuste),
-    [ajuste, valorDaUnidade],
-  );
+  // ⚠️ O PREÇO DA TELA (`preco`) SAIU DAQUI (18/09/2026) e é calculado logo abaixo do prazo
+  // efetivo: no modo simulação o desconto é o do plano no prazo do plano, e esse desconto só se
+  // conhece depois de saber qual plano está escolhido e quantas parcelas estão no campo.
 
   const [cockpit, setCockpit] = useState<Cockpit>({
     anuaisQuantidade: 0,
@@ -361,6 +375,13 @@ export function SimuladorDeProposta({
   const planosDaConta: PlanoDaComposicao[] = useMemo(
     () =>
       planos.map((p) => ({
+        // ⚠️ AS ANUAIS E O DESCONTO DO PLANO ENTRAM NA CONTA (Lucas, 18/09/2026: *"esta faltando as
+        // anuais"* · *"tem que ser igual o mmendes"*). Até aqui eram descartados neste `map`, e o
+        // cartão do Garden anunciava o Investidor Parcelado pelo preço cheio e sem os reforços.
+        // Ausentes (o C2X e todo plano sem anual/desconto), a conta é exatamente a de antes.
+        anuaisQuantidade: p.anuaisQuantidade ?? null,
+        anuaisValor: p.anuaisValor ?? null,
+        descontoPercentual: p.descontoPercentual ?? null,
         entradaPercentual: p.entradaPercentual,
         nome: p.nome,
         parcelas: p.parcelas,
@@ -401,6 +422,12 @@ export function SimuladorDeProposta({
     [indiceDoPlano, planosDaConta],
   );
 
+  /**
+   * O desconto do plano escolhido (0 quando não tem). É dele que o campo de desconto parte quando o
+   * plano é carregado, e é contra ele que a troca de plano decide o que fazer com o desconto.
+   */
+  const descontoDoAtivo = descontoDoPlano(planoBase?.descontoPercentual);
+
   // ⚠️ O PLANO CRU FICA À MÃO. `PlanoDaComposicao` carrega só o que a conta usa; o índice de
   // correção, o sistema de amortização e a convenção de juros são do CADASTRO, e a tela precisa
   // deles para dizer o que o cliente vai assinar. Vem do MESMO índice do `planoBase`.
@@ -434,6 +461,51 @@ export function SimuladorDeProposta({
    */
   const prazoDaFaixa =
     cockpit.parcelas > 0 ? cockpit.parcelas : (planoBase?.parcelas ?? 0);
+
+  /**
+   * O desconto do plano escolhido, SE o prazo na tela é o do plano; zero quando não é.
+   *
+   * ⚠️ O DESCONTO SÓ É "DO PLANO" NO PRAZO DO PLANO (18/09/2026). O Investidor do Garden dá 12% em
+   * 36 vezes com 40% de entrada; escolhido o Investidor e trocado o prazo para 84, os 12% que ficam
+   * no campo deixam de ser a tabela oficial e passam a ser uma exceção do coordenador. É este número
+   * que sobe como `descontoDoPlanoPercentual`, e com ele zerado a `ModalDeProposta` pede a nota como
+   * pede de qualquer desconto dado à mão (`ajusteFrenteAoPlano`). O prazo é o efetivo, o mesmo da
+   * faixa: campo em branco é o prazo do plano.
+   */
+  const descontoNoPrazo = descontoDoPlanoNoPrazo({
+    descontoDoPlano: descontoDoAtivo,
+    parcelasDoPlano: planoBase?.parcelas ?? 0,
+    parcelasEfetivas: prazoDaFaixa,
+  });
+
+  /**
+   * O ajuste que vale na tela.
+   *
+   * ⚠️ NO MODO SIMULAÇÃO NÃO EXISTE DESCONTO À MÃO (18/09/2026). O espelho público monta este
+   * simulador numa página sem login, e o PDF que sai de lá leva a marca da casa: o campo de desconto
+   * fica preso ao desconto do plano escolhido, no prazo do plano (fora dele, desconto nenhum, pela
+   * mesma régua de cima). A rota do PDF confere de novo, porque a tela não é a última palavra
+   * (`app/api/publico/espelho/simulacao`). Na Mesa de Venda é o ajuste do campo, como sempre foi.
+   */
+  const ajusteDaTela = useMemo(
+    () => (ehSimulacao ? ajusteDoPlano(descontoNoPrazo) : ajuste),
+    [ajuste, descontoNoPrazo, ehSimulacao],
+  );
+  const preco = useMemo(
+    () => aplicarAjuste(valorDaUnidade, ajusteDaTela),
+    [ajusteDaTela, valorDaUnidade],
+  );
+
+  /**
+   * O campo do lote tem um desconto que NÃO é o do plano ativo (dado à mão, a mais ou a menos)?
+   *
+   * ⚠️ É O QUE FAZ A BUSCA POR PARCELA RESPEITAR O CAMPO. Sem desconto à mão, cada plano compõe sobre
+   * o preço do cartão dele (o que o clique carrega). Com desconto à mão, o plano ATIVO compõe sobre
+   * o preço do campo: senão o coordenador dava 10% no Investidor Parcelado, partia da parcela, e a
+   * composição voltava a 8% por baixo do campo. Nunca no modo simulação, onde não há desconto à mão.
+   */
+  const campoComDescontoProprio =
+    !ehSimulacao && !mesmoAjuste(ajuste, ajusteDoPlano(descontoDoAtivo));
 
   const premissaDaFaixa = useMemo(
     () => premissaDoPrazo(faixasDePrazo ?? [], prazoDaFaixa),
@@ -497,39 +569,66 @@ export function SimuladorDeProposta({
   //
   // ⚠️ Com a entrada do próprio plano, e não uma qualquer: é a condição que a diretoria aprovou, e
   // é dela que a conversa parte. Clicar carrega tudo no cockpit.
+  //
+  // ⚠️ E COM O DESCONTO E AS ANUAIS DO PLANO (Lucas, 18/09/2026: *"tem que ser igual o mmendes"*).
+  // A conta é `condicaoDoPlano` (`lib/hercules/tabela-do-lote.ts`): a tabela com o desconto do
+  // plano, a entrada do plano sobre esse preço (com o piso do empreendimento por baixo), as anuais
+  // que cabem no prazo e a parcela de `montarProposta`. Antes eram três cópias desta conta aqui
+  // dentro, as três com `baloesQuantidade: 0`.
+  //
+  // ⚠️ O CARTÃO É O CLIQUE. O preço de cada cartão sai de `precoDeTabelaDoCartao`, que devolve o
+  // preço que o clique naquele plano vai deixar no campo (`ajusteAoTrocarDePlano`). Sem desconto em
+  // plano nenhum (todos os outros empreendimentos), é `cockpit.valor`, como sempre foi.
   const tabela = useMemo(
     () =>
       planosDaConta.map((p) => {
-        const entrada = entradaDoPlano(
-          cockpit.valor,
-          p.entradaPercentual,
+        const condicao = condicaoDoPlano({
           entradaMinimaPercentual,
-        );
-        const montada = montarProposta({
-          baloesQuantidade: 0,
-          baloesValor: 0,
-          entrada,
-          parcelas: p.parcelas,
-          sistemaAmortizacao: p.sistemaAmortizacao,
-          taxaAoMes: p.taxaAoMes,
-          valor: cockpit.valor,
+          plano: p,
+          precoDeTabela: precoDeTabelaDoCartao({
+            descontoDoAtivo,
+            descontoDoPlano: p.descontoPercentual,
+            valorDaUnidade,
+            valorNaTela: cockpit.valor,
+          }),
         });
-        return { entrada, parcela: montada.parcela, plano: p };
+        return {
+          anuais: condicao.anuais,
+          desconto: condicao.descontoPercentual,
+          entrada: condicao.entrada,
+          parcela: condicao.parcela,
+          plano: p,
+          preco: condicao.precoDoPlano,
+        };
       }),
-    [cockpit.valor, entradaMinimaPercentual, planosDaConta],
+    [cockpit.valor, descontoDoAtivo, entradaMinimaPercentual, planosDaConta, valorDaUnidade],
   );
 
   function carregarPlano(nome: string) {
     const alvo = tabela.find((t) => t.plano.nome === nome);
     if (!alvo) return;
     setPlanoAtivo(nome);
+    // ⚠️ O DESCONTO DO PLANO VAI PARA O CAMPO DE DESCONTO, e trocar de plano troca o desconto. Ver
+    // `ajusteAoTrocarDePlano`: entre planos sem desconto, o desconto à mão continua de pé.
+    setAjuste((atual) =>
+      ajusteAoTrocarDePlano({
+        ajusteAtual: atual,
+        descontoDoAnterior: descontoDoAtivo,
+        descontoDoNovo: alvo.desconto,
+      }),
+    );
     setCockpit((a) => ({
       ...a,
-      anuaisQuantidade: 0,
-      anuaisValor: 0,
+      // ⚠️ AS ANUAIS DO PLANO, e não zero (Lucas: *"esta faltando as anuais"*). Plano sem anual
+      // cadastrada continua zerando, como antes.
+      anuaisQuantidade: alvo.anuais.quantidade,
+      anuaisValor: alvo.anuais.valor,
       entrada: alvo.entrada,
       parcela: alvo.parcela,
       parcelas: alvo.plano.parcelas,
+      // O preço do cartão é o que o novo desconto produz: gravar junto evita um render com a
+      // entrada nova sobre o preço velho, antes de o efeito do ajuste alcançar o cockpit.
+      valor: alvo.preco,
     }));
     setComando("condicoes");
     setEntradaEhTeto(false);
@@ -541,43 +640,37 @@ export function SimuladorDeProposta({
   useEffect(() => {
     const maisLongo =
       [...planosDaConta].sort((a, b) => b.parcelas - a.parcelas)[0] ?? null;
-    const entrada = maisLongo
-      ? entradaDoPlano(
-          valorDaUnidade,
-          maisLongo.entradaPercentual,
+    // ⚠️ A MESMA CONTA DO CARTÃO E DO CLIQUE, sobre a tabela do lote: o lote abre no plano mais
+    // longo com o desconto, a entrada e as anuais dele. No Garden isso é o Investidor Parcelado a
+    // 92% da tabela, com 4 anuais de R$ 25.000 — o cartão que o Lucas mandou no print.
+    const condicao = maisLongo
+      ? condicaoDoPlano({
           entradaMinimaPercentual,
-        )
-      : 0;
+          plano: maisLongo,
+          precoDeTabela: valorDaUnidade,
+        })
+      : null;
 
     setPlanoAtivo(maisLongo?.nome ?? null);
     setComando("condicoes");
     setEntradaEhTeto(false);
-    // ⚠️ TROCOU DE UNIDADE, ZERA O DESCONTO. Um desconto de 5% que sobrevivesse à troca de lote
-    // seria aplicado a um preço que ninguém negociou — e como este efeito também reescreve o valor,
-    // deixar o ajuste de pé faria a tela mostrar a tabela do lote novo com o desconto do antigo.
-    setAjuste(SEM_AJUSTE);
+    // ⚠️ TROCOU DE UNIDADE, ZERA O DESCONTO À MÃO. Um desconto de 5% que sobrevivesse à troca de
+    // lote seria aplicado a um preço que ninguém negociou — e como este efeito também reescreve o
+    // valor, deixar o ajuste de pé faria a tela mostrar a tabela do lote novo com o desconto do
+    // antigo. O que fica é o do PLANO em que o lote abre (nenhum, fora dos planos com desconto).
+    setAjuste(condicao?.ajuste ?? SEM_AJUSTE);
     setCockpit({
-      anuaisQuantidade: 0,
-      anuaisValor: 0,
-      entrada,
+      anuaisQuantidade: condicao?.anuais.quantidade ?? 0,
+      anuaisValor: condicao?.anuais.valor ?? 0,
+      entrada: condicao?.entrada ?? 0,
       entradaVezes: 1,
-      parcela: maisLongo
-        ? montarProposta({
-            baloesQuantidade: 0,
-            baloesValor: 0,
-            entrada,
-            parcelas: maisLongo.parcelas,
-            sistemaAmortizacao: maisLongo.sistemaAmortizacao,
-            taxaAoMes: maisLongo.taxaAoMes,
-            valor: valorDaUnidade,
-          }).parcela
-        : 0,
+      parcela: condicao?.parcela ?? 0,
       // ⚠️ SEM PLANO, UM PRAZO DE PARTIDA — e não zero. Com zero parcelas não existe conta
       // possível, e a tela abria morta no produto sem plano cadastrado. 120 é ponto de partida
       // editável, não regra da casa: o plano NORMAL do C2X vai de 37 a 200 parcelas, e não existe
       // um número que sirva a todos.
       parcelas: maisLongo?.parcelas ?? PARCELAS_SEM_PLANO,
-      valor: valorDaUnidade,
+      valor: condicao?.precoDoPlano ?? valorDaUnidade,
     });
   }, [entradaMinimaPercentual, planosDaConta, unidade, valorDaUnidade]);
 
@@ -705,6 +798,23 @@ export function SimuladorDeProposta({
   const parcelaDeReferencia =
     comando === "parcela" ? cockpit.parcela : Math.round(montada?.parcela ?? 0);
 
+  /**
+   * O preço sobre o qual cada plano compõe na busca por parcela: o do cartão dele, que é o que o
+   * clique carrega; e, para o plano ativo com desconto à mão, o do campo.
+   *
+   * ⚠️ UMA FONTE SÓ PARA O PREÇO DA COMPOSIÇÃO (18/09/2026). Antes a busca recebia um `valor` e um
+   * `precoDeTabela` e decidia o preço de cada plano por conta própria, com uma regra parecida com a
+   * do cartão e não a mesma. Sem desconto de plano nenhum (os outros empreendimentos), toda posição
+   * é `cockpit.valor`, como sempre foi.
+   */
+  const precosDasComposicoes = useMemo(
+    () =>
+      tabela.map((t, posicao) =>
+        posicao === indiceDoPlano && campoComDescontoProprio ? cockpit.valor : t.preco,
+      ),
+    [campoComDescontoProprio, cockpit.valor, indiceDoPlano, tabela],
+  );
+
   const composicoes = useMemo(
     () =>
       parcelaDeReferencia > 0
@@ -712,29 +822,78 @@ export function SimuladorDeProposta({
             parcelaAlvo: parcelaDeReferencia,
             planos: planosDaConta,
             entradaMinimaPercentual,
+            // ⚠️ CADA PLANO COMPÕE SOBRE O PREÇO DELE (18/09/2026): o do cartão, que é a tabela com
+            // o desconto do plano, ou o valor da tela no plano sem desconto (ver
+            // `precosDasComposicoes`). `valor` e `precoDeTabela` ficam como a regra de reserva.
+            precoDeTabela: valorDaUnidade,
+            precos: precosDasComposicoes,
             tetoDaEntrada:
               entradaEhTeto && cockpit.entrada > 0 ? cockpit.entrada : null,
-            valor: cockpit.valor,
+            valor: descontoDoAtivo > 0 ? valorDaUnidade : cockpit.valor,
           })
         : [],
     [
       cockpit.entrada,
       cockpit.valor,
+      descontoDoAtivo,
       entradaEhTeto,
       entradaMinimaPercentual,
       parcelaDeReferencia,
       planosDaConta,
+      precosDasComposicoes,
+      valorDaUnidade,
     ],
   );
+
+  /**
+   * O desconto que uma composição carrega no preço: o que o clique nela deixaria no campo.
+   *
+   * ⚠️ A MESMA REGRA DO CARTÃO (`ajusteAoTrocarDePlano`), com uma exceção: a composição do plano
+   * ATIVO, quando o campo tem desconto à mão, fechou sobre o preço do campo (`precosDasComposicoes`)
+   * e carrega o ajuste do campo. É o par exato do preço: sem ele o cartão diria um valor e o
+   * desconto subiria outro.
+   */
+  const nomeDoAtivo = planoBase?.nome ?? null;
+  const ajusteDaComposicao = useCallback(
+    (c: Composicao): AjusteDePreco =>
+      c.plano === nomeDoAtivo && campoComDescontoProprio
+        ? ajuste
+        : ajusteAoTrocarDePlano({
+            ajusteAtual: ajusteDaTela,
+            descontoDoAnterior: descontoDoAtivo,
+            descontoDoNovo: c.descontoPercentual,
+          }),
+    [ajuste, ajusteDaTela, campoComDescontoProprio, descontoDoAtivo, nomeDoAtivo],
+  );
+
+  /**
+   * Escolher esta composição muda o preço do campo? Aí o cartão dela diz o preço e o desconto.
+   *
+   * ⚠️ SÓ QUANDO MUDA (18/09/2026): composição de plano com desconto, ou com preço diferente do que
+   * está no campo. Nos empreendimentos sem desconto de plano toda composição fecha sobre o preço do
+   * campo, e os cartões ficam exatamente como eram.
+   */
+  const composicaoMostraPreco = (c: Composicao) =>
+    c.descontoPercentual > 0 || !centavosIguais(c.valor, cockpit.valor);
+
+  /** "R$ 400.200 (desconto de 8%)" ou "R$ 435.000 (tabela)": o par que a escolha leva ao campo. */
+  const precoDaComposicao = (c: Composicao) => {
+    const ajusteDela = descreverAjuste(aplicarAjuste(valorDaUnidade, ajusteDaComposicao(c)));
+    return `${dinheiro(c.valor)} (${ajusteDela ? ajusteDela.toLowerCase() : "tabela"})`;
+  };
 
   const principal: Leitura | null = useMemo(() => {
     if (comando === "condicoes" && montada && plano) {
       return {
+        ajuste: ajusteDaTela,
         anuais: {
           quantidade: cockpit.anuaisQuantidade,
           valor: cockpit.anuaisValor,
         },
         composicao: null,
+        // ⚠️ O DO PLANO SÓ NO PRAZO DO PLANO (`descontoNoPrazo`): fora dele, o desconto que está no
+        // campo é exceção e a modal pede a nota.
+        descontoDoPlano: descontoNoPrazo,
         // A mesma entrada da conta acima: o cartão mostra o que vai ser gravado.
         entrada: montagem.entrada,
         financiado: montada.financiado,
@@ -743,14 +902,19 @@ export function SimuladorDeProposta({
         parcelas: montada.parcelas,
         plano: plano.nome,
         total: montada.total,
+        valor: cockpit.valor,
       };
     }
 
     const melhor = composicoes[0];
     if (!melhor) return null;
     return {
+      // ⚠️ O DESCONTO DA COMPOSIÇÃO é o que o clique nela deixaria no campo — a mesma regra da
+      // troca de plano (`ajusteDaComposicao`). Sem desconto de plano nenhum, é o ajuste de sempre.
+      ajuste: ajusteDaComposicao(melhor),
       anuais: melhor.anuais,
       composicao: melhor,
+      descontoDoPlano: melhor.descontoPercentual,
       entrada: melhor.entrada,
       // ⚠️ VEM DA COMPOSIÇÃO, NÃO DE `valor − entrada`: os reforços anuais são abatidos pelo que
       // valem hoje, e é este o número que o PDF imprime como "Financiado". Recalcular aqui fazia a
@@ -762,11 +926,22 @@ export function SimuladorDeProposta({
       parcelas: melhor.parcelas,
       plano: melhor.plano,
       total: melhor.total,
+      valor: melhor.valor,
     };
     // ⚠️ `montagem.entrada` NAS DEPENDÊNCIAS (16/09/2026, aviso do lint que já vinha do HEAD): o
     // cartão do ramo `montada` mostra essa entrada, e um memo que lê um valor sem declará-lo pode
     // devolver o cartão com o número anterior. É memo de leitura: recalcular a mais não dispara nada.
-  }, [comando, composicoes, cockpit, montada, montagem.entrada, plano]);
+  }, [
+    ajusteDaComposicao,
+    ajusteDaTela,
+    comando,
+    composicoes,
+    cockpit,
+    descontoNoPrazo,
+    montada,
+    montagem.entrada,
+    plano,
+  ]);
 
   /**
    * As demais: mesma parcela, outro arranjo.
@@ -793,9 +968,16 @@ export function SimuladorDeProposta({
       principal
         ? {
             // Ajuste zerado é "sem ajuste": o que interessa gravar é o desconto que existiu.
-            ajuste: ajuste.valor !== 0 ? ajuste : null,
+            //
+            // ⚠️ O AJUSTE E O VALOR SÃO OS DA LEITURA, e não os do campo (18/09/2026). Na
+            // composição recomendada de um plano com desconto, o preço é o DELE; subir o valor do
+            // campo junto com a entrada e a parcela da composição geraria uma proposta que não
+            // fecha. No ramo montado, e em todo empreendimento sem desconto de plano, os dois são
+            // exatamente o `ajuste` e o `cockpit.valor` de sempre.
+            ajuste: principal.ajuste.valor !== 0 ? principal.ajuste : null,
             anuaisQuantidade: principal.anuais.quantidade,
             anuaisValor: principal.anuais.valor,
+            descontoDoPlanoPercentual: principal.descontoDoPlano,
             diaDeVencimento,
             // ⚠️ QUANDO HÁ MONTAGEM, A ENTRADA É A SOMA DELA — inclusive quando passa do
             // combinado, que é o caso em que o cliente paga mais no ato. Sem isto o papel sairia
@@ -811,15 +993,13 @@ export function SimuladorDeProposta({
             parcelasMensais: principal.parcelas,
             planoNome: principal.plano,
             primeiraParcelaEm,
-            valorNegociado: cockpit.valor,
+            valorNegociado: principal.valor,
           }
         : null,
     );
   }, [
-    ajuste,
     aoMudarCondicoes,
     cockpit.entradaVezes,
-    cockpit.valor,
     // ⚠️ AS DUAS ENTRARAM EM 13/09/2026 E SÃO OBRIGATÓRIAS. Sem `datasDaEntrada`, mudar a data de
     // uma parcela da entrada não avisava a modal e a data não chegava à proposta; sem
     // `premissaAlterada`, mexer nos juros não abria a caixa de nota. Nos dois casos a tela mostrava
@@ -836,7 +1016,30 @@ export function SimuladorDeProposta({
     principal,
   ]);
 
+  // ── O QUE O CAMPO DO LOTE MOSTRA ─────────────────────────────────────────
+  //
+  // ⚠️ É O PREÇO DA LEITURA PRINCIPAL, que é o que sobe (`aoMudarCondicoes`). No ramo montado ele é
+  // o próprio ajuste da tela; na composição recomendada é o desconto dela sobre a tabela, que é
+  // exatamente o `valor` com que ela fechou (`precoNoPlano` é `aplicarAjuste` com o desconto do
+  // plano). Nos empreendimentos sem desconto de plano os dois caminhos dão o mesmo `ajuste`.
+  const ajusteNoCampo =
+    principal?.origem === "composicao" ? principal.ajuste : ajusteDaTela;
+  /** O empreendimento tem plano com desconto próprio (o Garden)? Ver o campo do lote, abaixo. */
+  const algumPlanoComDesconto = planosDaConta.some(
+    (p) => descontoDoPlano(p.descontoPercentual) > 0,
+  );
+  const precoNoCampo = useMemo(
+    () =>
+      ajusteNoCampo === ajusteDaTela
+        ? preco
+        : aplicarAjuste(valorDaUnidade, ajusteNoCampo),
+    [ajusteDaTela, ajusteNoCampo, preco, valorDaUnidade],
+  );
+
   function usarComposicao(c: Composicao) {
+    // ⚠️ A COMPOSIÇÃO TRAZ O PREÇO DO PLANO DELA, e o desconto vai junto para o campo — o mesmo
+    // par que o cartão dela mostra (`ajusteDaComposicao`). Sem desconto de plano, nada muda.
+    setAjuste(ajusteDaComposicao(c));
     setCockpit((atual) => ({
       ...atual,
       anuaisQuantidade: c.anuais.quantidade,
@@ -844,6 +1047,7 @@ export function SimuladorDeProposta({
       entrada: c.entrada,
       parcela: c.parcela,
       parcelas: c.parcelas,
+      valor: c.valor,
     }));
     setPlanoAtivo(c.plano);
     setComando("condicoes");
@@ -882,12 +1086,38 @@ export function SimuladorDeProposta({
         }}
       >
         <Bloco titulo="O lote">
+          {/* ⚠️ O CAMPO MOSTRA O PREÇO QUE SOBE (18/09/2026). Partindo da parcela, o que vai para a
+              proposta e para o PDF é a composição recomendada, com o preço e o desconto DELA
+              (`principal`); o campo continuava no plano ativo, e no Garden a tela dizia
+              "R$ 400.200,00, desconto de 8% do plano" enquanto a proposta subia o Normal a
+              R$ 435.000,00. Agora o campo lê a leitura principal.
+
+              ⚠️ E MEXER NELE ENQUANTO ELE MOSTRA UMA COMPOSIÇÃO É EDITAR ESSA COMPOSIÇÃO, onde os
+              planos têm preço próprio: a composição vai para o cockpit (o mesmo "Editar") e o
+              desconto digitado vale sobre ela. Sem isso o coordenador digitava 3% em cima do Normal
+              recomendado, a busca refazia a recomendação e o campo pulava para os 8% do Investidor
+              Parcelado. Nos empreendimentos sem desconto de plano nada muda: o desconto digitado
+              continua valendo para todas as composições, no modo parcela, como sempre valeu. */}
           <CampoDoLote
-            ajuste={ajuste}
-            aoMudarAjuste={setAjuste}
-            preco={preco}
+            ajuste={ajusteNoCampo}
+            aoMudarAjuste={(novo) => {
+              if (
+                algumPlanoComDesconto &&
+                principal?.origem === "composicao" &&
+                principal.composicao
+              ) {
+                usarComposicao(principal.composicao);
+              }
+              // Por último: é o que foi digitado que vale, por cima do desconto da composição.
+              setAjuste(novo);
+            }}
+            descontoDoPlano={
+              principal ? principal.descontoDoPlano : descontoNoPrazo
+            }
+            preco={precoNoCampo}
             rotulo={`Lote ${unidade}`}
             rotuloDoValor={ehSimulacao ? "Valor simulado" : "Proposta"}
+            somenteLeitura={ehSimulacao}
           />
         </Bloco>
 
@@ -1493,6 +1723,24 @@ export function SimuladorDeProposta({
                     {t.plano.parcelas}x · entrada {dinheiro(t.entrada)} (
                     {t.plano.entradaPercentual}%)
                   </div>
+                  {/* ⚠️ O DESCONTO E AS ANUAIS DO PLANO, quando ele tem (Lucas, 18/09/2026: *"esta
+                      faltando as anuais"* · *"tem que ser igual o mmendes"*). A parcela acima já os
+                      considera; sem esta linha o cartão não diria de onde ela vem. Plano sem os
+                      dois (todos os outros empreendimentos) não ganha linha nenhuma. */}
+                  {t.desconto > 0 || t.anuais.quantidade > 0 ? (
+                    <div style={{ color: T.muted, fontSize: 11 }}>
+                      {[
+                        t.desconto > 0
+                          ? `desconto ${t.desconto.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`
+                          : null,
+                        t.anuais.quantidade > 0
+                          ? `${t.anuais.quantidade} ${t.anuais.quantidade === 1 ? "anual" : "anuais"} de ${dinheiro(t.anuais.valor)}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </div>
+                  ) : null}
                   <div style={{ color: T.muted, fontSize: 10.5, marginTop: 2 }}>
                     {INDICES[
                       (crus.get(t.plano.nome)?.indiceCorrecao ??
@@ -1557,6 +1805,16 @@ export function SimuladorDeProposta({
               </span>
               <span style={{ color: T.muted, fontSize: 11.5 }}>
                 Plano {principal.plano}
+                {/* ⚠️ A COMPOSIÇÃO DIZ O PREÇO DELA (18/09/2026). Cada plano compõe sobre o próprio
+                    preço, e a recomendada pode ser de um plano com outro preço que o do plano
+                    ativo: sem esta linha o cartão anunciava a parcela do Normal a R$ 435.000 logo
+                    abaixo de um campo que dizia R$ 400.200. Nos empreendimentos sem desconto de
+                    plano o preço da composição é o do campo, e a linha não aparece. */}
+                {principal.origem === "composicao" &&
+                principal.composicao &&
+                composicaoMostraPreco(principal.composicao)
+                  ? ` · ${precoDaComposicao(principal.composicao)}`
+                  : ""}
               </span>
             </div>
 
@@ -1616,7 +1874,7 @@ export function SimuladorDeProposta({
                     ? `${parcelasDaEntrada.length}× · 1ª de ${dinheiro(parcelasDaEntrada[0] ?? 0)}`
                     : cockpit.entradaVezes > 1
                       ? `${cockpit.entradaVezes} × ${dinheiro(principal.entrada / cockpit.entradaVezes)}`
-                      : `${Math.round((principal.entrada / (cockpit.valor || 1)) * 100)}% do valor`
+                      : `${Math.round((principal.entrada / (principal.valor || 1)) * 100)}% do valor`
                 }
                 rotulo="Entrada"
                 valor={dinheiro(principal.entrada)}
@@ -1640,7 +1898,7 @@ export function SimuladorDeProposta({
                 valor={dinheiro(principal.financiado)}
               />
               <Dado
-                nota={`+${Math.round((principal.total / (cockpit.valor || 1) - 1) * 100)}% sobre a tabela`}
+                nota={`+${Math.round((principal.total / (principal.valor || 1) - 1) * 100)}% sobre a tabela`}
                 rotulo="Total pago"
                 valor={dinheiro(principal.total)}
               />
@@ -1695,7 +1953,9 @@ export function SimuladorDeProposta({
             <div style={{ display: "grid", gap: 6 }}>
               {alternativas.map((c) => (
                 <button
-                  key={`${c.plano}-${c.anuais.quantidade}`}
+                  // O valor anual entra na chave: o arranjo do plano (4 × R$ 25.000) e o da
+                  // varredura podem ter a mesma quantidade no mesmo plano.
+                  key={`${c.plano}-${c.anuais.quantidade}-${c.anuais.valor}`}
                   onClick={() => usarComposicao(c)}
                   style={{
                     alignItems: "center",
@@ -1737,6 +1997,12 @@ export function SimuladorDeProposta({
                   <span style={{ color: T.sub, fontSize: 12 }}>
                     {c.parcelas} meses
                   </span>
+                  {/* O preço da composição, quando escolhê-la muda o preço do campo. */}
+                  {composicaoMostraPreco(c) ? (
+                    <span style={{ color: T.sub, fontSize: 12 }}>
+                      {precoDaComposicao(c)}
+                    </span>
+                  ) : null}
                   <span style={{ color: T.muted, fontSize: 12 }}>
                     total {dinheiro(c.total)}
                   </span>
@@ -2272,19 +2538,47 @@ function Dado({
 // digitou `-7.500` em R$, ela responde `5%`. Quem aprova desconto pensa em percentual e quem fecha a
 // proposta pensa em reais — a conta de cabeça entre os dois é onde nasce o erro que só aparece no
 // contrato assinado.
+
+/**
+ * O número que a pessoa digitou no campo de desconto, sempre positivo — o sinal vem do botão.
+ *
+ * Fora do componente (18/09/2026) porque o efeito que mostra no campo o desconto do plano também o
+ * usa, e uma função recriada a cada render viraria dependência do efeito.
+ */
+function numeroDigitado(cru: string): number {
+  const limpo = cru
+    .replace(/[\s+-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  if (!limpo) return 0;
+  const n = Number(limpo);
+  return Number.isFinite(n) ? Math.abs(n) : 0;
+}
+
 function CampoDoLote({
   ajuste,
   aoMudarAjuste,
+  descontoDoPlano: descontoDoPlanoAtivo = 0,
   preco,
   rotulo,
   rotuloDoValor,
+  somenteLeitura = false,
 }: {
   ajuste: AjusteDePreco;
   aoMudarAjuste: (a: AjusteDePreco) => void;
+  /** O desconto do plano escolhido. Quando o campo é exatamente ele, a tela diz "do plano". */
+  descontoDoPlano?: number;
   preco: ReturnType<typeof aplicarAjuste>;
   rotulo: string;
   /** "Proposta" na Mesa de Venda; "Valor simulado" no espelho público. */
   rotuloDoValor: string;
+  /**
+   * Sem os controles de desconto: a tela só mostra a tabela, o desconto do plano e o valor.
+   *
+   * ⚠️ É O ESPELHO PÚBLICO (18/09/2026). A página não tem login e o PDF sai com a marca da casa: lá
+   * o desconto é o do plano escolhido, e ninguém digita outro.
+   */
+  somenteLeitura?: boolean;
 }) {
   const [texto, setTexto] = useState("");
   // ⚠️ O SENTIDO É UM BOTÃO, NÃO UM SINAL DIGITADO. Na primeira versão o desconto exigia escrever
@@ -2294,12 +2588,33 @@ function CampoDoLote({
   const [sentido, setSentido] = useState<-1 | 1>(-1);
   const temAjuste = preco.emReais !== 0;
   const desconto = preco.emReais < 0;
+  /** O campo é o desconto do plano, e não um desconto dado à mão. */
+  const ehODoPlano =
+    descontoDoPlanoAtivo > 0 &&
+    ajuste.modo === "percentual" &&
+    ajuste.valor === ajusteDoPlano(descontoDoPlanoAtivo).valor;
 
   // Enquanto a pessoa digita, o texto é dela — reescrever a cada tecla move o cursor e apaga o
-  // sinal de menos que ela acabou de escrever. Só volta a seguir o estado quando o ajuste é zerado
-  // de fora (troca de unidade, por exemplo).
+  // sinal de menos que ela acabou de escrever. Só volta a seguir o estado quando o ajuste muda de
+  // fora: zerado (troca de unidade, por exemplo) ou trocado pelo desconto de um plano.
+  //
+  // ⚠️ O DESCONTO DO PLANO PRECISA APARECER NO CAMPO (18/09/2026). Escolher o Investidor
+  // Parcelado põe -8% no ajuste; sem esta leitura o campo continuava em branco com a linha de baixo
+  // dizendo "Desconto de 8%", e quem digitasse ali achando que estava vazio SUBSTITUIRIA os 8% sem
+  // perceber. O texto só é reescrito quando não é o número que já está escrito — digitar "8," não
+  // vira "8" embaixo do dedo.
   useEffect(() => {
-    if (ajuste.valor === 0) setTexto("");
+    if (ajuste.valor === 0) {
+      setTexto("");
+      return;
+    }
+    const absoluto = Math.abs(ajuste.valor);
+    setTexto((atual) =>
+      numeroDigitado(atual) === absoluto
+        ? atual
+        : absoluto.toLocaleString("pt-BR", { maximumFractionDigits: 2 }),
+    );
+    setSentido(ajuste.valor < 0 ? -1 : 1);
   }, [ajuste.valor]);
 
   function mudarModo(modo: AjusteDePreco["modo"]) {
@@ -2307,17 +2622,6 @@ function CampoDoLote({
     // uma conta que ninguém pediu; e converter para o equivalente (-R$ 7.500) mudaria o que a
     // pessoa escreveu. Ela trocou de moeda: o número é reinterpretado, e ela vê o resultado na hora.
     aoMudarAjuste({ modo, valor: ajuste.valor });
-  }
-
-  /** O número que a pessoa digitou, sempre positivo — o sinal vem do botão. */
-  function numeroDigitado(cru: string): number {
-    const limpo = cru
-      .replace(/[\s+-]/g, "")
-      .replace(/\./g, "")
-      .replace(",", ".");
-    if (!limpo) return 0;
-    const n = Number(limpo);
-    return Number.isFinite(n) ? Math.abs(n) : 0;
   }
 
   function mudarValor(cru: string) {
@@ -2366,7 +2670,13 @@ function CampoDoLote({
         <span>{dinheiroExato(preco.tabela)}</span>
       </div>
 
-      <div style={{ display: "flex", gap: 6, minWidth: 0 }}>
+      {/* ⚠️ SOMENTE LEITURA ESCONDE A LINHA INTEIRA (sentido, moeda e número). E não é só aparência:
+          no modo simulação o ajuste da conta é derivado do plano (`ajusteDaTela`), e o que se
+          digitasse aqui não entraria em conta nenhuma. */}
+      <div
+        data-controles-do-desconto=""
+        style={{ display: somenteLeitura ? "none" : "flex", gap: 6, minWidth: 0 }}
+      >
         {/* ⚠️ O SENTIDO VEM PRIMEIRO, à esquerda: é a decisão que muda o resultado de lado, e ela
             precisa ser vista antes de o número ser digitado. O menos nasce escolhido porque
             desconto é o caso comum — e porque, se alguém não reparar no par de botões, errar para
@@ -2481,6 +2791,7 @@ function CampoDoLote({
           >
             <span style={{ color: T.muted, fontSize: 11 }}>
               {descreverAjuste(preco)}
+              {ehODoPlano ? " do plano" : ""}
             </span>
             <span
               style={{

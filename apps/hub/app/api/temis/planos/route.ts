@@ -4,7 +4,9 @@ import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
   conferirPlano,
+  descontoParaGravar,
   ehColunaDaRessalvaAusente,
+  ehColunaDoDescontoAusente,
   type EntradaDePlano,
   limparRessalva,
 } from "@/lib/temis/planos";
@@ -44,30 +46,60 @@ export async function GET(request: Request) {
   const admin = createApoloAdminClient();
   if (!admin) return NextResponse.json({ error: "Supabase indisponível." }, { status: 503 });
 
-  // ⚠️ A RESSALVA (migration 0168) PODE AINDA NÃO EXISTIR NO BANCO. O código sobe antes dela, e uma
-  // coluna a mais no select derrubaria a aba de planos inteira com 502. Por isso a leitura tenta com
-  // a coluna e, SÓ se o erro for dela (`ehColunaDaRessalvaAusente`), repete sem.
+  // ⚠️ A RESSALVA (migration 0168) E O DESCONTO (0178) PODEM AINDA NÃO EXISTIR NO BANCO. O código
+  // sobe antes delas, e uma coluna a mais no select derrubaria a aba de planos inteira com 502. Por
+  // isso a leitura tenta com as colunas e, SÓ se o erro for de uma delas
+  // (`ehColunaDaRessalvaAusente`, `ehColunaDoDescontoAusente`), repete sem aquela.
   //
-  // ⚠️ DOIS LITERAIS, E NÃO UMA STRING MONTADA: o supabase-js só infere a forma da linha quando o
-  // `select` é um literal (ver o comentário de COLUNAS_DA_PROPOSTA em incorporador/venda/route.ts).
-  const lerPlanos = (comRessalva: boolean) => {
-    const tabela = admin.from("temis_planos");
-    const consulta = comRessalva
-      ? tabela.select(
-          "id, nome, parcelas, entrada_percentual, juros_taxa, juros_periodicidade, juros_convencao, indice_correcao, sistema_amortizacao, slot, ativo, ordem, observacao, categoria_id, minuta_id, criado_em, ressalva",
-        )
-      : tabela.select(
-          "id, nome, parcelas, entrada_percentual, juros_taxa, juros_periodicidade, juros_convencao, indice_correcao, sistema_amortizacao, slot, ativo, ordem, observacao, categoria_id, minuta_id, criado_em",
-        );
-    return consulta
+  // ⚠️ A STRING É MONTADA, e por isso a linha é tipada à mão (`LinhaDoCadastro`). Com duas colunas
+  // opcionais seriam quatro literais para o supabase-js inferir a forma; um tipo declarado é o
+  // mesmo contrato, num lugar só.
+  const lerPlanos = (comRessalva: boolean, comDesconto: boolean) =>
+    admin
+      .from("temis_planos")
+      .select(
+        [
+          // ⚠️ AS ANUAIS (0138) ENTRAM NA LEITURA (18/09/2026). A aba confere o plano contra o preço
+          // de uma unidade, e sem as anuais a conferência do Investidor Parcelado do Garden dizia
+          // R$ 4.383,14 enquanto a Mesa dizia outro número. As colunas existem desde a 0138 (a Mesa e
+          // o espelho já as leem), então não precisam da tolerância da ressalva e do desconto.
+          "id, nome, parcelas, entrada_percentual, juros_taxa, juros_periodicidade, juros_convencao, indice_correcao, sistema_amortizacao, slot, ativo, ordem, observacao, categoria_id, minuta_id, criado_em, anuais_quantidade, anuais_valor",
+          comRessalva ? "ressalva" : null,
+          comDesconto ? "desconto_percentual" : null,
+        ]
+          .filter(Boolean)
+          .join(", "),
+      )
       .eq("workspace_id", "careli")
       .eq("enterprise_id", enterpriseId)
       .order("ordem", { ascending: true })
       .order("parcelas", { ascending: true });
+
+  type LinhaDoCadastro = {
+    anuais_quantidade: null | number | string;
+    anuais_valor: null | number | string;
+    ativo: boolean;
+    categoria_id: null | string;
+    criado_em: string;
+    desconto_percentual?: null | number | string;
+    entrada_percentual: number | string;
+    id: string;
+    indice_correcao: string;
+    juros_convencao: string;
+    juros_periodicidade: string;
+    juros_taxa: null | number | string;
+    minuta_id: null | string;
+    nome: string;
+    observacao: null | string;
+    ordem: number;
+    parcelas: number;
+    ressalva?: null | string;
+    sistema_amortizacao: string;
+    slot: null | string;
   };
 
-  const [planosComRessalva, categoriasRes, minutasRes] = await Promise.all([
-    lerPlanos(true),
+  const [primeiraLeitura, categoriasRes, minutasRes, pisoRes] = await Promise.all([
+    lerPlanos(true, true),
     admin
       .from("temis_categorias")
       .select("id, nome, ordem, ativa")
@@ -81,10 +113,26 @@ export async function GET(request: Request) {
       .eq("enterprise_id", enterpriseId)
       .neq("situacao", "arquivada")
       .order("nome", { ascending: true }),
+    // ⚠️ O PISO DE ENTRADA DO EMPREENDIMENTO, o mesmo que a Mesa entrega ao simulador
+    // (`apolo_enterprise_settings.entrada_minima_percentual`). A conferência da aba usa a conta da
+    // Mesa (`conferenciaDoPlano`), e sem o piso ela partiria do padrão da casa (10%): o Investidor
+    // Parcelado do Garden (8%) apareceria com a entrada de outro número.
+    admin
+      .from("apolo_enterprise_settings")
+      .select("entrada_minima_percentual")
+      .eq("enterprise_id", enterpriseId)
+      .maybeSingle<{ entrada_minima_percentual: null | number | string }>(),
   ]);
-  const planosRes = ehColunaDaRessalvaAusente(planosComRessalva.error)
-    ? await lerPlanos(false)
-    : planosComRessalva;
+  // No máximo duas repetições: uma por coluna que pode faltar. Qualquer outro erro sai como veio.
+  let planosRes = primeiraLeitura;
+  let comRessalva = true;
+  let comDesconto = true;
+  for (let tentativa = 0; tentativa < 2 && planosRes.error; tentativa += 1) {
+    if (comRessalva && ehColunaDaRessalvaAusente(planosRes.error)) comRessalva = false;
+    else if (comDesconto && ehColunaDoDescontoAusente(planosRes.error)) comDesconto = false;
+    else break;
+    planosRes = await lerPlanos(comRessalva, comDesconto);
+  }
 
   // ⚠️ FALHA FECHADA. Devolver lista vazia num erro de leitura faria a tela dizer "este
   // empreendimento não tem plano" — uma afirmação de negócio a partir de uma falha técnica, e o
@@ -101,10 +149,28 @@ export async function GET(request: Request) {
   const minutas = minutasRes.data ?? [];
   const porCategoria = new Map(categorias.map((c) => [c.id, c.nome]));
   const porMinuta = new Map(minutas.map((m) => [m.id, m.nome]));
-  const planos = planosRes.data ?? [];
+  const planos = (planosRes.data ?? []) as unknown as LinhaDoCadastro[];
+
+  // ⚠️ FALHA NA LEITURA DO PISO NÃO DERRUBA A ABA, e vira "não cadastrado" (padrão da casa), nunca
+  // zero: é a mesma escolha da Mesa (`incorporador/venda`). O piso só alimenta a conferência.
+  if (pisoRes.error) console.error("[temis/planos] piso de entrada", pisoRes.error);
+  const pisoCru = pisoRes.error ? null : pisoRes.data?.entrada_minima_percentual;
+  const pisoNumero = pisoCru === null || pisoCru === undefined || pisoCru === "" ? null : Number(pisoCru);
+  const entradaMinimaPercentual =
+    pisoNumero !== null && Number.isFinite(pisoNumero) ? pisoNumero : null;
+
+  /** `numeric` chega como texto do PostgREST; meia configuração de anual não é anual nenhuma. */
+  const anuais = (p: LinhaDoCadastro) => {
+    const quantidade = Number(p.anuais_quantidade ?? 0);
+    const valor = Number(p.anuais_valor ?? 0);
+    return Number.isFinite(quantidade) && Number.isFinite(valor) && quantidade > 0 && valor > 0
+      ? { anuaisQuantidade: quantidade, anuaisValor: valor }
+      : { anuaisQuantidade: null, anuaisValor: null };
+  };
 
   return NextResponse.json({
     data: {
+      entradaMinimaPercentual,
       categorias: categorias.map((c) => ({
         ativa: c.ativa,
         id: c.id,
@@ -119,10 +185,13 @@ export async function GET(request: Request) {
         versao: m.versao,
       })),
       planos: planos.map((p) => ({
+        ...anuais(p),
         ativo: p.ativo,
         categoriaId: p.categoria_id,
         categoriaNome: p.categoria_id ? (porCategoria.get(p.categoria_id) ?? null) : null,
         criadoEm: p.criado_em,
+        // Sem a 0178 a linha chega sem o campo: zero, que é "sem desconto", e não `undefined`.
+        descontoPercentual: descontoParaGravar(p.desconto_percentual),
         entradaPercentual: Number(p.entrada_percentual),
         id: p.id,
         indiceCorrecao: p.indice_correcao,
@@ -136,7 +205,7 @@ export async function GET(request: Request) {
         ordem: p.ordem,
         parcelas: p.parcelas,
         // Sem a 0168 a linha chega sem o campo: nulo, e não `undefined`, para a tela não distinguir.
-        ressalva: limparRessalva((p as { ressalva?: unknown }).ressalva),
+        ressalva: limparRessalva(p.ressalva),
         sistemaAmortizacao: p.sistema_amortizacao,
         slot: p.slot,
       })),
@@ -154,6 +223,11 @@ export async function GET(request: Request) {
 function paraColunas(entrada: EntradaDePlano, enterpriseId: string) {
   return {
     ...("ressalva" in entrada ? { ressalva: limparRessalva(entrada.ressalva) } : {}),
+    // ⚠️ O DESCONTO (0178) SEGUE A MESMA REGRA DA RESSALVA: só entra quando a tela falou dele.
+    // Cliente antigo sem o campo não apaga o desconto do Investidor do Garden ao salvar os juros.
+    ...("descontoPercentual" in entrada
+      ? { desconto_percentual: descontoParaGravar(entrada.descontoPercentual) }
+      : {}),
     ativo: entrada.ativo ?? true,
     categoria_id: entrada.categoriaId ?? null,
     entrada_percentual: entrada.entradaPercentual,
@@ -194,6 +268,9 @@ function explicarErro(codigo: string, mensagem: string): string {
   if (codigo === "23514" && mensagem.includes("ressalva")) {
     return "A ressalva de disponibilidade tem no máximo 80 caracteres e não pode ser só espaços.";
   }
+  if (codigo === "23514" && mensagem.includes("desconto")) {
+    return "O desconto do plano é um percentual de 0 a menos de 100: 8 significa 8%.";
+  }
   if (codigo === "23514") return "Algum valor está fora do permitido. Confira parcelas, juros e entrada.";
   return "Não consegui gravar o plano.";
 }
@@ -202,32 +279,45 @@ function explicarErro(codigo: string, mensagem: string): string {
 const RESSALVA_SEM_COLUNA =
   "A ressalva de disponibilidade ainda não foi liberada no banco. Salve o plano sem ela por enquanto.";
 
+/** A frase de quando alguém tenta GRAVAR um desconto com a migration 0178 ainda por aplicar. */
+const DESCONTO_SEM_COLUNA =
+  "O desconto do plano ainda não foi liberado no banco. Salve o plano sem desconto por enquanto.";
+
 /**
- * Grava, e se o banco ainda não tem a coluna `ressalva` (0168 pendente), decide o que fazer.
+ * Grava, e se o banco ainda não tem a coluna `ressalva` (0168) ou `desconto_percentual` (0178),
+ * decide o que fazer.
  *
- * ⚠️ SEM RESSALVA PARA GRAVAR, REPETE SEM A CHAVE: não há nada a perder, e o operador que só trocou
- * os juros não pode ser barrado por uma migration que não é dele. COM RESSALVA, RECUSA: gravar o
- * plano e descartar a frase calado diria "salvo" para uma condição de disponibilidade que nunca vai
- * aparecer no portal.
+ * ⚠️ SEM VALOR PARA GRAVAR NAQUELA COLUNA, REPETE SEM A CHAVE: não há nada a perder, e o operador
+ * que só trocou os juros não pode ser barrado por uma migration que não é dele. COM VALOR, RECUSA:
+ * gravar o plano e descartar a frase ou o desconto calado diria "salvo" para uma condição que nunca
+ * vai aparecer na venda — e um desconto de plano que some é preço de tabela cobrado de quem devia
+ * pagar 8% menos.
  */
-async function gravarTolerandoARessalva<
+async function gravarTolerandoColunasNovas<
   R extends { error: { code?: string; message?: string } | null },
 >(
   colunas: ReturnType<typeof paraColunas>,
   gravar: (linha: ReturnType<typeof paraColunas>) => PromiseLike<R>,
-): Promise<{ resposta: R; semColuna: boolean }> {
-  const primeira = await gravar(colunas);
-  if (!ehColunaDaRessalvaAusente(primeira.error)) {
-    return { resposta: primeira, semColuna: false };
-  }
+): Promise<{ resposta: R; semColuna: null | string }> {
+  const linha: Record<string, unknown> = { ...colunas };
 
-  if ("ressalva" in colunas && colunas.ressalva) {
-    return { resposta: primeira, semColuna: true };
-  }
+  // No máximo três idas: a original e uma por coluna que pode faltar.
+  for (let tentativa = 0; ; tentativa += 1) {
+    const resposta = await gravar(linha as ReturnType<typeof paraColunas>);
+    if (tentativa >= 2) return { resposta, semColuna: null };
 
-  const semRessalva = { ...colunas };
-  delete (semRessalva as { ressalva?: unknown }).ressalva;
-  return { resposta: await gravar(semRessalva), semColuna: false };
+    if (ehColunaDaRessalvaAusente(resposta.error) && "ressalva" in linha) {
+      if (linha.ressalva) return { resposta, semColuna: RESSALVA_SEM_COLUNA };
+      delete linha.ressalva;
+      continue;
+    }
+    if (ehColunaDoDescontoAusente(resposta.error) && "desconto_percentual" in linha) {
+      if (linha.desconto_percentual) return { resposta, semColuna: DESCONTO_SEM_COLUNA };
+      delete linha.desconto_percentual;
+      continue;
+    }
+    return { resposta, semColuna: null };
+  }
 }
 
 export async function POST(request: Request) {
@@ -246,12 +336,12 @@ export async function POST(request: Request) {
   const admin = createApoloAdminClient();
   if (!admin) return NextResponse.json({ error: "Supabase indisponível." }, { status: 503 });
 
-  const { resposta, semColuna } = await gravarTolerandoARessalva(
+  const { resposta, semColuna } = await gravarTolerandoColunasNovas(
     paraColunas(entrada, enterpriseId),
     (linha) => admin.from("temis_planos").insert(linha).select("id").single(),
   );
 
-  if (semColuna) return NextResponse.json({ error: RESSALVA_SEM_COLUNA }, { status: 400 });
+  if (semColuna) return NextResponse.json({ error: semColuna }, { status: 400 });
   const { data, error } = resposta;
   if (error) {
     return NextResponse.json({ error: explicarErro(error.code ?? "", error.message ?? "") }, { status: 400 });
@@ -278,7 +368,7 @@ export async function PATCH(request: Request) {
   const admin = createApoloAdminClient();
   if (!admin) return NextResponse.json({ error: "Supabase indisponível." }, { status: 503 });
 
-  const { resposta, semColuna } = await gravarTolerandoARessalva(
+  const { resposta, semColuna } = await gravarTolerandoColunasNovas(
     paraColunas(entrada, enterpriseId),
     (linha) =>
       admin
@@ -289,7 +379,7 @@ export async function PATCH(request: Request) {
         .eq("id", id),
   );
 
-  if (semColuna) return NextResponse.json({ error: RESSALVA_SEM_COLUNA }, { status: 400 });
+  if (semColuna) return NextResponse.json({ error: semColuna }, { status: 400 });
   const { error } = resposta;
   if (error) {
     return NextResponse.json({ error: explicarErro(error.code ?? "", error.message ?? "") }, { status: 400 });

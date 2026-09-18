@@ -39,21 +39,19 @@ import {
 } from "@/lib/apolo/planos-comerciais";
 import type { PlanosDoEmpreendimento } from "@/lib/apolo/planos-comerciais-c2x";
 import {
+  colunasComAsNovas,
   comoPlano,
   type LinhaDoPlano,
   type PlanoDoPanteon,
   planosPreferindoOPanteon,
+  semAColunaQueFaltou,
 } from "@/lib/hercules/planos-do-panteon";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import {
   itensDoMenorRecorte,
   type OrigemDoRecorte,
 } from "@/lib/hercules/recorte-da-unidade";
-import {
-  ehColunaDaRessalvaAusente,
-  rotuloDoIndice,
-  rotuloDoSistema,
-} from "@/lib/temis/planos";
+import { rotuloDoIndice, rotuloDoSistema } from "@/lib/temis/planos";
 
 type Cliente = Pick<SupabaseClient, "from">;
 
@@ -70,6 +68,8 @@ export type PlanoLido = {
   anuaisQuantidade: null | number;
   anuaisValor: null | number;
   categoriaId: null | string;
+  /** O desconto do plano sobre a tabela (0178). Zero = sem desconto; o C2X não tem. */
+  descontoPercentual: number;
   enterpriseId: string;
   entradaPercentual: number;
   fonte: FonteDoPlano;
@@ -90,6 +90,14 @@ export type PlanoLido = {
 export type PlanoDoPortal = {
   /** "5 anuais de R$ 25.000,00". Nulo = plano sem anual. */
   anuais: null | string;
+  /**
+   * "8% sobre a tabela". Nulo = plano sem desconto.
+   *
+   * ⚠️ O TIME DA CECÍLIO PRECISA VER O DESCONTO DO PLANO AQUI, porque é o preço dele: o Investidor
+   * Parcelado do Garden vende a 92% da tabela, e sem esta linha a aba anunciaria o plano pelo preço
+   * cheio que a Mesa não cobra.
+   */
+  desconto: null | string;
   /** "20%", ou "sem entrada". */
   entrada: string;
   fonte: FonteDoPlano;
@@ -203,6 +211,7 @@ export function planoLidoDoPanteon(plano: PlanoDoPanteon): PlanoLido {
     anuaisQuantidade: plano.anuaisQuantidade,
     anuaisValor: plano.anuaisValor,
     categoriaId: plano.categoriaId ?? null,
+    descontoPercentual: plano.descontoPercentual,
     enterpriseId: plano.enterpriseId ?? "",
     entradaPercentual: plano.entradaPercentual,
     fonte: "panteon",
@@ -229,6 +238,7 @@ export function planosDoC2xLidos(grupo: PlanosDoEmpreendimento): PlanoLido[] {
     anuaisQuantidade: null,
     anuaisValor: null,
     categoriaId: null,
+    descontoPercentual: 0,
     enterpriseId: String(grupo.enterpriseId),
     entradaPercentual: plano.entradaPercentual,
     fonte: "c2x",
@@ -304,6 +314,10 @@ export function planoParaATela(plano: PlanoLido): PlanoDoPortal {
     anuais:
       plano.anuaisQuantidade && plano.anuaisValor
         ? `${plano.anuaisQuantidade} ${plano.anuaisQuantidade === 1 ? "anual" : "anuais"} de ${dinheiro(plano.anuaisValor)}`
+        : null,
+    desconto:
+      plano.descontoPercentual > 0
+        ? `${plano.descontoPercentual.toLocaleString("pt-BR", { maximumFractionDigits: 3 })}% sobre a tabela`
         : null,
     entrada: plano.entradaPercentual > 0 ? textoDoSinal(formatavel) : "sem entrada",
     fonte: plano.fonte,
@@ -532,19 +546,20 @@ function emLotes(ids: readonly string[]): string[][] {
  *
  * ⚠️ A RESSALVA PODE AINDA NÃO EXISTIR (migration 0168 pendente): o primeiro erro que for DELA faz a
  * leitura seguir sem a coluna, e a tela mostra os planos sem etiqueta. Qualquer outro erro lança.
+ * O DESCONTO (0178) tem a mesma tolerância: sem a coluna, o plano aparece sem desconto.
  */
 export async function lerPlanosDoPortal(
   cliente: Cliente,
   enterpriseIds: readonly string[],
 ): Promise<PlanoLido[]> {
   const linhas: LinhaDoPlanoDoPortal[] = [];
-  let comRessalva = true;
+  let novas = { desconto: true, ressalva: true };
 
   for (const lote of emLotes(enterpriseIds)) {
     for (let de = 0; ; ) {
       const { data, error } = await cliente
         .from("temis_planos")
-        .select(comRessalva ? `${COLUNAS_DO_PLANO},ressalva` : COLUNAS_DO_PLANO)
+        .select(colunasComAsNovas(COLUNAS_DO_PLANO, novas))
         .eq("workspace_id", WORKSPACE)
         .eq("ativo", true)
         .in("enterprise_id", lote)
@@ -552,8 +567,9 @@ export async function lerPlanosDoPortal(
         .order("id", { ascending: true })
         .range(de, de + PAGINA - 1);
 
-      if (error && comRessalva && ehColunaDaRessalvaAusente(error)) {
-        comRessalva = false;
+      const semElas = error ? semAColunaQueFaltou(error, novas) : null;
+      if (semElas) {
+        novas = semElas;
         continue;
       }
       if (error) throw new Error(error.message);

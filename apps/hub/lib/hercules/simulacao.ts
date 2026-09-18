@@ -62,9 +62,42 @@ export function valorPresenteDosBaloes(quantidade: number, valor: number, i: num
   if (i <= 0) return quantidade * valor;
 
   let soma = 0;
-  // O k-ésimo balão cai no aniversário k, ou seja, 12k meses à frente.
+  // O k-ésimo balão cai junto com a mensal 12k, ou seja, 12k meses à frente (a mensal 1 é o mês 1).
   for (let k = 1; k <= quantidade; k += 1) soma += valor * (1 + i) ** (-12 * k);
   return soma;
+}
+
+/**
+ * Quanto as anuais abatem do saldo que a série mensal vai amortizar, no sistema do plano.
+ *
+ * ⚠️ NO SACOC É O VALOR DE FACE (18/09/2026). Lucas, com a Mesa do Garden aberta: *"tem que ser
+ * igual o mmendes"*. No SACOC da casa a parcela do primeiro ciclo é o saldo dividido pelo prazo, e
+ * os juros do contrato entram pelo degrau do aniversário (`parcelaSacoc`, `parcelaNiveladaSacoc`).
+ * Descontar as anuais a valor presente pela taxa do plano é raciocínio de Price enxertado num
+ * contrato que não amortiza assim, e dava outro número que o mapa da MMendes (`garden.html`,
+ * `condicoes`, que abate as anuais pelo valor de face): R$ 328,18 a mais por mês no NORMAL de 60x
+ * e R$ 159,19 no INVESTIDOR PARCELADO de 84x, em todos os lotes. Com o valor de face a folha também
+ * fecha: entrada + anuais + saldo das mensais = valor negociado, ao centavo.
+ *
+ * ⚠️ PRICE E SAC CONTINUAM A VALOR PRESENTE. Nos dois o juro corre sobre o saldo desde o primeiro
+ * mês, e aí o balão do ano três vale hoje menos que a face: abatê-lo inteiro derrubaria a parcela
+ * abaixo do que o contrato cumpre.
+ *
+ * ⚠️ É A FUNÇÃO ÚNICA DESTA PERGUNTA: `montarProposta`, `entradaParaAParcela` e `montarCronograma`
+ * passam todos por aqui. Mudar um lado só faz a tela e o PDF voltarem a discordar.
+ */
+export function anuaisQueAbatemOSaldo(entrada: {
+  quantidade: number;
+  sistemaAmortizacao: SistemaAmortizacao;
+  taxaAoMes: number;
+  valor: number;
+}): number {
+  const { quantidade, sistemaAmortizacao, taxaAoMes, valor } = entrada;
+  return valorPresenteDosBaloes(
+    quantidade,
+    valor,
+    sistemaAmortizacao === "sacoc" ? 0 : taxaAoMes,
+  );
 }
 
 /** Fator de anuidade: quanto vale hoje uma série de `parcelas` pagamentos de 1, à taxa `i`. */
@@ -205,7 +238,10 @@ export function somaDasMensais(entrada: {
 }
 
 export type PropostaMontada = {
-  /** O que sobra para a série mensal, depois da entrada e do valor presente dos balões. */
+  /**
+   * O que sobra para a série mensal, depois da entrada e dos balões (`anuaisQueAbatemOSaldo`: valor
+   * de face no SACOC, valor presente na Price e no SAC).
+   */
   financiado: number;
   /** A do PRIMEIRO ciclo, no SACOC: é a que o C2X emite no primeiro ano e a que a tela anuncia. */
   parcela: number;
@@ -216,11 +252,11 @@ export type PropostaMontada = {
 /**
  * A parcela de uma proposta montada à mão.
  *
- * ⚠️ O BALÃO SAI DO SALDO PELO VALOR PRESENTE, e não pelo valor de face. Somar R$ 20.000 de um
- * balão que cai daqui a três anos como se fosse dinheiro de hoje reduziria a parcela além do que a
- * conta permite — e a proposta sairia mais barata do que o contrato consegue cumprir. Isso vale nos
- * TRÊS sistemas: é dinheiro do futuro abatendo saldo de hoje, e essa pergunta não muda quando o
- * jeito de dividir o saldo muda. O que muda é só o passo seguinte, a divisão.
+ * ⚠️ O BALÃO SAI DO SALDO PELO SISTEMA DO PLANO (`anuaisQueAbatemOSaldo`). Na Price e no SAC,
+ * pelo valor presente: somar R$ 20.000 de um balão que cai daqui a três anos como se fosse dinheiro
+ * de hoje reduziria a parcela além do que a conta permite. No SACOC, pelo valor de face (desde
+ * 18/09/2026, "tem que ser igual o mmendes"): a parcela do primeiro ciclo é amortização pura e os
+ * juros entram no degrau do aniversário, então não há desconto de juros a fazer no balão.
  *
  * ⚠️ E O TOTAL SOMA A SÉRIE INTEIRA (`somaDasMensais`), não `parcela × parcelas`: no SACOC a
  * parcela do primeiro ano não é a do contrato inteiro.
@@ -237,8 +273,13 @@ export function montarProposta(entrada: {
   const { baloesQuantidade, baloesValor, parcelas, sistemaAmortizacao, taxaAoMes, valor } = entrada;
   const desembolsoInicial = Math.max(0, entrada.entrada);
 
-  const vpBaloes = valorPresenteDosBaloes(baloesQuantidade, baloesValor, taxaAoMes);
-  const financiado = Math.max(0, valor - desembolsoInicial - vpBaloes);
+  const baloesNoSaldo = anuaisQueAbatemOSaldo({
+    quantidade: baloesQuantidade,
+    sistemaAmortizacao,
+    taxaAoMes,
+    valor: baloesValor,
+  });
+  const financiado = Math.max(0, valor - desembolsoInicial - baloesNoSaldo);
   const parcela = parcelaDoFinanciado({ financiado, parcelas, sistemaAmortizacao, taxaAoMes });
 
   return {
@@ -263,8 +304,9 @@ export function montarProposta(entrada: {
  * anuidade da Price devolvia um saldo menor e, com ele, uma entrada MAIOR do que a necessária —
  * dinheiro de agora que o cliente não precisava pôr, no plano de 21 dos 24 empreendimentos.
  *
- * ⚠️ O VALOR PRESENTE DOS BALÕES CONTINUA SAINDO ANTES, igual na ida: o reforço anual abate o
- * saldo pelo que vale hoje, seja qual for o sistema.
+ * ⚠️ OS BALÕES SAEM ANTES, igual na ida e pela MESMA função (`anuaisQueAbatemOSaldo`): valor de
+ * face no SACOC, valor presente na Price e no SAC. Inverter com uma regra e ir com outra faria a
+ * entrada sugerida não produzir a parcela pedida.
  */
 export function entradaParaAParcela(entrada: {
   baloesQuantidade: number;
@@ -278,10 +320,15 @@ export function entradaParaAParcela(entrada: {
   const { baloesQuantidade, baloesValor, parcela, parcelas, sistemaAmortizacao, taxaAoMes, valor } =
     entrada;
 
-  const vpBaloes = valorPresenteDosBaloes(baloesQuantidade, baloesValor, taxaAoMes);
+  const baloesNoSaldo = anuaisQueAbatemOSaldo({
+    quantidade: baloesQuantidade,
+    sistemaAmortizacao,
+    taxaAoMes,
+    valor: baloesValor,
+  });
   const financiadoQueAParcelaPaga =
     parcela * fatorDoFinanciado({ parcelas, sistemaAmortizacao, taxaAoMes });
-  const bruta = valor - vpBaloes - financiadoQueAParcelaPaga;
+  const bruta = valor - baloesNoSaldo - financiadoQueAParcelaPaga;
 
   return bruta >= 0 ? { entrada: bruta, sobra: 0 } : { entrada: 0, sobra: -bruta };
 }

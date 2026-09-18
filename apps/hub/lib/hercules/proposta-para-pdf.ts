@@ -87,6 +87,15 @@ export type DadosDaFolha = {
   logoEmpreendimento: null | Uint8Array;
   plano: PlanoComercial;
   /**
+   * O preço de TABELA da unidade, para a folha mostrar de onde o valor negociado saiu.
+   *
+   * ⚠️ QUEM MANDA É A ROTA, E ELA SÓ MANDA QUANDO O PLANO TEM DESCONTO (Lucas, 18/09/2026: *"tem
+   * que ser igual o mmendes"*). O Investidor Parcelado do Garden vende a 92% da tabela, e o
+   * comprador precisa ler "tabela R$ 435.000,00 · desconto 8%" para entender os R$ 400.200,00 da
+   * capa. Ausente (todo plano sem desconto), a folha sai exatamente como saía.
+   */
+  precoDeTabela?: null | number;
+  /**
    * O tipo do PRODUTO onde a unidade mora. Ausente = loteamento, que é o que toda folha foi até a
    * migration 0170.
    *
@@ -268,9 +277,30 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
   const taxa = textoDaTaxa(plano);
   const temCorrecao = plano.indiceCorrecao !== "SEM_CORRECAO";
 
-  const condicoes: Array<{ rotulo: string; valor: string }> = [
-    { rotulo: "Parcelas mensais", valor: String(cronograma.mensais.length) },
-  ];
+  const condicoes: Array<{ rotulo: string; valor: string }> = [];
+  // ⚠️ A TABELA E O DESCONTO SÓ ENTRAM QUANDO HOUVE DESCONTO e a rota informou a tabela (ver
+  // `precoDeTabela`). O percentual é o do dinheiro de verdade, tabela contra negociado, e não o
+  // cadastrado no plano: se o coordenador deu mais que o plano, o papel diz o total que foi dado.
+  const tabela = dados.precoDeTabela;
+  if (
+    typeof tabela === "number" &&
+    Number.isFinite(tabela) &&
+    tabela > 0 &&
+    Math.round(dados.valorNegociado * 100) < Math.round(tabela * 100)
+  ) {
+    const desconto = tabela - dados.valorNegociado;
+    condicoes.push(
+      { rotulo: "Valor de tabela", valor: reais(tabela) },
+      {
+        rotulo: "Desconto",
+        valor: `${percentual((desconto / tabela) * 100)} · ${reais(desconto)}`,
+      },
+    );
+  }
+  condicoes.push({
+    rotulo: "Parcelas mensais",
+    valor: String(cronograma.mensais.length),
+  });
   // ⚠️ SÓ ENTRA QUANDO EXISTE. "Parcelas anuais: 0" faria o comprador procurar do que se trata.
   if (cronograma.anuais.length > 0) {
     condicoes.push({
@@ -323,11 +353,17 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
       valor: reais(cronograma.totais.entrada),
     },
     {
-      detalhe: `${cronograma.mensais.length} mensais${
+      // ⚠️ A LEGENDA DIZ O QUE O NÚMERO É (18/09/2026). O "Financiado" é o saldo que a série MENSAL
+      // amortiza: as anuais já saíram dele. A legenda antiga ("84 mensais + 4 anuais") dizia o
+      // contrário, e quem somava o papel (entrada + financiado + anuais) achava R$ 13.372,36 a mais
+      // que o valor da unidade no Investidor Parcelado do Garden. Com as anuais pelo valor de face
+      // no SACOC (`anuaisQueAbatemOSaldo`) a soma fecha ao centavo, e a legenda diz por quê.
+      // Curta de propósito: o cartão tem ~120 pt de largura em Helvetica 7, e "saldo das 180
+      // mensais, fora as 10 anuais" invadiria o cartão da parcela ao lado.
+      detalhe:
         cronograma.anuais.length > 0
-          ? ` + ${cronograma.anuais.length} anuais`
-          : ""
-      }`,
+          ? `${cronograma.mensais.length} mensais, fora as ${cronograma.anuais.length} anuais`
+          : `${cronograma.mensais.length} mensais`,
       rotulo: "Financiado",
       valor: reais(cronograma.totais.financiado),
     },

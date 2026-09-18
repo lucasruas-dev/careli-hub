@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 
 import { abrirEspelho } from "@/lib/hercules/espelho/abrir-espelho";
 import { estadoDoEspelho } from "@/lib/hercules/espelho/estado-do-espelho";
-import { planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
+import { pisoDeEntradaPublico, planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
 import { EspelhoPublico } from "@/modules/publico/espelho/EspelhoPublico";
 
 // O ESPELHO PÚBLICO — o mapa de lotes que o corretor manda para o cliente.
@@ -50,18 +50,22 @@ export default async function EspelhoPublicoRoute({
   const { client, codigo, filhosC2xIds, masterplan, nome, paiC2xId } = aberto.espelho;
 
   try {
-    const [estado, planos] = await Promise.all([
+    const ids = [paiC2xId, ...filhosC2xIds].filter(Boolean) as string[];
+    const [estado, planos, entradaMinimaPercentual] = await Promise.all([
       estadoDoEspelho(client, {
         enterpriseIdDoPai: paiC2xId,
         enterpriseIdsDosFilhos: filhosC2xIds,
       }),
-      planosPublicos(client, [paiC2xId, ...filhosC2xIds].filter(Boolean) as string[]),
+      planosPublicos(client, ids),
+      // O piso do empreendimento (8% no Garden): o mesmo que a Mesa de Venda entrega ao simulador.
+      pisoDeEntradaPublico(client, ids),
     ]);
 
     return (
       <EspelhoPublico
         inicial={{
           ...estado,
+          entradaMinimaPercentual,
           planos,
           empreendimento: { codigo, nome },
           temMapa: masterplan !== null,

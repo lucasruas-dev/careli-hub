@@ -441,8 +441,8 @@ export function conferirProposta(
     // ⚠️ E O TETO É SÓ DA ENTRADA — SOMAR OS REFORÇOS AQUI RECUSA VENDA BOA. Uma versão anterior
     // somava entrada + reforços nominais e comparava com o preço à vista; medido contra o próprio
     // simulador, isso reprovava SETE composições que a tela recomenda, porque reforço que cai no
-    // mês 72 não é dinheiro de hoje. Quem sabe se a composição fecha é o cronograma, que desconta
-    // os reforços a valor presente (`valorPresenteDosBaloes`) e quebra quando o saldo fica
+    // mês 72 não é dinheiro de hoje. Quem sabe se a composição fecha é o cronograma, que abate os
+    // reforços pelo sistema do plano (`anuaisQueAbatemOSaldo`) e quebra quando o saldo fica
     // negativo. Aqui a régua é a do dinheiro do ATO.
     //
     // ⚠️ IGUAL AO VALOR PASSA: é a venda à vista, e recusá-la seria proibir o cliente de quitar

@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { calcularParcela } from "@/lib/apolo/planos-comerciais";
 import {
   abrirFormulario,
   type CampoDaFaixa,
@@ -31,10 +30,10 @@ import {
 } from "@/lib/hercules/faixa-no-formulario-do-plano";
 import {
   type CategoriaDoTemis,
+  conferirNaUnidade,
   conferirPlano,
   type EntradaDePlano,
   limparRessalva,
-  paraCalculo,
   type PlanoDoTemis,
   RESSALVA_MAXIMA,
   rotuloDoIndice,
@@ -87,6 +86,11 @@ type MinutaResumida = {
 
 type Carga = {
   categorias: CategoriaDoTemis[];
+  /**
+   * O piso de entrada do empreendimento (`apolo_enterprise_settings`), o mesmo que a Mesa entrega ao
+   * simulador. A conferência do plano parte dele, como a Mesa. Nulo = padrão da casa.
+   */
+  entradaMinimaPercentual?: null | number;
   minutas: MinutaResumida[];
   planos: PlanoDoTemis[];
 };
@@ -110,6 +114,7 @@ const SLOTS: { rotulo: string; valor: string }[] = [
 
 const PLANO_NOVO: Rascunho = {
   categoriaId: null,
+  descontoPercentual: 0,
   entradaPercentual: 20,
   indiceCorrecao: "IPCA_ANUAL",
   jurosConvencao: "equivalente",
@@ -200,6 +205,13 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
   // embaixo do dedo de quem está digitando "12,".
   const [entradaTexto, setEntradaTexto] = useState("20");
   const [jurosTexto, setJurosTexto] = useState("");
+  /**
+   * O desconto do plano sobre a tabela, como texto pelo mesmo motivo da entrada e dos juros.
+   *
+   * ⚠️ VAZIO É "SEM DESCONTO" (Lucas, 18/09/2026: *"tem que ser igual o mmendes"*, e no mapa da
+   * MMendes o plano Normal é "tabela", sem desconto). Não é campo por preencher.
+   */
+  const [descontoTexto, setDescontoTexto] = useState("");
 
   // Preço da conferência. Começa vazio: um valor sugerido viraria número que ninguém escolheu.
   const [precoSimulado, setPrecoSimulado] = useState("");
@@ -270,6 +282,7 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
     setRascunho(plano);
     setEntradaTexto(premissa.entradaTexto);
     setJurosTexto(premissa.jurosTexto);
+    setDescontoTexto("");
     // ⚠️ O PLANO NOVO TAMBÉM NÃO É PREENCHIDO AO ABRIR: a faixa entra quando o operador escreve as
     // parcelas. Preencher na abertura dependeria de a leitura das faixas já ter chegado, e o mesmo
     // clique em "Novo plano" abriria ora com a premissa da faixa, ora sem ela.
@@ -285,6 +298,7 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
     const editado: Rascunho = {
       ativo: plano.ativo,
       categoriaId: plano.categoriaId,
+      descontoPercentual: plano.descontoPercentual ?? 0,
       entradaPercentual: plano.entradaPercentual,
       id: plano.id,
       indiceCorrecao: plano.indiceCorrecao,
@@ -308,6 +322,9 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
     setRascunho(editado);
     setEntradaTexto(premissa.entradaTexto);
     setJurosTexto(premissa.jurosTexto);
+    setDescontoTexto(
+      plano.descontoPercentual ? paraTexto(plano.descontoPercentual) : "",
+    );
     // ⚠️⚠️ ABRIR UM PLANO SALVO NÃO CONSULTA FAIXA. Um plano com IPCA que o operador só abriu para
     // conferir não pode virar Poupança porque a faixa mudou depois: ele pode já ter vendido, e o
     // contrato de quem comprou diz IPCA. `abrirFormulario` nem recebe as faixas.
@@ -391,6 +408,9 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
 
     const entrada: EntradaDePlano = {
       ...rascunho,
+      // ⚠️ SEMPRE COM A CHAVE, como a ressalva: é ela que diz à rota que esta tela fala de desconto.
+      // Vazio é zero, "sem desconto".
+      descontoPercentual: paraNumero(descontoTexto) ?? 0,
       entradaPercentual: paraNumero(entradaTexto) ?? 0,
       jurosTaxa: paraNumero(jurosTexto),
       // ⚠️ SEMPRE COM A CHAVE: é a presença dela que diz à rota "apague" quando o campo foi limpo.
@@ -469,6 +489,8 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
           body: JSON.stringify({
             ativo: !plano.ativo,
             categoriaId: plano.categoriaId,
+            // Como a ressalva: vai com o valor lido, para o PATCH continuar sendo o plano INTEIRO.
+            descontoPercentual: plano.descontoPercentual ?? 0,
             entradaPercentual: plano.entradaPercentual,
             indiceCorrecao: plano.indiceCorrecao,
             jurosConvencao: plano.jurosConvencao,
@@ -694,12 +716,25 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
           criandoAqui={criandoAqui}
           criandoCategoria={criandoCategoria}
           criarCategoria={criarCategoria}
+          anuaisDoPlano={
+            rascunho.id
+              ? (() => {
+                  const salvo = carga.planos.find((p) => p.id === rascunho.id);
+                  return salvo
+                    ? { quantidade: salvo.anuaisQuantidade ?? null, valor: salvo.anuaisValor ?? null }
+                    : null;
+                })()
+              : null
+          }
+          descontoTexto={descontoTexto}
           editarPremissa={editarPremissa}
+          entradaMinimaPercentual={carga.entradaMinimaPercentual ?? null}
           entradaTexto={entradaTexto}
           indicesCarregados={tabela !== null}
           jurosTexto={jurosTexto}
           minutas={carga.minutas}
           mudarCategoriaNova={setCategoriaNova}
+          mudarDesconto={setDescontoTexto}
           mudarParcelas={mudarParcelasDoPlano}
           mudarPreco={setPrecoSimulado}
           opcoesDoIndice={opcoesDeIndice(
@@ -721,6 +756,7 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
           aoDesativar={(p) => void alternarAtivo(p)}
           aoEditar={abrirEdicao}
           aoNovo={() => abrirNovo(categoria.id)}
+          entradaMinimaPercentual={carga.entradaMinimaPercentual ?? null}
           key={categoria.id}
           planos={carga.planos.filter((p) => p.categoriaId === categoria.id)}
           preco={preco}
@@ -734,6 +770,7 @@ export function PlanosComerciaisTab({ enterpriseId, name }: Props) {
           aoDesativar={(p) => void alternarAtivo(p)}
           aoEditar={abrirEdicao}
           aoNovo={() => abrirNovo(null)}
+          entradaMinimaPercentual={carga.entradaMinimaPercentual ?? null}
           planos={semCategoria}
           preco={preco}
           salvando={salvando}
@@ -827,6 +864,7 @@ function GrupoDePlanos({
   aoDesativar,
   aoEditar,
   aoNovo,
+  entradaMinimaPercentual,
   planos,
   preco,
   salvando,
@@ -835,6 +873,7 @@ function GrupoDePlanos({
   aoDesativar: (plano: PlanoDoTemis) => void;
   aoEditar: (plano: PlanoDoTemis) => void;
   aoNovo: () => void;
+  entradaMinimaPercentual: null | number;
   planos: PlanoDoTemis[];
   preco: null | number;
   salvando: boolean;
@@ -873,6 +912,7 @@ function GrupoDePlanos({
             <LinhaDoPlano
               aoDesativar={() => aoDesativar(plano)}
               aoEditar={() => aoEditar(plano)}
+              entradaMinimaPercentual={entradaMinimaPercentual}
               key={plano.id}
               plano={plano}
               preco={preco}
@@ -888,12 +928,15 @@ function GrupoDePlanos({
 function LinhaDoPlano({
   aoDesativar,
   aoEditar,
+  entradaMinimaPercentual,
   plano,
   preco,
   salvando,
 }: {
   aoDesativar: () => void;
   aoEditar: () => void;
+  /** O piso de entrada do empreendimento, o mesmo que a Mesa usa. Nulo = padrão da casa. */
+  entradaMinimaPercentual: null | number;
   plano: PlanoDoTemis;
   preco: null | number;
   salvando: boolean;
@@ -901,8 +944,18 @@ function LinhaDoPlano({
   // ⚠️ O CÁLCULO PASSA POR `paraCalculo` DE PROPÓSITO. É o módulo com 27 testes medidos contra nove
   // empreendimentos reais que decide sinal e parcela; recalcular aqui na mão criaria um segundo
   // número, e a tela e o contrato passariam a discordar sem ninguém perceber.
-  const simulado =
-    preco === null ? null : calcularParcela(paraCalculo(plano), preco);
+  //
+  // ⚠️ O PREÇO DA CONFERÊNCIA É O DO PLANO: com desconto, a tabela menos o desconto dele — é sobre
+  // esse preço que a Mesa calcula entrada e parcela (`tabela-do-lote.ts`). Sem desconto, o próprio
+  // preço digitado.
+  //
+  // ⚠️ E A CONTA É A DA MESA, COM AS ANUAIS (18/09/2026, "tem que ser igual o mmendes"). Aqui era
+  // `calcularParcela`, que não conhece anual: no Investidor Parcelado do Garden, lote de
+  // R$ 435.000, esta linha dizia R$ 4.383,14 enquanto a Mesa dizia outro número. Agora é
+  // `conferenciaDoPlano` (tabela-do-lote.ts): desconto, entrada do plano com o piso do
+  // empreendimento, anuais que cabem no prazo e a parcela de `montarProposta`. A natureza da
+  // parcela ("inicial", "a primeira") continua vindo de `calcularParcela`, lá dentro.
+  const simulado = conferirNaUnidade(plano, preco, entradaMinimaPercentual);
 
   return (
     <li
@@ -939,6 +992,23 @@ function LinhaDoPlano({
               maximumFractionDigits: 3,
             })}
             % ·{" "}
+            {plano.descontoPercentual ? (
+              <>
+                desconto de{" "}
+                {plano.descontoPercentual.toLocaleString("pt-BR", {
+                  maximumFractionDigits: 3,
+                })}
+                % ·{" "}
+              </>
+            ) : null}
+            {/* As anuais do plano (0138), quando ele tem: é o que a conferência abaixo usa. */}
+            {plano.anuaisQuantidade && plano.anuaisValor ? (
+              <>
+                {plano.anuaisQuantidade}{" "}
+                {plano.anuaisQuantidade === 1 ? "anual" : "anuais"} de{" "}
+                {dinheiro(plano.anuaisValor)} ·{" "}
+              </>
+            ) : null}
             {plano.jurosTaxa === null
               ? "sem juros"
               : `juros de ${plano.jurosTaxa.toLocaleString("pt-BR", {
@@ -989,25 +1059,55 @@ function LinhaDoPlano({
         </p>
       ) : null}
 
-      {simulado?.parcela != null ? (
-        <p className="m-0 rounded-lg bg-subtle px-2.5 py-1.5 text-xs text-ink-soft">
-          Nessa unidade: sinal de{" "}
-          <strong className="font-semibold tabular-nums text-ink">
-            {dinheiro(simulado.sinal)}
-          </strong>{" "}
-          e {simulado.parcelas} parcelas de{" "}
-          <strong className="font-semibold tabular-nums text-ink">
-            {dinheiro(simulado.parcela)}
-          </strong>
-          {simulado.naturezaDaParcela === "primeira"
-            ? " (a primeira; as seguintes caem)"
-            : simulado.naturezaDaParcela === "inicial"
-              ? " (inicial, antes da correção)"
-              : ""}
-          .
-        </p>
-      ) : null}
+      {simulado ? <ConferenciaNaUnidade conferencia={simulado} /> : null}
     </li>
+  );
+}
+
+/** "Nessa unidade: sinal de R$ 32.016,00, 4 anuais de R$ 25.000,00 e 84 parcelas de R$ 3.192,67." */
+function ConferenciaNaUnidade({
+  conferencia,
+}: {
+  conferencia: NonNullable<ReturnType<typeof conferirNaUnidade>>;
+}) {
+  return (
+    <p className="m-0 rounded-lg bg-subtle px-2.5 py-1.5 text-xs text-ink-soft">
+      Nessa unidade
+      {/* O preço do plano, quando o desconto dele muda o preço: é sobre ele que a conta foi feita. */}
+      {conferencia.descontoPercentual > 0 ? (
+        <>
+          {" "}
+          (no plano,{" "}
+          <strong className="font-semibold tabular-nums text-ink">
+            {dinheiro(conferencia.precoDoPlano)}
+          </strong>
+          )
+        </>
+      ) : null}
+      : sinal de{" "}
+      <strong className="font-semibold tabular-nums text-ink">
+        {dinheiro(conferencia.entrada)}
+      </strong>
+      {conferencia.anuais.quantidade > 0 ? (
+        <>
+          , {conferencia.anuais.quantidade}{" "}
+          {conferencia.anuais.quantidade === 1 ? "anual" : "anuais"} de{" "}
+          <strong className="font-semibold tabular-nums text-ink">
+            {dinheiro(conferencia.anuais.valor)}
+          </strong>
+        </>
+      ) : null}{" "}
+      e {conferencia.parcelas} parcelas de{" "}
+      <strong className="font-semibold tabular-nums text-ink">
+        {dinheiro(conferencia.parcela)}
+      </strong>
+      {conferencia.naturezaDaParcela === "primeira"
+        ? " (a primeira; as seguintes caem)"
+        : conferencia.naturezaDaParcela === "inicial"
+          ? " (inicial, antes da correção)"
+          : ""}
+      .
+    </p>
   );
 }
 
@@ -1022,12 +1122,16 @@ function Formulario({
   criandoAqui,
   criandoCategoria,
   criarCategoria,
+  anuaisDoPlano,
+  descontoTexto,
   editarPremissa,
+  entradaMinimaPercentual,
   entradaTexto,
   indicesCarregados,
   jurosTexto,
   minutas,
   mudarCategoriaNova,
+  mudarDesconto,
   mudarParcelas,
   mudarPreco,
   opcoesDoIndice,
@@ -1049,6 +1153,17 @@ function Formulario({
   criandoAqui: boolean;
   criandoCategoria: boolean;
   criarCategoria: () => Promise<void>;
+  /**
+   * As anuais do plano que está sendo editado, como estão no cadastro (0138). Nulo no plano novo.
+   *
+   * ⚠️ O FORMULÁRIO NÃO EDITA ANUAL, mas a prévia precisa delas: sem as anuais a prévia do Investidor
+   * Parcelado do Garden anunciava uma parcela que a Mesa não vende.
+   */
+  anuaisDoPlano: null | { quantidade: null | number; valor: null | number };
+  /** O desconto do plano sobre a tabela, como está escrito no campo ("8", "12,5", ou vazio). */
+  descontoTexto: string;
+  /** O piso de entrada do empreendimento, o mesmo que a Mesa usa. Nulo = padrão da casa. */
+  entradaMinimaPercentual: null | number;
   /** Troca à mão de entrada, juros, periodicidade ou índice — os campos que a faixa governa. */
   editarPremissa: (
     campo: CampoDaFaixa,
@@ -1060,6 +1175,7 @@ function Formulario({
   jurosTexto: string;
   minutas: MinutaResumida[];
   mudarCategoriaNova: (valor: string) => void;
+  mudarDesconto: (texto: string) => void;
   /** O único caminho pelo qual a faixa de prazo preenche o formulário. */
   mudarParcelas: (parcelas: number) => void;
   mudarPreco: (v: string) => void;
@@ -1074,19 +1190,19 @@ function Formulario({
 }) {
   // A prévia usa o rascunho VIVO, com os textos já convertidos: é ela que denuncia o 0,20 digitado
   // no lugar de 20 antes de o plano virar contrato.
-  const previa =
-    preco === null
-      ? null
-      : calcularParcela(
-          paraCalculo(
-            planoDaPrevia(
-              rascunho,
-              paraNumero(entradaTexto),
-              paraNumero(jurosTexto),
-            ),
-          ),
-          preco,
-        );
+  //
+  // ⚠️ E É A CONTA DA MESA (`conferirNaUnidade`, 18/09/2026): o desconto digitado, a entrada com o
+  // piso do empreendimento e as anuais do plano. Com `calcularParcela` a prévia ignorava as anuais.
+  const previa = conferirNaUnidade(
+    {
+      ...planoDaPrevia(rascunho, paraNumero(entradaTexto), paraNumero(jurosTexto)),
+      anuaisQuantidade: anuaisDoPlano?.quantidade ?? null,
+      anuaisValor: anuaisDoPlano?.valor ?? null,
+      descontoPercentual: paraNumero(descontoTexto),
+    },
+    preco,
+    entradaMinimaPercentual,
+  );
 
   const campo =
     "h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-line-strong";
@@ -1256,6 +1372,27 @@ function Formulario({
           </label>
         </div>
 
+        {/* ⚠️ O DESCONTO DO PLANO (0178). Lucas (18/09/2026): *"tem que ser igual o mmendes"*. No
+            mapa do Garden da MMendes cada plano tem o seu desconto sobre a tabela (Investidor
+            Parcelado 8%, Investidor 12%), e até aqui ele só existia escrito na observação, "aplicar
+            no campo de desconto do simulador", à mão, lote a lote. Com o número aqui, a Mesa, o
+            espelho e o portal aplicam sozinhos, e a proposta com ele não pede motivo. */}
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="grid gap-1.5">
+            <span className={rotulo}>Desconto (%)</span>
+            <input
+              className={campo}
+              inputMode="decimal"
+              onChange={(e) => mudarDesconto(e.target.value)}
+              placeholder="vazio = sem desconto"
+              value={descontoTexto}
+            />
+            <span className="text-[11px] text-ink-muted">
+              Sobre o preço de tabela. 8 significa 8%.
+            </span>
+          </label>
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="grid gap-1.5">
             <span className={rotulo}>Juros (%)</span>
@@ -1399,23 +1536,8 @@ function Formulario({
             />
           </label>
 
-          {previa?.parcela != null ? (
-            <p className="m-0 text-sm text-ink">
-              Sinal de{" "}
-              <strong className="font-semibold tabular-nums">
-                {dinheiro(previa.sinal)}
-              </strong>{" "}
-              e {previa.parcelas} parcelas de{" "}
-              <strong className="font-semibold tabular-nums">
-                {dinheiro(previa.parcela)}
-              </strong>
-              {previa.naturezaDaParcela === "primeira"
-                ? " (a primeira; as seguintes caem)"
-                : previa.naturezaDaParcela === "inicial"
-                  ? " (inicial, antes da correção)"
-                  : ""}
-              .
-            </p>
+          {previa ? (
+            <ConferenciaNaUnidade conferencia={previa} />
           ) : (
             <p className="m-0 text-xs text-ink-muted">
               Digite o preço de uma unidade para ver o sinal e a parcela que

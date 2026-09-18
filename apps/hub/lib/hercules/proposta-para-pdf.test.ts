@@ -263,7 +263,12 @@ describe("⚠️ o que a folha promete tem que ser o que o contrato cumpre", () 
     expect(comAnuais.condicoes.find((c) => c.rotulo === "Parcelas anuais")?.valor).toBe(
       "10 de R$ 2.000,00",
     );
-    expect(comAnuais.destaques[2]?.detalhe).toBe("120 mensais + 10 anuais");
+    // ⚠️ A LEGENDA DIZ O QUE O NÚMERO É (18/09/2026): o "Financiado" é o saldo das mensais, e as
+    // anuais já saíram dele. "120 mensais + 10 anuais" dizia o contrário, e quem somava o papel
+    // (entrada + financiado + anuais) achava mais do que o valor da unidade.
+    expect(comAnuais.destaques[2]?.detalhe).toBe("120 mensais, fora as 10 anuais");
+    // E o papel fecha: entrada + anuais + financiado = valor negociado, ao centavo.
+    expect(comAnuais.destaques[2]?.valor).toBe("R$ 70.000,00");
 
     const semAnuais = folhaDoExemplo();
     expect(semAnuais.anuais).toEqual([]);
@@ -376,5 +381,61 @@ describe("⚠️ o plano que NÃO reajusta não pode prometer reajuste", () => {
     expect(folha.temReajuste).toBe(true);
     expect(folha.reajustes.length).toBeGreaterThan(1);
     expect(folha.reajustes[0]?.periodo).toBe("1º ano");
+  });
+});
+
+// ── A TABELA E O DESCONTO DO PLANO NO PAPEL (18/09/2026) ─────────────────────
+//
+// Lucas: "tem que ser igual o mmendes". O Investidor Parcelado do Garden vende a 92% da tabela; a
+// rota manda o preço de tabela só quando o plano tem desconto, e a folha diz de onde veio o valor.
+describe("montarFolhaDaProposta com o desconto do plano", () => {
+  const investidorParcelado: PlanoComercial = {
+    ...SACOC_COM_JUROS,
+    entradaPercentual: 8,
+    jurosTaxa: 6,
+    nome: "INVESTIDOR PARCELADO",
+    parcelas: 84,
+    slot: null,
+  };
+  const doGarden = () =>
+    montarFolhaDaProposta({
+      ...BASE,
+      cronograma: montarCronograma({
+        ...CONDICOES,
+        anuaisQuantidade: 4,
+        anuaisValor: 25_000,
+        entradaValor: 32_016,
+        entradaVezes: 1,
+        parcelasMensais: 84,
+        plano: investidorParcelado,
+        valorNegociado: 400_200,
+      }),
+      plano: investidorParcelado,
+      precoDeTabela: 435_000,
+      valorNegociado: 400_200,
+    });
+
+  it("mostra a tabela, o desconto e as anuais", () => {
+    const valor = (rotulo: string) => doGarden().condicoes.find((c) => c.rotulo === rotulo)?.valor;
+    expect(valor("Valor de tabela")).toBe("R$ 435.000,00");
+    expect(valor("Desconto")).toBe("8% · R$ 34.800,00");
+    expect(valor("Parcelas anuais")).toBe("4 de R$ 25.000,00");
+    expect(doGarden().destaques[0]?.valor).toBe("R$ 400.200,00");
+    expect(JSON.stringify(doGarden().condicoes)).not.toContain("—");
+  });
+
+  it("⚠️ sem o preço de tabela (todo plano sem desconto), a folha sai como saía", () => {
+    const antes = folhaDoExemplo().condicoes;
+    expect(antes[0]?.rotulo).toBe("Parcelas mensais");
+    expect(antes.some((c) => c.rotulo === "Valor de tabela" || c.rotulo === "Desconto")).toBe(false);
+
+    // Tabela informada mas sem desconto (negociado igual ou acima): nada muda também.
+    const semDesconto = montarFolhaDaProposta({
+      ...BASE,
+      cronograma: montarCronograma(CONDICOES),
+      plano: SACOC_SEM_JUROS,
+      precoDeTabela: 100_000,
+    });
+    expect(semDesconto.condicoes).toEqual(antes);
   });
 });

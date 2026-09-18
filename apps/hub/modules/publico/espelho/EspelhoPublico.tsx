@@ -225,6 +225,14 @@ type Estado = {
   atualizadoEm: string;
   contagem: Record<SituacaoPublica, number>;
   empreendimento: { codigo: string; nome: string };
+  /**
+   * O piso de entrada do empreendimento (`apolo_enterprise_settings`), o mesmo que a Mesa de Venda
+   * entrega ao simulador. Nulo = padrão da casa; zero = zero.
+   *
+   * ⚠️ OPCIONAL porque um servidor ainda na versão anterior não manda o campo, e ausente tem de
+   * continuar sendo o comportamento de antes (o padrão da casa).
+   */
+  entradaMinimaPercentual?: null | number;
   lotes: LoteDoEspelho[];
   /** Vazio = empreendimento sem plano cadastrado; o simulador não aparece. */
   planos: PlanoPublico[];
@@ -357,6 +365,7 @@ export function EspelhoPublico({
 
       {escolhido ? (
         <PainelDoLote
+          entradaMinimaPercentual={estado.entradaMinimaPercentual ?? null}
           lote={escolhido}
           nomeDoEmpreendimento={estado.empreendimento.nome}
           planos={estado.planos}
@@ -593,12 +602,14 @@ function Grade({
 // ── O PAINEL DO LOTE: preço, metragem e simulação ──────────────────────────────────
 
 function PainelDoLote({
+  entradaMinimaPercentual,
   lote,
   nomeDoEmpreendimento,
   onFechar,
   planos,
   token,
 }: {
+  entradaMinimaPercentual: null | number;
   lote: LoteDoEspelho;
   nomeDoEmpreendimento: string;
   onFechar: () => void;
@@ -626,6 +637,12 @@ function PainelDoLote({
   const planosDaVenda: PlanoDaVenda[] = useMemo(
     () =>
       planos.map((p) => ({
+        // ⚠️ AS ANUAIS E O DESCONTO DO PLANO VÃO JUNTO (18/09/2026). O simulador passou a usá-los
+        // na conta do cartão e do clique (`tabela-do-lote.ts`); sem eles aqui, o espelho do Garden
+        // voltaria a anunciar o plano pelo preço cheio e sem os reforços que ele tem.
+        anuaisQuantidade: p.anuaisQuantidade,
+        anuaisValor: p.anuaisValor,
+        descontoPercentual: p.descontoPercentual,
         entradaPercentual: p.entradaPercentual,
         indiceCorrecao: p.indiceCorrecao,
         jurosConvencao: p.jurosConvencao,
@@ -770,6 +787,10 @@ function PainelDoLote({
               aoMudarCondicoes={(c) => {
                 condicoes.current = c;
               }}
+              // ⚠️ O PISO DO EMPREENDIMENTO, como a Mesa de Venda faz (Lucas, 18/09/2026). Sem ele o
+              // espelho do Garden anunciava "entrada R$ 41.000 (8%)" num lote de R$ 410.000: o
+              // padrão da casa (10%) com o rótulo do plano de 8% ao lado.
+              entradaMinimaPercentual={entradaMinimaPercentual}
               planos={planosDaVenda}
               unidade={nomeDoLote}
               valorDaUnidade={preco}

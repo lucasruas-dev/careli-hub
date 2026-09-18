@@ -8,6 +8,7 @@ import {
 } from "@/components/documento/VisualizadorDeDocumento";
 import { cpfValido, formatarDocumento, soDigitos } from "@/lib/apolo/documento";
 import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
+import { precoNoPlano } from "@/lib/hercules/ajuste-de-preco";
 import { montarCronograma } from "@/lib/hercules/cronograma";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
 import {
@@ -30,6 +31,7 @@ import {
 } from "@/lib/hercules/busca-de-proponente";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import { comoFoiOAviso, vencimentoEmDias } from "@/lib/hercules/reserva";
+import { ajusteFrenteAoPlano } from "@/lib/hercules/tabela-do-lote";
 
 import {
   type CondicoesDaProposta,
@@ -362,7 +364,21 @@ export function ModalDeProposta({
    * observação — nove em cada dez alterações do C2X não têm motivo escrito, e é esse buraco que a
    * trava fecha.
    */
-  const ehDesconto = (condicoes?.ajuste?.valor ?? 0) < 0;
+  //
+  // ⚠️ O DESCONTO DO PLANO NÃO É DESCONTO DO COORDENADOR (Lucas, 18/09/2026: *"tem que ser igual o
+  // mmendes"*). Escolher o Investidor Parcelado do Garden põe os 8% dele no campo de desconto, e
+  // isso é a tabela oficial cadastrada no Apolo, não uma exceção: pedir motivo ali seria pedir que
+  // o corretor justificasse o preço de tabela. Só o que passa do desconto do plano pede nota
+  // (`ajusteFrenteAoPlano`). Em plano sem desconto a regra é a de sempre: ajuste negativo pede.
+  const frenteAoPlano = ajusteFrenteAoPlano({
+    ajuste: condicoes?.ajuste ?? null,
+    descontoDoPlanoPercentual: condicoes?.descontoDoPlanoPercentual ?? 0,
+    precoDeTabela: portao?.unidade.preco ?? 0,
+    valorNegociado: condicoes?.valorNegociado ?? 0,
+  });
+  const ehDesconto = frenteAoPlano === "desconto";
+  /** Há ajuste de preço que NÃO é o do plano: é o que abre a caixa de nota. */
+  const ajusteProprio = frenteAoPlano === "desconto" || frenteAoPlano === "acrescimo";
   /**
    * O corretor mexeu na premissa (juros ou índice) que o cadastro entregou?
    *
@@ -633,10 +649,12 @@ export function ModalDeProposta({
       //
       // ⚠️ SÓ SOBE COM AJUSTE. Sem alteração de preço não há o que explicar, e mandar string vazia
       // encheria a coluna de nulos ruidosos.
+      //
+      // ⚠️ O DESCONTO DO PLANO NÃO CONTA COMO AJUSTE AQUI (18/09/2026): sem caixa na tela, uma nota
+      // escrita antes (quando havia desconto além do plano) não pode subir calada. Em plano sem
+      // desconto, `ajusteProprio` é exatamente "tem ajuste", como antes.
       observacao:
-        condicoesAgora.ajuste || condicoesAgora.premissaAlterada
-          ? nota.trim()
-          : "",
+        ajusteProprio || condicoesAgora.premissaAlterada ? nota.trim() : "",
       entradaParcelas: condicoesAgora.entradaParcelas,
       entradaVezes: condicoesAgora.entradaVezes,
       parcelasMensais: condicoesAgora.parcelasMensais,
@@ -948,7 +966,7 @@ export function ModalDeProposta({
                       ⚠️ E O DE/PARA VEM ESCRITO PELO SISTEMA, acima do campo. A nota do humano vale
                       muito mais acompanhada do número que ela explica: sem isso, daqui a seis meses
                       alguém lê "cliente pediu" sem saber de quanto para quanto. */}
-                  {condicoes?.ajuste || premissaAlterada ? (
+                  {ajusteProprio || premissaAlterada ? (
                     <div style={{ display: "grid", gap: 6 }}>
                       <label
                         htmlFor="nota-do-ajuste"
@@ -971,11 +989,16 @@ export function ModalDeProposta({
                           linha diria "tabela R$ 170.000 · proposta R$ 170.000" logo acima de uma
                           caixa que pergunta por que a condição mudou. */}
                       <p
-                        hidden={!condicoes?.ajuste}
+                        hidden={!ajusteProprio}
                         style={{ color: T.muted, fontSize: 11.5, margin: 0 }}
                       >
-                        Tabela {dinheiro(portao?.unidade.preco ?? 0)} · proposta{" "}
-                        {dinheiro(condicoes?.valorNegociado ?? 0)}
+                        Tabela {dinheiro(portao?.unidade.preco ?? 0)}
+                        {/* Com desconto de plano, o de/para diz também o preço DO PLANO: é dele
+                            que a nota explica a diferença. */}
+                        {(condicoes?.descontoDoPlanoPercentual ?? 0) > 0
+                          ? ` · plano ${dinheiro(precoNoPlano(portao?.unidade.preco ?? 0, condicoes?.descontoDoPlanoPercentual))}`
+                          : ""}{" "}
+                        · proposta {dinheiro(condicoes?.valorNegociado ?? 0)}
                       </p>
                       <textarea
                         id="nota-do-ajuste"

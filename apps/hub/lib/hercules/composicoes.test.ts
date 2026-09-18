@@ -208,8 +208,10 @@ describe("⚠️ composicoesQueFecham em SACOC — o plano de 21 dos 24 empreend
 
     expect(r.length).toBeGreaterThan(0);
     for (const c of r) {
-      const vp = valorPresenteDosBaloes(c.anuais.quantidade, c.anuais.valor, 0.0072);
-      expect(c.parcela).toBeCloseTo((136_521 - c.entrada - vp) / c.parcelas, 2);
+      // ⚠️ AS ANUAIS PELO VALOR DE FACE NO SACOC (18/09/2026), como o mapa da MMendes: a parcela do
+      // 1º ciclo é o saldo dividido pelo prazo, e o saldo é o lote menos a entrada menos as anuais.
+      const face = c.anuais.quantidade * c.anuais.valor;
+      expect(c.parcela).toBeCloseTo((136_521 - c.entrada - face) / c.parcelas, 2);
       expect(c.parcela).toBeLessThanOrEqual(3_450 + 0.01);
     }
   });
@@ -258,11 +260,14 @@ describe("⚠️ composicoesQueFecham em SACOC — o plano de 21 dos 24 empreend
 });
 
 describe("⚠️ o financiado da composição é o mesmo que o PDF imprime", () => {
-  it("desconta o valor presente dos reforços, e não o valor de face", () => {
-    // O defeito que isto prende: a tela mostrava `valor − entrada` no cartão "A financiar" e o PDF
-    // imprimia o saldo com os balões descontados a valor presente. Na mesma venda, com 3 reforços
-    // de R$ 15.000 num contrato de 120 meses, eram R$ 38.656 de diferença entre o número que o
-    // coordenador leu na mesa e o que o comprador recebeu no papel.
+  // O defeito que isto prende: a tela mostrava `valor − entrada` no cartão "A financiar" e o PDF
+  // imprimia o saldo com os balões já abatidos. Na mesma venda, com 3 reforços de R$ 15.000 num
+  // contrato de 120 meses, eram dezenas de milhares de reais de diferença entre o número que o
+  // coordenador leu na mesa e o que o comprador recebeu no papel.
+  //
+  // ⚠️ E O ABATIMENTO É O DO SISTEMA DO PLANO (18/09/2026): valor de face no SACOC, como a MMendes;
+  // valor presente na Price. É a mesma função (`anuaisQueAbatemOSaldo`) que o cronograma usa.
+  it("SACOC: abate os reforços pelo valor de face, e a conta fecha ao centavo", () => {
     const r = composicoesQueFecham({
       parcelaAlvo: 1_200,
       planos: PLANOS_SACOC,
@@ -275,14 +280,32 @@ describe("⚠️ o financiado da composição é o mesmo que o PDF imprime", () 
     for (const c of comReforco) {
       // O financiado é MENOR que `valor − entrada`, porque os balões abatem parte do saldo…
       expect(c.financiado).toBeLessThan(200_000 - c.entrada);
-      // …e é exatamente `valor − entrada − valorPresenteDosBaloes`, que é a conta do cronograma.
-      const plano = PLANOS_SACOC.find((p) => p.nome === c.plano);
+      // …e é exatamente `valor − entrada − anuais de face`: entrada + anuais + saldo = valor.
+      expect(Math.round(c.financiado * 100)).toBe(
+        Math.round((200_000 - c.entrada - c.anuais.quantidade * c.anuais.valor) * 100),
+      );
+    }
+  });
+
+  it("Price: abate os reforços pelo valor presente, como sempre", () => {
+    const r = composicoesQueFecham({
+      parcelaAlvo: 1_200,
+      planos: PLANOS,
+      valor: 200_000,
+    });
+
+    const comReforco = r.filter((c) => c.anuais.quantidade > 0);
+    expect(comReforco.length).toBeGreaterThan(0);
+
+    for (const c of comReforco) {
+      const plano = PLANOS.find((p) => p.nome === c.plano);
       expect(plano).toBeDefined();
       const presente = valorPresenteDosBaloes(
         c.anuais.quantidade,
         c.anuais.valor,
         plano?.taxaAoMes ?? 0,
       );
+      expect(presente).toBeLessThan(c.anuais.quantidade * c.anuais.valor);
       expect(c.financiado).toBeCloseTo(200_000 - c.entrada - presente, 2);
     }
   });

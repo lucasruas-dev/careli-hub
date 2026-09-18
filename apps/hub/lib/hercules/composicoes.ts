@@ -14,10 +14,27 @@
 
 import type { SistemaAmortizacao } from "@/lib/apolo/planos-comerciais";
 
+import { descontoDoPlano, precoNoPlano } from "./ajuste-de-preco";
 import { pisoDaEntradaNoPrazo } from "./faixa-do-plano";
 import { entradaParaAParcela, montarProposta } from "./simulacao";
 
 export type PlanoDaComposicao = {
+  /**
+   * As anuais do plano (0138), quando ele tem. Andam em par.
+   *
+   * ⚠️ OPCIONAIS, E AUSENTE É "SEM ANUAL DE PLANO". Até 18/09/2026 o simulador jogava fora as anuais
+   * cadastradas (Lucas: *"esta faltando as anuais"*): o cartão do Garden anunciava a parcela de um
+   * plano sem os reforços que ele tem. Quem monta o plano a partir do cadastro passa as duas.
+   */
+  anuaisQuantidade?: null | number;
+  anuaisValor?: null | number;
+  /**
+   * O desconto do plano sobre a tabela, 0 a 100 (0178). Ausente = sem desconto.
+   *
+   * ⚠️ É O PREÇO DO PLANO, NÃO UMA EXCEÇÃO: o Investidor Parcelado do Garden vende a 92% da tabela,
+   * e é sobre esse preço que a entrada e a parcela dele se calculam (`garden.html`, `condicoes`).
+   */
+  descontoPercentual?: null | number;
   /** Percentual de entrada que o plano prevê — o piso sugerido, não uma trava. */
   entradaPercentual: number;
   nome: string;
@@ -40,15 +57,28 @@ export type PlanoDaComposicao = {
 export type Composicao = {
   /** Quantos reforços anuais, e de quanto. */
   anuais: { quantidade: number; valor: number };
+  /**
+   * As anuais desta composição são as CADASTRADAS no plano ("4 anuais de R$ 25.000" no Investidor
+   * Parcelado do Garden), e não um arranjo da varredura.
+   *
+   * ⚠️ É UMA OPÇÃO A MAIS, NÃO A ÚNICA (18/09/2026). O plano com anuais cadastradas compõe com a
+   * varredura de sempre E com o arranjo dele, cada um na sua linha. Compor só com o arranjo do
+   * plano fazia o Investidor Parcelado sumir da busca por R$ 4.000 no lote de R$ 435.000 (4 anuais
+   * de R$ 25.000 mais 84 × 4.000 já pagariam o lote), exatamente onde a MMendes o recomenda.
+   */
+  arranjoDoPlano: boolean;
+  /** O desconto do plano desta composição (0 quando não tem). */
+  descontoPercentual: number;
   entrada: number;
   /** Quanto a entrada representa do valor negociado. */
   entradaPercentual: number;
   /**
-   * O saldo que vira série mensal, JÁ DESCONTADO o valor presente dos reforços.
+   * O saldo que vira série mensal, JÁ ABATIDOS os reforços (`anuaisQueAbatemOSaldo`: valor de face
+   * no SACOC, valor presente na Price e no SAC).
    *
-   * ⚠️ NÃO É `valor − entrada`. Os reforços anuais vencem lá na frente e entram na conta pelo que
-   * valem HOJE, não pelo valor de face — é assim que `montarProposta` calcula e é o número que o
-   * PDF imprime como "Financiado". A tela recalculava `valor − entrada` por conta própria e
+   * ⚠️ NÃO É `valor − entrada`. Os reforços anuais também abatem o saldo — é assim que
+   * `montarProposta` calcula e é o número que o PDF imprime como "Financiado". A tela recalculava
+   * `valor − entrada` por conta própria e
    * mostrava R$ 180.000 onde o papel do cliente dizia R$ 166.111,11, na mesma venda. Pior: no
    * SACOC a parcela é `financiado ÷ n`, então o cartão se contradizia sozinho — anunciava
    * R$ 1.384,26 embaixo de um saldo que daria R$ 1.500,00.
@@ -66,7 +96,38 @@ export type Composicao = {
    * um contrato de 120 meses a 8% a.a. — e é este número que ordena o desempate da lista.
    */
   total: number;
+  /**
+   * O preço sobre o qual esta composição foi montada: o `valor` pedido, ou a tabela com o desconto
+   * do plano quando ele tem.
+   *
+   * ⚠️ É O VALOR NEGOCIADO DESTA COMPOSIÇÃO, e quem a usa tem que usá-lo junto. Uma composição do
+   * Investidor Parcelado do Garden fecha sobre 92% da tabela; subir a entrada e a parcela dela com o
+   * valor de outro plano geraria uma proposta cuja conta não fecha.
+   */
+  valor: number;
 };
+
+/**
+ * As anuais do plano que cabem no prazo.
+ *
+ * ⚠️ O K-ÉSIMO REFORÇO VENCE JUNTO COM A MENSAL 12K (`montarCronograma`): um plano de 36 meses tem
+ * três, com a 3ª anual na 36ª mensal, e cadastro com mais anuais do que isso cobraria depois da
+ * última parcela. A régua é a mesma do contador da tela e de `conferirProposta`. Quantidade ou valor
+ * zerado, nulo ou inválido é "sem anual": meia configuração não é anual nenhuma.
+ */
+export function anuaisDoPlano(plano: {
+  anuaisQuantidade?: null | number;
+  anuaisValor?: null | number;
+  parcelas: number;
+}): { quantidade: number; valor: number } {
+  const quantidade = Math.trunc(Number(plano.anuaisQuantidade ?? 0));
+  const valor = Number(plano.anuaisValor ?? 0);
+  if (!Number.isFinite(quantidade) || !Number.isFinite(valor) || quantidade <= 0 || valor <= 0) {
+    return { quantidade: 0, valor: 0 };
+  }
+  const cabem = Math.min(quantidade, Math.floor(Math.max(0, plano.parcelas) / 12));
+  return cabem > 0 ? { quantidade: cabem, valor } : { quantidade: 0, valor: 0 };
+}
 
 /**
  * O piso de entrada da casa, em percentual do valor negociado.
@@ -128,13 +189,48 @@ export function composicoesQueFecham(entrada: {
   entradaMinimaPercentual?: null | number;
   parcelaAlvo: number;
   planos: PlanoDaComposicao[];
+  /**
+   * O preço de TABELA do lote, sobre o qual o desconto de cada plano incide. Ausente = `valor`.
+   *
+   * ⚠️ SÓ O PLANO COM DESCONTO O USA. Plano sem desconto continua fechando sobre `valor` (o preço
+   * da tela, com o desconto que o coordenador tiver digitado), como sempre fechou; plano com
+   * desconto fecha sobre `tabela × (1 − desconto)`, que é o preço dele (`garden.html`, `ofAlvo`).
+   * Aplicar o desconto do plano sobre um `valor` que já veio descontado daria desconto em cima de
+   * desconto.
+   */
+  precoDeTabela?: null | number;
+  /**
+   * O preço sobre o qual CADA plano compõe, na mesma ordem de `planos`. Posição ausente, nula ou
+   * sem número positivo = a regra de cima (`precoDeTabela` com o desconto do plano, ou `valor`).
+   *
+   * ⚠️ É O PREÇO QUE O CLIQUE NAQUELE PLANO CARREGA, e quem sabe dele é a tela (18/09/2026). O
+   * simulador manda aqui o preço do cartão de cada plano, e para o plano ativo com desconto dado à
+   * mão, o preço do campo: sem isso, a composição recomendada fechava sobre um preço e o campo do
+   * lote mostrava outro, e a proposta subia com um terceiro. Nos empreendimentos sem desconto de
+   * plano toda posição é o próprio `valor`, e a lista sai idêntica.
+   */
+  precos?: ReadonlyArray<null | number | undefined>;
   /** Teto do que o cliente tem de entrada. Ausente = sem teto. */
   tetoDaEntrada?: null | number;
   valor: number;
 }): Composicao[] {
   const { anuaisPossiveis = [0, 15_000, 20_000, 25_000, 30_000], parcelaAlvo, planos, valor } = entrada;
   const teto = entrada.tetoDaEntrada ?? null;
-  const pisoDaCasa = milhar(entradaMinima(valor, entrada.entradaMinimaPercentual));
+  const tabela =
+    typeof entrada.precoDeTabela === "number" && entrada.precoDeTabela > 0
+      ? entrada.precoDeTabela
+      : valor;
+
+  /** O preço sobre o qual ESTE plano é vendido. Sem desconto, o `valor` pedido, intacto. */
+  const precoDoPlano = (plano: PlanoDaComposicao, indice: number) => {
+    const informado = entrada.precos?.[indice];
+    if (typeof informado === "number" && Number.isFinite(informado) && informado > 0) {
+      return informado;
+    }
+    return descontoDoPlano(plano.descontoPercentual) > 0
+      ? precoNoPlano(tabela, plano.descontoPercentual)
+      : valor;
+  };
 
   /**
    * O piso de CADA plano — o da casa ou o da faixa dele, o que for maior.
@@ -148,8 +244,13 @@ export function composicoesQueFecham(entrada: {
    * tela recusando o número que ela mesma tinha acabado de recomendar.
    *
    * ⚠️ CADA PLANO TEM O SEU, e não há um piso único da varredura: o prazo do plano É a faixa dele.
+   *
+   * ⚠️ E O PISO É DO PREÇO DO PLANO (18/09/2026). Com desconto de plano, o Investidor Parcelado do
+   * Garden vende a 92% da tabela, e os 8% de entrada dele são 8% DESSE preço, como na MMendes
+   * (`pd * pr.entMin`). Para o plano sem desconto o preço do plano é o próprio `valor`, e o piso
+   * sai exatamente como saía.
    */
-  const pisoDoPlano = (plano: PlanoDaComposicao) =>
+  const pisoDoPlano = (plano: PlanoDaComposicao, valorDoPlano: number) =>
     // ⚠️ O ARREDONDAMENTO PARA CIMA NÃO PODE PASSAR DO LOTE. `milhar` existe para transformar
     // "entrada de R$ 27.304" em conversa de mesa ("R$ 28.000"), e isso é bom em plano parcelado —
     // mas no plano À VISTA o piso é 100% do valor, e milhar(138.500) devolve R$ 139.000: uma
@@ -157,17 +258,19 @@ export function composicoesQueFecham(entrada: {
     // depois com "a entrada não pode passar do valor negociado" — a tela oferecendo o que ela mesma
     // proíbe, sem saída para o coordenador.
     Math.min(
-      valor,
+      valorDoPlano,
       milhar(
         pisoDaEntradaNoPrazo({
           parcelas: plano.parcelas,
-          pisoDaCasaEmReais: pisoDaCasa,
+          pisoDaCasaEmReais: milhar(
+            entradaMinima(valorDoPlano, entrada.entradaMinimaPercentual),
+          ),
           planos: planos.map((p) => ({
             entradaPercentual: p.entradaPercentual,
             nome: p.nome,
             parcelas: p.parcelas,
           })),
-          valorNegociado: valor,
+          valorNegociado: valorDoPlano,
         }).emReais,
       ),
     );
@@ -176,85 +279,114 @@ export function composicoesQueFecham(entrada: {
 
   const achadas: Composicao[] = [];
 
-  for (const plano of planos) {
+  for (const [indice, plano] of planos.entries()) {
     if (plano.parcelas <= 0) continue;
 
-    // ⚠️ O REFORÇO TEM QUE CABER NO PRAZO. O k-ésimo balão cai no mês 12k (ver
-    // `valorPresenteDosBaloes`): num plano de 36 meses só existem três aniversários, e varrer até
-    // seis oferecia "6 × R$ 15.000 ao ano" num contrato de três anos — dinheiro cobrado depois da
-    // última parcela. A conta descontava tudo do saldo e a parcela saía menor do que o contrato
+    const valorDoPlano = precoDoPlano(plano, indice);
+    if (!(valorDoPlano > 0)) continue;
+    const descontoPercentual = descontoDoPlano(plano.descontoPercentual);
+
+    // ⚠️ O REFORÇO TEM QUE CABER NO PRAZO. O k-ésimo balão vence com a mensal 12k (ver
+    // `montarCronograma`): num plano de 36 meses só existem três aniversários, e varrer até seis
+    // oferecia "6 × R$ 15.000 ao ano" num contrato de três anos — dinheiro cobrado depois da
+    // última parcela. A conta abatia tudo do saldo e a parcela saía menor do que o contrato
     // consegue cumprir.
     const aniversarios = Math.floor(plano.parcelas / 12);
 
-    for (const valorAnual of anuaisPossiveis) {
-      // Zero reforço é uma composição legítima, e a mais simples de explicar.
-      const quantidades =
-        valorAnual === 0
+    // ⚠️ A VARREDURA LIVRE DE SEMPRE, MAIS O ARRANJO DO PLANO (18/09/2026). A varredura (zero anual
+    // e os valores de anual da casa) é o que acha a composição de quem quer MENOS entrada; o arranjo
+    // cadastrado ("4 anuais de R$ 25.000" no Investidor Parcelado do Garden) é a tabela que a
+    // diretoria aprovou, e entra como mais uma linha. Numa versão anterior o plano com anuais
+    // cadastradas compunha SÓ com as dele, e o Investidor Parcelado sumia da busca por R$ 4.000 no
+    // lote de R$ 435.000, onde a MMendes (`garden.html`, `propor`) o recomenda. Plano sem anual
+    // cadastrada fica exatamente como era: só a varredura.
+    const doPlano = anuaisDoPlano(plano);
+    const ehArranjoDoPlano = (quantidade: number, valorAnual: number) =>
+      doPlano.quantidade > 0 &&
+      quantidade === doPlano.quantidade &&
+      valorAnual === doPlano.valor;
+    const livres: Array<{ quantidade: number; valorAnual: number }> = anuaisPossiveis.flatMap(
+      (valorAnual) =>
+        // Zero reforço é uma composição legítima, e a mais simples de explicar.
+        (valorAnual === 0
           ? [0]
-          : Array.from({ length: Math.min(6, aniversarios) }, (_, i) => i + 1);
+          : Array.from({ length: Math.min(6, aniversarios) }, (_, i) => i + 1)
+        ).map((quantidade) => ({ quantidade, valorAnual })),
+    );
+    const arranjos =
+      doPlano.quantidade > 0 &&
+      !livres.some((a) => ehArranjoDoPlano(a.quantidade, a.valorAnual))
+        ? [...livres, { quantidade: doPlano.quantidade, valorAnual: doPlano.valor }]
+        : livres;
 
-      for (const quantidade of quantidades) {
-        // ⚠️ A INVERSÃO É A DO SISTEMA DO PLANO. Ver `fatorDoFinanciado`, em `simulacao.ts`: no
-        // SACOC o saldo que a parcela pedida paga é `parcela × n` (amortização pura), e não o valor
-        // presente de uma série Price. Usar a inversão errada devolvia, para a mesma parcela, uma
-        // entrada mais alta do que a necessária — e a composição voltava ao cartão com uma parcela
-        // que o contrato não emite.
-        const { entrada: exata, sobra } = entradaParaAParcela({
-          baloesQuantidade: quantidade,
-          baloesValor: valorAnual,
-          parcela: parcelaAlvo,
-          parcelas: plano.parcelas,
-          sistemaAmortizacao: plano.sistemaAmortizacao,
-          taxaAoMes: plano.taxaAoMes,
-          valor,
-        });
+    for (const { quantidade, valorAnual } of arranjos) {
+      // ⚠️ A INVERSÃO É A DO SISTEMA DO PLANO. Ver `fatorDoFinanciado`, em `simulacao.ts`: no
+      // SACOC o saldo que a parcela pedida paga é `parcela × n` (amortização pura), e não o valor
+      // presente de uma série Price. Usar a inversão errada devolvia, para a mesma parcela, uma
+      // entrada mais alta do que a necessária — e a composição voltava ao cartão com uma parcela
+      // que o contrato não emite.
+      const { entrada: exata, sobra } = entradaParaAParcela({
+        baloesQuantidade: quantidade,
+        baloesValor: valorAnual,
+        parcela: parcelaAlvo,
+        parcelas: plano.parcelas,
+        sistemaAmortizacao: plano.sistemaAmortizacao,
+        taxaAoMes: plano.taxaAoMes,
+        valor: valorDoPlano,
+      });
 
-        // A parcela pedida já paga o lote: não é composição, é outra conversa.
-        if (sobra > 0) continue;
+      // A parcela pedida já paga o lote: não é composição, é outra conversa.
+      if (sobra > 0) continue;
 
-        // ⚠️ ANCORA NO PISO, NÃO DESCARTA. Quando a entrada que fecharia a parcela pedida fica
-        // abaixo do mínimo da casa, a composição continua válida: com a entrada no piso a parcela
-        // sai MENOR do que a pedida, que é a favor do cliente. Descartar esconderia a melhor
-        // notícia da mesa ("cabe, e ainda sobra").
-        const arredondada = Math.max(pisoDoPlano(plano), milhar(exata));
+      // ⚠️ ANCORA NO PISO, NÃO DESCARTA. Quando a entrada que fecharia a parcela pedida fica
+      // abaixo do mínimo da casa, a composição continua válida: com a entrada no piso a parcela
+      // sai MENOR do que a pedida, que é a favor do cliente. Descartar esconderia a melhor
+      // notícia da mesa ("cabe, e ainda sobra").
+      const arredondada = Math.max(pisoDoPlano(plano, valorDoPlano), milhar(exata));
 
-        // ⚠️ ENTRADA QUE COBRE O LOTE INTEIRO NÃO É COMPOSIÇÃO — é venda à vista, e ela não
-        // responde a pergunta que foi feita. Quem digitou "o cliente paga R$ 4.000 por mês" recebia
-        // como única recomendação o plano À VISTA com entrada de 100% e "R$ 0,00 por mês, 1 vez", e
-        // o PDF saía com "Parcela 1 de 1: R$ 0,00" para alguém que acabou de dizer que pode pagar
-        // quatro mil. Vender à vista continua possível: basta escolher o plano na tabela.
-        if (arredondada >= valor) continue;
-        if (teto !== null && arredondada > teto) continue;
+      // ⚠️ ENTRADA QUE COBRE O LOTE INTEIRO NÃO É COMPOSIÇÃO — é venda à vista, e ela não
+      // responde a pergunta que foi feita. Quem digitou "o cliente paga R$ 4.000 por mês" recebia
+      // como única recomendação o plano À VISTA com entrada de 100% e "R$ 0,00 por mês, 1 vez", e
+      // o PDF saía com "Parcela 1 de 1: R$ 0,00" para alguém que acabou de dizer que pode pagar
+      // quatro mil. Vender à vista continua possível: basta escolher o plano na tabela.
+      if (arredondada >= valorDoPlano) continue;
+      if (teto !== null && arredondada > teto) continue;
 
-        const montada = montarProposta({
-          baloesQuantidade: quantidade,
-          baloesValor: valorAnual,
-          entrada: arredondada,
-          parcelas: plano.parcelas,
-          sistemaAmortizacao: plano.sistemaAmortizacao,
-          taxaAoMes: plano.taxaAoMes,
-          valor,
-        });
+      const montada = montarProposta({
+        baloesQuantidade: quantidade,
+        baloesValor: valorAnual,
+        entrada: arredondada,
+        parcelas: plano.parcelas,
+        sistemaAmortizacao: plano.sistemaAmortizacao,
+        taxaAoMes: plano.taxaAoMes,
+        valor: valorDoPlano,
+      });
 
-        achadas.push({
-          anuais: { quantidade, valor: valorAnual },
-          entrada: arredondada,
-          entradaPercentual: valor > 0 ? (arredondada / valor) * 100 : 0,
-          financiado: montada.financiado,
-          parcela: montada.parcela,
-          parcelas: plano.parcelas,
-          plano: plano.nome,
-          total: montada.total,
-        });
-      }
+      achadas.push({
+        anuais: { quantidade, valor: valorAnual },
+        arranjoDoPlano: ehArranjoDoPlano(quantidade, valorAnual),
+        descontoPercentual,
+        entrada: arredondada,
+        entradaPercentual: (arredondada / valorDoPlano) * 100,
+        financiado: montada.financiado,
+        parcela: montada.parcela,
+        parcelas: plano.parcelas,
+        plano: plano.nome,
+        total: montada.total,
+        valor: valorDoPlano,
+      });
     }
   }
 
   // ⚠️ UMA POR PLANO+REFORÇO: sem isso, seis quantidades de reforço do mesmo plano viram seis
-  // linhas quase iguais e a lista deixa de ser lida.
+  // linhas quase iguais e a lista deixa de ser lida. O arranjo cadastrado no plano tem a SUA linha
+  // (`do-plano`): misturado aos da varredura ele só apareceria quando fosse o de menor entrada, e a
+  // tabela oficial sumiria da lista justamente quando a varredura acha coisa melhor.
   const melhorPorChave = new Map<string, Composicao>();
   for (const c of achadas) {
-    const chave = `${c.plano}|${c.anuais.quantidade > 0 ? "com-reforco" : "sem-reforco"}`;
+    const chave = `${c.plano}|${
+      c.arranjoDoPlano ? "do-plano" : c.anuais.quantidade > 0 ? "com-reforco" : "sem-reforco"
+    }`;
     const atual = melhorPorChave.get(chave);
     if (!atual || c.entrada < atual.entrada) melhorPorChave.set(chave, c);
   }

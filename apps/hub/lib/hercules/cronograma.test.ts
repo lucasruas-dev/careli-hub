@@ -224,18 +224,54 @@ describe("⚠️ vencimento é DIA, não instante", () => {
 });
 
 describe("as parcelas anuais", () => {
-  it("caem uma por ano, a primeira doze meses depois da primeira mensal", () => {
+  // ⚠️ MUDOU EM 18/09/2026: a anual k vence JUNTO COM A MENSAL 12k (a 1ª com a 12ª mensal), e não
+  // doze meses depois da primeira mensal (que é a mensal 13). Com a regra antiga a última anual de
+  // um plano de 36 meses com 3 anuais vencia um mês depois da última mensal. É o `fatorBaloes` da
+  // MMendes e o mês que o valor presente da Price sempre usou.
+  it("caem uma por ano, a primeira junto com a 12ª mensal", () => {
     const c = montarCronograma({
       ...EXEMPLO_DO_LUCAS,
       anuaisQuantidade: 3,
       anuaisValor: 2_000,
     });
     expect(c.anuais.map((p) => p.vencimento)).toEqual([
-      "2027-12-10",
-      "2028-12-10",
-      "2029-12-10",
+      "2027-11-10",
+      "2028-11-10",
+      "2029-11-10",
+    ]);
+    expect(c.anuais.map((p) => p.vencimento)).toEqual([
+      c.mensais[11]?.vencimento,
+      c.mensais[23]?.vencimento,
+      c.mensais[35]?.vencimento,
     ]);
     expect(c.totais.anuais).toBe(6_000);
+  });
+
+  it("⚠️ a última anual nunca vence depois da última mensal (os três planos do Garden)", () => {
+    // INVESTIDOR 36x com 3 anuais, NORMAL 60x com 5, INVESTIDOR PARCELADO 84x com 4: o teto de anuais
+    // é `floor(prazo ÷ 12)`, e com a anual k na mensal 12k a última cai no máximo na última mensal.
+    for (const [parcelasMensais, anuaisQuantidade, anuaisValor] of [
+      [36, 3, 30_000],
+      [60, 5, 25_000],
+      [84, 4, 25_000],
+      // O teto cheio de um prazo que não fecha em anos inteiros.
+      [95, 7, 1_000],
+    ] as const) {
+      const c = montarCronograma({
+        ...EXEMPLO_DO_LUCAS,
+        anuaisQuantidade,
+        anuaisValor,
+        entradaValor: 100_000 * 0.1,
+        parcelasMensais,
+        valorNegociado: 400_000,
+      });
+      const ultimaMensal = c.mensais.at(-1)!.vencimento;
+      expect(c.anuais).toHaveLength(anuaisQuantidade);
+      expect(c.anuais.every((a) => a.vencimento <= ultimaMensal)).toBe(true);
+      c.anuais.forEach((a, k) => {
+        expect(a.vencimento).toBe(c.mensais[12 * (k + 1) - 1]?.vencimento);
+      });
+    }
   });
 
   it("num plano SEM juros, valor presente e face são a mesma coisa: o saldo cai 6 mil", () => {
@@ -249,7 +285,23 @@ describe("as parcelas anuais", () => {
     expect(c.mensais[0]?.valor).toBe(700);
   });
 
-  it("⚠️ COM juros o saldo cai pelo VALOR PRESENTE, e não pelo total de face", () => {
+  it("⚠️ SACOC COM juros: o saldo cai pelo VALOR DE FACE, e a folha fecha ao centavo", () => {
+    // Decisão de 18/09/2026 ("tem que ser igual o mmendes"): no SACOC a parcela do 1º ciclo é
+    // amortização pura, e os juros entram no degrau do aniversário; as anuais abatem o saldo pelo
+    // que o boleto do aniversário cobra. Entrada + anuais + financiado = valor negociado.
+    const c = montarCronograma({
+      ...EXEMPLO_DO_LUCAS,
+      anuaisQuantidade: 3,
+      anuaisValor: 20_000,
+      entradaVezes: 1,
+      plano: SACOC_COM_JUROS,
+    });
+    expect(c.totais.financiado).toBe(30_000);
+    expect(c.mensais[0]?.valor).toBe(250);
+    expect(c.totais.entrada + c.totais.anuais + c.totais.financiado).toBe(100_000);
+  });
+
+  it("⚠️ PRICE COM juros o saldo cai pelo VALOR PRESENTE, e não pelo total de face", () => {
     const c = montarCronograma({
       ...EXEMPLO_DO_LUCAS,
       anuaisQuantidade: 3,

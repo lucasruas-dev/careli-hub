@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { abrirEspelho } from "@/lib/hercules/espelho/abrir-espelho";
 import { estadoDoEspelho } from "@/lib/hercules/espelho/estado-do-espelho";
-import { planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
+import { pisoDeEntradaPublico, planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
 import {
   apelidoDoEspelho,
   emitirTokenDoEspelho,
@@ -83,18 +83,21 @@ export default async function EspelhoCurtoRoute({
   const { filhosC2xIds, masterplan, nome, paiC2xId } = aberto.espelho;
 
   try {
-    const [estado, planos] = await Promise.all([
+    const ids = [paiC2xId, ...filhosC2xIds].filter(Boolean) as string[];
+    const [estado, planos, entradaMinimaPercentual] = await Promise.all([
       estadoDoEspelho(aberto.espelho.client, {
         enterpriseIdDoPai: paiC2xId,
         enterpriseIdsDosFilhos: filhosC2xIds,
       }),
-      planosPublicos(aberto.espelho.client, [paiC2xId, ...filhosC2xIds].filter(Boolean) as string[]),
+      planosPublicos(aberto.espelho.client, ids),
+      pisoDeEntradaPublico(aberto.espelho.client, ids),
     ]);
 
     return (
       <EspelhoPublico
         inicial={{
           ...estado,
+          entradaMinimaPercentual,
           planos,
           empreendimento: { codigo: aberto.espelho.codigo, nome },
           temMapa: masterplan !== null,

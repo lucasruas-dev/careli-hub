@@ -1,11 +1,38 @@
 import { describe, expect, it } from "vitest";
 
-import { semPlanosRepetidos, type PlanoPublico } from "./planos-publicos";
+import { pisoDoEspelho, semPlanosRepetidos, type PlanoPublico } from "./planos-publicos";
+
+// O PISO DO ESPELHO (18/09/2026): o Garden aparecia com "entrada R$ 41.000 (8%)" num lote de
+// R$ 410.000 porque o espelho usava o padrão da casa (10%) e não os 8% do empreendimento.
+describe("pisoDoEspelho", () => {
+  it("o piso cadastrado vale, e chega como o numeric do banco (texto)", () => {
+    expect(pisoDoEspelho(["8.00"])).toBe(8);
+  });
+
+  it("ninguém cadastrou: nulo, que é o padrão da casa", () => {
+    expect(pisoDoEspelho([])).toBeNull();
+    expect(pisoDoEspelho([null, undefined, ""])).toBeNull();
+  });
+
+  it("⚠️ zero é decisão, não ausência", () => {
+    expect(pisoDoEspelho(["0.00"])).toBe(0);
+    expect(pisoDoEspelho([null, 0])).toBe(0);
+  });
+
+  it("pai e filhos com pisos diferentes: vale o maior, que nenhum filho recusa", () => {
+    expect(pisoDoEspelho(["8.00", "10.00", null])).toBe(10);
+  });
+
+  it("lixo não vira piso", () => {
+    expect(pisoDoEspelho(["abc", -5 as unknown as string])).toBeNull();
+  });
+});
 
 function plano(parcial: Partial<PlanoPublico>): PlanoPublico {
   return {
     anuaisQuantidade: 0,
     anuaisValor: 0,
+    descontoPercentual: 0,
     entradaPercentual: 20,
     indiceCorrecao: "IPCA_ANUAL",
     jurosConvencao: "efetiva",
@@ -62,6 +89,8 @@ describe("semPlanosRepetidos", () => {
       { anuaisQuantidade: 2 },
       { anuaisValor: 15000 },
       { sistemaAmortizacao: "SAC" },
+      // O desconto do plano (0178) é preço: dois planos iguais com descontos diferentes são dois.
+      { descontoPercentual: 8 },
     ] as Array<Partial<PlanoPublico>>) {
       expect(semPlanosRepetidos([base, plano(variacao)]), JSON.stringify(variacao)).toHaveLength(2);
     }
