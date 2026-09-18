@@ -1061,6 +1061,28 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     situacao: "depois",
     titulo: "Gravacao de tela dentro da conversa",
   },
+  {
+    id: "PAN-115",
+    entregueEm: "2026-09-18",
+    evidencia:
+      "v1.350.0, commit aff317ab, deployment dpl_69BqRb44VitjFRMw2vZtuvmDVKXd. Migration 0176_um_dono_por_terreno aplicada em produção com OK do Lucas; a 0177 não (o código grava `atividade` sem ela). Régua em lib/hercules/situacao-da-unidade.ts, porta única em lib/hercules/criar-reserva.ts, conclusão do pedido em lib/hercules/concluir-cancelamento-server.ts.",
+    modulo: "Hercules",
+    porque:
+      "Lucas (18/09/2026): *\"eu não posso vender dois lotes para pessoas diferentes, eu tomo processo por conta disso\"*. Havia três réguas de situação (Venda, Apolo e telão, espelho) e 108 unidades divergentes; o índice antigo não via o mesmo lote em linhas diferentes. E o cancelamento concluído pelo administrativo não devolvia a unidade à venda.",
+    situacao: "entregue",
+    titulo: "Uma situação por unidade, um dono por lote, e o cancelamento concluído devolve a unidade",
+  },
+  {
+    id: "PAN-116",
+    entregueEm: "2026-09-18",
+    evidencia:
+      "v1.350.1. modules/espelho/MapaDeLotes.tsx (pinça, arraste, limitarDeslocamento) e modules/publico/espelho/EspelhoPublico.tsx (`publico-shell`, CSS_DO_CELULAR). Teste MapaDeLotes.toque.test.tsx. Conferido em 375×812 e 812×375.",
+    modulo: "Hercules",
+    porque:
+      "Lucas (18/09/2026): *\"o link do espelho para os corretores, ficou ruim no celular\"*, *\"eu não consigo mover com o dedo, dar zoom, deitar a tela\"*. O corretor manda o link pelo WhatsApp e o cliente abre no celular: a página abria com largura de computador e o mapa não respondia ao dedo.",
+    situacao: "entregue",
+    titulo: "O espelho dos corretores funciona no celular",
+  },
 ];
 
 /** Quantos itens em cada situação — o cabeçalho da tela lê daqui. */

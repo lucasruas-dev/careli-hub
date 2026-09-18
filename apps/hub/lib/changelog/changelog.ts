@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-09-18-espelho-no-celular",
-    deployedAt: "2026-09-18T15:50:00-03:00",
+    deployedAt: "2026-09-18T15:59:30-03:00",
     modules: [
       {
         module: "Hércules",

@@ -95,6 +95,44 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Hercules/Espelho] O espelho dos corretores funciona no celular (v1.350.1)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-18 16:00 -03:00` (push na main; o horario exato do deployment fica no changelog).
+- Ambiente: `producao`.
+- Origem: OK explicito do Lucas ("pode"), depois de o preview devolver 404 no link do espelho. O 404 era do ambiente de preview: o selo do link curto e assinado com `SESSAO_CAD_SECRET` e o link circula assinado com o segredo de producao. Medido nos logs da Vercel: `c2x.app.br/e/garden-ksewinpw` com 18 respostas 200 nas 6 h anteriores.
+- Pedido: "o link do espelho para os corretores, ficou ruim no celular", "ele fica todo travado", "eu nao consigo mover com o dedo, dar zoom, deitar a tela", "o simulador tambem, otimiza para celular", "deixa o zoom na pinca", "somente nos espelhos".
+- Causa: `html { min-width: 1024px }` (apps/hub/styles/globals.css) sem a classe `publico-shell` na raiz do EspelhoPublico: a pagina renderizava a 1024 px no celular. O motor do mapa desligava os gestos do navegador (`touchAction: none`) e so dava zoom pela roda do mouse.
+- Escopo publicado:
+  - `apps/hub/modules/espelho/MapaDeLotes.tsx` (compartilhado com a Mesa de Venda): pinca com dois dedos ancorada entre eles, arraste com um dedo, `limitarDeslocamento` (a arte nunca sai da tela), recorte no giro do aparelho, pinca nunca abre lote. Sem botoes de zoom.
+  - `apps/hub/modules/publico/espelho/EspelhoPublico.tsx`: `publico-shell` nas duas raizes; botao Tela cheia so onde a API existe; cabecalho e acoes quebram linha; `CSS_DO_CELULAR` (ate 760 px de largura ou 500 px de altura) poe o painel do lote em 100dvh e o simulador numa coluna.
+  - `apps/hub/modules/espelho/MapaDeLotes.toque.test.tsx` (novo).
+  - Changelog 1.350.1 e roadmap (PAN-115, PAN-116).
+- Excluido de proposito: as outras paginas publicas (`/publico/painel`, `/publico/verificar`, `/publico/assinaturas`, `/publico/masterplan`) continuam sem `publico-shell`. Foi proposta uma casca para todas e o Lucas recusou ("nao precisa", "somente nos espelhos").
+- Commits publicados: `9627c751`, `84197615` e o do registro.
+- Deployment anterior: commit `aff317ab` (v1.350.0) / `dpl_69BqRb44VitjFRMw2vZtuvmDVKXd`.
+- Dominio alvo autorizado: `https://c2x.app.br`. `https://ops.c2x.app.br`: NAO TOCADO.
+- Validacoes executadas: typecheck limpo; suite completa 6.904 testes verdes em 423 arquivos; conferido no servidor local contra producao em 375x812 e 812x375 (largura do documento igual a da tela, painel do lote em tela cheia, simulador em coluna unica, sem rolagem lateral).
+- Rollback definido: `aff317ab` / `dpl_69BqRb44VitjFRMw2vZtuvmDVKXd` (Instant Rollback).
+- Riscos conhecidos: BAIXO. So tela: nenhuma escrita em banco, nenhuma migration, nenhuma env. A Mesa de Venda usa o mesmo motor e ganha a pinca; com mouse nada muda.
+
+Registro de producao:
+
+- Assunto: `[Hercules/Temis/Apolo/Prometeu] A situacao da unidade e uma so, o lote nao se vende duas vezes, e o cancelamento concluido devolve a unidade (v1.350.0)`.
+- Squad/agente responsavel: `Zeus` (workflows multi-agente de implementacao e revisao adversarial).
+- Data e hora local: `2026-09-18 15:21:07 -03:00`.
+- Ambiente: `producao`.
+- Origem: OK explicito do Lucas ("tem meu ok") para aplicar a 0176 e subir. Pedidos: "esses status tem que morar em um so lugar", "eu nao posso vender dois lotes para pessoas diferentes ... nunca permita que isso aconteca", "toda reserva, proposta deve ser criada no hercules", "o time adminsitrativo quando finaliza um cancelamento de contrato, a unidade nao esta voltando para disponibilidade".
+- Migration: `0176_um_dono_por_terreno.sql` APLICADA em `bxgukywoxgivlrhjkwjx` (coluna `terreno_chave` e indice unico parcial em `hercules_reservas`). `0177_origem_conclusao_na_passagem.sql` NAO aplicada; o codigo grava `atividade` sem ela.
+- Escopo publicado: regua unica `lib/hercules/situacao-da-unidade.ts`; porta unica da reserva `lib/hercules/criar-reserva.ts` (confere antes e depois e desfaz); `trava-do-lote.ts`; cancelamentos condicionais em `cancelar-reserva-server.ts`; bloqueio com segunda conferencia; conclusao de cancelamento e distrato na Temis (`concluir-cancelamento-server.ts`), indeferimento com efeito na venda (`indeferimento-na-venda-server.ts`); carga do C2X que nao regrava venda encerrada no Panteon.
+- Commit publicado: `aff317ab`. Deployment novo: `dpl_69BqRb44VitjFRMw2vZtuvmDVKXd`.
+- Deployment anterior: commit `0236fe41` / `dpl_8Xbawh6TmmRC8ZqBfZ7RXgXhT25Z`.
+- Dominio alvo autorizado: `https://c2x.app.br`. `https://ops.c2x.app.br`: NAO TOCADO.
+- Healthchecks pos-deploy: home 200; espelho publico 200; API autenticada 401 sem sessao (esperado).
+- Rollback definido: `0236fe41` / `dpl_8Xbawh6TmmRC8ZqBfZ7RXgXhT25Z`. A 0176 nao precisa ser desfeita para voltar o codigo (o codigo anterior nao le a coluna).
+- Riscos conhecidos: corrida indeferir x concluir no mesmo instante; a aba Historico da Temis ainda chama a conclusao de "Proposta cancelada"; marcar atividade pela API leva o card a Concluido. VOL1106 e VOC0306 sem correcao de dados: o coordenador pede o cancelamento de novo e o administrativo conclui.
+
+Registro de producao:
+
 - Assunto: `[Iris/Zeus-Plantao] Buscar pelo CPF sem digitar a mascara, com a tela perguntando o que e (v1.326.0)`.
 - Squad/agente responsavel: `Zeus de Plantao`.
 - Data e hora local: `2026-09-13 11:43:14 -03:00`.
