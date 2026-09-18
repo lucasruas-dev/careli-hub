@@ -1,3 +1,8 @@
+import {
+  canalForaDaMeta,
+  decidirAbertura,
+  origemDoTicket,
+} from "@/lib/iris/abertura-fora-da-meta";
 import { fixLegacyBrazilianMobileNumber } from "@/lib/iris/phone-country";
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -300,9 +305,17 @@ export async function POST(request: NextRequest) {
     // dedicado (config.defaultQueueSlug) — Jurídico → número Jurídico, Gurgel →
     // Gurgel, Atendimento → 4143. Sem channelId explícito, o canal (e o número)
     // segue a fila escolhida; com channelId explícito, respeita o que veio.
+    //
+    // ⚠️ A FILA DA EVOLUTION É OLHADA ANTES, porque `getQueueChannel` só enxerga canal da Meta e
+    // mandava a Central de Relacionamento para o 4143 (ver lib/iris/abertura-fora-da-meta.ts).
+    const canalDaEvolution =
+      !channelId && queue ? await getEvolutionChannelOfQueue(client, queue) : null;
+    const foraDaMeta = canalForaDaMeta(canalDaEvolution);
     const queueChannel =
-      !channelId && queue ? await getQueueChannel(client, queue) : null;
-    const effectiveChannel = queueChannel ?? channel;
+      !channelId && queue && !foraDaMeta
+        ? await getQueueChannel(client, queue)
+        : null;
+    const effectiveChannel = canalDaEvolution ?? queueChannel ?? channel;
     const queuePhoneNumberId =
       normalizeText(effectiveChannel.external_account_id) || null;
     const linkedAttendanceTicket =
@@ -370,10 +383,16 @@ export async function POST(request: NextRequest) {
       contact.id,
       phone,
     );
-    const shouldSendTemplate =
-      requestedTemplateSend && !customerServiceWindow.open;
+    // ⚠️ A JANELA DE 24H SÓ VALE NA META. Fora dela (Central de Relacionamento, Evolution) a
+    // abertura não trava nem manda template: o operador abre e escreve.
+    const decisaoDaAbertura = decidirAbertura({
+      foraDaMeta,
+      janelaAberta: customerServiceWindow.open,
+      pediuTemplate: requestedTemplateSend,
+    });
+    const shouldSendTemplate = decisaoDaAbertura.enviarTemplate;
 
-    if (!requestedTemplateSend && !customerServiceWindow.open) {
+    if (decisaoDaAbertura.bloquearPorJanela) {
       return NextResponse.json(
         {
           error:
@@ -513,6 +532,12 @@ export async function POST(request: NextRequest) {
       : customerServiceWindow.open
         ? "window_open_reused"
         : "not_sent";
+    const origemDoTicketNovo = origemDoTicket({
+      foraDaMeta,
+      sourceEntityId,
+      sourceEntityType,
+      telefone: phone,
+    });
     let ticket: { id: string; protocol: string; [key: string]: unknown } | null = null;
 
     if (linkedAttendanceTicket) {
@@ -625,6 +650,7 @@ export async function POST(request: NextRequest) {
               : null,
             metaPhoneNumberId: templatePhoneNumberId,
             metaTemplateStatus,
+            ...(foraDaMeta ? { provider: "evolution" } : {}),
             sourceModule,
             templateInstallmentSummary,
             templateProtocolReference,
@@ -648,9 +674,11 @@ export async function POST(request: NextRequest) {
             templateInstallmentSummary,
             templateBody,
             templateProtocolReference,
+            // O mesmo par que o processador da Evolution grava no ticket direto que ele abre.
+            ...(foraDaMeta ? { contactPhone: phone, provider: "evolution" } : {}),
           },
-          source_entity_id: sourceEntityId,
-          source_entity_type: sourceEntityType,
+          source_entity_id: origemDoTicketNovo.sourceEntityId,
+          source_entity_type: origemDoTicketNovo.sourceEntityType,
           source_module: sourceModule,
           status: initialStatus,
           subject: ticketSubject,
@@ -1654,6 +1682,43 @@ async function getQueueChannel(
   }
 
   return getWhatsAppChannel(client, null);
+}
+
+// O canal da EVOLUTION ligado à fila, quando é esse o caso.
+//
+// ⚠️ EXISTE À PARTE porque todas as buscas de canal acima filtram `provider = 'meta'`, e são elas
+// que decidem número e template no resto da rota. Afrouxar o filtro delas faria um canal da
+// Evolution chegar a `getMetaWhatsAppOutboundConfig` como se fosse número da Meta. Aqui só se
+// responde uma pergunta: a fila fala fora da Meta? Canal de outro provedor devolve nulo, e a rota
+// segue o caminho da Meta de sempre.
+async function getEvolutionChannelOfQueue(
+  client: SupabaseClient,
+  queue: { metadata?: unknown } | null | undefined,
+) {
+  const boundChannelId = normalizeUuid(
+    normalizeRecord(queue?.metadata).channelId,
+  );
+
+  if (!boundChannelId) {
+    return null;
+  }
+
+  const { data } = await client
+    .from("caredesk_channels")
+    .select("id,name,slug,status,external_account_id,provider")
+    .eq("id", boundChannelId)
+    .eq("kind", "whatsapp")
+    .eq("status", "active")
+    .maybeSingle<{
+      external_account_id: string | null;
+      id: string;
+      name: string;
+      provider: string | null;
+      slug: string;
+      status: string;
+    }>();
+
+  return data && canalForaDaMeta(data) ? data : null;
 }
 
 // Número (phone_number_id) de uma fila — base da trava de transferir só entre
