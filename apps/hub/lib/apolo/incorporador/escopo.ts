@@ -265,9 +265,20 @@ export async function idsDaSessao(
       ids.push(...idsDoEmpreendimento(emp));
       continue;
     }
-    for (const stageId of emp.stageIds) {
-      if (daSessao.has(String(stageId))) ids.push(String(stageId));
-    }
+    const divisoes = emp.stageIds.map((id) => String(id).trim()).filter(Boolean);
+    const daConta = divisoes.filter((id) => daSessao.has(id));
+    ids.push(...daConta);
+
+    // ⚠️ TODAS AS DIVISÕES TAMBÉM FAZEM O DONO DO CONJUNTO, e ganham o id do grupo. O CAD público
+    // grava o empreendimento como "group:Lagoa Bonita" (para quem está de fora o loteamento é um
+    // só), e as contas do portal comercial recebem os ids das divisões, nunca o do grupo. Sem esta
+    // linha, quem tinha as três glebas não enxergava a CAD gravada no grupo: foi o caso do FÁBIO
+    // COSTA CHAVES (18/09/2026), credenciado no Apolo e "sem CAD neste empreendimento" na proposta
+    // da Gurgel. Medido no mesmo dia: 2 CADs estão gravadas no grupo, as duas credenciadas.
+    //
+    // A assimetria acima continua de pé: gleba sozinha, ou duas de três, NÃO ganham o grupo. A CAD
+    // gravada no grupo pode ser da gleba de outro dono, e só quem tem todas responde por ela.
+    if (divisoes.length > 0 && daConta.length === divisoes.length) ids.push(String(emp.id).trim());
   }
 
   // O que a sessão traz entra sempre: se o empreendimento sumiu do catálogo, o id gravado no

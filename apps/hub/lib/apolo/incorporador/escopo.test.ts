@@ -152,9 +152,11 @@ describe("idsDaSessao (a tradução para as tabelas do Apolo)", () => {
         ids.push(emp.id, ...emp.stageIds);
         continue;
       }
-      for (const stageId of emp.stageIds) {
-        if (daSessao.has(String(stageId))) ids.push(String(stageId));
-      }
+      const daConta = emp.stageIds.filter((stageId) => daSessao.has(String(stageId)));
+      ids.push(...daConta.map(String));
+      // Desde 18/09/2026: todas as divisões = dono do conjunto (ver escopo-grupo-completo.test.ts,
+      // que testa a função real).
+      if (emp.stageIds.length > 0 && daConta.length === emp.stageIds.length) ids.push(emp.id);
     }
 
     return [...new Set([...ids, ...permitidos])];
