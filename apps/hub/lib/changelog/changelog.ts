@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-09-18-situacao-unica-e-um-dono-por-lote",
-    deployedAt: "2026-09-18T20:00:00-03:00",
+    deployedAt: "2026-09-18T15:21:07-03:00",
     modules: [
       {
         module: "Hércules",
@@ -111,6 +111,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas, 18/09/2026: \"esses status tem que morar em um so lugar\" e \"eu não posso vender dois lotes para pessoas diferentes\". Havia três réguas (Venda pelo processo, Apolo e telão pelo C2X, espelho por `aberta`) e 108 unidades divergentes; o índice da 0125 não via o mesmo lote em linhas diferentes (VLO/VOC/VOR).",
     },
+    rollback: "0236fe41",
     title: "A situação da unidade é uma só, o lote não se vende duas vezes, e o cancelamento concluído devolve a unidade",
     type: "melhoria",
     version: "1.350.0",
