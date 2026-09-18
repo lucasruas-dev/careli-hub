@@ -83,26 +83,72 @@ export async function buscarCorretorPorCpf(
   if (entidadeError) throw new Error(`Falha ao ler o corretor: ${entidadeError.message}`);
   if (!entidade?.id) return null;
 
-  const { candidatos, email } = await imobiliariasDoCorretor(adminClient, entidade.id);
+  const { candidatos, email } = await imobiliariasDoCorretor(adminClient, entidade.id, digits);
   return { candidatos, email, entityId: entidade.id, nome: entidade.display_name ?? "" };
 }
 
-// As imobiliárias a que o corretor está pendurado. O relacionamento é ENTRE ENTIDADES
-// (`related_entity_id` real), o que é a diferença para o corretor-de-texto do wizard interno:
-// lá o vínculo seria por nome, e nome não desempata dois Henriques.
+// Vínculo declarado que foi desfeito: o contato saiu da imobiliária e não autoriza mais nada.
+const STATUS_DE_VINCULO_DESFEITO = new Set(["archived", "blocked", "rejected"]);
+
+// As imobiliárias a que o corretor está pendurado, por DOIS caminhos, os dois pelo documento e
+// nunca pelo nome (nome não desempata dois Henriques):
+//
+//   1. o vínculo LIGADO à ficha (`related_entity_id` = o corretor). É o que o próprio CAD público
+//      grava quando o corretor se cadastra por aqui.
+//   2. o vínculo DECLARADO pela imobiliária com o CPF do corretor na metadata, sem ficha ligada.
+//
+// ⚠️ O SEGUNDO CAMINHO NÃO EXISTIA, e travava quem a imobiliária cadastrou. O cadastro de
+// imobiliária no Apolo e o credenciamento público de imobiliária gravam os corretores dela como
+// CONTATO: CPF na metadata, `related_entity_id` nulo. Medido em 18/09/2026: 147 dos 408 vínculos de
+// corretor estão assim, em 80 imobiliárias, e nenhum era lido aqui. Quem já tinha ficha de corretor
+// (a representante que vira corretora, pela regra do Lucas: *"se o usuário não cadastrar nenhum
+// corretor, ele cadastra o representante como corretor"*) digitava o CPF e caía em "Não localizamos
+// esse CNPJ entre as imobiliárias credenciadas", com a imobiliária credenciada e habilitada. Foi o
+// caso da CINTHIA DUARTE PIRES (CNPJ 62.103.009/0001-85), em 18/09/2026.
+//
+// ⚠️ A DECLARAÇÃO NÃO DISPENSA NADA: a imobiliária continua tendo de estar credenciada, e os
+// empreendimentos continuam saindo da habilitação dela. O CPF só responde "de quem é este corretor".
+//
+// O CPF na metadata não tem índice (a nota de `buscarCorretorPorCpf` acima). Medido em 18/09/2026:
+// a consulta filtra por `related_entity_id is null` pelo índice que existe e leva 1,3 ms sobre as
+// 6.904 linhas da tabela.
 async function imobiliariasDoCorretor(
   adminClient: AdminClient,
   corretorEntityId: string,
+  cpf: string,
 ): Promise<{ candidatos: VinculoCorretor[]; email: string }> {
-  const { data, error } = await adminClient
-    .from("apolo_relationships")
-    .select("entity_id, metadata")
-    .eq("related_entity_id", corretorEntityId)
-    .eq("relationship_type", PERFIL_CORRETOR)
-    .limit(50);
-  if (error) throw new Error(`Falha ao ler vínculos: ${error.message}`);
+  const [ligados, declarados] = await Promise.all([
+    adminClient
+      .from("apolo_relationships")
+      .select("entity_id, metadata")
+      .eq("related_entity_id", corretorEntityId)
+      .eq("relationship_type", PERFIL_CORRETOR)
+      .limit(50),
+    adminClient
+      .from("apolo_relationships")
+      .select("entity_id, metadata, status")
+      .is("related_entity_id", null)
+      .eq("relationship_type", PERFIL_CORRETOR)
+      // O CPF foi gravado das duas formas: 133 só com dígitos e 12 com máscara (18/09/2026).
+      .in("metadata->>cpf", formatosDoCpf(cpf))
+      .limit(50),
+  ]);
+  if (ligados.error) throw new Error(`Falha ao ler vínculos: ${ligados.error.message}`);
+  if (declarados.error) throw new Error(`Falha ao ler vínculos: ${declarados.error.message}`);
 
-  const linhas = (data ?? []) as { entity_id: string; metadata: { email?: string } | null }[];
+  type LinhaDeVinculo = {
+    entity_id: string;
+    metadata: { email?: string } | null;
+    status?: string | null;
+  };
+  // Ligados ANTES dos declarados: é a ordem em que `resolverVinculo` escolhe a imobiliária, e o
+  // vínculo que o corretor fez por conta própria continua valendo primeiro.
+  const linhas = [
+    ...((ligados.data ?? []) as LinhaDeVinculo[]),
+    ...((declarados.data ?? []) as LinhaDeVinculo[]).filter(
+      (row) => !STATUS_DE_VINCULO_DESFEITO.has(String(row.status ?? "")),
+    ),
+  ];
   const email = linhas.map((row) => row.metadata?.email).find(Boolean) ?? "";
 
   const imobIds = Array.from(new Set(linhas.map((row) => row.entity_id))).filter(Boolean);
@@ -134,13 +180,23 @@ async function imobiliariasDoCorretor(
 
   const candidatos = (
     (entidades ?? []) as { display_name: string | null; id: string; legal_name: string | null }[]
-  ).map((row) => ({
-    imobiliariaAtiva: ativaPorId.get(row.id) ?? false,
-    imobiliariaEntityId: row.id,
-    imobiliariaNome: row.legal_name || row.display_name || "Imobiliária",
-  }));
+  )
+    .map((row) => ({
+      imobiliariaAtiva: ativaPorId.get(row.id) ?? false,
+      imobiliariaEntityId: row.id,
+      imobiliariaNome: row.legal_name || row.display_name || "Imobiliária",
+    }))
+    // O `.in()` não devolve na ordem pedida: a ordem dos vínculos (ligados primeiro) é refeita aqui.
+    .sort((a, b) => imobIds.indexOf(a.imobiliariaEntityId) - imobIds.indexOf(b.imobiliariaEntityId));
 
   return { candidatos, email };
+}
+
+// As duas grafias em que o CPF aparece na metadata dos vínculos: só dígitos e com máscara.
+function formatosDoCpf(cpf: string): string[] {
+  const d = normalizarCpf(cpf);
+  if (d.length !== 11) return [d];
+  return [d, `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`];
 }
 
 // ---------------------------------------------------------------------------
