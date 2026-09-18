@@ -68,8 +68,8 @@ const COLUNAS: Record<string, readonly string[]> = {
     "atualizado_em", "cancelada_em", "cancelada_motivo", "cancelada_por", "cancelada_por_nome",
     "corretor_entity_id", "criado_em", "criado_por", "criado_por_nome", "empreendimento_id",
     "evento_id", "id", "imobiliaria_entity_id", "observacao", "origem", "prometeu_reserva_id",
-    "proponentes", "protocolo_numero", "situacao", "unidade_id", "validade_em", "venda_id",
-    "workspace_id",
+    "proponentes", "protocolo_numero", "situacao", "terreno_chave", "unidade_id", "validade_em",
+    "venda_id", "workspace_id",
   ],
   hercules_unidades: [
     "atualizado_em", "codigo", "criado_em", "enterprise_id", "espelho_de", "id", "lote",
@@ -125,12 +125,13 @@ function condicaoDoOr(expressao: string): null | { coluna: string; teste: (l: Li
   };
 }
 
-/** As regras de `hercules_reservas` que o banco de verdade faz valer (0125 + 0167). */
+/** As regras de `hercules_reservas` que o banco de verdade faz valer (0125 + 0167 + 0176). */
 function violacao(
   tabela: string,
   linha: Linha,
   outras: readonly Linha[],
   origensAceitas: readonly string[],
+  com0176 = true,
 ): ErroDoBanco | null {
   if (tabela !== "hercules_reservas") return null;
   for (const coluna of ["empreendimento_id", "unidade_id", "origem"]) {
@@ -156,15 +157,31 @@ function violacao(
       message: 'duplicate key value violates unique constraint "hercules_reservas_uma_viva_por_unidade"',
     };
   }
+  // 0176: uma reserva viva por terreno, quando a chave veio.
+  const chave = texto(linha.terreno_chave);
+  if (
+    com0176 &&
+    viva(linha) &&
+    chave !== null &&
+    outras.some(
+      (o) => viva(o) && texto(o.terreno_chave) === chave && texto(o.workspace_id) === texto(linha.workspace_id),
+    )
+  ) {
+    return {
+      code: "23505",
+      message: 'duplicate key value violates unique constraint "hercules_reservas_um_dono_por_terreno"',
+    };
+  }
   return null;
 }
 
 function criarBanco(
   inicial: Record<string, Linha[]>,
-  opcoes: { maxLinhas?: number; origensAceitas?: readonly string[] } = {},
+  opcoes: { maxLinhas?: number; origensAceitas?: readonly string[]; sem0176?: boolean } = {},
 ): Banco {
   const maxLinhas = opcoes.maxLinhas ?? 1000;
   const origensAceitas = opcoes.origensAceitas ?? ORIGENS_COM_A_0167;
+  const com0176 = opcoes.sem0176 !== true;
   const tabelas = new Map<string, Linha[]>();
   const consultas: Consulta[] = [];
   const problemas: string[] = [];
@@ -214,6 +231,7 @@ function criarBanco(
     const filtros: Array<(l: Linha) => boolean> = [];
     const descricao: string[] = [];
     const erros: string[] = [];
+    let semAColunaDoTerreno = false;
 
     const conferir = (coluna: string, onde: string) => {
       const conhecidas = COLUNAS[tabela];
@@ -240,7 +258,7 @@ function criarBanco(
         const novas: Linha[] = [];
         for (const bruta of carga) {
           const nova = comPadroes(tabela, bruta);
-          const erro = violacao(tabela, nova, [...todas, ...novas], origensAceitas);
+          const erro = violacao(tabela, nova, [...todas, ...novas], origensAceitas, com0176);
           if (erro) return { data: null, error: erro };
           novas.push(nova);
         }
@@ -251,7 +269,7 @@ function criarBanco(
         const alvo = todas.filter(casa);
         const patch = carga[0] ?? {};
         for (const l of alvo) {
-          const erro = violacao(tabela, { ...l, ...patch }, todas.filter((o) => o !== l), origensAceitas);
+          const erro = violacao(tabela, { ...l, ...patch }, todas.filter((o) => o !== l), origensAceitas, com0176);
           if (erro) return { data: null, error: erro };
         }
         for (const l of alvo) Object.assign(l, patch);
@@ -274,6 +292,16 @@ function criarBanco(
       if (erros.length > 0) {
         problemas.push(...erros);
         return { data: null, error: { code: "42703", message: erros.join("; ") } };
+      }
+      if (semAColunaDoTerreno) {
+        // O que o PostgREST responde quando a 0176 ainda não rodou.
+        return {
+          data: null,
+          error: {
+            code: "PGRST204",
+            message: "Could not find the 'terreno_chave' column of 'hercules_reservas' in the schema cache",
+          },
+        };
       }
       if (falhas.some((f) => f(consulta))) {
         return { data: null, error: { code: "08006", message: "conexão perdida (falha simulada)" } };
@@ -310,6 +338,9 @@ function criarBanco(
         operacao = "insert";
         carga = Array.isArray(linha) ? linha : [linha];
         for (const l of carga) for (const coluna of Object.keys(l)) conferir(coluna, "insert");
+        if (!com0176 && tabela === "hercules_reservas" && carga.some((l) => "terreno_chave" in l)) {
+          semAColunaDoTerreno = true;
+        }
         return q;
       },
       is(coluna, valor) {
@@ -456,7 +487,7 @@ const cupomDoSalao = (id: string, codigo: string, unidadeC2xId: null | string, e
   ...extra,
 });
 
-function bancoDaCasa(opcoes?: { maxLinhas?: number; origensAceitas?: readonly string[] }): Banco {
+function bancoDaCasa(opcoes?: { maxLinhas?: number; origensAceitas?: readonly string[]; sem0176?: boolean }): Banco {
   return criarBanco(
     {
       hercules_propostas: [],
@@ -1025,14 +1056,15 @@ describe("⚠️ duas reservas AO MESMO TEMPO no mesmo terreno: nunca dois donos
   };
 
   it.each([
-    { a: { enterpriseId: VOR, linha: "vor-1206" }, b: { enterpriseId: VOC, linha: "voc-1206" }, nome: "linhas diferentes do terreno (VOR 12-06 × VOC 12-06)" },
-    { a: { enterpriseId: VOC, linha: "voc-0305" }, b: { enterpriseId: VOC, linha: "voc-0305" }, nome: "a mesma linha (VOC 03-05)" },
-  ])("$nome", async ({ a, b }) => {
+    { a: { enterpriseId: VOR, linha: "vor-1206" }, b: { enterpriseId: VOC, linha: "voc-1206" }, nome: "linhas diferentes do terreno (VOR 12-06 × VOC 12-06)", sem0176: false },
+    { a: { enterpriseId: VOC, linha: "voc-0305" }, b: { enterpriseId: VOC, linha: "voc-0305" }, nome: "a mesma linha (VOC 03-05)", sem0176: false },
+    { a: { enterpriseId: VOR, linha: "vor-1206" }, b: { enterpriseId: VOC, linha: "voc-1206" }, nome: "linhas diferentes do terreno, banco SEM a 0176", sem0176: true },
+  ])("$nome", async ({ a, b, sem0176 }) => {
     const desfechos = new Set<string>();
     const terreno = new Set(["vlo-1206", "vor-1206", "voc-1206", "vlo-0305", "voc-0305"]);
 
     for (let atraso = 0; atraso <= 200; atraso += 1) {
-      const banco = novoBanco();
+      const banco = novoBanco({ sem0176 });
       const [ra, rb] = await Promise.all([
         reservar(banco, pedido(a.linha, a.enterpriseId, { criadoPor: "u-a" })),
         atrasar(atraso).then(() => reservar(banco, pedido(b.linha, b.enterpriseId, { criadoPor: "u-b" }))),
@@ -1053,8 +1085,8 @@ describe("⚠️ duas reservas AO MESMO TEMPO no mesmo terreno: nunca dois donos
     expect(desfechos.has("1")).toBe(true);
   });
 
-  it("nas linhas diferentes existe o entrelaçamento em que as DUAS desistem (o pior caso aceito)", async () => {
-    const atrasoZero = novoBanco();
+  it("sem a 0176, nas linhas diferentes existe o entrelaçamento em que as DUAS desistem (o pior caso aceito)", async () => {
+    const atrasoZero = novoBanco({ sem0176: true });
     const respostas = await Promise.all([
       reservar(atrasoZero, pedido("vor-1206", VOR)),
       reservar(atrasoZero, pedido("voc-1206", VOC)),
@@ -1062,5 +1094,78 @@ describe("⚠️ duas reservas AO MESMO TEMPO no mesmo terreno: nunca dois donos
     expect(respostas.map((r) => r.ok)).toEqual([false, false]);
     expect(vivas(atrasoZero)).toEqual([]);
     expect(atrasoZero.linhas("hercules_reservas").map((l) => l.situacao)).toEqual(["cancelada", "cancelada"]);
+  });
+
+  it("com a 0176, o mesmo entrelaçamento tem UMA vencedora: a segunda morre no INSERT", async () => {
+    const atrasoZero = novoBanco();
+    const respostas = await Promise.all([
+      reservar(atrasoZero, pedido("vor-1206", VOR)),
+      reservar(atrasoZero, pedido("voc-1206", VOC)),
+    ]);
+    expect(respostas.filter((r) => r.ok)).toHaveLength(1);
+    expect(vivas(atrasoZero)).toHaveLength(1);
+  });
+});
+
+// ── A 0176: A TRAVA QUE NÃO DEPENDE DE O SERVIDOR SOBREVIVER ─────────────────────────────
+//
+// As duas conferências da porta única fecham toda corrida em que o servidor termina o que começou.
+// A que sobra: a outra reserva entra (numa linha irmã do terreno) entre a minha primeira conferência
+// e o meu INSERT, e o servidor cai logo depois do INSERT, antes da segunda conferência. Sem a 0176,
+// ficam dois donos e ninguém para desfazer. Com ela, o meu INSERT morre no banco.
+
+describe("⚠️ 0176: um dono por terreno, garantido pelo banco", () => {
+  const rivalNaIrma = (banco: Banco, terrenoChave: null | string) => () =>
+    banco.semear(
+      "hercules_reservas",
+      reservaDoHercules("r-rival", "vor-1206", terrenoChave ? { terreno_chave: terrenoChave } : {}),
+    );
+  const depoisDaPrimeiraConferencia = (c: Consulta) =>
+    c.tabela === "hercules_reservas" && c.operacao === "select" && c.filtros.some((f) => f.startsWith("in:situacao"));
+  const servidorCaiDepoisDoInsert = (banco: Banco) =>
+    banco.depois(
+      (c) => c.tabela === "hercules_reservas" && c.operacao === "insert",
+      () => {
+        throw new Error("servidor caiu");
+      },
+    );
+
+  it("a reserva grava a chave do terreno: o menor id entre as linhas do mesmo chão", async () => {
+    const banco = novoBanco();
+    const r = await reservar(banco, pedido("voc-1206", VOC));
+    expect(r.ok).toBe(true);
+    expect(vivas(banco).map((v) => v.terreno_chave)).toEqual(["vlo-1206"]);
+  });
+
+  it("⚠️ com a 0176: o rival entrou na irmã e o servidor cairia depois do INSERT, mas o INSERT já morre no banco", async () => {
+    const banco = novoBanco();
+    banco.depois(depoisDaPrimeiraConferencia, rivalNaIrma(banco, "vlo-1206"));
+    servidorCaiDepoisDoInsert(banco);
+
+    const r = await reservar(banco, pedido("voc-1206", VOC));
+
+    expect(r).toMatchObject({ ok: false, status: 409 });
+    expect(vivas(banco).map((v) => v.id)).toEqual(["r-rival"]);
+  });
+
+  it("⚠️ sem a 0176, o mesmo acidente deixa DOIS donos (é por isso que a migration existe)", async () => {
+    const banco = novoBanco({ sem0176: true });
+    banco.depois(depoisDaPrimeiraConferencia, rivalNaIrma(banco, null));
+    servidorCaiDepoisDoInsert(banco);
+
+    await expect(reservar(banco, pedido("voc-1206", VOC))).rejects.toThrow("servidor caiu");
+    expect(vivas(banco)).toHaveLength(2);
+  });
+
+  it("banco sem a 0176: a reserva grava sem a chave, e as duas conferências seguram como antes", async () => {
+    const banco = novoBanco({ sem0176: true });
+    const r = await reservar(banco, pedido("voc-1206", VOC));
+    expect(r.ok).toBe(true);
+    expect(vivas(banco)).toHaveLength(1);
+    expect(vivas(banco)[0]?.terreno_chave ?? null).toBeNull();
+
+    const outra = await reservar(banco, pedido("vor-1206", VOR));
+    expect(outra).toMatchObject({ ok: false, status: 409 });
+    expect(vivas(banco)).toHaveLength(1);
   });
 });

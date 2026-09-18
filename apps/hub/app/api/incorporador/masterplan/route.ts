@@ -147,7 +147,9 @@ export async function GET(request: Request) {
 
   // ESCOPO: o código pedido tem que pertencer a este incorporador. A permissão é por id do C2X, e
   // o pedido chega por código, então a tradução acontece aqui — nunca confiando no que veio na URL.
-  const c2x = await loadApoloEnterprises();
+  // Só a lista (nome, código, id): a situação das unidades não é usada aqui, e lê-la custaria
+  // as propostas e reservas do banco inteiro a cada chamada.
+  const c2x = await loadApoloEnterprises({ comSituacao: false });
 
   if (!c2x.ok) {
     return NextResponse.json(

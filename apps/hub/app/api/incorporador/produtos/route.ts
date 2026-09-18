@@ -105,7 +105,9 @@ export async function GET(request: Request) {
   // configuração): o `.catch` põe as duas quedas no mesmo caminho. O cadastro fora do ar vira
   // `null` e só tira os produtos do Panteon, nunca os do C2X.
   const [c2x, cadastro] = await Promise.all([
-    loadApoloEnterprises().catch((erro: unknown) => {
+    // Só a lista (nome, código, id): a situação das unidades não é usada aqui, e lê-la custaria
+    // as propostas e reservas do banco inteiro a cada chamada.
+    loadApoloEnterprises({ comSituacao: false }).catch((erro: unknown) => {
       console.error("[incorporador/produtos] C2X indisponível", erro);
       return { error: "C2X indisponível.", ok: false as const };
     }),

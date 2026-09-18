@@ -71,7 +71,9 @@ export async function GET(request: Request) {
   // quedas no mesmo caminho.
   const doEscopo = idsDaSessao(sessao);
   const [c2x, permitidos, cadastro, estoque] = await Promise.all([
-    loadApoloEnterprises().catch((erro: unknown) => {
+    // Só a lista (nome, código, id): a situação das unidades não é usada aqui, e lê-la custaria
+    // as propostas e reservas do banco inteiro a cada chamada.
+    loadApoloEnterprises({ comSituacao: false }).catch((erro: unknown) => {
       console.error("[incorporador/produtos/painel] C2X indisponível", erro);
       return { error: "C2X indisponível.", ok: false as const };
     }),

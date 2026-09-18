@@ -102,7 +102,9 @@ async function montarEmpreendimentos(
     ]),
   );
 
-  const c2x = await loadApoloEnterprises();
+  // Só a lista (nome, código, id): a situação das unidades não é usada aqui, e lê-la custaria
+  // as propostas e reservas do banco inteiro a cada chamada.
+  const c2x = await loadApoloEnterprises({ comSituacao: false });
 
   // O cadastro do Panteon só é lido quando há produto dele na lista: a vitrine pública abre muito, e
   // hoje quase sempre só com o C2X. Falha na leitura não derruba a vitrine (o card sai com a sigla

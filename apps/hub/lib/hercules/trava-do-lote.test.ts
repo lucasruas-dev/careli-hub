@@ -61,8 +61,8 @@ const COLUNAS: Record<string, readonly string[]> = {
     "atualizado_em", "cancelada_em", "cancelada_motivo", "cancelada_por", "cancelada_por_nome",
     "corretor_entity_id", "criado_em", "criado_por", "criado_por_nome", "empreendimento_id",
     "evento_id", "id", "imobiliaria_entity_id", "observacao", "origem", "prometeu_reserva_id",
-    "proponentes", "protocolo_numero", "situacao", "unidade_id", "validade_em", "venda_id",
-    "workspace_id",
+    "proponentes", "protocolo_numero", "situacao", "terreno_chave", "unidade_id", "validade_em",
+    "venda_id", "workspace_id",
   ],
   hercules_unidades: [
     "atualizado_em", "codigo", "criado_em", "enterprise_id", "espelho_de", "id", "lote",
