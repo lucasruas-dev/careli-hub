@@ -19,7 +19,7 @@
 // jurídico decidir.
 
 /** As etapas em que a venda já saiu da mão do coordenador e o desfazer é do jurídico. */
-const DEPOIS_DO_CONTRATO = new Set(["assinatura", "contrato", "faturado"]);
+export const DEPOIS_DO_CONTRATO: ReadonlySet<string> = new Set(["assinatura", "contrato", "faturado"]);
 
 export type TipoDaAcaoDeCancelamento = "pedido" | "proposta" | "reserva";
 

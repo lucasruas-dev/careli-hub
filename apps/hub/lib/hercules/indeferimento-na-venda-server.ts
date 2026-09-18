@@ -138,7 +138,7 @@ async function recusarOPedido(
   // pedido novo espera, a história não se perde).
   const { data: lida, error: erroDaLeitura } = await sb
     .from("hercules_propostas")
-    .select("id, etapa, cancelamento_pedido_em, cancelamento_pedido_motivo, cancelamento_pedido_por, cancelamento_pedido_tipo")
+    .select("id, etapa, etapa_desde, cancelamento_pedido_em, cancelamento_pedido_motivo, cancelamento_pedido_por, cancelamento_pedido_tipo")
     .eq("workspace_id", WORKSPACE)
     .eq("id", propostaId)
     .maybeSingle();
@@ -156,6 +156,7 @@ async function recusarOPedido(
     cancelamento_pedido_por: null | string;
     cancelamento_pedido_tipo: null | string;
     etapa: string;
+    etapa_desde?: null | string;
   };
   if (!pedido?.cancelamento_pedido_em || !(ETAPAS_DO_FLUXO as readonly string[]).includes(String(pedido.etapa ?? ""))) {
     return { aviso: null, feito: "nada", recado: `Pedido de ${nome} indeferido.` };
@@ -191,7 +192,7 @@ async function recusarOPedido(
       propostaId,
     });
     return {
-      aviso: `Pedido de ${nome} indeferido, mas a história do pedido não foi gravada na venda, então a marca do pedido ficou nela: o Hércules ainda não oferece um pedido novo. Avise o time do Panteon.`,
+      aviso: `Pedido de ${nome} indeferido, mas a história do pedido não foi gravada na venda, então a marca do pedido ficou nela. Avise o time do Panteon.`,
       feito: "nada",
       recado: null,
     };
@@ -207,7 +208,9 @@ async function recusarOPedido(
       cancelamento_pedido_tipo: null,
     })
     .eq("id", propostaId)
-    .not("cancelamento_pedido_em", "is", null)
+    // ⚠️ A MARCA QUE FOI LIDA, e não "qualquer marca" (revisão de 18/09/2026): um pedido novo que
+    // entrou entre a leitura e esta escrita tem marca própria, e não é ela que este indeferimento recusa.
+    .eq("cancelamento_pedido_em", pedido.cancelamento_pedido_em)
     .in("etapa", [...ETAPAS_DO_FLUXO])
     // ⚠️ O `.select()` DIZ SE PEGOU LINHA: sem ele, "a marca saiu" e "não havia marca" seriam a
     // mesma resposta, e a tela contaria uma liberação que não aconteceu.
@@ -219,7 +222,7 @@ async function recusarOPedido(
       propostaId,
     });
     return {
-      aviso: `Pedido de ${nome} indeferido, mas a marca do pedido não saiu da venda: o Hércules ainda não oferece um pedido novo. Avise o time do Panteon.`,
+      aviso: `Pedido de ${nome} indeferido, mas a marca do pedido não saiu da venda. Avise o time do Panteon.`,
       feito: "nada",
       recado: null,
     };
@@ -229,11 +232,108 @@ async function recusarOPedido(
     return { aviso: null, feito: "nada", recado: `Pedido de ${nome} indeferido.` };
   }
 
+  // ⚠️ O CONTRATO JÁ INDEFERIDO: A VENDA VOLTA PARA PROPOSTA AGORA (revisão de 18/09/2026). Com o
+  // pedido aberto, o indeferimento do contrato segurou a venda em Contrato (ver `devolverAQuemVendeu`);
+  // quando o pedido também é recusado, ninguém mais a tirava de lá. Foi o que prendeu VOL1106 e
+  // VOC0306: a Nívea indeferiu primeiro o contrato (no VOC0306: "Contrato não será gerado, pois foi
+  // solicitado o cancelamento.") e depois o pedido (no VOL1106: "Cancelamento não será realizado, pois
+  // não foi gerado contrato nem boletos."). A saída que ela apontou é a proposta: sem contrato, quem
+  // vendeu cancela a proposta no Hércules, e o lote volta. Oferecer um pedido novo mandaria de volta
+  // à Têmis o que ela recusou.
+  //
+  // ⚠️ SÓ NO PEDIDO DE CANCELAMENTO, NUNCA NO DE DISTRATO (revisão de 18/09/2026). O distrato só é
+  // escolhido quando o sistema apurou pagamento ou assinatura; em Proposta, a venda sairia por
+  // "Cancelar proposta", que não confere pagamento nenhum, e o lote voltaria sem devolução ao cliente.
+  // No distrato recusado a venda fica em Contrato, e o jurídico decide o caminho.
+  //
+  // ⚠️ E SÓ COM O INDEFERIMENTO DESTA PASSAGEM POR CONTRATO: o card indeferido tem de ser posterior à
+  // entrada da venda em `contrato`. Um indeferimento de uma passagem anterior não diz nada sobre o
+  // contrato de agora.
+  if (String(pedido.etapa ?? "") === "contrato" && tipoDoPedido === "cancelamento") {
+    const contrato = await contratoJaIndeferido(sb, propostaId, pedido.etapa_desde ?? null);
+    if (contrato === "falhou") {
+      return {
+        aviso: `Pedido de ${nome} indeferido, mas não deu para conferir o card de contrato desta venda: ela continua em Contrato no Hércules. Avise o time do Panteon.`,
+        feito: "carimbo_limpo",
+        recado: null,
+      };
+    }
+    if (contrato) {
+      const volta = await devolverAQuemVendeu(sb, propostaId, contrato.id, {
+        motivo: contrato.indeferido_motivo ?? "outro",
+        observacao: contrato.indeferido_observacao,
+        usuarioNome: contrato.indeferido_por_nome,
+      });
+      if (volta.feito === "voltou_para_proposta") {
+        return {
+          aviso: null,
+          feito: "voltou_para_proposta",
+          recado: `Pedido de ${nome} indeferido. Como o contrato desta venda também foi indeferido, ela voltou para Proposta no Hércules: quem vendeu cancela a proposta ou envia de novo.`,
+        };
+      }
+      // A venda não voltou (envelope vivo, outro card, venda que andou): a notícia do pedido vem
+      // primeiro, senão quem acabou de indeferir lê só "Contrato indeferido, mas..." e não sabe que a
+      // marca saiu.
+      const prefixo = `Pedido de ${nome} indeferido, e a marca do pedido saiu da venda.`;
+      return {
+        aviso: volta.aviso ? `${prefixo} ${volta.aviso}` : null,
+        feito: "carimbo_limpo",
+        recado: volta.recado ? `${prefixo} ${volta.recado}` : null,
+      };
+    }
+  }
+
   return {
     aviso: null,
     feito: "carimbo_limpo",
     recado: `Pedido de ${nome} indeferido. A venda continua como estava, e o Hércules volta a oferecer o pedido de cancelamento.`,
   };
+}
+
+/**
+ * O card de contrato mais recente da venda, se ele acabou indeferido NESTA passagem por contrato.
+ *
+ * `null` quando não há card de contrato, quando o mais recente não foi indeferido (o contrato anda,
+ * ou já foi assinado) ou quando o indeferimento é anterior a `desde` (a entrada da venda em
+ * `contrato`): aí a venda fica como está. `"falhou"` quando a leitura não respondeu.
+ */
+async function contratoJaIndeferido(
+  sb: SupabaseClient,
+  propostaId: string,
+  desde: null | string,
+): Promise<"falhou" | null | {
+  id: string;
+  indeferido_motivo: null | string;
+  indeferido_observacao: null | string;
+  indeferido_por_nome: null | string;
+}> {
+  const { data, error } = await sb
+    .from("temis_trabalhos")
+    .select("id, estagio, indeferido_em, indeferido_motivo, indeferido_observacao, indeferido_por_nome")
+    .eq("workspace_id", WORKSPACE)
+    .eq("proposta_id", propostaId)
+    .eq("tipo", "contrato")
+    .order("criado_em", { ascending: false })
+    .limit(1);
+  if (error) {
+    console.error("[hercules][indeferimento] falha ao ler o card de contrato da venda", error.message);
+    return "falhou";
+  }
+  const ultimo = ((data ?? []) as Array<{
+    estagio: null | string;
+    id: string;
+    indeferido_em: null | string;
+    indeferido_motivo: null | string;
+    indeferido_observacao: null | string;
+    indeferido_por_nome: null | string;
+  }>)[0];
+  if (!ultimo || ultimo.estagio !== "indeferido") return null;
+  // Sem a data de entrada em contrato, ou sem a data do indeferimento, não dá para provar que ele é
+  // desta passagem: a venda fica como está (o erro barato).
+  const entrou = Date.parse(String(desde ?? ""));
+  const indeferido = Date.parse(String(ultimo.indeferido_em ?? ""));
+  if (!Number.isFinite(entrou) || !Number.isFinite(indeferido) || indeferido < entrou) return null;
+  return ultimo;
 }
 
 /**

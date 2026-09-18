@@ -160,4 +160,17 @@ describe("revisão rodada 2: a marca do pedido sem nenhum card de pedido aberto"
     expect(resposta.status).toBe(200);
     expect(estado.abertos).toHaveLength(1);
   });
+
+  it("⚠️ marca que acabou de nascer, com o card ainda a caminho: o segundo clique não abre outro card", async () => {
+    // A rota grava a marca ANTES de criar o card. Um segundo clique nesse intervalo vê a marca sem
+    // card; tratá-la como resto limparia o pedido em curso e abriria o segundo card do mesmo contrato.
+    estado.marca = new Date(Date.now() - 10_000).toISOString();
+    estado.naFila = { data: [], error: null };
+
+    const resposta = await pedir();
+
+    expect(resposta.status).toBe(409);
+    expect(estado.abertos).toHaveLength(0);
+    expect(estado.carimbos).toBe(0);
+  });
 });

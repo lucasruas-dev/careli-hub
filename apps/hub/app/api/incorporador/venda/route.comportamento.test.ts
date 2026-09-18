@@ -27,6 +27,10 @@ const estado = vi.hoisted(() => ({
   selectsDeUnidade: [] as string[],
   sem0171: false,
   sessao: {} as Record<string, unknown>,
+  /** `hercules_propostas`: as vendas do escopo. */
+  propostas: [] as Array<Record<string, unknown>>,
+  /** `temis_trabalhos`: os cards de pedido abertos, por venda. `null` faz a leitura falhar. */
+  cardsAbertos: [] as null | string[],
 }));
 
 const CADASTRO = vi.hoisted(() => [
@@ -121,6 +125,11 @@ vi.mock("@/lib/apolo/server", () => {
         }
         return { data: UNIDADES, error: null };
       }
+      if (tabela === "hercules_propostas") return { data: estado.propostas, error: null };
+      if (tabela === "temis_trabalhos") {
+        if (estado.cardsAbertos === null) return { data: null, error: { code: "57014", message: "tempo esgotado" } };
+        return { data: estado.cardsAbertos.map((id) => ({ proposta_id: id })), error: null };
+      }
       if (tabela === "prometeu_reservas") {
         if (estado.falhaNaSituacao) return { data: null, error: { code: "08006", message: "conexão caiu" } };
         return { data: estado.reservasDoEvento, error: null };
@@ -169,6 +178,43 @@ beforeEach(() => {
   estado.selectsDeUnidade = [];
   estado.sem0171 = false;
   estado.sessao = CECILIO;
+  estado.propostas = [];
+  estado.cardsAbertos = [];
+});
+
+describe("a marca do pedido de cancelamento que sobrou (18/09/2026)", () => {
+  // VOL1106 e VOC0306: o pedido foi indeferido e a marca ficou. A tela lia a marca como pedido e
+  // apagava "Solicitar cancelamento" para sempre.
+  const venda = (id: string, unidade: string, codigo: string, etapa: string) => ({
+    cancelamento_pedido_em: "2026-09-16T18:01:41.367Z",
+    cliente_nome: "CLIENTE",
+    codigo: null,
+    empreendimento_codigo: codigo,
+    etapa,
+    etapa_desde: "2026-09-16T17:00:00.000Z",
+    id,
+    origem: "panteon",
+    protocolo_numero: 19,
+    unidade_id: unidade,
+    valor: 100000,
+  });
+  type Linha = { cancelamentoPedidoEm: null | string; id: string };
+  const marcaDe = async (id: string) =>
+    ((await carregar()) as unknown as { lista: Linha[] }).lista.find((l) => l.id === id)?.cancelamentoPedidoEm;
+
+  it("sem card de pedido aberto na Têmis, a marca antiga não chega à tela; com card, chega", async () => {
+    estado.propostas = [venda("venda-orfa", "u-voc", "VOC", "contrato"), venda("venda-com-card", "u-gdn", "GDN", "assinatura")];
+    estado.cardsAbertos = ["venda-com-card"];
+    expect(await marcaDe("venda-orfa")).toBeNull();
+    expect(await marcaDe("venda-com-card")).toBe("2026-09-16T18:01:41.367Z");
+  });
+
+  it("⚠️ leitura da Têmis que falha deixa a marca: o botão fica apagado, como antes", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    estado.propostas = [venda("venda-orfa", "u-voc", "VOC", "contrato")];
+    estado.cardsAbertos = null;
+    expect(await marcaDe("venda-orfa")).toBe("2026-09-16T18:01:41.367Z");
+  });
 });
 
 describe("escritaPorEmpreendimento", () => {

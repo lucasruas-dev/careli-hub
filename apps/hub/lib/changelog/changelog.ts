@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-18-pedido-indeferido-libera-o-botao",
+    deployedAt: "2026-09-18T17:10:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Pedido de cancelamento recusado quando o contrato já tinha sido indeferido: a venda volta para Proposta.** Sem contrato, quem vendeu cancela a proposta e o lote volta. Antes ela ficava presa em Contrato, sem botão nenhum.",
+              "**A marca de um pedido que já acabou não apaga mais o botão \"Solicitar cancelamento\".** Quem decide se há pedido é o card aberto na Têmis.",
+            ],
+            screen: "Venda · Cancelamento",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "lib/hercules/indeferimento-na-venda-server.ts: `recusarOPedido`, depois de limpar a marca, encadeia `devolverAQuemVendeu` quando o pedido recusado é de CANCELAMENTO (nunca distrato, que envolve pagamento ou assinatura), a venda está em contrato e o card de contrato mais recente foi indeferido depois da entrada da venda em contrato (`contratoJaIndeferido`); a limpeza da marca passou a exigir a marca lida. lib/hercules/marca-de-pedido.ts: `marcaEhResto` (marca sem card de pedido aberto E com mais de 15 minutos, acima do teto de duração da rota) e `soltarMarcasQueSobraram` (na carga da tela da Venda, só vendas em assinatura, contrato ou faturado; uma leitura de temis_trabalhos em lotes de 100; leitura que falha mantém toda marca). O desfazer do carimbo na rota do pedido passou a exigir a marca que ele gravou. app/api/incorporador/venda/route.ts chama na carga; a rota do pedido (`limparMarcaOrfa`) passa a recusar a marca recém-nascida, que ainda não tem card porque a própria rota grava a marca antes do card. Medido em produção (só leitura): das 9 vendas marcadas, 3 sem card aberto (VOL1106, VOC0306 e TST0104, de teste) e 6 com distrato em análise, que continuam travadas. VOL1106 e VOC0306 ficaram presas antes desta versão e vão para Proposta pelo SQL de docs/operations/2026-09-18-vol1106-voc0306-volta-para-proposta.sql, aplicado à parte com OK do Lucas.",
+      motivation:
+        "Medição pós-deploy da v1.350.0 (18/09/2026): VOL1106 e VOC0306 sem saída. A tela lia a marca como pedido e apagava o botão, e a limpeza da marca que sobrou só rodava quando o pedido novo chegava à rota, o que nunca acontecia. A revisão adversarial mostrou que o botão sozinho levava ao caminho errado: a Nívea indeferiu primeiro o contrato e depois o pedido porque não havia contrato nem boletos, e a saída certa é a proposta.",
+    },
+    rollback: "f384e036",
+    title: "Pedido de cancelamento recusado não prende mais a venda em Contrato",
+    type: "correcao",
+    version: "1.351.1",
+  },
+  {
     buildTag: "2026-09-18-planos-do-garden-como-a-mmendes",
     deployedAt: "2026-09-18T18:00:13-03:00",
     modules: [

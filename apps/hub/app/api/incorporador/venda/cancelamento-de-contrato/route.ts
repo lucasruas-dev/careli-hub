@@ -18,6 +18,7 @@ import {
   MOVIMENTO_PEDIDO_DE_CANCELAMENTO,
   MOVIMENTO_PEDIDO_DE_DISTRATO,
 } from "@/lib/hercules/indeferimento-na-venda-server";
+import { marcaEhResto } from "@/lib/hercules/marca-de-pedido";
 import { cardsAbertosDaProposta } from "@/lib/temis/cards-abertos-db";
 import { abrirTrabalho, ehColunaDoDonoAusente } from "@/lib/temis/trabalhos-db";
 
@@ -418,6 +419,9 @@ export async function POST(request: Request) {
           cancelamento_pedido_tipo: null,
         })
         .eq("id", proposta.id)
+        // ⚠️ SÓ A MARCA DESTE PEDIDO (revisão de 18/09/2026): a que esta chamada gravou, e não a de
+        // um pedido que tenha entrado depois dela.
+        .eq("cancelamento_pedido_em", agora)
         .select("id");
 
       const desfeito = !erroDoDesfazer && (limpas?.length ?? 0) > 0;
@@ -433,7 +437,7 @@ export async function POST(request: Request) {
           error: `O pedido não chegou à Têmis${avisoDaTemis ? ` (${avisoDaTemis})` : ""}. ${
             desfeito
               ? "Nada foi registrado; avise o jurídico."
-              : "A marca do pedido ficou registrada e o botão não vai aceitar nova tentativa: avise o jurídico e peça para o time do Panteon limpar a marca."
+              : "A marca do pedido ficou registrada: o botão volta a aceitar o pedido em 15 minutos. Avise o jurídico; se o botão não voltar, avise o time do Panteon."
           }`,
         },
         { status: 502 },
@@ -479,6 +483,12 @@ async function limparMarcaOrfa(
   });
   if (!abertos.ok) return "falhou";
   if (abertos.cards.length > 0) return "tem_pedido_aberto";
+  // ⚠️ A MARCA QUE ACABOU DE NASCER AINDA NÃO TEM CARD (18/09/2026): a própria rota grava a marca
+  // antes de criar o card. Um segundo clique nesse intervalo leria "sem card", limparia a marca do
+  // pedido em curso e abriria o segundo card. Ver `lib/hercules/marca-de-pedido.ts`.
+  if (!marcaEhResto({ agora: new Date(), cardsAbertos: abertos.cards.length, marca })) {
+    return "tem_pedido_aberto";
+  }
 
   const { data: venda, error: erroDaVenda } = await admin
     .from("hercules_propostas")

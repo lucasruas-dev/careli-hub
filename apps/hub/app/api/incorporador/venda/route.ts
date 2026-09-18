@@ -37,6 +37,7 @@ import {
   planosPreferindoOPanteon,
 } from "@/lib/hercules/planos-do-panteon";
 import { tipoProdutoDe, type TipoProduto } from "@/lib/hercules/produto-novo";
+import { soltarMarcasQueSobraram } from "@/lib/hercules/marca-de-pedido";
 import { reservaComoLinhaDoFluxo } from "@/lib/hercules/reserva";
 import {
   lerSituacaoDasUnidades,
@@ -262,6 +263,12 @@ export async function GET(request: Request) {
       propostas.push(...((data ?? []) as unknown as PropostaDaCarga[]));
       if ((data?.length ?? 0) < PAGINA) break;
     }
+
+    // ⚠️ A MARCA DO PEDIDO QUE SOBROU NÃO APAGA O BOTÃO (18/09/2026). A tela lê
+    // `cancelamento_pedido_em` como "já existe pedido" e apaga "Solicitar cancelamento"; com o card
+    // indeferido e a marca de pé, a venda ficava sem saída (VOL1106 e VOC0306). Quem decide se a
+    // marca é pedido é o card aberto na Têmis. Ver `lib/hercules/marca-de-pedido.ts`.
+    await soltarMarcasQueSobraram(supabase, propostas);
 
     // ── As unidades, para o mapa do estoque ───────────────────────────────
     //

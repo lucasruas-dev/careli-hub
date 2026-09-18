@@ -29,7 +29,19 @@ const COLUNAS: Record<string, readonly string[]> = {
     "workspace_id",
   ],
   temis_envelopes: ["criado_em", "envelope_id", "estado", "falha", "id", "proposta_id", "provedor"],
-  temis_trabalhos: ["criado_em", "estagio", "id", "proposta_id", "tipo", "workspace_id"],
+  // As três do indeferimento conferidas no schema de produção em 18/09/2026 (information_schema).
+  temis_trabalhos: [
+    "criado_em",
+    "estagio",
+    "id",
+    "indeferido_em",
+    "indeferido_motivo",
+    "indeferido_observacao",
+    "indeferido_por_nome",
+    "proposta_id",
+    "tipo",
+    "workspace_id",
+  ],
 };
 
 function banco(inicial: Record<string, Linha[]>) {
@@ -140,7 +152,9 @@ afterEach(() => {
 });
 
 /** A venda do VOC0306 (COD 000021) como estava presa: em contrato, com a marca do pedido. */
-function vendaPresa(extra: { cards?: Linha[]; envelopes?: Linha[]; venda?: Linha } = {}) {
+function vendaPresa(
+  extra: { cards?: Linha[]; envelopes?: Linha[]; estagioDoContrato?: string; venda?: Linha } = {},
+) {
   const b = banco({
     hercules_proposta_etapas: [],
     hercules_propostas: [
@@ -161,7 +175,18 @@ function vendaPresa(extra: { cards?: Linha[]; envelopes?: Linha[]; venda?: Linha
     temis_envelopes: extra.envelopes ?? [],
     temis_trabalhos: [
       { estagio: "indeferido", id: "card-pedido", proposta_id: "venda-21", tipo: "cancelamento", workspace_id: "careli" },
-      { estagio: "indeferido", id: "card-contrato", proposta_id: "venda-21", tipo: "contrato", workspace_id: "careli" },
+      {
+        criado_em: "2026-09-16T12:00:00.000Z",
+        estagio: extra.estagioDoContrato ?? "indeferido",
+        id: "card-contrato",
+        indeferido_em: "2026-09-17T13:25:42.466Z",
+        indeferido_motivo: "outro",
+        indeferido_observacao: "Contrato não será gerado, pois foi solicitado o cancelamento",
+        indeferido_por_nome: "Nivea",
+        proposta_id: "venda-21",
+        tipo: "contrato",
+        workspace_id: "careli",
+      },
       ...(extra.cards ?? []),
     ],
   });
@@ -173,8 +198,8 @@ const quem = { motivo: "outro", observacao: "Cancelamento não será realizado",
 const escritas = (b: ReturnType<typeof banco>) => b.consultas.filter((c) => c.operacao !== "select");
 
 describe("B: o pedido de cancelamento indeferido é o pedido RECUSADO", () => {
-  it("a marca do pedido sai da venda, e a venda continua em contrato", async () => {
-    const b = vendaPresa();
+  it("a marca do pedido sai da venda, e a venda continua em contrato (o contrato ainda anda)", async () => {
+    const b = vendaPresa({ estagioDoContrato: "contrato" });
 
     const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-pedido", proposta_id: "venda-21", tipo: "cancelamento" }, quem);
 
@@ -207,11 +232,73 @@ describe("B: o pedido de cancelamento indeferido é o pedido RECUSADO", () => {
     });
   });
 
-  it("a escrita é condicional: só com a marca de pé e só na venda viva", async () => {
+  it("⚠️ VOL1106: o contrato já foi indeferido, e com o pedido recusado a venda volta para Proposta", async () => {
+    // A Nívea indeferiu o contrato ("Contrato não será gerado, pois foi solicitado o cancelamento") e
+    // depois o pedido ("Cancelamento não será realizado, pois não foi gerado contrato nem boletos").
+    // Sem contrato, a saída é a proposta: quem vendeu a cancela no Hércules e o lote volta.
+    const b = vendaPresa();
+
+    const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-pedido", proposta_id: "venda-21", tipo: "cancelamento" }, quem);
+
+    expect(r.feito).toBe("voltou_para_proposta");
+    expect(r.aviso).toBeNull();
+    expect(r.recado).toContain("voltou para Proposta");
+    expect(b.linha("hercules_propostas", "venda-21")).toMatchObject({
+      cancelamento_pedido_em: null,
+      etapa: "proposta",
+      etapa_por: "Nivea",
+    });
+    // A história fica inteira: o pedido, a recusa e a volta, com o motivo do contrato indeferido.
+    expect(b.linhas("hercules_proposta_etapas").map((m) => m.para)).toEqual([
+      "pedido_de_cancelamento",
+      "pedido_de_cancelamento_indeferido",
+      "proposta",
+    ]);
+    expect(b.linhas("hercules_proposta_etapas")[2]).toMatchObject({
+      de: "contrato",
+      observacao: "Contrato não será gerado, pois foi solicitado o cancelamento",
+    });
+  });
+
+  it("⚠️ pedido de DISTRATO recusado não devolve a venda para Proposta: o lote não pode sair sem devolução", async () => {
+    const b = vendaPresa({ venda: { cancelamento_pedido_tipo: "distrato" } });
+    const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-pedido", proposta_id: "venda-21", tipo: "distrato" }, quem);
+    expect(r.feito).toBe("carimbo_limpo");
+    expect(b.linha("hercules_propostas", "venda-21")).toMatchObject({ cancelamento_pedido_em: null, etapa: "contrato" });
+    expect(b.linhas("hercules_proposta_etapas").map((m) => m.para)).toEqual([
+      "pedido_de_distrato",
+      "pedido_de_distrato_indeferido",
+    ]);
+  });
+
+  it("⚠️ o contrato indeferido numa passagem ANTERIOR por contrato não devolve a venda", async () => {
+    // A venda voltou a contrato em 18/09, depois do indeferimento de 17/09: aquele indeferimento é de
+    // outro contrato.
+    const b = vendaPresa({ venda: { etapa_desde: "2026-09-18T10:00:00.000Z" } });
+    const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-pedido", proposta_id: "venda-21", tipo: "cancelamento" }, quem);
+    expect(r.feito).toBe("carimbo_limpo");
+    expect(b.linha("hercules_propostas", "venda-21")?.etapa).toBe("contrato");
+  });
+
+  it("contrato indeferido, mas com envelope vivo: a marca sai e a venda fica em contrato, com o aviso", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const b = vendaPresa({
+      envelopes: [{ criado_em: "2026-09-16T13:00:00.000Z", envelope_id: "env-1", estado: "enviado", falha: null, id: "reg-1", proposta_id: "venda-21", provedor: "clicksign" }],
+    });
+    const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-pedido", proposta_id: "venda-21", tipo: "cancelamento" }, quem);
+    expect(r.feito).toBe("carimbo_limpo");
+    expect(r.aviso).toContain("envelope vivo");
+    // A notícia do pedido vem primeiro: quem indeferiu sabe que a marca saiu.
+    expect(r.aviso).toMatch(/^Pedido de cancelamento indeferido, e a marca do pedido saiu da venda\./);
+    expect(b.linha("hercules_propostas", "venda-21")).toMatchObject({ cancelamento_pedido_em: null, etapa: "contrato" });
+  });
+
+  it("a escrita é condicional: só com a marca lida e só na venda viva", async () => {
     const b = vendaPresa();
     await devolverVendaNoIndeferimento(b.cliente, { id: "card-pedido", proposta_id: "venda-21", tipo: "distrato" }, quem);
     const limpeza = escritas(b).find((c) => c.tabela === "hercules_propostas");
-    expect(limpeza?.filtros).toContain("not:cancelamento_pedido_em.is.null");
+    // A marca QUE FOI LIDA: um pedido novo que entrou no meio tem marca própria, e fica.
+    expect(limpeza?.filtros).toContain("eq:cancelamento_pedido_em=2026-09-17T12:00:00.000Z");
     expect(limpeza?.filtros).toContain("in:etapa=reservado,proposta,contrato,assinatura,faturado");
   });
 
