@@ -348,17 +348,39 @@ if (!GRAVAR) {
 }
 
 // ── 5. GRAVAÇÃO ─────────────────────────────────────────────────────────────
+//
+// ⚠️ A CARGA NÃO RESSUSCITA VENDA QUE O PANTEON ENCERROU (18/09/2026). A conclusão de um cancelamento
+// ou distrato na Têmis (`lib/hercules/concluir-cancelamento-server.ts`) derruba a venda importada e
+// devolve o lote; o C2X continua dizendo `assinatura` enquanto ninguém o acertar à mão. Rodar esta
+// carga de novo regravava a etapa por cima (merge por `origem_c2x_id`), e o lote, já revendido no
+// Panteon, ficava com DOIS donos vivos. Esta carga nunca grava `cancelada_em`: se a linha tem, foi o
+// Panteon que encerrou, e ela sai do upsert.
+const encerradasNoPanteon = new Set();
+for (let de = 0; ; de += 1000) {
+  const pagina = await supa(
+    `hercules_propostas?select=origem_c2x_id&origem_c2x_id=not.is.null&cancelada_em=not.is.null&etapa=in.(cancelado,distrato)&order=id&limit=1000&offset=${de}`,
+  );
+  for (const p of pagina) encerradasNoPanteon.add(Number(p.origem_c2x_id));
+  if (pagina.length < 1000) break;
+}
+const paraGravar = propostas.filter((p) => !encerradasNoPanteon.has(Number(p.origem_c2x_id)));
+if (paraGravar.length !== propostas.length) {
+  console.log(
+    `\n⚠️ ${propostas.length - paraGravar.length} proposta(s) encerrada(s) no Panteon ficam como estão (o C2X ainda não foi acertado para elas).`,
+  );
+}
+
 console.log("\nGravando as propostas…");
-for (let i = 0; i < propostas.length; i += 200) {
-  const lote = propostas.slice(i, i + 200);
+for (let i = 0; i < paraGravar.length; i += 200) {
+  const lote = paraGravar.slice(i, i + 200);
   await supa("hercules_propostas?on_conflict=origem_c2x_id", {
     body: JSON.stringify(lote),
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
     method: "POST",
   });
-  process.stdout.write(`  ${Math.min(i + 200, propostas.length)}/${propostas.length}\r`);
+  process.stdout.write(`  ${Math.min(i + 200, paraGravar.length)}/${paraGravar.length}\r`);
 }
-console.log(`\n  ${propostas.length} propostas gravadas.`);
+console.log(`\n  ${paraGravar.length} propostas gravadas.`);
 
 // O id do Panteon por proposta do C2X, para ligar o histórico.
 const gravadas = await lerTudo("hercules_propostas", "id,origem_c2x_id");

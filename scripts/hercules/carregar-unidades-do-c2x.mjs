@@ -1,3 +1,7 @@
+// ⚠️ DESDE 18/09/2026 O PANTEON DESFAZ VENDA IMPORTADA (conclusão de cancelamento ou distrato na
+// Têmis) e devolve o lote a `disponivel`. Se o C2X não for acertado à mão, esta carga volta o lote a
+// `vendida`: é o lado seguro (lote ocupado a mais, nunca dois donos), mas o lote some da venda até o
+// C2X ser corrigido. `importar-fluxo-de-venda.mjs` já não regrava a venda encerrada no Panteon.
 // CARGA INICIAL DAS UNIDADES: C2X -> Panteon.
 //
 // Pedido do Lucas (01/09/2026): *"pode migrar todas as unidade do c2x para o panteon, cria a tabela

@@ -12,6 +12,9 @@ import type { EventoDaClicksign } from "./clicksign/webhook";
 import { ehTerminal, type EstadoDaAssinatura } from "./tipos";
 import { estadoDoEventoClicksign } from "./traduzir";
 
+/** Os cards de PEDIDO: nunca andam com o envelope do contrato. */
+const TIPOS_DE_PEDIDO = new Set(["cancelamento", "distrato"]);
+
 // O EVENTO DO WEBHOOK VIRA ESTADO — e o card da Têmis anda junto.
 //
 // ⚠️ SÓ EVENTO CONFERIDO CHEGA AQUI. Quem confere é `conferirAssinaturaDoWebhook`, na rota. Este
@@ -292,7 +295,12 @@ async function cardsQueAceitam(
     return [];
   }
 
-  const cards = (data ?? []) as CardParaMover[];
+  // ⚠️ O PEDIDO DE CANCELAMENTO OU DE DISTRATO NÃO ANDA COM O CONTRATO (revisão de 18/09/2026). O
+  // envelope desta proposta é o do CONTRATO (só o card de contrato produz envelope). Com o pedido
+  // aberto na mesma proposta, "Gerar contrato" e o envio levavam o card do pedido junto para
+  // Contrato e Em assinatura, e o webhook de "assinado" podia levá-lo a Concluído com a venda viva.
+  // Quem move o card do pedido é a conclusão dele, e só ela.
+  const cards = ((data ?? []) as CardParaMover[]).filter((c) => !TIPOS_DE_PEDIDO.has(String(c.tipo)));
   const podem = cards.filter(
     (c) =>
       c.estagio !== "faturado" &&
@@ -399,8 +407,10 @@ export async function concluirAssinaturaDoCard(
   const cards = (data ?? []) as { estagio: string; id: string; tipo: TipoDeTrabalho }[];
 
   // ⚠️ QUEM CONCLUI É QUEM ESTAVA ASSINANDO. Com dois cards na mesma proposta, mover os dois
-  // faria o cancelamento "concluir" por causa da assinatura do contrato da venda.
-  const card = cards.find((c) => c.estagio === "assinatura");
+  // faria o cancelamento "concluir" por causa da assinatura do contrato da venda. E o card de pedido
+  // (cancelamento, distrato) nunca: a assinatura é do contrato, e o pedido só se conclui pela ação
+  // própria, que desfaz a venda (revisão de 18/09/2026).
+  const card = cards.find((c) => c.estagio === "assinatura" && !TIPOS_DE_PEDIDO.has(String(c.tipo)));
 
   // Sem card não há o que mover — e isso não é erro: o envelope pode ter nascido fora do quadro.
   if (!card) return;

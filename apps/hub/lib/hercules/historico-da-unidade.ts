@@ -276,11 +276,29 @@ function comoSeEscreveAEtapa(valor: null | string | undefined): null | string {
 const ETAPA_DERIVADA: Record<string, string> = {
   assinatura: "Enviada para assinatura",
   contrato: "Enviada para contrato",
+  // ⚠️ O distrato nativo nasce da conclusão na Têmis, que grava `cancelada_em`, e a linha da queda
+  // da venda já se chama "Distrato" (ver o laço abaixo): com `cancelada_em` a derivação não roda,
+  // senão seriam DUAS linhas no mesmo segundo para um clique só (18/09/2026).
   distrato: "Distrato",
   faturado: "Faturada",
 };
 
+/**
+ * Os fatos da venda que não são etapa: o pedido de cancelamento e a recusa dele, gravados em
+ * `hercules_proposta_etapas` pelo indeferimento (`indeferimento-na-venda-server.ts`) ANTES de a marca
+ * do pedido sair da venda. Sem isto, indeferir apagava da ficha do lote a linha "Cancelamento
+ * solicitado" e a recusa não aparecia em lugar nenhum do Hércules.
+ */
+const FATO_DO_MOVIMENTO: Record<string, string> = {
+  pedido_de_cancelamento: "Cancelamento solicitado",
+  pedido_de_cancelamento_indeferido: "Pedido de cancelamento indeferido",
+  pedido_de_distrato: "Distrato solicitado",
+  pedido_de_distrato_indeferido: "Pedido de distrato indeferido",
+};
+
 function fraseDoMovimento(m: MovimentoDoHistorico): string {
+  const fato = FATO_DO_MOVIMENTO[String(m.para ?? "").trim()];
+  if (fato && !m.para_c2x) return fato;
   // ⚠️ O ID DO C2X PRIMEIRO, O TEXTO DO PANTEON DEPOIS: os movimentos importados só têm o id, e os
   // daqui só têm o nome. Ler um formato só faz metade das transições virar "Registro atualizado".
   const de = m.de_c2x ? (ESTAGIO[m.de_c2x] ?? `Estágio ${m.de_c2x}`) : comoSeEscreveAEtapa(m.de);
@@ -379,10 +397,21 @@ export function historicoDaUnidade(
     // dizendo o que aconteceu no meio. O motivo é o que o coordenador procura quando alguém
     // pergunta por que este lote soltou — a mesma razão pela qual a reserva já grava o dela.
     if (p.cancelada_em) {
+      // ⚠️ O NOME É O DO QUE ACONTECEU (18/09/2026): a venda desfeita pela conclusão de um pedido na
+      // Têmis é "Distrato" ou "Cancelamento concluído", e não "Proposta cancelada", que é o
+      // cancelamento da proposta na tela Venda. Distrato de venda importada do C2X também aparecia
+      // como "Proposta cancelada".
+      const etapaFinal = String(p.etapa ?? "").trim().toLowerCase();
+      const fatoDaQueda =
+        etapaFinal === "distrato"
+          ? "Distrato"
+          : etapaFinal === "cancelado" && texto(p.cancelamento_pedido_em)
+            ? "Cancelamento concluído"
+            : "Proposta cancelada";
       eventos.push({
         cliente: texto(p.cliente_nome),
         codigo: nativa ? codigoDaVenda(p.protocolo_numero) || null : null,
-        fato: "Proposta cancelada",
+        fato: fatoDaQueda,
         id: `cancelada:${p.id}`,
         observacao: texto(p.cancelada_motivo),
         propostaId: p.id,
@@ -429,7 +458,14 @@ export function historicoDaUnidade(
     const etapaAgora = String(p.etapa ?? "").trim().toLowerCase();
     const fatoDaEtapa = ETAPA_DERIVADA[etapaAgora];
     const quandoDaEtapa = texto(p.etapa_desde);
-    if (nativa && fatoDaEtapa && quandoDaEtapa && !destinosJaGravados.has(`${p.id}:${etapaAgora}`)) {
+    const jaContadaPelaQueda = etapaAgora === "distrato" && Boolean(p.cancelada_em);
+    if (
+      nativa &&
+      fatoDaEtapa &&
+      quandoDaEtapa &&
+      !jaContadaPelaQueda &&
+      !destinosJaGravados.has(`${p.id}:${etapaAgora}`)
+    ) {
       eventos.push({
         cliente: texto(p.cliente_nome),
         codigo: codigoDaVenda(p.protocolo_numero) || null,

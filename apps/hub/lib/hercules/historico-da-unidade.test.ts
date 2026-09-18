@@ -740,3 +740,58 @@ describe("a etapa da proposta conta o passo que o movimento não contou", () => 
     }
   });
 });
+
+// ── O PEDIDO INDEFERIDO E A CONCLUSÃO NA TÊMIS (18/09/2026) ─────────────────────────
+
+describe("o pedido de cancelamento e o que a Têmis decidiu", () => {
+  it("pedido indeferido: 'Cancelamento solicitado' não some, e a recusa entra com quem e por quê", () => {
+    const eventos = historicoDaUnidade(
+      [proposta({ criado_em: "2026-09-10T10:00:00.000Z", criado_em_c2x: null, etapa: "contrato", id: "v" })],
+      [
+        movimento({ de_c2x: null, para_c2x: null, autor_nome: "Nivea", de: null, motivo: "Cliente desistiu", para: "pedido_de_cancelamento", proposta_id: "v", quando: "2026-09-16T18:01:41.000Z" }),
+        movimento({ de_c2x: null, para_c2x: null, autor_nome: "Nivea Careli", de: null, motivo: "Outro motivo", observacao: "Contrato não chegou a ser gerado", para: "pedido_de_cancelamento_indeferido", proposta_id: "v", quando: "2026-09-17T13:28:27.000Z" }),
+      ],
+    );
+    const fatos = eventos.map((e) => e.fato);
+    expect(fatos).toContain("Cancelamento solicitado");
+    expect(fatos).toContain("Pedido de cancelamento indeferido");
+    const recusa = eventos.find((e) => e.fato === "Pedido de cancelamento indeferido");
+    expect(recusa).toMatchObject({ observacao: "Outro motivo", quem: "Nivea Careli" });
+  });
+
+  it("distrato concluído na Têmis: UMA linha 'Distrato', e não 'Proposta cancelada' nem uma segunda derivada", () => {
+    const eventos = historicoDaUnidade(
+      [
+        proposta({
+          cancelada_em: "2026-09-18T15:00:00.000Z",
+          cancelada_motivo: "Distrato concluído na Têmis por Nivea",
+          cancelada_por_nome: "Nivea",
+          cancelamento_pedido_em: "2026-09-17T12:00:00.000Z",
+          cancelamento_pedido_tipo: "distrato",
+          criado_em: "2026-09-10T10:00:00.000Z", criado_em_c2x: null,
+          etapa: "distrato",
+          etapa_desde: "2026-09-18T15:00:00.000Z",
+          id: "v",
+        }),
+      ],
+      [],
+    );
+    const fatos = eventos.map((e) => e.fato);
+    expect(fatos.filter((f) => f === "Distrato")).toHaveLength(1);
+    expect(fatos).not.toContain("Proposta cancelada");
+  });
+
+  it("cancelamento concluído pelo pedido: 'Cancelamento concluído'; sem pedido continua 'Proposta cancelada'", () => {
+    const comPedido = historicoDaUnidade(
+      [proposta({ cancelada_em: "2026-09-18T15:00:00.000Z", cancelamento_pedido_em: "2026-09-17T12:00:00.000Z", criado_em: "2026-09-10T10:00:00.000Z", criado_em_c2x: null, etapa: "cancelado", id: "v" })],
+      [],
+    );
+    expect(comPedido.map((e) => e.fato)).toContain("Cancelamento concluído");
+
+    const semPedido = historicoDaUnidade(
+      [proposta({ cancelada_em: "2026-09-18T15:00:00.000Z", criado_em: "2026-09-10T10:00:00.000Z", criado_em_c2x: null, etapa: "cancelado", id: "v" })],
+      [],
+    );
+    expect(semPedido.map((e) => e.fato)).toContain("Proposta cancelada");
+  });
+});

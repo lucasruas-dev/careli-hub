@@ -41,8 +41,28 @@ export function podeConcluir(tipo: string, estagio: string): boolean {
   );
 }
 
+/**
+ * O card JÁ CONCLUÍDO ainda tem o que terminar? (a RETOMADA)
+ *
+ * ⚠️ O LOTE QUE NÃO VOLTOU NA HORA NÃO PODE FICAR PRESO PARA SEMPRE (revisão de 18/09/2026). A trava
+ * pode segurar o lote no clique (outro dono, leitura que falhou), e o card fecha mesmo assim: sem a
+ * retomada, quando o motivo se resolvesse não haveria botão nem rota para devolver o lote. Também é
+ * a saída do card que chegou a Concluído por outro caminho (marcação de atividade) sem a venda cair.
+ * Quem decide se há o que fazer é o servidor; a tela só oferece quando ele diz que a venda ainda
+ * está viva ou que o lote ainda está ocupado.
+ */
+export function podeRetomar(
+  tipo: string,
+  estagio: string,
+  situacao: { unidadeLivre: boolean; vendaDesfeita: boolean } | null,
+): boolean {
+  if (!ehTipoQueConclui(tipo) || String(estagio ?? "").trim() !== "faturado" || !situacao) return false;
+  return !situacao.vendaDesfeita || !situacao.unidadeLivre;
+}
+
 /** O texto do botão (o `title` e o `aria-label` do ícone). */
-export function rotuloDaConclusao(tipo: TipoQueConclui): string {
+export function rotuloDaConclusao(tipo: TipoQueConclui, retomada = false): string {
+  if (retomada) return "Tentar liberar a unidade";
   return tipo === "distrato" ? "Concluir distrato" : "Concluir cancelamento";
 }
 
@@ -98,15 +118,25 @@ export function conferirDeclaracoes(
  * dois lotes para pessoas diferentes"*). Prometer a devolução sem a condição faria a tela mentir no
  * caso em que a trava segura o lote, que é justamente o caso que importa.
  *
- * ⚠️ O CANCELAMENTO AVISA DO ENVELOPE; O DISTRATO NÃO. No cancelamento o contrato não chegou a ser
- * assinado por todos, e o envelope ainda correndo na Clicksign é cancelado (senão alguém assinaria
- * um contrato de venda desfeita). No distrato o contrato foi assinado: ele é o documento da venda e
- * não se mexe.
+ * ⚠️ O ENVELOPE QUE AINDA SE PODE ASSINAR É CANCELADO NOS DOIS TIPOS; o contrato assinado por todos
+ * (o documento que o distrato desfaz) fica como está.
  */
-export function avisoDaConclusao(args: { codigo: null | string; tipo: TipoQueConclui }): string {
+export function avisoDaConclusao(args: {
+  codigo: null | string;
+  retomada?: boolean;
+  tipo: TipoQueConclui;
+}): string {
   const venda = args.codigo ? `A venda ${args.codigo}` : "A venda deste card";
-  if (args.tipo === "distrato") {
-    return `${venda} é distratada, a reserva cai e a unidade volta para a disponibilidade se não houver outro dono. O contrato assinado não é mexido na Clicksign. Não se desfaz.`;
+  if (args.retomada) {
+    return `${venda} já foi desfeita por este card. Aqui só se tenta de novo devolver a unidade: ela volta para a disponibilidade se não houver outro dono.`;
   }
-  return `${venda} é cancelada, a reserva cai e a unidade volta para a disponibilidade se não houver outro dono. Envelope ainda em assinatura na Clicksign é cancelado. Não se desfaz.`;
+  // ⚠️ O ENVELOPE NOS DOIS CASOS (revisão de 18/09/2026). O distrato pode nascer do PAGAMENTO com o
+  // contrato ainda sem todas as assinaturas: deixar esse envelope vivo seria deixar alguém assinar o
+  // contrato de um lote que já voltou para a venda. Só o contrato assinado por todos fica como está.
+  const envelope =
+    "Envelope do contrato ainda sem todas as assinaturas é cancelado na Clicksign; contrato já assinado por todos fica como está.";
+  if (args.tipo === "distrato") {
+    return `${venda} é distratada, a reserva cai e a unidade volta para a disponibilidade se não houver outro dono. ${envelope} Não se desfaz.`;
+  }
+  return `${venda} é cancelada, a reserva cai e a unidade volta para a disponibilidade se não houver outro dono. ${envelope} Não se desfaz.`;
 }

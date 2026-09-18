@@ -70,7 +70,7 @@ const COLUNAS: Record<string, readonly string[]> = {
   hercules_propostas: [
     "aberta", "atualizado_em", "cancelada_em", "cancelada_motivo", "cancelada_por", "cancelada_por_nome",
     "cancelamento_pedido_em", "cancelamento_pedido_motivo", "cancelamento_pedido_por",
-    "cancelamento_pedido_tipo", "codigo", "criado_em", "criado_em_c2x", "data_assinatura", "data_ato",
+    "cancelamento_pedido_tipo", "cliente_documento", "codigo", "criado_em", "criado_em_c2x", "data_assinatura", "data_ato",
     "data_faturamento", "etapa", "etapa_desde", "etapa_por", "id", "origem", "protocolo_numero",
     "reserva_id", "unidade_id", "workspace_id",
   ],
@@ -95,7 +95,7 @@ const COLUNAS: Record<string, readonly string[]> = {
   temis_trabalhos: [
     "atividades_feitas", "atualizado_em", "criado_em", "estagio", "estagio_desde", "id",
     "indeferido_em", "indeferido_motivo", "indeferido_observacao", "indeferido_por",
-    "indeferido_por_nome", "proposta_id", "tipo", "workspace_id",
+    "indeferido_por_nome", "proposta_id", "tipo", "unidade", "workspace_id",
   ],
 };
 
@@ -606,7 +606,8 @@ describe("concluir o cancelamento: a venda cai e o lote volta", () => {
     expect(banco.linha("temis_trabalhos", "card-contrato")).toMatchObject({
       estagio: "indeferido",
       indeferido_motivo: "outro",
-      indeferido_observacao: "Venda cancelada pelo card de cancelamento card-pedido",
+      // Sem id interno em texto que alguém lê (revisão de 18/09/2026): o COD da venda.
+      indeferido_observacao: "Venda cancelada pelo pedido de cancelamento (COD 000021)",
       indeferido_por_nome: "Nivea",
     });
 
@@ -914,17 +915,62 @@ describe("concluir o distrato", () => {
     expect(r.recado).toContain("Distrato concluído: a venda COD VOC3 foi distratada e a unidade voltou");
   });
 
-  it("não toca no envelope do contrato: assinado fica quieto, e o que ainda corre vira aviso", async () => {
+  // ⚠️ MUDOU NA REVISÃO DE 18/09/2026: o envelope que ainda se pode assinar MORRE também no distrato
+  // (senão alguém assinaria o contrato de um lote que já voltou para a venda). Só o assinado por
+  // todos fica quieto.
+  it("envelope ainda assinável: morre na Clicksign antes de a venda cair, e o histórico do card conta", async () => {
+    silenciar();
     const banco = distratoImportado({ envelopes: [envelope({ estado: "parcial" })] });
-    const { chamadas, porta } = portaDeTeste();
+    const { chamadas, porta } = portaDeTeste({ get: { data: { attributes: { status: "running" } } } });
 
     const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), porta);
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
+    expect(chamadas.map((c) => c.metodo)).toEqual(["GET", "PATCH"]);
+    expect(r.envelopeCancelado).toBe("env-vivo");
+    expect(banco.linha("temis_envelopes", "reg-env")?.estado).toBe("cancelado");
+    const passagem = banco.linhas("temis_trabalho_etapas").find((p) => p.trabalho_id === "card-pedido");
+    expect(String(passagem?.observacao)).toContain("envelope env-vivo cancelado na Clicksign");
+  });
+
+  it("contrato assinado por todos: o envelope fica quieto, e o distrato conclui", async () => {
+    const banco = distratoImportado({ envelopes: [envelope({ estado: "assinado" })] });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), porta);
+
+    expect(r.ok).toBe(true);
     expect(chamadas).toEqual([]);
-    expect(banco.linha("temis_envelopes", "reg-env")?.estado).toBe("parcial");
-    expect(r.avisos.join(" ")).toContain("ainda corre na Clicksign (env-vivo)");
+    expect(banco.linha("temis_envelopes", "reg-env")?.estado).toBe("assinado");
+  });
+
+  it("a Clicksign diz assinado por todos no distrato: não cancela, e o card de contrato assinado não vira indeferido", async () => {
+    silenciar();
+    const banco = distratoImportado({
+      cardDeContrato: { estagio: "assinatura" },
+      envelopes: [envelope({ estado: "parcial" })],
+    });
+    const { chamadas, porta } = portaDeTeste({ get: { data: { attributes: { status: "closed", signers_count: 2 } } } });
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), porta);
+
+    // "closed" sem saber se todos assinaram cai em CONFERIR: recusa sem gravar nada (falha fechada).
+    expect(r.ok).toBe(false);
+    expect(chamadas.map((c) => c.metodo)).toEqual(["GET"]);
+    expect(escritas(banco)).toEqual([]);
+  });
+
+  it("card de contrato em Pré-faturamento (contrato assinado): fica onde está, e o recado diz", async () => {
+    const banco = distratoImportado({ cardDeContrato: { estagio: "prazo_legal" } });
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), portaDeTeste().porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(banco.linha("temis_trabalhos", "card-contrato")?.estagio).toBe("prazo_legal");
+    expect(r.contratosIndeferidos).toEqual([]);
+    expect(r.avisos.join(" ")).toContain("fica em Pré-faturamento: o contrato foi assinado");
   });
 
   it("card de distrato com fatos que hoje dariam cancelamento simples segue (o distrato é o instrumento maior)", async () => {
@@ -992,10 +1038,7 @@ describe("o que para antes de gravar", () => {
     expect(r.recado).toMatch(/^A venda COD 000021 já estava cancelada/);
   });
 
-  it.each([
-    ["indeferido", "foi indeferido"],
-    ["faturado", "já está concluído"],
-  ])("card %s não conclui", async (estagio, frase) => {
+  it.each([["indeferido", "foi indeferido"]])("card %s não conclui", async (estagio, frase) => {
     const banco = cenario({ pedido: { estagio } });
     const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
     expect(r.ok).toBe(false);
@@ -1082,5 +1125,181 @@ describe("os cards abertos de uma venda", () => {
     const banco = cenario();
     banco.falhar((c) => c.tabela === "temis_trabalhos");
     expect(await cardsAbertosDaProposta(banco.cliente, { propostaId: "venda-21", tipos: ["contrato"] })).toEqual({ ok: false });
+  });
+});
+
+// ── RODADA 2 DA REVISÃO (18/09/2026) ───────────────────────────────────────────
+
+describe("a retomada: card concluído com o lote ainda preso", () => {
+  it("card em Concluído com a venda já desfeita: só tenta devolver o lote, sem pedir as declarações de novo", async () => {
+    const banco = cenario({
+      pedido: { estagio: "faturado", tipo: "distrato" },
+      venda: { cancelada_em: "2026-09-18T12:00:00.000Z", etapa: "distrato" },
+    });
+    banco.linha("hercules_reservas", "res-21")!.situacao = "cancelada";
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.jaEstavaDesfeita).toBe(true);
+    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("disponivel");
+    // O card já estava concluído: não é regravado, e a tentativa vai para o histórico dele.
+    expect(escritas(banco)).not.toContain("temis_trabalhos:card-pedido");
+    const passagem = banco.linhas("temis_trabalho_etapas").find((l) => l.trabalho_id === "card-pedido");
+    expect(String(passagem?.observacao)).toContain("Nova tentativa de liberar a unidade");
+  });
+
+  it("retomada tardia: cadastro `vendida` atualizado DEPOIS da queda da venda não é da venda, e não volta", async () => {
+    const banco = cenario({
+      pedido: { estagio: "faturado", tipo: "distrato" },
+      venda: { cancelada_em: "2026-09-18T12:00:00.000Z", etapa: "distrato" },
+      vocSituacao: "vendida",
+    });
+    banco.linha("hercules_reservas", "res-21")!.situacao = "cancelada";
+    banco.linha("hercules_unidades", "voc-0306")!.atualizado_em = "2026-09-19T08:00:00.000Z";
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
+
+    expect(r.ok && r.unidade.voltou).toBe(false);
+    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("vendida");
+  });
+
+  it("retomada: cadastro `vendida` que ninguém mexeu depois da queda é da venda desfeita, e volta", async () => {
+    const banco = cenario({
+      pedido: { estagio: "faturado", tipo: "distrato" },
+      venda: { cancelada_em: "2026-09-18T12:00:00.000Z", etapa: "distrato" },
+      vocSituacao: "vendida",
+    });
+    banco.linha("hercules_reservas", "res-21")!.situacao = "cancelada";
+    banco.linha("hercules_unidades", "voc-0306")!.atualizado_em = "2026-09-18T11:00:00.000Z";
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
+
+    expect(r.ok && r.unidade.voltou).toBe(true);
+    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("disponivel");
+  });
+});
+
+describe("a cópia antiga do C2X do mesmo cliente, na linha do pai", () => {
+  // O formato real medido em 18/09/2026 (VOL0710, VOC0911, VOC1102, VOR1401): distrato da venda da
+  // gleba, e na linha do VLO uma proposta `reservado` do MESMO cliente, cópia da carga do C2X.
+  const comCopia = (documentoDaCopia: string, extraDaCopia: Linha = {}) => {
+    const banco = cenario({
+      cardDeContrato: null,
+      pedido: { tipo: "distrato" },
+      semReserva: true,
+      venda: {
+        cancelamento_pedido_tipo: "distrato",
+        cliente_documento: "529.982.247-25",
+        codigo: "VOC3",
+        data_assinatura: "2025-11-10",
+        etapa: "assinatura",
+        origem: "c2x",
+        protocolo_numero: null,
+        reserva_id: null,
+      },
+      vocSituacao: "vendida",
+    });
+    banco.semear("hercules_propostas", {
+      cliente_documento: documentoDaCopia,
+      etapa: "reservado",
+      etapa_desde: "2025-10-01T00:00:00.000Z",
+      id: "copia-vlo",
+      origem: "c2x",
+      unidade_id: "vlo-0306",
+      workspace_id: "careli",
+      ...extraDaCopia,
+    });
+    return banco;
+  };
+
+  it("mesmo cliente (CPF com ou sem máscara): a cópia é encerrada e o lote volta", async () => {
+    const banco = comCopia("52998224725");
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), portaDeTeste().porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.copiasEncerradas).toBe(1);
+    expect(banco.linha("hercules_propostas", "copia-vlo")).toMatchObject({ etapa: "cancelado" });
+    expect(String(banco.linha("hercules_propostas", "copia-vlo")?.cancelada_motivo)).toContain("Cópia do C2X encerrada");
+    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("disponivel");
+    expect(r.recado).toContain("a cópia antiga do C2X do mesmo cliente foi encerrada");
+  });
+
+  it("OUTRO cliente: a cópia não é tocada, e ela segura o lote", async () => {
+    const banco = comCopia("11144477735");
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), portaDeTeste().porta);
+
+    expect(r.ok && r.copiasEncerradas).toBe(0);
+    expect(banco.linha("hercules_propostas", "copia-vlo")?.etapa).toBe("reservado");
+    expect(r.ok && r.unidade.voltou).toBe(false);
+  });
+
+  it("mesmo cliente mas em outra etapa (contrato): não é cópia de reserva, não é tocada", async () => {
+    const banco = comCopia("52998224725", { etapa: "contrato" });
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), portaDeTeste().porta);
+
+    expect(banco.linha("hercules_propostas", "copia-vlo")?.etapa).toBe("contrato");
+    expect(r.ok && r.unidade.voltou).toBe(false);
+  });
+
+  it("mesmo cliente mas nascida no Panteon: não é tocada", async () => {
+    const banco = comCopia("52998224725", { origem: "panteon" });
+
+    await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), portaDeTeste().porta);
+
+    expect(banco.linha("hercules_propostas", "copia-vlo")?.etapa).toBe("reservado");
+  });
+
+  it("venda sem documento do cliente: nenhuma cópia casa (documento vazio não casa com nada)", async () => {
+    const banco = comCopia("");
+    banco.linha("hercules_propostas", "venda-21")!.cliente_documento = null;
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), portaDeTeste().porta);
+
+    expect(r.ok && r.copiasEncerradas).toBe(0);
+    expect(banco.linha("hercules_propostas", "copia-vlo")?.etapa).toBe("reservado");
+  });
+});
+
+describe("a corrida com o Indeferir", () => {
+  it("o card indeferido enquanto a conclusão reapurava: a venda NÃO cai (releitura do card)", async () => {
+    silenciar();
+    const banco = cenario();
+    banco.depois(
+      (c) => c.tabela === "hercules_proposta_eventos",
+      (b) => {
+        b.linha("temis_trabalhos", "card-pedido")!.estagio = "indeferido";
+      },
+    );
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
+
+    expect(r.ok).toBe(false);
+    expect(banco.linha("hercules_propostas", "venda-21")?.etapa).toBe("contrato");
+    expect(banco.linha("hercules_reservas", "res-21")?.situacao).toBe("proposta");
+    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("reservada");
+  });
+
+  it("a marca do pedido limpa entre a releitura e a escrita: a condição do passo 1 segura a venda", async () => {
+    silenciar();
+    const banco = cenario();
+    // A releitura do card (a SEGUNDA leitura dele) passa; a marca some logo depois, antes do passo 1.
+    let leiturasDoCard = 0;
+    banco.depois(
+      (c) => c.tabela === "temis_trabalhos" && c.operacao === "select" && ++leiturasDoCard === 2,
+      (b) => {
+        b.linha("hercules_propostas", "venda-21")!.cancelamento_pedido_em = null;
+      },
+    );
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
+
+    expect(r.ok).toBe(false);
+    expect(banco.linha("hercules_propostas", "venda-21")?.etapa).toBe("contrato");
   });
 });

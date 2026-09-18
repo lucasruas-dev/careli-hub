@@ -43,6 +43,7 @@ function banco(inicial: Record<string, Linha[]>) {
     const consulta: Consulta = { filtros: [], operacao: "select", tabela };
     const filtros: Array<(l: Linha) => boolean> = [];
     let carga: Linha = {};
+    let cargas: Linha[] = [];
     let unico = false;
     const conferir = (c: string) => {
       if (!(COLUNAS[tabela] ?? []).includes(c)) problemas.push(`${tabela}.${c}`);
@@ -53,7 +54,7 @@ function banco(inicial: Record<string, Linha[]>) {
       const todas = tabelas.get(tabela) ?? [];
       tabelas.set(tabela, todas);
       if (consulta.operacao === "insert") {
-        todas.push({ ...carga });
+        for (const l of cargas) todas.push({ ...l });
         return { data: null, error: null };
       }
       const casadas = todas.filter((l) => filtros.every((f) => f(l)));
@@ -74,10 +75,17 @@ function banco(inicial: Record<string, Linha[]>) {
         filtros.push((l) => vs.map(txt).includes(txt(l[c])));
         return q;
       },
-      insert: (l: Linha) => {
+      insert: (l: Linha | Linha[]) => {
         consulta.operacao = "insert";
-        for (const c of Object.keys(l)) conferir(c);
-        carga = l;
+        cargas = Array.isArray(l) ? l : [l];
+        for (const linha of cargas) for (const c of Object.keys(linha)) conferir(c);
+        return q;
+      },
+      is: (c: string, v: unknown) => {
+        conferir(c);
+        consulta.filtros.push(`is:${c}=${String(v)}`);
+        if (v === null) filtros.push((l) => txt(l[c]) === null);
+        else problemas.push(`is(${String(v)}) não imitado`);
         return q;
       },
       limit: () => q,
@@ -171,6 +179,24 @@ describe("B: o pedido de cancelamento indeferido é o pedido RECUSADO", () => {
     const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-pedido", proposta_id: "venda-21", tipo: "cancelamento" }, quem);
 
     expect(r.feito).toBe("carimbo_limpo");
+    // ⚠️ A HISTÓRIA ANTES DA LIMPEZA (rodada 2, 18/09/2026): quem pediu, quando e por quê, e a recusa,
+    // viram movimento da venda. Sem isto a ficha do lote perdia "Cancelamento solicitado".
+    expect(b.linhas("hercules_proposta_etapas")).toEqual([
+      expect.objectContaining({
+        autor_nome: "Nivea",
+        de: null,
+        motivo: "Cliente desistiu",
+        para: "pedido_de_cancelamento",
+        quando: "2026-09-17T12:00:00.000Z",
+      }),
+      expect.objectContaining({
+        autor_nome: "Nivea",
+        de: null,
+        motivo: "Outro motivo",
+        observacao: "Cancelamento não será realizado",
+        para: "pedido_de_cancelamento_indeferido",
+      }),
+    ]);
     expect(r.recado).toContain("o Hércules volta a oferecer o pedido de cancelamento");
     expect(b.linha("hercules_propostas", "venda-21")).toMatchObject({
       cancelamento_pedido_em: null,
@@ -184,7 +210,7 @@ describe("B: o pedido de cancelamento indeferido é o pedido RECUSADO", () => {
   it("a escrita é condicional: só com a marca de pé e só na venda viva", async () => {
     const b = vendaPresa();
     await devolverVendaNoIndeferimento(b.cliente, { id: "card-pedido", proposta_id: "venda-21", tipo: "distrato" }, quem);
-    const limpeza = escritas(b)[0];
+    const limpeza = escritas(b).find((c) => c.tabela === "hercules_propostas");
     expect(limpeza?.filtros).toContain("not:cancelamento_pedido_em.is.null");
     expect(limpeza?.filtros).toContain("in:etapa=reservado,proposta,contrato,assinatura,faturado");
   });
@@ -206,6 +232,16 @@ describe("B: o pedido de cancelamento indeferido é o pedido RECUSADO", () => {
     expect(escritas(b)).toEqual([]);
   });
 
+  it("a história que não grava segura a marca: a ficha do lote não perde o pedido", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const b = vendaPresa();
+    b.falhar((c) => c.tabela === "hercules_proposta_etapas");
+    const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-pedido", proposta_id: "venda-21", tipo: "cancelamento" }, quem);
+    expect(r.feito).toBe("nada");
+    expect(r.aviso).toContain("a marca do pedido ficou nela");
+    expect(b.linha("hercules_propostas", "venda-21")?.cancelamento_pedido_em).not.toBeNull();
+  });
+
   it("não conseguir conferir os outros pedidos não limpa a marca", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const b = vendaPresa();
@@ -217,9 +253,32 @@ describe("B: o pedido de cancelamento indeferido é o pedido RECUSADO", () => {
   });
 });
 
+/** A venda em contrato SEM pedido de cancelamento: é a que o contrato indeferido devolve. */
+const semPedido = (extra: Parameters<typeof vendaPresa>[0] = {}) =>
+  vendaPresa({ ...extra, venda: { cancelamento_pedido_em: null, ...extra.venda } });
+
 describe("C: o contrato indeferido volta a quem vendeu", () => {
-  it("a venda sai de contrato para proposta, e o passo entra no histórico", async () => {
+  it("com pedido de cancelamento aberto a venda NÃO volta (senão cairia pelo Cancelar proposta, sem distrato)", async () => {
     const b = vendaPresa();
+    const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-contrato", proposta_id: "venda-21", tipo: "contrato" }, quem);
+    expect(r.feito).toBe("nada");
+    expect(r.recado).toContain("tem pedido de cancelamento aberto");
+    expect(b.linha("hercules_propostas", "venda-21")?.etapa).toBe("contrato");
+    expect(escritas(b)).toEqual([]);
+  });
+
+  it("com outro card de contrato aberto (o contrato novo já anda) a venda NÃO volta", async () => {
+    const b = semPedido({
+      cards: [{ estagio: "analise", id: "card-contrato-novo", proposta_id: "venda-21", tipo: "contrato", workspace_id: "careli" }],
+    });
+    const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-contrato", proposta_id: "venda-21", tipo: "contrato" }, quem);
+    expect(r.feito).toBe("nada");
+    expect(r.recado).toContain("tem outro card aberto");
+    expect(escritas(b)).toEqual([]);
+  });
+
+  it("a venda sai de contrato para proposta, e o passo entra no histórico", async () => {
+    const b = semPedido();
 
     const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-contrato", proposta_id: "venda-21", tipo: "contrato" }, quem);
 
@@ -230,8 +289,9 @@ describe("C: o contrato indeferido volta a quem vendeu", () => {
     const venda = b.linha("hercules_propostas", "venda-21");
     expect(venda).toMatchObject({ etapa: "proposta", etapa_por: "Nivea" });
     expect(venda?.etapa_desde).not.toBe("2026-09-12T12:00:00.000Z");
-    // A condição vai na escrita: se a venda já andou, nada se mexe.
+    // A condição vai na escrita: se a venda já andou, ou se um pedido chegou, nada se mexe.
     expect(escritas(b)[0]?.filtros).toContain("eq:etapa=contrato");
+    expect(escritas(b)[0]?.filtros).toContain("is:cancelamento_pedido_em=null");
     expect(b.linhas("hercules_proposta_etapas")).toEqual([
       expect.objectContaining({
         autor_nome: "Nivea",
@@ -245,7 +305,7 @@ describe("C: o contrato indeferido volta a quem vendeu", () => {
   });
 
   it.each(["assinatura", "faturado", "cancelado"])("venda em %s não se mexe", async (etapa) => {
-    const b = vendaPresa({ venda: { etapa } });
+    const b = semPedido({ venda: { etapa } });
     const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-contrato", proposta_id: "venda-21", tipo: "contrato" }, quem);
     expect(r.feito).toBe("nada");
     expect(escritas(b)).toEqual([]);
@@ -253,7 +313,7 @@ describe("C: o contrato indeferido volta a quem vendeu", () => {
 
   it("envelope vivo segura a venda em contrato, com aviso e log", async () => {
     const aviso = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const b = vendaPresa({
+    const b = semPedido({
       envelopes: [
         {
           criado_em: "2026-09-13T12:00:00.000Z",
@@ -276,7 +336,7 @@ describe("C: o contrato indeferido volta a quem vendeu", () => {
   });
 
   it("envelope já morto (cancelado) não segura", async () => {
-    const b = vendaPresa({
+    const b = semPedido({
       envelopes: [
         {
           criado_em: "2026-09-13T12:00:00.000Z",
@@ -295,7 +355,7 @@ describe("C: o contrato indeferido volta a quem vendeu", () => {
 
   it("leitura do envelope que falha também segura", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const b = vendaPresa();
+    const b = semPedido();
     b.falhar((c) => c.tabela === "temis_envelopes");
     const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-contrato", proposta_id: "venda-21", tipo: "contrato" }, quem);
     expect(r.feito).toBe("nada");

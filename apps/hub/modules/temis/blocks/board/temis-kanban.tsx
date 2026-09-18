@@ -192,10 +192,13 @@ export function TemisKanban({
    * que morre junto com quem o escreveu nunca chega a ser lido. Some sozinho depois de alguns
    * segundos — é confirmacao, nao alerta.
    */
-  const [recado, setRecado] = useState<null | string>(null);
+  const [recado, setRecado] = useState<null | { pedeAcao: boolean; texto: string }>(null);
 
+  // ⚠️ SÓ A CONFIRMAÇÃO SOME SOZINHA. O recado que PEDE AÇÃO (o lote não voltou para a
+  // disponibilidade, um card ficou aberto, a venda não acompanhou) fica em âmbar até alguém fechar:
+  // em oito segundos numa faixa verde ele era lido como "deu certo" (revisão de 18/09/2026).
   useEffect(() => {
-    if (!recado) return;
+    if (!recado || recado.pedeAcao) return;
     const relogio = setTimeout(() => setRecado(null), 8000);
     return () => clearTimeout(relogio);
   }, [recado]);
@@ -349,10 +352,10 @@ export function TemisKanban({
     >
       {emTrabalho ? (
         <TelaDeTrabalho
-          aoConcluir={(recado) => {
+          aoConcluir={(texto, pedeAcao) => {
             // A ordem importa: o recado primeiro, a volta depois. Fechar a tela antes faria o
             // quadro aparecer em branco por um instante e só então mostrar o aviso.
-            setRecado(recado);
+            setRecado({ pedeAcao: Boolean(pedeAcao), texto });
             void carregar();
             setEmTrabalho(null);
           }}
@@ -363,10 +366,28 @@ export function TemisKanban({
       ) : null}
       {/* ⚠️ O RECADO FICA NO TOPO E EM VERDE: e a confirmacao de que a etapa fechou. Sem ele, gerar
           o contrato parecia nao ter feito nada — o modal fechava e o quadro voltava igual. */}
-      {recado ? (
+      {recado && !recado.pedeAcao ? (
         <p className="flex items-start gap-2 rounded-lg border border-emerald-300/70 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
-          <FileCheck2 aria-hidden="true" className="mt-0.5 shrink-0" size={15} /> {recado}
+          <FileCheck2 aria-hidden="true" className="mt-0.5 shrink-0" size={15} /> {recado.texto}
         </p>
+      ) : null}
+      {recado && recado.pedeAcao ? (
+        <div
+          className="flex items-start gap-2 rounded-lg border border-amber-400/70 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
+          role="alert"
+        >
+          <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0" size={15} />
+          <span className="flex-1">{recado.texto}</span>
+          <button
+            aria-label="Fechar o aviso"
+            className="shrink-0 rounded px-1.5 text-xs font-semibold underline-offset-2 hover:underline"
+            onClick={() => setRecado(null)}
+            title="Fechar o aviso"
+            type="button"
+          >
+            Fechar
+          </button>
+        </div>
       ) : null}
       {erro ? (
         <p className="flex items-start gap-2 rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm text-ink dark:border-red-500/40 dark:bg-red-500/10">

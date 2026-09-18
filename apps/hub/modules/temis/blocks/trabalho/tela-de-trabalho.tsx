@@ -28,6 +28,7 @@ import {
   DECLARACOES_DO_DISTRATO,
   ehTipoQueConclui,
   podeConcluir,
+  podeRetomar,
   rotuloDaConclusao,
   type TipoQueConclui,
 } from "@/lib/temis/conclusao-do-cancelamento";
@@ -240,7 +241,11 @@ export function TelaDeTrabalho({
    * Uma etapa foi encerrada aqui dentro: o quadro que recebe isto mostra o recado e volta a ser a
    * tela. Hoje são dois casos: a geração do contrato e o envio para assinatura.
    */
-  aoConcluir?: (recado: string) => void;
+  /**
+   * `pedeAcao` = o recado conta algo que ficou por fazer (o lote não voltou, um card ficou aberto,
+   * a venda não acompanhou): o quadro o mostra em âmbar e só fecha no clique.
+   */
+  aoConcluir?: (recado: string, pedeAcao?: boolean) => void;
   aoFechar: () => void;
   /** Chamado quando algo muda, para o quadro recarregar. */
   aoMudar: () => void;
@@ -252,6 +257,8 @@ export function TelaDeTrabalho({
     card: Card;
     envelopeVivo: EnvelopeVivo | null;
     podeEmitir: boolean;
+    /** Só no pedido de cancelamento ou distrato: a venda caiu? o lote está livre? (a retomada) */
+    situacaoDoPedido?: null | { unidadeLivre: boolean; vendaDesfeita: boolean };
   }>(null);
   const [erro, setErro] = useState<null | string>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -296,6 +303,7 @@ export function TelaDeTrabalho({
           // "não sei", que a confirmação trata como o texto neutro e o servidor resolve de novo.
           envelopeVivo?: EnvelopeVivo | null;
           podeEmitir: boolean;
+          situacaoDoPedido?: null | { unidadeLivre: boolean; vendaDesfeita: boolean };
         };
         error?: string;
       };
@@ -382,14 +390,18 @@ export function TelaDeTrabalho({
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });
-        const corpo = (await r.json().catch(() => ({}))) as { error?: string; recado?: null | string };
+        const corpo = (await r.json().catch(() => ({}))) as {
+          aviso?: null | string;
+          error?: string;
+          recado?: null | string;
+        };
         if (!r.ok) return corpo.error ?? "Não consegui indeferir.";
         // ⚠️ O INDEFERIMENTO MEXE NA VENDA (18/09/2026), e o recado diz como: o pedido de
         // cancelamento recusado devolve o botão do pedido no Hércules; o contrato indeferido devolve a
         // venda para Proposta. Quando há o que contar, a tela volta ao quadro com o recado, como as
         // outras ações; o card sem venda ligada continua aberto mostrando o Indeferido.
         if (corpo.recado && aoConcluir) {
-          aoConcluir(corpo.recado);
+          aoConcluir(corpo.recado, Boolean(corpo.aviso));
           return null;
         }
         await carregar();
@@ -423,10 +435,20 @@ export function TelaDeTrabalho({
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });
-        const corpo = (await r.json().catch(() => ({}))) as { error?: string; recado?: string };
+        const corpo = (await r.json().catch(() => ({}))) as {
+          avisos?: string[];
+          error?: string;
+          recado?: string;
+          unidade?: { voltou?: boolean };
+        };
         if (!r.ok) return corpo.error ?? "Não consegui concluir.";
         if (aoConcluir) {
-          aoConcluir(corpo.recado ?? "Concluído.");
+          // ⚠️ O LOTE QUE NÃO VOLTOU PEDE AÇÃO: é exatamente a queixa que abriu este trabalho, e o
+          // recado verde de oito segundos a escondia (revisão de 18/09/2026).
+          aoConcluir(
+            corpo.recado ?? "Concluído.",
+            corpo.unidade?.voltou === false || (corpo.avisos?.length ?? 0) > 0,
+          );
         } else {
           await carregar();
           aoMudar();
@@ -542,10 +564,24 @@ export function TelaDeTrabalho({
    * O card se conclui por aqui? Cancelamento ou distrato, com venda ligada, fora de Concluído e de
    * Indeferido. A régua é `podeConcluir`, a mesma que o servidor aplica.
    */
+  /**
+   * O card CONCLUÍDO com o lote ainda preso (ou com a venda viva): a RETOMADA. Quem diz é o
+   * servidor, em `situacaoDoPedido` (revisão de 18/09/2026: sem isto, lote que a trava segurou no
+   * clique ficava preso para sempre, porque o card fechava e o botão sumia).
+   */
+  const retomada = podeRetomar(card.tipo, card.estagio, dados.situacaoDoPedido ?? null);
   const tipoQueConclui: null | TipoQueConclui =
-    card.proposta_id && ehTipoQueConclui(card.tipo) && podeConcluir(card.tipo, card.estagio)
+    card.proposta_id &&
+    ehTipoQueConclui(card.tipo) &&
+    (podeConcluir(card.tipo, card.estagio) || retomada)
       ? card.tipo
       : null;
+  /**
+   * O Indeferir aparece na análise (todo tipo) e em QUALQUER estágio aberto do pedido de
+   * cancelamento ou de distrato: é a única saída de um pedido que se quer recusar.
+   */
+  const podeIndeferir =
+    card.estagio === "analise" || (ehTipoQueConclui(card.tipo) && podeConcluir(card.tipo, card.estagio));
   /** "COD 000019", como o pedido do Hércules gravou: é o que a confirmação diz que cai. */
   const codigoDoPedido =
     pedidoDoTrabalho({ observacao: card.observacao, tipo: card.tipo })?.itens.find(
@@ -680,7 +716,7 @@ export function TelaDeTrabalho({
             com título e parágrafo, para três cliques; e ficavam abaixo de tudo que se lê, então
             era preciso rolar a análise inteira para agir sobre ela. Cada botão diz o que faz
             pelo `title` e pelo `aria-label` — ícone sem nome nenhum é adivinhação. */}
-        {card.estagio === "analise" || tipoQueConclui ? (
+        {card.estagio === "analise" || tipoQueConclui || podeIndeferir ? (
           <div className="flex items-center gap-1.5">
             {card.estagio === "analise" && card.proposta_id ? (
               <BotaoDeAcao
@@ -703,7 +739,7 @@ export function TelaDeTrabalho({
                   setConcluindo((v) => !v);
                 }}
                 principal
-                rotulo={rotuloDaConclusao(tipoQueConclui)}
+                rotulo={rotuloDaConclusao(tipoQueConclui, retomada)}
               />
             ) : null}
 
@@ -721,7 +757,7 @@ export function TelaDeTrabalho({
               />
             ) : null}
 
-            {card.estagio === "analise" ? (
+            {podeIndeferir ? (
               <BotaoDeAcao
                 ativo={indeferindo}
                 icone={Ban}
@@ -748,8 +784,23 @@ export function TelaDeTrabalho({
               aoCancelar={() => setConcluindo(false)}
               aoConfirmar={concluir}
               codigo={codigoDoPedido}
+              retomada={retomada}
+              // Na retomada da venda JÁ desfeita as declarações foram dadas na conclusão.
+              semDeclaracoes={retomada && Boolean(dados.situacaoDoPedido?.vendaDesfeita)}
               tipo={tipoQueConclui}
             />
+          ) : null}
+
+          {/* O pedido que andou para além da análise também se recusa: o formulário mora aqui fora. */}
+          {indeferindo && card.estagio !== "analise" && podeIndeferir ? (
+            <div className="mb-3">
+              <FormularioDeIndeferimento
+                aoFechar={() => setIndeferindo(false)}
+                emAndamento={ocupado}
+                onIndeferir={indeferir}
+                tipo={card.tipo}
+              />
+            </div>
           ) : null}
 
           {card.estagio === "indeferido" ? <BlocoIndeferido card={card} /> : null}
@@ -896,7 +947,17 @@ export function TelaDeTrabalho({
               exatamente o que este card já fez. O que aconteceu com a venda e com o lote está no
               histórico do card, gravado pela conclusão. */}
           {card.estagio === "faturado" && ehTipoQueConclui(card.tipo) ? (
-            <Aviso texto="Concluído: a venda foi desfeita. Se a unidade voltou para a disponibilidade, e por que não, está no histórico deste card." />
+            <Aviso
+              texto={
+                // ⚠️ SÓ DIZ "DESFEITA" QUANDO A VENDA CAIU DE FATO (revisão de 18/09/2026): o card
+                // pode ter chegado aqui por outro caminho com a venda viva.
+                dados.situacaoDoPedido && !dados.situacaoDoPedido.vendaDesfeita
+                  ? "Este card está em Concluído, mas a venda continua de pé no Hércules. Use o botão de concluir, no topo, para desfazê-la."
+                  : dados.situacaoDoPedido && !dados.situacaoDoPedido.unidadeLivre
+                    ? "Concluído: a venda foi desfeita, mas a unidade ainda não voltou para a disponibilidade. O porquê está no histórico deste card; resolvido o motivo, use Tentar liberar a unidade, no topo."
+                    : "Concluído: a venda foi desfeita. O que aconteceu com a unidade está no histórico deste card."
+              }
+            />
           ) : null}
 
           {card.estagio === "faturado" && !ehTipoQueConclui(card.tipo) ? (
@@ -964,16 +1025,11 @@ function EtapaDeAnalise({
   pedido: null | PedidoDoTrabalho;
   tipo: TipoDeTrabalho;
 }) {
-  const [motivo, setMotivo] = useState("");
-  const [observacao, setObservacao] = useState("");
-  /** A falha do próprio formulário de indeferimento — separada do erro que vem do topo. */
-  const [erroDoForm, setErroDoForm] = useState<null | string>(null);
-
   return (
     <div className="grid gap-3">
-      {erro ?? erroDoForm ? (
+      {erro ? (
         <p className="m-0 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs text-rose-600 dark:text-rose-300">
-          {erro ?? erroDoForm}
+          {erro}
         </p>
       ) : null}
 
@@ -1103,71 +1159,112 @@ function EtapaDeAnalise({
       </div>
 
       {indeferindo ? (
-        <section className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
-          <h3 className="m-0 text-sm font-semibold text-ink">Indeferir este trabalho</h3>
-          {/* ⚠️ INDEFERIR UM PEDIDO DE CANCELAMENTO É RECUSÁ-LO, e a frase diz isso antes do clique.
-              A Nívea "finalizou" dois cancelamentos por aqui (18/09/2026) e os lotes ficaram presos:
-              quem quer desfazer a venda usa o botão de concluir, ao lado. */}
-          <p className="m-0 mt-1 text-xs text-ink-muted">
-            {ehTipoQueConclui(tipo)
-              ? `Indeferir recusa o pedido: a venda continua como está, e o Hércules volta a oferecer o pedido de cancelamento. Para desfazer a venda, use ${rotuloDaConclusao(tipo)}.`
-              : tipo === "contrato"
-                ? "A venda volta para Proposta no Hércules. O motivo vai para o corretor e para a imobiliária: diga o que precisa ser corrigido."
-                : "O motivo vai para o corretor e para a imobiliária. Diga o que precisa ser corrigido."}
-          </p>
-
-          <label className="mt-3 block text-xs font-semibold text-ink-soft">
-            Motivo
-            <select
-              className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink"
-              onChange={(ev) => setMotivo(ev.target.value)}
-              value={motivo}
-            >
-              <option value="">Escolha…</option>
-              {MOTIVOS.map((m) => (
-                <option key={m.codigo} value={m.codigo}>
-                  {m.rotulo}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="mt-3 block text-xs font-semibold text-ink-soft">
-            Observação
-            {motivo === "outro" ? (
-              <span className="ml-1 font-normal text-rose-600 dark:text-rose-300">
-                obrigatória para “Outro motivo”
-              </span>
-            ) : null}
-            <textarea
-              className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink"
-              onChange={(ev) => setObservacao(ev.target.value)}
-              rows={3}
-              value={observacao}
-            />
-          </label>
-
-          <button
-            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-surface px-3.5 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-500/10 disabled:opacity-50 dark:text-rose-300"
-            disabled={emAndamento || !motivo}
-            onClick={async () => {
-              setErroDoForm(null);
-              const falha = await onIndeferir(motivo, observacao);
-              if (falha) setErroDoForm(falha);
-              else aoFecharIndeferimento();
-            }}
-            type="button"
-          >
-            {emAndamento ? (
-              <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-            ) : (
-              <Ban aria-hidden="true" className="size-3.5" />
-            )}
-            Confirmar indeferimento
-          </button>
-        </section>
+        <FormularioDeIndeferimento
+          aoFechar={aoFecharIndeferimento}
+          emAndamento={emAndamento}
+          onIndeferir={onIndeferir}
+          tipo={tipo}
+        />
       ) : null}
     </div>
+  );
+}
+
+
+/**
+ * O FORMULÁRIO DE INDEFERIMENTO, fora da análise.
+ *
+ * ⚠️ SAIU DE DENTRO DE `EtapaDeAnalise` (revisão de 18/09/2026). O pedido de cancelamento ou de
+ * distrato é recusado de QUALQUER estágio aberto (não só da análise); com o formulário preso à
+ * análise, um pedido que tivesse andado não teria como ser recusado, e a marca do pedido prenderia
+ * a venda sem saída.
+ */
+function FormularioDeIndeferimento({
+  aoFechar,
+  emAndamento,
+  onIndeferir,
+  tipo,
+}: {
+  aoFechar: () => void;
+  emAndamento: boolean;
+  onIndeferir: (motivo: string, observacao: string) => Promise<null | string>;
+  tipo: TipoDeTrabalho;
+}) {
+  const [motivo, setMotivo] = useState("");
+  const [observacao, setObservacao] = useState("");
+  const [erroDoForm, setErroDoForm] = useState<null | string>(null);
+
+  return (
+    <>
+      {erroDoForm ? (
+        <p className="m-0 mb-3 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs text-rose-600 dark:text-rose-300">
+          {erroDoForm}
+        </p>
+      ) : null}
+      <section className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
+        <h3 className="m-0 text-sm font-semibold text-ink">Indeferir este trabalho</h3>
+        {/* ⚠️ INDEFERIR UM PEDIDO DE CANCELAMENTO É RECUSÁ-LO, e a frase diz isso antes do clique.
+            A Nívea "finalizou" dois cancelamentos por aqui (18/09/2026) e os lotes ficaram presos:
+            quem quer desfazer a venda usa o botão de concluir, ao lado. */}
+        <p className="m-0 mt-1 text-xs text-ink-muted">
+          {ehTipoQueConclui(tipo)
+            ? `Indeferir recusa o pedido: a venda continua como está, e o Hércules volta a oferecer o pedido de cancelamento. Para desfazer a venda, use ${rotuloDaConclusao(tipo)}.`
+            : tipo === "contrato"
+              ? "A venda volta para Proposta no Hércules. O motivo vai para o corretor e para a imobiliária: diga o que precisa ser corrigido."
+              : "O motivo vai para o corretor e para a imobiliária. Diga o que precisa ser corrigido."}
+        </p>
+
+        <label className="mt-3 block text-xs font-semibold text-ink-soft">
+          Motivo
+          <select
+            className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink"
+            onChange={(ev) => setMotivo(ev.target.value)}
+            value={motivo}
+          >
+            <option value="">Escolha…</option>
+            {MOTIVOS.map((m) => (
+              <option key={m.codigo} value={m.codigo}>
+                {m.rotulo}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="mt-3 block text-xs font-semibold text-ink-soft">
+          Observação
+          {motivo === "outro" ? (
+            <span className="ml-1 font-normal text-rose-600 dark:text-rose-300">
+              obrigatória para “Outro motivo”
+            </span>
+          ) : null}
+          <textarea
+            className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink"
+            onChange={(ev) => setObservacao(ev.target.value)}
+            rows={3}
+            value={observacao}
+          />
+        </label>
+
+        <button
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-surface px-3.5 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-500/10 disabled:opacity-50 dark:text-rose-300"
+          disabled={emAndamento || !motivo}
+          onClick={async () => {
+            setErroDoForm(null);
+            const falha = await onIndeferir(motivo, observacao);
+            if (falha) setErroDoForm(falha);
+            else aoFechar();
+          }}
+          type="button"
+        >
+          {emAndamento ? (
+            <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+          ) : (
+            <Ban aria-hidden="true" className="size-3.5" />
+          )}
+          Confirmar indeferimento
+        </button>
+      </section>
+    </>
   );
 }
 
@@ -1333,6 +1430,8 @@ function ConfirmarConclusao({
   aoCancelar,
   aoConfirmar,
   codigo,
+  retomada = false,
+  semDeclaracoes = false,
   tipo,
 }: {
   aoCancelar: () => void;
@@ -1340,24 +1439,31 @@ function ConfirmarConclusao({
   aoConfirmar: (declaracoes: Partial<Record<ChaveDaDeclaracao, boolean>>) => Promise<null | string>;
   /** "COD 000019", do pedido; `null` quando o pedido não trouxe o código. */
   codigo: null | string;
+  /** A retomada de um card já concluído: a frase e o título mudam. */
+  retomada?: boolean;
+  /** A venda já caiu na conclusão, com as declarações dadas lá: não se pede de novo. */
+  semDeclaracoes?: boolean;
   tipo: TipoQueConclui;
 }) {
   const [marcadas, setMarcadas] = useState<Partial<Record<ChaveDaDeclaracao, boolean>>>({});
   const [erro, setErro] = useState<null | string>(null);
   /** O clique está no ar: o cancelamento pode passar pela Clicksign, e o segundo clique espera. */
   const [enviando, setEnviando] = useState(false);
+  const pedeDeclaracoes = tipo === "distrato" && !semDeclaracoes;
   const faltaDeclarar =
-    tipo === "distrato" && DECLARACOES_DO_DISTRATO.some((d) => marcadas[d.chave] !== true);
+    pedeDeclaracoes && DECLARACOES_DO_DISTRATO.some((d) => marcadas[d.chave] !== true);
 
   return (
     <section className="mb-3 rounded-xl border border-line-strong bg-surface p-4">
       <h3 className="m-0 flex items-center gap-1.5 text-sm font-semibold text-ink">
         <CircleCheck aria-hidden="true" className="size-4" />
-        {rotuloDaConclusao(tipo)}
+        {rotuloDaConclusao(tipo, retomada)}
       </h3>
-      <p className="m-0 mt-1 text-xs text-ink-soft">{avisoDaConclusao({ codigo, tipo })}</p>
+      <p className="m-0 mt-1 text-xs text-ink-soft">
+        {avisoDaConclusao({ codigo, retomada: retomada && semDeclaracoes, tipo })}
+      </p>
 
-      {tipo === "distrato" ? (
+      {pedeDeclaracoes ? (
         <fieldset className="m-0 mt-3 grid gap-2 border-0 p-0">
           <legend className="sr-only">Confirmações obrigatórias do distrato</legend>
           {DECLARACOES_DO_DISTRATO.map((d) => (
@@ -1405,7 +1511,7 @@ function ConfirmarConclusao({
               setEnviando(false);
             }
           }}
-          title={faltaDeclarar ? "Marque as duas confirmações" : rotuloDaConclusao(tipo)}
+          title={faltaDeclarar ? "Marque as duas confirmações" : rotuloDaConclusao(tipo, retomada)}
           type="button"
         >
           {enviando ? (

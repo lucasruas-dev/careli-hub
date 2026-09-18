@@ -11,7 +11,7 @@ import { devolverVendaNoIndeferimento } from "./indeferimento-na-venda-server";
 // O banco em memória abaixo é CÓPIA do de `concluir-cancelamento-server.test.ts` (o dublê de lá
 // não é exportado). Os testes do fim deste arquivo procuram ordens de acontecimentos que deixem o
 // lote livre com dono, dinheiro sem distrato, estado inconsistente ou envelope vivo de venda caída.
-// Os que têm "DEFEITO" no nome estão VERMELHOS DE PROPÓSITO: afirmam o comportamento certo, e o
+// Até a rodada 2 (18/09/2026) os que tinham "DEFEITO" no nome ficavam VERMELHOS DE PROPÓSITO: afirmavam o comportamento certo, e o
 // código de hoje não o cumpre. Os demais conferem suspeitas que se mostraram infundadas.
 //
 // (cabeçalho original da cópia)
@@ -77,7 +77,7 @@ const COLUNAS: Record<string, readonly string[]> = {
   hercules_propostas: [
     "aberta", "atualizado_em", "cancelada_em", "cancelada_motivo", "cancelada_por", "cancelada_por_nome",
     "cancelamento_pedido_em", "cancelamento_pedido_motivo", "cancelamento_pedido_por",
-    "cancelamento_pedido_tipo", "codigo", "criado_em", "criado_em_c2x", "data_assinatura", "data_ato",
+    "cancelamento_pedido_tipo", "cliente_documento", "codigo", "criado_em", "criado_em_c2x", "data_assinatura", "data_ato",
     "data_faturamento", "etapa", "etapa_desde", "etapa_por", "id", "origem", "protocolo_numero",
     "reserva_id", "unidade_id", "workspace_id",
   ],
@@ -102,7 +102,7 @@ const COLUNAS: Record<string, readonly string[]> = {
   temis_trabalhos: [
     "atividades_feitas", "atualizado_em", "criado_em", "estagio", "estagio_desde", "id",
     "indeferido_em", "indeferido_motivo", "indeferido_observacao", "indeferido_por",
-    "indeferido_por_nome", "proposta_id", "tipo", "workspace_id",
+    "indeferido_por_nome", "proposta_id", "tipo", "unidade", "workspace_id",
   ],
 };
 
@@ -594,8 +594,13 @@ const VOR = "41";
 /** Simula o que o POST de indeferir grava no card, e o que o item B faz depois (a régua real). */
 async function indeferirComoOServidor(banco: Banco, cardId: string, tipo: string) {
   const card = banco.linha("temis_trabalhos", cardId);
-  // `.neq("estagio", "faturado")` é a ÚNICA condição do update do indeferir (trabalho-servico.ts).
-  if (!card || card.estagio === "faturado") return null;
+  // As condições do indeferir desde a rodada 2 (trabalho-servico.ts): card aberto, e pedido cuja venda
+  // ainda não caiu (senão o caminho é concluir de novo).
+  if (!card || card.estagio === "faturado" || card.estagio === "indeferido") return null;
+  const venda = banco.linha("hercules_propostas", String(card.proposta_id));
+  if ((tipo === "cancelamento" || tipo === "distrato") && ["cancelado", "distrato"].includes(String(venda?.etapa))) {
+    return null;
+  }
   card.estagio = "indeferido";
   return devolverVendaNoIndeferimento(
     banco.cliente,
@@ -605,7 +610,7 @@ async function indeferirComoOServidor(banco: Banco, cardId: string, tipo: string
 }
 
 describe("REVISÃO (3): corrida e falha no meio", () => {
-  it("DEFEITO: Indeferir clicado enquanto a conclusão roda — a venda cai com o pedido recusado", async () => {
+  it("Indeferir clicado enquanto a conclusão roda: a venda NÃO cai com o pedido recusado", async () => {
     silenciar();
     const banco = cenario();
     // Duas pessoas no mesmo card: a conclusão leu o card em Análise; antes do passo 1 o Indeferir
@@ -629,7 +634,7 @@ describe("REVISÃO (3): corrida e falha no meio", () => {
     expect(banco.linha("hercules_propostas", "venda-21")?.etapa).toBe("contrato");
   });
 
-  it("(documenta o estado que a corrida acima deixa: sem saída pela tela)", async () => {
+  it("depois da correção: a corrida acima deixa um estado coerente (pedido recusado, venda e lote como estavam)", async () => {
     silenciar();
     const banco = cenario();
     banco.depois(
@@ -640,16 +645,13 @@ describe("REVISÃO (3): corrida e falha no meio", () => {
       },
     );
     const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
-    expect(r.ok).toBe(true);
-    expect(banco.linha("hercules_propostas", "venda-21")?.etapa).toBe("cancelado");
-    expect(banco.linha("temis_trabalhos", "card-pedido")?.estagio).toBe("indeferido");
-    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("disponivel");
-    // E concluir de novo é recusado: o card indeferido diz "pedido recusado" sobre uma venda caída.
-    const deNovo = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
-    expect(deNovo.ok).toBe(false);
+    expect(r.ok).toBe(false);
+    expect(banco.linha("hercules_propostas", "venda-21")?.etapa).toBe("contrato");
+    expect(banco.linha("hercules_reservas", "res-21")?.situacao).toBe("proposta");
+    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("reservada");
   });
 
-  it("DEFEITO: falha no passo 2 e alguém clica Indeferir — proposta morta com reserva viva, lote preso sem saída", async () => {
+  it("falha no passo 2 e alguém clica Indeferir: o indeferir é recusado e a conclusão de novo termina", async () => {
     silenciar();
     const banco = cenario();
     let falhar = true;
@@ -660,12 +662,12 @@ describe("REVISÃO (3): corrida e falha no meio", () => {
     expect(banco.linha("hercules_propostas", "venda-21")?.etapa).toBe("cancelado");
     falhar = false;
 
-    // O botão Indeferir continua na tela (card em Análise) e o servidor aceita (só barra `faturado`).
+    // Desde a rodada 2 o servidor RECUSA indeferir pedido cuja venda já caiu.
     const b = await indeferirComoOServidor(banco, "card-pedido", "cancelamento");
-    expect(b?.feito).toBe("nada"); // venda fora do fluxo: B não mexe
+    expect(b).toBeNull();
 
     const retomada = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
-    expect(retomada.ok).toBe(false); // "Este pedido foi indeferido"
+    expect(retomada.ok).toBe(true);
 
     // O certo: nenhuma ordem de cliques deixa reserva viva de venda cancelada.
     expect(banco.linha("hercules_reservas", "res-21")?.situacao).toBe("cancelada");
@@ -761,7 +763,7 @@ describe("REVISÃO (1)/(4): o lote nunca volta com dono vivo, nem sai de bloquea
     expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("bloqueada");
   });
 
-  it("DEFEITO (menor): cadastro que já dizia disponível com outro dono vivo sai como `voltou: true`", async () => {
+  it("cadastro que já dizia disponível com outro dono vivo NÃO sai como `voltou: true`", async () => {
     const banco = cenario({ vocSituacao: "disponivel" });
     banco.semear("hercules_reservas", {
       empreendimento_id: "emp-vlo",
@@ -806,7 +808,7 @@ describe("REVISÃO (5): envelope vivo de venda caída", () => {
       venda: { cancelamento_pedido_tipo: "distrato" },
     });
 
-  it("DEFEITO: o distrato solta o lote com o contrato ainda assinável na Clicksign", async () => {
+  it("o distrato não solta o lote com o contrato ainda assinável na Clicksign", async () => {
     silenciar();
     const banco = distratoComEnvelopeVivo();
     const { chamadas, porta } = portaDeTeste({ get: { data: { attributes: { status: "running" } } } });
@@ -820,20 +822,21 @@ describe("REVISÃO (5): envelope vivo de venda caída", () => {
     expect(r.ok && loteLivre && !envelopeMorreu).toBe(false);
   });
 
-  it("DEFEITO: o aviso do envelope vivo só vai no recado da tela, e não no histórico do card", async () => {
+  it("o envelope cancelado no distrato fica no histórico do card, não só no recado", async () => {
     silenciar();
     const banco = distratoComEnvelopeVivo();
+    const { porta } = portaDeTeste({ get: { data: { attributes: { status: "running" } } } });
 
-    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), portaDeTeste().porta);
-    expect(r.ok && r.avisos.join(" ")).toContain("ainda corre na Clicksign");
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), porta);
+    expect(r.ok).toBe(true);
 
     const passagem = banco.linhas("temis_trabalho_etapas").find((p) => p.trabalho_id === "card-pedido");
-    expect(String(passagem?.observacao)).toContain("Clicksign");
+    expect(String(passagem?.observacao)).toContain("cancelado na Clicksign");
   });
 });
 
 describe("REVISÃO (2): o contrato indeferido com pedido de distrato aberto", () => {
-  it("DEFEITO: indeferir o CONTRATO com o distrato na fila devolve a venda para Proposta, e o 'Cancelar proposta' da Venda a derruba sem distrato", async () => {
+  it("indeferir o CONTRATO com o distrato na fila NÃO devolve a venda para Proposta", async () => {
     silenciar();
     // O padrão real da Nívea: pedido e contrato abertos na mesma venda. Aqui o pedido saiu DISTRATO
     // (ajuste manual: PIX por fora), e o card de contrato é indeferido antes do pedido andar.
@@ -848,7 +851,7 @@ describe("REVISÃO (2): o contrato indeferido com pedido de distrato aberto", ()
       { motivo: "outro", observacao: null, usuarioNome: "Nivea" },
     );
 
-    expect(naVenda.feito).toBe("voltou_para_proposta"); // hoje
+    expect(naVenda.feito).toBe("nada");
     // Em `proposta`, o PATCH de /api/incorporador/venda/proposta cancela só com `origem = panteon` e
     // `etapa = proposta`: não olha carimbo nem card de distrato. O certo: com pedido de cancelamento
     // ou distrato aberto, a venda NÃO sai de Contrato pelo indeferimento do contrato.

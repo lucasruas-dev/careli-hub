@@ -8,6 +8,7 @@ import {
   conferirDeclaracoes,
   DECLARACOES_DO_DISTRATO,
   podeConcluir,
+  podeRetomar,
   rotuloDaConclusao,
 } from "./conclusao-do-cancelamento";
 
@@ -93,14 +94,33 @@ describe("o que a confirmação diz antes do clique", () => {
     expect(texto).toContain("A venda COD 000019 é cancelada");
     expect(texto).toContain("a reserva cai");
     expect(texto).toContain("volta para a disponibilidade se não houver outro dono");
-    expect(texto).toContain("Clicksign é cancelado");
+    expect(texto).toContain("ainda sem todas as assinaturas é cancelado na Clicksign");
   });
 
-  it("distrato: não promete mexer no contrato assinado", () => {
+  it("distrato: o envelope ainda assinável morre, o contrato assinado por todos fica como está", () => {
     const texto = avisoDaConclusao({ codigo: "COD VOC3", tipo: "distrato" });
     expect(texto).toContain("A venda COD VOC3 é distratada");
     expect(texto).toContain("se não houver outro dono");
-    expect(texto).toContain("não é mexido");
+    expect(texto).toContain("ainda sem todas as assinaturas é cancelado na Clicksign");
+    expect(texto).toContain("contrato já assinado por todos fica como está");
+  });
+
+  it("retomada: só a nova tentativa de devolver a unidade, sem prometer desfazer a venda de novo", () => {
+    const texto = avisoDaConclusao({ codigo: "COD VOC3", retomada: true, tipo: "distrato" });
+    expect(texto).toContain("já foi desfeita por este card");
+    expect(texto).toContain("volta para a disponibilidade se não houver outro dono");
+    expect(texto).not.toContain("é distratada");
+  });
+
+  it("podeRetomar: só no card concluído de pedido, com a venda viva ou o lote ocupado", () => {
+    const livre = { unidadeLivre: true, vendaDesfeita: true };
+    expect(podeRetomar("distrato", "faturado", { ...livre, unidadeLivre: false })).toBe(true);
+    expect(podeRetomar("cancelamento", "faturado", { ...livre, vendaDesfeita: false })).toBe(true);
+    expect(podeRetomar("cancelamento", "faturado", livre)).toBe(false);
+    expect(podeRetomar("cancelamento", "faturado", null)).toBe(false);
+    expect(podeRetomar("cancelamento", "analise", { ...livre, unidadeLivre: false })).toBe(false);
+    expect(podeRetomar("contrato", "faturado", { ...livre, unidadeLivre: false })).toBe(false);
+    expect(rotuloDaConclusao("distrato", true)).toBe("Tentar liberar a unidade");
   });
 
   it("sem código, a frase continua inteira", () => {

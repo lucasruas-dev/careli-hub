@@ -259,32 +259,11 @@ vi.mock("@/lib/apolo/documentos", async (importOriginal) => ({
   listApoloDocuments: vi.fn(async () => estado.documentos),
 }));
 
-import * as portalBoard from "@/app/api/incorporador/temis/board/route";
-import * as portalEmpreendimentos from "@/app/api/incorporador/temis/empreendimentos/route";
-import * as portalTrabalho from "@/app/api/incorporador/temis/trabalho/route";
-import * as portalConversa from "@/app/api/incorporador/temis/trabalho/conversa/route";
-import * as portalDocumentos from "@/app/api/incorporador/temis/trabalho/documentos/route";
-import * as portalHistorico from "@/app/api/incorporador/temis/trabalho/historico/route";
-import * as portalTrabalhos from "@/app/api/incorporador/temis/trabalhos/route";
-import * as hubBoard from "@/app/api/temis/board/route";
-import * as hubEmpreendimentos from "@/app/api/temis/empreendimentos/route";
 import * as hubTrabalho from "@/app/api/temis/trabalho/route";
-import * as hubConversa from "@/app/api/temis/trabalho/conversa/route";
-import * as hubDocumentos from "@/app/api/temis/trabalho/documentos/route";
-import * as hubHistorico from "@/app/api/temis/trabalho/historico/route";
-import * as hubTrabalhos from "@/app/api/temis/trabalhos/route";
-import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
-import {
-  PRODUTOS_DE_16_DE_SETEMBRO,
-  TUDO_DA_CECILIO,
-} from "@/lib/temis/fixtures/produtos-operados";
+import { TUDO_DA_CECILIO } from "@/lib/temis/fixtures/produtos-operados";
 import { donoDoTrabalho } from "@/lib/temis/trabalhos-db";
 
 // ── APOIO ───────────────────────────────────────────────────────────────────
-
-function get(caminho: string): Request {
-  return new Request(`https://c2x.app.br${caminho}`);
-}
 
 function post(caminho: string, corpo: unknown): Request {
   return new Request(`https://c2x.app.br${caminho}`, {
@@ -292,10 +271,6 @@ function post(caminho: string, corpo: unknown): Request {
     headers: { "content-type": "application/json" },
     method: "POST",
   });
-}
-
-function consultasA(tabela: string): Chamada[] {
-  return estado.chamadas.filter((c) => c.tabela === tabela);
 }
 
 function temFiltro(chamada: Chamada | undefined, ...filtro: unknown[]): boolean {
@@ -306,10 +281,6 @@ function temFiltro(chamada: Chamada | undefined, ...filtro: unknown[]): boolean 
 
 function valorDoFiltro(chamada: Chamada, metodo: string, coluna: string): unknown {
   return chamada.filtros.find((f) => f[0] === metodo && f[1] === coluna)?.[2];
-}
-
-function selecionou(chamada: Chamada, trecho: string): boolean {
-  return chamada.filtros.some((f) => f[0] === "select" && String(f[1]).includes(trecho));
 }
 
 /** As propostas que têm trabalho da Cecílio no escopo. As outras são da Careli (Gurgel). */
@@ -331,25 +302,6 @@ function responderPorTabela(
     return mapa[chamada.tabela]?.(chamada) ?? { data: [], error: null };
   };
 }
-
-const CARD = {
-  arrependimento_inicio: null,
-  cliente_cpf: null,
-  cliente_nome: "Cliente",
-  enterprise_codigo: "VOC",
-  enterprise_nome: "Vale do Ouro",
-  estagio: "analise",
-  estagio_desde: "2026-09-16T10:00:00Z",
-  id: "t-cecilio",
-  indeferido_em: null,
-  indeferido_motivo: null,
-  indeferido_observacao: null,
-  indeferido_por_nome: null,
-  observacao: null,
-  proposta_id: null,
-  tipo: "contrato",
-  unidade: "Q01 L01",
-};
 
 beforeEach(() => {
   estado.assinados = [];
@@ -378,11 +330,11 @@ beforeEach(() => {
 // O dublê de Supabase acima é CÓPIA do de `trabalho-rotas.test.ts`. Aqui ele responde como o banco
 // de verdade responderia ao `update` do indeferir: o card JÁ indeferido casa com
 // `.neq("estagio", "faturado")` e volta como linha gravada.
-// Os testes com "DEFEITO" no nome estão VERMELHOS DE PROPÓSITO.
+// Até a rodada 2 (18/09/2026) o teste abaixo ficava VERMELHO DE PROPÓSITO; a correção o deixou verde.
 // ════════════════════════════════════════════════════════════════════════════════
 
 describe("REVISÃO: indeferir de novo um card que já estava indeferido", () => {
-  it("DEFEITO: aba velha indefere de novo o contrato antigo e devolve para Proposta a venda do contrato NOVO", async () => {
+  it("aba velha indefere de novo o contrato antigo: recusado, e a venda do contrato NOVO não volta para Proposta", async () => {
     // O contrato K1 foi indeferido (a venda voltou para Proposta), quem vendeu corrigiu e mandou de
     // novo: a venda está em Contrato com o card K2 aberto. Numa aba aberta desde antes, K1 ainda
     // aparece em Análise com o botão Indeferir.
@@ -401,9 +353,9 @@ describe("REVISÃO: indeferir de novo um card que já estava indeferido", () => 
       post("/api/temis/trabalho", { id: "t-careli", motivo: "outro", observacao: "aba velha" }),
     );
 
-    expect(r.status).toBe(200); // hoje: aceita
-    // O certo: um card que já estava indeferido não é indeferido de novo, e a venda (que agora é do
-    // card K2) não é devolvida para Proposta por ele.
+    // Um card que já estava indeferido não é indeferido de novo (409), e a venda (que agora é do card
+    // K2) não é devolvida para Proposta por ele.
+    expect(r.status).toBe(409);
     expect(mocks.devolverVendaNoIndeferimento).not.toHaveBeenCalled();
   });
 });

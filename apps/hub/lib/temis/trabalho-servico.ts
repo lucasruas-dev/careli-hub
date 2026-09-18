@@ -893,10 +893,53 @@ export async function abrirCardDoTrabalho(
   // `/api/temis/contrato/previa`, que já faz exatamente isto.
   const podeEmitir = await opcoes.podeEmitir();
 
+  // ⚠️ SÓ NO PEDIDO DE CANCELAMENTO OU DISTRATO: é o que acende a RETOMADA na tela (o card concluído
+  // com o lote ainda preso, ou com a venda viva). Falha de leitura = `null`, e a tela não oferece.
+  const tipoDoCard = String(card.tipo).trim();
+  const situacaoDoPedido =
+    card.proposta_id && (tipoDoCard === "cancelamento" || tipoDoCard === "distrato")
+      ? await lerSituacaoDoPedido(sb, String(card.proposta_id))
+      : null;
+
   return NextResponse.json(
-    { data: { analise, assinatura, card: { ...card, contratos }, envelopeVivo, podeEmitir } },
+    {
+      data: {
+        analise,
+        assinatura,
+        card: { ...card, contratos },
+        envelopeVivo,
+        podeEmitir,
+        situacaoDoPedido,
+      },
+    },
     { headers: { "Cache-Control": "no-store" } },
   );
+}
+
+/**
+ * A venda do pedido caiu? O lote dela está livre no cadastro? É o que decide se o card concluído
+ * ainda oferece "Tentar liberar a unidade".
+ */
+async function lerSituacaoDoPedido(
+  sb: SupabaseClient,
+  propostaId: string,
+): Promise<null | { unidadeLivre: boolean; vendaDesfeita: boolean }> {
+  const { data: venda, error } = await sb
+    .from("hercules_propostas")
+    .select("etapa, unidade_id")
+    .eq("id", propostaId)
+    .maybeSingle<{ etapa: null | string; unidade_id: null | string }>();
+  if (error || !venda) return null;
+  const etapa = String(venda.etapa ?? "").trim();
+  const vendaDesfeita = etapa === "cancelado" || etapa === "distrato";
+  if (!venda.unidade_id) return { unidadeLivre: true, vendaDesfeita };
+  const { data: unidade, error: erroDaUnidade } = await sb
+    .from("hercules_unidades")
+    .select("situacao")
+    .eq("id", venda.unidade_id)
+    .maybeSingle<{ situacao: null | string }>();
+  if (erroDaUnidade || !unidade) return null;
+  return { unidadeLivre: String(unidade.situacao ?? "") === "disponivel", vendaDesfeita };
 }
 
 /**
@@ -1152,6 +1195,46 @@ export async function decidirSobreOTrabalho(
     return NextResponse.json({ error: conferido.erro }, { status: 400 });
   }
 
+  // ⚠️ SÓ SE INDEFERE CARD QUE AINDA ANDA (revisão de 18/09/2026). Indeferir de novo um card já
+  // indeferido regravava o motivo e o autor do primeiro indeferimento e, agora que o indeferimento
+  // chega na venda, puxava para Proposta a venda cujo contrato NOVO já andava (aba antiga aberta).
+  if (card.estagio === "indeferido" || card.estagio === "faturado") {
+    return NextResponse.json(
+      {
+        error:
+          card.estagio === "indeferido"
+            ? "Este trabalho já foi indeferido."
+            : "Este trabalho já foi concluído e não pode ser indeferido.",
+      },
+      { status: 409 },
+    );
+  }
+
+  // ⚠️ PEDIDO CUJA VENDA JÁ CAIU NÃO SE INDEFERE (revisão de 18/09/2026). É a conclusão que parou no
+  // meio (a venda caiu, a reserva ou o lote não): indeferir agora deixaria a venda morta com a
+  // reserva viva e o card recusado, sem nenhuma saída pela tela. O caminho é concluir de novo.
+  if ((card.tipo === "cancelamento" || card.tipo === "distrato") && card.proposta_id) {
+    const { data: vendaLida, error: erroDaVenda } = await sb
+      .from("hercules_propostas")
+      .select("etapa")
+      .eq("id", card.proposta_id)
+      .maybeSingle<{ etapa: null | string }>();
+    if (erroDaVenda) {
+      console.error("[temis][trabalho] falha ao ler a venda antes de indeferir", erroDaVenda);
+      return NextResponse.json({ error: "Nao foi possivel conferir a venda. Nada foi indeferido." }, { status: 503 });
+    }
+    const etapaDaVenda = String(vendaLida?.etapa ?? "").trim();
+    if (etapaDaVenda === "cancelado" || etapaDaVenda === "distrato") {
+      return NextResponse.json(
+        {
+          error:
+            "A venda deste pedido já foi desfeita pela conclusão, que parou no meio. Não indefira: clique em concluir de novo para terminar (o que já foi feito não se repete).",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const agora = new Date().toISOString();
   const { data: mexidos, error } = await sb
     .from("temis_trabalhos")
@@ -1168,10 +1251,9 @@ export async function decidirSobreOTrabalho(
       indeferido_por_nome: quemNome,
     })
     .eq("id", card.id)
-    // Faturado é o fim: um contrato que já virou venda não volta para indeferido.
-    .neq("estagio", "faturado")
-    // ⚠️ O `.select()` EXISTE PARA SABER SE PEGOU ALGUMA LINHA: o `update` que o `.neq` barra volta
-    // sem erro e sem linha, e o histórico gravaria a passagem que não aconteceu.
+    // ⚠️ COMPARAÇÃO E TROCA COM O ESTÁGIO LIDO: se o card andou (outra pessoa indeferiu, concluiu ou
+    // o envelope o moveu) entre a leitura e aqui, nada se grava. O `.select()` diz se pegou linha.
+    .eq("estagio", card.estagio)
     .select("id");
 
   if (error) {
@@ -1181,7 +1263,7 @@ export async function decidirSobreOTrabalho(
 
   if (!mexidos || mexidos.length === 0) {
     return NextResponse.json(
-      { error: "Este trabalho já foi faturado e não pode ser indeferido." },
+      { error: "Este trabalho mudou enquanto a tela estava aberta. Nada foi indeferido; abra de novo." },
       { status: 409 },
     );
   }
@@ -1217,6 +1299,8 @@ export async function decidirSobreOTrabalho(
   });
   return NextResponse.json(
     {
+      // ⚠️ O AVISO VIAJA SEPARADO: é o que o quadro mostra em âmbar e só fecha no clique.
+      aviso: naVenda.aviso,
       ok: true,
       recado: [naVenda.recado, naVenda.aviso].filter(Boolean).join(" ") || null,
       venda: naVenda.feito,

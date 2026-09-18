@@ -164,8 +164,8 @@ export async function devolverCadastroDaUnidade(
     const linha = unidade as { enterprise_id: number | string; situacao: null | string };
     const situacao = linha.situacao === null || linha.situacao === undefined ? null : String(linha.situacao);
     if (situacao === "bloqueada") return { devolvida: false, porque: "bloqueada" };
-    if (situacao === "disponivel") return { devolvida: false, porque: "ja_disponivel" };
-    if (situacao === null || !aceitos.includes(situacao)) {
+    const jaDisponivel = situacao === "disponivel";
+    if (!jaDisponivel && (situacao === null || !aceitos.includes(situacao))) {
       return { devolvida: false, porque: "cadastro", situacao };
     }
 
@@ -181,6 +181,10 @@ export async function devolverCadastroDaUnidade(
     });
     if (donos === null) return { devolvida: false, porque: "leitura_falhou" };
     if (donos.length > 0) return { devolvida: false, donos, porque: "outro_dono" };
+    // ⚠️ "JÁ DISPONÍVEL" SÓ DEPOIS DA TRAVA (revisão de 18/09/2026). O cadastro dizer disponível não
+    // prova que o lote está livre: outro dono no terreno (a linha do pai, a gleba irmã) deixa o lote
+    // ocupado na régua, e contar isso como "voltou" faria a tela prometer um lote que a porta recusa.
+    if (jaDisponivel) return { devolvida: false, porque: "ja_disponivel" };
 
     const { data: devolvidas, error } = await client
       .from("hercules_unidades")
