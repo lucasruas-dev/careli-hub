@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-18-relacionamento-sem-janela-da-meta",
+    deployedAt: "2026-09-18T12:24:00-03:00",
+    modules: [
+      {
+        module: "Íris",
+        screens: [
+          {
+            items: [
+              "**Abrir atendimento pela Central de Relacionamento não pede mais template nem esbarra na janela de 24h.** O número do relacionamento roda fora da Meta, e a janela é regra só da Meta. Escolha o canal, a fila, abra e escreva.",
+              "**O atendimento aberto sai pelo número do relacionamento**, e não mais pelo 4143. A resposta do cliente cai no mesmo protocolo.",
+              "**No canal de Atendimento (4143), Gurgel e Jurídico nada muda**: com a janela fechada, continua sendo preciso um template aprovado.",
+            ],
+            screen: "Abrir atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "bf3446e5",
+    technical: {
+      done:
+        "`app/api/iris/tickets/route.ts`: a janela de 24h era conferida sem olhar o canal da fila (409 'Janela de 24h fechada'), e as buscas de canal da rota filtram `provider = 'meta'`, então a fila ligada à Evolution caía no canal padrão (4143). Novo `getEvolutionChannelOfQueue` lê o canal vinculado à fila sem esse filtro; com canal da Evolution, o ticket nasce nele, sem janela e sem template, como conversa direta (`source_entity_type = whatsapp-direct`, telefone em `source_entity_id`, `provider: evolution` em metadata e source_context), igual ao que `ensureOpenDirectTicket` cria. Isso liga a tela (`isDirect`), o envio (`group-messages`) e o reuso da resposta do cliente. Regra pura em `lib/iris/abertura-fora-da-meta.ts` (`canalForaDaMeta`, `decidirAbertura`, `origemDoTicket`), com 11 testes: o contrato da marca `whatsapp-direct` entre os quatro arquivos é lido no teste, e a volta da trava antiga foi validada por mutação. Medido: dos 1.237 tickets da fila Central de Relacionamento, nenhum tinha sido aberto pelo modal. 6.388 testes passando e typecheck limpo.",
+      motivation:
+        "Lucas (18/09/2026), com o print do modal: *\"ao selecionar o canal de relacionamento (...) não poderia ter essa trava da janela. A janela tem que existir somente para o canal de atendimento, 4143, o canal do relacionamento o número está rodando fora da meta\"*.",
+    },
+    title: "Abrir atendimento pelo Relacionamento sem a janela da Meta",
+    type: "correcao",
+    version: "1.349.3",
+  },
+  {
     buildTag: "2026-09-18-primeira-mensal-e-documento-em-janela",
     deployedAt: "2026-09-18T11:00:00-03:00",
     modules: [
