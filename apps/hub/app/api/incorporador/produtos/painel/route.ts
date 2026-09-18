@@ -1,20 +1,30 @@
 import { NextResponse } from "next/server";
 
-import { loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
+import {
+  type ApoloEnterpriseBucket,
+  type ApoloEnterpriseRow,
+  loadApoloEnterprises,
+} from "@/lib/apolo/empreendimentos";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import {
+  type Cenario,
+  cenarioVazio,
   decidirPainelDeProdutos,
   montarPainelDeProdutos,
   type PainelDeProdutos,
+  somarCenarios,
 } from "@/lib/apolo/incorporador/painel-de-produtos";
 import { sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
 import { lerCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
+import { baldeDaEtapa } from "@/lib/hercules/fluxo-de-venda";
 import {
-  estoquePorEmpreendimento,
-  type PropostaDaCarga,
-  type UnidadeDoMapa,
-} from "@/lib/hercules/fluxo-de-venda";
+  baldeDaSituacao,
+  lerSituacaoDasUnidades,
+  type SituacaoDaUnidade,
+  type SituacaoDasUnidades,
+  situacaoDoTerreno,
+} from "@/lib/hercules/situacao-da-unidade";
 
 // O PAINEL DE PRODUTOS DO HÉRCULES: os seis cards e a tabela pai/filhos da aba Produtos.
 //
@@ -32,18 +42,24 @@ import {
 // respondiam a mesma pergunta por fontes diferentes — a Venda contava `hercules_unidades`, esta
 // contava `enterprise_unities` do legado.
 //
-// A troca foi MEDIDA antes: as 5.528 unidades batem uma a uma nos 35 empreendimentos, então
-// nenhum número de incorporador se mexe. O que muda é que empreendimento cadastrado só aqui
-// deixa de aparecer zerado, e a classificação passa a ser a MESMA da Venda — inclusive a coluna
-// "Em negociação", que o legado tinha em `sale_status_id` e que a importação não trouxe: ela volta
-// pela PROPOSTA, que sabe dizer se está em proposta, contrato ou assinatura.
+// ⚠️ E A SITUAÇÃO DE CADA UNIDADE VEM DA RÉGUA ÚNICA DESDE 18/09/2026 (lib/hercules/situacao-da-
+// unidade.ts). Lucas: *"esses status tem que morar em um so lugar"* · *"no c2x não precisa olhar"*.
+// Até aqui este painel tinha a conta dele (`estoquePorEmpreendimento`: a proposta viva da própria
+// linha, senão o cadastro cru), que não via a reserva do Hércules nem a do evento, nem a proposta
+// que mora na linha antiga do terreno. Agora a quantidade e o preço continuam saindo de
+// `hercules_unidades`, linha a linha, e o BALDE de cada linha sai da situação do terreno dela.
 //
 // O C2X continua entrando para a MOLDURA (quais linhas existem, nome e cidade de quem não está no
-// cadastro do Panteon) — não para contar unidade.
+// cadastro do Panteon) — não para contar unidade. Nem na linha que só o C2X conhece: o `scenario`
+// que o legado manda (de `sale_status_id`) é trocado pelo do Panteon antes da montagem.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export type PainelDeProdutosDoIncorporador = PainelDeProdutos;
+
+// Texto para o coordenador (externo): diz o efeito, sem nomear sistema.
+const AVISO_DE_ESTOQUE =
+  "Os números de estoque não carregaram agora e aparecem zerados. Tente de novo em instantes.";
 
 export async function GET(request: Request) {
   const sessao = sessaoDoRequest(request);
@@ -52,8 +68,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
   }
 
-  // As três leituras não dependem uma da outra: C2X (números), sessão expandida (escopo) e
-  // cadastro (agrupamento) correm juntas.
+  // C2X (moldura), sessão expandida (escopo) e cadastro (agrupamento) correm juntas. O estoque
+  // espera só o escopo: é ele que diz quais empreendimentos contar.
   //
   // ⚠️ O CADASTRO É ENRIQUECIMENTO, O ESCOPO NÃO. Cadastro fora do ar degrada: todo
   // empreendimento vira linha simples com o nome do C2X (é a tela antiga, sem pai/filho) — melhor
@@ -64,16 +80,20 @@ export async function GET(request: Request) {
   // regra inteira está em `decidirPainelDeProdutos`. `loadApoloEnterprises` lança quando o MySQL
   // recusa a consulta (ele só devolve `ok: false` sem configuração): o `.catch` põe as duas
   // quedas no mesmo caminho.
+  const doEscopo = idsDaSessao(sessao);
   const [c2x, permitidos, cadastro, estoque] = await Promise.all([
     loadApoloEnterprises().catch((erro: unknown) => {
       console.error("[incorporador/produtos/painel] C2X indisponível", erro);
       return { error: "C2X indisponível.", ok: false as const };
     }),
-    idsDaSessao(sessao),
+    doEscopo,
     // `lerCadastro...` (e não `carregar...`) porque o painel precisa saber se a 0170 veio: sem a
     // coluna `operado_por`, nenhuma linha acende escrita no portal que confecciona (fail-closed).
     lerCadastroDeEmpreendimentos().catch(() => null),
-    lerEstoqueDoPanteon(),
+    // ⚠️ UMA LEITURA DA SITUAÇÃO PARA A SESSÃO INTEIRA, e não uma por produto: o comercial vê
+    // todos os empreendimentos de uma vez, e N idas à régua seriam N vezes as propostas vivas e as
+    // reservas do banco inteiro.
+    doEscopo.then(lerEstoqueDoPanteon),
   ]);
 
   // ⚠️ `podeEscrever` DE CADA LINHA (decisão do Lucas, 16/09/2026): no portal que confecciona, só no
@@ -85,8 +105,8 @@ export async function GET(request: Request) {
     painel: montarPainelDeProdutos({
       cadastro: cadastro?.linhas ?? [],
       com0170: cadastro?.com0170 === true,
-      estoque,
-      linhasDoC2x: c2x.ok ? c2x.data.rows : [],
+      estoque: estoque ?? new Map(),
+      linhasDoC2x: c2x.ok ? comOEstoqueDoPanteon(c2x.data.rows, estoque) : [],
       permitidos: new Set(permitidos),
       portal: { incorporadorId: sessao.incorporadorId, slug: sessao.slug, tipo: sessao.tipo },
     }),
@@ -99,56 +119,157 @@ export async function GET(request: Request) {
     );
   }
 
+  // ⚠️ ESTOQUE QUE NÃO CARREGOU SAI ZERADO E AVISADO, NUNCA LIVRE. Zero não afirma que há lote para
+  // vender; e o aviso impede que a pessoa leia "0" como "vendeu tudo".
+  const painel =
+    estoque === null
+      ? {
+          ...decidido.painel,
+          avisoDaFonte: [decidido.painel.avisoDaFonte, AVISO_DE_ESTOQUE].filter(Boolean).join(" "),
+        }
+      : decidido.painel;
+
   return NextResponse.json(
-    { data: decidido.painel },
+    { data: painel },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
 
 /**
- * O estoque de cada empreendimento, contado no Panteon.
+ * A linha do C2X com o número do PANTEON no lugar do dela.
  *
- * ⚠️ PAGINA NAS DUAS LEITURAS. São 5.528 unidades e 4.857 propostas, e o PostgREST corta em 1.000
- * linhas SEM ERRO: sem paginar, a tela mostraria um estoque silenciosamente truncado — que é pior
- * do que uma tela vazia, porque parece certo.
- *
- * ⚠️ FALHA NÃO DERRUBA A TELA: sem estoque, cada linha aparece zerada e o resto do painel (nomes,
- * agrupamento, quem é pai de quem) continua de pé.
+ * ⚠️ A LINHA QUE SÓ O C2X CONHECE (id da sessão fora do cadastro, ou o cadastro inteiro fora do ar)
+ * era montada com o `scenario` do legado, que classifica por `sale_status_id` / `sale_blocked` e não
+ * vê nada feito no Panteon. É a mesma unidade com dois status, na mesma tela. Aqui a moldura fica
+ * (nome, cidade, espelho) e o número passa a ser o de `hercules_unidades`; empreendimento sem
+ * unidade no Panteon entra zerado, a mesma regra das outras linhas.
  */
-async function lerEstoqueDoPanteon() {
-  const supabase = createApoloAdminClient();
-  if (!supabase) return new Map();
+function comOEstoqueDoPanteon(
+  linhas: ApoloEnterpriseRow[],
+  estoque: Map<string, Cenario> | null,
+): ApoloEnterpriseRow[] {
+  const doPanteon = (id: string): Cenario => estoque?.get(String(id).trim()) ?? cenarioVazio();
 
-  const PAGINA = 1000;
+  return linhas.map((linha) => {
+    const etapas = (linha.stages ?? []).map((etapa) => ({ ...etapa, scenario: doPanteon(etapa.id) }));
+    return {
+      ...linha,
+      scenario:
+        etapas.length > 0 ? somarCenarios(etapas.map((etapa) => etapa.scenario)) : doPanteon(linha.id),
+      stages: etapas,
+    };
+  });
+}
+
+type LinhaDoEstoque = {
+  enterprise_id: number | string;
+  id: string;
+  preco_tabela: null | number | string;
+};
+
+type ClienteAdmin = NonNullable<ReturnType<typeof createApoloAdminClient>>;
+
+/**
+ * O estoque de cada empreendimento da sessão, contado no Panteon.
+ *
+ * ⚠️ QUANTIDADE E PREÇO SÃO DA LINHA; A SITUAÇÃO É DO TERRENO. Cada linha de `hercules_unidades`
+ * conta no empreendimento dela, como sempre contou (o espelho que responde sozinho continua com as
+ * linhas dele), e o balde sai de `porLinha`, que responde pela linha viva e pela antiga do mesmo
+ * lote com a mesma situação.
+ *
+ * ⚠️ PAGINA. O PostgREST corta em 1.000 linhas SEM ERRO: sem paginar, a tela mostraria um estoque
+ * silenciosamente truncado — que é pior do que uma tela vazia, porque parece certo.
+ *
+ * ⚠️ FALHA DEVOLVE `null`, e não um mapa vazio: quem chama precisa saber que não leu, para avisar.
+ * Mesmo assim a tela não cai — nomes, agrupamento e quem é pai de quem continuam de pé.
+ */
+async function lerEstoqueDoPanteon(ids: readonly string[]): Promise<Map<string, Cenario> | null> {
+  // "group:…" é id sintético do agrupamento do Apolo: nenhuma unidade o guarda.
+  const pedidos = [
+    ...new Set(ids.map((id) => String(id).trim()).filter((id) => id && !id.toLowerCase().startsWith("group:"))),
+  ];
+  if (pedidos.length === 0) return new Map();
+
+  const supabase = createApoloAdminClient();
+  if (!supabase) {
+    console.error("[incorporador/produtos/painel] Supabase ausente: sem o estoque do Panteon.");
+    return null;
+  }
 
   try {
-    const unidades: UnidadeDoMapa[] = [];
-    for (let de = 0; ; de += PAGINA) {
-      const { data, error } = await supabase
-        .from("hercules_unidades")
-        .select("id,codigo,quadra,lote,situacao,preco_tabela,enterprise_id")
-        .eq("workspace_id", "careli")
-        .range(de, de + PAGINA - 1);
-      if (error) throw new Error(error.message);
-      unidades.push(...((data ?? []) as UnidadeDoMapa[]));
-      if ((data?.length ?? 0) < PAGINA) break;
-    }
-
-    const propostas: PropostaDaCarga[] = [];
-    for (let de = 0; ; de += PAGINA) {
-      const { data, error } = await supabase
-        .from("hercules_propostas")
-        .select("id,unidade_id,etapa,etapa_desde,criado_em_c2x")
-        .eq("workspace_id", "careli")
-        .range(de, de + PAGINA - 1);
-      if (error) throw new Error(error.message);
-      propostas.push(...((data ?? []) as PropostaDaCarga[]));
-      if ((data?.length ?? 0) < PAGINA) break;
-    }
-
-    return estoquePorEmpreendimento({ propostas, unidades });
+    const [linhas, situacoes] = await Promise.all([
+      lerLinhasDoEstoque(supabase, pedidos),
+      lerSituacaoDasUnidades(supabase, pedidos),
+    ]);
+    return contarEstoque(linhas, situacoes);
   } catch (erro) {
     console.error("[incorporador/produtos/painel] estoque do Panteon", erro);
-    return new Map();
+    return null;
   }
+}
+
+async function lerLinhasDoEstoque(supabase: ClienteAdmin, ids: string[]): Promise<LinhaDoEstoque[]> {
+  const PAGINA = 1000;
+  const linhas: LinhaDoEstoque[] = [];
+  for (let de = 0; ; de += PAGINA) {
+    const { data, error } = await supabase
+      .from("hercules_unidades")
+      .select("id,enterprise_id,preco_tabela")
+      .eq("workspace_id", "careli")
+      .in("enterprise_id", ids)
+      .order("id", { ascending: true })
+      .range(de, de + PAGINA - 1);
+    if (error) throw new Error(error.message);
+    linhas.push(...((data ?? []) as LinhaDoEstoque[]));
+    if ((data?.length ?? 0) < PAGINA) break;
+  }
+  return linhas;
+}
+
+/**
+ * A situação de uma linha que a régua não devolveu (nasceu entre as duas leituras): a que a própria
+ * régua dá a quem não se conhece — hoje, bloqueada. Calculada, e não escrita à mão, para mudar junto
+ * se a régua mudar de ideia. Nunca livre.
+ */
+const SITUACAO_FORA_DO_MAPA: SituacaoDaUnidade = situacaoDoTerreno({
+  cadastro: null,
+  propostasVivas: [],
+  reservada: false,
+});
+
+/**
+ * O balde da tela Produtos para uma situação.
+ *
+ * ⚠️ QUEM DIZ SE ESTÁ LIVRE É `baldeDaSituacao`. Esta tela só tem uma coluna a mais, "Em negociação",
+ * que é um PEDAÇO do vendido (proposta, contrato, assinatura): `baldeDaEtapa` só separa esse pedaço,
+ * nunca tira nada do ocupado.
+ */
+function baldeDoEstoque(situacao: SituacaoDaUnidade): ApoloEnterpriseBucket {
+  const balde = baldeDaSituacao(situacao);
+  return balde === "vendido" && baldeDaEtapa(situacao) === "negociacao" ? "negociacao" : balde;
+}
+
+function valorDe(preco: null | number | string): number {
+  const n = typeof preco === "number" ? preco : Number(preco ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function contarEstoque(linhas: LinhaDoEstoque[], situacoes: SituacaoDasUnidades): Map<string, Cenario> {
+  const porEmpreendimento = new Map<string, Cenario>();
+
+  for (const linha of linhas) {
+    const id = String(linha.enterprise_id).trim();
+    const cenario = porEmpreendimento.get(id) ?? cenarioVazio();
+    const balde = baldeDoEstoque(situacoes.porLinha.get(linha.id)?.situacao ?? SITUACAO_FORA_DO_MAPA);
+    const valor = valorDe(linha.preco_tabela);
+
+    cenario[balde].units += 1;
+    cenario[balde].value += valor;
+    cenario.total.units += 1;
+    cenario.total.value += valor;
+
+    porEmpreendimento.set(id, cenario);
+  }
+
+  return porEmpreendimento;
 }

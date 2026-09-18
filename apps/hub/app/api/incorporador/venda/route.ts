@@ -38,6 +38,10 @@ import {
 } from "@/lib/hercules/planos-do-panteon";
 import { tipoProdutoDe, type TipoProduto } from "@/lib/hercules/produto-novo";
 import { reservaComoLinhaDoFluxo } from "@/lib/hercules/reserva";
+import {
+  lerSituacaoDasUnidades,
+  type SituacaoDaUnidade,
+} from "@/lib/hercules/situacao-da-unidade";
 import { ehColunaDaUnidadeVerticalAusente } from "@/lib/hercules/unidade-nova";
 
 /** As etapas da esteira que já PARARAM: virou credenciado, ou não seguiu. */
@@ -298,6 +302,28 @@ export async function GET(request: Request) {
       if ((data?.length ?? 0) < PAGINA) break;
     }
 
+    // ── A SITUAÇÃO DE CADA UNIDADE, PELA RÉGUA ÚNICA ──────────────────────
+    //
+    // Lucas (18/09/2026): *"esses status tem que morar em um so lugar"* · *"quero é dentro do
+    // panteon tem que ter o mesmo status"*. A grade pintava por uma conta própria (a proposta viva
+    // da LINHA, ou o cadastro) que não via a linha antiga do terreno nem a reserva do evento; o
+    // Apolo pintava por outra. Agora as duas perguntam a `situacao-da-unidade.ts`.
+    //
+    // ⚠️ SÓ A SITUAÇÃO MUDA DE DONO. O funil, a lista de propostas e o VGV continuam saindo das
+    // propostas, como sempre: são outra pergunta (ver `agregarFluxo`).
+    //
+    // ⚠️ O ESCOPO É O MESMO DA GRADE (`idsDoEscopo`): a leitura traz o terreno inteiro de cada
+    // unidade pedida, e `porLinha` responde por qualquer linha dele.
+    //
+    // ⚠️ DISPARADA AQUI E ESPERADA LÁ EMBAIXO, para correr junto com planos, esteira e reservas em
+    // vez de somar o tempo dela ao da rota (limite de 30 s). O `then` com os dois ramos existe para
+    // a rejeição nunca ficar solta: se ela chegasse antes do `await` e outra leitura lançasse no
+    // meio, seria uma rejeição sem dono no processo.
+    const situacaoPedida = lerSituacaoDasUnidades(supabase, [...idsDoEscopo]).then(
+      (lida) => ({ lida, ok: true as const }),
+      (erro: unknown) => ({ erro, ok: false as const }),
+    );
+
     // ── O código de cada lote no MAPA do pai ──────────────────────────────
     //
     // ⚠️ O MASTERPLAN DO PRODUTO DIVIDIDO É DO PAI, E OS CONTORNOS FALAM O CÓDIGO DO PAI
@@ -489,6 +515,19 @@ export async function GET(request: Request) {
       }
     }
 
+    // ⚠️ FALHA NA SITUAÇÃO DERRUBA A TELA (503), ao contrário dos planos, das reservas e do piso
+    // de entrada logo acima. Sem ela a grade não tem como saber quem está livre, e as duas saídas
+    // seriam piores do que o erro: voltar à conta antiga pintaria de verde o lote reservado no
+    // evento (é o defeito que esta leitura conserta), e pintar tudo de ocupado acenderia
+    // "Desbloquear" em todo lote da tela. Lote vendido oferecido de novo não tem volta; uma tela
+    // que pede para recarregar tem.
+    const situacao = await situacaoPedida;
+    if (!situacao.ok) throw situacao.erro;
+    const situacaoPorUnidade = new Map<string, SituacaoDaUnidade>();
+    for (const [linha, unidade] of situacao.lida.porLinha) {
+      situacaoPorUnidade.set(linha, unidade.situacao);
+    }
+
     return NextResponse.json(
       {
         data: {
@@ -496,6 +535,7 @@ export async function GET(request: Request) {
             cads,
             periodo,
             propostas: [...reservas, ...propostas],
+            situacaoPorUnidade,
             tiposDeProduto,
             unidades,
           }),

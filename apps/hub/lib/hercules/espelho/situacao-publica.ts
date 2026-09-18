@@ -4,106 +4,93 @@
 // proposta, contrato) e verde para disponivel"* · *"esse é o padrão externo, o interno é o que
 // desenhamos e que está hoje com as cores referente aos status"*.
 //
-// ⚠️ A FONTE É O PANTEON, E SÓ ELE. Lucas (10/09/2026): *"nada de olhar no c2x"* · *"temo
-// cadastro de unidades"*. É a virada que ele anunciou em 09/09: o Panteon deixa de refletir o
-// legado e passa a ser o registro. Então o cadastro é `hercules_unidades` e o processo são
-// `hercules_propostas` e `hercules_reservas` — nenhuma consulta ao MySQL entra neste caminho.
+// ⚠️ ESTE ARQUIVO NÃO DECIDE SITUAÇÃO NENHUMA. Quem decide é `../situacao-da-unidade.ts`, a régua
+// única do Panteon (Lucas, 18/09/2026: *"esses status tem que morar em um so lugar"* · *"quero é
+// dentro do panteon tem que ter o mesmo status"*). Aqui só se traduz a resposta dela em duas cores:
+// VERDE SE E SÓ SE `estaLivre`. Proposta, contrato, assinatura, faturado, reserva, vendido e
+// bloqueado saem todos azul, que é exatamente o pedido de 09/09.
 //
-// ⚠️ E POR ISSO A REGRA É FAIL-CLOSED. Verde é uma AFIRMAÇÃO para quem está de fora: "este lote
-// está à venda". Só sai verde o que o cadastro diz `disponivel` E não tem nada do processo por
-// cima. Qualquer outra coisa — situação desconhecida, proposta aberta, reserva viva, cadastro em
-// branco — sai azul. O erro caro desta tela é anunciar disponível um lote que já tem dono: o
-// cliente escolhe, o corretor promete, e alguém tem de desdizer.
+// ⚠️ O QUE HAVIA AQUI ANTES, E POR QUE SAIU. O espelho tinha régua própria, e errada nos dois sinais
+// de processo: `hercules_propostas.aberta` (que NUNCA volta a falso depois que a proposta morre, então
+// proposta cancelada seguia travando o lote) e `hercules_reservas.situacao = 'reservada'` (valor que a
+// tabela não usa: a reserva viva é `ativa`, então reserva nenhuma do Hércules pintava o lote de azul).
+// Resultado: o link público e a tela Venda discordavam do mesmo lote. Nenhuma régua daqui para a
+// frente; se a cor pública estiver errada, o defeito está na régua única, e é lá que se corrige.
 //
-// Medido em 10/09/2026 nos oito masterplans publicados: a régua trava 3 lotes que o cadastro
-// dava como disponíveis mas têm proposta aberta (1 no Veredas, 2 no Vale do Ouro). É exatamente
-// o pedido do Lucas em 09/09: *"tem que comunicar com nosso processo, reservou, proposta, tem
-// que refletir no espelho"*.
+// ⚠️ FAIL-CLOSED, SEMPRE. Verde é uma AFIRMAÇÃO para quem está de fora: "este lote está à venda".
+// Linha que a leitura da situação não conhece, lote sem registro, dúvida sobre qual terreno o
+// quadrado representa: tudo sai azul. O erro caro desta tela é anunciar disponível um lote que já
+// tem dono: o cliente escolhe, o corretor promete, e alguém tem de desdizer.
 
-/** As duas cores do público. Nada de status intermediário aqui — isso é o espelho INTERNO. */
+import { estaLivre, type SituacaoDaUnidade } from "../situacao-da-unidade";
+
+/** As duas cores do público. Nada de status intermediário aqui: isso é o espelho INTERNO. */
 export type SituacaoPublica = "disponivel" | "indisponivel";
 
-export type SinaisDaUnidade = {
-  /**
-   * Este registro é o do FILHO (a carteira que vende), e não o do pai (o espelho histórico).
-   *
-   * ⚠️ OS DOIS REGISTROS DO MESMO TERRENO NÃO VALEM IGUAL, e tratá-los como iguais foi o
-   * primeiro desenho errado deste arquivo. Medido em 10/09/2026 no Vale do Ouro: o pai (VLO)
-   * está parado e diz `vendida` em 4 lotes que os filhos dão como `disponivel`. Somar os dois
-   * como pares esconderia 4 lotes à venda — o mesmo estrago do `price <= 1`
-   * ([[reference_bi_preco_um_real_esconde_estoque]]). Quem vende é o filho, e é ele que sabe.
-   */
-  doFilho: boolean;
-  /** `hercules_propostas.aberta` — proposta viva sobre este lote. */
-  propostaAberta: boolean;
-  /** `hercules_reservas.situacao = 'reservada'`. */
-  reservaViva: boolean;
-  /** `hercules_unidades.situacao`: disponivel · reservada · vendida · bloqueada. */
-  situacaoNoCadastro: null | string;
+/**
+ * A cor pública de uma situação da régua única.
+ *
+ * ⚠️ `undefined` É "NÃO CONSEGUI LER", e sai azul. Nunca devolve verde por ausência.
+ */
+export function corPublica(situacao: SituacaoDaUnidade | undefined): SituacaoPublica {
+  return situacao !== undefined && estaLivre(situacao) ? "disponivel" : "indisponivel";
+}
+
+/** Uma linha de `hercules_unidades` que caiu no quadrado de um lote do espelho. */
+export type LinhaDoLote = {
+  /** A linha é do empreendimento PAI, o dono do desenho (`inkscape:label` é o código dele). */
+  doPai: boolean;
+  /** `hercules_unidades.id`. É por ele que a régua única responde (`porLinha`). */
+  id: string;
 };
 
-/** O único valor do cadastro que pode virar verde. */
-const CADASTRO_DISPONIVEL = "disponivel";
+/** O pedaço da leitura da régua única que esta função consulta. */
+export type TerrenoComSituacao = { id: string; situacao: SituacaoDaUnidade };
 
 /**
- * A ordem das perguntas É a regra:
+ * A cor de UM quadrado do espelho: as linhas de `hercules_unidades` que o espelho juntou pela
+ * quadra e pelo lote (ou torre e apartamento), respondidas pela régua única.
  *
- * 1. **Processo do Panteon primeiro.** Reserva viva ou proposta aberta tornam o lote
- *    indisponível mesmo que o cadastro ainda não tenha sido virado — o cadastro é carregado em
- *    lote, e o processo acontece agora.
- * 2. **Só então o cadastro**, e apenas o valor exato `disponivel`. Valor desconhecido (alguém
- *    acrescenta um estado novo amanhã) NÃO vira verde: vira azul, calado.
+ * ⚠️ QUEM RESPONDE É O TERRENO DO DESENHO. O público vê o loteamento pelo masterplan do PAI, e o
+ * lote do desenho é o código do pai (VLO0305). A régua única já resolve esse código para o terreno
+ * inteiro: a linha antiga do pai aponta (`espelho_de`) para a viva da gleba, e `porLinha` devolve a
+ * mesma resposta para as duas, com proposta e reserva de qualquer uma delas na conta. Então:
+ *
+ * 1. **Linha que a régua não conhece: azul.** É uma linha que a leitura não trouxe (outro workspace,
+ *    unidade criada entre as duas leituras). Sem resposta, não há afirmação de verde.
+ * 2. **Linha do pai que aponta para uma gleba: é esse terreno que responde.** É o caso do Vale do
+ *    Ouro com os lotes que VOC e VOR disputam: a migration 0162 apontou o pai para a gleba que vende
+ *    (a não bloqueada), e a outra linha do quadrado é outro cadastro, que a régua única trata como
+ *    outra unidade. Somar as duas deixaria azul um lote que a carteira viva vende.
+ * 3. **Sem esse ponteiro, o quadrado junta linhas que o Panteon não diz serem o mesmo terreno**
+ *    (pai sem gleba cadastrada, ou produto dividido que a marca ainda não alcança). Verde só se
+ *    TODAS estiverem livres. Na dúvida, azul.
  */
-export function situacaoPublica(sinais: SinaisDaUnidade): SituacaoPublica {
-  if (sinais.reservaViva || sinais.propostaAberta) return "indisponivel";
-  return sinais.situacaoNoCadastro === CADASTRO_DISPONIVEL
-    ? "disponivel"
-    : "indisponivel";
-}
-
-/**
- * A situação de um LOTE que existe em mais de um cadastro.
- *
- * ⚠️ O MESMO TERRENO EXISTE DUAS VEZES NO BANCO. Medido em 10/09/2026: o Vale do Ouro tem 298
- * unidades no pai (VLO) e 301 nos filhos (VOC, VOL, VOR) para os MESMOS 298 lotes; o Lagoa
- * Bonita tem 495 no pai e 412 nos filhos. É o resíduo de duas cargas
- * ([[reference_hercules_unidades_e_um_retrato_parado]]) e não uma decisão de modelo. A chave real
- * do lote é `quadra` + `lote`, que é única nos dois lados — o CÓDIGO não serve, porque o pai
- * grava `VLO0101` e o filho `VOL0101` para o mesmo terreno.
- *
- * A regra tem dois degraus, e a ordem importa:
- *
- * 1. **O processo trava, venha de onde vier.** Proposta aberta ou reserva viva em QUALQUER
- *    registro do terreno pinta azul. Aqui pai e filho valem igual, porque processo é fato: uma
- *    proposta lançada no pai vale tanto quanto uma lançada no filho.
- * 2. **O cadastro do FILHO decide, quando existe.** É a regra que a casa já aplica em
- *    `expandir-id-do-painel.ts` (*"quando o pai tem filho autorizado, o pai É os filhos"*) e o
- *    modelo do Lucas: o pai empresta o desenho, os filhos dizem o que aconteceu. Sem filho — os
- *    83 lotes do Lagoa Bonita que só existem no pai —, o pai responde, que é o único que tem.
- */
-export function situacaoDoLoteReal(
-  registros: readonly SinaisDaUnidade[],
+export function situacaoPublicaDoLote(
+  linhas: readonly LinhaDoLote[],
+  porLinha: ReadonlyMap<string, TerrenoComSituacao>,
 ): SituacaoPublica {
-  if (registros.length === 0) return "indisponivel";
+  if (linhas.length === 0) return "indisponivel";
 
-  // Degrau 1: o processo trava o terreno inteiro.
-  if (registros.some((r) => r.reservaViva || r.propostaAberta)) {
-    return "indisponivel";
+  const todos = new Map<string, SituacaoDaUnidade>();
+  const doDesenho = new Map<string, SituacaoDaUnidade>();
+
+  for (const linha of linhas) {
+    const terreno = porLinha.get(linha.id);
+    if (!terreno) return "indisponivel";
+    todos.set(terreno.id, terreno.situacao);
+    // O pai que responde por OUTRA linha é o pai apontando para a gleba viva.
+    if (linha.doPai && terreno.id !== linha.id) doDesenho.set(terreno.id, terreno.situacao);
   }
 
-  // Degrau 2: quem responde é o filho; só na ausência dele, o pai.
-  const filhos = registros.filter((r) => r.doFilho);
-  const quemResponde = filhos.length > 0 ? filhos : registros;
-
-  // Entre filhos, `some` e não `every`: quando um lote migra de carteira, o cadastro ANTIGO fica
-  // `bloqueada` e o novo carrega o estado real — medido nos 3 lotes que VOC e VOR disputam. Exigir
-  // unanimidade deixaria azul um lote que a carteira viva dá como disponível.
-  return quemResponde.some((r) => r.situacaoNoCadastro === CADASTRO_DISPONIVEL)
-    ? "disponivel"
-    : "indisponivel";
+  const quemResponde = doDesenho.size > 0 ? doDesenho : todos;
+  for (const situacao of quemResponde.values()) {
+    if (corPublica(situacao) !== "disponivel") return "indisponivel";
+  }
+  return "disponivel";
 }
 
-/** Quantos de cada cor — a legenda do espelho. */
+/** Quantos de cada cor: a legenda do espelho. */
 export function contarPublicas(
   situacoes: Iterable<SituacaoPublica>,
 ): Record<SituacaoPublica, number> {

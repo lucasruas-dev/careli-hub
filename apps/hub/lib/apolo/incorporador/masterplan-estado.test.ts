@@ -3,7 +3,21 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { aplicarEstadoAtual, type EstadoDoLote, MAPA, situacaoDoMapa } from "./masterplan-estado";
+import type {
+  SituacaoDasUnidades,
+  SituacaoDaUnidade,
+  UnidadeComSituacao,
+} from "@/lib/hercules/situacao-da-unidade";
+
+import { situacoesDoArquivo } from "./masterplan-dois-estados";
+import {
+  aplicarEstadoAtual,
+  corDoMapa,
+  type EstadoDoLote,
+  estadoDosLotes,
+  type LoteDoC2x,
+  MAPA,
+} from "./masterplan-estado";
 import { chaveDoLote, lerLinhasDoMapa, recortarMasterplan } from "./masterplan-recorte";
 
 // O TESTE QUE IMPORTA É O DOS ARQUIVOS DE VERDADE. A reescrita acontece linha a linha dentro de um
@@ -44,29 +58,160 @@ function comoEstaNoHtml(
   return fora;
 }
 
-describe("situacaoDoMapa", () => {
-  it("usa a mesma régua da tela de Vendas", () => {
-    // Os cinco status do C2X caindo nas quatro cores do mapa.
-    expect(situacaoDoMapa(1, 0)).toBe(MAPA.DISPONIVEL);
-    expect(situacaoDoMapa(2, 0)).toBe(MAPA.RESERVADO);
-    // "Em negociação" pinta de vendido: é assim que a tela de Vendas conta os 91 do VOL.
-    expect(situacaoDoMapa(3, 0)).toBe(MAPA.VENDIDO);
-    expect(situacaoDoMapa(4, 0)).toBe(MAPA.VENDIDO);
-    expect(situacaoDoMapa(5, 0)).toBe(MAPA.BLOQUEADO);
+// ── A SITUAÇÃO VEM DA RÉGUA ÚNICA (Lucas, 18/09/2026: *"esses status tem que morar em um so lugar"*)
+//
+// Até aqui este arquivo tinha a própria régua (`situacaoDoMapa`, sobre o `sale_status_id` do C2X), e o
+// lote reservado ou em proposta no Hércules abria verde no mapa. Os testes abaixo são a troca: a cor
+// sai de `situacao-da-unidade.ts`, e o C2X entra só com escopo, comprador e preço.
+
+function unidade(codigo: string, situacao: SituacaoDaUnidade): UnidadeComSituacao {
+  return {
+    codigo,
+    enterpriseId: "37",
+    id: `viva-${codigo}`,
+    lote: null,
+    origemC2xId: null,
+    quadra: null,
+    situacao,
+  };
+}
+
+/** O que `lerSituacaoDasUnidades` devolveria: cada unidade respondendo pelos códigos e ids dados. */
+function situacoes(
+  entradas: Array<{ codigos?: string[]; origens?: string[]; unidade: UnidadeComSituacao }>,
+): Pick<SituacaoDasUnidades, "porCodigo" | "porOrigemC2x"> {
+  const porCodigo = new Map<string, UnidadeComSituacao>();
+  const porOrigemC2x = new Map<string, UnidadeComSituacao>();
+  for (const e of entradas) {
+    for (const c of e.codigos ?? []) porCodigo.set(c, e.unidade);
+    for (const o of e.origens ?? []) porOrigemC2x.set(o, e.unidade);
+  }
+  return { porCodigo, porOrigemC2x };
+}
+
+function lote(parcial: Partial<LoteDoC2x>): LoteDoC2x {
+  return {
+    atualizadoEm: 0,
+    chave: "3-05",
+    codigo: "VOC0305",
+    comprador: "FULANO DE TAL",
+    enterpriseId: "37",
+    origemC2xId: "5001",
+    preco: 140401,
+    ...parcial,
+  };
+}
+
+describe("corDoMapa", () => {
+  it("a régua única nas quatro cores do arquivo", () => {
+    expect(corDoMapa("disponivel")).toBe(MAPA.DISPONIVEL);
+    expect(corDoMapa("reservado")).toBe(MAPA.RESERVADO);
+    expect(corDoMapa("reservada")).toBe(MAPA.RESERVADO);
+    expect(corDoMapa("bloqueada")).toBe(MAPA.BLOQUEADO);
+    // Proposta, contrato, assinatura e faturado pintam de vendido: o mesmo agrupamento que o mapa
+    // sempre fez com o "em negociação" do legado.
+    for (const s of ["proposta", "contrato", "assinatura", "faturado", "vendida"] as const) {
+      expect(corDoMapa(s)).toBe(MAPA.VENDIDO);
+    }
+  });
+});
+
+describe("estadoDosLotes", () => {
+  it("⚠️ a cor é a do Panteon: lote reservado no Hércules sai reservado, e o LoteDoC2x nem tem status", () => {
+    const { estados, semSituacao } = estadoDosLotes(
+      [lote({})],
+      situacoes([{ codigos: ["VOC0305"], unidade: unidade("VOC0305", "reservado") }]),
+    );
+    expect(semSituacao).toBe(0);
+    expect(estados.get("3-05")).toEqual({
+      comprador: "FULANO DE TAL",
+      situacao: MAPA.RESERVADO,
+      valor: 140401,
+    });
   });
 
-  it("bloqueia pelo flag E pelo status, cada um por si", () => {
-    // O flag sozinho basta, mesmo com o status dizendo disponível.
-    expect(situacaoDoMapa(1, 1)).toBe(MAPA.BLOQUEADO);
-    // E o status 5 sozinho também: quem edita o legado à mão pode limpar um e esquecer o outro.
-    expect(situacaoDoMapa(5, 0)).toBe(MAPA.BLOQUEADO);
-    // O bloqueio ganha da venda — é o que tira o lote da oferta.
-    expect(situacaoDoMapa(4, 1)).toBe(MAPA.BLOQUEADO);
+  it("os bloqueados do Panteon deixam de sair verdes", () => {
+    const { estados } = estadoDosLotes(
+      [lote({ comprador: "" })],
+      situacoes([{ codigos: ["VOC0305"], unidade: unidade("VOC0305", "bloqueada") }]),
+    );
+    // Bloqueado grava valor zero, que é a convenção do arquivo.
+    expect(estados.get("3-05")).toEqual({ comprador: "", situacao: MAPA.BLOQUEADO, valor: 0 });
   });
 
-  it("trata status ausente como disponível, sem quebrar", () => {
-    expect(situacaoDoMapa(null, null)).toBe(MAPA.DISPONIVEL);
-    expect(situacaoDoMapa(0, 0)).toBe(MAPA.DISPONIVEL);
+  it("o código do pai e o da gleba respondem o mesmo terreno", () => {
+    // O masterplan do produto dividido é do pai: a sessão com VLO lê `VLO0305` no C2X, e a proposta
+    // mora na linha viva da gleba (`VOC0305`). `porCodigo` responde pelos dois.
+    const terreno = unidade("VOC0305", "contrato");
+    const { estados } = estadoDosLotes(
+      [lote({ codigo: "VLO0305", enterpriseId: "35", origemC2xId: "9305" })],
+      situacoes([{ codigos: ["VOC0305", "VLO0305"], unidade: terreno }]),
+    );
+    expect(estados.get("3-05")?.situacao).toBe(MAPA.VENDIDO);
+  });
+
+  it("sem código que case, acha pelo id do legado", () => {
+    const { estados, semSituacao } = estadoDosLotes(
+      [lote({ codigo: "RENOMEADO-NO-C2X", origemC2xId: "5001" })],
+      situacoes([{ origens: ["5001"], unidade: unidade("VOC0305", "proposta") }]),
+    );
+    expect(semSituacao).toBe(0);
+    expect(estados.get("3-05")?.situacao).toBe(MAPA.VENDIDO);
+  });
+
+  it("⚠️ lote que o Panteon não conhece NÃO sai livre", () => {
+    const { estados, semSituacao } = estadoDosLotes([lote({ codigo: null })], situacoes([]));
+    expect(semSituacao).toBe(1);
+    // Nem verde, nem com nome: bloqueado, sem comprador e sem preço.
+    expect(estados.get("3-05")).toEqual({ comprador: "", situacao: MAPA.BLOQUEADO, valor: 0 });
+  });
+
+  it("o nome do comprador só aparece em lote que o Panteon diz ter dono", () => {
+    // O C2X ainda tem proposta viva com nome, mas o Panteon diz livre: o nome sai junto.
+    const { estados } = estadoDosLotes(
+      [lote({ comprador: "NOME QUE FICOU NO LEGADO" })],
+      situacoes([{ codigos: ["VOC0305"], unidade: unidade("VOC0305", "disponivel") }]),
+    );
+    expect(estados.get("3-05")).toEqual({ comprador: "", situacao: MAPA.DISPONIVEL, valor: 140401 });
+  });
+
+  it("o R$ 1 do legado não vira preço no mapa", () => {
+    const { estados } = estadoDosLotes(
+      [lote({ comprador: "", preco: 1 })],
+      situacoes([{ codigos: ["VOC0305"], unidade: unidade("VOC0305", "disponivel") }]),
+    );
+    expect(estados.get("3-05")?.valor).toBe(0);
+  });
+
+  it("pai e gleba no mesmo escopo: o nome vem da linha que tem proposta, mesmo sendo a mais antiga", () => {
+    const terreno = unidade("VOC0305", "vendida");
+    const { estados } = estadoDosLotes(
+      [
+        lote({ atualizadoEm: 100, comprador: "COMPRADOR DA GLEBA" }),
+        // O pai foi tocado depois (a divisão) e não tem proposta nenhuma.
+        lote({ atualizadoEm: 999, codigo: "VLO0305", comprador: "", enterpriseId: "35", origemC2xId: "9305" }),
+      ],
+      situacoes([{ codigos: ["VOC0305", "VLO0305"], unidade: terreno }]),
+    );
+    expect(estados.get("3-05")).toEqual({
+      comprador: "COMPRADOR DA GLEBA",
+      situacao: MAPA.VENDIDO,
+      valor: 140401,
+    });
+  });
+
+  it("colisão entre terrenos diferentes: quem tem dono ganha do mais recente", () => {
+    const { estados } = estadoDosLotes(
+      [
+        lote({ atualizadoEm: 100 }),
+        lote({ atualizadoEm: 999, codigo: "VLO0305", comprador: "" }),
+      ],
+      situacoes([
+        { codigos: ["VOC0305"], unidade: unidade("VOC0305", "reservado") },
+        { codigos: ["VLO0305"], unidade: unidade("VLO0305", "bloqueada") },
+      ]),
+    );
+    expect(estados.get("3-05")?.situacao).toBe(MAPA.RESERVADO);
   });
 });
 
@@ -87,6 +232,7 @@ describe("aplicarEstadoAtual", () => {
     );
 
     const atualizado = aplicarEstadoAtual(html, estados);
+    expect(atualizado.escrito).toBe(true);
     expect(atualizado.semEstado).toBe(0);
 
     const depois = comoEstaNoHtml(atualizado.html);
@@ -235,9 +381,54 @@ describe("aplicarEstadoAtual", () => {
 
     const depois = comoEstaNoHtml(atualizado.html).get(chave);
     expect(depois?.valor).toBe(0);
-    // Situação fora das quatro cores cai no estado neutro, em vez de sumir da legenda.
-    expect(depois?.situacao).toBe(MAPA.DISPONIVEL);
+    // ⚠️ Situação fora da régua vai para o ÚLTIMO slot (ocupado), nunca para o 0: valor que não se
+    // entende não pode virar lote livre.
+    expect(depois?.situacao).toBe(MAPA.BLOQUEADO);
     expect(lerLinhasDoMapa(atualizado.html)?.desconhecidas).toBe(0);
+
+    for (const invalida of [-1, 1.5, Number.NaN]) {
+      const outro = aplicarEstadoAtual(
+        html,
+        new Map([[chave, { comprador: "", situacao: invalida, valor: 1 }]]),
+      );
+      expect(comoEstaNoHtml(outro.html).get(chave)?.situacao).toBe(MAPA.BLOQUEADO);
+    }
+  });
+
+  // ⚠️ O GARDEN TEM TRÊS SITUAÇÕES, E NÃO QUATRO: `['Disponível','Reservado','Vendido']`. Gravar `3`
+  // nele fazia o lote SUMIR do mapa (o `pintar()` de lá percorre `s<3` e `F.sit[3]` é `undefined`).
+  it("no Garden, o bloqueado vai para o último slot que o arquivo tem, e não some", () => {
+    const html = REAIS.find((r) => r.nome === "garden")?.html;
+    if (!html) return;
+    expect(situacoesDoArquivo(html)).toBe(3);
+
+    const chaves = (lerLinhasDoMapa(html)?.linhas ?? []).map((l) => l.chave);
+    const atualizado = aplicarEstadoAtual(
+      html,
+      new Map(chaves.map((c) => [c, { comprador: "", situacao: MAPA.BLOQUEADO, valor: 0 }])),
+    );
+
+    expect(atualizado.escrito).toBe(true);
+    for (const estado of comoEstaNoHtml(atualizado.html).values()) {
+      expect(estado.situacao).toBe(2);
+    }
+    expect(recortarMasterplan(atualizado.html, new Set(chaves)).ok).toBe(true);
+  });
+
+  it("arquivo que não declara quantas situações conhece não é escrito, e quem chama recusa", () => {
+    const semSlots = [
+      "<script>",
+      "const DADOS=[",
+      '[1,"01",0,426.31,140401,"","10,10 20,10 20,20"]];',
+      "</script>",
+    ].join("\n");
+
+    const atualizado = aplicarEstadoAtual(
+      semSlots,
+      new Map([["1-01", { comprador: "X", situacao: MAPA.VENDIDO, valor: 1 }]]),
+    );
+    expect(atualizado.escrito).toBe(false);
+    expect(atualizado.html).toBe(semSlots);
   });
 });
 
@@ -279,6 +470,8 @@ describe("o DADOS reescrito continua sendo um array válido", () => {
     );
 
     const dados = parseDados(aplicarEstadoAtual(html, estados).html);
+    // O Garden tem três situações: o `3` dele cai no último slot (ver o teste do Garden acima).
+    const ultimo = (situacoesDoArquivo(html) ?? 4) - 1;
 
     // Uma linha por lote, sete campos cada, e nada de `undefined` no meio.
     expect(dados.length).toBe(linhas.length);
@@ -286,7 +479,7 @@ describe("o DADOS reescrito continua sendo um array válido", () => {
       expect(Array.isArray(linha)).toBe(true);
       const campos = linha as unknown[];
       expect(campos.length).toBe(7);
-      expect(campos[2]).toBe(i % 4);
+      expect(campos[2]).toBe(Math.min(i % 4, ultimo));
       expect(campos[4]).toBe(i * 1000);
       expect(typeof campos[5]).toBe("string");
       // O polígono é o desenho e não pode ter sido tocado.

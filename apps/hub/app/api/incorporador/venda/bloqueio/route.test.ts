@@ -51,17 +51,31 @@ describe("as travas do bloqueio", () => {
     expect(ROTA).toContain("unidade.espelho_de");
   });
 
-  it("pergunta pelo TERRENO, e não só pela linha", () => {
-    // ⚠️ VOC0305 está `disponivel` com zero propostas, e o gêmeo VLO0305 tem reserva viva. Sem o
-    // `.in`, a rota bloqueia o lote com a reserva ativa por baixo.
-    expect(ROTA).toContain('.eq("espelho_de", unidade.id)');
-    expect(ROTA).toContain('.in("unidade_id", ');
+  it("⚠️ \"está livre?\" é a régua ÚNICA, a mesma que pinta a grade (Lucas, 18/09/2026)", () => {
+    // A régua pergunta pelo TERRENO (VOC0305 livre com o gêmeo VLO0305 em proposta), pela ETAPA (e
+    // não por `aberta`, que nunca volta para false) e pela RESERVA do Hércules e do evento. O
+    // comportamento está provado em route.comportamento.test.ts; aqui, que a rota não voltou a
+    // fazer a conta dela.
+    expect(ROTA).toContain('from "@/lib/hercules/situacao-da-unidade"');
+    expect(ROTA).toContain("lerSituacaoDasUnidades(admin, ");
+    expect(ROTA).toContain("estaLivre(situacao)");
+    expect(ROTA).not.toContain('.from("hercules_propostas")');
+    expect(ROTA).not.toContain('.eq("aberta"');
+    expect(ROTA).not.toContain('unidade.situacao !== "disponivel"');
   });
 
-  it("descarta as propostas mortas pela ETAPA, não por `aberta`", () => {
-    // `aberta` nunca volta para false: 20 propostas mortas seguem marcadas.
-    expect(ROTA).toContain('"cancelado","distrato"');
-    expect(ROTA).not.toContain('.eq("aberta"');
+  it("⚠️ situação que não se leu não é livre", () => {
+    expect(ROTA).toContain("if (!situacao)");
+  });
+
+  it("a conferência vem ANTES da escrita, nos dois verbos", () => {
+    const [post, del] = ROTA.split("export async function DELETE");
+    for (const verbo of [post ?? "", del ?? ""]) {
+      const conferencia = verbo.indexOf("await situacaoCanonica(admin, unidade)");
+      const escrita = verbo.indexOf(".update(");
+      expect(conferencia).toBeGreaterThan(-1);
+      expect(escrita).toBeGreaterThan(conferencia);
+    }
   });
 
   it("grava com UPDATE condicional e confere o que casou", () => {

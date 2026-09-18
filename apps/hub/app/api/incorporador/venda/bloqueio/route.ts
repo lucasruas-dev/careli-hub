@@ -9,7 +9,14 @@ import {
   motivoDoBloqueio,
   type PedidoDeBloqueio,
 } from "@/lib/hercules/bloqueio-de-unidade";
+import { ETAPAS_DO_FLUXO } from "@/lib/hercules/fluxo-de-venda";
 import { lerComColunasDoApartamento, nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
+import {
+  estaLivre,
+  lerSituacaoDasUnidades,
+  rotuloDaSituacao,
+  type SituacaoDaUnidade,
+} from "@/lib/hercules/situacao-da-unidade";
 
 // O BLOQUEIO DA UNIDADE — o coordenador tira um lote da venda, com o motivo escrito.
 //
@@ -73,6 +80,33 @@ async function unidadeDoBloqueio(
       .maybeSingle(),
   );
   return (data ?? null) as unknown as null | UnidadeDoBloqueio;
+}
+
+/**
+ * A situação do TERRENO desta unidade, pela régua única (`situacao-da-unidade.ts`).
+ *
+ * ⚠️ É A MESMA RESPOSTA QUE A GRADE MOSTRA, e é por isso que a rota não faz mais a conta dela.
+ * Lucas (18/09/2026): *"esses status tem que morar em um so lugar"*. A régua já pergunta pelo
+ * terreno inteiro (a linha viva e a antiga do pai, que aponta para ela por `espelho_de`) e já
+ * enxerga o que a conta antiga desta rota não via: a reserva do Hércules e a do evento de
+ * lançamento (`prometeu_reservas`). Um lote reservado no evento, sem proposta, passava pelo
+ * bloqueio como se estivesse livre.
+ *
+ * ⚠️ NULO = NÃO SE SABE, e quem chama trata como ocupado. A leitura lê o empreendimento da unidade;
+ * ela só falta ali numa corrida (a linha mudou entre as duas leituras). Falha de leitura LANÇA, e o
+ * `catch` da rota responde 500 sem gravar nada.
+ */
+async function situacaoCanonica(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  unidade: UnidadeDoBloqueio,
+): Promise<null | SituacaoDaUnidade> {
+  const { porLinha } = await lerSituacaoDasUnidades(admin, [String(unidade.enterprise_id ?? "")]);
+  return porLinha.get(unidade.id)?.situacao ?? null;
+}
+
+/** A situação é um passo do caminho da venda (reserva, proposta, contrato, assinatura, faturado)? */
+function emProcessoDeVenda(situacao: SituacaoDaUnidade): boolean {
+  return (ETAPAS_DO_FLUXO as readonly string[]).includes(situacao);
 }
 
 /** O nome da unidade para a resposta, com as colunas do prédio quando vieram. */
@@ -144,57 +178,35 @@ export async function POST(request: Request) {
       );
     }
 
-    // ⚠️ AQUI A PERGUNTA É PELA `situacao`, E ELA NÃO BASTA SOZINHA — a trava de verdade é o UPDATE
-    // condicional abaixo. Esta conferência existe para dar uma FRASE a quem clicou; sem ela, o
-    // update casaria zero linhas e a resposta seria um "não deu" sem motivo.
-    if (unidade.situacao !== "disponivel") {
+    // ⚠️ SÓ BLOQUEIA LOTE LIVRE, E QUEM DIZ SE ESTÁ LIVRE É A RÉGUA ÚNICA — a mesma que pinta a
+    // grade. Ela já responde pelo que esta rota perguntava na mão, e pelo que não perguntava:
+    //   • a proposta viva ganha do cadastro (38 unidades estão `bloqueada` no cadastro com proposta
+    //     viva; o inverso, `disponivel` com proposta andando, é o que o Lucas proibiu: *"não pode
+    //     ter nenhuma proposta, reserva, contrato"*);
+    //   • a proposta viva é pela ETAPA, e não por `aberta`, que nunca volta para false;
+    //   • a pergunta é pelo TERRENO, e não pela linha: `VOC0305` (viva, sem proposta) tinha o gêmeo
+    //     `VLO0305` (antigo) com proposta viva desde 08/09 (medido em 14/09/2026);
+    //   • e a RESERVA, do Hércules ou do evento de lançamento, que a conta antiga não via.
+    //
+    // ⚠️ ESTA CONFERÊNCIA DÁ A FRASE; A TRAVA DE VERDADE CONTINUA SENDO O UPDATE CONDICIONAL abaixo.
+    // Entre esta leitura e a gravação cabe uma reserva de outra pessoa, e só o banco decide isso.
+    // Sem a conferência, o update casaria zero linhas e a resposta seria um "não deu" sem motivo.
+    //
+    // ⚠️ SITUAÇÃO QUE NÃO SE LEU NÃO É LIVRE. Nulo (a unidade não veio na leitura) recusa; falha de
+    // leitura lança e cai no `catch` (500), sem gravar nada.
+    const situacao = await situacaoCanonica(admin, unidade);
+    if (!situacao) {
       return NextResponse.json(
-        {
-          error: `Esta unidade está ${unidade.situacao}. Só unidade disponível pode ser bloqueada.`,
-        },
+        { error: "Não foi possível confirmar a situação desta unidade. Recarregue a tela." },
         { status: 409 },
       );
     }
-
-    // ⚠️ E A PROPOSTA VIVA GANHA DO CADASTRO. A coluna `situacao` e a etapa do fluxo JÁ DISCORDAM em
-    // produção: 38 unidades estão `bloqueada` no cadastro e têm proposta viva. O inverso — cadastro
-    // `disponivel` com proposta andando — é o caso que o Lucas proibiu em palavras ("não pode ter
-    // nenhuma proposta, reserva, contrato"), e `situacao` sozinha não o enxerga.
-    //
-    // ⚠️ A PERGUNTA É PELA ETAPA, E NÃO POR `aberta`: medido, `hercules_propostas.aberta` nunca
-    // volta para false, e 20 propostas mortas (distrato, cancelado) continuam marcadas como
-    // abertas. Usar `aberta` barraria o bloqueio em lote que está livre de verdade.
-    //
-    // ⚠️ E A PERGUNTA É PELO TERRENO, NÃO PELA LINHA — foi o defeito que a revisão pegou. O mesmo
-    // lote tem DUAS linhas nos produtos divididos, e a proposta pode morar na OUTRA. Medido em
-    // 14/09/2026, o caso exato: `VOC0305` (a linha viva, `espelho_de` nulo) está `disponivel` com
-    // ZERO propostas, e o gêmeo `VLO0305` — o registro antigo, que aponta para ela — está
-    // `reservada` com UMA proposta viva desde 08/09. Perguntando só pela linha viva, a rota
-    // bloquearia o lote com a reserva ativa por baixo: exatamente o que o pedido proíbe.
-    const { data: gemeas } = await admin
-      .from("hercules_unidades")
-      .select("id")
-      .eq("workspace_id", WORKSPACE)
-      .eq("espelho_de", unidade.id);
-
-    const linhasDoTerreno = [
-      unidade.id,
-      ...(Array.isArray(gemeas) ? gemeas.map((g) => String((g as { id: string }).id)) : []),
-    ];
-
-    const { data: vivas } = await admin
-      .from("hercules_propostas")
-      .select("id,etapa")
-      .eq("workspace_id", WORKSPACE)
-      .in("unidade_id", linhasDoTerreno)
-      .not("etapa", "in", '("cancelado","distrato")')
-      .limit(1);
-
-    if (Array.isArray(vivas) && vivas.length > 0) {
+    if (!estaLivre(situacao)) {
       return NextResponse.json(
         {
-          error:
-            "Esta unidade tem um processo de venda em andamento. Cancele antes de bloquear o lote.",
+          error: emProcessoDeVenda(situacao)
+            ? `Esta unidade tem um processo de venda em andamento (${rotuloDaSituacao(situacao)}). Cancele antes de bloquear o lote.`
+            : `Situação da unidade: ${rotuloDaSituacao(situacao)}. Só unidade disponível pode ser bloqueada.`,
         },
         { status: 409 },
       );
@@ -319,30 +331,21 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // A mesma prova do bloqueio, ao contrário: só volta ao estoque o que não tem nada em cima — e
-    // pelas DUAS linhas do terreno, pelo mesmo motivo de lá.
-    const { data: gemeas } = await admin
-      .from("hercules_unidades")
-      .select("id")
-      .eq("workspace_id", WORKSPACE)
-      .eq("espelho_de", unidade.id);
-
-    const { data: vivas } = await admin
-      .from("hercules_propostas")
-      .select("id,etapa")
-      .eq("workspace_id", WORKSPACE)
-      .in("unidade_id", [
-        unidade.id,
-        ...(Array.isArray(gemeas) ? gemeas.map((g) => String((g as { id: string }).id)) : []),
-      ])
-      .not("etapa", "in", '("cancelado","distrato")')
-      .limit(1);
-
-    if (Array.isArray(vivas) && vivas.length > 0) {
+    // A mesma prova do bloqueio, ao contrário: só volta ao estoque o que não tem nada em cima, pelo
+    // terreno inteiro e pela MESMA régua da grade.
+    //
+    // ⚠️ COM O CADASTRO `bloqueada`, A RÉGUA SÓ DIZ `bloqueada` SE NÃO HOUVER NADA VIVO: proposta
+    // viva em qualquer linha do terreno responde a etapa dela, e reserva viva (do Hércules ou do
+    // evento) responde `reservado`. Qualquer outra resposta, ou nenhuma (a unidade não veio na
+    // leitura), recusa. Falha de leitura lança e cai no `catch`, sem gravar nada.
+    const situacao = await situacaoCanonica(admin, unidade);
+    if (situacao !== "bloqueada") {
       return NextResponse.json(
         {
           error:
-            "Esta unidade tem um processo de venda em andamento e não pode voltar ao estoque.",
+            situacao && emProcessoDeVenda(situacao)
+              ? "Esta unidade tem um processo de venda em andamento e não pode voltar ao estoque."
+              : "Não foi possível confirmar a situação desta unidade. Recarregue a tela.",
         },
         { status: 409 },
       );

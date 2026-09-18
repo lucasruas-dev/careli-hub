@@ -1,4 +1,17 @@
-// EM QUE BALDE A UNIDADE CAI — a regra única, para a tela de Unidades e para os cards do topo.
+// EM QUE BALDE A UNIDADE CAI — o vocabulário dos baldes do Apolo, e a régua ANTIGA do C2X.
+//
+// ⚠️ A SITUAÇÃO DA UNIDADE NÃO É MAIS DECIDIDA AQUI (Lucas, 18/09/2026: *"esses status tem que morar
+// em um so lugar"* · *"no c2x não precisa olhar"*). A régua única mora em
+// `lib/hercules/situacao-da-unidade.ts` (`lerSituacaoDasUnidades` + `baldeDaSituacao`), e é ela que
+// pinta a aba Unidades, o masterplan interno e o espelho. As funções abaixo que leem
+// `sale_status_id`/`sale_blocked` ficam SÓ enquanto ainda há leitor antigo, marcadas `@deprecated`:
+//   • `baldeDaUnidade`: sem leitor de tela desde a migração (a aba Unidades passou a usar
+//     `baldeDaSituacao`). Sobra o teste; pode sair quando ninguém mais a importar.
+//   • `sqlDoBalde`: ainda soma os CARDS do topo da aba Empreendimentos, dentro do SELECT do C2X.
+//     Com a lista já no Panteon, card e lista voltam a poder discordar: é a pendência que falta.
+// O que continua valendo sem ressalva é o VOCABULÁRIO: `BaldeDaUnidade` e `rotuloDoBalde`.
+//
+// O histórico, que explica por que este arquivo nasceu:
 //
 // ⚠️ ELA EXISTE PORQUE AS DUAS DISCORDAVAM. Os cards eram somados em SQL e a lista era
 // classificada em TypeScript, cada um com sua regra, e em 28/08/2026 o Villa Paris entregou a
@@ -38,6 +51,10 @@ export const SALE_STATUS = {
 } as const;
 
 /**
+ * @deprecated A régua do C2X. A situação da unidade sai de `lib/hercules/situacao-da-unidade.ts`
+ * (`baldeDaSituacao` dá os mesmos baldes a partir do Panteon). Não ganhe leitor novo: o lote
+ * reservado, em proposta ou bloqueado no Hércules sai "disponível" por aqui.
+ *
  * A ordem, e o porquê de cada degrau:
  *
  * 1. **Vendido primeiro** — é definitivo, não vira outra coisa.
@@ -64,6 +81,10 @@ export function baldeDaUnidade(sinais: SinaisDaUnidade): BaldeDaUnidade {
 }
 
 /**
+ * @deprecated A régua do C2X, em SQL. Ainda soma os cards da aba Empreendimentos
+ * (`loadApoloEnterprises`), e por isso não saiu; a contagem certa é a dos baldes de
+ * `baldeDaSituacao` sobre `lerSituacaoDasUnidades`, que não cabe dentro de uma query do MySQL.
+ *
  * O MESMO encadeamento, em SQL, para a agregação dos cards.
  *
  * ⚠️ Não sabe da reserva do Panteon — ela vive no Supabase e não dá para juntar numa query do

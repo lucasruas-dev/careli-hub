@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
+import {
+  catalogoDeEmpreendimentos,
+  type EmpreendimentoDoCatalogo,
+} from "@/lib/apolo/catalogo-empreendimentos";
 import { codigosParaOC2x } from "@/lib/apolo/incorporador/cadastro-do-produto";
 import {
   pedidoPrecisaDeExpansao,
@@ -28,13 +31,14 @@ import {
   montarResumoDoProduto,
   type ResumoDoProduto,
 } from "@/lib/apolo/incorporador/resumo-do-produto";
-import {
-  estagioDaUnidadeDoPanteon,
-  lerUnidadesDoPanteon,
-} from "@/lib/apolo/incorporador/unidades-do-panteon";
 import { createApoloAdminClient } from "@/lib/apolo/server";
-import { loadApoloEnterpriseVendas } from "@/lib/apolo/vendas";
+import type { ApoloVendaStage } from "@/lib/apolo/vendas";
+import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { ehIdDoPai, expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
+import {
+  lerSituacaoDasUnidades,
+  type SituacaoDaUnidade,
+} from "@/lib/hercules/situacao-da-unidade";
 
 // O RESUMO DE UM PRODUTO DO HÉRCULES: a faixa do processo do coordenador.
 //
@@ -43,6 +47,13 @@ import { ehIdDoPai, expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-pai
 // o que esta rota devolve é o que o painel NÃO sabe: quem vende (imobiliárias, corretores), o
 // cadastro (CADs por etapa, credenciados) e a venda (unidades por estágio). Montagem pura em
 // `montarResumoDoProduto`, coberta por teste.
+//
+// ⚠️ A VENDA (unidades por estágio) SAI DA RÉGUA ÚNICA DESDE 18/09/2026, e não mais do C2X. Lucas:
+// *"esses status tem que morar em um so lugar"* · *"no c2x não precisa olhar"*. O funil contava o
+// estágio da última proposta do legado (e, no produto do Panteon, o `hercules_unidades.situacao`
+// cru): a reserva feita no Hércules ou no evento, e a proposta que anda no Panteon, não apareciam.
+// Agora cada unidade entra no estágio da situação dela (lib/hercules/situacao-da-unidade.ts), a
+// mesma que pinta a Venda e a aba Unidades da ficha.
 //
 // ⚠️ O ESCOPO VEM DO TOKEN, NUNCA DA URL. É a MESMA resolução do `emp` da rota de Vendas
 // (../../vendas/route.ts): `codigosDaSessao` é a única fonte dos códigos, o `emp` só REDUZ, e o
@@ -59,8 +70,8 @@ import { ehIdDoPai, expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-pai
 // INTEIRO e a sessão o tem. É a MESMA regra das rotas irmãs (produto/imobiliarias, contratos) e do
 // Board (`recorteDoProduto`): uma CAD gravada como "group:…" entra nas quatro abas ou em nenhuma.
 //
-// ⚠️ CUSTO. Uma leitura do C2X (a mesma da aba Vendas) + duas do Apolo, quando o coordenador ABRE
-// a ficha. Nada aqui pode virar polling.
+// ⚠️ CUSTO. A régua única (poucas páginas do Panteon) + duas leituras do Apolo, quando o
+// coordenador ABRE a ficha. Nada aqui pode virar polling.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -137,50 +148,110 @@ export async function GET(request: Request) {
   const admin = createApoloAdminClient();
   if (!admin) return indisponivel();
 
-  // (16/09/2026, revisão) O PRODUTO QUE SÓ EXISTE NO PANTEON CONTA AS UNIDADES DO PANTEON. O funil
-  // lia só o C2X, que não conhece o produto, e o Resumo saía zerado para o produto cadastrado pelo
-  // portal. Os códigos do C2X vão para lá; os próprios, para `hercules_unidades`
-  // (lib/apolo/incorporador/unidades-do-panteon.ts).
+  // OS IDS DO FUNIL, a partir dos CÓDIGOS do pedido — o mesmo recorte que o funil sempre contou.
   //
-  // ⚠️ O PRODUTO COM DONO MARCADO CONTA DO PANTEON TAMBÉM (D2, 16/09/2026), pela MESMA lista da aba
-  // Unidades (`lidosDoPanteon`): o funil e a tabela da mesma ficha não podem ler fontes diferentes.
+  // ⚠️ PELOS CÓDIGOS, E NÃO POR `enterpriseIds`. Os dois recortes quase sempre coincidem, mas não
+  // sempre: quem tem só a gleba do Fernando (LBF, "33") e abre a linha do grupo ("group:Lagoa
+  // Bonita") recebe `codes` = [LBF] e `enterpriseIds` vazio, porque a sessão não tem o grupo. O funil
+  // saía com as unidades do LBF; pelos ids, sairia zerado.
+  //
+  // Os produtos que o Panteon mantém (os próprios e os com DONO MARCADO, `lidosDoPanteon`, a mesma
+  // lista da aba Unidades) já vêm com o id; os outros códigos se traduzem pelo catálogo.
   const lidos = lidosDoPanteon({
     cadastro: doPanteon.cadastro,
     codes,
     idsDaSessao: doPanteon.idsDaSessao,
     proprios: doPanteon.proprios,
   });
-  const codesDoC2x = codigosParaOC2x(codes, lidos);
-  const idsDosPropriosDoPedido = lidos.map((lido) => lido.enterpriseId);
+  const doCatalogo = idsDosCodigos(catalogo, codigosParaOC2x(codes, lidos));
 
-  // As leituras correm juntas: mesmo escopo, um fetch só na tela.
-  const [esteira, imobiliarias, vendas, doPanteonNoPedido] = await Promise.all([
-    lerEsteiraDoEscopo(admin, enterpriseIds),
-    lerImobiliariasVinculadas(admin, enterpriseIds),
-    codesDoC2x.length > 0 ? loadApoloEnterpriseVendas(codesDoC2x) : Promise.resolve(null),
-    idsDosPropriosDoPedido.length > 0
-      ? lerUnidadesDoPanteon(admin, idsDosPropriosDoPedido).catch((erro: unknown) => {
-          console.error("[incorporador][produto/resumo] unidades do Panteon", erro);
-          return null;
-        })
-      : Promise.resolve([]),
-  ]);
-
-  // Qualquer fonte fora do ar derruba o resumo inteiro, de propósito: uma faixa com "0 vendidas"
-  // porque o C2X não respondeu é afirmação errada, e afirmação errada na tela do coordenador
-  // vira ligação.
-  if (!esteira.ok || !imobiliarias.ok || (vendas && !vendas.ok) || doPanteonNoPedido === null) {
+  // Código que ninguém traduz não tem unidade para contar: o funil sairia com "0" onde há venda.
+  if (doCatalogo.faltando.length > 0) {
+    console.error("[incorporador][produto/resumo] códigos sem id no catálogo", doCatalogo.faltando);
     return indisponivel();
   }
 
+  const idsDoFunil = [...new Set([...doCatalogo.ids, ...lidos.map((lido) => lido.enterpriseId)])];
+
+  // As leituras correm juntas: mesmo escopo, um fetch só na tela.
+  const [esteira, imobiliarias, situacoes] = await Promise.all([
+    lerEsteiraDoEscopo(admin, enterpriseIds),
+    lerImobiliariasVinculadas(admin, enterpriseIds),
+    // ⚠️ FALHA DA SITUAÇÃO DERRUBA O RESUMO. Mapa vazio viraria "0 reservas, 0 vendidas".
+    lerSituacaoDasUnidades(admin, idsDoFunil).catch((erro: unknown) => {
+      console.error("[incorporador][produto/resumo] situação das unidades", erro);
+      return null;
+    }),
+  ]);
+
+  // Qualquer fonte fora do ar derruba o resumo inteiro, de propósito: uma faixa com "0 vendidas"
+  // porque a leitura não respondeu é afirmação errada, e afirmação errada na tela do coordenador
+  // vira ligação.
+  if (!esteira.ok || !imobiliarias.ok || situacoes === null) {
+    return indisponivel();
+  }
+
+  // ⚠️ UMA UNIDADE POR TERRENO. `unidades` traz só a linha viva de cada lote: pedir o pai (VLO) e as
+  // glebas (VOC, VOL) juntos não conta o mesmo lote duas vezes.
   const data: ResumoDoProduto = montarResumoDoProduto({
     esteira: esteira.linhas,
     imobiliarias: imobiliarias.credenciadas,
-    unidades: [
-      ...(vendas?.ok ? vendas.data.units : []),
-      ...doPanteonNoPedido.map((linha) => ({ stage: estagioDaUnidadeDoPanteon(linha.situacao) })),
-    ],
+    unidades: situacoes.unidades.map((unidade) => ({ stage: estagioNoFunil(unidade.situacao) })),
   });
 
   return NextResponse.json({ data }, { headers: { "Cache-Control": "no-store" } });
+}
+
+/**
+ * Os ids do C2X (os que `hercules_unidades.enterprise_id` guarda) destes códigos, pelo catálogo:
+ * `codes[i]` é a sigla de `stageIds[i]`. Devolve também o código que o catálogo não achou.
+ *
+ * ⚠️ OS CÓDIGOS QUE O FUNIL NUNCA CONTOU CONTINUAM FORA (`EXCLUDED_ENTERPRISE_CODES`: teste,
+ * laboratório e o espelho do Lagoa Bonita). A leitura antiga do C2X os pulava; trocar a fonte da
+ * situação não é motivo para o recorte do funil mudar.
+ */
+function idsDosCodigos(
+  catalogo: readonly EmpreendimentoDoCatalogo[],
+  codes: readonly string[],
+): { faltando: string[]; ids: string[] } {
+  const chave = (code: string) => String(code ?? "").trim().toUpperCase();
+  const excluidos = new Set(EXCLUDED_ENTERPRISE_CODES.map(chave));
+  const alvo = new Set(codes.map(chave).filter((code) => code && !excluidos.has(code)));
+
+  const achados = new Set<string>();
+  const ids: string[] = [];
+  for (const emp of catalogo) {
+    emp.codes.forEach((code, indice) => {
+      const id = String(emp.stageIds[indice] ?? "").trim();
+      if (!id || !alvo.has(chave(code))) return;
+      achados.add(chave(code));
+      ids.push(id);
+    });
+  }
+
+  return { faltando: [...alvo].filter((code) => !achados.has(code)), ids };
+}
+
+/**
+ * O estágio do funil de uma situação da régua única.
+ *
+ * O vocabulário é quase o mesmo; as três traduções são estas:
+ *   • `reservada` (do cadastro, sem processo) é reserva, como `reservado`;
+ *   • `vendida` sem proposta viva é venda que acabou: conta em Vendidas, como `faturado`;
+ *   • `bloqueada` não é venda, e fica com `disponivel`, que a faixa não mostra. Nada aqui diz
+ *     "livre": o Resumo não tem esse número.
+ */
+function estagioNoFunil(situacao: SituacaoDaUnidade): ApoloVendaStage {
+  switch (situacao) {
+    case "bloqueada":
+    case "disponivel":
+      return "disponivel";
+    case "reservada":
+    case "reservado":
+      return "reservado";
+    case "vendida":
+      return "faturado";
+    default:
+      return situacao;
+  }
 }

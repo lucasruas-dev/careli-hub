@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
-import { type ApoloEnterpriseUnit, loadApoloEnterpriseUnits } from "@/lib/apolo/empreendimentos";
+import {
+  type ApoloEnterpriseUnit,
+  loadApoloEnterpriseUnits,
+  situacaoDaLinhaDoPanteon,
+  situacaoNaAbaUnidades,
+} from "@/lib/apolo/empreendimentos";
 import { lerUnidadesDoPanteon, unidadeDoPanteonNaTela } from "@/lib/apolo/incorporador/unidades-do-panteon";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { ehIdDoPanteon } from "@/lib/hercules/produto-novo";
+import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 import { createPrometeuClient, eventoOperavelId } from "@/lib/prometeu/data";
 import { topicoDaFila } from "@/lib/prometeu/fila-topic";
 
@@ -16,6 +22,9 @@ import { topicoDaFila } from "@/lib/prometeu/fila-topic";
 // Panteon (`ehIdDoPanteon`), as unidades saem de `hercules_unidades`, pela MESMA leitura e o MESMO
 // formato de tela que a ficha do portal usa (lib/apolo/incorporador/unidades-do-panteon.ts). Id do
 // C2X (ou sem id) segue o caminho de sempre, pelos códigos.
+//
+// ⚠️ NOS DOIS RAMOS, A SITUAÇÃO É A DO PANTEON (18/09/2026): lib/hercules/situacao-da-unidade.ts,
+// a mesma régua da tela Venda. Do C2X vem o resto da linha, nunca o livre/reservado/vendido.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -26,8 +35,24 @@ async function unidadesDoPanteon(enterpriseId: string, codigo: string): Promise<
   if (!admin) return { error: "Cadastro de unidades indisponível.", ok: false };
 
   try {
-    const linhas = await lerUnidadesDoPanteon(admin, [enterpriseId]);
-    return { ok: true, units: linhas.map((linha) => unidadeDoPanteonNaTela(linha, codigo)) };
+    // ⚠️ A SITUAÇÃO NÃO SAI DE `hercules_unidades.situacao` CRU (18/09/2026, Lucas: *"esses status
+    // tem que morar em um so lugar"*). O cadastro não sabe da proposta nem da reserva do Hércules:
+    // o lote em contrato aparecia "Disponível" aqui e "Contrato" na tela Venda. A linha continua
+    // vindo de `lerUnidadesDoPanteon` (quadra, lote, área, preço, matrícula); a situação vem da
+    // régua única, pelo id da linha (`porLinha`), e é escrita do MESMO jeito que o ramo do C2X
+    // escreve (`situacaoNaAbaUnidades`). Falha em qualquer das duas leituras cai no `catch`: erro
+    // na tela, nunca lote pintado de livre.
+    const [linhas, situacoes] = await Promise.all([
+      lerUnidadesDoPanteon(admin, [enterpriseId]),
+      lerSituacaoDasUnidades(admin, [enterpriseId]),
+    ]);
+    return {
+      ok: true,
+      units: linhas.map((linha) => ({
+        ...unidadeDoPanteonNaTela(linha, codigo),
+        ...situacaoNaAbaUnidades(situacaoDaLinhaDoPanteon(linha.id, situacoes)),
+      })),
+    };
   } catch (erro) {
     // ⚠️ Erro NUNCA vira "zero unidades": a tela mostraria o produto vazio como se fosse verdade.
     console.error("[apolo][empreendimentos] unidades do Panteon indisponíveis", erro);

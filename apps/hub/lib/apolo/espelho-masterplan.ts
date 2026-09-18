@@ -16,6 +16,13 @@ import { getHadesDbPool } from "@/lib/guardian/db";
 // ⚠️ ESCRITA NO LEGADO — a exceção autorizada. Só duas colunas (`sale_status_id`,
 // `sale_blocked`), só nas 298 unidades do 35, e só quando DIVERGEM da carteira. Em dia parado
 // não escreve nada: a checagem é um SELECT de comparação.
+//
+// ⚠️ ISTO MANTÉM O MAPA DO C2X, E NENHUMA TELA DO PANTEON (18/09/2026). O que este arquivo copia é o
+// `show_map/35` que o corretor abre DENTRO do legado. As telas do Panteon (aba Unidades, masterplan
+// interno, espelho, Venda) pintam o lote pela régua única de `lib/hercules/situacao-da-unidade.ts`,
+// e não pelo `sale_status_id` que passa por aqui (Lucas: *"no c2x não precisa olhar"*). Por isso
+// ele não foi migrado: trocar o que ele escreve seria mudar a escrita no legado, e isso exige OK do
+// Lucas a cada vez.
 const MASTERPLAN = 35;
 const CARTEIRAS = [36, 37];
 

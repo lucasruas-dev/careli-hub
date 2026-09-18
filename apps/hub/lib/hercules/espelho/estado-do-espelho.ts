@@ -1,8 +1,15 @@
 // O ESTADO DO ESPELHO PÚBLICO — o que a tela recebe para pintar o mapa.
 //
 // ⚠️ SÓ PANTEON. Lucas (10/09/2026): *"nada de olhar no c2x"* · *"temo cadastro de unidades"*.
-// Cadastro em `hercules_unidades`, processo em `hercules_propostas` e `hercules_reservas`.
 // Nenhuma consulta ao MySQL do legado entra neste caminho.
+//
+// ⚠️ A SITUAÇÃO VEM DA RÉGUA ÚNICA, E SÓ DELA (Lucas, 18/09/2026: *"esses status tem que morar em
+// um so lugar"*). `lerSituacaoDasUnidades` (`../situacao-da-unidade.ts`) responde por terreno, com
+// proposta viva, reserva do Hércules e reserva do evento na conta; este arquivo só a traduz em duas
+// cores (`situacao-publica.ts`). Daqui saem o DESENHO do lote (código, quadra, lote, torre) e o que
+// o folheto mostra (preço, área), lidos de `hercules_unidades` como sempre foram. Nenhuma decisão de
+// situação a partir de `hercules_unidades.situacao` cru, de `hercules_propostas.aberta` ou de
+// `hercules_reservas.situacao` mora mais aqui.
 //
 // ⚠️ O QUE SAI DAQUI É PÚBLICO — viaja por um link sem login, para quem o corretor mandar. Por
 // lote saem QUATRO coisas: código, situação em duas cores, preço de tabela e área. Nunca nome de
@@ -29,6 +36,7 @@ import { chaveDoLote } from "@/lib/apolo/incorporador/masterplan-recorte";
 import { compararApartamentos } from "../fluxo-de-venda";
 import { COLUNAS_DO_APARTAMENTO, nomeDaUnidade, tipoDaUnidade } from "../nome-da-unidade";
 import type { TipoProduto } from "../produto-novo";
+import { lerSituacaoDasUnidades } from "../situacao-da-unidade";
 import {
   apartamentoCanonico,
   chaveDaUnidade,
@@ -38,8 +46,8 @@ import {
 
 import {
   contarPublicas,
-  situacaoDoLoteReal,
-  type SinaisDaUnidade,
+  type LinhaDoLote,
+  situacaoPublicaDoLote,
   type SituacaoPublica,
 } from "./situacao-publica";
 
@@ -93,7 +101,6 @@ type LinhaDeUnidade = {
   lote: null | string;
   preco_tabela: null | number | string;
   quadra: null | string;
-  situacao: string;
   // As colunas do prédio (0171). Ausentes quando a migration ainda não foi aplicada.
   andar?: null | number;
   apartamento?: null | string;
@@ -154,16 +161,19 @@ export async function estadoDoEspelho(
       lotes: [],
     };
   }
-  const unidades = await lerUnidades(client, todosOsIds);
-  const comProcesso = await lerIdsComProcesso(
-    client,
-    unidades.map((u) => u.id),
-  );
+  // ⚠️ AS DUAS LEITURAS FALHAM JUNTAS. Se a situação não vier, `lerSituacaoDasUnidades` lança e
+  // este `Promise.all` lança junto: a rota responde 503 e a página mostra "não foi possível carregar".
+  // Nunca um mapa com o desenho certo e as cores adivinhadas.
+  const [unidades, situacoes] = await Promise.all([
+    lerUnidades(client, todosOsIds),
+    lerSituacaoDasUnidades(client, todosOsIds),
+  ]);
 
-  // ⚠️ UM TERRENO, VÁRIOS REGISTROS. A chave é `quadra` + `lote` porque o MESMO terreno existe no
-  // cadastro do pai e no do filho, com códigos diferentes (VLO0101 e VOL0101). Sem quadra ou lote
-  // cadastrados a unidade fica sozinha na própria chave — ela não participa do cruzamento, mas
-  // continua aparecendo na grade.
+  // ⚠️ UM QUADRADO, VÁRIOS REGISTROS. A chave é `quadra` + `lote` porque o MESMO terreno existe no
+  // cadastro do pai e no do filho, com códigos diferentes (VLO0101 e VOL0101). Isto decide só o que
+  // vira UM quadrado na tela; qual terreno responde pela cor é pergunta da régua única
+  // (`situacaoPublicaDoLote`). Sem quadra ou lote cadastrados a unidade fica sozinha na própria
+  // chave: não participa do cruzamento, mas continua aparecendo na grade.
   const terrenos = new Map<
     string,
     {
@@ -175,7 +185,7 @@ export async function estadoDoEspelho(
       lote: null | string;
       preco: null | number;
       quadra: null | string;
-      registros: SinaisDaUnidade[];
+      registros: LinhaDoLote[];
       tipologia: null | string;
       tipoProduto: TipoProduto;
       torre: null | string;
@@ -222,7 +232,7 @@ export async function estadoDoEspelho(
         lote: u.lote,
         preco: precoReal,
         quadra: u.quadra,
-        registros: [sinaisDe(u, doPai, comProcesso)],
+        registros: [{ doPai, id: u.id }],
         tipologia,
         tipoProduto: tipoDaLinha,
         torre,
@@ -231,7 +241,7 @@ export async function estadoDoEspelho(
       continue;
     }
 
-    atual.registros.push(sinaisDe(u, doPai, comProcesso));
+    atual.registros.push({ doPai, id: u.id });
     // O código do PAI é o que casa com o `inkscape:label` do masterplan — é ele que o desenho
     // procura. O do filho só serve de rótulo quando não há pai.
     if (doPai) atual.codigoDoPai = u.codigo.trim().toUpperCase();
@@ -271,7 +281,9 @@ export async function estadoDoEspelho(
         tipoProduto: t.tipoProduto,
         torre: t.torre,
       }),
-      situacao: situacaoDoLoteReal(t.registros),
+      // ⚠️ SÓ AS DUAS CORES SAEM DAQUI. A situação da régua única diz "contrato", "assinatura":
+      // é etapa do processo, e etapa do processo não viaja num link sem login.
+      situacao: situacaoPublicaDoLote(t.registros, situacoes.porLinha),
       tipologia: t.tipologia,
       tipoProduto: t.tipoProduto,
       torre: t.torre,
@@ -294,20 +306,6 @@ export async function estadoDoEspelho(
     atualizadoEm: new Date().toISOString(),
     contagem: contarPublicas(lotes.map((l) => l.situacao)),
     lotes,
-  };
-}
-
-function sinaisDe(
-  u: LinhaDeUnidade,
-  doPai: boolean,
-  comProcesso: { propostas: Set<string>; reservas: Set<string> },
-): SinaisDaUnidade {
-  return {
-    // Quem não é do pai é do filho — e a régua só distingue esses dois.
-    doFilho: !doPai,
-    propostaAberta: comProcesso.propostas.has(u.id),
-    reservaViva: comProcesso.reservas.has(u.id),
-    situacaoNoCadastro: u.situacao,
   };
 }
 
@@ -341,7 +339,7 @@ async function lerUnidades(
   for (let pagina = 0; ; pagina += 1) {
     const { data, error } = await client
       .from("hercules_unidades")
-      .select(`area,codigo,enterprise_id,id,lote,preco_tabela,quadra,situacao${colunasDoApartamento}`)
+      .select(`area,codigo,enterprise_id,id,lote,preco_tabela,quadra${colunasDoApartamento}`)
       .in("enterprise_id", enterpriseIds)
       .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
 
@@ -355,42 +353,4 @@ async function lerUnidades(
     todas.push(...lote);
     if (lote.length < PAGINA) return todas;
   }
-}
-
-/** Os ids de unidade com proposta aberta ou reserva viva. Duas consultas, paginadas. */
-async function lerIdsComProcesso(
-  client: SupabaseClient,
-  unidadeIds: readonly string[],
-): Promise<{ propostas: Set<string>; reservas: Set<string> }> {
-  const propostas = new Set<string>();
-  const reservas = new Set<string>();
-  if (unidadeIds.length === 0) return { propostas, reservas };
-
-  // ⚠️ NÃO USA `.in(unidade_id, [...5.540 uuids])`: a URL do PostgREST estoura
-  // ([[reference_postgrest_in_url_limite]]). Filtra pelo EMPREENDIMENTO e cruza em memória — a
-  // proposta já carrega `empreendimento_codigo`, mas o vínculo confiável é `unidade_id`.
-  const doEscopo = new Set(unidadeIds);
-  const PAGINA = 1000;
-
-  for (const [tabela, filtro, destino] of [
-    ["hercules_propostas", { coluna: "aberta", valor: true }, propostas],
-    ["hercules_reservas", { coluna: "situacao", valor: "reservada" }, reservas],
-  ] as const) {
-    for (let pagina = 0; ; pagina += 1) {
-      const { data, error } = await client
-        .from(tabela)
-        .select("unidade_id")
-        .eq(filtro.coluna, filtro.valor)
-        .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
-
-      if (error) throw new Error(error.message);
-      const linhas = (data ?? []) as { unidade_id: null | string }[];
-      for (const l of linhas) {
-        if (l.unidade_id && doEscopo.has(l.unidade_id)) destino.add(l.unidade_id);
-      }
-      if (linhas.length < PAGINA) break;
-    }
-  }
-
-  return { propostas, reservas };
 }

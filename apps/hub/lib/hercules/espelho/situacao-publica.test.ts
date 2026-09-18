@@ -1,106 +1,142 @@
 import { describe, expect, it } from "vitest";
 
+import type { SituacaoDaUnidade } from "../situacao-da-unidade";
+
 import {
   contarPublicas,
-  situacaoDoLoteReal,
-  situacaoPublica,
+  corPublica,
+  situacaoPublicaDoLote,
+  type TerrenoComSituacao,
 } from "./situacao-publica";
 
-// O QUE ESTE TESTE PROTEGE: verde e uma AFIRMACAO publica — "este lote esta a venda" — feita num
-// link que circula no WhatsApp, para gente que nao tem login. Um lote verde que ja tem dono faz o
-// cliente escolher, o corretor prometer e alguem ter de desdizer. Toda duvida sai azul.
+// O QUE ESTE TESTE PROTEGE: verde e uma AFIRMACAO publica, "este lote esta a venda", feita num link
+// que circula no WhatsApp, para gente que nao tem login. A situacao vem da regua unica
+// (`situacao-da-unidade.ts`); aqui se prova que o espelho so a traduz em duas cores, e que toda
+// duvida sai azul.
 
-const nada = {
-  doFilho: true,
-  propostaAberta: false,
-  reservaViva: false,
-  situacaoNoCadastro: "disponivel",
-};
-const pai = { ...nada, doFilho: false };
+const TODAS: SituacaoDaUnidade[] = [
+  "disponivel",
+  "reservado",
+  "reservada",
+  "proposta",
+  "contrato",
+  "assinatura",
+  "faturado",
+  "vendida",
+  "bloqueada",
+];
 
-describe("situacao publica de uma unidade", () => {
-  it("verde quando o cadastro diz disponivel e nao ha processo em cima", () => {
-    expect(situacaoPublica(nada)).toBe("disponivel");
-  });
-
-  // ⚠️ O PEDIDO DO LUCAS EM 09/09: "reservou, proposta, tem que refletir no espelho".
-  it("azul quando ha proposta aberta, mesmo com o cadastro disponivel", () => {
-    expect(situacaoPublica({ ...nada, propostaAberta: true })).toBe("indisponivel");
-  });
-
-  it("azul quando ha reserva viva, mesmo com o cadastro disponivel", () => {
-    expect(situacaoPublica({ ...nada, reservaViva: true })).toBe("indisponivel");
-  });
-
-  it("azul para vendida, reservada e bloqueada", () => {
-    for (const s of ["vendida", "reservada", "bloqueada"]) {
-      expect(situacaoPublica({ ...nada, situacaoNoCadastro: s })).toBe("indisponivel");
+describe("cor publica de uma situacao da regua unica", () => {
+  it("verde se e so se a regua diz livre", () => {
+    for (const s of TODAS) {
+      expect(corPublica(s)).toBe(s === "disponivel" ? "disponivel" : "indisponivel");
     }
   });
 
-  // ⚠️ FAIL-CLOSED. Um estado novo criado amanha no cadastro nao pode nascer verde.
-  it("azul para situacao desconhecida, nula ou vazia", () => {
-    for (const s of ["em_negociacao", "DISPONIVEL", " disponivel", "", null]) {
-      expect(situacaoPublica({ ...nada, situacaoNoCadastro: s })).toBe("indisponivel");
-    }
+  // ⚠️ FAIL-CLOSED. Nao conseguir ler nunca vira verde.
+  it("azul quando a situacao nao veio", () => {
+    expect(corPublica(undefined)).toBe("indisponivel");
   });
 });
 
-describe("situacao do lote real (o mesmo terreno em dois cadastros)", () => {
-  // ⚠️ O CASO REAL DO VALE DO OURO, e o que quase saiu errado. O mesmo terreno existe no pai
-  // (VLO0101) e no filho (VOL0101); o PAI esta parado e diz "vendida" em 4 lotes que os filhos
-  // dao como disponiveis. Quem vende e o filho — tratar os dois como pares esconderia 4 lotes
-  // a venda, que e o estrago do `price <= 1`.
-  it("o FILHO decide: pai vendida + filho disponivel = VERDE", () => {
+/** O `porLinha` da regua unica: cada linha aponta para o terreno que responde por ela. */
+function porLinha(linhas: Record<string, TerrenoComSituacao>): Map<string, TerrenoComSituacao> {
+  return new Map(Object.entries(linhas));
+}
+
+describe("a cor de um quadrado do espelho", () => {
+  it("uma linha so: a cor da regua unica", () => {
+    const livre = porLinha({ VOC0105: { id: "VOC0105", situacao: "disponivel" } });
+    expect(situacaoPublicaDoLote([{ doPai: false, id: "VOC0105" }], livre)).toBe("disponivel");
+
+    const emContrato = porLinha({ VOC0105: { id: "VOC0105", situacao: "contrato" } });
+    expect(situacaoPublicaDoLote([{ doPai: false, id: "VOC0105" }], emContrato)).toBe("indisponivel");
+  });
+
+  // ⚠️ O PAI APONTA PARA A GLEBA (espelho_de), e a regua unica ja devolve a mesma resposta para as
+  // duas linhas. O cadastro parado do pai nao tem voz propria.
+  it("pai que aponta para a gleba: o terreno da gleba responde pelas duas linhas", () => {
+    const gleba = { id: "VOC0305", situacao: "reservado" as const };
     expect(
-      situacaoDoLoteReal([
-        { ...pai, situacaoNoCadastro: "vendida" },
-        { ...nada, situacaoNoCadastro: "disponivel" },
-      ]),
+      situacaoPublicaDoLote(
+        [
+          { doPai: true, id: "VLO0305" },
+          { doPai: false, id: "VOC0305" },
+        ],
+        porLinha({ VLO0305: gleba, VOC0305: gleba }),
+      ),
+    ).toBe("indisponivel");
+  });
+
+  // ⚠️ OS LOTES QUE VOC E VOR DISPUTAM (migration 0162). O pai aponta para a gleba que vende; a
+  // linha bloqueada da outra carteira e outra unidade para a regua unica e nao apaga o verde.
+  it("pai que aponta para a gleba que vende: a linha bloqueada da outra carteira nao conta", () => {
+    const vor = { id: "VOR0410", situacao: "disponivel" as const };
+    expect(
+      situacaoPublicaDoLote(
+        [
+          { doPai: true, id: "VLO0410" },
+          { doPai: false, id: "VOC0410" },
+          { doPai: false, id: "VOR0410" },
+        ],
+        porLinha({
+          VLO0410: vor,
+          VOC0410: { id: "VOC0410", situacao: "bloqueada" },
+          VOR0410: vor,
+        }),
+      ),
     ).toBe("disponivel");
   });
 
-  it("o FILHO decide tambem no outro sentido: pai disponivel + filho vendida = AZUL", () => {
+  // Os 83 lotes da Lagoa Bonita que so existem no pai: ele responde por si.
+  it("pai sem gleba responde pelo proprio terreno", () => {
     expect(
-      situacaoDoLoteReal([
-        { ...pai, situacaoNoCadastro: "disponivel" },
-        { ...nada, situacaoNoCadastro: "vendida" },
-      ]),
-    ).toBe("indisponivel");
-  });
-
-  // Os 83 lotes do Lagoa Bonita que so existem no pai: ele responde, porque e o unico que tem.
-  it("sem filho, o pai responde", () => {
-    expect(situacaoDoLoteReal([pai])).toBe("disponivel");
-    expect(
-      situacaoDoLoteReal([{ ...pai, situacaoNoCadastro: "vendida" }]),
-    ).toBe("indisponivel");
-  });
-
-  // Os 3 lotes que VOC e VOR disputam: o cadastro antigo fica "bloqueada" e o novo tem o estado
-  // real. Exigir unanimidade entre filhos deixaria azul um lote que a carteira viva vende.
-  it("entre filhos, disponivel em um deles basta", () => {
-    expect(
-      situacaoDoLoteReal([
-        { ...nada, situacaoNoCadastro: "bloqueada" },
-        nada,
-      ]),
+      situacaoPublicaDoLote(
+        [{ doPai: true, id: "LABC0901" }],
+        porLinha({ LABC0901: { id: "LABC0901", situacao: "disponivel" } }),
+      ),
     ).toBe("disponivel");
   });
 
-  // O processo trava venha de onde vier — aqui pai e filho valem igual, porque proposta e fato.
-  it("azul quando QUALQUER registro do lote tem proposta aberta, inclusive o pai", () => {
+  // ⚠️ SEM O PONTEIRO, o quadrado junta linhas que o Panteon nao diz serem o mesmo terreno. Se uma
+  // delas esta em processo, o lote nao pode sair verde so porque a outra diz livre.
+  it("linhas de terrenos diferentes sem ponteiro: verde so se todas estiverem livres", () => {
+    const linhas = [
+      { doPai: true, id: "PAI01" },
+      { doPai: false, id: "FIL01" },
+    ];
     expect(
-      situacaoDoLoteReal([nada, { ...nada, propostaAberta: true }]),
+      situacaoPublicaDoLote(
+        linhas,
+        porLinha({
+          FIL01: { id: "FIL01", situacao: "proposta" },
+          PAI01: { id: "PAI01", situacao: "disponivel" },
+        }),
+      ),
     ).toBe("indisponivel");
     expect(
-      situacaoDoLoteReal([nada, { ...pai, propostaAberta: true }]),
-    ).toBe("indisponivel");
+      situacaoPublicaDoLote(
+        linhas,
+        porLinha({
+          FIL01: { id: "FIL01", situacao: "disponivel" },
+          PAI01: { id: "PAI01", situacao: "disponivel" },
+        }),
+      ),
+    ).toBe("disponivel");
   });
 
-  // Lote que existe no mapa e nao existe no cadastro: some como indisponivel, nunca como verde.
-  it("azul quando nao ha registro nenhum", () => {
-    expect(situacaoDoLoteReal([])).toBe("indisponivel");
+  // ⚠️ FAIL-CLOSED: linha que a regua unica nao trouxe, ou quadrado sem linha nenhuma.
+  it("azul quando alguma linha do quadrado nao tem resposta da regua unica", () => {
+    expect(
+      situacaoPublicaDoLote(
+        [
+          { doPai: true, id: "VLO0105" },
+          { doPai: false, id: "VOC0105" },
+        ],
+        porLinha({ VOC0105: { id: "VOC0105", situacao: "disponivel" } }),
+      ),
+    ).toBe("indisponivel");
+    expect(situacaoPublicaDoLote([], porLinha({}))).toBe("indisponivel");
   });
 });
 

@@ -7,7 +7,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 //     Sem a 0170, ninguém fora do comercial escreve;
 //   • a trava do LAB: sessão com o 31 não traz o LAB como produto "próprio" (onda 2, leitura [0]);
 //   • a ressalva do plano chega à Mesa (onda 1, políticas);
-//   • a grade pede as colunas do prédio e cai sem elas quando a 0171 não existe (onda 2, vertical).
+//   • a grade pede as colunas do prédio e cai sem elas quando a 0171 não existe (onda 2, vertical);
+//   • a grade pinta pela régua única da situação (Lucas, 18/09/2026: *"esses status tem que morar
+//     em um so lugar"*), e falha nessa leitura não vira lote livre.
 //
 // Banco, catálogo e cookie são falsos; a agregação, a régua de escrita e a tradução do escopo são as
 // de verdade.
@@ -16,6 +18,10 @@ type Linha = Record<string, unknown>;
 
 const estado = vi.hoisted(() => ({
   com0170: true,
+  /** Faz a leitura da reserva do evento falhar: ela só é lida pela régua da situação. */
+  falhaNaSituacao: false,
+  /** `prometeu_reservas`: só a régua da situação a lê. */
+  reservasDoEvento: [] as Array<Record<string, unknown>>,
   pedidos: [] as Array<{ codesAutorizados: string[]; proprios?: Array<{ codigo: string }> }>,
   permitidos: ["37", "39"] as string[],
   selectsDeUnidade: [] as string[],
@@ -31,8 +37,8 @@ const CADASTRO = vi.hoisted(() => [
 ]);
 
 const UNIDADES = vi.hoisted(() => [
-  { categoria_id: null, codigo: "VOC1206", enterprise_id: "37", espelho_de: null, id: "u-voc", lote: "06", preco_tabela: "100000.00", quadra: "12", situacao: "disponivel" },
-  { categoria_id: null, codigo: "GDN0107", enterprise_id: "39", espelho_de: null, id: "u-gdn", lote: "07", preco_tabela: "120000.00", quadra: "01", situacao: "disponivel" },
+  { categoria_id: null, codigo: "VOC1206", enterprise_id: "37", espelho_de: null, id: "u-voc", lote: "06", origem_c2x_id: 5001, preco_tabela: "100000.00", quadra: "12", situacao: "disponivel" },
+  { categoria_id: null, codigo: "GDN0107", enterprise_id: "39", espelho_de: null, id: "u-gdn", lote: "07", origem_c2x_id: 5002, preco_tabela: "120000.00", quadra: "01", situacao: "disponivel" },
 ]);
 
 const CECILIO = { incorporadorId: "inc-cecilio", slug: "cecilio-rocha", tipo: "incorporador" };
@@ -115,13 +121,18 @@ vi.mock("@/lib/apolo/server", () => {
         }
         return { data: UNIDADES, error: null };
       }
+      if (tabela === "prometeu_reservas") {
+        if (estado.falhaNaSituacao) return { data: null, error: { code: "08006", message: "conexão caiu" } };
+        return { data: estado.reservasDoEvento, error: null };
+      }
       return { data: [], error: null };
     };
     const cadeia: Linha = {
       then: (ok: (r: unknown) => unknown, falha?: (e: unknown) => unknown) =>
         Promise.resolve(resposta()).then(ok, falha),
     };
-    for (const metodo of ["eq", "in", "order", "range"]) cadeia[metodo] = () => cadeia;
+    // `not` entrou com a régua da situação, que lê as linhas antigas do terreno por `espelho_de`.
+    for (const metodo of ["eq", "in", "not", "order", "range"]) cadeia[metodo] = () => cadeia;
     cadeia.select = (lista: string) => {
       colunas = lista;
       if (tabela === "hercules_unidades") estado.selectsDeUnidade.push(lista);
@@ -137,7 +148,8 @@ import { GET } from "./route";
 type Resposta = {
   data: {
     escritaPorEmpreendimento: Record<string, boolean>;
-    mapa: Array<{ unidades: unknown[] }>;
+    fluxo: Array<{ etapa: string; quantidade: number }>;
+    mapa: Array<{ unidades: Array<{ etapa: string; id: string; situacao: string }> }>;
     planos: Array<{ nome: string; ressalva: null | string }>;
   };
 };
@@ -150,6 +162,8 @@ async function carregar(): Promise<Resposta["data"]> {
 
 beforeEach(() => {
   estado.com0170 = true;
+  estado.falhaNaSituacao = false;
+  estado.reservasDoEvento = [];
   estado.pedidos = [];
   estado.permitidos = ["37", "39"];
   estado.selectsDeUnidade = [];
@@ -203,5 +217,30 @@ describe("a grade do prédio", () => {
     const { mapa } = await carregar();
     expect(estado.selectsDeUnidade[1]).not.toContain("torre");
     expect(mapa.flatMap((g) => g.unidades)).toHaveLength(2);
+  });
+});
+
+describe("a situação na grade vem da régua única", () => {
+  it("⚠️ lote reservado no EVENTO sai reservado na grade, e não disponível", async () => {
+    // Cadastro `disponivel` e nenhuma proposta: a conta antiga da Venda pintava de verde. A régua
+    // vê a reserva do evento pelo id do legado da unidade, igual ao que o Apolo vai mostrar.
+    estado.reservasDoEvento = [{ situacao: "reservada", unidade_c2x_id: 5001 }];
+    const { fluxo, mapa } = await carregar();
+    const etapas = Object.fromEntries(mapa.flatMap((g) => g.unidades).map((u) => [u.id, u.etapa]));
+    expect(etapas).toEqual({ "u-gdn": "disponivel", "u-voc": "reservado" });
+    // O estoque livre da faixa acompanha a grade...
+    expect(fluxo.find((f) => f.etapa === "disponivel")?.quantidade).toBe(1);
+    // ...e o funil continua das propostas: a reserva do evento não é proposta do Hércules.
+    expect(fluxo.find((f) => f.etapa === "reservado")?.quantidade).toBe(0);
+  });
+
+  it("⚠️ falha na leitura da situação responde 503, e nunca devolve lote livre", async () => {
+    estado.falhaNaSituacao = true;
+    const erro = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const resposta = await GET(new Request("https://c2x.app.br/api/incorporador/venda"));
+    expect(resposta.status).toBe(503);
+    const corpo = (await resposta.json()) as { data?: unknown; error?: string };
+    expect(corpo.data).toBeUndefined();
+    erro.mockRestore();
   });
 });

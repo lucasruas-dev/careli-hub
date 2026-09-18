@@ -394,6 +394,50 @@ function etapaDaSituacao(situacao: string): EtapaDoEspelho {
   }
 }
 
+/**
+ * Quem decide a etapa de cada unidade da grade e do estoque.
+ *
+ * ⚠️ COM `situacaoPorUnidade`, QUEM DECIDE É A RÉGUA ÚNICA (`situacao-da-unidade.ts`), e a conta
+ * local não roda. Lucas (18/09/2026): *"esses status tem que morar em um so lugar"*. A conta local
+ * abaixo olha só a linha da grade e só `hercules_propostas`: não vê a proposta que mora na linha
+ * ANTIGA do terreno (a do pai, que aponta para a viva por `espelho_de`), nem a reserva do Hércules,
+ * nem a do evento (`prometeu_reservas`). Era por isso que a mesma unidade saía com uma situação na
+ * Venda e outra no Apolo.
+ *
+ * ⚠️ UNIDADE AUSENTE DO MAPA VIRA `bloqueada`, NUNCA LIVRE. O mapa vem da mesma tabela e do mesmo
+ * escopo da grade, então a ausência só acontece numa corrida (a unidade nasceu entre as duas
+ * leituras). Na dúvida, fora da oferta: a mesma regra de `etapaDaSituacao`.
+ *
+ * Sem o mapa, a conta local continua como sempre foi, para não quebrar quem ainda não passa a
+ * situação. Não é uma segunda régua a manter: é a que sai quando nenhum chamador depender dela.
+ * O import de `situacao-da-unidade.ts` não entra aqui, e é de propósito: aquele módulo importa
+ * este, e o mapa chega pronto de quem chama.
+ */
+function reguaDaEtapa(
+  propostas: readonly PropostaDaCarga[],
+  situacaoPorUnidade: ReadonlyMap<string, EtapaDoEspelho> | undefined,
+): (u: UnidadeDoMapa) => EtapaDoEspelho {
+  if (situacaoPorUnidade) {
+    return (u) => situacaoPorUnidade.get(u.id) ?? "bloqueada";
+  }
+
+  // ⚠️ A ETAPA DA UNIDADE VEM DA PROPOSTA VIVA MAIS RECENTE. Uma unidade acumula propostas ao
+  // longo do tempo (revenda, cancelamento e nova venda): a que vale é a última que ainda está no
+  // caminho. Pegar qualquer uma pintaria de "faturado" um lote que voltou para o estoque.
+  const vivaPorUnidade = new Map<string, { desde: string; etapa: EtapaDoFluxo }>();
+  for (const p of propostas) {
+    if (!p.unidade_id || !ehDoFluxo(p.etapa)) continue;
+    const desde = String(p.etapa_desde ?? p.criado_em_c2x ?? "");
+    const atual = vivaPorUnidade.get(p.unidade_id);
+    if (!atual || desde > atual.desde) vivaPorUnidade.set(p.unidade_id, { desde, etapa: p.etapa });
+  }
+  // ⚠️ A PROPOSTA VIVA REFINA, MAS A SITUAÇÃO NUNCA É REBAIXADA PARA LIVRE. Com proposta, ela
+  // manda (é ela que sabe se está em contrato ou já faturou). Sem proposta, vale o cadastro — e
+  // "vendida" ou "reservada" continuam ocupadas, nunca disponíveis: dizer que um lote vendido
+  // está livre é convidar a segunda venda.
+  return (u) => vivaPorUnidade.get(u.id)?.etapa ?? etapaDaSituacao(u.situacao);
+}
+
 /** `8` → `8%`; `8.5` → `8,5%`. A mesma escrita do extrato. */
 function porcentagem(valor: number): string {
   return `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
@@ -593,12 +637,23 @@ export function agregarFluxo({
   cads = null,
   periodo,
   propostas,
+  situacaoPorUnidade,
   tiposDeProduto,
   unidades,
 }: {
   cads?: CadsDoEscopo | null;
   periodo?: PeriodoDoPainel;
   propostas: PropostaDaCarga[];
+  /**
+   * A situação de cada unidade pela régua única, pelo id de QUALQUER linha do terreno: é o
+   * `porLinha` de `lerSituacaoDasUnidades` reduzido à situação.
+   *
+   * ⚠️ ELA PINTA A GRADE E CONTA O ESTOQUE (inclusive o passo `disponivel` da faixa); o resto da
+   * faixa, a lista, o VGV, o ranking e a série continuam saindo das propostas. São perguntas
+   * diferentes: "em que situação está este lote" é da régua; "quantas propostas andam no funil"
+   * é das propostas. Ausente = a conta local de sempre (ver `reguaDaEtapa`).
+   */
+  situacaoPorUnidade?: ReadonlyMap<string, EtapaDoEspelho>;
   /**
    * O tipo de cada produto do escopo, por `enterprise_id` (`hercules_empreendimentos.tipo_produto`).
    *
@@ -698,20 +753,7 @@ export function agregarFluxo({
 
   // ── O estoque, pelas unidades ────────────────────────────────────────────
   const estoque: Record<string, number> = {};
-  // ⚠️ A ETAPA DA UNIDADE VEM DA PROPOSTA VIVA MAIS RECENTE. Uma unidade acumula propostas ao
-  // longo do tempo (revenda, cancelamento e nova venda): a que vale é a última que ainda está no
-  // caminho. Pegar qualquer uma pintaria de "faturado" um lote que voltou para o estoque.
-  const vivaPorUnidade = new Map<
-    string,
-    { desde: string; etapa: EtapaDoFluxo }
-  >();
-  for (const p of propostas) {
-    if (!p.unidade_id || !ehDoFluxo(p.etapa)) continue;
-    const desde = String(p.etapa_desde ?? p.criado_em_c2x ?? "");
-    const atual = vivaPorUnidade.get(p.unidade_id);
-    if (!atual || desde > atual.desde)
-      vivaPorUnidade.set(p.unidade_id, { desde, etapa: p.etapa });
-  }
+  const etapaDa = reguaDaEtapa(propostas, situacaoPorUnidade);
 
   // ⚠️ A CHAVE DO GRUPO LEVA O TIPO. Sem ele, a quadra "Unidades" de um loteamento e a torre única
   // "Unidades" de um prédio virariam o mesmo grupo no consolidado, e a grade poria lote e
@@ -721,12 +763,7 @@ export function agregarFluxo({
   let disponiveis = 0;
   let vgvDisponivel = 0;
   for (const u of unidades) {
-    // ⚠️ A PROPOSTA VIVA REFINA, MAS A SITUAÇÃO NUNCA É REBAIXADA PARA LIVRE. Com proposta, ela
-    // manda (é ela que sabe se está em contrato ou já faturou). Sem proposta, vale o cadastro — e
-    // "vendida" ou "reservada" continuam ocupadas, nunca disponíveis: dizer que um lote vendido
-    // está livre é convidar a segunda venda.
-    const etapa: EtapaDoEspelho =
-      vivaPorUnidade.get(u.id)?.etapa ?? etapaDaSituacao(u.situacao);
+    const etapa = etapaDa(u);
 
     estoque[etapa] = (estoque[etapa] ?? 0) + 1;
     if (etapa === "disponivel") {
@@ -944,30 +981,24 @@ export function baldeDaEtapa(etapa: EtapaDoEspelho): BaldeDoProduto {
  * ⚠️ A PROPOSTA VIVA REFINA, MAS NUNCA REBAIXA PARA LIVRE — o mesmo cuidado de `agregarFluxo`:
  * sem proposta vale o cadastro, e "vendida" ou "reservada" continuam ocupadas. Dizer que um lote
  * vendido está livre é convidar a segunda venda.
+ *
+ * ⚠️ `situacaoPorUnidade` É A MESMA PORTA DE `agregarFluxo`: com ela, quem decide o balde de cada
+ * unidade é a régua única (`situacao-da-unidade.ts`), e a conta local não roda. Opcional só para
+ * não quebrar quem ainda não passa o mapa.
  */
 export function estoquePorEmpreendimento(entrada: {
   propostas: PropostaDaCarga[];
+  situacaoPorUnidade?: ReadonlyMap<string, EtapaDoEspelho>;
   unidades: UnidadeDoMapa[];
 }): Map<string, EstoqueDoEmpreendimento> {
-  const vivaPorUnidade = new Map<
-    string,
-    { desde: string; etapa: EtapaDoFluxo }
-  >();
-  for (const p of entrada.propostas) {
-    if (!p.unidade_id || !ehDoFluxo(p.etapa)) continue;
-    const desde = String(p.etapa_desde ?? p.criado_em_c2x ?? "");
-    const atual = vivaPorUnidade.get(p.unidade_id);
-    if (!atual || desde > atual.desde)
-      vivaPorUnidade.set(p.unidade_id, { desde, etapa: p.etapa });
-  }
+  const etapaDa = reguaDaEtapa(entrada.propostas, entrada.situacaoPorUnidade);
 
   const porEmpreendimento = new Map<string, EstoqueDoEmpreendimento>();
 
   for (const u of entrada.unidades) {
     const id = String(u.enterprise_id);
     const estoque = porEmpreendimento.get(id) ?? estoqueVazio();
-    const etapa =
-      vivaPorUnidade.get(u.id)?.etapa ?? etapaDaSituacao(u.situacao);
+    const etapa = etapaDa(u);
     const balde = baldeDaEtapa(etapa);
     const valor = numero(u.preco_tabela);
 

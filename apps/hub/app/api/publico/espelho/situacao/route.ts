@@ -18,9 +18,15 @@ import { planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
 //
 // ⚠️ E NÃO SAI DAQUI NADA DE CLIENTE. Por lote: código, quadra, lote, situação em duas cores,
 // preço de tabela e área. Nunca comprador, corretor, imobiliária, desconto ou etapa do processo.
+//
+// ⚠️ A COR É A DA RÉGUA ÚNICA (`lib/hercules/situacao-da-unidade.ts`, Lucas 18/09/2026: *"esses
+// status tem que morar em um so lugar"*): verde se e só se a unidade está livre para a tela Venda.
+// Se a leitura da situação falhar, `estadoDoEspelho` lança e esta rota responde 503. Nunca verde.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-// O Lagoa Bonita tem 907 registros somando pai e filhos, em três consultas paginadas. Folga.
+// O Lagoa Bonita tem 907 registros somando pai e filhos. A régua única lê as linhas do produto, as
+// linhas antigas que apontam para elas e o processo vivo (propostas e as duas reservas), em páginas
+// de 1.000, em paralelo com o cadastro do desenho. Folga.
 export const maxDuration = 30;
 
 export async function GET(request: Request) {

@@ -141,6 +141,34 @@ vi.mock("@/lib/apolo/incorporador/unidades-do-panteon", async (importOriginal) =
   ]),
 }));
 
+// (18/09/2026) O funil do Resumo conta pela RÉGUA ÚNICA da situação (lib/hercules/situacao-da-unidade.ts).
+// A leitura é mockada; o que se prova aqui é por quais produtos ela é chamada. As unidades são as
+// mesmas do mock de `lerUnidadesDoPanteon`, com a situação que a régua daria a elas.
+vi.mock("@/lib/hercules/situacao-da-unidade", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/hercules/situacao-da-unidade")>()),
+  lerSituacaoDasUnidades: vi.fn(async (_client: unknown, ids: readonly string[]) => {
+    const unidade = (id: string, codigo: string, enterpriseId: string, situacao: "disponivel" | "reservada") => ({
+      codigo,
+      enterpriseId,
+      id,
+      lote: "01",
+      origemC2xId: null,
+      quadra: "01",
+      situacao,
+    });
+    const unidades = [
+      ...(ids.includes("9001") ? [unidade("u-tst-1", "TST0101", "9001", "reservada")] : []),
+      ...(ids.includes("39") ? [unidade("u-gdn-1", "GDN0101", "39", "disponivel")] : []),
+    ];
+    return {
+      porCodigo: new Map(unidades.map((u) => [u.codigo, u])),
+      porLinha: new Map(unidades.map((u) => [u.id, u])),
+      porOrigemC2x: new Map(),
+      unidades,
+    };
+  }),
+}));
+
 vi.mock("@/lib/apolo/incorporador/assinaturas", () => ({
   lerAssinaturasDoPanteon: vi.fn(async () => ({ linhas: [], ok: true })),
   lerAssinaturasDoPortal: vi.fn(async () => ({
@@ -159,6 +187,7 @@ import { lerUnidadesDoPanteon } from "@/lib/apolo/incorporador/unidades-do-pante
 import { criarSessaoIncorporador, INCORPORADOR_COOKIE } from "@/lib/apolo/incorporador/sessao";
 import { loadApoloEnterpriseVendas } from "@/lib/apolo/vendas";
 import { topoDaArvoreDeAlgum } from "@/lib/hercules/masterplan-do-empreendimento";
+import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 
 import { GET as getAssinaturas } from "../vendas/assinaturas/route";
 import { GET as getImobiliarias } from "./imobiliarias/route";
@@ -196,17 +225,26 @@ const lidosDoPanteon = (): string[] =>
   );
 
 /**
- * Os códigos que a leitura de cada rota recebeu na última chamada. Em Resumo e Unidades, a soma do
- * que foi ao C2X com o que foi ao Panteon (desde 16/09/2026 o produto próprio não vai ao C2X).
+ * O Resumo conta tudo pela régua única desde 18/09/2026, por ID: o id de cada produto que ela recebeu,
+ * no código dele. E nenhum código vai ao C2X.
+ */
+const CODIGO_DO_ID_NO_FUNIL: Record<string, string> = { "37": "VOC", "39": "GDN", "9001": "TST" };
+const lidosPelaSituacao = (): string[] => [
+  ...(vi.mocked(loadApoloEnterpriseVendas).mock.calls.at(-1)?.[0] ?? []),
+  ...[...(vi.mocked(lerSituacaoDasUnidades).mock.calls.at(-1)?.[1] ?? [])].map(
+    (id) => CODIGO_DO_ID_NO_FUNIL[id] ?? id,
+  ),
+];
+
+/**
+ * Os códigos que a leitura de cada rota recebeu na última chamada. Em Unidades, a soma do que foi ao
+ * C2X com o que foi ao Panteon (desde 16/09/2026 o produto próprio não vai ao C2X).
  */
 const ROTAS = [
   {
     caminho: "produto/resumo",
     get: getResumo,
-    lidos: () => [
-      ...(vi.mocked(loadApoloEnterpriseVendas).mock.calls.at(-1)?.[0] ?? []),
-      ...lidosDoPanteon(),
-    ],
+    lidos: lidosPelaSituacao,
   },
   {
     caminho: "produto/unidades",
@@ -371,7 +409,7 @@ describe("D2: o produto com dono marcado (o Garden da Cecílio) lê o estoque do
     const resposta = await getResumo(requisicao("produto/resumo", "39", SESSAO_COM_GARDEN));
     expect(resposta.status).toBe(200);
     expect(vi.mocked(loadApoloEnterpriseVendas)).not.toHaveBeenCalled();
-    expect(vi.mocked(lerUnidadesDoPanteon).mock.calls.at(-1)?.[1]).toEqual(["39"]);
+    expect(vi.mocked(lerSituacaoDasUnidades).mock.calls.at(-1)?.[1]).toEqual(["39"]);
   });
 
   // (16/09/2026, revisão do conjunto) As vendas antigas do Garden estão no C2X; o contrato que a

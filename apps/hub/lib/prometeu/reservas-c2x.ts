@@ -15,6 +15,12 @@
 //
 // Estado real do evento quando isto foi escrito: 99 "Reservado" + 8 "Contrato gerado" +
 // 1 "Proposta realizada" com open=1, e 13 cancelados com open=0.
+//
+// ⚠️ NADA DAQUI DIZ SE A UNIDADE ESTÁ LIVRE (Lucas, 18/09/2026: *"esses status tem que morar em
+// um so lugar"* · *"no c2x não precisa olhar"*). Estas leituras contam a história do PEDIDO de
+// cada cliente no legado (a jornada da Central, quem pegou o quê); a situação da unidade, em
+// qualquer tela do Panteon, telão incluído, é de lib/hercules/situacao-da-unidade.ts.
+// `etapaEhVenda` diz se o pedido já é venda para somar o dia, e não pinta lote nenhum.
 import { getHadesDbPool } from "@/lib/guardian/db";
 import type { RowDataPacket } from "mysql2";
 
