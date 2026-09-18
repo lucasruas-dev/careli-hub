@@ -48,7 +48,7 @@ export type UnidadeDoCrm = {
   /** Código do lote (VOCQ02L18), o mesmo do Apolo e do masterplan. */
   codigo: string;
   empreendimento: null | string;
-  /** Rótulo do funil: Reservado, Proposta emitida, Contrato gerado, Em assinatura, Faturado. */
+  /** Rótulo do funil, o da régua (`rotuloDaSituacao`): Reservado, Proposta, Contrato, Assinatura, Faturado. */
   estagio: string;
   lote: null | string;
   quadra: null | string;
@@ -728,7 +728,7 @@ export type ResumoFinanceiroDaUnidade = {
 export type UnidadeDaFicha = {
   codigo: string;
   empreendimento: null | string;
-  /** Rótulo do funil (Reservado, Proposta emitida… Faturado) — nunca a chave interna do C2X. */
+  /** Rótulo do funil, o da régua (Reservado, Proposta… Faturado) — nunca a chave interna do C2X. */
   etapa: string;
   /** `null` enquanto a venda não faturou: reserva/proposta ainda não tem boleto. */
   financeiro: null | ResumoFinanceiroDaUnidade;

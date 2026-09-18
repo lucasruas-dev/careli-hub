@@ -26,6 +26,8 @@
 // ⚠️ A ORDEM DAS PERGUNTAS É A REGRA, e ela precisa ser a MESMA nos dois lados. Por isso o SQL
 // mora aqui do lado da função, e não solto na query.
 
+import { rotuloDoBalde as rotuloDoBaldeDaRegua } from "@/lib/hercules/situacao-da-unidade";
+
 export type BaldeDaUnidade =
   | "bloqueado"
   | "disponivel"
@@ -109,14 +111,10 @@ export function sqlDoBalde(alias: string): string {
 // entrando na regra, o RVPA09 virou "reservado" e ganhou a cor âmbar, mas o texto continuou
 // vindo de `sale_statuses.name` — e o badge saiu âmbar escrito "Disponível". Cor e palavra
 // precisam ter a MESMA fonte, senão uma delas mente.
-const ROTULO: Record<BaldeDaUnidade, string> = {
-  bloqueado: "Bloqueado",
-  disponivel: "Disponível",
-  negociacao: "Em negociação",
-  reservado: "Reservado",
-  vendido: "Vendido",
-};
-
+//
+// ⚠️ E A PALAVRA MORA NA RÉGUA (18/09/2026): os baldes daqui são os mesmos de `BaldeDaSituacao`, e
+// o texto é o de `rotuloDoBalde` em lib/hercules/situacao-da-unidade.ts. Esta função só repassa,
+// para quem ainda importa daqui.
 export function rotuloDoBalde(balde: BaldeDaUnidade): string {
-  return ROTULO[balde];
+  return rotuloDoBaldeDaRegua(balde);
 }

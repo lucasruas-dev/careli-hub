@@ -4,7 +4,6 @@ import {
   autorizarOperacaoDeVenda,
   ORIGEM_ACEITA_SEM_A_0167,
   origemDaReserva,
-  type OrigemDaReserva,
   origemRecusadaSemA0167,
 } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";

@@ -7,7 +7,7 @@ import {
   estagioPelaSituacao,
 } from "@/lib/apolo/vendas";
 import { estagioDaSituacao } from "@/lib/hercules/estoque-da-situacao";
-import { baldeDaSituacao, type SituacaoDaUnidade } from "@/lib/hercules/situacao-da-unidade";
+import { baldeDaSituacao, rotuloDaSituacao, type SituacaoDaUnidade } from "@/lib/hercules/situacao-da-unidade";
 
 import {
   BALDE_LABELS,
@@ -122,10 +122,11 @@ describe("o resumo de vendas do portal", () => {
 
     expect(negociacao.units).toBe(9);
     expect(negociacao.vgv).toBe(900);
+    // Os rótulos da régua (`rotuloDaSituacao`), os mesmos da aba Unidades e da Venda do Hércules.
     expect(negociacao.etapas.map((etapa) => etapa.rotulo)).toEqual([
-      "Proposta emitida",
-      "Contrato gerado",
-      "Em assinatura",
+      "Proposta",
+      "Contrato",
+      "Assinatura",
     ]);
   });
 
@@ -368,6 +369,26 @@ describe("a situação da unidade pela régua única", () => {
     const [linha] = unidadesParaOPortal([pelaRegua("reservado")]);
 
     expect(linha).toMatchObject({ balde: "reservado", etapa: "reservado", situacao: "Reservado" });
+  });
+
+  it("⚠️ a vendida sem proposta cai na coluna Faturado, mas se escreve como a régua: Vendido", () => {
+    // A leitura escreve `situacao` por `rotuloDaSituacao`; é esse texto que a linha mostra.
+    const [linha] = unidadesParaOPortal([pelaRegua("vendida", { situacao: rotuloDaSituacao("vendida") })]);
+
+    expect(linha).toMatchObject({ balde: "vendido", etapa: "faturado", situacao: "Vendido" });
+  });
+
+  it("⚠️ a sem cadastro no Panteon continua escrita como bloqueada no portal", () => {
+    const [linha] = unidadesParaOPortal([
+      {
+        ...unidade("disponivel", null),
+        ...estagioPelaSituacao(null),
+        semCadastroNoPanteon: true,
+        situacao: "Sem cadastro no Panteon",
+      },
+    ]);
+
+    expect(linha?.situacao).toBe("Bloqueado");
   });
 
   it("⚠️ sem venda viva no C2X, o popup da proposta não liga (a proposta do legado é história)", () => {

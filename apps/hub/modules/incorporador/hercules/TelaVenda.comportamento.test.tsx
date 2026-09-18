@@ -84,8 +84,15 @@ const DADOS = {
       ["u-salao", "reservado"],
       ["u-reserva", "reservado"],
       ["u-pai", "proposta"],
+      // Vendida no cadastro, sem proposta que sustente: o texto da régua é "Vendido".
+      ["u-vendida", "vendida"],
     ]),
-    unidades: [unidade("u-salao", "01"), unidade("u-reserva", "02"), unidade("u-pai", "03")],
+    unidades: [
+      unidade("u-salao", "01"),
+      unidade("u-reserva", "02"),
+      unidade("u-pai", "03"),
+      unidade("u-vendida", "04"),
+    ],
   }),
   escritaPorEmpreendimento: { "39": true },
 };
@@ -181,6 +188,23 @@ describe("TelaVenda: a ficha obedece à régua", () => {
     expect(titulos.some((t) => t.includes("C2X"))).toBe(false);
     expect(botao("Enviar para contrato")?.disabled).toBe(true);
     expect(botao("Cancelar proposta")?.disabled).toBe(true);
+  });
+
+  it("⚠️ o texto é o da régua, e o \"sem proposta\" não some: vai para a dica", async () => {
+    // Lucas (18/09/2026): *"quero é dentro do panteon tem que ter o mesmo status"*. A grade dizia
+    // "Vendida sem proposta" do lote que a aba Unidades chama de "Vendido".
+    await montar();
+
+    const quadrado = [...container.querySelectorAll("button")].find((b) =>
+      (b.getAttribute("title") ?? "").includes("código Q01L04"),
+    );
+    expect(quadrado?.getAttribute("title")).toContain("Vendido sem proposta");
+
+    await clicarNoLote("Q01L04");
+    const selo = [...container.querySelectorAll("span")].find((s) => s.textContent === "Vendido");
+    expect(selo, "selo da unidade em foco").toBeTruthy();
+    expect(selo?.getAttribute("title")).toContain("sem proposta");
+    expect(container.textContent ?? "").not.toContain("Vendida sem proposta");
   });
 
   it("a reserva do Hércules da própria unidade continua operável", async () => {

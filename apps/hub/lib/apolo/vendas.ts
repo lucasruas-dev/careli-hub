@@ -47,13 +47,17 @@ export const APOLO_VENDA_STAGE_ORDER: ApoloVendaStage[] = [
   "faturado",
 ];
 
+// ⚠️ O TEXTO DE CADA COLUNA É O DA RÉGUA (`rotuloDaSituacao`), o mesmo da aba Unidades e da Venda
+// do Hércules (Lucas, 18/09/2026: *"esses status tem que morar em um so lugar"*). Até aqui esta
+// tabela escrevia "Proposta emitida", "Contrato gerado" e "Em assinatura": o mesmo lote com dois
+// nomes, conforme a tela. Cada estágio do funil é uma situação da régua, então nada se traduz.
 export const APOLO_VENDA_STAGE_LABELS: Record<ApoloVendaStage, string> = {
-  assinatura: "Em assinatura",
-  contrato: "Contrato gerado",
-  disponivel: "Disponível",
-  faturado: "Faturado",
-  proposta: "Proposta emitida",
-  reservado: "Reservado",
+  assinatura: rotuloDaSituacao("assinatura"),
+  contrato: rotuloDaSituacao("contrato"),
+  disponivel: rotuloDaSituacao("disponivel"),
+  faturado: rotuloDaSituacao("faturado"),
+  proposta: rotuloDaSituacao("proposta"),
+  reservado: rotuloDaSituacao("reservado"),
 };
 
 export const APOLO_VENDA_TERMINAL_LABELS: Record<ApoloVendaTerminal, string> = {

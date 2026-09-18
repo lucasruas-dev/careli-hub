@@ -4,7 +4,7 @@
 // funil interno, saídos dos onze do C2X. O que muda aqui é o vocabulário e o recorte.
 //
 // ⚠️ POR QUE DOBRAR OS SEIS EM QUATRO. O operador da Careli precisa saber se a unidade está em
-// "Proposta emitida", "Contrato gerado" ou "Em assinatura", porque cada um desses é uma tarefa
+// "Proposta", "Contrato" ou "Assinatura", porque cada um desses é uma tarefa
 // dele. Para o incorporador, os três são a mesma notícia: alguém está comprando e ainda não
 // terminou. O vocabulário que o dono usou ao pedir a tela foi "disponível, reservado, em
 // negociação, vendido", e é esse que a tela fala; o detalhe por etapa continua no payload, uma
@@ -121,7 +121,7 @@ export function resumoDeVendas(vendas: ApoloEnterpriseVendas): ResumoDeVendas {
     alvo.units += bucket.units;
     alvo.vgv += bucket.vgv;
 
-    // A etapa só aparece se tiver alguma coisa: linha "Contrato gerado: 0" não informa nada e
+    // A etapa só aparece se tiver alguma coisa: linha "Contrato: 0" não informa nada e
     // ainda faz o cliente perguntar o que é.
     if (bucket.units > 0) {
       alvo.etapas.push({
@@ -254,7 +254,7 @@ export type UnidadeDoPortal = {
   /** Quem vendeu. Informação comercial do dono do empreendimento, que paga a comissão. */
   imobiliaria: null | string;
   lote: null | string;
-  /** Etapa exata dentro do balde ("Em assinatura"), para a linha da lista dizer o pé em que está. */
+  /** Etapa exata dentro do balde ("Assinatura"), para a linha da lista dizer o pé em que está. */
   situacao: string;
   unidade: string;
   /**
@@ -297,10 +297,15 @@ export function unidadesParaOPortal(unidades: ApoloVendaUnit[]): UnidadeDoPortal
       etapa: unidade.stage,
       imobiliaria: unidade.imobiliaria?.name ?? null,
       lote: unidade.lot,
+      // ⚠️ O TEXTO É O DA RÉGUA, que a leitura já escreveu em `situacao` (`rotuloDaSituacao`): a
+      // "vendida" sem proposta cai na coluna Faturado, mas se escreve "Vendido", como na aba
+      // Unidades e na Venda. Sem ele (unidade montada à mão) ou sem cadastro no Panteon, o de antes.
       situacao:
-        balde === "bloqueada"
-          ? BALDE_LABELS.bloqueada
-          : APOLO_VENDA_STAGE_LABELS[unidade.stage],
+        unidade.situacao && !unidade.semCadastroNoPanteon
+          ? unidade.situacao
+          : balde === "bloqueada"
+            ? BALDE_LABELS.bloqueada
+            : APOLO_VENDA_STAGE_LABELS[unidade.stage],
       unidade: unidade.code,
       // `ApoloVendaUnit.id` chega como string do loader; id que não vira número positivo sai
       // nulo, e o clique daquela linha simplesmente não liga (a tela degrada, não quebra). Sem
