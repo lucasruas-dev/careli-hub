@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-18-cad-reconhece-corretor-declarado",
+    deployedAt: "2026-09-18T12:58:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O corretor que a imobiliária cadastrou passa a entrar no CAD público pelo CPF.** Antes, quem já tinha ficha no sistema e foi incluído como corretor no cadastro da imobiliária (como o representante legal que vira corretor quando a imobiliária não informa nenhum) digitava o CPF e recebia \"Não localizamos esse CNPJ\", com a imobiliária credenciada e habilitada.",
+              "**Nada afrouxa**: a imobiliária continua tendo de estar credenciada, e o corretor só vê os empreendimentos em que ela está habilitada. Corretor retirado da imobiliária não entra.",
+            ],
+            screen: "CAD do corretor (formulário público)",
+          },
+        ],
+      },
+    ],
+    rollback: "58390936",
+    technical: {
+      done:
+        "`lib/publico/cad/dados.ts` (`imobiliariasDoCorretor`): além do vínculo ligado à ficha (`related_entity_id` = corretor), a porta lê o vínculo de corretor DECLARADO pela imobiliária com o CPF na metadata e `related_entity_id` nulo, que é como o cadastro de imobiliária do Apolo e o credenciamento público gravam os corretores. O CPF é comparado nas duas grafias gravadas (dígitos e máscara); vínculo `archived`, `blocked` ou `rejected` não conta; os ligados vêm antes dos declarados na escolha da imobiliária. Medido em 18/09/2026: 147 dos 408 vínculos de corretor estavam só com CPF, em 80 imobiliárias, e 3 corretores com ficha estavam travados na porta. A consulta nova usa o índice de `related_entity_id` e leva 1,3 ms sobre 6.904 linhas. 7 testes novos com banco em memória (`corretor-declarado.test.ts`), e a função corrigida foi rodada em leitura contra produção: o CPF da Cinthia encontra a imobiliária ativa e o REP. 6.404 testes passando e typecheck limpo.",
+      motivation:
+        "Lucas (18/09/2026), com prints do CRM 360 e do /publico/cad: *\"estamos tentando subir uma cad para essa imobiliaria pelo corretor 119.100.916-50 e está dando erro que não era para dar pois a imobiliaria está habilitada\"* e *\"é a regra que havia falado, que se o usuario não cadastrar nenhum corretor, ele cadastra o representante como corretor\"*.",
+    },
+    title: "CAD público reconhece o corretor cadastrado pela imobiliária",
+    type: "correcao",
+    version: "1.349.4",
+  },
+  {
     buildTag: "2026-09-18-relacionamento-sem-janela-da-meta",
     deployedAt: "2026-09-18T12:24:00-03:00",
     modules: [
