@@ -394,7 +394,11 @@ function resolverNo(
   const filhos = no.children;
   if (!Array.isArray(filhos)) return limpar(no);
 
-  const resolvidos = semOracaoDoRegime(aplicarPares(filhos, dados, dono), dados, dono);
+  const resolvidos = semOracaoDoRg(
+    semOracaoDoRegime(aplicarPares(filhos, dados, dono), dados, dono),
+    dados,
+    dono,
+  );
   const finais: (NoDeTexto | NoDoDocumento)[] = [];
 
   // ⚠️ TINHA CONTEÚDO ANTES? É o que separa "esvaziou no corte" de "já nascia vazio". Ver
@@ -482,6 +486,72 @@ function semAOracao(bruto: string): string {
   const oracao = corte >= 0 ? bruto.slice(corte) : bruto;
   if (!ANUNCIA_O_REGIME.test(oracao)) return bruto;
   return corte >= 0 ? bruto.slice(0, corte) : "";
+}
+
+/** `rg_cliente` e os sufixados do legado (`rg_cliente_2` … `rg_cliente_5`). */
+const RG = /^rg_cliente(?:_([2-5]))?$/;
+
+/** O texto que ANUNCIA o RG: "portador da cédula de identidade nº", "RG nº", "registro geral". */
+const ANUNCIA_O_RG = /identidade|c[ée]dula|registro geral|\bRG\b/i;
+
+/**
+ * Sem RG no cadastro, a oração do RG sai do papel — e o contrato não trava por ela.
+ *
+ * Lucas (18/09/2026): *"rg não precisa"*. Até aqui o RG ausente virava `[rg_cliente]` no corpo, entrava
+ * em `semValor` e `podeGerarContrato` recusava gerar o documento: o contrato de toda CAD pública
+ * (que nunca pediu o número) ficava preso por um campo que o negócio não exige.
+ *
+ * ⚠️ ESCONDER SÓ A VARIÁVEL SERIA PIOR, pela mesma razão do regime de bens: sobraria "portador da
+ * cédula de identidade nº  e inscrito no CPF", que parece redação e não erro. Some a oração inteira.
+ * A redação medida nas duas minutas publicadas que usam a variável (VDO 19 e RVP 38, em 18/09/2026)
+ * é a mesma: `[profissao_cliente], portador da cédula de identidade nº [rg_cliente] e inscrito no CPF
+ * sob o nº [cpf_cliente]`. O corte leva do último separador antes da variável até ela, e o " e " que
+ * a ligava ao CPF vira a vírgula que o separador levou: sai `[profissao_cliente], inscrito no CPF…`.
+ *
+ * ⚠️ COM RG, NADA MUDA: ele continua impresso como sempre.
+ *
+ * ⚠️ E O CORTE SÓ ACONTECE QUANDO O TEXTO ANTERIOR ANUNCIA O RG. Uma minuta que escreva a variável
+ * sem anunciá-la fica como estava — com o colchete no papel e o aviso da prévia —, porque cortar ali
+ * comeria redação que este motor não sabe ler.
+ */
+function semOracaoDoRg(
+  filhos: readonly (NoDeTexto | NoDoDocumento)[],
+  dados: DadosDoContrato,
+  dono: null | number,
+): (NoDeTexto | NoDoDocumento)[] {
+  const saida = [...filhos];
+
+  for (let i = saida.length - 1; i >= 0; i -= 1) {
+    const filho = saida[i];
+    if (!filho || ehTexto(filho)) continue;
+    const nome = nomeDaVariavel(filho);
+    const rg = nome ? RG.exec(nome) : null;
+    if (!rg) continue;
+
+    const indice = rg[1] ? Number(rg[1]) - 1 : (donoDoNo(filho) ?? dono ?? 0);
+    const comprador = dados.compradores[indice];
+    // Sem comprador não há de quem dizer que o RG falta: fica o colchete, como qualquer variável.
+    if (!comprador || String(comprador.valores.rg_cliente ?? "").trim()) continue;
+
+    const anterior = i > 0 ? saida[i - 1] : undefined;
+    if (!anterior || !ehTexto(anterior)) continue;
+
+    const corte = Math.max(anterior.text.lastIndexOf(","), anterior.text.lastIndexOf(";"));
+    const oracao = corte >= 0 ? anterior.text.slice(corte) : anterior.text;
+    if (!ANUNCIA_O_RG.test(oracao)) continue;
+
+    saida[i - 1] = { ...anterior, text: corte >= 0 ? anterior.text.slice(0, corte) : "" };
+    saida.splice(i, 1);
+
+    // O " e " que ligava o RG ao que vinha depois vira o separador que o corte levou.
+    const seguinte = saida[i];
+    if (seguinte && ehTexto(seguinte) && /^\s*e\s+/i.test(seguinte.text)) {
+      const separador = corte >= 0 ? `${anterior.text.charAt(corte)} ` : "";
+      saida[i] = { ...seguinte, text: seguinte.text.replace(/^\s*e\s+/i, separador) };
+    }
+  }
+
+  return saida;
 }
 
 /**

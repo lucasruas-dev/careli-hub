@@ -14,10 +14,18 @@
 // justamente onde se descobre que falta uma.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { CarteiraDaVenda } from "@/lib/apolo/carteira-da-venda";
+import { dataBr, dinheiro } from "@/lib/apolo/extrato-cliente";
+
 import type { ComercialDaAnalise } from "./comercial-da-analise";
 
 import { comercialDaProposta } from "./comercial-da-analise";
-import { dadosDaProposta } from "./dados-do-contrato";
+import {
+  CARTEIRA_AINDA_SEM_A_VENDA,
+  dadosDaProposta,
+  SEM_LANCAMENTOS_NA_CARTEIRA,
+  semValorNaCarteira,
+} from "./dados-do-contrato";
 
 /** Um campo como a tela mostra: rótulo humano, valor, e se está faltando. */
 export type CampoDaAnalise = {
@@ -44,6 +52,15 @@ export type AnaliseDoTrabalho = {
    * `condicoes`. A tela diz isso, em vez de desenhar uma tabela de zeros.
    */
   comercial: ComercialDaAnalise | null;
+  /**
+   * De onde saiu o financeiro do bloco "A proposta" na venda IMPORTADA sem cronograma: a carteira do
+   * Apolo, e só ela. `null` na nativa e em toda venda que tem `comercial`.
+   *
+   * Lucas (18/09/2026): *"a única coisa que vamos utilizar o c2x é a questão financeira, mesmo assim
+   * ela tem que morar dentro da carteira no apolo"*. `texto` é a frase que a tela põe no topo do
+   * bloco, e diz a fonte em todos os casos — inclusive quando a carteira ainda não tem a venda.
+   */
+  financeiro: FinanceiroDaAnalise | null;
   imobiliaria: CampoDaAnalise[];
   proponentes: ProponenteDaAnalise[];
   /**
@@ -54,6 +71,12 @@ export type AnaliseDoTrabalho = {
   proposta: CampoDaAnalise[];
   /** Onde é: empreendimento, quadra, lote, área e matrícula. Independe do cronograma. */
   unidade: CampoDaAnalise[];
+};
+
+export type FinanceiroDaAnalise = {
+  fonte: "carteira_do_apolo";
+  situacao: "erro" | "nunca_sincronizada" | "ok" | "sem_parcela";
+  texto: string;
 };
 
 /**
@@ -73,6 +96,7 @@ function campo(
 
 /** Pessoa física e jurídica têm qualificações diferentes; o bloco segue a flag do dado. */
 function camposDoProponente(comprador: {
+  ehCasado?: boolean;
   ehPessoaFisica: boolean;
   valores: Record<string, string>;
 }): CampoDaAnalise[] {
@@ -98,10 +122,20 @@ function camposDoProponente(comprador: {
     // o literal "COMPRADOR" para todo mundo (dados-do-contrato.ts, `por("identificacao_cliente",
     // "COMPRADOR")`). O RG é este, montado como "número + órgão" — e só quando o número existe,
     // porque o órgão sozinho imprimia "cédula de identidade nº SSP/MG".
-    campo(v, "rg_cliente", "RG"),
+    //
+    // ⚠️ E ELE SÓ APARECE QUANDO EXISTE. Lucas (18/09/2026): *"rg não precisa"*. Como linha marcada
+    // "não informado" ele pintava de pendência quase toda CAD pública, que nunca pediu o número.
+    ...(String(v.rg_cliente ?? "").trim() ? [campo(v, "rg_cliente", "RG")] : []),
     campo(v, "data_nascimento_cliente", "Nascimento"),
     campo(v, "estado_civil_cliente", "Estado civil"),
-    campo(v, "regime_casamento_cliente", "Regime de bens"),
+    // ⚠️ O REGIME SÓ É PENDÊNCIA DE QUEM É CASADO. Como linha "não informado" ele pintava de pendência
+    // o solteiro: medido em 18/09/2026, 7 dos 10 cards em análise, e era a única pendência que sobrava
+    // no bloco deles. É a regra de `conferir` (dados-do-contrato.ts), que não avisa regime de solteiro,
+    // e a do contrato: sem estado civil `ehCasado` é indefinido, a cláusula do regime fica no papel, e
+    // a linha fica aqui também. Com valor, ela aparece sempre.
+    ...(comprador.ehCasado !== false || String(v.regime_casamento_cliente ?? "").trim()
+      ? [campo(v, "regime_casamento_cliente", "Regime de bens")]
+      : []),
     campo(v, "nacionalidade_cliente", "Nacionalidade"),
     campo(v, "email_cliente", "E-mail"),
     campo(v, "telefone_cliente", "Telefone"),
@@ -136,6 +170,153 @@ function camposDoConjuge(comprador: {
 }
 
 /**
+ * A frase do topo do bloco "A proposta" da venda importada. `null` quando não há o que dizer (a venda
+ * é nativa).
+ *
+ * ⚠️ A FONTE É DITA SEMPRE, até quando não há número: a frase diz onde o financeiro mora e por que
+ * ele não está aqui; "não informado" dizia que alguém esqueceu. E cada frase só afirma o que se sabe
+ * (ver `semValorNaCarteira`): "sem lançamentos" é só da carteira da venda sincronizada e vazia.
+ */
+export function financeiroDaCarteira(carteira: CarteiraDaVenda | null): FinanceiroDaAnalise | null {
+  if (!carteira || carteira.situacao === "nativa") return null;
+
+  if (carteira.situacao === "ok") {
+    return {
+      fonte: "carteira_do_apolo",
+      situacao: "ok",
+      texto: `Venda importada do C2X. Entrada, parcelas, pago e em aberto vêm da carteira do Apolo, sincronizada em ${dataBr(carteira.sincronizadaEm)}.`,
+    };
+  }
+  if (carteira.situacao === "erro") {
+    return {
+      fonte: "carteira_do_apolo",
+      situacao: "erro",
+      texto:
+        "Venda importada do C2X. Não consegui ler a carteira do Apolo desta venda agora: os valores dela ficaram de fora. Tente abrir de novo.",
+    };
+  }
+  if (carteira.motivo === "sem_parcela") {
+    const quando = carteira.sincronizadaEm ? `, sincronizada em ${dataBr(carteira.sincronizadaEm)}` : "";
+    return {
+      fonte: "carteira_do_apolo",
+      situacao: "sem_parcela",
+      texto: `Venda importada do C2X, ${SEM_LANCAMENTOS_NA_CARTEIRA}${quando}.`,
+    };
+  }
+  // ⚠️ AQUI NÃO SE DIZ "SEM LANÇAMENTOS": a carteira do Apolo tem as parcelas da pessoa (o retrato
+  // de `apolo_financial_snapshots`), e o que ainda não existe é a carteira separada por venda. Ver
+  // `CARTEIRA_AINDA_SEM_A_VENDA`.
+  return {
+    fonte: "carteira_do_apolo",
+    situacao: "nunca_sincronizada",
+    texto: `Venda importada do C2X: ${CARTEIRA_AINDA_SEM_A_VENDA}, então entrada, parcelas, pago e em aberto não aparecem aqui.`,
+  };
+}
+
+/**
+ * O bloco "A proposta" da venda importada: o que a proposta tem, mais o financeiro da carteira.
+ *
+ * ⚠️ O QUE A CARTEIRA NÃO TEM NÃO VIRA "NÃO INFORMADO": vira a frase de onde ele deveria estar. E o
+ * valor de venda, o plano, o prazo e o vencimento continuam saindo da proposta, porque são dela.
+ */
+function camposDaCarteira(
+  g: Record<string, string>,
+  carteira: CarteiraDaVenda | null,
+): CampoDaAnalise[] {
+  // ⚠️ A FRASE DEPENDE DA RAZÃO (ver `semValorNaCarteira`): leitura que falhou não vira "sem
+  // lançamentos", e a carteira que ainda não separa a venda também não.
+  const semLancamento = (rotulo: string): CampoDaAnalise => ({
+    faltando: true,
+    rotulo,
+    valor: semValorNaCarteira(carteira),
+  });
+  const daProposta = [campo(g, "preco_venda", "Valor da venda"), campo(g, "plano_nome", "Plano")];
+  const prazo = String(g.prazo_meses_amortizacao ?? "").trim()
+    ? campo(g, "prazo_meses_amortizacao", "Parcelas")
+    : semLancamento("Parcelas");
+  const vencimento = campo(g, "dia_vencimento", "Vencimento");
+
+  if (carteira?.situacao !== "ok") {
+    return [
+      ...daProposta,
+      semLancamento("Entrada"),
+      semLancamento("A financiar"),
+      prazo,
+      vencimento,
+    ];
+  }
+
+  const { porTipo } = carteira;
+  const vezes = (n: number, uma: string, varias: string) => `${n} ${n === 1 ? uma : varias}`;
+  const comEntrada = porTipo.ato.quantidade + porTipo.sinal.quantidade;
+  const pago = Object.values(porTipo).reduce((t, p) => t + p.pago, 0);
+  const aberto = Object.values(porTipo).reduce((t, p) => t + p.aberto, 0);
+  const vencido = Object.values(porTipo).reduce((t, p) => t + p.vencido, 0);
+  const { totais } = carteira.relatorio;
+
+  const campos: CampoDaAnalise[] = [
+    ...daProposta,
+    comEntrada > 0
+      ? {
+          faltando: false,
+          rotulo: "Entrada",
+          valor: `${dinheiro(carteira.entrada)} · ${[
+            porTipo.ato.quantidade ? vezes(porTipo.ato.quantidade, "ato", "atos") : "",
+            porTipo.sinal.quantidade ? vezes(porTipo.sinal.quantidade, "sinal", "sinais") : "",
+          ]
+            .filter(Boolean)
+            .join(" + ")}`,
+        }
+      : semLancamento("Entrada"),
+    porTipo.mensal.quantidade > 0
+      ? {
+          faltando: false,
+          rotulo: "Mensais",
+          valor: `${porTipo.mensal.quantidade} de ${dinheiro(carteira.mensalidade)}`,
+        }
+      : semLancamento("Mensais"),
+  ];
+
+  // Só entra quando existe: "Anuais e reforços: 0" faz quem lê procurar do que se trata.
+  if (porTipo.reforco.quantidade > 0) {
+    campos.push({
+      faltando: false,
+      rotulo: "Anuais e reforços",
+      valor: `${porTipo.reforco.quantidade}, somando ${dinheiro(porTipo.reforco.valorContratual)}`,
+    });
+  }
+
+  campos.push(
+    porTipo.mensal.quantidade + porTipo.reforco.quantidade > 0
+      ? { faltando: false, rotulo: "A financiar", valor: dinheiro(carteira.financiado) }
+      : semLancamento("A financiar"),
+    prazo,
+    vencimento,
+    {
+      faltando: false,
+      rotulo: "Pago até hoje",
+      // ⚠️ O PAGO É O QUE ENTROU (`realizados`), e não o saldo a valor de hoje: num distrato é o
+      // número da devolução.
+      valor:
+        totais.parcelasPagas > 0
+          ? `${dinheiro(pago)} · ${vezes(totais.parcelasPagas, "parcela", "parcelas")}`
+          : "nada pago",
+    },
+    {
+      faltando: false,
+      rotulo: "Em aberto",
+      valor: carteira.relatorio.contrato.encerrado
+        ? "contrato encerrado, sem saldo em aberto"
+        : `${dinheiro(aberto)} · ${vezes(totais.parcelasAbertas, "parcela", "parcelas")}${
+            vencido > 0 ? `, ${dinheiro(vencido)} vencidos` : ""
+          }`,
+    },
+  );
+
+  return campos;
+}
+
+/**
  * Os três blocos da etapa 1, prontos para a tela.
  *
  * `null` quando a proposta não existe — o card sem `proposta_id` (os antigos, nascidos antes da
@@ -148,16 +329,21 @@ export async function analiseDoTrabalho(
   const montado = await dadosDaProposta(propostaId, sb);
   if (!montado) return null;
 
-  const { avisos, dados } = montado;
+  const { avisos, carteira, dados } = montado;
   const g = dados.gerais;
 
   // ⚠️ EM PARALELO NÃO, DE PROPÓSITO — `dadosDaProposta` já decidiu se a proposta existe. Buscar o
   // comercial antes disso gastaria duas consultas em todo card sem venda ligada.
   const comercial = await comercialDaProposta(sb, propostaId);
 
+  // ⚠️ A CARTEIRA SÓ FALA QUANDO NÃO HÁ CRONOGRAMA. Com `comercial`, o bloco é o cronograma que o
+  // comprador leu; a carteira não o substitui.
+  const financeiro = comercial ? null : financeiroDaCarteira(carteira);
+
   return {
     avisos,
     comercial,
+    financeiro,
     // ⚠️ SEM COMISSÃO AQUI. `gerais` traz `percentual_comissao_*` e `valor_total_comissao`, que
     // são política comercial — a etapa 1 confere QUEM vendeu, não QUANTO se paga a quem.
     imobiliaria: [
@@ -183,7 +369,7 @@ export async function analiseDoTrabalho(
       conjuge: camposDoConjuge(c),
       nome: String(c.valores.nome_cliente ?? c.valores.razao_social_cliente ?? "").trim() || "Sem nome",
     })),
-    proposta: [
+    proposta: financeiro ? camposDaCarteira(g, carteira) : [
       campo(g, "preco_venda", "Valor da venda"),
       campo(g, "plano_nome", "Plano"),
       campo(g, "valor_entrada", "Entrada"),

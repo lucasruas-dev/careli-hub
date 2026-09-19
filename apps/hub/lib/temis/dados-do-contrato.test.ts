@@ -731,8 +731,9 @@ describe("as seis fontes do comprador", () => {
     // passam por qualquer conferência automática e por nenhuma humana, tarde demais.
     expect(v.cidade_cliente).toBeUndefined();
     expect(v.rg_cliente).toBeUndefined();
-    // E, por não existirem, os dois entram na lista de quem vai conferir.
-    expect(r.avisos.join(" ")).toContain("RG");
+    // ⚠️ E O RG NÃO É COBRADO (Lucas, 18/09/2026: *"rg não precisa"*). Ele não vira campo preenchido
+    // com o órgão sozinho, e também não vira "falta RG" nos avisos.
+    expect(r.avisos.join(" ")).not.toContain("RG");
   });
 
   it("e-mail e telefone caem em apolo_contacts quando a ficha não os tem", async () => {
@@ -894,7 +895,13 @@ describe("os avisos", () => {
           {
             enterprise_id: "39",
             entity_id: THIAGO,
-            ficha: { ...FICHA_DO_THIAGO, rg: "", estadoCivilId: "1", regimeBensId: "" },
+            ficha: {
+              ...FICHA_DO_THIAGO,
+              estadoCivilId: "1",
+              nacionalidade: "",
+              regimeBensId: "",
+              rg: "",
+            },
           },
         ],
         hercules_propostas: proposta(),
@@ -906,7 +913,9 @@ describe("os avisos", () => {
     // detalhe do fixture em vez de por um defeito do código.
     const aviso = r.avisos.find((a) => a.includes("falta"));
     expect(aviso, r.avisos.join(" | ")).toBeDefined();
-    expect(aviso).toContain("RG");
+    expect(aviso).toContain("nacionalidade");
+    // ⚠️ O RG VAZIO NÃO ENTRA NA LISTA (Lucas, 18/09/2026: *"rg não precisa"*).
+    expect(aviso).not.toContain("RG");
     // ⚠️ SOLTEIRO NÃO É COBRADO POR REGIME DE BENS — aviso que sempre aparece é aviso que ninguém lê.
     expect(r.avisos.join(" ")).not.toContain("regime de bens");
   });

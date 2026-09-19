@@ -732,3 +732,89 @@ describe("o parágrafo que esvaziou no corte", () => {
     expect(r.nos).toHaveLength(3);
   });
 });
+
+// ── O RG QUE NÃO É EXIGIDO ───────────────────────────────────────────────────
+//
+// Lucas, 18/09/2026: *"rg não precisa"*. Até aqui o RG ausente virava `[rg_cliente]` no papel, entrava
+// em `semValor` e a geração do contrato era RECUSADA por `podeGerarContrato`. A redação é a medida nas
+// duas minutas publicadas que usam a variável (VDO 19 e RVP 38).
+describe("a oração do RG", () => {
+  const qualificacao = [
+    p(
+      v("nome_cliente"),
+      ", ",
+      v("profissao_cliente"),
+      ", portador da cédula de identidade nº ",
+      v("rg_cliente"),
+      " e inscrito no CPF sob o nº ",
+      v("cpf_cliente"),
+      ", residente",
+    ),
+  ];
+
+  const pessoa = (nome: string, rg?: string): DadosDoComprador => ({
+    ehPessoaFisica: true,
+    temConjuge: false,
+    valores: {
+      cpf_cliente: "111.222.333-44",
+      nome_cliente: nome,
+      profissao_cliente: "Corretor",
+      ...(rg ? { rg_cliente: rg } : {}),
+    },
+  });
+
+  it("sem RG, a oração inteira sai — e o contrato não fica preso por ela", () => {
+    const r = preencherContrato(qualificacao, { compradores: [pessoa("SEM RG")], gerais: {} });
+
+    expect(texto(r.nos)).toBe(
+      "SEM RG, Corretor, inscrito no CPF sob o nº 111.222.333-44, residente",
+    );
+    expect(r.semValor).not.toContain("rg_cliente");
+  });
+
+  it("com RG, nada muda: ele continua impresso", () => {
+    const r = preencherContrato(qualificacao, {
+      compradores: [pessoa("COM RG", "MG-12.345.678 SSP/MG")],
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe(
+      "COM RG, Corretor, portador da cédula de identidade nº MG-12.345.678 SSP/MG e inscrito no CPF sob o nº 111.222.333-44, residente",
+    );
+  });
+
+  // ⚠️ SEM O ANÚNCIO, O MOTOR NÃO CORTA: a redação é outra, e cortar comeria texto que ele não sabe
+  // ler. Fica o colchete, e a prévia avisa — como qualquer variável sem valor.
+  it("quando o texto anterior não anuncia o RG, fica o colchete", () => {
+    const r = preencherContrato([p(v("nome_cliente"), ", documento ", v("rg_cliente"))], {
+      compradores: [pessoa("OUTRA REDACAO")],
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe("OUTRA REDACAO, documento [rg_cliente]");
+    expect(r.semValor).toContain("rg_cliente");
+  });
+
+  it("no laço, cada comprador responde pelo seu RG", () => {
+    const r = preencherContrato(
+      [
+        p(
+          v("inicio_cada_comprador"),
+          v("nome_cliente"),
+          ", portador da cédula de identidade nº ",
+          v("rg_cliente"),
+          " e inscrito no CPF sob o nº ",
+          v("cpf_cliente"),
+          "; ",
+          v("fim_cada_comprador"),
+        ),
+      ],
+      { compradores: [pessoa("PRIMEIRO", "MG-1"), pessoa("SEGUNDO")], gerais: {} },
+    );
+    const t = texto(r.nos);
+
+    expect(t).toContain("PRIMEIRO, portador da cédula de identidade nº MG-1 e inscrito no CPF");
+    expect(t).toContain("SEGUNDO, inscrito no CPF sob o nº 111.222.333-44");
+    expect(r.semValor).toEqual([]);
+  });
+});

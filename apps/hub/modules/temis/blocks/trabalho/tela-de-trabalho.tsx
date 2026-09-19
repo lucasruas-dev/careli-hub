@@ -1127,11 +1127,13 @@ function EtapaDeAnalise({
         </Bloco>
       ) : (
         <Bloco titulo="A proposta">
-          {/* As 4.857 propostas importadas do C2X nasceram sem cronograma: o que existe delas é o
-              texto abaixo, e dizer isso é melhor do que desenhar uma tabela de zeros. */}
+          {/* As propostas importadas do C2X nasceram sem cronograma. O financeiro delas mora na
+              carteira do Apolo (Lucas, 18/09/2026: "a única coisa que vamos utilizar o c2x é a
+              questão financeira, mesmo assim ela tem que morar dentro da carteira no apolo"), e a
+              frase de cima diz a fonte, inclusive quando a carteira ainda não tem a venda. */}
           <p className="m-0 text-[11px] text-ink-muted">
-            Esta proposta não tem fluxo de pagamento gravado — é uma das importadas do C2X. Os
-            valores abaixo são o que existe dela.
+            {analise.financeiro?.texto ??
+              "Esta proposta não tem fluxo de pagamento gravado. Os valores abaixo são o que existe dela."}
           </p>
           <Campos campos={analise.proposta} />
         </Bloco>

@@ -48,8 +48,11 @@ import {
   formatDateBR,
 } from "@/lib/apolo/c2x-fields";
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
-import { unirConjuge, unirEndereco } from "@/lib/apolo/cadastro-cascata";
+import { type EnderecoDaFicha, unirConjuge, unirEndereco } from "@/lib/apolo/cadastro-cascata";
+import { type CarteiraDaVenda, carteiraDaVendaImportada } from "@/lib/apolo/carteira-da-venda";
 import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
+import type { FatosApurados } from "@/lib/hercules/fatos-do-contrato";
+import { lerFatosDoContrato } from "@/lib/hercules/fatos-do-contrato-server";
 import { lerComColunasDoApartamento } from "@/lib/hercules/nome-da-unidade";
 
 import {
@@ -63,7 +66,21 @@ import type { DadosDoComprador, DadosDoContrato } from "./preencher-contrato";
 // ── AS LINHAS COMO ELAS CHEGAM ───────────────────────────────────────────────
 
 type LinhaDaProposta = {
+  /**
+   * O usuário do C2X do titular — a PONTE EXATA entre a venda importada e a ficha do Apolo. É o
+   * mesmo número que a CAD pública grava em `metadata.c2xUserId` e que o espelho do C2X carrega em
+   * `apolo_source_links` (`c2x/users/<id>`). Ver `ordenarFichas`.
+   */
+  cliente_c2x_id?: null | number | string;
   cliente_documento: null | string;
+  /**
+   * A entidade que a proposta NATIVA aponta (a ficha da CAD do titular). Nula nas importadas.
+   *
+   * ⚠️ ELA NÃO ERA LIDA, e é por isso que 3 dos 4 contratos nativos em análise em 18/09/2026 saíam
+   * com a ficha errada: o casamento era só por documento, e o espelho do C2X (status `active`) ganhava
+   * da CAD (status `review`) pela ordem alfabética do status.
+   */
+  cliente_entity_id?: null | string;
   cliente_nome: null | string;
   compradores: unknown;
   condicoes: unknown;
@@ -82,9 +99,24 @@ type LinhaDaProposta = {
    * em todas elas.
    */
   contrato_parcelas: null | number | string;
+  /** As três datas que `apurarFatosDoContrato` lê — só usadas quando a carteira da venda está vazia. */
+  data_assinatura?: null | string;
+  data_ato?: null | string;
+  data_faturamento?: null | string;
   dia_vencimento: null | number | string;
   empreendimento_id: null | string;
+  /** O estágio da venda no C2X, na carga. Reserva do estágio da carteira do Apolo. */
+  etapa_c2x?: null | number | string;
+  /**
+   * A imobiliária da venda no C2X. Casa com `apolo_source_links` (`c2x/users/<id>`) e é o que traz
+   * CNPJ, telefone e e-mail da imobiliária para a venda importada, que não guarda
+   * `imobiliaria_entity_id`. Medido em 18/09/2026: as 2.611 importadas abertas sem corretor têm o link.
+   */
+  imobiliaria_c2x_id?: null | number | string;
+  /** `acquisition_requests.id` da venda importada. Nula na nativa. É a chave da carteira do Apolo. */
+  origem_c2x_id?: null | number | string;
   plano_nome: null | string;
+  plano_parcelas?: null | number | string;
   unidade_id: null | string;
   valor: null | number | string;
 };
@@ -118,7 +150,10 @@ type LinhaDoEmpreendimento = {
   c2x_enterprise_id: null | string;
   cidade: null | string;
   codigo: null | string;
+  id?: null | string;
   nome: null | string;
+  /** O pai no cadastro do Panteon (VOC → VLO). Nulo no pai e no empreendimento sem divisão. */
+  pai_id?: null | string;
   uf: null | string;
 };
 
@@ -174,7 +209,17 @@ type ComissaoDaVenda = {
   percentuais: LinhaDaComissao | null;
 };
 
-type LinhaDaEsteira = { enterprise_id: null | string; entity_id: string; ficha: unknown };
+type LinhaDaEsteira = {
+  /** O nome do corretor em texto, como a CAD gravou. Reserva do nome da entidade. */
+  corretor?: null | string;
+  /** Quem mandou a CAD. É o corretor da venda importada, que a carga do C2X não trouxe. */
+  corretor_entity_id?: null | string;
+  enterprise_id: null | string;
+  entity_id: string;
+  ficha: unknown;
+  imobiliaria?: null | string;
+  imobiliaria_entity_id?: null | string;
+};
 
 type LinhaDoEndereco = {
   city: null | string;
@@ -214,9 +259,13 @@ type LinhaDoRelacionamento = {
  * está vazia.
  */
 type CompradorDaProposta = {
+  /** O usuário do C2X deste comprador, na grafia da importação. É a ponte exata até a ficha. */
+  c2x_user_id?: unknown;
   cpf?: unknown;
   /** A grafia da importação do C2X para o mesmo campo que a proposta nativa chama de `cpf`. */
   documento?: unknown;
+  /** A entidade do Apolo que a proposta apontar para este comprador, quando apontar. */
+  entity_id?: unknown;
   nome?: unknown;
   participacao?: unknown;
   /** A grafia da importação do C2X para `participacao`. */
@@ -280,14 +329,25 @@ type CondicoesGravadas = {
 export async function dadosDaProposta(
   propostaId: string,
   sb: SupabaseClient,
-): Promise<{ avisos: string[]; dados: DadosDoContrato } | null> {
+): Promise<{
+  avisos: string[];
+  /**
+   * O financeiro da venda IMPORTADA sem cronograma, lido da carteira do Apolo. `null` na nativa e na
+   * importada que tem cronograma gravado. Ver `carteira-da-venda.ts`.
+   *
+   * ⚠️ SAI DAQUI, E NÃO DE UMA SEGUNDA LEITURA NA TELA, pela regra do topo de
+   * `analise-do-trabalho.ts`: a tela e o papel precisam dizer o mesmo número.
+   */
+  carteira: CarteiraDaVenda | null;
+  dados: DadosDoContrato;
+} | null> {
   const avisos: string[] = [];
 
   const proposta = await umaLinha<LinhaDaProposta>(
     sb
       .from("hercules_propostas")
       .select(
-        "cliente_documento, cliente_nome, compradores, condicoes, contrato_parcelas, corretor_entity_id, corretor_nome, dia_vencimento, empreendimento_id, imobiliaria_entity_id, imobiliaria_nome, plano_nome, unidade_id, valor",
+        "cliente_c2x_id, cliente_documento, cliente_entity_id, cliente_nome, compradores, condicoes, contrato_parcelas, corretor_entity_id, corretor_nome, data_assinatura, data_ato, data_faturamento, dia_vencimento, empreendimento_id, etapa_c2x, imobiliaria_c2x_id, imobiliaria_entity_id, imobiliaria_nome, origem_c2x_id, plano_nome, plano_parcelas, unidade_id, valor",
       )
       .eq("id", propostaId)
       .maybeSingle(),
@@ -296,7 +356,12 @@ export async function dadosDaProposta(
 
   if (!proposta) return null;
 
-  const [unidade, empreendimento, doVinculado] = await Promise.all([
+  // ⚠️ O VÍNCULO DA PRÓPRIA PROPOSTA MANDA. Só a venda que não aponta nem imobiliária nem corretor
+  // (as importadas do C2X, que a carga gravou sem vínculo) procura quem vendeu na CAD do titular —
+  // ver `quemVendeuPeloApolo`.
+  const temVinculoNaProposta = Boolean(proposta.imobiliaria_entity_id || proposta.corretor_entity_id);
+
+  const [unidade, empreendimento, doVinculado, links] = await Promise.all([
     proposta.unidade_id
       ? umaLinha<LinhaDaUnidade>(
           // ⚠️ AS COLUNAS DO PRÉDIO VÊM JUNTO, E SEM ELAS SE A 0171 NÃO ENTROU (onda 2, vertical).
@@ -319,30 +384,95 @@ export async function dadosDaProposta(
       ? umaLinha<LinhaDoEmpreendimento>(
           sb
             .from("hercules_empreendimentos")
-            .select("c2x_enterprise_id, cidade, codigo, nome, uf")
+            .select("c2x_enterprise_id, cidade, codigo, id, nome, pai_id, uf")
             .eq("id", proposta.empreendimento_id)
             .maybeSingle(),
           "hercules_empreendimentos",
         )
       : Promise.resolve(null),
-    cadastroDoVinculado(sb, proposta.imobiliaria_entity_id, proposta.corretor_entity_id),
+    // ⚠️ A PRECEDÊNCIA DE SEMPRE: a imobiliária vence o corretor (ver `cadastroDoVinculado`).
+    temVinculoNaProposta
+      ? cadastroDoVinculado(sb, [
+          texto(proposta.imobiliaria_entity_id) || texto(proposta.corretor_entity_id),
+        ])
+      : Promise.resolve(null),
+    lerLinksDoC2x(sb, idsDoC2xDaProposta(proposta)),
   ]);
+
+  // ⚠️ A CARTEIRA SÓ É PROCURADA PARA A VENDA IMPORTADA SEM CRONOGRAMA. Lucas (18/09/2026): *"a
+  // única coisa que vamos utilizar o c2x é a questão financeira, mesmo assim ela tem que morar dentro
+  // da carteira no apolo"*. A nativa tem o cronograma congelado na própria proposta, e ele continua
+  // sendo a verdade dela: é o papel que o comprador leu.
+  const importadaSemCronograma =
+    !objeto(proposta.condicoes) && idDaVendaImportada(proposta.origem_c2x_id) !== null;
 
   // ⚠️ A COMISSÃO É UMA SEGUNDA VIAGEM, e não cabe no `Promise.all` de cima: a chave de
   // `apolo_enterprise_settings` só se conhece DEPOIS de ler o empreendimento (ver
   // `comissaoDoEmpreendimento`). Mas ela roda junto com os compradores, que é a leitura cara — assim
-  // as duas viagens extras não somam tempo à prévia do contrato.
-  const [compradores, comissao] = await Promise.all([
-    montarCompradores(sb, proposta, empreendimento, avisos),
+  // as duas viagens extras não somam tempo à prévia do contrato. A carteira vai junto pelo mesmo motivo.
+  const [montados, comissao, carteira] = await Promise.all([
+    montarCompradores(sb, proposta, empreendimento, links, avisos),
     comissaoDoEmpreendimento(sb, empreendimento, unidade),
+    importadaSemCronograma
+      ? carteiraDaVendaImportada(
+          sb,
+          {
+            area: unidade?.area,
+            codigoDaUnidade: unidade?.codigo,
+            dataAssinatura: proposta.data_assinatura,
+            dataAto: proposta.data_ato,
+            empreendimentoCodigo: empreendimento?.codigo,
+            empreendimentoNome: empreendimento?.nome,
+            estagio: proposta.etapa_c2x,
+            lote: unidade?.lote,
+            origemC2xId: proposta.origem_c2x_id ?? null,
+            planoParcelas: proposta.plano_parcelas,
+            precoTabela: unidade?.preco_tabela,
+            quadra: unidade?.quadra,
+          },
+          hojeEmBrasilia(new Date()),
+        )
+      : Promise.resolve(null),
   ]);
+
+  if (carteira?.situacao === "erro") {
+    console.error("[temis][dados] falha ao ler a carteira do Apolo", { erro: carteira.error, propostaId });
+  }
+
+  // ⚠️ QUEM VENDEU DEPENDE DO TITULAR JÁ ESCOLHIDO (é a CAD dele que responde), então vem depois dos
+  // compradores. Só roda para a venda sem vínculo, e é aí que a viagem a mais se paga.
+  const vendeu: QuemVendeu = temVinculoNaProposta
+    ? { corretorNome: "", imobiliariaNome: "", vinculado: doVinculado }
+    : await quemVendeuPeloApolo(sb, {
+        dosCompradores: montados.dosCompradores,
+        empreendimento,
+        links,
+        proposta,
+        titular: montados.titular,
+        unidade,
+      });
+
+  // ⚠️ CARTEIRA VAZIA É FATO, E O FATO PODE DIVERGIR DO HÉRCULES — o VOL 4881 tem "ato pago em
+  // 22/08" registrado e a carteira sem parcela nenhuma. Só nesse caso os fatos são lidos: é a única
+  // hora em que eles mudam o que a tela diz. Falha na leitura deles não derruba a análise; só deixa
+  // de apontar a divergência.
+  const fatos =
+    carteira?.situacao === "sem_carteira" && carteira.motivo === "sem_parcela"
+      ? await lerFatosDoContrato(sb, {
+          data_assinatura: proposta.data_assinatura ?? null,
+          data_ato: proposta.data_ato ?? null,
+          data_faturamento: proposta.data_faturamento ?? null,
+          id: propostaId,
+        }).catch(() => null)
+      : null;
 
   return {
     avisos,
+    carteira,
     dados: {
-      compradores,
+      compradores: montados.compradores,
       condicoes: condicoesDoContrato(proposta),
-      gerais: gerais(proposta, unidade, empreendimento, doVinculado, comissao, avisos),
+      gerais: gerais(proposta, unidade, empreendimento, vendeu, comissao, avisos, { carteira, fatos }),
     },
   };
 }
@@ -353,13 +483,14 @@ async function montarCompradores(
   sb: SupabaseClient,
   proposta: LinhaDaProposta,
   empreendimento: LinhaDoEmpreendimento | null,
+  links: LinksDoC2x,
   avisos: string[],
-): Promise<DadosDoComprador[]> {
+): Promise<CompradoresMontados> {
   const daProposta = compradoresDaProposta(proposta);
 
   if (daProposta.length === 0) {
     avisos.push("A proposta não tem comprador nenhum: a qualificação do contrato sai em branco.");
-    return [];
+    return { compradores: [], dosCompradores: { documentos: new Set(), fichas: new Set() }, titular: null };
   }
 
   // ⚠️ UMA CONSULTA SÓ, E COM AS DUAS GRAFIAS DO DOCUMENTO. `document_masked` guarda o documento
@@ -402,41 +533,443 @@ async function montarCompradores(
         )
       : [];
 
-  // ⚠️ A ARQUIVADA SÓ ENTRA SE NÃO HOUVER OUTRA. O `order("status")` acima já traz `active` antes de
-  // `archived` alfabeticamente — mas depender disso seria depender de um acaso do alfabeto, que a
-  // primeira renomeação de status quebraria em silêncio. Aqui a regra está escrita.
-  const porDocumento = new Map<string, LinhaDaEntidade>();
+  // ⚠️ TODAS AS FICHAS DO MESMO DOCUMENTO FICAM, na ordem do banco. Até 18/09/2026 ficava UMA por
+  // documento — a primeira pela ordem alfabética do status —, e a escolha era esta linha. Ver
+  // `ordenarFichas` para o porquê de não ser mais.
+  const porDocumento = new Map<string, LinhaDaEntidade[]>();
   for (const e of entidades) {
     const chave = soDigitos(e.document_masked ?? "");
     if (!chave) continue;
-    const atual = porDocumento.get(chave);
-    if (!atual || (ehArquivada(atual) && !ehArquivada(e))) porDocumento.set(chave, e);
+    const lista = porDocumento.get(chave) ?? [];
+    lista.push(e);
+    porDocumento.set(chave, lista);
   }
 
+  // ⚠️ AS CAMADAS SÃO LIDAS PARA TODAS, E ANTES DE ESCOLHER. "Tem cadastro preenchido" é critério de
+  // escolha, e a ficha da esteira é metade dessa resposta; e a escolhida pode ser completada pelas
+  // outras do mesmo documento. As quatro consultas já eram em lote pelos ids de todas.
   const ids = [...new Set(entidades.map((e) => e.id).filter(Boolean))];
-  const { conjuges, contatos, enderecos, fichas } = await camadasDoCadastro(
+  const { conjuges, contatos, enderecos, esteira, fichas } = await camadasDoCadastro(
     sb,
     ids,
     empreendimento?.c2x_enterprise_id ?? null,
   );
 
-  return daProposta.map((cru) => {
+  // ⚠️ O COMPRADOR NÃO VENDE O PRÓPRIO LOTE. Todas as fichas dos documentos dos compradores (vivas e
+  // arquivadas) e os próprios documentos: é o que `quemVendeuPeloApolo` confere antes de aceitar o
+  // corretor ou a imobiliária que a CAD aponta.
+  const dosCompradores: DosCompradores = {
+    documentos: new Set(daProposta.map(documentoDoComprador).filter(Boolean)),
+    fichas: new Set(ids),
+  };
+
+  let titular: null | TitularEscolhido = null;
+
+  const compradores = daProposta.map((cru) => {
     const digitos = documentoDoComprador(cru);
-    const entidade = digitos ? (porDocumento.get(digitos) ?? null) : null;
-    return umComprador({
+    const ehTitular = cru.titular === true;
+    const apontada = texto(cru.entity_id) || (ehTitular ? texto(proposta.cliente_entity_id) : "");
+    const ligada = ligadaAoUsuarioDoC2x(
+      texto(cru.c2x_user_id) || (ehTitular ? texto(proposta.cliente_c2x_id) : ""),
+      links,
+    );
+    const ordenadas = ordenarFichas(digitos ? (porDocumento.get(digitos) ?? []) : [], {
+      apontada,
+      ligada,
+      nomeDaProposta: texto(cru.nome),
+      // ⚠️ FICHA VAZIA NÃO É CADASTRO. 137 das 835 linhas de `apolo_esteira` têm `ficha = {}` (medido
+      // em 18/09/2026), e `Boolean({})` é verdadeiro: o espelho com uma linha vazia empatava com a CAD
+      // preenchida, a ordem do banco decidia, e ganhava o espelho.
+      temCadastro: (e) =>
+        Object.values(fichas.get(e.id) ?? {}).some(preenchido) || temCadastroDoWizard(e),
+    });
+    const entidade = ordenadas[0] ?? null;
+    // ⚠️ SÓ AS VIVAS COMPLETAM. A arquivada é a duplicada que o merge do Apolo esvaziou de propósito;
+    // se sobrou algo nela, é o que o merge decidiu descartar.
+    const vivas = ordenadas.slice(1).filter((e) => !ehArquivada(e));
+    // ⚠️ E SÓ AS DA MESMA PESSOA. O mesmo CPF não prova a mesma pessoa no Apolo: medido em 18/09/2026,
+    // um titular de 4 vendas importadas abertas tem o espelho (o dele) e uma CAD de OUTRO primeiro
+    // nome com o mesmo CPF, com nascimento, estado civil, RG e endereço. É o defeito conhecido da CAD
+    // gravada com o CPF do cônjuge. Completar a escolhida com ela poria no contrato, e no envelope de
+    // assinatura, os dados pessoais de um terceiro. Ver `ehAMesmaPessoa`.
+    const daMesmaPessoa = entidade
+      ? vivas.filter((e) => ehAMesmaPessoa(e, entidade, { apontada, ligada }))
+      : [];
+    const deOutraPessoa = vivas.length - daMesmaPessoa.length;
+    const pessoa = entidade ? [entidade, ...daMesmaPessoa] : [];
+
+    if (ehTitular && !titular) {
+      titular = {
+        entidadeId: entidade?.id ?? null,
+        esteira: esteira.filter((l) => pessoa.some((e) => e.id === l.entity_id && !ehArquivada(e))),
+      };
+    }
+
+    // ⚠️ AS DUAS CAMADAS DO CADASTRO, unidas aqui. A ficha da esteira é o que alguém corrigiu na
+    // tela; `metadata.cadastro` é o que o wizard capturou na entrada — e era ignorado, deixando 222
+    // estados civis, 212 nascimentos e 205 profissões sem chegar ao contrato.
+    const camadas: CamadasDaFicha[] = pessoa.map((e) => ({
+      cadastro: cadastroDaEntidade(fichas.get(e.id) ?? null, e),
+      conjuge: conjuges.get(e.id) ?? null,
+      contatos: contatos.get(e.id) ?? [],
+      endereco: enderecos.get(e.id) ?? null,
+    }));
+
+    const montado = umComprador({
       avisos,
-      conjuge: entidade ? (conjuges.get(entidade.id) ?? null) : null,
-      contatos: entidade ? (contatos.get(entidade.id) ?? []) : [],
       daProposta: cru,
       digitos,
-      endereco: entidade ? (enderecos.get(entidade.id) ?? null) : null,
       entidade,
-      // ⚠️ AS DUAS CAMADAS DO CADASTRO, unidas aqui. A ficha da esteira é o que alguém corrigiu na
-      // tela; `metadata.cadastro` é o que o wizard capturou na entrada — e era ignorado, deixando
-      // 222 estados civis, 212 nascimentos e 205 profissões sem chegar ao contrato.
-      ficha: cadastroDaEntidade(entidade ? (fichas.get(entidade.id) ?? null) : null, entidade),
+      ...pessoaCompletada(camadas),
     });
+
+    if (deOutraPessoa > 0) {
+      const nome = montado.valores.nome_cliente || texto(cru.nome) || "Comprador sem nome";
+      avisos.push(
+        `${nome}: o Apolo tem outra ficha com este CPF e outro nome, e ela ficou de fora do contrato. Confira qual é a pessoa certa.`,
+      );
+    }
+
+    return montado;
   });
+
+  return { compradores, dosCompradores, titular };
+}
+
+/** As camadas de UMA ficha do Apolo, lidas por `camadasDoCadastro`. */
+type CamadasDaFicha = {
+  cadastro: null | Record<string, unknown>;
+  conjuge: LinhaDoRelacionamento | null;
+  contatos: LinhaDoContato[];
+  endereco: LinhaDoEndereco | null;
+};
+
+/**
+ * A escolhida, completada pelas outras fichas da MESMA pessoa (a escolhida é a primeira da lista).
+ *
+ * ⚠️ O QUE FALTAR NELA VEM DAS OUTRAS FICHAS, nunca de documento diferente nem de outra pessoa.
+ * Lucas (18/09/2026), sobre o distrato que veio sem nascimento, estado civil e profissão: *"tudo
+ * tem que ser alimentado pelo panteon"*. O dado estava no Panteon, numa das duas fichas da mesma
+ * pessoa. A escolhida continua mandando em tudo que ela tem.
+ *
+ * ⚠️ ENDEREÇO, CÔNJUGE, E-MAIL E TELEFONE SÃO DA FICHA INTEIRA, e não da camada. Cada um deles mora em
+ * duas camadas da mesma entidade (a ficha e a tabela: `apolo_addresses`, `apolo_relationships`,
+ * `apolo_contacts`), e completar só a camada da ficha deixava a ficha de OUTRA entidade passar por
+ * cima da tabela da escolhida. Medido na revisão de 18/09/2026: 9 importadas abertas saíam com rua,
+ * bairro ou número de outra ficha tendo a escolhida o seu endereço na tabela, e 3 com o endereço
+ * COSTURADO de dois cadastros (o bairro de um com a rua e o CEP do outro). Agora a escolhida que
+ * tem o dado em QUALQUER camada fica com ele; sem nenhuma, ele vem inteiro (ficha e tabela) da
+ * primeira outra ficha que o tenha.
+ */
+function pessoaCompletada(camadas: CamadasDaFicha[]): {
+  conjuge: LinhaDoRelacionamento | null;
+  email: string;
+  endereco: LinhaDoEndereco | null;
+  ficha: null | Record<string, unknown>;
+  telefone: string;
+} {
+  const [daEscolhida, ...dasOutras] = camadas;
+  const unida = fichaComplementada(
+    daEscolhida?.cadastro ?? null,
+    dasOutras.map((c) => c.cadastro),
+  );
+
+  const donaDoEndereco = camadas.find((c) =>
+    unirEndereco(c.cadastro, enderecoDaTabela(c.endereco)),
+  );
+  const donaDoConjuge = camadas.find((c) => unirConjuge(c.cadastro, conjugeDaTabela(c.conjuge)));
+
+  // O bloco inteiro sai da dona, e o pedaço que a escolhida tivesse sem ser dona (o bairro solto sem
+  // rua nem CEP) sai junto: é o que costurava o endereço de dois cadastros.
+  const ficha =
+    unida || donaDoEndereco || donaDoConjuge
+      ? {
+          ...soAsChaves(unida, (k) => !ehDoEndereco(k) && !ehDoConjuge(k)),
+          ...soAsChaves(donaDoEndereco?.cadastro ?? null, ehDoEndereco),
+          ...soAsChaves(donaDoConjuge?.cadastro ?? null, ehDoConjuge),
+        }
+      : null;
+
+  // A ficha antes da tabela DENTRO da mesma entidade (a regra de sempre), e a escolhida inteira antes
+  // de qualquer outra: o WhatsApp de outra ficha não passa por cima do telefone da escolhida.
+  const daPessoa = (chave: "email" | "telefone", tipos: string[]) =>
+    camadas.map((c) => texto(c.cadastro?.[chave]) || primeiroContato(c.contatos, tipos)).filter(Boolean);
+  // ⚠️ `whatsapp` ANTES DE `phone`: ver a nota em `umComprador`.
+  const telefones = daPessoa("telefone", ["whatsapp", "phone"]);
+
+  return {
+    conjuge: donaDoConjuge?.conjuge ?? null,
+    email: daPessoa("email", ["email"])[0] ?? "",
+    endereco: donaDoEndereco?.endereco ?? null,
+    ficha,
+    telefone: comNonoDigito(telefones[0] ?? "", telefones.slice(1)),
+  };
+}
+
+/**
+ * O celular da escolhida escrito SEM o nono dígito, trocado pela grafia completa do MESMO número que
+ * outra ficha da mesma pessoa tem.
+ *
+ * ⚠️ É A ÚNICA EXCEÇÃO À PRECEDÊNCIA DA ESCOLHIDA, e não troca de número: medido em 18/09/2026, ao
+ * dar à escolhida a precedência no telefone, 2 compradores do estrato passavam a sair com o próprio
+ * celular sem o nono dígito, que a outra ficha tinha completo. Número diferente continua sendo o da
+ * escolhida.
+ */
+function comNonoDigito(escolhido: string, outros: string[]): string {
+  const semPais = (t: string, tamanho: number) => {
+    const d = soDigitos(t);
+    return d.length === tamanho + 2 && d.startsWith("55") ? d.slice(2) : d;
+  };
+  const curto = semPais(escolhido, 10);
+  if (curto.length !== 10) return escolhido;
+  const completo = outros.find((outro) => {
+    const d = semPais(outro, 11);
+    return d.length === 11 && d[2] === "9" && d.slice(0, 2) === curto.slice(0, 2) && d.slice(3) === curto.slice(2);
+  });
+  return completo ?? escolhido;
+}
+
+/** A linha de `apolo_addresses` no formato de `unirEndereco`. */
+function enderecoDaTabela(linha: LinhaDoEndereco | null): Partial<EnderecoDaFicha> | null {
+  if (!linha) return null;
+  return {
+    bairro: texto(linha.district),
+    cep: texto(linha.postal_code),
+    cidade: texto(linha.city),
+    complemento: texto(linha.complement),
+    logradouro: texto(linha.street),
+    numero: texto(linha.number),
+    uf: texto(linha.state),
+  };
+}
+
+/** A linha de `apolo_relationships` no formato de `unirConjuge`. */
+function conjugeDaTabela(linha: LinhaDoRelacionamento | null) {
+  if (!linha) return null;
+  return {
+    cpf: linha.metadata?.cpf,
+    email: linha.metadata?.email,
+    nacionalidade: linha.metadata?.nacionalidade,
+    nome: linha.label,
+    profissaoId: linha.metadata?.profissaoId,
+    telefone: linha.metadata?.phone,
+  };
+}
+
+const CHAVES_DO_ENDERECO = new Set(["bairro", "cep", "cidade", "complemento", "logradouro", "numero", "uf"]);
+
+function ehDoEndereco(chave: string): boolean {
+  return CHAVES_DO_ENDERECO.has(chave);
+}
+
+function ehDoConjuge(chave: string): boolean {
+  return chave.startsWith("conjuge");
+}
+
+/** Só as chaves que o filtro aceita, e só as preenchidas. */
+function soAsChaves(
+  cadastro: null | Record<string, unknown>,
+  aceita: (chave: string) => boolean,
+): Record<string, unknown> {
+  const saida: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(cadastro ?? {})) if (aceita(k) && preenchido(v)) saida[k] = v;
+  return saida;
+}
+
+/**
+ * A outra ficha do mesmo documento é COMPROVADAMENTE a mesma pessoa da escolhida.
+ *
+ * ⚠️ O CPF IGUAL NÃO BASTA (ver a nota em `montarCompradores`). Vale o que prova por id: a ficha que a
+ * proposta aponta e a que a ponte do C2X liga ao usuário do comprador. Sem id, vale o nome: o mesmo
+ * nome, ou um contido no outro com o mesmo primeiro nome (o espelho do C2X às vezes guarda o nome
+ * mais curto). Medido em 18/09/2026, nas fichas vivas dos titulares de vendas abertas: 97 pares do
+ * mesmo documento, 94 com o nome igual, 2 com um contido no outro, e 1 com primeiro nome diferente,
+ * que é a outra pessoa.
+ */
+function ehAMesmaPessoa(
+  outra: LinhaDaEntidade,
+  escolhida: LinhaDaEntidade,
+  prova: { apontada: string; ligada: (e: LinhaDaEntidade) => boolean },
+): boolean {
+  if (prova.apontada && outra.id === prova.apontada) return true;
+  if (prova.ligada(outra)) return true;
+  return mesmoNome(nomeDaFicha(outra), nomeDaFicha(escolhida));
+}
+
+function nomeDaFicha(e: LinhaDaEntidade): string {
+  return texto(e.display_name) || texto(e.legal_name);
+}
+
+/**
+ * Dois nomes da mesma pessoa: iguais sem acento, caixa e pontuação, ou um contido no outro com o
+ * mesmo primeiro nome ("MARIA SOUZA" e "MARIA DE SOUZA LIMA"). Nome vazio não prova nada.
+ */
+export function mesmoNome(a: string, b: string): boolean {
+  const partes = (nome: string) =>
+    nome
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, " ")
+      .trim()
+      .split(" ")
+      .filter(Boolean);
+  const pa = partes(a);
+  const pb = partes(b);
+  if (pa.length === 0 || pb.length === 0) return false;
+  if (pa[0] !== pb[0]) return false;
+  const [curto, longo] = pa.length <= pb.length ? [pa, new Set(pb)] : [pb, new Set(pa)];
+  return curto.every((p) => longo.has(p));
+}
+
+/** A ponte pelo usuário do C2X: `metadata.c2xUserId` (a CAD enviada) ou `c2x/users/<id>` (o espelho). */
+function ligadaAoUsuarioDoC2x(c2xUserId: string, links: LinksDoC2x): (e: LinhaDaEntidade) => boolean {
+  if (!c2xUserId) return () => false;
+  const doEspelho = links.get(c2xUserId) ?? [];
+  return (e) => texto(objeto(e.metadata)?.c2xUserId) === c2xUserId || doEspelho.includes(e.id);
+}
+
+/** O titular como a escolha o deixou: a entidade que ganhou e as linhas de esteira da mesma pessoa. */
+type TitularEscolhido = {
+  entidadeId: null | string;
+  /** As linhas de `apolo_esteira` de todas as fichas VIVAS do documento do titular. */
+  esteira: LinhaDaEsteira[];
+};
+
+/** Quem compra, para `quemVendeuPeloApolo` não pôr o comprador como quem vendeu. */
+type DosCompradores = {
+  /** Os documentos (só dígitos) de todos os compradores da proposta. */
+  documentos: Set<string>;
+  /** Todas as fichas desses documentos, vivas e arquivadas. */
+  fichas: Set<string>;
+};
+
+type CompradoresMontados = {
+  compradores: DadosDoComprador[];
+  dosCompradores: DosCompradores;
+  titular: null | TitularEscolhido;
+};
+
+/**
+ * A ordem em que as fichas do MESMO documento disputam o comprador.
+ *
+ * ⚠️ A ORDEM ALFABÉTICA DO STATUS ESCOLHIA ERRADO, e foi o distrato do VOC Q09 L11 que mostrou.
+ * Lucas (18/09/2026): *"tem um distrato mas não está trazendo as informações, analisa o porquê"*. A
+ * mesma pessoa tinha duas fichas: o ESPELHO do C2X (`active`, sem `metadata.cadastro`) e a da CAD
+ * pública (`review`, com nascimento, estado civil, nacionalidade e profissão). `active` vem antes de
+ * `review` no alfabeto, e o card saía com a qualificação vazia com o cadastro completo ali do lado.
+ * Medido no mesmo dia: 5 dos 6 distratos e 3 dos 4 contratos nativos em análise. Com esta régua, a
+ * escolha muda em 121 compradores de 119 vendas importadas abertas e em 5 nativas, e em nenhum deles
+ * a escolhida nova tem menos cadastro que a antiga.
+ *
+ * A régua, do mais forte para o mais fraco:
+ *
+ *   0. a ARQUIVADA só ganha se não houver outra — o merge do Apolo a esvaziou (a regra de 08/09);
+ *   1. a entidade que a PROPOSTA APONTA (`cliente_entity_id`, `compradores[].entity_id`);
+ *   2. a PONTE EXATA pelo usuário do C2X: `cliente_c2x_id`/`compradores[].c2x_user_id` casando com
+ *      `metadata.c2xUserId` (a CAD que foi enviada ao C2X) ou com `apolo_source_links` `c2x/users/<id>`
+ *      (o espelho). É id, não nome — não casa gente diferente;
+ *   3. a que tem o NOME que a proposta gravou para o comprador (`mesmoNome`). Sem id que decida, é o
+ *      que impede a CAD de outra pessoa com o mesmo CPF de ganhar só por ter cadastro (a revisão de
+ *      18/09/2026 achou um CPF com duas pessoas, titular de 4 vendas abertas);
+ *   4. a que tem CADASTRO PREENCHIDO (ficha da esteira ou `metadata.cadastro`) antes da que não tem;
+ *   5. a ordem do banco: status, `created_at`, `id` — estável, para o mesmo contrato gerado duas
+ *      vezes sair igual.
+ *
+ * ⚠️ SÓ ENTRE FICHAS DO MESMO DOCUMENTO. O apontamento e a ponte ordenam; nenhum dos dois traz para
+ * dentro uma entidade de outro CPF. Medido em 18/09/2026: nas 12 nativas com `cliente_entity_id`, a
+ * entidade apontada tem o mesmo documento do comprador em 12.
+ */
+function ordenarFichas(
+  candidatas: LinhaDaEntidade[],
+  criterio: {
+    apontada: string;
+    ligada: (e: LinhaDaEntidade) => boolean;
+    nomeDaProposta: string;
+    temCadastro: (e: LinhaDaEntidade) => boolean;
+  },
+): LinhaDaEntidade[] {
+  const peso = (e: LinhaDaEntidade): number[] => [
+    ehArquivada(e) ? 1 : 0,
+    criterio.apontada && e.id === criterio.apontada ? 0 : 1,
+    criterio.ligada(e) ? 0 : 1,
+    mesmoNome(nomeDaFicha(e), criterio.nomeDaProposta) ? 0 : 1,
+    criterio.temCadastro(e) ? 0 : 1,
+  ];
+
+  return candidatas
+    .map((e, ordemDoBanco) => ({ e, ordemDoBanco, peso: peso(e) }))
+    .sort((a, b) => {
+      for (let i = 0; i < a.peso.length; i += 1) {
+        const diferenca = (a.peso[i] ?? 0) - (b.peso[i] ?? 0);
+        if (diferenca !== 0) return diferenca;
+      }
+      return a.ordemDoBanco - b.ordemDoBanco;
+    })
+    .map((x) => x.e);
+}
+
+/** `metadata.cadastro` com pelo menos um campo preenchido. */
+function temCadastroDoWizard(e: LinhaDaEntidade): boolean {
+  const cadastro = objeto(objeto(e.metadata)?.cadastro);
+  return Boolean(cadastro && Object.values(cadastro).some(preenchido));
+}
+
+/**
+ * Os campos que andam JUNTOS: ou vêm todos da mesma ficha, ou nenhum vem.
+ *
+ * ⚠️ É O QUE IMPEDE O CONTRATO DE COSTURAR DUAS VERSÕES DA MESMA PESSOA. O número de uma casa com o
+ * CEP de outra é um endereço que não existe; o regime de bens de um cadastro com o estado civil de
+ * outro é uma qualificação que ninguém declarou; e o órgão de um RG com o número de outro é o
+ * defeito que a trava do número fechou em 08/09. O resto (nascimento, nacionalidade, e-mail) é um
+ * dado por campo, e completa campo a campo.
+ */
+const CAMPOS_EM_BLOCO: readonly (readonly string[])[] = [
+  ["orgaoEmissor", "rg"],
+  ["estadoCivilId", "regimeBensId"],
+  ["profissaoId", "profissaoOutro"],
+];
+
+/**
+ * A qualificação da ficha escolhida, completada pelas outras fichas da MESMA pessoa.
+ *
+ * ⚠️ A ESCOLHIDA SEMPRE TEM PRECEDÊNCIA: o que ela tem, fica. As outras só preenchem o que falta,
+ * na ordem de `ordenarFichas`.
+ *
+ * ⚠️ ENDEREÇO, CÔNJUGE, E-MAIL E TELEFONE NÃO SAEM DAQUI, E SAEM DA FICHA: a escolhida os tem também
+ * nas tabelas, e só `pessoaCompletada` enxerga as duas camadas de cada entidade. As chaves deles que
+ * a escolhida tiver ficam; as das outras não entram por aqui.
+ */
+function fichaComplementada(
+  principal: null | Record<string, unknown>,
+  outras: (null | Record<string, unknown>)[],
+): null | Record<string, unknown> {
+  const daEntidade = (chave: string) =>
+    ehDoEndereco(chave) || ehDoConjuge(chave) || chave === "email" || chave === "telefone";
+  let unida: null | Record<string, unknown> = principal ? { ...principal } : null;
+  const emBloco = new Set(CAMPOS_EM_BLOCO.flat());
+
+  for (const outra of outras) {
+    if (!outra) continue;
+    const alvo: Record<string, unknown> = unida ?? {};
+    unida = alvo;
+
+    for (const bloco of CAMPOS_EM_BLOCO) {
+      if (bloco.some((k) => preenchido(alvo[k]))) continue;
+      for (const k of bloco) if (preenchido(outra[k])) alvo[k] = outra[k];
+    }
+
+    for (const [k, v] of Object.entries(outra)) {
+      if (emBloco.has(k) || daEntidade(k)) continue;
+      if (!preenchido(alvo[k]) && preenchido(v)) alvo[k] = v;
+    }
+  }
+
+  return unida;
+}
+
+function preenchido(v: unknown): boolean {
+  return v !== null && v !== undefined && texto(v) !== "";
 }
 
 /**
@@ -455,12 +988,15 @@ async function camadasDoCadastro(
   conjuges: Map<string, LinhaDoRelacionamento>;
   contatos: Map<string, LinhaDoContato[]>;
   enderecos: Map<string, LinhaDoEndereco>;
+  /** As linhas cruas da esteira, da mais recente para a mais antiga. É daqui que sai o corretor da CAD. */
+  esteira: LinhaDaEsteira[];
   fichas: Map<string, Record<string, unknown>>;
 }> {
   const vazio = {
     conjuges: new Map<string, LinhaDoRelacionamento>(),
     contatos: new Map<string, LinhaDoContato[]>(),
     enderecos: new Map<string, LinhaDoEndereco>(),
+    esteira: [] as LinhaDaEsteira[],
     fichas: new Map<string, Record<string, unknown>>(),
   };
   if (ids.length === 0) return vazio;
@@ -469,7 +1005,10 @@ async function camadasDoCadastro(
     varias<LinhaDaEsteira>(
       sb
         .from("apolo_esteira")
-        .select("enterprise_id, entity_id, ficha")
+        // ⚠️ O CORRETOR E A IMOBILIÁRIA VÊM NA MESMA VIAGEM DA FICHA: a venda importada não os tem, e
+        // a CAD do titular tem (ver `quemVendeuPeloApolo`). Uma consulta a mais por card para ler
+        // colunas da linha que já vinha seria desperdício.
+        .select("corretor, corretor_entity_id, enterprise_id, entity_id, ficha, imobiliaria, imobiliaria_entity_id")
         .in("entity_id", ids)
         .order("atualizado_em", { ascending: false }),
       "apolo_esteira",
@@ -545,7 +1084,7 @@ async function camadasDoCadastro(
     conjuges.set(linha.entity_id, linha);
   }
 
-  return { conjuges, contatos, enderecos, fichas };
+  return { conjuges, contatos, enderecos, esteira: linhasDaEsteira, fichas };
 }
 
 /**
@@ -555,40 +1094,294 @@ async function camadasDoCadastro(
  * comissão é a imobiliária quando ela existe, e o corretor autônomo quando a venda foi direta.
  * Inverter faria o contrato de corretagem nomear como beneficiário quem não recebe.
  *
- * ⚠️ SÓ AS PROPOSTAS NASCIDAS NO PANTEON TÊM ESSE VÍNCULO. As importadas do C2X guardam apenas o
- * nome em texto (`imobiliaria_nome`), e para elas ele não será reconstruído — decisão do Lucas em
- * 08/09/2026: *"o que foi gerado antes do Panteon, deixa sem mesmo"*. Reconciliar por nome casaria
- * pouco mais de um terço e criaria vínculo ERRADO nos outros, que é pior do que campo vazio num
- * contrato de corretagem.
+ * ⚠️ A IMPORTADA NÃO É RECONCILIADA POR NOME — decisão do Lucas em 08/09/2026: *"o que foi gerado
+ * antes do Panteon, deixa sem mesmo"*. Reconciliar por nome casaria pouco mais de um terço e criaria
+ * vínculo ERRADO nos outros. Desde 18/09/2026 ela é reconciliada por ID, que não erra de pessoa: o
+ * `imobiliaria_c2x_id` da venda casa com `apolo_source_links` (`c2x/users/<id>`), e o corretor vem da
+ * CAD do titular no Apolo. Ver `quemVendeuPeloApolo`.
+ *
+ * ⚠️ RECEBE UMA LISTA porque a mesma imobiliária pode ter duas entidades no Apolo (o espelho do C2X
+ * e a do credenciamento, mesmo CNPJ — medido no ACP 4947). O documento sai da primeira que o tiver
+ * inteiro, e os contatos das duas, na ordem da lista.
  */
 async function cadastroDoVinculado(
   sb: SupabaseClient,
-  imobiliariaId: null | string,
-  corretorId: null | string,
-): Promise<null | { documento: string; email: string; telefone: string }> {
-  const id = imobiliariaId ?? corretorId;
-  if (!id) return null;
+  ids: string[],
+): Promise<null | DoVinculado> {
+  const lidas = await lerEntidadesDoVinculo(sb, ids);
+  const comEntidade = lidas.filter((l) => l.entidade);
+  if (comEntidade.length === 0) return null;
 
-  const [entidade, contatos] = await Promise.all([
-    umaLinha<LinhaDaEntidade>(
-      sb.from("apolo_entities").select("document_masked, id").eq("id", id).maybeSingle(),
-      "apolo_entities",
-    ),
-    varias<LinhaDoContato>(
-      sb.from("apolo_contacts").select("contact_type, entity_id, value").eq("entity_id", id),
-      "apolo_contacts",
-    ),
-  ]);
-
-  if (!entidade) return null;
-
+  const contatos = comEntidade.flatMap((l) => l.contatos);
   return {
-    documento: documentoImprimivel(texto(entidade.document_masked)),
+    documento:
+      comEntidade.map((l) => documentoImprimivel(texto(l.entidade?.document_masked))).find(Boolean) ?? "",
     email: primeiroContato(contatos, ["email"]),
     // ⚠️ WHATSAPP PRIMEIRO. No Apolo o `whatsapp` é o tipo que a maioria das entidades tem; ler só
     // `phone` deixaria o contrato de corretagem sem telefone na maior parte das vendas.
     telefone: primeiroContato(contatos, ["whatsapp", "phone"]),
   };
+}
+
+type DoVinculado = { documento: string; email: string; telefone: string };
+
+/** Entidade e contatos de cada id, uma consulta por id (são no máximo três). */
+async function lerEntidadesDoVinculo(
+  sb: SupabaseClient,
+  ids: string[],
+): Promise<{ contatos: LinhaDoContato[]; entidade: LinhaDaEntidade | null; id: string }[]> {
+  const unicos = [...new Set(ids.map(texto).filter(Boolean))];
+  return Promise.all(
+    unicos.map(async (id) => {
+      const [entidade, contatos] = await Promise.all([
+        umaLinha<LinhaDaEntidade>(
+          sb
+            .from("apolo_entities")
+            .select("display_name, document_masked, id, legal_name, trade_name")
+            .eq("id", id)
+            .maybeSingle(),
+          "apolo_entities",
+        ),
+        varias<LinhaDoContato>(
+          sb.from("apolo_contacts").select("contact_type, entity_id, value").eq("entity_id", id),
+          "apolo_contacts",
+        ),
+      ]);
+      return { contatos, entidade: objeto(entidade) ? entidade : null, id };
+    }),
+  );
+}
+
+/** O que a corretagem precisa saber de quem vendeu, quando a proposta não guarda o vínculo. */
+type QuemVendeu = {
+  /** Vazio = não se soube. O nome da proposta, quando existir, continua ganhando (ver `gerais`). */
+  corretorNome: string;
+  imobiliariaNome: string;
+  vinculado: DoVinculado | null;
+};
+
+/**
+ * Quem vendeu a venda IMPORTADA, pelo que o Panteon sabe — sem ler o C2X.
+ *
+ * Lucas (18/09/2026): *"tudo tem que ser alimentado pelo panteon"*. A carga das importadas
+ * (`importar-fluxo-de-venda.mjs`) grava o corretor vazio e nenhum vínculo; o card do distrato saía
+ * "Corretor: não informado" e o contrato de corretagem sem CNPJ, telefone e e-mail da imobiliária.
+ *
+ * As duas fontes, as duas por ID:
+ *
+ *   • a IMOBILIÁRIA DA VENDA: `imobiliaria_c2x_id` → `apolo_source_links` `c2x/users/<id>`. Medido em
+ *     18/09/2026: as 2.611 importadas abertas sem corretor têm esse link.
+ *   • a CAD DO TITULAR no Apolo (`apolo_esteira`): `corretor_entity_id` e `imobiliaria_entity_id`.
+ *     Medido: 160 dessas vendas têm CAD no escopo, 107 com corretor. Com as travas abaixo (o escopo, a
+ *     imobiliária da venda, e o comprador que não é corretor de si mesmo), 81 ganham o corretor
+ *     (rodada 2, 18/09/2026, no estrato de 209 vendas abertas medido contra a rodada 1, que dava 98).
+ *
+ * ⚠️ A CAD SÓ VALE NO EMPREENDIMENTO DA VENDA. Quem comprou em dois loteamentos tem duas CADs, e o
+ * corretor do outro não vendeu este lote. O escopo é a família do empreendimento no cadastro do
+ * Panteon (pai e filhos: VLO 35, VOC 37, VOL 36, VOR 41) mais o id do grupo (`group:Vale do Ouro`),
+ * os dois formatos que `apolo_esteira.enterprise_id` guarda — a régua de `cliente-credenciado.ts`.
+ *
+ * ⚠️ E A CAD SÓ VALE SE A IMOBILIÁRIA DELA FOR A DA VENDA. Medido: das 160, 152 casam (pelo id ou
+ * pelo mesmo CNPJ) e 8 não. Nessas 8 o corretor da CAD é de OUTRA imobiliária — nomeá-lo no contrato
+ * de corretagem poria um beneficiário que não vendeu. Sem casar, fica "não informado", como antes.
+ */
+async function quemVendeuPeloApolo(
+  sb: SupabaseClient,
+  entrada: {
+    dosCompradores: DosCompradores;
+    empreendimento: LinhaDoEmpreendimento | null;
+    links: LinksDoC2x;
+    proposta: LinhaDaProposta;
+    titular: null | TitularEscolhido;
+    unidade: LinhaDaUnidade | null;
+  },
+): Promise<QuemVendeu> {
+  const { dosCompradores, links, proposta, titular } = entrada;
+  const idDaImobiliaria = texto(proposta.imobiliaria_c2x_id);
+  const daVenda = idDaImobiliaria ? (links.get(idDaImobiliaria) ?? []) : [];
+
+  const comVinculo = (titular?.esteira ?? []).filter(
+    (l) => texto(l.corretor_entity_id) || texto(l.imobiliaria_entity_id),
+  );
+
+  let cad: LinhaDaEsteira | null = null;
+  if (comVinculo.length > 0) {
+    const escopo = await escopoDaVenda(sb, entrada.empreendimento, entrada.unidade);
+    // A do titular escolhido primeiro; entre as dele (ou entre as outras), a mais recente — a ordem
+    // em que a esteira já chega.
+    const noEscopo = comVinculo.filter((l) => escopo.has(texto(l.enterprise_id)));
+    cad =
+      noEscopo.find((l) => l.entity_id === titular?.entidadeId) ?? noEscopo[0] ?? null;
+  }
+
+  const idImobDaCad = texto(cad?.imobiliaria_entity_id);
+  const idCorretorDaCad = texto(cad?.corretor_entity_id);
+  const lidas = await lerEntidadesDoVinculo(sb, [...daVenda, idImobDaCad, idCorretorDaCad]);
+  const porId = new Map(lidas.map((l) => [l.id, l]));
+
+  const docDe = (id: string) => soDigitos(texto(porId.get(id)?.entidade?.document_masked));
+  // ⚠️ O COMPRADOR NÃO VENDEU O PRÓPRIO LOTE. O formulário público da CAD grava como corretor quem
+  // preenche a primeira etapa, e o cliente que preenche sozinho vira corretor de si mesmo (a memória
+  // "corretor do CAD público é o CLIENTE"). Medido em 18/09/2026: 24 das 179 linhas de `apolo_esteira`
+  // com corretor apontam a própria ficha, e das 98 importadas que ganhavam corretor pela CAD, 17 a 19
+  // imprimiam o comprador como corretor. Uma venda tinha também o link da imobiliária no próprio
+  // comprador. Ficha de qualquer comprador, ou o mesmo documento, fica de fora: "não informado".
+  const ehComprador = (id: string) =>
+    dosCompradores.fichas.has(id) || dosCompradores.documentos.has(docDe(id));
+  const docDaCad = idImobDaCad ? docDe(idImobDaCad) : "";
+  const cadCasa =
+    Boolean(cad) &&
+    (daVenda.length === 0 ||
+      (Boolean(idImobDaCad) &&
+        (daVenda.includes(idImobDaCad) ||
+          (docDaCad.length >= 11 && daVenda.some((id) => docDe(id) === docDaCad)))));
+
+  const imobiliarias = [
+    ...daVenda,
+    ...(cadCasa && idImobDaCad && !daVenda.includes(idImobDaCad) ? [idImobDaCad] : []),
+  ].filter((id) => porId.get(id)?.entidade && !ehComprador(id));
+  const corretor =
+    cadCasa && idCorretorDaCad && porId.get(idCorretorDaCad)?.entidade && !ehComprador(idCorretorDaCad)
+      ? idCorretorDaCad
+      : "";
+  const imobiliariaDaCadValida = cadCasa && !(idImobDaCad && ehComprador(idImobDaCad));
+
+  const nomeDe = (id: string) => {
+    const e = porId.get(id)?.entidade;
+    return texto(e?.trade_name) || texto(e?.display_name) || texto(e?.legal_name);
+  };
+  const nomeDePessoa = (id: string) => {
+    const e = porId.get(id)?.entidade;
+    return texto(e?.display_name) || texto(e?.legal_name);
+  };
+
+  // ⚠️ A IMOBILIÁRIA VENCE O CORRETOR na corretagem, a mesma precedência de sempre.
+  const doVinculo = imobiliarias.length > 0 ? imobiliarias : corretor ? [corretor] : [];
+  const vinculadas = doVinculo.map((id) => porId.get(id)).filter((l) => l?.entidade);
+  const contatos = vinculadas.flatMap((l) => l?.contatos ?? []);
+
+  return {
+    corretorNome: corretor ? nomeDePessoa(corretor) || texto(cad?.corretor) : "",
+    imobiliariaNome:
+      (imobiliarias[0] ? nomeDe(imobiliarias[0]) : "") ||
+      (imobiliariaDaCadValida ? texto(cad?.imobiliaria) : ""),
+    vinculado:
+      vinculadas.length > 0
+        ? {
+            documento:
+              vinculadas
+                .map((l) => documentoImprimivel(texto(l?.entidade?.document_masked)))
+                .find(Boolean) ?? "",
+            email: primeiroContato(contatos, ["email"]),
+            telefone: primeiroContato(contatos, ["whatsapp", "phone"]),
+          }
+        : null,
+  };
+}
+
+/**
+ * Os `enterprise_id` que contam como "o empreendimento desta venda" na esteira do Apolo.
+ *
+ * ⚠️ SÓ O PANTEON, E NÃO O CATÁLOGO DO C2X. `catalogoDeEmpreendimentos` (que o resto do código usa
+ * para achar o grupo) lê o legado; aqui o grupo sai do cadastro de pai e filhos do Hércules: o pai
+ * que tem filhos é o consolidado, e o id dele é `group:<nome do pai>`. Medido em 18/09/2026: os cinco
+ * pais com filhos (Lagoa Bonita, Lavra do Ouro, Portal dos Vales, Rio de Pedras, Vale do Ouro) têm o
+ * nome igual ao do grupo do catálogo, e `apolo_esteira.enterprise_id` guarda hoje duas CADs como
+ * `group:Lagoa Bonita` (o Vale do Ouro aparece como `group:Vale do Ouro` nos ajustes do empreendimento).
+ *
+ * ⚠️ FALHA DE LEITURA ENCOLHE O ESCOPO, NUNCA O ALARGA. Sem a família, vale o empreendimento e a
+ * unidade: a CAD de outro loteamento continua de fora, que é o lado barato de errar.
+ */
+async function escopoDaVenda(
+  sb: SupabaseClient,
+  empreendimento: LinhaDoEmpreendimento | null,
+  unidade: LinhaDaUnidade | null,
+): Promise<Set<string>> {
+  const escopo = new Set(
+    [texto(empreendimento?.c2x_enterprise_id), texto(unidade?.enterprise_id)].filter(Boolean),
+  );
+  const raiz = texto(empreendimento?.pai_id) || texto(empreendimento?.id);
+  if (!raiz) return escopo;
+
+  type Membro = { c2x_enterprise_id: null | string; id: string; nome: null | string; pai_id: null | string };
+  let familia: Membro[] = [];
+  try {
+    familia = await varias<Membro>(
+      sb
+        .from("hercules_empreendimentos")
+        .select("c2x_enterprise_id, id, nome, pai_id")
+        .or(`id.eq.${raiz},pai_id.eq.${raiz}`),
+      "hercules_empreendimentos",
+    );
+  } catch (erro) {
+    console.error("[temis][dados] falha ao ler a família do empreendimento da venda", erro);
+    return escopo;
+  }
+
+  for (const membro of familia) {
+    const id = texto(membro.c2x_enterprise_id);
+    if (id) escopo.add(id);
+  }
+  const doPai = familia.find((m) => m.id === raiz);
+  if (doPai && familia.some((m) => m.pai_id === raiz) && texto(doPai.nome)) {
+    escopo.add(`group:${texto(doPai.nome)}`);
+  }
+  return escopo;
+}
+
+/** Usuário do C2X → entidades do Apolo, por `apolo_source_links` (`c2x/users/<id>`). */
+type LinksDoC2x = Map<string, string[]>;
+
+/**
+ * Os usuários do C2X que esta proposta cita: os compradores, o titular e a imobiliária.
+ *
+ * ⚠️ A IMOBILIÁRIA SÓ ENTRA SEM VÍNCULO NA PROPOSTA. Com `imobiliaria_entity_id` (nativa) o vínculo
+ * da própria proposta manda, e procurar outro seria uma viagem para não usar.
+ */
+function idsDoC2xDaProposta(proposta: LinhaDaProposta): string[] {
+  const ids = new Set<string>();
+  const crus = Array.isArray(proposta.compradores) ? (proposta.compradores as unknown[]) : [];
+  for (const c of crus) {
+    const id = texto(objeto(c)?.c2x_user_id);
+    if (id) ids.add(id);
+  }
+  const doTitular = texto(proposta.cliente_c2x_id);
+  if (doTitular) ids.add(doTitular);
+  const daImobiliaria = texto(proposta.imobiliaria_c2x_id);
+  if (daImobiliaria && !proposta.imobiliaria_entity_id && !proposta.corretor_entity_id) {
+    ids.add(daImobiliaria);
+  }
+  return [...ids];
+}
+
+/** Uma consulta só, para todos os ids do C2X da proposta. */
+async function lerLinksDoC2x(sb: SupabaseClient, ids: string[]): Promise<LinksDoC2x> {
+  const links: LinksDoC2x = new Map();
+  if (ids.length === 0) return links;
+  const linhas = await varias<{ entity_id: null | string; source_id: null | string }>(
+    sb
+      .from("apolo_source_links")
+      .select("entity_id, source_id")
+      .eq("source_system", "c2x")
+      .eq("source_table", "users")
+      .in("source_id", ids),
+    "apolo_source_links",
+  );
+  for (const l of linhas) {
+    const origem = texto(l.source_id);
+    const entidade = texto(l.entity_id);
+    if (!origem || !entidade) continue;
+    const lista = links.get(origem) ?? [];
+    if (!lista.includes(entidade)) lista.push(entidade);
+    links.set(origem, lista);
+  }
+  return links;
+}
+
+/** `origem_c2x_id` como número de venda do C2X; `null` na venda nativa. */
+function idDaVendaImportada(bruto: unknown): null | number {
+  const n = Number(texto(bruto));
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 /**
@@ -607,29 +1400,84 @@ async function cadastroDoVinculado(
  * coluna, e é por ela que a leitura passa. Hoje isso não muda uma linha do papel (nenhuma das
  * divisões desses três tem linha de settings), e existe para que cadastrar a comissão pela tela
  * funcione nos três sem uma segunda correção depois.
+ *
+ * ⚠️ A DIVISÃO DA UNIDADE VEM PRIMEIRO, E O PAI SÓ COMPLETA (18/09/2026). A venda importada aponta
+ * para o PAI (VLO, 35), e a comissão lia só a chave do empreendimento: o VLO tem a coordenadora e os
+ * percentuais NULOS, e o VOC (37), a divisão onde o lote está, tem 2% e 4%. O distrato do VOC Q09 L11
+ * saía com "o empreendimento não tem os percentuais de comissão cadastrados" — medido: 416 vendas
+ * vivas nessa situação. É a precedência que o Lucas deu para o pai e o filho (08/09/2026): *"o pai
+ * sempre será o referencial, ele é o macro"*, e o filho que configurou usa o seu; o que o filho não
+ * configurou, herda. A ordem é: a divisão da unidade, o empreendimento da proposta, o pai dele.
+ *
+ * ⚠️ HERDA CAMPO A CAMPO, e não linha a linha: a linha do VLO existe (tem a coordenadora) com os
+ * percentuais nulos, e "tem linha" não pode significar "tem percentual". A MINUTA não muda: continua
+ * a do pai (`__empreendimento_id`), porque o texto do contrato é do loteamento inteiro.
  */
 async function comissaoDoEmpreendimento(
   sb: SupabaseClient,
   empreendimento: LinhaDoEmpreendimento | null,
   unidade: LinhaDaUnidade | null,
 ): Promise<ComissaoDaVenda> {
-  const chave = texto(empreendimento?.c2x_enterprise_id) || texto(unidade?.enterprise_id);
-  if (!chave) return { coordenadora: null, percentuais: null };
+  const chaves = await chavesDaComissao(sb, empreendimento, unidade);
+  if (chaves.length === 0) return { coordenadora: null, percentuais: null };
 
-  const percentuais = await umaLinha<LinhaDaComissao>(
-    sb
-      .from("apolo_enterprise_settings")
-      .select(
-        "comissao_coordenadora_percentual, comissao_imobiliaria_percentual, coordenadora_entity_id",
-      )
-      .eq("enterprise_id", chave)
-      .maybeSingle(),
-    "apolo_enterprise_settings",
+  const linhas = await Promise.all(
+    chaves.map((chave) =>
+      umaLinha<LinhaDaComissao>(
+        sb
+          .from("apolo_enterprise_settings")
+          .select(
+            "comissao_coordenadora_percentual, comissao_imobiliaria_percentual, coordenadora_entity_id",
+          )
+          .eq("enterprise_id", chave)
+          .maybeSingle(),
+        "apolo_enterprise_settings",
+      ),
+    ),
   );
+
+  const percentuais = herdarComissao(linhas);
 
   return {
     coordenadora: await cadastroDaCoordenadora(sb, texto(percentuais?.coordenadora_entity_id)),
     percentuais,
+  };
+}
+
+/** A divisão da unidade, o empreendimento da proposta e o pai dele — nessa ordem, sem repetição. */
+async function chavesDaComissao(
+  sb: SupabaseClient,
+  empreendimento: LinhaDoEmpreendimento | null,
+  unidade: LinhaDaUnidade | null,
+): Promise<string[]> {
+  const chaves = [texto(unidade?.enterprise_id), texto(empreendimento?.c2x_enterprise_id)];
+
+  // O pai só é lido quando existe: o empreendimento da venda importada JÁ É o pai, e o nativo de uma
+  // divisão (VOL 36) precisa subir um degrau para herdar do VLO o que não configurou.
+  const paiId = texto(empreendimento?.pai_id);
+  if (paiId) {
+    const pai = await umaLinha<{ c2x_enterprise_id: null | string }>(
+      sb.from("hercules_empreendimentos").select("c2x_enterprise_id").eq("id", paiId).maybeSingle(),
+      "hercules_empreendimentos",
+    );
+    chaves.push(texto(pai?.c2x_enterprise_id));
+  }
+
+  return [...new Set(chaves.filter(Boolean))];
+}
+
+/** O primeiro valor NÃO NULO de cada campo, na ordem das chaves. Zero é valor (ver `gerais`). */
+function herdarComissao(linhas: (LinhaDaComissao | null)[]): LinhaDaComissao | null {
+  const vivas = linhas.filter((l): l is LinhaDaComissao => objeto(l) !== null);
+  if (vivas.length === 0) return null;
+
+  const primeiro = (campo: keyof LinhaDaComissao) =>
+    vivas.map((l) => l[campo]).find((v) => v !== null && v !== undefined && texto(v) !== "") ?? null;
+
+  return {
+    comissao_coordenadora_percentual: primeiro("comissao_coordenadora_percentual"),
+    comissao_imobiliaria_percentual: primeiro("comissao_imobiliaria_percentual"),
+    coordenadora_entity_id: primeiro("coordenadora_entity_id") as null | string,
   };
 }
 
@@ -723,14 +1571,17 @@ async function cadastroDaCoordenadora(
 function umComprador(entrada: {
   avisos: string[];
   conjuge: LinhaDoRelacionamento | null;
-  contatos: LinhaDoContato[];
   daProposta: CompradorDaProposta;
   digitos: string;
+  /** Já resolvido por `pessoaCompletada`: a ficha e depois `apolo_contacts`, a escolhida primeiro. */
+  email: string;
   endereco: LinhaDoEndereco | null;
   entidade: LinhaDaEntidade | null;
   ficha: null | Record<string, unknown>;
+  /** Idem, com `whatsapp` antes de `phone`. */
+  telefone: string;
 }): DadosDoComprador {
-  const { avisos, contatos, daProposta, digitos, endereco, entidade, ficha } = entrada;
+  const { avisos, daProposta, digitos, endereco, entidade, ficha } = entrada;
   const valores: Record<string, string> = {};
   const por = (nome: string, valor: string) => {
     // Ver a nota do topo: chave sem valor NÃO entra — o motor imprime `[nome]` e alguém vê.
@@ -807,28 +1658,15 @@ function umComprador(entrada: {
 
   // ⚠️ A FICHA GANHA, MAS `apolo_contacts` É QUEM TEM O DADO DE QUEM NUNCA FOI EDITADO À MÃO. É a
   // mesma cascata do endereço, e o motivo é o mesmo: no wizard o contato nasce na tabela.
-  por("email_cliente", texto(ficha?.email) || primeiroContato(contatos, ["email"]));
+  por("email_cliente", entrada.email);
   // ⚠️ `whatsapp` ANTES DE `phone`, e o jsonb da proposta por último. A ordem dos dois primeiros é a
   // mesma de `c2x-write-server.ts`: 3.941 entidades só têm a linha `whatsapp`, e preferir `phone`
   // faria o contrato imprimir o fixo enquanto o resto do Panteon fala com o celular da pessoa. O
   // terceiro degrau é o único contato que o comprador NÃO titular costuma ter — ele não tem
   // reserva, pode não ter CAD e pode nem ter entidade no Apolo (ver `CompradorDaProposta.telefone`).
-  por(
-    "telefone_cliente",
-    texto(ficha?.telefone) ||
-      primeiroContato(contatos, ["whatsapp", "phone"]) ||
-      texto(daProposta.telefone),
-  );
+  por("telefone_cliente", entrada.telefone || texto(daProposta.telefone));
 
-  const enderecoUnido = unirEndereco(ficha, {
-    bairro: texto(endereco?.district),
-    cep: texto(endereco?.postal_code),
-    cidade: texto(endereco?.city),
-    complemento: texto(endereco?.complement),
-    logradouro: texto(endereco?.street),
-    numero: texto(endereco?.number),
-    uf: texto(endereco?.state),
-  });
+  const enderecoUnido = unirEndereco(ficha, enderecoDaTabela(endereco));
   if (enderecoUnido) {
     // ⚠️ `textoUtil` E NÃO O VALOR CRU: 4.633 cadastros têm a string "Endereco cadastral" gravada na
     // coluna da rua, e ela saiu impressa num contrato real ("residente e domiciliado na Endereco
@@ -853,14 +1691,7 @@ function umComprador(entrada: {
   // ⚠️ O CÔNJUGE VEM DAS DUAS FONTES, com a ficha ganhando campo a campo. No wizard ele nasce em
   // `apolo_relationships` e a ficha só o recebe se alguém editou — ler só a ficha faria um casado
   // sair no contrato sem cônjuge, que é o assinante que falta no cartório.
-  const conjuge = unirConjuge(ficha, {
-    cpf: entrada.conjuge?.metadata?.cpf,
-    email: entrada.conjuge?.metadata?.email,
-    nacionalidade: entrada.conjuge?.metadata?.nacionalidade,
-    nome: entrada.conjuge?.label,
-    profissaoId: entrada.conjuge?.metadata?.profissaoId,
-    telefone: entrada.conjuge?.metadata?.phone,
-  });
+  const conjuge = unirConjuge(ficha, conjugeDaTabela(entrada.conjuge));
 
   if (conjuge) {
     por("nome_conjuge", conjuge.nome);
@@ -934,7 +1765,11 @@ function conferir(entrada: {
     if (!valores.nacionalidade_cliente) faltando.push("nacionalidade");
     if (!valores.estado_civil_cliente) faltando.push("estado civil");
     if (!valores.profissao_cliente) faltando.push("profissão");
-    if (!valores.rg_cliente) faltando.push("RG");
+    // ⚠️ O RG NÃO É COBRADO. Lucas (18/09/2026): *"rg não precisa"*. E metade do Panteon não o tem:
+    // medido no mesmo dia, `metadata.cadastro` tem o órgão emissor em 215 entidades e o número em
+    // ZERO (ver `cadastroDaEntidade`), e a ficha da esteira tem o número em 406 de 835. Cobrá-lo punha
+    // "falta RG" em quase todo card de CAD pública. Se o número existir, ele continua impresso; se não
+    // existir, a oração do RG sai do papel (`semOracaoDoRg`, em `preencher-contrato.ts`).
     if (!valores.data_nascimento_cliente) faltando.push("data de nascimento");
   } else {
     if (!valores.cnpj_cliente) faltando.push("CNPJ");
@@ -968,9 +1803,10 @@ function gerais(
   proposta: LinhaDaProposta,
   unidade: LinhaDaUnidade | null,
   empreendimento: LinhaDoEmpreendimento | null,
-  doVinculado: null | { documento: string; email: string; telefone: string },
+  vendeu: QuemVendeu,
   comissao: ComissaoDaVenda,
   avisos: string[],
+  financeiro: { carteira: CarteiraDaVenda | null; fatos: FatosApurados | null },
 ): Record<string, string> {
   const g: Record<string, string> = {};
   const por = (nome: string, valor: string) => {
@@ -1105,18 +1941,23 @@ function gerais(
   // ⚠️ E AQUI SE LÊ O NOME DESNORMALIZADO DA PROPOSTA, não a entidade do Apolo. Nas propostas
   // importadas do C2X — que são a esmagadora maioria — `imobiliaria_nome` está preenchido e o
   // vínculo com `apolo_entities` não existe. Buscar pela entidade deixaria o contrato de corretagem
-  // SEM BENEFICIÁRIO em quase toda venda de hoje. O nome basta para o texto; CRECI, CNPJ e contato
-  // continuam pendentes e aparecem na lista de conferência da Têmis.
-  const vinculado = texto(proposta.imobiliaria_nome) || texto(proposta.corretor_nome);
+  // SEM BENEFICIÁRIO em quase toda venda de hoje. O nome basta para o texto.
+  //
+  // ⚠️ E O NOME DA PROPOSTA CONTINUA GANHANDO. O que `quemVendeuPeloApolo` achou só entra onde a
+  // proposta está em branco — na importada, o corretor (a carga o gravou vazio em todas).
+  const imobiliariaNome = texto(proposta.imobiliaria_nome) || vendeu.imobiliariaNome;
+  const corretorNome = texto(proposta.corretor_nome) || vendeu.corretorNome;
+  const vinculado = imobiliariaNome || corretorNome;
   if (vinculado) {
     por("nome_vinculado", vinculado);
-    por("imobiliaria_nome", texto(proposta.imobiliaria_nome));
-    por("corretor_nome", texto(proposta.corretor_nome));
+    por("imobiliaria_nome", imobiliariaNome);
+    por("corretor_nome", corretorNome);
   }
 
-  // ⚠️ O CADASTRO DA IMOBILIÁRIA SÓ ENTRA COM VÍNCULO. Ver `cadastroDoVinculado`: as propostas
-  // nascidas no Panteon guardam `imobiliaria_entity_id` (vem da reserva) e daí saem documento,
-  // telefone e e-mail; as importadas do C2X têm só o nome, e ficam com estes três em branco.
+  // ⚠️ O CADASTRO DA IMOBILIÁRIA SÓ ENTRA COM VÍNCULO POR ID. Ver `cadastroDoVinculado`: as nativas
+  // guardam `imobiliaria_entity_id` (vem da reserva); as importadas chegam pela ponte do
+  // `imobiliaria_c2x_id` (ver `quemVendeuPeloApolo`). Sem nenhum dos dois, os três ficam em branco.
+  const doVinculado = vendeu.vinculado;
   if (doVinculado) {
     por("cpf_cnpj_vinculado", doVinculado.documento);
     por("telefone_vinculado", doVinculado.telefone);
@@ -1238,8 +2079,14 @@ function gerais(
   // ⚠️ E NUNCA `plano_parcelas`: aquele é o tamanho do MOLDE. É a lição escrita na própria rota da
   // proposta — foi o molde no lugar do contrato que estampou "144x" no extrato de um contrato de 62
   // parcelas.
+  // ⚠️ A CARTEIRA DO APOLO É A RESERVA DA VENDA IMPORTADA, e só dela: é o que o comprador está
+  // pagando, lançamento a lançamento. Ver `carteira-da-venda.ts`.
+  const daCarteira = financeiro.carteira?.situacao === "ok" ? financeiro.carteira : null;
+
   const parcelasDoContrato = numero(proposta.contrato_parcelas);
-  const mensais = Array.isArray(condicoes?.mensais) ? condicoes.mensais.length : 0;
+  const mensais = Array.isArray(condicoes?.mensais)
+    ? condicoes.mensais.length
+    : (daCarteira?.parcelasMensais ?? 0);
   const prazo =
     parcelasDoContrato !== null && parcelasDoContrato > 0
       ? Math.trunc(parcelasDoContrato)
@@ -1255,9 +2102,17 @@ function gerais(
   // PDF da proposta imprimiu e o cliente leu; recalcular aqui faria o contrato discordar do papel
   // que ele tem na mão no dia em que o plano do empreendimento mudar.
   if (!condicoes) {
-    avisos.push(
-      "A proposta não tem cronograma gravado: entrada, financiado e parcelas anuais ficaram em branco.",
-    );
+    if (daCarteira) {
+      // ⚠️ SÓ O QUE A CARTEIRA TEM LANÇADO. Sem ato nem sinal lançados, a entrada é DESCONHECIDA, e
+      // não zero: "R$ 0,00" no contrato afirmaria uma venda sem entrada.
+      const temEntrada = daCarteira.porTipo.ato.quantidade + daCarteira.porTipo.sinal.quantidade > 0;
+      const temFinanciado =
+        daCarteira.porTipo.mensal.quantidade + daCarteira.porTipo.reforco.quantidade > 0;
+      if (temEntrada) parDeDinheiro("valor_entrada", daCarteira.entrada);
+      if (temFinanciado) parDeDinheiro("valor_divida_financiada", daCarteira.financiado);
+      return g;
+    }
+    avisos.push(avisoSemCronograma(financeiro.carteira, financeiro.fatos));
     return g;
   }
 
@@ -1285,6 +2140,66 @@ function condicoesDoContrato(proposta: LinhaDaProposta): Record<string, boolean>
   if (!condicoes) return {};
   const anuais = Array.isArray(condicoes.anuais) ? condicoes.anuais : [];
   return { tem_anuais: anuais.length > 0 };
+}
+
+/**
+ * O que a tela escreve no lugar do valor quando a carteira do Apolo não responde por esta venda.
+ *
+ * ⚠️ TRÊS FRASES, E NENHUMA É "NÃO INFORMADO". "Não informado" diz que alguém esqueceu de preencher;
+ * aqui ninguém esqueceu — o financeiro mora na carteira do Apolo. E cada frase só afirma o que se
+ * sabe:
+ *
+ *   • SEM LANÇAMENTOS só quando a carteira da venda foi sincronizada e não tem parcela nenhuma.
+ *   • AINDA NÃO SEPARA quando a carteira por venda não tem a venda. ⚠️ "Sem lançamentos" aqui era
+ *     desmentido pela própria carteira do Apolo: o retrato por pessoa (`apolo_financial_snapshots`)
+ *     de 18/09/2026 tem as parcelas de 4 dos 6 distratos em análise (62 a 185 parcelas, o total
+ *     igual ao valor da venda). O que falta é a carteira separada por venda, não o lançamento.
+ *   • NÃO CONSEGUI LER quando a leitura falhou: afirmar ausência num distrato é apurar a devolução
+ *     como venda sem pagamento.
+ */
+export const SEM_LANCAMENTOS_NA_CARTEIRA = "sem lançamentos na carteira do Apolo";
+export const CARTEIRA_AINDA_SEM_A_VENDA = "a carteira do Apolo ainda não separa esta venda por parcela";
+export const CARTEIRA_ILEGIVEL = "não consegui ler a carteira do Apolo";
+
+/** A frase do campo, conforme a razão de a carteira não ter respondido. */
+export function semValorNaCarteira(carteira: CarteiraDaVenda | null): string {
+  if (carteira?.situacao === "erro") return CARTEIRA_ILEGIVEL;
+  // Com a carteira da venda lida ("ok" sem parcela daquele tipo, ou sincronizada e vazia), a ausência
+  // é fato dela.
+  if (
+    carteira?.situacao === "ok" ||
+    (carteira?.situacao === "sem_carteira" && carteira.motivo === "sem_parcela")
+  ) {
+    return SEM_LANCAMENTOS_NA_CARTEIRA;
+  }
+  return CARTEIRA_AINDA_SEM_A_VENDA;
+}
+
+/**
+ * O aviso de "sem cronograma", dito conforme a razão.
+ *
+ * ⚠️ QUATRO CAUSAS, QUATRO FRASES. A nativa sem cronograma é defeito de gravação; a importada nunca
+ * sincronizada é pendência da carteira; a sincronizada sem parcela é fato da venda; e a leitura que
+ * falhou não é nenhuma das três. Uma frase só para as quatro mandaria o operador procurar no lugar
+ * errado.
+ */
+function avisoSemCronograma(carteira: CarteiraDaVenda | null, fatos: FatosApurados | null): string {
+  if (!carteira || carteira.situacao === "nativa" || carteira.situacao === "ok") {
+    return "A proposta não tem cronograma gravado: entrada, financiado e parcelas anuais ficaram em branco.";
+  }
+  // ⚠️ SEM A MENSAGEM DO BANCO. O aviso vai para o card e para o portal do incorporador, e o texto do
+  // Postgres é detalhe de schema da casa (a mesma regra de `abrirCardDoTrabalho`). Ele fica no log.
+  if (carteira.situacao === "erro") {
+    return "Não consegui ler a carteira do Apolo desta venda: entrada, financiado e parcelas ficaram em branco. Tente abrir de novo.";
+  }
+  if (carteira.motivo === "nunca_sincronizada") {
+    return "Venda importada: a carteira do Apolo ainda não separa esta venda por parcela, então entrada, financiado, pago e em aberto ficaram em branco.";
+  }
+  const quando = carteira.sincronizadaEm ? ` em ${dataBR(carteira.sincronizadaEm.slice(0, 10))}` : "";
+  const divergencia = fatos?.houvePagamento
+    ? ` Mas o Hércules registra ${fatos.comoSoube.pagamento}: confira antes de seguir.`
+    : "";
+  return `Venda importada sem lançamentos na carteira do Apolo: a carteira foi sincronizada${quando} e não tem parcela nenhuma desta venda.${divergencia}`;
 }
 
 // ── A DATA DE HOJE ───────────────────────────────────────────────────────────
