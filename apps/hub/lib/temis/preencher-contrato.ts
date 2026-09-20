@@ -378,7 +378,19 @@ function inserirGerados(
 
     if (posicao < 0) {
       // Pode estar mais abaixo (célula de tabela, item de lista): desce.
-      saida.push({ ...no, children: filhos.map((f) => (ehTexto(f) ? f : dentroDoFilho(f as NoDoDocumento, dados))) });
+      //
+      // ⚠️ A DESCIDA TROCA O FILHO POR UMA LISTA, e não por um filho só. Na minuta real (VOL v6,
+      // medida em 20/09/2026) o Quadro-Resumo inteiro é uma tabela de uma coluna e a variável mora
+      // num parágrafo DENTRO da célula do item VI. Quando a descida preservava o parágrafo e só
+      // trocava o conteúdo dele, o quadro saía como `<p><tr><td>…</td></tr></p>`: linhas de tabela
+      // penduradas num parágrafo. O navegador reaproveita essas linhas na tabela de fora, o
+      // Quadro-Resumo ganha sete colunas que não são dele e todas as outras seções encolhem —
+      // *"a tabela está desconfigurando o resto do contrato"* (Lucas, 20/09/2026). Aqui o parágrafo
+      // dá lugar à tabela, que vira IRMÃ dos outros parágrafos da mesma célula.
+      const descidos = filhos.flatMap((f) =>
+        ehTexto(f) ? [f] : inserirGerados([f as NoDoDocumento], dados),
+      );
+      saida.push({ ...no, children: descidos });
       continue;
     }
 
@@ -392,13 +404,6 @@ function inserirGerados(
   }
 
   return saida;
-}
-
-/** O mesmo, um nível abaixo: um gerado dentro de célula ou item de lista. */
-function dentroDoFilho(no: NoDoDocumento, dados: DadosDoContrato): NoDoDocumento {
-  const filhos = no.children;
-  if (!Array.isArray(filhos)) return no;
-  return { ...no, children: inserirGerados([no], dados)[0]?.children ?? filhos };
 }
 
 // ── 1.5. OS PARES QUE ATRAVESSAM PARÁGRAFOS ─────────────────────────────────

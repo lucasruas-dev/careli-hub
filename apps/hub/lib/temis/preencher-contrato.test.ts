@@ -865,3 +865,52 @@ describe("variáveis geradas (tabelas)", () => {
     expect(texto(r.nos)).toBe("Quadro: (parte integrante) Mensais");
   });
 });
+
+// ── O QUADRO DENTRO DO QUADRO-RESUMO ─────────────────────────────────────────
+//
+// ⚠️ NA MINUTA REAL A VARIÁVEL NÃO ESTÁ NA FOLHA: ESTÁ DENTRO DE UMA CÉLULA. Medido em 20/09/2026 na
+// VOL-MINUTA-COMPRA-VENDA-NORMAL v6, o Quadro-Resumo inteiro é uma tabela de uma coluna, e o item VI
+// é uma célula dela: `table > tr > td > p > [tabela_geral_pagamentos]`.
+//
+// Lucas, vendo o contrato gerado: *"a tabela está desconfigurando o resto do contrato"*. O quadro
+// saía como `<p>` com `<tr>` dentro — linhas de tabela penduradas num parágrafo, dentro da célula do
+// Quadro-Resumo. O navegador reaproveita essas linhas na tabela de fora, a grade do Quadro-Resumo
+// ganha sete colunas que não são dela e todas as outras seções encolhem.
+describe("o quadro dentro de uma célula (o Quadro-Resumo da minuta real)", () => {
+  const quadro: NoDoDocumento = {
+    children: [{ children: [{ children: [{ text: "Mensais" }], type: "td" }], type: "tr" }],
+    type: "table",
+  };
+
+  const dentroDaCelula: NoDoDocumento = {
+    children: [
+      {
+        children: [
+          {
+            children: [p("6.2. PREÇO TOTAL DA AQUISIÇÃO"), p(v("tabela_geral_pagamentos"))],
+            type: "td",
+          },
+        ],
+        type: "tr",
+      },
+    ],
+    type: "table",
+  };
+
+  it("⚠️ o quadro entra como TABELA irmã na célula, e não como linha solta num parágrafo", () => {
+    const r = preencherContrato([dentroDaCelula], {
+      compradores: [comprador("X")],
+      gerados: { tabela_geral_pagamentos: [quadro] },
+      gerais: {},
+    });
+    const html = documentoParaHtml(r.nos);
+
+    // Nenhum `<tr>` pendurado em parágrafo: é isso que desmonta a grade do Quadro-Resumo.
+    expect(html).not.toContain("<p><tr>");
+    expect(/<p[^>]*><tr>/.test(html)).toBe(false);
+    // O quadro é uma tabela de verdade, dentro da célula, depois do texto da cláusula.
+    expect(html).toContain("</p><table");
+    expect(texto(r.nos)).toContain("6.2. PREÇO TOTAL DA AQUISIÇÃO");
+    expect(texto(r.nos)).toContain("Mensais");
+  });
+});

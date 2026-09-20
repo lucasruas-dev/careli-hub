@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-20-quadro-de-pagamento-dentro-do-quadro-resumo",
+    deployedAt: "2026-09-20T18:40:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O quadro de pagamento parou de desconfigurar o contrato.** Na minuta, a variável do quadro mora dentro do Quadro-Resumo, e a tabela entrava lá de um jeito que bagunçava a grade: as seções do contrato encolhiam e o texto quebrava em colunas estreitas. Agora o quadro entra como tabela de verdade dentro da célula e o resto do Quadro-Resumo fica como estava.",
+              "**A coluna Valor sai só com o número, sem o \"a partir de\".** Quem conta o reajuste continua sendo a coluna Correção e a cláusula de correção monetária.",
+            ],
+            screen: "Contrato · Prévia e geração",
+          },
+        ],
+      },
+    ],
+    rollback: "9252e5d1",
+    technical: {
+      done:
+        "`preencher-contrato.ts`, descida do `inserirGerados`: o filho passa a ser trocado por uma LISTA de nós (flatMap) em vez de um nó só. A versão anterior (`dentroDoFilho`) preservava o parágrafo e trocava apenas os filhos dele, então o quadro saía como `<p><tr><td>…</td></tr></p>` — medido no HTML gerado. Na VOL-MINUTA-COMPRA-VENDA-NORMAL v6 o Quadro-Resumo inteiro é uma tabela de uma coluna e a variável está num `<p>` dentro do `<td>` do item VI; o parser reaproveita essas linhas soltas na tabela de fora, a grade ganha sete colunas que não são dela e todas as seções encolhem. Agora o parágrafo dá lugar à `<table>`, irmã dos outros parágrafos da mesma célula. `tabela-de-pagamentos.ts`: `valorDaSerie` devolve só a primeira parcela. Teste novo com a estrutura real (table > tr > td > p > variável) travando `<p><tr>`; 980 testes da Têmis passando. ⚠️ Largura: não é declarada no nó — o CSS do documento (`css-do-documento.ts:90`) já dá `width: 100%` a toda tabela, e declarar inline mudaria a diagramação de minutas que gravam largura própria.",
+      motivation:
+        "Lucas (20/09/2026), vendo o contrato do Vale do Ouro gerado: *\"a tabela está desconfigurando o resto do contrato, outra coisa que precisa mudar é tirar o texto a partir de\"*.",
+    },
+    title: "Contrato: o quadro de pagamento dentro do Quadro-Resumo",
+    type: "correcao",
+    version: "1.351.3",
+  },
+  {
     buildTag: "2026-09-20-contrato-conjuge-e-quadro-de-pagamento",
     deployedAt: "2026-09-20T17:24:00-03:00",
     modules: [

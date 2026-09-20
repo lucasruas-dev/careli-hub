@@ -164,20 +164,16 @@ function celula(
 }
 
 /**
- * O valor da série.
+ * O valor da série: a PRIMEIRA parcela, sem nenhuma ressalva escrita junto.
  *
- * ⚠️ "A PARTIR DE" QUANDO A PARCELA MUDA. No plano com correção anual a mensal sai de R$ 770,49 e
- * chega a R$ 2.083,74 na 156ª: escrever "156 x R$ 770,49" seria o contrato afirmando um valor fixo
- * que ele mesmo corrige todo ano.
+ * ⚠️ O "A PARTIR DE" SAIU A PEDIDO DO LUCAS (20/09/2026): *"outra coisa que precisa mudar é tirar o
+ * texto a partir de"*. A coluna passa a ser só número. A ressalva que ele carregava continua no
+ * quadro, na coluna Correção ("IPCA anual"), e na cláusula VII do contrato, que é onde o reajuste é
+ * contratado: a mensal do plano com correção anual sai de R$ 770,49 e chega a R$ 2.083,74 na 156ª.
  */
 function valorDaSerie(serie: readonly ParcelaGravada[]): string {
   const primeira = numero(serie[0]?.valor);
-  if (primeira === null) return "—";
-  const mudou = serie.some((p) => {
-    const valor = numero(p.valor);
-    return valor !== null && Math.abs(valor - primeira) >= 0.01;
-  });
-  return mudou ? `a partir de ${dinheiro(primeira)}` : dinheiro(primeira);
+  return primeira === null ? "—" : dinheiro(primeira);
 }
 
 /**
