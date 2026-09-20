@@ -13,7 +13,11 @@ import {
   envioAindaPodeEstarNoAr,
   seguraOEnvio,
 } from "@/lib/assinatura/envio-db";
-import { assinantesDoQuadro, empresasDoEmpreendimento } from "@/lib/assinatura/quadro-db";
+import {
+  assinanteDeTermosDaVendedora,
+  assinantesDoQuadro,
+  empresasDoEmpreendimento,
+} from "@/lib/assinatura/quadro-db";
 import { type Pessoa, signatariosDoContrato } from "@/lib/assinatura/signatarios";
 import type { EstadoDaAssinatura, Signatario } from "@/lib/assinatura/tipos";
 import { rotuloDoEstado } from "@/lib/assinatura/traduzir";
@@ -215,6 +219,9 @@ type VendaDoAcordo = {
  * 20/09/2026: só pelo empreendimento, 3 dos 18 acordos aprovados chegam a uma vendedora; com a queda
  * para a unidade, 18 de 18. A Lavra do Ouro, que responde por 32 dos 40 acordos, está justamente
  * nesse caso.
+ *
+ * ⚠️ E OS DOIS CAMINHOS VIRARAM TRÊS, NA ORDEM DA CASA, PARA PROCURAR QUEM ASSINA — ver
+ * `cadeiaDeEmpreendimentos`. O id do ENVELOPE continua sendo o de sempre: são perguntas diferentes.
  */
 async function vendaDoAcordo(
   sb: SupabaseClient,
@@ -262,29 +269,140 @@ async function vendaDoAcordo(
   // do acordo do ZZ TESTE entrar na lista de produção sem o marcador.
   const identidade = identidadeDoContrato(resolvido.dados.gerais, comprador?.nome ?? "");
 
+  // ⚠️ ESTE É O ID DO ENVELOPE, E ELE NÃO MUDOU. É o que vai gravado em
+  // `temis_envelopes.enterprise_id`, que responde "de que empreendimento é este envelope" — outra
+  // pergunta, e outra coluna, que a correção de 20/09/2026 deixou em paz de propósito.
   const enterpriseId =
     resolvido.dados.gerais.__empreendimento_id ||
     resolvido.dados.gerais.__unidade_enterprise_id ||
     null;
 
-  const empresas = await empresasDoEmpreendimento(sb, enterpriseId);
-  const doQuadro = await assinantesDoQuadro(sb, {
-    coordenadorEntityId: empresas.coordenador,
-    enterpriseId,
-    vendedoraEntityId: empresas.vendedora,
-  });
-
   return {
     comprador,
     empreendimento: identidade.empreendimento,
     enterpriseId,
-    // ⚠️ SÓ A VENDEDORA. O quadro traz também coordenador e testemunha, que são partes do CONTRATO
-    // de venda; o acordo é entre quem deve, quem vende e quem administra a carteira.
-    incorporador: doQuadro.find((p) => p.papel === "vendedora") ?? null,
+    incorporador: await incorporadorDoAcordo(sb, resolvido.dados.gerais),
     propostaId: proposta.id,
     unidade: identidade.unidade,
     unidadeId: proposta.unidade_id,
   };
+}
+
+/**
+ * OS EMPREENDIMENTOS EM QUE SE PROCURA QUEM ASSINA, na ordem da casa e sem repetição.
+ *
+ *     a divisão da unidade  →  o empreendimento da proposta  →  o pai dele
+ *
+ * ⚠️ A ORDEM É A DE `chavesDaComissao`, E NÃO UMA REGRA NOVA (correção de 20/09/2026). Lucas
+ * (08/09/2026): *"o pai sempre será o referencial, ele é o macro"*, e o filho que configurou usa o
+ * seu. O acordo usava a ordem CONTRÁRIA e parava no segundo degrau
+ * (`__empreendimento_id || __unidade_enterprise_id`): quem abrisse a ficha do empreendimento em que
+ * o LOTE está e apontasse o analista lá não era achado, e quem apontasse UMA pessoa no loteamento
+ * inteiro não valia para as divisões dele.
+ *
+ * ⚠️ MEDIDO EM 20/09/2026, e por isso a correção é barata agora: dos 18 acordos aprovados, ZERO têm
+ * os dois ids diferentes e ZERO nascem de divisão com pai — mas 408 das 2.012 propostas faturadas
+ * têm os dois ids preenchidos e DIFERENTES, e é de proposta faturada que nasce acordo. Os pares de
+ * pai e filho existem no cadastro (VLO 35 é pai de VOC 37, VOL 36 e VOR 41; LAB 31 é pai de LBR 27,
+ * LBP 32 e LBF 33).
+ *
+ * ⚠️ O PAI CUSTA DUAS CONSULTAS, E SÓ QUANDO EXISTE. É a mesma cadeia do termo de rescisão
+ * (`termo-de-rescisao-server.ts`): a linha do empreendimento pelo `c2x_enterprise_id`, e o
+ * `c2x_enterprise_id` do `pai_id` dela. Falha de leitura não derruba nada: devolve a cadeia curta,
+ * que é exatamente o que o envio já fazia antes.
+ */
+async function cadeiaDeEmpreendimentos(
+  sb: SupabaseClient,
+  gerais: Record<string, string>,
+): Promise<string[]> {
+  const daUnidade = String(gerais.__unidade_enterprise_id ?? "").trim();
+  const daProposta = String(gerais.__empreendimento_id ?? "").trim();
+  const cadeia = [daUnidade, daProposta].filter(Boolean);
+
+  if (daProposta) {
+    try {
+      const { data: filho } = await sb
+        .from("hercules_empreendimentos")
+        .select("pai_id")
+        .eq("c2x_enterprise_id", daProposta)
+        .limit(1)
+        .maybeSingle<{ pai_id: null | string }>();
+
+      const paiId = String(filho?.pai_id ?? "").trim();
+      if (paiId) {
+        const { data: pai } = await sb
+          .from("hercules_empreendimentos")
+          .select("c2x_enterprise_id")
+          .eq("id", paiId)
+          .limit(1)
+          .maybeSingle<{ c2x_enterprise_id: null | string }>();
+
+        const doPai = String(pai?.c2x_enterprise_id ?? "").trim();
+        if (doPai) cadeia.push(doPai);
+      }
+    } catch (e) {
+      console.warn(
+        "[hades][acordo][assinatura] não deu para subir até o pai do empreendimento:",
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+
+  return [...new Set(cadeia)];
+}
+
+/**
+ * QUEM ASSINA PELO INCORPORADOR — o primeiro nome que a cadeia devolver, na precedência do Lucas.
+ *
+ *     apontado para TERMOS  →  vendedora do quadro  →  representante legal da PJ
+ *
+ * ⚠️ E A VARREDURA É CAMPO A CAMPO, COMO EM `herdarComissao`, e não degrau a degrau: procura-se o
+ * APONTADO nos três empreendimentos da cadeia antes de aceitar a vendedora do contrato de qualquer
+ * um deles. O apontado é a resposta à pergunta certa ("quem assina os TERMOS"), e a vendedora do
+ * quadro é a resposta a outra ("quem assina a COMPRA E VENDA") que serve de queda; deixar a
+ * vendedora de um degrau mais específico vencer o apontado de um degrau acima trocaria a resposta
+ * certa pela aproximada.
+ *
+ * ⚠️ SEM `ordemPropria`, NOS DOIS DEGRAUS (correção de 20/09/2026). `assinantesDoQuadro` carrega o
+ * "Assina em" da linha, que é um campo da tela do CONTRATO, e `ordenarSignatarios` faz a ordem da
+ * PESSOA vencer a do papel: com "Assina em: 1" na vendedora, o envelope do acordo saía com o
+ * incorporador no MESMO degrau do comprador (groups 1, 1, 2 em vez de 1, 2, 3). A fila do acordo é
+ * a do Lucas (*"na ordem comprador, incorporador e nivea careli"*), e o comprador vem primeiro
+ * porque é ele quem pode não aceitar o acordo. `assinanteDeTermosDaVendedora` já nascia sem a
+ * coluna; o degrau de baixo ficou sem a mesma proteção.
+ *
+ * ⚠️ SÓ A VENDEDORA. O quadro traz também coordenador e testemunha, que são partes do CONTRATO de
+ * venda; o acordo é entre quem deve, quem vende e quem administra a carteira.
+ */
+async function incorporadorDoAcordo(
+  sb: SupabaseClient,
+  gerais: Record<string, string>,
+): Promise<null | Pessoa> {
+  const cadeia = await cadeiaDeEmpreendimentos(sb, gerais);
+
+  for (const id of cadeia) {
+    const apontado = await assinanteDeTermosDaVendedora(sb, id);
+    if (apontado) return apontado;
+  }
+
+  for (const id of cadeia) {
+    const empresas = await empresasDoEmpreendimento(sb, id);
+    const doQuadro = await assinantesDoQuadro(sb, {
+      coordenadorEntityId: empresas.coordenador,
+      enterpriseId: id,
+      vendedoraEntityId: empresas.vendedora,
+    });
+    const vendedora = doQuadro.find((p) => p.papel === "vendedora");
+    if (vendedora) return semAOrdemDoContrato(vendedora);
+  }
+
+  return null;
+}
+
+/** A pessoa do quadro sem o "Assina em" da tela do contrato. Ver a nota de `incorporadorDoAcordo`. */
+function semAOrdemDoContrato(pessoa: Pessoa): Pessoa {
+  const { ordemPropria: _daTelaDoContrato, ...semAOrdem } = pessoa;
+  return semAOrdem;
 }
 
 // ── O PREPARO: O QUE A TELA MOSTRA ANTES DE ALGUÉM CLICAR ───────────────────
@@ -325,10 +443,17 @@ export async function prepararEnvioDoAcordo(
 
   return {
     envelope: envelope ? comoATelaLe(envelope) : null,
+    // ⚠️ O ENVELOPE VIVO VEM ANTES DA FALTA DE CADASTRO (correção de 20/09/2026), e a razão é a
+    // diferença entre um fato e uma previsão. A falta de cadastro fala do PRÓXIMO envio; o envelope
+    // vivo é um termo que JÁ está cobrando assinatura do cliente, pago e sem apagar. Com o apontado
+    // removido depois do envio, a ordem antiga fazia o operador ler "falta apontar quem assina os
+    // TERMOS" ao lado de um envelope em curso, sem uma palavra sobre o id dele nem sobre como
+    // cancelá-lo. A falha de LEITURA continua na frente das duas: sem ler `temis_envelopes` não se
+    // sabe nem se existe envelope.
     impedimento:
       (envelopes.ok ? null : envelopes.erro) ??
-      montagem.impedimento ??
-      impedimentoDoEnvelopeVivo(envelopes.ok ? envelopes.linhas : []),
+      impedimentoDoEnvelopeVivo(envelopes.ok ? envelopes.linhas : []) ??
+      montagem.impedimento,
     ok: true,
     signatarios: montagem.signatarios,
   };

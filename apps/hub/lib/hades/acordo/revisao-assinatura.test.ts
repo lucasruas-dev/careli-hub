@@ -21,6 +21,11 @@ vi.mock("@/lib/temis/dados-do-contrato", () => ({
 }));
 
 vi.mock("@/lib/assinatura/quadro-db", () => ({
+  // ⚠️ O APONTADO PARA OS TERMOS NÃO EXISTE NESTES CASOS, e é o que mantém estes testes contando a
+  // história de antes de 20/09/2026: sem ninguém apontado, o envio cai na vendedora do quadro,
+  // exatamente como caía. O caso COM apontado tem teste próprio em
+  // `assinante-de-termos-no-envio.test.ts`.
+  assinanteDeTermosDaVendedora: async () => null,
   assinantesDoQuadro: (...args: unknown[]) => quadroDoEmpreendimento(...args),
   empresasDoEmpreendimento: async () => ({ coordenador: null, vendedora: "ent-vendedora" }),
 }));

@@ -109,6 +109,10 @@ vi.mock("@/lib/temis/dados-do-contrato", () => ({
 }));
 
 vi.mock("@/lib/assinatura/quadro-db", () => ({
+  // ⚠️ NINGUÉM APONTADO PARA OS TERMOS, de propósito: esta revisão é sobre a PORTA (autorização,
+  // recusa, contagem de chamadas à Clicksign) e tem de continuar contando a história de antes do
+  // campo novo — sem apontado, o envio cai na vendedora do quadro, como caía.
+  assinanteDeTermosDaVendedora: async () => null,
   assinantesDoQuadro: async () => [
     {
       cpf: "111.222.333-44",

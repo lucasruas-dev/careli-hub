@@ -8,8 +8,18 @@ import type { Signatario } from "@/lib/assinatura/tipos";
 // incorporador tem no sistema a nivea pode ficar como padrao"*.
 //
 //     comprador      hercules_propostas.compradores → `dadosDaProposta` → `signatariosDoContrato`
-//     incorporador   apolo_enterprise_settings.vendedor_entity_id → `assinantesDoQuadro`
+//     incorporador   temis_assinantes `termos_vendedora` → `assinanteDeTermosDaVendedora`
+//                    ↘ sem ninguém apontado → a vendedora do quadro → o representante legal da PJ
+//                    ↘ e os três degraus são procurados na divisão da unidade, no empreendimento da
+//                      proposta e no pai dele, nessa ordem (`incorporadorDoAcordo`, em envio-db.ts)
 //     Careli         lib/hades/acordo/assinante-da-careli.ts
+//
+// ⚠️ O PRIMEIRO DEGRAU DO INCORPORADOR NASCEU EM 20/09/2026, e ele é o campo que o Lucas pediu:
+// *"nessa tela vc pode abrir mais um campo para assinatura de termos vendedora, ae eu posso apontar
+// quem vai assinar os termos, não precisa necessariamente ser os representantes legais, pode ser o
+// juridico, analista, enfim"*. Quem assina a compra e venda pela empresa costuma NÃO ser quem
+// despacha um termo de acordo, e antes disto o acordo só tinha os dois degraus de baixo, que são os
+// do CONTRATO. Esta função continua PURA: quem encadeia a precedência é `envio-db.ts`.
 //
 // ⚠️ NENHUMA DAS TRÊS SAI DO C2X, E ISSO NÃO É PREFERÊNCIA DE ARQUITETURA: O C2X NÃO TEM O CAMPO. A
 // ficha do Hades (`loadHadesAttendanceClient`), que é de onde o PDF tira nome, CPF, qualificação e
@@ -98,6 +108,20 @@ export function signatariosDoAcordo(partes: {
  * tem pessoa física para assinar pelo incorporador. A frase abaixo é, hoje, a que todo operador vai
  * ler; ela existe para que ele saiba que o defeito é de cadastro, e em qual tela se arruma.
  *
+ * ⚠️ E ELA APONTA PRIMEIRO O CAMPO DOS TERMOS, que é o caminho barato. Os 18 acordos aprovados estão
+ * em 4 empreendimentos de 3 incorporadoras (medido em 20/09/2026): apontar uma pessoa por
+ * incorporadora, repetida nos 4 empreendimentos, tira os 18 desta frase. Mandar o operador atrás do
+ * representante legal da PJ é mandá-lo mexer no cadastro da empresa, que muda o CONTRATO de venda
+ * também — e o Lucas foi explícito que quem assina termo *"não precisa necessariamente ser os
+ * representantes legais"*.
+ *
+ * ⚠️ E O CAMINHO É O DE VERDADE: ABA SETUP, SUB-ABA ASSINATURA (revisão de 20/09/2026). A frase
+ * dizia *"na aba Assinatura da tela do empreendimento"*, e no primeiro nível de abas
+ * (`empreendimentos-view.tsx`: Visão geral, Unidades, Carteira, …, Setup) NÃO EXISTE aba com esse
+ * nome — a Assinatura é sub-aba de dentro do Setup. Como esta frase é hoje a única instrução que os
+ * 18 acordos aprovados entregam ao operador, mandá-lo procurar uma aba que não está lá é mandá-lo
+ * desistir.
+ *
  * ⚠️ E O ENVIO PARA, EM VEZ DE SAIR SEM ELE. No CONTRATO, vendedora ausente vira AVISO e o envelope
  * sai assim mesmo — decisão tomada em 08/09/2026 para não travar o primeiro teste do ZZ TESTE por um
  * cadastro que ninguém tinha preenchido. Aqui não: o Lucas nomeou as três partes, e um acordo
@@ -117,8 +141,10 @@ function faltaAlgumaParte(partes: {
 
   if (!partes.incorporador) {
     return (
-      "Falta quem assina pelo INCORPORADOR deste empreendimento: nenhuma pessoa está cadastrada como vendedora, e a empresa não tem representante legal apontado. " +
-      "Cadastre no Quadro de assinatura do empreendimento, ou aponte o representante legal no cadastro da empresa, e mande de novo."
+      "Falta apontar quem assina os TERMOS pelo INCORPORADOR deste empreendimento: ninguém foi apontado em Assinatura de termos (vendedora), " +
+      "nenhuma pessoa está cadastrada como vendedora e a empresa não tem representante legal. " +
+      "Aponte a pessoa no Quadro de assinatura do empreendimento, na aba Setup, sub-aba Assinatura, da tela do empreendimento (Apolo). " +
+      "Pode ser alguém do jurídico ou um analista, não precisa ser o representante legal. Depois mande de novo."
     );
   }
 

@@ -573,20 +573,66 @@ export async function desativarAnexo(ator: AtorDaTemis, request: Request): Promi
 // para vendedora também a inclusão das assinaturas igual a testemunha (...) Testemunha a mesma
 // coisa, e coordenador de vendas a mesma coisa, eu posso ter mais de um como coordenador"*.
 //
-// ⚠️ TRÊS PAPÉIS, E SÓ TRÊS. Comprador e cônjuge saem da PROPOSTA e nunca daqui: digitar o comprador
-// abriria a porta para o contrato dizer uma pessoa e o envelope ir para outra, e o defeito só
-// apareceria meses depois. O captador não entra — decisão do Lucas no mesmo dia.
+// ⚠️ TRÊS PAPÉIS DO CONTRATO, E SÓ TRÊS. Comprador e cônjuge saem da PROPOSTA e nunca daqui: digitar
+// o comprador abriria a porta para o contrato dizer uma pessoa e o envelope ir para outra, e o
+// defeito só apareceria meses depois. O captador não entra — decisão do Lucas no mesmo dia.
 //
 // ⚠️ A VENDEDORA VEM COM UMA LINHA QUE NÃO ESTÁ NA TABELA. O representante legal cadastrado na PJ
 // (`apolo_relationships`) é devolvido junto, marcado `origem: "representante"` e SEM id: ele é
 // derivado do cadastro da empresa, não uma linha daqui. Guardá-lo aqui criaria uma segunda verdade
 // sobre quem representa a empresa.
+//
+// ⚠️ E EXISTE UM QUARTO PAPEL, QUE NÃO É DO CONTRATO: `termos_vendedora`. Lucas (20/09/2026):
+// *"essa tela determina os assinantes (...) nessa tela vc pode abrir mais um campo para assinatura
+// de termos vendedora, ae eu posso apontar quem vai assinar os termos, não precisa necessariamente
+// ser os representantes legais, pode ser o juridico, analista, enfim"*. É quem a incorporadora
+// apontou para assinar os TERMOS que a Careli emite sobre a carteira dela — hoje o termo de acordo
+// do Hades. Ele mora na mesma tabela porque é a mesma forma (uma pessoa, presa ao empreendimento,
+// com posição e ordem), e NÃO no papel `vendedora` porque a pergunta é outra: um analista apontado
+// para assinar termos não pode virar, no mesmo instante, quem assina a compra e venda. Quem garante
+// essa separação é `lib/assinatura/quadro-db.ts`, que só traduz para o contrato os papéis do seu
+// mapa. Depende da migration 0180 para ser GRAVADO; a leitura funciona sem ela.
 
 const POSICAO_MAXIMA_NO_QUADRO = 9;
 const ORDEM_MAXIMA = 20;
 
-export const PAPEIS_DO_QUADRO = ["vendedora", "coordenador", "testemunha"] as const;
+/** A migration que libera o papel `termos_vendedora` no check da tabela. */
+export const MIGRATION_DO_ASSINANTE_DE_TERMOS = "0180_assinante_de_termos_da_vendedora";
+
+export const PAPEIS_DO_QUADRO = [
+  "vendedora",
+  "coordenador",
+  "testemunha",
+  // ⚠️ ÚLTIMO, E FORA DO CONTRATO. Ver a nota do bloco acima: acrescentar no fim é o que deixa as
+  // telas que iteram esta lista mostrarem o papel novo DEPOIS dos três de sempre, sem reordenar o
+  // que o operador já conhece.
+  "termos_vendedora",
+] as const;
 export type PapelDoQuadro = (typeof PAPEIS_DO_QUADRO)[number];
+
+/**
+ * O papel que SÓ A CARELI aponta, e quem fecha essa porta é o servidor.
+ *
+ * ⚠️ ESCONDER O CAMPO NA TELA NÃO É FECHAR A PORTA (revisão de 20/09/2026). O cartão do quadro nasce
+ * com a caixa dos termos desligada no portal da Cecílio (`comAssinantesDeTermos`), mas as duas
+ * portas — `/api/temis/assinantes` (hub) e `/api/incorporador/temis/assinantes` (portal) — chamam as
+ * MESMAS `incluirAssinante` e `removerAssinante`, e a única lista conferida era `PAPEIS_DO_QUADRO`.
+ * Um POST direto do portal com este papel passava dentro do alcance daquele incorporador, e um
+ * DELETE apagava o apontado pela Careli, sem nada na tela dizendo que aconteceu.
+ *
+ * ⚠️ E O TERMO É INSTRUMENTO DA COBRANÇA DA CARELI, não do produto do incorporador: é a Careli que
+ * emite, paga o envelope e responde pelo que ele diz. Quem assina por ela do lado da vendedora é
+ * uma escolha da casa, e o portal continua com o CONTRATO inteiro (vendedora, coordenador,
+ * testemunha), que é o que aquela equipe confecciona.
+ *
+ * ⚠️ 404, E NÃO 403 (`foraDoEscopo`): para o portal este papel não existe, é a mesma frase de
+ * qualquer id de fora. Dizer "você não pode" confirmaria que há o que apontar ali.
+ */
+export const PAPEL_SO_DA_CARELI: PapelDoQuadro = "termos_vendedora";
+
+function fechadoParaOPortal(ator: AtorDaTemis, papel: string): NextResponse | null {
+  return ator.tipo !== "hub" && papel === PAPEL_SO_DA_CARELI ? foraDoEscopo() : null;
+}
 
 const COLUNAS_DO_ASSINANTE =
   "id,enterprise_id,papel,posicao,ordem_assinatura,nome,cpf,email,entity_id,observacao,origem";
@@ -705,11 +751,20 @@ async function representanteDoCadastro(
   papel: PapelDoQuadro,
 ): Promise<AssinanteDoQuadro | null> {
   try {
-    // ⚠️ DUAS COLUNAS, DOIS PAPÉIS. `vendedor_entity_id` é a incorporadora; `coordenador_entity_id`
+    // ⚠️ DUAS COLUNAS, TRÊS PAPÉIS. `vendedor_entity_id` é a incorporadora; `coordenador_entity_id`
     // (0159) é o COORDENADOR daquele empreendimento — e nenhum dos dois é `coordenadora_entity_id`,
     // que é a Coordenação de Vendas da casa. Trocar essas três já pôs o captador no lugar do
     // coordenador uma vez.
-    const coluna = papel === "vendedora" ? "vendedor_entity_id" : "coordenador_entity_id";
+    //
+    // ⚠️ `termos_vendedora` HERDA DA MESMA EMPRESA QUE `vendedora`, e por isso está do lado de cá do
+    // ternário. É a mesma incorporadora: o que muda é o DOCUMENTO que aquela pessoa assina. Deixá-lo
+    // cair no `else` (como um terceiro papel faria por descuido) mostraria no campo dos termos o
+    // representante da COORDENADORA de vendas — outra empresa, outra pessoa, e ninguém olhando a
+    // tela teria como desconfiar.
+    const coluna =
+      papel === "vendedora" || papel === "termos_vendedora"
+        ? "vendedor_entity_id"
+        : "coordenador_entity_id";
 
     const { data: settings } = await admin
       .from("apolo_enterprise_settings")
@@ -791,6 +846,14 @@ export async function lerQuadroDeAssinatura(
       .order("posicao", { ascending: true }),
     representanteDoCadastro(admin, enterpriseId, "vendedora"),
     representanteDoCadastro(admin, enterpriseId, "coordenador"),
+    // ⚠️ O REPRESENTANTE VAI TAMBÉM NO PAPEL DOS TERMOS, PORQUE ELE É O ÚLTIMO DEGRAU. O envio do
+    // termo cai nele quando ninguém foi apontado E ninguém ocupou o papel `vendedora` (ver
+    // `assinanteDeTermosDaVendedora` e `incorporadorDoAcordo`). Ele sai daqui como CANDIDATO, e não
+    // como veredito: quem decide qual das linhas a caixa dos termos mostra como "assina os termos"
+    // é `filaDosTermos`, no cartão, que tem a lista inteira na mão e espelha a cadeia do envio.
+    // Decidir aqui obrigaria esta leitura a conhecer o papel `vendedora` para responder sobre o
+    // papel dos termos, e são duas perguntas que o cartão já faz juntas.
+    representanteDoCadastro(admin, enterpriseId, "termos_vendedora"),
   ]);
 
   if (error) {
@@ -846,6 +909,12 @@ export async function incluirAssinante(ator: AtorDaTemis, request: Request): Pro
     return NextResponse.json({ error: "Informe o empreendimento." }, { status: 400 });
   }
 
+  // ⚠️ ANTES DE TUDO, E SEM IR AO BANCO. Ver `PAPEL_SO_DA_CARELI`: a caixa dos termos é da Careli, e
+  // escondê-la na tela não fechava a porta. Recusar aqui, antes do alcance, também é o que impede o
+  // portal de descobrir pela resposta se aquele empreendimento é dele.
+  const soDaCareli = fechadoParaOPortal(ator, texto(corpo.papel));
+  if (soDaCareli) return soDaCareli;
+
   // Incluir é escrita: no portal, só no quadro do produto que ele opera.
   const barrado = respostaDoAlcance(await alcanceParaEscrever(admin, ator, enterpriseId));
   if (barrado) return barrado;
@@ -871,14 +940,21 @@ export async function incluirAssinante(ator: AtorDaTemis, request: Request): Pro
     // dizer isso, o operador lê "posicao ocupada" olhando para um quadro onde aquele número parece
     // livre.
     const ocupada = error.code === "23505";
+    // ⚠️ 23514 É O CHECK DO PAPEL, E HOJE ELE SÓ ESTOURA NUM CASO: `termos_vendedora` antes da
+    // migration 0180. O código sobe antes dela (a leitura do quadro não precisa de nada novo), e um
+    // "Nao foi possivel gravar o assinante" seco mandaria o operador conferir o nome, o CPF e o
+    // e-mail que ele digitou certo. A frase nomeia a migration, como a do envio do acordo nomeia a
+    // 0179.
+    const papelNaoLiberado = error.code === "23514";
     console.warn("[temis/assinantes] insert falhou:", error.message);
+    const recado = papelNaoLiberado
+      ? `O banco ainda nao aceita o papel "${valores.papel}": falta aplicar a migration ${MIGRATION_DO_ASSINANTE_DE_TERMOS}. Avise quem cuida do banco; os outros papeis do quadro continuam funcionando.`
+      : ocupada
+        ? `A posicao ${valores.posicao} ja esta ocupada em ${valores.papel} neste empreendimento.`
+        : "Nao foi possivel gravar o assinante.";
     return NextResponse.json(
-      {
-        error: ocupada
-          ? `A posicao ${valores.posicao} ja esta ocupada em ${valores.papel} neste empreendimento.`
-          : "Nao foi possivel gravar o assinante.",
-      },
-      { status: ocupada ? 409 : 500 },
+      { error: recado },
+      { status: papelNaoLiberado ? 503 : ocupada ? 409 : 500 },
     );
   }
 
@@ -903,6 +979,21 @@ export async function removerAssinante(ator: AtorDaTemis, request: Request): Pro
 
   const id = (new URL(request.url).searchParams.get("id") ?? "").trim();
   if (!id) return NextResponse.json({ error: "Informe o assinante." }, { status: 400 });
+
+  // ⚠️ O PAPEL DA LINHA É CONFERIDO ANTES DO ALCANCE, E SÓ PARA O PORTAL. O alcance responde "este
+  // empreendimento é seu?", e a linha dos TERMOS está num empreendimento que É do incorporador —
+  // então o alcance diz sim, e o DELETE apagava o apontado pela Careli. A pergunta que faltava é
+  // outra: quem aponta quem assina os termos da carteira é a Careli (ver `PAPEL_SO_DA_CARELI`). A
+  // consulta extra só acontece do lado do portal; para o hub nada disto roda.
+  if (ator.tipo !== "hub") {
+    const { data: linha } = await admin
+      .from("temis_assinantes")
+      .select("papel")
+      .eq("id", id)
+      .maybeSingle<{ papel: null | string }>();
+    const soDaCareli = fechadoParaOPortal(ator, String(linha?.papel ?? ""));
+    if (soDaCareli) return soDaCareli;
+  }
 
   const barrado = respostaDoAlcance(await alcanceDoAssinante(admin, ator, id));
   if (barrado) return barrado;

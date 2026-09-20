@@ -1564,7 +1564,12 @@ function SetupTab({
       {subAba === "assinatura" ? (
         <>
           <OrdemDeAssinaturaCard code={code} enterpriseId={enterpriseId} />
-          <QuadroDeAssinaturaCard enterpriseId={enterpriseId} />
+          {/* ⚠️ `comAssinantesDeTermos` SÓ AQUI. Lucas (20/09/2026): *"essa tela determina os
+              assinantes (...) nessa tela vc pode abrir mais um campo para assinatura de termos
+              vendedora"* — é esta, a do empreendimento no Apolo. O mesmo cartão é a tela de minutas
+              do portal da Cecílio, e lá o campo fica desligado: o termo de acordo é instrumento da
+              cobrança da Careli, não da confecção de contrato daquela equipe. */}
+          <QuadroDeAssinaturaCard comAssinantesDeTermos enterpriseId={enterpriseId} />
         </>
       ) : null}
     </div>

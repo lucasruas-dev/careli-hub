@@ -78,6 +78,19 @@ describe("o dado que falta vira FRASE, e o envio não sai", () => {
     expect(impedimento).toContain("representante legal");
   });
 
+  // ⚠️ A FRASE TEM DE NOMEAR O CAMPO NOVO, E DIZER QUE ELE NÃO EXIGE PROCURAÇÃO. Lucas
+  // (20/09/2026): *"não precisa necessariamente ser os representantes legais, pode ser o juridico,
+  // analista, enfim"*. Sem isso, o operador que lê "falta representante legal" vai atrás da
+  // procuração da incorporadora — o caminho caro — em vez de apontar alguém no quadro, que é o
+  // caminho que o Lucas desenhou.
+  it("a frase manda apontar quem assina os TERMOS, e diz que não precisa ser o representante", () => {
+    const { impedimento } = signatariosDoAcordo({ careli, comprador, incorporador: null });
+
+    expect(impedimento).toContain("TERMOS");
+    expect(impedimento).toContain("Assinatura de termos (vendedora)");
+    expect(impedimento).toContain("não precisa ser o representante legal");
+  });
+
   it("sem comprador no cadastro do Panteon, a frase manda conferir a venda", () => {
     const { impedimento } = signatariosDoAcordo({ careli, comprador: null, incorporador });
 
