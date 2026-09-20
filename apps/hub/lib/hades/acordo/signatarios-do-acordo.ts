@@ -18,7 +18,8 @@ import type { Signatario } from "@/lib/assinatura/tipos";
 // e-mail por pessoa é o do Panteon. Por isso o PAPEL continua vindo do C2X (é a mesma leitura que o
 // operador vê na tela antes de clicar) e o ENVELOPE vem do Panteon.
 //
-// ⚠️ O CÔNJUGE NÃO ENTRA, E A AUSÊNCIA DELE É UMA DECISÃO. O termo de acordo qualifica UM comprador
+// ⚠️ O CÔNJUGE NÃO ENTRA, E QUEM DISSE ISSO FOI O LUCAS (20/09/2026): *"entra no envelope somente o
+// proponente"*. O termo de acordo qualifica UM comprador
 // (é o cliente da carteira, o dono do débito) e o Lucas pediu três signatários. Mandar o cônjuge
 // assinar poria no envelope alguém que o documento não menciona — a mesma regra que
 // `signatariosDoContrato` aplica ao ligar o cônjuge só quando o contrato o qualificou. Se algum dia

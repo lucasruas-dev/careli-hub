@@ -1,6 +1,8 @@
 -- 0179 — O ENVELOPE DO TERMO DE ACORDO: o elo que faltava entre `temis_envelopes` e o Hades.
 --
--- ⚠️ NÃO APLICADA. Aguarda OK explícito do Lucas.
+-- ✅ APLICADA EM PRODUÇÃO em 20/09/2026, com OK do Lucas ("tem o meu ok"). Conferido depois: a coluna
+-- existe com a FK para guardian_compromissos, e os dois índices estão valendo (o parcial por
+-- compromisso e o único que impede dois envelopes vivos do mesmo acordo).
 --
 -- Lucas (20/09/2026): *"vamos precisar encaminhar esse acordo para assinatura, ou seja, vamos levar
 -- esse documento para ser assinado na click. quem vai, o comprador, o incorporador e a nivea

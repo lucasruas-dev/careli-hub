@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GuardianCompromissoDetail } from "@/lib/guardian/compromissos";
 
+import { ASSINANTE_DA_CARELI } from "@/lib/hades/acordo/assinante-da-careli";
 import { MOTIVOS_DO_TERMO } from "@/lib/hades/dossie/termo-de-acordo-gate";
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
@@ -272,6 +273,51 @@ describe("o registro em temis_envelopes", () => {
     expect(insert?.patch.estado).toBe("rascunho");
     // A ordem do acordo é sempre ligada: comprador, depois incorporador, depois Careli.
     expect(insert?.patch.ordenada).toBe(true);
+  });
+
+  it("⚠️ só o proponente vai ao envelope: cônjuge e segundo comprador da venda ficam de fora", async () => {
+    // Lucas, 20/09/2026: *"entra no envelope somente o proponente"*. A venda pode ter casal e mais de
+    // um comprador; o termo de acordo qualifica UM, o dono do débito.
+    const comCasal = vendaDoPanteon();
+    comCasal.dados.compradores = [
+      {
+        temConjuge: true,
+        valores: {
+          cpf_cliente: "444.555.666-17",
+          cpf_conjuge: "777.888.999-00",
+          email_cliente: "comprador@exemplo.test",
+          email_conjuge: "conjuge@exemplo.test",
+          nome_cliente: "Beltrano Exemplo Ferreira",
+          nome_conjuge: "Beltrana Exemplo Ferreira",
+          telefone_cliente: "31999990000",
+        },
+      },
+      {
+        temConjuge: false,
+        valores: {
+          cpf_cliente: "222.333.444-05",
+          email_cliente: "segundo@exemplo.test",
+          nome_cliente: "Segundo Comprador Silva",
+          telefone_cliente: "31988880000",
+        },
+      },
+    ] as (typeof comCasal)["dados"]["compradores"];
+    leituraDaVenda.mockResolvedValue(comCasal);
+    const { escritas, sb } = bancoDeTeste({});
+    const { porta } = portaDeTeste();
+
+    const feito = await enviarAcordoParaAssinatura(sb, acordo(), {}, { montarPdf: PDF_PRONTO, porta });
+
+    expect("ok" in feito && feito.ok).toBe(true);
+    const insert = escritas.find((e) => "compromisso_id" in e.patch);
+    const assinam = (insert?.patch.signatarios ?? []) as Array<{ email: string; papel: string }>;
+    expect(assinam).toHaveLength(3);
+    expect(assinam.map((p) => p.papel)).toEqual(["comprador", "vendedora", "careli"]);
+    expect(assinam.map((p) => p.email)).toEqual([
+      "comprador@exemplo.test",
+      representante.email,
+      ASSINANTE_DA_CARELI.email,
+    ]);
   });
 
   it("o carimbo do sucesso grava o id do envelope e o estado aguardando", async () => {
