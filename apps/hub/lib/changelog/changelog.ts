@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-20-contrato-conjuge-e-quadro-de-pagamento",
+    deployedAt: "2026-09-20T17:24:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O contrato não traz mais o cônjuge de quem não tem cônjuge.** O bloco de assinatura do cônjuge, que ocupa vários parágrafos, some inteiro quando o comprador é solteiro. Antes ele saía no papel e ainda travava a geração do documento.",
+              "**O quadro de pagamento passa a ser montado.** A variável da tabela estava no catálogo e ninguém a preenchia, então saía o colchete no lugar do quadro. Agora o contrato traz uma linha por tipo de parcela (entrada, mensais e anuais) com correção, juros, primeiro vencimento, quantidade, valor e total, tudo a partir do cronograma da própria proposta.",
+              "**O custo total da aquisição deixa de repetir o preço do lote**: ele passa a ser o preço mais a comissão.",
+              "**O CRECI da imobiliária sai do cadastro dela**, e a coordenadora de vendas ganha a variável da razão social, para a linha do beneficiário não sair com o nome fantasia.",
+            ],
+            screen: "Contrato · Prévia e geração",
+          },
+        ],
+      },
+    ],
+    rollback: "86de613f",
+    technical: {
+      done:
+        "`preencher-contrato.ts`: novo `paresEntreBlocos`, entre o laço e as variáveis — `aplicarPares` só enxergava marcadores irmãos DENTRO de um parágrafo, e nas assinaturas `[inicio_dados_conjuge]` é um parágrafo e `[fim_dados_conjuge]` é outro (medido na minuta publicada do VOL: as 6 ocorrências estão corretamente entre marcadores, o defeito era do motor). Mesma rede do laço para par quebrado, recursivo para aninhado, e o que está fora dos marcadores no mesmo parágrafo fica. Novo `inserirGerados`: variável que vira NÓ troca o parágrafo inteiro (tabela dentro de `<p>` é HTML inválido); gerado ausente continua caindo em `semValor`. Novo `lib/temis/tabela-de-pagamentos.ts` (6 testes) lê `hercules_propostas.condicoes` — entrada, mensais, anuais, totais e o plano — e escreve o quadro com `INDICES`/taxa na mesma grafia do resto da casa; quantidade sai do campo `total` da parcela (o prazo contratado), e valor que muda no reajuste sai como \"a partir de\". `dados-do-contrato.ts`: `gerados` com o quadro nos DOIS nomes (`tabela_pagamentos` e `tabela_geral_pagamentos`), `valor_custo_total_aquisicao` (preço + comissão em centavos inteiros), `creci_vinculado` de `metadata.cadastro.creci` e `razao_social_coordenadora_vendas` de `legal_name`. Catálogo atualizado (o custo total saiu da lista de pendentes). 12 testes novos, validados por mutação; 7.123 testes passando e typecheck limpo. ⚠️ Sem cronograma gravado (proposta importada do C2X) o quadro não existe: a variável continua cobrando e entra um aviso na conferência. ⚠️ Imobiliária vinda do sync do C2X segue sem CRECI até ser cadastrada no Apolo — não se lê o legado para completar contrato.",
+      motivation:
+        "Lucas (20/09/2026), com quatro prints do contrato do Vale do Ouro: *\"Está trazendo o conjuge sem ter conjuge\"*, *\"Falta a tabela de pagamentos\"* e *\"mudamos a variavel e mesmo assim não veio a tabela\"*, *\"O preço do lote e da aquisição não podem ser os mesmos\"*, *\"O nome da Gurgel está incompleto. Não está trazendo o CRECi\"*.",
+    },
+    title: "Contrato: o cônjuge que não existe some e o quadro de pagamento aparece",
+    type: "correcao",
+    version: "1.351.2",
+  },
+  {
     buildTag: "2026-09-18-email-sai-da-iris",
     deployedAt: "2026-09-18T22:38:00-03:00",
     modules: [
