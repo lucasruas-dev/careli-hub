@@ -914,3 +914,186 @@ describe("o quadro dentro de uma célula (o Quadro-Resumo da minuta real)", () =
     expect(texto(r.nos)).toContain("Mensais");
   });
 });
+
+// ── O PAR CONDICIONAL DENTRO DA CÉLULA ───────────────────────────────────────
+//
+// ⚠️ NA MINUTA REAL, DOIS DOS SEIS PARES DO CÔNJUGE ESTÃO DENTRO DA TABELA DO QUADRO-RESUMO. Medido
+// em 20/09/2026 no jsonb da VOL-MINUTA-COMPRA-VENDA-NORMAL v6: o nó de topo nº 3 é uma tabela de
+// 44 KB e carrega 2 pares `[inicio_dados_conjuge]…[fim_dados_conjuge]`; os outros 4 estão soltos no
+// documento. `paresEntreBlocos` percorria só a lista que recebia, então os pares de dentro da célula
+// nunca eram resolvidos — e o contrato de uma compradora SOLTEIRA saía com `[nome_conjuge]` e a
+// palavra CÔNJUGE impressos na caixa de CIÊNCIA PRÉVIA. Lucas, com o print do contrato gerado:
+// *"ainda está aparecendo o nome do conjuge mesmo a pessoa sendo solteira"*.
+describe("o par que atravessa parágrafos DENTRO de uma célula", () => {
+  const celulaComAssinatura = (): NoDoDocumento => ({
+    children: [
+      {
+        children: [
+          {
+            children: [
+              p("(Assinado eletronicamente)", v("inicio_dados_conjuge")),
+              p(v("nome_conjuge")),
+              p("CÔNJUGE", v("fim_dados_conjuge")),
+            ],
+            type: "td",
+          },
+        ],
+        type: "tr",
+      },
+    ],
+    type: "table",
+  });
+
+  it("⚠️ comprador SOLTEIRO: o bloco do cônjuge some de dentro da célula", () => {
+    const r = preencherContrato([celulaComAssinatura()], {
+      compradores: [comprador("VITORIA SILVA ARAUJO")],
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe("(Assinado eletronicamente)");
+    expect(texto(r.nos)).not.toContain("CÔNJUGE");
+    expect(r.semValor).not.toContain("nome_conjuge");
+  });
+
+  it("comprador CASADO: o bloco do cônjuge fica, na célula onde estava", () => {
+    const r = preencherContrato([celulaComAssinatura()], {
+      compradores: [
+        comprador("VITORIA SILVA ARAUJO", {
+          temConjuge: true,
+          valores: { nome_cliente: "VITORIA SILVA ARAUJO", nome_conjuge: "JOÃO DA SILVA" },
+        }),
+      ],
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toContain("JOÃO DA SILVA");
+    expect(texto(r.nos)).toContain("CÔNJUGE");
+    // E continua DENTRO da tabela: o bloco não pode vazar para fora do Quadro-Resumo.
+    expect(r.nos.length).toBe(1);
+    expect(r.nos[0]?.type).toBe("table");
+  });
+});
+
+// ── O LAÇO DENTRO DA CÉLULA ──────────────────────────────────────────────────
+//
+// ⚠️ OS DOIS LAÇOS DE COMPRADOR DA MINUTA REAL TAMBÉM ESTÃO DENTRO DA TABELA. Medido em 20/09/2026
+// no jsonb da VOL v6: o nó nº 3 (a tabela do Quadro-Resumo) carrega 2 pares
+// `[inicio_cada_comprador]…[fim_cada_comprador]`, e cada um começa num parágrafo e termina em outro,
+// dentro da MESMA célula. A descida de `expandirLaco` ia de um filho por vez, então nunca via o
+// fechamento no parágrafo vizinho: o par era tratado como quebrado, o laço não rodava e o
+// Quadro-Resumo de uma venda com DOIS compradores saía com um comprador só.
+describe("o laço que atravessa parágrafos DENTRO de uma célula", () => {
+  const celulaComLaco = (): NoDoDocumento => ({
+    children: [
+      {
+        children: [
+          {
+            children: [
+              p(v("inicio_cada_comprador"), v("nome_cliente")),
+              p("COMPROMISSÁRIO(A) COMPRADOR(A)", v("fim_cada_comprador")),
+            ],
+            type: "td",
+          },
+        ],
+        type: "tr",
+      },
+    ],
+    type: "table",
+  });
+
+  it("⚠️ dois compradores: os dois aparecem dentro da célula", () => {
+    const r = preencherContrato([celulaComLaco()], {
+      compradores: [comprador("VITORIA SILVA ARAUJO"), comprador("JOÃO DA SILVA")],
+      gerais: {},
+    });
+
+    expect(r.vezesDoLaco).toBe(2);
+    expect(texto(r.nos)).toContain("VITORIA SILVA ARAUJO");
+    expect(texto(r.nos)).toContain("JOÃO DA SILVA");
+    // E nenhum marcador sobra impresso no papel.
+    expect(texto(r.nos)).not.toContain("cada_comprador");
+    expect(r.semValor).not.toContain("fim_cada_comprador");
+  });
+});
+
+// ── ONDE A DESCIDA NÃO PODE ENTRAR ───────────────────────────────────────────
+//
+// ⚠️ DESCER DEMAIS ESTRAGA TANTO QUANTO NÃO DESCER. Estes dois casos não existem na minuta do Vale
+// do Ouro de hoje, e é justamente por isso que estão travados aqui: são as formas que a primeira
+// versão da descida produzia — `<table>` pendurada num parágrafo e quadro solto ao lado da célula —
+// e que o navegador desmonta na hora de imprimir.
+describe("a descida dos gerados respeita a moldura do documento", () => {
+  const quadro: NoDoDocumento = {
+    children: [{ children: [{ children: [{ text: "Mensais" }], type: "td" }], type: "tr" }],
+    type: "table",
+  };
+
+  it("⚠️ variável filha DIRETA da célula: o quadro entra DENTRO dela, não ao lado", () => {
+    const celula: NoDoDocumento = {
+      children: [
+        { children: [{ children: [v("tabela_geral_pagamentos")], type: "td" }], type: "tr" },
+      ],
+      type: "table",
+    };
+
+    const r = preencherContrato([celula], {
+      compradores: [comprador("X")],
+      gerados: { tabela_geral_pagamentos: [quadro] },
+      gerais: {},
+    });
+    const html = documentoParaHtml(r.nos);
+
+    // Tabela irmã do `<td>` dentro do `<tr>` é HTML inválido: o navegador a joga para fora do
+    // quadro inteiro.
+    expect(/<\/td><table/.test(html)).toBe(false);
+    expect(/<td[^>]*><table/.test(html)).toBe(true);
+    expect(texto(r.nos)).toContain("Mensais");
+  });
+
+  it("⚠️ variável dentro de um nó de LINHA (link): a descida não entra, e a variável cobra", () => {
+    const comLink: NoDoDocumento = {
+      children: [{ children: [v("tabela_geral_pagamentos")], type: "a", url: "https://x" }],
+      type: "p",
+    };
+
+    const r = preencherContrato([comLink], {
+      compradores: [comprador("X")],
+      gerados: { tabela_geral_pagamentos: [quadro] },
+      gerais: {},
+    });
+    const html = documentoParaHtml(r.nos);
+
+    // `<table>` dentro de `<p>` racha a cláusula em duas na hora de imprimir.
+    expect(/<p[^>]*><table/.test(html)).toBe(false);
+    expect(texto(r.nos)).toContain("[tabela_geral_pagamentos]");
+    expect(r.semValor).toContain("tabela_geral_pagamentos");
+  });
+});
+
+// ⚠️ CÉLULA QUE ESVAZIOU NÃO PODE SUMIR. Quando o bloco condicional que ocupava a célula inteira é
+// desligado (a compradora é solteira), o `<td>` fica sem conteúdo — e apagá-lo tira uma coluna
+// daquela linha, desmontando a grade do Quadro-Resumo. Na folha, apagar um parágrafo vazio é
+// inofensivo; dentro de uma tabela, não é a mesma coisa.
+describe("a poda de vazios não desmonta a grade", () => {
+  it("célula que ficou sem conteúdo continua existindo, vazia", () => {
+    const linha: NoDoDocumento = {
+      children: [
+        {
+          children: [
+            { children: [p("COMPRADOR")], type: "td" },
+            { children: [p(v("inicio_dados_conjuge"), v("nome_conjuge"), v("fim_dados_conjuge"))], type: "td" },
+          ],
+          type: "tr",
+        },
+      ],
+      type: "table",
+    };
+
+    const r = preencherContrato([linha], { compradores: [comprador("X")], gerais: {} });
+    const html = documentoParaHtml(r.nos);
+
+    expect(texto(r.nos)).not.toContain("nome_conjuge");
+    // As duas células continuam lá: a linha não pode encolher.
+    expect((html.match(/<td/g) ?? []).length).toBe(2);
+  });
+});

@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-20-contrato-dentro-do-quadro-resumo",
+    deployedAt: "2026-09-20T19:20:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O cônjuge de quem é solteiro some também do Quadro-Resumo.** O bloco do cônjuge aparece em seis lugares da minuta do Vale do Ouro, e dois deles ficam dentro da tabela do Quadro-Resumo. Só os quatro de fora eram tratados: na caixa de CIÊNCIA PRÉVIA saía o nome do cônjuge de uma compradora solteira.",
+              "**Venda com dois compradores passa a mostrar os dois no Quadro-Resumo.** Os dois laços de comprador que ficam dentro daquela tabela não rodavam, e o quadro saía com o primeiro comprador apenas, enquanto o corpo do contrato trazia os dois.",
+              "**A grade do quadro não encolhe mais.** Célula que ficou sem conteúdo depois de um bloco desligado continua existindo, vazia, em vez de sumir e tirar uma coluna da linha.",
+            ],
+            screen: "Contrato · Prévia e geração",
+          },
+        ],
+      },
+    ],
+    rollback: "4d79ca49",
+    technical: {
+      done:
+        "Uma régua única de descida no motor (`preencher-contrato.ts`): `ehConteinerDeBlocos` (td, th, tr, table, tbody/thead/tfoot, li, ul, ol, blockquote, callout, column) decide onde cada etapa entra, pelo TIPO DO PAI. `paresEntreBlocos` passou a descer (não descia: percorria só a lista que recebia) e `expandirLaco` passou a descer com a LISTA INTEIRA de filhos em vez de um filho por vez — o par e o laço atravessam parágrafos IRMÃOS dentro da mesma célula, e descer um a um nunca via o fechamento. Medido no jsonb de produção (VOL-MINUTA-COMPRA-VENDA-NORMAL v6, nó de topo nº 3, tabela de 44 KB): 2 pares de cônjuge e 2 laços de comprador vivem lá dentro, em tr[1]>td e tr[16]>td (a caixa de CIÊNCIA PRÉVIA); os outros 4 de cada são de topo e sempre funcionaram. A régua por tipo também fecha dois pontos cegos de olhar a forma dos filhos: texto solto entre os parágrafos da célula (uma linha em branco) bloqueava a descida, e nó de LINHA com filhos (link, a própria variável) a autorizava onde não devia. `inserirGerados`: não desce mais em nó de linha (tabela dentro de `<p>` racha a cláusula) e, quando a variável é filha direta da célula, o quadro entra DENTRO dela em vez de virar irmão do `<td>`. `resolverNo`: célula que esvaziou no corte fica vazia em vez de ser removida, senão a linha perde coluna. 6 testes novos com as formas reais; 1.096 testes da Têmis passando; suíte e typecheck limpos. ⚠️ AINDA EM ABERTO, medido e não corrigido: par ou laço que abre numa célula e fecha em OUTRA (ou fora da tabela) continua contando como par quebrado e some com um comprador EM SILÊNCIO — não acontece na minuta do VOL, e a conferência que roda antes de publicar não pega, porque ela só confere equilíbrio de marcadores no texto, não se o motor os alcança.",
+      motivation:
+        "Lucas (20/09/2026), com o print do contrato gerado depois da 1.351.3: *\"ainda está aparecendo o nome do conjuge mesmo a pessoa sendo solteira\"*. A auditoria das demais etapas do motor, feita em seguida, achou o laço e a poda pelo mesmo caminho.",
+    },
+    title: "Contrato: o que está dentro do Quadro-Resumo também obedece",
+    type: "correcao",
+    version: "1.351.4",
+  },
+  {
     buildTag: "2026-09-20-quadro-de-pagamento-dentro-do-quadro-resumo",
     deployedAt: "2026-09-20T18:40:00-03:00",
     modules: [
